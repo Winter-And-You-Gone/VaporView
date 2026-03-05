@@ -1,19 +1,20 @@
-# VaproView
+# VaporView
 
 基于 Qt 的导航系统可视化交互界面，用于实时监控 GNSS/IMU 导航数据、PTB210 气压计和 HMP3 温湿度传感器数据。
 
 ## 功能特性
 
 - **多传感器数据采集**: 支持 GNSS (PVTSLN)、IMU (HiPNUC)、PTB210 气压计、HMP3 温湿度传感器
-- **实时数据显示**: 多标签页界面，实时更新传感器数据
-- **串口配置管理**: 可配置各传感器的串口参数
-- **数据导出**: 支持 CSV、JSON、KML 格式导出
-- **日志记录**: 操作日志和传感器数据日志
+- **实时数据显示**: 横向并排显示所有传感器数据
+- **串口配置管理**: 下拉选择串口，自动扫描可用设备
+- **全屏模式**: 支持 F11 全屏显示
+- **数据导出**: 支持 CSV、JSON 格式导出
+- **日志记录**: 操作日志记录
 
 ## 架构
 
 ```
-VaproView/
+VaporView/
 ├── CMakeLists.txt          # CMake 构建配置
 ├── include/                # C++ 头文件
 │   ├── MainWindow.h        # 主窗口
@@ -49,7 +50,7 @@ VaproView/
 ## 构建
 
 ```bash
-cd /home/nvidia/NAV/VaproView
+cd /home/nvidia/NAV/VaporView
 mkdir -p build && cd build
 cmake ..
 make -j$(nproc)
@@ -62,18 +63,10 @@ cmake -DUSE_QT6=ON ..
 make -j$(nproc)
 ```
 
-### 构建 Python 绑定
-
-```bash
-pip install pybind11
-cmake -DBUILD_PYTHON_BINDINGS=ON ..
-make -j$(nproc)
-```
-
 ## 运行
 
 ```bash
-./build/VaproView
+./build/VaporView
 ```
 
 ## 默认串口配置
@@ -102,50 +95,6 @@ make -j$(nproc)
 ### HMP3 温湿度传感器
 - Modbus RTU 协议
 - 从站地址: 240 (0xF0)
-
-## 数据导出格式
-
-### CSV
-```csv
-Category,Parameter,Value,Unit,Valid
-GNSS,Latitude,39.90420000,deg,Yes
-GNSS,Longitude,116.40740000,deg,Yes
-...
-```
-
-### JSON
-```json
-{
-  "gnss": {
-    "latitude": 39.9042,
-    "longitude": 116.4074,
-    "valid": true
-  },
-  ...
-}
-```
-
-### KML (Google Earth)
-支持单点位置和轨迹导出。
-
-## Python 模块使用
-
-```python
-from python import ConfigManager, FileLogger, DataExporter
-
-# 配置管理
-config = ConfigManager()
-print(config.config.gnss.port)
-
-# 日志记录
-logger = FileLogger()
-logger.start()
-logger.info("Application started")
-
-# 数据导出
-exporter = DataExporter()
-exporter.export_to_json(data)
-```
 
 ## 许可证
 
