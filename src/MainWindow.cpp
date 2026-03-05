@@ -17,6 +17,9 @@
 #include <QDirIterator>
 #include <QScrollBar>
 #include <QShortcut>
+#include <QEvent>
+#include <QLocale>
+#include <QCoreApplication>
 #include <memory>
 
 GnssPanel::GnssPanel(QWidget *parent)
@@ -35,6 +38,19 @@ GnssPanel::GnssPanel(QWidget *parent)
     , hdop_label_(nullptr)
     , diff_age_label_(nullptr)
     , raw_label_(nullptr)
+    , status_lbl_(nullptr)
+    , lat_lbl_(nullptr)
+    , lon_lbl_(nullptr)
+    , alt_lbl_(nullptr)
+    , vel_n_lbl_(nullptr)
+    , vel_e_lbl_(nullptr)
+    , heading_lbl_(nullptr)
+    , pitch_lbl_(nullptr)
+    , sats_lbl_(nullptr)
+    , gdop_lbl_(nullptr)
+    , pdop_lbl_(nullptr)
+    , hdop_lbl_(nullptr)
+    , diff_lbl_(nullptr)
 {
     setupUi();
 }
@@ -47,8 +63,8 @@ void GnssPanel::setupUi()
 
     int row = 0;
 
-    auto createRow = [this, &row, layout](const QString& label, QLabel*& valueLabel) {
-        auto *lbl = new QLabel(label, this);
+    auto createRow = [this, &row, layout](QLabel*& lbl, QLabel*& valueLabel) {
+        lbl = new QLabel(this);
         lbl->setStyleSheet("font-weight: bold; color: #555; font-size: 9px;");
         valueLabel = new QLabel("---", this);
         valueLabel->setStyleSheet("font-family: monospace; font-size: 10px; color: #0078d7;");
@@ -57,21 +73,39 @@ void GnssPanel::setupUi()
         row++;
     };
 
-    createRow(tr("Status:"), status_label_);
-    createRow(tr("Lat:"), lat_label_);
-    createRow(tr("Lon:"), lon_label_);
-    createRow(tr("Alt:"), alt_label_);
-    createRow(tr("Vel N:"), vel_n_label_);
-    createRow(tr("Vel E:"), vel_e_label_);
-    createRow(tr("Heading:"), heading_label_);
-    createRow(tr("Pitch:"), pitch_label_);
-    createRow(tr("Sats:"), sats_label_);
-    createRow(tr("GDOP:"), gdop_label_);
-    createRow(tr("PDOP:"), pdop_label_);
-    createRow(tr("HDOP:"), hdop_label_);
-    createRow(tr("Diff:"), diff_age_label_);
+    createRow(status_lbl_, status_label_);
+    createRow(lat_lbl_, lat_label_);
+    createRow(lon_lbl_, lon_label_);
+    createRow(alt_lbl_, alt_label_);
+    createRow(vel_n_lbl_, vel_n_label_);
+    createRow(vel_e_lbl_, vel_e_label_);
+    createRow(heading_lbl_, heading_label_);
+    createRow(pitch_lbl_, pitch_label_);
+    createRow(sats_lbl_, sats_label_);
+    createRow(gdop_lbl_, gdop_label_);
+    createRow(pdop_lbl_, pdop_label_);
+    createRow(hdop_lbl_, hdop_label_);
+    createRow(diff_lbl_, diff_age_label_);
 
     layout->setColumnStretch(1, 1);
+    retranslateUi();
+}
+
+void GnssPanel::retranslateUi()
+{
+    status_lbl_->setText(tr("Status:"));
+    lat_lbl_->setText(tr("Lat:"));
+    lon_lbl_->setText(tr("Lon:"));
+    alt_lbl_->setText(tr("Alt:"));
+    vel_n_lbl_->setText(tr("Vel N:"));
+    vel_e_lbl_->setText(tr("Vel E:"));
+    heading_lbl_->setText(tr("Heading:"));
+    pitch_lbl_->setText(tr("Pitch:"));
+    sats_lbl_->setText(tr("Sats:"));
+    gdop_lbl_->setText(tr("GDOP:"));
+    pdop_lbl_->setText(tr("PDOP:"));
+    hdop_lbl_->setText(tr("HDOP:"));
+    diff_lbl_->setText(tr("Diff:"));
 }
 
 void GnssPanel::updateData(const VaproView::GnssData& data)
@@ -119,6 +153,13 @@ ImuPanel::ImuPanel(QWidget *parent)
     , temp_label_(nullptr)
     , press_label_(nullptr)
     , source_label_(nullptr)
+    , source_lbl_(nullptr)
+    , accel_sep_(nullptr)
+    , gyro_sep_(nullptr)
+    , attitude_sep_(nullptr)
+    , env_sep_(nullptr)
+    , temp_lbl_(nullptr)
+    , press_lbl_(nullptr)
 {
     setupUi();
 }
@@ -131,8 +172,8 @@ void ImuPanel::setupUi()
 
     int row = 0;
 
-    auto createRow = [this, &row, layout](const QString& label, QLabel*& valueLabel) {
-        auto *lbl = new QLabel(label, this);
+    auto createRow = [this, &row, layout](QLabel*& lbl, QLabel*& valueLabel) {
+        lbl = new QLabel(this);
         lbl->setStyleSheet("font-weight: bold; color: #555; font-size: 9px;");
         valueLabel = new QLabel("---", this);
         valueLabel->setStyleSheet("font-family: monospace; font-size: 10px; color: #0078d7;");
@@ -141,28 +182,48 @@ void ImuPanel::setupUi()
         row++;
     };
 
-    createRow(tr("Source:"), source_label_);
+    createRow(source_lbl_, source_label_);
 
-    layout->addWidget(new QLabel(tr("— Accel —"), this), row++, 0, 1, 2);
-    createRow(tr("X:"), acc_x_label_);
-    createRow(tr("Y:"), acc_y_label_);
-    createRow(tr("Z:"), acc_z_label_);
+    accel_sep_ = new QLabel(this);
+    accel_sep_->setStyleSheet("color: #888; font-size: 9px;");
+    layout->addWidget(accel_sep_, row++, 0, 1, 2);
+    createRow(acc_x_label_, acc_x_label_);
+    createRow(acc_y_label_, acc_y_label_);
+    createRow(acc_z_label_, acc_z_label_);
 
-    layout->addWidget(new QLabel(tr("— Gyro —"), this), row++, 0, 1, 2);
-    createRow(tr("X:"), gyr_x_label_);
-    createRow(tr("Y:"), gyr_y_label_);
-    createRow(tr("Z:"), gyr_z_label_);
+    gyro_sep_ = new QLabel(this);
+    gyro_sep_->setStyleSheet("color: #888; font-size: 9px;");
+    layout->addWidget(gyro_sep_, row++, 0, 1, 2);
+    createRow(gyr_x_label_, gyr_x_label_);
+    createRow(gyr_y_label_, gyr_y_label_);
+    createRow(gyr_z_label_, gyr_z_label_);
 
-    layout->addWidget(new QLabel(tr("— Attitude —"), this), row++, 0, 1, 2);
-    createRow(tr("Roll:"), roll_label_);
-    createRow(tr("Pitch:"), pitch_label_);
-    createRow(tr("Yaw:"), yaw_label_);
+    attitude_sep_ = new QLabel(this);
+    attitude_sep_->setStyleSheet("color: #888; font-size: 9px;");
+    layout->addWidget(attitude_sep_, row++, 0, 1, 2);
+    createRow(roll_label_, roll_label_);
+    createRow(pitch_label_, pitch_label_);
+    createRow(yaw_label_, yaw_label_);
 
-    layout->addWidget(new QLabel(tr("— Env —"), this), row++, 0, 1, 2);
-    createRow(tr("Temp:"), temp_label_);
-    createRow(tr("Press:"), press_label_);
+    env_sep_ = new QLabel(this);
+    env_sep_->setStyleSheet("color: #888; font-size: 9px;");
+    layout->addWidget(env_sep_, row++, 0, 1, 2);
+    createRow(temp_lbl_, temp_label_);
+    createRow(press_lbl_, press_label_);
 
     layout->setColumnStretch(1, 1);
+    retranslateUi();
+}
+
+void ImuPanel::retranslateUi()
+{
+    source_lbl_->setText(tr("Source:"));
+    accel_sep_->setText(tr("— Accel —"));
+    gyro_sep_->setText(tr("— Gyro —"));
+    attitude_sep_->setText(tr("— Attitude —"));
+    env_sep_->setText(tr("— Env —"));
+    temp_lbl_->setText(tr("Temp:"));
+    press_lbl_->setText(tr("Press:"));
 }
 
 void ImuPanel::updateData(const VaproView::ImuData& data)
@@ -198,6 +259,7 @@ PtbPanel::PtbPanel(QWidget *parent)
     : QWidget(parent)
     , pressure_label_(nullptr)
     , status_label_(nullptr)
+    , pressure_lbl_(nullptr)
 {
     setupUi();
 }
@@ -209,20 +271,27 @@ void PtbPanel::setupUi()
     layout->setContentsMargins(3, 3, 3, 3);
 
     auto *pressLayout = new QHBoxLayout();
-    auto *pressLbl = new QLabel(tr("Pressure:"), this);
-    pressLbl->setStyleSheet("font-weight: bold; color: #555; font-size: 9px;");
-    pressLayout->addWidget(pressLbl);
+    pressure_lbl_ = new QLabel(this);
+    pressure_lbl_->setStyleSheet("font-weight: bold; color: #555; font-size: 9px;");
+    pressLayout->addWidget(pressure_lbl_);
     pressure_label_ = new QLabel("--- hPa", this);
     pressure_label_->setStyleSheet("font-family: monospace; font-size: 12px; font-weight: bold; color: #0078d7;");
     pressLayout->addWidget(pressure_label_);
     pressLayout->addStretch();
     layout->addLayout(pressLayout);
 
-    status_label_ = new QLabel(tr("Waiting..."), this);
+    status_label_ = new QLabel(this);
     status_label_->setStyleSheet("color: #888; font-size: 9px;");
     layout->addWidget(status_label_);
 
     layout->addStretch();
+    retranslateUi();
+}
+
+void PtbPanel::retranslateUi()
+{
+    pressure_lbl_->setText(tr("Pressure:"));
+    status_label_->setText(tr("Waiting..."));
 }
 
 void PtbPanel::updateData(const VaproView::PtbData& data)
@@ -248,6 +317,8 @@ HmpPanel::HmpPanel(QWidget *parent)
     , humidity_label_(nullptr)
     , temperature_label_(nullptr)
     , status_label_(nullptr)
+    , temp_lbl_(nullptr)
+    , humidity_lbl_(nullptr)
 {
     setupUi();
 }
@@ -259,9 +330,9 @@ void HmpPanel::setupUi()
     layout->setContentsMargins(3, 3, 3, 3);
 
     auto *tempLayout = new QHBoxLayout();
-    auto *tempLbl = new QLabel(tr("Temp:"), this);
-    tempLbl->setStyleSheet("font-weight: bold; color: #555; font-size: 9px;");
-    tempLayout->addWidget(tempLbl);
+    temp_lbl_ = new QLabel(this);
+    temp_lbl_->setStyleSheet("font-weight: bold; color: #555; font-size: 9px;");
+    tempLayout->addWidget(temp_lbl_);
     temperature_label_ = new QLabel("--- °C", this);
     temperature_label_->setStyleSheet("font-family: monospace; font-size: 12px; font-weight: bold; color: #0078d7;");
     tempLayout->addWidget(temperature_label_);
@@ -269,20 +340,28 @@ void HmpPanel::setupUi()
     layout->addLayout(tempLayout);
 
     auto *humidLayout = new QHBoxLayout();
-    auto *humidLbl = new QLabel(tr("Humidity:"), this);
-    humidLbl->setStyleSheet("font-weight: bold; color: #555; font-size: 9px;");
-    humidLayout->addWidget(humidLbl);
+    humidity_lbl_ = new QLabel(this);
+    humidity_lbl_->setStyleSheet("font-weight: bold; color: #555; font-size: 9px;");
+    humidLayout->addWidget(humidity_lbl_);
     humidity_label_ = new QLabel("--- %RH", this);
     humidity_label_->setStyleSheet("font-family: monospace; font-size: 12px; font-weight: bold; color: #0078d7;");
     humidLayout->addWidget(humidity_label_);
     humidLayout->addStretch();
     layout->addLayout(humidLayout);
 
-    status_label_ = new QLabel(tr("Waiting..."), this);
+    status_label_ = new QLabel(this);
     status_label_->setStyleSheet("color: #888; font-size: 9px;");
     layout->addWidget(status_label_);
 
     layout->addStretch();
+    retranslateUi();
+}
+
+void HmpPanel::retranslateUi()
+{
+    temp_lbl_->setText(tr("Temp:"));
+    humidity_lbl_->setText(tr("Humidity:"));
+    status_label_->setText(tr("Waiting..."));
 }
 
 void HmpPanel::updateData(const VaproView::HmpData& data)
@@ -330,12 +409,21 @@ MainWindow::MainWindow(QWidget *parent)
     , export_btn_(nullptr)
     , refresh_ports_btn_(nullptr)
     , fullscreen_btn_(nullptr)
+    , lang_action_(nullptr)
+    , config_group_(nullptr)
+    , data_group_(nullptr)
+    , log_group_(nullptr)
+    , gnss_group_(nullptr)
+    , imu_group_(nullptr)
+    , ptb_group_(nullptr)
+    , hmp_group_(nullptr)
     , gnss_collector_(nullptr)
     , imu_collector_(nullptr)
     , ptb_collector_(nullptr)
     , hmp_collector_(nullptr)
     , refresh_timer_(nullptr)
     , is_fullscreen_(false)
+    , is_english_(false)
 {
     setupMenuBar();
     setupToolBar();
@@ -360,35 +448,50 @@ MainWindow::~MainWindow()
     if (hmp_collector_) hmp_collector_->stop();
 }
 
+void MainWindow::changeEvent(QEvent *event)
+{
+    if (event->type() == QEvent::LanguageChange)
+    {
+        retranslateUi();
+    }
+    QMainWindow::changeEvent(event);
+}
+
 void MainWindow::setupMenuBar()
 {
     QMenu *fileMenu = menuBar()->addMenu(tr("&File"));
 
-    QAction *exportAction = new QAction(tr("&Export Data..."), this);
+    QAction *exportAction = new QAction(this);
     exportAction->setShortcut(QKeySequence::Save);
     connect(exportAction, &QAction::triggered, this, &MainWindow::onExportClicked);
     fileMenu->addAction(exportAction);
 
     fileMenu->addSeparator();
 
-    QAction *exitAction = new QAction(tr("E&xit"), this);
+    QAction *exitAction = new QAction(this);
     exitAction->setShortcut(QKeySequence::Quit);
     connect(exitAction, &QAction::triggered, this, &QMainWindow::close);
     fileMenu->addAction(exitAction);
 
     QMenu *viewMenu = menuBar()->addMenu(tr("&View"));
 
-    fullscreen_btn_ = new QAction(tr("&Fullscreen"), this);
+    fullscreen_btn_ = new QAction(this);
     fullscreen_btn_->setShortcut(QKeySequence(Qt::Key_F11));
     connect(fullscreen_btn_, &QAction::triggered, this, &MainWindow::onToggleFullScreen);
     viewMenu->addAction(fullscreen_btn_);
 
+    QMenu *langMenu = menuBar()->addMenu(tr("&Language"));
+
+    lang_action_ = new QAction(this);
+    connect(lang_action_, &QAction::triggered, this, &MainWindow::onSwitchLanguage);
+    langMenu->addAction(lang_action_);
+
     QMenu *helpMenu = menuBar()->addMenu(tr("&Help"));
 
-    QAction *aboutAction = new QAction(tr("&About"), this);
+    QAction *aboutAction = new QAction(this);
     connect(aboutAction, &QAction::triggered, [this]() {
-        QMessageBox::about(this, tr("About VaproView"),
-            tr("VaproView Application\n\n"
+        QMessageBox::about(this, tr("About VaporView"),
+            tr("VaporView Application\n\n"
                "Version 1.0.0\n\n"
                "Navigation System with RTK and IMU support.\n\n"
                "Supported devices:\n"
@@ -399,6 +502,8 @@ void MainWindow::setupMenuBar()
                "Press F11 for fullscreen mode."));
     });
     helpMenu->addAction(aboutAction);
+
+    retranslateUi();
 }
 
 void MainWindow::setupToolBar()
@@ -406,19 +511,19 @@ void MainWindow::setupToolBar()
     QToolBar *toolbar = addToolBar(tr("Main Toolbar"));
     toolbar->setMovable(false);
 
-    refresh_ports_btn_ = new QAction(tr("Refresh"), this);
+    refresh_ports_btn_ = new QAction(this);
     refresh_ports_btn_->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
     connect(refresh_ports_btn_, &QAction::triggered, this, &MainWindow::onRefreshPortsClicked);
     toolbar->addAction(refresh_ports_btn_);
 
     toolbar->addSeparator();
 
-    connect_btn_ = new QAction(tr("Connect"), this);
+    connect_btn_ = new QAction(this);
     connect_btn_->setIcon(style()->standardIcon(QStyle::SP_DialogYesButton));
     connect(connect_btn_, &QAction::triggered, this, &MainWindow::onConnectClicked);
     toolbar->addAction(connect_btn_);
 
-    disconnect_btn_ = new QAction(tr("Disconnect"), this);
+    disconnect_btn_ = new QAction(this);
     disconnect_btn_->setIcon(style()->standardIcon(QStyle::SP_DialogNoButton));
     disconnect_btn_->setEnabled(false);
     connect(disconnect_btn_, &QAction::triggered, this, &MainWindow::onDisconnectClicked);
@@ -426,20 +531,20 @@ void MainWindow::setupToolBar()
 
     toolbar->addSeparator();
 
-    QAction *clearLogAction = new QAction(tr("Clear"), this);
+    QAction *clearLogAction = new QAction(this);
     connect(clearLogAction, &QAction::triggered, this, &MainWindow::onClearLogClicked);
     toolbar->addAction(clearLogAction);
 
     toolbar->addSeparator();
 
-    export_btn_ = new QAction(tr("Export"), this);
+    export_btn_ = new QAction(this);
     export_btn_->setIcon(style()->standardIcon(QStyle::SP_DialogSaveButton));
     connect(export_btn_, &QAction::triggered, this, &MainWindow::onExportClicked);
     toolbar->addAction(export_btn_);
 
     toolbar->addSeparator();
 
-    QAction *fullscreenAction = new QAction(tr("Fullscreen"), this);
+    QAction *fullscreenAction = new QAction(this);
     fullscreenAction->setIcon(style()->standardIcon(QStyle::SP_TitleBarMaxButton));
     connect(fullscreenAction, &QAction::triggered, this, &MainWindow::onToggleFullScreen);
     toolbar->addAction(fullscreenAction);
@@ -447,7 +552,7 @@ void MainWindow::setupToolBar()
 
 void MainWindow::setupStatusBar()
 {
-    status_label_ = new QLabel(tr("Ready"));
+    status_label_ = new QLabel(this);
     statusBar()->addWidget(status_label_);
 }
 
@@ -463,6 +568,8 @@ void MainWindow::setupCentralWidget()
     setupConfigPanel();
     setupDataPanels();
     setupLogPanel();
+
+    retranslateUi();
 }
 
 QStringList MainWindow::getAvailablePorts()
@@ -521,11 +628,8 @@ QStringList MainWindow::getAvailablePorts()
 
 void MainWindow::setupConfigPanel()
 {
-    auto *config_container = new QHBoxLayout();
-    config_container->addStretch();
-
-    auto *config_group = new QGroupBox(tr("Serial Port Configuration"), this);
-    auto *config_layout = new QGridLayout(config_group);
+    config_group_ = new QGroupBox(this);
+    auto *config_layout = new QGridLayout(config_group_);
     config_layout->setSpacing(3);
 
     QStringList baudRates = {"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"};
@@ -567,53 +671,50 @@ void MainWindow::setupConfigPanel()
     createPortRow(tr("PTB210:"), ptb_port_combo_, ptb_baud_combo_, "/dev/ttyBARO", "9600", row++);
     createPortRow(tr("HMP3:"), hmp_port_combo_, hmp_baud_combo_, "/dev/ttyHMP", "19200", row++);
 
-    config_container->addWidget(config_group);
-    config_container->addStretch();
-
-    main_layout_->addLayout(config_container);
+    main_layout_->addWidget(config_group_);
 }
 
 void MainWindow::setupDataPanels()
 {
-    auto *data_group = new QGroupBox(tr("Sensor Data"), this);
-    auto *data_layout = new QHBoxLayout(data_group);
+    data_group_ = new QGroupBox(this);
+    auto *data_layout = new QHBoxLayout(data_group_);
     data_layout->setSpacing(3);
 
-    auto *gnss_group = new QGroupBox(tr("GNSS / RTK"), this);
-    auto *gnss_layout = new QVBoxLayout(gnss_group);
+    gnss_group_ = new QGroupBox(this);
+    auto *gnss_layout = new QVBoxLayout(gnss_group_);
     gnss_layout->setContentsMargins(2, 2, 2, 2);
     gnss_panel_ = new GnssPanel(this);
     gnss_layout->addWidget(gnss_panel_);
-    data_layout->addWidget(gnss_group);
+    data_layout->addWidget(gnss_group_);
 
-    auto *imu_group = new QGroupBox(tr("IMU"), this);
-    auto *imu_layout = new QVBoxLayout(imu_group);
+    imu_group_ = new QGroupBox(this);
+    auto *imu_layout = new QVBoxLayout(imu_group_);
     imu_layout->setContentsMargins(2, 2, 2, 2);
     imu_panel_ = new ImuPanel(this);
     imu_layout->addWidget(imu_panel_);
-    data_layout->addWidget(imu_group);
+    data_layout->addWidget(imu_group_);
 
-    auto *ptb_group = new QGroupBox(tr("PTB210"), this);
-    auto *ptb_layout = new QVBoxLayout(ptb_group);
+    ptb_group_ = new QGroupBox(this);
+    auto *ptb_layout = new QVBoxLayout(ptb_group_);
     ptb_layout->setContentsMargins(2, 2, 2, 2);
     ptb_panel_ = new PtbPanel(this);
     ptb_layout->addWidget(ptb_panel_);
-    data_layout->addWidget(ptb_group);
+    data_layout->addWidget(ptb_group_);
 
-    auto *hmp_group = new QGroupBox(tr("HMP3"), this);
-    auto *hmp_layout = new QVBoxLayout(hmp_group);
+    hmp_group_ = new QGroupBox(this);
+    auto *hmp_layout = new QVBoxLayout(hmp_group_);
     hmp_layout->setContentsMargins(2, 2, 2, 2);
     hmp_panel_ = new HmpPanel(this);
     hmp_layout->addWidget(hmp_panel_);
-    data_layout->addWidget(hmp_group);
+    data_layout->addWidget(hmp_group_);
 
-    main_layout_->addWidget(data_group, 1);
+    main_layout_->addWidget(data_group_, 1);
 }
 
 void MainWindow::setupLogPanel()
 {
-    auto *log_group = new QGroupBox(tr("Log"), this);
-    auto *log_layout = new QVBoxLayout(log_group);
+    log_group_ = new QGroupBox(this);
+    auto *log_layout = new QVBoxLayout(log_group_);
     log_layout->setContentsMargins(3, 3, 3, 3);
 
     log_text_edit_ = new QTextEdit(this);
@@ -622,7 +723,69 @@ void MainWindow::setupLogPanel()
     log_text_edit_->setMaximumHeight(70);
     log_layout->addWidget(log_text_edit_);
 
-    main_layout_->addWidget(log_group);
+    main_layout_->addWidget(log_group_);
+}
+
+void MainWindow::retranslateUi()
+{
+    menuBar()->actions().at(0)->menu()->setTitle(tr("&File"));
+    menuBar()->actions().at(0)->menu()->actions().at(0)->setText(tr("&Export Data..."));
+    menuBar()->actions().at(0)->menu()->actions().at(2)->setText(tr("E&xit"));
+
+    menuBar()->actions().at(1)->menu()->setTitle(tr("&View"));
+    fullscreen_btn_->setText(tr("&Fullscreen"));
+
+    menuBar()->actions().at(2)->menu()->setTitle(tr("&Language"));
+    lang_action_->setText(is_english_ ? tr("Switch to Chinese") : tr("Switch to English"));
+
+    menuBar()->actions().at(3)->menu()->setTitle(tr("&Help"));
+    menuBar()->actions().at(3)->menu()->actions().at(0)->setText(tr("&About"));
+
+    refresh_ports_btn_->setText(tr("Refresh"));
+    connect_btn_->setText(tr("Connect"));
+    disconnect_btn_->setText(tr("Disconnect"));
+    export_btn_->setText(tr("Export"));
+
+    status_label_->setText(tr("Ready"));
+
+    config_group_->setTitle(tr("Serial Port Configuration"));
+    data_group_->setTitle(tr("Sensor Data"));
+    log_group_->setTitle(tr("Log"));
+
+    gnss_group_->setTitle(tr("GNSS / RTK"));
+    imu_group_->setTitle(tr("IMU"));
+    ptb_group_->setTitle(tr("PTB210"));
+    hmp_group_->setTitle(tr("HMP3"));
+
+    gnss_panel_->retranslateUi();
+    imu_panel_->retranslateUi();
+    ptb_panel_->retranslateUi();
+    hmp_panel_->retranslateUi();
+}
+
+void MainWindow::switchToLanguage(const QString& lang)
+{
+    qApp->removeTranslator(&translator_);
+
+    if (lang == "zh")
+    {
+        QLocale::setDefault(QLocale(QLocale::Chinese));
+    }
+    else
+    {
+        QLocale::setDefault(QLocale(QLocale::English));
+    }
+
+    QEvent event(QEvent::LanguageChange);
+    QCoreApplication::sendEvent(this, &event);
+}
+
+void MainWindow::onSwitchLanguage()
+{
+    is_english_ = !is_english_;
+    switchToLanguage(is_english_ ? "en" : "zh");
+    retranslateUi();
+    log(tr("Language switched"));
 }
 
 void MainWindow::log(const QString& message)
