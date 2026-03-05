@@ -437,6 +437,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(refresh_timer_, &QTimer::timeout, this, &MainWindow::onRefreshTimer);
     refresh_timer_->start(100);
 
+    retranslateUi();
+
     updateConnectionStatus(false);
 }
 
@@ -502,8 +504,6 @@ void MainWindow::setupMenuBar()
                "Press F11 for fullscreen mode."));
     });
     helpMenu->addAction(aboutAction);
-
-    retranslateUi();
 }
 
 void MainWindow::setupToolBar()
@@ -568,8 +568,6 @@ void MainWindow::setupCentralWidget()
     setupConfigPanel();
     setupDataPanels();
     setupLogPanel();
-
-    retranslateUi();
 }
 
 QStringList MainWindow::getAvailablePorts()
