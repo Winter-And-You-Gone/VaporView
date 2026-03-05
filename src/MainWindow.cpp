@@ -17,6 +17,7 @@
 #include <QDirIterator>
 #include <QScrollBar>
 #include <QShortcut>
+#include <QSpacerItem>
 #include <memory>
 
 GnssPanel::GnssPanel(QWidget *parent)
@@ -501,6 +502,10 @@ MainWindow::MainWindow(QWidget *parent)
     , imu_lbl_(nullptr)
     , ptb_lbl_(nullptr)
     , hmp_lbl_(nullptr)
+    , rate_lbl_(nullptr)
+    , current_rate_lbl_(nullptr)
+    , sample_rate_combo_(nullptr)
+    , custom_rate_spin_(nullptr)
     , gnss_collector_(nullptr)
     , imu_collector_(nullptr)
     , ptb_collector_(nullptr)
@@ -508,6 +513,7 @@ MainWindow::MainWindow(QWidget *parent)
     , refresh_timer_(nullptr)
     , is_fullscreen_(false)
     , is_english_(false)
+    , current_sample_rate_(1)
 {
     setupMenuBar();
     setupToolBar();
@@ -755,6 +761,38 @@ void MainWindow::setupConfigPanel()
     createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, "/dev/ttyBARO", "9600", row++);
     createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, "/dev/ttyHMP", "19200", row++);
 
+    config_layout->addItem(new QSpacerItem(20, 10, QSizePolicy::Fixed, QSizePolicy::Fixed), row++, 0);
+
+    rate_lbl_ = new QLabel(this);
+    rate_lbl_->setStyleSheet("font-weight: bold; font-size: 9px;");
+    config_layout->addWidget(rate_lbl_, row, 0);
+
+    sample_rate_combo_ = new QComboBox(this);
+    sample_rate_combo_->addItem("1 Hz");
+    sample_rate_combo_->addItem("2 Hz");
+    sample_rate_combo_->addItem("5 Hz");
+    sample_rate_combo_->addItem("10 Hz");
+    sample_rate_combo_->addItem("20 Hz");
+    sample_rate_combo_->addItem(is_english_ ? "Custom" : "自定义");
+    sample_rate_combo_->setCurrentIndex(0);
+    sample_rate_combo_->setMinimumWidth(80);
+    connect(sample_rate_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::onSampleRateChanged);
+    config_layout->addWidget(sample_rate_combo_, row, 1);
+
+    custom_rate_spin_ = new QSpinBox(this);
+    custom_rate_spin_->setRange(1, 20);
+    custom_rate_spin_->setValue(1);
+    custom_rate_spin_->setSuffix(" Hz");
+    custom_rate_spin_->setEnabled(false);
+    custom_rate_spin_->setMinimumWidth(70);
+    connect(custom_rate_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, &MainWindow::onCustomRateChanged);
+    config_layout->addWidget(custom_rate_spin_, row, 2);
+
+    row++;
+    current_rate_lbl_ = new QLabel(this);
+    current_rate_lbl_->setStyleSheet("font-weight: bold; color: #0078d7; font-size: 9px;");
+    config_layout->addWidget(current_rate_lbl_, row, 0, 1, 3);
+
     main_layout_->addWidget(config_group_);
 }
 
@@ -850,6 +888,14 @@ void MainWindow::setEnglish(bool english)
     ptb_lbl_->setText(english ? "PTB210:" : "PTB210:");
     hmp_lbl_->setText(english ? "HMP3:" : "HMP3:");
 
+    rate_lbl_->setText(english ? "Sample Rate:" : "采样频率:");
+    QString customText = english ? "Custom" : "自定义";
+    if (sample_rate_combo_->count() > 5)
+    {
+        sample_rate_combo_->setItemText(5, customText);
+    }
+    updateCurrentRateLabel();
+
     gnss_panel_->setEnglish(english);
     imu_panel_->setEnglish(english);
     ptb_panel_->setEnglish(english);
@@ -861,6 +907,44 @@ void MainWindow::onSwitchLanguage()
     is_english_ = !is_english_;
     setEnglish(is_english_);
     log(is_english_ ? "Language switched to English" : "语言已切换为中文");
+}
+
+void MainWindow::onSampleRateChanged(int index)
+{
+    int rates[] = {1, 2, 5, 10, 20};
+    if (index >= 0 && index < 5)
+    {
+        current_sample_rate_ = rates[index];
+        custom_rate_spin_->setEnabled(false);
+    }
+    else if (index == 5)
+    {
+        custom_rate_spin_->setEnabled(true);
+        current_sample_rate_ = custom_rate_spin_->value();
+    }
+    applySampleRate();
+    updateCurrentRateLabel();
+}
+
+void MainWindow::onCustomRateChanged(int value)
+{
+    current_sample_rate_ = value;
+    applySampleRate();
+    updateCurrentRateLabel();
+}
+
+void MainWindow::applySampleRate()
+{
+    if (gnss_collector_) gnss_collector_->setSampleRate(current_sample_rate_);
+    if (imu_collector_) imu_collector_->setSampleRate(current_sample_rate_);
+    if (ptb_collector_) ptb_collector_->setSampleRate(current_sample_rate_);
+    if (hmp_collector_) hmp_collector_->setSampleRate(current_sample_rate_);
+    log(QString(is_english_ ? "Sample rate set to %1 Hz" : "采样频率已设置为 %1 Hz").arg(current_sample_rate_));
+}
+
+void MainWindow::updateCurrentRateLabel()
+{
+    current_rate_lbl_->setText(QString(is_english_ ? "Current: %1 Hz" : "当前: %1 Hz").arg(current_sample_rate_));
 }
 
 void MainWindow::log(const QString& message)
@@ -951,6 +1035,11 @@ void MainWindow::onConnectClicked()
     imu_collector_ = std::make_unique<VaproView::ImuCollector>();
     ptb_collector_ = std::make_unique<VaproView::PtbCollector>();
     hmp_collector_ = std::make_unique<VaproView::HmpCollector>();
+
+    gnss_collector_->setSampleRate(current_sample_rate_);
+    imu_collector_->setSampleRate(current_sample_rate_);
+    ptb_collector_->setSampleRate(current_sample_rate_);
+    hmp_collector_->setSampleRate(current_sample_rate_);
 
     bool any_connected = false;
     QString selectText = is_english_ ? "-- Select --" : "-- 选择 --";

@@ -171,6 +171,8 @@ private slots:
     void onRefreshPortsClicked();
     void onToggleFullScreen();
     void onSwitchLanguage();
+    void onSampleRateChanged(int index);
+    void onCustomRateChanged(int value);
 
 private:
     void setupMenuBar();
@@ -184,6 +186,8 @@ private:
     void updateConnectionStatus(bool connected);
     QStringList getAvailablePorts();
     void setEnglish(bool english);
+    void applySampleRate();
+    void updateCurrentRateLabel();
 
     QWidget *central_widget_;
     QVBoxLayout *main_layout_;
@@ -227,6 +231,11 @@ private:
     QLabel *imu_lbl_;
     QLabel *ptb_lbl_;
     QLabel *hmp_lbl_;
+    QLabel *rate_lbl_;
+    QLabel *current_rate_lbl_;
+
+    QComboBox *sample_rate_combo_;
+    QSpinBox *custom_rate_spin_;
 
     std::unique_ptr<VaproView::GnssCollector> gnss_collector_;
     std::unique_ptr<VaproView::ImuCollector> imu_collector_;
@@ -242,6 +251,7 @@ private:
 
     bool is_fullscreen_;
     bool is_english_;
+    int current_sample_rate_;
 };
 
 #endif

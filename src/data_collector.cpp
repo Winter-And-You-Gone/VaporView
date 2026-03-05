@@ -66,6 +66,33 @@ std::string DataCollector::getLastError() const
   return serial_.lastError();
 }
 
+void DataCollector::setSampleRate(int hz)
+{
+  if (hz < 1) hz = 1;
+  if (hz > 20) hz = 20;
+  std::lock_guard<std::mutex> lock(mutex_);
+  sample_rate_hz_ = hz;
+}
+
+int DataCollector::getSampleRate() const
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  return sample_rate_hz_;
+}
+
+bool DataCollector::shouldEmitData()
+{
+  auto now = std::chrono::steady_clock::now();
+  auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(now - last_emit_time_).count();
+  int interval_us = 1000000 / sample_rate_hz_;
+  return elapsed >= interval_us;
+}
+
+void DataCollector::updateLastEmitTime()
+{
+  last_emit_time_ = std::chrono::steady_clock::now();
+}
+
 bool DataCollector::initialize()
 {
   return true;
@@ -137,8 +164,9 @@ void GnssCollector::run()
           latest_data_.raw_sentence = line;
           latest_data_.error_message.clear();
 
-          if (data_callback_)
+          if (data_callback_ && shouldEmitData())
           {
+            updateLastEmitTime();
             data_callback_();
           }
         }
@@ -245,8 +273,9 @@ void ImuCollector::run()
             std::lock_guard<std::mutex> lock(mutex_);
             latest_data_ = sample;
 
-            if (data_callback_)
+            if (data_callback_ && shouldEmitData())
             {
+              updateLastEmitTime();
               data_callback_();
             }
           }
@@ -277,6 +306,8 @@ void PtbCollector::run()
 
   while (running_.load())
   {
+    auto start_time = std::chrono::steady_clock::now();
+    
     serial_.write(PTB_CMD_PRESSURE, std::strlen(PTB_CMD_PRESSURE));
     usleep(100000);
 
@@ -298,8 +329,9 @@ void PtbCollector::run()
         latest_data_.timestamp = std::chrono::steady_clock::now();
         latest_data_.error_message.clear();
 
-        if (data_callback_)
+        if (data_callback_ && shouldEmitData())
         {
+          updateLastEmitTime();
           data_callback_();
         }
       }
@@ -311,7 +343,14 @@ void PtbCollector::run()
       }
     }
 
-    usleep(900000);
+    int interval_ms = 1000 / sample_rate_hz_;
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start_time).count();
+    int remaining = interval_ms - static_cast<int>(elapsed) - 100;
+    if (remaining > 0)
+    {
+      usleep(static_cast<useconds_t>(remaining * 1000));
+    }
   }
 }
 
@@ -363,6 +402,8 @@ void HmpCollector::run()
 
   while (running_.load())
   {
+    auto start_time = std::chrono::steady_clock::now();
+    
     request[0] = HMP3_SLAVE_ADDR;
     request[1] = 0x03;
     request[2] = 0x00;
@@ -401,8 +442,9 @@ void HmpCollector::run()
         latest_data_.timestamp = std::chrono::steady_clock::now();
         latest_data_.error_message.clear();
 
-        if (data_callback_)
+        if (data_callback_ && shouldEmitData())
         {
+          updateLastEmitTime();
           data_callback_();
         }
       }
@@ -420,7 +462,14 @@ void HmpCollector::run()
       latest_data_.error_message = "Modbus error: " + std::to_string(response[2]);
     }
 
-    usleep(900000);
+    int interval_ms = 1000 / sample_rate_hz_;
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start_time).count();
+    int remaining = interval_ms - static_cast<int>(elapsed) - 100;
+    if (remaining > 0)
+    {
+      usleep(static_cast<useconds_t>(remaining * 1000));
+    }
   }
 }
 

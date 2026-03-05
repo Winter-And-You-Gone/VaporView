@@ -28,18 +28,24 @@ public:
   bool isRunning() const;
 
   void setDataCallback(DataCallback callback);
+  void setSampleRate(int hz);
+  int getSampleRate() const;
   std::string getLastError() const;
 
 protected:
   virtual void run() = 0;
   virtual bool initialize();
   virtual void cleanup();
+  bool shouldEmitData();
+  void updateLastEmitTime();
 
   SerialPort serial_;
   std::atomic<bool> running_{false};
   std::thread thread_;
   mutable std::mutex mutex_;
   DataCallback data_callback_;
+  int sample_rate_hz_{1};
+  std::chrono::steady_clock::time_point last_emit_time_;
 };
 
 class GnssCollector : public DataCollector
