@@ -20,7 +20,6 @@
 #include <QTimer>
 #include <QAction>
 #include <QScrollArea>
-#include <QTranslator>
 #include <memory>
 
 class GnssPanel : public QWidget
@@ -30,7 +29,7 @@ class GnssPanel : public QWidget
 public:
     explicit GnssPanel(QWidget *parent = nullptr);
     void updateData(const VaproView::GnssData& data);
-    void retranslateUi();
+    void setEnglish(bool english);
 
 private:
     void setupUi();
@@ -48,7 +47,6 @@ private:
     QLabel *pdop_label_;
     QLabel *hdop_label_;
     QLabel *diff_age_label_;
-    QLabel *raw_label_;
 
     QLabel *status_lbl_;
     QLabel *lat_lbl_;
@@ -63,6 +61,8 @@ private:
     QLabel *pdop_lbl_;
     QLabel *hdop_lbl_;
     QLabel *diff_lbl_;
+
+    bool is_english_;
 };
 
 class ImuPanel : public QWidget
@@ -72,7 +72,7 @@ class ImuPanel : public QWidget
 public:
     explicit ImuPanel(QWidget *parent = nullptr);
     void updateData(const VaproView::ImuData& data);
-    void retranslateUi();
+    void setEnglish(bool english);
 
 private:
     void setupUi();
@@ -86,10 +86,6 @@ private:
     QLabel *roll_label_;
     QLabel *pitch_label_;
     QLabel *yaw_label_;
-    QLabel *quat_w_label_;
-    QLabel *quat_x_label_;
-    QLabel *quat_y_label_;
-    QLabel *quat_z_label_;
     QLabel *temp_label_;
     QLabel *press_label_;
     QLabel *source_label_;
@@ -101,6 +97,17 @@ private:
     QLabel *env_sep_;
     QLabel *temp_lbl_;
     QLabel *press_lbl_;
+    QLabel *acc_x_lbl_;
+    QLabel *acc_y_lbl_;
+    QLabel *acc_z_lbl_;
+    QLabel *gyr_x_lbl_;
+    QLabel *gyr_y_lbl_;
+    QLabel *gyr_z_lbl_;
+    QLabel *roll_lbl_;
+    QLabel *pitch_lbl_;
+    QLabel *yaw_lbl_;
+
+    bool is_english_;
 };
 
 class PtbPanel : public QWidget
@@ -110,7 +117,7 @@ class PtbPanel : public QWidget
 public:
     explicit PtbPanel(QWidget *parent = nullptr);
     void updateData(const VaproView::PtbData& data);
-    void retranslateUi();
+    void setEnglish(bool english);
 
 private:
     void setupUi();
@@ -118,6 +125,8 @@ private:
     QLabel *pressure_label_;
     QLabel *status_label_;
     QLabel *pressure_lbl_;
+
+    bool is_english_;
 };
 
 class HmpPanel : public QWidget
@@ -127,7 +136,7 @@ class HmpPanel : public QWidget
 public:
     explicit HmpPanel(QWidget *parent = nullptr);
     void updateData(const VaproView::HmpData& data);
-    void retranslateUi();
+    void setEnglish(bool english);
 
 private:
     void setupUi();
@@ -137,6 +146,8 @@ private:
     QLabel *status_label_;
     QLabel *temp_lbl_;
     QLabel *humidity_lbl_;
+
+    bool is_english_;
 };
 
 class MainWindow : public QMainWindow
@@ -146,9 +157,6 @@ class MainWindow : public QMainWindow
 public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
-
-protected:
-    void changeEvent(QEvent *event) override;
 
 private slots:
     void onConnectClicked();
@@ -175,8 +183,7 @@ private:
     void log(const QString& message);
     void updateConnectionStatus(bool connected);
     QStringList getAvailablePorts();
-    void switchToLanguage(const QString& lang);
-    void retranslateUi();
+    void setEnglish(bool english);
 
     QWidget *central_widget_;
     QVBoxLayout *main_layout_;
@@ -203,6 +210,10 @@ private:
     QAction *refresh_ports_btn_;
     QAction *fullscreen_btn_;
     QAction *lang_action_;
+    QAction *clear_log_action_;
+    QAction *export_action_;
+    QAction *exit_action_;
+    QAction *about_action_;
 
     QGroupBox *config_group_;
     QGroupBox *data_group_;
@@ -211,6 +222,11 @@ private:
     QGroupBox *imu_group_;
     QGroupBox *ptb_group_;
     QGroupBox *hmp_group_;
+
+    QLabel *gnss_lbl_;
+    QLabel *imu_lbl_;
+    QLabel *ptb_lbl_;
+    QLabel *hmp_lbl_;
 
     std::unique_ptr<VaproView::GnssCollector> gnss_collector_;
     std::unique_ptr<VaproView::ImuCollector> imu_collector_;
@@ -226,8 +242,6 @@ private:
 
     bool is_fullscreen_;
     bool is_english_;
-
-    QTranslator translator_;
 };
 
 #endif

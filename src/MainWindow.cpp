@@ -17,9 +17,6 @@
 #include <QDirIterator>
 #include <QScrollBar>
 #include <QShortcut>
-#include <QEvent>
-#include <QLocale>
-#include <QCoreApplication>
 #include <memory>
 
 GnssPanel::GnssPanel(QWidget *parent)
@@ -37,7 +34,6 @@ GnssPanel::GnssPanel(QWidget *parent)
     , pdop_label_(nullptr)
     , hdop_label_(nullptr)
     , diff_age_label_(nullptr)
-    , raw_label_(nullptr)
     , status_lbl_(nullptr)
     , lat_lbl_(nullptr)
     , lon_lbl_(nullptr)
@@ -51,6 +47,7 @@ GnssPanel::GnssPanel(QWidget *parent)
     , pdop_lbl_(nullptr)
     , hdop_lbl_(nullptr)
     , diff_lbl_(nullptr)
+    , is_english_(false)
 {
     setupUi();
 }
@@ -88,24 +85,44 @@ void GnssPanel::setupUi()
     createRow(diff_lbl_, diff_age_label_);
 
     layout->setColumnStretch(1, 1);
-    retranslateUi();
+    setEnglish(false);
 }
 
-void GnssPanel::retranslateUi()
+void GnssPanel::setEnglish(bool english)
 {
-    status_lbl_->setText(tr("Status:"));
-    lat_lbl_->setText(tr("Lat:"));
-    lon_lbl_->setText(tr("Lon:"));
-    alt_lbl_->setText(tr("Alt:"));
-    vel_n_lbl_->setText(tr("Vel N:"));
-    vel_e_lbl_->setText(tr("Vel E:"));
-    heading_lbl_->setText(tr("Heading:"));
-    pitch_lbl_->setText(tr("Pitch:"));
-    sats_lbl_->setText(tr("Sats:"));
-    gdop_lbl_->setText(tr("GDOP:"));
-    pdop_lbl_->setText(tr("PDOP:"));
-    hdop_lbl_->setText(tr("HDOP:"));
-    diff_lbl_->setText(tr("Diff:"));
+    is_english_ = english;
+    if (english)
+    {
+        status_lbl_->setText("Status:");
+        lat_lbl_->setText("Lat:");
+        lon_lbl_->setText("Lon:");
+        alt_lbl_->setText("Alt:");
+        vel_n_lbl_->setText("Vel N:");
+        vel_e_lbl_->setText("Vel E:");
+        heading_lbl_->setText("Heading:");
+        pitch_lbl_->setText("Pitch:");
+        sats_lbl_->setText("Sats:");
+        gdop_lbl_->setText("GDOP:");
+        pdop_lbl_->setText("PDOP:");
+        hdop_lbl_->setText("HDOP:");
+        diff_lbl_->setText("Diff:");
+    }
+    else
+    {
+        status_lbl_->setText("状态:");
+        lat_lbl_->setText("纬度:");
+        lon_lbl_->setText("经度:");
+        alt_lbl_->setText("高度:");
+        vel_n_lbl_->setText("北速:");
+        vel_e_lbl_->setText("东速:");
+        heading_lbl_->setText("航向:");
+        pitch_lbl_->setText("俯仰:");
+        sats_lbl_->setText("卫星:");
+        gdop_lbl_->setText("GDOP:");
+        pdop_lbl_->setText("PDOP:");
+        hdop_lbl_->setText("HDOP:");
+        diff_lbl_->setText("差分龄:");
+    }
 }
 
 void GnssPanel::updateData(const VaproView::GnssData& data)
@@ -146,10 +163,6 @@ ImuPanel::ImuPanel(QWidget *parent)
     , roll_label_(nullptr)
     , pitch_label_(nullptr)
     , yaw_label_(nullptr)
-    , quat_w_label_(nullptr)
-    , quat_x_label_(nullptr)
-    , quat_y_label_(nullptr)
-    , quat_z_label_(nullptr)
     , temp_label_(nullptr)
     , press_label_(nullptr)
     , source_label_(nullptr)
@@ -160,6 +173,16 @@ ImuPanel::ImuPanel(QWidget *parent)
     , env_sep_(nullptr)
     , temp_lbl_(nullptr)
     , press_lbl_(nullptr)
+    , acc_x_lbl_(nullptr)
+    , acc_y_lbl_(nullptr)
+    , acc_z_lbl_(nullptr)
+    , gyr_x_lbl_(nullptr)
+    , gyr_y_lbl_(nullptr)
+    , gyr_z_lbl_(nullptr)
+    , roll_lbl_(nullptr)
+    , pitch_lbl_(nullptr)
+    , yaw_lbl_(nullptr)
+    , is_english_(false)
 {
     setupUi();
 }
@@ -187,23 +210,23 @@ void ImuPanel::setupUi()
     accel_sep_ = new QLabel(this);
     accel_sep_->setStyleSheet("color: #888; font-size: 9px;");
     layout->addWidget(accel_sep_, row++, 0, 1, 2);
-    createRow(acc_x_label_, acc_x_label_);
-    createRow(acc_y_label_, acc_y_label_);
-    createRow(acc_z_label_, acc_z_label_);
+    createRow(acc_x_lbl_, acc_x_label_);
+    createRow(acc_y_lbl_, acc_y_label_);
+    createRow(acc_z_lbl_, acc_z_label_);
 
     gyro_sep_ = new QLabel(this);
     gyro_sep_->setStyleSheet("color: #888; font-size: 9px;");
     layout->addWidget(gyro_sep_, row++, 0, 1, 2);
-    createRow(gyr_x_label_, gyr_x_label_);
-    createRow(gyr_y_label_, gyr_y_label_);
-    createRow(gyr_z_label_, gyr_z_label_);
+    createRow(gyr_x_lbl_, gyr_x_label_);
+    createRow(gyr_y_lbl_, gyr_y_label_);
+    createRow(gyr_z_lbl_, gyr_z_label_);
 
     attitude_sep_ = new QLabel(this);
     attitude_sep_->setStyleSheet("color: #888; font-size: 9px;");
     layout->addWidget(attitude_sep_, row++, 0, 1, 2);
-    createRow(roll_label_, roll_label_);
-    createRow(pitch_label_, pitch_label_);
-    createRow(yaw_label_, yaw_label_);
+    createRow(roll_lbl_, roll_label_);
+    createRow(pitch_lbl_, pitch_label_);
+    createRow(yaw_lbl_, yaw_label_);
 
     env_sep_ = new QLabel(this);
     env_sep_->setStyleSheet("color: #888; font-size: 9px;");
@@ -212,18 +235,50 @@ void ImuPanel::setupUi()
     createRow(press_lbl_, press_label_);
 
     layout->setColumnStretch(1, 1);
-    retranslateUi();
+    setEnglish(false);
 }
 
-void ImuPanel::retranslateUi()
+void ImuPanel::setEnglish(bool english)
 {
-    source_lbl_->setText(tr("Source:"));
-    accel_sep_->setText(tr("— Accel —"));
-    gyro_sep_->setText(tr("— Gyro —"));
-    attitude_sep_->setText(tr("— Attitude —"));
-    env_sep_->setText(tr("— Env —"));
-    temp_lbl_->setText(tr("Temp:"));
-    press_lbl_->setText(tr("Press:"));
+    is_english_ = english;
+    if (english)
+    {
+        source_lbl_->setText("Source:");
+        accel_sep_->setText("— Accel —");
+        gyro_sep_->setText("— Gyro —");
+        attitude_sep_->setText("— Attitude —");
+        env_sep_->setText("— Env —");
+        temp_lbl_->setText("Temp:");
+        press_lbl_->setText("Press:");
+        acc_x_lbl_->setText("X:");
+        acc_y_lbl_->setText("Y:");
+        acc_z_lbl_->setText("Z:");
+        gyr_x_lbl_->setText("X:");
+        gyr_y_lbl_->setText("Y:");
+        gyr_z_lbl_->setText("Z:");
+        roll_lbl_->setText("Roll:");
+        pitch_lbl_->setText("Pitch:");
+        yaw_lbl_->setText("Yaw:");
+    }
+    else
+    {
+        source_lbl_->setText("数据源:");
+        accel_sep_->setText("— 加速度 —");
+        gyro_sep_->setText("— 陀螺仪 —");
+        attitude_sep_->setText("— 姿态 —");
+        env_sep_->setText("— 环境 —");
+        temp_lbl_->setText("温度:");
+        press_lbl_->setText("气压:");
+        acc_x_lbl_->setText("X:");
+        acc_y_lbl_->setText("Y:");
+        acc_z_lbl_->setText("Z:");
+        gyr_x_lbl_->setText("X:");
+        gyr_y_lbl_->setText("Y:");
+        gyr_z_lbl_->setText("Z:");
+        roll_lbl_->setText("横滚:");
+        pitch_lbl_->setText("俯仰:");
+        yaw_lbl_->setText("航向:");
+    }
 }
 
 void ImuPanel::updateData(const VaproView::ImuData& data)
@@ -260,6 +315,7 @@ PtbPanel::PtbPanel(QWidget *parent)
     , pressure_label_(nullptr)
     , status_label_(nullptr)
     , pressure_lbl_(nullptr)
+    , is_english_(false)
 {
     setupUi();
 }
@@ -285,13 +341,22 @@ void PtbPanel::setupUi()
     layout->addWidget(status_label_);
 
     layout->addStretch();
-    retranslateUi();
+    setEnglish(false);
 }
 
-void PtbPanel::retranslateUi()
+void PtbPanel::setEnglish(bool english)
 {
-    pressure_lbl_->setText(tr("Pressure:"));
-    status_label_->setText(tr("Waiting..."));
+    is_english_ = english;
+    if (english)
+    {
+        pressure_lbl_->setText("Pressure:");
+        status_label_->setText("Waiting...");
+    }
+    else
+    {
+        pressure_lbl_->setText("气压:");
+        status_label_->setText("等待数据...");
+    }
 }
 
 void PtbPanel::updateData(const VaproView::PtbData& data)
@@ -300,7 +365,7 @@ void PtbPanel::updateData(const VaproView::PtbData& data)
     {
         pressure_label_->setText(QString::asprintf("%.2f hPa", data.pressure_hpa));
         pressure_label_->setStyleSheet("font-family: monospace; font-size: 12px; font-weight: bold; color: green;");
-        status_label_->setText(tr("Valid"));
+        status_label_->setText(is_english_ ? "Valid" : "有效");
         status_label_->setStyleSheet("color: green; font-size: 9px;");
     }
     else
@@ -319,6 +384,7 @@ HmpPanel::HmpPanel(QWidget *parent)
     , status_label_(nullptr)
     , temp_lbl_(nullptr)
     , humidity_lbl_(nullptr)
+    , is_english_(false)
 {
     setupUi();
 }
@@ -354,14 +420,24 @@ void HmpPanel::setupUi()
     layout->addWidget(status_label_);
 
     layout->addStretch();
-    retranslateUi();
+    setEnglish(false);
 }
 
-void HmpPanel::retranslateUi()
+void HmpPanel::setEnglish(bool english)
 {
-    temp_lbl_->setText(tr("Temp:"));
-    humidity_lbl_->setText(tr("Humidity:"));
-    status_label_->setText(tr("Waiting..."));
+    is_english_ = english;
+    if (english)
+    {
+        temp_lbl_->setText("Temp:");
+        humidity_lbl_->setText("Humidity:");
+        status_label_->setText("Waiting...");
+    }
+    else
+    {
+        temp_lbl_->setText("温度:");
+        humidity_lbl_->setText("湿度:");
+        status_label_->setText("等待数据...");
+    }
 }
 
 void HmpPanel::updateData(const VaproView::HmpData& data)
@@ -372,7 +448,7 @@ void HmpPanel::updateData(const VaproView::HmpData& data)
         humidity_label_->setText(QString::asprintf("%.1f %%RH", data.humidity));
         temperature_label_->setStyleSheet("font-family: monospace; font-size: 12px; font-weight: bold; color: green;");
         humidity_label_->setStyleSheet("font-family: monospace; font-size: 12px; font-weight: bold; color: green;");
-        status_label_->setText(tr("Valid"));
+        status_label_->setText(is_english_ ? "Valid" : "有效");
         status_label_->setStyleSheet("color: green; font-size: 9px;");
     }
     else
@@ -410,6 +486,10 @@ MainWindow::MainWindow(QWidget *parent)
     , refresh_ports_btn_(nullptr)
     , fullscreen_btn_(nullptr)
     , lang_action_(nullptr)
+    , clear_log_action_(nullptr)
+    , export_action_(nullptr)
+    , exit_action_(nullptr)
+    , about_action_(nullptr)
     , config_group_(nullptr)
     , data_group_(nullptr)
     , log_group_(nullptr)
@@ -417,6 +497,10 @@ MainWindow::MainWindow(QWidget *parent)
     , imu_group_(nullptr)
     , ptb_group_(nullptr)
     , hmp_group_(nullptr)
+    , gnss_lbl_(nullptr)
+    , imu_lbl_(nullptr)
+    , ptb_lbl_(nullptr)
+    , hmp_lbl_(nullptr)
     , gnss_collector_(nullptr)
     , imu_collector_(nullptr)
     , ptb_collector_(nullptr)
@@ -437,7 +521,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(refresh_timer_, &QTimer::timeout, this, &MainWindow::onRefreshTimer);
     refresh_timer_->start(100);
 
-    retranslateUi();
+    setEnglish(false);
 
     updateConnectionStatus(false);
 }
@@ -450,65 +534,67 @@ MainWindow::~MainWindow()
     if (hmp_collector_) hmp_collector_->stop();
 }
 
-void MainWindow::changeEvent(QEvent *event)
-{
-    if (event->type() == QEvent::LanguageChange)
-    {
-        retranslateUi();
-    }
-    QMainWindow::changeEvent(event);
-}
-
 void MainWindow::setupMenuBar()
 {
-    QMenu *fileMenu = menuBar()->addMenu(tr("&File"));
+    QMenu *fileMenu = menuBar()->addMenu("");
 
-    QAction *exportAction = new QAction(this);
-    exportAction->setShortcut(QKeySequence::Save);
-    connect(exportAction, &QAction::triggered, this, &MainWindow::onExportClicked);
-    fileMenu->addAction(exportAction);
+    export_action_ = new QAction(this);
+    export_action_->setShortcut(QKeySequence::Save);
+    connect(export_action_, &QAction::triggered, this, &MainWindow::onExportClicked);
+    fileMenu->addAction(export_action_);
 
     fileMenu->addSeparator();
 
-    QAction *exitAction = new QAction(this);
-    exitAction->setShortcut(QKeySequence::Quit);
-    connect(exitAction, &QAction::triggered, this, &QMainWindow::close);
-    fileMenu->addAction(exitAction);
+    exit_action_ = new QAction(this);
+    exit_action_->setShortcut(QKeySequence::Quit);
+    connect(exit_action_, &QAction::triggered, this, &QMainWindow::close);
+    fileMenu->addAction(exit_action_);
 
-    QMenu *viewMenu = menuBar()->addMenu(tr("&View"));
+    QMenu *viewMenu = menuBar()->addMenu("");
 
     fullscreen_btn_ = new QAction(this);
     fullscreen_btn_->setShortcut(QKeySequence(Qt::Key_F11));
     connect(fullscreen_btn_, &QAction::triggered, this, &MainWindow::onToggleFullScreen);
     viewMenu->addAction(fullscreen_btn_);
 
-    QMenu *langMenu = menuBar()->addMenu(tr("&Language"));
+    QMenu *langMenu = menuBar()->addMenu("");
 
     lang_action_ = new QAction(this);
     connect(lang_action_, &QAction::triggered, this, &MainWindow::onSwitchLanguage);
     langMenu->addAction(lang_action_);
 
-    QMenu *helpMenu = menuBar()->addMenu(tr("&Help"));
+    QMenu *helpMenu = menuBar()->addMenu("");
 
-    QAction *aboutAction = new QAction(this);
-    connect(aboutAction, &QAction::triggered, [this]() {
-        QMessageBox::about(this, tr("About VaporView"),
-            tr("VaporView Application\n\n"
-               "Version 1.0.0\n\n"
-               "Navigation System with RTK and IMU support.\n\n"
-               "Supported devices:\n"
-               "- UM982 RTK Receiver (PVTSLN)\n"
-               "- HiPNUC IMU (HI81/HI83/HI91)\n"
-               "- PTB210 Barometer\n"
-               "- HMP3 Temperature/Humidity Sensor\n\n"
-               "Press F11 for fullscreen mode."));
+    about_action_ = new QAction(this);
+    connect(about_action_, &QAction::triggered, [this]() {
+        QString title = is_english_ ? "About VaporView" : "关于 VaporView";
+        QString text = is_english_ ?
+            "VaporView Application\n\n"
+            "Version 1.0.0\n\n"
+            "Navigation System with RTK and IMU support.\n\n"
+            "Supported devices:\n"
+            "- UM982 RTK Receiver (PVTSLN)\n"
+            "- HiPNUC IMU (HI81/HI83/HI91)\n"
+            "- PTB210 Barometer\n"
+            "- HMP3 Temperature/Humidity Sensor\n\n"
+            "Press F11 for fullscreen mode." :
+            "VaporView 应用程序\n\n"
+            "版本 1.0.0\n\n"
+            "导航系统，支持 RTK 和 IMU。\n\n"
+            "支持的设备:\n"
+            "- UM982 RTK 接收机 (PVTSLN)\n"
+            "- HiPNUC IMU (HI81/HI83/HI91)\n"
+            "- PTB210 气压计\n"
+            "- HMP3 温湿度传感器\n\n"
+            "按 F11 进入全屏模式。";
+        QMessageBox::about(this, title, text);
     });
-    helpMenu->addAction(aboutAction);
+    helpMenu->addAction(about_action_);
 }
 
 void MainWindow::setupToolBar()
 {
-    QToolBar *toolbar = addToolBar(tr("Main Toolbar"));
+    QToolBar *toolbar = addToolBar("");
     toolbar->setMovable(false);
 
     refresh_ports_btn_ = new QAction(this);
@@ -531,9 +617,9 @@ void MainWindow::setupToolBar()
 
     toolbar->addSeparator();
 
-    QAction *clearLogAction = new QAction(this);
-    connect(clearLogAction, &QAction::triggered, this, &MainWindow::onClearLogClicked);
-    toolbar->addAction(clearLogAction);
+    clear_log_action_ = new QAction(this);
+    connect(clear_log_action_, &QAction::triggered, this, &MainWindow::onClearLogClicked);
+    toolbar->addAction(clear_log_action_);
 
     toolbar->addSeparator();
 
@@ -544,10 +630,10 @@ void MainWindow::setupToolBar()
 
     toolbar->addSeparator();
 
-    QAction *fullscreenAction = new QAction(this);
-    fullscreenAction->setIcon(style()->standardIcon(QStyle::SP_TitleBarMaxButton));
-    connect(fullscreenAction, &QAction::triggered, this, &MainWindow::onToggleFullScreen);
-    toolbar->addAction(fullscreenAction);
+    fullscreen_btn_ = new QAction(this);
+    fullscreen_btn_->setIcon(style()->standardIcon(QStyle::SP_TitleBarMaxButton));
+    connect(fullscreen_btn_, &QAction::triggered, this, &MainWindow::onToggleFullScreen);
+    toolbar->addAction(fullscreen_btn_);
 }
 
 void MainWindow::setupStatusBar()
@@ -633,13 +719,13 @@ void MainWindow::setupConfigPanel()
     QStringList baudRates = {"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"};
     QStringList ports = getAvailablePorts();
 
-    auto createPortRow = [this, config_layout, &baudRates, &ports](const QString& name, QComboBox*& portCombo, QComboBox*& baudCombo, const QString& defaultPort, const QString& defaultBaud, int row) {
-        auto *lbl = new QLabel(name, this);
+    auto createPortRow = [this, config_layout, &baudRates, &ports](QLabel*& lbl, QComboBox*& portCombo, QComboBox*& baudCombo, const QString& defaultPort, const QString& defaultBaud, int row) {
+        lbl = new QLabel(this);
         lbl->setStyleSheet("font-weight: bold; font-size: 9px;");
         config_layout->addWidget(lbl, row, 0);
 
         portCombo = new QComboBox(this);
-        portCombo->addItem(tr("-- Select --"));
+        portCombo->addItem(is_english_ ? "-- Select --" : "-- 选择 --");
         portCombo->addItems(ports);
         portCombo->setEditable(true);
         portCombo->setMinimumWidth(140);
@@ -664,10 +750,10 @@ void MainWindow::setupConfigPanel()
     };
 
     int row = 0;
-    createPortRow(tr("GNSS:"), gnss_port_combo_, gnss_baud_combo_, "/dev/ttyCOM3", "115200", row++);
-    createPortRow(tr("IMU:"), imu_port_combo_, imu_baud_combo_, "/dev/ttyIMU", "115200", row++);
-    createPortRow(tr("PTB210:"), ptb_port_combo_, ptb_baud_combo_, "/dev/ttyBARO", "9600", row++);
-    createPortRow(tr("HMP3:"), hmp_port_combo_, hmp_baud_combo_, "/dev/ttyHMP", "19200", row++);
+    createPortRow(gnss_lbl_, gnss_port_combo_, gnss_baud_combo_, "/dev/ttyCOM3", "115200", row++);
+    createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, "/dev/ttyIMU", "115200", row++);
+    createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, "/dev/ttyBARO", "9600", row++);
+    createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, "/dev/ttyHMP", "19200", row++);
 
     main_layout_->addWidget(config_group_);
 }
@@ -724,66 +810,57 @@ void MainWindow::setupLogPanel()
     main_layout_->addWidget(log_group_);
 }
 
-void MainWindow::retranslateUi()
+void MainWindow::setEnglish(bool english)
 {
-    menuBar()->actions().at(0)->menu()->setTitle(tr("&File"));
-    menuBar()->actions().at(0)->menu()->actions().at(0)->setText(tr("&Export Data..."));
-    menuBar()->actions().at(0)->menu()->actions().at(2)->setText(tr("E&xit"));
+    is_english_ = english;
 
-    menuBar()->actions().at(1)->menu()->setTitle(tr("&View"));
-    fullscreen_btn_->setText(tr("&Fullscreen"));
+    menuBar()->actions().at(0)->menu()->setTitle(english ? "&File" : "文件(&F)");
+    export_action_->setText(english ? "&Export Data..." : "导出数据(&E)...");
+    exit_action_->setText(english ? "E&xit" : "退出(&X)");
 
-    menuBar()->actions().at(2)->menu()->setTitle(tr("&Language"));
-    lang_action_->setText(is_english_ ? tr("Switch to Chinese") : tr("Switch to English"));
+    menuBar()->actions().at(1)->menu()->setTitle(english ? "&View" : "视图(&V)");
+    fullscreen_btn_->setText(english ? "&Fullscreen" : "全屏(&F)");
 
-    menuBar()->actions().at(3)->menu()->setTitle(tr("&Help"));
-    menuBar()->actions().at(3)->menu()->actions().at(0)->setText(tr("&About"));
+    menuBar()->actions().at(2)->menu()->setTitle(english ? "&Language" : "语言(&L)");
+    lang_action_->setText(english ? "Switch to Chinese" : "切换到英文");
 
-    refresh_ports_btn_->setText(tr("Refresh"));
-    connect_btn_->setText(tr("Connect"));
-    disconnect_btn_->setText(tr("Disconnect"));
-    export_btn_->setText(tr("Export"));
+    menuBar()->actions().at(3)->menu()->setTitle(english ? "&Help" : "帮助(&H)");
+    about_action_->setText(english ? "&About" : "关于(&A)");
 
-    status_label_->setText(tr("Ready"));
+    refresh_ports_btn_->setText(english ? "Refresh" : "刷新");
+    connect_btn_->setText(english ? "Connect" : "连接");
+    disconnect_btn_->setText(english ? "Disconnect" : "断开");
+    clear_log_action_->setText(english ? "Clear" : "清空");
+    export_btn_->setText(english ? "Export" : "导出");
+    fullscreen_btn_->setText(english ? "Fullscreen" : "全屏");
 
-    config_group_->setTitle(tr("Serial Port Configuration"));
-    data_group_->setTitle(tr("Sensor Data"));
-    log_group_->setTitle(tr("Log"));
+    status_label_->setText(english ? "Ready" : "就绪");
 
-    gnss_group_->setTitle(tr("GNSS / RTK"));
-    imu_group_->setTitle(tr("IMU"));
-    ptb_group_->setTitle(tr("PTB210"));
-    hmp_group_->setTitle(tr("HMP3"));
+    config_group_->setTitle(english ? "Serial Port Configuration" : "串口配置");
+    data_group_->setTitle(english ? "Sensor Data" : "传感器数据");
+    log_group_->setTitle(english ? "Log" : "日志");
 
-    gnss_panel_->retranslateUi();
-    imu_panel_->retranslateUi();
-    ptb_panel_->retranslateUi();
-    hmp_panel_->retranslateUi();
-}
+    gnss_group_->setTitle(english ? "GNSS / RTK" : "GNSS / RTK");
+    imu_group_->setTitle(english ? "IMU" : "IMU");
+    ptb_group_->setTitle(english ? "PTB210" : "PTB210");
+    hmp_group_->setTitle(english ? "HMP3" : "HMP3");
 
-void MainWindow::switchToLanguage(const QString& lang)
-{
-    qApp->removeTranslator(&translator_);
+    gnss_lbl_->setText(english ? "GNSS:" : "GNSS:");
+    imu_lbl_->setText(english ? "IMU:" : "IMU:");
+    ptb_lbl_->setText(english ? "PTB210:" : "PTB210:");
+    hmp_lbl_->setText(english ? "HMP3:" : "HMP3:");
 
-    if (lang == "zh")
-    {
-        QLocale::setDefault(QLocale(QLocale::Chinese));
-    }
-    else
-    {
-        QLocale::setDefault(QLocale(QLocale::English));
-    }
-
-    QEvent event(QEvent::LanguageChange);
-    QCoreApplication::sendEvent(this, &event);
+    gnss_panel_->setEnglish(english);
+    imu_panel_->setEnglish(english);
+    ptb_panel_->setEnglish(english);
+    hmp_panel_->setEnglish(english);
 }
 
 void MainWindow::onSwitchLanguage()
 {
     is_english_ = !is_english_;
-    switchToLanguage(is_english_ ? "en" : "zh");
-    retranslateUi();
-    log(tr("Language switched"));
+    setEnglish(is_english_);
+    log(is_english_ ? "Language switched to English" : "语言已切换为中文");
 }
 
 void MainWindow::log(const QString& message)
@@ -809,12 +886,12 @@ void MainWindow::updateConnectionStatus(bool connected)
 
     if (connected)
     {
-        status_label_->setText(tr("Connected"));
+        status_label_->setText(is_english_ ? "Connected" : "已连接");
         status_label_->setStyleSheet("color: green; font-weight: bold;");
     }
     else
     {
-        status_label_->setText(tr("Disconnected"));
+        status_label_->setText(is_english_ ? "Disconnected" : "未连接");
         status_label_->setStyleSheet("color: red;");
     }
 }
@@ -827,14 +904,14 @@ void MainWindow::onToggleFullScreen()
         setMaximumSize(1280, 720);
         resize(1280, 720);
         is_fullscreen_ = false;
-        fullscreen_btn_->setText(tr("&Fullscreen"));
+        fullscreen_btn_->setText(is_english_ ? "&Fullscreen" : "全屏(&F)");
     }
     else
     {
         setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
         showFullScreen();
         is_fullscreen_ = true;
-        fullscreen_btn_->setText(tr("&Exit Fullscreen"));
+        fullscreen_btn_->setText(is_english_ ? "&Exit Fullscreen" : "退出全屏(&E)");
     }
 }
 
@@ -845,7 +922,7 @@ void MainWindow::onRefreshPortsClicked()
     auto updateCombo = [this, &ports](QComboBox* combo) {
         QString current = combo->currentText();
         combo->clear();
-        combo->addItem(tr("-- Select --"));
+        combo->addItem(is_english_ ? "-- Select --" : "-- 选择 --");
         combo->addItems(ports);
         int idx = combo->findText(current);
         if (idx >= 0)
@@ -863,12 +940,12 @@ void MainWindow::onRefreshPortsClicked()
     updateCombo(ptb_port_combo_);
     updateCombo(hmp_port_combo_);
 
-    log(tr("Ports refreshed: %1 found").arg(ports.size()));
+    log(QString(is_english_ ? "Ports refreshed: %1 found" : "端口已刷新: 发现 %1 个").arg(ports.size()));
 }
 
 void MainWindow::onConnectClicked()
 {
-    log(tr("Connecting..."));
+    log(is_english_ ? "Connecting..." : "正在连接...");
 
     gnss_collector_ = std::make_unique<VaproView::GnssCollector>();
     imu_collector_ = std::make_unique<VaproView::ImuCollector>();
@@ -876,68 +953,69 @@ void MainWindow::onConnectClicked()
     hmp_collector_ = std::make_unique<VaproView::HmpCollector>();
 
     bool any_connected = false;
+    QString selectText = is_english_ ? "-- Select --" : "-- 选择 --";
 
     QString gnss_port = gnss_port_combo_->currentText();
-    if (gnss_port != tr("-- Select --") && !gnss_port.isEmpty())
+    if (gnss_port != selectText && !gnss_port.isEmpty())
     {
         VaproView::SerialConfig gnss_config = VaproView::SerialConfig::N81(gnss_baud_combo_->currentText().toInt());
         if (gnss_collector_->start(gnss_port.toStdString(), gnss_config))
         {
-            log(tr("GNSS: %1 @ %2").arg(gnss_port, gnss_baud_combo_->currentText()));
+            log(QString("GNSS: %1 @ %2").arg(gnss_port, gnss_baud_combo_->currentText()));
             gnss_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onGnssDataReady", Qt::QueuedConnection); });
             any_connected = true;
         }
         else
         {
-            log(tr("GNSS failed: %1").arg(QString::fromStdString(gnss_collector_->getLastError())));
+            log(QString(is_english_ ? "GNSS failed: %1" : "GNSS 连接失败: %1").arg(QString::fromStdString(gnss_collector_->getLastError())));
         }
     }
 
     QString imu_port = imu_port_combo_->currentText();
-    if (imu_port != tr("-- Select --") && !imu_port.isEmpty())
+    if (imu_port != selectText && !imu_port.isEmpty())
     {
         VaproView::SerialConfig imu_config = VaproView::SerialConfig::N81(imu_baud_combo_->currentText().toInt());
         if (imu_collector_->start(imu_port.toStdString(), imu_config))
         {
-            log(tr("IMU: %1 @ %2").arg(imu_port, imu_baud_combo_->currentText()));
+            log(QString("IMU: %1 @ %2").arg(imu_port, imu_baud_combo_->currentText()));
             imu_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onImuDataReady", Qt::QueuedConnection); });
             any_connected = true;
         }
         else
         {
-            log(tr("IMU failed: %1").arg(QString::fromStdString(imu_collector_->getLastError())));
+            log(QString(is_english_ ? "IMU failed: %1" : "IMU 连接失败: %1").arg(QString::fromStdString(imu_collector_->getLastError())));
         }
     }
 
     QString ptb_port = ptb_port_combo_->currentText();
-    if (ptb_port != tr("-- Select --") && !ptb_port.isEmpty())
+    if (ptb_port != selectText && !ptb_port.isEmpty())
     {
         VaproView::SerialConfig ptb_config = VaproView::SerialConfig::E71(ptb_baud_combo_->currentText().toInt());
         if (ptb_collector_->start(ptb_port.toStdString(), ptb_config))
         {
-            log(tr("PTB210: %1 @ %2").arg(ptb_port, ptb_baud_combo_->currentText()));
+            log(QString("PTB210: %1 @ %2").arg(ptb_port, ptb_baud_combo_->currentText()));
             ptb_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onPtbDataReady", Qt::QueuedConnection); });
             any_connected = true;
         }
         else
         {
-            log(tr("PTB210 failed: %1").arg(QString::fromStdString(ptb_collector_->getLastError())));
+            log(QString(is_english_ ? "PTB210 failed: %1" : "PTB210 连接失败: %1").arg(QString::fromStdString(ptb_collector_->getLastError())));
         }
     }
 
     QString hmp_port = hmp_port_combo_->currentText();
-    if (hmp_port != tr("-- Select --") && !hmp_port.isEmpty())
+    if (hmp_port != selectText && !hmp_port.isEmpty())
     {
         VaproView::SerialConfig hmp_config = VaproView::SerialConfig::N82(hmp_baud_combo_->currentText().toInt());
         if (hmp_collector_->start(hmp_port.toStdString(), hmp_config))
         {
-            log(tr("HMP3: %1 @ %2").arg(hmp_port, hmp_baud_combo_->currentText()));
+            log(QString("HMP3: %1 @ %2").arg(hmp_port, hmp_baud_combo_->currentText()));
             hmp_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onHmpDataReady", Qt::QueuedConnection); });
             any_connected = true;
         }
         else
         {
-            log(tr("HMP3 failed: %1").arg(QString::fromStdString(hmp_collector_->getLastError())));
+            log(QString(is_english_ ? "HMP3 failed: %1" : "HMP3 连接失败: %1").arg(QString::fromStdString(hmp_collector_->getLastError())));
         }
     }
 
@@ -947,13 +1025,13 @@ void MainWindow::onConnectClicked()
     }
     else
     {
-        log(tr("No ports connected"));
+        log(is_english_ ? "No ports connected" : "没有端口连接成功");
     }
 }
 
 void MainWindow::onDisconnectClicked()
 {
-    log(tr("Disconnecting..."));
+    log(is_english_ ? "Disconnecting..." : "正在断开...");
 
     if (gnss_collector_)
     {
@@ -977,7 +1055,7 @@ void MainWindow::onDisconnectClicked()
     }
 
     updateConnectionStatus(false);
-    log(tr("Disconnected"));
+    log(is_english_ ? "Disconnected" : "已断开");
 }
 
 void MainWindow::onGnssDataReady()
@@ -1022,7 +1100,8 @@ void MainWindow::onRefreshTimer()
 
 void MainWindow::onExportClicked()
 {
-    QString filename = QFileDialog::getSaveFileName(this, tr("Export Data"), QString(), tr("CSV Files (*.csv);;JSON Files (*.json)"));
+    QString filter = is_english_ ? "CSV Files (*.csv);;JSON Files (*.json)" : "CSV 文件 (*.csv);;JSON 文件 (*.json)";
+    QString filename = QFileDialog::getSaveFileName(this, is_english_ ? "Export Data" : "导出数据", QString(), filter);
     if (filename.isEmpty())
     {
         return;
@@ -1031,7 +1110,7 @@ void MainWindow::onExportClicked()
     QFile file(filename);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
     {
-        QMessageBox::warning(this, tr("Error"), tr("Failed to open file for writing"));
+        QMessageBox::warning(this, is_english_ ? "Error" : "错误", is_english_ ? "Failed to open file for writing" : "无法打开文件进行写入");
         return;
     }
 
@@ -1078,11 +1157,11 @@ void MainWindow::onExportClicked()
     }
 
     file.close();
-    log(tr("Exported: %1").arg(filename));
+    log(QString(is_english_ ? "Exported: %1" : "已导出: %1").arg(filename));
 }
 
 void MainWindow::onClearLogClicked()
 {
     log_text_edit_->clear();
-    log(tr("Log cleared"));
+    log(is_english_ ? "Log cleared" : "日志已清空");
 }
