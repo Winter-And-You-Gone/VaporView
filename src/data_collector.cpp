@@ -2,6 +2,8 @@
 #include "hipnuc_dec.h"
 #include "pvtsln_data.hpp"
 #include <cstring>
+#include <iomanip>
+#include <sstream>
 #include <unistd.h>
 
 namespace VaproView
@@ -154,7 +156,9 @@ bool GnssCollector::setDeviceSampleRate(int hz)
   if (hz > 20) hz = 20;
   
   double interval = 1.0 / hz;
-  std::string cmd = "PVTSLNA COM3 " + std::to_string(interval) + "\r\n";
+  std::ostringstream oss;
+  oss << std::fixed << std::setprecision(6) << interval;
+  std::string cmd = "PVTSLNA COM3 " + oss.str() + "\r\n";
   
   log("[RTK TX] " + cmd);
   
@@ -163,6 +167,32 @@ bool GnssCollector::setDeviceSampleRate(int hz)
   {
     log("[RTK TX] Failed to send command");
     return false;
+  }
+  
+  usleep(200000);
+  
+  char response[512];
+  ssize_t n = serial_.read(response, sizeof(response) - 1);
+  if (n > 0)
+  {
+    response[n] = '\0';
+    std::string resp(response);
+    
+    size_t start = resp.find_first_not_of(" \t\r\n");
+    if (start != std::string::npos)
+    {
+      resp = resp.substr(start);
+    }
+    size_t end = resp.find_last_not_of(" \t\r\n");
+    if (end != std::string::npos)
+    {
+      resp = resp.substr(0, end + 1);
+    }
+    
+    if (!resp.empty())
+    {
+      log("[RTK RX] " + resp);
+    }
   }
   
   return true;
@@ -229,10 +259,6 @@ void GnssCollector::run()
               data_callback_();
             }
           }
-        }
-        else if (!line.empty())
-        {
-          log("[RTK RX] " + line);
         }
       }
     }
