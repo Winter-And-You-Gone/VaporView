@@ -157,7 +157,7 @@ bool GnssCollector::setDeviceSampleRate(int hz)
   
   double interval = 1.0 / hz;
   std::ostringstream oss;
-  oss << std::fixed << std::setprecision(6) << interval;
+  oss << std::fixed << std::setprecision(1) << interval;
   std::string cmd = "PVTSLNA COM3 " + oss.str() + "\r\n";
   
   log("[RTK TX] " + cmd);
@@ -169,30 +169,43 @@ bool GnssCollector::setDeviceSampleRate(int hz)
     return false;
   }
   
-  usleep(200000);
+  usleep(300000);
   
-  char response[512];
+  char response[1024];
   ssize_t n = serial_.read(response, sizeof(response) - 1);
   if (n > 0)
   {
     response[n] = '\0';
     std::string resp(response);
     
-    size_t start = resp.find_first_not_of(" \t\r\n");
-    if (start != std::string::npos)
+    std::string rx_line;
+    std::istringstream iss(resp);
+    while (std::getline(iss, rx_line))
     {
-      resp = resp.substr(start);
+      while (!rx_line.empty() && (rx_line.back() == '\r' || rx_line.back() == '\n'))
+      {
+        rx_line.pop_back();
+      }
+      
+      if (rx_line.empty()) continue;
+      
+      if (rx_line.find("OK") != std::string::npos ||
+          rx_line.find("ERROR") != std::string::npos ||
+          rx_line.find("$") == 0 ||
+          rx_line.find("#") == 0)
+      {
+        log("[RTK RX] " + rx_line);
+      }
+      else if (rx_line.find("PVTSLN") != std::string::npos)
+      {
+        log("[RTK RX] PVTSLNA output started at " + std::to_string(hz) + " Hz");
+        break;
+      }
     }
-    size_t end = resp.find_last_not_of(" \t\r\n");
-    if (end != std::string::npos)
-    {
-      resp = resp.substr(0, end + 1);
-    }
-    
-    if (!resp.empty())
-    {
-      log("[RTK RX] " + resp);
-    }
+  }
+  else
+  {
+    log("[RTK RX] No response (command may have been accepted)");
   }
   
   return true;
