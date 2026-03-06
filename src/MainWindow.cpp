@@ -58,49 +58,58 @@ GnssPanel::GnssPanel(QWidget *parent)
 void GnssPanel::setupUi()
 {
     auto *mainLayout = new QVBoxLayout(this);
-    mainLayout->setSpacing(8);
-    mainLayout->setContentsMargins(8, 8, 8, 8);
+    mainLayout->setSpacing(6);
+    mainLayout->setContentsMargins(6, 6, 6, 6);
 
     rate_label_ = new QLabel(this);
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     mainLayout->addWidget(rate_label_);
 
-    auto *layout = new QGridLayout();
-    layout->setVerticalSpacing(8);
-    layout->setHorizontalSpacing(8);
-    layout->setContentsMargins(0, 0, 0, 0);
+    auto *colsLayout = new QHBoxLayout();
+    colsLayout->setSpacing(12);
 
-    int row = 0;
+    auto *leftLayout = new QGridLayout();
+    leftLayout->setVerticalSpacing(4);
+    leftLayout->setHorizontalSpacing(6);
 
-    auto createRow = [this, &row, layout](QLabel*& lbl, QLabel*& valueLabel) {
-        lbl = new QLabel(this);
+    auto *rightLayout = new QGridLayout();
+    rightLayout->setVerticalSpacing(4);
+    rightLayout->setHorizontalSpacing(6);
+
+    auto createRow = [](QGridLayout* grid, int row, QLabel*& lbl, QLabel*& valueLabel, QWidget* parent) {
+        lbl = new QLabel(parent);
         lbl->setObjectName("fieldLabel");
-        lbl->setMinimumHeight(18);
-        valueLabel = new QLabel("---", this);
+        lbl->setMinimumHeight(16);
+        valueLabel = new QLabel("---", parent);
         valueLabel->setObjectName("valueLabel");
-        valueLabel->setMinimumHeight(18);
-        layout->addWidget(lbl, row, 0);
-        layout->addWidget(valueLabel, row, 1);
-        row++;
+        valueLabel->setMinimumHeight(16);
+        grid->addWidget(lbl, row, 0);
+        grid->addWidget(valueLabel, row, 1);
     };
 
-    createRow(status_lbl_, status_label_);
-    createRow(lat_lbl_, lat_label_);
-    createRow(lon_lbl_, lon_label_);
-    createRow(alt_lbl_, alt_label_);
-    createRow(vel_n_lbl_, vel_n_label_);
-    createRow(vel_e_lbl_, vel_e_label_);
-    createRow(heading_lbl_, heading_label_);
-    createRow(pitch_lbl_, pitch_label_);
-    createRow(sats_lbl_, sats_label_);
-    createRow(gdop_lbl_, gdop_label_);
-    createRow(pdop_lbl_, pdop_label_);
-    createRow(hdop_lbl_, hdop_label_);
-    createRow(diff_lbl_, diff_age_label_);
+    createRow(leftLayout, 0, status_lbl_, status_label_, this);
+    createRow(leftLayout, 1, lat_lbl_, lat_label_, this);
+    createRow(leftLayout, 2, lon_lbl_, lon_label_, this);
+    createRow(leftLayout, 3, alt_lbl_, alt_label_, this);
+    createRow(leftLayout, 4, vel_n_lbl_, vel_n_label_, this);
+    createRow(leftLayout, 5, vel_e_lbl_, vel_e_label_, this);
+    createRow(leftLayout, 6, heading_lbl_, heading_label_, this);
 
-    layout->setColumnStretch(1, 1);
-    mainLayout->addLayout(layout);
+    createRow(rightLayout, 0, pitch_lbl_, pitch_label_, this);
+    createRow(rightLayout, 1, sats_lbl_, sats_label_, this);
+    createRow(rightLayout, 2, gdop_lbl_, gdop_label_, this);
+    createRow(rightLayout, 3, pdop_lbl_, pdop_label_, this);
+    createRow(rightLayout, 4, hdop_lbl_, hdop_label_, this);
+    createRow(rightLayout, 5, diff_lbl_, diff_age_label_, this);
+
+    leftLayout->setColumnStretch(1, 1);
+    rightLayout->setColumnStretch(1, 1);
+
+    colsLayout->addLayout(leftLayout, 1);
+    colsLayout->addLayout(rightLayout, 1);
+
+    mainLayout->addLayout(colsLayout);
     mainLayout->addStretch();
     setEnglish(false);
 }
@@ -220,8 +229,8 @@ ImuPanel::ImuPanel(QWidget *parent)
 void ImuPanel::setupUi()
 {
     auto *mainLayout = new QVBoxLayout(this);
-    mainLayout->setSpacing(8);
-    mainLayout->setContentsMargins(8, 8, 8, 8);
+    mainLayout->setSpacing(6);
+    mainLayout->setContentsMargins(6, 6, 6, 6);
 
     rate_label_ = new QLabel(this);
     rate_label_->setObjectName("rateLabel");
@@ -229,56 +238,60 @@ void ImuPanel::setupUi()
     rate_label_->setFixedHeight(20);
     mainLayout->addWidget(rate_label_);
 
-    auto *layout = new QGridLayout();
-    layout->setVerticalSpacing(8);
-    layout->setHorizontalSpacing(6);
-    layout->setContentsMargins(0, 0, 0, 0);
+    auto *colsLayout = new QHBoxLayout();
+    colsLayout->setSpacing(12);
 
-    int row = 0;
+    auto *leftLayout = new QGridLayout();
+    leftLayout->setVerticalSpacing(4);
+    leftLayout->setHorizontalSpacing(6);
 
-    auto createRow = [this, &row, layout](QLabel*& lbl, QLabel*& valueLabel) {
-        lbl = new QLabel(this);
+    auto *rightLayout = new QGridLayout();
+    rightLayout->setVerticalSpacing(4);
+    rightLayout->setHorizontalSpacing(6);
+
+    auto createRow = [](QGridLayout* grid, int row, QLabel*& lbl, QLabel*& valueLabel, QWidget* parent) {
+        lbl = new QLabel(parent);
         lbl->setObjectName("fieldLabel");
-        lbl->setFixedHeight(20);
-        valueLabel = new QLabel("---", this);
+        lbl->setMinimumHeight(16);
+        valueLabel = new QLabel("---", parent);
         valueLabel->setObjectName("valueLabel");
-        valueLabel->setFixedHeight(20);
-        layout->addWidget(lbl, row, 0);
-        layout->addWidget(valueLabel, row, 1);
-        row++;
+        valueLabel->setMinimumHeight(16);
+        grid->addWidget(lbl, row, 0);
+        grid->addWidget(valueLabel, row, 1);
     };
 
-    auto createSeparator = [this, &row, layout](QLabel*& sep) {
-        sep = new QLabel(this);
+    auto createSeparator = [](QGridLayout* grid, int row, QLabel*& sep, QWidget* parent) {
+        sep = new QLabel(parent);
         sep->setObjectName("separatorLabel");
-        sep->setMinimumHeight(24);
-        layout->addWidget(sep, row, 0, 1, 2);
-        row++;
+        sep->setMinimumHeight(20);
+        grid->addWidget(sep, row, 0, 1, 2);
     };
 
-    createRow(source_lbl_, source_label_);
+    createRow(leftLayout, 0, source_lbl_, source_label_, this);
+    createSeparator(leftLayout, 1, accel_sep_, this);
+    createRow(leftLayout, 2, acc_x_lbl_, acc_x_label_, this);
+    createRow(leftLayout, 3, acc_y_lbl_, acc_y_label_, this);
+    createRow(leftLayout, 4, acc_z_lbl_, acc_z_label_, this);
+    createSeparator(leftLayout, 5, gyro_sep_, this);
+    createRow(leftLayout, 6, gyr_x_lbl_, gyr_x_label_, this);
+    createRow(leftLayout, 7, gyr_y_lbl_, gyr_y_label_, this);
+    createRow(leftLayout, 8, gyr_z_lbl_, gyr_z_label_, this);
 
-    createSeparator(accel_sep_);
-    createRow(acc_x_lbl_, acc_x_label_);
-    createRow(acc_y_lbl_, acc_y_label_);
-    createRow(acc_z_lbl_, acc_z_label_);
+    createSeparator(rightLayout, 0, attitude_sep_, this);
+    createRow(rightLayout, 1, roll_lbl_, roll_label_, this);
+    createRow(rightLayout, 2, pitch_lbl_, pitch_label_, this);
+    createRow(rightLayout, 3, yaw_lbl_, yaw_label_, this);
+    createSeparator(rightLayout, 4, env_sep_, this);
+    createRow(rightLayout, 5, temp_lbl_, temp_label_, this);
+    createRow(rightLayout, 6, press_lbl_, press_label_, this);
 
-    createSeparator(gyro_sep_);
-    createRow(gyr_x_lbl_, gyr_x_label_);
-    createRow(gyr_y_lbl_, gyr_y_label_);
-    createRow(gyr_z_lbl_, gyr_z_label_);
+    leftLayout->setColumnStretch(1, 1);
+    rightLayout->setColumnStretch(1, 1);
 
-    createSeparator(attitude_sep_);
-    createRow(roll_lbl_, roll_label_);
-    createRow(pitch_lbl_, pitch_label_);
-    createRow(yaw_lbl_, yaw_label_);
+    colsLayout->addLayout(leftLayout, 1);
+    colsLayout->addLayout(rightLayout, 1);
 
-    createSeparator(env_sep_);
-    createRow(temp_lbl_, temp_label_);
-    createRow(press_lbl_, press_label_);
-
-    layout->setColumnStretch(1, 1);
-    mainLayout->addLayout(layout);
+    mainLayout->addLayout(colsLayout);
     mainLayout->addStretch();
     setEnglish(false);
 }
@@ -381,31 +394,31 @@ PtbPanel::PtbPanel(QWidget *parent)
 void PtbPanel::setupUi()
 {
     auto *layout = new QVBoxLayout(this);
-    layout->setSpacing(10);
-    layout->setContentsMargins(10, 10, 10, 10);
+    layout->setSpacing(4);
+    layout->setContentsMargins(6, 6, 6, 6);
 
     rate_label_ = new QLabel(this);
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    rate_label_->setMinimumHeight(22);
+    rate_label_->setMinimumHeight(16);
     layout->addWidget(rate_label_);
 
     auto *pressLayout = new QHBoxLayout();
-    pressLayout->setSpacing(8);
+    pressLayout->setSpacing(6);
     pressure_lbl_ = new QLabel(this);
     pressure_lbl_->setObjectName("fieldLabel");
-    pressure_lbl_->setMinimumHeight(22);
+    pressure_lbl_->setMinimumHeight(16);
     pressLayout->addWidget(pressure_lbl_);
     pressure_label_ = new QLabel("--- hPa", this);
     pressure_label_->setObjectName("highlightedValue");
-    pressure_label_->setMinimumHeight(22);
+    pressure_label_->setMinimumHeight(16);
     pressLayout->addWidget(pressure_label_);
     pressLayout->addStretch();
     layout->addLayout(pressLayout);
 
     status_label_ = new QLabel(this);
     status_label_->setObjectName("statusIndicator");
-    status_label_->setMinimumHeight(22);
+    status_label_->setMinimumHeight(16);
     layout->addWidget(status_label_);
 
     layout->addStretch();
@@ -477,44 +490,44 @@ HmpPanel::HmpPanel(QWidget *parent)
 void HmpPanel::setupUi()
 {
     auto *layout = new QVBoxLayout(this);
-    layout->setSpacing(10);
-    layout->setContentsMargins(10, 10, 10, 10);
+    layout->setSpacing(4);
+    layout->setContentsMargins(6, 6, 6, 6);
 
     rate_label_ = new QLabel(this);
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    rate_label_->setMinimumHeight(22);
+    rate_label_->setMinimumHeight(16);
     layout->addWidget(rate_label_);
 
     auto *tempLayout = new QHBoxLayout();
-    tempLayout->setSpacing(8);
+    tempLayout->setSpacing(6);
     temp_lbl_ = new QLabel(this);
     temp_lbl_->setObjectName("fieldLabel");
-    temp_lbl_->setMinimumHeight(22);
+    temp_lbl_->setMinimumHeight(16);
     tempLayout->addWidget(temp_lbl_);
     temperature_label_ = new QLabel("--- °C", this);
     temperature_label_->setObjectName("highlightedValue");
-    temperature_label_->setMinimumHeight(22);
+    temperature_label_->setMinimumHeight(16);
     tempLayout->addWidget(temperature_label_);
     tempLayout->addStretch();
     layout->addLayout(tempLayout);
 
     auto *humidLayout = new QHBoxLayout();
-    humidLayout->setSpacing(8);
+    humidLayout->setSpacing(6);
     humidity_lbl_ = new QLabel(this);
     humidity_lbl_->setObjectName("fieldLabel");
-    humidity_lbl_->setMinimumHeight(22);
+    humidity_lbl_->setMinimumHeight(16);
     humidLayout->addWidget(humidity_lbl_);
     humidity_label_ = new QLabel("--- %RH", this);
     humidity_label_->setObjectName("highlightedValue");
-    humidity_label_->setMinimumHeight(22);
+    humidity_label_->setMinimumHeight(16);
     humidLayout->addWidget(humidity_label_);
     humidLayout->addStretch();
     layout->addLayout(humidLayout);
 
     status_label_ = new QLabel(this);
     status_label_->setObjectName("statusIndicator");
-    status_label_->setMinimumHeight(22);
+    status_label_->setMinimumHeight(16);
     layout->addWidget(status_label_);
 
     layout->addStretch();
