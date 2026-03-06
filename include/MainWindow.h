@@ -269,6 +269,7 @@ private:
     QGroupBox *imu_group_;
     QGroupBox *ptb_group_;
     QGroupBox *hmp_group_;
+    QGroupBox *env_group_;
 
     QLabel *gnss_lbl_;
     QLabel *imu_lbl_;

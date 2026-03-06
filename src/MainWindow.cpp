@@ -305,10 +305,6 @@ void ImuPanel::setupUi()
     leftLayout->setVerticalSpacing(4);
     leftLayout->setHorizontalSpacing(6);
 
-    auto *midLayout = new QGridLayout();
-    midLayout->setVerticalSpacing(4);
-    midLayout->setHorizontalSpacing(6);
-
     auto *rightLayout = new QGridLayout();
     rightLayout->setVerticalSpacing(4);
     rightLayout->setHorizontalSpacing(6);
@@ -341,26 +337,20 @@ void ImuPanel::setupUi()
     createRow(leftLayout, 7, gyr_y_lbl_, gyr_y_label_, this);
     createRow(leftLayout, 8, gyr_z_lbl_, gyr_z_label_, this);
 
-    createSeparator(midLayout, 0, attitude_sep_, this);
-    createRow(midLayout, 1, roll_lbl_, roll_label_, this);
-    createRow(midLayout, 2, pitch_lbl_, pitch_label_, this);
-    createRow(midLayout, 3, yaw_lbl_, yaw_label_, this);
-    createSeparator(midLayout, 4, quat_sep_, this);
-    createRow(midLayout, 5, quat_w_lbl_, quat_w_label_, this);
-    createRow(midLayout, 6, quat_x_lbl_, quat_x_label_, this);
-    createRow(midLayout, 7, quat_y_lbl_, quat_y_label_, this);
-    createRow(midLayout, 8, quat_z_lbl_, quat_z_label_, this);
-
-    createSeparator(rightLayout, 0, env_sep_, this);
-    createRow(rightLayout, 1, temp_lbl_, temp_label_, this);
-    createRow(rightLayout, 2, press_lbl_, press_label_, this);
+    createSeparator(rightLayout, 0, attitude_sep_, this);
+    createRow(rightLayout, 1, roll_lbl_, roll_label_, this);
+    createRow(rightLayout, 2, pitch_lbl_, pitch_label_, this);
+    createRow(rightLayout, 3, yaw_lbl_, yaw_label_, this);
+    createSeparator(rightLayout, 4, quat_sep_, this);
+    createRow(rightLayout, 5, quat_w_lbl_, quat_w_label_, this);
+    createRow(rightLayout, 6, quat_x_lbl_, quat_x_label_, this);
+    createRow(rightLayout, 7, quat_y_lbl_, quat_y_label_, this);
+    createRow(rightLayout, 8, quat_z_lbl_, quat_z_label_, this);
 
     leftLayout->setColumnStretch(1, 1);
-    midLayout->setColumnStretch(1, 1);
     rightLayout->setColumnStretch(1, 1);
 
     colsLayout->addLayout(leftLayout, 1);
-    colsLayout->addLayout(midLayout, 1);
     colsLayout->addLayout(rightLayout, 1);
 
     mainLayout->addLayout(colsLayout);
@@ -386,9 +376,6 @@ void ImuPanel::setEnglish(bool english)
         gyro_sep_->setText("— Gyro —");
         attitude_sep_->setText("— Attitude —");
         quat_sep_->setText("— Quaternion —");
-        env_sep_->setText("— Env —");
-        temp_lbl_->setText("Temp:");
-        press_lbl_->setText("Press:");
         acc_x_lbl_->setText("X:");
         acc_y_lbl_->setText("Y:");
         acc_z_lbl_->setText("Z:");
@@ -410,9 +397,6 @@ void ImuPanel::setEnglish(bool english)
         gyro_sep_->setText("— 陀螺仪 —");
         attitude_sep_->setText("— 姿态 —");
         quat_sep_->setText("— 四元数 —");
-        env_sep_->setText("— 环境 —");
-        temp_lbl_->setText("温度:");
-        press_lbl_->setText("气压:");
         acc_x_lbl_->setText("X:");
         acc_y_lbl_->setText("Y:");
         acc_z_lbl_->setText("Z:");
@@ -454,9 +438,6 @@ void ImuPanel::updateData(const VaproView::ImuData& data)
         quat_x_label_->setText(QString::asprintf("%.4f", data.quaternion[1]));
         quat_y_label_->setText(QString::asprintf("%.4f", data.quaternion[2]));
         quat_z_label_->setText(QString::asprintf("%.4f", data.quaternion[3]));
-
-        temp_label_->setText(QString::asprintf("%.1f°C", data.temperature));
-        press_label_->setText(QString::asprintf("%.1f hPa", data.air_pressure));
     }
     else
     {
@@ -715,6 +696,7 @@ MainWindow::MainWindow(QWidget *parent)
     , imu_group_(nullptr)
     , ptb_group_(nullptr)
     , hmp_group_(nullptr)
+    , env_group_(nullptr)
     , gnss_lbl_(nullptr)
     , imu_lbl_(nullptr)
     , ptb_lbl_(nullptr)
@@ -1126,21 +1108,22 @@ void MainWindow::setupDataPanels()
     imu_layout->addWidget(imu_panel_);
     data_layout->addWidget(imu_group_);
 
-    ptb_group_ = new QGroupBox(this);
-    ptb_group_->setObjectName("sensorGroupBox");
-    auto *ptb_layout = new QVBoxLayout(ptb_group_);
-    ptb_layout->setContentsMargins(2, 2, 2, 2);
-    ptb_panel_ = new PtbPanel(this);
-    ptb_layout->addWidget(ptb_panel_);
-    data_layout->addWidget(ptb_group_);
+    auto *env_group = new QGroupBox(this);
+    env_group->setObjectName("sensorGroupBox");
+    auto *env_layout = new QVBoxLayout(env_group);
+    env_layout->setContentsMargins(2, 2, 2, 2);
+    env_layout->setSpacing(2);
 
-    hmp_group_ = new QGroupBox(this);
-    hmp_group_->setObjectName("sensorGroupBox");
-    auto *hmp_layout = new QVBoxLayout(hmp_group_);
-    hmp_layout->setContentsMargins(2, 2, 2, 2);
+    ptb_panel_ = new PtbPanel(this);
+    env_layout->addWidget(ptb_panel_);
+
     hmp_panel_ = new HmpPanel(this);
-    hmp_layout->addWidget(hmp_panel_);
-    data_layout->addWidget(hmp_group_);
+    env_layout->addWidget(hmp_panel_);
+
+    data_layout->addWidget(env_group);
+
+    ptb_group_ = nullptr;
+    hmp_group_ = nullptr;
 
     main_layout_->addWidget(data_group_, 1);
 }
@@ -1189,8 +1172,7 @@ void MainWindow::setEnglish(bool english)
 
     gnss_group_->setTitle(english ? "GNSS / RTK" : "GNSS / RTK");
     imu_group_->setTitle(english ? "IMU" : "IMU");
-    ptb_group_->setTitle(english ? "PTB210" : "PTB210");
-    hmp_group_->setTitle(english ? "HMP3" : "HMP3");
+    env_group_->setTitle(english ? "Environment" : "环境参数");
 
     gnss_lbl_->setText(english ? "GNSS:" : "GNSS:");
     imu_lbl_->setText(english ? "IMU:" : "IMU:");
