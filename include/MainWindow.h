@@ -179,16 +179,11 @@ private slots:
     void onRefreshPortsClicked();
     void onToggleFullScreen();
     void onSwitchLanguage();
-    void onGlobalSampleRateChanged(int index);
-    void onGlobalCustomRateChanged(int value);
-    void onGnssRateChanged(int index);
-    void onImuRateChanged(int index);
-    void onPtbRateChanged(int index);
-    void onHmpRateChanged(int index);
-    void onGnssCustomRateChanged(int value);
-    void onImuCustomRateChanged(int value);
-    void onPtbCustomRateChanged(int value);
-    void onHmpCustomRateChanged(int value);
+    void onGlobalRateChanged(const QString& text);
+    void onGnssRateChanged(const QString& text);
+    void onImuRateChanged(const QString& text);
+    void onPtbRateChanged(const QString& text);
+    void onHmpRateChanged(const QString& text);
 
 private:
     void setupMenuBar();
@@ -203,6 +198,7 @@ private:
     QStringList getAvailablePorts();
     void setEnglish(bool english);
     void applyAllSampleRates();
+    int parseRate(const QString& text);
 
     QWidget *central_widget_;
     QVBoxLayout *main_layout_;
@@ -253,15 +249,10 @@ private:
     QLabel *hmp_rate_lbl_;
 
     QComboBox *global_rate_combo_;
-    QSpinBox *global_custom_spin_;
     QComboBox *gnss_rate_combo_;
-    QSpinBox *gnss_custom_spin_;
     QComboBox *imu_rate_combo_;
-    QSpinBox *imu_custom_spin_;
     QComboBox *ptb_rate_combo_;
-    QSpinBox *ptb_custom_spin_;
     QComboBox *hmp_rate_combo_;
-    QSpinBox *hmp_custom_spin_;
 
     std::unique_ptr<VaproView::GnssCollector> gnss_collector_;
     std::unique_ptr<VaproView::ImuCollector> imu_collector_;

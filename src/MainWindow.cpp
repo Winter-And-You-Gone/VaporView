@@ -576,15 +576,10 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_rate_lbl_(nullptr)
     , hmp_rate_lbl_(nullptr)
     , global_rate_combo_(nullptr)
-    , global_custom_spin_(nullptr)
     , gnss_rate_combo_(nullptr)
-    , gnss_custom_spin_(nullptr)
     , imu_rate_combo_(nullptr)
-    , imu_custom_spin_(nullptr)
     , ptb_rate_combo_(nullptr)
-    , ptb_custom_spin_(nullptr)
     , hmp_rate_combo_(nullptr)
-    , hmp_custom_spin_(nullptr)
     , gnss_collector_(nullptr)
     , imu_collector_(nullptr)
     , ptb_collector_(nullptr)
@@ -837,29 +832,22 @@ void MainWindow::setupConfigPanel()
         config_layout->addWidget(baudCombo, row, 2);
     };
 
-    auto createRateRow = [this, config_layout](QLabel*& lbl, QComboBox*& combo, QSpinBox*& spin, int row) {
+    auto createRateRow = [this, config_layout](QLabel*& lbl, QComboBox*& combo, int row) {
         lbl = new QLabel(this);
         lbl->setStyleSheet("font-weight: bold; font-size: 9px;");
         config_layout->addWidget(lbl, row, 0);
 
         combo = new QComboBox(this);
-        combo->addItem("1 Hz");
-        combo->addItem("2 Hz");
-        combo->addItem("5 Hz");
-        combo->addItem("10 Hz");
-        combo->addItem("20 Hz");
-        combo->addItem(is_english_ ? "Custom" : "自定义");
+        combo->addItem("1");
+        combo->addItem("2");
+        combo->addItem("5");
+        combo->addItem("10");
+        combo->addItem("20");
         combo->setCurrentIndex(0);
+        combo->setEditable(true);
         combo->setMinimumWidth(80);
+        combo->setValidator(new QIntValidator(1, 20, combo));
         config_layout->addWidget(combo, row, 1);
-
-        spin = new QSpinBox(this);
-        spin->setRange(1, 20);
-        spin->setValue(1);
-        spin->setSuffix(" Hz");
-        spin->setEnabled(false);
-        spin->setMinimumWidth(70);
-        config_layout->addWidget(spin, row, 2);
     };
 
     int row = 0;
@@ -874,9 +862,8 @@ void MainWindow::setupConfigPanel()
     global_sep->setStyleSheet("font-weight: bold; color: #666; font-size: 10px; border-bottom: 1px solid #ccc;");
     config_layout->addWidget(global_sep, row++, 0, 1, 3);
 
-    createRateRow(global_rate_lbl_, global_rate_combo_, global_custom_spin_, row++);
-    connect(global_rate_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::onGlobalSampleRateChanged);
-    connect(global_custom_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, &MainWindow::onGlobalCustomRateChanged);
+    createRateRow(global_rate_lbl_, global_rate_combo_, row++);
+    connect(global_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onGlobalRateChanged);
 
     config_layout->addItem(new QSpacerItem(10, 5, QSizePolicy::Fixed, QSizePolicy::Fixed), row++, 0);
 
@@ -884,19 +871,15 @@ void MainWindow::setupConfigPanel()
     individual_sep->setStyleSheet("font-weight: bold; color: #666; font-size: 10px; border-bottom: 1px solid #ccc;");
     config_layout->addWidget(individual_sep, row++, 0, 1, 3);
 
-    createRateRow(gnss_rate_lbl_, gnss_rate_combo_, gnss_custom_spin_, row++);
-    createRateRow(imu_rate_lbl_, imu_rate_combo_, imu_custom_spin_, row++);
-    createRateRow(ptb_rate_lbl_, ptb_rate_combo_, ptb_custom_spin_, row++);
-    createRateRow(hmp_rate_lbl_, hmp_rate_combo_, hmp_custom_spin_, row++);
+    createRateRow(gnss_rate_lbl_, gnss_rate_combo_, row++);
+    createRateRow(imu_rate_lbl_, imu_rate_combo_, row++);
+    createRateRow(ptb_rate_lbl_, ptb_rate_combo_, row++);
+    createRateRow(hmp_rate_lbl_, hmp_rate_combo_, row++);
 
-    connect(gnss_rate_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::onGnssRateChanged);
-    connect(gnss_custom_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, &MainWindow::onGnssCustomRateChanged);
-    connect(imu_rate_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::onImuRateChanged);
-    connect(imu_custom_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, &MainWindow::onImuCustomRateChanged);
-    connect(ptb_rate_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::onPtbRateChanged);
-    connect(ptb_custom_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, &MainWindow::onPtbCustomRateChanged);
-    connect(hmp_rate_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::onHmpRateChanged);
-    connect(hmp_custom_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, &MainWindow::onHmpCustomRateChanged);
+    connect(gnss_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onGnssRateChanged);
+    connect(imu_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onImuRateChanged);
+    connect(ptb_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onPtbRateChanged);
+    connect(hmp_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onHmpRateChanged);
 
     main_layout_->addWidget(config_group_);
 }
@@ -999,19 +982,6 @@ void MainWindow::setEnglish(bool english)
     ptb_rate_lbl_->setText(english ? "PTB Rate:" : "PTB频率:");
     hmp_rate_lbl_->setText(english ? "HMP Rate:" : "HMP频率:");
 
-    QString customText = english ? "Custom" : "自定义";
-    auto updateComboCustom = [customText](QComboBox* combo) {
-        if (combo && combo->count() > 5)
-        {
-            combo->setItemText(5, customText);
-        }
-    };
-    updateComboCustom(global_rate_combo_);
-    updateComboCustom(gnss_rate_combo_);
-    updateComboCustom(imu_rate_combo_);
-    updateComboCustom(ptb_rate_combo_);
-    updateComboCustom(hmp_rate_combo_);
-
     gnss_panel_->setEnglish(english);
     imu_panel_->setEnglish(english);
     ptb_panel_->setEnglish(english);
@@ -1025,144 +995,69 @@ void MainWindow::onSwitchLanguage()
     log(is_english_ ? "Language switched to English" : "语言已切换为中文");
 }
 
-void MainWindow::onGlobalSampleRateChanged(int index)
+int MainWindow::parseRate(const QString& text)
 {
-    int rates[] = {1, 2, 5, 10, 20};
-    int rate = 1;
-    if (index >= 0 && index < 5)
+    bool ok;
+    int rate = text.toInt(&ok);
+    if (ok && rate >= 1 && rate <= 20)
     {
-        rate = rates[index];
-        global_custom_spin_->setEnabled(false);
+        return rate;
     }
-    else if (index == 5)
-    {
-        global_custom_spin_->setEnabled(true);
-        rate = global_custom_spin_->value();
-    }
-    
+    return 1;
+}
+
+void MainWindow::onGlobalRateChanged(const QString& text)
+{
+    int rate = parseRate(text);
     gnss_sample_rate_ = rate;
     imu_sample_rate_ = rate;
     ptb_sample_rate_ = rate;
     hmp_sample_rate_ = rate;
     
-    gnss_rate_combo_->setCurrentIndex(index);
-    imu_rate_combo_->setCurrentIndex(index);
-    ptb_rate_combo_->setCurrentIndex(index);
-    hmp_rate_combo_->setCurrentIndex(index);
+    gnss_rate_combo_->blockSignals(true);
+    imu_rate_combo_->blockSignals(true);
+    ptb_rate_combo_->blockSignals(true);
+    hmp_rate_combo_->blockSignals(true);
     
-    gnss_custom_spin_->setValue(rate);
-    imu_custom_spin_->setValue(rate);
-    ptb_custom_spin_->setValue(rate);
-    hmp_custom_spin_->setValue(rate);
+    gnss_rate_combo_->setCurrentText(text);
+    imu_rate_combo_->setCurrentText(text);
+    ptb_rate_combo_->setCurrentText(text);
+    hmp_rate_combo_->setCurrentText(text);
     
-    applyAllSampleRates();
-}
-
-void MainWindow::onGlobalCustomRateChanged(int value)
-{
-    gnss_sample_rate_ = value;
-    imu_sample_rate_ = value;
-    ptb_sample_rate_ = value;
-    hmp_sample_rate_ = value;
-    
-    gnss_custom_spin_->setValue(value);
-    imu_custom_spin_->setValue(value);
-    ptb_custom_spin_->setValue(value);
-    hmp_custom_spin_->setValue(value);
+    gnss_rate_combo_->blockSignals(false);
+    imu_rate_combo_->blockSignals(false);
+    ptb_rate_combo_->blockSignals(false);
+    hmp_rate_combo_->blockSignals(false);
     
     applyAllSampleRates();
 }
 
-void MainWindow::onGnssRateChanged(int index)
+void MainWindow::onGnssRateChanged(const QString& text)
 {
-    int rates[] = {1, 2, 5, 10, 20};
-    if (index >= 0 && index < 5)
-    {
-        gnss_sample_rate_ = rates[index];
-        gnss_custom_spin_->setEnabled(false);
-    }
-    else if (index == 5)
-    {
-        gnss_custom_spin_->setEnabled(true);
-        gnss_sample_rate_ = gnss_custom_spin_->value();
-    }
+    gnss_sample_rate_ = parseRate(text);
     if (gnss_collector_) gnss_collector_->setSampleRate(gnss_sample_rate_);
     log(QString(is_english_ ? "GNSS sample rate set to %1 Hz" : "GNSS采样频率已设置为 %1 Hz").arg(gnss_sample_rate_));
 }
 
-void MainWindow::onImuRateChanged(int index)
+void MainWindow::onImuRateChanged(const QString& text)
 {
-    int rates[] = {1, 2, 5, 10, 20};
-    if (index >= 0 && index < 5)
-    {
-        imu_sample_rate_ = rates[index];
-        imu_custom_spin_->setEnabled(false);
-    }
-    else if (index == 5)
-    {
-        imu_custom_spin_->setEnabled(true);
-        imu_sample_rate_ = imu_custom_spin_->value();
-    }
+    imu_sample_rate_ = parseRate(text);
     if (imu_collector_) imu_collector_->setSampleRate(imu_sample_rate_);
     log(QString(is_english_ ? "IMU sample rate set to %1 Hz" : "IMU采样频率已设置为 %1 Hz").arg(imu_sample_rate_));
 }
 
-void MainWindow::onPtbRateChanged(int index)
+void MainWindow::onPtbRateChanged(const QString& text)
 {
-    int rates[] = {1, 2, 5, 10, 20};
-    if (index >= 0 && index < 5)
-    {
-        ptb_sample_rate_ = rates[index];
-        ptb_custom_spin_->setEnabled(false);
-    }
-    else if (index == 5)
-    {
-        ptb_custom_spin_->setEnabled(true);
-        ptb_sample_rate_ = ptb_custom_spin_->value();
-    }
+    ptb_sample_rate_ = parseRate(text);
     if (ptb_collector_) ptb_collector_->setSampleRate(ptb_sample_rate_);
     log(QString(is_english_ ? "PTB sample rate set to %1 Hz" : "PTB采样频率已设置为 %1 Hz").arg(ptb_sample_rate_));
 }
 
-void MainWindow::onHmpRateChanged(int index)
+void MainWindow::onHmpRateChanged(const QString& text)
 {
-    int rates[] = {1, 2, 5, 10, 20};
-    if (index >= 0 && index < 5)
-    {
-        hmp_sample_rate_ = rates[index];
-        hmp_custom_spin_->setEnabled(false);
-    }
-    else if (index == 5)
-    {
-        hmp_custom_spin_->setEnabled(true);
-        hmp_sample_rate_ = hmp_custom_spin_->value();
-    }
+    hmp_sample_rate_ = parseRate(text);
     if (hmp_collector_) hmp_collector_->setSampleRate(hmp_sample_rate_);
     log(QString(is_english_ ? "HMP sample rate set to %1 Hz" : "HMP采样频率已设置为 %1 Hz").arg(hmp_sample_rate_));
-}
-
-void MainWindow::onGnssCustomRateChanged(int value)
-{
-    gnss_sample_rate_ = value;
-    if (gnss_collector_) gnss_collector_->setSampleRate(gnss_sample_rate_);
-}
-
-void MainWindow::onImuCustomRateChanged(int value)
-{
-    imu_sample_rate_ = value;
-    if (imu_collector_) imu_collector_->setSampleRate(imu_sample_rate_);
-}
-
-void MainWindow::onPtbCustomRateChanged(int value)
-{
-    ptb_sample_rate_ = value;
-    if (ptb_collector_) ptb_collector_->setSampleRate(ptb_sample_rate_);
-}
-
-void MainWindow::onHmpCustomRateChanged(int value)
-{
-    hmp_sample_rate_ = value;
-    if (hmp_collector_) hmp_collector_->setSampleRate(hmp_sample_rate_);
 }
 
 void MainWindow::applyAllSampleRates()
