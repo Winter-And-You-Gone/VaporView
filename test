@@ -1,0 +1,10 @@
+Category,Parameter,Value,Unit,Valid
+GNSS,Latitude,0,deg,Yes
+GNSS,Longitude,0,deg,Yes
+GNSS,Altitude,0,m,Yes
+IMU,AccX,0,m/sÂ²,No
+IMU,AccY,0,m/sÂ²,No
+IMU,AccZ,0,m/sÂ²,No
+PTB,Pressure,0,hPa,No
+HMP,Humidity,0,%RH,No
+HMP,Temperature,0,Â°C,No

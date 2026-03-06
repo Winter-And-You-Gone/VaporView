@@ -1556,6 +1556,8 @@ void MainWindow::onExportClicked()
     }
 
     QTextStream out(&file);
+    out.setCodec("UTF-8");
+    out.setGenerateByteOrderMark(true);
 
     if (filename.endsWith(".json", Qt::CaseInsensitive))
     {
@@ -1564,12 +1566,36 @@ void MainWindow::onExportClicked()
         out << "    \"latitude\": " << current_gnss_.latitude << ",\n";
         out << "    \"longitude\": " << current_gnss_.longitude << ",\n";
         out << "    \"altitude\": " << current_gnss_.altitude << ",\n";
+        out << "    \"vel_north\": " << current_gnss_.vel_north << ",\n";
+        out << "    \"vel_east\": " << current_gnss_.vel_east << ",\n";
+        out << "    \"vel_ground\": " << current_gnss_.vel_ground << ",\n";
+        out << "    \"heading\": " << current_gnss_.heading << ",\n";
+        out << "    \"pitch\": " << current_gnss_.heading_pitch << ",\n";
+        out << "    \"sigma_lat\": " << current_gnss_.sigma_lat << ",\n";
+        out << "    \"sigma_lon\": " << current_gnss_.sigma_lon << ",\n";
+        out << "    \"sigma_alt\": " << current_gnss_.sigma_alt << ",\n";
+        out << "    \"sats_used\": " << current_gnss_.num_satellites_used << ",\n";
+        out << "    \"sats_tracked\": " << current_gnss_.num_satellites_tracked << ",\n";
+        out << "    \"gdop\": " << current_gnss_.gdop << ",\n";
+        out << "    \"pdop\": " << current_gnss_.pdop << ",\n";
+        out << "    \"hdop\": " << current_gnss_.hdop << ",\n";
+        out << "    \"status\": \"" << QString::fromStdString(current_gnss_.position_status).replace("\"", "\\\"") << "\",\n";
         out << "    \"valid\": " << (current_gnss_.valid ? "true" : "false") << "\n";
         out << "  },\n";
         out << "  \"imu\": {\n";
         out << "    \"acc_x\": " << current_imu_.acceleration[0] << ",\n";
         out << "    \"acc_y\": " << current_imu_.acceleration[1] << ",\n";
         out << "    \"acc_z\": " << current_imu_.acceleration[2] << ",\n";
+        out << "    \"gyr_x\": " << current_imu_.gyroscope[0] << ",\n";
+        out << "    \"gyr_y\": " << current_imu_.gyroscope[1] << ",\n";
+        out << "    \"gyr_z\": " << current_imu_.gyroscope[2] << ",\n";
+        out << "    \"roll\": " << current_imu_.rpy[0] << ",\n";
+        out << "    \"pitch\": " << current_imu_.rpy[1] << ",\n";
+        out << "    \"yaw\": " << current_imu_.rpy[2] << ",\n";
+        out << "    \"quat_w\": " << current_imu_.quaternion[0] << ",\n";
+        out << "    \"quat_x\": " << current_imu_.quaternion[1] << ",\n";
+        out << "    \"quat_y\": " << current_imu_.quaternion[2] << ",\n";
+        out << "    \"quat_z\": " << current_imu_.quaternion[3] << ",\n";
         out << "    \"valid\": " << (current_imu_.valid ? "true" : "false") << "\n";
         out << "  },\n";
         out << "  \"ptb\": {\n";
@@ -1589,12 +1615,36 @@ void MainWindow::onExportClicked()
         out << "GNSS,Latitude," << current_gnss_.latitude << ",deg," << (current_gnss_.valid ? "Yes" : "No") << "\n";
         out << "GNSS,Longitude," << current_gnss_.longitude << ",deg," << (current_gnss_.valid ? "Yes" : "No") << "\n";
         out << "GNSS,Altitude," << current_gnss_.altitude << ",m," << (current_gnss_.valid ? "Yes" : "No") << "\n";
-        out << "IMU,AccX," << current_imu_.acceleration[0] << ",m/s²," << (current_imu_.valid ? "Yes" : "No") << "\n";
-        out << "IMU,AccY," << current_imu_.acceleration[1] << ",m/s²," << (current_imu_.valid ? "Yes" : "No") << "\n";
-        out << "IMU,AccZ," << current_imu_.acceleration[2] << ",m/s²," << (current_imu_.valid ? "Yes" : "No") << "\n";
+        out << "GNSS,VelNorth," << current_gnss_.vel_north << ",m/s," << (current_gnss_.valid ? "Yes" : "No") << "\n";
+        out << "GNSS,VelEast," << current_gnss_.vel_east << ",m/s," << (current_gnss_.valid ? "Yes" : "No") << "\n";
+        out << "GNSS,VelGround," << current_gnss_.vel_ground << ",m/s," << (current_gnss_.valid ? "Yes" : "No") << "\n";
+        out << "GNSS,Heading," << current_gnss_.heading << ",deg," << (current_gnss_.valid ? "Yes" : "No") << "\n";
+        out << "GNSS,Pitch," << current_gnss_.heading_pitch << ",deg," << (current_gnss_.valid ? "Yes" : "No") << "\n";
+        out << "GNSS,SigmaLat," << current_gnss_.sigma_lat << ",m," << (current_gnss_.valid ? "Yes" : "No") << "\n";
+        out << "GNSS,SigmaLon," << current_gnss_.sigma_lon << ",m," << (current_gnss_.valid ? "Yes" : "No") << "\n";
+        out << "GNSS,SigmaAlt," << current_gnss_.sigma_alt << ",m," << (current_gnss_.valid ? "Yes" : "No") << "\n";
+        out << "GNSS,SatsUsed," << current_gnss_.num_satellites_used << ",," << (current_gnss_.valid ? "Yes" : "No") << "\n";
+        out << "GNSS,SatsTracked," << current_gnss_.num_satellites_tracked << ",," << (current_gnss_.valid ? "Yes" : "No") << "\n";
+        out << "GNSS,GDOP," << current_gnss_.gdop << ",," << (current_gnss_.valid ? "Yes" : "No") << "\n";
+        out << "GNSS,PDOP," << current_gnss_.pdop << ",," << (current_gnss_.valid ? "Yes" : "No") << "\n";
+        out << "GNSS,HDOP," << current_gnss_.hdop << ",," << (current_gnss_.valid ? "Yes" : "No") << "\n";
+        out << "GNSS,Status," << QString::fromStdString(current_gnss_.position_status) << ",," << (current_gnss_.valid ? "Yes" : "No") << "\n";
+        out << "IMU,AccX," << current_imu_.acceleration[0] << ",m/s2," << (current_imu_.valid ? "Yes" : "No") << "\n";
+        out << "IMU,AccY," << current_imu_.acceleration[1] << ",m/s2," << (current_imu_.valid ? "Yes" : "No") << "\n";
+        out << "IMU,AccZ," << current_imu_.acceleration[2] << ",m/s2," << (current_imu_.valid ? "Yes" : "No") << "\n";
+        out << "IMU,GyrX," << current_imu_.gyroscope[0] << ",deg/s," << (current_imu_.valid ? "Yes" : "No") << "\n";
+        out << "IMU,GyrY," << current_imu_.gyroscope[1] << ",deg/s," << (current_imu_.valid ? "Yes" : "No") << "\n";
+        out << "IMU,GyrZ," << current_imu_.gyroscope[2] << ",deg/s," << (current_imu_.valid ? "Yes" : "No") << "\n";
+        out << "IMU,Roll," << current_imu_.rpy[0] << ",deg," << (current_imu_.valid ? "Yes" : "No") << "\n";
+        out << "IMU,Pitch," << current_imu_.rpy[1] << ",deg," << (current_imu_.valid ? "Yes" : "No") << "\n";
+        out << "IMU,Yaw," << current_imu_.rpy[2] << ",deg," << (current_imu_.valid ? "Yes" : "No") << "\n";
+        out << "IMU,QuatW," << current_imu_.quaternion[0] << ",," << (current_imu_.valid ? "Yes" : "No") << "\n";
+        out << "IMU,QuatX," << current_imu_.quaternion[1] << ",," << (current_imu_.valid ? "Yes" : "No") << "\n";
+        out << "IMU,QuatY," << current_imu_.quaternion[2] << ",," << (current_imu_.valid ? "Yes" : "No") << "\n";
+        out << "IMU,QuatZ," << current_imu_.quaternion[3] << ",," << (current_imu_.valid ? "Yes" : "No") << "\n";
         out << "PTB,Pressure," << current_ptb_.pressure_hpa << ",hPa," << (current_ptb_.valid ? "Yes" : "No") << "\n";
         out << "HMP,Humidity," << current_hmp_.humidity << ",%RH," << (current_hmp_.valid ? "Yes" : "No") << "\n";
-        out << "HMP,Temperature," << current_hmp_.temperature << ",°C," << (current_hmp_.valid ? "Yes" : "No") << "\n";
+        out << "HMP,Temperature," << current_hmp_.temperature << ",C," << (current_hmp_.valid ? "Yes" : "No") << "\n";
     }
 
     file.close();
