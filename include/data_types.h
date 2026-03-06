@@ -22,6 +22,11 @@ struct GnssData
   double heading = 0.0;
   double heading_pitch = 0.0;
   double heading_length = 0.0;
+  std::string heading_type;
+  int heading_trackedsvs = 0;
+  int heading_solnsvs = 0;
+  int heading_ggl1 = 0;
+  int heading_ggl1l2 = 0;
 
   double sigma_lat = 0.0;
   double sigma_lon = 0.0;

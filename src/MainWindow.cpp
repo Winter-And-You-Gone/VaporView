@@ -106,15 +106,18 @@ void GnssPanel::setupUi()
     createRow(midLayout, 2, vel_ground_lbl_, vel_ground_label_, this);
     createRow(midLayout, 3, heading_lbl_, heading_label_, this);
     createRow(midLayout, 4, pitch_lbl_, pitch_label_, this);
-    createRow(midLayout, 5, heading_len_lbl_, heading_len_label_, this);
-    createRow(midLayout, 6, sats_lbl_, sats_label_, this);
-    createRow(midLayout, 7, diff_lbl_, diff_age_label_, this);
+    createRow(midLayout, 5, heading_type_lbl_, heading_type_label_, this);
+    createRow(midLayout, 6, heading_len_lbl_, heading_len_label_, this);
+    createRow(midLayout, 7, heading_sats_lbl_, heading_sats_label_, this);
+    createRow(midLayout, 8, sats_lbl_, sats_label_, this);
+    createRow(midLayout, 9, diff_lbl_, diff_age_label_, this);
 
     createRow(rightLayout, 0, gdop_lbl_, gdop_label_, this);
     createRow(rightLayout, 1, pdop_lbl_, pdop_label_, this);
     createRow(rightLayout, 2, hdop_lbl_, hdop_label_, this);
     createRow(rightLayout, 3, htdop_lbl_, htdop_label_, this);
     createRow(rightLayout, 4, tdop_lbl_, tdop_label_, this);
+    createRow(rightLayout, 5, cutoff_lbl_, cutoff_label_, this);
 
     leftLayout->setColumnStretch(1, 1);
     midLayout->setColumnStretch(1, 1);
@@ -155,7 +158,9 @@ void GnssPanel::setEnglish(bool english)
         vel_ground_lbl_->setText("Vel Gnd:");
         heading_lbl_->setText("Heading:");
         pitch_lbl_->setText("Pitch:");
+        heading_type_lbl_->setText("Hd Type:");
         heading_len_lbl_->setText("Base L:");
+        heading_sats_lbl_->setText("Hd Sats:");
         sats_lbl_->setText("Sats:");
         diff_lbl_->setText("Diff:");
         gdop_lbl_->setText("GDOP:");
@@ -163,6 +168,7 @@ void GnssPanel::setEnglish(bool english)
         hdop_lbl_->setText("HDOP:");
         htdop_lbl_->setText("HTDOP:");
         tdop_lbl_->setText("TDOP:");
+        cutoff_lbl_->setText("Cutoff:");
     }
     else
     {
@@ -179,7 +185,9 @@ void GnssPanel::setEnglish(bool english)
         vel_ground_lbl_->setText("地速:");
         heading_lbl_->setText("航向:");
         pitch_lbl_->setText("俯仰:");
+        heading_type_lbl_->setText("定向类型:");
         heading_len_lbl_->setText("基线长:");
+        heading_sats_lbl_->setText("定向卫星:");
         sats_lbl_->setText("卫星:");
         diff_lbl_->setText("差分龄:");
         gdop_lbl_->setText("GDOP:");
@@ -187,6 +195,7 @@ void GnssPanel::setEnglish(bool english)
         hdop_lbl_->setText("HDOP:");
         htdop_lbl_->setText("HTDOP:");
         tdop_lbl_->setText("TDOP:");
+        cutoff_lbl_->setText("截止角:");
     }
 }
 
@@ -211,7 +220,9 @@ void GnssPanel::updateData(const VaproView::GnssData& data)
         vel_ground_label_->setText(QString::asprintf("%.3f m/s", data.vel_ground));
         heading_label_->setText(QString::asprintf("%.2f°", data.heading));
         pitch_label_->setText(QString::asprintf("%.2f°", data.heading_pitch));
+        heading_type_label_->setText(QString::fromStdString(data.heading_type));
         heading_len_label_->setText(QString::asprintf("%.3f m", data.heading_length));
+        heading_sats_label_->setText(QString("%1/%2").arg(data.heading_solnsvs).arg(data.heading_trackedsvs));
         sats_label_->setText(QString("%1/%2").arg(data.num_satellites_used).arg(data.num_satellites_tracked));
         diff_age_label_->setText(QString::asprintf("%.1f s", data.diff_age));
         gdop_label_->setText(QString::asprintf("%.2f", data.gdop));
@@ -219,6 +230,7 @@ void GnssPanel::updateData(const VaproView::GnssData& data)
         hdop_label_->setText(QString::asprintf("%.2f", data.hdop));
         htdop_label_->setText(QString::asprintf("%.2f", data.htdop));
         tdop_label_->setText(QString::asprintf("%.2f", data.tdop));
+        cutoff_label_->setText(QString::asprintf("%.1f°", data.elevation_cutoff));
     }
     else
     {

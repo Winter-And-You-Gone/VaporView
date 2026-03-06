@@ -46,6 +46,8 @@ private:
     QLabel *heading_label_;
     QLabel *pitch_label_;
     QLabel *heading_len_label_;
+    QLabel *heading_type_label_;
+    QLabel *heading_sats_label_;
     QLabel *sats_label_;
     QLabel *gdop_label_;
     QLabel *pdop_label_;
@@ -57,6 +59,7 @@ private:
     QLabel *sigma_lat_label_;
     QLabel *sigma_lon_label_;
     QLabel *sigma_alt_label_;
+    QLabel *cutoff_label_;
 
     QLabel *status_lbl_;
     QLabel *lat_lbl_;
@@ -67,14 +70,17 @@ private:
     QLabel *vel_ground_lbl_;
     QLabel *heading_lbl_;
     QLabel *pitch_lbl_;
+    QLabel *heading_type_lbl_;
     QLabel *heading_len_lbl_;
+    QLabel *heading_sats_lbl_;
     QLabel *sats_lbl_;
+    QLabel *diff_lbl_;
     QLabel *gdop_lbl_;
     QLabel *pdop_lbl_;
     QLabel *hdop_lbl_;
     QLabel *htdop_lbl_;
     QLabel *tdop_lbl_;
-    QLabel *diff_lbl_;
+    QLabel *cutoff_lbl_;
     QLabel *undulation_lbl_;
     QLabel *sigma_lat_lbl_;
     QLabel *sigma_lon_lbl_;
