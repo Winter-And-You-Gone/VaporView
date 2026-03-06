@@ -157,7 +157,7 @@ bool GnssCollector::setDeviceSampleRate(int hz)
   
   double interval = 1.0 / hz;
   std::ostringstream oss;
-  oss << std::fixed << std::setprecision(1) << interval;
+  oss << std::fixed << std::setprecision(2) << interval;
   std::string cmd = "PVTSLNA COM3 " + oss.str() + "\r\n";
   
   log("[RTK TX] " + cmd);
