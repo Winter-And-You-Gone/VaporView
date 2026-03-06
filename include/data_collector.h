@@ -16,6 +16,7 @@ class DataCollector
 {
 public:
   using DataCallback = std::function<void()>;
+  using LogCallback = std::function<void(const std::string&)>;
 
   DataCollector();
   virtual ~DataCollector();
@@ -28,6 +29,7 @@ public:
   bool isRunning() const;
 
   void setDataCallback(DataCallback callback);
+  void setLogCallback(LogCallback callback);
   void setSampleRate(int hz);
   int getSampleRate() const;
   double getActualRate() const;
@@ -41,12 +43,14 @@ protected:
   bool shouldEmitData();
   void updateLastEmitTime();
   void recordDataReceived();
+  void log(const std::string& message);
 
   SerialPort serial_;
   std::atomic<bool> running_{false};
   std::thread thread_;
   mutable std::mutex mutex_;
   DataCallback data_callback_;
+  LogCallback log_callback_;
   int sample_rate_hz_{1};
   std::chrono::steady_clock::time_point last_emit_time_;
   std::chrono::steady_clock::time_point last_data_time_;

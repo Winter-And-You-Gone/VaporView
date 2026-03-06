@@ -1168,6 +1168,17 @@ void MainWindow::onConnectClicked()
     ptb_collector_->setSampleRate(ptb_sample_rate_);
     hmp_collector_->setSampleRate(hmp_sample_rate_);
 
+    auto logCallback = [this](const std::string& msg) {
+        QMetaObject::invokeMethod(this, [this, msg]() {
+            log(QString::fromStdString(msg));
+        }, Qt::QueuedConnection);
+    };
+    
+    gnss_collector_->setLogCallback(logCallback);
+    imu_collector_->setLogCallback(logCallback);
+    ptb_collector_->setLogCallback(logCallback);
+    hmp_collector_->setLogCallback(logCallback);
+
     bool any_connected = false;
     QString selectText = is_english_ ? "-- Select --" : "-- 选择 --";
 

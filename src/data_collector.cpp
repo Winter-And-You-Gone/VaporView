@@ -61,6 +61,20 @@ void DataCollector::setDataCallback(DataCallback callback)
   data_callback_ = std::move(callback);
 }
 
+void DataCollector::setLogCallback(LogCallback callback)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  log_callback_ = std::move(callback);
+}
+
+void DataCollector::log(const std::string& message)
+{
+  if (log_callback_)
+  {
+    log_callback_(message);
+  }
+}
+
 std::string DataCollector::getLastError() const
 {
   return serial_.lastError();
@@ -142,8 +156,30 @@ bool GnssCollector::setDeviceSampleRate(int hz)
   double interval = 1.0 / hz;
   std::string cmd = "PVTSLNA COM3 " + std::to_string(interval) + "\r\n";
   
+  log("[RTK TX] " + cmd);
+  
   ssize_t written = serial_.write(cmd.c_str(), cmd.length());
-  return written == static_cast<ssize_t>(cmd.length());
+  if (written != static_cast<ssize_t>(cmd.length()))
+  {
+    log("[RTK TX] Failed to send command");
+    return false;
+  }
+  
+  usleep(100000);
+  
+  char response[256];
+  ssize_t n = serial_.read(response, sizeof(response));
+  if (n > 0)
+  {
+    std::string resp(response, static_cast<size_t>(n));
+    while (!resp.empty() && (resp.back() == '\r' || resp.back() == '\n'))
+    {
+      resp.pop_back();
+    }
+    log("[RTK RX] " + resp);
+  }
+  
+  return true;
 }
 
 void GnssCollector::run()
