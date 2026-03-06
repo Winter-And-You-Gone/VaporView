@@ -165,20 +165,6 @@ bool GnssCollector::setDeviceSampleRate(int hz)
     return false;
   }
   
-  usleep(100000);
-  
-  char response[256];
-  ssize_t n = serial_.read(response, sizeof(response));
-  if (n > 0)
-  {
-    std::string resp(response, static_cast<size_t>(n));
-    while (!resp.empty() && (resp.back() == '\r' || resp.back() == '\n'))
-    {
-      resp.pop_back();
-    }
-    log("[RTK RX] " + resp);
-  }
-  
   return true;
 }
 
@@ -206,58 +192,55 @@ void GnssCollector::run()
           line.pop_back();
         }
 
-        if (line.find("PVTSLN") == std::string::npos)
+        if (line.find("PVTSLN") != std::string::npos)
         {
-          continue;
-        }
-
-        unicore_um982_driver::PVTSLNData pvt_data;
-        std::string error;
-        if (unicore_um982_driver::parsePVTSLN(line, pvt_data, &error))
-        {
-          std::lock_guard<std::mutex> lock(mutex_);
-          latest_data_.latitude = pvt_data.latitude;
-          latest_data_.longitude = pvt_data.longitude;
-          latest_data_.altitude = pvt_data.altitude;
-          latest_data_.vel_north = pvt_data.velocity_north;
-          latest_data_.vel_east = pvt_data.velocity_east;
-          latest_data_.vel_down = pvt_data.velocity_up;
-          latest_data_.heading = pvt_data.heading;
-          latest_data_.heading_pitch = pvt_data.heading_pitch;
-          latest_data_.position_status = pvt_data.position_status;
-          latest_data_.num_satellites_used = pvt_data.num_satellites_used;
-          latest_data_.num_satellites_tracked = pvt_data.num_satellites_tracked;
-          latest_data_.gdop = pvt_data.gdop;
-          latest_data_.pdop = pvt_data.pdop;
-          latest_data_.hdop = pvt_data.hdop;
-          latest_data_.htdop = pvt_data.htdop;
-          latest_data_.tdop = pvt_data.tdop;
-          latest_data_.diff_age = pvt_data.bestpos_diff_age;
-          latest_data_.timestamp = std::chrono::steady_clock::now();
-          latest_data_.valid = true;
-          latest_data_.raw_sentence = line;
-          latest_data_.error_message.clear();
-
-          recordDataReceived();
-
-          if (data_callback_ && shouldEmitData())
+          unicore_um982_driver::PVTSLNData pvt_data;
+          std::string error;
+          if (unicore_um982_driver::parsePVTSLN(line, pvt_data, &error))
           {
-            updateLastEmitTime();
-            data_callback_();
+            std::lock_guard<std::mutex> lock(mutex_);
+            latest_data_.latitude = pvt_data.latitude;
+            latest_data_.longitude = pvt_data.longitude;
+            latest_data_.altitude = pvt_data.altitude;
+            latest_data_.vel_north = pvt_data.velocity_north;
+            latest_data_.vel_east = pvt_data.velocity_east;
+            latest_data_.vel_down = pvt_data.velocity_up;
+            latest_data_.heading = pvt_data.heading;
+            latest_data_.heading_pitch = pvt_data.heading_pitch;
+            latest_data_.position_status = pvt_data.position_status;
+            latest_data_.num_satellites_used = pvt_data.num_satellites_used;
+            latest_data_.num_satellites_tracked = pvt_data.num_satellites_tracked;
+            latest_data_.gdop = pvt_data.gdop;
+            latest_data_.pdop = pvt_data.pdop;
+            latest_data_.hdop = pvt_data.hdop;
+            latest_data_.htdop = pvt_data.htdop;
+            latest_data_.tdop = pvt_data.tdop;
+            latest_data_.diff_age = pvt_data.bestpos_diff_age;
+            latest_data_.timestamp = std::chrono::steady_clock::now();
+            latest_data_.valid = true;
+            latest_data_.raw_sentence = line;
+            latest_data_.error_message.clear();
+
+            recordDataReceived();
+
+            if (data_callback_ && shouldEmitData())
+            {
+              updateLastEmitTime();
+              data_callback_();
+            }
           }
         }
-        else
+        else if (!line.empty() && (line.find("OK") != std::string::npos || 
+                                    line.find("ERROR") != std::string::npos ||
+                                    line.find("$") == 0))
         {
-          std::lock_guard<std::mutex> lock(mutex_);
-          latest_data_.valid = false;
-          latest_data_.error_message = error;
-          latest_data_.raw_sentence = line;
+          log("[RTK RX] " + line);
         }
       }
     }
     else
     {
-      usleep(5000);
+      usleep(10000);
     }
   }
 }
