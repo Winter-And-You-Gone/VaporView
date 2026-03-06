@@ -1067,11 +1067,15 @@ void MainWindow::onHmpRateChanged(const QString& text)
 
 void MainWindow::applyAllSampleRates()
 {
-    if (gnss_collector_) gnss_collector_->setSampleRate(gnss_sample_rate_);
+    if (gnss_collector_) 
+    {
+        gnss_collector_->setSampleRate(gnss_sample_rate_);
+        gnss_collector_->setDeviceSampleRate(gnss_sample_rate_);
+    }
     if (imu_collector_) imu_collector_->setSampleRate(imu_sample_rate_);
     if (ptb_collector_) ptb_collector_->setSampleRate(ptb_sample_rate_);
     if (hmp_collector_) hmp_collector_->setSampleRate(hmp_sample_rate_);
- log(QString(is_english_ ? "All sample rates set to %1 Hz" : "所有采样频率已设置为 %1 Hz").arg(gnss_sample_rate_));
+    log(QString(is_english_ ? "All sample rates set to %1 Hz" : "所有采样频率已设置为 %1 Hz").arg(gnss_sample_rate_));
 }
 
 void MainWindow::onToggleFullScreen()
