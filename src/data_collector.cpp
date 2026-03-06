@@ -230,9 +230,7 @@ void GnssCollector::run()
             }
           }
         }
-        else if (!line.empty() && (line.find("OK") != std::string::npos || 
-                                    line.find("ERROR") != std::string::npos ||
-                                    line.find("$") == 0))
+        else if (!line.empty())
         {
           log("[RTK RX] " + line);
         }
