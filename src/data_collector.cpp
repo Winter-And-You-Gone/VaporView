@@ -107,7 +107,6 @@ void DataCollector::recordDataReceived()
   auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - freq_calc_start_).count();
   if (elapsed >= 1000)
   {
-    std::lock_guard<std::mutex> lock(mutex_);
     actual_rate_ = data_count_ * 1000.0 / elapsed;
     data_count_ = 0;
     freq_calc_start_ = now;
