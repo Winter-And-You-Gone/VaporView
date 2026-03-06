@@ -18,8 +18,14 @@ struct GnssData
   double vel_north = 0.0;
   double vel_east = 0.0;
   double vel_down = 0.0;
+  double vel_ground = 0.0;
   double heading = 0.0;
   double heading_pitch = 0.0;
+  double heading_length = 0.0;
+
+  double sigma_lat = 0.0;
+  double sigma_lon = 0.0;
+  double sigma_alt = 0.0;
 
   std::string position_status;
   int num_satellites_used = 0;
@@ -31,6 +37,8 @@ struct GnssData
   double htdop = 0.0;
   double tdop = 0.0;
   double diff_age = 0.0;
+  double undulation = 0.0;
+  double elevation_cutoff = 0.0;
 
   std::chrono::steady_clock::time_point timestamp{};
   bool valid = false;
@@ -56,6 +64,7 @@ struct ImuData
   std::chrono::steady_clock::time_point timestamp{};
   bool valid = false;
   std::string error_message;
+  std::string raw_sentence;
 };
 
 struct PtbData

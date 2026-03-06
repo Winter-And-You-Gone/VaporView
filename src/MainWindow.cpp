@@ -73,6 +73,10 @@ void GnssPanel::setupUi()
     leftLayout->setVerticalSpacing(4);
     leftLayout->setHorizontalSpacing(6);
 
+    auto *midLayout = new QGridLayout();
+    midLayout->setVerticalSpacing(4);
+    midLayout->setHorizontalSpacing(6);
+
     auto *rightLayout = new QGridLayout();
     rightLayout->setVerticalSpacing(4);
     rightLayout->setHorizontalSpacing(6);
@@ -92,21 +96,32 @@ void GnssPanel::setupUi()
     createRow(leftLayout, 1, lat_lbl_, lat_label_, this);
     createRow(leftLayout, 2, lon_lbl_, lon_label_, this);
     createRow(leftLayout, 3, alt_lbl_, alt_label_, this);
-    createRow(leftLayout, 4, vel_n_lbl_, vel_n_label_, this);
-    createRow(leftLayout, 5, vel_e_lbl_, vel_e_label_, this);
-    createRow(leftLayout, 6, heading_lbl_, heading_label_, this);
+    createRow(leftLayout, 4, sigma_lat_lbl_, sigma_lat_label_, this);
+    createRow(leftLayout, 5, sigma_lon_lbl_, sigma_lon_label_, this);
+    createRow(leftLayout, 6, sigma_alt_lbl_, sigma_alt_label_, this);
+    createRow(leftLayout, 7, undulation_lbl_, undulation_label_, this);
 
-    createRow(rightLayout, 0, pitch_lbl_, pitch_label_, this);
-    createRow(rightLayout, 1, sats_lbl_, sats_label_, this);
-    createRow(rightLayout, 2, gdop_lbl_, gdop_label_, this);
-    createRow(rightLayout, 3, pdop_lbl_, pdop_label_, this);
-    createRow(rightLayout, 4, hdop_lbl_, hdop_label_, this);
-    createRow(rightLayout, 5, diff_lbl_, diff_age_label_, this);
+    createRow(midLayout, 0, vel_n_lbl_, vel_n_label_, this);
+    createRow(midLayout, 1, vel_e_lbl_, vel_e_label_, this);
+    createRow(midLayout, 2, vel_ground_lbl_, vel_ground_label_, this);
+    createRow(midLayout, 3, heading_lbl_, heading_label_, this);
+    createRow(midLayout, 4, pitch_lbl_, pitch_label_, this);
+    createRow(midLayout, 5, heading_len_lbl_, heading_len_label_, this);
+    createRow(midLayout, 6, sats_lbl_, sats_label_, this);
+    createRow(midLayout, 7, diff_lbl_, diff_age_label_, this);
+
+    createRow(rightLayout, 0, gdop_lbl_, gdop_label_, this);
+    createRow(rightLayout, 1, pdop_lbl_, pdop_label_, this);
+    createRow(rightLayout, 2, hdop_lbl_, hdop_label_, this);
+    createRow(rightLayout, 3, htdop_lbl_, htdop_label_, this);
+    createRow(rightLayout, 4, tdop_lbl_, tdop_label_, this);
 
     leftLayout->setColumnStretch(1, 1);
+    midLayout->setColumnStretch(1, 1);
     rightLayout->setColumnStretch(1, 1);
 
     colsLayout->addLayout(leftLayout, 1);
+    colsLayout->addLayout(midLayout, 1);
     colsLayout->addLayout(rightLayout, 1);
 
     mainLayout->addLayout(colsLayout);
@@ -131,15 +146,23 @@ void GnssPanel::setEnglish(bool english)
         lat_lbl_->setText("Lat:");
         lon_lbl_->setText("Lon:");
         alt_lbl_->setText("Alt:");
+        sigma_lat_lbl_->setText("σ Lat:");
+        sigma_lon_lbl_->setText("σ Lon:");
+        sigma_alt_lbl_->setText("σ Alt:");
+        undulation_lbl_->setText("Undul:");
         vel_n_lbl_->setText("Vel N:");
         vel_e_lbl_->setText("Vel E:");
+        vel_ground_lbl_->setText("Vel Gnd:");
         heading_lbl_->setText("Heading:");
         pitch_lbl_->setText("Pitch:");
+        heading_len_lbl_->setText("Base L:");
         sats_lbl_->setText("Sats:");
+        diff_lbl_->setText("Diff:");
         gdop_lbl_->setText("GDOP:");
         pdop_lbl_->setText("PDOP:");
         hdop_lbl_->setText("HDOP:");
-        diff_lbl_->setText("Diff:");
+        htdop_lbl_->setText("HTDOP:");
+        tdop_lbl_->setText("TDOP:");
     }
     else
     {
@@ -147,15 +170,23 @@ void GnssPanel::setEnglish(bool english)
         lat_lbl_->setText("纬度:");
         lon_lbl_->setText("经度:");
         alt_lbl_->setText("高度:");
+        sigma_lat_lbl_->setText("纬度σ:");
+        sigma_lon_lbl_->setText("经度σ:");
+        sigma_alt_lbl_->setText("高度σ:");
+        undulation_lbl_->setText("异常高:");
         vel_n_lbl_->setText("北速:");
         vel_e_lbl_->setText("东速:");
+        vel_ground_lbl_->setText("地速:");
         heading_lbl_->setText("航向:");
         pitch_lbl_->setText("俯仰:");
+        heading_len_lbl_->setText("基线长:");
         sats_lbl_->setText("卫星:");
+        diff_lbl_->setText("差分龄:");
         gdop_lbl_->setText("GDOP:");
         pdop_lbl_->setText("PDOP:");
         hdop_lbl_->setText("HDOP:");
-        diff_lbl_->setText("差分龄:");
+        htdop_lbl_->setText("HTDOP:");
+        tdop_lbl_->setText("TDOP:");
     }
 }
 
@@ -168,18 +199,26 @@ void GnssPanel::updateData(const VaproView::GnssData& data)
         status_label_->style()->unpolish(status_label_);
         status_label_->style()->polish(status_label_);
 
-        lat_label_->setText(QString::asprintf("%.6f°", data.latitude));
-        lon_label_->setText(QString::asprintf("%.6f°", data.longitude));
-        alt_label_->setText(QString::asprintf("%.2f m", data.altitude));
-        vel_n_label_->setText(QString::asprintf("%.2f m/s", data.vel_north));
-        vel_e_label_->setText(QString::asprintf("%.2f m/s", data.vel_east));
-        heading_label_->setText(QString::asprintf("%.1f°", data.heading));
-        pitch_label_->setText(QString::asprintf("%.1f°", data.heading_pitch));
+        lat_label_->setText(QString::asprintf("%.8f°", data.latitude));
+        lon_label_->setText(QString::asprintf("%.8f°", data.longitude));
+        alt_label_->setText(QString::asprintf("%.3f m", data.altitude));
+        sigma_lat_label_->setText(QString::asprintf("%.3f m", data.sigma_lat));
+        sigma_lon_label_->setText(QString::asprintf("%.3f m", data.sigma_lon));
+        sigma_alt_label_->setText(QString::asprintf("%.3f m", data.sigma_alt));
+        undulation_label_->setText(QString::asprintf("%.3f m", data.undulation));
+        vel_n_label_->setText(QString::asprintf("%.3f m/s", data.vel_north));
+        vel_e_label_->setText(QString::asprintf("%.3f m/s", data.vel_east));
+        vel_ground_label_->setText(QString::asprintf("%.3f m/s", data.vel_ground));
+        heading_label_->setText(QString::asprintf("%.2f°", data.heading));
+        pitch_label_->setText(QString::asprintf("%.2f°", data.heading_pitch));
+        heading_len_label_->setText(QString::asprintf("%.3f m", data.heading_length));
         sats_label_->setText(QString("%1/%2").arg(data.num_satellites_used).arg(data.num_satellites_tracked));
-        gdop_label_->setText(QString::asprintf("%.1f", data.gdop));
-        pdop_label_->setText(QString::asprintf("%.1f", data.pdop));
-        hdop_label_->setText(QString::asprintf("%.1f", data.hdop));
         diff_age_label_->setText(QString::asprintf("%.1f s", data.diff_age));
+        gdop_label_->setText(QString::asprintf("%.2f", data.gdop));
+        pdop_label_->setText(QString::asprintf("%.2f", data.pdop));
+        hdop_label_->setText(QString::asprintf("%.2f", data.hdop));
+        htdop_label_->setText(QString::asprintf("%.2f", data.htdop));
+        tdop_label_->setText(QString::asprintf("%.2f", data.tdop));
     }
     else
     {
@@ -202,6 +241,10 @@ ImuPanel::ImuPanel(QWidget *parent)
     , roll_label_(nullptr)
     , pitch_label_(nullptr)
     , yaw_label_(nullptr)
+    , quat_w_label_(nullptr)
+    , quat_x_label_(nullptr)
+    , quat_y_label_(nullptr)
+    , quat_z_label_(nullptr)
     , temp_label_(nullptr)
     , press_label_(nullptr)
     , source_label_(nullptr)
@@ -209,6 +252,7 @@ ImuPanel::ImuPanel(QWidget *parent)
     , accel_sep_(nullptr)
     , gyro_sep_(nullptr)
     , attitude_sep_(nullptr)
+    , quat_sep_(nullptr)
     , env_sep_(nullptr)
     , temp_lbl_(nullptr)
     , press_lbl_(nullptr)
@@ -221,6 +265,10 @@ ImuPanel::ImuPanel(QWidget *parent)
     , roll_lbl_(nullptr)
     , pitch_lbl_(nullptr)
     , yaw_lbl_(nullptr)
+    , quat_w_lbl_(nullptr)
+    , quat_x_lbl_(nullptr)
+    , quat_y_lbl_(nullptr)
+    , quat_z_lbl_(nullptr)
     , is_english_(false)
 {
     setupUi();
@@ -244,6 +292,10 @@ void ImuPanel::setupUi()
     auto *leftLayout = new QGridLayout();
     leftLayout->setVerticalSpacing(4);
     leftLayout->setHorizontalSpacing(6);
+
+    auto *midLayout = new QGridLayout();
+    midLayout->setVerticalSpacing(4);
+    midLayout->setHorizontalSpacing(6);
 
     auto *rightLayout = new QGridLayout();
     rightLayout->setVerticalSpacing(4);
@@ -277,18 +329,26 @@ void ImuPanel::setupUi()
     createRow(leftLayout, 7, gyr_y_lbl_, gyr_y_label_, this);
     createRow(leftLayout, 8, gyr_z_lbl_, gyr_z_label_, this);
 
-    createSeparator(rightLayout, 0, attitude_sep_, this);
-    createRow(rightLayout, 1, roll_lbl_, roll_label_, this);
-    createRow(rightLayout, 2, pitch_lbl_, pitch_label_, this);
-    createRow(rightLayout, 3, yaw_lbl_, yaw_label_, this);
-    createSeparator(rightLayout, 4, env_sep_, this);
-    createRow(rightLayout, 5, temp_lbl_, temp_label_, this);
-    createRow(rightLayout, 6, press_lbl_, press_label_, this);
+    createSeparator(midLayout, 0, attitude_sep_, this);
+    createRow(midLayout, 1, roll_lbl_, roll_label_, this);
+    createRow(midLayout, 2, pitch_lbl_, pitch_label_, this);
+    createRow(midLayout, 3, yaw_lbl_, yaw_label_, this);
+    createSeparator(midLayout, 4, quat_sep_, this);
+    createRow(midLayout, 5, quat_w_lbl_, quat_w_label_, this);
+    createRow(midLayout, 6, quat_x_lbl_, quat_x_label_, this);
+    createRow(midLayout, 7, quat_y_lbl_, quat_y_label_, this);
+    createRow(midLayout, 8, quat_z_lbl_, quat_z_label_, this);
+
+    createSeparator(rightLayout, 0, env_sep_, this);
+    createRow(rightLayout, 1, temp_lbl_, temp_label_, this);
+    createRow(rightLayout, 2, press_lbl_, press_label_, this);
 
     leftLayout->setColumnStretch(1, 1);
+    midLayout->setColumnStretch(1, 1);
     rightLayout->setColumnStretch(1, 1);
 
     colsLayout->addLayout(leftLayout, 1);
+    colsLayout->addLayout(midLayout, 1);
     colsLayout->addLayout(rightLayout, 1);
 
     mainLayout->addLayout(colsLayout);
@@ -313,6 +373,7 @@ void ImuPanel::setEnglish(bool english)
         accel_sep_->setText("— Accel —");
         gyro_sep_->setText("— Gyro —");
         attitude_sep_->setText("— Attitude —");
+        quat_sep_->setText("— Quaternion —");
         env_sep_->setText("— Env —");
         temp_lbl_->setText("Temp:");
         press_lbl_->setText("Press:");
@@ -325,6 +386,10 @@ void ImuPanel::setEnglish(bool english)
         roll_lbl_->setText("Roll:");
         pitch_lbl_->setText("Pitch:");
         yaw_lbl_->setText("Yaw:");
+        quat_w_lbl_->setText("W:");
+        quat_x_lbl_->setText("X:");
+        quat_y_lbl_->setText("Y:");
+        quat_z_lbl_->setText("Z:");
     }
     else
     {
@@ -332,6 +397,7 @@ void ImuPanel::setEnglish(bool english)
         accel_sep_->setText("— 加速度 —");
         gyro_sep_->setText("— 陀螺仪 —");
         attitude_sep_->setText("— 姿态 —");
+        quat_sep_->setText("— 四元数 —");
         env_sep_->setText("— 环境 —");
         temp_lbl_->setText("温度:");
         press_lbl_->setText("气压:");
@@ -344,6 +410,10 @@ void ImuPanel::setEnglish(bool english)
         roll_lbl_->setText("横滚:");
         pitch_lbl_->setText("俯仰:");
         yaw_lbl_->setText("航向:");
+        quat_w_lbl_->setText("W:");
+        quat_x_lbl_->setText("X:");
+        quat_y_lbl_->setText("Y:");
+        quat_z_lbl_->setText("Z:");
     }
 }
 
@@ -360,13 +430,18 @@ void ImuPanel::updateData(const VaproView::ImuData& data)
         acc_y_label_->setText(QString::asprintf("%.3f", data.acceleration[1]));
         acc_z_label_->setText(QString::asprintf("%.3f", data.acceleration[2]));
 
-        gyr_x_label_->setText(QString::asprintf("%.2f", data.gyroscope[0]));
-        gyr_y_label_->setText(QString::asprintf("%.2f", data.gyroscope[1]));
-        gyr_z_label_->setText(QString::asprintf("%.2f", data.gyroscope[2]));
+        gyr_x_label_->setText(QString::asprintf("%.3f", data.gyroscope[0]));
+        gyr_y_label_->setText(QString::asprintf("%.3f", data.gyroscope[1]));
+        gyr_z_label_->setText(QString::asprintf("%.3f", data.gyroscope[2]));
 
-        roll_label_->setText(QString::asprintf("%.1f°", data.rpy[0]));
-        pitch_label_->setText(QString::asprintf("%.1f°", data.rpy[1]));
-        yaw_label_->setText(QString::asprintf("%.1f°", data.rpy[2]));
+        roll_label_->setText(QString::asprintf("%.2f°", data.rpy[0]));
+        pitch_label_->setText(QString::asprintf("%.2f°", data.rpy[1]));
+        yaw_label_->setText(QString::asprintf("%.2f°", data.rpy[2]));
+
+        quat_w_label_->setText(QString::asprintf("%.4f", data.quaternion[0]));
+        quat_x_label_->setText(QString::asprintf("%.4f", data.quaternion[1]));
+        quat_y_label_->setText(QString::asprintf("%.4f", data.quaternion[2]));
+        quat_z_label_->setText(QString::asprintf("%.4f", data.quaternion[3]));
 
         temp_label_->setText(QString::asprintf("%.1f°C", data.temperature));
         press_label_->setText(QString::asprintf("%.1f hPa", data.air_pressure));

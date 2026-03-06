@@ -248,8 +248,13 @@ void GnssCollector::run()
             latest_data_.vel_north = pvt_data.velocity_north;
             latest_data_.vel_east = pvt_data.velocity_east;
             latest_data_.vel_down = pvt_data.velocity_up;
+            latest_data_.vel_ground = pvt_data.psrvel_ground;
             latest_data_.heading = pvt_data.heading;
             latest_data_.heading_pitch = pvt_data.heading_pitch;
+            latest_data_.heading_length = pvt_data.heading_length;
+            latest_data_.sigma_lat = pvt_data.sigma_latitude;
+            latest_data_.sigma_lon = pvt_data.sigma_longitude;
+            latest_data_.sigma_alt = pvt_data.sigma_altitude;
             latest_data_.position_status = pvt_data.position_status;
             latest_data_.num_satellites_used = pvt_data.num_satellites_used;
             latest_data_.num_satellites_tracked = pvt_data.num_satellites_tracked;
@@ -259,6 +264,8 @@ void GnssCollector::run()
             latest_data_.htdop = pvt_data.htdop;
             latest_data_.tdop = pvt_data.tdop;
             latest_data_.diff_age = pvt_data.bestpos_diff_age;
+            latest_data_.undulation = pvt_data.undulation;
+            latest_data_.elevation_cutoff = pvt_data.elevation_cutoff;
             latest_data_.timestamp = std::chrono::steady_clock::now();
             latest_data_.valid = true;
             latest_data_.raw_sentence = line;

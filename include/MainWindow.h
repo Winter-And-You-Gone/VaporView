@@ -42,13 +42,21 @@ private:
     QLabel *alt_label_;
     QLabel *vel_n_label_;
     QLabel *vel_e_label_;
+    QLabel *vel_ground_label_;
     QLabel *heading_label_;
     QLabel *pitch_label_;
+    QLabel *heading_len_label_;
     QLabel *sats_label_;
     QLabel *gdop_label_;
     QLabel *pdop_label_;
     QLabel *hdop_label_;
+    QLabel *htdop_label_;
+    QLabel *tdop_label_;
     QLabel *diff_age_label_;
+    QLabel *undulation_label_;
+    QLabel *sigma_lat_label_;
+    QLabel *sigma_lon_label_;
+    QLabel *sigma_alt_label_;
 
     QLabel *status_lbl_;
     QLabel *lat_lbl_;
@@ -56,13 +64,21 @@ private:
     QLabel *alt_lbl_;
     QLabel *vel_n_lbl_;
     QLabel *vel_e_lbl_;
+    QLabel *vel_ground_lbl_;
     QLabel *heading_lbl_;
     QLabel *pitch_lbl_;
+    QLabel *heading_len_lbl_;
     QLabel *sats_lbl_;
     QLabel *gdop_lbl_;
     QLabel *pdop_lbl_;
     QLabel *hdop_lbl_;
+    QLabel *htdop_lbl_;
+    QLabel *tdop_lbl_;
     QLabel *diff_lbl_;
+    QLabel *undulation_lbl_;
+    QLabel *sigma_lat_lbl_;
+    QLabel *sigma_lon_lbl_;
+    QLabel *sigma_alt_lbl_;
 
     bool is_english_;
 };
@@ -90,6 +106,10 @@ private:
     QLabel *roll_label_;
     QLabel *pitch_label_;
     QLabel *yaw_label_;
+    QLabel *quat_w_label_;
+    QLabel *quat_x_label_;
+    QLabel *quat_y_label_;
+    QLabel *quat_z_label_;
     QLabel *temp_label_;
     QLabel *press_label_;
     QLabel *source_label_;
@@ -98,6 +118,7 @@ private:
     QLabel *accel_sep_;
     QLabel *gyro_sep_;
     QLabel *attitude_sep_;
+    QLabel *quat_sep_;
     QLabel *env_sep_;
     QLabel *temp_lbl_;
     QLabel *press_lbl_;
@@ -110,6 +131,10 @@ private:
     QLabel *roll_lbl_;
     QLabel *pitch_lbl_;
     QLabel *yaw_lbl_;
+    QLabel *quat_w_lbl_;
+    QLabel *quat_x_lbl_;
+    QLabel *quat_y_lbl_;
+    QLabel *quat_z_lbl_;
 
     bool is_english_;
 };
