@@ -59,6 +59,7 @@ class GnssCollector : public DataCollector
 {
 public:
   GnssData getLatestData();
+  bool setDeviceSampleRate(int hz) override;
 
 protected:
   void run() override;

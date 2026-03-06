@@ -1035,7 +1035,11 @@ void MainWindow::onGlobalRateChanged(const QString& text)
 void MainWindow::onGnssRateChanged(const QString& text)
 {
     gnss_sample_rate_ = parseRate(text);
-    if (gnss_collector_) gnss_collector_->setSampleRate(gnss_sample_rate_);
+    if (gnss_collector_) 
+    {
+        gnss_collector_->setSampleRate(gnss_sample_rate_);
+        gnss_collector_->setDeviceSampleRate(gnss_sample_rate_);
+    }
     log(QString(is_english_ ? "GNSS sample rate set to %1 Hz" : "GNSS采样频率已设置为 %1 Hz").arg(gnss_sample_rate_));
 }
 

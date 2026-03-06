@@ -134,6 +134,18 @@ GnssData GnssCollector::getLatestData()
   return latest_data_;
 }
 
+bool GnssCollector::setDeviceSampleRate(int hz)
+{
+  if (hz < 1) hz = 1;
+  if (hz > 20) hz = 20;
+  
+  double interval = 1.0 / hz;
+  std::string cmd = "PVTSLNA COM3 " + std::to_string(interval) + "\r\n";
+  
+  ssize_t written = serial_.write(cmd.c_str(), cmd.length());
+  return written == static_cast<ssize_t>(cmd.length());
+}
+
 void GnssCollector::run()
 {
   std::string buffer;
