@@ -1121,6 +1121,7 @@ void MainWindow::setupDataPanels()
     env_layout->addWidget(hmp_panel_);
 
     data_layout->addWidget(env_group);
+    env_group_ = env_group;
 
     ptb_group_ = nullptr;
     hmp_group_ = nullptr;
