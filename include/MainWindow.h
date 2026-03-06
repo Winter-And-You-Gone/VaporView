@@ -193,6 +193,7 @@ private:
     void setupConfigPanel();
     void setupDataPanels();
     void setupLogPanel();
+    void loadModernStyleSheet();
     void log(const QString& message);
     void updateConnectionStatus(bool connected);
     QStringList getAvailablePorts();

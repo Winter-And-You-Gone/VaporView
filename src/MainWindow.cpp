@@ -18,6 +18,7 @@
 #include <QScrollBar>
 #include <QShortcut>
 #include <QSpacerItem>
+#include <QApplication>
 #include <memory>
 
 GnssPanel::GnssPanel(QWidget *parent)
@@ -57,25 +58,28 @@ GnssPanel::GnssPanel(QWidget *parent)
 void GnssPanel::setupUi()
 {
     auto *mainLayout = new QVBoxLayout(this);
-    mainLayout->setSpacing(3);
-    mainLayout->setContentsMargins(3, 3, 3, 3);
+    mainLayout->setSpacing(8);
+    mainLayout->setContentsMargins(8, 8, 8, 8);
 
     rate_label_ = new QLabel(this);
-    rate_label_->setStyleSheet("font-weight: bold; color: #666; font-size: 9px; text-align: right;");
+    rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     mainLayout->addWidget(rate_label_);
 
     auto *layout = new QGridLayout();
-    layout->setSpacing(3);
+    layout->setVerticalSpacing(8);
+    layout->setHorizontalSpacing(8);
     layout->setContentsMargins(0, 0, 0, 0);
 
     int row = 0;
 
     auto createRow = [this, &row, layout](QLabel*& lbl, QLabel*& valueLabel) {
         lbl = new QLabel(this);
-        lbl->setStyleSheet("font-weight: bold; color: #555; font-size: 9px;");
+        lbl->setObjectName("fieldLabel");
+        lbl->setMinimumHeight(18);
         valueLabel = new QLabel("---", this);
-        valueLabel->setStyleSheet("font-family: monospace; font-size: 10px; color: #0078d7;");
+        valueLabel->setObjectName("valueLabel");
+        valueLabel->setMinimumHeight(18);
         layout->addWidget(lbl, row, 0);
         layout->addWidget(valueLabel, row, 1);
         row++;
@@ -151,7 +155,9 @@ void GnssPanel::updateData(const VaproView::GnssData& data)
     if (data.valid)
     {
         status_label_->setText(QString::fromStdString(data.position_status));
-        status_label_->setStyleSheet("font-family: monospace; font-size: 10px; color: green; font-weight: bold;");
+        status_label_->setProperty("data-valid", true);
+        status_label_->style()->unpolish(status_label_);
+        status_label_->style()->polish(status_label_);
 
         lat_label_->setText(QString::asprintf("%.6f°", data.latitude));
         lon_label_->setText(QString::asprintf("%.6f°", data.longitude));
@@ -169,7 +175,9 @@ void GnssPanel::updateData(const VaproView::GnssData& data)
     else
     {
         status_label_->setText(QString::fromStdString(data.error_message));
-        status_label_->setStyleSheet("font-family: monospace; font-size: 10px; color: red;");
+        status_label_->setProperty("data-valid", false);
+        status_label_->style()->unpolish(status_label_);
+        status_label_->style()->polish(status_label_);
     }
 }
 
@@ -212,56 +220,60 @@ ImuPanel::ImuPanel(QWidget *parent)
 void ImuPanel::setupUi()
 {
     auto *mainLayout = new QVBoxLayout(this);
-    mainLayout->setSpacing(3);
-    mainLayout->setContentsMargins(3, 3, 3, 3);
+    mainLayout->setSpacing(8);
+    mainLayout->setContentsMargins(8, 8, 8, 8);
 
     rate_label_ = new QLabel(this);
-    rate_label_->setStyleSheet("font-weight: bold; color: #666; font-size: 9px; text-align: right;");
+    rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    rate_label_->setFixedHeight(20);
     mainLayout->addWidget(rate_label_);
 
     auto *layout = new QGridLayout();
-    layout->setSpacing(3);
+    layout->setVerticalSpacing(8);
+    layout->setHorizontalSpacing(6);
     layout->setContentsMargins(0, 0, 0, 0);
 
     int row = 0;
 
     auto createRow = [this, &row, layout](QLabel*& lbl, QLabel*& valueLabel) {
         lbl = new QLabel(this);
-        lbl->setStyleSheet("font-weight: bold; color: #555; font-size: 9px;");
+        lbl->setObjectName("fieldLabel");
+        lbl->setFixedHeight(20);
         valueLabel = new QLabel("---", this);
-        valueLabel->setStyleSheet("font-family: monospace; font-size: 10px; color: #0078d7;");
+        valueLabel->setObjectName("valueLabel");
+        valueLabel->setFixedHeight(20);
         layout->addWidget(lbl, row, 0);
         layout->addWidget(valueLabel, row, 1);
         row++;
     };
 
+    auto createSeparator = [this, &row, layout](QLabel*& sep) {
+        sep = new QLabel(this);
+        sep->setObjectName("separatorLabel");
+        sep->setMinimumHeight(24);
+        layout->addWidget(sep, row, 0, 1, 2);
+        row++;
+    };
+
     createRow(source_lbl_, source_label_);
 
-    accel_sep_ = new QLabel(this);
-    accel_sep_->setStyleSheet("color: #888; font-size: 9px;");
-    layout->addWidget(accel_sep_, row++, 0, 1, 2);
+    createSeparator(accel_sep_);
     createRow(acc_x_lbl_, acc_x_label_);
     createRow(acc_y_lbl_, acc_y_label_);
     createRow(acc_z_lbl_, acc_z_label_);
 
-    gyro_sep_ = new QLabel(this);
-    gyro_sep_->setStyleSheet("color: #888; font-size: 9px;");
-    layout->addWidget(gyro_sep_, row++, 0, 1, 2);
+    createSeparator(gyro_sep_);
     createRow(gyr_x_lbl_, gyr_x_label_);
     createRow(gyr_y_lbl_, gyr_y_label_);
     createRow(gyr_z_lbl_, gyr_z_label_);
 
-    attitude_sep_ = new QLabel(this);
-    attitude_sep_->setStyleSheet("color: #888; font-size: 9px;");
-    layout->addWidget(attitude_sep_, row++, 0, 1, 2);
+    createSeparator(attitude_sep_);
     createRow(roll_lbl_, roll_label_);
     createRow(pitch_lbl_, pitch_label_);
     createRow(yaw_lbl_, yaw_label_);
 
-    env_sep_ = new QLabel(this);
-    env_sep_->setStyleSheet("color: #888; font-size: 9px;");
-    layout->addWidget(env_sep_, row++, 0, 1, 2);
+    createSeparator(env_sep_);
     createRow(temp_lbl_, temp_label_);
     createRow(press_lbl_, press_label_);
 
@@ -327,7 +339,9 @@ void ImuPanel::updateData(const VaproView::ImuData& data)
     if (data.valid)
     {
         source_label_->setText(data.from_hi83 ? "HI83" : "HI91/HI81");
-        source_label_->setStyleSheet("font-family: monospace; font-size: 10px; color: green; font-weight: bold;");
+        source_label_->setProperty("data-valid", true);
+        source_label_->style()->unpolish(source_label_);
+        source_label_->style()->polish(source_label_);
 
         acc_x_label_->setText(QString::asprintf("%.3f", data.acceleration[0]));
         acc_y_label_->setText(QString::asprintf("%.3f", data.acceleration[1]));
@@ -347,7 +361,9 @@ void ImuPanel::updateData(const VaproView::ImuData& data)
     else
     {
         source_label_->setText(QString::fromStdString(data.error_message));
-        source_label_->setStyleSheet("font-family: monospace; font-size: 10px; color: red;");
+        source_label_->setProperty("data-valid", false);
+        source_label_->style()->unpolish(source_label_);
+        source_label_->style()->polish(source_label_);
     }
 }
 
@@ -365,26 +381,31 @@ PtbPanel::PtbPanel(QWidget *parent)
 void PtbPanel::setupUi()
 {
     auto *layout = new QVBoxLayout(this);
-    layout->setSpacing(3);
-    layout->setContentsMargins(3, 3, 3, 3);
+    layout->setSpacing(10);
+    layout->setContentsMargins(10, 10, 10, 10);
 
     rate_label_ = new QLabel(this);
-    rate_label_->setStyleSheet("font-weight: bold; color: #666; font-size: 9px; text-align: right;");
+    rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    rate_label_->setMinimumHeight(22);
     layout->addWidget(rate_label_);
 
     auto *pressLayout = new QHBoxLayout();
+    pressLayout->setSpacing(8);
     pressure_lbl_ = new QLabel(this);
-    pressure_lbl_->setStyleSheet("font-weight: bold; color: #555; font-size: 9px;");
+    pressure_lbl_->setObjectName("fieldLabel");
+    pressure_lbl_->setMinimumHeight(22);
     pressLayout->addWidget(pressure_lbl_);
     pressure_label_ = new QLabel("--- hPa", this);
-    pressure_label_->setStyleSheet("font-family: monospace; font-size: 12px; font-weight: bold; color: #0078d7;");
+    pressure_label_->setObjectName("highlightedValue");
+    pressure_label_->setMinimumHeight(22);
     pressLayout->addWidget(pressure_label_);
     pressLayout->addStretch();
     layout->addLayout(pressLayout);
 
     status_label_ = new QLabel(this);
-    status_label_->setStyleSheet("color: #888; font-size: 9px;");
+    status_label_->setObjectName("statusIndicator");
+    status_label_->setMinimumHeight(22);
     layout->addWidget(status_label_);
 
     layout->addStretch();
@@ -419,16 +440,24 @@ void PtbPanel::updateData(const VaproView::PtbData& data)
     if (data.valid)
     {
         pressure_label_->setText(QString::asprintf("%.2f hPa", data.pressure_hpa));
-        pressure_label_->setStyleSheet("font-family: monospace; font-size: 12px; font-weight: bold; color: green;");
+        pressure_label_->setProperty("data-valid", true);
+        pressure_label_->style()->unpolish(pressure_label_);
+        pressure_label_->style()->polish(pressure_label_);
         status_label_->setText(is_english_ ? "Valid" : "有效");
-        status_label_->setStyleSheet("color: green; font-size: 9px;");
+        status_label_->setProperty("status", "connected");
+        status_label_->style()->unpolish(status_label_);
+        status_label_->style()->polish(status_label_);
     }
     else
     {
         pressure_label_->setText("--- hPa");
-        pressure_label_->setStyleSheet("font-family: monospace; font-size: 12px; font-weight: bold; color: red;");
+        pressure_label_->setProperty("data-valid", false);
+        pressure_label_->style()->unpolish(pressure_label_);
+        pressure_label_->style()->polish(pressure_label_);
         status_label_->setText(QString::fromStdString(data.error_message));
-        status_label_->setStyleSheet("color: red; font-size: 9px;");
+        status_label_->setProperty("status", "disconnected");
+        status_label_->style()->unpolish(status_label_);
+        status_label_->style()->polish(status_label_);
     }
 }
 
@@ -448,36 +477,44 @@ HmpPanel::HmpPanel(QWidget *parent)
 void HmpPanel::setupUi()
 {
     auto *layout = new QVBoxLayout(this);
-    layout->setSpacing(3);
-    layout->setContentsMargins(3, 3, 3, 3);
+    layout->setSpacing(10);
+    layout->setContentsMargins(10, 10, 10, 10);
 
     rate_label_ = new QLabel(this);
-    rate_label_->setStyleSheet("font-weight: bold; color: #666; font-size: 9px; text-align: right;");
+    rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    rate_label_->setMinimumHeight(22);
     layout->addWidget(rate_label_);
 
     auto *tempLayout = new QHBoxLayout();
+    tempLayout->setSpacing(8);
     temp_lbl_ = new QLabel(this);
-    temp_lbl_->setStyleSheet("font-weight: bold; color: #555; font-size: 9px;");
+    temp_lbl_->setObjectName("fieldLabel");
+    temp_lbl_->setMinimumHeight(22);
     tempLayout->addWidget(temp_lbl_);
     temperature_label_ = new QLabel("--- °C", this);
-    temperature_label_->setStyleSheet("font-family: monospace; font-size: 12px; font-weight: bold; color: #0078d7;");
+    temperature_label_->setObjectName("highlightedValue");
+    temperature_label_->setMinimumHeight(22);
     tempLayout->addWidget(temperature_label_);
     tempLayout->addStretch();
     layout->addLayout(tempLayout);
 
     auto *humidLayout = new QHBoxLayout();
+    humidLayout->setSpacing(8);
     humidity_lbl_ = new QLabel(this);
-    humidity_lbl_->setStyleSheet("font-weight: bold; color: #555; font-size: 9px;");
+    humidity_lbl_->setObjectName("fieldLabel");
+    humidity_lbl_->setMinimumHeight(22);
     humidLayout->addWidget(humidity_lbl_);
     humidity_label_ = new QLabel("--- %RH", this);
-    humidity_label_->setStyleSheet("font-family: monospace; font-size: 12px; font-weight: bold; color: #0078d7;");
+    humidity_label_->setObjectName("highlightedValue");
+    humidity_label_->setMinimumHeight(22);
     humidLayout->addWidget(humidity_label_);
     humidLayout->addStretch();
     layout->addLayout(humidLayout);
 
     status_label_ = new QLabel(this);
-    status_label_->setStyleSheet("color: #888; font-size: 9px;");
+    status_label_->setObjectName("statusIndicator");
+    status_label_->setMinimumHeight(22);
     layout->addWidget(status_label_);
 
     layout->addStretch();
@@ -515,19 +552,31 @@ void HmpPanel::updateData(const VaproView::HmpData& data)
     {
         temperature_label_->setText(QString::asprintf("%.1f °C", data.temperature));
         humidity_label_->setText(QString::asprintf("%.1f %%RH", data.humidity));
-        temperature_label_->setStyleSheet("font-family: monospace; font-size: 12px; font-weight: bold; color: green;");
-        humidity_label_->setStyleSheet("font-family: monospace; font-size: 12px; font-weight: bold; color: green;");
+        temperature_label_->setProperty("data-valid", true);
+        temperature_label_->style()->unpolish(temperature_label_);
+        temperature_label_->style()->polish(temperature_label_);
+        humidity_label_->setProperty("data-valid", true);
+        humidity_label_->style()->unpolish(humidity_label_);
+        humidity_label_->style()->polish(humidity_label_);
         status_label_->setText(is_english_ ? "Valid" : "有效");
-        status_label_->setStyleSheet("color: green; font-size: 9px;");
+        status_label_->setProperty("status", "connected");
+        status_label_->style()->unpolish(status_label_);
+        status_label_->style()->polish(status_label_);
     }
     else
     {
         temperature_label_->setText("--- °C");
         humidity_label_->setText("--- %RH");
-        temperature_label_->setStyleSheet("font-family: monospace; font-size: 12px; font-weight: bold; color: red;");
-        humidity_label_->setStyleSheet("font-family: monospace; font-size: 12px; font-weight: bold; color: red;");
+        temperature_label_->setProperty("data-valid", false);
+        temperature_label_->style()->unpolish(temperature_label_);
+        temperature_label_->style()->polish(temperature_label_);
+        humidity_label_->setProperty("data-valid", false);
+        humidity_label_->style()->unpolish(humidity_label_);
+        humidity_label_->style()->polish(humidity_label_);
         status_label_->setText(QString::fromStdString(data.error_message));
-        status_label_->setStyleSheet("color: red; font-size: 9px;");
+        status_label_->setProperty("status", "disconnected");
+        status_label_->style()->unpolish(status_label_);
+        status_label_->style()->polish(status_label_);
     }
 }
 
@@ -592,6 +641,8 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_sample_rate_(1)
     , hmp_sample_rate_(1)
 {
+    loadModernStyleSheet();
+    
     setupMenuBar();
     setupToolBar();
     setupStatusBar();
@@ -616,6 +667,56 @@ MainWindow::~MainWindow()
     if (imu_collector_) imu_collector_->stop();
     if (ptb_collector_) ptb_collector_->stop();
     if (hmp_collector_) hmp_collector_->stop();
+}
+
+void MainWindow::loadModernStyleSheet()
+{
+    QString stylePath = QCoreApplication::applicationDirPath() + "/../resources/modern_style.qss";
+    QFile styleFile(stylePath);
+    
+    if (styleFile.open(QFile::ReadOnly | QFile::Text))
+    {
+        QString styleSheet = QString::fromUtf8(styleFile.readAll());
+        qApp->setStyleSheet(styleSheet);
+        styleFile.close();
+    }
+    else
+    {
+        QString fallbackStyle = 
+            "* { font-family: \"Segoe UI\", \"Microsoft YaHei\", \"PingFang SC\", sans-serif; }"
+            "QMainWindow { background-color: #f5f5f5; }"
+            "QMenuBar { background-color: #ffffff; border-bottom: 1px solid #e0e0e0; padding: 4px 8px; }"
+            "QMenuBar::item { background-color: transparent; padding: 6px 12px; border-radius: 4px; color: #333333; }"
+            "QMenuBar::item:selected { background-color: #e3f2fd; color: #1976d2; }"
+            "QMenu { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px 0px; }"
+            "QMenu::item { padding: 8px 32px 8px 16px; color: #333333; }"
+            "QMenu::item:selected { background-color: #e3f2fd; color: #1976d2; }"
+            "QToolBar { background-color: #ffffff; border-bottom: 1px solid #e0e0e0; padding: 8px 12px; spacing: 8px; }"
+            "QToolBar QToolButton { background-color: transparent; border: none; border-radius: 6px; padding: 8px 12px; color: #555555; font-size: 13px; }"
+            "QToolBar QToolButton:hover { background-color: #f0f0f0; }"
+            "QToolBar QToolButton:disabled { color: #bdbdbd; }"
+            "QStatusBar { background-color: #ffffff; border-top: 1px solid #e0e0e0; padding: 4px 12px; color: #666666; font-size: 12px; }"
+            "QGroupBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; margin-top: 16px; padding: 16px 12px 12px 12px; font-size: 13px; font-weight: bold; color: #333333; }"
+            "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 12px; padding: 0px 8px; background-color: #ffffff; color: #1976d2; }"
+            "QLabel { color: #333333; background-color: transparent; border: none; }"
+            "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 6px 12px; min-height: 28px; color: #333333; font-size: 12px; }"
+            "QComboBox:hover { border-color: #bdbdbd; }"
+            "QComboBox:focus { border-color: #1976d2; border-width: 2px; }"
+            "QComboBox QAbstractItemView { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; selection-background-color: #e3f2fd; selection-color: #1976d2; padding: 4px; outline: none; }"
+            "QTextEdit { background-color: #1e1e1e; color: #00ff99; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 11px; }"
+            "QScrollBar:vertical { background-color: #f5f5f5; width: 12px; border-radius: 6px; }"
+            "QScrollBar::handle:vertical { background-color: #bdbdbd; min-height: 30px; border-radius: 6px; margin: 2px; }"
+            "QScrollBar::handle:vertical:hover { background-color: #9e9e9e; }"
+            "QScrollBar:horizontal { background-color: #f5f5f5; height: 12px; border-radius: 6px; }"
+            "QScrollBar::handle:horizontal { background-color: #bdbdbd; min-width: 30px; border-radius: 6px; margin: 2px; }"
+            "QScrollBar::handle:horizontal:hover { background-color: #9e9e9e; }"
+            "QPushButton { background-color: #1976d2; color: #ffffff; border: none; border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: 500; min-height: 32px; }"
+            "QPushButton:hover { background-color: #1565c0; }"
+            "QPushButton:pressed { background-color: #0d47a1; }"
+            "QPushButton:disabled { background-color: #bdbdbd; color: #ffffff; }"
+            "QToolTip { background-color: #424242; color: #ffffff; border: none; border-radius: 4px; padding: 6px 10px; font-size: 12px; }";
+        qApp->setStyleSheet(fallbackStyle);
+    }
 }
 
 void MainWindow::setupMenuBar()
@@ -731,13 +832,22 @@ void MainWindow::setupCentralWidget()
     central_widget_ = new QWidget(this);
     setCentralWidget(central_widget_);
 
-    main_layout_ = new QVBoxLayout(central_widget_);
-    main_layout_->setSpacing(3);
-    main_layout_->setContentsMargins(3, 3, 3, 3);
+    auto *main_h_layout = new QHBoxLayout(central_widget_);
+    main_h_layout->setSpacing(2);
+    main_h_layout->setContentsMargins(2, 2, 2, 2);
+
+    auto *left_widget = new QWidget(this);
+    main_layout_ = new QVBoxLayout(left_widget);
+    main_layout_->setSpacing(2);
+    main_layout_->setContentsMargins(0, 0, 0, 0);
 
     setupConfigPanel();
     setupDataPanels();
+
+    main_h_layout->addWidget(left_widget, 3);
+
     setupLogPanel();
+    main_h_layout->addWidget(log_group_, 1);
 }
 
 QStringList MainWindow::getAvailablePorts()
@@ -798,21 +908,33 @@ void MainWindow::setupConfigPanel()
 {
     config_group_ = new QGroupBox(this);
     auto *config_layout = new QGridLayout(config_group_);
-    config_layout->setSpacing(3);
+    config_layout->setVerticalSpacing(8);
+    config_layout->setHorizontalSpacing(8);
+    config_layout->setContentsMargins(8, 4, 8, 8);
+
+    config_layout->setColumnStretch(0, 0);
+    config_layout->setColumnStretch(1, 3);
+    config_layout->setColumnStretch(2, 1);
+    config_layout->setColumnMinimumWidth(0, 80);
+    config_layout->setColumnMinimumWidth(1, 250);
+    config_layout->setColumnMinimumWidth(2, 100);
 
     QStringList baudRates = {"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"};
     QStringList ports = getAvailablePorts();
 
     auto createPortRow = [this, config_layout, &baudRates, &ports](QLabel*& lbl, QComboBox*& portCombo, QComboBox*& baudCombo, const QString& defaultPort, const QString& defaultBaud, int row) {
         lbl = new QLabel(this);
-        lbl->setStyleSheet("font-weight: bold; font-size: 9px;");
-        config_layout->addWidget(lbl, row, 0);
+        lbl->setObjectName("fieldLabel");
+        lbl->setFixedHeight(20);
+        lbl->setFixedWidth(80);
+        config_layout->addWidget(lbl, row, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
         portCombo = new QComboBox(this);
         portCombo->addItem(is_english_ ? "-- Select --" : "-- 选择 --");
         portCombo->addItems(ports);
         portCombo->setEditable(true);
-        portCombo->setMinimumWidth(140);
+        portCombo->setFixedHeight(20);
+        portCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         portCombo->setMaxVisibleItems(15);
 
         int defaultIdx = portCombo->findText(defaultPort);
@@ -824,19 +946,22 @@ void MainWindow::setupConfigPanel()
         {
             portCombo->setEditText(defaultPort);
         }
-        config_layout->addWidget(portCombo, row, 1);
+        config_layout->addWidget(portCombo, row, 1, Qt::AlignVCenter);
 
         baudCombo = new QComboBox(this);
         baudCombo->addItems(baudRates);
         baudCombo->setCurrentText(defaultBaud);
-        baudCombo->setMinimumWidth(70);
-        config_layout->addWidget(baudCombo, row, 2);
+        baudCombo->setFixedHeight(20);
+        baudCombo->setFixedWidth(100);
+        config_layout->addWidget(baudCombo, row, 2, Qt::AlignVCenter);
     };
 
     auto createRateRow = [this, config_layout](QLabel*& lbl, QComboBox*& combo, int row) {
         lbl = new QLabel(this);
-        lbl->setStyleSheet("font-weight: bold; font-size: 9px;");
-        config_layout->addWidget(lbl, row, 0);
+        lbl->setObjectName("fieldLabel");
+        lbl->setFixedHeight(20);
+        lbl->setFixedWidth(80);
+        config_layout->addWidget(lbl, row, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
         combo = new QComboBox(this);
         combo->addItem("1");
@@ -846,9 +971,10 @@ void MainWindow::setupConfigPanel()
         combo->addItem("20");
         combo->setCurrentIndex(0);
         combo->setEditable(true);
-        combo->setMinimumWidth(80);
+        combo->setFixedHeight(20);
+        combo->setFixedWidth(100);
         combo->setValidator(new QIntValidator(1, 20, combo));
-        config_layout->addWidget(combo, row, 1);
+        config_layout->addWidget(combo, row, 1, Qt::AlignVCenter | Qt::AlignLeft);
     };
 
     int row = 0;
@@ -857,20 +983,12 @@ void MainWindow::setupConfigPanel()
     createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, "/dev/ttyBARO", "9600", row++);
     createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, "/dev/ttyHMP", "19200", row++);
 
-    config_layout->addItem(new QSpacerItem(20, 10, QSizePolicy::Fixed, QSizePolicy::Fixed), row++, 0);
-
-    QLabel *global_sep = new QLabel(this);
-    global_sep->setStyleSheet("font-weight: bold; color: #666; font-size: 10px; border-bottom: 1px solid #ccc;");
-    config_layout->addWidget(global_sep, row++, 0, 1, 3);
+    config_layout->addItem(new QSpacerItem(20, 16, QSizePolicy::Fixed, QSizePolicy::Fixed), row++, 0);
 
     createRateRow(global_rate_lbl_, global_rate_combo_, row++);
     connect(global_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onGlobalRateChanged);
 
-    config_layout->addItem(new QSpacerItem(10, 5, QSizePolicy::Fixed, QSizePolicy::Fixed), row++, 0);
-
-    QLabel *individual_sep = new QLabel(this);
-    individual_sep->setStyleSheet("font-weight: bold; color: #666; font-size: 10px; border-bottom: 1px solid #ccc;");
-    config_layout->addWidget(individual_sep, row++, 0, 1, 3);
+    config_layout->addItem(new QSpacerItem(10, 12, QSizePolicy::Fixed, QSizePolicy::Fixed), row++, 0);
 
     createRateRow(gnss_rate_lbl_, gnss_rate_combo_, row++);
     createRateRow(imu_rate_lbl_, imu_rate_combo_, row++);
@@ -889,9 +1007,11 @@ void MainWindow::setupDataPanels()
 {
     data_group_ = new QGroupBox(this);
     auto *data_layout = new QHBoxLayout(data_group_);
-    data_layout->setSpacing(3);
+    data_layout->setSpacing(2);
+    data_layout->setContentsMargins(2, 2, 2, 2);
 
     gnss_group_ = new QGroupBox(this);
+    gnss_group_->setObjectName("sensorGroupBox");
     auto *gnss_layout = new QVBoxLayout(gnss_group_);
     gnss_layout->setContentsMargins(2, 2, 2, 2);
     gnss_panel_ = new GnssPanel(this);
@@ -899,6 +1019,7 @@ void MainWindow::setupDataPanels()
     data_layout->addWidget(gnss_group_);
 
     imu_group_ = new QGroupBox(this);
+    imu_group_->setObjectName("sensorGroupBox");
     auto *imu_layout = new QVBoxLayout(imu_group_);
     imu_layout->setContentsMargins(2, 2, 2, 2);
     imu_panel_ = new ImuPanel(this);
@@ -906,6 +1027,7 @@ void MainWindow::setupDataPanels()
     data_layout->addWidget(imu_group_);
 
     ptb_group_ = new QGroupBox(this);
+    ptb_group_->setObjectName("sensorGroupBox");
     auto *ptb_layout = new QVBoxLayout(ptb_group_);
     ptb_layout->setContentsMargins(2, 2, 2, 2);
     ptb_panel_ = new PtbPanel(this);
@@ -913,6 +1035,7 @@ void MainWindow::setupDataPanels()
     data_layout->addWidget(ptb_group_);
 
     hmp_group_ = new QGroupBox(this);
+    hmp_group_->setObjectName("sensorGroupBox");
     auto *hmp_layout = new QVBoxLayout(hmp_group_);
     hmp_layout->setContentsMargins(2, 2, 2, 2);
     hmp_panel_ = new HmpPanel(this);
@@ -926,15 +1049,12 @@ void MainWindow::setupLogPanel()
 {
     log_group_ = new QGroupBox(this);
     auto *log_layout = new QVBoxLayout(log_group_);
-    log_layout->setContentsMargins(3, 3, 3, 3);
+    log_layout->setContentsMargins(4, 4, 4, 4);
 
     log_text_edit_ = new QTextEdit(this);
     log_text_edit_->setReadOnly(true);
-    log_text_edit_->setStyleSheet("background-color: #1e1e1e; color: #00ff99; font-family: monospace; font-size: 9px;");
-    log_text_edit_->setMaximumHeight(70);
+    log_text_edit_->setMinimumWidth(200);
     log_layout->addWidget(log_text_edit_);
-
-    main_layout_->addWidget(log_group_);
 }
 
 void MainWindow::setEnglish(bool english)
@@ -977,7 +1097,7 @@ void MainWindow::setEnglish(bool english)
     ptb_lbl_->setText(english ? "PTB210:" : "PTB210:");
     hmp_lbl_->setText(english ? "HMP3:" : "HMP3:");
 
-    global_rate_lbl_->setText(english ? "Global Rate:" : "统一频率:");
+    global_rate_lbl_->setText(english ? "Global Rate:" : "统一调整频率:");
     gnss_rate_lbl_->setText(english ? "GNSS Rate:" : "GNSS频率:");
     imu_rate_lbl_->setText(english ? "IMU Rate:" : "IMU频率:");
     ptb_rate_lbl_->setText(english ? "PTB Rate:" : "PTB频率:");
@@ -1121,13 +1241,15 @@ void MainWindow::updateConnectionStatus(bool connected)
     if (connected)
     {
         status_label_->setText(is_english_ ? "Connected" : "已连接");
-        status_label_->setStyleSheet("color: green; font-weight: bold;");
+        status_label_->setProperty("status", "connected");
     }
     else
     {
         status_label_->setText(is_english_ ? "Disconnected" : "未连接");
-        status_label_->setStyleSheet("color: red;");
+        status_label_->setProperty("status", "disconnected");
     }
+    status_label_->style()->unpolish(status_label_);
+    status_label_->style()->polish(status_label_);
 }
 
 void MainWindow::onRefreshPortsClicked()

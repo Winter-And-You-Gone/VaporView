@@ -48,6 +48,7 @@ set(NAV_UI_FILES
 )
 
 set(NAV_RESOURCES
+    resources/modern_style.qss
 )
 
 add_executable(VaproView
@@ -67,6 +68,14 @@ target_include_directories(VaproView PRIVATE
 target_link_libraries(VaproView PRIVATE
     ${QT_LIBRARIES}
     Threads::Threads
+)
+
+add_custom_command(TARGET VaproView POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/resources
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/resources/modern_style.qss
+        ${CMAKE_BINARY_DIR}/resources/modern_style.qss
+    COMMENT "Copying resources to build directory"
 )
 
 target_compile_options(VaproView PRIVATE
@@ -108,4 +117,8 @@ install(TARGETS VaproView
 
 install(DIRECTORY include/
     DESTINATION include
+)
+
+install(FILES ${NAV_RESOURCES}
+    DESTINATION resources
 )
