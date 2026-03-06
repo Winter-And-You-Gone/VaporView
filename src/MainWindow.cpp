@@ -598,7 +598,8 @@ MainWindow::MainWindow(QWidget *parent)
     setupCentralWidget();
 
     resize(1280, 720);
-    setMaximumSize(1280, 720);
+    setMaximumSize(1368, 768);
+    setMinimumSize(800, 600);
 
     refresh_timer_ = new QTimer(this);
     connect(refresh_timer_, &QTimer::timeout, this, &MainWindow::onRefreshTimer);
@@ -1070,7 +1071,26 @@ void MainWindow::applyAllSampleRates()
     if (imu_collector_) imu_collector_->setSampleRate(imu_sample_rate_);
     if (ptb_collector_) ptb_collector_->setSampleRate(ptb_sample_rate_);
     if (hmp_collector_) hmp_collector_->setSampleRate(hmp_sample_rate_);
-    log(QString(is_english_ ? "All sample rates set to %1 Hz" : "所有采样频率已设置为 %1 Hz").arg(gnss_sample_rate_));
+ log(QString(is_english_ ? "All sample rates set to %1 Hz" : "所有采样频率已设置为 %1 Hz").arg(gnss_sample_rate_));
+}
+
+void MainWindow::onToggleFullScreen()
+{
+    if (is_fullscreen_)
+    {
+        showNormal();
+        setMaximumSize(1368, 768);
+        resize(1280, 720);
+        menuBar()->show();
+        is_fullscreen_ = false;
+    }
+    else
+    {
+        setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+        showFullScreen();
+        menuBar()->hide();
+        is_fullscreen_ = true;
+    }
 }
 
 void MainWindow::log(const QString& message)
@@ -1103,25 +1123,6 @@ void MainWindow::updateConnectionStatus(bool connected)
     {
         status_label_->setText(is_english_ ? "Disconnected" : "未连接");
         status_label_->setStyleSheet("color: red;");
-    }
-}
-
-void MainWindow::onToggleFullScreen()
-{
-    if (is_fullscreen_)
-    {
-        showNormal();
-        setMaximumSize(1280, 720);
-        resize(1280, 720);
-        is_fullscreen_ = false;
-        fullscreen_btn_->setText(is_english_ ? "&Fullscreen" : "全屏(&F)");
-    }
-    else
-    {
-        setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
-        showFullScreen();
-        is_fullscreen_ = true;
-        fullscreen_btn_->setText(is_english_ ? "&Exit Fullscreen" : "退出全屏(&E)");
     }
 }
 
