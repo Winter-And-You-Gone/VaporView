@@ -29,11 +29,13 @@ class GnssPanel : public QWidget
 public:
     explicit GnssPanel(QWidget *parent = nullptr);
     void updateData(const VaproView::GnssData& data);
+    void updateRate(double hz);
     void setEnglish(bool english);
 
 private:
     void setupUi();
 
+    QLabel *rate_label_;
     QLabel *status_label_;
     QLabel *lat_label_;
     QLabel *lon_label_;
@@ -72,11 +74,13 @@ class ImuPanel : public QWidget
 public:
     explicit ImuPanel(QWidget *parent = nullptr);
     void updateData(const VaproView::ImuData& data);
+    void updateRate(double hz);
     void setEnglish(bool english);
 
 private:
     void setupUi();
 
+    QLabel *rate_label_;
     QLabel *acc_x_label_;
     QLabel *acc_y_label_;
     QLabel *acc_z_label_;
@@ -117,11 +121,13 @@ class PtbPanel : public QWidget
 public:
     explicit PtbPanel(QWidget *parent = nullptr);
     void updateData(const VaproView::PtbData& data);
+    void updateRate(double hz);
     void setEnglish(bool english);
 
 private:
     void setupUi();
 
+    QLabel *rate_label_;
     QLabel *pressure_label_;
     QLabel *status_label_;
     QLabel *pressure_lbl_;
@@ -136,11 +142,13 @@ class HmpPanel : public QWidget
 public:
     explicit HmpPanel(QWidget *parent = nullptr);
     void updateData(const VaproView::HmpData& data);
+    void updateRate(double hz);
     void setEnglish(bool english);
 
 private:
     void setupUi();
 
+    QLabel *rate_label_;
     QLabel *humidity_label_;
     QLabel *temperature_label_;
     QLabel *status_label_;
@@ -171,8 +179,16 @@ private slots:
     void onRefreshPortsClicked();
     void onToggleFullScreen();
     void onSwitchLanguage();
-    void onSampleRateChanged(int index);
-    void onCustomRateChanged(int value);
+    void onGlobalSampleRateChanged(int index);
+    void onGlobalCustomRateChanged(int value);
+    void onGnssRateChanged(int index);
+    void onImuRateChanged(int index);
+    void onPtbRateChanged(int index);
+    void onHmpRateChanged(int index);
+    void onGnssCustomRateChanged(int value);
+    void onImuCustomRateChanged(int value);
+    void onPtbCustomRateChanged(int value);
+    void onHmpCustomRateChanged(int value);
 
 private:
     void setupMenuBar();
@@ -186,8 +202,7 @@ private:
     void updateConnectionStatus(bool connected);
     QStringList getAvailablePorts();
     void setEnglish(bool english);
-    void applySampleRate();
-    void updateCurrentRateLabel();
+    void applyAllSampleRates();
 
     QWidget *central_widget_;
     QVBoxLayout *main_layout_;
@@ -231,11 +246,22 @@ private:
     QLabel *imu_lbl_;
     QLabel *ptb_lbl_;
     QLabel *hmp_lbl_;
-    QLabel *rate_lbl_;
-    QLabel *current_rate_lbl_;
+    QLabel *global_rate_lbl_;
+    QLabel *gnss_rate_lbl_;
+    QLabel *imu_rate_lbl_;
+    QLabel *ptb_rate_lbl_;
+    QLabel *hmp_rate_lbl_;
 
-    QComboBox *sample_rate_combo_;
-    QSpinBox *custom_rate_spin_;
+    QComboBox *global_rate_combo_;
+    QSpinBox *global_custom_spin_;
+    QComboBox *gnss_rate_combo_;
+    QSpinBox *gnss_custom_spin_;
+    QComboBox *imu_rate_combo_;
+    QSpinBox *imu_custom_spin_;
+    QComboBox *ptb_rate_combo_;
+    QSpinBox *ptb_custom_spin_;
+    QComboBox *hmp_rate_combo_;
+    QSpinBox *hmp_custom_spin_;
 
     std::unique_ptr<VaproView::GnssCollector> gnss_collector_;
     std::unique_ptr<VaproView::ImuCollector> imu_collector_;
@@ -251,7 +277,10 @@ private:
 
     bool is_fullscreen_;
     bool is_english_;
-    int current_sample_rate_;
+    int gnss_sample_rate_;
+    int imu_sample_rate_;
+    int ptb_sample_rate_;
+    int hmp_sample_rate_;
 };
 
 #endif

@@ -22,6 +22,7 @@
 
 GnssPanel::GnssPanel(QWidget *parent)
     : QWidget(parent)
+    , rate_label_(nullptr)
     , status_label_(nullptr)
     , lat_label_(nullptr)
     , lon_label_(nullptr)
@@ -55,9 +56,18 @@ GnssPanel::GnssPanel(QWidget *parent)
 
 void GnssPanel::setupUi()
 {
-    auto *layout = new QGridLayout(this);
+    auto *mainLayout = new QVBoxLayout(this);
+    mainLayout->setSpacing(3);
+    mainLayout->setContentsMargins(3, 3, 3, 3);
+
+    rate_label_ = new QLabel(this);
+    rate_label_->setStyleSheet("font-weight: bold; color: #666; font-size: 9px; text-align: right;");
+    rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    mainLayout->addWidget(rate_label_);
+
+    auto *layout = new QGridLayout();
     layout->setSpacing(3);
-    layout->setContentsMargins(3, 3, 3, 3);
+    layout->setContentsMargins(0, 0, 0, 0);
 
     int row = 0;
 
@@ -86,7 +96,17 @@ void GnssPanel::setupUi()
     createRow(diff_lbl_, diff_age_label_);
 
     layout->setColumnStretch(1, 1);
+    mainLayout->addLayout(layout);
+    mainLayout->addStretch();
     setEnglish(false);
+}
+
+void GnssPanel::updateRate(double hz)
+{
+    if (rate_label_)
+    {
+        rate_label_->setText(QString::asprintf("%.1f Hz", hz));
+    }
 }
 
 void GnssPanel::setEnglish(bool english)
@@ -155,6 +175,7 @@ void GnssPanel::updateData(const VaproView::GnssData& data)
 
 ImuPanel::ImuPanel(QWidget *parent)
     : QWidget(parent)
+    , rate_label_(nullptr)
     , acc_x_label_(nullptr)
     , acc_y_label_(nullptr)
     , acc_z_label_(nullptr)
@@ -190,9 +211,18 @@ ImuPanel::ImuPanel(QWidget *parent)
 
 void ImuPanel::setupUi()
 {
-    auto *layout = new QGridLayout(this);
+    auto *mainLayout = new QVBoxLayout(this);
+    mainLayout->setSpacing(3);
+    mainLayout->setContentsMargins(3, 3, 3, 3);
+
+    rate_label_ = new QLabel(this);
+    rate_label_->setStyleSheet("font-weight: bold; color: #666; font-size: 9px; text-align: right;");
+    rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    mainLayout->addWidget(rate_label_);
+
+    auto *layout = new QGridLayout();
     layout->setSpacing(3);
-    layout->setContentsMargins(3, 3, 3, 3);
+    layout->setContentsMargins(0, 0, 0, 0);
 
     int row = 0;
 
@@ -236,7 +266,17 @@ void ImuPanel::setupUi()
     createRow(press_lbl_, press_label_);
 
     layout->setColumnStretch(1, 1);
+    mainLayout->addLayout(layout);
+    mainLayout->addStretch();
     setEnglish(false);
+}
+
+void ImuPanel::updateRate(double hz)
+{
+    if (rate_label_)
+    {
+        rate_label_->setText(QString::asprintf("%.1f Hz", hz));
+    }
 }
 
 void ImuPanel::setEnglish(bool english)
@@ -313,6 +353,7 @@ void ImuPanel::updateData(const VaproView::ImuData& data)
 
 PtbPanel::PtbPanel(QWidget *parent)
     : QWidget(parent)
+    , rate_label_(nullptr)
     , pressure_label_(nullptr)
     , status_label_(nullptr)
     , pressure_lbl_(nullptr)
@@ -326,6 +367,11 @@ void PtbPanel::setupUi()
     auto *layout = new QVBoxLayout(this);
     layout->setSpacing(3);
     layout->setContentsMargins(3, 3, 3, 3);
+
+    rate_label_ = new QLabel(this);
+    rate_label_->setStyleSheet("font-weight: bold; color: #666; font-size: 9px; text-align: right;");
+    rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    layout->addWidget(rate_label_);
 
     auto *pressLayout = new QHBoxLayout();
     pressure_lbl_ = new QLabel(this);
@@ -343,6 +389,14 @@ void PtbPanel::setupUi()
 
     layout->addStretch();
     setEnglish(false);
+}
+
+void PtbPanel::updateRate(double hz)
+{
+    if (rate_label_)
+    {
+        rate_label_->setText(QString::asprintf("%.1f Hz", hz));
+    }
 }
 
 void PtbPanel::setEnglish(bool english)
@@ -380,6 +434,7 @@ void PtbPanel::updateData(const VaproView::PtbData& data)
 
 HmpPanel::HmpPanel(QWidget *parent)
     : QWidget(parent)
+    , rate_label_(nullptr)
     , humidity_label_(nullptr)
     , temperature_label_(nullptr)
     , status_label_(nullptr)
@@ -395,6 +450,11 @@ void HmpPanel::setupUi()
     auto *layout = new QVBoxLayout(this);
     layout->setSpacing(3);
     layout->setContentsMargins(3, 3, 3, 3);
+
+    rate_label_ = new QLabel(this);
+    rate_label_->setStyleSheet("font-weight: bold; color: #666; font-size: 9px; text-align: right;");
+    rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    layout->addWidget(rate_label_);
 
     auto *tempLayout = new QHBoxLayout();
     temp_lbl_ = new QLabel(this);
@@ -422,6 +482,14 @@ void HmpPanel::setupUi()
 
     layout->addStretch();
     setEnglish(false);
+}
+
+void HmpPanel::updateRate(double hz)
+{
+    if (rate_label_)
+    {
+        rate_label_->setText(QString::asprintf("%.1f Hz", hz));
+    }
 }
 
 void HmpPanel::setEnglish(bool english)
@@ -502,10 +570,21 @@ MainWindow::MainWindow(QWidget *parent)
     , imu_lbl_(nullptr)
     , ptb_lbl_(nullptr)
     , hmp_lbl_(nullptr)
-    , rate_lbl_(nullptr)
-    , current_rate_lbl_(nullptr)
-    , sample_rate_combo_(nullptr)
-    , custom_rate_spin_(nullptr)
+    , global_rate_lbl_(nullptr)
+    , gnss_rate_lbl_(nullptr)
+    , imu_rate_lbl_(nullptr)
+    , ptb_rate_lbl_(nullptr)
+    , hmp_rate_lbl_(nullptr)
+    , global_rate_combo_(nullptr)
+    , global_custom_spin_(nullptr)
+    , gnss_rate_combo_(nullptr)
+    , gnss_custom_spin_(nullptr)
+    , imu_rate_combo_(nullptr)
+    , imu_custom_spin_(nullptr)
+    , ptb_rate_combo_(nullptr)
+    , ptb_custom_spin_(nullptr)
+    , hmp_rate_combo_(nullptr)
+    , hmp_custom_spin_(nullptr)
     , gnss_collector_(nullptr)
     , imu_collector_(nullptr)
     , ptb_collector_(nullptr)
@@ -513,7 +592,10 @@ MainWindow::MainWindow(QWidget *parent)
     , refresh_timer_(nullptr)
     , is_fullscreen_(false)
     , is_english_(false)
-    , current_sample_rate_(1)
+    , gnss_sample_rate_(1)
+    , imu_sample_rate_(1)
+    , ptb_sample_rate_(1)
+    , hmp_sample_rate_(1)
 {
     setupMenuBar();
     setupToolBar();
@@ -755,6 +837,31 @@ void MainWindow::setupConfigPanel()
         config_layout->addWidget(baudCombo, row, 2);
     };
 
+    auto createRateRow = [this, config_layout](QLabel*& lbl, QComboBox*& combo, QSpinBox*& spin, int row) {
+        lbl = new QLabel(this);
+        lbl->setStyleSheet("font-weight: bold; font-size: 9px;");
+        config_layout->addWidget(lbl, row, 0);
+
+        combo = new QComboBox(this);
+        combo->addItem("1 Hz");
+        combo->addItem("2 Hz");
+        combo->addItem("5 Hz");
+        combo->addItem("10 Hz");
+        combo->addItem("20 Hz");
+        combo->addItem(is_english_ ? "Custom" : "自定义");
+        combo->setCurrentIndex(0);
+        combo->setMinimumWidth(80);
+        config_layout->addWidget(combo, row, 1);
+
+        spin = new QSpinBox(this);
+        spin->setRange(1, 20);
+        spin->setValue(1);
+        spin->setSuffix(" Hz");
+        spin->setEnabled(false);
+        spin->setMinimumWidth(70);
+        config_layout->addWidget(spin, row, 2);
+    };
+
     int row = 0;
     createPortRow(gnss_lbl_, gnss_port_combo_, gnss_baud_combo_, "/dev/ttyCOM3", "115200", row++);
     createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, "/dev/ttyIMU", "115200", row++);
@@ -763,35 +870,33 @@ void MainWindow::setupConfigPanel()
 
     config_layout->addItem(new QSpacerItem(20, 10, QSizePolicy::Fixed, QSizePolicy::Fixed), row++, 0);
 
-    rate_lbl_ = new QLabel(this);
-    rate_lbl_->setStyleSheet("font-weight: bold; font-size: 9px;");
-    config_layout->addWidget(rate_lbl_, row, 0);
+    QLabel *global_sep = new QLabel(this);
+    global_sep->setStyleSheet("font-weight: bold; color: #666; font-size: 10px; border-bottom: 1px solid #ccc;");
+    config_layout->addWidget(global_sep, row++, 0, 1, 3);
 
-    sample_rate_combo_ = new QComboBox(this);
-    sample_rate_combo_->addItem("1 Hz");
-    sample_rate_combo_->addItem("2 Hz");
-    sample_rate_combo_->addItem("5 Hz");
-    sample_rate_combo_->addItem("10 Hz");
-    sample_rate_combo_->addItem("20 Hz");
-    sample_rate_combo_->addItem(is_english_ ? "Custom" : "自定义");
-    sample_rate_combo_->setCurrentIndex(0);
-    sample_rate_combo_->setMinimumWidth(80);
-    connect(sample_rate_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::onSampleRateChanged);
-    config_layout->addWidget(sample_rate_combo_, row, 1);
+    createRateRow(global_rate_lbl_, global_rate_combo_, global_custom_spin_, row++);
+    connect(global_rate_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::onGlobalSampleRateChanged);
+    connect(global_custom_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, &MainWindow::onGlobalCustomRateChanged);
 
-    custom_rate_spin_ = new QSpinBox(this);
-    custom_rate_spin_->setRange(1, 20);
-    custom_rate_spin_->setValue(1);
-    custom_rate_spin_->setSuffix(" Hz");
-    custom_rate_spin_->setEnabled(false);
-    custom_rate_spin_->setMinimumWidth(70);
-    connect(custom_rate_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, &MainWindow::onCustomRateChanged);
-    config_layout->addWidget(custom_rate_spin_, row, 2);
+    config_layout->addItem(new QSpacerItem(10, 5, QSizePolicy::Fixed, QSizePolicy::Fixed), row++, 0);
 
-    row++;
-    current_rate_lbl_ = new QLabel(this);
-    current_rate_lbl_->setStyleSheet("font-weight: bold; color: #0078d7; font-size: 9px;");
-    config_layout->addWidget(current_rate_lbl_, row, 0, 1, 3);
+    QLabel *individual_sep = new QLabel(this);
+    individual_sep->setStyleSheet("font-weight: bold; color: #666; font-size: 10px; border-bottom: 1px solid #ccc;");
+    config_layout->addWidget(individual_sep, row++, 0, 1, 3);
+
+    createRateRow(gnss_rate_lbl_, gnss_rate_combo_, gnss_custom_spin_, row++);
+    createRateRow(imu_rate_lbl_, imu_rate_combo_, imu_custom_spin_, row++);
+    createRateRow(ptb_rate_lbl_, ptb_rate_combo_, ptb_custom_spin_, row++);
+    createRateRow(hmp_rate_lbl_, hmp_rate_combo_, hmp_custom_spin_, row++);
+
+    connect(gnss_rate_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::onGnssRateChanged);
+    connect(gnss_custom_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, &MainWindow::onGnssCustomRateChanged);
+    connect(imu_rate_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::onImuRateChanged);
+    connect(imu_custom_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, &MainWindow::onImuCustomRateChanged);
+    connect(ptb_rate_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::onPtbRateChanged);
+    connect(ptb_custom_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, &MainWindow::onPtbCustomRateChanged);
+    connect(hmp_rate_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &MainWindow::onHmpRateChanged);
+    connect(hmp_custom_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, &MainWindow::onHmpCustomRateChanged);
 
     main_layout_->addWidget(config_group_);
 }
@@ -888,13 +993,24 @@ void MainWindow::setEnglish(bool english)
     ptb_lbl_->setText(english ? "PTB210:" : "PTB210:");
     hmp_lbl_->setText(english ? "HMP3:" : "HMP3:");
 
-    rate_lbl_->setText(english ? "Sample Rate:" : "采样频率:");
+    global_rate_lbl_->setText(english ? "Global Rate:" : "统一频率:");
+    gnss_rate_lbl_->setText(english ? "GNSS Rate:" : "GNSS频率:");
+    imu_rate_lbl_->setText(english ? "IMU Rate:" : "IMU频率:");
+    ptb_rate_lbl_->setText(english ? "PTB Rate:" : "PTB频率:");
+    hmp_rate_lbl_->setText(english ? "HMP Rate:" : "HMP频率:");
+
     QString customText = english ? "Custom" : "自定义";
-    if (sample_rate_combo_->count() > 5)
-    {
-        sample_rate_combo_->setItemText(5, customText);
-    }
-    updateCurrentRateLabel();
+    auto updateComboCustom = [customText](QComboBox* combo) {
+        if (combo && combo->count() > 5)
+        {
+            combo->setItemText(5, customText);
+        }
+    };
+    updateComboCustom(global_rate_combo_);
+    updateComboCustom(gnss_rate_combo_);
+    updateComboCustom(imu_rate_combo_);
+    updateComboCustom(ptb_rate_combo_);
+    updateComboCustom(hmp_rate_combo_);
 
     gnss_panel_->setEnglish(english);
     imu_panel_->setEnglish(english);
@@ -909,42 +1025,153 @@ void MainWindow::onSwitchLanguage()
     log(is_english_ ? "Language switched to English" : "语言已切换为中文");
 }
 
-void MainWindow::onSampleRateChanged(int index)
+void MainWindow::onGlobalSampleRateChanged(int index)
+{
+    int rates[] = {1, 2, 5, 10, 20};
+    int rate = 1;
+    if (index >= 0 && index < 5)
+    {
+        rate = rates[index];
+        global_custom_spin_->setEnabled(false);
+    }
+    else if (index == 5)
+    {
+        global_custom_spin_->setEnabled(true);
+        rate = global_custom_spin_->value();
+    }
+    
+    gnss_sample_rate_ = rate;
+    imu_sample_rate_ = rate;
+    ptb_sample_rate_ = rate;
+    hmp_sample_rate_ = rate;
+    
+    gnss_rate_combo_->setCurrentIndex(index);
+    imu_rate_combo_->setCurrentIndex(index);
+    ptb_rate_combo_->setCurrentIndex(index);
+    hmp_rate_combo_->setCurrentIndex(index);
+    
+    gnss_custom_spin_->setValue(rate);
+    imu_custom_spin_->setValue(rate);
+    ptb_custom_spin_->setValue(rate);
+    hmp_custom_spin_->setValue(rate);
+    
+    applyAllSampleRates();
+}
+
+void MainWindow::onGlobalCustomRateChanged(int value)
+{
+    gnss_sample_rate_ = value;
+    imu_sample_rate_ = value;
+    ptb_sample_rate_ = value;
+    hmp_sample_rate_ = value;
+    
+    gnss_custom_spin_->setValue(value);
+    imu_custom_spin_->setValue(value);
+    ptb_custom_spin_->setValue(value);
+    hmp_custom_spin_->setValue(value);
+    
+    applyAllSampleRates();
+}
+
+void MainWindow::onGnssRateChanged(int index)
 {
     int rates[] = {1, 2, 5, 10, 20};
     if (index >= 0 && index < 5)
     {
-        current_sample_rate_ = rates[index];
-        custom_rate_spin_->setEnabled(false);
+        gnss_sample_rate_ = rates[index];
+        gnss_custom_spin_->setEnabled(false);
     }
     else if (index == 5)
     {
-        custom_rate_spin_->setEnabled(true);
-        current_sample_rate_ = custom_rate_spin_->value();
+        gnss_custom_spin_->setEnabled(true);
+        gnss_sample_rate_ = gnss_custom_spin_->value();
     }
-    applySampleRate();
-    updateCurrentRateLabel();
+    if (gnss_collector_) gnss_collector_->setSampleRate(gnss_sample_rate_);
+    log(QString(is_english_ ? "GNSS sample rate set to %1 Hz" : "GNSS采样频率已设置为 %1 Hz").arg(gnss_sample_rate_));
 }
 
-void MainWindow::onCustomRateChanged(int value)
+void MainWindow::onImuRateChanged(int index)
 {
-    current_sample_rate_ = value;
-    applySampleRate();
-    updateCurrentRateLabel();
+    int rates[] = {1, 2, 5, 10, 20};
+    if (index >= 0 && index < 5)
+    {
+        imu_sample_rate_ = rates[index];
+        imu_custom_spin_->setEnabled(false);
+    }
+    else if (index == 5)
+    {
+        imu_custom_spin_->setEnabled(true);
+        imu_sample_rate_ = imu_custom_spin_->value();
+    }
+    if (imu_collector_) imu_collector_->setSampleRate(imu_sample_rate_);
+    log(QString(is_english_ ? "IMU sample rate set to %1 Hz" : "IMU采样频率已设置为 %1 Hz").arg(imu_sample_rate_));
 }
 
-void MainWindow::applySampleRate()
+void MainWindow::onPtbRateChanged(int index)
 {
-    if (gnss_collector_) gnss_collector_->setSampleRate(current_sample_rate_);
-    if (imu_collector_) imu_collector_->setSampleRate(current_sample_rate_);
-    if (ptb_collector_) ptb_collector_->setSampleRate(current_sample_rate_);
-    if (hmp_collector_) hmp_collector_->setSampleRate(current_sample_rate_);
-    log(QString(is_english_ ? "Sample rate set to %1 Hz" : "采样频率已设置为 %1 Hz").arg(current_sample_rate_));
+    int rates[] = {1, 2, 5, 10, 20};
+    if (index >= 0 && index < 5)
+    {
+        ptb_sample_rate_ = rates[index];
+        ptb_custom_spin_->setEnabled(false);
+    }
+    else if (index == 5)
+    {
+        ptb_custom_spin_->setEnabled(true);
+        ptb_sample_rate_ = ptb_custom_spin_->value();
+    }
+    if (ptb_collector_) ptb_collector_->setSampleRate(ptb_sample_rate_);
+    log(QString(is_english_ ? "PTB sample rate set to %1 Hz" : "PTB采样频率已设置为 %1 Hz").arg(ptb_sample_rate_));
 }
 
-void MainWindow::updateCurrentRateLabel()
+void MainWindow::onHmpRateChanged(int index)
 {
-    current_rate_lbl_->setText(QString(is_english_ ? "Current: %1 Hz" : "当前: %1 Hz").arg(current_sample_rate_));
+    int rates[] = {1, 2, 5, 10, 20};
+    if (index >= 0 && index < 5)
+    {
+        hmp_sample_rate_ = rates[index];
+        hmp_custom_spin_->setEnabled(false);
+    }
+    else if (index == 5)
+    {
+        hmp_custom_spin_->setEnabled(true);
+        hmp_sample_rate_ = hmp_custom_spin_->value();
+    }
+    if (hmp_collector_) hmp_collector_->setSampleRate(hmp_sample_rate_);
+    log(QString(is_english_ ? "HMP sample rate set to %1 Hz" : "HMP采样频率已设置为 %1 Hz").arg(hmp_sample_rate_));
+}
+
+void MainWindow::onGnssCustomRateChanged(int value)
+{
+    gnss_sample_rate_ = value;
+    if (gnss_collector_) gnss_collector_->setSampleRate(gnss_sample_rate_);
+}
+
+void MainWindow::onImuCustomRateChanged(int value)
+{
+    imu_sample_rate_ = value;
+    if (imu_collector_) imu_collector_->setSampleRate(imu_sample_rate_);
+}
+
+void MainWindow::onPtbCustomRateChanged(int value)
+{
+    ptb_sample_rate_ = value;
+    if (ptb_collector_) ptb_collector_->setSampleRate(ptb_sample_rate_);
+}
+
+void MainWindow::onHmpCustomRateChanged(int value)
+{
+    hmp_sample_rate_ = value;
+    if (hmp_collector_) hmp_collector_->setSampleRate(hmp_sample_rate_);
+}
+
+void MainWindow::applyAllSampleRates()
+{
+    if (gnss_collector_) gnss_collector_->setSampleRate(gnss_sample_rate_);
+    if (imu_collector_) imu_collector_->setSampleRate(imu_sample_rate_);
+    if (ptb_collector_) ptb_collector_->setSampleRate(ptb_sample_rate_);
+    if (hmp_collector_) hmp_collector_->setSampleRate(hmp_sample_rate_);
+    log(QString(is_english_ ? "All sample rates set to %1 Hz" : "所有采样频率已设置为 %1 Hz").arg(gnss_sample_rate_));
 }
 
 void MainWindow::log(const QString& message)
@@ -1036,10 +1263,10 @@ void MainWindow::onConnectClicked()
     ptb_collector_ = std::make_unique<VaproView::PtbCollector>();
     hmp_collector_ = std::make_unique<VaproView::HmpCollector>();
 
-    gnss_collector_->setSampleRate(current_sample_rate_);
-    imu_collector_->setSampleRate(current_sample_rate_);
-    ptb_collector_->setSampleRate(current_sample_rate_);
-    hmp_collector_->setSampleRate(current_sample_rate_);
+    gnss_collector_->setSampleRate(gnss_sample_rate_);
+    imu_collector_->setSampleRate(imu_sample_rate_);
+    ptb_collector_->setSampleRate(ptb_sample_rate_);
+    hmp_collector_->setSampleRate(hmp_sample_rate_);
 
     bool any_connected = false;
     QString selectText = is_english_ ? "-- Select --" : "-- 选择 --";
@@ -1185,6 +1412,11 @@ void MainWindow::onRefreshTimer()
     imu_panel_->updateData(current_imu_);
     ptb_panel_->updateData(current_ptb_);
     hmp_panel_->updateData(current_hmp_);
+
+    if (gnss_collector_) gnss_panel_->updateRate(gnss_collector_->getActualRate());
+    if (imu_collector_) imu_panel_->updateRate(imu_collector_->getActualRate());
+    if (ptb_collector_) ptb_panel_->updateRate(ptb_collector_->getActualRate());
+    if (hmp_collector_) hmp_panel_->updateRate(hmp_collector_->getActualRate());
 }
 
 void MainWindow::onExportClicked()

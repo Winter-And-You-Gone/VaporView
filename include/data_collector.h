@@ -30,14 +30,17 @@ public:
   void setDataCallback(DataCallback callback);
   void setSampleRate(int hz);
   int getSampleRate() const;
+  double getActualRate() const;
   std::string getLastError() const;
 
 protected:
   virtual void run() = 0;
   virtual bool initialize();
   virtual void cleanup();
+  virtual bool setDeviceSampleRate(int hz);
   bool shouldEmitData();
   void updateLastEmitTime();
+  void recordDataReceived();
 
   SerialPort serial_;
   std::atomic<bool> running_{false};
@@ -46,6 +49,10 @@ protected:
   DataCallback data_callback_;
   int sample_rate_hz_{1};
   std::chrono::steady_clock::time_point last_emit_time_;
+  std::chrono::steady_clock::time_point last_data_time_;
+  std::chrono::steady_clock::time_point freq_calc_start_;
+  int data_count_{0};
+  double actual_rate_{0.0};
 };
 
 class GnssCollector : public DataCollector

@@ -93,6 +93,33 @@ void DataCollector::updateLastEmitTime()
   last_emit_time_ = std::chrono::steady_clock::now();
 }
 
+double DataCollector::getActualRate() const
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  return actual_rate_;
+}
+
+void DataCollector::recordDataReceived()
+{
+  auto now = std::chrono::steady_clock::now();
+  data_count_++;
+  
+  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - freq_calc_start_).count();
+  if (elapsed >= 1000)
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    actual_rate_ = data_count_ * 1000.0 / elapsed;
+    data_count_ = 0;
+    freq_calc_start_ = now;
+  }
+}
+
+bool DataCollector::setDeviceSampleRate(int hz)
+{
+  (void)hz;
+  return true;
+}
+
 bool DataCollector::initialize()
 {
   return true;
@@ -163,6 +190,8 @@ void GnssCollector::run()
           latest_data_.valid = true;
           latest_data_.raw_sentence = line;
           latest_data_.error_message.clear();
+
+          recordDataReceived();
 
           if (data_callback_ && shouldEmitData())
           {
@@ -273,6 +302,8 @@ void ImuCollector::run()
             std::lock_guard<std::mutex> lock(mutex_);
             latest_data_ = sample;
 
+            recordDataReceived();
+
             if (data_callback_ && shouldEmitData())
             {
               updateLastEmitTime();
@@ -328,6 +359,8 @@ void PtbCollector::run()
         latest_data_.valid = true;
         latest_data_.timestamp = std::chrono::steady_clock::now();
         latest_data_.error_message.clear();
+
+        recordDataReceived();
 
         if (data_callback_ && shouldEmitData())
         {
@@ -441,6 +474,8 @@ void HmpCollector::run()
         latest_data_.valid = true;
         latest_data_.timestamp = std::chrono::steady_clock::now();
         latest_data_.error_message.clear();
+
+        recordDataReceived();
 
         if (data_callback_ && shouldEmitData())
         {
