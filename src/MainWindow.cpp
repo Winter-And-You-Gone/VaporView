@@ -597,7 +597,12 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_sample_rate_(1)
     , hmp_sample_rate_(1)
 {
- resize(1280, 720);
+    setupMenuBar();
+    setupToolBar();
+    setupStatusBar();
+    setupCentralWidget();
+
+    resize(1280, 720);
     setMaximumSize(1280, 720);
 
     refresh_timer_ = new QTimer(this);
