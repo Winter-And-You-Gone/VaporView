@@ -1062,11 +1062,15 @@ void MainWindow::setupConfigPanel()
         combo->addItem("5");
         combo->addItem("10");
         combo->addItem("20");
-        combo->setCurrentIndex(0);
+        combo->addItem("50");
+        combo->addItem("100");
+        combo->addItem("200");
+        combo->addItem("500");
+        combo->setCurrentIndex(4);
         combo->setEditable(true);
         combo->setFixedHeight(20);
         combo->setFixedWidth(100);
-        combo->setValidator(new QIntValidator(1, 20, combo));
+        combo->setValidator(new QIntValidator(1, 500, combo));
         config_layout->addWidget(combo, row, 1, Qt::AlignVCenter | Qt::AlignLeft);
     };
 
@@ -1220,16 +1224,17 @@ int MainWindow::parseRate(const QString& text)
 {
     bool ok;
     int rate = text.toInt(&ok);
-    if (ok && rate >= 1 && rate <= 20)
+    if (ok && rate >= 1 && rate <= 500)
     {
         return rate;
     }
-    return 1;
+    return 20;
 }
 
 void MainWindow::onGlobalRateChanged(const QString& text)
 {
     int rate = parseRate(text);
+    
     gnss_sample_rate_ = rate;
     imu_sample_rate_ = rate;
     ptb_sample_rate_ = rate;
@@ -1250,7 +1255,27 @@ void MainWindow::onGlobalRateChanged(const QString& text)
     ptb_rate_combo_->blockSignals(false);
     hmp_rate_combo_->blockSignals(false);
     
-    applyAllSampleRates();
+    if (gnss_collector_ && gnss_collector_->isRunning())
+    {
+        gnss_collector_->setSampleRate(rate);
+        gnss_collector_->setDeviceSampleRate(rate);
+    }
+    if (imu_collector_ && imu_collector_->isRunning())
+    {
+        imu_collector_->setSampleRate(rate);
+        imu_collector_->setDeviceSampleRate(rate);
+    }
+    if (ptb_collector_ && ptb_collector_->isRunning())
+    {
+        ptb_collector_->setSampleRate(rate);
+        ptb_collector_->setDeviceSampleRate(rate);
+    }
+    if (hmp_collector_ && hmp_collector_->isRunning())
+    {
+        hmp_collector_->setSampleRate(rate);
+    }
+    
+    log(QString(is_english_ ? "All rates set to %1 Hz" : "所有频率已设置为 %1 Hz").arg(rate));
 }
 
 void MainWindow::onGnssRateChanged(const QString& text)
@@ -1267,14 +1292,28 @@ void MainWindow::onGnssRateChanged(const QString& text)
 void MainWindow::onImuRateChanged(const QString& text)
 {
     imu_sample_rate_ = parseRate(text);
-    if (imu_collector_) imu_collector_->setSampleRate(imu_sample_rate_);
+    if (imu_collector_)
+    {
+        imu_collector_->setSampleRate(imu_sample_rate_);
+        if (imu_collector_->isRunning())
+        {
+            imu_collector_->setDeviceSampleRate(imu_sample_rate_);
+        }
+    }
     log(QString(is_english_ ? "IMU sample rate set to %1 Hz" : "IMU采样频率已设置为 %1 Hz").arg(imu_sample_rate_));
 }
 
 void MainWindow::onPtbRateChanged(const QString& text)
 {
     ptb_sample_rate_ = parseRate(text);
-    if (ptb_collector_) ptb_collector_->setSampleRate(ptb_sample_rate_);
+    if (ptb_collector_)
+    {
+        ptb_collector_->setSampleRate(ptb_sample_rate_);
+        if (ptb_collector_->isRunning())
+        {
+            ptb_collector_->setDeviceSampleRate(ptb_sample_rate_);
+        }
+    }
     log(QString(is_english_ ? "PTB sample rate set to %1 Hz" : "PTB采样频率已设置为 %1 Hz").arg(ptb_sample_rate_));
 }
 
@@ -1287,15 +1326,49 @@ void MainWindow::onHmpRateChanged(const QString& text)
 
 void MainWindow::applyAllSampleRates()
 {
-    if (gnss_collector_) 
+    int rate = parseRate(global_rate_combo_->currentText());
+
+    if (gnss_collector_ && gnss_collector_->isRunning())
     {
-        gnss_collector_->setSampleRate(gnss_sample_rate_);
-        gnss_collector_->setDeviceSampleRate(gnss_sample_rate_);
+        gnss_collector_->setSampleRate(rate);
+        gnss_collector_->setDeviceSampleRate(rate);
     }
-    if (imu_collector_) imu_collector_->setSampleRate(imu_sample_rate_);
-    if (ptb_collector_) ptb_collector_->setSampleRate(ptb_sample_rate_);
-    if (hmp_collector_) hmp_collector_->setSampleRate(hmp_sample_rate_);
-    log(QString(is_english_ ? "All sample rates set to %1 Hz" : "所有采样频率已设置为 %1 Hz").arg(gnss_sample_rate_));
+    if (imu_collector_ && imu_collector_->isRunning())
+    {
+        imu_collector_->setSampleRate(rate);
+        imu_collector_->setDeviceSampleRate(rate);
+    }
+    if (ptb_collector_ && ptb_collector_->isRunning())
+    {
+        ptb_collector_->setSampleRate(rate);
+        ptb_collector_->setDeviceSampleRate(rate);
+    }
+    if (hmp_collector_ && hmp_collector_->isRunning())
+    {
+        hmp_collector_->setSampleRate(rate);
+    }
+
+    gnss_rate_combo_->blockSignals(true);
+    imu_rate_combo_->blockSignals(true);
+    ptb_rate_combo_->blockSignals(true);
+    hmp_rate_combo_->blockSignals(true);
+
+    gnss_rate_combo_->setCurrentText(QString::number(rate));
+    imu_rate_combo_->setCurrentText(QString::number(rate));
+    ptb_rate_combo_->setCurrentText(QString::number(rate));
+    hmp_rate_combo_->setCurrentText(QString::number(rate));
+
+    gnss_rate_combo_->blockSignals(false);
+    imu_rate_combo_->blockSignals(false);
+    ptb_rate_combo_->blockSignals(false);
+    hmp_rate_combo_->blockSignals(false);
+
+    gnss_sample_rate_ = rate;
+    imu_sample_rate_ = rate;
+    ptb_sample_rate_ = rate;
+    hmp_sample_rate_ = rate;
+
+    log(QString(is_english_ ? "All rates set to %1 Hz" : "所有频率已设置为 %1 Hz").arg(rate));
 }
 
 void MainWindow::onToggleFullScreen()
@@ -1420,74 +1493,211 @@ void MainWindow::onConnectClicked()
     ptb_collector_->setLogCallback(logCallback);
     hmp_collector_->setLogCallback(logCallback);
 
-    bool any_connected = false;
+    int total_devices = 0;
+    int connected_devices = 0;
     QString selectText = is_english_ ? "-- Select --" : "-- 选择 --";
+
+    log(is_english_ ? "========== Starting Connection ==========" : "========== 开始连接 ==========");
+    QApplication::processEvents();
 
     QString gnss_port = gnss_port_combo_->currentText();
     if (gnss_port != selectText && !gnss_port.isEmpty())
     {
-        VaproView::SerialConfig gnss_config = VaproView::SerialConfig::N81(gnss_baud_combo_->currentText().toInt());
-        if (gnss_collector_->start(gnss_port.toStdString(), gnss_config))
+        total_devices++;
+        log(QString(is_english_ ? "[GNSS] Checking port: %1" : "[GNSS] 检查端口: %1").arg(gnss_port));
+        QApplication::processEvents();
+        
+        if (QFile::exists(QString("/dev/%1").arg(gnss_port)))
         {
-            log(QString("GNSS: %1 @ %2").arg(gnss_port, gnss_baud_combo_->currentText()));
-            gnss_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onGnssDataReady", Qt::QueuedConnection); });
-            any_connected = true;
+            log(QString(is_english_ ? "[GNSS] Port exists, connecting..." : "[GNSS] 端口存在，正在连接..."));
         }
         else
         {
-            log(QString(is_english_ ? "GNSS failed: %1" : "GNSS 连接失败: %1").arg(QString::fromStdString(gnss_collector_->getLastError())));
+            log(QString(is_english_ ? "[GNSS] Port not found: /dev/%1" : "[GNSS] 端口不存在: /dev/%1").arg(gnss_port));
+        }
+        QApplication::processEvents();
+        
+        VaproView::SerialConfig gnss_config = VaproView::SerialConfig::N81(gnss_baud_combo_->currentText().toInt());
+        if (gnss_collector_->start(gnss_port.toStdString(), gnss_config))
+        {
+            log(QString(is_english_ ? "[GNSS] Serial port opened, checking device response..." : "[GNSS] 串口已打开，正在检测设备响应..."));
+            QApplication::processEvents();
+            
+            if (gnss_collector_->checkDeviceResponse())
+            {
+                log(QString(is_english_ ? "[GNSS] Device responding, connected: %1 @ %2 baud" : "[GNSS] 设备响应正常，连接成功: %1 @ %2 波特率").arg(gnss_port, gnss_baud_combo_->currentText()));
+                gnss_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onGnssDataReady", Qt::QueuedConnection); });
+                connected_devices++;
+            }
+            else
+            {
+                log(is_english_ ? "[GNSS] Device not responding! Check power and cables." : "[GNSS] 设备无响应！请检查电源和连接线。");
+                gnss_collector_->stop();
+            }
+        }
+        else
+        {
+            log(QString(is_english_ ? "[GNSS] Failed to open port: %1" : "[GNSS] 打开端口失败: %1").arg(QString::fromStdString(gnss_collector_->getLastError())));
         }
     }
+    else
+    {
+        log(is_english_ ? "[GNSS] Skipped (not selected)" : "[GNSS] 跳过 (未选择)");
+    }
+    QApplication::processEvents();
 
     QString imu_port = imu_port_combo_->currentText();
     if (imu_port != selectText && !imu_port.isEmpty())
     {
-        VaproView::SerialConfig imu_config = VaproView::SerialConfig::N81(imu_baud_combo_->currentText().toInt());
-        if (imu_collector_->start(imu_port.toStdString(), imu_config))
+        total_devices++;
+        log(QString(is_english_ ? "[IMU] Checking port: %1" : "[IMU] 检查端口: %1").arg(imu_port));
+        QApplication::processEvents();
+        
+        if (QFile::exists(QString("/dev/%1").arg(imu_port)))
         {
-            log(QString("IMU: %1 @ %2").arg(imu_port, imu_baud_combo_->currentText()));
-            imu_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onImuDataReady", Qt::QueuedConnection); });
-            any_connected = true;
+            log(QString(is_english_ ? "[IMU] Port exists, connecting..." : "[IMU] 端口存在，正在连接..."));
         }
         else
         {
-            log(QString(is_english_ ? "IMU failed: %1" : "IMU 连接失败: %1").arg(QString::fromStdString(imu_collector_->getLastError())));
+            log(QString(is_english_ ? "[IMU] Port not found: /dev/%1" : "[IMU] 端口不存在: /dev/%1").arg(imu_port));
+        }
+        QApplication::processEvents();
+        
+        VaproView::SerialConfig imu_config = VaproView::SerialConfig::N81(imu_baud_combo_->currentText().toInt());
+        if (imu_collector_->start(imu_port.toStdString(), imu_config))
+        {
+            log(QString(is_english_ ? "[IMU] Serial port opened, checking device response..." : "[IMU] 串口已打开，正在检测设备响应..."));
+            QApplication::processEvents();
+            
+            if (imu_collector_->checkDeviceResponse())
+            {
+                log(QString(is_english_ ? "[IMU] Device responding, connected: %1 @ %2 baud" : "[IMU] 设备响应正常，连接成功: %1 @ %2 波特率").arg(imu_port, imu_baud_combo_->currentText()));
+                imu_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onImuDataReady", Qt::QueuedConnection); });
+                int imu_rate = parseRate(imu_rate_combo_->currentText());
+                imu_collector_->setSampleRate(imu_rate);
+                imu_collector_->setDeviceSampleRate(imu_rate);
+                log(QString(is_english_ ? "[IMU] Sample rate set to %1 Hz" : "[IMU] 采样频率设置为 %1 Hz").arg(imu_rate));
+                connected_devices++;
+            }
+            else
+            {
+                log(is_english_ ? "[IMU] Device not responding! Check power and cables." : "[IMU] 设备无响应！请检查电源和连接线。");
+                imu_collector_->stop();
+            }
+        }
+        else
+        {
+            log(QString(is_english_ ? "[IMU] Failed to open port: %1" : "[IMU] 打开端口失败: %1").arg(QString::fromStdString(imu_collector_->getLastError())));
         }
     }
+    else
+    {
+        log(is_english_ ? "[IMU] Skipped (not selected)" : "[IMU] 跳过 (未选择)");
+    }
+    QApplication::processEvents();
 
     QString ptb_port = ptb_port_combo_->currentText();
     if (ptb_port != selectText && !ptb_port.isEmpty())
     {
-        VaproView::SerialConfig ptb_config = VaproView::SerialConfig::E71(ptb_baud_combo_->currentText().toInt());
-        if (ptb_collector_->start(ptb_port.toStdString(), ptb_config))
+        total_devices++;
+        log(QString(is_english_ ? "[PTB] Checking port: %1" : "[PTB] 检查端口: %1").arg(ptb_port));
+        QApplication::processEvents();
+        
+        if (QFile::exists(QString("/dev/%1").arg(ptb_port)))
         {
-            log(QString("PTB210: %1 @ %2").arg(ptb_port, ptb_baud_combo_->currentText()));
-            ptb_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onPtbDataReady", Qt::QueuedConnection); });
-            any_connected = true;
+            log(QString(is_english_ ? "[PTB] Port exists, connecting..." : "[PTB] 端口存在，正在连接..."));
         }
         else
         {
-            log(QString(is_english_ ? "PTB210 failed: %1" : "PTB210 连接失败: %1").arg(QString::fromStdString(ptb_collector_->getLastError())));
+            log(QString(is_english_ ? "[PTB] Port not found: /dev/%1" : "[PTB] 端口不存在: /dev/%1").arg(ptb_port));
+        }
+        QApplication::processEvents();
+        
+        VaproView::SerialConfig ptb_config = VaproView::SerialConfig::E71(ptb_baud_combo_->currentText().toInt());
+        if (ptb_collector_->start(ptb_port.toStdString(), ptb_config))
+        {
+            log(QString(is_english_ ? "[PTB] Serial port opened, checking device response..." : "[PTB] 串口已打开，正在检测设备响应..."));
+            QApplication::processEvents();
+            
+            if (ptb_collector_->checkDeviceResponse())
+            {
+                log(QString(is_english_ ? "[PTB] Device responding, connected: %1 @ %2 baud" : "[PTB] 设备响应正常，连接成功: %1 @ %2 波特率").arg(ptb_port, ptb_baud_combo_->currentText()));
+                ptb_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onPtbDataReady", Qt::QueuedConnection); });
+                int ptb_rate = parseRate(ptb_rate_combo_->currentText());
+                ptb_collector_->setSampleRate(ptb_rate);
+                ptb_collector_->setDeviceSampleRate(ptb_rate);
+                log(QString(is_english_ ? "[PTB] Sample rate set to %1 Hz" : "[PTB] 采样频率设置为 %1 Hz").arg(ptb_rate));
+                connected_devices++;
+            }
+            else
+            {
+                log(is_english_ ? "[PTB] Device not responding! Check power and cables." : "[PTB] 设备无响应！请检查电源和连接线。");
+                ptb_collector_->stop();
+            }
+        }
+        else
+        {
+            log(QString(is_english_ ? "[PTB] Failed to open port: %1" : "[PTB] 打开端口失败: %1").arg(QString::fromStdString(ptb_collector_->getLastError())));
         }
     }
+    else
+    {
+        log(is_english_ ? "[PTB] Skipped (not selected)" : "[PTB] 跳过 (未选择)");
+    }
+    QApplication::processEvents();
 
     QString hmp_port = hmp_port_combo_->currentText();
     if (hmp_port != selectText && !hmp_port.isEmpty())
     {
-        VaproView::SerialConfig hmp_config = VaproView::SerialConfig::N82(hmp_baud_combo_->currentText().toInt());
-        if (hmp_collector_->start(hmp_port.toStdString(), hmp_config))
+        total_devices++;
+        log(QString(is_english_ ? "[HMP] Checking port: %1" : "[HMP] 检查端口: %1").arg(hmp_port));
+        QApplication::processEvents();
+        
+        if (QFile::exists(QString("/dev/%1").arg(hmp_port)))
         {
-            log(QString("HMP3: %1 @ %2").arg(hmp_port, hmp_baud_combo_->currentText()));
-            hmp_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onHmpDataReady", Qt::QueuedConnection); });
-            any_connected = true;
+            log(QString(is_english_ ? "[HMP] Port exists, connecting..." : "[HMP] 端口存在，正在连接..."));
         }
         else
         {
-            log(QString(is_english_ ? "HMP3 failed: %1" : "HMP3 连接失败: %1").arg(QString::fromStdString(hmp_collector_->getLastError())));
+            log(QString(is_english_ ? "[HMP] Port not found: /dev/%1" : "[HMP] 端口不存在: /dev/%1").arg(hmp_port));
+        }
+        QApplication::processEvents();
+        
+        VaproView::SerialConfig hmp_config = VaproView::SerialConfig::N82(hmp_baud_combo_->currentText().toInt());
+        if (hmp_collector_->start(hmp_port.toStdString(), hmp_config))
+        {
+            log(QString(is_english_ ? "[HMP] Serial port opened, checking device response..." : "[HMP] 串口已打开，正在检测设备响应..."));
+            QApplication::processEvents();
+            
+            if (hmp_collector_->checkDeviceResponse())
+            {
+                log(QString(is_english_ ? "[HMP] Device responding, connected: %1 @ %2 baud" : "[HMP] 设备响应正常，连接成功: %1 @ %2 波特率").arg(hmp_port, hmp_baud_combo_->currentText()));
+                hmp_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onHmpDataReady", Qt::QueuedConnection); });
+                int hmp_rate = parseRate(hmp_rate_combo_->currentText());
+                hmp_collector_->setSampleRate(hmp_rate);
+                log(QString(is_english_ ? "[HMP] Sample rate set to %1 Hz" : "[HMP] 采样频率设置为 %1 Hz").arg(hmp_rate));
+                connected_devices++;
+            }
+            else
+            {
+                log(is_english_ ? "[HMP] Device not responding! Check power and cables." : "[HMP] 设备无响应！请检查电源和连接线。");
+                hmp_collector_->stop();
+            }
+        }
+        else
+        {
+            log(QString(is_english_ ? "[HMP] Failed to open port: %1" : "[HMP] 打开端口失败: %1").arg(QString::fromStdString(hmp_collector_->getLastError())));
         }
     }
+    else
+    {
+        log(is_english_ ? "[HMP] Skipped (not selected)" : "[HMP] 跳过 (未选择)");
+    }
+    QApplication::processEvents();
 
-    if (any_connected)
+    log(QString(is_english_ ? "========== Connection Summary: %1/%2 devices connected ==========" : "========== 连接摘要: %1/%2 设备已连接 ==========").arg(connected_devices).arg(total_devices));
+
+    if (connected_devices > 0)
     {
         updateConnectionStatus(true);
     }
@@ -1570,7 +1780,7 @@ void MainWindow::onRefreshTimer()
         double rate = gnss_collector_->getActualRate();
         gnss_panel_->updateRate(rate);
         int rate_int = static_cast<int>(std::round(rate));
-        if (rate_int >= 1 && rate_int <= 20)
+        if (rate_int >= 1 && rate_int <= 500)
         {
             gnss_rate_combo_->blockSignals(true);
             gnss_rate_combo_->setCurrentText(QString::number(rate_int));
@@ -1582,7 +1792,7 @@ void MainWindow::onRefreshTimer()
         double rate = imu_collector_->getActualRate();
         imu_panel_->updateRate(rate);
         int rate_int = static_cast<int>(std::round(rate));
-        if (rate_int >= 1 && rate_int <= 20)
+        if (rate_int >= 1 && rate_int <= 500)
         {
             imu_rate_combo_->blockSignals(true);
             imu_rate_combo_->setCurrentText(QString::number(rate_int));
@@ -1594,7 +1804,7 @@ void MainWindow::onRefreshTimer()
         double rate = ptb_collector_->getActualRate();
         ptb_panel_->updateRate(rate);
         int rate_int = static_cast<int>(std::round(rate));
-        if (rate_int >= 1 && rate_int <= 20)
+        if (rate_int >= 1 && rate_int <= 500)
         {
             ptb_rate_combo_->blockSignals(true);
             ptb_rate_combo_->setCurrentText(QString::number(rate_int));
@@ -1606,7 +1816,7 @@ void MainWindow::onRefreshTimer()
         double rate = hmp_collector_->getActualRate();
         hmp_panel_->updateRate(rate);
         int rate_int = static_cast<int>(std::round(rate));
-        if (rate_int >= 1 && rate_int <= 20)
+        if (rate_int >= 1 && rate_int <= 500)
         {
             hmp_rate_combo_->blockSignals(true);
             hmp_rate_combo_->setCurrentText(QString::number(rate_int));

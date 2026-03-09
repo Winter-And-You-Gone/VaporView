@@ -36,6 +36,11 @@ bool DataCollector::start(const std::string& port, const SerialConfig& config)
     return false;
   }
 
+  freq_calc_start_ = std::chrono::steady_clock::now();
+  last_emit_time_ = std::chrono::steady_clock::now();
+  data_count_ = 0;
+  actual_rate_ = 0.0;
+
   running_.store(true);
   thread_ = std::thread(&DataCollector::run, this);
   return true;
@@ -55,6 +60,11 @@ void DataCollector::stop()
 bool DataCollector::isRunning() const
 {
   return running_.load();
+}
+
+bool DataCollector::checkDeviceResponse()
+{
+  return true;
 }
 
 void DataCollector::setDataCallback(DataCallback callback)
@@ -85,7 +95,7 @@ std::string DataCollector::getLastError() const
 void DataCollector::setSampleRate(int hz)
 {
   if (hz < 1) hz = 1;
-  if (hz > 20) hz = 20;
+  if (hz > 500) hz = 500;
   std::lock_guard<std::mutex> lock(mutex_);
   sample_rate_hz_ = hz;
 }
@@ -211,6 +221,29 @@ bool GnssCollector::setDeviceSampleRate(int hz)
   return true;
 }
 
+bool GnssCollector::checkDeviceResponse()
+{
+  char buffer[256];
+  ssize_t n = serial_.read(buffer, sizeof(buffer));
+  if (n > 0)
+  {
+    std::string data(buffer, static_cast<size_t>(n));
+    if (data.find("$") != std::string::npos || data.find("#") != std::string::npos)
+    {
+      return true;
+    }
+  }
+  
+  usleep(500000);
+  n = serial_.read(buffer, sizeof(buffer));
+  if (n > 0)
+  {
+    return true;
+  }
+  
+  return false;
+}
+
 void GnssCollector::run()
 {
   std::string buffer;
@@ -293,6 +326,75 @@ ImuData ImuCollector::getLatestData()
 {
   std::lock_guard<std::mutex> lock(mutex_);
   return latest_data_;
+}
+
+bool ImuCollector::setDeviceSampleRate(int hz)
+{
+  double period;
+  if (hz == 1) period = 1.0;
+  else if (hz == 2) period = 0.5;
+  else if (hz == 5) period = 0.2;
+  else if (hz == 10) period = 0.1;
+  else if (hz == 20) period = 0.05;
+  else if (hz == 50) period = 0.02;
+  else if (hz == 100) period = 0.01;
+  else if (hz == 200) period = 0.005;
+  else if (hz == 500) period = 0.002;
+  else
+  {
+    log("IMU: Unsupported sample rate: " + std::to_string(hz) + " Hz");
+    return false;
+  }
+
+  char cmd[64];
+  snprintf(cmd, sizeof(cmd), "LOG HI91 ONTIME %.3f\r\n", period);
+  
+  ssize_t written = serial_.write(cmd, strlen(cmd));
+  if (written < 0)
+  {
+    log("IMU: Failed to send sample rate command");
+    return false;
+  }
+
+  log("IMU: Set sample rate to " + std::to_string(hz) + " Hz (period: " + std::to_string(period) + "s)");
+  sample_rate_hz_ = hz;
+  return true;
+}
+
+bool ImuCollector::checkDeviceResponse()
+{
+  char buffer[2048];
+  hipnuc_raw_t raw{};
+  
+  usleep(100000);
+  ssize_t n = serial_.read(buffer, sizeof(buffer));
+  if (n > 0)
+  {
+    for (ssize_t i = 0; i < n; i++)
+    {
+      int ret = hipnuc_input(&raw, static_cast<uint8_t>(buffer[i]));
+      if (ret == 1)
+      {
+        return true;
+      }
+    }
+  }
+  
+  usleep(500000);
+  n = serial_.read(buffer, sizeof(buffer));
+  if (n > 0)
+  {
+    for (ssize_t i = 0; i < n; i++)
+    {
+      int ret = hipnuc_input(&raw, static_cast<uint8_t>(buffer[i]));
+      if (ret == 1)
+      {
+        return true;
+      }
+    }
+  }
+  
+  return false;
 }
 
 void ImuCollector::run()
@@ -400,9 +502,78 @@ PtbData PtbCollector::getLatestData()
   return latest_data_;
 }
 
+bool PtbCollector::setDeviceSampleRate(int hz)
+{
+  if (hz < 1 || hz > 70)
+  {
+    log("PTB210: Unsupported sample rate: " + std::to_string(hz) + " Hz (valid: 1-70 Hz)");
+    return false;
+  }
+
+  int mpm = hz * 60;
+  if (mpm < 6) mpm = 6;
+  if (mpm > 4200) mpm = 4200;
+
+  char cmd[32];
+  snprintf(cmd, sizeof(cmd), ".MPM.%d\r", mpm);
+  
+  ssize_t written = serial_.write(cmd, strlen(cmd));
+  if (written < 0)
+  {
+    log("PTB210: Failed to send MPM command");
+    return false;
+  }
+
+  usleep(100000);
+
+  const char* reset_cmd = ".RESET\r";
+  written = serial_.write(reset_cmd, strlen(reset_cmd));
+  if (written < 0)
+  {
+    log("PTB210: Failed to send RESET command");
+    return false;
+  }
+
+  log("PTB210: Set sample rate to " + std::to_string(hz) + " Hz (MPM: " + std::to_string(mpm) + ")");
+  sample_rate_hz_ = hz;
+  return true;
+}
+
 bool PtbCollector::initialize()
 {
   return true;
+}
+
+bool PtbCollector::checkDeviceResponse()
+{
+  char response[256];
+  
+  serial_.write(PTB_CMD_PRESSURE, std::strlen(PTB_CMD_PRESSURE));
+  usleep(100000);
+  
+  ssize_t n = serial_.read(response, sizeof(response));
+  if (n > 0)
+  {
+    std::string resp(response, static_cast<size_t>(n));
+    while (!resp.empty() && (resp.back() == '\r' || resp.back() == '\n' || resp.back() == ' '))
+    {
+      resp.pop_back();
+    }
+    
+    if (!resp.empty())
+    {
+      try
+      {
+        std::stod(resp);
+        return true;
+      }
+      catch (...)
+      {
+      }
+    }
+  }
+  
+  return false;
 }
 
 void PtbCollector::run()
@@ -414,7 +585,7 @@ void PtbCollector::run()
     auto start_time = std::chrono::steady_clock::now();
     
     serial_.write(PTB_CMD_PRESSURE, std::strlen(PTB_CMD_PRESSURE));
-    usleep(100000);
+    usleep(30000);
 
     ssize_t n = serial_.read(response, sizeof(response));
     if (n > 0)
@@ -453,7 +624,7 @@ void PtbCollector::run()
     int interval_ms = 1000 / sample_rate_hz_;
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start_time).count();
-    int remaining = interval_ms - static_cast<int>(elapsed) - 100;
+    int remaining = interval_ms - static_cast<int>(elapsed);
     if (remaining > 0)
     {
       usleep(static_cast<useconds_t>(remaining * 1000));
@@ -470,6 +641,41 @@ HmpData HmpCollector::getLatestData()
 bool HmpCollector::initialize()
 {
   return true;
+}
+
+bool HmpCollector::checkDeviceResponse()
+{
+  uint8_t request[8];
+  uint8_t response[64];
+  
+  request[0] = HMP3_SLAVE_ADDR;
+  request[1] = 0x03;
+  request[2] = 0x00;
+  request[3] = 0x00;
+  request[4] = 0x00;
+  request[5] = 0x04;
+  uint16_t crc = modbusCrc16(request, 6);
+  request[6] = crc & 0xFF;
+  request[7] = (crc >> 8) & 0xFF;
+  
+  serial_.flush();
+  serial_.write(request, 8);
+  usleep(100000);
+  
+  ssize_t n = serial_.read(response, sizeof(response));
+  
+  if (n >= 13 && response[0] == HMP3_SLAVE_ADDR && response[1] == 0x03)
+  {
+    uint16_t recv_crc = response[n - 2] | (response[n - 1] << 8);
+    uint16_t calc_crc = modbusCrc16(response, static_cast<size_t>(n - 2));
+    
+    if (recv_crc == calc_crc)
+    {
+      return true;
+    }
+  }
+  
+  return false;
 }
 
 uint16_t HmpCollector::modbusCrc16(const uint8_t* data, size_t len)

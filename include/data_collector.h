@@ -40,6 +40,7 @@ protected:
   virtual bool initialize();
   virtual void cleanup();
   virtual bool setDeviceSampleRate(int hz);
+  virtual bool checkDeviceResponse();
   bool shouldEmitData();
   void updateLastEmitTime();
   void recordDataReceived();
@@ -64,6 +65,7 @@ class GnssCollector : public DataCollector
 public:
   GnssData getLatestData();
   bool setDeviceSampleRate(int hz) override;
+  bool checkDeviceResponse() override;
 
 protected:
   void run() override;
@@ -76,6 +78,8 @@ class ImuCollector : public DataCollector
 {
 public:
   ImuData getLatestData();
+  bool setDeviceSampleRate(int hz) override;
+  bool checkDeviceResponse() override;
 
 protected:
   void run() override;
@@ -88,6 +92,8 @@ class PtbCollector : public DataCollector
 {
 public:
   PtbData getLatestData();
+  bool setDeviceSampleRate(int hz) override;
+  bool checkDeviceResponse() override;
 
 protected:
   void run() override;
@@ -102,6 +108,7 @@ class HmpCollector : public DataCollector
 {
 public:
   HmpData getLatestData();
+  bool checkDeviceResponse() override;
 
 protected:
   void run() override;
