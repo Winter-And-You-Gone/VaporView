@@ -27,6 +27,7 @@ cmake_install.cmake
 *.autosave
 .idea/
 .vscode/
+.trae/
 *.swp
 *.swo
 *~
