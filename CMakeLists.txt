@@ -31,6 +31,7 @@ set(NAV_SOURCES
     src/MainWindow.cpp
     src/serial_port.cpp
     src/data_collector.cpp
+    src/RtkConfigDialog.cpp
     ${UM982_DRIVER_DIR}/pvtsln_parser.cpp
     ${HIPNUC_DRIVER_DIR}/hipnuc_dec.c
 )
@@ -40,6 +41,7 @@ set(NAV_HEADERS
     include/serial_port.h
     include/data_types.h
     include/data_collector.h
+    include/RtkConfigDialog.h
     ${UM982_DRIVER_DIR}/pvtsln_data.hpp
     ${HIPNUC_DRIVER_DIR}/hipnuc_dec.h
 )

@@ -22,6 +22,8 @@
 #include <QScrollArea>
 #include <memory>
 
+class RtkConfigDialog;
+
 class GnssPanel : public QWidget
 {
     Q_OBJECT
@@ -215,6 +217,7 @@ private slots:
     void onImuRateChanged(const QString& text);
     void onPtbRateChanged(const QString& text);
     void onHmpRateChanged(const QString& text);
+    void onRtkConfigClicked();
 
 private:
     void setupMenuBar();
@@ -305,6 +308,9 @@ private:
     int imu_sample_rate_;
     int ptb_sample_rate_;
     int hmp_sample_rate_;
+
+    QAction *rtk_config_action_;
+    RtkConfigDialog *rtk_config_dialog_;
 };
 
 #endif

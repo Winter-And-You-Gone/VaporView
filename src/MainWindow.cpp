@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "RtkConfigDialog.h"
 #include "data_collector.h"
 #include "data_types.h"
 #include <QMenu>
@@ -19,6 +20,7 @@
 #include <QShortcut>
 #include <QSpacerItem>
 #include <QApplication>
+#include <cmath>
 #include <memory>
 
 GnssPanel::GnssPanel(QWidget *parent)
@@ -722,6 +724,8 @@ MainWindow::MainWindow(QWidget *parent)
     , imu_sample_rate_(1)
     , ptb_sample_rate_(1)
     , hmp_sample_rate_(1)
+    , rtk_config_action_(nullptr)
+    , rtk_config_dialog_(nullptr)
 {
     loadModernStyleSheet();
     
@@ -881,6 +885,13 @@ void MainWindow::setupToolBar()
     disconnect_btn_->setEnabled(false);
     connect(disconnect_btn_, &QAction::triggered, this, &MainWindow::onDisconnectClicked);
     toolbar->addAction(disconnect_btn_);
+
+    toolbar->addSeparator();
+
+    rtk_config_action_ = new QAction(this);
+    rtk_config_action_->setIcon(style()->standardIcon(QStyle::SP_ComputerIcon));
+    connect(rtk_config_action_, &QAction::triggered, this, &MainWindow::onRtkConfigClicked);
+    toolbar->addAction(rtk_config_action_);
 
     toolbar->addSeparator();
 
@@ -1164,6 +1175,7 @@ void MainWindow::setEnglish(bool english)
     clear_log_action_->setText(english ? "Clear" : "清空");
     export_btn_->setText(english ? "Export" : "导出");
     fullscreen_btn_->setText(english ? "Fullscreen" : "全屏");
+    rtk_config_action_->setText(english ? "RTK Config" : "RTK配置");
 
     status_label_->setText(english ? "Ready" : "就绪");
 
@@ -1190,6 +1202,11 @@ void MainWindow::setEnglish(bool english)
     imu_panel_->setEnglish(english);
     ptb_panel_->setEnglish(english);
     hmp_panel_->setEnglish(english);
+
+    if (rtk_config_dialog_)
+    {
+        rtk_config_dialog_->setWindowTitle(english ? "RTK NTRIP Configuration" : "RTK NTRIP 配置");
+    }
 }
 
 void MainWindow::onSwitchLanguage()
@@ -1367,6 +1384,21 @@ void MainWindow::onConnectClicked()
 {
     log(is_english_ ? "Connecting..." : "正在连接...");
 
+    current_gnss_ = VaproView::GnssData();
+    current_imu_ = VaproView::ImuData();
+    current_ptb_ = VaproView::PtbData();
+    current_hmp_ = VaproView::HmpData();
+
+    gnss_panel_->updateData(current_gnss_);
+    imu_panel_->updateData(current_imu_);
+    ptb_panel_->updateData(current_ptb_);
+    hmp_panel_->updateData(current_hmp_);
+
+    gnss_panel_->updateRate(0.0);
+    imu_panel_->updateRate(0.0);
+    ptb_panel_->updateRate(0.0);
+    hmp_panel_->updateRate(0.0);
+
     gnss_collector_ = std::make_unique<VaproView::GnssCollector>();
     imu_collector_ = std::make_unique<VaproView::ImuCollector>();
     ptb_collector_ = std::make_unique<VaproView::PtbCollector>();
@@ -1533,10 +1565,54 @@ void MainWindow::onRefreshTimer()
     ptb_panel_->updateData(current_ptb_);
     hmp_panel_->updateData(current_hmp_);
 
-    if (gnss_collector_) gnss_panel_->updateRate(gnss_collector_->getActualRate());
-    if (imu_collector_) imu_panel_->updateRate(imu_collector_->getActualRate());
-    if (ptb_collector_) ptb_panel_->updateRate(ptb_collector_->getActualRate());
-    if (hmp_collector_) hmp_panel_->updateRate(hmp_collector_->getActualRate());
+    if (gnss_collector_)
+    {
+        double rate = gnss_collector_->getActualRate();
+        gnss_panel_->updateRate(rate);
+        int rate_int = static_cast<int>(std::round(rate));
+        if (rate_int >= 1 && rate_int <= 20)
+        {
+            gnss_rate_combo_->blockSignals(true);
+            gnss_rate_combo_->setCurrentText(QString::number(rate_int));
+            gnss_rate_combo_->blockSignals(false);
+        }
+    }
+    if (imu_collector_)
+    {
+        double rate = imu_collector_->getActualRate();
+        imu_panel_->updateRate(rate);
+        int rate_int = static_cast<int>(std::round(rate));
+        if (rate_int >= 1 && rate_int <= 20)
+        {
+            imu_rate_combo_->blockSignals(true);
+            imu_rate_combo_->setCurrentText(QString::number(rate_int));
+            imu_rate_combo_->blockSignals(false);
+        }
+    }
+    if (ptb_collector_)
+    {
+        double rate = ptb_collector_->getActualRate();
+        ptb_panel_->updateRate(rate);
+        int rate_int = static_cast<int>(std::round(rate));
+        if (rate_int >= 1 && rate_int <= 20)
+        {
+            ptb_rate_combo_->blockSignals(true);
+            ptb_rate_combo_->setCurrentText(QString::number(rate_int));
+            ptb_rate_combo_->blockSignals(false);
+        }
+    }
+    if (hmp_collector_)
+    {
+        double rate = hmp_collector_->getActualRate();
+        hmp_panel_->updateRate(rate);
+        int rate_int = static_cast<int>(std::round(rate));
+        if (rate_int >= 1 && rate_int <= 20)
+        {
+            hmp_rate_combo_->blockSignals(true);
+            hmp_rate_combo_->setCurrentText(QString::number(rate_int));
+            hmp_rate_combo_->blockSignals(false);
+        }
+    }
 }
 
 void MainWindow::onExportClicked()
@@ -1655,4 +1731,15 @@ void MainWindow::onClearLogClicked()
 {
     log_text_edit_->clear();
     log(is_english_ ? "Log cleared" : "日志已清空");
+}
+
+void MainWindow::onRtkConfigClicked()
+{
+    if (!rtk_config_dialog_)
+    {
+        rtk_config_dialog_ = new RtkConfigDialog(this);
+    }
+    rtk_config_dialog_->show();
+    rtk_config_dialog_->raise();
+    rtk_config_dialog_->activateWindow();
 }
