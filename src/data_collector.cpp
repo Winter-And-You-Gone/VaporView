@@ -224,21 +224,20 @@ bool GnssCollector::setDeviceSampleRate(int hz)
 bool GnssCollector::checkDeviceResponse()
 {
   char buffer[256];
-  ssize_t n = serial_.read(buffer, sizeof(buffer));
-  if (n > 0)
-  {
-    std::string data(buffer, static_cast<size_t>(n));
-    if (data.find("$") != std::string::npos || data.find("#") != std::string::npos)
-    {
-      return true;
-    }
-  }
+  int max_attempts = 20;
   
-  usleep(500000);
-  n = serial_.read(buffer, sizeof(buffer));
-  if (n > 0)
+  for (int i = 0; i < max_attempts; i++)
   {
-    return true;
+    usleep(100000);
+    ssize_t n = serial_.read(buffer, sizeof(buffer));
+    if (n > 0)
+    {
+      std::string data(buffer, static_cast<size_t>(n));
+      if (data.find("$") != std::string::npos || data.find("#") != std::string::npos)
+      {
+        return true;
+      }
+    }
   }
   
   return false;
@@ -365,31 +364,21 @@ bool ImuCollector::checkDeviceResponse()
 {
   char buffer[2048];
   hipnuc_raw_t raw{};
+  int max_attempts = 20;
   
-  usleep(100000);
-  ssize_t n = serial_.read(buffer, sizeof(buffer));
-  if (n > 0)
+  for (int i = 0; i < max_attempts; i++)
   {
-    for (ssize_t i = 0; i < n; i++)
+    usleep(100000);
+    ssize_t n = serial_.read(buffer, sizeof(buffer));
+    if (n > 0)
     {
-      int ret = hipnuc_input(&raw, static_cast<uint8_t>(buffer[i]));
-      if (ret == 1)
+      for (ssize_t j = 0; j < n; j++)
       {
-        return true;
-      }
-    }
-  }
-  
-  usleep(500000);
-  n = serial_.read(buffer, sizeof(buffer));
-  if (n > 0)
-  {
-    for (ssize_t i = 0; i < n; i++)
-    {
-      int ret = hipnuc_input(&raw, static_cast<uint8_t>(buffer[i]));
-      if (ret == 1)
-      {
-        return true;
+        int ret = hipnuc_input(&raw, static_cast<uint8_t>(buffer[j]));
+        if (ret == 1)
+        {
+          return true;
+        }
       }
     }
   }
@@ -547,28 +536,36 @@ bool PtbCollector::initialize()
 bool PtbCollector::checkDeviceResponse()
 {
   char response[256];
+  int max_attempts = 10;
   
-  serial_.write(PTB_CMD_PRESSURE, std::strlen(PTB_CMD_PRESSURE));
-  usleep(100000);
-  
-  ssize_t n = serial_.read(response, sizeof(response));
-  if (n > 0)
+  for (int i = 0; i < max_attempts; i++)
   {
-    std::string resp(response, static_cast<size_t>(n));
-    while (!resp.empty() && (resp.back() == '\r' || resp.back() == '\n' || resp.back() == ' '))
-    {
-      resp.pop_back();
-    }
+    serial_.flush();
+    serial_.write(PTB_CMD_PRESSURE, std::strlen(PTB_CMD_PRESSURE));
     
-    if (!resp.empty())
+    for (int j = 0; j < 10; j++)
     {
-      try
+      usleep(50000);
+      ssize_t n = serial_.read(response, sizeof(response));
+      if (n > 0)
       {
-        std::stod(resp);
-        return true;
-      }
-      catch (...)
-      {
+        std::string resp(response, static_cast<size_t>(n));
+        while (!resp.empty() && (resp.back() == '\r' || resp.back() == '\n' || resp.back() == ' '))
+        {
+          resp.pop_back();
+        }
+        
+        if (!resp.empty())
+        {
+          try
+          {
+            std::stod(resp);
+            return true;
+          }
+          catch (...)
+          {
+          }
+        }
       }
     }
   }
@@ -658,20 +655,28 @@ bool HmpCollector::checkDeviceResponse()
   request[6] = crc & 0xFF;
   request[7] = (crc >> 8) & 0xFF;
   
-  serial_.flush();
-  serial_.write(request, 8);
-  usleep(100000);
+  int max_attempts = 10;
   
-  ssize_t n = serial_.read(response, sizeof(response));
-  
-  if (n >= 13 && response[0] == HMP3_SLAVE_ADDR && response[1] == 0x03)
+  for (int i = 0; i < max_attempts; i++)
   {
-    uint16_t recv_crc = response[n - 2] | (response[n - 1] << 8);
-    uint16_t calc_crc = modbusCrc16(response, static_cast<size_t>(n - 2));
+    serial_.flush();
+    serial_.write(request, 8);
     
-    if (recv_crc == calc_crc)
+    for (int j = 0; j < 10; j++)
     {
-      return true;
+      usleep(50000);
+      ssize_t n = serial_.read(response, sizeof(response));
+      
+      if (n >= 13 && response[0] == HMP3_SLAVE_ADDR && response[1] == 0x03)
+      {
+        uint16_t recv_crc = response[n - 2] | (response[n - 1] << 8);
+        uint16_t calc_crc = modbusCrc16(response, static_cast<size_t>(n - 2));
+        
+        if (recv_crc == calc_crc)
+        {
+          return true;
+        }
+      }
     }
   }
   
