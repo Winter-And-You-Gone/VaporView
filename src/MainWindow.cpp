@@ -1507,13 +1507,14 @@ void MainWindow::onConnectClicked()
         log(QString(is_english_ ? "[GNSS] Checking port: %1" : "[GNSS] 检查端口: %1").arg(gnss_port));
         QApplication::processEvents();
         
-        if (QFile::exists(QString("/dev/%1").arg(gnss_port)))
+        QString gnss_port_path = gnss_port.startsWith("/dev/") ? gnss_port : QString("/dev/%1").arg(gnss_port);
+        if (QFile::exists(gnss_port_path))
         {
             log(QString(is_english_ ? "[GNSS] Port exists, connecting..." : "[GNSS] 端口存在，正在连接..."));
         }
         else
         {
-            log(QString(is_english_ ? "[GNSS] Port not found: /dev/%1" : "[GNSS] 端口不存在: /dev/%1").arg(gnss_port));
+            log(QString(is_english_ ? "[GNSS] Port not found: %1" : "[GNSS] 端口不存在: %1").arg(gnss_port_path));
         }
         QApplication::processEvents();
         
@@ -1553,13 +1554,14 @@ void MainWindow::onConnectClicked()
         log(QString(is_english_ ? "[IMU] Checking port: %1" : "[IMU] 检查端口: %1").arg(imu_port));
         QApplication::processEvents();
         
-        if (QFile::exists(QString("/dev/%1").arg(imu_port)))
+        QString imu_port_path = imu_port.startsWith("/dev/") ? imu_port : QString("/dev/%1").arg(imu_port);
+        if (QFile::exists(imu_port_path))
         {
             log(QString(is_english_ ? "[IMU] Port exists, connecting..." : "[IMU] 端口存在，正在连接..."));
         }
         else
         {
-            log(QString(is_english_ ? "[IMU] Port not found: /dev/%1" : "[IMU] 端口不存在: /dev/%1").arg(imu_port));
+            log(QString(is_english_ ? "[IMU] Port not found: %1" : "[IMU] 端口不存在: %1").arg(imu_port_path));
         }
         QApplication::processEvents();
         
@@ -1603,13 +1605,14 @@ void MainWindow::onConnectClicked()
         log(QString(is_english_ ? "[PTB] Checking port: %1" : "[PTB] 检查端口: %1").arg(ptb_port));
         QApplication::processEvents();
         
-        if (QFile::exists(QString("/dev/%1").arg(ptb_port)))
+        QString ptb_port_path = ptb_port.startsWith("/dev/") ? ptb_port : QString("/dev/%1").arg(ptb_port);
+        if (QFile::exists(ptb_port_path))
         {
             log(QString(is_english_ ? "[PTB] Port exists, connecting..." : "[PTB] 端口存在，正在连接..."));
         }
         else
         {
-            log(QString(is_english_ ? "[PTB] Port not found: /dev/%1" : "[PTB] 端口不存在: /dev/%1").arg(ptb_port));
+            log(QString(is_english_ ? "[PTB] Port not found: %1" : "[PTB] 端口不存在: %1").arg(ptb_port_path));
         }
         QApplication::processEvents();
         
@@ -1653,13 +1656,14 @@ void MainWindow::onConnectClicked()
         log(QString(is_english_ ? "[HMP] Checking port: %1" : "[HMP] 检查端口: %1").arg(hmp_port));
         QApplication::processEvents();
         
-        if (QFile::exists(QString("/dev/%1").arg(hmp_port)))
+        QString hmp_port_path = hmp_port.startsWith("/dev/") ? hmp_port : QString("/dev/%1").arg(hmp_port);
+        if (QFile::exists(hmp_port_path))
         {
             log(QString(is_english_ ? "[HMP] Port exists, connecting..." : "[HMP] 端口存在，正在连接..."));
         }
         else
         {
-            log(QString(is_english_ ? "[HMP] Port not found: /dev/%1" : "[HMP] 端口不存在: /dev/%1").arg(hmp_port));
+            log(QString(is_english_ ? "[HMP] Port not found: %1" : "[HMP] 端口不存在: %1").arg(hmp_port_path));
         }
         QApplication::processEvents();
         
