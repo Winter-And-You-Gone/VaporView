@@ -14,11 +14,11 @@ option(USE_QT6 "Use Qt6 instead of Qt5" OFF)
 option(BUILD_PYTHON_BINDINGS "Build Python bindings with pybind11" OFF)
 
 if(USE_QT6)
-    find_package(Qt6 COMPONENTS Core Widgets REQUIRED)
-    set(QT_LIBRARIES Qt6::Core Qt6::Widgets)
+    find_package(Qt6 COMPONENTS Core Widgets SerialPort REQUIRED)
+    set(QT_LIBRARIES Qt6::Core Qt6::Widgets Qt6::SerialPort)
 else()
-    find_package(Qt5 COMPONENTS Core Widgets REQUIRED)
-    set(QT_LIBRARIES Qt5::Core Qt5::Widgets)
+    find_package(Qt5 COMPONENTS Core Widgets SerialPort REQUIRED)
+    set(QT_LIBRARIES Qt5::Core Qt5::Widgets Qt5::SerialPort)
 endif()
 
 find_package(Threads REQUIRED)
@@ -53,12 +53,27 @@ set(NAV_RESOURCES
     resources/modern_style.qss
 )
 
-add_executable(VaproView
-    ${NAV_SOURCES}
-    ${NAV_HEADERS}
-    ${NAV_UI_FILES}
-    ${NAV_RESOURCES}
-)
+set(NAV_WIN_RESOURCES)
+if(WIN32)
+    list(APPEND NAV_WIN_RESOURCES resources/app.rc)
+endif()
+
+if(WIN32)
+    add_executable(VaproView WIN32
+        ${NAV_SOURCES}
+        ${NAV_HEADERS}
+        ${NAV_UI_FILES}
+        ${NAV_RESOURCES}
+        ${NAV_WIN_RESOURCES}
+    )
+else()
+    add_executable(VaproView
+        ${NAV_SOURCES}
+        ${NAV_HEADERS}
+        ${NAV_UI_FILES}
+        ${NAV_RESOURCES}
+    )
+endif()
 
 target_include_directories(VaproView PRIVATE
     ${CMAKE_SOURCE_DIR}/include
@@ -77,14 +92,21 @@ add_custom_command(TARGET VaproView POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/resources/modern_style.qss
         ${CMAKE_BINARY_DIR}/resources/modern_style.qss
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/resources/app.ico
+        ${CMAKE_BINARY_DIR}/resources/app.ico
     COMMENT "Copying resources to build directory"
 )
 
-target_compile_options(VaproView PRIVATE
-    -Wall
-    -Wextra
-    -Wpedantic
-)
+if(MSVC)
+    target_compile_options(VaproView PRIVATE /W4 /utf-8)
+else()
+    target_compile_options(VaproView PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+endif()
 
 if(BUILD_PYTHON_BINDINGS)
     find_package(Python3 COMPONENTS Interpreter Development REQUIRED)

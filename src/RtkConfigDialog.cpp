@@ -10,6 +10,7 @@
 #include <QDirIterator>
 #include <QDateTime>
 #include <QRegularExpression>
+#include <QSerialPortInfo>
 
 RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     : QDialog(parent)
@@ -218,7 +219,11 @@ void RtkConfigDialog::loadSettings()
     username_edit_->setText(settings.value("username", "").toString());
     password_edit_->setText(settings.value("password", "").toString());
     mountpoint_edit_->setText(settings.value("mountpoint", "").toString());
+#ifdef _WIN32
+    output_port_combo_->setCurrentText(settings.value("output_port", "COM3").toString());
+#else
     output_port_combo_->setCurrentText(settings.value("output_port", "/dev/ttyCOM3").toString());
+#endif
     baudrate_combo_->setCurrentText(settings.value("baudrate", "115200").toString());
     timeout_spin_->setValue(settings.value("timeout", 5000).toInt());
     reconnect_spin_->setValue(settings.value("reconnect", 1000).toInt());
@@ -315,34 +320,10 @@ void RtkConfigDialog::updateButtonStates()
 QStringList RtkConfigDialog::getAvailablePorts() const
 {
     QStringList ports;
-    QDir devDir("/dev");
-
-    QStringList filters;
-    filters << "ttyUSB*" << "ttyACM*" << "ttyCOM*" << "ttyIMU*" << "ttyBARO*" << "ttyHMP*"
-            << "ttyS*" << "ttyTHS*" << "ttyGS*" << "ttyAMA*" << "ttyMFD*";
-    devDir.setNameFilters(filters);
-    devDir.setFilter(QDir::System | QDir::Files);
-
-    QFileInfoList fileList = devDir.entryInfoList(QDir::AllEntries | QDir::System, QDir::Name);
-    for (const QFileInfo& info : fileList)
+    const auto infos = QSerialPortInfo::availablePorts();
+    for (const QSerialPortInfo& info : infos)
     {
-        ports.append(info.absoluteFilePath());
-    }
-
-    QDirIterator it("/dev/serial/by-id", QStringList(), QDir::NoSymLinks | QDir::Files, QDirIterator::Subdirectories);
-    while (it.hasNext())
-    {
-        it.next();
-        QString path = it.filePath();
-        QFileInfo linkInfo(path);
-        if (linkInfo.isSymLink())
-        {
-            QString target = linkInfo.symLinkTarget();
-            if (!target.isEmpty())
-            {
-                ports.append(path);
-            }
-        }
+        ports.append(info.portName());
     }
 
     ports.removeDuplicates();
@@ -449,19 +430,30 @@ void RtkConfigDialog::onTestClicked()
     appendLog(tr("Testing connection to %1:%2...").arg(server, port));
 
     QString testCmd;
+    const QString nullSink =
+#ifdef _WIN32
+        "NUL";
+#else
+        "/dev/null";
+#endif
+
     if (!username.isEmpty())
     {
-        testCmd = QString("curl -s -o /dev/null -w '%%{http_code}' --connect-timeout 5 -u %1:%2 http://%3:%4/%5")
-            .arg(username, password, server, port, mountpoint.isEmpty() ? "" : mountpoint);
+        testCmd = QString("curl -s -o %1 -w '%%{http_code}' --connect-timeout 5 -u %2:%3 http://%4:%5/%6")
+            .arg(nullSink, username, password, server, port, mountpoint.isEmpty() ? "" : mountpoint);
     }
     else
     {
-        testCmd = QString("curl -s -o /dev/null -w '%%{http_code}' --connect-timeout 5 http://%1:%2/%3")
-            .arg(server, port, mountpoint.isEmpty() ? "" : mountpoint);
+        testCmd = QString("curl -s -o %1 -w '%%{http_code}' --connect-timeout 5 http://%2:%3/%4")
+            .arg(nullSink, server, port, mountpoint.isEmpty() ? "" : mountpoint);
     }
 
     QProcess test_process;
+#ifdef _WIN32
+    test_process.start("cmd", QStringList() << "/C" << testCmd);
+#else
     test_process.start("bash", QStringList() << "-c" << testCmd);
+#endif
     test_process.waitForFinished(10000);
 
     QString output = test_process.readAllStandardOutput().trimmed();

@@ -20,6 +20,7 @@
 #include <QShortcut>
 #include <QSpacerItem>
 #include <QApplication>
+#include <QSerialPortInfo>
 #include <cmath>
 #include <memory>
 
@@ -946,50 +947,10 @@ void MainWindow::setupCentralWidget()
 QStringList MainWindow::getAvailablePorts()
 {
     QStringList ports;
-    QDir devDir("/dev");
-
-    QStringList filters;
-    filters << "ttyUSB*" << "ttyACM*" << "ttyCOM*" << "ttyIMU*" << "ttyBARO*" << "ttyHMP*"
-            << "ttyS*" << "ttyTHS*" << "ttyGS*" << "ttyAMA*" << "ttyMFD*";
-    devDir.setNameFilters(filters);
-    devDir.setFilter(QDir::System | QDir::Files);
-
-    QFileInfoList fileList = devDir.entryInfoList(QDir::AllEntries | QDir::System, QDir::Name);
-    for (const QFileInfo& info : fileList)
+    const auto infos = QSerialPortInfo::availablePorts();
+    for (const QSerialPortInfo& info : infos)
     {
-        ports.append(info.absoluteFilePath());
-    }
-
-    QDirIterator it("/dev/serial/by-id", QStringList(), QDir::NoSymLinks | QDir::Files, QDirIterator::Subdirectories);
-    while (it.hasNext())
-    {
-        it.next();
-        QString path = it.filePath();
-        QFileInfo linkInfo(path);
-        if (linkInfo.isSymLink())
-        {
-            QString target = linkInfo.symLinkTarget();
-            if (!target.isEmpty())
-            {
-                ports.append(path);
-            }
-        }
-    }
-
-    QDirIterator it2("/dev/serial/by-path", QStringList(), QDir::NoSymLinks | QDir::Files, QDirIterator::Subdirectories);
-    while (it2.hasNext())
-    {
-        it2.next();
-        QString path = it2.filePath();
-        QFileInfo linkInfo(path);
-        if (linkInfo.isSymLink())
-        {
-            QString target = linkInfo.symLinkTarget();
-            if (!target.isEmpty())
-            {
-                ports.append(path);
-            }
-        }
+        ports.append(info.portName());
     }
 
     ports.removeDuplicates();
@@ -1075,10 +1036,17 @@ void MainWindow::setupConfigPanel()
     };
 
     int row = 0;
+#ifdef _WIN32
+    createPortRow(gnss_lbl_, gnss_port_combo_, gnss_baud_combo_, "COM3", "115200", row++);
+    createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, "COM4", "115200", row++);
+    createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, "COM5", "9600", row++);
+    createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, "COM6", "19200", row++);
+#else
     createPortRow(gnss_lbl_, gnss_port_combo_, gnss_baud_combo_, "/dev/ttyCOM3", "115200", row++);
     createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, "/dev/ttyIMU", "115200", row++);
     createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, "/dev/ttyBARO", "9600", row++);
     createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, "/dev/ttyHMP", "19200", row++);
+#endif
 
     config_layout->addItem(new QSpacerItem(20, 16, QSizePolicy::Fixed, QSizePolicy::Fixed), row++, 0);
 
@@ -1507,15 +1475,7 @@ void MainWindow::onConnectClicked()
         log(QString(is_english_ ? "[GNSS] Checking port: %1" : "[GNSS] 检查端口: %1").arg(gnss_port));
         QApplication::processEvents();
         
-        QString gnss_port_path = gnss_port.startsWith("/dev/") ? gnss_port : QString("/dev/%1").arg(gnss_port);
-        if (QFile::exists(gnss_port_path))
-        {
-            log(QString(is_english_ ? "[GNSS] Port exists, connecting..." : "[GNSS] 端口存在，正在连接..."));
-        }
-        else
-        {
-            log(QString(is_english_ ? "[GNSS] Port not found: %1" : "[GNSS] 端口不存在: %1").arg(gnss_port_path));
-        }
+        log(QString(is_english_ ? "[GNSS] Port selected, connecting..." : "[GNSS] 已选择端口，正在连接..."));
         QApplication::processEvents();
         
         VaproView::SerialConfig gnss_config = VaproView::SerialConfig::N81(gnss_baud_combo_->currentText().toInt());
@@ -1554,15 +1514,7 @@ void MainWindow::onConnectClicked()
         log(QString(is_english_ ? "[IMU] Checking port: %1" : "[IMU] 检查端口: %1").arg(imu_port));
         QApplication::processEvents();
         
-        QString imu_port_path = imu_port.startsWith("/dev/") ? imu_port : QString("/dev/%1").arg(imu_port);
-        if (QFile::exists(imu_port_path))
-        {
-            log(QString(is_english_ ? "[IMU] Port exists, connecting..." : "[IMU] 端口存在，正在连接..."));
-        }
-        else
-        {
-            log(QString(is_english_ ? "[IMU] Port not found: %1" : "[IMU] 端口不存在: %1").arg(imu_port_path));
-        }
+        log(QString(is_english_ ? "[IMU] Port selected, connecting..." : "[IMU] 已选择端口，正在连接..."));
         QApplication::processEvents();
         
         VaproView::SerialConfig imu_config = VaproView::SerialConfig::N81(imu_baud_combo_->currentText().toInt());
@@ -1605,15 +1557,7 @@ void MainWindow::onConnectClicked()
         log(QString(is_english_ ? "[PTB] Checking port: %1" : "[PTB] 检查端口: %1").arg(ptb_port));
         QApplication::processEvents();
         
-        QString ptb_port_path = ptb_port.startsWith("/dev/") ? ptb_port : QString("/dev/%1").arg(ptb_port);
-        if (QFile::exists(ptb_port_path))
-        {
-            log(QString(is_english_ ? "[PTB] Port exists, connecting..." : "[PTB] 端口存在，正在连接..."));
-        }
-        else
-        {
-            log(QString(is_english_ ? "[PTB] Port not found: %1" : "[PTB] 端口不存在: %1").arg(ptb_port_path));
-        }
+        log(QString(is_english_ ? "[PTB] Port selected, connecting..." : "[PTB] 已选择端口，正在连接..."));
         QApplication::processEvents();
         
         VaproView::SerialConfig ptb_config = VaproView::SerialConfig::E71(ptb_baud_combo_->currentText().toInt());
@@ -1656,15 +1600,7 @@ void MainWindow::onConnectClicked()
         log(QString(is_english_ ? "[HMP] Checking port: %1" : "[HMP] 检查端口: %1").arg(hmp_port));
         QApplication::processEvents();
         
-        QString hmp_port_path = hmp_port.startsWith("/dev/") ? hmp_port : QString("/dev/%1").arg(hmp_port);
-        if (QFile::exists(hmp_port_path))
-        {
-            log(QString(is_english_ ? "[HMP] Port exists, connecting..." : "[HMP] 端口存在，正在连接..."));
-        }
-        else
-        {
-            log(QString(is_english_ ? "[HMP] Port not found: %1" : "[HMP] 端口不存在: %1").arg(hmp_port_path));
-        }
+        log(QString(is_english_ ? "[HMP] Port selected, connecting..." : "[HMP] 已选择端口，正在连接..."));
         QApplication::processEvents();
         
         VaproView::SerialConfig hmp_config = VaproView::SerialConfig::N82(hmp_baud_combo_->currentText().toInt());

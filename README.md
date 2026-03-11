@@ -87,7 +87,7 @@ VaproView/
 ## 依赖
 
 - CMake 3.16+
-- Qt5 (Core, Widgets)
+- Qt5 (Core, Widgets, SerialPort)
 - C++17 编译器
 
 ## 构建
@@ -104,6 +104,20 @@ make -j$(nproc)
 ```bash
 ./build/VaproView
 ```
+
+### Windows 构建与运行
+
+```powershell
+cd VaporView
+cmake -S . -B build-win -G Ninja
+cmake --build build-win -j
+.\build-win\VaproView.exe
+```
+
+说明:
+- Windows 端口名使用 `COM3/COM4...`。
+- Linux 端口名继续使用 `/dev/...`。
+- 建议 Windows 安装 Qt 5.15.2（含 SerialPort 模块）+ MinGW 64-bit 或 MSVC 2019/2022 工具链。
 
 ## 默认串口配置
 

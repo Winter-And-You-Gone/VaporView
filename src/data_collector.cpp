@@ -4,11 +4,133 @@
 #include <cstring>
 #include <iomanip>
 #include <sstream>
-#include <unistd.h>
-#include <poll.h>
 
 namespace VaproView
 {
+namespace
+{
+void sleepMs(int ms)
+{
+  if (ms > 0)
+  {
+    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+  }
+}
+
+ssize_t readAccumulated(SerialPort& serial, uint8_t* buffer, size_t capacity, int total_wait_ms, int step_ms = 20)
+{
+  size_t total = 0;
+  int elapsed = 0;
+  while (elapsed < total_wait_ms && total < capacity)
+  {
+    ssize_t n = serial.read(buffer + total, capacity - total);
+    if (n > 0)
+    {
+      total += static_cast<size_t>(n);
+    }
+    sleepMs(step_ms);
+    elapsed += step_ms;
+  }
+  return static_cast<ssize_t>(total);
+}
+
+uint16_t modbusCrc16Local(const uint8_t* data, size_t len)
+{
+  uint16_t crc = 0xFFFF;
+  for (size_t i = 0; i < len; i++)
+  {
+    crc ^= data[i];
+    for (int j = 0; j < 8; j++)
+    {
+      if (crc & 0x0001)
+      {
+        crc >>= 1;
+        crc ^= 0xA001;
+      }
+      else
+      {
+        crc >>= 1;
+      }
+    }
+  }
+  return crc;
+}
+
+float decodeFloatLELocal(uint16_t reg0, uint16_t reg1)
+{
+  uint32_t val = static_cast<uint32_t>(reg0) | (static_cast<uint32_t>(reg1) << 16);
+  float result;
+  std::memcpy(&result, &val, sizeof(float));
+  return result;
+}
+
+enum class HmpParseResult
+{
+  None,
+  Data,
+  Exception,
+  CrcError
+};
+
+HmpParseResult parseHmpResponse(const uint8_t* buffer, size_t size, float& humidity, float& temperature, uint8_t& exception_code, uint8_t function_code)
+{
+  constexpr uint8_t kSlaveAddr = 240;
+  const uint8_t exception_fc = static_cast<uint8_t>(function_code | 0x80);
+
+  for (size_t i = 0; i < size; ++i)
+  {
+    if (buffer[i] != kSlaveAddr)
+    {
+      continue;
+    }
+
+    if (i + 5 <= size && buffer[i + 1] == exception_fc)
+    {
+      uint16_t recv_crc = static_cast<uint16_t>(buffer[i + 3]) | (static_cast<uint16_t>(buffer[i + 4]) << 8);
+      uint16_t calc_crc = modbusCrc16Local(buffer + i, 3);
+      if (recv_crc == calc_crc)
+      {
+        exception_code = buffer[i + 2];
+        return HmpParseResult::Exception;
+      }
+      return HmpParseResult::CrcError;
+    }
+
+    if (i + 3 <= size && buffer[i + 1] == function_code)
+    {
+      uint8_t byte_count = buffer[i + 2];
+      size_t frame_len = static_cast<size_t>(3 + byte_count + 2);
+      if (i + frame_len > size)
+      {
+        continue;
+      }
+
+      uint16_t recv_crc = static_cast<uint16_t>(buffer[i + frame_len - 2]) |
+                          (static_cast<uint16_t>(buffer[i + frame_len - 1]) << 8);
+      uint16_t calc_crc = modbusCrc16Local(buffer + i, frame_len - 2);
+      if (recv_crc != calc_crc)
+      {
+        return HmpParseResult::CrcError;
+      }
+
+      if (byte_count >= 8)
+      {
+        uint16_t reg0 = static_cast<uint16_t>(buffer[i + 3] << 8) | buffer[i + 4];
+        uint16_t reg1 = static_cast<uint16_t>(buffer[i + 5] << 8) | buffer[i + 6];
+        uint16_t reg2 = static_cast<uint16_t>(buffer[i + 7] << 8) | buffer[i + 8];
+        uint16_t reg3 = static_cast<uint16_t>(buffer[i + 9] << 8) | buffer[i + 10];
+
+        humidity = decodeFloatLELocal(reg0, reg1);
+        temperature = decodeFloatLELocal(reg2, reg3);
+        return HmpParseResult::Data;
+      }
+    }
+  }
+
+  return HmpParseResult::None;
+}
+
+}
 
 DataCollector::DataCollector()
 {
@@ -180,7 +302,7 @@ bool GnssCollector::setDeviceSampleRate(int hz)
     return false;
   }
   
-  usleep(300000);
+  sleepMs(300);
   
   char response[1024];
   ssize_t n = serial_.read(response, sizeof(response) - 1);
@@ -225,32 +347,25 @@ bool GnssCollector::setDeviceSampleRate(int hz)
 bool GnssCollector::checkDeviceResponse()
 {
   char buffer[256];
-  struct pollfd p;
-  p.fd = serial_.fileDescriptor();
-  p.events = POLLIN;
-  
-  int max_wait_ms = 2000;
+  constexpr int max_wait_ms = 2000;
+  constexpr int step_ms = 100;
   int elapsed_ms = 0;
-  
+
   while (elapsed_ms < max_wait_ms)
   {
-    int rpoll = poll(&p, 1, 100);
-    elapsed_ms += 100;
-    
-    if (rpoll > 0 && (p.revents & POLLIN))
+    ssize_t n = serial_.read(buffer, sizeof(buffer));
+    if (n > 0)
     {
-      ssize_t n = serial_.read(buffer, sizeof(buffer));
-      if (n > 0)
+      std::string data(buffer, static_cast<size_t>(n));
+      if (data.find("$") != std::string::npos || data.find("#") != std::string::npos)
       {
-        std::string data(buffer, static_cast<size_t>(n));
-        if (data.find("$") != std::string::npos || data.find("#") != std::string::npos)
-        {
-          return true;
-        }
+        return true;
       }
     }
+    sleepMs(step_ms);
+    elapsed_ms += step_ms;
   }
-  
+
   return false;
 }
 
@@ -327,7 +442,7 @@ void GnssCollector::run()
     }
     else
     {
-      usleep(10000);
+      sleepMs(10);
     }
   }
 }
@@ -375,36 +490,29 @@ bool ImuCollector::checkDeviceResponse()
 {
   char buffer[2048];
   hipnuc_raw_t raw{};
-  
-  struct pollfd p;
-  p.fd = serial_.fileDescriptor();
-  p.events = POLLIN;
-  
-  int max_wait_ms = 2000;
+
+  constexpr int max_wait_ms = 2000;
+  constexpr int step_ms = 100;
   int elapsed_ms = 0;
-  
+
   while (elapsed_ms < max_wait_ms)
   {
-    int rpoll = poll(&p, 1, 100);
-    elapsed_ms += 100;
-    
-    if (rpoll > 0 && (p.revents & POLLIN))
+    ssize_t n = serial_.read(buffer, sizeof(buffer));
+    if (n > 0)
     {
-      ssize_t n = serial_.read(buffer, sizeof(buffer));
-      if (n > 0)
+      for (ssize_t j = 0; j < n; j++)
       {
-        for (ssize_t j = 0; j < n; j++)
+        int ret = hipnuc_input(&raw, static_cast<uint8_t>(buffer[j]));
+        if (ret == 1)
         {
-          int ret = hipnuc_input(&raw, static_cast<uint8_t>(buffer[j]));
-          if (ret == 1)
-          {
-            return true;
-          }
+          return true;
         }
       }
     }
+    sleepMs(step_ms);
+    elapsed_ms += step_ms;
   }
-  
+
   return false;
 }
 
@@ -502,7 +610,7 @@ void ImuCollector::run()
     }
     else
     {
-      usleep(5000);
+      sleepMs(5);
     }
   }
 }
@@ -535,7 +643,7 @@ bool PtbCollector::setDeviceSampleRate(int hz)
     return false;
   }
 
-  usleep(100000);
+  sleepMs(100);
 
   const char* reset_cmd = ".RESET\r";
   written = serial_.write(reset_cmd, strlen(reset_cmd));
@@ -567,7 +675,7 @@ bool PtbCollector::checkDeviceResponse()
     
     for (int j = 0; j < 10; j++)
     {
-      usleep(50000);
+      sleepMs(50);
       ssize_t n = serial_.read(response, sizeof(response));
       if (n > 0)
       {
@@ -604,7 +712,7 @@ void PtbCollector::run()
     auto start_time = std::chrono::steady_clock::now();
     
     serial_.write(PTB_CMD_PRESSURE, std::strlen(PTB_CMD_PRESSURE));
-    usleep(30000);
+    sleepMs(30);
 
     ssize_t n = serial_.read(response, sizeof(response));
     if (n > 0)
@@ -646,7 +754,7 @@ void PtbCollector::run()
     int remaining = interval_ms - static_cast<int>(elapsed);
     if (remaining > 0)
     {
-      usleep(static_cast<useconds_t>(remaining * 1000));
+      sleepMs(remaining);
     }
   }
 }
@@ -666,9 +774,10 @@ bool HmpCollector::checkDeviceResponse()
 {
   uint8_t request[8];
   uint8_t response[64];
-  
+  constexpr uint8_t function_code = 0x03;
+
   request[0] = HMP3_SLAVE_ADDR;
-  request[1] = 0x03;
+  request[1] = function_code;
   request[2] = 0x00;
   request[3] = 0x00;
   request[4] = 0x00;
@@ -676,32 +785,26 @@ bool HmpCollector::checkDeviceResponse()
   uint16_t crc = modbusCrc16(request, 6);
   request[6] = crc & 0xFF;
   request[7] = (crc >> 8) & 0xFF;
-  
+
   int max_attempts = 10;
-  
+
   for (int i = 0; i < max_attempts; i++)
   {
     serial_.flush();
     serial_.write(request, 8);
-    
-    for (int j = 0; j < 10; j++)
+
+    ssize_t n = readAccumulated(serial_, response, sizeof(response), 500, 25);
+    float humidity = 0.0f;
+    float temperature = 0.0f;
+    uint8_t exception_code = 0;
+    const size_t response_size = n > 0 ? static_cast<size_t>(n) : 0U;
+    HmpParseResult parsed = parseHmpResponse(response, response_size, humidity, temperature, exception_code, function_code);
+    if (parsed == HmpParseResult::Data)
     {
-      usleep(50000);
-      ssize_t n = serial_.read(response, sizeof(response));
-      
-      if (n >= 13 && response[0] == HMP3_SLAVE_ADDR && response[1] == 0x03)
-      {
-        uint16_t recv_crc = response[n - 2] | (response[n - 1] << 8);
-        uint16_t calc_crc = modbusCrc16(response, static_cast<size_t>(n - 2));
-        
-        if (recv_crc == calc_crc)
-        {
-          return true;
-        }
-      }
+      return true;
     }
   }
-  
+
   return false;
 }
 
@@ -756,52 +859,41 @@ void HmpCollector::run()
 
     serial_.flush();
     serial_.write(request, 8);
-    usleep(100000);
+    ssize_t n = readAccumulated(serial_, response, sizeof(response), 500, 25);
+    float humidity = 0.0f;
+    float temperature = 0.0f;
+    uint8_t exception_code = 0;
+    const size_t response_size = n > 0 ? static_cast<size_t>(n) : 0U;
+    HmpParseResult parsed = parseHmpResponse(response, response_size, humidity, temperature, exception_code, 0x03);
 
-    ssize_t n = serial_.read(response, sizeof(response));
-
-    if (n >= 13 && response[0] == HMP3_SLAVE_ADDR && response[1] == 0x03)
+    if (parsed == HmpParseResult::Data)
     {
-      uint16_t recv_crc = response[n - 2] | (response[n - 1] << 8);
-      uint16_t calc_crc = modbusCrc16(response, static_cast<size_t>(n - 2));
+      std::lock_guard<std::mutex> lock(mutex_);
+      latest_data_.humidity = humidity;
+      latest_data_.temperature = temperature;
+      latest_data_.valid = true;
+      latest_data_.timestamp = std::chrono::steady_clock::now();
+      latest_data_.error_message.clear();
 
-      if (recv_crc == calc_crc)
+      recordDataReceived();
+
+      if (data_callback_ && shouldEmitData())
       {
-        uint16_t reg0 = (response[3] << 8) | response[4];
-        uint16_t reg1 = (response[5] << 8) | response[6];
-        uint16_t reg2 = (response[7] << 8) | response[8];
-        uint16_t reg3 = (response[9] << 8) | response[10];
-
-        float humidity = decodeFloatLE(reg0, reg1);
-        float temperature = decodeFloatLE(reg2, reg3);
-
-        std::lock_guard<std::mutex> lock(mutex_);
-        latest_data_.humidity = humidity;
-        latest_data_.temperature = temperature;
-        latest_data_.valid = true;
-        latest_data_.timestamp = std::chrono::steady_clock::now();
-        latest_data_.error_message.clear();
-
-        recordDataReceived();
-
-        if (data_callback_ && shouldEmitData())
-        {
-          updateLastEmitTime();
-          data_callback_();
-        }
-      }
-      else
-      {
-        std::lock_guard<std::mutex> lock(mutex_);
-        latest_data_.valid = false;
-        latest_data_.error_message = "CRC error";
+        updateLastEmitTime();
+        data_callback_();
       }
     }
-    else if (n > 0 && response[1] == 0x83)
+    else if (parsed == HmpParseResult::Exception)
     {
       std::lock_guard<std::mutex> lock(mutex_);
       latest_data_.valid = false;
-      latest_data_.error_message = "Modbus error: " + std::to_string(response[2]);
+      latest_data_.error_message = "Modbus error: " + std::to_string(exception_code);
+    }
+    else if (parsed == HmpParseResult::CrcError)
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      latest_data_.valid = false;
+      latest_data_.error_message = "CRC error";
     }
 
     int interval_ms = 1000 / sample_rate_hz_;
@@ -810,9 +902,10 @@ void HmpCollector::run()
     int remaining = interval_ms - static_cast<int>(elapsed) - 100;
     if (remaining > 0)
     {
-      usleep(static_cast<useconds_t>(remaining * 1000));
+      sleepMs(remaining);
     }
   }
 }
 
 }
+

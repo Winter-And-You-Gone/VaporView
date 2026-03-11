@@ -2,7 +2,13 @@
 #define VAPROVIEW_SERIAL_PORT_H
 
 #include <cstdint>
+#include <cstddef>
 #include <string>
+
+#ifdef _MSC_VER
+#include <BaseTsd.h>
+using ssize_t = SSIZE_T;
+#endif
 
 namespace VaproView
 {
@@ -79,6 +85,9 @@ public:
 private:
   int fd_;
   std::string last_error_;
+#ifdef _WIN32
+  void* handle_ = nullptr;
+#endif
 };
 
 }
