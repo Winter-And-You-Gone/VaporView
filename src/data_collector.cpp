@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <sstream>
 #include <unistd.h>
+#include <poll.h>
 
 namespace VaproView
 {
@@ -224,18 +225,28 @@ bool GnssCollector::setDeviceSampleRate(int hz)
 bool GnssCollector::checkDeviceResponse()
 {
   char buffer[256];
-  int max_attempts = 20;
+  struct pollfd p;
+  p.fd = serial_.fileDescriptor();
+  p.events = POLLIN;
   
-  for (int i = 0; i < max_attempts; i++)
+  int max_wait_ms = 2000;
+  int elapsed_ms = 0;
+  
+  while (elapsed_ms < max_wait_ms)
   {
-    usleep(100000);
-    ssize_t n = serial_.read(buffer, sizeof(buffer));
-    if (n > 0)
+    int rpoll = poll(&p, 1, 100);
+    elapsed_ms += 100;
+    
+    if (rpoll > 0 && (p.revents & POLLIN))
     {
-      std::string data(buffer, static_cast<size_t>(n));
-      if (data.find("$") != std::string::npos || data.find("#") != std::string::npos)
+      ssize_t n = serial_.read(buffer, sizeof(buffer));
+      if (n > 0)
       {
-        return true;
+        std::string data(buffer, static_cast<size_t>(n));
+        if (data.find("$") != std::string::npos || data.find("#") != std::string::npos)
+        {
+          return true;
+        }
       }
     }
   }
@@ -364,20 +375,31 @@ bool ImuCollector::checkDeviceResponse()
 {
   char buffer[2048];
   hipnuc_raw_t raw{};
-  int max_attempts = 20;
   
-  for (int i = 0; i < max_attempts; i++)
+  struct pollfd p;
+  p.fd = serial_.fileDescriptor();
+  p.events = POLLIN;
+  
+  int max_wait_ms = 2000;
+  int elapsed_ms = 0;
+  
+  while (elapsed_ms < max_wait_ms)
   {
-    usleep(100000);
-    ssize_t n = serial_.read(buffer, sizeof(buffer));
-    if (n > 0)
+    int rpoll = poll(&p, 1, 100);
+    elapsed_ms += 100;
+    
+    if (rpoll > 0 && (p.revents & POLLIN))
     {
-      for (ssize_t j = 0; j < n; j++)
+      ssize_t n = serial_.read(buffer, sizeof(buffer));
+      if (n > 0)
       {
-        int ret = hipnuc_input(&raw, static_cast<uint8_t>(buffer[j]));
-        if (ret == 1)
+        for (ssize_t j = 0; j < n; j++)
         {
-          return true;
+          int ret = hipnuc_input(&raw, static_cast<uint8_t>(buffer[j]));
+          if (ret == 1)
+          {
+            return true;
+          }
         }
       }
     }
