@@ -75,6 +75,10 @@ else()
     )
 endif()
 
+if(MSVC)
+    target_compile_options(VaproView PRIVATE /FI"${CMAKE_SOURCE_DIR}/include/compiler_compat.h")
+endif()
+
 target_include_directories(VaproView PRIVATE
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/src
@@ -126,6 +130,10 @@ if(BUILD_PYTHON_BINDINGS)
             ${UM982_DRIVER_DIR}
             ${HIPNUC_DRIVER_DIR}
         )
+
+        if(MSVC)
+            target_compile_options(VaproView_bindings PRIVATE /FI"${CMAKE_SOURCE_DIR}/include/compiler_compat.h")
+        endif()
 
         target_link_libraries(VaproView_bindings PRIVATE
             Threads::Threads
