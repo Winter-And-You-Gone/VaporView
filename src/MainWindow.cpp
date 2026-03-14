@@ -929,6 +929,11 @@ void MainWindow::loadModernStyleSheet()
     {
         base_style_sheet_ = QString::fromUtf8(styleFile.readAll());
         styleFile.close();
+
+        const QFileInfo styleInfo(stylePath);
+        const QString resourceDir = styleInfo.absolutePath();
+        const QString comboArrowPath = QDir(resourceDir).absoluteFilePath("combo_arrow_down.xpm").replace('\\', '/');
+        base_style_sheet_.replace("url(combo_arrow_down.xpm)", QString("url(%1)").arg(comboArrowPath));
     }
     else
     {
