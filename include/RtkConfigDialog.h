@@ -65,6 +65,7 @@ private:
     void updateGgaStatusLabel(const QString& message, bool healthy);
     void processGgaBuffer();
     void handleGgaSentence(const QString& sentence);
+    void trimGgaDisplay();
     bool tryOpenGgaPort();
     int currentGgaBaudrate() const;
     QString ggaPortName() const;

@@ -15,6 +15,7 @@
 #include <QRegularExpression>
 #include <QSerialPortInfo>
 #include <QSignalBlocker>
+#include <QTextBlock>
 #include <QTextCursor>
 #include <cmath>
 
@@ -23,7 +24,7 @@ namespace
 constexpr int kGgaPollIntervalMs = 50;
 constexpr int kGgaReconnectIntervalMs = 1500;
 constexpr int kGgaStaleTimeoutMs = 1500;
-constexpr int kGgaMaxVisibleLines = 120;
+constexpr int kGgaMaxVisibleLines = 200;
 const QRegularExpression kGgaSentencePattern("^\\$..GGA,");
 
 QComboBox *createTimingComboBox(QWidget *parent, const QString &defaultValue)
@@ -849,6 +850,7 @@ void RtkConfigDialog::handleGgaSentence(const QString& sentence)
         const int previousValue = scrollBar ? scrollBar->value() : 0;
         const QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss.zzz");
         gga_text_edit_->append(QString("[%1] %2").arg(timestamp, sentence));
+        trimGgaDisplay();
         QTimer::singleShot(0, this, [this, stickToBottom, previousValue]() {
             if (!gga_text_edit_)
             {
@@ -870,6 +872,34 @@ void RtkConfigDialog::handleGgaSentence(const QString& sentence)
                 updatedScrollBar->setValue(std::min(previousValue, updatedScrollBar->maximum()));
             }
         });
+    }
+}
+
+void RtkConfigDialog::trimGgaDisplay()
+{
+    if (!gga_text_edit_)
+    {
+        return;
+    }
+
+    QTextDocument *document = gga_text_edit_->document();
+    if (!document)
+    {
+        return;
+    }
+
+    while (document->blockCount() > kGgaMaxVisibleLines)
+    {
+        QTextBlock firstBlock = document->begin();
+        if (!firstBlock.isValid())
+        {
+            break;
+        }
+
+        QTextCursor cursor(firstBlock);
+        cursor.select(QTextCursor::BlockUnderCursor);
+        cursor.removeSelectedText();
+        cursor.deleteChar();
     }
 }
 
