@@ -877,6 +877,8 @@ MainWindow::MainWindow(QWidget *parent)
     , cancel_connection_requested_(false)
     , font_scale_percent_(100)
     , base_font_point_size_(0.0)
+    , base_window_size_(1280, 720)
+    , base_minimum_window_size_(800, 600)
     , gnss_sample_rate_(1)
     , imu_sample_rate_(1)
     , ptb_sample_rate_(1)
@@ -899,8 +901,8 @@ MainWindow::MainWindow(QWidget *parent)
     setupStatusBar();
     setupCentralWidget();
 
-    resize(1280, 720);
-    setMinimumSize(800, 600);
+    resize(base_window_size_);
+    setMinimumSize(base_minimum_window_size_);
 
     refresh_timer_ = new QTimer(this);
     connect(refresh_timer_, &QTimer::timeout, this, &MainWindow::onRefreshTimer);
@@ -1127,13 +1129,11 @@ void MainWindow::setFontScale(int percent)
     }
 
     QSize targetSize = size();
-    const int previousPercent = std::max(1, font_scale_percent_);
     if (!isFullScreen() && !isMaximized())
     {
-        const double scaleRatio = static_cast<double>(percent) / static_cast<double>(previousPercent);
         targetSize = QSize(
-            std::max(1, static_cast<int>(std::lround(size().width() * scaleRatio))),
-            std::max(1, static_cast<int>(std::lround(size().height() * scaleRatio)))
+            std::max(1, static_cast<int>(std::lround(base_window_size_.width() * percent / 100.0))),
+            std::max(1, static_cast<int>(std::lround(base_window_size_.height() * percent / 100.0)))
         );
     }
 

@@ -96,6 +96,8 @@ private:
     bool is_running_;
     bool is_english_;
     int font_scale_percent_;
+    QSize base_dialog_size_;
+    QSize base_minimum_dialog_size_;
     QString config_file_path_;
 };
 

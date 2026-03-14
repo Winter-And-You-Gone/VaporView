@@ -362,6 +362,8 @@ private:
     int font_scale_percent_;
     double base_font_point_size_;
     QString base_style_sheet_;
+    QSize base_window_size_;
+    QSize base_minimum_window_size_;
     int gnss_sample_rate_;
     int imu_sample_rate_;
     int ptb_sample_rate_;

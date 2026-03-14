@@ -88,6 +88,8 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , is_running_(false)
     , is_english_(false)
     , font_scale_percent_(100)
+    , base_dialog_size_(620, 740)
+    , base_minimum_dialog_size_(560, 680)
 {
     setupUi();
     loadSettings();
@@ -384,10 +386,12 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
     log_text_edit_->setMinimumWidth(scalePixels(200));
 
-    setMinimumSize(scalePixels(560), scalePixels(680));
+    setMinimumSize(
+        std::max(scalePixels(base_minimum_dialog_size_.width()), minimumSize().width()),
+        std::max(scalePixels(base_minimum_dialog_size_.height()), minimumSize().height()));
     if (!isMaximized() && !isFullScreen())
     {
-        resize(size().expandedTo(minimumSize()).expandedTo(QSize(scalePixels(620), scalePixels(740))));
+        resize(size().expandedTo(minimumSize()).expandedTo(QSize(scalePixels(base_dialog_size_.width()), scalePixels(base_dialog_size_.height()))));
     }
 }
 
@@ -399,13 +403,11 @@ void RtkConfigDialog::setFontScale(int percent)
     }
 
     QSize targetSize = size();
-    const int previousPercent = std::max(1, font_scale_percent_);
     if (!isMaximized() && !isFullScreen())
     {
-        const double scaleRatio = static_cast<double>(percent) / static_cast<double>(previousPercent);
         targetSize = QSize(
-            std::max(1, static_cast<int>(std::lround(size().width() * scaleRatio))),
-            std::max(1, static_cast<int>(std::lround(size().height() * scaleRatio)))
+            std::max(1, static_cast<int>(std::lround(base_dialog_size_.width() * percent / 100.0))),
+            std::max(1, static_cast<int>(std::lround(base_dialog_size_.height() * percent / 100.0)))
         );
     }
 
