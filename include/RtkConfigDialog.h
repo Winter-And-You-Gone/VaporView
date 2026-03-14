@@ -9,6 +9,7 @@
 #include <QLabel>
 #include <QGroupBox>
 #include <QProcess>
+#include <QScrollBar>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -67,6 +68,7 @@ private:
     bool tryOpenGgaPort();
     int currentGgaBaudrate() const;
     QString ggaPortName() const;
+    void refreshPortCombos();
 
     QVBoxLayout *main_layout_;
     QGridLayout *config_layout_;
@@ -101,6 +103,7 @@ private:
     QComboBox *baudrate_combo_;
     QComboBox *timeout_combo_;
     QComboBox *reconnect_combo_;
+    QComboBox *gga_port_combo_;
     QCheckBox *background_check_;
     QTextEdit *gga_text_edit_;
     QTextEdit *log_text_edit_;

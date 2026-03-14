@@ -14,6 +14,7 @@
 #include <QIntValidator>
 #include <QRegularExpression>
 #include <QSerialPortInfo>
+#include <QSignalBlocker>
 #include <QTextCursor>
 #include <cmath>
 
@@ -86,6 +87,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , baudrate_combo_(nullptr)
     , timeout_combo_(nullptr)
     , reconnect_combo_(nullptr)
+    , gga_port_combo_(nullptr)
     , background_check_(nullptr)
     , gga_text_edit_(nullptr)
     , log_text_edit_(nullptr)
@@ -119,6 +121,14 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     gga_poll_timer_ = new QTimer(this);
     connect(gga_poll_timer_, &QTimer::timeout, this, &RtkConfigDialog::onGgaPollTimer);
     connect(baudrate_combo_, &QComboBox::currentTextChanged, this, [this](const QString&) {
+        stopGgaMonitor();
+        startGgaMonitor();
+    });
+    connect(gga_port_combo_, &QComboBox::currentTextChanged, this, [this](const QString&) {
+        if (gga_text_edit_)
+        {
+            gga_text_edit_->clear();
+        }
         stopGgaMonitor();
         startGgaMonitor();
     });
@@ -241,6 +251,10 @@ void RtkConfigDialog::setupUi()
 
     gga_port_info_label_ = new QLabel(this);
     gga_header_layout_->addWidget(gga_port_info_label_);
+
+    gga_port_combo_ = new QComboBox(this);
+    gga_port_combo_->setEditable(true);
+    gga_header_layout_->addWidget(gga_port_combo_);
     gga_header_layout_->addStretch();
 
     gga_frequency_label_ = new QLabel(this);
@@ -319,7 +333,7 @@ void RtkConfigDialog::setEnglish(bool english)
     setWindowTitle(textFor("RTK NTRIP Configuration", "RTK NTRIP 配置"));
     config_group_->setTitle(textFor("NTRIP Server Configuration", "NTRIP 服务器配置"));
     output_group_->setTitle(textFor("RTCM Output Configuration", "RTCM 输出配置"));
-    gga_group_->setTitle(textFor("COM1 GGA Monitor", "COM1 GGA 监视"));
+    gga_group_->setTitle(textFor("GGA Monitor", "GGA 监视"));
     log_group_->setTitle(textFor("RTK Service Log", "RTK 服务日志"));
 
     server_label_->setText(textFor("Server:", "服务器:"));
@@ -438,9 +452,12 @@ void RtkConfigDialog::applyScaledUiMetrics()
     timeout_combo_->setMinimumHeight(scalePixels(30));
     reconnect_combo_->setMinimumWidth(scalePixels(200));
     reconnect_combo_->setMinimumHeight(scalePixels(30));
+    gga_port_combo_->setMinimumWidth(scalePixels(160));
+    gga_port_combo_->setMinimumHeight(scalePixels(30));
 
     gga_status_label_->setMinimumHeight(scalePixels(24));
     gga_text_edit_->setMinimumHeight(scalePixels(170));
+    gga_text_edit_->document()->setDocumentMargin(scalePixels(8));
 
     applyButtonWidth(refresh_ports_btn_, 80);
     applyButtonWidth(fetch_mountpoints_btn_, 128);
@@ -514,10 +531,13 @@ void RtkConfigDialog::loadSettings()
     username_edit_->setText(settings.value("username", "").toString());
     password_edit_->setText(settings.value("password", "").toString());
     mountpoint_edit_->setText(settings.value("mountpoint", "").toString());
+    refreshPortCombos();
 #ifdef _WIN32
     output_port_combo_->setCurrentText(settings.value("output_port", "COM1").toString());
+    gga_port_combo_->setCurrentText(settings.value("gga_port", "COM1").toString());
 #else
     output_port_combo_->setCurrentText(settings.value("output_port", "/dev/ttyCOM3").toString());
+    gga_port_combo_->setCurrentText(settings.value("gga_port", "/dev/ttyS0").toString());
 #endif
     baudrate_combo_->setCurrentText(settings.value("baudrate", "115200").toString());
     timeout_combo_->setCurrentText(settings.value("timeout", "5000").toString());
@@ -536,6 +556,7 @@ void RtkConfigDialog::saveSettings()
     settings.setValue("password", password_edit_->text());
     settings.setValue("mountpoint", mountpoint_edit_->text());
     settings.setValue("output_port", output_port_combo_->currentText());
+    settings.setValue("gga_port", gga_port_combo_->currentText());
     settings.setValue("baudrate", baudrate_combo_->currentText());
     settings.setValue("timeout", timeout_combo_->currentText());
     settings.setValue("reconnect", reconnect_combo_->currentText());
@@ -615,11 +636,16 @@ void RtkConfigDialog::updateButtonStates()
 
 QString RtkConfigDialog::ggaPortName() const
 {
+    if (!gga_port_combo_)
+    {
 #ifdef _WIN32
-    return QStringLiteral("COM1");
+        return QStringLiteral("COM1");
 #else
-    return QStringLiteral("/dev/ttyS0");
+        return QStringLiteral("/dev/ttyS0");
 #endif
+    }
+
+    return gga_port_combo_->currentText().trimmed();
 }
 
 int RtkConfigDialog::currentGgaBaudrate() const
@@ -659,16 +685,11 @@ void RtkConfigDialog::updateGgaMonitorText()
         return;
     }
 
-    gga_port_info_label_->setText(textFor("Port: %1 @ %2", "串口: %1 @ %2")
-        .arg(ggaPortName(), QString::number(currentGgaBaudrate())));
+    gga_port_info_label_->setText(textFor("GGA Port:", "GGA串口:"));
 
     if (gga_status_message_.isEmpty())
     {
-#ifdef _WIN32
-        updateGgaStatusLabel(textFor("Status: Waiting for COM1 data", "状态: 正在等待 COM1 数据"), false);
-#else
         updateGgaStatusLabel(textFor("Status: Waiting for serial data", "状态: 正在等待串口数据"), false);
-#endif
     }
     else if (gga_status_message_.startsWith("Status:") || gga_status_message_.startsWith("状态:"))
     {
@@ -736,10 +757,16 @@ bool RtkConfigDialog::tryOpenGgaPort()
 
     gga_last_open_attempt_ = now;
     const std::string port = ggaPortName().toStdString();
+    if (port.empty())
+    {
+        updateGgaStatusLabel(textFor("Status: Please select a GGA port", "状态: 请选择 GGA 串口"), false);
+        return false;
+    }
+
     if (!gga_serial_.open(port, currentGgaBaudrate()))
     {
         updateGgaStatusLabel(
-            textFor("Status: COM1 unavailable, retrying...", "状态: COM1 不可用，正在重试..."),
+            textFor("Status: %1 unavailable, retrying...", "状态: %1 不可用，正在重试...").arg(ggaPortName()),
             false);
         return false;
     }
@@ -749,7 +776,7 @@ bool RtkConfigDialog::tryOpenGgaPort()
     gga_recent_intervals_sec_.clear();
     gga_has_sentence_time_ = false;
     updateGgaFrequency(0.0);
-    updateGgaStatusLabel(textFor("Status: Listening for GGA sentences", "状态: 正在监听 GGA 语句"), true);
+    updateGgaStatusLabel(textFor("Status: Listening on %1", "状态: 正在监听 %1").arg(ggaPortName()), true);
     updateGgaMonitorText();
     return true;
 }
@@ -817,11 +844,22 @@ void RtkConfigDialog::handleGgaSentence(const QString& sentence)
 
     if (gga_text_edit_)
     {
+        QScrollBar *scrollBar = gga_text_edit_->verticalScrollBar();
+        const bool stickToBottom = !scrollBar || scrollBar->value() >= (scrollBar->maximum() - 2);
+        const int previousValue = scrollBar ? scrollBar->value() : 0;
         const QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss.zzz");
         gga_text_edit_->append(QString("[%1] %2").arg(timestamp, sentence));
-        QTextCursor cursor = gga_text_edit_->textCursor();
-        cursor.movePosition(QTextCursor::End);
-        gga_text_edit_->setTextCursor(cursor);
+        if (scrollBar)
+        {
+            if (stickToBottom)
+            {
+                scrollBar->setValue(scrollBar->maximum());
+            }
+            else
+            {
+                scrollBar->setValue(previousValue);
+            }
+        }
     }
 }
 
@@ -847,7 +885,7 @@ void RtkConfigDialog::onGgaPollTimer()
         {
             gga_serial_.close();
             updateGgaFrequency(0.0);
-            updateGgaStatusLabel(textFor("Status: COM1 read failed, reconnecting...", "状态: COM1 读取失败，正在重连..."), false);
+            updateGgaStatusLabel(textFor("Status: %1 read failed, reconnecting...", "状态: %1 读取失败，正在重连...").arg(ggaPortName()), false);
         }
         break;
     }
@@ -861,6 +899,35 @@ void RtkConfigDialog::onGgaPollTimer()
             gga_recent_intervals_sec_.clear();
             updateGgaFrequency(0.0);
             updateGgaStatusLabel(textFor("Status: Waiting for next GGA sentence", "状态: 正在等待下一条 GGA 语句"), false);
+        }
+    }
+}
+
+void RtkConfigDialog::refreshPortCombos()
+{
+    const QStringList ports = getAvailablePorts();
+    const QString currentOutput = output_port_combo_ ? output_port_combo_->currentText().trimmed() : QString();
+    const QString currentGga = gga_port_combo_ ? gga_port_combo_->currentText().trimmed() : QString();
+
+    if (output_port_combo_)
+    {
+        const QSignalBlocker blocker(output_port_combo_);
+        output_port_combo_->clear();
+        output_port_combo_->addItems(ports);
+        if (!currentOutput.isEmpty())
+        {
+            output_port_combo_->setCurrentText(currentOutput);
+        }
+    }
+
+    if (gga_port_combo_)
+    {
+        const QSignalBlocker blocker(gga_port_combo_);
+        gga_port_combo_->clear();
+        gga_port_combo_->addItems(ports);
+        if (!currentGga.isEmpty())
+        {
+            gga_port_combo_->setCurrentText(currentGga);
         }
     }
 }
@@ -881,23 +948,8 @@ QStringList RtkConfigDialog::getAvailablePorts() const
 
 void RtkConfigDialog::onRefreshPortsClicked()
 {
-    QStringList ports = getAvailablePorts();
-    QString current = output_port_combo_->currentText();
-
-    output_port_combo_->clear();
-    output_port_combo_->addItems(ports);
-
-    int idx = output_port_combo_->findText(current);
-    if (idx >= 0)
-    {
-        output_port_combo_->setCurrentIndex(idx);
-    }
-    else if (!current.isEmpty())
-    {
-        output_port_combo_->setEditText(current);
-    }
-
-    appendLog(textFor("Ports refreshed: %1 found", "串口已刷新: 发现 %1 个").arg(ports.size()));
+    refreshPortCombos();
+    appendLog(textFor("Ports refreshed: %1 found", "串口已刷新: 发现 %1 个").arg(getAvailablePorts().size()));
 }
 
 void RtkConfigDialog::onFetchMountpointsClicked()
@@ -1189,6 +1241,7 @@ void RtkConfigDialog::onSaveConfigClicked()
     settings.setValue("password", password_edit_->text());
     settings.setValue("mountpoint", mountpoint_edit_->text());
     settings.setValue("output_port", output_port_combo_->currentText());
+    settings.setValue("gga_port", gga_port_combo_->currentText());
     settings.setValue("baudrate", baudrate_combo_->currentText());
     settings.setValue("timeout", timeout_combo_->currentText());
     settings.setValue("reconnect", reconnect_combo_->currentText());
@@ -1216,6 +1269,7 @@ void RtkConfigDialog::onLoadConfigClicked()
     password_edit_->setText(settings.value("password", "").toString());
     mountpoint_edit_->setText(settings.value("mountpoint", "").toString());
     output_port_combo_->setCurrentText(settings.value("output_port", "").toString());
+    gga_port_combo_->setCurrentText(settings.value("gga_port", "").toString());
     baudrate_combo_->setCurrentText(settings.value("baudrate", "115200").toString());
     timeout_combo_->setCurrentText(settings.value("timeout", "5000").toString());
     reconnect_combo_->setCurrentText(settings.value("reconnect", "1000").toString());
