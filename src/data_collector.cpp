@@ -696,7 +696,7 @@ bool PtbCollector::initialize()
 bool PtbCollector::checkDeviceResponse()
 {
   char response[256];
-  int max_attempts = 10;
+  int max_attempts = 5;
   
   for (int i = 0; i < max_attempts; i++)
   {
@@ -820,7 +820,7 @@ bool HmpCollector::checkDeviceResponse()
   request[6] = crc & 0xFF;
   request[7] = (crc >> 8) & 0xFF;
 
-  int max_attempts = 10;
+  int max_attempts = 5;
 
   for (int i = 0; i < max_attempts; i++)
   {
