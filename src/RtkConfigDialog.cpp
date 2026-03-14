@@ -308,8 +308,15 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
         const QFontMetrics metrics(button->font());
         const int textWidth = metrics.horizontalAdvance(button->text());
-        button->setFixedWidth(std::max(scalePixels(baseWidth), textWidth + scalePixels(36)));
-        button->setFixedHeight(scalePixels(32));
+        const int targetWidth = std::max(scalePixels(baseWidth), textWidth + scalePixels(28));
+        const int targetHeight = std::max(scalePixels(28), metrics.height() + scalePixels(8));
+        button->setFixedWidth(targetWidth);
+        button->setFixedHeight(targetHeight);
+        button->setStyleSheet(QString(
+            "QPushButton { padding: %1px %2px; min-height: %3px; }")
+            .arg(scalePixels(2))
+            .arg(scalePixels(10))
+            .arg(std::max(1, targetHeight - scalePixels(4))));
     };
 
     if (main_layout_)
