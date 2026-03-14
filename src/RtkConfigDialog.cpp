@@ -482,11 +482,13 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
     gga_status_label_->setMinimumHeight(scalePixels(24));
     const int ggaTextHeight = scalePixels(118);
+    const int ggaTextBottomGap = scalePixels(8);
     gga_text_edit_->setFixedHeight(ggaTextHeight);
     gga_text_edit_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     if (gga_text_container_)
     {
         gga_text_container_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        gga_text_container_->setFixedHeight(ggaTextHeight + ggaTextBottomGap);
     }
     gga_text_edit_->document()->setDocumentMargin(scalePixels(12));
     gga_group_->setMinimumHeight(0);
