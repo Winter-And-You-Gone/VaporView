@@ -236,11 +236,37 @@ GUI 当前导出的是内存中的最新一帧快照，而非持续录制数据�
 - `file_logger.py`：日志与 CSV 落盘
 - `data_exporter.py`：CSV / JSON / KML 导出
 
-当前 GUI 主流程未直接调用这些 Python 模块。
+这些模块当前更接近“辅助工具代码”，不是桌面程序运行时正在使用的核心组件。
+
+更具体地说：
+
+- `VaporView.exe` 的主界面、串口连接、设备采集、实时显示、日志刷新和导出流程，当前都由 C++ / Qt 代码实现
+- `python/` 目录下的模块目前没有被主窗口或采集线程直接导入、调用或嵌入执行
+- 因此，修改这些 Python 文件不会直接改变当前 GUI 的运行行为，除非后续专门把它们接入主程序
+
+对使用者的直接影响是：
+
+- 只运行桌面程序时，可以先忽略 `python/` 目录
+- 如果后续需要做脚本化处理、批量导出、离线分析或工具脚本，这个目录可以作为现成基础继续扩展
+- 当前 README 中提到的导出、日志等主功能，不是由这些 Python 模块驱动的，而是由 C++ 代码独立完成的
 
 ## Python 绑定状态
 
-CMake 中保留了 `BUILD_PYTHON_BINDINGS` 选项，但仓库内目前不存在 `python/bindings.cpp`，因此该选项尚未处于可用状态。
+CMake 中保留了 `BUILD_PYTHON_BINDINGS` 选项，目的是在未来通过 `pybind11` 把部分 C++ 能力导出给 Python 调用。
+
+如果这条构建链完整可用，理论上可以生成一个类似 `VaporView_bindings` 的 Python 扩展模块，让 Python 代码直接调用串口、解析器或采集相关的 C++ 功能。
+
+当前之所以标记为“未完成”，是因为：
+
+- CMake 中已经写了 `BUILD_PYTHON_BINDINGS` 选项
+- 也已经写了 `pybind11_add_module(...)` 这条构建路径
+- 但构建入口文件 `python/bindings.cpp` 目前并不存在
+
+因此当前实际状态是：
+
+- 默认构建桌面程序时，这一项不会影响正常使用
+- 如果手动打开 `BUILD_PYTHON_BINDINGS=ON`，构建大概率会因为缺少 `python/bindings.cpp` 而失败
+- 这部分不影响当前 GUI 功能，只表示“Python 调用 C++ 核心能力”这条扩展路线还没有正式做完
 
 ## 默认串口参数
 
