@@ -15,6 +15,7 @@
 #include <QRegularExpression>
 #include <QSerialPortInfo>
 #include <QSignalBlocker>
+#include <QSizePolicy>
 #include <QTextBlock>
 #include <QTextCursor>
 #include <cmath>
@@ -244,6 +245,7 @@ void RtkConfigDialog::setupUi()
     main_layout_->addWidget(output_group_);
 
     gga_group_ = new QGroupBox(this);
+    gga_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
     gga_layout_ = new QVBoxLayout(gga_group_);
     gga_layout_->setSpacing(6);
     gga_layout_->setContentsMargins(8, 8, 8, 12);
@@ -460,8 +462,11 @@ void RtkConfigDialog::applyScaledUiMetrics()
     gga_port_combo_->setMinimumHeight(scalePixels(30));
 
     gga_status_label_->setMinimumHeight(scalePixels(24));
-    gga_text_edit_->setMinimumHeight(scalePixels(160));
+    const int ggaTextHeight = scalePixels(150);
+    gga_text_edit_->setMinimumHeight(ggaTextHeight);
+    gga_text_edit_->setMaximumHeight(ggaTextHeight);
     gga_text_edit_->document()->setDocumentMargin(scalePixels(12));
+    gga_group_->setMinimumHeight(ggaTextHeight + scalePixels(92));
 
     applyButtonWidth(refresh_ports_btn_, 80);
     applyButtonWidth(fetch_mountpoints_btn_, 128);
