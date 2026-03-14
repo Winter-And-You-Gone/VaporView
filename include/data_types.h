@@ -91,6 +91,16 @@ struct HmpData
   std::string error_message;
 };
 
+struct LidarData
+{
+  double distance_m = 0.0;
+  uint16_t signal_strength = 0;
+
+  std::chrono::steady_clock::time_point timestamp{};
+  bool valid = false;
+  std::string error_message;
+};
+
 }
 
 #endif

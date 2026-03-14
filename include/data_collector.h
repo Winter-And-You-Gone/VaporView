@@ -133,6 +133,25 @@ private:
   static float decodeFloatLE(uint16_t reg0, uint16_t reg1);
 };
 
+class LidarCollector : public DataCollector
+{
+public:
+  LidarData getLatestData();
+  bool setDeviceSampleRate(int hz) override;
+  bool checkDeviceResponse() override;
+
+protected:
+  void run() override;
+  bool initialize() override;
+
+private:
+  LidarData latest_data_;
+
+  static constexpr uint8_t TF03_HEADER = 0x59;
+
+  static bool parseFrame(const uint8_t* frame, size_t size, LidarData& sample);
+};
+
 }
 
 #endif

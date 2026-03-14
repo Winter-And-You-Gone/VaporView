@@ -4,6 +4,7 @@
 #include <cstring>
 #include <iomanip>
 #include <sstream>
+#include <vector>
 
 namespace VaproView
 {
@@ -1107,6 +1108,191 @@ void HmpCollector::run()
     if (remaining > 0)
     {
       sleepMs(remaining);
+    }
+  }
+}
+
+LidarData LidarCollector::getLatestData()
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  return latest_data_;
+}
+
+bool LidarCollector::initialize()
+{
+  serial_.setNonBlocking(true);
+  return true;
+}
+
+bool LidarCollector::setDeviceSampleRate(int hz)
+{
+  if (hz < 1 || hz > 100)
+  {
+    log("TF03: Unsupported frame rate: " + std::to_string(hz) + " Hz (valid: 1-100 Hz)");
+    return false;
+  }
+
+  uint8_t command[6];
+  command[0] = 0x5A;
+  command[1] = 0x06;
+  command[2] = 0x03;
+  command[3] = static_cast<uint8_t>(hz & 0xFF);
+  command[4] = static_cast<uint8_t>((hz >> 8) & 0xFF);
+  command[5] = static_cast<uint8_t>((command[0] + command[1] + command[2] + command[3] + command[4]) & 0xFF);
+
+  const ssize_t written = serial_.write(command, sizeof(command));
+  if (written != static_cast<ssize_t>(sizeof(command)))
+  {
+    log("TF03: Failed to send frame rate command");
+    return false;
+  }
+
+  sample_rate_hz_ = hz;
+  log("TF03: Set frame rate to " + std::to_string(hz) + " Hz");
+  return true;
+}
+
+bool LidarCollector::parseFrame(const uint8_t* frame, size_t size, LidarData& sample)
+{
+  if (!frame || size < 9 || frame[0] != TF03_HEADER || frame[1] != TF03_HEADER)
+  {
+    return false;
+  }
+
+  uint8_t checksum = 0;
+  for (size_t i = 0; i < 8; ++i)
+  {
+    checksum = static_cast<uint8_t>(checksum + frame[i]);
+  }
+
+  if (checksum != frame[8])
+  {
+    return false;
+  }
+
+  const uint16_t distance_cm = static_cast<uint16_t>(frame[2]) | (static_cast<uint16_t>(frame[3]) << 8);
+  const uint16_t strength = static_cast<uint16_t>(frame[4]) | (static_cast<uint16_t>(frame[5]) << 8);
+
+  sample.distance_m = distance_cm / 100.0;
+  sample.signal_strength = strength;
+  sample.timestamp = std::chrono::steady_clock::now();
+  sample.valid = strength >= 40 && distance_cm > 0;
+  sample.error_message = sample.valid ? "" : "Weak signal or out of range";
+  return true;
+}
+
+bool LidarCollector::checkDeviceResponse()
+{
+  uint8_t chunk[128];
+  std::vector<uint8_t> buffer;
+  buffer.reserve(256);
+
+  constexpr int max_wait_ms = 1500;
+  constexpr int step_ms = 20;
+  const auto start_time = std::chrono::steady_clock::now();
+  int elapsed_ms = 0;
+
+  while (elapsed_ms < max_wait_ms)
+  {
+    if (isCancelRequested())
+    {
+      return false;
+    }
+
+    log(formatDetectionProgress("等待TF03测距帧", 1, 1, computeRemainingSeconds(start_time, max_wait_ms)));
+    ssize_t n = serial_.read(chunk, sizeof(chunk));
+    if (n > 0)
+    {
+      buffer.insert(buffer.end(), chunk, chunk + n);
+      while (buffer.size() >= 9)
+      {
+        auto header = std::find(buffer.begin(), buffer.end(), TF03_HEADER);
+        if (header == buffer.end() || std::distance(header, buffer.end()) < 2)
+        {
+          buffer.clear();
+          break;
+        }
+        if (*(header + 1) != TF03_HEADER)
+        {
+          buffer.erase(buffer.begin(), header + 1);
+          continue;
+        }
+        if (std::distance(header, buffer.end()) < 9)
+        {
+          buffer.erase(buffer.begin(), header);
+          break;
+        }
+
+        LidarData sample;
+        if (parseFrame(&(*header), 9, sample))
+        {
+          return true;
+        }
+        buffer.erase(buffer.begin(), header + 2);
+      }
+    }
+
+    sleepMs(step_ms);
+    elapsed_ms += step_ms;
+  }
+
+  return false;
+}
+
+void LidarCollector::run()
+{
+  uint8_t chunk[256];
+  std::vector<uint8_t> buffer;
+  buffer.reserve(512);
+
+  while (running_.load())
+  {
+    ssize_t n = serial_.read(chunk, sizeof(chunk));
+    if (n > 0)
+    {
+      buffer.insert(buffer.end(), chunk, chunk + n);
+      while (buffer.size() >= 9)
+      {
+        auto header = std::find(buffer.begin(), buffer.end(), TF03_HEADER);
+        if (header == buffer.end() || std::distance(header, buffer.end()) < 2)
+        {
+          buffer.clear();
+          break;
+        }
+        if (*(header + 1) != TF03_HEADER)
+        {
+          buffer.erase(buffer.begin(), header + 1);
+          continue;
+        }
+        if (std::distance(header, buffer.end()) < 9)
+        {
+          buffer.erase(buffer.begin(), header);
+          break;
+        }
+
+        LidarData sample;
+        if (parseFrame(&(*header), 9, sample))
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          latest_data_ = sample;
+
+          recordDataReceived();
+
+          if (data_callback_ && shouldEmitData())
+          {
+            updateLastEmitTime();
+            data_callback_();
+          }
+          buffer.erase(buffer.begin(), header + 9);
+          continue;
+        }
+
+        buffer.erase(buffer.begin(), header + 2);
+      }
+    }
+    else
+    {
+      sleepMs(5);
     }
   }
 }

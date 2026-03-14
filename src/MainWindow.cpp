@@ -690,6 +690,117 @@ void HmpPanel::updateData(const VaproView::HmpData& data)
     }
 }
 
+LidarPanel::LidarPanel(QWidget *parent)
+    : QWidget(parent)
+    , rate_label_(nullptr)
+    , distance_label_(nullptr)
+    , strength_label_(nullptr)
+    , status_label_(nullptr)
+    , distance_lbl_(nullptr)
+    , strength_lbl_(nullptr)
+    , is_english_(false)
+{
+    setupUi();
+}
+
+void LidarPanel::setupUi()
+{
+    auto *layout = new QVBoxLayout(this);
+    layout->setSpacing(6);
+    layout->setContentsMargins(6, 6, 6, 6);
+
+    rate_label_ = new QLabel("0.0 Hz", this);
+    rate_label_->setObjectName("rateBadge");
+    layout->addWidget(rate_label_, 0, Qt::AlignRight);
+
+    auto *distanceLayout = new QHBoxLayout();
+    distanceLayout->setSpacing(6);
+    distance_lbl_ = new QLabel(this);
+    distance_lbl_->setObjectName("fieldLabel");
+    distance_lbl_->setMinimumHeight(22);
+    distanceLayout->addWidget(distance_lbl_);
+    distance_label_ = new QLabel("--- m", this);
+    distance_label_->setObjectName("highlightedValue");
+    distance_label_->setMinimumHeight(22);
+    distanceLayout->addWidget(distance_label_);
+    distanceLayout->addStretch();
+    layout->addLayout(distanceLayout);
+
+    auto *strengthLayout = new QHBoxLayout();
+    strengthLayout->setSpacing(6);
+    strength_lbl_ = new QLabel(this);
+    strength_lbl_->setObjectName("fieldLabel");
+    strength_lbl_->setMinimumHeight(22);
+    strengthLayout->addWidget(strength_lbl_);
+    strength_label_ = new QLabel("---", this);
+    strength_label_->setObjectName("valueLabel");
+    strength_label_->setMinimumHeight(22);
+    strengthLayout->addWidget(strength_label_);
+    strengthLayout->addStretch();
+    layout->addLayout(strengthLayout);
+
+    status_label_ = new QLabel(this);
+    status_label_->setObjectName("statusIndicator");
+    status_label_->setMinimumHeight(22);
+    layout->addWidget(status_label_);
+
+    layout->addStretch();
+    setEnglish(false);
+}
+
+void LidarPanel::updateRate(double hz)
+{
+    if (rate_label_)
+    {
+        rate_label_->setText(QString::asprintf("%.1f Hz", hz));
+    }
+}
+
+void LidarPanel::setEnglish(bool english)
+{
+    is_english_ = english;
+    if (english)
+    {
+        distance_lbl_->setText("Distance:");
+        strength_lbl_->setText("Strength:");
+        status_label_->setText("Waiting...");
+    }
+    else
+    {
+        distance_lbl_->setText("距离:");
+        strength_lbl_->setText("强度:");
+        status_label_->setText("等待中...");
+    }
+}
+
+void LidarPanel::updateData(const VaproView::LidarData& data)
+{
+    if (data.valid)
+    {
+        distance_label_->setText(QString::asprintf("%.2f m", data.distance_m));
+        strength_label_->setText(QString::number(data.signal_strength));
+        distance_label_->setProperty("data-valid", true);
+        distance_label_->style()->unpolish(distance_label_);
+        distance_label_->style()->polish(distance_label_);
+        status_label_->setText(is_english_ ? "Valid" : "有效");
+        status_label_->setProperty("status", "connected");
+        status_label_->style()->unpolish(status_label_);
+        status_label_->style()->polish(status_label_);
+    }
+    else
+    {
+        distance_label_->setText("--- m");
+        strength_label_->setText("---");
+        distance_label_->setProperty("data-valid", false);
+        distance_label_->style()->unpolish(distance_label_);
+        distance_label_->style()->polish(distance_label_);
+        status_label_->setText(is_english_ ? "No echo" : "无回波");
+        status_label_->setProperty("status", "disconnected");
+        status_label_->style()->unpolish(status_label_);
+        status_label_->style()->polish(status_label_);
+    }
+}
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , central_widget_(nullptr)
@@ -698,16 +809,19 @@ MainWindow::MainWindow(QWidget *parent)
     , imu_panel_(nullptr)
     , ptb_panel_(nullptr)
     , hmp_panel_(nullptr)
+    , lidar_panel_(nullptr)
     , log_text_edit_(nullptr)
     , status_label_(nullptr)
     , gnss_port_combo_(nullptr)
     , imu_port_combo_(nullptr)
     , ptb_port_combo_(nullptr)
     , hmp_port_combo_(nullptr)
+    , lidar_port_combo_(nullptr)
     , gnss_baud_combo_(nullptr)
     , imu_baud_combo_(nullptr)
     , ptb_baud_combo_(nullptr)
     , hmp_baud_combo_(nullptr)
+    , lidar_baud_combo_(nullptr)
     , connect_btn_(nullptr)
     , cancel_connect_btn_(nullptr)
     , disconnect_btn_(nullptr)
@@ -732,24 +846,29 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_group_(nullptr)
     , hmp_group_(nullptr)
     , env_group_(nullptr)
+    , lidar_group_(nullptr)
     , gnss_lbl_(nullptr)
     , imu_lbl_(nullptr)
     , ptb_lbl_(nullptr)
     , hmp_lbl_(nullptr)
+    , lidar_lbl_(nullptr)
     , global_rate_lbl_(nullptr)
     , gnss_rate_lbl_(nullptr)
     , imu_rate_lbl_(nullptr)
     , ptb_rate_lbl_(nullptr)
     , hmp_rate_lbl_(nullptr)
+    , lidar_rate_lbl_(nullptr)
     , global_rate_combo_(nullptr)
     , gnss_rate_combo_(nullptr)
     , imu_rate_combo_(nullptr)
     , ptb_rate_combo_(nullptr)
     , hmp_rate_combo_(nullptr)
+    , lidar_rate_combo_(nullptr)
     , gnss_collector_(nullptr)
     , imu_collector_(nullptr)
     , ptb_collector_(nullptr)
     , hmp_collector_(nullptr)
+    , lidar_collector_(nullptr)
     , refresh_timer_(nullptr)
     , is_fullscreen_(false)
     , is_english_(false)
@@ -762,6 +881,7 @@ MainWindow::MainWindow(QWidget *parent)
     , imu_sample_rate_(1)
     , ptb_sample_rate_(1)
     , hmp_sample_rate_(1)
+    , lidar_sample_rate_(1)
     , rtk_config_action_(nullptr)
     , rtk_config_dialog_(nullptr)
 {
@@ -1220,26 +1340,25 @@ void MainWindow::setupConfigPanel()
     QStringList baudRates = {"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"};
     QStringList ports = getAvailablePorts();
 
-    auto createRateCombo = [this]() {
+    auto createRateCombo = [this](int maxRate = 500) {
         auto *combo = new QComboBox(this);
-        combo->addItem("1");
-        combo->addItem("2");
-        combo->addItem("5");
-        combo->addItem("10");
-        combo->addItem("20");
-        combo->addItem("50");
-        combo->addItem("100");
-        combo->addItem("200");
-        combo->addItem("500");
+        const QList<int> supportedRates = {1, 2, 5, 10, 20, 50, 100, 200, 500};
+        for (int rate : supportedRates)
+        {
+            if (rate <= maxRate)
+            {
+                combo->addItem(QString::number(rate));
+            }
+        }
         combo->setCurrentIndex(4);
         combo->setEditable(true);
         combo->setFixedHeight(30);
         combo->setFixedWidth(100);
-        combo->setValidator(new QIntValidator(1, 500, combo));
+        combo->setValidator(new QIntValidator(1, maxRate, combo));
         return combo;
     };
 
-    auto createPortRow = [this, config_layout, &baudRates, &ports, &createRateCombo](QLabel*& lbl, QComboBox*& portCombo, QComboBox*& baudCombo, QLabel*& rateLbl, QComboBox*& rateCombo, const QString& defaultPort, const QString& defaultBaud, int row) {
+    auto createPortRow = [this, config_layout, &baudRates, &ports, &createRateCombo](QLabel*& lbl, QComboBox*& portCombo, QComboBox*& baudCombo, QLabel*& rateLbl, QComboBox*& rateCombo, const QString& defaultPort, const QString& defaultBaud, int row, int maxRate = 500) {
         lbl = new QLabel(this);
         lbl->setObjectName("fieldLabel");
         lbl->setFixedHeight(28);
@@ -1277,7 +1396,7 @@ void MainWindow::setupConfigPanel()
         rateLbl->setFixedHeight(28);
         config_layout->addWidget(rateLbl, row, 3, Qt::AlignVCenter | Qt::AlignRight);
 
-        rateCombo = createRateCombo();
+        rateCombo = createRateCombo(maxRate);
         config_layout->addWidget(rateCombo, row, 4, Qt::AlignVCenter);
     };
 
@@ -1298,17 +1417,20 @@ void MainWindow::setupConfigPanel()
     createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, imu_rate_lbl_, imu_rate_combo_, "COM4", "115200", row++);
     createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "COM5", "9600", row++);
     createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "COM6", "19200", row++);
+    createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "COM7", "115200", row++, 100);
 #else
     createPortRow(gnss_lbl_, gnss_port_combo_, gnss_baud_combo_, gnss_rate_lbl_, gnss_rate_combo_, "/dev/ttyCOM3", "115200", row++);
     createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, imu_rate_lbl_, imu_rate_combo_, "/dev/ttyIMU", "115200", row++);
     createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "/dev/ttyBARO", "9600", row++);
     createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "/dev/ttyHMP", "19200", row++);
+    createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "/dev/ttyTF03", "115200", row++, 100);
 #endif
 
     connect(gnss_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onGnssRateChanged);
     connect(imu_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onImuRateChanged);
     connect(ptb_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onPtbRateChanged);
     connect(hmp_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onHmpRateChanged);
+    connect(lidar_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onLidarRateChanged);
 
     main_layout_->addWidget(config_group_);
 }
@@ -1342,6 +1464,9 @@ void MainWindow::setupDataPanels()
     env_layout->setContentsMargins(2, 2, 2, 2);
     env_layout->setSpacing(2);
 
+    lidar_panel_ = new LidarPanel(this);
+    env_layout->addWidget(lidar_panel_);
+
     ptb_panel_ = new PtbPanel(this);
     env_layout->addWidget(ptb_panel_);
 
@@ -1351,6 +1476,7 @@ void MainWindow::setupDataPanels()
     data_layout->addWidget(env_group);
     env_group_ = env_group;
 
+    lidar_group_ = nullptr;
     ptb_group_ = nullptr;
     hmp_group_ = nullptr;
 
@@ -1409,23 +1535,26 @@ void MainWindow::setEnglish(bool english)
 
     gnss_group_->setTitle(english ? "GNSS / RTK" : "GNSS / RTK");
     imu_group_->setTitle(english ? "IMU" : "IMU");
-    env_group_->setTitle(english ? "Environment" : "环境参数");
+    env_group_->setTitle(english ? "Environment / Range" : "环境与测距");
 
     gnss_lbl_->setText(english ? "GNSS:" : "GNSS:");
     imu_lbl_->setText(english ? "IMU:" : "IMU:");
     ptb_lbl_->setText(english ? "PTB210:" : "PTB210:");
     hmp_lbl_->setText(english ? "HMP3:" : "HMP3:");
+    lidar_lbl_->setText(english ? "TF03:" : "TF03:");
 
     global_rate_lbl_->setText(english ? "Global Rate:" : "统一频率:");
     gnss_rate_lbl_->setText(english ? "Rate:" : "频率:");
     imu_rate_lbl_->setText(english ? "Rate:" : "频率:");
     ptb_rate_lbl_->setText(english ? "Rate:" : "频率:");
     hmp_rate_lbl_->setText(english ? "Rate:" : "频率:");
+    lidar_rate_lbl_->setText(english ? "Rate:" : "频率:");
 
     gnss_panel_->setEnglish(english);
     imu_panel_->setEnglish(english);
     ptb_panel_->setEnglish(english);
     hmp_panel_->setEnglish(english);
+    lidar_panel_->setEnglish(english);
 
     if (rtk_config_dialog_)
     {
@@ -1511,6 +1640,12 @@ void MainWindow::onGlobalRateChanged(const QString& text)
     {
         hmp_collector_->setSampleRate(rate);
     }
+    if (lidar_collector_ && lidar_collector_->isRunning())
+    {
+        const int lidarRate = std::min(rate, 100);
+        lidar_collector_->setSampleRate(lidarRate);
+        lidar_collector_->setDeviceSampleRate(lidarRate);
+    }
     
     log(QString(is_english_ ? "All rates set to %1 Hz" : "所有频率已设置为 %1 Hz").arg(rate));
 }
@@ -1561,6 +1696,20 @@ void MainWindow::onHmpRateChanged(const QString& text)
     log(QString(is_english_ ? "HMP sample rate set to %1 Hz" : "HMP采样频率已设置为 %1 Hz").arg(hmp_sample_rate_));
 }
 
+void MainWindow::onLidarRateChanged(const QString& text)
+{
+    lidar_sample_rate_ = std::min(parseRate(text), 100);
+    if (lidar_collector_)
+    {
+        lidar_collector_->setSampleRate(lidar_sample_rate_);
+        if (lidar_collector_->isRunning())
+        {
+            lidar_collector_->setDeviceSampleRate(lidar_sample_rate_);
+        }
+    }
+    log(QString(is_english_ ? "TF03 sample rate set to %1 Hz" : "TF03采样频率已设置为 %1 Hz").arg(lidar_sample_rate_));
+}
+
 void MainWindow::applyAllSampleRates()
 {
     int rate = parseRate(global_rate_combo_->currentText());
@@ -1584,26 +1733,36 @@ void MainWindow::applyAllSampleRates()
     {
         hmp_collector_->setSampleRate(rate);
     }
+    if (lidar_collector_ && lidar_collector_->isRunning())
+    {
+        const int lidarRate = std::min(rate, 100);
+        lidar_collector_->setSampleRate(lidarRate);
+        lidar_collector_->setDeviceSampleRate(lidarRate);
+    }
 
     gnss_rate_combo_->blockSignals(true);
     imu_rate_combo_->blockSignals(true);
     ptb_rate_combo_->blockSignals(true);
     hmp_rate_combo_->blockSignals(true);
+    lidar_rate_combo_->blockSignals(true);
 
     gnss_rate_combo_->setCurrentText(QString::number(rate));
     imu_rate_combo_->setCurrentText(QString::number(rate));
     ptb_rate_combo_->setCurrentText(QString::number(rate));
     hmp_rate_combo_->setCurrentText(QString::number(rate));
+    lidar_rate_combo_->setCurrentText(QString::number(std::min(rate, 100)));
 
     gnss_rate_combo_->blockSignals(false);
     imu_rate_combo_->blockSignals(false);
     ptb_rate_combo_->blockSignals(false);
     hmp_rate_combo_->blockSignals(false);
+    lidar_rate_combo_->blockSignals(false);
 
     gnss_sample_rate_ = rate;
     imu_sample_rate_ = rate;
     ptb_sample_rate_ = rate;
     hmp_sample_rate_ = rate;
+    lidar_sample_rate_ = std::min(rate, 100);
 
     log(QString(is_english_ ? "All rates set to %1 Hz" : "所有频率已设置为 %1 Hz").arg(rate));
 }
@@ -1673,10 +1832,12 @@ void MainWindow::updateConnectionStatus(bool connected)
     imu_port_combo_->setEnabled(inputsEnabled);
     ptb_port_combo_->setEnabled(inputsEnabled);
     hmp_port_combo_->setEnabled(inputsEnabled);
+    lidar_port_combo_->setEnabled(inputsEnabled);
     gnss_baud_combo_->setEnabled(inputsEnabled);
     imu_baud_combo_->setEnabled(inputsEnabled);
     ptb_baud_combo_->setEnabled(inputsEnabled);
     hmp_baud_combo_->setEnabled(inputsEnabled);
+    lidar_baud_combo_->setEnabled(inputsEnabled);
 
     if (connection_attempt_in_progress_)
     {
@@ -1719,6 +1880,11 @@ void MainWindow::stopAllCollectors()
         hmp_collector_->stop();
         hmp_collector_.reset();
     }
+    if (lidar_collector_)
+    {
+        lidar_collector_->stop();
+        lidar_collector_.reset();
+    }
 }
 
 bool MainWindow::shouldAbortConnectionAttempt()
@@ -1758,6 +1924,7 @@ void MainWindow::onRefreshPortsClicked()
     updateCombo(imu_port_combo_);
     updateCombo(ptb_port_combo_);
     updateCombo(hmp_port_combo_);
+    updateCombo(lidar_port_combo_);
 
     log(QString(is_english_ ? "Ports refreshed: %1 found" : "端口已刷新: 发现 %1 个").arg(ports.size()));
 }
@@ -1774,26 +1941,31 @@ void MainWindow::onConnectClicked()
     current_imu_ = VaproView::ImuData();
     current_ptb_ = VaproView::PtbData();
     current_hmp_ = VaproView::HmpData();
+    current_lidar_ = VaproView::LidarData();
 
     gnss_panel_->updateData(current_gnss_);
     imu_panel_->updateData(current_imu_);
     ptb_panel_->updateData(current_ptb_);
     hmp_panel_->updateData(current_hmp_);
+    lidar_panel_->updateData(current_lidar_);
 
     gnss_panel_->updateRate(0.0);
     imu_panel_->updateRate(0.0);
     ptb_panel_->updateRate(0.0);
     hmp_panel_->updateRate(0.0);
+    lidar_panel_->updateRate(0.0);
 
     gnss_collector_ = std::make_unique<VaproView::GnssCollector>();
     imu_collector_ = std::make_unique<VaproView::ImuCollector>();
     ptb_collector_ = std::make_unique<VaproView::PtbCollector>();
     hmp_collector_ = std::make_unique<VaproView::HmpCollector>();
+    lidar_collector_ = std::make_unique<VaproView::LidarCollector>();
 
     gnss_collector_->setSampleRate(gnss_sample_rate_);
     imu_collector_->setSampleRate(imu_sample_rate_);
     ptb_collector_->setSampleRate(ptb_sample_rate_);
     hmp_collector_->setSampleRate(hmp_sample_rate_);
+    lidar_collector_->setSampleRate(lidar_sample_rate_);
 
     auto logCallback = [this](const std::string& msg) {
         const QString qmsg = QString::fromStdString(msg);
@@ -1813,11 +1985,13 @@ void MainWindow::onConnectClicked()
     imu_collector_->setLogCallback(logCallback);
     ptb_collector_->setLogCallback(logCallback);
     hmp_collector_->setLogCallback(logCallback);
+    lidar_collector_->setLogCallback(logCallback);
     auto cancelCallback = [this]() { return cancel_connection_requested_.load(); };
     gnss_collector_->setCancelCallback(cancelCallback);
     imu_collector_->setCancelCallback(cancelCallback);
     ptb_collector_->setCancelCallback(cancelCallback);
     hmp_collector_->setCancelCallback(cancelCallback);
+    lidar_collector_->setCancelCallback(cancelCallback);
 
     int total_devices = 0;
     int connected_devices = 0;
@@ -2055,6 +2229,68 @@ void MainWindow::onConnectClicked()
     }
     if (abortIfRequested()) return;
 
+    QString lidar_port = lidar_port_combo_->currentText();
+    if (lidar_port != selectText && !lidar_port.isEmpty())
+    {
+        total_devices++;
+        log(QString(is_english_ ? "[TF03] Checking port: %1" : "[TF03] 检查端口: %1").arg(lidar_port));
+        if (abortIfRequested()) return;
+
+        log(QString(is_english_ ? "[TF03] Port selected, connecting..." : "[TF03] 已选择端口，正在连接..."));
+        if (abortIfRequested()) return;
+
+        VaproView::SerialConfig lidar_config = VaproView::SerialConfig::N81(lidar_baud_combo_->currentText().toInt());
+        if (lidar_collector_->start(lidar_port.toStdString(), lidar_config))
+        {
+            log(QString(is_english_ ? "[TF03] Serial port opened, checking device response..." : "[TF03] 串口已打开，正在检测设备响应..."));
+            if (abortIfRequested()) return;
+
+            if (lidar_collector_->checkDeviceResponse())
+            {
+                log(QString(is_english_ ? "[TF03] Device responding, connected: %1 @ %2 baud" : "[TF03] 设备响应正常，连接成功: %1 @ %2 波特率").arg(lidar_port, lidar_baud_combo_->currentText()));
+                lidar_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onLidarDataReady", Qt::QueuedConnection); });
+                int lidar_rate = std::min(parseRate(lidar_rate_combo_->currentText()), 100);
+                lidar_collector_->setSampleRate(lidar_rate);
+                if (!lidar_collector_->setDeviceSampleRate(lidar_rate))
+                {
+                    log(QString(is_english_ ? "[TF03] Failed to apply frame rate %1 Hz, using device default." : "[TF03] 应用 %1 Hz 输出频率失败，使用设备默认频率。").arg(lidar_rate));
+                }
+                else
+                {
+                    log(QString(is_english_ ? "[TF03] Frame rate set to %1 Hz" : "[TF03] 输出频率设置为 %1 Hz").arg(lidar_rate));
+                }
+
+                if (lidar_collector_->startStreaming())
+                {
+                    connected_devices++;
+                }
+                else
+                {
+                    log(is_english_ ? "[TF03] Failed to start data stream." : "[TF03] 启动数据流失败。");
+                    lidar_collector_->stop();
+                }
+            }
+            else if (abortIfRequested())
+            {
+                return;
+            }
+            else
+            {
+                log(is_english_ ? "[TF03] Device not responding! Check power and cables." : "[TF03] 设备无响应！请检查电源和连接线。");
+                lidar_collector_->stop();
+            }
+        }
+        else
+        {
+            log(QString(is_english_ ? "[TF03] Failed to open port: %1" : "[TF03] 打开端口失败: %1").arg(QString::fromStdString(lidar_collector_->getLastError())));
+        }
+    }
+    else
+    {
+        log(is_english_ ? "[TF03] Skipped (not selected)" : "[TF03] 跳过 (未选择)");
+    }
+    if (abortIfRequested()) return;
+
     log(QString(is_english_ ? "========== Connection Summary: %1/%2 devices connected ==========" : "========== 连接摘要: %1/%2 设备已连接 ==========").arg(connected_devices).arg(total_devices));
 
     if (connected_devices == 0)
@@ -2118,12 +2354,21 @@ void MainWindow::onHmpDataReady()
     }
 }
 
+void MainWindow::onLidarDataReady()
+{
+    if (lidar_collector_)
+    {
+        current_lidar_ = lidar_collector_->getLatestData();
+    }
+}
+
 void MainWindow::onRefreshTimer()
 {
     gnss_panel_->updateData(current_gnss_);
     imu_panel_->updateData(current_imu_);
     ptb_panel_->updateData(current_ptb_);
     hmp_panel_->updateData(current_hmp_);
+    lidar_panel_->updateData(current_lidar_);
 
     if (gnss_collector_)
     {
@@ -2171,6 +2416,18 @@ void MainWindow::onRefreshTimer()
             hmp_rate_combo_->blockSignals(true);
             hmp_rate_combo_->setCurrentText(QString::number(rate_int));
             hmp_rate_combo_->blockSignals(false);
+        }
+    }
+    if (lidar_collector_)
+    {
+        double rate = lidar_collector_->getActualRate();
+        lidar_panel_->updateRate(rate);
+        int rate_int = static_cast<int>(std::round(rate));
+        if (rate_int >= 1 && rate_int <= 100)
+        {
+            lidar_rate_combo_->blockSignals(true);
+            lidar_rate_combo_->setCurrentText(QString::number(rate_int));
+            lidar_rate_combo_->blockSignals(false);
         }
     }
 }
@@ -2242,6 +2499,11 @@ void MainWindow::onExportClicked()
         out << "    \"humidity\": " << current_hmp_.humidity << ",\n";
         out << "    \"temperature\": " << current_hmp_.temperature << ",\n";
         out << "    \"valid\": " << (current_hmp_.valid ? "true" : "false") << "\n";
+        out << "  },\n";
+        out << "  \"tf03\": {\n";
+        out << "    \"distance_m\": " << current_lidar_.distance_m << ",\n";
+        out << "    \"signal_strength\": " << current_lidar_.signal_strength << ",\n";
+        out << "    \"valid\": " << (current_lidar_.valid ? "true" : "false") << "\n";
         out << "  }\n";
         out << "}\n";
     }
@@ -2281,6 +2543,8 @@ void MainWindow::onExportClicked()
         out << "PTB,Pressure," << current_ptb_.pressure_hpa << ",hPa," << (current_ptb_.valid ? "Yes" : "No") << "\n";
         out << "HMP,Humidity," << current_hmp_.humidity << ",%RH," << (current_hmp_.valid ? "Yes" : "No") << "\n";
         out << "HMP,Temperature," << current_hmp_.temperature << ",C," << (current_hmp_.valid ? "Yes" : "No") << "\n";
+        out << "TF03,Distance," << current_lidar_.distance_m << ",m," << (current_lidar_.valid ? "Yes" : "No") << "\n";
+        out << "TF03,SignalStrength," << current_lidar_.signal_strength << ",," << (current_lidar_.valid ? "Yes" : "No") << "\n";
     }
 
     file.close();

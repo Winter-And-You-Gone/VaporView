@@ -193,6 +193,29 @@ private:
     bool is_english_;
 };
 
+class LidarPanel : public QWidget
+{
+    Q_OBJECT
+
+public:
+    explicit LidarPanel(QWidget *parent = nullptr);
+    void updateData(const VaproView::LidarData& data);
+    void updateRate(double hz);
+    void setEnglish(bool english);
+
+private:
+    void setupUi();
+
+    QLabel *rate_label_;
+    QLabel *distance_label_;
+    QLabel *strength_label_;
+    QLabel *status_label_;
+    QLabel *distance_lbl_;
+    QLabel *strength_lbl_;
+
+    bool is_english_;
+};
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -208,6 +231,7 @@ private slots:
     void onImuDataReady();
     void onPtbDataReady();
     void onHmpDataReady();
+    void onLidarDataReady();
     void onRefreshTimer();
     void onExportClicked();
     void onClearLogClicked();
@@ -219,6 +243,7 @@ private slots:
     void onImuRateChanged(const QString& text);
     void onPtbRateChanged(const QString& text);
     void onHmpRateChanged(const QString& text);
+    void onLidarRateChanged(const QString& text);
     void onRtkConfigClicked();
     void onFontScaleTriggered(QAction *action);
     void onCancelConnectClicked();
@@ -254,6 +279,7 @@ private:
     ImuPanel *imu_panel_;
     PtbPanel *ptb_panel_;
     HmpPanel *hmp_panel_;
+    LidarPanel *lidar_panel_;
 
     QTextEdit *log_text_edit_;
     QLabel *status_label_;
@@ -262,10 +288,12 @@ private:
     QComboBox *imu_port_combo_;
     QComboBox *ptb_port_combo_;
     QComboBox *hmp_port_combo_;
+    QComboBox *lidar_port_combo_;
     QComboBox *gnss_baud_combo_;
     QComboBox *imu_baud_combo_;
     QComboBox *ptb_baud_combo_;
     QComboBox *hmp_baud_combo_;
+    QComboBox *lidar_baud_combo_;
     QAction *connect_btn_;
     QAction *cancel_connect_btn_;
     QAction *disconnect_btn_;
@@ -291,27 +319,32 @@ private:
     QGroupBox *ptb_group_;
     QGroupBox *hmp_group_;
     QGroupBox *env_group_;
+    QGroupBox *lidar_group_;
 
     QLabel *gnss_lbl_;
     QLabel *imu_lbl_;
     QLabel *ptb_lbl_;
     QLabel *hmp_lbl_;
+    QLabel *lidar_lbl_;
     QLabel *global_rate_lbl_;
     QLabel *gnss_rate_lbl_;
     QLabel *imu_rate_lbl_;
     QLabel *ptb_rate_lbl_;
     QLabel *hmp_rate_lbl_;
+    QLabel *lidar_rate_lbl_;
 
     QComboBox *global_rate_combo_;
     QComboBox *gnss_rate_combo_;
     QComboBox *imu_rate_combo_;
     QComboBox *ptb_rate_combo_;
     QComboBox *hmp_rate_combo_;
+    QComboBox *lidar_rate_combo_;
 
     std::unique_ptr<VaproView::GnssCollector> gnss_collector_;
     std::unique_ptr<VaproView::ImuCollector> imu_collector_;
     std::unique_ptr<VaproView::PtbCollector> ptb_collector_;
     std::unique_ptr<VaproView::HmpCollector> hmp_collector_;
+    std::unique_ptr<VaproView::LidarCollector> lidar_collector_;
 
     QTimer *refresh_timer_;
 
@@ -319,6 +352,7 @@ private:
     VaproView::ImuData current_imu_;
     VaproView::PtbData current_ptb_;
     VaproView::HmpData current_hmp_;
+    VaproView::LidarData current_lidar_;
 
     bool is_fullscreen_;
     bool is_english_;
@@ -332,6 +366,7 @@ private:
     int imu_sample_rate_;
     int ptb_sample_rate_;
     int hmp_sample_rate_;
+    int lidar_sample_rate_;
 
     QAction *rtk_config_action_;
     RtkConfigDialog *rtk_config_dialog_;
