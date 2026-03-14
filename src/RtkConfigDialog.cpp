@@ -291,7 +291,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (config_layout_)
     {
         config_layout_->setHorizontalSpacing(scalePixels(6));
-        config_layout_->setVerticalSpacing(scalePixels(6));
+        config_layout_->setVerticalSpacing(scalePixels(8));
     }
 
     if (output_layout_)
@@ -311,12 +311,12 @@ void RtkConfigDialog::applyScaledUiMetrics()
         log_layout_->setSpacing(scalePixels(4));
     }
 
-    server_edit_->setMinimumHeight(scalePixels(36));
+    server_edit_->setMinimumHeight(scalePixels(34));
     port_edit_->setMaximumWidth(scalePixels(80));
-    port_edit_->setMinimumHeight(scalePixels(36));
-    username_edit_->setMinimumHeight(scalePixels(36));
-    password_edit_->setMinimumHeight(scalePixels(36));
-    mountpoint_edit_->setMinimumHeight(scalePixels(36));
+    port_edit_->setMinimumHeight(scalePixels(34));
+    username_edit_->setMinimumHeight(scalePixels(34));
+    password_edit_->setMinimumHeight(scalePixels(34));
+    mountpoint_edit_->setMinimumHeight(scalePixels(34));
 
     output_port_combo_->setMinimumWidth(scalePixels(200));
     output_port_combo_->setMinimumHeight(scalePixels(30));

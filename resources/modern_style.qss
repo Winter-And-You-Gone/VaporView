@@ -354,8 +354,8 @@ QLineEdit {
     background-color: #ffffff;
     border: 1px solid #e0e0e0;
     border-radius: 6px;
-    padding: 8px 12px;
-    min-height: 34px;
+    padding: 5px 12px;
+    min-height: 32px;
     color: #333333;
     font-size: 14px;
     selection-background-color: #e3f2fd;
