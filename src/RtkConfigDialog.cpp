@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QDateTime>
+#include <QFontMetrics>
 #include <QRegularExpression>
 #include <QSerialPortInfo>
 #include <cmath>
@@ -270,6 +271,17 @@ int RtkConfigDialog::scalePixels(int pixels) const
 
 void RtkConfigDialog::applyScaledUiMetrics()
 {
+    auto applyButtonWidth = [this](QPushButton *button, int baseWidth) {
+        if (!button)
+        {
+            return;
+        }
+
+        const QFontMetrics metrics(button->font());
+        const int textWidth = metrics.horizontalAdvance(button->text());
+        button->setFixedWidth(std::max(scalePixels(baseWidth), textWidth + scalePixels(36)));
+    };
+
     if (main_layout_)
     {
         main_layout_->setSpacing(scalePixels(8));
@@ -315,13 +327,13 @@ void RtkConfigDialog::applyScaledUiMetrics()
     reconnect_spin_->setMinimumWidth(scalePixels(200));
     reconnect_spin_->setMinimumHeight(scalePixels(30));
 
-    refresh_ports_btn_->setFixedWidth(scalePixels(80));
-    start_btn_->setFixedWidth(scalePixels(80));
-    stop_btn_->setFixedWidth(scalePixels(80));
-    test_btn_->setFixedWidth(scalePixels(120));
-    save_config_btn_->setFixedWidth(scalePixels(100));
-    load_config_btn_->setFixedWidth(scalePixels(100));
-    clear_log_btn_->setFixedWidth(scalePixels(80));
+    applyButtonWidth(refresh_ports_btn_, 80);
+    applyButtonWidth(start_btn_, 80);
+    applyButtonWidth(stop_btn_, 80);
+    applyButtonWidth(test_btn_, 120);
+    applyButtonWidth(save_config_btn_, 100);
+    applyButtonWidth(load_config_btn_, 100);
+    applyButtonWidth(clear_log_btn_, 96);
 
     log_text_edit_->setMinimumWidth(scalePixels(200));
 
