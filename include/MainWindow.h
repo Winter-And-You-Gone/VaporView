@@ -237,6 +237,8 @@ private:
     void setFontScale(int percent);
     void applyStyleConfiguration();
     QString scaledStyleSheet(const QString& styleSheet) const;
+    void applyScaledUiMetrics();
+    int scalePixels(int pixels) const;
     void applyAllSampleRates();
     int parseRate(const QString& text);
 

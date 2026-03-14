@@ -11,6 +11,22 @@
 #include <QDateTime>
 #include <QRegularExpression>
 #include <QSerialPortInfo>
+#include <cmath>
+
+namespace
+{
+int currentFontScalePercent()
+{
+    QSettings settings("VaproView", "MainWindow");
+    const int percent = settings.value("font_scale_percent", 100).toInt();
+    return percent < 85 || percent > 150 ? 100 : percent;
+}
+
+int scaleDialogPixels(int pixels)
+{
+    return static_cast<int>(std::lround(pixels * currentFontScalePercent() / 100.0));
+}
+}
 
 RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     : QDialog(parent)
@@ -41,8 +57,8 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     updateButtonStates();
 
     setWindowTitle(tr("RTK NTRIP Configuration"));
-    setMinimumSize(560, 680);
-    resize(620, 740);
+    setMinimumSize(scaleDialogPixels(560), scaleDialogPixels(680));
+    resize(scaleDialogPixels(620), scaleDialogPixels(740));
 
     config_file_path_ = QDir::homePath() + "/.config/VaproView/rtk_config.ini";
 }
@@ -83,7 +99,7 @@ void RtkConfigDialog::setupUi()
     config_layout->addWidget(new QLabel(tr("Port:"), this), row, 2);
     port_edit_ = new QLineEdit(this);
     port_edit_->setText("2101");
-    port_edit_->setMaximumWidth(80);
+    port_edit_->setMaximumWidth(scaleDialogPixels(80));
     config_layout->addWidget(port_edit_, row, 3);
     row++;
 
@@ -117,7 +133,7 @@ void RtkConfigDialog::setupUi()
     output_layout->addWidget(output_port_combo_, row, 1);
 
     refresh_ports_btn_ = new QPushButton(tr("Refresh"), this);
-    refresh_ports_btn_->setFixedWidth(80);
+    refresh_ports_btn_->setFixedWidth(scaleDialogPixels(80));
     connect(refresh_ports_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onRefreshPortsClicked);
     output_layout->addWidget(refresh_ports_btn_, row, 2);
     row++;
@@ -154,24 +170,24 @@ void RtkConfigDialog::setupUi()
     btn_layout->setSpacing(6);
 
     start_btn_ = new QPushButton(tr("Start"), this);
-    start_btn_->setFixedWidth(80);
+    start_btn_->setFixedWidth(scaleDialogPixels(80));
     connect(start_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onStartClicked);
 
     stop_btn_ = new QPushButton(tr("Stop"), this);
-    stop_btn_->setFixedWidth(80);
+    stop_btn_->setFixedWidth(scaleDialogPixels(80));
     stop_btn_->setEnabled(false);
     connect(stop_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onStopClicked);
 
     test_btn_ = new QPushButton(tr("Test Connection"), this);
-    test_btn_->setFixedWidth(120);
+    test_btn_->setFixedWidth(scaleDialogPixels(120));
     connect(test_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onTestClicked);
 
     save_config_btn_ = new QPushButton(tr("Save Config"), this);
-    save_config_btn_->setFixedWidth(100);
+    save_config_btn_->setFixedWidth(scaleDialogPixels(100));
     connect(save_config_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onSaveConfigClicked);
 
     load_config_btn_ = new QPushButton(tr("Load Config"), this);
-    load_config_btn_->setFixedWidth(100);
+    load_config_btn_->setFixedWidth(scaleDialogPixels(100));
     connect(load_config_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onLoadConfigClicked);
 
     btn_layout->addWidget(start_btn_);
@@ -197,7 +213,7 @@ void RtkConfigDialog::setupUi()
 
     auto *log_btn_layout = new QHBoxLayout();
     clear_log_btn_ = new QPushButton(tr("Clear Log"), this);
-    clear_log_btn_->setFixedWidth(80);
+    clear_log_btn_->setFixedWidth(scaleDialogPixels(80));
     connect(clear_log_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onClearLogClicked);
     log_btn_layout->addStretch();
     log_btn_layout->addWidget(clear_log_btn_);

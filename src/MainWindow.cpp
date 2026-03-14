@@ -20,6 +20,7 @@
 #include <QShortcut>
 #include <QSpacerItem>
 #include <QApplication>
+#include <QLayout>
 #include <QSerialPortInfo>
 #include <QRegularExpression>
 #include <QSettings>
@@ -27,6 +28,27 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+
+namespace
+{
+constexpr const char *kBaseMinWidthProperty = "_vv_base_min_width";
+constexpr const char *kBaseMinHeightProperty = "_vv_base_min_height";
+constexpr const char *kBaseMaxWidthProperty = "_vv_base_max_width";
+constexpr const char *kBaseMaxHeightProperty = "_vv_base_max_height";
+constexpr const char *kBaseSpacingProperty = "_vv_base_spacing";
+constexpr const char *kBaseMarginsLeftProperty = "_vv_base_margin_left";
+constexpr const char *kBaseMarginsTopProperty = "_vv_base_margin_top";
+constexpr const char *kBaseMarginsRightProperty = "_vv_base_margin_right";
+constexpr const char *kBaseMarginsBottomProperty = "_vv_base_margin_bottom";
+
+void rememberBaseMetric(QObject *object, const char *propertyName, int value)
+{
+    if (!object->property(propertyName).isValid())
+    {
+        object->setProperty(propertyName, value);
+    }
+}
+}
 
 GnssPanel::GnssPanel(QWidget *parent)
     : QWidget(parent)
@@ -765,6 +787,7 @@ MainWindow::MainWindow(QWidget *parent)
     refresh_timer_->start(100);
 
     setEnglish(false);
+    applyStyleConfiguration();
 
     updateConnectionStatus(false);
 }
@@ -829,17 +852,17 @@ void MainWindow::loadModernStyleSheet()
 
 QString MainWindow::scaledStyleSheet(const QString& styleSheet) const
 {
-    const QRegularExpression fontRegex(R"(font-size:\s*(\d+)px)");
+    const QRegularExpression pixelRegex(R"((\d+)px)");
     QString scaled = styleSheet;
-    QRegularExpressionMatchIterator it = fontRegex.globalMatch(styleSheet);
+    QRegularExpressionMatchIterator it = pixelRegex.globalMatch(styleSheet);
     QList<QPair<QString, QString>> replacements;
 
     while (it.hasNext())
     {
         const QRegularExpressionMatch match = it.next();
         const int originalPx = match.captured(1).toInt();
-        const int scaledPx = std::max(8, static_cast<int>(std::lround(originalPx * font_scale_percent_ / 100.0)));
-        replacements.append({match.captured(0), QString("font-size: %1px").arg(scaledPx)});
+        const int scaledPx = originalPx == 0 ? 0 : std::max(1, scalePixels(originalPx));
+        replacements.append({match.captured(0), QString("%1px").arg(scaledPx)});
     }
 
     for (const auto& replacement : replacements)
@@ -850,12 +873,97 @@ QString MainWindow::scaledStyleSheet(const QString& styleSheet) const
     return scaled;
 }
 
+int MainWindow::scalePixels(int pixels) const
+{
+    return static_cast<int>(std::lround(pixels * font_scale_percent_ / 100.0));
+}
+
+void MainWindow::applyScaledUiMetrics()
+{
+    auto applyWidgetMetrics = [this](QWidget *widget) {
+        if (!widget)
+        {
+            return;
+        }
+
+        const int minimumWidth = widget->minimumWidth();
+        if (minimumWidth > 0)
+        {
+            rememberBaseMetric(widget, kBaseMinWidthProperty, minimumWidth);
+            widget->setMinimumWidth(std::max(1, scalePixels(widget->property(kBaseMinWidthProperty).toInt())));
+        }
+
+        const int minimumHeight = widget->minimumHeight();
+        if (minimumHeight > 0)
+        {
+            rememberBaseMetric(widget, kBaseMinHeightProperty, minimumHeight);
+            widget->setMinimumHeight(std::max(1, scalePixels(widget->property(kBaseMinHeightProperty).toInt())));
+        }
+
+        const int maximumWidth = widget->maximumWidth();
+        if (maximumWidth > 0 && maximumWidth < QWIDGETSIZE_MAX)
+        {
+            rememberBaseMetric(widget, kBaseMaxWidthProperty, maximumWidth);
+            widget->setMaximumWidth(std::max(1, scalePixels(widget->property(kBaseMaxWidthProperty).toInt())));
+        }
+
+        const int maximumHeight = widget->maximumHeight();
+        if (maximumHeight > 0 && maximumHeight < QWIDGETSIZE_MAX)
+        {
+            rememberBaseMetric(widget, kBaseMaxHeightProperty, maximumHeight);
+            widget->setMaximumHeight(std::max(1, scalePixels(widget->property(kBaseMaxHeightProperty).toInt())));
+        }
+    };
+
+    applyWidgetMetrics(this);
+    for (QWidget *widget : findChildren<QWidget*>())
+    {
+        applyWidgetMetrics(widget);
+    }
+
+    auto applyLayoutMetrics = [this](QLayout *layout) {
+        if (!layout)
+        {
+            return;
+        }
+
+        if (layout->spacing() >= 0)
+        {
+            rememberBaseMetric(layout, kBaseSpacingProperty, layout->spacing());
+            layout->setSpacing(std::max(0, scalePixels(layout->property(kBaseSpacingProperty).toInt())));
+        }
+
+        const QMargins margins = layout->contentsMargins();
+        rememberBaseMetric(layout, kBaseMarginsLeftProperty, margins.left());
+        rememberBaseMetric(layout, kBaseMarginsTopProperty, margins.top());
+        rememberBaseMetric(layout, kBaseMarginsRightProperty, margins.right());
+        rememberBaseMetric(layout, kBaseMarginsBottomProperty, margins.bottom());
+        layout->setContentsMargins(
+            std::max(0, scalePixels(layout->property(kBaseMarginsLeftProperty).toInt())),
+            std::max(0, scalePixels(layout->property(kBaseMarginsTopProperty).toInt())),
+            std::max(0, scalePixels(layout->property(kBaseMarginsRightProperty).toInt())),
+            std::max(0, scalePixels(layout->property(kBaseMarginsBottomProperty).toInt()))
+        );
+    };
+
+    if (layout())
+    {
+        applyLayoutMetrics(layout());
+    }
+
+    for (QLayout *layout : findChildren<QLayout*>())
+    {
+        applyLayoutMetrics(layout);
+    }
+}
+
 void MainWindow::applyStyleConfiguration()
 {
     QFont appFont = qApp->font();
     appFont.setPointSizeF(base_font_point_size_ * font_scale_percent_ / 100.0);
     qApp->setFont(appFont);
     qApp->setStyleSheet(scaledStyleSheet(base_style_sheet_));
+    applyScaledUiMetrics();
 }
 
 void MainWindow::setFontScale(int percent)
