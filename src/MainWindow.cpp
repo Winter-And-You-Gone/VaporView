@@ -855,19 +855,25 @@ QString MainWindow::scaledStyleSheet(const QString& styleSheet) const
     const QRegularExpression pixelRegex(R"((\d+)px)");
     QString scaled = styleSheet;
     QRegularExpressionMatchIterator it = pixelRegex.globalMatch(styleSheet);
-    QList<QPair<QString, QString>> replacements;
+    struct Replacement
+    {
+        int start;
+        int length;
+        QString text;
+    };
+    QList<Replacement> replacements;
 
     while (it.hasNext())
     {
         const QRegularExpressionMatch match = it.next();
         const int originalPx = match.captured(1).toInt();
         const int scaledPx = originalPx == 0 ? 0 : std::max(1, scalePixels(originalPx));
-        replacements.append({match.captured(0), QString("%1px").arg(scaledPx)});
+        replacements.append({match.capturedStart(0), match.capturedLength(0), QString("%1px").arg(scaledPx)});
     }
 
-    for (const auto& replacement : replacements)
+    for (auto replacementIt = replacements.crbegin(); replacementIt != replacements.crend(); ++replacementIt)
     {
-        scaled.replace(replacement.first, replacement.second);
+        scaled.replace(replacementIt->start, replacementIt->length, replacementIt->text);
     }
 
     return scaled;
