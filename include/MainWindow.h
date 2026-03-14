@@ -237,6 +237,7 @@ private slots:
     void onRecordingTimer();
     void onClearLogClicked();
     void onRefreshPortsClicked();
+    void onChooseRecordingDirectoryClicked();
     void onToggleFullScreen();
     void onSwitchLanguage();
     void onGlobalRateChanged(const QString& text);
@@ -260,6 +261,7 @@ private:
     void loadModernStyleSheet();
     void log(const QString& message);
     void updateRecordingStatusLabel();
+    QString defaultRecordingDirectory() const;
     bool startRecordingSession();
     void stopRecording(bool announce = true);
     void writeRecordingHeader();
@@ -307,6 +309,7 @@ private:
     QAction *fullscreen_btn_;
     QAction *lang_action_;
     QAction *clear_log_action_;
+    QAction *recording_directory_action_;
     QAction *exit_action_;
     QAction *about_action_;
     QActionGroup *font_scale_group_;
@@ -375,6 +378,7 @@ private:
     int hmp_sample_rate_;
     int lidar_sample_rate_;
     std::unique_ptr<QFile> recording_file_;
+    QString recording_directory_;
     QString recording_filename_;
     qint64 recording_entry_count_;
     bool gnss_updated_since_last_record_;

@@ -7,6 +7,7 @@
 #include <QMessageBox>
 #include <QFile>
 #include <QFileInfo>
+#include <QFileDialog>
 #include <QTextStream>
 #include <QDateTime>
 #include <QGridLayout>
@@ -25,7 +26,6 @@
 #include <QSerialPortInfo>
 #include <QRegularExpression>
 #include <QSettings>
-#include <QStandardPaths>
 #include <QThread>
 #include <algorithm>
 #include <cmath>
@@ -858,6 +858,7 @@ MainWindow::MainWindow(QWidget *parent)
     , fullscreen_btn_(nullptr)
     , lang_action_(nullptr)
     , clear_log_action_(nullptr)
+    , recording_directory_action_(nullptr)
     , exit_action_(nullptr)
     , about_action_(nullptr)
     , font_scale_group_(nullptr)
@@ -913,6 +914,7 @@ MainWindow::MainWindow(QWidget *parent)
     , hmp_sample_rate_(1)
     , lidar_sample_rate_(1)
     , recording_file_(nullptr)
+    , recording_directory_()
     , recording_filename_()
     , recording_entry_count_(0)
     , gnss_updated_since_last_record_(false)
@@ -929,6 +931,11 @@ MainWindow::MainWindow(QWidget *parent)
     QSettings settings("VaporView", "MainWindow");
     settings.remove("font_scale_percent");
     font_scale_percent_ = 100;
+    recording_directory_ = settings.value("recording_directory", defaultRecordingDirectory()).toString();
+    if (recording_directory_.isEmpty())
+    {
+        recording_directory_ = defaultRecordingDirectory();
+    }
 
     loadModernStyleSheet();
     
@@ -1199,6 +1206,11 @@ void MainWindow::setFontScale(int percent)
 void MainWindow::setupMenuBar()
 {
     QMenu *fileMenu = menuBar()->addMenu("");
+
+    recording_directory_action_ = new QAction(this);
+    connect(recording_directory_action_, &QAction::triggered, this, &MainWindow::onChooseRecordingDirectoryClicked);
+    fileMenu->addAction(recording_directory_action_);
+    fileMenu->addSeparator();
 
     exit_action_ = new QAction(this);
     exit_action_->setShortcut(QKeySequence::Quit);
@@ -1573,6 +1585,7 @@ void MainWindow::setEnglish(bool english)
     is_english_ = english;
 
     menuBar()->actions().at(0)->menu()->setTitle(english ? "&File" : "文件(&F)");
+    recording_directory_action_->setText(english ? "Recording Folder..." : "记录目录...");
     exit_action_->setText(english ? "E&xit" : "退出(&X)");
 
     menuBar()->actions().at(1)->menu()->setTitle(english ? "&View" : "视图(&V)");
@@ -1918,17 +1931,36 @@ void MainWindow::updateRecordingStatusLabel()
     recording_status_label_->style()->polish(recording_status_label_);
 }
 
+QString MainWindow::defaultRecordingDirectory() const
+{
+    QDir dir(QCoreApplication::applicationDirPath());
+    for (int i = 0; i < 6; ++i)
+    {
+        if (QFileInfo::exists(dir.filePath("CMakeLists.txt")) && QFileInfo::exists(dir.filePath("README.md")))
+        {
+            return dir.filePath("records");
+        }
+        if (!dir.cdUp())
+        {
+            break;
+        }
+    }
+
+    return QDir(QCoreApplication::applicationDirPath()).filePath("records");
+}
+
 bool MainWindow::startRecordingSession()
 {
     stopRecording(false);
 
-    QString documentsDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-    if (documentsDir.isEmpty())
+    QString recordsPath = recording_directory_.trimmed();
+    if (recordsPath.isEmpty())
     {
-        documentsDir = QDir::homePath() + "/Documents";
+        recordsPath = defaultRecordingDirectory();
+        recording_directory_ = recordsPath;
     }
 
-    QDir recordsDir(documentsDir + "/VaporView/records");
+    QDir recordsDir(recordsPath);
     if (!recordsDir.exists() && !recordsDir.mkpath("."))
     {
         QMessageBox::warning(
@@ -1972,6 +2004,25 @@ bool MainWindow::startRecordingSession()
     updateRecordingStatusLabel();
     log(QString(is_english_ ? "Started automatic session recording: %1" : "已开始自动会话记录: %1").arg(filename));
     return true;
+}
+
+void MainWindow::onChooseRecordingDirectoryClicked()
+{
+    const QString currentDirectory = recording_directory_.isEmpty() ? defaultRecordingDirectory() : recording_directory_;
+    const QString selectedDirectory = QFileDialog::getExistingDirectory(
+        this,
+        is_english_ ? "Select Recording Folder" : "选择记录目录",
+        currentDirectory,
+        QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+    if (selectedDirectory.isEmpty())
+    {
+        return;
+    }
+
+    recording_directory_ = QDir::fromNativeSeparators(selectedDirectory);
+    QSettings settings("VaporView", "MainWindow");
+    settings.setValue("recording_directory", recording_directory_);
+    log(QString(is_english_ ? "Recording folder set to: %1" : "记录目录已设置为: %1").arg(recording_directory_));
 }
 
 void MainWindow::stopRecording(bool announce)
