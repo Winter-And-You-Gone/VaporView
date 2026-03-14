@@ -970,6 +970,15 @@ void MainWindow::applyStyleConfiguration()
     qApp->setFont(appFont);
     qApp->setStyleSheet(scaledStyleSheet(base_style_sheet_));
     applyScaledUiMetrics();
+
+    if (!isFullScreen() && !isMaximized())
+    {
+        const QSize targetSize = size().expandedTo(minimumSize()).expandedTo(minimumSizeHint());
+        if (targetSize != size())
+        {
+            resize(targetSize);
+        }
+    }
 }
 
 void MainWindow::setFontScale(int percent)
@@ -1188,6 +1197,7 @@ QStringList MainWindow::getAvailablePorts()
 void MainWindow::setupConfigPanel()
 {
     config_group_ = new QGroupBox(this);
+    config_group_->setMinimumWidth(480);
     auto *config_layout = new QGridLayout(config_group_);
     config_layout->setVerticalSpacing(8);
     config_layout->setHorizontalSpacing(8);
