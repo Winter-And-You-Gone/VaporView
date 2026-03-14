@@ -42,6 +42,14 @@ std::string formatDetectionProgress(const char* action, int attempt, int total_a
   return oss.str();
 }
 
+double computeRemainingSeconds(const std::chrono::steady_clock::time_point& start_time, int timeout_ms)
+{
+  const auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - start_time).count();
+  const auto remaining_ms = std::max<int64_t>(0, static_cast<int64_t>(timeout_ms) - elapsed_ms);
+  return remaining_ms / 1000.0;
+}
+
 uint16_t modbusCrc16Local(const uint8_t* data, size_t len)
 {
   uint16_t crc = 0xFFFF;
@@ -367,11 +375,12 @@ bool GnssCollector::checkDeviceResponse()
   char buffer[256];
   constexpr int max_wait_ms = 2000;
   constexpr int step_ms = 100;
+  const auto start_time = std::chrono::steady_clock::now();
   int elapsed_ms = 0;
 
   while (elapsed_ms < max_wait_ms)
   {
-    log(formatDetectionProgress("等待GNSS数据帧", 1, 1, (max_wait_ms - elapsed_ms) / 1000.0));
+    log(formatDetectionProgress("等待GNSS数据帧", 1, 1, computeRemainingSeconds(start_time, max_wait_ms)));
     ssize_t n = serial_.read(buffer, sizeof(buffer));
     if (n > 0)
     {
@@ -512,11 +521,12 @@ bool ImuCollector::checkDeviceResponse()
 
   constexpr int max_wait_ms = 2000;
   constexpr int step_ms = 100;
+  const auto start_time = std::chrono::steady_clock::now();
   int elapsed_ms = 0;
 
   while (elapsed_ms < max_wait_ms)
   {
-    log(formatDetectionProgress("等待IMU数据帧", 1, 1, (max_wait_ms - elapsed_ms) / 1000.0));
+    log(formatDetectionProgress("等待IMU数据帧", 1, 1, computeRemainingSeconds(start_time, max_wait_ms)));
     ssize_t n = serial_.read(buffer, sizeof(buffer));
     if (n > 0)
     {
@@ -690,13 +700,15 @@ bool PtbCollector::checkDeviceResponse()
   
   for (int i = 0; i < max_attempts; i++)
   {
-    log(formatDetectionProgress("发送PTB压力查询", i + 1, max_attempts, 0.50));
+    constexpr int total_wait_ms = 500;
+    const auto attempt_start = std::chrono::steady_clock::now();
+    log(formatDetectionProgress("发送PTB压力查询", i + 1, max_attempts, computeRemainingSeconds(attempt_start, total_wait_ms)));
     serial_.flush();
     serial_.write(PTB_CMD_PRESSURE, std::strlen(PTB_CMD_PRESSURE));
     
     for (int j = 0; j < 10; j++)
     {
-      log(formatDetectionProgress("等待PTB压力返回", i + 1, max_attempts, (10 - j) * 0.05));
+      log(formatDetectionProgress("等待PTB压力返回", i + 1, max_attempts, computeRemainingSeconds(attempt_start, total_wait_ms)));
       sleepMs(50);
       ssize_t n = serial_.read(response, sizeof(response));
       if (n > 0)
@@ -812,16 +824,17 @@ bool HmpCollector::checkDeviceResponse()
 
   for (int i = 0; i < max_attempts; i++)
   {
-    log(formatDetectionProgress("发送HMP寄存器查询", i + 1, max_attempts, 0.50));
+    constexpr int total_wait_ms = 500;
+    const auto attempt_start = std::chrono::steady_clock::now();
+    log(formatDetectionProgress("发送HMP寄存器查询", i + 1, max_attempts, computeRemainingSeconds(attempt_start, total_wait_ms)));
     serial_.flush();
     serial_.write(request, 8);
-    constexpr int total_wait_ms = 500;
     constexpr int step_ms = 25;
     size_t total = 0;
     int elapsed = 0;
     while (elapsed < total_wait_ms && total < sizeof(response))
     {
-      log(formatDetectionProgress("等待HMP寄存器返回", i + 1, max_attempts, (total_wait_ms - elapsed) / 1000.0));
+      log(formatDetectionProgress("等待HMP寄存器返回", i + 1, max_attempts, computeRemainingSeconds(attempt_start, total_wait_ms)));
       ssize_t chunk = serial_.read(response + total, sizeof(response) - total);
       if (chunk > 0)
       {
