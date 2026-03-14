@@ -13,23 +13,14 @@
 #include <QSerialPortInfo>
 #include <cmath>
 
-namespace
-{
-int currentFontScalePercent()
-{
-    QSettings settings("VaproView", "MainWindow");
-    const int percent = settings.value("font_scale_percent", 100).toInt();
-    return percent < 85 || percent > 150 ? 100 : percent;
-}
-
-int scaleDialogPixels(int pixels)
-{
-    return static_cast<int>(std::lround(pixels * currentFontScalePercent() / 100.0));
-}
-}
-
 RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     : QDialog(parent)
+    , main_layout_(nullptr)
+    , config_layout_(nullptr)
+    , output_layout_(nullptr)
+    , button_layout_(nullptr)
+    , log_layout_(nullptr)
+    , log_button_layout_(nullptr)
     , config_group_(nullptr)
     , output_group_(nullptr)
     , log_group_(nullptr)
@@ -64,12 +55,12 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , str2str_process_(nullptr)
     , is_running_(false)
     , is_english_(false)
+    , font_scale_percent_(100)
 {
     setupUi();
     loadSettings();
+    setFontScale(100);
     setEnglish(false);
-    setMinimumSize(scaleDialogPixels(560), scaleDialogPixels(680));
-    resize(scaleDialogPixels(620), scaleDialogPixels(740));
 
     config_file_path_ = QDir::homePath() + "/.config/VaproView/rtk_config.ini";
 }
@@ -93,165 +84,144 @@ RtkConfigDialog::~RtkConfigDialog()
 
 void RtkConfigDialog::setupUi()
 {
-    auto *main_layout = new QVBoxLayout(this);
-    main_layout->setSpacing(8);
-    main_layout->setContentsMargins(12, 12, 12, 12);
+    main_layout_ = new QVBoxLayout(this);
+    main_layout_->setSpacing(8);
+    main_layout_->setContentsMargins(12, 12, 12, 12);
 
     config_group_ = new QGroupBox(this);
-    auto *config_layout = new QGridLayout(config_group_);
-    config_layout->setSpacing(6);
+    config_layout_ = new QGridLayout(config_group_);
+    config_layout_->setSpacing(6);
 
     int row = 0;
     server_label_ = new QLabel(this);
-    config_layout->addWidget(server_label_, row, 0);
+    config_layout_->addWidget(server_label_, row, 0);
     server_edit_ = new QLineEdit(this);
-    config_layout->addWidget(server_edit_, row, 1);
+    config_layout_->addWidget(server_edit_, row, 1);
 
     port_label_ = new QLabel(this);
-    config_layout->addWidget(port_label_, row, 2);
+    config_layout_->addWidget(port_label_, row, 2);
     port_edit_ = new QLineEdit(this);
     port_edit_->setText("2101");
-    port_edit_->setMaximumWidth(scaleDialogPixels(80));
-    config_layout->addWidget(port_edit_, row, 3);
+    config_layout_->addWidget(port_edit_, row, 3);
     row++;
 
     username_label_ = new QLabel(this);
-    config_layout->addWidget(username_label_, row, 0);
+    config_layout_->addWidget(username_label_, row, 0);
     username_edit_ = new QLineEdit(this);
-    config_layout->addWidget(username_edit_, row, 1, 1, 3);
+    config_layout_->addWidget(username_edit_, row, 1, 1, 3);
     row++;
 
     password_label_ = new QLabel(this);
-    config_layout->addWidget(password_label_, row, 0);
+    config_layout_->addWidget(password_label_, row, 0);
     password_edit_ = new QLineEdit(this);
     password_edit_->setEchoMode(QLineEdit::Password);
-    config_layout->addWidget(password_edit_, row, 1, 1, 3);
+    config_layout_->addWidget(password_edit_, row, 1, 1, 3);
     row++;
 
     mountpoint_label_ = new QLabel(this);
-    config_layout->addWidget(mountpoint_label_, row, 0);
+    config_layout_->addWidget(mountpoint_label_, row, 0);
     mountpoint_edit_ = new QLineEdit(this);
-    config_layout->addWidget(mountpoint_edit_, row, 1, 1, 3);
+    config_layout_->addWidget(mountpoint_edit_, row, 1, 1, 3);
     row++;
 
-    main_layout->addWidget(config_group_);
+    main_layout_->addWidget(config_group_);
 
     output_group_ = new QGroupBox(this);
-    auto *output_layout = new QGridLayout(output_group_);
-    output_layout->setSpacing(6);
-    output_layout->setColumnStretch(1, 1);
-    output_layout->setColumnMinimumWidth(2, scaleDialogPixels(88));
+    output_layout_ = new QGridLayout(output_group_);
+    output_layout_->setSpacing(6);
+    output_layout_->setColumnStretch(1, 1);
 
     row = 0;
     output_port_label_ = new QLabel(this);
-    output_layout->addWidget(output_port_label_, row, 0);
+    output_layout_->addWidget(output_port_label_, row, 0);
     output_port_combo_ = new QComboBox(this);
     output_port_combo_->setEditable(true);
-    output_port_combo_->setMinimumWidth(scaleDialogPixels(200));
-    output_port_combo_->setFixedHeight(scaleDialogPixels(30));
-    output_layout->addWidget(output_port_combo_, row, 1);
+    output_layout_->addWidget(output_port_combo_, row, 1);
 
     refresh_ports_btn_ = new QPushButton(this);
-    refresh_ports_btn_->setFixedWidth(scaleDialogPixels(80));
     connect(refresh_ports_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onRefreshPortsClicked);
-    output_layout->addWidget(refresh_ports_btn_, row, 2);
+    output_layout_->addWidget(refresh_ports_btn_, row, 2);
     row++;
 
     baudrate_label_ = new QLabel(this);
-    output_layout->addWidget(baudrate_label_, row, 0);
+    output_layout_->addWidget(baudrate_label_, row, 0);
     baudrate_combo_ = new QComboBox(this);
     baudrate_combo_->addItems({"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"});
     baudrate_combo_->setCurrentText("115200");
-    baudrate_combo_->setMinimumWidth(scaleDialogPixels(200));
-    baudrate_combo_->setFixedHeight(scaleDialogPixels(30));
-    output_layout->addWidget(baudrate_combo_, row, 1);
+    output_layout_->addWidget(baudrate_combo_, row, 1);
     row++;
 
     timeout_label_ = new QLabel(this);
-    output_layout->addWidget(timeout_label_, row, 0);
+    output_layout_->addWidget(timeout_label_, row, 0);
     timeout_spin_ = new QSpinBox(this);
     timeout_spin_->setRange(1000, 60000);
     timeout_spin_->setValue(5000);
     timeout_spin_->setSingleStep(1000);
-    timeout_spin_->setMinimumWidth(scaleDialogPixels(200));
-    timeout_spin_->setFixedHeight(scaleDialogPixels(30));
-    output_layout->addWidget(timeout_spin_, row, 1);
+    output_layout_->addWidget(timeout_spin_, row, 1);
     row++;
 
     reconnect_label_ = new QLabel(this);
-    output_layout->addWidget(reconnect_label_, row, 0);
+    output_layout_->addWidget(reconnect_label_, row, 0);
     reconnect_spin_ = new QSpinBox(this);
     reconnect_spin_->setRange(1000, 60000);
     reconnect_spin_->setValue(1000);
     reconnect_spin_->setSingleStep(1000);
-    reconnect_spin_->setMinimumWidth(scaleDialogPixels(200));
-    reconnect_spin_->setFixedHeight(scaleDialogPixels(30));
-    output_layout->addWidget(reconnect_spin_, row, 1);
+    output_layout_->addWidget(reconnect_spin_, row, 1);
     row++;
 
     background_check_ = new QCheckBox(this);
-    output_layout->addWidget(background_check_, row, 0, 1, 3);
+    output_layout_->addWidget(background_check_, row, 0, 1, 3);
 
-    main_layout->addWidget(output_group_);
+    main_layout_->addWidget(output_group_);
 
-    auto *btn_layout = new QHBoxLayout();
-    btn_layout->setSpacing(6);
+    button_layout_ = new QHBoxLayout();
+    button_layout_->setSpacing(6);
 
     start_btn_ = new QPushButton(this);
-    start_btn_->setFixedWidth(scaleDialogPixels(80));
     connect(start_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onStartClicked);
 
     stop_btn_ = new QPushButton(this);
-    stop_btn_->setFixedWidth(scaleDialogPixels(80));
     stop_btn_->setEnabled(false);
     connect(stop_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onStopClicked);
 
     test_btn_ = new QPushButton(this);
-    test_btn_->setFixedWidth(scaleDialogPixels(120));
     connect(test_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onTestClicked);
 
     save_config_btn_ = new QPushButton(this);
-    save_config_btn_->setFixedWidth(scaleDialogPixels(100));
     connect(save_config_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onSaveConfigClicked);
 
     load_config_btn_ = new QPushButton(this);
-    load_config_btn_->setFixedWidth(scaleDialogPixels(100));
     connect(load_config_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onLoadConfigClicked);
 
-    btn_layout->addWidget(start_btn_);
-    btn_layout->addWidget(stop_btn_);
-    btn_layout->addWidget(test_btn_);
-    btn_layout->addStretch();
-    btn_layout->addWidget(save_config_btn_);
-    btn_layout->addWidget(load_config_btn_);
+    button_layout_->addWidget(start_btn_);
+    button_layout_->addWidget(stop_btn_);
+    button_layout_->addWidget(test_btn_);
+    button_layout_->addStretch();
+    button_layout_->addWidget(save_config_btn_);
+    button_layout_->addWidget(load_config_btn_);
 
-    main_layout->addLayout(btn_layout);
+    main_layout_->addLayout(button_layout_);
 
     log_group_ = new QGroupBox(this);
-    auto *log_layout = new QVBoxLayout(log_group_);
-    log_layout->setSpacing(4);
+    log_layout_ = new QVBoxLayout(log_group_);
+    log_layout_->setSpacing(4);
 
     log_text_edit_ = new QTextEdit(this);
     log_text_edit_->setReadOnly(true);
-    log_text_edit_->setStyleSheet(
-        "QTextEdit { background-color: #ffffff; color: #222222; "
-        "font-family: Consolas, Monaco, monospace; font-size: 13px; }"
-    );
-    log_layout->addWidget(log_text_edit_);
+    log_layout_->addWidget(log_text_edit_);
 
-    auto *log_btn_layout = new QHBoxLayout();
+    log_button_layout_ = new QHBoxLayout();
     clear_log_btn_ = new QPushButton(this);
-    clear_log_btn_->setFixedWidth(scaleDialogPixels(80));
     connect(clear_log_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onClearLogClicked);
-    log_btn_layout->addStretch();
-    log_btn_layout->addWidget(clear_log_btn_);
-    log_layout->addLayout(log_btn_layout);
+    log_button_layout_->addStretch();
+    log_button_layout_->addWidget(clear_log_btn_);
+    log_layout_->addLayout(log_button_layout_);
 
-    main_layout->addWidget(log_group_, 1);
+    main_layout_->addWidget(log_group_, 1);
 
     status_label_ = new QLabel(this);
     status_label_->setStyleSheet("QLabel { color: #666666; font-weight: bold; }");
-    main_layout->addWidget(status_label_);
+    main_layout_->addWidget(status_label_);
 }
 
 QString RtkConfigDialog::textFor(const QString& english, const QString& chinese) const
@@ -291,6 +261,92 @@ void RtkConfigDialog::setEnglish(bool english)
     clear_log_btn_->setText(textFor("Clear Log", "清空日志"));
 
     updateButtonStates();
+}
+
+int RtkConfigDialog::scalePixels(int pixels) const
+{
+    return static_cast<int>(std::lround(pixels * font_scale_percent_ / 100.0));
+}
+
+void RtkConfigDialog::applyScaledUiMetrics()
+{
+    if (main_layout_)
+    {
+        main_layout_->setSpacing(scalePixels(8));
+        main_layout_->setContentsMargins(scalePixels(12), scalePixels(12), scalePixels(12), scalePixels(12));
+    }
+
+    if (config_layout_)
+    {
+        config_layout_->setHorizontalSpacing(scalePixels(6));
+        config_layout_->setVerticalSpacing(scalePixels(6));
+    }
+
+    if (output_layout_)
+    {
+        output_layout_->setHorizontalSpacing(scalePixels(6));
+        output_layout_->setVerticalSpacing(scalePixels(6));
+        output_layout_->setColumnMinimumWidth(2, scalePixels(88));
+    }
+
+    if (button_layout_)
+    {
+        button_layout_->setSpacing(scalePixels(6));
+    }
+
+    if (log_layout_)
+    {
+        log_layout_->setSpacing(scalePixels(4));
+    }
+
+    server_edit_->setMinimumHeight(scalePixels(30));
+    port_edit_->setMaximumWidth(scalePixels(80));
+    port_edit_->setMinimumHeight(scalePixels(30));
+    username_edit_->setMinimumHeight(scalePixels(30));
+    password_edit_->setMinimumHeight(scalePixels(30));
+    mountpoint_edit_->setMinimumHeight(scalePixels(30));
+
+    output_port_combo_->setMinimumWidth(scalePixels(200));
+    output_port_combo_->setMinimumHeight(scalePixels(30));
+    baudrate_combo_->setMinimumWidth(scalePixels(200));
+    baudrate_combo_->setMinimumHeight(scalePixels(30));
+    timeout_spin_->setMinimumWidth(scalePixels(200));
+    timeout_spin_->setMinimumHeight(scalePixels(30));
+    reconnect_spin_->setMinimumWidth(scalePixels(200));
+    reconnect_spin_->setMinimumHeight(scalePixels(30));
+
+    refresh_ports_btn_->setFixedWidth(scalePixels(80));
+    start_btn_->setFixedWidth(scalePixels(80));
+    stop_btn_->setFixedWidth(scalePixels(80));
+    test_btn_->setFixedWidth(scalePixels(120));
+    save_config_btn_->setFixedWidth(scalePixels(100));
+    load_config_btn_->setFixedWidth(scalePixels(100));
+    clear_log_btn_->setFixedWidth(scalePixels(80));
+
+    log_text_edit_->setMinimumWidth(scalePixels(200));
+
+    setMinimumSize(scalePixels(560), scalePixels(680));
+    if (!isMaximized() && !isFullScreen())
+    {
+        resize(size().expandedTo(minimumSize()).expandedTo(QSize(scalePixels(620), scalePixels(740))));
+    }
+}
+
+void RtkConfigDialog::setFontScale(int percent)
+{
+    if (percent < 85 || percent > 150)
+    {
+        percent = 100;
+    }
+
+    if (font_scale_percent_ == percent)
+    {
+        applyScaledUiMetrics();
+        return;
+    }
+
+    font_scale_percent_ = percent;
+    applyScaledUiMetrics();
 }
 
 void RtkConfigDialog::loadSettings()

@@ -10,6 +10,9 @@
 #include <QGroupBox>
 #include <QProcess>
 #include <QTimer>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QGridLayout>
 #include <QSpinBox>
 #include <QCheckBox>
 #include <memory>
@@ -25,6 +28,7 @@ public:
     void appendLog(const QString& message);
     bool isRunning() const;
     void setEnglish(bool english);
+    void setFontScale(int percent);
 
 private slots:
     void onStartClicked();
@@ -46,7 +50,15 @@ private:
     void updateButtonStates();
     QStringList getAvailablePorts() const;
     QString textFor(const QString& english, const QString& chinese) const;
+    int scalePixels(int pixels) const;
+    void applyScaledUiMetrics();
 
+    QVBoxLayout *main_layout_;
+    QGridLayout *config_layout_;
+    QGridLayout *output_layout_;
+    QHBoxLayout *button_layout_;
+    QVBoxLayout *log_layout_;
+    QHBoxLayout *log_button_layout_;
     QGroupBox *config_group_;
     QGroupBox *output_group_;
     QGroupBox *log_group_;
@@ -82,6 +94,7 @@ private:
     QProcess *str2str_process_;
     bool is_running_;
     bool is_english_;
+    int font_scale_percent_;
     QString config_file_path_;
 };
 

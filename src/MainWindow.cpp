@@ -1121,6 +1121,10 @@ void MainWindow::setFontScale(int percent)
 
     font_scale_percent_ = percent;
     applyStyleConfiguration();
+    if (rtk_config_dialog_)
+    {
+        rtk_config_dialog_->setFontScale(font_scale_percent_);
+    }
 }
 
 void MainWindow::setupMenuBar()
@@ -2575,6 +2579,7 @@ void MainWindow::onRtkConfigClicked()
     {
         rtk_config_dialog_ = new RtkConfigDialog(this);
     }
+    rtk_config_dialog_->setFontScale(font_scale_percent_);
     rtk_config_dialog_->setEnglish(is_english_);
     rtk_config_dialog_->show();
     rtk_config_dialog_->raise();
