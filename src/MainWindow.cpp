@@ -7,6 +7,10 @@
 #include <QMessageBox>
 #include <QFileDialog>
 #include <QFile>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTextStream>
 #include <QDateTime>
 #include <QGridLayout>
@@ -40,6 +44,27 @@ constexpr const char *kBaseMarginsLeftProperty = "_vv_base_margin_left";
 constexpr const char *kBaseMarginsTopProperty = "_vv_base_margin_top";
 constexpr const char *kBaseMarginsRightProperty = "_vv_base_margin_right";
 constexpr const char *kBaseMarginsBottomProperty = "_vv_base_margin_bottom";
+
+QString recordingTimestampUtc()
+{
+    return QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+}
+
+QString csvEscape(const QString &value)
+{
+    QString escaped = value;
+    escaped.replace("\"", "\"\"");
+    if (escaped.contains(',') || escaped.contains('"') || escaped.contains('\n') || escaped.contains('\r'))
+    {
+        escaped = QString("\"%1\"").arg(escaped);
+    }
+    return escaped;
+}
+
+QString csvBool(bool value)
+{
+    return value ? QStringLiteral("true") : QStringLiteral("false");
+}
 
 void rememberBaseMetric(QObject *object, const char *propertyName, int value)
 {
@@ -826,11 +851,15 @@ MainWindow::MainWindow(QWidget *parent)
     , cancel_connect_btn_(nullptr)
     , disconnect_btn_(nullptr)
     , export_btn_(nullptr)
+    , start_record_btn_(nullptr)
+    , stop_record_btn_(nullptr)
     , refresh_ports_btn_(nullptr)
     , fullscreen_btn_(nullptr)
     , lang_action_(nullptr)
     , clear_log_action_(nullptr)
     , export_action_(nullptr)
+    , start_record_action_(nullptr)
+    , stop_record_action_(nullptr)
     , exit_action_(nullptr)
     , about_action_(nullptr)
     , font_scale_group_(nullptr)
@@ -884,6 +913,11 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_sample_rate_(1)
     , hmp_sample_rate_(1)
     , lidar_sample_rate_(1)
+    , recording_file_(nullptr)
+    , recording_filename_()
+    , recording_json_(false)
+    , recording_first_entry_(true)
+    , recording_entry_count_(0)
     , rtk_config_action_(nullptr)
     , rtk_config_dialog_(nullptr)
 {
@@ -911,15 +945,18 @@ MainWindow::MainWindow(QWidget *parent)
     setEnglish(false);
     applyStyleConfiguration();
 
+    updateRecordingActions();
     updateConnectionStatus(false);
 }
 
 MainWindow::~MainWindow()
 {
+    stopRecording(false);
     if (gnss_collector_) gnss_collector_->stop();
     if (imu_collector_) imu_collector_->stop();
     if (ptb_collector_) ptb_collector_->stop();
     if (hmp_collector_) hmp_collector_->stop();
+    if (lidar_collector_) lidar_collector_->stop();
 }
 
 void MainWindow::loadModernStyleSheet()
@@ -1162,6 +1199,15 @@ void MainWindow::setupMenuBar()
     connect(export_action_, &QAction::triggered, this, &MainWindow::onExportClicked);
     fileMenu->addAction(export_action_);
 
+    start_record_action_ = new QAction(this);
+    start_record_action_->setShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_R));
+    connect(start_record_action_, &QAction::triggered, this, &MainWindow::onStartRecordingClicked);
+    fileMenu->addAction(start_record_action_);
+
+    stop_record_action_ = new QAction(this);
+    connect(stop_record_action_, &QAction::triggered, this, &MainWindow::onStopRecordingClicked);
+    fileMenu->addAction(stop_record_action_);
+
     fileMenu->addSeparator();
 
     exit_action_ = new QAction(this);
@@ -1306,6 +1352,16 @@ void MainWindow::setupToolBar()
     export_btn_->setIcon(style()->standardIcon(QStyle::SP_DialogSaveButton));
     connect(export_btn_, &QAction::triggered, this, &MainWindow::onExportClicked);
     toolbar->addAction(export_btn_);
+
+    start_record_btn_ = new QAction(this);
+    start_record_btn_->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
+    connect(start_record_btn_, &QAction::triggered, this, &MainWindow::onStartRecordingClicked);
+    toolbar->addAction(start_record_btn_);
+
+    stop_record_btn_ = new QAction(this);
+    stop_record_btn_->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
+    connect(stop_record_btn_, &QAction::triggered, this, &MainWindow::onStopRecordingClicked);
+    toolbar->addAction(stop_record_btn_);
 
     toolbar->addSeparator();
 
@@ -1541,7 +1597,9 @@ void MainWindow::setEnglish(bool english)
     is_english_ = english;
 
     menuBar()->actions().at(0)->menu()->setTitle(english ? "&File" : "文件(&F)");
-    export_action_->setText(english ? "&Export Data..." : "导出数据(&E)...");
+    export_action_->setText(english ? "Export &Snapshot..." : "导出快照(&E)...");
+    start_record_action_->setText(english ? "Start &Recording..." : "开始记录(&R)...");
+    stop_record_action_->setText(english ? "S&top Recording" : "停止记录(&T)");
     exit_action_->setText(english ? "E&xit" : "退出(&X)");
 
     menuBar()->actions().at(1)->menu()->setTitle(english ? "&View" : "视图(&V)");
@@ -1564,7 +1622,9 @@ void MainWindow::setEnglish(bool english)
     cancel_connect_btn_->setText(english ? "Cancel" : "取消");
     disconnect_btn_->setText(english ? "Disconnect" : "断开");
     clear_log_action_->setText(english ? "Clear" : "清空");
-    export_btn_->setText(english ? "Export" : "导出");
+    export_btn_->setText(english ? "Snapshot" : "快照");
+    start_record_btn_->setText(english ? "Start Rec" : "开始记录");
+    stop_record_btn_->setText(english ? "Stop Rec" : "停止记录");
     fullscreen_btn_->setText(english ? "Fullscreen" : "全屏");
     rtk_config_action_->setText(english ? "RTK Config" : "RTK配置");
 
@@ -1601,6 +1661,8 @@ void MainWindow::setEnglish(bool english)
     {
         rtk_config_dialog_->setEnglish(english);
     }
+
+    updateRecordingActions();
 }
 
 void MainWindow::onSwitchLanguage()
@@ -1858,6 +1920,238 @@ void MainWindow::log(const QString& message)
     QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
     log_text_edit_->append(QString("[%1] %2").arg(timestamp, message));
     has_inline_progress_log_ = false;
+}
+
+void MainWindow::updateRecordingActions()
+{
+    const bool recording = recording_file_ && recording_file_->isOpen();
+
+    if (start_record_action_)
+    {
+        start_record_action_->setEnabled(!recording);
+        start_record_action_->setText(is_english_ ? "Start &Recording..." : "开始记录(&R)...");
+    }
+    if (stop_record_action_)
+    {
+        stop_record_action_->setEnabled(recording);
+        stop_record_action_->setText(is_english_ ? "S&top Recording" : "停止记录(&T)");
+    }
+    if (start_record_btn_)
+    {
+        start_record_btn_->setEnabled(!recording);
+        start_record_btn_->setText(is_english_ ? "Start Rec" : "开始记录");
+    }
+    if (stop_record_btn_)
+    {
+        stop_record_btn_->setEnabled(recording);
+        stop_record_btn_->setText(is_english_ ? "Stop Rec" : "停止记录");
+    }
+}
+
+bool MainWindow::startRecordingToFile(const QString& filename)
+{
+    stopRecording(false);
+
+    auto file = std::make_unique<QFile>(filename);
+    if (!file->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+    {
+        QMessageBox::warning(
+            this,
+            is_english_ ? "Error" : "错误",
+            is_english_ ? "Failed to open recording file for writing" : "无法打开记录文件进行写入");
+        return false;
+    }
+
+    recording_json_ = filename.endsWith(".json", Qt::CaseInsensitive);
+    recording_first_entry_ = true;
+    recording_entry_count_ = 0;
+    recording_filename_ = filename;
+    recording_file_ = std::move(file);
+
+    QTextStream out(recording_file_.get());
+    out.setCodec("UTF-8");
+    out.setGenerateByteOrderMark(true);
+
+    if (recording_json_)
+    {
+        out << "{\n";
+        out << "  \"session_start\": \"" << recordingTimestampUtc() << "\",\n";
+        out << "  \"records\": [\n";
+    }
+    else
+    {
+        out << "timestamp_utc,device,valid,error_message,payload_json\n";
+    }
+    out.flush();
+
+    updateRecordingActions();
+    log(QString(is_english_ ? "Started continuous recording: %1" : "已开始持续记录: %1").arg(filename));
+    return true;
+}
+
+void MainWindow::stopRecording(bool announce)
+{
+    if (!recording_file_ || !recording_file_->isOpen())
+    {
+        recording_file_.reset();
+        recording_filename_.clear();
+        recording_entry_count_ = 0;
+        recording_first_entry_ = true;
+        updateRecordingActions();
+        return;
+    }
+
+    if (recording_json_)
+    {
+        QTextStream out(recording_file_.get());
+        out.setCodec("UTF-8");
+        out << "\n  ]\n}\n";
+        out.flush();
+    }
+
+    recording_file_->close();
+
+    const QString filename = recording_filename_;
+    const qint64 entryCount = recording_entry_count_;
+    recording_file_.reset();
+    recording_filename_.clear();
+    recording_entry_count_ = 0;
+    recording_first_entry_ = true;
+    recording_json_ = false;
+
+    updateRecordingActions();
+
+    if (announce)
+    {
+        log(QString(is_english_
+            ? "Stopped recording (%1 entries): %2"
+            : "已停止记录（%1 条）: %2").arg(entryCount).arg(filename));
+    }
+}
+
+void MainWindow::appendRecordingEntry(const QString& device, bool valid, const QString& errorMessage, const QJsonObject& payload)
+{
+    if (!recording_file_ || !recording_file_->isOpen())
+    {
+        return;
+    }
+
+    const QString timestampUtc = recordingTimestampUtc();
+    QTextStream out(recording_file_.get());
+    out.setCodec("UTF-8");
+    const QString payloadJson = QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
+
+    if (recording_json_)
+    {
+        QJsonObject record;
+        record.insert("timestamp_utc", timestampUtc);
+        record.insert("device", device);
+        record.insert("valid", valid);
+        record.insert("error_message", errorMessage);
+        record.insert("payload", payload);
+
+        if (!recording_first_entry_)
+        {
+            out << ",\n";
+        }
+        out << "    " << QString::fromUtf8(QJsonDocument(record).toJson(QJsonDocument::Compact));
+    }
+    else
+    {
+        out << csvEscape(timestampUtc) << ','
+            << csvEscape(device) << ','
+            << csvEscape(csvBool(valid)) << ','
+            << csvEscape(errorMessage) << ','
+            << csvEscape(payloadJson) << '\n';
+    }
+
+    out.flush();
+    recording_first_entry_ = false;
+    ++recording_entry_count_;
+}
+
+QJsonObject MainWindow::buildGnssRecordPayload(const VaporView::GnssData& data) const
+{
+    QJsonObject payload;
+    payload.insert("latitude", data.latitude);
+    payload.insert("longitude", data.longitude);
+    payload.insert("altitude", data.altitude);
+    payload.insert("vel_north", data.vel_north);
+    payload.insert("vel_east", data.vel_east);
+    payload.insert("vel_down", data.vel_down);
+    payload.insert("vel_ground", data.vel_ground);
+    payload.insert("heading", data.heading);
+    payload.insert("heading_pitch", data.heading_pitch);
+    payload.insert("heading_length", data.heading_length);
+    payload.insert("heading_type", QString::fromStdString(data.heading_type));
+    payload.insert("heading_trackedsvs", data.heading_trackedsvs);
+    payload.insert("heading_solnsvs", data.heading_solnsvs);
+    payload.insert("heading_ggl1", data.heading_ggl1);
+    payload.insert("heading_ggl1l2", data.heading_ggl1l2);
+    payload.insert("sigma_lat", data.sigma_lat);
+    payload.insert("sigma_lon", data.sigma_lon);
+    payload.insert("sigma_alt", data.sigma_alt);
+    payload.insert("position_status", QString::fromStdString(data.position_status));
+    payload.insert("num_satellites_used", data.num_satellites_used);
+    payload.insert("num_satellites_tracked", data.num_satellites_tracked);
+    payload.insert("gdop", data.gdop);
+    payload.insert("pdop", data.pdop);
+    payload.insert("hdop", data.hdop);
+    payload.insert("htdop", data.htdop);
+    payload.insert("tdop", data.tdop);
+    payload.insert("diff_age", data.diff_age);
+    payload.insert("undulation", data.undulation);
+    payload.insert("elevation_cutoff", data.elevation_cutoff);
+    payload.insert("raw_sentence", QString::fromStdString(data.raw_sentence));
+    return payload;
+}
+
+QJsonObject MainWindow::buildImuRecordPayload(const VaporView::ImuData& data) const
+{
+    QJsonObject payload;
+    payload.insert("acc_x", data.acceleration[0]);
+    payload.insert("acc_y", data.acceleration[1]);
+    payload.insert("acc_z", data.acceleration[2]);
+    payload.insert("gyr_x", data.gyroscope[0]);
+    payload.insert("gyr_y", data.gyroscope[1]);
+    payload.insert("gyr_z", data.gyroscope[2]);
+    payload.insert("roll", data.rpy[0]);
+    payload.insert("pitch", data.rpy[1]);
+    payload.insert("yaw", data.rpy[2]);
+    payload.insert("quat_w", data.quaternion[0]);
+    payload.insert("quat_x", data.quaternion[1]);
+    payload.insert("quat_y", data.quaternion[2]);
+    payload.insert("quat_z", data.quaternion[3]);
+    payload.insert("temperature", data.temperature);
+    payload.insert("air_pressure", data.air_pressure);
+    payload.insert("system_time_us", static_cast<qint64>(data.system_time_us));
+    payload.insert("system_time_ms", static_cast<qint64>(data.system_time_ms));
+    payload.insert("from_hi83", data.from_hi83);
+    payload.insert("raw_sentence", QString::fromStdString(data.raw_sentence));
+    return payload;
+}
+
+QJsonObject MainWindow::buildPtbRecordPayload(const VaporView::PtbData& data) const
+{
+    QJsonObject payload;
+    payload.insert("pressure_hpa", data.pressure_hpa);
+    return payload;
+}
+
+QJsonObject MainWindow::buildHmpRecordPayload(const VaporView::HmpData& data) const
+{
+    QJsonObject payload;
+    payload.insert("humidity", data.humidity);
+    payload.insert("temperature", data.temperature);
+    return payload;
+}
+
+QJsonObject MainWindow::buildLidarRecordPayload(const VaporView::LidarData& data) const
+{
+    QJsonObject payload;
+    payload.insert("distance_m", data.distance_m);
+    payload.insert("signal_strength", static_cast<int>(data.signal_strength));
+    return payload;
 }
 
 void MainWindow::updateConnectionStatus(bool connected)
@@ -2368,6 +2662,11 @@ void MainWindow::onGnssDataReady()
     if (gnss_collector_)
     {
         current_gnss_ = gnss_collector_->getLatestData();
+        appendRecordingEntry(
+            QStringLiteral("gnss"),
+            current_gnss_.valid,
+            QString::fromStdString(current_gnss_.error_message),
+            buildGnssRecordPayload(current_gnss_));
     }
 }
 
@@ -2376,6 +2675,11 @@ void MainWindow::onImuDataReady()
     if (imu_collector_)
     {
         current_imu_ = imu_collector_->getLatestData();
+        appendRecordingEntry(
+            QStringLiteral("imu"),
+            current_imu_.valid,
+            QString::fromStdString(current_imu_.error_message),
+            buildImuRecordPayload(current_imu_));
     }
 }
 
@@ -2384,6 +2688,11 @@ void MainWindow::onPtbDataReady()
     if (ptb_collector_)
     {
         current_ptb_ = ptb_collector_->getLatestData();
+        appendRecordingEntry(
+            QStringLiteral("ptb"),
+            current_ptb_.valid,
+            QString::fromStdString(current_ptb_.error_message),
+            buildPtbRecordPayload(current_ptb_));
     }
 }
 
@@ -2392,6 +2701,11 @@ void MainWindow::onHmpDataReady()
     if (hmp_collector_)
     {
         current_hmp_ = hmp_collector_->getLatestData();
+        appendRecordingEntry(
+            QStringLiteral("hmp"),
+            current_hmp_.valid,
+            QString::fromStdString(current_hmp_.error_message),
+            buildHmpRecordPayload(current_hmp_));
     }
 }
 
@@ -2400,6 +2714,11 @@ void MainWindow::onLidarDataReady()
     if (lidar_collector_)
     {
         current_lidar_ = lidar_collector_->getLatestData();
+        appendRecordingEntry(
+            QStringLiteral("tf03"),
+            current_lidar_.valid,
+            QString::fromStdString(current_lidar_.error_message),
+            buildLidarRecordPayload(current_lidar_));
     }
 }
 
@@ -2476,7 +2795,7 @@ void MainWindow::onRefreshTimer()
 void MainWindow::onExportClicked()
 {
     QString filter = is_english_ ? "CSV Files (*.csv);;JSON Files (*.json)" : "CSV 文件 (*.csv);;JSON 文件 (*.json)";
-    QString filename = QFileDialog::getSaveFileName(this, is_english_ ? "Export Data" : "导出数据", QString(), filter);
+    QString filename = QFileDialog::getSaveFileName(this, is_english_ ? "Export Snapshot" : "导出快照", QString(), filter);
     if (filename.isEmpty())
     {
         return;
@@ -2590,6 +2909,38 @@ void MainWindow::onExportClicked()
 
     file.close();
     log(QString(is_english_ ? "Exported: %1" : "已导出: %1").arg(filename));
+}
+
+void MainWindow::onStartRecordingClicked()
+{
+    QString filter = is_english_
+        ? "CSV Files (*.csv);;JSON Files (*.json)"
+        : "CSV 文件 (*.csv);;JSON 文件 (*.json)";
+    QString selectedFilter = filter.section(";;", 0, 0);
+    QString filename = QFileDialog::getSaveFileName(
+        this,
+        is_english_ ? "Start Continuous Recording" : "开始持续记录",
+        QString(),
+        filter,
+        &selectedFilter);
+
+    if (filename.isEmpty())
+    {
+        return;
+    }
+
+    const QFileInfo fileInfo(filename);
+    if (fileInfo.suffix().isEmpty())
+    {
+        filename += selectedFilter.contains("*.json") ? ".json" : ".csv";
+    }
+
+    startRecordingToFile(filename);
+}
+
+void MainWindow::onStopRecordingClicked()
+{
+    stopRecording(true);
 }
 
 void MainWindow::onClearLogClicked()

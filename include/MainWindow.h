@@ -25,6 +25,8 @@
 #include <memory>
 
 class RtkConfigDialog;
+class QFile;
+class QJsonObject;
 
 class GnssPanel : public QWidget
 {
@@ -234,6 +236,8 @@ private slots:
     void onLidarDataReady();
     void onRefreshTimer();
     void onExportClicked();
+    void onStartRecordingClicked();
+    void onStopRecordingClicked();
     void onClearLogClicked();
     void onRefreshPortsClicked();
     void onToggleFullScreen();
@@ -258,6 +262,15 @@ private:
     void setupLogPanel();
     void loadModernStyleSheet();
     void log(const QString& message);
+    void updateRecordingActions();
+    bool startRecordingToFile(const QString& filename);
+    void stopRecording(bool announce = true);
+    void appendRecordingEntry(const QString& device, bool valid, const QString& errorMessage, const QJsonObject& payload);
+    QJsonObject buildGnssRecordPayload(const VaporView::GnssData& data) const;
+    QJsonObject buildImuRecordPayload(const VaporView::ImuData& data) const;
+    QJsonObject buildPtbRecordPayload(const VaporView::PtbData& data) const;
+    QJsonObject buildHmpRecordPayload(const VaporView::HmpData& data) const;
+    QJsonObject buildLidarRecordPayload(const VaporView::LidarData& data) const;
     void updateConnectionStatus(bool connected);
     QStringList getAvailablePorts();
     void setEnglish(bool english);
@@ -298,11 +311,15 @@ private:
     QAction *cancel_connect_btn_;
     QAction *disconnect_btn_;
     QAction *export_btn_;
+    QAction *start_record_btn_;
+    QAction *stop_record_btn_;
     QAction *refresh_ports_btn_;
     QAction *fullscreen_btn_;
     QAction *lang_action_;
     QAction *clear_log_action_;
     QAction *export_action_;
+    QAction *start_record_action_;
+    QAction *stop_record_action_;
     QAction *exit_action_;
     QAction *about_action_;
     QActionGroup *font_scale_group_;
@@ -369,6 +386,11 @@ private:
     int ptb_sample_rate_;
     int hmp_sample_rate_;
     int lidar_sample_rate_;
+    std::unique_ptr<QFile> recording_file_;
+    QString recording_filename_;
+    bool recording_json_;
+    bool recording_first_entry_;
+    qint64 recording_entry_count_;
 
     QAction *rtk_config_action_;
     RtkConfigDialog *rtk_config_dialog_;
