@@ -81,8 +81,7 @@ VaporView/
   - `Core`
   - `Widgets`
   - `SerialPort`
-- RTK 相关辅助命令
-  - `curl`
+  - `Network`
 
 ## 构建
 
@@ -110,7 +109,7 @@ build-win/Release/VaporView.exe
 
 ### Linux
 
-项目保留了 GCC / Clang 路径，串口层使用 `termios`。如需在 Linux 上构建，需确保 Qt、外部驱动源码及 `curl` 可用。
+项目保留了 GCC / Clang 路径，串口层使用 `termios`。如需在 Linux 上构建，需确保 Qt 与外部驱动源码可用。
 
 ## 运行架构
 
@@ -146,10 +145,10 @@ Qt SerialPort 当前主要用于枚举可用串口，实际数据读写由仓库
 
 ### RTK 对话框
 
-`src/RtkConfigDialog.cpp` 通过仓库内 RTKLIB 封装与少量外部工具实现 RTK 辅助功能：
+`src/RtkConfigDialog.cpp` 通过仓库内 RTKLIB 封装与 Qt 网络模块实现 RTK 辅助功能：
 
 - `src/RtkStreamService.cpp`：基于 vendored RTKLIB `strsvr` API 实现 NTRIP 到串口转发
-- `curl`：连通性测试与挂载点列表获取
+- `QNetworkAccessManager`：连通性测试与挂载点列表获取
 
 ## 设备支持
 
@@ -269,7 +268,7 @@ CMake 中保留了 `BUILD_PYTHON_BINDINGS` 选项，但仓库内目前不存在 
 - `BUILD_PYTHON_BINDINGS` 当前不完整
 - GUI 导出仅为单次快照，不是持续记录
 - Python 辅助模块尚未接入 GUI 主流程
-- RTK 连通性测试与挂载点获取依赖外部 `curl`
+- RTK 对话框依赖 Qt Network 模块
 
 ## 许可证
 

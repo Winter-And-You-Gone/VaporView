@@ -12,12 +12,18 @@
 #include <QFontMetrics>
 #include <QInputDialog>
 #include <QIntValidator>
-#include <QProcess>
+#include <QEventLoop>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QRegularExpression>
 #include <QSerialPortInfo>
 #include <QSignalBlocker>
 #include <QTextBlock>
 #include <QTextCursor>
+#include <QTimer>
+#include <QUrl>
+#include <QUrlQuery>
 #include <cmath>
 
 namespace
@@ -26,7 +32,16 @@ constexpr int kGgaPollIntervalMs = 50;
 constexpr int kGgaReconnectIntervalMs = 1500;
 constexpr int kGgaStaleTimeoutMs = 1500;
 constexpr int kGgaMaxVisibleLines = 200;
+constexpr int kRtkHttpTimeoutMs = 5000;
 const QRegularExpression kGgaSentencePattern("^\\$..GGA,");
+
+struct HttpResponse
+{
+    int statusCode = 0;
+    QString body;
+    QString error;
+    bool timedOut = false;
+};
 
 QComboBox *createTimingComboBox(QWidget *parent, const QString &defaultValue)
 {
@@ -51,6 +66,79 @@ int comboIntValue(const QComboBox *combo, int defaultValue)
     bool ok = false;
     const int value = combo->currentText().toInt(&ok);
     return ok ? value : defaultValue;
+}
+
+QUrl buildRtkUrl(const QString &server, const QString &port, const QString &path = QString())
+{
+    QUrl url;
+    url.setScheme(QStringLiteral("http"));
+    url.setHost(server.trimmed());
+    bool portOk = false;
+    const int parsedPort = port.trimmed().toInt(&portOk);
+    if (portOk)
+    {
+        url.setPort(parsedPort);
+    }
+    url.setPath(path.isEmpty() ? QStringLiteral("/") : QStringLiteral("/") + path);
+    return url;
+}
+
+HttpResponse performRtkHttpGet(
+    QObject *context,
+    const QUrl &url,
+    const QString &username,
+    const QString &password,
+    const QString &acceptHeader = QStringLiteral("*/*"))
+{
+    HttpResponse result;
+
+    QNetworkAccessManager manager(context);
+    QNetworkRequest request(url);
+    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("VaporView/1.0"));
+    request.setRawHeader("Ntrip-Version", "Ntrip/2.0");
+    request.setRawHeader("Connection", "close");
+    request.setRawHeader("Accept", acceptHeader.toUtf8());
+
+    if (!username.trimmed().isEmpty())
+    {
+        const QByteArray credentials = QStringLiteral("%1:%2").arg(username.trimmed(), password).toUtf8().toBase64();
+        request.setRawHeader("Authorization", "Basic " + credentials);
+    }
+
+    QNetworkReply *reply = manager.get(request);
+    QEventLoop loop;
+    QTimer timeoutTimer;
+    timeoutTimer.setSingleShot(true);
+
+    QObject::connect(&timeoutTimer, &QTimer::timeout, &loop, [&]() {
+        result.timedOut = true;
+        result.error = QStringLiteral("Request timed out");
+        if (reply)
+        {
+            reply->abort();
+        }
+        loop.quit();
+    });
+    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+
+    timeoutTimer.start(kRtkHttpTimeoutMs);
+    loop.exec();
+
+    if (timeoutTimer.isActive())
+    {
+        timeoutTimer.stop();
+    }
+
+    result.body = QString::fromUtf8(reply->readAll());
+    result.statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+
+    if (!result.timedOut && reply->error() != QNetworkReply::NoError)
+    {
+        result.error = reply->errorString();
+    }
+
+    reply->deleteLater();
+    return result;
 }
 }
 
@@ -1149,38 +1237,25 @@ void RtkConfigDialog::onFetchMountpointsClicked()
 
     appendLog(textFor("Fetching mountpoint list from %1:%2...", "正在从 %1:%2 获取挂载点列表...").arg(server, port));
 
-    QString fetchCmd;
-    if (!username.isEmpty())
-    {
-        fetchCmd = QString("curl -s --connect-timeout 5 -u %1:%2 http://%3:%4/")
-            .arg(username, password, server, port);
-    }
-    else
-    {
-        fetchCmd = QString("curl -s --connect-timeout 5 http://%1:%2/")
-            .arg(server, port);
-    }
+    const HttpResponse response = performRtkHttpGet(
+        this,
+        buildRtkUrl(server, port),
+        username,
+        password,
+        QStringLiteral("text/plain, */*"));
 
-    QProcess fetchProcess;
-#ifdef _WIN32
-    fetchProcess.start("cmd", QStringList() << "/C" << fetchCmd);
-#else
-    fetchProcess.start("bash", QStringList() << "-c" << fetchCmd);
-#endif
-    fetchProcess.waitForFinished(10000);
-
-    const QString output = QString::fromUtf8(fetchProcess.readAllStandardOutput());
-    const QString error = QString::fromUtf8(fetchProcess.readAllStandardError()).trimmed();
-
-    if (!error.isEmpty() && output.trimmed().isEmpty())
+    if (response.timedOut || (!response.error.isEmpty() && response.body.trimmed().isEmpty()))
     {
-        appendLog(textFor("Failed to fetch mountpoint list: %1", "获取挂载点列表失败: %1").arg(error));
-        QMessageBox::warning(this, textFor("Failed", "失败"), textFor("Failed to fetch mountpoint list: %1", "获取挂载点列表失败: %1").arg(error));
+        const QString errorText = response.timedOut
+            ? textFor("Request timed out", "请求超时")
+            : response.error;
+        appendLog(textFor("Failed to fetch mountpoint list: %1", "获取挂载点列表失败: %1").arg(errorText));
+        QMessageBox::warning(this, textFor("Failed", "失败"), textFor("Failed to fetch mountpoint list: %1", "获取挂载点列表失败: %1").arg(errorText));
         return;
     }
 
     QStringList mountpoints;
-    const QStringList lines = output.split(QRegularExpression("[\r\n]+"), Qt::SkipEmptyParts);
+    const QStringList lines = response.body.split(QRegularExpression("[\r\n]+"), Qt::SkipEmptyParts);
     for (const QString &line : lines)
     {
         if (!line.startsWith("STR;"))
@@ -1279,11 +1354,11 @@ void RtkConfigDialog::onStopClicked()
 
 void RtkConfigDialog::onTestClicked()
 {
-    QString server = server_edit_->text().trimmed();
-    QString port = port_edit_->text().trimmed();
-    QString username = username_edit_->text().trimmed();
-    QString password = password_edit_->text();
-    QString mountpoint = mountpoint_edit_->text().trimmed();
+    const QString server = server_edit_->text().trimmed();
+    const QString port = port_edit_->text().trimmed();
+    const QString username = username_edit_->text().trimmed();
+    const QString password = password_edit_->text();
+    const QString mountpoint = mountpoint_edit_->text().trimmed();
 
     if (server.isEmpty())
     {
@@ -1293,50 +1368,33 @@ void RtkConfigDialog::onTestClicked()
 
     appendLog(textFor("Testing connection to %1:%2...", "正在测试连接 %1:%2 ...").arg(server, port));
 
-    QString testCmd;
-    const QString nullSink =
-#ifdef _WIN32
-        "NUL";
-#else
-        "/dev/null";
-#endif
+    const HttpResponse response = performRtkHttpGet(
+        this,
+        buildRtkUrl(server, port, mountpoint),
+        username,
+        password,
+        QStringLiteral("*/*"));
 
-    if (!username.isEmpty())
+    if (response.statusCode == 200 || response.statusCode == 401)
     {
-        testCmd = QString("curl -s -o %1 -w '%%{http_code}' --connect-timeout 5 -u %2:%3 http://%4:%5/%6")
-            .arg(nullSink, username, password, server, port, mountpoint.isEmpty() ? "" : mountpoint);
-    }
-    else
-    {
-        testCmd = QString("curl -s -o %1 -w '%%{http_code}' --connect-timeout 5 http://%2:%3/%4")
-            .arg(nullSink, server, port, mountpoint.isEmpty() ? "" : mountpoint);
-    }
-
-    QProcess test_process;
-#ifdef _WIN32
-    test_process.start("cmd", QStringList() << "/C" << testCmd);
-#else
-    test_process.start("bash", QStringList() << "-c" << testCmd);
-#endif
-    test_process.waitForFinished(10000);
-
-    QString output = test_process.readAllStandardOutput().trimmed();
-    QString error = test_process.readAllStandardError();
-
-    if (output == "200" || output == "401")
-    {
-        appendLog(textFor("Connection test successful (HTTP %1)", "连接测试成功 (HTTP %1)").arg(output));
+        appendLog(textFor("Connection test successful (HTTP %1)", "连接测试成功 (HTTP %1)").arg(response.statusCode));
         QMessageBox::information(this, textFor("Success", "成功"), textFor("Connection test successful!", "连接测试成功！"));
     }
-    else if (!error.isEmpty())
+    else if (response.timedOut || !response.error.isEmpty())
     {
-        appendLog(textFor("Connection test failed: %1", "连接测试失败: %1").arg(error));
-        QMessageBox::warning(this, textFor("Failed", "失败"), textFor("Connection test failed: %1", "连接测试失败: %1").arg(error));
+        const QString errorText = response.timedOut
+            ? textFor("Request timed out", "请求超时")
+            : response.error;
+        appendLog(textFor("Connection test failed: %1", "连接测试失败: %1").arg(errorText));
+        QMessageBox::warning(this, textFor("Failed", "失败"), textFor("Connection test failed: %1", "连接测试失败: %1").arg(errorText));
     }
     else
     {
-        appendLog(textFor("Connection test returned: %1", "连接测试返回: %1").arg(output));
-        QMessageBox::information(this, textFor("Result", "结果"), textFor("Server responded with code: %1", "服务器返回代码: %1").arg(output));
+        const QString statusText = response.statusCode > 0
+            ? QString::number(response.statusCode)
+            : textFor("No HTTP response", "无 HTTP 返回");
+        appendLog(textFor("Connection test returned: %1", "连接测试返回: %1").arg(statusText));
+        QMessageBox::information(this, textFor("Result", "结果"), textFor("Server responded with code: %1", "服务器返回代码: %1").arg(statusText));
     }
 }
 
