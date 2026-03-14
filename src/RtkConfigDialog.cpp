@@ -92,7 +92,6 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , timeout_combo_(nullptr)
     , reconnect_combo_(nullptr)
     , gga_port_combo_(nullptr)
-    , background_check_(nullptr)
     , gga_text_edit_(nullptr)
     , log_text_edit_(nullptr)
     , start_btn_(nullptr)
@@ -236,9 +235,6 @@ void RtkConfigDialog::setupUi()
     output_layout_->addWidget(reconnect_combo_, row, 1);
     row++;
 
-    background_check_ = new QCheckBox(this);
-    output_layout_->addWidget(background_check_, row, 0, 1, 3);
-
     main_layout_->addWidget(output_group_);
 
     gga_group_ = new QGroupBox(this);
@@ -364,7 +360,6 @@ void RtkConfigDialog::setEnglish(bool english)
 
     refresh_ports_btn_->setText(textFor("Refresh", "刷新"));
     fetch_mountpoints_btn_->setText(textFor("Detect Mountpoints", "检测挂载点"));
-    background_check_->setText(textFor("Run in background", "后台运行"));
     start_btn_->setText(textFor("Start", "启动"));
     stop_btn_->setText(textFor("Stop", "停止"));
     test_btn_->setText(textFor("Test Connection", "测试连接"));
@@ -596,7 +591,6 @@ void RtkConfigDialog::loadSettings()
     baudrate_combo_->setCurrentText(settings.value("baudrate", "115200").toString());
     timeout_combo_->setCurrentText(settings.value("timeout", "5000").toString());
     reconnect_combo_->setCurrentText(settings.value("reconnect", "1000").toString());
-    background_check_->setChecked(settings.value("background", false).toBool());
     updateGgaMonitorText();
 }
 
@@ -614,7 +608,6 @@ void RtkConfigDialog::saveSettings()
     settings.setValue("baudrate", baudrate_combo_->currentText());
     settings.setValue("timeout", timeout_combo_->currentText());
     settings.setValue("reconnect", reconnect_combo_->currentText());
-    settings.setValue("background", background_check_->isChecked());
 }
 
 QString RtkConfigDialog::buildCommandLine() const
@@ -661,11 +654,6 @@ QString RtkConfigDialog::buildCommandLine() const
         .arg(serial_url)
         .arg(timeout)
         .arg(reconnect);
-
-    if (background_check_->isChecked())
-    {
-        cmd += " -b 1";
-    }
 
     return cmd;
 }
@@ -1378,8 +1366,6 @@ void RtkConfigDialog::onSaveConfigClicked()
     settings.setValue("baudrate", baudrate_combo_->currentText());
     settings.setValue("timeout", timeout_combo_->currentText());
     settings.setValue("reconnect", reconnect_combo_->currentText());
-    settings.setValue("background", background_check_->isChecked());
-
     appendLog(textFor("Configuration saved to: %1", "配置已保存到: %1").arg(filename));
     QMessageBox::information(this, textFor("Saved", "已保存"), textFor("Configuration saved successfully!", "配置保存成功！"));
 }
@@ -1406,8 +1392,6 @@ void RtkConfigDialog::onLoadConfigClicked()
     baudrate_combo_->setCurrentText(settings.value("baudrate", "115200").toString());
     timeout_combo_->setCurrentText(settings.value("timeout", "5000").toString());
     reconnect_combo_->setCurrentText(settings.value("reconnect", "1000").toString());
-    background_check_->setChecked(settings.value("background", false).toBool());
-
     appendLog(textFor("Configuration loaded from: %1", "配置已从以下位置加载: %1").arg(filename));
 }
 

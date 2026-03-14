@@ -15,7 +15,6 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
-#include <QCheckBox>
 #include <chrono>
 #include <deque>
 #include <memory>
@@ -111,7 +110,6 @@ private:
     QComboBox *timeout_combo_;
     QComboBox *reconnect_combo_;
     QComboBox *gga_port_combo_;
-    QCheckBox *background_check_;
     QTextEdit *gga_text_edit_;
     QTextEdit *log_text_edit_;
     QPushButton *start_btn_;
