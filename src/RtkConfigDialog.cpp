@@ -291,14 +291,22 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (config_layout_)
     {
         config_layout_->setHorizontalSpacing(scalePixels(6));
-        config_layout_->setVerticalSpacing(scalePixels(8));
+        config_layout_->setVerticalSpacing(scalePixels(10));
+        for (int row = 0; row < 4; ++row)
+        {
+            config_layout_->setRowMinimumHeight(row, scalePixels(42));
+        }
     }
 
     if (output_layout_)
     {
         output_layout_->setHorizontalSpacing(scalePixels(6));
-        output_layout_->setVerticalSpacing(scalePixels(6));
+        output_layout_->setVerticalSpacing(scalePixels(10));
         output_layout_->setColumnMinimumWidth(2, scalePixels(88));
+        for (int row = 0; row < 5; ++row)
+        {
+            output_layout_->setRowMinimumHeight(row, scalePixels(40));
+        }
     }
 
     if (button_layout_)
