@@ -24,6 +24,7 @@ public:
 
     void appendLog(const QString& message);
     bool isRunning() const;
+    void setEnglish(bool english);
 
 private slots:
     void onStartClicked();
@@ -44,7 +45,20 @@ private:
     QString buildCommandLine() const;
     void updateButtonStates();
     QStringList getAvailablePorts() const;
+    QString textFor(const QString& english, const QString& chinese) const;
 
+    QGroupBox *config_group_;
+    QGroupBox *output_group_;
+    QGroupBox *log_group_;
+    QLabel *server_label_;
+    QLabel *port_label_;
+    QLabel *username_label_;
+    QLabel *password_label_;
+    QLabel *mountpoint_label_;
+    QLabel *output_port_label_;
+    QLabel *baudrate_label_;
+    QLabel *timeout_label_;
+    QLabel *reconnect_label_;
     QLineEdit *server_edit_;
     QLineEdit *port_edit_;
     QLineEdit *username_edit_;
@@ -67,6 +81,7 @@ private:
 
     QProcess *str2str_process_;
     bool is_running_;
+    bool is_english_;
     QString config_file_path_;
 };
 

@@ -1558,7 +1558,7 @@ void MainWindow::setEnglish(bool english)
 
     if (rtk_config_dialog_)
     {
-        rtk_config_dialog_->setWindowTitle(english ? "RTK NTRIP Configuration" : "RTK NTRIP 配置");
+        rtk_config_dialog_->setEnglish(english);
     }
 }
 
@@ -2564,6 +2564,7 @@ void MainWindow::onRtkConfigClicked()
     {
         rtk_config_dialog_ = new RtkConfigDialog(this);
     }
+    rtk_config_dialog_->setEnglish(is_english_);
     rtk_config_dialog_->show();
     rtk_config_dialog_->raise();
     rtk_config_dialog_->activateWindow();

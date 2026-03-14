@@ -30,6 +30,18 @@ int scaleDialogPixels(int pixels)
 
 RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     : QDialog(parent)
+    , config_group_(nullptr)
+    , output_group_(nullptr)
+    , log_group_(nullptr)
+    , server_label_(nullptr)
+    , port_label_(nullptr)
+    , username_label_(nullptr)
+    , password_label_(nullptr)
+    , mountpoint_label_(nullptr)
+    , output_port_label_(nullptr)
+    , baudrate_label_(nullptr)
+    , timeout_label_(nullptr)
+    , reconnect_label_(nullptr)
     , server_edit_(nullptr)
     , port_edit_(nullptr)
     , username_edit_(nullptr)
@@ -51,12 +63,11 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , status_label_(nullptr)
     , str2str_process_(nullptr)
     , is_running_(false)
+    , is_english_(false)
 {
     setupUi();
     loadSettings();
-    updateButtonStates();
-
-    setWindowTitle(tr("RTK NTRIP Configuration"));
+    setEnglish(false);
     setMinimumSize(scaleDialogPixels(560), scaleDialogPixels(680));
     resize(scaleDialogPixels(620), scaleDialogPixels(740));
 
@@ -86,66 +97,72 @@ void RtkConfigDialog::setupUi()
     main_layout->setSpacing(8);
     main_layout->setContentsMargins(12, 12, 12, 12);
 
-    auto *config_group = new QGroupBox(tr("NTRIP Server Configuration"), this);
-    auto *config_layout = new QGridLayout(config_group);
+    config_group_ = new QGroupBox(this);
+    auto *config_layout = new QGridLayout(config_group_);
     config_layout->setSpacing(6);
 
     int row = 0;
-    config_layout->addWidget(new QLabel(tr("Server:"), this), row, 0);
+    server_label_ = new QLabel(this);
+    config_layout->addWidget(server_label_, row, 0);
     server_edit_ = new QLineEdit(this);
-    server_edit_->setPlaceholderText(tr("e.g. rtk.ntrip.org"));
     config_layout->addWidget(server_edit_, row, 1);
 
-    config_layout->addWidget(new QLabel(tr("Port:"), this), row, 2);
+    port_label_ = new QLabel(this);
+    config_layout->addWidget(port_label_, row, 2);
     port_edit_ = new QLineEdit(this);
     port_edit_->setText("2101");
     port_edit_->setMaximumWidth(scaleDialogPixels(80));
     config_layout->addWidget(port_edit_, row, 3);
     row++;
 
-    config_layout->addWidget(new QLabel(tr("Username:"), this), row, 0);
+    username_label_ = new QLabel(this);
+    config_layout->addWidget(username_label_, row, 0);
     username_edit_ = new QLineEdit(this);
     config_layout->addWidget(username_edit_, row, 1, 1, 3);
     row++;
 
-    config_layout->addWidget(new QLabel(tr("Password:"), this), row, 0);
+    password_label_ = new QLabel(this);
+    config_layout->addWidget(password_label_, row, 0);
     password_edit_ = new QLineEdit(this);
     password_edit_->setEchoMode(QLineEdit::Password);
     config_layout->addWidget(password_edit_, row, 1, 1, 3);
     row++;
 
-    config_layout->addWidget(new QLabel(tr("Mountpoint:"), this), row, 0);
+    mountpoint_label_ = new QLabel(this);
+    config_layout->addWidget(mountpoint_label_, row, 0);
     mountpoint_edit_ = new QLineEdit(this);
-    mountpoint_edit_->setPlaceholderText(tr("e.g. RTCM33"));
     config_layout->addWidget(mountpoint_edit_, row, 1, 1, 3);
     row++;
 
-    main_layout->addWidget(config_group);
+    main_layout->addWidget(config_group_);
 
-    auto *output_group = new QGroupBox(tr("RTCM Output Configuration"), this);
-    auto *output_layout = new QGridLayout(output_group);
+    output_group_ = new QGroupBox(this);
+    auto *output_layout = new QGridLayout(output_group_);
     output_layout->setSpacing(6);
 
     row = 0;
-    output_layout->addWidget(new QLabel(tr("Output Port:"), this), row, 0);
+    output_port_label_ = new QLabel(this);
+    output_layout->addWidget(output_port_label_, row, 0);
     output_port_combo_ = new QComboBox(this);
     output_port_combo_->setEditable(true);
     output_layout->addWidget(output_port_combo_, row, 1);
 
-    refresh_ports_btn_ = new QPushButton(tr("Refresh"), this);
+    refresh_ports_btn_ = new QPushButton(this);
     refresh_ports_btn_->setFixedWidth(scaleDialogPixels(80));
     connect(refresh_ports_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onRefreshPortsClicked);
     output_layout->addWidget(refresh_ports_btn_, row, 2);
     row++;
 
-    output_layout->addWidget(new QLabel(tr("Baudrate:"), this), row, 0);
+    baudrate_label_ = new QLabel(this);
+    output_layout->addWidget(baudrate_label_, row, 0);
     baudrate_combo_ = new QComboBox(this);
     baudrate_combo_->addItems({"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"});
     baudrate_combo_->setCurrentText("115200");
     output_layout->addWidget(baudrate_combo_, row, 1, 1, 2);
     row++;
 
-    output_layout->addWidget(new QLabel(tr("Timeout (ms):"), this), row, 0);
+    timeout_label_ = new QLabel(this);
+    output_layout->addWidget(timeout_label_, row, 0);
     timeout_spin_ = new QSpinBox(this);
     timeout_spin_->setRange(1000, 60000);
     timeout_spin_->setValue(5000);
@@ -153,7 +170,8 @@ void RtkConfigDialog::setupUi()
     output_layout->addWidget(timeout_spin_, row, 1, 1, 2);
     row++;
 
-    output_layout->addWidget(new QLabel(tr("Reconnect (ms):"), this), row, 0);
+    reconnect_label_ = new QLabel(this);
+    output_layout->addWidget(reconnect_label_, row, 0);
     reconnect_spin_ = new QSpinBox(this);
     reconnect_spin_->setRange(1000, 60000);
     reconnect_spin_->setValue(1000);
@@ -161,32 +179,32 @@ void RtkConfigDialog::setupUi()
     output_layout->addWidget(reconnect_spin_, row, 1, 1, 2);
     row++;
 
-    background_check_ = new QCheckBox(tr("Run in background"), this);
+    background_check_ = new QCheckBox(this);
     output_layout->addWidget(background_check_, row, 0, 1, 3);
 
-    main_layout->addWidget(output_group);
+    main_layout->addWidget(output_group_);
 
     auto *btn_layout = new QHBoxLayout();
     btn_layout->setSpacing(6);
 
-    start_btn_ = new QPushButton(tr("Start"), this);
+    start_btn_ = new QPushButton(this);
     start_btn_->setFixedWidth(scaleDialogPixels(80));
     connect(start_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onStartClicked);
 
-    stop_btn_ = new QPushButton(tr("Stop"), this);
+    stop_btn_ = new QPushButton(this);
     stop_btn_->setFixedWidth(scaleDialogPixels(80));
     stop_btn_->setEnabled(false);
     connect(stop_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onStopClicked);
 
-    test_btn_ = new QPushButton(tr("Test Connection"), this);
+    test_btn_ = new QPushButton(this);
     test_btn_->setFixedWidth(scaleDialogPixels(120));
     connect(test_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onTestClicked);
 
-    save_config_btn_ = new QPushButton(tr("Save Config"), this);
+    save_config_btn_ = new QPushButton(this);
     save_config_btn_->setFixedWidth(scaleDialogPixels(100));
     connect(save_config_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onSaveConfigClicked);
 
-    load_config_btn_ = new QPushButton(tr("Load Config"), this);
+    load_config_btn_ = new QPushButton(this);
     load_config_btn_->setFixedWidth(scaleDialogPixels(100));
     connect(load_config_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onLoadConfigClicked);
 
@@ -199,8 +217,8 @@ void RtkConfigDialog::setupUi()
 
     main_layout->addLayout(btn_layout);
 
-    auto *log_group = new QGroupBox(tr("RTK Service Log"), this);
-    auto *log_layout = new QVBoxLayout(log_group);
+    log_group_ = new QGroupBox(this);
+    auto *log_layout = new QVBoxLayout(log_group_);
     log_layout->setSpacing(4);
 
     log_text_edit_ = new QTextEdit(this);
@@ -212,18 +230,57 @@ void RtkConfigDialog::setupUi()
     log_layout->addWidget(log_text_edit_);
 
     auto *log_btn_layout = new QHBoxLayout();
-    clear_log_btn_ = new QPushButton(tr("Clear Log"), this);
+    clear_log_btn_ = new QPushButton(this);
     clear_log_btn_->setFixedWidth(scaleDialogPixels(80));
     connect(clear_log_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onClearLogClicked);
     log_btn_layout->addStretch();
     log_btn_layout->addWidget(clear_log_btn_);
     log_layout->addLayout(log_btn_layout);
 
-    main_layout->addWidget(log_group, 1);
+    main_layout->addWidget(log_group_, 1);
 
-    status_label_ = new QLabel(tr("Status: Stopped"), this);
+    status_label_ = new QLabel(this);
     status_label_->setStyleSheet("QLabel { color: #666666; font-weight: bold; }");
     main_layout->addWidget(status_label_);
+}
+
+QString RtkConfigDialog::textFor(const QString& english, const QString& chinese) const
+{
+    return is_english_ ? english : chinese;
+}
+
+void RtkConfigDialog::setEnglish(bool english)
+{
+    is_english_ = english;
+
+    setWindowTitle(textFor("RTK NTRIP Configuration", "RTK NTRIP 配置"));
+    config_group_->setTitle(textFor("NTRIP Server Configuration", "NTRIP 服务器配置"));
+    output_group_->setTitle(textFor("RTCM Output Configuration", "RTCM 输出配置"));
+    log_group_->setTitle(textFor("RTK Service Log", "RTK 服务日志"));
+
+    server_label_->setText(textFor("Server:", "服务器:"));
+    port_label_->setText(textFor("Port:", "端口:"));
+    username_label_->setText(textFor("Username:", "用户名:"));
+    password_label_->setText(textFor("Password:", "密码:"));
+    mountpoint_label_->setText(textFor("Mountpoint:", "挂载点:"));
+    output_port_label_->setText(textFor("Output Port:", "输出串口:"));
+    baudrate_label_->setText(textFor("Baudrate:", "波特率:"));
+    timeout_label_->setText(textFor("Timeout (ms):", "超时 (ms):"));
+    reconnect_label_->setText(textFor("Reconnect (ms):", "重连间隔 (ms):"));
+
+    server_edit_->setPlaceholderText(textFor("e.g. rtk.ntrip.org", "例如: rtk.ntrip.org"));
+    mountpoint_edit_->setPlaceholderText(textFor("e.g. RTCM33", "例如: RTCM33"));
+
+    refresh_ports_btn_->setText(textFor("Refresh", "刷新"));
+    background_check_->setText(textFor("Run in background", "后台运行"));
+    start_btn_->setText(textFor("Start", "启动"));
+    stop_btn_->setText(textFor("Stop", "停止"));
+    test_btn_->setText(textFor("Test Connection", "测试连接"));
+    save_config_btn_->setText(textFor("Save Config", "保存配置"));
+    load_config_btn_->setText(textFor("Load Config", "加载配置"));
+    clear_log_btn_->setText(textFor("Clear Log", "清空日志"));
+
+    updateButtonStates();
 }
 
 void RtkConfigDialog::loadSettings()
@@ -323,12 +380,12 @@ void RtkConfigDialog::updateButtonStates()
 
     if (is_running_)
     {
-        status_label_->setText(tr("Status: Running"));
+        status_label_->setText(textFor("Status: Running", "状态: 运行中"));
         status_label_->setStyleSheet("QLabel { color: #43a047; font-weight: bold; }");
     }
     else
     {
-        status_label_->setText(tr("Status: Stopped"));
+        status_label_->setText(textFor("Status: Stopped", "状态: 已停止"));
         status_label_->setStyleSheet("QLabel { color: #666666; font-weight: bold; }");
     }
 }
@@ -365,7 +422,7 @@ void RtkConfigDialog::onRefreshPortsClicked()
         output_port_combo_->setEditText(current);
     }
 
-    appendLog(tr("Ports refreshed: %1 found").arg(ports.size()));
+    appendLog(textFor("Ports refreshed: %1 found", "串口已刷新: 发现 %1 个").arg(ports.size()));
 }
 
 void RtkConfigDialog::onStartClicked()
@@ -373,7 +430,7 @@ void RtkConfigDialog::onStartClicked()
     QString cmd = buildCommandLine();
     if (cmd.isEmpty())
     {
-        QMessageBox::warning(this, tr("Error"), tr("Please fill in server, mountpoint and output port."));
+        QMessageBox::warning(this, textFor("Error", "错误"), textFor("Please fill in server, mountpoint and output port.", "请填写服务器、挂载点和输出串口。"));
         return;
     }
 
@@ -390,8 +447,8 @@ void RtkConfigDialog::onStartClicked()
             this, &RtkConfigDialog::onProcessFinished);
     connect(str2str_process_, &QProcess::errorOccurred, this, &RtkConfigDialog::onProcessError);
 
-    appendLog(tr("Starting RTK service..."));
-    appendLog(tr("Command: %1").arg(cmd));
+    appendLog(textFor("Starting RTK service...", "正在启动 RTK 服务..."));
+    appendLog(textFor("Command: %1", "命令: %1").arg(cmd));
 
     str2str_process_->start("bash", QStringList() << "-c" << cmd);
 
@@ -399,11 +456,11 @@ void RtkConfigDialog::onStartClicked()
     {
         is_running_ = true;
         updateButtonStates();
-        appendLog(tr("RTK service started successfully"));
+        appendLog(textFor("RTK service started successfully", "RTK 服务启动成功"));
     }
     else
     {
-        appendLog(tr("Failed to start RTK service: %1").arg(str2str_process_->errorString()));
+        appendLog(textFor("Failed to start RTK service: %1", "RTK 服务启动失败: %1").arg(str2str_process_->errorString()));
         delete str2str_process_;
         str2str_process_ = nullptr;
     }
@@ -413,19 +470,19 @@ void RtkConfigDialog::onStopClicked()
 {
     if (str2str_process_ && str2str_process_->state() == QProcess::Running)
     {
-        appendLog(tr("Stopping RTK service..."));
+        appendLog(textFor("Stopping RTK service...", "正在停止 RTK 服务..."));
 
         str2str_process_->terminate();
         if (!str2str_process_->waitForFinished(3000))
         {
-            appendLog(tr("Process not responding, killing..."));
+            appendLog(textFor("Process not responding, killing...", "进程无响应，正在强制结束..."));
             str2str_process_->kill();
             str2str_process_->waitForFinished(1000);
         }
 
         is_running_ = false;
         updateButtonStates();
-        appendLog(tr("RTK service stopped"));
+        appendLog(textFor("RTK service stopped", "RTK 服务已停止"));
     }
 }
 
@@ -439,11 +496,11 @@ void RtkConfigDialog::onTestClicked()
 
     if (server.isEmpty())
     {
-        QMessageBox::warning(this, tr("Error"), tr("Please enter server address."));
+        QMessageBox::warning(this, textFor("Error", "错误"), textFor("Please enter server address.", "请输入服务器地址。"));
         return;
     }
 
-    appendLog(tr("Testing connection to %1:%2...").arg(server, port));
+    appendLog(textFor("Testing connection to %1:%2...", "正在测试连接 %1:%2 ...").arg(server, port));
 
     QString testCmd;
     const QString nullSink =
@@ -477,18 +534,18 @@ void RtkConfigDialog::onTestClicked()
 
     if (output == "200" || output == "401")
     {
-        appendLog(tr("Connection test successful (HTTP %1)").arg(output));
-        QMessageBox::information(this, tr("Success"), tr("Connection test successful!"));
+        appendLog(textFor("Connection test successful (HTTP %1)", "连接测试成功 (HTTP %1)").arg(output));
+        QMessageBox::information(this, textFor("Success", "成功"), textFor("Connection test successful!", "连接测试成功！"));
     }
     else if (!error.isEmpty())
     {
-        appendLog(tr("Connection test failed: %1").arg(error));
-        QMessageBox::warning(this, tr("Failed"), tr("Connection test failed: %1").arg(error));
+        appendLog(textFor("Connection test failed: %1", "连接测试失败: %1").arg(error));
+        QMessageBox::warning(this, textFor("Failed", "失败"), textFor("Connection test failed: %1", "连接测试失败: %1").arg(error));
     }
     else
     {
-        appendLog(tr("Connection test returned: %1").arg(output));
-        QMessageBox::information(this, tr("Result"), tr("Server responded with code: %1").arg(output));
+        appendLog(textFor("Connection test returned: %1", "连接测试返回: %1").arg(output));
+        QMessageBox::information(this, textFor("Result", "结果"), textFor("Server responded with code: %1", "服务器返回代码: %1").arg(output));
     }
 }
 
@@ -505,7 +562,7 @@ void RtkConfigDialog::onProcessReadyRead()
     }
     if (!error.isEmpty())
     {
-        appendLog(tr("[ERROR] %1").arg(error.trimmed()));
+        appendLog(textFor("[ERROR] %1", "[错误] %1").arg(error.trimmed()));
     }
 }
 
@@ -514,8 +571,8 @@ void RtkConfigDialog::onProcessFinished(int exitCode, QProcess::ExitStatus exitS
     is_running_ = false;
     updateButtonStates();
 
-    QString status = (exitStatus == QProcess::CrashExit) ? tr("crashed") : tr("finished");
-    appendLog(tr("RTK service %1 with exit code %2").arg(status).arg(exitCode));
+    QString status = (exitStatus == QProcess::CrashExit) ? textFor("crashed", "崩溃退出") : textFor("finished", "已结束");
+    appendLog(textFor("RTK service %1 with exit code %2", "RTK 服务%1，退出码 %2").arg(status).arg(exitCode));
 }
 
 void RtkConfigDialog::onProcessError(QProcess::ProcessError error)
@@ -524,25 +581,25 @@ void RtkConfigDialog::onProcessError(QProcess::ProcessError error)
     switch (error)
     {
         case QProcess::FailedToStart:
-            errorStr = tr("Failed to start process");
+            errorStr = textFor("Failed to start process", "进程启动失败");
             break;
         case QProcess::Crashed:
-            errorStr = tr("Process crashed");
+            errorStr = textFor("Process crashed", "进程崩溃");
             break;
         case QProcess::Timedout:
-            errorStr = tr("Process timed out");
+            errorStr = textFor("Process timed out", "进程超时");
             break;
         case QProcess::WriteError:
-            errorStr = tr("Write error");
+            errorStr = textFor("Write error", "写入错误");
             break;
         case QProcess::ReadError:
-            errorStr = tr("Read error");
+            errorStr = textFor("Read error", "读取错误");
             break;
         default:
-            errorStr = tr("Unknown error");
+            errorStr = textFor("Unknown error", "未知错误");
     }
 
-    appendLog(tr("[ERROR] Process error: %1").arg(errorStr));
+    appendLog(textFor("[ERROR] Process error: %1", "[错误] 进程错误: %1").arg(errorStr));
     is_running_ = false;
     updateButtonStates();
 }
@@ -550,9 +607,9 @@ void RtkConfigDialog::onProcessError(QProcess::ProcessError error)
 void RtkConfigDialog::onSaveConfigClicked()
 {
     QString filename = QFileDialog::getSaveFileName(
-        this, tr("Save RTK Configuration"),
+        this, textFor("Save RTK Configuration", "保存 RTK 配置"),
         QDir::homePath() + "/rtk_config.ini",
-        tr("INI Files (*.ini);;All Files (*)")
+        textFor("INI Files (*.ini);;All Files (*)", "INI 文件 (*.ini);;所有文件 (*)")
     );
 
     if (filename.isEmpty()) return;
@@ -569,16 +626,16 @@ void RtkConfigDialog::onSaveConfigClicked()
     settings.setValue("reconnect", reconnect_spin_->value());
     settings.setValue("background", background_check_->isChecked());
 
-    appendLog(tr("Configuration saved to: %1").arg(filename));
-    QMessageBox::information(this, tr("Saved"), tr("Configuration saved successfully!"));
+    appendLog(textFor("Configuration saved to: %1", "配置已保存到: %1").arg(filename));
+    QMessageBox::information(this, textFor("Saved", "已保存"), textFor("Configuration saved successfully!", "配置保存成功！"));
 }
 
 void RtkConfigDialog::onLoadConfigClicked()
 {
     QString filename = QFileDialog::getOpenFileName(
-        this, tr("Load RTK Configuration"),
+        this, textFor("Load RTK Configuration", "加载 RTK 配置"),
         QDir::homePath(),
-        tr("INI Files (*.ini);;All Files (*)")
+        textFor("INI Files (*.ini);;All Files (*)", "INI 文件 (*.ini);;所有文件 (*)")
     );
 
     if (filename.isEmpty()) return;
@@ -596,7 +653,7 @@ void RtkConfigDialog::onLoadConfigClicked()
     reconnect_spin_->setValue(settings.value("reconnect", 1000).toInt());
     background_check_->setChecked(settings.value("background", false).toBool());
 
-    appendLog(tr("Configuration loaded from: %1").arg(filename));
+    appendLog(textFor("Configuration loaded from: %1", "配置已从以下位置加载: %1").arg(filename));
 }
 
 void RtkConfigDialog::onClearLogClicked()
