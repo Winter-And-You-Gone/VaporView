@@ -108,8 +108,8 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , is_running_(false)
     , is_english_(false)
     , font_scale_percent_(100)
-    , base_dialog_size_(700, 910)
-    , base_minimum_dialog_size_(620, 820)
+    , base_dialog_size_(700, 950)
+    , base_minimum_dialog_size_(620, 860)
     , gga_poll_timer_(nullptr)
     , gga_last_open_attempt_()
     , gga_last_sentence_time_()
@@ -250,7 +250,7 @@ void RtkConfigDialog::setupUi()
     gga_layout_ = new QVBoxLayout(gga_group_);
     gga_layout_->setSpacing(6);
     gga_layout_->setContentsMargins(8, 8, 8, 12);
-    gga_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+    gga_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 
     gga_header_layout_ = new QHBoxLayout();
     gga_header_layout_->setSpacing(8);
@@ -491,9 +491,21 @@ void RtkConfigDialog::applyScaledUiMetrics()
         gga_text_container_->setFixedHeight(ggaTextHeight + ggaTextBottomGap);
     }
     gga_text_edit_->document()->setDocumentMargin(scalePixels(12));
-    gga_group_->setMinimumHeight(0);
-    gga_group_->setMaximumHeight(QWIDGETSIZE_MAX);
-    gga_group_->setMinimumSize(0, 0);
+    const QMargins ggaMargins = gga_layout_ ? gga_layout_->contentsMargins() : QMargins();
+    const int headerHeight = std::max({gga_port_info_label_->sizeHint().height(),
+                                       gga_port_combo_->sizeHint().height(),
+                                       gga_frequency_label_->sizeHint().height()});
+    const int statusHeight = std::max(gga_status_label_->minimumHeight(), gga_status_label_->sizeHint().height());
+    const int verticalSpacing = gga_layout_ ? gga_layout_->spacing() : 0;
+    const int ggaGroupHeight = ggaMargins.top()
+        + headerHeight
+        + verticalSpacing
+        + statusHeight
+        + verticalSpacing
+        + ggaTextHeight
+        + ggaTextBottomGap
+        + ggaMargins.bottom();
+    gga_group_->setFixedHeight(ggaGroupHeight);
 
     applyButtonWidth(refresh_ports_btn_, 80);
     applyButtonWidth(fetch_mountpoints_btn_, 128);
