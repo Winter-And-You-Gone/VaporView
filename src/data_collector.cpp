@@ -937,6 +937,9 @@ void HmpCollector::run()
   while (running_.load())
   {
     auto start_time = std::chrono::steady_clock::now();
+    const int requested_rate_hz = getSampleRate();
+    const int interval_ms = std::max(1, 1000 / requested_rate_hz);
+    const int response_wait_ms = std::min(500, std::max(50, interval_ms));
     
     request[0] = HMP3_SLAVE_ADDR;
     request[1] = 0x03;
@@ -950,12 +953,35 @@ void HmpCollector::run()
 
     serial_.flush();
     serial_.write(request, 8);
-    ssize_t n = readAccumulated(serial_, response, sizeof(response), 500, 25);
     float humidity = 0.0f;
     float temperature = 0.0f;
     uint8_t exception_code = 0;
-    const size_t response_size = n > 0 ? static_cast<size_t>(n) : 0U;
-    HmpParseResult parsed = parseHmpResponse(response, response_size, humidity, temperature, exception_code, 0x03);
+    HmpParseResult parsed = HmpParseResult::None;
+    size_t total = 0;
+    int elapsed_wait_ms = 0;
+    constexpr int step_ms = 25;
+
+    while (running_.load() && elapsed_wait_ms < response_wait_ms && total < sizeof(response))
+    {
+      ssize_t chunk = serial_.read(response + total, sizeof(response) - total);
+      if (chunk > 0)
+      {
+        total += static_cast<size_t>(chunk);
+        parsed = parseHmpResponse(response, total, humidity, temperature, exception_code, 0x03);
+        if (parsed != HmpParseResult::None)
+        {
+          break;
+        }
+      }
+
+      sleepMs(step_ms);
+      elapsed_wait_ms += step_ms;
+    }
+
+    if (parsed == HmpParseResult::None && total > 0)
+    {
+      parsed = parseHmpResponse(response, total, humidity, temperature, exception_code, 0x03);
+    }
 
     if (parsed == HmpParseResult::Data)
     {
@@ -987,10 +1013,9 @@ void HmpCollector::run()
       latest_data_.error_message = "CRC error";
     }
 
-    int interval_ms = 1000 / sample_rate_hz_;
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start_time).count();
-    int remaining = interval_ms - static_cast<int>(elapsed) - 100;
+    int remaining = interval_ms - static_cast<int>(elapsed);
     if (remaining > 0)
     {
       sleepMs(remaining);
