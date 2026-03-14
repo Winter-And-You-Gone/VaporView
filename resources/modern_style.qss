@@ -376,6 +376,70 @@ QLineEdit:disabled {
     color: #bdbdbd;
 }
 
+QSpinBox {
+    background-color: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 4px 28px 4px 10px;
+    color: #333333;
+    font-size: 14px;
+    min-height: 28px;
+}
+
+QSpinBox:hover {
+    border-color: #bdbdbd;
+}
+
+QSpinBox:focus {
+    border-color: #1976d2;
+    border-width: 2px;
+}
+
+QSpinBox:disabled {
+    background-color: #f5f5f5;
+    color: #bdbdbd;
+}
+
+QSpinBox::up-button,
+QSpinBox::down-button {
+    width: 20px;
+    border: none;
+    background-color: transparent;
+    subcontrol-origin: border;
+}
+
+QSpinBox::up-button {
+    subcontrol-position: top right;
+    border-top-right-radius: 6px;
+}
+
+QSpinBox::down-button {
+    subcontrol-position: bottom right;
+    border-bottom-right-radius: 6px;
+}
+
+QSpinBox::up-button:hover,
+QSpinBox::down-button:hover {
+    background-color: #f5f5f5;
+}
+
+QSpinBox::up-arrow,
+QSpinBox::down-arrow {
+    width: 0px;
+    height: 0px;
+    margin-right: 6px;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+}
+
+QSpinBox::up-arrow {
+    border-bottom: 5px solid #757575;
+}
+
+QSpinBox::down-arrow {
+    border-top: 5px solid #757575;
+}
+
 /* 进度条 */
 QProgressBar {
     background-color: #e0e0e0;

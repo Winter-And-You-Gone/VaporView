@@ -167,6 +167,7 @@ void RtkConfigDialog::setupUi()
     timeout_spin_->setRange(1000, 60000);
     timeout_spin_->setValue(5000);
     timeout_spin_->setSingleStep(1000);
+    timeout_spin_->setFixedHeight(scaleDialogPixels(30));
     output_layout->addWidget(timeout_spin_, row, 1, 1, 2);
     row++;
 
@@ -176,6 +177,7 @@ void RtkConfigDialog::setupUi()
     reconnect_spin_->setRange(1000, 60000);
     reconnect_spin_->setValue(1000);
     reconnect_spin_->setSingleStep(1000);
+    reconnect_spin_->setFixedHeight(scaleDialogPixels(30));
     output_layout->addWidget(reconnect_spin_, row, 1, 1, 2);
     row++;
 
