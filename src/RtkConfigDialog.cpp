@@ -190,7 +190,7 @@ void RtkConfigDialog::setupUi()
     log_text_edit_ = new QTextEdit(this);
     log_text_edit_->setReadOnly(true);
     log_text_edit_->setStyleSheet(
-        "QTextEdit { background-color: #1e1e1e; color: #00ff99; "
+        "QTextEdit { background-color: #ffffff; color: #222222; "
         "font-family: Consolas, Monaco, monospace; font-size: 11px; }"
     );
     log_layout->addWidget(log_text_edit_);

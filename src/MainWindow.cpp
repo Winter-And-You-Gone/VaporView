@@ -792,7 +792,7 @@ void MainWindow::loadModernStyleSheet()
             "QComboBox:hover { border-color: #bdbdbd; }"
             "QComboBox:focus { border-color: #1976d2; border-width: 2px; }"
             "QComboBox QAbstractItemView { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; selection-background-color: #e3f2fd; selection-color: #1976d2; padding: 4px; outline: none; }"
-            "QTextEdit { background-color: #1e1e1e; color: #00ff99; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 11px; }"
+            "QTextEdit { background-color: #ffffff; color: #222222; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 11px; }"
             "QScrollBar:vertical { background-color: #f5f5f5; width: 12px; border-radius: 6px; }"
             "QScrollBar::handle:vertical { background-color: #bdbdbd; min-height: 30px; border-radius: 6px; margin: 2px; }"
             "QScrollBar::handle:vertical:hover { background-color: #9e9e9e; }"

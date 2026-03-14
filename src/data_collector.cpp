@@ -34,10 +34,10 @@ ssize_t readAccumulated(SerialPort& serial, uint8_t* buffer, size_t capacity, in
   return static_cast<ssize_t>(total);
 }
 
-std::string formatDetectionProgress(const char* device, int attempt, int total_attempts, double remaining_seconds)
+std::string formatDetectionProgress(const char* action, int attempt, int total_attempts, double remaining_seconds)
 {
   std::ostringstream oss;
-  oss << "\r正在检测" << device << "响应，第" << attempt << "/" << total_attempts
+  oss << "\r正在" << action << "，第" << attempt << "/" << total_attempts
       << "轮，" << std::fixed << std::setprecision(2) << remaining_seconds << "秒";
   return oss.str();
 }
@@ -371,7 +371,7 @@ bool GnssCollector::checkDeviceResponse()
 
   while (elapsed_ms < max_wait_ms)
   {
-    log(formatDetectionProgress("GNSS", 1, 1, (max_wait_ms - elapsed_ms) / 1000.0));
+    log(formatDetectionProgress("等待GNSS数据帧", 1, 1, (max_wait_ms - elapsed_ms) / 1000.0));
     ssize_t n = serial_.read(buffer, sizeof(buffer));
     if (n > 0)
     {
@@ -516,7 +516,7 @@ bool ImuCollector::checkDeviceResponse()
 
   while (elapsed_ms < max_wait_ms)
   {
-    log(formatDetectionProgress("IMU", 1, 1, (max_wait_ms - elapsed_ms) / 1000.0));
+    log(formatDetectionProgress("等待IMU数据帧", 1, 1, (max_wait_ms - elapsed_ms) / 1000.0));
     ssize_t n = serial_.read(buffer, sizeof(buffer));
     if (n > 0)
     {
@@ -690,12 +690,13 @@ bool PtbCollector::checkDeviceResponse()
   
   for (int i = 0; i < max_attempts; i++)
   {
+    log(formatDetectionProgress("发送PTB压力查询", i + 1, max_attempts, 0.50));
     serial_.flush();
     serial_.write(PTB_CMD_PRESSURE, std::strlen(PTB_CMD_PRESSURE));
     
     for (int j = 0; j < 10; j++)
     {
-      log(formatDetectionProgress("PTB", i + 1, max_attempts, (10 - j) * 0.05));
+      log(formatDetectionProgress("等待PTB压力返回", i + 1, max_attempts, (10 - j) * 0.05));
       sleepMs(50);
       ssize_t n = serial_.read(response, sizeof(response));
       if (n > 0)
@@ -811,6 +812,7 @@ bool HmpCollector::checkDeviceResponse()
 
   for (int i = 0; i < max_attempts; i++)
   {
+    log(formatDetectionProgress("发送HMP寄存器查询", i + 1, max_attempts, 0.50));
     serial_.flush();
     serial_.write(request, 8);
     constexpr int total_wait_ms = 500;
@@ -819,7 +821,7 @@ bool HmpCollector::checkDeviceResponse()
     int elapsed = 0;
     while (elapsed < total_wait_ms && total < sizeof(response))
     {
-      log(formatDetectionProgress("HMP", i + 1, max_attempts, (total_wait_ms - elapsed) / 1000.0));
+      log(formatDetectionProgress("等待HMP寄存器返回", i + 1, max_attempts, (total_wait_ms - elapsed) / 1000.0));
       ssize_t chunk = serial_.read(response + total, sizeof(response) - total);
       if (chunk > 0)
       {

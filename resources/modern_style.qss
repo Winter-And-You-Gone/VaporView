@@ -224,15 +224,15 @@ QComboBox QAbstractItemView::item:hover {
 
 /* 文本编辑框 */
 QTextEdit {
-    background-color: #1e1e1e;
-    color: #00ff99;
+    background-color: #ffffff;
+    color: #222222;
     border: 1px solid #e0e0e0;
     border-radius: 6px;
     padding: 8px;
     font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 11px;
-    selection-background-color: #264f36;
-    selection-color: #00ff99;
+    selection-background-color: #e3f2fd;
+    selection-color: #222222;
 }
 
 /* 滚动条 */
