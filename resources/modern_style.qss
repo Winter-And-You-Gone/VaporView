@@ -74,9 +74,9 @@ QToolBar QToolButton {
     background-color: transparent;
     border: none;
     border-radius: 4px;
-    padding: 4px 8px;
+    padding: 6px 10px;
     color: #555555;
-    font-size: 12px;
+    font-size: 14px;
 }
 
 QToolBar QToolButton:hover {
@@ -103,7 +103,7 @@ QStatusBar {
     border-top: 1px solid #e0e0e0;
     padding: 4px 12px;
     color: #666666;
-    font-size: 12px;
+    font-size: 14px;
 }
 
 /* 分组框 */
@@ -113,7 +113,7 @@ QGroupBox {
     border-radius: 8px;
     margin-top: 12px;
     padding: 4px 4px 4px 4px;
-    font-size: 13px;
+    font-size: 15px;
     font-weight: bold;
     color: #333333;
 }
@@ -130,7 +130,7 @@ QGroupBox::title {
     padding: 0px 12px;
     background-color: #ffffff;
     color: #1976d2;
-    font-size: 14px;
+    font-size: 16px;
     font-weight: bold;
 }
 
@@ -143,26 +143,26 @@ QLabel {
 
 QLabel#rateLabel {
     color: #9e9e9e;
-    font-size: 11px;
+    font-size: 13px;
     font-weight: bold;
 }
 
 QLabel#fieldLabel {
     color: #666666;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 600;
 }
 
 QLabel#valueLabel {
     color: #1976d2;
     font-family: "Consolas", "Monaco", "Courier New", monospace;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 600;
 }
 
 QLabel#separatorLabel {
     color: #757575;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: bold;
     padding: 0px;
     margin: 0px;
@@ -173,9 +173,9 @@ QComboBox {
     background-color: #ffffff;
     border: 1px solid #e0e0e0;
     border-radius: 6px;
-    padding: 2px 8px;
+    padding: 4px 10px;
     color: #333333;
-    font-size: 12px;
+    font-size: 14px;
 }
 
 QComboBox:hover {
@@ -213,8 +213,8 @@ QComboBox QAbstractItemView {
 }
 
 QComboBox QAbstractItemView::item {
-    min-height: 24px;
-    padding: 2px 8px;
+    min-height: 28px;
+    padding: 4px 8px;
     border-radius: 2px;
 }
 
@@ -228,9 +228,9 @@ QTextEdit {
     color: #222222;
     border: 1px solid #e0e0e0;
     border-radius: 6px;
-    padding: 8px;
+    padding: 10px;
     font-family: "Consolas", "Monaco", "Courier New", monospace;
-    font-size: 11px;
+    font-size: 13px;
     selection-background-color: #e3f2fd;
     selection-color: #222222;
 }
@@ -312,7 +312,7 @@ QToolTip {
     border: none;
     border-radius: 4px;
     padding: 6px 10px;
-    font-size: 12px;
+    font-size: 13px;
 }
 
 /* 消息框 */
@@ -322,7 +322,7 @@ QMessageBox {
 
 QMessageBox QLabel {
     color: #333333;
-    font-size: 13px;
+    font-size: 15px;
 }
 
 /* 按钮 */
@@ -331,10 +331,10 @@ QPushButton {
     color: #ffffff;
     border: none;
     border-radius: 6px;
-    padding: 8px 16px;
-    font-size: 13px;
+    padding: 10px 16px;
+    font-size: 15px;
     font-weight: 500;
-    min-height: 32px;
+    min-height: 38px;
 }
 
 QPushButton:hover {
@@ -355,9 +355,9 @@ QLineEdit {
     background-color: #ffffff;
     border: 1px solid #e0e0e0;
     border-radius: 6px;
-    padding: 6px 12px;
+    padding: 8px 12px;
     color: #333333;
-    font-size: 12px;
+    font-size: 14px;
     selection-background-color: #e3f2fd;
     selection-color: #1976d2;
 }
@@ -394,7 +394,7 @@ QProgressBar::chunk {
 QCheckBox {
     color: #333333;
     spacing: 8px;
-    font-size: 12px;
+    font-size: 14px;
 }
 
 QCheckBox::indicator {
@@ -424,7 +424,7 @@ QCheckBox::indicator:checked:after {
 QRadioButton {
     color: #333333;
     spacing: 8px;
-    font-size: 12px;
+    font-size: 14px;
 }
 
 QRadioButton::indicator {
@@ -465,7 +465,7 @@ QLabel[data-valid="false"] {
 /* 高亮显示 */
 QLabel#highlightedValue {
     color: #1976d2;
-    font-size: 14px;
+    font-size: 16px;
     font-weight: bold;
     padding: 4px 8px;
     background-color: #e3f2fd;
@@ -477,7 +477,7 @@ QLabel#statusIndicator {
     padding: 4px 12px;
     border-radius: 12px;
     font-weight: bold;
-    font-size: 11px;
+    font-size: 13px;
 }
 
 QLabel#statusIndicator[status="connected"] {

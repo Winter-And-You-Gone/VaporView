@@ -41,8 +41,8 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     updateButtonStates();
 
     setWindowTitle(tr("RTK NTRIP Configuration"));
-    setMinimumSize(500, 600);
-    resize(550, 650);
+    setMinimumSize(560, 680);
+    resize(620, 740);
 
     config_file_path_ = QDir::homePath() + "/.config/VaproView/rtk_config.ini";
 }
@@ -191,7 +191,7 @@ void RtkConfigDialog::setupUi()
     log_text_edit_->setReadOnly(true);
     log_text_edit_->setStyleSheet(
         "QTextEdit { background-color: #ffffff; color: #222222; "
-        "font-family: Consolas, Monaco, monospace; font-size: 11px; }"
+        "font-family: Consolas, Monaco, monospace; font-size: 13px; }"
     );
     log_layout->addWidget(log_text_edit_);
 

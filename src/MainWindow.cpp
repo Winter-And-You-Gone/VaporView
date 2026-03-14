@@ -88,10 +88,10 @@ void GnssPanel::setupUi()
     auto createRow = [](QGridLayout* grid, int row, QLabel*& lbl, QLabel*& valueLabel, QWidget* parent) {
         lbl = new QLabel(parent);
         lbl->setObjectName("fieldLabel");
-        lbl->setMinimumHeight(16);
+        lbl->setMinimumHeight(22);
         valueLabel = new QLabel("---", parent);
         valueLabel->setObjectName("valueLabel");
-        valueLabel->setMinimumHeight(16);
+        valueLabel->setMinimumHeight(22);
         grid->addWidget(lbl, row, 0);
         grid->addWidget(valueLabel, row, 1);
     };
@@ -299,7 +299,7 @@ void ImuPanel::setupUi()
     rate_label_ = new QLabel(this);
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    rate_label_->setFixedHeight(20);
+    rate_label_->setFixedHeight(28);
     mainLayout->addWidget(rate_label_);
 
     auto *colsLayout = new QHBoxLayout();
@@ -316,10 +316,10 @@ void ImuPanel::setupUi()
     auto createRow = [](QGridLayout* grid, int row, QLabel*& lbl, QLabel*& valueLabel, QWidget* parent) {
         lbl = new QLabel(parent);
         lbl->setObjectName("fieldLabel");
-        lbl->setMinimumHeight(16);
+        lbl->setMinimumHeight(22);
         valueLabel = new QLabel("---", parent);
         valueLabel->setObjectName("valueLabel");
-        valueLabel->setMinimumHeight(16);
+        valueLabel->setMinimumHeight(22);
         grid->addWidget(lbl, row, 0);
         grid->addWidget(valueLabel, row, 1);
     };
@@ -327,7 +327,7 @@ void ImuPanel::setupUi()
     auto createSeparator = [](QGridLayout* grid, int row, QLabel*& sep, QWidget* parent) {
         sep = new QLabel(parent);
         sep->setObjectName("separatorLabel");
-        sep->setMinimumHeight(20);
+        sep->setMinimumHeight(26);
         grid->addWidget(sep, row, 0, 1, 2);
     };
 
@@ -472,25 +472,25 @@ void PtbPanel::setupUi()
     rate_label_ = new QLabel(this);
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    rate_label_->setMinimumHeight(16);
+    rate_label_->setMinimumHeight(22);
     layout->addWidget(rate_label_);
 
     auto *pressLayout = new QHBoxLayout();
     pressLayout->setSpacing(6);
     pressure_lbl_ = new QLabel(this);
     pressure_lbl_->setObjectName("fieldLabel");
-    pressure_lbl_->setMinimumHeight(16);
+    pressure_lbl_->setMinimumHeight(22);
     pressLayout->addWidget(pressure_lbl_);
     pressure_label_ = new QLabel("--- hPa", this);
     pressure_label_->setObjectName("highlightedValue");
-    pressure_label_->setMinimumHeight(16);
+    pressure_label_->setMinimumHeight(22);
     pressLayout->addWidget(pressure_label_);
     pressLayout->addStretch();
     layout->addLayout(pressLayout);
 
     status_label_ = new QLabel(this);
     status_label_->setObjectName("statusIndicator");
-    status_label_->setMinimumHeight(16);
+    status_label_->setMinimumHeight(22);
     layout->addWidget(status_label_);
 
     layout->addStretch();
@@ -568,18 +568,18 @@ void HmpPanel::setupUi()
     rate_label_ = new QLabel(this);
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    rate_label_->setMinimumHeight(16);
+    rate_label_->setMinimumHeight(22);
     layout->addWidget(rate_label_);
 
     auto *tempLayout = new QHBoxLayout();
     tempLayout->setSpacing(6);
     temp_lbl_ = new QLabel(this);
     temp_lbl_->setObjectName("fieldLabel");
-    temp_lbl_->setMinimumHeight(16);
+    temp_lbl_->setMinimumHeight(22);
     tempLayout->addWidget(temp_lbl_);
     temperature_label_ = new QLabel("--- °C", this);
     temperature_label_->setObjectName("highlightedValue");
-    temperature_label_->setMinimumHeight(16);
+    temperature_label_->setMinimumHeight(22);
     tempLayout->addWidget(temperature_label_);
     tempLayout->addStretch();
     layout->addLayout(tempLayout);
@@ -588,18 +588,18 @@ void HmpPanel::setupUi()
     humidLayout->setSpacing(6);
     humidity_lbl_ = new QLabel(this);
     humidity_lbl_->setObjectName("fieldLabel");
-    humidity_lbl_->setMinimumHeight(16);
+    humidity_lbl_->setMinimumHeight(22);
     humidLayout->addWidget(humidity_lbl_);
     humidity_label_ = new QLabel("--- %RH", this);
     humidity_label_->setObjectName("highlightedValue");
-    humidity_label_->setMinimumHeight(16);
+    humidity_label_->setMinimumHeight(22);
     humidLayout->addWidget(humidity_label_);
     humidLayout->addStretch();
     layout->addLayout(humidLayout);
 
     status_label_ = new QLabel(this);
     status_label_->setObjectName("statusIndicator");
-    status_label_->setMinimumHeight(16);
+    status_label_->setMinimumHeight(22);
     layout->addWidget(status_label_);
 
     layout->addStretch();
@@ -738,7 +738,6 @@ MainWindow::MainWindow(QWidget *parent)
     setupCentralWidget();
 
     resize(1280, 720);
-    setMaximumSize(1368, 768);
     setMinimumSize(800, 600);
 
     refresh_timer_ = new QTimer(this);
@@ -781,29 +780,29 @@ void MainWindow::loadModernStyleSheet()
             "QMenu::item { padding: 8px 32px 8px 16px; color: #333333; }"
             "QMenu::item:selected { background-color: #e3f2fd; color: #1976d2; }"
             "QToolBar { background-color: #ffffff; border-bottom: 1px solid #e0e0e0; padding: 8px 12px; spacing: 8px; }"
-            "QToolBar QToolButton { background-color: transparent; border: none; border-radius: 6px; padding: 8px 12px; color: #555555; font-size: 13px; }"
+            "QToolBar QToolButton { background-color: transparent; border: none; border-radius: 6px; padding: 10px 14px; color: #555555; font-size: 15px; }"
             "QToolBar QToolButton:hover { background-color: #f0f0f0; }"
             "QToolBar QToolButton:disabled { color: #bdbdbd; }"
-            "QStatusBar { background-color: #ffffff; border-top: 1px solid #e0e0e0; padding: 4px 12px; color: #666666; font-size: 12px; }"
-            "QGroupBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; margin-top: 16px; padding: 16px 12px 12px 12px; font-size: 13px; font-weight: bold; color: #333333; }"
+            "QStatusBar { background-color: #ffffff; border-top: 1px solid #e0e0e0; padding: 4px 12px; color: #666666; font-size: 14px; }"
+            "QGroupBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; margin-top: 16px; padding: 16px 12px 12px 12px; font-size: 15px; font-weight: bold; color: #333333; }"
             "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 12px; padding: 0px 8px; background-color: #ffffff; color: #1976d2; }"
             "QLabel { color: #333333; background-color: transparent; border: none; }"
-            "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 6px 12px; min-height: 28px; color: #333333; font-size: 12px; }"
+            "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px 12px; min-height: 34px; color: #333333; font-size: 14px; }"
             "QComboBox:hover { border-color: #bdbdbd; }"
             "QComboBox:focus { border-color: #1976d2; border-width: 2px; }"
             "QComboBox QAbstractItemView { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; selection-background-color: #e3f2fd; selection-color: #1976d2; padding: 4px; outline: none; }"
-            "QTextEdit { background-color: #ffffff; color: #222222; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 11px; }"
+            "QTextEdit { background-color: #ffffff; color: #222222; border: 1px solid #e0e0e0; border-radius: 6px; padding: 10px; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; }"
             "QScrollBar:vertical { background-color: #f5f5f5; width: 12px; border-radius: 6px; }"
             "QScrollBar::handle:vertical { background-color: #bdbdbd; min-height: 30px; border-radius: 6px; margin: 2px; }"
             "QScrollBar::handle:vertical:hover { background-color: #9e9e9e; }"
             "QScrollBar:horizontal { background-color: #f5f5f5; height: 12px; border-radius: 6px; }"
             "QScrollBar::handle:horizontal { background-color: #bdbdbd; min-width: 30px; border-radius: 6px; margin: 2px; }"
             "QScrollBar::handle:horizontal:hover { background-color: #9e9e9e; }"
-            "QPushButton { background-color: #1976d2; color: #ffffff; border: none; border-radius: 6px; padding: 8px 16px; font-size: 13px; font-weight: 500; min-height: 32px; }"
+            "QPushButton { background-color: #1976d2; color: #ffffff; border: none; border-radius: 6px; padding: 10px 18px; font-size: 15px; font-weight: 500; min-height: 38px; }"
             "QPushButton:hover { background-color: #1565c0; }"
             "QPushButton:pressed { background-color: #0d47a1; }"
             "QPushButton:disabled { background-color: #bdbdbd; color: #ffffff; }"
-            "QToolTip { background-color: #424242; color: #ffffff; border: none; border-radius: 4px; padding: 6px 10px; font-size: 12px; }";
+            "QToolTip { background-color: #424242; color: #ffffff; border: none; border-radius: 4px; padding: 6px 10px; font-size: 13px; }";
         qApp->setStyleSheet(fallbackStyle);
     }
 }
@@ -981,7 +980,7 @@ void MainWindow::setupConfigPanel()
     auto createPortRow = [this, config_layout, &baudRates, &ports](QLabel*& lbl, QComboBox*& portCombo, QComboBox*& baudCombo, const QString& defaultPort, const QString& defaultBaud, int row) {
         lbl = new QLabel(this);
         lbl->setObjectName("fieldLabel");
-        lbl->setFixedHeight(20);
+        lbl->setFixedHeight(28);
         lbl->setFixedWidth(80);
         config_layout->addWidget(lbl, row, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
@@ -989,7 +988,7 @@ void MainWindow::setupConfigPanel()
         portCombo->addItem(is_english_ ? "-- Select --" : "-- 选择 --");
         portCombo->addItems(ports);
         portCombo->setEditable(true);
-        portCombo->setFixedHeight(20);
+        portCombo->setFixedHeight(30);
         portCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         portCombo->setMaxVisibleItems(15);
 
@@ -1007,7 +1006,7 @@ void MainWindow::setupConfigPanel()
         baudCombo = new QComboBox(this);
         baudCombo->addItems(baudRates);
         baudCombo->setCurrentText(defaultBaud);
-        baudCombo->setFixedHeight(20);
+        baudCombo->setFixedHeight(30);
         baudCombo->setFixedWidth(100);
         config_layout->addWidget(baudCombo, row, 2, Qt::AlignVCenter);
     };
@@ -1015,7 +1014,7 @@ void MainWindow::setupConfigPanel()
     auto createRateRow = [this, config_layout](QLabel*& lbl, QComboBox*& combo, int row) {
         lbl = new QLabel(this);
         lbl->setObjectName("fieldLabel");
-        lbl->setFixedHeight(20);
+        lbl->setFixedHeight(28);
         lbl->setFixedWidth(80);
         config_layout->addWidget(lbl, row, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
@@ -1031,7 +1030,7 @@ void MainWindow::setupConfigPanel()
         combo->addItem("500");
         combo->setCurrentIndex(4);
         combo->setEditable(true);
-        combo->setFixedHeight(20);
+        combo->setFixedHeight(30);
         combo->setFixedWidth(100);
         combo->setValidator(new QIntValidator(1, 500, combo));
         config_layout->addWidget(combo, row, 1, Qt::AlignVCenter | Qt::AlignLeft);
@@ -1346,7 +1345,6 @@ void MainWindow::onToggleFullScreen()
     if (is_fullscreen_)
     {
         showNormal();
-        setMaximumSize(1368, 768);
         resize(1280, 720);
         menuBar()->show();
         is_fullscreen_ = false;
