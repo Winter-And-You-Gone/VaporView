@@ -1028,7 +1028,7 @@ void HmpCollector::run()
     auto start_time = std::chrono::steady_clock::now();
     const int requested_rate_hz = getSampleRate();
     const int interval_ms = std::max(1, 1000 / requested_rate_hz);
-    const int response_wait_ms = std::min(500, std::max(50, interval_ms));
+    const int response_wait_ms = std::min(500, std::max(100, interval_ms));
     
     request[0] = HMP3_SLAVE_ADDR;
     request[1] = 0x03;
@@ -1040,7 +1040,6 @@ void HmpCollector::run()
     request[6] = crc & 0xFF;
     request[7] = (crc >> 8) & 0xFF;
 
-    serial_.flush();
     serial_.write(request, 8);
     float humidity = 0.0f;
     float temperature = 0.0f;
