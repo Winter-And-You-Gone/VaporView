@@ -10,9 +10,38 @@
 #include <QDirIterator>
 #include <QDateTime>
 #include <QFontMetrics>
+#include <QIntValidator>
 #include <QRegularExpression>
 #include <QSerialPortInfo>
 #include <cmath>
+
+namespace
+{
+QComboBox *createTimingComboBox(QWidget *parent, const QString &defaultValue)
+{
+    auto *combo = new QComboBox(parent);
+    combo->setEditable(true);
+    combo->addItems({"1000", "2000", "5000", "10000", "30000", "60000"});
+    combo->setCurrentText(defaultValue);
+    if (combo->lineEdit())
+    {
+        combo->lineEdit()->setValidator(new QIntValidator(1000, 60000, combo));
+    }
+    return combo;
+}
+
+int comboIntValue(const QComboBox *combo, int defaultValue)
+{
+    if (!combo)
+    {
+        return defaultValue;
+    }
+
+    bool ok = false;
+    const int value = combo->currentText().toInt(&ok);
+    return ok ? value : defaultValue;
+}
+}
 
 RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     : QDialog(parent)
@@ -41,8 +70,8 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , mountpoint_edit_(nullptr)
     , output_port_combo_(nullptr)
     , baudrate_combo_(nullptr)
-    , timeout_spin_(nullptr)
-    , reconnect_spin_(nullptr)
+    , timeout_combo_(nullptr)
+    , reconnect_combo_(nullptr)
     , background_check_(nullptr)
     , log_text_edit_(nullptr)
     , start_btn_(nullptr)
@@ -154,20 +183,14 @@ void RtkConfigDialog::setupUi()
 
     timeout_label_ = new QLabel(this);
     output_layout_->addWidget(timeout_label_, row, 0);
-    timeout_spin_ = new QSpinBox(this);
-    timeout_spin_->setRange(1000, 60000);
-    timeout_spin_->setValue(5000);
-    timeout_spin_->setSingleStep(1000);
-    output_layout_->addWidget(timeout_spin_, row, 1);
+    timeout_combo_ = createTimingComboBox(this, "5000");
+    output_layout_->addWidget(timeout_combo_, row, 1);
     row++;
 
     reconnect_label_ = new QLabel(this);
     output_layout_->addWidget(reconnect_label_, row, 0);
-    reconnect_spin_ = new QSpinBox(this);
-    reconnect_spin_->setRange(1000, 60000);
-    reconnect_spin_->setValue(1000);
-    reconnect_spin_->setSingleStep(1000);
-    output_layout_->addWidget(reconnect_spin_, row, 1);
+    reconnect_combo_ = createTimingComboBox(this, "1000");
+    output_layout_->addWidget(reconnect_combo_, row, 1);
     row++;
 
     background_check_ = new QCheckBox(this);
@@ -330,10 +353,10 @@ void RtkConfigDialog::applyScaledUiMetrics()
     output_port_combo_->setMinimumHeight(scalePixels(30));
     baudrate_combo_->setMinimumWidth(scalePixels(200));
     baudrate_combo_->setMinimumHeight(scalePixels(30));
-    timeout_spin_->setMinimumWidth(scalePixels(200));
-    timeout_spin_->setMinimumHeight(scalePixels(30));
-    reconnect_spin_->setMinimumWidth(scalePixels(200));
-    reconnect_spin_->setMinimumHeight(scalePixels(30));
+    timeout_combo_->setMinimumWidth(scalePixels(200));
+    timeout_combo_->setMinimumHeight(scalePixels(30));
+    reconnect_combo_->setMinimumWidth(scalePixels(200));
+    reconnect_combo_->setMinimumHeight(scalePixels(30));
 
     applyButtonWidth(refresh_ports_btn_, 80);
     applyButtonWidth(start_btn_, 80);
@@ -384,8 +407,8 @@ void RtkConfigDialog::loadSettings()
     output_port_combo_->setCurrentText(settings.value("output_port", "/dev/ttyCOM3").toString());
 #endif
     baudrate_combo_->setCurrentText(settings.value("baudrate", "115200").toString());
-    timeout_spin_->setValue(settings.value("timeout", 5000).toInt());
-    reconnect_spin_->setValue(settings.value("reconnect", 1000).toInt());
+    timeout_combo_->setCurrentText(settings.value("timeout", "5000").toString());
+    reconnect_combo_->setCurrentText(settings.value("reconnect", "1000").toString());
     background_check_->setChecked(settings.value("background", false).toBool());
 }
 
@@ -400,8 +423,8 @@ void RtkConfigDialog::saveSettings()
     settings.setValue("mountpoint", mountpoint_edit_->text());
     settings.setValue("output_port", output_port_combo_->currentText());
     settings.setValue("baudrate", baudrate_combo_->currentText());
-    settings.setValue("timeout", timeout_spin_->value());
-    settings.setValue("reconnect", reconnect_spin_->value());
+    settings.setValue("timeout", timeout_combo_->currentText());
+    settings.setValue("reconnect", reconnect_combo_->currentText());
     settings.setValue("background", background_check_->isChecked());
 }
 
@@ -414,8 +437,8 @@ QString RtkConfigDialog::buildCommandLine() const
     QString mountpoint = mountpoint_edit_->text().trimmed();
     QString output_port = output_port_combo_->currentText().trimmed();
     QString baudrate = baudrate_combo_->currentText();
-    int timeout = timeout_spin_->value();
-    int reconnect = reconnect_spin_->value();
+    int timeout = comboIntValue(timeout_combo_, 5000);
+    int reconnect = comboIntValue(reconnect_combo_, 1000);
 
     if (server.isEmpty() || mountpoint.isEmpty() || output_port.isEmpty())
     {
@@ -708,8 +731,8 @@ void RtkConfigDialog::onSaveConfigClicked()
     settings.setValue("mountpoint", mountpoint_edit_->text());
     settings.setValue("output_port", output_port_combo_->currentText());
     settings.setValue("baudrate", baudrate_combo_->currentText());
-    settings.setValue("timeout", timeout_spin_->value());
-    settings.setValue("reconnect", reconnect_spin_->value());
+    settings.setValue("timeout", timeout_combo_->currentText());
+    settings.setValue("reconnect", reconnect_combo_->currentText());
     settings.setValue("background", background_check_->isChecked());
 
     appendLog(textFor("Configuration saved to: %1", "配置已保存到: %1").arg(filename));
@@ -735,8 +758,8 @@ void RtkConfigDialog::onLoadConfigClicked()
     mountpoint_edit_->setText(settings.value("mountpoint", "").toString());
     output_port_combo_->setCurrentText(settings.value("output_port", "").toString());
     baudrate_combo_->setCurrentText(settings.value("baudrate", "115200").toString());
-    timeout_spin_->setValue(settings.value("timeout", 5000).toInt());
-    reconnect_spin_->setValue(settings.value("reconnect", 1000).toInt());
+    timeout_combo_->setCurrentText(settings.value("timeout", "5000").toString());
+    reconnect_combo_->setCurrentText(settings.value("reconnect", "1000").toString());
     background_check_->setChecked(settings.value("background", false).toBool());
 
     appendLog(textFor("Configuration loaded from: %1", "配置已从以下位置加载: %1").arg(filename));

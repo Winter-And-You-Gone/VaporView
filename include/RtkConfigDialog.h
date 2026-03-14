@@ -13,7 +13,6 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
-#include <QSpinBox>
 #include <QCheckBox>
 #include <memory>
 
@@ -78,8 +77,8 @@ private:
     QLineEdit *mountpoint_edit_;
     QComboBox *output_port_combo_;
     QComboBox *baudrate_combo_;
-    QSpinBox *timeout_spin_;
-    QSpinBox *reconnect_spin_;
+    QComboBox *timeout_combo_;
+    QComboBox *reconnect_combo_;
     QCheckBox *background_check_;
     QTextEdit *log_text_edit_;
     QPushButton *start_btn_;
