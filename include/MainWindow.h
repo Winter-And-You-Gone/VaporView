@@ -21,6 +21,7 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QScrollArea>
+#include <atomic>
 #include <memory>
 
 class RtkConfigDialog;
@@ -220,6 +221,7 @@ private slots:
     void onHmpRateChanged(const QString& text);
     void onRtkConfigClicked();
     void onFontScaleTriggered(QAction *action);
+    void onCancelConnectClicked();
 
 private:
     void setupMenuBar();
@@ -241,6 +243,9 @@ private:
     int scalePixels(int pixels) const;
     void applyAllSampleRates();
     int parseRate(const QString& text);
+    void stopAllCollectors();
+    bool shouldAbortConnectionAttempt();
+    void finishConnectionAttempt(bool connected);
 
     QWidget *central_widget_;
     QVBoxLayout *main_layout_;
@@ -262,6 +267,7 @@ private:
     QComboBox *ptb_baud_combo_;
     QComboBox *hmp_baud_combo_;
     QAction *connect_btn_;
+    QAction *cancel_connect_btn_;
     QAction *disconnect_btn_;
     QAction *export_btn_;
     QAction *refresh_ports_btn_;
@@ -317,6 +323,8 @@ private:
     bool is_fullscreen_;
     bool is_english_;
     bool has_inline_progress_log_;
+    bool connection_attempt_in_progress_;
+    std::atomic<bool> cancel_connection_requested_;
     int font_scale_percent_;
     double base_font_point_size_;
     QString base_style_sheet_;

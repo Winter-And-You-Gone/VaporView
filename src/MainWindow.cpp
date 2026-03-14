@@ -709,6 +709,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_baud_combo_(nullptr)
     , hmp_baud_combo_(nullptr)
     , connect_btn_(nullptr)
+    , cancel_connect_btn_(nullptr)
     , disconnect_btn_(nullptr)
     , export_btn_(nullptr)
     , refresh_ports_btn_(nullptr)
@@ -753,6 +754,8 @@ MainWindow::MainWindow(QWidget *parent)
     , is_fullscreen_(false)
     , is_english_(false)
     , has_inline_progress_log_(false)
+    , connection_attempt_in_progress_(false)
+    , cancel_connection_requested_(false)
     , font_scale_percent_(100)
     , base_font_point_size_(0.0)
     , gnss_sample_rate_(1)
@@ -1111,6 +1114,12 @@ void MainWindow::setupToolBar()
     connect(connect_btn_, &QAction::triggered, this, &MainWindow::onConnectClicked);
     toolbar->addAction(connect_btn_);
 
+    cancel_connect_btn_ = new QAction(this);
+    cancel_connect_btn_->setIcon(style()->standardIcon(QStyle::SP_BrowserStop));
+    cancel_connect_btn_->setEnabled(false);
+    connect(cancel_connect_btn_, &QAction::triggered, this, &MainWindow::onCancelConnectClicked);
+    toolbar->addAction(cancel_connect_btn_);
+
     disconnect_btn_ = new QAction(this);
     disconnect_btn_->setIcon(style()->standardIcon(QStyle::SP_DialogNoButton));
     disconnect_btn_->setEnabled(false);
@@ -1385,6 +1394,7 @@ void MainWindow::setEnglish(bool english)
 
     refresh_ports_btn_->setText(english ? "Refresh" : "刷新");
     connect_btn_->setText(english ? "Connect" : "连接");
+    cancel_connect_btn_->setText(english ? "Cancel" : "取消");
     disconnect_btn_->setText(english ? "Disconnect" : "断开");
     clear_log_action_->setText(english ? "Clear" : "清空");
     export_btn_->setText(english ? "Export" : "导出");
@@ -1652,20 +1662,28 @@ void MainWindow::log(const QString& message)
 
 void MainWindow::updateConnectionStatus(bool connected)
 {
-    connect_btn_->setEnabled(!connected);
-    disconnect_btn_->setEnabled(connected);
-    refresh_ports_btn_->setEnabled(!connected);
+    const bool inputsEnabled = !connected && !connection_attempt_in_progress_;
 
-    gnss_port_combo_->setEnabled(!connected);
-    imu_port_combo_->setEnabled(!connected);
-    ptb_port_combo_->setEnabled(!connected);
-    hmp_port_combo_->setEnabled(!connected);
-    gnss_baud_combo_->setEnabled(!connected);
-    imu_baud_combo_->setEnabled(!connected);
-    ptb_baud_combo_->setEnabled(!connected);
-    hmp_baud_combo_->setEnabled(!connected);
+    connect_btn_->setEnabled(inputsEnabled);
+    cancel_connect_btn_->setEnabled(connection_attempt_in_progress_);
+    disconnect_btn_->setEnabled(connected && !connection_attempt_in_progress_);
+    refresh_ports_btn_->setEnabled(inputsEnabled);
 
-    if (connected)
+    gnss_port_combo_->setEnabled(inputsEnabled);
+    imu_port_combo_->setEnabled(inputsEnabled);
+    ptb_port_combo_->setEnabled(inputsEnabled);
+    hmp_port_combo_->setEnabled(inputsEnabled);
+    gnss_baud_combo_->setEnabled(inputsEnabled);
+    imu_baud_combo_->setEnabled(inputsEnabled);
+    ptb_baud_combo_->setEnabled(inputsEnabled);
+    hmp_baud_combo_->setEnabled(inputsEnabled);
+
+    if (connection_attempt_in_progress_)
+    {
+        status_label_->setText(is_english_ ? "Connecting..." : "正在连接...");
+        status_label_->setProperty("status", "connecting");
+    }
+    else if (connected)
     {
         status_label_->setText(is_english_ ? "Connected" : "已连接");
         status_label_->setProperty("status", "connected");
@@ -1677,6 +1695,43 @@ void MainWindow::updateConnectionStatus(bool connected)
     }
     status_label_->style()->unpolish(status_label_);
     status_label_->style()->polish(status_label_);
+}
+
+void MainWindow::stopAllCollectors()
+{
+    if (gnss_collector_)
+    {
+        gnss_collector_->stop();
+        gnss_collector_.reset();
+    }
+    if (imu_collector_)
+    {
+        imu_collector_->stop();
+        imu_collector_.reset();
+    }
+    if (ptb_collector_)
+    {
+        ptb_collector_->stop();
+        ptb_collector_.reset();
+    }
+    if (hmp_collector_)
+    {
+        hmp_collector_->stop();
+        hmp_collector_.reset();
+    }
+}
+
+bool MainWindow::shouldAbortConnectionAttempt()
+{
+    QApplication::processEvents(QEventLoop::AllEvents);
+    return cancel_connection_requested_.load();
+}
+
+void MainWindow::finishConnectionAttempt(bool connected)
+{
+    connection_attempt_in_progress_ = false;
+    cancel_connection_requested_.store(false);
+    updateConnectionStatus(connected);
 }
 
 void MainWindow::onRefreshPortsClicked()
@@ -1709,6 +1764,10 @@ void MainWindow::onRefreshPortsClicked()
 
 void MainWindow::onConnectClicked()
 {
+    connection_attempt_in_progress_ = true;
+    cancel_connection_requested_.store(false);
+    updateConnectionStatus(false);
+
     log(is_english_ ? "Connecting..." : "正在连接...");
 
     current_gnss_ = VaproView::GnssData();
@@ -1741,7 +1800,7 @@ void MainWindow::onConnectClicked()
         if (QThread::currentThread() == thread())
         {
             log(qmsg);
-            QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+            QApplication::processEvents(QEventLoop::AllEvents);
             return;
         }
 
@@ -1754,30 +1813,49 @@ void MainWindow::onConnectClicked()
     imu_collector_->setLogCallback(logCallback);
     ptb_collector_->setLogCallback(logCallback);
     hmp_collector_->setLogCallback(logCallback);
+    auto cancelCallback = [this]() { return cancel_connection_requested_.load(); };
+    gnss_collector_->setCancelCallback(cancelCallback);
+    imu_collector_->setCancelCallback(cancelCallback);
+    ptb_collector_->setCancelCallback(cancelCallback);
+    hmp_collector_->setCancelCallback(cancelCallback);
 
     int total_devices = 0;
     int connected_devices = 0;
     QString selectText = is_english_ ? "-- Select --" : "-- 选择 --";
 
+    auto cancelAttempt = [this]() {
+        stopAllCollectors();
+        log(is_english_ ? "Connection canceled" : "连接已取消");
+        finishConnectionAttempt(false);
+    };
+    auto abortIfRequested = [&]() {
+        if (!shouldAbortConnectionAttempt())
+        {
+            return false;
+        }
+        cancelAttempt();
+        return true;
+    };
+
     log(is_english_ ? "========== Starting Connection ==========" : "========== 开始连接 ==========");
-    QApplication::processEvents();
+    if (abortIfRequested()) return;
 
     QString gnss_port = gnss_port_combo_->currentText();
     if (gnss_port != selectText && !gnss_port.isEmpty())
     {
         total_devices++;
         log(QString(is_english_ ? "[GNSS] Checking port: %1" : "[GNSS] 检查端口: %1").arg(gnss_port));
-        QApplication::processEvents();
-        
+        if (abortIfRequested()) return;
+
         log(QString(is_english_ ? "[GNSS] Port selected, connecting..." : "[GNSS] 已选择端口，正在连接..."));
-        QApplication::processEvents();
-        
+        if (abortIfRequested()) return;
+
         VaproView::SerialConfig gnss_config = VaproView::SerialConfig::N81(gnss_baud_combo_->currentText().toInt());
         if (gnss_collector_->start(gnss_port.toStdString(), gnss_config))
         {
             log(QString(is_english_ ? "[GNSS] Serial port opened, checking device response..." : "[GNSS] 串口已打开，正在检测设备响应..."));
-            QApplication::processEvents();
-            
+            if (abortIfRequested()) return;
+
             if (gnss_collector_->checkDeviceResponse())
             {
                 log(QString(is_english_ ? "[GNSS] Device responding, connected: %1 @ %2 baud" : "[GNSS] 设备响应正常，连接成功: %1 @ %2 波特率").arg(gnss_port, gnss_baud_combo_->currentText()));
@@ -1791,6 +1869,10 @@ void MainWindow::onConnectClicked()
                     log(is_english_ ? "[GNSS] Failed to start data stream." : "[GNSS] 启动数据流失败。");
                     gnss_collector_->stop();
                 }
+            }
+            else if (abortIfRequested())
+            {
+                return;
             }
             else
             {
@@ -1807,24 +1889,24 @@ void MainWindow::onConnectClicked()
     {
         log(is_english_ ? "[GNSS] Skipped (not selected)" : "[GNSS] 跳过 (未选择)");
     }
-    QApplication::processEvents();
+    if (abortIfRequested()) return;
 
     QString imu_port = imu_port_combo_->currentText();
     if (imu_port != selectText && !imu_port.isEmpty())
     {
         total_devices++;
         log(QString(is_english_ ? "[IMU] Checking port: %1" : "[IMU] 检查端口: %1").arg(imu_port));
-        QApplication::processEvents();
-        
+        if (abortIfRequested()) return;
+
         log(QString(is_english_ ? "[IMU] Port selected, connecting..." : "[IMU] 已选择端口，正在连接..."));
-        QApplication::processEvents();
-        
+        if (abortIfRequested()) return;
+
         VaproView::SerialConfig imu_config = VaproView::SerialConfig::N81(imu_baud_combo_->currentText().toInt());
         if (imu_collector_->start(imu_port.toStdString(), imu_config))
         {
             log(QString(is_english_ ? "[IMU] Serial port opened, checking device response..." : "[IMU] 串口已打开，正在检测设备响应..."));
-            QApplication::processEvents();
-            
+            if (abortIfRequested()) return;
+
             if (imu_collector_->checkDeviceResponse())
             {
                 log(QString(is_english_ ? "[IMU] Device responding, connected: %1 @ %2 baud" : "[IMU] 设备响应正常，连接成功: %1 @ %2 波特率").arg(imu_port, imu_baud_combo_->currentText()));
@@ -1843,6 +1925,10 @@ void MainWindow::onConnectClicked()
                     imu_collector_->stop();
                 }
             }
+            else if (abortIfRequested())
+            {
+                return;
+            }
             else
             {
                 log(is_english_ ? "[IMU] Device not responding! Check power and cables." : "[IMU] 设备无响应！请检查电源和连接线。");
@@ -1858,24 +1944,24 @@ void MainWindow::onConnectClicked()
     {
         log(is_english_ ? "[IMU] Skipped (not selected)" : "[IMU] 跳过 (未选择)");
     }
-    QApplication::processEvents();
+    if (abortIfRequested()) return;
 
     QString ptb_port = ptb_port_combo_->currentText();
     if (ptb_port != selectText && !ptb_port.isEmpty())
     {
         total_devices++;
         log(QString(is_english_ ? "[PTB] Checking port: %1" : "[PTB] 检查端口: %1").arg(ptb_port));
-        QApplication::processEvents();
-        
+        if (abortIfRequested()) return;
+
         log(QString(is_english_ ? "[PTB] Port selected, connecting..." : "[PTB] 已选择端口，正在连接..."));
-        QApplication::processEvents();
-        
+        if (abortIfRequested()) return;
+
         VaproView::SerialConfig ptb_config = VaproView::SerialConfig::E71(ptb_baud_combo_->currentText().toInt());
         if (ptb_collector_->start(ptb_port.toStdString(), ptb_config))
         {
             log(QString(is_english_ ? "[PTB] Serial port opened, checking device response..." : "[PTB] 串口已打开，正在检测设备响应..."));
-            QApplication::processEvents();
-            
+            if (abortIfRequested()) return;
+
             if (ptb_collector_->checkDeviceResponse())
             {
                 log(QString(is_english_ ? "[PTB] Device responding, connected: %1 @ %2 baud" : "[PTB] 设备响应正常，连接成功: %1 @ %2 波特率").arg(ptb_port, ptb_baud_combo_->currentText()));
@@ -1894,6 +1980,10 @@ void MainWindow::onConnectClicked()
                     ptb_collector_->stop();
                 }
             }
+            else if (abortIfRequested())
+            {
+                return;
+            }
             else
             {
                 log(is_english_ ? "[PTB] Device not responding! Check power and cables." : "[PTB] 设备无响应！请检查电源和连接线。");
@@ -1909,24 +1999,24 @@ void MainWindow::onConnectClicked()
     {
         log(is_english_ ? "[PTB] Skipped (not selected)" : "[PTB] 跳过 (未选择)");
     }
-    QApplication::processEvents();
+    if (abortIfRequested()) return;
 
     QString hmp_port = hmp_port_combo_->currentText();
     if (hmp_port != selectText && !hmp_port.isEmpty())
     {
         total_devices++;
         log(QString(is_english_ ? "[HMP] Checking port: %1" : "[HMP] 检查端口: %1").arg(hmp_port));
-        QApplication::processEvents();
-        
+        if (abortIfRequested()) return;
+
         log(QString(is_english_ ? "[HMP] Port selected, connecting..." : "[HMP] 已选择端口，正在连接..."));
-        QApplication::processEvents();
-        
+        if (abortIfRequested()) return;
+
         VaproView::SerialConfig hmp_config = VaproView::SerialConfig::N82(hmp_baud_combo_->currentText().toInt());
         if (hmp_collector_->start(hmp_port.toStdString(), hmp_config))
         {
             log(QString(is_english_ ? "[HMP] Serial port opened, checking device response..." : "[HMP] 串口已打开，正在检测设备响应..."));
-            QApplication::processEvents();
-            
+            if (abortIfRequested()) return;
+
             if (hmp_collector_->checkDeviceResponse())
             {
                 log(QString(is_english_ ? "[HMP] Device responding, connected: %1 @ %2 baud" : "[HMP] 设备响应正常，连接成功: %1 @ %2 波特率").arg(hmp_port, hmp_baud_combo_->currentText()));
@@ -1944,6 +2034,10 @@ void MainWindow::onConnectClicked()
                     hmp_collector_->stop();
                 }
             }
+            else if (abortIfRequested())
+            {
+                return;
+            }
             else
             {
                 log(is_english_ ? "[HMP] Device not responding! Check power and cables." : "[HMP] 设备无响应！请检查电源和连接线。");
@@ -1959,47 +2053,37 @@ void MainWindow::onConnectClicked()
     {
         log(is_english_ ? "[HMP] Skipped (not selected)" : "[HMP] 跳过 (未选择)");
     }
-    QApplication::processEvents();
+    if (abortIfRequested()) return;
 
     log(QString(is_english_ ? "========== Connection Summary: %1/%2 devices connected ==========" : "========== 连接摘要: %1/%2 设备已连接 ==========").arg(connected_devices).arg(total_devices));
 
-    if (connected_devices > 0)
-    {
-        updateConnectionStatus(true);
-    }
-    else
+    if (connected_devices == 0)
     {
         log(is_english_ ? "No ports connected" : "没有端口连接成功");
     }
+
+    finishConnectionAttempt(connected_devices > 0);
 }
 
 void MainWindow::onDisconnectClicked()
 {
     log(is_english_ ? "Disconnecting..." : "正在断开...");
 
-    if (gnss_collector_)
+    stopAllCollectors();
+    finishConnectionAttempt(false);
+    log(is_english_ ? "Disconnected" : "已断开");
+}
+
+void MainWindow::onCancelConnectClicked()
+{
+    if (!connection_attempt_in_progress_)
     {
-        gnss_collector_->stop();
-        gnss_collector_.reset();
-    }
-    if (imu_collector_)
-    {
-        imu_collector_->stop();
-        imu_collector_.reset();
-    }
-    if (ptb_collector_)
-    {
-        ptb_collector_->stop();
-        ptb_collector_.reset();
-    }
-    if (hmp_collector_)
-    {
-        hmp_collector_->stop();
-        hmp_collector_.reset();
+        return;
     }
 
-    updateConnectionStatus(false);
-    log(is_english_ ? "Disconnected" : "已断开");
+    cancel_connection_requested_.store(true);
+    log(is_english_ ? "Cancel requested, stopping connection attempt..." : "已请求取消，正在停止连接流程...");
+    QApplication::processEvents(QEventLoop::AllEvents);
 }
 
 void MainWindow::onGnssDataReady()

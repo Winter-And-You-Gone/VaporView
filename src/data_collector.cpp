@@ -228,12 +228,28 @@ void DataCollector::setLogCallback(LogCallback callback)
   log_callback_ = std::move(callback);
 }
 
+void DataCollector::setCancelCallback(CancelCallback callback)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  cancel_callback_ = std::move(callback);
+}
+
 void DataCollector::log(const std::string& message)
 {
   if (log_callback_)
   {
     log_callback_(message);
   }
+}
+
+bool DataCollector::isCancelRequested() const
+{
+  CancelCallback cancel_callback;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    cancel_callback = cancel_callback_;
+  }
+  return cancel_callback && cancel_callback();
 }
 
 std::string DataCollector::getLastError() const
@@ -380,6 +396,10 @@ bool GnssCollector::checkDeviceResponse()
 
   while (elapsed_ms < max_wait_ms)
   {
+    if (isCancelRequested())
+    {
+      return false;
+    }
     log(formatDetectionProgress("等待GNSS数据帧", 1, 1, computeRemainingSeconds(start_time, max_wait_ms)));
     ssize_t n = serial_.read(buffer, sizeof(buffer));
     if (n > 0)
@@ -526,6 +546,10 @@ bool ImuCollector::checkDeviceResponse()
 
   while (elapsed_ms < max_wait_ms)
   {
+    if (isCancelRequested())
+    {
+      return false;
+    }
     log(formatDetectionProgress("等待IMU数据帧", 1, 1, computeRemainingSeconds(start_time, max_wait_ms)));
     ssize_t n = serial_.read(buffer, sizeof(buffer));
     if (n > 0)
@@ -700,6 +724,10 @@ bool PtbCollector::checkDeviceResponse()
   
   for (int i = 0; i < max_attempts; i++)
   {
+    if (isCancelRequested())
+    {
+      return false;
+    }
     constexpr int total_wait_ms = 500;
     const auto attempt_start = std::chrono::steady_clock::now();
     log(formatDetectionProgress("发送PTB压力查询", i + 1, max_attempts, computeRemainingSeconds(attempt_start, total_wait_ms)));
@@ -708,6 +736,10 @@ bool PtbCollector::checkDeviceResponse()
     
     for (int j = 0; j < 10; j++)
     {
+      if (isCancelRequested())
+      {
+        return false;
+      }
       log(formatDetectionProgress("等待PTB压力返回", i + 1, max_attempts, computeRemainingSeconds(attempt_start, total_wait_ms)));
       sleepMs(50);
       ssize_t n = serial_.read(response, sizeof(response));
@@ -824,6 +856,10 @@ bool HmpCollector::checkDeviceResponse()
 
   for (int i = 0; i < max_attempts; i++)
   {
+    if (isCancelRequested())
+    {
+      return false;
+    }
     constexpr int total_wait_ms = 500;
     const auto attempt_start = std::chrono::steady_clock::now();
     log(formatDetectionProgress("发送HMP寄存器查询", i + 1, max_attempts, computeRemainingSeconds(attempt_start, total_wait_ms)));
@@ -834,6 +870,10 @@ bool HmpCollector::checkDeviceResponse()
     int elapsed = 0;
     while (elapsed < total_wait_ms && total < sizeof(response))
     {
+      if (isCancelRequested())
+      {
+        return false;
+      }
       log(formatDetectionProgress("等待HMP寄存器返回", i + 1, max_attempts, computeRemainingSeconds(attempt_start, total_wait_ms)));
       ssize_t chunk = serial_.read(response + total, sizeof(response) - total);
       if (chunk > 0)
