@@ -19,6 +19,7 @@
 #include <QDoubleSpinBox>
 #include <QTimer>
 #include <QAction>
+#include <QActionGroup>
 #include <QScrollArea>
 #include <memory>
 
@@ -218,6 +219,7 @@ private slots:
     void onPtbRateChanged(const QString& text);
     void onHmpRateChanged(const QString& text);
     void onRtkConfigClicked();
+    void onFontScaleTriggered(QAction *action);
 
 private:
     void setupMenuBar();
@@ -232,6 +234,9 @@ private:
     void updateConnectionStatus(bool connected);
     QStringList getAvailablePorts();
     void setEnglish(bool english);
+    void setFontScale(int percent);
+    void applyStyleConfiguration();
+    QString scaledStyleSheet(const QString& styleSheet) const;
     void applyAllSampleRates();
     int parseRate(const QString& text);
 
@@ -264,6 +269,11 @@ private:
     QAction *export_action_;
     QAction *exit_action_;
     QAction *about_action_;
+    QActionGroup *font_scale_group_;
+    QAction *font_small_action_;
+    QAction *font_normal_action_;
+    QAction *font_large_action_;
+    QAction *font_extra_large_action_;
 
     QGroupBox *config_group_;
     QGroupBox *data_group_;
@@ -305,6 +315,9 @@ private:
     bool is_fullscreen_;
     bool is_english_;
     bool has_inline_progress_log_;
+    int font_scale_percent_;
+    double base_font_point_size_;
+    QString base_style_sheet_;
     int gnss_sample_rate_;
     int imu_sample_rate_;
     int ptb_sample_rate_;

@@ -21,7 +21,10 @@
 #include <QSpacerItem>
 #include <QApplication>
 #include <QSerialPortInfo>
+#include <QRegularExpression>
+#include <QSettings>
 #include <QThread>
+#include <algorithm>
 #include <cmath>
 #include <memory>
 
@@ -693,6 +696,11 @@ MainWindow::MainWindow(QWidget *parent)
     , export_action_(nullptr)
     , exit_action_(nullptr)
     , about_action_(nullptr)
+    , font_scale_group_(nullptr)
+    , font_small_action_(nullptr)
+    , font_normal_action_(nullptr)
+    , font_large_action_(nullptr)
+    , font_extra_large_action_(nullptr)
     , config_group_(nullptr)
     , data_group_(nullptr)
     , log_group_(nullptr)
@@ -723,6 +731,8 @@ MainWindow::MainWindow(QWidget *parent)
     , is_fullscreen_(false)
     , is_english_(false)
     , has_inline_progress_log_(false)
+    , font_scale_percent_(100)
+    , base_font_point_size_(0.0)
     , gnss_sample_rate_(1)
     , imu_sample_rate_(1)
     , ptb_sample_rate_(1)
@@ -730,6 +740,16 @@ MainWindow::MainWindow(QWidget *parent)
     , rtk_config_action_(nullptr)
     , rtk_config_dialog_(nullptr)
 {
+    const double currentPointSize = qApp->font().pointSizeF();
+    base_font_point_size_ = currentPointSize > 0.0 ? currentPointSize : 10.0;
+
+    QSettings settings("VaproView", "MainWindow");
+    font_scale_percent_ = settings.value("font_scale_percent", 100).toInt();
+    if (font_scale_percent_ < 85 || font_scale_percent_ > 150)
+    {
+        font_scale_percent_ = 100;
+    }
+
     loadModernStyleSheet();
     
     setupMenuBar();
@@ -764,13 +784,12 @@ void MainWindow::loadModernStyleSheet()
     
     if (styleFile.open(QFile::ReadOnly | QFile::Text))
     {
-        QString styleSheet = QString::fromUtf8(styleFile.readAll());
-        qApp->setStyleSheet(styleSheet);
+        base_style_sheet_ = QString::fromUtf8(styleFile.readAll());
         styleFile.close();
     }
     else
     {
-        QString fallbackStyle = 
+        base_style_sheet_ =
             "* { font-family: \"Segoe UI\", \"Microsoft YaHei\", \"PingFang SC\", sans-serif; }"
             "QMainWindow { background-color: #f5f5f5; }"
             "QMenuBar { background-color: #ffffff; border-bottom: 1px solid #e0e0e0; padding: 4px 8px; }"
@@ -803,8 +822,54 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton:pressed { background-color: #0d47a1; }"
             "QPushButton:disabled { background-color: #bdbdbd; color: #ffffff; }"
             "QToolTip { background-color: #424242; color: #ffffff; border: none; border-radius: 4px; padding: 6px 10px; font-size: 13px; }";
-        qApp->setStyleSheet(fallbackStyle);
     }
+
+    applyStyleConfiguration();
+}
+
+QString MainWindow::scaledStyleSheet(const QString& styleSheet) const
+{
+    const QRegularExpression fontRegex(R"(font-size:\s*(\d+)px)");
+    QString scaled = styleSheet;
+    QRegularExpressionMatchIterator it = fontRegex.globalMatch(styleSheet);
+    QList<QPair<QString, QString>> replacements;
+
+    while (it.hasNext())
+    {
+        const QRegularExpressionMatch match = it.next();
+        const int originalPx = match.captured(1).toInt();
+        const int scaledPx = std::max(8, static_cast<int>(std::lround(originalPx * font_scale_percent_ / 100.0)));
+        replacements.append({match.captured(0), QString("font-size: %1px").arg(scaledPx)});
+    }
+
+    for (const auto& replacement : replacements)
+    {
+        scaled.replace(replacement.first, replacement.second);
+    }
+
+    return scaled;
+}
+
+void MainWindow::applyStyleConfiguration()
+{
+    QFont appFont = qApp->font();
+    appFont.setPointSizeF(base_font_point_size_ * font_scale_percent_ / 100.0);
+    qApp->setFont(appFont);
+    qApp->setStyleSheet(scaledStyleSheet(base_style_sheet_));
+}
+
+void MainWindow::setFontScale(int percent)
+{
+    if (percent < 85 || percent > 150 || font_scale_percent_ == percent)
+    {
+        return;
+    }
+
+    font_scale_percent_ = percent;
+    applyStyleConfiguration();
+
+    QSettings settings("VaproView", "MainWindow");
+    settings.setValue("font_scale_percent", font_scale_percent_);
 }
 
 void MainWindow::setupMenuBar()
@@ -829,6 +894,53 @@ void MainWindow::setupMenuBar()
     fullscreen_btn_->setShortcut(QKeySequence(Qt::Key_F11));
     connect(fullscreen_btn_, &QAction::triggered, this, &MainWindow::onToggleFullScreen);
     viewMenu->addAction(fullscreen_btn_);
+
+    QMenu *fontMenu = menuBar()->addMenu("");
+    font_scale_group_ = new QActionGroup(this);
+    font_scale_group_->setExclusive(true);
+
+    font_small_action_ = new QAction(this);
+    font_small_action_->setCheckable(true);
+    font_small_action_->setData(90);
+    font_scale_group_->addAction(font_small_action_);
+    fontMenu->addAction(font_small_action_);
+
+    font_normal_action_ = new QAction(this);
+    font_normal_action_->setCheckable(true);
+    font_normal_action_->setData(100);
+    font_scale_group_->addAction(font_normal_action_);
+    fontMenu->addAction(font_normal_action_);
+
+    font_large_action_ = new QAction(this);
+    font_large_action_->setCheckable(true);
+    font_large_action_->setData(115);
+    font_scale_group_->addAction(font_large_action_);
+    fontMenu->addAction(font_large_action_);
+
+    font_extra_large_action_ = new QAction(this);
+    font_extra_large_action_->setCheckable(true);
+    font_extra_large_action_->setData(130);
+    font_scale_group_->addAction(font_extra_large_action_);
+    fontMenu->addAction(font_extra_large_action_);
+
+    connect(font_scale_group_, &QActionGroup::triggered, this, &MainWindow::onFontScaleTriggered);
+
+    if (font_scale_percent_ <= 95)
+    {
+        font_small_action_->setChecked(true);
+    }
+    else if (font_scale_percent_ <= 107)
+    {
+        font_normal_action_->setChecked(true);
+    }
+    else if (font_scale_percent_ <= 122)
+    {
+        font_large_action_->setChecked(true);
+    }
+    else
+    {
+        font_extra_large_action_->setChecked(true);
+    }
 
     QMenu *langMenu = menuBar()->addMenu("");
 
@@ -1136,10 +1248,16 @@ void MainWindow::setEnglish(bool english)
     menuBar()->actions().at(1)->menu()->setTitle(english ? "&View" : "视图(&V)");
     fullscreen_btn_->setText(english ? "&Fullscreen" : "全屏(&F)");
 
-    menuBar()->actions().at(2)->menu()->setTitle(english ? "&Language" : "语言(&L)");
+    menuBar()->actions().at(2)->menu()->setTitle(english ? "Font &Size" : "字号(&S)");
+    font_small_action_->setText(english ? "Small (90%)" : "小号 (90%)");
+    font_normal_action_->setText(english ? "Normal (100%)" : "标准 (100%)");
+    font_large_action_->setText(english ? "Large (115%)" : "大号 (115%)");
+    font_extra_large_action_->setText(english ? "Extra Large (130%)" : "超大 (130%)");
+
+    menuBar()->actions().at(3)->menu()->setTitle(english ? "&Language" : "语言(&L)");
     lang_action_->setText(english ? "Switch to Chinese" : "切换到英文");
 
-    menuBar()->actions().at(3)->menu()->setTitle(english ? "&Help" : "帮助(&H)");
+    menuBar()->actions().at(4)->menu()->setTitle(english ? "&Help" : "帮助(&H)");
     about_action_->setText(english ? "&About" : "关于(&A)");
 
     refresh_ports_btn_->setText(english ? "Refresh" : "刷新");
@@ -1187,6 +1305,23 @@ void MainWindow::onSwitchLanguage()
     is_english_ = !is_english_;
     setEnglish(is_english_);
     log(is_english_ ? "Language switched to English" : "语言已切换为中文");
+}
+
+void MainWindow::onFontScaleTriggered(QAction *action)
+{
+    if (!action)
+    {
+        return;
+    }
+
+    const int percent = action->data().toInt();
+    if (percent == font_scale_percent_)
+    {
+        return;
+    }
+
+    setFontScale(percent);
+    log(QString(is_english_ ? "Font size set to %1%" : "字体大小已设置为 %1%").arg(percent));
 }
 
 int MainWindow::parseRate(const QString& text)
