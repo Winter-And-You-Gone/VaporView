@@ -98,6 +98,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , start_btn_(nullptr)
     , stop_btn_(nullptr)
     , test_btn_(nullptr)
+    , gga_toggle_btn_(nullptr)
     , refresh_ports_btn_(nullptr)
     , fetch_mountpoints_btn_(nullptr)
     , save_config_btn_(nullptr)
@@ -114,6 +115,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , gga_last_open_attempt_()
     , gga_last_sentence_time_()
     , gga_has_sentence_time_(false)
+    , gga_monitor_enabled_(false)
 {
     setupUi();
     loadSettings();
@@ -126,17 +128,10 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     connect(gga_poll_timer_, &QTimer::timeout, this, &RtkConfigDialog::onGgaPollTimer);
     connect(baudrate_combo_, &QComboBox::currentTextChanged, this, [this](const QString&) {
         stopGgaMonitor();
-        startGgaMonitor();
     });
     connect(gga_port_combo_, &QComboBox::currentTextChanged, this, [this](const QString&) {
-        if (gga_text_edit_)
-        {
-            gga_text_edit_->clear();
-        }
         stopGgaMonitor();
-        startGgaMonitor();
     });
-    startGgaMonitor();
 }
 
 RtkConfigDialog::~RtkConfigDialog()
@@ -261,6 +256,10 @@ void RtkConfigDialog::setupUi()
     gga_port_combo_ = new QComboBox(this);
     gga_port_combo_->setEditable(true);
     gga_header_layout_->addWidget(gga_port_combo_);
+
+    gga_toggle_btn_ = new QPushButton(this);
+    connect(gga_toggle_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onGgaToggleClicked);
+    gga_header_layout_->addWidget(gga_toggle_btn_);
     gga_header_layout_->addStretch();
 
     gga_frequency_label_ = new QLabel(this);
@@ -374,6 +373,8 @@ void RtkConfigDialog::setEnglish(bool english)
     clear_log_btn_->setText(textFor("Clear Log", "清空日志"));
 
     updateGgaMonitorText();
+    updateGgaMonitorButton();
+    applyScaledUiMetrics();
     updateButtonStates();
 }
 
@@ -512,6 +513,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     applyButtonWidth(start_btn_, 80);
     applyButtonWidth(stop_btn_, 80);
     applyButtonWidth(test_btn_, 120);
+    applyButtonWidth(gga_toggle_btn_, 110);
     applyButtonWidth(save_config_btn_, 100);
     applyButtonWidth(load_config_btn_, 100);
     applyButtonWidth(clear_log_btn_, 96);
@@ -730,6 +732,19 @@ void RtkConfigDialog::updateGgaStatusLabel(const QString& message, bool healthy)
     gga_status_label_->setStyleSheet(QString("QLabel { color: %1; font-weight: bold; }").arg(color));
 }
 
+void RtkConfigDialog::updateGgaMonitorButton()
+{
+    if (!gga_toggle_btn_)
+    {
+        return;
+    }
+
+    gga_toggle_btn_->setText(gga_monitor_enabled_
+        ? textFor("Stop Reading", "停止读取")
+        : textFor("Read GGA", "读取GGA"));
+    gga_toggle_btn_->setEnabled(true);
+}
+
 void RtkConfigDialog::updateGgaMonitorText()
 {
     if (!gga_port_info_label_)
@@ -741,7 +756,11 @@ void RtkConfigDialog::updateGgaMonitorText()
 
     if (gga_status_message_.isEmpty())
     {
-        updateGgaStatusLabel(textFor("Status: Waiting for serial data", "状态: 正在等待串口数据"), false);
+        updateGgaStatusLabel(
+            gga_monitor_enabled_
+                ? textFor("Status: Waiting for serial data", "状态: 正在等待串口数据")
+                : textFor("Status: Click button to read GGA", "状态: 点击按钮开始读取GGA"),
+            false);
     }
     else if (gga_status_message_.startsWith("Status:") || gga_status_message_.startsWith("状态:"))
     {
@@ -762,11 +781,14 @@ void RtkConfigDialog::startGgaMonitor()
         return;
     }
 
+    gga_monitor_enabled_ = true;
     gga_buffer_.clear();
     gga_recent_intervals_sec_.clear();
     gga_has_sentence_time_ = false;
     updateGgaFrequency(0.0);
+    gga_status_message_.clear();
     updateGgaMonitorText();
+    updateGgaMonitorButton();
     gga_last_open_attempt_ = std::chrono::steady_clock::time_point();
     if (!gga_poll_timer_->isActive())
     {
@@ -790,11 +812,20 @@ void RtkConfigDialog::stopGgaMonitor()
     gga_buffer_.clear();
     gga_recent_intervals_sec_.clear();
     gga_has_sentence_time_ = false;
+    gga_monitor_enabled_ = false;
+    gga_status_message_.clear();
     updateGgaFrequency(0.0);
+    updateGgaMonitorText();
+    updateGgaMonitorButton();
 }
 
 bool RtkConfigDialog::tryOpenGgaPort()
 {
+    if (!gga_monitor_enabled_)
+    {
+        return false;
+    }
+
     if (gga_serial_.isOpen())
     {
         return true;
@@ -831,6 +862,17 @@ bool RtkConfigDialog::tryOpenGgaPort()
     updateGgaStatusLabel(textFor("Status: Listening on %1", "状态: 正在监听 %1").arg(ggaPortName()), true);
     updateGgaMonitorText();
     return true;
+}
+
+void RtkConfigDialog::onGgaToggleClicked()
+{
+    if (gga_monitor_enabled_)
+    {
+        stopGgaMonitor();
+        return;
+    }
+
+    startGgaMonitor();
 }
 
 void RtkConfigDialog::processGgaBuffer()

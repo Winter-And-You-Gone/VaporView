@@ -39,6 +39,7 @@ private slots:
     void onStartClicked();
     void onStopClicked();
     void onTestClicked();
+    void onGgaToggleClicked();
     void onProcessReadyRead();
     void onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
     void onProcessError(QProcess::ProcessError error);
@@ -64,6 +65,7 @@ private:
     void updateGgaMonitorText();
     void updateGgaFrequency(double hz);
     void updateGgaStatusLabel(const QString& message, bool healthy);
+    void updateGgaMonitorButton();
     void processGgaBuffer();
     void handleGgaSentence(const QString& sentence);
     void trimGgaDisplay();
@@ -115,6 +117,7 @@ private:
     QPushButton *start_btn_;
     QPushButton *stop_btn_;
     QPushButton *test_btn_;
+    QPushButton *gga_toggle_btn_;
     QPushButton *refresh_ports_btn_;
     QPushButton *fetch_mountpoints_btn_;
     QPushButton *save_config_btn_;
@@ -137,6 +140,7 @@ private:
     std::chrono::steady_clock::time_point gga_last_sentence_time_;
     std::deque<double> gga_recent_intervals_sec_;
     bool gga_has_sentence_time_;
+    bool gga_monitor_enabled_;
 };
 
 #endif
