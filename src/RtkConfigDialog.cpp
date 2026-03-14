@@ -311,12 +311,12 @@ void RtkConfigDialog::applyScaledUiMetrics()
         log_layout_->setSpacing(scalePixels(4));
     }
 
-    server_edit_->setMinimumHeight(scalePixels(30));
+    server_edit_->setMinimumHeight(scalePixels(36));
     port_edit_->setMaximumWidth(scalePixels(80));
-    port_edit_->setMinimumHeight(scalePixels(30));
-    username_edit_->setMinimumHeight(scalePixels(30));
-    password_edit_->setMinimumHeight(scalePixels(30));
-    mountpoint_edit_->setMinimumHeight(scalePixels(30));
+    port_edit_->setMinimumHeight(scalePixels(36));
+    username_edit_->setMinimumHeight(scalePixels(36));
+    password_edit_->setMinimumHeight(scalePixels(36));
+    mountpoint_edit_->setMinimumHeight(scalePixels(36));
 
     output_port_combo_->setMinimumWidth(scalePixels(200));
     output_port_combo_->setMinimumHeight(scalePixels(30));
@@ -371,7 +371,7 @@ void RtkConfigDialog::loadSettings()
     password_edit_->setText(settings.value("password", "").toString());
     mountpoint_edit_->setText(settings.value("mountpoint", "").toString());
 #ifdef _WIN32
-    output_port_combo_->setCurrentText(settings.value("output_port", "COM3").toString());
+    output_port_combo_->setCurrentText(settings.value("output_port", "COM1").toString());
 #else
     output_port_combo_->setCurrentText(settings.value("output_port", "/dev/ttyCOM3").toString());
 #endif
