@@ -21,6 +21,7 @@
 #include <QSpacerItem>
 #include <QApplication>
 #include <QSerialPortInfo>
+#include <QThread>
 #include <cmath>
 #include <memory>
 
@@ -1480,8 +1481,16 @@ void MainWindow::onConnectClicked()
     hmp_collector_->setSampleRate(hmp_sample_rate_);
 
     auto logCallback = [this](const std::string& msg) {
-        QMetaObject::invokeMethod(this, [this, msg]() {
-            log(QString::fromStdString(msg));
+        const QString qmsg = QString::fromStdString(msg);
+        if (QThread::currentThread() == thread())
+        {
+            log(qmsg);
+            QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+            return;
+        }
+
+        QMetaObject::invokeMethod(this, [this, qmsg]() {
+            log(qmsg);
         }, Qt::QueuedConnection);
     };
     
