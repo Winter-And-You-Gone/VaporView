@@ -51,6 +51,7 @@ set(NAV_UI_FILES
 
 set(NAV_RESOURCES
     resources/modern_style.qss
+    resources/combo_arrow_down.xpm
 )
 
 set(NAV_WIN_RESOURCES)
@@ -96,6 +97,9 @@ add_custom_command(TARGET VaproView POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/resources/modern_style.qss
         ${CMAKE_BINARY_DIR}/resources/modern_style.qss
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/resources/combo_arrow_down.xpm
+        ${CMAKE_BINARY_DIR}/resources/combo_arrow_down.xpm
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/resources/app.ico
         ${CMAKE_BINARY_DIR}/resources/app.ico
