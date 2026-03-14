@@ -63,11 +63,13 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , log_button_layout_(nullptr)
     , gga_layout_(nullptr)
     , gga_header_layout_(nullptr)
+    , gga_text_container_layout_(nullptr)
     , gga_button_spacer_(nullptr)
     , config_group_(nullptr)
     , output_group_(nullptr)
     , gga_group_(nullptr)
     , log_group_(nullptr)
+    , gga_text_container_(nullptr)
     , server_label_(nullptr)
     , port_label_(nullptr)
     , username_label_(nullptr)
@@ -268,11 +270,16 @@ void RtkConfigDialog::setupUi()
     gga_status_label_ = new QLabel(this);
     gga_layout_->addWidget(gga_status_label_);
 
-    gga_text_edit_ = new QTextEdit(this);
+    gga_text_container_ = new QWidget(gga_group_);
+    gga_text_container_layout_ = new QVBoxLayout(gga_text_container_);
+    gga_text_container_layout_->setContentsMargins(0, 0, 0, 8);
+    gga_text_container_layout_->setSpacing(0);
+
+    gga_text_edit_ = new QTextEdit(gga_text_container_);
     gga_text_edit_->setReadOnly(true);
     gga_text_edit_->document()->setMaximumBlockCount(kGgaMaxVisibleLines);
-    gga_layout_->addWidget(gga_text_edit_);
-    gga_layout_->addSpacing(6);
+    gga_text_container_layout_->addWidget(gga_text_edit_);
+    gga_layout_->addWidget(gga_text_container_);
 
     main_layout_->addWidget(gga_group_);
     gga_button_spacer_ = new QSpacerItem(0, 8, QSizePolicy::Minimum, QSizePolicy::Fixed);
@@ -434,6 +441,11 @@ void RtkConfigDialog::applyScaledUiMetrics()
         gga_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(12));
     }
 
+    if (gga_text_container_layout_)
+    {
+        gga_text_container_layout_->setContentsMargins(0, 0, 0, scalePixels(8));
+    }
+
     if (gga_button_spacer_)
     {
         gga_button_spacer_->changeSize(0, scalePixels(8), QSizePolicy::Minimum, QSizePolicy::Fixed);
@@ -472,6 +484,10 @@ void RtkConfigDialog::applyScaledUiMetrics()
     const int ggaTextHeight = scalePixels(118);
     gga_text_edit_->setFixedHeight(ggaTextHeight);
     gga_text_edit_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    if (gga_text_container_)
+    {
+        gga_text_container_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    }
     gga_text_edit_->document()->setDocumentMargin(scalePixels(12));
     gga_group_->setMinimumHeight(0);
     gga_group_->setMaximumHeight(QWIDGETSIZE_MAX);
