@@ -139,12 +139,16 @@ void RtkConfigDialog::setupUi()
     output_group_ = new QGroupBox(this);
     auto *output_layout = new QGridLayout(output_group_);
     output_layout->setSpacing(6);
+    output_layout->setColumnStretch(1, 1);
+    output_layout->setColumnMinimumWidth(2, scaleDialogPixels(88));
 
     row = 0;
     output_port_label_ = new QLabel(this);
     output_layout->addWidget(output_port_label_, row, 0);
     output_port_combo_ = new QComboBox(this);
     output_port_combo_->setEditable(true);
+    output_port_combo_->setMinimumWidth(scaleDialogPixels(200));
+    output_port_combo_->setFixedHeight(scaleDialogPixels(30));
     output_layout->addWidget(output_port_combo_, row, 1);
 
     refresh_ports_btn_ = new QPushButton(this);
@@ -158,7 +162,9 @@ void RtkConfigDialog::setupUi()
     baudrate_combo_ = new QComboBox(this);
     baudrate_combo_->addItems({"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"});
     baudrate_combo_->setCurrentText("115200");
-    output_layout->addWidget(baudrate_combo_, row, 1, 1, 2);
+    baudrate_combo_->setMinimumWidth(scaleDialogPixels(200));
+    baudrate_combo_->setFixedHeight(scaleDialogPixels(30));
+    output_layout->addWidget(baudrate_combo_, row, 1);
     row++;
 
     timeout_label_ = new QLabel(this);
@@ -167,8 +173,9 @@ void RtkConfigDialog::setupUi()
     timeout_spin_->setRange(1000, 60000);
     timeout_spin_->setValue(5000);
     timeout_spin_->setSingleStep(1000);
+    timeout_spin_->setMinimumWidth(scaleDialogPixels(200));
     timeout_spin_->setFixedHeight(scaleDialogPixels(30));
-    output_layout->addWidget(timeout_spin_, row, 1, 1, 2);
+    output_layout->addWidget(timeout_spin_, row, 1);
     row++;
 
     reconnect_label_ = new QLabel(this);
@@ -177,8 +184,9 @@ void RtkConfigDialog::setupUi()
     reconnect_spin_->setRange(1000, 60000);
     reconnect_spin_->setValue(1000);
     reconnect_spin_->setSingleStep(1000);
+    reconnect_spin_->setMinimumWidth(scaleDialogPixels(200));
     reconnect_spin_->setFixedHeight(scaleDialogPixels(30));
-    output_layout->addWidget(reconnect_spin_, row, 1, 1, 2);
+    output_layout->addWidget(reconnect_spin_, row, 1);
     row++;
 
     background_check_ = new QCheckBox(this);
