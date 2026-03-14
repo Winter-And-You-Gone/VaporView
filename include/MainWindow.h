@@ -304,6 +304,7 @@ private:
 
     bool is_fullscreen_;
     bool is_english_;
+    bool has_inline_progress_log_;
     int gnss_sample_rate_;
     int imu_sample_rate_;
     int ptb_sample_rate_;

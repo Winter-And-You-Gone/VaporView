@@ -721,6 +721,7 @@ MainWindow::MainWindow(QWidget *parent)
     , refresh_timer_(nullptr)
     , is_fullscreen_(false)
     , is_english_(false)
+    , has_inline_progress_log_(false)
     , gnss_sample_rate_(1)
     , imu_sample_rate_(1)
     , ptb_sample_rate_(1)
@@ -1360,8 +1361,36 @@ void MainWindow::onToggleFullScreen()
 
 void MainWindow::log(const QString& message)
 {
+    if (message.startsWith('\r'))
+    {
+        const QString inlineMessage = message.mid(1);
+        QTextCursor cursor = log_text_edit_->textCursor();
+        cursor.movePosition(QTextCursor::End);
+
+        if (!has_inline_progress_log_)
+        {
+            if (!log_text_edit_->document()->isEmpty())
+            {
+                cursor.insertBlock();
+            }
+            cursor.insertText(inlineMessage);
+            has_inline_progress_log_ = true;
+        }
+        else
+        {
+            cursor.movePosition(QTextCursor::StartOfBlock, QTextCursor::KeepAnchor);
+            cursor.removeSelectedText();
+            cursor.insertText(inlineMessage);
+        }
+
+        log_text_edit_->setTextCursor(cursor);
+        log_text_edit_->ensureCursorVisible();
+        return;
+    }
+
     QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
     log_text_edit_->append(QString("[%1] %2").arg(timestamp, message));
+    has_inline_progress_log_ = false;
 }
 
 void MainWindow::updateConnectionStatus(bool connected)
@@ -1912,6 +1941,7 @@ void MainWindow::onExportClicked()
 void MainWindow::onClearLogClicked()
 {
     log_text_edit_->clear();
+    has_inline_progress_log_ = false;
     log(is_english_ ? "Log cleared" : "日志已清空");
 }
 

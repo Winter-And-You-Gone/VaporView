@@ -34,6 +34,14 @@ ssize_t readAccumulated(SerialPort& serial, uint8_t* buffer, size_t capacity, in
   return static_cast<ssize_t>(total);
 }
 
+std::string formatDetectionProgress(const char* device, int attempt, int total_attempts, double remaining_seconds)
+{
+  std::ostringstream oss;
+  oss << "\r正在检测" << device << "响应，第" << attempt << "/" << total_attempts
+      << "轮，" << std::fixed << std::setprecision(2) << remaining_seconds << "秒";
+  return oss.str();
+}
+
 uint16_t modbusCrc16Local(const uint8_t* data, size_t len)
 {
   uint16_t crc = 0xFFFF;
@@ -363,6 +371,7 @@ bool GnssCollector::checkDeviceResponse()
 
   while (elapsed_ms < max_wait_ms)
   {
+    log(formatDetectionProgress("GNSS", 1, 1, (max_wait_ms - elapsed_ms) / 1000.0));
     ssize_t n = serial_.read(buffer, sizeof(buffer));
     if (n > 0)
     {
@@ -507,6 +516,7 @@ bool ImuCollector::checkDeviceResponse()
 
   while (elapsed_ms < max_wait_ms)
   {
+    log(formatDetectionProgress("IMU", 1, 1, (max_wait_ms - elapsed_ms) / 1000.0));
     ssize_t n = serial_.read(buffer, sizeof(buffer));
     if (n > 0)
     {
@@ -685,6 +695,7 @@ bool PtbCollector::checkDeviceResponse()
     
     for (int j = 0; j < 10; j++)
     {
+      log(formatDetectionProgress("PTB", i + 1, max_attempts, (10 - j) * 0.05));
       sleepMs(50);
       ssize_t n = serial_.read(response, sizeof(response));
       if (n > 0)
@@ -802,8 +813,23 @@ bool HmpCollector::checkDeviceResponse()
   {
     serial_.flush();
     serial_.write(request, 8);
+    constexpr int total_wait_ms = 500;
+    constexpr int step_ms = 25;
+    size_t total = 0;
+    int elapsed = 0;
+    while (elapsed < total_wait_ms && total < sizeof(response))
+    {
+      log(formatDetectionProgress("HMP", i + 1, max_attempts, (total_wait_ms - elapsed) / 1000.0));
+      ssize_t chunk = serial_.read(response + total, sizeof(response) - total);
+      if (chunk > 0)
+      {
+        total += static_cast<size_t>(chunk);
+      }
+      sleepMs(step_ms);
+      elapsed += step_ms;
+    }
 
-    ssize_t n = readAccumulated(serial_, response, sizeof(response), 500, 25);
+    ssize_t n = static_cast<ssize_t>(total);
     float humidity = 0.0f;
     float temperature = 0.0f;
     uint8_t exception_code = 0;
