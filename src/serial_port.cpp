@@ -444,9 +444,29 @@ bool SerialPort::flush()
 
 bool SerialPort::setNonBlocking(bool non_blocking)
 {
-  (void)non_blocking;
 #ifdef _WIN32
-  return isOpen();
+  if (!isOpen())
+  {
+    return false;
+  }
+
+  COMMTIMEOUTS timeouts{};
+  if (non_blocking)
+  {
+    // Return immediately with any bytes already buffered by the driver.
+    timeouts.ReadIntervalTimeout = MAXDWORD;
+    timeouts.ReadTotalTimeoutMultiplier = 0;
+    timeouts.ReadTotalTimeoutConstant = 0;
+  }
+  else
+  {
+    timeouts.ReadIntervalTimeout = 50;
+    timeouts.ReadTotalTimeoutConstant = 100;
+    timeouts.ReadTotalTimeoutMultiplier = 0;
+  }
+  timeouts.WriteTotalTimeoutConstant = 100;
+  timeouts.WriteTotalTimeoutMultiplier = 0;
+  return SetCommTimeouts(static_cast<HANDLE>(handle_), &timeouts) != 0;
 #else
   if (fd_ < 0)
   {

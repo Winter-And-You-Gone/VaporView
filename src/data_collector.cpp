@@ -921,6 +921,7 @@ HmpData HmpCollector::getLatestData()
 
 bool HmpCollector::initialize()
 {
+  serial_.setNonBlocking(true);
   return true;
 }
 
