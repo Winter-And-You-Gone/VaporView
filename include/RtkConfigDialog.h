@@ -9,6 +9,7 @@
 #include <QLabel>
 #include <QGroupBox>
 #include <QProcess>
+#include <QSizePolicy>
 #include <QScrollBar>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -79,6 +80,7 @@ private:
     QHBoxLayout *log_button_layout_;
     QVBoxLayout *gga_layout_;
     QHBoxLayout *gga_header_layout_;
+    QSpacerItem *gga_button_spacer_;
     QGroupBox *config_group_;
     QGroupBox *output_group_;
     QGroupBox *gga_group_;

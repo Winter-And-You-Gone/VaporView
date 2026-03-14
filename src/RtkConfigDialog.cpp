@@ -63,6 +63,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , log_button_layout_(nullptr)
     , gga_layout_(nullptr)
     , gga_header_layout_(nullptr)
+    , gga_button_spacer_(nullptr)
     , config_group_(nullptr)
     , output_group_(nullptr)
     , gga_group_(nullptr)
@@ -247,6 +248,7 @@ void RtkConfigDialog::setupUi()
     gga_layout_ = new QVBoxLayout(gga_group_);
     gga_layout_->setSpacing(6);
     gga_layout_->setContentsMargins(8, 8, 8, 12);
+    gga_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
 
     gga_header_layout_ = new QHBoxLayout();
     gga_header_layout_->setSpacing(8);
@@ -273,6 +275,8 @@ void RtkConfigDialog::setupUi()
     gga_layout_->addSpacing(6);
 
     main_layout_->addWidget(gga_group_);
+    gga_button_spacer_ = new QSpacerItem(0, 8, QSizePolicy::Minimum, QSizePolicy::Fixed);
+    main_layout_->addSpacerItem(gga_button_spacer_);
 
     button_layout_ = new QHBoxLayout();
     button_layout_->setSpacing(6);
@@ -430,6 +434,11 @@ void RtkConfigDialog::applyScaledUiMetrics()
         gga_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(12));
     }
 
+    if (gga_button_spacer_)
+    {
+        gga_button_spacer_->changeSize(0, scalePixels(8), QSizePolicy::Minimum, QSizePolicy::Fixed);
+    }
+
     if (gga_header_layout_)
     {
         gga_header_layout_->setSpacing(scalePixels(8));
@@ -462,14 +471,11 @@ void RtkConfigDialog::applyScaledUiMetrics()
     gga_status_label_->setMinimumHeight(scalePixels(24));
     const int ggaTextHeight = scalePixels(118);
     gga_text_edit_->setFixedHeight(ggaTextHeight);
+    gga_text_edit_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     gga_text_edit_->document()->setDocumentMargin(scalePixels(12));
     gga_group_->setMinimumHeight(0);
     gga_group_->setMaximumHeight(QWIDGETSIZE_MAX);
-    if (gga_layout_)
-    {
-        gga_layout_->activate();
-    }
-    gga_group_->setFixedHeight(gga_group_->sizeHint().height());
+    gga_group_->setMinimumSize(0, 0);
 
     applyButtonWidth(refresh_ports_btn_, 80);
     applyButtonWidth(fetch_mountpoints_btn_, 128);
@@ -489,6 +495,10 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (!isMaximized() && !isFullScreen())
     {
         resize(size().expandedTo(minimumSize()).expandedTo(QSize(scalePixels(base_dialog_size_.width()), scalePixels(base_dialog_size_.height()))));
+    }
+    if (main_layout_)
+    {
+        main_layout_->invalidate();
     }
 }
 
