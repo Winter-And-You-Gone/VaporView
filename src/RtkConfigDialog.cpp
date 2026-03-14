@@ -12,6 +12,7 @@
 #include <QFontMetrics>
 #include <QInputDialog>
 #include <QIntValidator>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QSerialPortInfo>
 #include <QSignalBlocker>
@@ -104,13 +105,15 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , load_config_btn_(nullptr)
     , clear_log_btn_(nullptr)
     , status_label_(nullptr)
-    , str2str_process_(nullptr)
+    , rtk_service_(std::make_unique<RtkStreamService>())
     , is_running_(false)
     , is_english_(false)
     , font_scale_percent_(100)
     , base_dialog_size_(700, 950)
     , base_minimum_dialog_size_(620, 860)
+    , rtk_status_timer_(nullptr)
     , gga_poll_timer_(nullptr)
+    , last_rtk_status_message_()
     , gga_last_open_attempt_()
     , gga_last_sentence_time_()
     , gga_has_sentence_time_(false)
@@ -122,6 +125,10 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     setEnglish(false);
 
     config_file_path_ = QDir::homePath() + "/.config/VaporView/rtk_config.ini";
+
+    rtk_status_timer_ = new QTimer(this);
+    rtk_status_timer_->setInterval(500);
+    connect(rtk_status_timer_, &QTimer::timeout, this, &RtkConfigDialog::onRtkStatusTimer);
 
     gga_poll_timer_ = new QTimer(this);
     connect(gga_poll_timer_, &QTimer::timeout, this, &RtkConfigDialog::onGgaPollTimer);
@@ -135,17 +142,13 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
 
 RtkConfigDialog::~RtkConfigDialog()
 {
-    if (str2str_process_)
+    if (rtk_status_timer_ && rtk_status_timer_->isActive())
     {
-        if (str2str_process_->state() == QProcess::Running)
-        {
-            str2str_process_->terminate();
-            if (!str2str_process_->waitForFinished(3000))
-            {
-                str2str_process_->kill();
-            }
-        }
-        delete str2str_process_;
+        rtk_status_timer_->stop();
+    }
+    if (rtk_service_)
+    {
+        rtk_service_->stop();
     }
     stopGgaMonitor();
     saveSettings();
@@ -610,52 +613,65 @@ void RtkConfigDialog::saveSettings()
     settings.setValue("reconnect", reconnect_combo_->currentText());
 }
 
-QString RtkConfigDialog::buildCommandLine() const
+bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config, QString *description) const
 {
-    QString server = server_edit_->text().trimmed();
-    QString port = port_edit_->text().trimmed();
-    QString username = username_edit_->text().trimmed();
-    QString password = password_edit_->text();
-    QString mountpoint = mountpoint_edit_->text().trimmed();
-    QString output_port = output_port_combo_->currentText().trimmed();
-    QString baudrate = baudrate_combo_->currentText();
-    int timeout = comboIntValue(timeout_combo_, 5000);
-    int reconnect = comboIntValue(reconnect_combo_, 1000);
+    const QString server = server_edit_->text().trimmed();
+    const QString port = port_edit_->text().trimmed();
+    const QString username = username_edit_->text().trimmed();
+    const QString password = password_edit_->text();
+    const QString mountpoint = mountpoint_edit_->text().trimmed();
+    const QString outputPort = output_port_combo_->currentText().trimmed();
+    bool baudrateOk = false;
+    const int baudrate = baudrate_combo_->currentText().toInt(&baudrateOk);
+    const int timeout = comboIntValue(timeout_combo_, 5000);
+    const int reconnect = comboIntValue(reconnect_combo_, 1000);
 
-    if (server.isEmpty() || mountpoint.isEmpty() || output_port.isEmpty())
+    if (server.isEmpty() || mountpoint.isEmpty() || outputPort.isEmpty())
     {
-        return QString();
+        return false;
     }
 
-    QString ntrip_url;
+    if (config)
+    {
+        config->server = server;
+        config->port = port.isEmpty() ? QStringLiteral("2101") : port;
+        config->username = username;
+        config->password = password;
+        config->mountpoint = mountpoint;
+        config->outputPort = outputPort;
+        config->baudrate = baudrateOk ? baudrate : 115200;
+        config->timeoutMs = timeout;
+        config->reconnectMs = reconnect;
+    }
+
+    QString ntripUrl;
     if (!username.isEmpty())
     {
-        ntrip_url = QString("ntrip://%1:%2@%3:%4/%5")
+        ntripUrl = QString("ntrip://%1:%2@%3:%4/%5")
             .arg(username)
             .arg(password)
             .arg(server)
-            .arg(port)
+            .arg(port.isEmpty() ? QStringLiteral("2101") : port)
             .arg(mountpoint);
     }
     else
     {
-        ntrip_url = QString("ntrip://%1:%2/%3")
+        ntripUrl = QString("ntrip://%1:%2/%3")
             .arg(server)
-            .arg(port)
+            .arg(port.isEmpty() ? QStringLiteral("2101") : port)
             .arg(mountpoint);
     }
 
-    QString serial_url = QString("serial://%1:%2:8:n:1:off")
-        .arg(output_port)
-        .arg(baudrate);
+    if (description)
+    {
+        const QString serialUrl = QString("serial://%1:%2:8:n:1:off")
+            .arg(outputPort)
+            .arg(baudrateOk ? baudrate : 115200);
+        *description = textFor("Embedded RTK stream: %1 -> %2", "内嵌 RTK 流服务: %1 -> %2")
+            .arg(ntripUrl, serialUrl);
+    }
 
-    QString cmd = QString("str2str -in %1 -out %2 -s %3 -r %4")
-        .arg(ntrip_url)
-        .arg(serial_url)
-        .arg(timeout)
-        .arg(reconnect);
-
-    return cmd;
+    return true;
 }
 
 void RtkConfigDialog::updateButtonStates()
@@ -674,6 +690,51 @@ void RtkConfigDialog::updateButtonStates()
         status_label_->setText(textFor("Status: Stopped", "状态: 已停止"));
         status_label_->setStyleSheet("QLabel { color: #666666; font-weight: bold; }");
     }
+}
+
+void RtkConfigDialog::pollRtkServiceStatus(bool forceLog)
+{
+    if (!rtk_service_)
+    {
+        return;
+    }
+
+    const RtkStreamStats stats = rtk_service_->stats();
+    const QString message = stats.message.isEmpty()
+        ? textFor("Streaming RTCM data", "正在转发 RTCM 数据")
+        : stats.message;
+
+    if ((forceLog || message != last_rtk_status_message_) && !message.isEmpty())
+    {
+        appendLog(textFor("RTK status: %1", "RTK 状态: %1").arg(message));
+        last_rtk_status_message_ = message;
+    }
+
+    if (!stats.running && is_running_)
+    {
+        is_running_ = false;
+        if (rtk_status_timer_ && rtk_status_timer_->isActive())
+        {
+            rtk_status_timer_->stop();
+        }
+        updateButtonStates();
+        appendLog(textFor("RTK service stopped unexpectedly", "RTK 服务已意外停止"));
+        return;
+    }
+
+    if (is_running_)
+    {
+        status_label_->setText(
+            textFor("Status: Running (%1 bps in / %2 bps out)", "状态: 运行中 (%1 bps 输入 / %2 bps 输出)")
+                .arg(stats.inputBps)
+                .arg(stats.outputBps));
+        status_label_->setStyleSheet("QLabel { color: #43a047; font-weight: bold; }");
+    }
+}
+
+void RtkConfigDialog::onRtkStatusTimer()
+{
+    pollRtkServiceStatus(false);
 }
 
 QString RtkConfigDialog::ggaPortName() const
@@ -1168,60 +1229,49 @@ void RtkConfigDialog::onFetchMountpointsClicked()
 
 void RtkConfigDialog::onStartClicked()
 {
-    QString cmd = buildCommandLine();
-    if (cmd.isEmpty())
+    RtkStreamConfig config;
+    QString description;
+    if (!buildRtkStreamConfig(&config, &description))
     {
         QMessageBox::warning(this, textFor("Error", "错误"), textFor("Please fill in server, mountpoint and output port.", "请填写服务器、挂载点和输出串口。"));
         return;
     }
 
-    if (str2str_process_)
-    {
-        delete str2str_process_;
-        str2str_process_ = nullptr;
-    }
-
-    str2str_process_ = new QProcess(this);
-    connect(str2str_process_, &QProcess::readyReadStandardOutput, this, &RtkConfigDialog::onProcessReadyRead);
-    connect(str2str_process_, &QProcess::readyReadStandardError, this, &RtkConfigDialog::onProcessReadyRead);
-    connect(str2str_process_, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, &RtkConfigDialog::onProcessFinished);
-    connect(str2str_process_, &QProcess::errorOccurred, this, &RtkConfigDialog::onProcessError);
-
     appendLog(textFor("Starting RTK service...", "正在启动 RTK 服务..."));
-    appendLog(textFor("Command: %1", "命令: %1").arg(cmd));
+    appendLog(description);
 
-    str2str_process_->start("bash", QStringList() << "-c" << cmd);
-
-    if (str2str_process_->waitForStarted(3000))
+    QString errorMessage;
+    if (rtk_service_ && rtk_service_->start(config, &errorMessage))
     {
         is_running_ = true;
+        last_rtk_status_message_.clear();
         updateButtonStates();
+        if (rtk_status_timer_ && !rtk_status_timer_->isActive())
+        {
+            rtk_status_timer_->start();
+        }
+        pollRtkServiceStatus(true);
         appendLog(textFor("RTK service started successfully", "RTK 服务启动成功"));
     }
     else
     {
-        appendLog(textFor("Failed to start RTK service: %1", "RTK 服务启动失败: %1").arg(str2str_process_->errorString()));
-        delete str2str_process_;
-        str2str_process_ = nullptr;
+        appendLog(textFor("Failed to start RTK service: %1", "RTK 服务启动失败: %1")
+            .arg(errorMessage.isEmpty() ? textFor("Unknown error", "未知错误") : errorMessage));
     }
 }
 
 void RtkConfigDialog::onStopClicked()
 {
-    if (str2str_process_ && str2str_process_->state() == QProcess::Running)
+    if (rtk_service_ && rtk_service_->isRunning())
     {
         appendLog(textFor("Stopping RTK service...", "正在停止 RTK 服务..."));
-
-        str2str_process_->terminate();
-        if (!str2str_process_->waitForFinished(3000))
+        rtk_service_->stop();
+        if (rtk_status_timer_ && rtk_status_timer_->isActive())
         {
-            appendLog(textFor("Process not responding, killing...", "进程无响应，正在强制结束..."));
-            str2str_process_->kill();
-            str2str_process_->waitForFinished(1000);
+            rtk_status_timer_->stop();
         }
-
         is_running_ = false;
+        last_rtk_status_message_.clear();
         updateButtonStates();
         appendLog(textFor("RTK service stopped", "RTK 服务已停止"));
     }
@@ -1288,61 +1338,6 @@ void RtkConfigDialog::onTestClicked()
         appendLog(textFor("Connection test returned: %1", "连接测试返回: %1").arg(output));
         QMessageBox::information(this, textFor("Result", "结果"), textFor("Server responded with code: %1", "服务器返回代码: %1").arg(output));
     }
-}
-
-void RtkConfigDialog::onProcessReadyRead()
-{
-    if (!str2str_process_) return;
-
-    QString output = str2str_process_->readAllStandardOutput();
-    QString error = str2str_process_->readAllStandardError();
-
-    if (!output.isEmpty())
-    {
-        appendLog(output.trimmed());
-    }
-    if (!error.isEmpty())
-    {
-        appendLog(textFor("[ERROR] %1", "[错误] %1").arg(error.trimmed()));
-    }
-}
-
-void RtkConfigDialog::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus)
-{
-    is_running_ = false;
-    updateButtonStates();
-
-    QString status = (exitStatus == QProcess::CrashExit) ? textFor("crashed", "崩溃退出") : textFor("finished", "已结束");
-    appendLog(textFor("RTK service %1 with exit code %2", "RTK 服务%1，退出码 %2").arg(status).arg(exitCode));
-}
-
-void RtkConfigDialog::onProcessError(QProcess::ProcessError error)
-{
-    QString errorStr;
-    switch (error)
-    {
-        case QProcess::FailedToStart:
-            errorStr = textFor("Failed to start process", "进程启动失败");
-            break;
-        case QProcess::Crashed:
-            errorStr = textFor("Process crashed", "进程崩溃");
-            break;
-        case QProcess::Timedout:
-            errorStr = textFor("Process timed out", "进程超时");
-            break;
-        case QProcess::WriteError:
-            errorStr = textFor("Write error", "写入错误");
-            break;
-        case QProcess::ReadError:
-            errorStr = textFor("Read error", "读取错误");
-            break;
-        default:
-            errorStr = textFor("Unknown error", "未知错误");
-    }
-
-    appendLog(textFor("[ERROR] Process error: %1", "[错误] 进程错误: %1").arg(errorStr));
-    is_running_ = false;
-    updateButtonStates();
 }
 
 void RtkConfigDialog::onSaveConfigClicked()

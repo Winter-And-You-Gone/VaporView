@@ -17,7 +17,7 @@
 - 设备独立采样率设置与统一频率联动
 - 中英文界面切换
 - 当前数据快照导出为 CSV 或 JSON
-- RTK NTRIP 配置对话框，可通过外部 `str2str` 启动 RTCM 转发
+- RTK NTRIP 配置对话框，内置 RTKLIB 流服务实现 RTCM 转发
 - 实时日志面板与连接状态提示
 
 ## 项目结构
@@ -29,12 +29,14 @@ VaporView/
 ├── include/
 │   ├── MainWindow.h
 │   ├── RtkConfigDialog.h
+│   ├── RtkStreamService.h
 │   ├── data_collector.h
 │   ├── data_types.h
 │   └── serial_port.h
 ├── src/
 │   ├── MainWindow.cpp
 │   ├── RtkConfigDialog.cpp
+│   ├── RtkStreamService.cpp
 │   ├── data_collector.cpp
 │   ├── main.cpp
 │   └── serial_port.cpp
@@ -44,6 +46,10 @@ VaporView/
 │   ├── combo_arrow_down.xpm
 │   ├── combo_arrow_up.xpm
 │   └── modern_style.qss
+├── third_party/
+│   └── rtklib/
+│       ├── LICENSE.txt
+│       └── src/
 └── python/
     ├── __init__.py
     ├── config_manager.py
@@ -75,8 +81,7 @@ VaporView/
   - `Core`
   - `Widgets`
   - `SerialPort`
-- RTK 功能所需的外部命令
-  - `str2str`
+- RTK 相关辅助命令
   - `curl`
 
 ## 构建
@@ -105,7 +110,7 @@ build-win/Release/VaporView.exe
 
 ### Linux
 
-项目保留了 GCC / Clang 路径，串口层使用 `termios`。如需在 Linux 上构建，需确保 Qt、外部驱动源码及 `str2str` / `curl` 可用。
+项目保留了 GCC / Clang 路径，串口层使用 `termios`。如需在 Linux 上构建，需确保 Qt、外部驱动源码及 `curl` 可用。
 
 ## 运行架构
 
@@ -141,9 +146,9 @@ Qt SerialPort 当前主要用于枚举可用串口，实际数据读写由仓库
 
 ### RTK 对话框
 
-`src/RtkConfigDialog.cpp` 通过 `QProcess` 调用外部工具实现 RTK 辅助功能：
+`src/RtkConfigDialog.cpp` 通过仓库内 RTKLIB 封装与少量外部工具实现 RTK 辅助功能：
 
-- `str2str`：NTRIP 到串口转发
+- `src/RtkStreamService.cpp`：基于 vendored RTKLIB `strsvr` API 实现 NTRIP 到串口转发
 - `curl`：连通性测试与挂载点列表获取
 
 ## 设备支持
@@ -264,9 +269,11 @@ CMake 中保留了 `BUILD_PYTHON_BINDINGS` 选项，但仓库内目前不存在 
 - `BUILD_PYTHON_BINDINGS` 当前不完整
 - GUI 导出仅为单次快照，不是持续记录
 - Python 辅助模块尚未接入 GUI 主流程
-- RTK 相关功能依赖外部 `str2str` 与 `curl`
+- RTK 连通性测试与挂载点获取依赖外部 `curl`
 
 ## 许可证
 
-当前仓库中未包含单独的 `LICENSE` 文件。对外分发前，建议补充正式许可证文件，并确认外部依赖的许可证边界。
+仓库当前未包含顶层项目许可证文件。`third_party/rtklib` 已随代码附带上游 `LICENSE.txt`。
+
+对外分发前，建议为 `VaporView` 主项目补充单独的许可证文件，并确认外部依赖的许可证边界。
 

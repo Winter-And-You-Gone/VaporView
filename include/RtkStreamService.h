@@ -1,0 +1,47 @@
+#ifndef VAPORVIEW_RTK_STREAM_SERVICE_H
+#define VAPORVIEW_RTK_STREAM_SERVICE_H
+
+#include <QString>
+
+#include <memory>
+
+struct RtkStreamConfig
+{
+    QString server;
+    QString port;
+    QString username;
+    QString password;
+    QString mountpoint;
+    QString outputPort;
+    int baudrate = 115200;
+    int timeoutMs = 5000;
+    int reconnectMs = 1000;
+};
+
+struct RtkStreamStats
+{
+    bool running = false;
+    int inputBytes = 0;
+    int outputBytes = 0;
+    int inputBps = 0;
+    int outputBps = 0;
+    QString message;
+};
+
+class RtkStreamService
+{
+public:
+    RtkStreamService();
+    ~RtkStreamService();
+
+    bool start(const RtkStreamConfig &config, QString *errorMessage = nullptr);
+    void stop();
+    bool isRunning() const;
+    RtkStreamStats stats() const;
+
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
+#endif

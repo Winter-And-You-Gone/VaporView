@@ -8,7 +8,6 @@
 #include <QTextEdit>
 #include <QLabel>
 #include <QGroupBox>
-#include <QProcess>
 #include <QSizePolicy>
 #include <QScrollBar>
 #include <QTimer>
@@ -20,6 +19,7 @@
 #include <memory>
 
 #include "serial_port.h"
+#include "RtkStreamService.h"
 
 class RtkConfigDialog : public QDialog
 {
@@ -39,9 +39,7 @@ private slots:
     void onStopClicked();
     void onTestClicked();
     void onGgaToggleClicked();
-    void onProcessReadyRead();
-    void onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
-    void onProcessError(QProcess::ProcessError error);
+    void onRtkStatusTimer();
     void onRefreshPortsClicked();
     void onFetchMountpointsClicked();
     void onSaveConfigClicked();
@@ -53,7 +51,7 @@ private:
     void setupUi();
     void loadSettings();
     void saveSettings();
-    QString buildCommandLine() const;
+    bool buildRtkStreamConfig(RtkStreamConfig *config, QString *description = nullptr) const;
     void updateButtonStates();
     QStringList getAvailablePorts() const;
     QString textFor(const QString& english, const QString& chinese) const;
@@ -72,6 +70,7 @@ private:
     int currentGgaBaudrate() const;
     QString ggaPortName() const;
     void refreshPortCombos();
+    void pollRtkServiceStatus(bool forceLog = false);
 
     QVBoxLayout *main_layout_;
     QGridLayout *config_layout_;
@@ -123,14 +122,16 @@ private:
     QPushButton *clear_log_btn_;
     QLabel *status_label_;
 
-    QProcess *str2str_process_;
+    std::unique_ptr<RtkStreamService> rtk_service_;
     bool is_running_;
     bool is_english_;
     int font_scale_percent_;
     QSize base_dialog_size_;
     QSize base_minimum_dialog_size_;
     QString config_file_path_;
+    QTimer *rtk_status_timer_;
     QTimer *gga_poll_timer_;
+    QString last_rtk_status_message_;
     VaporView::SerialPort gga_serial_;
     QString gga_buffer_;
     QString gga_status_message_;
