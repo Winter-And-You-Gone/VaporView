@@ -246,6 +246,7 @@ void RtkConfigDialog::setupUi()
     gga_group_ = new QGroupBox(this);
     gga_layout_ = new QVBoxLayout(gga_group_);
     gga_layout_->setSpacing(6);
+    gga_layout_->setContentsMargins(8, 8, 8, 10);
 
     gga_header_layout_ = new QHBoxLayout();
     gga_header_layout_->setSpacing(8);
@@ -425,6 +426,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (gga_layout_)
     {
         gga_layout_->setSpacing(scalePixels(6));
+        gga_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(10));
     }
 
     if (gga_header_layout_)
