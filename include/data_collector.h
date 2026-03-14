@@ -109,6 +109,7 @@ private:
   PtbData latest_data_;
   static constexpr const char* PTB_CMD_PRESSURE = ".P\r";
   static constexpr const char* PTB_CMD_CONTINUOUS = ".BP\r";
+  static constexpr const char* PTB_CMD_STOP = "\r";
 };
 
 class HmpCollector : public DataCollector

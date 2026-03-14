@@ -687,8 +687,7 @@ bool PtbCollector::setDeviceSampleRate(int hz)
   if (mpm < 6) mpm = 6;
   if (mpm > 4200) mpm = 4200;
 
-  const char* stop_cmd = "\r";
-  serial_.write(stop_cmd, std::strlen(stop_cmd));
+  serial_.write(PtbCollector::PTB_CMD_STOP, std::strlen(PtbCollector::PTB_CMD_STOP));
   sleepMs(50);
 
   const char* average_cmd = ".AVRG.0\r";
@@ -721,7 +720,7 @@ bool PtbCollector::setDeviceSampleRate(int hz)
     return false;
   }
 
-  sleepMs(200);
+  sleepMs(500);
 
   if (running_.load())
   {
@@ -750,8 +749,7 @@ void PtbCollector::cleanup()
     return;
   }
 
-  const char* stop_cmd = "\r";
-  serial_.write(stop_cmd, std::strlen(stop_cmd));
+  serial_.write(PTB_CMD_STOP, std::strlen(PTB_CMD_STOP));
   sleepMs(50);
   serial_.flush();
 }
@@ -814,13 +812,16 @@ void PtbCollector::run()
   std::string buffer;
   buffer.reserve(512);
 
-  serial_.flush();
-  ssize_t written = serial_.write(PTB_CMD_CONTINUOUS, std::strlen(PTB_CMD_CONTINUOUS));
-  if (written != static_cast<ssize_t>(std::strlen(PTB_CMD_CONTINUOUS)))
-  {
-    log("PTB210: Failed to start continuous output");
-    return;
-  }
+  auto startContinuousOutput = [this]() -> bool {
+    serial_.flush();
+    ssize_t written = serial_.write(PTB_CMD_CONTINUOUS, std::strlen(PTB_CMD_CONTINUOUS));
+    if (written != static_cast<ssize_t>(std::strlen(PTB_CMD_CONTINUOUS)))
+    {
+      log("PTB210: Failed to start continuous output");
+      return false;
+    }
+    return true;
+  };
 
   auto processLine = [this](std::string line) {
     while (!line.empty() && (line.back() == '\r' || line.back() == '\n' || line.back() == ' '))
@@ -852,11 +853,19 @@ void PtbCollector::run()
     }
     catch (const std::exception&)
     {
-      std::lock_guard<std::mutex> lock(mutex_);
-      latest_data_.valid = false;
-      latest_data_.error_message = "Parse error: " + line;
+      // Ignore command echoes or control lines and wait for the next numeric sample.
     }
   };
+
+  // PTB210 needs a short recovery window after .RESET before it accepts .BP reliably.
+  sleepMs(500);
+  if (!startContinuousOutput())
+  {
+    return;
+  }
+
+  auto last_data_time = std::chrono::steady_clock::now();
+  auto last_bp_time = std::chrono::steady_clock::now();
 
   while (running_.load())
   {
@@ -874,11 +883,31 @@ void PtbCollector::run()
         {
           buffer.erase(0, 1);
         }
+
+        const PtbData before = getLatestData();
         processLine(line);
+        const PtbData after = getLatestData();
+        if (after.valid && (!before.valid || after.timestamp != before.timestamp))
+        {
+          last_data_time = after.timestamp;
+        }
       }
     }
     else
     {
+      const int interval_ms = std::max(50, 1000 / std::max(1, getSampleRate()));
+      const int restart_timeout_ms = std::max(1000, interval_ms * 4);
+      const auto now = std::chrono::steady_clock::now();
+      const auto silence_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_data_time).count();
+      const auto since_bp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_bp_time).count();
+      if (silence_ms >= restart_timeout_ms && since_bp_ms >= 500)
+      {
+        log("PTB210: No continuous data yet, retrying .BP");
+        if (startContinuousOutput())
+        {
+          last_bp_time = std::chrono::steady_clock::now();
+        }
+      }
       sleepMs(5);
     }
   }
