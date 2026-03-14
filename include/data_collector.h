@@ -25,6 +25,7 @@ public:
   DataCollector& operator=(const DataCollector&) = delete;
 
   bool start(const std::string& port, const SerialConfig& config);
+  bool startStreaming();
   void stop();
   bool isRunning() const;
 

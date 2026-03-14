@@ -1488,7 +1488,15 @@ void MainWindow::onConnectClicked()
             {
                 log(QString(is_english_ ? "[GNSS] Device responding, connected: %1 @ %2 baud" : "[GNSS] 设备响应正常，连接成功: %1 @ %2 波特率").arg(gnss_port, gnss_baud_combo_->currentText()));
                 gnss_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onGnssDataReady", Qt::QueuedConnection); });
-                connected_devices++;
+                if (gnss_collector_->startStreaming())
+                {
+                    connected_devices++;
+                }
+                else
+                {
+                    log(is_english_ ? "[GNSS] Failed to start data stream." : "[GNSS] 启动数据流失败。");
+                    gnss_collector_->stop();
+                }
             }
             else
             {
@@ -1531,7 +1539,15 @@ void MainWindow::onConnectClicked()
                 imu_collector_->setSampleRate(imu_rate);
                 imu_collector_->setDeviceSampleRate(imu_rate);
                 log(QString(is_english_ ? "[IMU] Sample rate set to %1 Hz" : "[IMU] 采样频率设置为 %1 Hz").arg(imu_rate));
-                connected_devices++;
+                if (imu_collector_->startStreaming())
+                {
+                    connected_devices++;
+                }
+                else
+                {
+                    log(is_english_ ? "[IMU] Failed to start data stream." : "[IMU] 启动数据流失败。");
+                    imu_collector_->stop();
+                }
             }
             else
             {
@@ -1574,7 +1590,15 @@ void MainWindow::onConnectClicked()
                 ptb_collector_->setSampleRate(ptb_rate);
                 ptb_collector_->setDeviceSampleRate(ptb_rate);
                 log(QString(is_english_ ? "[PTB] Sample rate set to %1 Hz" : "[PTB] 采样频率设置为 %1 Hz").arg(ptb_rate));
-                connected_devices++;
+                if (ptb_collector_->startStreaming())
+                {
+                    connected_devices++;
+                }
+                else
+                {
+                    log(is_english_ ? "[PTB] Failed to start data stream." : "[PTB] 启动数据流失败。");
+                    ptb_collector_->stop();
+                }
             }
             else
             {
@@ -1616,7 +1640,15 @@ void MainWindow::onConnectClicked()
                 int hmp_rate = parseRate(hmp_rate_combo_->currentText());
                 hmp_collector_->setSampleRate(hmp_rate);
                 log(QString(is_english_ ? "[HMP] Sample rate set to %1 Hz" : "[HMP] 采样频率设置为 %1 Hz").arg(hmp_rate));
-                connected_devices++;
+                if (hmp_collector_->startStreaming())
+                {
+                    connected_devices++;
+                }
+                else
+                {
+                    log(is_english_ ? "[HMP] Failed to start data stream." : "[HMP] 启动数据流失败。");
+                    hmp_collector_->stop();
+                }
             }
             else
             {

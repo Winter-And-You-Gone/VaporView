@@ -143,7 +143,7 @@ DataCollector::~DataCollector()
 
 bool DataCollector::start(const std::string& port, const SerialConfig& config)
 {
-  if (running_.load())
+  if (running_.load() || serial_.isOpen())
   {
     return false;
   }
@@ -156,6 +156,16 @@ bool DataCollector::start(const std::string& port, const SerialConfig& config)
   if (!initialize())
   {
     serial_.close();
+    return false;
+  }
+
+  return true;
+}
+
+bool DataCollector::startStreaming()
+{
+  if (running_.load() || !serial_.isOpen())
+  {
     return false;
   }
 
