@@ -457,7 +457,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
     gga_status_label_->setMinimumHeight(scalePixels(24));
     gga_text_edit_->setMinimumHeight(scalePixels(170));
-    gga_text_edit_->document()->setDocumentMargin(scalePixels(8));
+    gga_text_edit_->document()->setDocumentMargin(scalePixels(12));
 
     applyButtonWidth(refresh_ports_btn_, 80);
     applyButtonWidth(fetch_mountpoints_btn_, 128);
@@ -849,17 +849,27 @@ void RtkConfigDialog::handleGgaSentence(const QString& sentence)
         const int previousValue = scrollBar ? scrollBar->value() : 0;
         const QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss.zzz");
         gga_text_edit_->append(QString("[%1] %2").arg(timestamp, sentence));
-        if (scrollBar)
-        {
+        QTimer::singleShot(0, this, [this, stickToBottom, previousValue]() {
+            if (!gga_text_edit_)
+            {
+                return;
+            }
+
+            QScrollBar *updatedScrollBar = gga_text_edit_->verticalScrollBar();
+            if (!updatedScrollBar)
+            {
+                return;
+            }
+
             if (stickToBottom)
             {
-                scrollBar->setValue(scrollBar->maximum());
+                updatedScrollBar->setValue(updatedScrollBar->maximum());
             }
             else
             {
-                scrollBar->setValue(previousValue);
+                updatedScrollBar->setValue(std::min(previousValue, updatedScrollBar->maximum()));
             }
-        }
+        });
     }
 }
 
