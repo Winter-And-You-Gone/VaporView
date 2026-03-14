@@ -1,5 +1,5 @@
-#ifndef VAPROVIEW_DATA_COLLECTOR_H
-#define VAPROVIEW_DATA_COLLECTOR_H
+#ifndef VaporView_DATA_COLLECTOR_H
+#define VaporView_DATA_COLLECTOR_H
 
 #include "data_types.h"
 #include "serial_port.h"
@@ -9,7 +9,7 @@
 #include <mutex>
 #include <thread>
 
-namespace VaproView
+namespace VaporView
 {
 
 class DataCollector
@@ -155,3 +155,4 @@ private:
 }
 
 #endif
+

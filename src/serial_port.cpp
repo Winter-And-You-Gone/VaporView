@@ -14,7 +14,7 @@
 #include <unistd.h>
 #endif
 
-namespace VaproView
+namespace VaporView
 {
 
 #ifndef _WIN32
@@ -503,3 +503,4 @@ int SerialPort::fileDescriptor() const
 }
 
 }
+

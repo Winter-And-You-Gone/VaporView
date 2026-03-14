@@ -1,5 +1,5 @@
-#ifndef VAPROVIEW_RTK_CONFIG_DIALOG_H
-#define VAPROVIEW_RTK_CONFIG_DIALOG_H
+#ifndef VaporView_RTK_CONFIG_DIALOG_H
+#define VaporView_RTK_CONFIG_DIALOG_H
 
 #include <QDialog>
 #include <QLineEdit>
@@ -131,7 +131,7 @@ private:
     QSize base_minimum_dialog_size_;
     QString config_file_path_;
     QTimer *gga_poll_timer_;
-    VaproView::SerialPort gga_serial_;
+    VaporView::SerialPort gga_serial_;
     QString gga_buffer_;
     QString gga_status_message_;
     std::chrono::steady_clock::time_point gga_last_open_attempt_;
@@ -142,3 +142,4 @@ private:
 };
 
 #endif
+

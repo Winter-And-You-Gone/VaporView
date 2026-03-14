@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(VaproView VERSION 1.0.0 LANGUAGES C CXX)
+project(VaporView VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -61,7 +61,7 @@ if(WIN32)
 endif()
 
 if(WIN32)
-    add_executable(VaproView WIN32
+    add_executable(VaporView WIN32
         ${NAV_SOURCES}
         ${NAV_HEADERS}
         ${NAV_UI_FILES}
@@ -69,7 +69,7 @@ if(WIN32)
         ${NAV_WIN_RESOURCES}
     )
 else()
-    add_executable(VaproView
+    add_executable(VaporView
         ${NAV_SOURCES}
         ${NAV_HEADERS}
         ${NAV_UI_FILES}
@@ -78,22 +78,22 @@ else()
 endif()
 
 if(MSVC)
-    target_compile_options(VaproView PRIVATE /FI"${CMAKE_SOURCE_DIR}/include/compiler_compat.h")
+    target_compile_options(VaporView PRIVATE /FI"${CMAKE_SOURCE_DIR}/include/compiler_compat.h")
 endif()
 
-target_include_directories(VaproView PRIVATE
+target_include_directories(VaporView PRIVATE
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/src
     ${UM982_DRIVER_DIR}
     ${HIPNUC_DRIVER_DIR}
 )
 
-target_link_libraries(VaproView PRIVATE
+target_link_libraries(VaporView PRIVATE
     ${QT_LIBRARIES}
     Threads::Threads
 )
 
-add_custom_command(TARGET VaproView POST_BUILD
+add_custom_command(TARGET VaporView POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/resources
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/resources/modern_style.qss
@@ -111,9 +111,9 @@ add_custom_command(TARGET VaproView POST_BUILD
 )
 
 if(MSVC)
-    target_compile_options(VaproView PRIVATE /W4 /utf-8)
+    target_compile_options(VaporView PRIVATE /W4 /utf-8)
 else()
-    target_compile_options(VaproView PRIVATE
+    target_compile_options(VaporView PRIVATE
         -Wall
         -Wextra
         -Wpedantic
@@ -125,7 +125,7 @@ if(BUILD_PYTHON_BINDINGS)
     find_package(pybind11 CONFIG)
 
     if(pybind11_FOUND)
-        pybind11_add_module(VaproView_bindings
+        pybind11_add_module(VaporView_bindings
             python/bindings.cpp
             src/serial_port.cpp
             src/data_collector.cpp
@@ -133,17 +133,17 @@ if(BUILD_PYTHON_BINDINGS)
             ${HIPNUC_DRIVER_DIR}/hipnuc_dec.c
         )
 
-        target_include_directories(VaproView_bindings PRIVATE
+        target_include_directories(VaporView_bindings PRIVATE
             ${CMAKE_SOURCE_DIR}/include
             ${UM982_DRIVER_DIR}
             ${HIPNUC_DRIVER_DIR}
         )
 
         if(MSVC)
-            target_compile_options(VaproView_bindings PRIVATE /FI"${CMAKE_SOURCE_DIR}/include/compiler_compat.h")
+            target_compile_options(VaporView_bindings PRIVATE /FI"${CMAKE_SOURCE_DIR}/include/compiler_compat.h")
         endif()
 
-        target_link_libraries(VaproView_bindings PRIVATE
+        target_link_libraries(VaporView_bindings PRIVATE
             Threads::Threads
         )
     else()
@@ -151,7 +151,7 @@ if(BUILD_PYTHON_BINDINGS)
     endif()
 endif()
 
-install(TARGETS VaproView
+install(TARGETS VaporView
     RUNTIME DESTINATION bin
 )
 
@@ -162,3 +162,4 @@ install(DIRECTORY include/
 install(FILES ${NAV_RESOURCES}
     DESTINATION resources
 )
+

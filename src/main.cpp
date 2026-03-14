@@ -11,9 +11,9 @@
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
-    app.setApplicationName("VaproView");
+    app.setApplicationName("VaporView");
     app.setApplicationVersion("1.0.0");
-    app.setOrganizationName("VaproView");
+    app.setOrganizationName("VaporView");
 
     const QString appDir = QCoreApplication::applicationDirPath();
     const QStringList iconCandidates = {
@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
     }
 
     MainWindow mainWindow;
-    mainWindow.setWindowTitle("VaproView");
+    mainWindow.setWindowTitle("VaporView");
     if (!app.windowIcon().isNull())
     {
         mainWindow.setWindowIcon(app.windowIcon());
@@ -50,3 +50,4 @@ int main(int argc, char *argv[])
 
     return app.exec();
 }
+

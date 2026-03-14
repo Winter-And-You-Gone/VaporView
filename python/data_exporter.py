@@ -1,5 +1,5 @@
 """
-Data Exporter for VaproView
+Data Exporter for VaporView
 Handles exporting sensor data to various formats (CSV, JSON, KML).
 """
 
@@ -121,7 +121,7 @@ class DataExporter:
         document = ET.SubElement(kml, 'Document')
         
         name = ET.SubElement(document, 'name')
-        name.text = "VaproView Position"
+        name.text = "VaporView Position"
         
         placemark = ET.SubElement(document, 'Placemark')
         
@@ -159,7 +159,7 @@ class DataExporter:
         document = ET.SubElement(kml, 'Document')
         
         name = ET.SubElement(document, 'name')
-        name.text = "VaproView Trajectory"
+        name.text = "VaporView Trajectory"
         
         placemark = ET.SubElement(document, 'Placemark')
         
@@ -247,3 +247,4 @@ if __name__ == "__main__":
     print(f"CSV: {exporter.export_to_csv(test_data)}")
     print(f"JSON: {exporter.export_to_json(test_data)}")
     print(f"KML: {exporter.export_to_kml(test_data)}")
+

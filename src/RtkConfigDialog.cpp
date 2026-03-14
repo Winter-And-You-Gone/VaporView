@@ -121,7 +121,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     setFontScale(100);
     setEnglish(false);
 
-    config_file_path_ = QDir::homePath() + "/.config/VaproView/rtk_config.ini";
+    config_file_path_ = QDir::homePath() + "/.config/VaporView/rtk_config.ini";
 
     gga_poll_timer_ = new QTimer(this);
     connect(gga_poll_timer_, &QTimer::timeout, this, &RtkConfigDialog::onGgaPollTimer);
@@ -573,7 +573,7 @@ void RtkConfigDialog::setFontScale(int percent)
 
 void RtkConfigDialog::loadSettings()
 {
-    QSettings settings("VaproView", "RtkConfig");
+    QSettings settings("VaporView", "RtkConfig");
 
     server_edit_->setText(settings.value("server", "").toString());
     port_edit_->setText(settings.value("port", "2101").toString());
@@ -596,7 +596,7 @@ void RtkConfigDialog::loadSettings()
 
 void RtkConfigDialog::saveSettings()
 {
-    QSettings settings("VaproView", "RtkConfig");
+    QSettings settings("VaporView", "RtkConfig");
 
     settings.setValue("server", server_edit_->text());
     settings.setValue("port", port_edit_->text());
@@ -1416,3 +1416,4 @@ bool RtkConfigDialog::isRunning() const
 {
     return is_running_;
 }
+

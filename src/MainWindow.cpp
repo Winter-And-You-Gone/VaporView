@@ -228,7 +228,7 @@ void GnssPanel::setEnglish(bool english)
     }
 }
 
-void GnssPanel::updateData(const VaproView::GnssData& data)
+void GnssPanel::updateData(const VaporView::GnssData& data)
 {
     if (data.valid)
     {
@@ -442,7 +442,7 @@ void ImuPanel::setEnglish(bool english)
     }
 }
 
-void ImuPanel::updateData(const VaproView::ImuData& data)
+void ImuPanel::updateData(const VaporView::ImuData& data)
 {
     if (data.valid)
     {
@@ -545,7 +545,7 @@ void PtbPanel::setEnglish(bool english)
     }
 }
 
-void PtbPanel::updateData(const VaproView::PtbData& data)
+void PtbPanel::updateData(const VaporView::PtbData& data)
 {
     if (data.valid)
     {
@@ -656,7 +656,7 @@ void HmpPanel::setEnglish(bool english)
     }
 }
 
-void HmpPanel::updateData(const VaproView::HmpData& data)
+void HmpPanel::updateData(const VaporView::HmpData& data)
 {
     if (data.valid)
     {
@@ -773,7 +773,7 @@ void LidarPanel::setEnglish(bool english)
     }
 }
 
-void LidarPanel::updateData(const VaproView::LidarData& data)
+void LidarPanel::updateData(const VaporView::LidarData& data)
 {
     if (data.valid)
     {
@@ -890,7 +890,7 @@ MainWindow::MainWindow(QWidget *parent)
     const double currentPointSize = qApp->font().pointSizeF();
     base_font_point_size_ = currentPointSize > 0.0 ? currentPointSize : 10.0;
 
-    QSettings settings("VaproView", "MainWindow");
+    QSettings settings("VaporView", "MainWindow");
     settings.remove("font_scale_percent");
     font_scale_percent_ = 100;
 
@@ -1978,11 +1978,11 @@ void MainWindow::onConnectClicked()
 
     log(is_english_ ? "Connecting..." : "正在连接...");
 
-    current_gnss_ = VaproView::GnssData();
-    current_imu_ = VaproView::ImuData();
-    current_ptb_ = VaproView::PtbData();
-    current_hmp_ = VaproView::HmpData();
-    current_lidar_ = VaproView::LidarData();
+    current_gnss_ = VaporView::GnssData();
+    current_imu_ = VaporView::ImuData();
+    current_ptb_ = VaporView::PtbData();
+    current_hmp_ = VaporView::HmpData();
+    current_lidar_ = VaporView::LidarData();
 
     gnss_panel_->updateData(current_gnss_);
     imu_panel_->updateData(current_imu_);
@@ -1996,11 +1996,11 @@ void MainWindow::onConnectClicked()
     hmp_panel_->updateRate(0.0);
     lidar_panel_->updateRate(0.0);
 
-    gnss_collector_ = std::make_unique<VaproView::GnssCollector>();
-    imu_collector_ = std::make_unique<VaproView::ImuCollector>();
-    ptb_collector_ = std::make_unique<VaproView::PtbCollector>();
-    hmp_collector_ = std::make_unique<VaproView::HmpCollector>();
-    lidar_collector_ = std::make_unique<VaproView::LidarCollector>();
+    gnss_collector_ = std::make_unique<VaporView::GnssCollector>();
+    imu_collector_ = std::make_unique<VaporView::ImuCollector>();
+    ptb_collector_ = std::make_unique<VaporView::PtbCollector>();
+    hmp_collector_ = std::make_unique<VaporView::HmpCollector>();
+    lidar_collector_ = std::make_unique<VaporView::LidarCollector>();
 
     gnss_collector_->setSampleRate(gnss_sample_rate_);
     imu_collector_->setSampleRate(imu_sample_rate_);
@@ -2065,7 +2065,7 @@ void MainWindow::onConnectClicked()
         log(QString(is_english_ ? "[GNSS] Port selected, connecting..." : "[GNSS] 已选择端口，正在连接..."));
         if (abortIfRequested()) return;
 
-        VaproView::SerialConfig gnss_config = VaproView::SerialConfig::N81(gnss_baud_combo_->currentText().toInt());
+        VaporView::SerialConfig gnss_config = VaporView::SerialConfig::N81(gnss_baud_combo_->currentText().toInt());
         if (gnss_collector_->start(gnss_port.toStdString(), gnss_config))
         {
             log(QString(is_english_ ? "[GNSS] Serial port opened, checking device response..." : "[GNSS] 串口已打开，正在检测设备响应..."));
@@ -2116,7 +2116,7 @@ void MainWindow::onConnectClicked()
         log(QString(is_english_ ? "[IMU] Port selected, connecting..." : "[IMU] 已选择端口，正在连接..."));
         if (abortIfRequested()) return;
 
-        VaproView::SerialConfig imu_config = VaproView::SerialConfig::N81(imu_baud_combo_->currentText().toInt());
+        VaporView::SerialConfig imu_config = VaporView::SerialConfig::N81(imu_baud_combo_->currentText().toInt());
         if (imu_collector_->start(imu_port.toStdString(), imu_config))
         {
             log(QString(is_english_ ? "[IMU] Serial port opened, checking device response..." : "[IMU] 串口已打开，正在检测设备响应..."));
@@ -2171,7 +2171,7 @@ void MainWindow::onConnectClicked()
         log(QString(is_english_ ? "[PTB] Port selected, connecting..." : "[PTB] 已选择端口，正在连接..."));
         if (abortIfRequested()) return;
 
-        VaproView::SerialConfig ptb_config = VaproView::SerialConfig::E71(ptb_baud_combo_->currentText().toInt());
+        VaporView::SerialConfig ptb_config = VaporView::SerialConfig::E71(ptb_baud_combo_->currentText().toInt());
         if (ptb_collector_->start(ptb_port.toStdString(), ptb_config))
         {
             log(QString(is_english_ ? "[PTB] Serial port opened, checking device response..." : "[PTB] 串口已打开，正在检测设备响应..."));
@@ -2226,7 +2226,7 @@ void MainWindow::onConnectClicked()
         log(QString(is_english_ ? "[HMP] Port selected, connecting..." : "[HMP] 已选择端口，正在连接..."));
         if (abortIfRequested()) return;
 
-        VaproView::SerialConfig hmp_config = VaproView::SerialConfig::N82(hmp_baud_combo_->currentText().toInt());
+        VaporView::SerialConfig hmp_config = VaporView::SerialConfig::N82(hmp_baud_combo_->currentText().toInt());
         if (hmp_collector_->start(hmp_port.toStdString(), hmp_config))
         {
             log(QString(is_english_ ? "[HMP] Serial port opened, checking device response..." : "[HMP] 串口已打开，正在检测设备响应..."));
@@ -2280,7 +2280,7 @@ void MainWindow::onConnectClicked()
         log(QString(is_english_ ? "[TF03] Port selected, connecting..." : "[TF03] 已选择端口，正在连接..."));
         if (abortIfRequested()) return;
 
-        VaproView::SerialConfig lidar_config = VaproView::SerialConfig::N81(lidar_baud_combo_->currentText().toInt());
+        VaporView::SerialConfig lidar_config = VaporView::SerialConfig::N81(lidar_baud_combo_->currentText().toInt());
         if (lidar_collector_->start(lidar_port.toStdString(), lidar_config))
         {
             log(QString(is_english_ ? "[TF03] Serial port opened, checking device response..." : "[TF03] 串口已打开，正在检测设备响应..."));
@@ -2611,3 +2611,4 @@ void MainWindow::onRtkConfigClicked()
     rtk_config_dialog_->raise();
     rtk_config_dialog_->activateWindow();
 }
+

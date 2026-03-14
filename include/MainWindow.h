@@ -1,5 +1,5 @@
-#ifndef VAPROVIEW_MAIN_WINDOW_H_
-#define VAPROVIEW_MAIN_WINDOW_H_
+#ifndef VaporView_MAIN_WINDOW_H_
+#define VaporView_MAIN_WINDOW_H_
 
 #include "data_collector.h"
 #include "data_types.h"
@@ -32,7 +32,7 @@ class GnssPanel : public QWidget
 
 public:
     explicit GnssPanel(QWidget *parent = nullptr);
-    void updateData(const VaproView::GnssData& data);
+    void updateData(const VaporView::GnssData& data);
     void updateRate(double hz);
     void setEnglish(bool english);
 
@@ -99,7 +99,7 @@ class ImuPanel : public QWidget
 
 public:
     explicit ImuPanel(QWidget *parent = nullptr);
-    void updateData(const VaproView::ImuData& data);
+    void updateData(const VaporView::ImuData& data);
     void updateRate(double hz);
     void setEnglish(bool english);
 
@@ -155,7 +155,7 @@ class PtbPanel : public QWidget
 
 public:
     explicit PtbPanel(QWidget *parent = nullptr);
-    void updateData(const VaproView::PtbData& data);
+    void updateData(const VaporView::PtbData& data);
     void updateRate(double hz);
     void setEnglish(bool english);
 
@@ -176,7 +176,7 @@ class HmpPanel : public QWidget
 
 public:
     explicit HmpPanel(QWidget *parent = nullptr);
-    void updateData(const VaproView::HmpData& data);
+    void updateData(const VaporView::HmpData& data);
     void updateRate(double hz);
     void setEnglish(bool english);
 
@@ -199,7 +199,7 @@ class LidarPanel : public QWidget
 
 public:
     explicit LidarPanel(QWidget *parent = nullptr);
-    void updateData(const VaproView::LidarData& data);
+    void updateData(const VaporView::LidarData& data);
     void updateRate(double hz);
     void setEnglish(bool english);
 
@@ -340,19 +340,19 @@ private:
     QComboBox *hmp_rate_combo_;
     QComboBox *lidar_rate_combo_;
 
-    std::unique_ptr<VaproView::GnssCollector> gnss_collector_;
-    std::unique_ptr<VaproView::ImuCollector> imu_collector_;
-    std::unique_ptr<VaproView::PtbCollector> ptb_collector_;
-    std::unique_ptr<VaproView::HmpCollector> hmp_collector_;
-    std::unique_ptr<VaproView::LidarCollector> lidar_collector_;
+    std::unique_ptr<VaporView::GnssCollector> gnss_collector_;
+    std::unique_ptr<VaporView::ImuCollector> imu_collector_;
+    std::unique_ptr<VaporView::PtbCollector> ptb_collector_;
+    std::unique_ptr<VaporView::HmpCollector> hmp_collector_;
+    std::unique_ptr<VaporView::LidarCollector> lidar_collector_;
 
     QTimer *refresh_timer_;
 
-    VaproView::GnssData current_gnss_;
-    VaproView::ImuData current_imu_;
-    VaproView::PtbData current_ptb_;
-    VaproView::HmpData current_hmp_;
-    VaproView::LidarData current_lidar_;
+    VaporView::GnssData current_gnss_;
+    VaporView::ImuData current_imu_;
+    VaporView::PtbData current_ptb_;
+    VaporView::HmpData current_hmp_;
+    VaporView::LidarData current_lidar_;
 
     bool is_fullscreen_;
     bool is_english_;
@@ -375,3 +375,4 @@ private:
 };
 
 #endif
+

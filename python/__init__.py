@@ -1,5 +1,5 @@
 """
-VaproView Python Modules
+VaporView Python Modules
 """
 
 from .config_manager import ConfigManager, AppConfig, SerialPortConfig
@@ -16,3 +16,4 @@ __all__ = [
 ]
 
 __version__ = '1.0.0'
+

@@ -6,7 +6,7 @@
 #include <sstream>
 #include <vector>
 
-namespace VaproView
+namespace VaporView
 {
 namespace
 {
@@ -1298,4 +1298,5 @@ void LidarCollector::run()
 }
 
 }
+
 

@@ -1,5 +1,5 @@
-#ifndef VAPROVIEW_SERIAL_PORT_H
-#define VAPROVIEW_SERIAL_PORT_H
+#ifndef VaporView_SERIAL_PORT_H
+#define VaporView_SERIAL_PORT_H
 
 #include <cstdint>
 #include <cstddef>
@@ -10,7 +10,7 @@
 using ssize_t = SSIZE_T;
 #endif
 
-namespace VaproView
+namespace VaporView
 {
 
 enum class Parity
@@ -93,3 +93,4 @@ private:
 }
 
 #endif
+

@@ -1,12 +1,12 @@
-#ifndef VAPROVIEW_DATA_TYPES_H
-#define VAPROVIEW_DATA_TYPES_H
+#ifndef VaporView_DATA_TYPES_H
+#define VaporView_DATA_TYPES_H
 
 #include <array>
 #include <chrono>
 #include <cstdint>
 #include <string>
 
-namespace VaproView
+namespace VaporView
 {
 
 struct GnssData
@@ -104,3 +104,4 @@ struct LidarData
 }
 
 #endif
+

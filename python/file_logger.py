@@ -1,5 +1,5 @@
 """
-File Logger for VaproView
+File Logger for VaporView
 Handles logging to files with rotation and formatting.
 """
 
@@ -19,7 +19,7 @@ class FileLogger:
         if log_dir:
             self.log_dir = Path(log_dir)
         else:
-            self.log_dir = Path.home() / ".local" / "share" / "VaproView" / "logs"
+            self.log_dir = Path.home() / ".local" / "share" / "VaporView" / "logs"
         
         self.log_dir.mkdir(parents=True, exist_ok=True)
         self.max_file_size = max_file_size_mb * 1024 * 1024
@@ -42,7 +42,7 @@ class FileLogger:
             
     def _get_log_file_path(self) -> Path:
         date_str = datetime.now().strftime("%Y%m%d")
-        return self.log_dir / f"vaproview_{date_str}.log"
+        return self.log_dir / f"VaporView_{date_str}.log"
     
     def _rotate_if_needed(self):
         if self.current_log_file and self.current_log_file.exists():
@@ -53,7 +53,7 @@ class FileLogger:
                 self._cleanup_old_files()
                 
     def _cleanup_old_files(self):
-        log_files = sorted(self.log_dir.glob("vaproview_*.log"), 
+        log_files = sorted(self.log_dir.glob("VaporView_*.log"), 
                           key=lambda p: p.stat().st_mtime, reverse=True)
         for old_file in log_files[self.max_files:]:
             old_file.unlink()
@@ -108,7 +108,7 @@ class DataLogger:
         if data_dir:
             self.data_dir = Path(data_dir)
         else:
-            self.data_dir = Path.home() / ".local" / "share" / "VaproView" / "data"
+            self.data_dir = Path.home() / ".local" / "share" / "VaporView" / "data"
         
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self.csv_files = {}
@@ -222,3 +222,4 @@ if __name__ == "__main__":
     import time
     time.sleep(1)
     logger.stop()
+

@@ -10,8 +10,6 @@
 - HMP3：温湿度传感器
 - TF03：激光测距模块
 
-注意：仓库目录名为 `VaporView`，工程目标名、命名空间和可执行文件名当前仍为 `VaproView`。
-
 ## 功能特性
 
 - 多设备串口接入与端口刷新
@@ -102,7 +100,7 @@ cmake --build build-win --config Release
 生成的可执行文件为：
 
 ```text
-build-win/Release/VaproView.exe
+build-win/Release/VaporView.exe
 ```
 
 ### Linux
@@ -262,7 +260,6 @@ CMake 中保留了 `BUILD_PYTHON_BINDINGS` 选项，但仓库内目前不存在 
 
 ## 已知限制
 
-- 工程目标名与仓库名不一致：`VaproView` vs `VaporView`
 - 依赖上一级目录源码，仓库不是单仓自包含构建
 - `BUILD_PYTHON_BINDINGS` 当前不完整
 - GUI 导出仅为单次快照，不是持续记录
@@ -272,3 +269,4 @@ CMake 中保留了 `BUILD_PYTHON_BINDINGS` 选项，但仓库内目前不存在 
 ## 许可证
 
 当前仓库中未包含单独的 `LICENSE` 文件。对外分发前，建议补充正式许可证文件，并确认外部依赖的许可证边界。
+

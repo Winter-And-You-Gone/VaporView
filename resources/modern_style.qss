@@ -1,5 +1,5 @@
 /* 
- * Modern Flat Design Theme for VaproView
+ * Modern Flat Design Theme for VaporView
  * 现代扁平化设计主题
  */
 
@@ -570,3 +570,4 @@ QFrame#separator {
     background-color: #e0e0e0;
     max-height: 1px;
 }
+

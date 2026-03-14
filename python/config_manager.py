@@ -1,5 +1,5 @@
 """
-Configuration Manager for VaproView
+Configuration Manager for VaporView
 Handles loading, saving, and managing application configuration.
 """
 
@@ -43,7 +43,7 @@ class AppConfig:
 
 
 class ConfigManager:
-    DEFAULT_CONFIG_DIR = Path.home() / ".config" / "VaproView"
+    DEFAULT_CONFIG_DIR = Path.home() / ".config" / "VaporView"
     DEFAULT_CONFIG_FILE = "config.json"
 
     def __init__(self, config_path: Optional[str] = None):
@@ -136,3 +136,4 @@ if __name__ == "__main__":
     print(f"Config path: {manager.config_path}")
     print(f"GNSS config: {manager.config.gnss}")
     print(f"IMU config: {manager.config.imu}")
+
