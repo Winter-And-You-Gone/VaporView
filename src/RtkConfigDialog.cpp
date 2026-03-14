@@ -398,14 +398,41 @@ void RtkConfigDialog::setFontScale(int percent)
         percent = 100;
     }
 
+    QSize targetSize = size();
+    const int previousPercent = std::max(1, font_scale_percent_);
+    if (!isMaximized() && !isFullScreen())
+    {
+        const double scaleRatio = static_cast<double>(percent) / static_cast<double>(previousPercent);
+        targetSize = QSize(
+            std::max(1, static_cast<int>(std::lround(size().width() * scaleRatio))),
+            std::max(1, static_cast<int>(std::lround(size().height() * scaleRatio)))
+        );
+    }
+
     if (font_scale_percent_ == percent)
     {
         applyScaledUiMetrics();
+        if (!isMaximized() && !isFullScreen())
+        {
+            targetSize = targetSize.expandedTo(minimumSize());
+            if (targetSize != size())
+            {
+                resize(targetSize);
+            }
+        }
         return;
     }
 
     font_scale_percent_ = percent;
     applyScaledUiMetrics();
+    if (!isMaximized() && !isFullScreen())
+    {
+        targetSize = targetSize.expandedTo(minimumSize());
+        if (targetSize != size())
+        {
+            resize(targetSize);
+        }
+    }
 }
 
 void RtkConfigDialog::loadSettings()

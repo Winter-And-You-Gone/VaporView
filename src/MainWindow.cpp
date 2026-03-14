@@ -1126,8 +1126,27 @@ void MainWindow::setFontScale(int percent)
         return;
     }
 
+    QSize targetSize = size();
+    const int previousPercent = std::max(1, font_scale_percent_);
+    if (!isFullScreen() && !isMaximized())
+    {
+        const double scaleRatio = static_cast<double>(percent) / static_cast<double>(previousPercent);
+        targetSize = QSize(
+            std::max(1, static_cast<int>(std::lround(size().width() * scaleRatio))),
+            std::max(1, static_cast<int>(std::lround(size().height() * scaleRatio)))
+        );
+    }
+
     font_scale_percent_ = percent;
     applyStyleConfiguration();
+    if (!isFullScreen() && !isMaximized())
+    {
+        targetSize = targetSize.expandedTo(minimumSize()).expandedTo(minimumSizeHint());
+        if (targetSize != size())
+        {
+            resize(targetSize);
+        }
+    }
     if (rtk_config_dialog_)
     {
         rtk_config_dialog_->setFontScale(font_scale_percent_);
