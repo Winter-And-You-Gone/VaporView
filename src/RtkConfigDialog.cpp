@@ -14,10 +14,17 @@
 #include <QIntValidator>
 #include <QRegularExpression>
 #include <QSerialPortInfo>
+#include <QTextCursor>
 #include <cmath>
 
 namespace
 {
+constexpr int kGgaPollIntervalMs = 50;
+constexpr int kGgaReconnectIntervalMs = 1500;
+constexpr int kGgaStaleTimeoutMs = 1500;
+constexpr int kGgaMaxVisibleLines = 120;
+const QRegularExpression kGgaSentencePattern("^\\$..GGA,");
+
 QComboBox *createTimingComboBox(QWidget *parent, const QString &defaultValue)
 {
     auto *combo = new QComboBox(parent);
@@ -52,8 +59,11 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , button_layout_(nullptr)
     , log_layout_(nullptr)
     , log_button_layout_(nullptr)
+    , gga_layout_(nullptr)
+    , gga_header_layout_(nullptr)
     , config_group_(nullptr)
     , output_group_(nullptr)
+    , gga_group_(nullptr)
     , log_group_(nullptr)
     , server_label_(nullptr)
     , port_label_(nullptr)
@@ -64,6 +74,9 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , baudrate_label_(nullptr)
     , timeout_label_(nullptr)
     , reconnect_label_(nullptr)
+    , gga_port_info_label_(nullptr)
+    , gga_status_label_(nullptr)
+    , gga_frequency_label_(nullptr)
     , server_edit_(nullptr)
     , port_edit_(nullptr)
     , username_edit_(nullptr)
@@ -74,6 +87,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , timeout_combo_(nullptr)
     , reconnect_combo_(nullptr)
     , background_check_(nullptr)
+    , gga_text_edit_(nullptr)
     , log_text_edit_(nullptr)
     , start_btn_(nullptr)
     , stop_btn_(nullptr)
@@ -88,8 +102,12 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , is_running_(false)
     , is_english_(false)
     , font_scale_percent_(100)
-    , base_dialog_size_(620, 740)
-    , base_minimum_dialog_size_(560, 680)
+    , base_dialog_size_(700, 910)
+    , base_minimum_dialog_size_(620, 820)
+    , gga_poll_timer_(nullptr)
+    , gga_last_open_attempt_()
+    , gga_last_sentence_time_()
+    , gga_has_sentence_time_(false)
 {
     setupUi();
     loadSettings();
@@ -97,6 +115,14 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     setEnglish(false);
 
     config_file_path_ = QDir::homePath() + "/.config/VaproView/rtk_config.ini";
+
+    gga_poll_timer_ = new QTimer(this);
+    connect(gga_poll_timer_, &QTimer::timeout, this, &RtkConfigDialog::onGgaPollTimer);
+    connect(baudrate_combo_, &QComboBox::currentTextChanged, this, [this](const QString&) {
+        stopGgaMonitor();
+        startGgaMonitor();
+    });
+    startGgaMonitor();
 }
 
 RtkConfigDialog::~RtkConfigDialog()
@@ -113,6 +139,7 @@ RtkConfigDialog::~RtkConfigDialog()
         }
         delete str2str_process_;
     }
+    stopGgaMonitor();
     saveSettings();
 }
 
@@ -205,6 +232,31 @@ void RtkConfigDialog::setupUi()
 
     main_layout_->addWidget(output_group_);
 
+    gga_group_ = new QGroupBox(this);
+    gga_layout_ = new QVBoxLayout(gga_group_);
+    gga_layout_->setSpacing(6);
+
+    gga_header_layout_ = new QHBoxLayout();
+    gga_header_layout_->setSpacing(8);
+
+    gga_port_info_label_ = new QLabel(this);
+    gga_header_layout_->addWidget(gga_port_info_label_);
+    gga_header_layout_->addStretch();
+
+    gga_frequency_label_ = new QLabel(this);
+    gga_header_layout_->addWidget(gga_frequency_label_);
+    gga_layout_->addLayout(gga_header_layout_);
+
+    gga_status_label_ = new QLabel(this);
+    gga_layout_->addWidget(gga_status_label_);
+
+    gga_text_edit_ = new QTextEdit(this);
+    gga_text_edit_->setReadOnly(true);
+    gga_text_edit_->document()->setMaximumBlockCount(kGgaMaxVisibleLines);
+    gga_layout_->addWidget(gga_text_edit_);
+
+    main_layout_->addWidget(gga_group_);
+
     button_layout_ = new QHBoxLayout();
     button_layout_->setSpacing(6);
 
@@ -267,6 +319,7 @@ void RtkConfigDialog::setEnglish(bool english)
     setWindowTitle(textFor("RTK NTRIP Configuration", "RTK NTRIP 配置"));
     config_group_->setTitle(textFor("NTRIP Server Configuration", "NTRIP 服务器配置"));
     output_group_->setTitle(textFor("RTCM Output Configuration", "RTCM 输出配置"));
+    gga_group_->setTitle(textFor("COM1 GGA Monitor", "COM1 GGA 监视"));
     log_group_->setTitle(textFor("RTK Service Log", "RTK 服务日志"));
 
     server_label_->setText(textFor("Server:", "服务器:"));
@@ -292,6 +345,7 @@ void RtkConfigDialog::setEnglish(bool english)
     load_config_btn_->setText(textFor("Load Config", "加载配置"));
     clear_log_btn_->setText(textFor("Clear Log", "清空日志"));
 
+    updateGgaMonitorText();
     updateButtonStates();
 }
 
@@ -353,6 +407,16 @@ void RtkConfigDialog::applyScaledUiMetrics()
         button_layout_->setSpacing(scalePixels(6));
     }
 
+    if (gga_layout_)
+    {
+        gga_layout_->setSpacing(scalePixels(6));
+    }
+
+    if (gga_header_layout_)
+    {
+        gga_header_layout_->setSpacing(scalePixels(8));
+    }
+
     if (log_layout_)
     {
         log_layout_->setSpacing(scalePixels(4));
@@ -375,6 +439,9 @@ void RtkConfigDialog::applyScaledUiMetrics()
     reconnect_combo_->setMinimumWidth(scalePixels(200));
     reconnect_combo_->setMinimumHeight(scalePixels(30));
 
+    gga_status_label_->setMinimumHeight(scalePixels(24));
+    gga_text_edit_->setMinimumHeight(scalePixels(170));
+
     applyButtonWidth(refresh_ports_btn_, 80);
     applyButtonWidth(fetch_mountpoints_btn_, 128);
     applyButtonWidth(start_btn_, 80);
@@ -385,6 +452,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     applyButtonWidth(clear_log_btn_, 96);
 
     log_text_edit_->setMinimumWidth(scalePixels(200));
+    gga_text_edit_->setMinimumWidth(scalePixels(200));
 
     setMinimumSize(
         std::max(scalePixels(base_minimum_dialog_size_.width()), minimumSize().width()),
@@ -455,6 +523,7 @@ void RtkConfigDialog::loadSettings()
     timeout_combo_->setCurrentText(settings.value("timeout", "5000").toString());
     reconnect_combo_->setCurrentText(settings.value("reconnect", "1000").toString());
     background_check_->setChecked(settings.value("background", false).toBool());
+    updateGgaMonitorText();
 }
 
 void RtkConfigDialog::saveSettings()
@@ -541,6 +610,258 @@ void RtkConfigDialog::updateButtonStates()
     {
         status_label_->setText(textFor("Status: Stopped", "状态: 已停止"));
         status_label_->setStyleSheet("QLabel { color: #666666; font-weight: bold; }");
+    }
+}
+
+QString RtkConfigDialog::ggaPortName() const
+{
+#ifdef _WIN32
+    return QStringLiteral("COM1");
+#else
+    return QStringLiteral("/dev/ttyS0");
+#endif
+}
+
+int RtkConfigDialog::currentGgaBaudrate() const
+{
+    bool ok = false;
+    const int baudrate = baudrate_combo_ ? baudrate_combo_->currentText().toInt(&ok) : 115200;
+    return ok ? baudrate : 115200;
+}
+
+void RtkConfigDialog::updateGgaFrequency(double hz)
+{
+    if (!gga_frequency_label_)
+    {
+        return;
+    }
+
+    gga_frequency_label_->setText(textFor("Actual Rate: %1 Hz", "真实频率: %1 Hz").arg(QString::number(std::max(0.0, hz), 'f', 2)));
+}
+
+void RtkConfigDialog::updateGgaStatusLabel(const QString& message, bool healthy)
+{
+    if (!gga_status_label_)
+    {
+        return;
+    }
+
+    gga_status_message_ = message;
+    const QString color = healthy ? QStringLiteral("#2e7d32") : QStringLiteral("#a26a00");
+    gga_status_label_->setText(message);
+    gga_status_label_->setStyleSheet(QString("QLabel { color: %1; font-weight: bold; }").arg(color));
+}
+
+void RtkConfigDialog::updateGgaMonitorText()
+{
+    if (!gga_port_info_label_)
+    {
+        return;
+    }
+
+    gga_port_info_label_->setText(textFor("Port: %1 @ %2", "串口: %1 @ %2")
+        .arg(ggaPortName(), QString::number(currentGgaBaudrate())));
+
+    if (gga_status_message_.isEmpty())
+    {
+#ifdef _WIN32
+        updateGgaStatusLabel(textFor("Status: Waiting for COM1 data", "状态: 正在等待 COM1 数据"), false);
+#else
+        updateGgaStatusLabel(textFor("Status: Waiting for serial data", "状态: 正在等待串口数据"), false);
+#endif
+    }
+    else if (gga_status_message_.startsWith("Status:") || gga_status_message_.startsWith("状态:"))
+    {
+        const bool healthy = gga_status_label_->styleSheet().contains("#2e7d32");
+        updateGgaStatusLabel(gga_status_message_, healthy);
+    }
+
+    if (gga_frequency_label_->text().isEmpty())
+    {
+        updateGgaFrequency(0.0);
+    }
+}
+
+void RtkConfigDialog::startGgaMonitor()
+{
+    if (!gga_poll_timer_)
+    {
+        return;
+    }
+
+    gga_buffer_.clear();
+    gga_recent_intervals_sec_.clear();
+    gga_has_sentence_time_ = false;
+    updateGgaFrequency(0.0);
+    updateGgaMonitorText();
+    gga_last_open_attempt_ = std::chrono::steady_clock::time_point();
+    if (!gga_poll_timer_->isActive())
+    {
+        gga_poll_timer_->start(kGgaPollIntervalMs);
+    }
+    onGgaPollTimer();
+}
+
+void RtkConfigDialog::stopGgaMonitor()
+{
+    if (gga_poll_timer_ && gga_poll_timer_->isActive())
+    {
+        gga_poll_timer_->stop();
+    }
+
+    if (gga_serial_.isOpen())
+    {
+        gga_serial_.close();
+    }
+
+    gga_buffer_.clear();
+    gga_recent_intervals_sec_.clear();
+    gga_has_sentence_time_ = false;
+    updateGgaFrequency(0.0);
+}
+
+bool RtkConfigDialog::tryOpenGgaPort()
+{
+    if (gga_serial_.isOpen())
+    {
+        return true;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    if (gga_last_open_attempt_.time_since_epoch().count() > 0 &&
+        std::chrono::duration_cast<std::chrono::milliseconds>(now - gga_last_open_attempt_).count() < kGgaReconnectIntervalMs)
+    {
+        return false;
+    }
+
+    gga_last_open_attempt_ = now;
+    const std::string port = ggaPortName().toStdString();
+    if (!gga_serial_.open(port, currentGgaBaudrate()))
+    {
+        updateGgaStatusLabel(
+            textFor("Status: COM1 unavailable, retrying...", "状态: COM1 不可用，正在重试..."),
+            false);
+        return false;
+    }
+
+    gga_serial_.setNonBlocking(true);
+    gga_buffer_.clear();
+    gga_recent_intervals_sec_.clear();
+    gga_has_sentence_time_ = false;
+    updateGgaFrequency(0.0);
+    updateGgaStatusLabel(textFor("Status: Listening for GGA sentences", "状态: 正在监听 GGA 语句"), true);
+    updateGgaMonitorText();
+    return true;
+}
+
+void RtkConfigDialog::processGgaBuffer()
+{
+    while (true)
+    {
+        int newlineIndex = gga_buffer_.indexOf('\n');
+        if (newlineIndex < 0)
+        {
+            break;
+        }
+
+        QString line = gga_buffer_.left(newlineIndex);
+        gga_buffer_.remove(0, newlineIndex + 1);
+        line = line.trimmed();
+        if (line.isEmpty())
+        {
+            continue;
+        }
+
+        if (kGgaSentencePattern.match(line).hasMatch())
+        {
+            handleGgaSentence(line);
+        }
+    }
+}
+
+void RtkConfigDialog::handleGgaSentence(const QString& sentence)
+{
+    const auto now = std::chrono::steady_clock::now();
+    if (gga_has_sentence_time_)
+    {
+        const double intervalSeconds =
+            std::chrono::duration_cast<std::chrono::duration<double>>(now - gga_last_sentence_time_).count();
+        if (intervalSeconds > 0.0)
+        {
+            gga_recent_intervals_sec_.push_back(intervalSeconds);
+            while (gga_recent_intervals_sec_.size() > 20)
+            {
+                gga_recent_intervals_sec_.pop_front();
+            }
+
+            double total = 0.0;
+            for (double value : gga_recent_intervals_sec_)
+            {
+                total += value;
+            }
+
+            if (!gga_recent_intervals_sec_.empty() && total > 0.0)
+            {
+                updateGgaFrequency(static_cast<double>(gga_recent_intervals_sec_.size()) / total);
+            }
+        }
+    }
+    else
+    {
+        updateGgaFrequency(0.0);
+    }
+
+    gga_has_sentence_time_ = true;
+    gga_last_sentence_time_ = now;
+    updateGgaStatusLabel(textFor("Status: Receiving GGA data", "状态: 正在接收 GGA 数据"), true);
+
+    if (gga_text_edit_)
+    {
+        const QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss.zzz");
+        gga_text_edit_->append(QString("[%1] %2").arg(timestamp, sentence));
+        QTextCursor cursor = gga_text_edit_->textCursor();
+        cursor.movePosition(QTextCursor::End);
+        gga_text_edit_->setTextCursor(cursor);
+    }
+}
+
+void RtkConfigDialog::onGgaPollTimer()
+{
+    if (!tryOpenGgaPort())
+    {
+        return;
+    }
+
+    char buffer[512];
+    while (true)
+    {
+        const ssize_t bytesRead = gga_serial_.read(buffer, sizeof(buffer));
+        if (bytesRead > 0)
+        {
+            gga_buffer_.append(QString::fromLatin1(buffer, static_cast<int>(bytesRead)));
+            processGgaBuffer();
+            continue;
+        }
+
+        if (bytesRead < 0)
+        {
+            gga_serial_.close();
+            updateGgaFrequency(0.0);
+            updateGgaStatusLabel(textFor("Status: COM1 read failed, reconnecting...", "状态: COM1 读取失败，正在重连..."), false);
+        }
+        break;
+    }
+
+    if (gga_has_sentence_time_)
+    {
+        const auto now = std::chrono::steady_clock::now();
+        const auto staleMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - gga_last_sentence_time_).count();
+        if (staleMs > kGgaStaleTimeoutMs)
+        {
+            gga_recent_intervals_sec_.clear();
+            updateGgaFrequency(0.0);
+            updateGgaStatusLabel(textFor("Status: Waiting for next GGA sentence", "状态: 正在等待下一条 GGA 语句"), false);
+        }
     }
 }
 
