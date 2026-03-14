@@ -766,11 +766,8 @@ MainWindow::MainWindow(QWidget *parent)
     base_font_point_size_ = currentPointSize > 0.0 ? currentPointSize : 10.0;
 
     QSettings settings("VaproView", "MainWindow");
-    font_scale_percent_ = settings.value("font_scale_percent", 100).toInt();
-    if (font_scale_percent_ < 85 || font_scale_percent_ > 150)
-    {
-        font_scale_percent_ = 100;
-    }
+    settings.remove("font_scale_percent");
+    font_scale_percent_ = 100;
 
     loadModernStyleSheet();
     
@@ -990,9 +987,6 @@ void MainWindow::setFontScale(int percent)
 
     font_scale_percent_ = percent;
     applyStyleConfiguration();
-
-    QSettings settings("VaproView", "MainWindow");
-    settings.setValue("font_scale_percent", font_scale_percent_);
 }
 
 void MainWindow::setupMenuBar()
@@ -1197,23 +1191,46 @@ QStringList MainWindow::getAvailablePorts()
 void MainWindow::setupConfigPanel()
 {
     config_group_ = new QGroupBox(this);
-    config_group_->setMinimumWidth(480);
+    config_group_->setMinimumWidth(760);
     auto *config_layout = new QGridLayout(config_group_);
     config_layout->setVerticalSpacing(8);
     config_layout->setHorizontalSpacing(8);
     config_layout->setContentsMargins(8, 4, 8, 8);
 
     config_layout->setColumnStretch(0, 0);
-    config_layout->setColumnStretch(1, 3);
-    config_layout->setColumnStretch(2, 1);
-    config_layout->setColumnMinimumWidth(0, 80);
-    config_layout->setColumnMinimumWidth(1, 250);
-    config_layout->setColumnMinimumWidth(2, 100);
+    config_layout->setColumnStretch(1, 1);
+    config_layout->setColumnStretch(2, 0);
+    config_layout->setColumnStretch(3, 0);
+    config_layout->setColumnStretch(4, 0);
+    config_layout->setColumnMinimumWidth(0, 90);
+    config_layout->setColumnMinimumWidth(1, 260);
+    config_layout->setColumnMinimumWidth(2, 110);
+    config_layout->setColumnMinimumWidth(3, 60);
+    config_layout->setColumnMinimumWidth(4, 110);
 
     QStringList baudRates = {"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"};
     QStringList ports = getAvailablePorts();
 
-    auto createPortRow = [this, config_layout, &baudRates, &ports](QLabel*& lbl, QComboBox*& portCombo, QComboBox*& baudCombo, const QString& defaultPort, const QString& defaultBaud, int row) {
+    auto createRateCombo = [this]() {
+        auto *combo = new QComboBox(this);
+        combo->addItem("1");
+        combo->addItem("2");
+        combo->addItem("5");
+        combo->addItem("10");
+        combo->addItem("20");
+        combo->addItem("50");
+        combo->addItem("100");
+        combo->addItem("200");
+        combo->addItem("500");
+        combo->setCurrentIndex(4);
+        combo->setEditable(true);
+        combo->setFixedHeight(30);
+        combo->setFixedWidth(100);
+        combo->setValidator(new QIntValidator(1, 500, combo));
+        return combo;
+    };
+
+    auto createPortRow = [this, config_layout, &baudRates, &ports, &createRateCombo](QLabel*& lbl, QComboBox*& portCombo, QComboBox*& baudCombo, QLabel*& rateLbl, QComboBox*& rateCombo, const QString& defaultPort, const QString& defaultBaud, int row) {
         lbl = new QLabel(this);
         lbl->setObjectName("fieldLabel");
         lbl->setFixedHeight(28);
@@ -1245,57 +1262,39 @@ void MainWindow::setupConfigPanel()
         baudCombo->setFixedHeight(30);
         baudCombo->setFixedWidth(100);
         config_layout->addWidget(baudCombo, row, 2, Qt::AlignVCenter);
-    };
 
-    auto createRateRow = [this, config_layout](QLabel*& lbl, QComboBox*& combo, int row) {
-        lbl = new QLabel(this);
-        lbl->setObjectName("fieldLabel");
-        lbl->setFixedHeight(28);
-        lbl->setFixedWidth(80);
-        config_layout->addWidget(lbl, row, 0, Qt::AlignVCenter | Qt::AlignLeft);
+        rateLbl = new QLabel(this);
+        rateLbl->setObjectName("fieldLabel");
+        rateLbl->setFixedHeight(28);
+        config_layout->addWidget(rateLbl, row, 3, Qt::AlignVCenter | Qt::AlignRight);
 
-        combo = new QComboBox(this);
-        combo->addItem("1");
-        combo->addItem("2");
-        combo->addItem("5");
-        combo->addItem("10");
-        combo->addItem("20");
-        combo->addItem("50");
-        combo->addItem("100");
-        combo->addItem("200");
-        combo->addItem("500");
-        combo->setCurrentIndex(4);
-        combo->setEditable(true);
-        combo->setFixedHeight(30);
-        combo->setFixedWidth(100);
-        combo->setValidator(new QIntValidator(1, 500, combo));
-        config_layout->addWidget(combo, row, 1, Qt::AlignVCenter | Qt::AlignLeft);
+        rateCombo = createRateCombo();
+        config_layout->addWidget(rateCombo, row, 4, Qt::AlignVCenter);
     };
 
     int row = 0;
-#ifdef _WIN32
-    createPortRow(gnss_lbl_, gnss_port_combo_, gnss_baud_combo_, "COM3", "115200", row++);
-    createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, "COM4", "115200", row++);
-    createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, "COM5", "9600", row++);
-    createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, "COM6", "19200", row++);
-#else
-    createPortRow(gnss_lbl_, gnss_port_combo_, gnss_baud_combo_, "/dev/ttyCOM3", "115200", row++);
-    createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, "/dev/ttyIMU", "115200", row++);
-    createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, "/dev/ttyBARO", "9600", row++);
-    createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, "/dev/ttyHMP", "19200", row++);
-#endif
 
-    config_layout->addItem(new QSpacerItem(20, 16, QSizePolicy::Fixed, QSizePolicy::Fixed), row++, 0);
+    global_rate_lbl_ = new QLabel(this);
+    global_rate_lbl_->setObjectName("fieldLabel");
+    global_rate_lbl_->setFixedHeight(28);
+    config_layout->addWidget(global_rate_lbl_, row, 3, Qt::AlignVCenter | Qt::AlignRight);
 
-    createRateRow(global_rate_lbl_, global_rate_combo_, row++);
+    global_rate_combo_ = createRateCombo();
+    config_layout->addWidget(global_rate_combo_, row, 4, Qt::AlignVCenter);
     connect(global_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onGlobalRateChanged);
+    ++row;
 
-    config_layout->addItem(new QSpacerItem(10, 12, QSizePolicy::Fixed, QSizePolicy::Fixed), row++, 0);
-
-    createRateRow(gnss_rate_lbl_, gnss_rate_combo_, row++);
-    createRateRow(imu_rate_lbl_, imu_rate_combo_, row++);
-    createRateRow(ptb_rate_lbl_, ptb_rate_combo_, row++);
-    createRateRow(hmp_rate_lbl_, hmp_rate_combo_, row++);
+#ifdef _WIN32
+    createPortRow(gnss_lbl_, gnss_port_combo_, gnss_baud_combo_, gnss_rate_lbl_, gnss_rate_combo_, "COM3", "115200", row++);
+    createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, imu_rate_lbl_, imu_rate_combo_, "COM4", "115200", row++);
+    createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "COM5", "9600", row++);
+    createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "COM6", "19200", row++);
+#else
+    createPortRow(gnss_lbl_, gnss_port_combo_, gnss_baud_combo_, gnss_rate_lbl_, gnss_rate_combo_, "/dev/ttyCOM3", "115200", row++);
+    createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, imu_rate_lbl_, imu_rate_combo_, "/dev/ttyIMU", "115200", row++);
+    createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "/dev/ttyBARO", "9600", row++);
+    createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "/dev/ttyHMP", "19200", row++);
+#endif
 
     connect(gnss_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onGnssRateChanged);
     connect(imu_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onImuRateChanged);
@@ -1407,11 +1406,11 @@ void MainWindow::setEnglish(bool english)
     ptb_lbl_->setText(english ? "PTB210:" : "PTB210:");
     hmp_lbl_->setText(english ? "HMP3:" : "HMP3:");
 
-    global_rate_lbl_->setText(english ? "Global Rate:" : "统一调整频率:");
-    gnss_rate_lbl_->setText(english ? "GNSS Rate:" : "GNSS频率:");
-    imu_rate_lbl_->setText(english ? "IMU Rate:" : "IMU频率:");
-    ptb_rate_lbl_->setText(english ? "PTB Rate:" : "PTB频率:");
-    hmp_rate_lbl_->setText(english ? "HMP Rate:" : "HMP频率:");
+    global_rate_lbl_->setText(english ? "Global Rate:" : "统一频率:");
+    gnss_rate_lbl_->setText(english ? "Rate:" : "频率:");
+    imu_rate_lbl_->setText(english ? "Rate:" : "频率:");
+    ptb_rate_lbl_->setText(english ? "Rate:" : "频率:");
+    hmp_rate_lbl_->setText(english ? "Rate:" : "频率:");
 
     gnss_panel_->setEnglish(english);
     imu_panel_->setEnglish(english);
