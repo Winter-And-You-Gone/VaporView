@@ -424,19 +424,17 @@ QSpinBox::down-button:hover {
 
 QSpinBox::up-arrow,
 QSpinBox::down-arrow {
-    width: 0px;
-    height: 0px;
+    width: 12px;
+    height: 8px;
     margin-right: 6px;
-    border-left: 4px solid transparent;
-    border-right: 4px solid transparent;
 }
 
 QSpinBox::up-arrow {
-    border-bottom: 5px solid #757575;
+    image: url(combo_arrow_up.xpm);
 }
 
 QSpinBox::down-arrow {
-    border-top: 5px solid #757575;
+    image: url(combo_arrow_down.xpm);
 }
 
 /* 进度条 */
