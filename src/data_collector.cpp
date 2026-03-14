@@ -687,11 +687,25 @@ bool PtbCollector::setDeviceSampleRate(int hz)
   if (mpm < 6) mpm = 6;
   if (mpm > 4200) mpm = 4200;
 
+  const char* stop_cmd = "\r";
+  serial_.write(stop_cmd, std::strlen(stop_cmd));
+  sleepMs(50);
+
+  const char* average_cmd = ".AVRG.0\r";
+  ssize_t written = serial_.write(average_cmd, std::strlen(average_cmd));
+  if (written != static_cast<ssize_t>(std::strlen(average_cmd)))
+  {
+    log("PTB210: Failed to send AVRG command");
+    return false;
+  }
+
+  sleepMs(50);
+
   char cmd[32];
   snprintf(cmd, sizeof(cmd), ".MPM.%d\r", mpm);
   
-  ssize_t written = serial_.write(cmd, strlen(cmd));
-  if (written < 0)
+  written = serial_.write(cmd, strlen(cmd));
+  if (written != static_cast<ssize_t>(std::strlen(cmd)))
   {
     log("PTB210: Failed to send MPM command");
     return false;
@@ -701,10 +715,22 @@ bool PtbCollector::setDeviceSampleRate(int hz)
 
   const char* reset_cmd = ".RESET\r";
   written = serial_.write(reset_cmd, strlen(reset_cmd));
-  if (written < 0)
+  if (written != static_cast<ssize_t>(std::strlen(reset_cmd)))
   {
     log("PTB210: Failed to send RESET command");
     return false;
+  }
+
+  sleepMs(200);
+
+  if (running_.load())
+  {
+    written = serial_.write(PTB_CMD_CONTINUOUS, std::strlen(PTB_CMD_CONTINUOUS));
+    if (written != static_cast<ssize_t>(std::strlen(PTB_CMD_CONTINUOUS)))
+    {
+      log("PTB210: Failed to resume continuous output");
+      return false;
+    }
   }
 
   log("PTB210: Set sample rate to " + std::to_string(hz) + " Hz (MPM: " + std::to_string(mpm) + ")");
@@ -715,6 +741,19 @@ bool PtbCollector::setDeviceSampleRate(int hz)
 bool PtbCollector::initialize()
 {
   return true;
+}
+
+void PtbCollector::cleanup()
+{
+  if (!serial_.isOpen())
+  {
+    return;
+  }
+
+  const char* stop_cmd = "\r";
+  serial_.write(stop_cmd, std::strlen(stop_cmd));
+  sleepMs(50);
+  serial_.flush();
 }
 
 bool PtbCollector::checkDeviceResponse()
@@ -771,56 +810,76 @@ bool PtbCollector::checkDeviceResponse()
 
 void PtbCollector::run()
 {
-  char response[256];
+  char chunk[256];
+  std::string buffer;
+  buffer.reserve(512);
+
+  serial_.flush();
+  ssize_t written = serial_.write(PTB_CMD_CONTINUOUS, std::strlen(PTB_CMD_CONTINUOUS));
+  if (written != static_cast<ssize_t>(std::strlen(PTB_CMD_CONTINUOUS)))
+  {
+    log("PTB210: Failed to start continuous output");
+    return;
+  }
+
+  auto processLine = [this](std::string line) {
+    while (!line.empty() && (line.back() == '\r' || line.back() == '\n' || line.back() == ' '))
+    {
+      line.pop_back();
+    }
+
+    if (line.empty())
+    {
+      return;
+    }
+
+    try
+    {
+      double pressure = std::stod(line);
+      std::lock_guard<std::mutex> lock(mutex_);
+      latest_data_.pressure_hpa = pressure;
+      latest_data_.valid = true;
+      latest_data_.timestamp = std::chrono::steady_clock::now();
+      latest_data_.error_message.clear();
+
+      recordDataReceived();
+
+      if (data_callback_ && shouldEmitData())
+      {
+        updateLastEmitTime();
+        data_callback_();
+      }
+    }
+    catch (const std::exception&)
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      latest_data_.valid = false;
+      latest_data_.error_message = "Parse error: " + line;
+    }
+  };
 
   while (running_.load())
   {
-    auto start_time = std::chrono::steady_clock::now();
-    
-    serial_.write(PTB_CMD_PRESSURE, std::strlen(PTB_CMD_PRESSURE));
-    sleepMs(30);
-
-    ssize_t n = serial_.read(response, sizeof(response));
+    ssize_t n = serial_.read(chunk, sizeof(chunk));
     if (n > 0)
     {
-      std::string resp(response, static_cast<size_t>(n));
-      while (!resp.empty() && (resp.back() == '\r' || resp.back() == '\n' || resp.back() == ' '))
+      buffer.append(chunk, static_cast<size_t>(n));
+
+      size_t line_end = std::string::npos;
+      while ((line_end = buffer.find_first_of("\r\n")) != std::string::npos)
       {
-        resp.pop_back();
-      }
-
-      try
-      {
-        double pressure = std::stod(resp);
-        std::lock_guard<std::mutex> lock(mutex_);
-        latest_data_.pressure_hpa = pressure;
-        latest_data_.valid = true;
-        latest_data_.timestamp = std::chrono::steady_clock::now();
-        latest_data_.error_message.clear();
-
-        recordDataReceived();
-
-        if (data_callback_ && shouldEmitData())
+        const std::string line = buffer.substr(0, line_end);
+        buffer.erase(0, line_end + 1);
+        while (!buffer.empty() && (buffer.front() == '\r' || buffer.front() == '\n'))
         {
-          updateLastEmitTime();
-          data_callback_();
+          buffer.erase(0, 1);
         }
-      }
-      catch (const std::exception& e)
-      {
-        std::lock_guard<std::mutex> lock(mutex_);
-        latest_data_.valid = false;
-        latest_data_.error_message = "Parse error: " + resp;
+        processLine(line);
       }
     }
-
-    int interval_ms = 1000 / sample_rate_hz_;
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now() - start_time).count();
-    int remaining = interval_ms - static_cast<int>(elapsed);
-    if (remaining > 0)
+    else
     {
-      sleepMs(remaining);
+      sleepMs(5);
     }
   }
 }

@@ -103,10 +103,12 @@ public:
 protected:
   void run() override;
   bool initialize() override;
+  void cleanup() override;
 
 private:
   PtbData latest_data_;
   static constexpr const char* PTB_CMD_PRESSURE = ".P\r";
+  static constexpr const char* PTB_CMD_CONTINUOUS = ".BP\r";
 };
 
 class HmpCollector : public DataCollector
