@@ -10,6 +10,7 @@
 #include <QDirIterator>
 #include <QDateTime>
 #include <QFontMetrics>
+#include <QInputDialog>
 #include <QIntValidator>
 #include <QRegularExpression>
 #include <QSerialPortInfo>
@@ -78,6 +79,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , stop_btn_(nullptr)
     , test_btn_(nullptr)
     , refresh_ports_btn_(nullptr)
+    , fetch_mountpoints_btn_(nullptr)
     , save_config_btn_(nullptr)
     , load_config_btn_(nullptr)
     , clear_log_btn_(nullptr)
@@ -151,7 +153,10 @@ void RtkConfigDialog::setupUi()
     mountpoint_label_ = new QLabel(this);
     config_layout_->addWidget(mountpoint_label_, row, 0);
     mountpoint_edit_ = new QLineEdit(this);
-    config_layout_->addWidget(mountpoint_edit_, row, 1, 1, 3);
+    config_layout_->addWidget(mountpoint_edit_, row, 1);
+    fetch_mountpoints_btn_ = new QPushButton(this);
+    connect(fetch_mountpoints_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onFetchMountpointsClicked);
+    config_layout_->addWidget(fetch_mountpoints_btn_, row, 2, 1, 2);
     row++;
 
     main_layout_->addWidget(config_group_);
@@ -276,6 +281,7 @@ void RtkConfigDialog::setEnglish(bool english)
     mountpoint_edit_->setPlaceholderText(textFor("e.g. RTCM33", "例如: RTCM33"));
 
     refresh_ports_btn_->setText(textFor("Refresh", "刷新"));
+    fetch_mountpoints_btn_->setText(textFor("Detect Mountpoints", "检测挂载点"));
     background_check_->setText(textFor("Run in background", "后台运行"));
     start_btn_->setText(textFor("Start", "启动"));
     stop_btn_->setText(textFor("Stop", "停止"));
@@ -348,6 +354,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     username_edit_->setMinimumHeight(scalePixels(34));
     password_edit_->setMinimumHeight(scalePixels(34));
     mountpoint_edit_->setMinimumHeight(scalePixels(34));
+    mountpoint_edit_->setMinimumWidth(scalePixels(180));
 
     output_port_combo_->setMinimumWidth(scalePixels(200));
     output_port_combo_->setMinimumHeight(scalePixels(30));
@@ -359,6 +366,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     reconnect_combo_->setMinimumHeight(scalePixels(30));
 
     applyButtonWidth(refresh_ports_btn_, 80);
+    applyButtonWidth(fetch_mountpoints_btn_, 128);
     applyButtonWidth(start_btn_, 80);
     applyButtonWidth(stop_btn_, 80);
     applyButtonWidth(test_btn_, 120);
@@ -532,6 +540,99 @@ void RtkConfigDialog::onRefreshPortsClicked()
     }
 
     appendLog(textFor("Ports refreshed: %1 found", "串口已刷新: 发现 %1 个").arg(ports.size()));
+}
+
+void RtkConfigDialog::onFetchMountpointsClicked()
+{
+    const QString server = server_edit_->text().trimmed();
+    const QString port = port_edit_->text().trimmed();
+    const QString username = username_edit_->text().trimmed();
+    const QString password = password_edit_->text();
+
+    if (server.isEmpty() || port.isEmpty())
+    {
+        QMessageBox::warning(this, textFor("Error", "错误"), textFor("Please enter server address and port first.", "请先填写服务器地址和端口。"));
+        return;
+    }
+
+    appendLog(textFor("Fetching mountpoint list from %1:%2...", "正在从 %1:%2 获取挂载点列表...").arg(server, port));
+
+    QString fetchCmd;
+    if (!username.isEmpty())
+    {
+        fetchCmd = QString("curl -s --connect-timeout 5 -u %1:%2 http://%3:%4/")
+            .arg(username, password, server, port);
+    }
+    else
+    {
+        fetchCmd = QString("curl -s --connect-timeout 5 http://%1:%2/")
+            .arg(server, port);
+    }
+
+    QProcess fetchProcess;
+#ifdef _WIN32
+    fetchProcess.start("cmd", QStringList() << "/C" << fetchCmd);
+#else
+    fetchProcess.start("bash", QStringList() << "-c" << fetchCmd);
+#endif
+    fetchProcess.waitForFinished(10000);
+
+    const QString output = QString::fromUtf8(fetchProcess.readAllStandardOutput());
+    const QString error = QString::fromUtf8(fetchProcess.readAllStandardError()).trimmed();
+
+    if (!error.isEmpty() && output.trimmed().isEmpty())
+    {
+        appendLog(textFor("Failed to fetch mountpoint list: %1", "获取挂载点列表失败: %1").arg(error));
+        QMessageBox::warning(this, textFor("Failed", "失败"), textFor("Failed to fetch mountpoint list: %1", "获取挂载点列表失败: %1").arg(error));
+        return;
+    }
+
+    QStringList mountpoints;
+    const QStringList lines = output.split(QRegularExpression("[\r\n]+"), Qt::SkipEmptyParts);
+    for (const QString &line : lines)
+    {
+        if (!line.startsWith("STR;"))
+        {
+            continue;
+        }
+
+        const QStringList parts = line.split(';');
+        if (parts.size() > 1 && !parts.at(1).trimmed().isEmpty())
+        {
+            mountpoints.append(parts.at(1).trimmed());
+        }
+    }
+
+    mountpoints.removeDuplicates();
+    mountpoints.sort();
+
+    if (mountpoints.isEmpty())
+    {
+        appendLog(textFor("No mountpoints found in sourcetable response.", "返回的源表中未找到挂载点。"));
+        QMessageBox::information(this, textFor("No Data", "无数据"), textFor("No mountpoints were found for this server.", "该服务器未返回可用挂载点。"));
+        return;
+    }
+
+    bool ok = false;
+    const QString currentMountpoint = mountpoint_edit_->text().trimmed();
+    const int currentIndex = std::max(0, mountpoints.indexOf(currentMountpoint));
+    const QString selected = QInputDialog::getItem(
+        this,
+        textFor("Select Mountpoint", "选择挂载点"),
+        textFor("Available mountpoints:", "可用挂载点:"),
+        mountpoints,
+        currentIndex,
+        false,
+        &ok
+    );
+
+    appendLog(textFor("Fetched %1 mountpoints.", "已获取 %1 个挂载点。").arg(mountpoints.size()));
+
+    if (ok && !selected.isEmpty())
+    {
+        mountpoint_edit_->setText(selected);
+        appendLog(textFor("Selected mountpoint: %1", "已选择挂载点: %1").arg(selected));
+    }
 }
 
 void RtkConfigDialog::onStartClicked()

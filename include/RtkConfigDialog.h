@@ -37,6 +37,7 @@ private slots:
     void onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus);
     void onProcessError(QProcess::ProcessError error);
     void onRefreshPortsClicked();
+    void onFetchMountpointsClicked();
     void onSaveConfigClicked();
     void onLoadConfigClicked();
     void onClearLogClicked();
@@ -85,6 +86,7 @@ private:
     QPushButton *stop_btn_;
     QPushButton *test_btn_;
     QPushButton *refresh_ports_btn_;
+    QPushButton *fetch_mountpoints_btn_;
     QPushButton *save_config_btn_;
     QPushButton *load_config_btn_;
     QPushButton *clear_log_btn_;
