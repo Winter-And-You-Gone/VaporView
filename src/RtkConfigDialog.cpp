@@ -460,7 +460,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     gga_port_combo_->setMinimumHeight(scalePixels(30));
 
     gga_status_label_->setMinimumHeight(scalePixels(24));
-    const int ggaTextHeight = scalePixels(140);
+    const int ggaTextHeight = scalePixels(118);
     gga_text_edit_->setFixedHeight(ggaTextHeight);
     gga_text_edit_->document()->setDocumentMargin(scalePixels(12));
     gga_group_->setMinimumHeight(0);
