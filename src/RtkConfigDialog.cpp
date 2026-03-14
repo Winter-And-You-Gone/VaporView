@@ -246,7 +246,7 @@ void RtkConfigDialog::setupUi()
     gga_group_ = new QGroupBox(this);
     gga_layout_ = new QVBoxLayout(gga_group_);
     gga_layout_->setSpacing(6);
-    gga_layout_->setContentsMargins(8, 8, 8, 10);
+    gga_layout_->setContentsMargins(8, 8, 8, 12);
 
     gga_header_layout_ = new QHBoxLayout();
     gga_header_layout_->setSpacing(8);
@@ -270,6 +270,7 @@ void RtkConfigDialog::setupUi()
     gga_text_edit_->setReadOnly(true);
     gga_text_edit_->document()->setMaximumBlockCount(kGgaMaxVisibleLines);
     gga_layout_->addWidget(gga_text_edit_);
+    gga_layout_->addSpacing(6);
 
     main_layout_->addWidget(gga_group_);
 
@@ -426,7 +427,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (gga_layout_)
     {
         gga_layout_->setSpacing(scalePixels(6));
-        gga_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(10));
+        gga_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(12));
     }
 
     if (gga_header_layout_)
@@ -459,7 +460,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     gga_port_combo_->setMinimumHeight(scalePixels(30));
 
     gga_status_label_->setMinimumHeight(scalePixels(24));
-    gga_text_edit_->setMinimumHeight(scalePixels(170));
+    gga_text_edit_->setMinimumHeight(scalePixels(160));
     gga_text_edit_->document()->setDocumentMargin(scalePixels(12));
 
     applyButtonWidth(refresh_ports_btn_, 80);
