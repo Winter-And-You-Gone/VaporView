@@ -47,9 +47,15 @@ VaporView/
 │   ├── combo_arrow_up.xpm
 │   └── modern_style.qss
 ├── third_party/
-│   └── rtklib/
-│       ├── LICENSE.txt
-│       └── src/
+│   ├── hipnuc_driver/
+│   │   ├── hipnuc_dec.c
+│   │   └── hipnuc_dec.h
+│   ├── rtklib/
+│   │   ├── LICENSE.txt
+│   │   └── src/
+│   └── um982_driver/
+│       ├── pvtsln_data.hpp
+│       └── pvtsln_parser.cpp
 └── python/
     ├── __init__.py
     ├── config_manager.py
@@ -57,21 +63,13 @@ VaporView/
     └── file_logger.py
 ```
 
-## 外部依赖源码
+## 第三方源码
 
-仓库当前依赖上一级目录中的协议驱动源码，不是单仓自包含构建：
+仓库已包含构建所需的第三方协议与 RTK 相关源码：
 
-```text
-../um982_driver/
-├── pvtsln_data.hpp
-└── pvtsln_parser.cpp
-
-../products-master/drivers/
-├── hipnuc_dec.h
-└── hipnuc_dec.c
-```
-
-缺少以上目录时，CMake 配置无法完成。
+- `third_party/um982_driver`：UM982 `PVTSLN` 解析器
+- `third_party/hipnuc_driver`：HiPNUC IMU 解码器
+- `third_party/rtklib`：RTKLIB `strsvr` 相关流服务实现
 
 ## 依赖要求
 
@@ -109,7 +107,7 @@ build-win/Release/VaporView.exe
 
 ### Linux
 
-项目保留了 GCC / Clang 路径，串口层使用 `termios`。如需在 Linux 上构建，需确保 Qt 与外部驱动源码可用。
+项目保留了 GCC / Clang 路径，串口层使用 `termios`。如需在 Linux 上构建，需确保 Qt 开发环境可用。
 
 ## 运行架构
 
@@ -155,7 +153,7 @@ Qt SerialPort 当前主要用于枚举可用串口，实际数据读写由仓库
 ### GNSS / RTK
 
 - 协议：`PVTSLN`
-- 解析器：`../um982_driver/pvtsln_parser.cpp`
+- 解析器：`third_party/um982_driver/pvtsln_parser.cpp`
 - 连接检测：等待串口流中出现 `$` 或 `#`
 - 设备采样率命令：`PVTSLNA COM3 <interval>`
 
@@ -167,7 +165,7 @@ Qt SerialPort 当前主要用于枚举可用串口，实际数据读写由仓库
 ### IMU
 
 - 协议：`HI81 / HI83 / HI91`
-- 解析器：`../products-master/drivers/hipnuc_dec.c`
+- 解析器：`third_party/hipnuc_driver/hipnuc_dec.c`
 - 连接检测：调用 `hipnuc_input()` 直到解出有效包
 - 设备采样率命令：`LOG HI91 ONTIME <period>`
 
@@ -264,7 +262,6 @@ CMake 中保留了 `BUILD_PYTHON_BINDINGS` 选项，但仓库内目前不存在 
 
 ## 已知限制
 
-- 依赖上一级目录源码，仓库不是单仓自包含构建
 - `BUILD_PYTHON_BINDINGS` 当前不完整
 - GUI 导出仅为单次快照，不是持续记录
 - Python 辅助模块尚未接入 GUI 主流程
@@ -274,5 +271,5 @@ CMake 中保留了 `BUILD_PYTHON_BINDINGS` 选项，但仓库内目前不存在 
 
 仓库当前未包含顶层项目许可证文件。`third_party/rtklib` 已随代码附带上游 `LICENSE.txt`。
 
-对外分发前，建议为 `VaporView` 主项目补充单独的许可证文件，并确认外部依赖的许可证边界。
+对外分发前，建议为 `VaporView` 主项目补充单独的许可证文件，并确认 `third_party/um982_driver`、`third_party/hipnuc_driver` 与 `third_party/rtklib` 的许可证边界。
 

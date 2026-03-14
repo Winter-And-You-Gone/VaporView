@@ -23,8 +23,8 @@ endif()
 
 find_package(Threads REQUIRED)
 
-set(UM982_DRIVER_DIR ${CMAKE_SOURCE_DIR}/../um982_driver)
-set(HIPNUC_DRIVER_DIR ${CMAKE_SOURCE_DIR}/../products-master/drivers)
+set(UM982_DRIVER_DIR ${CMAKE_SOURCE_DIR}/third_party/um982_driver)
+set(HIPNUC_DRIVER_DIR ${CMAKE_SOURCE_DIR}/third_party/hipnuc_driver)
 set(RTKLIB_DIR ${CMAKE_SOURCE_DIR}/third_party/rtklib)
 
 set(RTKLIB_SOURCES
