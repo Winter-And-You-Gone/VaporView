@@ -964,12 +964,13 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    cancel_connection_requested_.store(true);
+    if (connection_thread_.joinable())
+    {
+        connection_thread_.join();
+    }
     stopRecording(false);
-    if (gnss_collector_) gnss_collector_->stop();
-    if (imu_collector_) imu_collector_->stop();
-    if (ptb_collector_) ptb_collector_->stop();
-    if (hmp_collector_) hmp_collector_->stop();
-    if (lidar_collector_) lidar_collector_->stop();
+    stopAllCollectors();
 }
 
 void MainWindow::loadModernStyleSheet()
@@ -2176,7 +2177,6 @@ void MainWindow::stopAllCollectors()
 
 bool MainWindow::shouldAbortConnectionAttempt()
 {
-    QApplication::processEvents(QEventLoop::AllEvents);
     return cancel_connection_requested_.load();
 }
 
@@ -2187,6 +2187,10 @@ void MainWindow::finishConnectionAttempt(bool connected)
     if (!connected)
     {
         stopRecording(true);
+    }
+    if (connection_thread_.joinable())
+    {
+        connection_thread_.join();
     }
     updateConnectionStatus(connected);
 }
@@ -2222,6 +2226,11 @@ void MainWindow::onRefreshPortsClicked()
 
 void MainWindow::onConnectClicked()
 {
+    if (connection_thread_.joinable())
+    {
+        connection_thread_.join();
+    }
+
     connection_attempt_in_progress_ = true;
     cancel_connection_requested_.store(false);
     updateConnectionStatus(false);
@@ -2253,351 +2262,214 @@ void MainWindow::onConnectClicked()
         updateConnectionStatus(false);
         return;
     }
+    const bool english = is_english_;
+    const QString selectText = english ? "-- Select --" : "-- 选择 --";
+    const QString gnssPort = gnss_port_combo_->currentText();
+    const QString imuPort = imu_port_combo_->currentText();
+    const QString ptbPort = ptb_port_combo_->currentText();
+    const QString hmpPort = hmp_port_combo_->currentText();
+    const QString lidarPort = lidar_port_combo_->currentText();
+    const QString gnssBaudText = gnss_baud_combo_->currentText();
+    const QString imuBaudText = imu_baud_combo_->currentText();
+    const QString ptbBaudText = ptb_baud_combo_->currentText();
+    const QString hmpBaudText = hmp_baud_combo_->currentText();
+    const QString lidarBaudText = lidar_baud_combo_->currentText();
+    const int imuRate = parseRate(imu_rate_combo_->currentText());
+    const int ptbRate = parseRate(ptb_rate_combo_->currentText());
+    const int hmpRate = parseRate(hmp_rate_combo_->currentText());
+    const int lidarRate = std::min(parseRate(lidar_rate_combo_->currentText()), 100);
 
-    gnss_collector_ = std::make_unique<VaporView::GnssCollector>();
-    imu_collector_ = std::make_unique<VaporView::ImuCollector>();
-    ptb_collector_ = std::make_unique<VaporView::PtbCollector>();
-    hmp_collector_ = std::make_unique<VaporView::HmpCollector>();
-    lidar_collector_ = std::make_unique<VaporView::LidarCollector>();
+    connection_thread_ = std::thread([this,
+                                      english,
+                                      selectText,
+                                      gnssPort,
+                                      imuPort,
+                                      ptbPort,
+                                      hmpPort,
+                                      lidarPort,
+                                      gnssBaudText,
+                                      imuBaudText,
+                                      ptbBaudText,
+                                      hmpBaudText,
+                                      lidarBaudText,
+                                      imuRate,
+                                      ptbRate,
+                                      hmpRate,
+                                      lidarRate]() {
+        auto postLog = [this](const QString& message) {
+            QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
+        };
+        auto finishOnUi = [this](bool connected) {
+            QMetaObject::invokeMethod(this, [this, connected]() { finishConnectionAttempt(connected); }, Qt::QueuedConnection);
+        };
 
-    gnss_collector_->setSampleRate(gnss_sample_rate_);
-    imu_collector_->setSampleRate(imu_sample_rate_);
-    ptb_collector_->setSampleRate(ptb_sample_rate_);
-    hmp_collector_->setSampleRate(hmp_sample_rate_);
-    lidar_collector_->setSampleRate(lidar_sample_rate_);
+        gnss_collector_ = std::make_unique<VaporView::GnssCollector>();
+        imu_collector_ = std::make_unique<VaporView::ImuCollector>();
+        ptb_collector_ = std::make_unique<VaporView::PtbCollector>();
+        hmp_collector_ = std::make_unique<VaporView::HmpCollector>();
+        lidar_collector_ = std::make_unique<VaporView::LidarCollector>();
 
-    auto logCallback = [this](const std::string& msg) {
-        const QString qmsg = QString::fromStdString(msg);
-        if (QThread::currentThread() == thread())
-        {
-            log(qmsg);
-            QApplication::processEvents(QEventLoop::AllEvents);
-            return;
-        }
+        auto logCallback = [this](const std::string& msg) {
+            const QString qmsg = QString::fromStdString(msg);
+            QMetaObject::invokeMethod(this, [this, qmsg]() { log(qmsg); }, Qt::QueuedConnection);
+        };
+        auto cancelCallback = [this]() { return cancel_connection_requested_.load(); };
 
-        QMetaObject::invokeMethod(this, [this, qmsg]() {
-            log(qmsg);
-        }, Qt::QueuedConnection);
-    };
-    
-    gnss_collector_->setLogCallback(logCallback);
-    imu_collector_->setLogCallback(logCallback);
-    ptb_collector_->setLogCallback(logCallback);
-    hmp_collector_->setLogCallback(logCallback);
-    lidar_collector_->setLogCallback(logCallback);
-    auto cancelCallback = [this]() { return cancel_connection_requested_.load(); };
-    gnss_collector_->setCancelCallback(cancelCallback);
-    imu_collector_->setCancelCallback(cancelCallback);
-    ptb_collector_->setCancelCallback(cancelCallback);
-    hmp_collector_->setCancelCallback(cancelCallback);
-    lidar_collector_->setCancelCallback(cancelCallback);
+        gnss_collector_->setSampleRate(gnss_sample_rate_);
+        imu_collector_->setSampleRate(imuRate);
+        ptb_collector_->setSampleRate(ptbRate);
+        hmp_collector_->setSampleRate(hmpRate);
+        lidar_collector_->setSampleRate(lidarRate);
 
-    int total_devices = 0;
-    int connected_devices = 0;
-    QString selectText = is_english_ ? "-- Select --" : "-- 选择 --";
+        gnss_collector_->setLogCallback(logCallback);
+        imu_collector_->setLogCallback(logCallback);
+        ptb_collector_->setLogCallback(logCallback);
+        hmp_collector_->setLogCallback(logCallback);
+        lidar_collector_->setLogCallback(logCallback);
+        gnss_collector_->setCancelCallback(cancelCallback);
+        imu_collector_->setCancelCallback(cancelCallback);
+        ptb_collector_->setCancelCallback(cancelCallback);
+        hmp_collector_->setCancelCallback(cancelCallback);
+        lidar_collector_->setCancelCallback(cancelCallback);
 
-    auto cancelAttempt = [this]() {
-        stopAllCollectors();
-        log(is_english_ ? "Connection canceled" : "连接已取消");
-        finishConnectionAttempt(false);
-    };
-    auto abortIfRequested = [&]() {
-        if (!shouldAbortConnectionAttempt())
-        {
-            return false;
-        }
-        cancelAttempt();
-        return true;
-    };
+        int total_devices = 0;
+        int connected_devices = 0;
 
-    log(is_english_ ? "========== Starting Connection ==========" : "========== 开始连接 ==========");
-    if (abortIfRequested()) return;
+        auto cancelAttempt = [&]() {
+            stopAllCollectors();
+            postLog(english ? "Connection canceled" : "连接已取消");
+            finishOnUi(false);
+        };
+        auto abortIfRequested = [&]() {
+            if (!shouldAbortConnectionAttempt())
+            {
+                return false;
+            }
+            cancelAttempt();
+            return true;
+        };
+        auto connectCollector = [&](const QString& tag,
+                                    const QString& port,
+                                    const QString& baudText,
+                                    auto* collector,
+                                    const VaporView::SerialConfig& config,
+                                    auto&& onReady) -> int {
+            if (port == selectText || port.isEmpty())
+            {
+                postLog(QString(english ? "[%1] Skipped (not selected)" : "[%1] 跳过 (未选择)").arg(tag));
+                return 0;
+            }
 
-    QString gnss_port = gnss_port_combo_->currentText();
-    if (gnss_port != selectText && !gnss_port.isEmpty())
-    {
-        total_devices++;
-        log(QString(is_english_ ? "[GNSS] Checking port: %1" : "[GNSS] 检查端口: %1").arg(gnss_port));
+            total_devices++;
+            postLog(QString(english ? "[%1] Checking port: %2" : "[%1] 检查端口: %2").arg(tag, port));
+            if (abortIfRequested()) return -1;
+
+            postLog(QString(english ? "[%1] Port selected, connecting..." : "[%1] 已选择端口，正在连接...").arg(tag));
+            if (abortIfRequested()) return -1;
+
+            if (!collector->start(port.toStdString(), config))
+            {
+                postLog(QString(english ? "[%1] Failed to open port: %2" : "[%1] 打开端口失败: %2")
+                            .arg(tag, QString::fromStdString(collector->getLastError())));
+                return 0;
+            }
+
+            postLog(QString(english ? "[%1] Serial port opened, checking device response..." : "[%1] 串口已打开，正在检测设备响应...").arg(tag));
+            if (abortIfRequested()) return -1;
+
+            if (!collector->checkDeviceResponse())
+            {
+                if (abortIfRequested()) return -1;
+                postLog(QString(english ? "[%1] Device not responding! Check power and cables." : "[%1] 设备无响应！请检查电源和连接线。").arg(tag));
+                collector->stop();
+                return 0;
+            }
+
+            postLog(QString(english ? "[%1] Device responding, connected: %2 @ %3 baud" : "[%1] 设备响应正常，连接成功: %2 @ %3 波特率")
+                        .arg(tag, port, baudText));
+            if (!onReady())
+            {
+                collector->stop();
+                return 0;
+            }
+
+            connected_devices++;
+            return 1;
+        };
+
+        postLog(english ? "========== Starting Connection ==========" : "========== 开始连接 ==========");
         if (abortIfRequested()) return;
 
-        log(QString(is_english_ ? "[GNSS] Port selected, connecting..." : "[GNSS] 已选择端口，正在连接..."));
-        if (abortIfRequested()) return;
+        if (connectCollector("GNSS", gnssPort, gnssBaudText, gnss_collector_.get(),
+                             VaporView::SerialConfig::N81(gnssBaudText.toInt()),
+                             [&]() {
+                                 gnss_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onGnssDataReady", Qt::QueuedConnection); });
+                                 if (gnss_collector_->startStreaming()) return true;
+                                 postLog(english ? "[GNSS] Failed to start data stream." : "[GNSS] 启动数据流失败。");
+                                 return false;
+                             }) < 0) return;
 
-        VaporView::SerialConfig gnss_config = VaporView::SerialConfig::N81(gnss_baud_combo_->currentText().toInt());
-        if (gnss_collector_->start(gnss_port.toStdString(), gnss_config))
+        if (connectCollector("IMU", imuPort, imuBaudText, imu_collector_.get(),
+                             VaporView::SerialConfig::N81(imuBaudText.toInt()),
+                             [&]() {
+                                 imu_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onImuDataReady", Qt::QueuedConnection); });
+                                 imu_collector_->setSampleRate(imuRate);
+                                 imu_collector_->setDeviceSampleRate(imuRate);
+                                 postLog(QString(english ? "[IMU] Sample rate set to %1 Hz" : "[IMU] 采样频率设置为 %1 Hz").arg(imuRate));
+                                 if (imu_collector_->startStreaming()) return true;
+                                 postLog(english ? "[IMU] Failed to start data stream." : "[IMU] 启动数据流失败。");
+                                 return false;
+                             }) < 0) return;
+
+        if (connectCollector("PTB", ptbPort, ptbBaudText, ptb_collector_.get(),
+                             VaporView::SerialConfig::E71(ptbBaudText.toInt()),
+                             [&]() {
+                                 ptb_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onPtbDataReady", Qt::QueuedConnection); });
+                                 ptb_collector_->setSampleRate(ptbRate);
+                                 ptb_collector_->setDeviceSampleRate(ptbRate);
+                                 postLog(QString(english ? "[PTB] Sample rate set to %1 Hz" : "[PTB] 采样频率设置为 %1 Hz").arg(ptbRate));
+                                 if (ptb_collector_->startStreaming()) return true;
+                                 postLog(english ? "[PTB] Failed to start data stream." : "[PTB] 启动数据流失败。");
+                                 return false;
+                             }) < 0) return;
+
+        if (connectCollector("HMP", hmpPort, hmpBaudText, hmp_collector_.get(),
+                             VaporView::SerialConfig::N82(hmpBaudText.toInt()),
+                             [&]() {
+                                 hmp_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onHmpDataReady", Qt::QueuedConnection); });
+                                 hmp_collector_->setSampleRate(hmpRate);
+                                 postLog(QString(english ? "[HMP] Sample rate set to %1 Hz" : "[HMP] 采样频率设置为 %1 Hz").arg(hmpRate));
+                                 if (hmp_collector_->startStreaming()) return true;
+                                 postLog(english ? "[HMP] Failed to start data stream." : "[HMP] 启动数据流失败。");
+                                 return false;
+                             }) < 0) return;
+
+        if (connectCollector("TF03", lidarPort, lidarBaudText, lidar_collector_.get(),
+                             VaporView::SerialConfig::N81(lidarBaudText.toInt()),
+                             [&]() {
+                                 lidar_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onLidarDataReady", Qt::QueuedConnection); });
+                                 lidar_collector_->setSampleRate(lidarRate);
+                                 if (!lidar_collector_->setDeviceSampleRate(lidarRate))
+                                 {
+                                     postLog(QString(english ? "[TF03] Failed to apply frame rate %1 Hz, using device default." : "[TF03] 应用 %1 Hz 输出频率失败，使用设备默认频率。").arg(lidarRate));
+                                 }
+                                 else
+                                 {
+                                     postLog(QString(english ? "[TF03] Frame rate set to %1 Hz" : "[TF03] 输出频率设置为 %1 Hz").arg(lidarRate));
+                                 }
+                                 if (lidar_collector_->startStreaming()) return true;
+                                 postLog(english ? "[TF03] Failed to start data stream." : "[TF03] 启动数据流失败。");
+                                 return false;
+                             }) < 0) return;
+
+        postLog(QString(english ? "========== Connection Summary: %1/%2 devices connected ==========" : "========== 连接摘要: %1/%2 设备已连接 ==========").arg(connected_devices).arg(total_devices));
+        if (connected_devices == 0)
         {
-            log(QString(is_english_ ? "[GNSS] Serial port opened, checking device response..." : "[GNSS] 串口已打开，正在检测设备响应..."));
-            if (abortIfRequested()) return;
-
-            if (gnss_collector_->checkDeviceResponse())
-            {
-                log(QString(is_english_ ? "[GNSS] Device responding, connected: %1 @ %2 baud" : "[GNSS] 设备响应正常，连接成功: %1 @ %2 波特率").arg(gnss_port, gnss_baud_combo_->currentText()));
-                gnss_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onGnssDataReady", Qt::QueuedConnection); });
-                if (gnss_collector_->startStreaming())
-                {
-                    connected_devices++;
-                }
-                else
-                {
-                    log(is_english_ ? "[GNSS] Failed to start data stream." : "[GNSS] 启动数据流失败。");
-                    gnss_collector_->stop();
-                }
-            }
-            else if (abortIfRequested())
-            {
-                return;
-            }
-            else
-            {
-                log(is_english_ ? "[GNSS] Device not responding! Check power and cables." : "[GNSS] 设备无响应！请检查电源和连接线。");
-                gnss_collector_->stop();
-            }
+            postLog(english ? "No ports connected" : "没有端口连接成功");
         }
-        else
-        {
-            log(QString(is_english_ ? "[GNSS] Failed to open port: %1" : "[GNSS] 打开端口失败: %1").arg(QString::fromStdString(gnss_collector_->getLastError())));
-        }
-    }
-    else
-    {
-        log(is_english_ ? "[GNSS] Skipped (not selected)" : "[GNSS] 跳过 (未选择)");
-    }
-    if (abortIfRequested()) return;
 
-    QString imu_port = imu_port_combo_->currentText();
-    if (imu_port != selectText && !imu_port.isEmpty())
-    {
-        total_devices++;
-        log(QString(is_english_ ? "[IMU] Checking port: %1" : "[IMU] 检查端口: %1").arg(imu_port));
-        if (abortIfRequested()) return;
-
-        log(QString(is_english_ ? "[IMU] Port selected, connecting..." : "[IMU] 已选择端口，正在连接..."));
-        if (abortIfRequested()) return;
-
-        VaporView::SerialConfig imu_config = VaporView::SerialConfig::N81(imu_baud_combo_->currentText().toInt());
-        if (imu_collector_->start(imu_port.toStdString(), imu_config))
-        {
-            log(QString(is_english_ ? "[IMU] Serial port opened, checking device response..." : "[IMU] 串口已打开，正在检测设备响应..."));
-            if (abortIfRequested()) return;
-
-            if (imu_collector_->checkDeviceResponse())
-            {
-                log(QString(is_english_ ? "[IMU] Device responding, connected: %1 @ %2 baud" : "[IMU] 设备响应正常，连接成功: %1 @ %2 波特率").arg(imu_port, imu_baud_combo_->currentText()));
-                imu_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onImuDataReady", Qt::QueuedConnection); });
-                int imu_rate = parseRate(imu_rate_combo_->currentText());
-                imu_collector_->setSampleRate(imu_rate);
-                imu_collector_->setDeviceSampleRate(imu_rate);
-                log(QString(is_english_ ? "[IMU] Sample rate set to %1 Hz" : "[IMU] 采样频率设置为 %1 Hz").arg(imu_rate));
-                if (imu_collector_->startStreaming())
-                {
-                    connected_devices++;
-                }
-                else
-                {
-                    log(is_english_ ? "[IMU] Failed to start data stream." : "[IMU] 启动数据流失败。");
-                    imu_collector_->stop();
-                }
-            }
-            else if (abortIfRequested())
-            {
-                return;
-            }
-            else
-            {
-                log(is_english_ ? "[IMU] Device not responding! Check power and cables." : "[IMU] 设备无响应！请检查电源和连接线。");
-                imu_collector_->stop();
-            }
-        }
-        else
-        {
-            log(QString(is_english_ ? "[IMU] Failed to open port: %1" : "[IMU] 打开端口失败: %1").arg(QString::fromStdString(imu_collector_->getLastError())));
-        }
-    }
-    else
-    {
-        log(is_english_ ? "[IMU] Skipped (not selected)" : "[IMU] 跳过 (未选择)");
-    }
-    if (abortIfRequested()) return;
-
-    QString ptb_port = ptb_port_combo_->currentText();
-    if (ptb_port != selectText && !ptb_port.isEmpty())
-    {
-        total_devices++;
-        log(QString(is_english_ ? "[PTB] Checking port: %1" : "[PTB] 检查端口: %1").arg(ptb_port));
-        if (abortIfRequested()) return;
-
-        log(QString(is_english_ ? "[PTB] Port selected, connecting..." : "[PTB] 已选择端口，正在连接..."));
-        if (abortIfRequested()) return;
-
-        VaporView::SerialConfig ptb_config = VaporView::SerialConfig::E71(ptb_baud_combo_->currentText().toInt());
-        if (ptb_collector_->start(ptb_port.toStdString(), ptb_config))
-        {
-            log(QString(is_english_ ? "[PTB] Serial port opened, checking device response..." : "[PTB] 串口已打开，正在检测设备响应..."));
-            if (abortIfRequested()) return;
-
-            if (ptb_collector_->checkDeviceResponse())
-            {
-                log(QString(is_english_ ? "[PTB] Device responding, connected: %1 @ %2 baud" : "[PTB] 设备响应正常，连接成功: %1 @ %2 波特率").arg(ptb_port, ptb_baud_combo_->currentText()));
-                ptb_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onPtbDataReady", Qt::QueuedConnection); });
-                int ptb_rate = parseRate(ptb_rate_combo_->currentText());
-                ptb_collector_->setSampleRate(ptb_rate);
-                ptb_collector_->setDeviceSampleRate(ptb_rate);
-                log(QString(is_english_ ? "[PTB] Sample rate set to %1 Hz" : "[PTB] 采样频率设置为 %1 Hz").arg(ptb_rate));
-                if (ptb_collector_->startStreaming())
-                {
-                    connected_devices++;
-                }
-                else
-                {
-                    log(is_english_ ? "[PTB] Failed to start data stream." : "[PTB] 启动数据流失败。");
-                    ptb_collector_->stop();
-                }
-            }
-            else if (abortIfRequested())
-            {
-                return;
-            }
-            else
-            {
-                log(is_english_ ? "[PTB] Device not responding! Check power and cables." : "[PTB] 设备无响应！请检查电源和连接线。");
-                ptb_collector_->stop();
-            }
-        }
-        else
-        {
-            log(QString(is_english_ ? "[PTB] Failed to open port: %1" : "[PTB] 打开端口失败: %1").arg(QString::fromStdString(ptb_collector_->getLastError())));
-        }
-    }
-    else
-    {
-        log(is_english_ ? "[PTB] Skipped (not selected)" : "[PTB] 跳过 (未选择)");
-    }
-    if (abortIfRequested()) return;
-
-    QString hmp_port = hmp_port_combo_->currentText();
-    if (hmp_port != selectText && !hmp_port.isEmpty())
-    {
-        total_devices++;
-        log(QString(is_english_ ? "[HMP] Checking port: %1" : "[HMP] 检查端口: %1").arg(hmp_port));
-        if (abortIfRequested()) return;
-
-        log(QString(is_english_ ? "[HMP] Port selected, connecting..." : "[HMP] 已选择端口，正在连接..."));
-        if (abortIfRequested()) return;
-
-        VaporView::SerialConfig hmp_config = VaporView::SerialConfig::N82(hmp_baud_combo_->currentText().toInt());
-        if (hmp_collector_->start(hmp_port.toStdString(), hmp_config))
-        {
-            log(QString(is_english_ ? "[HMP] Serial port opened, checking device response..." : "[HMP] 串口已打开，正在检测设备响应..."));
-            if (abortIfRequested()) return;
-
-            if (hmp_collector_->checkDeviceResponse())
-            {
-                log(QString(is_english_ ? "[HMP] Device responding, connected: %1 @ %2 baud" : "[HMP] 设备响应正常，连接成功: %1 @ %2 波特率").arg(hmp_port, hmp_baud_combo_->currentText()));
-                hmp_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onHmpDataReady", Qt::QueuedConnection); });
-                int hmp_rate = parseRate(hmp_rate_combo_->currentText());
-                hmp_collector_->setSampleRate(hmp_rate);
-                log(QString(is_english_ ? "[HMP] Sample rate set to %1 Hz" : "[HMP] 采样频率设置为 %1 Hz").arg(hmp_rate));
-                if (hmp_collector_->startStreaming())
-                {
-                    connected_devices++;
-                }
-                else
-                {
-                    log(is_english_ ? "[HMP] Failed to start data stream." : "[HMP] 启动数据流失败。");
-                    hmp_collector_->stop();
-                }
-            }
-            else if (abortIfRequested())
-            {
-                return;
-            }
-            else
-            {
-                log(is_english_ ? "[HMP] Device not responding! Check power and cables." : "[HMP] 设备无响应！请检查电源和连接线。");
-                hmp_collector_->stop();
-            }
-        }
-        else
-        {
-            log(QString(is_english_ ? "[HMP] Failed to open port: %1" : "[HMP] 打开端口失败: %1").arg(QString::fromStdString(hmp_collector_->getLastError())));
-        }
-    }
-    else
-    {
-        log(is_english_ ? "[HMP] Skipped (not selected)" : "[HMP] 跳过 (未选择)");
-    }
-    if (abortIfRequested()) return;
-
-    QString lidar_port = lidar_port_combo_->currentText();
-    if (lidar_port != selectText && !lidar_port.isEmpty())
-    {
-        total_devices++;
-        log(QString(is_english_ ? "[TF03] Checking port: %1" : "[TF03] 检查端口: %1").arg(lidar_port));
-        if (abortIfRequested()) return;
-
-        log(QString(is_english_ ? "[TF03] Port selected, connecting..." : "[TF03] 已选择端口，正在连接..."));
-        if (abortIfRequested()) return;
-
-        VaporView::SerialConfig lidar_config = VaporView::SerialConfig::N81(lidar_baud_combo_->currentText().toInt());
-        if (lidar_collector_->start(lidar_port.toStdString(), lidar_config))
-        {
-            log(QString(is_english_ ? "[TF03] Serial port opened, checking device response..." : "[TF03] 串口已打开，正在检测设备响应..."));
-            if (abortIfRequested()) return;
-
-            if (lidar_collector_->checkDeviceResponse())
-            {
-                log(QString(is_english_ ? "[TF03] Device responding, connected: %1 @ %2 baud" : "[TF03] 设备响应正常，连接成功: %1 @ %2 波特率").arg(lidar_port, lidar_baud_combo_->currentText()));
-                lidar_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onLidarDataReady", Qt::QueuedConnection); });
-                int lidar_rate = std::min(parseRate(lidar_rate_combo_->currentText()), 100);
-                lidar_collector_->setSampleRate(lidar_rate);
-                if (!lidar_collector_->setDeviceSampleRate(lidar_rate))
-                {
-                    log(QString(is_english_ ? "[TF03] Failed to apply frame rate %1 Hz, using device default." : "[TF03] 应用 %1 Hz 输出频率失败，使用设备默认频率。").arg(lidar_rate));
-                }
-                else
-                {
-                    log(QString(is_english_ ? "[TF03] Frame rate set to %1 Hz" : "[TF03] 输出频率设置为 %1 Hz").arg(lidar_rate));
-                }
-
-                if (lidar_collector_->startStreaming())
-                {
-                    connected_devices++;
-                }
-                else
-                {
-                    log(is_english_ ? "[TF03] Failed to start data stream." : "[TF03] 启动数据流失败。");
-                    lidar_collector_->stop();
-                }
-            }
-            else if (abortIfRequested())
-            {
-                return;
-            }
-            else
-            {
-                log(is_english_ ? "[TF03] Device not responding! Check power and cables." : "[TF03] 设备无响应！请检查电源和连接线。");
-                lidar_collector_->stop();
-            }
-        }
-        else
-        {
-            log(QString(is_english_ ? "[TF03] Failed to open port: %1" : "[TF03] 打开端口失败: %1").arg(QString::fromStdString(lidar_collector_->getLastError())));
-        }
-    }
-    else
-    {
-        log(is_english_ ? "[TF03] Skipped (not selected)" : "[TF03] 跳过 (未选择)");
-    }
-    if (abortIfRequested()) return;
-
-    log(QString(is_english_ ? "========== Connection Summary: %1/%2 devices connected ==========" : "========== 连接摘要: %1/%2 设备已连接 ==========").arg(connected_devices).arg(total_devices));
-
-    if (connected_devices == 0)
-    {
-        log(is_english_ ? "No ports connected" : "没有端口连接成功");
-    }
-
-    finishConnectionAttempt(connected_devices > 0);
+        finishOnUi(connected_devices > 0);
+    });
 }
 
 void MainWindow::onDisconnectClicked()

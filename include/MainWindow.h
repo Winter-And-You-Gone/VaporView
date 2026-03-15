@@ -23,6 +23,7 @@
 #include <QScrollArea>
 #include <atomic>
 #include <memory>
+#include <thread>
 
 class RtkConfigDialog;
 class QFile;
@@ -367,6 +368,7 @@ private:
     bool has_inline_progress_log_;
     bool connection_attempt_in_progress_;
     std::atomic<bool> cancel_connection_requested_;
+    std::thread connection_thread_;
     int font_scale_percent_;
     double base_font_point_size_;
     QString base_style_sheet_;
