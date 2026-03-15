@@ -2263,13 +2263,6 @@ void MainWindow::onConnectClicked()
     hmp_panel_->updateRate(0.0);
     lidar_panel_->updateRate(0.0);
 
-    if (!startRecordingSession())
-    {
-        connection_attempt_in_progress_ = false;
-        cancel_connection_requested_.store(false);
-        updateConnectionStatus(false);
-        return;
-    }
     const bool english = is_english_;
     const QString selectText = english ? "-- Select --" : "-- 选择 --";
     const QString gnssPort = gnss_port_combo_->currentText();
@@ -2474,9 +2467,16 @@ void MainWindow::onConnectClicked()
         if (connected_devices == 0)
         {
             postLog(english ? "No ports connected" : "没有端口连接成功");
+            finishOnUi(false);
+            return;
         }
 
-        finishOnUi(connected_devices > 0);
+        bool recordingStarted = false;
+        QMetaObject::invokeMethod(this, [this, &recordingStarted]() {
+            recordingStarted = startRecordingSession();
+        }, Qt::BlockingQueuedConnection);
+
+        finishOnUi(recordingStarted);
     });
 }
 
@@ -2549,17 +2549,6 @@ void MainWindow::onLidarDataReady()
 void MainWindow::onRecordingTimer()
 {
     if (!recording_file_ || !recording_file_->isOpen())
-    {
-        return;
-    }
-
-    const bool hasFreshData =
-        gnss_updated_since_last_record_ ||
-        imu_updated_since_last_record_ ||
-        ptb_updated_since_last_record_ ||
-        hmp_updated_since_last_record_ ||
-        lidar_updated_since_last_record_;
-    if (!hasFreshData)
     {
         return;
     }
