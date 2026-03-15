@@ -740,7 +740,7 @@ bool PtbCollector::setDeviceSampleRate(int hz)
 
 bool PtbCollector::initialize()
 {
-  return true;
+  return serial_.setNonBlocking(true);
 }
 
 void PtbCollector::cleanup()
@@ -758,49 +758,92 @@ void PtbCollector::cleanup()
 bool PtbCollector::checkDeviceResponse()
 {
   char response[256];
-  int max_attempts = 5;
-  
+  constexpr int max_attempts = 5;
+  constexpr int total_wait_ms = 500;
+  constexpr int poll_interval_ms = 20;
+
+  auto isNumericPressure = [](std::string value) {
+    while (!value.empty() && (value.back() == '\r' || value.back() == '\n' || value.back() == ' '))
+    {
+      value.pop_back();
+    }
+    while (!value.empty() && value.front() == ' ')
+    {
+      value.erase(0, 1);
+    }
+    if (value.empty())
+    {
+      return false;
+    }
+    try
+    {
+      std::stod(value);
+      return true;
+    }
+    catch (const std::exception&)
+    {
+      return false;
+    }
+  };
+
   for (int i = 0; i < max_attempts; i++)
   {
     if (isCancelRequested())
     {
       return false;
     }
-    constexpr int total_wait_ms = 500;
+
     const auto attempt_start = std::chrono::steady_clock::now();
+    std::string buffer;
+    buffer.reserve(256);
+
     log(formatDetectionProgress("发送PTB压力查询", i + 1, max_attempts, computeRemainingSeconds(attempt_start, total_wait_ms)));
     serial_.flush();
-    serial_.write(PTB_CMD_PRESSURE, std::strlen(PTB_CMD_PRESSURE));
-    
-    for (int j = 0; j < 10; j++)
+    if (serial_.write(PTB_CMD_PRESSURE, std::strlen(PTB_CMD_PRESSURE)) != static_cast<ssize_t>(std::strlen(PTB_CMD_PRESSURE)))
+    {
+      log("PTB210: Failed to send pressure probe command");
+      continue;
+    }
+
+    while (std::chrono::duration_cast<std::chrono::milliseconds>(
+               std::chrono::steady_clock::now() - attempt_start).count() < total_wait_ms)
     {
       if (isCancelRequested())
       {
         return false;
       }
+
       log(formatDetectionProgress("等待PTB压力返回", i + 1, max_attempts, computeRemainingSeconds(attempt_start, total_wait_ms)));
-      sleepMs(50);
       ssize_t n = serial_.read(response, sizeof(response));
       if (n > 0)
       {
-        std::string resp(response, static_cast<size_t>(n));
-        while (!resp.empty() && (resp.back() == '\r' || resp.back() == '\n' || resp.back() == ' '))
+        buffer.append(response, static_cast<size_t>(n));
+
+        size_t line_end = std::string::npos;
+        while ((line_end = buffer.find_first_of("\r\n")) != std::string::npos)
         {
-          resp.pop_back();
-        }
-        
-        if (!resp.empty())
-        {
-          try
+          std::string line = buffer.substr(0, line_end);
+          buffer.erase(0, line_end + 1);
+          while (!buffer.empty() && (buffer.front() == '\r' || buffer.front() == '\n'))
           {
-            std::stod(resp);
-            return true;
+            buffer.erase(0, 1);
           }
-          catch (...)
+
+          if (isNumericPressure(line))
           {
+            return true;
           }
         }
       }
+      else
+      {
+        sleepMs(poll_interval_ms);
+      }
+    }
+
+    if (isNumericPressure(buffer))
+    {
+      return true;
     }
   }
   
