@@ -1998,6 +1998,7 @@ bool MainWindow::startRecordingSession()
         auto nextTick = std::chrono::steady_clock::now();
         while (recording_thread_running_.load())
         {
+            const auto tickTime = std::chrono::steady_clock::now();
             const VaporView::GnssData gnssSample = gnss_collector_ ? gnss_collector_->getLatestData() : VaporView::GnssData();
             const VaporView::ImuData imuSample = imu_collector_ ? imu_collector_->getLatestData() : VaporView::ImuData();
             const VaporView::PtbData ptbSample = ptb_collector_ ? ptb_collector_->getLatestData() : VaporView::PtbData();
@@ -2017,8 +2018,18 @@ bool MainWindow::startRecordingSession()
             auto appendBool = [&row](bool value) {
                 row << csvBool(value);
             };
+            auto isFresh = [tickTime](auto* collector, const auto& sample) {
+                if (!collector || sample.timestamp == std::chrono::steady_clock::time_point{})
+                {
+                    return false;
+                }
+                const int rate = std::max(1, collector->getSampleRate());
+                const int timeoutMs = std::max(250, static_cast<int>(std::ceil(3000.0 / rate)));
+                const auto ageMs = std::chrono::duration_cast<std::chrono::milliseconds>(tickTime - sample.timestamp).count();
+                return ageMs >= 0 && ageMs <= timeoutMs;
+            };
 
-            if (gnss_collector_ && gnssSample.timestamp != std::chrono::steady_clock::time_point{})
+            if (isFresh(gnss_collector_.get(), gnssSample))
             {
                 row
                     << QString::number(gnssSample.latitude)
@@ -2057,7 +2068,7 @@ bool MainWindow::startRecordingSession()
                 appendEmptyColumns(30);
             }
 
-            if (imu_collector_ && imuSample.timestamp != std::chrono::steady_clock::time_point{})
+            if (isFresh(imu_collector_.get(), imuSample))
             {
                 row
                     << QString::number(imuSample.acceleration[0])
@@ -2087,7 +2098,7 @@ bool MainWindow::startRecordingSession()
                 appendEmptyColumns(21);
             }
 
-            if (ptb_collector_ && ptbSample.timestamp != std::chrono::steady_clock::time_point{})
+            if (isFresh(ptb_collector_.get(), ptbSample))
             {
                 row << QString::number(ptbSample.pressure_hpa);
                 appendBool(ptbSample.valid);
@@ -2098,7 +2109,7 @@ bool MainWindow::startRecordingSession()
                 appendEmptyColumns(3);
             }
 
-            if (hmp_collector_ && hmpSample.timestamp != std::chrono::steady_clock::time_point{})
+            if (isFresh(hmp_collector_.get(), hmpSample))
             {
                 row
                     << QString::number(hmpSample.humidity)
@@ -2111,7 +2122,7 @@ bool MainWindow::startRecordingSession()
                 appendEmptyColumns(4);
             }
 
-            if (lidar_collector_ && lidarSample.timestamp != std::chrono::steady_clock::time_point{})
+            if (isFresh(lidar_collector_.get(), lidarSample))
             {
                 row
                     << QString::number(lidarSample.distance_m)
