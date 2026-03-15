@@ -235,7 +235,6 @@ private slots:
     void onHmpDataReady();
     void onLidarDataReady();
     void onRefreshTimer();
-    void onRecordingTimer();
     void onClearLogClicked();
     void onRefreshPortsClicked();
     void onChooseRecordingDirectoryClicked();
@@ -355,7 +354,6 @@ private:
     std::unique_ptr<VaporView::LidarCollector> lidar_collector_;
 
     QTimer *refresh_timer_;
-    QTimer *recording_timer_;
 
     VaporView::GnssData current_gnss_;
     VaporView::ImuData current_imu_;
@@ -369,6 +367,8 @@ private:
     bool connection_attempt_in_progress_;
     std::atomic<bool> cancel_connection_requested_;
     std::thread connection_thread_;
+    std::thread recording_thread_;
+    std::atomic<bool> recording_thread_running_;
     int font_scale_percent_;
     double base_font_point_size_;
     QString base_style_sheet_;
@@ -382,17 +382,7 @@ private:
     std::unique_ptr<QFile> recording_file_;
     QString recording_directory_;
     QString recording_filename_;
-    qint64 recording_entry_count_;
-    bool gnss_updated_since_last_record_;
-    bool imu_updated_since_last_record_;
-    bool ptb_updated_since_last_record_;
-    bool hmp_updated_since_last_record_;
-    bool lidar_updated_since_last_record_;
-    std::chrono::steady_clock::time_point last_recorded_gnss_timestamp_;
-    std::chrono::steady_clock::time_point last_recorded_imu_timestamp_;
-    std::chrono::steady_clock::time_point last_recorded_ptb_timestamp_;
-    std::chrono::steady_clock::time_point last_recorded_hmp_timestamp_;
-    std::chrono::steady_clock::time_point last_recorded_lidar_timestamp_;
+    std::atomic<qint64> recording_entry_count_;
 
     QAction *rtk_config_action_;
     RtkConfigDialog *rtk_config_dialog_;

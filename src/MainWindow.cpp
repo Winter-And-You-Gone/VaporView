@@ -898,12 +898,12 @@ MainWindow::MainWindow(QWidget *parent)
     , hmp_collector_(nullptr)
     , lidar_collector_(nullptr)
     , refresh_timer_(nullptr)
-    , recording_timer_(nullptr)
     , is_fullscreen_(false)
     , is_english_(false)
     , has_inline_progress_log_(false)
     , connection_attempt_in_progress_(false)
     , cancel_connection_requested_(false)
+    , recording_thread_running_(false)
     , font_scale_percent_(100)
     , base_font_point_size_(0.0)
     , base_window_size_(1280, 720)
@@ -917,16 +917,6 @@ MainWindow::MainWindow(QWidget *parent)
     , recording_directory_()
     , recording_filename_()
     , recording_entry_count_(0)
-    , gnss_updated_since_last_record_(false)
-    , imu_updated_since_last_record_(false)
-    , ptb_updated_since_last_record_(false)
-    , hmp_updated_since_last_record_(false)
-    , lidar_updated_since_last_record_(false)
-    , last_recorded_gnss_timestamp_()
-    , last_recorded_imu_timestamp_()
-    , last_recorded_ptb_timestamp_()
-    , last_recorded_hmp_timestamp_()
-    , last_recorded_lidar_timestamp_()
     , rtk_config_action_(nullptr)
     , rtk_config_dialog_(nullptr)
 {
@@ -955,11 +945,6 @@ MainWindow::MainWindow(QWidget *parent)
     refresh_timer_ = new QTimer(this);
     connect(refresh_timer_, &QTimer::timeout, this, &MainWindow::onRefreshTimer);
     refresh_timer_->start(100);
-
-    recording_timer_ = new QTimer(this);
-    recording_timer_->setInterval(50);
-    recording_timer_->setTimerType(Qt::PreciseTimer);
-    connect(recording_timer_, &QTimer::timeout, this, &MainWindow::onRecordingTimer);
 
     setEnglish(false);
     applyStyleConfiguration();
@@ -1932,7 +1917,7 @@ void MainWindow::updateRecordingStatusLabel()
         const QFileInfo info(recording_filename_);
         recording_status_label_->setText(
             QString(is_english_ ? "Recording: %1 rows | %2" : "记录中: %1 行 | %2")
-                .arg(recording_entry_count_)
+                .arg(static_cast<qlonglong>(recording_entry_count_.load()))
                 .arg(info.fileName()));
         recording_status_label_->setProperty("status", "connected");
     }
@@ -2003,24 +1988,164 @@ bool MainWindow::startRecordingSession()
         return false;
     }
 
+    QFile *filePtr = file.get();
     recording_filename_ = filename;
-    recording_entry_count_ = 0;
-    gnss_updated_since_last_record_ = false;
-    imu_updated_since_last_record_ = false;
-    ptb_updated_since_last_record_ = false;
-    hmp_updated_since_last_record_ = false;
-    lidar_updated_since_last_record_ = false;
-    last_recorded_gnss_timestamp_ = {};
-    last_recorded_imu_timestamp_ = {};
-    last_recorded_ptb_timestamp_ = {};
-    last_recorded_hmp_timestamp_ = {};
-    last_recorded_lidar_timestamp_ = {};
+    recording_entry_count_.store(0);
     recording_file_ = std::move(file);
     writeRecordingHeader();
-    if (recording_timer_)
-    {
-        recording_timer_->start();
-    }
+    recording_thread_running_.store(true);
+    recording_thread_ = std::thread([this, filePtr]() {
+        auto nextTick = std::chrono::steady_clock::now();
+        while (recording_thread_running_.load())
+        {
+            const VaporView::GnssData gnssSample = gnss_collector_ ? gnss_collector_->getLatestData() : VaporView::GnssData();
+            const VaporView::ImuData imuSample = imu_collector_ ? imu_collector_->getLatestData() : VaporView::ImuData();
+            const VaporView::PtbData ptbSample = ptb_collector_ ? ptb_collector_->getLatestData() : VaporView::PtbData();
+            const VaporView::HmpData hmpSample = hmp_collector_ ? hmp_collector_->getLatestData() : VaporView::HmpData();
+            const VaporView::LidarData lidarSample = lidar_collector_ ? lidar_collector_->getLatestData() : VaporView::LidarData();
+
+            QStringList row;
+            row.reserve(63);
+            row << recordingTimestampUtc();
+
+            auto appendEmptyColumns = [&row](int count) {
+                for (int i = 0; i < count; ++i)
+                {
+                    row << QString();
+                }
+            };
+            auto appendBool = [&row](bool value) {
+                row << csvBool(value);
+            };
+
+            if (gnss_collector_ && gnssSample.timestamp != std::chrono::steady_clock::time_point{})
+            {
+                row
+                    << QString::number(gnssSample.latitude)
+                    << QString::number(gnssSample.longitude)
+                    << QString::number(gnssSample.altitude)
+                    << QString::number(gnssSample.vel_north)
+                    << QString::number(gnssSample.vel_east)
+                    << QString::number(gnssSample.vel_down)
+                    << QString::number(gnssSample.vel_ground)
+                    << QString::number(gnssSample.heading)
+                    << QString::number(gnssSample.heading_pitch)
+                    << QString::number(gnssSample.heading_length)
+                    << QString::fromStdString(gnssSample.heading_type)
+                    << QString::number(gnssSample.heading_trackedsvs)
+                    << QString::number(gnssSample.heading_solnsvs)
+                    << QString::number(gnssSample.sigma_lat)
+                    << QString::number(gnssSample.sigma_lon)
+                    << QString::number(gnssSample.sigma_alt)
+                    << QString::fromStdString(gnssSample.position_status)
+                    << QString::number(gnssSample.num_satellites_used)
+                    << QString::number(gnssSample.num_satellites_tracked)
+                    << QString::number(gnssSample.gdop)
+                    << QString::number(gnssSample.pdop)
+                    << QString::number(gnssSample.hdop)
+                    << QString::number(gnssSample.htdop)
+                    << QString::number(gnssSample.tdop)
+                    << QString::number(gnssSample.diff_age)
+                    << QString::number(gnssSample.undulation)
+                    << QString::number(gnssSample.elevation_cutoff)
+                    << QString::fromStdString(gnssSample.raw_sentence);
+                appendBool(gnssSample.valid);
+                row << QString::fromStdString(gnssSample.error_message);
+            }
+            else
+            {
+                appendEmptyColumns(30);
+            }
+
+            if (imu_collector_ && imuSample.timestamp != std::chrono::steady_clock::time_point{})
+            {
+                row
+                    << QString::number(imuSample.acceleration[0])
+                    << QString::number(imuSample.acceleration[1])
+                    << QString::number(imuSample.acceleration[2])
+                    << QString::number(imuSample.gyroscope[0])
+                    << QString::number(imuSample.gyroscope[1])
+                    << QString::number(imuSample.gyroscope[2])
+                    << QString::number(imuSample.rpy[0])
+                    << QString::number(imuSample.rpy[1])
+                    << QString::number(imuSample.rpy[2])
+                    << QString::number(imuSample.quaternion[0])
+                    << QString::number(imuSample.quaternion[1])
+                    << QString::number(imuSample.quaternion[2])
+                    << QString::number(imuSample.quaternion[3])
+                    << QString::number(imuSample.temperature)
+                    << QString::number(imuSample.air_pressure)
+                    << QString::number(static_cast<qulonglong>(imuSample.system_time_us))
+                    << QString::number(imuSample.system_time_ms)
+                    << csvBool(imuSample.from_hi83)
+                    << QString::fromStdString(imuSample.raw_sentence);
+                appendBool(imuSample.valid);
+                row << QString::fromStdString(imuSample.error_message);
+            }
+            else
+            {
+                appendEmptyColumns(21);
+            }
+
+            if (ptb_collector_ && ptbSample.timestamp != std::chrono::steady_clock::time_point{})
+            {
+                row << QString::number(ptbSample.pressure_hpa);
+                appendBool(ptbSample.valid);
+                row << QString::fromStdString(ptbSample.error_message);
+            }
+            else
+            {
+                appendEmptyColumns(3);
+            }
+
+            if (hmp_collector_ && hmpSample.timestamp != std::chrono::steady_clock::time_point{})
+            {
+                row
+                    << QString::number(hmpSample.humidity)
+                    << QString::number(hmpSample.temperature);
+                appendBool(hmpSample.valid);
+                row << QString::fromStdString(hmpSample.error_message);
+            }
+            else
+            {
+                appendEmptyColumns(4);
+            }
+
+            if (lidar_collector_ && lidarSample.timestamp != std::chrono::steady_clock::time_point{})
+            {
+                row
+                    << QString::number(lidarSample.distance_m)
+                    << QString::number(lidarSample.signal_strength);
+                appendBool(lidarSample.valid);
+                row << QString::fromStdString(lidarSample.error_message);
+            }
+            else
+            {
+                appendEmptyColumns(4);
+            }
+
+            QTextStream out(filePtr);
+            out.setCodec("UTF-8");
+            for (int i = 0; i < row.size(); ++i)
+            {
+                if (i > 0)
+                {
+                    out << ',';
+                }
+                out << csvEscape(row.at(i));
+            }
+            out << '\n';
+            out.flush();
+
+            recording_entry_count_.fetch_add(1);
+            QMetaObject::invokeMethod(this, [this]() {
+                updateRecordingStatusLabel();
+            }, Qt::QueuedConnection);
+
+            nextTick += std::chrono::milliseconds(50);
+            std::this_thread::sleep_until(nextTick);
+        }
+    });
     updateRecordingStatusLabel();
     log(QString(is_english_ ? "Started automatic session recording: %1" : "已开始自动会话记录: %1").arg(filename));
     return true;
@@ -2047,26 +2172,17 @@ void MainWindow::onChooseRecordingDirectoryClicked()
 
 void MainWindow::stopRecording(bool announce)
 {
-    if (recording_timer_ && recording_timer_->isActive())
+    recording_thread_running_.store(false);
+    if (recording_thread_.joinable())
     {
-        recording_timer_->stop();
+        recording_thread_.join();
     }
 
     if (!recording_file_ || !recording_file_->isOpen())
     {
         recording_file_.reset();
         recording_filename_.clear();
-        recording_entry_count_ = 0;
-        gnss_updated_since_last_record_ = false;
-        imu_updated_since_last_record_ = false;
-        ptb_updated_since_last_record_ = false;
-        hmp_updated_since_last_record_ = false;
-        lidar_updated_since_last_record_ = false;
-        last_recorded_gnss_timestamp_ = {};
-        last_recorded_imu_timestamp_ = {};
-        last_recorded_ptb_timestamp_ = {};
-        last_recorded_hmp_timestamp_ = {};
-        last_recorded_lidar_timestamp_ = {};
+        recording_entry_count_.store(0);
         updateRecordingStatusLabel();
         return;
     }
@@ -2075,22 +2191,12 @@ void MainWindow::stopRecording(bool announce)
     recording_file_->close();
 
     const QString filename = recording_filename_;
-    const qint64 entryCount = recording_entry_count_;
+    const qint64 entryCount = recording_entry_count_.load();
     const bool removeEmpty = (entryCount == 0);
 
     recording_file_.reset();
     recording_filename_.clear();
-    recording_entry_count_ = 0;
-    gnss_updated_since_last_record_ = false;
-    imu_updated_since_last_record_ = false;
-    ptb_updated_since_last_record_ = false;
-    hmp_updated_since_last_record_ = false;
-    lidar_updated_since_last_record_ = false;
-    last_recorded_gnss_timestamp_ = {};
-    last_recorded_imu_timestamp_ = {};
-    last_recorded_ptb_timestamp_ = {};
-    last_recorded_hmp_timestamp_ = {};
-    last_recorded_lidar_timestamp_ = {};
+    recording_entry_count_.store(0);
 
     if (removeEmpty)
     {
@@ -2515,6 +2621,7 @@ void MainWindow::onDisconnectClicked()
 {
     log(is_english_ ? "Disconnecting..." : "正在断开...");
 
+    stopRecording(false);
     stopAllCollectors();
     finishConnectionAttempt(false);
     log(is_english_ ? "Disconnected" : "已断开");
@@ -2537,7 +2644,6 @@ void MainWindow::onGnssDataReady()
     if (gnss_collector_)
     {
         current_gnss_ = gnss_collector_->getLatestData();
-        gnss_updated_since_last_record_ = true;
     }
 }
 
@@ -2546,7 +2652,6 @@ void MainWindow::onImuDataReady()
     if (imu_collector_)
     {
         current_imu_ = imu_collector_->getLatestData();
-        imu_updated_since_last_record_ = true;
     }
 }
 
@@ -2555,7 +2660,6 @@ void MainWindow::onPtbDataReady()
     if (ptb_collector_)
     {
         current_ptb_ = ptb_collector_->getLatestData();
-        ptb_updated_since_last_record_ = true;
     }
 }
 
@@ -2564,7 +2668,6 @@ void MainWindow::onHmpDataReady()
     if (hmp_collector_)
     {
         current_hmp_ = hmp_collector_->getLatestData();
-        hmp_updated_since_last_record_ = true;
     }
 }
 
@@ -2573,174 +2676,7 @@ void MainWindow::onLidarDataReady()
     if (lidar_collector_)
     {
         current_lidar_ = lidar_collector_->getLatestData();
-        lidar_updated_since_last_record_ = true;
     }
-}
-
-void MainWindow::onRecordingTimer()
-{
-    if (!recording_file_ || !recording_file_->isOpen())
-    {
-        return;
-    }
-
-    const VaporView::GnssData gnssSample = gnss_collector_ ? gnss_collector_->getLatestData() : VaporView::GnssData();
-    const VaporView::ImuData imuSample = imu_collector_ ? imu_collector_->getLatestData() : VaporView::ImuData();
-    const VaporView::PtbData ptbSample = ptb_collector_ ? ptb_collector_->getLatestData() : VaporView::PtbData();
-    const VaporView::HmpData hmpSample = hmp_collector_ ? hmp_collector_->getLatestData() : VaporView::HmpData();
-    const VaporView::LidarData lidarSample = lidar_collector_ ? lidar_collector_->getLatestData() : VaporView::LidarData();
-
-    const bool hasNewGnss = gnss_collector_ && gnssSample.timestamp != std::chrono::steady_clock::time_point{} && gnssSample.timestamp > last_recorded_gnss_timestamp_;
-    const bool hasNewImu = imu_collector_ && imuSample.timestamp != std::chrono::steady_clock::time_point{} && imuSample.timestamp > last_recorded_imu_timestamp_;
-    const bool hasNewPtb = ptb_collector_ && ptbSample.timestamp != std::chrono::steady_clock::time_point{} && ptbSample.timestamp > last_recorded_ptb_timestamp_;
-    const bool hasNewHmp = hmp_collector_ && hmpSample.timestamp != std::chrono::steady_clock::time_point{} && hmpSample.timestamp > last_recorded_hmp_timestamp_;
-    const bool hasNewLidar = lidar_collector_ && lidarSample.timestamp != std::chrono::steady_clock::time_point{} && lidarSample.timestamp > last_recorded_lidar_timestamp_;
-
-    QStringList row;
-    row.reserve(63);
-    row << recordingTimestampUtc();
-
-    auto appendEmptyColumns = [&row](int count) {
-        for (int i = 0; i < count; ++i)
-        {
-            row << QString();
-        }
-    };
-    auto appendBool = [&row](bool value) {
-        row << csvBool(value);
-    };
-
-    if (hasNewGnss)
-    {
-        row
-            << QString::number(gnssSample.latitude)
-            << QString::number(gnssSample.longitude)
-            << QString::number(gnssSample.altitude)
-            << QString::number(gnssSample.vel_north)
-            << QString::number(gnssSample.vel_east)
-            << QString::number(gnssSample.vel_down)
-            << QString::number(gnssSample.vel_ground)
-            << QString::number(gnssSample.heading)
-            << QString::number(gnssSample.heading_pitch)
-            << QString::number(gnssSample.heading_length)
-            << QString::fromStdString(gnssSample.heading_type)
-            << QString::number(gnssSample.heading_trackedsvs)
-            << QString::number(gnssSample.heading_solnsvs)
-            << QString::number(gnssSample.sigma_lat)
-            << QString::number(gnssSample.sigma_lon)
-            << QString::number(gnssSample.sigma_alt)
-            << QString::fromStdString(gnssSample.position_status)
-            << QString::number(gnssSample.num_satellites_used)
-            << QString::number(gnssSample.num_satellites_tracked)
-            << QString::number(gnssSample.gdop)
-            << QString::number(gnssSample.pdop)
-            << QString::number(gnssSample.hdop)
-            << QString::number(gnssSample.htdop)
-            << QString::number(gnssSample.tdop)
-            << QString::number(gnssSample.diff_age)
-            << QString::number(gnssSample.undulation)
-            << QString::number(gnssSample.elevation_cutoff)
-            << QString::fromStdString(gnssSample.raw_sentence);
-        appendBool(gnssSample.valid);
-        row << QString::fromStdString(gnssSample.error_message);
-    }
-    else
-    {
-        appendEmptyColumns(30);
-    }
-
-    if (hasNewImu)
-    {
-        row
-            << QString::number(imuSample.acceleration[0])
-            << QString::number(imuSample.acceleration[1])
-            << QString::number(imuSample.acceleration[2])
-            << QString::number(imuSample.gyroscope[0])
-            << QString::number(imuSample.gyroscope[1])
-            << QString::number(imuSample.gyroscope[2])
-            << QString::number(imuSample.rpy[0])
-            << QString::number(imuSample.rpy[1])
-            << QString::number(imuSample.rpy[2])
-            << QString::number(imuSample.quaternion[0])
-            << QString::number(imuSample.quaternion[1])
-            << QString::number(imuSample.quaternion[2])
-            << QString::number(imuSample.quaternion[3])
-            << QString::number(imuSample.temperature)
-            << QString::number(imuSample.air_pressure)
-            << QString::number(static_cast<qulonglong>(imuSample.system_time_us))
-            << QString::number(imuSample.system_time_ms)
-            << csvBool(imuSample.from_hi83)
-            << QString::fromStdString(imuSample.raw_sentence);
-        appendBool(imuSample.valid);
-        row << QString::fromStdString(imuSample.error_message);
-    }
-    else
-    {
-        appendEmptyColumns(21);
-    }
-
-    if (hasNewPtb)
-    {
-        row << QString::number(ptbSample.pressure_hpa);
-        appendBool(ptbSample.valid);
-        row << QString::fromStdString(ptbSample.error_message);
-    }
-    else
-    {
-        appendEmptyColumns(3);
-    }
-
-    if (hasNewHmp)
-    {
-        row
-            << QString::number(hmpSample.humidity)
-            << QString::number(hmpSample.temperature);
-        appendBool(hmpSample.valid);
-        row << QString::fromStdString(hmpSample.error_message);
-    }
-    else
-    {
-        appendEmptyColumns(4);
-    }
-
-    if (hasNewLidar)
-    {
-        row
-            << QString::number(lidarSample.distance_m)
-            << QString::number(lidarSample.signal_strength);
-        appendBool(lidarSample.valid);
-        row << QString::fromStdString(lidarSample.error_message);
-    }
-    else
-    {
-        appendEmptyColumns(4);
-    }
-
-    QTextStream out(recording_file_.get());
-    out.setCodec("UTF-8");
-    for (int i = 0; i < row.size(); ++i)
-    {
-        if (i > 0)
-        {
-            out << ',';
-        }
-        out << csvEscape(row.at(i));
-    }
-    out << '\n';
-    out.flush();
-
-    ++recording_entry_count_;
-    gnss_updated_since_last_record_ = false;
-    imu_updated_since_last_record_ = false;
-    ptb_updated_since_last_record_ = false;
-    hmp_updated_since_last_record_ = false;
-    lidar_updated_since_last_record_ = false;
-    if (hasNewGnss) last_recorded_gnss_timestamp_ = gnssSample.timestamp;
-    if (hasNewImu) last_recorded_imu_timestamp_ = imuSample.timestamp;
-    if (hasNewPtb) last_recorded_ptb_timestamp_ = ptbSample.timestamp;
-    if (hasNewHmp) last_recorded_hmp_timestamp_ = hmpSample.timestamp;
-    if (hasNewLidar) last_recorded_lidar_timestamp_ = lidarSample.timestamp;
-    updateRecordingStatusLabel();
 }
 
 void MainWindow::onRefreshTimer()
