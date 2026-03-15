@@ -1898,11 +1898,19 @@ void MainWindow::log(const QString& message)
 
         log_text_edit_->setTextCursor(cursor);
         log_text_edit_->ensureCursorVisible();
+        if (QScrollBar *scrollBar = log_text_edit_->verticalScrollBar())
+        {
+            scrollBar->setValue(scrollBar->maximum());
+        }
         return;
     }
 
     QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
     log_text_edit_->append(QString("[%1] %2").arg(timestamp, message));
+    if (QScrollBar *scrollBar = log_text_edit_->verticalScrollBar())
+    {
+        scrollBar->setValue(scrollBar->maximum());
+    }
     has_inline_progress_log_ = false;
 }
 

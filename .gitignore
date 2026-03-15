@@ -38,3 +38,4 @@ __pycache__/
 *.pyc
 *.pyo
 .python-version
+records/
