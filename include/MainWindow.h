@@ -388,6 +388,11 @@ private:
     bool ptb_updated_since_last_record_;
     bool hmp_updated_since_last_record_;
     bool lidar_updated_since_last_record_;
+    std::chrono::steady_clock::time_point last_recorded_gnss_timestamp_;
+    std::chrono::steady_clock::time_point last_recorded_imu_timestamp_;
+    std::chrono::steady_clock::time_point last_recorded_ptb_timestamp_;
+    std::chrono::steady_clock::time_point last_recorded_hmp_timestamp_;
+    std::chrono::steady_clock::time_point last_recorded_lidar_timestamp_;
 
     QAction *rtk_config_action_;
     RtkConfigDialog *rtk_config_dialog_;
