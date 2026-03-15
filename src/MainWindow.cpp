@@ -2275,10 +2275,16 @@ void MainWindow::onConnectClicked()
     const QString ptbBaudText = ptb_baud_combo_->currentText();
     const QString hmpBaudText = hmp_baud_combo_->currentText();
     const QString lidarBaudText = lidar_baud_combo_->currentText();
+    const int gnssRate = parseRate(gnss_rate_combo_->currentText());
     const int imuRate = parseRate(imu_rate_combo_->currentText());
     const int ptbRate = parseRate(ptb_rate_combo_->currentText());
     const int hmpRate = parseRate(hmp_rate_combo_->currentText());
     const int lidarRate = std::min(parseRate(lidar_rate_combo_->currentText()), 100);
+    gnss_sample_rate_ = gnssRate;
+    imu_sample_rate_ = imuRate;
+    ptb_sample_rate_ = ptbRate;
+    hmp_sample_rate_ = hmpRate;
+    lidar_sample_rate_ = lidarRate;
 
     connection_thread_ = std::thread([this,
                                       english,
@@ -2293,6 +2299,7 @@ void MainWindow::onConnectClicked()
                                       ptbBaudText,
                                       hmpBaudText,
                                       lidarBaudText,
+                                      gnssRate,
                                       imuRate,
                                       ptbRate,
                                       hmpRate,
@@ -2316,7 +2323,7 @@ void MainWindow::onConnectClicked()
         };
         auto cancelCallback = [this]() { return cancel_connection_requested_.load(); };
 
-        gnss_collector_->setSampleRate(gnss_sample_rate_);
+        gnss_collector_->setSampleRate(gnssRate);
         imu_collector_->setSampleRate(imuRate);
         ptb_collector_->setSampleRate(ptbRate);
         hmp_collector_->setSampleRate(hmpRate);
@@ -2405,6 +2412,9 @@ void MainWindow::onConnectClicked()
                              VaporView::SerialConfig::N81(gnssBaudText.toInt()),
                              [&]() {
                                  gnss_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onGnssDataReady", Qt::QueuedConnection); });
+                                 gnss_collector_->setSampleRate(gnssRate);
+                                 gnss_collector_->setDeviceSampleRate(gnssRate);
+                                 postLog(QString(english ? "[GNSS] Sample rate set to %1 Hz" : "[GNSS] 采样频率设置为 %1 Hz").arg(gnssRate));
                                  if (gnss_collector_->startStreaming()) return true;
                                  postLog(english ? "[GNSS] Failed to start data stream." : "[GNSS] 启动数据流失败。");
                                  return false;
