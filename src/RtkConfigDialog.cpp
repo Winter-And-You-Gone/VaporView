@@ -1475,30 +1475,42 @@ void RtkConfigDialog::onTestClicked()
     QElapsedTimer timer;
     timer.start();
     bool gotResponse = false;
+    bool inputReady = false;
     RtkStreamStats finalStats;
+    QString lastStatusMessage;
     qint64 lastInjectMs = -1000;
-    while (timer.elapsed() < 6000)
+    while (timer.elapsed() < 10000)
     {
-        if (timer.elapsed() - lastInjectMs >= 1000)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        QThread::msleep(200);
+        finalStats = testService->stats();
+
+        if (!finalStats.message.isEmpty() && finalStats.message != lastStatusMessage)
+        {
+            appendLog(textFor("RTK test status: %1", "RTK 测试状态: %1").arg(finalStats.message));
+            lastStatusMessage = finalStats.message;
+        }
+
+        const QString messageLower = finalStats.message.toLower();
+        const bool stillConnecting =
+            messageLower.contains("connecting") || messageLower.contains("disconnected");
+        if (!inputReady && !stillConnecting)
+        {
+            inputReady = true;
+            appendLog(textFor("RTK input stream is ready, starting mock GGA feed.", "RTK 输入流已就绪，开始注入模拟 GGA。"));
+        }
+
+        if (inputReady && timer.elapsed() - lastInjectMs >= 1000)
         {
             const QString mockGga = buildMockGgaSentence();
             appendLog(textFor("Injecting mock GGA: %1", "正在注入模拟 GGA: %1").arg(mockGga));
             if (!testService->injectInputSentence(mockGga, &errorMessage))
             {
-                testService->stop();
-                appendLog(textFor("Mock GGA injection failed: %1", "模拟 GGA 注入失败: %1")
+                appendLog(textFor("Mock GGA injection deferred: %1", "模拟 GGA 注入暂未成功: %1")
                     .arg(errorMessage.isEmpty() ? textFor("Unknown error", "未知错误") : errorMessage));
-                QMessageBox::warning(this, textFor("Failed", "失败"),
-                    textFor("Mock GGA injection failed: %1", "模拟 GGA 注入失败: %1")
-                        .arg(errorMessage.isEmpty() ? textFor("Unknown error", "未知错误") : errorMessage));
-                return;
             }
             lastInjectMs = timer.elapsed();
         }
-
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-        QThread::msleep(200);
-        finalStats = testService->stats();
         if (finalStats.inputBytes > 0 || finalStats.outputBytes > 0 ||
             finalStats.inputBps > 0 || finalStats.outputBps > 0)
         {
@@ -1519,9 +1531,11 @@ void RtkConfigDialog::onTestClicked()
     }
     else
     {
-        const QString detail = finalStats.message.isEmpty()
-            ? textFor("No RTCM data returned within timeout.", "超时时间内未收到 RTCM 返回数据。")
-            : finalStats.message;
+        const QString detail = !inputReady
+            ? textFor("RTK input stream did not become ready within timeout.", "超时时间内 RTK 输入流未进入可用状态。")
+            : (finalStats.message.isEmpty()
+                ? textFor("No RTCM data returned within timeout.", "超时时间内未收到 RTCM 返回数据。")
+                : finalStats.message);
         appendLog(textFor("No-signal RTK test finished without RTCM response: %1", "无信号 RTK 测试结束，未收到 RTCM 返回: %1").arg(detail));
         QMessageBox::warning(this, textFor("No Response", "无返回"),
             textFor("Mock GGA test did not receive RTCM data.\n%1", "模拟 GGA 测试未收到 RTCM 返回数据。\n%1").arg(detail));
