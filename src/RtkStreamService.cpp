@@ -48,6 +48,15 @@ QString buildSerialPath(const RtkStreamConfig &config)
         .arg(config.baudrate);
 }
 
+QString buildOutputPath(const RtkStreamConfig &config)
+{
+    if (!sanitizeField(config.outputPathOverride).isEmpty())
+    {
+        return sanitizeField(config.outputPathOverride);
+    }
+    return buildSerialPath(config);
+}
+
 QString trimRtklibMessage(const char *message)
 {
     if (!message)
@@ -86,10 +95,11 @@ RtkStreamService::~RtkStreamService()
 
 bool RtkStreamService::start(const RtkStreamConfig &config, QString *errorMessage)
 {
+    const QString outputPath = buildOutputPath(config);
     if (sanitizeField(config.server).isEmpty() ||
         sanitizeField(config.port).isEmpty() ||
         sanitizeField(config.mountpoint).isEmpty() ||
-        sanitizeField(config.outputPort).isEmpty())
+        outputPath.isEmpty())
     {
         if (errorMessage)
         {
@@ -101,10 +111,12 @@ bool RtkStreamService::start(const RtkStreamConfig &config, QString *errorMessag
     stop();
 
     const QString ntripPath = buildNtripPath(config);
-    const QString serialPath = buildSerialPath(config);
+    const int outputStreamType = config.outputMode == RtkStreamConfig::OutputMode::TcpClient
+        ? STR_TCPCLI
+        : STR_SERIAL;
 
     std::string inputPathStorage = ntripPath.toUtf8().toStdString();
-    std::string outputPathStorage = serialPath.toUtf8().toStdString();
+    std::string outputPathStorage = outputPath.toUtf8().toStdString();
     std::array<char *, 2> paths = {
         inputPathStorage.data(),
         outputPathStorage.data(),
@@ -116,7 +128,7 @@ bool RtkStreamService::start(const RtkStreamConfig &config, QString *errorMessag
     std::array<strconv_t *, 1> nullConverters = {nullptr};
     std::array<char *, 2> nullCommands = {nullptr, nullptr};
     std::array<char *, 2> nullPeriodicCommands = {nullptr, nullptr};
-    std::array<int, 2> streamTypes = {STR_NTRIPCLI, STR_SERIAL};
+    std::array<int, 2> streamTypes = {STR_NTRIPCLI, outputStreamType};
     std::array<int, 8> options = {
         (std::max)(1000, config.timeoutMs),
         (std::max)(100, config.reconnectMs),
@@ -125,7 +137,7 @@ bool RtkStreamService::start(const RtkStreamConfig &config, QString *errorMessag
         10,
         0,
         30,
-        1,
+        (std::max)(0, config.relayBack),
     };
 
     if (!strsvrstart(
@@ -168,53 +180,6 @@ void RtkStreamService::stop()
 bool RtkStreamService::isRunning() const
 {
     return impl_->running && impl_->server.state != 0;
-}
-
-bool RtkStreamService::injectInputSentence(const QString &sentence, QString *errorMessage)
-{
-    if (!isRunning())
-    {
-        if (errorMessage)
-        {
-            *errorMessage = QStringLiteral("RTK stream service is not running.");
-        }
-        return false;
-    }
-
-    QString trimmed = sentence.trimmed();
-    if (trimmed.isEmpty())
-    {
-        if (errorMessage)
-        {
-            *errorMessage = QStringLiteral("Input sentence is empty.");
-        }
-        return false;
-    }
-
-    QByteArray payload = trimmed.toLatin1();
-    if (!payload.endsWith("\r\n"))
-    {
-        payload += "\r\n";
-    }
-
-    stream_t *inputStream = &impl_->server.stream[0];
-    strlock(inputStream);
-    const int written = strwrite(inputStream, reinterpret_cast<uint8_t *>(payload.data()), payload.size());
-    strunlock(inputStream);
-
-    if (written != payload.size())
-    {
-        if (errorMessage)
-        {
-            const QString message = stats().message;
-            *errorMessage = message.isEmpty()
-                ? QStringLiteral("Failed to inject NMEA sentence into RTK input stream.")
-                : message;
-        }
-        return false;
-    }
-
-    return true;
 }
 
 RtkStreamStats RtkStreamService::stats() const

@@ -17,6 +17,7 @@
 #include <QRegularExpression>
 #include <QSerialPortInfo>
 #include <QSignalBlocker>
+#include <QTcpServer>
 #include <QThread>
 #include <QTcpSocket>
 #include <QTextBlock>
@@ -1460,6 +1461,22 @@ void RtkConfigDialog::onTestClicked()
     appendLog(textFor("Starting no-signal RTK test...", "正在启动无信号 RTK 测试..."));
     appendLog(description);
 
+    QTcpServer mockSerialServer;
+    if (!mockSerialServer.listen(QHostAddress::LocalHost))
+    {
+        const QString errorText = mockSerialServer.errorString();
+        appendLog(textFor("Failed to start mock serial server: %1", "启动模拟串口服务器失败: %1").arg(errorText));
+        QMessageBox::warning(this, textFor("Failed", "失败"),
+            textFor("Failed to start mock serial server: %1", "启动模拟串口服务器失败: %1").arg(errorText));
+        return;
+    }
+
+    config.outputMode = RtkStreamConfig::OutputMode::TcpClient;
+    config.outputPathOverride = QStringLiteral("127.0.0.1:%1").arg(mockSerialServer.serverPort());
+    config.relayBack = 1;
+    appendLog(textFor("Using loopback mock serial on 127.0.0.1:%1", "正在使用 127.0.0.1:%1 的 loopback 模拟串口")
+        .arg(mockSerialServer.serverPort()));
+
     std::unique_ptr<RtkStreamService> testService = std::make_unique<RtkStreamService>();
     QString errorMessage;
     if (!testService->start(config, &errorMessage))
@@ -1475,15 +1492,23 @@ void RtkConfigDialog::onTestClicked()
     QElapsedTimer timer;
     timer.start();
     bool gotResponse = false;
-    bool inputReady = false;
+    bool linkReady = false;
     RtkStreamStats finalStats;
     QString lastStatusMessage;
     qint64 lastInjectMs = -1000;
+    std::unique_ptr<QTcpSocket> mockSerialPeer;
+    qint64 receivedRtcmBytes = 0;
     while (timer.elapsed() < 10000)
     {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
         QThread::msleep(200);
         finalStats = testService->stats();
+
+        if (!mockSerialPeer && mockSerialServer.hasPendingConnections())
+        {
+            mockSerialPeer.reset(mockSerialServer.nextPendingConnection());
+            appendLog(textFor("Mock serial loopback connected.", "模拟串口 loopback 已连接。"));
+        }
 
         if (!finalStats.message.isEmpty() && finalStats.message != lastStatusMessage)
         {
@@ -1494,24 +1519,37 @@ void RtkConfigDialog::onTestClicked()
         const QString messageLower = finalStats.message.toLower();
         const bool stillConnecting =
             messageLower.contains("connecting") || messageLower.contains("disconnected");
-        if (!inputReady && !stillConnecting)
+        if (!linkReady && mockSerialPeer && mockSerialPeer->state() == QAbstractSocket::ConnectedState && !stillConnecting)
         {
-            inputReady = true;
-            appendLog(textFor("RTK input stream is ready, starting mock GGA feed.", "RTK 输入流已就绪，开始注入模拟 GGA。"));
+            linkReady = true;
+            appendLog(textFor("RTK loopback link is ready, starting mock GGA feed.", "RTK loopback 链路已就绪，开始注入模拟 GGA。"));
         }
 
-        if (inputReady && timer.elapsed() - lastInjectMs >= 1000)
+        if (mockSerialPeer)
+        {
+            const QByteArray rtcmData = mockSerialPeer->readAll();
+            if (!rtcmData.isEmpty())
+            {
+                receivedRtcmBytes += rtcmData.size();
+                appendLog(textFor("Received %1 bytes from RTK output.", "已从 RTK 输出侧收到 %1 字节数据。").arg(rtcmData.size()));
+            }
+        }
+
+        if (linkReady && mockSerialPeer && timer.elapsed() - lastInjectMs >= 1000)
         {
             const QString mockGga = buildMockGgaSentence();
             appendLog(textFor("Injecting mock GGA: %1", "正在注入模拟 GGA: %1").arg(mockGga));
-            if (!testService->injectInputSentence(mockGga, &errorMessage))
+            QByteArray payload = mockGga.toLatin1();
+            payload += "\r\n";
+            const qint64 written = mockSerialPeer->write(payload);
+            if (written != payload.size() || !mockSerialPeer->waitForBytesWritten(500))
             {
-                appendLog(textFor("Mock GGA injection deferred: %1", "模拟 GGA 注入暂未成功: %1")
-                    .arg(errorMessage.isEmpty() ? textFor("Unknown error", "未知错误") : errorMessage));
+                appendLog(textFor("Mock GGA send deferred: %1", "模拟 GGA 发送暂未成功: %1")
+                    .arg(mockSerialPeer->errorString().isEmpty() ? textFor("Unknown error", "未知错误") : mockSerialPeer->errorString()));
             }
             lastInjectMs = timer.elapsed();
         }
-        if (finalStats.inputBytes > 0 || finalStats.outputBytes > 0 ||
+        if (receivedRtcmBytes > 0 || finalStats.inputBytes > 0 || finalStats.outputBytes > 0 ||
             finalStats.inputBps > 0 || finalStats.outputBps > 0)
         {
             gotResponse = true;
@@ -1520,19 +1558,25 @@ void RtkConfigDialog::onTestClicked()
     }
 
     testService->stop();
+    if (mockSerialPeer)
+    {
+        mockSerialPeer->disconnectFromHost();
+    }
 
     if (gotResponse)
     {
-        appendLog(textFor("No-signal RTK test succeeded: input %1 B, output %2 B", "无信号 RTK 测试成功: 输入 %1 B, 输出 %2 B")
+        appendLog(textFor("No-signal RTK test succeeded: input %1 B, output %2 B, loopback %3 B",
+                          "无信号 RTK 测试成功: 输入 %1 B, 输出 %2 B, loopback %3 B")
             .arg(finalStats.inputBytes)
-            .arg(finalStats.outputBytes));
+            .arg(finalStats.outputBytes)
+            .arg(receivedRtcmBytes));
         QMessageBox::information(this, textFor("Success", "成功"),
             textFor("Mock GGA test succeeded. RTCM data was received.", "模拟 GGA 测试成功，已收到 RTCM 返回数据。"));
     }
     else
     {
-        const QString detail = !inputReady
-            ? textFor("RTK input stream did not become ready within timeout.", "超时时间内 RTK 输入流未进入可用状态。")
+        const QString detail = !linkReady
+            ? textFor("RTK loopback link did not become ready within timeout.", "超时时间内 RTK loopback 链路未进入可用状态。")
             : (finalStats.message.isEmpty()
                 ? textFor("No RTCM data returned within timeout.", "超时时间内未收到 RTCM 返回数据。")
                 : finalStats.message);

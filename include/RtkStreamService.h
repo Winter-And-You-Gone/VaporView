@@ -7,15 +7,24 @@
 
 struct RtkStreamConfig
 {
+    enum class OutputMode
+    {
+        Serial,
+        TcpClient,
+    };
+
     QString server;
     QString port;
     QString username;
     QString password;
     QString mountpoint;
     QString outputPort;
+    QString outputPathOverride;
+    OutputMode outputMode = OutputMode::Serial;
     int baudrate = 115200;
     int timeoutMs = 5000;
     int reconnectMs = 1000;
+    int relayBack = 1;
 };
 
 struct RtkStreamStats
@@ -38,7 +47,6 @@ public:
     void stop();
     bool isRunning() const;
     RtkStreamStats stats() const;
-    bool injectInputSentence(const QString &sentence, QString *errorMessage = nullptr);
 
 private:
     struct Impl;
