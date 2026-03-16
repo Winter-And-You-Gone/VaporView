@@ -668,7 +668,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     gga_port_combo_->setMinimumHeight(scalePixels(30));
 
     gga_status_label_->setMinimumHeight(scalePixels(24));
-    const int ggaTextHeight = scalePixels(118);
+    const int ggaTextHeight = scalePixels(72);
     const int ggaTextBottomGap = scalePixels(8);
     gga_text_edit_->setFixedHeight(ggaTextHeight);
     gga_text_edit_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
@@ -705,6 +705,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     applyButtonWidth(clear_log_btn_, 96);
 
     log_text_edit_->setMinimumWidth(scalePixels(200));
+    log_text_edit_->setMinimumHeight(scalePixels(220));
     gga_text_edit_->setMinimumWidth(scalePixels(200));
 
     setMinimumSize(
