@@ -1514,6 +1514,7 @@ void RtkConfigDialog::onTestClicked()
     std::unique_ptr<QTcpSocket> mockSerialPeer;
     qint64 receivedRtcmBytes = 0;
     int rtcmResponseBursts = 0;
+    bool loggedMockGgaTemplate = false;
     while (timer.elapsed() < 15000)
     {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
@@ -1540,7 +1541,9 @@ void RtkConfigDialog::onTestClicked()
         if (!linkReady && mockSerialPeer && mockSerialPeer->state() == QAbstractSocket::ConnectedState && !stillConnecting)
         {
             linkReady = true;
-            appendLog(textFor("RTK loopback link is ready, starting mock GGA feed.", "RTK loopback 链路已就绪，开始注入模拟 GGA。"));
+            const QString mockGga = buildMockGgaSentence();
+            appendLog(textFor("Injecting GGA at 1 Hz: %1", "已按 1Hz 频率注入 GGA 数据: %1").arg(mockGga));
+            loggedMockGgaTemplate = true;
         }
 
         if (mockSerialPeer)
@@ -1550,23 +1553,23 @@ void RtkConfigDialog::onTestClicked()
             {
                 receivedRtcmBytes += rtcmData.size();
                 ++rtcmResponseBursts;
-                appendLog(textFor("Received %1 bytes from RTK output (burst %2).", "已从 RTK 输出侧收到 %1 字节数据（第 %2 次）。")
-                    .arg(rtcmData.size())
-                    .arg(rtcmResponseBursts));
             }
         }
 
         if (linkReady && mockSerialPeer && timer.elapsed() - lastInjectMs >= 1000)
         {
             const QString mockGga = buildMockGgaSentence();
-            appendLog(textFor("Injecting mock GGA: %1", "正在注入模拟 GGA: %1").arg(mockGga));
+            if (!loggedMockGgaTemplate)
+            {
+                appendLog(textFor("Injecting GGA at 1 Hz: %1", "已按 1Hz 频率注入 GGA 数据: %1").arg(mockGga));
+                loggedMockGgaTemplate = true;
+            }
             QByteArray payload = mockGga.toLatin1();
             payload += "\r\n";
             const qint64 written = mockSerialPeer->write(payload);
             if (written != payload.size() || !mockSerialPeer->waitForBytesWritten(500))
             {
-                appendLog(textFor("Mock GGA send deferred: %1", "模拟 GGA 发送暂未成功: %1")
-                    .arg(mockSerialPeer->errorString().isEmpty() ? textFor("Unknown error", "未知错误") : mockSerialPeer->errorString()));
+                errorMessage = mockSerialPeer->errorString().isEmpty() ? textFor("Unknown error", "未知错误") : mockSerialPeer->errorString();
             }
             lastInjectMs = timer.elapsed();
         }
