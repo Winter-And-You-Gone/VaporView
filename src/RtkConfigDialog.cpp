@@ -1498,7 +1498,8 @@ void RtkConfigDialog::onTestClicked()
     qint64 lastInjectMs = -1000;
     std::unique_ptr<QTcpSocket> mockSerialPeer;
     qint64 receivedRtcmBytes = 0;
-    while (timer.elapsed() < 10000)
+    int rtcmResponseBursts = 0;
+    while (timer.elapsed() < 15000)
     {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
         QThread::msleep(200);
@@ -1531,7 +1532,10 @@ void RtkConfigDialog::onTestClicked()
             if (!rtcmData.isEmpty())
             {
                 receivedRtcmBytes += rtcmData.size();
-                appendLog(textFor("Received %1 bytes from RTK output.", "已从 RTK 输出侧收到 %1 字节数据。").arg(rtcmData.size()));
+                ++rtcmResponseBursts;
+                appendLog(textFor("Received %1 bytes from RTK output (burst %2).", "已从 RTK 输出侧收到 %1 字节数据（第 %2 次）。")
+                    .arg(rtcmData.size())
+                    .arg(rtcmResponseBursts));
             }
         }
 
@@ -1549,8 +1553,9 @@ void RtkConfigDialog::onTestClicked()
             }
             lastInjectMs = timer.elapsed();
         }
-        if (receivedRtcmBytes > 0 || finalStats.inputBytes > 0 || finalStats.outputBytes > 0 ||
-            finalStats.inputBps > 0 || finalStats.outputBps > 0)
+        if (rtcmResponseBursts >= 3 ||
+            receivedRtcmBytes >= 2048 ||
+            (receivedRtcmBytes > 0 && finalStats.outputBps > 0))
         {
             gotResponse = true;
             break;
@@ -1571,7 +1576,7 @@ void RtkConfigDialog::onTestClicked()
             .arg(finalStats.outputBytes)
             .arg(receivedRtcmBytes));
         QMessageBox::information(this, textFor("Success", "成功"),
-            textFor("Mock GGA test succeeded. RTCM data was received.", "模拟 GGA 测试成功，已收到 RTCM 返回数据。"));
+            textFor("Mock GGA test succeeded. RTCM data was received multiple times.", "模拟 GGA 测试成功，已多次收到 RTCM 返回数据。"));
     }
     else
     {
