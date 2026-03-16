@@ -10,9 +10,11 @@
 #include <QDirIterator>
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QFontMetrics>
-#include <QInputDialog>
 #include <QIntValidator>
+#include <QLabel>
 #include <QElapsedTimer>
 #include <QRegularExpression>
 #include <QSerialPortInfo>
@@ -1414,23 +1416,39 @@ void RtkConfigDialog::onFetchMountpointsClicked()
         return;
     }
 
-    bool ok = false;
     const QString currentMountpoint = mountpoint_edit_->text().trimmed();
     const int currentIndex = std::max(0, mountpoints.indexOf(currentMountpoint));
-    QInputDialog mountpointDialog(this);
+    QDialog mountpointDialog(this);
     mountpointDialog.setWindowTitle(textFor("Select Mountpoint", "选择挂载点"));
-    mountpointDialog.setLabelText(textFor("Available mountpoints:", "可用挂载点:"));
-    mountpointDialog.setComboBoxItems(mountpoints);
-    mountpointDialog.setComboBoxEditable(false);
-    mountpointDialog.setTextValue(currentIndex >= 0 && currentIndex < mountpoints.size()
-                                      ? mountpoints.at(currentIndex)
-                                      : QString());
-    mountpointDialog.setMinimumWidth(scalePixels(420));
+    mountpointDialog.setModal(true);
+    mountpointDialog.setMinimumWidth(scalePixels(520));
+
+    auto *dialogLayout = new QVBoxLayout(&mountpointDialog);
+    dialogLayout->setContentsMargins(scalePixels(16), scalePixels(14), scalePixels(16), scalePixels(14));
+    dialogLayout->setSpacing(scalePixels(10));
+
+    auto *dialogLabel = new QLabel(textFor("Available mountpoints:", "可用挂载点:"), &mountpointDialog);
+    dialogLayout->addWidget(dialogLabel);
+
+    auto *mountpointCombo = new QComboBox(&mountpointDialog);
+    mountpointCombo->addItems(mountpoints);
+    mountpointCombo->setEditable(false);
+    mountpointCombo->setMinimumWidth(scalePixels(480));
+    if (currentIndex >= 0 && currentIndex < mountpoints.size())
+    {
+        mountpointCombo->setCurrentIndex(currentIndex);
+    }
+    dialogLayout->addWidget(mountpointCombo);
+
+    auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &mountpointDialog);
+    dialogLayout->addWidget(buttonBox);
+    connect(buttonBox, &QDialogButtonBox::accepted, &mountpointDialog, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &mountpointDialog, &QDialog::reject);
 
     const QString selected = mountpointDialog.exec() == QDialog::Accepted
-        ? mountpointDialog.textValue().trimmed()
+        ? mountpointCombo->currentText().trimmed()
         : QString();
-    ok = !selected.isEmpty();
+    const bool ok = !selected.isEmpty();
 
     appendLog(textFor("Fetched %1 mountpoints.", "已获取 %1 个挂载点。").arg(mountpoints.size()));
 
