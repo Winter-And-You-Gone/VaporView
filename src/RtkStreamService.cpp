@@ -32,11 +32,12 @@ QString buildNtripPath(const RtkStreamConfig &config)
 
     if (!username.isEmpty())
     {
-        return QString("ntrip://%1:%2@%3:%4/%5")
+        // RTKLIB STR_NTRIPCLI expects a raw NTRIP path, not a URL with scheme.
+        return QString("%1:%2@%3:%4/%5")
             .arg(username, password, server, port, mountpoint);
     }
 
-    return QString("ntrip://%1:%2/%3")
+    return QString("%1:%2/%3")
         .arg(server, port, mountpoint);
 }
 
