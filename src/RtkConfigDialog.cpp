@@ -716,16 +716,18 @@ void RtkConfigDialog::applyScaledUiMetrics()
     }
     gga_text_edit_->setMinimumWidth(scalePixels(200));
 
-    setMinimumSize(
-        std::max(scalePixels(base_minimum_dialog_size_.width()), minimumSize().width()),
-        std::max(scalePixels(base_minimum_dialog_size_.height()), minimumSize().height()));
-    if (!isMaximized() && !isFullScreen())
-    {
-        resize(size().expandedTo(minimumSize()).expandedTo(QSize(scalePixels(base_dialog_size_.width()), scalePixels(base_dialog_size_.height()))));
-    }
     if (main_layout_)
     {
         main_layout_->invalidate();
+    }
+
+    const QSize layoutHint = layout() ? layout()->sizeHint() : QSize();
+    setMinimumSize(
+        std::max({scalePixels(base_minimum_dialog_size_.width()), minimumSize().width(), layoutHint.width()}),
+        std::max({scalePixels(base_minimum_dialog_size_.height()), minimumSize().height(), layoutHint.height()}));
+    if (!isMaximized() && !isFullScreen())
+    {
+        resize(size().expandedTo(minimumSize()).expandedTo(QSize(scalePixels(base_dialog_size_.width()), scalePixels(base_dialog_size_.height()))));
     }
 }
 
