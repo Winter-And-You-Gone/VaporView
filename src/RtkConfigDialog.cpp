@@ -1573,9 +1573,7 @@ void RtkConfigDialog::onTestClicked()
             }
             lastInjectMs = timer.elapsed();
         }
-        if (rtcmResponseBursts >= 8 ||
-            receivedRtcmBytes >= 2048 ||
-            (receivedRtcmBytes > 0 && finalStats.outputBps > 0))
+        if (rtcmResponseBursts >= 8)
         {
             gotResponse = true;
             break;
