@@ -253,12 +253,14 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , gga_layout_(nullptr)
     , gga_header_layout_(nullptr)
     , gga_text_container_layout_(nullptr)
+    , log_text_container_layout_(nullptr)
     , gga_button_spacer_(nullptr)
     , config_group_(nullptr)
     , output_group_(nullptr)
     , gga_group_(nullptr)
     , log_group_(nullptr)
     , gga_text_container_(nullptr)
+    , log_text_container_(nullptr)
     , server_label_(nullptr)
     , port_label_(nullptr)
     , username_label_(nullptr)
@@ -507,9 +509,15 @@ void RtkConfigDialog::setupUi()
     log_layout_ = new QVBoxLayout(log_group_);
     log_layout_->setSpacing(4);
 
-    log_text_edit_ = new QTextEdit(log_group_);
+    log_text_container_ = new QWidget(log_group_);
+    log_text_container_layout_ = new QVBoxLayout(log_text_container_);
+    log_text_container_layout_->setContentsMargins(0, 0, 0, 8);
+    log_text_container_layout_->setSpacing(0);
+
+    log_text_edit_ = new QTextEdit(log_text_container_);
     log_text_edit_->setReadOnly(true);
-    log_layout_->addWidget(log_text_edit_);
+    log_text_container_layout_->addWidget(log_text_edit_);
+    log_layout_->addWidget(log_text_container_);
 
     main_layout_->addWidget(log_group_, 1);
 
@@ -646,6 +654,12 @@ void RtkConfigDialog::applyScaledUiMetrics()
         log_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(10));
     }
 
+    if (log_text_container_layout_)
+    {
+        log_text_container_layout_->setContentsMargins(0, 0, 0, scalePixels(8));
+        log_text_container_layout_->setSpacing(0);
+    }
+
     server_edit_->setMinimumHeight(scalePixels(34));
     port_edit_->setMaximumWidth(scalePixels(80));
     port_edit_->setMinimumHeight(scalePixels(34));
@@ -707,10 +721,16 @@ void RtkConfigDialog::applyScaledUiMetrics()
     log_text_edit_->setFixedHeight(logTextHeight);
     log_text_edit_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     log_text_edit_->document()->setDocumentMargin(scalePixels(10));
+    const int logTextBottomGap = scalePixels(8);
+    if (log_text_container_)
+    {
+        log_text_container_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        log_text_container_->setFixedHeight(logTextHeight + logTextBottomGap);
+    }
     if (log_group_ && log_layout_)
     {
         const QMargins logMargins = log_layout_->contentsMargins();
-        const int logGroupHeight = logMargins.top() + logTextHeight + logMargins.bottom();
+        const int logGroupHeight = logMargins.top() + logTextHeight + logTextBottomGap + logMargins.bottom();
         log_group_->setFixedHeight(logGroupHeight);
         log_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     }

@@ -82,12 +82,14 @@ private:
     QVBoxLayout *gga_layout_;
     QHBoxLayout *gga_header_layout_;
     QVBoxLayout *gga_text_container_layout_;
+    QVBoxLayout *log_text_container_layout_;
     QSpacerItem *gga_button_spacer_;
     QGroupBox *config_group_;
     QGroupBox *output_group_;
     QGroupBox *gga_group_;
     QGroupBox *log_group_;
     QWidget *gga_text_container_;
+    QWidget *log_text_container_;
     QLabel *server_label_;
     QLabel *port_label_;
     QLabel *username_label_;
