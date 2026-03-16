@@ -79,7 +79,7 @@ QString buildMockGgaSentence()
         .arg(utc.msec() / 10, 2, 10, QLatin1Char('0'));
 
     const QString body = QStringLiteral(
-        "GPGGA,%1,3113.8240,N,12128.4160,E,1,12,1.0,12.3,M,0.0,M,,")
+        "GPGGA,%1,3000.0000,N,12000.0000,E,1,12,1.0,0.0,M,0.0,M,,")
         .arg(timeField);
 
     unsigned char checksum = 0;
