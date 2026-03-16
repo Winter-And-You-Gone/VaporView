@@ -646,6 +646,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (log_layout_)
     {
         log_layout_->setSpacing(scalePixels(4));
+        log_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(10));
     }
 
     server_edit_->setMinimumHeight(scalePixels(34));
@@ -706,6 +707,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
     log_text_edit_->setMinimumWidth(scalePixels(200));
     log_text_edit_->setMinimumHeight(scalePixels(220));
+    log_text_edit_->document()->setDocumentMargin(scalePixels(10));
     gga_text_edit_->setMinimumWidth(scalePixels(200));
 
     setMinimumSize(
