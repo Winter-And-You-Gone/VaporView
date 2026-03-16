@@ -95,6 +95,17 @@ QString buildMockGgaSentence()
         .toUpper();
 }
 
+QString formatRtkStatusLine(const RtkStreamStats &stats, const QString &fallbackMessage)
+{
+    const QString message = stats.message.isEmpty() ? fallbackMessage : stats.message;
+    return QString("%1 [%2] %3 B %4 bps %5")
+        .arg(QDateTime::currentDateTime().toString("yyyy/MM/dd hh:mm:ss"))
+        .arg(stats.streamStateMask.isEmpty() ? QStringLiteral("-----") : stats.streamStateMask)
+        .arg(QString::number(stats.inputBytes).rightJustified(10, QLatin1Char(' ')))
+        .arg(QString::number(stats.inputBps).rightJustified(7, QLatin1Char(' ')))
+        .arg(message);
+}
+
 QUrl buildRtkUrl(const QString &server, const QString &port, const QString &path = QString())
 {
     QUrl url;
@@ -881,12 +892,9 @@ void RtkConfigDialog::pollRtkServiceStatus(bool forceLog)
         ? textFor("Streaming RTCM data", "正在转发 RTCM 数据")
         : stats.message;
 
-    const QString summaryLine = QString("%1 [%2] %3 B %4 bps %5")
-        .arg(QDateTime::currentDateTime().toString("yyyy/MM/dd hh:mm:ss"))
-        .arg(stats.streamStateMask.isEmpty() ? QStringLiteral("-----") : stats.streamStateMask)
-        .arg(QString::number(stats.inputBytes).rightJustified(10, QLatin1Char(' ')))
-        .arg(QString::number(stats.inputBps).rightJustified(7, QLatin1Char(' ')))
-        .arg(message);
+    const QString summaryLine = formatRtkStatusLine(
+        stats,
+        textFor("Streaming RTCM data", "正在转发 RTCM 数据"));
 
     if ((forceLog || is_running_) && !message.isEmpty())
     {
@@ -1501,8 +1509,8 @@ void RtkConfigDialog::onTestClicked()
     bool gotResponse = false;
     bool linkReady = false;
     RtkStreamStats finalStats;
-    QString lastStatusMessage;
     qint64 lastInjectMs = -1000;
+    qint64 lastStatusLogMs = -1000;
     std::unique_ptr<QTcpSocket> mockSerialPeer;
     qint64 receivedRtcmBytes = 0;
     int rtcmResponseBursts = 0;
@@ -1518,10 +1526,12 @@ void RtkConfigDialog::onTestClicked()
             appendLog(textFor("Mock serial loopback connected.", "模拟串口 loopback 已连接。"));
         }
 
-        if (!finalStats.message.isEmpty() && finalStats.message != lastStatusMessage)
+        if (timer.elapsed() - lastStatusLogMs >= 1000)
         {
-            appendLog(textFor("RTK test status: %1", "RTK 测试状态: %1").arg(finalStats.message));
-            lastStatusMessage = finalStats.message;
+            appendRawLogLine(formatRtkStatusLine(
+                finalStats,
+                textFor("Running no-signal RTK test", "正在执行无信号 RTK 测试")));
+            lastStatusLogMs = timer.elapsed();
         }
 
         const QString messageLower = finalStats.message.toLower();
