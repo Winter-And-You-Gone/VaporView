@@ -170,6 +170,53 @@ bool RtkStreamService::isRunning() const
     return impl_->running && impl_->server.state != 0;
 }
 
+bool RtkStreamService::injectInputSentence(const QString &sentence, QString *errorMessage)
+{
+    if (!isRunning())
+    {
+        if (errorMessage)
+        {
+            *errorMessage = QStringLiteral("RTK stream service is not running.");
+        }
+        return false;
+    }
+
+    QString trimmed = sentence.trimmed();
+    if (trimmed.isEmpty())
+    {
+        if (errorMessage)
+        {
+            *errorMessage = QStringLiteral("Input sentence is empty.");
+        }
+        return false;
+    }
+
+    QByteArray payload = trimmed.toLatin1();
+    if (!payload.endsWith("\r\n"))
+    {
+        payload += "\r\n";
+    }
+
+    stream_t *inputStream = &impl_->server.stream[0];
+    strlock(inputStream);
+    const int written = strwrite(inputStream, reinterpret_cast<uint8_t *>(payload.data()), payload.size());
+    strunlock(inputStream);
+
+    if (written != payload.size())
+    {
+        if (errorMessage)
+        {
+            const QString message = stats().message;
+            *errorMessage = message.isEmpty()
+                ? QStringLiteral("Failed to inject NMEA sentence into RTK input stream.")
+                : message;
+        }
+        return false;
+    }
+
+    return true;
+}
+
 RtkStreamStats RtkStreamService::stats() const
 {
     RtkStreamStats result;

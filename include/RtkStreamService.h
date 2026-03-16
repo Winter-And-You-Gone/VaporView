@@ -38,6 +38,7 @@ public:
     void stop();
     bool isRunning() const;
     RtkStreamStats stats() const;
+    bool injectInputSentence(const QString &sentence, QString *errorMessage = nullptr);
 
 private:
     struct Impl;

@@ -8,6 +8,7 @@
 #include <QSettings>
 #include <QDir>
 #include <QDirIterator>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QFontMetrics>
 #include <QInputDialog>
@@ -16,6 +17,7 @@
 #include <QRegularExpression>
 #include <QSerialPortInfo>
 #include <QSignalBlocker>
+#include <QThread>
 #include <QTcpSocket>
 #include <QTextBlock>
 #include <QTextCursor>
@@ -64,6 +66,32 @@ int comboIntValue(const QComboBox *combo, int defaultValue)
     bool ok = false;
     const int value = combo->currentText().toInt(&ok);
     return ok ? value : defaultValue;
+}
+
+QString buildMockGgaSentence()
+{
+    const QTime utc = QDateTime::currentDateTimeUtc().time();
+    const QString timeField = QStringLiteral("%1%2%3.%4")
+        .arg(utc.hour(), 2, 10, QLatin1Char('0'))
+        .arg(utc.minute(), 2, 10, QLatin1Char('0'))
+        .arg(utc.second(), 2, 10, QLatin1Char('0'))
+        .arg(utc.msec() / 10, 2, 10, QLatin1Char('0'));
+
+    const QString body = QStringLiteral(
+        "GPGGA,%1,3113.8240,N,12128.4160,E,1,12,1.0,12.3,M,0.0,M,,")
+        .arg(timeField);
+
+    unsigned char checksum = 0;
+    const QByteArray bytes = body.toLatin1();
+    for (char ch : bytes)
+    {
+        checksum ^= static_cast<unsigned char>(ch);
+    }
+
+    return QStringLiteral("$%1*%2")
+        .arg(body)
+        .arg(static_cast<int>(checksum), 2, 16, QLatin1Char('0'))
+        .toUpper();
 }
 
 QUrl buildRtkUrl(const QString &server, const QString &port, const QString &path = QString())
@@ -1414,47 +1442,89 @@ void RtkConfigDialog::onStopClicked()
 
 void RtkConfigDialog::onTestClicked()
 {
-    const QString server = server_edit_->text().trimmed();
-    const QString port = port_edit_->text().trimmed();
-    const QString username = username_edit_->text().trimmed();
-    const QString password = password_edit_->text();
-    const QString mountpoint = mountpoint_edit_->text().trimmed();
-
-    if (server.isEmpty())
+    if (is_running_)
     {
-        QMessageBox::warning(this, textFor("Error", "错误"), textFor("Please enter server address.", "请输入服务器地址。"));
+        QMessageBox::information(this, textFor("Busy", "请先停止"),
+            textFor("Stop the running RTK service before starting a no-signal test.", "请先停止当前 RTK 服务，再启动无信号测试。"));
         return;
     }
 
-    appendLog(textFor("Testing connection to %1:%2...", "正在测试连接 %1:%2 ...").arg(server, port));
-
-    const HttpResponse response = performRtkHttpGet(
-        this,
-        buildRtkUrl(server, port, mountpoint),
-        username,
-        password,
-        QStringLiteral("*/*"));
-
-    if (response.statusCode == 200 || response.statusCode == 401)
+    RtkStreamConfig config;
+    QString description;
+    if (!buildRtkStreamConfig(&config, &description))
     {
-        appendLog(textFor("Connection test successful (HTTP %1)", "连接测试成功 (HTTP %1)").arg(response.statusCode));
-        QMessageBox::information(this, textFor("Success", "成功"), textFor("Connection test successful!", "连接测试成功！"));
+        QMessageBox::warning(this, textFor("Error", "错误"), textFor("Please fill in server, mountpoint and output port.", "请填写服务器、挂载点和输出串口。"));
+        return;
     }
-    else if (response.timedOut || !response.error.isEmpty())
+
+    appendLog(textFor("Starting no-signal RTK test...", "正在启动无信号 RTK 测试..."));
+    appendLog(description);
+
+    std::unique_ptr<RtkStreamService> testService = std::make_unique<RtkStreamService>();
+    QString errorMessage;
+    if (!testService->start(config, &errorMessage))
     {
-        const QString errorText = response.timedOut
-            ? textFor("Request timed out", "请求超时")
-            : response.error;
-        appendLog(textFor("Connection test failed: %1", "连接测试失败: %1").arg(errorText));
-        QMessageBox::warning(this, textFor("Failed", "失败"), textFor("Connection test failed: %1", "连接测试失败: %1").arg(errorText));
+        appendLog(textFor("No-signal RTK test failed to start: %1", "无信号 RTK 测试启动失败: %1")
+            .arg(errorMessage.isEmpty() ? textFor("Unknown error", "未知错误") : errorMessage));
+        QMessageBox::warning(this, textFor("Failed", "失败"),
+            textFor("Failed to start no-signal RTK test: %1", "无信号 RTK 测试启动失败: %1")
+                .arg(errorMessage.isEmpty() ? textFor("Unknown error", "未知错误") : errorMessage));
+        return;
+    }
+
+    QElapsedTimer timer;
+    timer.start();
+    bool gotResponse = false;
+    RtkStreamStats finalStats;
+    qint64 lastInjectMs = -1000;
+    while (timer.elapsed() < 6000)
+    {
+        if (timer.elapsed() - lastInjectMs >= 1000)
+        {
+            const QString mockGga = buildMockGgaSentence();
+            appendLog(textFor("Injecting mock GGA: %1", "正在注入模拟 GGA: %1").arg(mockGga));
+            if (!testService->injectInputSentence(mockGga, &errorMessage))
+            {
+                testService->stop();
+                appendLog(textFor("Mock GGA injection failed: %1", "模拟 GGA 注入失败: %1")
+                    .arg(errorMessage.isEmpty() ? textFor("Unknown error", "未知错误") : errorMessage));
+                QMessageBox::warning(this, textFor("Failed", "失败"),
+                    textFor("Mock GGA injection failed: %1", "模拟 GGA 注入失败: %1")
+                        .arg(errorMessage.isEmpty() ? textFor("Unknown error", "未知错误") : errorMessage));
+                return;
+            }
+            lastInjectMs = timer.elapsed();
+        }
+
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        QThread::msleep(200);
+        finalStats = testService->stats();
+        if (finalStats.inputBytes > 0 || finalStats.outputBytes > 0 ||
+            finalStats.inputBps > 0 || finalStats.outputBps > 0)
+        {
+            gotResponse = true;
+            break;
+        }
+    }
+
+    testService->stop();
+
+    if (gotResponse)
+    {
+        appendLog(textFor("No-signal RTK test succeeded: input %1 B, output %2 B", "无信号 RTK 测试成功: 输入 %1 B, 输出 %2 B")
+            .arg(finalStats.inputBytes)
+            .arg(finalStats.outputBytes));
+        QMessageBox::information(this, textFor("Success", "成功"),
+            textFor("Mock GGA test succeeded. RTCM data was received.", "模拟 GGA 测试成功，已收到 RTCM 返回数据。"));
     }
     else
     {
-        const QString statusText = response.statusCode > 0
-            ? QString::number(response.statusCode)
-            : textFor("No HTTP response", "无 HTTP 返回");
-        appendLog(textFor("Connection test returned: %1", "连接测试返回: %1").arg(statusText));
-        QMessageBox::information(this, textFor("Result", "结果"), textFor("Server responded with code: %1", "服务器返回代码: %1").arg(statusText));
+        const QString detail = finalStats.message.isEmpty()
+            ? textFor("No RTCM data returned within timeout.", "超时时间内未收到 RTCM 返回数据。")
+            : finalStats.message;
+        appendLog(textFor("No-signal RTK test finished without RTCM response: %1", "无信号 RTK 测试结束，未收到 RTCM 返回: %1").arg(detail));
+        QMessageBox::warning(this, textFor("No Response", "无返回"),
+            textFor("Mock GGA test did not receive RTCM data.\n%1", "模拟 GGA 测试未收到 RTCM 返回数据。\n%1").arg(detail));
     }
 }
 
