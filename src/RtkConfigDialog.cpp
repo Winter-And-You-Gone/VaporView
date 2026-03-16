@@ -484,6 +484,9 @@ void RtkConfigDialog::setupUi()
     test_btn_ = new QPushButton(this);
     connect(test_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onTestClicked);
 
+    clear_log_btn_ = new QPushButton(this);
+    connect(clear_log_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onClearLogClicked);
+
     save_config_btn_ = new QPushButton(this);
     connect(save_config_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onSaveConfigClicked);
 
@@ -493,6 +496,7 @@ void RtkConfigDialog::setupUi()
     button_layout_->addWidget(start_btn_);
     button_layout_->addWidget(stop_btn_);
     button_layout_->addWidget(test_btn_);
+    button_layout_->addWidget(clear_log_btn_);
     button_layout_->addStretch();
     button_layout_->addWidget(save_config_btn_);
     button_layout_->addWidget(load_config_btn_);
@@ -503,16 +507,9 @@ void RtkConfigDialog::setupUi()
     log_layout_ = new QVBoxLayout(log_group_);
     log_layout_->setSpacing(4);
 
-    log_text_edit_ = new QTextEdit(this);
+    log_text_edit_ = new QTextEdit(log_group_);
     log_text_edit_->setReadOnly(true);
     log_layout_->addWidget(log_text_edit_);
-
-    log_button_layout_ = new QHBoxLayout();
-    clear_log_btn_ = new QPushButton(this);
-    connect(clear_log_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onClearLogClicked);
-    log_button_layout_->addStretch();
-    log_button_layout_->addWidget(clear_log_btn_);
-    log_layout_->addLayout(log_button_layout_);
 
     main_layout_->addWidget(log_group_, 1);
 
