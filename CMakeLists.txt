@@ -26,6 +26,7 @@ find_package(Threads REQUIRED)
 set(UM982_DRIVER_DIR ${CMAKE_SOURCE_DIR}/third_party/um982_driver)
 set(HIPNUC_DRIVER_DIR ${CMAKE_SOURCE_DIR}/third_party/hipnuc_driver)
 set(RTKLIB_DIR ${CMAKE_SOURCE_DIR}/third_party/rtklib)
+set(RTKLIB_STR2STR_SOURCE ${RTKLIB_DIR}/app/consapp/str2str/str2str.c)
 
 set(RTKLIB_SOURCES
     ${RTKLIB_DIR}/src/stream.c
@@ -71,6 +72,19 @@ if(MSVC)
     target_link_libraries(rtklib_strsvr PUBLIC ws2_32 winmm)
 else()
     target_compile_options(rtklib_strsvr PRIVATE -w)
+endif()
+
+if(EXISTS ${RTKLIB_STR2STR_SOURCE})
+    add_executable(str2str ${RTKLIB_STR2STR_SOURCE})
+    target_include_directories(str2str PRIVATE ${RTKLIB_DIR}/src)
+    target_link_libraries(str2str PRIVATE rtklib_strsvr)
+
+    if(MSVC)
+        target_compile_definitions(str2str PRIVATE _CRT_SECURE_NO_WARNINGS)
+        target_compile_options(str2str PRIVATE /W0 /utf-8)
+    else()
+        target_compile_options(str2str PRIVATE -w)
+    endif()
 endif()
 
 set(NAV_SOURCES
