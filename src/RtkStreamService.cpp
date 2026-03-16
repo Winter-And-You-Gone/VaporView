@@ -42,7 +42,8 @@ QString buildNtripPath(const RtkStreamConfig &config)
 
 QString buildSerialPath(const RtkStreamConfig &config)
 {
-    return QString("serial://%1:%2:8:n:1:off")
+    // RTKLIB STR_SERIAL expects a raw "port:baud:data:parity:stop:flow" path.
+    return QString("%1:%2:8:n:1:off")
         .arg(sanitizeField(config.outputPort))
         .arg(config.baudrate);
 }
