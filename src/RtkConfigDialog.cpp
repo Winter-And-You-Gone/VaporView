@@ -12,13 +12,11 @@
 #include <QFontMetrics>
 #include <QInputDialog>
 #include <QIntValidator>
-#include <QEventLoop>
-#include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QNetworkRequest>
+#include <QElapsedTimer>
 #include <QRegularExpression>
 #include <QSerialPortInfo>
 #include <QSignalBlocker>
+#include <QTcpSocket>
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTimer>
@@ -90,54 +88,116 @@ HttpResponse performRtkHttpGet(
     const QString &password,
     const QString &acceptHeader = QStringLiteral("*/*"))
 {
-    HttpResponse result;
+    Q_UNUSED(context);
 
-    QNetworkAccessManager manager(context);
-    QNetworkRequest request(url);
-    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("VaporView/1.0"));
-    request.setRawHeader("Ntrip-Version", "Ntrip/2.0");
-    request.setRawHeader("Connection", "close");
-    request.setRawHeader("Accept", acceptHeader.toUtf8());
+    HttpResponse result;
+    QTcpSocket socket;
+
+    const QString host = url.host().trimmed();
+    const int port = url.port(80);
+    QString path = url.path();
+    if (path.isEmpty())
+    {
+        path = QStringLiteral("/");
+    }
+    if (!url.query().isEmpty())
+    {
+        path += QStringLiteral("?") + url.query();
+    }
+
+    socket.connectToHost(host, static_cast<quint16>(port));
+    if (!socket.waitForConnected(kRtkHttpTimeoutMs))
+    {
+        result.error = socket.errorString();
+        result.timedOut = (socket.error() == QAbstractSocket::SocketTimeoutError);
+        return result;
+    }
+
+    QByteArray requestData;
+    requestData += "GET " + path.toUtf8() + " HTTP/1.0\r\n";
+    requestData += "Host: " + host.toUtf8() + ":" + QByteArray::number(port) + "\r\n";
+    requestData += "User-Agent: NTRIP VaporView/1.0\r\n";
+    requestData += "Ntrip-Version: Ntrip/2.0\r\n";
+    requestData += "Connection: close\r\n";
+    requestData += "Accept: " + acceptHeader.toUtf8() + "\r\n";
 
     if (!username.trimmed().isEmpty())
     {
         const QByteArray credentials = QStringLiteral("%1:%2").arg(username.trimmed(), password).toUtf8().toBase64();
-        request.setRawHeader("Authorization", "Basic " + credentials);
+        requestData += "Authorization: Basic " + credentials + "\r\n";
     }
 
-    QNetworkReply *reply = manager.get(request);
-    QEventLoop loop;
-    QTimer timeoutTimer;
-    timeoutTimer.setSingleShot(true);
+    requestData += "\r\n";
 
-    QObject::connect(&timeoutTimer, &QTimer::timeout, &loop, [&]() {
-        result.timedOut = true;
-        result.error = QStringLiteral("Request timed out");
-        if (reply)
+    if (socket.write(requestData) != requestData.size() || !socket.waitForBytesWritten(kRtkHttpTimeoutMs))
+    {
+        result.error = socket.errorString();
+        result.timedOut = (socket.error() == QAbstractSocket::SocketTimeoutError);
+        return result;
+    }
+
+    QByteArray rawResponse;
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < kRtkHttpTimeoutMs)
+    {
+        if (socket.waitForReadyRead(200))
         {
-            reply->abort();
+            rawResponse += socket.readAll();
+            while (socket.bytesAvailable() > 0)
+            {
+                rawResponse += socket.readAll();
+            }
         }
-        loop.quit();
-    });
-    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
 
-    timeoutTimer.start(kRtkHttpTimeoutMs);
-    loop.exec();
-
-    if (timeoutTimer.isActive())
-    {
-        timeoutTimer.stop();
+        if (socket.state() == QAbstractSocket::UnconnectedState)
+        {
+            break;
+        }
     }
 
-    result.body = QString::fromUtf8(reply->readAll());
-    result.statusCode = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    rawResponse += socket.readAll();
+    socket.disconnectFromHost();
 
-    if (!result.timedOut && reply->error() != QNetworkReply::NoError)
+    if (rawResponse.isEmpty())
     {
-        result.error = reply->errorString();
+        result.error = QStringLiteral("No response from server");
+        return result;
     }
 
-    reply->deleteLater();
+    auto parseStatusCode = [](const QByteArray &statusLine) {
+        const QRegularExpression statusPattern(QStringLiteral("(^|\\s)(\\d{3})(\\s|$)"));
+        const QRegularExpressionMatch match = statusPattern.match(QString::fromLatin1(statusLine));
+        return match.hasMatch() ? match.captured(2).toInt() : 0;
+    };
+
+    const int headerEnd = rawResponse.indexOf("\r\n\r\n");
+    QByteArray headerBytes = rawResponse;
+    QByteArray bodyBytes;
+    if (headerEnd >= 0)
+    {
+        headerBytes = rawResponse.left(headerEnd);
+        bodyBytes = rawResponse.mid(headerEnd + 4);
+    }
+
+    const QList<QByteArray> headerLines = headerBytes.split('\n');
+    const QByteArray statusLine = headerLines.isEmpty() ? QByteArray() : headerLines.first().trimmed();
+    result.statusCode = parseStatusCode(statusLine);
+
+    if (headerEnd >= 0)
+    {
+        result.body = QString::fromLatin1(bodyBytes);
+    }
+    else if (statusLine.startsWith("STR;") || statusLine.startsWith("CAS;") || statusLine.startsWith("NET;"))
+    {
+        result.statusCode = 200;
+        result.body = QString::fromLatin1(rawResponse);
+    }
+    else
+    {
+        result.body = QString::fromLatin1(rawResponse);
+    }
+
     return result;
 }
 }
