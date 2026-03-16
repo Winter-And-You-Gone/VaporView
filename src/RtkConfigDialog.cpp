@@ -304,7 +304,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     config_file_path_ = QDir::homePath() + "/.config/VaporView/rtk_config.ini";
 
     rtk_status_timer_ = new QTimer(this);
-    rtk_status_timer_->setInterval(500);
+    rtk_status_timer_->setInterval(1000);
     connect(rtk_status_timer_, &QTimer::timeout, this, &RtkConfigDialog::onRtkStatusTimer);
 
     gga_poll_timer_ = new QTimer(this);
@@ -881,11 +881,18 @@ void RtkConfigDialog::pollRtkServiceStatus(bool forceLog)
         ? textFor("Streaming RTCM data", "正在转发 RTCM 数据")
         : stats.message;
 
-    if ((forceLog || message != last_rtk_status_message_) && !message.isEmpty())
+    const QString summaryLine = QString("%1 [%2] %3 B %4 bps %5")
+        .arg(QDateTime::currentDateTime().toString("yyyy/MM/dd hh:mm:ss"))
+        .arg(stats.streamStateMask.isEmpty() ? QStringLiteral("-----") : stats.streamStateMask)
+        .arg(QString::number(stats.inputBytes).rightJustified(10, QLatin1Char(' ')))
+        .arg(QString::number(stats.inputBps).rightJustified(7, QLatin1Char(' ')))
+        .arg(message);
+
+    if ((forceLog || is_running_) && !message.isEmpty())
     {
-        appendLog(textFor("RTK status: %1", "RTK 状态: %1").arg(message));
-        last_rtk_status_message_ = message;
+        appendRawLogLine(summaryLine);
     }
+    last_rtk_status_message_ = message;
 
     if (!stats.running && is_running_)
     {
@@ -1652,6 +1659,17 @@ void RtkConfigDialog::appendLog(const QString& message)
 
     QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
     log_text_edit_->append(QString("[%1] %2").arg(timestamp, message));
+
+    QTextCursor cursor = log_text_edit_->textCursor();
+    cursor.movePosition(QTextCursor::End);
+    log_text_edit_->setTextCursor(cursor);
+}
+
+void RtkConfigDialog::appendRawLogLine(const QString& line)
+{
+    if (!log_text_edit_ || line.isEmpty()) return;
+
+    log_text_edit_->append(line);
 
     QTextCursor cursor = log_text_edit_->textCursor();
     cursor.movePosition(QTextCursor::End);

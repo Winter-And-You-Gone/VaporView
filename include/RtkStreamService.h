@@ -3,6 +3,7 @@
 
 #include <QString>
 
+#include <array>
 #include <memory>
 
 struct RtkStreamConfig
@@ -34,6 +35,8 @@ struct RtkStreamStats
     int outputBytes = 0;
     int inputBps = 0;
     int outputBps = 0;
+    std::array<int, 5> streamStates = {};
+    QString streamStateMask;
     QString message;
 };
 

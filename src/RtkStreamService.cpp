@@ -196,10 +196,22 @@ RtkStreamStats RtkStreamService::stats() const
 
     strsvrstat(&impl_->server, stat.data(), logStat.data(), bytes.data(), bps.data(), message.data());
 
+    static constexpr std::array<char, 5> kStateChars = {'E', '-', 'W', 'C', 'C'};
+    QString mask;
+    mask.reserve(5);
+    for (int i = 0; i < 5; ++i)
+    {
+        const int code = i < static_cast<int>(stat.size()) ? stat[static_cast<std::size_t>(i)] : 0;
+        result.streamStates[static_cast<std::size_t>(i)] = code;
+        const int index = std::clamp(code + 1, 0, static_cast<int>(kStateChars.size() - 1));
+        mask.append(QChar(kStateChars[static_cast<std::size_t>(index)]));
+    }
+
     result.inputBytes = bytes[0];
     result.outputBytes = bytes[1];
     result.inputBps = bps[0];
     result.outputBps = bps[1];
+    result.streamStateMask = mask;
     result.message = trimRtklibMessage(message.data());
     return result;
 }

@@ -30,6 +30,7 @@ public:
     ~RtkConfigDialog() override;
 
     void appendLog(const QString& message);
+    void appendRawLogLine(const QString& line);
     bool isRunning() const;
     void setEnglish(bool english);
     void setFontScale(int percent);
