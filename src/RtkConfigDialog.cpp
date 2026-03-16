@@ -703,8 +703,17 @@ void RtkConfigDialog::applyScaledUiMetrics()
     applyButtonWidth(clear_log_btn_, 96);
 
     log_text_edit_->setMinimumWidth(scalePixels(200));
-    log_text_edit_->setMinimumHeight(scalePixels(220));
+    const int logTextHeight = scalePixels(240);
+    log_text_edit_->setFixedHeight(logTextHeight);
+    log_text_edit_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     log_text_edit_->document()->setDocumentMargin(scalePixels(10));
+    if (log_group_ && log_layout_)
+    {
+        const QMargins logMargins = log_layout_->contentsMargins();
+        const int logGroupHeight = logMargins.top() + logTextHeight + logMargins.bottom();
+        log_group_->setFixedHeight(logGroupHeight);
+        log_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    }
     gga_text_edit_->setMinimumWidth(scalePixels(200));
 
     setMinimumSize(
