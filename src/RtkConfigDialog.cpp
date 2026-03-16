@@ -1417,15 +1417,20 @@ void RtkConfigDialog::onFetchMountpointsClicked()
     bool ok = false;
     const QString currentMountpoint = mountpoint_edit_->text().trimmed();
     const int currentIndex = std::max(0, mountpoints.indexOf(currentMountpoint));
-    const QString selected = QInputDialog::getItem(
-        this,
-        textFor("Select Mountpoint", "选择挂载点"),
-        textFor("Available mountpoints:", "可用挂载点:"),
-        mountpoints,
-        currentIndex,
-        false,
-        &ok
-    );
+    QInputDialog mountpointDialog(this);
+    mountpointDialog.setWindowTitle(textFor("Select Mountpoint", "选择挂载点"));
+    mountpointDialog.setLabelText(textFor("Available mountpoints:", "可用挂载点:"));
+    mountpointDialog.setComboBoxItems(mountpoints);
+    mountpointDialog.setComboBoxEditable(false);
+    mountpointDialog.setTextValue(currentIndex >= 0 && currentIndex < mountpoints.size()
+                                      ? mountpoints.at(currentIndex)
+                                      : QString());
+    mountpointDialog.setMinimumWidth(scalePixels(420));
+
+    const QString selected = mountpointDialog.exec() == QDialog::Accepted
+        ? mountpointDialog.textValue().trimmed()
+        : QString();
+    ok = !selected.isEmpty();
 
     appendLog(textFor("Fetched %1 mountpoints.", "已获取 %1 个挂载点。").arg(mountpoints.size()));
 
