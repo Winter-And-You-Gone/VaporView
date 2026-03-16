@@ -376,7 +376,6 @@ void RtkConfigDialog::setupUi()
     password_label_ = new QLabel(this);
     config_layout_->addWidget(password_label_, row, 0);
     password_edit_ = new QLineEdit(this);
-    password_edit_->setEchoMode(QLineEdit::Password);
     config_layout_->addWidget(password_edit_, row, 1, 1, 3);
     row++;
 
