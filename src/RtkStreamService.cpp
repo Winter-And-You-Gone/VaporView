@@ -125,7 +125,7 @@ bool RtkStreamService::start(const RtkStreamConfig &config, QString *errorMessag
         10,
         0,
         30,
-        0,
+        1,
     };
 
     if (!strsvrstart(
