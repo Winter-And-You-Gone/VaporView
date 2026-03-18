@@ -210,6 +210,23 @@ class DataLogger:
                     data.get('temperature', 0)
                 ])
 
+    def log_lidar(self, data: Dict[str, Any]):
+        with self._lock:
+            file_path = self._get_csv_file("lidar")
+            file_exists = file_path.exists()
+
+            with open(file_path, 'a', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                if not file_exists:
+                    writer.writerow(['timestamp', 'distance_m', 'signal_strength', 'valid'])
+
+                writer.writerow([
+                    datetime.now().isoformat(),
+                    data.get('distance_m', 0),
+                    data.get('signal_strength', 0),
+                    data.get('valid', False),
+                ])
+
 
 if __name__ == "__main__":
     logger = FileLogger()

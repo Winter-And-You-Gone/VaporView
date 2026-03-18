@@ -189,7 +189,7 @@ bool DataCollector::startStreaming()
   freq_calc_start_ = std::chrono::steady_clock::now();
   last_emit_time_ = std::chrono::steady_clock::now();
   data_count_ = 0;
-  actual_rate_ = 0.0;
+  actual_rate_.store(0.0);
 
   running_.store(true);
   thread_ = std::thread(&DataCollector::run, this);
@@ -237,9 +237,14 @@ void DataCollector::setCancelCallback(CancelCallback callback)
 
 void DataCollector::log(const std::string& message)
 {
-  if (log_callback_)
+  LogCallback callback;
   {
-    log_callback_(message);
+    std::lock_guard<std::mutex> lock(mutex_);
+    callback = log_callback_;
+  }
+  if (callback)
+  {
+    callback(message);
   }
 }
 
@@ -262,21 +267,20 @@ void DataCollector::setSampleRate(int hz)
 {
   if (hz < 1) hz = 1;
   if (hz > 500) hz = 500;
-  std::lock_guard<std::mutex> lock(mutex_);
-  sample_rate_hz_ = hz;
+  sample_rate_hz_.store(hz);
 }
 
 int DataCollector::getSampleRate() const
 {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return sample_rate_hz_;
+  return sample_rate_hz_.load();
 }
 
 bool DataCollector::shouldEmitData()
 {
   auto now = std::chrono::steady_clock::now();
   auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(now - last_emit_time_).count();
-  int interval_us = 1000000 / sample_rate_hz_;
+  const int sample_rate = std::max(1, sample_rate_hz_.load());
+  int interval_us = 1000000 / sample_rate;
   return elapsed >= interval_us;
 }
 
@@ -287,8 +291,7 @@ void DataCollector::updateLastEmitTime()
 
 double DataCollector::getActualRate() const
 {
-  std::lock_guard<std::mutex> lock(mutex_);
-  return actual_rate_;
+  return actual_rate_.load();
 }
 
 void DataCollector::recordDataReceived()
@@ -299,7 +302,7 @@ void DataCollector::recordDataReceived()
   auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - freq_calc_start_).count();
   if (elapsed >= 1000)
   {
-    actual_rate_ = data_count_ * 1000.0 / elapsed;
+    actual_rate_.store(data_count_ * 1000.0 / elapsed);
     data_count_ = 0;
     freq_calc_start_ = now;
   }
@@ -448,42 +451,46 @@ void GnssCollector::run()
           std::string error;
           if (unicore_um982_driver::parsePVTSLN(line, pvt_data, &error))
           {
-            std::lock_guard<std::mutex> lock(mutex_);
-            latest_data_.latitude = pvt_data.latitude;
-            latest_data_.longitude = pvt_data.longitude;
-            latest_data_.altitude = pvt_data.altitude;
-            latest_data_.vel_north = pvt_data.velocity_north;
-            latest_data_.vel_east = pvt_data.velocity_east;
-            latest_data_.vel_down = pvt_data.velocity_up;
-            latest_data_.vel_ground = pvt_data.psrvel_ground;
-            latest_data_.heading = pvt_data.heading;
-            latest_data_.heading_pitch = pvt_data.heading_pitch;
-            latest_data_.heading_length = pvt_data.heading_length;
-            latest_data_.sigma_lat = pvt_data.sigma_latitude;
-            latest_data_.sigma_lon = pvt_data.sigma_longitude;
-            latest_data_.sigma_alt = pvt_data.sigma_altitude;
-            latest_data_.position_status = pvt_data.position_status;
-            latest_data_.num_satellites_used = pvt_data.num_satellites_used;
-            latest_data_.num_satellites_tracked = pvt_data.num_satellites_tracked;
-            latest_data_.gdop = pvt_data.gdop;
-            latest_data_.pdop = pvt_data.pdop;
-            latest_data_.hdop = pvt_data.hdop;
-            latest_data_.htdop = pvt_data.htdop;
-            latest_data_.tdop = pvt_data.tdop;
-            latest_data_.diff_age = pvt_data.bestpos_diff_age;
-            latest_data_.undulation = pvt_data.undulation;
-            latest_data_.elevation_cutoff = pvt_data.elevation_cutoff;
-            latest_data_.timestamp = std::chrono::steady_clock::now();
-            latest_data_.valid = true;
-            latest_data_.raw_sentence = line;
-            latest_data_.error_message.clear();
+            DataCallback callback;
+            {
+              std::lock_guard<std::mutex> lock(mutex_);
+              latest_data_.latitude = pvt_data.latitude;
+              latest_data_.longitude = pvt_data.longitude;
+              latest_data_.altitude = pvt_data.altitude;
+              latest_data_.vel_north = pvt_data.velocity_north;
+              latest_data_.vel_east = pvt_data.velocity_east;
+              latest_data_.vel_down = pvt_data.velocity_up;
+              latest_data_.vel_ground = pvt_data.psrvel_ground;
+              latest_data_.heading = pvt_data.heading;
+              latest_data_.heading_pitch = pvt_data.heading_pitch;
+              latest_data_.heading_length = pvt_data.heading_length;
+              latest_data_.sigma_lat = pvt_data.sigma_latitude;
+              latest_data_.sigma_lon = pvt_data.sigma_longitude;
+              latest_data_.sigma_alt = pvt_data.sigma_altitude;
+              latest_data_.position_status = pvt_data.position_status;
+              latest_data_.num_satellites_used = pvt_data.num_satellites_used;
+              latest_data_.num_satellites_tracked = pvt_data.num_satellites_tracked;
+              latest_data_.gdop = pvt_data.gdop;
+              latest_data_.pdop = pvt_data.pdop;
+              latest_data_.hdop = pvt_data.hdop;
+              latest_data_.htdop = pvt_data.htdop;
+              latest_data_.tdop = pvt_data.tdop;
+              latest_data_.diff_age = pvt_data.bestpos_diff_age;
+              latest_data_.undulation = pvt_data.undulation;
+              latest_data_.elevation_cutoff = pvt_data.elevation_cutoff;
+              latest_data_.timestamp = std::chrono::steady_clock::now();
+              latest_data_.valid = true;
+              latest_data_.raw_sentence = line;
+              latest_data_.error_message.clear();
+              callback = data_callback_;
+            }
 
             recordDataReceived();
 
-            if (data_callback_ && shouldEmitData())
+            if (callback && shouldEmitData())
             {
               updateLastEmitTime();
-              data_callback_();
+              callback();
             }
           }
         }
@@ -531,7 +538,7 @@ bool ImuCollector::setDeviceSampleRate(int hz)
   }
 
   log("IMU: Set sample rate to " + std::to_string(hz) + " Hz (period: " + std::to_string(period) + "s)");
-  sample_rate_hz_ = hz;
+  sample_rate_hz_.store(hz);
   return true;
 }
 
@@ -649,15 +656,19 @@ void ImuCollector::run()
 
           if (sample.valid)
           {
-            std::lock_guard<std::mutex> lock(mutex_);
-            latest_data_ = sample;
+            DataCallback callback;
+            {
+              std::lock_guard<std::mutex> lock(mutex_);
+              latest_data_ = sample;
+              callback = data_callback_;
+            }
 
             recordDataReceived();
 
-            if (data_callback_ && shouldEmitData())
+            if (callback && shouldEmitData())
             {
               updateLastEmitTime();
-              data_callback_();
+              callback();
             }
           }
         }
@@ -734,7 +745,7 @@ bool PtbCollector::setDeviceSampleRate(int hz)
   }
 
   log("PTB210: Set sample rate to " + std::to_string(hz) + " Hz (MPM: " + std::to_string(mpm) + ")");
-  sample_rate_hz_ = hz;
+  sample_rate_hz_.store(hz);
   return true;
 }
 
@@ -867,7 +878,7 @@ void PtbCollector::run()
     return true;
   };
 
-  auto processLine = [this](std::string line) {
+  auto processLine = [this](std::string line) -> bool {
     while (!line.empty() && (line.back() == '\r' || line.back() == '\n' || line.back() == ' '))
     {
       line.pop_back();
@@ -875,29 +886,35 @@ void PtbCollector::run()
 
     if (line.empty())
     {
-      return;
+      return false;
     }
 
     try
     {
       double pressure = std::stod(line);
-      std::lock_guard<std::mutex> lock(mutex_);
-      latest_data_.pressure_hpa = pressure;
-      latest_data_.valid = true;
-      latest_data_.timestamp = std::chrono::steady_clock::now();
-      latest_data_.error_message.clear();
+      DataCallback callback;
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        latest_data_.pressure_hpa = pressure;
+        latest_data_.valid = true;
+        latest_data_.timestamp = std::chrono::steady_clock::now();
+        latest_data_.error_message.clear();
+        callback = data_callback_;
+      }
 
       recordDataReceived();
 
-      if (data_callback_ && shouldEmitData())
+      if (callback && shouldEmitData())
       {
         updateLastEmitTime();
-        data_callback_();
+        callback();
       }
+      return true;
     }
     catch (const std::exception&)
     {
       // Ignore command echoes or control lines and wait for the next numeric sample.
+      return false;
     }
   };
 
@@ -928,12 +945,9 @@ void PtbCollector::run()
           buffer.erase(0, 1);
         }
 
-        const PtbData before = getLatestData();
-        processLine(line);
-        const PtbData after = getLatestData();
-        if (after.valid && (!before.valid || after.timestamp != before.timestamp))
+        if (processLine(line))
         {
-          last_data_time = after.timestamp;
+          last_data_time = std::chrono::steady_clock::now();
         }
       }
     }
@@ -1117,19 +1131,23 @@ void HmpCollector::run()
 
     if (parsed == HmpParseResult::Data)
     {
-      std::lock_guard<std::mutex> lock(mutex_);
-      latest_data_.humidity = humidity;
-      latest_data_.temperature = temperature;
-      latest_data_.valid = true;
-      latest_data_.timestamp = std::chrono::steady_clock::now();
-      latest_data_.error_message.clear();
+      DataCallback callback;
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        latest_data_.humidity = humidity;
+        latest_data_.temperature = temperature;
+        latest_data_.valid = true;
+        latest_data_.timestamp = std::chrono::steady_clock::now();
+        latest_data_.error_message.clear();
+        callback = data_callback_;
+      }
 
       recordDataReceived();
 
-      if (data_callback_ && shouldEmitData())
+      if (callback && shouldEmitData())
       {
         updateLastEmitTime();
-        data_callback_();
+        callback();
       }
     }
     else if (parsed == HmpParseResult::Exception)
@@ -1190,7 +1208,7 @@ bool LidarCollector::setDeviceSampleRate(int hz)
     return false;
   }
 
-  sample_rate_hz_ = hz;
+  sample_rate_hz_.store(hz);
   log("TF03: Set frame rate to " + std::to_string(hz) + " Hz");
   return true;
 }
@@ -1316,15 +1334,19 @@ void LidarCollector::run()
         LidarData sample;
         if (parseFrame(&(*header), 9, sample))
         {
-          std::lock_guard<std::mutex> lock(mutex_);
-          latest_data_ = sample;
+          DataCallback callback;
+          {
+            std::lock_guard<std::mutex> lock(mutex_);
+            latest_data_ = sample;
+            callback = data_callback_;
+          }
 
           recordDataReceived();
 
-          if (data_callback_ && shouldEmitData())
+          if (callback && shouldEmitData())
           {
             updateLastEmitTime();
-            data_callback_();
+            callback();
           }
           buffer.erase(buffer.begin(), header + 9);
           continue;

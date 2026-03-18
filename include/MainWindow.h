@@ -23,6 +23,7 @@
 #include <QScrollArea>
 #include <atomic>
 #include <memory>
+#include <mutex>
 #include <thread>
 
 class RtkConfigDialog;
@@ -251,6 +252,15 @@ private slots:
     void onCancelConnectClicked();
 
 private:
+    struct CollectorSnapshot
+    {
+        std::shared_ptr<VaporView::GnssCollector> gnss;
+        std::shared_ptr<VaporView::ImuCollector> imu;
+        std::shared_ptr<VaporView::PtbCollector> ptb;
+        std::shared_ptr<VaporView::HmpCollector> hmp;
+        std::shared_ptr<VaporView::LidarCollector> lidar;
+    };
+
     void setupMenuBar();
     void setupToolBar();
     void setupStatusBar();
@@ -276,6 +286,8 @@ private:
     void applyAllSampleRates();
     int parseRate(const QString& text);
     void stopAllCollectors();
+    CollectorSnapshot snapshotCollectors() const;
+    void setCollectors(CollectorSnapshot collectors);
     bool shouldAbortConnectionAttempt();
     void finishConnectionAttempt(bool connected);
 
@@ -306,7 +318,8 @@ private:
     QAction *cancel_connect_btn_;
     QAction *disconnect_btn_;
     QAction *refresh_ports_btn_;
-    QAction *fullscreen_btn_;
+    QAction *fullscreen_menu_action_;
+    QAction *fullscreen_toolbar_action_;
     QAction *lang_action_;
     QAction *clear_log_action_;
     QAction *recording_directory_action_;
@@ -347,11 +360,12 @@ private:
     QComboBox *hmp_rate_combo_;
     QComboBox *lidar_rate_combo_;
 
-    std::unique_ptr<VaporView::GnssCollector> gnss_collector_;
-    std::unique_ptr<VaporView::ImuCollector> imu_collector_;
-    std::unique_ptr<VaporView::PtbCollector> ptb_collector_;
-    std::unique_ptr<VaporView::HmpCollector> hmp_collector_;
-    std::unique_ptr<VaporView::LidarCollector> lidar_collector_;
+    mutable std::mutex collector_mutex_;
+    std::shared_ptr<VaporView::GnssCollector> gnss_collector_;
+    std::shared_ptr<VaporView::ImuCollector> imu_collector_;
+    std::shared_ptr<VaporView::PtbCollector> ptb_collector_;
+    std::shared_ptr<VaporView::HmpCollector> hmp_collector_;
+    std::shared_ptr<VaporView::LidarCollector> lidar_collector_;
 
     QTimer *refresh_timer_;
 

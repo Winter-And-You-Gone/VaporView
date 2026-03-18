@@ -271,21 +271,13 @@ GUI 使用固定的自动会话记录策略：
 
 ## Python 绑定状态
 
-CMake 中保留了 `BUILD_PYTHON_BINDINGS` 选项，目的是在未来通过 `pybind11` 把部分 C++ 能力导出给 Python 调用。
+CMake 中仍然保留了 `BUILD_PYTHON_BINDINGS` 选项，目的是未来通过 `pybind11` 把部分 C++ 能力导出给 Python 调用。
 
-如果这条构建链完整可用，理论上可以生成一个类似 `VaporView_bindings` 的 Python 扩展模块，让 Python 代码直接调用串口、解析器或采集相关的 C++ 功能。
-
-当前之所以标记为“未完成”，是因为：
-
-- CMake 中已经写了 `BUILD_PYTHON_BINDINGS` 选项
-- 也已经写了 `pybind11_add_module(...)` 这条构建路径
-- 但构建入口文件 `python/bindings.cpp` 目前并不存在
-
-因此当前实际状态是：
+当前仓库没有 `python/bindings.cpp` 这个真实入口文件，因此这条构建链现在被显式标记为“不可用”：
 
 - 默认构建桌面程序时，这一项不会影响正常使用
-- 如果手动打开 `BUILD_PYTHON_BINDINGS=ON`，构建大概率会因为缺少 `python/bindings.cpp` 而失败
-- 这部分不影响当前 GUI 功能，只表示“Python 调用 C++ 核心能力”这条扩展路线还没有正式做完
+- 如果手动打开 `BUILD_PYTHON_BINDINGS=ON`，CMake 会在配置阶段直接失败，并明确提示缺少 `python/bindings.cpp`
+- 这部分不影响当前 GUI 功能，只表示“Python 调用 C++ 核心能力”这条扩展路线尚未实现
 
 ## 默认串口参数
 
@@ -307,7 +299,7 @@ CMake 中保留了 `BUILD_PYTHON_BINDINGS` 选项，目的是在未来通过 `py
 
 ## 已知限制
 
-- `BUILD_PYTHON_BINDINGS` 当前不完整
+- `BUILD_PYTHON_BINDINGS` 当前显式禁用；若开启会在配置阶段直接报错提示缺少 `python/bindings.cpp`
 - Python 辅助模块尚未接入 GUI 主流程
 - RTK 对话框依赖 Qt Network 模块
 

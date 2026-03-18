@@ -85,6 +85,12 @@ class DataExporter:
                 ts = hmp.get('timestamp', '')
                 writer.writerow(['HMP3', 'Humidity', hmp.get('humidity', 0), '%RH', hmp.get('valid', False), ts])
                 writer.writerow(['HMP3', 'Temperature', hmp.get('temperature', 0), '°C', hmp.get('valid', False), ts])
+
+            lidar = data.get('lidar', {})
+            if lidar:
+                ts = lidar.get('timestamp', '')
+                writer.writerow(['TF03', 'Distance', lidar.get('distance_m', 0), 'm', lidar.get('valid', False), ts])
+                writer.writerow(['TF03', 'Signal Strength', lidar.get('signal_strength', 0), '', lidar.get('valid', False), ts])
                 
         return str(file_path)
         
@@ -99,7 +105,8 @@ class DataExporter:
             'gnss': data.get('gnss', {}),
             'imu': data.get('imu', {}),
             'ptb': data.get('ptb', {}),
-            'hmp': data.get('hmp', {})
+            'hmp': data.get('hmp', {}),
+            'lidar': data.get('lidar', {}),
         }
         
         with open(file_path, 'w', encoding='utf-8') as f:
@@ -239,6 +246,12 @@ if __name__ == "__main__":
         'hmp': {
             'humidity': 65.0,
             'temperature': 22.5,
+            'valid': True,
+            'timestamp': datetime.now().isoformat()
+        },
+        'lidar': {
+            'distance_m': 12.34,
+            'signal_strength': 128,
             'valid': True,
             'timestamp': datetime.now().isoformat()
         }

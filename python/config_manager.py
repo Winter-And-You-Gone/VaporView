@@ -26,20 +26,33 @@ class AppConfig:
     imu: SerialPortConfig = None
     ptb: SerialPortConfig = None
     hmp: SerialPortConfig = None
+    lidar: SerialPortConfig = None
     refresh_interval_ms: int = 100
     auto_connect: bool = False
     log_file: str = ""
     export_format: str = "csv"
 
     def __post_init__(self):
+        is_windows = os.name == "nt"
         if self.gnss is None:
-            self.gnss = SerialPortConfig(port="/dev/ttyCOM3", baudrate=115200)
+            self.gnss = SerialPortConfig(port="COM3" if is_windows else "/dev/ttyCOM3", baudrate=115200)
         if self.imu is None:
-            self.imu = SerialPortConfig(port="/dev/ttyIMU", baudrate=115200)
+            self.imu = SerialPortConfig(port="COM4" if is_windows else "/dev/ttyIMU", baudrate=115200)
         if self.ptb is None:
-            self.ptb = SerialPortConfig(port="/dev/ttyBARO", baudrate=9600, parity="E", databits=7)
+            self.ptb = SerialPortConfig(
+                port="COM5" if is_windows else "/dev/ttyBARO",
+                baudrate=9600,
+                parity="E",
+                databits=7,
+            )
         if self.hmp is None:
-            self.hmp = SerialPortConfig(port="/dev/ttyHMP", baudrate=19200, stopbits=2)
+            self.hmp = SerialPortConfig(
+                port="COM6" if is_windows else "/dev/ttyHMP",
+                baudrate=19200,
+                stopbits=2,
+            )
+        if self.lidar is None:
+            self.lidar = SerialPortConfig(port="COM7" if is_windows else "/dev/ttyTF03", baudrate=115200)
 
 
 class ConfigManager:
@@ -73,6 +86,7 @@ class ConfigManager:
                 imu=SerialPortConfig(**data.get('imu', {})),
                 ptb=SerialPortConfig(**data.get('ptb', {})),
                 hmp=SerialPortConfig(**data.get('hmp', {})),
+                lidar=SerialPortConfig(**data.get('lidar', {})),
                 refresh_interval_ms=data.get('refresh_interval_ms', 100),
                 auto_connect=data.get('auto_connect', False),
                 log_file=data.get('log_file', ''),
@@ -91,6 +105,7 @@ class ConfigManager:
                 'imu': asdict(self.config.imu),
                 'ptb': asdict(self.config.ptb),
                 'hmp': asdict(self.config.hmp),
+                'lidar': asdict(self.config.lidar),
                 'refresh_interval_ms': self.config.refresh_interval_ms,
                 'auto_connect': self.config.auto_connect,
                 'log_file': self.config.log_file,
@@ -111,7 +126,8 @@ class ConfigManager:
             'gnss': self.config.gnss,
             'imu': self.config.imu,
             'ptb': self.config.ptb,
-            'hmp': self.config.hmp
+            'hmp': self.config.hmp,
+            'lidar': self.config.lidar,
         }
         
         if device in config_map:
@@ -126,7 +142,8 @@ class ConfigManager:
             'gnss': self.config.gnss,
             'imu': self.config.imu,
             'ptb': self.config.ptb,
-            'hmp': self.config.hmp
+            'hmp': self.config.hmp,
+            'lidar': self.config.lidar,
         }
         return config_map.get(device)
 
@@ -136,4 +153,5 @@ if __name__ == "__main__":
     print(f"Config path: {manager.config_path}")
     print(f"GNSS config: {manager.config.gnss}")
     print(f"IMU config: {manager.config.imu}")
+    print(f"Lidar config: {manager.config.lidar}")
 

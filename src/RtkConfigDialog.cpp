@@ -5,10 +5,10 @@
 #include <QFormLayout>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QPointer>
 #include <QSettings>
 #include <QDir>
 #include <QDirIterator>
-#include <QCoreApplication>
 #include <QDateTime>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -20,7 +20,6 @@
 #include <QSerialPortInfo>
 #include <QSignalBlocker>
 #include <QTcpServer>
-#include <QThread>
 #include <QTcpSocket>
 #include <QTextBlock>
 #include <QTextCursor>
@@ -44,6 +43,25 @@ struct HttpResponse
     QString body;
     QString error;
     bool timedOut = false;
+};
+
+struct MountpointFetchResult
+{
+    HttpResponse response;
+    QStringList mountpoints;
+};
+
+struct NoSignalTestResult
+{
+    bool cancelled = false;
+    bool gotResponse = false;
+    bool linkReady = false;
+    QString startError;
+    QString runtimeError;
+    QString finalMessage;
+    qint64 inputBytes = 0;
+    qint64 outputBytes = 0;
+    qint64 receivedRtcmBytes = 0;
 };
 
 QComboBox *createTimingComboBox(QWidget *parent, const QString &defaultValue)
@@ -242,6 +260,29 @@ HttpResponse performRtkHttpGet(
 
     return result;
 }
+
+QStringList parseMountpoints(const QString &responseBody)
+{
+    QStringList mountpoints;
+    const QStringList lines = responseBody.split(QRegularExpression("[\r\n]+"), Qt::SkipEmptyParts);
+    for (const QString &line : lines)
+    {
+        if (!line.startsWith(QStringLiteral("STR;")))
+        {
+            continue;
+        }
+
+        const QStringList parts = line.split(';');
+        if (parts.size() > 1 && !parts.at(1).trimmed().isEmpty())
+        {
+            mountpoints.append(parts.at(1).trimmed());
+        }
+    }
+
+    mountpoints.removeDuplicates();
+    mountpoints.sort();
+    return mountpoints;
+}
 }
 
 RtkConfigDialog::RtkConfigDialog(QWidget *parent)
@@ -334,6 +375,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
 
 RtkConfigDialog::~RtkConfigDialog()
 {
+    shutdown_requested_.store(true);
     if (rtk_status_timer_ && rtk_status_timer_->isActive())
     {
         rtk_status_timer_->stop();
@@ -343,7 +385,25 @@ RtkConfigDialog::~RtkConfigDialog()
         rtk_service_->stop();
     }
     stopGgaMonitor();
+    joinBackgroundTasks();
     saveSettings();
+}
+
+void RtkConfigDialog::joinBackgroundTasks()
+{
+    if (fetch_mountpoints_thread_.joinable())
+    {
+        fetch_mountpoints_thread_.join();
+    }
+    if (test_thread_.joinable())
+    {
+        test_thread_.join();
+    }
+}
+
+bool RtkConfigDialog::isBackgroundTaskRunning() const
+{
+    return fetch_mountpoints_in_progress_.load() || test_in_progress_.load();
 }
 
 void RtkConfigDialog::setupUi()
@@ -896,11 +956,25 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config, QString *des
 
 void RtkConfigDialog::updateButtonStates()
 {
-    start_btn_->setEnabled(!is_running_);
-    stop_btn_->setEnabled(is_running_);
-    test_btn_->setEnabled(!is_running_);
+    const bool busy = isBackgroundTaskRunning();
+    start_btn_->setEnabled(!is_running_ && !busy);
+    stop_btn_->setEnabled(is_running_ && !busy);
+    test_btn_->setEnabled(!is_running_ && !busy);
+    fetch_mountpoints_btn_->setEnabled(!busy);
+    refresh_ports_btn_->setEnabled(!busy);
+    save_config_btn_->setEnabled(!busy);
+    load_config_btn_->setEnabled(!busy);
+    gga_toggle_btn_->setEnabled(!busy);
 
-    if (is_running_)
+    if (busy)
+    {
+        const QString busyText = fetch_mountpoints_in_progress_.load()
+            ? textFor("Status: Fetching mountpoints", "状态: 正在获取挂载点")
+            : textFor("Status: Running no-signal RTK test", "状态: 正在执行无信号 RTK 测试");
+        status_label_->setText(busyText);
+        status_label_->setStyleSheet("QLabel { color: #ef6c00; font-weight: bold; }");
+    }
+    else if (is_running_)
     {
         status_label_->setText(textFor("Status: Running", "状态: 运行中"));
         status_label_->setStyleSheet("QLabel { color: #43a047; font-weight: bold; }");
@@ -1360,6 +1434,11 @@ void RtkConfigDialog::onRefreshPortsClicked()
 
 void RtkConfigDialog::onFetchMountpointsClicked()
 {
+    if (isBackgroundTaskRunning())
+    {
+        return;
+    }
+
     const QString server = server_edit_->text().trimmed();
     const QString port = port_edit_->text().trimmed();
     const QString username = username_edit_->text().trimmed();
@@ -1372,91 +1451,111 @@ void RtkConfigDialog::onFetchMountpointsClicked()
     }
 
     appendLog(textFor("Fetching mountpoint list from %1:%2...", "正在从 %1:%2 获取挂载点列表...").arg(server, port));
-
-    const HttpResponse response = performRtkHttpGet(
-        this,
-        buildRtkUrl(server, port),
-        username,
-        password,
-        QStringLiteral("text/plain, */*"));
-
-    if (response.timedOut || (!response.error.isEmpty() && response.body.trimmed().isEmpty()))
+    if (fetch_mountpoints_thread_.joinable())
     {
-        const QString errorText = response.timedOut
-            ? textFor("Request timed out", "请求超时")
-            : response.error;
-        appendLog(textFor("Failed to fetch mountpoint list: %1", "获取挂载点列表失败: %1").arg(errorText));
-        QMessageBox::warning(this, textFor("Failed", "失败"), textFor("Failed to fetch mountpoint list: %1", "获取挂载点列表失败: %1").arg(errorText));
-        return;
+        fetch_mountpoints_thread_.join();
     }
 
-    QStringList mountpoints;
-    const QStringList lines = response.body.split(QRegularExpression("[\r\n]+"), Qt::SkipEmptyParts);
-    for (const QString &line : lines)
-    {
-        if (!line.startsWith("STR;"))
+    fetch_mountpoints_in_progress_.store(true);
+    updateButtonStates();
+
+    QPointer<RtkConfigDialog> self(this);
+    fetch_mountpoints_thread_ = std::thread([self, server, port, username, password]() {
+        MountpointFetchResult result;
+        result.response = performRtkHttpGet(
+            nullptr,
+            buildRtkUrl(server, port),
+            username,
+            password,
+            QStringLiteral("text/plain, */*"));
+
+        if (!result.response.timedOut &&
+            (result.response.error.isEmpty() || !result.response.body.trimmed().isEmpty()))
         {
-            continue;
+            result.mountpoints = parseMountpoints(result.response.body);
         }
 
-        const QStringList parts = line.split(';');
-        if (parts.size() > 1 && !parts.at(1).trimmed().isEmpty())
+        if (!self)
         {
-            mountpoints.append(parts.at(1).trimmed());
+            return;
         }
-    }
 
-    mountpoints.removeDuplicates();
-    mountpoints.sort();
+        QObject *receiver = self.data();
+        QMetaObject::invokeMethod(receiver, [self, result = std::move(result)]() mutable {
+            if (!self)
+            {
+                return;
+            }
 
-    if (mountpoints.isEmpty())
-    {
-        appendLog(textFor("No mountpoints found in sourcetable response.", "返回的源表中未找到挂载点。"));
-        QMessageBox::information(this, textFor("No Data", "无数据"), textFor("No mountpoints were found for this server.", "该服务器未返回可用挂载点。"));
-        return;
-    }
+            self->fetch_mountpoints_in_progress_.store(false);
+            self->updateButtonStates();
 
-    const QString currentMountpoint = mountpoint_edit_->text().trimmed();
-    const int currentIndex = std::max(0, mountpoints.indexOf(currentMountpoint));
-    QDialog mountpointDialog(this);
-    mountpointDialog.setWindowTitle(textFor("Select Mountpoint", "选择挂载点"));
-    mountpointDialog.setModal(true);
-    mountpointDialog.setMinimumWidth(scalePixels(520));
+            const HttpResponse &response = result.response;
+            if (response.timedOut || (!response.error.isEmpty() && response.body.trimmed().isEmpty()))
+            {
+                const QString errorText = response.timedOut
+                    ? self->textFor("Request timed out", "请求超时")
+                    : response.error;
+                self->appendLog(self->textFor("Failed to fetch mountpoint list: %1", "获取挂载点列表失败: %1").arg(errorText));
+                QMessageBox::warning(
+                    self,
+                    self->textFor("Failed", "失败"),
+                    self->textFor("Failed to fetch mountpoint list: %1", "获取挂载点列表失败: %1").arg(errorText));
+                return;
+            }
 
-    auto *dialogLayout = new QVBoxLayout(&mountpointDialog);
-    dialogLayout->setContentsMargins(scalePixels(16), scalePixels(14), scalePixels(16), scalePixels(14));
-    dialogLayout->setSpacing(scalePixels(10));
+            if (result.mountpoints.isEmpty())
+            {
+                self->appendLog(self->textFor("No mountpoints found in sourcetable response.", "返回的源表中未找到挂载点。"));
+                QMessageBox::information(
+                    self,
+                    self->textFor("No Data", "无数据"),
+                    self->textFor("No mountpoints were found for this server.", "该服务器未返回可用挂载点。"));
+                return;
+            }
 
-    auto *dialogLabel = new QLabel(textFor("Available mountpoints:", "可用挂载点:"), &mountpointDialog);
-    dialogLayout->addWidget(dialogLabel);
+            const QString currentMountpoint = self->mountpoint_edit_->text().trimmed();
+            const int currentIndex = std::max(0, result.mountpoints.indexOf(currentMountpoint));
+            QDialog mountpointDialog(self);
+            mountpointDialog.setWindowTitle(self->textFor("Select Mountpoint", "选择挂载点"));
+            mountpointDialog.setModal(true);
+            mountpointDialog.setMinimumWidth(self->scalePixels(520));
 
-    auto *mountpointCombo = new QComboBox(&mountpointDialog);
-    mountpointCombo->addItems(mountpoints);
-    mountpointCombo->setEditable(false);
-    mountpointCombo->setMinimumWidth(scalePixels(480));
-    if (currentIndex >= 0 && currentIndex < mountpoints.size())
-    {
-        mountpointCombo->setCurrentIndex(currentIndex);
-    }
-    dialogLayout->addWidget(mountpointCombo);
+            auto *dialogLayout = new QVBoxLayout(&mountpointDialog);
+            dialogLayout->setContentsMargins(self->scalePixels(16), self->scalePixels(14), self->scalePixels(16), self->scalePixels(14));
+            dialogLayout->setSpacing(self->scalePixels(10));
 
-    auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &mountpointDialog);
-    dialogLayout->addWidget(buttonBox);
-    connect(buttonBox, &QDialogButtonBox::accepted, &mountpointDialog, &QDialog::accept);
-    connect(buttonBox, &QDialogButtonBox::rejected, &mountpointDialog, &QDialog::reject);
+            auto *dialogLabel = new QLabel(self->textFor("Available mountpoints:", "可用挂载点:"), &mountpointDialog);
+            dialogLayout->addWidget(dialogLabel);
 
-    const QString selected = mountpointDialog.exec() == QDialog::Accepted
-        ? mountpointCombo->currentText().trimmed()
-        : QString();
-    const bool ok = !selected.isEmpty();
+            auto *mountpointCombo = new QComboBox(&mountpointDialog);
+            mountpointCombo->addItems(result.mountpoints);
+            mountpointCombo->setEditable(false);
+            mountpointCombo->setMinimumWidth(self->scalePixels(480));
+            if (currentIndex >= 0 && currentIndex < result.mountpoints.size())
+            {
+                mountpointCombo->setCurrentIndex(currentIndex);
+            }
+            dialogLayout->addWidget(mountpointCombo);
 
-    appendLog(textFor("Fetched %1 mountpoints.", "已获取 %1 个挂载点。").arg(mountpoints.size()));
+            auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &mountpointDialog);
+            dialogLayout->addWidget(buttonBox);
+            QObject::connect(buttonBox, &QDialogButtonBox::accepted, &mountpointDialog, &QDialog::accept);
+            QObject::connect(buttonBox, &QDialogButtonBox::rejected, &mountpointDialog, &QDialog::reject);
 
-    if (ok && !selected.isEmpty())
-    {
-        mountpoint_edit_->setText(selected);
-        appendLog(textFor("Selected mountpoint: %1", "已选择挂载点: %1").arg(selected));
-    }
+            const QString selected = mountpointDialog.exec() == QDialog::Accepted
+                ? mountpointCombo->currentText().trimmed()
+                : QString();
+
+            self->appendLog(self->textFor("Fetched %1 mountpoints.", "已获取 %1 个挂载点。").arg(result.mountpoints.size()));
+
+            if (!selected.isEmpty())
+            {
+                self->mountpoint_edit_->setText(selected);
+                self->appendLog(self->textFor("Selected mountpoint: %1", "已选择挂载点: %1").arg(selected));
+            }
+        }, Qt::QueuedConnection);
+    });
 }
 
 void RtkConfigDialog::onStartClicked()
@@ -1511,6 +1610,11 @@ void RtkConfigDialog::onStopClicked()
 
 void RtkConfigDialog::onTestClicked()
 {
+    if (isBackgroundTaskRunning())
+    {
+        return;
+    }
+
     if (is_running_)
     {
         QMessageBox::information(this, textFor("Busy", "请先停止"),
@@ -1529,137 +1633,230 @@ void RtkConfigDialog::onTestClicked()
     appendLog(textFor("Starting no-signal RTK test...", "正在启动无信号 RTK 测试..."));
     appendLog(description);
 
-    QTcpServer mockSerialServer;
-    if (!mockSerialServer.listen(QHostAddress::LocalHost))
+    if (test_thread_.joinable())
     {
-        const QString errorText = mockSerialServer.errorString();
-        appendLog(textFor("Failed to start mock serial server: %1", "启动模拟串口服务器失败: %1").arg(errorText));
-        QMessageBox::warning(this, textFor("Failed", "失败"),
-            textFor("Failed to start mock serial server: %1", "启动模拟串口服务器失败: %1").arg(errorText));
-        return;
+        test_thread_.join();
     }
 
-    config.outputMode = RtkStreamConfig::OutputMode::TcpClient;
-    config.outputPathOverride = QStringLiteral("127.0.0.1:%1").arg(mockSerialServer.serverPort());
-    config.relayBack = 1;
-    appendLog(textFor("Using loopback mock serial on 127.0.0.1:%1", "正在使用 127.0.0.1:%1 的 loopback 模拟串口")
-        .arg(mockSerialServer.serverPort()));
+    test_in_progress_.store(true);
+    updateButtonStates();
 
-    std::unique_ptr<RtkStreamService> testService = std::make_unique<RtkStreamService>();
-    QString errorMessage;
-    if (!testService->start(config, &errorMessage))
-    {
-        appendLog(textFor("No-signal RTK test failed to start: %1", "无信号 RTK 测试启动失败: %1")
-            .arg(errorMessage.isEmpty() ? textFor("Unknown error", "未知错误") : errorMessage));
-        QMessageBox::warning(this, textFor("Failed", "失败"),
-            textFor("Failed to start no-signal RTK test: %1", "无信号 RTK 测试启动失败: %1")
-                .arg(errorMessage.isEmpty() ? textFor("Unknown error", "未知错误") : errorMessage));
-        return;
-    }
-
-    QElapsedTimer timer;
-    timer.start();
-    bool gotResponse = false;
-    bool linkReady = false;
-    RtkStreamStats finalStats;
-    qint64 lastInjectMs = -1000;
-    qint64 lastStatusLogMs = -1000;
-    std::unique_ptr<QTcpSocket> mockSerialPeer;
-    qint64 receivedRtcmBytes = 0;
-    int rtcmResponseBursts = 0;
-    bool loggedMockGgaTemplate = false;
-    while (timer.elapsed() < 15000)
-    {
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-        QThread::msleep(200);
-        finalStats = testService->stats();
-
-        if (!mockSerialPeer && mockSerialServer.hasPendingConnections())
-        {
-            mockSerialPeer.reset(mockSerialServer.nextPendingConnection());
-            appendLog(textFor("Mock serial loopback connected.", "模拟串口 loopback 已连接。"));
-        }
-
-        if (timer.elapsed() - lastStatusLogMs >= 1000)
-        {
-            appendRawLogLine(formatRtkStatusLine(
-                finalStats,
-                textFor("Running no-signal RTK test", "正在执行无信号 RTK 测试")));
-            lastStatusLogMs = timer.elapsed();
-        }
-
-        const QString messageLower = finalStats.message.toLower();
-        const bool stillConnecting =
-            messageLower.contains("connecting") || messageLower.contains("disconnected");
-        if (!linkReady && mockSerialPeer && mockSerialPeer->state() == QAbstractSocket::ConnectedState && !stillConnecting)
-        {
-            linkReady = true;
-            const QString mockGga = buildMockGgaSentence();
-            appendLog(textFor("Injecting GGA at 1 Hz: %1", "已按 1Hz 频率注入 GGA 数据: %1").arg(mockGga));
-            loggedMockGgaTemplate = true;
-        }
-
-        if (mockSerialPeer)
-        {
-            const QByteArray rtcmData = mockSerialPeer->readAll();
-            if (!rtcmData.isEmpty())
+    QPointer<RtkConfigDialog> self(this);
+    test_thread_ = std::thread([self, config]() mutable {
+        auto queueLog = [self](const QString &message) {
+            if (!self)
             {
-                receivedRtcmBytes += rtcmData.size();
-                ++rtcmResponseBursts;
+                return;
+            }
+            QObject *receiver = self.data();
+            QMetaObject::invokeMethod(receiver, [self, message]() {
+                if (!self)
+                {
+                    return;
+                }
+                self->appendLog(message);
+            }, Qt::QueuedConnection);
+        };
+
+        auto queueRawLog = [self](const QString &message) {
+            if (!self)
+            {
+                return;
+            }
+            QObject *receiver = self.data();
+            QMetaObject::invokeMethod(receiver, [self, message]() {
+                if (!self)
+                {
+                    return;
+                }
+                self->appendRawLogLine(message);
+            }, Qt::QueuedConnection);
+        };
+
+        NoSignalTestResult result;
+        QTcpServer mockSerialServer;
+        if (!mockSerialServer.listen(QHostAddress::LocalHost))
+        {
+            result.startError = mockSerialServer.errorString();
+        }
+        else
+        {
+            config.outputMode = RtkStreamConfig::OutputMode::TcpClient;
+            config.outputPathOverride = QStringLiteral("127.0.0.1:%1").arg(mockSerialServer.serverPort());
+            config.relayBack = 1;
+            queueLog(self->textFor("Using loopback mock serial on 127.0.0.1:%1", "正在使用 127.0.0.1:%1 的 loopback 模拟串口")
+                .arg(mockSerialServer.serverPort()));
+
+            std::unique_ptr<RtkStreamService> testService = std::make_unique<RtkStreamService>();
+            QString errorMessage;
+            if (!testService->start(config, &errorMessage))
+            {
+                result.startError = errorMessage.isEmpty() ? self->textFor("Unknown error", "未知错误") : errorMessage;
+            }
+            else
+            {
+                QElapsedTimer timer;
+                timer.start();
+                RtkStreamStats finalStats;
+                qint64 lastInjectMs = -1000;
+                qint64 lastStatusLogMs = -1000;
+                int rtcmResponseBursts = 0;
+                bool loggedMockGgaTemplate = false;
+                std::unique_ptr<QTcpSocket> mockSerialPeer;
+
+                while (!self->shutdown_requested_.load() && timer.elapsed() < 15000)
+                {
+                    finalStats = testService->stats();
+
+                    if (!mockSerialPeer &&
+                        (mockSerialServer.hasPendingConnections() || mockSerialServer.waitForNewConnection(100)))
+                    {
+                        mockSerialPeer.reset(mockSerialServer.nextPendingConnection());
+                        if (mockSerialPeer)
+                        {
+                            queueLog(self->textFor("Mock serial loopback connected.", "模拟串口 loopback 已连接。"));
+                        }
+                    }
+
+                    if (timer.elapsed() - lastStatusLogMs >= 1000)
+                    {
+                        queueRawLog(formatRtkStatusLine(
+                            finalStats,
+                            self->textFor("Running no-signal RTK test", "正在执行无信号 RTK 测试")));
+                        lastStatusLogMs = timer.elapsed();
+                    }
+
+                    const QString messageLower = finalStats.message.toLower();
+                    const bool stillConnecting =
+                        messageLower.contains(QStringLiteral("connecting")) ||
+                        messageLower.contains(QStringLiteral("disconnected"));
+                    if (!result.linkReady && mockSerialPeer &&
+                        mockSerialPeer->state() == QAbstractSocket::ConnectedState && !stillConnecting)
+                    {
+                        result.linkReady = true;
+                        const QString mockGga = buildMockGgaSentence();
+                        queueLog(self->textFor("Injecting GGA at 1 Hz: %1", "已按 1Hz 频率注入 GGA 数据: %1").arg(mockGga));
+                        loggedMockGgaTemplate = true;
+                    }
+
+                    if (mockSerialPeer)
+                    {
+                        if (mockSerialPeer->waitForReadyRead(20) || mockSerialPeer->bytesAvailable() > 0)
+                        {
+                            QByteArray rtcmData = mockSerialPeer->readAll();
+                            while (mockSerialPeer->bytesAvailable() > 0)
+                            {
+                                rtcmData += mockSerialPeer->readAll();
+                            }
+                            if (!rtcmData.isEmpty())
+                            {
+                                result.receivedRtcmBytes += rtcmData.size();
+                                ++rtcmResponseBursts;
+                            }
+                        }
+                    }
+
+                    if (result.linkReady && mockSerialPeer && timer.elapsed() - lastInjectMs >= 1000)
+                    {
+                        const QString mockGga = buildMockGgaSentence();
+                        if (!loggedMockGgaTemplate)
+                        {
+                            queueLog(self->textFor("Injecting GGA at 1 Hz: %1", "已按 1Hz 频率注入 GGA 数据: %1").arg(mockGga));
+                            loggedMockGgaTemplate = true;
+                        }
+                        QByteArray payload = mockGga.toLatin1();
+                        payload += "\r\n";
+                        const qint64 written = mockSerialPeer->write(payload);
+                        if (written != payload.size() || !mockSerialPeer->waitForBytesWritten(500))
+                        {
+                            result.runtimeError = mockSerialPeer->errorString().isEmpty()
+                                ? self->textFor("Unknown error", "未知错误")
+                                : mockSerialPeer->errorString();
+                            break;
+                        }
+                        lastInjectMs = timer.elapsed();
+                    }
+
+                    if (rtcmResponseBursts >= 8)
+                    {
+                        result.gotResponse = true;
+                        break;
+                    }
+
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
+
+                finalStats = testService->stats();
+                result.inputBytes = finalStats.inputBytes;
+                result.outputBytes = finalStats.outputBytes;
+                result.finalMessage = finalStats.message;
+                result.cancelled = self->shutdown_requested_.load();
+                testService->stop();
+                if (mockSerialPeer)
+                {
+                    mockSerialPeer->disconnectFromHost();
+                }
             }
         }
 
-        if (linkReady && mockSerialPeer && timer.elapsed() - lastInjectMs >= 1000)
+        if (!self)
         {
-            const QString mockGga = buildMockGgaSentence();
-            if (!loggedMockGgaTemplate)
-            {
-                appendLog(textFor("Injecting GGA at 1 Hz: %1", "已按 1Hz 频率注入 GGA 数据: %1").arg(mockGga));
-                loggedMockGgaTemplate = true;
-            }
-            QByteArray payload = mockGga.toLatin1();
-            payload += "\r\n";
-            const qint64 written = mockSerialPeer->write(payload);
-            if (written != payload.size() || !mockSerialPeer->waitForBytesWritten(500))
-            {
-                errorMessage = mockSerialPeer->errorString().isEmpty() ? textFor("Unknown error", "未知错误") : mockSerialPeer->errorString();
-            }
-            lastInjectMs = timer.elapsed();
+            return;
         }
-        if (rtcmResponseBursts >= 8)
-        {
-            gotResponse = true;
-            break;
-        }
-    }
 
-    testService->stop();
-    if (mockSerialPeer)
-    {
-        mockSerialPeer->disconnectFromHost();
-    }
+        QObject *receiver = self.data();
+        QMetaObject::invokeMethod(receiver, [self, result = std::move(result)]() mutable {
+            if (!self)
+            {
+                return;
+            }
 
-    if (gotResponse)
-    {
-        appendLog(textFor("No-signal RTK test succeeded: input %1 B, output %2 B, loopback %3 B",
-                          "无信号 RTK 测试成功: 输入 %1 B, 输出 %2 B, loopback %3 B")
-            .arg(finalStats.inputBytes)
-            .arg(finalStats.outputBytes)
-            .arg(receivedRtcmBytes));
-        QMessageBox::information(this, textFor("Success", "成功"),
-            textFor("Mock GGA test succeeded. RTCM data was received multiple times.", "模拟 GGA 测试成功，已多次收到 RTCM 返回数据。"));
-    }
-    else
-    {
-        const QString detail = !linkReady
-            ? textFor("RTK loopback link did not become ready within timeout.", "超时时间内 RTK loopback 链路未进入可用状态。")
-            : (finalStats.message.isEmpty()
-                ? textFor("No RTCM data returned within timeout.", "超时时间内未收到 RTCM 返回数据。")
-                : finalStats.message);
-        appendLog(textFor("No-signal RTK test finished without RTCM response: %1", "无信号 RTK 测试结束，未收到 RTCM 返回: %1").arg(detail));
-        QMessageBox::warning(this, textFor("No Response", "无返回"),
-            textFor("Mock GGA test did not receive RTCM data.\n%1", "模拟 GGA 测试未收到 RTCM 返回数据。\n%1").arg(detail));
-    }
+            self->test_in_progress_.store(false);
+            self->updateButtonStates();
+
+            if (result.cancelled)
+            {
+                return;
+            }
+
+            if (!result.startError.isEmpty())
+            {
+                self->appendLog(self->textFor("No-signal RTK test failed to start: %1", "无信号 RTK 测试启动失败: %1").arg(result.startError));
+                QMessageBox::warning(
+                    self,
+                    self->textFor("Failed", "失败"),
+                    self->textFor("Failed to start no-signal RTK test: %1", "无信号 RTK 测试启动失败: %1").arg(result.startError));
+                return;
+            }
+
+            if (result.gotResponse)
+            {
+                self->appendLog(self->textFor("No-signal RTK test succeeded: input %1 B, output %2 B, loopback %3 B",
+                                              "无信号 RTK 测试成功: 输入 %1 B, 输出 %2 B, loopback %3 B")
+                    .arg(result.inputBytes)
+                    .arg(result.outputBytes)
+                    .arg(result.receivedRtcmBytes));
+                QMessageBox::information(
+                    self,
+                    self->textFor("Success", "成功"),
+                    self->textFor("Mock GGA test succeeded. RTCM data was received multiple times.", "模拟 GGA 测试成功，已多次收到 RTCM 返回数据。"));
+                return;
+            }
+
+            const QString detail = !result.runtimeError.isEmpty()
+                ? result.runtimeError
+                : (!result.linkReady
+                    ? self->textFor("RTK loopback link did not become ready within timeout.", "超时时间内 RTK loopback 链路未进入可用状态。")
+                    : (result.finalMessage.isEmpty()
+                        ? self->textFor("No RTCM data returned within timeout.", "超时时间内未收到 RTCM 返回数据。")
+                        : result.finalMessage));
+            self->appendLog(self->textFor("No-signal RTK test finished without RTCM response: %1", "无信号 RTK 测试结束，未收到 RTCM 返回: %1").arg(detail));
+            QMessageBox::warning(
+                self,
+                self->textFor("No Response", "无返回"),
+                self->textFor("Mock GGA test did not receive RTCM data.\n%1", "模拟 GGA 测试未收到 RTCM 返回数据。\n%1").arg(detail));
+        }, Qt::QueuedConnection);
+    });
 }
 
 void RtkConfigDialog::onSaveConfigClicked()

@@ -855,7 +855,8 @@ MainWindow::MainWindow(QWidget *parent)
     , cancel_connect_btn_(nullptr)
     , disconnect_btn_(nullptr)
     , refresh_ports_btn_(nullptr)
-    , fullscreen_btn_(nullptr)
+    , fullscreen_menu_action_(nullptr)
+    , fullscreen_toolbar_action_(nullptr)
     , lang_action_(nullptr)
     , clear_log_action_(nullptr)
     , recording_directory_action_(nullptr)
@@ -924,8 +925,11 @@ MainWindow::MainWindow(QWidget *parent)
     base_font_point_size_ = currentPointSize > 0.0 ? currentPointSize : 10.0;
 
     QSettings settings("VaporView", "MainWindow");
-    settings.remove("font_scale_percent");
-    font_scale_percent_ = 100;
+    font_scale_percent_ = settings.value("font_scale_percent", 100).toInt();
+    if (font_scale_percent_ < 85 || font_scale_percent_ > 150)
+    {
+        font_scale_percent_ = 100;
+    }
     recording_directory_ = settings.value("recording_directory", defaultRecordingDirectory()).toString();
     if (recording_directory_.isEmpty())
     {
@@ -1193,6 +1197,9 @@ void MainWindow::setFontScale(int percent)
     {
         rtk_config_dialog_->setFontScale(font_scale_percent_);
     }
+
+    QSettings settings("VaporView", "MainWindow");
+    settings.setValue("font_scale_percent", font_scale_percent_);
 }
 
 void MainWindow::setupMenuBar()
@@ -1211,10 +1218,10 @@ void MainWindow::setupMenuBar()
 
     QMenu *viewMenu = menuBar()->addMenu("");
 
-    fullscreen_btn_ = new QAction(this);
-    fullscreen_btn_->setShortcut(QKeySequence(Qt::Key_F11));
-    connect(fullscreen_btn_, &QAction::triggered, this, &MainWindow::onToggleFullScreen);
-    viewMenu->addAction(fullscreen_btn_);
+    fullscreen_menu_action_ = new QAction(this);
+    fullscreen_menu_action_->setShortcut(QKeySequence(Qt::Key_F11));
+    connect(fullscreen_menu_action_, &QAction::triggered, this, &MainWindow::onToggleFullScreen);
+    viewMenu->addAction(fullscreen_menu_action_);
 
     QMenu *fontMenu = menuBar()->addMenu("");
     font_scale_group_ = new QActionGroup(this);
@@ -1342,10 +1349,10 @@ void MainWindow::setupToolBar()
 
     toolbar->addSeparator();
 
-    fullscreen_btn_ = new QAction(this);
-    fullscreen_btn_->setIcon(style()->standardIcon(QStyle::SP_TitleBarMaxButton));
-    connect(fullscreen_btn_, &QAction::triggered, this, &MainWindow::onToggleFullScreen);
-    toolbar->addAction(fullscreen_btn_);
+    fullscreen_toolbar_action_ = new QAction(this);
+    fullscreen_toolbar_action_->setIcon(style()->standardIcon(QStyle::SP_TitleBarMaxButton));
+    connect(fullscreen_toolbar_action_, &QAction::triggered, this, &MainWindow::onToggleFullScreen);
+    toolbar->addAction(fullscreen_toolbar_action_);
 }
 
 void MainWindow::setupStatusBar()
@@ -1581,7 +1588,7 @@ void MainWindow::setEnglish(bool english)
     exit_action_->setText(english ? "E&xit" : "退出(&X)");
 
     menuBar()->actions().at(1)->menu()->setTitle(english ? "&View" : "视图(&V)");
-    fullscreen_btn_->setText(english ? "&Fullscreen" : "全屏(&F)");
+    fullscreen_menu_action_->setText(english ? "&Fullscreen" : "全屏(&F)");
 
     menuBar()->actions().at(2)->menu()->setTitle(english ? "Font &Size" : "字号(&S)");
     font_small_action_->setText(english ? "Small (90%)" : "小号 (90%)");
@@ -1600,7 +1607,7 @@ void MainWindow::setEnglish(bool english)
     cancel_connect_btn_->setText(english ? "Cancel" : "取消");
     disconnect_btn_->setText(english ? "Disconnect" : "断开");
     clear_log_action_->setText(english ? "Clear" : "清空");
-    fullscreen_btn_->setText(english ? "Fullscreen" : "全屏");
+    fullscreen_toolbar_action_->setText(english ? "Fullscreen" : "全屏");
     rtk_config_action_->setText(english ? "RTK Config" : "RTK配置");
 
     status_label_->setText(english ? "Ready" : "就绪");
@@ -1699,30 +1706,32 @@ void MainWindow::onGlobalRateChanged(const QString& text)
     ptb_rate_combo_->blockSignals(false);
     hmp_rate_combo_->blockSignals(false);
     
-    if (gnss_collector_ && gnss_collector_->isRunning())
+    const CollectorSnapshot collectors = snapshotCollectors();
+
+    if (collectors.gnss && collectors.gnss->isRunning())
     {
-        gnss_collector_->setSampleRate(rate);
-        gnss_collector_->setDeviceSampleRate(rate);
+        collectors.gnss->setSampleRate(rate);
+        collectors.gnss->setDeviceSampleRate(rate);
     }
-    if (imu_collector_ && imu_collector_->isRunning())
+    if (collectors.imu && collectors.imu->isRunning())
     {
-        imu_collector_->setSampleRate(rate);
-        imu_collector_->setDeviceSampleRate(rate);
+        collectors.imu->setSampleRate(rate);
+        collectors.imu->setDeviceSampleRate(rate);
     }
-    if (ptb_collector_ && ptb_collector_->isRunning())
+    if (collectors.ptb && collectors.ptb->isRunning())
     {
-        ptb_collector_->setSampleRate(rate);
-        ptb_collector_->setDeviceSampleRate(rate);
+        collectors.ptb->setSampleRate(rate);
+        collectors.ptb->setDeviceSampleRate(rate);
     }
-    if (hmp_collector_ && hmp_collector_->isRunning())
+    if (collectors.hmp && collectors.hmp->isRunning())
     {
-        hmp_collector_->setSampleRate(rate);
+        collectors.hmp->setSampleRate(rate);
     }
-    if (lidar_collector_ && lidar_collector_->isRunning())
+    if (collectors.lidar && collectors.lidar->isRunning())
     {
         const int lidarRate = std::min(rate, 100);
-        lidar_collector_->setSampleRate(lidarRate);
-        lidar_collector_->setDeviceSampleRate(lidarRate);
+        collectors.lidar->setSampleRate(lidarRate);
+        collectors.lidar->setDeviceSampleRate(lidarRate);
     }
     
     log(QString(is_english_ ? "All rates set to %1 Hz" : "所有频率已设置为 %1 Hz").arg(rate));
@@ -1731,10 +1740,11 @@ void MainWindow::onGlobalRateChanged(const QString& text)
 void MainWindow::onGnssRateChanged(const QString& text)
 {
     gnss_sample_rate_ = parseRate(text);
-    if (gnss_collector_) 
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.gnss)
     {
-        gnss_collector_->setSampleRate(gnss_sample_rate_);
-        gnss_collector_->setDeviceSampleRate(gnss_sample_rate_);
+        collectors.gnss->setSampleRate(gnss_sample_rate_);
+        collectors.gnss->setDeviceSampleRate(gnss_sample_rate_);
     }
     log(QString(is_english_ ? "GNSS sample rate set to %1 Hz" : "GNSS采样频率已设置为 %1 Hz").arg(gnss_sample_rate_));
 }
@@ -1742,12 +1752,13 @@ void MainWindow::onGnssRateChanged(const QString& text)
 void MainWindow::onImuRateChanged(const QString& text)
 {
     imu_sample_rate_ = parseRate(text);
-    if (imu_collector_)
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.imu)
     {
-        imu_collector_->setSampleRate(imu_sample_rate_);
-        if (imu_collector_->isRunning())
+        collectors.imu->setSampleRate(imu_sample_rate_);
+        if (collectors.imu->isRunning())
         {
-            imu_collector_->setDeviceSampleRate(imu_sample_rate_);
+            collectors.imu->setDeviceSampleRate(imu_sample_rate_);
         }
     }
     log(QString(is_english_ ? "IMU sample rate set to %1 Hz" : "IMU采样频率已设置为 %1 Hz").arg(imu_sample_rate_));
@@ -1756,12 +1767,13 @@ void MainWindow::onImuRateChanged(const QString& text)
 void MainWindow::onPtbRateChanged(const QString& text)
 {
     ptb_sample_rate_ = parseRate(text);
-    if (ptb_collector_)
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.ptb)
     {
-        ptb_collector_->setSampleRate(ptb_sample_rate_);
-        if (ptb_collector_->isRunning())
+        collectors.ptb->setSampleRate(ptb_sample_rate_);
+        if (collectors.ptb->isRunning())
         {
-            ptb_collector_->setDeviceSampleRate(ptb_sample_rate_);
+            collectors.ptb->setDeviceSampleRate(ptb_sample_rate_);
         }
     }
     log(QString(is_english_ ? "PTB sample rate set to %1 Hz" : "PTB采样频率已设置为 %1 Hz").arg(ptb_sample_rate_));
@@ -1770,19 +1782,21 @@ void MainWindow::onPtbRateChanged(const QString& text)
 void MainWindow::onHmpRateChanged(const QString& text)
 {
     hmp_sample_rate_ = parseRate(text);
-    if (hmp_collector_) hmp_collector_->setSampleRate(hmp_sample_rate_);
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.hmp) collectors.hmp->setSampleRate(hmp_sample_rate_);
     log(QString(is_english_ ? "HMP sample rate set to %1 Hz" : "HMP采样频率已设置为 %1 Hz").arg(hmp_sample_rate_));
 }
 
 void MainWindow::onLidarRateChanged(const QString& text)
 {
     lidar_sample_rate_ = std::min(parseRate(text), 100);
-    if (lidar_collector_)
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.lidar)
     {
-        lidar_collector_->setSampleRate(lidar_sample_rate_);
-        if (lidar_collector_->isRunning())
+        collectors.lidar->setSampleRate(lidar_sample_rate_);
+        if (collectors.lidar->isRunning())
         {
-            lidar_collector_->setDeviceSampleRate(lidar_sample_rate_);
+            collectors.lidar->setDeviceSampleRate(lidar_sample_rate_);
         }
     }
     log(QString(is_english_ ? "TF03 sample rate set to %1 Hz" : "TF03采样频率已设置为 %1 Hz").arg(lidar_sample_rate_));
@@ -1791,31 +1805,32 @@ void MainWindow::onLidarRateChanged(const QString& text)
 void MainWindow::applyAllSampleRates()
 {
     int rate = parseRate(global_rate_combo_->currentText());
+    const CollectorSnapshot collectors = snapshotCollectors();
 
-    if (gnss_collector_ && gnss_collector_->isRunning())
+    if (collectors.gnss && collectors.gnss->isRunning())
     {
-        gnss_collector_->setSampleRate(rate);
-        gnss_collector_->setDeviceSampleRate(rate);
+        collectors.gnss->setSampleRate(rate);
+        collectors.gnss->setDeviceSampleRate(rate);
     }
-    if (imu_collector_ && imu_collector_->isRunning())
+    if (collectors.imu && collectors.imu->isRunning())
     {
-        imu_collector_->setSampleRate(rate);
-        imu_collector_->setDeviceSampleRate(rate);
+        collectors.imu->setSampleRate(rate);
+        collectors.imu->setDeviceSampleRate(rate);
     }
-    if (ptb_collector_ && ptb_collector_->isRunning())
+    if (collectors.ptb && collectors.ptb->isRunning())
     {
-        ptb_collector_->setSampleRate(rate);
-        ptb_collector_->setDeviceSampleRate(rate);
+        collectors.ptb->setSampleRate(rate);
+        collectors.ptb->setDeviceSampleRate(rate);
     }
-    if (hmp_collector_ && hmp_collector_->isRunning())
+    if (collectors.hmp && collectors.hmp->isRunning())
     {
-        hmp_collector_->setSampleRate(rate);
+        collectors.hmp->setSampleRate(rate);
     }
-    if (lidar_collector_ && lidar_collector_->isRunning())
+    if (collectors.lidar && collectors.lidar->isRunning())
     {
         const int lidarRate = std::min(rate, 100);
-        lidar_collector_->setSampleRate(lidarRate);
-        lidar_collector_->setDeviceSampleRate(lidarRate);
+        collectors.lidar->setSampleRate(lidarRate);
+        collectors.lidar->setDeviceSampleRate(lidarRate);
     }
 
     gnss_rate_combo_->blockSignals(true);
@@ -1999,11 +2014,12 @@ bool MainWindow::startRecordingSession()
         while (recording_thread_running_.load())
         {
             const auto tickTime = std::chrono::steady_clock::now();
-            const VaporView::GnssData gnssSample = gnss_collector_ ? gnss_collector_->getLatestData() : VaporView::GnssData();
-            const VaporView::ImuData imuSample = imu_collector_ ? imu_collector_->getLatestData() : VaporView::ImuData();
-            const VaporView::PtbData ptbSample = ptb_collector_ ? ptb_collector_->getLatestData() : VaporView::PtbData();
-            const VaporView::HmpData hmpSample = hmp_collector_ ? hmp_collector_->getLatestData() : VaporView::HmpData();
-            const VaporView::LidarData lidarSample = lidar_collector_ ? lidar_collector_->getLatestData() : VaporView::LidarData();
+            const CollectorSnapshot collectors = snapshotCollectors();
+            const VaporView::GnssData gnssSample = collectors.gnss ? collectors.gnss->getLatestData() : VaporView::GnssData();
+            const VaporView::ImuData imuSample = collectors.imu ? collectors.imu->getLatestData() : VaporView::ImuData();
+            const VaporView::PtbData ptbSample = collectors.ptb ? collectors.ptb->getLatestData() : VaporView::PtbData();
+            const VaporView::HmpData hmpSample = collectors.hmp ? collectors.hmp->getLatestData() : VaporView::HmpData();
+            const VaporView::LidarData lidarSample = collectors.lidar ? collectors.lidar->getLatestData() : VaporView::LidarData();
 
             QStringList row;
             row.reserve(63);
@@ -2029,7 +2045,7 @@ bool MainWindow::startRecordingSession()
                 return ageMs >= 0 && ageMs <= timeoutMs;
             };
 
-            if (isFresh(gnss_collector_.get(), gnssSample))
+            if (isFresh(collectors.gnss.get(), gnssSample))
             {
                 row
                     << QString::number(gnssSample.latitude)
@@ -2068,7 +2084,7 @@ bool MainWindow::startRecordingSession()
                 appendEmptyColumns(30);
             }
 
-            if (isFresh(imu_collector_.get(), imuSample))
+            if (isFresh(collectors.imu.get(), imuSample))
             {
                 row
                     << QString::number(imuSample.acceleration[0])
@@ -2098,7 +2114,7 @@ bool MainWindow::startRecordingSession()
                 appendEmptyColumns(21);
             }
 
-            if (isFresh(ptb_collector_.get(), ptbSample))
+            if (isFresh(collectors.ptb.get(), ptbSample))
             {
                 row << QString::number(ptbSample.pressure_hpa);
                 appendBool(ptbSample.valid);
@@ -2109,7 +2125,7 @@ bool MainWindow::startRecordingSession()
                 appendEmptyColumns(3);
             }
 
-            if (isFresh(hmp_collector_.get(), hmpSample))
+            if (isFresh(collectors.hmp.get(), hmpSample))
             {
                 row
                     << QString::number(hmpSample.humidity)
@@ -2122,7 +2138,7 @@ bool MainWindow::startRecordingSession()
                 appendEmptyColumns(4);
             }
 
-            if (isFresh(lidar_collector_.get(), lidarSample))
+            if (isFresh(collectors.lidar.get(), lidarSample))
             {
                 row
                     << QString::number(lidarSample.distance_m)
@@ -2292,32 +2308,53 @@ void MainWindow::updateConnectionStatus(bool connected)
     status_label_->style()->polish(status_label_);
 }
 
+MainWindow::CollectorSnapshot MainWindow::snapshotCollectors() const
+{
+    std::lock_guard<std::mutex> lock(collector_mutex_);
+    return {gnss_collector_, imu_collector_, ptb_collector_, hmp_collector_, lidar_collector_};
+}
+
+void MainWindow::setCollectors(CollectorSnapshot collectors)
+{
+    std::lock_guard<std::mutex> lock(collector_mutex_);
+    gnss_collector_ = std::move(collectors.gnss);
+    imu_collector_ = std::move(collectors.imu);
+    ptb_collector_ = std::move(collectors.ptb);
+    hmp_collector_ = std::move(collectors.hmp);
+    lidar_collector_ = std::move(collectors.lidar);
+}
+
 void MainWindow::stopAllCollectors()
 {
-    if (gnss_collector_)
+    CollectorSnapshot collectors;
     {
-        gnss_collector_->stop();
-        gnss_collector_.reset();
+        std::lock_guard<std::mutex> lock(collector_mutex_);
+        collectors.gnss = std::move(gnss_collector_);
+        collectors.imu = std::move(imu_collector_);
+        collectors.ptb = std::move(ptb_collector_);
+        collectors.hmp = std::move(hmp_collector_);
+        collectors.lidar = std::move(lidar_collector_);
     }
-    if (imu_collector_)
+
+    if (collectors.gnss)
     {
-        imu_collector_->stop();
-        imu_collector_.reset();
+        collectors.gnss->stop();
     }
-    if (ptb_collector_)
+    if (collectors.imu)
     {
-        ptb_collector_->stop();
-        ptb_collector_.reset();
+        collectors.imu->stop();
     }
-    if (hmp_collector_)
+    if (collectors.ptb)
     {
-        hmp_collector_->stop();
-        hmp_collector_.reset();
+        collectors.ptb->stop();
     }
-    if (lidar_collector_)
+    if (collectors.hmp)
     {
-        lidar_collector_->stop();
-        lidar_collector_.reset();
+        collectors.hmp->stop();
+    }
+    if (collectors.lidar)
+    {
+        collectors.lidar->stop();
     }
 }
 
@@ -2330,13 +2367,16 @@ void MainWindow::finishConnectionAttempt(bool connected)
 {
     connection_attempt_in_progress_ = false;
     cancel_connection_requested_.store(false);
-    if (!connected)
+    if (connected)
+    {
+        if (!startRecordingSession())
+        {
+            log(is_english_ ? "Automatic session recording failed to start" : "自动会话记录启动失败");
+        }
+    }
+    else
     {
         stopRecording(true);
-    }
-    if (connection_thread_.joinable())
-    {
-        connection_thread_.join();
     }
     updateConnectionStatus(connected);
 }
@@ -2424,6 +2464,8 @@ void MainWindow::onConnectClicked()
     hmp_sample_rate_ = hmpRate;
     lidar_sample_rate_ = lidarRate;
 
+    stopAllCollectors();
+
     connection_thread_ = std::thread([this,
                                       english,
                                       selectText,
@@ -2449,11 +2491,13 @@ void MainWindow::onConnectClicked()
             QMetaObject::invokeMethod(this, [this, connected]() { finishConnectionAttempt(connected); }, Qt::QueuedConnection);
         };
 
-        gnss_collector_ = std::make_unique<VaporView::GnssCollector>();
-        imu_collector_ = std::make_unique<VaporView::ImuCollector>();
-        ptb_collector_ = std::make_unique<VaporView::PtbCollector>();
-        hmp_collector_ = std::make_unique<VaporView::HmpCollector>();
-        lidar_collector_ = std::make_unique<VaporView::LidarCollector>();
+        CollectorSnapshot collectors;
+        collectors.gnss = std::make_shared<VaporView::GnssCollector>();
+        collectors.imu = std::make_shared<VaporView::ImuCollector>();
+        collectors.ptb = std::make_shared<VaporView::PtbCollector>();
+        collectors.hmp = std::make_shared<VaporView::HmpCollector>();
+        collectors.lidar = std::make_shared<VaporView::LidarCollector>();
+        setCollectors(collectors);
 
         auto logCallback = [this](const std::string& msg) {
             const QString qmsg = QString::fromStdString(msg);
@@ -2461,22 +2505,22 @@ void MainWindow::onConnectClicked()
         };
         auto cancelCallback = [this]() { return cancel_connection_requested_.load(); };
 
-        gnss_collector_->setSampleRate(gnssRate);
-        imu_collector_->setSampleRate(imuRate);
-        ptb_collector_->setSampleRate(ptbRate);
-        hmp_collector_->setSampleRate(hmpRate);
-        lidar_collector_->setSampleRate(lidarRate);
+        collectors.gnss->setSampleRate(gnssRate);
+        collectors.imu->setSampleRate(imuRate);
+        collectors.ptb->setSampleRate(ptbRate);
+        collectors.hmp->setSampleRate(hmpRate);
+        collectors.lidar->setSampleRate(lidarRate);
 
-        gnss_collector_->setLogCallback(logCallback);
-        imu_collector_->setLogCallback(logCallback);
-        ptb_collector_->setLogCallback(logCallback);
-        hmp_collector_->setLogCallback(logCallback);
-        lidar_collector_->setLogCallback(logCallback);
-        gnss_collector_->setCancelCallback(cancelCallback);
-        imu_collector_->setCancelCallback(cancelCallback);
-        ptb_collector_->setCancelCallback(cancelCallback);
-        hmp_collector_->setCancelCallback(cancelCallback);
-        lidar_collector_->setCancelCallback(cancelCallback);
+        collectors.gnss->setLogCallback(logCallback);
+        collectors.imu->setLogCallback(logCallback);
+        collectors.ptb->setLogCallback(logCallback);
+        collectors.hmp->setLogCallback(logCallback);
+        collectors.lidar->setLogCallback(logCallback);
+        collectors.gnss->setCancelCallback(cancelCallback);
+        collectors.imu->setCancelCallback(cancelCallback);
+        collectors.ptb->setCancelCallback(cancelCallback);
+        collectors.hmp->setCancelCallback(cancelCallback);
+        collectors.lidar->setCancelCallback(cancelCallback);
 
         int total_devices = 0;
         int connected_devices = 0;
@@ -2546,59 +2590,59 @@ void MainWindow::onConnectClicked()
         postLog(english ? "========== Starting Connection ==========" : "========== 开始连接 ==========");
         if (abortIfRequested()) return;
 
-        if (connectCollector("GNSS", gnssPort, gnssBaudText, gnss_collector_.get(),
+        if (connectCollector("GNSS", gnssPort, gnssBaudText, collectors.gnss.get(),
                              VaporView::SerialConfig::N81(gnssBaudText.toInt()),
                              [&]() {
-                                 gnss_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onGnssDataReady", Qt::QueuedConnection); });
-                                 gnss_collector_->setSampleRate(gnssRate);
-                                 gnss_collector_->setDeviceSampleRate(gnssRate);
+                                 collectors.gnss->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onGnssDataReady", Qt::QueuedConnection); });
+                                 collectors.gnss->setSampleRate(gnssRate);
+                                 collectors.gnss->setDeviceSampleRate(gnssRate);
                                  postLog(QString(english ? "[GNSS] Sample rate set to %1 Hz" : "[GNSS] 采样频率设置为 %1 Hz").arg(gnssRate));
-                                 if (gnss_collector_->startStreaming()) return true;
+                                 if (collectors.gnss->startStreaming()) return true;
                                  postLog(english ? "[GNSS] Failed to start data stream." : "[GNSS] 启动数据流失败。");
                                  return false;
                              }) < 0) return;
 
-        if (connectCollector("IMU", imuPort, imuBaudText, imu_collector_.get(),
+        if (connectCollector("IMU", imuPort, imuBaudText, collectors.imu.get(),
                              VaporView::SerialConfig::N81(imuBaudText.toInt()),
                              [&]() {
-                                 imu_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onImuDataReady", Qt::QueuedConnection); });
-                                 imu_collector_->setSampleRate(imuRate);
-                                 imu_collector_->setDeviceSampleRate(imuRate);
+                                 collectors.imu->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onImuDataReady", Qt::QueuedConnection); });
+                                 collectors.imu->setSampleRate(imuRate);
+                                 collectors.imu->setDeviceSampleRate(imuRate);
                                  postLog(QString(english ? "[IMU] Sample rate set to %1 Hz" : "[IMU] 采样频率设置为 %1 Hz").arg(imuRate));
-                                 if (imu_collector_->startStreaming()) return true;
+                                 if (collectors.imu->startStreaming()) return true;
                                  postLog(english ? "[IMU] Failed to start data stream." : "[IMU] 启动数据流失败。");
                                  return false;
                              }) < 0) return;
 
-        if (connectCollector("PTB", ptbPort, ptbBaudText, ptb_collector_.get(),
+        if (connectCollector("PTB", ptbPort, ptbBaudText, collectors.ptb.get(),
                              VaporView::SerialConfig::E71(ptbBaudText.toInt()),
                              [&]() {
-                                 ptb_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onPtbDataReady", Qt::QueuedConnection); });
-                                 ptb_collector_->setSampleRate(ptbRate);
-                                 ptb_collector_->setDeviceSampleRate(ptbRate);
+                                 collectors.ptb->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onPtbDataReady", Qt::QueuedConnection); });
+                                 collectors.ptb->setSampleRate(ptbRate);
+                                 collectors.ptb->setDeviceSampleRate(ptbRate);
                                  postLog(QString(english ? "[PTB] Sample rate set to %1 Hz" : "[PTB] 采样频率设置为 %1 Hz").arg(ptbRate));
-                                 if (ptb_collector_->startStreaming()) return true;
+                                 if (collectors.ptb->startStreaming()) return true;
                                  postLog(english ? "[PTB] Failed to start data stream." : "[PTB] 启动数据流失败。");
                                  return false;
                              }) < 0) return;
 
-        if (connectCollector("HMP", hmpPort, hmpBaudText, hmp_collector_.get(),
+        if (connectCollector("HMP", hmpPort, hmpBaudText, collectors.hmp.get(),
                              VaporView::SerialConfig::N82(hmpBaudText.toInt()),
                              [&]() {
-                                 hmp_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onHmpDataReady", Qt::QueuedConnection); });
-                                 hmp_collector_->setSampleRate(hmpRate);
+                                 collectors.hmp->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onHmpDataReady", Qt::QueuedConnection); });
+                                 collectors.hmp->setSampleRate(hmpRate);
                                  postLog(QString(english ? "[HMP] Sample rate set to %1 Hz" : "[HMP] 采样频率设置为 %1 Hz").arg(hmpRate));
-                                 if (hmp_collector_->startStreaming()) return true;
+                                 if (collectors.hmp->startStreaming()) return true;
                                  postLog(english ? "[HMP] Failed to start data stream." : "[HMP] 启动数据流失败。");
                                  return false;
                              }) < 0) return;
 
-        if (connectCollector("TF03", lidarPort, lidarBaudText, lidar_collector_.get(),
+        if (connectCollector("TF03", lidarPort, lidarBaudText, collectors.lidar.get(),
                              VaporView::SerialConfig::N81(lidarBaudText.toInt()),
                              [&]() {
-                                 lidar_collector_->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onLidarDataReady", Qt::QueuedConnection); });
-                                 lidar_collector_->setSampleRate(lidarRate);
-                                 if (!lidar_collector_->setDeviceSampleRate(lidarRate))
+                                 collectors.lidar->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onLidarDataReady", Qt::QueuedConnection); });
+                                 collectors.lidar->setSampleRate(lidarRate);
+                                 if (!collectors.lidar->setDeviceSampleRate(lidarRate))
                                  {
                                      postLog(QString(english ? "[TF03] Failed to apply frame rate %1 Hz, using device default." : "[TF03] 应用 %1 Hz 输出频率失败，使用设备默认频率。").arg(lidarRate));
                                  }
@@ -2606,7 +2650,7 @@ void MainWindow::onConnectClicked()
                                  {
                                      postLog(QString(english ? "[TF03] Frame rate set to %1 Hz" : "[TF03] 输出频率设置为 %1 Hz").arg(lidarRate));
                                  }
-                                 if (lidar_collector_->startStreaming()) return true;
+                                 if (collectors.lidar->startStreaming()) return true;
                                  postLog(english ? "[TF03] Failed to start data stream." : "[TF03] 启动数据流失败。");
                                  return false;
                              }) < 0) return;
@@ -2619,12 +2663,7 @@ void MainWindow::onConnectClicked()
             return;
         }
 
-        bool recordingStarted = false;
-        QMetaObject::invokeMethod(this, [this, &recordingStarted]() {
-            recordingStarted = startRecordingSession();
-        }, Qt::BlockingQueuedConnection);
-
-        finishOnUi(recordingStarted);
+        finishOnUi(true);
     });
 }
 
@@ -2634,6 +2673,10 @@ void MainWindow::onDisconnectClicked()
 
     stopRecording(false);
     stopAllCollectors();
+    if (connection_thread_.joinable())
+    {
+        connection_thread_.join();
+    }
     finishConnectionAttempt(false);
     log(is_english_ ? "Disconnected" : "已断开");
 }
@@ -2652,111 +2695,83 @@ void MainWindow::onCancelConnectClicked()
 
 void MainWindow::onGnssDataReady()
 {
-    if (gnss_collector_)
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.gnss)
     {
-        current_gnss_ = gnss_collector_->getLatestData();
+        current_gnss_ = collectors.gnss->getLatestData();
     }
 }
 
 void MainWindow::onImuDataReady()
 {
-    if (imu_collector_)
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.imu)
     {
-        current_imu_ = imu_collector_->getLatestData();
+        current_imu_ = collectors.imu->getLatestData();
     }
 }
 
 void MainWindow::onPtbDataReady()
 {
-    if (ptb_collector_)
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.ptb)
     {
-        current_ptb_ = ptb_collector_->getLatestData();
+        current_ptb_ = collectors.ptb->getLatestData();
     }
 }
 
 void MainWindow::onHmpDataReady()
 {
-    if (hmp_collector_)
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.hmp)
     {
-        current_hmp_ = hmp_collector_->getLatestData();
+        current_hmp_ = collectors.hmp->getLatestData();
     }
 }
 
 void MainWindow::onLidarDataReady()
 {
-    if (lidar_collector_)
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.lidar)
     {
-        current_lidar_ = lidar_collector_->getLatestData();
+        current_lidar_ = collectors.lidar->getLatestData();
     }
 }
 
 void MainWindow::onRefreshTimer()
 {
+    const CollectorSnapshot collectors = snapshotCollectors();
+
     gnss_panel_->updateData(current_gnss_);
     imu_panel_->updateData(current_imu_);
     ptb_panel_->updateData(current_ptb_);
     hmp_panel_->updateData(current_hmp_);
     lidar_panel_->updateData(current_lidar_);
 
-    if (gnss_collector_)
+    if (collectors.gnss)
     {
-        double rate = gnss_collector_->getActualRate();
+        const double rate = collectors.gnss->getActualRate();
         gnss_panel_->updateRate(rate);
-        int rate_int = static_cast<int>(std::round(rate));
-        if (rate_int >= 1 && rate_int <= 500)
-        {
-            gnss_rate_combo_->blockSignals(true);
-            gnss_rate_combo_->setCurrentText(QString::number(rate_int));
-            gnss_rate_combo_->blockSignals(false);
-        }
     }
-    if (imu_collector_)
+    if (collectors.imu)
     {
-        double rate = imu_collector_->getActualRate();
+        const double rate = collectors.imu->getActualRate();
         imu_panel_->updateRate(rate);
-        int rate_int = static_cast<int>(std::round(rate));
-        if (rate_int >= 1 && rate_int <= 500)
-        {
-            imu_rate_combo_->blockSignals(true);
-            imu_rate_combo_->setCurrentText(QString::number(rate_int));
-            imu_rate_combo_->blockSignals(false);
-        }
     }
-    if (ptb_collector_)
+    if (collectors.ptb)
     {
-        double rate = ptb_collector_->getActualRate();
+        const double rate = collectors.ptb->getActualRate();
         ptb_panel_->updateRate(rate);
-        int rate_int = static_cast<int>(std::round(rate));
-        if (rate_int >= 1 && rate_int <= 500)
-        {
-            ptb_rate_combo_->blockSignals(true);
-            ptb_rate_combo_->setCurrentText(QString::number(rate_int));
-            ptb_rate_combo_->blockSignals(false);
-        }
     }
-    if (hmp_collector_)
+    if (collectors.hmp)
     {
-        double rate = hmp_collector_->getActualRate();
+        const double rate = collectors.hmp->getActualRate();
         hmp_panel_->updateRate(rate);
-        int rate_int = static_cast<int>(std::round(rate));
-        if (rate_int >= 1 && rate_int <= 500)
-        {
-            hmp_rate_combo_->blockSignals(true);
-            hmp_rate_combo_->setCurrentText(QString::number(rate_int));
-            hmp_rate_combo_->blockSignals(false);
-        }
     }
-    if (lidar_collector_)
+    if (collectors.lidar)
     {
-        double rate = lidar_collector_->getActualRate();
+        const double rate = collectors.lidar->getActualRate();
         lidar_panel_->updateRate(rate);
-        int rate_int = static_cast<int>(std::round(rate));
-        if (rate_int >= 1 && rate_int <= 100)
-        {
-            lidar_rate_combo_->blockSignals(true);
-            lidar_rate_combo_->setCurrentText(QString::number(rate_int));
-            lidar_rate_combo_->blockSignals(false);
-        }
     }
 }
 

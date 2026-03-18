@@ -17,6 +17,8 @@
 #include <chrono>
 #include <deque>
 #include <memory>
+#include <atomic>
+#include <thread>
 
 #include "serial_port.h"
 #include "RtkStreamService.h"
@@ -72,6 +74,8 @@ private:
     QString ggaPortName() const;
     void refreshPortCombos();
     void pollRtkServiceStatus(bool forceLog = false);
+    void joinBackgroundTasks();
+    bool isBackgroundTaskRunning() const;
 
     QVBoxLayout *main_layout_;
     QGridLayout *config_layout_;
@@ -143,6 +147,11 @@ private:
     std::deque<double> gga_recent_intervals_sec_;
     bool gga_has_sentence_time_;
     bool gga_monitor_enabled_;
+    std::atomic<bool> fetch_mountpoints_in_progress_{false};
+    std::atomic<bool> test_in_progress_{false};
+    std::atomic<bool> shutdown_requested_{false};
+    std::thread fetch_mountpoints_thread_;
+    std::thread test_thread_;
 };
 
 #endif
