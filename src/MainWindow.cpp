@@ -9,6 +9,7 @@
 #include <QFileInfo>
 #include <QFileDialog>
 #include <QTextStream>
+#include <QStringConverter>
 #include <QDateTime>
 #include <QGridLayout>
 #include <QFrame>
@@ -1043,8 +1044,8 @@ QString MainWindow::scaledStyleSheet(const QString& styleSheet) const
     QRegularExpressionMatchIterator it = pixelRegex.globalMatch(styleSheet);
     struct Replacement
     {
-        int start;
-        int length;
+        qsizetype start;
+        qsizetype length;
         QString text;
     };
     QList<Replacement> replacements;
@@ -2152,7 +2153,7 @@ bool MainWindow::startRecordingSession()
             }
 
             QTextStream out(filePtr);
-            out.setCodec("UTF-8");
+            out.setEncoding(QStringConverter::Utf8);
             for (int i = 0; i < row.size(); ++i)
             {
                 if (i > 0)
@@ -2257,7 +2258,7 @@ void MainWindow::writeRecordingHeader()
     }
 
     QTextStream out(recording_file_.get());
-    out.setCodec("UTF-8");
+    out.setEncoding(QStringConverter::Utf8);
     out.setGenerateByteOrderMark(true);
     out
         << "timestamp_utc,"

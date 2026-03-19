@@ -1515,7 +1515,7 @@ void RtkConfigDialog::onFetchMountpointsClicked()
             }
 
             const QString currentMountpoint = self->mountpoint_edit_->text().trimmed();
-            const int currentIndex = std::max(0, result.mountpoints.indexOf(currentMountpoint));
+            const qsizetype currentIndex = std::max<qsizetype>(0, result.mountpoints.indexOf(currentMountpoint));
             QDialog mountpointDialog(self);
             mountpointDialog.setWindowTitle(self->textFor("Select Mountpoint", "选择挂载点"));
             mountpointDialog.setModal(true);
@@ -1534,14 +1534,18 @@ void RtkConfigDialog::onFetchMountpointsClicked()
             mountpointCombo->setMinimumWidth(self->scalePixels(480));
             if (currentIndex >= 0 && currentIndex < result.mountpoints.size())
             {
-                mountpointCombo->setCurrentIndex(currentIndex);
+                mountpointCombo->setCurrentIndex(static_cast<int>(currentIndex));
             }
             dialogLayout->addWidget(mountpointCombo);
 
             auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &mountpointDialog);
             dialogLayout->addWidget(buttonBox);
-            QObject::connect(buttonBox, &QDialogButtonBox::accepted, &mountpointDialog, &QDialog::accept);
-            QObject::connect(buttonBox, &QDialogButtonBox::rejected, &mountpointDialog, &QDialog::reject);
+            QObject::connect(buttonBox, &QDialogButtonBox::accepted, &mountpointDialog, [&mountpointDialog]() {
+                mountpointDialog.accept();
+            });
+            QObject::connect(buttonBox, &QDialogButtonBox::rejected, &mountpointDialog, [&mountpointDialog]() {
+                mountpointDialog.reject();
+            });
 
             const QString selected = mountpointDialog.exec() == QDialog::Accepted
                 ? mountpointCombo->currentText().trimmed()
