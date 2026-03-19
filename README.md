@@ -75,7 +75,7 @@ VaporView/
 
 - CMake 3.16+
 - 支持 C++17 的编译器
-- Qt 5 或 Qt 6
+- Qt 6
   - `Core`
   - `Widgets`
   - `SerialPort`
@@ -86,16 +86,16 @@ VaporView/
 ### 通用 CMake
 
 ```bash
-cmake -S . -B build
+cmake -S . -B build -DCMAKE_PREFIX_PATH=/path/to/Qt/6.x/<toolchain>
 cmake --build build
 ```
 
 ### Windows
 
-项目已在 Windows + MSVC 2019 环境下验证可构建。
+项目当前按 Qt 6 构建，已在 Windows + MSVC 2022 + Qt 6.8.3 环境下验证可构建。
 
 ```powershell
-cmake -S . -B build-win
+cmake -S . -B build-win -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH=C:/software/QT6/6.8.3/msvc2022_64
 cmake --build build-win --config Release
 ```
 

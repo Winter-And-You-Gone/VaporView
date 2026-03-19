@@ -10,16 +10,10 @@ set(CMAKE_AUTOUIC ON)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-option(USE_QT6 "Use Qt6 instead of Qt5" OFF)
 option(BUILD_PYTHON_BINDINGS "Build Python bindings with pybind11" OFF)
 
-if(USE_QT6)
-    find_package(Qt6 COMPONENTS Core Widgets SerialPort Network REQUIRED)
-    set(QT_LIBRARIES Qt6::Core Qt6::Widgets Qt6::SerialPort Qt6::Network)
-else()
-    find_package(Qt5 COMPONENTS Core Widgets SerialPort Network REQUIRED)
-    set(QT_LIBRARIES Qt5::Core Qt5::Widgets Qt5::SerialPort Qt5::Network)
-endif()
+find_package(Qt6 COMPONENTS Core Widgets SerialPort Network REQUIRED)
+set(QT_LIBRARIES Qt6::Core Qt6::Widgets Qt6::SerialPort Qt6::Network)
 
 find_package(Threads REQUIRED)
 
