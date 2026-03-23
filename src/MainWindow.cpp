@@ -77,6 +77,17 @@ QString csvEscape(const QString &value)
     return escaped;
 }
 
+QString jsonEscape(const QString &value)
+{
+    QString escaped = value;
+    escaped.replace("\\", "\\\\");
+    escaped.replace("\"", "\\\"");
+    escaped.replace("\n", "\\n");
+    escaped.replace("\r", "\\r");
+    escaped.replace("\t", "\\t");
+    return escaped;
+}
+
 QString csvBool(bool value)
 {
     return value ? QStringLiteral("true") : QStringLiteral("false");
@@ -1322,6 +1333,7 @@ MainWindow::MainWindow(QWidget *parent)
     , lang_action_(nullptr)
     , clear_log_action_(nullptr)
     , recording_directory_action_(nullptr)
+    , export_tdlas_snapshot_action_(nullptr)
     , exit_action_(nullptr)
     , about_action_(nullptr)
     , font_scale_group_(nullptr)
@@ -1706,6 +1718,11 @@ void MainWindow::setupMenuBar()
     recording_directory_action_ = new QAction(this);
     connect(recording_directory_action_, &QAction::triggered, this, &MainWindow::onChooseRecordingDirectoryClicked);
     fileMenu->addAction(recording_directory_action_);
+
+    export_tdlas_snapshot_action_ = new QAction(this);
+    connect(export_tdlas_snapshot_action_, &QAction::triggered, this, &MainWindow::onExportTdlasSnapshotClicked);
+    fileMenu->addAction(export_tdlas_snapshot_action_);
+
     fileMenu->addSeparator();
 
     exit_action_ = new QAction(this);
@@ -2163,6 +2180,7 @@ void MainWindow::setEnglish(bool english)
 
     menuBar()->actions().at(0)->menu()->setTitle(english ? "&File" : "文件(&F)");
     recording_directory_action_->setText(english ? "Recording Folder..." : "记录目录...");
+    export_tdlas_snapshot_action_->setText(english ? "Export TDLAS Verification Snapshot..." : "导出TDLAS验证快照...");
     exit_action_->setText(english ? "E&xit" : "退出(&X)");
 
     menuBar()->actions().at(1)->menu()->setTitle(english ? "&View" : "视图(&V)");
@@ -2911,6 +2929,149 @@ void MainWindow::writeRecordingHeader()
 QString MainWindow::tdlasMetricsJsonForRecording(const VaporView::TdlasData& data) const
 {
     return QString::fromStdString(data.metrics_json);
+}
+
+QString MainWindow::tdlasSnapshotJson(const VaporView::TdlasData& data) const
+{
+    QString json;
+    QTextStream out(&json);
+    out.setEncoding(QStringConverter::Utf8);
+
+    auto writeMetricArray = [&out](const std::vector<VaporView::TdlasMetric> &metrics) {
+        out << "[\n";
+        for (size_t i = 0; i < metrics.size(); ++i)
+        {
+            const VaporView::TdlasMetric &metric = metrics[i];
+            out << "      {\n"
+                << "        \"key\": \"" << jsonEscape(QString::fromStdString(metric.key)) << "\",\n"
+                << "        \"label_zh\": \"" << jsonEscape(QString::fromStdString(metric.label_zh)) << "\",\n"
+                << "        \"label_en\": \"" << jsonEscape(QString::fromStdString(metric.label_en)) << "\",\n"
+                << "        \"unit\": \"" << jsonEscape(QString::fromStdString(metric.unit)) << "\",\n"
+                << "        \"wire_type\": \"" << jsonEscape(QString::fromStdString(metric.wire_type)) << "\",\n"
+                << "        \"raw_hex\": \"" << jsonEscape(QString::fromStdString(metric.raw_hex)) << "\",\n"
+                << "        \"offset\": " << metric.offset << ",\n"
+                << "        \"value\": " << metric.value << ",\n"
+                << "        \"valid\": " << (metric.valid ? "true" : "false") << ",\n"
+                << "        \"confidence\": \"" << jsonEscape(QString::fromStdString(metric.confidence)) << "\"\n"
+                << "      }";
+            if (i + 1 < metrics.size())
+            {
+                out << ',';
+            }
+            out << '\n';
+        }
+        out << "    ]";
+    };
+
+    out << "{\n"
+        << "  \"exported_at_utc\": \"" << jsonEscape(recordingTimestampUtc()) << "\",\n"
+        << "  \"adapter_name\": \"" << jsonEscape(QString::fromStdString(data.adapter_name)) << "\",\n"
+        << "  \"capture_session_active\": " << (data.capture_session_active ? "true" : "false") << ",\n"
+        << "  \"matched\": " << (data.matched ? "true" : "false") << ",\n"
+        << "  \"valid\": " << (data.valid ? "true" : "false") << ",\n"
+        << "  \"mapping_unverified\": " << (data.mapping_unverified ? "true" : "false") << ",\n"
+        << "  \"last_match_time_utc\": \"" << jsonEscape(QString::fromStdString(data.last_match_time_utc)) << "\",\n"
+        << "  \"error_message\": \"" << jsonEscape(QString::fromStdString(data.error_message)) << "\",\n"
+        << "  \"payload_hex\": \"" << jsonEscape(QString::fromStdString(data.payload_hex)) << "\",\n"
+        << "  \"packet_length\": " << data.packet_length << ",\n"
+        << "  \"rates\": {\n"
+        << "    \"total_rate_hz\": " << data.total_rate_hz << ",\n"
+        << "    \"matched_rate_hz\": " << data.matched_rate_hz << "\n"
+        << "  },\n"
+        << "  \"counters\": {\n"
+        << "    \"total_packets\": " << data.total_packets << ",\n"
+        << "    \"matched_packets\": " << data.matched_packets << ",\n"
+        << "    \"non_ipv4_packets\": " << data.non_ipv4_packets << ",\n"
+        << "    \"non_udp_packets\": " << data.non_udp_packets << ",\n"
+        << "    \"filter_mismatch_packets\": " << data.filter_mismatch_packets << ",\n"
+        << "    \"parse_success_count\": " << data.parse_success_count << ",\n"
+        << "    \"parse_failure_count\": " << data.parse_failure_count << "\n"
+        << "  },\n"
+        << "  \"headers\": {\n"
+        << "    \"ethernet\": {\n"
+        << "      \"source_mac\": \"" << jsonEscape(QString::fromStdString(data.headers.ethernet.source.mac)) << "\",\n"
+        << "      \"destination_mac\": \"" << jsonEscape(QString::fromStdString(data.headers.ethernet.destination.mac)) << "\",\n"
+        << "      \"ether_type\": " << data.headers.ethernet.ether_type << "\n"
+        << "    },\n"
+        << "    \"ipv4\": {\n"
+        << "      \"source_ip\": \"" << jsonEscape(QString::fromStdString(data.headers.ipv4.source.ip)) << "\",\n"
+        << "      \"destination_ip\": \"" << jsonEscape(QString::fromStdString(data.headers.ipv4.destination.ip)) << "\",\n"
+        << "      \"version\": " << data.headers.ipv4.version << ",\n"
+        << "      \"ihl\": " << data.headers.ipv4.ihl << ",\n"
+        << "      \"ttl\": " << data.headers.ipv4.ttl << ",\n"
+        << "      \"protocol\": " << data.headers.ipv4.protocol << ",\n"
+        << "      \"total_length\": " << data.headers.ipv4.total_length << "\n"
+        << "    },\n"
+        << "    \"udp\": {\n"
+        << "      \"source_port\": " << data.headers.udp.source_port << ",\n"
+        << "      \"destination_port\": " << data.headers.udp.destination_port << ",\n"
+        << "      \"length\": " << data.headers.udp.length << ",\n"
+        << "      \"checksum\": " << data.headers.udp.checksum << "\n"
+        << "    }\n"
+        << "  },\n"
+        << "  \"current_metrics\": ";
+    writeMetricArray(data.metrics);
+    out << ",\n"
+        << "  \"recent_metric_samples\": [\n";
+
+    for (size_t i = 0; i < data.recent_metric_samples.size(); ++i)
+    {
+        const VaporView::TdlasMetricSample &sample = data.recent_metric_samples[i];
+        out << "    {\n"
+            << "      \"timestamp_utc\": \"" << jsonEscape(QString::fromStdString(sample.timestamp_utc)) << "\",\n"
+            << "      \"metrics\": ";
+        writeMetricArray(sample.metrics);
+        out << "\n    }";
+        if (i + 1 < data.recent_metric_samples.size())
+        {
+            out << ',';
+        }
+        out << '\n';
+    }
+
+    out << "  ]\n"
+        << "}\n";
+    return json;
+}
+
+void MainWindow::onExportTdlasSnapshotClicked()
+{
+    if (!current_tdlas_.capture_session_active && current_tdlas_.adapter_name.empty())
+    {
+        QMessageBox::information(this,
+                                 is_english_ ? "No TDLAS Data" : "无TDLAS数据",
+                                 is_english_ ? "No TDLAS verification data is available yet." : "当前还没有可导出的 TDLAS 验证数据。");
+        return;
+    }
+
+    const QString initialDir = recording_directory_.isEmpty() ? defaultRecordingDirectory() : recording_directory_;
+    QDir().mkpath(initialDir);
+    const QString defaultName = QDir(initialDir).filePath(QString("tdlas_snapshot_%1.json").arg(recordingSessionFileTimestamp()));
+    const QString filename = QFileDialog::getSaveFileName(
+        this,
+        is_english_ ? "Export TDLAS Verification Snapshot" : "导出TDLAS验证快照",
+        defaultName,
+        is_english_ ? "JSON Files (*.json)" : "JSON 文件 (*.json)");
+
+    if (filename.isEmpty())
+    {
+        return;
+    }
+
+    QFile file(filename);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+    {
+        QMessageBox::warning(this,
+                             is_english_ ? "Export Failed" : "导出失败",
+                             QString(is_english_ ? "Failed to write snapshot: %1" : "写入快照失败: %1").arg(file.errorString()));
+        return;
+    }
+
+    const QString snapshotJson = tdlasSnapshotJson(current_tdlas_);
+    file.write(snapshotJson.toUtf8());
+    file.close();
+
+    log(QString(is_english_ ? "Exported TDLAS verification snapshot: %1" : "已导出TDLAS验证快照: %1").arg(filename));
 }
 
 void MainWindow::updateConnectionStatus(bool connected)

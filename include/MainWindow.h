@@ -302,6 +302,7 @@ private slots:
     void onClearLogClicked();
     void onRefreshPortsClicked();
     void onChooseRecordingDirectoryClicked();
+    void onExportTdlasSnapshotClicked();
     void onToggleFullScreen();
     void onSwitchLanguage();
     void onGlobalRateChanged(const QString& text);
@@ -341,6 +342,7 @@ private:
     void stopRecording(bool announce = true);
     void writeRecordingHeader();
     QString tdlasMetricsJsonForRecording(const VaporView::TdlasData& data) const;
+    QString tdlasSnapshotJson(const VaporView::TdlasData& data) const;
     void updateConnectionStatus(bool connected);
     QStringList getAvailablePorts();
     void refreshTdlasAdapters();
@@ -395,6 +397,7 @@ private:
     QAction *lang_action_;
     QAction *clear_log_action_;
     QAction *recording_directory_action_;
+    QAction *export_tdlas_snapshot_action_;
     QAction *exit_action_;
     QAction *about_action_;
     QActionGroup *font_scale_group_;
