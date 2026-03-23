@@ -58,7 +58,7 @@ std::string summarizePayloadHex(const uint8_t* payload, size_t length)
 {
   std::ostringstream stream;
   stream << std::hex << std::setfill('0');
-  const size_t limit = std::min(length, kPayloadHexBytes);
+  const size_t limit = (std::min)(length, kPayloadHexBytes);
   for (size_t i = 0; i < limit; ++i)
   {
     if (i > 0)
@@ -642,8 +642,8 @@ void EthernetCaptureCollector::log(const std::string& message) const
 
 bool EthernetCaptureCollector::shouldEmitData() const
 {
-  const int rate = std::max(1, sample_rate_hz_.load());
-  const auto interval = std::chrono::milliseconds(std::max(2, 1000 / rate));
+  const int rate = (std::max)(1, sample_rate_hz_.load());
+  const auto interval = std::chrono::milliseconds((std::max)(2, 1000 / rate));
   return std::chrono::steady_clock::now() - last_emit_time_ >= interval;
 }
 
@@ -701,7 +701,7 @@ void EthernetCaptureCollector::run()
     const auto window_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - rate_window_start).count();
     if (window_ms >= 1000)
     {
-      const double elapsed = std::max(0.001, window_ms / 1000.0);
+      const double elapsed = (std::max)(0.001, window_ms / 1000.0);
       actual_rate_hz_.store(matched_window_packets / elapsed);
       const double total_rate = total_window_packets / elapsed;
       {
