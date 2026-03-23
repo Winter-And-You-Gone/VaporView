@@ -23,6 +23,7 @@
 #include <QActionGroup>
 #include <QScrollArea>
 #include <QLineEdit>
+#include <QVector>
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -30,6 +31,25 @@
 
 class RtkConfigDialog;
 class QFile;
+
+class QPaintEvent;
+
+class TdlasTrendSparkline : public QWidget
+{
+    Q_OBJECT
+
+public:
+    explicit TdlasTrendSparkline(QWidget *parent = nullptr);
+    void setSeries(const QString &title, const QString &subtitle, const QVector<double> &values);
+
+protected:
+    void paintEvent(QPaintEvent *event) override;
+
+private:
+    QString title_;
+    QString subtitle_;
+    QVector<double> values_;
+};
 
 class GnssPanel : public QWidget
 {
@@ -244,6 +264,9 @@ private:
     QLabel *metrics_label_;
     QLabel *payload_label_;
     QLabel *warning_label_;
+    QLabel *trend_lbl_;
+    TdlasTrendSparkline *trend_primary_;
+    TdlasTrendSparkline *trend_secondary_;
 
     QLabel *status_lbl_;
     QLabel *packet_rate_lbl_;
@@ -253,6 +276,7 @@ private:
     QLabel *packet_lbl_;
     QLabel *metrics_lbl_;
     QLabel *payload_lbl_;
+    QLabel *trend_title_lbl_;
 
     bool is_english_;
 };

@@ -22,6 +22,7 @@ namespace
 constexpr int kCaptureSize = 65536;
 constexpr int kReadTimeoutMs = 250;
 constexpr size_t kPayloadHexBytes = 64;
+constexpr size_t kTrendSampleHistory = 24;
 
 std::string jsonEscape(const std::string& value)
 {
@@ -497,6 +498,7 @@ bool EthernetCaptureCollector::start(const TdlasCaptureConfig& config)
   config_ = config;
   {
     std::lock_guard<std::mutex> lock(mutex_);
+    recent_metric_samples_.clear();
     latest_data_ = TdlasData{};
     latest_data_.adapter_name = config.adapter_name;
     latest_data_.error_message = "Waiting for matching traffic";
@@ -540,6 +542,7 @@ void EthernetCaptureCollector::stop()
     thread_.join();
   }
   std::lock_guard<std::mutex> lock(mutex_);
+  recent_metric_samples_.clear();
   latest_data_.capture_session_active = false;
   if (latest_data_.error_message.empty())
   {
@@ -834,10 +837,19 @@ void EthernetCaptureCollector::run()
       sample.timestamp = now;
       sample.last_match_time_utc = formatUtcNow();
       sample.error_message = any_metrics ? std::string() : "Payload observed but business mapping is still unverified";
+      TdlasMetricSample trendSample;
+      trendSample.timestamp_utc = sample.last_match_time_utc;
+      trendSample.metrics = sample.metrics;
 
       DataCallback callback;
       {
         std::lock_guard<std::mutex> lock(mutex_);
+        recent_metric_samples_.push_back(std::move(trendSample));
+        while (recent_metric_samples_.size() > kTrendSampleHistory)
+        {
+          recent_metric_samples_.pop_front();
+        }
+        sample.recent_metric_samples.assign(recent_metric_samples_.begin(), recent_metric_samples_.end());
         latest_data_ = sample;
         callback = data_callback_;
       }

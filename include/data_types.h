@@ -165,6 +165,12 @@ struct TdlasMetric
   std::string confidence = "unverified";
 };
 
+struct TdlasMetricSample
+{
+  std::string timestamp_utc;
+  std::vector<TdlasMetric> metrics;
+};
+
 struct TdlasData
 {
   std::string adapter_name;
@@ -174,6 +180,7 @@ struct TdlasData
   std::string error_message;
   std::string last_match_time_utc;
   std::vector<TdlasMetric> metrics;
+  std::vector<TdlasMetricSample> recent_metric_samples;
 
   uint32_t packet_length = 0;
   uint64_t total_packets = 0;

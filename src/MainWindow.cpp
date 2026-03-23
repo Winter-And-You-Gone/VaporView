@@ -29,6 +29,10 @@
 #include <QRegularExpression>
 #include <QSettings>
 #include <QThread>
+#include <QPainter>
+#include <QPen>
+#include <QPolygonF>
+#include <QVector>
 #include <algorithm>
 #include <cmath>
 #include <memory>
@@ -44,6 +48,13 @@ constexpr const char *kBaseMarginsLeftProperty = "_vv_base_margin_left";
 constexpr const char *kBaseMarginsTopProperty = "_vv_base_margin_top";
 constexpr const char *kBaseMarginsRightProperty = "_vv_base_margin_right";
 constexpr const char *kBaseMarginsBottomProperty = "_vv_base_margin_bottom";
+
+struct TdlasTrendSeriesView
+{
+    QString title;
+    QString subtitle;
+    QVector<double> values;
+};
 
 QString recordingTimestampUtc()
 {
@@ -174,6 +185,53 @@ QString tdlasPayloadPreviewText(const std::string& payloadHex)
     return lines.join('\n');
 }
 
+QVector<TdlasTrendSeriesView> tdlasTrendSeriesViews(const VaporView::TdlasData& data, bool english)
+{
+    QVector<TdlasTrendSeriesView> result;
+    if (data.recent_metric_samples.empty() || data.metrics.empty())
+    {
+        return result;
+    }
+
+    for (const VaporView::TdlasMetric& latestMetric : data.metrics)
+    {
+        if (!latestMetric.valid)
+        {
+            continue;
+        }
+
+        TdlasTrendSeriesView series;
+        series.title = english ? QString::fromStdString(latestMetric.label_en) : QString::fromStdString(latestMetric.label_zh);
+        series.subtitle = QString("%1 @%2 %3")
+            .arg(QString::fromStdString(latestMetric.wire_type.empty() ? std::string("---") : latestMetric.wire_type))
+            .arg(latestMetric.offset)
+            .arg(QString::fromStdString(latestMetric.confidence));
+
+        for (const VaporView::TdlasMetricSample& sample : data.recent_metric_samples)
+        {
+            for (const VaporView::TdlasMetric& metric : sample.metrics)
+            {
+                if (metric.key == latestMetric.key && metric.valid)
+                {
+                    series.values.append(metric.value);
+                    break;
+                }
+            }
+        }
+
+        if (!series.values.isEmpty())
+        {
+            result.append(series);
+        }
+        if (result.size() >= 2)
+        {
+            break;
+        }
+    }
+
+    return result;
+}
+
 void rememberBaseMetric(QObject *object, const char *propertyName, int value)
 {
     if (!object->property(propertyName).isValid())
@@ -181,6 +239,98 @@ void rememberBaseMetric(QObject *object, const char *propertyName, int value)
         object->setProperty(propertyName, value);
     }
 }
+}
+
+TdlasTrendSparkline::TdlasTrendSparkline(QWidget *parent)
+    : QWidget(parent)
+{
+    setMinimumHeight(64);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+}
+
+void TdlasTrendSparkline::setSeries(const QString &title, const QString &subtitle, const QVector<double> &values)
+{
+    title_ = title;
+    subtitle_ = subtitle;
+    values_ = values;
+    update();
+}
+
+void TdlasTrendSparkline::paintEvent(QPaintEvent *event)
+{
+    Q_UNUSED(event);
+
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    const QRectF frame = rect().adjusted(1.0, 1.0, -1.0, -1.0);
+    painter.setPen(QColor("#C8D6E5"));
+    painter.setBrush(QColor("#F8FBFD"));
+    painter.drawRoundedRect(frame, 8.0, 8.0);
+
+    painter.setPen(QColor("#274C67"));
+    QFont titleFont = painter.font();
+    titleFont.setPointSizeF(titleFont.pointSizeF() + 0.5);
+    titleFont.setBold(true);
+    painter.setFont(titleFont);
+    painter.drawText(QRectF(frame.left() + 10.0, frame.top() + 8.0, frame.width() - 20.0, 18.0),
+                     Qt::AlignLeft | Qt::AlignVCenter,
+                     title_.isEmpty() ? QStringLiteral("---") : title_);
+
+    QFont bodyFont = painter.font();
+    bodyFont.setBold(false);
+    bodyFont.setPointSizeF(bodyFont.pointSizeF() - 0.5);
+    painter.setFont(bodyFont);
+    painter.setPen(QColor("#5A7387"));
+    painter.drawText(QRectF(frame.left() + 10.0, frame.top() + 26.0, frame.width() - 20.0, 14.0),
+                     Qt::AlignLeft | Qt::AlignVCenter,
+                     subtitle_);
+
+    if (values_.size() < 2)
+    {
+        painter.setPen(QColor("#7D8FA0"));
+        painter.drawText(QRectF(frame.left() + 10.0, frame.top() + 42.0, frame.width() - 20.0, 18.0),
+                         Qt::AlignLeft | Qt::AlignVCenter,
+                         QStringLiteral("..."));
+        return;
+    }
+
+    QRectF plot = frame.adjusted(10.0, 44.0, -10.0, -10.0);
+    if (plot.width() <= 0.0 || plot.height() <= 0.0)
+    {
+        return;
+    }
+
+    auto [minIt, maxIt] = std::minmax_element(values_.cbegin(), values_.cend());
+    double minValue = *minIt;
+    double maxValue = *maxIt;
+    if (qFuzzyCompare(minValue, maxValue))
+    {
+        minValue -= 1.0;
+        maxValue += 1.0;
+    }
+
+    painter.setPen(QColor("#D6E3EC"));
+    painter.drawLine(QPointF(plot.left(), plot.bottom()), QPointF(plot.right(), plot.bottom()));
+    painter.drawLine(QPointF(plot.left(), plot.top()), QPointF(plot.right(), plot.top()));
+
+    QPolygonF polyline;
+    polyline.reserve(values_.size());
+    for (int i = 0; i < values_.size(); ++i)
+    {
+        const double xRatio = values_.size() == 1 ? 0.0 : static_cast<double>(i) / static_cast<double>(values_.size() - 1);
+        const double yRatio = (values_.at(i) - minValue) / (maxValue - minValue);
+        const qreal x = plot.left() + static_cast<qreal>(xRatio) * plot.width();
+        const qreal y = plot.bottom() - static_cast<qreal>(yRatio) * plot.height();
+        polyline << QPointF(x, y);
+    }
+
+    painter.setPen(QPen(QColor("#19A58D"), 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter.drawPolyline(polyline);
+
+    painter.setBrush(QColor("#19A58D"));
+    painter.setPen(Qt::NoPen);
+    painter.drawEllipse(polyline.last(), 3.5, 3.5);
 }
 
 GnssPanel::GnssPanel(QWidget *parent)
@@ -946,6 +1096,9 @@ TdlasPanel::TdlasPanel(QWidget *parent)
     , metrics_label_(nullptr)
     , payload_label_(nullptr)
     , warning_label_(nullptr)
+    , trend_lbl_(nullptr)
+    , trend_primary_(nullptr)
+    , trend_secondary_(nullptr)
     , status_lbl_(nullptr)
     , packet_rate_lbl_(nullptr)
     , endpoint_lbl_(nullptr)
@@ -954,6 +1107,7 @@ TdlasPanel::TdlasPanel(QWidget *parent)
     , packet_lbl_(nullptr)
     , metrics_lbl_(nullptr)
     , payload_lbl_(nullptr)
+    , trend_title_lbl_(nullptr)
     , is_english_(false)
 {
     setupUi();
@@ -992,6 +1146,16 @@ void TdlasPanel::setupUi()
     createRow(metrics_lbl_, metrics_label_);
     createRow(payload_lbl_, payload_label_);
 
+    trend_title_lbl_ = new QLabel(this);
+    trend_title_lbl_->setObjectName("fieldLabel");
+    layout->addWidget(trend_title_lbl_);
+
+    trend_primary_ = new TdlasTrendSparkline(this);
+    layout->addWidget(trend_primary_);
+
+    trend_secondary_ = new TdlasTrendSparkline(this);
+    layout->addWidget(trend_secondary_);
+
     warning_label_ = new QLabel(this);
     warning_label_->setObjectName("statusIndicator");
     warning_label_->setWordWrap(true);
@@ -1020,6 +1184,7 @@ void TdlasPanel::setEnglish(bool english)
     packet_lbl_->setText(english ? "Packet:" : "数据包:");
     metrics_lbl_->setText(english ? "Metrics:" : "指标:");
     payload_lbl_->setText(english ? "Payload Preview:" : "负载预览:");
+    trend_title_lbl_->setText(english ? "Recent Trends:" : "最近趋势:");
     warning_label_->setText(english
         ? "unverified mapping: business labels come from the legacy VI and still need live capture confirmation"
         : "unverified mapping：当前业务标签来自旧VI界面，仍需真实抓包确认");
@@ -1038,6 +1203,12 @@ void TdlasPanel::updateData(const VaporView::TdlasData& data)
         packet_label_->setText("---");
         metrics_label_->setText(is_english_ ? "No decoded business metrics yet" : "暂无可解码业务指标");
         payload_label_->setText("---");
+        trend_primary_->setSeries(is_english_ ? "Trend A" : "趋势A",
+                                  is_english_ ? "waiting for matched packets" : "等待匹配数据包",
+                                  {});
+        trend_secondary_->setSeries(is_english_ ? "Trend B" : "趋势B",
+                                    is_english_ ? "waiting for matched packets" : "等待匹配数据包",
+                                    {});
     }
     else
     {
@@ -1086,6 +1257,29 @@ void TdlasPanel::updateData(const VaporView::TdlasData& data)
                                    .arg(QString::fromStdString(data.adapter_name.empty() ? std::string("---") : data.adapter_name)));
         metrics_label_->setText(tdlasMetricSummaryText(data, is_english_));
         payload_label_->setText(data.payload_hex.empty() ? QStringLiteral("---") : tdlasPayloadPreviewText(data.payload_hex));
+
+        const QVector<TdlasTrendSeriesView> trends = tdlasTrendSeriesViews(data, is_english_);
+        if (!trends.isEmpty())
+        {
+            trend_primary_->setSeries(trends.at(0).title, trends.at(0).subtitle, trends.at(0).values);
+        }
+        else
+        {
+            trend_primary_->setSeries(is_english_ ? "Trend A" : "趋势A",
+                                      is_english_ ? "no valid samples yet" : "暂无有效样本",
+                                      {});
+        }
+
+        if (trends.size() > 1)
+        {
+            trend_secondary_->setSeries(trends.at(1).title, trends.at(1).subtitle, trends.at(1).values);
+        }
+        else
+        {
+            trend_secondary_->setSeries(is_english_ ? "Trend B" : "趋势B",
+                                        is_english_ ? "no second metric yet" : "暂无第二指标",
+                                        {});
+        }
     }
 
     status_label_->style()->unpolish(status_label_);

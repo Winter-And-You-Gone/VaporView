@@ -3,6 +3,7 @@
 
 #include "data_types.h"
 #include <atomic>
+#include <deque>
 #include <functional>
 #include <mutex>
 #include <string>
@@ -75,6 +76,7 @@ private:
   std::atomic<double> actual_rate_hz_{0.0};
   std::string last_error_;
   std::chrono::steady_clock::time_point last_emit_time_{};
+  std::deque<TdlasMetricSample> recent_metric_samples_;
 };
 
 }
