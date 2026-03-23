@@ -176,6 +176,8 @@ struct TdlasData
   std::string adapter_name;
   PacketHeaders headers;
   std::string payload_hex;
+  std::string payload_signature;
+  std::string payload_variation_summary;
   std::string metrics_json;
   std::string error_message;
   std::string last_match_time_utc;

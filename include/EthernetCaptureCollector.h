@@ -77,6 +77,7 @@ private:
   std::string last_error_;
   std::chrono::steady_clock::time_point last_emit_time_{};
   std::deque<TdlasMetricSample> recent_metric_samples_;
+  std::deque<std::vector<uint8_t>> recent_payload_samples_;
 };
 
 }

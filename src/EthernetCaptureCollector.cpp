@@ -23,6 +23,8 @@ constexpr int kCaptureSize = 65536;
 constexpr int kReadTimeoutMs = 250;
 constexpr size_t kPayloadHexBytes = 64;
 constexpr size_t kTrendSampleHistory = 24;
+constexpr size_t kPayloadSignatureBytes = 16;
+constexpr size_t kPayloadVariationBytes = 24;
 
 std::string jsonEscape(const std::string& value)
 {
@@ -87,6 +89,78 @@ std::string summarizeRawHex(const uint8_t* data, size_t length)
     }
     stream << std::setw(2) << static_cast<int>(data[i]);
   }
+  return stream.str();
+}
+
+std::string payloadSignature(const uint8_t* payload, size_t length)
+{
+  std::ostringstream stream;
+  stream << "len=" << length << " prefix=" << summarizeRawHex(payload, (std::min)(length, kPayloadSignatureBytes));
+  return stream.str();
+}
+
+std::string payloadVariationSummary(const std::deque<std::vector<uint8_t>>& recentPayloads)
+{
+  if (recentPayloads.size() < 2)
+  {
+    return "awaiting multiple payload samples";
+  }
+
+  const size_t inspectBytes = [&]() {
+    size_t minimum = (std::numeric_limits<size_t>::max)();
+    for (const auto& sample : recentPayloads)
+    {
+      minimum = (std::min)(minimum, sample.size());
+    }
+    if (minimum == (std::numeric_limits<size_t>::max)())
+    {
+      return static_cast<size_t>(0);
+    }
+    return (std::min)(minimum, kPayloadVariationBytes);
+  }();
+
+  if (inspectBytes == 0)
+  {
+    return "empty payload samples";
+  }
+
+  std::vector<size_t> changedOffsets;
+  for (size_t byteIndex = 0; byteIndex < inspectBytes; ++byteIndex)
+  {
+    const uint8_t first = recentPayloads.front().at(byteIndex);
+    bool changed = false;
+    for (size_t sampleIndex = 1; sampleIndex < recentPayloads.size(); ++sampleIndex)
+    {
+      if (recentPayloads.at(sampleIndex).at(byteIndex) != first)
+      {
+        changed = true;
+        break;
+      }
+    }
+    if (changed)
+    {
+      changedOffsets.push_back(byteIndex);
+    }
+  }
+
+  if (changedOffsets.empty())
+  {
+    std::ostringstream stream;
+    stream << "stable first " << inspectBytes << " B across " << recentPayloads.size() << " samples";
+    return stream.str();
+  }
+
+  std::ostringstream stream;
+  stream << "delta offsets ";
+  for (size_t i = 0; i < changedOffsets.size(); ++i)
+  {
+    if (i > 0)
+    {
+      stream << ',';
+    }
+    stream << changedOffsets[i];
+  }
+  stream << " within first " << inspectBytes << " B";
   return stream.str();
 }
 
@@ -499,6 +573,7 @@ bool EthernetCaptureCollector::start(const TdlasCaptureConfig& config)
   {
     std::lock_guard<std::mutex> lock(mutex_);
     recent_metric_samples_.clear();
+    recent_payload_samples_.clear();
     latest_data_ = TdlasData{};
     latest_data_.adapter_name = config.adapter_name;
     latest_data_.error_message = "Waiting for matching traffic";
@@ -543,6 +618,7 @@ void EthernetCaptureCollector::stop()
   }
   std::lock_guard<std::mutex> lock(mutex_);
   recent_metric_samples_.clear();
+  recent_payload_samples_.clear();
   latest_data_.capture_session_active = false;
   if (latest_data_.error_message.empty())
   {
@@ -818,6 +894,7 @@ void EthernetCaptureCollector::run()
       sample.adapter_name = config_.adapter_name;
       sample.headers = parsed.headers;
       sample.payload_hex = summarizePayloadHex(parsed.payload, parsed.payload_length);
+      sample.payload_signature = payloadSignature(parsed.payload, parsed.payload_length);
       sample.metrics = std::move(metrics);
       sample.metrics_json = metricsToJson(sample.metrics);
       sample.packet_length = static_cast<uint32_t>(header->caplen);
@@ -840,6 +917,7 @@ void EthernetCaptureCollector::run()
       TdlasMetricSample trendSample;
       trendSample.timestamp_utc = sample.last_match_time_utc;
       trendSample.metrics = sample.metrics;
+      std::vector<uint8_t> payloadSample(parsed.payload, parsed.payload + (std::min)(parsed.payload_length, kPayloadVariationBytes));
 
       DataCallback callback;
       {
@@ -849,7 +927,13 @@ void EthernetCaptureCollector::run()
         {
           recent_metric_samples_.pop_front();
         }
+        recent_payload_samples_.push_back(std::move(payloadSample));
+        while (recent_payload_samples_.size() > kTrendSampleHistory)
+        {
+          recent_payload_samples_.pop_front();
+        }
         sample.recent_metric_samples.assign(recent_metric_samples_.begin(), recent_metric_samples_.end());
+        sample.payload_variation_summary = payloadVariationSummary(recent_payload_samples_);
         latest_data_ = sample;
         callback = data_callback_;
       }

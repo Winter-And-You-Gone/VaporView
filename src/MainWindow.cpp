@@ -1103,6 +1103,7 @@ TdlasPanel::TdlasPanel(QWidget *parent)
     , endpoint_label_(nullptr)
     , header_label_(nullptr)
     , counters_label_(nullptr)
+    , traffic_label_(nullptr)
     , packet_label_(nullptr)
     , metrics_label_(nullptr)
     , payload_label_(nullptr)
@@ -1115,6 +1116,7 @@ TdlasPanel::TdlasPanel(QWidget *parent)
     , endpoint_lbl_(nullptr)
     , header_lbl_(nullptr)
     , counters_lbl_(nullptr)
+    , traffic_lbl_(nullptr)
     , packet_lbl_(nullptr)
     , metrics_lbl_(nullptr)
     , payload_lbl_(nullptr)
@@ -1153,6 +1155,7 @@ void TdlasPanel::setupUi()
     createRow(endpoint_lbl_, endpoint_label_);
     createRow(header_lbl_, header_label_);
     createRow(counters_lbl_, counters_label_);
+    createRow(traffic_lbl_, traffic_label_);
     createRow(packet_lbl_, packet_label_);
     createRow(metrics_lbl_, metrics_label_);
     createRow(payload_lbl_, payload_label_);
@@ -1192,6 +1195,7 @@ void TdlasPanel::setEnglish(bool english)
     endpoint_lbl_->setText(english ? "Endpoints:" : "端点:");
     header_lbl_->setText(english ? "Headers:" : "头部:");
     counters_lbl_->setText(english ? "Counters:" : "计数:");
+    traffic_lbl_->setText(english ? "Traffic:" : "流量画像:");
     packet_lbl_->setText(english ? "Packet:" : "数据包:");
     metrics_lbl_->setText(english ? "Metrics:" : "指标:");
     payload_lbl_->setText(english ? "Payload Preview:" : "负载预览:");
@@ -1211,6 +1215,7 @@ void TdlasPanel::updateData(const VaporView::TdlasData& data)
         endpoint_label_->setText("---");
         header_label_->setText("---");
         counters_label_->setText("---");
+        traffic_label_->setText("---");
         packet_label_->setText("---");
         metrics_label_->setText(is_english_ ? "No decoded business metrics yet" : "暂无可解码业务指标");
         payload_label_->setText("---");
@@ -1258,6 +1263,9 @@ void TdlasPanel::updateData(const VaporView::TdlasData& data)
         endpoint_label_->setText(endpointText);
         header_label_->setText(tdlasHeaderSummaryText(data, is_english_));
         counters_label_->setText(tdlasCounterSummaryText(data, is_english_));
+        traffic_label_->setText(QString("%1\n%2")
+                                    .arg(QString::fromStdString(data.payload_signature.empty() ? std::string("---") : data.payload_signature))
+                                    .arg(QString::fromStdString(data.payload_variation_summary.empty() ? std::string("---") : data.payload_variation_summary)));
 
         packet_label_->setText(QString(is_english_ ? "Len %1, last match %2, total %3, matched %4, session %5"
                                                    : "长度 %1，最近匹配 %2，总包 %3，匹配 %4，会话 %5")
