@@ -9,10 +9,12 @@
 - PTB210：气压计
 - HMP3：温湿度传感器
 - TF03：激光测距模块
+- TDLAS Ethernet：基于 Npcap 的以太网抓包与 UDP 业务观测
 
 ## 功能特性
 
 - 多设备串口接入与端口刷新
+- Windows 下的 TDLAS 以太网抓包接入
 - 多路实时数据显示与频率统计
 - 设备独立采样率设置与统一频率联动
 - 中英文界面切换
@@ -80,6 +82,9 @@ VaporView/
   - `Widgets`
   - `SerialPort`
   - `Network`
+- Windows + TDLAS 抓包功能
+  - Npcap 运行时
+  - Npcap SDK（仅构建时需要）
 
 ## 构建
 
@@ -94,8 +99,17 @@ cmake --build build
 
 项目当前按 Qt 6 构建，已在 Windows + MSVC 2022 + Qt 6.8.3 环境下验证可构建。
 
+如需启用 `TDLAS Ethernet` 抓包模块，需要在构建时提供 `Npcap SDK`：
+
 ```powershell
-cmake -S . -B build-win -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH=C:/software/QT6/6.8.3/msvc2022_64
+cmake -S . -B build-win -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH=C:/software/QT6/6.8.3/msvc2022_64 -DENABLE_TDLAS_CAPTURE=ON -DNPCAP_SDK_DIR=C:/software/npcap-sdk-1.16
+cmake --build build-win --config Release
+```
+
+如果只构建现有串口设备与 RTK 功能，可关闭该可选模块：
+
+```powershell
+cmake -S . -B build-win -G "Visual Studio 17 2022" -A x64 -DCMAKE_PREFIX_PATH=C:/software/QT6/6.8.3/msvc2022_64 -DENABLE_TDLAS_CAPTURE=OFF
 cmake --build build-win --config Release
 ```
 
@@ -140,6 +154,8 @@ Qt SerialPort 当前主要用于枚举可用串口，实际数据读写由仓库
 - `LidarCollector`
 
 基类 `DataCollector` 负责串口启停、线程管理、频率统计与数据回调。
+
+`src/EthernetCaptureCollector.cpp` 则为 `TDLAS Ethernet` 提供独立的以太网抓包线程，不复用串口采集继承链。
 
 ### RTK 对话框
 
@@ -213,6 +229,24 @@ Qt SerialPort 当前主要用于枚举可用串口，实际数据读写由仓库
 - 距离以米为单位显示和记录
 - 当前实现限制为 `1-100 Hz`
 
+### TDLAS Ethernet
+
+- 平台：Windows
+- 依赖：Npcap 运行时，构建时需要 `Npcap SDK`
+- 链路：Ethernet / IPv4 / UDP
+- 过滤条件：适配器、远端 IP、远端端口、本地端口
+- 连接成功语义：抓包线程已启动；若暂时没有匹配包，状态显示为“已连接，等待匹配流量”
+
+当前已实现的验证能力：
+
+- 最近匹配包的端点与头部摘要
+- 过滤/丢弃/解析计数
+- 最近匹配负载的十六进制预览
+- 候选业务字段的偏移、解析类型、原始字节和值
+- `unverified mapping` 提示，用于标记字段语义仍需真实流量确认
+
+当前业务指标仍以旧 VI 可见标签为命名来源；在真实样包逐项核实完成前，这些字段默认都视为 `unverified`。
+
 ## 自动会话记录
 
 GUI 使用固定的自动会话记录策略：
@@ -235,6 +269,7 @@ GUI 使用固定的自动会话记录策略：
 - 记录定时器固定为 `20 Hz`
 - 每一行的第一列为 `timestamp_utc`
 - 后续列按 `gnss_*`、`imu_*`、`ptb_*`、`hmp_*`、`tf03_*` 分组展开
+- 其中 TDLAS 会额外写入 `tdlas_*` 列与 `tdlas_metrics_json`
 - 记录启动后会由独立记录线程按固定 `50 ms` 节拍持续写行
 - 每一拍都会记录各设备“截至该时刻的最新读数”
 - 某个设备在本拍之前尚未收到过任何有效样本时，该设备对应整组列留空

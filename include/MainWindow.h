@@ -238,6 +238,8 @@ private:
     QLabel *status_label_;
     QLabel *packet_rate_label_;
     QLabel *endpoint_label_;
+    QLabel *header_label_;
+    QLabel *counters_label_;
     QLabel *packet_label_;
     QLabel *metrics_label_;
     QLabel *payload_label_;
@@ -246,6 +248,8 @@ private:
     QLabel *status_lbl_;
     QLabel *packet_rate_lbl_;
     QLabel *endpoint_lbl_;
+    QLabel *header_lbl_;
+    QLabel *counters_lbl_;
     QLabel *packet_lbl_;
     QLabel *metrics_lbl_;
     QLabel *payload_lbl_;

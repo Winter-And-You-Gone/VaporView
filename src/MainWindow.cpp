@@ -76,15 +76,22 @@ QString tdlasMetricSummaryText(const VaporView::TdlasData& data, bool english)
     QStringList lines;
     for (const VaporView::TdlasMetric& metric : data.metrics)
     {
-        if (!metric.valid)
-        {
-            continue;
-        }
         const QString label = english ? QString::fromStdString(metric.label_en) : QString::fromStdString(metric.label_zh);
-        QString line = QString("%1: %2").arg(label, QString::number(metric.value, 'f', 3));
-        if (!metric.unit.empty())
+        const QString status = metric.valid
+            ? QString::number(metric.value, 'f', 3)
+            : (english ? QStringLiteral("pending") : QStringLiteral("待确认"));
+        QString line = QString("%1 @%2 %3: %4")
+            .arg(label)
+            .arg(metric.offset)
+            .arg(QString::fromStdString(metric.wire_type.empty() ? std::string("---") : metric.wire_type))
+            .arg(status);
+        if (metric.valid && !metric.unit.empty())
         {
             line += QStringLiteral(" %1").arg(QString::fromStdString(metric.unit));
+        }
+        if (!metric.raw_hex.empty())
+        {
+            line += QStringLiteral(" {raw %1}").arg(QString::fromStdString(metric.raw_hex));
         }
         line += QStringLiteral(" [%1]").arg(QString::fromStdString(metric.confidence));
         lines << line;
@@ -93,6 +100,76 @@ QString tdlasMetricSummaryText(const VaporView::TdlasData& data, bool english)
     if (lines.isEmpty())
     {
         return english ? "No decoded business metrics yet" : "暂无可解码业务指标";
+    }
+    return lines.join('\n');
+}
+
+QString tdlasHeaderSummaryText(const VaporView::TdlasData& data, bool english)
+{
+    const auto macOrDash = [](const std::string& value) {
+        return QString::fromStdString(value.empty() ? std::string("---") : value);
+    };
+
+    return english
+        ? QString("ETH %1 -> %2 | IPv4 v%3 ihl %4 ttl %5 proto %6 | UDP len %7 checksum 0x%8")
+              .arg(macOrDash(data.headers.ethernet.source.mac))
+              .arg(macOrDash(data.headers.ethernet.destination.mac))
+              .arg(data.headers.ipv4.version)
+              .arg(data.headers.ipv4.ihl)
+              .arg(data.headers.ipv4.ttl)
+              .arg(data.headers.ipv4.protocol)
+              .arg(data.headers.udp.length)
+              .arg(QString::number(data.headers.udp.checksum, 16))
+        : QString("以太网 %1 -> %2 | IPv4 v%3 ihl %4 ttl %5 协议 %6 | UDP 长度 %7 校验和 0x%8")
+              .arg(macOrDash(data.headers.ethernet.source.mac))
+              .arg(macOrDash(data.headers.ethernet.destination.mac))
+              .arg(data.headers.ipv4.version)
+              .arg(data.headers.ipv4.ihl)
+              .arg(data.headers.ipv4.ttl)
+              .arg(data.headers.ipv4.protocol)
+              .arg(data.headers.udp.length)
+              .arg(QString::number(data.headers.udp.checksum, 16));
+}
+
+QString tdlasCounterSummaryText(const VaporView::TdlasData& data, bool english)
+{
+    return english
+        ? QString("non-IPv4 %1 | non-UDP %2 | filter drop %3 | parse ok %4 | parse fail %5")
+              .arg(static_cast<qulonglong>(data.non_ipv4_packets))
+              .arg(static_cast<qulonglong>(data.non_udp_packets))
+              .arg(static_cast<qulonglong>(data.filter_mismatch_packets))
+              .arg(static_cast<qulonglong>(data.parse_success_count))
+              .arg(static_cast<qulonglong>(data.parse_failure_count))
+        : QString("非IPv4 %1 | 非UDP %2 | 过滤丢弃 %3 | 解析成功 %4 | 解析失败 %5")
+              .arg(static_cast<qulonglong>(data.non_ipv4_packets))
+              .arg(static_cast<qulonglong>(data.non_udp_packets))
+              .arg(static_cast<qulonglong>(data.filter_mismatch_packets))
+              .arg(static_cast<qulonglong>(data.parse_success_count))
+              .arg(static_cast<qulonglong>(data.parse_failure_count));
+}
+
+QString tdlasPayloadPreviewText(const std::string& payloadHex)
+{
+    const QStringList bytes = QString::fromStdString(payloadHex).split(' ', Qt::SkipEmptyParts);
+    if (bytes.isEmpty())
+    {
+        return QStringLiteral("---");
+    }
+
+    QStringList lines;
+    QStringList currentLine;
+    for (int i = 0; i < bytes.size(); ++i)
+    {
+        currentLine << bytes.at(i);
+        if (currentLine.size() == 16)
+        {
+            lines << currentLine.join(' ');
+            currentLine.clear();
+        }
+    }
+    if (!currentLine.isEmpty())
+    {
+        lines << currentLine.join(' ');
     }
     return lines.join('\n');
 }
@@ -863,6 +940,8 @@ TdlasPanel::TdlasPanel(QWidget *parent)
     , status_label_(nullptr)
     , packet_rate_label_(nullptr)
     , endpoint_label_(nullptr)
+    , header_label_(nullptr)
+    , counters_label_(nullptr)
     , packet_label_(nullptr)
     , metrics_label_(nullptr)
     , payload_label_(nullptr)
@@ -870,6 +949,8 @@ TdlasPanel::TdlasPanel(QWidget *parent)
     , status_lbl_(nullptr)
     , packet_rate_lbl_(nullptr)
     , endpoint_lbl_(nullptr)
+    , header_lbl_(nullptr)
+    , counters_lbl_(nullptr)
     , packet_lbl_(nullptr)
     , metrics_lbl_(nullptr)
     , payload_lbl_(nullptr)
@@ -905,6 +986,8 @@ void TdlasPanel::setupUi()
     createRow(status_lbl_, status_label_);
     createRow(packet_rate_lbl_, packet_rate_label_);
     createRow(endpoint_lbl_, endpoint_label_);
+    createRow(header_lbl_, header_label_);
+    createRow(counters_lbl_, counters_label_);
     createRow(packet_lbl_, packet_label_);
     createRow(metrics_lbl_, metrics_label_);
     createRow(payload_lbl_, payload_label_);
@@ -932,9 +1015,11 @@ void TdlasPanel::setEnglish(bool english)
     status_lbl_->setText(english ? "Status:" : "状态:");
     packet_rate_lbl_->setText(english ? "Rates:" : "速率:");
     endpoint_lbl_->setText(english ? "Endpoints:" : "端点:");
+    header_lbl_->setText(english ? "Headers:" : "头部:");
+    counters_lbl_->setText(english ? "Counters:" : "计数:");
     packet_lbl_->setText(english ? "Packet:" : "数据包:");
     metrics_lbl_->setText(english ? "Metrics:" : "指标:");
-    payload_lbl_->setText(english ? "Payload:" : "负载:");
+    payload_lbl_->setText(english ? "Payload Preview:" : "负载预览:");
     warning_label_->setText(english
         ? "unverified mapping: business labels come from the legacy VI and still need live capture confirmation"
         : "unverified mapping：当前业务标签来自旧VI界面，仍需真实抓包确认");
@@ -948,6 +1033,8 @@ void TdlasPanel::updateData(const VaporView::TdlasData& data)
         status_label_->setProperty("status", "disconnected");
         packet_rate_label_->setText(is_english_ ? "Total 0.0 Hz / Matched 0.0 Hz" : "总包 0.0 Hz / 匹配 0.0 Hz");
         endpoint_label_->setText("---");
+        header_label_->setText("---");
+        counters_label_->setText("---");
         packet_label_->setText("---");
         metrics_label_->setText(is_english_ ? "No decoded business metrics yet" : "暂无可解码业务指标");
         payload_label_->setText("---");
@@ -987,15 +1074,18 @@ void TdlasPanel::updateData(const VaporView::TdlasData& data)
             .arg(QString::fromStdString(data.headers.ipv4.destination.ip.empty() ? std::string("---") : data.headers.ipv4.destination.ip))
             .arg(data.headers.udp.destination_port);
         endpoint_label_->setText(endpointText);
+        header_label_->setText(tdlasHeaderSummaryText(data, is_english_));
+        counters_label_->setText(tdlasCounterSummaryText(data, is_english_));
 
-        packet_label_->setText(QString(is_english_ ? "Len %1, last match %2, total %3, matched %4"
-                                                   : "长度 %1，最近匹配 %2，总包 %3，匹配 %4")
+        packet_label_->setText(QString(is_english_ ? "Len %1, last match %2, total %3, matched %4, session %5"
+                                                   : "长度 %1，最近匹配 %2，总包 %3，匹配 %4，会话 %5")
                                    .arg(data.packet_length)
                                    .arg(QString::fromStdString(data.last_match_time_utc.empty() ? std::string("---") : data.last_match_time_utc))
                                    .arg(static_cast<qulonglong>(data.total_packets))
-                                   .arg(static_cast<qulonglong>(data.matched_packets)));
+                                   .arg(static_cast<qulonglong>(data.matched_packets))
+                                   .arg(QString::fromStdString(data.adapter_name.empty() ? std::string("---") : data.adapter_name)));
         metrics_label_->setText(tdlasMetricSummaryText(data, is_english_));
-        payload_label_->setText(QString::fromStdString(data.payload_hex.empty() ? std::string("---") : data.payload_hex));
+        payload_label_->setText(data.payload_hex.empty() ? QStringLiteral("---") : tdlasPayloadPreviewText(data.payload_hex));
     }
 
     status_label_->style()->unpolish(status_label_);

@@ -74,6 +74,21 @@ std::string summarizePayloadHex(const uint8_t* payload, size_t length)
   return stream.str();
 }
 
+std::string summarizeRawHex(const uint8_t* data, size_t length)
+{
+  std::ostringstream stream;
+  stream << std::hex << std::setfill('0');
+  for (size_t i = 0; i < length; ++i)
+  {
+    if (i > 0)
+    {
+      stream << ' ';
+    }
+    stream << std::setw(2) << static_cast<int>(data[i]);
+  }
+  return stream.str();
+}
+
 uint16_t readU16BE(const uint8_t* data)
 {
   return static_cast<uint16_t>((static_cast<uint16_t>(data[0]) << 8) | static_cast<uint16_t>(data[1]));
@@ -165,7 +180,10 @@ std::string metricsToJson(const std::vector<TdlasMetric>& metrics)
            << "\"label_zh\":\"" << jsonEscape(metric.label_zh) << "\","
            << "\"label_en\":\"" << jsonEscape(metric.label_en) << "\","
            << "\"unit\":\"" << jsonEscape(metric.unit) << "\","
+           << "\"wire_type\":\"" << jsonEscape(metric.wire_type) << "\","
+           << "\"raw_hex\":\"" << jsonEscape(metric.raw_hex) << "\","
            << "\"value\":" << metric.value << ','
+           << "\"offset\":" << metric.offset << ','
            << "\"valid\":" << (metric.valid ? "true" : "false") << ','
            << "\"confidence\":\"" << jsonEscape(metric.confidence) << "\""
            << '}';
@@ -210,12 +228,15 @@ std::vector<TdlasMetric> parseBusinessMetrics(const uint8_t* payload, size_t len
     metric.label_zh = candidate.label_zh;
     metric.label_en = candidate.label_en;
     metric.unit = candidate.unit;
+    metric.offset = static_cast<uint32_t>(candidate.offset);
     metric.confidence = "unverified";
 
     if (candidate.type == CandidateMetric::Type::UInt16)
     {
+      metric.wire_type = "u16le";
       if (candidate.offset + 2 <= length)
       {
+        metric.raw_hex = summarizeRawHex(payload + candidate.offset, 2);
         metric.value = static_cast<double>(readU16LE(payload + candidate.offset));
         metric.valid = true;
         valid_found = true;
@@ -223,6 +244,8 @@ std::vector<TdlasMetric> parseBusinessMetrics(const uint8_t* payload, size_t len
     }
     else if (candidate.offset + 4 <= length)
     {
+      metric.wire_type = "f32le";
+      metric.raw_hex = summarizeRawHex(payload + candidate.offset, 4);
       const float value = readF32LE(payload + candidate.offset);
       if (isFiniteMetric(value))
       {

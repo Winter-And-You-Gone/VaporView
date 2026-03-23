@@ -157,7 +157,10 @@ struct TdlasMetric
   std::string label_zh;
   std::string label_en;
   std::string unit;
+  std::string wire_type;
+  std::string raw_hex;
   double value = 0.0;
+  uint32_t offset = 0;
   bool valid = false;
   std::string confidence = "unverified";
 };
