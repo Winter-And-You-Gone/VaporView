@@ -24,6 +24,7 @@
 #include <QStringList>
 #include <QApplication>
 #include <QLayout>
+#include <QIntValidator>
 #include <QSerialPortInfo>
 #include <QRegularExpression>
 #include <QSettings>
@@ -68,6 +69,32 @@ QString csvEscape(const QString &value)
 QString csvBool(bool value)
 {
     return value ? QStringLiteral("true") : QStringLiteral("false");
+}
+
+QString tdlasMetricSummaryText(const VaporView::TdlasData& data, bool english)
+{
+    QStringList lines;
+    for (const VaporView::TdlasMetric& metric : data.metrics)
+    {
+        if (!metric.valid)
+        {
+            continue;
+        }
+        const QString label = english ? QString::fromStdString(metric.label_en) : QString::fromStdString(metric.label_zh);
+        QString line = QString("%1: %2").arg(label, QString::number(metric.value, 'f', 3));
+        if (!metric.unit.empty())
+        {
+            line += QStringLiteral(" %1").arg(QString::fromStdString(metric.unit));
+        }
+        line += QStringLiteral(" [%1]").arg(QString::fromStdString(metric.confidence));
+        lines << line;
+    }
+
+    if (lines.isEmpty())
+    {
+        return english ? "No decoded business metrics yet" : "暂无可解码业务指标";
+    }
+    return lines.join('\n');
 }
 
 void rememberBaseMetric(QObject *object, const char *propertyName, int value)
@@ -830,6 +857,151 @@ void LidarPanel::updateData(const VaporView::LidarData& data)
     }
 }
 
+TdlasPanel::TdlasPanel(QWidget *parent)
+    : QWidget(parent)
+    , rate_label_(nullptr)
+    , status_label_(nullptr)
+    , packet_rate_label_(nullptr)
+    , endpoint_label_(nullptr)
+    , packet_label_(nullptr)
+    , metrics_label_(nullptr)
+    , payload_label_(nullptr)
+    , warning_label_(nullptr)
+    , status_lbl_(nullptr)
+    , packet_rate_lbl_(nullptr)
+    , endpoint_lbl_(nullptr)
+    , packet_lbl_(nullptr)
+    , metrics_lbl_(nullptr)
+    , payload_lbl_(nullptr)
+    , is_english_(false)
+{
+    setupUi();
+}
+
+void TdlasPanel::setupUi()
+{
+    auto *layout = new QVBoxLayout(this);
+    layout->setSpacing(6);
+    layout->setContentsMargins(6, 6, 6, 6);
+
+    rate_label_ = new QLabel(this);
+    rate_label_->setObjectName("rateLabel");
+    rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    layout->addWidget(rate_label_);
+
+    auto createRow = [this, layout](QLabel*& title, QLabel*& value) {
+        auto *row = new QHBoxLayout();
+        row->setSpacing(6);
+        title = new QLabel(this);
+        title->setObjectName("fieldLabel");
+        value = new QLabel(this);
+        value->setObjectName("valueLabel");
+        value->setWordWrap(true);
+        row->addWidget(title, 0, Qt::AlignTop);
+        row->addWidget(value, 1);
+        layout->addLayout(row);
+    };
+
+    createRow(status_lbl_, status_label_);
+    createRow(packet_rate_lbl_, packet_rate_label_);
+    createRow(endpoint_lbl_, endpoint_label_);
+    createRow(packet_lbl_, packet_label_);
+    createRow(metrics_lbl_, metrics_label_);
+    createRow(payload_lbl_, payload_label_);
+
+    warning_label_ = new QLabel(this);
+    warning_label_->setObjectName("statusIndicator");
+    warning_label_->setWordWrap(true);
+    layout->addWidget(warning_label_);
+    layout->addStretch();
+
+    setEnglish(false);
+}
+
+void TdlasPanel::updateRate(double hz)
+{
+    if (rate_label_)
+    {
+        rate_label_->setText(QString::asprintf("%.1f Hz matched", hz));
+    }
+}
+
+void TdlasPanel::setEnglish(bool english)
+{
+    is_english_ = english;
+    status_lbl_->setText(english ? "Status:" : "状态:");
+    packet_rate_lbl_->setText(english ? "Rates:" : "速率:");
+    endpoint_lbl_->setText(english ? "Endpoints:" : "端点:");
+    packet_lbl_->setText(english ? "Packet:" : "数据包:");
+    metrics_lbl_->setText(english ? "Metrics:" : "指标:");
+    payload_lbl_->setText(english ? "Payload:" : "负载:");
+    warning_label_->setText(english
+        ? "unverified mapping: business labels come from the legacy VI and still need live capture confirmation"
+        : "unverified mapping：当前业务标签来自旧VI界面，仍需真实抓包确认");
+}
+
+void TdlasPanel::updateData(const VaporView::TdlasData& data)
+{
+    if (!data.capture_session_active && data.adapter_name.empty())
+    {
+        status_label_->setText(is_english_ ? "Disconnected" : "未连接");
+        status_label_->setProperty("status", "disconnected");
+        packet_rate_label_->setText(is_english_ ? "Total 0.0 Hz / Matched 0.0 Hz" : "总包 0.0 Hz / 匹配 0.0 Hz");
+        endpoint_label_->setText("---");
+        packet_label_->setText("---");
+        metrics_label_->setText(is_english_ ? "No decoded business metrics yet" : "暂无可解码业务指标");
+        payload_label_->setText("---");
+    }
+    else
+    {
+        QString statusText;
+        if (!data.capture_session_active)
+        {
+            statusText = is_english_ ? "Disconnected" : "未连接";
+            status_label_->setProperty("status", "disconnected");
+        }
+        else if (data.matched_packets == 0)
+        {
+            statusText = is_english_ ? "Connected, waiting for matching traffic" : "已连接，等待匹配流量";
+            status_label_->setProperty("status", "connecting");
+        }
+        else if (data.valid)
+        {
+            statusText = is_english_ ? "Matched packet decoded" : "已匹配并完成解码";
+            status_label_->setProperty("status", "connected");
+        }
+        else
+        {
+            statusText = is_english_ ? "Matched packet observed, mapping pending" : "已匹配到数据包，映射待确认";
+            status_label_->setProperty("status", "connecting");
+        }
+        status_label_->setText(statusText);
+
+        packet_rate_label_->setText(QString(is_english_ ? "Total %1 Hz / Matched %2 Hz" : "总包 %1 Hz / 匹配 %2 Hz")
+                                        .arg(QString::number(data.total_rate_hz, 'f', 1))
+                                        .arg(QString::number(data.matched_rate_hz, 'f', 1)));
+
+        const QString endpointText = QString("%1:%2 -> %3:%4")
+            .arg(QString::fromStdString(data.headers.ipv4.source.ip.empty() ? std::string("---") : data.headers.ipv4.source.ip))
+            .arg(data.headers.udp.source_port)
+            .arg(QString::fromStdString(data.headers.ipv4.destination.ip.empty() ? std::string("---") : data.headers.ipv4.destination.ip))
+            .arg(data.headers.udp.destination_port);
+        endpoint_label_->setText(endpointText);
+
+        packet_label_->setText(QString(is_english_ ? "Len %1, last match %2, total %3, matched %4"
+                                                   : "长度 %1，最近匹配 %2，总包 %3，匹配 %4")
+                                   .arg(data.packet_length)
+                                   .arg(QString::fromStdString(data.last_match_time_utc.empty() ? std::string("---") : data.last_match_time_utc))
+                                   .arg(static_cast<qulonglong>(data.total_packets))
+                                   .arg(static_cast<qulonglong>(data.matched_packets)));
+        metrics_label_->setText(tdlasMetricSummaryText(data, is_english_));
+        payload_label_->setText(QString::fromStdString(data.payload_hex.empty() ? std::string("---") : data.payload_hex));
+    }
+
+    status_label_->style()->unpolish(status_label_);
+    status_label_->style()->polish(status_label_);
+}
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , central_widget_(nullptr)
@@ -839,6 +1011,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_panel_(nullptr)
     , hmp_panel_(nullptr)
     , lidar_panel_(nullptr)
+    , tdlas_panel_(nullptr)
     , log_text_edit_(nullptr)
     , status_label_(nullptr)
     , recording_status_label_(nullptr)
@@ -847,11 +1020,15 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_port_combo_(nullptr)
     , hmp_port_combo_(nullptr)
     , lidar_port_combo_(nullptr)
+    , tdlas_adapter_combo_(nullptr)
     , gnss_baud_combo_(nullptr)
     , imu_baud_combo_(nullptr)
     , ptb_baud_combo_(nullptr)
     , hmp_baud_combo_(nullptr)
     , lidar_baud_combo_(nullptr)
+    , tdlas_remote_ip_edit_(nullptr)
+    , tdlas_remote_port_edit_(nullptr)
+    , tdlas_local_port_edit_(nullptr)
     , connect_btn_(nullptr)
     , cancel_connect_btn_(nullptr)
     , disconnect_btn_(nullptr)
@@ -877,28 +1054,33 @@ MainWindow::MainWindow(QWidget *parent)
     , hmp_group_(nullptr)
     , env_group_(nullptr)
     , lidar_group_(nullptr)
+    , tdlas_group_(nullptr)
     , gnss_lbl_(nullptr)
     , imu_lbl_(nullptr)
     , ptb_lbl_(nullptr)
     , hmp_lbl_(nullptr)
     , lidar_lbl_(nullptr)
+    , tdlas_lbl_(nullptr)
     , global_rate_lbl_(nullptr)
     , gnss_rate_lbl_(nullptr)
     , imu_rate_lbl_(nullptr)
     , ptb_rate_lbl_(nullptr)
     , hmp_rate_lbl_(nullptr)
     , lidar_rate_lbl_(nullptr)
+    , tdlas_rate_lbl_(nullptr)
     , global_rate_combo_(nullptr)
     , gnss_rate_combo_(nullptr)
     , imu_rate_combo_(nullptr)
     , ptb_rate_combo_(nullptr)
     , hmp_rate_combo_(nullptr)
     , lidar_rate_combo_(nullptr)
+    , tdlas_rate_combo_(nullptr)
     , gnss_collector_(nullptr)
     , imu_collector_(nullptr)
     , ptb_collector_(nullptr)
     , hmp_collector_(nullptr)
     , lidar_collector_(nullptr)
+    , tdlas_collector_(nullptr)
     , refresh_timer_(nullptr)
     , is_fullscreen_(false)
     , is_english_(false)
@@ -915,6 +1097,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_sample_rate_(1)
     , hmp_sample_rate_(1)
     , lidar_sample_rate_(1)
+    , tdlas_sample_rate_(20)
     , recording_file_(nullptr)
     , recording_directory_()
     , recording_filename_()
@@ -950,6 +1133,35 @@ MainWindow::MainWindow(QWidget *parent)
     refresh_timer_ = new QTimer(this);
     connect(refresh_timer_, &QTimer::timeout, this, &MainWindow::onRefreshTimer);
     refresh_timer_->start(100);
+
+    if (tdlas_adapter_combo_)
+    {
+        const QString adapterName = settings.value("tdlas/adapter_name").toString();
+        for (int i = 1; i < tdlas_adapter_combo_->count(); ++i)
+        {
+            if (tdlas_adapter_combo_->itemData(i).toString() == adapterName)
+            {
+                tdlas_adapter_combo_->setCurrentIndex(i);
+                break;
+            }
+        }
+    }
+    if (tdlas_remote_ip_edit_)
+    {
+        tdlas_remote_ip_edit_->setText(settings.value("tdlas/remote_ip", "192.168.1.2").toString());
+    }
+    if (tdlas_remote_port_edit_)
+    {
+        tdlas_remote_port_edit_->setText(settings.value("tdlas/remote_port", "1600").toString());
+    }
+    if (tdlas_local_port_edit_)
+    {
+        tdlas_local_port_edit_->setText(settings.value("tdlas/local_port", "8080").toString());
+    }
+    if (tdlas_rate_combo_)
+    {
+        tdlas_rate_combo_->setCurrentText(settings.value("tdlas/sample_rate", QString::number(tdlas_sample_rate_)).toString());
+    }
 
     setEnglish(false);
     applyStyleConfiguration();
@@ -1402,10 +1614,40 @@ QStringList MainWindow::getAvailablePorts()
     return ports;
 }
 
+void MainWindow::refreshTdlasAdapters()
+{
+    if (!tdlas_adapter_combo_)
+    {
+        return;
+    }
+
+    const QString current = tdlas_adapter_combo_->currentData().toString();
+    tdlas_adapter_combo_->clear();
+    tdlas_adapter_combo_->addItem(is_english_ ? "-- Select Adapter --" : "-- 选择适配器 --", QString());
+
+    const auto adapters = VaporView::EthernetCaptureCollector::listAvailableAdapters();
+    for (const VaporView::TdlasAdapterInfo& adapter : adapters)
+    {
+        tdlas_adapter_combo_->addItem(QString::fromStdString(adapter.display_name), QString::fromStdString(adapter.name));
+    }
+
+    if (!current.isEmpty())
+    {
+        for (int i = 1; i < tdlas_adapter_combo_->count(); ++i)
+        {
+            if (tdlas_adapter_combo_->itemData(i).toString() == current)
+            {
+                tdlas_adapter_combo_->setCurrentIndex(i);
+                break;
+            }
+        }
+    }
+}
+
 void MainWindow::setupConfigPanel()
 {
     config_group_ = new QGroupBox(this);
-    config_group_->setMinimumWidth(760);
+    config_group_->setMinimumWidth(980);
     auto *config_layout = new QGridLayout(config_group_);
     config_layout->setVerticalSpacing(8);
     config_layout->setHorizontalSpacing(8);
@@ -1416,11 +1658,15 @@ void MainWindow::setupConfigPanel()
     config_layout->setColumnStretch(2, 0);
     config_layout->setColumnStretch(3, 0);
     config_layout->setColumnStretch(4, 0);
-    config_layout->setColumnMinimumWidth(0, 90);
+    config_layout->setColumnStretch(5, 0);
+    config_layout->setColumnStretch(6, 0);
+    config_layout->setColumnMinimumWidth(0, 110);
     config_layout->setColumnMinimumWidth(1, 260);
     config_layout->setColumnMinimumWidth(2, 110);
-    config_layout->setColumnMinimumWidth(3, 60);
+    config_layout->setColumnMinimumWidth(3, 100);
     config_layout->setColumnMinimumWidth(4, 110);
+    config_layout->setColumnMinimumWidth(5, 60);
+    config_layout->setColumnMinimumWidth(6, 110);
 
     QStringList baudRates = {"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"};
     QStringList ports = getAvailablePorts();
@@ -1490,10 +1736,10 @@ void MainWindow::setupConfigPanel()
     global_rate_lbl_ = new QLabel(this);
     global_rate_lbl_->setObjectName("fieldLabel");
     global_rate_lbl_->setFixedHeight(28);
-    config_layout->addWidget(global_rate_lbl_, row, 3, Qt::AlignVCenter | Qt::AlignRight);
+    config_layout->addWidget(global_rate_lbl_, row, 5, Qt::AlignVCenter | Qt::AlignRight);
 
     global_rate_combo_ = createRateCombo();
-    config_layout->addWidget(global_rate_combo_, row, 4, Qt::AlignVCenter);
+    config_layout->addWidget(global_rate_combo_, row, 6, Qt::AlignVCenter);
     connect(global_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onGlobalRateChanged);
     ++row;
 
@@ -1511,11 +1757,50 @@ void MainWindow::setupConfigPanel()
     createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "/dev/ttyTF03", "115200", row++, 100);
 #endif
 
+    tdlas_lbl_ = new QLabel(this);
+    tdlas_lbl_->setObjectName("fieldLabel");
+    tdlas_lbl_->setFixedHeight(28);
+    tdlas_lbl_->setFixedWidth(100);
+    config_layout->addWidget(tdlas_lbl_, row, 0, Qt::AlignVCenter | Qt::AlignLeft);
+
+    tdlas_adapter_combo_ = new QComboBox(this);
+    tdlas_adapter_combo_->setFixedHeight(30);
+    tdlas_adapter_combo_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    tdlas_adapter_combo_->setMaxVisibleItems(15);
+    config_layout->addWidget(tdlas_adapter_combo_, row, 1, Qt::AlignVCenter);
+
+    tdlas_remote_ip_edit_ = new QLineEdit(this);
+    tdlas_remote_ip_edit_->setFixedHeight(30);
+    tdlas_remote_ip_edit_->setClearButtonEnabled(true);
+    config_layout->addWidget(tdlas_remote_ip_edit_, row, 2, Qt::AlignVCenter);
+
+    tdlas_remote_port_edit_ = new QLineEdit(this);
+    tdlas_remote_port_edit_->setFixedHeight(30);
+    tdlas_remote_port_edit_->setClearButtonEnabled(true);
+    tdlas_remote_port_edit_->setValidator(new QIntValidator(0, 65535, tdlas_remote_port_edit_));
+    config_layout->addWidget(tdlas_remote_port_edit_, row, 3, Qt::AlignVCenter);
+
+    tdlas_local_port_edit_ = new QLineEdit(this);
+    tdlas_local_port_edit_->setFixedHeight(30);
+    tdlas_local_port_edit_->setClearButtonEnabled(true);
+    tdlas_local_port_edit_->setValidator(new QIntValidator(0, 65535, tdlas_local_port_edit_));
+    config_layout->addWidget(tdlas_local_port_edit_, row, 4, Qt::AlignVCenter);
+
+    tdlas_rate_lbl_ = new QLabel(this);
+    tdlas_rate_lbl_->setObjectName("fieldLabel");
+    tdlas_rate_lbl_->setFixedHeight(28);
+    config_layout->addWidget(tdlas_rate_lbl_, row, 5, Qt::AlignVCenter | Qt::AlignRight);
+
+    tdlas_rate_combo_ = createRateCombo();
+    config_layout->addWidget(tdlas_rate_combo_, row, 6, Qt::AlignVCenter);
+    refreshTdlasAdapters();
+
     connect(gnss_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onGnssRateChanged);
     connect(imu_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onImuRateChanged);
     connect(ptb_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onPtbRateChanged);
     connect(hmp_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onHmpRateChanged);
     connect(lidar_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onLidarRateChanged);
+    connect(tdlas_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onTdlasRateChanged);
 
     main_layout_->addWidget(config_group_);
 }
@@ -1542,6 +1827,14 @@ void MainWindow::setupDataPanels()
     imu_panel_ = new ImuPanel(this);
     imu_layout->addWidget(imu_panel_);
     data_layout->addWidget(imu_group_);
+
+    tdlas_group_ = new QGroupBox(this);
+    tdlas_group_->setObjectName("sensorGroupBox");
+    auto *tdlas_layout = new QVBoxLayout(tdlas_group_);
+    tdlas_layout->setContentsMargins(2, 2, 2, 2);
+    tdlas_panel_ = new TdlasPanel(this);
+    tdlas_layout->addWidget(tdlas_panel_);
+    data_layout->addWidget(tdlas_group_);
 
     auto *env_group = new QGroupBox(this);
     env_group->setObjectName("sensorGroupBox");
@@ -1619,6 +1912,7 @@ void MainWindow::setEnglish(bool english)
 
     gnss_group_->setTitle(english ? "GNSS / RTK" : "GNSS / RTK");
     imu_group_->setTitle(english ? "IMU" : "IMU");
+    tdlas_group_->setTitle(english ? "TDLAS Ethernet" : "TDLAS 以太网");
     env_group_->setTitle(english ? "Environment / Range" : "环境与测距");
 
     gnss_lbl_->setText(english ? "GNSS:" : "GNSS:");
@@ -1626,6 +1920,7 @@ void MainWindow::setEnglish(bool english)
     ptb_lbl_->setText(english ? "PTB210:" : "PTB210:");
     hmp_lbl_->setText(english ? "HMP3:" : "HMP3:");
     lidar_lbl_->setText(english ? "TF03:" : "TF03:");
+    tdlas_lbl_->setText(english ? "TDLAS:" : "TDLAS:");
 
     global_rate_lbl_->setText(english ? "Global Rate:" : "统一频率:");
     gnss_rate_lbl_->setText(english ? "Rate:" : "频率:");
@@ -1633,12 +1928,23 @@ void MainWindow::setEnglish(bool english)
     ptb_rate_lbl_->setText(english ? "Rate:" : "频率:");
     hmp_rate_lbl_->setText(english ? "Rate:" : "频率:");
     lidar_rate_lbl_->setText(english ? "Rate:" : "频率:");
+    tdlas_rate_lbl_->setText(english ? "Rate:" : "频率:");
+
+    tdlas_adapter_combo_->setToolTip(english ? "Capture adapter" : "抓包适配器");
+    tdlas_remote_ip_edit_->setPlaceholderText(english ? "Remote IP" : "远端IP");
+    tdlas_remote_port_edit_->setPlaceholderText(english ? "Remote Port" : "远端端口");
+    tdlas_local_port_edit_->setPlaceholderText(english ? "Local Port" : "本地端口");
+    tdlas_remote_ip_edit_->setToolTip(english ? "Leave empty to match any remote IP" : "留空表示匹配任意远端IP");
+    tdlas_remote_port_edit_->setToolTip(english ? "0 or empty means any remote port" : "0或留空表示匹配任意远端端口");
+    tdlas_local_port_edit_->setToolTip(english ? "0 or empty means any local port" : "0或留空表示匹配任意本地端口");
+    refreshTdlasAdapters();
 
     gnss_panel_->setEnglish(english);
     imu_panel_->setEnglish(english);
     ptb_panel_->setEnglish(english);
     hmp_panel_->setEnglish(english);
     lidar_panel_->setEnglish(english);
+    tdlas_panel_->setEnglish(english);
 
     if (rtk_config_dialog_)
     {
@@ -1691,21 +1997,25 @@ void MainWindow::onGlobalRateChanged(const QString& text)
     imu_sample_rate_ = rate;
     ptb_sample_rate_ = rate;
     hmp_sample_rate_ = rate;
+    tdlas_sample_rate_ = rate;
     
     gnss_rate_combo_->blockSignals(true);
     imu_rate_combo_->blockSignals(true);
     ptb_rate_combo_->blockSignals(true);
     hmp_rate_combo_->blockSignals(true);
+    tdlas_rate_combo_->blockSignals(true);
     
     gnss_rate_combo_->setCurrentText(text);
     imu_rate_combo_->setCurrentText(text);
     ptb_rate_combo_->setCurrentText(text);
     hmp_rate_combo_->setCurrentText(text);
+    tdlas_rate_combo_->setCurrentText(text);
     
     gnss_rate_combo_->blockSignals(false);
     imu_rate_combo_->blockSignals(false);
     ptb_rate_combo_->blockSignals(false);
     hmp_rate_combo_->blockSignals(false);
+    tdlas_rate_combo_->blockSignals(false);
     
     const CollectorSnapshot collectors = snapshotCollectors();
 
@@ -1733,6 +2043,10 @@ void MainWindow::onGlobalRateChanged(const QString& text)
         const int lidarRate = std::min(rate, 100);
         collectors.lidar->setSampleRate(lidarRate);
         collectors.lidar->setDeviceSampleRate(lidarRate);
+    }
+    if (collectors.tdlas && collectors.tdlas->isRunning())
+    {
+        collectors.tdlas->setSampleRate(rate);
     }
     
     log(QString(is_english_ ? "All rates set to %1 Hz" : "所有频率已设置为 %1 Hz").arg(rate));
@@ -1803,6 +2117,17 @@ void MainWindow::onLidarRateChanged(const QString& text)
     log(QString(is_english_ ? "TF03 sample rate set to %1 Hz" : "TF03采样频率已设置为 %1 Hz").arg(lidar_sample_rate_));
 }
 
+void MainWindow::onTdlasRateChanged(const QString& text)
+{
+    tdlas_sample_rate_ = parseRate(text);
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.tdlas)
+    {
+        collectors.tdlas->setSampleRate(tdlas_sample_rate_);
+    }
+    log(QString(is_english_ ? "TDLAS sample rate set to %1 Hz" : "TDLAS采样频率已设置为 %1 Hz").arg(tdlas_sample_rate_));
+}
+
 void MainWindow::applyAllSampleRates()
 {
     int rate = parseRate(global_rate_combo_->currentText());
@@ -1833,30 +2158,38 @@ void MainWindow::applyAllSampleRates()
         collectors.lidar->setSampleRate(lidarRate);
         collectors.lidar->setDeviceSampleRate(lidarRate);
     }
+    if (collectors.tdlas && collectors.tdlas->isRunning())
+    {
+        collectors.tdlas->setSampleRate(rate);
+    }
 
     gnss_rate_combo_->blockSignals(true);
     imu_rate_combo_->blockSignals(true);
     ptb_rate_combo_->blockSignals(true);
     hmp_rate_combo_->blockSignals(true);
     lidar_rate_combo_->blockSignals(true);
+    tdlas_rate_combo_->blockSignals(true);
 
     gnss_rate_combo_->setCurrentText(QString::number(rate));
     imu_rate_combo_->setCurrentText(QString::number(rate));
     ptb_rate_combo_->setCurrentText(QString::number(rate));
     hmp_rate_combo_->setCurrentText(QString::number(rate));
     lidar_rate_combo_->setCurrentText(QString::number(std::min(rate, 100)));
+    tdlas_rate_combo_->setCurrentText(QString::number(rate));
 
     gnss_rate_combo_->blockSignals(false);
     imu_rate_combo_->blockSignals(false);
     ptb_rate_combo_->blockSignals(false);
     hmp_rate_combo_->blockSignals(false);
     lidar_rate_combo_->blockSignals(false);
+    tdlas_rate_combo_->blockSignals(false);
 
     gnss_sample_rate_ = rate;
     imu_sample_rate_ = rate;
     ptb_sample_rate_ = rate;
     hmp_sample_rate_ = rate;
     lidar_sample_rate_ = std::min(rate, 100);
+    tdlas_sample_rate_ = rate;
 
     log(QString(is_english_ ? "All rates set to %1 Hz" : "所有频率已设置为 %1 Hz").arg(rate));
 }
@@ -2021,9 +2354,10 @@ bool MainWindow::startRecordingSession()
             const VaporView::PtbData ptbSample = collectors.ptb ? collectors.ptb->getLatestData() : VaporView::PtbData();
             const VaporView::HmpData hmpSample = collectors.hmp ? collectors.hmp->getLatestData() : VaporView::HmpData();
             const VaporView::LidarData lidarSample = collectors.lidar ? collectors.lidar->getLatestData() : VaporView::LidarData();
+            const VaporView::TdlasData tdlasSample = collectors.tdlas ? collectors.tdlas->getLatestData() : VaporView::TdlasData();
 
             QStringList row;
-            row.reserve(63);
+            row.reserve(74);
             row << recordingTimestampUtc();
 
             auto appendEmptyColumns = [&row](int count) {
@@ -2152,6 +2486,25 @@ bool MainWindow::startRecordingSession()
                 appendEmptyColumns(4);
             }
 
+            if (isFresh(collectors.tdlas.get(), tdlasSample))
+            {
+                row
+                    << QString::fromStdString(tdlasSample.adapter_name)
+                    << QString::fromStdString(tdlasSample.headers.ipv4.source.ip)
+                    << QString::fromStdString(tdlasSample.headers.ipv4.destination.ip)
+                    << QString::number(tdlasSample.headers.udp.source_port)
+                    << QString::number(tdlasSample.headers.udp.destination_port)
+                    << QString::number(tdlasSample.packet_length);
+                appendBool(tdlasSample.valid);
+                row << QString::fromStdString(tdlasSample.error_message)
+                    << QString::fromStdString(tdlasSample.payload_hex)
+                    << tdlasMetricsJsonForRecording(tdlasSample);
+            }
+            else
+            {
+                appendEmptyColumns(10);
+            }
+
             QTextStream out(filePtr);
             out.setEncoding(QStringConverter::Utf8);
             for (int i = 0; i < row.size(); ++i)
@@ -2266,8 +2619,14 @@ void MainWindow::writeRecordingHeader()
         << "imu_acc_x,imu_acc_y,imu_acc_z,imu_gyr_x,imu_gyr_y,imu_gyr_z,imu_roll,imu_pitch,imu_yaw,imu_quat_w,imu_quat_x,imu_quat_y,imu_quat_z,imu_temperature,imu_air_pressure,imu_system_time_us,imu_system_time_ms,imu_from_hi83,imu_raw_sentence,imu_valid,imu_error_message,"
         << "ptb_pressure_hpa,ptb_valid,ptb_error_message,"
         << "hmp_humidity,hmp_temperature,hmp_valid,hmp_error_message,"
-        << "tf03_distance_m,tf03_signal_strength,tf03_valid,tf03_error_message\n";
+        << "tf03_distance_m,tf03_signal_strength,tf03_valid,tf03_error_message,"
+        << "tdlas_adapter,tdlas_src_ip,tdlas_dst_ip,tdlas_src_port,tdlas_dst_port,tdlas_packet_len,tdlas_valid,tdlas_error_message,tdlas_payload_hex,tdlas_metrics_json\n";
     out.flush();
+}
+
+QString MainWindow::tdlasMetricsJsonForRecording(const VaporView::TdlasData& data) const
+{
+    return QString::fromStdString(data.metrics_json);
 }
 
 void MainWindow::updateConnectionStatus(bool connected)
@@ -2284,11 +2643,16 @@ void MainWindow::updateConnectionStatus(bool connected)
     ptb_port_combo_->setEnabled(inputsEnabled);
     hmp_port_combo_->setEnabled(inputsEnabled);
     lidar_port_combo_->setEnabled(inputsEnabled);
+    tdlas_adapter_combo_->setEnabled(inputsEnabled);
     gnss_baud_combo_->setEnabled(inputsEnabled);
     imu_baud_combo_->setEnabled(inputsEnabled);
     ptb_baud_combo_->setEnabled(inputsEnabled);
     hmp_baud_combo_->setEnabled(inputsEnabled);
     lidar_baud_combo_->setEnabled(inputsEnabled);
+    tdlas_remote_ip_edit_->setEnabled(inputsEnabled);
+    tdlas_remote_port_edit_->setEnabled(inputsEnabled);
+    tdlas_local_port_edit_->setEnabled(inputsEnabled);
+    tdlas_rate_combo_->setEnabled(inputsEnabled);
 
     if (connection_attempt_in_progress_)
     {
@@ -2312,7 +2676,7 @@ void MainWindow::updateConnectionStatus(bool connected)
 MainWindow::CollectorSnapshot MainWindow::snapshotCollectors() const
 {
     std::lock_guard<std::mutex> lock(collector_mutex_);
-    return {gnss_collector_, imu_collector_, ptb_collector_, hmp_collector_, lidar_collector_};
+    return {gnss_collector_, imu_collector_, ptb_collector_, hmp_collector_, lidar_collector_, tdlas_collector_};
 }
 
 void MainWindow::setCollectors(CollectorSnapshot collectors)
@@ -2323,6 +2687,7 @@ void MainWindow::setCollectors(CollectorSnapshot collectors)
     ptb_collector_ = std::move(collectors.ptb);
     hmp_collector_ = std::move(collectors.hmp);
     lidar_collector_ = std::move(collectors.lidar);
+    tdlas_collector_ = std::move(collectors.tdlas);
 }
 
 void MainWindow::stopAllCollectors()
@@ -2335,6 +2700,7 @@ void MainWindow::stopAllCollectors()
         collectors.ptb = std::move(ptb_collector_);
         collectors.hmp = std::move(hmp_collector_);
         collectors.lidar = std::move(lidar_collector_);
+        collectors.tdlas = std::move(tdlas_collector_);
     }
 
     if (collectors.gnss)
@@ -2356,6 +2722,10 @@ void MainWindow::stopAllCollectors()
     if (collectors.lidar)
     {
         collectors.lidar->stop();
+    }
+    if (collectors.tdlas)
+    {
+        collectors.tdlas->stop();
     }
 }
 
@@ -2407,8 +2777,12 @@ void MainWindow::onRefreshPortsClicked()
     updateCombo(ptb_port_combo_);
     updateCombo(hmp_port_combo_);
     updateCombo(lidar_port_combo_);
+    refreshTdlasAdapters();
 
-    log(QString(is_english_ ? "Ports refreshed: %1 found" : "端口已刷新: 发现 %1 个").arg(ports.size()));
+    log(QString(is_english_ ? "Ports refreshed: %1 serial ports, %2 capture adapters"
+                            : "端口已刷新: %1 个串口，%2 个抓包适配器")
+            .arg(ports.size())
+            .arg(std::max(0, tdlas_adapter_combo_->count() - 1)));
 }
 
 void MainWindow::onConnectClicked()
@@ -2429,18 +2803,21 @@ void MainWindow::onConnectClicked()
     current_ptb_ = VaporView::PtbData();
     current_hmp_ = VaporView::HmpData();
     current_lidar_ = VaporView::LidarData();
+    current_tdlas_ = VaporView::TdlasData();
 
     gnss_panel_->updateData(current_gnss_);
     imu_panel_->updateData(current_imu_);
     ptb_panel_->updateData(current_ptb_);
     hmp_panel_->updateData(current_hmp_);
     lidar_panel_->updateData(current_lidar_);
+    tdlas_panel_->updateData(current_tdlas_);
 
     gnss_panel_->updateRate(0.0);
     imu_panel_->updateRate(0.0);
     ptb_panel_->updateRate(0.0);
     hmp_panel_->updateRate(0.0);
     lidar_panel_->updateRate(0.0);
+    tdlas_panel_->updateRate(0.0);
 
     const bool english = is_english_;
     const QString selectText = english ? "-- Select --" : "-- 选择 --";
@@ -2449,6 +2826,11 @@ void MainWindow::onConnectClicked()
     const QString ptbPort = ptb_port_combo_->currentText();
     const QString hmpPort = hmp_port_combo_->currentText();
     const QString lidarPort = lidar_port_combo_->currentText();
+    const QString tdlasAdapterName = tdlas_adapter_combo_->currentData().toString();
+    const QString tdlasAdapterLabel = tdlas_adapter_combo_->currentText();
+    const QString tdlasRemoteIp = tdlas_remote_ip_edit_->text().trimmed();
+    const QString tdlasRemotePortText = tdlas_remote_port_edit_->text().trimmed();
+    const QString tdlasLocalPortText = tdlas_local_port_edit_->text().trimmed();
     const QString gnssBaudText = gnss_baud_combo_->currentText();
     const QString imuBaudText = imu_baud_combo_->currentText();
     const QString ptbBaudText = ptb_baud_combo_->currentText();
@@ -2459,11 +2841,20 @@ void MainWindow::onConnectClicked()
     const int ptbRate = parseRate(ptb_rate_combo_->currentText());
     const int hmpRate = parseRate(hmp_rate_combo_->currentText());
     const int lidarRate = std::min(parseRate(lidar_rate_combo_->currentText()), 100);
+    const int tdlasRate = parseRate(tdlas_rate_combo_->currentText());
     gnss_sample_rate_ = gnssRate;
     imu_sample_rate_ = imuRate;
     ptb_sample_rate_ = ptbRate;
     hmp_sample_rate_ = hmpRate;
     lidar_sample_rate_ = lidarRate;
+    tdlas_sample_rate_ = tdlasRate;
+
+    QSettings settings("VaporView", "MainWindow");
+    settings.setValue("tdlas/adapter_name", tdlasAdapterName);
+    settings.setValue("tdlas/remote_ip", tdlasRemoteIp);
+    settings.setValue("tdlas/remote_port", tdlasRemotePortText);
+    settings.setValue("tdlas/local_port", tdlasLocalPortText);
+    settings.setValue("tdlas/sample_rate", QString::number(tdlasRate));
 
     stopAllCollectors();
 
@@ -2475,6 +2866,11 @@ void MainWindow::onConnectClicked()
                                       ptbPort,
                                       hmpPort,
                                       lidarPort,
+                                      tdlasAdapterName,
+                                      tdlasAdapterLabel,
+                                      tdlasRemoteIp,
+                                      tdlasRemotePortText,
+                                      tdlasLocalPortText,
                                       gnssBaudText,
                                       imuBaudText,
                                       ptbBaudText,
@@ -2484,7 +2880,8 @@ void MainWindow::onConnectClicked()
                                       imuRate,
                                       ptbRate,
                                       hmpRate,
-                                      lidarRate]() {
+                                      lidarRate,
+                                      tdlasRate]() {
         auto postLog = [this](const QString& message) {
             QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
         };
@@ -2498,6 +2895,7 @@ void MainWindow::onConnectClicked()
         collectors.ptb = std::make_shared<VaporView::PtbCollector>();
         collectors.hmp = std::make_shared<VaporView::HmpCollector>();
         collectors.lidar = std::make_shared<VaporView::LidarCollector>();
+        collectors.tdlas = std::make_shared<VaporView::EthernetCaptureCollector>();
         setCollectors(collectors);
 
         auto logCallback = [this](const std::string& msg) {
@@ -2511,17 +2909,20 @@ void MainWindow::onConnectClicked()
         collectors.ptb->setSampleRate(ptbRate);
         collectors.hmp->setSampleRate(hmpRate);
         collectors.lidar->setSampleRate(lidarRate);
+        collectors.tdlas->setSampleRate(tdlasRate);
 
         collectors.gnss->setLogCallback(logCallback);
         collectors.imu->setLogCallback(logCallback);
         collectors.ptb->setLogCallback(logCallback);
         collectors.hmp->setLogCallback(logCallback);
         collectors.lidar->setLogCallback(logCallback);
+        collectors.tdlas->setLogCallback(logCallback);
         collectors.gnss->setCancelCallback(cancelCallback);
         collectors.imu->setCancelCallback(cancelCallback);
         collectors.ptb->setCancelCallback(cancelCallback);
         collectors.hmp->setCancelCallback(cancelCallback);
         collectors.lidar->setCancelCallback(cancelCallback);
+        collectors.tdlas->setCancelCallback(cancelCallback);
 
         int total_devices = 0;
         int connected_devices = 0;
@@ -2656,6 +3057,37 @@ void MainWindow::onConnectClicked()
                                  return false;
                              }) < 0) return;
 
+        if (!tdlasAdapterName.isEmpty())
+        {
+            total_devices++;
+            postLog(QString(english ? "[TDLAS] Opening capture adapter: %1" : "[TDLAS] 正在打开抓包适配器: %1").arg(tdlasAdapterLabel));
+            if (abortIfRequested()) return;
+
+            collectors.tdlas->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onTdlasDataReady", Qt::QueuedConnection); });
+            collectors.tdlas->setSampleRate(tdlasRate);
+
+            VaporView::TdlasCaptureConfig captureConfig;
+            captureConfig.adapter_name = tdlasAdapterName.toStdString();
+            captureConfig.remote_ip = tdlasRemoteIp.toStdString();
+            captureConfig.remote_port = static_cast<uint16_t>(tdlasRemotePortText.isEmpty() ? 0 : tdlasRemotePortText.toUShort());
+            captureConfig.local_port = static_cast<uint16_t>(tdlasLocalPortText.isEmpty() ? 0 : tdlasLocalPortText.toUShort());
+
+            if (!collectors.tdlas->start(captureConfig))
+            {
+                postLog(QString(english ? "[TDLAS] Failed to start capture: %1" : "[TDLAS] 启动抓包失败: %1")
+                            .arg(QString::fromStdString(collectors.tdlas->getLastError())));
+            }
+            else
+            {
+                connected_devices++;
+                postLog(english ? "[TDLAS] Capture started, waiting for matching traffic." : "[TDLAS] 抓包已启动，等待匹配流量。");
+            }
+        }
+        else
+        {
+            postLog(english ? "[TDLAS] Skipped (adapter not selected)" : "[TDLAS] 跳过 (未选择适配器)");
+        }
+
         postLog(QString(english ? "========== Connection Summary: %1/%2 devices connected ==========" : "========== 连接摘要: %1/%2 设备已连接 ==========").arg(connected_devices).arg(total_devices));
         if (connected_devices == 0)
         {
@@ -2739,6 +3171,15 @@ void MainWindow::onLidarDataReady()
     }
 }
 
+void MainWindow::onTdlasDataReady()
+{
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.tdlas)
+    {
+        current_tdlas_ = collectors.tdlas->getLatestData();
+    }
+}
+
 void MainWindow::onRefreshTimer()
 {
     const CollectorSnapshot collectors = snapshotCollectors();
@@ -2748,6 +3189,7 @@ void MainWindow::onRefreshTimer()
     ptb_panel_->updateData(current_ptb_);
     hmp_panel_->updateData(current_hmp_);
     lidar_panel_->updateData(current_lidar_);
+    tdlas_panel_->updateData(current_tdlas_);
 
     if (collectors.gnss)
     {
@@ -2773,6 +3215,11 @@ void MainWindow::onRefreshTimer()
     {
         const double rate = collectors.lidar->getActualRate();
         lidar_panel_->updateRate(rate);
+    }
+    if (collectors.tdlas)
+    {
+        const double rate = collectors.tdlas->getActualRate();
+        tdlas_panel_->updateRate(rate);
     }
 }
 

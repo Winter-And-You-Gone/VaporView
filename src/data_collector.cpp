@@ -1,6 +1,7 @@
 #include "data_collector.h"
 #include "hipnuc_dec.h"
 #include "pvtsln_data.hpp"
+#include <algorithm>
 #include <cstring>
 #include <iomanip>
 #include <sstream>

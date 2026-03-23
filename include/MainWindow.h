@@ -3,6 +3,7 @@
 
 #include "data_collector.h"
 #include "data_types.h"
+#include "EthernetCaptureCollector.h"
 #include <QMainWindow>
 #include <QLabel>
 #include <QVBoxLayout>
@@ -21,6 +22,7 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QScrollArea>
+#include <QLineEdit>
 #include <atomic>
 #include <memory>
 #include <mutex>
@@ -219,6 +221,38 @@ private:
     bool is_english_;
 };
 
+class TdlasPanel : public QWidget
+{
+    Q_OBJECT
+
+public:
+    explicit TdlasPanel(QWidget *parent = nullptr);
+    void updateData(const VaporView::TdlasData& data);
+    void updateRate(double hz);
+    void setEnglish(bool english);
+
+private:
+    void setupUi();
+
+    QLabel *rate_label_;
+    QLabel *status_label_;
+    QLabel *packet_rate_label_;
+    QLabel *endpoint_label_;
+    QLabel *packet_label_;
+    QLabel *metrics_label_;
+    QLabel *payload_label_;
+    QLabel *warning_label_;
+
+    QLabel *status_lbl_;
+    QLabel *packet_rate_lbl_;
+    QLabel *endpoint_lbl_;
+    QLabel *packet_lbl_;
+    QLabel *metrics_lbl_;
+    QLabel *payload_lbl_;
+
+    bool is_english_;
+};
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -235,6 +269,7 @@ private slots:
     void onPtbDataReady();
     void onHmpDataReady();
     void onLidarDataReady();
+    void onTdlasDataReady();
     void onRefreshTimer();
     void onClearLogClicked();
     void onRefreshPortsClicked();
@@ -247,6 +282,7 @@ private slots:
     void onPtbRateChanged(const QString& text);
     void onHmpRateChanged(const QString& text);
     void onLidarRateChanged(const QString& text);
+    void onTdlasRateChanged(const QString& text);
     void onRtkConfigClicked();
     void onFontScaleTriggered(QAction *action);
     void onCancelConnectClicked();
@@ -259,6 +295,7 @@ private:
         std::shared_ptr<VaporView::PtbCollector> ptb;
         std::shared_ptr<VaporView::HmpCollector> hmp;
         std::shared_ptr<VaporView::LidarCollector> lidar;
+        std::shared_ptr<VaporView::EthernetCaptureCollector> tdlas;
     };
 
     void setupMenuBar();
@@ -275,8 +312,10 @@ private:
     bool startRecordingSession();
     void stopRecording(bool announce = true);
     void writeRecordingHeader();
+    QString tdlasMetricsJsonForRecording(const VaporView::TdlasData& data) const;
     void updateConnectionStatus(bool connected);
     QStringList getAvailablePorts();
+    void refreshTdlasAdapters();
     void setEnglish(bool english);
     void setFontScale(int percent);
     void applyStyleConfiguration();
@@ -299,6 +338,7 @@ private:
     PtbPanel *ptb_panel_;
     HmpPanel *hmp_panel_;
     LidarPanel *lidar_panel_;
+    TdlasPanel *tdlas_panel_;
 
     QTextEdit *log_text_edit_;
     QLabel *status_label_;
@@ -309,11 +349,15 @@ private:
     QComboBox *ptb_port_combo_;
     QComboBox *hmp_port_combo_;
     QComboBox *lidar_port_combo_;
+    QComboBox *tdlas_adapter_combo_;
     QComboBox *gnss_baud_combo_;
     QComboBox *imu_baud_combo_;
     QComboBox *ptb_baud_combo_;
     QComboBox *hmp_baud_combo_;
     QComboBox *lidar_baud_combo_;
+    QLineEdit *tdlas_remote_ip_edit_;
+    QLineEdit *tdlas_remote_port_edit_;
+    QLineEdit *tdlas_local_port_edit_;
     QAction *connect_btn_;
     QAction *cancel_connect_btn_;
     QAction *disconnect_btn_;
@@ -340,18 +384,21 @@ private:
     QGroupBox *hmp_group_;
     QGroupBox *env_group_;
     QGroupBox *lidar_group_;
+    QGroupBox *tdlas_group_;
 
     QLabel *gnss_lbl_;
     QLabel *imu_lbl_;
     QLabel *ptb_lbl_;
     QLabel *hmp_lbl_;
     QLabel *lidar_lbl_;
+    QLabel *tdlas_lbl_;
     QLabel *global_rate_lbl_;
     QLabel *gnss_rate_lbl_;
     QLabel *imu_rate_lbl_;
     QLabel *ptb_rate_lbl_;
     QLabel *hmp_rate_lbl_;
     QLabel *lidar_rate_lbl_;
+    QLabel *tdlas_rate_lbl_;
 
     QComboBox *global_rate_combo_;
     QComboBox *gnss_rate_combo_;
@@ -359,6 +406,7 @@ private:
     QComboBox *ptb_rate_combo_;
     QComboBox *hmp_rate_combo_;
     QComboBox *lidar_rate_combo_;
+    QComboBox *tdlas_rate_combo_;
 
     mutable std::mutex collector_mutex_;
     std::shared_ptr<VaporView::GnssCollector> gnss_collector_;
@@ -366,6 +414,7 @@ private:
     std::shared_ptr<VaporView::PtbCollector> ptb_collector_;
     std::shared_ptr<VaporView::HmpCollector> hmp_collector_;
     std::shared_ptr<VaporView::LidarCollector> lidar_collector_;
+    std::shared_ptr<VaporView::EthernetCaptureCollector> tdlas_collector_;
 
     QTimer *refresh_timer_;
 
@@ -374,6 +423,7 @@ private:
     VaporView::PtbData current_ptb_;
     VaporView::HmpData current_hmp_;
     VaporView::LidarData current_lidar_;
+    VaporView::TdlasData current_tdlas_;
 
     bool is_fullscreen_;
     bool is_english_;
@@ -393,6 +443,7 @@ private:
     int ptb_sample_rate_;
     int hmp_sample_rate_;
     int lidar_sample_rate_;
+    int tdlas_sample_rate_;
     std::unique_ptr<QFile> recording_file_;
     QString recording_directory_;
     QString recording_filename_;

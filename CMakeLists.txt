@@ -11,6 +11,11 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 option(BUILD_PYTHON_BINDINGS "Build Python bindings with pybind11" OFF)
+if(WIN32)
+    option(ENABLE_TDLAS_CAPTURE "Enable TDLAS Ethernet capture via Npcap SDK" ON)
+else()
+    option(ENABLE_TDLAS_CAPTURE "Enable TDLAS Ethernet capture via Npcap SDK" OFF)
+endif()
 
 find_package(Qt6 COMPONENTS Core Widgets SerialPort Network REQUIRED)
 set(QT_LIBRARIES Qt6::Core Qt6::Widgets Qt6::SerialPort Qt6::Network)
@@ -21,6 +26,53 @@ set(UM982_DRIVER_DIR ${CMAKE_SOURCE_DIR}/third_party/um982_driver)
 set(HIPNUC_DRIVER_DIR ${CMAKE_SOURCE_DIR}/third_party/hipnuc_driver)
 set(RTKLIB_DIR ${CMAKE_SOURCE_DIR}/third_party/rtklib)
 set(RTKLIB_STR2STR_SOURCE ${RTKLIB_DIR}/app/consapp/str2str/str2str.c)
+
+set(NPCAP_INCLUDE_DIR "")
+set(NPCAP_WPCAP_LIB "")
+set(NPCAP_PACKET_LIB "")
+if(WIN32 AND ENABLE_TDLAS_CAPTURE)
+    set(_npcap_roots)
+    if(DEFINED NPCAP_SDK_DIR)
+        list(APPEND _npcap_roots "${NPCAP_SDK_DIR}")
+    endif()
+    if(DEFINED ENV{NPCAP_SDK_DIR})
+        list(APPEND _npcap_roots "$ENV{NPCAP_SDK_DIR}")
+    endif()
+    list(APPEND _npcap_roots
+        "C:/Program Files/Npcap SDK"
+        "C:/Program Files (x86)/Npcap SDK"
+        "C:/Program Files/Npcap"
+        "C:/Program Files (x86)/Npcap"
+    )
+
+    foreach(_npcap_root IN LISTS _npcap_roots)
+        cmake_path(NORMAL_PATH _npcap_root OUTPUT_VARIABLE _npcap_root_normalized)
+
+        set(_npcap_include_candidate "${_npcap_root_normalized}/Include")
+        set(_npcap_wpcap_candidate "${_npcap_root_normalized}/Lib/x64/wpcap.lib")
+        set(_npcap_packet_candidate "${_npcap_root_normalized}/Lib/x64/Packet.lib")
+
+        if(NOT NPCAP_INCLUDE_DIR AND EXISTS "${_npcap_include_candidate}/pcap.h")
+            set(NPCAP_INCLUDE_DIR "${_npcap_include_candidate}")
+        endif()
+        if(NOT NPCAP_WPCAP_LIB AND EXISTS "${_npcap_wpcap_candidate}")
+            set(NPCAP_WPCAP_LIB "${_npcap_wpcap_candidate}")
+        endif()
+        if(NOT NPCAP_PACKET_LIB AND EXISTS "${_npcap_packet_candidate}")
+            set(NPCAP_PACKET_LIB "${_npcap_packet_candidate}")
+        endif()
+
+        if(NPCAP_INCLUDE_DIR AND NPCAP_WPCAP_LIB AND NPCAP_PACKET_LIB)
+            break()
+        endif()
+    endforeach()
+
+    if(NOT NPCAP_INCLUDE_DIR OR NOT NPCAP_WPCAP_LIB OR NOT NPCAP_PACKET_LIB)
+        message(FATAL_ERROR
+            "ENABLE_TDLAS_CAPTURE=ON requires the Npcap SDK (Include + Lib/x64). "
+            "Set NPCAP_SDK_DIR or install the SDK in a standard path.")
+    endif()
+endif()
 
 set(RTKLIB_SOURCES
     ${RTKLIB_DIR}/src/stream.c
@@ -62,10 +114,13 @@ target_compile_definitions(rtklib_strsvr PRIVATE
 
 if(MSVC)
     target_compile_definitions(rtklib_strsvr PRIVATE _CRT_SECURE_NO_WARNINGS)
-    target_compile_options(rtklib_strsvr PRIVATE /W0)
-    target_link_libraries(rtklib_strsvr PUBLIC ws2_32 winmm)
+    target_compile_options(rtklib_strsvr PRIVATE /W0 /Zc:__cplusplus /permissive-)
 else()
     target_compile_options(rtklib_strsvr PRIVATE -w)
+endif()
+
+if(WIN32)
+    target_link_libraries(rtklib_strsvr PUBLIC ws2_32 winmm)
 endif()
 
 if(EXISTS ${RTKLIB_STR2STR_SOURCE})
@@ -75,7 +130,7 @@ if(EXISTS ${RTKLIB_STR2STR_SOURCE})
 
     if(MSVC)
         target_compile_definitions(str2str PRIVATE _CRT_SECURE_NO_WARNINGS)
-        target_compile_options(str2str PRIVATE /W0 /utf-8)
+        target_compile_options(str2str PRIVATE /W0 /utf-8 /Zc:__cplusplus /permissive-)
     else()
         target_compile_options(str2str PRIVATE -w)
     endif()
@@ -86,6 +141,7 @@ set(NAV_SOURCES
     src/MainWindow.cpp
     src/serial_port.cpp
     src/data_collector.cpp
+    src/EthernetCaptureCollector.cpp
     src/RtkConfigDialog.cpp
     src/RtkStreamService.cpp
     ${UM982_DRIVER_DIR}/pvtsln_parser.cpp
@@ -97,6 +153,7 @@ set(NAV_HEADERS
     include/serial_port.h
     include/data_types.h
     include/data_collector.h
+    include/EthernetCaptureCollector.h
     include/RtkConfigDialog.h
     include/RtkStreamService.h
     ${UM982_DRIVER_DIR}/pvtsln_data.hpp
@@ -135,7 +192,7 @@ else()
 endif()
 
 if(MSVC)
-    target_compile_options(VaporView PRIVATE /FI"${CMAKE_SOURCE_DIR}/include/compiler_compat.h")
+    target_compile_options(VaporView PRIVATE /FI"${CMAKE_SOURCE_DIR}/include/compiler_compat.h" /Zc:__cplusplus /permissive-)
 endif()
 
 target_include_directories(VaporView PRIVATE
@@ -144,6 +201,7 @@ target_include_directories(VaporView PRIVATE
     ${RTKLIB_DIR}/src
     ${UM982_DRIVER_DIR}
     ${HIPNUC_DRIVER_DIR}
+    ${NPCAP_INCLUDE_DIR}
 )
 
 target_link_libraries(VaporView PRIVATE
@@ -151,6 +209,10 @@ target_link_libraries(VaporView PRIVATE
     Threads::Threads
     rtklib_strsvr
 )
+
+if(WIN32 AND ENABLE_TDLAS_CAPTURE)
+    target_compile_definitions(VaporView PRIVATE ENABLE_TDLAS_CAPTURE=1)
+endif()
 
 add_custom_command(TARGET VaporView POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/resources
@@ -170,7 +232,7 @@ add_custom_command(TARGET VaporView POST_BUILD
 )
 
 if(MSVC)
-    target_compile_options(VaporView PRIVATE /W4 /utf-8)
+    target_compile_options(VaporView PRIVATE /W4 /utf-8 /Zc:__cplusplus /permissive-)
 else()
     target_compile_options(VaporView PRIVATE
         -Wall
@@ -206,7 +268,7 @@ if(BUILD_PYTHON_BINDINGS)
     )
 
     if(MSVC)
-        target_compile_options(VaporView_bindings PRIVATE /FI"${CMAKE_SOURCE_DIR}/include/compiler_compat.h")
+        target_compile_options(VaporView_bindings PRIVATE /FI"${CMAKE_SOURCE_DIR}/include/compiler_compat.h" /Zc:__cplusplus /permissive-)
     endif()
 
     target_link_libraries(VaporView_bindings PRIVATE

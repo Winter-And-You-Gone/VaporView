@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace VaporView
 {
@@ -99,6 +100,94 @@ struct LidarData
   std::chrono::steady_clock::time_point timestamp{};
   bool valid = false;
   std::string error_message;
+};
+
+struct PacketEndpoint
+{
+  std::string mac;
+  std::string ip;
+  uint16_t port = 0;
+  bool valid = false;
+};
+
+struct EthernetHeaderData
+{
+  PacketEndpoint source;
+  PacketEndpoint destination;
+  uint16_t ether_type = 0;
+  bool valid = false;
+};
+
+struct IPv4HeaderData
+{
+  uint8_t version = 0;
+  uint8_t ihl = 0;
+  uint8_t type_of_service = 0;
+  uint16_t total_length = 0;
+  uint16_t identification = 0;
+  uint16_t flags = 0;
+  uint16_t fragment_offset = 0;
+  uint8_t ttl = 0;
+  uint8_t protocol = 0;
+  uint16_t header_checksum = 0;
+  PacketEndpoint source;
+  PacketEndpoint destination;
+  bool valid = false;
+};
+
+struct UdpHeaderData
+{
+  uint16_t source_port = 0;
+  uint16_t destination_port = 0;
+  uint16_t length = 0;
+  uint16_t checksum = 0;
+  bool valid = false;
+};
+
+struct PacketHeaders
+{
+  EthernetHeaderData ethernet;
+  IPv4HeaderData ipv4;
+  UdpHeaderData udp;
+};
+
+struct TdlasMetric
+{
+  std::string key;
+  std::string label_zh;
+  std::string label_en;
+  std::string unit;
+  double value = 0.0;
+  bool valid = false;
+  std::string confidence = "unverified";
+};
+
+struct TdlasData
+{
+  std::string adapter_name;
+  PacketHeaders headers;
+  std::string payload_hex;
+  std::string metrics_json;
+  std::string error_message;
+  std::string last_match_time_utc;
+  std::vector<TdlasMetric> metrics;
+
+  uint32_t packet_length = 0;
+  uint64_t total_packets = 0;
+  uint64_t matched_packets = 0;
+  uint64_t non_ipv4_packets = 0;
+  uint64_t non_udp_packets = 0;
+  uint64_t filter_mismatch_packets = 0;
+  uint64_t parse_success_count = 0;
+  uint64_t parse_failure_count = 0;
+  double total_rate_hz = 0.0;
+  double matched_rate_hz = 0.0;
+
+  std::chrono::steady_clock::time_point timestamp{};
+  bool capture_session_active = false;
+  bool matched = false;
+  bool valid = false;
+  bool mapping_unverified = true;
 };
 
 }
