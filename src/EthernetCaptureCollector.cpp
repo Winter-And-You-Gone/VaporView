@@ -27,6 +27,7 @@ constexpr size_t kTrendSampleHistory = 24;
 constexpr size_t kPayloadSignatureBytes = 16;
 constexpr size_t kPayloadVariationBytes = 24;
 constexpr size_t kPayloadWordStatsBytes = 64;
+constexpr size_t kPayloadSampleBytes = kPayloadWordStatsBytes;
 
 std::string jsonEscape(const std::string& value)
 {
@@ -973,7 +974,7 @@ void EthernetCaptureCollector::run()
       TdlasMetricSample trendSample;
       trendSample.timestamp_utc = sample.last_match_time_utc;
       trendSample.metrics = sample.metrics;
-      std::vector<uint8_t> payloadSample(parsed.payload, parsed.payload + (std::min)(parsed.payload_length, kPayloadVariationBytes));
+      std::vector<uint8_t> payloadSample(parsed.payload, parsed.payload + (std::min)(parsed.payload_length, kPayloadSampleBytes));
 
       DataCallback callback;
       {
