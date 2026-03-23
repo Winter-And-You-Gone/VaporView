@@ -126,6 +126,49 @@ QString tdlasMetricSummaryText(const VaporView::TdlasData& data, bool english)
     return lines.join('\n');
 }
 
+QString tdlasWordStatsSummaryText(const VaporView::TdlasData& data, bool english)
+{
+    if (data.word_stats.empty())
+    {
+        return english ? "Awaiting word statistics" : "等待word统计";
+    }
+
+    QStringList lines;
+    const int limit = std::min<int>(12, static_cast<int>(data.word_stats.size()));
+    for (int i = 0; i < limit; ++i)
+    {
+        const VaporView::TdlasWordStat &stat = data.word_stats.at(static_cast<size_t>(i));
+        lines << (english
+            ? QString("w%1 @%2 = %3 range[%4,%5] unique %6 %7 {raw %8}")
+                  .arg(stat.word_index, 2, 10, QChar('0'))
+                  .arg(stat.offset)
+                  .arg(stat.latest_value)
+                  .arg(stat.min_value)
+                  .arg(stat.max_value)
+                  .arg(stat.unique_count)
+                  .arg(stat.stable ? "stable" : "dynamic")
+                  .arg(QString::fromStdString(stat.raw_hex))
+            : QString("w%1 @%2 = %3 范围[%4,%5] 唯一值 %6 %7 {raw %8}")
+                  .arg(stat.word_index, 2, 10, QChar('0'))
+                  .arg(stat.offset)
+                  .arg(stat.latest_value)
+                  .arg(stat.min_value)
+                  .arg(stat.max_value)
+                  .arg(stat.unique_count)
+                  .arg(stat.stable ? "稳定" : "变化")
+                  .arg(QString::fromStdString(stat.raw_hex)));
+    }
+
+    if (data.word_stats.size() > static_cast<size_t>(limit))
+    {
+        lines << (english
+            ? QString("... %1 more words exported in snapshot").arg(data.word_stats.size() - static_cast<size_t>(limit))
+            : QString("... 其余 %1 个word已导出到快照").arg(data.word_stats.size() - static_cast<size_t>(limit)));
+    }
+
+    return lines.join('\n');
+}
+
 QString tdlasHeaderSummaryText(const VaporView::TdlasData& data, bool english)
 {
     const auto macOrDash = [](const std::string& value) {
@@ -1104,6 +1147,7 @@ TdlasPanel::TdlasPanel(QWidget *parent)
     , header_label_(nullptr)
     , counters_label_(nullptr)
     , traffic_label_(nullptr)
+    , word_stats_label_(nullptr)
     , packet_label_(nullptr)
     , metrics_label_(nullptr)
     , payload_label_(nullptr)
@@ -1117,6 +1161,7 @@ TdlasPanel::TdlasPanel(QWidget *parent)
     , header_lbl_(nullptr)
     , counters_lbl_(nullptr)
     , traffic_lbl_(nullptr)
+    , word_stats_lbl_(nullptr)
     , packet_lbl_(nullptr)
     , metrics_lbl_(nullptr)
     , payload_lbl_(nullptr)
@@ -1156,6 +1201,7 @@ void TdlasPanel::setupUi()
     createRow(header_lbl_, header_label_);
     createRow(counters_lbl_, counters_label_);
     createRow(traffic_lbl_, traffic_label_);
+    createRow(word_stats_lbl_, word_stats_label_);
     createRow(packet_lbl_, packet_label_);
     createRow(metrics_lbl_, metrics_label_);
     createRow(payload_lbl_, payload_label_);
@@ -1196,6 +1242,7 @@ void TdlasPanel::setEnglish(bool english)
     header_lbl_->setText(english ? "Headers:" : "头部:");
     counters_lbl_->setText(english ? "Counters:" : "计数:");
     traffic_lbl_->setText(english ? "Traffic:" : "流量画像:");
+    word_stats_lbl_->setText(english ? "Words:" : "Word统计:");
     packet_lbl_->setText(english ? "Packet:" : "数据包:");
     metrics_lbl_->setText(english ? "Metrics:" : "指标:");
     payload_lbl_->setText(english ? "Payload Preview:" : "负载预览:");
@@ -1216,6 +1263,7 @@ void TdlasPanel::updateData(const VaporView::TdlasData& data)
         header_label_->setText("---");
         counters_label_->setText("---");
         traffic_label_->setText("---");
+        word_stats_label_->setText("---");
         packet_label_->setText("---");
         metrics_label_->setText(is_english_ ? "No decoded business metrics yet" : "暂无可解码业务指标");
         payload_label_->setText("---");
@@ -1266,6 +1314,7 @@ void TdlasPanel::updateData(const VaporView::TdlasData& data)
         traffic_label_->setText(QString("%1\n%2")
                                     .arg(QString::fromStdString(data.payload_signature.empty() ? std::string("---") : data.payload_signature))
                                     .arg(QString::fromStdString(data.payload_variation_summary.empty() ? std::string("---") : data.payload_variation_summary)));
+        word_stats_label_->setText(tdlasWordStatsSummaryText(data, is_english_));
 
         packet_label_->setText(QString(is_english_ ? "Len %1, last match %2, total %3, matched %4, session %5"
                                                    : "长度 %1，最近匹配 %2，总包 %3，匹配 %4，会话 %5")
@@ -2981,6 +3030,8 @@ QString MainWindow::tdlasSnapshotJson(const VaporView::TdlasData& data) const
         << "  \"last_match_time_utc\": \"" << jsonEscape(QString::fromStdString(data.last_match_time_utc)) << "\",\n"
         << "  \"error_message\": \"" << jsonEscape(QString::fromStdString(data.error_message)) << "\",\n"
         << "  \"payload_hex\": \"" << jsonEscape(QString::fromStdString(data.payload_hex)) << "\",\n"
+        << "  \"payload_signature\": \"" << jsonEscape(QString::fromStdString(data.payload_signature)) << "\",\n"
+        << "  \"payload_variation_summary\": \"" << jsonEscape(QString::fromStdString(data.payload_variation_summary)) << "\",\n"
         << "  \"packet_length\": " << data.packet_length << ",\n"
         << "  \"rates\": {\n"
         << "    \"total_rate_hz\": " << data.total_rate_hz << ",\n"
@@ -3017,6 +3068,27 @@ QString MainWindow::tdlasSnapshotJson(const VaporView::TdlasData& data) const
         << "      \"checksum\": " << data.headers.udp.checksum << "\n"
         << "    }\n"
         << "  },\n"
+        << "  \"word_stats\": [\n";
+    for (size_t i = 0; i < data.word_stats.size(); ++i)
+    {
+        const VaporView::TdlasWordStat &stat = data.word_stats[i];
+        out << "    {\n"
+            << "      \"word_index\": " << stat.word_index << ",\n"
+            << "      \"offset\": " << stat.offset << ",\n"
+            << "      \"raw_hex\": \"" << jsonEscape(QString::fromStdString(stat.raw_hex)) << "\",\n"
+            << "      \"latest_value\": " << stat.latest_value << ",\n"
+            << "      \"min_value\": " << stat.min_value << ",\n"
+            << "      \"max_value\": " << stat.max_value << ",\n"
+            << "      \"unique_count\": " << stat.unique_count << ",\n"
+            << "      \"stable\": " << (stat.stable ? "true" : "false") << "\n"
+            << "    }";
+        if (i + 1 < data.word_stats.size())
+        {
+            out << ',';
+        }
+        out << '\n';
+    }
+    out << "  ],\n"
         << "  \"current_metrics\": ";
     writeMetricArray(data.metrics);
     out << ",\n"

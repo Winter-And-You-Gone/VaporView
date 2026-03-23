@@ -261,6 +261,7 @@ private:
     QLabel *header_label_;
     QLabel *counters_label_;
     QLabel *traffic_label_;
+    QLabel *word_stats_label_;
     QLabel *packet_label_;
     QLabel *metrics_label_;
     QLabel *payload_label_;
@@ -275,6 +276,7 @@ private:
     QLabel *header_lbl_;
     QLabel *counters_lbl_;
     QLabel *traffic_lbl_;
+    QLabel *word_stats_lbl_;
     QLabel *packet_lbl_;
     QLabel *metrics_lbl_;
     QLabel *payload_lbl_;

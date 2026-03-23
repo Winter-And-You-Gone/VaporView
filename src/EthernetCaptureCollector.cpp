@@ -7,6 +7,7 @@
 #include <cstring>
 #include <iomanip>
 #include <limits>
+#include <set>
 #include <sstream>
 #include <thread>
 
@@ -25,6 +26,7 @@ constexpr size_t kPayloadHexBytes = 64;
 constexpr size_t kTrendSampleHistory = 24;
 constexpr size_t kPayloadSignatureBytes = 16;
 constexpr size_t kPayloadVariationBytes = 24;
+constexpr size_t kPayloadWordStatsBytes = 64;
 
 std::string jsonEscape(const std::string& value)
 {
@@ -162,6 +164,60 @@ std::string payloadVariationSummary(const std::deque<std::vector<uint8_t>>& rece
   }
   stream << " within first " << inspectBytes << " B";
   return stream.str();
+}
+
+std::vector<TdlasWordStat> summarizeWordStats(const std::deque<std::vector<uint8_t>>& recentPayloads)
+{
+  std::vector<TdlasWordStat> stats;
+  if (recentPayloads.empty())
+  {
+    return stats;
+  }
+
+  size_t inspectBytes = (std::numeric_limits<size_t>::max)();
+  for (const auto& sample : recentPayloads)
+  {
+    inspectBytes = (std::min)(inspectBytes, sample.size());
+  }
+  if (inspectBytes == (std::numeric_limits<size_t>::max)())
+  {
+    return stats;
+  }
+
+  inspectBytes = (std::min)(inspectBytes, kPayloadWordStatsBytes);
+  inspectBytes -= inspectBytes % 2;
+  stats.reserve(inspectBytes / 2);
+
+  const std::vector<uint8_t>& latest = recentPayloads.back();
+  for (size_t offset = 0; offset + 1 < inspectBytes; offset += 2)
+  {
+    TdlasWordStat stat;
+    stat.word_index = static_cast<uint32_t>(offset / 2);
+    stat.offset = static_cast<uint32_t>(offset);
+    stat.raw_hex = summarizeRawHex(latest.data() + offset, 2);
+    stat.latest_value = static_cast<uint16_t>((static_cast<uint16_t>(latest[offset + 1]) << 8) |
+                                              static_cast<uint16_t>(latest[offset]));
+
+    uint16_t minValue = stat.latest_value;
+    uint16_t maxValue = stat.latest_value;
+    std::set<uint16_t> uniqueValues;
+    for (const auto& sample : recentPayloads)
+    {
+      const uint16_t value = static_cast<uint16_t>((static_cast<uint16_t>(sample[offset + 1]) << 8) |
+                                                   static_cast<uint16_t>(sample[offset]));
+      minValue = (std::min)(minValue, value);
+      maxValue = (std::max)(maxValue, value);
+      uniqueValues.insert(value);
+    }
+
+    stat.min_value = minValue;
+    stat.max_value = maxValue;
+    stat.unique_count = static_cast<uint32_t>(uniqueValues.size());
+    stat.stable = (stat.unique_count <= 1);
+    stats.push_back(stat);
+  }
+
+  return stats;
 }
 
 uint16_t readU16BE(const uint8_t* data)
@@ -934,6 +990,7 @@ void EthernetCaptureCollector::run()
         }
         sample.recent_metric_samples.assign(recent_metric_samples_.begin(), recent_metric_samples_.end());
         sample.payload_variation_summary = payloadVariationSummary(recent_payload_samples_);
+        sample.word_stats = summarizeWordStats(recent_payload_samples_);
         latest_data_ = sample;
         callback = data_callback_;
       }

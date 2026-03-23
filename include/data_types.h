@@ -171,6 +171,18 @@ struct TdlasMetricSample
   std::vector<TdlasMetric> metrics;
 };
 
+struct TdlasWordStat
+{
+  uint32_t word_index = 0;
+  uint32_t offset = 0;
+  std::string raw_hex;
+  uint16_t latest_value = 0;
+  uint16_t min_value = 0;
+  uint16_t max_value = 0;
+  uint32_t unique_count = 0;
+  bool stable = false;
+};
+
 struct TdlasData
 {
   std::string adapter_name;
@@ -182,6 +194,7 @@ struct TdlasData
   std::string error_message;
   std::string last_match_time_utc;
   std::vector<TdlasMetric> metrics;
+  std::vector<TdlasWordStat> word_stats;
   std::vector<TdlasMetricSample> recent_metric_samples;
 
   uint32_t packet_length = 0;
