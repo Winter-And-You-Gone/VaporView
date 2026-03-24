@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Pretty-print TDLAS payload information from a snapshot JSON."""
+"""Show raw TDLAS payload preview bytes from a snapshot JSON."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from typing import Iterable, List
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Show payload bytes and u16 words from a TDLAS snapshot JSON."
+        description="Show raw payload preview bytes from a TDLAS snapshot JSON."
     )
     parser.add_argument("snapshot", type=Path, help="Path to tdlas_snapshot_*.json")
     parser.add_argument(
@@ -19,12 +19,6 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=4,
         help="How many 16-byte rows of payload preview to print (default: 4)",
-    )
-    parser.add_argument(
-        "--word-limit",
-        type=int,
-        default=16,
-        help="How many word-stat rows to print (default: 16)",
     )
     return parser.parse_args()
 
@@ -72,64 +66,10 @@ def format_byte_rows(payload_bytes: List[int], max_rows: int) -> str:
     return "\n".join(rows)
 
 
-def format_word_rows(snapshot: dict, payload_bytes: List[int], word_limit: int) -> str:
-    word_stats = snapshot.get("word_stats") or []
-    if word_stats:
-        lines = []
-        for stat in word_stats[:word_limit]:
-            lines.append(
-                "  w{word:02d} @ {offset:02d}: latest={latest:<4d} "
-                "range=[{minv},{maxv}] unique={uniq} {state} raw={raw}".format(
-                    word=int(stat.get("word_index", 0)),
-                    offset=int(stat.get("offset", 0)),
-                    latest=int(stat.get("latest_value", 0)),
-                    minv=int(stat.get("min_value", 0)),
-                    maxv=int(stat.get("max_value", 0)),
-                    uniq=int(stat.get("unique_count", 0)),
-                    state="stable" if stat.get("stable") else "dynamic",
-                    raw=stat.get("raw_hex", "--"),
-                )
-            )
-        if len(word_stats) > word_limit:
-            lines.append(f"  ... {len(word_stats) - word_limit} more words in snapshot")
-        return "\n".join(lines)
-
-    if len(payload_bytes) < 2:
-        return "(no word statistics stored in snapshot)"
-
-    derived = []
-    for word_index, row in enumerate(chunked(payload_bytes[: word_limit * 2], 2)):
-        if len(row) < 2:
-            break
-        value = row[0] | (row[1] << 8)
-        derived.append(
-            f"  w{word_index:02d} @ {word_index * 2:02d}: latest={value:<4d} raw={row[0]:02X} {row[1]:02X}"
-        )
-    return "\n".join(derived)
-
-
-def format_metric_rows(snapshot: dict) -> str:
-    metrics = snapshot.get("current_metrics") or []
-    if not metrics:
-        return "(no candidate metrics in snapshot)"
-
-    lines = []
-    for metric in metrics:
-        lines.append(
-            "  {key} @ {offset}: {wire} raw={raw} value={value}".format(
-                key=metric.get("key", "--"),
-                offset=metric.get("offset", "--"),
-                wire=metric.get("wire_type", "--"),
-                raw=metric.get("raw_hex", "--"),
-                value=metric.get("value", "--"),
-            )
-        )
-    return "\n".join(lines)
-
-
 def main() -> int:
     args = parse_args()
     snapshot = load_snapshot(args.snapshot)
+    payload_hex = snapshot.get("payload_hex", "")
     payload_bytes = parse_payload_preview(snapshot.get("payload_hex", ""))
     headers = snapshot.get("headers") or {}
     ipv4 = headers.get("ipv4") or {}
@@ -154,17 +94,11 @@ def main() -> int:
             matched_packets=counters.get("matched_packets", "--"),
         )
     )
-    print(f"payload_signature: {snapshot.get('payload_signature', '--')}")
-    print(f"payload_variation_summary: {snapshot.get('payload_variation_summary', '--')}")
+    print(f"payload_preview_bytes_in_snapshot: {len(payload_bytes)}")
+    print(f"payload_preview_truncated: {'...' in payload_hex}")
     print()
-    print("payload_preview:")
+    print("payload_preview_raw_bytes:")
     print(format_byte_rows(payload_bytes, max_rows=args.byte_rows))
-    print()
-    print("word_stats:")
-    print(format_word_rows(snapshot, payload_bytes, word_limit=args.word_limit))
-    print()
-    print("candidate_metrics:")
-    print(format_metric_rows(snapshot))
     return 0
 
 
