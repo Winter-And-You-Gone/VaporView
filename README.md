@@ -247,6 +247,7 @@ Qt SerialPort 当前主要用于枚举可用串口，实际数据读写由仓库
 - 候选业务字段的偏移、解析类型、原始字节和值
 - 最近 N 个匹配业务样本的趋势缓存与面板趋势线
 - 可手动导出 TDLAS 验证快照 JSON，便于现场抓包留档与字段比对
+- 可用 `scripts/show_tdlas_payload.py` 直接查看快照里的 payload 预览、`u16` word 统计和候选字段
 - `unverified mapping` 提示，用于标记字段语义仍需真实流量确认
 
 当前业务指标仍以旧 VI 可见标签为命名来源；在真实样包逐项核实完成前，这些字段默认都视为 `unverified`。
