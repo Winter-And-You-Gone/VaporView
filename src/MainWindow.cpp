@@ -8,6 +8,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QFileDialog>
+#include <QSaveFile>
 #include <QTextStream>
 #include <QStringConverter>
 #include <QDateTime>
@@ -2993,45 +2994,28 @@ QString MainWindow::tdlasSnapshotJson(const VaporView::TdlasData& data) const
     QString json;
     QTextStream out(&json);
     out.setEncoding(QStringConverter::Utf8);
-
-    auto writeMetricArray = [&out](const std::vector<VaporView::TdlasMetric> &metrics) {
-        out << "[\n";
-        for (size_t i = 0; i < metrics.size(); ++i)
+    const QString payloadPreview = QString::fromStdString(data.payload_hex);
+    const bool payloadPreviewTruncated = payloadPreview.contains("...");
+    const QStringList payloadTokens = payloadPreview.split(' ', Qt::SkipEmptyParts);
+    int payloadPreviewBytes = 0;
+    for (const QString &token : payloadTokens)
+    {
+        if (token != "...")
         {
-            const VaporView::TdlasMetric &metric = metrics[i];
-            out << "      {\n"
-                << "        \"key\": \"" << jsonEscape(QString::fromStdString(metric.key)) << "\",\n"
-                << "        \"label_zh\": \"" << jsonEscape(QString::fromStdString(metric.label_zh)) << "\",\n"
-                << "        \"label_en\": \"" << jsonEscape(QString::fromStdString(metric.label_en)) << "\",\n"
-                << "        \"unit\": \"" << jsonEscape(QString::fromStdString(metric.unit)) << "\",\n"
-                << "        \"wire_type\": \"" << jsonEscape(QString::fromStdString(metric.wire_type)) << "\",\n"
-                << "        \"raw_hex\": \"" << jsonEscape(QString::fromStdString(metric.raw_hex)) << "\",\n"
-                << "        \"offset\": " << metric.offset << ",\n"
-                << "        \"value\": " << metric.value << ",\n"
-                << "        \"valid\": " << (metric.valid ? "true" : "false") << ",\n"
-                << "        \"confidence\": \"" << jsonEscape(QString::fromStdString(metric.confidence)) << "\"\n"
-                << "      }";
-            if (i + 1 < metrics.size())
-            {
-                out << ',';
-            }
-            out << '\n';
+            ++payloadPreviewBytes;
         }
-        out << "    ]";
-    };
+    }
 
     out << "{\n"
         << "  \"exported_at_utc\": \"" << jsonEscape(recordingTimestampUtc()) << "\",\n"
         << "  \"adapter_name\": \"" << jsonEscape(QString::fromStdString(data.adapter_name)) << "\",\n"
         << "  \"capture_session_active\": " << (data.capture_session_active ? "true" : "false") << ",\n"
         << "  \"matched\": " << (data.matched ? "true" : "false") << ",\n"
-        << "  \"valid\": " << (data.valid ? "true" : "false") << ",\n"
-        << "  \"mapping_unverified\": " << (data.mapping_unverified ? "true" : "false") << ",\n"
         << "  \"last_match_time_utc\": \"" << jsonEscape(QString::fromStdString(data.last_match_time_utc)) << "\",\n"
         << "  \"error_message\": \"" << jsonEscape(QString::fromStdString(data.error_message)) << "\",\n"
-        << "  \"payload_hex\": \"" << jsonEscape(QString::fromStdString(data.payload_hex)) << "\",\n"
-        << "  \"payload_signature\": \"" << jsonEscape(QString::fromStdString(data.payload_signature)) << "\",\n"
-        << "  \"payload_variation_summary\": \"" << jsonEscape(QString::fromStdString(data.payload_variation_summary)) << "\",\n"
+        << "  \"payload_preview_hex\": \"" << jsonEscape(payloadPreview) << "\",\n"
+        << "  \"payload_preview_bytes\": " << payloadPreviewBytes << ",\n"
+        << "  \"payload_preview_truncated\": " << (payloadPreviewTruncated ? "true" : "false") << ",\n"
         << "  \"packet_length\": " << data.packet_length << ",\n"
         << "  \"rates\": {\n"
         << "    \"total_rate_hz\": " << data.total_rate_hz << ",\n"
@@ -3067,49 +3051,7 @@ QString MainWindow::tdlasSnapshotJson(const VaporView::TdlasData& data) const
         << "      \"length\": " << data.headers.udp.length << ",\n"
         << "      \"checksum\": " << data.headers.udp.checksum << "\n"
         << "    }\n"
-        << "  },\n"
-        << "  \"word_stats\": [\n";
-    for (size_t i = 0; i < data.word_stats.size(); ++i)
-    {
-        const VaporView::TdlasWordStat &stat = data.word_stats[i];
-        out << "    {\n"
-            << "      \"word_index\": " << stat.word_index << ",\n"
-            << "      \"offset\": " << stat.offset << ",\n"
-            << "      \"raw_hex\": \"" << jsonEscape(QString::fromStdString(stat.raw_hex)) << "\",\n"
-            << "      \"latest_value\": " << stat.latest_value << ",\n"
-            << "      \"min_value\": " << stat.min_value << ",\n"
-            << "      \"max_value\": " << stat.max_value << ",\n"
-            << "      \"unique_count\": " << stat.unique_count << ",\n"
-            << "      \"stable\": " << (stat.stable ? "true" : "false") << "\n"
-            << "    }";
-        if (i + 1 < data.word_stats.size())
-        {
-            out << ',';
-        }
-        out << '\n';
-    }
-    out << "  ],\n"
-        << "  \"current_metrics\": ";
-    writeMetricArray(data.metrics);
-    out << ",\n"
-        << "  \"recent_metric_samples\": [\n";
-
-    for (size_t i = 0; i < data.recent_metric_samples.size(); ++i)
-    {
-        const VaporView::TdlasMetricSample &sample = data.recent_metric_samples[i];
-        out << "    {\n"
-            << "      \"timestamp_utc\": \"" << jsonEscape(QString::fromStdString(sample.timestamp_utc)) << "\",\n"
-            << "      \"metrics\": ";
-        writeMetricArray(sample.metrics);
-        out << "\n    }";
-        if (i + 1 < data.recent_metric_samples.size())
-        {
-            out << ',';
-        }
-        out << '\n';
-    }
-
-    out << "  ]\n"
+        << "  }\n"
         << "}\n";
     return json;
 }
@@ -3138,8 +3080,18 @@ void MainWindow::onExportTdlasSnapshotClicked()
         return;
     }
 
-    QFile file(filename);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+    const QString snapshotJson = tdlasSnapshotJson(current_tdlas_);
+    const QByteArray snapshotBytes = snapshotJson.toUtf8();
+    if (snapshotBytes.isEmpty())
+    {
+        QMessageBox::warning(this,
+                             is_english_ ? "Export Failed" : "导出失败",
+                             is_english_ ? "Snapshot JSON is empty." : "快照 JSON 为空。");
+        return;
+    }
+
+    QSaveFile file(filename);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
     {
         QMessageBox::warning(this,
                              is_english_ ? "Export Failed" : "导出失败",
@@ -3147,9 +3099,22 @@ void MainWindow::onExportTdlasSnapshotClicked()
         return;
     }
 
-    const QString snapshotJson = tdlasSnapshotJson(current_tdlas_);
-    file.write(snapshotJson.toUtf8());
-    file.close();
+    const qint64 written = file.write(snapshotBytes);
+    if (written != snapshotBytes.size())
+    {
+        file.cancelWriting();
+        QMessageBox::warning(this,
+                             is_english_ ? "Export Failed" : "导出失败",
+                             is_english_ ? "Failed to write complete snapshot JSON." : "快照 JSON 未完整写入。");
+        return;
+    }
+    if (!file.commit())
+    {
+        QMessageBox::warning(this,
+                             is_english_ ? "Export Failed" : "导出失败",
+                             QString(is_english_ ? "Failed to finalize snapshot: %1" : "保存快照失败: %1").arg(file.errorString()));
+        return;
+    }
 
     log(QString(is_english_ ? "Exported TDLAS verification snapshot: %1" : "已导出TDLAS验证快照: %1").arg(filename));
 }

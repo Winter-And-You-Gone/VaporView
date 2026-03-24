@@ -24,6 +24,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def load_snapshot(path: Path) -> dict:
+    if not path.exists():
+        raise FileNotFoundError(f"snapshot not found: {path}")
+    if path.stat().st_size == 0:
+        raise ValueError(f"snapshot is empty: {path}")
     with path.open("r", encoding="utf-8") as fh:
         return json.load(fh)
 
@@ -69,8 +73,8 @@ def format_byte_rows(payload_bytes: List[int], max_rows: int) -> str:
 def main() -> int:
     args = parse_args()
     snapshot = load_snapshot(args.snapshot)
-    payload_hex = snapshot.get("payload_hex", "")
-    payload_bytes = parse_payload_preview(snapshot.get("payload_hex", ""))
+    payload_hex = snapshot.get("payload_preview_hex", snapshot.get("payload_hex", ""))
+    payload_bytes = parse_payload_preview(payload_hex)
     headers = snapshot.get("headers") or {}
     ipv4 = headers.get("ipv4") or {}
     udp = headers.get("udp") or {}
@@ -95,7 +99,7 @@ def main() -> int:
         )
     )
     print(f"payload_preview_bytes_in_snapshot: {len(payload_bytes)}")
-    print(f"payload_preview_truncated: {'...' in payload_hex}")
+    print(f"payload_preview_truncated: {snapshot.get('payload_preview_truncated', '...' in payload_hex)}")
     print()
     print("payload_preview_raw_bytes:")
     print(format_byte_rows(payload_bytes, max_rows=args.byte_rows))
