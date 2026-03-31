@@ -20,6 +20,17 @@ endif()
 find_package(Qt6 COMPONENTS Core Widgets SerialPort Network REQUIRED)
 set(QT_LIBRARIES Qt6::Core Qt6::Widgets Qt6::SerialPort Qt6::Network)
 
+if(WIN32 AND MINGW)
+    find_program(QT_WINDEPLOYQT_EXECUTABLE
+        NAMES windeployqt6 windeployqt
+        HINTS
+            ${CMAKE_PREFIX_PATH}/bin
+            ENV PATH
+    )
+
+    get_filename_component(MINGW_RUNTIME_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+endif()
+
 find_package(Threads REQUIRED)
 
 set(UM982_DRIVER_DIR ${CMAKE_SOURCE_DIR}/third_party/um982_driver)
@@ -230,6 +241,30 @@ add_custom_command(TARGET VaporView POST_BUILD
         ${CMAKE_BINARY_DIR}/resources/app.ico
     COMMENT "Copying resources to build directory"
 )
+
+if(WIN32 AND MINGW)
+    if(QT_WINDEPLOYQT_EXECUTABLE)
+        add_custom_command(TARGET VaporView POST_BUILD
+            COMMAND ${QT_WINDEPLOYQT_EXECUTABLE}
+                --release
+                --compiler-runtime
+                --no-translations
+                $<TARGET_FILE:VaporView>
+            COMMENT "Deploying Qt runtime for VaporView"
+        )
+    endif()
+
+    foreach(_mingw_runtime_dll libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll)
+        if(EXISTS "${MINGW_RUNTIME_DIR}/${_mingw_runtime_dll}")
+            add_custom_command(TARGET VaporView POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${MINGW_RUNTIME_DIR}/${_mingw_runtime_dll}"
+                    "$<TARGET_FILE_DIR:VaporView>/${_mingw_runtime_dll}"
+                COMMENT "Copying ${_mingw_runtime_dll} to build directory"
+            )
+        endif()
+    endforeach()
+endif()
 
 if(MSVC)
     target_compile_options(VaporView PRIVATE /W4 /utf-8 /Zc:__cplusplus /permissive-)
