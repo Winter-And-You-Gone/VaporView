@@ -28,6 +28,18 @@ if(WIN32 AND MINGW)
             ENV PATH
     )
 
+    find_program(MSYS_BASH_EXECUTABLE
+        NAMES bash
+        HINTS
+            C:/msys64/usr/bin
+            ENV PATH
+    )
+
+    find_program(POWERSHELL_EXECUTABLE
+        NAMES pwsh powershell
+        HINTS ENV PATH
+    )
+
     get_filename_component(MINGW_RUNTIME_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
 endif()
 
@@ -254,16 +266,18 @@ if(WIN32 AND MINGW)
         )
     endif()
 
-    foreach(_mingw_runtime_dll libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll)
-        if(EXISTS "${MINGW_RUNTIME_DIR}/${_mingw_runtime_dll}")
-            add_custom_command(TARGET VaporView POST_BUILD
-                COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                    "${MINGW_RUNTIME_DIR}/${_mingw_runtime_dll}"
-                    "$<TARGET_FILE_DIR:VaporView>/${_mingw_runtime_dll}"
-                COMMENT "Copying ${_mingw_runtime_dll} to build directory"
-            )
-        endif()
-    endforeach()
+    if(POWERSHELL_EXECUTABLE AND MSYS_BASH_EXECUTABLE)
+        add_custom_command(TARGET VaporView POST_BUILD
+            COMMAND ${POWERSHELL_EXECUTABLE}
+                -NoProfile
+                -ExecutionPolicy Bypass
+                -File "${CMAKE_SOURCE_DIR}/scripts/deploy_mingw_runtime.ps1"
+                -BuildDir "$<TARGET_FILE_DIR:VaporView>"
+                -RuntimeDir "${MINGW_RUNTIME_DIR}"
+                -BashExe "${MSYS_BASH_EXECUTABLE}"
+            COMMENT "Copying MinGW runtime dependencies for VaporView"
+        )
+    endif()
 endif()
 
 if(MSVC)
