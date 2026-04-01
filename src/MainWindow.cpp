@@ -53,6 +53,7 @@ constexpr const char *kBaseMarginsLeftProperty = "_vv_base_margin_left";
 constexpr const char *kBaseMarginsTopProperty = "_vv_base_margin_top";
 constexpr const char *kBaseMarginsRightProperty = "_vv_base_margin_right";
 constexpr const char *kBaseMarginsBottomProperty = "_vv_base_margin_bottom";
+constexpr int kMainPageInputHeight = 34;
 
 QString recordingTimestampUtc()
 {
@@ -1086,11 +1087,15 @@ void MainWindow::loadModernStyleSheet()
             "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 12px; padding: 0px 8px; background-color: #ffffff; color: #1976d2; }"
             "QLabel { color: #333333; background-color: transparent; border: none; }"
             "QLabel#sectionTitleLabel { color: #1976d2; font-size: 16px; font-weight: bold; }"
-            "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px 12px; min-height: 34px; color: #333333; font-size: 14px; }"
+            "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 6px 12px; min-height: 34px; color: #333333; font-size: 14px; }"
             "QComboBox:hover { border-color: #bdbdbd; }"
             "QComboBox:focus { border-color: #1976d2; border-width: 2px; }"
             "QComboBox QAbstractItemView { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; selection-background-color: #e3f2fd; selection-color: #1976d2; padding: 4px; outline: none; }"
-            "QSpinBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px 30px 8px 12px; min-height: 34px; color: #333333; font-size: 14px; }"
+            "QLineEdit { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 6px 12px; min-height: 34px; color: #333333; font-size: 14px; }"
+            "QLineEdit:hover { border-color: #bdbdbd; }"
+            "QLineEdit:focus { border-color: #1976d2; border-width: 2px; }"
+            "QLineEdit:disabled { background-color: #f5f5f5; color: #bdbdbd; }"
+            "QSpinBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 6px 30px 6px 12px; min-height: 34px; color: #333333; font-size: 14px; }"
             "QSpinBox:hover { border-color: #bdbdbd; }"
             "QSpinBox:focus { border-color: #1976d2; border-width: 2px; }"
             "QSpinBox:disabled { background-color: #f5f5f5; color: #bdbdbd; }"
@@ -1571,7 +1576,7 @@ void MainWindow::setupConfigPanel()
         }
         combo->setCurrentIndex(4);
         combo->setEditable(true);
-        combo->setFixedHeight(30);
+        combo->setFixedHeight(kMainPageInputHeight);
         combo->setFixedWidth(100);
         combo->setValidator(new QIntValidator(1, maxRate, combo));
         return combo;
@@ -1590,7 +1595,7 @@ void MainWindow::setupConfigPanel()
         portCombo->setEditable(true);
         portCombo->setMinimumContentsLength(10);
         portCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-        portCombo->setFixedHeight(30);
+        portCombo->setFixedHeight(kMainPageInputHeight);
         portCombo->setMinimumWidth(160);
         portCombo->setMaximumWidth(190);
         portCombo->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
@@ -1610,7 +1615,7 @@ void MainWindow::setupConfigPanel()
         baudCombo = new QComboBox(this);
         baudCombo->addItems(baudRates);
         baudCombo->setCurrentText(defaultBaud);
-        baudCombo->setFixedHeight(30);
+        baudCombo->setFixedHeight(kMainPageInputHeight);
         baudCombo->setFixedWidth(100);
         config_layout->addWidget(baudCombo, row, 2, Qt::AlignVCenter);
 
@@ -1752,7 +1757,7 @@ void MainWindow::setupDataPanels()
     waveform_split_spin_->setRange(1, 5);
     waveform_split_spin_->setValue(waveform_split_minutes_);
     waveform_split_spin_->setSuffix(is_english_ ? " min" : " 分钟");
-    waveform_split_spin_->setFixedHeight(30);
+    waveform_split_spin_->setFixedHeight(kMainPageInputHeight);
     waveform_split_spin_->setFixedWidth(100);
     connect(waveform_split_spin_, &QSpinBox::valueChanged, this, [this](int value) {
         waveform_split_minutes_ = value;
