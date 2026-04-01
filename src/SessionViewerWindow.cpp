@@ -388,8 +388,8 @@ void SessionViewerWindow::setEnglish(bool english)
 
 void SessionViewerWindow::updateTexts()
 {
-    setWindowTitle(is_english_ ? "Session Browser" : "会话浏览器");
-    choose_session_btn_->setText(is_english_ ? "Open Session..." : "打开会话...");
+    setWindowTitle(is_english_ ? "Data Viewer" : "数据查看器");
+    choose_session_btn_->setText(is_english_ ? "Open Data..." : "打开数据...");
     reload_btn_->setText(is_english_ ? "Reload" : "重新加载");
     summary_group_->setTitle(is_english_ ? "Session Summary" : "会话概览");
     waveform_group_->setTitle(is_english_ ? "Normalized Second Harmonic" : "归一化二次谐波");
@@ -469,7 +469,7 @@ void SessionViewerWindow::onChooseSessionClicked()
     const QString initialDir = settings.value("last_session_directory", QDir::currentPath()).toString();
     const QString sessionDirectory = QFileDialog::getExistingDirectory(
         this,
-        is_english_ ? "Choose Session Directory" : "选择会话目录",
+        is_english_ ? "Choose Data Directory" : "选择数据目录",
         initialDir,
         QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
 
@@ -548,7 +548,7 @@ bool SessionViewerWindow::loadSessionMetadata(const QString& sessionDirectory)
     if (!file.open(QIODevice::ReadOnly))
     {
         QMessageBox::warning(this,
-                             is_english_ ? "Open Session" : "打开会话",
+                             is_english_ ? "Open Data" : "打开数据",
                              QString(is_english_ ? "Failed to open %1" : "无法打开 %1").arg(metadataPath));
         setStatusText(QString(is_english_ ? "Failed to open session.json: %1" : "打开 session.json 失败: %1").arg(metadataPath));
         return false;
@@ -558,7 +558,7 @@ bool SessionViewerWindow::loadSessionMetadata(const QString& sessionDirectory)
     if (!document.isObject())
     {
         QMessageBox::warning(this,
-                             is_english_ ? "Open Session" : "打开会话",
+                             is_english_ ? "Open Data" : "打开数据",
                              QString(is_english_ ? "Invalid session.json: %1" : "session.json 无效: %1").arg(metadataPath));
         setStatusText(QString(is_english_ ? "Invalid session metadata: %1" : "session 元数据无效: %1").arg(metadataPath));
         return false;

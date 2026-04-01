@@ -1739,7 +1739,7 @@ void MainWindow::setEnglish(bool english)
 
     menuBar()->actions().at(0)->menu()->setTitle(english ? "&File" : "文件(&F)");
     recording_directory_action_->setText(english ? "Recording Folder..." : "记录目录...");
-    session_viewer_action_->setText(english ? "Session Browser..." : "会话浏览器...");
+    session_viewer_action_->setText(english ? "Data Viewer..." : "数据查看器...");
     exit_action_->setText(english ? "E&xit" : "退出(&X)");
 
     menuBar()->actions().at(1)->menu()->setTitle(english ? "&View" : "视图(&V)");
