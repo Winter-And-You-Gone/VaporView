@@ -470,27 +470,24 @@ void TcpWavePanel::processBuffer()
 
 bool TcpWavePanel::tryConsumeHeader()
 {
-    if (buffer_.size() < kHeaderSize)
+    while (buffer_.size() >= kHeaderSize)
     {
-        return false;
-    }
+        const qint32 candidate = qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(buffer_.constData()));
+        if (candidate >= 0 && candidate <= kMaxPayloadBytes && (candidate % kFloatSize) == 0)
+        {
+            expected_payload_size_ = candidate;
+            buffer_.remove(0, kHeaderSize);
+            return true;
+        }
 
-    expected_payload_size_ = qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(buffer_.constData()));
-    buffer_.remove(0, kHeaderSize);
-
-    if (expected_payload_size_ < 0 || expected_payload_size_ > kMaxPayloadBytes || (expected_payload_size_ % kFloatSize) != 0)
-    {
         setStatusText(QString(is_english_
-            ? "Invalid payload size: %1"
-            : "无效的数据负载长度: %1").arg(expected_payload_size_));
-        requestGracefulDisconnect();
-        resetParserState();
-        buffer_.clear();
-        pending_wave1_.clear();
-        return false;
+            ? "Unexpected TCP frame header (%1), trying to resync..."
+            : "TCP帧头异常（%1），正在尝试重新同步...")
+            .arg(candidate));
+        buffer_.remove(0, 1);
     }
 
-    return true;
+    return false;
 }
 
 bool TcpWavePanel::tryConsumePayload(QVector<float>& output)
