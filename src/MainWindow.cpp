@@ -929,6 +929,7 @@ MainWindow::MainWindow(QWidget *parent)
     , hmp_lbl_(nullptr)
     , lidar_lbl_(nullptr)
     , config_inline_title_lbl_(nullptr)
+    , tcp_inline_title_lbl_(nullptr)
     , global_rate_lbl_(nullptr)
     , waveform_split_lbl_(nullptr)
     , gnss_rate_lbl_(nullptr)
@@ -1478,12 +1479,12 @@ void MainWindow::setupCentralWidget()
     setCentralWidget(central_widget_);
 
     auto *main_h_layout = new QHBoxLayout(central_widget_);
-    main_h_layout->setSpacing(4);
+    main_h_layout->setSpacing(1);
     main_h_layout->setContentsMargins(2, 2, 2, 2);
 
     auto *left_widget = new QWidget(this);
     main_layout_ = new QVBoxLayout(left_widget);
-    main_layout_->setSpacing(4);
+    main_layout_->setSpacing(1);
     main_layout_->setContentsMargins(0, 0, 0, 0);
 
     setupConfigPanel();
@@ -1657,8 +1658,8 @@ void MainWindow::setupDataPanels()
 {
     data_group_ = new QGroupBox(this);
     auto *data_layout = new QVBoxLayout(data_group_);
-    data_layout->setSpacing(2);
-    data_layout->setContentsMargins(2, 2, 2, 2);
+    data_layout->setSpacing(1);
+    data_layout->setContentsMargins(1, 1, 1, 1);
 
     auto *sensor_splitter = new QSplitter(Qt::Horizontal, data_group_);
     sensor_splitter->setChildrenCollapsible(false);
@@ -1714,11 +1715,18 @@ void MainWindow::setupDataPanels()
     tcp_wave_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
     tcp_wave_group_->setMaximumHeight(360);
     auto *tcpWaveLayout = new QVBoxLayout(tcp_wave_group_);
-    tcpWaveLayout->setContentsMargins(2, 2, 2, 2);
-    tcpWaveLayout->setSpacing(2);
+    tcpWaveLayout->setContentsMargins(1, 1, 1, 1);
+    tcpWaveLayout->setSpacing(1);
 
     auto *tcpTopRowLayout = new QHBoxLayout();
     tcpTopRowLayout->setSpacing(8);
+    tcpTopRowLayout->setContentsMargins(4, 0, 4, 0);
+
+    tcp_inline_title_lbl_ = new QLabel(this);
+    tcp_inline_title_lbl_->setObjectName("sectionTitleLabel");
+    tcp_inline_title_lbl_->setFixedHeight(28);
+    tcpTopRowLayout->addWidget(tcp_inline_title_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+
     tcpTopRowLayout->addStretch(1);
 
     waveform_split_lbl_ = new QLabel(this);
@@ -1811,7 +1819,7 @@ void MainWindow::setEnglish(bool english)
 
     config_group_->setTitle(QString());
     data_group_->setTitle(english ? "Sensor Data" : "传感器数据");
-    tcp_wave_group_->setTitle(english ? "TCP Wave Monitor" : "TCP波形监视");
+    tcp_wave_group_->setTitle(QString());
     log_group_->setTitle(english ? "Log" : "日志");
 
     gnss_group_->setTitle(english ? "GNSS / RTK" : "GNSS / RTK");
@@ -1827,6 +1835,10 @@ void MainWindow::setEnglish(bool english)
     if (config_inline_title_lbl_)
     {
         config_inline_title_lbl_->setText(english ? "Serial Port Configuration" : "串口配置");
+    }
+    if (tcp_inline_title_lbl_)
+    {
+        tcp_inline_title_lbl_->setText(english ? "TCP Wave Monitor" : "TCP波形监视");
     }
     global_rate_lbl_->setText(english ? "Global Rate:" : "统一频率:");
     waveform_split_lbl_->setText(english ? "Wave Split:" : "波形分段:");

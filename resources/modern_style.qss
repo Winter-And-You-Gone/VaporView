@@ -111,23 +111,23 @@ QGroupBox {
     background-color: #ffffff;
     border: 1px solid #e0e0e0;
     border-radius: 8px;
-    margin-top: 12px;
-    padding: 4px 4px 4px 4px;
+    margin-top: 6px;
+    padding: 2px 2px 2px 2px;
     font-size: 15px;
     font-weight: bold;
     color: #333333;
 }
 
 QGroupBox#sensorGroupBox {
-    margin-top: 12px;
-    padding: 2px 2px 2px 2px;
+    margin-top: 4px;
+    padding: 1px 1px 1px 1px;
 }
 
 QGroupBox::title {
     subcontrol-origin: margin;
     subcontrol-position: top left;
     left: 16px;
-    padding: 0px 12px;
+    padding: 0px 8px;
     background-color: #ffffff;
     color: #1976d2;
     font-size: 16px;
@@ -295,19 +295,19 @@ QScrollArea {
 
 /* 分割器 */
 QSplitter::handle {
-    background-color: #e0e0e0;
+    background-color: transparent;
 }
 
 QSplitter::handle:horizontal {
-    width: 2px;
+    width: 1px;
 }
 
 QSplitter::handle:vertical {
-    height: 2px;
+    height: 1px;
 }
 
 QSplitter::handle:hover {
-    background-color: #1976d2;
+    background-color: #d6e8fb;
 }
 
 /* 工具提示 */
