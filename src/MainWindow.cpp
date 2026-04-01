@@ -1539,16 +1539,12 @@ void MainWindow::setupConfigPanel()
     config_layout->setColumnStretch(2, 0);
     config_layout->setColumnStretch(3, 0);
     config_layout->setColumnStretch(4, 0);
-    config_layout->setColumnStretch(5, 0);
-    config_layout->setColumnStretch(6, 0);
-    config_layout->setColumnStretch(7, 1);
+    config_layout->setColumnStretch(5, 1);
     config_layout->setColumnMinimumWidth(0, 110);
     config_layout->setColumnMinimumWidth(1, 170);
     config_layout->setColumnMinimumWidth(2, 100);
     config_layout->setColumnMinimumWidth(3, 80);
     config_layout->setColumnMinimumWidth(4, 100);
-    config_layout->setColumnMinimumWidth(5, 90);
-    config_layout->setColumnMinimumWidth(6, 100);
 
     QStringList baudRates = {"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"};
     QStringList ports = getAvailablePorts();
@@ -1618,7 +1614,7 @@ void MainWindow::setupConfigPanel()
     };
 
     config_inline_title_lbl_ = new QLabel(this);
-    config_inline_title_lbl_->setObjectName("fieldLabel");
+    config_inline_title_lbl_->setObjectName("sectionTitleLabel");
     config_inline_title_lbl_->setFixedHeight(28);
     config_layout->addWidget(config_inline_title_lbl_, 0, 0, 1, 3, Qt::AlignVCenter | Qt::AlignLeft);
 
@@ -1630,31 +1626,6 @@ void MainWindow::setupConfigPanel()
     global_rate_combo_ = createRateCombo();
     config_layout->addWidget(global_rate_combo_, 0, 4, Qt::AlignVCenter);
     connect(global_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onGlobalRateChanged);
-
-    waveform_split_lbl_ = new QLabel(this);
-    waveform_split_lbl_->setObjectName("fieldLabel");
-    waveform_split_lbl_->setFixedHeight(28);
-    config_layout->addWidget(waveform_split_lbl_, 0, 5, Qt::AlignVCenter | Qt::AlignRight);
-
-    waveform_split_spin_ = new QSpinBox(this);
-    waveform_split_spin_->setRange(1, 5);
-    waveform_split_spin_->setValue(waveform_split_minutes_);
-    waveform_split_spin_->setSuffix(is_english_ ? " min" : " 分钟");
-    waveform_split_spin_->setFixedHeight(30);
-    waveform_split_spin_->setFixedWidth(100);
-    connect(waveform_split_spin_, &QSpinBox::valueChanged, this, [this](int value) {
-        waveform_split_minutes_ = value;
-        QSettings settings("VaporView", "MainWindow");
-        settings.setValue("waveform_split_minutes", waveform_split_minutes_);
-        if (waveform_split_spin_)
-        {
-            waveform_split_spin_->setSuffix(is_english_ ? " min" : " 分钟");
-        }
-        log(QString(is_english_
-            ? "Waveform split duration set to %1 minute(s)"
-            : "波形分文件时长已设置为 %1 分钟").arg(value));
-    });
-    config_layout->addWidget(waveform_split_spin_, 0, 6, Qt::AlignVCenter);
 
     int row = 1;
 
@@ -1741,10 +1712,41 @@ void MainWindow::setupDataPanels()
     tcp_wave_group_ = new QGroupBox(this);
     tcp_wave_group_->setObjectName("sensorGroupBox");
     tcp_wave_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
-    tcp_wave_group_->setMaximumHeight(320);
+    tcp_wave_group_->setMaximumHeight(360);
     auto *tcpWaveLayout = new QVBoxLayout(tcp_wave_group_);
     tcpWaveLayout->setContentsMargins(2, 2, 2, 2);
     tcpWaveLayout->setSpacing(2);
+
+    auto *tcpTopRowLayout = new QHBoxLayout();
+    tcpTopRowLayout->setSpacing(8);
+    tcpTopRowLayout->addStretch(1);
+
+    waveform_split_lbl_ = new QLabel(this);
+    waveform_split_lbl_->setObjectName("fieldLabel");
+    waveform_split_lbl_->setFixedHeight(28);
+    tcpTopRowLayout->addWidget(waveform_split_lbl_, 0, Qt::AlignVCenter | Qt::AlignRight);
+
+    waveform_split_spin_ = new QSpinBox(this);
+    waveform_split_spin_->setRange(1, 5);
+    waveform_split_spin_->setValue(waveform_split_minutes_);
+    waveform_split_spin_->setSuffix(is_english_ ? " min" : " 分钟");
+    waveform_split_spin_->setFixedHeight(30);
+    waveform_split_spin_->setFixedWidth(100);
+    connect(waveform_split_spin_, &QSpinBox::valueChanged, this, [this](int value) {
+        waveform_split_minutes_ = value;
+        QSettings settings("VaporView", "MainWindow");
+        settings.setValue("waveform_split_minutes", waveform_split_minutes_);
+        if (waveform_split_spin_)
+        {
+            waveform_split_spin_->setSuffix(is_english_ ? " min" : " 分钟");
+        }
+        log(QString(is_english_
+            ? "Waveform split duration set to %1 minute(s)"
+            : "波形分文件时长已设置为 %1 分钟").arg(value));
+    });
+    tcpTopRowLayout->addWidget(waveform_split_spin_, 0, Qt::AlignVCenter);
+    tcpWaveLayout->addLayout(tcpTopRowLayout);
+
     tcp_wave_panel_ = new TcpWavePanel(this);
     tcp_wave_panel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     connect(tcp_wave_panel_, &TcpWavePanel::normalizedSecondHarmonicFrameReady,
@@ -1831,6 +1833,13 @@ void MainWindow::setEnglish(bool english)
     if (waveform_split_spin_)
     {
         waveform_split_spin_->setSuffix(english ? " min" : " 分钟");
+        const QString tooltip = english
+            ? "Controls how long each waveform .dat file keeps recording before a new segment file is created. "
+              "For example, 1 minute means the waveform writer rolls to a new file every minute."
+            : "用于控制每个波形 .dat 文件连续记录多久后切换到新的分段文件。"
+              "例如设置为 1 分钟时，波形写盘线程会每分钟滚动生成一个新文件。";
+        waveform_split_lbl_->setToolTip(tooltip);
+        waveform_split_spin_->setToolTip(tooltip);
     }
     gnss_rate_lbl_->setText(english ? "Rate:" : "频率:");
     imu_rate_lbl_->setText(english ? "Rate:" : "频率:");
