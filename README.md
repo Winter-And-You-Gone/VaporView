@@ -106,6 +106,27 @@ cmake --build build --config Release
 build/Release/VaporView.exe
 ```
 
+### 远程 Windows 构建
+
+当前仓库常通过 `sshfs` 挂载到本地目录进行编辑。对于这个项目，不要在挂载目录上直接运行本地构建；请改用仓库内的远程构建脚本，通过 SSH 到远程主机上的真实仓库目录执行构建。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\remote-build.ps1
+```
+
+脚本默认连接以下远程环境：
+
+- 主机：`Administrator@100.102.21.86`
+- 仓库：`C:\WorkSpace\NAV\VaporView`
+- 构建目录：`C:\WorkSpace\NAV\VaporView\build`
+- 工具链：`C:\msys64\ucrt64`
+
+如需重新生成远程 `build` 目录中的 CMake 配置，可加 `-Reconfigure`：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\remote-build.ps1 -Reconfigure
+```
+
 ### Linux
 
 项目保留了 GCC / Clang 路径，串口层使用 `termios`。如需在 Linux 上构建，需确保 Qt 开发环境可用。
