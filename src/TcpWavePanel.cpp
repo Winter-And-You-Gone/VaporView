@@ -123,6 +123,7 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , host_label_(nullptr)
     , port_label_(nullptr)
     , status_label_(nullptr)
+    , hint_label_(nullptr)
     , wave1_info_label_(nullptr)
     , wave4_info_label_(nullptr)
     , wave1_group_(nullptr)
@@ -132,6 +133,7 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , socket_(nullptr)
     , read_state_(ReadState::Wave1Header)
     , expected_payload_size_(0)
+    , frame_count_(0)
     , is_english_(false)
 {
     setupUi();
@@ -184,6 +186,10 @@ void TcpWavePanel::setupUi()
     status_label_->setWordWrap(true);
     controlLayout->addWidget(status_label_, 1, 0, 1, 5);
 
+    hint_label_ = new QLabel(this);
+    hint_label_->setWordWrap(true);
+    controlLayout->addWidget(hint_label_, 2, 0, 1, 5);
+
     mainLayout->addLayout(controlLayout);
 
     auto *plotsLayout = new QHBoxLayout();
@@ -222,6 +228,9 @@ void TcpWavePanel::setEnglish(bool english)
         : (english ? "Start" : "启动"));
     wave1_group_->setTitle(english ? "Wave 1" : "波形图1");
     wave4_group_->setTitle(english ? "Wave 4" : "波形图4");
+    hint_label_->setText(english
+        ? "This TCP sender is likely single-client. Do not open the LabVIEW VI receiver and VaporView on port 8888 at the same time."
+        : "这个TCP发送端大概率只支持单客户端。不要同时打开 LabVIEW VI 接收端和 VaporView 去抢同一个 8888 连接。");
 
     wave1_info_label_->setText(english ? "waiting for wave1 frame" : "等待波形图1数据帧");
     wave4_info_label_->setText(english ? "waiting for wave4 frame" : "等待波形图4数据帧");
@@ -291,6 +300,7 @@ void TcpWavePanel::onToggleConnectionClicked()
     buffer_.clear();
     pending_wave1_.clear();
     resetParserState();
+    frame_count_ = 0;
     setStatusText(QString(is_english_ ? "Connecting to %1:%2..." : "正在连接 %1:%2...")
         .arg(host_edit_->text()).arg(port_spin_->value()));
     socket_->connectToHost(host_edit_->text(), static_cast<quint16>(port_spin_->value()));
@@ -300,14 +310,25 @@ void TcpWavePanel::onToggleConnectionClicked()
 void TcpWavePanel::onSocketConnected()
 {
     setConnectedUiState(true);
-    setStatusText(QString(is_english_ ? "Connected to %1:%2" : "已连接到 %1:%2")
+    setStatusText(QString(is_english_
+        ? "Connected to %1:%2, waiting for the first frame..."
+        : "已连接到 %1:%2，正在等待首帧数据...")
         .arg(host_edit_->text()).arg(port_spin_->value()));
 }
 
 void TcpWavePanel::onSocketDisconnected()
 {
     setConnectedUiState(false);
-    setStatusText(is_english_ ? "Disconnected" : "已断开");
+    if (frame_count_ > 0)
+    {
+        setStatusText(QString(is_english_
+            ? "Disconnected after receiving %1 frames"
+            : "已断开，本次共接收 %1 帧").arg(frame_count_));
+    }
+    else
+    {
+        setStatusText(is_english_ ? "Disconnected without receiving any frame" : "已断开，本次未收到任何数据帧");
+    }
 }
 
 void TcpWavePanel::onSocketReadyRead()
@@ -328,7 +349,10 @@ void TcpWavePanel::onSocketStateChanged()
     {
     case QAbstractSocket::HostLookupState:
     case QAbstractSocket::ConnectingState:
-        setConnectedUiState(true);
+        host_edit_->setEnabled(false);
+        port_spin_->setEnabled(false);
+        connect_button_->setEnabled(false);
+        connect_button_->setText(is_english_ ? "Connecting..." : "连接中...");
         setStatusText(QString(is_english_ ? "Connecting to %1:%2..." : "正在连接 %1:%2...")
             .arg(host_edit_->text()).arg(port_spin_->value()));
         break;
@@ -422,6 +446,7 @@ void TcpWavePanel::processBuffer()
             }
             wave1_plot_->setSamples(pending_wave1_);
             wave4_plot_->setSamples(wave4);
+            ++frame_count_;
 
             wave1_info_label_->setText(QString(is_english_
                 ? "wave1: %1 samples"
@@ -431,9 +456,9 @@ void TcpWavePanel::processBuffer()
                 : "波形图4: %1 个采样点").arg(wave4.size()));
 
             setStatusText(QString(is_english_
-                ? "Receiving frames from %1:%2"
-                : "正在接收来自 %1:%2 的数据帧")
-                .arg(host_edit_->text()).arg(port_spin_->value()));
+                ? "Receiving frame %3 from %1:%2"
+                : "正在接收来自 %1:%2 的数据帧，第 %3 帧")
+                .arg(host_edit_->text()).arg(port_spin_->value()).arg(frame_count_));
 
             pending_wave1_.clear();
             resetParserState();

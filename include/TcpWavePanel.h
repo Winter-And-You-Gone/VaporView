@@ -57,6 +57,7 @@ private:
     QLabel *host_label_;
     QLabel *port_label_;
     QLabel *status_label_;
+    QLabel *hint_label_;
     QLabel *wave1_info_label_;
     QLabel *wave4_info_label_;
     QGroupBox *wave1_group_;
@@ -69,6 +70,7 @@ private:
     QVector<float> pending_wave1_;
     ReadState read_state_;
     int expected_payload_size_;
+    qint64 frame_count_;
     bool is_english_;
 };
 
