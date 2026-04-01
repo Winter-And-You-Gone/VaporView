@@ -24,6 +24,18 @@ namespace
 constexpr int kHeaderSize = 4;
 constexpr int kFloatSize = 4;
 constexpr int kMaxPayloadBytes = 16 * 1024 * 1024;
+
+QString hexPreview(const QByteArray& data, int limit = 12)
+{
+    const int count = std::min(limit, static_cast<int>(data.size()));
+    QStringList parts;
+    parts.reserve(count);
+    for (int i = 0; i < count; ++i)
+    {
+        parts << QString("%1").arg(static_cast<unsigned char>(data.at(i)), 2, 16, QChar('0')).toUpper();
+    }
+    return parts.join(' ');
+}
 }
 
 class WavePlotWidget : public QWidget
@@ -481,9 +493,10 @@ bool TcpWavePanel::tryConsumeHeader()
         }
 
         setStatusText(QString(is_english_
-            ? "Unexpected TCP frame header (%1), trying to resync..."
-            : "TCP帧头异常（%1），正在尝试重新同步...")
-            .arg(candidate));
+            ? "Unexpected TCP frame header (%1), bytes: %2, trying to resync..."
+            : "TCP帧头异常（%1），字节预览：%2，正在尝试重新同步...")
+            .arg(candidate)
+            .arg(hexPreview(buffer_)));
         buffer_.remove(0, 1);
     }
 
