@@ -1293,7 +1293,8 @@ void MainWindow::setupMenuBar()
             "- UM982 RTK Receiver (PVTSLN)\n"
             "- HiPNUC IMU (HI81/HI83/HI91)\n"
             "- PTB210 Barometer\n"
-            "- HMP3 Temperature/Humidity Sensor\n\n"
+            "- HMP3 Temperature/Humidity Sensor\n"
+            "- TF03 Laser Rangefinder\n\n"
             "Press F11 for fullscreen mode." :
             "VaporView 应用程序\n\n"
             "版本 1.0.0\n\n"
@@ -1302,7 +1303,8 @@ void MainWindow::setupMenuBar()
             "- UM982 RTK 接收机 (PVTSLN)\n"
             "- HiPNUC IMU (HI81/HI83/HI91)\n"
             "- PTB210 气压计\n"
-            "- HMP3 温湿度传感器\n\n"
+            "- HMP3 温湿度传感器\n"
+            "- TF03 激光测距模块\n\n"
             "按 F11 进入全屏模式。";
         QMessageBox::about(this, title, text);
     });
