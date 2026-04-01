@@ -924,12 +924,14 @@ MainWindow::MainWindow(QWidget *parent)
     , hmp_lbl_(nullptr)
     , lidar_lbl_(nullptr)
     , global_rate_lbl_(nullptr)
+    , waveform_split_lbl_(nullptr)
     , gnss_rate_lbl_(nullptr)
     , imu_rate_lbl_(nullptr)
     , ptb_rate_lbl_(nullptr)
     , hmp_rate_lbl_(nullptr)
     , lidar_rate_lbl_(nullptr)
     , global_rate_combo_(nullptr)
+    , waveform_split_spin_(nullptr)
     , gnss_rate_combo_(nullptr)
     , imu_rate_combo_(nullptr)
     , ptb_rate_combo_(nullptr)
@@ -957,6 +959,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_sample_rate_(1)
     , hmp_sample_rate_(1)
     , lidar_sample_rate_(1)
+    , waveform_split_minutes_(1)
     , steady_clock_anchor_(std::chrono::steady_clock::now())
     , system_clock_anchor_(std::chrono::system_clock::now())
     , sensors_file_(nullptr)
@@ -993,6 +996,11 @@ MainWindow::MainWindow(QWidget *parent)
     if (recording_directory_.isEmpty())
     {
         recording_directory_ = defaultRecordingDirectory();
+    }
+    waveform_split_minutes_ = settings.value("waveform_split_minutes", 1).toInt();
+    if (waveform_split_minutes_ < 1 || waveform_split_minutes_ > 5)
+    {
+        waveform_split_minutes_ = 1;
     }
 
     loadModernStyleSheet();
@@ -1562,6 +1570,32 @@ void MainWindow::setupConfigPanel()
     connect(global_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onGlobalRateChanged);
     ++row;
 
+    waveform_split_lbl_ = new QLabel(this);
+    waveform_split_lbl_->setObjectName("fieldLabel");
+    waveform_split_lbl_->setFixedHeight(28);
+    config_layout->addWidget(waveform_split_lbl_, row, 5, Qt::AlignVCenter | Qt::AlignRight);
+
+    waveform_split_spin_ = new QSpinBox(this);
+    waveform_split_spin_->setRange(1, 5);
+    waveform_split_spin_->setValue(waveform_split_minutes_);
+    waveform_split_spin_->setSuffix(is_english_ ? " min" : " 分钟");
+    waveform_split_spin_->setFixedHeight(30);
+    waveform_split_spin_->setFixedWidth(100);
+    connect(waveform_split_spin_, &QSpinBox::valueChanged, this, [this](int value) {
+        waveform_split_minutes_ = value;
+        QSettings settings("VaporView", "MainWindow");
+        settings.setValue("waveform_split_minutes", waveform_split_minutes_);
+        if (waveform_split_spin_)
+        {
+            waveform_split_spin_->setSuffix(is_english_ ? " min" : " 分钟");
+        }
+        log(QString(is_english_
+            ? "Waveform split duration set to %1 minute(s)"
+            : "波形分文件时长已设置为 %1 分钟").arg(value));
+    });
+    config_layout->addWidget(waveform_split_spin_, row, 6, Qt::AlignVCenter);
+    ++row;
+
 #ifdef _WIN32
     createPortRow(gnss_lbl_, gnss_port_combo_, gnss_baud_combo_, gnss_rate_lbl_, gnss_rate_combo_, "COM3", "115200", row++);
     createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, imu_rate_lbl_, imu_rate_combo_, "COM4", "115200", row++);
@@ -1708,6 +1742,11 @@ void MainWindow::setEnglish(bool english)
     lidar_lbl_->setText(english ? "TF03:" : "TF03:");
 
     global_rate_lbl_->setText(english ? "Global Rate:" : "统一频率:");
+    waveform_split_lbl_->setText(english ? "Wave Split:" : "波形分段:");
+    if (waveform_split_spin_)
+    {
+        waveform_split_spin_->setSuffix(english ? " min" : " 分钟");
+    }
     gnss_rate_lbl_->setText(english ? "Rate:" : "频率:");
     imu_rate_lbl_->setText(english ? "Rate:" : "频率:");
     ptb_rate_lbl_->setText(english ? "Rate:" : "频率:");
@@ -2161,7 +2200,7 @@ void MainWindow::writeSessionMetadata(const QString& endTimeUtc)
     root["waveform_value_type"] = QStringLiteral("float32");
     root["waveform_timestamp_type"] = QStringLiteral("uint64");
     root["timestamp_unit"] = QStringLiteral("microseconds");
-    root["waveform_split_minutes"] = 1;
+    root["waveform_split_minutes"] = waveform_split_minutes_;
     root["sensor_rows"] = QString::number(recording_entry_count_.load());
     root["waveform_frames"] = QString::number(waveform_frame_count_.load());
     root["waveform_file_count"] = QString::number(waveform_file_count_.load());
@@ -2193,7 +2232,7 @@ void MainWindow::writeDeviceConfigSnapshot()
     QJsonObject root;
     root["recording_directory"] = recording_directory_;
     root["session_directory"] = session_directory_;
-    root["waveform_split_minutes"] = 1;
+    root["waveform_split_minutes"] = waveform_split_minutes_;
 
     QJsonObject waveform;
     waveform["host"] = tcp_wave_panel_ ? tcp_wave_panel_->host() : QStringLiteral("127.0.0.1");
@@ -2582,7 +2621,7 @@ void MainWindow::onNormalizedSecondHarmonicFrameReady(quint64 timestampUs, QVect
 void MainWindow::runWaveformWriter()
 {
     constexpr int kExpectedSamplesPerFrame = 50000;
-    constexpr quint64 kSegmentDurationUs = 60ULL * 1000ULL * 1000ULL;
+    const quint64 kSegmentDurationUs = static_cast<quint64>(std::max(1, waveform_split_minutes_)) * 60ULL * 1000ULL * 1000ULL;
 
     std::unique_ptr<QFile> waveformFile;
     quint64 currentSegmentStartUs = 0;

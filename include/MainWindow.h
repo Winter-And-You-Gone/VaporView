@@ -369,6 +369,7 @@ private:
     QLabel *hmp_lbl_;
     QLabel *lidar_lbl_;
     QLabel *global_rate_lbl_;
+    QLabel *waveform_split_lbl_;
     QLabel *gnss_rate_lbl_;
     QLabel *imu_rate_lbl_;
     QLabel *ptb_rate_lbl_;
@@ -376,6 +377,7 @@ private:
     QLabel *lidar_rate_lbl_;
 
     QComboBox *global_rate_combo_;
+    QSpinBox *waveform_split_spin_;
     QComboBox *gnss_rate_combo_;
     QComboBox *imu_rate_combo_;
     QComboBox *ptb_rate_combo_;
@@ -417,6 +419,7 @@ private:
     int ptb_sample_rate_;
     int hmp_sample_rate_;
     int lidar_sample_rate_;
+    int waveform_split_minutes_;
     std::chrono::steady_clock::time_point steady_clock_anchor_;
     std::chrono::system_clock::time_point system_clock_anchor_;
     std::unique_ptr<QFile> sensors_file_;
