@@ -23,6 +23,7 @@ public:
     void setEnglish(bool english);
     QString host() const;
     int port() const;
+    bool isConnected() const;
 
     enum class ParseMode
     {
@@ -55,6 +56,7 @@ public:
 
 signals:
     void normalizedSecondHarmonicFrameReady(quint64 timestampUs, QVector<float> samples);
+    void connectionStateChanged(bool connected);
 
 private slots:
     void onToggleConnectionClicked();

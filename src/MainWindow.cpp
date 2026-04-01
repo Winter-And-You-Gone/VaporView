@@ -1702,6 +1702,9 @@ void MainWindow::setupDataPanels()
     tcp_wave_panel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     connect(tcp_wave_panel_, &TcpWavePanel::normalizedSecondHarmonicFrameReady,
             this, &MainWindow::onNormalizedSecondHarmonicFrameReady);
+    connect(tcp_wave_panel_, &TcpWavePanel::connectionStateChanged, this, [this](bool) {
+        updateRecordingActionStates();
+    });
     tcpWaveLayout->addWidget(tcp_wave_panel_);
     main_layout_->addWidget(tcp_wave_group_, 0);
 }
@@ -2589,9 +2592,11 @@ void MainWindow::onChooseRecordingDirectoryClicked()
 
 void MainWindow::onStartRecordingClicked()
 {
-    if (!is_connected_)
+    const bool tcpConnected = tcp_wave_panel_ && tcp_wave_panel_->isConnected();
+    if (!is_connected_ && !tcpConnected)
     {
-        log(is_english_ ? "Connect devices before starting recording" : "请先连接设备，再开始记录");
+        log(is_english_ ? "At least one serial device or the TCP wave link must be connected before recording"
+                        : "开始记录前，至少需要一个串口设备在线或 TCP 波形链路已连接");
         return;
     }
 
@@ -2847,10 +2852,12 @@ void MainWindow::runWaveformWriter()
 
 void MainWindow::updateRecordingActionStates()
 {
+    const bool tcpConnected = tcp_wave_panel_ && tcp_wave_panel_->isConnected();
+    const bool recordingSourceAvailable = is_connected_ || tcpConnected;
     const bool sessionOpen = sensors_file_ && sensors_file_->isOpen();
     const bool recordingActive = sessionOpen && !recording_paused_ && recording_thread_running_.load();
-    const bool canStart = is_connected_ && !connection_attempt_in_progress_ && (!sessionOpen || recording_paused_);
-    const bool canPause = is_connected_ && !connection_attempt_in_progress_ && recordingActive;
+    const bool canStart = recordingSourceAvailable && !connection_attempt_in_progress_ && (!sessionOpen || recording_paused_);
+    const bool canPause = !connection_attempt_in_progress_ && recordingActive;
     const bool canStop = sessionOpen && !connection_attempt_in_progress_;
 
     if (start_recording_btn_)

@@ -301,6 +301,11 @@ int TcpWavePanel::port() const
     return port_spin_ ? port_spin_->value() : 8888;
 }
 
+bool TcpWavePanel::isConnected() const
+{
+    return socket_ && socket_->state() == QAbstractSocket::ConnectedState;
+}
+
 void TcpWavePanel::setupSocket()
 {
     socket_ = new QTcpSocket(this);
@@ -375,6 +380,7 @@ void TcpWavePanel::onToggleConnectionClicked()
 void TcpWavePanel::onSocketConnected()
 {
     setConnectedUiState(true);
+    emit connectionStateChanged(true);
     setStatusText(QString(is_english_
         ? "Connected to %1:%2, waiting for the first frame..."
         : "已连接到 %1:%2，正在等待首帧数据...")
@@ -384,6 +390,7 @@ void TcpWavePanel::onSocketConnected()
 void TcpWavePanel::onSocketDisconnected()
 {
     setConnectedUiState(false);
+    emit connectionStateChanged(false);
     if (frame_count_ > 0)
     {
         setStatusText(QString(is_english_
