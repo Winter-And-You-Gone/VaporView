@@ -30,6 +30,7 @@
 
 class RtkConfigDialog;
 class QFile;
+class TcpWavePanel;
 
 class GnssPanel : public QWidget
 {
@@ -336,6 +337,7 @@ private:
     QGroupBox *config_group_;
     QGroupBox *data_group_;
     QGroupBox *log_group_;
+    QGroupBox *tcp_wave_group_;
     QGroupBox *gnss_group_;
     QGroupBox *imu_group_;
     QGroupBox *ptb_group_;
@@ -402,6 +404,7 @@ private:
 
     QAction *rtk_config_action_;
     RtkConfigDialog *rtk_config_dialog_;
+    TcpWavePanel *tcp_wave_panel_;
 };
 
 #endif

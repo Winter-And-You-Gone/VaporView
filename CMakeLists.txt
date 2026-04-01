@@ -112,6 +112,7 @@ set(NAV_SOURCES
     src/MainWindow.cpp
     src/serial_port.cpp
     src/data_collector.cpp
+    src/TcpWavePanel.cpp
     src/RtkConfigDialog.cpp
     src/RtkStreamService.cpp
     ${UM982_DRIVER_DIR}/pvtsln_parser.cpp
@@ -123,6 +124,7 @@ set(NAV_HEADERS
     include/serial_port.h
     include/data_types.h
     include/data_collector.h
+    include/TcpWavePanel.h
     include/RtkConfigDialog.h
     include/RtkStreamService.h
     ${UM982_DRIVER_DIR}/pvtsln_data.hpp

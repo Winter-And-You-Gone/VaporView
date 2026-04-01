@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 #include "RtkConfigDialog.h"
+#include "TcpWavePanel.h"
 #include "data_collector.h"
 #include "data_types.h"
 #include <QMenu>
@@ -1575,6 +1576,15 @@ void MainWindow::setupDataPanels()
     hmp_group_ = nullptr;
 
     main_layout_->addWidget(data_group_, 1);
+
+    tcp_wave_group_ = new QGroupBox(this);
+    tcp_wave_group_->setObjectName("sensorGroupBox");
+    auto *tcpWaveLayout = new QVBoxLayout(tcp_wave_group_);
+    tcpWaveLayout->setContentsMargins(2, 2, 2, 2);
+    tcpWaveLayout->setSpacing(2);
+    tcp_wave_panel_ = new TcpWavePanel(this);
+    tcpWaveLayout->addWidget(tcp_wave_panel_);
+    main_layout_->addWidget(tcp_wave_group_, 1);
 }
 
 void MainWindow::setupLogPanel()
@@ -1624,6 +1634,7 @@ void MainWindow::setEnglish(bool english)
 
     config_group_->setTitle(english ? "Serial Port Configuration" : "串口配置");
     data_group_->setTitle(english ? "Sensor Data" : "传感器数据");
+    tcp_wave_group_->setTitle(english ? "TCP Wave Monitor" : "TCP波形监视");
     log_group_->setTitle(english ? "Log" : "日志");
 
     gnss_group_->setTitle(english ? "GNSS / RTK" : "GNSS / RTK");
@@ -1648,6 +1659,7 @@ void MainWindow::setEnglish(bool english)
     ptb_panel_->setEnglish(english);
     hmp_panel_->setEnglish(english);
     lidar_panel_->setEnglish(english);
+    tcp_wave_panel_->setEnglish(english);
 
     if (rtk_config_dialog_)
     {
