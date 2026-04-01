@@ -39,4 +39,6 @@ __pycache__/
 *.pyc
 *.pyo
 .python-version
+/data/
+/scripts/
 records/

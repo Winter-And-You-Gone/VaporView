@@ -106,27 +106,6 @@ cmake --build build --config Release
 build/Release/VaporView.exe
 ```
 
-### 远程 Windows 构建
-
-当前仓库常通过 `sshfs` 挂载到本地目录进行编辑。对于这个项目，不要在挂载目录上直接运行本地构建；请改用仓库内的远程构建脚本，通过 SSH 到远程主机上的真实仓库目录执行构建。
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\remote-build.ps1
-```
-
-脚本默认连接以下远程环境：
-
-- 主机：`Administrator@100.102.21.86`
-- 仓库：`C:\WorkSpace\NAV\VaporView`
-- 构建目录：`C:\WorkSpace\NAV\VaporView\build`
-- 工具链：`C:\msys64\ucrt64`
-
-如需重新生成远程 `build` 目录中的 CMake 配置，可加 `-Reconfigure`：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\remote-build.ps1 -Reconfigure
-```
-
 ### Linux
 
 项目保留了 GCC / Clang 路径，串口层使用 `termios`。如需在 Linux 上构建，需确保 Qt 开发环境可用。
@@ -172,12 +151,6 @@ Qt SerialPort 当前主要用于枚举可用串口，实际数据读写由仓库
 - 按参考 LabVIEW 逻辑读取两段波形数据：
   - `4字节 little-endian 长度 + 波形图1 float32 数组`
   - `4字节 little-endian 长度 + 波形图4 float32 数组`
-
-另外，仓库中提供了一个临时验证脚本：
-
-- `scripts/tcp_wave_preview.py`
-- 可直接连接本地 TCP 端口预览两张波形图
-- 支持 `--mock` 模式，本地生成同协议测试数据用于自检
 
 ### RTK 对话框
 

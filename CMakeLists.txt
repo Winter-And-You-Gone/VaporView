@@ -211,7 +211,8 @@ if(WIN32 AND MINGW)
         )
     endif()
 
-    if(POWERSHELL_EXECUTABLE AND MSYS_BASH_EXECUTABLE)
+    if(POWERSHELL_EXECUTABLE AND MSYS_BASH_EXECUTABLE
+       AND EXISTS "${CMAKE_SOURCE_DIR}/scripts/deploy_mingw_runtime.ps1")
         add_custom_command(TARGET VaporView POST_BUILD
             COMMAND ${POWERSHELL_EXECUTABLE}
                 -NoProfile
