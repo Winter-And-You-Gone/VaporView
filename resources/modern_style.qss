@@ -179,8 +179,8 @@ QComboBox {
     background-color: #ffffff;
     border: 1px solid #e0e0e0;
     border-radius: 6px;
-    padding: 6px 12px;
-    min-height: 34px;
+    padding: 4px 12px;
+    min-height: 30px;
     color: #333333;
     font-size: 14px;
 }
@@ -361,8 +361,8 @@ QLineEdit {
     background-color: #ffffff;
     border: 1px solid #e0e0e0;
     border-radius: 6px;
-    padding: 6px 12px;
-    min-height: 34px;
+    padding: 4px 12px;
+    min-height: 30px;
     color: #333333;
     font-size: 14px;
     selection-background-color: #e3f2fd;
@@ -387,10 +387,10 @@ QSpinBox {
     background-color: #ffffff;
     border: 1px solid #e0e0e0;
     border-radius: 6px;
-    padding: 6px 30px 6px 12px;
+    padding: 4px 30px 4px 12px;
     color: #333333;
     font-size: 14px;
-    min-height: 34px;
+    min-height: 30px;
 }
 
 QSpinBox:hover {

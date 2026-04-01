@@ -53,7 +53,7 @@ constexpr const char *kBaseMarginsLeftProperty = "_vv_base_margin_left";
 constexpr const char *kBaseMarginsTopProperty = "_vv_base_margin_top";
 constexpr const char *kBaseMarginsRightProperty = "_vv_base_margin_right";
 constexpr const char *kBaseMarginsBottomProperty = "_vv_base_margin_bottom";
-constexpr int kMainPageInputHeight = 34;
+constexpr int kMainPageInputHeight = 30;
 
 QString recordingTimestampUtc()
 {
@@ -1087,15 +1087,15 @@ void MainWindow::loadModernStyleSheet()
             "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 12px; padding: 0px 8px; background-color: #ffffff; color: #1976d2; }"
             "QLabel { color: #333333; background-color: transparent; border: none; }"
             "QLabel#sectionTitleLabel { color: #1976d2; font-size: 16px; font-weight: bold; }"
-            "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 6px 12px; min-height: 34px; color: #333333; font-size: 14px; }"
+            "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 12px; min-height: 30px; color: #333333; font-size: 14px; }"
             "QComboBox:hover { border-color: #bdbdbd; }"
             "QComboBox:focus { border-color: #1976d2; border-width: 2px; }"
             "QComboBox QAbstractItemView { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; selection-background-color: #e3f2fd; selection-color: #1976d2; padding: 4px; outline: none; }"
-            "QLineEdit { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 6px 12px; min-height: 34px; color: #333333; font-size: 14px; }"
+            "QLineEdit { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 12px; min-height: 30px; color: #333333; font-size: 14px; }"
             "QLineEdit:hover { border-color: #bdbdbd; }"
             "QLineEdit:focus { border-color: #1976d2; border-width: 2px; }"
             "QLineEdit:disabled { background-color: #f5f5f5; color: #bdbdbd; }"
-            "QSpinBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 6px 30px 6px 12px; min-height: 34px; color: #333333; font-size: 14px; }"
+            "QSpinBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 30px 4px 12px; min-height: 30px; color: #333333; font-size: 14px; }"
             "QSpinBox:hover { border-color: #bdbdbd; }"
             "QSpinBox:focus { border-color: #1976d2; border-width: 2px; }"
             "QSpinBox:disabled { background-color: #f5f5f5; color: #bdbdbd; }"

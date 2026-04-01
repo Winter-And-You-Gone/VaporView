@@ -236,7 +236,7 @@ void TcpWavePanel::setupUi()
     port_spin_ = new QSpinBox(this);
     port_spin_->setRange(1, 65535);
     port_spin_->setValue(8888);
-    port_spin_->setFixedWidth(92);
+    port_spin_->setFixedWidth(108);
     control_layout_->addWidget(port_spin_, 0, 4);
 
     connect_button_ = new QPushButton(this);
