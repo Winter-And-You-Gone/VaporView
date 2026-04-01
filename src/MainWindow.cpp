@@ -1488,7 +1488,13 @@ void MainWindow::setupCentralWidget()
     setupConfigPanel();
     setupDataPanels();
 
-    main_h_layout->addWidget(left_widget, 3);
+    auto *left_scroll_area = new QScrollArea(this);
+    left_scroll_area->setWidgetResizable(true);
+    left_scroll_area->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    left_scroll_area->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    left_scroll_area->setFrameShape(QFrame::NoFrame);
+    left_scroll_area->setWidget(left_widget);
+    main_h_layout->addWidget(left_scroll_area, 3);
 
     setupLogPanel();
     main_h_layout->addWidget(log_group_, 1);

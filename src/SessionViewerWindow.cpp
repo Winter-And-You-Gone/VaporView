@@ -16,6 +16,7 @@
 #include <QMessageBox>
 #include <QPainter>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QSlider>
@@ -193,6 +194,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , session_path_edit_(nullptr)
     , choose_session_btn_(nullptr)
     , reload_btn_(nullptr)
+    , clear_view_btn_(nullptr)
     , status_label_(nullptr)
     , summary_group_(nullptr)
     , session_name_title_(nullptr)
@@ -248,8 +250,14 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
 
 void SessionViewerWindow::setupUi()
 {
+    auto *scrollArea = new QScrollArea(this);
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    setCentralWidget(scrollArea);
+
     central_widget_ = new QWidget(this);
-    setCentralWidget(central_widget_);
+    scrollArea->setWidget(central_widget_);
 
     auto *mainLayout = new QVBoxLayout(central_widget_);
     mainLayout->setContentsMargins(8, 8, 8, 8);
@@ -276,9 +284,13 @@ void SessionViewerWindow::setupUi()
     connect(reload_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onReloadClicked);
     controlLayout->addWidget(reload_btn_, 0, 3);
 
+    clear_view_btn_ = new QPushButton(this);
+    connect(clear_view_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onClearViewClicked);
+    controlLayout->addWidget(clear_view_btn_, 0, 4);
+
     status_label_ = new QLabel(this);
     status_label_->setWordWrap(true);
-    controlLayout->addWidget(status_label_, 1, 0, 1, 4);
+    controlLayout->addWidget(status_label_, 1, 0, 1, 5);
 
     mainLayout->addLayout(controlLayout);
 
@@ -391,6 +403,7 @@ void SessionViewerWindow::updateTexts()
     setWindowTitle(is_english_ ? "Data Viewer" : "数据查看器");
     choose_session_btn_->setText(is_english_ ? "Open Data..." : "打开数据...");
     reload_btn_->setText(is_english_ ? "Reload" : "重新加载");
+    clear_view_btn_->setText(is_english_ ? "Clear Page" : "清空页面");
     summary_group_->setTitle(is_english_ ? "Session Summary" : "会话概览");
     waveform_group_->setTitle(is_english_ ? "Normalized Second Harmonic" : "归一化二次谐波");
     csv_group_->setTitle(is_english_ ? "Sensors CSV" : "传感器 CSV");
@@ -422,6 +435,38 @@ void SessionViewerWindow::setStatusText(const QString& text)
     {
         status_label_->setText(text);
     }
+}
+
+void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
+{
+    session_directory_.clear();
+    metadata_filename_.clear();
+    sensors_csv_filename_.clear();
+    waveform_directory_.clear();
+    session_name_.clear();
+    start_time_utc_.clear();
+    end_time_utc_.clear();
+    csv_headers_.clear();
+    csv_timestamps_us_.clear();
+    waveform_segments_.clear();
+    total_sensor_rows_ = 0;
+    total_waveform_frames_ = 0;
+    points_per_frame_ = 50000;
+    waveform_export_rate_hz_ = 10;
+
+    csv_table_->clearContents();
+    csv_table_->setRowCount(0);
+    csv_table_->setColumnCount(0);
+    static_cast<SessionWavePlotWidget*>(waveform_plot_)->setSamples({});
+    frame_info_label_->setText(is_english_ ? "No waveform frame loaded" : "尚未加载波形帧");
+    csv_info_label_->setText(is_english_ ? "No CSV loaded" : "尚未加载 CSV");
+    updateSummaryLabels();
+    updateWaveformControls();
+    if (clearPathEdit && session_path_edit_)
+    {
+        session_path_edit_->clear();
+    }
+    setStatusText(is_english_ ? "The current page has been cleared." : "当前页面内容已清空。");
 }
 
 QString SessionViewerWindow::resolveSessionDirectory(const QString& path) const
@@ -492,20 +537,7 @@ void SessionViewerWindow::onReloadClicked()
 
 bool SessionViewerWindow::loadSessionDirectory(const QString& sessionDirectory)
 {
-    session_directory_.clear();
-    metadata_filename_.clear();
-    sensors_csv_filename_.clear();
-    waveform_directory_.clear();
-    session_name_.clear();
-    start_time_utc_.clear();
-    end_time_utc_.clear();
-    csv_headers_.clear();
-    csv_timestamps_us_.clear();
-    waveform_segments_.clear();
-    total_sensor_rows_ = 0;
-    total_waveform_frames_ = 0;
-    points_per_frame_ = 50000;
-    waveform_export_rate_hz_ = 10;
+    clearLoadedData(false);
 
     const QString normalized = QDir::fromNativeSeparators(sessionDirectory);
     if (!loadSessionMetadata(normalized))
@@ -539,6 +571,11 @@ bool SessionViewerWindow::loadSessionDirectory(const QString& sessionDirectory)
 
     setStatusText(QString(is_english_ ? "Loaded session: %1" : "已加载会话: %1").arg(session_directory_));
     return true;
+}
+
+void SessionViewerWindow::onClearViewClicked()
+{
+    clearLoadedData(true);
 }
 
 bool SessionViewerWindow::loadSessionMetadata(const QString& sessionDirectory)

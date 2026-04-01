@@ -9,6 +9,7 @@ class QGroupBox;
 class QLabel;
 class QLineEdit;
 class QPushButton;
+class QScrollArea;
 class QSlider;
 class QSpinBox;
 class QTableWidget;
@@ -26,6 +27,7 @@ public:
 private slots:
     void onChooseSessionClicked();
     void onReloadClicked();
+    void onClearViewClicked();
     void onFrameSliderChanged(int value);
     void onFrameSpinChanged(int value);
 
@@ -42,6 +44,7 @@ private:
     void updateSummaryLabels();
     void updateWaveformControls();
     void setStatusText(const QString& text);
+    void clearLoadedData(bool clearPathEdit = true);
     QString resolveSessionDirectory(const QString& path) const;
     bool loadSessionDirectory(const QString& sessionDirectory);
     bool loadSessionMetadata(const QString& sessionDirectory);
@@ -54,6 +57,7 @@ private:
     QLineEdit *session_path_edit_;
     QPushButton *choose_session_btn_;
     QPushButton *reload_btn_;
+    QPushButton *clear_view_btn_;
     QLabel *status_label_;
     QGroupBox *summary_group_;
     QLabel *session_name_title_;
