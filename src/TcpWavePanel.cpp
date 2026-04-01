@@ -225,8 +225,8 @@ void TcpWavePanel::setupUi()
 
     host_edit_ = new QLineEdit(this);
     host_edit_->setText("127.0.0.1");
-    host_edit_->setMinimumWidth(160);
-    host_edit_->setMaximumWidth(220);
+    host_edit_->setMinimumWidth(90);
+    host_edit_->setMaximumWidth(110);
     control_layout_->addWidget(host_edit_, 0, 2);
 
     port_label_ = new QLabel(this);
