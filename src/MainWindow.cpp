@@ -959,7 +959,7 @@ MainWindow::MainWindow(QWidget *parent)
     , recording_paused_(false)
     , font_scale_percent_(100)
     , base_font_point_size_(0.0)
-    , base_window_size_(1280, 720)
+    , base_window_size_(1440, 860)
     , base_minimum_window_size_(800, 600)
     , gnss_sample_rate_(1)
     , imu_sample_rate_(1)
@@ -1477,12 +1477,12 @@ void MainWindow::setupCentralWidget()
     setCentralWidget(central_widget_);
 
     auto *main_h_layout = new QHBoxLayout(central_widget_);
-    main_h_layout->setSpacing(2);
+    main_h_layout->setSpacing(4);
     main_h_layout->setContentsMargins(2, 2, 2, 2);
 
     auto *left_widget = new QWidget(this);
     main_layout_ = new QVBoxLayout(left_widget);
-    main_layout_->setSpacing(2);
+    main_layout_->setSpacing(4);
     main_layout_->setContentsMargins(0, 0, 0, 0);
 
     setupConfigPanel();
@@ -1494,10 +1494,17 @@ void MainWindow::setupCentralWidget()
     left_scroll_area->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     left_scroll_area->setFrameShape(QFrame::NoFrame);
     left_scroll_area->setWidget(left_widget);
-    main_h_layout->addWidget(left_scroll_area, 3);
 
     setupLogPanel();
-    main_h_layout->addWidget(log_group_, 1);
+
+    auto *main_splitter = new QSplitter(Qt::Horizontal, central_widget_);
+    main_splitter->setChildrenCollapsible(false);
+    main_splitter->addWidget(left_scroll_area);
+    main_splitter->addWidget(log_group_);
+    main_splitter->setStretchFactor(0, 6);
+    main_splitter->setStretchFactor(1, 1);
+    main_splitter->setSizes({1120, 260});
+    main_h_layout->addWidget(main_splitter);
 }
 
 QStringList MainWindow::getAvailablePorts()
@@ -1517,26 +1524,29 @@ QStringList MainWindow::getAvailablePorts()
 void MainWindow::setupConfigPanel()
 {
     config_group_ = new QGroupBox(this);
-    config_group_->setMinimumWidth(980);
-    auto *config_layout = new QGridLayout(config_group_);
+    config_group_->setMinimumWidth(860);
+
+    auto *config_root_layout = new QVBoxLayout(config_group_);
+    config_root_layout->setSpacing(8);
+    config_root_layout->setContentsMargins(8, 4, 8, 8);
+
+    auto *summary_row_layout = new QHBoxLayout();
+    summary_row_layout->setSpacing(8);
+    summary_row_layout->addStretch(1);
+
+    auto *config_layout = new QGridLayout();
     config_layout->setVerticalSpacing(8);
     config_layout->setHorizontalSpacing(8);
-    config_layout->setContentsMargins(8, 4, 8, 8);
-
     config_layout->setColumnStretch(0, 0);
     config_layout->setColumnStretch(1, 1);
     config_layout->setColumnStretch(2, 0);
     config_layout->setColumnStretch(3, 0);
     config_layout->setColumnStretch(4, 0);
-    config_layout->setColumnStretch(5, 0);
-    config_layout->setColumnStretch(6, 0);
     config_layout->setColumnMinimumWidth(0, 110);
     config_layout->setColumnMinimumWidth(1, 260);
-    config_layout->setColumnMinimumWidth(2, 110);
-    config_layout->setColumnMinimumWidth(3, 100);
-    config_layout->setColumnMinimumWidth(4, 110);
-    config_layout->setColumnMinimumWidth(5, 60);
-    config_layout->setColumnMinimumWidth(6, 110);
+    config_layout->setColumnMinimumWidth(2, 100);
+    config_layout->setColumnMinimumWidth(3, 80);
+    config_layout->setColumnMinimumWidth(4, 100);
 
     QStringList baudRates = {"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"};
     QStringList ports = getAvailablePorts();
@@ -1601,22 +1611,19 @@ void MainWindow::setupConfigPanel()
         config_layout->addWidget(rateCombo, row, 4, Qt::AlignVCenter);
     };
 
-    int row = 0;
-
     global_rate_lbl_ = new QLabel(this);
     global_rate_lbl_->setObjectName("fieldLabel");
     global_rate_lbl_->setFixedHeight(28);
-    config_layout->addWidget(global_rate_lbl_, row, 5, Qt::AlignVCenter | Qt::AlignRight);
+    summary_row_layout->addWidget(global_rate_lbl_, 0, Qt::AlignVCenter | Qt::AlignRight);
 
     global_rate_combo_ = createRateCombo();
-    config_layout->addWidget(global_rate_combo_, row, 6, Qt::AlignVCenter);
+    summary_row_layout->addWidget(global_rate_combo_, 0, Qt::AlignVCenter);
     connect(global_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onGlobalRateChanged);
-    ++row;
 
     waveform_split_lbl_ = new QLabel(this);
     waveform_split_lbl_->setObjectName("fieldLabel");
     waveform_split_lbl_->setFixedHeight(28);
-    config_layout->addWidget(waveform_split_lbl_, row, 5, Qt::AlignVCenter | Qt::AlignRight);
+    summary_row_layout->addWidget(waveform_split_lbl_, 0, Qt::AlignVCenter | Qt::AlignRight);
 
     waveform_split_spin_ = new QSpinBox(this);
     waveform_split_spin_->setRange(1, 5);
@@ -1636,8 +1643,11 @@ void MainWindow::setupConfigPanel()
             ? "Waveform split duration set to %1 minute(s)"
             : "波形分文件时长已设置为 %1 分钟").arg(value));
     });
-    config_layout->addWidget(waveform_split_spin_, row, 6, Qt::AlignVCenter);
-    ++row;
+    summary_row_layout->addWidget(waveform_split_spin_, 0, Qt::AlignVCenter);
+
+    config_root_layout->addLayout(summary_row_layout);
+
+    int row = 0;
 
 #ifdef _WIN32
     createPortRow(gnss_lbl_, gnss_port_combo_, gnss_baud_combo_, gnss_rate_lbl_, gnss_rate_combo_, "COM3", "115200", row++);
@@ -1659,15 +1669,19 @@ void MainWindow::setupConfigPanel()
     connect(hmp_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onHmpRateChanged);
     connect(lidar_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onLidarRateChanged);
 
+    config_root_layout->addLayout(config_layout);
     main_layout_->addWidget(config_group_);
 }
 
 void MainWindow::setupDataPanels()
 {
     data_group_ = new QGroupBox(this);
-    auto *data_layout = new QHBoxLayout(data_group_);
+    auto *data_layout = new QVBoxLayout(data_group_);
     data_layout->setSpacing(2);
     data_layout->setContentsMargins(2, 2, 2, 2);
+
+    auto *sensor_splitter = new QSplitter(Qt::Horizontal, data_group_);
+    sensor_splitter->setChildrenCollapsible(false);
 
     gnss_group_ = new QGroupBox(this);
     gnss_group_->setObjectName("sensorGroupBox");
@@ -1675,7 +1689,7 @@ void MainWindow::setupDataPanels()
     gnss_layout->setContentsMargins(2, 2, 2, 2);
     gnss_panel_ = new GnssPanel(this);
     gnss_layout->addWidget(gnss_panel_);
-    data_layout->addWidget(gnss_group_);
+    sensor_splitter->addWidget(gnss_group_);
 
     imu_group_ = new QGroupBox(this);
     imu_group_->setObjectName("sensorGroupBox");
@@ -1683,7 +1697,7 @@ void MainWindow::setupDataPanels()
     imu_layout->setContentsMargins(2, 2, 2, 2);
     imu_panel_ = new ImuPanel(this);
     imu_layout->addWidget(imu_panel_);
-    data_layout->addWidget(imu_group_);
+    sensor_splitter->addWidget(imu_group_);
 
     auto *env_group = new QGroupBox(this);
     env_group->setObjectName("sensorGroupBox");
@@ -1700,7 +1714,13 @@ void MainWindow::setupDataPanels()
     hmp_panel_ = new HmpPanel(this);
     env_layout->addWidget(hmp_panel_);
 
-    data_layout->addWidget(env_group);
+    sensor_splitter->addWidget(env_group);
+    sensor_splitter->setStretchFactor(0, 4);
+    sensor_splitter->setStretchFactor(1, 4);
+    sensor_splitter->setStretchFactor(2, 4);
+    sensor_splitter->setSizes({420, 420, 420});
+
+    data_layout->addWidget(sensor_splitter, 1);
     env_group_ = env_group;
 
     lidar_group_ = nullptr;
@@ -1730,6 +1750,8 @@ void MainWindow::setupDataPanels()
 void MainWindow::setupLogPanel()
 {
     log_group_ = new QGroupBox(this);
+    log_group_->setMinimumWidth(220);
+    log_group_->setMaximumWidth(340);
     auto *log_layout = new QVBoxLayout(log_group_);
     log_layout->setContentsMargins(4, 4, 4, 4);
 
