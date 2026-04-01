@@ -18,12 +18,14 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 namespace
 {
 constexpr int kHeaderSize = 4;
 constexpr int kFloatSize = 4;
 constexpr int kMaxPayloadBytes = 16 * 1024 * 1024;
+constexpr int kPreferredPayloadBytes = 200000;
 
 QString hexPreview(const QByteArray& data, int limit = 12)
 {
@@ -35,6 +37,36 @@ QString hexPreview(const QByteArray& data, int limit = 12)
         parts << QString("%1").arg(static_cast<unsigned char>(data.at(i)), 2, 16, QChar('0')).toUpper();
     }
     return parts.join(' ');
+}
+
+QString headerOrderLabel(bool english, TcpWavePanel::HeaderByteOrder order)
+{
+    switch (order)
+    {
+    case TcpWavePanel::HeaderByteOrder::LittleEndian:
+        return english ? "little-endian" : "小端";
+    case TcpWavePanel::HeaderByteOrder::BigEndian:
+        return english ? "big-endian" : "大端";
+    case TcpWavePanel::HeaderByteOrder::Unknown:
+    default:
+        return english ? "unknown" : "未知";
+    }
+}
+
+QString floatEncodingLabel(bool english, TcpWavePanel::FloatEncoding encoding)
+{
+    switch (encoding)
+    {
+    case TcpWavePanel::FloatEncoding::LittleEndian:
+        return english ? "little-endian float32" : "小端 float32";
+    case TcpWavePanel::FloatEncoding::BigEndian:
+        return english ? "big-endian float32" : "大端 float32";
+    case TcpWavePanel::FloatEncoding::WordSwappedLittleEndian:
+        return english ? "word-swapped float32" : "16位字交换 float32";
+    case TcpWavePanel::FloatEncoding::Unknown:
+    default:
+        return english ? "unknown float32" : "未知 float32";
+    }
 }
 }
 
@@ -147,6 +179,8 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , socket_(nullptr)
     , parse_mode_(ParseMode::AutoDetect)
     , read_state_(ReadState::Wave1Header)
+    , header_byte_order_(HeaderByteOrder::Unknown)
+    , float_encoding_(FloatEncoding::Unknown)
     , expected_payload_size_(0)
     , frame_count_(0)
     , is_english_(false)
@@ -317,6 +351,9 @@ void TcpWavePanel::onToggleConnectionClicked()
     wave4_history_.clear();
     pending_wave1_.clear();
     resetParserState();
+    parse_mode_ = ParseMode::AutoDetect;
+    header_byte_order_ = HeaderByteOrder::Unknown;
+    float_encoding_ = FloatEncoding::Unknown;
     frame_count_ = 0;
     setStatusText(QString(is_english_ ? "Connecting to %1:%2..." : "正在连接 %1:%2...")
         .arg(host_edit_->text()).arg(port_spin_->value()));
@@ -423,74 +460,12 @@ void TcpWavePanel::setStatusText(const QString& text)
 
 void TcpWavePanel::resetParserState()
 {
-    parse_mode_ = ParseMode::AutoDetect;
     read_state_ = ReadState::Wave1Header;
     expected_payload_size_ = 0;
 }
 
 void TcpWavePanel::processBuffer()
 {
-    if (parse_mode_ == ParseMode::AutoDetect && buffer_.size() >= 12)
-    {
-        const qint32 candidate = qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(buffer_.constData()));
-        const bool validLengthHeader = candidate > 0 && candidate <= kMaxPayloadBytes && (candidate % kFloatSize) == 0;
-        if (validLengthHeader)
-        {
-            parse_mode_ = ParseMode::LengthPrefixed;
-            setStatusText(is_english_ ? "Detected length-prefixed TCP payloads" : "已识别为长度前缀TCP负载格式");
-        }
-        else if (looksLikeRawScalarTriplet(buffer_))
-        {
-            parse_mode_ = ParseMode::RawScalarTriplets;
-            setStatusText(is_english_
-                ? "Detected LabVIEW raw scalar stream, switching parser mode"
-                : "已识别为LabVIEW原始标量流，正在切换解析模式");
-        }
-    }
-
-    if (parse_mode_ == ParseMode::RawScalarTriplets)
-    {
-        bool updated = false;
-        while (buffer_.size() >= 12)
-        {
-            const float skipped = decodeRawScalarSample(buffer_.constData());
-            const float wave1 = decodeRawScalarSample(buffer_.constData() + 4);
-            const float wave4 = decodeRawScalarSample(buffer_.constData() + 8);
-            buffer_.remove(0, 12);
-
-            if (!std::isfinite(skipped) || !std::isfinite(wave1) || !std::isfinite(wave4))
-            {
-                continue;
-            }
-
-            appendHistorySample(wave1_history_, wave1, 50000);
-            appendHistorySample(wave4_history_, wave4, 50000);
-            ++frame_count_;
-            updated = true;
-        }
-
-        if (updated)
-        {
-            wave1_plot_->setSamples(wave1_history_);
-            wave4_plot_->setSamples(wave4_history_);
-            wave1_info_label_->setText(QString(is_english_
-                ? "wave1: %1 samples, latest=%2"
-                : "波形图1: %1 个采样点，最新值=%2")
-                .arg(wave1_history_.size())
-                .arg(wave1_history_.isEmpty() ? 0.0 : wave1_history_.last(), 0, 'f', 6));
-            wave4_info_label_->setText(QString(is_english_
-                ? "wave4: %1 samples, latest=%2"
-                : "波形图4: %1 个采样点，最新值=%2")
-                .arg(wave4_history_.size())
-                .arg(wave4_history_.isEmpty() ? 0.0 : wave4_history_.last(), 0, 'f', 6));
-            setStatusText(QString(is_english_
-                ? "Receiving raw scalar frame %1"
-                : "正在接收原始标量流，第 %1 帧")
-                .arg(frame_count_));
-        }
-        return;
-    }
-
     while (true)
     {
         switch (read_state_)
@@ -529,17 +504,35 @@ void TcpWavePanel::processBuffer()
             wave4_plot_->setSamples(wave4_history_);
             ++frame_count_;
 
+            const auto describeRange = [](const QVector<float>& values) {
+                if (values.isEmpty())
+                {
+                    return QStringLiteral("min=0.000 max=0.000");
+                }
+                const auto [minIt, maxIt] = std::minmax_element(values.cbegin(), values.cend());
+                return QString("min=%1 max=%2")
+                    .arg(*minIt, 0, 'f', 6)
+                    .arg(*maxIt, 0, 'f', 6);
+            };
+
             wave1_info_label_->setText(QString(is_english_
-                ? "wave1: %1 samples"
-                : "波形图1: %1 个采样点").arg(pending_wave1_.size()));
+                ? "wave1: %1 samples, %2"
+                : "波形图1: %1 个采样点，%2")
+                .arg(pending_wave1_.size())
+                .arg(describeRange(pending_wave1_)));
             wave4_info_label_->setText(QString(is_english_
-                ? "wave4: %1 samples"
-                : "波形图4: %1 个采样点").arg(wave4.size()));
+                ? "wave4: %1 samples, %2"
+                : "波形图4: %1 个采样点，%2")
+                .arg(wave4.size())
+                .arg(describeRange(wave4)));
 
             setStatusText(QString(is_english_
-                ? "Receiving frame %3 from %1:%2"
-                : "正在接收来自 %1:%2 的数据帧，第 %3 帧")
-                .arg(host_edit_->text()).arg(port_spin_->value()).arg(frame_count_));
+                ? "Receiving frame %3 from %1:%2, float format: %4"
+                : "正在接收来自 %1:%2 的数据帧，第 %3 帧，浮点格式: %4")
+                .arg(host_edit_->text())
+                .arg(port_spin_->value())
+                .arg(frame_count_)
+                .arg(floatEncodingLabel(is_english_, float_encoding_)));
 
             pending_wave1_.clear();
             resetParserState();
@@ -549,67 +542,121 @@ void TcpWavePanel::processBuffer()
     }
 }
 
-bool TcpWavePanel::tryConsumeHeader()
+bool TcpWavePanel::trySynchronizeLengthPrefixedStream()
 {
-    while (buffer_.size() >= kHeaderSize)
-    {
-        const qint32 candidate = qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(buffer_.constData()));
-        if (candidate >= 0 && candidate <= kMaxPayloadBytes && (candidate % kFloatSize) == 0)
-        {
-            expected_payload_size_ = candidate;
-            buffer_.remove(0, kHeaderSize);
-            return true;
-        }
-
-        setStatusText(QString(is_english_
-            ? "Unexpected TCP frame header (%1), bytes: %2, trying to resync..."
-            : "TCP帧头异常（%1），字节预览：%2，正在尝试重新同步...")
-            .arg(candidate)
-            .arg(hexPreview(buffer_)));
-        buffer_.remove(0, 1);
-    }
-
-    return false;
-}
-
-void TcpWavePanel::appendHistorySample(QVector<float>& history, float value, int maxSamples)
-{
-    history.append(value);
-    const int overflow = history.size() - maxSamples;
-    if (overflow > 0)
-    {
-        history.remove(0, overflow);
-    }
-}
-
-bool TcpWavePanel::looksLikeRawScalarTriplet(const QByteArray& data) const
-{
-    if (data.size() < 12)
+    if (buffer_.size() < kHeaderSize)
     {
         return false;
     }
 
-    const float a = decodeRawScalarSample(data.constData());
-    const float b = decodeRawScalarSample(data.constData() + 4);
-    const float c = decodeRawScalarSample(data.constData() + 8);
-    auto plausible = [](float value) {
-        return std::isfinite(value) && std::fabs(value) < 1.0e6f;
+    if (header_byte_order_ != HeaderByteOrder::Unknown)
+    {
+        const qint32 candidate = decodeHeaderValue(buffer_.constData(), header_byte_order_);
+        if (isValidPayloadSize(candidate))
+        {
+            return true;
+        }
+    }
+
+    const HeaderByteOrder orders[] = {
+        HeaderByteOrder::LittleEndian,
+        HeaderByteOrder::BigEndian,
     };
-    return plausible(a) && plausible(b) && plausible(c);
+    for (int offset = 0; offset <= buffer_.size() - kHeaderSize; ++offset)
+    {
+        for (HeaderByteOrder order : orders)
+        {
+            const qint32 firstPayloadSize = decodeHeaderValue(buffer_.constData() + offset, order);
+            if (!isValidPayloadSize(firstPayloadSize))
+            {
+                continue;
+            }
+
+            const bool preferredSize = firstPayloadSize == kPreferredPayloadBytes;
+            const int secondHeaderOffset = offset + kHeaderSize + firstPayloadSize;
+            const bool canValidateSecondHeader = secondHeaderOffset + kHeaderSize <= buffer_.size();
+            const bool secondHeaderValid = canValidateSecondHeader
+                && isValidPayloadSize(decodeHeaderValue(buffer_.constData() + secondHeaderOffset, order));
+            if (!preferredSize && !secondHeaderValid)
+            {
+                continue;
+            }
+
+            if (offset > 0)
+            {
+                setStatusText(QString(is_english_
+                    ? "Recovered TCP frame boundary after skipping %1 bytes, header order: %2"
+                    : "已跳过 %1 字节并重新找到TCP帧边界，帧头字节序: %2")
+                    .arg(offset)
+                    .arg(headerOrderLabel(is_english_, order)));
+                buffer_.remove(0, offset);
+            }
+            else if (parse_mode_ == ParseMode::AutoDetect)
+            {
+                setStatusText(QString(is_english_
+                    ? "Detected length-prefixed TCP payloads, header order: %1"
+                    : "已识别为长度前缀TCP负载格式，帧头字节序: %1")
+                    .arg(headerOrderLabel(is_english_, order)));
+            }
+
+            header_byte_order_ = order;
+            parse_mode_ = ParseMode::LengthPrefixed;
+            return true;
+        }
+    }
+
+    const qint32 little = decodeHeaderValue(buffer_.constData(), HeaderByteOrder::LittleEndian);
+    const qint32 big = decodeHeaderValue(buffer_.constData(), HeaderByteOrder::BigEndian);
+    setStatusText(QString(is_english_
+        ? "Waiting for a valid TCP frame boundary, bytes: %1, little=%2, big=%3"
+        : "正在等待有效的TCP帧边界，字节预览：%1，小端=%2，大端=%3")
+        .arg(hexPreview(buffer_))
+        .arg(little)
+        .arg(big));
+    return false;
 }
 
-float TcpWavePanel::decodeRawScalarSample(const char *raw) const
+bool TcpWavePanel::isValidPayloadSize(qint32 candidate) const
 {
-    const uchar ordered[4] = {
-        static_cast<uchar>(raw[0]),
-        static_cast<uchar>(raw[1]),
-        static_cast<uchar>(raw[3]),
-        static_cast<uchar>(raw[2]),
-    };
-    const quint32 bits = qFromLittleEndian<quint32>(ordered);
-    float value = 0.0f;
-    std::memcpy(&value, &bits, sizeof(float));
-    return value;
+    return candidate > 0 && candidate <= kMaxPayloadBytes && (candidate % kFloatSize) == 0;
+}
+
+qint32 TcpWavePanel::decodeHeaderValue(const char *raw, HeaderByteOrder order) const
+{
+    const uchar *bytes = reinterpret_cast<const uchar*>(raw);
+    switch (order)
+    {
+    case HeaderByteOrder::LittleEndian:
+        return qFromLittleEndian<qint32>(bytes);
+    case HeaderByteOrder::BigEndian:
+        return qFromBigEndian<qint32>(bytes);
+    case HeaderByteOrder::Unknown:
+    default:
+        return qFromLittleEndian<qint32>(bytes);
+    }
+}
+
+bool TcpWavePanel::tryConsumeHeader()
+{
+    if (!trySynchronizeLengthPrefixedStream())
+    {
+        return false;
+    }
+
+    const qint32 candidate = decodeHeaderValue(buffer_.constData(), header_byte_order_);
+    if (!isValidPayloadSize(candidate))
+    {
+        setStatusText(QString(is_english_
+            ? "Unexpected TCP frame header after resync (%1), bytes: %2"
+            : "重同步后TCP帧头仍异常（%1），字节预览：%2")
+            .arg(candidate)
+            .arg(hexPreview(buffer_)));
+        return false;
+    }
+
+    expected_payload_size_ = candidate;
+    buffer_.remove(0, kHeaderSize);
+    return true;
 }
 
 bool TcpWavePanel::tryConsumePayload(QVector<float>& output)
@@ -621,9 +668,125 @@ bool TcpWavePanel::tryConsumePayload(QVector<float>& output)
 
     const QByteArray payload = buffer_.left(expected_payload_size_);
     buffer_.remove(0, expected_payload_size_);
+    if (float_encoding_ == FloatEncoding::Unknown)
+    {
+        float_encoding_ = autoDetectFloatEncoding(payload);
+        setStatusText(QString(is_english_
+            ? "Detected float payload format: %1"
+            : "已识别浮点负载格式: %1")
+            .arg(floatEncodingLabel(is_english_, float_encoding_)));
+    }
     output = decodeFloatPayload(payload);
     expected_payload_size_ = 0;
     return true;
+}
+
+float TcpWavePanel::decodeFloatSample(const char *raw, FloatEncoding encoding) const
+{
+    quint32 bits = 0;
+    switch (encoding)
+    {
+    case FloatEncoding::LittleEndian:
+        bits = qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(raw));
+        break;
+    case FloatEncoding::BigEndian:
+        bits = qFromBigEndian<quint32>(reinterpret_cast<const uchar*>(raw));
+        break;
+    case FloatEncoding::WordSwappedLittleEndian:
+    {
+        const uchar ordered[4] = {
+            static_cast<uchar>(raw[0]),
+            static_cast<uchar>(raw[1]),
+            static_cast<uchar>(raw[3]),
+            static_cast<uchar>(raw[2]),
+        };
+        bits = qFromLittleEndian<quint32>(ordered);
+        break;
+    }
+    case FloatEncoding::Unknown:
+    default:
+        bits = qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(raw));
+        break;
+    }
+
+    float value = 0.0f;
+    std::memcpy(&value, &bits, sizeof(float));
+    return value;
+}
+
+TcpWavePanel::FloatEncoding TcpWavePanel::autoDetectFloatEncoding(const QByteArray& payload) const
+{
+    const FloatEncoding candidates[] = {
+        FloatEncoding::LittleEndian,
+        FloatEncoding::BigEndian,
+        FloatEncoding::WordSwappedLittleEndian,
+    };
+    const int sampleCount = std::min(static_cast<int>(payload.size() / kFloatSize), 1024);
+    double bestScore = -std::numeric_limits<double>::infinity();
+    FloatEncoding bestEncoding = FloatEncoding::LittleEndian;
+
+    for (FloatEncoding encoding : candidates)
+    {
+        double score = 0.0;
+        float previous = 0.0f;
+        bool hasPrevious = false;
+        for (int i = 0; i < sampleCount; ++i)
+        {
+            const float value = decodeFloatSample(payload.constData() + i * kFloatSize, encoding);
+            if (!std::isfinite(value))
+            {
+                score -= 1000.0;
+                continue;
+            }
+
+            const double magnitude = std::fabs(static_cast<double>(value));
+            score += 100.0;
+            if (magnitude < 10.0)
+            {
+                score += 20.0;
+            }
+            else if (magnitude < 1000.0)
+            {
+                score += 5.0;
+            }
+            else if (magnitude > 1.0e6)
+            {
+                score -= 200.0;
+            }
+
+            if (hasPrevious)
+            {
+                const double delta = std::fabs(static_cast<double>(value) - static_cast<double>(previous));
+                if (delta < 0.1)
+                {
+                    score += 5.0;
+                }
+                else if (delta < 1.0)
+                {
+                    score += 3.0;
+                }
+                else if (delta < 10.0)
+                {
+                    score += 1.0;
+                }
+                else if (delta > 1.0e4)
+                {
+                    score -= 25.0;
+                }
+            }
+
+            previous = value;
+            hasPrevious = true;
+        }
+
+        if (score > bestScore)
+        {
+            bestScore = score;
+            bestEncoding = encoding;
+        }
+    }
+
+    return bestEncoding;
 }
 
 QVector<float> TcpWavePanel::decodeFloatPayload(const QByteArray& payload) const
@@ -631,13 +794,12 @@ QVector<float> TcpWavePanel::decodeFloatPayload(const QByteArray& payload) const
     QVector<float> values;
     const int count = payload.size() / kFloatSize;
     values.resize(count);
+    const FloatEncoding encoding = float_encoding_ == FloatEncoding::Unknown
+        ? FloatEncoding::LittleEndian
+        : float_encoding_;
     for (int i = 0; i < count; ++i)
     {
-        const uchar *raw = reinterpret_cast<const uchar*>(payload.constData() + i * kFloatSize);
-        const quint32 bits = qFromLittleEndian<quint32>(raw);
-        float value = 0.0f;
-        std::memcpy(&value, &bits, sizeof(float));
-        values[i] = value;
+        values[i] = decodeFloatSample(payload.constData() + i * kFloatSize, encoding);
     }
     return values;
 }

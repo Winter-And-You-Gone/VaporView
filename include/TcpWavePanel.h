@@ -22,20 +22,10 @@ public:
 
     void setEnglish(bool english);
 
-private slots:
-    void onToggleConnectionClicked();
-    void onSocketConnected();
-    void onSocketDisconnected();
-    void onSocketReadyRead();
-    void onSocketStateChanged();
-    void onSocketError();
-
-private:
     enum class ParseMode
     {
         AutoDetect,
-        LengthPrefixed,
-        RawScalarTriplets
+        LengthPrefixed
     };
 
     enum class ReadState
@@ -46,19 +36,45 @@ private:
         Wave4Payload
     };
 
+    enum class HeaderByteOrder
+    {
+        Unknown,
+        LittleEndian,
+        BigEndian
+    };
+
+    enum class FloatEncoding
+    {
+        Unknown,
+        LittleEndian,
+        BigEndian,
+        WordSwappedLittleEndian
+    };
+
+private slots:
+    void onToggleConnectionClicked();
+    void onSocketConnected();
+    void onSocketDisconnected();
+    void onSocketReadyRead();
+    void onSocketStateChanged();
+    void onSocketError();
+
+private:
     void setupUi();
     void setupSocket();
     void recreateSocket();
     void requestGracefulDisconnect();
-    void appendHistorySample(QVector<float>& history, float value, int maxSamples);
-    bool looksLikeRawScalarTriplet(const QByteArray& data) const;
-    float decodeRawScalarSample(const char *raw) const;
     void setConnectedUiState(bool connected);
     void setStatusText(const QString& text);
     void resetParserState();
     void processBuffer();
+    bool trySynchronizeLengthPrefixedStream();
+    bool isValidPayloadSize(qint32 candidate) const;
+    qint32 decodeHeaderValue(const char *raw, HeaderByteOrder order) const;
     bool tryConsumeHeader();
     bool tryConsumePayload(QVector<float>& output);
+    float decodeFloatSample(const char *raw, FloatEncoding encoding) const;
+    FloatEncoding autoDetectFloatEncoding(const QByteArray& payload) const;
     QVector<float> decodeFloatPayload(const QByteArray& payload) const;
 
     QLineEdit *host_edit_;
@@ -82,6 +98,8 @@ private:
     QVector<float> pending_wave1_;
     ParseMode parse_mode_;
     ReadState read_state_;
+    HeaderByteOrder header_byte_order_;
+    FloatEncoding float_encoding_;
     int expected_payload_size_;
     qint64 frame_count_;
     bool is_english_;
