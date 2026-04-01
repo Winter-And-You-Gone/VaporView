@@ -14,6 +14,7 @@
 #include <QSpinBox>
 #include <QTcpSocket>
 #include <QVBoxLayout>
+#include <QDateTime>
 #include <QtEndian>
 #include <algorithm>
 #include <cmath>
@@ -275,19 +276,29 @@ void TcpWavePanel::setEnglish(bool english)
     connect_button_->setText(socket_ && socket_->state() == QAbstractSocket::ConnectedState
         ? (english ? "Stop" : "停止")
         : (english ? "Start" : "启动"));
-    wave1_group_->setTitle(english ? "Wave 1" : "波形图1");
-    wave4_group_->setTitle(english ? "Wave 4" : "波形图4");
+    wave1_group_->setTitle(english ? "Raw Signal" : "原始信号");
+    wave4_group_->setTitle(english ? "Normalized Second Harmonic" : "归一化二次谐波");
     hint_label_->setText(english
         ? "This TCP sender is likely single-client. Do not open the LabVIEW VI receiver and VaporView on port 8888 at the same time."
         : "这个TCP发送端大概率只支持单客户端。不要同时打开 LabVIEW VI 接收端和 VaporView 去抢同一个 8888 连接。");
 
-    wave1_info_label_->setText(english ? "waiting for wave1 frame" : "等待波形图1数据帧");
-    wave4_info_label_->setText(english ? "waiting for wave4 frame" : "等待波形图4数据帧");
+    wave1_info_label_->setText(english ? "waiting for raw-signal frame" : "等待原始信号数据帧");
+    wave4_info_label_->setText(english ? "waiting for normalized second harmonic frame" : "等待归一化二次谐波数据帧");
 
     if (!socket_ || socket_->state() != QAbstractSocket::ConnectedState)
     {
         setStatusText(english ? "Idle" : "空闲");
     }
+}
+
+QString TcpWavePanel::host() const
+{
+    return host_edit_ ? host_edit_->text() : QStringLiteral("127.0.0.1");
+}
+
+int TcpWavePanel::port() const
+{
+    return port_spin_ ? port_spin_->value() : 8888;
 }
 
 void TcpWavePanel::setupSocket()
@@ -503,6 +514,9 @@ void TcpWavePanel::processBuffer()
             wave1_plot_->setSamples(wave1_history_);
             wave4_plot_->setSamples(wave4_history_);
             ++frame_count_;
+            emit normalizedSecondHarmonicFrameReady(
+                static_cast<quint64>(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()) * 1000ULL,
+                wave4_history_);
 
             const auto describeRange = [](const QVector<float>& values) {
                 if (values.isEmpty())
@@ -516,13 +530,13 @@ void TcpWavePanel::processBuffer()
             };
 
             wave1_info_label_->setText(QString(is_english_
-                ? "wave1: %1 samples, %2"
-                : "波形图1: %1 个采样点，%2")
+                ? "raw signal: %1 samples, %2"
+                : "原始信号: %1 个采样点，%2")
                 .arg(pending_wave1_.size())
                 .arg(describeRange(pending_wave1_)));
             wave4_info_label_->setText(QString(is_english_
-                ? "wave4: %1 samples, %2"
-                : "波形图4: %1 个采样点，%2")
+                ? "normalized second harmonic: %1 samples, %2"
+                : "归一化二次谐波: %1 个采样点，%2")
                 .arg(wave4.size())
                 .arg(describeRange(wave4)));
 

@@ -24,6 +24,9 @@
 #include <QLineEdit>
 #include <QVector>
 #include <atomic>
+#include <condition_variable>
+#include <cstdint>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -253,6 +256,7 @@ private slots:
     void onRtkConfigClicked();
     void onFontScaleTriggered(QAction *action);
     void onCancelConnectClicked();
+    void onNormalizedSecondHarmonicFrameReady(quint64 timestampUs, QVector<float> samples);
 
 private:
     struct CollectorSnapshot
@@ -262,6 +266,12 @@ private:
         std::shared_ptr<VaporView::PtbCollector> ptb;
         std::shared_ptr<VaporView::HmpCollector> hmp;
         std::shared_ptr<VaporView::LidarCollector> lidar;
+    };
+
+    struct WaveformFrame
+    {
+        quint64 timestamp_us = 0;
+        QVector<float> samples;
     };
 
     void setupMenuBar();
@@ -277,7 +287,15 @@ private:
     QString defaultRecordingDirectory() const;
     bool startRecordingSession();
     void stopRecording(bool announce = true);
-    void writeRecordingHeader();
+    void writeSensorsHeader();
+    bool prepareRecordingSessionLayout(const QString& recordsPath, const QString& sessionName);
+    void writeSessionMetadata(const QString& endTimeUtc = QString());
+    void writeDeviceConfigSnapshot();
+    void appendEventLogLine(const QString& level, const QString& message);
+    void appendErrorLogLine(const QString& message);
+    quint64 currentTimestampUs() const;
+    quint64 steadyToEpochUs(const std::chrono::steady_clock::time_point& timePoint) const;
+    void runWaveformWriter();
     void updateConnectionStatus(bool connected);
     QStringList getAvailablePorts();
     void setEnglish(bool english);
@@ -387,6 +405,8 @@ private:
     std::thread connection_thread_;
     std::thread recording_thread_;
     std::atomic<bool> recording_thread_running_;
+    std::thread waveform_writer_thread_;
+    std::atomic<bool> waveform_writer_running_;
     int font_scale_percent_;
     double base_font_point_size_;
     QString base_style_sheet_;
@@ -397,10 +417,29 @@ private:
     int ptb_sample_rate_;
     int hmp_sample_rate_;
     int lidar_sample_rate_;
-    std::unique_ptr<QFile> recording_file_;
+    std::chrono::steady_clock::time_point steady_clock_anchor_;
+    std::chrono::system_clock::time_point system_clock_anchor_;
+    std::unique_ptr<QFile> sensors_file_;
+    std::unique_ptr<QFile> event_log_file_;
+    std::unique_ptr<QFile> error_log_file_;
     QString recording_directory_;
-    QString recording_filename_;
+    QString session_directory_;
+    QString session_name_;
+    QString session_start_time_utc_;
+    quint64 session_start_time_us_;
+    QString sensors_filename_;
+    QString session_metadata_filename_;
+    QString event_log_filename_;
+    QString error_log_filename_;
+    QString device_config_filename_;
+    QString waveform_directory_;
     std::atomic<qint64> recording_entry_count_;
+    std::atomic<qint64> waveform_frame_count_;
+    std::atomic<qint64> waveform_file_count_;
+    std::mutex recording_files_mutex_;
+    std::mutex waveform_queue_mutex_;
+    std::condition_variable waveform_queue_cv_;
+    std::deque<WaveformFrame> waveform_queue_;
 
     QAction *rtk_config_action_;
     RtkConfigDialog *rtk_config_dialog_;

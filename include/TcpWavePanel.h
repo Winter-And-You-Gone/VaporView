@@ -21,6 +21,8 @@ public:
     ~TcpWavePanel() override;
 
     void setEnglish(bool english);
+    QString host() const;
+    int port() const;
 
     enum class ParseMode
     {
@@ -50,6 +52,9 @@ public:
         BigEndian,
         WordSwappedLittleEndian
     };
+
+signals:
+    void normalizedSecondHarmonicFrameReady(quint64 timestampUs, QVector<float> samples);
 
 private slots:
     void onToggleConnectionClicked();

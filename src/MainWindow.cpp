@@ -13,6 +13,10 @@
 #include <QTextStream>
 #include <QStringConverter>
 #include <QDateTime>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QTimeZone>
 #include <QGridLayout>
 #include <QFrame>
 #include <QScrollArea>
@@ -34,6 +38,7 @@
 #include <QVector>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <memory>
 
 namespace
@@ -53,9 +58,16 @@ QString recordingTimestampUtc()
     return QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
 }
 
-QString recordingSessionFileTimestamp()
+QString recordingSessionDirectoryTimestamp()
 {
-    return QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
+    return QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss");
+}
+
+QString waveformSegmentTimestamp(quint64 timestampUs)
+{
+    return QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(timestampUs / 1000ULL), QTimeZone::UTC)
+        .toLocalTime()
+        .toString("yyyy-MM-dd_HH-mm-ss");
 }
 
 QString csvEscape(const QString &value)
@@ -72,6 +84,32 @@ QString csvEscape(const QString &value)
 QString csvBool(bool value)
 {
     return value ? QStringLiteral("true") : QStringLiteral("false");
+}
+
+bool shouldMirrorToErrorLog(const QString& message)
+{
+    static const QStringList keywords = {
+        QStringLiteral("error"),
+        QStringLiteral("failed"),
+        QStringLiteral("timeout"),
+        QStringLiteral("exception"),
+        QStringLiteral("disconnect"),
+        QStringLiteral("异常"),
+        QStringLiteral("失败"),
+        QStringLiteral("错误"),
+        QStringLiteral("超时"),
+        QStringLiteral("掉线"),
+        QStringLiteral("断开"),
+    };
+    const QString lower = message.toLower();
+    for (const QString& keyword : keywords)
+    {
+        if (lower.contains(keyword.toLower()))
+        {
+            return true;
+        }
+    }
+    return false;
 }
 void rememberBaseMetric(QObject *object, const char *propertyName, int value)
 {
@@ -909,6 +947,7 @@ MainWindow::MainWindow(QWidget *parent)
     , connection_attempt_in_progress_(false)
     , cancel_connection_requested_(false)
     , recording_thread_running_(false)
+    , waveform_writer_running_(false)
     , font_scale_percent_(100)
     , base_font_point_size_(0.0)
     , base_window_size_(1280, 720)
@@ -918,12 +957,28 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_sample_rate_(1)
     , hmp_sample_rate_(1)
     , lidar_sample_rate_(1)
-    , recording_file_(nullptr)
+    , steady_clock_anchor_(std::chrono::steady_clock::now())
+    , system_clock_anchor_(std::chrono::system_clock::now())
+    , sensors_file_(nullptr)
+    , event_log_file_(nullptr)
+    , error_log_file_(nullptr)
     , recording_directory_()
-    , recording_filename_()
+    , session_directory_()
+    , session_name_()
+    , session_start_time_utc_()
+    , session_start_time_us_(0)
+    , sensors_filename_()
+    , session_metadata_filename_()
+    , event_log_filename_()
+    , error_log_filename_()
+    , device_config_filename_()
+    , waveform_directory_()
     , recording_entry_count_(0)
+    , waveform_frame_count_(0)
+    , waveform_file_count_(0)
     , rtk_config_action_(nullptr)
     , rtk_config_dialog_(nullptr)
+    , tcp_wave_panel_(nullptr)
 {
     const double currentPointSize = qApp->font().pointSizeF();
     base_font_point_size_ = currentPointSize > 0.0 ? currentPointSize : 10.0;
@@ -1586,6 +1641,8 @@ void MainWindow::setupDataPanels()
     tcpWaveLayout->setSpacing(2);
     tcp_wave_panel_ = new TcpWavePanel(this);
     tcp_wave_panel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    connect(tcp_wave_panel_, &TcpWavePanel::normalizedSecondHarmonicFrameReady,
+            this, &MainWindow::onNormalizedSecondHarmonicFrameReady);
     tcpWaveLayout->addWidget(tcp_wave_panel_);
     main_layout_->addWidget(tcp_wave_group_, 0);
 }
@@ -1943,6 +2000,12 @@ void MainWindow::log(const QString& message)
         scrollBar->setValue(scrollBar->maximum());
     }
     has_inline_progress_log_ = false;
+
+    appendEventLogLine(QStringLiteral("info"), message);
+    if (shouldMirrorToErrorLog(message))
+    {
+        appendErrorLogLine(message);
+    }
 }
 
 void MainWindow::updateRecordingStatusLabel()
@@ -1952,12 +2015,14 @@ void MainWindow::updateRecordingStatusLabel()
         return;
     }
 
-    if (recording_file_ && recording_file_->isOpen())
+    if (sensors_file_ && sensors_file_->isOpen())
     {
-        const QFileInfo info(recording_filename_);
+        const QFileInfo info(session_directory_);
         recording_status_label_->setText(
-            QString(is_english_ ? "Recording: %1 rows | %2" : "记录中: %1 行 | %2")
+            QString(is_english_ ? "Recording: %1 sensor rows | %2 waveform frames | %3"
+                                : "记录中: 设备 %1 行 | 波形 %2 帧 | %3")
                 .arg(static_cast<qlonglong>(recording_entry_count_.load()))
+                .arg(static_cast<qlonglong>(waveform_frame_count_.load()))
                 .arg(info.fileName()));
         recording_status_label_->setProperty("status", "connected");
     }
@@ -1978,7 +2043,7 @@ QString MainWindow::defaultRecordingDirectory() const
     {
         if (QFileInfo::exists(dir.filePath("CMakeLists.txt")) && QFileInfo::exists(dir.filePath("README.md")))
         {
-            return dir.filePath("records");
+            return dir.filePath("data");
         }
         if (!dir.cdUp())
         {
@@ -1986,7 +2051,181 @@ QString MainWindow::defaultRecordingDirectory() const
         }
     }
 
-    return QDir(QCoreApplication::applicationDirPath()).filePath("records");
+    return QDir(QCoreApplication::applicationDirPath()).filePath("data");
+}
+
+bool MainWindow::prepareRecordingSessionLayout(const QString& recordsPath, const QString& sessionName)
+{
+    QDir recordsDir(recordsPath);
+    if (!recordsDir.exists() && !recordsDir.mkpath("."))
+    {
+        return false;
+    }
+
+    QString finalSessionName = sessionName;
+    QString finalSessionDirectory = recordsDir.filePath(finalSessionName);
+    int suffix = 1;
+    while (QFileInfo::exists(finalSessionDirectory))
+    {
+        finalSessionName = QString("%1_%2").arg(sessionName).arg(suffix++);
+        finalSessionDirectory = recordsDir.filePath(finalSessionName);
+    }
+
+    QDir sessionDir(finalSessionDirectory);
+    if (!recordsDir.mkpath(finalSessionName) ||
+        !sessionDir.mkpath("waveform") ||
+        !sessionDir.mkpath("sensors") ||
+        !sessionDir.mkpath("logs") ||
+        !sessionDir.mkpath("config"))
+    {
+        return false;
+    }
+
+    session_name_ = finalSessionName;
+    session_directory_ = QDir::fromNativeSeparators(finalSessionDirectory);
+    waveform_directory_ = QDir::fromNativeSeparators(sessionDir.filePath("waveform"));
+    sensors_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("sensors/devices.csv"));
+    session_metadata_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("session.json"));
+    event_log_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("logs/event_log.csv"));
+    error_log_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("logs/error_log.txt"));
+    device_config_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("config/device_config.json"));
+    return true;
+}
+
+void MainWindow::appendEventLogLine(const QString& level, const QString& message)
+{
+    std::lock_guard<std::mutex> lock(recording_files_mutex_);
+    if (!event_log_file_ || !event_log_file_->isOpen())
+    {
+        return;
+    }
+
+    QTextStream out(event_log_file_.get());
+    out.setEncoding(QStringConverter::Utf8);
+    out << csvEscape(recordingTimestampUtc()) << ','
+        << currentTimestampUs() << ','
+        << csvEscape(level) << ','
+        << csvEscape(message) << '\n';
+    out.flush();
+}
+
+void MainWindow::appendErrorLogLine(const QString& message)
+{
+    std::lock_guard<std::mutex> lock(recording_files_mutex_);
+    if (!error_log_file_ || !error_log_file_->isOpen())
+    {
+        return;
+    }
+
+    QTextStream out(error_log_file_.get());
+    out.setEncoding(QStringConverter::Utf8);
+    out << '[' << recordingTimestampUtc() << "] " << message << '\n';
+    out.flush();
+}
+
+quint64 MainWindow::currentTimestampUs() const
+{
+    return static_cast<quint64>(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()) * 1000ULL;
+}
+
+quint64 MainWindow::steadyToEpochUs(const std::chrono::steady_clock::time_point& timePoint) const
+{
+    if (timePoint == std::chrono::steady_clock::time_point{})
+    {
+        return 0;
+    }
+
+    const auto delta = timePoint - steady_clock_anchor_;
+    const auto systemPoint = system_clock_anchor_ + std::chrono::duration_cast<std::chrono::system_clock::duration>(delta);
+    return static_cast<quint64>(std::chrono::duration_cast<std::chrono::microseconds>(systemPoint.time_since_epoch()).count());
+}
+
+void MainWindow::writeSessionMetadata(const QString& endTimeUtc)
+{
+    if (session_metadata_filename_.isEmpty() || session_directory_.isEmpty())
+    {
+        return;
+    }
+
+    QDir sessionDir(session_directory_);
+    QJsonObject root;
+    root["session_name"] = session_name_;
+    root["start_time_utc"] = session_start_time_utc_;
+    root["start_time_us"] = QString::number(session_start_time_us_);
+    root["end_time_utc"] = endTimeUtc;
+    root["software_version"] = QCoreApplication::applicationVersion().isEmpty()
+        ? QStringLiteral("dev")
+        : QCoreApplication::applicationVersion();
+    root["waveform_points_per_frame"] = 50000;
+    root["waveform_export_rate_hz"] = 10;
+    root["waveform_value_type"] = QStringLiteral("float32");
+    root["waveform_timestamp_type"] = QStringLiteral("uint64");
+    root["timestamp_unit"] = QStringLiteral("microseconds");
+    root["waveform_split_minutes"] = 1;
+    root["sensor_rows"] = QString::number(recording_entry_count_.load());
+    root["waveform_frames"] = QString::number(waveform_frame_count_.load());
+    root["waveform_file_count"] = QString::number(waveform_file_count_.load());
+
+    QJsonObject paths;
+    paths["waveform_directory"] = sessionDir.relativeFilePath(waveform_directory_);
+    paths["devices_csv"] = sessionDir.relativeFilePath(sensors_filename_);
+    paths["event_log"] = sessionDir.relativeFilePath(event_log_filename_);
+    paths["error_log"] = sessionDir.relativeFilePath(error_log_filename_);
+    paths["device_config"] = sessionDir.relativeFilePath(device_config_filename_);
+    root["paths"] = paths;
+
+    QFile file(session_metadata_filename_);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    {
+        return;
+    }
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    file.close();
+}
+
+void MainWindow::writeDeviceConfigSnapshot()
+{
+    if (device_config_filename_.isEmpty())
+    {
+        return;
+    }
+
+    QJsonObject root;
+    root["recording_directory"] = recording_directory_;
+    root["session_directory"] = session_directory_;
+    root["waveform_split_minutes"] = 1;
+
+    QJsonObject waveform;
+    waveform["host"] = tcp_wave_panel_ ? tcp_wave_panel_->host() : QStringLiteral("127.0.0.1");
+    waveform["port"] = tcp_wave_panel_ ? tcp_wave_panel_->port() : 8888;
+    waveform["frame_rate_hz"] = 10;
+    waveform["points_per_frame"] = 50000;
+    waveform["value_type"] = QStringLiteral("float32");
+    waveform["timestamp_type"] = QStringLiteral("uint64");
+    root["waveform"] = waveform;
+
+    QJsonObject sensors;
+    auto addSerialConfig = [&sensors](const QString& name, QComboBox* port, QComboBox* baud, QComboBox* rate) {
+        QJsonObject obj;
+        obj["port"] = port ? port->currentText() : QString();
+        obj["baud"] = baud ? baud->currentText() : QString();
+        obj["rate_hz"] = rate ? rate->currentText() : QString();
+        sensors[name] = obj;
+    };
+    addSerialConfig("gnss", gnss_port_combo_, gnss_baud_combo_, gnss_rate_combo_);
+    addSerialConfig("imu", imu_port_combo_, imu_baud_combo_, imu_rate_combo_);
+    addSerialConfig("ptb", ptb_port_combo_, ptb_baud_combo_, ptb_rate_combo_);
+    addSerialConfig("hmp", hmp_port_combo_, hmp_baud_combo_, hmp_rate_combo_);
+    addSerialConfig("tf03", lidar_port_combo_, lidar_baud_combo_, lidar_rate_combo_);
+    root["sensors"] = sensors;
+
+    QFile file(device_config_filename_);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    {
+        return;
+    }
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    file.close();
 }
 
 bool MainWindow::startRecordingSession()
@@ -2000,45 +2239,70 @@ bool MainWindow::startRecordingSession()
         recording_directory_ = recordsPath;
     }
 
-    QDir recordsDir(recordsPath);
-    if (!recordsDir.exists() && !recordsDir.mkpath("."))
+    const QString sessionName = QStringLiteral("session_%1").arg(recordingSessionDirectoryTimestamp());
+    if (!prepareRecordingSessionLayout(recordsPath, sessionName))
     {
         QMessageBox::warning(
             this,
             is_english_ ? "Error" : "错误",
-            is_english_ ? "Failed to create recording directory" : "无法创建记录目录");
+            is_english_ ? "Failed to create session directories" : "无法创建会话目录结构");
         return false;
     }
 
-    QString baseName = recordingSessionFileTimestamp();
-    QString filename = recordsDir.filePath(baseName + ".csv");
-    int suffix = 1;
-    while (QFileInfo::exists(filename))
+    sensors_file_ = std::make_unique<QFile>(sensors_filename_);
+    event_log_file_ = std::make_unique<QFile>(event_log_filename_);
+    error_log_file_ = std::make_unique<QFile>(error_log_filename_);
+    if (!sensors_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
+        !event_log_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
+        !error_log_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
     {
-        filename = recordsDir.filePath(QString("%1_%2.csv").arg(baseName).arg(suffix++));
-    }
-
-    auto file = std::make_unique<QFile>(filename);
-    if (!file->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
-    {
+        sensors_file_.reset();
+        event_log_file_.reset();
+        error_log_file_.reset();
         QMessageBox::warning(
             this,
             is_english_ ? "Error" : "错误",
-            is_english_ ? "Failed to open recording file for writing" : "无法打开记录文件进行写入");
+            is_english_ ? "Failed to open session files for writing" : "无法打开会话文件进行写入");
         return false;
     }
 
-    QFile *filePtr = file.get();
-    recording_filename_ = filename;
+    session_start_time_utc_ = recordingTimestampUtc();
+    session_start_time_us_ = currentTimestampUs();
     recording_entry_count_.store(0);
-    recording_file_ = std::move(file);
-    writeRecordingHeader();
+    waveform_frame_count_.store(0);
+    waveform_file_count_.store(0);
+    {
+        std::lock_guard<std::mutex> lock(waveform_queue_mutex_);
+        waveform_queue_.clear();
+    }
+
+    {
+        QTextStream eventOut(event_log_file_.get());
+        eventOut.setEncoding(QStringConverter::Utf8);
+        eventOut << "timestamp_utc,timestamp_us,level,message\n";
+        eventOut.flush();
+    }
+
+    writeSensorsHeader();
+    writeSessionMetadata();
+    writeDeviceConfigSnapshot();
+    appendEventLogLine(QStringLiteral("info"),
+                       QString(is_english_ ? "Session recording started: %1" : "会话记录已开始: %1").arg(session_directory_));
+
+    waveform_writer_running_.store(true);
+    waveform_writer_thread_ = std::thread([this]() {
+        runWaveformWriter();
+    });
+
+    QFile *filePtr = sensors_file_.get();
     recording_thread_running_.store(true);
     recording_thread_ = std::thread([this, filePtr]() {
         auto nextTick = std::chrono::steady_clock::now();
         while (recording_thread_running_.load())
         {
             const auto tickTime = std::chrono::steady_clock::now();
+            const quint64 recordTimestampUs = currentTimestampUs();
+            const QString recordTimestampUtc = recordingTimestampUtc();
             const CollectorSnapshot collectors = snapshotCollectors();
             const VaporView::GnssData gnssSample = collectors.gnss ? collectors.gnss->getLatestData() : VaporView::GnssData();
             const VaporView::ImuData imuSample = collectors.imu ? collectors.imu->getLatestData() : VaporView::ImuData();
@@ -2048,7 +2312,7 @@ bool MainWindow::startRecordingSession()
 
             QStringList row;
             row.reserve(64);
-            row << recordingTimestampUtc();
+            row << QString::number(recordTimestampUs) << recordTimestampUtc;
 
             auto appendEmptyColumns = [&row](int count) {
                 for (int i = 0; i < count; ++i)
@@ -2073,90 +2337,66 @@ bool MainWindow::startRecordingSession()
             if (isFresh(collectors.gnss.get(), gnssSample))
             {
                 row
-                    << QString::number(gnssSample.latitude)
-                    << QString::number(gnssSample.longitude)
-                    << QString::number(gnssSample.altitude)
-                    << QString::number(gnssSample.vel_north)
-                    << QString::number(gnssSample.vel_east)
-                    << QString::number(gnssSample.vel_down)
-                    << QString::number(gnssSample.vel_ground)
-                    << QString::number(gnssSample.heading)
-                    << QString::number(gnssSample.heading_pitch)
-                    << QString::number(gnssSample.heading_length)
-                    << QString::fromStdString(gnssSample.heading_type)
-                    << QString::number(gnssSample.heading_trackedsvs)
-                    << QString::number(gnssSample.heading_solnsvs)
-                    << QString::number(gnssSample.sigma_lat)
-                    << QString::number(gnssSample.sigma_lon)
-                    << QString::number(gnssSample.sigma_alt)
+                    << QString::number(steadyToEpochUs(gnssSample.timestamp))
+                    << QString::number(gnssSample.latitude, 'f', 9)
+                    << QString::number(gnssSample.longitude, 'f', 9)
+                    << QString::number(gnssSample.altitude, 'f', 6)
                     << QString::fromStdString(gnssSample.position_status)
                     << QString::number(gnssSample.num_satellites_used)
-                    << QString::number(gnssSample.num_satellites_tracked)
-                    << QString::number(gnssSample.gdop)
-                    << QString::number(gnssSample.pdop)
-                    << QString::number(gnssSample.hdop)
-                    << QString::number(gnssSample.htdop)
-                    << QString::number(gnssSample.tdop)
-                    << QString::number(gnssSample.diff_age)
-                    << QString::number(gnssSample.undulation)
-                    << QString::number(gnssSample.elevation_cutoff)
-                    << QString::fromStdString(gnssSample.raw_sentence);
+                    << QString::number(gnssSample.heading, 'f', 6)
+                    << QString::number(gnssSample.heading_pitch, 'f', 6)
+                    << QString::number(gnssSample.vel_north, 'f', 6)
+                    << QString::number(gnssSample.vel_east, 'f', 6)
+                    << QString::number(gnssSample.vel_down, 'f', 6);
                 appendBool(gnssSample.valid);
                 row << QString::fromStdString(gnssSample.error_message);
             }
             else
             {
-                appendEmptyColumns(30);
+                appendEmptyColumns(13);
             }
 
             if (isFresh(collectors.imu.get(), imuSample))
             {
                 row
-                    << QString::number(imuSample.acceleration[0])
-                    << QString::number(imuSample.acceleration[1])
-                    << QString::number(imuSample.acceleration[2])
-                    << QString::number(imuSample.gyroscope[0])
-                    << QString::number(imuSample.gyroscope[1])
-                    << QString::number(imuSample.gyroscope[2])
-                    << QString::number(imuSample.rpy[0])
-                    << QString::number(imuSample.rpy[1])
-                    << QString::number(imuSample.rpy[2])
-                    << QString::number(imuSample.quaternion[0])
-                    << QString::number(imuSample.quaternion[1])
-                    << QString::number(imuSample.quaternion[2])
-                    << QString::number(imuSample.quaternion[3])
-                    << QString::number(imuSample.temperature)
-                    << QString::number(imuSample.air_pressure)
-                    << QString::number(static_cast<qulonglong>(imuSample.system_time_us))
-                    << QString::number(imuSample.system_time_ms)
-                    << csvBool(imuSample.from_hi83)
-                    << QString::fromStdString(imuSample.raw_sentence);
+                    << QString::number(steadyToEpochUs(imuSample.timestamp))
+                    << QString::number(imuSample.acceleration[0], 'f', 6)
+                    << QString::number(imuSample.acceleration[1], 'f', 6)
+                    << QString::number(imuSample.acceleration[2], 'f', 6)
+                    << QString::number(imuSample.gyroscope[0], 'f', 6)
+                    << QString::number(imuSample.gyroscope[1], 'f', 6)
+                    << QString::number(imuSample.gyroscope[2], 'f', 6)
+                    << QString::number(imuSample.rpy[0], 'f', 6)
+                    << QString::number(imuSample.rpy[1], 'f', 6)
+                    << QString::number(imuSample.rpy[2], 'f', 6);
                 appendBool(imuSample.valid);
                 row << QString::fromStdString(imuSample.error_message);
             }
             else
             {
-                appendEmptyColumns(21);
-            }
-
-            if (isFresh(collectors.ptb.get(), ptbSample))
-            {
-                row << QString::number(ptbSample.pressure_hpa);
-                appendBool(ptbSample.valid);
-                row << QString::fromStdString(ptbSample.error_message);
-            }
-            else
-            {
-                appendEmptyColumns(3);
+                appendEmptyColumns(12);
             }
 
             if (isFresh(collectors.hmp.get(), hmpSample))
             {
                 row
-                    << QString::number(hmpSample.humidity)
-                    << QString::number(hmpSample.temperature);
+                    << QString::number(steadyToEpochUs(hmpSample.timestamp))
+                    << QString::number(hmpSample.temperature, 'f', 6)
+                    << QString::number(hmpSample.humidity, 'f', 6);
                 appendBool(hmpSample.valid);
                 row << QString::fromStdString(hmpSample.error_message);
+            }
+            else
+            {
+                appendEmptyColumns(5);
+            }
+
+            if (isFresh(collectors.ptb.get(), ptbSample))
+            {
+                row << QString::number(steadyToEpochUs(ptbSample.timestamp))
+                    << QString::number(ptbSample.pressure_hpa, 'f', 6);
+                appendBool(ptbSample.valid);
+                row << QString::fromStdString(ptbSample.error_message);
             }
             else
             {
@@ -2166,7 +2406,8 @@ bool MainWindow::startRecordingSession()
             if (isFresh(collectors.lidar.get(), lidarSample))
             {
                 row
-                    << QString::number(lidarSample.distance_m)
+                    << QString::number(steadyToEpochUs(lidarSample.timestamp))
+                    << QString::number(lidarSample.distance_m, 'f', 6)
                     << QString::number(lidarSample.signal_strength);
                 appendBool(lidarSample.valid);
                 row << QString::fromStdString(lidarSample.error_message);
@@ -2176,30 +2417,33 @@ bool MainWindow::startRecordingSession()
                 appendEmptyColumns(4);
             }
 
-            QTextStream out(filePtr);
-            out.setEncoding(QStringConverter::Utf8);
-            for (int i = 0; i < row.size(); ++i)
             {
-                if (i > 0)
+                std::lock_guard<std::mutex> lock(recording_files_mutex_);
+                QTextStream out(filePtr);
+                out.setEncoding(QStringConverter::Utf8);
+                for (int i = 0; i < row.size(); ++i)
                 {
-                    out << ',';
+                    if (i > 0)
+                    {
+                        out << ',';
+                    }
+                    out << csvEscape(row.at(i));
                 }
-                out << csvEscape(row.at(i));
+                out << '\n';
+                out.flush();
             }
-            out << '\n';
-            out.flush();
 
             recording_entry_count_.fetch_add(1);
             QMetaObject::invokeMethod(this, [this]() {
                 updateRecordingStatusLabel();
             }, Qt::QueuedConnection);
 
-            nextTick += std::chrono::milliseconds(50);
+            nextTick += std::chrono::milliseconds(100);
             std::this_thread::sleep_until(nextTick);
         }
     });
     updateRecordingStatusLabel();
-    log(QString(is_english_ ? "Started automatic session recording: %1" : "已开始自动会话记录: %1").arg(filename));
+    log(QString(is_english_ ? "Started automatic session recording: %1" : "已开始自动会话记录: %1").arg(session_directory_));
     return true;
 }
 
@@ -2230,68 +2474,216 @@ void MainWindow::stopRecording(bool announce)
         recording_thread_.join();
     }
 
-    if (!recording_file_ || !recording_file_->isOpen())
+    waveform_writer_running_.store(false);
+    waveform_queue_cv_.notify_all();
+    if (waveform_writer_thread_.joinable())
     {
-        recording_file_.reset();
-        recording_filename_.clear();
-        recording_entry_count_.store(0);
-        updateRecordingStatusLabel();
-        return;
+        waveform_writer_thread_.join();
     }
 
-    recording_file_->flush();
-    recording_file_->close();
-
-    const QString filename = recording_filename_;
     const qint64 entryCount = recording_entry_count_.load();
-    const bool removeEmpty = (entryCount == 0);
+    const qint64 waveformCount = waveform_frame_count_.load();
+    const QString sessionPath = session_directory_;
 
-    recording_file_.reset();
-    recording_filename_.clear();
-    recording_entry_count_.store(0);
-
-    if (removeEmpty)
+    if (sensors_file_ && sensors_file_->isOpen())
     {
-        QFile::remove(filename);
+        appendEventLogLine(QStringLiteral("info"),
+                           QString(is_english_ ? "Session recording stopped: %1" : "会话记录已停止: %1").arg(sessionPath));
+        writeSessionMetadata(recordingTimestampUtc());
     }
+
+    {
+        std::lock_guard<std::mutex> lock(recording_files_mutex_);
+        if (sensors_file_ && sensors_file_->isOpen())
+        {
+            sensors_file_->flush();
+            sensors_file_->close();
+        }
+        if (event_log_file_ && event_log_file_->isOpen())
+        {
+            event_log_file_->flush();
+            event_log_file_->close();
+        }
+        if (error_log_file_ && error_log_file_->isOpen())
+        {
+            error_log_file_->flush();
+            error_log_file_->close();
+        }
+    }
+
+    sensors_file_.reset();
+    event_log_file_.reset();
+    error_log_file_.reset();
+    recording_entry_count_.store(0);
+    waveform_frame_count_.store(0);
+    waveform_file_count_.store(0);
+    session_directory_.clear();
+    session_name_.clear();
+    session_start_time_utc_.clear();
+    session_start_time_us_ = 0;
+    sensors_filename_.clear();
+    session_metadata_filename_.clear();
+    event_log_filename_.clear();
+    error_log_filename_.clear();
+    device_config_filename_.clear();
+    waveform_directory_.clear();
 
     updateRecordingStatusLabel();
 
     if (announce)
     {
-        if (removeEmpty)
-        {
-            log(QString(is_english_
-                ? "Stopped automatic recording with no samples, removed empty file: %1"
-                : "自动记录已停止，因无采样数据已删除空文件: %1").arg(filename));
-        }
-        else
-        {
-            log(QString(is_english_
-                ? "Stopped automatic recording (%1 rows): %2"
-                : "自动记录已停止（%1 行）: %2").arg(entryCount).arg(filename));
-        }
+        log(QString(is_english_
+            ? "Stopped automatic recording (%1 sensor rows, %2 waveform frames): %3"
+            : "自动记录已停止（设备 %1 行，波形 %2 帧）: %3")
+            .arg(entryCount)
+            .arg(waveformCount)
+            .arg(sessionPath));
     }
 }
 
-void MainWindow::writeRecordingHeader()
+void MainWindow::writeSensorsHeader()
 {
-    if (!recording_file_ || !recording_file_->isOpen())
+    if (!sensors_file_ || !sensors_file_->isOpen())
     {
         return;
     }
 
-    QTextStream out(recording_file_.get());
+    QTextStream out(sensors_file_.get());
     out.setEncoding(QStringConverter::Utf8);
     out.setGenerateByteOrderMark(true);
     out
-        << "timestamp_utc,"
-        << "gnss_latitude,gnss_longitude,gnss_altitude,gnss_vel_north,gnss_vel_east,gnss_vel_down,gnss_vel_ground,gnss_heading,gnss_heading_pitch,gnss_heading_length,gnss_heading_type,gnss_heading_trackedsvs,gnss_heading_solnsvs,gnss_sigma_lat,gnss_sigma_lon,gnss_sigma_alt,gnss_position_status,gnss_num_satellites_used,gnss_num_satellites_tracked,gnss_gdop,gnss_pdop,gnss_hdop,gnss_htdop,gnss_tdop,gnss_diff_age,gnss_undulation,gnss_elevation_cutoff,gnss_raw_sentence,gnss_valid,gnss_error_message,"
-        << "imu_acc_x,imu_acc_y,imu_acc_z,imu_gyr_x,imu_gyr_y,imu_gyr_z,imu_roll,imu_pitch,imu_yaw,imu_quat_w,imu_quat_x,imu_quat_y,imu_quat_z,imu_temperature,imu_air_pressure,imu_system_time_us,imu_system_time_ms,imu_from_hi83,imu_raw_sentence,imu_valid,imu_error_message,"
-        << "ptb_pressure_hpa,ptb_valid,ptb_error_message,"
-        << "hmp_humidity,hmp_temperature,hmp_valid,hmp_error_message,"
+        << "record_timestamp_us,record_timestamp_utc,"
+        << "rtk_timestamp_us,rtk_lat,rtk_lon,rtk_alt,rtk_fix,rtk_sat,rtk_heading,rtk_pitch,rtk_vel_n,rtk_vel_e,rtk_vel_d,rtk_valid,rtk_error_message,"
+        << "imu_timestamp_us,imu_ax,imu_ay,imu_az,imu_gx,imu_gy,imu_gz,imu_roll,imu_pitch,imu_yaw,imu_valid,imu_error_message,"
+        << "th_timestamp_us,temp_c,humidity_rh,th_valid,th_error_message,"
+        << "baro_timestamp_us,baro_hpa,baro_valid,baro_error_message,"
         << "tf03_distance_m,tf03_signal_strength,tf03_valid,tf03_error_message\n";
     out.flush();
+}
+
+void MainWindow::onNormalizedSecondHarmonicFrameReady(quint64 timestampUs, QVector<float> samples)
+{
+    if (!waveform_writer_running_.load())
+    {
+        return;
+    }
+
+    WaveformFrame frame;
+    frame.timestamp_us = timestampUs;
+    frame.samples = std::move(samples);
+
+    {
+        std::lock_guard<std::mutex> lock(waveform_queue_mutex_);
+        waveform_queue_.push_back(std::move(frame));
+    }
+    waveform_queue_cv_.notify_one();
+}
+
+void MainWindow::runWaveformWriter()
+{
+    constexpr int kExpectedSamplesPerFrame = 50000;
+    constexpr quint64 kSegmentDurationUs = 60ULL * 1000ULL * 1000ULL;
+
+    std::unique_ptr<QFile> waveformFile;
+    quint64 currentSegmentStartUs = 0;
+
+    auto openSegment = [&](quint64 segmentStartUs) -> bool {
+        const QString filename = QDir(waveform_directory_).filePath(
+            QString("waveform_%1.dat").arg(waveformSegmentTimestamp(segmentStartUs)));
+        waveformFile = std::make_unique<QFile>(filename);
+        if (!waveformFile->open(QIODevice::WriteOnly | QIODevice::Truncate))
+        {
+            QMetaObject::invokeMethod(this, [this, filename]() {
+                const QString message = QString(is_english_
+                    ? "Failed to open waveform file: %1"
+                    : "无法打开波形文件: %1").arg(filename);
+                log(message);
+                appendErrorLogLine(message);
+            }, Qt::QueuedConnection);
+            waveformFile.reset();
+            return false;
+        }
+
+        currentSegmentStartUs = segmentStartUs;
+        waveform_file_count_.fetch_add(1);
+        return true;
+    };
+
+    while (true)
+    {
+        WaveformFrame frame;
+        {
+            std::unique_lock<std::mutex> lock(waveform_queue_mutex_);
+            waveform_queue_cv_.wait(lock, [this]() {
+                return !waveform_writer_running_.load() || !waveform_queue_.empty();
+            });
+            if (waveform_queue_.empty() && !waveform_writer_running_.load())
+            {
+                break;
+            }
+            if (waveform_queue_.empty())
+            {
+                continue;
+            }
+            frame = std::move(waveform_queue_.front());
+            waveform_queue_.pop_front();
+        }
+
+        if (frame.samples.size() != kExpectedSamplesPerFrame)
+        {
+            QMetaObject::invokeMethod(this, [this, sampleCount = frame.samples.size()]() {
+                const QString message = QString(is_english_
+                    ? "Skipped waveform frame with unexpected sample count: %1"
+                    : "已跳过采样点数量异常的波形帧: %1").arg(sampleCount);
+                log(message);
+                appendErrorLogLine(message);
+            }, Qt::QueuedConnection);
+            continue;
+        }
+
+        const quint64 segmentStartUs = frame.timestamp_us - (frame.timestamp_us % kSegmentDurationUs);
+        if (!waveformFile || currentSegmentStartUs != segmentStartUs)
+        {
+            if (waveformFile && waveformFile->isOpen())
+            {
+                waveformFile->flush();
+                waveformFile->close();
+            }
+            if (!openSegment(segmentStartUs))
+            {
+                continue;
+            }
+        }
+
+        QByteArray block;
+        block.resize(static_cast<int>(sizeof(quint64) + kExpectedSamplesPerFrame * sizeof(float)));
+        std::memcpy(block.data(), &frame.timestamp_us, sizeof(quint64));
+        std::memcpy(block.data() + sizeof(quint64), frame.samples.constData(), kExpectedSamplesPerFrame * sizeof(float));
+
+        if (waveformFile->write(block) != block.size())
+        {
+            const QString filename = waveformFile->fileName();
+            QMetaObject::invokeMethod(this, [this, filename]() {
+                const QString message = QString(is_english_
+                    ? "Failed to write waveform frame into %1"
+                    : "写入波形帧失败: %1").arg(filename);
+                log(message);
+                appendErrorLogLine(message);
+            }, Qt::QueuedConnection);
+            continue;
+        }
+
+        waveform_frame_count_.fetch_add(1);
+        QMetaObject::invokeMethod(this, [this]() {
+            updateRecordingStatusLabel();
+        }, Qt::QueuedConnection);
+    }
+
+    if (waveformFile && waveformFile->isOpen())
+    {
+        waveformFile->flush();
+        waveformFile->close();
+    }
 }
 
 void MainWindow::updateConnectionStatus(bool connected)
