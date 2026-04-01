@@ -1579,12 +1579,15 @@ void MainWindow::setupDataPanels()
 
     tcp_wave_group_ = new QGroupBox(this);
     tcp_wave_group_->setObjectName("sensorGroupBox");
+    tcp_wave_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    tcp_wave_group_->setMaximumHeight(320);
     auto *tcpWaveLayout = new QVBoxLayout(tcp_wave_group_);
     tcpWaveLayout->setContentsMargins(2, 2, 2, 2);
     tcpWaveLayout->setSpacing(2);
     tcp_wave_panel_ = new TcpWavePanel(this);
+    tcp_wave_panel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     tcpWaveLayout->addWidget(tcp_wave_panel_);
-    main_layout_->addWidget(tcp_wave_group_, 1);
+    main_layout_->addWidget(tcp_wave_group_, 0);
 }
 
 void MainWindow::setupLogPanel()

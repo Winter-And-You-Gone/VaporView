@@ -45,7 +45,9 @@ public:
         : QWidget(parent)
         , line_color_(lineColor)
     {
-        setMinimumHeight(180);
+        setMinimumHeight(120);
+        setMaximumHeight(150);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     }
 
     void setSamples(const QVector<float>& samples)
