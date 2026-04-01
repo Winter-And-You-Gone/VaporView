@@ -111,16 +111,16 @@ QGroupBox {
     background-color: #ffffff;
     border: 1px solid #e0e0e0;
     border-radius: 8px;
-    margin-top: 6px;
-    padding: 2px 2px 2px 2px;
+    margin-top: 0px;
+    padding: 1px 1px 1px 1px;
     font-size: 15px;
     font-weight: bold;
     color: #333333;
 }
 
 QGroupBox#sensorGroupBox {
-    margin-top: 4px;
-    padding: 1px 1px 1px 1px;
+    margin-top: 0px;
+    padding: 0px 0px 0px 0px;
 }
 
 QGroupBox::title {
@@ -299,15 +299,15 @@ QSplitter::handle {
 }
 
 QSplitter::handle:horizontal {
-    width: 1px;
+    width: 0px;
 }
 
 QSplitter::handle:vertical {
-    height: 1px;
+    height: 0px;
 }
 
 QSplitter::handle:hover {
-    background-color: #d6e8fb;
+    background-color: transparent;
 }
 
 /* 工具提示 */

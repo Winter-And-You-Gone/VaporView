@@ -381,8 +381,12 @@ private:
     QLabel *ptb_lbl_;
     QLabel *hmp_lbl_;
     QLabel *lidar_lbl_;
+    QLabel *data_inline_title_lbl_;
+    QLabel *log_inline_title_lbl_;
+    QLabel *gnss_inline_title_lbl_;
+    QLabel *imu_inline_title_lbl_;
+    QLabel *env_inline_title_lbl_;
     QLabel *config_inline_title_lbl_;
-    QLabel *tcp_inline_title_lbl_;
     QLabel *global_rate_lbl_;
     QLabel *waveform_split_lbl_;
     QLabel *gnss_rate_lbl_;

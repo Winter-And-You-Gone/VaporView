@@ -10,6 +10,7 @@ class QPushButton;
 class QGroupBox;
 class QSpinBox;
 class QTcpSocket;
+class QGridLayout;
 class WavePlotWidget;
 
 class TcpWavePanel : public QWidget
@@ -24,6 +25,7 @@ public:
     QString host() const;
     int port() const;
     bool isConnected() const;
+    void attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox);
 
     enum class ParseMode
     {
@@ -89,14 +91,18 @@ private:
     QPushButton *connect_button_;
     QLabel *host_label_;
     QLabel *port_label_;
+    QLabel *panel_title_label_;
     QLabel *status_label_;
     QLabel *hint_label_;
+    QLabel *wave1_title_label_;
+    QLabel *wave4_title_label_;
     QLabel *wave1_info_label_;
     QLabel *wave4_info_label_;
     QGroupBox *wave1_group_;
     QGroupBox *wave4_group_;
     WavePlotWidget *wave1_plot_;
     WavePlotWidget *wave4_plot_;
+    QGridLayout *control_layout_;
     QTcpSocket *socket_;
 
     QByteArray buffer_;

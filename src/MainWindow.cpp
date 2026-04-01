@@ -928,8 +928,12 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_lbl_(nullptr)
     , hmp_lbl_(nullptr)
     , lidar_lbl_(nullptr)
+    , data_inline_title_lbl_(nullptr)
+    , log_inline_title_lbl_(nullptr)
+    , gnss_inline_title_lbl_(nullptr)
+    , imu_inline_title_lbl_(nullptr)
+    , env_inline_title_lbl_(nullptr)
     , config_inline_title_lbl_(nullptr)
-    , tcp_inline_title_lbl_(nullptr)
     , global_rate_lbl_(nullptr)
     , waveform_split_lbl_(nullptr)
     , gnss_rate_lbl_(nullptr)
@@ -1078,9 +1082,10 @@ void MainWindow::loadModernStyleSheet()
             "QToolBar QToolButton:hover { background-color: #f0f0f0; }"
             "QToolBar QToolButton:disabled { color: #bdbdbd; }"
             "QStatusBar { background-color: #ffffff; border-top: 1px solid #e0e0e0; padding: 4px 12px; color: #666666; font-size: 14px; }"
-            "QGroupBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; margin-top: 16px; padding: 16px 12px 12px 12px; font-size: 15px; font-weight: bold; color: #333333; }"
+            "QGroupBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; margin-top: 0px; padding: 1px 1px 1px 1px; font-size: 15px; font-weight: bold; color: #333333; }"
             "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 12px; padding: 0px 8px; background-color: #ffffff; color: #1976d2; }"
             "QLabel { color: #333333; background-color: transparent; border: none; }"
+            "QLabel#sectionTitleLabel { color: #1976d2; font-size: 16px; font-weight: bold; }"
             "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px 12px; min-height: 34px; color: #333333; font-size: 14px; }"
             "QComboBox:hover { border-color: #bdbdbd; }"
             "QComboBox:focus { border-color: #1976d2; border-width: 2px; }"
@@ -1103,6 +1108,9 @@ void MainWindow::loadModernStyleSheet()
             "QScrollBar:horizontal { background-color: #f5f5f5; height: 12px; border-radius: 6px; }"
             "QScrollBar::handle:horizontal { background-color: #bdbdbd; min-width: 30px; border-radius: 6px; margin: 2px; }"
             "QScrollBar::handle:horizontal:hover { background-color: #9e9e9e; }"
+            "QSplitter::handle { background-color: transparent; }"
+            "QSplitter::handle:horizontal { width: 0px; }"
+            "QSplitter::handle:vertical { height: 0px; }"
             "QPushButton { background-color: #1976d2; color: #ffffff; border: none; border-radius: 6px; padding: 10px 18px; font-size: 15px; font-weight: 500; min-height: 38px; }"
             "QPushButton:hover { background-color: #1565c0; }"
             "QPushButton:pressed { background-color: #0d47a1; }"
@@ -1479,12 +1487,12 @@ void MainWindow::setupCentralWidget()
     setCentralWidget(central_widget_);
 
     auto *main_h_layout = new QHBoxLayout(central_widget_);
-    main_h_layout->setSpacing(1);
+    main_h_layout->setSpacing(0);
     main_h_layout->setContentsMargins(2, 2, 2, 2);
 
     auto *left_widget = new QWidget(this);
     main_layout_ = new QVBoxLayout(left_widget);
-    main_layout_->setSpacing(1);
+    main_layout_->setSpacing(0);
     main_layout_->setContentsMargins(0, 0, 0, 0);
 
     setupConfigPanel();
@@ -1501,6 +1509,7 @@ void MainWindow::setupCentralWidget()
 
     auto *main_splitter = new QSplitter(Qt::Horizontal, central_widget_);
     main_splitter->setChildrenCollapsible(false);
+    main_splitter->setHandleWidth(0);
     main_splitter->addWidget(left_scroll_area);
     main_splitter->addWidget(log_group_);
     main_splitter->setStretchFactor(0, 6);
@@ -1658,16 +1667,26 @@ void MainWindow::setupDataPanels()
 {
     data_group_ = new QGroupBox(this);
     auto *data_layout = new QVBoxLayout(data_group_);
-    data_layout->setSpacing(1);
-    data_layout->setContentsMargins(1, 1, 1, 1);
+    data_layout->setSpacing(0);
+    data_layout->setContentsMargins(0, 0, 0, 0);
+
+    data_inline_title_lbl_ = new QLabel(this);
+    data_inline_title_lbl_->setObjectName("sectionTitleLabel");
+    data_inline_title_lbl_->setContentsMargins(6, 2, 6, 0);
+    data_layout->addWidget(data_inline_title_lbl_, 0, Qt::AlignLeft);
 
     auto *sensor_splitter = new QSplitter(Qt::Horizontal, data_group_);
     sensor_splitter->setChildrenCollapsible(false);
+    sensor_splitter->setHandleWidth(0);
 
     gnss_group_ = new QGroupBox(this);
     gnss_group_->setObjectName("sensorGroupBox");
     auto *gnss_layout = new QVBoxLayout(gnss_group_);
-    gnss_layout->setContentsMargins(2, 2, 2, 2);
+    gnss_layout->setContentsMargins(1, 1, 1, 1);
+    gnss_layout->setSpacing(0);
+    gnss_inline_title_lbl_ = new QLabel(this);
+    gnss_inline_title_lbl_->setObjectName("sectionTitleLabel");
+    gnss_layout->addWidget(gnss_inline_title_lbl_, 0, Qt::AlignLeft);
     gnss_panel_ = new GnssPanel(this);
     gnss_layout->addWidget(gnss_panel_);
     sensor_splitter->addWidget(gnss_group_);
@@ -1675,7 +1694,11 @@ void MainWindow::setupDataPanels()
     imu_group_ = new QGroupBox(this);
     imu_group_->setObjectName("sensorGroupBox");
     auto *imu_layout = new QVBoxLayout(imu_group_);
-    imu_layout->setContentsMargins(2, 2, 2, 2);
+    imu_layout->setContentsMargins(1, 1, 1, 1);
+    imu_layout->setSpacing(0);
+    imu_inline_title_lbl_ = new QLabel(this);
+    imu_inline_title_lbl_->setObjectName("sectionTitleLabel");
+    imu_layout->addWidget(imu_inline_title_lbl_, 0, Qt::AlignLeft);
     imu_panel_ = new ImuPanel(this);
     imu_layout->addWidget(imu_panel_);
     sensor_splitter->addWidget(imu_group_);
@@ -1683,8 +1706,11 @@ void MainWindow::setupDataPanels()
     auto *env_group = new QGroupBox(this);
     env_group->setObjectName("sensorGroupBox");
     auto *env_layout = new QVBoxLayout(env_group);
-    env_layout->setContentsMargins(2, 2, 2, 2);
-    env_layout->setSpacing(2);
+    env_layout->setContentsMargins(1, 1, 1, 1);
+    env_layout->setSpacing(0);
+    env_inline_title_lbl_ = new QLabel(this);
+    env_inline_title_lbl_->setObjectName("sectionTitleLabel");
+    env_layout->addWidget(env_inline_title_lbl_, 0, Qt::AlignLeft);
 
     lidar_panel_ = new LidarPanel(this);
     env_layout->addWidget(lidar_panel_);
@@ -1715,24 +1741,12 @@ void MainWindow::setupDataPanels()
     tcp_wave_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
     tcp_wave_group_->setMaximumHeight(360);
     auto *tcpWaveLayout = new QVBoxLayout(tcp_wave_group_);
-    tcpWaveLayout->setContentsMargins(1, 1, 1, 1);
-    tcpWaveLayout->setSpacing(1);
-
-    auto *tcpTopRowLayout = new QHBoxLayout();
-    tcpTopRowLayout->setSpacing(8);
-    tcpTopRowLayout->setContentsMargins(4, 0, 4, 0);
-
-    tcp_inline_title_lbl_ = new QLabel(this);
-    tcp_inline_title_lbl_->setObjectName("sectionTitleLabel");
-    tcp_inline_title_lbl_->setFixedHeight(28);
-    tcpTopRowLayout->addWidget(tcp_inline_title_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-
-    tcpTopRowLayout->addStretch(1);
+    tcpWaveLayout->setContentsMargins(0, 0, 0, 0);
+    tcpWaveLayout->setSpacing(0);
 
     waveform_split_lbl_ = new QLabel(this);
     waveform_split_lbl_->setObjectName("fieldLabel");
     waveform_split_lbl_->setFixedHeight(28);
-    tcpTopRowLayout->addWidget(waveform_split_lbl_, 0, Qt::AlignVCenter | Qt::AlignRight);
 
     waveform_split_spin_ = new QSpinBox(this);
     waveform_split_spin_->setRange(1, 5);
@@ -1752,11 +1766,10 @@ void MainWindow::setupDataPanels()
             ? "Waveform split duration set to %1 minute(s)"
             : "波形分文件时长已设置为 %1 分钟").arg(value));
     });
-    tcpTopRowLayout->addWidget(waveform_split_spin_, 0, Qt::AlignVCenter);
-    tcpWaveLayout->addLayout(tcpTopRowLayout);
 
     tcp_wave_panel_ = new TcpWavePanel(this);
     tcp_wave_panel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    tcp_wave_panel_->attachWaveformSplitControls(waveform_split_lbl_, waveform_split_spin_);
     connect(tcp_wave_panel_, &TcpWavePanel::normalizedSecondHarmonicFrameReady,
             this, &MainWindow::onNormalizedSecondHarmonicFrameReady);
     connect(tcp_wave_panel_, &TcpWavePanel::connectionStateChanged, this, [this](bool) {
@@ -1772,7 +1785,12 @@ void MainWindow::setupLogPanel()
     log_group_->setMinimumWidth(220);
     log_group_->setMaximumWidth(340);
     auto *log_layout = new QVBoxLayout(log_group_);
-    log_layout->setContentsMargins(4, 4, 4, 4);
+    log_layout->setContentsMargins(0, 0, 0, 0);
+    log_layout->setSpacing(0);
+
+    log_inline_title_lbl_ = new QLabel(this);
+    log_inline_title_lbl_->setObjectName("sectionTitleLabel");
+    log_layout->addWidget(log_inline_title_lbl_, 0, Qt::AlignLeft);
 
     log_text_edit_ = new QTextEdit(this);
     log_text_edit_->setReadOnly(true);
@@ -1818,13 +1836,13 @@ void MainWindow::setEnglish(bool english)
     status_label_->setText(english ? "Ready" : "就绪");
 
     config_group_->setTitle(QString());
-    data_group_->setTitle(english ? "Sensor Data" : "传感器数据");
+    data_group_->setTitle(QString());
     tcp_wave_group_->setTitle(QString());
-    log_group_->setTitle(english ? "Log" : "日志");
+    log_group_->setTitle(QString());
 
-    gnss_group_->setTitle(english ? "GNSS / RTK" : "GNSS / RTK");
-    imu_group_->setTitle(english ? "IMU" : "IMU");
-    env_group_->setTitle(english ? "Environment / Range" : "环境与测距");
+    gnss_group_->setTitle(QString());
+    imu_group_->setTitle(QString());
+    env_group_->setTitle(QString());
 
     gnss_lbl_->setText(english ? "GNSS:" : "GNSS:");
     imu_lbl_->setText(english ? "IMU:" : "IMU:");
@@ -1836,9 +1854,25 @@ void MainWindow::setEnglish(bool english)
     {
         config_inline_title_lbl_->setText(english ? "Serial Port Configuration" : "串口配置");
     }
-    if (tcp_inline_title_lbl_)
+    if (data_inline_title_lbl_)
     {
-        tcp_inline_title_lbl_->setText(english ? "TCP Wave Monitor" : "TCP波形监视");
+        data_inline_title_lbl_->setText(english ? "Sensor Data" : "传感器数据");
+    }
+    if (log_inline_title_lbl_)
+    {
+        log_inline_title_lbl_->setText(english ? "Log" : "日志");
+    }
+    if (gnss_inline_title_lbl_)
+    {
+        gnss_inline_title_lbl_->setText(english ? "GNSS / RTK" : "GNSS / RTK");
+    }
+    if (imu_inline_title_lbl_)
+    {
+        imu_inline_title_lbl_->setText(english ? "IMU" : "IMU");
+    }
+    if (env_inline_title_lbl_)
+    {
+        env_inline_title_lbl_->setText(english ? "Environment / Range" : "环境与测距");
     }
     global_rate_lbl_->setText(english ? "Global Rate:" : "统一频率:");
     waveform_split_lbl_->setText(english ? "Wave Split:" : "波形分段:");

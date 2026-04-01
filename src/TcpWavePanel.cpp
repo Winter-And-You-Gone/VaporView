@@ -96,10 +96,10 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.fillRect(rect(), QColor("#050805"));
+        painter.fillRect(rect(), QColor("#ffffff"));
 
         const QRectF plotRect = rect().adjusted(42, 12, -10, -24);
-        painter.setPen(QPen(QColor("#1b6416"), 1));
+        painter.setPen(QPen(QColor("#e3e8ef"), 1));
         for (int i = 0; i <= 10; ++i)
         {
             const qreal x = plotRect.left() + plotRect.width() * i / 10.0;
@@ -111,12 +111,12 @@ protected:
             painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
         }
 
-        painter.setPen(QPen(QColor("#9ca39d"), 1));
+        painter.setPen(QPen(QColor("#cfd7e3"), 1));
         painter.drawRect(plotRect);
 
         if (samples_.isEmpty())
         {
-            painter.setPen(QColor("#b8c4b8"));
+            painter.setPen(QColor("#7a8899"));
             painter.drawText(plotRect, Qt::AlignCenter, tr("No data"));
             return;
         }
@@ -149,7 +149,7 @@ protected:
         painter.setPen(QPen(line_color_, 1.4));
         painter.drawPolyline(polyline);
 
-        painter.setPen(QColor("#d7d7d7"));
+        painter.setPen(QColor("#5e6b78"));
         painter.drawText(QRectF(4, plotRect.top() - 2, 36, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 3));
         painter.drawText(QRectF(4, plotRect.center().y() - 8, 36, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number((maxValue + minValue) * 0.5, 'f', 3));
         painter.drawText(QRectF(4, plotRect.bottom() - 8, 36, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(minValue, 'f', 3));
@@ -169,14 +169,18 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , connect_button_(nullptr)
     , host_label_(nullptr)
     , port_label_(nullptr)
+    , panel_title_label_(nullptr)
     , status_label_(nullptr)
     , hint_label_(nullptr)
+    , wave1_title_label_(nullptr)
+    , wave4_title_label_(nullptr)
     , wave1_info_label_(nullptr)
     , wave4_info_label_(nullptr)
     , wave1_group_(nullptr)
     , wave4_group_(nullptr)
     , wave1_plot_(nullptr)
     , wave4_plot_(nullptr)
+    , control_layout_(nullptr)
     , socket_(nullptr)
     , parse_mode_(ParseMode::AutoDetect)
     , read_state_(ReadState::Wave1Header)
@@ -204,64 +208,77 @@ TcpWavePanel::~TcpWavePanel()
 void TcpWavePanel::setupUi()
 {
     auto *mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(6, 6, 6, 6);
-    mainLayout->setSpacing(6);
+    mainLayout->setContentsMargins(4, 4, 4, 4);
+    mainLayout->setSpacing(4);
 
-    auto *controlLayout = new QGridLayout();
-    controlLayout->setHorizontalSpacing(8);
-    controlLayout->setVerticalSpacing(4);
+    control_layout_ = new QGridLayout();
+    control_layout_->setHorizontalSpacing(8);
+    control_layout_->setVerticalSpacing(4);
+
+    panel_title_label_ = new QLabel(this);
+    panel_title_label_->setObjectName("sectionTitleLabel");
+    control_layout_->addWidget(panel_title_label_, 0, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
     host_label_ = new QLabel(this);
     host_label_->setObjectName("fieldLabel");
-    controlLayout->addWidget(host_label_, 0, 0);
+    control_layout_->addWidget(host_label_, 0, 1);
 
     host_edit_ = new QLineEdit(this);
     host_edit_->setText("127.0.0.1");
-    controlLayout->addWidget(host_edit_, 0, 1);
+    host_edit_->setMinimumWidth(160);
+    host_edit_->setMaximumWidth(220);
+    control_layout_->addWidget(host_edit_, 0, 2);
 
     port_label_ = new QLabel(this);
     port_label_->setObjectName("fieldLabel");
-    controlLayout->addWidget(port_label_, 0, 2);
+    control_layout_->addWidget(port_label_, 0, 3);
 
     port_spin_ = new QSpinBox(this);
     port_spin_->setRange(1, 65535);
     port_spin_->setValue(8888);
-    controlLayout->addWidget(port_spin_, 0, 3);
+    port_spin_->setFixedWidth(92);
+    control_layout_->addWidget(port_spin_, 0, 4);
 
     connect_button_ = new QPushButton(this);
     connect(connect_button_, &QPushButton::clicked, this, &TcpWavePanel::onToggleConnectionClicked);
-    controlLayout->addWidget(connect_button_, 0, 4);
+    control_layout_->addWidget(connect_button_, 0, 7);
 
     status_label_ = new QLabel(this);
     status_label_->setWordWrap(true);
-    controlLayout->addWidget(status_label_, 1, 0, 1, 5);
+    control_layout_->addWidget(status_label_, 1, 0, 1, 8);
 
     hint_label_ = new QLabel(this);
     hint_label_->setWordWrap(true);
-    controlLayout->addWidget(hint_label_, 2, 0, 1, 5);
+    control_layout_->addWidget(hint_label_, 2, 0, 1, 8);
 
-    mainLayout->addLayout(controlLayout);
+    mainLayout->addLayout(control_layout_);
 
     auto *plotsLayout = new QHBoxLayout();
-    plotsLayout->setSpacing(6);
+    plotsLayout->setSpacing(1);
 
     wave1_group_ = new QGroupBox(this);
     wave1_group_->setObjectName("sensorGroupBox");
     auto *wave1Layout = new QVBoxLayout(wave1_group_);
-    wave1Layout->setContentsMargins(4, 4, 4, 4);
+    wave1Layout->setContentsMargins(2, 2, 2, 2);
+    wave1_title_label_ = new QLabel(this);
+    wave1_title_label_->setObjectName("sectionTitleLabel");
+    wave1Layout->addWidget(wave1_title_label_);
     wave1_info_label_ = new QLabel(this);
     wave1Layout->addWidget(wave1_info_label_);
-    wave1_plot_ = new WavePlotWidget(QColor("#f2f2f2"), this);
+    wave1_plot_ = new WavePlotWidget(QColor("#4e79c7"), this);
     wave1Layout->addWidget(wave1_plot_, 1);
     plotsLayout->addWidget(wave1_group_, 1);
 
     wave4_group_ = new QGroupBox(this);
     wave4_group_->setObjectName("sensorGroupBox");
     auto *wave4Layout = new QVBoxLayout(wave4_group_);
-    wave4Layout->setContentsMargins(4, 4, 4, 4);
+    wave4Layout->setContentsMargins(2, 2, 2, 2);
+    wave4_title_label_ = new QLabel(this);
+    wave4_title_label_->setObjectName("sectionTitleLabel");
+    wave4Layout->addWidget(wave4_title_label_);
     wave4_info_label_ = new QLabel(this);
     wave4Layout->addWidget(wave4_info_label_);
-    wave4_plot_ = new WavePlotWidget(QColor("#ffe100"), this);
+    wave4_plot_ = new WavePlotWidget(QColor("#ef8f35"), this);
     wave4Layout->addWidget(wave4_plot_, 1);
     plotsLayout->addWidget(wave4_group_, 1);
 
@@ -271,13 +288,25 @@ void TcpWavePanel::setupUi()
 void TcpWavePanel::setEnglish(bool english)
 {
     is_english_ = english;
+    if (panel_title_label_)
+    {
+        panel_title_label_->setText(english ? "TCP Wave Monitor" : "TCP波形监视");
+    }
     host_label_->setText(english ? "TCP Host:" : "TCP主机:");
     port_label_->setText(english ? "Port:" : "端口:");
     connect_button_->setText(socket_ && socket_->state() == QAbstractSocket::ConnectedState
         ? (english ? "Stop" : "停止")
         : (english ? "Start" : "启动"));
-    wave1_group_->setTitle(english ? "Raw Signal" : "原始信号");
-    wave4_group_->setTitle(english ? "Normalized Second Harmonic" : "归一化二次谐波");
+    wave1_group_->setTitle(QString());
+    wave4_group_->setTitle(QString());
+    if (wave1_title_label_)
+    {
+        wave1_title_label_->setText(english ? "Raw Signal" : "原始信号");
+    }
+    if (wave4_title_label_)
+    {
+        wave4_title_label_->setText(english ? "Normalized Second Harmonic" : "归一化二次谐波");
+    }
     hint_label_->setText(english
         ? "This TCP sender is likely single-client. Do not open the LabVIEW VI receiver and VaporView on port 8888 at the same time."
         : "这个TCP发送端大概率只支持单客户端。不要同时打开 LabVIEW VI 接收端和 VaporView 去抢同一个 8888 连接。");
@@ -289,6 +318,19 @@ void TcpWavePanel::setEnglish(bool english)
     {
         setStatusText(english ? "Idle" : "空闲");
     }
+}
+
+void TcpWavePanel::attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox)
+{
+    if (!control_layout_ || !label || !spinBox)
+    {
+        return;
+    }
+
+    label->setParent(this);
+    spinBox->setParent(this);
+    control_layout_->addWidget(label, 0, 5, Qt::AlignVCenter | Qt::AlignRight);
+    control_layout_->addWidget(spinBox, 0, 6, Qt::AlignVCenter);
 }
 
 QString TcpWavePanel::host() const
