@@ -896,6 +896,9 @@ MainWindow::MainWindow(QWidget *parent)
     , connect_btn_(nullptr)
     , cancel_connect_btn_(nullptr)
     , disconnect_btn_(nullptr)
+    , start_recording_btn_(nullptr)
+    , pause_recording_btn_(nullptr)
+    , stop_recording_btn_(nullptr)
     , refresh_ports_btn_(nullptr)
     , fullscreen_menu_action_(nullptr)
     , fullscreen_toolbar_action_(nullptr)
@@ -947,9 +950,11 @@ MainWindow::MainWindow(QWidget *parent)
     , is_english_(false)
     , has_inline_progress_log_(false)
     , connection_attempt_in_progress_(false)
+    , is_connected_(false)
     , cancel_connection_requested_(false)
     , recording_thread_running_(false)
     , waveform_writer_running_(false)
+    , recording_paused_(false)
     , font_scale_percent_(100)
     , base_font_point_size_(0.0)
     , base_window_size_(1280, 720)
@@ -1406,6 +1411,26 @@ void MainWindow::setupToolBar()
 
     toolbar->addSeparator();
 
+    start_recording_btn_ = new QAction(this);
+    start_recording_btn_->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
+    start_recording_btn_->setEnabled(false);
+    connect(start_recording_btn_, &QAction::triggered, this, &MainWindow::onStartRecordingClicked);
+    toolbar->addAction(start_recording_btn_);
+
+    pause_recording_btn_ = new QAction(this);
+    pause_recording_btn_->setIcon(style()->standardIcon(QStyle::SP_MediaPause));
+    pause_recording_btn_->setEnabled(false);
+    connect(pause_recording_btn_, &QAction::triggered, this, &MainWindow::onPauseRecordingClicked);
+    toolbar->addAction(pause_recording_btn_);
+
+    stop_recording_btn_ = new QAction(this);
+    stop_recording_btn_->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
+    stop_recording_btn_->setEnabled(false);
+    connect(stop_recording_btn_, &QAction::triggered, this, &MainWindow::onStopRecordingClicked);
+    toolbar->addAction(stop_recording_btn_);
+
+    toolbar->addSeparator();
+
     rtk_config_action_ = new QAction(this);
     rtk_config_action_->setIcon(style()->standardIcon(QStyle::SP_ComputerIcon));
     connect(rtk_config_action_, &QAction::triggered, this, &MainWindow::onRtkConfigClicked);
@@ -1720,6 +1745,9 @@ void MainWindow::setEnglish(bool english)
     connect_btn_->setText(english ? "Connect" : "连接");
     cancel_connect_btn_->setText(english ? "Cancel" : "取消");
     disconnect_btn_->setText(english ? "Disconnect" : "断开");
+    start_recording_btn_->setText(english ? "Start Recording" : "开始记录");
+    pause_recording_btn_->setText(english ? "Pause Recording" : "暂停记录");
+    stop_recording_btn_->setText(english ? "Stop Recording" : "结束记录");
     clear_log_action_->setText(english ? "Clear" : "清空");
     fullscreen_toolbar_action_->setText(english ? "Fullscreen" : "全屏");
     rtk_config_action_->setText(english ? "RTK Config" : "RTK配置");
@@ -2057,13 +2085,26 @@ void MainWindow::updateRecordingStatusLabel()
     if (sensors_file_ && sensors_file_->isOpen())
     {
         const QFileInfo info(session_directory_);
-        recording_status_label_->setText(
-            QString(is_english_ ? "Recording: %1 sensor rows | %2 waveform frames | %3"
-                                : "记录中: 设备 %1 行 | 波形 %2 帧 | %3")
-                .arg(static_cast<qlonglong>(recording_entry_count_.load()))
-                .arg(static_cast<qlonglong>(waveform_frame_count_.load()))
-                .arg(info.fileName()));
-        recording_status_label_->setProperty("status", "connected");
+        if (recording_paused_)
+        {
+            recording_status_label_->setText(
+                QString(is_english_ ? "Recording: Paused | %1 sensor rows | %2 waveform frames | %3"
+                                    : "记录: 已暂停 | 设备 %1 行 | 波形 %2 帧 | %3")
+                    .arg(static_cast<qlonglong>(recording_entry_count_.load()))
+                    .arg(static_cast<qlonglong>(waveform_frame_count_.load()))
+                    .arg(info.fileName()));
+            recording_status_label_->setProperty("status", "connecting");
+        }
+        else
+        {
+            recording_status_label_->setText(
+                QString(is_english_ ? "Recording: %1 sensor rows | %2 waveform frames | %3"
+                                    : "记录中: 设备 %1 行 | 波形 %2 帧 | %3")
+                    .arg(static_cast<qlonglong>(recording_entry_count_.load()))
+                    .arg(static_cast<qlonglong>(waveform_frame_count_.load()))
+                    .arg(info.fileName()));
+            recording_status_label_->setProperty("status", "connected");
+        }
     }
     else
     {
@@ -2073,6 +2114,7 @@ void MainWindow::updateRecordingStatusLabel()
 
     recording_status_label_->style()->unpolish(recording_status_label_);
     recording_status_label_->style()->polish(recording_status_label_);
+    updateRecordingActionStates();
 }
 
 QString MainWindow::defaultRecordingDirectory() const
@@ -2267,66 +2309,18 @@ void MainWindow::writeDeviceConfigSnapshot()
     file.close();
 }
 
-bool MainWindow::startRecordingSession()
+void MainWindow::startRecordingWorkers()
 {
-    stopRecording(false);
-
-    QString recordsPath = recording_directory_.trimmed();
-    if (recordsPath.isEmpty())
+    if (recording_thread_running_.load() || waveform_writer_running_.load())
     {
-        recordsPath = defaultRecordingDirectory();
-        recording_directory_ = recordsPath;
+        return;
     }
 
-    const QString sessionName = QStringLiteral("session_%1").arg(recordingSessionDirectoryTimestamp());
-    if (!prepareRecordingSessionLayout(recordsPath, sessionName))
-    {
-        QMessageBox::warning(
-            this,
-            is_english_ ? "Error" : "错误",
-            is_english_ ? "Failed to create session directories" : "无法创建会话目录结构");
-        return false;
-    }
-
-    sensors_file_ = std::make_unique<QFile>(sensors_filename_);
-    event_log_file_ = std::make_unique<QFile>(event_log_filename_);
-    error_log_file_ = std::make_unique<QFile>(error_log_filename_);
-    if (!sensors_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
-        !event_log_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
-        !error_log_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
-    {
-        sensors_file_.reset();
-        event_log_file_.reset();
-        error_log_file_.reset();
-        QMessageBox::warning(
-            this,
-            is_english_ ? "Error" : "错误",
-            is_english_ ? "Failed to open session files for writing" : "无法打开会话文件进行写入");
-        return false;
-    }
-
-    session_start_time_utc_ = recordingTimestampUtc();
-    session_start_time_us_ = currentTimestampUs();
-    recording_entry_count_.store(0);
-    waveform_frame_count_.store(0);
-    waveform_file_count_.store(0);
+    recording_paused_ = false;
     {
         std::lock_guard<std::mutex> lock(waveform_queue_mutex_);
         waveform_queue_.clear();
     }
-
-    {
-        QTextStream eventOut(event_log_file_.get());
-        eventOut.setEncoding(QStringConverter::Utf8);
-        eventOut << "timestamp_utc,timestamp_us,level,message\n";
-        eventOut.flush();
-    }
-
-    writeSensorsHeader();
-    writeSessionMetadata();
-    writeDeviceConfigSnapshot();
-    appendEventLogLine(QStringLiteral("info"),
-                       QString(is_english_ ? "Session recording started: %1" : "会话记录已开始: %1").arg(session_directory_));
 
     waveform_writer_running_.store(true);
     waveform_writer_thread_ = std::thread([this]() {
@@ -2481,8 +2475,96 @@ bool MainWindow::startRecordingSession()
             std::this_thread::sleep_until(nextTick);
         }
     });
+}
+
+void MainWindow::stopRecordingWorkers()
+{
+    recording_thread_running_.store(false);
+    if (recording_thread_.joinable())
+    {
+        recording_thread_.join();
+    }
+
+    waveform_writer_running_.store(false);
+    waveform_queue_cv_.notify_all();
+    if (waveform_writer_thread_.joinable())
+    {
+        waveform_writer_thread_.join();
+    }
+}
+
+bool MainWindow::startRecordingSession()
+{
+    if (sensors_file_ && sensors_file_->isOpen())
+    {
+        if (!recording_paused_)
+        {
+            return true;
+        }
+
+        startRecordingWorkers();
+        updateRecordingStatusLabel();
+        log(QString(is_english_ ? "Resumed recording session: %1" : "已继续记录会话: %1").arg(session_directory_));
+        return true;
+    }
+
+    QString recordsPath = recording_directory_.trimmed();
+    if (recordsPath.isEmpty())
+    {
+        recordsPath = defaultRecordingDirectory();
+        recording_directory_ = recordsPath;
+    }
+
+    const QString sessionName = QStringLiteral("session_%1").arg(recordingSessionDirectoryTimestamp());
+    if (!prepareRecordingSessionLayout(recordsPath, sessionName))
+    {
+        QMessageBox::warning(
+            this,
+            is_english_ ? "Error" : "错误",
+            is_english_ ? "Failed to create session directories" : "无法创建会话目录结构");
+        return false;
+    }
+
+    sensors_file_ = std::make_unique<QFile>(sensors_filename_);
+    event_log_file_ = std::make_unique<QFile>(event_log_filename_);
+    error_log_file_ = std::make_unique<QFile>(error_log_filename_);
+    if (!sensors_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
+        !event_log_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
+        !error_log_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+    {
+        sensors_file_.reset();
+        event_log_file_.reset();
+        error_log_file_.reset();
+        QMessageBox::warning(
+            this,
+            is_english_ ? "Error" : "错误",
+            is_english_ ? "Failed to open session files for writing" : "无法打开会话文件进行写入");
+        return false;
+    }
+
+    session_start_time_utc_ = recordingTimestampUtc();
+    session_start_time_us_ = currentTimestampUs();
+    recording_entry_count_.store(0);
+    waveform_frame_count_.store(0);
+    waveform_file_count_.store(0);
+    {
+        std::lock_guard<std::mutex> lock(waveform_queue_mutex_);
+        waveform_queue_.clear();
+    }
+
+    {
+        QTextStream eventOut(event_log_file_.get());
+        eventOut.setEncoding(QStringConverter::Utf8);
+        eventOut << "timestamp_utc,timestamp_us,level,message\n";
+        eventOut.flush();
+    }
+
+    writeSensorsHeader();
+    writeSessionMetadata();
+    writeDeviceConfigSnapshot();
+    startRecordingWorkers();
     updateRecordingStatusLabel();
-    log(QString(is_english_ ? "Started automatic session recording: %1" : "已开始自动会话记录: %1").arg(session_directory_));
+    log(QString(is_english_ ? "Started recording session: %1" : "已开始记录会话: %1").arg(session_directory_));
     return true;
 }
 
@@ -2505,19 +2587,58 @@ void MainWindow::onChooseRecordingDirectoryClicked()
     log(QString(is_english_ ? "Recording folder set to: %1" : "记录目录已设置为: %1").arg(recording_directory_));
 }
 
-void MainWindow::stopRecording(bool announce)
+void MainWindow::onStartRecordingClicked()
 {
-    recording_thread_running_.store(false);
-    if (recording_thread_.joinable())
+    if (!is_connected_)
     {
-        recording_thread_.join();
+        log(is_english_ ? "Connect devices before starting recording" : "请先连接设备，再开始记录");
+        return;
     }
 
-    waveform_writer_running_.store(false);
-    waveform_queue_cv_.notify_all();
-    if (waveform_writer_thread_.joinable())
+    if (!startRecordingSession())
     {
-        waveform_writer_thread_.join();
+        log(is_english_ ? "Failed to start recording session" : "启动记录会话失败");
+    }
+}
+
+void MainWindow::onPauseRecordingClicked()
+{
+    pauseRecordingSession(true);
+}
+
+void MainWindow::onStopRecordingClicked()
+{
+    stopRecording(true);
+}
+
+void MainWindow::pauseRecordingSession(bool announce)
+{
+    if (!sensors_file_ || !sensors_file_->isOpen() || recording_paused_)
+    {
+        return;
+    }
+
+    stopRecordingWorkers();
+    recording_paused_ = true;
+    writeSessionMetadata();
+    updateRecordingStatusLabel();
+
+    if (announce)
+    {
+        log(QString(is_english_ ? "Paused recording session: %1" : "已暂停记录会话: %1").arg(session_directory_));
+    }
+}
+
+void MainWindow::stopRecording(bool announce)
+{
+    const bool hadOpenSession = sensors_file_ && sensors_file_->isOpen();
+    stopRecordingWorkers();
+
+    if (!hadOpenSession)
+    {
+        recording_paused_ = false;
+        updateRecordingStatusLabel();
+        return;
     }
 
     const qint64 entryCount = recording_entry_count_.load();
@@ -2526,8 +2647,6 @@ void MainWindow::stopRecording(bool announce)
 
     if (sensors_file_ && sensors_file_->isOpen())
     {
-        appendEventLogLine(QStringLiteral("info"),
-                           QString(is_english_ ? "Session recording stopped: %1" : "会话记录已停止: %1").arg(sessionPath));
         writeSessionMetadata(recordingTimestampUtc());
     }
 
@@ -2556,6 +2675,7 @@ void MainWindow::stopRecording(bool announce)
     recording_entry_count_.store(0);
     waveform_frame_count_.store(0);
     waveform_file_count_.store(0);
+    recording_paused_ = false;
     session_directory_.clear();
     session_name_.clear();
     session_start_time_utc_.clear();
@@ -2572,8 +2692,8 @@ void MainWindow::stopRecording(bool announce)
     if (announce)
     {
         log(QString(is_english_
-            ? "Stopped automatic recording (%1 sensor rows, %2 waveform frames): %3"
-            : "自动记录已停止（设备 %1 行，波形 %2 帧）: %3")
+            ? "Stopped recording (%1 sensor rows, %2 waveform frames): %3"
+            : "记录已结束（设备 %1 行，波形 %2 帧）: %3")
             .arg(entryCount)
             .arg(waveformCount)
             .arg(sessionPath));
@@ -2725,8 +2845,31 @@ void MainWindow::runWaveformWriter()
     }
 }
 
+void MainWindow::updateRecordingActionStates()
+{
+    const bool sessionOpen = sensors_file_ && sensors_file_->isOpen();
+    const bool recordingActive = sessionOpen && !recording_paused_ && recording_thread_running_.load();
+    const bool canStart = is_connected_ && !connection_attempt_in_progress_ && (!sessionOpen || recording_paused_);
+    const bool canPause = is_connected_ && !connection_attempt_in_progress_ && recordingActive;
+    const bool canStop = sessionOpen && !connection_attempt_in_progress_;
+
+    if (start_recording_btn_)
+    {
+        start_recording_btn_->setEnabled(canStart);
+    }
+    if (pause_recording_btn_)
+    {
+        pause_recording_btn_->setEnabled(canPause);
+    }
+    if (stop_recording_btn_)
+    {
+        stop_recording_btn_->setEnabled(canStop);
+    }
+}
+
 void MainWindow::updateConnectionStatus(bool connected)
 {
+    is_connected_ = connected;
     const bool inputsEnabled = !connected && !connection_attempt_in_progress_;
 
     connect_btn_->setEnabled(inputsEnabled);
@@ -2762,6 +2905,7 @@ void MainWindow::updateConnectionStatus(bool connected)
     }
     status_label_->style()->unpolish(status_label_);
     status_label_->style()->polish(status_label_);
+    updateRecordingActionStates();
 }
 
 MainWindow::CollectorSnapshot MainWindow::snapshotCollectors() const
@@ -2823,14 +2967,7 @@ void MainWindow::finishConnectionAttempt(bool connected)
 {
     connection_attempt_in_progress_ = false;
     cancel_connection_requested_.store(false);
-    if (connected)
-    {
-        if (!startRecordingSession())
-        {
-            log(is_english_ ? "Automatic session recording failed to start" : "自动会话记录启动失败");
-        }
-    }
-    else
+    if (!connected && sensors_file_ && sensors_file_->isOpen())
     {
         stopRecording(true);
     }
@@ -3129,7 +3266,7 @@ void MainWindow::onDisconnectClicked()
 {
     log(is_english_ ? "Disconnecting..." : "正在断开...");
 
-    stopRecording(false);
+    stopRecording(true);
     stopAllCollectors();
     if (connection_thread_.joinable())
     {

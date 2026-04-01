@@ -257,6 +257,9 @@ private slots:
     void onFontScaleTriggered(QAction *action);
     void onCancelConnectClicked();
     void onNormalizedSecondHarmonicFrameReady(quint64 timestampUs, QVector<float> samples);
+    void onStartRecordingClicked();
+    void onPauseRecordingClicked();
+    void onStopRecordingClicked();
 
 private:
     struct CollectorSnapshot
@@ -286,7 +289,10 @@ private:
     void updateRecordingStatusLabel();
     QString defaultRecordingDirectory() const;
     bool startRecordingSession();
+    void pauseRecordingSession(bool announce = true);
     void stopRecording(bool announce = true);
+    void startRecordingWorkers();
+    void stopRecordingWorkers();
     void writeSensorsHeader();
     bool prepareRecordingSessionLayout(const QString& recordsPath, const QString& sessionName);
     void writeSessionMetadata(const QString& endTimeUtc = QString());
@@ -311,6 +317,7 @@ private:
     void setCollectors(CollectorSnapshot collectors);
     bool shouldAbortConnectionAttempt();
     void finishConnectionAttempt(bool connected);
+    void updateRecordingActionStates();
 
     QWidget *central_widget_;
     QVBoxLayout *main_layout_;
@@ -338,6 +345,9 @@ private:
     QAction *connect_btn_;
     QAction *cancel_connect_btn_;
     QAction *disconnect_btn_;
+    QAction *start_recording_btn_;
+    QAction *pause_recording_btn_;
+    QAction *stop_recording_btn_;
     QAction *refresh_ports_btn_;
     QAction *fullscreen_menu_action_;
     QAction *fullscreen_toolbar_action_;
@@ -403,12 +413,14 @@ private:
     bool is_english_;
     bool has_inline_progress_log_;
     bool connection_attempt_in_progress_;
+    bool is_connected_;
     std::atomic<bool> cancel_connection_requested_;
     std::thread connection_thread_;
     std::thread recording_thread_;
     std::atomic<bool> recording_thread_running_;
     std::thread waveform_writer_thread_;
     std::atomic<bool> waveform_writer_running_;
+    bool recording_paused_;
     int font_scale_percent_;
     double base_font_point_size_;
     QString base_style_sheet_;
