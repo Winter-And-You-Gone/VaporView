@@ -212,7 +212,7 @@ void TcpWavePanel::setupUi()
     mainLayout->setSpacing(4);
 
     control_layout_ = new QGridLayout();
-    control_layout_->setHorizontalSpacing(8);
+    control_layout_->setHorizontalSpacing(4);
     control_layout_->setVerticalSpacing(4);
 
     panel_title_label_ = new QLabel(this);
