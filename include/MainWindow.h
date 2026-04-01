@@ -381,6 +381,7 @@ private:
     QLabel *ptb_lbl_;
     QLabel *hmp_lbl_;
     QLabel *lidar_lbl_;
+    QLabel *config_inline_title_lbl_;
     QLabel *global_rate_lbl_;
     QLabel *waveform_split_lbl_;
     QLabel *gnss_rate_lbl_;

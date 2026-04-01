@@ -928,6 +928,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_lbl_(nullptr)
     , hmp_lbl_(nullptr)
     , lidar_lbl_(nullptr)
+    , config_inline_title_lbl_(nullptr)
     , global_rate_lbl_(nullptr)
     , waveform_split_lbl_(nullptr)
     , gnss_rate_lbl_(nullptr)
@@ -1530,10 +1531,6 @@ void MainWindow::setupConfigPanel()
     config_root_layout->setSpacing(8);
     config_root_layout->setContentsMargins(8, 4, 8, 8);
 
-    auto *summary_row_layout = new QHBoxLayout();
-    summary_row_layout->setSpacing(8);
-    summary_row_layout->addStretch(1);
-
     auto *config_layout = new QGridLayout();
     config_layout->setVerticalSpacing(8);
     config_layout->setHorizontalSpacing(8);
@@ -1542,12 +1539,16 @@ void MainWindow::setupConfigPanel()
     config_layout->setColumnStretch(2, 0);
     config_layout->setColumnStretch(3, 0);
     config_layout->setColumnStretch(4, 0);
-    config_layout->setColumnStretch(5, 1);
+    config_layout->setColumnStretch(5, 0);
+    config_layout->setColumnStretch(6, 0);
+    config_layout->setColumnStretch(7, 1);
     config_layout->setColumnMinimumWidth(0, 110);
     config_layout->setColumnMinimumWidth(1, 170);
     config_layout->setColumnMinimumWidth(2, 100);
     config_layout->setColumnMinimumWidth(3, 80);
     config_layout->setColumnMinimumWidth(4, 100);
+    config_layout->setColumnMinimumWidth(5, 90);
+    config_layout->setColumnMinimumWidth(6, 100);
 
     QStringList baudRates = {"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"};
     QStringList ports = getAvailablePorts();
@@ -1616,19 +1617,24 @@ void MainWindow::setupConfigPanel()
         config_layout->addWidget(rateCombo, row, 4, Qt::AlignVCenter);
     };
 
+    config_inline_title_lbl_ = new QLabel(this);
+    config_inline_title_lbl_->setObjectName("fieldLabel");
+    config_inline_title_lbl_->setFixedHeight(28);
+    config_layout->addWidget(config_inline_title_lbl_, 0, 0, 1, 3, Qt::AlignVCenter | Qt::AlignLeft);
+
     global_rate_lbl_ = new QLabel(this);
     global_rate_lbl_->setObjectName("fieldLabel");
     global_rate_lbl_->setFixedHeight(28);
-    summary_row_layout->addWidget(global_rate_lbl_, 0, Qt::AlignVCenter | Qt::AlignRight);
+    config_layout->addWidget(global_rate_lbl_, 0, 3, Qt::AlignVCenter | Qt::AlignRight);
 
     global_rate_combo_ = createRateCombo();
-    summary_row_layout->addWidget(global_rate_combo_, 0, Qt::AlignVCenter);
+    config_layout->addWidget(global_rate_combo_, 0, 4, Qt::AlignVCenter);
     connect(global_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onGlobalRateChanged);
 
     waveform_split_lbl_ = new QLabel(this);
     waveform_split_lbl_->setObjectName("fieldLabel");
     waveform_split_lbl_->setFixedHeight(28);
-    summary_row_layout->addWidget(waveform_split_lbl_, 0, Qt::AlignVCenter | Qt::AlignRight);
+    config_layout->addWidget(waveform_split_lbl_, 0, 5, Qt::AlignVCenter | Qt::AlignRight);
 
     waveform_split_spin_ = new QSpinBox(this);
     waveform_split_spin_->setRange(1, 5);
@@ -1648,11 +1654,9 @@ void MainWindow::setupConfigPanel()
             ? "Waveform split duration set to %1 minute(s)"
             : "波形分文件时长已设置为 %1 分钟").arg(value));
     });
-    summary_row_layout->addWidget(waveform_split_spin_, 0, Qt::AlignVCenter);
+    config_layout->addWidget(waveform_split_spin_, 0, 6, Qt::AlignVCenter);
 
-    config_root_layout->addLayout(summary_row_layout);
-
-    int row = 0;
+    int row = 1;
 
 #ifdef _WIN32
     createPortRow(gnss_lbl_, gnss_port_combo_, gnss_baud_combo_, gnss_rate_lbl_, gnss_rate_combo_, "COM3", "115200", row++);
@@ -1803,7 +1807,7 @@ void MainWindow::setEnglish(bool english)
 
     status_label_->setText(english ? "Ready" : "就绪");
 
-    config_group_->setTitle(english ? "Serial Port Configuration" : "串口配置");
+    config_group_->setTitle(QString());
     data_group_->setTitle(english ? "Sensor Data" : "传感器数据");
     tcp_wave_group_->setTitle(english ? "TCP Wave Monitor" : "TCP波形监视");
     log_group_->setTitle(english ? "Log" : "日志");
@@ -1818,6 +1822,10 @@ void MainWindow::setEnglish(bool english)
     hmp_lbl_->setText(english ? "HMP3:" : "HMP3:");
     lidar_lbl_->setText(english ? "TF03:" : "TF03:");
 
+    if (config_inline_title_lbl_)
+    {
+        config_inline_title_lbl_->setText(english ? "Serial Port Configuration" : "串口配置");
+    }
     global_rate_lbl_->setText(english ? "Global Rate:" : "统一频率:");
     waveform_split_lbl_->setText(english ? "Wave Split:" : "波形分段:");
     if (waveform_split_spin_)
