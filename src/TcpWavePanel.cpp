@@ -143,6 +143,7 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , wave1_plot_(nullptr)
     , wave4_plot_(nullptr)
     , socket_(nullptr)
+    , parse_mode_(ParseMode::AutoDetect)
     , read_state_(ReadState::Wave1Header)
     , expected_payload_size_(0)
     , frame_count_(0)
@@ -310,6 +311,8 @@ void TcpWavePanel::onToggleConnectionClicked()
 
     recreateSocket();
     buffer_.clear();
+    wave1_history_.clear();
+    wave4_history_.clear();
     pending_wave1_.clear();
     resetParserState();
     frame_count_ = 0;
@@ -418,12 +421,74 @@ void TcpWavePanel::setStatusText(const QString& text)
 
 void TcpWavePanel::resetParserState()
 {
+    parse_mode_ = ParseMode::AutoDetect;
     read_state_ = ReadState::Wave1Header;
     expected_payload_size_ = 0;
 }
 
 void TcpWavePanel::processBuffer()
 {
+    if (parse_mode_ == ParseMode::AutoDetect && buffer_.size() >= 12)
+    {
+        const qint32 candidate = qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(buffer_.constData()));
+        const bool validLengthHeader = candidate > 0 && candidate <= kMaxPayloadBytes && (candidate % kFloatSize) == 0;
+        if (validLengthHeader)
+        {
+            parse_mode_ = ParseMode::LengthPrefixed;
+            setStatusText(is_english_ ? "Detected length-prefixed TCP payloads" : "已识别为长度前缀TCP负载格式");
+        }
+        else if (looksLikeRawScalarTriplet(buffer_))
+        {
+            parse_mode_ = ParseMode::RawScalarTriplets;
+            setStatusText(is_english_
+                ? "Detected LabVIEW raw scalar stream, switching parser mode"
+                : "已识别为LabVIEW原始标量流，正在切换解析模式");
+        }
+    }
+
+    if (parse_mode_ == ParseMode::RawScalarTriplets)
+    {
+        bool updated = false;
+        while (buffer_.size() >= 12)
+        {
+            const float skipped = decodeRawScalarSample(buffer_.constData());
+            const float wave1 = decodeRawScalarSample(buffer_.constData() + 4);
+            const float wave4 = decodeRawScalarSample(buffer_.constData() + 8);
+            buffer_.remove(0, 12);
+
+            if (!std::isfinite(skipped) || !std::isfinite(wave1) || !std::isfinite(wave4))
+            {
+                continue;
+            }
+
+            appendHistorySample(wave1_history_, wave1, 50000);
+            appendHistorySample(wave4_history_, wave4, 50000);
+            ++frame_count_;
+            updated = true;
+        }
+
+        if (updated)
+        {
+            wave1_plot_->setSamples(wave1_history_);
+            wave4_plot_->setSamples(wave4_history_);
+            wave1_info_label_->setText(QString(is_english_
+                ? "wave1: %1 samples, latest=%2"
+                : "波形图1: %1 个采样点，最新值=%2")
+                .arg(wave1_history_.size())
+                .arg(wave1_history_.isEmpty() ? 0.0 : wave1_history_.last(), 0, 'f', 6));
+            wave4_info_label_->setText(QString(is_english_
+                ? "wave4: %1 samples, latest=%2"
+                : "波形图4: %1 个采样点，最新值=%2")
+                .arg(wave4_history_.size())
+                .arg(wave4_history_.isEmpty() ? 0.0 : wave4_history_.last(), 0, 'f', 6));
+            setStatusText(QString(is_english_
+                ? "Receiving raw scalar frame %1"
+                : "正在接收原始标量流，第 %1 帧")
+                .arg(frame_count_));
+        }
+        return;
+    }
+
     while (true)
     {
         switch (read_state_)
@@ -456,8 +521,10 @@ void TcpWavePanel::processBuffer()
             {
                 return;
             }
-            wave1_plot_->setSamples(pending_wave1_);
-            wave4_plot_->setSamples(wave4);
+            wave1_history_ = pending_wave1_;
+            wave4_history_ = wave4;
+            wave1_plot_->setSamples(wave1_history_);
+            wave4_plot_->setSamples(wave4_history_);
             ++frame_count_;
 
             wave1_info_label_->setText(QString(is_english_
@@ -501,6 +568,46 @@ bool TcpWavePanel::tryConsumeHeader()
     }
 
     return false;
+}
+
+void TcpWavePanel::appendHistorySample(QVector<float>& history, float value, int maxSamples)
+{
+    history.append(value);
+    const int overflow = history.size() - maxSamples;
+    if (overflow > 0)
+    {
+        history.remove(0, overflow);
+    }
+}
+
+bool TcpWavePanel::looksLikeRawScalarTriplet(const QByteArray& data) const
+{
+    if (data.size() < 12)
+    {
+        return false;
+    }
+
+    const float a = decodeRawScalarSample(data.constData());
+    const float b = decodeRawScalarSample(data.constData() + 4);
+    const float c = decodeRawScalarSample(data.constData() + 8);
+    auto plausible = [](float value) {
+        return std::isfinite(value) && std::fabs(value) < 1.0e6f;
+    };
+    return plausible(a) && plausible(b) && plausible(c);
+}
+
+float TcpWavePanel::decodeRawScalarSample(const char *raw) const
+{
+    const uchar ordered[4] = {
+        static_cast<uchar>(raw[0]),
+        static_cast<uchar>(raw[1]),
+        static_cast<uchar>(raw[3]),
+        static_cast<uchar>(raw[2]),
+    };
+    const quint32 bits = qFromLittleEndian<quint32>(ordered);
+    float value = 0.0f;
+    std::memcpy(&value, &bits, sizeof(float));
+    return value;
 }
 
 bool TcpWavePanel::tryConsumePayload(QVector<float>& output)

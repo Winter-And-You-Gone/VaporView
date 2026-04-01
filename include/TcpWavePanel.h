@@ -31,6 +31,13 @@ private slots:
     void onSocketError();
 
 private:
+    enum class ParseMode
+    {
+        AutoDetect,
+        LengthPrefixed,
+        RawScalarTriplets
+    };
+
     enum class ReadState
     {
         Wave1Header,
@@ -43,6 +50,9 @@ private:
     void setupSocket();
     void recreateSocket();
     void requestGracefulDisconnect();
+    void appendHistorySample(QVector<float>& history, float value, int maxSamples);
+    bool looksLikeRawScalarTriplet(const QByteArray& data) const;
+    float decodeRawScalarSample(const char *raw) const;
     void setConnectedUiState(bool connected);
     void setStatusText(const QString& text);
     void resetParserState();
@@ -67,7 +77,10 @@ private:
     QTcpSocket *socket_;
 
     QByteArray buffer_;
+    QVector<float> wave1_history_;
+    QVector<float> wave4_history_;
     QVector<float> pending_wave1_;
+    ParseMode parse_mode_;
     ReadState read_state_;
     int expected_payload_size_;
     qint64 frame_count_;
