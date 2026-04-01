@@ -1538,12 +1538,13 @@ void MainWindow::setupConfigPanel()
     config_layout->setVerticalSpacing(8);
     config_layout->setHorizontalSpacing(8);
     config_layout->setColumnStretch(0, 0);
-    config_layout->setColumnStretch(1, 1);
+    config_layout->setColumnStretch(1, 0);
     config_layout->setColumnStretch(2, 0);
     config_layout->setColumnStretch(3, 0);
     config_layout->setColumnStretch(4, 0);
+    config_layout->setColumnStretch(5, 1);
     config_layout->setColumnMinimumWidth(0, 110);
-    config_layout->setColumnMinimumWidth(1, 260);
+    config_layout->setColumnMinimumWidth(1, 170);
     config_layout->setColumnMinimumWidth(2, 100);
     config_layout->setColumnMinimumWidth(3, 80);
     config_layout->setColumnMinimumWidth(4, 100);
@@ -1580,8 +1581,12 @@ void MainWindow::setupConfigPanel()
         portCombo->addItem(is_english_ ? "-- Select --" : "-- 选择 --");
         portCombo->addItems(ports);
         portCombo->setEditable(true);
+        portCombo->setMinimumContentsLength(10);
+        portCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
         portCombo->setFixedHeight(30);
-        portCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        portCombo->setMinimumWidth(160);
+        portCombo->setMaximumWidth(190);
+        portCombo->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         portCombo->setMaxVisibleItems(15);
 
         int defaultIdx = portCombo->findText(defaultPort);
