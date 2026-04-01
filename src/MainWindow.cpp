@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 #include "RtkConfigDialog.h"
+#include "SessionViewerWindow.h"
 #include "TcpWavePanel.h"
 #include "data_collector.h"
 #include "data_types.h"
@@ -904,6 +905,7 @@ MainWindow::MainWindow(QWidget *parent)
     , fullscreen_toolbar_action_(nullptr)
     , lang_action_(nullptr)
     , clear_log_action_(nullptr)
+    , session_viewer_action_(nullptr)
     , recording_directory_action_(nullptr)
     , exit_action_(nullptr)
     , about_action_(nullptr)
@@ -987,6 +989,7 @@ MainWindow::MainWindow(QWidget *parent)
     , rtk_config_action_(nullptr)
     , rtk_config_dialog_(nullptr)
     , tcp_wave_panel_(nullptr)
+    , session_viewer_window_(nullptr)
 {
     const double currentPointSize = qApp->font().pointSizeF();
     base_font_point_size_ = currentPointSize > 0.0 ? currentPointSize : 10.0;
@@ -1282,6 +1285,10 @@ void MainWindow::setupMenuBar()
     connect(recording_directory_action_, &QAction::triggered, this, &MainWindow::onChooseRecordingDirectoryClicked);
     fileMenu->addAction(recording_directory_action_);
 
+    session_viewer_action_ = new QAction(this);
+    connect(session_viewer_action_, &QAction::triggered, this, &MainWindow::onOpenSessionViewerClicked);
+    fileMenu->addAction(session_viewer_action_);
+
     fileMenu->addSeparator();
 
     exit_action_ = new QAction(this);
@@ -1441,6 +1448,11 @@ void MainWindow::setupToolBar()
     clear_log_action_ = new QAction(this);
     connect(clear_log_action_, &QAction::triggered, this, &MainWindow::onClearLogClicked);
     toolbar->addAction(clear_log_action_);
+
+    toolbar->addSeparator();
+
+    session_viewer_action_->setIcon(style()->standardIcon(QStyle::SP_DirOpenIcon));
+    toolbar->addAction(session_viewer_action_);
 
     toolbar->addSeparator();
 
@@ -1727,6 +1739,7 @@ void MainWindow::setEnglish(bool english)
 
     menuBar()->actions().at(0)->menu()->setTitle(english ? "&File" : "文件(&F)");
     recording_directory_action_->setText(english ? "Recording Folder..." : "记录目录...");
+    session_viewer_action_->setText(english ? "Session Browser..." : "会话浏览器...");
     exit_action_->setText(english ? "E&xit" : "退出(&X)");
 
     menuBar()->actions().at(1)->menu()->setTitle(english ? "&View" : "视图(&V)");
@@ -1795,8 +1808,30 @@ void MainWindow::setEnglish(bool english)
     {
         rtk_config_dialog_->setEnglish(english);
     }
+    if (session_viewer_window_)
+    {
+        session_viewer_window_->setEnglish(english);
+    }
 
     updateRecordingStatusLabel();
+}
+
+void MainWindow::onOpenSessionViewerClicked()
+{
+    if (!session_viewer_window_)
+    {
+        session_viewer_window_ = new SessionViewerWindow(this);
+        session_viewer_window_->setEnglish(is_english_);
+    }
+
+    if (!session_directory_.isEmpty())
+    {
+        session_viewer_window_->openSessionPath(session_directory_);
+    }
+
+    session_viewer_window_->show();
+    session_viewer_window_->raise();
+    session_viewer_window_->activateWindow();
 }
 
 void MainWindow::onSwitchLanguage()

@@ -34,6 +34,7 @@
 class RtkConfigDialog;
 class QFile;
 class TcpWavePanel;
+class SessionViewerWindow;
 
 class GnssPanel : public QWidget
 {
@@ -254,6 +255,7 @@ private slots:
     void onHmpRateChanged(const QString& text);
     void onLidarRateChanged(const QString& text);
     void onRtkConfigClicked();
+    void onOpenSessionViewerClicked();
     void onFontScaleTriggered(QAction *action);
     void onCancelConnectClicked();
     void onNormalizedSecondHarmonicFrameReady(quint64 timestampUs, QVector<float> samples);
@@ -353,6 +355,7 @@ private:
     QAction *fullscreen_toolbar_action_;
     QAction *lang_action_;
     QAction *clear_log_action_;
+    QAction *session_viewer_action_;
     QAction *recording_directory_action_;
     QAction *exit_action_;
     QAction *about_action_;
@@ -459,6 +462,7 @@ private:
     QAction *rtk_config_action_;
     RtkConfigDialog *rtk_config_dialog_;
     TcpWavePanel *tcp_wave_panel_;
+    SessionViewerWindow *session_viewer_window_;
 };
 
 #endif
