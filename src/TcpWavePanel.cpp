@@ -129,25 +129,24 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , wave4_group_(nullptr)
     , wave1_plot_(nullptr)
     , wave4_plot_(nullptr)
-    , socket_(new QTcpSocket(this))
+    , socket_(nullptr)
     , read_state_(ReadState::Wave1Header)
     , expected_payload_size_(0)
     , is_english_(false)
 {
     setupUi();
+    setupSocket();
     setEnglish(false);
-    connect(socket_, &QTcpSocket::connected, this, &TcpWavePanel::onSocketConnected);
-    connect(socket_, &QTcpSocket::disconnected, this, &TcpWavePanel::onSocketDisconnected);
-    connect(socket_, &QTcpSocket::readyRead, this, &TcpWavePanel::onSocketReadyRead);
-    connect(socket_, &QAbstractSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
-        setStatusText(socket_->errorString());
-        setConnectedUiState(false);
-    });
 }
 
 TcpWavePanel::~TcpWavePanel()
 {
-    socket_->abort();
+    requestGracefulDisconnect();
+    if (socket_)
+    {
+        socket_->deleteLater();
+        socket_ = nullptr;
+    }
 }
 
 void TcpWavePanel::setupUi()
@@ -218,7 +217,7 @@ void TcpWavePanel::setEnglish(bool english)
     is_english_ = english;
     host_label_->setText(english ? "TCP Host:" : "TCP主机:");
     port_label_->setText(english ? "Port:" : "端口:");
-    connect_button_->setText(socket_->state() == QAbstractSocket::ConnectedState
+    connect_button_->setText(socket_ && socket_->state() == QAbstractSocket::ConnectedState
         ? (english ? "Stop" : "停止")
         : (english ? "Start" : "启动"));
     wave1_group_->setTitle(english ? "Wave 1" : "波形图1");
@@ -227,29 +226,75 @@ void TcpWavePanel::setEnglish(bool english)
     wave1_info_label_->setText(english ? "waiting for wave1 frame" : "等待波形图1数据帧");
     wave4_info_label_->setText(english ? "waiting for wave4 frame" : "等待波形图4数据帧");
 
-    if (socket_->state() != QAbstractSocket::ConnectedState)
+    if (!socket_ || socket_->state() != QAbstractSocket::ConnectedState)
     {
         setStatusText(english ? "Idle" : "空闲");
     }
 }
 
-void TcpWavePanel::onToggleConnectionClicked()
+void TcpWavePanel::setupSocket()
 {
-    if (socket_->state() == QAbstractSocket::ConnectedState || socket_->state() == QAbstractSocket::ConnectingState)
+    socket_ = new QTcpSocket(this);
+    connect(socket_, &QTcpSocket::connected, this, &TcpWavePanel::onSocketConnected);
+    connect(socket_, &QTcpSocket::disconnected, this, &TcpWavePanel::onSocketDisconnected);
+    connect(socket_, &QTcpSocket::readyRead, this, &TcpWavePanel::onSocketReadyRead);
+    connect(socket_, &QTcpSocket::stateChanged, this, [this](QAbstractSocket::SocketState) {
+        onSocketStateChanged();
+    });
+    connect(socket_, &QAbstractSocket::errorOccurred, this, [this](QAbstractSocket::SocketError) {
+        onSocketError();
+    });
+}
+
+void TcpWavePanel::recreateSocket()
+{
+    if (socket_)
     {
-        socket_->abort();
-        setConnectedUiState(false);
-        setStatusText(is_english_ ? "Disconnected" : "已断开");
+        requestGracefulDisconnect();
+        socket_->deleteLater();
+        socket_ = nullptr;
+    }
+    setupSocket();
+}
+
+void TcpWavePanel::requestGracefulDisconnect()
+{
+    if (!socket_)
+    {
         return;
     }
 
+    if (socket_->state() == QAbstractSocket::ConnectedState)
+    {
+        socket_->disconnectFromHost();
+        if (socket_->state() != QAbstractSocket::UnconnectedState)
+        {
+            socket_->waitForDisconnected(1000);
+        }
+    }
+    else if (socket_->state() == QAbstractSocket::ConnectingState ||
+             socket_->state() == QAbstractSocket::HostLookupState)
+    {
+        socket_->abort();
+    }
+}
+
+void TcpWavePanel::onToggleConnectionClicked()
+{
+    if (socket_ && socket_->state() != QAbstractSocket::UnconnectedState)
+    {
+        requestGracefulDisconnect();
+        return;
+    }
+
+    recreateSocket();
     buffer_.clear();
     pending_wave1_.clear();
     resetParserState();
     setStatusText(QString(is_english_ ? "Connecting to %1:%2..." : "正在连接 %1:%2...")
         .arg(host_edit_->text()).arg(port_spin_->value()));
     socket_->connectToHost(host_edit_->text(), static_cast<quint16>(port_spin_->value()));
-    setConnectedUiState(true);
+    onSocketStateChanged();
 }
 
 void TcpWavePanel::onSocketConnected()
@@ -271,11 +316,62 @@ void TcpWavePanel::onSocketReadyRead()
     processBuffer();
 }
 
+void TcpWavePanel::onSocketStateChanged()
+{
+    if (!socket_)
+    {
+        setConnectedUiState(false);
+        return;
+    }
+
+    switch (socket_->state())
+    {
+    case QAbstractSocket::HostLookupState:
+    case QAbstractSocket::ConnectingState:
+        setConnectedUiState(true);
+        setStatusText(QString(is_english_ ? "Connecting to %1:%2..." : "正在连接 %1:%2...")
+            .arg(host_edit_->text()).arg(port_spin_->value()));
+        break;
+    case QAbstractSocket::ConnectedState:
+        setConnectedUiState(true);
+        break;
+    case QAbstractSocket::ClosingState:
+        setConnectedUiState(true);
+        setStatusText(is_english_ ? "Disconnecting..." : "正在断开...");
+        break;
+    case QAbstractSocket::UnconnectedState:
+    default:
+        setConnectedUiState(false);
+        break;
+    }
+}
+
+void TcpWavePanel::onSocketError()
+{
+    if (!socket_)
+    {
+        return;
+    }
+    setStatusText(socket_->errorString());
+    if (socket_->state() == QAbstractSocket::UnconnectedState)
+    {
+        setConnectedUiState(false);
+    }
+}
+
 void TcpWavePanel::setConnectedUiState(bool connected)
 {
-    const bool active = connected && socket_->state() != QAbstractSocket::UnconnectedState;
+    const bool active = connected && socket_ && socket_->state() != QAbstractSocket::UnconnectedState;
     host_edit_->setEnabled(!active);
     port_spin_->setEnabled(!active);
+    if (socket_ && socket_->state() == QAbstractSocket::ClosingState)
+    {
+        connect_button_->setText(is_english_ ? "Disconnecting..." : "正在断开...");
+        connect_button_->setEnabled(false);
+        return;
+    }
+
+    connect_button_->setEnabled(true);
     connect_button_->setText(active ? (is_english_ ? "Stop" : "停止") : (is_english_ ? "Start" : "启动"));
 }
 
@@ -362,7 +458,7 @@ bool TcpWavePanel::tryConsumeHeader()
         setStatusText(QString(is_english_
             ? "Invalid payload size: %1"
             : "无效的数据负载长度: %1").arg(expected_payload_size_));
-        socket_->abort();
+        requestGracefulDisconnect();
         resetParserState();
         buffer_.clear();
         pending_wave1_.clear();

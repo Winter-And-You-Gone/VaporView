@@ -27,6 +27,8 @@ private slots:
     void onSocketConnected();
     void onSocketDisconnected();
     void onSocketReadyRead();
+    void onSocketStateChanged();
+    void onSocketError();
 
 private:
     enum class ReadState
@@ -38,6 +40,9 @@ private:
     };
 
     void setupUi();
+    void setupSocket();
+    void recreateSocket();
+    void requestGracefulDisconnect();
     void setConnectedUiState(bool connected);
     void setStatusText(const QString& text);
     void resetParserState();
