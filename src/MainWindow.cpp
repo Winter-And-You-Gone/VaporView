@@ -159,8 +159,8 @@ GnssPanel::GnssPanel(QWidget *parent)
 void GnssPanel::setupUi()
 {
     auto *mainLayout = new QVBoxLayout(this);
-    mainLayout->setSpacing(6);
-    mainLayout->setContentsMargins(6, 6, 6, 6);
+    mainLayout->setSpacing(4);
+    mainLayout->setContentsMargins(6, 2, 6, 6);
 
     rate_label_ = new QLabel(this);
     rate_label_->setObjectName("rateLabel");
@@ -390,13 +390,13 @@ ImuPanel::ImuPanel(QWidget *parent)
 void ImuPanel::setupUi()
 {
     auto *mainLayout = new QVBoxLayout(this);
-    mainLayout->setSpacing(6);
-    mainLayout->setContentsMargins(6, 6, 6, 6);
+    mainLayout->setSpacing(4);
+    mainLayout->setContentsMargins(6, 2, 6, 6);
 
     rate_label_ = new QLabel(this);
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    rate_label_->setFixedHeight(28);
+    rate_label_->setFixedHeight(24);
     mainLayout->addWidget(rate_label_);
 
     auto *colsLayout = new QHBoxLayout();
@@ -563,8 +563,8 @@ PtbPanel::PtbPanel(QWidget *parent)
 void PtbPanel::setupUi()
 {
     auto *layout = new QVBoxLayout(this);
-    layout->setSpacing(4);
-    layout->setContentsMargins(6, 6, 6, 6);
+    layout->setSpacing(3);
+    layout->setContentsMargins(6, 2, 6, 6);
 
     rate_label_ = new QLabel(this);
     rate_label_->setObjectName("rateLabel");
@@ -659,8 +659,8 @@ HmpPanel::HmpPanel(QWidget *parent)
 void HmpPanel::setupUi()
 {
     auto *layout = new QVBoxLayout(this);
-    layout->setSpacing(4);
-    layout->setContentsMargins(6, 6, 6, 6);
+    layout->setSpacing(3);
+    layout->setContentsMargins(6, 2, 6, 6);
 
     rate_label_ = new QLabel(this);
     rate_label_->setObjectName("rateLabel");
@@ -778,8 +778,8 @@ LidarPanel::LidarPanel(QWidget *parent)
 void LidarPanel::setupUi()
 {
     auto *layout = new QVBoxLayout(this);
-    layout->setSpacing(6);
-    layout->setContentsMargins(6, 6, 6, 6);
+    layout->setSpacing(3);
+    layout->setContentsMargins(6, 2, 6, 6);
 
     rate_label_ = new QLabel("0.0 Hz", this);
     rate_label_->setObjectName("rateBadge");
@@ -1687,7 +1687,7 @@ void MainWindow::setupDataPanels()
     gnss_group_ = new QGroupBox(this);
     gnss_group_->setObjectName("sensorGroupBox");
     auto *gnss_layout = new QVBoxLayout(gnss_group_);
-    gnss_layout->setContentsMargins(1, 1, 1, 1);
+    gnss_layout->setContentsMargins(1, 0, 1, 1);
     gnss_layout->setSpacing(0);
     gnss_inline_title_lbl_ = new QLabel(this);
     gnss_inline_title_lbl_->setObjectName("sectionTitleLabel");
@@ -1699,7 +1699,7 @@ void MainWindow::setupDataPanels()
     imu_group_ = new QGroupBox(this);
     imu_group_->setObjectName("sensorGroupBox");
     auto *imu_layout = new QVBoxLayout(imu_group_);
-    imu_layout->setContentsMargins(1, 1, 1, 1);
+    imu_layout->setContentsMargins(1, 0, 1, 1);
     imu_layout->setSpacing(0);
     imu_inline_title_lbl_ = new QLabel(this);
     imu_inline_title_lbl_->setObjectName("sectionTitleLabel");
@@ -1711,7 +1711,7 @@ void MainWindow::setupDataPanels()
     auto *env_group = new QGroupBox(this);
     env_group->setObjectName("sensorGroupBox");
     auto *env_layout = new QVBoxLayout(env_group);
-    env_layout->setContentsMargins(1, 1, 1, 1);
+    env_layout->setContentsMargins(1, 0, 1, 1);
     env_layout->setSpacing(0);
     env_inline_title_lbl_ = new QLabel(this);
     env_inline_title_lbl_->setObjectName("sectionTitleLabel");

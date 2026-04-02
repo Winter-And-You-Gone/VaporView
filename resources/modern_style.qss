@@ -356,6 +356,13 @@ QPushButton:disabled {
     color: #ffffff;
 }
 
+QPushButton#compactTcpButton {
+    padding: 0px 14px;
+    min-height: 28px;
+    max-height: 28px;
+    font-size: 14px;
+}
+
 /* 输入框 */
 QLineEdit {
     background-color: #ffffff;
