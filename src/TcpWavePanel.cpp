@@ -221,23 +221,23 @@ void TcpWavePanel::setupUi()
 
     host_label_ = new QLabel(this);
     host_label_->setObjectName("fieldLabel");
-    control_layout_->addWidget(host_label_, 0, 1);
+    control_layout_->addWidget(host_label_, 0, 1, Qt::AlignRight | Qt::AlignVCenter);
 
     host_edit_ = new QLineEdit(this);
     host_edit_->setText("127.0.0.1");
     host_edit_->setMinimumWidth(90);
     host_edit_->setMaximumWidth(110);
-    control_layout_->addWidget(host_edit_, 0, 2);
+    control_layout_->addWidget(host_edit_, 0, 2, Qt::AlignLeft | Qt::AlignVCenter);
 
     port_label_ = new QLabel(this);
     port_label_->setObjectName("fieldLabel");
-    control_layout_->addWidget(port_label_, 0, 3);
+    control_layout_->addWidget(port_label_, 0, 3, Qt::AlignRight | Qt::AlignVCenter);
 
     port_spin_ = new QSpinBox(this);
     port_spin_->setRange(1, 65535);
     port_spin_->setValue(8888);
     port_spin_->setFixedWidth(108);
-    control_layout_->addWidget(port_spin_, 0, 4);
+    control_layout_->addWidget(port_spin_, 0, 4, Qt::AlignLeft | Qt::AlignVCenter);
 
     connect_button_ = new QPushButton(this);
     connect(connect_button_, &QPushButton::clicked, this, &TcpWavePanel::onToggleConnectionClicked);
