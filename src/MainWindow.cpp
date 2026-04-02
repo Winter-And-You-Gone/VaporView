@@ -172,15 +172,15 @@ void GnssPanel::setupUi()
 
     auto *leftLayout = new QGridLayout();
     leftLayout->setVerticalSpacing(4);
-    leftLayout->setHorizontalSpacing(6);
+    leftLayout->setHorizontalSpacing(1);
 
     auto *midLayout = new QGridLayout();
     midLayout->setVerticalSpacing(4);
-    midLayout->setHorizontalSpacing(6);
+    midLayout->setHorizontalSpacing(1);
 
     auto *rightLayout = new QGridLayout();
     rightLayout->setVerticalSpacing(4);
-    rightLayout->setHorizontalSpacing(6);
+    rightLayout->setHorizontalSpacing(1);
 
     auto createRow = [](QGridLayout* grid, int row, QLabel*& lbl, QLabel*& valueLabel, QWidget* parent) {
         lbl = new QLabel(parent);
@@ -404,11 +404,11 @@ void ImuPanel::setupUi()
 
     auto *leftLayout = new QGridLayout();
     leftLayout->setVerticalSpacing(4);
-    leftLayout->setHorizontalSpacing(6);
+    leftLayout->setHorizontalSpacing(1);
 
     auto *rightLayout = new QGridLayout();
     rightLayout->setVerticalSpacing(4);
-    rightLayout->setHorizontalSpacing(6);
+    rightLayout->setHorizontalSpacing(1);
 
     auto createRow = [](QGridLayout* grid, int row, QLabel*& lbl, QLabel*& valueLabel, QWidget* parent) {
         lbl = new QLabel(parent);
@@ -573,7 +573,7 @@ void PtbPanel::setupUi()
     layout->addWidget(rate_label_);
 
     auto *pressLayout = new QHBoxLayout();
-    pressLayout->setSpacing(6);
+    pressLayout->setSpacing(1);
     pressure_lbl_ = new QLabel(this);
     pressure_lbl_->setObjectName("fieldLabel");
     pressure_lbl_->setMinimumHeight(22);
@@ -669,7 +669,7 @@ void HmpPanel::setupUi()
     layout->addWidget(rate_label_);
 
     auto *tempLayout = new QHBoxLayout();
-    tempLayout->setSpacing(6);
+    tempLayout->setSpacing(1);
     temp_lbl_ = new QLabel(this);
     temp_lbl_->setObjectName("fieldLabel");
     temp_lbl_->setMinimumHeight(22);
@@ -682,7 +682,7 @@ void HmpPanel::setupUi()
     layout->addLayout(tempLayout);
 
     auto *humidLayout = new QHBoxLayout();
-    humidLayout->setSpacing(6);
+    humidLayout->setSpacing(1);
     humidity_lbl_ = new QLabel(this);
     humidity_lbl_->setObjectName("fieldLabel");
     humidity_lbl_->setMinimumHeight(22);
@@ -786,7 +786,7 @@ void LidarPanel::setupUi()
     layout->addWidget(rate_label_, 0, Qt::AlignRight);
 
     auto *distanceLayout = new QHBoxLayout();
-    distanceLayout->setSpacing(6);
+    distanceLayout->setSpacing(1);
     distance_lbl_ = new QLabel(this);
     distance_lbl_->setObjectName("fieldLabel");
     distance_lbl_->setMinimumHeight(22);
@@ -799,7 +799,7 @@ void LidarPanel::setupUi()
     layout->addLayout(distanceLayout);
 
     auto *strengthLayout = new QHBoxLayout();
-    strengthLayout->setSpacing(6);
+    strengthLayout->setSpacing(1);
     strength_lbl_ = new QLabel(this);
     strength_lbl_->setObjectName("fieldLabel");
     strength_lbl_->setMinimumHeight(22);

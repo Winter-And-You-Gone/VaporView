@@ -212,7 +212,7 @@ void TcpWavePanel::setupUi()
     mainLayout->setSpacing(4);
 
     control_layout_ = new QGridLayout();
-    control_layout_->setHorizontalSpacing(2);
+    control_layout_->setHorizontalSpacing(1);
     control_layout_->setVerticalSpacing(4);
 
     panel_title_label_ = new QLabel(this);
@@ -221,7 +221,7 @@ void TcpWavePanel::setupUi()
 
     auto *hostRowLayout = new QHBoxLayout();
     hostRowLayout->setContentsMargins(0, 0, 0, 0);
-    hostRowLayout->setSpacing(2);
+    hostRowLayout->setSpacing(1);
     host_label_ = new QLabel(this);
     host_label_->setObjectName("fieldLabel");
     hostRowLayout->addWidget(host_label_, 0, Qt::AlignVCenter | Qt::AlignRight);
@@ -235,7 +235,7 @@ void TcpWavePanel::setupUi()
 
     auto *portRowLayout = new QHBoxLayout();
     portRowLayout->setContentsMargins(0, 0, 0, 0);
-    portRowLayout->setSpacing(2);
+    portRowLayout->setSpacing(1);
     port_label_ = new QLabel(this);
     port_label_->setObjectName("fieldLabel");
     portRowLayout->addWidget(port_label_, 0, Qt::AlignVCenter | Qt::AlignRight);
@@ -248,6 +248,7 @@ void TcpWavePanel::setupUi()
     control_layout_->addLayout(portRowLayout, 0, 2, Qt::AlignVCenter | Qt::AlignLeft);
 
     connect_button_ = new QPushButton(this);
+    connect_button_->setFixedHeight(28);
     connect(connect_button_, &QPushButton::clicked, this, &TcpWavePanel::onToggleConnectionClicked);
     control_layout_->addWidget(connect_button_, 0, 4, Qt::AlignVCenter | Qt::AlignLeft);
 
@@ -353,7 +354,7 @@ void TcpWavePanel::attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox)
     spinBox->setParent(this);
     auto *splitRowLayout = new QHBoxLayout();
     splitRowLayout->setContentsMargins(0, 0, 0, 0);
-    splitRowLayout->setSpacing(2);
+    splitRowLayout->setSpacing(1);
     splitRowLayout->addWidget(label, 0, Qt::AlignVCenter | Qt::AlignRight);
     splitRowLayout->addWidget(spinBox, 0, Qt::AlignVCenter | Qt::AlignLeft);
     control_layout_->addLayout(splitRowLayout, 0, 3, Qt::AlignVCenter | Qt::AlignLeft);
