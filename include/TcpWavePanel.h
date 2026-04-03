@@ -69,7 +69,6 @@ private slots:
     void onSocketStateChanged();
     void onSocketError();
     void onTogglePeakPlotModeClicked();
-    void onClearPeakPlotClicked();
 
 private:
     void setupUi();
@@ -110,7 +109,6 @@ private:
     WavePlotWidget *wave4_plot_;
     PeakTrendPlotWidget *peak_plot_;
     QPushButton *peak_mode_button_;
-    QPushButton *peak_clear_button_;
     QGridLayout *control_layout_;
     QTcpSocket *socket_;
 

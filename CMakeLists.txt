@@ -30,9 +30,8 @@ if(WIN32 AND MINGW)
             ENV PATH
     )
 
-    unset(POWERSHELL_EXECUTABLE CACHE)
     find_program(POWERSHELL_EXECUTABLE
-        NAMES powershell pwsh
+        NAMES pwsh powershell
         HINTS ENV PATH
     )
 

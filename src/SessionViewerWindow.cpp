@@ -515,6 +515,7 @@ void SessionViewerWindow::setupUi()
     waveform_peak_plot_title_->setObjectName("fieldLabel");
     peakHeaderLayout->addWidget(waveform_peak_plot_title_, 1, Qt::AlignVCenter | Qt::AlignLeft);
     waveform_peak_mode_btn_ = new QPushButton(this);
+    waveform_peak_mode_btn_->setFixedHeight(30);
     peakHeaderLayout->addWidget(waveform_peak_mode_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
     waveformLayout->addLayout(peakHeaderLayout);
 
