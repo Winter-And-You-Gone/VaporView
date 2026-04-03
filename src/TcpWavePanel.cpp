@@ -297,6 +297,7 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , wave4_plot_(nullptr)
     , peak_plot_(nullptr)
     , peak_mode_button_(nullptr)
+    , peak_clear_button_(nullptr)
     , control_layout_(nullptr)
     , socket_(nullptr)
     , peak_plot_scatter_mode_(true)
@@ -438,13 +439,20 @@ void TcpWavePanel::setupUi()
     peakHeaderLayout->setSpacing(8);
     peak_title_label_ = new QLabel(this);
     peak_title_label_->setObjectName("sectionTitleLabel");
-    peakHeaderLayout->addWidget(peak_title_label_, 1, Qt::AlignVCenter | Qt::AlignLeft);
+    peakHeaderLayout->addWidget(peak_title_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     peak_mode_button_ = new QPushButton(this);
     peak_mode_button_->setObjectName("compactTcpButton");
     peak_mode_button_->setFixedHeight(kTcpControlHeight);
     peak_mode_button_->setMinimumWidth(98);
     connect(peak_mode_button_, &QPushButton::clicked, this, &TcpWavePanel::onTogglePeakPlotModeClicked);
-    peakHeaderLayout->addWidget(peak_mode_button_, 0, Qt::AlignVCenter | Qt::AlignRight);
+    peakHeaderLayout->addWidget(peak_mode_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    peak_clear_button_ = new QPushButton(this);
+    peak_clear_button_->setObjectName("compactTcpButton");
+    peak_clear_button_->setFixedHeight(kTcpControlHeight);
+    peak_clear_button_->setMinimumWidth(72);
+    connect(peak_clear_button_, &QPushButton::clicked, this, &TcpWavePanel::onClearPeakPlotClicked);
+    peakHeaderLayout->addWidget(peak_clear_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    peakHeaderLayout->addStretch(1);
     peakLayout->addLayout(peakHeaderLayout);
     peak_plot_ = new PeakTrendPlotWidget(this);
     peak_plot_->setPlotMode(peak_plot_scatter_mode_ ? PeakTrendPlotWidget::PlotMode::Scatter : PeakTrendPlotWidget::PlotMode::Polyline);
@@ -477,7 +485,11 @@ void TcpWavePanel::setEnglish(bool english)
     }
     if (peak_title_label_)
     {
-        peak_title_label_->setText(english ? "Peak Value Trend" : "峰值趋势");
+        peak_title_label_->setText(english ? "Normalized Second Harmonic Peak Trend" : "归一化二次谐波峰值趋势");
+    }
+    if (peak_clear_button_)
+    {
+        peak_clear_button_->setText(english ? "Clear" : "清空");
     }
     hint_label_->setText(english
         ? "This TCP sender is likely single-client. Do not open the LabVIEW VI receiver and VaporView on port 8888 at the same time."
@@ -620,6 +632,15 @@ void TcpWavePanel::onTogglePeakPlotModeClicked()
     if (peak_plot_)
     {
         peak_plot_->setPlotMode(peak_plot_scatter_mode_ ? PeakTrendPlotWidget::PlotMode::Scatter : PeakTrendPlotWidget::PlotMode::Polyline);
+    }
+}
+
+void TcpWavePanel::onClearPeakPlotClicked()
+{
+    peak_history_.clear();
+    if (peak_plot_)
+    {
+        peak_plot_->setPeakValues({});
     }
 }
 
