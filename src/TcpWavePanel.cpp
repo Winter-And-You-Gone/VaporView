@@ -383,9 +383,6 @@ void TcpWavePanel::setupUi()
 
     mainLayout->addLayout(control_layout_);
 
-    auto *plotsColumnLayout = new QVBoxLayout();
-    plotsColumnLayout->setSpacing(4);
-
     auto *plotsLayout = new QHBoxLayout();
     plotsLayout->setSpacing(1);
 
@@ -428,10 +425,12 @@ void TcpWavePanel::setupUi()
     wave4_plot_ = new WavePlotWidget(QColor("#ef8f35"), this);
     wave4Layout->addWidget(wave4_plot_, 1);
     plotsLayout->addWidget(wave4_group_, 1);
-    plotsColumnLayout->addLayout(plotsLayout, 1);
+
+    mainLayout->addLayout(plotsLayout, 1);
 
     peak_group_ = new QGroupBox(this);
     peak_group_->setObjectName("sensorGroupBox");
+    peak_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto *peakLayout = new QVBoxLayout(peak_group_);
     peakLayout->setContentsMargins(2, 2, 2, 2);
     auto *peakHeaderLayout = new QHBoxLayout();
@@ -449,10 +448,8 @@ void TcpWavePanel::setupUi()
     peakLayout->addLayout(peakHeaderLayout);
     peak_plot_ = new PeakTrendPlotWidget(this);
     peak_plot_->setPlotMode(peak_plot_scatter_mode_ ? PeakTrendPlotWidget::PlotMode::Scatter : PeakTrendPlotWidget::PlotMode::Polyline);
-    peakLayout->addWidget(peak_plot_, 1);
-    plotsColumnLayout->addWidget(peak_group_, 1);
-
-    mainLayout->addLayout(plotsColumnLayout, 1);
+    peakLayout->addWidget(peak_plot_);
+    mainLayout->addWidget(peak_group_, 0);
 }
 
 void TcpWavePanel::setEnglish(bool english)
