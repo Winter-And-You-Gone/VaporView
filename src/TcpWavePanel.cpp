@@ -176,8 +176,8 @@ public:
         : QWidget(parent)
         , plot_mode_(PlotMode::Scatter)
     {
-        setMinimumHeight(120);
-        setMaximumHeight(150);
+        setMinimumHeight(132);
+        setMaximumHeight(170);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     }
 
@@ -202,7 +202,7 @@ protected:
         painter.setRenderHint(QPainter::Antialiasing, true);
         painter.fillRect(rect(), QColor("#ffffff"));
 
-        const QRectF plotRect = rect().adjusted(42, 12, -10, -24);
+        const QRectF plotRect = rect().adjusted(42, 12, -10, -30);
         painter.setPen(QPen(QColor("#e3e8ef"), 1));
         for (int i = 0; i <= 10; ++i)
         {
@@ -431,7 +431,7 @@ void TcpWavePanel::setupUi()
 
     peak_group_ = new QGroupBox(this);
     peak_group_->setObjectName("sensorGroupBox");
-    peak_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    peak_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     auto *peakLayout = new QVBoxLayout(peak_group_);
     peakLayout->setContentsMargins(2, 2, 2, 2);
     auto *peakHeaderLayout = new QHBoxLayout();
