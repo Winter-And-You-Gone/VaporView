@@ -1744,8 +1744,8 @@ void MainWindow::setupDataPanels()
 
     tcp_wave_group_ = new QGroupBox(this);
     tcp_wave_group_->setObjectName("sensorGroupBox");
-    tcp_wave_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
-    tcp_wave_group_->setMaximumHeight(360);
+    tcp_wave_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    tcp_wave_group_->setMinimumHeight(430);
     auto *tcpWaveLayout = new QVBoxLayout(tcp_wave_group_);
     tcpWaveLayout->setContentsMargins(0, 0, 0, 0);
     tcpWaveLayout->setSpacing(0);
