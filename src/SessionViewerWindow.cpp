@@ -8,6 +8,7 @@
 #include <QFileInfo>
 #include <QGridLayout>
 #include <QGroupBox>
+#include <QHBoxLayout>
 #include <QHeaderView>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -191,9 +192,16 @@ private:
 class SessionPeakPlotWidget : public QWidget
 {
 public:
+    enum class PlotMode
+    {
+        Scatter,
+        Polyline
+    };
+
     explicit SessionPeakPlotWidget(QWidget *parent = nullptr)
         : QWidget(parent)
         , current_frame_index_(-1)
+        , plot_mode_(PlotMode::Scatter)
     {
         setMinimumHeight(170);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -212,6 +220,12 @@ public:
     void setCurrentFrame(int frameIndex)
     {
         current_frame_index_ = frameIndex;
+        update();
+    }
+
+    void setPlotMode(PlotMode mode)
+    {
+        plot_mode_ = mode;
         update();
     }
 
@@ -257,37 +271,42 @@ protected:
             maxValue += pad;
         }
 
-        const int columns = std::max(2, static_cast<int>(std::floor(plotRect.width())));
         const int peakCount = static_cast<int>(peak_values_.size());
-        QPolygonF polyline;
-        polyline.reserve(columns);
-        for (int x = 0; x < columns; ++x)
+        QVector<QPointF> points;
+        points.reserve(peakCount);
+        for (int i = 0; i < peakCount; ++i)
         {
-            const double ratio = columns == 1 ? 0.0 : static_cast<double>(x) / static_cast<double>(columns - 1);
-            const int valueIndex = std::clamp(static_cast<int>(std::llround(ratio * (peakCount - 1))), 0, peakCount - 1);
-            const float value = peak_values_.at(valueIndex);
+            const double ratio = peakCount == 1 ? 0.5 : static_cast<double>(i) / static_cast<double>(peakCount - 1);
+            const float value = peak_values_.at(i);
             const double normalized = (value - minValue) / std::max(1e-6f, maxValue - minValue);
-            polyline.append(QPointF(plotRect.left() + ratio * plotRect.width(),
-                                    plotRect.bottom() - normalized * plotRect.height()));
+            points.push_back(QPointF(plotRect.left() + ratio * plotRect.width(),
+                                     plotRect.bottom() - normalized * plotRect.height()));
         }
 
-        painter.setPen(QPen(QColor("#66d0ff"), 1.5));
-        painter.drawPolyline(polyline);
+        const QColor seriesColor("#66d0ff");
+        if (plot_mode_ == PlotMode::Polyline && points.size() >= 2)
+        {
+            painter.setPen(QPen(seriesColor, 1.5));
+            painter.drawPolyline(QPolygonF(points));
+        }
+        else
+        {
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(seriesColor);
+            for (const QPointF& point : points)
+            {
+                painter.drawEllipse(point, 2.5, 2.5);
+            }
+        }
 
         if (current_frame_index_ >= 0 && current_frame_index_ < peak_values_.size())
         {
-            const double ratio = peak_values_.size() == 1 ? 0.0
-                : static_cast<double>(current_frame_index_) / static_cast<double>(peak_values_.size() - 1);
-            const qreal px = plotRect.left() + ratio * plotRect.width();
-            const float currentValue = peak_values_.at(current_frame_index_);
-            const double normalized = (currentValue - minValue) / std::max(1e-6f, maxValue - minValue);
-            const qreal py = plotRect.bottom() - normalized * plotRect.height();
-
+            const QPointF currentPoint = points.at(current_frame_index_);
             painter.setPen(QPen(QColor("#ffb347"), 1, Qt::DashLine));
-            painter.drawLine(QPointF(px, plotRect.top()), QPointF(px, plotRect.bottom()));
+            painter.drawLine(QPointF(currentPoint.x(), plotRect.top()), QPointF(currentPoint.x(), plotRect.bottom()));
             painter.setPen(Qt::NoPen);
             painter.setBrush(QColor("#ffb347"));
-            painter.drawEllipse(QPointF(px, py), 4.0, 4.0);
+            painter.drawEllipse(currentPoint, 4.0, 4.0);
         }
 
         painter.setPen(QColor("#d7e4f2"));
@@ -302,6 +321,7 @@ protected:
 private:
     QVector<float> peak_values_;
     int current_frame_index_;
+    PlotMode plot_mode_;
 };
 
 SessionViewerWindow::SessionViewerWindow(QWidget *parent)
@@ -334,6 +354,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , waveform_plot_title_(nullptr)
     , waveform_plot_(nullptr)
     , waveform_peak_plot_title_(nullptr)
+    , waveform_peak_mode_btn_(nullptr)
     , waveform_peak_plot_(nullptr)
     , csv_group_(nullptr)
     , csv_info_label_(nullptr)
@@ -351,6 +372,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , waveform_peak_values_()
     , is_english_(false)
     , updating_frame_controls_(false)
+    , waveform_peak_scatter_mode_(true)
     , points_per_frame_(50000)
     , waveform_export_rate_hz_(10)
     , total_sensor_rows_(0)
@@ -485,11 +507,21 @@ void SessionViewerWindow::setupUi()
     waveform_plot_ = new SessionWavePlotWidget(this);
     waveformLayout->addWidget(waveform_plot_, 1);
 
+    auto *peakHeaderLayout = new QHBoxLayout();
+    peakHeaderLayout->setContentsMargins(0, 0, 0, 0);
+    peakHeaderLayout->setSpacing(8);
     waveform_peak_plot_title_ = new QLabel(this);
     waveform_peak_plot_title_->setObjectName("fieldLabel");
-    waveformLayout->addWidget(waveform_peak_plot_title_);
+    peakHeaderLayout->addWidget(waveform_peak_plot_title_, 1, Qt::AlignVCenter | Qt::AlignLeft);
+    waveform_peak_mode_btn_ = new QPushButton(this);
+    waveform_peak_mode_btn_->setFixedHeight(30);
+    peakHeaderLayout->addWidget(waveform_peak_mode_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
+    waveformLayout->addLayout(peakHeaderLayout);
 
     waveform_peak_plot_ = new SessionPeakPlotWidget(this);
+    static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPlotMode(
+        waveform_peak_scatter_mode_ ? SessionPeakPlotWidget::PlotMode::Scatter : SessionPeakPlotWidget::PlotMode::Polyline);
+    connect(waveform_peak_mode_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onTogglePeakPlotModeClicked);
     waveformLayout->addWidget(waveform_peak_plot_, 1);
     upperLayout->addWidget(waveform_group_, 1);
 
@@ -539,6 +571,7 @@ void SessionViewerWindow::updateTexts()
     waveform_group_->setTitle(is_english_ ? "Normalized Second Harmonic" : "归一化二次谐波");
     waveform_plot_title_->setText(is_english_ ? "Current Frame Waveform" : "当前帧波形");
     waveform_peak_plot_title_->setText(is_english_ ? "Peak Value of Each Frame" : "每帧峰值");
+    updatePeakPlotModeButtonText();
     csv_group_->setTitle(is_english_ ? "Sensors CSV" : "传感器 CSV");
     session_name_title_->setText(is_english_ ? "Session:" : "会话:");
     start_time_title_->setText(is_english_ ? "Start:" : "开始时间:");
@@ -560,6 +593,18 @@ void SessionViewerWindow::updateTexts()
         updateSummaryLabels();
         updateWaveformControls();
     }
+}
+
+void SessionViewerWindow::updatePeakPlotModeButtonText()
+{
+    if (!waveform_peak_mode_btn_)
+    {
+        return;
+    }
+
+    waveform_peak_mode_btn_->setText(waveform_peak_scatter_mode_
+        ? (is_english_ ? "Show Polyline" : "切换到折线图")
+        : (is_english_ ? "Show Scatter" : "切换到散点图"));
 }
 
 void SessionViewerWindow::setStatusText(const QString& text)
@@ -988,6 +1033,14 @@ void SessionViewerWindow::onFrameSpinChanged(int value)
     {
         loadWaveformFrame(static_cast<quint64>(value - 1));
     }
+}
+
+void SessionViewerWindow::onTogglePeakPlotModeClicked()
+{
+    waveform_peak_scatter_mode_ = !waveform_peak_scatter_mode_;
+    updatePeakPlotModeButtonText();
+    static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPlotMode(
+        waveform_peak_scatter_mode_ ? SessionPeakPlotWidget::PlotMode::Scatter : SessionPeakPlotWidget::PlotMode::Polyline);
 }
 
 bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)

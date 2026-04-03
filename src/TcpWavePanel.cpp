@@ -163,6 +163,118 @@ private:
     QVector<float> samples_;
 };
 
+class PeakTrendPlotWidget : public QWidget
+{
+public:
+    enum class PlotMode
+    {
+        Scatter,
+        Polyline
+    };
+
+    explicit PeakTrendPlotWidget(QWidget *parent = nullptr)
+        : QWidget(parent)
+        , plot_mode_(PlotMode::Scatter)
+    {
+        setMinimumHeight(120);
+        setMaximumHeight(150);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    }
+
+    void setPeakValues(const QVector<float>& values)
+    {
+        peak_values_ = values;
+        update();
+    }
+
+    void setPlotMode(PlotMode mode)
+    {
+        plot_mode_ = mode;
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        QWidget::paintEvent(event);
+
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.fillRect(rect(), QColor("#ffffff"));
+
+        const QRectF plotRect = rect().adjusted(42, 12, -10, -24);
+        painter.setPen(QPen(QColor("#e3e8ef"), 1));
+        for (int i = 0; i <= 10; ++i)
+        {
+            const qreal x = plotRect.left() + plotRect.width() * i / 10.0;
+            painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
+        }
+        for (int i = 0; i <= 6; ++i)
+        {
+            const qreal y = plotRect.top() + plotRect.height() * i / 6.0;
+            painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
+        }
+
+        painter.setPen(QPen(QColor("#cfd7e3"), 1));
+        painter.drawRect(plotRect);
+
+        if (peak_values_.isEmpty())
+        {
+            painter.setPen(QColor("#7a8899"));
+            painter.drawText(plotRect, Qt::AlignCenter, QObject::tr("No peak data"));
+            return;
+        }
+
+        auto [minIt, maxIt] = std::minmax_element(peak_values_.cbegin(), peak_values_.cend());
+        float minValue = *minIt;
+        float maxValue = *maxIt;
+        if (std::fabs(maxValue - minValue) < 1e-6f)
+        {
+            const float pad = std::max(1e-6f, std::fabs(maxValue) * 0.05f + 1e-6f);
+            minValue -= pad;
+            maxValue += pad;
+        }
+
+        QVector<QPointF> points;
+        points.reserve(peak_values_.size());
+        for (int i = 0; i < peak_values_.size(); ++i)
+        {
+            const double ratio = peak_values_.size() == 1 ? 0.5 : static_cast<double>(i) / static_cast<double>(peak_values_.size() - 1);
+            const float value = peak_values_.at(i);
+            const double normalized = (value - minValue) / std::max(1e-6f, maxValue - minValue);
+            points.push_back(QPointF(plotRect.left() + ratio * plotRect.width(),
+                                     plotRect.bottom() - normalized * plotRect.height()));
+        }
+
+        const QColor seriesColor("#ef8f35");
+        if (plot_mode_ == PlotMode::Polyline && points.size() >= 2)
+        {
+            painter.setPen(QPen(seriesColor, 1.5));
+            painter.drawPolyline(QPolygonF(points));
+        }
+        else
+        {
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(seriesColor);
+            for (const QPointF& point : points)
+            {
+                painter.drawEllipse(point, 2.5, 2.5);
+            }
+        }
+
+        painter.setPen(QColor("#5e6b78"));
+        painter.drawText(QRectF(4, plotRect.top() - 2, 36, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 3));
+        painter.drawText(QRectF(4, plotRect.center().y() - 8, 36, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number((maxValue + minValue) * 0.5, 'f', 3));
+        painter.drawText(QRectF(4, plotRect.bottom() - 8, 36, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(minValue, 'f', 3));
+        painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 4, plotRect.width(), 16), Qt::AlignRight | Qt::AlignVCenter,
+                         QString("%1 frames").arg(peak_values_.size()));
+    }
+
+private:
+    QVector<float> peak_values_;
+    PlotMode plot_mode_;
+};
+
 TcpWavePanel::TcpWavePanel(QWidget *parent)
     : QWidget(parent)
     , host_edit_(nullptr)
@@ -175,14 +287,19 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , hint_label_(nullptr)
     , wave1_title_label_(nullptr)
     , wave4_title_label_(nullptr)
+    , peak_title_label_(nullptr)
     , wave1_info_label_(nullptr)
     , wave4_info_label_(nullptr)
     , wave1_group_(nullptr)
     , wave4_group_(nullptr)
+    , peak_group_(nullptr)
     , wave1_plot_(nullptr)
     , wave4_plot_(nullptr)
+    , peak_plot_(nullptr)
+    , peak_mode_button_(nullptr)
     , control_layout_(nullptr)
     , socket_(nullptr)
+    , peak_plot_scatter_mode_(true)
     , parse_mode_(ParseMode::AutoDetect)
     , read_state_(ReadState::Wave1Header)
     , header_byte_order_(HeaderByteOrder::Unknown)
@@ -266,6 +383,9 @@ void TcpWavePanel::setupUi()
 
     mainLayout->addLayout(control_layout_);
 
+    auto *plotsColumnLayout = new QVBoxLayout();
+    plotsColumnLayout->setSpacing(4);
+
     auto *plotsLayout = new QHBoxLayout();
     plotsLayout->setSpacing(1);
 
@@ -308,8 +428,31 @@ void TcpWavePanel::setupUi()
     wave4_plot_ = new WavePlotWidget(QColor("#ef8f35"), this);
     wave4Layout->addWidget(wave4_plot_, 1);
     plotsLayout->addWidget(wave4_group_, 1);
+    plotsColumnLayout->addLayout(plotsLayout, 1);
 
-    mainLayout->addLayout(plotsLayout, 1);
+    peak_group_ = new QGroupBox(this);
+    peak_group_->setObjectName("sensorGroupBox");
+    auto *peakLayout = new QVBoxLayout(peak_group_);
+    peakLayout->setContentsMargins(2, 2, 2, 2);
+    auto *peakHeaderLayout = new QHBoxLayout();
+    peakHeaderLayout->setContentsMargins(0, 0, 0, 0);
+    peakHeaderLayout->setSpacing(8);
+    peak_title_label_ = new QLabel(this);
+    peak_title_label_->setObjectName("sectionTitleLabel");
+    peakHeaderLayout->addWidget(peak_title_label_, 1, Qt::AlignVCenter | Qt::AlignLeft);
+    peak_mode_button_ = new QPushButton(this);
+    peak_mode_button_->setObjectName("compactTcpButton");
+    peak_mode_button_->setFixedHeight(kTcpControlHeight);
+    peak_mode_button_->setMinimumWidth(98);
+    connect(peak_mode_button_, &QPushButton::clicked, this, &TcpWavePanel::onTogglePeakPlotModeClicked);
+    peakHeaderLayout->addWidget(peak_mode_button_, 0, Qt::AlignVCenter | Qt::AlignRight);
+    peakLayout->addLayout(peakHeaderLayout);
+    peak_plot_ = new PeakTrendPlotWidget(this);
+    peak_plot_->setPlotMode(peak_plot_scatter_mode_ ? PeakTrendPlotWidget::PlotMode::Scatter : PeakTrendPlotWidget::PlotMode::Polyline);
+    peakLayout->addWidget(peak_plot_, 1);
+    plotsColumnLayout->addWidget(peak_group_, 1);
+
+    mainLayout->addLayout(plotsColumnLayout, 1);
 }
 
 void TcpWavePanel::setEnglish(bool english)
@@ -326,6 +469,7 @@ void TcpWavePanel::setEnglish(bool english)
         : (english ? "Start" : "启动"));
     wave1_group_->setTitle(QString());
     wave4_group_->setTitle(QString());
+    peak_group_->setTitle(QString());
     if (wave1_title_label_)
     {
         wave1_title_label_->setText(english ? "Raw Signal" : "原始信号");
@@ -334,17 +478,34 @@ void TcpWavePanel::setEnglish(bool english)
     {
         wave4_title_label_->setText(english ? "Normalized Second Harmonic" : "归一化二次谐波");
     }
+    if (peak_title_label_)
+    {
+        peak_title_label_->setText(english ? "Peak Value Trend" : "峰值趋势");
+    }
     hint_label_->setText(english
         ? "This TCP sender is likely single-client. Do not open the LabVIEW VI receiver and VaporView on port 8888 at the same time."
         : "这个TCP发送端大概率只支持单客户端。不要同时打开 LabVIEW VI 接收端和 VaporView 去抢同一个 8888 连接。");
 
     wave1_info_label_->setText(english ? "waiting for raw-signal frame" : "等待原始信号数据帧");
     wave4_info_label_->setText(english ? "waiting for normalized second harmonic frame" : "等待归一化二次谐波数据帧");
+    updatePeakPlotModeButtonText();
 
     if (!socket_ || socket_->state() != QAbstractSocket::ConnectedState)
     {
         setStatusText(english ? "Idle" : "空闲");
     }
+}
+
+void TcpWavePanel::updatePeakPlotModeButtonText()
+{
+    if (!peak_mode_button_)
+    {
+        return;
+    }
+
+    peak_mode_button_->setText(peak_plot_scatter_mode_
+        ? (is_english_ ? "Show Polyline" : "切换到折线图")
+        : (is_english_ ? "Show Scatter" : "切换到散点图"));
 }
 
 void TcpWavePanel::attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox)
@@ -438,7 +599,12 @@ void TcpWavePanel::onToggleConnectionClicked()
     buffer_.clear();
     wave1_history_.clear();
     wave4_history_.clear();
+    peak_history_.clear();
     pending_wave1_.clear();
+    if (peak_plot_)
+    {
+        peak_plot_->setPeakValues({});
+    }
     resetParserState();
     parse_mode_ = ParseMode::AutoDetect;
     header_byte_order_ = HeaderByteOrder::Unknown;
@@ -448,6 +614,16 @@ void TcpWavePanel::onToggleConnectionClicked()
         .arg(host_edit_->text()).arg(port_spin_->value()));
     socket_->connectToHost(host_edit_->text(), static_cast<quint16>(port_spin_->value()));
     onSocketStateChanged();
+}
+
+void TcpWavePanel::onTogglePeakPlotModeClicked()
+{
+    peak_plot_scatter_mode_ = !peak_plot_scatter_mode_;
+    updatePeakPlotModeButtonText();
+    if (peak_plot_)
+    {
+        peak_plot_->setPlotMode(peak_plot_scatter_mode_ ? PeakTrendPlotWidget::PlotMode::Scatter : PeakTrendPlotWidget::PlotMode::Polyline);
+    }
 }
 
 void TcpWavePanel::onSocketConnected()
@@ -593,6 +769,12 @@ void TcpWavePanel::processBuffer()
             wave4_history_ = wave4;
             wave1_plot_->setSamples(wave1_history_);
             wave4_plot_->setSamples(wave4_history_);
+            const auto peakIt = std::max_element(wave4_history_.cbegin(), wave4_history_.cend());
+            peak_history_.push_back(peakIt == wave4_history_.cend() ? 0.0f : *peakIt);
+            if (peak_plot_)
+            {
+                peak_plot_->setPeakValues(peak_history_);
+            }
             ++frame_count_;
             emit normalizedSecondHarmonicFrameReady(
                 static_cast<quint64>(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()) * 1000ULL,

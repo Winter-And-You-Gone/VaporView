@@ -30,6 +30,7 @@ private slots:
     void onClearViewClicked();
     void onFrameSliderChanged(int value);
     void onFrameSpinChanged(int value);
+    void onTogglePeakPlotModeClicked();
 
 private:
     struct WaveformSegment
@@ -53,6 +54,7 @@ private:
     bool loadWaveformPeakSeries();
     bool loadWaveformFrame(quint64 frameIndex);
     void highlightClosestSensorRow(quint64 timestampUs);
+    void updatePeakPlotModeButtonText();
 
     QWidget *central_widget_;
     QLineEdit *session_path_edit_;
@@ -82,6 +84,7 @@ private:
     QLabel *waveform_plot_title_;
     QWidget *waveform_plot_;
     QLabel *waveform_peak_plot_title_;
+    QPushButton *waveform_peak_mode_btn_;
     QWidget *waveform_peak_plot_;
     QGroupBox *csv_group_;
     QLabel *csv_info_label_;
@@ -100,6 +103,7 @@ private:
     QVector<float> waveform_peak_values_;
     bool is_english_;
     bool updating_frame_controls_;
+    bool waveform_peak_scatter_mode_;
     int points_per_frame_;
     int waveform_export_rate_hz_;
     quint64 total_sensor_rows_;

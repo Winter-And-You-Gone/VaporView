@@ -12,6 +12,7 @@ class QSpinBox;
 class QTcpSocket;
 class QGridLayout;
 class WavePlotWidget;
+class PeakTrendPlotWidget;
 
 class TcpWavePanel : public QWidget
 {
@@ -67,6 +68,7 @@ private slots:
     void onSocketReadyRead();
     void onSocketStateChanged();
     void onSocketError();
+    void onTogglePeakPlotModeClicked();
 
 private:
     void setupUi();
@@ -74,6 +76,7 @@ private:
     void recreateSocket();
     void requestGracefulDisconnect();
     void setConnectedUiState(bool connected);
+    void updatePeakPlotModeButtonText();
     void setStatusText(const QString& text);
     void resetParserState();
     void processBuffer();
@@ -96,19 +99,25 @@ private:
     QLabel *hint_label_;
     QLabel *wave1_title_label_;
     QLabel *wave4_title_label_;
+    QLabel *peak_title_label_;
     QLabel *wave1_info_label_;
     QLabel *wave4_info_label_;
     QGroupBox *wave1_group_;
     QGroupBox *wave4_group_;
+    QGroupBox *peak_group_;
     WavePlotWidget *wave1_plot_;
     WavePlotWidget *wave4_plot_;
+    PeakTrendPlotWidget *peak_plot_;
+    QPushButton *peak_mode_button_;
     QGridLayout *control_layout_;
     QTcpSocket *socket_;
 
     QByteArray buffer_;
     QVector<float> wave1_history_;
     QVector<float> wave4_history_;
+    QVector<float> peak_history_;
     QVector<float> pending_wave1_;
+    bool peak_plot_scatter_mode_;
     ParseMode parse_mode_;
     ReadState read_state_;
     HeaderByteOrder header_byte_order_;
