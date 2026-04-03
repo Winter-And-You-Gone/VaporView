@@ -202,7 +202,7 @@ protected:
         painter.setRenderHint(QPainter::Antialiasing, true);
         painter.fillRect(rect(), QColor("#ffffff"));
 
-        const QRectF plotRect = rect().adjusted(42, 12, -10, -36);
+        const QRectF plotRect = rect().adjusted(36, 8, -6, -30);
         painter.setPen(QPen(QColor("#e3e8ef"), 1));
         for (int i = 0; i <= 10; ++i)
         {
@@ -434,10 +434,10 @@ void TcpWavePanel::setupUi()
     peak_group_->setMinimumHeight(198);
     peak_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::MinimumExpanding);
     auto *peakLayout = new QVBoxLayout(peak_group_);
-    peakLayout->setContentsMargins(2, 2, 2, 4);
+    peakLayout->setContentsMargins(1, 1, 1, 2);
     auto *peakHeaderLayout = new QHBoxLayout();
     peakHeaderLayout->setContentsMargins(0, 0, 0, 0);
-    peakHeaderLayout->setSpacing(8);
+    peakHeaderLayout->setSpacing(6);
     peak_title_label_ = new QLabel(this);
     peak_title_label_->setObjectName("sectionTitleLabel");
     peakHeaderLayout->addWidget(peak_title_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
