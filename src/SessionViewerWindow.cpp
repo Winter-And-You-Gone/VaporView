@@ -188,6 +188,122 @@ private:
     QVector<float> samples_;
 };
 
+class SessionPeakPlotWidget : public QWidget
+{
+public:
+    explicit SessionPeakPlotWidget(QWidget *parent = nullptr)
+        : QWidget(parent)
+        , current_frame_index_(-1)
+    {
+        setMinimumHeight(170);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    }
+
+    void setPeakValues(const QVector<float>& values)
+    {
+        peak_values_ = values;
+        if (current_frame_index_ >= peak_values_.size())
+        {
+            current_frame_index_ = -1;
+        }
+        update();
+    }
+
+    void setCurrentFrame(int frameIndex)
+    {
+        current_frame_index_ = frameIndex;
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        QWidget::paintEvent(event);
+
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.fillRect(rect(), QColor("#071126"));
+
+        const QRectF plotRect = rect().adjusted(48, 12, -10, -28);
+        painter.setPen(QPen(QColor("#173559"), 1));
+        for (int i = 0; i <= 10; ++i)
+        {
+            const qreal x = plotRect.left() + plotRect.width() * i / 10.0;
+            painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
+        }
+        for (int i = 0; i <= 6; ++i)
+        {
+            const qreal y = plotRect.top() + plotRect.height() * i / 6.0;
+            painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
+        }
+
+        painter.setPen(QPen(QColor("#5e7698"), 1));
+        painter.drawRect(plotRect);
+
+        if (peak_values_.isEmpty())
+        {
+            painter.setPen(QColor("#c0cede"));
+            painter.drawText(plotRect, Qt::AlignCenter, QObject::tr("No peak overview"));
+            return;
+        }
+
+        const auto minMax = std::minmax_element(peak_values_.cbegin(), peak_values_.cend());
+        float minValue = *minMax.first;
+        float maxValue = *minMax.second;
+        if (std::fabs(maxValue - minValue) < 1e-6f)
+        {
+            const float pad = std::max(1e-6f, std::fabs(maxValue) * 0.05f + 1e-6f);
+            minValue -= pad;
+            maxValue += pad;
+        }
+
+        const int columns = std::max(2, static_cast<int>(std::floor(plotRect.width())));
+        const int peakCount = static_cast<int>(peak_values_.size());
+        QPolygonF polyline;
+        polyline.reserve(columns);
+        for (int x = 0; x < columns; ++x)
+        {
+            const double ratio = columns == 1 ? 0.0 : static_cast<double>(x) / static_cast<double>(columns - 1);
+            const int valueIndex = std::clamp(static_cast<int>(std::llround(ratio * (peakCount - 1))), 0, peakCount - 1);
+            const float value = peak_values_.at(valueIndex);
+            const double normalized = (value - minValue) / std::max(1e-6f, maxValue - minValue);
+            polyline.append(QPointF(plotRect.left() + ratio * plotRect.width(),
+                                    plotRect.bottom() - normalized * plotRect.height()));
+        }
+
+        painter.setPen(QPen(QColor("#66d0ff"), 1.5));
+        painter.drawPolyline(polyline);
+
+        if (current_frame_index_ >= 0 && current_frame_index_ < peak_values_.size())
+        {
+            const double ratio = peak_values_.size() == 1 ? 0.0
+                : static_cast<double>(current_frame_index_) / static_cast<double>(peak_values_.size() - 1);
+            const qreal px = plotRect.left() + ratio * plotRect.width();
+            const float currentValue = peak_values_.at(current_frame_index_);
+            const double normalized = (currentValue - minValue) / std::max(1e-6f, maxValue - minValue);
+            const qreal py = plotRect.bottom() - normalized * plotRect.height();
+
+            painter.setPen(QPen(QColor("#ffb347"), 1, Qt::DashLine));
+            painter.drawLine(QPointF(px, plotRect.top()), QPointF(px, plotRect.bottom()));
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QColor("#ffb347"));
+            painter.drawEllipse(QPointF(px, py), 4.0, 4.0);
+        }
+
+        painter.setPen(QColor("#d7e4f2"));
+        painter.drawText(QRectF(4, plotRect.top() - 2, 40, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 4));
+        painter.drawText(QRectF(4, plotRect.center().y() - 8, 40, 16), Qt::AlignRight | Qt::AlignVCenter,
+                         QString::number((maxValue + minValue) * 0.5, 'f', 4));
+        painter.drawText(QRectF(4, plotRect.bottom() - 8, 40, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(minValue, 'f', 4));
+        painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 6, plotRect.width(), 16), Qt::AlignRight | Qt::AlignVCenter,
+                         QStringLiteral("%1 frames").arg(peak_values_.size()));
+    }
+
+private:
+    QVector<float> peak_values_;
+    int current_frame_index_;
+};
+
 SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     : QMainWindow(parent)
     , central_widget_(nullptr)
@@ -215,7 +331,10 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , frame_spin_(nullptr)
     , frame_total_label_(nullptr)
     , frame_info_label_(nullptr)
+    , waveform_plot_title_(nullptr)
     , waveform_plot_(nullptr)
+    , waveform_peak_plot_title_(nullptr)
+    , waveform_peak_plot_(nullptr)
     , csv_group_(nullptr)
     , csv_info_label_(nullptr)
     , csv_table_(nullptr)
@@ -229,6 +348,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , csv_headers_()
     , csv_timestamps_us_()
     , waveform_segments_()
+    , waveform_peak_values_()
     , is_english_(false)
     , updating_frame_controls_(false)
     , points_per_frame_(50000)
@@ -358,8 +478,19 @@ void SessionViewerWindow::setupUi()
 
     waveformLayout->addLayout(frameLayout);
 
+    waveform_plot_title_ = new QLabel(this);
+    waveform_plot_title_->setObjectName("fieldLabel");
+    waveformLayout->addWidget(waveform_plot_title_);
+
     waveform_plot_ = new SessionWavePlotWidget(this);
     waveformLayout->addWidget(waveform_plot_, 1);
+
+    waveform_peak_plot_title_ = new QLabel(this);
+    waveform_peak_plot_title_->setObjectName("fieldLabel");
+    waveformLayout->addWidget(waveform_peak_plot_title_);
+
+    waveform_peak_plot_ = new SessionPeakPlotWidget(this);
+    waveformLayout->addWidget(waveform_peak_plot_, 1);
     upperLayout->addWidget(waveform_group_, 1);
 
     summaryWaveSplitter->addWidget(upperWidget);
@@ -406,6 +537,8 @@ void SessionViewerWindow::updateTexts()
     clear_view_btn_->setText(is_english_ ? "Clear Page" : "清空页面");
     summary_group_->setTitle(is_english_ ? "Session Summary" : "会话概览");
     waveform_group_->setTitle(is_english_ ? "Normalized Second Harmonic" : "归一化二次谐波");
+    waveform_plot_title_->setText(is_english_ ? "Current Frame Waveform" : "当前帧波形");
+    waveform_peak_plot_title_->setText(is_english_ ? "Peak Value of Each Frame" : "每帧峰值");
     csv_group_->setTitle(is_english_ ? "Sensors CSV" : "传感器 CSV");
     session_name_title_->setText(is_english_ ? "Session:" : "会话:");
     start_time_title_->setText(is_english_ ? "Start:" : "开始时间:");
@@ -449,6 +582,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     csv_headers_.clear();
     csv_timestamps_us_.clear();
     waveform_segments_.clear();
+    waveform_peak_values_.clear();
     total_sensor_rows_ = 0;
     total_waveform_frames_ = 0;
     points_per_frame_ = 50000;
@@ -458,6 +592,8 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     csv_table_->setRowCount(0);
     csv_table_->setColumnCount(0);
     static_cast<SessionWavePlotWidget*>(waveform_plot_)->setSamples({});
+    static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPeakValues({});
+    static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setCurrentFrame(-1);
     frame_info_label_->setText(is_english_ ? "No waveform frame loaded" : "尚未加载波形帧");
     csv_info_label_->setText(is_english_ ? "No CSV loaded" : "尚未加载 CSV");
     updateSummaryLabels();
@@ -549,6 +685,10 @@ bool SessionViewerWindow::loadSessionDirectory(const QString& sessionDirectory)
         return false;
     }
     if (!loadWaveformSegments())
+    {
+        return false;
+    }
+    if (!loadWaveformPeakSeries())
     {
         return false;
     }
@@ -734,6 +874,49 @@ bool SessionViewerWindow::loadWaveformSegments()
     return true;
 }
 
+bool SessionViewerWindow::loadWaveformPeakSeries()
+{
+    waveform_peak_values_.clear();
+    static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPeakValues({});
+    static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setCurrentFrame(-1);
+
+    if (waveform_segments_.isEmpty() || points_per_frame_ <= 0)
+    {
+        return true;
+    }
+
+    const quint64 frameBytes = kWaveformTimestampBytes + static_cast<quint64>(points_per_frame_) * kFloatBytes;
+    QVector<float> frameSamples(points_per_frame_);
+    waveform_peak_values_.reserve(static_cast<int>(std::min<quint64>(total_waveform_frames_, static_cast<quint64>(std::numeric_limits<int>::max()))));
+
+    for (const WaveformSegment& segment : waveform_segments_)
+    {
+        QFile file(segment.filename);
+        if (!file.open(QIODevice::ReadOnly))
+        {
+            setStatusText(QString(is_english_ ? "Failed to scan waveform file: %1" : "扫描波形文件失败: %1").arg(segment.filename));
+            return false;
+        }
+
+        for (quint64 frame = 0; frame < segment.frame_count; ++frame)
+        {
+            const QByteArray block = file.read(static_cast<qint64>(frameBytes));
+            if (block.size() != static_cast<int>(frameBytes))
+            {
+                setStatusText(QString(is_english_ ? "Incomplete waveform frame in %1" : "%1 中的波形帧不完整").arg(segment.filename));
+                return false;
+            }
+
+            std::memcpy(frameSamples.data(), block.constData() + sizeof(quint64), static_cast<size_t>(points_per_frame_) * sizeof(float));
+            const auto peakIt = std::max_element(frameSamples.cbegin(), frameSamples.cend());
+            waveform_peak_values_.push_back(peakIt == frameSamples.cend() ? 0.0f : *peakIt);
+        }
+    }
+
+    static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPeakValues(waveform_peak_values_);
+    return true;
+}
+
 void SessionViewerWindow::updateSummaryLabels()
 {
     session_name_value_->setText(session_name_.isEmpty() ? QStringLiteral("---") : session_name_);
@@ -846,18 +1029,23 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
     QVector<float> samples(points_per_frame_);
     std::memcpy(samples.data(), block.constData() + sizeof(quint64), static_cast<size_t>(points_per_frame_) * sizeof(float));
     static_cast<SessionWavePlotWidget*>(waveform_plot_)->setSamples(samples);
+    static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setCurrentFrame(static_cast<int>(frameIndex));
 
     const auto minMax = std::minmax_element(samples.cbegin(), samples.cend());
+    const float peakValue = frameIndex < static_cast<quint64>(waveform_peak_values_.size())
+        ? waveform_peak_values_.at(static_cast<int>(frameIndex))
+        : *minMax.second;
     const QString frameTime = formatTimestampUs(timestampUs);
     frame_info_label_->setText(QString(is_english_
-        ? "Frame %1 / %2 | %3 | %4 Hz export | min=%5 max=%6 | %7"
-        : "第 %1 / %2 帧 | %3 | %4 Hz 导出 | min=%5 max=%6 | %7")
+        ? "Frame %1 / %2 | %3 | %4 Hz export | min=%5 max=%6 peak=%7 | %8"
+        : "第 %1 / %2 帧 | %3 | %4 Hz 导出 | min=%5 max=%6 峰值=%7 | %8")
         .arg(frameIndex + 1)
         .arg(total_waveform_frames_)
         .arg(frameTime)
         .arg(waveform_export_rate_hz_)
         .arg(QString::number(*minMax.first, 'f', 6))
         .arg(QString::number(*minMax.second, 'f', 6))
+        .arg(QString::number(peakValue, 'f', 6))
         .arg(QFileInfo(it->filename).fileName()));
 
     highlightClosestSensorRow(timestampUs);

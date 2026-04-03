@@ -50,6 +50,7 @@ private:
     bool loadSessionMetadata(const QString& sessionDirectory);
     bool loadSensorsCsv();
     bool loadWaveformSegments();
+    bool loadWaveformPeakSeries();
     bool loadWaveformFrame(quint64 frameIndex);
     void highlightClosestSensorRow(quint64 timestampUs);
 
@@ -78,7 +79,10 @@ private:
     QSpinBox *frame_spin_;
     QLabel *frame_total_label_;
     QLabel *frame_info_label_;
+    QLabel *waveform_plot_title_;
     QWidget *waveform_plot_;
+    QLabel *waveform_peak_plot_title_;
+    QWidget *waveform_peak_plot_;
     QGroupBox *csv_group_;
     QLabel *csv_info_label_;
     QTableWidget *csv_table_;
@@ -93,6 +97,7 @@ private:
     QStringList csv_headers_;
     QVector<quint64> csv_timestamps_us_;
     QVector<WaveformSegment> waveform_segments_;
+    QVector<float> waveform_peak_values_;
     bool is_english_;
     bool updating_frame_controls_;
     int points_per_frame_;
