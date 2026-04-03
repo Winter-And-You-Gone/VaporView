@@ -179,8 +179,8 @@ QComboBox {
     background-color: #ffffff;
     border: 1px solid #e0e0e0;
     border-radius: 6px;
-    padding: 3px 10px;
-    min-height: 28px;
+    padding: 4px 10px;
+    min-height: 30px;
     color: #333333;
     font-size: 14px;
 }
@@ -219,7 +219,7 @@ QComboBox QAbstractItemView {
 }
 
 QComboBox QAbstractItemView::item {
-    min-height: 28px;
+    min-height: 30px;
     padding: 4px 8px;
     border-radius: 2px;
 }
@@ -358,8 +358,8 @@ QPushButton:disabled {
 
 QPushButton#compactTcpButton {
     padding: 0px 14px;
-    min-height: 28px;
-    max-height: 28px;
+    min-height: 30px;
+    max-height: 30px;
     font-size: 14px;
 }
 
@@ -368,8 +368,8 @@ QLineEdit {
     background-color: #ffffff;
     border: 1px solid #e0e0e0;
     border-radius: 6px;
-    padding: 3px 10px;
-    min-height: 28px;
+    padding: 4px 10px;
+    min-height: 30px;
     color: #333333;
     font-size: 14px;
     selection-background-color: #e3f2fd;
@@ -394,10 +394,10 @@ QSpinBox {
     background-color: #ffffff;
     border: 1px solid #e0e0e0;
     border-radius: 6px;
-    padding: 3px 28px 3px 10px;
+    padding: 4px 28px 4px 10px;
     color: #333333;
     font-size: 14px;
-    min-height: 28px;
+    min-height: 30px;
 }
 
 QSpinBox:hover {

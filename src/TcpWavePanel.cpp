@@ -249,8 +249,8 @@ void TcpWavePanel::setupUi()
 
     connect_button_ = new QPushButton(this);
     connect_button_->setObjectName("compactTcpButton");
-    connect_button_->setMinimumHeight(28);
-    connect_button_->setMaximumHeight(28);
+    connect_button_->setMinimumHeight(30);
+    connect_button_->setMaximumHeight(30);
     connect(connect_button_, &QPushButton::clicked, this, &TcpWavePanel::onToggleConnectionClicked);
     control_layout_->addWidget(connect_button_, 0, 4, Qt::AlignVCenter | Qt::AlignLeft);
 

@@ -53,7 +53,7 @@ constexpr const char *kBaseMarginsLeftProperty = "_vv_base_margin_left";
 constexpr const char *kBaseMarginsTopProperty = "_vv_base_margin_top";
 constexpr const char *kBaseMarginsRightProperty = "_vv_base_margin_right";
 constexpr const char *kBaseMarginsBottomProperty = "_vv_base_margin_bottom";
-constexpr int kMainPageInputHeight = 28;
+constexpr int kMainPageInputHeight = 30;
 
 QString recordingTimestampUtc()
 {
@@ -1087,15 +1087,15 @@ void MainWindow::loadModernStyleSheet()
             "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 12px; padding: 0px 8px; background-color: #ffffff; color: #1976d2; }"
             "QLabel { color: #333333; background-color: transparent; border: none; }"
             "QLabel#sectionTitleLabel { color: #1976d2; font-size: 16px; font-weight: bold; }"
-            "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 3px 10px; min-height: 28px; color: #333333; font-size: 14px; }"
+            "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 10px; min-height: 30px; color: #333333; font-size: 14px; }"
             "QComboBox:hover { border-color: #bdbdbd; }"
             "QComboBox:focus { border-color: #1976d2; border-width: 2px; }"
             "QComboBox QAbstractItemView { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; selection-background-color: #e3f2fd; selection-color: #1976d2; padding: 4px; outline: none; }"
-            "QLineEdit { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 3px 10px; min-height: 28px; color: #333333; font-size: 14px; }"
+            "QLineEdit { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 10px; min-height: 30px; color: #333333; font-size: 14px; }"
             "QLineEdit:hover { border-color: #bdbdbd; }"
             "QLineEdit:focus { border-color: #1976d2; border-width: 2px; }"
             "QLineEdit:disabled { background-color: #f5f5f5; color: #bdbdbd; }"
-            "QSpinBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 3px 28px 3px 10px; min-height: 28px; color: #333333; font-size: 14px; }"
+            "QSpinBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 28px 4px 10px; min-height: 30px; color: #333333; font-size: 14px; }"
             "QSpinBox:hover { border-color: #bdbdbd; }"
             "QSpinBox:focus { border-color: #1976d2; border-width: 2px; }"
             "QSpinBox:disabled { background-color: #f5f5f5; color: #bdbdbd; }"
@@ -1120,6 +1120,7 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton:hover { background-color: #1565c0; }"
             "QPushButton:pressed { background-color: #0d47a1; }"
             "QPushButton:disabled { background-color: #bdbdbd; color: #ffffff; }"
+            "QPushButton#compactTcpButton { padding: 0px 14px; min-height: 30px; max-height: 30px; font-size: 14px; }"
             "QToolTip { background-color: #424242; color: #ffffff; border: none; border-radius: 4px; padding: 6px 10px; font-size: 13px; }";
     }
 
@@ -1585,7 +1586,7 @@ void MainWindow::setupConfigPanel()
     auto createPortRow = [this, config_layout, &baudRates, &ports, &createRateCombo](QLabel*& lbl, QComboBox*& portCombo, QComboBox*& baudCombo, QLabel*& rateLbl, QComboBox*& rateCombo, const QString& defaultPort, const QString& defaultBaud, int row, int maxRate = 500) {
         lbl = new QLabel(this);
         lbl->setObjectName("fieldLabel");
-        lbl->setFixedHeight(28);
+        lbl->setFixedHeight(kMainPageInputHeight);
         lbl->setFixedWidth(80);
         config_layout->addWidget(lbl, row, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
@@ -1621,7 +1622,7 @@ void MainWindow::setupConfigPanel()
 
         rateLbl = new QLabel(this);
         rateLbl->setObjectName("fieldLabel");
-        rateLbl->setFixedHeight(28);
+        rateLbl->setFixedHeight(kMainPageInputHeight);
         config_layout->addWidget(rateLbl, row, 3, Qt::AlignVCenter | Qt::AlignRight);
 
         rateCombo = createRateCombo(maxRate);
@@ -1630,12 +1631,12 @@ void MainWindow::setupConfigPanel()
 
     config_inline_title_lbl_ = new QLabel(this);
     config_inline_title_lbl_->setObjectName("sectionTitleLabel");
-    config_inline_title_lbl_->setFixedHeight(28);
+    config_inline_title_lbl_->setFixedHeight(kMainPageInputHeight);
     config_layout->addWidget(config_inline_title_lbl_, 0, 0, 1, 3, Qt::AlignVCenter | Qt::AlignLeft);
 
     global_rate_lbl_ = new QLabel(this);
     global_rate_lbl_->setObjectName("fieldLabel");
-    global_rate_lbl_->setFixedHeight(28);
+    global_rate_lbl_->setFixedHeight(kMainPageInputHeight);
     config_layout->addWidget(global_rate_lbl_, 0, 3, Qt::AlignVCenter | Qt::AlignRight);
 
     global_rate_combo_ = createRateCombo();
@@ -1751,7 +1752,7 @@ void MainWindow::setupDataPanels()
 
     waveform_split_lbl_ = new QLabel(this);
     waveform_split_lbl_->setObjectName("fieldLabel");
-    waveform_split_lbl_->setFixedHeight(28);
+    waveform_split_lbl_->setFixedHeight(kMainPageInputHeight);
 
     waveform_split_spin_ = new QSpinBox(this);
     waveform_split_spin_->setRange(1, 5);
