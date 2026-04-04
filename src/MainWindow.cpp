@@ -885,6 +885,7 @@ MainWindow::MainWindow(QWidget *parent)
     , log_text_edit_(nullptr)
     , status_label_(nullptr)
     , recording_status_label_(nullptr)
+    , auto_detect_ports_btn_(nullptr)
     , gnss_port_combo_(nullptr)
     , imu_port_combo_(nullptr)
     , ptb_port_combo_(nullptr)
@@ -959,6 +960,7 @@ MainWindow::MainWindow(QWidget *parent)
     , is_english_(false)
     , has_inline_progress_log_(false)
     , connection_attempt_in_progress_(false)
+    , port_detection_in_progress_(false)
     , is_connected_(false)
     , cancel_connection_requested_(false)
     , recording_thread_running_(false)
@@ -1042,6 +1044,10 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow()
 {
     cancel_connection_requested_.store(true);
+    if (port_detection_thread_.joinable())
+    {
+        port_detection_thread_.join();
+    }
     if (connection_thread_.joinable())
     {
         connection_thread_.join();
@@ -1632,7 +1638,13 @@ void MainWindow::setupConfigPanel()
     config_inline_title_lbl_ = new QLabel(this);
     config_inline_title_lbl_->setObjectName("sectionTitleLabel");
     config_inline_title_lbl_->setFixedHeight(kMainPageInputHeight);
-    config_layout->addWidget(config_inline_title_lbl_, 0, 0, 1, 3, Qt::AlignVCenter | Qt::AlignLeft);
+    config_layout->addWidget(config_inline_title_lbl_, 0, 0, Qt::AlignVCenter | Qt::AlignLeft);
+
+    auto_detect_ports_btn_ = new QPushButton(this);
+    auto_detect_ports_btn_->setFixedHeight(kMainPageInputHeight);
+    auto_detect_ports_btn_->setMinimumWidth(120);
+    connect(auto_detect_ports_btn_, &QPushButton::clicked, this, &MainWindow::onAutoDetectPortsClicked);
+    config_layout->addWidget(auto_detect_ports_btn_, 0, 1, 1, 2, Qt::AlignVCenter | Qt::AlignLeft);
 
     global_rate_lbl_ = new QLabel(this);
     global_rate_lbl_->setObjectName("fieldLabel");
@@ -1859,6 +1871,13 @@ void MainWindow::setEnglish(bool english)
     if (config_inline_title_lbl_)
     {
         config_inline_title_lbl_->setText(english ? "Serial Port Configuration" : "串口配置");
+    }
+    if (auto_detect_ports_btn_)
+    {
+        auto_detect_ports_btn_->setText(english ? "Auto Detect Ports" : "自动识别串口");
+        auto_detect_ports_btn_->setToolTip(english
+            ? "Probe available serial ports and automatically assign detected devices."
+            : "扫描可用串口，并将识别出的设备自动填入对应端口。");
     }
     if (data_inline_title_lbl_)
     {
@@ -2993,9 +3012,10 @@ void MainWindow::updateRecordingActionStates()
     const bool recordingSourceAvailable = is_connected_ || tcpConnected;
     const bool sessionOpen = sensors_file_ && sensors_file_->isOpen();
     const bool recordingActive = sessionOpen && !recording_paused_ && recording_thread_running_.load();
-    const bool canStart = recordingSourceAvailable && !connection_attempt_in_progress_ && (!sessionOpen || recording_paused_);
-    const bool canPause = !connection_attempt_in_progress_ && recordingActive;
-    const bool canStop = sessionOpen && !connection_attempt_in_progress_;
+    const bool uiBusy = connection_attempt_in_progress_ || port_detection_in_progress_;
+    const bool canStart = recordingSourceAvailable && !uiBusy && (!sessionOpen || recording_paused_);
+    const bool canPause = !uiBusy && recordingActive;
+    const bool canStop = sessionOpen && !uiBusy;
 
     if (start_recording_btn_)
     {
@@ -3014,12 +3034,16 @@ void MainWindow::updateRecordingActionStates()
 void MainWindow::updateConnectionStatus(bool connected)
 {
     is_connected_ = connected;
-    const bool inputsEnabled = !connected && !connection_attempt_in_progress_;
+    const bool inputsEnabled = !connected && !connection_attempt_in_progress_ && !port_detection_in_progress_;
 
     connect_btn_->setEnabled(inputsEnabled);
     cancel_connect_btn_->setEnabled(connection_attempt_in_progress_);
     disconnect_btn_->setEnabled(connected && !connection_attempt_in_progress_);
     refresh_ports_btn_->setEnabled(inputsEnabled);
+    if (auto_detect_ports_btn_)
+    {
+        auto_detect_ports_btn_->setEnabled(inputsEnabled);
+    }
 
     gnss_port_combo_->setEnabled(inputsEnabled);
     imu_port_combo_->setEnabled(inputsEnabled);
@@ -3032,7 +3056,12 @@ void MainWindow::updateConnectionStatus(bool connected)
     hmp_baud_combo_->setEnabled(inputsEnabled);
     lidar_baud_combo_->setEnabled(inputsEnabled);
 
-    if (connection_attempt_in_progress_)
+    if (port_detection_in_progress_)
+    {
+        status_label_->setText(is_english_ ? "Detecting Ports..." : "正在识别串口...");
+        status_label_->setProperty("status", "connecting");
+    }
+    else if (connection_attempt_in_progress_)
     {
         status_label_->setText(is_english_ ? "Connecting..." : "正在连接...");
         status_label_->setProperty("status", "connecting");
@@ -3147,6 +3176,194 @@ void MainWindow::onRefreshPortsClicked()
     log(QString(is_english_ ? "Ports refreshed: %1 serial ports"
                             : "端口已刷新: %1 个串口")
             .arg(ports.size()));
+}
+
+void MainWindow::onAutoDetectPortsClicked()
+{
+    if (is_connected_ || connection_attempt_in_progress_ || port_detection_in_progress_)
+    {
+        return;
+    }
+
+    if (port_detection_thread_.joinable())
+    {
+        port_detection_thread_.join();
+    }
+
+    onRefreshPortsClicked();
+    port_detection_in_progress_ = true;
+    updateConnectionStatus(is_connected_);
+    log(is_english_ ? "Starting automatic serial-port detection..." : "开始自动识别串口...");
+
+    port_detection_thread_ = std::thread([this]() {
+        struct ProbeSpec
+        {
+            QString key;
+            QString label;
+            QString baud_text;
+            std::function<bool(const QString&)> probe;
+        };
+
+        struct DetectionResult
+        {
+            QString key;
+            QString port_name;
+            QString baud_text;
+        };
+
+        const bool english = is_english_;
+        auto postLog = [this](const QString& message) {
+            QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
+        };
+        auto finishOnUi = [this](QVector<DetectionResult> detections) {
+            QMetaObject::invokeMethod(this, [this, detections = std::move(detections)]() {
+                const QString selectText = is_english_ ? "-- Select --" : "-- 选择 --";
+                auto applySelection = [&selectText](QComboBox* combo, const QString& value) {
+                    if (!combo)
+                    {
+                        return;
+                    }
+                    const int idx = combo->findText(value);
+                    if (idx >= 0)
+                    {
+                        combo->setCurrentIndex(idx);
+                    }
+                    else if (!value.isEmpty() && value != selectText)
+                    {
+                        combo->setEditText(value);
+                    }
+                };
+
+                for (const DetectionResult& detection : detections)
+                {
+                    if (detection.key == "gnss")
+                    {
+                        applySelection(gnss_port_combo_, detection.port_name);
+                        gnss_baud_combo_->setCurrentText(detection.baud_text);
+                    }
+                    else if (detection.key == "imu")
+                    {
+                        applySelection(imu_port_combo_, detection.port_name);
+                        imu_baud_combo_->setCurrentText(detection.baud_text);
+                    }
+                    else if (detection.key == "ptb")
+                    {
+                        applySelection(ptb_port_combo_, detection.port_name);
+                        ptb_baud_combo_->setCurrentText(detection.baud_text);
+                    }
+                    else if (detection.key == "hmp")
+                    {
+                        applySelection(hmp_port_combo_, detection.port_name);
+                        hmp_baud_combo_->setCurrentText(detection.baud_text);
+                    }
+                    else if (detection.key == "lidar")
+                    {
+                        applySelection(lidar_port_combo_, detection.port_name);
+                        lidar_baud_combo_->setCurrentText(detection.baud_text);
+                    }
+                }
+
+                port_detection_in_progress_ = false;
+                updateConnectionStatus(is_connected_);
+            }, Qt::QueuedConnection);
+        };
+
+        auto probeCollector = [](const QString& port_name, auto&& collector, const VaporView::SerialConfig& config) {
+            if (!collector->start(port_name.toStdString(), config))
+            {
+                return false;
+            }
+
+            const bool responded = collector->checkDeviceResponse();
+            collector->stop();
+            return responded;
+        };
+
+        QVector<ProbeSpec> probe_specs = {
+            {"gnss", "GNSS", "115200", [probeCollector](const QString& port_name) {
+                auto collector = std::make_unique<VaporView::GnssCollector>();
+                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(115200));
+            }},
+            {"imu", "IMU", "115200", [probeCollector](const QString& port_name) {
+                auto collector = std::make_unique<VaporView::ImuCollector>();
+                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(115200));
+            }},
+            {"lidar", "TF03", "115200", [probeCollector](const QString& port_name) {
+                auto collector = std::make_unique<VaporView::LidarCollector>();
+                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(115200));
+            }},
+            {"ptb", "PTB210", "9600", [probeCollector](const QString& port_name) {
+                auto collector = std::make_unique<VaporView::PtbCollector>();
+                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::E71(9600));
+            }},
+            {"hmp", "HMP3", "19200", [probeCollector](const QString& port_name) {
+                auto collector = std::make_unique<VaporView::HmpCollector>();
+                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N82(19200));
+            }},
+        };
+
+        QStringList port_names = getAvailablePorts();
+        if (port_names.isEmpty())
+        {
+            postLog(english ? "Auto detect stopped: no serial ports found." : "自动识别结束：当前没有发现可用串口。");
+            finishOnUi({});
+            return;
+        }
+
+        QVector<DetectionResult> detections;
+        postLog(QString(english ? "Auto detect: probing %1 serial ports..." : "自动识别：开始探测 %1 个串口...")
+                    .arg(port_names.size()));
+
+        for (const QString& port_name : port_names)
+        {
+            bool matched = false;
+
+            for (const ProbeSpec& spec : probe_specs)
+            {
+                const bool already_detected = std::any_of(detections.cbegin(), detections.cend(),
+                    [&spec](const DetectionResult& result) { return result.key == spec.key; });
+                if (already_detected)
+                {
+                    continue;
+                }
+
+                postLog(QString(english ? "[Auto Detect] Probing %1 on %2 @ %3..." : "[自动识别] 正在探测 %1: %2 @ %3 ...")
+                            .arg(spec.label, port_name, spec.baud_text));
+
+                const bool responded = spec.probe(port_name);
+                if (!responded)
+                {
+                    continue;
+                }
+
+                detections.push_back({spec.key, port_name, spec.baud_text});
+                postLog(QString(english ? "[Auto Detect] Identified %1 on %2 @ %3" : "[自动识别] 已识别 %1: %2 @ %3")
+                            .arg(spec.label, port_name, spec.baud_text));
+                matched = true;
+                break;
+            }
+
+            if (!matched)
+            {
+                postLog(QString(english ? "[Auto Detect] No known device signature found on %1" : "[自动识别] 未在 %1 上识别到已知设备")
+                            .arg(port_name));
+            }
+        }
+
+        for (const ProbeSpec& spec : probe_specs)
+        {
+            const bool found = std::any_of(detections.cbegin(), detections.cend(),
+                [&spec](const DetectionResult& result) { return result.key == spec.key; });
+            if (!found)
+            {
+                postLog(QString(english ? "[Auto Detect] %1 not found" : "[自动识别] 未找到 %1").arg(spec.label));
+            }
+        }
+
+        postLog(QString(english ? "Auto detect finished: identified %1 device(s)." : "自动识别完成：共识别出 %1 个设备。")
+                    .arg(detections.size()));
+        finishOnUi(std::move(detections));
+    });
 }
 
 void MainWindow::onConnectClicked()
@@ -3533,4 +3750,3 @@ void MainWindow::onRtkConfigClicked()
     rtk_config_dialog_->raise();
     rtk_config_dialog_->activateWindow();
 }
-

@@ -245,6 +245,7 @@ private slots:
     void onRefreshTimer();
     void onClearLogClicked();
     void onRefreshPortsClicked();
+    void onAutoDetectPortsClicked();
     void onChooseRecordingDirectoryClicked();
     void onToggleFullScreen();
     void onSwitchLanguage();
@@ -333,6 +334,7 @@ private:
     QTextEdit *log_text_edit_;
     QLabel *status_label_;
     QLabel *recording_status_label_;
+    QPushButton *auto_detect_ports_btn_;
 
     QComboBox *gnss_port_combo_;
     QComboBox *imu_port_combo_;
@@ -422,9 +424,11 @@ private:
     bool is_english_;
     bool has_inline_progress_log_;
     bool connection_attempt_in_progress_;
+    bool port_detection_in_progress_;
     bool is_connected_;
     std::atomic<bool> cancel_connection_requested_;
     std::thread connection_thread_;
+    std::thread port_detection_thread_;
     std::thread recording_thread_;
     std::atomic<bool> recording_thread_running_;
     std::thread waveform_writer_thread_;
