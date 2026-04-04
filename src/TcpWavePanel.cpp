@@ -99,7 +99,35 @@ protected:
         painter.setRenderHint(QPainter::Antialiasing, true);
         painter.fillRect(rect(), QColor("#ffffff"));
 
-        const QRectF plotRect = rect().adjusted(42, 12, -10, -24);
+        if (samples_.isEmpty())
+        {
+            const QRectF emptyPlotRect = rect().adjusted(18, 8, -2, -18);
+            painter.setPen(QPen(QColor("#cfd7e3"), 1));
+            painter.drawRect(emptyPlotRect);
+            painter.setPen(QColor("#7a8899"));
+            painter.drawText(emptyPlotRect, Qt::AlignCenter, tr("No data"));
+            return;
+        }
+
+        auto [minIt, maxIt] = std::minmax_element(samples_.cbegin(), samples_.cend());
+        float minValue = *minIt;
+        float maxValue = *maxIt;
+        if (std::fabs(maxValue - minValue) < 1e-6f)
+        {
+            const float pad = std::max(1e-6f, std::fabs(maxValue) * 0.05f + 1e-6f);
+            minValue -= pad;
+            maxValue += pad;
+        }
+
+        const QString maxLabel = QString::number(maxValue, 'f', 3);
+        const QString midLabel = QString::number((maxValue + minValue) * 0.5, 'f', 3);
+        const QString minLabel = QString::number(minValue, 'f', 3);
+        const QFontMetrics fm = painter.fontMetrics();
+        const int labelWidth = std::max({fm.horizontalAdvance(maxLabel), fm.horizontalAdvance(midLabel), fm.horizontalAdvance(minLabel)});
+        const int leftMargin = std::max(18, labelWidth + 4);
+        const int bottomMargin = fm.height() + 2;
+        const QRectF plotRect = rect().adjusted(leftMargin, 8, -2, -bottomMargin);
+
         painter.setPen(QPen(QColor("#e3e8ef"), 1));
         for (int i = 0; i <= 10; ++i)
         {
@@ -114,23 +142,6 @@ protected:
 
         painter.setPen(QPen(QColor("#cfd7e3"), 1));
         painter.drawRect(plotRect);
-
-        if (samples_.isEmpty())
-        {
-            painter.setPen(QColor("#7a8899"));
-            painter.drawText(plotRect, Qt::AlignCenter, tr("No data"));
-            return;
-        }
-
-        auto [minIt, maxIt] = std::minmax_element(samples_.cbegin(), samples_.cend());
-        float minValue = *minIt;
-        float maxValue = *maxIt;
-        if (std::fabs(maxValue - minValue) < 1e-6f)
-        {
-            const float pad = std::max(1e-6f, std::fabs(maxValue) * 0.05f + 1e-6f);
-            minValue -= pad;
-            maxValue += pad;
-        }
 
         const int columns = std::max(2, static_cast<int>(std::floor(plotRect.width())));
         QPolygonF polyline;
@@ -151,10 +162,10 @@ protected:
         painter.drawPolyline(polyline);
 
         painter.setPen(QColor("#5e6b78"));
-        painter.drawText(QRectF(4, plotRect.top() - 2, 36, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 3));
-        painter.drawText(QRectF(4, plotRect.center().y() - 8, 36, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number((maxValue + minValue) * 0.5, 'f', 3));
-        painter.drawText(QRectF(4, plotRect.bottom() - 8, 36, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(minValue, 'f', 3));
-        painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 4, plotRect.width(), 16), Qt::AlignRight | Qt::AlignVCenter,
+        painter.drawText(QRectF(2, plotRect.top() - 2, leftMargin - 4, fm.height()), Qt::AlignRight | Qt::AlignVCenter, maxLabel);
+        painter.drawText(QRectF(2, plotRect.center().y() - fm.height() * 0.5, leftMargin - 4, fm.height()), Qt::AlignRight | Qt::AlignVCenter, midLabel);
+        painter.drawText(QRectF(2, plotRect.bottom() - fm.height() + 2, leftMargin - 4, fm.height()), Qt::AlignRight | Qt::AlignVCenter, minLabel);
+        painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 2, plotRect.width(), fm.height()), Qt::AlignRight | Qt::AlignVCenter,
                          QString("%1 samples").arg(sampleCount));
     }
 
