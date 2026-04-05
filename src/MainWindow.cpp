@@ -54,6 +54,7 @@ constexpr const char *kBaseMarginsTopProperty = "_vv_base_margin_top";
 constexpr const char *kBaseMarginsRightProperty = "_vv_base_margin_right";
 constexpr const char *kBaseMarginsBottomProperty = "_vv_base_margin_bottom";
 constexpr int kMainPageInputHeight = 30;
+constexpr int kMainPageButtonHeight = 38;
 
 QString recordingTimestampUtc()
 {
@@ -1126,7 +1127,8 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton:hover { background-color: #1565c0; }"
             "QPushButton:pressed { background-color: #0d47a1; }"
             "QPushButton:disabled { background-color: #bdbdbd; color: #ffffff; }"
-            "QPushButton#compactTcpButton { padding: 0px 14px; min-height: 30px; max-height: 30px; font-size: 14px; }"
+            "QPushButton#compactTcpButton { padding: 0px 14px; min-height: 38px; max-height: 38px; font-size: 14px; }"
+            "QPushButton#compactTcpStartButton { padding: 0px 14px; min-height: 38px; max-height: 38px; font-size: 14px; }"
             "QToolTip { background-color: #424242; color: #ffffff; border: none; border-radius: 4px; padding: 6px 10px; font-size: 13px; }";
     }
 
@@ -1641,7 +1643,7 @@ void MainWindow::setupConfigPanel()
     config_layout->addWidget(config_inline_title_lbl_, 0, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
     auto_detect_ports_btn_ = new QPushButton(this);
-    auto_detect_ports_btn_->setFixedHeight(kMainPageInputHeight);
+    auto_detect_ports_btn_->setFixedHeight(kMainPageButtonHeight);
     auto_detect_ports_btn_->setMinimumWidth(120);
     connect(auto_detect_ports_btn_, &QPushButton::clicked, this, &MainWindow::onAutoDetectPortsClicked);
     config_layout->addWidget(auto_detect_ports_btn_, 0, 1, 1, 2, Qt::AlignVCenter | Qt::AlignLeft);

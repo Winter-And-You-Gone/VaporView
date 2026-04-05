@@ -358,15 +358,15 @@ QPushButton:disabled {
 
 QPushButton#compactTcpButton {
     padding: 0px 14px;
-    min-height: 30px;
-    max-height: 30px;
+    min-height: 38px;
+    max-height: 38px;
     font-size: 14px;
 }
 
 QPushButton#compactTcpStartButton {
     padding: 0px 14px;
-    min-height: 37px;
-    max-height: 37px;
+    min-height: 38px;
+    max-height: 38px;
     font-size: 14px;
 }
 

@@ -28,7 +28,7 @@ constexpr int kFloatSize = 4;
 constexpr int kMaxPayloadBytes = 16 * 1024 * 1024;
 constexpr int kPreferredPayloadBytes = 200000;
 constexpr int kTcpControlHeight = 30;
-constexpr int kTcpStartButtonHeight = kTcpControlHeight + 7;
+constexpr int kTcpButtonHeight = 38;
 
 QString hexPreview(const QByteArray& data, int limit = 12)
 {
@@ -393,7 +393,7 @@ void TcpWavePanel::setupUi()
 
     connect_button_ = new QPushButton(this);
     connect_button_->setObjectName("compactTcpStartButton");
-    connect_button_->setFixedHeight(kTcpStartButtonHeight);
+    connect_button_->setFixedHeight(kTcpButtonHeight);
     connect(connect_button_, &QPushButton::clicked, this, &TcpWavePanel::onToggleConnectionClicked);
     control_layout_->addWidget(connect_button_, 0, 4, Qt::AlignVCenter | Qt::AlignLeft);
 
@@ -466,13 +466,13 @@ void TcpWavePanel::setupUi()
     peakHeaderLayout->addWidget(peak_title_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     peak_mode_button_ = new QPushButton(this);
     peak_mode_button_->setObjectName("compactTcpButton");
-    peak_mode_button_->setFixedHeight(kTcpControlHeight);
+    peak_mode_button_->setFixedHeight(kTcpButtonHeight);
     peak_mode_button_->setMinimumWidth(98);
     connect(peak_mode_button_, &QPushButton::clicked, this, &TcpWavePanel::onTogglePeakPlotModeClicked);
     peakHeaderLayout->addWidget(peak_mode_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     peak_clear_button_ = new QPushButton(this);
     peak_clear_button_->setObjectName("compactTcpButton");
-    peak_clear_button_->setFixedHeight(kTcpControlHeight);
+    peak_clear_button_->setFixedHeight(kTcpButtonHeight);
     peak_clear_button_->setMinimumWidth(72);
     connect(peak_clear_button_, &QPushButton::clicked, this, &TcpWavePanel::onClearPeakPlotClicked);
     peakHeaderLayout->addWidget(peak_clear_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);

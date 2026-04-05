@@ -646,7 +646,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
         const QFontMetrics metrics(button->font());
         const int textWidth = metrics.horizontalAdvance(button->text());
         const int targetWidth = std::max(scalePixels(baseWidth), textWidth + scalePixels(28));
-        const int targetHeight = std::max(scalePixels(28), metrics.height() + scalePixels(8));
+        const int targetHeight = std::max(scalePixels(38), metrics.height() + scalePixels(8));
         button->setFixedWidth(targetWidth);
         button->setFixedHeight(targetHeight);
         button->setStyleSheet(QString(
