@@ -34,6 +34,7 @@ constexpr int kGgaPollIntervalMs = 50;
 constexpr int kGgaReconnectIntervalMs = 1500;
 constexpr int kGgaStaleTimeoutMs = 1500;
 constexpr int kGgaMaxVisibleLines = 200;
+constexpr int kRtkLogVisibleLines = 5;
 constexpr int kRtkHttpTimeoutMs = 5000;
 const QRegularExpression kGgaSentencePattern("^\\$..GGA,");
 
@@ -783,10 +784,12 @@ void RtkConfigDialog::applyScaledUiMetrics()
     applyButtonWidth(clear_log_btn_, 96);
 
     log_text_edit_->setMinimumWidth(scalePixels(200));
-    const int logTextHeight = scalePixels(240);
+    const QFontMetrics logMetrics(log_text_edit_->font());
+    const int logDocumentMargin = scalePixels(10);
+    const int logTextHeight = logMetrics.lineSpacing() * kRtkLogVisibleLines + logDocumentMargin * 2;
     log_text_edit_->setFixedHeight(logTextHeight);
     log_text_edit_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    log_text_edit_->document()->setDocumentMargin(scalePixels(10));
+    log_text_edit_->document()->setDocumentMargin(logDocumentMargin);
     const int logTextBottomGap = scalePixels(8);
     if (log_text_container_)
     {
