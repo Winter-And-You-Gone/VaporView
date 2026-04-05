@@ -124,7 +124,7 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.fillRect(rect(), QColor("#050805"));
+        painter.fillRect(rect(), QColor("#000000"));
 
         const QRectF plotRect = rect().adjusted(48, 12, -10, -30);
         painter.setPen(QPen(QColor("#1b6416"), 1));
@@ -236,7 +236,7 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.fillRect(rect(), QColor("#071126"));
+        painter.fillRect(rect(), QColor("#000000"));
 
         const QRectF plotRect = rect().adjusted(48, 12, -10, -28);
         painter.setPen(QPen(QColor("#173559"), 1));

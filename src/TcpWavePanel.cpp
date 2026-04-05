@@ -28,6 +28,7 @@ constexpr int kFloatSize = 4;
 constexpr int kMaxPayloadBytes = 16 * 1024 * 1024;
 constexpr int kPreferredPayloadBytes = 200000;
 constexpr int kTcpControlHeight = 30;
+constexpr int kTcpStartButtonHeight = kTcpControlHeight + 4;
 
 QString hexPreview(const QByteArray& data, int limit = 12)
 {
@@ -391,8 +392,8 @@ void TcpWavePanel::setupUi()
     control_layout_->addLayout(portRowLayout, 0, 2, Qt::AlignVCenter | Qt::AlignLeft);
 
     connect_button_ = new QPushButton(this);
-    connect_button_->setObjectName("compactTcpButton");
-    connect_button_->setFixedHeight(kTcpControlHeight);
+    connect_button_->setObjectName("compactTcpStartButton");
+    connect_button_->setFixedHeight(kTcpStartButtonHeight);
     connect(connect_button_, &QPushButton::clicked, this, &TcpWavePanel::onToggleConnectionClicked);
     control_layout_->addWidget(connect_button_, 0, 4, Qt::AlignVCenter | Qt::AlignLeft);
 

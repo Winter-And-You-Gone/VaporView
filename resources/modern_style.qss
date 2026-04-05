@@ -363,6 +363,13 @@ QPushButton#compactTcpButton {
     font-size: 14px;
 }
 
+QPushButton#compactTcpStartButton {
+    padding: 0px 14px;
+    min-height: 34px;
+    max-height: 34px;
+    font-size: 14px;
+}
+
 /* 输入框 */
 QLineEdit {
     background-color: #ffffff;
