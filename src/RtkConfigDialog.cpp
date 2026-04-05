@@ -415,6 +415,7 @@ void RtkConfigDialog::setupUi()
     config_group_ = new QGroupBox(this);
     config_layout_ = new QGridLayout(config_group_);
     config_layout_->setSpacing(6);
+    config_layout_->setContentsMargins(10, 30, 10, 10);
 
     int row = 0;
     server_label_ = new QLabel(this);
@@ -455,6 +456,7 @@ void RtkConfigDialog::setupUi()
     output_group_ = new QGroupBox(this);
     output_layout_ = new QGridLayout(output_group_);
     output_layout_->setSpacing(6);
+    output_layout_->setContentsMargins(10, 30, 10, 10);
     output_layout_->setColumnStretch(1, 1);
 
     row = 0;
@@ -494,7 +496,7 @@ void RtkConfigDialog::setupUi()
     gga_group_ = new QGroupBox(this);
     gga_layout_ = new QVBoxLayout(gga_group_);
     gga_layout_->setSpacing(6);
-    gga_layout_->setContentsMargins(8, 8, 8, 12);
+    gga_layout_->setContentsMargins(10, 30, 10, 12);
     gga_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 
     gga_header_layout_ = new QHBoxLayout();
@@ -569,6 +571,7 @@ void RtkConfigDialog::setupUi()
     log_group_ = new QGroupBox(this);
     log_layout_ = new QVBoxLayout(log_group_);
     log_layout_->setSpacing(4);
+    log_layout_->setContentsMargins(10, 30, 10, 10);
 
     log_text_container_ = new QWidget(log_group_);
     log_text_container_layout_ = new QVBoxLayout(log_text_container_);
@@ -666,6 +669,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     {
         config_layout_->setHorizontalSpacing(scalePixels(6));
         config_layout_->setVerticalSpacing(scalePixels(10));
+        config_layout_->setContentsMargins(scalePixels(10), scalePixels(30), scalePixels(10), scalePixels(10));
         for (int row = 0; row < 4; ++row)
         {
             config_layout_->setRowMinimumHeight(row, scalePixels(42));
@@ -676,6 +680,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     {
         output_layout_->setHorizontalSpacing(scalePixels(6));
         output_layout_->setVerticalSpacing(scalePixels(10));
+        output_layout_->setContentsMargins(scalePixels(10), scalePixels(30), scalePixels(10), scalePixels(10));
         output_layout_->setColumnMinimumWidth(2, scalePixels(88));
         for (int row = 0; row < 5; ++row)
         {
@@ -691,7 +696,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (gga_layout_)
     {
         gga_layout_->setSpacing(scalePixels(6));
-        gga_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(12));
+        gga_layout_->setContentsMargins(scalePixels(10), scalePixels(30), scalePixels(10), scalePixels(12));
     }
 
     if (gga_text_container_layout_)
@@ -712,7 +717,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (log_layout_)
     {
         log_layout_->setSpacing(scalePixels(4));
-        log_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(10));
+        log_layout_->setContentsMargins(scalePixels(10), scalePixels(30), scalePixels(10), scalePixels(10));
     }
 
     if (log_text_container_layout_)
