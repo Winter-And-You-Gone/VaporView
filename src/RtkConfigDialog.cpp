@@ -343,8 +343,8 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , is_running_(false)
     , is_english_(false)
     , font_scale_percent_(100)
-    , base_dialog_size_(700, 950)
-    , base_minimum_dialog_size_(620, 860)
+    , base_dialog_size_(700, 0)
+    , base_minimum_dialog_size_(620, 0)
     , rtk_status_timer_(nullptr)
     , gga_poll_timer_(nullptr)
     , last_rtk_status_message_()
@@ -584,7 +584,7 @@ void RtkConfigDialog::setupUi()
     log_text_container_layout_->addWidget(log_text_edit_);
     log_layout_->addWidget(log_text_container_);
 
-    main_layout_->addWidget(log_group_, 1);
+    main_layout_->addWidget(log_group_);
 
     status_label_ = new QLabel(this);
     status_label_->setStyleSheet("QLabel { color: #666666; font-weight: bold; }");
