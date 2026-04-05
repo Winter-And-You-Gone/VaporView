@@ -572,11 +572,11 @@ void RtkConfigDialog::setupUi()
     log_group_ = new QGroupBox(this);
     log_layout_ = new QVBoxLayout(log_group_);
     log_layout_->setSpacing(4);
-    log_layout_->setContentsMargins(10, 30, 10, 10);
+    log_layout_->setContentsMargins(10, 30, 10, 4);
 
     log_text_container_ = new QWidget(log_group_);
     log_text_container_layout_ = new QVBoxLayout(log_text_container_);
-    log_text_container_layout_->setContentsMargins(0, 0, 0, 8);
+    log_text_container_layout_->setContentsMargins(0, 0, 0, 2);
     log_text_container_layout_->setSpacing(0);
 
     log_text_edit_ = new QTextEdit(log_text_container_);
@@ -718,12 +718,12 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (log_layout_)
     {
         log_layout_->setSpacing(scalePixels(4));
-        log_layout_->setContentsMargins(scalePixels(10), scalePixels(30), scalePixels(10), scalePixels(10));
+        log_layout_->setContentsMargins(scalePixels(10), scalePixels(30), scalePixels(10), scalePixels(4));
     }
 
     if (log_text_container_layout_)
     {
-        log_text_container_layout_->setContentsMargins(0, 0, 0, scalePixels(8));
+        log_text_container_layout_->setContentsMargins(0, 0, 0, scalePixels(2));
         log_text_container_layout_->setSpacing(0);
     }
 
@@ -790,7 +790,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     log_text_edit_->setFixedHeight(logTextHeight);
     log_text_edit_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     log_text_edit_->document()->setDocumentMargin(logDocumentMargin);
-    const int logTextBottomGap = scalePixels(8);
+    const int logTextBottomGap = scalePixels(2);
     if (log_text_container_)
     {
         log_text_container_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
