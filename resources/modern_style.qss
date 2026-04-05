@@ -337,10 +337,11 @@ QPushButton {
     color: #ffffff;
     border: none;
     border-radius: 6px;
-    padding: 10px 16px;
+    padding: 0px 16px;
     font-size: 15px;
     font-weight: 500;
     min-height: 38px;
+    max-height: 38px;
 }
 
 QPushButton:hover {

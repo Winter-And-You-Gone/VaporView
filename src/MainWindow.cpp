@@ -1123,7 +1123,7 @@ void MainWindow::loadModernStyleSheet()
             "QSplitter::handle { background-color: transparent; }"
             "QSplitter::handle:horizontal { width: 0px; }"
             "QSplitter::handle:vertical { height: 0px; }"
-            "QPushButton { background-color: #1976d2; color: #ffffff; border: none; border-radius: 6px; padding: 10px 18px; font-size: 15px; font-weight: 500; min-height: 38px; }"
+            "QPushButton { background-color: #1976d2; color: #ffffff; border: none; border-radius: 6px; padding: 0px 18px; font-size: 15px; font-weight: 500; min-height: 38px; max-height: 38px; }"
             "QPushButton:hover { background-color: #1565c0; }"
             "QPushButton:pressed { background-color: #0d47a1; }"
             "QPushButton:disabled { background-color: #bdbdbd; color: #ffffff; }"
