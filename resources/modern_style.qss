@@ -365,8 +365,8 @@ QPushButton#compactTcpButton {
 
 QPushButton#compactTcpStartButton {
     padding: 0px 14px;
-    min-height: 34px;
-    max-height: 34px;
+    min-height: 36px;
+    max-height: 36px;
     font-size: 14px;
 }
 

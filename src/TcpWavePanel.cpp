@@ -28,7 +28,7 @@ constexpr int kFloatSize = 4;
 constexpr int kMaxPayloadBytes = 16 * 1024 * 1024;
 constexpr int kPreferredPayloadBytes = 200000;
 constexpr int kTcpControlHeight = 30;
-constexpr int kTcpStartButtonHeight = kTcpControlHeight + 4;
+constexpr int kTcpStartButtonHeight = kTcpControlHeight + 6;
 
 QString hexPreview(const QByteArray& data, int limit = 12)
 {

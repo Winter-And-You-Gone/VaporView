@@ -124,7 +124,7 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.fillRect(rect(), QColor("#000000"));
+        painter.fillRect(rect(), QColor("#ffffff"));
 
         const QRectF plotRect = rect().adjusted(48, 12, -10, -30);
         painter.setPen(QPen(QColor("#1b6416"), 1));
@@ -236,10 +236,10 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.fillRect(rect(), QColor("#000000"));
+        painter.fillRect(rect(), QColor("#ffffff"));
 
         const QRectF plotRect = rect().adjusted(48, 12, -10, -28);
-        painter.setPen(QPen(QColor("#173559"), 1));
+        painter.setPen(QPen(QColor("#c7d7ea"), 1));
         for (int i = 0; i <= 10; ++i)
         {
             const qreal x = plotRect.left() + plotRect.width() * i / 10.0;
@@ -251,12 +251,12 @@ protected:
             painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
         }
 
-        painter.setPen(QPen(QColor("#5e7698"), 1));
+        painter.setPen(QPen(QColor("#9bb3cc"), 1));
         painter.drawRect(plotRect);
 
         if (peak_values_.isEmpty())
         {
-            painter.setPen(QColor("#c0cede"));
+            painter.setPen(QColor("#5e7698"));
             painter.drawText(plotRect, Qt::AlignCenter, QObject::tr("No peak overview"));
             return;
         }
@@ -309,7 +309,7 @@ protected:
             painter.drawEllipse(currentPoint, 4.0, 4.0);
         }
 
-        painter.setPen(QColor("#d7e4f2"));
+        painter.setPen(QColor("#4f647a"));
         painter.drawText(QRectF(4, plotRect.top() - 2, 40, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 4));
         painter.drawText(QRectF(4, plotRect.center().y() - 8, 40, 16), Qt::AlignRight | Qt::AlignVCenter,
                          QString::number((maxValue + minValue) * 0.5, 'f', 4));
