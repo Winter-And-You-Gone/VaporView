@@ -587,6 +587,8 @@ void RtkConfigDialog::setupUi()
     main_layout_->addWidget(log_group_);
 
     status_label_ = new QLabel(this);
+    status_label_->setWordWrap(false);
+    status_label_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     status_label_->setStyleSheet("QLabel { color: #666666; font-weight: bold; }");
     main_layout_->addWidget(status_label_);
 }
@@ -811,12 +813,13 @@ void RtkConfigDialog::applyScaledUiMetrics()
     }
 
     const QSize layoutHint = layout() ? layout()->sizeHint() : QSize();
-    setMinimumSize(
-        std::max({scalePixels(base_minimum_dialog_size_.width()), minimumSize().width(), layoutHint.width()}),
-        std::max({scalePixels(base_minimum_dialog_size_.height()), minimumSize().height(), layoutHint.height()}));
+    const QSize targetMinimumSize(
+        std::max(scalePixels(base_minimum_dialog_size_.width()), layoutHint.width()),
+        std::max(scalePixels(base_minimum_dialog_size_.height()), layoutHint.height()));
+    setMinimumSize(targetMinimumSize);
     if (!isMaximized() && !isFullScreen())
     {
-        resize(size().expandedTo(minimumSize()).expandedTo(QSize(scalePixels(base_dialog_size_.width()), scalePixels(base_dialog_size_.height()))));
+        resize(size().expandedTo(targetMinimumSize).expandedTo(QSize(scalePixels(base_dialog_size_.width()), scalePixels(base_dialog_size_.height()))));
     }
 }
 
