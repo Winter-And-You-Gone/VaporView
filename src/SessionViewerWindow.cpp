@@ -446,6 +446,7 @@ void SessionViewerWindow::setupUi()
     summary_group_ = new QGroupBox(this);
     summary_group_->setObjectName("sensorGroupBox");
     auto *summaryLayout = new QGridLayout(summary_group_);
+    summaryLayout->setContentsMargins(10, 30, 10, 10);
     summaryLayout->setHorizontalSpacing(10);
     summaryLayout->setVerticalSpacing(6);
 
@@ -469,7 +470,7 @@ void SessionViewerWindow::setupUi()
     waveform_group_ = new QGroupBox(this);
     waveform_group_->setObjectName("sensorGroupBox");
     auto *waveformLayout = new QVBoxLayout(waveform_group_);
-    waveformLayout->setContentsMargins(6, 6, 6, 6);
+    waveformLayout->setContentsMargins(10, 30, 10, 10);
     waveformLayout->setSpacing(6);
 
     auto *frameLayout = new QGridLayout();
@@ -530,7 +531,7 @@ void SessionViewerWindow::setupUi()
     csv_group_ = new QGroupBox(this);
     csv_group_->setObjectName("sensorGroupBox");
     auto *csvLayout = new QVBoxLayout(csv_group_);
-    csvLayout->setContentsMargins(6, 6, 6, 6);
+    csvLayout->setContentsMargins(10, 30, 10, 10);
     csvLayout->setSpacing(6);
 
     csv_info_label_ = new QLabel(this);
