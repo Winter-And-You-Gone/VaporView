@@ -6,7 +6,6 @@
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickWindow>
-#include <QSGRendererInterface>
 #include <QTextStream>
 #include "QmlAppController.h"
 #include "RtkController.h"
@@ -17,9 +16,6 @@ int main(int argc, char *argv[])
     qputenv("QT_QUICK_CONTROLS_STYLE", "Basic");
 #ifdef WIN32
     qputenv("QT_QPA_PLATFORM", "windows:darkmode=2");
-#endif
-#if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
-    QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 #endif
 
     QApplication app(argc, argv);
