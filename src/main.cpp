@@ -6,6 +6,7 @@
 #include <QIcon>
 #include <QDir>
 #include <QFileInfo>
+#include <QStyleFactory>
 #include "MainWindow.h"
 
 int main(int argc, char *argv[])
@@ -14,6 +15,7 @@ int main(int argc, char *argv[])
     app.setApplicationName("VaporView");
     app.setApplicationVersion("1.0.0");
     app.setOrganizationName("VaporView");
+    app.setStyle(QStyleFactory::create("Fusion"));
 
     const QString appDir = QCoreApplication::applicationDirPath();
     const QStringList iconCandidates = {

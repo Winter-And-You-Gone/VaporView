@@ -98,14 +98,17 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.fillRect(rect(), QColor("#ffffff"));
+        const QRectF cardRect = rect().adjusted(0.5, 0.5, -0.5, -0.5);
+        painter.setPen(QPen(QColor("#dddddd"), 1));
+        painter.setBrush(QColor("#fbfbfb"));
+        painter.drawRoundedRect(cardRect, 14, 14);
 
         if (samples_.isEmpty())
         {
-            const QRectF emptyPlotRect = rect().adjusted(18, 8, -2, -18);
-            painter.setPen(QPen(QColor("#cfd7e3"), 1));
+            const QRectF emptyPlotRect = cardRect.adjusted(18, 8, -2, -18);
+            painter.setPen(QPen(QColor("#d7dfe8"), 1));
             painter.drawRect(emptyPlotRect);
-            painter.setPen(QColor("#7a8899"));
+            painter.setPen(QColor("#6a6a6a"));
             painter.drawText(emptyPlotRect, Qt::AlignCenter, tr("No data"));
             return;
         }
@@ -127,9 +130,9 @@ protected:
         const int labelWidth = std::max({fm.horizontalAdvance(maxLabel), fm.horizontalAdvance(midLabel), fm.horizontalAdvance(minLabel)});
         const int leftMargin = std::max(18, labelWidth + 4);
         const int bottomMargin = fm.height() + 2;
-        const QRectF plotRect = rect().adjusted(leftMargin, 8, -2, -bottomMargin);
+        const QRectF plotRect = cardRect.adjusted(leftMargin, 10, -6, -bottomMargin - 4);
 
-        painter.setPen(QPen(QColor("#e3e8ef"), 1));
+        painter.setPen(QPen(QColor("#e6ebf2"), 1));
         for (int i = 0; i <= 10; ++i)
         {
             const qreal x = plotRect.left() + plotRect.width() * i / 10.0;
@@ -141,7 +144,7 @@ protected:
             painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
         }
 
-        painter.setPen(QPen(QColor("#cfd7e3"), 1));
+        painter.setPen(QPen(QColor("#d4dce6"), 1));
         painter.drawRect(plotRect);
 
         const int columns = std::max(2, static_cast<int>(std::floor(plotRect.width())));
@@ -159,10 +162,10 @@ protected:
             polyline.append(QPointF(px, py));
         }
 
-        painter.setPen(QPen(line_color_, 1.4));
+        painter.setPen(QPen(line_color_, 1.6));
         painter.drawPolyline(polyline);
 
-        painter.setPen(QColor("#5e6b78"));
+        painter.setPen(QColor("#5e5e5e"));
         painter.drawText(QRectF(2, plotRect.top() - 2, leftMargin - 4, fm.height()), Qt::AlignRight | Qt::AlignVCenter, maxLabel);
         painter.drawText(QRectF(2, plotRect.center().y() - fm.height() * 0.5, leftMargin - 4, fm.height()), Qt::AlignRight | Qt::AlignVCenter, midLabel);
         painter.drawText(QRectF(2, plotRect.bottom() - fm.height() + 2, leftMargin - 4, fm.height()), Qt::AlignRight | Qt::AlignVCenter, minLabel);
@@ -212,14 +215,17 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.fillRect(rect(), QColor("#ffffff"));
+        const QRectF cardRect = rect().adjusted(0.5, 0.5, -0.5, -0.5);
+        painter.setPen(QPen(QColor("#dddddd"), 1));
+        painter.setBrush(QColor("#fbfbfb"));
+        painter.drawRoundedRect(cardRect, 14, 14);
 
         if (peak_values_.isEmpty())
         {
-            const QRectF emptyPlotRect = rect().adjusted(18, 8, -2, -18);
-            painter.setPen(QPen(QColor("#cfd7e3"), 1));
+            const QRectF emptyPlotRect = cardRect.adjusted(18, 8, -2, -18);
+            painter.setPen(QPen(QColor("#d7dfe8"), 1));
             painter.drawRect(emptyPlotRect);
-            painter.setPen(QColor("#7a8899"));
+            painter.setPen(QColor("#6a6a6a"));
             painter.drawText(emptyPlotRect, Qt::AlignCenter, QObject::tr("No peak data"));
             return;
         }
@@ -241,9 +247,9 @@ protected:
         const int labelWidth = std::max({fm.horizontalAdvance(maxLabel), fm.horizontalAdvance(midLabel), fm.horizontalAdvance(minLabel)});
         const int leftMargin = std::max(18, labelWidth + 4);
         const int bottomMargin = fm.height() + 2;
-        const QRectF plotRect = rect().adjusted(leftMargin, 8, -2, -bottomMargin);
+        const QRectF plotRect = cardRect.adjusted(leftMargin, 10, -6, -bottomMargin - 4);
 
-        painter.setPen(QPen(QColor("#e3e8ef"), 1));
+        painter.setPen(QPen(QColor("#e6ebf2"), 1));
         for (int i = 0; i <= 10; ++i)
         {
             const qreal x = plotRect.left() + plotRect.width() * i / 10.0;
@@ -255,7 +261,7 @@ protected:
             painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
         }
 
-        painter.setPen(QPen(QColor("#cfd7e3"), 1));
+        painter.setPen(QPen(QColor("#d4dce6"), 1));
         painter.drawRect(plotRect);
 
         QVector<QPointF> points;
@@ -269,7 +275,7 @@ protected:
                                      plotRect.bottom() - normalized * plotRect.height()));
         }
 
-        const QColor seriesColor("#ef8f35");
+        const QColor seriesColor("#f7630c");
         if (plot_mode_ == PlotMode::Polyline && points.size() >= 2)
         {
             painter.setPen(QPen(seriesColor, 1.5));
@@ -285,7 +291,7 @@ protected:
             }
         }
 
-        painter.setPen(QColor("#5e6b78"));
+        painter.setPen(QColor("#5e5e5e"));
         painter.drawText(QRectF(2, plotRect.top() - 2, leftMargin - 4, fm.height()), Qt::AlignRight | Qt::AlignVCenter, maxLabel);
         painter.drawText(QRectF(2, plotRect.center().y() - fm.height() * 0.5, leftMargin - 4, fm.height()), Qt::AlignRight | Qt::AlignVCenter, midLabel);
         painter.drawText(QRectF(2, plotRect.bottom() - fm.height() + 2, leftMargin - 4, fm.height()), Qt::AlignRight | Qt::AlignVCenter, minLabel);
@@ -350,8 +356,8 @@ TcpWavePanel::~TcpWavePanel()
 void TcpWavePanel::setupUi()
 {
     auto *mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(4, 4, 4, 4);
-    mainLayout->setSpacing(4);
+    mainLayout->setContentsMargins(2, 2, 2, 2);
+    mainLayout->setSpacing(10);
 
     control_layout_ = new QGridLayout();
     control_layout_->setHorizontalSpacing(1);
@@ -398,10 +404,12 @@ void TcpWavePanel::setupUi()
     control_layout_->addWidget(connect_button_, 0, 4, Qt::AlignVCenter | Qt::AlignLeft);
 
     status_label_ = new QLabel(this);
+    status_label_->setObjectName("fieldLabel");
     status_label_->setWordWrap(true);
     control_layout_->addWidget(status_label_, 1, 0, 1, 5);
 
     hint_label_ = new QLabel(this);
+    hint_label_->setObjectName("fieldLabel");
     hint_label_->setWordWrap(true);
     control_layout_->addWidget(hint_label_, 2, 0, 1, 5);
 
@@ -411,9 +419,9 @@ void TcpWavePanel::setupUi()
     plotsLayout->setSpacing(1);
 
     wave1_group_ = new QGroupBox(this);
-    wave1_group_->setObjectName("sensorGroupBox");
+    wave1_group_->setObjectName("cardSurface");
     auto *wave1Layout = new QVBoxLayout(wave1_group_);
-    wave1Layout->setContentsMargins(2, 2, 2, 2);
+    wave1Layout->setContentsMargins(12, 10, 12, 12);
     auto *wave1HeaderLayout = new QHBoxLayout();
     wave1HeaderLayout->setContentsMargins(0, 0, 0, 0);
     wave1HeaderLayout->setSpacing(8);
@@ -426,14 +434,14 @@ void TcpWavePanel::setupUi()
     wave1_info_label_->setWordWrap(false);
     wave1HeaderLayout->addWidget(wave1_info_label_, 1, Qt::AlignVCenter | Qt::AlignRight);
     wave1Layout->addLayout(wave1HeaderLayout);
-    wave1_plot_ = new WavePlotWidget(QColor("#4e79c7"), this);
+    wave1_plot_ = new WavePlotWidget(QColor("#0078d4"), this);
     wave1Layout->addWidget(wave1_plot_, 1);
     plotsLayout->addWidget(wave1_group_, 1);
 
     wave4_group_ = new QGroupBox(this);
-    wave4_group_->setObjectName("sensorGroupBox");
+    wave4_group_->setObjectName("cardSurface");
     auto *wave4Layout = new QVBoxLayout(wave4_group_);
-    wave4Layout->setContentsMargins(2, 2, 2, 2);
+    wave4Layout->setContentsMargins(12, 10, 12, 12);
     auto *wave4HeaderLayout = new QHBoxLayout();
     wave4HeaderLayout->setContentsMargins(0, 0, 0, 0);
     wave4HeaderLayout->setSpacing(8);
@@ -446,18 +454,18 @@ void TcpWavePanel::setupUi()
     wave4_info_label_->setWordWrap(false);
     wave4HeaderLayout->addWidget(wave4_info_label_, 1, Qt::AlignVCenter | Qt::AlignRight);
     wave4Layout->addLayout(wave4HeaderLayout);
-    wave4_plot_ = new WavePlotWidget(QColor("#ef8f35"), this);
+    wave4_plot_ = new WavePlotWidget(QColor("#f7630c"), this);
     wave4Layout->addWidget(wave4_plot_, 1);
     plotsLayout->addWidget(wave4_group_, 1);
 
     mainLayout->addLayout(plotsLayout, 1);
 
     peak_group_ = new QGroupBox(this);
-    peak_group_->setObjectName("sensorGroupBox");
+    peak_group_->setObjectName("cardSurface");
     peak_group_->setMinimumHeight(198);
     peak_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::MinimumExpanding);
     auto *peakLayout = new QVBoxLayout(peak_group_);
-    peakLayout->setContentsMargins(0, 1, 0, 0);
+    peakLayout->setContentsMargins(12, 10, 12, 12);
     auto *peakHeaderLayout = new QHBoxLayout();
     peakHeaderLayout->setContentsMargins(0, 0, 0, 0);
     peakHeaderLayout->setSpacing(6);

@@ -409,11 +409,13 @@ bool RtkConfigDialog::isBackgroundTaskRunning() const
 
 void RtkConfigDialog::setupUi()
 {
+    setObjectName("windowSurface");
     main_layout_ = new QVBoxLayout(this);
     main_layout_->setSpacing(8);
     main_layout_->setContentsMargins(12, 12, 12, 12);
 
     config_group_ = new QGroupBox(this);
+    config_group_->setObjectName("cardSurface");
     config_layout_ = new QGridLayout(config_group_);
     config_layout_->setSpacing(6);
     config_layout_->setContentsMargins(10, 30, 10, 10);
@@ -448,6 +450,7 @@ void RtkConfigDialog::setupUi()
     mountpoint_edit_ = new QLineEdit(this);
     config_layout_->addWidget(mountpoint_edit_, row, 1);
     fetch_mountpoints_btn_ = new QPushButton(this);
+    fetch_mountpoints_btn_->setObjectName("accentButton");
     connect(fetch_mountpoints_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onFetchMountpointsClicked);
     config_layout_->addWidget(fetch_mountpoints_btn_, row, 2, 1, 2);
     row++;
@@ -455,6 +458,7 @@ void RtkConfigDialog::setupUi()
     main_layout_->addWidget(config_group_);
 
     output_group_ = new QGroupBox(this);
+    output_group_->setObjectName("cardSurface");
     output_layout_ = new QGridLayout(output_group_);
     output_layout_->setSpacing(6);
     output_layout_->setContentsMargins(10, 30, 10, 10);
@@ -468,6 +472,7 @@ void RtkConfigDialog::setupUi()
     output_layout_->addWidget(output_port_combo_, row, 1);
 
     refresh_ports_btn_ = new QPushButton(this);
+    refresh_ports_btn_->setObjectName("secondaryButton");
     connect(refresh_ports_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onRefreshPortsClicked);
     output_layout_->addWidget(refresh_ports_btn_, row, 2);
     row++;
@@ -495,6 +500,7 @@ void RtkConfigDialog::setupUi()
     main_layout_->addWidget(output_group_);
 
     gga_group_ = new QGroupBox(this);
+    gga_group_->setObjectName("cardSurface");
     gga_layout_ = new QVBoxLayout(gga_group_);
     gga_layout_->setSpacing(6);
     gga_layout_->setContentsMargins(10, 30, 10, 12);
@@ -511,6 +517,7 @@ void RtkConfigDialog::setupUi()
     gga_header_layout_->addWidget(gga_port_combo_);
 
     gga_toggle_btn_ = new QPushButton(this);
+    gga_toggle_btn_->setObjectName("secondaryButton");
     connect(gga_toggle_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onGgaToggleClicked);
     gga_header_layout_->addWidget(gga_toggle_btn_);
     gga_header_layout_->addStretch();
@@ -528,6 +535,7 @@ void RtkConfigDialog::setupUi()
     gga_text_container_layout_->setSpacing(0);
 
     gga_text_edit_ = new QTextEdit(gga_text_container_);
+    gga_text_edit_->setObjectName("monitorConsole");
     gga_text_edit_->setReadOnly(true);
     gga_text_edit_->document()->setMaximumBlockCount(kGgaMaxVisibleLines);
     gga_text_container_layout_->addWidget(gga_text_edit_);
@@ -541,22 +549,28 @@ void RtkConfigDialog::setupUi()
     button_layout_->setSpacing(6);
 
     start_btn_ = new QPushButton(this);
+    start_btn_->setObjectName("accentButton");
     connect(start_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onStartClicked);
 
     stop_btn_ = new QPushButton(this);
+    stop_btn_->setObjectName("dangerButton");
     stop_btn_->setEnabled(false);
     connect(stop_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onStopClicked);
 
     test_btn_ = new QPushButton(this);
+    test_btn_->setObjectName("secondaryButton");
     connect(test_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onTestClicked);
 
     clear_log_btn_ = new QPushButton(this);
+    clear_log_btn_->setObjectName("secondaryButton");
     connect(clear_log_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onClearLogClicked);
 
     save_config_btn_ = new QPushButton(this);
+    save_config_btn_->setObjectName("secondaryButton");
     connect(save_config_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onSaveConfigClicked);
 
     load_config_btn_ = new QPushButton(this);
+    load_config_btn_->setObjectName("secondaryButton");
     connect(load_config_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onLoadConfigClicked);
 
     button_layout_->addWidget(start_btn_);
@@ -570,6 +584,7 @@ void RtkConfigDialog::setupUi()
     main_layout_->addLayout(button_layout_);
 
     log_group_ = new QGroupBox(this);
+    log_group_->setObjectName("cardSurface");
     log_layout_ = new QVBoxLayout(log_group_);
     log_layout_->setSpacing(4);
     log_layout_->setContentsMargins(10, 30, 10, 4);
@@ -580,6 +595,7 @@ void RtkConfigDialog::setupUi()
     log_text_container_layout_->setSpacing(0);
 
     log_text_edit_ = new QTextEdit(log_text_container_);
+    log_text_edit_->setObjectName("monitorConsole");
     log_text_edit_->setReadOnly(true);
     log_text_container_layout_->addWidget(log_text_edit_);
     log_layout_->addWidget(log_text_container_);

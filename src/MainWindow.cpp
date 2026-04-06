@@ -1436,7 +1436,10 @@ void MainWindow::setupMenuBar()
 void MainWindow::setupToolBar()
 {
     QToolBar *toolbar = addToolBar("");
+    toolbar->setObjectName("topCommandBar");
     toolbar->setMovable(false);
+    toolbar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    toolbar->setIconSize(QSize(18, 18));
 
     refresh_ports_btn_ = new QAction(this);
     refresh_ports_btn_->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
@@ -1511,24 +1514,27 @@ void MainWindow::setupToolBar()
 void MainWindow::setupStatusBar()
 {
     status_label_ = new QLabel(this);
+    status_label_->setObjectName("statusIndicator");
     statusBar()->addWidget(status_label_);
 
     recording_status_label_ = new QLabel(this);
+    recording_status_label_->setObjectName("statusIndicator");
     statusBar()->addPermanentWidget(recording_status_label_);
 }
 
 void MainWindow::setupCentralWidget()
 {
     central_widget_ = new QWidget(this);
+    central_widget_->setObjectName("windowSurface");
     setCentralWidget(central_widget_);
 
     auto *main_h_layout = new QHBoxLayout(central_widget_);
-    main_h_layout->setSpacing(0);
-    main_h_layout->setContentsMargins(2, 2, 2, 2);
+    main_h_layout->setSpacing(12);
+    main_h_layout->setContentsMargins(12, 10, 12, 12);
 
     auto *left_widget = new QWidget(this);
     main_layout_ = new QVBoxLayout(left_widget);
-    main_layout_->setSpacing(0);
+    main_layout_->setSpacing(12);
     main_layout_->setContentsMargins(0, 0, 0, 0);
 
     setupConfigPanel();
@@ -1545,7 +1551,7 @@ void MainWindow::setupCentralWidget()
 
     auto *main_splitter = new QSplitter(Qt::Horizontal, central_widget_);
     main_splitter->setChildrenCollapsible(false);
-    main_splitter->setHandleWidth(0);
+    main_splitter->setHandleWidth(10);
     main_splitter->addWidget(left_scroll_area);
     main_splitter->addWidget(log_group_);
     main_splitter->setStretchFactor(0, 6);
@@ -1571,11 +1577,12 @@ QStringList MainWindow::getAvailablePorts()
 void MainWindow::setupConfigPanel()
 {
     config_group_ = new QGroupBox(this);
+    config_group_->setObjectName("cardSurface");
     config_group_->setMinimumWidth(860);
 
     auto *config_root_layout = new QVBoxLayout(config_group_);
-    config_root_layout->setSpacing(8);
-    config_root_layout->setContentsMargins(8, 4, 8, 8);
+    config_root_layout->setSpacing(12);
+    config_root_layout->setContentsMargins(14, 12, 14, 14);
 
     auto *config_layout = new QGridLayout();
     config_layout->setVerticalSpacing(8);
@@ -1665,6 +1672,7 @@ void MainWindow::setupConfigPanel()
     config_layout->addWidget(config_inline_title_lbl_, 0, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
     auto_detect_ports_btn_ = new QPushButton(this);
+    auto_detect_ports_btn_->setObjectName("accentButton");
     auto_detect_ports_btn_->setFixedHeight(kMainPageButtonHeight);
     auto_detect_ports_btn_->setMinimumWidth(120);
     connect(auto_detect_ports_btn_, &QPushButton::clicked, this, &MainWindow::onAutoDetectPortsClicked);
@@ -1708,9 +1716,10 @@ void MainWindow::setupConfigPanel()
 void MainWindow::setupDataPanels()
 {
     data_group_ = new QGroupBox(this);
+    data_group_->setObjectName("cardSurface");
     auto *data_layout = new QVBoxLayout(data_group_);
-    data_layout->setSpacing(0);
-    data_layout->setContentsMargins(0, 0, 0, 0);
+    data_layout->setSpacing(10);
+    data_layout->setContentsMargins(14, 10, 14, 14);
 
     data_inline_title_lbl_ = new QLabel(this);
     data_inline_title_lbl_->setObjectName("sectionTitleLabel");
@@ -1719,13 +1728,13 @@ void MainWindow::setupDataPanels()
 
     auto *sensor_splitter = new QSplitter(Qt::Horizontal, data_group_);
     sensor_splitter->setChildrenCollapsible(false);
-    sensor_splitter->setHandleWidth(0);
+    sensor_splitter->setHandleWidth(10);
 
     gnss_group_ = new QGroupBox(this);
     gnss_group_->setObjectName("sensorGroupBox");
     auto *gnss_layout = new QVBoxLayout(gnss_group_);
-    gnss_layout->setContentsMargins(1, 0, 1, 1);
-    gnss_layout->setSpacing(0);
+    gnss_layout->setContentsMargins(8, 2, 8, 8);
+    gnss_layout->setSpacing(2);
     gnss_inline_title_lbl_ = new QLabel(this);
     gnss_inline_title_lbl_->setObjectName("sectionTitleLabel");
     gnss_layout->addWidget(gnss_inline_title_lbl_, 0, Qt::AlignLeft);
@@ -1736,8 +1745,8 @@ void MainWindow::setupDataPanels()
     imu_group_ = new QGroupBox(this);
     imu_group_->setObjectName("sensorGroupBox");
     auto *imu_layout = new QVBoxLayout(imu_group_);
-    imu_layout->setContentsMargins(1, 0, 1, 1);
-    imu_layout->setSpacing(0);
+    imu_layout->setContentsMargins(8, 2, 8, 8);
+    imu_layout->setSpacing(2);
     imu_inline_title_lbl_ = new QLabel(this);
     imu_inline_title_lbl_->setObjectName("sectionTitleLabel");
     imu_layout->addWidget(imu_inline_title_lbl_, 0, Qt::AlignLeft);
@@ -1748,8 +1757,8 @@ void MainWindow::setupDataPanels()
     auto *env_group = new QGroupBox(this);
     env_group->setObjectName("sensorGroupBox");
     auto *env_layout = new QVBoxLayout(env_group);
-    env_layout->setContentsMargins(1, 0, 1, 1);
-    env_layout->setSpacing(0);
+    env_layout->setContentsMargins(8, 2, 8, 8);
+    env_layout->setSpacing(6);
     env_inline_title_lbl_ = new QLabel(this);
     env_inline_title_lbl_->setObjectName("sectionTitleLabel");
     env_layout->addWidget(env_inline_title_lbl_, 0, Qt::AlignLeft);
@@ -1779,12 +1788,12 @@ void MainWindow::setupDataPanels()
     main_layout_->addWidget(data_group_, 1);
 
     tcp_wave_group_ = new QGroupBox(this);
-    tcp_wave_group_->setObjectName("sensorGroupBox");
+    tcp_wave_group_->setObjectName("cardSurface");
     tcp_wave_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     tcp_wave_group_->setMinimumHeight(430);
     auto *tcpWaveLayout = new QVBoxLayout(tcp_wave_group_);
-    tcpWaveLayout->setContentsMargins(0, 0, 0, 0);
-    tcpWaveLayout->setSpacing(0);
+    tcpWaveLayout->setContentsMargins(14, 10, 14, 14);
+    tcpWaveLayout->setSpacing(8);
 
     waveform_split_lbl_ = new QLabel(this);
     waveform_split_lbl_->setObjectName("fieldLabel");
@@ -1824,17 +1833,19 @@ void MainWindow::setupDataPanels()
 void MainWindow::setupLogPanel()
 {
     log_group_ = new QGroupBox(this);
+    log_group_->setObjectName("cardSurface");
     log_group_->setMinimumWidth(220);
     log_group_->setMaximumWidth(340);
     auto *log_layout = new QVBoxLayout(log_group_);
-    log_layout->setContentsMargins(0, 0, 0, 0);
-    log_layout->setSpacing(0);
+    log_layout->setContentsMargins(14, 10, 14, 14);
+    log_layout->setSpacing(8);
 
     log_inline_title_lbl_ = new QLabel(this);
     log_inline_title_lbl_->setObjectName("sectionTitleLabel");
     log_layout->addWidget(log_inline_title_lbl_, 0, Qt::AlignLeft);
 
     log_text_edit_ = new QTextEdit(this);
+    log_text_edit_->setObjectName("logConsole");
     log_text_edit_->setReadOnly(true);
     log_text_edit_->setMinimumWidth(200);
     log_layout->addWidget(log_text_edit_);

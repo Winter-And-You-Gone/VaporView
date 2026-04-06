@@ -124,10 +124,13 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.fillRect(rect(), QColor("#ffffff"));
+        const QRectF cardRect = rect().adjusted(0.5, 0.5, -0.5, -0.5);
+        painter.setPen(QPen(QColor("#dddddd"), 1));
+        painter.setBrush(QColor("#fbfbfb"));
+        painter.drawRoundedRect(cardRect, 14, 14);
 
-        const QRectF plotRect = rect().adjusted(48, 12, -10, -30);
-        painter.setPen(QPen(QColor("#1b6416"), 1));
+        const QRectF plotRect = cardRect.adjusted(48, 14, -12, -32);
+        painter.setPen(QPen(QColor("#e6ebf2"), 1));
         for (int i = 0; i <= 10; ++i)
         {
             const qreal x = plotRect.left() + plotRect.width() * i / 10.0;
@@ -139,12 +142,12 @@ protected:
             painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
         }
 
-        painter.setPen(QPen(QColor("#9ca39d"), 1));
+        painter.setPen(QPen(QColor("#d4dce6"), 1));
         painter.drawRect(plotRect);
 
         if (samples_.isEmpty())
         {
-            painter.setPen(QColor("#b8c4b8"));
+            painter.setPen(QColor("#6a6a6a"));
             painter.drawText(plotRect, Qt::AlignCenter, tr("No waveform frame"));
             return;
         }
@@ -173,10 +176,10 @@ protected:
                                     plotRect.bottom() - normalized * plotRect.height()));
         }
 
-        painter.setPen(QPen(QColor("#f0d000"), 1.4));
+        painter.setPen(QPen(QColor("#0078d4"), 1.7));
         painter.drawPolyline(polyline);
 
-        painter.setPen(QColor("#d7d7d7"));
+        painter.setPen(QColor("#5e5e5e"));
         painter.drawText(QRectF(4, plotRect.top() - 2, 40, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 4));
         painter.drawText(QRectF(4, plotRect.center().y() - 8, 40, 16), Qt::AlignRight | Qt::AlignVCenter,
                          QString::number((maxValue + minValue) * 0.5, 'f', 4));
@@ -236,10 +239,13 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.fillRect(rect(), QColor("#ffffff"));
+        const QRectF cardRect = rect().adjusted(0.5, 0.5, -0.5, -0.5);
+        painter.setPen(QPen(QColor("#dddddd"), 1));
+        painter.setBrush(QColor("#fbfbfb"));
+        painter.drawRoundedRect(cardRect, 14, 14);
 
-        const QRectF plotRect = rect().adjusted(48, 12, -10, -28);
-        painter.setPen(QPen(QColor("#c7d7ea"), 1));
+        const QRectF plotRect = cardRect.adjusted(48, 14, -12, -30);
+        painter.setPen(QPen(QColor("#e6ebf2"), 1));
         for (int i = 0; i <= 10; ++i)
         {
             const qreal x = plotRect.left() + plotRect.width() * i / 10.0;
@@ -251,12 +257,12 @@ protected:
             painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
         }
 
-        painter.setPen(QPen(QColor("#9bb3cc"), 1));
+        painter.setPen(QPen(QColor("#d4dce6"), 1));
         painter.drawRect(plotRect);
 
         if (peak_values_.isEmpty())
         {
-            painter.setPen(QColor("#5e7698"));
+            painter.setPen(QColor("#6a6a6a"));
             painter.drawText(plotRect, Qt::AlignCenter, QObject::tr("No peak overview"));
             return;
         }
@@ -283,7 +289,7 @@ protected:
                                      plotRect.bottom() - normalized * plotRect.height()));
         }
 
-        const QColor seriesColor("#66d0ff");
+        const QColor seriesColor("#f7630c");
         if (plot_mode_ == PlotMode::Polyline && points.size() >= 2)
         {
             painter.setPen(QPen(seriesColor, 1.5));
@@ -302,14 +308,14 @@ protected:
         if (current_frame_index_ >= 0 && current_frame_index_ < peak_values_.size())
         {
             const QPointF currentPoint = points.at(current_frame_index_);
-            painter.setPen(QPen(QColor("#ffb347"), 1, Qt::DashLine));
+            painter.setPen(QPen(QColor("#0078d4"), 1, Qt::DashLine));
             painter.drawLine(QPointF(currentPoint.x(), plotRect.top()), QPointF(currentPoint.x(), plotRect.bottom()));
             painter.setPen(Qt::NoPen);
-            painter.setBrush(QColor("#ffb347"));
+            painter.setBrush(QColor("#0078d4"));
             painter.drawEllipse(currentPoint, 4.0, 4.0);
         }
 
-        painter.setPen(QColor("#4f647a"));
+        painter.setPen(QColor("#5e5e5e"));
         painter.drawText(QRectF(4, plotRect.top() - 2, 40, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 4));
         painter.drawText(QRectF(4, plotRect.center().y() - 8, 40, 16), Qt::AlignRight | Qt::AlignVCenter,
                          QString::number((maxValue + minValue) * 0.5, 'f', 4));
@@ -399,6 +405,7 @@ void SessionViewerWindow::setupUi()
     setCentralWidget(scrollArea);
 
     central_widget_ = new QWidget(this);
+    central_widget_->setObjectName("windowSurface");
     scrollArea->setWidget(central_widget_);
 
     auto *mainLayout = new QVBoxLayout(central_widget_);
@@ -419,18 +426,22 @@ void SessionViewerWindow::setupUi()
     controlLayout->addWidget(session_path_edit_, 0, 1);
 
     choose_session_btn_ = new QPushButton(this);
+    choose_session_btn_->setObjectName("accentButton");
     connect(choose_session_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onChooseSessionClicked);
     controlLayout->addWidget(choose_session_btn_, 0, 2);
 
     reload_btn_ = new QPushButton(this);
+    reload_btn_->setObjectName("secondaryButton");
     connect(reload_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onReloadClicked);
     controlLayout->addWidget(reload_btn_, 0, 3);
 
     clear_view_btn_ = new QPushButton(this);
+    clear_view_btn_->setObjectName("secondaryButton");
     connect(clear_view_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onClearViewClicked);
     controlLayout->addWidget(clear_view_btn_, 0, 4);
 
     status_label_ = new QLabel(this);
+    status_label_->setObjectName("fieldLabel");
     status_label_->setWordWrap(true);
     controlLayout->addWidget(status_label_, 1, 0, 1, 5);
 
@@ -444,7 +455,7 @@ void SessionViewerWindow::setupUi()
     upperLayout->setSpacing(8);
 
     summary_group_ = new QGroupBox(this);
-    summary_group_->setObjectName("sensorGroupBox");
+    summary_group_->setObjectName("cardSurface");
     auto *summaryLayout = new QGridLayout(summary_group_);
     summaryLayout->setContentsMargins(10, 30, 10, 10);
     summaryLayout->setHorizontalSpacing(10);
@@ -468,7 +479,7 @@ void SessionViewerWindow::setupUi()
     upperLayout->addWidget(summary_group_);
 
     waveform_group_ = new QGroupBox(this);
-    waveform_group_->setObjectName("sensorGroupBox");
+    waveform_group_->setObjectName("cardSurface");
     auto *waveformLayout = new QVBoxLayout(waveform_group_);
     waveformLayout->setContentsMargins(10, 30, 10, 10);
     waveformLayout->setSpacing(6);
@@ -515,6 +526,7 @@ void SessionViewerWindow::setupUi()
     waveform_peak_plot_title_->setObjectName("fieldLabel");
     peakHeaderLayout->addWidget(waveform_peak_plot_title_, 1, Qt::AlignVCenter | Qt::AlignLeft);
     waveform_peak_mode_btn_ = new QPushButton(this);
+    waveform_peak_mode_btn_->setObjectName("secondaryButton");
     peakHeaderLayout->addWidget(waveform_peak_mode_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
     waveformLayout->addLayout(peakHeaderLayout);
 
@@ -528,7 +540,7 @@ void SessionViewerWindow::setupUi()
     summaryWaveSplitter->addWidget(upperWidget);
 
     csv_group_ = new QGroupBox(this);
-    csv_group_->setObjectName("sensorGroupBox");
+    csv_group_->setObjectName("cardSurface");
     auto *csvLayout = new QVBoxLayout(csv_group_);
     csvLayout->setContentsMargins(10, 30, 10, 10);
     csvLayout->setSpacing(6);
