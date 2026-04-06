@@ -19,23 +19,6 @@ void sleepMs(int ms)
   }
 }
 
-ssize_t readAccumulated(SerialPort& serial, uint8_t* buffer, size_t capacity, int total_wait_ms, int step_ms = 20)
-{
-  size_t total = 0;
-  int elapsed = 0;
-  while (elapsed < total_wait_ms && total < capacity)
-  {
-    ssize_t n = serial.read(buffer + total, capacity - total);
-    if (n > 0)
-    {
-      total += static_cast<size_t>(n);
-    }
-    sleepMs(step_ms);
-    elapsed += step_ms;
-  }
-  return static_cast<ssize_t>(total);
-}
-
 std::string formatDetectionProgress(const char* action, int attempt, int total_attempts, double remaining_seconds)
 {
   std::ostringstream oss;

@@ -106,6 +106,38 @@ cmake --build build --config Release
 build/Release/VaporView.exe
 ```
 
+### Windows UCRT64 + Ninja
+
+仓库现在内置了不依赖全局 `PATH` 的 Windows 构建入口，固定使用：
+
+- `D:\msys64\ucrt64`
+- `D:\Ninja`
+
+可直接使用项目内的 `CMakePresets.json`：
+
+```powershell
+D:\msys64\ucrt64\bin\cmake.exe --preset windows-ucrt64-release
+D:\msys64\ucrt64\bin\cmake.exe --build --preset windows-ucrt64-release
+```
+
+也可以使用仓库根目录的一键脚本：
+
+```powershell
+.\build-ucrt64.ps1
+```
+
+脚本支持以下模式：
+
+- `.\build-ucrt64.ps1 -Action Configure`
+- `.\build-ucrt64.ps1 -Action Build`
+- `.\build-ucrt64.ps1 -Action Rebuild`
+
+输出目录默认是：
+
+```text
+build/
+```
+
 ### Linux
 
 项目保留了 GCC / Clang 路径，串口层使用 `termios`。如需在 Linux 上构建，需确保 Qt 开发环境可用。

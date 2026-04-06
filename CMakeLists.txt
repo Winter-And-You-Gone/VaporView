@@ -207,6 +207,9 @@ if(WIN32 AND MINGW)
                 --release
                 --compiler-runtime
                 --no-translations
+                --no-system-d3d-compiler
+                --no-system-dxc-compiler
+                --exclude-plugins qopensslbackend
                 $<TARGET_FILE:VaporView>
             COMMENT "Deploying Qt runtime for VaporView"
         )

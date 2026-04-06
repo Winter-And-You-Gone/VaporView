@@ -1,0 +1,46 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 23,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "windows-ucrt64-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "BUILD_PYTHON_BINDINGS": "OFF",
+        "CMAKE_PREFIX_PATH": "D:/msys64/ucrt64",
+        "CMAKE_C_COMPILER": "D:/msys64/ucrt64/bin/gcc.exe",
+        "CMAKE_CXX_COMPILER": "D:/msys64/ucrt64/bin/g++.exe",
+        "CMAKE_MAKE_PROGRAM": "D:/Ninja/ninja.exe"
+      },
+      "environment": {
+        "PATH": "D:\\Ninja;D:\\msys64\\ucrt64\\bin;D:\\msys64\\usr\\bin;$penv{PATH}"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "windows-ucrt64-release",
+      "displayName": "Windows UCRT64 Release",
+      "description": "Configure VaporView with the project-local UCRT64 + Ninja toolchain without modifying the system PATH.",
+      "inherits": "windows-ucrt64-base"
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-ucrt64-release",
+      "displayName": "Build Windows UCRT64 Release",
+      "configurePreset": "windows-ucrt64-release",
+      "jobs": 0
+    }
+  ]
+}
