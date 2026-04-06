@@ -215,16 +215,15 @@ if(WIN32 AND MINGW)
         )
     endif()
 
-    if(POWERSHELL_EXECUTABLE AND MSYS_BASH_EXECUTABLE
-       AND EXISTS "${CMAKE_SOURCE_DIR}/scripts/deploy_mingw_runtime.ps1")
+    if(POWERSHELL_EXECUTABLE
+       AND EXISTS "${CMAKE_SOURCE_DIR}/tools/deploy_mingw_runtime.ps1")
         add_custom_command(TARGET VaporView POST_BUILD
             COMMAND ${POWERSHELL_EXECUTABLE}
                 -NoProfile
                 -ExecutionPolicy Bypass
-                -File "${CMAKE_SOURCE_DIR}/scripts/deploy_mingw_runtime.ps1"
+                -File "${CMAKE_SOURCE_DIR}/tools/deploy_mingw_runtime.ps1"
                 -BuildDir "$<TARGET_FILE_DIR:VaporView>"
                 -RuntimeDir "${MINGW_RUNTIME_DIR}"
-                -BashExe "${MSYS_BASH_EXECUTABLE}"
             COMMENT "Copying MinGW runtime dependencies for VaporView"
         )
     endif()
