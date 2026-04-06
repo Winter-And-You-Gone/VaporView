@@ -79,7 +79,7 @@ function Get-ImportedDllNames {
 $queue = [System.Collections.Generic.Queue[string]]::new()
 $scanned = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
-Get-ChildItem -LiteralPath $buildDirResolved -File | Where-Object {
+Get-ChildItem -LiteralPath $buildDirResolved -Recurse -File | Where-Object {
     $_.Extension -in @(".exe", ".dll")
 } | ForEach-Object {
     $queue.Enqueue($_.FullName)

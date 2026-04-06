@@ -12,8 +12,20 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 option(BUILD_PYTHON_BINDINGS "Build Python bindings with pybind11" OFF)
 
-find_package(Qt6 COMPONENTS Core Widgets SerialPort Network REQUIRED)
-set(QT_LIBRARIES Qt6::Core Qt6::Widgets Qt6::SerialPort Qt6::Network)
+find_package(Qt6 COMPONENTS Core Widgets SerialPort Network Quick Qml QuickControls2 QuickDialogs2 REQUIRED)
+if(COMMAND qt_policy)
+    qt_policy(SET QTP0004 NEW)
+endif()
+set(QT_LIBRARIES
+    Qt6::Core
+    Qt6::Widgets
+    Qt6::SerialPort
+    Qt6::Network
+    Qt6::Quick
+    Qt6::Qml
+    Qt6::QuickControls2
+    Qt6::QuickDialogs2
+)
 
 if(WIN32 AND MINGW)
     find_program(QT_WINDEPLOYQT_EXECUTABLE
@@ -37,9 +49,14 @@ if(WIN32 AND MINGW)
     )
 
     get_filename_component(MINGW_RUNTIME_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    set(QT_TOOLING_PATH "${CMAKE_PREFIX_PATH}/share/qt6/bin;${CMAKE_PREFIX_PATH}/bin;$ENV{PATH}")
 endif()
 
 find_package(Threads REQUIRED)
+
+set(FLUENTUI_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(FLUENTUI_QML_PLUGIN_DIRECTORY "${CMAKE_BINARY_DIR}/FluentUI" CACHE PATH "" FORCE)
+add_subdirectory(third_party/FluentUI)
 
 set(UM982_DRIVER_DIR ${CMAKE_SOURCE_DIR}/third_party/um982_driver)
 set(HIPNUC_DRIVER_DIR ${CMAKE_SOURCE_DIR}/third_party/hipnuc_driver)
@@ -110,31 +127,41 @@ endif()
 
 set(NAV_SOURCES
     src/main.cpp
-    src/MainWindow.cpp
+    src/QmlAppController.cpp
+    src/RtkController.cpp
+    src/SessionController.cpp
     src/serial_port.cpp
     src/data_collector.cpp
-    src/TcpWavePanel.cpp
-    src/SessionViewerWindow.cpp
-    src/RtkConfigDialog.cpp
     src/RtkStreamService.cpp
     ${UM982_DRIVER_DIR}/pvtsln_parser.cpp
     ${HIPNUC_DRIVER_DIR}/hipnuc_dec.c
 )
 
 set(NAV_HEADERS
-    include/MainWindow.h
+    include/QmlAppController.h
+    include/RtkController.h
+    include/SessionController.h
     include/serial_port.h
     include/data_types.h
     include/data_collector.h
-    include/TcpWavePanel.h
-    include/SessionViewerWindow.h
-    include/RtkConfigDialog.h
     include/RtkStreamService.h
     ${UM982_DRIVER_DIR}/pvtsln_data.hpp
     ${HIPNUC_DRIVER_DIR}/hipnuc_dec.h
 )
 
 set(NAV_UI_FILES
+)
+
+set(NAV_QML_FILES
+    qml/App.qml
+    qml/WaveformPlot.qml
+    qml/PeakSeriesPlot.qml
+    qml/SensorCard.qml
+    qml/page/DashboardPage.qml
+    qml/page/DevicesPage.qml
+    qml/page/RtkPage.qml
+    qml/page/SessionPage.qml
+    qml/page/ToolsPage.qml
 )
 
 set(NAV_RESOURCES
@@ -181,6 +208,15 @@ target_link_libraries(VaporView PRIVATE
     ${QT_LIBRARIES}
     Threads::Threads
     rtklib_strsvr
+    fluentuiplugin
+)
+
+qt_add_qml_module(VaporView
+    URI VaporViewApp
+    VERSION 1.0
+    RESOURCE_PREFIX /qt/qml
+    QML_FILES
+        ${NAV_QML_FILES}
 )
 
 add_custom_command(TARGET VaporView POST_BUILD
@@ -203,8 +239,12 @@ add_custom_command(TARGET VaporView POST_BUILD
 if(WIN32 AND MINGW)
     if(QT_WINDEPLOYQT_EXECUTABLE)
         add_custom_command(TARGET VaporView POST_BUILD
-            COMMAND ${QT_WINDEPLOYQT_EXECUTABLE}
+            COMMAND ${CMAKE_COMMAND} -E env
+                "PATH=${QT_TOOLING_PATH}"
+                ${QT_WINDEPLOYQT_EXECUTABLE}
                 --release
+                --qmldir "${CMAKE_SOURCE_DIR}/qml"
+                --qmlimport "${CMAKE_BINARY_DIR}"
                 --compiler-runtime
                 --no-translations
                 --no-system-d3d-compiler
