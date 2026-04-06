@@ -53,7 +53,8 @@ constexpr const char *kBaseMarginsLeftProperty = "_vv_base_margin_left";
 constexpr const char *kBaseMarginsTopProperty = "_vv_base_margin_top";
 constexpr const char *kBaseMarginsRightProperty = "_vv_base_margin_right";
 constexpr const char *kBaseMarginsBottomProperty = "_vv_base_margin_bottom";
-constexpr int kMainPageInputHeight = 34;
+constexpr int kMainPageInputHeight = 30;
+constexpr int kMainPageButtonHeight = 38;
 
 QString recordingTimestampUtc()
 {
@@ -159,8 +160,8 @@ GnssPanel::GnssPanel(QWidget *parent)
 void GnssPanel::setupUi()
 {
     auto *mainLayout = new QVBoxLayout(this);
-    mainLayout->setSpacing(6);
-    mainLayout->setContentsMargins(6, 6, 6, 6);
+    mainLayout->setSpacing(4);
+    mainLayout->setContentsMargins(6, 2, 6, 6);
 
     rate_label_ = new QLabel(this);
     rate_label_->setObjectName("rateLabel");
@@ -172,15 +173,15 @@ void GnssPanel::setupUi()
 
     auto *leftLayout = new QGridLayout();
     leftLayout->setVerticalSpacing(4);
-    leftLayout->setHorizontalSpacing(6);
+    leftLayout->setHorizontalSpacing(1);
 
     auto *midLayout = new QGridLayout();
     midLayout->setVerticalSpacing(4);
-    midLayout->setHorizontalSpacing(6);
+    midLayout->setHorizontalSpacing(1);
 
     auto *rightLayout = new QGridLayout();
     rightLayout->setVerticalSpacing(4);
-    rightLayout->setHorizontalSpacing(6);
+    rightLayout->setHorizontalSpacing(1);
 
     auto createRow = [](QGridLayout* grid, int row, QLabel*& lbl, QLabel*& valueLabel, QWidget* parent) {
         lbl = new QLabel(parent);
@@ -390,13 +391,13 @@ ImuPanel::ImuPanel(QWidget *parent)
 void ImuPanel::setupUi()
 {
     auto *mainLayout = new QVBoxLayout(this);
-    mainLayout->setSpacing(6);
-    mainLayout->setContentsMargins(6, 6, 6, 6);
+    mainLayout->setSpacing(4);
+    mainLayout->setContentsMargins(6, 2, 6, 6);
 
     rate_label_ = new QLabel(this);
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    rate_label_->setFixedHeight(28);
+    rate_label_->setFixedHeight(24);
     mainLayout->addWidget(rate_label_);
 
     auto *colsLayout = new QHBoxLayout();
@@ -404,11 +405,11 @@ void ImuPanel::setupUi()
 
     auto *leftLayout = new QGridLayout();
     leftLayout->setVerticalSpacing(4);
-    leftLayout->setHorizontalSpacing(6);
+    leftLayout->setHorizontalSpacing(1);
 
     auto *rightLayout = new QGridLayout();
     rightLayout->setVerticalSpacing(4);
-    rightLayout->setHorizontalSpacing(6);
+    rightLayout->setHorizontalSpacing(1);
 
     auto createRow = [](QGridLayout* grid, int row, QLabel*& lbl, QLabel*& valueLabel, QWidget* parent) {
         lbl = new QLabel(parent);
@@ -563,8 +564,8 @@ PtbPanel::PtbPanel(QWidget *parent)
 void PtbPanel::setupUi()
 {
     auto *layout = new QVBoxLayout(this);
-    layout->setSpacing(4);
-    layout->setContentsMargins(6, 6, 6, 6);
+    layout->setSpacing(3);
+    layout->setContentsMargins(6, 2, 6, 6);
 
     rate_label_ = new QLabel(this);
     rate_label_->setObjectName("rateLabel");
@@ -573,7 +574,7 @@ void PtbPanel::setupUi()
     layout->addWidget(rate_label_);
 
     auto *pressLayout = new QHBoxLayout();
-    pressLayout->setSpacing(6);
+    pressLayout->setSpacing(1);
     pressure_lbl_ = new QLabel(this);
     pressure_lbl_->setObjectName("fieldLabel");
     pressure_lbl_->setMinimumHeight(22);
@@ -659,8 +660,8 @@ HmpPanel::HmpPanel(QWidget *parent)
 void HmpPanel::setupUi()
 {
     auto *layout = new QVBoxLayout(this);
-    layout->setSpacing(4);
-    layout->setContentsMargins(6, 6, 6, 6);
+    layout->setSpacing(3);
+    layout->setContentsMargins(6, 2, 6, 6);
 
     rate_label_ = new QLabel(this);
     rate_label_->setObjectName("rateLabel");
@@ -669,7 +670,7 @@ void HmpPanel::setupUi()
     layout->addWidget(rate_label_);
 
     auto *tempLayout = new QHBoxLayout();
-    tempLayout->setSpacing(6);
+    tempLayout->setSpacing(1);
     temp_lbl_ = new QLabel(this);
     temp_lbl_->setObjectName("fieldLabel");
     temp_lbl_->setMinimumHeight(22);
@@ -682,7 +683,7 @@ void HmpPanel::setupUi()
     layout->addLayout(tempLayout);
 
     auto *humidLayout = new QHBoxLayout();
-    humidLayout->setSpacing(6);
+    humidLayout->setSpacing(1);
     humidity_lbl_ = new QLabel(this);
     humidity_lbl_->setObjectName("fieldLabel");
     humidity_lbl_->setMinimumHeight(22);
@@ -778,15 +779,15 @@ LidarPanel::LidarPanel(QWidget *parent)
 void LidarPanel::setupUi()
 {
     auto *layout = new QVBoxLayout(this);
-    layout->setSpacing(6);
-    layout->setContentsMargins(6, 6, 6, 6);
+    layout->setSpacing(3);
+    layout->setContentsMargins(6, 2, 6, 6);
 
     rate_label_ = new QLabel("0.0 Hz", this);
     rate_label_->setObjectName("rateBadge");
     layout->addWidget(rate_label_, 0, Qt::AlignRight);
 
     auto *distanceLayout = new QHBoxLayout();
-    distanceLayout->setSpacing(6);
+    distanceLayout->setSpacing(1);
     distance_lbl_ = new QLabel(this);
     distance_lbl_->setObjectName("fieldLabel");
     distance_lbl_->setMinimumHeight(22);
@@ -799,7 +800,7 @@ void LidarPanel::setupUi()
     layout->addLayout(distanceLayout);
 
     auto *strengthLayout = new QHBoxLayout();
-    strengthLayout->setSpacing(6);
+    strengthLayout->setSpacing(1);
     strength_lbl_ = new QLabel(this);
     strength_lbl_->setObjectName("fieldLabel");
     strength_lbl_->setMinimumHeight(22);
@@ -1093,15 +1094,15 @@ void MainWindow::loadModernStyleSheet()
             "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 12px; padding: 0px 8px; background-color: #ffffff; color: #1976d2; }"
             "QLabel { color: #333333; background-color: transparent; border: none; }"
             "QLabel#sectionTitleLabel { color: #1976d2; font-size: 16px; font-weight: bold; }"
-            "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 6px 12px; min-height: 34px; color: #333333; font-size: 14px; }"
+            "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 10px; min-height: 30px; color: #333333; font-size: 14px; }"
             "QComboBox:hover { border-color: #bdbdbd; }"
             "QComboBox:focus { border-color: #1976d2; border-width: 2px; }"
             "QComboBox QAbstractItemView { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; selection-background-color: #e3f2fd; selection-color: #1976d2; padding: 4px; outline: none; }"
-            "QLineEdit { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 6px 12px; min-height: 34px; color: #333333; font-size: 14px; }"
+            "QLineEdit { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 10px; min-height: 30px; color: #333333; font-size: 14px; }"
             "QLineEdit:hover { border-color: #bdbdbd; }"
             "QLineEdit:focus { border-color: #1976d2; border-width: 2px; }"
             "QLineEdit:disabled { background-color: #f5f5f5; color: #bdbdbd; }"
-            "QSpinBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 6px 30px 6px 12px; min-height: 34px; color: #333333; font-size: 14px; }"
+            "QSpinBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 28px 4px 10px; min-height: 30px; color: #333333; font-size: 14px; }"
             "QSpinBox:hover { border-color: #bdbdbd; }"
             "QSpinBox:focus { border-color: #1976d2; border-width: 2px; }"
             "QSpinBox:disabled { background-color: #f5f5f5; color: #bdbdbd; }"
@@ -1126,6 +1127,8 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton:hover { background-color: #1565c0; }"
             "QPushButton:pressed { background-color: #0d47a1; }"
             "QPushButton:disabled { background-color: #bdbdbd; color: #ffffff; }"
+            "QPushButton#compactTcpButton { padding: 0px 14px; min-height: 38px; max-height: 38px; font-size: 14px; }"
+            "QPushButton#compactTcpStartButton { padding: 0px 14px; min-height: 38px; max-height: 38px; font-size: 14px; }"
             "QToolTip { background-color: #424242; color: #ffffff; border: none; border-radius: 4px; padding: 6px 10px; font-size: 13px; }";
     }
 
@@ -1591,7 +1594,7 @@ void MainWindow::setupConfigPanel()
     auto createPortRow = [this, config_layout, &baudRates, &ports, &createRateCombo](QLabel*& lbl, QComboBox*& portCombo, QComboBox*& baudCombo, QLabel*& rateLbl, QComboBox*& rateCombo, const QString& defaultPort, const QString& defaultBaud, int row, int maxRate = 500) {
         lbl = new QLabel(this);
         lbl->setObjectName("fieldLabel");
-        lbl->setFixedHeight(28);
+        lbl->setFixedHeight(kMainPageInputHeight);
         lbl->setFixedWidth(80);
         config_layout->addWidget(lbl, row, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
@@ -1627,7 +1630,7 @@ void MainWindow::setupConfigPanel()
 
         rateLbl = new QLabel(this);
         rateLbl->setObjectName("fieldLabel");
-        rateLbl->setFixedHeight(28);
+        rateLbl->setFixedHeight(kMainPageInputHeight);
         config_layout->addWidget(rateLbl, row, 3, Qt::AlignVCenter | Qt::AlignRight);
 
         rateCombo = createRateCombo(maxRate);
@@ -1636,12 +1639,18 @@ void MainWindow::setupConfigPanel()
 
     config_inline_title_lbl_ = new QLabel(this);
     config_inline_title_lbl_->setObjectName("sectionTitleLabel");
-    config_inline_title_lbl_->setFixedHeight(28);
-    config_layout->addWidget(config_inline_title_lbl_, 0, 0, 1, 3, Qt::AlignVCenter | Qt::AlignLeft);
+    config_inline_title_lbl_->setFixedHeight(kMainPageInputHeight);
+    config_layout->addWidget(config_inline_title_lbl_, 0, 0, Qt::AlignVCenter | Qt::AlignLeft);
+
+    auto_detect_ports_btn_ = new QPushButton(this);
+    auto_detect_ports_btn_->setFixedHeight(kMainPageButtonHeight);
+    auto_detect_ports_btn_->setMinimumWidth(120);
+    connect(auto_detect_ports_btn_, &QPushButton::clicked, this, &MainWindow::onAutoDetectPortsClicked);
+    config_layout->addWidget(auto_detect_ports_btn_, 0, 1, 1, 2, Qt::AlignVCenter | Qt::AlignLeft);
 
     global_rate_lbl_ = new QLabel(this);
     global_rate_lbl_->setObjectName("fieldLabel");
-    global_rate_lbl_->setFixedHeight(28);
+    global_rate_lbl_->setFixedHeight(kMainPageInputHeight);
     config_layout->addWidget(global_rate_lbl_, 0, 3, Qt::AlignVCenter | Qt::AlignRight);
 
     global_rate_combo_ = createRateCombo();
@@ -1693,7 +1702,7 @@ void MainWindow::setupDataPanels()
     gnss_group_ = new QGroupBox(this);
     gnss_group_->setObjectName("sensorGroupBox");
     auto *gnss_layout = new QVBoxLayout(gnss_group_);
-    gnss_layout->setContentsMargins(1, 1, 1, 1);
+    gnss_layout->setContentsMargins(1, 0, 1, 1);
     gnss_layout->setSpacing(0);
     gnss_inline_title_lbl_ = new QLabel(this);
     gnss_inline_title_lbl_->setObjectName("sectionTitleLabel");
@@ -1705,7 +1714,7 @@ void MainWindow::setupDataPanels()
     imu_group_ = new QGroupBox(this);
     imu_group_->setObjectName("sensorGroupBox");
     auto *imu_layout = new QVBoxLayout(imu_group_);
-    imu_layout->setContentsMargins(1, 1, 1, 1);
+    imu_layout->setContentsMargins(1, 0, 1, 1);
     imu_layout->setSpacing(0);
     imu_inline_title_lbl_ = new QLabel(this);
     imu_inline_title_lbl_->setObjectName("sectionTitleLabel");
@@ -1717,7 +1726,7 @@ void MainWindow::setupDataPanels()
     auto *env_group = new QGroupBox(this);
     env_group->setObjectName("sensorGroupBox");
     auto *env_layout = new QVBoxLayout(env_group);
-    env_layout->setContentsMargins(1, 1, 1, 1);
+    env_layout->setContentsMargins(1, 0, 1, 1);
     env_layout->setSpacing(0);
     env_inline_title_lbl_ = new QLabel(this);
     env_inline_title_lbl_->setObjectName("sectionTitleLabel");
@@ -1757,7 +1766,7 @@ void MainWindow::setupDataPanels()
 
     waveform_split_lbl_ = new QLabel(this);
     waveform_split_lbl_->setObjectName("fieldLabel");
-    waveform_split_lbl_->setFixedHeight(28);
+    waveform_split_lbl_->setFixedHeight(kMainPageInputHeight);
 
     waveform_split_spin_ = new QSpinBox(this);
     waveform_split_spin_->setRange(1, 5);

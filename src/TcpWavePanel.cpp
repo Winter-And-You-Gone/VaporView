@@ -188,8 +188,8 @@ public:
         : QWidget(parent)
         , plot_mode_(PlotMode::Scatter)
     {
-        setMinimumHeight(120);
-        setMaximumHeight(150);
+        setMinimumHeight(150);
+        setMaximumHeight(190);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     }
 
@@ -214,7 +214,35 @@ protected:
         painter.setRenderHint(QPainter::Antialiasing, true);
         painter.fillRect(rect(), QColor("#ffffff"));
 
-        const QRectF plotRect = rect().adjusted(42, 12, -10, -24);
+        if (peak_values_.isEmpty())
+        {
+            const QRectF emptyPlotRect = rect().adjusted(18, 8, -2, -18);
+            painter.setPen(QPen(QColor("#cfd7e3"), 1));
+            painter.drawRect(emptyPlotRect);
+            painter.setPen(QColor("#7a8899"));
+            painter.drawText(emptyPlotRect, Qt::AlignCenter, QObject::tr("No peak data"));
+            return;
+        }
+
+        auto [minIt, maxIt] = std::minmax_element(peak_values_.cbegin(), peak_values_.cend());
+        float minValue = *minIt;
+        float maxValue = *maxIt;
+        if (std::fabs(maxValue - minValue) < 1e-6f)
+        {
+            const float pad = std::max(1e-6f, std::fabs(maxValue) * 0.05f + 1e-6f);
+            minValue -= pad;
+            maxValue += pad;
+        }
+
+        const QString maxLabel = QString::number(maxValue, 'f', 3);
+        const QString midLabel = QString::number((maxValue + minValue) * 0.5, 'f', 3);
+        const QString minLabel = QString::number(minValue, 'f', 3);
+        const QFontMetrics fm = painter.fontMetrics();
+        const int labelWidth = std::max({fm.horizontalAdvance(maxLabel), fm.horizontalAdvance(midLabel), fm.horizontalAdvance(minLabel)});
+        const int leftMargin = std::max(18, labelWidth + 4);
+        const int bottomMargin = fm.height() + 2;
+        const QRectF plotRect = rect().adjusted(leftMargin, 8, -2, -bottomMargin);
+
         painter.setPen(QPen(QColor("#e3e8ef"), 1));
         for (int i = 0; i <= 10; ++i)
         {
@@ -229,23 +257,6 @@ protected:
 
         painter.setPen(QPen(QColor("#cfd7e3"), 1));
         painter.drawRect(plotRect);
-
-        if (peak_values_.isEmpty())
-        {
-            painter.setPen(QColor("#7a8899"));
-            painter.drawText(plotRect, Qt::AlignCenter, QObject::tr("No peak data"));
-            return;
-        }
-
-        auto [minIt, maxIt] = std::minmax_element(peak_values_.cbegin(), peak_values_.cend());
-        float minValue = *minIt;
-        float maxValue = *maxIt;
-        if (std::fabs(maxValue - minValue) < 1e-6f)
-        {
-            const float pad = std::max(1e-6f, std::fabs(maxValue) * 0.05f + 1e-6f);
-            minValue -= pad;
-            maxValue += pad;
-        }
 
         QVector<QPointF> points;
         points.reserve(peak_values_.size());
@@ -275,10 +286,10 @@ protected:
         }
 
         painter.setPen(QColor("#5e6b78"));
-        painter.drawText(QRectF(4, plotRect.top() - 2, 36, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 3));
-        painter.drawText(QRectF(4, plotRect.center().y() - 8, 36, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number((maxValue + minValue) * 0.5, 'f', 3));
-        painter.drawText(QRectF(4, plotRect.bottom() - 8, 36, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(minValue, 'f', 3));
-        painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 4, plotRect.width(), 16), Qt::AlignRight | Qt::AlignVCenter,
+        painter.drawText(QRectF(2, plotRect.top() - 2, leftMargin - 4, fm.height()), Qt::AlignRight | Qt::AlignVCenter, maxLabel);
+        painter.drawText(QRectF(2, plotRect.center().y() - fm.height() * 0.5, leftMargin - 4, fm.height()), Qt::AlignRight | Qt::AlignVCenter, midLabel);
+        painter.drawText(QRectF(2, plotRect.bottom() - fm.height() + 2, leftMargin - 4, fm.height()), Qt::AlignRight | Qt::AlignVCenter, minLabel);
+        painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 2, plotRect.width(), fm.height()), Qt::AlignRight | Qt::AlignVCenter,
                          QString("%1 frames").arg(peak_values_.size()));
     }
 
@@ -309,6 +320,7 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , wave4_plot_(nullptr)
     , peak_plot_(nullptr)
     , peak_mode_button_(nullptr)
+    , peak_clear_button_(nullptr)
     , control_layout_(nullptr)
     , socket_(nullptr)
     , peak_plot_scatter_mode_(true)
@@ -395,9 +407,6 @@ void TcpWavePanel::setupUi()
 
     mainLayout->addLayout(control_layout_);
 
-    auto *plotsColumnLayout = new QVBoxLayout();
-    plotsColumnLayout->setSpacing(4);
-
     auto *plotsLayout = new QHBoxLayout();
     plotsLayout->setSpacing(1);
 
@@ -440,31 +449,39 @@ void TcpWavePanel::setupUi()
     wave4_plot_ = new WavePlotWidget(QColor("#ef8f35"), this);
     wave4Layout->addWidget(wave4_plot_, 1);
     plotsLayout->addWidget(wave4_group_, 1);
-    plotsColumnLayout->addLayout(plotsLayout, 1);
+
+    mainLayout->addLayout(plotsLayout, 1);
 
     peak_group_ = new QGroupBox(this);
     peak_group_->setObjectName("sensorGroupBox");
+    peak_group_->setMinimumHeight(198);
+    peak_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::MinimumExpanding);
     auto *peakLayout = new QVBoxLayout(peak_group_);
-    peakLayout->setContentsMargins(2, 2, 2, 2);
+    peakLayout->setContentsMargins(0, 1, 0, 0);
     auto *peakHeaderLayout = new QHBoxLayout();
     peakHeaderLayout->setContentsMargins(0, 0, 0, 0);
-    peakHeaderLayout->setSpacing(8);
+    peakHeaderLayout->setSpacing(6);
     peak_title_label_ = new QLabel(this);
     peak_title_label_->setObjectName("sectionTitleLabel");
-    peakHeaderLayout->addWidget(peak_title_label_, 1, Qt::AlignVCenter | Qt::AlignLeft);
+    peakHeaderLayout->addWidget(peak_title_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     peak_mode_button_ = new QPushButton(this);
     peak_mode_button_->setObjectName("compactTcpButton");
-    peak_mode_button_->setFixedHeight(kTcpControlHeight);
+    peak_mode_button_->setFixedHeight(kTcpButtonHeight);
     peak_mode_button_->setMinimumWidth(98);
     connect(peak_mode_button_, &QPushButton::clicked, this, &TcpWavePanel::onTogglePeakPlotModeClicked);
-    peakHeaderLayout->addWidget(peak_mode_button_, 0, Qt::AlignVCenter | Qt::AlignRight);
+    peakHeaderLayout->addWidget(peak_mode_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    peak_clear_button_ = new QPushButton(this);
+    peak_clear_button_->setObjectName("compactTcpButton");
+    peak_clear_button_->setFixedHeight(kTcpButtonHeight);
+    peak_clear_button_->setMinimumWidth(72);
+    connect(peak_clear_button_, &QPushButton::clicked, this, &TcpWavePanel::onClearPeakPlotClicked);
+    peakHeaderLayout->addWidget(peak_clear_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    peakHeaderLayout->addStretch(1);
     peakLayout->addLayout(peakHeaderLayout);
     peak_plot_ = new PeakTrendPlotWidget(this);
     peak_plot_->setPlotMode(peak_plot_scatter_mode_ ? PeakTrendPlotWidget::PlotMode::Scatter : PeakTrendPlotWidget::PlotMode::Polyline);
-    peakLayout->addWidget(peak_plot_, 1);
-    plotsColumnLayout->addWidget(peak_group_, 1);
-
-    mainLayout->addLayout(plotsColumnLayout, 1);
+    peakLayout->addWidget(peak_plot_);
+    mainLayout->addWidget(peak_group_, 0);
 }
 
 void TcpWavePanel::setEnglish(bool english)
@@ -492,7 +509,11 @@ void TcpWavePanel::setEnglish(bool english)
     }
     if (peak_title_label_)
     {
-        peak_title_label_->setText(english ? "Peak Value Trend" : "峰值趋势");
+        peak_title_label_->setText(english ? "Normalized Second Harmonic Peak Trend" : "归一化二次谐波峰值趋势");
+    }
+    if (peak_clear_button_)
+    {
+        peak_clear_button_->setText(english ? "Clear" : "清空");
     }
     hint_label_->setText(english
         ? "This TCP sender is likely single-client. Do not open the LabVIEW VI receiver and VaporView on port 8888 at the same time."
@@ -635,6 +656,15 @@ void TcpWavePanel::onTogglePeakPlotModeClicked()
     if (peak_plot_)
     {
         peak_plot_->setPlotMode(peak_plot_scatter_mode_ ? PeakTrendPlotWidget::PlotMode::Scatter : PeakTrendPlotWidget::PlotMode::Polyline);
+    }
+}
+
+void TcpWavePanel::onClearPeakPlotClicked()
+{
+    peak_history_.clear();
+    if (peak_plot_)
+    {
+        peak_plot_->setPeakValues({});
     }
 }
 
