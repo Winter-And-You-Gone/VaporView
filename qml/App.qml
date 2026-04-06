@@ -35,17 +35,33 @@ FluWindow {
         topPadding: 0
 
         actionItem: Component {
-            Row {
-                spacing: 8
+            Item {
+                width: actionRow.width + titleBarReserve
+                height: actionRow.height
 
-                FluButton {
-                    text: appController.english ? "中文" : "EN"
-                    onClicked: appController.toggleLanguage()
+                readonly property int titleBarReserve: {
+                    if (window.appBar && window.appBar.layoutStandardbuttons) {
+                        return window.appBar.layoutStandardbuttons.width + 12
+                    }
+                    return 212
                 }
 
-                FluFilledButton {
-                    text: appController.english ? "RTK Service" : "RTK 服务"
-                    onClicked: navigationView.push("qrc:/qt/qml/VaporViewApp/qml/page/RtkPage.qml")
+                Row {
+                    id: actionRow
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.right: parent.right
+                    anchors.rightMargin: parent.titleBarReserve
+                    spacing: 8
+
+                    FluButton {
+                        text: appController.english ? "中文" : "EN"
+                        onClicked: appController.toggleLanguage()
+                    }
+
+                    FluFilledButton {
+                        text: appController.english ? "RTK Service" : "RTK 服务"
+                        onClicked: navigationView.push("qrc:/qt/qml/VaporViewApp/qml/page/RtkPage.qml")
+                    }
                 }
             }
         }
