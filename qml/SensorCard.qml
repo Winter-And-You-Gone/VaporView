@@ -15,9 +15,11 @@ FluFrame {
     Layout.fillWidth: true
     Layout.minimumWidth: 280
     Layout.preferredWidth: 320
+    Layout.preferredHeight: contentLayout.implicitHeight + 36
     padding: 0
 
     ColumnLayout {
+        id: contentLayout
         anchors.fill: parent
         anchors.margins: 18
         spacing: 14
@@ -63,9 +65,11 @@ FluFrame {
                 spacing: 12
 
                 FluText {
+                    Layout.minimumWidth: 84
                     Layout.preferredWidth: 104
                     text: modelData.label
                     color: "#64748b"
+                    wrapMode: Text.WordWrap
                 }
 
                 FluText {
@@ -73,6 +77,7 @@ FluFrame {
                     horizontalAlignment: Text.AlignRight
                     text: modelData.value
                     font: FluTextStyle.BodyStrong
+                    wrapMode: Text.WrapAnywhere
                 }
             }
         }

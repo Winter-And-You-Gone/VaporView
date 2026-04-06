@@ -28,8 +28,10 @@ FluScrollablePage {
 
     FluFrame {
         Layout.fillWidth: true
+        Layout.preferredHeight: headerLayout.implicitHeight + 40
 
         ColumnLayout {
+            id: headerLayout
             anchors.fill: parent
             anchors.margins: 20
             spacing: 10
@@ -64,8 +66,10 @@ FluScrollablePage {
         FluFrame {
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignTop
+            Layout.preferredHeight: ntripLayout.implicitHeight + 36
 
             ColumnLayout {
+                id: ntripLayout
                 anchors.fill: parent
                 anchors.margins: 18
                 spacing: 10
@@ -82,9 +86,11 @@ FluScrollablePage {
                     onTextChanged: rtkController.server = text
                 }
 
-                RowLayout {
+                GridLayout {
                     Layout.fillWidth: true
-                    spacing: 10
+                    columns: width > 720 ? 2 : 1
+                    columnSpacing: 10
+                    rowSpacing: 10
 
                     FluTextBox {
                         Layout.fillWidth: true
@@ -118,7 +124,7 @@ FluScrollablePage {
                     onActivated: rtkController.mountpoint = currentText
                 }
 
-                RowLayout {
+                Flow {
                     Layout.fillWidth: true
                     spacing: 10
 
@@ -146,8 +152,10 @@ FluScrollablePage {
         FluFrame {
             Layout.fillWidth: true
             Layout.alignment: Qt.AlignTop
+            Layout.preferredHeight: serialLayout.implicitHeight + 36
 
             ColumnLayout {
+                id: serialLayout
                 anchors.fill: parent
                 anchors.margins: 18
                 spacing: 10
@@ -157,9 +165,11 @@ FluScrollablePage {
                     font: FluTextStyle.BodyStrong
                 }
 
-                RowLayout {
+                GridLayout {
                     Layout.fillWidth: true
-                    spacing: 10
+                    columns: width > 640 ? 2 : 1
+                    columnSpacing: 10
+                    rowSpacing: 10
 
                     FluComboBox {
                         Layout.fillWidth: true
@@ -178,9 +188,11 @@ FluScrollablePage {
                     }
                 }
 
-                RowLayout {
+                GridLayout {
                     Layout.fillWidth: true
-                    spacing: 10
+                    columns: width > 920 ? 3 : 1
+                    columnSpacing: 10
+                    rowSpacing: 10
 
                     FluComboBox {
                         Layout.fillWidth: true
@@ -213,7 +225,7 @@ FluScrollablePage {
                     }
                 }
 
-                RowLayout {
+                Flow {
                     Layout.fillWidth: true
                     spacing: 10
 
@@ -241,8 +253,10 @@ FluScrollablePage {
 
     FluFrame {
         Layout.fillWidth: true
+        Layout.preferredHeight: ggaLayout.implicitHeight + 36
 
         ColumnLayout {
+            id: ggaLayout
             anchors.fill: parent
             anchors.margins: 18
             spacing: 10
@@ -267,9 +281,11 @@ FluScrollablePage {
                 }
             }
 
-            RowLayout {
+            GridLayout {
                 Layout.fillWidth: true
-                spacing: 10
+                columns: width > 760 ? 3 : 1
+                columnSpacing: 10
+                rowSpacing: 10
 
                 FluComboBox {
                     Layout.preferredWidth: 220

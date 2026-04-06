@@ -15,12 +15,15 @@ FluScrollablePage {
 
     FluFrame {
         Layout.fillWidth: true
-        Layout.preferredHeight: 170
+        Layout.preferredHeight: heroLayout.implicitHeight + 48
 
-        RowLayout {
+        GridLayout {
+            id: heroLayout
             anchors.fill: parent
             anchors.margins: 24
-            spacing: 20
+            columns: width > 920 ? 2 : 1
+            columnSpacing: 20
+            rowSpacing: 20
 
             ColumnLayout {
                 Layout.fillWidth: true
@@ -40,7 +43,8 @@ FluScrollablePage {
                     Layout.fillWidth: true
                 }
 
-                RowLayout {
+                Flow {
+                    Layout.fillWidth: true
                     spacing: 10
 
                     FluFilledButton {
@@ -70,10 +74,12 @@ FluScrollablePage {
             }
 
             FluFrame {
+                Layout.fillWidth: true
                 Layout.preferredWidth: 240
-                Layout.fillHeight: true
+                Layout.preferredHeight: statusCardLayout.implicitHeight + 36
 
                 ColumnLayout {
+                    id: statusCardLayout
                     anchors.fill: parent
                     anchors.margins: 18
                     spacing: 10
@@ -114,7 +120,7 @@ FluScrollablePage {
 
     GridLayout {
         Layout.fillWidth: true
-        columns: width > 1100 ? 3 : 2
+        columns: width > 1320 ? 3 : width > 780 ? 2 : 1
         columnSpacing: 12
         rowSpacing: 12
 

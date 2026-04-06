@@ -25,8 +25,10 @@ FluScrollablePage {
 
     FluFrame {
         Layout.fillWidth: true
+        Layout.preferredHeight: sessionHeaderLayout.implicitHeight + 40
 
         ColumnLayout {
+            id: sessionHeaderLayout
             anchors.fill: parent
             anchors.margins: 20
             spacing: 10
@@ -46,6 +48,11 @@ FluScrollablePage {
                     text: sessionController.sessionPath
                     placeholderText: appController.english ? "Paste a session directory or session.json path" : "粘贴 session 目录或 session.json 路径"
                 }
+            }
+
+            Flow {
+                Layout.fillWidth: true
+                spacing: 10
 
                 FluFilledButton {
                     text: appController.english ? "Open" : "打开"
@@ -78,7 +85,7 @@ FluScrollablePage {
 
     GridLayout {
         Layout.fillWidth: true
-        columns: width > 1180 ? 3 : 2
+        columns: width > 1180 ? 3 : width > 760 ? 2 : 1
         columnSpacing: 12
         rowSpacing: 12
 
@@ -118,8 +125,10 @@ FluScrollablePage {
 
     FluFrame {
         Layout.fillWidth: true
+        Layout.preferredHeight: waveSectionLayout.implicitHeight + 36
 
         ColumnLayout {
+            id: waveSectionLayout
             anchors.fill: parent
             anchors.margins: 18
             spacing: 10
@@ -142,9 +151,11 @@ FluScrollablePage {
                 }
             }
 
-            RowLayout {
+            GridLayout {
                 Layout.fillWidth: true
-                spacing: 10
+                columns: width > 760 ? 2 : 1
+                columnSpacing: 10
+                rowSpacing: 10
 
                 FluSlider {
                     Layout.fillWidth: true

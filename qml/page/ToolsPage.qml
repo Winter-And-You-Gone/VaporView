@@ -9,8 +9,10 @@ FluScrollablePage {
 
     FluFrame {
         Layout.fillWidth: true
+        Layout.preferredHeight: workbenchLayout.implicitHeight + 40
 
         ColumnLayout {
+            id: workbenchLayout
             anchors.fill: parent
             anchors.margins: 20
             spacing: 12
@@ -29,7 +31,8 @@ FluScrollablePage {
                       : "剩余工具现在已经进入 Fluent 页面，这里保留给项目说明、后续实用工具和迁移检查点。"
             }
 
-            RowLayout {
+            Flow {
+                Layout.fillWidth: true
                 spacing: 10
 
                 FluFilledButton {
@@ -47,8 +50,10 @@ FluScrollablePage {
 
     FluFrame {
         Layout.fillWidth: true
+        Layout.preferredHeight: stateLayout.implicitHeight + 40
 
         ColumnLayout {
+            id: stateLayout
             anchors.fill: parent
             anchors.margins: 20
             spacing: 10
