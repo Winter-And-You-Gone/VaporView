@@ -34,6 +34,7 @@
 #include <QIntValidator>
 #include <QSerialPortInfo>
 #include <QRegularExpression>
+#include <QHash>
 #include <QSet>
 #include <QSignalBlocker>
 #include <QSettings>
@@ -3359,54 +3360,85 @@ void MainWindow::onAutoDetectPortsClicked()
                         combo->setEditText(value);
                     }
                 };
+                auto normalizePort = [&selectText](const QString& value) {
+                    return (value.isEmpty() || value == selectText) ? selectText : value;
+                };
 
-                // Reset all serial-port selectors first so unidentified devices stay on "Select".
-                applySelection(gnss_port_combo_, selectText);
-                applySelection(imu_port_combo_, selectText);
-                applySelection(ptb_port_combo_, selectText);
-                applySelection(hmp_port_combo_, selectText);
-                applySelection(lidar_port_combo_, selectText);
+                QHash<QString, QString> plannedPorts{
+                    {"gnss", normalizePort(gnss_port_combo_->currentText())},
+                    {"imu", normalizePort(imu_port_combo_->currentText())},
+                    {"ptb", normalizePort(ptb_port_combo_->currentText())},
+                    {"hmp", normalizePort(hmp_port_combo_->currentText())},
+                    {"lidar", normalizePort(lidar_port_combo_->currentText())},
+                };
 
-                QSet<QString> usedPorts;
+                QHash<QString, QString> detectedBaud;
                 for (const DetectionResult& detection : detections)
                 {
-                    if (detection.port_name.isEmpty() || detection.port_name == selectText)
+                    const QString portName = normalizePort(detection.port_name);
+                    if (portName == selectText)
                     {
                         continue;
                     }
-
-                    // Keep one device per port; if duplicate is seen, keep the first assignment.
-                    if (usedPorts.contains(detection.port_name))
+                    if (!plannedPorts.contains(detection.key))
                     {
                         continue;
                     }
-                    usedPorts.insert(detection.port_name);
+                    plannedPorts[detection.key] = portName;
+                    detectedBaud[detection.key] = detection.baud_text;
+                }
 
-                    if (detection.key == "gnss")
+                QHash<QString, int> portUseCount;
+                for (auto it = plannedPorts.cbegin(); it != plannedPorts.cend(); ++it)
+                {
+                    if (it.value() != selectText)
                     {
-                        applySelection(gnss_port_combo_, detection.port_name);
-                        gnss_baud_combo_->setCurrentText(detection.baud_text);
+                        portUseCount[it.value()] += 1;
                     }
-                    else if (detection.key == "imu")
+                }
+
+                QSet<QString> duplicatePorts;
+                for (auto it = portUseCount.cbegin(); it != portUseCount.cend(); ++it)
+                {
+                    if (it.value() > 1)
                     {
-                        applySelection(imu_port_combo_, detection.port_name);
-                        imu_baud_combo_->setCurrentText(detection.baud_text);
+                        duplicatePorts.insert(it.key());
                     }
-                    else if (detection.key == "ptb")
+                }
+
+                for (auto it = plannedPorts.begin(); it != plannedPorts.end(); ++it)
+                {
+                    if (duplicatePorts.contains(it.value()))
                     {
-                        applySelection(ptb_port_combo_, detection.port_name);
-                        ptb_baud_combo_->setCurrentText(detection.baud_text);
+                        it.value() = selectText;
                     }
-                    else if (detection.key == "hmp")
-                    {
-                        applySelection(hmp_port_combo_, detection.port_name);
-                        hmp_baud_combo_->setCurrentText(detection.baud_text);
-                    }
-                    else if (detection.key == "lidar")
-                    {
-                        applySelection(lidar_port_combo_, detection.port_name);
-                        lidar_baud_combo_->setCurrentText(detection.baud_text);
-                    }
+                }
+
+                applySelection(gnss_port_combo_, plannedPorts.value("gnss", selectText));
+                applySelection(imu_port_combo_, plannedPorts.value("imu", selectText));
+                applySelection(ptb_port_combo_, plannedPorts.value("ptb", selectText));
+                applySelection(hmp_port_combo_, plannedPorts.value("hmp", selectText));
+                applySelection(lidar_port_combo_, plannedPorts.value("lidar", selectText));
+
+                if (plannedPorts.value("gnss", selectText) != selectText && detectedBaud.contains("gnss"))
+                {
+                    gnss_baud_combo_->setCurrentText(detectedBaud.value("gnss"));
+                }
+                if (plannedPorts.value("imu", selectText) != selectText && detectedBaud.contains("imu"))
+                {
+                    imu_baud_combo_->setCurrentText(detectedBaud.value("imu"));
+                }
+                if (plannedPorts.value("ptb", selectText) != selectText && detectedBaud.contains("ptb"))
+                {
+                    ptb_baud_combo_->setCurrentText(detectedBaud.value("ptb"));
+                }
+                if (plannedPorts.value("hmp", selectText) != selectText && detectedBaud.contains("hmp"))
+                {
+                    hmp_baud_combo_->setCurrentText(detectedBaud.value("hmp"));
+                }
+                if (plannedPorts.value("lidar", selectText) != selectText && detectedBaud.contains("lidar"))
+                {
+                    lidar_baud_combo_->setCurrentText(detectedBaud.value("lidar"));
                 }
 
                 port_detection_in_progress_ = false;
