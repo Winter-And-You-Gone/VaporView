@@ -11,6 +11,8 @@ FluFrame {
     property color accentColor: "#2563eb"
     property bool active: false
     property var fields: []
+    property int fieldColumns: 1
+    property int labelWidth: 128
 
     Layout.fillWidth: true
     Layout.minimumWidth: 320
@@ -58,27 +60,34 @@ FluFrame {
             }
         }
 
-        Repeater {
-            model: root.fields
+        GridLayout {
+            Layout.fillWidth: true
+            columns: Math.max(1, root.fieldColumns)
+            columnSpacing: 16
+            rowSpacing: 10
 
-            delegate: RowLayout {
-                Layout.fillWidth: true
-                spacing: 12
+            Repeater {
+                model: root.fields
 
-                FluText {
-                    Layout.minimumWidth: 112
-                    Layout.preferredWidth: 128
-                    text: modelData.label
-                    color: "#64748b"
-                    wrapMode: Text.WordWrap
-                }
-
-                FluText {
+                delegate: RowLayout {
                     Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignRight
-                    text: modelData.value
-                    font: FluTextStyle.BodyStrong
-                    wrapMode: Text.WrapAnywhere
+                    spacing: 12
+
+                    FluText {
+                        Layout.minimumWidth: root.labelWidth
+                        Layout.preferredWidth: root.labelWidth
+                        text: modelData.label
+                        color: "#64748b"
+                        wrapMode: Text.WordWrap
+                    }
+
+                    FluText {
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignRight
+                        text: modelData.value
+                        font: FluTextStyle.BodyStrong
+                        wrapMode: Text.WrapAnywhere
+                    }
                 }
             }
         }
