@@ -31,6 +31,8 @@ constexpr int kMaxPayloadBytes = 16 * 1024 * 1024;
 constexpr int kPreferredPayloadBytes = 200000;
 constexpr int kTcpControlHeight = 30;
 constexpr int kTcpButtonHeight = 38;
+constexpr int kPeakSearchStartIndex = 10000;
+constexpr int kPeakSearchEndIndex = 50000;
 
 QString hexPreview(const QByteArray& data, int limit = 12)
 {
@@ -845,7 +847,14 @@ void TcpWavePanel::processBuffer()
             wave4_history_ = wave4;
             wave1_plot_->setSamples(wave1_history_);
             wave4_plot_->setSamples(wave4_history_);
-            const auto peakIt = std::max_element(wave4_history_.cbegin(), wave4_history_.cend());
+            const int sampleCount = static_cast<int>(wave4_history_.size());
+            const int peakStart = std::min(kPeakSearchStartIndex, sampleCount);
+            const int peakEnd = std::min(kPeakSearchEndIndex, sampleCount);
+            const auto peakBegin = wave4_history_.cbegin() + peakStart;
+            const auto peakFinish = wave4_history_.cbegin() + peakEnd;
+            const auto peakIt = peakBegin < peakFinish
+                ? std::max_element(peakBegin, peakFinish)
+                : wave4_history_.cend();
             peak_history_.push_back(peakIt == wave4_history_.cend() ? 0.0f : *peakIt);
             if (peak_plot_)
             {
