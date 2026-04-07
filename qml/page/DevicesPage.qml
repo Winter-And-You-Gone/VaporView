@@ -5,7 +5,7 @@ import FluentUI 1.0
 import VaporViewApp
 
 FluScrollablePage {
-    title: appController.english ? "Devices & Telemetry" : "设备与数据"
+    title: appController.english ? "Overview & Devices" : "总览与设备"
     padding: 12
     spacing: 12
 
@@ -160,273 +160,220 @@ FluScrollablePage {
 
     FluFrame {
         Layout.fillWidth: true
-        Layout.preferredHeight: deviceLayout.implicitHeight + 40
+        Layout.preferredHeight: configLayout.implicitHeight + 40
 
         ColumnLayout {
-            id: deviceLayout
+            id: configLayout
             anchors.fill: parent
             anchors.margins: 20
             spacing: 16
 
             FluText {
-                text: appController.english ? "Device Wiring Matrix" : "设备连线矩阵"
+                text: appController.english ? "Device Configuration Matrix" : "设备配置矩阵"
                 font: FluTextStyle.Title
             }
 
             GridLayout {
                 Layout.fillWidth: true
-                columns: width > 960 ? 2 : 1
-                columnSpacing: 12
-                rowSpacing: 12
+                columns: 6
+                columnSpacing: 10
+                rowSpacing: 10
 
-                FluFrame {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: gnssLayout.implicitHeight + 32
-
-                    ColumnLayout {
-                        id: gnssLayout
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 10
-
-                        FluText {
-                            text: "GNSS"
-                            font: FluTextStyle.BodyStrong
-                        }
-
-                        FluText { text: appController.english ? "Port" : "端口"; color: "#64748b" }
-                        FluComboBox {
-                            Layout.fillWidth: true
-                            editable: true
-                            model: appController.portOptions
-                            currentIndex: portIndex(appController.portOptions, appController.gnssPort)
-                            onActivated: appController.gnssPort = currentText
-                            onCommit: function(text) { appController.gnssPort = text }
-                            disabled: !appController.canEditPorts
-                        }
-
-                        FluText { text: appController.english ? "Baud" : "波特率"; color: "#64748b" }
-                        FluComboBox {
-                            Layout.fillWidth: true
-                            editable: true
-                            model: appController.baudOptions
-                            currentIndex: listIndex(appController.baudOptions, appController.gnssBaud)
-                            onActivated: appController.gnssBaud = currentText
-                            onCommit: function(text) { appController.gnssBaud = text }
-                            disabled: !appController.canEditPorts
-                        }
-
-                        FluText { text: appController.english ? "Rate" : "频率"; color: "#64748b" }
-                        FluComboBox {
-                            Layout.fillWidth: true
-                            editable: true
-                            model: appController.rateOptions
-                            currentIndex: listIndex(appController.rateOptions, appController.gnssRate)
-                            onActivated: appController.gnssRate = currentText
-                            onCommit: function(text) { appController.gnssRate = text }
-                            disabled: !appController.canEditPorts
-                        }
-                    }
+                FluText {
+                    text: ""
+                    Layout.preferredWidth: 96
                 }
 
-                FluFrame {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: imuLayout.implicitHeight + 32
+                FluText { text: "GNSS"; font: FluTextStyle.BodyStrong; horizontalAlignment: Text.AlignHCenter; Layout.fillWidth: true }
+                FluText { text: "IMU"; font: FluTextStyle.BodyStrong; horizontalAlignment: Text.AlignHCenter; Layout.fillWidth: true }
+                FluText { text: "PTB210"; font: FluTextStyle.BodyStrong; horizontalAlignment: Text.AlignHCenter; Layout.fillWidth: true }
+                FluText { text: "HMP3"; font: FluTextStyle.BodyStrong; horizontalAlignment: Text.AlignHCenter; Layout.fillWidth: true }
+                FluText { text: "TF03"; font: FluTextStyle.BodyStrong; horizontalAlignment: Text.AlignHCenter; Layout.fillWidth: true }
 
-                    ColumnLayout {
-                        id: imuLayout
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 10
-
-                        FluText {
-                            text: "IMU"
-                            font: FluTextStyle.BodyStrong
-                        }
-
-                        FluText { text: appController.english ? "Port" : "端口"; color: "#64748b" }
-                        FluComboBox {
-                            Layout.fillWidth: true
-                            editable: true
-                            model: appController.portOptions
-                            currentIndex: portIndex(appController.portOptions, appController.imuPort)
-                            onActivated: appController.imuPort = currentText
-                            onCommit: function(text) { appController.imuPort = text }
-                            disabled: !appController.canEditPorts
-                        }
-
-                        FluText { text: appController.english ? "Baud" : "波特率"; color: "#64748b" }
-                        FluComboBox {
-                            Layout.fillWidth: true
-                            editable: true
-                            model: appController.baudOptions
-                            currentIndex: listIndex(appController.baudOptions, appController.imuBaud)
-                            onActivated: appController.imuBaud = currentText
-                            onCommit: function(text) { appController.imuBaud = text }
-                            disabled: !appController.canEditPorts
-                        }
-
-                        FluText { text: appController.english ? "Rate" : "频率"; color: "#64748b" }
-                        FluComboBox {
-                            Layout.fillWidth: true
-                            editable: true
-                            model: appController.rateOptions
-                            currentIndex: listIndex(appController.rateOptions, appController.imuRate)
-                            onActivated: appController.imuRate = currentText
-                            onCommit: function(text) { appController.imuRate = text }
-                            disabled: !appController.canEditPorts
-                        }
-                    }
+                FluText {
+                    text: appController.english ? "Port" : "端口"
+                    color: "#64748b"
+                    font: FluTextStyle.BodyStrong
+                    Layout.preferredWidth: 96
                 }
 
-                FluFrame {
+                FluComboBox {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: ptbLayout.implicitHeight + 32
-
-                    ColumnLayout {
-                        id: ptbLayout
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 10
-
-                        FluText {
-                            text: "PTB210"
-                            font: FluTextStyle.BodyStrong
-                        }
-
-                        FluText { text: appController.english ? "Port" : "端口"; color: "#64748b" }
-                        FluComboBox {
-                            Layout.fillWidth: true
-                            editable: true
-                            model: appController.portOptions
-                            currentIndex: portIndex(appController.portOptions, appController.ptbPort)
-                            onActivated: appController.ptbPort = currentText
-                            onCommit: function(text) { appController.ptbPort = text }
-                            disabled: !appController.canEditPorts
-                        }
-
-                        FluText { text: appController.english ? "Baud" : "波特率"; color: "#64748b" }
-                        FluComboBox {
-                            Layout.fillWidth: true
-                            editable: true
-                            model: appController.baudOptions
-                            currentIndex: listIndex(appController.baudOptions, appController.ptbBaud)
-                            onActivated: appController.ptbBaud = currentText
-                            onCommit: function(text) { appController.ptbBaud = text }
-                            disabled: !appController.canEditPorts
-                        }
-
-                        FluText { text: appController.english ? "Rate" : "频率"; color: "#64748b" }
-                        FluComboBox {
-                            Layout.fillWidth: true
-                            editable: true
-                            model: appController.rateOptions
-                            currentIndex: listIndex(appController.rateOptions, appController.ptbRate)
-                            onActivated: appController.ptbRate = currentText
-                            onCommit: function(text) { appController.ptbRate = text }
-                            disabled: !appController.canEditPorts
-                        }
-                    }
+                    Layout.preferredWidth: 148
+                    editable: true
+                    model: appController.portOptions
+                    currentIndex: portIndex(appController.portOptions, appController.gnssPort)
+                    onActivated: appController.gnssPort = currentText
+                    onCommit: function(text) { appController.gnssPort = text }
+                    disabled: !appController.canEditPorts
                 }
 
-                FluFrame {
+                FluComboBox {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: hmpLayout.implicitHeight + 32
-
-                    ColumnLayout {
-                        id: hmpLayout
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 10
-
-                        FluText {
-                            text: "HMP3"
-                            font: FluTextStyle.BodyStrong
-                        }
-
-                        FluText { text: appController.english ? "Port" : "端口"; color: "#64748b" }
-                        FluComboBox {
-                            Layout.fillWidth: true
-                            editable: true
-                            model: appController.portOptions
-                            currentIndex: portIndex(appController.portOptions, appController.hmpPort)
-                            onActivated: appController.hmpPort = currentText
-                            onCommit: function(text) { appController.hmpPort = text }
-                            disabled: !appController.canEditPorts
-                        }
-
-                        FluText { text: appController.english ? "Baud" : "波特率"; color: "#64748b" }
-                        FluComboBox {
-                            Layout.fillWidth: true
-                            editable: true
-                            model: appController.baudOptions
-                            currentIndex: listIndex(appController.baudOptions, appController.hmpBaud)
-                            onActivated: appController.hmpBaud = currentText
-                            onCommit: function(text) { appController.hmpBaud = text }
-                            disabled: !appController.canEditPorts
-                        }
-
-                        FluText { text: appController.english ? "Rate" : "频率"; color: "#64748b" }
-                        FluComboBox {
-                            Layout.fillWidth: true
-                            editable: true
-                            model: appController.rateOptions
-                            currentIndex: listIndex(appController.rateOptions, appController.hmpRate)
-                            onActivated: appController.hmpRate = currentText
-                            onCommit: function(text) { appController.hmpRate = text }
-                            disabled: !appController.canEditPorts
-                        }
-                    }
+                    Layout.preferredWidth: 148
+                    editable: true
+                    model: appController.portOptions
+                    currentIndex: portIndex(appController.portOptions, appController.imuPort)
+                    onActivated: appController.imuPort = currentText
+                    onCommit: function(text) { appController.imuPort = text }
+                    disabled: !appController.canEditPorts
                 }
 
-                FluFrame {
+                FluComboBox {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: lidarLayout.implicitHeight + 32
+                    Layout.preferredWidth: 148
+                    editable: true
+                    model: appController.portOptions
+                    currentIndex: portIndex(appController.portOptions, appController.ptbPort)
+                    onActivated: appController.ptbPort = currentText
+                    onCommit: function(text) { appController.ptbPort = text }
+                    disabled: !appController.canEditPorts
+                }
 
-                    ColumnLayout {
-                        id: lidarLayout
-                        anchors.fill: parent
-                        anchors.margins: 16
-                        spacing: 10
+                FluComboBox {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 148
+                    editable: true
+                    model: appController.portOptions
+                    currentIndex: portIndex(appController.portOptions, appController.hmpPort)
+                    onActivated: appController.hmpPort = currentText
+                    onCommit: function(text) { appController.hmpPort = text }
+                    disabled: !appController.canEditPorts
+                }
 
-                        FluText {
-                            text: "TF03"
-                            font: FluTextStyle.BodyStrong
-                        }
+                FluComboBox {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 148
+                    editable: true
+                    model: appController.portOptions
+                    currentIndex: portIndex(appController.portOptions, appController.lidarPort)
+                    onActivated: appController.lidarPort = currentText
+                    onCommit: function(text) { appController.lidarPort = text }
+                    disabled: !appController.canEditPorts
+                }
 
-                        FluText { text: appController.english ? "Port" : "端口"; color: "#64748b" }
-                        FluComboBox {
-                            Layout.fillWidth: true
-                            editable: true
-                            model: appController.portOptions
-                            currentIndex: portIndex(appController.portOptions, appController.lidarPort)
-                            onActivated: appController.lidarPort = currentText
-                            onCommit: function(text) { appController.lidarPort = text }
-                            disabled: !appController.canEditPorts
-                        }
+                FluText {
+                    text: appController.english ? "Baud" : "波特率"
+                    color: "#64748b"
+                    font: FluTextStyle.BodyStrong
+                    Layout.preferredWidth: 96
+                }
 
-                        FluText { text: appController.english ? "Baud" : "波特率"; color: "#64748b" }
-                        FluComboBox {
-                            Layout.fillWidth: true
-                            editable: true
-                            model: appController.baudOptions
-                            currentIndex: listIndex(appController.baudOptions, appController.lidarBaud)
-                            onActivated: appController.lidarBaud = currentText
-                            onCommit: function(text) { appController.lidarBaud = text }
-                            disabled: !appController.canEditPorts
-                        }
+                FluComboBox {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 148
+                    editable: true
+                    model: appController.baudOptions
+                    currentIndex: listIndex(appController.baudOptions, appController.gnssBaud)
+                    onActivated: appController.gnssBaud = currentText
+                    onCommit: function(text) { appController.gnssBaud = text }
+                    disabled: !appController.canEditPorts
+                }
 
-                        FluText { text: appController.english ? "Rate" : "频率"; color: "#64748b" }
-                        FluComboBox {
-                            Layout.fillWidth: true
-                            editable: true
-                            model: appController.rateOptions
-                            currentIndex: listIndex(appController.rateOptions, appController.lidarRate)
-                            onActivated: appController.lidarRate = currentText
-                            onCommit: function(text) { appController.lidarRate = text }
-                            disabled: !appController.canEditPorts
-                        }
-                    }
+                FluComboBox {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 148
+                    editable: true
+                    model: appController.baudOptions
+                    currentIndex: listIndex(appController.baudOptions, appController.imuBaud)
+                    onActivated: appController.imuBaud = currentText
+                    onCommit: function(text) { appController.imuBaud = text }
+                    disabled: !appController.canEditPorts
+                }
+
+                FluComboBox {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 148
+                    editable: true
+                    model: appController.baudOptions
+                    currentIndex: listIndex(appController.baudOptions, appController.ptbBaud)
+                    onActivated: appController.ptbBaud = currentText
+                    onCommit: function(text) { appController.ptbBaud = text }
+                    disabled: !appController.canEditPorts
+                }
+
+                FluComboBox {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 148
+                    editable: true
+                    model: appController.baudOptions
+                    currentIndex: listIndex(appController.baudOptions, appController.hmpBaud)
+                    onActivated: appController.hmpBaud = currentText
+                    onCommit: function(text) { appController.hmpBaud = text }
+                    disabled: !appController.canEditPorts
+                }
+
+                FluComboBox {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 148
+                    editable: true
+                    model: appController.baudOptions
+                    currentIndex: listIndex(appController.baudOptions, appController.lidarBaud)
+                    onActivated: appController.lidarBaud = currentText
+                    onCommit: function(text) { appController.lidarBaud = text }
+                    disabled: !appController.canEditPorts
+                }
+
+                FluText {
+                    text: appController.english ? "Rate" : "频率"
+                    color: "#64748b"
+                    font: FluTextStyle.BodyStrong
+                    Layout.preferredWidth: 96
+                }
+
+                FluComboBox {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 148
+                    editable: true
+                    model: appController.rateOptions
+                    currentIndex: listIndex(appController.rateOptions, appController.gnssRate)
+                    onActivated: appController.gnssRate = currentText
+                    onCommit: function(text) { appController.gnssRate = text }
+                    disabled: !appController.canEditPorts
+                }
+
+                FluComboBox {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 148
+                    editable: true
+                    model: appController.rateOptions
+                    currentIndex: listIndex(appController.rateOptions, appController.imuRate)
+                    onActivated: appController.imuRate = currentText
+                    onCommit: function(text) { appController.imuRate = text }
+                    disabled: !appController.canEditPorts
+                }
+
+                FluComboBox {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 148
+                    editable: true
+                    model: appController.rateOptions
+                    currentIndex: listIndex(appController.rateOptions, appController.ptbRate)
+                    onActivated: appController.ptbRate = currentText
+                    onCommit: function(text) { appController.ptbRate = text }
+                    disabled: !appController.canEditPorts
+                }
+
+                FluComboBox {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 148
+                    editable: true
+                    model: appController.rateOptions
+                    currentIndex: listIndex(appController.rateOptions, appController.hmpRate)
+                    onActivated: appController.hmpRate = currentText
+                    onCommit: function(text) { appController.hmpRate = text }
+                    disabled: !appController.canEditPorts
+                }
+
+                FluComboBox {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 148
+                    editable: true
+                    model: appController.rateOptions
+                    currentIndex: listIndex(appController.rateOptions, appController.lidarRate)
+                    onActivated: appController.lidarRate = currentText
+                    onCommit: function(text) { appController.lidarRate = text }
+                    disabled: !appController.canEditPorts
                 }
             }
         }
@@ -446,8 +393,8 @@ FluScrollablePage {
             rateText: sensorNumber(appController.gnssData, "rate", 1, " Hz")
             fields: [
                 { label: appController.english ? "Status" : "状态", value: sensorText(appController.gnssData, "status") },
-                { label: appController.english ? "Latitude" : "纬度", value: sensorNumber(appController.gnssData, "latitude", 8, "°") },
-                { label: appController.english ? "Longitude" : "经度", value: sensorNumber(appController.gnssData, "longitude", 8, "°") },
+                { label: appController.english ? "Latitude" : "纬度", value: sensorNumber(appController.gnssData, "latitude", 8, " deg") },
+                { label: appController.english ? "Longitude" : "经度", value: sensorNumber(appController.gnssData, "longitude", 8, " deg") },
                 { label: appController.english ? "Altitude" : "高度", value: sensorNumber(appController.gnssData, "altitude", 3, " m") },
                 { label: appController.english ? "Vel North" : "北向速度", value: sensorNumber(appController.gnssData, "velNorth", 3, " m/s") },
                 { label: appController.english ? "Vel East" : "东向速度", value: sensorNumber(appController.gnssData, "velEast", 3, " m/s") },

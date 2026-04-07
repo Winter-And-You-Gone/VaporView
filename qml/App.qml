@@ -75,13 +75,6 @@ FluWindow {
             FluPaneItem {
                 title: appController.english ? "Overview" : "总览"
                 icon: FluentIcons.Home
-                url: "qrc:/qt/qml/VaporViewApp/qml/page/DashboardPage.qml"
-                onTap: navigationView.push(url)
-            }
-
-            FluPaneItem {
-                title: appController.english ? "Devices" : "设备"
-                icon: FluentIcons.TVMonitor
                 url: "qrc:/qt/qml/VaporViewApp/qml/page/DevicesPage.qml"
                 onTap: navigationView.push(url)
             }
