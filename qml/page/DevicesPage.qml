@@ -5,6 +5,7 @@ import FluentUI 1.0
 import VaporViewApp
 
 FluScrollablePage {
+    id: page
     title: appController.english ? "Overview & Devices" : "总览与设备"
     padding: 12
     spacing: 12
@@ -396,8 +397,8 @@ FluScrollablePage {
                 accentColor: "#2563eb"
                 active: appController.gnssData.valid
                 rateText: sensorNumber(appController.gnssData, "rate", 1, " Hz")
-                fieldColumns: width > 760 ? 3 : 2
-                labelWidth: 84
+                fieldColumns: page.width > 980 ? 3 : 2
+                labelWidth: 76
                 fields: [
                     { label: appController.english ? "Status" : "状态", value: sensorText(appController.gnssData, "status") },
                     { label: appController.english ? "Latitude" : "纬度", value: sensorNumber(appController.gnssData, "latitude", 8, " deg") },
@@ -437,8 +438,8 @@ FluScrollablePage {
                 accentColor: "#0f766e"
                 active: appController.imuData.valid
                 rateText: sensorNumber(appController.imuData, "rate", 1, " Hz")
-                fieldColumns: width > 760 ? 3 : 2
-                labelWidth: 84
+                fieldColumns: page.width > 980 ? 3 : 2
+                labelWidth: 76
                 fields: [
                     { label: appController.english ? "Status" : "状态", value: sensorText(appController.imuData, "status") },
                     { label: appController.english ? "Source" : "来源", value: sensorText(appController.imuData, "source") },
