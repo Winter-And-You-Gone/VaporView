@@ -125,13 +125,6 @@ FluScrollablePage {
                                 text: appController.statusText
                                 font: FluTextStyle.BodyStrong
                             }
-
-                            FluText {
-                                text: appController.english
-                                      ? "GNSS " + sensorText(appController.gnssData, "status") + " | IMU " + sensorText(appController.imuData, "status")
-                                      : "GNSS " + sensorText(appController.gnssData, "status") + " | IMU " + sensorText(appController.imuData, "status")
-                                color: "#64748b"
-                            }
                         }
                     }
                 }

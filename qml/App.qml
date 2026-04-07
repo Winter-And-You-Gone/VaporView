@@ -31,7 +31,7 @@ FluWindow {
         pageMode: FluNavigationViewType.NoStack
         displayMode: FluNavigationViewType.Open
         title: "VaporView"
-        cellWidth: 280
+        cellWidth: 96
         topPadding: 0
 
         actionItem: Component {
