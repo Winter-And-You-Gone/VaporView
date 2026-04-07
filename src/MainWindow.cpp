@@ -34,6 +34,7 @@
 #include <QIntValidator>
 #include <QSerialPortInfo>
 #include <QRegularExpression>
+#include <QSet>
 #include <QSignalBlocker>
 #include <QSettings>
 #include <QThread>
@@ -3359,8 +3360,28 @@ void MainWindow::onAutoDetectPortsClicked()
                     }
                 };
 
+                // Reset all serial-port selectors first so unidentified devices stay on "Select".
+                applySelection(gnss_port_combo_, selectText);
+                applySelection(imu_port_combo_, selectText);
+                applySelection(ptb_port_combo_, selectText);
+                applySelection(hmp_port_combo_, selectText);
+                applySelection(lidar_port_combo_, selectText);
+
+                QSet<QString> usedPorts;
                 for (const DetectionResult& detection : detections)
                 {
+                    if (detection.port_name.isEmpty() || detection.port_name == selectText)
+                    {
+                        continue;
+                    }
+
+                    // Keep one device per port; if duplicate is seen, keep the first assignment.
+                    if (usedPorts.contains(detection.port_name))
+                    {
+                        continue;
+                    }
+                    usedPorts.insert(detection.port_name);
+
                     if (detection.key == "gnss")
                     {
                         applySelection(gnss_port_combo_, detection.port_name);
