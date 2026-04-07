@@ -3328,6 +3328,7 @@ void MainWindow::onAutoDetectPortsClicked()
             QString key;
             QString label;
             QString baud_text;
+            bool passive;
             std::function<bool(const QString&)> probe;
         };
 
@@ -3458,23 +3459,23 @@ void MainWindow::onAutoDetectPortsClicked()
         };
 
         QVector<ProbeSpec> probe_specs = {
-            {"gnss", "GNSS", "115200", [probeCollector](const QString& port_name) {
+            {"gnss", "GNSS", "115200", true, [probeCollector](const QString& port_name) {
                 auto collector = std::make_unique<VaporView::GnssCollector>();
                 return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(115200));
             }},
-            {"imu", "IMU", "115200", [probeCollector](const QString& port_name) {
+            {"imu", "IMU", "115200", true, [probeCollector](const QString& port_name) {
                 auto collector = std::make_unique<VaporView::ImuCollector>();
                 return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(115200));
             }},
-            {"lidar", "TF03", "115200", [probeCollector](const QString& port_name) {
+            {"lidar", "TF03", "115200", true, [probeCollector](const QString& port_name) {
                 auto collector = std::make_unique<VaporView::LidarCollector>();
                 return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(115200));
             }},
-            {"ptb", "PTB210", "9600", [probeCollector](const QString& port_name) {
+            {"ptb", "PTB210", "9600", false, [probeCollector](const QString& port_name) {
                 auto collector = std::make_unique<VaporView::PtbCollector>();
                 return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::E71(9600));
             }},
-            {"hmp", "HMP3", "19200", [probeCollector](const QString& port_name) {
+            {"hmp", "HMP3", "19200", false, [probeCollector](const QString& port_name) {
                 auto collector = std::make_unique<VaporView::HmpCollector>();
                 return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N82(19200));
             }},
@@ -3492,41 +3493,69 @@ void MainWindow::onAutoDetectPortsClicked()
         postLog(QString(english ? "Auto detect: probing %1 serial ports..." : "自动识别：开始探测 %1 个串口...")
                     .arg(port_names.size()));
 
-        for (const QString& port_name : port_names)
-        {
-            bool matched = false;
-
-            for (const ProbeSpec& spec : probe_specs)
+        auto runProbePhase = [&](bool passivePhase) {
+            if (passivePhase)
             {
-                const bool already_detected = std::any_of(detections.cbegin(), detections.cend(),
-                    [&spec](const DetectionResult& result) { return result.key == spec.key; });
-                if (already_detected)
+                postLog(english
+                    ? "[Auto Detect] Phase 1: probing passive-stream devices first (GNSS/IMU/TF03)..."
+                    : "[自动识别] 阶段1：优先探测被动发送设备（GNSS/IMU/TF03）...");
+            }
+            else
+            {
+                postLog(english
+                    ? "[Auto Detect] Phase 2: probing active-poll devices (PTB210/HMP3)..."
+                    : "[自动识别] 阶段2：探测主动轮询设备（PTB210/HMP3）...");
+            }
+
+            for (const QString& port_name : port_names)
+            {
+                const bool portAlreadyClaimed = std::any_of(detections.cbegin(), detections.cend(),
+                    [&port_name](const DetectionResult& result) { return result.port_name == port_name; });
+                if (portAlreadyClaimed)
                 {
                     continue;
                 }
 
-                postLog(QString(english ? "[Auto Detect] Probing %1 on %2 @ %3..." : "[自动识别] 正在探测 %1: %2 @ %3 ...")
-                            .arg(spec.label, port_name, spec.baud_text));
-
-                const bool responded = spec.probe(port_name);
-                if (!responded)
+                bool matched = false;
+                for (const ProbeSpec& spec : probe_specs)
                 {
-                    continue;
+                    if (spec.passive != passivePhase)
+                    {
+                        continue;
+                    }
+                    const bool already_detected = std::any_of(detections.cbegin(), detections.cend(),
+                        [&spec](const DetectionResult& result) { return result.key == spec.key; });
+                    if (already_detected)
+                    {
+                        continue;
+                    }
+
+                    postLog(QString(english ? "[Auto Detect] Probing %1 on %2 @ %3..." : "[自动识别] 正在探测 %1: %2 @ %3 ...")
+                                .arg(spec.label, port_name, spec.baud_text));
+
+                    const bool responded = spec.probe(port_name);
+                    if (!responded)
+                    {
+                        continue;
+                    }
+
+                    detections.push_back({spec.key, port_name, spec.baud_text});
+                    postLog(QString(english ? "[Auto Detect] Identified %1 on %2 @ %3" : "[自动识别] 已识别 %1: %2 @ %3")
+                                .arg(spec.label, port_name, spec.baud_text));
+                    matched = true;
+                    break;
                 }
 
-                detections.push_back({spec.key, port_name, spec.baud_text});
-                postLog(QString(english ? "[Auto Detect] Identified %1 on %2 @ %3" : "[自动识别] 已识别 %1: %2 @ %3")
-                            .arg(spec.label, port_name, spec.baud_text));
-                matched = true;
-                break;
+                if (!matched)
+                {
+                    postLog(QString(english ? "[Auto Detect] No known device signature found on %1" : "[自动识别] 未在 %1 上识别到已知设备")
+                                .arg(port_name));
+                }
             }
+        };
 
-            if (!matched)
-            {
-                postLog(QString(english ? "[Auto Detect] No known device signature found on %1" : "[自动识别] 未在 %1 上识别到已知设备")
-                            .arg(port_name));
-            }
-        }
+        runProbePhase(true);
+        runProbePhase(false);
 
         for (const ProbeSpec& spec : probe_specs)
         {
