@@ -396,8 +396,8 @@ FluScrollablePage {
                 accentColor: "#2563eb"
                 active: appController.gnssData.valid
                 rateText: sensorNumber(appController.gnssData, "rate", 1, " Hz")
-                fieldColumns: width > 1100 ? 3 : 2
-                labelWidth: 96
+                fieldColumns: width > 760 ? 3 : 2
+                labelWidth: 84
                 fields: [
                     { label: appController.english ? "Status" : "状态", value: sensorText(appController.gnssData, "status") },
                     { label: appController.english ? "Latitude" : "纬度", value: sensorNumber(appController.gnssData, "latitude", 8, " deg") },
@@ -437,8 +437,8 @@ FluScrollablePage {
                 accentColor: "#0f766e"
                 active: appController.imuData.valid
                 rateText: sensorNumber(appController.imuData, "rate", 1, " Hz")
-                fieldColumns: width > 1100 ? 3 : 2
-                labelWidth: 96
+                fieldColumns: width > 760 ? 3 : 2
+                labelWidth: 84
                 fields: [
                     { label: appController.english ? "Status" : "状态", value: sensorText(appController.imuData, "status") },
                     { label: appController.english ? "Source" : "来源", value: sensorText(appController.imuData, "source") },
@@ -465,8 +465,8 @@ FluScrollablePage {
 
         ColumnLayout {
             Layout.fillWidth: width <= 980
-            Layout.preferredWidth: 360
-            Layout.maximumWidth: 420
+            Layout.preferredWidth: 320
+            Layout.maximumWidth: 360
             Layout.alignment: Qt.AlignTop
             spacing: 12
 

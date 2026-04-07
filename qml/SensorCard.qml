@@ -12,7 +12,7 @@ FluFrame {
     property bool active: false
     property var fields: []
     property int fieldColumns: 1
-    property int labelWidth: 128
+    property int labelWidth: 104
 
     Layout.fillWidth: true
     Layout.minimumWidth: 320
@@ -23,8 +23,8 @@ FluFrame {
     ColumnLayout {
         id: contentLayout
         anchors.fill: parent
-        anchors.margins: 18
-        spacing: 14
+        anchors.margins: 16
+        spacing: 12
 
         RowLayout {
             Layout.fillWidth: true
@@ -63,15 +63,15 @@ FluFrame {
         GridLayout {
             Layout.fillWidth: true
             columns: Math.max(1, root.fieldColumns)
-            columnSpacing: 16
-            rowSpacing: 10
+            columnSpacing: 12
+            rowSpacing: 8
 
             Repeater {
                 model: root.fields
 
                 delegate: RowLayout {
                     Layout.fillWidth: true
-                    spacing: 12
+                    spacing: 8
 
                     FluText {
                         Layout.minimumWidth: root.labelWidth
