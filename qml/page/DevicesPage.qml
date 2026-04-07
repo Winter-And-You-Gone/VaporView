@@ -58,23 +58,13 @@ FluScrollablePage {
             id: overviewLayout
             anchors.fill: parent
             anchors.margins: 22
-            columns: width > 1080 ? 2 : 1
+            columns: 1
             columnSpacing: 18
             rowSpacing: 18
 
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 10
-
-                FluText {
-                    text: appController.english ? "Device Control Center" : "设备控制中心"
-                    font: FluTextStyle.Title
-                }
-
-                FluText {
-                    text: appController.statusText
-                    font: FluTextStyle.BodyStrong
-                }
 
                 Flow {
                     Layout.fillWidth: true
@@ -109,37 +99,27 @@ FluScrollablePage {
                         disabled: !appController.canDisconnect
                         onClicked: appController.disconnectDevices()
                     }
-                }
-            }
 
-            FluFrame {
-                Layout.fillWidth: true
-                Layout.alignment: Qt.AlignTop
-                Layout.preferredHeight: statusCardLayout.implicitHeight + 32
+                    FluFrame {
+                        width: statusRow.implicitWidth + 28
+                        height: statusRow.implicitHeight + 20
 
-                ColumnLayout {
-                    id: statusCardLayout
-                    anchors.fill: parent
-                    anchors.margins: 18
-                    spacing: 10
+                        RowLayout {
+                            id: statusRow
+                            anchors.centerIn: parent
+                            spacing: 12
 
-                    FluText {
-                        text: appController.english ? "Connection State" : "连接状态"
-                        font: FluTextStyle.BodyStrong
-                    }
+                            FluText {
+                                text: appController.english ? "Connection State" : "连接状态"
+                                font: FluTextStyle.BodyStrong
+                            }
 
-                    RowLayout {
-                        spacing: 12
-
-                        FluProgressRing {
-                            indeterminate: appController.connectionAttemptInProgress || appController.portDetectionInProgress
-                            value: appController.connected ? 1 : 0
-                            Layout.preferredWidth: 40
-                            Layout.preferredHeight: 40
-                        }
-
-                        ColumnLayout {
-                            spacing: 2
+                            FluProgressRing {
+                                indeterminate: appController.connectionAttemptInProgress || appController.portDetectionInProgress
+                                value: appController.connected ? 1 : 0
+                                Layout.preferredWidth: 30
+                                Layout.preferredHeight: 30
+                            }
 
                             FluText {
                                 text: appController.statusText
@@ -168,11 +148,6 @@ FluScrollablePage {
             anchors.fill: parent
             anchors.margins: 20
             spacing: 16
-
-            FluText {
-                text: appController.english ? "Device Configuration Matrix" : "设备配置矩阵"
-                font: FluTextStyle.Title
-            }
 
             GridLayout {
                 Layout.fillWidth: true
