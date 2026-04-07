@@ -8,7 +8,10 @@ FluScrollablePage {
     id: page
     title: appController.english ? "Overview & Devices" : "总览与设备"
     padding: 12
+    rightPadding: 28
     spacing: 12
+    property int topRowHeight: Math.max(gnssCard.implicitHeight, imuCard.implicitHeight)
+    property int lowerRowHeight: Math.max(ptbCard.implicitHeight, hmpCard.implicitHeight, tfCard.implicitHeight, 248)
 
     function portIndex(options, value) {
         const idx = options.indexOf(value)
@@ -357,8 +360,10 @@ FluScrollablePage {
             spacing: 12
 
             SensorCard {
+                id: gnssCard
                 Layout.fillWidth: true
                 Layout.preferredWidth: 0
+                Layout.preferredHeight: page.topRowHeight
                 title: "GNSS"
                 subtitle: appController.english ? "Positioning and heading" : "定位与定向"
                 accentColor: "#2563eb"
@@ -400,8 +405,10 @@ FluScrollablePage {
             }
 
             SensorCard {
+                id: imuCard
                 Layout.fillWidth: true
                 Layout.preferredWidth: 0
+                Layout.preferredHeight: page.topRowHeight
                 title: "IMU"
                 subtitle: appController.english ? "Attitude and inertial data" : "姿态与惯导"
                 accentColor: "#0f766e"
@@ -443,8 +450,10 @@ FluScrollablePage {
                 spacing: 12
 
                 SensorCard {
+                    id: ptbCard
                     Layout.fillWidth: true
                     Layout.preferredWidth: 0
+                    Layout.preferredHeight: page.lowerRowHeight
                     title: "PTB210"
                     subtitle: appController.english ? "Barometric channel" : "气压通道"
                     accentColor: "#9333ea"
@@ -458,8 +467,10 @@ FluScrollablePage {
                 }
 
                 SensorCard {
+                    id: hmpCard
                     Layout.fillWidth: true
                     Layout.preferredWidth: 0
+                    Layout.preferredHeight: page.lowerRowHeight
                     title: "HMP3"
                     subtitle: appController.english ? "Humidity and temperature" : "温湿度"
                     accentColor: "#ea580c"
@@ -474,8 +485,10 @@ FluScrollablePage {
                 }
 
                 SensorCard {
+                    id: tfCard
                     Layout.fillWidth: true
                     Layout.preferredWidth: 0
+                    Layout.preferredHeight: page.lowerRowHeight
                     title: "TF03"
                     subtitle: appController.english ? "Range finding" : "测距"
                     accentColor: "#dc2626"
@@ -491,10 +504,11 @@ FluScrollablePage {
             }
 
             FluFrame {
+                id: logCard
                 Layout.preferredWidth: 360
                 Layout.minimumWidth: 320
                 Layout.maximumWidth: 400
-                Layout.preferredHeight: 248
+                Layout.preferredHeight: page.lowerRowHeight
                 Layout.alignment: Qt.AlignRight | Qt.AlignTop
 
                 ColumnLayout {
