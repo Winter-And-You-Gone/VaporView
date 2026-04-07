@@ -94,18 +94,6 @@ FluWindow {
             }
         }
 
-        footerItems: FluObject {
-            FluPaneItemSeparator {
-            }
-
-            FluPaneItem {
-                title: appController.english ? "Tools" : "工具"
-                icon: FluentIcons.Settings
-                url: "qrc:/qt/qml/VaporViewApp/qml/page/ToolsPage.qml"
-                onTap: navigationView.push(url)
-            }
-        }
-
         Component.onCompleted: {
             startupPageTimer.start()
         }
