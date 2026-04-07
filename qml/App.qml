@@ -36,6 +36,7 @@ FluWindow {
 
         actionItem: Component {
             Item {
+                id: actionContainer
                 width: actionRow.width + titleBarReserve
                 height: actionRow.height
 
@@ -44,6 +45,10 @@ FluWindow {
                         return window.appBar.layoutStandardbuttons.width + 12
                     }
                     return 212
+                }
+
+                Component.onCompleted: {
+                    window.setHitTestVisible(actionContainer)
                 }
 
                 Row {
