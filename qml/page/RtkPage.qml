@@ -42,15 +42,6 @@ FluScrollablePage {
             }
 
             FluText {
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-                color: "#64748b"
-                text: appController.english
-                      ? "The RTK configuration dialog is now a Fluent page. Stream control, mountpoint discovery, GGA monitoring and no-signal testing stay in C++."
-                      : "RTK 配置界面已经切成 Fluent 页面，流控制、挂载点抓取、GGA 监视和无信号测试仍由 C++ 后端负责。"
-            }
-
-            FluText {
                 text: rtkController.statusText
                 font: FluTextStyle.BodyStrong
             }

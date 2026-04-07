@@ -18,17 +18,8 @@ FluScrollablePage {
             spacing: 12
 
             FluText {
-                text: appController.english ? "Fluent Workbench" : "Fluent 工作台"
+                text: appController.english ? "Quick Actions" : "快捷操作"
                 font: FluTextStyle.Title
-            }
-
-            FluText {
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-                color: "#64748b"
-                text: appController.english
-                      ? "The remaining tools now live behind Fluent pages. This area can be used for project notes, future utilities and migration checkpoints."
-                      : "剩余工具现在已经进入 Fluent 页面，这里保留给项目说明、后续实用工具和迁移检查点。"
             }
 
             Flow {
@@ -66,15 +57,6 @@ FluScrollablePage {
             FluText {
                 text: appController.statusText
                 font: FluTextStyle.TitleLarge
-            }
-
-            FluText {
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-                color: "#64748b"
-                text: appController.english
-                      ? "Navigation now includes dedicated RTK and session pages. Remaining work is focused on deeper workflow parity such as recording and waveform acquisition."
-                      : "导航里已经有独立的 RTK 和会话页面，后续重点会放在更深层的录制流程与波形采集能力补齐。"
             }
         }
     }

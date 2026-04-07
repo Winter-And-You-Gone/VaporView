@@ -13,8 +13,8 @@ FluFrame {
     property var fields: []
 
     Layout.fillWidth: true
-    Layout.minimumWidth: 280
-    Layout.preferredWidth: 320
+    Layout.minimumWidth: 320
+    Layout.preferredWidth: 360
     Layout.preferredHeight: contentLayout.implicitHeight + 36
     padding: 0
 
@@ -47,6 +47,7 @@ FluFrame {
                 FluText {
                     text: root.subtitle
                     color: "#64748b"
+                    visible: text.length > 0
                 }
             }
 
@@ -65,8 +66,8 @@ FluFrame {
                 spacing: 12
 
                 FluText {
-                    Layout.minimumWidth: 84
-                    Layout.preferredWidth: 104
+                    Layout.minimumWidth: 112
+                    Layout.preferredWidth: 128
                     text: modelData.label
                     color: "#64748b"
                     wrapMode: Text.WordWrap
