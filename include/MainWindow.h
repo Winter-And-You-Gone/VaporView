@@ -42,7 +42,7 @@ class GnssPanel : public QWidget
 
 public:
     explicit GnssPanel(QWidget *parent = nullptr);
-    void updateData(const VaporView::GnssData& data);
+    void updateData(const VaporView::GnssData& data, quint64 timestamp_us = 0);
     void updateRate(double hz);
     void setEnglish(bool english);
 
@@ -51,6 +51,7 @@ private:
 
     QLabel *rate_label_;
     QLabel *status_label_;
+    QLabel *time_label_;
     QLabel *lat_label_;
     QLabel *lon_label_;
     QLabel *alt_label_;
@@ -76,6 +77,7 @@ private:
     QLabel *cutoff_label_;
 
     QLabel *status_lbl_;
+    QLabel *time_lbl_;
     QLabel *lat_lbl_;
     QLabel *lon_lbl_;
     QLabel *alt_lbl_;
@@ -109,7 +111,7 @@ class ImuPanel : public QWidget
 
 public:
     explicit ImuPanel(QWidget *parent = nullptr);
-    void updateData(const VaporView::ImuData& data);
+    void updateData(const VaporView::ImuData& data, quint64 gnss_timestamp_us = 0);
     void updateRate(double hz);
     void setEnglish(bool english);
 
@@ -134,9 +136,11 @@ private:
     QLabel *press_label_;
     QLabel *source_label_;
     QLabel *time_label_;
+    QLabel *pps_label_;
 
     QLabel *source_lbl_;
     QLabel *time_lbl_;
+    QLabel *pps_lbl_;
     QLabel *accel_sep_;
     QLabel *gyro_sep_;
     QLabel *attitude_sep_;

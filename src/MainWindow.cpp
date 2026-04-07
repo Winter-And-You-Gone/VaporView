@@ -58,6 +58,7 @@ constexpr const char *kBaseMarginsRightProperty = "_vv_base_margin_right";
 constexpr const char *kBaseMarginsBottomProperty = "_vv_base_margin_bottom";
 constexpr int kMainPageInputHeight = 30;
 constexpr int kMainPageButtonHeight = 38;
+constexpr quint64 kImuPpsSyncWindowUs = 2ULL * 1000ULL * 1000ULL;
 
 QString recordingTimestampUtc()
 {
@@ -153,6 +154,7 @@ GnssPanel::GnssPanel(QWidget *parent)
     : QWidget(parent)
     , rate_label_(nullptr)
     , status_label_(nullptr)
+    , time_label_(nullptr)
     , lat_label_(nullptr)
     , lon_label_(nullptr)
     , alt_label_(nullptr)
@@ -166,6 +168,7 @@ GnssPanel::GnssPanel(QWidget *parent)
     , hdop_label_(nullptr)
     , diff_age_label_(nullptr)
     , status_lbl_(nullptr)
+    , time_lbl_(nullptr)
     , lat_lbl_(nullptr)
     , lon_lbl_(nullptr)
     , alt_lbl_(nullptr)
@@ -221,13 +224,14 @@ void GnssPanel::setupUi()
     };
 
     createRow(leftLayout, 0, status_lbl_, status_label_, this);
-    createRow(leftLayout, 1, lat_lbl_, lat_label_, this);
-    createRow(leftLayout, 2, lon_lbl_, lon_label_, this);
-    createRow(leftLayout, 3, alt_lbl_, alt_label_, this);
-    createRow(leftLayout, 4, sigma_lat_lbl_, sigma_lat_label_, this);
-    createRow(leftLayout, 5, sigma_lon_lbl_, sigma_lon_label_, this);
-    createRow(leftLayout, 6, sigma_alt_lbl_, sigma_alt_label_, this);
-    createRow(leftLayout, 7, undulation_lbl_, undulation_label_, this);
+    createRow(leftLayout, 1, time_lbl_, time_label_, this);
+    createRow(leftLayout, 2, lat_lbl_, lat_label_, this);
+    createRow(leftLayout, 3, lon_lbl_, lon_label_, this);
+    createRow(leftLayout, 4, alt_lbl_, alt_label_, this);
+    createRow(leftLayout, 5, sigma_lat_lbl_, sigma_lat_label_, this);
+    createRow(leftLayout, 6, sigma_lon_lbl_, sigma_lon_label_, this);
+    createRow(leftLayout, 7, sigma_alt_lbl_, sigma_alt_label_, this);
+    createRow(leftLayout, 8, undulation_lbl_, undulation_label_, this);
 
     createRow(midLayout, 0, vel_n_lbl_, vel_n_label_, this);
     createRow(midLayout, 1, vel_e_lbl_, vel_e_label_, this);
@@ -274,6 +278,7 @@ void GnssPanel::setEnglish(bool english)
     if (english)
     {
         status_lbl_->setText("Status:");
+        time_lbl_->setText("Time:");
         lat_lbl_->setText("Lat:");
         lon_lbl_->setText("Lon:");
         alt_lbl_->setText("Alt:");
@@ -301,6 +306,7 @@ void GnssPanel::setEnglish(bool english)
     else
     {
         status_lbl_->setText("状态:");
+        time_lbl_->setText("时间:");
         lat_lbl_->setText("纬度:");
         lon_lbl_->setText("经度:");
         alt_lbl_->setText("高度:");
@@ -327,7 +333,7 @@ void GnssPanel::setEnglish(bool english)
     }
 }
 
-void GnssPanel::updateData(const VaporView::GnssData& data)
+void GnssPanel::updateData(const VaporView::GnssData& data, quint64 timestamp_us)
 {
     if (data.valid)
     {
@@ -335,6 +341,17 @@ void GnssPanel::updateData(const VaporView::GnssData& data)
         status_label_->setProperty("data-valid", true);
         status_label_->style()->unpolish(status_label_);
         status_label_->style()->polish(status_label_);
+
+        if (timestamp_us > 0)
+        {
+            const auto utcText = QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(timestamp_us / 1000ULL), QTimeZone::UTC)
+                                     .toString("yyyy-MM-dd HH:mm:ss.zzz 'UTC'");
+            time_label_->setText(QString("%1 (%2 us)").arg(utcText, QString::number(timestamp_us)));
+        }
+        else
+        {
+            time_label_->setText("---");
+        }
 
         lat_label_->setText(QString::asprintf("%.8f°", data.latitude));
         lon_label_->setText(QString::asprintf("%.8f°", data.longitude));
@@ -366,6 +383,7 @@ void GnssPanel::updateData(const VaporView::GnssData& data)
         status_label_->setProperty("data-valid", false);
         status_label_->style()->unpolish(status_label_);
         status_label_->style()->polish(status_label_);
+        time_label_->setText("---");
     }
 }
 
@@ -389,8 +407,10 @@ ImuPanel::ImuPanel(QWidget *parent)
     , press_label_(nullptr)
     , source_label_(nullptr)
     , time_label_(nullptr)
+    , pps_label_(nullptr)
     , source_lbl_(nullptr)
     , time_lbl_(nullptr)
+    , pps_lbl_(nullptr)
     , accel_sep_(nullptr)
     , gyro_sep_(nullptr)
     , attitude_sep_(nullptr)
@@ -459,14 +479,15 @@ void ImuPanel::setupUi()
 
     createRow(leftLayout, 0, source_lbl_, source_label_, this);
     createRow(leftLayout, 1, time_lbl_, time_label_, this);
-    createSeparator(leftLayout, 2, accel_sep_, this);
-    createRow(leftLayout, 3, acc_x_lbl_, acc_x_label_, this);
-    createRow(leftLayout, 4, acc_y_lbl_, acc_y_label_, this);
-    createRow(leftLayout, 5, acc_z_lbl_, acc_z_label_, this);
-    createSeparator(leftLayout, 6, gyro_sep_, this);
-    createRow(leftLayout, 7, gyr_x_lbl_, gyr_x_label_, this);
-    createRow(leftLayout, 8, gyr_y_lbl_, gyr_y_label_, this);
-    createRow(leftLayout, 9, gyr_z_lbl_, gyr_z_label_, this);
+    createRow(leftLayout, 2, pps_lbl_, pps_label_, this);
+    createSeparator(leftLayout, 3, accel_sep_, this);
+    createRow(leftLayout, 4, acc_x_lbl_, acc_x_label_, this);
+    createRow(leftLayout, 5, acc_y_lbl_, acc_y_label_, this);
+    createRow(leftLayout, 6, acc_z_lbl_, acc_z_label_, this);
+    createSeparator(leftLayout, 7, gyro_sep_, this);
+    createRow(leftLayout, 8, gyr_x_lbl_, gyr_x_label_, this);
+    createRow(leftLayout, 9, gyr_y_lbl_, gyr_y_label_, this);
+    createRow(leftLayout, 10, gyr_z_lbl_, gyr_z_label_, this);
 
     createSeparator(rightLayout, 0, attitude_sep_, this);
     createRow(rightLayout, 1, roll_lbl_, roll_label_, this);
@@ -504,6 +525,7 @@ void ImuPanel::setEnglish(bool english)
     {
         source_lbl_->setText("Source:");
         time_lbl_->setText("Time:");
+        pps_lbl_->setText("PPS:");
         accel_sep_->setText("— Accel —");
         gyro_sep_->setText("— Gyro —");
         attitude_sep_->setText("— Attitude —");
@@ -526,6 +548,7 @@ void ImuPanel::setEnglish(bool english)
     {
         source_lbl_->setText("数据源:");
         time_lbl_->setText("时间:");
+        pps_lbl_->setText("PPS有效:");
         accel_sep_->setText("— 加速度 —");
         gyro_sep_->setText("— 陀螺仪 —");
         attitude_sep_->setText("— 姿态 —");
@@ -546,7 +569,7 @@ void ImuPanel::setEnglish(bool english)
     }
 }
 
-void ImuPanel::updateData(const VaporView::ImuData& data)
+void ImuPanel::updateData(const VaporView::ImuData& data, quint64 gnss_timestamp_us)
 {
     if (data.valid)
     {
@@ -554,17 +577,62 @@ void ImuPanel::updateData(const VaporView::ImuData& data)
         source_label_->setProperty("data-valid", true);
         source_label_->style()->unpolish(source_label_);
         source_label_->style()->polish(source_label_);
+        quint64 imuTimestampUs = 0;
         if (data.from_hi83 && data.system_time_us > 0)
         {
-            time_label_->setText(QString::number(data.system_time_us) + " us");
+            imuTimestampUs = static_cast<quint64>(data.system_time_us);
         }
         else if (data.system_time_ms > 0)
         {
-            time_label_->setText(QString::number(data.system_time_ms) + " ms");
+            imuTimestampUs = static_cast<quint64>(data.system_time_ms) * 1000ULL;
+        }
+
+        bool ppsValid = false;
+        quint64 deltaUs = 0;
+        if (imuTimestampUs > 0 && gnss_timestamp_us > 0)
+        {
+            deltaUs = (imuTimestampUs > gnss_timestamp_us) ? (imuTimestampUs - gnss_timestamp_us)
+                                                           : (gnss_timestamp_us - imuTimestampUs);
+            ppsValid = deltaUs <= kImuPpsSyncWindowUs;
+        }
+
+        if (imuTimestampUs > 0 && ppsValid)
+        {
+            const auto utcText = QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(imuTimestampUs / 1000ULL), QTimeZone::UTC)
+                                     .toString("yyyy-MM-dd HH:mm:ss.zzz 'UTC'");
+            time_label_->setText(QString("%1 (%2 us)").arg(utcText, QString::number(imuTimestampUs)));
         }
         else
         {
-            time_label_->setText("---");
+            if (data.from_hi83 && data.system_time_us > 0)
+            {
+                time_label_->setText(QString::number(data.system_time_us) + " us");
+            }
+            else if (data.system_time_ms > 0)
+            {
+                time_label_->setText(QString::number(data.system_time_ms) + " ms");
+            }
+            else
+            {
+                time_label_->setText("---");
+            }
+        }
+
+        if (gnss_timestamp_us == 0 || imuTimestampUs == 0)
+        {
+            pps_label_->setText(is_english_ ? "Unknown" : "未知");
+        }
+        else if (ppsValid)
+        {
+            pps_label_->setText(is_english_
+                ? QString("Valid (Δ%1 ms)").arg(QString::number(deltaUs / 1000ULL))
+                : QString("有效 (差值%1 ms)").arg(QString::number(deltaUs / 1000ULL)));
+        }
+        else
+        {
+            pps_label_->setText(is_english_
+                ? QString("Invalid (Δ%1 ms)").arg(QString::number(deltaUs / 1000ULL))
+                : QString("无效 (差值%1 ms)").arg(QString::number(deltaUs / 1000ULL)));
         }
 
         acc_x_label_->setText(QString::asprintf("%.3f", data.acceleration[0]));
@@ -591,6 +659,7 @@ void ImuPanel::updateData(const VaporView::ImuData& data)
         source_label_->style()->unpolish(source_label_);
         source_label_->style()->polish(source_label_);
         time_label_->setText("---");
+        pps_label_->setText(is_english_ ? "Unknown" : "未知");
     }
 }
 
@@ -3581,8 +3650,8 @@ void MainWindow::onConnectClicked()
     current_hmp_ = VaporView::HmpData();
     current_lidar_ = VaporView::LidarData();
 
-    gnss_panel_->updateData(current_gnss_);
-    imu_panel_->updateData(current_imu_);
+    gnss_panel_->updateData(current_gnss_, 0);
+    imu_panel_->updateData(current_imu_, 0);
     ptb_panel_->updateData(current_ptb_);
     hmp_panel_->updateData(current_hmp_);
     lidar_panel_->updateData(current_lidar_);
@@ -3894,8 +3963,9 @@ void MainWindow::onRefreshTimer()
 {
     const CollectorSnapshot collectors = snapshotCollectors();
 
-    gnss_panel_->updateData(current_gnss_);
-    imu_panel_->updateData(current_imu_);
+    const quint64 gnssTimestampUs = current_gnss_.valid ? steadyToEpochUs(current_gnss_.timestamp) : 0;
+    gnss_panel_->updateData(current_gnss_, gnssTimestampUs);
+    imu_panel_->updateData(current_imu_, gnssTimestampUs);
     ptb_panel_->updateData(current_ptb_);
     hmp_panel_->updateData(current_hmp_);
     lidar_panel_->updateData(current_lidar_);
