@@ -381,7 +381,7 @@ FluScrollablePage {
 
     GridLayout {
         Layout.fillWidth: true
-        columns: width > 1380 ? 2 : 1
+        columns: width > 980 ? 2 : 1
         columnSpacing: 12
         rowSpacing: 12
 
@@ -464,7 +464,7 @@ FluScrollablePage {
         }
 
         ColumnLayout {
-            Layout.fillWidth: width <= 1380
+            Layout.fillWidth: width <= 980
             Layout.preferredWidth: 360
             Layout.maximumWidth: 420
             Layout.alignment: Qt.AlignTop
