@@ -348,24 +348,23 @@ FluScrollablePage {
         }
     }
 
-    GridLayout {
+    ColumnLayout {
         Layout.fillWidth: true
-        columns: width > 980 ? 2 : 1
-        columnSpacing: 12
-        rowSpacing: 12
+        spacing: 12
 
-        ColumnLayout {
+        RowLayout {
             Layout.fillWidth: true
-            Layout.alignment: Qt.AlignTop
             spacing: 12
 
             SensorCard {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 0
                 title: "GNSS"
                 subtitle: appController.english ? "Positioning and heading" : "定位与定向"
                 accentColor: "#2563eb"
                 active: appController.gnssData.valid
                 rateText: sensorNumber(appController.gnssData, "rate", 1, " Hz")
-                fieldColumns: page.width > 980 ? 3 : 2
+                fieldColumns: 3
                 labelWidth: 76
                 fields: [
                     { label: appController.english ? "Status" : "状态", value: sensorText(appController.gnssData, "status") },
@@ -401,12 +400,14 @@ FluScrollablePage {
             }
 
             SensorCard {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 0
                 title: "IMU"
                 subtitle: appController.english ? "Attitude and inertial data" : "姿态与惯导"
                 accentColor: "#0f766e"
                 active: appController.imuData.valid
                 rateText: sensorNumber(appController.imuData, "rate", 1, " Hz")
-                fieldColumns: page.width > 980 ? 3 : 2
+                fieldColumns: 3
                 labelWidth: 76
                 fields: [
                     { label: appController.english ? "Status" : "状态", value: sensorText(appController.imuData, "status") },
@@ -432,88 +433,100 @@ FluScrollablePage {
             }
         }
 
-        ColumnLayout {
-            Layout.fillWidth: width <= 980
-            Layout.preferredWidth: 320
-            Layout.maximumWidth: 360
-            Layout.alignment: Qt.AlignTop
+        RowLayout {
+            Layout.fillWidth: true
             spacing: 12
 
-            SensorCard {
-                title: "PTB210"
-                subtitle: appController.english ? "Barometric channel" : "气压通道"
-                accentColor: "#9333ea"
-                active: appController.ptbData.valid
-                rateText: sensorNumber(appController.ptbData, "rate", 1, " Hz")
-                labelWidth: 92
-                fields: [
-                    { label: appController.english ? "Status" : "状态", value: sensorText(appController.ptbData, "status") },
-                    { label: appController.english ? "Pressure" : "气压", value: sensorNumber(appController.ptbData, "pressure", 2, " hPa") }
-                ]
-            }
-
-            SensorCard {
-                title: "HMP3"
-                subtitle: appController.english ? "Humidity and temperature" : "温湿度"
-                accentColor: "#ea580c"
-                active: appController.hmpData.valid
-                rateText: sensorNumber(appController.hmpData, "rate", 1, " Hz")
-                labelWidth: 92
-                fields: [
-                    { label: appController.english ? "Status" : "状态", value: sensorText(appController.hmpData, "status") },
-                    { label: appController.english ? "Temperature" : "温度", value: sensorNumber(appController.hmpData, "temperature", 2, " C") },
-                    { label: appController.english ? "Humidity" : "湿度", value: sensorNumber(appController.hmpData, "humidity", 2, " %") }
-                ]
-            }
-
-            SensorCard {
-                title: "TF03"
-                subtitle: appController.english ? "Range finding" : "测距"
-                accentColor: "#dc2626"
-                active: appController.lidarData.valid
-                rateText: sensorNumber(appController.lidarData, "rate", 1, " Hz")
-                labelWidth: 92
-                fields: [
-                    { label: appController.english ? "Status" : "状态", value: sensorText(appController.lidarData, "status") },
-                    { label: appController.english ? "Distance" : "距离", value: sensorNumber(appController.lidarData, "distance", 3, " m") },
-                    { label: appController.english ? "Strength" : "强度", value: sensorInteger(appController.lidarData, "strength", "") }
-                ]
-            }
-        }
-    }
-
-    FluFrame {
-        Layout.fillWidth: true
-        Layout.preferredHeight: 320
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 18
-            spacing: 12
-
-            FluText {
-                text: appController.english ? "Live Event Log" : "实时事件日志"
-                font: FluTextStyle.BodyStrong
-            }
-
-            Rectangle {
+            RowLayout {
                 Layout.fillWidth: true
-                Layout.fillHeight: true
-                radius: 8
-                color: "#0f172a"
+                Layout.alignment: Qt.AlignTop
+                spacing: 12
 
-                ListView {
+                SensorCard {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 0
+                    title: "PTB210"
+                    subtitle: appController.english ? "Barometric channel" : "气压通道"
+                    accentColor: "#9333ea"
+                    active: appController.ptbData.valid
+                    rateText: sensorNumber(appController.ptbData, "rate", 1, " Hz")
+                    labelWidth: 84
+                    fields: [
+                        { label: appController.english ? "Status" : "状态", value: sensorText(appController.ptbData, "status") },
+                        { label: appController.english ? "Pressure" : "气压", value: sensorNumber(appController.ptbData, "pressure", 2, " hPa") }
+                    ]
+                }
+
+                SensorCard {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 0
+                    title: "HMP3"
+                    subtitle: appController.english ? "Humidity and temperature" : "温湿度"
+                    accentColor: "#ea580c"
+                    active: appController.hmpData.valid
+                    rateText: sensorNumber(appController.hmpData, "rate", 1, " Hz")
+                    labelWidth: 84
+                    fields: [
+                        { label: appController.english ? "Status" : "状态", value: sensorText(appController.hmpData, "status") },
+                        { label: appController.english ? "Temperature" : "温度", value: sensorNumber(appController.hmpData, "temperature", 2, " C") },
+                        { label: appController.english ? "Humidity" : "湿度", value: sensorNumber(appController.hmpData, "humidity", 2, " %") }
+                    ]
+                }
+
+                SensorCard {
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 0
+                    title: "TF03"
+                    subtitle: appController.english ? "Range finding" : "测距"
+                    accentColor: "#dc2626"
+                    active: appController.lidarData.valid
+                    rateText: sensorNumber(appController.lidarData, "rate", 1, " Hz")
+                    labelWidth: 84
+                    fields: [
+                        { label: appController.english ? "Status" : "状态", value: sensorText(appController.lidarData, "status") },
+                        { label: appController.english ? "Distance" : "距离", value: sensorNumber(appController.lidarData, "distance", 3, " m") },
+                        { label: appController.english ? "Strength" : "强度", value: sensorInteger(appController.lidarData, "strength", "") }
+                    ]
+                }
+            }
+
+            FluFrame {
+                Layout.preferredWidth: 360
+                Layout.minimumWidth: 320
+                Layout.maximumWidth: 400
+                Layout.preferredHeight: 248
+                Layout.alignment: Qt.AlignRight | Qt.AlignTop
+
+                ColumnLayout {
                     anchors.fill: parent
-                    anchors.margins: 14
-                    clip: true
-                    spacing: 6
-                    model: appController.logModel
+                    anchors.margins: 16
+                    spacing: 10
 
-                    delegate: FluText {
-                        width: ListView.view.width
-                        text: typeof modelData === "undefined" ? "" : String(modelData)
-                        color: "#dbeafe"
-                        wrapMode: Text.WrapAnywhere
+                    FluText {
+                        text: appController.english ? "Live Event Log" : "实时事件日志"
+                        font: FluTextStyle.BodyStrong
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        radius: 8
+                        color: "#0f172a"
+
+                        ListView {
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            clip: true
+                            spacing: 6
+                            model: appController.logModel
+
+                            delegate: FluText {
+                                width: ListView.view.width
+                                text: typeof modelData === "undefined" ? "" : String(modelData)
+                                color: "#dbeafe"
+                                wrapMode: Text.WrapAnywhere
+                            }
+                        }
                     }
                 }
             }
