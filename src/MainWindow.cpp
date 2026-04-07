@@ -388,7 +388,9 @@ ImuPanel::ImuPanel(QWidget *parent)
     , temp_label_(nullptr)
     , press_label_(nullptr)
     , source_label_(nullptr)
+    , time_label_(nullptr)
     , source_lbl_(nullptr)
+    , time_lbl_(nullptr)
     , accel_sep_(nullptr)
     , gyro_sep_(nullptr)
     , attitude_sep_(nullptr)
@@ -456,14 +458,15 @@ void ImuPanel::setupUi()
     };
 
     createRow(leftLayout, 0, source_lbl_, source_label_, this);
-    createSeparator(leftLayout, 1, accel_sep_, this);
-    createRow(leftLayout, 2, acc_x_lbl_, acc_x_label_, this);
-    createRow(leftLayout, 3, acc_y_lbl_, acc_y_label_, this);
-    createRow(leftLayout, 4, acc_z_lbl_, acc_z_label_, this);
-    createSeparator(leftLayout, 5, gyro_sep_, this);
-    createRow(leftLayout, 6, gyr_x_lbl_, gyr_x_label_, this);
-    createRow(leftLayout, 7, gyr_y_lbl_, gyr_y_label_, this);
-    createRow(leftLayout, 8, gyr_z_lbl_, gyr_z_label_, this);
+    createRow(leftLayout, 1, time_lbl_, time_label_, this);
+    createSeparator(leftLayout, 2, accel_sep_, this);
+    createRow(leftLayout, 3, acc_x_lbl_, acc_x_label_, this);
+    createRow(leftLayout, 4, acc_y_lbl_, acc_y_label_, this);
+    createRow(leftLayout, 5, acc_z_lbl_, acc_z_label_, this);
+    createSeparator(leftLayout, 6, gyro_sep_, this);
+    createRow(leftLayout, 7, gyr_x_lbl_, gyr_x_label_, this);
+    createRow(leftLayout, 8, gyr_y_lbl_, gyr_y_label_, this);
+    createRow(leftLayout, 9, gyr_z_lbl_, gyr_z_label_, this);
 
     createSeparator(rightLayout, 0, attitude_sep_, this);
     createRow(rightLayout, 1, roll_lbl_, roll_label_, this);
@@ -500,6 +503,7 @@ void ImuPanel::setEnglish(bool english)
     if (english)
     {
         source_lbl_->setText("Source:");
+        time_lbl_->setText("Time:");
         accel_sep_->setText("— Accel —");
         gyro_sep_->setText("— Gyro —");
         attitude_sep_->setText("— Attitude —");
@@ -521,6 +525,7 @@ void ImuPanel::setEnglish(bool english)
     else
     {
         source_lbl_->setText("数据源:");
+        time_lbl_->setText("时间:");
         accel_sep_->setText("— 加速度 —");
         gyro_sep_->setText("— 陀螺仪 —");
         attitude_sep_->setText("— 姿态 —");
@@ -549,6 +554,18 @@ void ImuPanel::updateData(const VaporView::ImuData& data)
         source_label_->setProperty("data-valid", true);
         source_label_->style()->unpolish(source_label_);
         source_label_->style()->polish(source_label_);
+        if (data.from_hi83 && data.system_time_us > 0)
+        {
+            time_label_->setText(QString::number(data.system_time_us) + " us");
+        }
+        else if (data.system_time_ms > 0)
+        {
+            time_label_->setText(QString::number(data.system_time_ms) + " ms");
+        }
+        else
+        {
+            time_label_->setText("---");
+        }
 
         acc_x_label_->setText(QString::asprintf("%.3f", data.acceleration[0]));
         acc_y_label_->setText(QString::asprintf("%.3f", data.acceleration[1]));
@@ -573,6 +590,7 @@ void ImuPanel::updateData(const VaporView::ImuData& data)
         source_label_->setProperty("data-valid", false);
         source_label_->style()->unpolish(source_label_);
         source_label_->style()->polish(source_label_);
+        time_label_->setText("---");
     }
 }
 

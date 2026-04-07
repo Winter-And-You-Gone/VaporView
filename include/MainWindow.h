@@ -133,8 +133,10 @@ private:
     QLabel *temp_label_;
     QLabel *press_label_;
     QLabel *source_label_;
+    QLabel *time_label_;
 
     QLabel *source_lbl_;
+    QLabel *time_lbl_;
     QLabel *accel_sep_;
     QLabel *gyro_sep_;
     QLabel *attitude_sep_;
