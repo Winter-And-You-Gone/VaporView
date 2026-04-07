@@ -315,6 +315,9 @@ private:
     int scalePixels(int pixels) const;
     void applyAllSampleRates();
     int parseRate(const QString& text);
+    void loadRememberedInputState();
+    void saveRememberedInputState() const;
+    void bindRememberedInputState();
     void stopAllCollectors();
     CollectorSnapshot snapshotCollectors() const;
     void setCollectors(CollectorSnapshot collectors);

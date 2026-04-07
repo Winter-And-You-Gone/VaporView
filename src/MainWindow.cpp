@@ -34,6 +34,7 @@
 #include <QIntValidator>
 #include <QSerialPortInfo>
 #include <QRegularExpression>
+#include <QSignalBlocker>
 #include <QSettings>
 #include <QThread>
 #include <QVector>
@@ -87,6 +88,29 @@ QString csvEscape(const QString &value)
 QString csvBool(bool value)
 {
     return value ? QStringLiteral("true") : QStringLiteral("false");
+}
+
+void applyComboText(QComboBox *combo, const QString& value)
+{
+    if (!combo || value.isEmpty())
+    {
+        return;
+    }
+    const QSignalBlocker blocker(combo);
+    const int idx = combo->findText(value);
+    if (idx >= 0)
+    {
+        combo->setCurrentIndex(idx);
+        return;
+    }
+    if (combo->isEditable())
+    {
+        combo->setEditText(value);
+    }
+    else
+    {
+        combo->setCurrentText(value);
+    }
 }
 
 bool shouldMirrorToErrorLog(const QString& message)
@@ -1027,6 +1051,8 @@ MainWindow::MainWindow(QWidget *parent)
     setupToolBar();
     setupStatusBar();
     setupCentralWidget();
+    loadRememberedInputState();
+    bindRememberedInputState();
 
     resize(base_window_size_);
     setMinimumSize(base_minimum_window_size_);
@@ -1044,6 +1070,7 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    saveRememberedInputState();
     cancel_connection_requested_.store(true);
     if (port_detection_thread_.joinable())
     {
@@ -1299,6 +1326,102 @@ void MainWindow::setFontScale(int percent)
 
     QSettings settings("VaporView", "MainWindow");
     settings.setValue("font_scale_percent", font_scale_percent_);
+}
+
+void MainWindow::loadRememberedInputState()
+{
+    QSettings settings("VaporView", "MainWindow");
+
+    applyComboText(gnss_port_combo_, settings.value("serial/gnss_port", gnss_port_combo_->currentText()).toString());
+    applyComboText(imu_port_combo_, settings.value("serial/imu_port", imu_port_combo_->currentText()).toString());
+    applyComboText(ptb_port_combo_, settings.value("serial/ptb_port", ptb_port_combo_->currentText()).toString());
+    applyComboText(hmp_port_combo_, settings.value("serial/hmp_port", hmp_port_combo_->currentText()).toString());
+    applyComboText(lidar_port_combo_, settings.value("serial/lidar_port", lidar_port_combo_->currentText()).toString());
+
+    applyComboText(gnss_baud_combo_, settings.value("serial/gnss_baud", gnss_baud_combo_->currentText()).toString());
+    applyComboText(imu_baud_combo_, settings.value("serial/imu_baud", imu_baud_combo_->currentText()).toString());
+    applyComboText(ptb_baud_combo_, settings.value("serial/ptb_baud", ptb_baud_combo_->currentText()).toString());
+    applyComboText(hmp_baud_combo_, settings.value("serial/hmp_baud", hmp_baud_combo_->currentText()).toString());
+    applyComboText(lidar_baud_combo_, settings.value("serial/lidar_baud", lidar_baud_combo_->currentText()).toString());
+
+    applyComboText(global_rate_combo_, settings.value("rate/global", global_rate_combo_->currentText()).toString());
+    applyComboText(gnss_rate_combo_, settings.value("rate/gnss", gnss_rate_combo_->currentText()).toString());
+    applyComboText(imu_rate_combo_, settings.value("rate/imu", imu_rate_combo_->currentText()).toString());
+    applyComboText(ptb_rate_combo_, settings.value("rate/ptb", ptb_rate_combo_->currentText()).toString());
+    applyComboText(hmp_rate_combo_, settings.value("rate/hmp", hmp_rate_combo_->currentText()).toString());
+    applyComboText(lidar_rate_combo_, settings.value("rate/lidar", lidar_rate_combo_->currentText()).toString());
+
+    if (waveform_split_spin_)
+    {
+        const QSignalBlocker blocker(waveform_split_spin_);
+        waveform_split_spin_->setValue(settings.value("waveform_split_minutes", waveform_split_spin_->value()).toInt());
+        waveform_split_minutes_ = waveform_split_spin_->value();
+    }
+}
+
+void MainWindow::saveRememberedInputState() const
+{
+    QSettings settings("VaporView", "MainWindow");
+    settings.setValue("serial/gnss_port", gnss_port_combo_->currentText());
+    settings.setValue("serial/imu_port", imu_port_combo_->currentText());
+    settings.setValue("serial/ptb_port", ptb_port_combo_->currentText());
+    settings.setValue("serial/hmp_port", hmp_port_combo_->currentText());
+    settings.setValue("serial/lidar_port", lidar_port_combo_->currentText());
+
+    settings.setValue("serial/gnss_baud", gnss_baud_combo_->currentText());
+    settings.setValue("serial/imu_baud", imu_baud_combo_->currentText());
+    settings.setValue("serial/ptb_baud", ptb_baud_combo_->currentText());
+    settings.setValue("serial/hmp_baud", hmp_baud_combo_->currentText());
+    settings.setValue("serial/lidar_baud", lidar_baud_combo_->currentText());
+
+    settings.setValue("rate/global", global_rate_combo_->currentText());
+    settings.setValue("rate/gnss", gnss_rate_combo_->currentText());
+    settings.setValue("rate/imu", imu_rate_combo_->currentText());
+    settings.setValue("rate/ptb", ptb_rate_combo_->currentText());
+    settings.setValue("rate/hmp", hmp_rate_combo_->currentText());
+    settings.setValue("rate/lidar", lidar_rate_combo_->currentText());
+
+    if (waveform_split_spin_)
+    {
+        settings.setValue("waveform_split_minutes", waveform_split_spin_->value());
+    }
+}
+
+void MainWindow::bindRememberedInputState()
+{
+    auto bindCombo = [this](QComboBox *combo) {
+        if (!combo)
+        {
+            return;
+        }
+        connect(combo, &QComboBox::currentTextChanged, this, [this](const QString&) {
+            saveRememberedInputState();
+        });
+    };
+
+    bindCombo(gnss_port_combo_);
+    bindCombo(imu_port_combo_);
+    bindCombo(ptb_port_combo_);
+    bindCombo(hmp_port_combo_);
+    bindCombo(lidar_port_combo_);
+    bindCombo(gnss_baud_combo_);
+    bindCombo(imu_baud_combo_);
+    bindCombo(ptb_baud_combo_);
+    bindCombo(hmp_baud_combo_);
+    bindCombo(lidar_baud_combo_);
+    bindCombo(global_rate_combo_);
+    bindCombo(gnss_rate_combo_);
+    bindCombo(imu_rate_combo_);
+    bindCombo(ptb_rate_combo_);
+    bindCombo(hmp_rate_combo_);
+    bindCombo(lidar_rate_combo_);
+
+    if (waveform_split_spin_)
+    {
+        connect(waveform_split_spin_, &QSpinBox::valueChanged, this, [this](int) {
+            saveRememberedInputState();
+        });
+    }
 }
 
 void MainWindow::setupMenuBar()

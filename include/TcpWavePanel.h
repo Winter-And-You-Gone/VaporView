@@ -77,6 +77,8 @@ private:
     void recreateSocket();
     void requestGracefulDisconnect();
     void setConnectedUiState(bool connected);
+    void loadRememberedInputState();
+    void saveRememberedInputState() const;
     void updatePeakPlotModeButtonText();
     void setStatusText(const QString& text);
     void resetParserState();

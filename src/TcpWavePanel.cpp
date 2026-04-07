@@ -11,6 +11,8 @@
 #include <QPen>
 #include <QPolygonF>
 #include <QPushButton>
+#include <QSettings>
+#include <QSignalBlocker>
 #include <QSpinBox>
 #include <QTcpSocket>
 #include <QVBoxLayout>
@@ -333,12 +335,14 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , is_english_(false)
 {
     setupUi();
+    loadRememberedInputState();
     setupSocket();
     setEnglish(false);
 }
 
 TcpWavePanel::~TcpWavePanel()
 {
+    saveRememberedInputState();
     requestGracefulDisconnect();
     if (socket_)
     {
@@ -482,6 +486,36 @@ void TcpWavePanel::setupUi()
     peak_plot_->setPlotMode(peak_plot_scatter_mode_ ? PeakTrendPlotWidget::PlotMode::Scatter : PeakTrendPlotWidget::PlotMode::Polyline);
     peakLayout->addWidget(peak_plot_);
     mainLayout->addWidget(peak_group_, 0);
+
+    connect(host_edit_, &QLineEdit::textChanged, this, [this](const QString&) {
+        saveRememberedInputState();
+    });
+    connect(port_spin_, &QSpinBox::valueChanged, this, [this](int) {
+        saveRememberedInputState();
+    });
+}
+
+void TcpWavePanel::loadRememberedInputState()
+{
+    QSettings settings("VaporView", "TcpWavePanel");
+    const QString hostValue = settings.value("connection/host", host_edit_->text()).toString();
+    const int portValue = settings.value("connection/port", port_spin_->value()).toInt();
+
+    {
+        const QSignalBlocker hostBlocker(host_edit_);
+        host_edit_->setText(hostValue);
+    }
+    {
+        const QSignalBlocker portBlocker(port_spin_);
+        port_spin_->setValue(portValue);
+    }
+}
+
+void TcpWavePanel::saveRememberedInputState() const
+{
+    QSettings settings("VaporView", "TcpWavePanel");
+    settings.setValue("connection/host", host_edit_->text());
+    settings.setValue("connection/port", port_spin_->value());
 }
 
 void TcpWavePanel::setEnglish(bool english)
