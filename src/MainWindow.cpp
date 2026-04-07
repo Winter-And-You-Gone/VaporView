@@ -351,14 +351,10 @@ void GnssPanel::updateData(const VaporView::GnssData& data, quint64 timestamp_us
 
         const QString formattedText = timestamp_us > 0
             ? QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(timestamp_us / 1000ULL), QTimeZone::UTC)
-                  .toString("HH:mm:ss.zzz 'UTC'")
+                  .toString("yyyy-MM-dd HH:mm:ss.zzz 'UTC'")
             : QStringLiteral("---");
-        const QString rawText = timestamp_us > 0 ? QString::number(timestamp_us) + " us" : QStringLiteral("---");
-        time_label_->setText(QString("%1: %2\n%3: %4")
-            .arg(is_english_ ? "UTC" : "格式化")
-            .arg(formattedText)
-            .arg(is_english_ ? "Raw" : "原始")
-            .arg(rawText));
+        const QString rawText = timestamp_us > 0 ? QString::number(timestamp_us) + "us" : QStringLiteral("---");
+        time_label_->setText(QString("%1\n%2").arg(formattedText, rawText));
 
         lat_label_->setText(QString::asprintf("%.8f°", data.latitude));
         lon_label_->setText(QString::asprintf("%.8f°", data.longitude));
@@ -390,9 +386,7 @@ void GnssPanel::updateData(const VaporView::GnssData& data, quint64 timestamp_us
         status_label_->setProperty("data-valid", false);
         status_label_->style()->unpolish(status_label_);
         status_label_->style()->polish(status_label_);
-        time_label_->setText(QString("%1: ---\n%2: ---")
-            .arg(is_english_ ? "UTC" : "格式化")
-            .arg(is_english_ ? "Raw" : "原始"));
+        time_label_->setText(QStringLiteral("---\n---"));
     }
 }
 
@@ -614,22 +608,18 @@ void ImuPanel::updateData(const VaporView::ImuData& data, quint64 gnss_timestamp
 
         const QString formattedText = (imuTimestampUs > 0 && ppsValid)
             ? QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(imuTimestampUs / 1000ULL), QTimeZone::UTC)
-                  .toString("HH:mm:ss.zzz 'UTC'")
+                  .toString("yyyy-MM-dd HH:mm:ss.zzz 'UTC'")
             : QStringLiteral("---");
         QString rawText = QStringLiteral("---");
         if (data.from_hi83 && data.system_time_us > 0)
         {
-            rawText = QString::number(data.system_time_us) + " us";
+            rawText = QString::number(data.system_time_us) + "us";
         }
         else if (data.system_time_ms > 0)
         {
-            rawText = QString::number(data.system_time_ms) + " ms";
+            rawText = QString::number(data.system_time_ms) + "ms";
         }
-        time_label_->setText(QString("%1: %2\n%3: %4")
-            .arg(is_english_ ? "UTC" : "格式化")
-            .arg(formattedText)
-            .arg(is_english_ ? "Raw" : "原始")
-            .arg(rawText));
+        time_label_->setText(QString("%1\n%2").arg(formattedText, rawText));
 
         if (gnss_timestamp_us == 0 || imuTimestampUs == 0)
         {
@@ -671,9 +661,7 @@ void ImuPanel::updateData(const VaporView::ImuData& data, quint64 gnss_timestamp
         source_label_->setProperty("data-valid", false);
         source_label_->style()->unpolish(source_label_);
         source_label_->style()->polish(source_label_);
-        time_label_->setText(QString("%1: ---\n%2: ---")
-            .arg(is_english_ ? "UTC" : "格式化")
-            .arg(is_english_ ? "Raw" : "原始"));
+        time_label_->setText(QStringLiteral("---\n---"));
         pps_label_->setText(is_english_ ? "Unknown" : "未知");
     }
 }
