@@ -797,7 +797,7 @@ void SessionViewerWindow::setupUi()
     csv_table_->setWordWrap(false);
     csv_table_->setStyleSheet(
         "QTableWidget { background-color: #ffffff; alternate-background-color: #ffffff; gridline-color: #e5e7eb; }"
-        "QTableWidget::item { background-color: #ffffff; color: #1f2933; }"
+        "QTableWidget::item { color: #1f2933; }"
         "QTableWidget::item:selected { background-color: #c7e3ff; color: #1f2933; }"
         "QTableWidget::item:selected:active { background-color: #c7e3ff; color: #1f2933; }"
         "QTableWidget::item:selected:!active { background-color: #c7e3ff; color: #1f2933; }");
