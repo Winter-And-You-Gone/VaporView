@@ -104,6 +104,7 @@ private:
     bool is_english_;
     bool updating_frame_controls_;
     bool waveform_peak_scatter_mode_;
+    int highlighted_csv_row_;
     int points_per_frame_;
     int waveform_export_rate_hz_;
     quint64 total_sensor_rows_;

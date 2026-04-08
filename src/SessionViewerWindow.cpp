@@ -43,6 +43,7 @@ namespace
 {
 constexpr quint64 kWaveformTimestampBytes = sizeof(quint64);
 constexpr quint64 kFloatBytes = sizeof(float);
+const QColor kHighlightedCsvRowColor("#d8ecff");
 
 QString csvValueAt(const QStringList& fields, int index)
 {
@@ -601,6 +602,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , is_english_(false)
     , updating_frame_controls_(false)
     , waveform_peak_scatter_mode_(true)
+    , highlighted_csv_row_(-1)
     , points_per_frame_(50000)
     , waveform_export_rate_hz_(10)
     , total_sensor_rows_(0)
@@ -876,6 +878,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     csv_table_->clearContents();
     csv_table_->setRowCount(0);
     csv_table_->setColumnCount(0);
+    highlighted_csv_row_ = -1;
     static_cast<SessionWavePlotWidget*>(waveform_plot_)->setSamples({});
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPeakValues({});
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setCurrentFrame(-1);
@@ -1050,6 +1053,7 @@ bool SessionViewerWindow::loadSensorsCsv()
     csv_table_->clearContents();
     csv_table_->setRowCount(0);
     csv_table_->setColumnCount(0);
+    highlighted_csv_row_ = -1;
     csv_headers_.clear();
     csv_timestamps_us_.clear();
 
@@ -1370,9 +1374,30 @@ void SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs)
         row = (timestampUs - lower <= upper - timestampUs) ? lowerIndex - 1 : lowerIndex;
     }
 
-    csv_table_->selectRow(row);
-    if (csv_table_->item(row, 0))
+    if (highlighted_csv_row_ >= 0 && highlighted_csv_row_ < csv_table_->rowCount() && highlighted_csv_row_ != row)
     {
-        csv_table_->scrollToItem(csv_table_->item(row, 0), QAbstractItemView::PositionAtCenter);
+        for (int col = 0; col < csv_table_->columnCount(); ++col)
+        {
+            if (QTableWidgetItem *item = csv_table_->item(highlighted_csv_row_, col))
+            {
+                item->setBackground(QBrush());
+            }
+        }
+    }
+
+    for (int col = 0; col < csv_table_->columnCount(); ++col)
+    {
+        if (QTableWidgetItem *item = csv_table_->item(row, col))
+        {
+            item->setBackground(kHighlightedCsvRowColor);
+        }
+    }
+
+    highlighted_csv_row_ = row;
+    csv_table_->selectRow(row);
+    csv_table_->setCurrentCell(row, 0, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+    if (QTableWidgetItem *item = csv_table_->item(row, 0))
+    {
+        csv_table_->scrollToItem(item, QAbstractItemView::PositionAtCenter);
     }
 }
