@@ -60,6 +60,14 @@ if(WIN32 AND MINGW)
     )
 
     get_filename_component(MINGW_RUNTIME_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    get_filename_component(QT_RUNTIME_DIR "${Qt6_DIR}/../../../bin" ABSOLUTE)
+
+    set(VAPORVIEW_RUNTIME_COPY_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/CopyRuntimeDependencies.cmake")
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CopyRuntimeDependencies.cmake.in"
+        "${VAPORVIEW_RUNTIME_COPY_SCRIPT}"
+        @ONLY
+    )
 endif()
 
 find_package(Threads REQUIRED)
@@ -235,7 +243,15 @@ if(WIN32 AND MINGW)
         )
     endif()
 
-    if(POWERSHELL_EXECUTABLE AND MSYS_BASH_EXECUTABLE
+    if(EXISTS "${VAPORVIEW_RUNTIME_COPY_SCRIPT}")
+        add_custom_command(TARGET VaporView POST_BUILD
+            COMMAND ${CMAKE_COMMAND}
+                -DVAPORVIEW_RUNTIME_TARGET=$<TARGET_FILE:VaporView>
+                -DVAPORVIEW_RUNTIME_DESTINATION=$<TARGET_FILE_DIR:VaporView>
+                -P "${VAPORVIEW_RUNTIME_COPY_SCRIPT}"
+            COMMENT "Copying MinGW runtime dependencies for VaporView"
+        )
+    elseif(POWERSHELL_EXECUTABLE AND MSYS_BASH_EXECUTABLE
        AND EXISTS "${CMAKE_SOURCE_DIR}/scripts/deploy_mingw_runtime.ps1")
         add_custom_command(TARGET VaporView POST_BUILD
             COMMAND ${POWERSHELL_EXECUTABLE}
