@@ -715,7 +715,7 @@ void SessionViewerWindow::setupUi()
 
     summary_group_ = new QGroupBox(this);
     summary_group_->setObjectName("sensorGroupBox");
-    summary_group_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+    summary_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto *summaryLayout = new QGridLayout(summary_group_);
     summaryLayout->setContentsMargins(8, 28, 8, 8);
     summaryLayout->setHorizontalSpacing(6);
@@ -750,7 +750,7 @@ void SessionViewerWindow::setupUi()
     createSummaryRow(1, 1, sensor_rows_title_, sensor_rows_value_);
     createSummaryRow(1, 2, waveform_files_title_, waveform_files_value_);
     createSummaryRow(2, 0, waveform_frames_title_, waveform_frames_value_);
-    upperLayout->addWidget(summary_group_, 0, Qt::AlignLeft | Qt::AlignTop);
+    upperLayout->addWidget(summary_group_);
 
     waveform_group_ = new QGroupBox(this);
     waveform_group_->setObjectName("sensorGroupBox");
