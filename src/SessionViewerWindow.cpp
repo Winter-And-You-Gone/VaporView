@@ -716,15 +716,21 @@ void SessionViewerWindow::setupUi()
     summary_group_ = new QGroupBox(this);
     summary_group_->setObjectName("sensorGroupBox");
     auto *summaryLayout = new QGridLayout(summary_group_);
-    summaryLayout->setContentsMargins(10, 30, 10, 10);
-    summaryLayout->setHorizontalSpacing(10);
-    summaryLayout->setVerticalSpacing(6);
+    summaryLayout->setContentsMargins(8, 28, 8, 8);
+    summaryLayout->setHorizontalSpacing(6);
+    summaryLayout->setVerticalSpacing(4);
 
     auto createSummaryRow = [this, summaryLayout](int row, int col, QLabel*& title, QLabel*& value) {
         title = new QLabel(this);
         title->setObjectName("fieldLabel");
+        title->setMinimumWidth(52);
+        title->setMaximumWidth(72);
+        title->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
         value = new QLabel("---", this);
         value->setObjectName("valueLabel");
+        value->setMinimumWidth(88);
+        value->setMaximumWidth(180);
+        value->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
         summaryLayout->addWidget(title, row, col * 2);
         summaryLayout->addWidget(value, row, col * 2 + 1);
     };
