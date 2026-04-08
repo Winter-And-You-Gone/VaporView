@@ -1470,7 +1470,8 @@ QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs)
     {
         csv_table_->selectRow(primaryRow);
         csv_table_->setCurrentCell(primaryRow, 0, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
-        if (QTableWidgetItem *item = csv_table_->item(primaryRow, 0))
+        const int topVisibleRow = rowsToHighlight.isEmpty() ? primaryRow : rowsToHighlight.first();
+        if (QTableWidgetItem *item = csv_table_->item(topVisibleRow, 0))
         {
             csv_table_->scrollToItem(item, QAbstractItemView::PositionAtTop);
         }
