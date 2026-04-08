@@ -1398,6 +1398,6 @@ void SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs)
     csv_table_->setCurrentCell(row, 0, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
     if (QTableWidgetItem *item = csv_table_->item(row, 0))
     {
-        csv_table_->scrollToItem(item, QAbstractItemView::PositionAtCenter);
+        csv_table_->scrollToItem(item, QAbstractItemView::PositionAtTop);
     }
 }
