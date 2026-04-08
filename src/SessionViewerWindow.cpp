@@ -14,6 +14,7 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMouseEvent>
 #include <QMessageBox>
 #include <QPainter>
 #include <QPushButton>
@@ -26,6 +27,7 @@
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTextStream>
+#include <QWheelEvent>
 #include <QVBoxLayout>
 #include <QWidget>
 #include <QStringConverter>
@@ -202,6 +204,11 @@ public:
         : QWidget(parent)
         , current_frame_index_(-1)
         , plot_mode_(PlotMode::Scatter)
+        , view_start_index_(0)
+        , view_count_(0)
+        , dragging_(false)
+        , drag_start_x_(0)
+        , drag_origin_start_(0)
     {
         setMinimumHeight(170);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -209,11 +216,15 @@ public:
 
     void setPeakValues(const QVector<float>& values)
     {
+        const bool keepTail = peak_values_.isEmpty() ||
+            view_count_ <= 0 ||
+            (view_start_index_ + visibleCount()) >= peak_values_.size();
         peak_values_ = values;
         if (current_frame_index_ >= peak_values_.size())
         {
             current_frame_index_ = -1;
         }
+        normalizeView(keepTail);
         update();
     }
 
@@ -261,7 +272,11 @@ protected:
             return;
         }
 
-        const auto minMax = std::minmax_element(peak_values_.cbegin(), peak_values_.cend());
+        const int startIndex = visibleStartIndex();
+        const int count = visibleCount();
+        const auto visibleBegin = peak_values_.cbegin() + startIndex;
+        const auto visibleEnd = visibleBegin + count;
+        const auto minMax = std::minmax_element(visibleBegin, visibleEnd);
         float minValue = *minMax.first;
         float maxValue = *minMax.second;
         if (std::fabs(maxValue - minValue) < 1e-6f)
@@ -271,13 +286,12 @@ protected:
             maxValue += pad;
         }
 
-        const int peakCount = static_cast<int>(peak_values_.size());
         QVector<QPointF> points;
-        points.reserve(peakCount);
-        for (int i = 0; i < peakCount; ++i)
+        points.reserve(count);
+        for (int i = 0; i < count; ++i)
         {
-            const double ratio = peakCount == 1 ? 0.5 : static_cast<double>(i) / static_cast<double>(peakCount - 1);
-            const float value = peak_values_.at(i);
+            const double ratio = count == 1 ? 0.5 : static_cast<double>(i) / static_cast<double>(count - 1);
+            const float value = peak_values_.at(startIndex + i);
             const double normalized = (value - minValue) / std::max(1e-6f, maxValue - minValue);
             points.push_back(QPointF(plotRect.left() + ratio * plotRect.width(),
                                      plotRect.bottom() - normalized * plotRect.height()));
@@ -299,9 +313,9 @@ protected:
             }
         }
 
-        if (current_frame_index_ >= 0 && current_frame_index_ < peak_values_.size())
+        if (current_frame_index_ >= startIndex && current_frame_index_ < (startIndex + count))
         {
-            const QPointF currentPoint = points.at(current_frame_index_);
+            const QPointF currentPoint = points.at(current_frame_index_ - startIndex);
             painter.setPen(QPen(QColor("#ffb347"), 1, Qt::DashLine));
             painter.drawLine(QPointF(currentPoint.x(), plotRect.top()), QPointF(currentPoint.x(), plotRect.bottom()));
             painter.setPen(Qt::NoPen);
@@ -314,14 +328,173 @@ protected:
         painter.drawText(QRectF(4, plotRect.center().y() - 8, 40, 16), Qt::AlignRight | Qt::AlignVCenter,
                          QString::number((maxValue + minValue) * 0.5, 'f', 4));
         painter.drawText(QRectF(4, plotRect.bottom() - 8, 40, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(minValue, 'f', 4));
+        painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 6, plotRect.width() * 0.55, 16),
+                         Qt::AlignLeft | Qt::AlignVCenter,
+                         QString("%1-%2 / %3")
+                             .arg(startIndex + 1)
+                             .arg(startIndex + count)
+                             .arg(peak_values_.size()));
         painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 6, plotRect.width(), 16), Qt::AlignRight | Qt::AlignVCenter,
-                         QStringLiteral("%1 frames").arg(peak_values_.size()));
+                         QStringLiteral("%1 frames").arg(count));
+    }
+
+    void wheelEvent(QWheelEvent *event) override
+    {
+        if (peak_values_.size() <= 1)
+        {
+            return;
+        }
+
+        const int totalCount = peak_values_.size();
+        const int oldCount = visibleCount();
+        int newCount = oldCount;
+        if (event->angleDelta().y() > 0)
+        {
+            newCount = std::max(20, static_cast<int>(std::floor(oldCount * 0.8)));
+        }
+        else if (event->angleDelta().y() < 0)
+        {
+            newCount = std::min(totalCount, static_cast<int>(std::ceil(oldCount * 1.25)));
+        }
+
+        if (newCount == oldCount)
+        {
+            event->accept();
+            return;
+        }
+
+        if (newCount >= totalCount)
+        {
+            view_start_index_ = 0;
+            view_count_ = 0;
+            update();
+            event->accept();
+            return;
+        }
+
+        const qreal ratio = width() <= 1 ? 0.5 : std::clamp(event->position().x() / static_cast<qreal>(width()), 0.0, 1.0);
+        const double anchorIndex = visibleStartIndex() + ratio * std::max(0, oldCount - 1);
+        view_count_ = newCount;
+        view_start_index_ = static_cast<int>(std::llround(anchorIndex - ratio * std::max(0, newCount - 1)));
+        normalizeView(false);
+        update();
+        event->accept();
+    }
+
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        if (event->button() == Qt::LeftButton && peak_values_.size() > visibleCount())
+        {
+            dragging_ = true;
+            drag_start_x_ = event->position().x();
+            drag_origin_start_ = visibleStartIndex();
+            setCursor(Qt::ClosedHandCursor);
+            event->accept();
+            return;
+        }
+        QWidget::mousePressEvent(event);
+    }
+
+    void mouseMoveEvent(QMouseEvent *event) override
+    {
+        if (dragging_ && peak_values_.size() > visibleCount())
+        {
+            const qreal widthPixels = std::max(1.0, static_cast<qreal>(width()));
+            const qreal deltaRatio = (event->position().x() - drag_start_x_) / widthPixels;
+            const int deltaFrames = static_cast<int>(std::llround(deltaRatio * visibleCount()));
+            view_start_index_ = drag_origin_start_ - deltaFrames;
+            normalizeView(false);
+            update();
+            event->accept();
+            return;
+        }
+        QWidget::mouseMoveEvent(event);
+    }
+
+    void mouseReleaseEvent(QMouseEvent *event) override
+    {
+        if (event->button() == Qt::LeftButton && dragging_)
+        {
+            dragging_ = false;
+            unsetCursor();
+            event->accept();
+            return;
+        }
+        QWidget::mouseReleaseEvent(event);
+    }
+
+    void mouseDoubleClickEvent(QMouseEvent *event) override
+    {
+        if (event->button() == Qt::LeftButton)
+        {
+            view_start_index_ = 0;
+            view_count_ = 0;
+            dragging_ = false;
+            unsetCursor();
+            update();
+            event->accept();
+            return;
+        }
+        QWidget::mouseDoubleClickEvent(event);
     }
 
 private:
+    int visibleStartIndex() const
+    {
+        const int totalCount = static_cast<int>(peak_values_.size());
+        return peak_values_.isEmpty() ? 0 : std::clamp(view_start_index_, 0, std::max(0, totalCount - visibleCount()));
+    }
+
+    int visibleCount() const
+    {
+        const int totalCount = static_cast<int>(peak_values_.size());
+        if (peak_values_.isEmpty())
+        {
+            return 0;
+        }
+        if (view_count_ <= 0 || view_count_ >= totalCount)
+        {
+            return totalCount;
+        }
+        return std::clamp(view_count_, 1, totalCount);
+    }
+
+    void normalizeView(bool keepTail)
+    {
+        const int totalCount = static_cast<int>(peak_values_.size());
+        if (peak_values_.isEmpty())
+        {
+            view_start_index_ = 0;
+            view_count_ = 0;
+            return;
+        }
+
+        if (view_count_ <= 0 || view_count_ >= totalCount)
+        {
+            view_start_index_ = 0;
+            view_count_ = 0;
+            return;
+        }
+
+        view_count_ = std::clamp(view_count_, 1, totalCount);
+        if (keepTail)
+        {
+            view_start_index_ = std::max(0, totalCount - view_count_);
+        }
+        else
+        {
+            view_start_index_ = std::clamp(view_start_index_, 0, std::max(0, totalCount - view_count_));
+        }
+    }
+
     QVector<float> peak_values_;
     int current_frame_index_;
     PlotMode plot_mode_;
+    int view_start_index_;
+    int view_count_;
+    bool dragging_;
+    qreal drag_start_x_;
+    int drag_origin_start_;
 };
 
 SessionViewerWindow::SessionViewerWindow(QWidget *parent)
