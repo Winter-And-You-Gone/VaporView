@@ -43,8 +43,9 @@ namespace
 {
 constexpr quint64 kWaveformTimestampBytes = sizeof(quint64);
 constexpr quint64 kFloatBytes = sizeof(float);
-const QColor kHighlightedCsvRowColor("#d8ecff");
-const QColor kSecondaryHighlightedCsvRowColor("#eef6ff");
+const QColor kHighlightedCsvRowColor("#c7e3ff");
+const QColor kSecondaryHighlightedCsvRowColor("#e8f3ff");
+const QColor kDefaultCsvRowColor("#ffffff");
 
 QString csvValueAt(const QStringList& fields, int index)
 {
@@ -789,16 +790,17 @@ void SessionViewerWindow::setupUi()
     csvLayout->addWidget(csv_info_label_);
 
     csv_table_ = new QTableWidget(this);
-    csv_table_->setAlternatingRowColors(true);
+    csv_table_->setAlternatingRowColors(false);
     csv_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
     csv_table_->setSelectionMode(QAbstractItemView::SingleSelection);
     csv_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     csv_table_->setWordWrap(false);
     csv_table_->setStyleSheet(
-        "QTableWidget { background-color: #ffffff; alternate-background-color: #f7fbff; }"
-        "QTableWidget::item:selected { background-color: #d8ecff; color: #1f2933; }"
-        "QTableWidget::item:selected:active { background-color: #d8ecff; color: #1f2933; }"
-        "QTableWidget::item:selected:!active { background-color: #d8ecff; color: #1f2933; }");
+        "QTableWidget { background-color: #ffffff; alternate-background-color: #ffffff; gridline-color: #e5e7eb; }"
+        "QTableWidget::item { background-color: #ffffff; color: #1f2933; }"
+        "QTableWidget::item:selected { background-color: #c7e3ff; color: #1f2933; }"
+        "QTableWidget::item:selected:active { background-color: #c7e3ff; color: #1f2933; }"
+        "QTableWidget::item:selected:!active { background-color: #c7e3ff; color: #1f2933; }");
     csv_table_->horizontalHeader()->setSectionsMovable(true);
     csv_table_->horizontalHeader()->setDefaultSectionSize(140);
     csv_table_->verticalHeader()->setVisible(false);
@@ -836,6 +838,10 @@ void SessionViewerWindow::updateTexts()
     waveform_files_title_->setText(is_english_ ? "Wave Files:" : "波形文件数:");
     waveform_frames_title_->setText(is_english_ ? "Wave Frames:" : "波形帧数:");
     frame_title_->setText(is_english_ ? "Frame:" : "帧:");
+    if (csv_table_ && csv_table_->columnCount() > 0)
+    {
+        csv_table_->setHorizontalHeaderItem(0, new QTableWidgetItem(is_english_ ? "No." : "序号"));
+    }
 
     if (session_directory_.isEmpty())
     {
@@ -1089,8 +1095,12 @@ bool SessionViewerWindow::loadSensorsCsv()
     }
 
     csv_headers_ = parseCsvLine(stream.readLine());
-    csv_table_->setColumnCount(csv_headers_.size());
-    csv_table_->setHorizontalHeaderLabels(csv_headers_);
+    QStringList displayHeaders;
+    displayHeaders.reserve(csv_headers_.size() + 1);
+    displayHeaders << (is_english_ ? "No." : "序号");
+    displayHeaders << csv_headers_;
+    csv_table_->setColumnCount(displayHeaders.size());
+    csv_table_->setHorizontalHeaderLabels(displayHeaders);
 
     QVector<QStringList> rows;
     rows.reserve(static_cast<int>(std::min<quint64>(total_sensor_rows_ > 0 ? total_sensor_rows_ : 256ULL, 50000ULL)));
@@ -1120,10 +1130,16 @@ bool SessionViewerWindow::loadSensorsCsv()
     csv_table_->setRowCount(rows.size());
     for (int row = 0; row < rows.size(); ++row)
     {
+        auto *indexItem = new QTableWidgetItem(QString::number(row + 1));
+        indexItem->setBackground(kDefaultCsvRowColor);
+        csv_table_->setItem(row, 0, indexItem);
+
         const QStringList& fields = rows.at(row);
         for (int col = 0; col < csv_headers_.size(); ++col)
         {
-            csv_table_->setItem(row, col, new QTableWidgetItem(csvValueAt(fields, col)));
+            auto *item = new QTableWidgetItem(csvValueAt(fields, col));
+            item->setBackground(kDefaultCsvRowColor);
+            csv_table_->setItem(row, col + 1, item);
         }
     }
 
@@ -1409,7 +1425,7 @@ QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs)
         {
             if (QTableWidgetItem *item = csv_table_->item(previousRow, col))
             {
-                item->setBackground(QBrush());
+                item->setBackground(kDefaultCsvRowColor);
             }
         }
     }
