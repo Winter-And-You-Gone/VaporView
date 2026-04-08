@@ -78,6 +78,34 @@ QString formatSignedDeltaMs(qint64 deltaUs)
         .arg(QString::number(deltaMs, 'f', 3));
 }
 
+QString formatDurationText(const QString& startUtc, const QString& endUtc, bool english)
+{
+    const QDateTime start = QDateTime::fromString(startUtc, Qt::ISODate);
+    const QDateTime end = QDateTime::fromString(endUtc, Qt::ISODate);
+    if (!start.isValid() || !end.isValid() || end < start)
+    {
+        return QStringLiteral("---");
+    }
+
+    qint64 seconds = start.secsTo(end);
+    const qint64 hours = seconds / 3600;
+    seconds %= 3600;
+    const qint64 minutes = seconds / 60;
+    seconds %= 60;
+
+    QStringList parts;
+    if (hours > 0)
+    {
+        parts << (english ? QString("%1h").arg(hours) : QString("%1小时").arg(hours));
+    }
+    if (minutes > 0 || hours > 0)
+    {
+        parts << (english ? QString("%1m").arg(minutes) : QString("%1分").arg(minutes));
+    }
+    parts << (english ? QString("%1s").arg(seconds) : QString("%1秒").arg(seconds));
+    return parts.join(' ');
+}
+
 QStringList parseCsvLine(const QString& line)
 {
     QStringList fields;
@@ -578,6 +606,8 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , start_time_value_(nullptr)
     , end_time_title_(nullptr)
     , end_time_value_(nullptr)
+    , duration_title_(nullptr)
+    , duration_value_(nullptr)
     , sensor_rows_title_(nullptr)
     , sensor_rows_value_(nullptr)
     , waveform_files_title_(nullptr)
@@ -702,9 +732,10 @@ void SessionViewerWindow::setupUi()
     createSummaryRow(0, 0, session_name_title_, session_name_value_);
     createSummaryRow(0, 1, start_time_title_, start_time_value_);
     createSummaryRow(0, 2, end_time_title_, end_time_value_);
-    createSummaryRow(1, 0, sensor_rows_title_, sensor_rows_value_);
-    createSummaryRow(1, 1, waveform_files_title_, waveform_files_value_);
-    createSummaryRow(1, 2, waveform_frames_title_, waveform_frames_value_);
+    createSummaryRow(1, 0, duration_title_, duration_value_);
+    createSummaryRow(1, 1, sensor_rows_title_, sensor_rows_value_);
+    createSummaryRow(1, 2, waveform_files_title_, waveform_files_value_);
+    createSummaryRow(2, 0, waveform_frames_title_, waveform_frames_value_);
     upperLayout->addWidget(summary_group_);
 
     waveform_group_ = new QGroupBox(this);
@@ -825,7 +856,7 @@ void SessionViewerWindow::updateTexts()
     choose_session_btn_->setText(is_english_ ? "Open Data..." : "打开数据...");
     reload_btn_->setText(is_english_ ? "Reload" : "重新加载");
     clear_view_btn_->setText(is_english_ ? "Clear Page" : "清空页面");
-    summary_group_->setTitle(is_english_ ? "Session Summary" : "会话概览");
+    summary_group_->setTitle(is_english_ ? "Data Summary" : "数据概览");
     waveform_group_->setTitle(is_english_ ? "Normalized Second Harmonic" : "归一化二次谐波");
     waveform_plot_title_->setText(is_english_ ? "Current Frame Waveform" : "当前帧波形");
     waveform_peak_plot_title_->setText(is_english_ ? "Peak Value of Each Frame" : "每帧峰值");
@@ -834,6 +865,7 @@ void SessionViewerWindow::updateTexts()
     session_name_title_->setText(is_english_ ? "Session:" : "会话:");
     start_time_title_->setText(is_english_ ? "Start:" : "开始时间:");
     end_time_title_->setText(is_english_ ? "End:" : "结束时间:");
+    duration_title_->setText(is_english_ ? "Duration:" : "记录时间:");
     sensor_rows_title_->setText(is_english_ ? "Sensor Rows:" : "传感器行数:");
     waveform_files_title_->setText(is_english_ ? "Wave Files:" : "波形文件数:");
     waveform_frames_title_->setText(is_english_ ? "Wave Frames:" : "波形帧数:");
@@ -1252,6 +1284,7 @@ void SessionViewerWindow::updateSummaryLabels()
     session_name_value_->setText(session_name_.isEmpty() ? QStringLiteral("---") : session_name_);
     start_time_value_->setText(start_time_utc_.isEmpty() ? QStringLiteral("---") : start_time_utc_);
     end_time_value_->setText(end_time_utc_.isEmpty() ? QStringLiteral("---") : end_time_utc_);
+    duration_value_->setText(formatDurationText(start_time_utc_, end_time_utc_, is_english_));
     sensor_rows_value_->setText(QString::number(total_sensor_rows_));
     waveform_files_value_->setText(QString::number(waveform_segments_.size()));
     waveform_frames_value_->setText(QString::number(total_waveform_frames_));

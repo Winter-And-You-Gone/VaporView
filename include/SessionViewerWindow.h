@@ -69,6 +69,8 @@ private:
     QLabel *start_time_value_;
     QLabel *end_time_title_;
     QLabel *end_time_value_;
+    QLabel *duration_title_;
+    QLabel *duration_value_;
     QLabel *sensor_rows_title_;
     QLabel *sensor_rows_value_;
     QLabel *waveform_files_title_;
