@@ -28,6 +28,8 @@
 #include <QUrlQuery>
 #include <cmath>
 
+#include "serial_probe_utils.h"
+
 namespace
 {
 constexpr int kGgaPollIntervalMs = 50;
@@ -37,6 +39,31 @@ constexpr int kGgaMaxVisibleLines = 200;
 constexpr int kRtkLogVisibleLines = 5;
 constexpr int kRtkHttpTimeoutMs = 5000;
 const QRegularExpression kGgaSentencePattern("^\\$..GGA,");
+
+QStringList buildProbeBaudList(const QComboBox *baudrateCombo)
+{
+    QStringList baudTexts;
+    if (baudrateCombo)
+    {
+        const QString currentText = baudrateCombo->currentText().trimmed();
+        if (!currentText.isEmpty())
+        {
+            baudTexts.append(currentText);
+        }
+
+        for (int i = 0; i < baudrateCombo->count(); ++i)
+        {
+            const QString text = baudrateCombo->itemText(i).trimmed();
+            if (!text.isEmpty())
+            {
+                baudTexts.append(text);
+            }
+        }
+    }
+
+    baudTexts.removeDuplicates();
+    return baudTexts;
+}
 
 struct HttpResponse
 {
@@ -336,6 +363,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , test_btn_(nullptr)
     , gga_toggle_btn_(nullptr)
     , refresh_ports_btn_(nullptr)
+    , auto_detect_ports_btn_(nullptr)
     , fetch_mountpoints_btn_(nullptr)
     , apply_heading_length_btn_(nullptr)
     , save_config_btn_(nullptr)
@@ -399,6 +427,10 @@ void RtkConfigDialog::joinBackgroundTasks()
     {
         fetch_mountpoints_thread_.join();
     }
+    if (port_detection_thread_.joinable())
+    {
+        port_detection_thread_.join();
+    }
     if (test_thread_.joinable())
     {
         test_thread_.join();
@@ -407,7 +439,7 @@ void RtkConfigDialog::joinBackgroundTasks()
 
 bool RtkConfigDialog::isBackgroundTaskRunning() const
 {
-    return fetch_mountpoints_in_progress_.load() || test_in_progress_.load();
+    return fetch_mountpoints_in_progress_.load() || port_detection_in_progress_.load() || test_in_progress_.load();
 }
 
 void RtkConfigDialog::setupUi()
@@ -473,6 +505,10 @@ void RtkConfigDialog::setupUi()
     refresh_ports_btn_ = new QPushButton(this);
     connect(refresh_ports_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onRefreshPortsClicked);
     output_layout_->addWidget(refresh_ports_btn_, row, 2);
+
+    auto_detect_ports_btn_ = new QPushButton(this);
+    connect(auto_detect_ports_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onAutoDetectPortsClicked);
+    output_layout_->addWidget(auto_detect_ports_btn_, row, 3);
     row++;
 
     baudrate_label_ = new QLabel(this);
@@ -638,6 +674,7 @@ void RtkConfigDialog::setEnglish(bool english)
     heading_length_edit_->setPlaceholderText(textFor("e.g. 134", "例如: 134"));
 
     refresh_ports_btn_->setText(textFor("Refresh", "刷新"));
+    auto_detect_ports_btn_->setText(textFor("Auto Detect", "自动识别"));
     fetch_mountpoints_btn_->setText(textFor("Detect Mountpoints", "检测挂载点"));
     apply_heading_length_btn_->setText(textFor("Apply Baseline", "下发基线长度"));
     start_btn_->setText(textFor("Start", "启动"));
@@ -702,6 +739,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
         output_layout_->setVerticalSpacing(scalePixels(10));
         output_layout_->setContentsMargins(scalePixels(10), scalePixels(30), scalePixels(10), scalePixels(10));
         output_layout_->setColumnMinimumWidth(2, scalePixels(88));
+        output_layout_->setColumnMinimumWidth(3, scalePixels(108));
         for (int row = 0; row < 6; ++row)
         {
             output_layout_->setRowMinimumHeight(row, scalePixels(40));
@@ -795,6 +833,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     gga_group_->setFixedHeight(ggaGroupHeight);
 
     applyButtonWidth(refresh_ports_btn_, 80);
+    applyButtonWidth(auto_detect_ports_btn_, 96);
     applyButtonWidth(apply_heading_length_btn_, 120);
     applyButtonWidth(fetch_mountpoints_btn_, 128);
     applyButtonWidth(start_btn_, 80);
@@ -996,6 +1035,7 @@ void RtkConfigDialog::updateButtonStates()
     apply_heading_length_btn_->setEnabled(!is_running_ && !busy);
     fetch_mountpoints_btn_->setEnabled(!busy);
     refresh_ports_btn_->setEnabled(!busy);
+    auto_detect_ports_btn_->setEnabled(!busy);
     save_config_btn_->setEnabled(!busy);
     load_config_btn_->setEnabled(!busy);
     gga_toggle_btn_->setEnabled(!busy);
@@ -1004,6 +1044,8 @@ void RtkConfigDialog::updateButtonStates()
     {
         const QString busyText = fetch_mountpoints_in_progress_.load()
             ? textFor("Status: Fetching mountpoints", "状态: 正在获取挂载点")
+            : port_detection_in_progress_.load()
+                ? textFor("Status: Detecting serial ports", "状态: 正在识别串口")
             : textFor("Status: Running no-signal RTK test", "状态: 正在执行无信号 RTK 测试");
         status_label_->setText(busyText);
         status_label_->setStyleSheet("QLabel { color: #ef6c00; font-weight: bold; }");
@@ -1608,6 +1650,132 @@ void RtkConfigDialog::onRefreshPortsClicked()
 {
     refreshPortCombos();
     appendLog(textFor("Ports refreshed: %1 found", "串口已刷新: 发现 %1 个").arg(getAvailablePorts().size()));
+}
+
+void RtkConfigDialog::onAutoDetectPortsClicked()
+{
+    if (is_running_ || isBackgroundTaskRunning())
+    {
+        return;
+    }
+
+    if (port_detection_thread_.joinable())
+    {
+        port_detection_thread_.join();
+    }
+
+    refreshPortCombos();
+    const QStringList portNames = getAvailablePorts();
+    if (portNames.isEmpty())
+    {
+        appendLog(textFor("Auto detect stopped: no serial ports found.", "自动识别结束：当前没有发现可用串口。"));
+        return;
+    }
+
+    const QStringList baudTexts = buildProbeBaudList(baudrate_combo_);
+    port_detection_in_progress_.store(true);
+    updateButtonStates();
+    appendLog(textFor("Starting RTK output port auto detect...", "开始自动识别 RTK 输出串口..."));
+
+    QPointer<RtkConfigDialog> self(this);
+    port_detection_thread_ = std::thread([self, portNames, baudTexts]() {
+        if (!self)
+        {
+            return;
+        }
+
+        auto queueLog = [self](const QString& message) {
+            if (!self)
+            {
+                return;
+            }
+            QMetaObject::invokeMethod(self.data(), [self, message]() {
+                if (self)
+                {
+                    self->appendLog(message);
+                }
+            }, Qt::QueuedConnection);
+        };
+
+        QString detectedPort;
+        QString detectedBaud;
+        for (const QString& portName : portNames)
+        {
+            if (!self || self->shutdown_requested_.load())
+            {
+                break;
+            }
+
+            queueLog(self->textFor("[Auto Detect] Probing GGA on %1...", "[自动识别] 正在探测 GGA: %1 ...").arg(portName));
+            const auto probeResult = VaporView::probeSerialPortForHeader(
+                portName,
+                baudTexts,
+                VaporView::SerialHeaderProbeKind::Gga);
+            if (!probeResult.matched)
+            {
+                continue;
+            }
+
+            detectedPort = portName;
+            detectedBaud = probeResult.baudText;
+            queueLog(self->textFor("[Auto Detect] Identified GGA output on %1 @ %2",
+                                   "[自动识别] 已识别 GGA 输出串口: %1 @ %2")
+                         .arg(detectedPort, detectedBaud));
+            break;
+        }
+
+        if (!self)
+        {
+            return;
+        }
+
+        QMetaObject::invokeMethod(self.data(), [self, detectedPort, detectedBaud]() {
+            if (!self)
+            {
+                return;
+            }
+
+            self->port_detection_in_progress_.store(false);
+            if (!detectedPort.isEmpty())
+            {
+                self->applyDetectedOutputAndGgaPort(detectedPort, detectedBaud);
+            }
+            else
+            {
+                self->appendLog(self->textFor("Auto detect finished: no GGA output port found.",
+                                              "自动识别完成：未找到 GGA 输出串口。"));
+            }
+            self->updateButtonStates();
+        }, Qt::QueuedConnection);
+    });
+}
+
+void RtkConfigDialog::applyDetectedOutputAndGgaPort(const QString& portName, const QString& baudText)
+{
+    if (portName.isEmpty())
+    {
+        return;
+    }
+
+    if (output_port_combo_)
+    {
+        output_port_combo_->setCurrentText(portName);
+    }
+    if (gga_port_combo_)
+    {
+        gga_port_combo_->setCurrentText(portName);
+    }
+    if (!baudText.isEmpty() && baudrate_combo_)
+    {
+        baudrate_combo_->setCurrentText(baudText);
+    }
+
+    const QString appliedBaud = !baudText.isEmpty() && baudrate_combo_
+        ? baudText
+        : (baudrate_combo_ ? baudrate_combo_->currentText() : QString());
+    appendLog(textFor("Auto detect applied: output and GGA ports set to %1 @ %2.",
+                      "自动识别已应用：输出串口和 GGA 串口已设置为 %1 @ %2。")
+                  .arg(portName, appliedBaud));
 }
 
 void RtkConfigDialog::onFetchMountpointsClicked()

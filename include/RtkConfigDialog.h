@@ -45,6 +45,7 @@ private slots:
     void onRtkStatusTimer();
     void onRefreshPortsClicked();
     void onFetchMountpointsClicked();
+    void onAutoDetectPortsClicked();
     void onApplyHeadingLengthClicked();
     void onSaveConfigClicked();
     void onLoadConfigClicked();
@@ -79,6 +80,7 @@ private:
     void joinBackgroundTasks();
     bool isBackgroundTaskRunning() const;
     bool sendReceiverCommands(const QStringList& commands, QString *errorMessage = nullptr);
+    void applyDetectedOutputAndGgaPort(const QString& portName, const QString& baudText);
 
     QVBoxLayout *main_layout_;
     QGridLayout *config_layout_;
@@ -128,6 +130,7 @@ private:
     QPushButton *test_btn_;
     QPushButton *gga_toggle_btn_;
     QPushButton *refresh_ports_btn_;
+    QPushButton *auto_detect_ports_btn_;
     QPushButton *fetch_mountpoints_btn_;
     QPushButton *apply_heading_length_btn_;
     QPushButton *save_config_btn_;
@@ -154,9 +157,11 @@ private:
     bool gga_has_sentence_time_;
     bool gga_monitor_enabled_;
     std::atomic<bool> fetch_mountpoints_in_progress_{false};
+    std::atomic<bool> port_detection_in_progress_{false};
     std::atomic<bool> test_in_progress_{false};
     std::atomic<bool> shutdown_requested_{false};
     std::thread fetch_mountpoints_thread_;
+    std::thread port_detection_thread_;
     std::thread test_thread_;
 };
 

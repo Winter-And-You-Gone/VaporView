@@ -4,6 +4,7 @@
 #include "TcpWavePanel.h"
 #include "data_collector.h"
 #include "data_types.h"
+#include "serial_probe_utils.h"
 #include <QMenu>
 #include <QAction>
 #include <QMessageBox>
@@ -3548,9 +3549,12 @@ void MainWindow::onAutoDetectPortsClicked()
         };
 
         QVector<ProbeSpec> probe_specs = {
-            {"gnss", "GNSS", "115200", [probeCollector](const QString& port_name) {
-                auto collector = std::make_unique<VaporView::GnssCollector>();
-                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(115200));
+            {"gnss", "GNSS", "115200", [](const QString& port_name) {
+                const auto probeResult = VaporView::probeSerialPortForHeader(
+                    port_name,
+                    {QStringLiteral("115200")},
+                    VaporView::SerialHeaderProbeKind::GnssPvt);
+                return probeResult.matched;
             }},
             {"imu", "IMU", "115200", [probeCollector](const QString& port_name) {
                 auto collector = std::make_unique<VaporView::ImuCollector>();
