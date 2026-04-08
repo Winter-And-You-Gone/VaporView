@@ -312,6 +312,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , mountpoint_label_(nullptr)
     , output_port_label_(nullptr)
     , baudrate_label_(nullptr)
+    , heading_length_label_(nullptr)
     , timeout_label_(nullptr)
     , reconnect_label_(nullptr)
     , gga_port_info_label_(nullptr)
@@ -322,6 +323,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , username_edit_(nullptr)
     , password_edit_(nullptr)
     , mountpoint_edit_(nullptr)
+    , heading_length_edit_(nullptr)
     , output_port_combo_(nullptr)
     , baudrate_combo_(nullptr)
     , timeout_combo_(nullptr)
@@ -335,6 +337,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , gga_toggle_btn_(nullptr)
     , refresh_ports_btn_(nullptr)
     , fetch_mountpoints_btn_(nullptr)
+    , apply_heading_length_btn_(nullptr)
     , save_config_btn_(nullptr)
     , load_config_btn_(nullptr)
     , clear_log_btn_(nullptr)
@@ -480,6 +483,17 @@ void RtkConfigDialog::setupUi()
     output_layout_->addWidget(baudrate_combo_, row, 1);
     row++;
 
+    heading_length_label_ = new QLabel(this);
+    output_layout_->addWidget(heading_length_label_, row, 0);
+    heading_length_edit_ = new QLineEdit(this);
+    heading_length_edit_->setValidator(new QIntValidator(0, 300000, heading_length_edit_));
+    output_layout_->addWidget(heading_length_edit_, row, 1);
+
+    apply_heading_length_btn_ = new QPushButton(this);
+    connect(apply_heading_length_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onApplyHeadingLengthClicked);
+    output_layout_->addWidget(apply_heading_length_btn_, row, 2);
+    row++;
+
     timeout_label_ = new QLabel(this);
     output_layout_->addWidget(timeout_label_, row, 0);
     timeout_combo_ = createTimingComboBox(this, "5000");
@@ -615,14 +629,17 @@ void RtkConfigDialog::setEnglish(bool english)
     mountpoint_label_->setText(textFor("Mountpoint:", "挂载点:"));
     output_port_label_->setText(textFor("Output Port:", "输出串口:"));
     baudrate_label_->setText(textFor("Baudrate:", "波特率:"));
+    heading_length_label_->setText(textFor("Antenna Baseline (cm):", "双天线力臂(cm):"));
     timeout_label_->setText(textFor("Timeout (ms):", "超时 (ms):"));
     reconnect_label_->setText(textFor("Reconnect (ms):", "重连间隔 (ms):"));
 
     server_edit_->setPlaceholderText(textFor("e.g. rtk.ntrip.org", "例如: rtk.ntrip.org"));
     mountpoint_edit_->setPlaceholderText(textFor("e.g. RTCM33", "例如: RTCM33"));
+    heading_length_edit_->setPlaceholderText(textFor("e.g. 134", "例如: 134"));
 
     refresh_ports_btn_->setText(textFor("Refresh", "刷新"));
     fetch_mountpoints_btn_->setText(textFor("Detect Mountpoints", "检测挂载点"));
+    apply_heading_length_btn_->setText(textFor("Apply Baseline", "下发力臂"));
     start_btn_->setText(textFor("Start", "启动"));
     stop_btn_->setText(textFor("Stop", "停止"));
     test_btn_->setText(textFor("Test Connection", "测试连接"));
@@ -685,7 +702,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
         output_layout_->setVerticalSpacing(scalePixels(10));
         output_layout_->setContentsMargins(scalePixels(10), scalePixels(30), scalePixels(10), scalePixels(10));
         output_layout_->setColumnMinimumWidth(2, scalePixels(88));
-        for (int row = 0; row < 5; ++row)
+        for (int row = 0; row < 6; ++row)
         {
             output_layout_->setRowMinimumHeight(row, scalePixels(40));
         }
@@ -741,6 +758,8 @@ void RtkConfigDialog::applyScaledUiMetrics()
     output_port_combo_->setMinimumHeight(scalePixels(30));
     baudrate_combo_->setMinimumWidth(scalePixels(200));
     baudrate_combo_->setMinimumHeight(scalePixels(30));
+    heading_length_edit_->setMinimumWidth(scalePixels(200));
+    heading_length_edit_->setMinimumHeight(scalePixels(34));
     timeout_combo_->setMinimumWidth(scalePixels(200));
     timeout_combo_->setMinimumHeight(scalePixels(30));
     reconnect_combo_->setMinimumWidth(scalePixels(200));
@@ -776,6 +795,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     gga_group_->setFixedHeight(ggaGroupHeight);
 
     applyButtonWidth(refresh_ports_btn_, 80);
+    applyButtonWidth(apply_heading_length_btn_, 120);
     applyButtonWidth(fetch_mountpoints_btn_, 128);
     applyButtonWidth(start_btn_, 80);
     applyButtonWidth(stop_btn_, 80);
@@ -874,6 +894,7 @@ void RtkConfigDialog::loadSettings()
     username_edit_->setText(settings.value("username", "").toString());
     password_edit_->setText(settings.value("password", "").toString());
     mountpoint_edit_->setText(settings.value("mountpoint", "").toString());
+    heading_length_edit_->setText(settings.value("heading_length_cm", "").toString());
     refreshPortCombos();
 #ifdef _WIN32
     output_port_combo_->setCurrentText(settings.value("output_port", "COM1").toString());
@@ -897,6 +918,7 @@ void RtkConfigDialog::saveSettings()
     settings.setValue("username", username_edit_->text());
     settings.setValue("password", password_edit_->text());
     settings.setValue("mountpoint", mountpoint_edit_->text());
+    settings.setValue("heading_length_cm", heading_length_edit_->text());
     settings.setValue("output_port", output_port_combo_->currentText());
     settings.setValue("gga_port", gga_port_combo_->currentText());
     settings.setValue("baudrate", baudrate_combo_->currentText());
@@ -971,6 +993,7 @@ void RtkConfigDialog::updateButtonStates()
     start_btn_->setEnabled(!is_running_ && !busy);
     stop_btn_->setEnabled(is_running_ && !busy);
     test_btn_->setEnabled(!is_running_ && !busy);
+    apply_heading_length_btn_->setEnabled(!is_running_ && !busy);
     fetch_mountpoints_btn_->setEnabled(!busy);
     refresh_ports_btn_->setEnabled(!busy);
     save_config_btn_->setEnabled(!busy);
@@ -1061,6 +1084,13 @@ QString RtkConfigDialog::ggaPortName() const
 }
 
 int RtkConfigDialog::currentGgaBaudrate() const
+{
+    bool ok = false;
+    const int baudrate = baudrate_combo_ ? baudrate_combo_->currentText().toInt(&ok) : 115200;
+    return ok ? baudrate : 115200;
+}
+
+int RtkConfigDialog::currentOutputBaudrate() const
 {
     bool ok = false;
     const int baudrate = baudrate_combo_ ? baudrate_combo_->currentText().toInt(&ok) : 115200;
@@ -1231,6 +1261,143 @@ void RtkConfigDialog::onGgaToggleClicked()
     }
 
     startGgaMonitor();
+}
+
+bool RtkConfigDialog::sendReceiverCommands(const QStringList& commands, QString *errorMessage)
+{
+    const QString outputPort = output_port_combo_ ? output_port_combo_->currentText().trimmed() : QString();
+    if (outputPort.isEmpty())
+    {
+        if (errorMessage)
+        {
+            *errorMessage = textFor("Please select an RTK output port first.", "请先选择 RTK 输出串口。");
+        }
+        return false;
+    }
+
+    VaporView::SerialPort serial;
+    if (!serial.open(outputPort.toStdString(), currentOutputBaudrate()))
+    {
+        if (errorMessage)
+        {
+            *errorMessage = textFor("Failed to open %1: %2", "打开 %1 失败: %2")
+                .arg(outputPort, QString::fromStdString(serial.lastError()));
+        }
+        return false;
+    }
+
+    auto appendResponseLines = [this](const QByteArray &buffer) {
+        const QList<QByteArray> lines = buffer.split('\n');
+        bool logged = false;
+        for (const QByteArray &rawLine : lines)
+        {
+            const QString line = QString::fromLatin1(rawLine).trimmed();
+            if (line.isEmpty())
+            {
+                continue;
+            }
+            appendLog(QStringLiteral("[RTK RX] %1").arg(line));
+            logged = true;
+        }
+        if (!logged)
+        {
+            appendLog(textFor("[RTK RX] No response (command may have been accepted)",
+                              "[RTK RX] 无返回（命令可能已被接受）"));
+        }
+    };
+
+    for (const QString &command : commands)
+    {
+        const QString trimmedCommand = command.trimmed();
+        if (trimmedCommand.isEmpty())
+        {
+            continue;
+        }
+
+        const QByteArray payload = (trimmedCommand + QStringLiteral("\r\n")).toLatin1();
+        appendLog(QStringLiteral("[RTK TX] %1").arg(trimmedCommand));
+        const ssize_t written = serial.write(payload.constData(), static_cast<size_t>(payload.size()));
+        if (written != payload.size())
+        {
+            if (errorMessage)
+            {
+                *errorMessage = textFor("Failed to send command: %1", "命令发送失败: %1").arg(trimmedCommand);
+            }
+            serial.close();
+            return false;
+        }
+
+        serial.flush();
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+        QByteArray responseBuffer;
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(500);
+        while (std::chrono::steady_clock::now() < deadline)
+        {
+            char buffer[512];
+            const ssize_t readBytes = serial.read(buffer, sizeof(buffer));
+            if (readBytes > 0)
+            {
+                responseBuffer.append(buffer, static_cast<int>(readBytes));
+                std::this_thread::sleep_for(std::chrono::milliseconds(60));
+                continue;
+            }
+
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+
+        appendResponseLines(responseBuffer);
+    }
+
+    serial.close();
+    return true;
+}
+
+void RtkConfigDialog::onApplyHeadingLengthClicked()
+{
+    if (is_running_)
+    {
+        QMessageBox::warning(
+            this,
+            textFor("RTK Running", "RTK 运行中"),
+            textFor("Stop the RTK service before changing the dual-antenna baseline length.",
+                    "请先停止 RTK 服务，再修改双天线力臂长度。"));
+        return;
+    }
+
+    const QString lengthText = heading_length_edit_ ? heading_length_edit_->text().trimmed() : QString();
+    bool lengthOk = false;
+    const int lengthCm = lengthText.toInt(&lengthOk);
+    if (!lengthOk || lengthCm <= 0)
+    {
+        QMessageBox::warning(
+            this,
+            textFor("Invalid Length", "长度无效"),
+            textFor("Enter a positive dual-antenna baseline length in centimeters, for example 134.",
+                    "请输入正整数的双天线力臂长度（单位 cm），例如 134。"));
+        return;
+    }
+
+    QString errorMessage;
+    const QStringList commands = {
+        QStringLiteral("CONFIG HEADING FIXLENGTH"),
+        QStringLiteral("CONFIG HEADING LENGTH %1 1").arg(lengthCm),
+        QStringLiteral("SAVECONFIG")
+    };
+
+    if (!sendReceiverCommands(commands, &errorMessage))
+    {
+        QMessageBox::warning(this, textFor("Command Failed", "命令发送失败"), errorMessage);
+        return;
+    }
+
+    saveSettings();
+    appendLog(textFor("Dual-antenna baseline updated to %1 cm.", "双天线力臂已更新为 %1 cm。").arg(lengthCm));
+    QMessageBox::information(
+        this,
+        textFor("Baseline Updated", "力臂已更新"),
+        textFor("The RTK receiver has been sent the dual-antenna baseline command: %1 cm.",
+                "已向 RTK 模块下发双天线力臂命令：%1 cm。").arg(lengthCm));
 }
 
 void RtkConfigDialog::processGgaBuffer()
@@ -1890,6 +2057,7 @@ void RtkConfigDialog::onSaveConfigClicked()
     settings.setValue("username", username_edit_->text());
     settings.setValue("password", password_edit_->text());
     settings.setValue("mountpoint", mountpoint_edit_->text());
+    settings.setValue("heading_length_cm", heading_length_edit_->text());
     settings.setValue("output_port", output_port_combo_->currentText());
     settings.setValue("gga_port", gga_port_combo_->currentText());
     settings.setValue("baudrate", baudrate_combo_->currentText());
@@ -1916,6 +2084,7 @@ void RtkConfigDialog::onLoadConfigClicked()
     username_edit_->setText(settings.value("username", "").toString());
     password_edit_->setText(settings.value("password", "").toString());
     mountpoint_edit_->setText(settings.value("mountpoint", "").toString());
+    heading_length_edit_->setText(settings.value("heading_length_cm", "").toString());
     output_port_combo_->setCurrentText(settings.value("output_port", "").toString());
     gga_port_combo_->setCurrentText(settings.value("gga_port", "").toString());
     baudrate_combo_->setCurrentText(settings.value("baudrate", "115200").toString());

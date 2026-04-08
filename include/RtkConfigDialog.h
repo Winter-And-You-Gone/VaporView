@@ -45,6 +45,7 @@ private slots:
     void onRtkStatusTimer();
     void onRefreshPortsClicked();
     void onFetchMountpointsClicked();
+    void onApplyHeadingLengthClicked();
     void onSaveConfigClicked();
     void onLoadConfigClicked();
     void onClearLogClicked();
@@ -71,11 +72,13 @@ private:
     void trimGgaDisplay();
     bool tryOpenGgaPort();
     int currentGgaBaudrate() const;
+    int currentOutputBaudrate() const;
     QString ggaPortName() const;
     void refreshPortCombos();
     void pollRtkServiceStatus(bool forceLog = false);
     void joinBackgroundTasks();
     bool isBackgroundTaskRunning() const;
+    bool sendReceiverCommands(const QStringList& commands, QString *errorMessage = nullptr);
 
     QVBoxLayout *main_layout_;
     QGridLayout *config_layout_;
@@ -101,6 +104,7 @@ private:
     QLabel *mountpoint_label_;
     QLabel *output_port_label_;
     QLabel *baudrate_label_;
+    QLabel *heading_length_label_;
     QLabel *timeout_label_;
     QLabel *reconnect_label_;
     QLabel *gga_port_info_label_;
@@ -111,6 +115,7 @@ private:
     QLineEdit *username_edit_;
     QLineEdit *password_edit_;
     QLineEdit *mountpoint_edit_;
+    QLineEdit *heading_length_edit_;
     QComboBox *output_port_combo_;
     QComboBox *baudrate_combo_;
     QComboBox *timeout_combo_;
@@ -124,6 +129,7 @@ private:
     QPushButton *gga_toggle_btn_;
     QPushButton *refresh_ports_btn_;
     QPushButton *fetch_mountpoints_btn_;
+    QPushButton *apply_heading_length_btn_;
     QPushButton *save_config_btn_;
     QPushButton *load_config_btn_;
     QPushButton *clear_log_btn_;
