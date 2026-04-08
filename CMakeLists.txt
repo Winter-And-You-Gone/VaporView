@@ -1,4 +1,27 @@
 cmake_minimum_required(VERSION 3.16)
+
+if(WIN32 AND NOT DEFINED CMAKE_RC_COMPILER)
+    set(_vaporview_windres_candidates)
+    foreach(_vaporview_compiler_var CMAKE_C_COMPILER CMAKE_CXX_COMPILER)
+        if(DEFINED ${_vaporview_compiler_var})
+            get_filename_component(_vaporview_compiler_dir "${${_vaporview_compiler_var}}" DIRECTORY)
+            list(APPEND _vaporview_windres_candidates "${_vaporview_compiler_dir}/windres.exe")
+        endif()
+    endforeach()
+
+    foreach(_vaporview_windres_candidate IN LISTS _vaporview_windres_candidates)
+        if(EXISTS "${_vaporview_windres_candidate}")
+            set(CMAKE_RC_COMPILER "${_vaporview_windres_candidate}" CACHE FILEPATH "Windows resource compiler" FORCE)
+            break()
+        endif()
+    endforeach()
+
+    unset(_vaporview_windres_candidate)
+    unset(_vaporview_windres_candidates)
+    unset(_vaporview_compiler_dir)
+    unset(_vaporview_compiler_var)
+endif()
+
 project(VaporView VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
