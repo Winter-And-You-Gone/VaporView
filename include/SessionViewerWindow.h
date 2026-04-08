@@ -53,7 +53,7 @@ private:
     bool loadWaveformSegments();
     bool loadWaveformPeakSeries();
     bool loadWaveformFrame(quint64 frameIndex);
-    void highlightClosestSensorRow(quint64 timestampUs);
+    QString highlightClosestSensorRow(quint64 timestampUs);
     void updatePeakPlotModeButtonText();
 
     QWidget *central_widget_;
@@ -104,7 +104,7 @@ private:
     bool is_english_;
     bool updating_frame_controls_;
     bool waveform_peak_scatter_mode_;
-    int highlighted_csv_row_;
+    QVector<int> highlighted_csv_rows_;
     int points_per_frame_;
     int waveform_export_rate_hz_;
     quint64 total_sensor_rows_;

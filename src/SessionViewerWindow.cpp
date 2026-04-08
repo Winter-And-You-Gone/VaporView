@@ -44,6 +44,7 @@ namespace
 constexpr quint64 kWaveformTimestampBytes = sizeof(quint64);
 constexpr quint64 kFloatBytes = sizeof(float);
 const QColor kHighlightedCsvRowColor("#d8ecff");
+const QColor kSecondaryHighlightedCsvRowColor("#eef6ff");
 
 QString csvValueAt(const QStringList& fields, int index)
 {
@@ -66,6 +67,14 @@ QString formatTimestampUs(quint64 timestampUs)
     return QStringLiteral("%1.%2")
         .arg(QDateTime::fromMSecsSinceEpoch(millis, QTimeZone::UTC).toLocalTime().toString("yyyy-MM-dd HH:mm:ss"))
         .arg(micros, 6, 10, QChar('0'));
+}
+
+QString formatSignedDeltaMs(qint64 deltaUs)
+{
+    const double deltaMs = static_cast<double>(deltaUs) / 1000.0;
+    return QString("%1%2 ms")
+        .arg(deltaMs >= 0.0 ? "+" : "")
+        .arg(QString::number(deltaMs, 'f', 3));
 }
 
 QStringList parseCsvLine(const QString& line)
@@ -602,7 +611,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , is_english_(false)
     , updating_frame_controls_(false)
     , waveform_peak_scatter_mode_(true)
-    , highlighted_csv_row_(-1)
+    , highlighted_csv_rows_()
     , points_per_frame_(50000)
     , waveform_export_rate_hz_(10)
     , total_sensor_rows_(0)
@@ -883,7 +892,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     csv_table_->clearContents();
     csv_table_->setRowCount(0);
     csv_table_->setColumnCount(0);
-    highlighted_csv_row_ = -1;
+    highlighted_csv_rows_.clear();
     static_cast<SessionWavePlotWidget*>(waveform_plot_)->setSamples({});
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPeakValues({});
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setCurrentFrame(-1);
@@ -1058,7 +1067,7 @@ bool SessionViewerWindow::loadSensorsCsv()
     csv_table_->clearContents();
     csv_table_->setRowCount(0);
     csv_table_->setColumnCount(0);
-    highlighted_csv_row_ = -1;
+    highlighted_csv_rows_.clear();
     csv_headers_.clear();
     csv_timestamps_us_.clear();
 
@@ -1338,6 +1347,7 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
         ? waveform_peak_values_.at(static_cast<int>(frameIndex))
         : *minMax.second;
     const QString frameTime = formatTimestampUs(timestampUs);
+    const QString csvMatchText = highlightClosestSensorRow(timestampUs);
     frame_info_label_->setText(QString(is_english_
         ? "Frame %1 / %2 | %3 | %4 Hz export | min=%5 max=%6 peak=%7 | %8"
         : "第 %1 / %2 帧 | %3 | %4 Hz 导出 | min=%5 max=%6 峰值=%7 | %8")
@@ -1348,62 +1358,107 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
         .arg(QString::number(*minMax.first, 'f', 6))
         .arg(QString::number(*minMax.second, 'f', 6))
         .arg(QString::number(peakValue, 'f', 6))
-        .arg(QFileInfo(it->filename).fileName()));
-
-    highlightClosestSensorRow(timestampUs);
+        .arg(QFileInfo(it->filename).fileName())
+        + (csvMatchText.isEmpty() ? QString() : QStringLiteral(" | ") + csvMatchText));
     return true;
 }
 
-void SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs)
+QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs)
 {
     if (csv_timestamps_us_.isEmpty() || csv_table_->rowCount() == 0)
     {
-        return;
+        return QString();
     }
 
     const auto it = std::lower_bound(csv_timestamps_us_.cbegin(), csv_timestamps_us_.cend(), timestampUs);
-    int row = 0;
-    if (it == csv_timestamps_us_.cend())
+    QVector<int> rowsToHighlight;
+    rowsToHighlight.reserve(2);
+    if (it == csv_timestamps_us_.cbegin())
     {
-        row = csv_timestamps_us_.size() - 1;
+        rowsToHighlight.push_back(0);
+        if (csv_timestamps_us_.size() > 1)
+        {
+            rowsToHighlight.push_back(1);
+        }
     }
-    else if (it == csv_timestamps_us_.cbegin())
+    else if (it == csv_timestamps_us_.cend())
     {
-        row = 0;
+        if (csv_timestamps_us_.size() > 1)
+        {
+            rowsToHighlight.push_back(csv_timestamps_us_.size() - 2);
+        }
+        rowsToHighlight.push_back(csv_timestamps_us_.size() - 1);
     }
     else
     {
         const int lowerIndex = static_cast<int>(it - csv_timestamps_us_.cbegin());
-        const quint64 upper = csv_timestamps_us_.at(lowerIndex);
-        const quint64 lower = csv_timestamps_us_.at(lowerIndex - 1);
-        row = (timestampUs - lower <= upper - timestampUs) ? lowerIndex - 1 : lowerIndex;
+        rowsToHighlight.push_back(lowerIndex - 1);
+        rowsToHighlight.push_back(lowerIndex);
     }
 
-    if (highlighted_csv_row_ >= 0 && highlighted_csv_row_ < csv_table_->rowCount() && highlighted_csv_row_ != row)
+    std::sort(rowsToHighlight.begin(), rowsToHighlight.end());
+    rowsToHighlight.erase(std::unique(rowsToHighlight.begin(), rowsToHighlight.end()), rowsToHighlight.end());
+
+    for (int previousRow : highlighted_csv_rows_)
     {
+        if (previousRow < 0 || previousRow >= csv_table_->rowCount() || rowsToHighlight.contains(previousRow))
+        {
+            continue;
+        }
         for (int col = 0; col < csv_table_->columnCount(); ++col)
         {
-            if (QTableWidgetItem *item = csv_table_->item(highlighted_csv_row_, col))
+            if (QTableWidgetItem *item = csv_table_->item(previousRow, col))
             {
                 item->setBackground(QBrush());
             }
         }
     }
 
-    for (int col = 0; col < csv_table_->columnCount(); ++col)
+    int primaryRow = rowsToHighlight.isEmpty() ? -1 : rowsToHighlight.first();
+    qint64 primaryAbsDelta = std::numeric_limits<qint64>::max();
+    for (int row : rowsToHighlight)
     {
-        if (QTableWidgetItem *item = csv_table_->item(row, col))
+        if (row < 0 || row >= csv_timestamps_us_.size())
         {
-            item->setBackground(kHighlightedCsvRowColor);
+            continue;
+        }
+        const qint64 deltaUs = static_cast<qint64>(csv_timestamps_us_.at(row)) - static_cast<qint64>(timestampUs);
+        const qint64 absDeltaUs = std::llabs(deltaUs);
+        if (absDeltaUs < primaryAbsDelta)
+        {
+            primaryAbsDelta = absDeltaUs;
+            primaryRow = row;
         }
     }
 
-    highlighted_csv_row_ = row;
-    csv_table_->selectRow(row);
-    csv_table_->setCurrentCell(row, 0, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
-    if (QTableWidgetItem *item = csv_table_->item(row, 0))
+    QStringList matchParts;
+    for (int row : rowsToHighlight)
     {
-        csv_table_->scrollToItem(item, QAbstractItemView::PositionAtTop);
+        const QColor rowColor = (row == primaryRow) ? kHighlightedCsvRowColor : kSecondaryHighlightedCsvRowColor;
+        for (int col = 0; col < csv_table_->columnCount(); ++col)
+        {
+            if (QTableWidgetItem *item = csv_table_->item(row, col))
+            {
+                item->setBackground(rowColor);
+            }
+        }
+
+        const qint64 deltaUs = static_cast<qint64>(csv_timestamps_us_.at(row)) - static_cast<qint64>(timestampUs);
+        matchParts.append(is_english_
+            ? QString("CSV row %1 (%2)").arg(row + 1).arg(formatSignedDeltaMs(deltaUs))
+            : QString("CSV 第%1行（%2）").arg(row + 1).arg(formatSignedDeltaMs(deltaUs)));
+    }
+
+    highlighted_csv_rows_ = rowsToHighlight;
+    if (primaryRow >= 0)
+    {
+        csv_table_->selectRow(primaryRow);
+        csv_table_->setCurrentCell(primaryRow, 0, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+        if (QTableWidgetItem *item = csv_table_->item(primaryRow, 0))
+        {
+            csv_table_->scrollToItem(item, QAbstractItemView::PositionAtTop);
+        }
     }
     csv_table_->viewport()->update();
+    return matchParts.join(is_english_ ? " | " : " | ");
 }
