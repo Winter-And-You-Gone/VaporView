@@ -841,6 +841,10 @@ void SessionViewerWindow::updateTexts()
     if (csv_table_ && csv_table_->columnCount() > 0)
     {
         csv_table_->setHorizontalHeaderItem(0, new QTableWidgetItem(is_english_ ? "No." : "序号"));
+        if (csv_table_->columnCount() > 1)
+        {
+            csv_table_->setHorizontalHeaderItem(1, new QTableWidgetItem(is_english_ ? "Delta" : "时间误差"));
+        }
     }
 
     if (session_directory_.isEmpty())
@@ -1096,11 +1100,14 @@ bool SessionViewerWindow::loadSensorsCsv()
 
     csv_headers_ = parseCsvLine(stream.readLine());
     QStringList displayHeaders;
-    displayHeaders.reserve(csv_headers_.size() + 1);
+    displayHeaders.reserve(csv_headers_.size() + 2);
     displayHeaders << (is_english_ ? "No." : "序号");
+    displayHeaders << (is_english_ ? "Delta" : "时间误差");
     displayHeaders << csv_headers_;
     csv_table_->setColumnCount(displayHeaders.size());
     csv_table_->setHorizontalHeaderLabels(displayHeaders);
+    csv_table_->setColumnWidth(0, 48);
+    csv_table_->setColumnWidth(1, 96);
 
     QVector<QStringList> rows;
     rows.reserve(static_cast<int>(std::min<quint64>(total_sensor_rows_ > 0 ? total_sensor_rows_ : 256ULL, 50000ULL)));
@@ -1134,12 +1141,16 @@ bool SessionViewerWindow::loadSensorsCsv()
         indexItem->setBackground(kDefaultCsvRowColor);
         csv_table_->setItem(row, 0, indexItem);
 
+        auto *deltaItem = new QTableWidgetItem(QString());
+        deltaItem->setBackground(kDefaultCsvRowColor);
+        csv_table_->setItem(row, 1, deltaItem);
+
         const QStringList& fields = rows.at(row);
         for (int col = 0; col < csv_headers_.size(); ++col)
         {
             auto *item = new QTableWidgetItem(csvValueAt(fields, col));
             item->setBackground(kDefaultCsvRowColor);
-            csv_table_->setItem(row, col + 1, item);
+            csv_table_->setItem(row, col + 2, item);
         }
     }
 
@@ -1428,6 +1439,10 @@ QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs)
                 item->setBackground(kDefaultCsvRowColor);
             }
         }
+        if (QTableWidgetItem *deltaItem = csv_table_->item(previousRow, 1))
+        {
+            deltaItem->setText(QString());
+        }
     }
 
     int primaryRow = rowsToHighlight.isEmpty() ? -1 : rowsToHighlight.first();
@@ -1460,6 +1475,10 @@ QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs)
         }
 
         const qint64 deltaUs = static_cast<qint64>(csv_timestamps_us_.at(row)) - static_cast<qint64>(timestampUs);
+        if (QTableWidgetItem *deltaItem = csv_table_->item(row, 1))
+        {
+            deltaItem->setText(formatSignedDeltaMs(deltaUs));
+        }
         matchParts.append(is_english_
             ? QString("CSV row %1 (%2)").arg(row + 1).arg(formatSignedDeltaMs(deltaUs))
             : QString("CSV 第%1行（%2）").arg(row + 1).arg(formatSignedDeltaMs(deltaUs)));
