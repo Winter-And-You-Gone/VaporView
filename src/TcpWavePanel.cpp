@@ -1,4 +1,5 @@
 #include "TcpWavePanel.h"
+#include "RangeSelectionAxisWidget.h"
 #include <QAbstractSocket>
 #include <QByteArray>
 #include <QGridLayout>
@@ -23,6 +24,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <limits>
 
 namespace
@@ -211,6 +213,7 @@ public:
             (view_start_index_ + visibleCount()) >= peak_values_.size();
         peak_values_ = values;
         normalizeView(keepTail);
+        notifyViewChanged();
         update();
     }
 
@@ -218,6 +221,35 @@ public:
     {
         plot_mode_ = mode;
         update();
+    }
+
+    void setViewRange(int startIndex, int count)
+    {
+        if (peak_values_.isEmpty())
+        {
+            return;
+        }
+
+        if (count <= 0 || count >= static_cast<int>(peak_values_.size()))
+        {
+            view_start_index_ = 0;
+            view_count_ = 0;
+        }
+        else
+        {
+            view_start_index_ = startIndex;
+            view_count_ = count;
+            normalizeView(false);
+        }
+
+        notifyViewChanged();
+        update();
+    }
+
+    void setViewChangedCallback(std::function<void(int, int, int)> callback)
+    {
+        on_view_changed_ = std::move(callback);
+        notifyViewChanged();
     }
 
 protected:
@@ -347,6 +379,7 @@ protected:
         {
             view_start_index_ = 0;
             view_count_ = 0;
+            notifyViewChanged();
             update();
             event->accept();
             return;
@@ -357,6 +390,7 @@ protected:
         view_count_ = newCount;
         view_start_index_ = static_cast<int>(std::llround(anchorIndex - ratio * std::max(0, newCount - 1)));
         normalizeView(false);
+        notifyViewChanged();
         update();
         event->accept();
     }
@@ -384,6 +418,7 @@ protected:
             const int deltaFrames = static_cast<int>(std::llround(deltaRatio * visibleCount()));
             view_start_index_ = drag_origin_start_ - deltaFrames;
             normalizeView(false);
+            notifyViewChanged();
             update();
             event->accept();
             return;
@@ -411,6 +446,7 @@ protected:
             view_count_ = 0;
             dragging_ = false;
             unsetCursor();
+            notifyViewChanged();
             update();
             event->accept();
             return;
@@ -467,6 +503,14 @@ private:
         }
     }
 
+    void notifyViewChanged()
+    {
+        if (on_view_changed_)
+        {
+            on_view_changed_(static_cast<int>(peak_values_.size()), visibleStartIndex(), visibleCount());
+        }
+    }
+
     QVector<float> peak_values_;
     PlotMode plot_mode_;
     int view_start_index_;
@@ -474,6 +518,7 @@ private:
     bool dragging_;
     qreal drag_start_x_;
     int drag_origin_start_;
+    std::function<void(int, int, int)> on_view_changed_;
 };
 
 TcpWavePanel::TcpWavePanel(QWidget *parent)
@@ -661,6 +706,20 @@ void TcpWavePanel::setupUi()
     peak_plot_ = new PeakTrendPlotWidget(this);
     peak_plot_->setPlotMode(peak_plot_scatter_mode_ ? PeakTrendPlotWidget::PlotMode::Scatter : PeakTrendPlotWidget::PlotMode::Polyline);
     peakLayout->addWidget(peak_plot_);
+    auto *peakRangeAxis = new RangeSelectionAxisWidget(this);
+    peak_plot_->setViewChangedCallback([peakRangeAxis](int totalCount, int startIndex, int visibleCount) {
+        if (peakRangeAxis)
+        {
+            peakRangeAxis->setRange(totalCount, startIndex, visibleCount);
+        }
+    });
+    peakRangeAxis->setRangeChangedCallback([this](int startIndex, int visibleCount) {
+        if (peak_plot_)
+        {
+            peak_plot_->setViewRange(startIndex, visibleCount);
+        }
+    });
+    peakLayout->addWidget(peakRangeAxis);
     mainLayout->addWidget(peak_group_, 0);
 
     connect(host_edit_, &QLineEdit::textChanged, this, [this](const QString&) {

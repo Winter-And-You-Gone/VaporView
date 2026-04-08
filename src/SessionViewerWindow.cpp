@@ -1,4 +1,5 @@
 #include "SessionViewerWindow.h"
+#include "RangeSelectionAxisWidget.h"
 
 #include <QByteArray>
 #include <QDateTime>
@@ -35,6 +36,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <limits>
 
 namespace
@@ -225,12 +227,23 @@ public:
             current_frame_index_ = -1;
         }
         normalizeView(keepTail);
+        notifyViewChanged();
         update();
     }
 
     void setCurrentFrame(int frameIndex)
     {
         current_frame_index_ = frameIndex;
+        if (current_frame_index_ >= 0 &&
+            current_frame_index_ < static_cast<int>(peak_values_.size()) &&
+            (current_frame_index_ < visibleStartIndex() ||
+             current_frame_index_ >= (visibleStartIndex() + visibleCount())))
+        {
+            const int count = visibleCount();
+            view_start_index_ = std::clamp(current_frame_index_ - count / 2, 0, std::max(0, static_cast<int>(peak_values_.size()) - count));
+            normalizeView(false);
+            notifyViewChanged();
+        }
         update();
     }
 
@@ -238,6 +251,35 @@ public:
     {
         plot_mode_ = mode;
         update();
+    }
+
+    void setViewRange(int startIndex, int count)
+    {
+        if (peak_values_.isEmpty())
+        {
+            return;
+        }
+
+        if (count <= 0 || count >= static_cast<int>(peak_values_.size()))
+        {
+            view_start_index_ = 0;
+            view_count_ = 0;
+        }
+        else
+        {
+            view_start_index_ = startIndex;
+            view_count_ = count;
+            normalizeView(false);
+        }
+
+        notifyViewChanged();
+        update();
+    }
+
+    void setViewChangedCallback(std::function<void(int, int, int)> callback)
+    {
+        on_view_changed_ = std::move(callback);
+        notifyViewChanged();
     }
 
 protected:
@@ -367,6 +409,7 @@ protected:
         {
             view_start_index_ = 0;
             view_count_ = 0;
+            notifyViewChanged();
             update();
             event->accept();
             return;
@@ -377,6 +420,7 @@ protected:
         view_count_ = newCount;
         view_start_index_ = static_cast<int>(std::llround(anchorIndex - ratio * std::max(0, newCount - 1)));
         normalizeView(false);
+        notifyViewChanged();
         update();
         event->accept();
     }
@@ -404,6 +448,7 @@ protected:
             const int deltaFrames = static_cast<int>(std::llround(deltaRatio * visibleCount()));
             view_start_index_ = drag_origin_start_ - deltaFrames;
             normalizeView(false);
+            notifyViewChanged();
             update();
             event->accept();
             return;
@@ -431,6 +476,7 @@ protected:
             view_count_ = 0;
             dragging_ = false;
             unsetCursor();
+            notifyViewChanged();
             update();
             event->accept();
             return;
@@ -487,6 +533,14 @@ private:
         }
     }
 
+    void notifyViewChanged()
+    {
+        if (on_view_changed_)
+        {
+            on_view_changed_(static_cast<int>(peak_values_.size()), visibleStartIndex(), visibleCount());
+        }
+    }
+
     QVector<float> peak_values_;
     int current_frame_index_;
     PlotMode plot_mode_;
@@ -495,6 +549,7 @@ private:
     bool dragging_;
     qreal drag_start_x_;
     int drag_origin_start_;
+    std::function<void(int, int, int)> on_view_changed_;
 };
 
 SessionViewerWindow::SessionViewerWindow(QWidget *parent)
@@ -694,8 +749,20 @@ void SessionViewerWindow::setupUi()
     waveform_peak_plot_ = new SessionPeakPlotWidget(this);
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPlotMode(
         waveform_peak_scatter_mode_ ? SessionPeakPlotWidget::PlotMode::Scatter : SessionPeakPlotWidget::PlotMode::Polyline);
+    auto *waveformPeakRangeAxis = new RangeSelectionAxisWidget(this);
+    static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setViewChangedCallback(
+        [waveformPeakRangeAxis](int totalCount, int startIndex, int visibleCount) {
+            if (waveformPeakRangeAxis)
+            {
+                waveformPeakRangeAxis->setRange(totalCount, startIndex, visibleCount);
+            }
+        });
+    waveformPeakRangeAxis->setRangeChangedCallback([this](int startIndex, int visibleCount) {
+        static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setViewRange(startIndex, visibleCount);
+    });
     connect(waveform_peak_mode_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onTogglePeakPlotModeClicked);
     waveformLayout->addWidget(waveform_peak_plot_, 1);
+    waveformLayout->addWidget(waveformPeakRangeAxis);
     upperLayout->addWidget(waveform_group_, 1);
 
     summaryWaveSplitter->addWidget(upperWidget);
