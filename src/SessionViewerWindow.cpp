@@ -785,6 +785,11 @@ void SessionViewerWindow::setupUi()
     csv_table_->setSelectionMode(QAbstractItemView::SingleSelection);
     csv_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     csv_table_->setWordWrap(false);
+    csv_table_->setStyleSheet(
+        "QTableWidget { background-color: #ffffff; alternate-background-color: #f7fbff; }"
+        "QTableWidget::item:selected { background-color: #d8ecff; color: #1f2933; }"
+        "QTableWidget::item:selected:active { background-color: #d8ecff; color: #1f2933; }"
+        "QTableWidget::item:selected:!active { background-color: #d8ecff; color: #1f2933; }");
     csv_table_->horizontalHeader()->setSectionsMovable(true);
     csv_table_->horizontalHeader()->setDefaultSectionSize(140);
     csv_table_->verticalHeader()->setVisible(false);
@@ -1400,4 +1405,5 @@ void SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs)
     {
         csv_table_->scrollToItem(item, QAbstractItemView::PositionAtTop);
     }
+    csv_table_->viewport()->update();
 }
