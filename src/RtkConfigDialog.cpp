@@ -629,7 +629,7 @@ void RtkConfigDialog::setEnglish(bool english)
     mountpoint_label_->setText(textFor("Mountpoint:", "挂载点:"));
     output_port_label_->setText(textFor("Output Port:", "输出串口:"));
     baudrate_label_->setText(textFor("Baudrate:", "波特率:"));
-    heading_length_label_->setText(textFor("Antenna Baseline (cm):", "双天线力臂(cm):"));
+    heading_length_label_->setText(textFor("Baseline Length (cm):", "基线长度（双天线间距）(cm):"));
     timeout_label_->setText(textFor("Timeout (ms):", "超时 (ms):"));
     reconnect_label_->setText(textFor("Reconnect (ms):", "重连间隔 (ms):"));
 
@@ -639,7 +639,7 @@ void RtkConfigDialog::setEnglish(bool english)
 
     refresh_ports_btn_->setText(textFor("Refresh", "刷新"));
     fetch_mountpoints_btn_->setText(textFor("Detect Mountpoints", "检测挂载点"));
-    apply_heading_length_btn_->setText(textFor("Apply Baseline", "下发力臂"));
+    apply_heading_length_btn_->setText(textFor("Apply Baseline", "下发基线长度"));
     start_btn_->setText(textFor("Start", "启动"));
     stop_btn_->setText(textFor("Stop", "停止"));
     test_btn_->setText(textFor("Test Connection", "测试连接"));
@@ -1361,7 +1361,7 @@ void RtkConfigDialog::onApplyHeadingLengthClicked()
             this,
             textFor("RTK Running", "RTK 运行中"),
             textFor("Stop the RTK service before changing the dual-antenna baseline length.",
-                    "请先停止 RTK 服务，再修改双天线力臂长度。"));
+                    "请先停止 RTK 服务，再修改基线长度（双天线间距）。"));
         return;
     }
 
@@ -1374,7 +1374,7 @@ void RtkConfigDialog::onApplyHeadingLengthClicked()
             this,
             textFor("Invalid Length", "长度无效"),
             textFor("Enter a positive dual-antenna baseline length in centimeters, for example 134.",
-                    "请输入正整数的双天线力臂长度（单位 cm），例如 134。"));
+                    "请输入正整数的基线长度（双天线间距，单位 cm），例如 134。"));
         return;
     }
 
@@ -1392,12 +1392,12 @@ void RtkConfigDialog::onApplyHeadingLengthClicked()
     }
 
     saveSettings();
-    appendLog(textFor("Dual-antenna baseline updated to %1 cm.", "双天线力臂已更新为 %1 cm。").arg(lengthCm));
+    appendLog(textFor("Dual-antenna baseline updated to %1 cm.", "基线长度（双天线间距）已更新为 %1 cm。").arg(lengthCm));
     QMessageBox::information(
         this,
-        textFor("Baseline Updated", "力臂已更新"),
+        textFor("Baseline Updated", "基线长度已更新"),
         textFor("The RTK receiver has been sent the dual-antenna baseline command: %1 cm.",
-                "已向 RTK 模块下发双天线力臂命令：%1 cm。").arg(lengthCm));
+                "已向 RTK 模块下发基线长度（双天线间距）命令：%1 cm。").arg(lengthCm));
 }
 
 void RtkConfigDialog::processGgaBuffer()
