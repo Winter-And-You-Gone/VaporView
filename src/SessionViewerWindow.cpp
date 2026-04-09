@@ -108,6 +108,47 @@ QString formatDurationText(const QString& startUtc, const QString& endUtc, bool 
     return parts.join(' ');
 }
 
+double calculateMeasuredRateHz(const QVector<quint64>& timestampsUs)
+{
+    if (timestampsUs.size() < 2)
+    {
+        return 0.0;
+    }
+
+    quint64 firstUs = 0;
+    quint64 lastUs = 0;
+    bool foundFirst = false;
+    int validCount = 0;
+    for (quint64 timestampUs : timestampsUs)
+    {
+        if (timestampUs == 0)
+        {
+            continue;
+        }
+
+        if (!foundFirst)
+        {
+            firstUs = timestampUs;
+            foundFirst = true;
+        }
+        lastUs = timestampUs;
+        ++validCount;
+    }
+
+    if (!foundFirst || validCount < 2 || lastUs <= firstUs)
+    {
+        return 0.0;
+    }
+
+    const double durationSeconds = static_cast<double>(lastUs - firstUs) / 1000000.0;
+    if (durationSeconds <= 0.0)
+    {
+        return 0.0;
+    }
+
+    return static_cast<double>(validCount - 1) / durationSeconds;
+}
+
 QStringList parseCsvLine(const QString& line)
 {
     QStringList fields;
@@ -1410,6 +1451,41 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     setStatusText(is_english_ ? "The current page has been cleared." : "当前页面内容已清空。");
 }
 
+QString SessionViewerWindow::formatMeasuredRateText(const QVector<quint64>& timestampsUs, int metadataRateHz, const QString& metadataMode) const
+{
+    const double measuredRateHz = calculateMeasuredRateHz(timestampsUs);
+    if (measuredRateHz > 0.0)
+    {
+        return QStringLiteral("%1 Hz").arg(QString::number(measuredRateHz, 'f', measuredRateHz >= 10.0 ? 2 : 3));
+    }
+
+    int validCount = 0;
+    for (quint64 timestampUs : timestampsUs)
+    {
+        if (timestampUs != 0)
+        {
+            ++validCount;
+        }
+    }
+
+    if (validCount == 1)
+    {
+        return is_english_ ? QStringLiteral("Single frame") : QStringLiteral("仅 1 条数据");
+    }
+
+    if (metadataMode == QStringLiteral("per_frame"))
+    {
+        return is_english_ ? QStringLiteral("Per-frame") : QStringLiteral("逐帧导出");
+    }
+
+    if (metadataRateHz > 0)
+    {
+        return QStringLiteral("%1 Hz").arg(metadataRateHz);
+    }
+
+    return QStringLiteral("---");
+}
+
 QString SessionViewerWindow::resolveSessionDirectory(const QString& path) const
 {
     if (path.isEmpty())
@@ -1787,14 +1863,13 @@ void SessionViewerWindow::updateSummaryLabels()
     start_time_value_->setText(start_time_utc_.isEmpty() ? QStringLiteral("---") : start_time_utc_);
     end_time_value_->setText(end_time_utc_.isEmpty() ? QStringLiteral("---") : end_time_utc_);
     duration_value_->setText(hasSession ? formatDurationText(start_time_utc_, end_time_utc_, is_english_) : QStringLiteral("---"));
-    sensor_export_rate_value_->setText(hasSession && sensor_export_rate_hz_ > 0
-        ? QStringLiteral("%1 Hz").arg(sensor_export_rate_hz_)
+    sensor_export_rate_value_->setText(hasSession
+        ? formatMeasuredRateText(csv_timestamps_us_, sensor_export_rate_hz_, QStringLiteral("fixed_rate"))
         : QStringLiteral("---"));
     sensor_rows_value_->setText(hasSession ? QString::number(total_sensor_rows_) : QStringLiteral("---"));
-    waveform_export_rate_value_->setText(!hasSession ? QStringLiteral("---")
-        : ((waveform_export_mode_ == QStringLiteral("per_frame") || waveform_export_rate_hz_ <= 0)
-            ? (is_english_ ? QStringLiteral("Per-frame") : QStringLiteral("逐帧导出"))
-            : QStringLiteral("%1 Hz").arg(waveform_export_rate_hz_)));
+    waveform_export_rate_value_->setText(hasSession
+        ? formatMeasuredRateText(waveform_timestamps_us_, waveform_export_rate_hz_, waveform_export_mode_)
+        : QStringLiteral("---"));
     waveform_files_value_->setText(hasSession ? QString::number(waveform_segments_.size()) : QStringLiteral("---"));
     waveform_frames_value_->setText(hasSession ? QString::number(total_waveform_frames_) : QStringLiteral("---"));
 }
