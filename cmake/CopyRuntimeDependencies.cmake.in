@@ -2,6 +2,10 @@ if(NOT DEFINED VAPORVIEW_RUNTIME_TARGET)
     message(FATAL_ERROR "VAPORVIEW_RUNTIME_TARGET is not defined")
 endif()
 
+if(POLICY CMP0207)
+    cmake_policy(SET CMP0207 NEW)
+endif()
+
 if(NOT DEFINED VAPORVIEW_RUNTIME_DESTINATION)
     message(FATAL_ERROR "VAPORVIEW_RUNTIME_DESTINATION is not defined")
 endif()
@@ -40,6 +44,11 @@ file(GET_RUNTIME_DEPENDENCIES
 foreach(vaporview_dependency IN LISTS vaporview_resolved_deps)
     file(COPY "${vaporview_dependency}" DESTINATION "${vaporview_runtime_destination}")
 endforeach()
+
+if(vaporview_unresolved_deps)
+    list(FILTER vaporview_unresolved_deps EXCLUDE REGEX "^(api-ms-win-|ext-ms-)")
+    list(FILTER vaporview_unresolved_deps EXCLUDE REGEX ".*[Ww]indows[\\\\/][Ss]ystem32[\\\\/].*")
+endif()
 
 if(vaporview_unresolved_deps)
     list(JOIN vaporview_unresolved_deps "\n  " vaporview_unresolved_list)

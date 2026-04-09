@@ -238,6 +238,7 @@ if(WIN32 AND MINGW)
                 --release
                 --compiler-runtime
                 --no-translations
+                --no-system-dxc-compiler
                 $<TARGET_FILE:VaporView>
             COMMENT "Deploying Qt runtime for VaporView"
         )
