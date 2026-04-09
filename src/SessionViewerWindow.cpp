@@ -1098,18 +1098,6 @@ void SessionViewerWindow::setupUi()
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPlotMode(
         waveform_peak_scatter_mode_ ? SessionPeakPlotWidget::PlotMode::Scatter : SessionPeakPlotWidget::PlotMode::Polyline);
     auto *waveformPeakRangeAxis = new RangeSelectionAxisWidget(this);
-    static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setViewChangedCallback(
-        [this, waveformPeakRangeAxis](int totalCount, int startIndex, int visibleCount) {
-            if (waveformPeakRangeAxis)
-            {
-                waveformPeakRangeAxis->setRange(totalCount, startIndex, visibleCount);
-            }
-            syncEnvironmentRangeToWaveformRange(startIndex, visibleCount);
-        });
-    waveformPeakRangeAxis->setRangeChangedCallback([this](int startIndex, int visibleCount) {
-        static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setViewRange(startIndex, visibleCount);
-        syncEnvironmentRangeToWaveformRange(startIndex, visibleCount);
-    });
     connect(waveform_peak_mode_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onTogglePeakPlotModeClicked);
     waveformLayout->addWidget(waveform_peak_plot_, 1);
     waveformLayout->addWidget(waveformPeakRangeAxis);
@@ -1139,6 +1127,19 @@ void SessionViewerWindow::setupUi()
     environment_info_label_->setWordWrap(true);
     environment_info_label_->setObjectName("fieldLabel");
     waveformLayout->addWidget(environment_info_label_);
+
+    static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setViewChangedCallback(
+        [this, waveformPeakRangeAxis](int totalCount, int startIndex, int visibleCount) {
+            if (waveformPeakRangeAxis)
+            {
+                waveformPeakRangeAxis->setRange(totalCount, startIndex, visibleCount);
+            }
+            syncEnvironmentRangeToWaveformRange(startIndex, visibleCount);
+        });
+    waveformPeakRangeAxis->setRangeChangedCallback([this](int startIndex, int visibleCount) {
+        static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setViewRange(startIndex, visibleCount);
+        syncEnvironmentRangeToWaveformRange(startIndex, visibleCount);
+    });
     upperLayout->addWidget(waveform_group_, 1);
 
     summaryWaveSplitter->addWidget(upperWidget);
@@ -1923,6 +1924,11 @@ int SessionViewerWindow::findClosestCsvRow(quint64 timestampUs) const
 
 void SessionViewerWindow::syncEnvironmentRangeToWaveformRange(int startFrameIndex, int visibleFrameCount)
 {
+    if (!temperature_plot_ || !humidity_plot_ || !pressure_plot_)
+    {
+        return;
+    }
+
     if (csv_timestamps_us_.isEmpty())
     {
         static_cast<SingleSeriesTrendPlotWidget*>(temperature_plot_)->setViewRange(0, 0);
