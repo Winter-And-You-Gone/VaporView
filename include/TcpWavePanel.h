@@ -80,6 +80,8 @@ private:
     void loadRememberedInputState();
     void saveRememberedInputState() const;
     void updatePeakPlotModeButtonText();
+    void resetFrameRateDisplay();
+    void updateFrameRateDisplay(qint64 arrivalTimeMs);
     void setStatusText(const QString& text);
     void resetParserState();
     void processBuffer();
@@ -98,6 +100,7 @@ private:
     QLabel *host_label_;
     QLabel *port_label_;
     QLabel *panel_title_label_;
+    QLabel *frame_rate_label_;
     QLabel *status_label_;
     QLabel *hint_label_;
     QLabel *wave1_title_label_;
@@ -128,6 +131,7 @@ private:
     FloatEncoding float_encoding_;
     int expected_payload_size_;
     qint64 frame_count_;
+    QVector<qint64> frame_arrival_times_ms_;
     bool is_english_;
 };
 

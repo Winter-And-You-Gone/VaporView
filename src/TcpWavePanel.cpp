@@ -37,6 +37,7 @@ constexpr int kTcpControlHeight = 30;
 constexpr int kTcpButtonHeight = 38;
 constexpr int kPeakSearchStartIndex = 10000;
 constexpr int kPeakSearchEndIndex = 50000;
+constexpr qint64 kFrameRateWindowMs = 5000;
 
 QString hexPreview(const QByteArray& data, int limit = 12)
 {
@@ -529,6 +530,7 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , host_label_(nullptr)
     , port_label_(nullptr)
     , panel_title_label_(nullptr)
+    , frame_rate_label_(nullptr)
     , status_label_(nullptr)
     , hint_label_(nullptr)
     , wave1_title_label_(nullptr)
@@ -553,6 +555,7 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , float_encoding_(FloatEncoding::Unknown)
     , expected_payload_size_(0)
     , frame_count_(0)
+    , frame_arrival_times_ms_()
     , is_english_(false)
 {
     setupUi();
@@ -586,6 +589,10 @@ void TcpWavePanel::setupUi()
     panel_title_label_->setObjectName("sectionTitleLabel");
     control_layout_->addWidget(panel_title_label_, 0, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
+    frame_rate_label_ = new QLabel(this);
+    frame_rate_label_->setObjectName("fieldLabel");
+    control_layout_->addWidget(frame_rate_label_, 0, 1, Qt::AlignVCenter | Qt::AlignLeft);
+
     auto *hostRowLayout = new QHBoxLayout();
     hostRowLayout->setContentsMargins(0, 0, 0, 0);
     hostRowLayout->setSpacing(1);
@@ -599,7 +606,7 @@ void TcpWavePanel::setupUi()
     host_edit_->setMinimumWidth(90);
     host_edit_->setMaximumWidth(110);
     hostRowLayout->addWidget(host_edit_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    control_layout_->addLayout(hostRowLayout, 0, 1, Qt::AlignVCenter | Qt::AlignLeft);
+    control_layout_->addLayout(hostRowLayout, 0, 2, Qt::AlignVCenter | Qt::AlignLeft);
 
     auto *portRowLayout = new QHBoxLayout();
     portRowLayout->setContentsMargins(0, 0, 0, 0);
@@ -614,21 +621,21 @@ void TcpWavePanel::setupUi()
     port_spin_->setFixedHeight(kTcpControlHeight);
     port_spin_->setFixedWidth(108);
     portRowLayout->addWidget(port_spin_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    control_layout_->addLayout(portRowLayout, 0, 2, Qt::AlignVCenter | Qt::AlignLeft);
+    control_layout_->addLayout(portRowLayout, 0, 3, Qt::AlignVCenter | Qt::AlignLeft);
 
     connect_button_ = new QPushButton(this);
     connect_button_->setObjectName("compactTcpStartButton");
     connect_button_->setFixedHeight(kTcpButtonHeight);
     connect(connect_button_, &QPushButton::clicked, this, &TcpWavePanel::onToggleConnectionClicked);
-    control_layout_->addWidget(connect_button_, 0, 4, Qt::AlignVCenter | Qt::AlignLeft);
+    control_layout_->addWidget(connect_button_, 0, 5, Qt::AlignVCenter | Qt::AlignLeft);
 
     status_label_ = new QLabel(this);
     status_label_->setWordWrap(true);
-    control_layout_->addWidget(status_label_, 1, 0, 1, 5);
+    control_layout_->addWidget(status_label_, 1, 0, 1, 6);
 
     hint_label_ = new QLabel(this);
     hint_label_->setWordWrap(true);
-    control_layout_->addWidget(hint_label_, 2, 0, 1, 5);
+    control_layout_->addWidget(hint_label_, 2, 0, 1, 6);
 
     mainLayout->addLayout(control_layout_);
 
@@ -760,6 +767,7 @@ void TcpWavePanel::setEnglish(bool english)
     {
         panel_title_label_->setText(english ? "TCP Wave Monitor" : "TCP波形监视");
     }
+    resetFrameRateDisplay();
     host_label_->setText(english ? "TCP Host:" : "TCP主机:");
     port_label_->setText(english ? "Port:" : "端口:");
     connect_button_->setText(socket_ && socket_->state() == QAbstractSocket::ConnectedState
@@ -810,6 +818,43 @@ void TcpWavePanel::updatePeakPlotModeButtonText()
         : (is_english_ ? "Show Scatter" : "切换到散点图"));
 }
 
+void TcpWavePanel::resetFrameRateDisplay()
+{
+    if (!frame_rate_label_)
+    {
+        return;
+    }
+    frame_rate_label_->setText(is_english_ ? "Realtime: -- Hz" : "实时频率: -- Hz");
+}
+
+void TcpWavePanel::updateFrameRateDisplay(qint64 arrivalTimeMs)
+{
+    if (!frame_rate_label_)
+    {
+        return;
+    }
+
+    frame_arrival_times_ms_.push_back(arrivalTimeMs);
+    while (!frame_arrival_times_ms_.isEmpty() &&
+           arrivalTimeMs - frame_arrival_times_ms_.front() > kFrameRateWindowMs)
+    {
+        frame_arrival_times_ms_.removeFirst();
+    }
+
+    double rateHz = 0.0;
+    if (frame_arrival_times_ms_.size() >= 2)
+    {
+        const qint64 elapsedMs = frame_arrival_times_ms_.back() - frame_arrival_times_ms_.front();
+        if (elapsedMs > 0)
+        {
+            rateHz = (frame_arrival_times_ms_.size() - 1) * 1000.0 / static_cast<double>(elapsedMs);
+        }
+    }
+
+    frame_rate_label_->setText(QString(is_english_ ? "Realtime: %1 Hz" : "实时频率: %1 Hz")
+        .arg(QString::number(rateHz, 'f', 2)));
+}
+
 void TcpWavePanel::attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox)
 {
     if (!control_layout_ || !label || !spinBox)
@@ -824,7 +869,7 @@ void TcpWavePanel::attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox)
     splitRowLayout->setSpacing(1);
     splitRowLayout->addWidget(label, 0, Qt::AlignVCenter | Qt::AlignRight);
     splitRowLayout->addWidget(spinBox, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    control_layout_->addLayout(splitRowLayout, 0, 3, Qt::AlignVCenter | Qt::AlignLeft);
+    control_layout_->addLayout(splitRowLayout, 0, 4, Qt::AlignVCenter | Qt::AlignLeft);
 }
 
 QString TcpWavePanel::host() const
@@ -912,6 +957,8 @@ void TcpWavePanel::onToggleConnectionClicked()
     header_byte_order_ = HeaderByteOrder::Unknown;
     float_encoding_ = FloatEncoding::Unknown;
     frame_count_ = 0;
+    frame_arrival_times_ms_.clear();
+    resetFrameRateDisplay();
     setStatusText(QString(is_english_ ? "Connecting to %1:%2..." : "正在连接 %1:%2...")
         .arg(host_edit_->text()).arg(port_spin_->value()));
     socket_->connectToHost(host_edit_->text(), static_cast<quint16>(port_spin_->value()));
@@ -961,6 +1008,8 @@ void TcpWavePanel::onSocketDisconnected()
     {
         setStatusText(is_english_ ? "Disconnected without receiving any frame" : "已断开，本次未收到任何数据帧");
     }
+    frame_arrival_times_ms_.clear();
+    resetFrameRateDisplay();
 }
 
 void TcpWavePanel::onSocketReadyRead()
@@ -1094,6 +1143,7 @@ void TcpWavePanel::processBuffer()
                 peak_plot_->setPeakValues(peak_history_);
             }
             ++frame_count_;
+            updateFrameRateDisplay(QDateTime::currentMSecsSinceEpoch());
             emit normalizedSecondHarmonicFrameReady(
                 static_cast<quint64>(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()) * 1000ULL,
                 wave4_history_);
