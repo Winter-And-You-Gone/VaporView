@@ -936,6 +936,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , temperature_values_()
     , humidity_values_()
     , pressure_values_()
+    , waveform_timestamps_us_()
     , waveform_segments_()
     , waveform_peak_values_()
     , is_english_(false)
@@ -1098,17 +1099,16 @@ void SessionViewerWindow::setupUi()
         waveform_peak_scatter_mode_ ? SessionPeakPlotWidget::PlotMode::Scatter : SessionPeakPlotWidget::PlotMode::Polyline);
     auto *waveformPeakRangeAxis = new RangeSelectionAxisWidget(this);
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setViewChangedCallback(
-        [waveformPeakRangeAxis](int totalCount, int startIndex, int visibleCount) {
+        [this, waveformPeakRangeAxis](int totalCount, int startIndex, int visibleCount) {
             if (waveformPeakRangeAxis)
             {
                 waveformPeakRangeAxis->setRange(totalCount, startIndex, visibleCount);
             }
+            syncEnvironmentRangeToWaveformRange(startIndex, visibleCount);
         });
     waveformPeakRangeAxis->setRangeChangedCallback([this](int startIndex, int visibleCount) {
         static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setViewRange(startIndex, visibleCount);
-        static_cast<SingleSeriesTrendPlotWidget*>(temperature_plot_)->setViewRange(startIndex, visibleCount);
-        static_cast<SingleSeriesTrendPlotWidget*>(humidity_plot_)->setViewRange(startIndex, visibleCount);
-        static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setViewRange(startIndex, visibleCount);
+        syncEnvironmentRangeToWaveformRange(startIndex, visibleCount);
     });
     connect(waveform_peak_mode_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onTogglePeakPlotModeClicked);
     waveformLayout->addWidget(waveform_peak_plot_, 1);
@@ -1349,6 +1349,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     temperature_values_.clear();
     humidity_values_.clear();
     pressure_values_.clear();
+    waveform_timestamps_us_.clear();
     waveform_segments_.clear();
     waveform_peak_values_.clear();
     total_sensor_rows_ = 0;
@@ -1703,6 +1704,7 @@ bool SessionViewerWindow::loadWaveformSegments()
 bool SessionViewerWindow::loadWaveformPeakSeries()
 {
     waveform_peak_values_.clear();
+    waveform_timestamps_us_.clear();
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPeakValues({});
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setCurrentFrame(-1);
 
@@ -1714,6 +1716,7 @@ bool SessionViewerWindow::loadWaveformPeakSeries()
     const quint64 frameBytes = kWaveformTimestampBytes + static_cast<quint64>(points_per_frame_) * kFloatBytes;
     QVector<float> frameSamples(points_per_frame_);
     waveform_peak_values_.reserve(static_cast<int>(std::min<quint64>(total_waveform_frames_, static_cast<quint64>(std::numeric_limits<int>::max()))));
+    waveform_timestamps_us_.reserve(static_cast<int>(std::min<quint64>(total_waveform_frames_, static_cast<quint64>(std::numeric_limits<int>::max()))));
 
     for (const WaveformSegment& segment : waveform_segments_)
     {
@@ -1733,6 +1736,9 @@ bool SessionViewerWindow::loadWaveformPeakSeries()
                 return false;
             }
 
+            quint64 timestampUs = 0;
+            std::memcpy(&timestampUs, block.constData(), sizeof(quint64));
+            waveform_timestamps_us_.push_back(timestampUs);
             std::memcpy(frameSamples.data(), block.constData() + sizeof(quint64), static_cast<size_t>(points_per_frame_) * sizeof(float));
             const auto peakIt = std::max_element(frameSamples.cbegin(), frameSamples.cend());
             waveform_peak_values_.push_back(peakIt == frameSamples.cend() ? 0.0f : *peakIt);
@@ -1885,6 +1891,69 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
         .arg(QFileInfo(it->filename).fileName())
         + (csvMatchText.isEmpty() ? QString() : QStringLiteral(" | ") + csvMatchText));
     return true;
+}
+
+int SessionViewerWindow::findClosestCsvRow(quint64 timestampUs) const
+{
+    if (csv_timestamps_us_.isEmpty())
+    {
+        return -1;
+    }
+
+    const auto it = std::lower_bound(csv_timestamps_us_.cbegin(), csv_timestamps_us_.cend(), timestampUs);
+    if (it == csv_timestamps_us_.cbegin())
+    {
+        return 0;
+    }
+    if (it == csv_timestamps_us_.cend())
+    {
+        return static_cast<int>(csv_timestamps_us_.size()) - 1;
+    }
+
+    const int upperIndex = static_cast<int>(it - csv_timestamps_us_.cbegin());
+    const int lowerIndex = upperIndex - 1;
+    const quint64 lowerDelta = timestampUs >= csv_timestamps_us_.at(lowerIndex)
+        ? (timestampUs - csv_timestamps_us_.at(lowerIndex))
+        : (csv_timestamps_us_.at(lowerIndex) - timestampUs);
+    const quint64 upperDelta = timestampUs >= csv_timestamps_us_.at(upperIndex)
+        ? (timestampUs - csv_timestamps_us_.at(upperIndex))
+        : (csv_timestamps_us_.at(upperIndex) - timestampUs);
+    return lowerDelta <= upperDelta ? lowerIndex : upperIndex;
+}
+
+void SessionViewerWindow::syncEnvironmentRangeToWaveformRange(int startFrameIndex, int visibleFrameCount)
+{
+    if (csv_timestamps_us_.isEmpty())
+    {
+        static_cast<SingleSeriesTrendPlotWidget*>(temperature_plot_)->setViewRange(0, 0);
+        static_cast<SingleSeriesTrendPlotWidget*>(humidity_plot_)->setViewRange(0, 0);
+        static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setViewRange(0, 0);
+        return;
+    }
+
+    if (waveform_timestamps_us_.isEmpty() || visibleFrameCount <= 0)
+    {
+        static_cast<SingleSeriesTrendPlotWidget*>(temperature_plot_)->setViewRange(0, 0);
+        static_cast<SingleSeriesTrendPlotWidget*>(humidity_plot_)->setViewRange(0, 0);
+        static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setViewRange(0, 0);
+        return;
+    }
+
+    const int totalFrames = static_cast<int>(waveform_timestamps_us_.size());
+    const int clampedStart = std::clamp(startFrameIndex, 0, std::max(0, totalFrames - 1));
+    const int clampedEnd = std::clamp(clampedStart + visibleFrameCount - 1, clampedStart, totalFrames - 1);
+    const int startCsvRow = findClosestCsvRow(waveform_timestamps_us_.at(clampedStart));
+    const int endCsvRow = findClosestCsvRow(waveform_timestamps_us_.at(clampedEnd));
+    if (startCsvRow < 0 || endCsvRow < 0)
+    {
+        return;
+    }
+
+    const int csvStart = std::min(startCsvRow, endCsvRow);
+    const int csvCount = std::max(1, std::abs(endCsvRow - startCsvRow) + 1);
+    static_cast<SingleSeriesTrendPlotWidget*>(temperature_plot_)->setViewRange(csvStart, csvCount);
+    static_cast<SingleSeriesTrendPlotWidget*>(humidity_plot_)->setViewRange(csvStart, csvCount);
+    static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setViewRange(csvStart, csvCount);
 }
 
 QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs)

@@ -61,6 +61,8 @@ private:
     bool loadWaveformSegments();
     bool loadWaveformPeakSeries();
     bool loadWaveformFrame(quint64 frameIndex);
+    int findClosestCsvRow(quint64 timestampUs) const;
+    void syncEnvironmentRangeToWaveformRange(int startFrameIndex, int visibleFrameCount);
     QString highlightClosestSensorRow(quint64 timestampUs);
     void updatePeakPlotModeButtonText();
 
@@ -120,6 +122,7 @@ private:
     QVector<double> temperature_values_;
     QVector<double> humidity_values_;
     QVector<double> pressure_values_;
+    QVector<quint64> waveform_timestamps_us_;
     QVector<WaveformSegment> waveform_segments_;
     QVector<float> waveform_peak_values_;
     bool is_english_;
