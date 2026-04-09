@@ -650,6 +650,8 @@ public:
         , line_color_(color)
         , empty_text_(emptyText)
         , current_index_(-1)
+        , view_start_index_(0)
+        , view_count_(0)
     {
         setMinimumHeight(130);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -662,12 +664,37 @@ public:
         {
             current_index_ = -1;
         }
+        normalizeView();
         update();
     }
 
     void setCurrentIndex(int index)
     {
         current_index_ = index;
+        update();
+    }
+
+    void setViewRange(int startIndex, int count)
+    {
+        if (values_.isEmpty())
+        {
+            view_start_index_ = 0;
+            view_count_ = 0;
+            update();
+            return;
+        }
+
+        if (count <= 0 || count >= values_.size())
+        {
+            view_start_index_ = 0;
+            view_count_ = 0;
+        }
+        else
+        {
+            view_start_index_ = startIndex;
+            view_count_ = count;
+            normalizeView();
+        }
         update();
     }
 
@@ -680,7 +707,40 @@ protected:
         painter.setRenderHint(QPainter::Antialiasing, true);
         painter.fillRect(rect(), QColor("#ffffff"));
 
-        const QRectF plotRect = rect().adjusted(16, 12, -10, -28);
+        if (values_.isEmpty())
+        {
+            const QRectF emptyPlotRect = rect().adjusted(16, 12, -10, -28);
+            painter.setPen(QPen(QColor("#cfd7e3"), 1));
+            painter.drawRect(emptyPlotRect);
+            painter.setPen(QColor("#7a8899"));
+            painter.drawText(emptyPlotRect, Qt::AlignCenter, empty_text_);
+            return;
+        }
+
+        const int startIndex = visibleStartIndex();
+        const int count = visibleCount();
+        const auto visibleBegin = values_.cbegin() + startIndex;
+        const auto visibleEnd = visibleBegin + count;
+        double minValue = std::numeric_limits<double>::infinity();
+        double maxValue = -std::numeric_limits<double>::infinity();
+        for (auto it = visibleBegin; it != visibleEnd; ++it)
+        {
+            if (!std::isfinite(*it))
+            {
+                continue;
+            }
+            minValue = std::min(minValue, *it);
+            maxValue = std::max(maxValue, *it);
+        }
+
+        const bool hasFiniteValues = std::isfinite(minValue) && std::isfinite(maxValue);
+        const QString maxLabel = hasFiniteValues ? QString::number(maxValue, 'f', 3) : QStringLiteral("---");
+        const QString midLabel = hasFiniteValues ? QString::number((maxValue + minValue) * 0.5, 'f', 3) : QStringLiteral("---");
+        const QString minLabel = hasFiniteValues ? QString::number(minValue, 'f', 3) : QStringLiteral("---");
+        const QFontMetrics fm = painter.fontMetrics();
+        const int labelWidth = std::max({fm.horizontalAdvance(maxLabel), fm.horizontalAdvance(midLabel), fm.horizontalAdvance(minLabel)});
+        const int leftMargin = std::max(36, labelWidth + 6);
+        const QRectF plotRect = rect().adjusted(leftMargin, 12, -10, -28);
         painter.setPen(QPen(QColor("#e3e8ef"), 1));
         for (int i = 0; i <= 10; ++i)
         {
@@ -696,67 +756,86 @@ protected:
         painter.setPen(QPen(QColor("#cfd7e3"), 1));
         painter.drawRect(plotRect);
 
-        const int totalSamples = values_.size();
-        if (totalSamples <= 0)
+        if (!hasFiniteValues)
         {
             painter.setPen(QColor("#7a8899"));
             painter.drawText(plotRect, Qt::AlignCenter, empty_text_);
             return;
         }
 
-        if (current_index_ >= 0 && current_index_ < totalSamples)
+        if (current_index_ >= startIndex && current_index_ < (startIndex + count))
         {
-            const qreal ratio = totalSamples == 1 ? 0.0 : static_cast<qreal>(current_index_) / static_cast<qreal>(totalSamples - 1);
+            const int relativeIndex = current_index_ - startIndex;
+            const qreal ratio = count == 1 ? 0.0 : static_cast<qreal>(relativeIndex) / static_cast<qreal>(count - 1);
             const qreal x = plotRect.left() + ratio * plotRect.width();
             painter.setPen(QPen(QColor("#94a3b8"), 1, Qt::DashLine));
             painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
         }
 
-        drawSeries(painter, plotRect, values_);
+        drawSeries(painter, plotRect, startIndex, count, minValue, maxValue);
 
         painter.setPen(QColor("#5e6b78"));
+        painter.drawText(QRectF(4, plotRect.top() - 2, leftMargin - 6, fm.height()), Qt::AlignRight | Qt::AlignVCenter, maxLabel);
+        painter.drawText(QRectF(4, plotRect.center().y() - fm.height() * 0.5, leftMargin - 6, fm.height()), Qt::AlignRight | Qt::AlignVCenter, midLabel);
+        painter.drawText(QRectF(4, plotRect.bottom() - fm.height() + 2, leftMargin - 6, fm.height()), Qt::AlignRight | Qt::AlignVCenter, minLabel);
+        painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 4, plotRect.width() * 0.55, 16),
+                         Qt::AlignLeft | Qt::AlignVCenter,
+                         QString("%1-%2 / %3").arg(startIndex + 1).arg(startIndex + count).arg(values_.size()));
         painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 4, plotRect.width(), 16),
                          Qt::AlignRight | Qt::AlignVCenter,
-                         QStringLiteral("%1 samples").arg(totalSamples));
+                         QStringLiteral("%1 samples").arg(count));
     }
 
 private:
-    void drawSeries(QPainter& painter, const QRectF& plotRect, const QVector<double>& values)
+    int visibleStartIndex() const
     {
-        QVector<int> validIndices;
-        validIndices.reserve(values.size());
-        double minValue = std::numeric_limits<double>::infinity();
-        double maxValue = -std::numeric_limits<double>::infinity();
-        for (int i = 0; i < values.size(); ++i)
+        if (values_.isEmpty())
         {
-            const double value = values.at(i);
-            if (!std::isfinite(value))
-            {
-                continue;
-            }
-            validIndices.push_back(i);
-            minValue = std::min(minValue, value);
-            maxValue = std::max(maxValue, value);
+            return 0;
         }
+        return std::clamp(view_start_index_, 0, std::max(0, static_cast<int>(values_.size()) - visibleCount()));
+    }
 
-        if (validIndices.isEmpty())
+    int visibleCount() const
+    {
+        const int totalCount = static_cast<int>(values_.size());
+        if (totalCount <= 0)
         {
+            return 0;
+        }
+        if (view_count_ <= 0 || view_count_ >= totalCount)
+        {
+            return totalCount;
+        }
+        return std::clamp(view_count_, 1, totalCount);
+    }
+
+    void normalizeView()
+    {
+        const int totalCount = static_cast<int>(values_.size());
+        if (totalCount <= 0 || view_count_ <= 0 || view_count_ >= totalCount)
+        {
+            view_start_index_ = 0;
+            view_count_ = 0;
             return;
         }
+        view_count_ = std::clamp(view_count_, 1, totalCount);
+        view_start_index_ = std::clamp(view_start_index_, 0, std::max(0, totalCount - view_count_));
+    }
 
-        if (std::fabs(maxValue - minValue) < 1e-9)
-        {
-            const double pad = std::max(1e-6, std::fabs(maxValue) * 0.05 + 1e-6);
-            minValue -= pad;
-            maxValue += pad;
-        }
-
+    void drawSeries(QPainter& painter,
+                    const QRectF& plotRect,
+                    int startIndex,
+                    int count,
+                    double minValue,
+                    double maxValue)
+    {
         QPolygonF segment;
-        const int totalSamples = std::max(1, static_cast<int>(values.size()));
         painter.setPen(QPen(line_color_, 1.5));
-        for (int i = 0; i < values.size(); ++i)
+        for (int relativeIndex = 0; relativeIndex < count; ++relativeIndex)
         {
-            const double value = values.at(i);
+            const int i = startIndex + relativeIndex;
+            const double value = values_.at(i);
             if (!std::isfinite(value))
             {
                 if (segment.size() >= 2)
@@ -767,7 +846,7 @@ private:
                 continue;
             }
 
-            const qreal x = plotRect.left() + (totalSamples == 1 ? 0.0 : (static_cast<qreal>(i) / static_cast<qreal>(totalSamples - 1)) * plotRect.width());
+            const qreal x = plotRect.left() + (count == 1 ? 0.0 : (static_cast<qreal>(relativeIndex) / static_cast<qreal>(count - 1)) * plotRect.width());
             const qreal normalized = (value - minValue) / std::max(1e-9, maxValue - minValue);
             const qreal y = plotRect.bottom() - normalized * plotRect.height();
             segment.append(QPointF(x, y));
@@ -781,10 +860,11 @@ private:
             painter.drawPoint(segment.first());
         }
 
-        if (current_index_ >= 0 && current_index_ < values.size() && std::isfinite(values.at(current_index_)))
+        if (current_index_ >= startIndex && current_index_ < (startIndex + count) && std::isfinite(values_.at(current_index_)))
         {
-            const qreal x = plotRect.left() + (totalSamples == 1 ? 0.0 : (static_cast<qreal>(current_index_) / static_cast<qreal>(totalSamples - 1)) * plotRect.width());
-            const qreal normalized = (values.at(current_index_) - minValue) / std::max(1e-9, maxValue - minValue);
+            const int relativeIndex = current_index_ - startIndex;
+            const qreal x = plotRect.left() + (count == 1 ? 0.0 : (static_cast<qreal>(relativeIndex) / static_cast<qreal>(count - 1)) * plotRect.width());
+            const qreal normalized = (values_.at(current_index_) - minValue) / std::max(1e-9, maxValue - minValue);
             const qreal y = plotRect.bottom() - normalized * plotRect.height();
             painter.setBrush(line_color_);
             painter.drawEllipse(QPointF(x, y), 3.0, 3.0);
@@ -795,6 +875,8 @@ private:
     QString empty_text_;
     QVector<double> values_;
     int current_index_;
+    int view_start_index_;
+    int view_count_;
 };
 
 SessionViewerWindow::SessionViewerWindow(QWidget *parent)
@@ -1024,6 +1106,9 @@ void SessionViewerWindow::setupUi()
         });
     waveformPeakRangeAxis->setRangeChangedCallback([this](int startIndex, int visibleCount) {
         static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setViewRange(startIndex, visibleCount);
+        static_cast<SingleSeriesTrendPlotWidget*>(temperature_plot_)->setViewRange(startIndex, visibleCount);
+        static_cast<SingleSeriesTrendPlotWidget*>(humidity_plot_)->setViewRange(startIndex, visibleCount);
+        static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setViewRange(startIndex, visibleCount);
     });
     connect(waveform_peak_mode_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onTogglePeakPlotModeClicked);
     waveformLayout->addWidget(waveform_peak_plot_, 1);
