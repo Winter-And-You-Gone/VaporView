@@ -37,6 +37,7 @@ constexpr int kTcpControlHeight = 30;
 constexpr int kTcpButtonHeight = 38;
 constexpr int kPeakSearchStartIndex = 10000;
 constexpr int kPeakSearchEndIndex = 50000;
+constexpr qint64 kFrameRateWindowMs = 5000;
 
 QString hexPreview(const QByteArray& data, int limit = 12)
 {
@@ -534,6 +535,7 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , wave1_title_label_(nullptr)
     , wave4_title_label_(nullptr)
     , peak_title_label_(nullptr)
+    , frame_rate_label_(nullptr)
     , wave1_info_label_(nullptr)
     , wave4_info_label_(nullptr)
     , wave1_group_(nullptr)
@@ -553,6 +555,7 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , float_encoding_(FloatEncoding::Unknown)
     , expected_payload_size_(0)
     , frame_count_(0)
+    , frame_arrival_times_ms_()
     , is_english_(false)
 {
     setupUi();
@@ -689,6 +692,9 @@ void TcpWavePanel::setupUi()
     peak_title_label_ = new QLabel(this);
     peak_title_label_->setObjectName("sectionTitleLabel");
     peakHeaderLayout->addWidget(peak_title_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    frame_rate_label_ = new QLabel(this);
+    frame_rate_label_->setObjectName("fieldLabel");
+    peakHeaderLayout->addWidget(frame_rate_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     peak_mode_button_ = new QPushButton(this);
     peak_mode_button_->setObjectName("compactTcpButton");
     peak_mode_button_->setFixedHeight(kTcpButtonHeight);
@@ -780,6 +786,7 @@ void TcpWavePanel::setEnglish(bool english)
     {
         peak_title_label_->setText(english ? "Normalized Second Harmonic Peak Trend" : "归一化二次谐波峰值趋势");
     }
+    resetFrameRateDisplay();
     if (peak_clear_button_)
     {
         peak_clear_button_->setText(english ? "Clear" : "清空");
@@ -808,6 +815,43 @@ void TcpWavePanel::updatePeakPlotModeButtonText()
     peak_mode_button_->setText(peak_plot_scatter_mode_
         ? (is_english_ ? "Show Polyline" : "切换到折线图")
         : (is_english_ ? "Show Scatter" : "切换到散点图"));
+}
+
+void TcpWavePanel::resetFrameRateDisplay()
+{
+    if (!frame_rate_label_)
+    {
+        return;
+    }
+    frame_rate_label_->setText(is_english_ ? "Realtime: -- Hz" : "实时频率: -- Hz");
+}
+
+void TcpWavePanel::updateFrameRateDisplay(qint64 arrivalTimeMs)
+{
+    if (!frame_rate_label_)
+    {
+        return;
+    }
+
+    frame_arrival_times_ms_.push_back(arrivalTimeMs);
+    while (!frame_arrival_times_ms_.isEmpty() &&
+           arrivalTimeMs - frame_arrival_times_ms_.front() > kFrameRateWindowMs)
+    {
+        frame_arrival_times_ms_.removeFirst();
+    }
+
+    double rateHz = 0.0;
+    if (frame_arrival_times_ms_.size() >= 2)
+    {
+        const qint64 elapsedMs = frame_arrival_times_ms_.back() - frame_arrival_times_ms_.front();
+        if (elapsedMs > 0)
+        {
+            rateHz = (frame_arrival_times_ms_.size() - 1) * 1000.0 / static_cast<double>(elapsedMs);
+        }
+    }
+
+    frame_rate_label_->setText(QString(is_english_ ? "Realtime: %1 Hz" : "实时频率: %1 Hz")
+        .arg(QString::number(rateHz, 'f', 2)));
 }
 
 void TcpWavePanel::attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox)
@@ -912,6 +956,8 @@ void TcpWavePanel::onToggleConnectionClicked()
     header_byte_order_ = HeaderByteOrder::Unknown;
     float_encoding_ = FloatEncoding::Unknown;
     frame_count_ = 0;
+    frame_arrival_times_ms_.clear();
+    resetFrameRateDisplay();
     setStatusText(QString(is_english_ ? "Connecting to %1:%2..." : "正在连接 %1:%2...")
         .arg(host_edit_->text()).arg(port_spin_->value()));
     socket_->connectToHost(host_edit_->text(), static_cast<quint16>(port_spin_->value()));
@@ -961,6 +1007,7 @@ void TcpWavePanel::onSocketDisconnected()
     {
         setStatusText(is_english_ ? "Disconnected without receiving any frame" : "已断开，本次未收到任何数据帧");
     }
+    frame_arrival_times_ms_.clear();
 }
 
 void TcpWavePanel::onSocketReadyRead()
@@ -1094,6 +1141,7 @@ void TcpWavePanel::processBuffer()
                 peak_plot_->setPeakValues(peak_history_);
             }
             ++frame_count_;
+            updateFrameRateDisplay(QDateTime::currentMSecsSinceEpoch());
             emit normalizedSecondHarmonicFrameReady(
                 static_cast<quint64>(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()) * 1000ULL,
                 wave4_history_);
