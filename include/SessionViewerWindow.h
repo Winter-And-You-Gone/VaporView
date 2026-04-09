@@ -131,6 +131,7 @@ private:
     QVector<int> highlighted_csv_rows_;
     int points_per_frame_;
     int waveform_export_rate_hz_;
+    QString waveform_export_mode_;
     quint64 total_sensor_rows_;
     quint64 total_waveform_frames_;
 };

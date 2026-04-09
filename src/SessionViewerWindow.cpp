@@ -945,6 +945,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , highlighted_csv_rows_()
     , points_per_frame_(50000)
     , waveform_export_rate_hz_(10)
+    , waveform_export_mode_(QStringLiteral("fixed_rate"))
     , total_sensor_rows_(0)
     , total_waveform_frames_(0)
 {
@@ -1357,6 +1358,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     total_waveform_frames_ = 0;
     points_per_frame_ = 50000;
     waveform_export_rate_hz_ = 10;
+    waveform_export_mode_ = QStringLiteral("fixed_rate");
 
     csv_table_->clearContents();
     csv_table_->setRowCount(0);
@@ -1530,6 +1532,8 @@ bool SessionViewerWindow::loadSessionMetadata(const QString& sessionDirectory)
     total_waveform_frames_ = root.value(QStringLiteral("waveform_frames")).toVariant().toULongLong();
     points_per_frame_ = root.value(QStringLiteral("waveform_points_per_frame")).toInt(50000);
     waveform_export_rate_hz_ = root.value(QStringLiteral("waveform_export_rate_hz")).toInt(10);
+    waveform_export_mode_ = root.value(QStringLiteral("waveform_export_mode")).toString(
+        waveform_export_rate_hz_ > 0 ? QStringLiteral("fixed_rate") : QStringLiteral("per_frame"));
 
     const QString csvRelativePath = paths.value(QStringLiteral("devices_csv")).toString(QStringLiteral("sensors/devices.csv"));
     const QString waveformRelativePath = paths.value(QStringLiteral("waveform_directory")).toString(QStringLiteral("waveform"));
@@ -1879,13 +1883,16 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
         : *minMax.second;
     const QString frameTime = formatTimestampUs(timestampUs);
     const QString csvMatchText = highlightClosestSensorRow(timestampUs);
+    const QString waveformExportText = (waveform_export_mode_ == QStringLiteral("per_frame") || waveform_export_rate_hz_ <= 0)
+        ? (is_english_ ? QStringLiteral("per-frame export") : QStringLiteral("逐帧导出"))
+        : QString(is_english_ ? "%1 Hz export" : "%1 Hz 导出").arg(waveform_export_rate_hz_);
     frame_info_label_->setText(QString(is_english_
-        ? "Frame %1 / %2 | %3 | %4 Hz export | min=%5 max=%6 peak=%7 | %8"
-        : "第 %1 / %2 帧 | %3 | %4 Hz 导出 | min=%5 max=%6 峰值=%7 | %8")
+        ? "Frame %1 / %2 | %3 | %4 | min=%5 max=%6 peak=%7 | %8"
+        : "第 %1 / %2 帧 | %3 | %4 | min=%5 max=%6 峰值=%7 | %8")
         .arg(frameIndex + 1)
         .arg(total_waveform_frames_)
         .arg(frameTime)
-        .arg(waveform_export_rate_hz_)
+        .arg(waveformExportText)
         .arg(QString::number(*minMax.first, 'f', 6))
         .arg(QString::number(*minMax.second, 'f', 6))
         .arg(QString::number(peakValue, 'f', 6))

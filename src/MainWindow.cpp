@@ -60,6 +60,8 @@ constexpr const char *kBaseMarginsBottomProperty = "_vv_base_margin_bottom";
 constexpr int kMainPageInputHeight = 30;
 constexpr int kMainPageButtonHeight = 38;
 constexpr quint64 kImuPpsSyncWindowUs = 2ULL * 1000ULL * 1000ULL;
+constexpr int kSensorExportRateHz = 20;
+constexpr int kSensorExportPeriodMs = 1000 / kSensorExportRateHz;
 
 QString recordingTimestampUtc()
 {
@@ -2637,7 +2639,9 @@ void MainWindow::writeSessionMetadata(const QString& endTimeUtc)
         ? QStringLiteral("dev")
         : QCoreApplication::applicationVersion();
     root["waveform_points_per_frame"] = 50000;
-    root["waveform_export_rate_hz"] = 10;
+    root["sensor_export_rate_hz"] = kSensorExportRateHz;
+    root["waveform_export_rate_hz"] = 0;
+    root["waveform_export_mode"] = QStringLiteral("per_frame");
     root["waveform_value_type"] = QStringLiteral("float32");
     root["waveform_timestamp_type"] = QStringLiteral("uint64");
     root["timestamp_unit"] = QStringLiteral("microseconds");
@@ -2678,7 +2682,8 @@ void MainWindow::writeDeviceConfigSnapshot()
     QJsonObject waveform;
     waveform["host"] = tcp_wave_panel_ ? tcp_wave_panel_->host() : QStringLiteral("127.0.0.1");
     waveform["port"] = tcp_wave_panel_ ? tcp_wave_panel_->port() : 8888;
-    waveform["frame_rate_hz"] = 10;
+    waveform["frame_rate_hz"] = 0;
+    waveform["frame_rate_mode"] = QStringLiteral("per_frame");
     waveform["points_per_frame"] = 50000;
     waveform["value_type"] = QStringLiteral("float32");
     waveform["timestamp_type"] = QStringLiteral("uint64");
@@ -2870,7 +2875,7 @@ void MainWindow::startRecordingWorkers()
                 updateRecordingStatusLabel();
             }, Qt::QueuedConnection);
 
-            nextTick += std::chrono::milliseconds(100);
+            nextTick += std::chrono::milliseconds(kSensorExportPeriodMs);
             std::this_thread::sleep_until(nextTick);
         }
     });
