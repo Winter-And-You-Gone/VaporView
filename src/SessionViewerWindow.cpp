@@ -45,9 +45,19 @@ namespace
 {
 constexpr quint64 kWaveformTimestampBytes = sizeof(quint64);
 constexpr quint64 kFloatBytes = sizeof(float);
+constexpr int kSessionViewerPlotHeight = 120;
+constexpr int kSessionViewerPlotLeftMargin = 64;
+constexpr int kSessionViewerPlotRightMargin = 10;
+constexpr int kSessionViewerPlotTopMargin = 12;
+constexpr int kSessionViewerPlotBottomMargin = 28;
+constexpr int kSessionViewerWaveBottomMargin = 30;
 const QColor kHighlightedCsvRowColor("#c7e3ff");
 const QColor kSecondaryHighlightedCsvRowColor("#e8f3ff");
 const QColor kDefaultCsvRowColor("#ffffff");
+const QColor kCurrentGuideLineColor("#ffb347");
+const QColor kCurrentGuideLabelFillColor("#8b4a00");
+const QColor kCurrentGuideLabelBorderColor("#5f3000");
+const QColor kCurrentGuideLabelTextColor("#fff7ea");
 
 QString csvValueAt(const QStringList& fields, int index)
 {
@@ -234,6 +244,56 @@ QString formatOptionalSeriesValue(double value, int decimals, const QString& uni
         ? QString::number(value, 'f', decimals)
         : QStringLiteral("%1 %2").arg(QString::number(value, 'f', decimals), unit);
 }
+
+QString formatGuideValue(double value, int decimals, const QString& unit = QString())
+{
+    if (!std::isfinite(value))
+    {
+        return QStringLiteral("---");
+    }
+    const QString number = QString::number(value, 'f', decimals);
+    return unit.isEmpty() ? number : QStringLiteral("%1 %2").arg(number, unit);
+}
+
+void drawGuideTag(QPainter& painter, const QRectF& rect, const QString& text, Qt::Alignment alignment)
+{
+    painter.save();
+    painter.setPen(QPen(kCurrentGuideLabelBorderColor, 1));
+    painter.setBrush(kCurrentGuideLabelFillColor);
+    painter.drawRoundedRect(rect, 4.0, 4.0);
+    painter.setPen(kCurrentGuideLabelTextColor);
+    painter.drawText(rect.adjusted(4, 0, -4, 0), alignment | Qt::AlignVCenter, text);
+    painter.restore();
+}
+
+void drawCurrentPointGuides(QPainter& painter,
+                            const QRectF& plotRect,
+                            const QPointF& currentPoint,
+                            const QString& xLabel,
+                            const QString& yLabel)
+{
+    painter.save();
+    painter.setPen(QPen(kCurrentGuideLineColor, 1, Qt::DashLine));
+    painter.drawLine(QPointF(currentPoint.x(), plotRect.top()), QPointF(currentPoint.x(), plotRect.bottom()));
+    painter.drawLine(QPointF(plotRect.left(), currentPoint.y()), QPointF(plotRect.right(), currentPoint.y()));
+
+    const QFontMetrics fm = painter.fontMetrics();
+    const int xTagWidth = std::max(40, fm.horizontalAdvance(xLabel) + 12);
+    const qreal xTagLeft = std::clamp(currentPoint.x() - xTagWidth * 0.5,
+        plotRect.left(), plotRect.right() - static_cast<qreal>(xTagWidth));
+    drawGuideTag(painter,
+        QRectF(xTagLeft, plotRect.bottom() + 2, xTagWidth, fm.height() + 2),
+        xLabel,
+        Qt::AlignCenter);
+
+    const qreal yTagTop = std::clamp(currentPoint.y() - (fm.height() + 2) * 0.5,
+        plotRect.top(), plotRect.bottom() - static_cast<qreal>(fm.height() + 2));
+    drawGuideTag(painter,
+        QRectF(2, yTagTop, plotRect.left() - 6, fm.height() + 2),
+        yLabel,
+        Qt::AlignRight);
+    painter.restore();
+}
 }
 
 class SessionWavePlotWidget : public QWidget
@@ -242,8 +302,8 @@ public:
     explicit SessionWavePlotWidget(QWidget *parent = nullptr)
         : QWidget(parent)
     {
-        setMinimumHeight(220);
-        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        setFixedHeight(kSessionViewerPlotHeight);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     }
 
     void setSamples(const QVector<float>& samples)
@@ -261,7 +321,11 @@ protected:
         painter.setRenderHint(QPainter::Antialiasing, true);
         painter.fillRect(rect(), QColor("#ffffff"));
 
-        const QRectF plotRect = rect().adjusted(48, 12, -10, -30);
+        const QRectF plotRect = rect().adjusted(
+            kSessionViewerPlotLeftMargin,
+            kSessionViewerPlotTopMargin,
+            -kSessionViewerPlotRightMargin,
+            -kSessionViewerWaveBottomMargin);
         painter.setPen(QPen(QColor("#f0d000"), 1));
         for (int i = 0; i <= 10; ++i)
         {
@@ -312,10 +376,10 @@ protected:
         painter.drawPolyline(polyline);
 
         painter.setPen(QColor("#334155"));
-        painter.drawText(QRectF(4, plotRect.top() - 2, 40, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 4));
-        painter.drawText(QRectF(4, plotRect.center().y() - 8, 40, 16), Qt::AlignRight | Qt::AlignVCenter,
+        painter.drawText(QRectF(4, plotRect.top() - 2, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 4));
+        painter.drawText(QRectF(4, plotRect.center().y() - 8, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter,
                          QString::number((maxValue + minValue) * 0.5, 'f', 4));
-        painter.drawText(QRectF(4, plotRect.bottom() - 8, 40, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(minValue, 'f', 4));
+        painter.drawText(QRectF(4, plotRect.bottom() - 8, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(minValue, 'f', 4));
         painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 6, plotRect.width(), 16), Qt::AlignRight | Qt::AlignVCenter,
                          QStringLiteral("%1 samples").arg(samples_.size()));
     }
@@ -339,12 +403,9 @@ public:
         , plot_mode_(PlotMode::Scatter)
         , view_start_index_(0)
         , view_count_(0)
-        , dragging_(false)
-        , drag_start_x_(0)
-        , drag_origin_start_(0)
     {
-        setMinimumHeight(170);
-        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        setFixedHeight(kSessionViewerPlotHeight);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     }
 
     void setPeakValues(const QVector<float>& values)
@@ -422,7 +483,11 @@ protected:
         painter.setRenderHint(QPainter::Antialiasing, true);
         painter.fillRect(rect(), QColor("#ffffff"));
 
-        const QRectF plotRect = rect().adjusted(48, 12, -10, -28);
+        const QRectF plotRect = rect().adjusted(
+            kSessionViewerPlotLeftMargin,
+            kSessionViewerPlotTopMargin,
+            -kSessionViewerPlotRightMargin,
+            -kSessionViewerPlotBottomMargin);
         painter.setPen(QPen(QColor("#c7d7ea"), 1));
         for (int i = 0; i <= 10; ++i)
         {
@@ -489,18 +554,16 @@ protected:
         if (current_frame_index_ >= startIndex && current_frame_index_ < (startIndex + count))
         {
             const QPointF currentPoint = points.at(current_frame_index_ - startIndex);
-            painter.setPen(QPen(QColor("#ffb347"), 1, Qt::DashLine));
-            painter.drawLine(QPointF(currentPoint.x(), plotRect.top()), QPointF(currentPoint.x(), plotRect.bottom()));
             painter.setPen(Qt::NoPen);
-            painter.setBrush(QColor("#ffb347"));
+            painter.setBrush(kCurrentGuideLineColor);
             painter.drawEllipse(currentPoint, 4.0, 4.0);
         }
 
         painter.setPen(QColor("#4f647a"));
-        painter.drawText(QRectF(4, plotRect.top() - 2, 40, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 4));
-        painter.drawText(QRectF(4, plotRect.center().y() - 8, 40, 16), Qt::AlignRight | Qt::AlignVCenter,
+        painter.drawText(QRectF(4, plotRect.top() - 2, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 4));
+        painter.drawText(QRectF(4, plotRect.center().y() - 8, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter,
                          QString::number((maxValue + minValue) * 0.5, 'f', 4));
-        painter.drawText(QRectF(4, plotRect.bottom() - 8, 40, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(minValue, 'f', 4));
+        painter.drawText(QRectF(4, plotRect.bottom() - 8, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(minValue, 'f', 4));
         painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 6, plotRect.width() * 0.55, 16),
                          Qt::AlignLeft | Qt::AlignVCenter,
                          QString("%1-%2 / %3")
@@ -509,110 +572,20 @@ protected:
                              .arg(peak_values_.size()));
         painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 6, plotRect.width(), 16), Qt::AlignRight | Qt::AlignVCenter,
                          QStringLiteral("%1 frames").arg(count));
-    }
 
-    void wheelEvent(QWheelEvent *event) override
-    {
-        if (peak_values_.size() <= 1)
+        if (current_frame_index_ >= startIndex && current_frame_index_ < (startIndex + count))
         {
-            return;
+            const QPointF currentPoint = points.at(current_frame_index_ - startIndex);
+            drawCurrentPointGuides(
+                painter,
+                plotRect,
+                currentPoint,
+                QString::number(current_frame_index_ + 1),
+                formatGuideValue(peak_values_.at(current_frame_index_), 4));
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(kCurrentGuideLineColor);
+            painter.drawEllipse(currentPoint, 4.0, 4.0);
         }
-
-        const int totalCount = peak_values_.size();
-        const int oldCount = visibleCount();
-        int newCount = oldCount;
-        if (event->angleDelta().y() > 0)
-        {
-            newCount = std::max(20, static_cast<int>(std::floor(oldCount * 0.8)));
-        }
-        else if (event->angleDelta().y() < 0)
-        {
-            newCount = std::min(totalCount, static_cast<int>(std::ceil(oldCount * 1.25)));
-        }
-
-        if (newCount == oldCount)
-        {
-            event->accept();
-            return;
-        }
-
-        if (newCount >= totalCount)
-        {
-            view_start_index_ = 0;
-            view_count_ = 0;
-            notifyViewChanged();
-            update();
-            event->accept();
-            return;
-        }
-
-        const qreal ratio = width() <= 1 ? 0.5 : std::clamp(event->position().x() / static_cast<qreal>(width()), 0.0, 1.0);
-        const double anchorIndex = visibleStartIndex() + ratio * std::max(0, oldCount - 1);
-        view_count_ = newCount;
-        view_start_index_ = static_cast<int>(std::llround(anchorIndex - ratio * std::max(0, newCount - 1)));
-        normalizeView(false);
-        notifyViewChanged();
-        update();
-        event->accept();
-    }
-
-    void mousePressEvent(QMouseEvent *event) override
-    {
-        if (event->button() == Qt::LeftButton && peak_values_.size() > visibleCount())
-        {
-            dragging_ = true;
-            drag_start_x_ = event->position().x();
-            drag_origin_start_ = visibleStartIndex();
-            setCursor(Qt::ClosedHandCursor);
-            event->accept();
-            return;
-        }
-        QWidget::mousePressEvent(event);
-    }
-
-    void mouseMoveEvent(QMouseEvent *event) override
-    {
-        if (dragging_ && peak_values_.size() > visibleCount())
-        {
-            const qreal widthPixels = std::max(1.0, static_cast<qreal>(width()));
-            const qreal deltaRatio = (event->position().x() - drag_start_x_) / widthPixels;
-            const int deltaFrames = static_cast<int>(std::llround(deltaRatio * visibleCount()));
-            view_start_index_ = drag_origin_start_ - deltaFrames;
-            normalizeView(false);
-            notifyViewChanged();
-            update();
-            event->accept();
-            return;
-        }
-        QWidget::mouseMoveEvent(event);
-    }
-
-    void mouseReleaseEvent(QMouseEvent *event) override
-    {
-        if (event->button() == Qt::LeftButton && dragging_)
-        {
-            dragging_ = false;
-            unsetCursor();
-            event->accept();
-            return;
-        }
-        QWidget::mouseReleaseEvent(event);
-    }
-
-    void mouseDoubleClickEvent(QMouseEvent *event) override
-    {
-        if (event->button() == Qt::LeftButton)
-        {
-            view_start_index_ = 0;
-            view_count_ = 0;
-            dragging_ = false;
-            unsetCursor();
-            notifyViewChanged();
-            update();
-            event->accept();
-            return;
-        }
-        QWidget::mouseDoubleClickEvent(event);
     }
 
 private:
@@ -677,25 +650,30 @@ private:
     PlotMode plot_mode_;
     int view_start_index_;
     int view_count_;
-    bool dragging_;
-    qreal drag_start_x_;
-    int drag_origin_start_;
     std::function<void(int, int, int)> on_view_changed_;
 };
 
 class SingleSeriesTrendPlotWidget : public QWidget
 {
 public:
-    explicit SingleSeriesTrendPlotWidget(const QColor& color, const QString& emptyText, QWidget *parent = nullptr)
+    enum class PlotMode
+    {
+        Scatter,
+        Polyline
+    };
+
+    explicit SingleSeriesTrendPlotWidget(const QColor& color, const QString& emptyText, const QString& unit = QString(), QWidget *parent = nullptr)
         : QWidget(parent)
         , line_color_(color)
         , empty_text_(emptyText)
+        , unit_(unit)
         , current_index_(-1)
+        , plot_mode_(PlotMode::Polyline)
         , view_start_index_(0)
         , view_count_(0)
     {
-        setMinimumHeight(130);
-        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        setFixedHeight(kSessionViewerPlotHeight);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     }
 
     void setValues(const QVector<double>& values)
@@ -712,6 +690,12 @@ public:
     void setCurrentIndex(int index)
     {
         current_index_ = index;
+        update();
+    }
+
+    void setPlotMode(PlotMode mode)
+    {
+        plot_mode_ = mode;
         update();
     }
 
@@ -750,7 +734,11 @@ protected:
 
         if (values_.isEmpty())
         {
-            const QRectF emptyPlotRect = rect().adjusted(16, 12, -10, -28);
+            const QRectF emptyPlotRect = rect().adjusted(
+                kSessionViewerPlotLeftMargin,
+                kSessionViewerPlotTopMargin,
+                -kSessionViewerPlotRightMargin,
+                -kSessionViewerPlotBottomMargin);
             painter.setPen(QPen(QColor("#cfd7e3"), 1));
             painter.drawRect(emptyPlotRect);
             painter.setPen(QColor("#7a8899"));
@@ -775,13 +763,15 @@ protected:
         }
 
         const bool hasFiniteValues = std::isfinite(minValue) && std::isfinite(maxValue);
-        const QString maxLabel = hasFiniteValues ? QString::number(maxValue, 'f', 3) : QStringLiteral("---");
-        const QString midLabel = hasFiniteValues ? QString::number((maxValue + minValue) * 0.5, 'f', 3) : QStringLiteral("---");
-        const QString minLabel = hasFiniteValues ? QString::number(minValue, 'f', 3) : QStringLiteral("---");
+        const QString maxLabel = hasFiniteValues ? formatGuideValue(maxValue, 3, unit_) : QStringLiteral("---");
+        const QString midLabel = hasFiniteValues ? formatGuideValue((maxValue + minValue) * 0.5, 3, unit_) : QStringLiteral("---");
+        const QString minLabel = hasFiniteValues ? formatGuideValue(minValue, 3, unit_) : QStringLiteral("---");
         const QFontMetrics fm = painter.fontMetrics();
-        const int labelWidth = std::max({fm.horizontalAdvance(maxLabel), fm.horizontalAdvance(midLabel), fm.horizontalAdvance(minLabel)});
-        const int leftMargin = std::max(36, labelWidth + 6);
-        const QRectF plotRect = rect().adjusted(leftMargin, 12, -10, -28);
+        const QRectF plotRect = rect().adjusted(
+            kSessionViewerPlotLeftMargin,
+            kSessionViewerPlotTopMargin,
+            -kSessionViewerPlotRightMargin,
+            -kSessionViewerPlotBottomMargin);
         painter.setPen(QPen(QColor("#e3e8ef"), 1));
         for (int i = 0; i <= 10; ++i)
         {
@@ -804,27 +794,35 @@ protected:
             return;
         }
 
-        if (current_index_ >= startIndex && current_index_ < (startIndex + count))
-        {
-            const int relativeIndex = current_index_ - startIndex;
-            const qreal ratio = count == 1 ? 0.0 : static_cast<qreal>(relativeIndex) / static_cast<qreal>(count - 1);
-            const qreal x = plotRect.left() + ratio * plotRect.width();
-            painter.setPen(QPen(QColor("#94a3b8"), 1, Qt::DashLine));
-            painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
-        }
-
         drawSeries(painter, plotRect, startIndex, count, minValue, maxValue);
 
         painter.setPen(QColor("#5e6b78"));
-        painter.drawText(QRectF(4, plotRect.top() - 2, leftMargin - 6, fm.height()), Qt::AlignRight | Qt::AlignVCenter, maxLabel);
-        painter.drawText(QRectF(4, plotRect.center().y() - fm.height() * 0.5, leftMargin - 6, fm.height()), Qt::AlignRight | Qt::AlignVCenter, midLabel);
-        painter.drawText(QRectF(4, plotRect.bottom() - fm.height() + 2, leftMargin - 6, fm.height()), Qt::AlignRight | Qt::AlignVCenter, minLabel);
+        painter.drawText(QRectF(4, plotRect.top() - 2, kSessionViewerPlotLeftMargin - 8, fm.height()), Qt::AlignRight | Qt::AlignVCenter, maxLabel);
+        painter.drawText(QRectF(4, plotRect.center().y() - fm.height() * 0.5, kSessionViewerPlotLeftMargin - 8, fm.height()), Qt::AlignRight | Qt::AlignVCenter, midLabel);
+        painter.drawText(QRectF(4, plotRect.bottom() - fm.height() + 2, kSessionViewerPlotLeftMargin - 8, fm.height()), Qt::AlignRight | Qt::AlignVCenter, minLabel);
         painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 4, plotRect.width() * 0.55, 16),
                          Qt::AlignLeft | Qt::AlignVCenter,
                          QString("%1-%2 / %3").arg(startIndex + 1).arg(startIndex + count).arg(values_.size()));
         painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 4, plotRect.width(), 16),
                          Qt::AlignRight | Qt::AlignVCenter,
                          QStringLiteral("%1 samples").arg(count));
+
+        if (current_index_ >= startIndex && current_index_ < (startIndex + count) && std::isfinite(values_.at(current_index_)))
+        {
+            const int relativeIndex = current_index_ - startIndex;
+            const qreal x = plotRect.left() + (count == 1 ? 0.0 : (static_cast<qreal>(relativeIndex) / static_cast<qreal>(count - 1)) * plotRect.width());
+            const qreal normalized = (values_.at(current_index_) - minValue) / std::max(1e-9, maxValue - minValue);
+            const qreal y = plotRect.bottom() - normalized * plotRect.height();
+            drawCurrentPointGuides(
+                painter,
+                plotRect,
+                QPointF(x, y),
+                QString::number(current_index_ + 1),
+                formatGuideValue(values_.at(current_index_), 3, unit_));
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(line_color_);
+            painter.drawEllipse(QPointF(x, y), 3.0, 3.0);
+        }
     }
 
 private:
@@ -873,6 +871,11 @@ private:
     {
         QPolygonF segment;
         painter.setPen(QPen(line_color_, 1.5));
+        if (plot_mode_ == PlotMode::Scatter)
+        {
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(line_color_);
+        }
         for (int relativeIndex = 0; relativeIndex < count; ++relativeIndex)
         {
             const int i = startIndex + relativeIndex;
@@ -890,13 +893,20 @@ private:
             const qreal x = plotRect.left() + (count == 1 ? 0.0 : (static_cast<qreal>(relativeIndex) / static_cast<qreal>(count - 1)) * plotRect.width());
             const qreal normalized = (value - minValue) / std::max(1e-9, maxValue - minValue);
             const qreal y = plotRect.bottom() - normalized * plotRect.height();
-            segment.append(QPointF(x, y));
+            if (plot_mode_ == PlotMode::Scatter)
+            {
+                painter.drawEllipse(QPointF(x, y), 2.2, 2.2);
+            }
+            else
+            {
+                segment.append(QPointF(x, y));
+            }
         }
-        if (segment.size() >= 2)
+        if (plot_mode_ == PlotMode::Polyline && segment.size() >= 2)
         {
             painter.drawPolyline(segment);
         }
-        else if (segment.size() == 1)
+        else if (plot_mode_ == PlotMode::Polyline && segment.size() == 1)
         {
             painter.drawPoint(segment.first());
         }
@@ -907,6 +917,7 @@ private:
             const qreal x = plotRect.left() + (count == 1 ? 0.0 : (static_cast<qreal>(relativeIndex) / static_cast<qreal>(count - 1)) * plotRect.width());
             const qreal normalized = (values_.at(current_index_) - minValue) / std::max(1e-9, maxValue - minValue);
             const qreal y = plotRect.bottom() - normalized * plotRect.height();
+            painter.setPen(Qt::NoPen);
             painter.setBrush(line_color_);
             painter.drawEllipse(QPointF(x, y), 3.0, 3.0);
         }
@@ -914,8 +925,10 @@ private:
 
     QColor line_color_;
     QString empty_text_;
+    QString unit_;
     QVector<double> values_;
     int current_index_;
+    PlotMode plot_mode_;
     int view_start_index_;
     int view_count_;
 };
@@ -1138,7 +1151,11 @@ void SessionViewerWindow::setupUi()
     peakHeaderLayout->setSpacing(8);
     waveform_peak_plot_title_ = new QLabel(this);
     waveform_peak_plot_title_->setObjectName("fieldLabel");
-    peakHeaderLayout->addWidget(waveform_peak_plot_title_, 1, Qt::AlignVCenter | Qt::AlignLeft);
+    peakHeaderLayout->addWidget(waveform_peak_plot_title_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    auto *waveformPeakRangeAxis = new RangeSelectionAxisWidget(this);
+    waveformPeakRangeAxis->setCompactMode(true);
+    waveformPeakRangeAxis->setMinimumWidth(240);
+    peakHeaderLayout->addWidget(waveformPeakRangeAxis, 1, Qt::AlignVCenter);
     waveform_peak_mode_btn_ = new QPushButton(this);
     peakHeaderLayout->addWidget(waveform_peak_mode_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
     waveformLayout->addLayout(peakHeaderLayout);
@@ -1146,30 +1163,40 @@ void SessionViewerWindow::setupUi()
     waveform_peak_plot_ = new SessionPeakPlotWidget(this);
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPlotMode(
         waveform_peak_scatter_mode_ ? SessionPeakPlotWidget::PlotMode::Scatter : SessionPeakPlotWidget::PlotMode::Polyline);
-    auto *waveformPeakRangeAxis = new RangeSelectionAxisWidget(this);
     connect(waveform_peak_mode_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onTogglePeakPlotModeClicked);
     waveformLayout->addWidget(waveform_peak_plot_, 1);
-    waveformLayout->addWidget(waveformPeakRangeAxis);
 
     temperature_plot_title_ = new QLabel(this);
     temperature_plot_title_->setObjectName("fieldLabel");
     waveformLayout->addWidget(temperature_plot_title_);
     temperature_plot_ = new SingleSeriesTrendPlotWidget(QColor("#d14343"),
-        is_english_ ? "No temperature series" : "没有温度趋势数据", this);
+        is_english_ ? "No temperature series" : "没有温度趋势数据",
+        QStringLiteral("°C"),
+        this);
+    static_cast<SingleSeriesTrendPlotWidget*>(temperature_plot_)->setPlotMode(
+        waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
     waveformLayout->addWidget(temperature_plot_);
 
     humidity_plot_title_ = new QLabel(this);
     humidity_plot_title_->setObjectName("fieldLabel");
     waveformLayout->addWidget(humidity_plot_title_);
     humidity_plot_ = new SingleSeriesTrendPlotWidget(QColor("#2f7fd3"),
-        is_english_ ? "No humidity series" : "没有湿度趋势数据", this);
+        is_english_ ? "No humidity series" : "没有湿度趋势数据",
+        QStringLiteral("%RH"),
+        this);
+    static_cast<SingleSeriesTrendPlotWidget*>(humidity_plot_)->setPlotMode(
+        waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
     waveformLayout->addWidget(humidity_plot_);
 
     pressure_plot_title_ = new QLabel(this);
     pressure_plot_title_->setObjectName("fieldLabel");
     waveformLayout->addWidget(pressure_plot_title_);
     pressure_plot_ = new SingleSeriesTrendPlotWidget(QColor("#2f9d57"),
-        is_english_ ? "No pressure series" : "没有气压趋势数据", this);
+        is_english_ ? "No pressure series" : "没有气压趋势数据",
+        QStringLiteral("hPa"),
+        this);
+    static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setPlotMode(
+        waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
     waveformLayout->addWidget(pressure_plot_);
 
     environment_info_label_ = new QLabel(this);
@@ -1943,6 +1970,12 @@ void SessionViewerWindow::onTogglePeakPlotModeClicked()
     updatePeakPlotModeButtonText();
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPlotMode(
         waveform_peak_scatter_mode_ ? SessionPeakPlotWidget::PlotMode::Scatter : SessionPeakPlotWidget::PlotMode::Polyline);
+    static_cast<SingleSeriesTrendPlotWidget*>(temperature_plot_)->setPlotMode(
+        waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
+    static_cast<SingleSeriesTrendPlotWidget*>(humidity_plot_)->setPlotMode(
+        waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
+    static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setPlotMode(
+        waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
 }
 
 bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)

@@ -246,9 +246,6 @@ public:
         , plot_mode_(PlotMode::Scatter)
         , view_start_index_(0)
         , view_count_(0)
-        , dragging_(false)
-        , drag_start_x_(0)
-        , drag_origin_start_(0)
     {
         setMinimumHeight(150);
         setMaximumHeight(190);
@@ -399,110 +396,6 @@ protected:
                          QString("%1 frames").arg(count));
     }
 
-    void wheelEvent(QWheelEvent *event) override
-    {
-        if (peak_values_.size() <= 1)
-        {
-            return;
-        }
-
-        const int totalCount = peak_values_.size();
-        const int oldCount = visibleCount();
-        int newCount = oldCount;
-        if (event->angleDelta().y() > 0)
-        {
-            newCount = std::max(20, static_cast<int>(std::floor(oldCount * 0.8)));
-        }
-        else if (event->angleDelta().y() < 0)
-        {
-            newCount = std::min(totalCount, static_cast<int>(std::ceil(oldCount * 1.25)));
-        }
-
-        if (newCount == oldCount)
-        {
-            event->accept();
-            return;
-        }
-
-        if (newCount >= totalCount)
-        {
-            view_start_index_ = 0;
-            view_count_ = 0;
-            notifyViewChanged();
-            update();
-            event->accept();
-            return;
-        }
-
-        const qreal ratio = width() <= 1 ? 0.5 : std::clamp(event->position().x() / static_cast<qreal>(width()), 0.0, 1.0);
-        const double anchorIndex = visibleStartIndex() + ratio * std::max(0, oldCount - 1);
-        view_count_ = newCount;
-        view_start_index_ = static_cast<int>(std::llround(anchorIndex - ratio * std::max(0, newCount - 1)));
-        normalizeView(false);
-        notifyViewChanged();
-        update();
-        event->accept();
-    }
-
-    void mousePressEvent(QMouseEvent *event) override
-    {
-        if (event->button() == Qt::LeftButton && peak_values_.size() > visibleCount())
-        {
-            dragging_ = true;
-            drag_start_x_ = event->position().x();
-            drag_origin_start_ = visibleStartIndex();
-            setCursor(Qt::ClosedHandCursor);
-            event->accept();
-            return;
-        }
-        QWidget::mousePressEvent(event);
-    }
-
-    void mouseMoveEvent(QMouseEvent *event) override
-    {
-        if (dragging_ && peak_values_.size() > visibleCount())
-        {
-            const qreal widthPixels = std::max(1.0, static_cast<qreal>(width()));
-            const qreal deltaRatio = (event->position().x() - drag_start_x_) / widthPixels;
-            const int deltaFrames = static_cast<int>(std::llround(deltaRatio * visibleCount()));
-            view_start_index_ = drag_origin_start_ - deltaFrames;
-            normalizeView(false);
-            notifyViewChanged();
-            update();
-            event->accept();
-            return;
-        }
-        QWidget::mouseMoveEvent(event);
-    }
-
-    void mouseReleaseEvent(QMouseEvent *event) override
-    {
-        if (event->button() == Qt::LeftButton && dragging_)
-        {
-            dragging_ = false;
-            unsetCursor();
-            event->accept();
-            return;
-        }
-        QWidget::mouseReleaseEvent(event);
-    }
-
-    void mouseDoubleClickEvent(QMouseEvent *event) override
-    {
-        if (event->button() == Qt::LeftButton)
-        {
-            view_start_index_ = 0;
-            view_count_ = 0;
-            dragging_ = false;
-            unsetCursor();
-            notifyViewChanged();
-            update();
-            event->accept();
-            return;
-        }
-        QWidget::mouseDoubleClickEvent(event);
-    }
-
 private:
     int visibleStartIndex() const
     {
@@ -564,9 +457,6 @@ private:
     PlotMode plot_mode_;
     int view_start_index_;
     int view_count_;
-    bool dragging_;
-    qreal drag_start_x_;
-    int drag_origin_start_;
     std::function<void(int, int, int)> on_view_changed_;
 };
 

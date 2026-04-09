@@ -16,12 +16,12 @@ public:
         , total_count_(0)
         , start_index_(0)
         , visible_count_(0)
+        , compact_mode_(false)
         , drag_mode_(DragMode::None)
         , drag_anchor_index_(0)
         , drag_anchor_count_(0)
     {
-        setMinimumHeight(42);
-        setMaximumHeight(54);
+        applySizing();
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         setMouseTracking(true);
     }
@@ -29,6 +29,18 @@ public:
     void setRangeChangedCallback(std::function<void(int, int)> callback)
     {
         on_range_changed_ = std::move(callback);
+    }
+
+    void setCompactMode(bool compact)
+    {
+        if (compact_mode_ == compact)
+        {
+            return;
+        }
+
+        compact_mode_ = compact;
+        applySizing();
+        update();
     }
 
     void setRange(int totalCount, int startIndex, int visibleCount)
@@ -64,7 +76,9 @@ protected:
         painter.setRenderHint(QPainter::Antialiasing, true);
         painter.fillRect(rect(), QColor("#ffffff"));
 
-        const QRectF trackRect = rect().adjusted(10, 16, -10, -16);
+        const QRectF trackRect = compact_mode_
+            ? rect().adjusted(8, 11, -8, -5)
+            : rect().adjusted(10, 16, -10, -16);
         painter.setPen(Qt::NoPen);
         painter.setBrush(QColor("#e7edf5"));
         painter.drawRoundedRect(trackRect, 4, 4);
@@ -92,13 +106,14 @@ protected:
         painter.drawRoundedRect(rightHandle, 3, 3);
 
         painter.setPen(QColor("#5e6b78"));
-        painter.drawText(QRectF(trackRect.left(), 0, trackRect.width() * 0.5, 14),
+        const qreal labelHeight = compact_mode_ ? 10.0 : 14.0;
+        painter.drawText(QRectF(trackRect.left(), 0, trackRect.width() * 0.5, labelHeight),
                          Qt::AlignLeft | Qt::AlignVCenter,
                          QString("%1").arg(startIndex + 1));
-        painter.drawText(QRectF(trackRect.left(), 0, trackRect.width(), 14),
+        painter.drawText(QRectF(trackRect.left(), 0, trackRect.width(), labelHeight),
                          Qt::AlignCenter | Qt::AlignVCenter,
                          QString("%1-%2").arg(startIndex + 1).arg(endIndex + 1));
-        painter.drawText(QRectF(trackRect.left(), 0, trackRect.width(), 14),
+        painter.drawText(QRectF(trackRect.left(), 0, trackRect.width(), labelHeight),
                          Qt::AlignRight | Qt::AlignVCenter,
                          QString("%1").arg(total_count_));
     }
@@ -111,13 +126,20 @@ protected:
             return;
         }
 
-        const QRectF trackRect = rect().adjusted(10, 16, -10, -16);
+        const QRectF trackRect = compact_mode_
+            ? rect().adjusted(8, 11, -8, -5)
+            : rect().adjusted(10, 16, -10, -16);
         const int startIndex = currentStartIndex();
         const int endIndex = currentEndIndex();
         const qreal leftX = positionForIndex(startIndex, trackRect);
         const qreal rightX = positionForIndex(endIndex, trackRect);
-        const QRectF leftHandle(leftX - 8, trackRect.top() - 6, 16, trackRect.height() + 12);
-        const QRectF rightHandle(rightX - 8, trackRect.top() - 6, 16, trackRect.height() + 12);
+        const qreal handleTouchWidth = compact_mode_ ? 14.0 : 16.0;
+        const qreal handleTouchTopInset = compact_mode_ ? 4.0 : 6.0;
+        const qreal handleTouchExtraHeight = compact_mode_ ? 8.0 : 12.0;
+        const QRectF leftHandle(leftX - handleTouchWidth * 0.5, trackRect.top() - handleTouchTopInset,
+            handleTouchWidth, trackRect.height() + handleTouchExtraHeight);
+        const QRectF rightHandle(rightX - handleTouchWidth * 0.5, trackRect.top() - handleTouchTopInset,
+            handleTouchWidth, trackRect.height() + handleTouchExtraHeight);
         const QRectF selectionRect(leftX, trackRect.top(), std::max(8.0, rightX - leftX), trackRect.height());
 
         if (leftHandle.contains(event->position()))
@@ -153,7 +175,9 @@ protected:
             return;
         }
 
-        const QRectF trackRect = rect().adjusted(10, 16, -10, -16);
+        const QRectF trackRect = compact_mode_
+            ? rect().adjusted(8, 11, -8, -5)
+            : rect().adjusted(10, 16, -10, -16);
         if (drag_mode_ == DragMode::None)
         {
             QWidget::mouseMoveEvent(event);
@@ -213,6 +237,20 @@ protected:
     }
 
 private:
+    void applySizing()
+    {
+        if (compact_mode_)
+        {
+            setMinimumHeight(28);
+            setMaximumHeight(32);
+        }
+        else
+        {
+            setMinimumHeight(42);
+            setMaximumHeight(54);
+        }
+    }
+
     enum class DragMode
     {
         None,
@@ -298,6 +336,7 @@ private:
     int total_count_;
     int start_index_;
     int visible_count_;
+    bool compact_mode_;
     DragMode drag_mode_;
     int drag_anchor_index_;
     int drag_anchor_count_;
