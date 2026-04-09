@@ -588,6 +588,9 @@ void TcpWavePanel::setupUi()
     panel_title_label_ = new QLabel(this);
     panel_title_label_->setObjectName("sectionTitleLabel");
     control_layout_->addWidget(panel_title_label_, 0, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    frame_rate_label_ = new QLabel(this);
+    frame_rate_label_->setObjectName("fieldLabel");
+    control_layout_->addWidget(frame_rate_label_, 0, 1, Qt::AlignVCenter | Qt::AlignLeft);
 
     auto *hostRowLayout = new QHBoxLayout();
     hostRowLayout->setContentsMargins(0, 0, 0, 0);
@@ -602,7 +605,7 @@ void TcpWavePanel::setupUi()
     host_edit_->setMinimumWidth(90);
     host_edit_->setMaximumWidth(110);
     hostRowLayout->addWidget(host_edit_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    control_layout_->addLayout(hostRowLayout, 0, 1, Qt::AlignVCenter | Qt::AlignLeft);
+    control_layout_->addLayout(hostRowLayout, 0, 2, Qt::AlignVCenter | Qt::AlignLeft);
 
     auto *portRowLayout = new QHBoxLayout();
     portRowLayout->setContentsMargins(0, 0, 0, 0);
@@ -617,21 +620,21 @@ void TcpWavePanel::setupUi()
     port_spin_->setFixedHeight(kTcpControlHeight);
     port_spin_->setFixedWidth(108);
     portRowLayout->addWidget(port_spin_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    control_layout_->addLayout(portRowLayout, 0, 2, Qt::AlignVCenter | Qt::AlignLeft);
+    control_layout_->addLayout(portRowLayout, 0, 3, Qt::AlignVCenter | Qt::AlignLeft);
 
     connect_button_ = new QPushButton(this);
     connect_button_->setObjectName("compactTcpStartButton");
     connect_button_->setFixedHeight(kTcpButtonHeight);
     connect(connect_button_, &QPushButton::clicked, this, &TcpWavePanel::onToggleConnectionClicked);
-    control_layout_->addWidget(connect_button_, 0, 4, Qt::AlignVCenter | Qt::AlignLeft);
+    control_layout_->addWidget(connect_button_, 0, 5, Qt::AlignVCenter | Qt::AlignLeft);
 
     status_label_ = new QLabel(this);
     status_label_->setWordWrap(true);
-    control_layout_->addWidget(status_label_, 1, 0, 1, 5);
+    control_layout_->addWidget(status_label_, 1, 0, 1, 6);
 
     hint_label_ = new QLabel(this);
     hint_label_->setWordWrap(true);
-    control_layout_->addWidget(hint_label_, 2, 0, 1, 5);
+    control_layout_->addWidget(hint_label_, 2, 0, 1, 6);
 
     mainLayout->addLayout(control_layout_);
 
@@ -692,9 +695,6 @@ void TcpWavePanel::setupUi()
     peak_title_label_ = new QLabel(this);
     peak_title_label_->setObjectName("sectionTitleLabel");
     peakHeaderLayout->addWidget(peak_title_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    frame_rate_label_ = new QLabel(this);
-    frame_rate_label_->setObjectName("fieldLabel");
-    peakHeaderLayout->addWidget(frame_rate_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     peak_mode_button_ = new QPushButton(this);
     peak_mode_button_->setObjectName("compactTcpButton");
     peak_mode_button_->setFixedHeight(kTcpButtonHeight);
@@ -868,7 +868,7 @@ void TcpWavePanel::attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox)
     splitRowLayout->setSpacing(1);
     splitRowLayout->addWidget(label, 0, Qt::AlignVCenter | Qt::AlignRight);
     splitRowLayout->addWidget(spinBox, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    control_layout_->addLayout(splitRowLayout, 0, 3, Qt::AlignVCenter | Qt::AlignLeft);
+    control_layout_->addLayout(splitRowLayout, 0, 4, Qt::AlignVCenter | Qt::AlignLeft);
 }
 
 QString TcpWavePanel::host() const
