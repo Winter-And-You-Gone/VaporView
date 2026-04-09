@@ -22,6 +22,7 @@
 #include <QScrollArea>
 #include <QResizeEvent>
 #include <QSettings>
+#include <QShowEvent>
 #include <QSignalBlocker>
 #include <QSlider>
 #include <QSpinBox>
@@ -743,7 +744,6 @@ void SessionViewerWindow::setupUi()
     createSummaryRow(sensor_rows_title_, sensor_rows_value_);
     createSummaryRow(waveform_files_title_, waveform_files_value_);
     createSummaryRow(waveform_frames_title_, waveform_frames_value_);
-    relayoutSummaryFields();
     upperLayout->addWidget(summary_group_);
 
     waveform_group_ = new QGroupBox(this);
@@ -864,6 +864,12 @@ void SessionViewerWindow::resizeEvent(QResizeEvent *event)
     relayoutSummaryFields();
 }
 
+void SessionViewerWindow::showEvent(QShowEvent *event)
+{
+    QMainWindow::showEvent(event);
+    relayoutSummaryFields();
+}
+
 void SessionViewerWindow::updateTexts()
 {
     setWindowTitle(is_english_ ? "Data Viewer" : "数据查看器");
@@ -941,7 +947,7 @@ void SessionViewerWindow::relayoutSummaryFields()
         {waveform_frames_title_, waveform_frames_value_},
     };
 
-    const int availableWidth = std::max(240, summary_group_->contentsRect().width());
+    const int availableWidth = std::max({240, summary_group_->width(), summary_group_->contentsRect().width()});
     int pairColumns = availableWidth >= 1400 ? 4 : (availableWidth >= 980 ? 3 : (availableWidth >= 640 ? 2 : 1));
     pairColumns = std::clamp(pairColumns, 1, static_cast<int>(fields.size()));
 

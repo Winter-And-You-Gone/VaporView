@@ -16,6 +16,7 @@ class QTableWidget;
 class QWidget;
 class QGridLayout;
 class QResizeEvent;
+class QShowEvent;
 
 class SessionViewerWindow : public QMainWindow
 {
@@ -28,6 +29,7 @@ public:
 
 protected:
     void resizeEvent(QResizeEvent *event) override;
+    void showEvent(QShowEvent *event) override;
 
 private slots:
     void onChooseSessionClicked();
