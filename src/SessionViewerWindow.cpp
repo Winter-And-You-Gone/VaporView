@@ -144,6 +144,55 @@ QStringList parseCsvLine(const QString& line)
     fields.push_back(current);
     return fields;
 }
+
+int findHeaderIndex(const QStringList& headers, const QStringList& candidates)
+{
+    for (const QString& candidate : candidates)
+    {
+        const int index = headers.indexOf(candidate);
+        if (index >= 0)
+        {
+            return index;
+        }
+    }
+    return -1;
+}
+
+bool parseBooleanCsvField(const QString& value, bool defaultValue = false)
+{
+    const QString normalized = value.trimmed().toLower();
+    if (normalized.isEmpty())
+    {
+        return defaultValue;
+    }
+    if (normalized == QStringLiteral("true") || normalized == QStringLiteral("1") || normalized == QStringLiteral("yes"))
+    {
+        return true;
+    }
+    if (normalized == QStringLiteral("false") || normalized == QStringLiteral("0") || normalized == QStringLiteral("no"))
+    {
+        return false;
+    }
+    return defaultValue;
+}
+
+double parseOptionalDouble(const QString& value)
+{
+    bool ok = false;
+    const double parsed = value.toDouble(&ok);
+    return ok ? parsed : std::numeric_limits<double>::quiet_NaN();
+}
+
+QString formatOptionalSeriesValue(double value, int decimals, const QString& unit = QString())
+{
+    if (!std::isfinite(value))
+    {
+        return QStringLiteral("---");
+    }
+    return unit.isEmpty()
+        ? QString::number(value, 'f', decimals)
+        : QStringLiteral("%1 %2").arg(QString::number(value, 'f', decimals), unit);
+}
 }
 
 class SessionWavePlotWidget : public QWidget
@@ -593,6 +642,170 @@ private:
     std::function<void(int, int, int)> on_view_changed_;
 };
 
+class EnvironmentTrendPlotWidget : public QWidget
+{
+public:
+    explicit EnvironmentTrendPlotWidget(QWidget *parent = nullptr)
+        : QWidget(parent)
+        , current_index_(-1)
+    {
+        setMinimumHeight(180);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    }
+
+    void setSeries(const QVector<double>& temperature,
+                   const QVector<double>& humidity,
+                   const QVector<double>& pressure)
+    {
+        temperature_ = temperature;
+        humidity_ = humidity;
+        pressure_ = pressure;
+        if (current_index_ >= sampleCount())
+        {
+            current_index_ = -1;
+        }
+        update();
+    }
+
+    void setCurrentIndex(int index)
+    {
+        current_index_ = index;
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        QWidget::paintEvent(event);
+
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.fillRect(rect(), QColor("#ffffff"));
+
+        const QRectF plotRect = rect().adjusted(16, 12, -10, -28);
+        painter.setPen(QPen(QColor("#e3e8ef"), 1));
+        for (int i = 0; i <= 10; ++i)
+        {
+            const qreal x = plotRect.left() + plotRect.width() * i / 10.0;
+            painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
+        }
+        for (int i = 0; i <= 6; ++i)
+        {
+            const qreal y = plotRect.top() + plotRect.height() * i / 6.0;
+            painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
+        }
+
+        painter.setPen(QPen(QColor("#cfd7e3"), 1));
+        painter.drawRect(plotRect);
+
+        const int totalSamples = sampleCount();
+        if (totalSamples <= 0)
+        {
+            painter.setPen(QColor("#7a8899"));
+            painter.drawText(plotRect, Qt::AlignCenter, tr("No environmental series"));
+            return;
+        }
+
+        if (current_index_ >= 0 && current_index_ < totalSamples)
+        {
+            const qreal ratio = totalSamples == 1 ? 0.0 : static_cast<qreal>(current_index_) / static_cast<qreal>(totalSamples - 1);
+            const qreal x = plotRect.left() + ratio * plotRect.width();
+            painter.setPen(QPen(QColor("#94a3b8"), 1, Qt::DashLine));
+            painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
+        }
+
+        drawSeries(painter, plotRect, temperature_, QColor("#d14343"));
+        drawSeries(painter, plotRect, humidity_, QColor("#2f7fd3"));
+        drawSeries(painter, plotRect, pressure_, QColor("#2f9d57"));
+
+        painter.setPen(QColor("#5e6b78"));
+        painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 4, plotRect.width(), 16),
+                         Qt::AlignRight | Qt::AlignVCenter,
+                         QStringLiteral("%1 samples").arg(totalSamples));
+    }
+
+private:
+    int sampleCount() const
+    {
+        return std::max({temperature_.size(), humidity_.size(), pressure_.size()});
+    }
+
+    void drawSeries(QPainter& painter, const QRectF& plotRect, const QVector<double>& values, const QColor& color)
+    {
+        QVector<int> validIndices;
+        validIndices.reserve(values.size());
+        double minValue = std::numeric_limits<double>::infinity();
+        double maxValue = -std::numeric_limits<double>::infinity();
+        for (int i = 0; i < values.size(); ++i)
+        {
+            const double value = values.at(i);
+            if (!std::isfinite(value))
+            {
+                continue;
+            }
+            validIndices.push_back(i);
+            minValue = std::min(minValue, value);
+            maxValue = std::max(maxValue, value);
+        }
+
+        if (validIndices.isEmpty())
+        {
+            return;
+        }
+
+        if (std::fabs(maxValue - minValue) < 1e-9)
+        {
+            const double pad = std::max(1e-6, std::fabs(maxValue) * 0.05 + 1e-6);
+            minValue -= pad;
+            maxValue += pad;
+        }
+
+        QPolygonF segment;
+        const int totalSamples = std::max(1, sampleCount());
+        painter.setPen(QPen(color, 1.5));
+        for (int i = 0; i < values.size(); ++i)
+        {
+            const double value = values.at(i);
+            if (!std::isfinite(value))
+            {
+                if (segment.size() >= 2)
+                {
+                    painter.drawPolyline(segment);
+                }
+                segment.clear();
+                continue;
+            }
+
+            const qreal x = plotRect.left() + (totalSamples == 1 ? 0.0 : (static_cast<qreal>(i) / static_cast<qreal>(totalSamples - 1)) * plotRect.width());
+            const qreal normalized = (value - minValue) / std::max(1e-9, maxValue - minValue);
+            const qreal y = plotRect.bottom() - normalized * plotRect.height();
+            segment.append(QPointF(x, y));
+        }
+        if (segment.size() >= 2)
+        {
+            painter.drawPolyline(segment);
+        }
+        else if (segment.size() == 1)
+        {
+            painter.drawPoint(segment.first());
+        }
+
+        if (current_index_ >= 0 && current_index_ < values.size() && std::isfinite(values.at(current_index_)))
+        {
+            const qreal x = plotRect.left() + (totalSamples == 1 ? 0.0 : (static_cast<qreal>(current_index_) / static_cast<qreal>(totalSamples - 1)) * plotRect.width());
+            const qreal normalized = (values.at(current_index_) - minValue) / std::max(1e-9, maxValue - minValue);
+            const qreal y = plotRect.bottom() - normalized * plotRect.height();
+            painter.setBrush(color);
+            painter.drawEllipse(QPointF(x, y), 3.0, 3.0);
+        }
+    }
+
+    QVector<double> temperature_;
+    QVector<double> humidity_;
+    QVector<double> pressure_;
+    int current_index_;
+};
+
 SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     : QMainWindow(parent)
     , central_widget_(nullptr)
@@ -628,6 +841,9 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , waveform_peak_plot_title_(nullptr)
     , waveform_peak_mode_btn_(nullptr)
     , waveform_peak_plot_(nullptr)
+    , environment_plot_title_(nullptr)
+    , environment_info_label_(nullptr)
+    , environment_plot_(nullptr)
     , csv_group_(nullptr)
     , csv_info_label_(nullptr)
     , csv_table_(nullptr)
@@ -640,6 +856,9 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , end_time_utc_()
     , csv_headers_()
     , csv_timestamps_us_()
+    , temperature_values_()
+    , humidity_values_()
+    , pressure_values_()
     , waveform_segments_()
     , waveform_peak_values_()
     , is_english_(false)
@@ -814,6 +1033,18 @@ void SessionViewerWindow::setupUi()
     connect(waveform_peak_mode_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onTogglePeakPlotModeClicked);
     waveformLayout->addWidget(waveform_peak_plot_, 1);
     waveformLayout->addWidget(waveformPeakRangeAxis);
+
+    environment_plot_title_ = new QLabel(this);
+    environment_plot_title_->setObjectName("fieldLabel");
+    waveformLayout->addWidget(environment_plot_title_);
+
+    environment_info_label_ = new QLabel(this);
+    environment_info_label_->setWordWrap(true);
+    environment_info_label_->setObjectName("fieldLabel");
+    waveformLayout->addWidget(environment_info_label_);
+
+    environment_plot_ = new EnvironmentTrendPlotWidget(this);
+    waveformLayout->addWidget(environment_plot_, 1);
     upperLayout->addWidget(waveform_group_, 1);
 
     summaryWaveSplitter->addWidget(upperWidget);
@@ -880,6 +1111,7 @@ void SessionViewerWindow::updateTexts()
     waveform_group_->setTitle(is_english_ ? "Normalized Second Harmonic" : "归一化二次谐波");
     waveform_plot_title_->setText(is_english_ ? "Current Frame Waveform" : "当前帧波形");
     waveform_peak_plot_title_->setText(is_english_ ? "Peak Value of Each Frame" : "每帧峰值");
+    environment_plot_title_->setText(is_english_ ? "Temperature / Humidity / Pressure" : "温度 / 湿度 / 气压");
     updatePeakPlotModeButtonText();
     csv_group_->setTitle(is_english_ ? "Sensors CSV" : "传感器 CSV");
     session_name_title_->setText(is_english_ ? "Session:" : "会话:");
@@ -905,6 +1137,7 @@ void SessionViewerWindow::updateTexts()
                                   : "请选择一个 session 目录来查看录制的 CSV 和波形文件。");
         csv_info_label_->setText(is_english_ ? "No CSV loaded" : "尚未加载 CSV");
         frame_info_label_->setText(is_english_ ? "No waveform frame loaded" : "尚未加载波形帧");
+        environment_info_label_->setText(is_english_ ? "No environmental series loaded" : "尚未加载环境趋势数据");
     }
     else
     {
@@ -1017,6 +1250,9 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     end_time_utc_.clear();
     csv_headers_.clear();
     csv_timestamps_us_.clear();
+    temperature_values_.clear();
+    humidity_values_.clear();
+    pressure_values_.clear();
     waveform_segments_.clear();
     waveform_peak_values_.clear();
     total_sensor_rows_ = 0;
@@ -1031,8 +1267,11 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     static_cast<SessionWavePlotWidget*>(waveform_plot_)->setSamples({});
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPeakValues({});
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setCurrentFrame(-1);
+    static_cast<EnvironmentTrendPlotWidget*>(environment_plot_)->setSeries({}, {}, {});
+    static_cast<EnvironmentTrendPlotWidget*>(environment_plot_)->setCurrentIndex(-1);
     frame_info_label_->setText(is_english_ ? "No waveform frame loaded" : "尚未加载波形帧");
     csv_info_label_->setText(is_english_ ? "No CSV loaded" : "尚未加载 CSV");
+    environment_info_label_->setText(is_english_ ? "No environmental series loaded" : "尚未加载环境趋势数据");
     updateSummaryLabels();
     updateWaveformControls();
     if (clearPathEdit && session_path_edit_)
@@ -1224,6 +1463,11 @@ bool SessionViewerWindow::loadSensorsCsv()
     }
 
     csv_headers_ = parseCsvLine(stream.readLine());
+    const int tempIndex = findHeaderIndex(csv_headers_, {QStringLiteral("temp_c")});
+    const int humidityIndex = findHeaderIndex(csv_headers_, {QStringLiteral("humidity_rh")});
+    const int pressureIndex = findHeaderIndex(csv_headers_, {QStringLiteral("baro_hpa"), QStringLiteral("baro_pa")});
+    const int thValidIndex = findHeaderIndex(csv_headers_, {QStringLiteral("th_valid")});
+    const int baroValidIndex = findHeaderIndex(csv_headers_, {QStringLiteral("baro_valid")});
     QStringList displayHeaders;
     displayHeaders.reserve(csv_headers_.size() + 2);
     displayHeaders << (is_english_ ? "No." : "序号");
@@ -1236,6 +1480,9 @@ bool SessionViewerWindow::loadSensorsCsv()
 
     QVector<QStringList> rows;
     rows.reserve(static_cast<int>(std::min<quint64>(total_sensor_rows_ > 0 ? total_sensor_rows_ : 256ULL, 50000ULL)));
+    temperature_values_.clear();
+    humidity_values_.clear();
+    pressure_values_.clear();
     while (!stream.atEnd())
     {
         const QString line = stream.readLine();
@@ -1257,6 +1504,12 @@ bool SessionViewerWindow::loadSensorsCsv()
         {
             csv_timestamps_us_.last() = 0;
         }
+
+        const bool thValid = thValidIndex < 0 || parseBooleanCsvField(csvValueAt(fields, thValidIndex), true);
+        const bool baroValid = baroValidIndex < 0 || parseBooleanCsvField(csvValueAt(fields, baroValidIndex), true);
+        temperature_values_.push_back((tempIndex >= 0 && thValid) ? parseOptionalDouble(csvValueAt(fields, tempIndex)) : std::numeric_limits<double>::quiet_NaN());
+        humidity_values_.push_back((humidityIndex >= 0 && thValid) ? parseOptionalDouble(csvValueAt(fields, humidityIndex)) : std::numeric_limits<double>::quiet_NaN());
+        pressure_values_.push_back((pressureIndex >= 0 && baroValid) ? parseOptionalDouble(csvValueAt(fields, pressureIndex)) : std::numeric_limits<double>::quiet_NaN());
     }
 
     csv_table_->setRowCount(rows.size());
@@ -1285,6 +1538,20 @@ bool SessionViewerWindow::loadSensorsCsv()
         : "已从 %2 加载 %1 行 CSV")
         .arg(total_sensor_rows_)
         .arg(QDir::toNativeSeparators(sensors_csv_filename_)));
+
+    static_cast<EnvironmentTrendPlotWidget*>(environment_plot_)->setSeries(temperature_values_, humidity_values_, pressure_values_);
+    static_cast<EnvironmentTrendPlotWidget*>(environment_plot_)->setCurrentIndex(-1);
+    const bool hasEnvironmentSeries =
+        std::any_of(temperature_values_.cbegin(), temperature_values_.cend(), [](double value) { return std::isfinite(value); }) ||
+        std::any_of(humidity_values_.cbegin(), humidity_values_.cend(), [](double value) { return std::isfinite(value); }) ||
+        std::any_of(pressure_values_.cbegin(), pressure_values_.cend(), [](double value) { return std::isfinite(value); });
+    environment_info_label_->setText(hasEnvironmentSeries
+        ? (is_english_
+            ? "Red: temperature (°C), blue: humidity (%RH), green: pressure (hPa)."
+            : "红色: 温度(°C)，蓝色: 湿度(%RH)，绿色: 气压(hPa)。")
+        : (is_english_
+            ? "No temperature, humidity, or pressure columns were found in this CSV."
+            : "这个 CSV 中没有找到温度、湿度或气压列。"));
     return true;
 }
 
@@ -1613,6 +1880,7 @@ QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs)
     highlighted_csv_rows_ = rowsToHighlight;
     if (primaryRow >= 0)
     {
+        static_cast<EnvironmentTrendPlotWidget*>(environment_plot_)->setCurrentIndex(primaryRow);
         csv_table_->selectRow(primaryRow);
         csv_table_->setCurrentCell(primaryRow, 0, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
         const int topVisibleRow = rowsToHighlight.isEmpty() ? primaryRow : rowsToHighlight.first();
@@ -1621,6 +1889,22 @@ QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs)
             csv_table_->scrollToItem(item, QAbstractItemView::PositionAtTop);
         }
     }
+    else
+    {
+        static_cast<EnvironmentTrendPlotWidget*>(environment_plot_)->setCurrentIndex(-1);
+    }
     csv_table_->viewport()->update();
+
+    if (primaryRow >= 0)
+    {
+        environment_info_label_->setText(QString(is_english_
+            ? "Red: temperature %1, blue: humidity %2, green: pressure %3 (CSV row %4)."
+            : "红色: 温度 %1，蓝色: 湿度 %2，绿色: 气压 %3（CSV 第%4行）。")
+            .arg(formatOptionalSeriesValue(primaryRow < temperature_values_.size() ? temperature_values_.at(primaryRow) : std::numeric_limits<double>::quiet_NaN(), 2, QStringLiteral("°C")))
+            .arg(formatOptionalSeriesValue(primaryRow < humidity_values_.size() ? humidity_values_.at(primaryRow) : std::numeric_limits<double>::quiet_NaN(), 2, QStringLiteral("%RH")))
+            .arg(formatOptionalSeriesValue(primaryRow < pressure_values_.size() ? pressure_values_.at(primaryRow) : std::numeric_limits<double>::quiet_NaN(), 2, QStringLiteral("hPa")))
+            .arg(primaryRow + 1));
+    }
+
     return matchParts.join(is_english_ ? " | " : " | ");
 }

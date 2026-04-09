@@ -97,6 +97,9 @@ private:
     QLabel *waveform_peak_plot_title_;
     QPushButton *waveform_peak_mode_btn_;
     QWidget *waveform_peak_plot_;
+    QLabel *environment_plot_title_;
+    QLabel *environment_info_label_;
+    QWidget *environment_plot_;
     QGroupBox *csv_group_;
     QLabel *csv_info_label_;
     QTableWidget *csv_table_;
@@ -110,6 +113,9 @@ private:
     QString end_time_utc_;
     QStringList csv_headers_;
     QVector<quint64> csv_timestamps_us_;
+    QVector<double> temperature_values_;
+    QVector<double> humidity_values_;
+    QVector<double> pressure_values_;
     QVector<WaveformSegment> waveform_segments_;
     QVector<float> waveform_peak_values_;
     bool is_english_;
