@@ -172,7 +172,7 @@ protected:
         painter.fillRect(rect(), QColor("#ffffff"));
 
         const QRectF plotRect = rect().adjusted(48, 12, -10, -30);
-        painter.setPen(QPen(QColor("#1b6416"), 1));
+        painter.setPen(QPen(QColor("#f0d000"), 1));
         for (int i = 0; i <= 10; ++i)
         {
             const qreal x = plotRect.left() + plotRect.width() * i / 10.0;
@@ -184,12 +184,12 @@ protected:
             painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
         }
 
-        painter.setPen(QPen(QColor("#9ca39d"), 1));
+        painter.setPen(QPen(QColor("#c9b53a"), 1));
         painter.drawRect(plotRect);
 
         if (samples_.isEmpty())
         {
-            painter.setPen(QColor("#b8c4b8"));
+            painter.setPen(QColor("#64748b"));
             painter.drawText(plotRect, Qt::AlignCenter, tr("No waveform frame"));
             return;
         }
@@ -218,10 +218,10 @@ protected:
                                     plotRect.bottom() - normalized * plotRect.height()));
         }
 
-        painter.setPen(QPen(QColor("#f0d000"), 1.4));
+        painter.setPen(QPen(QColor("#1b6416"), 1.4));
         painter.drawPolyline(polyline);
 
-        painter.setPen(QColor("#d7d7d7"));
+        painter.setPen(QColor("#334155"));
         painter.drawText(QRectF(4, plotRect.top() - 2, 40, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 4));
         painter.drawText(QRectF(4, plotRect.center().y() - 8, 40, 16), Qt::AlignRight | Qt::AlignVCenter,
                          QString::number((maxValue + minValue) * 0.5, 'f', 4));
