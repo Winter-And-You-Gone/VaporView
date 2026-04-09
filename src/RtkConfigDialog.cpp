@@ -884,7 +884,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
 void RtkConfigDialog::setFontScale(int percent)
 {
-    if (percent < 85 || percent > 150)
+    if (percent < 70 || percent > 150)
     {
         percent = 100;
     }

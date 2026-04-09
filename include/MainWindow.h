@@ -371,6 +371,8 @@ private:
     QAction *exit_action_;
     QAction *about_action_;
     QActionGroup *font_scale_group_;
+    QAction *font_tiny_action_;
+    QAction *font_extra_small_action_;
     QAction *font_small_action_;
     QAction *font_normal_action_;
     QAction *font_large_action_;

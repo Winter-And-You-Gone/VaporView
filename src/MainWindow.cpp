@@ -1054,6 +1054,8 @@ MainWindow::MainWindow(QWidget *parent)
     , exit_action_(nullptr)
     , about_action_(nullptr)
     , font_scale_group_(nullptr)
+    , font_tiny_action_(nullptr)
+    , font_extra_small_action_(nullptr)
     , font_small_action_(nullptr)
     , font_normal_action_(nullptr)
     , font_large_action_(nullptr)
@@ -1147,7 +1149,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     QSettings settings("VaporView", "MainWindow");
     font_scale_percent_ = settings.value("font_scale_percent", 100).toInt();
-    if (font_scale_percent_ < 85 || font_scale_percent_ > 150)
+    if (font_scale_percent_ < 70 || font_scale_percent_ > 150)
     {
         font_scale_percent_ = 100;
     }
@@ -1412,7 +1414,7 @@ void MainWindow::applyStyleConfiguration()
 
 void MainWindow::setFontScale(int percent)
 {
-    if (percent < 85 || percent > 150 || font_scale_percent_ == percent)
+    if (percent < 70 || percent > 150 || font_scale_percent_ == percent)
     {
         return;
     }
@@ -1571,6 +1573,18 @@ void MainWindow::setupMenuBar()
     font_scale_group_ = new QActionGroup(this);
     font_scale_group_->setExclusive(true);
 
+    font_tiny_action_ = new QAction(this);
+    font_tiny_action_->setCheckable(true);
+    font_tiny_action_->setData(70);
+    font_scale_group_->addAction(font_tiny_action_);
+    fontMenu->addAction(font_tiny_action_);
+
+    font_extra_small_action_ = new QAction(this);
+    font_extra_small_action_->setCheckable(true);
+    font_extra_small_action_->setData(80);
+    font_scale_group_->addAction(font_extra_small_action_);
+    fontMenu->addAction(font_extra_small_action_);
+
     font_small_action_ = new QAction(this);
     font_small_action_->setCheckable(true);
     font_small_action_->setData(90);
@@ -1597,7 +1611,15 @@ void MainWindow::setupMenuBar()
 
     connect(font_scale_group_, &QActionGroup::triggered, this, &MainWindow::onFontScaleTriggered);
 
-    if (font_scale_percent_ <= 95)
+    if (font_scale_percent_ <= 75)
+    {
+        font_tiny_action_->setChecked(true);
+    }
+    else if (font_scale_percent_ <= 85)
+    {
+        font_extra_small_action_->setChecked(true);
+    }
+    else if (font_scale_percent_ <= 95)
     {
         font_small_action_->setChecked(true);
     }
@@ -2071,6 +2093,8 @@ void MainWindow::setEnglish(bool english)
     fullscreen_menu_action_->setText(english ? "&Fullscreen" : "全屏(&F)");
 
     menuBar()->actions().at(2)->menu()->setTitle(english ? "Font &Size" : "字号(&S)");
+    font_tiny_action_->setText(english ? "Tiny (70%)" : "超小 (70%)");
+    font_extra_small_action_->setText(english ? "Extra Small (80%)" : "特小 (80%)");
     font_small_action_->setText(english ? "Small (90%)" : "小号 (90%)");
     font_normal_action_->setText(english ? "Normal (100%)" : "标准 (100%)");
     font_large_action_->setText(english ? "Large (115%)" : "大号 (115%)");
