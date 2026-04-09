@@ -38,6 +38,7 @@ constexpr int kTcpButtonHeight = 38;
 constexpr int kPeakSearchStartIndex = 10000;
 constexpr int kPeakSearchEndIndex = 50000;
 constexpr qint64 kFrameRateWindowMs = 5000;
+constexpr double kMaxReasonableWaveMagnitude = 1.0e6;
 
 QString hexPreview(const QByteArray& data, int limit = 12)
 {
@@ -79,6 +80,53 @@ QString floatEncodingLabel(bool english, TcpWavePanel::FloatEncoding encoding)
     default:
         return english ? "unknown float32" : "未知 float32";
     }
+}
+
+QString formatWaveValue(double value, int fixedDecimals)
+{
+    if (!std::isfinite(value))
+    {
+        return QStringLiteral("NaN");
+    }
+
+    const double magnitude = std::fabs(value);
+    if (magnitude >= 100000.0 || (magnitude > 0.0 && magnitude < 0.0001))
+    {
+        return QString::number(value, 'g', 6);
+    }
+    return QString::number(value, 'f', fixedDecimals);
+}
+
+bool isReasonableWavePayload(const QVector<float>& values, double maxMagnitude, double *observedMaxMagnitude = nullptr)
+{
+    double observedMax = 0.0;
+    for (float value : values)
+    {
+        if (!std::isfinite(value))
+        {
+            if (observedMaxMagnitude)
+            {
+                *observedMaxMagnitude = std::numeric_limits<double>::infinity();
+            }
+            return false;
+        }
+
+        observedMax = std::max(observedMax, std::fabs(static_cast<double>(value)));
+        if (observedMax > maxMagnitude)
+        {
+            if (observedMaxMagnitude)
+            {
+                *observedMaxMagnitude = observedMax;
+            }
+            return false;
+        }
+    }
+
+    if (observedMaxMagnitude)
+    {
+        *observedMaxMagnitude = observedMax;
+    }
+    return true;
 }
 }
 
@@ -129,9 +177,9 @@ protected:
             maxValue += pad;
         }
 
-        const QString maxLabel = QString::number(maxValue, 'f', 3);
-        const QString midLabel = QString::number((maxValue + minValue) * 0.5, 'f', 3);
-        const QString minLabel = QString::number(minValue, 'f', 3);
+        const QString maxLabel = formatWaveValue(maxValue, 3);
+        const QString midLabel = formatWaveValue((maxValue + minValue) * 0.5, 3);
+        const QString minLabel = formatWaveValue(minValue, 3);
         const QFontMetrics fm = painter.fontMetrics();
         const int labelWidth = std::max({fm.horizontalAdvance(maxLabel), fm.horizontalAdvance(midLabel), fm.horizontalAdvance(minLabel)});
         const int leftMargin = std::max(18, labelWidth + 4);
@@ -1125,6 +1173,23 @@ void TcpWavePanel::processBuffer()
             {
                 return;
             }
+
+            double wave1MaxMagnitude = 0.0;
+            double wave4MaxMagnitude = 0.0;
+            if (!isReasonableWavePayload(pending_wave1_, kMaxReasonableWaveMagnitude, &wave1MaxMagnitude) ||
+                !isReasonableWavePayload(wave4, kMaxReasonableWaveMagnitude, &wave4MaxMagnitude))
+            {
+                setStatusText(QString(is_english_
+                    ? "Dropped abnormal TCP frame, raw max=%1, harmonic max=%2. Waiting for next frame..."
+                    : "已丢弃异常TCP帧，原始信号最大值=%1，二次谐波最大值=%2，等待下一帧...")
+                    .arg(formatWaveValue(wave1MaxMagnitude, 3))
+                    .arg(formatWaveValue(wave4MaxMagnitude, 3)));
+                pending_wave1_.clear();
+                float_encoding_ = FloatEncoding::Unknown;
+                resetParserState();
+                break;
+            }
+
             wave1_history_ = pending_wave1_;
             wave4_history_ = wave4;
             wave1_plot_->setSamples(wave1_history_);
@@ -1155,8 +1220,8 @@ void TcpWavePanel::processBuffer()
                 }
                 const auto [minIt, maxIt] = std::minmax_element(values.cbegin(), values.cend());
                 return QString("min=%1 max=%2")
-                    .arg(*minIt, 0, 'f', 6)
-                    .arg(*maxIt, 0, 'f', 6);
+                    .arg(formatWaveValue(*minIt, 6))
+                    .arg(formatWaveValue(*maxIt, 6));
             };
 
             wave1_info_label_->setText(QString(is_english_
