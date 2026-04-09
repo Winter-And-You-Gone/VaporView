@@ -97,9 +97,13 @@ private:
     QLabel *waveform_peak_plot_title_;
     QPushButton *waveform_peak_mode_btn_;
     QWidget *waveform_peak_plot_;
-    QLabel *environment_plot_title_;
+    QLabel *temperature_plot_title_;
+    QWidget *temperature_plot_;
+    QLabel *humidity_plot_title_;
+    QWidget *humidity_plot_;
+    QLabel *pressure_plot_title_;
+    QWidget *pressure_plot_;
     QLabel *environment_info_label_;
-    QWidget *environment_plot_;
     QGroupBox *csv_group_;
     QLabel *csv_info_label_;
     QTableWidget *csv_table_;
