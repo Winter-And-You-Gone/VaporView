@@ -14,6 +14,8 @@ class QSlider;
 class QSpinBox;
 class QTableWidget;
 class QWidget;
+class QGridLayout;
+class QResizeEvent;
 
 class SessionViewerWindow : public QMainWindow
 {
@@ -23,6 +25,9 @@ public:
     explicit SessionViewerWindow(QWidget *parent = nullptr);
     void setEnglish(bool english);
     bool openSessionPath(const QString& path);
+
+protected:
+    void resizeEvent(QResizeEvent *event) override;
 
 private slots:
     void onChooseSessionClicked();
@@ -43,6 +48,7 @@ private:
     void setupUi();
     void updateTexts();
     void updateSummaryLabels();
+    void relayoutSummaryFields();
     void updateWaveformControls();
     void setStatusText(const QString& text);
     void clearLoadedData(bool clearPathEdit = true);
@@ -63,6 +69,7 @@ private:
     QPushButton *clear_view_btn_;
     QLabel *status_label_;
     QGroupBox *summary_group_;
+    QGridLayout *summary_layout_;
     QLabel *session_name_title_;
     QLabel *session_name_value_;
     QLabel *start_time_title_;

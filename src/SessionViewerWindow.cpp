@@ -20,6 +20,7 @@
 #include <QPainter>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QResizeEvent>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QSlider>
@@ -600,6 +601,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , clear_view_btn_(nullptr)
     , status_label_(nullptr)
     , summary_group_(nullptr)
+    , summary_layout_(nullptr)
     , session_name_title_(nullptr)
     , session_name_value_(nullptr)
     , start_time_title_(nullptr)
@@ -715,41 +717,33 @@ void SessionViewerWindow::setupUi()
 
     summary_group_ = new QGroupBox(this);
     summary_group_->setObjectName("sensorGroupBox");
-    summary_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    auto *summaryLayout = new QGridLayout(summary_group_);
-    summaryLayout->setContentsMargins(8, 28, 8, 8);
-    summaryLayout->setHorizontalSpacing(6);
-    summaryLayout->setVerticalSpacing(4);
-    summaryLayout->setColumnStretch(0, 0);
-    summaryLayout->setColumnStretch(1, 0);
-    summaryLayout->setColumnStretch(2, 0);
-    summaryLayout->setColumnStretch(3, 0);
-    summaryLayout->setColumnStretch(4, 0);
-    summaryLayout->setColumnStretch(5, 0);
-    summaryLayout->setColumnStretch(6, 1);
+    summary_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    summary_layout_ = new QGridLayout(summary_group_);
+    summary_layout_->setContentsMargins(8, 28, 8, 8);
+    summary_layout_->setHorizontalSpacing(8);
+    summary_layout_->setVerticalSpacing(4);
 
-    auto createSummaryRow = [this, summaryLayout](int row, int col, QLabel*& title, QLabel*& value) {
+    auto createSummaryRow = [this](QLabel*& title, QLabel*& value) {
         title = new QLabel(this);
         title->setObjectName("fieldLabel");
         title->setMinimumWidth(52);
-        title->setMaximumWidth(72);
+        title->setMaximumWidth(88);
         title->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
         value = new QLabel("---", this);
         value->setObjectName("valueLabel");
-        value->setMinimumWidth(88);
-        value->setMaximumWidth(150);
-        value->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
-        summaryLayout->addWidget(title, row, col * 2);
-        summaryLayout->addWidget(value, row, col * 2 + 1);
+        value->setMinimumWidth(120);
+        value->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        value->setWordWrap(false);
     };
 
-    createSummaryRow(0, 0, session_name_title_, session_name_value_);
-    createSummaryRow(0, 1, start_time_title_, start_time_value_);
-    createSummaryRow(0, 2, end_time_title_, end_time_value_);
-    createSummaryRow(1, 0, duration_title_, duration_value_);
-    createSummaryRow(1, 1, sensor_rows_title_, sensor_rows_value_);
-    createSummaryRow(1, 2, waveform_files_title_, waveform_files_value_);
-    createSummaryRow(2, 0, waveform_frames_title_, waveform_frames_value_);
+    createSummaryRow(session_name_title_, session_name_value_);
+    createSummaryRow(start_time_title_, start_time_value_);
+    createSummaryRow(end_time_title_, end_time_value_);
+    createSummaryRow(duration_title_, duration_value_);
+    createSummaryRow(sensor_rows_title_, sensor_rows_value_);
+    createSummaryRow(waveform_files_title_, waveform_files_value_);
+    createSummaryRow(waveform_frames_title_, waveform_frames_value_);
+    relayoutSummaryFields();
     upperLayout->addWidget(summary_group_);
 
     waveform_group_ = new QGroupBox(this);
@@ -864,6 +858,12 @@ void SessionViewerWindow::setEnglish(bool english)
     updateTexts();
 }
 
+void SessionViewerWindow::resizeEvent(QResizeEvent *event)
+{
+    QMainWindow::resizeEvent(event);
+    relayoutSummaryFields();
+}
+
 void SessionViewerWindow::updateTexts()
 {
     setWindowTitle(is_english_ ? "Data Viewer" : "数据查看器");
@@ -917,6 +917,47 @@ void SessionViewerWindow::updatePeakPlotModeButtonText()
     waveform_peak_mode_btn_->setText(waveform_peak_scatter_mode_
         ? (is_english_ ? "Show Polyline" : "切换到折线图")
         : (is_english_ ? "Show Scatter" : "切换到散点图"));
+}
+
+void SessionViewerWindow::relayoutSummaryFields()
+{
+    if (!summary_layout_ || !summary_group_)
+    {
+        return;
+    }
+
+    while (summary_layout_->count() > 0)
+    {
+        summary_layout_->takeAt(0);
+    }
+
+    const QVector<QPair<QLabel*, QLabel*>> fields = {
+        {session_name_title_, session_name_value_},
+        {start_time_title_, start_time_value_},
+        {end_time_title_, end_time_value_},
+        {duration_title_, duration_value_},
+        {sensor_rows_title_, sensor_rows_value_},
+        {waveform_files_title_, waveform_files_value_},
+        {waveform_frames_title_, waveform_frames_value_},
+    };
+
+    const int availableWidth = std::max(240, summary_group_->contentsRect().width());
+    int pairColumns = availableWidth >= 1400 ? 4 : (availableWidth >= 980 ? 3 : (availableWidth >= 640 ? 2 : 1));
+    pairColumns = std::clamp(pairColumns, 1, static_cast<int>(fields.size()));
+
+    for (int column = 0; column < pairColumns * 2; ++column)
+    {
+        summary_layout_->setColumnStretch(column, (column % 2 == 1) ? 1 : 0);
+        summary_layout_->setColumnMinimumWidth(column, 0);
+    }
+
+    for (int index = 0; index < fields.size(); ++index)
+    {
+        const int row = index / pairColumns;
+        const int pairColumn = index % pairColumns;
+        summary_layout_->addWidget(fields.at(index).first, row, pairColumn * 2);
+        summary_layout_->addWidget(fields.at(index).second, row, pairColumn * 2 + 1);
+    }
 }
 
 void SessionViewerWindow::setStatusText(const QString& text)
