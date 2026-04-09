@@ -937,10 +937,13 @@ void SessionViewerWindow::relayoutSummaryFields()
         summary_layout_->takeAt(0);
     }
 
-    const QVector<QPair<QLabel*, QLabel*>> fields = {
+    const QVector<QPair<QLabel*, QLabel*>> longFields = {
         {session_name_title_, session_name_value_},
         {start_time_title_, start_time_value_},
         {end_time_title_, end_time_value_},
+    };
+
+    const QVector<QPair<QLabel*, QLabel*>> shortFields = {
         {duration_title_, duration_value_},
         {sensor_rows_title_, sensor_rows_value_},
         {waveform_files_title_, waveform_files_value_},
@@ -948,21 +951,50 @@ void SessionViewerWindow::relayoutSummaryFields()
     };
 
     const int availableWidth = std::max({240, summary_group_->width(), summary_group_->contentsRect().width()});
-    int pairColumns = availableWidth >= 1400 ? 4 : (availableWidth >= 980 ? 3 : (availableWidth >= 640 ? 2 : 1));
-    pairColumns = std::clamp(pairColumns, 1, static_cast<int>(fields.size()));
-
-    for (int column = 0; column < pairColumns * 2; ++column)
+    const int maxPairColumns = 4;
+    for (int column = 0; column < maxPairColumns * 2; ++column)
     {
-        summary_layout_->setColumnStretch(column, (column % 2 == 1) ? 1 : 0);
+        summary_layout_->setColumnStretch(column, 0);
         summary_layout_->setColumnMinimumWidth(column, 0);
     }
 
-    for (int index = 0; index < fields.size(); ++index)
+    auto addFieldPair = [this](const QPair<QLabel*, QLabel*>& field, int row, int pairColumn) {
+        summary_layout_->addWidget(field.first, row, pairColumn * 2);
+        summary_layout_->addWidget(field.second, row, pairColumn * 2 + 1);
+        summary_layout_->setColumnStretch(pairColumn * 2 + 1, 1);
+    };
+
+    if (availableWidth >= 1280)
     {
-        const int row = index / pairColumns;
-        const int pairColumn = index % pairColumns;
-        summary_layout_->addWidget(fields.at(index).first, row, pairColumn * 2);
-        summary_layout_->addWidget(fields.at(index).second, row, pairColumn * 2 + 1);
+        for (int index = 0; index < longFields.size(); ++index)
+        {
+            addFieldPair(longFields.at(index), 0, index);
+        }
+        for (int index = 0; index < shortFields.size(); ++index)
+        {
+            addFieldPair(shortFields.at(index), 1, index);
+        }
+        return;
+    }
+
+    if (availableWidth >= 980)
+    {
+        for (int index = 0; index < longFields.size(); ++index)
+        {
+            addFieldPair(longFields.at(index), 0, index);
+        }
+        addFieldPair(shortFields.at(0), 1, 0);
+        addFieldPair(shortFields.at(1), 1, 1);
+        addFieldPair(shortFields.at(2), 2, 0);
+        addFieldPair(shortFields.at(3), 2, 1);
+        return;
+    }
+
+    const QVector<QPair<QLabel*, QLabel*>> allFields = longFields + shortFields;
+    const int pairColumns = availableWidth >= 640 ? 2 : 1;
+    for (int index = 0; index < allFields.size(); ++index)
+    {
+        addFieldPair(allFields.at(index), index / pairColumns, index % pairColumns);
     }
 }
 
