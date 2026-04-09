@@ -82,8 +82,12 @@ private:
     QLabel *end_time_value_;
     QLabel *duration_title_;
     QLabel *duration_value_;
+    QLabel *sensor_export_rate_title_;
+    QLabel *sensor_export_rate_value_;
     QLabel *sensor_rows_title_;
     QLabel *sensor_rows_value_;
+    QLabel *waveform_export_rate_title_;
+    QLabel *waveform_export_rate_value_;
     QLabel *waveform_files_title_;
     QLabel *waveform_files_value_;
     QLabel *waveform_frames_title_;
@@ -130,6 +134,7 @@ private:
     bool waveform_peak_scatter_mode_;
     QVector<int> highlighted_csv_rows_;
     int points_per_frame_;
+    int sensor_export_rate_hz_;
     int waveform_export_rate_hz_;
     QString waveform_export_mode_;
     quint64 total_sensor_rows_;

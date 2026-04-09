@@ -897,8 +897,12 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , end_time_value_(nullptr)
     , duration_title_(nullptr)
     , duration_value_(nullptr)
+    , sensor_export_rate_title_(nullptr)
+    , sensor_export_rate_value_(nullptr)
     , sensor_rows_title_(nullptr)
     , sensor_rows_value_(nullptr)
+    , waveform_export_rate_title_(nullptr)
+    , waveform_export_rate_value_(nullptr)
     , waveform_files_title_(nullptr)
     , waveform_files_value_(nullptr)
     , waveform_frames_title_(nullptr)
@@ -944,6 +948,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , waveform_peak_scatter_mode_(true)
     , highlighted_csv_rows_()
     , points_per_frame_(50000)
+    , sensor_export_rate_hz_(10)
     , waveform_export_rate_hz_(10)
     , waveform_export_mode_(QStringLiteral("fixed_rate"))
     , total_sensor_rows_(0)
@@ -1025,8 +1030,8 @@ void SessionViewerWindow::setupUi()
     auto createSummaryRow = [this](QLabel*& title, QLabel*& value) {
         title = new QLabel(this);
         title->setObjectName("fieldLabel");
-        title->setMinimumWidth(52);
-        title->setMaximumWidth(88);
+        title->setMinimumWidth(64);
+        title->setMaximumWidth(156);
         title->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
         value = new QLabel("---", this);
         value->setObjectName("valueLabel");
@@ -1039,7 +1044,9 @@ void SessionViewerWindow::setupUi()
     createSummaryRow(start_time_title_, start_time_value_);
     createSummaryRow(end_time_title_, end_time_value_);
     createSummaryRow(duration_title_, duration_value_);
+    createSummaryRow(sensor_export_rate_title_, sensor_export_rate_value_);
     createSummaryRow(sensor_rows_title_, sensor_rows_value_);
+    createSummaryRow(waveform_export_rate_title_, waveform_export_rate_value_);
     createSummaryRow(waveform_files_title_, waveform_files_value_);
     createSummaryRow(waveform_frames_title_, waveform_frames_value_);
     upperLayout->addWidget(summary_group_);
@@ -1216,7 +1223,9 @@ void SessionViewerWindow::updateTexts()
     start_time_title_->setText(is_english_ ? "Start:" : "开始时间:");
     end_time_title_->setText(is_english_ ? "End:" : "结束时间:");
     duration_title_->setText(is_english_ ? "Duration:" : "记录时间:");
+    sensor_export_rate_title_->setText(is_english_ ? "CSV Rate:" : "设备CSV文件记录频率:");
     sensor_rows_title_->setText(is_english_ ? "Sensor Rows:" : "传感器行数:");
+    waveform_export_rate_title_->setText(is_english_ ? "Wave Rate:" : "波形记录频率:");
     waveform_files_title_->setText(is_english_ ? "Wave Files:" : "波形文件数:");
     waveform_frames_title_->setText(is_english_ ? "Wave Frames:" : "波形帧数:");
     frame_title_->setText(is_english_ ? "Frame:" : "帧:");
@@ -1276,13 +1285,15 @@ void SessionViewerWindow::relayoutSummaryFields()
 
     const QVector<QPair<QLabel*, QLabel*>> shortFields = {
         {duration_title_, duration_value_},
+        {sensor_export_rate_title_, sensor_export_rate_value_},
         {sensor_rows_title_, sensor_rows_value_},
+        {waveform_export_rate_title_, waveform_export_rate_value_},
         {waveform_files_title_, waveform_files_value_},
         {waveform_frames_title_, waveform_frames_value_},
     };
 
     const int availableWidth = std::max({240, summary_group_->width(), summary_group_->contentsRect().width()});
-    const int maxPairColumns = 4;
+    const int maxPairColumns = 6;
     for (int column = 0; column < maxPairColumns * 2; ++column)
     {
         summary_layout_->setColumnStretch(column, 0);
@@ -1295,7 +1306,7 @@ void SessionViewerWindow::relayoutSummaryFields()
         summary_layout_->setColumnStretch(pairColumn * 2 + 1, 1);
     };
 
-    if (availableWidth >= 1280)
+    if (availableWidth >= 1720)
     {
         for (int index = 0; index < longFields.size(); ++index)
         {
@@ -1308,16 +1319,29 @@ void SessionViewerWindow::relayoutSummaryFields()
         return;
     }
 
+    if (availableWidth >= 1280)
+    {
+        for (int index = 0; index < longFields.size(); ++index)
+        {
+            addFieldPair(longFields.at(index), 0, index);
+        }
+        for (int index = 0; index < shortFields.size(); ++index)
+        {
+            addFieldPair(shortFields.at(index), 1 + index / 3, index % 3);
+        }
+        return;
+    }
+
     if (availableWidth >= 980)
     {
         for (int index = 0; index < longFields.size(); ++index)
         {
             addFieldPair(longFields.at(index), 0, index);
         }
-        addFieldPair(shortFields.at(0), 1, 0);
-        addFieldPair(shortFields.at(1), 1, 1);
-        addFieldPair(shortFields.at(2), 2, 0);
-        addFieldPair(shortFields.at(3), 2, 1);
+        for (int index = 0; index < shortFields.size(); ++index)
+        {
+            addFieldPair(shortFields.at(index), 1 + index / 2, index % 2);
+        }
         return;
     }
 
@@ -1357,6 +1381,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     total_sensor_rows_ = 0;
     total_waveform_frames_ = 0;
     points_per_frame_ = 50000;
+    sensor_export_rate_hz_ = 10;
     waveform_export_rate_hz_ = 10;
     waveform_export_mode_ = QStringLiteral("fixed_rate");
 
@@ -1531,6 +1556,7 @@ bool SessionViewerWindow::loadSessionMetadata(const QString& sessionDirectory)
     total_sensor_rows_ = root.value(QStringLiteral("sensor_rows")).toVariant().toULongLong();
     total_waveform_frames_ = root.value(QStringLiteral("waveform_frames")).toVariant().toULongLong();
     points_per_frame_ = root.value(QStringLiteral("waveform_points_per_frame")).toInt(50000);
+    sensor_export_rate_hz_ = root.value(QStringLiteral("sensor_export_rate_hz")).toInt(10);
     waveform_export_rate_hz_ = root.value(QStringLiteral("waveform_export_rate_hz")).toInt(10);
     waveform_export_mode_ = root.value(QStringLiteral("waveform_export_mode")).toString(
         waveform_export_rate_hz_ > 0 ? QStringLiteral("fixed_rate") : QStringLiteral("per_frame"));
@@ -1756,13 +1782,21 @@ bool SessionViewerWindow::loadWaveformPeakSeries()
 
 void SessionViewerWindow::updateSummaryLabels()
 {
+    const bool hasSession = !session_name_.isEmpty() || !metadata_filename_.isEmpty();
     session_name_value_->setText(session_name_.isEmpty() ? QStringLiteral("---") : session_name_);
     start_time_value_->setText(start_time_utc_.isEmpty() ? QStringLiteral("---") : start_time_utc_);
     end_time_value_->setText(end_time_utc_.isEmpty() ? QStringLiteral("---") : end_time_utc_);
-    duration_value_->setText(formatDurationText(start_time_utc_, end_time_utc_, is_english_));
-    sensor_rows_value_->setText(QString::number(total_sensor_rows_));
-    waveform_files_value_->setText(QString::number(waveform_segments_.size()));
-    waveform_frames_value_->setText(QString::number(total_waveform_frames_));
+    duration_value_->setText(hasSession ? formatDurationText(start_time_utc_, end_time_utc_, is_english_) : QStringLiteral("---"));
+    sensor_export_rate_value_->setText(hasSession && sensor_export_rate_hz_ > 0
+        ? QStringLiteral("%1 Hz").arg(sensor_export_rate_hz_)
+        : QStringLiteral("---"));
+    sensor_rows_value_->setText(hasSession ? QString::number(total_sensor_rows_) : QStringLiteral("---"));
+    waveform_export_rate_value_->setText(!hasSession ? QStringLiteral("---")
+        : ((waveform_export_mode_ == QStringLiteral("per_frame") || waveform_export_rate_hz_ <= 0)
+            ? (is_english_ ? QStringLiteral("Per-frame") : QStringLiteral("逐帧导出"))
+            : QStringLiteral("%1 Hz").arg(waveform_export_rate_hz_)));
+    waveform_files_value_->setText(hasSession ? QString::number(waveform_segments_.size()) : QStringLiteral("---"));
+    waveform_frames_value_->setText(hasSession ? QString::number(total_waveform_frames_) : QStringLiteral("---"));
 }
 
 void SessionViewerWindow::updateWaveformControls()
