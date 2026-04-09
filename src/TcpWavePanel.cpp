@@ -85,16 +85,9 @@ QString floatEncodingLabel(bool english, TcpWavePanel::FloatEncoding encoding)
 class WavePlotWidget : public QWidget
 {
 public:
-    enum class PlotStyle
-    {
-        Polyline,
-        Envelope
-    };
-
-    explicit WavePlotWidget(const QColor& lineColor, PlotStyle plotStyle = PlotStyle::Polyline, QWidget *parent = nullptr)
+    explicit WavePlotWidget(const QColor& lineColor, QWidget *parent = nullptr)
         : QWidget(parent)
         , line_color_(lineColor)
-        , plot_style_(plotStyle)
     {
         setMinimumHeight(120);
         setMaximumHeight(150);
@@ -160,57 +153,23 @@ protected:
         painter.setPen(QPen(QColor("#cfd7e3"), 1));
         painter.drawRect(plotRect);
 
-        const auto valueToY = [&](float value) {
-            const double normalized = (value - minValue) / std::max(1e-6f, maxValue - minValue);
-            return plotRect.bottom() - normalized * plotRect.height();
-        };
-
-        if (minValue < 0.0f && maxValue > 0.0f)
-        {
-            painter.setPen(QPen(QColor("#d6dde8"), 1, Qt::DashLine));
-            const qreal zeroY = valueToY(0.0f);
-            painter.drawLine(QPointF(plotRect.left(), zeroY), QPointF(plotRect.right(), zeroY));
-        }
-
         const int columns = std::max(2, static_cast<int>(std::floor(plotRect.width())));
+        QPolygonF polyline;
+        polyline.reserve(columns);
         const int sampleCount = samples_.size();
-
-        if (plot_style_ == PlotStyle::Envelope && sampleCount > columns * 2)
+        for (int x = 0; x < columns; ++x)
         {
-            painter.setPen(QPen(line_color_, 1));
-            for (int x = 0; x < columns; ++x)
-            {
-                const int startIndex = std::clamp(
-                    static_cast<int>((static_cast<qint64>(x) * sampleCount) / columns),
-                    0,
-                    sampleCount - 1);
-                const int endIndex = std::clamp(
-                    static_cast<int>((static_cast<qint64>(x + 1) * sampleCount + columns - 1) / columns),
-                    startIndex + 1,
-                    sampleCount);
-
-                auto [bucketMinIt, bucketMaxIt] =
-                    std::minmax_element(samples_.cbegin() + startIndex, samples_.cbegin() + endIndex);
-                const double ratio = columns == 1 ? 0.0 : static_cast<double>(x) / static_cast<double>(columns - 1);
-                const qreal px = plotRect.left() + ratio * plotRect.width();
-                painter.drawLine(QPointF(px, valueToY(*bucketMinIt)), QPointF(px, valueToY(*bucketMaxIt)));
-            }
+            const double ratio = columns == 1 ? 0.0 : static_cast<double>(x) / static_cast<double>(columns - 1);
+            const int index = std::clamp(static_cast<int>(std::llround(ratio * (sampleCount - 1))), 0, sampleCount - 1);
+            const float value = samples_.at(index);
+            const double normalized = (value - minValue) / std::max(1e-6f, maxValue - minValue);
+            const qreal px = plotRect.left() + ratio * plotRect.width();
+            const qreal py = plotRect.bottom() - normalized * plotRect.height();
+            polyline.append(QPointF(px, py));
         }
-        else
-        {
-            QPolygonF polyline;
-            polyline.reserve(columns);
-            for (int x = 0; x < columns; ++x)
-            {
-                const double ratio = columns == 1 ? 0.0 : static_cast<double>(x) / static_cast<double>(columns - 1);
-                const int index = std::clamp(static_cast<int>(std::llround(ratio * (sampleCount - 1))), 0, sampleCount - 1);
-                const qreal px = plotRect.left() + ratio * plotRect.width();
-                polyline.append(QPointF(px, valueToY(samples_.at(index))));
-            }
 
-            painter.setPen(QPen(line_color_, 1.4));
-            painter.drawPolyline(polyline);
-        }
+        painter.setPen(QPen(line_color_, 1.4));
+        painter.drawPolyline(polyline);
 
         painter.setPen(QColor("#5e6b78"));
         painter.drawText(QRectF(2, plotRect.top() - 2, leftMargin - 4, fm.height()), Qt::AlignRight | Qt::AlignVCenter, maxLabel);
@@ -222,7 +181,6 @@ protected:
 
 private:
     QColor line_color_;
-    PlotStyle plot_style_;
     QVector<float> samples_;
 };
 
@@ -699,7 +657,7 @@ void TcpWavePanel::setupUi()
     wave1_info_label_->setWordWrap(false);
     wave1HeaderLayout->addWidget(wave1_info_label_, 1, Qt::AlignVCenter | Qt::AlignRight);
     wave1Layout->addLayout(wave1HeaderLayout);
-    wave1_plot_ = new WavePlotWidget(QColor("#4e79c7"), WavePlotWidget::PlotStyle::Envelope, this);
+    wave1_plot_ = new WavePlotWidget(QColor("#4e79c7"), this);
     wave1Layout->addWidget(wave1_plot_, 1);
     plotsLayout->addWidget(wave1_group_, 1);
 
@@ -719,7 +677,7 @@ void TcpWavePanel::setupUi()
     wave4_info_label_->setWordWrap(false);
     wave4HeaderLayout->addWidget(wave4_info_label_, 1, Qt::AlignVCenter | Qt::AlignRight);
     wave4Layout->addLayout(wave4HeaderLayout);
-    wave4_plot_ = new WavePlotWidget(QColor("#ef8f35"), WavePlotWidget::PlotStyle::Polyline, this);
+    wave4_plot_ = new WavePlotWidget(QColor("#ef8f35"), this);
     wave4Layout->addWidget(wave4_plot_, 1);
     plotsLayout->addWidget(wave4_group_, 1);
 
