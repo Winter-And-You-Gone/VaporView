@@ -2999,7 +2999,7 @@ bool MainWindow::prepareRecordingSessionLayout(const QString& recordsPath, const
     session_directory_ = QDir::fromNativeSeparators(finalSessionDirectory);
     waveform_directory_ = QDir::fromNativeSeparators(sessionDir.filePath("waveform"));
     sensors_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("sensors/devices.csv"));
-    imu_raw_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("sensors/imu_raw.bin"));
+    imu_raw_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("sensors/imu_raw.dat"));
     session_metadata_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("session.json"));
     event_log_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("logs/event_log.csv"));
     error_log_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("logs/error_log.txt"));
@@ -3086,7 +3086,7 @@ void MainWindow::writeSessionMetadata(const QString& endTimeUtc)
     QJsonObject paths;
     paths["waveform_directory"] = sessionDir.relativeFilePath(waveform_directory_);
     paths["devices_csv"] = sessionDir.relativeFilePath(sensors_filename_);
-    paths["imu_raw_bin"] = sessionDir.relativeFilePath(imu_raw_filename_);
+    paths["imu_raw_dat"] = sessionDir.relativeFilePath(imu_raw_filename_);
     paths["event_log"] = sessionDir.relativeFilePath(event_log_filename_);
     paths["error_log"] = sessionDir.relativeFilePath(error_log_filename_);
     paths["device_config"] = sessionDir.relativeFilePath(device_config_filename_);
