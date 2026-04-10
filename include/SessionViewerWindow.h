@@ -1,6 +1,7 @@
 #ifndef VaporView_SESSION_VIEWER_WINDOW_H_
 #define VaporView_SESSION_VIEWER_WINDOW_H_
 
+#include <QByteArray>
 #include <QMainWindow>
 #include <QStringList>
 #include <QVector>
@@ -24,6 +25,7 @@ class QWidget;
 class QGridLayout;
 class QResizeEvent;
 class QShowEvent;
+class QProcess;
 class TrajectoryViewerDialog;
 
 class SessionViewerWindow : public QMainWindow
@@ -44,9 +46,12 @@ private slots:
     void onReloadClicked();
     void onClearViewClicked();
     void onViewTrajectoryClicked();
+    void onRunKfGinsClicked();
     void onFrameSliderChanged(int value);
     void onFrameSpinChanged(int value);
     void onTogglePeakPlotModeClicked();
+    void onKfGinsProcessOutputReady();
+    void onKfGinsProcessFinished(int exitCode, int exitStatus);
 
 private:
     struct WaveformSegment
@@ -75,12 +80,16 @@ private:
     void syncEnvironmentRangeToWaveformRange(int startFrameIndex, int visibleFrameCount);
     QString highlightClosestSensorRow(quint64 timestampUs);
     void updatePeakPlotModeButtonText();
+    QString ensureKfGinsExecutablePath();
+    bool exportKfGinsDataset(QString *configPath, QString *outputDirectory, QString *warningMessage, QString *errorMessage) const;
+    void finalizeKfGinsRun(bool success, const QString& detail);
 
     QWidget *central_widget_;
     QLineEdit *session_path_edit_;
     QPushButton *choose_session_btn_;
     QPushButton *reload_btn_;
     QPushButton *trajectory_view_btn_;
+    QPushButton *kf_gins_btn_;
     QPushButton *clear_view_btn_;
     QLabel *status_label_;
     QGroupBox *summary_group_;
@@ -146,6 +155,10 @@ private:
     bool waveform_peak_scatter_mode_;
     QVector<int> highlighted_csv_rows_;
     TrajectoryViewerDialog *trajectory_viewer_dialog_;
+    QProcess *kf_gins_process_;
+    QString kf_gins_output_directory_;
+    QString kf_gins_warning_message_;
+    QByteArray kf_gins_process_output_;
     int points_per_frame_;
     int sensor_export_rate_hz_;
     int waveform_export_rate_hz_;
