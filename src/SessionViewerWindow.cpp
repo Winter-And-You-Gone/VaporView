@@ -23,6 +23,7 @@
 #include <QMessageBox>
 #include <QPainter>
 #include <QProcess>
+#include <QProcessEnvironment>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollArea>
@@ -2476,6 +2477,20 @@ void SessionViewerWindow::onRunKfGinsClicked()
     kf_gins_process_->setProgram(executablePath);
     kf_gins_process_->setArguments({configPath});
     kf_gins_process_->setWorkingDirectory(QFileInfo(executablePath).absolutePath());
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    QStringList pathEntries = environment.value(QStringLiteral("PATH")).split(';', Qt::SkipEmptyParts);
+    const QString executableDirectory = QDir::fromNativeSeparators(QFileInfo(executablePath).absolutePath());
+    const QString ucrt64BinDirectory = QStringLiteral("F:/msys64/ucrt64/bin");
+    if (!pathEntries.contains(executableDirectory, Qt::CaseInsensitive))
+    {
+        pathEntries.prepend(executableDirectory);
+    }
+    if (QDir(ucrt64BinDirectory).exists() && !pathEntries.contains(ucrt64BinDirectory, Qt::CaseInsensitive))
+    {
+        pathEntries.prepend(ucrt64BinDirectory);
+    }
+    environment.insert(QStringLiteral("PATH"), pathEntries.join(';'));
+    kf_gins_process_->setProcessEnvironment(environment);
     connect(kf_gins_process_, &QProcess::readyReadStandardOutput, this, &SessionViewerWindow::onKfGinsProcessOutputReady);
     connect(kf_gins_process_, &QProcess::readyReadStandardError, this, &SessionViewerWindow::onKfGinsProcessOutputReady);
     connect(kf_gins_process_, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
