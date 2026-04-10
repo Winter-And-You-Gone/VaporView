@@ -10,6 +10,15 @@
 namespace VaporView
 {
 
+enum class ImuFrameType : uint8_t
+{
+  Unknown = 0,
+  HI81 = 0x81,
+  HI83 = 0x83,
+  HI91 = 0x91,
+  HI92 = 0x92
+};
+
 struct GnssData
 {
   double latitude = 0.0;
@@ -66,6 +75,7 @@ struct ImuData
   uint32_t system_time_ms = 0;
 
   bool from_hi83 = false;
+  ImuFrameType frame_type = ImuFrameType::Unknown;
 
   std::chrono::steady_clock::time_point timestamp{};
   bool valid = false;

@@ -82,15 +82,23 @@ private:
 class ImuCollector : public DataCollector
 {
 public:
+  using RawPacketCallback = std::function<void(uint64_t host_timestamp_us, uint8_t frame_tag, const uint8_t* data, size_t size)>;
+
   ImuData getLatestData();
   bool setDeviceSampleRate(int hz) override;
   bool checkDeviceResponse() override;
+  void setRawPacketCallback(RawPacketCallback callback);
+  bool setOutputMessageType(const std::string& message_type);
+  std::string outputMessageType() const;
+  bool sendAsciiCommand(const std::string& command, int wait_ms = 60);
 
 protected:
   void run() override;
 
 private:
   ImuData latest_data_;
+  RawPacketCallback raw_packet_callback_;
+  std::string output_message_type_ = "HI92";
 };
 
 class PtbCollector : public DataCollector

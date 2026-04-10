@@ -2,6 +2,8 @@
 #include "hipnuc_dec.h"
 #include "pvtsln_data.hpp"
 #include <algorithm>
+#include <chrono>
+#include <cstdio>
 #include <cstring>
 #include <iomanip>
 #include <sstream>
@@ -80,6 +82,37 @@ float decodeFloatLELocal(uint16_t reg0, uint16_t reg1)
   float result;
   std::memcpy(&result, &val, sizeof(float));
   return result;
+}
+
+bool isSupportedImuMessageType(const std::string& message_type)
+{
+  return message_type == "HI91" || message_type == "HI92";
+}
+
+bool imuSampleRateToPeriod(int hz, double& period_seconds)
+{
+  switch (hz)
+  {
+  case 1: period_seconds = 1.0; return true;
+  case 2: period_seconds = 0.5; return true;
+  case 5: period_seconds = 0.2; return true;
+  case 10: period_seconds = 0.1; return true;
+  case 20: period_seconds = 0.05; return true;
+  case 50: period_seconds = 0.02; return true;
+  case 100: period_seconds = 0.01; return true;
+  case 200: period_seconds = 0.005; return true;
+  case 250: period_seconds = 0.004; return true;
+  case 500: period_seconds = 0.002; return true;
+  case 1000: period_seconds = 0.001; return true;
+  default:
+    return false;
+  }
+}
+
+uint64_t systemTimestampUs()
+{
+  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+      std::chrono::system_clock::now().time_since_epoch()).count());
 }
 
 enum class HmpParseResult
@@ -267,7 +300,7 @@ std::string DataCollector::getLastError() const
 void DataCollector::setSampleRate(int hz)
 {
   if (hz < 1) hz = 1;
-  if (hz > 500) hz = 500;
+  if (hz > 1000) hz = 1000;
   sample_rate_hz_.store(hz);
 }
 
@@ -510,35 +543,82 @@ ImuData ImuCollector::getLatestData()
   return latest_data_;
 }
 
+void ImuCollector::setRawPacketCallback(RawPacketCallback callback)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  raw_packet_callback_ = std::move(callback);
+}
+
+bool ImuCollector::setOutputMessageType(const std::string& message_type)
+{
+  if (!isSupportedImuMessageType(message_type))
+  {
+    log("IMU: Unsupported output message type: " + message_type);
+    return false;
+  }
+
+  std::lock_guard<std::mutex> lock(mutex_);
+  output_message_type_ = message_type;
+  return true;
+}
+
+std::string ImuCollector::outputMessageType() const
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  return output_message_type_;
+}
+
+bool ImuCollector::sendAsciiCommand(const std::string& command, int wait_ms)
+{
+  if (!serial_.isOpen())
+  {
+    log("IMU: Serial port is not open");
+    return false;
+  }
+
+  const ssize_t written = serial_.write(command.c_str(), command.size());
+  if (written != static_cast<ssize_t>(command.size()))
+  {
+    log("IMU: Failed to send command: " + command);
+    return false;
+  }
+
+  if (wait_ms > 0)
+  {
+    sleepMs(wait_ms);
+  }
+  return true;
+}
+
 bool ImuCollector::setDeviceSampleRate(int hz)
 {
-  double period;
-  if (hz == 1) period = 1.0;
-  else if (hz == 2) period = 0.5;
-  else if (hz == 5) period = 0.2;
-  else if (hz == 10) period = 0.1;
-  else if (hz == 20) period = 0.05;
-  else if (hz == 50) period = 0.02;
-  else if (hz == 100) period = 0.01;
-  else if (hz == 200) period = 0.005;
-  else if (hz == 500) period = 0.002;
-  else
+  double period = 0.0;
+  if (!imuSampleRateToPeriod(hz, period))
   {
     log("IMU: Unsupported sample rate: " + std::to_string(hz) + " Hz");
     return false;
   }
 
+  const std::string message_type = outputMessageType();
+  if (!sendAsciiCommand("LOG HI91 ONTIME 0\r\n"))
+  {
+    return false;
+  }
+  if (!sendAsciiCommand("LOG HI92 ONTIME 0\r\n"))
+  {
+    return false;
+  }
+
   char cmd[64];
-  snprintf(cmd, sizeof(cmd), "LOG HI91 ONTIME %.3f\r\n", period);
-  
-  ssize_t written = serial_.write(cmd, strlen(cmd));
-  if (written < 0)
+  std::snprintf(cmd, sizeof(cmd), "LOG %s ONTIME %.3f\r\n", message_type.c_str(), period);
+  if (!sendAsciiCommand(cmd))
   {
     log("IMU: Failed to send sample rate command");
     return false;
   }
 
-  log("IMU: Set sample rate to " + std::to_string(hz) + " Hz (period: " + std::to_string(period) + "s)");
+  log("IMU: Set " + message_type + " sample rate to " + std::to_string(hz) +
+      " Hz (period: " + std::to_string(period) + "s)");
   sample_rate_hz_.store(hz);
   return true;
 }
@@ -596,11 +676,13 @@ void ImuCollector::run()
         {
           ImuData sample;
           sample.timestamp = std::chrono::steady_clock::now();
+          sample.frame_type = ImuFrameType::Unknown;
 
           if (raw.hi83.tag == 0x83)
           {
             sample.valid = true;
             sample.from_hi83 = true;
+            sample.frame_type = ImuFrameType::HI83;
             sample.system_time_us = raw.hi83.system_time_us;
             sample.acceleration[0] = raw.hi83.acc_b[0];
             sample.acceleration[1] = raw.hi83.acc_b[1];
@@ -622,6 +704,7 @@ void ImuCollector::run()
           {
             sample.valid = true;
             sample.from_hi83 = false;
+            sample.frame_type = ImuFrameType::HI91;
             sample.system_time_ms = raw.hi91.system_time;
             sample.acceleration[0] = raw.hi91.acc[0] * 9.8;
             sample.acceleration[1] = raw.hi91.acc[1] * 9.8;
@@ -639,10 +722,32 @@ void ImuCollector::run()
             sample.temperature = static_cast<double>(raw.hi91.temp);
             sample.air_pressure = raw.hi91.air_pressure;
           }
+          else if (raw.hi92.tag == 0x92)
+          {
+            sample.valid = true;
+            sample.from_hi83 = false;
+            sample.frame_type = ImuFrameType::HI92;
+            sample.acceleration[0] = static_cast<double>(raw.hi92.acc_b[0]) * 0.0048828;
+            sample.acceleration[1] = static_cast<double>(raw.hi92.acc_b[1]) * 0.0048828;
+            sample.acceleration[2] = static_cast<double>(raw.hi92.acc_b[2]) * 0.0048828;
+            sample.gyroscope[0] = static_cast<double>(raw.hi92.gyr_b[0]) * 0.001;
+            sample.gyroscope[1] = static_cast<double>(raw.hi92.gyr_b[1]) * 0.001;
+            sample.gyroscope[2] = static_cast<double>(raw.hi92.gyr_b[2]) * 0.001;
+            sample.rpy[0] = static_cast<double>(raw.hi92.roll) * 0.001;
+            sample.rpy[1] = static_cast<double>(raw.hi92.pitch) * 0.001;
+            sample.rpy[2] = static_cast<double>(raw.hi92.yaw) * 0.001;
+            sample.quaternion[0] = static_cast<double>(raw.hi92.quat[0]) * 0.0001;
+            sample.quaternion[1] = static_cast<double>(raw.hi92.quat[1]) * 0.0001;
+            sample.quaternion[2] = static_cast<double>(raw.hi92.quat[2]) * 0.0001;
+            sample.quaternion[3] = static_cast<double>(raw.hi92.quat[3]) * 0.0001;
+            sample.temperature = static_cast<double>(raw.hi92.temp);
+            sample.air_pressure = 100000.0 + static_cast<double>(raw.hi92.air_pressure);
+          }
           else if (raw.hi81.tag == 0x81)
           {
             sample.valid = true;
             sample.from_hi83 = false;
+            sample.frame_type = ImuFrameType::HI81;
             sample.acceleration[0] = static_cast<double>(raw.hi81.acc_b[0]);
             sample.acceleration[1] = static_cast<double>(raw.hi81.acc_b[1]);
             sample.acceleration[2] = static_cast<double>(raw.hi81.acc_b[2]);
@@ -658,13 +763,40 @@ void ImuCollector::run()
           if (sample.valid)
           {
             DataCallback callback;
+            RawPacketCallback raw_callback;
             {
               std::lock_guard<std::mutex> lock(mutex_);
               latest_data_ = sample;
               callback = data_callback_;
+              raw_callback = raw_packet_callback_;
             }
 
             recordDataReceived();
+
+            if (raw_callback)
+            {
+              const size_t packet_size = static_cast<size_t>(raw.len + 6);
+              uint8_t frame_tag = 0;
+              switch (sample.frame_type)
+              {
+              case ImuFrameType::HI81:
+                frame_tag = 0x81;
+                break;
+              case ImuFrameType::HI83:
+                frame_tag = 0x83;
+                break;
+              case ImuFrameType::HI91:
+                frame_tag = 0x91;
+                break;
+              case ImuFrameType::HI92:
+                frame_tag = 0x92;
+                break;
+              case ImuFrameType::Unknown:
+              default:
+                break;
+              }
+              raw_callback(systemTimestampUs(), frame_tag, raw.buf, packet_size);
+            }
 
             if (callback && shouldEmitData())
             {

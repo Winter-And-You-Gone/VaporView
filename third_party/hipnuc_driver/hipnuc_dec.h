@@ -47,6 +47,25 @@ typedef struct __attribute__((__packed__))
     float           quat[4];        /* Quaternion (w, x, y, z) */
 } hi91_t;
 
+/**
+ * Packet 0x92: IMU data (integer)
+ */
+typedef struct __attribute__((__packed__))
+{
+    uint8_t         tag;            /* Data packet tag */
+    uint16_t        main_status;    /* Status information */
+    int8_t          temp;           /* Temperature */
+    uint16_t        reserved0;      /* Reserved */
+    int16_t         air_pressure;   /* Air pressure offset from 100000 Pa */
+    int16_t         reserved1;      /* Reserved */
+    int16_t         gyr_b[3];       /* Gyroscope data (raw, 0.001 rad/s) */
+    int16_t         acc_b[3];       /* Accelerometer data (raw, 0.0048828 m/s^2) */
+    int16_t         mag_b[3];       /* Magnetometer data (raw, 0.030517 uT) */
+    int32_t         roll;           /* Roll angle (0.001 deg) */
+    int32_t         pitch;          /* Pitch angle (0.001 deg) */
+    int32_t         yaw;            /* Yaw angle (0.001 deg) */
+    int16_t         quat[4];        /* Quaternion (0.0001) */
+} hi92_t;
 
 /**
  * Packet 0x81: INS data, including lat, lon, eul, quat, raw IMU data 
@@ -173,6 +192,7 @@ typedef struct
     int len;                            /* Message length (bytes) */
     uint8_t buf[HIPNUC_MAX_RAW_SIZE];   /* Message raw buffer */
     hi91_t hi91;                        /* Decoded 0x91 packet data */
+    hi92_t hi92;                        /* Decoded 0x92 packet data */
     hi81_t hi81;                        /* Decoded 0x81 packet data */
     hi83_t hi83;                        /* Decoded 0x83 packet data */
 } hipnuc_raw_t;

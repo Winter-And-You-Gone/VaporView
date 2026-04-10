@@ -324,6 +324,11 @@ private:
     void loadRememberedInputState();
     void saveRememberedInputState() const;
     void bindRememberedInputState();
+    bool applyImuDeviceProfile(const QString& requestedFormat = QString(), int requestedBaud = -1, int requestedRate = -1);
+    bool restartImuCollector(const std::shared_ptr<VaporView::ImuCollector>& collector, const QString& port, int baud, int rate);
+    void setImuFormatSelection(const QString& format);
+    void setImuBaudSelection(int baud);
+    void setImuRateSelection(int rate);
     void stopAllCollectors();
     CollectorSnapshot snapshotCollectors() const;
     void setCollectors(CollectorSnapshot collectors);
@@ -415,6 +420,16 @@ private:
     QComboBox *ptb_rate_combo_;
     QComboBox *hmp_rate_combo_;
     QComboBox *lidar_rate_combo_;
+    QComboBox *imu_format_combo_;
+    QPushButton *imu_apply_btn_;
+    QPushButton *imu_hi91_btn_;
+    QPushButton *imu_hi92_btn_;
+    QPushButton *imu_baud_115200_btn_;
+    QPushButton *imu_baud_921600_btn_;
+    QPushButton *imu_rate_100_btn_;
+    QPushButton *imu_rate_200_btn_;
+    QPushButton *imu_rate_500_btn_;
+    QPushButton *imu_rate_1000_btn_;
 
     mutable std::mutex collector_mutex_;
     std::shared_ptr<VaporView::GnssCollector> gnss_collector_;
@@ -459,6 +474,7 @@ private:
     std::chrono::steady_clock::time_point steady_clock_anchor_;
     std::chrono::system_clock::time_point system_clock_anchor_;
     std::unique_ptr<QFile> sensors_file_;
+    std::unique_ptr<QFile> imu_raw_file_;
     std::unique_ptr<QFile> event_log_file_;
     std::unique_ptr<QFile> error_log_file_;
     QString recording_directory_;
@@ -467,6 +483,7 @@ private:
     QString session_start_time_utc_;
     quint64 session_start_time_us_;
     QString sensors_filename_;
+    QString imu_raw_filename_;
     QString session_metadata_filename_;
     QString event_log_filename_;
     QString error_log_filename_;

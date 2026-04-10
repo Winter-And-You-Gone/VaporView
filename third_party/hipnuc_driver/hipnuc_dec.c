@@ -18,6 +18,7 @@
 
 /* new HiPNUC standard packet */
 #define HIPNUC_ID_HI91        (0x91)
+#define HIPNUC_ID_HI92        (0x92)
 #define HIPNUC_ID_HI81        (0x81)
 #define HIPNUC_ID_HI83        (0x83)
 
@@ -81,6 +82,7 @@ static int parse_data(hipnuc_raw_t *raw)
     
     /* ignore all previous data */
     raw->hi91.tag = 0;
+    raw->hi92.tag = 0;
     raw->hi81.tag = 0;
     raw->hi83.tag = 0;
 
@@ -91,6 +93,10 @@ static int parse_data(hipnuc_raw_t *raw)
         case HIPNUC_ID_HI91:
             memcpy(&raw->hi91, p + ofs, sizeof(hi91_t));
             ofs += sizeof(hi91_t);
+            break;
+        case HIPNUC_ID_HI92:
+            memcpy(&raw->hi92, p + ofs, sizeof(hi92_t));
+            ofs += sizeof(hi92_t);
             break;
         case HIPNUC_ID_HI81:
             memcpy(&raw->hi81, p + ofs, sizeof(hi81_t));

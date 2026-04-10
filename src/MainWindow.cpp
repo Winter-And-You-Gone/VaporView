@@ -62,6 +62,25 @@ constexpr int kMainPageButtonHeight = 38;
 constexpr quint64 kImuPpsSyncWindowUs = 2ULL * 1000ULL * 1000ULL;
 constexpr int kSensorExportRateHz = 20;
 constexpr int kSensorExportPeriodMs = 1000 / kSensorExportRateHz;
+constexpr char kImuRawMagic[8] = {'V', 'V', 'I', 'M', 'U', 'R', 'A', 'W'};
+
+#pragma pack(push, 1)
+struct ImuRawFileHeader
+{
+    char magic[8];
+    quint32 version;
+    quint32 header_size;
+};
+
+struct ImuRawRecordHeader
+{
+    quint32 marker;
+    quint32 payload_size;
+    quint64 host_timestamp_us;
+    quint8 frame_tag;
+    quint8 reserved[3];
+};
+#pragma pack(pop)
 
 QString recordingTimestampUtc()
 {
@@ -94,6 +113,43 @@ QString csvEscape(const QString &value)
 QString csvBool(bool value)
 {
     return value ? QStringLiteral("true") : QStringLiteral("false");
+}
+
+QString imuFrameTypeName(VaporView::ImuFrameType type)
+{
+    switch (type)
+    {
+    case VaporView::ImuFrameType::HI81:
+        return QStringLiteral("HI81");
+    case VaporView::ImuFrameType::HI83:
+        return QStringLiteral("HI83");
+    case VaporView::ImuFrameType::HI91:
+        return QStringLiteral("HI91");
+    case VaporView::ImuFrameType::HI92:
+        return QStringLiteral("HI92");
+    case VaporView::ImuFrameType::Unknown:
+    default:
+        return QStringLiteral("Unknown");
+    }
+}
+
+QString imuRatePeriodText(int hz)
+{
+    switch (hz)
+    {
+    case 1: return QStringLiteral("1");
+    case 2: return QStringLiteral("0.5");
+    case 5: return QStringLiteral("0.2");
+    case 10: return QStringLiteral("0.1");
+    case 20: return QStringLiteral("0.05");
+    case 50: return QStringLiteral("0.02");
+    case 100: return QStringLiteral("0.01");
+    case 200: return QStringLiteral("0.005");
+    case 250: return QStringLiteral("0.004");
+    case 500: return QStringLiteral("0.002");
+    case 1000: return QStringLiteral("0.001");
+    default: return QString();
+    }
 }
 
 void applyComboText(QComboBox *combo, const QString& value)
@@ -608,7 +664,7 @@ void ImuPanel::updateData(const VaporView::ImuData& data, quint64 gnss_timestamp
 {
     if (data.valid)
     {
-        source_label_->setText(data.from_hi83 ? "HI83" : "HI91/HI81");
+        source_label_->setText(imuFrameTypeName(data.frame_type));
         source_label_->setProperty("data-valid", true);
         source_label_->style()->unpolish(source_label_);
         source_label_->style()->polish(source_label_);
@@ -1094,6 +1150,16 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_rate_combo_(nullptr)
     , hmp_rate_combo_(nullptr)
     , lidar_rate_combo_(nullptr)
+    , imu_format_combo_(nullptr)
+    , imu_apply_btn_(nullptr)
+    , imu_hi91_btn_(nullptr)
+    , imu_hi92_btn_(nullptr)
+    , imu_baud_115200_btn_(nullptr)
+    , imu_baud_921600_btn_(nullptr)
+    , imu_rate_100_btn_(nullptr)
+    , imu_rate_200_btn_(nullptr)
+    , imu_rate_500_btn_(nullptr)
+    , imu_rate_1000_btn_(nullptr)
     , gnss_collector_(nullptr)
     , imu_collector_(nullptr)
     , ptb_collector_(nullptr)
@@ -1115,7 +1181,7 @@ MainWindow::MainWindow(QWidget *parent)
     , base_window_size_(1440, 860)
     , base_minimum_window_size_(800, 600)
     , gnss_sample_rate_(1)
-    , imu_sample_rate_(1)
+    , imu_sample_rate_(200)
     , ptb_sample_rate_(1)
     , hmp_sample_rate_(1)
     , lidar_sample_rate_(1)
@@ -1123,6 +1189,7 @@ MainWindow::MainWindow(QWidget *parent)
     , steady_clock_anchor_(std::chrono::steady_clock::now())
     , system_clock_anchor_(std::chrono::system_clock::now())
     , sensors_file_(nullptr)
+    , imu_raw_file_(nullptr)
     , event_log_file_(nullptr)
     , error_log_file_(nullptr)
     , recording_directory_()
@@ -1131,6 +1198,7 @@ MainWindow::MainWindow(QWidget *parent)
     , session_start_time_utc_()
     , session_start_time_us_(0)
     , sensors_filename_()
+    , imu_raw_filename_()
     , session_metadata_filename_()
     , event_log_filename_()
     , error_log_filename_()
@@ -1465,10 +1533,11 @@ void MainWindow::loadRememberedInputState()
 
     applyComboText(global_rate_combo_, settings.value("rate/global", global_rate_combo_->currentText()).toString());
     applyComboText(gnss_rate_combo_, settings.value("rate/gnss", gnss_rate_combo_->currentText()).toString());
-    applyComboText(imu_rate_combo_, settings.value("rate/imu", imu_rate_combo_->currentText()).toString());
+    applyComboText(imu_rate_combo_, settings.value("rate/imu", QStringLiteral("200")).toString());
     applyComboText(ptb_rate_combo_, settings.value("rate/ptb", ptb_rate_combo_->currentText()).toString());
     applyComboText(hmp_rate_combo_, settings.value("rate/hmp", hmp_rate_combo_->currentText()).toString());
     applyComboText(lidar_rate_combo_, settings.value("rate/lidar", lidar_rate_combo_->currentText()).toString());
+    applyComboText(imu_format_combo_, settings.value("serial/imu_format", QStringLiteral("HI92")).toString());
 
     if (waveform_split_spin_)
     {
@@ -1489,6 +1558,7 @@ void MainWindow::saveRememberedInputState() const
 
     settings.setValue("serial/gnss_baud", gnss_baud_combo_->currentText());
     settings.setValue("serial/imu_baud", imu_baud_combo_->currentText());
+    settings.setValue("serial/imu_format", imu_format_combo_ ? imu_format_combo_->currentText() : QStringLiteral("HI92"));
     settings.setValue("serial/ptb_baud", ptb_baud_combo_->currentText());
     settings.setValue("serial/hmp_baud", hmp_baud_combo_->currentText());
     settings.setValue("serial/lidar_baud", lidar_baud_combo_->currentText());
@@ -1525,6 +1595,7 @@ void MainWindow::bindRememberedInputState()
     bindCombo(lidar_port_combo_);
     bindCombo(gnss_baud_combo_);
     bindCombo(imu_baud_combo_);
+    bindCombo(imu_format_combo_);
     bindCombo(ptb_baud_combo_);
     bindCombo(hmp_baud_combo_);
     bindCombo(lidar_baud_combo_);
@@ -1541,6 +1612,227 @@ void MainWindow::bindRememberedInputState()
             saveRememberedInputState();
         });
     }
+}
+
+void MainWindow::setImuFormatSelection(const QString& format)
+{
+    applyComboText(imu_format_combo_, format);
+}
+
+void MainWindow::setImuBaudSelection(int baud)
+{
+    applyComboText(imu_baud_combo_, QString::number(baud));
+}
+
+void MainWindow::setImuRateSelection(int rate)
+{
+    applyComboText(imu_rate_combo_, QString::number(rate));
+    imu_sample_rate_ = parseRate(imu_rate_combo_->currentText());
+}
+
+bool MainWindow::restartImuCollector(const std::shared_ptr<VaporView::ImuCollector>& collector, const QString& port, int baud, int rate)
+{
+    if (!collector)
+    {
+        return false;
+    }
+
+    collector->setSampleRate(rate);
+    if (!collector->start(port.toStdString(), VaporView::SerialConfig::N81(baud)))
+    {
+        log(QString(is_english_ ? "[IMU] Failed to reopen IMU port: %1" : "[IMU] 重新打开 IMU 串口失败: %1")
+                .arg(QString::fromStdString(collector->getLastError())));
+        return false;
+    }
+    collector->setOutputMessageType(imu_format_combo_ ? imu_format_combo_->currentText().toStdString() : std::string("HI92"));
+    if (!collector->checkDeviceResponse())
+    {
+        log(is_english_ ? "[IMU] No response after reopening IMU port" : "[IMU] 重新打开 IMU 串口后未收到设备响应");
+        collector->stop();
+        return false;
+    }
+    if (!collector->startStreaming())
+    {
+        log(is_english_ ? "[IMU] Failed to restart IMU data stream" : "[IMU] 重新启动 IMU 数据流失败");
+        collector->stop();
+        return false;
+    }
+    log(QString(is_english_ ? "[IMU] Reconnected at %1 baud, %2 Hz, %3" : "[IMU] 已按 %1 波特率、%2 Hz、%3 重新连接")
+            .arg(baud)
+            .arg(rate)
+            .arg(imu_format_combo_ ? imu_format_combo_->currentText() : QStringLiteral("HI92")));
+    return true;
+}
+
+bool MainWindow::applyImuDeviceProfile(const QString& requestedFormat, int requestedBaud, int requestedRate)
+{
+    if (connection_attempt_in_progress_ || port_detection_in_progress_)
+    {
+        return false;
+    }
+
+    const QString selectText = is_english_ ? "-- Select --" : "-- 选择 --";
+    const QString port = imu_port_combo_ ? imu_port_combo_->currentText().trimmed() : QString();
+    if (port.isEmpty() || port == selectText)
+    {
+        log(is_english_ ? "Select an IMU serial port first" : "请先选择 IMU 串口");
+        return false;
+    }
+
+    bool baudOk = false;
+    const int currentBaud = (imu_baud_combo_ ? imu_baud_combo_->currentText() : QStringLiteral("115200")).toInt(&baudOk);
+    const int effectiveCurrentBaud = baudOk && currentBaud > 0 ? currentBaud : 115200;
+    const QString currentFormat = imu_format_combo_ ? imu_format_combo_->currentText().trimmed().toUpper() : QStringLiteral("HI92");
+    const int currentRate = parseRate(imu_rate_combo_ ? imu_rate_combo_->currentText() : QStringLiteral("200"));
+
+    const QString targetFormat = requestedFormat.isEmpty() ? currentFormat : requestedFormat.trimmed().toUpper();
+    const int targetBaud = requestedBaud > 0 ? requestedBaud : effectiveCurrentBaud;
+    const int targetRate = requestedRate > 0 ? requestedRate : currentRate;
+    const QString targetPeriod = imuRatePeriodText(targetRate);
+
+    if ((targetFormat != QStringLiteral("HI91") && targetFormat != QStringLiteral("HI92")) || targetPeriod.isEmpty())
+    {
+        log(is_english_ ? "Unsupported IMU format or rate" : "IMU 输出格式或频率不受支持");
+        return false;
+    }
+
+    setImuFormatSelection(targetFormat);
+    setImuBaudSelection(targetBaud);
+    setImuRateSelection(targetRate);
+    saveRememberedInputState();
+
+    const CollectorSnapshot collectors = snapshotCollectors();
+    const auto imuCollector = collectors.imu;
+    const bool collectorRunning = imuCollector && imuCollector->isRunning();
+
+    auto sendCommand = [this](auto&& sender, const QString& command, int waitMs = 80) -> bool {
+        const std::string stdCommand = command.toStdString();
+        if (!sender(stdCommand, waitMs))
+        {
+            return false;
+        }
+        log(QString("[IMU TX] %1").arg(command.trimmed()));
+        return true;
+    };
+
+    bool configured = false;
+    bool needRestart = false;
+
+    if (collectorRunning)
+    {
+        imuCollector->setOutputMessageType(targetFormat.toStdString());
+        if (!sendCommand([&](const std::string& cmd, int waitMs) { return imuCollector->sendAsciiCommand(cmd, waitMs); }, QStringLiteral("LOG HI91 ONTIME 0\r\n")))
+        {
+            return false;
+        }
+        if (!sendCommand([&](const std::string& cmd, int waitMs) { return imuCollector->sendAsciiCommand(cmd, waitMs); }, QStringLiteral("LOG HI92 ONTIME 0\r\n")))
+        {
+            return false;
+        }
+        if (!sendCommand([&](const std::string& cmd, int waitMs) { return imuCollector->sendAsciiCommand(cmd, waitMs); },
+                         QStringLiteral("LOG %1 ONTIME %2\r\n").arg(targetFormat, targetPeriod)))
+        {
+            return false;
+        }
+        if (!sendCommand([&](const std::string& cmd, int waitMs) { return imuCollector->sendAsciiCommand(cmd, waitMs); },
+                         QStringLiteral("SAVECONFIG\r\n"), 120))
+        {
+            return false;
+        }
+        configured = true;
+
+        if (targetBaud != effectiveCurrentBaud)
+        {
+            if (!sendCommand([&](const std::string& cmd, int waitMs) { return imuCollector->sendAsciiCommand(cmd, waitMs); },
+                             QStringLiteral("SERIALCONFIG %1\r\n").arg(targetBaud), 150))
+            {
+                return false;
+            }
+            needRestart = true;
+        }
+    }
+    else
+    {
+        VaporView::SerialPort tempPort;
+        if (!tempPort.open(port.toStdString(), VaporView::SerialConfig::N81(effectiveCurrentBaud)))
+        {
+            log(QString(is_english_
+                ? "[IMU] Unable to open %1 for direct configuration, saved for next connection"
+                : "[IMU] 无法打开 %1 直接配置，已保存到下次连接时应用").arg(port));
+            return true;
+        }
+
+        auto directSend = [&](const std::string& cmd, int waitMs) -> bool {
+            const bool ok = tempPort.write(cmd.c_str(), cmd.size()) == static_cast<ssize_t>(cmd.size());
+            if (ok && waitMs > 0)
+            {
+                QThread::msleep(waitMs);
+            }
+            return ok;
+        };
+
+        if (!sendCommand(directSend, QStringLiteral("LOG HI91 ONTIME 0\r\n")))
+        {
+            return false;
+        }
+        if (!sendCommand(directSend, QStringLiteral("LOG HI92 ONTIME 0\r\n")))
+        {
+            return false;
+        }
+        if (!sendCommand(directSend, QStringLiteral("LOG %1 ONTIME %2\r\n").arg(targetFormat, targetPeriod)))
+        {
+            return false;
+        }
+        if (!sendCommand(directSend, QStringLiteral("SAVECONFIG\r\n"), 120))
+        {
+            return false;
+        }
+        configured = true;
+        if (targetBaud != effectiveCurrentBaud)
+        {
+            if (!sendCommand(directSend, QStringLiteral("SERIALCONFIG %1\r\n").arg(targetBaud), 150))
+            {
+                return false;
+            }
+            tempPort.close();
+            if (tempPort.open(port.toStdString(), VaporView::SerialConfig::N81(targetBaud)))
+            {
+                if (!sendCommand(directSend, QStringLiteral("SAVECONFIG\r\n"), 120))
+                {
+                    return false;
+                }
+            }
+        }
+        tempPort.close();
+    }
+
+    if (collectorRunning && needRestart)
+    {
+        imuCollector->stop();
+        if (!restartImuCollector(imuCollector, port, targetBaud, targetRate))
+        {
+            return false;
+        }
+        if (!imuCollector->sendAsciiCommand("SAVECONFIG\r\n", 120))
+        {
+            log(is_english_ ? "[IMU] Failed to persist baud rate after reconnect" : "[IMU] 重连后保存波特率配置失败");
+        }
+    }
+    else if (collectorRunning)
+    {
+        imuCollector->setSampleRate(targetRate);
+    }
+
+    if (configured)
+    {
+        log(QString(is_english_
+            ? "IMU profile applied: %1, %2 baud, %3 Hz"
+            : "IMU 配置已应用: %1, %2 波特率, %3 Hz")
+            .arg(targetFormat)
+            .arg(targetBaud)
+            .arg(targetRate));
+    }
+    return configured;
 }
 
 void MainWindow::setupMenuBar()
@@ -1653,7 +1945,7 @@ void MainWindow::setupMenuBar()
             "Navigation System with RTK and IMU support.\n\n"
             "Supported devices:\n"
             "- UM982 RTK Receiver (PVTSLN)\n"
-            "- HiPNUC IMU (HI81/HI83/HI91)\n"
+            "- HiPNUC IMU (HI81/HI83/HI91/HI92)\n"
             "- PTB210 Barometer\n"
             "- HMP3 Temperature/Humidity Sensor\n"
             "- TF03 Laser Rangefinder\n\n"
@@ -1663,7 +1955,7 @@ void MainWindow::setupMenuBar()
             "导航系统，支持 RTK 和 IMU。\n\n"
             "支持的设备:\n"
             "- UM982 RTK 接收机 (PVTSLN)\n"
-            "- HiPNUC IMU (HI81/HI83/HI91)\n"
+            "- HiPNUC IMU (HI81/HI83/HI91/HI92)\n"
             "- PTB210 气压计\n"
             "- HMP3 温湿度传感器\n"
             "- TF03 激光测距模块\n\n"
@@ -1837,7 +2129,7 @@ void MainWindow::setupConfigPanel()
 
     auto createRateCombo = [this](int maxRate = 500) {
         auto *combo = new QComboBox(this);
-        const QList<int> supportedRates = {1, 2, 5, 10, 20, 50, 100, 200, 500};
+        const QList<int> supportedRates = {1, 2, 5, 10, 20, 50, 100, 200, 250, 500, 1000};
         for (int rate : supportedRates)
         {
             if (rate <= maxRate)
@@ -1845,7 +2137,8 @@ void MainWindow::setupConfigPanel()
                 combo->addItem(QString::number(rate));
             }
         }
-        combo->setCurrentIndex(4);
+        const int preferredIndex = combo->findText(maxRate >= 200 ? QStringLiteral("200") : QStringLiteral("20"));
+        combo->setCurrentIndex(preferredIndex >= 0 ? preferredIndex : 0);
         combo->setEditable(true);
         combo->setFixedHeight(kMainPageInputHeight);
         combo->setFixedWidth(100);
@@ -1923,23 +2216,101 @@ void MainWindow::setupConfigPanel()
 
 #ifdef _WIN32
     createPortRow(gnss_lbl_, gnss_port_combo_, gnss_baud_combo_, gnss_rate_lbl_, gnss_rate_combo_, "COM3", "115200", row++);
-    createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, imu_rate_lbl_, imu_rate_combo_, "COM4", "115200", row++);
+    const int imuRow = row;
+    createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, imu_rate_lbl_, imu_rate_combo_, "COM4", "115200", row++, 1000);
     createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "COM5", "9600", row++);
     createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "COM6", "19200", row++);
     createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "COM7", "115200", row++, 100);
 #else
     createPortRow(gnss_lbl_, gnss_port_combo_, gnss_baud_combo_, gnss_rate_lbl_, gnss_rate_combo_, "/dev/ttyCOM3", "115200", row++);
-    createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, imu_rate_lbl_, imu_rate_combo_, "/dev/ttyIMU", "115200", row++);
+    const int imuRow = row;
+    createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, imu_rate_lbl_, imu_rate_combo_, "/dev/ttyIMU", "115200", row++, 1000);
     createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "/dev/ttyBARO", "9600", row++);
     createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "/dev/ttyHMP", "19200", row++);
     createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "/dev/ttyTF03", "115200", row++, 100);
 #endif
+
+    imu_rate_combo_->setCurrentText(QStringLiteral("200"));
+
+    auto *imuExtrasWidget = new QWidget(this);
+    auto *imuExtrasLayout = new QVBoxLayout(imuExtrasWidget);
+    imuExtrasLayout->setContentsMargins(0, 0, 0, 0);
+    imuExtrasLayout->setSpacing(4);
+
+    auto *imuTopRow = new QHBoxLayout();
+    imuTopRow->setContentsMargins(0, 0, 0, 0);
+    imuTopRow->setSpacing(4);
+    imu_format_combo_ = new QComboBox(this);
+    imu_format_combo_->addItems({QStringLiteral("HI91"), QStringLiteral("HI92")});
+    imu_format_combo_->setCurrentText(QStringLiteral("HI92"));
+    imu_format_combo_->setFixedHeight(kMainPageInputHeight);
+    imu_format_combo_->setFixedWidth(80);
+    imuTopRow->addWidget(imu_format_combo_);
+
+    imu_hi91_btn_ = new QPushButton(QStringLiteral("HI91"), this);
+    imu_hi91_btn_->setFixedHeight(kMainPageInputHeight);
+    imuTopRow->addWidget(imu_hi91_btn_);
+
+    imu_hi92_btn_ = new QPushButton(QStringLiteral("HI92"), this);
+    imu_hi92_btn_->setFixedHeight(kMainPageInputHeight);
+    imuTopRow->addWidget(imu_hi92_btn_);
+
+    imu_apply_btn_ = new QPushButton(this);
+    imu_apply_btn_->setFixedHeight(kMainPageInputHeight);
+    imuTopRow->addWidget(imu_apply_btn_);
+    imuTopRow->addStretch(1);
+    imuExtrasLayout->addLayout(imuTopRow);
+
+    auto *imuBottomRow = new QHBoxLayout();
+    imuBottomRow->setContentsMargins(0, 0, 0, 0);
+    imuBottomRow->setSpacing(4);
+    imu_baud_115200_btn_ = new QPushButton(QStringLiteral("115200"), this);
+    imu_baud_921600_btn_ = new QPushButton(QStringLiteral("921600"), this);
+    imu_rate_100_btn_ = new QPushButton(QStringLiteral("100Hz"), this);
+    imu_rate_200_btn_ = new QPushButton(QStringLiteral("200Hz"), this);
+    imu_rate_500_btn_ = new QPushButton(QStringLiteral("500Hz"), this);
+    imu_rate_1000_btn_ = new QPushButton(QStringLiteral("1000Hz"), this);
+    for (QPushButton* button : {imu_baud_115200_btn_, imu_baud_921600_btn_, imu_rate_100_btn_, imu_rate_200_btn_, imu_rate_500_btn_, imu_rate_1000_btn_})
+    {
+        button->setFixedHeight(kMainPageInputHeight);
+        imuBottomRow->addWidget(button);
+    }
+    imuBottomRow->addStretch(1);
+    imuExtrasLayout->addLayout(imuBottomRow);
+    config_layout->addWidget(imuExtrasWidget, imuRow, 5, 1, 1, Qt::AlignVCenter | Qt::AlignLeft);
 
     connect(gnss_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onGnssRateChanged);
     connect(imu_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onImuRateChanged);
     connect(ptb_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onPtbRateChanged);
     connect(hmp_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onHmpRateChanged);
     connect(lidar_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onLidarRateChanged);
+    connect(imu_apply_btn_, &QPushButton::clicked, this, [this]() {
+        applyImuDeviceProfile();
+    });
+    connect(imu_hi91_btn_, &QPushButton::clicked, this, [this]() {
+        applyImuDeviceProfile(QStringLiteral("HI91"));
+    });
+    connect(imu_hi92_btn_, &QPushButton::clicked, this, [this]() {
+        applyImuDeviceProfile(QStringLiteral("HI92"));
+    });
+    connect(imu_baud_115200_btn_, &QPushButton::clicked, this, [this]() {
+        applyImuDeviceProfile(QString(), 115200, -1);
+    });
+    connect(imu_baud_921600_btn_, &QPushButton::clicked, this, [this]() {
+        applyImuDeviceProfile(QString(), 921600, -1);
+    });
+    connect(imu_rate_100_btn_, &QPushButton::clicked, this, [this]() {
+        applyImuDeviceProfile(QString(), -1, 100);
+    });
+    connect(imu_rate_200_btn_, &QPushButton::clicked, this, [this]() {
+        applyImuDeviceProfile(QString(), -1, 200);
+    });
+    connect(imu_rate_500_btn_, &QPushButton::clicked, this, [this]() {
+        applyImuDeviceProfile(QString(), -1, 500);
+    });
+    connect(imu_rate_1000_btn_, &QPushButton::clicked, this, [this]() {
+        applyImuDeviceProfile(QString(), -1, 1000);
+    });
 
     config_root_layout->addLayout(config_layout);
     main_layout_->addWidget(config_group_);
@@ -2180,6 +2551,43 @@ void MainWindow::setEnglish(bool english)
     }
     gnss_rate_lbl_->setText(english ? "Rate:" : "频率:");
     imu_rate_lbl_->setText(english ? "Rate:" : "频率:");
+    if (imu_apply_btn_)
+    {
+        imu_apply_btn_->setText(english ? "Apply IMU" : "应用IMU");
+        imu_apply_btn_->setToolTip(english ? "Apply the selected IMU format, baud rate, and output frequency" : "应用当前选择的 IMU 输出格式、波特率和输出频率");
+    }
+    if (imu_hi91_btn_)
+    {
+        imu_hi91_btn_->setToolTip(english ? "Switch IMU output to HI91 immediately" : "立即切换 IMU 输出为 HI91");
+    }
+    if (imu_hi92_btn_)
+    {
+        imu_hi92_btn_->setToolTip(english ? "Switch IMU output to HI92 immediately" : "立即切换 IMU 输出为 HI92");
+    }
+    if (imu_baud_115200_btn_)
+    {
+        imu_baud_115200_btn_->setToolTip(english ? "Switch IMU baud rate to 115200" : "一键切换 IMU 波特率到 115200");
+    }
+    if (imu_baud_921600_btn_)
+    {
+        imu_baud_921600_btn_->setToolTip(english ? "Switch IMU baud rate to 921600" : "一键切换 IMU 波特率到 921600");
+    }
+    if (imu_rate_100_btn_)
+    {
+        imu_rate_100_btn_->setToolTip(english ? "Switch IMU output frequency to 100 Hz" : "一键切换 IMU 输出频率到 100 Hz");
+    }
+    if (imu_rate_200_btn_)
+    {
+        imu_rate_200_btn_->setToolTip(english ? "Switch IMU output frequency to 200 Hz" : "一键切换 IMU 输出频率到 200 Hz");
+    }
+    if (imu_rate_500_btn_)
+    {
+        imu_rate_500_btn_->setToolTip(english ? "Switch IMU output frequency to 500 Hz" : "一键切换 IMU 输出频率到 500 Hz");
+    }
+    if (imu_rate_1000_btn_)
+    {
+        imu_rate_1000_btn_->setToolTip(english ? "Switch IMU output frequency to 1000 Hz" : "一键切换 IMU 输出频率到 1000 Hz");
+    }
     ptb_rate_lbl_->setText(english ? "Rate:" : "频率:");
     hmp_rate_lbl_->setText(english ? "Rate:" : "频率:");
     lidar_rate_lbl_->setText(english ? "Rate:" : "频率:");
@@ -2249,7 +2657,7 @@ int MainWindow::parseRate(const QString& text)
 {
     bool ok;
     int rate = text.toInt(&ok);
-    if (ok && rate >= 1 && rate <= 500)
+    if (ok && rate >= 1 && rate <= 1000)
     {
         return rate;
     }
@@ -2591,6 +2999,7 @@ bool MainWindow::prepareRecordingSessionLayout(const QString& recordsPath, const
     session_directory_ = QDir::fromNativeSeparators(finalSessionDirectory);
     waveform_directory_ = QDir::fromNativeSeparators(sessionDir.filePath("waveform"));
     sensors_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("sensors/devices.csv"));
+    imu_raw_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("sensors/imu_raw.bin"));
     session_metadata_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("session.json"));
     event_log_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("logs/event_log.csv"));
     error_log_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("logs/error_log.txt"));
@@ -2677,6 +3086,7 @@ void MainWindow::writeSessionMetadata(const QString& endTimeUtc)
     QJsonObject paths;
     paths["waveform_directory"] = sessionDir.relativeFilePath(waveform_directory_);
     paths["devices_csv"] = sessionDir.relativeFilePath(sensors_filename_);
+    paths["imu_raw_bin"] = sessionDir.relativeFilePath(imu_raw_filename_);
     paths["event_log"] = sessionDir.relativeFilePath(event_log_filename_);
     paths["error_log"] = sessionDir.relativeFilePath(error_log_filename_);
     paths["device_config"] = sessionDir.relativeFilePath(device_config_filename_);
@@ -2723,6 +3133,9 @@ void MainWindow::writeDeviceConfigSnapshot()
     };
     addSerialConfig("gnss", gnss_port_combo_, gnss_baud_combo_, gnss_rate_combo_);
     addSerialConfig("imu", imu_port_combo_, imu_baud_combo_, imu_rate_combo_);
+    QJsonObject imuConfig = sensors.value("imu").toObject();
+    imuConfig["format"] = imu_format_combo_ ? imu_format_combo_->currentText() : QStringLiteral("HI92");
+    sensors["imu"] = imuConfig;
     addSerialConfig("ptb", ptb_port_combo_, ptb_baud_combo_, ptb_rate_combo_);
     addSerialConfig("hmp", hmp_port_combo_, hmp_baud_combo_, hmp_rate_combo_);
     addSerialConfig("tf03", lidar_port_combo_, lidar_baud_combo_, lidar_rate_combo_);
@@ -2954,13 +3367,16 @@ bool MainWindow::startRecordingSession()
     }
 
     sensors_file_ = std::make_unique<QFile>(sensors_filename_);
+    imu_raw_file_ = std::make_unique<QFile>(imu_raw_filename_);
     event_log_file_ = std::make_unique<QFile>(event_log_filename_);
     error_log_file_ = std::make_unique<QFile>(error_log_filename_);
     if (!sensors_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
+        !imu_raw_file_->open(QIODevice::WriteOnly | QIODevice::Truncate) ||
         !event_log_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
         !error_log_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
     {
         sensors_file_.reset();
+        imu_raw_file_.reset();
         event_log_file_.reset();
         error_log_file_.reset();
         QMessageBox::warning(
@@ -2985,6 +3401,15 @@ bool MainWindow::startRecordingSession()
         eventOut.setEncoding(QStringConverter::Utf8);
         eventOut << "timestamp_utc,timestamp_us,level,message\n";
         eventOut.flush();
+    }
+
+    {
+        const ImuRawFileHeader imuHeader{{kImuRawMagic[0], kImuRawMagic[1], kImuRawMagic[2], kImuRawMagic[3],
+                                          kImuRawMagic[4], kImuRawMagic[5], kImuRawMagic[6], kImuRawMagic[7]},
+                                         1u,
+                                         static_cast<quint32>(sizeof(ImuRawFileHeader))};
+        imu_raw_file_->write(reinterpret_cast<const char*>(&imuHeader), sizeof(imuHeader));
+        imu_raw_file_->flush();
     }
 
     writeSensorsHeader();
@@ -3087,6 +3512,11 @@ void MainWindow::stopRecording(bool announce)
             sensors_file_->flush();
             sensors_file_->close();
         }
+        if (imu_raw_file_ && imu_raw_file_->isOpen())
+        {
+            imu_raw_file_->flush();
+            imu_raw_file_->close();
+        }
         if (event_log_file_ && event_log_file_->isOpen())
         {
             event_log_file_->flush();
@@ -3100,6 +3530,7 @@ void MainWindow::stopRecording(bool announce)
     }
 
     sensors_file_.reset();
+    imu_raw_file_.reset();
     event_log_file_.reset();
     error_log_file_.reset();
     recording_entry_count_.store(0);
@@ -3111,6 +3542,7 @@ void MainWindow::stopRecording(bool announce)
     session_start_time_utc_.clear();
     session_start_time_us_ = 0;
     sensors_filename_.clear();
+    imu_raw_filename_.clear();
     session_metadata_filename_.clear();
     event_log_filename_.clear();
     error_log_filename_.clear();
@@ -3324,6 +3756,18 @@ void MainWindow::updateConnectionStatus(bool connected)
     ptb_baud_combo_->setEnabled(inputsEnabled);
     hmp_baud_combo_->setEnabled(inputsEnabled);
     lidar_baud_combo_->setEnabled(inputsEnabled);
+    if (imu_format_combo_)
+    {
+        imu_format_combo_->setEnabled(!connection_attempt_in_progress_ && !port_detection_in_progress_);
+    }
+    for (QPushButton* button : {imu_apply_btn_, imu_hi91_btn_, imu_hi92_btn_, imu_baud_115200_btn_, imu_baud_921600_btn_,
+                                imu_rate_100_btn_, imu_rate_200_btn_, imu_rate_500_btn_, imu_rate_1000_btn_})
+    {
+        if (button)
+        {
+            button->setEnabled(!connection_attempt_in_progress_ && !port_detection_in_progress_);
+        }
+    }
 
     if (port_detection_in_progress_)
     {
@@ -3732,6 +4176,7 @@ void MainWindow::onConnectClicked()
     const QString ptbBaudText = ptb_baud_combo_->currentText();
     const QString hmpBaudText = hmp_baud_combo_->currentText();
     const QString lidarBaudText = lidar_baud_combo_->currentText();
+    const QString imuFormat = imu_format_combo_ ? imu_format_combo_->currentText().trimmed().toUpper() : QStringLiteral("HI92");
     const int gnssRate = parseRate(gnss_rate_combo_->currentText());
     const int imuRate = parseRate(imu_rate_combo_->currentText());
     const int ptbRate = parseRate(ptb_rate_combo_->currentText());
@@ -3758,6 +4203,7 @@ void MainWindow::onConnectClicked()
                                       ptbBaudText,
                                       hmpBaudText,
                                       lidarBaudText,
+                                      imuFormat,
                                       gnssRate,
                                       imuRate,
                                       ptbRate,
@@ -3786,6 +4232,7 @@ void MainWindow::onConnectClicked()
 
         collectors.gnss->setSampleRate(gnssRate);
         collectors.imu->setSampleRate(imuRate);
+        collectors.imu->setOutputMessageType(imuFormat.toStdString());
         collectors.ptb->setSampleRate(ptbRate);
         collectors.hmp->setSampleRate(hmpRate);
         collectors.lidar->setSampleRate(lidarRate);
@@ -3800,6 +4247,28 @@ void MainWindow::onConnectClicked()
         collectors.ptb->setCancelCallback(cancelCallback);
         collectors.hmp->setCancelCallback(cancelCallback);
         collectors.lidar->setCancelCallback(cancelCallback);
+        collectors.imu->setRawPacketCallback([this](uint64_t hostTimestampUs, uint8_t frameTag, const uint8_t* data, size_t size) {
+            if (!recording_thread_running_.load())
+            {
+                return;
+            }
+
+            std::lock_guard<std::mutex> lock(recording_files_mutex_);
+            if (!imu_raw_file_ || !imu_raw_file_->isOpen())
+            {
+                return;
+            }
+
+            const ImuRawRecordHeader header{
+                0x524D5549u,
+                static_cast<quint32>(size),
+                static_cast<quint64>(hostTimestampUs),
+                static_cast<quint8>(frameTag),
+                {0, 0, 0}
+            };
+            imu_raw_file_->write(reinterpret_cast<const char*>(&header), sizeof(header));
+            imu_raw_file_->write(reinterpret_cast<const char*>(data), static_cast<qint64>(size));
+        });
 
         int total_devices = 0;
         int connected_devices = 0;
@@ -3886,8 +4355,11 @@ void MainWindow::onConnectClicked()
                              [&]() {
                                  collectors.imu->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onImuDataReady", Qt::QueuedConnection); });
                                  collectors.imu->setSampleRate(imuRate);
+                                 collectors.imu->setOutputMessageType(imuFormat.toStdString());
                                  collectors.imu->setDeviceSampleRate(imuRate);
-                                 postLog(QString(english ? "[IMU] Sample rate set to %1 Hz" : "[IMU] 采样频率设置为 %1 Hz").arg(imuRate));
+                                 postLog(QString(english ? "[IMU] %1 output set to %2 Hz" : "[IMU] 已设置 %1 输出为 %2 Hz")
+                                             .arg(imuFormat)
+                                             .arg(imuRate));
                                  if (collectors.imu->startStreaming()) return true;
                                  postLog(english ? "[IMU] Failed to start data stream." : "[IMU] 启动数据流失败。");
                                  return false;
