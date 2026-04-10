@@ -256,6 +256,21 @@ QString formatGuideValue(double value, int decimals, const QString& unit = QStri
     return unit.isEmpty() ? number : QStringLiteral("%1 %2").arg(number, unit);
 }
 
+double haversineDistanceMeters(double lat1Deg, double lon1Deg, double lat2Deg, double lon2Deg)
+{
+    constexpr double kEarthRadiusMeters = 6371000.0;
+    const double lat1 = qDegreesToRadians(lat1Deg);
+    const double lon1 = qDegreesToRadians(lon1Deg);
+    const double lat2 = qDegreesToRadians(lat2Deg);
+    const double lon2 = qDegreesToRadians(lon2Deg);
+    const double dLat = lat2 - lat1;
+    const double dLon = lon2 - lon1;
+    const double a = std::sin(dLat * 0.5) * std::sin(dLat * 0.5) +
+        std::cos(lat1) * std::cos(lat2) * std::sin(dLon * 0.5) * std::sin(dLon * 0.5);
+    const double c = 2.0 * std::atan2(std::sqrt(a), std::sqrt(std::max(0.0, 1.0 - a)));
+    return kEarthRadiusMeters * c;
+}
+
 int sessionViewerAxisTextWidth(const QFontMetrics& fm, const QStringList& labels)
 {
     int maxWidth = 0;
@@ -1758,6 +1773,7 @@ bool SessionViewerWindow::loadSensorsCsv()
     const int rtkLonIndex = findHeaderIndex(csv_headers_, {QStringLiteral("rtk_lon")});
     const int rtkTimestampIndex = findHeaderIndex(csv_headers_, {QStringLiteral("rtk_timestamp_us")});
     const int rtkValidIndex = findHeaderIndex(csv_headers_, {QStringLiteral("rtk_valid")});
+    const int rtkFixIndex = findHeaderIndex(csv_headers_, {QStringLiteral("rtk_fix")});
     const int tempIndex = findHeaderIndex(csv_headers_, {QStringLiteral("temp_c")});
     const int humidityIndex = findHeaderIndex(csv_headers_, {QStringLiteral("humidity_rh")});
     const int pressureIndex = findHeaderIndex(csv_headers_, {QStringLiteral("baro_hpa"), QStringLiteral("baro_pa")});
@@ -1810,11 +1826,16 @@ bool SessionViewerWindow::loadSensorsCsv()
         const bool rtkValid = rtkValidIndex < 0 || parseBooleanCsvField(csvValueAt(fields, rtkValidIndex), true);
         const double lat = parseOptionalDouble(csvValueAt(fields, rtkLatIndex));
         const double lon = parseOptionalDouble(csvValueAt(fields, rtkLonIndex));
+        const QString rtkFix = csvValueAt(fields, rtkFixIndex).trimmed().toUpper();
         if (rtkValid &&
             std::isfinite(lat) &&
             std::isfinite(lon) &&
+            !(std::abs(lat) < 1e-8 && std::abs(lon) < 1e-8) &&
             lat >= -90.0 && lat <= 90.0 &&
-            lon >= -180.0 && lon <= 180.0)
+            lon >= -180.0 && lon <= 180.0 &&
+            rtkFix != QStringLiteral("NONE") &&
+            rtkFix != QStringLiteral("NO_FIX") &&
+            rtkFix != QStringLiteral("INVALID"))
         {
             bool timestampOk = false;
             const quint64 rtkTimestampUs = csvValueAt(fields, rtkTimestampIndex).toULongLong(&timestampOk);
@@ -1822,6 +1843,15 @@ bool SessionViewerWindow::loadSensorsCsv()
             point.latitude = lat;
             point.longitude = lon;
             point.timestamp_us = timestampOk ? rtkTimestampUs : 0;
+            if (!rtk_track_points_.isEmpty())
+            {
+                const RtkTrackPoint& previous = rtk_track_points_.last();
+                const double jumpMeters = haversineDistanceMeters(previous.latitude, previous.longitude, point.latitude, point.longitude);
+                if (jumpMeters > 1000.0)
+                {
+                    continue;
+                }
+            }
             rtk_track_points_.push_back(point);
         }
     }
