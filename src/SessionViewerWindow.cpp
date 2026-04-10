@@ -1994,6 +1994,7 @@ QString SessionViewerWindow::ensureKfGinsExecutablePath()
     }
 
     const QStringList candidatePaths = {
+        QDir(repoPath).filePath(QStringLiteral("bin/KF-GINS.exe")),
         QDir(repoPath).filePath(QStringLiteral("build/KF-GINS.exe")),
         QDir(repoPath).filePath(QStringLiteral("cmake-build-release/KF-GINS.exe")),
         QDir(repoPath).filePath(QStringLiteral("cmake-build-debug/KF-GINS.exe")),
