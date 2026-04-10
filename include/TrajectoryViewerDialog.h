@@ -23,6 +23,9 @@ private:
 
     QLabel *summary_label_;
     QWidget *map_widget_;
+    QPushButton *zoom_in_button_;
+    QPushButton *zoom_out_button_;
+    QPushButton *reset_view_button_;
     QPushButton *close_button_;
     bool is_english_;
 };

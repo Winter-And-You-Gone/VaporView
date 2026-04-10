@@ -11,6 +11,7 @@
 #include <QSet>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QWheelEvent>
 #include <QWidget>
 #include <QtMath>
 #include <algorithm>
@@ -53,6 +54,9 @@ public:
         , is_english_(false)
         , zoom_(kDefaultZoom)
         , center_world_pixel_(0.0, 0.0)
+        , fit_zoom_(kDefaultZoom)
+        , fit_center_world_pixel_(0.0, 0.0)
+        , manual_view_active_(false)
     {
         setMinimumSize(720, 420);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -67,7 +71,27 @@ public:
     void setTrackPoints(const QVector<RtkTrackPoint>& points)
     {
         track_points_ = points;
+        manual_view_active_ = false;
         refreshViewport();
+        update();
+    }
+
+    void zoomIn()
+    {
+        adjustZoom(+1);
+    }
+
+    void zoomOut()
+    {
+        adjustZoom(-1);
+    }
+
+    void resetView()
+    {
+        manual_view_active_ = false;
+        zoom_ = fit_zoom_;
+        center_world_pixel_ = fit_center_world_pixel_;
+        requestVisibleTiles();
         update();
     }
 
@@ -76,6 +100,30 @@ protected:
     {
         QWidget::resizeEvent(event);
         refreshViewport();
+    }
+
+    void wheelEvent(QWheelEvent *event) override
+    {
+        if (track_points_.isEmpty())
+        {
+            event->ignore();
+            return;
+        }
+
+        const QPoint angleDelta = event->angleDelta();
+        if (angleDelta.y() > 0)
+        {
+            adjustZoom(+1);
+            event->accept();
+            return;
+        }
+        if (angleDelta.y() < 0)
+        {
+            adjustZoom(-1);
+            event->accept();
+            return;
+        }
+        event->ignore();
     }
 
     void paintEvent(QPaintEvent *event) override
@@ -121,6 +169,8 @@ private:
         {
             zoom_ = kDefaultZoom;
             center_world_pixel_ = QPointF();
+            fit_zoom_ = zoom_;
+            fit_center_world_pixel_ = center_world_pixel_;
             return;
         }
 
@@ -130,8 +180,13 @@ private:
 
         if (track_points_.size() == 1)
         {
-            zoom_ = kDefaultZoom;
-            center_world_pixel_ = latLonToPixel(track_points_.first().latitude, track_points_.first().longitude, zoom_);
+            fit_zoom_ = kDefaultZoom;
+            fit_center_world_pixel_ = latLonToPixel(track_points_.first().latitude, track_points_.first().longitude, fit_zoom_);
+            if (!manual_view_active_)
+            {
+                zoom_ = fit_zoom_;
+                center_world_pixel_ = fit_center_world_pixel_;
+            }
             requestVisibleTiles();
             return;
         }
@@ -153,27 +208,37 @@ private:
 
             if ((maxX - minX) <= availableWidth * 0.8 && (maxY - minY) <= availableHeight * 0.8)
             {
-                zoom_ = candidateZoom;
-                center_world_pixel_ = QPointF((minX + maxX) * 0.5, (minY + maxY) * 0.5);
+                fit_zoom_ = candidateZoom;
+                fit_center_world_pixel_ = QPointF((minX + maxX) * 0.5, (minY + maxY) * 0.5);
+                if (!manual_view_active_)
+                {
+                    zoom_ = fit_zoom_;
+                    center_world_pixel_ = fit_center_world_pixel_;
+                }
                 requestVisibleTiles();
                 return;
             }
         }
 
-        zoom_ = kMinZoom;
+        fit_zoom_ = kMinZoom;
         double minX = std::numeric_limits<double>::infinity();
         double maxX = -std::numeric_limits<double>::infinity();
         double minY = std::numeric_limits<double>::infinity();
         double maxY = -std::numeric_limits<double>::infinity();
         for (const RtkTrackPoint& point : track_points_)
         {
-            const QPointF pixel = latLonToPixel(point.latitude, point.longitude, zoom_);
+            const QPointF pixel = latLonToPixel(point.latitude, point.longitude, fit_zoom_);
             minX = std::min(minX, pixel.x());
             maxX = std::max(maxX, pixel.x());
             minY = std::min(minY, pixel.y());
             maxY = std::max(maxY, pixel.y());
         }
-        center_world_pixel_ = QPointF((minX + maxX) * 0.5, (minY + maxY) * 0.5);
+        fit_center_world_pixel_ = QPointF((minX + maxX) * 0.5, (minY + maxY) * 0.5);
+        if (!manual_view_active_)
+        {
+            zoom_ = fit_zoom_;
+            center_world_pixel_ = fit_center_world_pixel_;
+        }
         requestVisibleTiles();
     }
 
@@ -314,6 +379,43 @@ private:
         painter.drawRoundedRect(mapRect, 8.0, 8.0);
     }
 
+    void adjustZoom(int delta)
+    {
+        if (track_points_.isEmpty() || delta == 0)
+        {
+            return;
+        }
+
+        const int newZoom = std::clamp(zoom_ + delta, kMinZoom, kMaxZoom);
+        if (newZoom == zoom_)
+        {
+            return;
+        }
+
+        const QPointF centerLatLonPixelAtNewZoom = latLonToPixel(
+            pixelToLatitude(center_world_pixel_, zoom_),
+            pixelToLongitude(center_world_pixel_, zoom_),
+            newZoom);
+        zoom_ = newZoom;
+        center_world_pixel_ = centerLatLonPixelAtNewZoom;
+        manual_view_active_ = true;
+        requestVisibleTiles();
+        update();
+    }
+
+    double pixelToLongitude(const QPointF& pixel, int zoom) const
+    {
+        const double worldSize = static_cast<double>(kTileSize) * static_cast<double>(1 << zoom);
+        return pixel.x() / worldSize * 360.0 - 180.0;
+    }
+
+    double pixelToLatitude(const QPointF& pixel, int zoom) const
+    {
+        const double worldSize = static_cast<double>(kTileSize) * static_cast<double>(1 << zoom);
+        const double mercatorY = M_PI * (1.0 - 2.0 * pixel.y() / worldSize);
+        return qRadiansToDegrees(std::atan(std::sinh(mercatorY)));
+    }
+
     QNetworkAccessManager *manager_;
     QVector<RtkTrackPoint> track_points_;
     QHash<QString, QPixmap> tile_cache_;
@@ -321,6 +423,9 @@ private:
     bool is_english_;
     int zoom_;
     QPointF center_world_pixel_;
+    int fit_zoom_;
+    QPointF fit_center_world_pixel_;
+    bool manual_view_active_;
 };
 }
 
@@ -328,6 +433,9 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     : QDialog(parent)
     , summary_label_(new QLabel(this))
     , map_widget_(new TrajectoryMapWidget(this))
+    , zoom_in_button_(new QPushButton(this))
+    , zoom_out_button_(new QPushButton(this))
+    , reset_view_button_(new QPushButton(this))
     , close_button_(new QPushButton(this))
     , is_english_(false)
 {
@@ -344,6 +452,18 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     mainLayout->addWidget(map_widget_, 1);
 
     auto *buttonLayout = new QHBoxLayout();
+    connect(zoom_in_button_, &QPushButton::clicked, this, [this]() {
+        static_cast<TrajectoryMapWidget*>(map_widget_)->zoomIn();
+    });
+    connect(zoom_out_button_, &QPushButton::clicked, this, [this]() {
+        static_cast<TrajectoryMapWidget*>(map_widget_)->zoomOut();
+    });
+    connect(reset_view_button_, &QPushButton::clicked, this, [this]() {
+        static_cast<TrajectoryMapWidget*>(map_widget_)->resetView();
+    });
+    buttonLayout->addWidget(zoom_in_button_);
+    buttonLayout->addWidget(zoom_out_button_);
+    buttonLayout->addWidget(reset_view_button_);
     buttonLayout->addStretch(1);
     connect(close_button_, &QPushButton::clicked, this, &QDialog::accept);
     buttonLayout->addWidget(close_button_);
@@ -395,5 +515,8 @@ void TrajectoryViewerDialog::setTrackPoints(const QVector<RtkTrackPoint>& points
 void TrajectoryViewerDialog::updateTexts()
 {
     setWindowTitle(is_english_ ? QStringLiteral("RTK Trajectory Viewer") : QStringLiteral("RTK轨迹查看"));
+    zoom_in_button_->setText(is_english_ ? QStringLiteral("Zoom In") : QStringLiteral("放大"));
+    zoom_out_button_->setText(is_english_ ? QStringLiteral("Zoom Out") : QStringLiteral("缩小"));
+    reset_view_button_->setText(is_english_ ? QStringLiteral("Fit Track") : QStringLiteral("适应轨迹"));
     close_button_->setText(is_english_ ? QStringLiteral("Close") : QStringLiteral("关闭"));
 }
