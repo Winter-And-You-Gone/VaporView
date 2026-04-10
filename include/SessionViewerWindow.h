@@ -5,6 +5,13 @@
 #include <QStringList>
 #include <QVector>
 
+struct RtkTrackPoint
+{
+    double latitude = 0.0;
+    double longitude = 0.0;
+    quint64 timestamp_us = 0;
+};
+
 class QGroupBox;
 class QLabel;
 class QLineEdit;
@@ -17,6 +24,7 @@ class QWidget;
 class QGridLayout;
 class QResizeEvent;
 class QShowEvent;
+class TrajectoryViewerDialog;
 
 class SessionViewerWindow : public QMainWindow
 {
@@ -35,6 +43,7 @@ private slots:
     void onChooseSessionClicked();
     void onReloadClicked();
     void onClearViewClicked();
+    void onViewTrajectoryClicked();
     void onFrameSliderChanged(int value);
     void onFrameSpinChanged(int value);
     void onTogglePeakPlotModeClicked();
@@ -71,6 +80,7 @@ private:
     QLineEdit *session_path_edit_;
     QPushButton *choose_session_btn_;
     QPushButton *reload_btn_;
+    QPushButton *trajectory_view_btn_;
     QPushButton *clear_view_btn_;
     QLabel *status_label_;
     QGroupBox *summary_group_;
@@ -127,6 +137,7 @@ private:
     QVector<double> temperature_values_;
     QVector<double> humidity_values_;
     QVector<double> pressure_values_;
+    QVector<RtkTrackPoint> rtk_track_points_;
     QVector<quint64> waveform_timestamps_us_;
     QVector<WaveformSegment> waveform_segments_;
     QVector<float> waveform_peak_values_;
@@ -134,6 +145,7 @@ private:
     bool updating_frame_controls_;
     bool waveform_peak_scatter_mode_;
     QVector<int> highlighted_csv_rows_;
+    TrajectoryViewerDialog *trajectory_viewer_dialog_;
     int points_per_frame_;
     int sensor_export_rate_hz_;
     int waveform_export_rate_hz_;

@@ -1,5 +1,6 @@
 #include "SessionViewerWindow.h"
 #include "RangeSelectionAxisWidget.h"
+#include "TrajectoryViewerDialog.h"
 
 #include <QByteArray>
 #include <QDateTime>
@@ -951,6 +952,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , session_path_edit_(nullptr)
     , choose_session_btn_(nullptr)
     , reload_btn_(nullptr)
+    , trajectory_view_btn_(nullptr)
     , clear_view_btn_(nullptr)
     , status_label_(nullptr)
     , summary_group_(nullptr)
@@ -1006,6 +1008,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , temperature_values_()
     , humidity_values_()
     , pressure_values_()
+    , rtk_track_points_()
     , waveform_timestamps_us_()
     , waveform_segments_()
     , waveform_peak_values_()
@@ -1013,6 +1016,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , updating_frame_controls_(false)
     , waveform_peak_scatter_mode_(true)
     , highlighted_csv_rows_()
+    , trajectory_viewer_dialog_(nullptr)
     , points_per_frame_(50000)
     , sensor_export_rate_hz_(10)
     , waveform_export_rate_hz_(10)
@@ -1068,13 +1072,18 @@ void SessionViewerWindow::setupUi()
     connect(reload_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onReloadClicked);
     controlLayout->addWidget(reload_btn_, 0, 3);
 
+    trajectory_view_btn_ = new QPushButton(this);
+    trajectory_view_btn_->setEnabled(false);
+    connect(trajectory_view_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onViewTrajectoryClicked);
+    controlLayout->addWidget(trajectory_view_btn_, 0, 4);
+
     clear_view_btn_ = new QPushButton(this);
     connect(clear_view_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onClearViewClicked);
-    controlLayout->addWidget(clear_view_btn_, 0, 4);
+    controlLayout->addWidget(clear_view_btn_, 0, 5);
 
     status_label_ = new QLabel(this);
     status_label_->setWordWrap(true);
-    controlLayout->addWidget(status_label_, 1, 0, 1, 5);
+    controlLayout->addWidget(status_label_, 1, 0, 1, 6);
 
     mainLayout->addLayout(controlLayout);
 
@@ -1289,6 +1298,7 @@ void SessionViewerWindow::updateTexts()
     setWindowTitle(is_english_ ? "Data Viewer" : "数据查看器");
     choose_session_btn_->setText(is_english_ ? "Open Data..." : "打开数据...");
     reload_btn_->setText(is_english_ ? "Reload" : "重新加载");
+    trajectory_view_btn_->setText(is_english_ ? "View Trajectory" : "轨迹查看");
     clear_view_btn_->setText(is_english_ ? "Clear Page" : "清空页面");
     summary_group_->setTitle(is_english_ ? "Data Summary" : "数据概览");
     waveform_group_->setTitle(is_english_ ? "Normalized Second Harmonic" : "归一化二次谐波");
@@ -1330,6 +1340,11 @@ void SessionViewerWindow::updateTexts()
     {
         updateSummaryLabels();
         updateWaveformControls();
+    }
+
+    if (trajectory_viewer_dialog_)
+    {
+        trajectory_viewer_dialog_->setEnglish(is_english_);
     }
 }
 
@@ -1455,6 +1470,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     temperature_values_.clear();
     humidity_values_.clear();
     pressure_values_.clear();
+    rtk_track_points_.clear();
     waveform_timestamps_us_.clear();
     waveform_segments_.clear();
     waveform_peak_values_.clear();
@@ -1478,6 +1494,11 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     static_cast<SingleSeriesTrendPlotWidget*>(humidity_plot_)->setCurrentIndex(-1);
     static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setValues({});
     static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setCurrentIndex(-1);
+    trajectory_view_btn_->setEnabled(false);
+    if (trajectory_viewer_dialog_)
+    {
+        trajectory_viewer_dialog_->setTrackPoints({});
+    }
     frame_info_label_->setText(is_english_ ? "No waveform frame loaded" : "尚未加载波形帧");
     csv_info_label_->setText(is_english_ ? "No CSV loaded" : "尚未加载 CSV");
     environment_info_label_->setText(is_english_ ? "No environmental series loaded" : "尚未加载环境趋势数据");
@@ -1589,6 +1610,29 @@ void SessionViewerWindow::onReloadClicked()
     }
 
     loadSessionDirectory(session_directory_);
+}
+
+void SessionViewerWindow::onViewTrajectoryClicked()
+{
+    if (rtk_track_points_.isEmpty())
+    {
+        QMessageBox::information(this,
+            is_english_ ? "RTK Trajectory" : "RTK轨迹",
+            is_english_ ? "No valid RTK latitude/longitude samples were found in the current session."
+                        : "当前会话中没有找到有效的 RTK 经纬度轨迹点。");
+        return;
+    }
+
+    if (!trajectory_viewer_dialog_)
+    {
+        trajectory_viewer_dialog_ = new TrajectoryViewerDialog(this);
+    }
+
+    trajectory_viewer_dialog_->setEnglish(is_english_);
+    trajectory_viewer_dialog_->setTrackPoints(rtk_track_points_);
+    trajectory_viewer_dialog_->show();
+    trajectory_viewer_dialog_->raise();
+    trajectory_viewer_dialog_->activateWindow();
 }
 
 bool SessionViewerWindow::loadSessionDirectory(const QString& sessionDirectory)
@@ -1710,6 +1754,10 @@ bool SessionViewerWindow::loadSensorsCsv()
     }
 
     csv_headers_ = parseCsvLine(stream.readLine());
+    const int rtkLatIndex = findHeaderIndex(csv_headers_, {QStringLiteral("rtk_lat")});
+    const int rtkLonIndex = findHeaderIndex(csv_headers_, {QStringLiteral("rtk_lon")});
+    const int rtkTimestampIndex = findHeaderIndex(csv_headers_, {QStringLiteral("rtk_timestamp_us")});
+    const int rtkValidIndex = findHeaderIndex(csv_headers_, {QStringLiteral("rtk_valid")});
     const int tempIndex = findHeaderIndex(csv_headers_, {QStringLiteral("temp_c")});
     const int humidityIndex = findHeaderIndex(csv_headers_, {QStringLiteral("humidity_rh")});
     const int pressureIndex = findHeaderIndex(csv_headers_, {QStringLiteral("baro_hpa"), QStringLiteral("baro_pa")});
@@ -1730,6 +1778,7 @@ bool SessionViewerWindow::loadSensorsCsv()
     temperature_values_.clear();
     humidity_values_.clear();
     pressure_values_.clear();
+    rtk_track_points_.clear();
     while (!stream.atEnd())
     {
         const QString line = stream.readLine();
@@ -1757,6 +1806,24 @@ bool SessionViewerWindow::loadSensorsCsv()
         temperature_values_.push_back((tempIndex >= 0 && thValid) ? parseOptionalDouble(csvValueAt(fields, tempIndex)) : std::numeric_limits<double>::quiet_NaN());
         humidity_values_.push_back((humidityIndex >= 0 && thValid) ? parseOptionalDouble(csvValueAt(fields, humidityIndex)) : std::numeric_limits<double>::quiet_NaN());
         pressure_values_.push_back((pressureIndex >= 0 && baroValid) ? parseOptionalDouble(csvValueAt(fields, pressureIndex)) : std::numeric_limits<double>::quiet_NaN());
+
+        const bool rtkValid = rtkValidIndex < 0 || parseBooleanCsvField(csvValueAt(fields, rtkValidIndex), true);
+        const double lat = parseOptionalDouble(csvValueAt(fields, rtkLatIndex));
+        const double lon = parseOptionalDouble(csvValueAt(fields, rtkLonIndex));
+        if (rtkValid &&
+            std::isfinite(lat) &&
+            std::isfinite(lon) &&
+            lat >= -90.0 && lat <= 90.0 &&
+            lon >= -180.0 && lon <= 180.0)
+        {
+            bool timestampOk = false;
+            const quint64 rtkTimestampUs = csvValueAt(fields, rtkTimestampIndex).toULongLong(&timestampOk);
+            RtkTrackPoint point;
+            point.latitude = lat;
+            point.longitude = lon;
+            point.timestamp_us = timestampOk ? rtkTimestampUs : 0;
+            rtk_track_points_.push_back(point);
+        }
     }
 
     csv_table_->setRowCount(rows.size());
@@ -1796,6 +1863,11 @@ bool SessionViewerWindow::loadSensorsCsv()
         std::any_of(temperature_values_.cbegin(), temperature_values_.cend(), [](double value) { return std::isfinite(value); }) ||
         std::any_of(humidity_values_.cbegin(), humidity_values_.cend(), [](double value) { return std::isfinite(value); }) ||
         std::any_of(pressure_values_.cbegin(), pressure_values_.cend(), [](double value) { return std::isfinite(value); });
+    trajectory_view_btn_->setEnabled(!rtk_track_points_.isEmpty());
+    if (trajectory_viewer_dialog_)
+    {
+        trajectory_viewer_dialog_->setTrackPoints(rtk_track_points_);
+    }
     environment_info_label_->setText(hasEnvironmentSeries
         ? (is_english_
             ? "Loaded temperature, humidity, and pressure trend series."
