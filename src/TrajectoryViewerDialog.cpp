@@ -57,6 +57,8 @@ public:
         , fit_zoom_(kDefaultZoom)
         , fit_center_world_pixel_(0.0, 0.0)
         , manual_view_active_(false)
+        , english_track_label_(QStringLiteral("RTK trajectory"))
+        , chinese_track_label_(QStringLiteral("RTK轨迹"))
     {
         setMinimumSize(720, 420);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -73,6 +75,13 @@ public:
         track_points_ = points;
         manual_view_active_ = false;
         refreshViewport();
+        update();
+    }
+
+    void setTrackLabel(const QString& englishLabel, const QString& chineseLabel)
+    {
+        english_track_label_ = englishLabel;
+        chinese_track_label_ = chineseLabel;
         update();
     }
 
@@ -142,8 +151,9 @@ protected:
             painter.setPen(QColor("#718096"));
             painter.drawRoundedRect(mapRect, 8.0, 8.0);
             painter.drawText(mapRect, Qt::AlignCenter,
-                is_english_ ? QStringLiteral("No RTK trajectory available in this session.")
-                            : QStringLiteral("当前会话中没有可用的 RTK 轨迹。"));
+                is_english_
+                    ? QStringLiteral("No %1 available in this session.").arg(english_track_label_)
+                    : QStringLiteral("当前会话中没有可用的%1。").arg(chinese_track_label_));
             return;
         }
 
@@ -159,7 +169,9 @@ protected:
                 : QStringLiteral("底图数据 © OpenStreetMap contributors"));
         painter.drawText(QRectF(mapRect.left(), mapRect.bottom() + 2, mapRect.width(), 16),
             Qt::AlignRight | Qt::AlignVCenter,
-            QString(is_english_ ? "RTK points: %1" : "RTK 点数: %1").arg(track_points_.size()));
+            QString(is_english_ ? "%1 points: %2" : "%1点数: %2")
+                .arg(is_english_ ? english_track_label_ : chinese_track_label_)
+                .arg(track_points_.size()));
     }
 
 private:
@@ -426,6 +438,8 @@ private:
     int fit_zoom_;
     QPointF fit_center_world_pixel_;
     bool manual_view_active_;
+    QString english_track_label_;
+    QString chinese_track_label_;
 };
 }
 
@@ -438,6 +452,9 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , reset_view_button_(new QPushButton(this))
     , close_button_(new QPushButton(this))
     , is_english_(false)
+    , english_track_label_(QStringLiteral("RTK trajectory"))
+    , chinese_track_label_(QStringLiteral("RTK轨迹"))
+    , track_points_()
 {
     setModal(false);
     resize(920, 640);
@@ -477,16 +494,32 @@ void TrajectoryViewerDialog::setEnglish(bool english)
     is_english_ = english;
     static_cast<TrajectoryMapWidget*>(map_widget_)->setEnglish(english);
     updateTexts();
+    updateSummary();
+}
+
+void TrajectoryViewerDialog::setTrackLabel(const QString& englishLabel, const QString& chineseLabel)
+{
+    english_track_label_ = englishLabel;
+    chinese_track_label_ = chineseLabel;
+    static_cast<TrajectoryMapWidget*>(map_widget_)->setTrackLabel(englishLabel, chineseLabel);
+    updateTexts();
+    updateSummary();
 }
 
 void TrajectoryViewerDialog::setTrackPoints(const QVector<RtkTrackPoint>& points)
 {
+    track_points_ = points;
     static_cast<TrajectoryMapWidget*>(map_widget_)->setTrackPoints(points);
-    if (points.isEmpty())
+    updateSummary();
+}
+
+void TrajectoryViewerDialog::updateSummary()
+{
+    if (track_points_.isEmpty())
     {
         summary_label_->setText(is_english_
-            ? QStringLiteral("No valid RTK latitude/longitude samples were found in this session.")
-            : QStringLiteral("当前会话中没有找到有效的 RTK 经纬度轨迹点。"));
+            ? QStringLiteral("No valid latitude/longitude samples were found for %1 in this session.").arg(english_track_label_)
+            : QStringLiteral("当前会话中没有找到%1的有效经纬度轨迹点。").arg(chinese_track_label_));
         return;
     }
 
@@ -494,7 +527,7 @@ void TrajectoryViewerDialog::setTrackPoints(const QVector<RtkTrackPoint>& points
     double maxLat = -std::numeric_limits<double>::infinity();
     double minLon = std::numeric_limits<double>::infinity();
     double maxLon = -std::numeric_limits<double>::infinity();
-    for (const RtkTrackPoint& point : points)
+    for (const RtkTrackPoint& point : track_points_)
     {
         minLat = std::min(minLat, point.latitude);
         maxLat = std::max(maxLat, point.latitude);
@@ -503,9 +536,10 @@ void TrajectoryViewerDialog::setTrackPoints(const QVector<RtkTrackPoint>& points
     }
 
     summary_label_->setText(QString(is_english_
-        ? "Showing %1 RTK trajectory points. Latitude %2 to %3, longitude %4 to %5."
-        : "正在显示 %1 个 RTK 轨迹点。纬度范围 %2 到 %3，经度范围 %4 到 %5。")
-        .arg(points.size())
+        ? "Showing %1 %2 points. Latitude %3 to %4, longitude %5 to %6."
+        : "正在显示 %1 个%2点。纬度范围 %3 到 %4，经度范围 %5 到 %6。")
+        .arg(track_points_.size())
+        .arg(is_english_ ? english_track_label_ : chinese_track_label_)
         .arg(QString::number(minLat, 'f', 7))
         .arg(QString::number(maxLat, 'f', 7))
         .arg(QString::number(minLon, 'f', 7))
@@ -514,7 +548,9 @@ void TrajectoryViewerDialog::setTrackPoints(const QVector<RtkTrackPoint>& points
 
 void TrajectoryViewerDialog::updateTexts()
 {
-    setWindowTitle(is_english_ ? QStringLiteral("RTK Trajectory Viewer") : QStringLiteral("RTK轨迹查看"));
+    setWindowTitle(is_english_
+        ? QStringLiteral("%1 Viewer").arg(english_track_label_)
+        : QStringLiteral("%1查看").arg(chinese_track_label_));
     zoom_in_button_->setText(is_english_ ? QStringLiteral("Zoom In") : QStringLiteral("放大"));
     zoom_out_button_->setText(is_english_ ? QStringLiteral("Zoom Out") : QStringLiteral("缩小"));
     reset_view_button_->setText(is_english_ ? QStringLiteral("Fit Track") : QStringLiteral("适应轨迹"));

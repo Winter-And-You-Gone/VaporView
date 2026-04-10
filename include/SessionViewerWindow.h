@@ -46,6 +46,8 @@ private slots:
     void onReloadClicked();
     void onClearViewClicked();
     void onViewTrajectoryClicked();
+    void onViewKfGinsTrajectoryClicked();
+    void onConfigureKfGinsClicked();
     void onRunKfGinsClicked();
     void onFrameSliderChanged(int value);
     void onFrameSpinChanged(int value);
@@ -73,6 +75,7 @@ private:
     bool loadSessionDirectory(const QString& sessionDirectory);
     bool loadSessionMetadata(const QString& sessionDirectory);
     bool loadSensorsCsv();
+    bool loadKfGinsTrack();
     bool loadWaveformSegments();
     bool loadWaveformPeakSeries();
     bool loadWaveformFrame(quint64 frameIndex);
@@ -89,6 +92,8 @@ private:
     QPushButton *choose_session_btn_;
     QPushButton *reload_btn_;
     QPushButton *trajectory_view_btn_;
+    QPushButton *kf_gins_trajectory_view_btn_;
+    QPushButton *kf_gins_config_btn_;
     QPushButton *kf_gins_btn_;
     QPushButton *clear_view_btn_;
     QLabel *status_label_;
@@ -147,6 +152,7 @@ private:
     QVector<double> humidity_values_;
     QVector<double> pressure_values_;
     QVector<RtkTrackPoint> rtk_track_points_;
+    QVector<RtkTrackPoint> kf_gins_track_points_;
     QVector<quint64> waveform_timestamps_us_;
     QVector<WaveformSegment> waveform_segments_;
     QVector<float> waveform_peak_values_;
@@ -155,6 +161,7 @@ private:
     bool waveform_peak_scatter_mode_;
     QVector<int> highlighted_csv_rows_;
     TrajectoryViewerDialog *trajectory_viewer_dialog_;
+    TrajectoryViewerDialog *kf_gins_trajectory_viewer_dialog_;
     QProcess *kf_gins_process_;
     QString kf_gins_output_directory_;
     QString kf_gins_warning_message_;

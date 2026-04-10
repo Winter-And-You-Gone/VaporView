@@ -4,10 +4,13 @@
 
 #include <QByteArray>
 #include <QDateTime>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFormLayout>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -38,6 +41,7 @@
 #include <QWidget>
 #include <QStringConverter>
 #include <QTimeZone>
+#include <array>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -388,6 +392,42 @@ struct KfGinsGnssRow
     double vel_d = 0.0;
     QString fix_text;
 };
+
+bool parseTripletSetting(const QString& text, std::array<double, 3> *values)
+{
+    if (!values)
+    {
+        return false;
+    }
+
+    const QStringList parts = text.split(QRegularExpression(QStringLiteral("[,;\\s]+")), Qt::SkipEmptyParts);
+    if (parts.size() != 3)
+    {
+        return false;
+    }
+
+    std::array<double, 3> parsed{};
+    for (int i = 0; i < 3; ++i)
+    {
+        bool ok = false;
+        parsed[static_cast<size_t>(i)] = parts.at(i).toDouble(&ok);
+        if (!ok)
+        {
+            return false;
+        }
+    }
+
+    *values = parsed;
+    return true;
+}
+
+QString formatTripletSetting(const std::array<double, 3>& values, int decimals)
+{
+    return QStringLiteral("%1, %2, %3")
+        .arg(QString::number(values[0], 'f', decimals))
+        .arg(QString::number(values[1], 'f', decimals))
+        .arg(QString::number(values[2], 'f', decimals));
+}
 
 double haversineDistanceMeters(double lat1Deg, double lon1Deg, double lat2Deg, double lon2Deg)
 {
@@ -1101,6 +1141,8 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , choose_session_btn_(nullptr)
     , reload_btn_(nullptr)
     , trajectory_view_btn_(nullptr)
+    , kf_gins_trajectory_view_btn_(nullptr)
+    , kf_gins_config_btn_(nullptr)
     , kf_gins_btn_(nullptr)
     , clear_view_btn_(nullptr)
     , status_label_(nullptr)
@@ -1158,6 +1200,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , humidity_values_()
     , pressure_values_()
     , rtk_track_points_()
+    , kf_gins_track_points_()
     , waveform_timestamps_us_()
     , waveform_segments_()
     , waveform_peak_values_()
@@ -1166,6 +1209,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , waveform_peak_scatter_mode_(true)
     , highlighted_csv_rows_()
     , trajectory_viewer_dialog_(nullptr)
+    , kf_gins_trajectory_viewer_dialog_(nullptr)
     , kf_gins_process_(nullptr)
     , kf_gins_output_directory_()
     , kf_gins_warning_message_()
@@ -1230,18 +1274,27 @@ void SessionViewerWindow::setupUi()
     connect(trajectory_view_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onViewTrajectoryClicked);
     controlLayout->addWidget(trajectory_view_btn_, 0, 4);
 
+    kf_gins_trajectory_view_btn_ = new QPushButton(this);
+    kf_gins_trajectory_view_btn_->setEnabled(false);
+    connect(kf_gins_trajectory_view_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onViewKfGinsTrajectoryClicked);
+    controlLayout->addWidget(kf_gins_trajectory_view_btn_, 0, 5);
+
+    kf_gins_config_btn_ = new QPushButton(this);
+    connect(kf_gins_config_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onConfigureKfGinsClicked);
+    controlLayout->addWidget(kf_gins_config_btn_, 0, 6);
+
     kf_gins_btn_ = new QPushButton(this);
     kf_gins_btn_->setEnabled(false);
     connect(kf_gins_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onRunKfGinsClicked);
-    controlLayout->addWidget(kf_gins_btn_, 0, 5);
+    controlLayout->addWidget(kf_gins_btn_, 0, 7);
 
     clear_view_btn_ = new QPushButton(this);
     connect(clear_view_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onClearViewClicked);
-    controlLayout->addWidget(clear_view_btn_, 0, 6);
+    controlLayout->addWidget(clear_view_btn_, 0, 8);
 
     status_label_ = new QLabel(this);
     status_label_->setWordWrap(true);
-    controlLayout->addWidget(status_label_, 1, 0, 1, 7);
+    controlLayout->addWidget(status_label_, 1, 0, 1, 9);
 
     mainLayout->addLayout(controlLayout);
 
@@ -1457,6 +1510,8 @@ void SessionViewerWindow::updateTexts()
     choose_session_btn_->setText(is_english_ ? "Open Data..." : "打开数据...");
     reload_btn_->setText(is_english_ ? "Reload" : "重新加载");
     trajectory_view_btn_->setText(is_english_ ? "View Trajectory" : "轨迹查看");
+    kf_gins_trajectory_view_btn_->setText(is_english_ ? "View KF-GINS" : "查看KF-GINS");
+    kf_gins_config_btn_->setText(is_english_ ? "KF-GINS Config" : "KF-GINS设置");
     kf_gins_btn_->setText((kf_gins_process_ && kf_gins_process_->state() != QProcess::NotRunning)
         ? (is_english_ ? "KF-GINS Running..." : "KF-GINS运行中...")
         : (is_english_ ? "Run KF-GINS" : "运行KF-GINS"));
@@ -1506,6 +1561,10 @@ void SessionViewerWindow::updateTexts()
     if (trajectory_viewer_dialog_)
     {
         trajectory_viewer_dialog_->setEnglish(is_english_);
+    }
+    if (kf_gins_trajectory_viewer_dialog_)
+    {
+        kf_gins_trajectory_viewer_dialog_->setEnglish(is_english_);
     }
 }
 
@@ -1632,6 +1691,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     humidity_values_.clear();
     pressure_values_.clear();
     rtk_track_points_.clear();
+    kf_gins_track_points_.clear();
     waveform_timestamps_us_.clear();
     waveform_segments_.clear();
     waveform_peak_values_.clear();
@@ -1656,10 +1716,15 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setValues({});
     static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setCurrentIndex(-1);
     trajectory_view_btn_->setEnabled(false);
+    kf_gins_trajectory_view_btn_->setEnabled(false);
     kf_gins_btn_->setEnabled(false);
     if (trajectory_viewer_dialog_)
     {
         trajectory_viewer_dialog_->setTrackPoints({});
+    }
+    if (kf_gins_trajectory_viewer_dialog_)
+    {
+        kf_gins_trajectory_viewer_dialog_->setTrackPoints({});
     }
     frame_info_label_->setText(is_english_ ? "No waveform frame loaded" : "尚未加载波形帧");
     csv_info_label_->setText(is_english_ ? "No CSV loaded" : "尚未加载 CSV");
@@ -1791,25 +1856,174 @@ void SessionViewerWindow::onViewTrajectoryClicked()
     }
 
     trajectory_viewer_dialog_->setEnglish(is_english_);
+    trajectory_viewer_dialog_->setTrackLabel(QStringLiteral("RTK trajectory"), QStringLiteral("RTK轨迹"));
     trajectory_viewer_dialog_->setTrackPoints(rtk_track_points_);
     trajectory_viewer_dialog_->show();
     trajectory_viewer_dialog_->raise();
     trajectory_viewer_dialog_->activateWindow();
 }
 
+void SessionViewerWindow::onViewKfGinsTrajectoryClicked()
+{
+    if (kf_gins_track_points_.isEmpty())
+    {
+        QMessageBox::information(this,
+            QStringLiteral("KF-GINS"),
+            is_english_ ? "No KF-GINS trajectory result was found in the current session."
+                        : "当前会话中没有找到KF-GINS轨迹结果。");
+        return;
+    }
+
+    if (!kf_gins_trajectory_viewer_dialog_)
+    {
+        kf_gins_trajectory_viewer_dialog_ = new TrajectoryViewerDialog(this);
+    }
+
+    kf_gins_trajectory_viewer_dialog_->setEnglish(is_english_);
+    kf_gins_trajectory_viewer_dialog_->setTrackLabel(QStringLiteral("KF-GINS trajectory"), QStringLiteral("KF-GINS轨迹"));
+    kf_gins_trajectory_viewer_dialog_->setTrackPoints(kf_gins_track_points_);
+    kf_gins_trajectory_viewer_dialog_->show();
+    kf_gins_trajectory_viewer_dialog_->raise();
+    kf_gins_trajectory_viewer_dialog_->activateWindow();
+}
+
+void SessionViewerWindow::onConfigureKfGinsClicked()
+{
+    QSettings settings("VaporView", "SessionViewer");
+    const QString defaultAntlever = QStringLiteral("0, 0, 0");
+    const QString defaultArw = QStringLiteral("0.3, 0.3, 0.3");
+    const QString defaultVrw = QStringLiteral("0.1, 0.1, 0.1");
+    const QString defaultGbstd = QStringLiteral("10, 10, 10");
+    const QString defaultAbstd = QStringLiteral("100, 100, 100");
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(is_english_ ? "KF-GINS Config" : "KF-GINS设置");
+
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *formLayout = new QFormLayout();
+    layout->addLayout(formLayout);
+
+    auto *antleverEdit = new QLineEdit(settings.value("kf_gins/antlever", defaultAntlever).toString(), &dialog);
+    auto *initAttEdit = new QLineEdit(settings.value("kf_gins/initatt_override").toString(), &dialog);
+    auto *arwEdit = new QLineEdit(settings.value("kf_gins/arw", defaultArw).toString(), &dialog);
+    auto *vrwEdit = new QLineEdit(settings.value("kf_gins/vrw", defaultVrw).toString(), &dialog);
+    auto *gbstdEdit = new QLineEdit(settings.value("kf_gins/gbstd", defaultGbstd).toString(), &dialog);
+    auto *abstdEdit = new QLineEdit(settings.value("kf_gins/abstd", defaultAbstd).toString(), &dialog);
+
+    initAttEdit->setPlaceholderText(is_english_ ? "Leave empty to use first IMU attitude" : "留空则使用首个IMU姿态");
+
+    formLayout->addRow(is_english_ ? "Lever Arm (m)" : "杆臂 (m)", antleverEdit);
+    formLayout->addRow(is_english_ ? "Initial Attitude Override (deg)" : "初始姿态覆盖 (deg)", initAttEdit);
+    formLayout->addRow(is_english_ ? "ARW" : "ARW", arwEdit);
+    formLayout->addRow(is_english_ ? "VRW" : "VRW", vrwEdit);
+    formLayout->addRow(is_english_ ? "Gyro Bias STD" : "陀螺零偏STD", gbstdEdit);
+    formLayout->addRow(is_english_ ? "Accel Bias STD" : "加计零偏STD", abstdEdit);
+
+    auto *hintLabel = new QLabel(
+        is_english_
+            ? "Each field uses three comma-separated values, for example: 0.0, 0.0, 0.0"
+            : "每个字段填写三个逗号分隔的值，例如：0.0, 0.0, 0.0",
+        &dialog);
+    hintLabel->setWordWrap(true);
+    layout->addWidget(hintLabel);
+
+    auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    layout->addWidget(buttonBox);
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    if (dialog.exec() != QDialog::Accepted)
+    {
+        return;
+    }
+
+    const struct
+    {
+        QString key;
+        QLineEdit *edit;
+        bool allowEmpty;
+    } fields[] = {
+        {QStringLiteral("kf_gins/antlever"), antleverEdit, false},
+        {QStringLiteral("kf_gins/initatt_override"), initAttEdit, true},
+        {QStringLiteral("kf_gins/arw"), arwEdit, false},
+        {QStringLiteral("kf_gins/vrw"), vrwEdit, false},
+        {QStringLiteral("kf_gins/gbstd"), gbstdEdit, false},
+        {QStringLiteral("kf_gins/abstd"), abstdEdit, false},
+    };
+
+    for (const auto& field : fields)
+    {
+        const QString value = field.edit->text().trimmed();
+        if (field.allowEmpty && value.isEmpty())
+        {
+            continue;
+        }
+
+        std::array<double, 3> parsed{};
+        if (!parseTripletSetting(value, &parsed))
+        {
+            QMessageBox::warning(this,
+                QStringLiteral("KF-GINS"),
+                is_english_
+                    ? QString("Invalid triplet for %1.").arg(field.edit->placeholderText().isEmpty() ? field.key : field.edit->placeholderText())
+                    : QString("字段格式无效，请填写三个数字：%1").arg(field.key));
+            return;
+        }
+    }
+
+    settings.setValue("kf_gins/antlever", antleverEdit->text().trimmed());
+    settings.setValue("kf_gins/initatt_override", initAttEdit->text().trimmed());
+    settings.setValue("kf_gins/arw", arwEdit->text().trimmed());
+    settings.setValue("kf_gins/vrw", vrwEdit->text().trimmed());
+    settings.setValue("kf_gins/gbstd", gbstdEdit->text().trimmed());
+    settings.setValue("kf_gins/abstd", abstdEdit->text().trimmed());
+    setStatusText(is_english_ ? "KF-GINS parameters were saved." : "KF-GINS参数已保存。");
+}
+
 QString SessionViewerWindow::ensureKfGinsExecutablePath()
 {
     QSettings settings("VaporView", "SessionViewer");
+    const QString defaultRepoPath = QStringLiteral("x:/Project/GPS/NAV/KF-GINS");
+    const QString repoPath = QDir::fromNativeSeparators(settings.value("kf_gins/repo_path", defaultRepoPath).toString());
+    settings.setValue("kf_gins/repo_path", repoPath);
+
     QString executablePath = settings.value("kf_gins/executable_path").toString();
     if (!executablePath.isEmpty() && QFileInfo::exists(executablePath))
     {
         return QDir::fromNativeSeparators(QFileInfo(executablePath).absoluteFilePath());
     }
 
+    const QStringList candidatePaths = {
+        QDir(repoPath).filePath(QStringLiteral("build/KF-GINS.exe")),
+        QDir(repoPath).filePath(QStringLiteral("cmake-build-release/KF-GINS.exe")),
+        QDir(repoPath).filePath(QStringLiteral("cmake-build-debug/KF-GINS.exe")),
+        QDir(repoPath).filePath(QStringLiteral("KF-GINS.exe"))
+    };
+    for (const QString& candidate : candidatePaths)
+    {
+        if (QFileInfo::exists(candidate))
+        {
+            executablePath = QDir::fromNativeSeparators(QFileInfo(candidate).absoluteFilePath());
+            settings.setValue("kf_gins/executable_path", executablePath);
+            return executablePath;
+        }
+    }
+
+    if (QDir(repoPath).exists())
+    {
+        QMessageBox::information(this,
+            QStringLiteral("KF-GINS"),
+            is_english_
+                ? QString("KF-GINS source is available under %1, but KF-GINS.exe was not found yet. Please build it there or choose an executable manually.")
+                      .arg(repoPath)
+                : QString("已在 %1 找到KF-GINS源码，但还没有找到KF-GINS.exe。请先在该目录构建，或手动选择可执行文件。")
+                      .arg(repoPath));
+    }
+
     const QString selectedPath = QFileDialog::getOpenFileName(
         this,
         is_english_ ? "Choose KF-GINS Executable" : "选择KF-GINS可执行文件",
-        executablePath.isEmpty() ? QDir::currentPath() : QFileInfo(executablePath).absolutePath(),
+        executablePath.isEmpty() ? repoPath : QFileInfo(executablePath).absolutePath(),
         is_english_
             ? "Executable (*.exe);;All Files (*)"
             : "可执行文件 (*.exe);;所有文件 (*)");
@@ -2101,9 +2315,23 @@ bool SessionViewerWindow::exportKfGinsDataset(QString *configPath,
 
     const KfGinsGnssRow& firstGnss = gnssRows.first();
     const KfGinsImuRow& firstImu = imuRows.first();
-    const double initRoll = std::isfinite(firstImu.roll) ? firstImu.roll : 0.0;
-    const double initPitch = std::isfinite(firstImu.pitch) ? firstImu.pitch : 0.0;
-    const double initYaw = std::isfinite(firstImu.yaw) ? firstImu.yaw : 0.0;
+    QSettings settings("VaporView", "SessionViewer");
+    std::array<double, 3> antlever = {0.0, 0.0, 0.0};
+    std::array<double, 3> arw = {0.3, 0.3, 0.3};
+    std::array<double, 3> vrw = {0.1, 0.1, 0.1};
+    std::array<double, 3> gbstd = {10.0, 10.0, 10.0};
+    std::array<double, 3> abstd = {100.0, 100.0, 100.0};
+    std::array<double, 3> initAttOverride = {0.0, 0.0, 0.0};
+    const bool hasInitAttOverride = parseTripletSetting(settings.value("kf_gins/initatt_override").toString(), &initAttOverride);
+    parseTripletSetting(settings.value("kf_gins/antlever", formatTripletSetting(antlever, 3)).toString(), &antlever);
+    parseTripletSetting(settings.value("kf_gins/arw", formatTripletSetting(arw, 3)).toString(), &arw);
+    parseTripletSetting(settings.value("kf_gins/vrw", formatTripletSetting(vrw, 3)).toString(), &vrw);
+    parseTripletSetting(settings.value("kf_gins/gbstd", formatTripletSetting(gbstd, 3)).toString(), &gbstd);
+    parseTripletSetting(settings.value("kf_gins/abstd", formatTripletSetting(abstd, 3)).toString(), &abstd);
+
+    const double initRoll = hasInitAttOverride ? initAttOverride[0] : (std::isfinite(firstImu.roll) ? firstImu.roll : 0.0);
+    const double initPitch = hasInitAttOverride ? initAttOverride[1] : (std::isfinite(firstImu.pitch) ? firstImu.pitch : 0.0);
+    const double initYaw = hasInitAttOverride ? initAttOverride[2] : (std::isfinite(firstImu.yaw) ? firstImu.yaw : 0.0);
     const double initVelN = std::isfinite(firstGnss.vel_n) ? firstGnss.vel_n : 0.0;
     const double initVelE = std::isfinite(firstGnss.vel_e) ? firstGnss.vel_e : 0.0;
     const double initVelD = std::isfinite(firstGnss.vel_d) ? firstGnss.vel_d : 0.0;
@@ -2143,14 +2371,16 @@ bool SessionViewerWindow::exportKfGinsDataset(QString *configPath,
         << "initvelstd: [ 0.5, 0.5, 0.5 ]\n"
         << "initattstd: [ 2.0, 2.0, 5.0 ]\n"
         << "imunoise:\n"
-        << "  arw: [0.3, 0.3, 0.3]\n"
-        << "  vrw: [0.1, 0.1, 0.1]\n"
-        << "  gbstd: [10.0, 10.0, 10.0]\n"
-        << "  abstd: [100.0, 100.0, 100.0]\n"
+        << "  arw: [" << QString::number(arw[0], 'f', 3) << ", " << QString::number(arw[1], 'f', 3) << ", " << QString::number(arw[2], 'f', 3) << "]\n"
+        << "  vrw: [" << QString::number(vrw[0], 'f', 3) << ", " << QString::number(vrw[1], 'f', 3) << ", " << QString::number(vrw[2], 'f', 3) << "]\n"
+        << "  gbstd: [" << QString::number(gbstd[0], 'f', 3) << ", " << QString::number(gbstd[1], 'f', 3) << ", " << QString::number(gbstd[2], 'f', 3) << "]\n"
+        << "  abstd: [" << QString::number(abstd[0], 'f', 3) << ", " << QString::number(abstd[1], 'f', 3) << ", " << QString::number(abstd[2], 'f', 3) << "]\n"
         << "  gsstd: [300.0, 300.0, 300.0]\n"
         << "  asstd: [300.0, 300.0, 300.0]\n"
         << "  corrtime: 4.0\n"
-        << "antlever: [ 0.0, 0.0, 0.0 ]\n";
+        << "antlever: [ " << QString::number(antlever[0], 'f', 3) << ", "
+        << QString::number(antlever[1], 'f', 3) << ", "
+        << QString::number(antlever[2], 'f', 3) << " ]\n";
     yamlFile.close();
 
     *configPath = QDir::fromNativeSeparators(yamlFilePath);
@@ -2198,6 +2428,10 @@ void SessionViewerWindow::finalizeKfGinsRun(bool success, const QString& detail)
             ? (is_english_ ? "KF-GINS finished successfully." : "KF-GINS运行完成。")
             : (is_english_ ? "KF-GINS failed." : "KF-GINS运行失败。"))
         : detail;
+    if (success)
+    {
+        loadKfGinsTrack();
+    }
     setStatusText(message);
     QMessageBox::information(this,
         is_english_ ? "KF-GINS" : "KF-GINS",
@@ -2314,11 +2548,16 @@ bool SessionViewerWindow::loadSessionDirectory(const QString& sessionDirectory)
     clearLoadedData(false);
 
     const QString normalized = QDir::fromNativeSeparators(sessionDirectory);
+    session_directory_ = normalized;
     if (!loadSessionMetadata(normalized))
     {
         return false;
     }
     if (!loadSensorsCsv())
+    {
+        return false;
+    }
+    if (!loadKfGinsTrack())
     {
         return false;
     }
@@ -2331,7 +2570,6 @@ bool SessionViewerWindow::loadSessionDirectory(const QString& sessionDirectory)
         return false;
     }
 
-    session_directory_ = normalized;
     session_path_edit_->setText(session_directory_);
     updateSummaryLabels();
     updateWaveformControls();
@@ -2348,6 +2586,87 @@ bool SessionViewerWindow::loadSessionDirectory(const QString& sessionDirectory)
     }
 
     setStatusText(QString(is_english_ ? "Loaded session: %1" : "已加载会话: %1").arg(session_directory_));
+    return true;
+}
+
+bool SessionViewerWindow::loadKfGinsTrack()
+{
+    kf_gins_track_points_.clear();
+    if (kf_gins_trajectory_view_btn_)
+    {
+        kf_gins_trajectory_view_btn_->setEnabled(false);
+    }
+    if (kf_gins_trajectory_viewer_dialog_)
+    {
+        kf_gins_trajectory_viewer_dialog_->setTrackLabel(QStringLiteral("KF-GINS trajectory"), QStringLiteral("KF-GINS轨迹"));
+        kf_gins_trajectory_viewer_dialog_->setTrackPoints({});
+    }
+
+    if (session_directory_.isEmpty())
+    {
+        return true;
+    }
+
+    const QString navResultPath = QDir(session_directory_).filePath(QStringLiteral("analysis/kf_gins/KF_GINS_Navresult.nav"));
+    QFile navFile(navResultPath);
+    if (!navFile.exists())
+    {
+        return true;
+    }
+    if (!navFile.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        setStatusText(QString(is_english_ ? "Failed to open KF-GINS nav result: %1" : "打开KF-GINS导航结果失败: %1").arg(navResultPath));
+        return false;
+    }
+
+    QTextStream navIn(&navFile);
+    navIn.setEncoding(QStringConverter::Utf8);
+    while (!navIn.atEnd())
+    {
+        const QString line = navIn.readLine().trimmed();
+        if (line.isEmpty() || line.startsWith('#') || line.startsWith('%'))
+        {
+            continue;
+        }
+
+        const QStringList fields = line.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+        if (fields.size() < 4)
+        {
+            continue;
+        }
+
+        bool timeOk = false;
+        bool latOk = false;
+        bool lonOk = false;
+        const double timeSeconds = fields.at(1).toDouble(&timeOk);
+        const double latitude = fields.at(2).toDouble(&latOk);
+        const double longitude = fields.at(3).toDouble(&lonOk);
+        if (!timeOk || !latOk || !lonOk ||
+            !std::isfinite(latitude) || !std::isfinite(longitude) ||
+            latitude < -90.0 || latitude > 90.0 ||
+            longitude < -180.0 || longitude > 180.0 ||
+            (std::abs(latitude) < 1e-8 && std::abs(longitude) < 1e-8))
+        {
+            continue;
+        }
+
+        RtkTrackPoint point;
+        point.latitude = latitude;
+        point.longitude = longitude;
+        point.timestamp_us = timeSeconds > 0.0
+            ? static_cast<quint64>(std::llround(timeSeconds * 1000000.0))
+            : 0;
+        kf_gins_track_points_.push_back(point);
+    }
+
+    if (kf_gins_trajectory_view_btn_)
+    {
+        kf_gins_trajectory_view_btn_->setEnabled(!kf_gins_track_points_.isEmpty());
+    }
+    if (kf_gins_trajectory_viewer_dialog_)
+    {
+        kf_gins_trajectory_viewer_dialog_->setTrackPoints(kf_gins_track_points_);
+    }
     return true;
 }
 
