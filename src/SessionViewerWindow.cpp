@@ -255,6 +255,16 @@ QString formatGuideValue(double value, int decimals, const QString& unit = QStri
     return unit.isEmpty() ? number : QStringLiteral("%1 %2").arg(number, unit);
 }
 
+int sessionViewerAxisTextWidth(const QFontMetrics& fm, const QStringList& labels)
+{
+    int maxWidth = 0;
+    for (const QString& label : labels)
+    {
+        maxWidth = std::max(maxWidth, fm.horizontalAdvance(label));
+    }
+    return maxWidth;
+}
+
 void drawGuideTag(QPainter& painter, const QRectF& rect, const QString& text, Qt::Alignment alignment)
 {
     painter.save();
@@ -767,8 +777,10 @@ protected:
         const QString midLabel = hasFiniteValues ? formatGuideValue((maxValue + minValue) * 0.5, 3, unit_) : QStringLiteral("---");
         const QString minLabel = hasFiniteValues ? formatGuideValue(minValue, 3, unit_) : QStringLiteral("---");
         const QFontMetrics fm = painter.fontMetrics();
+        const int axisTextWidth = sessionViewerAxisTextWidth(fm, {maxLabel, midLabel, minLabel});
+        const int leftMargin = std::max(kSessionViewerPlotLeftMargin, axisTextWidth + 12);
         const QRectF plotRect = rect().adjusted(
-            kSessionViewerPlotLeftMargin,
+            leftMargin,
             kSessionViewerPlotTopMargin,
             -kSessionViewerPlotRightMargin,
             -kSessionViewerPlotBottomMargin);
@@ -797,9 +809,9 @@ protected:
         drawSeries(painter, plotRect, startIndex, count, minValue, maxValue);
 
         painter.setPen(QColor("#5e6b78"));
-        painter.drawText(QRectF(4, plotRect.top() - 2, kSessionViewerPlotLeftMargin - 8, fm.height()), Qt::AlignRight | Qt::AlignVCenter, maxLabel);
-        painter.drawText(QRectF(4, plotRect.center().y() - fm.height() * 0.5, kSessionViewerPlotLeftMargin - 8, fm.height()), Qt::AlignRight | Qt::AlignVCenter, midLabel);
-        painter.drawText(QRectF(4, plotRect.bottom() - fm.height() + 2, kSessionViewerPlotLeftMargin - 8, fm.height()), Qt::AlignRight | Qt::AlignVCenter, minLabel);
+        painter.drawText(QRectF(4, plotRect.top() - 2, leftMargin - 8, fm.height()), Qt::AlignRight | Qt::AlignVCenter, maxLabel);
+        painter.drawText(QRectF(4, plotRect.center().y() - fm.height() * 0.5, leftMargin - 8, fm.height()), Qt::AlignRight | Qt::AlignVCenter, midLabel);
+        painter.drawText(QRectF(4, plotRect.bottom() - fm.height() + 2, leftMargin - 8, fm.height()), Qt::AlignRight | Qt::AlignVCenter, minLabel);
         painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 4, plotRect.width() * 0.55, 16),
                          Qt::AlignLeft | Qt::AlignVCenter,
                          QString("%1-%2 / %3").arg(startIndex + 1).arg(startIndex + count).arg(values_.size()));
