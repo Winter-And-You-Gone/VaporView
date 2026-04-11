@@ -474,7 +474,17 @@ private:
                     tileUrl = QUrl(QStringLiteral("https://tile.openstreetmap.org/%1/%2/%3.png").arg(zoom_).arg(tileX).arg(tileY));
                 }
                 QNetworkRequest request(tileUrl);
-                request.setRawHeader("User-Agent", "VaporView/1.0");
+                if (tile_provider_ == TileProvider::TianDiTu)
+                {
+                    request.setRawHeader(
+                        "User-Agent",
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36");
+                }
+                else
+                {
+                    request.setRawHeader("User-Agent", "VaporView/1.0");
+                }
                 QNetworkReply *reply = manager_->get(request);
                 QObject::connect(reply, &QNetworkReply::finished, this, [this, reply, key]() {
                     pending_tiles_.remove(key);
