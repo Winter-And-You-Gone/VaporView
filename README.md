@@ -18,8 +18,15 @@
 - 本地 TCP 波形监视，支持按 LabVIEW 参考协议读取 `127.0.0.1:8888` 的波形图1/波形图4数据
 - 中英文界面切换
 - 连接会话自动记录，按 20 Hz 聚合写入 CSV
+- `session_*/sensors/imu_raw.dat` 原始 IMU 二进制记录
 - RTK NTRIP 配置对话框，内置 RTKLIB 流服务实现 RTCM 转发
 - 实时日志面板与连接状态提示
+
+## 记录格式说明
+
+IMU 原始记录格式说明见：
+
+- [imu_raw_dat_format.md](C:/WorkSpace/NAV/VaporView/docs/imu_raw_dat_format.md)
 
 ## 项目结构
 
