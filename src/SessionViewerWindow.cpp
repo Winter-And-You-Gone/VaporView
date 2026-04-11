@@ -2871,7 +2871,7 @@ bool SessionViewerWindow::loadSensorsCsv()
             {
                 const RtkTrackPoint& previous = rtk_track_points_.last();
                 const double jumpMeters = haversineDistanceMeters(previous.latitude, previous.longitude, point.latitude, point.longitude);
-                if (jumpMeters > 1000.0)
+                if (jumpMeters > 20.0)
                 {
                     continue;
                 }
