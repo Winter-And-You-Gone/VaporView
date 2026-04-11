@@ -41,9 +41,19 @@ file(GET_RUNTIME_DEPENDENCIES
         "ext-ms-.*"
 )
 
+list(REMOVE_DUPLICATES vaporview_resolved_deps)
 foreach(vaporview_dependency IN LISTS vaporview_resolved_deps)
     file(COPY "${vaporview_dependency}" DESTINATION "${vaporview_runtime_destination}")
 endforeach()
+
+if(EXISTS "${vaporview_runtime_destination}/imageformats/qjpeg.dll")
+    foreach(vaporview_search_dir IN LISTS vaporview_existing_search_dirs)
+        if(EXISTS "${vaporview_search_dir}/libjpeg-8.dll")
+            file(COPY "${vaporview_search_dir}/libjpeg-8.dll" DESTINATION "${vaporview_runtime_destination}")
+            break()
+        endif()
+    endforeach()
+endif()
 
 if(vaporview_unresolved_deps)
     list(FILTER vaporview_unresolved_deps EXCLUDE REGEX "^(api-ms-win-|ext-ms-)")
