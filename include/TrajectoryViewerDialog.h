@@ -8,6 +8,7 @@
 
 class QLabel;
 class QPushButton;
+class QComboBox;
 class QWidget;
 
 class TrajectoryViewerDialog : public QDialog
@@ -25,9 +26,11 @@ private:
 
     QLabel *summary_label_;
     QWidget *map_widget_;
+    QComboBox *map_source_combo_;
     QPushButton *zoom_in_button_;
     QPushButton *zoom_out_button_;
     QPushButton *reset_view_button_;
+    QPushButton *delete_tianditu_key_button_;
     QPushButton *close_button_;
     bool is_english_;
     QString english_track_label_;
