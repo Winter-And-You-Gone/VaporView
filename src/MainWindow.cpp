@@ -1680,8 +1680,8 @@ bool MainWindow::applyImuDeviceProfile(const QString& requestedFormat, int reque
     }
 
     bool baudOk = false;
-    const int currentBaud = (imu_baud_combo_ ? imu_baud_combo_->currentText() : QStringLiteral("115200")).toInt(&baudOk);
-    const int effectiveCurrentBaud = baudOk && currentBaud > 0 ? currentBaud : 115200;
+    const int currentBaud = (imu_baud_combo_ ? imu_baud_combo_->currentText() : QStringLiteral("921600")).toInt(&baudOk);
+    const int effectiveCurrentBaud = baudOk && currentBaud > 0 ? currentBaud : 921600;
     const QString currentFormat = imu_format_combo_ ? imu_format_combo_->currentText().trimmed().toUpper() : QStringLiteral("HI92");
     const int currentRate = parseRate(imu_rate_combo_ ? imu_rate_combo_->currentText() : QStringLiteral("200"));
 
@@ -2216,15 +2216,13 @@ void MainWindow::setupConfigPanel()
 
 #ifdef _WIN32
     createPortRow(gnss_lbl_, gnss_port_combo_, gnss_baud_combo_, gnss_rate_lbl_, gnss_rate_combo_, "COM3", "115200", row++);
-    const int imuRow = row;
-    createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, imu_rate_lbl_, imu_rate_combo_, "COM4", "115200", row++, 1000);
+    createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, imu_rate_lbl_, imu_rate_combo_, "COM4", "921600", row++, 1000);
     createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "COM5", "9600", row++);
     createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "COM6", "19200", row++);
     createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "COM7", "115200", row++, 100);
 #else
     createPortRow(gnss_lbl_, gnss_port_combo_, gnss_baud_combo_, gnss_rate_lbl_, gnss_rate_combo_, "/dev/ttyCOM3", "115200", row++);
-    const int imuRow = row;
-    createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, imu_rate_lbl_, imu_rate_combo_, "/dev/ttyIMU", "115200", row++, 1000);
+    createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, imu_rate_lbl_, imu_rate_combo_, "/dev/ttyIMU", "921600", row++, 1000);
     createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "/dev/ttyBARO", "9600", row++);
     createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "/dev/ttyHMP", "19200", row++);
     createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "/dev/ttyTF03", "115200", row++, 100);
@@ -2232,85 +2230,11 @@ void MainWindow::setupConfigPanel()
 
     imu_rate_combo_->setCurrentText(QStringLiteral("200"));
 
-    auto *imuExtrasWidget = new QWidget(this);
-    auto *imuExtrasLayout = new QVBoxLayout(imuExtrasWidget);
-    imuExtrasLayout->setContentsMargins(0, 0, 0, 0);
-    imuExtrasLayout->setSpacing(4);
-
-    auto *imuTopRow = new QHBoxLayout();
-    imuTopRow->setContentsMargins(0, 0, 0, 0);
-    imuTopRow->setSpacing(4);
-    imu_format_combo_ = new QComboBox(this);
-    imu_format_combo_->addItems({QStringLiteral("HI91"), QStringLiteral("HI92")});
-    imu_format_combo_->setCurrentText(QStringLiteral("HI92"));
-    imu_format_combo_->setFixedHeight(kMainPageInputHeight);
-    imu_format_combo_->setFixedWidth(80);
-    imuTopRow->addWidget(imu_format_combo_);
-
-    imu_hi91_btn_ = new QPushButton(QStringLiteral("HI91"), this);
-    imu_hi91_btn_->setFixedHeight(kMainPageInputHeight);
-    imuTopRow->addWidget(imu_hi91_btn_);
-
-    imu_hi92_btn_ = new QPushButton(QStringLiteral("HI92"), this);
-    imu_hi92_btn_->setFixedHeight(kMainPageInputHeight);
-    imuTopRow->addWidget(imu_hi92_btn_);
-
-    imu_apply_btn_ = new QPushButton(this);
-    imu_apply_btn_->setFixedHeight(kMainPageInputHeight);
-    imuTopRow->addWidget(imu_apply_btn_);
-    imuTopRow->addStretch(1);
-    imuExtrasLayout->addLayout(imuTopRow);
-
-    auto *imuBottomRow = new QHBoxLayout();
-    imuBottomRow->setContentsMargins(0, 0, 0, 0);
-    imuBottomRow->setSpacing(4);
-    imu_baud_115200_btn_ = new QPushButton(QStringLiteral("115200"), this);
-    imu_baud_921600_btn_ = new QPushButton(QStringLiteral("921600"), this);
-    imu_rate_100_btn_ = new QPushButton(QStringLiteral("100Hz"), this);
-    imu_rate_200_btn_ = new QPushButton(QStringLiteral("200Hz"), this);
-    imu_rate_500_btn_ = new QPushButton(QStringLiteral("500Hz"), this);
-    imu_rate_1000_btn_ = new QPushButton(QStringLiteral("1000Hz"), this);
-    for (QPushButton* button : {imu_baud_115200_btn_, imu_baud_921600_btn_, imu_rate_100_btn_, imu_rate_200_btn_, imu_rate_500_btn_, imu_rate_1000_btn_})
-    {
-        button->setFixedHeight(kMainPageInputHeight);
-        imuBottomRow->addWidget(button);
-    }
-    imuBottomRow->addStretch(1);
-    imuExtrasLayout->addLayout(imuBottomRow);
-    config_layout->addWidget(imuExtrasWidget, imuRow, 5, 1, 1, Qt::AlignVCenter | Qt::AlignLeft);
-
     connect(gnss_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onGnssRateChanged);
     connect(imu_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onImuRateChanged);
     connect(ptb_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onPtbRateChanged);
     connect(hmp_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onHmpRateChanged);
     connect(lidar_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onLidarRateChanged);
-    connect(imu_apply_btn_, &QPushButton::clicked, this, [this]() {
-        applyImuDeviceProfile();
-    });
-    connect(imu_hi91_btn_, &QPushButton::clicked, this, [this]() {
-        applyImuDeviceProfile(QStringLiteral("HI91"));
-    });
-    connect(imu_hi92_btn_, &QPushButton::clicked, this, [this]() {
-        applyImuDeviceProfile(QStringLiteral("HI92"));
-    });
-    connect(imu_baud_115200_btn_, &QPushButton::clicked, this, [this]() {
-        applyImuDeviceProfile(QString(), 115200, -1);
-    });
-    connect(imu_baud_921600_btn_, &QPushButton::clicked, this, [this]() {
-        applyImuDeviceProfile(QString(), 921600, -1);
-    });
-    connect(imu_rate_100_btn_, &QPushButton::clicked, this, [this]() {
-        applyImuDeviceProfile(QString(), -1, 100);
-    });
-    connect(imu_rate_200_btn_, &QPushButton::clicked, this, [this]() {
-        applyImuDeviceProfile(QString(), -1, 200);
-    });
-    connect(imu_rate_500_btn_, &QPushButton::clicked, this, [this]() {
-        applyImuDeviceProfile(QString(), -1, 500);
-    });
-    connect(imu_rate_1000_btn_, &QPushButton::clicked, this, [this]() {
-        applyImuDeviceProfile(QString(), -1, 1000);
-    });
 
     config_root_layout->addLayout(config_layout);
     main_layout_->addWidget(config_group_);
@@ -3908,7 +3832,13 @@ void MainWindow::onAutoDetectPortsClicked()
     updateConnectionStatus(is_connected_);
     log(is_english_ ? "Starting automatic serial-port detection..." : "开始自动识别串口...");
 
-    port_detection_thread_ = std::thread([this]() {
+    const QString imuProbeBaudText = imu_baud_combo_ ? imu_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
+    bool imuProbeBaudOk = false;
+    const int imuProbeBaud = imuProbeBaudText.toInt(&imuProbeBaudOk);
+    const int effectiveImuProbeBaud = imuProbeBaudOk && imuProbeBaud > 0 ? imuProbeBaud : 921600;
+    const QString effectiveImuProbeBaudText = QString::number(effectiveImuProbeBaud);
+
+    port_detection_thread_ = std::thread([this, effectiveImuProbeBaud, effectiveImuProbeBaudText]() {
         struct ProbeSpec
         {
             QString key;
@@ -4051,9 +3981,9 @@ void MainWindow::onAutoDetectPortsClicked()
                     VaporView::SerialHeaderProbeKind::GnssPvt);
                 return probeResult.matched;
             }},
-            {"imu", "IMU", "115200", [probeCollector](const QString& port_name) {
+            {"imu", "IMU", effectiveImuProbeBaudText, [probeCollector, effectiveImuProbeBaud](const QString& port_name) {
                 auto collector = std::make_unique<VaporView::ImuCollector>();
-                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(115200));
+                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(effectiveImuProbeBaud));
             }},
             {"lidar", "TF03", "115200", [probeCollector](const QString& port_name) {
                 auto collector = std::make_unique<VaporView::LidarCollector>();
@@ -4176,7 +4106,6 @@ void MainWindow::onConnectClicked()
     const QString ptbBaudText = ptb_baud_combo_->currentText();
     const QString hmpBaudText = hmp_baud_combo_->currentText();
     const QString lidarBaudText = lidar_baud_combo_->currentText();
-    const QString imuFormat = imu_format_combo_ ? imu_format_combo_->currentText().trimmed().toUpper() : QStringLiteral("HI92");
     const int gnssRate = parseRate(gnss_rate_combo_->currentText());
     const int imuRate = parseRate(imu_rate_combo_->currentText());
     const int ptbRate = parseRate(ptb_rate_combo_->currentText());
@@ -4203,7 +4132,6 @@ void MainWindow::onConnectClicked()
                                       ptbBaudText,
                                       hmpBaudText,
                                       lidarBaudText,
-                                      imuFormat,
                                       gnssRate,
                                       imuRate,
                                       ptbRate,
@@ -4232,7 +4160,6 @@ void MainWindow::onConnectClicked()
 
         collectors.gnss->setSampleRate(gnssRate);
         collectors.imu->setSampleRate(imuRate);
-        collectors.imu->setOutputMessageType(imuFormat.toStdString());
         collectors.ptb->setSampleRate(ptbRate);
         collectors.hmp->setSampleRate(hmpRate);
         collectors.lidar->setSampleRate(lidarRate);
@@ -4355,10 +4282,10 @@ void MainWindow::onConnectClicked()
                              [&]() {
                                  collectors.imu->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onImuDataReady", Qt::QueuedConnection); });
                                  collectors.imu->setSampleRate(imuRate);
-                                 collectors.imu->setOutputMessageType(imuFormat.toStdString());
                                  collectors.imu->setDeviceSampleRate(imuRate);
-                                 postLog(QString(english ? "[IMU] %1 output set to %2 Hz" : "[IMU] 已设置 %1 输出为 %2 Hz")
-                                             .arg(imuFormat)
+                                 postLog(QString(english
+                                                     ? "[IMU] Sample rate command sent: %1 Hz"
+                                                     : "[IMU] 已发送采样频率指令：%1 Hz")
                                              .arg(imuRate));
                                  if (collectors.imu->startStreaming()) return true;
                                  postLog(english ? "[IMU] Failed to start data stream." : "[IMU] 启动数据流失败。");
