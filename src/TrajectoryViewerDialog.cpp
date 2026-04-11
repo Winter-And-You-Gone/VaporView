@@ -11,6 +11,7 @@
 #include <QSet>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QMouseEvent>
 #include <QWheelEvent>
 #include <QWidget>
 #include <QtMath>
@@ -57,11 +58,15 @@ public:
         , fit_zoom_(kDefaultZoom)
         , fit_center_world_pixel_(0.0, 0.0)
         , manual_view_active_(false)
+        , dragging_(false)
+        , drag_start_pos_()
+        , drag_start_center_world_pixel_()
         , english_track_label_(QStringLiteral("RTK trajectory"))
         , chinese_track_label_(QStringLiteral("RTK轨迹"))
     {
         setMinimumSize(720, 420);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        setMouseTracking(true);
     }
 
     void setEnglish(bool english)
@@ -133,6 +138,47 @@ protected:
             return;
         }
         event->ignore();
+    }
+
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        if (event->button() == Qt::LeftButton && !track_points_.isEmpty())
+        {
+            dragging_ = true;
+            drag_start_pos_ = event->position();
+            drag_start_center_world_pixel_ = center_world_pixel_;
+            setCursor(Qt::ClosedHandCursor);
+            event->accept();
+            return;
+        }
+        QWidget::mousePressEvent(event);
+    }
+
+    void mouseMoveEvent(QMouseEvent *event) override
+    {
+        if (dragging_)
+        {
+            const QPointF delta = event->position() - drag_start_pos_;
+            center_world_pixel_ = drag_start_center_world_pixel_ - delta;
+            manual_view_active_ = true;
+            requestVisibleTiles();
+            update();
+            event->accept();
+            return;
+        }
+        QWidget::mouseMoveEvent(event);
+    }
+
+    void mouseReleaseEvent(QMouseEvent *event) override
+    {
+        if (dragging_ && event->button() == Qt::LeftButton)
+        {
+            dragging_ = false;
+            unsetCursor();
+            event->accept();
+            return;
+        }
+        QWidget::mouseReleaseEvent(event);
     }
 
     void paintEvent(QPaintEvent *event) override
@@ -438,6 +484,9 @@ private:
     int fit_zoom_;
     QPointF fit_center_world_pixel_;
     bool manual_view_active_;
+    bool dragging_;
+    QPointF drag_start_pos_;
+    QPointF drag_start_center_world_pixel_;
     QString english_track_label_;
     QString chinese_track_label_;
 };
