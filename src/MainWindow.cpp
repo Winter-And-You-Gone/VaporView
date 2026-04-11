@@ -1199,6 +1199,7 @@ MainWindow::MainWindow(QWidget *parent)
     , session_start_time_us_(0)
     , sensors_filename_()
     , imu_raw_filename_()
+    , imu_raw_doc_filename_()
     , session_metadata_filename_()
     , event_log_filename_()
     , error_log_filename_()
@@ -2892,6 +2893,24 @@ QString MainWindow::defaultRecordingDirectory() const
     return QDir(QCoreApplication::applicationDirPath()).filePath("data");
 }
 
+QString MainWindow::locateRepositoryRoot() const
+{
+    QDir dir(QCoreApplication::applicationDirPath());
+    for (int i = 0; i < 6; ++i)
+    {
+        if (QFileInfo::exists(dir.filePath("CMakeLists.txt")) && QFileInfo::exists(dir.filePath("README.md")))
+        {
+            return dir.path();
+        }
+        if (!dir.cdUp())
+        {
+            break;
+        }
+    }
+
+    return QString();
+}
+
 bool MainWindow::prepareRecordingSessionLayout(const QString& recordsPath, const QString& sessionName)
 {
     QDir recordsDir(recordsPath);
@@ -2924,11 +2943,35 @@ bool MainWindow::prepareRecordingSessionLayout(const QString& recordsPath, const
     waveform_directory_ = QDir::fromNativeSeparators(sessionDir.filePath("waveform"));
     sensors_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("sensors/devices.csv"));
     imu_raw_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("sensors/imu_raw.dat"));
+    imu_raw_doc_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("imu_raw_dat_format.md"));
     session_metadata_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("session.json"));
     event_log_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("logs/event_log.csv"));
     error_log_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("logs/error_log.txt"));
     device_config_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("config/device_config.json"));
     return true;
+}
+
+bool MainWindow::copyImuRawFormatDocumentToSession()
+{
+    if (session_directory_.isEmpty() || imu_raw_doc_filename_.isEmpty())
+    {
+        return false;
+    }
+
+    const QString repositoryRoot = locateRepositoryRoot();
+    if (repositoryRoot.isEmpty())
+    {
+        return false;
+    }
+
+    const QString sourcePath = QDir(repositoryRoot).filePath("docs/imu_raw_dat_format.md");
+    if (!QFileInfo::exists(sourcePath))
+    {
+        return false;
+    }
+
+    QFile::remove(imu_raw_doc_filename_);
+    return QFile::copy(sourcePath, imu_raw_doc_filename_);
 }
 
 void MainWindow::appendEventLogLine(const QString& level, const QString& message)
@@ -3011,6 +3054,7 @@ void MainWindow::writeSessionMetadata(const QString& endTimeUtc)
     paths["waveform_directory"] = sessionDir.relativeFilePath(waveform_directory_);
     paths["devices_csv"] = sessionDir.relativeFilePath(sensors_filename_);
     paths["imu_raw_dat"] = sessionDir.relativeFilePath(imu_raw_filename_);
+    paths["imu_raw_format_doc"] = sessionDir.relativeFilePath(imu_raw_doc_filename_);
     paths["event_log"] = sessionDir.relativeFilePath(event_log_filename_);
     paths["error_log"] = sessionDir.relativeFilePath(error_log_filename_);
     paths["device_config"] = sessionDir.relativeFilePath(device_config_filename_);
@@ -3337,6 +3381,12 @@ bool MainWindow::startRecordingSession()
     }
 
     writeSensorsHeader();
+    if (!copyImuRawFormatDocumentToSession())
+    {
+        log(QString(is_english_
+            ? "Warning: failed to copy IMU raw format document into session folder"
+            : "警告：未能将 IMU 原始格式说明复制到当前会话目录"));
+    }
     writeSessionMetadata();
     writeDeviceConfigSnapshot();
     startRecordingWorkers();
@@ -3467,6 +3517,7 @@ void MainWindow::stopRecording(bool announce)
     session_start_time_us_ = 0;
     sensors_filename_.clear();
     imu_raw_filename_.clear();
+    imu_raw_doc_filename_.clear();
     session_metadata_filename_.clear();
     event_log_filename_.clear();
     error_log_filename_.clear();

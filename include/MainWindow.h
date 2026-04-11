@@ -297,6 +297,7 @@ private:
     void log(const QString& message);
     void updateRecordingStatusLabel();
     QString defaultRecordingDirectory() const;
+    QString locateRepositoryRoot() const;
     bool startRecordingSession();
     void pauseRecordingSession(bool announce = true);
     void stopRecording(bool announce = true);
@@ -304,6 +305,7 @@ private:
     void stopRecordingWorkers();
     void writeSensorsHeader();
     bool prepareRecordingSessionLayout(const QString& recordsPath, const QString& sessionName);
+    bool copyImuRawFormatDocumentToSession();
     void writeSessionMetadata(const QString& endTimeUtc = QString());
     void writeDeviceConfigSnapshot();
     void appendEventLogLine(const QString& level, const QString& message);
@@ -484,6 +486,7 @@ private:
     quint64 session_start_time_us_;
     QString sensors_filename_;
     QString imu_raw_filename_;
+    QString imu_raw_doc_filename_;
     QString session_metadata_filename_;
     QString event_log_filename_;
     QString error_log_filename_;
