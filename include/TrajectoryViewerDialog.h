@@ -9,6 +9,7 @@
 class QLabel;
 class QPushButton;
 class QComboBox;
+class QProgressBar;
 class QWidget;
 
 class TrajectoryViewerDialog : public QDialog
@@ -25,6 +26,8 @@ private:
     void updateSummary();
 
     QLabel *summary_label_;
+    QLabel *map_status_label_;
+    QProgressBar *map_progress_bar_;
     QWidget *map_widget_;
     QComboBox *map_source_combo_;
     QPushButton *zoom_in_button_;

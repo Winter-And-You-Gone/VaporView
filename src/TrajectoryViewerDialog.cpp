@@ -11,6 +11,7 @@
 #include <QPainter>
 #include <QPixmap>
 #include <QPushButton>
+#include <QProgressBar>
 #include <QSet>
 #include <QSettings>
 #include <QUrl>
@@ -22,6 +23,7 @@
 #include <QtMath>
 #include <algorithm>
 #include <cmath>
+#include <functional>
 
 namespace
 {
@@ -117,9 +119,22 @@ public:
         setMouseTracking(true);
     }
 
+    void setStatusCallback(std::function<void(const QString&)> callback)
+    {
+        status_callback_ = std::move(callback);
+        updateLoadFeedback();
+    }
+
+    void setProgressCallback(std::function<void(int, int, int)> callback)
+    {
+        progress_callback_ = std::move(callback);
+        updateLoadFeedback();
+    }
+
     void setEnglish(bool english)
     {
         is_english_ = english;
+        updateLoadFeedback();
         update();
     }
 
@@ -127,6 +142,10 @@ public:
     {
         track_points_ = points;
         manual_view_active_ = false;
+        tile_cache_.clear();
+        pending_tiles_.clear();
+        failed_tiles_.clear();
+        last_tile_error_.clear();
         refreshViewport();
         update();
     }
@@ -147,7 +166,10 @@ public:
         tile_provider_ = provider;
         tile_cache_.clear();
         pending_tiles_.clear();
+        failed_tiles_.clear();
+        last_tile_error_.clear();
         requestVisibleTiles();
+        updateLoadFeedback();
         update();
     }
 
@@ -168,7 +190,10 @@ public:
         {
             tile_cache_.clear();
             pending_tiles_.clear();
+            failed_tiles_.clear();
+            last_tile_error_.clear();
             requestVisibleTiles();
+            updateLoadFeedback();
             update();
         }
     }
@@ -315,6 +340,8 @@ private:
             center_world_pixel_ = QPointF();
             fit_zoom_ = zoom_;
             fit_center_world_pixel_ = center_world_pixel_;
+            current_visible_tile_keys_.clear();
+            updateLoadFeedback();
             return;
         }
 
@@ -390,10 +417,14 @@ private:
     {
         if (track_points_.isEmpty())
         {
+            current_visible_tile_keys_.clear();
+            updateLoadFeedback();
             return;
         }
         if (tile_provider_ == TileProvider::TianDiTu && tianditu_key_.trimmed().isEmpty())
         {
+            current_visible_tile_keys_.clear();
+            updateLoadFeedback();
             return;
         }
 
@@ -407,11 +438,13 @@ private:
         const int minTileY = std::max(0, static_cast<int>(std::floor(topLeft.y() / kTileSize)));
         const int maxTileY = std::min(tileCount - 1, static_cast<int>(std::floor(bottomRight.y() / kTileSize)));
 
+        QSet<QString> visibleKeys;
         for (int tileX = minTileX; tileX <= maxTileX; ++tileX)
         {
             for (int tileY = minTileY; tileY <= maxTileY; ++tileY)
             {
                 const QString key = QStringLiteral("%1:%2").arg(tileProviderKey(tile_provider_), tileKey(zoom_, tileX, tileY));
+                visibleKeys.insert(key);
                 if (tile_cache_.contains(key) || pending_tiles_.contains(key))
                 {
                     continue;
@@ -451,14 +484,31 @@ private:
                         tile.loadFromData(reply->readAll());
                         if (!tile.isNull())
                         {
+                            failed_tiles_.remove(key);
                             tile_cache_.insert(key, tile);
                         }
+                        else
+                        {
+                            failed_tiles_.insert(key);
+                            last_tile_error_ = is_english_
+                                ? QStringLiteral("The tile response could not be decoded as an image.")
+                                : QStringLiteral("收到的瓦片响应无法解码为图像。");
+                        }
+                    }
+                    else
+                    {
+                        failed_tiles_.insert(key);
+                        last_tile_error_ = reply->errorString();
                     }
                     reply->deleteLater();
+                    updateLoadFeedback();
                     update();
                 });
             }
         }
+        current_visible_tile_keys_ = visibleKeys;
+        failed_tiles_ = failed_tiles_.intersect(current_visible_tile_keys_);
+        updateLoadFeedback();
     }
 
     void drawTiles(QPainter& painter, const QRectF& mapRect)
@@ -476,7 +526,7 @@ private:
         {
             for (int tileY = minTileY; tileY <= maxTileY; ++tileY)
             {
-                const QString key = tileKey(zoom_, tileX, tileY);
+                const QString key = QStringLiteral("%1:%2").arg(tileProviderKey(tile_provider_), tileKey(zoom_, tileX, tileY));
                 const QRectF tileRect(
                     mapRect.left() + tileX * kTileSize - topLeft.x(),
                     mapRect.top() + tileY * kTileSize - topLeft.y(),
@@ -586,13 +636,104 @@ private:
         return qRadiansToDegrees(std::atan(std::sinh(mercatorY)));
     }
 
+    void updateLoadFeedback()
+    {
+        const int totalVisible = current_visible_tile_keys_.size();
+        int loaded = 0;
+        int failed = 0;
+        int pending = 0;
+        for (const QString& key : current_visible_tile_keys_)
+        {
+            if (tile_cache_.contains(key))
+            {
+                ++loaded;
+            }
+            else if (pending_tiles_.contains(key))
+            {
+                ++pending;
+            }
+            else if (failed_tiles_.contains(key))
+            {
+                ++failed;
+            }
+        }
+
+        if (progress_callback_)
+        {
+            progress_callback_(loaded, failed, totalVisible);
+        }
+
+        if (!status_callback_)
+        {
+            return;
+        }
+
+        QString statusText;
+        if (track_points_.isEmpty())
+        {
+            statusText = is_english_
+                ? QStringLiteral("No track data is available, so no base map tiles need to be loaded.")
+                : QStringLiteral("当前没有轨迹数据，因此无需加载底图瓦片。");
+        }
+        else if (tile_provider_ == TileProvider::TianDiTu && tianditu_key_.trimmed().isEmpty())
+        {
+            statusText = is_english_
+                ? QStringLiteral("Tianditu is selected but no key is configured.")
+                : QStringLiteral("当前已选择天地图，但尚未配置 Key。");
+        }
+        else if (totalVisible <= 0)
+        {
+            statusText = is_english_
+                ? QStringLiteral("Preparing visible map tiles...")
+                : QStringLiteral("正在准备可见区域底图瓦片...");
+        }
+        else if (pending > 0)
+        {
+            statusText = QString(is_english_
+                ? "Loading %1 tiles: %2/%3 loaded, %4 pending, %5 failed."
+                : "正在加载%1底图：已加载 %2/%3，待完成 %4，失败 %5。")
+                .arg(tile_provider_ == TileProvider::TianDiTu
+                    ? (is_english_ ? QStringLiteral("Tianditu") : QStringLiteral("天地图"))
+                    : QStringLiteral("OSM"))
+                .arg(loaded)
+                .arg(totalVisible)
+                .arg(pending)
+                .arg(failed);
+        }
+        else if (failed > 0)
+        {
+            statusText = QString(is_english_
+                ? "Base map finished with %1/%2 tiles loaded and %3 failures. Last error: %4"
+                : "底图加载完成：成功 %1/%2，失败 %3。最近错误：%4")
+                .arg(loaded)
+                .arg(totalVisible)
+                .arg(failed)
+                .arg(last_tile_error_.isEmpty()
+                    ? (is_english_ ? QStringLiteral("unknown") : QStringLiteral("未知"))
+                    : last_tile_error_);
+        }
+        else
+        {
+            statusText = QString(is_english_
+                ? "Base map loaded successfully: %1/%2 tiles ready."
+                : "底图加载成功：%1/%2 个瓦片已就绪。")
+                .arg(loaded)
+                .arg(totalVisible);
+        }
+
+        status_callback_(statusText);
+    }
+
     QNetworkAccessManager *manager_;
     QVector<RtkTrackPoint> track_points_;
     QHash<QString, QPixmap> tile_cache_;
     QSet<QString> pending_tiles_;
+    QSet<QString> current_visible_tile_keys_;
+    QSet<QString> failed_tiles_;
     bool is_english_;
     TileProvider tile_provider_;
     QString tianditu_key_;
+    QString last_tile_error_;
     int zoom_;
     QPointF center_world_pixel_;
     int fit_zoom_;
@@ -603,12 +744,16 @@ private:
     QPointF drag_start_center_world_pixel_;
     QString english_track_label_;
     QString chinese_track_label_;
+    std::function<void(const QString&)> status_callback_;
+    std::function<void(int, int, int)> progress_callback_;
 };
 }
 
 TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     : QDialog(parent)
     , summary_label_(new QLabel(this))
+    , map_status_label_(new QLabel(this))
+    , map_progress_bar_(new QProgressBar(this))
     , map_widget_(new TrajectoryMapWidget(this))
     , map_source_combo_(new QComboBox(this))
     , zoom_in_button_(new QPushButton(this))
@@ -631,7 +776,27 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     summary_label_->setWordWrap(true);
     summary_label_->setObjectName(QStringLiteral("fieldLabel"));
     mainLayout->addWidget(summary_label_);
+    map_status_label_->setWordWrap(true);
+    map_status_label_->setObjectName(QStringLiteral("fieldLabel"));
+    mainLayout->addWidget(map_status_label_);
+    map_progress_bar_->setTextVisible(true);
+    map_progress_bar_->setMinimum(0);
+    map_progress_bar_->setMaximum(1);
+    map_progress_bar_->setValue(0);
+    mainLayout->addWidget(map_progress_bar_);
     mainLayout->addWidget(map_widget_, 1);
+
+    auto *mapWidget = static_cast<TrajectoryMapWidget*>(map_widget_);
+    mapWidget->setStatusCallback([this](const QString& text) {
+        map_status_label_->setText(text);
+    });
+    mapWidget->setProgressCallback([this](int loaded, int failed, int total) {
+        map_progress_bar_->setMaximum(std::max(1, total));
+        map_progress_bar_->setValue(std::min(total, loaded + failed));
+        map_progress_bar_->setFormat(total > 0
+            ? QStringLiteral("%1/%2").arg(std::min(total, loaded + failed)).arg(total)
+            : QStringLiteral("--"));
+    });
 
     auto *buttonLayout = new QHBoxLayout();
     buttonLayout->addWidget(map_source_combo_);
@@ -713,11 +878,11 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     {
         QSettings settings("VaporView", "TrajectoryViewer");
         const QString tiandituKey = settings.value(tiandituKeySettingKey()).toString().trimmed();
-        static_cast<TrajectoryMapWidget*>(map_widget_)->setTianDiTuKey(tiandituKey);
+        mapWidget->setTianDiTuKey(tiandituKey);
         const QString provider = settings.value(tileProviderSettingKey(), QStringLiteral("osm")).toString().trimmed().toLower();
         QSignalBlocker blocker(map_source_combo_);
         map_source_combo_->setCurrentIndex(provider == QStringLiteral("tianditu") ? 1 : 0);
-        static_cast<TrajectoryMapWidget*>(map_widget_)->setTileProvider(
+        mapWidget->setTileProvider(
             provider == QStringLiteral("tianditu") && !tiandituKey.isEmpty()
                 ? TileProvider::TianDiTu
                 : TileProvider::OpenStreetMap);
@@ -795,6 +960,10 @@ void TrajectoryViewerDialog::updateTexts()
         map_source_combo_->addItem(is_english_ ? QStringLiteral("Tianditu") : QStringLiteral("天地图"));
         map_source_combo_->setCurrentIndex(static_cast<TrajectoryMapWidget*>(map_widget_)->tileProvider() == TileProvider::TianDiTu ? 1 : 0);
     }
+    map_progress_bar_->setToolTip(
+        is_english_
+            ? QStringLiteral("Shows the loading progress of the currently visible base map tiles.")
+            : QStringLiteral("显示当前可见区域底图瓦片的加载进度。"));
     zoom_in_button_->setText(is_english_ ? QStringLiteral("Zoom In") : QStringLiteral("放大"));
     zoom_out_button_->setText(is_english_ ? QStringLiteral("Zoom Out") : QStringLiteral("缩小"));
     reset_view_button_->setText(is_english_ ? QStringLiteral("Fit Track") : QStringLiteral("适应轨迹"));
