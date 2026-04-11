@@ -1537,7 +1537,7 @@ void MainWindow::loadRememberedInputState()
     applyComboText(ptb_rate_combo_, settings.value("rate/ptb", ptb_rate_combo_->currentText()).toString());
     applyComboText(hmp_rate_combo_, settings.value("rate/hmp", hmp_rate_combo_->currentText()).toString());
     applyComboText(lidar_rate_combo_, settings.value("rate/lidar", lidar_rate_combo_->currentText()).toString());
-    applyComboText(imu_format_combo_, settings.value("serial/imu_format", QStringLiteral("HI92")).toString());
+    applyComboText(imu_format_combo_, settings.value("serial/imu_format", QStringLiteral("HI91")).toString());
 
     if (waveform_split_spin_)
     {
@@ -1558,7 +1558,7 @@ void MainWindow::saveRememberedInputState() const
 
     settings.setValue("serial/gnss_baud", gnss_baud_combo_->currentText());
     settings.setValue("serial/imu_baud", imu_baud_combo_->currentText());
-    settings.setValue("serial/imu_format", imu_format_combo_ ? imu_format_combo_->currentText() : QStringLiteral("HI92"));
+    settings.setValue("serial/imu_format", imu_format_combo_ ? imu_format_combo_->currentText() : QStringLiteral("HI91"));
     settings.setValue("serial/ptb_baud", ptb_baud_combo_->currentText());
     settings.setValue("serial/hmp_baud", hmp_baud_combo_->currentText());
     settings.setValue("serial/lidar_baud", lidar_baud_combo_->currentText());
@@ -1644,7 +1644,7 @@ bool MainWindow::restartImuCollector(const std::shared_ptr<VaporView::ImuCollect
                 .arg(QString::fromStdString(collector->getLastError())));
         return false;
     }
-    collector->setOutputMessageType(imu_format_combo_ ? imu_format_combo_->currentText().toStdString() : std::string("HI92"));
+    collector->setOutputMessageType(imu_format_combo_ ? imu_format_combo_->currentText().toStdString() : std::string("HI91"));
     if (!collector->checkDeviceResponse())
     {
         log(is_english_ ? "[IMU] No response after reopening IMU port" : "[IMU] 重新打开 IMU 串口后未收到设备响应");
@@ -1660,7 +1660,7 @@ bool MainWindow::restartImuCollector(const std::shared_ptr<VaporView::ImuCollect
     log(QString(is_english_ ? "[IMU] Reconnected at %1 baud, %2 Hz, %3" : "[IMU] 已按 %1 波特率、%2 Hz、%3 重新连接")
             .arg(baud)
             .arg(rate)
-            .arg(imu_format_combo_ ? imu_format_combo_->currentText() : QStringLiteral("HI92")));
+            .arg(imu_format_combo_ ? imu_format_combo_->currentText() : QStringLiteral("HI91")));
     return true;
 }
 
@@ -1682,7 +1682,7 @@ bool MainWindow::applyImuDeviceProfile(const QString& requestedFormat, int reque
     bool baudOk = false;
     const int currentBaud = (imu_baud_combo_ ? imu_baud_combo_->currentText() : QStringLiteral("921600")).toInt(&baudOk);
     const int effectiveCurrentBaud = baudOk && currentBaud > 0 ? currentBaud : 921600;
-    const QString currentFormat = imu_format_combo_ ? imu_format_combo_->currentText().trimmed().toUpper() : QStringLiteral("HI92");
+    const QString currentFormat = imu_format_combo_ ? imu_format_combo_->currentText().trimmed().toUpper() : QStringLiteral("HI91");
     const int currentRate = parseRate(imu_rate_combo_ ? imu_rate_combo_->currentText() : QStringLiteral("200"));
 
     const QString targetFormat = requestedFormat.isEmpty() ? currentFormat : requestedFormat.trimmed().toUpper();
@@ -3058,7 +3058,7 @@ void MainWindow::writeDeviceConfigSnapshot()
     addSerialConfig("gnss", gnss_port_combo_, gnss_baud_combo_, gnss_rate_combo_);
     addSerialConfig("imu", imu_port_combo_, imu_baud_combo_, imu_rate_combo_);
     QJsonObject imuConfig = sensors.value("imu").toObject();
-    imuConfig["format"] = imu_format_combo_ ? imu_format_combo_->currentText() : QStringLiteral("HI92");
+    imuConfig["format"] = imu_format_combo_ ? imu_format_combo_->currentText() : QStringLiteral("HI91");
     sensors["imu"] = imuConfig;
     addSerialConfig("ptb", ptb_port_combo_, ptb_baud_combo_, ptb_rate_combo_);
     addSerialConfig("hmp", hmp_port_combo_, hmp_baud_combo_, hmp_rate_combo_);
@@ -4280,12 +4280,17 @@ void MainWindow::onConnectClicked()
         if (connectCollector("IMU", imuPort, imuBaudText, collectors.imu.get(),
                              VaporView::SerialConfig::N81(imuBaudText.toInt()),
                              [&]() {
+                                 const QString imuFormat = imu_format_combo_
+                                     ? imu_format_combo_->currentText().trimmed().toUpper()
+                                     : QStringLiteral("HI91");
                                  collectors.imu->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onImuDataReady", Qt::QueuedConnection); });
                                  collectors.imu->setSampleRate(imuRate);
+                                 collectors.imu->setOutputMessageType(imuFormat.toStdString());
                                  collectors.imu->setDeviceSampleRate(imuRate);
                                  postLog(QString(english
-                                                     ? "[IMU] Sample rate command sent: %1 Hz"
-                                                     : "[IMU] 已发送采样频率指令：%1 Hz")
+                                                     ? "[IMU] Output format set to %1, sample rate command sent: %2 Hz"
+                                                     : "[IMU] 输出格式已设为 %1，已发送采样频率指令：%2 Hz")
+                                             .arg(imuFormat)
                                              .arg(imuRate));
                                  if (collectors.imu->startStreaming()) return true;
                                  postLog(english ? "[IMU] Failed to start data stream." : "[IMU] 启动数据流失败。");

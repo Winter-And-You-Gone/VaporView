@@ -98,7 +98,7 @@ protected:
 private:
   ImuData latest_data_;
   RawPacketCallback raw_packet_callback_;
-  std::string output_message_type_ = "HI92";
+  std::string output_message_type_ = "HI91";
 };
 
 class PtbCollector : public DataCollector
