@@ -3,6 +3,7 @@
 #include "TrajectoryViewerDialog.h"
 
 #include <QByteArray>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -1984,8 +1985,37 @@ void SessionViewerWindow::onConfigureKfGinsClicked()
 QString SessionViewerWindow::ensureKfGinsExecutablePath()
 {
     QSettings settings("VaporView", "SessionViewer");
-    const QString defaultRepoPath = QStringLiteral("x:/Project/GPS/NAV/KF-GINS");
-    const QString repoPath = QDir::fromNativeSeparators(settings.value("kf_gins/repo_path", defaultRepoPath).toString());
+    const QString storedRepoPath = QDir::fromNativeSeparators(settings.value("kf_gins/repo_path").toString());
+    const QString executableDir = QFileInfo(QCoreApplication::applicationFilePath()).absolutePath();
+    const QStringList repoPathCandidates = {
+        storedRepoPath,
+        QDir(executableDir).absoluteFilePath(QStringLiteral("../../KF-GINS")),
+        QDir(executableDir).absoluteFilePath(QStringLiteral("../KF-GINS")),
+        QStringLiteral("c:/WorkSpace/NAV/KF-GINS")
+    };
+
+    QString repoPath;
+    for (const QString& candidate : repoPathCandidates)
+    {
+        if (candidate.isEmpty())
+        {
+            continue;
+        }
+
+        const QString normalized = QDir::fromNativeSeparators(QFileInfo(candidate).absoluteFilePath());
+        if (QDir(normalized).exists())
+        {
+            repoPath = normalized;
+            break;
+        }
+    }
+
+    if (repoPath.isEmpty())
+    {
+        repoPath = QDir::fromNativeSeparators(
+            QFileInfo(repoPathCandidates.back()).absoluteFilePath());
+    }
+
     settings.setValue("kf_gins/repo_path", repoPath);
 
     QString executablePath = settings.value("kf_gins/executable_path").toString();
