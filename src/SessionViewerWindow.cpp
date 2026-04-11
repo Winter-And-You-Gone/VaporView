@@ -2589,7 +2589,7 @@ void SessionViewerWindow::onKfGinsProcessFinished(int exitCode, int exitStatus)
     finalizeKfGinsRun(success, detail);
 }
 
-bool SessionViewerWindow::loadSessionDirectory(const QString& sessionDirectory)
+bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
 {
     clearLoadedData(false);
 

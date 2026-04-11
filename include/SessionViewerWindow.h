@@ -72,7 +72,7 @@ private:
     void clearLoadedData(bool clearPathEdit = true);
     QString resolveSessionDirectory(const QString& path) const;
     QString formatMeasuredRateText(const QVector<quint64>& timestampsUs, int metadataRateHz, const QString& metadataMode) const;
-    bool loadSessionDirectory(const QString& sessionDirectory);
+    bool loadSessionDirectory(QString sessionDirectory);
     bool loadSessionMetadata(const QString& sessionDirectory);
     bool loadSensorsCsv();
     bool loadKfGinsTrack();
