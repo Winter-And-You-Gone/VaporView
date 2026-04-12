@@ -152,11 +152,11 @@ QColor heatmapColorAt(double normalized)
 {
     static const std::array<std::pair<double, QColor>, 6> stops = {{
         {0.00, QColor("#1d4ed8")},
-        {0.18, QColor("#2563eb")},
-        {0.38, QColor("#22d3ee")},
-        {0.58, QColor("#84cc16")},
-        {0.78, QColor("#fde047")},
-        {1.00, QColor("#f97316")}
+        {0.20, QColor("#2563eb")},
+        {0.40, QColor("#22d3ee")},
+        {0.60, QColor("#67e8f9")},
+        {0.80, QColor("#fde047")},
+        {1.00, QColor("#dc2626")}
     }};
 
     const double clamped = std::clamp(normalized, 0.0, 1.0);
@@ -1165,26 +1165,20 @@ void TrajectoryViewerDialog::updateSummary()
     }
 
     const double totalRange = maxPeak - minPeak;
-    const double section = totalRange / 3.0;
-    const double lowerThreshold = minPeak + section;
-    const double upperThreshold = minPeak + section * 2.0;
-    const QString lowText = is_english_
-        ? QStringLiteral("Low: %1 to %2").arg(formatPeakValue(minPeak)).arg(formatPeakValue(lowerThreshold))
-        : QStringLiteral("低: %1 到 %2").arg(formatPeakValue(minPeak)).arg(formatPeakValue(lowerThreshold));
-    const QString midText = is_english_
-        ? QStringLiteral("Mid: %1 to %2").arg(formatPeakValue(lowerThreshold)).arg(formatPeakValue(upperThreshold))
-        : QStringLiteral("中: %1 到 %2").arg(formatPeakValue(lowerThreshold)).arg(formatPeakValue(upperThreshold));
-    const QString highText = is_english_
-        ? QStringLiteral("High: %1 to %2").arg(formatPeakValue(upperThreshold)).arg(formatPeakValue(maxPeak))
-        : QStringLiteral("高: %1 到 %2").arg(formatPeakValue(upperThreshold)).arg(formatPeakValue(maxPeak));
-    const QString lowColor = heatmapColorAt(1.0 / 6.0).name();
-    const QString midColor = heatmapColorAt(0.5).name();
-    const QString highColor = heatmapColorAt(5.0 / 6.0).name();
-    legend_label_->setText(QStringLiteral(
-        "<span style=\"color:%1; font-weight:600;\">■</span> %2&nbsp;&nbsp;&nbsp;"
-        "<span style=\"color:%3; font-weight:600;\">■</span> %4&nbsp;&nbsp;&nbsp;"
-        "<span style=\"color:%5; font-weight:600;\">■</span> %6")
-            .arg(lowColor, lowText, midColor, midText, highColor, highText));
+    const double section = totalRange / 5.0;
+    QStringList legendEntries;
+    legendEntries.reserve(5);
+    for (int index = 0; index < 5; ++index)
+    {
+        const double startValue = minPeak + section * index;
+        const double endValue = (index == 4) ? maxPeak : (minPeak + section * (index + 1));
+        const QString bandText = is_english_
+            ? QStringLiteral("Band %1: %2 to %3").arg(index + 1).arg(formatPeakValue(startValue)).arg(formatPeakValue(endValue))
+            : QStringLiteral("%1段: %2 到 %3").arg(index + 1).arg(formatPeakValue(startValue)).arg(formatPeakValue(endValue));
+        const QString bandColor = heatmapColorAt((index + 0.5) / 5.0).name();
+        legendEntries.push_back(QStringLiteral("<span style=\"color:%1; font-weight:600;\">■</span> %2").arg(bandColor, bandText));
+    }
+    legend_label_->setText(legendEntries.join(QStringLiteral("&nbsp;&nbsp;&nbsp;")));
 }
 
 void TrajectoryViewerDialog::updateTexts()
