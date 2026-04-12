@@ -160,6 +160,11 @@ QColor trackHeatColor(float peakValue, float minPeak, float maxPeak)
     return QColor("#dc2626");
 }
 
+QString formatPeakValue(double value)
+{
+    return QString::number(value, 'f', 6);
+}
+
 QString mapAttributionText(TileProvider provider, bool english)
 {
     switch (provider)
@@ -893,6 +898,7 @@ private:
 TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     : QDialog(parent)
     , summary_label_(new QLabel(this))
+    , legend_label_(new QLabel(this))
     , map_status_label_(new QLabel(this))
     , map_progress_bar_(new QProgressBar(this))
     , map_widget_(new TrajectoryMapWidget(this))
@@ -917,6 +923,11 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     summary_label_->setWordWrap(true);
     summary_label_->setObjectName(QStringLiteral("fieldLabel"));
     mainLayout->addWidget(summary_label_);
+    legend_label_ = new QLabel(this);
+    legend_label_->setWordWrap(true);
+    legend_label_->setTextFormat(Qt::RichText);
+    legend_label_->setObjectName(QStringLiteral("fieldLabel"));
+    mainLayout->addWidget(legend_label_);
     map_status_label_->setWordWrap(true);
     map_status_label_->setObjectName(QStringLiteral("fieldLabel"));
     mainLayout->addWidget(map_status_label_);
@@ -1081,6 +1092,9 @@ void TrajectoryViewerDialog::updateSummary()
         summary_label_->setText(is_english_
             ? QStringLiteral("No valid latitude/longitude samples were found for %1 in this session.").arg(english_track_label_)
             : QStringLiteral("当前会话中没有找到%1的有效经纬度轨迹点。").arg(chinese_track_label_));
+        legend_label_->setText(is_english_
+            ? QStringLiteral("Legend: no valid peak values are available for heatmap coloring.")
+            : QStringLiteral("图例：当前没有可用于热力着色的有效峰值。"));
         return;
     }
 
@@ -1088,12 +1102,21 @@ void TrajectoryViewerDialog::updateSummary()
     double maxLat = -std::numeric_limits<double>::infinity();
     double minLon = std::numeric_limits<double>::infinity();
     double maxLon = -std::numeric_limits<double>::infinity();
+    double minPeak = std::numeric_limits<double>::infinity();
+    double maxPeak = -std::numeric_limits<double>::infinity();
+    bool hasPeakRange = false;
     for (const RtkTrackPoint& point : track_points_)
     {
         minLat = std::min(minLat, point.latitude);
         maxLat = std::max(maxLat, point.latitude);
         minLon = std::min(minLon, point.longitude);
         maxLon = std::max(maxLon, point.longitude);
+        if (point.has_peak_value && std::isfinite(point.peak_value))
+        {
+            hasPeakRange = true;
+            minPeak = std::min(minPeak, static_cast<double>(point.peak_value));
+            maxPeak = std::max(maxPeak, static_cast<double>(point.peak_value));
+        }
     }
 
     summary_label_->setText(QString(is_english_
@@ -1105,6 +1128,33 @@ void TrajectoryViewerDialog::updateSummary()
         .arg(QString::number(maxLat, 'f', 7))
         .arg(QString::number(minLon, 'f', 7))
         .arg(QString::number(maxLon, 'f', 7)));
+
+    if (!hasPeakRange)
+    {
+        legend_label_->setText(is_english_
+            ? QStringLiteral("Legend: no valid peak values remain after filtering, so the trajectory falls back to the default blue line.")
+            : QStringLiteral("图例：过滤后没有剩余有效峰值，轨迹将回退为默认蓝线。"));
+        return;
+    }
+
+    const double totalRange = maxPeak - minPeak;
+    const double section = totalRange / 3.0;
+    const double lowerThreshold = minPeak + section;
+    const double upperThreshold = minPeak + section * 2.0;
+    const QString lowText = is_english_
+        ? QStringLiteral("Low: %1 to %2").arg(formatPeakValue(minPeak)).arg(formatPeakValue(lowerThreshold))
+        : QStringLiteral("低: %1 到 %2").arg(formatPeakValue(minPeak)).arg(formatPeakValue(lowerThreshold));
+    const QString midText = is_english_
+        ? QStringLiteral("Mid: %1 to %2").arg(formatPeakValue(lowerThreshold)).arg(formatPeakValue(upperThreshold))
+        : QStringLiteral("中: %1 到 %2").arg(formatPeakValue(lowerThreshold)).arg(formatPeakValue(upperThreshold));
+    const QString highText = is_english_
+        ? QStringLiteral("High: %1 to %2").arg(formatPeakValue(upperThreshold)).arg(formatPeakValue(maxPeak))
+        : QStringLiteral("高: %1 到 %2").arg(formatPeakValue(upperThreshold)).arg(formatPeakValue(maxPeak));
+    legend_label_->setText(QStringLiteral(
+        "<span style=\"color:#2563eb; font-weight:600;\">■</span> %1&nbsp;&nbsp;&nbsp;"
+        "<span style=\"color:#f59e0b; font-weight:600;\">■</span> %2&nbsp;&nbsp;&nbsp;"
+        "<span style=\"color:#dc2626; font-weight:600;\">■</span> %3")
+            .arg(lowText, midText, highText));
 }
 
 void TrajectoryViewerDialog::updateTexts()

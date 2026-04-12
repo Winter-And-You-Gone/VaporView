@@ -26,6 +26,7 @@ private:
     void updateSummary();
 
     QLabel *summary_label_;
+    QLabel *legend_label_;
     QLabel *map_status_label_;
     QProgressBar *map_progress_bar_;
     QWidget *map_widget_;
