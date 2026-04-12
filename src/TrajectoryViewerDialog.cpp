@@ -21,6 +21,7 @@
 #include <QWheelEvent>
 #include <QWidget>
 #include <QtMath>
+#include <array>
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -147,40 +148,44 @@ QColor interpolateColor(const QColor& first, const QColor& second, double ratio)
         static_cast<int>(std::lround(first.blue() + (second.blue() - first.blue()) * clampedRatio)));
 }
 
+QColor heatmapColorAt(double normalized)
+{
+    static const std::array<std::pair<double, QColor>, 6> stops = {{
+        {0.00, QColor("#1d4ed8")},
+        {0.18, QColor("#2563eb")},
+        {0.38, QColor("#22d3ee")},
+        {0.58, QColor("#84cc16")},
+        {0.78, QColor("#fde047")},
+        {1.00, QColor("#f97316")}
+    }};
+
+    const double clamped = std::clamp(normalized, 0.0, 1.0);
+    for (size_t index = 1; index < stops.size(); ++index)
+    {
+        const auto& previous = stops[index - 1];
+        const auto& current = stops[index];
+        if (clamped <= current.first)
+        {
+            const double localRatio = (clamped - previous.first) / std::max(1e-6, current.first - previous.first);
+            return interpolateColor(previous.second, current.second, localRatio);
+        }
+    }
+    return stops.back().second;
+}
+
 QColor trackHeatColor(float peakValue, float minPeak, float maxPeak)
 {
     const double totalRange = static_cast<double>(maxPeak) - static_cast<double>(minPeak);
     if (!(totalRange > 1e-6))
     {
-        return QColor("#facc15");
+        return heatmapColorAt(0.5);
     }
 
     const double normalized = std::clamp(
         (static_cast<double>(peakValue) - static_cast<double>(minPeak)) / totalRange,
         0.0,
         1.0);
-    const double firstBreak = 1.0 / 3.0;
-    const double secondBreak = 2.0 / 3.0;
-
-    const QColor blueDark("#1d4ed8");
-    const QColor blueBright("#60a5fa");
-    const QColor yellowBright("#fde047");
-    const QColor yellowDeep("#f59e0b");
-    const QColor redLight("#f97316");
-    const QColor redDeep("#dc2626");
-
-    if (normalized < firstBreak)
-    {
-        const double localRatio = normalized / std::max(1e-6, firstBreak);
-        return interpolateColor(blueDark, blueBright, localRatio);
-    }
-    if (normalized < secondBreak)
-    {
-        const double localRatio = (normalized - firstBreak) / std::max(1e-6, secondBreak - firstBreak);
-        return interpolateColor(yellowBright, yellowDeep, localRatio);
-    }
-    const double localRatio = (normalized - secondBreak) / std::max(1e-6, 1.0 - secondBreak);
-    return interpolateColor(redLight, redDeep, localRatio);
+    return heatmapColorAt(normalized);
 }
 
 QString formatPeakValue(double value)
@@ -1172,11 +1177,14 @@ void TrajectoryViewerDialog::updateSummary()
     const QString highText = is_english_
         ? QStringLiteral("High: %1 to %2").arg(formatPeakValue(upperThreshold)).arg(formatPeakValue(maxPeak))
         : QStringLiteral("高: %1 到 %2").arg(formatPeakValue(upperThreshold)).arg(formatPeakValue(maxPeak));
+    const QString lowColor = heatmapColorAt(1.0 / 6.0).name();
+    const QString midColor = heatmapColorAt(0.5).name();
+    const QString highColor = heatmapColorAt(5.0 / 6.0).name();
     legend_label_->setText(QStringLiteral(
-        "<span style=\"color:#2563eb; font-weight:600;\">■</span> %1&nbsp;&nbsp;&nbsp;"
-        "<span style=\"color:#22c55e; font-weight:600;\">■</span> %2&nbsp;&nbsp;&nbsp;"
-        "<span style=\"color:#dc2626; font-weight:600;\">■</span> %3")
-            .arg(lowText, midText, highText));
+        "<span style=\"color:%1; font-weight:600;\">■</span> %2&nbsp;&nbsp;&nbsp;"
+        "<span style=\"color:%3; font-weight:600;\">■</span> %4&nbsp;&nbsp;&nbsp;"
+        "<span style=\"color:%5; font-weight:600;\">■</span> %6")
+            .arg(lowColor, lowText, midColor, midText, highColor, highText));
 }
 
 void TrajectoryViewerDialog::updateTexts()
