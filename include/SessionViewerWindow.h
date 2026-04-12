@@ -54,10 +54,26 @@ private slots:
     void onFrameSliderChanged(int value);
     void onFrameSpinChanged(int value);
     void onTogglePeakPlotModeClicked();
+    void onConfigurePeakFilterClicked();
     void onKfGinsProcessOutputReady();
     void onKfGinsProcessFinished(int exitCode, int exitStatus);
 
 private:
+    enum class PeakFilterMode
+    {
+        None,
+        IqrOutlier,
+        KeepRange,
+        ExcludeRange
+    };
+
+    struct PeakFilterSettings
+    {
+        PeakFilterMode mode = PeakFilterMode::None;
+        double min_value = 0.0;
+        double max_value = 0.0;
+    };
+
     struct WaveformSegment
     {
         QString filename;
@@ -82,10 +98,13 @@ private:
     bool loadWaveformPeakSeries();
     bool loadWaveformFrame(quint64 frameIndex);
     int findClosestCsvRow(quint64 timestampUs) const;
+    void applyPeakFilter();
     void updateRtkTrackPeakValues();
     void syncEnvironmentRangeToWaveformRange(int startFrameIndex, int visibleFrameCount);
     QString highlightClosestSensorRow(quint64 timestampUs);
     void updatePeakPlotModeButtonText();
+    void updatePeakFilterButtonText();
+    QString peakFilterModeText(PeakFilterMode mode) const;
     QString ensureKfGinsExecutablePath();
     bool exportKfGinsDataset(QString *configPath, QString *outputDirectory, QString *warningMessage, QString *errorMessage) const;
     void finalizeKfGinsRun(bool success, const QString& detail);
@@ -129,6 +148,7 @@ private:
     QLabel *waveform_plot_title_;
     QWidget *waveform_plot_;
     QLabel *waveform_peak_plot_title_;
+    QPushButton *waveform_peak_filter_btn_;
     QPushButton *waveform_peak_mode_btn_;
     QWidget *waveform_peak_plot_;
     QLabel *temperature_plot_title_;
@@ -158,7 +178,9 @@ private:
     QVector<RtkTrackPoint> kf_gins_track_points_;
     QVector<quint64> waveform_timestamps_us_;
     QVector<WaveformSegment> waveform_segments_;
+    QVector<float> waveform_peak_raw_values_;
     QVector<float> waveform_peak_values_;
+    PeakFilterSettings peak_filter_settings_;
     bool is_english_;
     bool updating_frame_controls_;
     bool waveform_peak_scatter_mode_;

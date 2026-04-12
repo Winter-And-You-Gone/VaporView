@@ -3,6 +3,7 @@
 #include "TrajectoryViewerDialog.h"
 
 #include <QByteArray>
+#include <QComboBox>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDialog>
@@ -758,11 +759,29 @@ protected:
 
         const int startIndex = visibleStartIndex();
         const int count = visibleCount();
-        const auto visibleBegin = peak_values_.cbegin() + startIndex;
-        const auto visibleEnd = visibleBegin + count;
-        const auto minMax = std::minmax_element(visibleBegin, visibleEnd);
-        float minValue = *minMax.first;
-        float maxValue = *minMax.second;
+        QVector<int> finiteIndices;
+        finiteIndices.reserve(count);
+        float minValue = std::numeric_limits<float>::max();
+        float maxValue = std::numeric_limits<float>::lowest();
+        for (int i = 0; i < count; ++i)
+        {
+            const float value = peak_values_.at(startIndex + i);
+            if (!std::isfinite(value))
+            {
+                continue;
+            }
+            finiteIndices.push_back(i);
+            minValue = std::min(minValue, value);
+            maxValue = std::max(maxValue, value);
+        }
+        if (finiteIndices.isEmpty())
+        {
+            painter.setPen(QColor("#5e7698"));
+            painter.drawText(plotRect, Qt::AlignCenter,
+                QObject::tr("All visible peaks were filtered out"));
+            return;
+        }
+
         if (std::fabs(maxValue - minValue) < 1e-6f)
         {
             const float pad = std::max(1e-6f, std::fabs(maxValue) * 0.05f + 1e-6f);
@@ -776,16 +795,38 @@ protected:
         {
             const double ratio = count == 1 ? 0.5 : static_cast<double>(i) / static_cast<double>(count - 1);
             const float value = peak_values_.at(startIndex + i);
+            if (!std::isfinite(value))
+            {
+                points.push_back(QPointF(std::numeric_limits<qreal>::quiet_NaN(), std::numeric_limits<qreal>::quiet_NaN()));
+                continue;
+            }
             const double normalized = (value - minValue) / std::max(1e-6f, maxValue - minValue);
             points.push_back(QPointF(plotRect.left() + ratio * plotRect.width(),
-                                     plotRect.bottom() - normalized * plotRect.height()));
+                plotRect.bottom() - normalized * plotRect.height()));
         }
 
         const QColor seriesColor("#66d0ff");
         if (plot_mode_ == PlotMode::Polyline && points.size() >= 2)
         {
             painter.setPen(QPen(seriesColor, 1.5));
-            painter.drawPolyline(QPolygonF(points));
+            QPolygonF segment;
+            for (const QPointF& point : points)
+            {
+                if (!std::isfinite(point.x()) || !std::isfinite(point.y()))
+                {
+                    if (segment.size() >= 2)
+                    {
+                        painter.drawPolyline(segment);
+                    }
+                    segment.clear();
+                    continue;
+                }
+                segment.push_back(point);
+            }
+            if (segment.size() >= 2)
+            {
+                painter.drawPolyline(segment);
+            }
         }
         else
         {
@@ -793,6 +834,10 @@ protected:
             painter.setBrush(seriesColor);
             for (const QPointF& point : points)
             {
+                if (!std::isfinite(point.x()) || !std::isfinite(point.y()))
+                {
+                    continue;
+                }
                 painter.drawEllipse(point, 2.5, 2.5);
             }
         }
@@ -800,9 +845,12 @@ protected:
         if (current_frame_index_ >= startIndex && current_frame_index_ < (startIndex + count))
         {
             const QPointF currentPoint = points.at(current_frame_index_ - startIndex);
-            painter.setPen(Qt::NoPen);
-            painter.setBrush(kCurrentGuideLineColor);
-            painter.drawEllipse(currentPoint, 4.0, 4.0);
+            if (std::isfinite(currentPoint.x()) && std::isfinite(currentPoint.y()))
+            {
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(kCurrentGuideLineColor);
+                painter.drawEllipse(currentPoint, 4.0, 4.0);
+            }
         }
 
         painter.setPen(QColor("#4f647a"));
@@ -822,15 +870,18 @@ protected:
         if (current_frame_index_ >= startIndex && current_frame_index_ < (startIndex + count))
         {
             const QPointF currentPoint = points.at(current_frame_index_ - startIndex);
-            drawCurrentPointGuides(
-                painter,
-                plotRect,
-                currentPoint,
-                QString::number(current_frame_index_ + 1),
-                formatGuideValue(peak_values_.at(current_frame_index_), 4));
-            painter.setPen(Qt::NoPen);
-            painter.setBrush(kCurrentGuideLineColor);
-            painter.drawEllipse(currentPoint, 4.0, 4.0);
+            if (std::isfinite(currentPoint.x()) && std::isfinite(currentPoint.y()))
+            {
+                drawCurrentPointGuides(
+                    painter,
+                    plotRect,
+                    currentPoint,
+                    QString::number(current_frame_index_ + 1),
+                    formatGuideValue(peak_values_.at(current_frame_index_), 4));
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(kCurrentGuideLineColor);
+                painter.drawEllipse(currentPoint, 4.0, 4.0);
+            }
         }
     }
 
@@ -1222,6 +1273,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , waveform_plot_title_(nullptr)
     , waveform_plot_(nullptr)
     , waveform_peak_plot_title_(nullptr)
+    , waveform_peak_filter_btn_(nullptr)
     , waveform_peak_mode_btn_(nullptr)
     , waveform_peak_plot_(nullptr)
     , temperature_plot_title_(nullptr)
@@ -1250,7 +1302,9 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , kf_gins_track_points_()
     , waveform_timestamps_us_()
     , waveform_segments_()
+    , waveform_peak_raw_values_()
     , waveform_peak_values_()
+    , peak_filter_settings_()
     , is_english_(false)
     , updating_frame_controls_(false)
     , waveform_peak_scatter_mode_(true)
@@ -1273,6 +1327,22 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     setEnglish(false);
 
     QSettings settings("VaporView", "SessionViewer");
+    const QString peakFilterMode = settings.value("peak_filter/mode", QStringLiteral("none")).toString().trimmed().toLower();
+    if (peakFilterMode == QStringLiteral("iqr"))
+    {
+        peak_filter_settings_.mode = PeakFilterMode::IqrOutlier;
+    }
+    else if (peakFilterMode == QStringLiteral("keep_range"))
+    {
+        peak_filter_settings_.mode = PeakFilterMode::KeepRange;
+    }
+    else if (peakFilterMode == QStringLiteral("exclude_range"))
+    {
+        peak_filter_settings_.mode = PeakFilterMode::ExcludeRange;
+    }
+    peak_filter_settings_.min_value = settings.value("peak_filter/min_value", 0.0).toDouble();
+    peak_filter_settings_.max_value = settings.value("peak_filter/max_value", 0.0).toDouble();
+    updatePeakFilterButtonText();
     const QString lastSession = settings.value("last_session_directory").toString();
     if (!lastSession.isEmpty())
     {
@@ -1435,6 +1505,8 @@ void SessionViewerWindow::setupUi()
     waveformPeakRangeAxis->setCompactMode(true);
     waveformPeakRangeAxis->setMinimumWidth(240);
     peakHeaderLayout->addWidget(waveformPeakRangeAxis, 1, Qt::AlignVCenter);
+    waveform_peak_filter_btn_ = new QPushButton(this);
+    peakHeaderLayout->addWidget(waveform_peak_filter_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
     waveform_peak_mode_btn_ = new QPushButton(this);
     peakHeaderLayout->addWidget(waveform_peak_mode_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
     waveformLayout->addLayout(peakHeaderLayout);
@@ -1442,6 +1514,7 @@ void SessionViewerWindow::setupUi()
     waveform_peak_plot_ = new SessionPeakPlotWidget(this);
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPlotMode(
         waveform_peak_scatter_mode_ ? SessionPeakPlotWidget::PlotMode::Scatter : SessionPeakPlotWidget::PlotMode::Polyline);
+    connect(waveform_peak_filter_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onConfigurePeakFilterClicked);
     connect(waveform_peak_mode_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onTogglePeakPlotModeClicked);
     waveformLayout->addWidget(waveform_peak_plot_, 1);
 
@@ -1571,6 +1644,7 @@ void SessionViewerWindow::updateTexts()
     humidity_plot_title_->setText(is_english_ ? "Humidity" : "湿度");
     pressure_plot_title_->setText(is_english_ ? "Pressure" : "气压");
     updatePeakPlotModeButtonText();
+    updatePeakFilterButtonText();
     csv_group_->setTitle(is_english_ ? "Sensors CSV" : "传感器 CSV");
     session_name_title_->setText(is_english_ ? "Session:" : "会话:");
     start_time_title_->setText(is_english_ ? "Start:" : "开始时间:");
@@ -1625,6 +1699,34 @@ void SessionViewerWindow::updatePeakPlotModeButtonText()
     waveform_peak_mode_btn_->setText(waveform_peak_scatter_mode_
         ? (is_english_ ? "Show Polyline" : "切换到折线图")
         : (is_english_ ? "Show Scatter" : "切换到散点图"));
+}
+
+QString SessionViewerWindow::peakFilterModeText(PeakFilterMode mode) const
+{
+    switch (mode)
+    {
+    case PeakFilterMode::IqrOutlier:
+        return is_english_ ? QStringLiteral("IQR") : QStringLiteral("IQR");
+    case PeakFilterMode::KeepRange:
+        return is_english_ ? QStringLiteral("Keep Range") : QStringLiteral("保留区间");
+    case PeakFilterMode::ExcludeRange:
+        return is_english_ ? QStringLiteral("Exclude Range") : QStringLiteral("排除区间");
+    case PeakFilterMode::None:
+    default:
+        return is_english_ ? QStringLiteral("Off") : QStringLiteral("关闭");
+    }
+}
+
+void SessionViewerWindow::updatePeakFilterButtonText()
+{
+    if (!waveform_peak_filter_btn_)
+    {
+        return;
+    }
+
+    waveform_peak_filter_btn_->setText(QStringLiteral("%1:%2")
+        .arg(is_english_ ? QStringLiteral("Peak Filter") : QStringLiteral("峰值过滤"))
+        .arg(peakFilterModeText(peak_filter_settings_.mode)));
 }
 
 void SessionViewerWindow::relayoutSummaryFields()
@@ -1741,6 +1843,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     kf_gins_track_points_.clear();
     waveform_timestamps_us_.clear();
     waveform_segments_.clear();
+    waveform_peak_raw_values_.clear();
     waveform_peak_values_.clear();
     total_sensor_rows_ = 0;
     total_waveform_frames_ = 0;
@@ -3016,8 +3119,81 @@ bool SessionViewerWindow::loadWaveformSegments()
     return true;
 }
 
+void SessionViewerWindow::applyPeakFilter()
+{
+    waveform_peak_values_.clear();
+    waveform_peak_values_.reserve(waveform_peak_raw_values_.size());
+
+    QVector<double> finiteValues;
+    finiteValues.reserve(waveform_peak_raw_values_.size());
+    for (float value : waveform_peak_raw_values_)
+    {
+        if (std::isfinite(value))
+        {
+            finiteValues.push_back(static_cast<double>(value));
+        }
+    }
+
+    double iqrLowerBound = -std::numeric_limits<double>::infinity();
+    double iqrUpperBound = std::numeric_limits<double>::infinity();
+    if (peak_filter_settings_.mode == PeakFilterMode::IqrOutlier && finiteValues.size() >= 4)
+    {
+        const double q1 = percentileValue(finiteValues, 0.25);
+        const double q3 = percentileValue(finiteValues, 0.75);
+        if (std::isfinite(q1) && std::isfinite(q3))
+        {
+            const double iqr = q3 - q1;
+            const double padding = std::max(1e-6, iqr * 1.5);
+            iqrLowerBound = q1 - padding;
+            iqrUpperBound = q3 + padding;
+        }
+    }
+
+    const double rangeMin = std::min(peak_filter_settings_.min_value, peak_filter_settings_.max_value);
+    const double rangeMax = std::max(peak_filter_settings_.min_value, peak_filter_settings_.max_value);
+    for (float rawValue : waveform_peak_raw_values_)
+    {
+        bool keepValue = std::isfinite(rawValue);
+        if (keepValue)
+        {
+            const double value = static_cast<double>(rawValue);
+            switch (peak_filter_settings_.mode)
+            {
+            case PeakFilterMode::IqrOutlier:
+                keepValue = value >= iqrLowerBound && value <= iqrUpperBound;
+                break;
+            case PeakFilterMode::KeepRange:
+                keepValue = value >= rangeMin && value <= rangeMax;
+                break;
+            case PeakFilterMode::ExcludeRange:
+                keepValue = !(value >= rangeMin && value <= rangeMax);
+                break;
+            case PeakFilterMode::None:
+            default:
+                keepValue = true;
+                break;
+            }
+        }
+
+        waveform_peak_values_.push_back(keepValue
+            ? rawValue
+            : std::numeric_limits<float>::quiet_NaN());
+    }
+
+    if (waveform_peak_plot_)
+    {
+        static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPeakValues(waveform_peak_values_);
+    }
+    updateRtkTrackPeakValues();
+    if (frame_spin_ && frame_spin_->value() > 0)
+    {
+        loadWaveformFrame(static_cast<quint64>(frame_spin_->value() - 1));
+    }
+}
+
 bool SessionViewerWindow::loadWaveformPeakSeries()
 {
+    waveform_peak_raw_values_.clear();
     waveform_peak_values_.clear();
     waveform_timestamps_us_.clear();
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPeakValues({});
@@ -3030,7 +3206,7 @@ bool SessionViewerWindow::loadWaveformPeakSeries()
 
     const quint64 frameBytes = kWaveformTimestampBytes + static_cast<quint64>(points_per_frame_) * kFloatBytes;
     QVector<float> frameSamples(points_per_frame_);
-    waveform_peak_values_.reserve(static_cast<int>(std::min<quint64>(total_waveform_frames_, static_cast<quint64>(std::numeric_limits<int>::max()))));
+    waveform_peak_raw_values_.reserve(static_cast<int>(std::min<quint64>(total_waveform_frames_, static_cast<quint64>(std::numeric_limits<int>::max()))));
     waveform_timestamps_us_.reserve(static_cast<int>(std::min<quint64>(total_waveform_frames_, static_cast<quint64>(std::numeric_limits<int>::max()))));
 
     for (const WaveformSegment& segment : waveform_segments_)
@@ -3056,12 +3232,11 @@ bool SessionViewerWindow::loadWaveformPeakSeries()
             waveform_timestamps_us_.push_back(timestampUs);
             std::memcpy(frameSamples.data(), block.constData() + sizeof(quint64), static_cast<size_t>(points_per_frame_) * sizeof(float));
             const auto peakIt = std::max_element(frameSamples.cbegin(), frameSamples.cend());
-            waveform_peak_values_.push_back(peakIt == frameSamples.cend() ? 0.0f : *peakIt);
+            waveform_peak_raw_values_.push_back(peakIt == frameSamples.cend() ? 0.0f : *peakIt);
         }
     }
 
-    static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPeakValues(waveform_peak_values_);
-    updateRtkTrackPeakValues();
+    applyPeakFilter();
     return true;
 }
 
@@ -3160,6 +3335,93 @@ void SessionViewerWindow::onTogglePeakPlotModeClicked()
         waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
 }
 
+void SessionViewerWindow::onConfigurePeakFilterClicked()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(is_english_ ? QStringLiteral("Peak Filter") : QStringLiteral("峰值过滤"));
+
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *formLayout = new QFormLayout();
+    formLayout->setContentsMargins(0, 0, 0, 0);
+
+    auto *modeCombo = new QComboBox(&dialog);
+    modeCombo->addItem(is_english_ ? QStringLiteral("Off") : QStringLiteral("关闭"), static_cast<int>(PeakFilterMode::None));
+    modeCombo->addItem(is_english_ ? QStringLiteral("IQR Outlier Filter") : QStringLiteral("IQR 异常值过滤"), static_cast<int>(PeakFilterMode::IqrOutlier));
+    modeCombo->addItem(is_english_ ? QStringLiteral("Keep Range") : QStringLiteral("保留区间"), static_cast<int>(PeakFilterMode::KeepRange));
+    modeCombo->addItem(is_english_ ? QStringLiteral("Exclude Range") : QStringLiteral("排除区间"), static_cast<int>(PeakFilterMode::ExcludeRange));
+    modeCombo->setCurrentIndex(std::max(0, modeCombo->findData(static_cast<int>(peak_filter_settings_.mode))));
+    formLayout->addRow(is_english_ ? QStringLiteral("Method") : QStringLiteral("方式"), modeCombo);
+
+    auto *minEdit = new QLineEdit(QString::number(peak_filter_settings_.min_value, 'f', 6), &dialog);
+    auto *maxEdit = new QLineEdit(QString::number(peak_filter_settings_.max_value, 'f', 6), &dialog);
+    formLayout->addRow(is_english_ ? QStringLiteral("Range Min") : QStringLiteral("区间最小值"), minEdit);
+    formLayout->addRow(is_english_ ? QStringLiteral("Range Max") : QStringLiteral("区间最大值"), maxEdit);
+    layout->addLayout(formLayout);
+
+    auto *hintLabel = new QLabel(
+        is_english_
+            ? QStringLiteral("IQR removes statistical outliers. Keep Range keeps only values inside [min, max]. Exclude Range removes values inside [min, max].")
+            : QStringLiteral("IQR 会过滤统计异常值。保留区间只保留 [最小值, 最大值] 内的峰值。排除区间会过滤 [最小值, 最大值] 内的峰值。"),
+        &dialog);
+    hintLabel->setWordWrap(true);
+    layout->addWidget(hintLabel);
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    layout->addWidget(buttons);
+    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    if (dialog.exec() != QDialog::Accepted)
+    {
+        return;
+    }
+
+    bool minOk = false;
+    bool maxOk = false;
+    const double minValue = minEdit->text().trimmed().toDouble(&minOk);
+    const double maxValue = maxEdit->text().trimmed().toDouble(&maxOk);
+    const PeakFilterMode mode = static_cast<PeakFilterMode>(modeCombo->currentData().toInt());
+    if ((mode == PeakFilterMode::KeepRange || mode == PeakFilterMode::ExcludeRange) && (!minOk || !maxOk))
+    {
+        QMessageBox::warning(
+            this,
+            is_english_ ? QStringLiteral("Peak Filter") : QStringLiteral("峰值过滤"),
+            is_english_ ? QStringLiteral("Please enter valid numeric range values.") : QStringLiteral("请输入有效的数值区间。"));
+        return;
+    }
+
+    peak_filter_settings_.mode = mode;
+    if (minOk)
+    {
+        peak_filter_settings_.min_value = minValue;
+    }
+    if (maxOk)
+    {
+        peak_filter_settings_.max_value = maxValue;
+    }
+
+    QSettings settings("VaporView", "SessionViewer");
+    QString modeKey = QStringLiteral("none");
+    if (mode == PeakFilterMode::IqrOutlier)
+    {
+        modeKey = QStringLiteral("iqr");
+    }
+    else if (mode == PeakFilterMode::KeepRange)
+    {
+        modeKey = QStringLiteral("keep_range");
+    }
+    else if (mode == PeakFilterMode::ExcludeRange)
+    {
+        modeKey = QStringLiteral("exclude_range");
+    }
+    settings.setValue("peak_filter/mode", modeKey);
+    settings.setValue("peak_filter/min_value", peak_filter_settings_.min_value);
+    settings.setValue("peak_filter/max_value", peak_filter_settings_.max_value);
+
+    updatePeakFilterButtonText();
+    applyPeakFilter();
+}
+
 bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
 {
     if (waveform_segments_.isEmpty() || frameIndex >= total_waveform_frames_)
@@ -3202,14 +3464,22 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setCurrentFrame(static_cast<int>(frameIndex));
 
     const auto minMax = std::minmax_element(samples.cbegin(), samples.cend());
-    const float peakValue = frameIndex < static_cast<quint64>(waveform_peak_values_.size())
-        ? waveform_peak_values_.at(static_cast<int>(frameIndex))
+    const float rawPeakValue = frameIndex < static_cast<quint64>(waveform_peak_raw_values_.size())
+        ? waveform_peak_raw_values_.at(static_cast<int>(frameIndex))
         : *minMax.second;
+    const float filteredPeakValue = frameIndex < static_cast<quint64>(waveform_peak_values_.size())
+        ? waveform_peak_values_.at(static_cast<int>(frameIndex))
+        : rawPeakValue;
     const QString frameTime = formatTimestampUs(timestampUs);
     const QString csvMatchText = highlightClosestSensorRow(timestampUs);
     const QString waveformExportText = (waveform_export_mode_ == QStringLiteral("per_frame") || waveform_export_rate_hz_ <= 0)
         ? (is_english_ ? QStringLiteral("per-frame export") : QStringLiteral("逐帧导出"))
         : QString(is_english_ ? "%1 Hz export" : "%1 Hz 导出").arg(waveform_export_rate_hz_);
+    const QString peakText = std::isfinite(filteredPeakValue)
+        ? QString::number(filteredPeakValue, 'f', 6)
+        : (is_english_
+            ? QStringLiteral("%1 (filtered)").arg(QString::number(rawPeakValue, 'f', 6))
+            : QStringLiteral("%1（已过滤）").arg(QString::number(rawPeakValue, 'f', 6)));
     frame_info_label_->setText(QString(is_english_
         ? "Frame %1 / %2 | %3 | %4 | min=%5 max=%6 peak=%7 | %8"
         : "第 %1 / %2 帧 | %3 | %4 | min=%5 max=%6 峰值=%7 | %8")
@@ -3219,7 +3489,7 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
         .arg(waveformExportText)
         .arg(QString::number(*minMax.first, 'f', 6))
         .arg(QString::number(*minMax.second, 'f', 6))
-        .arg(QString::number(peakValue, 'f', 6))
+        .arg(peakText)
         .arg(QFileInfo(it->filename).fileName())
         + (csvMatchText.isEmpty() ? QString() : QStringLiteral(" | ") + csvMatchText));
     return true;
@@ -3255,31 +3525,6 @@ int SessionViewerWindow::findClosestCsvRow(quint64 timestampUs) const
 
 void SessionViewerWindow::updateRtkTrackPeakValues()
 {
-    QVector<double> validPeaks;
-    validPeaks.reserve(waveform_peak_values_.size());
-    for (float value : waveform_peak_values_)
-    {
-        if (std::isfinite(value))
-        {
-            validPeaks.push_back(static_cast<double>(value));
-        }
-    }
-
-    double lowerBound = -std::numeric_limits<double>::infinity();
-    double upperBound = std::numeric_limits<double>::infinity();
-    if (validPeaks.size() >= 4)
-    {
-        const double q1 = percentileValue(validPeaks, 0.25);
-        const double q3 = percentileValue(validPeaks, 0.75);
-        if (std::isfinite(q1) && std::isfinite(q3))
-        {
-            const double iqr = q3 - q1;
-            const double pad = std::max(1e-6, iqr * 1.5);
-            lowerBound = q1 - pad;
-            upperBound = q3 + pad;
-        }
-    }
-
     for (RtkTrackPoint& point : rtk_track_points_)
     {
         point.peak_value = 0.0f;
@@ -3298,10 +3543,6 @@ void SessionViewerWindow::updateRtkTrackPeakValues()
 
         const float peakValue = waveform_peak_values_.at(peakIndex);
         if (!std::isfinite(peakValue))
-        {
-            continue;
-        }
-        if (static_cast<double>(peakValue) < lowerBound || static_cast<double>(peakValue) > upperBound)
         {
             continue;
         }
