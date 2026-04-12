@@ -102,6 +102,27 @@ int findClosestTimestampIndex(const QVector<quint64>& timestampsUs, quint64 time
     return lowerDelta <= upperDelta ? lowerIndex : upperIndex;
 }
 
+double percentileValue(QVector<double> values, double percentile)
+{
+    if (values.isEmpty())
+    {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+
+    std::sort(values.begin(), values.end());
+    const double clampedPercentile = std::clamp(percentile, 0.0, 1.0);
+    const double scaledIndex = clampedPercentile * static_cast<double>(values.size() - 1);
+    const int lowerIndex = static_cast<int>(std::floor(scaledIndex));
+    const int upperIndex = static_cast<int>(std::ceil(scaledIndex));
+    if (lowerIndex == upperIndex)
+    {
+        return values.at(lowerIndex);
+    }
+
+    const double fraction = scaledIndex - static_cast<double>(lowerIndex);
+    return values.at(lowerIndex) * (1.0 - fraction) + values.at(upperIndex) * fraction;
+}
+
 QString formatTimestampUs(quint64 timestampUs)
 {
     if (timestampUs == 0)
@@ -3234,6 +3255,31 @@ int SessionViewerWindow::findClosestCsvRow(quint64 timestampUs) const
 
 void SessionViewerWindow::updateRtkTrackPeakValues()
 {
+    QVector<double> validPeaks;
+    validPeaks.reserve(waveform_peak_values_.size());
+    for (float value : waveform_peak_values_)
+    {
+        if (std::isfinite(value))
+        {
+            validPeaks.push_back(static_cast<double>(value));
+        }
+    }
+
+    double lowerBound = -std::numeric_limits<double>::infinity();
+    double upperBound = std::numeric_limits<double>::infinity();
+    if (validPeaks.size() >= 4)
+    {
+        const double q1 = percentileValue(validPeaks, 0.25);
+        const double q3 = percentileValue(validPeaks, 0.75);
+        if (std::isfinite(q1) && std::isfinite(q3))
+        {
+            const double iqr = q3 - q1;
+            const double pad = std::max(1e-6, iqr * 1.5);
+            lowerBound = q1 - pad;
+            upperBound = q3 + pad;
+        }
+    }
+
     for (RtkTrackPoint& point : rtk_track_points_)
     {
         point.peak_value = 0.0f;
@@ -3250,7 +3296,17 @@ void SessionViewerWindow::updateRtkTrackPeakValues()
             continue;
         }
 
-        point.peak_value = waveform_peak_values_.at(peakIndex);
+        const float peakValue = waveform_peak_values_.at(peakIndex);
+        if (!std::isfinite(peakValue))
+        {
+            continue;
+        }
+        if (static_cast<double>(peakValue) < lowerBound || static_cast<double>(peakValue) > upperBound)
+        {
+            continue;
+        }
+
+        point.peak_value = peakValue;
         point.has_peak_value = true;
     }
 
