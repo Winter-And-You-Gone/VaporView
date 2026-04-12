@@ -152,27 +152,27 @@ QColor trackHeatColor(float peakValue, float minPeak, float maxPeak)
     const double totalRange = static_cast<double>(maxPeak) - static_cast<double>(minPeak);
     if (!(totalRange > 1e-6))
     {
-        return QColor("#f59e0b");
+        return QColor("#22c55e");
     }
 
-    const double section = totalRange / 3.0;
-    const double lowerThreshold = static_cast<double>(minPeak) + section;
-    const double upperThreshold = static_cast<double>(minPeak) + section * 2.0;
-    const QColor lowColor("#2563eb");
-    const QColor midColor("#f59e0b");
-    const QColor highColor("#dc2626");
-    if (static_cast<double>(peakValue) < lowerThreshold)
+    const double normalized = std::clamp(
+        (static_cast<double>(peakValue) - static_cast<double>(minPeak)) / totalRange,
+        0.0,
+        1.0);
+    const QColor blueColor("#2563eb");
+    const QColor greenColor("#22c55e");
+    const QColor yellowColor("#facc15");
+    const QColor redColor("#dc2626");
+
+    if (normalized < (1.0 / 3.0))
     {
-        const double localRatio = (static_cast<double>(peakValue) - static_cast<double>(minPeak)) / std::max(1e-6, lowerThreshold - static_cast<double>(minPeak));
-        return interpolateColor(lowColor, midColor, localRatio * 0.5);
+        return interpolateColor(blueColor, greenColor, normalized * 3.0);
     }
-    if (static_cast<double>(peakValue) < upperThreshold)
+    if (normalized < (2.0 / 3.0))
     {
-        const double localRatio = (static_cast<double>(peakValue) - lowerThreshold) / std::max(1e-6, upperThreshold - lowerThreshold);
-        return interpolateColor(interpolateColor(lowColor, midColor, 0.5), interpolateColor(midColor, highColor, 0.5), localRatio);
+        return interpolateColor(greenColor, yellowColor, (normalized - 1.0 / 3.0) * 3.0);
     }
-    const double localRatio = (static_cast<double>(peakValue) - upperThreshold) / std::max(1e-6, static_cast<double>(maxPeak) - upperThreshold);
-    return interpolateColor(midColor, highColor, 0.5 + localRatio * 0.5);
+    return interpolateColor(yellowColor, redColor, (normalized - 2.0 / 3.0) * 3.0);
 }
 
 QString formatPeakValue(double value)
@@ -1166,7 +1166,7 @@ void TrajectoryViewerDialog::updateSummary()
         : QStringLiteral("高: %1 到 %2").arg(formatPeakValue(upperThreshold)).arg(formatPeakValue(maxPeak));
     legend_label_->setText(QStringLiteral(
         "<span style=\"color:#2563eb; font-weight:600;\">■</span> %1&nbsp;&nbsp;&nbsp;"
-        "<span style=\"color:#f59e0b; font-weight:600;\">■</span> %2&nbsp;&nbsp;&nbsp;"
+        "<span style=\"color:#22c55e; font-weight:600;\">■</span> %2&nbsp;&nbsp;&nbsp;"
         "<span style=\"color:#dc2626; font-weight:600;\">■</span> %3")
             .arg(lowText, midText, highText));
 }
