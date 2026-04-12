@@ -138,6 +138,15 @@ QColor defaultTrackColor()
     return QColor("#2563eb");
 }
 
+QColor interpolateColor(const QColor& first, const QColor& second, double ratio)
+{
+    const double clampedRatio = std::clamp(ratio, 0.0, 1.0);
+    return QColor(
+        static_cast<int>(std::lround(first.red() + (second.red() - first.red()) * clampedRatio)),
+        static_cast<int>(std::lround(first.green() + (second.green() - first.green()) * clampedRatio)),
+        static_cast<int>(std::lround(first.blue() + (second.blue() - first.blue()) * clampedRatio)));
+}
+
 QColor trackHeatColor(float peakValue, float minPeak, float maxPeak)
 {
     const double totalRange = static_cast<double>(maxPeak) - static_cast<double>(minPeak);
@@ -149,15 +158,21 @@ QColor trackHeatColor(float peakValue, float minPeak, float maxPeak)
     const double section = totalRange / 3.0;
     const double lowerThreshold = static_cast<double>(minPeak) + section;
     const double upperThreshold = static_cast<double>(minPeak) + section * 2.0;
+    const QColor lowColor("#2563eb");
+    const QColor midColor("#f59e0b");
+    const QColor highColor("#dc2626");
     if (static_cast<double>(peakValue) < lowerThreshold)
     {
-        return QColor("#2563eb");
+        const double localRatio = (static_cast<double>(peakValue) - static_cast<double>(minPeak)) / std::max(1e-6, lowerThreshold - static_cast<double>(minPeak));
+        return interpolateColor(lowColor, midColor, localRatio * 0.5);
     }
     if (static_cast<double>(peakValue) < upperThreshold)
     {
-        return QColor("#f59e0b");
+        const double localRatio = (static_cast<double>(peakValue) - lowerThreshold) / std::max(1e-6, upperThreshold - lowerThreshold);
+        return interpolateColor(interpolateColor(lowColor, midColor, 0.5), interpolateColor(midColor, highColor, 0.5), localRatio);
     }
-    return QColor("#dc2626");
+    const double localRatio = (static_cast<double>(peakValue) - upperThreshold) / std::max(1e-6, static_cast<double>(maxPeak) - upperThreshold);
+    return interpolateColor(midColor, highColor, 0.5 + localRatio * 0.5);
 }
 
 QString formatPeakValue(double value)
@@ -923,7 +938,6 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     summary_label_->setWordWrap(true);
     summary_label_->setObjectName(QStringLiteral("fieldLabel"));
     mainLayout->addWidget(summary_label_);
-    legend_label_ = new QLabel(this);
     legend_label_->setWordWrap(true);
     legend_label_->setTextFormat(Qt::RichText);
     legend_label_->setObjectName(QStringLiteral("fieldLabel"));
