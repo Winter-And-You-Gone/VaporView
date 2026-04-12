@@ -125,6 +125,13 @@ QVector<TileLayerSpec> tileLayerSpecs(TileProvider provider)
     }
 }
 
+QString tiandituHostForTile(int tileX, int tileY, const QString& layerSuffix)
+{
+    const int layerSeed = qHash(layerSuffix) & 0x7fffffff;
+    const int shard = std::abs(tileX * 31 + tileY * 17 + layerSeed) % 8;
+    return QStringLiteral("t%1.tianditu.gov.cn").arg(shard);
+}
+
 QString mapAttributionText(TileProvider provider, bool english)
 {
     switch (provider)
@@ -510,7 +517,8 @@ private:
                     }
                     else
                     {
-                        tileUrl = QUrl(QStringLiteral("https://t0.tianditu.gov.cn/%1/wmts").arg(layer.endpoint_path));
+                        tileUrl = QUrl(QStringLiteral("https://%1/%2/wmts")
+                            .arg(tiandituHostForTile(tileX, tileY, layer.cache_suffix), layer.endpoint_path));
                         QUrlQuery query;
                         query.addQueryItem(QStringLiteral("SERVICE"), QStringLiteral("WMTS"));
                         query.addQueryItem(QStringLiteral("REQUEST"), QStringLiteral("GetTile"));
