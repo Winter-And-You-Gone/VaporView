@@ -150,12 +150,14 @@ QColor interpolateColor(const QColor& first, const QColor& second, double ratio)
 
 QColor heatmapColorAt(double normalized)
 {
-    static const std::array<std::pair<double, QColor>, 6> stops = {{
+    static const std::array<std::pair<double, QColor>, 8> stops = {{
         {0.00, QColor("#1d4ed8")},
-        {0.20, QColor("#2563eb")},
-        {0.40, QColor("#22d3ee")},
-        {0.60, QColor("#67e8f9")},
-        {0.80, QColor("#fde047")},
+        {0.14, QColor("#2563eb")},
+        {0.28, QColor("#38bdf8")},
+        {0.42, QColor("#22d3ee")},
+        {0.56, QColor("#67e8f9")},
+        {0.70, QColor("#a3e635")},
+        {0.84, QColor("#fde047")},
         {1.00, QColor("#dc2626")}
     }};
 
@@ -1165,17 +1167,18 @@ void TrajectoryViewerDialog::updateSummary()
     }
 
     const double totalRange = maxPeak - minPeak;
-    const double section = totalRange / 5.0;
+    const int bandCount = 7;
+    const double section = totalRange / static_cast<double>(bandCount);
     QStringList legendEntries;
-    legendEntries.reserve(5);
-    for (int index = 0; index < 5; ++index)
+    legendEntries.reserve(bandCount);
+    for (int index = 0; index < bandCount; ++index)
     {
         const double startValue = minPeak + section * index;
-        const double endValue = (index == 4) ? maxPeak : (minPeak + section * (index + 1));
+        const double endValue = (index == bandCount - 1) ? maxPeak : (minPeak + section * (index + 1));
         const QString bandText = is_english_
             ? QStringLiteral("Band %1: %2 to %3").arg(index + 1).arg(formatPeakValue(startValue)).arg(formatPeakValue(endValue))
             : QStringLiteral("%1段: %2 到 %3").arg(index + 1).arg(formatPeakValue(startValue)).arg(formatPeakValue(endValue));
-        const QString bandColor = heatmapColorAt((index + 0.5) / 5.0).name();
+        const QString bandColor = heatmapColorAt((index + 0.5) / static_cast<double>(bandCount)).name();
         legendEntries.push_back(QStringLiteral("<span style=\"color:%1; font-weight:600;\">■</span> %2").arg(bandColor, bandText));
     }
     legend_label_->setText(legendEntries.join(QStringLiteral("&nbsp;&nbsp;&nbsp;")));
