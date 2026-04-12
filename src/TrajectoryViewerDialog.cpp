@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <limits>
 
 namespace
 {
@@ -130,6 +131,33 @@ QString tiandituHostForTile(int tileX, int tileY, const QString& layerSuffix)
     const int layerSeed = qHash(layerSuffix) & 0x7fffffff;
     const int shard = std::abs(tileX * 31 + tileY * 17 + layerSeed) % 8;
     return QStringLiteral("t%1.tianditu.gov.cn").arg(shard);
+}
+
+QColor defaultTrackColor()
+{
+    return QColor("#2563eb");
+}
+
+QColor trackHeatColor(float peakValue, float minPeak, float maxPeak)
+{
+    const double totalRange = static_cast<double>(maxPeak) - static_cast<double>(minPeak);
+    if (!(totalRange > 1e-6))
+    {
+        return QColor("#f59e0b");
+    }
+
+    const double section = totalRange / 3.0;
+    const double lowerThreshold = static_cast<double>(minPeak) + section;
+    const double upperThreshold = static_cast<double>(minPeak) + section * 2.0;
+    if (static_cast<double>(peakValue) < lowerThreshold)
+    {
+        return QColor("#2563eb");
+    }
+    if (static_cast<double>(peakValue) < upperThreshold)
+    {
+        return QColor("#f59e0b");
+    }
+    return QColor("#dc2626");
 }
 
 QString mapAttributionText(TileProvider provider, bool english)
@@ -650,19 +678,50 @@ private:
 
     void drawTrack(QPainter& painter, const QRectF& mapRect)
     {
-        QPolygonF polyline;
+        QVector<QPointF> polyline;
         polyline.reserve(track_points_.size());
+        bool hasPeakRange = false;
+        float minPeak = std::numeric_limits<float>::max();
+        float maxPeak = std::numeric_limits<float>::lowest();
         for (const RtkTrackPoint& point : track_points_)
         {
             polyline.push_back(worldToScreen(latLonToPixel(point.latitude, point.longitude, zoom_), mapRect));
+            if (point.has_peak_value)
+            {
+                hasPeakRange = true;
+                minPeak = std::min(minPeak, point.peak_value);
+                maxPeak = std::max(maxPeak, point.peak_value);
+            }
         }
 
         painter.save();
         painter.setClipRect(mapRect);
-        painter.setPen(QPen(QColor("#2563eb"), 2.4, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
         if (polyline.size() >= 2)
         {
-            painter.drawPolyline(polyline);
+            for (int index = 0; index + 1 < polyline.size(); ++index)
+            {
+                QColor segmentColor = defaultTrackColor();
+                const RtkTrackPoint& firstPoint = track_points_.at(index);
+                const RtkTrackPoint& secondPoint = track_points_.at(index + 1);
+                if (hasPeakRange)
+                {
+                    if (firstPoint.has_peak_value && secondPoint.has_peak_value)
+                    {
+                        segmentColor = trackHeatColor((firstPoint.peak_value + secondPoint.peak_value) * 0.5f, minPeak, maxPeak);
+                    }
+                    else if (firstPoint.has_peak_value)
+                    {
+                        segmentColor = trackHeatColor(firstPoint.peak_value, minPeak, maxPeak);
+                    }
+                    else if (secondPoint.has_peak_value)
+                    {
+                        segmentColor = trackHeatColor(secondPoint.peak_value, minPeak, maxPeak);
+                    }
+                }
+
+                painter.setPen(QPen(segmentColor, 2.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+                painter.drawLine(polyline.at(index), polyline.at(index + 1));
+            }
         }
 
         if (!polyline.isEmpty())

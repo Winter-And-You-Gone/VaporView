@@ -78,6 +78,30 @@ QString csvValueAt(const QStringList& fields, int index)
     return fields.at(index);
 }
 
+int findClosestTimestampIndex(const QVector<quint64>& timestampsUs, quint64 timestampUs)
+{
+    if (timestampsUs.isEmpty())
+    {
+        return -1;
+    }
+
+    const auto lower = std::lower_bound(timestampsUs.cbegin(), timestampsUs.cend(), timestampUs);
+    if (lower == timestampsUs.cbegin())
+    {
+        return 0;
+    }
+    if (lower == timestampsUs.cend())
+    {
+        return timestampsUs.size() - 1;
+    }
+
+    const int upperIndex = static_cast<int>(std::distance(timestampsUs.cbegin(), lower));
+    const int lowerIndex = upperIndex - 1;
+    const quint64 lowerDelta = timestampUs - timestampsUs.at(lowerIndex);
+    const quint64 upperDelta = timestampsUs.at(upperIndex) - timestampUs;
+    return lowerDelta <= upperDelta ? lowerIndex : upperIndex;
+}
+
 QString formatTimestampUs(quint64 timestampUs)
 {
     if (timestampUs == 0)
@@ -2917,12 +2941,9 @@ bool SessionViewerWindow::loadSensorsCsv()
         std::any_of(temperature_values_.cbegin(), temperature_values_.cend(), [](double value) { return std::isfinite(value); }) ||
         std::any_of(humidity_values_.cbegin(), humidity_values_.cend(), [](double value) { return std::isfinite(value); }) ||
         std::any_of(pressure_values_.cbegin(), pressure_values_.cend(), [](double value) { return std::isfinite(value); });
+    updateRtkTrackPeakValues();
     trajectory_view_btn_->setEnabled(!rtk_track_points_.isEmpty());
     kf_gins_btn_->setEnabled(!session_directory_.isEmpty() && (!kf_gins_process_ || kf_gins_process_->state() == QProcess::NotRunning));
-    if (trajectory_viewer_dialog_)
-    {
-        trajectory_viewer_dialog_->setTrackPoints(rtk_track_points_);
-    }
     environment_info_label_->setText(hasEnvironmentSeries
         ? (is_english_
             ? "Loaded temperature, humidity, and pressure trend series."
@@ -3019,6 +3040,7 @@ bool SessionViewerWindow::loadWaveformPeakSeries()
     }
 
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPeakValues(waveform_peak_values_);
+    updateRtkTrackPeakValues();
     return true;
 }
 
@@ -3208,6 +3230,34 @@ int SessionViewerWindow::findClosestCsvRow(quint64 timestampUs) const
         ? (timestampUs - csv_timestamps_us_.at(upperIndex))
         : (csv_timestamps_us_.at(upperIndex) - timestampUs);
     return lowerDelta <= upperDelta ? lowerIndex : upperIndex;
+}
+
+void SessionViewerWindow::updateRtkTrackPeakValues()
+{
+    for (RtkTrackPoint& point : rtk_track_points_)
+    {
+        point.peak_value = 0.0f;
+        point.has_peak_value = false;
+
+        if (point.timestamp_us == 0)
+        {
+            continue;
+        }
+
+        const int peakIndex = findClosestTimestampIndex(waveform_timestamps_us_, point.timestamp_us);
+        if (peakIndex < 0 || peakIndex >= waveform_peak_values_.size())
+        {
+            continue;
+        }
+
+        point.peak_value = waveform_peak_values_.at(peakIndex);
+        point.has_peak_value = true;
+    }
+
+    if (trajectory_viewer_dialog_)
+    {
+        trajectory_viewer_dialog_->setTrackPoints(rtk_track_points_);
+    }
 }
 
 void SessionViewerWindow::syncEnvironmentRangeToWaveformRange(int startFrameIndex, int visibleFrameCount)

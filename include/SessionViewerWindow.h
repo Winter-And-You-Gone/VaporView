@@ -11,6 +11,8 @@ struct RtkTrackPoint
     double latitude = 0.0;
     double longitude = 0.0;
     quint64 timestamp_us = 0;
+    float peak_value = 0.0f;
+    bool has_peak_value = false;
 };
 
 class QGroupBox;
@@ -80,6 +82,7 @@ private:
     bool loadWaveformPeakSeries();
     bool loadWaveformFrame(quint64 frameIndex);
     int findClosestCsvRow(quint64 timestampUs) const;
+    void updateRtkTrackPeakValues();
     void syncEnvironmentRangeToWaveformRange(int startFrameIndex, int visibleFrameCount);
     QString highlightClosestSensorRow(quint64 timestampUs);
     void updatePeakPlotModeButtonText();
