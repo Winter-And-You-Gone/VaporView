@@ -161,7 +161,6 @@ QColor trackHeatColor(float peakValue, float minPeak, float maxPeak)
         1.0);
     const double firstBreak = 1.0 / 3.0;
     const double secondBreak = 2.0 / 3.0;
-    const double blendWidth = 0.08;
 
     const QColor blueDark("#1d4ed8");
     const QColor blueBright("#60a5fa");
@@ -170,28 +169,17 @@ QColor trackHeatColor(float peakValue, float minPeak, float maxPeak)
     const QColor redLight("#f97316");
     const QColor redDeep("#dc2626");
 
-    if (normalized <= (firstBreak - blendWidth))
+    if (normalized < firstBreak)
     {
-        const double localRatio = normalized / std::max(1e-6, firstBreak - blendWidth);
+        const double localRatio = normalized / std::max(1e-6, firstBreak);
         return interpolateColor(blueDark, blueBright, localRatio);
     }
-    if (normalized < (firstBreak + blendWidth))
+    if (normalized < secondBreak)
     {
-        const double localRatio = (normalized - (firstBreak - blendWidth)) / std::max(1e-6, blendWidth * 2.0);
-        return interpolateColor(blueBright, yellowBright, localRatio);
-    }
-    if (normalized <= (secondBreak - blendWidth))
-    {
-        const double localRatio = (normalized - (firstBreak + blendWidth)) / std::max(1e-6, (secondBreak - blendWidth) - (firstBreak + blendWidth));
+        const double localRatio = (normalized - firstBreak) / std::max(1e-6, secondBreak - firstBreak);
         return interpolateColor(yellowBright, yellowDeep, localRatio);
     }
-    if (normalized < (secondBreak + blendWidth))
-    {
-        const double localRatio = (normalized - (secondBreak - blendWidth)) / std::max(1e-6, blendWidth * 2.0);
-        return interpolateColor(yellowDeep, redLight, localRatio);
-    }
-
-    const double localRatio = (normalized - (secondBreak + blendWidth)) / std::max(1e-6, 1.0 - (secondBreak + blendWidth));
+    const double localRatio = (normalized - secondBreak) / std::max(1e-6, 1.0 - secondBreak);
     return interpolateColor(redLight, redDeep, localRatio);
 }
 
