@@ -24,7 +24,7 @@
 ## 项目结构
 
 ```text
-VaporView/
+VaporView-Fluent/
 ├── CMakeLists.txt
 ├── README.md
 ├── include/
