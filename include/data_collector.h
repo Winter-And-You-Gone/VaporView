@@ -18,7 +18,8 @@ enum class LidarProtocol
   TF03,
   TFA1500DistanceFrame,
   TFA1500LowFrequencyFrame,
-  TFA1500HighFrequency
+  TFA1500HighFrequency,
+  ObservedAaB7Frame
 };
 
 class DataCollector

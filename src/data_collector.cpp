@@ -127,6 +127,8 @@ const char* lidarProtocolName(LidarProtocol protocol)
     return "TFA1500-L Low-Frequency";
   case LidarProtocol::TFA1500HighFrequency:
     return "TFA1500-L High-Frequency";
+  case LidarProtocol::ObservedAaB7Frame:
+    return "Observed AA-B7 Lidar";
   case LidarProtocol::Unknown:
   default:
     return "Unknown";
@@ -139,6 +141,10 @@ constexpr uint8_t kTfa1500Header = 0x5C;
 constexpr size_t kTfa1500FrameSize = 5;
 constexpr uint8_t kTfa1500LowFrequencyHeader = 0x55;
 constexpr size_t kTfa1500LowFrequencyMinFrameSize = 6;
+constexpr uint8_t kObservedAaHeader = 0xAA;
+constexpr uint8_t kObservedB7Type = 0xB7;
+constexpr uint8_t kObservedBbTail = 0xBB;
+constexpr size_t kObservedAaB7FrameSize = 10;
 
 bool parseTf03FrameLocal(const uint8_t* frame, size_t size, LidarData& sample)
 {
@@ -246,6 +252,34 @@ bool parseTfa1500LowFrequencyFrameLocal(const uint8_t* frame, size_t size, Lidar
   return true;
 }
 
+bool parseObservedAaB7FrameLocal(const uint8_t* frame, size_t size, LidarData& sample)
+{
+  if (!frame || size < kObservedAaB7FrameSize)
+  {
+    return false;
+  }
+  if (frame[0] != kObservedAaHeader || frame[1] != kObservedB7Type || frame[2] != kObservedAaB7FrameSize || frame[9] != kObservedBbTail)
+  {
+    return false;
+  }
+
+  const uint16_t distance_a = static_cast<uint16_t>(frame[3] << 8) | frame[4];
+  const uint16_t distance_b = static_cast<uint16_t>(frame[5] << 8) | frame[6];
+  if (distance_a != distance_b)
+  {
+    return false;
+  }
+
+  // Inference from observed frames: bytes 3-4 and 5-6 duplicate the same distance in cm,
+  // byte 8 behaves like a signal/quality indicator, and byte 9 is a fixed frame tail.
+  sample.distance_m = distance_a / 100.0;
+  sample.signal_strength = frame[8];
+  sample.timestamp = std::chrono::steady_clock::now();
+  sample.valid = distance_a > 0;
+  sample.error_message = sample.valid ? "" : "No target detected or out of range";
+  return true;
+}
+
 bool extractNextTf03Sample(std::vector<uint8_t>& buffer, LidarData& sample)
 {
   while (buffer.size() >= kTf03FrameSize)
@@ -342,6 +376,34 @@ bool extractNextTfa1500LowFrequencySample(std::vector<uint8_t>& buffer, LidarDat
   return false;
 }
 
+bool extractNextObservedAaB7Sample(std::vector<uint8_t>& buffer, LidarData& sample)
+{
+  while (buffer.size() >= kObservedAaB7FrameSize)
+  {
+    auto header = std::find(buffer.begin(), buffer.end(), kObservedAaHeader);
+    if (header == buffer.end())
+    {
+      buffer.clear();
+      return false;
+    }
+
+    if (std::distance(header, buffer.end()) < static_cast<std::ptrdiff_t>(kObservedAaB7FrameSize))
+    {
+      buffer.erase(buffer.begin(), header);
+      return false;
+    }
+
+    if (parseObservedAaB7FrameLocal(&(*header), static_cast<size_t>(std::distance(header, buffer.end())), sample))
+    {
+      buffer.erase(buffer.begin(), header + kObservedAaB7FrameSize);
+      return true;
+    }
+
+    buffer.erase(buffer.begin(), header + 1);
+  }
+  return false;
+}
+
 bool extractNextLidarSample(std::vector<uint8_t>& buffer, LidarProtocol protocol_hint, LidarData& sample, LidarProtocol& detected_protocol)
 {
   if (protocol_hint == LidarProtocol::TF03)
@@ -384,13 +446,24 @@ bool extractNextLidarSample(std::vector<uint8_t>& buffer, LidarProtocol protocol
     return false;
   }
 
+  if (protocol_hint == LidarProtocol::ObservedAaB7Frame)
+  {
+    if (extractNextObservedAaB7Sample(buffer, sample))
+    {
+      detected_protocol = LidarProtocol::ObservedAaB7Frame;
+      return true;
+    }
+    return false;
+  }
+
   while (!buffer.empty())
   {
     auto tf03 = std::find(buffer.begin(), buffer.end(), kTf03Header);
     auto tfa = std::find(buffer.begin(), buffer.end(), kTfa1500Header);
     auto tfa_low = std::find(buffer.begin(), buffer.end(), kTfa1500LowFrequencyHeader);
+    auto aa_b7 = std::find(buffer.begin(), buffer.end(), kObservedAaHeader);
 
-    if (tf03 == buffer.end() && tfa == buffer.end() && tfa_low == buffer.end())
+    if (tf03 == buffer.end() && tfa == buffer.end() && tfa_low == buffer.end() && aa_b7 == buffer.end())
     {
       buffer.clear();
       return false;
@@ -400,6 +473,7 @@ bool extractNextLidarSample(std::vector<uint8_t>& buffer, LidarProtocol protocol
     if (tf03 != buffer.end() && (earliest == buffer.end() || tf03 < earliest)) earliest = tf03;
     if (tfa != buffer.end() && (earliest == buffer.end() || tfa < earliest)) earliest = tfa;
     if (tfa_low != buffer.end() && (earliest == buffer.end() || tfa_low < earliest)) earliest = tfa_low;
+    if (aa_b7 != buffer.end() && (earliest == buffer.end() || aa_b7 < earliest)) earliest = aa_b7;
 
     if (earliest == tf03)
     {
@@ -452,6 +526,24 @@ bool extractNextLidarSample(std::vector<uint8_t>& buffer, LidarProtocol protocol
         return false;
       }
       buffer.erase(buffer.begin(), tfa_low);
+      continue;
+    }
+
+    if (earliest == aa_b7)
+    {
+      std::vector<uint8_t> slice(aa_b7, buffer.end());
+      if (extractNextObservedAaB7Sample(slice, sample))
+      {
+        detected_protocol = LidarProtocol::ObservedAaB7Frame;
+        buffer.assign(slice.begin(), slice.end());
+        return true;
+      }
+
+      if (aa_b7 == buffer.begin())
+      {
+        return false;
+      }
+      buffer.erase(buffer.begin(), aa_b7);
       continue;
     }
     buffer.erase(buffer.begin(), earliest + 1);
