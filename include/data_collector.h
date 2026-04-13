@@ -16,6 +16,7 @@ enum class LidarProtocol
 {
   Unknown,
   TF03,
+  TFA1500DistanceFrame,
   TFA1500HighFrequency
 };
 
@@ -173,6 +174,7 @@ private:
   bool tfa1500_stream_started_ = false;
 
   bool ensureTfa1500Streaming();
+  bool ensureTfa1500DistanceOutput();
   void stopTfa1500Streaming();
   static bool parseTf03Frame(const uint8_t* frame, size_t size, LidarData& sample);
   static bool parseTfa1500Frame(const uint8_t* frame, size_t size, LidarData& sample);

@@ -121,8 +121,10 @@ const char* lidarProtocolName(LidarProtocol protocol)
   {
   case LidarProtocol::TF03:
     return "TF03";
-  case LidarProtocol::TFA1500HighFrequency:
+  case LidarProtocol::TFA1500DistanceFrame:
     return "TFA1500-L";
+  case LidarProtocol::TFA1500HighFrequency:
+    return "TFA1500-L High-Frequency";
   case LidarProtocol::Unknown:
   default:
     return "Unknown";
@@ -277,6 +279,16 @@ bool extractNextLidarSample(std::vector<uint8_t>& buffer, LidarProtocol protocol
     return false;
   }
 
+  if (protocol_hint == LidarProtocol::TFA1500DistanceFrame)
+  {
+    if (extractNextTfa1500Sample(buffer, sample))
+    {
+      detected_protocol = LidarProtocol::TFA1500DistanceFrame;
+      return true;
+    }
+    return false;
+  }
+
   while (!buffer.empty())
   {
     auto tf03 = std::find(buffer.begin(), buffer.end(), kTf03Header);
@@ -308,12 +320,12 @@ bool extractNextLidarSample(std::vector<uint8_t>& buffer, LidarProtocol protocol
     }
 
     std::vector<uint8_t> slice(tfa, buffer.end());
-    if (extractNextTfa1500Sample(slice, sample))
-    {
-      detected_protocol = LidarProtocol::TFA1500HighFrequency;
-      buffer.assign(slice.begin(), slice.end());
-      return true;
-    }
+      if (extractNextTfa1500Sample(slice, sample))
+      {
+        detected_protocol = LidarProtocol::TFA1500DistanceFrame;
+        buffer.assign(slice.begin(), slice.end());
+        return true;
+      }
 
     if (tfa == buffer.begin())
     {
@@ -1557,6 +1569,20 @@ bool LidarCollector::ensureTfa1500Streaming()
   return true;
 }
 
+bool LidarCollector::ensureTfa1500DistanceOutput()
+{
+  static const uint8_t command[] = {0x5A, 0x0A, 0x02, 0x02, 0x00, 0xF1};
+  const ssize_t written = serial_.write(command, sizeof(command));
+  if (written != static_cast<ssize_t>(sizeof(command)))
+  {
+    log("TFA1500-L: Failed to send measurement-distance output command");
+    return false;
+  }
+
+  log("TFA1500-L: Sent measurement-distance output command");
+  return true;
+}
+
 void LidarCollector::stopTfa1500Streaming()
 {
   if (!tfa1500_stream_started_ || !serial_.isOpen())
@@ -1585,6 +1611,14 @@ bool LidarCollector::setDeviceSampleRate(int hz)
 
     sample_rate_hz_.store(std::min(hz, 1000));
     log("TFA1500-L: High-frequency mode uses adaptive device output; host sample rate limit set to " + std::to_string(sample_rate_hz_.load()) + " Hz");
+    return true;
+  }
+
+  if (active_protocol_ == LidarProtocol::TFA1500DistanceFrame)
+  {
+    ensureTfa1500DistanceOutput();
+    sample_rate_hz_.store(std::min(hz, 100));
+    log("TFA1500-L: Device-side frequency command is unavailable in distance-output mode; host sample rate limit set to " + std::to_string(sample_rate_hz_.load()) + " Hz");
     return true;
   }
 
@@ -1691,6 +1725,10 @@ bool LidarCollector::checkDeviceResponse()
   {
     ensureTfa1500Streaming();
   }
+  else if (serial_config_.baudrate >= 115200)
+  {
+    ensureTfa1500DistanceOutput();
+  }
 
   while (elapsed_ms < max_wait_ms)
   {
@@ -1713,6 +1751,10 @@ bool LidarCollector::checkDeviceResponse()
                                    sample,
                                    detected_protocol))
         {
+          if (detected_protocol == LidarProtocol::TFA1500DistanceFrame && prefer_tfa1500)
+          {
+            detected_protocol = LidarProtocol::TFA1500HighFrequency;
+          }
           active_protocol_ = detected_protocol;
           log(std::string("Lidar: Detected protocol ") + lidarProtocolName(active_protocol_));
           return true;

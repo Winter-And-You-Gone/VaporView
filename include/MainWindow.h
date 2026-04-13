@@ -322,7 +322,9 @@ private:
     void applyScaledUiMetrics();
     int scalePixels(int pixels) const;
     void applyAllSampleRates();
-    int parseRate(const QString& text);
+    int parseRate(const QString& text) const;
+    bool isLidarRateUnspecified(const QString& text) const;
+    int effectiveLidarSampleRate(const QString& text) const;
     void loadRememberedInputState();
     void saveRememberedInputState() const;
     void bindRememberedInputState();

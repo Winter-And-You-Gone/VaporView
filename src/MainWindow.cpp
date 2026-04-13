@@ -2229,6 +2229,12 @@ void MainWindow::setupConfigPanel()
     createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "/dev/ttyLidar", "115200", row++, 100);
 #endif
 
+    if (lidar_rate_combo_)
+    {
+        lidar_rate_combo_->addItem(is_english_ ? "No Set" : "不设定");
+        lidar_rate_combo_->setValidator(nullptr);
+    }
+
     imu_rate_combo_->setCurrentText(QStringLiteral("200"));
 
     connect(gnss_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onGnssRateChanged);
@@ -2516,6 +2522,16 @@ void MainWindow::setEnglish(bool english)
     ptb_rate_lbl_->setText(english ? "Rate:" : "频率:");
     hmp_rate_lbl_->setText(english ? "Rate:" : "频率:");
     lidar_rate_lbl_->setText(english ? "Rate:" : "频率:");
+    if (lidar_rate_combo_)
+    {
+        const QString oldText = english ? QStringLiteral("不设定") : QStringLiteral("No Set");
+        const QString newText = english ? QStringLiteral("No Set") : QStringLiteral("不设定");
+        const int idx = lidar_rate_combo_->findText(oldText);
+        if (idx >= 0)
+        {
+            lidar_rate_combo_->setItemText(idx, newText);
+        }
+    }
 
     gnss_panel_->setEnglish(english);
     imu_panel_->setEnglish(english);
@@ -2578,7 +2594,7 @@ void MainWindow::onFontScaleTriggered(QAction *action)
     log(QString(is_english_ ? "Font size set to %1%" : "字体大小已设置为 %1%").arg(percent));
 }
 
-int MainWindow::parseRate(const QString& text)
+int MainWindow::parseRate(const QString& text) const
 {
     bool ok;
     int rate = text.toInt(&ok);
@@ -2587,6 +2603,22 @@ int MainWindow::parseRate(const QString& text)
         return rate;
     }
     return 20;
+}
+
+bool MainWindow::isLidarRateUnspecified(const QString& text) const
+{
+    const QString trimmed = text.trimmed();
+    return trimmed.compare(QStringLiteral("No Set"), Qt::CaseInsensitive) == 0
+        || trimmed == QStringLiteral("不设定");
+}
+
+int MainWindow::effectiveLidarSampleRate(const QString& text) const
+{
+    if (isLidarRateUnspecified(text))
+    {
+        return 100;
+    }
+    return std::min(parseRate(text), 100);
 }
 
 void MainWindow::onGlobalRateChanged(const QString& text)
@@ -2602,16 +2634,22 @@ void MainWindow::onGlobalRateChanged(const QString& text)
     imu_rate_combo_->blockSignals(true);
     ptb_rate_combo_->blockSignals(true);
     hmp_rate_combo_->blockSignals(true);
+    lidar_rate_combo_->blockSignals(true);
     
     gnss_rate_combo_->setCurrentText(text);
     imu_rate_combo_->setCurrentText(text);
     ptb_rate_combo_->setCurrentText(text);
     hmp_rate_combo_->setCurrentText(text);
+    if (!isLidarRateUnspecified(lidar_rate_combo_->currentText()))
+    {
+        lidar_rate_combo_->setCurrentText(QString::number(std::min(rate, 100)));
+    }
     
     gnss_rate_combo_->blockSignals(false);
     imu_rate_combo_->blockSignals(false);
     ptb_rate_combo_->blockSignals(false);
     hmp_rate_combo_->blockSignals(false);
+    lidar_rate_combo_->blockSignals(false);
     
     const CollectorSnapshot collectors = snapshotCollectors();
 
@@ -2638,7 +2676,10 @@ void MainWindow::onGlobalRateChanged(const QString& text)
     {
         const int lidarRate = std::min(rate, 100);
         collectors.lidar->setSampleRate(lidarRate);
-        collectors.lidar->setDeviceSampleRate(lidarRate);
+        if (!isLidarRateUnspecified(lidar_rate_combo_->currentText()))
+        {
+            collectors.lidar->setDeviceSampleRate(lidarRate);
+        }
     }
     
     log(QString(is_english_ ? "All rates set to %1 Hz" : "所有频率已设置为 %1 Hz").arg(rate));
@@ -2696,17 +2737,25 @@ void MainWindow::onHmpRateChanged(const QString& text)
 
 void MainWindow::onLidarRateChanged(const QString& text)
 {
-    lidar_sample_rate_ = std::min(parseRate(text), 100);
+    const bool skipDeviceRate = isLidarRateUnspecified(text);
+    lidar_sample_rate_ = effectiveLidarSampleRate(text);
     const CollectorSnapshot collectors = snapshotCollectors();
     if (collectors.lidar)
     {
         collectors.lidar->setSampleRate(lidar_sample_rate_);
-        if (collectors.lidar->isRunning())
+        if (collectors.lidar->isRunning() && !skipDeviceRate)
         {
             collectors.lidar->setDeviceSampleRate(lidar_sample_rate_);
         }
     }
-    log(QString(is_english_ ? "Lidar sample rate set to %1 Hz" : "激光测距仪采样频率已设置为 %1 Hz").arg(lidar_sample_rate_));
+    if (skipDeviceRate)
+    {
+        log(is_english_ ? "Lidar output-rate command disabled; using device default/adaptive output" : "已禁用激光测距仪输出频率下发，使用设备默认/自适应输出");
+    }
+    else
+    {
+        log(QString(is_english_ ? "Lidar sample rate set to %1 Hz" : "激光测距仪采样频率已设置为 %1 Hz").arg(lidar_sample_rate_));
+    }
 }
 
 void MainWindow::applyAllSampleRates()
@@ -2737,7 +2786,10 @@ void MainWindow::applyAllSampleRates()
     {
         const int lidarRate = std::min(rate, 100);
         collectors.lidar->setSampleRate(lidarRate);
-        collectors.lidar->setDeviceSampleRate(lidarRate);
+        if (!isLidarRateUnspecified(lidar_rate_combo_->currentText()))
+        {
+            collectors.lidar->setDeviceSampleRate(lidarRate);
+        }
     }
 
     gnss_rate_combo_->blockSignals(true);
@@ -2750,7 +2802,10 @@ void MainWindow::applyAllSampleRates()
     imu_rate_combo_->setCurrentText(QString::number(rate));
     ptb_rate_combo_->setCurrentText(QString::number(rate));
     hmp_rate_combo_->setCurrentText(QString::number(rate));
-    lidar_rate_combo_->setCurrentText(QString::number(std::min(rate, 100)));
+    if (!isLidarRateUnspecified(lidar_rate_combo_->currentText()))
+    {
+        lidar_rate_combo_->setCurrentText(QString::number(std::min(rate, 100)));
+    }
 
     gnss_rate_combo_->blockSignals(false);
     imu_rate_combo_->blockSignals(false);
@@ -2762,7 +2817,9 @@ void MainWindow::applyAllSampleRates()
     imu_sample_rate_ = rate;
     ptb_sample_rate_ = rate;
     hmp_sample_rate_ = rate;
-    lidar_sample_rate_ = std::min(rate, 100);
+    lidar_sample_rate_ = isLidarRateUnspecified(lidar_rate_combo_->currentText())
+        ? 100
+        : std::min(rate, 100);
 
     log(QString(is_english_ ? "All rates set to %1 Hz" : "所有频率已设置为 %1 Hz").arg(rate));
 }
@@ -4165,7 +4222,9 @@ void MainWindow::onConnectClicked()
     const int imuRate = parseRate(imu_rate_combo_->currentText());
     const int ptbRate = parseRate(ptb_rate_combo_->currentText());
     const int hmpRate = parseRate(hmp_rate_combo_->currentText());
-    const int lidarRate = std::min(parseRate(lidar_rate_combo_->currentText()), 100);
+    const QString lidarRateText = lidar_rate_combo_->currentText();
+    const bool skipLidarDeviceRate = isLidarRateUnspecified(lidarRateText);
+    const int lidarRate = effectiveLidarSampleRate(lidarRateText);
     gnss_sample_rate_ = gnssRate;
     imu_sample_rate_ = imuRate;
     ptb_sample_rate_ = ptbRate;
@@ -4191,7 +4250,8 @@ void MainWindow::onConnectClicked()
                                       imuRate,
                                       ptbRate,
                                       hmpRate,
-                                      lidarRate]() {
+                                      lidarRate,
+                                      skipLidarDeviceRate]() {
         auto postLog = [this](const QString& message) {
             QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
         };
@@ -4380,7 +4440,11 @@ void MainWindow::onConnectClicked()
                              [&]() {
                                  collectors.lidar->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onLidarDataReady", Qt::QueuedConnection); });
                                  collectors.lidar->setSampleRate(lidarRate);
-                                 if (!collectors.lidar->setDeviceSampleRate(lidarRate))
+                                 if (skipLidarDeviceRate)
+                                 {
+                                     postLog(english ? "[Lidar] Skip output-rate command; using device default/adaptive output." : "[Lidar] 跳过输出频率下发，使用设备默认/自适应输出。");
+                                 }
+                                 else if (!collectors.lidar->setDeviceSampleRate(lidarRate))
                                  {
                                      postLog(QString(english ? "[Lidar] Failed to apply output rate %1 Hz, using device default." : "[Lidar] 应用 %1 Hz 输出频率失败，使用设备默认输出。").arg(lidarRate));
                                  }
