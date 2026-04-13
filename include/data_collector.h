@@ -12,6 +12,13 @@
 namespace VaporView
 {
 
+enum class LidarProtocol
+{
+  Unknown,
+  TF03,
+  TFA1500HighFrequency
+};
+
 class DataCollector
 {
 public:
@@ -57,6 +64,7 @@ protected:
   DataCallback data_callback_;
   LogCallback log_callback_;
   CancelCallback cancel_callback_;
+  SerialConfig serial_config_;
   std::atomic<int> sample_rate_hz_{1};
   std::chrono::steady_clock::time_point last_emit_time_;
   std::chrono::steady_clock::time_point last_data_time_;
@@ -151,13 +159,23 @@ public:
 protected:
   void run() override;
   bool initialize() override;
+  void cleanup() override;
 
 private:
   LidarData latest_data_;
 
   static constexpr uint8_t TF03_HEADER = 0x59;
+  static constexpr uint8_t TFA1500_HEADER = 0x5C;
+  static constexpr size_t TF03_FRAME_SIZE = 9;
+  static constexpr size_t TFA1500_FRAME_SIZE = 5;
 
-  static bool parseFrame(const uint8_t* frame, size_t size, LidarData& sample);
+  LidarProtocol active_protocol_ = LidarProtocol::Unknown;
+  bool tfa1500_stream_started_ = false;
+
+  bool ensureTfa1500Streaming();
+  void stopTfa1500Streaming();
+  static bool parseTf03Frame(const uint8_t* frame, size_t size, LidarData& sample);
+  static bool parseTfa1500Frame(const uint8_t* frame, size_t size, LidarData& sample);
 };
 
 }

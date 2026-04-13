@@ -115,6 +115,216 @@ uint64_t systemTimestampUs()
       std::chrono::system_clock::now().time_since_epoch()).count());
 }
 
+const char* lidarProtocolName(LidarProtocol protocol)
+{
+  switch (protocol)
+  {
+  case LidarProtocol::TF03:
+    return "TF03";
+  case LidarProtocol::TFA1500HighFrequency:
+    return "TFA1500-L";
+  case LidarProtocol::Unknown:
+  default:
+    return "Unknown";
+  }
+}
+
+constexpr uint8_t kTf03Header = 0x59;
+constexpr size_t kTf03FrameSize = 9;
+constexpr uint8_t kTfa1500Header = 0x5C;
+constexpr size_t kTfa1500FrameSize = 5;
+
+bool parseTf03FrameLocal(const uint8_t* frame, size_t size, LidarData& sample)
+{
+  if (!frame || size < kTf03FrameSize || frame[0] != kTf03Header || frame[1] != kTf03Header)
+  {
+    return false;
+  }
+
+  uint8_t checksum = 0;
+  for (size_t i = 0; i < 8; ++i)
+  {
+    checksum = static_cast<uint8_t>(checksum + frame[i]);
+  }
+
+  if (checksum != frame[8])
+  {
+    return false;
+  }
+
+  const uint16_t distance_cm = static_cast<uint16_t>(frame[2]) | (static_cast<uint16_t>(frame[3]) << 8);
+  const uint16_t strength = static_cast<uint16_t>(frame[4]) | (static_cast<uint16_t>(frame[5]) << 8);
+
+  sample.distance_m = distance_cm / 100.0;
+  sample.signal_strength = strength;
+  sample.timestamp = std::chrono::steady_clock::now();
+  sample.valid = strength >= 40 && distance_cm > 0;
+  sample.error_message = sample.valid ? "" : "Weak signal or out of range";
+  return true;
+}
+
+bool parseTfa1500FrameLocal(const uint8_t* frame, size_t size, LidarData& sample)
+{
+  if (!frame || size < kTfa1500FrameSize || frame[0] != kTfa1500Header)
+  {
+    return false;
+  }
+
+  uint8_t sum = 0;
+  for (size_t i = 1; i < 4; ++i)
+  {
+    sum = static_cast<uint8_t>(sum + frame[i]);
+  }
+  const uint8_t checksum = static_cast<uint8_t>(~sum);
+  if (checksum != frame[4])
+  {
+    return false;
+  }
+
+  const uint32_t distance_cm =
+      static_cast<uint32_t>(frame[1]) |
+      (static_cast<uint32_t>(frame[2]) << 8) |
+      (static_cast<uint32_t>(frame[3]) << 16);
+  const bool valid = distance_cm != 0x003FFFFFu;
+
+  sample.distance_m = valid ? (static_cast<double>(distance_cm) / 100.0) : 0.0;
+  sample.signal_strength = 0;
+  sample.timestamp = std::chrono::steady_clock::now();
+  sample.valid = valid && distance_cm > 0;
+  sample.error_message = sample.valid ? "" : "No target detected or out of range";
+  return true;
+}
+
+bool extractNextTf03Sample(std::vector<uint8_t>& buffer, LidarData& sample)
+{
+  while (buffer.size() >= kTf03FrameSize)
+  {
+    auto header = std::find(buffer.begin(), buffer.end(), kTf03Header);
+    if (header == buffer.end())
+    {
+      buffer.clear();
+      return false;
+    }
+    if (std::distance(header, buffer.end()) < 2)
+    {
+      buffer.erase(buffer.begin(), header);
+      return false;
+    }
+    if (*(header + 1) != kTf03Header)
+    {
+      buffer.erase(buffer.begin(), header + 1);
+      continue;
+    }
+    if (std::distance(header, buffer.end()) < static_cast<std::ptrdiff_t>(kTf03FrameSize))
+    {
+      buffer.erase(buffer.begin(), header);
+      return false;
+    }
+    if (parseTf03FrameLocal(&(*header), kTf03FrameSize, sample))
+    {
+      buffer.erase(buffer.begin(), header + kTf03FrameSize);
+      return true;
+    }
+    buffer.erase(buffer.begin(), header + 1);
+  }
+  return false;
+}
+
+bool extractNextTfa1500Sample(std::vector<uint8_t>& buffer, LidarData& sample)
+{
+  while (buffer.size() >= kTfa1500FrameSize)
+  {
+    auto header = std::find(buffer.begin(), buffer.end(), kTfa1500Header);
+    if (header == buffer.end())
+    {
+      buffer.clear();
+      return false;
+    }
+    if (std::distance(header, buffer.end()) < static_cast<std::ptrdiff_t>(kTfa1500FrameSize))
+    {
+      buffer.erase(buffer.begin(), header);
+      return false;
+    }
+    if (parseTfa1500FrameLocal(&(*header), kTfa1500FrameSize, sample))
+    {
+      buffer.erase(buffer.begin(), header + kTfa1500FrameSize);
+      return true;
+    }
+    buffer.erase(buffer.begin(), header + 1);
+  }
+  return false;
+}
+
+bool extractNextLidarSample(std::vector<uint8_t>& buffer, LidarProtocol protocol_hint, LidarData& sample, LidarProtocol& detected_protocol)
+{
+  if (protocol_hint == LidarProtocol::TF03)
+  {
+    if (extractNextTf03Sample(buffer, sample))
+    {
+      detected_protocol = LidarProtocol::TF03;
+      return true;
+    }
+    return false;
+  }
+
+  if (protocol_hint == LidarProtocol::TFA1500HighFrequency)
+  {
+    if (extractNextTfa1500Sample(buffer, sample))
+    {
+      detected_protocol = LidarProtocol::TFA1500HighFrequency;
+      return true;
+    }
+    return false;
+  }
+
+  while (!buffer.empty())
+  {
+    auto tf03 = std::find(buffer.begin(), buffer.end(), kTf03Header);
+    auto tfa = std::find(buffer.begin(), buffer.end(), kTfa1500Header);
+
+    if (tf03 == buffer.end() && tfa == buffer.end())
+    {
+      buffer.clear();
+      return false;
+    }
+
+    const bool choose_tf03 = (tf03 != buffer.end()) && (tfa == buffer.end() || tf03 <= tfa);
+    if (choose_tf03)
+    {
+      std::vector<uint8_t> slice(tf03, buffer.end());
+      if (extractNextTf03Sample(slice, sample))
+      {
+        detected_protocol = LidarProtocol::TF03;
+        buffer.assign(slice.begin(), slice.end());
+        return true;
+      }
+
+      if (tf03 == buffer.begin())
+      {
+        return false;
+      }
+      buffer.erase(buffer.begin(), tf03);
+      continue;
+    }
+
+    std::vector<uint8_t> slice(tfa, buffer.end());
+    if (extractNextTfa1500Sample(slice, sample))
+    {
+      detected_protocol = LidarProtocol::TFA1500HighFrequency;
+      buffer.assign(slice.begin(), slice.end());
+      return true;
+    }
+
+    if (tfa == buffer.begin())
+    {
+      return false;
+    }
+    buffer.erase(buffer.begin(), tfa);
+  }
+
+  return false;
+}
+
 enum class HmpParseResult
 {
   None,
@@ -203,6 +413,8 @@ bool DataCollector::start(const std::string& port, const SerialConfig& config)
   {
     return false;
   }
+
+  serial_config_ = config;
 
   if (!initialize())
   {
@@ -1315,11 +1527,67 @@ LidarData LidarCollector::getLatestData()
 bool LidarCollector::initialize()
 {
   serial_.setNonBlocking(true);
+  active_protocol_ = LidarProtocol::Unknown;
+  tfa1500_stream_started_ = false;
   return true;
+}
+
+void LidarCollector::cleanup()
+{
+  stopTfa1500Streaming();
+  active_protocol_ = LidarProtocol::Unknown;
+}
+
+bool LidarCollector::ensureTfa1500Streaming()
+{
+  if (tfa1500_stream_started_)
+  {
+    return true;
+  }
+
+  static const uint8_t command[] = {0x55, 0xAA, 0xCB, 0xCC, 0xCC, 0xCC, 0xCC, 0xFB};
+  const ssize_t written = serial_.write(command, sizeof(command));
+  if (written != static_cast<ssize_t>(sizeof(command)))
+  {
+    log("TFA1500-L: Failed to send high-frequency ranging start command");
+    return false;
+  }
+
+  tfa1500_stream_started_ = true;
+  return true;
+}
+
+void LidarCollector::stopTfa1500Streaming()
+{
+  if (!tfa1500_stream_started_ || !serial_.isOpen())
+  {
+    return;
+  }
+
+  static const uint8_t command[] = {0x55, 0xAA, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xFC};
+  serial_.write(command, sizeof(command));
+  tfa1500_stream_started_ = false;
 }
 
 bool LidarCollector::setDeviceSampleRate(int hz)
 {
+  if (hz < 1)
+  {
+    hz = 1;
+  }
+
+  if (active_protocol_ == LidarProtocol::TFA1500HighFrequency || serial_config_.baudrate >= 500000)
+  {
+    if (!ensureTfa1500Streaming())
+    {
+      return false;
+    }
+
+    sample_rate_hz_.store(std::min(hz, 1000));
+    log("TFA1500-L: High-frequency mode uses adaptive device output; host sample rate limit set to " + std::to_string(sample_rate_hz_.load()) + " Hz");
+    return true;
+  }
+
   if (hz < 1 || hz > 100)
   {
     log("TF03: Unsupported frame rate: " + std::to_string(hz) + " Hz (valid: 1-100 Hz)");
@@ -1346,7 +1614,7 @@ bool LidarCollector::setDeviceSampleRate(int hz)
   return true;
 }
 
-bool LidarCollector::parseFrame(const uint8_t* frame, size_t size, LidarData& sample)
+bool LidarCollector::parseTf03Frame(const uint8_t* frame, size_t size, LidarData& sample)
 {
   if (!frame || size < 9 || frame[0] != TF03_HEADER || frame[1] != TF03_HEADER)
   {
@@ -1375,6 +1643,38 @@ bool LidarCollector::parseFrame(const uint8_t* frame, size_t size, LidarData& sa
   return true;
 }
 
+bool LidarCollector::parseTfa1500Frame(const uint8_t* frame, size_t size, LidarData& sample)
+{
+  if (!frame || size < TFA1500_FRAME_SIZE || frame[0] != TFA1500_HEADER)
+  {
+    return false;
+  }
+
+  uint8_t sum = 0;
+  for (size_t i = 1; i < 4; ++i)
+  {
+    sum = static_cast<uint8_t>(sum + frame[i]);
+  }
+  const uint8_t checksum = static_cast<uint8_t>(~sum);
+  if (checksum != frame[4])
+  {
+    return false;
+  }
+
+  const uint32_t distance_cm =
+      static_cast<uint32_t>(frame[1]) |
+      (static_cast<uint32_t>(frame[2]) << 8) |
+      (static_cast<uint32_t>(frame[3]) << 16);
+  const bool valid = distance_cm != 0x003FFFFFu;
+
+  sample.distance_m = valid ? (static_cast<double>(distance_cm) / 100.0) : 0.0;
+  sample.signal_strength = 0;
+  sample.timestamp = std::chrono::steady_clock::now();
+  sample.valid = valid && distance_cm > 0;
+  sample.error_message = sample.valid ? "" : "No target detected or out of range";
+  return true;
+}
+
 bool LidarCollector::checkDeviceResponse()
 {
   uint8_t chunk[128];
@@ -1385,6 +1685,12 @@ bool LidarCollector::checkDeviceResponse()
   constexpr int step_ms = 20;
   const auto start_time = std::chrono::steady_clock::now();
   int elapsed_ms = 0;
+  const bool prefer_tfa1500 = serial_config_.baudrate >= 500000;
+
+  if (prefer_tfa1500)
+  {
+    ensureTfa1500Streaming();
+  }
 
   while (elapsed_ms < max_wait_ms)
   {
@@ -1393,36 +1699,25 @@ bool LidarCollector::checkDeviceResponse()
       return false;
     }
 
-    log(formatDetectionProgress("等待TF03测距帧", 1, 1, computeRemainingSeconds(start_time, max_wait_ms)));
+    log(formatDetectionProgress("等待激光测距帧", 1, 1, computeRemainingSeconds(start_time, max_wait_ms)));
     ssize_t n = serial_.read(chunk, sizeof(chunk));
     if (n > 0)
     {
       buffer.insert(buffer.end(), chunk, chunk + n);
-      while (buffer.size() >= 9)
+      while (!buffer.empty())
       {
-        auto header = std::find(buffer.begin(), buffer.end(), TF03_HEADER);
-        if (header == buffer.end() || std::distance(header, buffer.end()) < 2)
-        {
-          buffer.clear();
-          break;
-        }
-        if (*(header + 1) != TF03_HEADER)
-        {
-          buffer.erase(buffer.begin(), header + 1);
-          continue;
-        }
-        if (std::distance(header, buffer.end()) < 9)
-        {
-          buffer.erase(buffer.begin(), header);
-          break;
-        }
-
         LidarData sample;
-        if (parseFrame(&(*header), 9, sample))
+        LidarProtocol detected_protocol = LidarProtocol::Unknown;
+        if (extractNextLidarSample(buffer,
+                                   prefer_tfa1500 ? LidarProtocol::TFA1500HighFrequency : active_protocol_,
+                                   sample,
+                                   detected_protocol))
         {
+          active_protocol_ = detected_protocol;
+          log(std::string("Lidar: Detected protocol ") + lidarProtocolName(active_protocol_));
           return true;
         }
-        buffer.erase(buffer.begin(), header + 2);
+        break;
       }
     }
 
@@ -1439,34 +1734,24 @@ void LidarCollector::run()
   std::vector<uint8_t> buffer;
   buffer.reserve(512);
 
+  if (active_protocol_ == LidarProtocol::TFA1500HighFrequency)
+  {
+    ensureTfa1500Streaming();
+  }
+
   while (running_.load())
   {
     ssize_t n = serial_.read(chunk, sizeof(chunk));
     if (n > 0)
     {
       buffer.insert(buffer.end(), chunk, chunk + n);
-      while (buffer.size() >= 9)
+      while (!buffer.empty())
       {
-        auto header = std::find(buffer.begin(), buffer.end(), TF03_HEADER);
-        if (header == buffer.end() || std::distance(header, buffer.end()) < 2)
-        {
-          buffer.clear();
-          break;
-        }
-        if (*(header + 1) != TF03_HEADER)
-        {
-          buffer.erase(buffer.begin(), header + 1);
-          continue;
-        }
-        if (std::distance(header, buffer.end()) < 9)
-        {
-          buffer.erase(buffer.begin(), header);
-          break;
-        }
-
         LidarData sample;
-        if (parseFrame(&(*header), 9, sample))
+        LidarProtocol detected_protocol = active_protocol_;
+        if (extractNextLidarSample(buffer, active_protocol_, sample, detected_protocol))
         {
+          active_protocol_ = detected_protocol;
           DataCallback callback;
           {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -1481,11 +1766,9 @@ void LidarCollector::run()
             updateLastEmitTime();
             callback();
           }
-          buffer.erase(buffer.begin(), header + 9);
           continue;
         }
-
-        buffer.erase(buffer.begin(), header + 2);
+        break;
       }
     }
     else

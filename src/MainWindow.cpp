@@ -1949,7 +1949,7 @@ void MainWindow::setupMenuBar()
             "- HiPNUC IMU (HI81/HI83/HI91/HI92)\n"
             "- PTB210 Barometer\n"
             "- HMP3 Temperature/Humidity Sensor\n"
-            "- TF03 Laser Rangefinder\n\n"
+            "- TF03 / TFA1500-L Laser Rangefinder\n\n"
             "Press F11 for fullscreen mode." :
             "VaporView 应用程序\n\n"
             "版本 1.0.0\n\n"
@@ -1959,7 +1959,7 @@ void MainWindow::setupMenuBar()
             "- HiPNUC IMU (HI81/HI83/HI91/HI92)\n"
             "- PTB210 气压计\n"
             "- HMP3 温湿度传感器\n"
-            "- TF03 激光测距模块\n\n"
+            "- TF03 / TFA1500-L 激光测距模块\n\n"
             "按 F11 进入全屏模式。";
         QMessageBox::about(this, title, text);
     });
@@ -2125,7 +2125,7 @@ void MainWindow::setupConfigPanel()
     config_layout->setColumnMinimumWidth(3, 80);
     config_layout->setColumnMinimumWidth(4, 100);
 
-    QStringList baudRates = {"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"};
+    QStringList baudRates = {"9600", "19200", "38400", "57600", "115200", "230400", "460800", "500000", "921600"};
     QStringList ports = getAvailablePorts();
 
     auto createRateCombo = [this](int maxRate = 500) {
@@ -2226,7 +2226,7 @@ void MainWindow::setupConfigPanel()
     createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, imu_rate_lbl_, imu_rate_combo_, "/dev/ttyIMU", "921600", row++, 1000);
     createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "/dev/ttyBARO", "9600", row++);
     createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "/dev/ttyHMP", "19200", row++);
-    createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "/dev/ttyTF03", "115200", row++, 100);
+    createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "/dev/ttyLidar", "115200", row++, 100);
 #endif
 
     imu_rate_combo_->setCurrentText(QStringLiteral("200"));
@@ -2428,7 +2428,7 @@ void MainWindow::setEnglish(bool english)
     imu_lbl_->setText(english ? "IMU:" : "IMU:");
     ptb_lbl_->setText(english ? "PTB210:" : "PTB210:");
     hmp_lbl_->setText(english ? "HMP3:" : "HMP3:");
-    lidar_lbl_->setText(english ? "TF03:" : "TF03:");
+    lidar_lbl_->setText(english ? "TF03 / TFA1500-L:" : "TF03 / TFA1500-L:");
 
     if (config_inline_title_lbl_)
     {
@@ -2706,7 +2706,7 @@ void MainWindow::onLidarRateChanged(const QString& text)
             collectors.lidar->setDeviceSampleRate(lidar_sample_rate_);
         }
     }
-    log(QString(is_english_ ? "TF03 sample rate set to %1 Hz" : "TF03采样频率已设置为 %1 Hz").arg(lidar_sample_rate_));
+    log(QString(is_english_ ? "Lidar sample rate set to %1 Hz" : "激光测距仪采样频率已设置为 %1 Hz").arg(lidar_sample_rate_));
 }
 
 void MainWindow::applyAllSampleRates()
@@ -4040,6 +4040,10 @@ void MainWindow::onAutoDetectPortsClicked()
                 auto collector = std::make_unique<VaporView::LidarCollector>();
                 return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(115200));
             }},
+            {"lidar", "TFA1500-L", "500000", [probeCollector](const QString& port_name) {
+                auto collector = std::make_unique<VaporView::LidarCollector>();
+                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(500000));
+            }},
             {"ptb", "PTB210", "9600", [probeCollector](const QString& port_name) {
                 auto collector = std::make_unique<VaporView::PtbCollector>();
                 return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::E71(9600));
@@ -4371,21 +4375,21 @@ void MainWindow::onConnectClicked()
                                  return false;
                              }) < 0) return;
 
-        if (connectCollector("TF03", lidarPort, lidarBaudText, collectors.lidar.get(),
+        if (connectCollector("LIDAR", lidarPort, lidarBaudText, collectors.lidar.get(),
                              VaporView::SerialConfig::N81(lidarBaudText.toInt()),
                              [&]() {
                                  collectors.lidar->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onLidarDataReady", Qt::QueuedConnection); });
                                  collectors.lidar->setSampleRate(lidarRate);
                                  if (!collectors.lidar->setDeviceSampleRate(lidarRate))
                                  {
-                                     postLog(QString(english ? "[TF03] Failed to apply frame rate %1 Hz, using device default." : "[TF03] 应用 %1 Hz 输出频率失败，使用设备默认频率。").arg(lidarRate));
+                                     postLog(QString(english ? "[Lidar] Failed to apply output rate %1 Hz, using device default." : "[Lidar] 应用 %1 Hz 输出频率失败，使用设备默认输出。").arg(lidarRate));
                                  }
                                  else
                                  {
-                                     postLog(QString(english ? "[TF03] Frame rate set to %1 Hz" : "[TF03] 输出频率设置为 %1 Hz").arg(lidarRate));
+                                     postLog(QString(english ? "[Lidar] Output rate set to %1 Hz or host-side limit updated" : "[Lidar] 输出频率已设置为 %1 Hz，或已更新主机侧限频").arg(lidarRate));
                                  }
                                  if (collectors.lidar->startStreaming()) return true;
-                                 postLog(english ? "[TF03] Failed to start data stream." : "[TF03] 启动数据流失败。");
+                                 postLog(english ? "[Lidar] Failed to start data stream." : "[Lidar] 启动数据流失败。");
                                  return false;
                              }) < 0) return;
 

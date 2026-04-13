@@ -44,6 +44,10 @@ speed_t baudToTermios(int baudrate)
     return B230400;
   case 460800:
     return B460800;
+#ifdef B500000
+  case 500000:
+    return B500000;
+#endif
   case 921600:
     return B921600;
   default:
