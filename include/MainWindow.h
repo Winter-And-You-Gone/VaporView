@@ -298,6 +298,8 @@ private:
     void updateRecordingStatusLabel();
     void rebuildRecordingRateMenu();
     void setRecordingExportRateHz(int rate, bool should_log = true);
+    void setImuRecordingRateHz(int rate, bool should_log = true);
+    void setWaveformRecordingRateHz(int rate, bool should_log = true);
     QString defaultRecordingDirectory() const;
     QString locateRepositoryRoot() const;
     bool startRecordingSession();
@@ -478,6 +480,8 @@ private:
     int hmp_sample_rate_;
     int lidar_sample_rate_;
     int recording_export_rate_hz_;
+    int imu_recording_rate_hz_;
+    int waveform_recording_rate_hz_;
     int waveform_split_minutes_;
     std::chrono::steady_clock::time_point steady_clock_anchor_;
     std::chrono::system_clock::time_point system_clock_anchor_;
@@ -501,6 +505,8 @@ private:
     std::atomic<qint64> recording_entry_count_;
     std::atomic<qint64> waveform_frame_count_;
     std::atomic<qint64> waveform_file_count_;
+    std::atomic<quint64> last_imu_record_timestamp_us_;
+    std::atomic<quint64> last_waveform_record_timestamp_us_;
     std::mutex recording_files_mutex_;
     std::mutex waveform_queue_mutex_;
     std::condition_variable waveform_queue_cv_;

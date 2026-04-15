@@ -1185,6 +1185,8 @@ MainWindow::MainWindow(QWidget *parent)
     , hmp_sample_rate_(1)
     , lidar_sample_rate_(1)
     , recording_export_rate_hz_(20)
+    , imu_recording_rate_hz_(0)
+    , waveform_recording_rate_hz_(0)
     , waveform_split_minutes_(1)
     , steady_clock_anchor_(std::chrono::steady_clock::now())
     , system_clock_anchor_(std::chrono::system_clock::now())
@@ -1208,6 +1210,8 @@ MainWindow::MainWindow(QWidget *parent)
     , recording_entry_count_(0)
     , waveform_frame_count_(0)
     , waveform_file_count_(0)
+    , last_imu_record_timestamp_us_(0)
+    , last_waveform_record_timestamp_us_(0)
     , rtk_config_action_(nullptr)
     , rtk_config_dialog_(nullptr)
     , tcp_wave_panel_(nullptr)
@@ -1236,6 +1240,16 @@ MainWindow::MainWindow(QWidget *parent)
     if (recording_export_rate_hz_ < 1 || recording_export_rate_hz_ > 200)
     {
         recording_export_rate_hz_ = 20;
+    }
+    imu_recording_rate_hz_ = settings.value("imu_recording_rate_hz", 0).toInt();
+    if (imu_recording_rate_hz_ < 0 || imu_recording_rate_hz_ > 1000)
+    {
+        imu_recording_rate_hz_ = 0;
+    }
+    waveform_recording_rate_hz_ = settings.value("waveform_recording_rate_hz", 0).toInt();
+    if (waveform_recording_rate_hz_ < 0 || waveform_recording_rate_hz_ > 1000)
+    {
+        waveform_recording_rate_hz_ = 0;
     }
 
     loadModernStyleSheet();
@@ -1528,37 +1542,71 @@ void MainWindow::rebuildRecordingRateMenu()
         return;
     }
 
-    const QVector<int> standardRates{1, 2, 5, 10, 20, 50, 100, 200};
-    const int currentRate = std::clamp(recording_export_rate_hz_, 1, 200);
-    const bool hasCustomRate = !standardRates.contains(currentRate);
-
     recording_rate_menu_->clear();
+    auto buildSubmenu = [this](QMenu *parent,
+                               const QString& title,
+                               const QVector<int>& standardRates,
+                               int currentRate,
+                               bool allowUnlimited,
+                               const QString& unlimitedEnglish,
+                               const QString& unlimitedChinese,
+                               auto setter) {
+        QMenu *submenu = parent->addMenu(title);
 
-    auto addRateAction = [this, currentRate](int rate, bool isCustom = false) {
-        QString text = QString::number(rate) + QStringLiteral(" Hz");
-        if (isCustom)
+        auto addAction = [this, submenu, currentRate, &setter](int rate, const QString& text) {
+            QAction *action = submenu->addAction(text);
+            action->setCheckable(true);
+            action->setChecked(rate == currentRate);
+            connect(action, &QAction::triggered, this, [this, rate, setter]() {
+                setter(rate);
+            });
+        };
+
+        if (allowUnlimited)
         {
-            text += is_english_ ? QStringLiteral(" (Custom)") : QStringLiteral("（当前）");
+            addAction(0, is_english_ ? unlimitedEnglish : unlimitedChinese);
+            submenu->addSeparator();
         }
 
-        QAction *action = recording_rate_menu_->addAction(text);
-        action->setCheckable(true);
-        action->setChecked(rate == currentRate);
-        connect(action, &QAction::triggered, this, [this, rate]() {
-            setRecordingExportRateHz(rate);
-        });
+        if (currentRate > 0 && !standardRates.contains(currentRate))
+        {
+            addAction(currentRate,
+                      QStringLiteral("%1 Hz%2").arg(currentRate).arg(is_english_ ? QStringLiteral(" (Custom)") : QStringLiteral("（当前）")));
+            submenu->addSeparator();
+        }
+
+        for (int rate : standardRates)
+        {
+            addAction(rate, QStringLiteral("%1 Hz").arg(rate));
+        }
     };
 
-    if (hasCustomRate)
-    {
-        addRateAction(currentRate, true);
-        recording_rate_menu_->addSeparator();
-    }
+    buildSubmenu(recording_rate_menu_,
+                 is_english_ ? QStringLiteral("Waveform") : QStringLiteral("波形"),
+                 QVector<int>{1, 2, 5, 10, 20, 50, 100, 200, 500, 1000},
+                 std::clamp(waveform_recording_rate_hz_, 0, 1000),
+                 true,
+                 QStringLiteral("Per frame"),
+                 QStringLiteral("每帧"),
+                 [this](int rate) { setWaveformRecordingRateHz(rate); });
 
-    for (int rate : standardRates)
-    {
-        addRateAction(rate);
-    }
+    buildSubmenu(recording_rate_menu_,
+                 is_english_ ? QStringLiteral("IMU") : QStringLiteral("IMU"),
+                 QVector<int>{1, 2, 5, 10, 20, 50, 100, 200, 500, 1000},
+                 std::clamp(imu_recording_rate_hz_, 0, 1000),
+                 true,
+                 QStringLiteral("Raw packets"),
+                 QStringLiteral("原始包"),
+                 [this](int rate) { setImuRecordingRateHz(rate); });
+
+    buildSubmenu(recording_rate_menu_,
+                 is_english_ ? QStringLiteral("Other devices") : QStringLiteral("其余设备"),
+                 QVector<int>{1, 2, 5, 10, 20, 50, 100, 200},
+                 std::clamp(recording_export_rate_hz_, 1, 200),
+                 false,
+                 QString(),
+                 QString(),
+                 [this](int rate) { setRecordingExportRateHz(rate); });
 }
 
 void MainWindow::setRecordingExportRateHz(int rate, bool should_log)
@@ -1571,7 +1619,41 @@ void MainWindow::setRecordingExportRateHz(int rate, bool should_log)
 
     if (changed && should_log)
     {
-        log(QString(is_english_ ? "Recording rate set to %1 Hz" : "记录频率已设置为 %1 Hz").arg(recording_export_rate_hz_));
+        log(QString(is_english_ ? "Other-devices recording rate set to %1 Hz" : "其余设备记录频率已设置为 %1 Hz").arg(recording_export_rate_hz_));
+    }
+}
+
+void MainWindow::setImuRecordingRateHz(int rate, bool should_log)
+{
+    const int normalizedRate = std::clamp(rate, 0, 1000);
+    const bool changed = imu_recording_rate_hz_ != normalizedRate;
+    imu_recording_rate_hz_ = normalizedRate;
+    rebuildRecordingRateMenu();
+    saveRememberedInputState();
+
+    if (changed && should_log)
+    {
+        const QString text = imu_recording_rate_hz_ == 0
+            ? (is_english_ ? QStringLiteral("IMU recording set to raw packets") : QStringLiteral("IMU 记录已设置为原始包"))
+            : QString(is_english_ ? "IMU recording rate set to %1 Hz" : "IMU 记录频率已设置为 %1 Hz").arg(imu_recording_rate_hz_);
+        log(text);
+    }
+}
+
+void MainWindow::setWaveformRecordingRateHz(int rate, bool should_log)
+{
+    const int normalizedRate = std::clamp(rate, 0, 1000);
+    const bool changed = waveform_recording_rate_hz_ != normalizedRate;
+    waveform_recording_rate_hz_ = normalizedRate;
+    rebuildRecordingRateMenu();
+    saveRememberedInputState();
+
+    if (changed && should_log)
+    {
+        const QString text = waveform_recording_rate_hz_ == 0
+            ? (is_english_ ? QStringLiteral("Waveform recording set to per-frame mode") : QStringLiteral("波形记录已设置为每帧模式"))
+            : QString(is_english_ ? "Waveform recording rate set to %1 Hz" : "波形记录频率已设置为 %1 Hz").arg(waveform_recording_rate_hz_);
+        log(text);
     }
 }
 
@@ -1600,6 +1682,8 @@ void MainWindow::loadRememberedInputState()
     applyComboText(imu_format_combo_, settings.value("serial/imu_format", QStringLiteral("HI91")).toString());
 
     recording_export_rate_hz_ = std::clamp(settings.value("recording_export_rate_hz", recording_export_rate_hz_).toInt(), 1, 200);
+    imu_recording_rate_hz_ = std::clamp(settings.value("imu_recording_rate_hz", imu_recording_rate_hz_).toInt(), 0, 1000);
+    waveform_recording_rate_hz_ = std::clamp(settings.value("waveform_recording_rate_hz", waveform_recording_rate_hz_).toInt(), 0, 1000);
     rebuildRecordingRateMenu();
 
     if (waveform_split_spin_)
@@ -1633,6 +1717,8 @@ void MainWindow::saveRememberedInputState() const
     settings.setValue("rate/hmp", hmp_rate_combo_->currentText());
     settings.setValue("rate/lidar", lidar_rate_combo_->currentText());
     settings.setValue("recording_export_rate_hz", recording_export_rate_hz_);
+    settings.setValue("imu_recording_rate_hz", imu_recording_rate_hz_);
+    settings.setValue("waveform_recording_rate_hz", waveform_recording_rate_hz_);
 
     if (waveform_split_spin_)
     {
@@ -2454,7 +2540,7 @@ void MainWindow::setEnglish(bool english)
     recording_directory_action_->setText(english ? "Recording Folder..." : "记录目录...");
     if (recording_rate_menu_)
     {
-        recording_rate_menu_->setTitle(english ? "Record Hz" : "记录频率");
+        recording_rate_menu_->setTitle(english ? "Record Rates" : "记录频率");
         rebuildRecordingRateMenu();
     }
     session_viewer_action_->setText(english ? "Data Viewer..." : "数据查看器...");
@@ -3166,8 +3252,11 @@ void MainWindow::writeSessionMetadata(const QString& endTimeUtc)
         : QCoreApplication::applicationVersion();
     root["waveform_points_per_frame"] = 50000;
     root["sensor_export_rate_hz"] = recording_export_rate_hz_;
-    root["waveform_export_rate_hz"] = 0;
-    root["waveform_export_mode"] = QStringLiteral("per_frame");
+    root["other_devices_export_rate_hz"] = recording_export_rate_hz_;
+    root["imu_raw_export_rate_hz"] = imu_recording_rate_hz_;
+    root["imu_raw_export_mode"] = imu_recording_rate_hz_ > 0 ? QStringLiteral("throttled") : QStringLiteral("raw");
+    root["waveform_export_rate_hz"] = waveform_recording_rate_hz_;
+    root["waveform_export_mode"] = waveform_recording_rate_hz_ > 0 ? QStringLiteral("throttled") : QStringLiteral("per_frame");
     root["waveform_value_type"] = QStringLiteral("float32");
     root["waveform_timestamp_type"] = QStringLiteral("uint64");
     root["timestamp_unit"] = QStringLiteral("microseconds");
@@ -3206,13 +3295,18 @@ void MainWindow::writeDeviceConfigSnapshot()
     root["recording_directory"] = recording_directory_;
     root["session_directory"] = session_directory_;
     root["sensor_export_rate_hz"] = recording_export_rate_hz_;
+    root["other_devices_export_rate_hz"] = recording_export_rate_hz_;
+    root["imu_raw_export_rate_hz"] = imu_recording_rate_hz_;
+    root["imu_raw_export_mode"] = imu_recording_rate_hz_ > 0 ? QStringLiteral("throttled") : QStringLiteral("raw");
+    root["waveform_export_rate_hz"] = waveform_recording_rate_hz_;
+    root["waveform_export_mode"] = waveform_recording_rate_hz_ > 0 ? QStringLiteral("throttled") : QStringLiteral("per_frame");
     root["waveform_split_minutes"] = waveform_split_minutes_;
 
     QJsonObject waveform;
     waveform["host"] = tcp_wave_panel_ ? tcp_wave_panel_->host() : QStringLiteral("127.0.0.1");
     waveform["port"] = tcp_wave_panel_ ? tcp_wave_panel_->port() : 8888;
-    waveform["frame_rate_hz"] = 0;
-    waveform["frame_rate_mode"] = QStringLiteral("per_frame");
+    waveform["frame_rate_hz"] = waveform_recording_rate_hz_;
+    waveform["frame_rate_mode"] = waveform_recording_rate_hz_ > 0 ? QStringLiteral("throttled") : QStringLiteral("per_frame");
     waveform["points_per_frame"] = 50000;
     waveform["value_type"] = QStringLiteral("float32");
     waveform["timestamp_type"] = QStringLiteral("uint64");
@@ -3230,6 +3324,8 @@ void MainWindow::writeDeviceConfigSnapshot()
     addSerialConfig("imu", imu_port_combo_, imu_baud_combo_, imu_rate_combo_);
     QJsonObject imuConfig = sensors.value("imu").toObject();
     imuConfig["format"] = imu_format_combo_ ? imu_format_combo_->currentText() : QStringLiteral("HI91");
+    imuConfig["record_rate_hz"] = imu_recording_rate_hz_;
+    imuConfig["record_mode"] = imu_recording_rate_hz_ > 0 ? QStringLiteral("throttled") : QStringLiteral("raw");
     sensors["imu"] = imuConfig;
     addSerialConfig("ptb", ptb_port_combo_, ptb_baud_combo_, ptb_rate_combo_);
     addSerialConfig("hmp", hmp_port_combo_, hmp_baud_combo_, hmp_rate_combo_);
@@ -3253,6 +3349,8 @@ void MainWindow::startRecordingWorkers()
     }
 
     recording_paused_ = false;
+    last_imu_record_timestamp_us_.store(0);
+    last_waveform_record_timestamp_us_.store(0);
     {
         std::lock_guard<std::mutex> lock(waveform_queue_mutex_);
         waveform_queue_.clear();
@@ -3692,6 +3790,17 @@ void MainWindow::onNormalizedSecondHarmonicFrameReady(quint64 timestampUs, QVect
     {
         return;
     }
+
+    if (waveform_recording_rate_hz_ > 0)
+    {
+        const quint64 minIntervalUs = 1000000ULL / static_cast<quint64>(waveform_recording_rate_hz_);
+        const quint64 lastTimestampUs = last_waveform_record_timestamp_us_.load();
+        if (lastTimestampUs != 0 && timestampUs > lastTimestampUs && timestampUs - lastTimestampUs < minIntervalUs)
+        {
+            return;
+        }
+    }
+    last_waveform_record_timestamp_us_.store(timestampUs);
 
     WaveformFrame frame;
     frame.timestamp_us = timestampUs;
@@ -4365,6 +4474,21 @@ void MainWindow::onConnectClicked()
             if (!recording_thread_running_.load())
             {
                 return;
+            }
+
+            if (imu_recording_rate_hz_ > 0)
+            {
+                const quint64 minIntervalUs = 1000000ULL / static_cast<quint64>(imu_recording_rate_hz_);
+                const quint64 lastTimestampUs = last_imu_record_timestamp_us_.load();
+                if (lastTimestampUs != 0 && hostTimestampUs > lastTimestampUs && hostTimestampUs - lastTimestampUs < minIntervalUs)
+                {
+                    return;
+                }
+                last_imu_record_timestamp_us_.store(static_cast<quint64>(hostTimestampUs));
+            }
+            else
+            {
+                last_imu_record_timestamp_us_.store(static_cast<quint64>(hostTimestampUs));
             }
 
             std::lock_guard<std::mutex> lock(recording_files_mutex_);
