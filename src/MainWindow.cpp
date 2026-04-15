@@ -2220,13 +2220,13 @@ void MainWindow::setupConfigPanel()
     createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, imu_rate_lbl_, imu_rate_combo_, "COM4", "921600", row++, 1000);
     createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "COM5", "9600", row++);
     createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "COM6", "19200", row++);
-    createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "COM7", "115200", row++, 100);
+    createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "COM7", "500000", row++, 100);
 #else
     createPortRow(gnss_lbl_, gnss_port_combo_, gnss_baud_combo_, gnss_rate_lbl_, gnss_rate_combo_, "/dev/ttyCOM3", "115200", row++);
     createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, imu_rate_lbl_, imu_rate_combo_, "/dev/ttyIMU", "921600", row++, 1000);
     createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "/dev/ttyBARO", "9600", row++);
     createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "/dev/ttyHMP", "19200", row++);
-    createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "/dev/ttyLidar", "115200", row++, 100);
+    createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "/dev/ttyLidar", "500000", row++, 100);
 #endif
 
     if (lidar_rate_combo_)
@@ -4093,13 +4093,13 @@ void MainWindow::onAutoDetectPortsClicked()
                 auto collector = std::make_unique<VaporView::ImuCollector>();
                 return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(effectiveImuProbeBaud));
             }},
-            {"lidar", "TF03", "115200", [probeCollector](const QString& port_name) {
-                auto collector = std::make_unique<VaporView::LidarCollector>();
-                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(115200));
-            }},
             {"lidar", "TFA1500-L", "500000", [probeCollector](const QString& port_name) {
                 auto collector = std::make_unique<VaporView::LidarCollector>();
                 return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(500000));
+            }},
+            {"lidar", "TF03", "115200", [probeCollector](const QString& port_name) {
+                auto collector = std::make_unique<VaporView::LidarCollector>();
+                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(115200));
             }},
             {"ptb", "PTB210", "9600", [probeCollector](const QString& port_name) {
                 auto collector = std::make_unique<VaporView::PtbCollector>();
