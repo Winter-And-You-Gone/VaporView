@@ -128,7 +128,7 @@ const char* lidarProtocolName(LidarProtocol protocol)
   case LidarProtocol::TFA1500HighFrequency:
     return "TFA1500-L High-Frequency";
   case LidarProtocol::ObservedAaB7Frame:
-    return "Observed AA-B7 Lidar";
+    return "AA-B7 Lidar";
   case LidarProtocol::Unknown:
   default:
     return "Unknown";
@@ -270,8 +270,6 @@ bool parseObservedAaB7FrameLocal(const uint8_t* frame, size_t size, LidarData& s
     return false;
   }
 
-  // Inference from observed frames: bytes 3-4 and 5-6 duplicate the same distance in cm,
-  // byte 8 behaves like a signal/quality indicator, and byte 9 is a fixed frame tail.
   sample.distance_m = distance_a / 100.0;
   sample.signal_strength = frame[8];
   sample.timestamp = std::chrono::steady_clock::now();
@@ -550,31 +548,6 @@ bool extractNextLidarSample(std::vector<uint8_t>& buffer, LidarProtocol protocol
   }
 
   return false;
-}
-
-std::string formatHexSnippet(const uint8_t* data, size_t size, size_t max_bytes = 16)
-{
-  if (!data || size == 0)
-  {
-    return "";
-  }
-
-  std::ostringstream oss;
-  oss << std::hex << std::uppercase << std::setfill('0');
-  const size_t count = std::min(size, max_bytes);
-  for (size_t i = 0; i < count; ++i)
-  {
-    if (i > 0)
-    {
-      oss << ' ';
-    }
-    oss << std::setw(2) << static_cast<int>(data[i]);
-  }
-  if (size > max_bytes)
-  {
-    oss << " ...";
-  }
-  return oss.str();
 }
 
 enum class HmpParseResult
@@ -1805,7 +1778,6 @@ bool LidarCollector::ensureTfa1500Streaming()
     return false;
   }
 
-  log("TFA1500-L: Sent high-frequency ranging start command");
   tfa1500_stream_started_ = true;
   return true;
 }
@@ -1821,7 +1793,6 @@ bool LidarCollector::ensureTfa1500Standby()
   }
 
   tfa1500_stream_started_ = false;
-  log("TFA1500-L: Sent standby command (stop standard/low-frequency ranging)");
   return true;
 }
 
@@ -1835,7 +1806,6 @@ bool LidarCollector::ensureTfa1500DistanceOutput()
     return false;
   }
 
-  log("TFA1500-L: Sent measurement-distance output command");
   return true;
 }
 
@@ -1849,7 +1819,6 @@ bool LidarCollector::ensureTfa1500LowFrequencyContinuous()
     return false;
   }
 
-  log("TFA1500-L: Sent low-frequency continuous ranging command");
   return true;
 }
 
@@ -2005,7 +1974,6 @@ bool LidarCollector::checkDeviceResponse()
   bool tried_low_frequency_after_standby = false;
   bool tried_high_frequency = false;
   bool tried_high_frequency_after_standby = false;
-  bool logged_raw_bytes = false;
 
   while (elapsed_ms < max_wait_ms)
   {
@@ -2016,7 +1984,6 @@ bool LidarCollector::checkDeviceResponse()
 
     if (!tried_passive_listen)
     {
-      log("Lidar: Listening for passive output");
       tried_passive_listen = true;
     }
     else if (!prefer_tfa1500 && !tried_distance_output && elapsed_ms >= 600)
@@ -2057,11 +2024,6 @@ bool LidarCollector::checkDeviceResponse()
     ssize_t n = serial_.read(chunk, sizeof(chunk));
     if (n > 0)
     {
-      if (!logged_raw_bytes)
-      {
-        log("Lidar: Received raw bytes during detection: " + formatHexSnippet(chunk, static_cast<size_t>(n)));
-        logged_raw_bytes = true;
-      }
       buffer.insert(buffer.end(), chunk, chunk + n);
       while (!buffer.empty())
       {
