@@ -41,6 +41,7 @@
 #include <QSettings>
 #include <QThread>
 #include <QVector>
+#include <QWidgetAction>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -1081,7 +1082,7 @@ MainWindow::MainWindow(QWidget *parent)
     , log_text_edit_(nullptr)
     , status_label_(nullptr)
     , recording_status_label_(nullptr)
-    , recording_rate_toolbar_label_(nullptr)
+    , recording_rate_menu_label_(nullptr)
     , auto_detect_ports_btn_(nullptr)
     , gnss_port_combo_(nullptr)
     , imu_port_combo_(nullptr)
@@ -1106,6 +1107,7 @@ MainWindow::MainWindow(QWidget *parent)
     , clear_log_action_(nullptr)
     , session_viewer_action_(nullptr)
     , recording_directory_action_(nullptr)
+    , recording_rate_widget_action_(nullptr)
     , exit_action_(nullptr)
     , about_action_(nullptr)
     , font_scale_group_(nullptr)
@@ -1855,6 +1857,40 @@ void MainWindow::setupMenuBar()
     connect(recording_directory_action_, &QAction::triggered, this, &MainWindow::onChooseRecordingDirectoryClicked);
     fileMenu->addAction(recording_directory_action_);
 
+    QWidget *recordingRateWidget = new QWidget(fileMenu);
+    QHBoxLayout *recordingRateLayout = new QHBoxLayout(recordingRateWidget);
+    recordingRateLayout->setContentsMargins(12, 4, 12, 4);
+    recordingRateLayout->setSpacing(8);
+
+    recording_rate_menu_label_ = new QLabel(recordingRateWidget);
+    recordingRateLayout->addWidget(recording_rate_menu_label_);
+
+    recording_rate_combo_ = new QComboBox(recordingRateWidget);
+    recording_rate_combo_->setEditable(true);
+    recording_rate_combo_->addItems({QStringLiteral("1"), QStringLiteral("2"), QStringLiteral("5"), QStringLiteral("10"),
+                                     QStringLiteral("20"), QStringLiteral("50"), QStringLiteral("100"), QStringLiteral("200")});
+    recording_rate_combo_->setValidator(new QIntValidator(1, 200, recording_rate_combo_));
+    recording_rate_combo_->setFixedHeight(kMainPageInputHeight);
+    recording_rate_combo_->setFixedWidth(80);
+    recording_rate_combo_->setCurrentText(QString::number(recording_export_rate_hz_));
+    connect(recording_rate_combo_, &QComboBox::currentTextChanged, this, [this](const QString& text) {
+        const int rate = std::clamp(parseRate(text), 1, 200);
+        recording_export_rate_hz_ = rate;
+        if (recording_rate_combo_ && recording_rate_combo_->currentText() != QString::number(rate))
+        {
+            const QSignalBlocker blocker(recording_rate_combo_);
+            recording_rate_combo_->setCurrentText(QString::number(rate));
+        }
+        saveRememberedInputState();
+        log(QString(is_english_ ? "Recording rate set to %1 Hz" : "记录频率已设置为 %1 Hz").arg(recording_export_rate_hz_));
+    });
+    recordingRateLayout->addWidget(recording_rate_combo_);
+    recordingRateLayout->addStretch(1);
+
+    recording_rate_widget_action_ = new QWidgetAction(this);
+    recording_rate_widget_action_->setDefaultWidget(recordingRateWidget);
+    fileMenu->addAction(recording_rate_widget_action_);
+
     session_viewer_action_ = new QAction(this);
     connect(session_viewer_action_, &QAction::triggered, this, &MainWindow::onOpenSessionViewerClicked);
     fileMenu->addAction(session_viewer_action_);
@@ -2025,33 +2061,6 @@ void MainWindow::setupToolBar()
     stop_recording_btn_->setEnabled(false);
     connect(stop_recording_btn_, &QAction::triggered, this, &MainWindow::onStopRecordingClicked);
     toolbar->addAction(stop_recording_btn_);
-
-    recording_rate_toolbar_label_ = new QLabel(toolbar);
-    recording_rate_toolbar_label_->setContentsMargins(8, 0, 4, 0);
-    toolbar->addWidget(recording_rate_toolbar_label_);
-
-    recording_rate_combo_ = new QComboBox(toolbar);
-    recording_rate_combo_->setEditable(true);
-    recording_rate_combo_->addItems({QStringLiteral("1"), QStringLiteral("2"), QStringLiteral("5"), QStringLiteral("10"),
-                                     QStringLiteral("20"), QStringLiteral("50"), QStringLiteral("100"), QStringLiteral("200")});
-    recording_rate_combo_->setValidator(new QIntValidator(1, 200, recording_rate_combo_));
-    recording_rate_combo_->setFixedHeight(kMainPageInputHeight);
-    recording_rate_combo_->setFixedWidth(80);
-    recording_rate_combo_->setCurrentText(QString::number(recording_export_rate_hz_));
-    connect(recording_rate_combo_, &QComboBox::currentTextChanged, this, [this](const QString& text) {
-        const int rate = std::clamp(parseRate(text), 1, 200);
-        recording_export_rate_hz_ = rate;
-        if (recording_rate_combo_ && recording_rate_combo_->currentText() != QString::number(rate))
-        {
-            const QSignalBlocker blocker(recording_rate_combo_);
-            recording_rate_combo_->setCurrentText(QString::number(rate));
-        }
-        saveRememberedInputState();
-        log(QString(is_english_ ? "Recording rate set to %1 Hz" : "记录频率已设置为 %1 Hz").arg(recording_export_rate_hz_));
-    });
-    toolbar->addWidget(recording_rate_combo_);
-
-    toolbar->addSeparator();
 
     rtk_config_action_ = new QAction(this);
     rtk_config_action_->setIcon(style()->standardIcon(QStyle::SP_ComputerIcon));
@@ -2422,7 +2431,7 @@ void MainWindow::setEnglish(bool english)
 {
     is_english_ = english;
 
-    menuBar()->actions().at(0)->menu()->setTitle(english ? "&File" : "文件(&F)");
+    menuBar()->actions().at(0)->menu()->setTitle(english ? "&Data" : "数据(&D)");
     recording_directory_action_->setText(english ? "Recording Folder..." : "记录目录...");
     session_viewer_action_->setText(english ? "Data Viewer..." : "数据查看器...");
     exit_action_->setText(english ? "E&xit" : "退出(&X)");
@@ -2451,9 +2460,9 @@ void MainWindow::setEnglish(bool english)
     start_recording_btn_->setText(english ? "Start Recording" : "开始记录");
     pause_recording_btn_->setText(english ? "Pause Recording" : "暂停记录");
     stop_recording_btn_->setText(english ? "Stop Recording" : "结束记录");
-    if (recording_rate_toolbar_label_)
+    if (recording_rate_menu_label_)
     {
-        recording_rate_toolbar_label_->setText(english ? "Record Hz:" : "记录频率:");
+        recording_rate_menu_label_->setText(english ? "Record Hz:" : "记录频率:");
     }
     if (recording_rate_combo_)
     {
@@ -2461,9 +2470,9 @@ void MainWindow::setEnglish(bool english)
             ? "Controls how often devices.csv writes the latest sensor snapshot while recording."
             : "控制记录时 devices.csv 写入最新传感器快照的频率。";
         recording_rate_combo_->setToolTip(tooltip);
-        if (recording_rate_toolbar_label_)
+        if (recording_rate_menu_label_)
         {
-            recording_rate_toolbar_label_->setToolTip(tooltip);
+            recording_rate_menu_label_->setToolTip(tooltip);
         }
     }
     clear_log_action_->setText(english ? "Clear" : "清空");

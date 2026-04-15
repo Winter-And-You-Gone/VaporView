@@ -35,6 +35,7 @@ class RtkConfigDialog;
 class QFile;
 class TcpWavePanel;
 class SessionViewerWindow;
+class QWidgetAction;
 
 class GnssPanel : public QWidget
 {
@@ -352,7 +353,7 @@ private:
     QTextEdit *log_text_edit_;
     QLabel *status_label_;
     QLabel *recording_status_label_;
-    QLabel *recording_rate_toolbar_label_;
+    QLabel *recording_rate_menu_label_;
     QPushButton *auto_detect_ports_btn_;
 
     QComboBox *gnss_port_combo_;
@@ -378,6 +379,7 @@ private:
     QAction *clear_log_action_;
     QAction *session_viewer_action_;
     QAction *recording_directory_action_;
+    QWidgetAction *recording_rate_widget_action_;
     QAction *exit_action_;
     QAction *about_action_;
     QActionGroup *font_scale_group_;
