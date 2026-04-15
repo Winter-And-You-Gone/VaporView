@@ -352,6 +352,7 @@ private:
     QTextEdit *log_text_edit_;
     QLabel *status_label_;
     QLabel *recording_status_label_;
+    QLabel *recording_rate_toolbar_label_;
     QPushButton *auto_detect_ports_btn_;
 
     QComboBox *gnss_port_combo_;
@@ -418,6 +419,7 @@ private:
     QLabel *lidar_rate_lbl_;
 
     QComboBox *global_rate_combo_;
+    QComboBox *recording_rate_combo_;
     QSpinBox *waveform_split_spin_;
     QComboBox *gnss_rate_combo_;
     QComboBox *imu_rate_combo_;
@@ -474,6 +476,7 @@ private:
     int ptb_sample_rate_;
     int hmp_sample_rate_;
     int lidar_sample_rate_;
+    int recording_export_rate_hz_;
     int waveform_split_minutes_;
     std::chrono::steady_clock::time_point steady_clock_anchor_;
     std::chrono::system_clock::time_point system_clock_anchor_;

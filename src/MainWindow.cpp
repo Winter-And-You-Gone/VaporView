@@ -60,8 +60,6 @@ constexpr const char *kBaseMarginsBottomProperty = "_vv_base_margin_bottom";
 constexpr int kMainPageInputHeight = 30;
 constexpr int kMainPageButtonHeight = 38;
 constexpr quint64 kImuPpsSyncWindowUs = 2ULL * 1000ULL * 1000ULL;
-constexpr int kSensorExportRateHz = 20;
-constexpr int kSensorExportPeriodMs = 1000 / kSensorExportRateHz;
 constexpr char kImuRawMagic[8] = {'V', 'V', 'I', 'M', 'U', 'R', 'A', 'W'};
 
 #pragma pack(push, 1)
@@ -1083,6 +1081,7 @@ MainWindow::MainWindow(QWidget *parent)
     , log_text_edit_(nullptr)
     , status_label_(nullptr)
     , recording_status_label_(nullptr)
+    , recording_rate_toolbar_label_(nullptr)
     , auto_detect_ports_btn_(nullptr)
     , gnss_port_combo_(nullptr)
     , imu_port_combo_(nullptr)
@@ -1144,6 +1143,7 @@ MainWindow::MainWindow(QWidget *parent)
     , hmp_rate_lbl_(nullptr)
     , lidar_rate_lbl_(nullptr)
     , global_rate_combo_(nullptr)
+    , recording_rate_combo_(nullptr)
     , waveform_split_spin_(nullptr)
     , gnss_rate_combo_(nullptr)
     , imu_rate_combo_(nullptr)
@@ -1185,6 +1185,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_sample_rate_(1)
     , hmp_sample_rate_(1)
     , lidar_sample_rate_(1)
+    , recording_export_rate_hz_(20)
     , waveform_split_minutes_(1)
     , steady_clock_anchor_(std::chrono::steady_clock::now())
     , system_clock_anchor_(std::chrono::system_clock::now())
@@ -1231,6 +1232,11 @@ MainWindow::MainWindow(QWidget *parent)
     if (waveform_split_minutes_ < 1 || waveform_split_minutes_ > 5)
     {
         waveform_split_minutes_ = 1;
+    }
+    recording_export_rate_hz_ = settings.value("recording_export_rate_hz", 20).toInt();
+    if (recording_export_rate_hz_ < 1 || recording_export_rate_hz_ > 200)
+    {
+        recording_export_rate_hz_ = 20;
     }
 
     loadModernStyleSheet();
@@ -1538,7 +1544,10 @@ void MainWindow::loadRememberedInputState()
     applyComboText(ptb_rate_combo_, settings.value("rate/ptb", ptb_rate_combo_->currentText()).toString());
     applyComboText(hmp_rate_combo_, settings.value("rate/hmp", hmp_rate_combo_->currentText()).toString());
     applyComboText(lidar_rate_combo_, settings.value("rate/lidar", lidar_rate_combo_->currentText()).toString());
+    applyComboText(recording_rate_combo_, settings.value("recording_export_rate_hz", QString::number(recording_export_rate_hz_)).toString());
     applyComboText(imu_format_combo_, settings.value("serial/imu_format", QStringLiteral("HI91")).toString());
+
+    recording_export_rate_hz_ = std::clamp(parseRate(recording_rate_combo_ ? recording_rate_combo_->currentText() : QStringLiteral("20")), 1, 200);
 
     if (waveform_split_spin_)
     {
@@ -1570,6 +1579,7 @@ void MainWindow::saveRememberedInputState() const
     settings.setValue("rate/ptb", ptb_rate_combo_->currentText());
     settings.setValue("rate/hmp", hmp_rate_combo_->currentText());
     settings.setValue("rate/lidar", lidar_rate_combo_->currentText());
+    settings.setValue("recording_export_rate_hz", recording_rate_combo_ ? recording_rate_combo_->currentText() : QString::number(recording_export_rate_hz_));
 
     if (waveform_split_spin_)
     {
@@ -1601,6 +1611,7 @@ void MainWindow::bindRememberedInputState()
     bindCombo(hmp_baud_combo_);
     bindCombo(lidar_baud_combo_);
     bindCombo(global_rate_combo_);
+    bindCombo(recording_rate_combo_);
     bindCombo(gnss_rate_combo_);
     bindCombo(imu_rate_combo_);
     bindCombo(ptb_rate_combo_);
@@ -2015,6 +2026,31 @@ void MainWindow::setupToolBar()
     connect(stop_recording_btn_, &QAction::triggered, this, &MainWindow::onStopRecordingClicked);
     toolbar->addAction(stop_recording_btn_);
 
+    recording_rate_toolbar_label_ = new QLabel(toolbar);
+    recording_rate_toolbar_label_->setContentsMargins(8, 0, 4, 0);
+    toolbar->addWidget(recording_rate_toolbar_label_);
+
+    recording_rate_combo_ = new QComboBox(toolbar);
+    recording_rate_combo_->setEditable(true);
+    recording_rate_combo_->addItems({QStringLiteral("1"), QStringLiteral("2"), QStringLiteral("5"), QStringLiteral("10"),
+                                     QStringLiteral("20"), QStringLiteral("50"), QStringLiteral("100"), QStringLiteral("200")});
+    recording_rate_combo_->setValidator(new QIntValidator(1, 200, recording_rate_combo_));
+    recording_rate_combo_->setFixedHeight(kMainPageInputHeight);
+    recording_rate_combo_->setFixedWidth(80);
+    recording_rate_combo_->setCurrentText(QString::number(recording_export_rate_hz_));
+    connect(recording_rate_combo_, &QComboBox::currentTextChanged, this, [this](const QString& text) {
+        const int rate = std::clamp(parseRate(text), 1, 200);
+        recording_export_rate_hz_ = rate;
+        if (recording_rate_combo_ && recording_rate_combo_->currentText() != QString::number(rate))
+        {
+            const QSignalBlocker blocker(recording_rate_combo_);
+            recording_rate_combo_->setCurrentText(QString::number(rate));
+        }
+        saveRememberedInputState();
+        log(QString(is_english_ ? "Recording rate set to %1 Hz" : "记录频率已设置为 %1 Hz").arg(recording_export_rate_hz_));
+    });
+    toolbar->addWidget(recording_rate_combo_);
+
     toolbar->addSeparator();
 
     rtk_config_action_ = new QAction(this);
@@ -2415,6 +2451,21 @@ void MainWindow::setEnglish(bool english)
     start_recording_btn_->setText(english ? "Start Recording" : "开始记录");
     pause_recording_btn_->setText(english ? "Pause Recording" : "暂停记录");
     stop_recording_btn_->setText(english ? "Stop Recording" : "结束记录");
+    if (recording_rate_toolbar_label_)
+    {
+        recording_rate_toolbar_label_->setText(english ? "Record Hz:" : "记录频率:");
+    }
+    if (recording_rate_combo_)
+    {
+        const QString tooltip = english
+            ? "Controls how often devices.csv writes the latest sensor snapshot while recording."
+            : "控制记录时 devices.csv 写入最新传感器快照的频率。";
+        recording_rate_combo_->setToolTip(tooltip);
+        if (recording_rate_toolbar_label_)
+        {
+            recording_rate_toolbar_label_->setToolTip(tooltip);
+        }
+    }
     clear_log_action_->setText(english ? "Clear" : "清空");
     fullscreen_toolbar_action_->setText(english ? "Fullscreen" : "全屏");
     rtk_config_action_->setText(english ? "RTK Config" : "RTK配置");
@@ -3096,7 +3147,7 @@ void MainWindow::writeSessionMetadata(const QString& endTimeUtc)
         ? QStringLiteral("dev")
         : QCoreApplication::applicationVersion();
     root["waveform_points_per_frame"] = 50000;
-    root["sensor_export_rate_hz"] = kSensorExportRateHz;
+    root["sensor_export_rate_hz"] = recording_export_rate_hz_;
     root["waveform_export_rate_hz"] = 0;
     root["waveform_export_mode"] = QStringLiteral("per_frame");
     root["waveform_value_type"] = QStringLiteral("float32");
@@ -3136,6 +3187,7 @@ void MainWindow::writeDeviceConfigSnapshot()
     QJsonObject root;
     root["recording_directory"] = recording_directory_;
     root["session_directory"] = session_directory_;
+    root["sensor_export_rate_hz"] = recording_export_rate_hz_;
     root["waveform_split_minutes"] = waveform_split_minutes_;
 
     QJsonObject waveform;
@@ -3196,6 +3248,8 @@ void MainWindow::startRecordingWorkers()
     QFile *filePtr = sensors_file_.get();
     recording_thread_running_.store(true);
     recording_thread_ = std::thread([this, filePtr]() {
+        const int exportRateHz = std::max(1, recording_export_rate_hz_);
+        const auto exportPeriod = std::chrono::microseconds(1000000 / exportRateHz);
         auto nextTick = std::chrono::steady_clock::now();
         while (recording_thread_running_.load())
         {
@@ -3337,7 +3391,7 @@ void MainWindow::startRecordingWorkers()
                 updateRecordingStatusLabel();
             }, Qt::QueuedConnection);
 
-            nextTick += std::chrono::milliseconds(kSensorExportPeriodMs);
+            nextTick += exportPeriod;
             std::this_thread::sleep_until(nextTick);
         }
     });
