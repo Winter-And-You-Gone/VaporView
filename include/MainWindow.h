@@ -35,7 +35,6 @@ class RtkConfigDialog;
 class QFile;
 class TcpWavePanel;
 class SessionViewerWindow;
-class QWidgetAction;
 
 class GnssPanel : public QWidget
 {
@@ -297,6 +296,8 @@ private:
     void loadModernStyleSheet();
     void log(const QString& message);
     void updateRecordingStatusLabel();
+    void rebuildRecordingRateMenu();
+    void setRecordingExportRateHz(int rate, bool should_log = true);
     QString defaultRecordingDirectory() const;
     QString locateRepositoryRoot() const;
     bool startRecordingSession();
@@ -353,7 +354,6 @@ private:
     QTextEdit *log_text_edit_;
     QLabel *status_label_;
     QLabel *recording_status_label_;
-    QLabel *recording_rate_menu_label_;
     QPushButton *auto_detect_ports_btn_;
 
     QComboBox *gnss_port_combo_;
@@ -379,7 +379,6 @@ private:
     QAction *clear_log_action_;
     QAction *session_viewer_action_;
     QAction *recording_directory_action_;
-    QWidgetAction *recording_rate_widget_action_;
     QAction *exit_action_;
     QAction *about_action_;
     QActionGroup *font_scale_group_;
@@ -389,6 +388,7 @@ private:
     QAction *font_normal_action_;
     QAction *font_large_action_;
     QAction *font_extra_large_action_;
+    QMenu *recording_rate_menu_;
 
     QGroupBox *config_group_;
     QGroupBox *data_group_;
@@ -421,7 +421,6 @@ private:
     QLabel *lidar_rate_lbl_;
 
     QComboBox *global_rate_combo_;
-    QComboBox *recording_rate_combo_;
     QSpinBox *waveform_split_spin_;
     QComboBox *gnss_rate_combo_;
     QComboBox *imu_rate_combo_;
