@@ -1797,8 +1797,6 @@ bool LidarCollector::ensureTfa1500Streaming()
     return true;
   }
 
-  ensureTfa1500Standby();
-
   static const uint8_t command[] = {0x55, 0xAA, 0xCB, 0xCC, 0xCC, 0xCC, 0xCC, 0xFB};
   const ssize_t written = serial_.write(command, sizeof(command));
   if (written != static_cast<ssize_t>(sizeof(command)))
@@ -1807,6 +1805,7 @@ bool LidarCollector::ensureTfa1500Streaming()
     return false;
   }
 
+  log("TFA1500-L: Sent high-frequency ranging start command");
   tfa1500_stream_started_ = true;
   return true;
 }
@@ -1821,14 +1820,13 @@ bool LidarCollector::ensureTfa1500Standby()
     return false;
   }
 
+  tfa1500_stream_started_ = false;
   log("TFA1500-L: Sent standby command (stop standard/low-frequency ranging)");
   return true;
 }
 
 bool LidarCollector::ensureTfa1500DistanceOutput()
 {
-  ensureTfa1500Standby();
-
   static const uint8_t command[] = {0x5A, 0x0A, 0x02, 0x02, 0x00, 0xF1};
   const ssize_t written = serial_.write(command, sizeof(command));
   if (written != static_cast<ssize_t>(sizeof(command)))
@@ -1843,8 +1841,6 @@ bool LidarCollector::ensureTfa1500DistanceOutput()
 
 bool LidarCollector::ensureTfa1500LowFrequencyContinuous()
 {
-  ensureTfa1500Standby();
-
   static const uint8_t command[] = {0x55, 0x02, 0x02, 0x20, 0x00, 0x75};
   const ssize_t written = serial_.write(command, sizeof(command));
   if (written != static_cast<ssize_t>(sizeof(command)))
@@ -2004,8 +2000,11 @@ bool LidarCollector::checkDeviceResponse()
   const bool prefer_tfa1500 = serial_config_.baudrate >= 500000;
   bool tried_passive_listen = false;
   bool tried_distance_output = false;
+  bool tried_distance_output_after_standby = false;
   bool tried_low_frequency = false;
+  bool tried_low_frequency_after_standby = false;
   bool tried_high_frequency = false;
+  bool tried_high_frequency_after_standby = false;
   bool logged_raw_bytes = false;
 
   while (elapsed_ms < max_wait_ms)
@@ -2025,15 +2024,33 @@ bool LidarCollector::checkDeviceResponse()
       ensureTfa1500DistanceOutput();
       tried_distance_output = true;
     }
+    else if (!prefer_tfa1500 && !tried_distance_output_after_standby && elapsed_ms >= 1100)
+    {
+      ensureTfa1500Standby();
+      ensureTfa1500DistanceOutput();
+      tried_distance_output_after_standby = true;
+    }
     else if (!prefer_tfa1500 && !tried_low_frequency && elapsed_ms >= 1400)
     {
       ensureTfa1500LowFrequencyContinuous();
       tried_low_frequency = true;
     }
+    else if (!prefer_tfa1500 && !tried_low_frequency_after_standby && elapsed_ms >= 2200)
+    {
+      ensureTfa1500Standby();
+      ensureTfa1500LowFrequencyContinuous();
+      tried_low_frequency_after_standby = true;
+    }
     else if (prefer_tfa1500 && !tried_high_frequency && elapsed_ms >= 200)
     {
       ensureTfa1500Streaming();
       tried_high_frequency = true;
+    }
+    else if (prefer_tfa1500 && !tried_high_frequency_after_standby && elapsed_ms >= 1000)
+    {
+      ensureTfa1500Standby();
+      ensureTfa1500Streaming();
+      tried_high_frequency_after_standby = true;
     }
 
     log(formatDetectionProgress("等待激光测距帧", 1, 1, computeRemainingSeconds(start_time, max_wait_ms)));
