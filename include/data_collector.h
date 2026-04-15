@@ -176,6 +176,7 @@ private:
   bool tfa1500_stream_started_ = false;
 
   bool ensureTfa1500Streaming();
+  bool ensureTfa1500Standby();
   bool ensureTfa1500DistanceOutput();
   bool ensureTfa1500LowFrequencyContinuous();
   void stopTfa1500Streaming();

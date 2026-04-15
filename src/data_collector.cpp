@@ -1797,6 +1797,8 @@ bool LidarCollector::ensureTfa1500Streaming()
     return true;
   }
 
+  ensureTfa1500Standby();
+
   static const uint8_t command[] = {0x55, 0xAA, 0xCB, 0xCC, 0xCC, 0xCC, 0xCC, 0xFB};
   const ssize_t written = serial_.write(command, sizeof(command));
   if (written != static_cast<ssize_t>(sizeof(command)))
@@ -1809,8 +1811,24 @@ bool LidarCollector::ensureTfa1500Streaming()
   return true;
 }
 
+bool LidarCollector::ensureTfa1500Standby()
+{
+  static const uint8_t command[] = {0x55, 0x00, 0x02, 0x00, 0x00, 0x57};
+  const ssize_t written = serial_.write(command, sizeof(command));
+  if (written != static_cast<ssize_t>(sizeof(command)))
+  {
+    log("TFA1500-L: Failed to send standby command");
+    return false;
+  }
+
+  log("TFA1500-L: Sent standby command (stop standard/low-frequency ranging)");
+  return true;
+}
+
 bool LidarCollector::ensureTfa1500DistanceOutput()
 {
+  ensureTfa1500Standby();
+
   static const uint8_t command[] = {0x5A, 0x0A, 0x02, 0x02, 0x00, 0xF1};
   const ssize_t written = serial_.write(command, sizeof(command));
   if (written != static_cast<ssize_t>(sizeof(command)))
@@ -1825,6 +1843,8 @@ bool LidarCollector::ensureTfa1500DistanceOutput()
 
 bool LidarCollector::ensureTfa1500LowFrequencyContinuous()
 {
+  ensureTfa1500Standby();
+
   static const uint8_t command[] = {0x55, 0x02, 0x02, 0x20, 0x00, 0x75};
   const ssize_t written = serial_.write(command, sizeof(command));
   if (written != static_cast<ssize_t>(sizeof(command)))
