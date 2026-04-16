@@ -1849,7 +1849,7 @@ bool LidarCollector::setDeviceSampleRate(int hz)
     }
 
     sample_rate_hz_.store(std::min(hz, 1000));
-    log("TFA1500-L: High-frequency mode uses adaptive device output; host sample rate limit set to " + std::to_string(sample_rate_hz_.load()) + " Hz");
+    log("TFA1500-L: 高频模式使用设备自适应输出；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
     return true;
   }
 
@@ -1857,7 +1857,7 @@ bool LidarCollector::setDeviceSampleRate(int hz)
   {
     ensureTfa1500DistanceOutput();
     sample_rate_hz_.store(std::min(hz, 100));
-    log("TFA1500-L: Device-side frequency command is unavailable in distance-output mode; host sample rate limit set to " + std::to_string(sample_rate_hz_.load()) + " Hz");
+    log("TFA1500-L: 距离输出模式不支持设备侧频率命令；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
     return true;
   }
 
@@ -1865,7 +1865,7 @@ bool LidarCollector::setDeviceSampleRate(int hz)
   {
     ensureTfa1500LowFrequencyContinuous();
     sample_rate_hz_.store(std::min(hz, 100));
-    log("TFA1500-L: Device-side frequency command is unavailable in low-frequency mode; host sample rate limit set to " + std::to_string(sample_rate_hz_.load()) + " Hz");
+    log("TFA1500-L: 低频模式不支持设备侧频率命令；主机采样率限制已设置为 " + std::to_string(sample_rate_hz_.load()) + " Hz");
     return true;
   }
 
