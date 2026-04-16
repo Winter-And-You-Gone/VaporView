@@ -2001,7 +2001,6 @@ void MainWindow::setupMenuBar()
 
     session_viewer_action_ = new QAction(this);
     connect(session_viewer_action_, &QAction::triggered, this, &MainWindow::onOpenSessionViewerClicked);
-    fileMenu->addAction(session_viewer_action_);
 
     fileMenu->addSeparator();
 
