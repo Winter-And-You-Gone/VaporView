@@ -124,14 +124,14 @@ const char* lidarProtocolName(LidarProtocol protocol)
   case LidarProtocol::TFA1500DistanceFrame:
     return "TFA1500-L";
   case LidarProtocol::TFA1500LowFrequencyFrame:
-    return "TFA1500-L Low-Frequency";
+    return "TFA1500-L 低频";
   case LidarProtocol::TFA1500HighFrequency:
-    return "TFA1500-L High-Frequency";
+    return "TFA1500-L 高频";
   case LidarProtocol::ObservedAaB7Frame:
-    return "AA-B7 Lidar";
+    return "AA-B7 激光测距帧";
   case LidarProtocol::Unknown:
   default:
-    return "Unknown";
+    return "未知协议";
   }
 }
 
@@ -171,7 +171,7 @@ bool parseTf03FrameLocal(const uint8_t* frame, size_t size, LidarData& sample)
   sample.signal_strength = strength;
   sample.timestamp = std::chrono::steady_clock::now();
   sample.valid = strength >= 40 && distance_cm > 0;
-  sample.error_message = sample.valid ? "" : "Weak signal or out of range";
+  sample.error_message = sample.valid ? "" : "信号弱或超出量程";
   return true;
 }
 
@@ -203,7 +203,7 @@ bool parseTfa1500FrameLocal(const uint8_t* frame, size_t size, LidarData& sample
   sample.signal_strength = 0;
   sample.timestamp = std::chrono::steady_clock::now();
   sample.valid = valid && distance_cm > 0;
-  sample.error_message = sample.valid ? "" : "No target detected or out of range";
+  sample.error_message = sample.valid ? "" : "未检测到目标或超出量程";
   return true;
 }
 
@@ -248,7 +248,7 @@ bool parseTfa1500LowFrequencyFrameLocal(const uint8_t* frame, size_t size, Lidar
   sample.signal_strength = 0;
   sample.timestamp = std::chrono::steady_clock::now();
   sample.valid = distance_dm > 0;
-  sample.error_message = sample.valid ? "" : "No target detected or out of range";
+  sample.error_message = sample.valid ? "" : "未检测到目标或超出量程";
   return true;
 }
 
@@ -274,7 +274,7 @@ bool parseObservedAaB7FrameLocal(const uint8_t* frame, size_t size, LidarData& s
   sample.signal_strength = frame[8];
   sample.timestamp = std::chrono::steady_clock::now();
   sample.valid = distance_a > 0;
-  sample.error_message = sample.valid ? "" : "No target detected or out of range";
+  sample.error_message = sample.valid ? "" : "未检测到目标或超出量程";
   return true;
 }
 
@@ -815,7 +815,7 @@ bool GnssCollector::setDeviceSampleRate(int hz)
   ssize_t written = serial_.write(cmd.c_str(), cmd.length());
   if (written != static_cast<ssize_t>(cmd.length()))
   {
-    log("[RTK TX] Failed to send command");
+    log("[RTK 发送] 命令发送失败");
     return false;
   }
   
@@ -848,14 +848,14 @@ bool GnssCollector::setDeviceSampleRate(int hz)
       }
       else if (rx_line.find("PVTSLN") != std::string::npos)
       {
-        log("[RTK RX] PVTSLNA output started at " + std::to_string(hz) + " Hz");
+        log("[RTK 接收] PVTSLNA 输出已启动，频率 " + std::to_string(hz) + " Hz");
         break;
       }
     }
   }
   else
   {
-    log("[RTK RX] No response (command may have been accepted)");
+    log("[RTK 接收] 未收到响应（命令可能已生效）");
   }
   
   return true;
@@ -990,7 +990,7 @@ bool ImuCollector::setOutputMessageType(const std::string& message_type)
 {
   if (!isSupportedImuMessageType(message_type))
   {
-    log("IMU: Unsupported output message type: " + message_type);
+    log("IMU: 不支持的输出消息类型: " + message_type);
     return false;
   }
 
@@ -1009,14 +1009,14 @@ bool ImuCollector::sendAsciiCommand(const std::string& command, int wait_ms)
 {
   if (!serial_.isOpen())
   {
-    log("IMU: Serial port is not open");
+    log("IMU: 串口未打开");
     return false;
   }
 
   const ssize_t written = serial_.write(command.c_str(), command.size());
   if (written != static_cast<ssize_t>(command.size()))
   {
-    log("IMU: Failed to send command: " + command);
+    log("IMU: 命令发送失败: " + command);
     return false;
   }
 
@@ -1032,7 +1032,7 @@ bool ImuCollector::setDeviceSampleRate(int hz)
   double period = 0.0;
   if (!imuSampleRateToPeriod(hz, period))
   {
-    log("IMU: Unsupported sample rate: " + std::to_string(hz) + " Hz");
+    log("IMU: 不支持的采样频率: " + std::to_string(hz) + " Hz");
     return false;
   }
 
@@ -1050,12 +1050,12 @@ bool ImuCollector::setDeviceSampleRate(int hz)
   std::snprintf(cmd, sizeof(cmd), "LOG %s ONTIME %.3f\r\n", message_type.c_str(), period);
   if (!sendAsciiCommand(cmd))
   {
-    log("IMU: Failed to send sample rate command");
+    log("IMU: 采样频率命令发送失败");
     return false;
   }
 
-  log("IMU: Set " + message_type + " sample rate to " + std::to_string(hz) +
-      " Hz (period: " + std::to_string(period) + "s)");
+  log("IMU: 已将 " + message_type + " 采样频率设置为 " + std::to_string(hz) +
+      " Hz（周期: " + std::to_string(period) + " 秒）");
   sample_rate_hz_.store(hz);
   return true;
 }
@@ -1261,7 +1261,7 @@ bool PtbCollector::setDeviceSampleRate(int hz)
 {
   if (hz < 1 || hz > 70)
   {
-    log("PTB210: Unsupported sample rate: " + std::to_string(hz) + " Hz (valid: 1-70 Hz)");
+    log("PTB210: 不支持的采样频率: " + std::to_string(hz) + " Hz（有效范围: 1-70 Hz）");
     return false;
   }
 
@@ -1276,7 +1276,7 @@ bool PtbCollector::setDeviceSampleRate(int hz)
   ssize_t written = serial_.write(average_cmd, std::strlen(average_cmd));
   if (written != static_cast<ssize_t>(std::strlen(average_cmd)))
   {
-    log("PTB210: Failed to send AVRG command");
+    log("PTB210: 发送 AVRG 命令失败");
     return false;
   }
 
@@ -1288,7 +1288,7 @@ bool PtbCollector::setDeviceSampleRate(int hz)
   written = serial_.write(cmd, strlen(cmd));
   if (written != static_cast<ssize_t>(std::strlen(cmd)))
   {
-    log("PTB210: Failed to send MPM command");
+    log("PTB210: 发送 MPM 命令失败");
     return false;
   }
 
@@ -1298,7 +1298,7 @@ bool PtbCollector::setDeviceSampleRate(int hz)
   written = serial_.write(reset_cmd, strlen(reset_cmd));
   if (written != static_cast<ssize_t>(std::strlen(reset_cmd)))
   {
-    log("PTB210: Failed to send RESET command");
+    log("PTB210: 发送 RESET 命令失败");
     return false;
   }
 
@@ -1309,12 +1309,12 @@ bool PtbCollector::setDeviceSampleRate(int hz)
     written = serial_.write(PTB_CMD_CONTINUOUS, std::strlen(PTB_CMD_CONTINUOUS));
     if (written != static_cast<ssize_t>(std::strlen(PTB_CMD_CONTINUOUS)))
     {
-      log("PTB210: Failed to resume continuous output");
+      log("PTB210: 恢复连续输出失败");
       return false;
     }
   }
 
-  log("PTB210: Set sample rate to " + std::to_string(hz) + " Hz (MPM: " + std::to_string(mpm) + ")");
+  log("PTB210: 已将采样频率设置为 " + std::to_string(hz) + " Hz（MPM: " + std::to_string(mpm) + "）");
   sample_rate_hz_.store(hz);
   return true;
 }
@@ -1382,7 +1382,7 @@ bool PtbCollector::checkDeviceResponse()
     serial_.flush();
     if (serial_.write(PTB_CMD_PRESSURE, std::strlen(PTB_CMD_PRESSURE)) != static_cast<ssize_t>(std::strlen(PTB_CMD_PRESSURE)))
     {
-      log("PTB210: Failed to send pressure probe command");
+      log("PTB210: 发送压力探测命令失败");
       continue;
     }
 
@@ -1442,7 +1442,7 @@ void PtbCollector::run()
     ssize_t written = serial_.write(PTB_CMD_CONTINUOUS, std::strlen(PTB_CMD_CONTINUOUS));
     if (written != static_cast<ssize_t>(std::strlen(PTB_CMD_CONTINUOUS)))
     {
-      log("PTB210: Failed to start continuous output");
+      log("PTB210: 启动连续输出失败");
       return false;
     }
     return true;
@@ -1530,7 +1530,7 @@ void PtbCollector::run()
       const auto since_bp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - last_bp_time).count();
       if (silence_ms >= restart_timeout_ms && since_bp_ms >= 500)
       {
-        log("PTB210: No continuous data yet, retrying .BP");
+        log("PTB210: 暂未收到连续数据，正在重试 .BP");
         if (startContinuousOutput())
         {
           last_bp_time = std::chrono::steady_clock::now();
@@ -1724,13 +1724,13 @@ void HmpCollector::run()
     {
       std::lock_guard<std::mutex> lock(mutex_);
       latest_data_.valid = false;
-      latest_data_.error_message = "Modbus error: " + std::to_string(exception_code);
+      latest_data_.error_message = "Modbus 错误: " + std::to_string(exception_code);
     }
     else if (parsed == HmpParseResult::CrcError)
     {
       std::lock_guard<std::mutex> lock(mutex_);
       latest_data_.valid = false;
-      latest_data_.error_message = "CRC error";
+      latest_data_.error_message = "CRC 校验错误";
     }
 
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -1774,7 +1774,7 @@ bool LidarCollector::ensureTfa1500Streaming()
   const ssize_t written = serial_.write(command, sizeof(command));
   if (written != static_cast<ssize_t>(sizeof(command)))
   {
-    log("TFA1500-L: Failed to send high-frequency ranging start command");
+    log("TFA1500-L: 发送高频测距启动命令失败");
     return false;
   }
 
@@ -1788,7 +1788,7 @@ bool LidarCollector::ensureTfa1500Standby()
   const ssize_t written = serial_.write(command, sizeof(command));
   if (written != static_cast<ssize_t>(sizeof(command)))
   {
-    log("TFA1500-L: Failed to send standby command");
+    log("TFA1500-L: 发送待机命令失败");
     return false;
   }
 
@@ -1802,7 +1802,7 @@ bool LidarCollector::ensureTfa1500DistanceOutput()
   const ssize_t written = serial_.write(command, sizeof(command));
   if (written != static_cast<ssize_t>(sizeof(command)))
   {
-    log("TFA1500-L: Failed to send measurement-distance output command");
+    log("TFA1500-L: 发送距离输出命令失败");
     return false;
   }
 
@@ -1815,7 +1815,7 @@ bool LidarCollector::ensureTfa1500LowFrequencyContinuous()
   const ssize_t written = serial_.write(command, sizeof(command));
   if (written != static_cast<ssize_t>(sizeof(command)))
   {
-    log("TFA1500-L: Failed to send low-frequency continuous ranging command");
+    log("TFA1500-L: 发送低频连续测距命令失败");
     return false;
   }
 
@@ -1871,7 +1871,7 @@ bool LidarCollector::setDeviceSampleRate(int hz)
 
   if (hz < 1 || hz > 100)
   {
-    log("TF03: Unsupported frame rate: " + std::to_string(hz) + " Hz (valid: 1-100 Hz)");
+    log("TF03: 不支持的帧率: " + std::to_string(hz) + " Hz（有效范围: 1-100 Hz）");
     return false;
   }
 
@@ -1886,12 +1886,12 @@ bool LidarCollector::setDeviceSampleRate(int hz)
   const ssize_t written = serial_.write(command, sizeof(command));
   if (written != static_cast<ssize_t>(sizeof(command)))
   {
-    log("TF03: Failed to send frame rate command");
+    log("TF03: 发送帧率命令失败");
     return false;
   }
 
   sample_rate_hz_.store(hz);
-  log("TF03: Set frame rate to " + std::to_string(hz) + " Hz");
+  log("TF03: 已将帧率设置为 " + std::to_string(hz) + " Hz");
   return true;
 }
 
@@ -1920,7 +1920,7 @@ bool LidarCollector::parseTf03Frame(const uint8_t* frame, size_t size, LidarData
   sample.signal_strength = strength;
   sample.timestamp = std::chrono::steady_clock::now();
   sample.valid = strength >= 40 && distance_cm > 0;
-  sample.error_message = sample.valid ? "" : "Weak signal or out of range";
+  sample.error_message = sample.valid ? "" : "信号弱或超出量程";
   return true;
 }
 
@@ -1952,7 +1952,7 @@ bool LidarCollector::parseTfa1500Frame(const uint8_t* frame, size_t size, LidarD
   sample.signal_strength = 0;
   sample.timestamp = std::chrono::steady_clock::now();
   sample.valid = valid && distance_cm > 0;
-  sample.error_message = sample.valid ? "" : "No target detected or out of range";
+  sample.error_message = sample.valid ? "" : "未检测到目标或超出量程";
   return true;
 }
 
@@ -2039,7 +2039,7 @@ bool LidarCollector::checkDeviceResponse()
             detected_protocol = LidarProtocol::TFA1500HighFrequency;
           }
           active_protocol_ = detected_protocol;
-          log(std::string("Lidar: Detected protocol ") + lidarProtocolName(active_protocol_));
+          log(std::string("激光测距仪: 已识别协议 ") + lidarProtocolName(active_protocol_));
           return true;
         }
         break;

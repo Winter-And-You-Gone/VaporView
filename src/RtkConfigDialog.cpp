@@ -1338,13 +1338,13 @@ bool RtkConfigDialog::sendReceiverCommands(const QStringList& commands, QString 
             {
                 continue;
             }
-            appendLog(QStringLiteral("[RTK RX] %1").arg(line));
+            appendLog(QStringLiteral("[RTK 接收] %1").arg(line));
             logged = true;
         }
         if (!logged)
         {
-            appendLog(textFor("[RTK RX] No response (command may have been accepted)",
-                              "[RTK RX] 无返回（命令可能已被接受）"));
+            appendLog(textFor("[RTK 接收] No response (command may have been accepted)",
+                              "[RTK 接收] 无返回（命令可能已被接受）"));
         }
     };
 
@@ -1357,7 +1357,7 @@ bool RtkConfigDialog::sendReceiverCommands(const QStringList& commands, QString 
         }
 
         const QByteArray payload = (trimmedCommand + QStringLiteral("\r\n")).toLatin1();
-        appendLog(QStringLiteral("[RTK TX] %1").arg(trimmedCommand));
+        appendLog(QStringLiteral("[RTK 发送] %1").arg(trimmedCommand));
         const ssize_t written = serial.write(payload.constData(), static_cast<size_t>(payload.size()));
         if (written != payload.size())
         {

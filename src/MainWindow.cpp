@@ -1861,7 +1861,7 @@ bool MainWindow::applyImuDeviceProfile(const QString& requestedFormat, int reque
         {
             return false;
         }
-        log(QString("[IMU TX] %1").arg(command.trimmed()));
+        log(QString("[IMU 发送] %1").arg(command.trimmed()));
         return true;
     };
 
