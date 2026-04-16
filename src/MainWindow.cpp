@@ -1080,6 +1080,7 @@ MainWindow::MainWindow(QWidget *parent)
     , lidar_panel_(nullptr)
     , log_text_edit_(nullptr)
     , status_label_(nullptr)
+    , status_task_progress_bar_(nullptr)
     , recording_status_label_(nullptr)
     , auto_detect_ports_btn_(nullptr)
     , gnss_port_combo_(nullptr)
@@ -2198,8 +2199,62 @@ void MainWindow::setupStatusBar()
     status_label_ = new QLabel(this);
     statusBar()->addWidget(status_label_);
 
+    status_task_progress_bar_ = new QProgressBar(this);
+    status_task_progress_bar_->setVisible(false);
+    status_task_progress_bar_->setTextVisible(true);
+    status_task_progress_bar_->setFixedHeight(18);
+    status_task_progress_bar_->setMinimumWidth(180);
+    status_task_progress_bar_->setMaximumWidth(260);
+    status_task_progress_bar_->setRange(0, 100);
+    status_task_progress_bar_->setValue(0);
+    status_task_progress_bar_->setFormat(QString());
+    statusBar()->addWidget(status_task_progress_bar_);
+
     recording_status_label_ = new QLabel(this);
     statusBar()->addPermanentWidget(recording_status_label_);
+}
+
+void MainWindow::showStatusTaskProgress(const QString& label, int value, int maximum)
+{
+    if (!status_task_progress_bar_)
+    {
+        return;
+    }
+
+    const int normalizedMaximum = std::max(1, maximum);
+    const int normalizedValue = std::clamp(value, 0, normalizedMaximum);
+    status_task_progress_bar_->setVisible(true);
+    status_task_progress_bar_->setRange(0, normalizedMaximum);
+    status_task_progress_bar_->setValue(normalizedValue);
+    status_task_progress_bar_->setFormat(QStringLiteral("%1 %p%").arg(label));
+    status_task_progress_bar_->setToolTip(label);
+}
+
+void MainWindow::showBusyStatusTaskProgress(const QString& label)
+{
+    if (!status_task_progress_bar_)
+    {
+        return;
+    }
+
+    status_task_progress_bar_->setVisible(true);
+    status_task_progress_bar_->setRange(0, 0);
+    status_task_progress_bar_->setFormat(label);
+    status_task_progress_bar_->setToolTip(label);
+}
+
+void MainWindow::hideStatusTaskProgress()
+{
+    if (!status_task_progress_bar_)
+    {
+        return;
+    }
+
+    status_task_progress_bar_->setVisible(false);
+    status_task_progress_bar_->setRange(0, 100);
+    status_task_progress_bar_->setValue(0);
+    status_task_progress_bar_->setFormat(QString());
+    status_task_progress_bar_->setToolTip(QString());
 }
 
 void MainWindow::setupCentralWidget()
@@ -2711,6 +2766,9 @@ void MainWindow::setEnglish(bool english)
 
 void MainWindow::onOpenSessionViewerClicked()
 {
+    showBusyStatusTaskProgress(is_english_ ? "Opening Data Viewer..." : "正在打开数据查看器...");
+    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+
     if (!session_viewer_window_)
     {
         session_viewer_window_ = new SessionViewerWindow(this);
@@ -2725,6 +2783,7 @@ void MainWindow::onOpenSessionViewerClicked()
     session_viewer_window_->show();
     session_viewer_window_->raise();
     session_viewer_window_->activateWindow();
+    hideStatusTaskProgress();
 }
 
 void MainWindow::onSwitchLanguage()
@@ -4072,6 +4131,7 @@ void MainWindow::finishConnectionAttempt(bool connected)
     {
         stopRecording(true);
     }
+    hideStatusTaskProgress();
     updateConnectionStatus(connected);
 }
 
@@ -4122,6 +4182,7 @@ void MainWindow::onAutoDetectPortsClicked()
     port_detection_in_progress_ = true;
     updateConnectionStatus(is_connected_);
     log(is_english_ ? "Starting automatic serial-port detection..." : "开始自动识别串口...");
+    showBusyStatusTaskProgress(is_english_ ? "Detecting Ports..." : "正在识别串口...");
 
     const QString imuProbeBaudText = imu_baud_combo_ ? imu_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
     bool imuProbeBaudOk = false;
@@ -4249,6 +4310,7 @@ void MainWindow::onAutoDetectPortsClicked()
                 }
 
                 port_detection_in_progress_ = false;
+                hideStatusTaskProgress();
                 updateConnectionStatus(is_connected_);
             }, Qt::QueuedConnection);
         };
@@ -4408,6 +4470,12 @@ void MainWindow::onConnectClicked()
     const QString lidarRateText = lidar_rate_combo_->currentText();
     const bool skipLidarDeviceRate = isLidarRateUnspecified(lidarRateText);
     const int lidarRate = effectiveLidarSampleRate(lidarRateText);
+    const int selectedDeviceCount =
+        ((gnssPort != selectText && !gnssPort.isEmpty()) ? 1 : 0) +
+        ((imuPort != selectText && !imuPort.isEmpty()) ? 1 : 0) +
+        ((ptbPort != selectText && !ptbPort.isEmpty()) ? 1 : 0) +
+        ((hmpPort != selectText && !hmpPort.isEmpty()) ? 1 : 0) +
+        ((lidarPort != selectText && !lidarPort.isEmpty()) ? 1 : 0);
     gnss_sample_rate_ = gnssRate;
     imu_sample_rate_ = imuRate;
     ptb_sample_rate_ = ptbRate;
@@ -4415,6 +4483,9 @@ void MainWindow::onConnectClicked()
     lidar_sample_rate_ = lidarRate;
 
     stopAllCollectors();
+
+    const int connectionProgressSteps = std::max(1, selectedDeviceCount * 4 + 1);
+    showStatusTaskProgress(is_english_ ? "Connecting devices..." : "正在连接设备...", 0, connectionProgressSteps);
 
     connection_thread_ = std::thread([this,
                                       english,
@@ -4434,9 +4505,15 @@ void MainWindow::onConnectClicked()
                                       ptbRate,
                                       hmpRate,
                                       lidarRate,
-                                      skipLidarDeviceRate]() {
+                                      skipLidarDeviceRate,
+                                      connectionProgressSteps]() {
         auto postLog = [this](const QString& message) {
             QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
+        };
+        auto postProgress = [this, connectionProgressSteps](const QString& label, int value) {
+            QMetaObject::invokeMethod(this, [this, label, value, connectionProgressSteps]() {
+                showStatusTaskProgress(label, value, connectionProgressSteps);
+            }, Qt::QueuedConnection);
         };
         auto finishOnUi = [this](bool connected) {
             QMetaObject::invokeMethod(this, [this, connected]() { finishConnectionAttempt(connected); }, Qt::QueuedConnection);
@@ -4512,6 +4589,7 @@ void MainWindow::onConnectClicked()
 
         int total_devices = 0;
         int connected_devices = 0;
+        int progressStep = 0;
 
         auto cancelAttempt = [&]() {
             stopAllCollectors();
@@ -4539,9 +4617,11 @@ void MainWindow::onConnectClicked()
             }
 
             total_devices++;
+            postProgress(english ? QString("Connecting %1...").arg(tag) : QString("正在连接 %1...").arg(tag), ++progressStep);
             postLog(QString(english ? "[%1] Checking port: %2" : "[%1] 检查端口: %2").arg(tag, port));
             if (abortIfRequested()) return -1;
 
+            postProgress(english ? QString("Opening %1...").arg(tag) : QString("正在打开 %1...").arg(tag), ++progressStep);
             postLog(QString(english ? "[%1] Port selected, connecting..." : "[%1] 已选择端口，正在连接...").arg(tag));
             if (abortIfRequested()) return -1;
 
@@ -4552,6 +4632,7 @@ void MainWindow::onConnectClicked()
                 return 0;
             }
 
+            postProgress(english ? QString("Checking %1 response...").arg(tag) : QString("正在检测 %1 响应...").arg(tag), ++progressStep);
             postLog(QString(english ? "[%1] Serial port opened, checking device response..." : "[%1] 串口已打开，正在检测设备响应...").arg(tag));
             if (abortIfRequested()) return -1;
 
@@ -4563,6 +4644,7 @@ void MainWindow::onConnectClicked()
                 return 0;
             }
 
+            postProgress(english ? QString("Starting %1 stream...").arg(tag) : QString("正在启动 %1 数据流...").arg(tag), ++progressStep);
             postLog(QString(english ? "[%1] Device responding, connected: %2 @ %3 baud" : "[%1] 设备响应正常，连接成功: %2 @ %3 波特率")
                         .arg(tag, port, baudText));
             if (!onReady())
@@ -4655,6 +4737,7 @@ void MainWindow::onConnectClicked()
                                  return false;
                              }) < 0) return;
 
+        postProgress(english ? "Finalizing connection..." : "正在完成连接...", connectionProgressSteps);
         postLog(QString(english ? "========== Connection Summary: %1/%2 devices connected ==========" : "========== 连接摘要: %1/%2 设备已连接 ==========").arg(connected_devices).arg(total_devices));
         if (connected_devices == 0)
         {

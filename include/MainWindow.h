@@ -15,6 +15,7 @@
 #include <QGroupBox>
 #include <QComboBox>
 #include <QPushButton>
+#include <QProgressBar>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
 #include <QTimer>
@@ -296,6 +297,9 @@ private:
     void loadModernStyleSheet();
     void log(const QString& message);
     void updateRecordingStatusLabel();
+    void showStatusTaskProgress(const QString& label, int value, int maximum);
+    void showBusyStatusTaskProgress(const QString& label);
+    void hideStatusTaskProgress();
     void rebuildRecordingRateMenu();
     void setRecordingExportRateHz(int rate, bool should_log = true);
     void setImuRecordingRateHz(int rate, bool should_log = true);
@@ -355,6 +359,7 @@ private:
 
     QTextEdit *log_text_edit_;
     QLabel *status_label_;
+    QProgressBar *status_task_progress_bar_;
     QLabel *recording_status_label_;
     QPushButton *auto_detect_ports_btn_;
 
