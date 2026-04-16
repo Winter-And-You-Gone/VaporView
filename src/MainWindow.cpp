@@ -1355,6 +1355,9 @@ void MainWindow::loadModernStyleSheet()
             "QScrollBar::handle:horizontal { background-color: #bdbdbd; min-width: 30px; border-radius: 6px; margin: 2px; }"
             "QScrollBar::handle:horizontal:hover { background-color: #9e9e9e; }"
             "QSplitter::handle { background-color: transparent; }"
+            "QSplitter#mainContentSplitter::handle:horizontal { width: 8px; background-color: transparent; }"
+            "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: rgba(25, 118, 210, 0.18); }"
+            "QSplitter#mainContentSplitter::handle:horizontal:pressed { background-color: rgba(25, 118, 210, 0.28); }"
             "QSplitter::handle:horizontal { width: 0px; }"
             "QSplitter::handle:vertical { height: 0px; }"
             "QPushButton { background-color: #1976d2; color: #ffffff; border: none; border-radius: 6px; padding: 0px 18px; font-size: 15px; font-weight: 500; min-height: 38px; max-height: 38px; }"
@@ -2227,8 +2230,9 @@ void MainWindow::setupCentralWidget()
     setupLogPanel();
 
     auto *main_splitter = new QSplitter(Qt::Horizontal, central_widget_);
+    main_splitter->setObjectName("mainContentSplitter");
     main_splitter->setChildrenCollapsible(false);
-    main_splitter->setHandleWidth(0);
+    main_splitter->setHandleWidth(8);
     main_splitter->addWidget(left_scroll_area);
     main_splitter->addWidget(log_group_);
     main_splitter->setStretchFactor(0, 6);
@@ -2516,8 +2520,7 @@ void MainWindow::setupDataPanels()
 void MainWindow::setupLogPanel()
 {
     log_group_ = new QGroupBox(this);
-    log_group_->setMinimumWidth(220);
-    log_group_->setMaximumWidth(340);
+    log_group_->setMinimumWidth(120);
     auto *log_layout = new QVBoxLayout(log_group_);
     log_layout->setContentsMargins(0, 0, 0, 0);
     log_layout->setSpacing(0);
@@ -2528,7 +2531,7 @@ void MainWindow::setupLogPanel()
 
     log_text_edit_ = new QTextEdit(this);
     log_text_edit_->setReadOnly(true);
-    log_text_edit_->setMinimumWidth(200);
+    log_text_edit_->setMinimumWidth(100);
     log_layout->addWidget(log_text_edit_);
 }
 
