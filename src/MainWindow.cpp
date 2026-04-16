@@ -2654,10 +2654,13 @@ void MainWindow::setEnglish(bool english)
     }
     if (auto_detect_ports_btn_)
     {
-        auto_detect_ports_btn_->setText(english ? "Auto Detect Ports" : "自动识别串口");
-        auto_detect_ports_btn_->setToolTip(english
-            ? "Probe available serial ports and automatically assign detected devices."
-            : "扫描可用串口，并将识别出的设备自动填入对应端口。");
+        auto_detect_ports_btn_->setText(port_detection_in_progress_
+            ? (english ? "Cancel Auto Detect" : "取消自动识别")
+            : (english ? "Auto Detect Ports" : "自动识别串口"));
+        auto_detect_ports_btn_->setToolTip(port_detection_in_progress_
+            ? (english ? "Stop the current serial-port detection task." : "停止当前串口自动识别任务。")
+            : (english ? "Probe available serial ports and automatically assign detected devices."
+                       : "扫描可用串口，并将识别出的设备自动填入对应端口。"));
     }
     if (data_inline_title_lbl_)
     {
@@ -4017,7 +4020,14 @@ void MainWindow::updateConnectionStatus(bool connected)
     refresh_ports_btn_->setEnabled(inputsEnabled);
     if (auto_detect_ports_btn_)
     {
-        auto_detect_ports_btn_->setEnabled(inputsEnabled);
+        auto_detect_ports_btn_->setEnabled(!connected && !connection_attempt_in_progress_);
+        auto_detect_ports_btn_->setText(port_detection_in_progress_
+            ? (is_english_ ? "Cancel Auto Detect" : "取消自动识别")
+            : (is_english_ ? "Auto Detect Ports" : "自动识别串口"));
+        auto_detect_ports_btn_->setToolTip(port_detection_in_progress_
+            ? (is_english_ ? "Stop the current serial-port detection task." : "停止当前串口自动识别任务。")
+            : (is_english_ ? "Probe available serial ports and automatically assign detected devices."
+                           : "扫描可用串口，并将识别出的设备自动填入对应端口。"));
     }
 
     gnss_port_combo_->setEnabled(inputsEnabled);
@@ -4168,7 +4178,17 @@ void MainWindow::onRefreshPortsClicked()
 
 void MainWindow::onAutoDetectPortsClicked()
 {
-    if (is_connected_ || connection_attempt_in_progress_ || port_detection_in_progress_)
+    if (port_detection_in_progress_)
+    {
+        cancel_connection_requested_.store(true);
+        log(is_english_ ? "Cancel requested, stopping automatic serial-port detection..." : "已请求取消，正在停止自动识别串口...");
+        showBusyStatusTaskProgress(is_english_ ? "Canceling port detection..." : "正在取消串口识别...");
+        updateConnectionStatus(is_connected_);
+        QApplication::processEvents(QEventLoop::AllEvents);
+        return;
+    }
+
+    if (is_connected_ || connection_attempt_in_progress_)
     {
         return;
     }
@@ -4180,6 +4200,7 @@ void MainWindow::onAutoDetectPortsClicked()
 
     onRefreshPortsClicked();
     port_detection_in_progress_ = true;
+    cancel_connection_requested_.store(false);
     updateConnectionStatus(is_connected_);
     log(is_english_ ? "Starting automatic serial-port detection..." : "开始自动识别串口...");
     showBusyStatusTaskProgress(is_english_ ? "Detecting Ports..." : "正在识别串口...");
@@ -4207,6 +4228,7 @@ void MainWindow::onAutoDetectPortsClicked()
         };
 
         const bool english = is_english_;
+        const auto cancelRequested = [this]() { return cancel_connection_requested_.load(); };
         auto postLog = [this](const QString& message) {
             QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
         };
@@ -4310,12 +4332,14 @@ void MainWindow::onAutoDetectPortsClicked()
                 }
 
                 port_detection_in_progress_ = false;
+                cancel_connection_requested_.store(false);
                 hideStatusTaskProgress();
                 updateConnectionStatus(is_connected_);
             }, Qt::QueuedConnection);
         };
 
-        auto probeCollector = [](const QString& port_name, auto&& collector, const VaporView::SerialConfig& config) {
+        auto probeCollector = [cancelRequested](const QString& port_name, auto&& collector, const VaporView::SerialConfig& config) {
+            collector->setCancelCallback(cancelRequested);
             if (!collector->start(port_name.toStdString(), config))
             {
                 return false;
@@ -4370,10 +4394,24 @@ void MainWindow::onAutoDetectPortsClicked()
 
         for (const QString& port_name : port_names)
         {
+            if (cancelRequested())
+            {
+                postLog(english ? "Auto detect canceled." : "自动识别已取消。");
+                finishOnUi(std::move(detections));
+                return;
+            }
+
             bool matched = false;
 
             for (const ProbeSpec& spec : probe_specs)
             {
+                if (cancelRequested())
+                {
+                    postLog(english ? "Auto detect canceled." : "自动识别已取消。");
+                    finishOnUi(std::move(detections));
+                    return;
+                }
+
                 const bool already_detected = std::any_of(detections.cbegin(), detections.cend(),
                     [&spec](const DetectionResult& result) { return result.key == spec.key; });
                 if (already_detected)
