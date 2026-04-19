@@ -259,6 +259,7 @@ private slots:
     void onToggleFullScreen();
     void onSwitchLanguage();
     void onReconfigureEpsilonClicked();
+    void onConfigureEpsilonPacketRatesClicked();
     void onGlobalRateChanged(const QString& text);
     void onGnssRateChanged(const QString& text);
     void onImuRateChanged(const QString& text);
@@ -394,6 +395,7 @@ private:
     QAction *clear_log_action_;
     QAction *session_viewer_action_;
     QAction *epsilon_reconfigure_action_;
+    QAction *epsilon_packet_rates_action_;
     QAction *recording_directory_action_;
     QAction *exit_action_;
     QAction *about_action_;
@@ -404,6 +406,12 @@ private:
     QAction *font_normal_action_;
     QAction *font_large_action_;
     QAction *font_extra_large_action_;
+    QMenu *data_menu_;
+    QMenu *devices_menu_;
+    QMenu *view_menu_;
+    QMenu *font_menu_;
+    QMenu *language_menu_;
+    QMenu *help_menu_;
     QMenu *recording_rate_menu_;
 
     QGroupBox *config_group_;

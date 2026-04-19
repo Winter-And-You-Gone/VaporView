@@ -7,6 +7,10 @@
 #include "serial_probe_utils.h"
 #include <QMenu>
 #include <QAction>
+#include <QCheckBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
 #include <QMessageBox>
 #include <QFile>
 #include <QFileInfo>
@@ -44,7 +48,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <map>
 #include <memory>
+#include <vector>
 
 namespace
 {
@@ -206,6 +212,138 @@ void rememberBaseMetric(QObject *object, const char *propertyName, int value)
     {
         object->setProperty(propertyName, value);
     }
+}
+
+struct EpsilonPacketConfigOption
+{
+    quint8 packet_id = 0;
+    const char *message_name = nullptr;
+    const char *title_zh = nullptr;
+    const char *title_en = nullptr;
+    std::vector<int> supported_rates_hz;
+};
+
+const std::vector<EpsilonPacketConfigOption>& epsilonPacketConfigOptions()
+{
+    static const std::vector<EpsilonPacketConfigOption> kOptions = {
+        {0x40, "MSG_IMU", "IMU原始数据", "IMU Raw Data", {0, 1, 2, 5, 10, 20, 50, 100, 200, 250, 500, 1000}},
+        {0x41, "MSG_AHRS", "AHRS姿态解", "AHRS Attitude", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x42, "MSG_INSGPS", "INS/GPS融合解", "INS/GPS Navigation", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x50, "MSG_SYS_STATE", "系统状态", "System State", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x59, "MSG_RAW_GNSS", "原始GNSS", "Raw GNSS", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x5A, "MSG_SATELLITE", "卫星汇总", "Satellite Summary", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x5C, "MSG_GEODETIC_POS", "大地坐标", "Geodetic Position", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+        {0x5D, "MSG_ECEF_POS", "ECEF坐标", "ECEF Position", {0, 1, 2, 5, 10, 20, 50, 100, 250, 500}},
+    };
+    return kOptions;
+}
+
+QString epsilonPacketRateSettingsKey(quint8 packetId)
+{
+    return QStringLiteral("epsilon_custom_packet_rate_%1")
+        .arg(packetId, 2, 16, QLatin1Char('0'))
+        .toUpper();
+}
+
+std::map<uint8_t, int> groupedEpsilonPacketRates(int baseRateHz)
+{
+    const int lowRateHz = std::min(baseRateHz, 20);
+    return {
+        {0x40, baseRateHz},
+        {0x41, baseRateHz},
+        {0x42, baseRateHz},
+        {0x50, baseRateHz},
+        {0x59, lowRateHz},
+        {0x5A, lowRateHz},
+        {0x5C, lowRateHz},
+        {0x5D, lowRateHz},
+    };
+}
+
+bool epsilonPacketRateSupported(const EpsilonPacketConfigOption& option, int rateHz)
+{
+    return std::find(option.supported_rates_hz.cbegin(), option.supported_rates_hz.cend(), rateHz) != option.supported_rates_hz.cend();
+}
+
+std::map<uint8_t, int> loadCustomEpsilonPacketRates(QSettings& settings, int fallbackBaseRateHz)
+{
+    std::map<uint8_t, int> packetRates = groupedEpsilonPacketRates(fallbackBaseRateHz);
+    for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
+    {
+        const int fallbackRate = packetRates[option.packet_id];
+        const int storedRate = settings.value(epsilonPacketRateSettingsKey(option.packet_id), fallbackRate).toInt();
+        packetRates[option.packet_id] = epsilonPacketRateSupported(option, storedRate) ? storedRate : fallbackRate;
+    }
+    return packetRates;
+}
+
+std::map<uint8_t, int> effectiveEpsilonPacketRates(QSettings& settings, int baseRateHz, bool *usingCustomProfile = nullptr)
+{
+    const bool useCustomProfile = settings.value("epsilon_custom_packet_rates_enabled", false).toBool();
+    if (usingCustomProfile)
+    {
+        *usingCustomProfile = useCustomProfile;
+    }
+    return useCustomProfile ? loadCustomEpsilonPacketRates(settings, baseRateHz) : groupedEpsilonPacketRates(baseRateHz);
+}
+
+QString epsilonPacketRatesSignature(const std::map<uint8_t, int>& packetRates)
+{
+    QStringList parts;
+    for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
+    {
+        const auto it = packetRates.find(option.packet_id);
+        const int rateHz = (it != packetRates.end()) ? it->second : -1;
+        parts << QStringLiteral("%1=%2")
+                     .arg(option.packet_id, 2, 16, QLatin1Char('0'))
+                     .toUpper()
+                     .arg(rateHz);
+    }
+    return parts.join(';');
+}
+
+QString epsilonPacketRatesSummary(const std::map<uint8_t, int>& packetRates)
+{
+    QStringList parts;
+    for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
+    {
+        const auto it = packetRates.find(option.packet_id);
+        if (it == packetRates.end())
+        {
+            continue;
+        }
+        parts << QStringLiteral("%1=%2Hz")
+                     .arg(option.packet_id, 2, 16, QLatin1Char('0'))
+                     .toUpper()
+                     .arg(it->second);
+    }
+    return parts.join(QStringLiteral(", "));
+}
+
+int epsilonPacketCallbackRate(const std::map<uint8_t, int>& packetRates, int fallbackRateHz)
+{
+    int maxRateHz = 0;
+    for (const auto& entry : packetRates)
+    {
+        maxRateHz = std::max(maxRateHz, entry.second);
+    }
+    return maxRateHz > 0 ? maxRateHz : fallbackRateHz;
+}
+
+QString epsilonPacketDialogRowLabel(const EpsilonPacketConfigOption& option, bool english)
+{
+    const int maxRateHz = option.supported_rates_hz.empty() ? 0 : option.supported_rates_hz.back();
+    if (english)
+    {
+        return QStringLiteral("%1 [%2]  (Max %3 Hz)")
+            .arg(QString::fromLatin1(option.message_name))
+            .arg(option.packet_id, 2, 16, QLatin1Char('0'))
+            .arg(maxRateHz);
+    }
+    return QStringLiteral("%1 [%2]（最大 %3 Hz）")
+        .arg(QString::fromUtf8(option.title_zh))
+        .arg(option.packet_id, 2, 16, QLatin1Char('0'))
+        .arg(maxRateHz);
 }
 }
 
@@ -1398,6 +1536,7 @@ MainWindow::MainWindow(QWidget *parent)
     , clear_log_action_(nullptr)
     , session_viewer_action_(nullptr)
     , epsilon_reconfigure_action_(nullptr)
+    , epsilon_packet_rates_action_(nullptr)
     , recording_directory_action_(nullptr)
     , exit_action_(nullptr)
     , about_action_(nullptr)
@@ -1408,6 +1547,12 @@ MainWindow::MainWindow(QWidget *parent)
     , font_normal_action_(nullptr)
     , font_large_action_(nullptr)
     , font_extra_large_action_(nullptr)
+    , data_menu_(nullptr)
+    , devices_menu_(nullptr)
+    , view_menu_(nullptr)
+    , font_menu_(nullptr)
+    , language_menu_(nullptr)
+    , help_menu_(nullptr)
     , recording_rate_menu_(nullptr)
     , config_group_(nullptr)
     , data_group_(nullptr)
@@ -2305,37 +2450,43 @@ bool MainWindow::applyImuDeviceProfile(const QString& requestedFormat, int reque
 
 void MainWindow::setupMenuBar()
 {
-    QMenu *fileMenu = menuBar()->addMenu("");
+    data_menu_ = menuBar()->addMenu("");
 
     recording_directory_action_ = new QAction(this);
     connect(recording_directory_action_, &QAction::triggered, this, &MainWindow::onChooseRecordingDirectoryClicked);
-    fileMenu->addAction(recording_directory_action_);
+    data_menu_->addAction(recording_directory_action_);
 
-    recording_rate_menu_ = fileMenu->addMenu("");
+    recording_rate_menu_ = data_menu_->addMenu("");
     rebuildRecordingRateMenu();
+
+    devices_menu_ = menuBar()->addMenu("");
+
+    epsilon_packet_rates_action_ = new QAction(this);
+    connect(epsilon_packet_rates_action_, &QAction::triggered, this, &MainWindow::onConfigureEpsilonPacketRatesClicked);
+    devices_menu_->addAction(epsilon_packet_rates_action_);
 
     epsilon_reconfigure_action_ = new QAction(this);
     connect(epsilon_reconfigure_action_, &QAction::triggered, this, &MainWindow::onReconfigureEpsilonClicked);
-    fileMenu->addAction(epsilon_reconfigure_action_);
+    devices_menu_->addAction(epsilon_reconfigure_action_);
 
     session_viewer_action_ = new QAction(this);
     connect(session_viewer_action_, &QAction::triggered, this, &MainWindow::onOpenSessionViewerClicked);
 
-    fileMenu->addSeparator();
+    data_menu_->addSeparator();
 
     exit_action_ = new QAction(this);
     exit_action_->setShortcut(QKeySequence::Quit);
     connect(exit_action_, &QAction::triggered, this, &QMainWindow::close);
-    fileMenu->addAction(exit_action_);
+    data_menu_->addAction(exit_action_);
 
-    QMenu *viewMenu = menuBar()->addMenu("");
+    view_menu_ = menuBar()->addMenu("");
 
     fullscreen_menu_action_ = new QAction(this);
     fullscreen_menu_action_->setShortcut(QKeySequence(Qt::Key_F11));
     connect(fullscreen_menu_action_, &QAction::triggered, this, &MainWindow::onToggleFullScreen);
-    viewMenu->addAction(fullscreen_menu_action_);
+    view_menu_->addAction(fullscreen_menu_action_);
 
-    QMenu *fontMenu = menuBar()->addMenu("");
+    font_menu_ = menuBar()->addMenu("");
     font_scale_group_ = new QActionGroup(this);
     font_scale_group_->setExclusive(true);
 
@@ -2343,37 +2494,37 @@ void MainWindow::setupMenuBar()
     font_tiny_action_->setCheckable(true);
     font_tiny_action_->setData(70);
     font_scale_group_->addAction(font_tiny_action_);
-    fontMenu->addAction(font_tiny_action_);
+    font_menu_->addAction(font_tiny_action_);
 
     font_extra_small_action_ = new QAction(this);
     font_extra_small_action_->setCheckable(true);
     font_extra_small_action_->setData(80);
     font_scale_group_->addAction(font_extra_small_action_);
-    fontMenu->addAction(font_extra_small_action_);
+    font_menu_->addAction(font_extra_small_action_);
 
     font_small_action_ = new QAction(this);
     font_small_action_->setCheckable(true);
     font_small_action_->setData(90);
     font_scale_group_->addAction(font_small_action_);
-    fontMenu->addAction(font_small_action_);
+    font_menu_->addAction(font_small_action_);
 
     font_normal_action_ = new QAction(this);
     font_normal_action_->setCheckable(true);
     font_normal_action_->setData(100);
     font_scale_group_->addAction(font_normal_action_);
-    fontMenu->addAction(font_normal_action_);
+    font_menu_->addAction(font_normal_action_);
 
     font_large_action_ = new QAction(this);
     font_large_action_->setCheckable(true);
     font_large_action_->setData(115);
     font_scale_group_->addAction(font_large_action_);
-    fontMenu->addAction(font_large_action_);
+    font_menu_->addAction(font_large_action_);
 
     font_extra_large_action_ = new QAction(this);
     font_extra_large_action_->setCheckable(true);
     font_extra_large_action_->setData(130);
     font_scale_group_->addAction(font_extra_large_action_);
-    fontMenu->addAction(font_extra_large_action_);
+    font_menu_->addAction(font_extra_large_action_);
 
     connect(font_scale_group_, &QActionGroup::triggered, this, &MainWindow::onFontScaleTriggered);
 
@@ -2402,13 +2553,13 @@ void MainWindow::setupMenuBar()
         font_extra_large_action_->setChecked(true);
     }
 
-    QMenu *langMenu = menuBar()->addMenu("");
+    language_menu_ = menuBar()->addMenu("");
 
     lang_action_ = new QAction(this);
     connect(lang_action_, &QAction::triggered, this, &MainWindow::onSwitchLanguage);
-    langMenu->addAction(lang_action_);
+    language_menu_->addAction(lang_action_);
 
-    QMenu *helpMenu = menuBar()->addMenu("");
+    help_menu_ = menuBar()->addMenu("");
 
     about_action_ = new QAction(this);
     connect(about_action_, &QAction::triggered, [this]() {
@@ -2434,7 +2585,7 @@ void MainWindow::setupMenuBar()
             "按 F11 进入全屏模式。";
         QMessageBox::about(this, title, text);
     });
-    helpMenu->addAction(about_action_);
+    help_menu_->addAction(about_action_);
 }
 
 void MainWindow::setupToolBar()
@@ -2918,12 +3069,23 @@ void MainWindow::setEnglish(bool english)
 {
     is_english_ = english;
 
-    menuBar()->actions().at(0)->menu()->setTitle(english ? "&Data" : "数据(&D)");
+    if (data_menu_)
+    {
+        data_menu_->setTitle(english ? "&Data" : "数据(&D)");
+    }
     recording_directory_action_->setText(english ? "Recording Folder..." : "记录目录...");
     if (recording_rate_menu_)
     {
         recording_rate_menu_->setTitle(english ? "Record Rates" : "记录频率");
         rebuildRecordingRateMenu();
+    }
+    if (devices_menu_)
+    {
+        devices_menu_->setTitle(english ? "&Devices" : "设备(&E)");
+    }
+    if (epsilon_packet_rates_action_)
+    {
+        epsilon_packet_rates_action_->setText(english ? "EPSILON Packet Rates..." : "设置EPSILON包频率...");
     }
     if (epsilon_reconfigure_action_)
     {
@@ -2932,10 +3094,16 @@ void MainWindow::setEnglish(bool english)
     session_viewer_action_->setText(english ? "Data Viewer..." : "数据查看器...");
     exit_action_->setText(english ? "E&xit" : "退出(&X)");
 
-    menuBar()->actions().at(1)->menu()->setTitle(english ? "&View" : "视图(&V)");
+    if (view_menu_)
+    {
+        view_menu_->setTitle(english ? "&View" : "视图(&V)");
+    }
     fullscreen_menu_action_->setText(english ? "&Fullscreen" : "全屏(&F)");
 
-    menuBar()->actions().at(2)->menu()->setTitle(english ? "Font &Size" : "字号(&S)");
+    if (font_menu_)
+    {
+        font_menu_->setTitle(english ? "Font &Size" : "字号(&S)");
+    }
     font_tiny_action_->setText(english ? "Tiny (70%)" : "超小 (70%)");
     font_extra_small_action_->setText(english ? "Extra Small (80%)" : "特小 (80%)");
     font_small_action_->setText(english ? "Small (90%)" : "小号 (90%)");
@@ -2943,10 +3111,16 @@ void MainWindow::setEnglish(bool english)
     font_large_action_->setText(english ? "Large (115%)" : "大号 (115%)");
     font_extra_large_action_->setText(english ? "Extra Large (130%)" : "超大 (130%)");
 
-    menuBar()->actions().at(3)->menu()->setTitle(english ? "&Language" : "语言(&L)");
+    if (language_menu_)
+    {
+        language_menu_->setTitle(english ? "&Language" : "语言(&L)");
+    }
     lang_action_->setText(english ? "Switch to Chinese" : "切换到英文");
 
-    menuBar()->actions().at(4)->menu()->setTitle(english ? "&Help" : "帮助(&H)");
+    if (help_menu_)
+    {
+        help_menu_->setTitle(english ? "&Help" : "帮助(&H)");
+    }
     about_action_->setText(english ? "&About" : "关于(&A)");
 
     refresh_ports_btn_->setText(english ? "Refresh" : "刷新");
@@ -3180,16 +3354,16 @@ int MainWindow::effectiveLidarSampleRate(const QString& text) const
 void MainWindow::onGlobalRateChanged(const QString& text)
 {
     int rate = parseRate(text);
-    
+
     epsilon_sample_rate_ = std::clamp(rate, 20, 200);
     ptb_sample_rate_ = rate;
     hmp_sample_rate_ = rate;
-    
+
     if (epsilon_rate_combo_) epsilon_rate_combo_->blockSignals(true);
     if (ptb_rate_combo_) ptb_rate_combo_->blockSignals(true);
     if (hmp_rate_combo_) hmp_rate_combo_->blockSignals(true);
     if (lidar_rate_combo_) lidar_rate_combo_->blockSignals(true);
-    
+
     if (epsilon_rate_combo_) epsilon_rate_combo_->setCurrentText(QString::number(epsilon_sample_rate_));
     if (ptb_rate_combo_) ptb_rate_combo_->setCurrentText(text);
     if (hmp_rate_combo_) hmp_rate_combo_->setCurrentText(text);
@@ -3197,18 +3371,23 @@ void MainWindow::onGlobalRateChanged(const QString& text)
     {
         lidar_rate_combo_->setCurrentText(QString::number(std::min(rate, 100)));
     }
-    
+
     if (epsilon_rate_combo_) epsilon_rate_combo_->blockSignals(false);
     if (ptb_rate_combo_) ptb_rate_combo_->blockSignals(false);
     if (hmp_rate_combo_) hmp_rate_combo_->blockSignals(false);
     if (lidar_rate_combo_) lidar_rate_combo_->blockSignals(false);
-    
+
+    QSettings settings("VaporView", "MainWindow");
+    bool epsilonUsesCustomPacketRates = false;
+    const std::map<uint8_t, int> epsilonDesiredPacketRates =
+        effectiveEpsilonPacketRates(settings, epsilon_sample_rate_, &epsilonUsesCustomPacketRates);
+    const int epsilonCallbackRate = epsilonPacketCallbackRate(epsilonDesiredPacketRates, epsilon_sample_rate_);
     const CollectorSnapshot collectors = snapshotCollectors();
 
     if (collectors.epsilon && collectors.epsilon->isRunning())
     {
-        collectors.epsilon->setSampleRate(epsilon_sample_rate_);
-        collectors.epsilon->setDeviceSampleRate(epsilon_sample_rate_);
+        collectors.epsilon->setSampleRate(epsilonCallbackRate);
+        collectors.epsilon->setOutputPacketRates(epsilonDesiredPacketRates);
     }
     if (collectors.ptb && collectors.ptb->isRunning())
     {
@@ -3229,19 +3408,47 @@ void MainWindow::onGlobalRateChanged(const QString& text)
         }
     }
     
-    log(QString(is_english_ ? "All rates set to %1 Hz" : "所有频率已设置为 %1 Hz").arg(rate));
+    if (epsilonUsesCustomPacketRates)
+    {
+        log(QString(is_english_
+                        ? "All rates set to %1 Hz; EPSILON keeps the saved custom packet-rate profile."
+                        : "所有频率已设置为 %1 Hz；EPSILON 保持已保存的自定义包频率配置。")
+                .arg(rate));
+    }
+    else
+    {
+        log(QString(is_english_ ? "All rates set to %1 Hz" : "所有频率已设置为 %1 Hz").arg(rate));
+    }
 }
 
 void MainWindow::onGnssRateChanged(const QString& text)
 {
     epsilon_sample_rate_ = parseRate(text);
+    QSettings settings("VaporView", "MainWindow");
+    bool epsilonUsesCustomPacketRates = false;
+    const std::map<uint8_t, int> epsilonDesiredPacketRates =
+        effectiveEpsilonPacketRates(settings, epsilon_sample_rate_, &epsilonUsesCustomPacketRates);
+    const int epsilonCallbackRate = epsilonPacketCallbackRate(epsilonDesiredPacketRates, epsilon_sample_rate_);
     const CollectorSnapshot collectors = snapshotCollectors();
     if (collectors.epsilon)
     {
-        collectors.epsilon->setSampleRate(epsilon_sample_rate_);
-        collectors.epsilon->setDeviceSampleRate(epsilon_sample_rate_);
+        collectors.epsilon->setSampleRate(epsilonCallbackRate);
+        if (collectors.epsilon->isRunning())
+        {
+            collectors.epsilon->setOutputPacketRates(epsilonDesiredPacketRates);
+        }
     }
-    log(QString(is_english_ ? "EPSILON output rate set to %1 Hz" : "EPSILON 输出频率已设置为 %1 Hz").arg(epsilon_sample_rate_));
+    if (epsilonUsesCustomPacketRates)
+    {
+        log(QString(is_english_
+                        ? "EPSILON grouped rate was set to %1 Hz, but the saved custom packet-rate profile remains active."
+                        : "EPSILON 分组频率已设置为 %1 Hz，但当前仍启用已保存的自定义包频率配置。")
+                .arg(epsilon_sample_rate_));
+    }
+    else
+    {
+        log(QString(is_english_ ? "EPSILON output rate set to %1 Hz" : "EPSILON 输出频率已设置为 %1 Hz").arg(epsilon_sample_rate_));
+    }
 }
 
 void MainWindow::onImuRateChanged(const QString& text)
@@ -3299,12 +3506,17 @@ void MainWindow::applyAllSampleRates()
 {
     int rate = parseRate(global_rate_combo_->currentText());
     const CollectorSnapshot collectors = snapshotCollectors();
+    QSettings settings("VaporView", "MainWindow");
+    bool epsilonUsesCustomPacketRates = false;
+    const int epsilonRate = std::clamp(rate, 20, 200);
+    const std::map<uint8_t, int> epsilonDesiredPacketRates =
+        effectiveEpsilonPacketRates(settings, epsilonRate, &epsilonUsesCustomPacketRates);
+    const int epsilonCallbackRate = epsilonPacketCallbackRate(epsilonDesiredPacketRates, epsilonRate);
 
     if (collectors.epsilon && collectors.epsilon->isRunning())
     {
-        const int epsilonRate = std::clamp(rate, 20, 200);
-        collectors.epsilon->setSampleRate(epsilonRate);
-        collectors.epsilon->setDeviceSampleRate(epsilonRate);
+        collectors.epsilon->setSampleRate(epsilonCallbackRate);
+        collectors.epsilon->setOutputPacketRates(epsilonDesiredPacketRates);
     }
     if (collectors.ptb && collectors.ptb->isRunning())
     {
@@ -3330,7 +3542,7 @@ void MainWindow::applyAllSampleRates()
     hmp_rate_combo_->blockSignals(true);
     lidar_rate_combo_->blockSignals(true);
 
-    if (epsilon_rate_combo_) epsilon_rate_combo_->setCurrentText(QString::number(std::clamp(rate, 20, 200)));
+    if (epsilon_rate_combo_) epsilon_rate_combo_->setCurrentText(QString::number(epsilonRate));
     ptb_rate_combo_->setCurrentText(QString::number(rate));
     hmp_rate_combo_->setCurrentText(QString::number(rate));
     if (!isLidarRateUnspecified(lidar_rate_combo_->currentText()))
@@ -4358,6 +4570,10 @@ void MainWindow::updateConnectionStatus(bool connected)
     {
         epsilon_reconfigure_action_->setEnabled(!uiBusy);
     }
+    if (epsilon_packet_rates_action_)
+    {
+        epsilon_packet_rates_action_->setEnabled(!uiBusy);
+    }
     if (auto_detect_ports_btn_)
     {
         auto_detect_ports_btn_->setEnabled(!connected && !connection_attempt_in_progress_ && !epsilon_reconfigure_in_progress_);
@@ -4859,12 +5075,18 @@ void MainWindow::onConnectClicked()
     const bool skipLidarDeviceRate = isLidarRateUnspecified(lidarRateText);
     const int lidarRate = effectiveLidarSampleRate(lidarRateText);
     QSettings settings("VaporView", "MainWindow");
+    bool epsilonUsesCustomPacketRates = false;
+    const std::map<uint8_t, int> epsilonDesiredPacketRates =
+        effectiveEpsilonPacketRates(settings, epsilonRate, &epsilonUsesCustomPacketRates);
+    const int epsilonCallbackRate = epsilonPacketCallbackRate(epsilonDesiredPacketRates, epsilonRate);
+    const QString epsilonDesiredPacketSignature = epsilonPacketRatesSignature(epsilonDesiredPacketRates);
+    const QString epsilonDesiredPacketSummary = epsilonPacketRatesSummary(epsilonDesiredPacketRates);
     const bool epsilonConfigLikelyMatches =
         !epsilonPort.isEmpty() &&
         epsilonPort != selectText &&
         settings.value("epsilon_last_config_port").toString() == epsilonPort &&
         settings.value("epsilon_last_config_baud").toString() == epsilonBaudText &&
-        settings.value("epsilon_last_config_rate_hz", -1).toInt() == epsilonRate;
+        settings.value("epsilon_last_config_signature").toString() == epsilonDesiredPacketSignature;
     const int selectedDeviceCount =
         ((epsilonPort != selectText && !epsilonPort.isEmpty()) ? 1 : 0) +
         ((ptbPort != selectText && !ptbPort.isEmpty()) ? 1 : 0) +
@@ -4892,6 +5114,11 @@ void MainWindow::onConnectClicked()
                                       hmpBaudText,
                                       lidarBaudText,
                                       epsilonConfigLikelyMatches,
+                                      epsilonUsesCustomPacketRates,
+                                      epsilonDesiredPacketRates,
+                                      epsilonDesiredPacketSignature,
+                                      epsilonDesiredPacketSummary,
+                                      epsilonCallbackRate,
                                       epsilonRate,
                                       ptbRate,
                                       hmpRate,
@@ -4909,11 +5136,12 @@ void MainWindow::onConnectClicked()
         auto finishOnUi = [this](bool connected) {
             QMetaObject::invokeMethod(this, [this, connected]() { finishConnectionAttempt(connected); }, Qt::QueuedConnection);
         };
-        auto persistEpsilonConfig = [epsilonPort, epsilonBaudText, epsilonRate]() {
+        auto persistEpsilonConfig = [epsilonPort, epsilonBaudText, epsilonRate, epsilonDesiredPacketSignature]() {
             QSettings settings("VaporView", "MainWindow");
             settings.setValue("epsilon_last_config_port", epsilonPort);
             settings.setValue("epsilon_last_config_baud", epsilonBaudText);
             settings.setValue("epsilon_last_config_rate_hz", epsilonRate);
+            settings.setValue("epsilon_last_config_signature", epsilonDesiredPacketSignature);
         };
 
         CollectorSnapshot collectors;
@@ -4929,7 +5157,7 @@ void MainWindow::onConnectClicked()
         };
         auto cancelCallback = [this]() { return cancel_connection_requested_.load(); };
 
-        collectors.epsilon->setSampleRate(epsilonRate);
+        collectors.epsilon->setSampleRate(epsilonCallbackRate);
         collectors.ptb->setSampleRate(ptbRate);
         collectors.hmp->setSampleRate(hmpRate);
         collectors.lidar->setSampleRate(lidarRate);
@@ -5042,22 +5270,37 @@ void MainWindow::onConnectClicked()
                              VaporView::SerialConfig::N81(epsilonBaudText.toInt()),
                              [&]() {
                                  collectors.epsilon->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onEpsilonDataReady", Qt::QueuedConnection); });
-                                 collectors.epsilon->setSampleRate(epsilonRate);
+                                 collectors.epsilon->setSampleRate(epsilonCallbackRate);
                                  if (epsilonConfigLikelyMatches)
                                  {
-                                     postLog(english
-                                                 ? "[EPSILON] Using the last saved device output profile; skipping automatic reconfiguration."
-                                                 : "[EPSILON] 使用上次已保存的设备输出配置，跳过自动重配。");
+                                     postLog(QString(english
+                                                         ? "[EPSILON] Using the last saved %1 profile; skipping automatic reconfiguration."
+                                                         : "[EPSILON] 使用上次已保存的%1配置，跳过自动重配。")
+                                                 .arg(epsilonUsesCustomPacketRates
+                                                          ? (english ? "custom packet-rate" : "自定义包频率")
+                                                          : (english ? "grouped output-rate" : "分组输出频率")));
                                  }
-                                 else if (!collectors.epsilon->setDeviceSampleRate(epsilonRate))
+                                 else if (!collectors.epsilon->setOutputPacketRates(epsilonDesiredPacketRates))
                                  {
-                                     postLog(QString(english ? "[EPSILON] Failed to configure output rate %1 Hz" : "[EPSILON] 配置输出频率 %1 Hz 失败").arg(epsilonRate));
+                                     postLog(QString(english
+                                                         ? "[EPSILON] Failed to configure the %1 profile: %2"
+                                                         : "[EPSILON] 配置%1失败：%2")
+                                                 .arg(epsilonUsesCustomPacketRates
+                                                          ? (english ? "custom packet-rate" : "自定义包频率")
+                                                          : (english ? "grouped output-rate" : "分组输出频率"))
+                                                 .arg(epsilonDesiredPacketSummary));
                                      return false;
                                  }
                                  else
                                  {
                                      persistEpsilonConfig();
-                                     postLog(QString(english ? "[EPSILON] Output rate set to %1 Hz" : "[EPSILON] 输出频率已设为 %1 Hz").arg(epsilonRate));
+                                     postLog(QString(english
+                                                         ? "[EPSILON] Applied %1 profile: %2"
+                                                         : "[EPSILON] 已应用%1配置：%2")
+                                                 .arg(epsilonUsesCustomPacketRates
+                                                          ? (english ? "custom packet-rate" : "自定义包频率")
+                                                          : (english ? "grouped output-rate" : "分组输出频率"))
+                                                 .arg(epsilonDesiredPacketSummary));
                                  }
                                  if (collectors.epsilon->startStreaming()) return true;
                                  postLog(english ? "[EPSILON] Failed to start navigation stream." : "[EPSILON] 启动导航数据流失败。");
@@ -5252,6 +5495,142 @@ void MainWindow::onRtkConfigClicked()
     rtk_config_dialog_->activateWindow();
 }
 
+void MainWindow::onConfigureEpsilonPacketRatesClicked()
+{
+    if (connection_attempt_in_progress_ || port_detection_in_progress_ || epsilon_reconfigure_in_progress_)
+    {
+        return;
+    }
+
+    const int groupedRateHz = parseRate(epsilon_rate_combo_ ? epsilon_rate_combo_->currentText() : QStringLiteral("100"));
+    QSettings settings("VaporView", "MainWindow");
+    const bool customEnabled = settings.value("epsilon_custom_packet_rates_enabled", false).toBool();
+    const std::map<uint8_t, int> groupedRates = groupedEpsilonPacketRates(groupedRateHz);
+    const std::map<uint8_t, int> initialRates = loadCustomEpsilonPacketRates(settings, groupedRateHz);
+
+    QDialog dialog(this);
+    dialog.setModal(true);
+    dialog.setWindowTitle(is_english_ ? "EPSILON Packet Rates" : "EPSILON 包频率设置");
+
+    auto *layout = new QVBoxLayout(&dialog);
+
+    auto *hintLabel = new QLabel(
+        is_english_
+            ? QStringLiteral("Configured from the local EPSILON ground-station profile. Each row shows the packet's maximum supported rate.")
+            : QStringLiteral("配置范围来自本地 EPSILON 官方地面站配置。每一行都显示该数据包支持的最大频率。"),
+        &dialog);
+    hintLabel->setWordWrap(true);
+    layout->addWidget(hintLabel);
+
+    auto *enableCustomCheck = new QCheckBox(
+        is_english_
+            ? QStringLiteral("Use custom EPSILON packet rates for future connect/reconfigure operations")
+            : QStringLiteral("后续连接和重配时使用这组自定义 EPSILON 包频率"),
+        &dialog);
+    enableCustomCheck->setChecked(customEnabled);
+    layout->addWidget(enableCustomCheck);
+
+    auto *formLayout = new QFormLayout();
+    formLayout->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    formLayout->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
+    formLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    layout->addLayout(formLayout);
+
+    std::map<uint8_t, QComboBox*> packetCombos;
+    for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
+    {
+        auto *combo = new QComboBox(&dialog);
+        combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+        for (int rateHz : option.supported_rates_hz)
+        {
+            combo->addItem(rateHz == 0
+                               ? (is_english_ ? QStringLiteral("No Output (0 Hz)") : QStringLiteral("不输出 (0 Hz)"))
+                               : QStringLiteral("%1 Hz").arg(rateHz),
+                           rateHz);
+        }
+        const int initialRateHz = initialRates.count(option.packet_id) ? initialRates.at(option.packet_id) : groupedRates.at(option.packet_id);
+        const int comboIndex = combo->findData(initialRateHz);
+        if (comboIndex >= 0)
+        {
+            combo->setCurrentIndex(comboIndex);
+        }
+        packetCombos[option.packet_id] = combo;
+        formLayout->addRow(epsilonPacketDialogRowLabel(option, is_english_), combo);
+    }
+
+    auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    QPushButton *defaultsButton = buttonBox->addButton(
+        is_english_ ? QStringLiteral("Use Grouped Defaults") : QStringLiteral("恢复分组默认值"),
+        QDialogButtonBox::ResetRole);
+    connect(defaultsButton, &QPushButton::clicked, &dialog, [&packetCombos, groupedRates, enableCustomCheck]() {
+        enableCustomCheck->setChecked(false);
+        for (const auto& entry : packetCombos)
+        {
+            const auto it = groupedRates.find(entry.first);
+            if (it == groupedRates.end())
+            {
+                continue;
+            }
+            QComboBox *combo = entry.second;
+            const int index = combo ? combo->findData(it->second) : -1;
+            if (combo && index >= 0)
+            {
+                combo->setCurrentIndex(index);
+            }
+        }
+    });
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttonBox);
+
+    if (dialog.exec() != QDialog::Accepted)
+    {
+        return;
+    }
+
+    std::map<uint8_t, int> savedPacketRates;
+    for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
+    {
+        QComboBox *combo = packetCombos[option.packet_id];
+        const int rateHz = combo ? combo->currentData().toInt() : groupedRates.at(option.packet_id);
+        savedPacketRates[option.packet_id] = rateHz;
+        settings.setValue(epsilonPacketRateSettingsKey(option.packet_id), rateHz);
+    }
+    settings.setValue("epsilon_custom_packet_rates_enabled", enableCustomCheck->isChecked());
+    settings.remove("epsilon_last_config_signature");
+
+    if (enableCustomCheck->isChecked())
+    {
+        log(QString(is_english_
+                        ? "[EPSILON] Custom packet-rate profile saved: %1"
+                        : "[EPSILON] 已保存自定义包频率配置: %1")
+                .arg(epsilonPacketRatesSummary(savedPacketRates)));
+    }
+    else
+    {
+        log(QString(is_english_
+                        ? "[EPSILON] Custom packet-rate profile disabled. The grouped %1 Hz profile will be used."
+                        : "[EPSILON] 已关闭自定义包频率，后续将使用分组 %1 Hz 配置。")
+                .arg(groupedRateHz));
+    }
+
+    const QString selectText = is_english_ ? "-- Select --" : "-- 选择 --";
+    const QString epsilonPort = epsilon_port_combo_ ? epsilon_port_combo_->currentText().trimmed() : QString();
+    if (!recording_thread_running_.load() && !epsilonPort.isEmpty() && epsilonPort != selectText)
+    {
+        log(is_english_
+                ? "[EPSILON] Applying the saved packet-rate profile now..."
+                : "[EPSILON] 正在应用刚保存的包频率配置...");
+        onReconfigureEpsilonClicked();
+    }
+    else
+    {
+        log(is_english_
+                ? "[EPSILON] Packet-rate profile saved. It will be used on the next connect/reconfigure."
+                : "[EPSILON] 包频率配置已保存，将在下次连接或重配时生效。");
+    }
+}
+
 void MainWindow::onReconfigureEpsilonClicked()
 {
     if (connection_attempt_in_progress_ || port_detection_in_progress_ || epsilon_reconfigure_in_progress_)
@@ -5285,6 +5664,12 @@ void MainWindow::onReconfigureEpsilonClicked()
 
     const int epsilonRate = parseRate(epsilon_rate_combo_ ? epsilon_rate_combo_->currentText() : QStringLiteral("100"));
     epsilon_sample_rate_ = epsilonRate;
+    QSettings settings("VaporView", "MainWindow");
+    bool usingCustomPacketProfile = false;
+    const std::map<uint8_t, int> desiredPacketRates = effectiveEpsilonPacketRates(settings, epsilonRate, &usingCustomPacketProfile);
+    const int epsilonCallbackRate = epsilonPacketCallbackRate(desiredPacketRates, epsilonRate);
+    const QString desiredPacketRateSignature = epsilonPacketRatesSignature(desiredPacketRates);
+    const QString desiredPacketRateSummary = epsilonPacketRatesSummary(desiredPacketRates);
 
     if (epsilon_reconfigure_thread_.joinable())
     {
@@ -5298,10 +5683,12 @@ void MainWindow::onReconfigureEpsilonClicked()
     epsilon_reconfigure_in_progress_ = true;
     showBusyStatusTaskProgress(english ? "Reconfiguring EPSILON..." : "正在重配 EPSILON...");
     updateConnectionStatus(is_connected_);
-    log(QString(english ? "[EPSILON] Starting manual output reconfiguration: %1 @ %2, target %3 Hz"
-                        : "[EPSILON] 开始手动重配输出: %1 @ %2，目标 %3 Hz")
+    log(QString(english ? "[EPSILON] Starting manual output reconfiguration: %1 @ %2, %3 profile (%4)"
+                        : "[EPSILON] 开始手动重配输出: %1 @ %2，使用%3配置（%4）")
             .arg(epsilonPort, epsilonBaudText)
-            .arg(epsilonRate));
+            .arg(usingCustomPacketProfile ? (english ? "custom packet-rate" : "自定义包频率")
+                                          : (english ? "grouped output-rate" : "分组输出频率"))
+            .arg(desiredPacketRateSummary));
 
     epsilon_reconfigure_thread_ = std::thread([this,
                                                english,
@@ -5309,6 +5696,9 @@ void MainWindow::onReconfigureEpsilonClicked()
                                                epsilonBaud,
                                                epsilonBaudText,
                                                epsilonRate,
+                                               epsilonCallbackRate,
+                                               desiredPacketRates,
+                                               desiredPacketRateSignature,
                                                liveCollector,
                                                shouldRestartCollector]() {
         auto postLog = [this](const QString& message) {
@@ -5330,7 +5720,7 @@ void MainWindow::onReconfigureEpsilonClicked()
             const QString qmsg = QString::fromStdString(msg);
             QMetaObject::invokeMethod(this, [this, qmsg]() { log(qmsg); }, Qt::QueuedConnection);
         });
-        collector->setSampleRate(epsilonRate);
+        collector->setSampleRate(epsilonCallbackRate);
 
         if (shouldRestartCollector)
         {
@@ -5349,7 +5739,7 @@ void MainWindow::onReconfigureEpsilonClicked()
             return;
         }
 
-        if (!collector->setDeviceSampleRate(epsilonRate))
+        if (!collector->setOutputPacketRates(desiredPacketRates))
         {
             postLog(QString(english ? "[EPSILON] Manual reconfiguration failed on %1 @ %2."
                                     : "[EPSILON] 在 %1 @ %2 上执行手动重配失败。")
@@ -5364,6 +5754,7 @@ void MainWindow::onReconfigureEpsilonClicked()
             settings.setValue("epsilon_last_config_port", epsilonPort);
             settings.setValue("epsilon_last_config_baud", epsilonBaudText);
             settings.setValue("epsilon_last_config_rate_hz", epsilonRate);
+            settings.setValue("epsilon_last_config_signature", desiredPacketRateSignature);
         }
 
         if (shouldRestartCollector)

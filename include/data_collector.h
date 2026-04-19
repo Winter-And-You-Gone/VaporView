@@ -6,6 +6,7 @@
 #include <atomic>
 #include <chrono>
 #include <functional>
+#include <map>
 #include <mutex>
 #include <thread>
 
@@ -101,6 +102,7 @@ public:
 
   EpsilonData getLatestData();
   bool setDeviceSampleRate(int hz) override;
+  bool setOutputPacketRates(const std::map<uint8_t, int>& packet_rates);
   bool checkDeviceResponse() override;
   void setRawFrameCallback(RawFrameCallback callback);
 

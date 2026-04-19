@@ -269,6 +269,19 @@ bool isSupportedEpsilonRate(int hz)
   return hz == 20 || hz == 50 || hz == 100 || hz == 200;
 }
 
+bool isSupportedEpsilonPacketRate(uint8_t packet_id, int hz)
+{
+  static const std::vector<int> kCommonRates = {0, 1, 2, 5, 10, 20, 50, 100, 250, 500};
+  static const std::vector<int> kImuRates = {0, 1, 2, 5, 10, 20, 50, 100, 200, 250, 500, 1000};
+
+  const std::vector<int>* supported_rates = &kCommonRates;
+  if (packet_id == kMsgImu)
+  {
+    supported_rates = &kImuRates;
+  }
+  return std::find(supported_rates->cbegin(), supported_rates->cend(), hz) != supported_rates->cend();
+}
+
 std::map<uint8_t, int> desiredEpsilonPacketRates(int hz)
 {
   const int navLowRate = std::min(hz, 20);
@@ -1386,10 +1399,37 @@ bool EpsilonCollector::setDeviceSampleRate(int hz)
     log("EPSILON: unsupported output rate " + std::to_string(hz) + " Hz");
     return false;
   }
+  if (!setOutputPacketRates(desiredEpsilonPacketRates(hz)))
+  {
+    return false;
+  }
+  sample_rate_hz_.store(hz);
+  return true;
+}
+
+bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packetRates)
+{
+  if (packetRates.empty())
+  {
+    log("EPSILON: no packet rates were provided for configuration");
+    return false;
+  }
   if (!serial_.isOpen())
   {
     log("EPSILON: serial port is not open");
     return false;
+  }
+  for (const auto& entry : packetRates)
+  {
+    if (!isSupportedEpsilonPacketRate(entry.first, entry.second))
+    {
+      std::ostringstream oss;
+      oss << "EPSILON: unsupported packet rate " << entry.second << " Hz for packet 0x"
+          << std::uppercase << std::hex << std::setw(2) << std::setfill('0')
+          << static_cast<int>(entry.first);
+      log(oss.str());
+      return false;
+    }
   }
 
   auto readAsciiResponse = [this](int totalWaitMs) {
@@ -1435,10 +1475,9 @@ bool EpsilonCollector::setDeviceSampleRate(int hz)
   sendAsciiCommand("#fconfig\r\n", kConfigCommandWaitMs);
   const std::string fmsgResponse = sendAsciiCommand("#fmsg\r\n", kConfigCommandWaitMs);
   const auto currentRates = parseFmsgResponse(fmsgResponse);
-  const auto desiredRates = desiredEpsilonPacketRates(hz);
 
-  bool needsReconfigure = currentRates.size() < desiredRates.size();
-  for (const auto& entry : desiredRates)
+  bool needsReconfigure = currentRates.size() < packetRates.size();
+  for (const auto& entry : packetRates)
   {
     const auto it = currentRates.find(entry.first);
     if (it == currentRates.end() || it->second != entry.second)
@@ -1450,7 +1489,7 @@ bool EpsilonCollector::setDeviceSampleRate(int hz)
 
   if (needsReconfigure)
   {
-    for (const auto& entry : desiredRates)
+    for (const auto& entry : packetRates)
     {
       char command[32];
       std::snprintf(command, sizeof(command), "#fmsg %02X %d\r\n", entry.first, entry.second);
@@ -1473,7 +1512,7 @@ bool EpsilonCollector::setDeviceSampleRate(int hz)
   }
   else
   {
-    log("EPSILON: output configuration already matches requested rates");
+    log("EPSILON: output configuration already matches requested packet rates");
     sendAsciiCommand("#fdeconfig\r\n", kConfigCommandWaitMs);
     std::vector<uint8_t> frameBuffer;
     std::vector<uint8_t> frame;
@@ -1487,8 +1526,6 @@ bool EpsilonCollector::setDeviceSampleRate(int hz)
       log("EPSILON: configuration query completed, but navigation stream is still silent");
     }
   }
-
-  sample_rate_hz_.store(hz);
   return true;
 }
 
