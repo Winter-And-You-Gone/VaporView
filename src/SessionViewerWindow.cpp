@@ -24,8 +24,6 @@
 #include <QMouseEvent>
 #include <QMessageBox>
 #include <QPainter>
-#include <QProcess>
-#include <QProcessEnvironment>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollArea>
@@ -44,7 +42,6 @@
 #include <QWidget>
 #include <QStringConverter>
 #include <QTimeZone>
-#include <array>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -68,8 +65,6 @@ const QColor kCurrentGuideLineColor("#ffb347");
 const QColor kCurrentGuideLabelFillColor("#8b4a00");
 const QColor kCurrentGuideLabelBorderColor("#5f3000");
 const QColor kCurrentGuideLabelTextColor("#fff7ea");
-constexpr int kDefaultKfGinsLeapSeconds = 18;
-
 QString csvValueAt(const QStringList& fields, int index)
 {
     if (index < 0 || index >= fields.size())
@@ -311,42 +306,6 @@ QString formatGuideValue(double value, int decimals, const QString& unit = QStri
     return unit.isEmpty() ? number : QStringLiteral("%1 %2").arg(number, unit);
 }
 
-bool pathContainsNonAscii(const QString& path)
-{
-    for (const QChar ch : path)
-    {
-        if (ch.unicode() > 127)
-        {
-            return true;
-        }
-    }
-    return false;
-}
-
-QString pathForYaml(const QString& path)
-{
-    return QDir::fromNativeSeparators(QFileInfo(path).absoluteFilePath());
-}
-
-double epochUsToGpsSecondsOfWeek(quint64 epochUs, int leapSeconds = kDefaultKfGinsLeapSeconds)
-{
-    if (epochUs == 0)
-    {
-        return 0.0;
-    }
-
-    static const qint64 kGpsEpochSeconds = QDateTime(QDate(1980, 1, 6), QTime(0, 0), QTimeZone::UTC).toSecsSinceEpoch();
-    const double utcSeconds = static_cast<double>(epochUs) / 1000000.0;
-    const double gpsSeconds = utcSeconds - static_cast<double>(kGpsEpochSeconds) + static_cast<double>(leapSeconds);
-    const double weekSeconds = 604800.0;
-    if (gpsSeconds <= 0.0)
-    {
-        return 0.0;
-    }
-
-    return std::fmod(gpsSeconds, weekSeconds);
-}
-
 int estimateImuRateHz(const QVector<quint64>& timestampsUs)
 {
     QVector<double> deltasSeconds;
@@ -382,99 +341,6 @@ int estimateImuRateHz(const QVector<quint64>& timestampsUs)
     }
 
     return std::clamp(static_cast<int>(std::lround(1.0 / medianDeltaSeconds)), 1, 1000);
-}
-
-void appendKfGinsGnssStd(const QString& fixText, QStringList& fields)
-{
-    const QString normalizedFix = fixText.trimmed().toUpper();
-    double northStd = 10.0;
-    double eastStd = 10.0;
-    double downStd = 20.0;
-
-    if (normalizedFix.contains(QStringLiteral("FIX")) || normalizedFix.contains(QStringLiteral("NARROW")))
-    {
-        northStd = 0.02;
-        eastStd = 0.02;
-        downStd = 0.05;
-    }
-    else if (normalizedFix.contains(QStringLiteral("FLOAT")))
-    {
-        northStd = 0.5;
-        eastStd = 0.5;
-        downStd = 1.0;
-    }
-    else if (normalizedFix.contains(QStringLiteral("SINGLE")) || normalizedFix.contains(QStringLiteral("DGPS")))
-    {
-        northStd = 5.0;
-        eastStd = 5.0;
-        downStd = 10.0;
-    }
-
-    fields << QString::number(northStd, 'f', 3)
-           << QString::number(eastStd, 'f', 3)
-           << QString::number(downStd, 'f', 3);
-}
-
-struct KfGinsImuRow
-{
-    quint64 timestamp_us = 0;
-    double ax = 0.0;
-    double ay = 0.0;
-    double az = 0.0;
-    double gx = 0.0;
-    double gy = 0.0;
-    double gz = 0.0;
-    double roll = 0.0;
-    double pitch = 0.0;
-    double yaw = 0.0;
-};
-
-struct KfGinsGnssRow
-{
-    quint64 timestamp_us = 0;
-    double lat = 0.0;
-    double lon = 0.0;
-    double alt = 0.0;
-    double vel_n = 0.0;
-    double vel_e = 0.0;
-    double vel_d = 0.0;
-    QString fix_text;
-};
-
-bool parseTripletSetting(const QString& text, std::array<double, 3> *values)
-{
-    if (!values)
-    {
-        return false;
-    }
-
-    const QStringList parts = text.split(QRegularExpression(QStringLiteral("[,;\\s]+")), Qt::SkipEmptyParts);
-    if (parts.size() != 3)
-    {
-        return false;
-    }
-
-    std::array<double, 3> parsed{};
-    for (int i = 0; i < 3; ++i)
-    {
-        bool ok = false;
-        parsed[static_cast<size_t>(i)] = parts.at(i).toDouble(&ok);
-        if (!ok)
-        {
-            return false;
-        }
-    }
-
-    *values = parsed;
-    return true;
-}
-
-QString formatTripletSetting(const std::array<double, 3>& values, int decimals)
-{
-    return QStringLiteral("%1, %2, %3")
-        .arg(QString::number(values[0], 'f', decimals))
-        .arg(QString::number(values[1], 'f', decimals))
-        .arg(QString::number(values[2], 'f', decimals));
 }
 
 double haversineDistanceMeters(double lat1Deg, double lon1Deg, double lat2Deg, double lon2Deg)
@@ -1239,9 +1105,6 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , choose_session_btn_(nullptr)
     , reload_btn_(nullptr)
     , trajectory_view_btn_(nullptr)
-    , kf_gins_trajectory_view_btn_(nullptr)
-    , kf_gins_config_btn_(nullptr)
-    , kf_gins_btn_(nullptr)
     , clear_view_btn_(nullptr)
     , status_label_(nullptr)
     , summary_group_(nullptr)
@@ -1299,7 +1162,6 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , humidity_values_()
     , pressure_values_()
     , rtk_track_points_()
-    , kf_gins_track_points_()
     , waveform_timestamps_us_()
     , waveform_segments_()
     , waveform_peak_raw_values_()
@@ -1310,11 +1172,6 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , waveform_peak_scatter_mode_(true)
     , highlighted_csv_rows_()
     , trajectory_viewer_dialog_(nullptr)
-    , kf_gins_trajectory_viewer_dialog_(nullptr)
-    , kf_gins_process_(nullptr)
-    , kf_gins_output_directory_()
-    , kf_gins_warning_message_()
-    , kf_gins_process_output_()
     , points_per_frame_(50000)
     , sensor_export_rate_hz_(10)
     , waveform_export_rate_hz_(10)
@@ -1391,27 +1248,13 @@ void SessionViewerWindow::setupUi()
     connect(trajectory_view_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onViewTrajectoryClicked);
     controlLayout->addWidget(trajectory_view_btn_, 0, 4);
 
-    kf_gins_trajectory_view_btn_ = new QPushButton(this);
-    kf_gins_trajectory_view_btn_->setEnabled(false);
-    connect(kf_gins_trajectory_view_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onViewKfGinsTrajectoryClicked);
-    controlLayout->addWidget(kf_gins_trajectory_view_btn_, 0, 5);
-
-    kf_gins_config_btn_ = new QPushButton(this);
-    connect(kf_gins_config_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onConfigureKfGinsClicked);
-    controlLayout->addWidget(kf_gins_config_btn_, 0, 6);
-
-    kf_gins_btn_ = new QPushButton(this);
-    kf_gins_btn_->setEnabled(false);
-    connect(kf_gins_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onRunKfGinsClicked);
-    controlLayout->addWidget(kf_gins_btn_, 0, 7);
-
     clear_view_btn_ = new QPushButton(this);
     connect(clear_view_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onClearViewClicked);
-    controlLayout->addWidget(clear_view_btn_, 0, 8);
+    controlLayout->addWidget(clear_view_btn_, 0, 5);
 
     status_label_ = new QLabel(this);
     status_label_->setWordWrap(true);
-    controlLayout->addWidget(status_label_, 1, 0, 1, 9);
+    controlLayout->addWidget(status_label_, 1, 0, 1, 6);
 
     mainLayout->addLayout(controlLayout);
 
@@ -1630,11 +1473,6 @@ void SessionViewerWindow::updateTexts()
     choose_session_btn_->setText(is_english_ ? "Open Data..." : "打开数据...");
     reload_btn_->setText(is_english_ ? "Reload" : "重新加载");
     trajectory_view_btn_->setText(is_english_ ? "View Trajectory" : "轨迹查看");
-    kf_gins_trajectory_view_btn_->setText(is_english_ ? "View KF-GINS" : "查看KF-GINS");
-    kf_gins_config_btn_->setText(is_english_ ? "KF-GINS Config" : "KF-GINS设置");
-    kf_gins_btn_->setText((kf_gins_process_ && kf_gins_process_->state() != QProcess::NotRunning)
-        ? (is_english_ ? "KF-GINS Running..." : "KF-GINS运行中...")
-        : (is_english_ ? "Run KF-GINS" : "运行KF-GINS"));
     clear_view_btn_->setText(is_english_ ? "Clear Page" : "清空页面");
     summary_group_->setTitle(is_english_ ? "Data Summary" : "数据概览");
     waveform_group_->setTitle(is_english_ ? "Normalized Second Harmonic" : "归一化二次谐波");
@@ -1682,10 +1520,6 @@ void SessionViewerWindow::updateTexts()
     if (trajectory_viewer_dialog_)
     {
         trajectory_viewer_dialog_->setEnglish(is_english_);
-    }
-    if (kf_gins_trajectory_viewer_dialog_)
-    {
-        kf_gins_trajectory_viewer_dialog_->setEnglish(is_english_);
     }
 }
 
@@ -1840,7 +1674,6 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     humidity_values_.clear();
     pressure_values_.clear();
     rtk_track_points_.clear();
-    kf_gins_track_points_.clear();
     waveform_timestamps_us_.clear();
     waveform_segments_.clear();
     waveform_peak_raw_values_.clear();
@@ -1866,15 +1699,9 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setValues({});
     static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setCurrentIndex(-1);
     trajectory_view_btn_->setEnabled(false);
-    kf_gins_trajectory_view_btn_->setEnabled(false);
-    kf_gins_btn_->setEnabled(false);
     if (trajectory_viewer_dialog_)
     {
         trajectory_viewer_dialog_->setTrackPoints({});
-    }
-    if (kf_gins_trajectory_viewer_dialog_)
-    {
-        kf_gins_trajectory_viewer_dialog_->setTrackPoints({});
     }
     frame_info_label_->setText(is_english_ ? "No waveform frame loaded" : "尚未加载波形帧");
     csv_info_label_->setText(is_english_ ? "No CSV loaded" : "尚未加载 CSV");
@@ -2013,730 +1840,6 @@ void SessionViewerWindow::onViewTrajectoryClicked()
     trajectory_viewer_dialog_->activateWindow();
 }
 
-void SessionViewerWindow::onViewKfGinsTrajectoryClicked()
-{
-    if (kf_gins_track_points_.isEmpty())
-    {
-        QMessageBox::information(this,
-            QStringLiteral("KF-GINS"),
-            is_english_ ? "No KF-GINS trajectory result was found in the current session."
-                        : "当前会话中没有找到KF-GINS轨迹结果。");
-        return;
-    }
-
-    if (!kf_gins_trajectory_viewer_dialog_)
-    {
-        kf_gins_trajectory_viewer_dialog_ = new TrajectoryViewerDialog(this);
-    }
-
-    kf_gins_trajectory_viewer_dialog_->setEnglish(is_english_);
-    kf_gins_trajectory_viewer_dialog_->setTrackLabel(QStringLiteral("KF-GINS trajectory"), QStringLiteral("KF-GINS轨迹"));
-    kf_gins_trajectory_viewer_dialog_->setTrackPoints(kf_gins_track_points_);
-    kf_gins_trajectory_viewer_dialog_->show();
-    kf_gins_trajectory_viewer_dialog_->raise();
-    kf_gins_trajectory_viewer_dialog_->activateWindow();
-}
-
-void SessionViewerWindow::onConfigureKfGinsClicked()
-{
-    QSettings settings("VaporView", "SessionViewer");
-    const QString defaultAntlever = QStringLiteral("0, 0, 0");
-    const QString defaultArw = QStringLiteral("0.3, 0.3, 0.3");
-    const QString defaultVrw = QStringLiteral("0.1, 0.1, 0.1");
-    const QString defaultGbstd = QStringLiteral("10, 10, 10");
-    const QString defaultAbstd = QStringLiteral("100, 100, 100");
-
-    QDialog dialog(this);
-    dialog.setWindowTitle(is_english_ ? "KF-GINS Config" : "KF-GINS设置");
-
-    auto *layout = new QVBoxLayout(&dialog);
-    auto *formLayout = new QFormLayout();
-    layout->addLayout(formLayout);
-
-    auto *antleverEdit = new QLineEdit(settings.value("kf_gins/antlever", defaultAntlever).toString(), &dialog);
-    auto *initAttEdit = new QLineEdit(settings.value("kf_gins/initatt_override").toString(), &dialog);
-    auto *arwEdit = new QLineEdit(settings.value("kf_gins/arw", defaultArw).toString(), &dialog);
-    auto *vrwEdit = new QLineEdit(settings.value("kf_gins/vrw", defaultVrw).toString(), &dialog);
-    auto *gbstdEdit = new QLineEdit(settings.value("kf_gins/gbstd", defaultGbstd).toString(), &dialog);
-    auto *abstdEdit = new QLineEdit(settings.value("kf_gins/abstd", defaultAbstd).toString(), &dialog);
-
-    initAttEdit->setPlaceholderText(is_english_ ? "Leave empty to use first IMU attitude" : "留空则使用首个IMU姿态");
-
-    formLayout->addRow(is_english_ ? "Lever Arm (m)" : "杆臂 (m)", antleverEdit);
-    formLayout->addRow(is_english_ ? "Initial Attitude Override (deg)" : "初始姿态覆盖 (deg)", initAttEdit);
-    formLayout->addRow(is_english_ ? "ARW" : "ARW", arwEdit);
-    formLayout->addRow(is_english_ ? "VRW" : "VRW", vrwEdit);
-    formLayout->addRow(is_english_ ? "Gyro Bias STD" : "陀螺零偏STD", gbstdEdit);
-    formLayout->addRow(is_english_ ? "Accel Bias STD" : "加计零偏STD", abstdEdit);
-
-    auto *hintLabel = new QLabel(
-        is_english_
-            ? "Each field uses three comma-separated values, for example: 0.0, 0.0, 0.0"
-            : "每个字段填写三个逗号分隔的值，例如：0.0, 0.0, 0.0",
-        &dialog);
-    hintLabel->setWordWrap(true);
-    layout->addWidget(hintLabel);
-
-    auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    layout->addWidget(buttonBox);
-    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-
-    if (dialog.exec() != QDialog::Accepted)
-    {
-        return;
-    }
-
-    const struct
-    {
-        QString key;
-        QLineEdit *edit;
-        bool allowEmpty;
-    } fields[] = {
-        {QStringLiteral("kf_gins/antlever"), antleverEdit, false},
-        {QStringLiteral("kf_gins/initatt_override"), initAttEdit, true},
-        {QStringLiteral("kf_gins/arw"), arwEdit, false},
-        {QStringLiteral("kf_gins/vrw"), vrwEdit, false},
-        {QStringLiteral("kf_gins/gbstd"), gbstdEdit, false},
-        {QStringLiteral("kf_gins/abstd"), abstdEdit, false},
-    };
-
-    for (const auto& field : fields)
-    {
-        const QString value = field.edit->text().trimmed();
-        if (field.allowEmpty && value.isEmpty())
-        {
-            continue;
-        }
-
-        std::array<double, 3> parsed{};
-        if (!parseTripletSetting(value, &parsed))
-        {
-            QMessageBox::warning(this,
-                QStringLiteral("KF-GINS"),
-                is_english_
-                    ? QString("Invalid triplet for %1.").arg(field.edit->placeholderText().isEmpty() ? field.key : field.edit->placeholderText())
-                    : QString("字段格式无效，请填写三个数字：%1").arg(field.key));
-            return;
-        }
-    }
-
-    settings.setValue("kf_gins/antlever", antleverEdit->text().trimmed());
-    settings.setValue("kf_gins/initatt_override", initAttEdit->text().trimmed());
-    settings.setValue("kf_gins/arw", arwEdit->text().trimmed());
-    settings.setValue("kf_gins/vrw", vrwEdit->text().trimmed());
-    settings.setValue("kf_gins/gbstd", gbstdEdit->text().trimmed());
-    settings.setValue("kf_gins/abstd", abstdEdit->text().trimmed());
-    setStatusText(is_english_ ? "KF-GINS parameters were saved." : "KF-GINS参数已保存。");
-}
-
-QString SessionViewerWindow::ensureKfGinsExecutablePath()
-{
-    QSettings settings("VaporView", "SessionViewer");
-    const QString storedRepoPath = QDir::fromNativeSeparators(settings.value("kf_gins/repo_path").toString());
-    const QString executableDir = QFileInfo(QCoreApplication::applicationFilePath()).absolutePath();
-    const QStringList repoPathCandidates = {
-        storedRepoPath,
-        QDir(executableDir).absoluteFilePath(QStringLiteral("../../KF-GINS")),
-        QDir(executableDir).absoluteFilePath(QStringLiteral("../KF-GINS")),
-        QStringLiteral("c:/WorkSpace/NAV/KF-GINS")
-    };
-
-    QString repoPath;
-    for (const QString& candidate : repoPathCandidates)
-    {
-        if (candidate.isEmpty())
-        {
-            continue;
-        }
-
-        const QString normalized = QDir::fromNativeSeparators(QFileInfo(candidate).absoluteFilePath());
-        if (QDir(normalized).exists())
-        {
-            repoPath = normalized;
-            break;
-        }
-    }
-
-    if (repoPath.isEmpty())
-    {
-        repoPath = QDir::fromNativeSeparators(
-            QFileInfo(repoPathCandidates.back()).absoluteFilePath());
-    }
-
-    settings.setValue("kf_gins/repo_path", repoPath);
-
-    QString executablePath = settings.value("kf_gins/executable_path").toString();
-    if (!executablePath.isEmpty() && QFileInfo::exists(executablePath))
-    {
-        return QDir::fromNativeSeparators(QFileInfo(executablePath).absoluteFilePath());
-    }
-
-    const QStringList candidatePaths = {
-        QDir(repoPath).filePath(QStringLiteral("bin/KF-GINS.exe")),
-        QDir(repoPath).filePath(QStringLiteral("build/KF-GINS.exe")),
-        QDir(repoPath).filePath(QStringLiteral("cmake-build-release/KF-GINS.exe")),
-        QDir(repoPath).filePath(QStringLiteral("cmake-build-debug/KF-GINS.exe")),
-        QDir(repoPath).filePath(QStringLiteral("KF-GINS.exe"))
-    };
-    for (const QString& candidate : candidatePaths)
-    {
-        if (QFileInfo::exists(candidate))
-        {
-            executablePath = QDir::fromNativeSeparators(QFileInfo(candidate).absoluteFilePath());
-            settings.setValue("kf_gins/executable_path", executablePath);
-            return executablePath;
-        }
-    }
-
-    if (QDir(repoPath).exists())
-    {
-        QMessageBox::information(this,
-            QStringLiteral("KF-GINS"),
-            is_english_
-                ? QString("KF-GINS source is available under %1, but KF-GINS.exe was not found yet. Please build it there or choose an executable manually.")
-                      .arg(repoPath)
-                : QString("已在 %1 找到KF-GINS源码，但还没有找到KF-GINS.exe。请先在该目录构建，或手动选择可执行文件。")
-                      .arg(repoPath));
-    }
-
-    const QString selectedPath = QFileDialog::getOpenFileName(
-        this,
-        is_english_ ? "Choose KF-GINS Executable" : "选择KF-GINS可执行文件",
-        executablePath.isEmpty() ? repoPath : QFileInfo(executablePath).absolutePath(),
-        is_english_
-            ? "Executable (*.exe);;All Files (*)"
-            : "可执行文件 (*.exe);;所有文件 (*)");
-    if (selectedPath.isEmpty())
-    {
-        return QString();
-    }
-
-    executablePath = QDir::fromNativeSeparators(QFileInfo(selectedPath).absoluteFilePath());
-    settings.setValue("kf_gins/executable_path", executablePath);
-    return executablePath;
-}
-
-bool SessionViewerWindow::exportKfGinsDataset(QString *configPath,
-                                              QString *outputDirectory,
-                                              QString *warningMessage,
-                                              QString *errorMessage) const
-{
-    if (!configPath || !outputDirectory || !warningMessage || !errorMessage)
-    {
-        return false;
-    }
-
-    *configPath = QString();
-    *outputDirectory = QString();
-    *warningMessage = QString();
-    *errorMessage = QString();
-
-    if (session_directory_.isEmpty() || sensors_csv_filename_.isEmpty())
-    {
-        *errorMessage = is_english_ ? "No session is currently loaded." : "当前没有已加载的会话。";
-        return false;
-    }
-
-    const QString exportRoot = QDir(session_directory_).filePath("analysis/kf_gins");
-    if (pathContainsNonAscii(exportRoot) || pathContainsNonAscii(sensors_csv_filename_))
-    {
-        *errorMessage = is_english_
-            ? "KF-GINS on Windows requires ASCII-only paths. Please place the session in a path without Chinese characters."
-            : "KF-GINS 在 Windows 下要求路径不含中文。请把当前 session 放到不含中文的路径后再运行。";
-        return false;
-    }
-
-    QDir exportDir(exportRoot);
-    if (!exportDir.exists() && !QDir().mkpath(exportRoot))
-    {
-        *errorMessage = QString(is_english_ ? "Failed to create KF-GINS export folder: %1" : "创建KF-GINS导出目录失败: %1")
-            .arg(exportRoot);
-        return false;
-    }
-
-    QFile csvFile(sensors_csv_filename_);
-    if (!csvFile.open(QIODevice::ReadOnly | QIODevice::Text))
-    {
-        *errorMessage = QString(is_english_ ? "Failed to open session CSV: %1" : "打开session CSV失败: %1")
-            .arg(sensors_csv_filename_);
-        return false;
-    }
-
-    QTextStream stream(&csvFile);
-    stream.setEncoding(QStringConverter::Utf8);
-    if (stream.atEnd())
-    {
-        *errorMessage = is_english_ ? "The session CSV is empty." : "当前session CSV为空。";
-        return false;
-    }
-
-    const QStringList headers = parseCsvLine(stream.readLine());
-    const int rtkTimestampIndex = findHeaderIndex(headers, {QStringLiteral("rtk_timestamp_us")});
-    const int rtkLatIndex = findHeaderIndex(headers, {QStringLiteral("rtk_lat")});
-    const int rtkLonIndex = findHeaderIndex(headers, {QStringLiteral("rtk_lon")});
-    const int rtkAltIndex = findHeaderIndex(headers, {QStringLiteral("rtk_alt")});
-    const int rtkFixIndex = findHeaderIndex(headers, {QStringLiteral("rtk_fix")});
-    const int rtkValidIndex = findHeaderIndex(headers, {QStringLiteral("rtk_valid")});
-    const int rtkVelNIndex = findHeaderIndex(headers, {QStringLiteral("rtk_vel_n")});
-    const int rtkVelEIndex = findHeaderIndex(headers, {QStringLiteral("rtk_vel_e")});
-    const int rtkVelDIndex = findHeaderIndex(headers, {QStringLiteral("rtk_vel_d")});
-    const int imuTimestampIndex = findHeaderIndex(headers, {QStringLiteral("imu_timestamp_us")});
-    const int imuAxIndex = findHeaderIndex(headers, {QStringLiteral("imu_ax")});
-    const int imuAyIndex = findHeaderIndex(headers, {QStringLiteral("imu_ay")});
-    const int imuAzIndex = findHeaderIndex(headers, {QStringLiteral("imu_az")});
-    const int imuGxIndex = findHeaderIndex(headers, {QStringLiteral("imu_gx")});
-    const int imuGyIndex = findHeaderIndex(headers, {QStringLiteral("imu_gy")});
-    const int imuGzIndex = findHeaderIndex(headers, {QStringLiteral("imu_gz")});
-    const int imuRollIndex = findHeaderIndex(headers, {QStringLiteral("imu_roll")});
-    const int imuPitchIndex = findHeaderIndex(headers, {QStringLiteral("imu_pitch")});
-    const int imuYawIndex = findHeaderIndex(headers, {QStringLiteral("imu_yaw")});
-    const int imuValidIndex = findHeaderIndex(headers, {QStringLiteral("imu_valid")});
-
-    if (rtkTimestampIndex < 0 || rtkLatIndex < 0 || rtkLonIndex < 0 || rtkAltIndex < 0 ||
-        imuTimestampIndex < 0 || imuAxIndex < 0 || imuAyIndex < 0 || imuAzIndex < 0 ||
-        imuGxIndex < 0 || imuGyIndex < 0 || imuGzIndex < 0)
-    {
-        *errorMessage = is_english_
-            ? "The current session CSV does not contain the RTK/IMU fields required by KF-GINS."
-            : "当前session CSV缺少KF-GINS所需的RTK/IMU字段。";
-        return false;
-    }
-
-    QVector<KfGinsImuRow> imuRows;
-    QVector<KfGinsGnssRow> gnssRows;
-    imuRows.reserve(4096);
-    gnssRows.reserve(1024);
-
-    while (!stream.atEnd())
-    {
-        const QString line = stream.readLine();
-        if (line.trimmed().isEmpty())
-        {
-            continue;
-        }
-
-        QStringList fields = parseCsvLine(line);
-        while (fields.size() < headers.size())
-        {
-            fields.push_back(QString());
-        }
-
-        const bool imuValid = imuValidIndex < 0 || parseBooleanCsvField(csvValueAt(fields, imuValidIndex), true);
-        const quint64 imuTimestampUs = csvValueAt(fields, imuTimestampIndex).toULongLong();
-        const double ax = parseOptionalDouble(csvValueAt(fields, imuAxIndex));
-        const double ay = parseOptionalDouble(csvValueAt(fields, imuAyIndex));
-        const double az = parseOptionalDouble(csvValueAt(fields, imuAzIndex));
-        const double gx = parseOptionalDouble(csvValueAt(fields, imuGxIndex));
-        const double gy = parseOptionalDouble(csvValueAt(fields, imuGyIndex));
-        const double gz = parseOptionalDouble(csvValueAt(fields, imuGzIndex));
-        if (imuValid &&
-            imuTimestampUs > 0 &&
-            std::isfinite(ax) && std::isfinite(ay) && std::isfinite(az) &&
-            std::isfinite(gx) && std::isfinite(gy) && std::isfinite(gz))
-        {
-            KfGinsImuRow row;
-            row.timestamp_us = imuTimestampUs;
-            row.ax = ax;
-            row.ay = ay;
-            row.az = az;
-            row.gx = gx;
-            row.gy = gy;
-            row.gz = gz;
-            row.roll = parseOptionalDouble(csvValueAt(fields, imuRollIndex));
-            row.pitch = parseOptionalDouble(csvValueAt(fields, imuPitchIndex));
-            row.yaw = parseOptionalDouble(csvValueAt(fields, imuYawIndex));
-            imuRows.push_back(row);
-        }
-
-        const bool rtkValid = rtkValidIndex < 0 || parseBooleanCsvField(csvValueAt(fields, rtkValidIndex), true);
-        const quint64 rtkTimestampUs = csvValueAt(fields, rtkTimestampIndex).toULongLong();
-        const double lat = parseOptionalDouble(csvValueAt(fields, rtkLatIndex));
-        const double lon = parseOptionalDouble(csvValueAt(fields, rtkLonIndex));
-        const double alt = parseOptionalDouble(csvValueAt(fields, rtkAltIndex));
-        if (rtkValid &&
-            rtkTimestampUs > 0 &&
-            std::isfinite(lat) && std::isfinite(lon) && std::isfinite(alt) &&
-            lat >= -90.0 && lat <= 90.0 &&
-            lon >= -180.0 && lon <= 180.0 &&
-            !(std::abs(lat) < 1e-8 && std::abs(lon) < 1e-8))
-        {
-            KfGinsGnssRow row;
-            row.timestamp_us = rtkTimestampUs;
-            row.lat = lat;
-            row.lon = lon;
-            row.alt = alt;
-            row.vel_n = parseOptionalDouble(csvValueAt(fields, rtkVelNIndex));
-            row.vel_e = parseOptionalDouble(csvValueAt(fields, rtkVelEIndex));
-            row.vel_d = parseOptionalDouble(csvValueAt(fields, rtkVelDIndex));
-            row.fix_text = csvValueAt(fields, rtkFixIndex);
-            gnssRows.push_back(row);
-        }
-    }
-
-    if (imuRows.size() < 2)
-    {
-        *errorMessage = is_english_
-            ? "The current session does not contain enough valid IMU samples for KF-GINS."
-            : "当前session里没有足够的有效IMU样本供KF-GINS使用。";
-        return false;
-    }
-    if (gnssRows.size() < 2)
-    {
-        *errorMessage = is_english_
-            ? "The current session does not contain enough valid RTK/GNSS samples for KF-GINS."
-            : "当前session里没有足够的有效RTK/GNSS样本供KF-GINS使用。";
-        return false;
-    }
-
-    std::sort(imuRows.begin(), imuRows.end(), [](const KfGinsImuRow& a, const KfGinsImuRow& b) {
-        return a.timestamp_us < b.timestamp_us;
-    });
-    std::sort(gnssRows.begin(), gnssRows.end(), [](const KfGinsGnssRow& a, const KfGinsGnssRow& b) {
-        return a.timestamp_us < b.timestamp_us;
-    });
-
-    QVector<quint64> imuTimestampsUs;
-    imuTimestampsUs.reserve(imuRows.size());
-    for (const KfGinsImuRow& row : imuRows)
-    {
-        imuTimestampsUs.push_back(row.timestamp_us);
-    }
-    const int imuRateHz = estimateImuRateHz(imuTimestampsUs);
-
-    const QString imuFilePath = exportDir.filePath("vaporview_imu.txt");
-    const QString gnssFilePath = exportDir.filePath("vaporview_gnss.txt");
-    const QString yamlFilePath = exportDir.filePath("kf-gins.yaml");
-
-    QFile imuFile(imuFilePath);
-    if (!imuFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
-    {
-        *errorMessage = QString(is_english_ ? "Failed to write KF-GINS IMU file: %1" : "写入KF-GINS IMU文件失败: %1")
-            .arg(imuFilePath);
-        return false;
-    }
-    QTextStream imuOut(&imuFile);
-    imuOut.setEncoding(QStringConverter::Utf8);
-
-    quint64 previousImuTimestampUs = 0;
-    int exportedImuRows = 0;
-    for (const KfGinsImuRow& row : imuRows)
-    {
-        if (previousImuTimestampUs == 0 || row.timestamp_us <= previousImuTimestampUs)
-        {
-            previousImuTimestampUs = row.timestamp_us;
-            continue;
-        }
-
-        const double deltaSeconds = static_cast<double>(row.timestamp_us - previousImuTimestampUs) / 1000000.0;
-        previousImuTimestampUs = row.timestamp_us;
-        if (deltaSeconds <= 1e-4 || deltaSeconds > 1.0)
-        {
-            continue;
-        }
-
-        imuOut << QString::number(epochUsToGpsSecondsOfWeek(row.timestamp_us), 'f', 6) << ' '
-               << QString::number(row.gx * deltaSeconds, 'f', 10) << ' '
-               << QString::number(row.gy * deltaSeconds, 'f', 10) << ' '
-               << QString::number(row.gz * deltaSeconds, 'f', 10) << ' '
-               << QString::number(row.ax * deltaSeconds, 'f', 10) << ' '
-               << QString::number(row.ay * deltaSeconds, 'f', 10) << ' '
-               << QString::number(row.az * deltaSeconds, 'f', 10) << '\n';
-        ++exportedImuRows;
-    }
-    imuFile.close();
-
-    if (exportedImuRows < 2)
-    {
-        *errorMessage = is_english_
-            ? "KF-GINS IMU export produced too few valid rows after timestamp conversion."
-            : "KF-GINS IMU导出后有效行数过少，无法继续运行。";
-        return false;
-    }
-
-    QFile gnssFile(gnssFilePath);
-    if (!gnssFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
-    {
-        *errorMessage = QString(is_english_ ? "Failed to write KF-GINS GNSS file: %1" : "写入KF-GINS GNSS文件失败: %1")
-            .arg(gnssFilePath);
-        return false;
-    }
-    QTextStream gnssOut(&gnssFile);
-    gnssOut.setEncoding(QStringConverter::Utf8);
-
-    quint64 previousGnssTimestampUs = 0;
-    int exportedGnssRows = 0;
-    for (const KfGinsGnssRow& row : gnssRows)
-    {
-        if (previousGnssTimestampUs != 0 && row.timestamp_us <= previousGnssTimestampUs)
-        {
-            continue;
-        }
-        previousGnssTimestampUs = row.timestamp_us;
-
-        QStringList fields;
-        fields << QString::number(epochUsToGpsSecondsOfWeek(row.timestamp_us), 'f', 6)
-               << QString::number(row.lat, 'f', 9)
-               << QString::number(row.lon, 'f', 9)
-               << QString::number(row.alt, 'f', 4);
-        appendKfGinsGnssStd(row.fix_text, fields);
-        gnssOut << fields.join(' ') << '\n';
-        ++exportedGnssRows;
-    }
-    gnssFile.close();
-
-    if (exportedGnssRows < 2)
-    {
-        *errorMessage = is_english_
-            ? "KF-GINS GNSS export produced too few valid rows."
-            : "KF-GINS GNSS导出后的有效行数过少。";
-        return false;
-    }
-
-    const KfGinsGnssRow& firstGnss = gnssRows.first();
-    const KfGinsImuRow& firstImu = imuRows.first();
-    QSettings settings("VaporView", "SessionViewer");
-    std::array<double, 3> antlever = {0.0, 0.0, 0.0};
-    std::array<double, 3> arw = {0.3, 0.3, 0.3};
-    std::array<double, 3> vrw = {0.1, 0.1, 0.1};
-    std::array<double, 3> gbstd = {10.0, 10.0, 10.0};
-    std::array<double, 3> abstd = {100.0, 100.0, 100.0};
-    std::array<double, 3> initAttOverride = {0.0, 0.0, 0.0};
-    const bool hasInitAttOverride = parseTripletSetting(settings.value("kf_gins/initatt_override").toString(), &initAttOverride);
-    parseTripletSetting(settings.value("kf_gins/antlever", formatTripletSetting(antlever, 3)).toString(), &antlever);
-    parseTripletSetting(settings.value("kf_gins/arw", formatTripletSetting(arw, 3)).toString(), &arw);
-    parseTripletSetting(settings.value("kf_gins/vrw", formatTripletSetting(vrw, 3)).toString(), &vrw);
-    parseTripletSetting(settings.value("kf_gins/gbstd", formatTripletSetting(gbstd, 3)).toString(), &gbstd);
-    parseTripletSetting(settings.value("kf_gins/abstd", formatTripletSetting(abstd, 3)).toString(), &abstd);
-
-    const double initRoll = hasInitAttOverride ? initAttOverride[0] : (std::isfinite(firstImu.roll) ? firstImu.roll : 0.0);
-    const double initPitch = hasInitAttOverride ? initAttOverride[1] : (std::isfinite(firstImu.pitch) ? firstImu.pitch : 0.0);
-    const double initYaw = hasInitAttOverride ? initAttOverride[2] : (std::isfinite(firstImu.yaw) ? firstImu.yaw : 0.0);
-    const double initVelN = std::isfinite(firstGnss.vel_n) ? firstGnss.vel_n : 0.0;
-    const double initVelE = std::isfinite(firstGnss.vel_e) ? firstGnss.vel_e : 0.0;
-    const double initVelD = std::isfinite(firstGnss.vel_d) ? firstGnss.vel_d : 0.0;
-    const double startTimeSeconds = epochUsToGpsSecondsOfWeek(imuRows.at(1).timestamp_us);
-    const double endTimeSeconds = epochUsToGpsSecondsOfWeek(imuRows.last().timestamp_us);
-
-    QFile yamlFile(yamlFilePath);
-    if (!yamlFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
-    {
-        *errorMessage = QString(is_english_ ? "Failed to write KF-GINS config file: %1" : "写入KF-GINS配置文件失败: %1")
-            .arg(yamlFilePath);
-        return false;
-    }
-
-    QTextStream yamlOut(&yamlFile);
-    yamlOut.setEncoding(QStringConverter::Utf8);
-    yamlOut
-        << "# Auto-generated by VaporView\n"
-        << "imupath: \"" << pathForYaml(imuFilePath) << "\"\n"
-        << "gnsspath: \"" << pathForYaml(gnssFilePath) << "\"\n"
-        << "outputpath: \"" << pathForYaml(exportRoot) << "\"\n"
-        << "imudatalen: 7\n"
-        << "imudatarate: " << imuRateHz << "\n"
-        << "starttime: " << QString::number(startTimeSeconds, 'f', 6) << "\n"
-        << "endtime: " << QString::number(endTimeSeconds, 'f', 6) << "\n"
-        << "initpos: [ " << QString::number(firstGnss.lat, 'f', 9) << ", " << QString::number(firstGnss.lon, 'f', 9)
-        << ", " << QString::number(firstGnss.alt, 'f', 4) << " ]\n"
-        << "initvel: [ " << QString::number(initVelN, 'f', 6) << ", " << QString::number(initVelE, 'f', 6)
-        << ", " << QString::number(initVelD, 'f', 6) << " ]\n"
-        << "initatt: [ " << QString::number(initRoll, 'f', 6) << ", " << QString::number(initPitch, 'f', 6)
-        << ", " << QString::number(initYaw, 'f', 6) << " ]\n"
-        << "initgyrbias: [ 0, 0, 0 ]\n"
-        << "initaccbias: [ 0, 0, 0 ]\n"
-        << "initgyrscale: [ 0, 0, 0 ]\n"
-        << "initaccscale: [ 0, 0, 0 ]\n"
-        << "initposstd: [ 1.0, 1.0, 2.0 ]\n"
-        << "initvelstd: [ 0.5, 0.5, 0.5 ]\n"
-        << "initattstd: [ 2.0, 2.0, 5.0 ]\n"
-        << "imunoise:\n"
-        << "  arw: [" << QString::number(arw[0], 'f', 3) << ", " << QString::number(arw[1], 'f', 3) << ", " << QString::number(arw[2], 'f', 3) << "]\n"
-        << "  vrw: [" << QString::number(vrw[0], 'f', 3) << ", " << QString::number(vrw[1], 'f', 3) << ", " << QString::number(vrw[2], 'f', 3) << "]\n"
-        << "  gbstd: [" << QString::number(gbstd[0], 'f', 3) << ", " << QString::number(gbstd[1], 'f', 3) << ", " << QString::number(gbstd[2], 'f', 3) << "]\n"
-        << "  abstd: [" << QString::number(abstd[0], 'f', 3) << ", " << QString::number(abstd[1], 'f', 3) << ", " << QString::number(abstd[2], 'f', 3) << "]\n"
-        << "  gsstd: [300.0, 300.0, 300.0]\n"
-        << "  asstd: [300.0, 300.0, 300.0]\n"
-        << "  corrtime: 4.0\n"
-        << "antlever: [ " << QString::number(antlever[0], 'f', 3) << ", "
-        << QString::number(antlever[1], 'f', 3) << ", "
-        << QString::number(antlever[2], 'f', 3) << " ]\n";
-    yamlFile.close();
-
-    *configPath = QDir::fromNativeSeparators(yamlFilePath);
-    *outputDirectory = QDir::fromNativeSeparators(exportRoot);
-    *warningMessage = is_english_
-        ? QString("KF-GINS input was generated from session CSV snapshots, not raw IMU packets. Exported %1 IMU rows at about %2 Hz and %3 GNSS rows.")
-              .arg(exportedImuRows)
-              .arg(imuRateHz)
-              .arg(exportedGnssRows)
-        : QString("KF-GINS输入来自session CSV快照而不是原始IMU包。已导出 %1 行IMU数据，估计频率约 %2 Hz，GNSS数据 %3 行。")
-              .arg(exportedImuRows)
-              .arg(imuRateHz)
-              .arg(exportedGnssRows);
-    return true;
-}
-
-void SessionViewerWindow::finalizeKfGinsRun(bool success, const QString& detail)
-{
-    if (kf_gins_btn_)
-    {
-        kf_gins_btn_->setEnabled(!session_directory_.isEmpty());
-        kf_gins_btn_->setText(is_english_ ? "Run KF-GINS" : "运行KF-GINS");
-    }
-
-    if (kf_gins_process_)
-    {
-        kf_gins_process_->deleteLater();
-        kf_gins_process_ = nullptr;
-    }
-
-    const QString logFilePath = kf_gins_output_directory_.isEmpty()
-        ? QString()
-        : QDir(kf_gins_output_directory_).filePath("kf_gins_process.log");
-    if (!logFilePath.isEmpty())
-    {
-        QFile logFile(logFilePath);
-        if (logFile.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
-        {
-            logFile.write(kf_gins_process_output_);
-        }
-    }
-
-    const QString message = detail.isEmpty()
-        ? (success
-            ? (is_english_ ? "KF-GINS finished successfully." : "KF-GINS运行完成。")
-            : (is_english_ ? "KF-GINS failed." : "KF-GINS运行失败。"))
-        : detail;
-    if (success)
-    {
-        loadKfGinsTrack();
-    }
-    setStatusText(message);
-    QMessageBox::information(this,
-        is_english_ ? "KF-GINS" : "KF-GINS",
-        message);
-    kf_gins_process_output_.clear();
-    kf_gins_output_directory_.clear();
-    kf_gins_warning_message_.clear();
-}
-
-void SessionViewerWindow::onRunKfGinsClicked()
-{
-    if (kf_gins_process_ && kf_gins_process_->state() != QProcess::NotRunning)
-    {
-        QMessageBox::information(this,
-            is_english_ ? "KF-GINS" : "KF-GINS",
-            is_english_ ? "KF-GINS is already running." : "KF-GINS正在运行中。");
-        return;
-    }
-
-    const QString executablePath = ensureKfGinsExecutablePath();
-    if (executablePath.isEmpty())
-    {
-        return;
-    }
-
-    QString configPath;
-    QString outputDirectory;
-    QString warningMessage;
-    QString errorMessage;
-    if (!exportKfGinsDataset(&configPath, &outputDirectory, &warningMessage, &errorMessage))
-    {
-        QMessageBox::warning(this, is_english_ ? "KF-GINS" : "KF-GINS", errorMessage);
-        setStatusText(errorMessage);
-        return;
-    }
-
-    kf_gins_output_directory_ = outputDirectory;
-    kf_gins_warning_message_ = warningMessage;
-    kf_gins_process_output_.clear();
-    kf_gins_process_ = new QProcess(this);
-    kf_gins_process_->setProgram(executablePath);
-    kf_gins_process_->setArguments({configPath});
-    kf_gins_process_->setWorkingDirectory(QFileInfo(executablePath).absolutePath());
-    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
-    QStringList pathEntries = environment.value(QStringLiteral("PATH")).split(';', Qt::SkipEmptyParts);
-    const QString executableDirectory = QDir::fromNativeSeparators(QFileInfo(executablePath).absolutePath());
-    const QString ucrt64BinDirectory = QStringLiteral("F:/msys64/ucrt64/bin");
-    if (!pathEntries.contains(executableDirectory, Qt::CaseInsensitive))
-    {
-        pathEntries.prepend(executableDirectory);
-    }
-    if (QDir(ucrt64BinDirectory).exists() && !pathEntries.contains(ucrt64BinDirectory, Qt::CaseInsensitive))
-    {
-        pathEntries.prepend(ucrt64BinDirectory);
-    }
-    environment.insert(QStringLiteral("PATH"), pathEntries.join(';'));
-    kf_gins_process_->setProcessEnvironment(environment);
-    connect(kf_gins_process_, &QProcess::readyReadStandardOutput, this, &SessionViewerWindow::onKfGinsProcessOutputReady);
-    connect(kf_gins_process_, &QProcess::readyReadStandardError, this, &SessionViewerWindow::onKfGinsProcessOutputReady);
-    connect(kf_gins_process_, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
-        onKfGinsProcessFinished(exitCode, static_cast<int>(exitStatus));
-    });
-
-    kf_gins_btn_->setEnabled(false);
-    kf_gins_btn_->setText(is_english_ ? "KF-GINS Running..." : "KF-GINS运行中...");
-    setStatusText(is_english_
-        ? QString("Running KF-GINS with exported session data... %1").arg(warningMessage)
-        : QString("正在使用导出的session数据运行KF-GINS... %1").arg(warningMessage));
-
-    kf_gins_process_->start();
-    if (!kf_gins_process_->waitForStarted(5000))
-    {
-        const QString message = QString(is_english_ ? "Failed to start KF-GINS: %1" : "启动KF-GINS失败: %1")
-            .arg(kf_gins_process_->errorString());
-        finalizeKfGinsRun(false, message);
-    }
-}
-
-void SessionViewerWindow::onKfGinsProcessOutputReady()
-{
-    if (!kf_gins_process_)
-    {
-        return;
-    }
-
-    kf_gins_process_output_.append(kf_gins_process_->readAllStandardOutput());
-    kf_gins_process_output_.append(kf_gins_process_->readAllStandardError());
-}
-
-void SessionViewerWindow::onKfGinsProcessFinished(int exitCode, int exitStatus)
-{
-    const bool success = (exitStatus == static_cast<int>(QProcess::NormalExit) && exitCode == 0);
-    const QString navResultPath = kf_gins_output_directory_.isEmpty()
-        ? QString()
-        : QDir(kf_gins_output_directory_).filePath("KF_GINS_Navresult.nav");
-
-    QString detail;
-    if (success && QFileInfo::exists(navResultPath))
-    {
-        detail = QString(is_english_
-                ? "KF-GINS finished successfully.\nOutput folder: %1\nNav result: %2"
-                : "KF-GINS运行成功。\n输出目录: %1\n导航结果: %2")
-            .arg(kf_gins_output_directory_, navResultPath);
-        if (!kf_gins_warning_message_.isEmpty())
-        {
-            detail += QStringLiteral("\n\n") + kf_gins_warning_message_;
-        }
-    }
-    else
-    {
-        QString processTail = QString::fromLocal8Bit(kf_gins_process_output_);
-        if (processTail.size() > 800)
-        {
-            processTail = processTail.right(800);
-        }
-        detail = QString(is_english_
-                ? "KF-GINS failed (exit code %1).\n%2"
-                : "KF-GINS运行失败（退出码 %1）。\n%2")
-            .arg(exitCode)
-            .arg(processTail.trimmed().isEmpty() ? (is_english_ ? "No process output." : "没有可用的进程输出。") : processTail.trimmed());
-    }
-
-    finalizeKfGinsRun(success, detail);
-}
-
 bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
 {
     clearLoadedData(false);
@@ -2748,10 +1851,6 @@ bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
         return false;
     }
     if (!loadSensorsCsv())
-    {
-        return false;
-    }
-    if (!loadKfGinsTrack())
     {
         return false;
     }
@@ -2780,87 +1879,6 @@ bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
     }
 
     setStatusText(QString(is_english_ ? "Loaded session: %1" : "已加载会话: %1").arg(session_directory_));
-    return true;
-}
-
-bool SessionViewerWindow::loadKfGinsTrack()
-{
-    kf_gins_track_points_.clear();
-    if (kf_gins_trajectory_view_btn_)
-    {
-        kf_gins_trajectory_view_btn_->setEnabled(false);
-    }
-    if (kf_gins_trajectory_viewer_dialog_)
-    {
-        kf_gins_trajectory_viewer_dialog_->setTrackLabel(QStringLiteral("KF-GINS trajectory"), QStringLiteral("KF-GINS轨迹"));
-        kf_gins_trajectory_viewer_dialog_->setTrackPoints({});
-    }
-
-    if (session_directory_.isEmpty())
-    {
-        return true;
-    }
-
-    const QString navResultPath = QDir(session_directory_).filePath(QStringLiteral("analysis/kf_gins/KF_GINS_Navresult.nav"));
-    QFile navFile(navResultPath);
-    if (!navFile.exists())
-    {
-        return true;
-    }
-    if (!navFile.open(QIODevice::ReadOnly | QIODevice::Text))
-    {
-        setStatusText(QString(is_english_ ? "Failed to open KF-GINS nav result: %1" : "打开KF-GINS导航结果失败: %1").arg(navResultPath));
-        return false;
-    }
-
-    QTextStream navIn(&navFile);
-    navIn.setEncoding(QStringConverter::Utf8);
-    while (!navIn.atEnd())
-    {
-        const QString line = navIn.readLine().trimmed();
-        if (line.isEmpty() || line.startsWith('#') || line.startsWith('%'))
-        {
-            continue;
-        }
-
-        const QStringList fields = line.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
-        if (fields.size() < 4)
-        {
-            continue;
-        }
-
-        bool timeOk = false;
-        bool latOk = false;
-        bool lonOk = false;
-        const double timeSeconds = fields.at(1).toDouble(&timeOk);
-        const double latitude = fields.at(2).toDouble(&latOk);
-        const double longitude = fields.at(3).toDouble(&lonOk);
-        if (!timeOk || !latOk || !lonOk ||
-            !std::isfinite(latitude) || !std::isfinite(longitude) ||
-            latitude < -90.0 || latitude > 90.0 ||
-            longitude < -180.0 || longitude > 180.0 ||
-            (std::abs(latitude) < 1e-8 && std::abs(longitude) < 1e-8))
-        {
-            continue;
-        }
-
-        RtkTrackPoint point;
-        point.latitude = latitude;
-        point.longitude = longitude;
-        point.timestamp_us = timeSeconds > 0.0
-            ? static_cast<quint64>(std::llround(timeSeconds * 1000000.0))
-            : 0;
-        kf_gins_track_points_.push_back(point);
-    }
-
-    if (kf_gins_trajectory_view_btn_)
-    {
-        kf_gins_trajectory_view_btn_->setEnabled(!kf_gins_track_points_.isEmpty());
-    }
-    if (kf_gins_trajectory_viewer_dialog_)
-    {
-        kf_gins_trajectory_viewer_dialog_->setTrackPoints(kf_gins_track_points_);
-    }
     return true;
 }
 
@@ -2941,14 +1959,23 @@ bool SessionViewerWindow::loadSensorsCsv()
     }
 
     csv_headers_ = parseCsvLine(stream.readLine());
-    const int rtkLatIndex = findHeaderIndex(csv_headers_, {QStringLiteral("rtk_lat")});
-    const int rtkLonIndex = findHeaderIndex(csv_headers_, {QStringLiteral("rtk_lon")});
-    const int rtkTimestampIndex = findHeaderIndex(csv_headers_, {QStringLiteral("rtk_timestamp_us")});
-    const int rtkValidIndex = findHeaderIndex(csv_headers_, {QStringLiteral("rtk_valid")});
-    const int rtkFixIndex = findHeaderIndex(csv_headers_, {QStringLiteral("rtk_fix")});
-    const int tempIndex = findHeaderIndex(csv_headers_, {QStringLiteral("temp_c")});
-    const int humidityIndex = findHeaderIndex(csv_headers_, {QStringLiteral("humidity_rh")});
-    const int pressureIndex = findHeaderIndex(csv_headers_, {QStringLiteral("baro_hpa"), QStringLiteral("baro_pa")});
+    const int recordTimestampIndex = findHeaderIndex(csv_headers_, {QStringLiteral("record_timestamp_us")});
+    const int epsilonHostTimestampIndex = findHeaderIndex(csv_headers_, {QStringLiteral("epsilon_host_timestamp_us")});
+    const int navLatIndex = findHeaderIndex(csv_headers_, {QStringLiteral("nav_lat_deg"), QStringLiteral("rtk_lat")});
+    const int navLonIndex = findHeaderIndex(csv_headers_, {QStringLiteral("nav_lon_deg"), QStringLiteral("rtk_lon")});
+    const int trackTimestampIndex = findHeaderIndex(csv_headers_, {
+        QStringLiteral("epsilon_host_timestamp_us"),
+        QStringLiteral("record_timestamp_us"),
+        QStringLiteral("rtk_timestamp_us")
+    });
+    const int epsilonValidIndex = findHeaderIndex(csv_headers_, {QStringLiteral("epsilon_valid"), QStringLiteral("rtk_valid")});
+    const int gnssFixIndex = findHeaderIndex(csv_headers_, {QStringLiteral("gnss_fix"), QStringLiteral("rtk_fix")});
+    const int hmpTemperatureIndex = findHeaderIndex(csv_headers_, {QStringLiteral("hmp_temperature_c"), QStringLiteral("temp_c")});
+    const int hmpHumidityIndex = findHeaderIndex(csv_headers_, {QStringLiteral("hmp_humidity_rh"), QStringLiteral("humidity_rh")});
+    const int ptbPressureIndex = findHeaderIndex(csv_headers_, {QStringLiteral("ptb_pressure_hpa"), QStringLiteral("baro_hpa")});
+    const int epsilonImuTempIndex = findHeaderIndex(csv_headers_, {QStringLiteral("imu_temp_c"), QStringLiteral("temp_c"), QStringLiteral("hmp_temperature_c")});
+    const int epsilonPressureTempIndex = findHeaderIndex(csv_headers_, {QStringLiteral("pressure_temp_c")});
+    const int epsilonPressureIndex = findHeaderIndex(csv_headers_, {QStringLiteral("pressure_pa"), QStringLiteral("baro_pa"), QStringLiteral("baro_hpa")});
     const int thValidIndex = findHeaderIndex(csv_headers_, {QStringLiteral("th_valid")});
     const int baroValidIndex = findHeaderIndex(csv_headers_, {QStringLiteral("baro_valid")});
     QStringList displayHeaders;
@@ -2983,7 +2010,24 @@ bool SessionViewerWindow::loadSensorsCsv()
         rows.push_back(fields);
 
         bool ok = false;
-        csv_timestamps_us_.push_back(csvValueAt(fields, 0).toULongLong(&ok));
+        quint64 timestampUs = 0;
+        if (recordTimestampIndex >= 0)
+        {
+            timestampUs = csvValueAt(fields, recordTimestampIndex).toULongLong(&ok);
+        }
+        else if (epsilonHostTimestampIndex >= 0)
+        {
+            timestampUs = csvValueAt(fields, epsilonHostTimestampIndex).toULongLong(&ok);
+        }
+        else if (trackTimestampIndex >= 0)
+        {
+            timestampUs = csvValueAt(fields, trackTimestampIndex).toULongLong(&ok);
+        }
+        else
+        {
+            timestampUs = csvValueAt(fields, 0).toULongLong(&ok);
+        }
+        csv_timestamps_us_.push_back(timestampUs);
         if (!ok)
         {
             csv_timestamps_us_.last() = 0;
@@ -2991,30 +2035,64 @@ bool SessionViewerWindow::loadSensorsCsv()
 
         const bool thValid = thValidIndex < 0 || parseBooleanCsvField(csvValueAt(fields, thValidIndex), true);
         const bool baroValid = baroValidIndex < 0 || parseBooleanCsvField(csvValueAt(fields, baroValidIndex), true);
-        temperature_values_.push_back((tempIndex >= 0 && thValid) ? parseOptionalDouble(csvValueAt(fields, tempIndex)) : std::numeric_limits<double>::quiet_NaN());
-        humidity_values_.push_back((humidityIndex >= 0 && thValid) ? parseOptionalDouble(csvValueAt(fields, humidityIndex)) : std::numeric_limits<double>::quiet_NaN());
-        pressure_values_.push_back((pressureIndex >= 0 && baroValid) ? parseOptionalDouble(csvValueAt(fields, pressureIndex)) : std::numeric_limits<double>::quiet_NaN());
+        double temperatureValue = std::numeric_limits<double>::quiet_NaN();
+        if (hmpTemperatureIndex >= 0 && thValid)
+        {
+            temperatureValue = parseOptionalDouble(csvValueAt(fields, hmpTemperatureIndex));
+        }
+        if (!std::isfinite(temperatureValue) && epsilonImuTempIndex >= 0)
+        {
+            temperatureValue = parseOptionalDouble(csvValueAt(fields, epsilonImuTempIndex));
+        }
+        if (!std::isfinite(temperatureValue) && epsilonPressureTempIndex >= 0)
+        {
+            temperatureValue = parseOptionalDouble(csvValueAt(fields, epsilonPressureTempIndex));
+        }
+        temperature_values_.push_back(temperatureValue);
 
-        const bool rtkValid = rtkValidIndex < 0 || parseBooleanCsvField(csvValueAt(fields, rtkValidIndex), true);
-        const double lat = parseOptionalDouble(csvValueAt(fields, rtkLatIndex));
-        const double lon = parseOptionalDouble(csvValueAt(fields, rtkLonIndex));
-        const QString rtkFix = csvValueAt(fields, rtkFixIndex).trimmed().toUpper();
-        if (rtkValid &&
+        humidity_values_.push_back((hmpHumidityIndex >= 0 && thValid)
+                                       ? parseOptionalDouble(csvValueAt(fields, hmpHumidityIndex))
+                                       : std::numeric_limits<double>::quiet_NaN());
+
+        double pressureValue = std::numeric_limits<double>::quiet_NaN();
+        if (ptbPressureIndex >= 0 && baroValid)
+        {
+            pressureValue = parseOptionalDouble(csvValueAt(fields, ptbPressureIndex));
+        }
+        if (!std::isfinite(pressureValue) && epsilonPressureIndex >= 0)
+        {
+            pressureValue = parseOptionalDouble(csvValueAt(fields, epsilonPressureIndex));
+            const QString pressureHeader = csv_headers_.value(epsilonPressureIndex).trimmed().toLower();
+            if (std::isfinite(pressureValue) && pressureHeader.endsWith(QStringLiteral("_pa")))
+            {
+                pressureValue /= 100.0;
+            }
+        }
+        pressure_values_.push_back(pressureValue);
+
+        const bool navValid = epsilonValidIndex < 0 || parseBooleanCsvField(csvValueAt(fields, epsilonValidIndex), true);
+        const double lat = parseOptionalDouble(csvValueAt(fields, navLatIndex));
+        const double lon = parseOptionalDouble(csvValueAt(fields, navLonIndex));
+        const QString gnssFix = csvValueAt(fields, gnssFixIndex).trimmed().toUpper();
+        if (navValid &&
             std::isfinite(lat) &&
             std::isfinite(lon) &&
             !(std::abs(lat) < 1e-8 && std::abs(lon) < 1e-8) &&
             lat >= -90.0 && lat <= 90.0 &&
             lon >= -180.0 && lon <= 180.0 &&
-            rtkFix != QStringLiteral("NONE") &&
-            rtkFix != QStringLiteral("NO_FIX") &&
-            rtkFix != QStringLiteral("INVALID"))
+            gnssFix != QStringLiteral("NONE") &&
+            gnssFix != QStringLiteral("NO_FIX") &&
+            gnssFix != QStringLiteral("INVALID") &&
+            gnssFix != QStringLiteral("NO_GPS"))
         {
             bool timestampOk = false;
-            const quint64 rtkTimestampUs = csvValueAt(fields, rtkTimestampIndex).toULongLong(&timestampOk);
+            const quint64 trackTimestampUs = trackTimestampIndex >= 0
+                ? csvValueAt(fields, trackTimestampIndex).toULongLong(&timestampOk)
+                : csv_timestamps_us_.last();
             RtkTrackPoint point;
             point.latitude = lat;
             point.longitude = lon;
-            point.timestamp_us = timestampOk ? rtkTimestampUs : 0;
+            point.timestamp_us = timestampOk ? trackTimestampUs : csv_timestamps_us_.last();
             if (!rtk_track_points_.isEmpty())
             {
                 const RtkTrackPoint& previous = rtk_track_points_.last();
@@ -3067,7 +2145,6 @@ bool SessionViewerWindow::loadSensorsCsv()
         std::any_of(pressure_values_.cbegin(), pressure_values_.cend(), [](double value) { return std::isfinite(value); });
     updateRtkTrackPeakValues();
     trajectory_view_btn_->setEnabled(!rtk_track_points_.isEmpty());
-    kf_gins_btn_->setEnabled(!session_directory_.isEmpty() && (!kf_gins_process_ || kf_gins_process_->state() == QProcess::NotRunning));
     environment_info_label_->setText(hasEnvironmentSeries
         ? (is_english_
             ? "Loaded temperature, humidity, and pressure trend series."

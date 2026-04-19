@@ -27,7 +27,6 @@ class QWidget;
 class QGridLayout;
 class QResizeEvent;
 class QShowEvent;
-class QProcess;
 class TrajectoryViewerDialog;
 
 class SessionViewerWindow : public QMainWindow
@@ -48,15 +47,10 @@ private slots:
     void onReloadClicked();
     void onClearViewClicked();
     void onViewTrajectoryClicked();
-    void onViewKfGinsTrajectoryClicked();
-    void onConfigureKfGinsClicked();
-    void onRunKfGinsClicked();
     void onFrameSliderChanged(int value);
     void onFrameSpinChanged(int value);
     void onTogglePeakPlotModeClicked();
     void onConfigurePeakFilterClicked();
-    void onKfGinsProcessOutputReady();
-    void onKfGinsProcessFinished(int exitCode, int exitStatus);
 
 private:
     enum class PeakFilterMode
@@ -93,7 +87,6 @@ private:
     bool loadSessionDirectory(QString sessionDirectory);
     bool loadSessionMetadata(const QString& sessionDirectory);
     bool loadSensorsCsv();
-    bool loadKfGinsTrack();
     bool loadWaveformSegments();
     bool loadWaveformPeakSeries();
     bool loadWaveformFrame(quint64 frameIndex);
@@ -105,18 +98,12 @@ private:
     void updatePeakPlotModeButtonText();
     void updatePeakFilterButtonText();
     QString peakFilterModeText(PeakFilterMode mode) const;
-    QString ensureKfGinsExecutablePath();
-    bool exportKfGinsDataset(QString *configPath, QString *outputDirectory, QString *warningMessage, QString *errorMessage) const;
-    void finalizeKfGinsRun(bool success, const QString& detail);
 
     QWidget *central_widget_;
     QLineEdit *session_path_edit_;
     QPushButton *choose_session_btn_;
     QPushButton *reload_btn_;
     QPushButton *trajectory_view_btn_;
-    QPushButton *kf_gins_trajectory_view_btn_;
-    QPushButton *kf_gins_config_btn_;
-    QPushButton *kf_gins_btn_;
     QPushButton *clear_view_btn_;
     QLabel *status_label_;
     QGroupBox *summary_group_;
@@ -175,7 +162,6 @@ private:
     QVector<double> humidity_values_;
     QVector<double> pressure_values_;
     QVector<RtkTrackPoint> rtk_track_points_;
-    QVector<RtkTrackPoint> kf_gins_track_points_;
     QVector<quint64> waveform_timestamps_us_;
     QVector<WaveformSegment> waveform_segments_;
     QVector<float> waveform_peak_raw_values_;
@@ -186,11 +172,6 @@ private:
     bool waveform_peak_scatter_mode_;
     QVector<int> highlighted_csv_rows_;
     TrajectoryViewerDialog *trajectory_viewer_dialog_;
-    TrajectoryViewerDialog *kf_gins_trajectory_viewer_dialog_;
-    QProcess *kf_gins_process_;
-    QString kf_gins_output_directory_;
-    QString kf_gins_warning_message_;
-    QByteArray kf_gins_process_output_;
     int points_per_frame_;
     int sensor_export_rate_hz_;
     int waveform_export_rate_hz_;

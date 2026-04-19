@@ -59,8 +59,10 @@ constexpr const char *kBaseMarginsRightProperty = "_vv_base_margin_right";
 constexpr const char *kBaseMarginsBottomProperty = "_vv_base_margin_bottom";
 constexpr int kMainPageInputHeight = 30;
 constexpr int kMainPageButtonHeight = 38;
+constexpr int kEpsilonTitleColumnWidth = 170;
+constexpr int kEpsilonValueColumnMinWidth = 320;
 constexpr quint64 kImuPpsSyncWindowUs = 2ULL * 1000ULL * 1000ULL;
-constexpr char kImuRawMagic[8] = {'V', 'V', 'I', 'M', 'U', 'R', 'A', 'W'};
+constexpr char kImuRawMagic[8] = {'V', 'V', 'E', 'P', 'S', 'R', 'A', 'W'};
 
 #pragma pack(push, 1)
 struct ImuRawFileHeader
@@ -206,6 +208,262 @@ void rememberBaseMetric(QObject *object, const char *propertyName, int value)
     }
 }
 }
+
+class EpsilonPanel : public QWidget
+{
+public:
+    explicit EpsilonPanel(QWidget *parent = nullptr)
+        : QWidget(parent)
+        , rate_label_(nullptr)
+        , is_english_(false)
+    {
+        setupUi();
+        setEnglish(false);
+    }
+
+    void updateRate(double hz)
+    {
+        if (rate_label_)
+        {
+            rate_label_->setText(QString(is_english_ ? "Total Frame Rate: %1 Hz" : "总帧率: %1 Hz")
+                                     .arg(hz, 0, 'f', hz >= 100.0 ? 0 : 1));
+        }
+    }
+
+    void setEnglish(bool english)
+    {
+        is_english_ = english;
+        updateRate(0.0);
+        for (auto it = title_labels_.cbegin(); it != title_labels_.cend(); ++it)
+        {
+            it.value()->setText(english ? title_en_.value(it.key()) : title_zh_.value(it.key()));
+        }
+    }
+
+    void updateData(const VaporView::EpsilonData& epsilon_data)
+    {
+        auto setValue = [this](const QString& key, const QString& value) {
+            if (QLabel *label = value_labels_.value(key, nullptr))
+            {
+                const QString display_text = value.isEmpty() ? QStringLiteral("--") : value;
+                label->setText(display_text);
+                label->setToolTip(display_text);
+            }
+        };
+        auto formatNumber = [](double value, int decimals) {
+            return std::isfinite(value) ? QString::number(value, 'f', decimals) : QString();
+        };
+        auto triple = [&](double a, double b, double c, int decimals = 6) {
+            if (!std::isfinite(a) || !std::isfinite(b) || !std::isfinite(c))
+            {
+                return QString();
+            }
+            return QStringLiteral("[%1, %2, %3]")
+                .arg(a, 0, 'f', decimals)
+                .arg(b, 0, 'f', decimals)
+                .arg(c, 0, 'f', decimals);
+        };
+        auto packetRateText = [](const QList<QPair<QString, double>>& packet_rates) {
+            QStringList parts;
+            for (const auto& packet_rate : packet_rates)
+            {
+                if (packet_rate.second > 0.0 && std::isfinite(packet_rate.second))
+                {
+                    parts << QStringLiteral("%1 %2Hz")
+                                 .arg(packet_rate.first)
+                                 .arg(packet_rate.second, 0, 'f', packet_rate.second >= 100.0 ? 0 : 1);
+                }
+            }
+            return parts.join(QStringLiteral(" / "));
+        };
+        const bool gnss_fix_valid = epsilon_data.gnss_fix_code >= 2;
+        const bool utc_valid = gnss_fix_valid && epsilon_data.utc_unix_s > 0;
+        const bool pressure_valid = std::isfinite(epsilon_data.pressure_pa) &&
+                                    epsilon_data.pressure_pa > 0.0 &&
+                                    std::isfinite(epsilon_data.pressure_altitude_m);
+
+        const QString utcText = utc_valid
+            ? QDateTime::fromSecsSinceEpoch(static_cast<qint64>(epsilon_data.utc_unix_s), QTimeZone::UTC)
+                  .addMSecs(static_cast<qint64>(epsilon_data.utc_microseconds / 1000U))
+                  .toString(Qt::ISODateWithMs)
+            : QString();
+
+        setValue(QStringLiteral("time_utc"), utcText);
+        setValue(QStringLiteral("device_ts"), epsilon_data.device_timestamp_us > 0 ? QString::number(epsilon_data.device_timestamp_us) : QString());
+        setValue(QStringLiteral("rate_high"),
+                 packetRateText({
+                     {QStringLiteral("40"), epsilon_data.imu_packet_rate_hz},
+                     {QStringLiteral("41"), epsilon_data.ahrs_packet_rate_hz},
+                     {QStringLiteral("42"), epsilon_data.insgps_packet_rate_hz},
+                     {QStringLiteral("50"), epsilon_data.sys_state_packet_rate_hz},
+                 }));
+        setValue(QStringLiteral("rate_low"),
+                 packetRateText({
+                     {QStringLiteral("59"), epsilon_data.raw_gnss_packet_rate_hz},
+                     {QStringLiteral("5A"), epsilon_data.satellite_packet_rate_hz},
+                     {QStringLiteral("5C"), epsilon_data.geodetic_packet_rate_hz},
+                     {QStringLiteral("5D"), epsilon_data.ecef_packet_rate_hz},
+                 }));
+        setValue(QStringLiteral("fix"), QString::fromStdString(epsilon_data.gnss_fix_text));
+        setValue(QStringLiteral("sat"), gnss_fix_valid && epsilon_data.gnss_satellites > 0 ? QString::number(epsilon_data.gnss_satellites) : QString());
+        setValue(QStringLiteral("llh"), gnss_fix_valid ? triple(epsilon_data.latitude_deg, epsilon_data.longitude_deg, epsilon_data.height_m, 8) : QString());
+        setValue(QStringLiteral("ecef"), gnss_fix_valid ? triple(epsilon_data.ecef_x_m, epsilon_data.ecef_y_m, epsilon_data.ecef_z_m, 4) : QString());
+        setValue(QStringLiteral("ned_pos"), gnss_fix_valid ? triple(epsilon_data.ned_n_m, epsilon_data.ned_e_m, epsilon_data.ned_d_m, 4) : QString());
+        setValue(QStringLiteral("ned_vel"), gnss_fix_valid ? triple(epsilon_data.vel_n_mps, epsilon_data.vel_e_mps, epsilon_data.vel_d_mps, 4) : QString());
+        setValue(QStringLiteral("body_vel"), gnss_fix_valid ? triple(epsilon_data.body_vel_x_mps, epsilon_data.body_vel_y_mps, epsilon_data.body_vel_z_mps, 4) : QString());
+        setValue(QStringLiteral("body_acc"), triple(epsilon_data.body_acc_x_mps2, epsilon_data.body_acc_y_mps2, epsilon_data.body_acc_z_mps2, 4));
+        setValue(QStringLiteral("imu_acc"), triple(epsilon_data.imu_acc_x_mps2, epsilon_data.imu_acc_y_mps2, epsilon_data.imu_acc_z_mps2, 4));
+        setValue(QStringLiteral("imu_gyr"), triple(epsilon_data.imu_gyr_x_radps, epsilon_data.imu_gyr_y_radps, epsilon_data.imu_gyr_z_radps, 6));
+        setValue(QStringLiteral("ang_vel"), triple(epsilon_data.ang_vel_x_radps, epsilon_data.ang_vel_y_radps, epsilon_data.ang_vel_z_radps, 6));
+        setValue(QStringLiteral("rpy"),
+                 triple(epsilon_data.roll_deg, epsilon_data.pitch_deg, epsilon_data.yaw_deg, 4));
+        setValue(QStringLiteral("quat"),
+                 (std::isfinite(epsilon_data.quat_w) &&
+                  std::isfinite(epsilon_data.quat_x) &&
+                  std::isfinite(epsilon_data.quat_y) &&
+                  std::isfinite(epsilon_data.quat_z))
+                     ? QStringLiteral("[%1, %2, %3, %4]")
+                           .arg(epsilon_data.quat_w, 0, 'f', 6)
+                           .arg(epsilon_data.quat_x, 0, 'f', 6)
+                           .arg(epsilon_data.quat_y, 0, 'f', 6)
+                           .arg(epsilon_data.quat_z, 0, 'f', 6)
+                     : QString());
+        setValue(QStringLiteral("mag"), triple(epsilon_data.mag_x_mg, epsilon_data.mag_y_mg, epsilon_data.mag_z_mg, 3));
+        setValue(QStringLiteral("temp"),
+                 (std::isfinite(epsilon_data.imu_temp_c) || std::isfinite(epsilon_data.pressure_temp_c))
+                     ? QStringLiteral("%1 C / %2 C")
+                           .arg(formatNumber(epsilon_data.imu_temp_c, 2).isEmpty() ? QStringLiteral("--") : formatNumber(epsilon_data.imu_temp_c, 2))
+                           .arg(formatNumber(epsilon_data.pressure_temp_c, 2).isEmpty() ? QStringLiteral("--") : formatNumber(epsilon_data.pressure_temp_c, 2))
+                     : QString());
+        setValue(QStringLiteral("pressure"),
+                 pressure_valid
+                     ? QStringLiteral("%1 Pa | Alt %2 m")
+                           .arg(epsilon_data.pressure_pa, 0, 'f', 2)
+                           .arg(epsilon_data.pressure_altitude_m, 0, 'f', 2)
+                     : QString());
+        setValue(QStringLiteral("dop"),
+                 gnss_fix_valid && std::isfinite(epsilon_data.hdop) && std::isfinite(epsilon_data.vdop)
+                     ? QStringLiteral("HDOP %1 / VDOP %2")
+                           .arg(epsilon_data.hdop, 0, 'f', 3)
+                           .arg(epsilon_data.vdop, 0, 'f', 3)
+                     : QString());
+        setValue(QStringLiteral("acc"),
+                 gnss_fix_valid && std::isfinite(epsilon_data.hacc_m) && std::isfinite(epsilon_data.vacc_m)
+                     ? QStringLiteral("hAcc %1 / vAcc %2")
+                           .arg(epsilon_data.hacc_m, 0, 'f', 3)
+                           .arg(epsilon_data.vacc_m, 0, 'f', 3)
+                     : QString());
+        setValue(QStringLiteral("std"),
+                 gnss_fix_valid &&
+                         std::isfinite(epsilon_data.lat_std_m) &&
+                         std::isfinite(epsilon_data.lon_std_m) &&
+                         std::isfinite(epsilon_data.height_std_m)
+                     ? QStringLiteral("[%1, %2, %3] m")
+                           .arg(epsilon_data.lat_std_m, 0, 'f', 3)
+                           .arg(epsilon_data.lon_std_m, 0, 'f', 3)
+                           .arg(epsilon_data.height_std_m, 0, 'f', 3)
+                     : QString());
+        setValue(QStringLiteral("heading_valid"), gnss_fix_valid ? (epsilon_data.heading_valid ? QStringLiteral("true") : QStringLiteral("false")) : QString());
+        setValue(QStringLiteral("status_bits"), QStringLiteral("0x%1").arg(epsilon_data.system_status_bits, 4, 16, QLatin1Char('0')).toUpper());
+        setValue(QStringLiteral("filter_bits"), QStringLiteral("0x%1").arg(epsilon_data.filter_status_bits, 4, 16, QLatin1Char('0')).toUpper());
+        setValue(QStringLiteral("update_bits"), QStringLiteral("0x%1").arg(epsilon_data.update_status_bits, 4, 16, QLatin1Char('0')).toUpper());
+        setValue(QStringLiteral("frames"),
+                 QStringLiteral("%1 / dropped %2")
+                     .arg(epsilon_data.raw_frame_count)
+                     .arg(epsilon_data.dropped_frame_count));
+    }
+
+private:
+    void addField(QGridLayout *layout,
+                  int row,
+                  int column,
+                  const QString& key,
+                  const QString& zhTitle,
+                  const QString& enTitle)
+    {
+        QLabel *title = new QLabel(this);
+        title->setObjectName(QStringLiteral("fieldLabel"));
+        title->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        QLabel *value = new QLabel(QStringLiteral("--"), this);
+        value->setObjectName(QStringLiteral("valueLabel"));
+        value->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        value->setWordWrap(false);
+        value->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        value->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+        value->setMinimumHeight(22);
+        value->setMinimumWidth(kEpsilonValueColumnMinWidth);
+        layout->addWidget(title, row, column * 2);
+        layout->addWidget(value, row, column * 2 + 1);
+        title_labels_.insert(key, title);
+        value_labels_.insert(key, value);
+        title_zh_.insert(key, zhTitle);
+        title_en_.insert(key, enTitle);
+    }
+
+    void setupUi()
+    {
+        auto *layout = new QVBoxLayout(this);
+        layout->setContentsMargins(8, 6, 8, 8);
+        layout->setSpacing(6);
+
+        rate_label_ = new QLabel(this);
+        rate_label_->setObjectName(QStringLiteral("rateLabel"));
+        layout->addWidget(rate_label_, 0, Qt::AlignLeft);
+
+        auto *grid = new QGridLayout();
+        grid->setHorizontalSpacing(12);
+        grid->setVerticalSpacing(6);
+        grid->setColumnMinimumWidth(0, kEpsilonTitleColumnWidth);
+        grid->setColumnMinimumWidth(1, kEpsilonValueColumnMinWidth);
+        grid->setColumnMinimumWidth(2, kEpsilonTitleColumnWidth);
+        grid->setColumnMinimumWidth(3, kEpsilonValueColumnMinWidth);
+        grid->setColumnStretch(0, 0);
+        grid->setColumnStretch(1, 1);
+        grid->setColumnStretch(2, 0);
+        grid->setColumnStretch(3, 1);
+
+        int row = 0;
+        addField(grid, row++, 0, QStringLiteral("time_utc"), QStringLiteral("UTC时间:"), QStringLiteral("UTC Time:"));
+        addField(grid, row++, 0, QStringLiteral("device_ts"), QStringLiteral("设备时间戳(us):"), QStringLiteral("Device Timestamp (us):"));
+        addField(grid, row++, 0, QStringLiteral("rate_high"), QStringLiteral("高频包率[40/41/42/50]:"), QStringLiteral("High-Rate Packets [40/41/42/50]:"));
+        addField(grid, row++, 0, QStringLiteral("rate_low"), QStringLiteral("低频包率[59/5A/5C/5D]:"), QStringLiteral("Low-Rate Packets [59/5A/5C/5D]:"));
+        addField(grid, row++, 0, QStringLiteral("fix"), QStringLiteral("GNSS状态:"), QStringLiteral("GNSS Fix:"));
+        addField(grid, row++, 0, QStringLiteral("sat"), QStringLiteral("卫星数:"), QStringLiteral("Satellites:"));
+        addField(grid, row++, 0, QStringLiteral("llh"), QStringLiteral("经纬高[deg,m]:"), QStringLiteral("LLH [deg,m]:"));
+        addField(grid, row++, 0, QStringLiteral("ecef"), QStringLiteral("ECEF[m]:"), QStringLiteral("ECEF [m]:"));
+        addField(grid, row++, 0, QStringLiteral("ned_pos"), QStringLiteral("NED位置[m]:"), QStringLiteral("NED Position [m]:"));
+        addField(grid, row++, 0, QStringLiteral("ned_vel"), QStringLiteral("NED速度[m/s]:"), QStringLiteral("NED Velocity [m/s]:"));
+        addField(grid, row++, 0, QStringLiteral("body_vel"), QStringLiteral("机体系速度[m/s]:"), QStringLiteral("Body Velocity [m/s]:"));
+        addField(grid, row++, 0, QStringLiteral("body_acc"), QStringLiteral("机体系加速度[m/s²]:"), QStringLiteral("Body Accel [m/s²]:"));
+        addField(grid, row++, 0, QStringLiteral("imu_acc"), QStringLiteral("IMU加速度[m/s²]:"), QStringLiteral("IMU Accel [m/s²]:"));
+        addField(grid, row++, 0, QStringLiteral("imu_gyr"), QStringLiteral("IMU角速度[rad/s]:"), QStringLiteral("IMU Gyro [rad/s]:"));
+
+        row = 0;
+        addField(grid, row++, 1, QStringLiteral("ang_vel"), QStringLiteral("姿态角速度[rad/s]:"), QStringLiteral("Attitude Rates [rad/s]:"));
+        addField(grid, row++, 1, QStringLiteral("rpy"), QStringLiteral("姿态角[deg]:"), QStringLiteral("RPY [deg]:"));
+        addField(grid, row++, 1, QStringLiteral("quat"), QStringLiteral("四元数:"), QStringLiteral("Quaternion:"));
+        addField(grid, row++, 1, QStringLiteral("mag"), QStringLiteral("磁场[mG]:"), QStringLiteral("Mag [mG]:"));
+        addField(grid, row++, 1, QStringLiteral("temp"), QStringLiteral("温度[IMU/气压]:"), QStringLiteral("Temp [IMU/Baro]:"));
+        addField(grid, row++, 1, QStringLiteral("pressure"), QStringLiteral("气压/气压高:"), QStringLiteral("Pressure/Altitude:"));
+        addField(grid, row++, 1, QStringLiteral("dop"), QStringLiteral("DOP:"), QStringLiteral("DOP:"));
+        addField(grid, row++, 1, QStringLiteral("acc"), QStringLiteral("定位精度[m]:"), QStringLiteral("Accuracy [m]:"));
+        addField(grid, row++, 1, QStringLiteral("std"), QStringLiteral("坐标标准差[m]:"), QStringLiteral("Coord Std [m]:"));
+        addField(grid, row++, 1, QStringLiteral("heading_valid"), QStringLiteral("航向有效:"), QStringLiteral("Heading Valid:"));
+        addField(grid, row++, 1, QStringLiteral("status_bits"), QStringLiteral("系统状态位:"), QStringLiteral("System Bits:"));
+        addField(grid, row++, 1, QStringLiteral("filter_bits"), QStringLiteral("滤波状态位:"), QStringLiteral("Filter Bits:"));
+        addField(grid, row++, 1, QStringLiteral("update_bits"), QStringLiteral("更新状态位:"), QStringLiteral("Update Bits:"));
+        addField(grid, row++, 1, QStringLiteral("frames"), QStringLiteral("原始帧统计:"), QStringLiteral("Raw Frame Stats:"));
+
+        layout->addLayout(grid);
+    }
+
+    QLabel *rate_label_;
+    QHash<QString, QLabel*> title_labels_;
+    QHash<QString, QLabel*> value_labels_;
+    QHash<QString, QString> title_zh_;
+    QHash<QString, QString> title_en_;
+    bool is_english_;
+};
 
 GnssPanel::GnssPanel(QWidget *parent)
     : QWidget(parent)
@@ -419,11 +677,11 @@ void GnssPanel::setEnglish(bool english)
     }
 }
 
-void GnssPanel::updateData(const VaporView::GnssData& data, quint64 timestamp_us)
+void GnssPanel::updateData(const VaporView::GnssData& gnss_data, quint64 timestamp_us)
 {
-    if (data.valid)
+    if (gnss_data.valid)
     {
-        status_label_->setText(QString::fromStdString(data.position_status));
+        status_label_->setText(QString::fromStdString(gnss_data.position_status));
         status_label_->setProperty("data-valid", true);
         status_label_->style()->unpolish(status_label_);
         status_label_->style()->polish(status_label_);
@@ -435,33 +693,33 @@ void GnssPanel::updateData(const VaporView::GnssData& data, quint64 timestamp_us
         const QString rawText = timestamp_us > 0 ? QString::number(timestamp_us) + "us" : QStringLiteral("---");
         time_label_->setText(QString("%1\n%2").arg(formattedText, rawText));
 
-        lat_label_->setText(QString::asprintf("%.8f°", data.latitude));
-        lon_label_->setText(QString::asprintf("%.8f°", data.longitude));
-        alt_label_->setText(QString::asprintf("%.3f m", data.altitude));
-        sigma_lat_label_->setText(QString::asprintf("%.3f m", data.sigma_lat));
-        sigma_lon_label_->setText(QString::asprintf("%.3f m", data.sigma_lon));
-        sigma_alt_label_->setText(QString::asprintf("%.3f m", data.sigma_alt));
-        undulation_label_->setText(QString::asprintf("%.3f m", data.undulation));
-        vel_n_label_->setText(QString::asprintf("%.3f m/s", data.vel_north));
-        vel_e_label_->setText(QString::asprintf("%.3f m/s", data.vel_east));
-        vel_ground_label_->setText(QString::asprintf("%.3f m/s", data.vel_ground));
-        heading_label_->setText(QString::asprintf("%.2f°", data.heading));
-        pitch_label_->setText(QString::asprintf("%.2f°", data.heading_pitch));
-        heading_type_label_->setText(QString::fromStdString(data.heading_type));
-        heading_len_label_->setText(QString::asprintf("%.3f m", data.heading_length));
-        heading_sats_label_->setText(QString("%1/%2").arg(data.heading_solnsvs).arg(data.heading_trackedsvs));
-        sats_label_->setText(QString("%1/%2").arg(data.num_satellites_used).arg(data.num_satellites_tracked));
-        diff_age_label_->setText(QString::asprintf("%.1f s", data.diff_age));
-        gdop_label_->setText(QString::asprintf("%.2f", data.gdop));
-        pdop_label_->setText(QString::asprintf("%.2f", data.pdop));
-        hdop_label_->setText(QString::asprintf("%.2f", data.hdop));
-        htdop_label_->setText(QString::asprintf("%.2f", data.htdop));
-        tdop_label_->setText(QString::asprintf("%.2f", data.tdop));
-        cutoff_label_->setText(QString::asprintf("%.1f°", data.elevation_cutoff));
+        lat_label_->setText(QString::asprintf("%.8f°", gnss_data.latitude));
+        lon_label_->setText(QString::asprintf("%.8f°", gnss_data.longitude));
+        alt_label_->setText(QString::asprintf("%.3f m", gnss_data.altitude));
+        sigma_lat_label_->setText(QString::asprintf("%.3f m", gnss_data.sigma_lat));
+        sigma_lon_label_->setText(QString::asprintf("%.3f m", gnss_data.sigma_lon));
+        sigma_alt_label_->setText(QString::asprintf("%.3f m", gnss_data.sigma_alt));
+        undulation_label_->setText(QString::asprintf("%.3f m", gnss_data.undulation));
+        vel_n_label_->setText(QString::asprintf("%.3f m/s", gnss_data.vel_north));
+        vel_e_label_->setText(QString::asprintf("%.3f m/s", gnss_data.vel_east));
+        vel_ground_label_->setText(QString::asprintf("%.3f m/s", gnss_data.vel_ground));
+        heading_label_->setText(QString::asprintf("%.2f°", gnss_data.heading));
+        pitch_label_->setText(QString::asprintf("%.2f°", gnss_data.heading_pitch));
+        heading_type_label_->setText(QString::fromStdString(gnss_data.heading_type));
+        heading_len_label_->setText(QString::asprintf("%.3f m", gnss_data.heading_length));
+        heading_sats_label_->setText(QString("%1/%2").arg(gnss_data.heading_solnsvs).arg(gnss_data.heading_trackedsvs));
+        sats_label_->setText(QString("%1/%2").arg(gnss_data.num_satellites_used).arg(gnss_data.num_satellites_tracked));
+        diff_age_label_->setText(QString::asprintf("%.1f s", gnss_data.diff_age));
+        gdop_label_->setText(QString::asprintf("%.2f", gnss_data.gdop));
+        pdop_label_->setText(QString::asprintf("%.2f", gnss_data.pdop));
+        hdop_label_->setText(QString::asprintf("%.2f", gnss_data.hdop));
+        htdop_label_->setText(QString::asprintf("%.2f", gnss_data.htdop));
+        tdop_label_->setText(QString::asprintf("%.2f", gnss_data.tdop));
+        cutoff_label_->setText(QString::asprintf("%.1f°", gnss_data.elevation_cutoff));
     }
     else
     {
-        status_label_->setText(QString::fromStdString(data.error_message));
+        status_label_->setText(QString::fromStdString(gnss_data.error_message));
         status_label_->setProperty("data-valid", false);
         status_label_->style()->unpolish(status_label_);
         status_label_->style()->polish(status_label_);
@@ -658,22 +916,22 @@ void ImuPanel::setEnglish(bool english)
     }
 }
 
-void ImuPanel::updateData(const VaporView::ImuData& data, quint64 gnss_timestamp_us)
+void ImuPanel::updateData(const VaporView::ImuData& imu_data, quint64 gnss_timestamp_us)
 {
-    if (data.valid)
+    if (imu_data.valid)
     {
-        source_label_->setText(imuFrameTypeName(data.frame_type));
+        source_label_->setText(imuFrameTypeName(imu_data.frame_type));
         source_label_->setProperty("data-valid", true);
         source_label_->style()->unpolish(source_label_);
         source_label_->style()->polish(source_label_);
         quint64 imuTimestampUs = 0;
-        if (data.from_hi83 && data.system_time_us > 0)
+        if (imu_data.from_hi83 && imu_data.system_time_us > 0)
         {
-            imuTimestampUs = static_cast<quint64>(data.system_time_us);
+            imuTimestampUs = static_cast<quint64>(imu_data.system_time_us);
         }
-        else if (data.system_time_ms > 0)
+        else if (imu_data.system_time_ms > 0)
         {
-            imuTimestampUs = static_cast<quint64>(data.system_time_ms) * 1000ULL;
+            imuTimestampUs = static_cast<quint64>(imu_data.system_time_ms) * 1000ULL;
         }
 
         bool ppsValid = false;
@@ -690,13 +948,13 @@ void ImuPanel::updateData(const VaporView::ImuData& data, quint64 gnss_timestamp
                   .toString("yyyy-MM-dd HH:mm:ss.zzz 'UTC'")
             : QStringLiteral("---");
         QString rawText = QStringLiteral("---");
-        if (data.from_hi83 && data.system_time_us > 0)
+        if (imu_data.from_hi83 && imu_data.system_time_us > 0)
         {
-            rawText = QString::number(data.system_time_us) + "us";
+            rawText = QString::number(imu_data.system_time_us) + "us";
         }
-        else if (data.system_time_ms > 0)
+        else if (imu_data.system_time_ms > 0)
         {
-            rawText = QString::number(data.system_time_ms) + "ms";
+            rawText = QString::number(imu_data.system_time_ms) + "ms";
         }
         time_label_->setText(QString("%1\n%2").arg(formattedText, rawText));
 
@@ -717,26 +975,26 @@ void ImuPanel::updateData(const VaporView::ImuData& data, quint64 gnss_timestamp
                 : QString("无效 (差值%1 ms)").arg(QString::number(deltaUs / 1000ULL)));
         }
 
-        acc_x_label_->setText(QString::asprintf("%.3f", data.acceleration[0]));
-        acc_y_label_->setText(QString::asprintf("%.3f", data.acceleration[1]));
-        acc_z_label_->setText(QString::asprintf("%.3f", data.acceleration[2]));
+        acc_x_label_->setText(QString::asprintf("%.3f", imu_data.acceleration[0]));
+        acc_y_label_->setText(QString::asprintf("%.3f", imu_data.acceleration[1]));
+        acc_z_label_->setText(QString::asprintf("%.3f", imu_data.acceleration[2]));
 
-        gyr_x_label_->setText(QString::asprintf("%.3f", data.gyroscope[0]));
-        gyr_y_label_->setText(QString::asprintf("%.3f", data.gyroscope[1]));
-        gyr_z_label_->setText(QString::asprintf("%.3f", data.gyroscope[2]));
+        gyr_x_label_->setText(QString::asprintf("%.3f", imu_data.gyroscope[0]));
+        gyr_y_label_->setText(QString::asprintf("%.3f", imu_data.gyroscope[1]));
+        gyr_z_label_->setText(QString::asprintf("%.3f", imu_data.gyroscope[2]));
 
-        roll_label_->setText(QString::asprintf("%.2f°", data.rpy[0]));
-        pitch_label_->setText(QString::asprintf("%.2f°", data.rpy[1]));
-        yaw_label_->setText(QString::asprintf("%.2f°", data.rpy[2]));
+        roll_label_->setText(QString::asprintf("%.2f°", imu_data.rpy[0]));
+        pitch_label_->setText(QString::asprintf("%.2f°", imu_data.rpy[1]));
+        yaw_label_->setText(QString::asprintf("%.2f°", imu_data.rpy[2]));
 
-        quat_w_label_->setText(QString::asprintf("%.4f", data.quaternion[0]));
-        quat_x_label_->setText(QString::asprintf("%.4f", data.quaternion[1]));
-        quat_y_label_->setText(QString::asprintf("%.4f", data.quaternion[2]));
-        quat_z_label_->setText(QString::asprintf("%.4f", data.quaternion[3]));
+        quat_w_label_->setText(QString::asprintf("%.4f", imu_data.quaternion[0]));
+        quat_x_label_->setText(QString::asprintf("%.4f", imu_data.quaternion[1]));
+        quat_y_label_->setText(QString::asprintf("%.4f", imu_data.quaternion[2]));
+        quat_z_label_->setText(QString::asprintf("%.4f", imu_data.quaternion[3]));
     }
     else
     {
-        source_label_->setText(QString::fromStdString(data.error_message));
+        source_label_->setText(QString::fromStdString(imu_data.error_message));
         source_label_->setProperty("data-valid", false);
         source_label_->style()->unpolish(source_label_);
         source_label_->style()->polish(source_label_);
@@ -813,11 +1071,11 @@ void PtbPanel::setEnglish(bool english)
     }
 }
 
-void PtbPanel::updateData(const VaporView::PtbData& data)
+void PtbPanel::updateData(const VaporView::PtbData& ptb_data)
 {
-    if (data.valid)
+    if (ptb_data.valid)
     {
-        pressure_label_->setText(QString::asprintf("%.2f hPa", data.pressure_hpa));
+        pressure_label_->setText(QString::asprintf("%.2f hPa", ptb_data.pressure_hpa));
         pressure_label_->setProperty("data-valid", true);
         pressure_label_->style()->unpolish(pressure_label_);
         pressure_label_->style()->polish(pressure_label_);
@@ -832,7 +1090,7 @@ void PtbPanel::updateData(const VaporView::PtbData& data)
         pressure_label_->setProperty("data-valid", false);
         pressure_label_->style()->unpolish(pressure_label_);
         pressure_label_->style()->polish(pressure_label_);
-        status_label_->setText(QString::fromStdString(data.error_message));
+        status_label_->setText(QString::fromStdString(ptb_data.error_message));
         status_label_->setProperty("status", "disconnected");
         status_label_->style()->unpolish(status_label_);
         status_label_->style()->polish(status_label_);
@@ -924,12 +1182,12 @@ void HmpPanel::setEnglish(bool english)
     }
 }
 
-void HmpPanel::updateData(const VaporView::HmpData& data)
+void HmpPanel::updateData(const VaporView::HmpData& hmp_data)
 {
-    if (data.valid)
+    if (hmp_data.valid)
     {
-        temperature_label_->setText(QString::asprintf("%.1f °C", data.temperature));
-        humidity_label_->setText(QString::asprintf("%.1f %%RH", data.humidity));
+        temperature_label_->setText(QString::asprintf("%.1f °C", hmp_data.temperature));
+        humidity_label_->setText(QString::asprintf("%.1f %%RH", hmp_data.humidity));
         temperature_label_->setProperty("data-valid", true);
         temperature_label_->style()->unpolish(temperature_label_);
         temperature_label_->style()->polish(temperature_label_);
@@ -951,7 +1209,7 @@ void HmpPanel::updateData(const VaporView::HmpData& data)
         humidity_label_->setProperty("data-valid", false);
         humidity_label_->style()->unpolish(humidity_label_);
         humidity_label_->style()->polish(humidity_label_);
-        status_label_->setText(QString::fromStdString(data.error_message));
+        status_label_->setText(QString::fromStdString(hmp_data.error_message));
         status_label_->setProperty("status", "disconnected");
         status_label_->style()->unpolish(status_label_);
         status_label_->style()->polish(status_label_);
@@ -1041,12 +1299,12 @@ void LidarPanel::setEnglish(bool english)
     }
 }
 
-void LidarPanel::updateData(const VaporView::LidarData& data)
+void LidarPanel::updateData(const VaporView::LidarData& lidar_data)
 {
-    if (data.valid)
+    if (lidar_data.valid)
     {
-        distance_label_->setText(QString::asprintf("%.2f m", data.distance_m));
-        strength_label_->setText(QString::number(data.signal_strength));
+        distance_label_->setText(QString::asprintf("%.2f m", lidar_data.distance_m));
+        strength_label_->setText(QString::number(lidar_data.signal_strength));
         distance_label_->setProperty("data-valid", true);
         distance_label_->style()->unpolish(distance_label_);
         distance_label_->style()->polish(distance_label_);
@@ -1078,16 +1336,19 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_panel_(nullptr)
     , hmp_panel_(nullptr)
     , lidar_panel_(nullptr)
+    , epsilon_panel_(nullptr)
     , log_text_edit_(nullptr)
     , status_label_(nullptr)
     , status_task_progress_bar_(nullptr)
     , recording_status_label_(nullptr)
     , auto_detect_ports_btn_(nullptr)
+    , epsilon_port_combo_(nullptr)
     , gnss_port_combo_(nullptr)
     , imu_port_combo_(nullptr)
     , ptb_port_combo_(nullptr)
     , hmp_port_combo_(nullptr)
     , lidar_port_combo_(nullptr)
+    , epsilon_baud_combo_(nullptr)
     , gnss_baud_combo_(nullptr)
     , imu_baud_combo_(nullptr)
     , ptb_baud_combo_(nullptr)
@@ -1105,6 +1366,7 @@ MainWindow::MainWindow(QWidget *parent)
     , lang_action_(nullptr)
     , clear_log_action_(nullptr)
     , session_viewer_action_(nullptr)
+    , epsilon_reconfigure_action_(nullptr)
     , recording_directory_action_(nullptr)
     , exit_action_(nullptr)
     , about_action_(nullptr)
@@ -1119,12 +1381,14 @@ MainWindow::MainWindow(QWidget *parent)
     , config_group_(nullptr)
     , data_group_(nullptr)
     , log_group_(nullptr)
+    , epsilon_group_(nullptr)
     , gnss_group_(nullptr)
     , imu_group_(nullptr)
     , ptb_group_(nullptr)
     , hmp_group_(nullptr)
     , env_group_(nullptr)
     , lidar_group_(nullptr)
+    , epsilon_lbl_(nullptr)
     , gnss_lbl_(nullptr)
     , imu_lbl_(nullptr)
     , ptb_lbl_(nullptr)
@@ -1132,12 +1396,14 @@ MainWindow::MainWindow(QWidget *parent)
     , lidar_lbl_(nullptr)
     , data_inline_title_lbl_(nullptr)
     , log_inline_title_lbl_(nullptr)
+    , epsilon_inline_title_lbl_(nullptr)
     , gnss_inline_title_lbl_(nullptr)
     , imu_inline_title_lbl_(nullptr)
     , env_inline_title_lbl_(nullptr)
     , config_inline_title_lbl_(nullptr)
     , global_rate_lbl_(nullptr)
     , waveform_split_lbl_(nullptr)
+    , epsilon_rate_lbl_(nullptr)
     , gnss_rate_lbl_(nullptr)
     , imu_rate_lbl_(nullptr)
     , ptb_rate_lbl_(nullptr)
@@ -1145,6 +1411,7 @@ MainWindow::MainWindow(QWidget *parent)
     , lidar_rate_lbl_(nullptr)
     , global_rate_combo_(nullptr)
     , waveform_split_spin_(nullptr)
+    , epsilon_rate_combo_(nullptr)
     , gnss_rate_combo_(nullptr)
     , imu_rate_combo_(nullptr)
     , ptb_rate_combo_(nullptr)
@@ -1160,6 +1427,7 @@ MainWindow::MainWindow(QWidget *parent)
     , imu_rate_200_btn_(nullptr)
     , imu_rate_500_btn_(nullptr)
     , imu_rate_1000_btn_(nullptr)
+    , epsilon_collector_(nullptr)
     , gnss_collector_(nullptr)
     , imu_collector_(nullptr)
     , ptb_collector_(nullptr)
@@ -1171,6 +1439,7 @@ MainWindow::MainWindow(QWidget *parent)
     , has_inline_progress_log_(false)
     , connection_attempt_in_progress_(false)
     , port_detection_in_progress_(false)
+    , epsilon_reconfigure_in_progress_(false)
     , is_connected_(false)
     , cancel_connection_requested_(false)
     , recording_thread_running_(false)
@@ -1180,6 +1449,7 @@ MainWindow::MainWindow(QWidget *parent)
     , base_font_point_size_(0.0)
     , base_window_size_(1440, 860)
     , base_minimum_window_size_(800, 600)
+    , epsilon_sample_rate_(100)
     , gnss_sample_rate_(1)
     , imu_sample_rate_(200)
     , ptb_sample_rate_(1)
@@ -1287,6 +1557,10 @@ MainWindow::~MainWindow()
     if (connection_thread_.joinable())
     {
         connection_thread_.join();
+    }
+    if (epsilon_reconfigure_thread_.joinable())
+    {
+        epsilon_reconfigure_thread_.join();
     }
     stopRecording(false);
     stopAllCollectors();
@@ -1595,13 +1869,13 @@ void MainWindow::rebuildRecordingRateMenu()
                  [this](int rate) { setWaveformRecordingRateHz(rate); });
 
     buildSubmenu(recording_rate_menu_,
-                 is_english_ ? QStringLiteral("IMU") : QStringLiteral("IMU"),
-                 QVector<int>{1, 2, 5, 10, 20, 50, 100, 200, 500, 1000},
-                 std::clamp(imu_recording_rate_hz_, 0, 1000),
+                 is_english_ ? QStringLiteral("EPSILON Raw") : QStringLiteral("EPSILON原始帧"),
+                 {},
+                 0,
                  true,
-                 QStringLiteral("Raw packets"),
-                 QStringLiteral("原始包"),
-                 [this](int rate) { setImuRecordingRateHz(rate); });
+                 QStringLiteral("Verified FDILink frames"),
+                 QStringLiteral("已校验FDILink原始帧"),
+                 [this](int) { setImuRecordingRateHz(0); });
 
     buildSubmenu(recording_rate_menu_,
                  is_english_ ? QStringLiteral("Other devices") : QStringLiteral("其余设备"),
@@ -1629,7 +1903,8 @@ void MainWindow::setRecordingExportRateHz(int rate, bool should_log)
 
 void MainWindow::setImuRecordingRateHz(int rate, bool should_log)
 {
-    const int normalizedRate = std::clamp(rate, 0, 1000);
+    Q_UNUSED(rate);
+    const int normalizedRate = 0;
     const bool changed = imu_recording_rate_hz_ != normalizedRate;
     imu_recording_rate_hz_ = normalizedRate;
     rebuildRecordingRateMenu();
@@ -1637,10 +1912,9 @@ void MainWindow::setImuRecordingRateHz(int rate, bool should_log)
 
     if (changed && should_log)
     {
-        const QString text = imu_recording_rate_hz_ == 0
-            ? (is_english_ ? QStringLiteral("IMU recording set to raw packets") : QStringLiteral("IMU 记录已设置为原始包"))
-            : QString(is_english_ ? "IMU recording rate set to %1 Hz" : "IMU 记录频率已设置为 %1 Hz").arg(imu_recording_rate_hz_);
-        log(text);
+        log(is_english_
+            ? QStringLiteral("EPSILON raw recording keeps full verified FDILink frames")
+            : QStringLiteral("EPSILON 原始记录固定保存完整已校验 FDILink 帧"));
     }
 }
 
@@ -1665,25 +1939,34 @@ void MainWindow::loadRememberedInputState()
 {
     QSettings settings("VaporView", "MainWindow");
 
-    applyComboText(gnss_port_combo_, settings.value("serial/gnss_port", gnss_port_combo_->currentText()).toString());
-    applyComboText(imu_port_combo_, settings.value("serial/imu_port", imu_port_combo_->currentText()).toString());
-    applyComboText(ptb_port_combo_, settings.value("serial/ptb_port", ptb_port_combo_->currentText()).toString());
-    applyComboText(hmp_port_combo_, settings.value("serial/hmp_port", hmp_port_combo_->currentText()).toString());
-    applyComboText(lidar_port_combo_, settings.value("serial/lidar_port", lidar_port_combo_->currentText()).toString());
+    auto loadCombo = [&settings](QComboBox *combo, const QString& key, const QString& fallbackKey = QString()) {
+        if (!combo)
+        {
+            return;
+        }
+        QVariant fallback = combo->currentText();
+        if (!fallbackKey.isEmpty())
+        {
+            fallback = settings.value(fallbackKey, fallback);
+        }
+        applyComboText(combo, settings.value(key, fallback).toString());
+    };
 
-    applyComboText(gnss_baud_combo_, settings.value("serial/gnss_baud", gnss_baud_combo_->currentText()).toString());
-    applyComboText(imu_baud_combo_, settings.value("serial/imu_baud", imu_baud_combo_->currentText()).toString());
-    applyComboText(ptb_baud_combo_, settings.value("serial/ptb_baud", ptb_baud_combo_->currentText()).toString());
-    applyComboText(hmp_baud_combo_, settings.value("serial/hmp_baud", hmp_baud_combo_->currentText()).toString());
-    applyComboText(lidar_baud_combo_, settings.value("serial/lidar_baud", lidar_baud_combo_->currentText()).toString());
+    loadCombo(epsilon_port_combo_, QStringLiteral("serial/epsilon_port"), QStringLiteral("serial/gnss_port"));
+    loadCombo(ptb_port_combo_, QStringLiteral("serial/ptb_port"));
+    loadCombo(hmp_port_combo_, QStringLiteral("serial/hmp_port"));
+    loadCombo(lidar_port_combo_, QStringLiteral("serial/lidar_port"));
 
-    applyComboText(global_rate_combo_, settings.value("rate/global", global_rate_combo_->currentText()).toString());
-    applyComboText(gnss_rate_combo_, settings.value("rate/gnss", gnss_rate_combo_->currentText()).toString());
-    applyComboText(imu_rate_combo_, settings.value("rate/imu", QStringLiteral("200")).toString());
-    applyComboText(ptb_rate_combo_, settings.value("rate/ptb", ptb_rate_combo_->currentText()).toString());
-    applyComboText(hmp_rate_combo_, settings.value("rate/hmp", hmp_rate_combo_->currentText()).toString());
-    applyComboText(lidar_rate_combo_, settings.value("rate/lidar", lidar_rate_combo_->currentText()).toString());
-    applyComboText(imu_format_combo_, settings.value("serial/imu_format", QStringLiteral("HI91")).toString());
+    loadCombo(epsilon_baud_combo_, QStringLiteral("serial/epsilon_baud"), QStringLiteral("serial/gnss_baud"));
+    loadCombo(ptb_baud_combo_, QStringLiteral("serial/ptb_baud"));
+    loadCombo(hmp_baud_combo_, QStringLiteral("serial/hmp_baud"));
+    loadCombo(lidar_baud_combo_, QStringLiteral("serial/lidar_baud"));
+
+    loadCombo(global_rate_combo_, QStringLiteral("rate/global"));
+    loadCombo(epsilon_rate_combo_, QStringLiteral("rate/epsilon"), QStringLiteral("rate/gnss"));
+    loadCombo(ptb_rate_combo_, QStringLiteral("rate/ptb"));
+    loadCombo(hmp_rate_combo_, QStringLiteral("rate/hmp"));
+    loadCombo(lidar_rate_combo_, QStringLiteral("rate/lidar"));
 
     recording_export_rate_hz_ = std::clamp(settings.value("recording_export_rate_hz", recording_export_rate_hz_).toInt(), 1, 200);
     imu_recording_rate_hz_ = std::clamp(settings.value("imu_recording_rate_hz", imu_recording_rate_hz_).toInt(), 0, 1000);
@@ -1701,25 +1984,29 @@ void MainWindow::loadRememberedInputState()
 void MainWindow::saveRememberedInputState() const
 {
     QSettings settings("VaporView", "MainWindow");
-    settings.setValue("serial/gnss_port", gnss_port_combo_->currentText());
-    settings.setValue("serial/imu_port", imu_port_combo_->currentText());
-    settings.setValue("serial/ptb_port", ptb_port_combo_->currentText());
-    settings.setValue("serial/hmp_port", hmp_port_combo_->currentText());
-    settings.setValue("serial/lidar_port", lidar_port_combo_->currentText());
 
-    settings.setValue("serial/gnss_baud", gnss_baud_combo_->currentText());
-    settings.setValue("serial/imu_baud", imu_baud_combo_->currentText());
-    settings.setValue("serial/imu_format", imu_format_combo_ ? imu_format_combo_->currentText() : QStringLiteral("HI91"));
-    settings.setValue("serial/ptb_baud", ptb_baud_combo_->currentText());
-    settings.setValue("serial/hmp_baud", hmp_baud_combo_->currentText());
-    settings.setValue("serial/lidar_baud", lidar_baud_combo_->currentText());
+    auto saveCombo = [&settings](const QString& key, QComboBox *combo) {
+        if (combo)
+        {
+            settings.setValue(key, combo->currentText());
+        }
+    };
 
-    settings.setValue("rate/global", global_rate_combo_->currentText());
-    settings.setValue("rate/gnss", gnss_rate_combo_->currentText());
-    settings.setValue("rate/imu", imu_rate_combo_->currentText());
-    settings.setValue("rate/ptb", ptb_rate_combo_->currentText());
-    settings.setValue("rate/hmp", hmp_rate_combo_->currentText());
-    settings.setValue("rate/lidar", lidar_rate_combo_->currentText());
+    saveCombo(QStringLiteral("serial/epsilon_port"), epsilon_port_combo_);
+    saveCombo(QStringLiteral("serial/ptb_port"), ptb_port_combo_);
+    saveCombo(QStringLiteral("serial/hmp_port"), hmp_port_combo_);
+    saveCombo(QStringLiteral("serial/lidar_port"), lidar_port_combo_);
+
+    saveCombo(QStringLiteral("serial/epsilon_baud"), epsilon_baud_combo_);
+    saveCombo(QStringLiteral("serial/ptb_baud"), ptb_baud_combo_);
+    saveCombo(QStringLiteral("serial/hmp_baud"), hmp_baud_combo_);
+    saveCombo(QStringLiteral("serial/lidar_baud"), lidar_baud_combo_);
+
+    saveCombo(QStringLiteral("rate/global"), global_rate_combo_);
+    saveCombo(QStringLiteral("rate/epsilon"), epsilon_rate_combo_);
+    saveCombo(QStringLiteral("rate/ptb"), ptb_rate_combo_);
+    saveCombo(QStringLiteral("rate/hmp"), hmp_rate_combo_);
+    saveCombo(QStringLiteral("rate/lidar"), lidar_rate_combo_);
     settings.setValue("recording_export_rate_hz", recording_export_rate_hz_);
     settings.setValue("imu_recording_rate_hz", imu_recording_rate_hz_);
     settings.setValue("waveform_recording_rate_hz", waveform_recording_rate_hz_);
@@ -1742,20 +2029,16 @@ void MainWindow::bindRememberedInputState()
         });
     };
 
-    bindCombo(gnss_port_combo_);
-    bindCombo(imu_port_combo_);
+    bindCombo(epsilon_port_combo_);
     bindCombo(ptb_port_combo_);
     bindCombo(hmp_port_combo_);
     bindCombo(lidar_port_combo_);
-    bindCombo(gnss_baud_combo_);
-    bindCombo(imu_baud_combo_);
-    bindCombo(imu_format_combo_);
+    bindCombo(epsilon_baud_combo_);
     bindCombo(ptb_baud_combo_);
     bindCombo(hmp_baud_combo_);
     bindCombo(lidar_baud_combo_);
     bindCombo(global_rate_combo_);
-    bindCombo(gnss_rate_combo_);
-    bindCombo(imu_rate_combo_);
+    bindCombo(epsilon_rate_combo_);
     bindCombo(ptb_rate_combo_);
     bindCombo(hmp_rate_combo_);
     bindCombo(lidar_rate_combo_);
@@ -2000,6 +2283,10 @@ void MainWindow::setupMenuBar()
     recording_rate_menu_ = fileMenu->addMenu("");
     rebuildRecordingRateMenu();
 
+    epsilon_reconfigure_action_ = new QAction(this);
+    connect(epsilon_reconfigure_action_, &QAction::triggered, this, &MainWindow::onReconfigureEpsilonClicked);
+    fileMenu->addAction(epsilon_reconfigure_action_);
+
     session_viewer_action_ = new QAction(this);
     connect(session_viewer_action_, &QAction::triggered, this, &MainWindow::onOpenSessionViewerClicked);
 
@@ -2098,20 +2385,18 @@ void MainWindow::setupMenuBar()
         QString text = is_english_ ?
             "VaporView Application\n\n"
             "Version 1.0.0\n\n"
-            "Navigation System with RTK and IMU support.\n\n"
+            "Integrated navigation and environment monitoring system.\n\n"
             "Supported devices:\n"
-            "- UM982 RTK Receiver (PVTSLN)\n"
-            "- HiPNUC IMU (HI81/HI83/HI91/HI92)\n"
+            "- EPSILON Integrated Navigation (FDILink)\n"
             "- PTB210 Barometer\n"
             "- HMP3 Temperature/Humidity Sensor\n"
             "- TF03 / TFA1500-L Laser Rangefinder\n\n"
             "Press F11 for fullscreen mode." :
             "VaporView 应用程序\n\n"
             "版本 1.0.0\n\n"
-            "导航系统，支持 RTK 和 IMU。\n\n"
+            "组合导航与环境监控系统。\n\n"
             "支持的设备:\n"
-            "- UM982 RTK 接收机 (PVTSLN)\n"
-            "- HiPNUC IMU (HI81/HI83/HI91/HI92)\n"
+            "- EPSILON 组合导航一体机 (FDILink)\n"
             "- PTB210 气压计\n"
             "- HMP3 温湿度传感器\n"
             "- TF03 / TFA1500-L 激光测距模块\n\n"
@@ -2355,6 +2640,18 @@ void MainWindow::setupConfigPanel()
         return combo;
     };
 
+    auto createEpsilonRateCombo = [this]() {
+        auto *combo = new QComboBox(this);
+        for (int rate : {20, 50, 100, 200})
+        {
+            combo->addItem(QString::number(rate));
+        }
+        combo->setCurrentText(QStringLiteral("100"));
+        combo->setFixedHeight(kMainPageInputHeight);
+        combo->setFixedWidth(100);
+        return combo;
+    };
+
     auto createPortRow = [this, config_layout, &baudRates, &ports, &createRateCombo](QLabel*& lbl, QComboBox*& portCombo, QComboBox*& baudCombo, QLabel*& rateLbl, QComboBox*& rateCombo, const QString& defaultPort, const QString& defaultBaud, int row, int maxRate = 500) {
         lbl = new QLabel(this);
         lbl->setObjectName("fieldLabel");
@@ -2424,18 +2721,24 @@ void MainWindow::setupConfigPanel()
     int row = 1;
 
 #ifdef _WIN32
-    createPortRow(gnss_lbl_, gnss_port_combo_, gnss_baud_combo_, gnss_rate_lbl_, gnss_rate_combo_, "COM3", "115200", row++);
-    createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, imu_rate_lbl_, imu_rate_combo_, "COM4", "921600", row++, 1000);
+    createPortRow(epsilon_lbl_, epsilon_port_combo_, epsilon_baud_combo_, epsilon_rate_lbl_, epsilon_rate_combo_, "COM3", "921600", row++, 200);
     createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "COM5", "9600", row++);
     createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "COM6", "19200", row++);
     createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "COM7", "500000", row++, 100);
 #else
-    createPortRow(gnss_lbl_, gnss_port_combo_, gnss_baud_combo_, gnss_rate_lbl_, gnss_rate_combo_, "/dev/ttyCOM3", "115200", row++);
-    createPortRow(imu_lbl_, imu_port_combo_, imu_baud_combo_, imu_rate_lbl_, imu_rate_combo_, "/dev/ttyIMU", "921600", row++, 1000);
+    createPortRow(epsilon_lbl_, epsilon_port_combo_, epsilon_baud_combo_, epsilon_rate_lbl_, epsilon_rate_combo_, "/dev/ttyEPSILON", "921600", row++, 200);
     createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "/dev/ttyBARO", "9600", row++);
     createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "/dev/ttyHMP", "19200", row++);
     createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "/dev/ttyLidar", "500000", row++, 100);
 #endif
+
+    if (epsilon_rate_combo_)
+    {
+        config_layout->removeWidget(epsilon_rate_combo_);
+        delete epsilon_rate_combo_;
+        epsilon_rate_combo_ = createEpsilonRateCombo();
+        config_layout->addWidget(epsilon_rate_combo_, 1, 4, Qt::AlignVCenter);
+    }
 
     if (lidar_rate_combo_)
     {
@@ -2443,10 +2746,7 @@ void MainWindow::setupConfigPanel()
         lidar_rate_combo_->setValidator(nullptr);
     }
 
-    imu_rate_combo_->setCurrentText(QStringLiteral("200"));
-
-    connect(gnss_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onGnssRateChanged);
-    connect(imu_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onImuRateChanged);
+    connect(epsilon_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onGnssRateChanged);
     connect(ptb_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onPtbRateChanged);
     connect(hmp_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onHmpRateChanged);
     connect(lidar_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onLidarRateChanged);
@@ -2471,29 +2771,24 @@ void MainWindow::setupDataPanels()
     sensor_splitter->setChildrenCollapsible(false);
     sensor_splitter->setHandleWidth(0);
 
-    gnss_group_ = new QGroupBox(this);
-    gnss_group_->setObjectName("sensorGroupBox");
-    auto *gnss_layout = new QVBoxLayout(gnss_group_);
-    gnss_layout->setContentsMargins(1, 0, 1, 1);
-    gnss_layout->setSpacing(0);
-    gnss_inline_title_lbl_ = new QLabel(this);
-    gnss_inline_title_lbl_->setObjectName("sectionTitleLabel");
-    gnss_layout->addWidget(gnss_inline_title_lbl_, 0, Qt::AlignLeft);
-    gnss_panel_ = new GnssPanel(this);
-    gnss_layout->addWidget(gnss_panel_);
-    sensor_splitter->addWidget(gnss_group_);
+    epsilon_group_ = new QGroupBox(this);
+    epsilon_group_->setObjectName("sensorGroupBox");
+    auto *epsilon_layout = new QVBoxLayout(epsilon_group_);
+    epsilon_layout->setContentsMargins(1, 0, 1, 1);
+    epsilon_layout->setSpacing(0);
+    epsilon_inline_title_lbl_ = new QLabel(this);
+    epsilon_inline_title_lbl_->setObjectName("sectionTitleLabel");
+    epsilon_layout->addWidget(epsilon_inline_title_lbl_, 0, Qt::AlignLeft);
+    epsilon_panel_ = new EpsilonPanel(this);
+    epsilon_layout->addWidget(epsilon_panel_);
+    sensor_splitter->addWidget(epsilon_group_);
 
-    imu_group_ = new QGroupBox(this);
-    imu_group_->setObjectName("sensorGroupBox");
-    auto *imu_layout = new QVBoxLayout(imu_group_);
-    imu_layout->setContentsMargins(1, 0, 1, 1);
-    imu_layout->setSpacing(0);
-    imu_inline_title_lbl_ = new QLabel(this);
-    imu_inline_title_lbl_->setObjectName("sectionTitleLabel");
-    imu_layout->addWidget(imu_inline_title_lbl_, 0, Qt::AlignLeft);
-    imu_panel_ = new ImuPanel(this);
-    imu_layout->addWidget(imu_panel_);
-    sensor_splitter->addWidget(imu_group_);
+    gnss_group_ = nullptr;
+    imu_group_ = nullptr;
+    gnss_panel_ = nullptr;
+    imu_panel_ = nullptr;
+    gnss_inline_title_lbl_ = nullptr;
+    imu_inline_title_lbl_ = nullptr;
 
     auto *env_group = new QGroupBox(this);
     env_group->setObjectName("sensorGroupBox");
@@ -2514,10 +2809,9 @@ void MainWindow::setupDataPanels()
     env_layout->addWidget(hmp_panel_);
 
     sensor_splitter->addWidget(env_group);
-    sensor_splitter->setStretchFactor(0, 4);
-    sensor_splitter->setStretchFactor(1, 4);
-    sensor_splitter->setStretchFactor(2, 4);
-    sensor_splitter->setSizes({420, 420, 420});
+    sensor_splitter->setStretchFactor(0, 7);
+    sensor_splitter->setStretchFactor(1, 3);
+    sensor_splitter->setSizes({860, 360});
 
     data_layout->addWidget(sensor_splitter, 1);
     env_group_ = env_group;
@@ -2600,6 +2894,10 @@ void MainWindow::setEnglish(bool english)
         recording_rate_menu_->setTitle(english ? "Record Rates" : "记录频率");
         rebuildRecordingRateMenu();
     }
+    if (epsilon_reconfigure_action_)
+    {
+        epsilon_reconfigure_action_->setText(english ? "Reconfigure EPSILON Output..." : "重新配置EPSILON输出...");
+    }
     session_viewer_action_->setText(english ? "Data Viewer..." : "数据查看器...");
     exit_action_->setText(english ? "E&xit" : "退出(&X)");
 
@@ -2638,15 +2936,17 @@ void MainWindow::setEnglish(bool english)
     tcp_wave_group_->setTitle(QString());
     log_group_->setTitle(QString());
 
-    gnss_group_->setTitle(QString());
-    imu_group_->setTitle(QString());
-    env_group_->setTitle(QString());
+    if (epsilon_group_) epsilon_group_->setTitle(QString());
+    if (gnss_group_) gnss_group_->setTitle(QString());
+    if (imu_group_) imu_group_->setTitle(QString());
+    if (env_group_) env_group_->setTitle(QString());
 
-    gnss_lbl_->setText(english ? "GNSS:" : "GNSS:");
-    imu_lbl_->setText(english ? "IMU:" : "IMU:");
-    ptb_lbl_->setText(english ? "PTB210:" : "PTB210:");
-    hmp_lbl_->setText(english ? "HMP3:" : "HMP3:");
-    lidar_lbl_->setText(english ? "TF03 / TFA1500-L:" : "TF03 / TFA1500-L:");
+    if (epsilon_lbl_) epsilon_lbl_->setText(english ? "EPSILON:" : "EPSILON:");
+    if (gnss_lbl_) gnss_lbl_->setText(english ? "GNSS:" : "GNSS:");
+    if (imu_lbl_) imu_lbl_->setText(english ? "IMU:" : "IMU:");
+    if (ptb_lbl_) ptb_lbl_->setText(english ? "PTB210:" : "PTB210:");
+    if (hmp_lbl_) hmp_lbl_->setText(english ? "HMP3:" : "HMP3:");
+    if (lidar_lbl_) lidar_lbl_->setText(english ? "TF03 / TFA1500-L:" : "TF03 / TFA1500-L:");
 
     if (config_inline_title_lbl_)
     {
@@ -2669,6 +2969,10 @@ void MainWindow::setEnglish(bool english)
     if (log_inline_title_lbl_)
     {
         log_inline_title_lbl_->setText(english ? "Log" : "日志");
+    }
+    if (epsilon_inline_title_lbl_)
+    {
+        epsilon_inline_title_lbl_->setText(english ? "EPSILON Integrated Navigation" : "EPSILON组合导航");
     }
     if (gnss_inline_title_lbl_)
     {
@@ -2695,8 +2999,9 @@ void MainWindow::setEnglish(bool english)
         waveform_split_lbl_->setToolTip(tooltip);
         waveform_split_spin_->setToolTip(tooltip);
     }
-    gnss_rate_lbl_->setText(english ? "Rate:" : "频率:");
-    imu_rate_lbl_->setText(english ? "Rate:" : "频率:");
+    if (epsilon_rate_lbl_) epsilon_rate_lbl_->setText(english ? "Rate:" : "频率:");
+    if (gnss_rate_lbl_) gnss_rate_lbl_->setText(english ? "Rate:" : "频率:");
+    if (imu_rate_lbl_) imu_rate_lbl_->setText(english ? "Rate:" : "频率:");
     if (imu_apply_btn_)
     {
         imu_apply_btn_->setText(english ? "Apply IMU" : "应用IMU");
@@ -2748,12 +3053,13 @@ void MainWindow::setEnglish(bool english)
         }
     }
 
-    gnss_panel_->setEnglish(english);
-    imu_panel_->setEnglish(english);
-    ptb_panel_->setEnglish(english);
-    hmp_panel_->setEnglish(english);
-    lidar_panel_->setEnglish(english);
-    tcp_wave_panel_->setEnglish(english);
+    if (epsilon_panel_) epsilon_panel_->setEnglish(english);
+    if (gnss_panel_) gnss_panel_->setEnglish(english);
+    if (imu_panel_) imu_panel_->setEnglish(english);
+    if (ptb_panel_) ptb_panel_->setEnglish(english);
+    if (hmp_panel_) hmp_panel_->setEnglish(english);
+    if (lidar_panel_) lidar_panel_->setEnglish(english);
+    if (tcp_wave_panel_) tcp_wave_panel_->setEnglish(english);
 
     if (rtk_config_dialog_)
     {
@@ -2844,43 +3150,34 @@ void MainWindow::onGlobalRateChanged(const QString& text)
 {
     int rate = parseRate(text);
     
-    gnss_sample_rate_ = rate;
-    imu_sample_rate_ = rate;
+    epsilon_sample_rate_ = std::clamp(rate, 20, 200);
     ptb_sample_rate_ = rate;
     hmp_sample_rate_ = rate;
     
-    gnss_rate_combo_->blockSignals(true);
-    imu_rate_combo_->blockSignals(true);
-    ptb_rate_combo_->blockSignals(true);
-    hmp_rate_combo_->blockSignals(true);
-    lidar_rate_combo_->blockSignals(true);
+    if (epsilon_rate_combo_) epsilon_rate_combo_->blockSignals(true);
+    if (ptb_rate_combo_) ptb_rate_combo_->blockSignals(true);
+    if (hmp_rate_combo_) hmp_rate_combo_->blockSignals(true);
+    if (lidar_rate_combo_) lidar_rate_combo_->blockSignals(true);
     
-    gnss_rate_combo_->setCurrentText(text);
-    imu_rate_combo_->setCurrentText(text);
-    ptb_rate_combo_->setCurrentText(text);
-    hmp_rate_combo_->setCurrentText(text);
-    if (!isLidarRateUnspecified(lidar_rate_combo_->currentText()))
+    if (epsilon_rate_combo_) epsilon_rate_combo_->setCurrentText(QString::number(epsilon_sample_rate_));
+    if (ptb_rate_combo_) ptb_rate_combo_->setCurrentText(text);
+    if (hmp_rate_combo_) hmp_rate_combo_->setCurrentText(text);
+    if (lidar_rate_combo_ && !isLidarRateUnspecified(lidar_rate_combo_->currentText()))
     {
         lidar_rate_combo_->setCurrentText(QString::number(std::min(rate, 100)));
     }
     
-    gnss_rate_combo_->blockSignals(false);
-    imu_rate_combo_->blockSignals(false);
-    ptb_rate_combo_->blockSignals(false);
-    hmp_rate_combo_->blockSignals(false);
-    lidar_rate_combo_->blockSignals(false);
+    if (epsilon_rate_combo_) epsilon_rate_combo_->blockSignals(false);
+    if (ptb_rate_combo_) ptb_rate_combo_->blockSignals(false);
+    if (hmp_rate_combo_) hmp_rate_combo_->blockSignals(false);
+    if (lidar_rate_combo_) lidar_rate_combo_->blockSignals(false);
     
     const CollectorSnapshot collectors = snapshotCollectors();
 
-    if (collectors.gnss && collectors.gnss->isRunning())
+    if (collectors.epsilon && collectors.epsilon->isRunning())
     {
-        collectors.gnss->setSampleRate(rate);
-        collectors.gnss->setDeviceSampleRate(rate);
-    }
-    if (collectors.imu && collectors.imu->isRunning())
-    {
-        collectors.imu->setSampleRate(rate);
-        collectors.imu->setDeviceSampleRate(rate);
+        collectors.epsilon->setSampleRate(epsilon_sample_rate_);
+        collectors.epsilon->setDeviceSampleRate(epsilon_sample_rate_);
     }
     if (collectors.ptb && collectors.ptb->isRunning())
     {
@@ -2906,29 +3203,19 @@ void MainWindow::onGlobalRateChanged(const QString& text)
 
 void MainWindow::onGnssRateChanged(const QString& text)
 {
-    gnss_sample_rate_ = parseRate(text);
+    epsilon_sample_rate_ = parseRate(text);
     const CollectorSnapshot collectors = snapshotCollectors();
-    if (collectors.gnss)
+    if (collectors.epsilon)
     {
-        collectors.gnss->setSampleRate(gnss_sample_rate_);
-        collectors.gnss->setDeviceSampleRate(gnss_sample_rate_);
+        collectors.epsilon->setSampleRate(epsilon_sample_rate_);
+        collectors.epsilon->setDeviceSampleRate(epsilon_sample_rate_);
     }
-    log(QString(is_english_ ? "GNSS sample rate set to %1 Hz" : "GNSS采样频率已设置为 %1 Hz").arg(gnss_sample_rate_));
+    log(QString(is_english_ ? "EPSILON output rate set to %1 Hz" : "EPSILON 输出频率已设置为 %1 Hz").arg(epsilon_sample_rate_));
 }
 
 void MainWindow::onImuRateChanged(const QString& text)
 {
-    imu_sample_rate_ = parseRate(text);
-    const CollectorSnapshot collectors = snapshotCollectors();
-    if (collectors.imu)
-    {
-        collectors.imu->setSampleRate(imu_sample_rate_);
-        if (collectors.imu->isRunning())
-        {
-            collectors.imu->setDeviceSampleRate(imu_sample_rate_);
-        }
-    }
-    log(QString(is_english_ ? "IMU sample rate set to %1 Hz" : "IMU采样频率已设置为 %1 Hz").arg(imu_sample_rate_));
+    Q_UNUSED(text);
 }
 
 void MainWindow::onPtbRateChanged(const QString& text)
@@ -2982,15 +3269,11 @@ void MainWindow::applyAllSampleRates()
     int rate = parseRate(global_rate_combo_->currentText());
     const CollectorSnapshot collectors = snapshotCollectors();
 
-    if (collectors.gnss && collectors.gnss->isRunning())
+    if (collectors.epsilon && collectors.epsilon->isRunning())
     {
-        collectors.gnss->setSampleRate(rate);
-        collectors.gnss->setDeviceSampleRate(rate);
-    }
-    if (collectors.imu && collectors.imu->isRunning())
-    {
-        collectors.imu->setSampleRate(rate);
-        collectors.imu->setDeviceSampleRate(rate);
+        const int epsilonRate = std::clamp(rate, 20, 200);
+        collectors.epsilon->setSampleRate(epsilonRate);
+        collectors.epsilon->setDeviceSampleRate(epsilonRate);
     }
     if (collectors.ptb && collectors.ptb->isRunning())
     {
@@ -3011,14 +3294,12 @@ void MainWindow::applyAllSampleRates()
         }
     }
 
-    gnss_rate_combo_->blockSignals(true);
-    imu_rate_combo_->blockSignals(true);
+    if (epsilon_rate_combo_) epsilon_rate_combo_->blockSignals(true);
     ptb_rate_combo_->blockSignals(true);
     hmp_rate_combo_->blockSignals(true);
     lidar_rate_combo_->blockSignals(true);
 
-    gnss_rate_combo_->setCurrentText(QString::number(rate));
-    imu_rate_combo_->setCurrentText(QString::number(rate));
+    if (epsilon_rate_combo_) epsilon_rate_combo_->setCurrentText(QString::number(std::clamp(rate, 20, 200)));
     ptb_rate_combo_->setCurrentText(QString::number(rate));
     hmp_rate_combo_->setCurrentText(QString::number(rate));
     if (!isLidarRateUnspecified(lidar_rate_combo_->currentText()))
@@ -3026,8 +3307,7 @@ void MainWindow::applyAllSampleRates()
         lidar_rate_combo_->setCurrentText(QString::number(std::min(rate, 100)));
     }
 
-    gnss_rate_combo_->blockSignals(false);
-    imu_rate_combo_->blockSignals(false);
+    if (epsilon_rate_combo_) epsilon_rate_combo_->blockSignals(false);
     ptb_rate_combo_->blockSignals(false);
     hmp_rate_combo_->blockSignals(false);
     lidar_rate_combo_->blockSignals(false);
@@ -3218,8 +3498,8 @@ bool MainWindow::prepareRecordingSessionLayout(const QString& recordsPath, const
     session_directory_ = QDir::fromNativeSeparators(finalSessionDirectory);
     waveform_directory_ = QDir::fromNativeSeparators(sessionDir.filePath("waveform"));
     sensors_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("sensors/devices.csv"));
-    imu_raw_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("sensors/imu_raw.dat"));
-    imu_raw_doc_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("imu_raw_dat_format.md"));
+    imu_raw_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("sensors/epsilon_raw.dat"));
+    imu_raw_doc_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("epsilon_raw_dat_format.md"));
     session_metadata_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("session.json"));
     event_log_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("logs/event_log.csv"));
     error_log_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("logs/error_log.txt"));
@@ -3240,7 +3520,7 @@ bool MainWindow::copyImuRawFormatDocumentToSession()
         return false;
     }
 
-    const QString sourcePath = QDir(repositoryRoot).filePath("docs/imu_raw_dat_format.md");
+    const QString sourcePath = QDir(repositoryRoot).filePath("docs/epsilon_raw_dat_format.md");
     if (!QFileInfo::exists(sourcePath))
     {
         return false;
@@ -3314,11 +3594,11 @@ void MainWindow::writeSessionMetadata(const QString& endTimeUtc)
     root["software_version"] = QCoreApplication::applicationVersion().isEmpty()
         ? QStringLiteral("dev")
         : QCoreApplication::applicationVersion();
+    root["epsilon_schema_version"] = QStringLiteral("epsilon.v1");
     root["waveform_points_per_frame"] = 50000;
     root["sensor_export_rate_hz"] = recording_export_rate_hz_;
     root["other_devices_export_rate_hz"] = recording_export_rate_hz_;
-    root["imu_raw_export_rate_hz"] = imu_recording_rate_hz_;
-    root["imu_raw_export_mode"] = imu_recording_rate_hz_ > 0 ? QStringLiteral("throttled") : QStringLiteral("raw");
+    root["epsilon_raw_export_mode"] = QStringLiteral("verified_fdilink_frames");
     root["waveform_export_rate_hz"] = waveform_recording_rate_hz_;
     root["waveform_export_mode"] = waveform_recording_rate_hz_ > 0 ? QStringLiteral("throttled") : QStringLiteral("per_frame");
     root["waveform_value_type"] = QStringLiteral("float32");
@@ -3332,8 +3612,8 @@ void MainWindow::writeSessionMetadata(const QString& endTimeUtc)
     QJsonObject paths;
     paths["waveform_directory"] = sessionDir.relativeFilePath(waveform_directory_);
     paths["devices_csv"] = sessionDir.relativeFilePath(sensors_filename_);
-    paths["imu_raw_dat"] = sessionDir.relativeFilePath(imu_raw_filename_);
-    paths["imu_raw_format_doc"] = sessionDir.relativeFilePath(imu_raw_doc_filename_);
+    paths["epsilon_raw_dat"] = sessionDir.relativeFilePath(imu_raw_filename_);
+    paths["epsilon_raw_format_doc"] = sessionDir.relativeFilePath(imu_raw_doc_filename_);
     paths["event_log"] = sessionDir.relativeFilePath(event_log_filename_);
     paths["error_log"] = sessionDir.relativeFilePath(error_log_filename_);
     paths["device_config"] = sessionDir.relativeFilePath(device_config_filename_);
@@ -3358,10 +3638,10 @@ void MainWindow::writeDeviceConfigSnapshot()
     QJsonObject root;
     root["recording_directory"] = recording_directory_;
     root["session_directory"] = session_directory_;
+    root["epsilon_schema_version"] = QStringLiteral("epsilon.v1");
     root["sensor_export_rate_hz"] = recording_export_rate_hz_;
     root["other_devices_export_rate_hz"] = recording_export_rate_hz_;
-    root["imu_raw_export_rate_hz"] = imu_recording_rate_hz_;
-    root["imu_raw_export_mode"] = imu_recording_rate_hz_ > 0 ? QStringLiteral("throttled") : QStringLiteral("raw");
+    root["epsilon_raw_export_mode"] = QStringLiteral("verified_fdilink_frames");
     root["waveform_export_rate_hz"] = waveform_recording_rate_hz_;
     root["waveform_export_mode"] = waveform_recording_rate_hz_ > 0 ? QStringLiteral("throttled") : QStringLiteral("per_frame");
     root["waveform_split_minutes"] = waveform_split_minutes_;
@@ -3384,13 +3664,7 @@ void MainWindow::writeDeviceConfigSnapshot()
         obj["rate_hz"] = rate ? rate->currentText() : QString();
         sensors[name] = obj;
     };
-    addSerialConfig("gnss", gnss_port_combo_, gnss_baud_combo_, gnss_rate_combo_);
-    addSerialConfig("imu", imu_port_combo_, imu_baud_combo_, imu_rate_combo_);
-    QJsonObject imuConfig = sensors.value("imu").toObject();
-    imuConfig["format"] = imu_format_combo_ ? imu_format_combo_->currentText() : QStringLiteral("HI91");
-    imuConfig["record_rate_hz"] = imu_recording_rate_hz_;
-    imuConfig["record_mode"] = imu_recording_rate_hz_ > 0 ? QStringLiteral("throttled") : QStringLiteral("raw");
-    sensors["imu"] = imuConfig;
+    addSerialConfig("epsilon", epsilon_port_combo_, epsilon_baud_combo_, epsilon_rate_combo_);
     addSerialConfig("ptb", ptb_port_combo_, ptb_baud_combo_, ptb_rate_combo_);
     addSerialConfig("hmp", hmp_port_combo_, hmp_baud_combo_, hmp_rate_combo_);
     addSerialConfig("tf03", lidar_port_combo_, lidar_baud_combo_, lidar_rate_combo_);
@@ -3435,17 +3709,15 @@ void MainWindow::startRecordingWorkers()
         {
             const auto tickTime = std::chrono::steady_clock::now();
             const quint64 recordTimestampUs = currentTimestampUs();
-            const QString recordTimestampUtc = recordingTimestampUtc();
             const CollectorSnapshot collectors = snapshotCollectors();
-            const VaporView::GnssData gnssSample = collectors.gnss ? collectors.gnss->getLatestData() : VaporView::GnssData();
-            const VaporView::ImuData imuSample = collectors.imu ? collectors.imu->getLatestData() : VaporView::ImuData();
+            const VaporView::EpsilonData epsilonSample = collectors.epsilon ? collectors.epsilon->getLatestData() : VaporView::EpsilonData();
             const VaporView::PtbData ptbSample = collectors.ptb ? collectors.ptb->getLatestData() : VaporView::PtbData();
             const VaporView::HmpData hmpSample = collectors.hmp ? collectors.hmp->getLatestData() : VaporView::HmpData();
             const VaporView::LidarData lidarSample = collectors.lidar ? collectors.lidar->getLatestData() : VaporView::LidarData();
 
             QStringList row;
-            row.reserve(64);
-            row << QString::number(recordTimestampUs) << recordTimestampUtc;
+            row.reserve(72);
+            row << QString::number(recordTimestampUs);
 
             auto appendEmptyColumns = [&row](int count) {
                 for (int i = 0; i < count; ++i)
@@ -3467,87 +3739,105 @@ void MainWindow::startRecordingWorkers()
                 return ageMs >= 0 && ageMs <= timeoutMs;
             };
 
-            if (isFresh(collectors.gnss.get(), gnssSample))
+            if (isFresh(collectors.epsilon.get(), epsilonSample))
             {
                 row
-                    << QString::number(steadyToEpochUs(gnssSample.timestamp))
-                    << QString::number(gnssSample.latitude, 'f', 9)
-                    << QString::number(gnssSample.longitude, 'f', 9)
-                    << QString::number(gnssSample.altitude, 'f', 6)
-                    << QString::fromStdString(gnssSample.position_status)
-                    << QString::number(gnssSample.num_satellites_used)
-                    << QString::number(gnssSample.heading, 'f', 6)
-                    << QString::number(gnssSample.heading_pitch, 'f', 6)
-                    << QString::number(gnssSample.vel_north, 'f', 6)
-                    << QString::number(gnssSample.vel_east, 'f', 6)
-                    << QString::number(gnssSample.vel_down, 'f', 6);
-                appendBool(gnssSample.valid);
-                row << QString::fromStdString(gnssSample.error_message);
+                    << QString::number(steadyToEpochUs(epsilonSample.timestamp))
+                    << QString::number(epsilonSample.device_timestamp_us)
+                    << QString::number(epsilonSample.utc_unix_s)
+                    << QString::number(epsilonSample.utc_microseconds)
+                    << QString::number(epsilonSample.latitude_deg, 'f', 9)
+                    << QString::number(epsilonSample.longitude_deg, 'f', 9)
+                    << QString::number(epsilonSample.height_m, 'f', 6)
+                    << QString::number(epsilonSample.ecef_x_m, 'f', 6)
+                    << QString::number(epsilonSample.ecef_y_m, 'f', 6)
+                    << QString::number(epsilonSample.ecef_z_m, 'f', 6)
+                    << QString::number(epsilonSample.ned_n_m, 'f', 6)
+                    << QString::number(epsilonSample.ned_e_m, 'f', 6)
+                    << QString::number(epsilonSample.ned_d_m, 'f', 6)
+                    << QString::number(epsilonSample.vel_n_mps, 'f', 6)
+                    << QString::number(epsilonSample.vel_e_mps, 'f', 6)
+                    << QString::number(epsilonSample.vel_d_mps, 'f', 6)
+                    << QString::number(epsilonSample.body_vel_x_mps, 'f', 6)
+                    << QString::number(epsilonSample.body_vel_y_mps, 'f', 6)
+                    << QString::number(epsilonSample.body_vel_z_mps, 'f', 6)
+                    << QString::number(epsilonSample.body_acc_x_mps2, 'f', 6)
+                    << QString::number(epsilonSample.body_acc_y_mps2, 'f', 6)
+                    << QString::number(epsilonSample.body_acc_z_mps2, 'f', 6)
+                    << QString::number(epsilonSample.roll_deg, 'f', 6)
+                    << QString::number(epsilonSample.pitch_deg, 'f', 6)
+                    << QString::number(epsilonSample.yaw_deg, 'f', 6)
+                    << QString::number(epsilonSample.quat_w, 'f', 8)
+                    << QString::number(epsilonSample.quat_x, 'f', 8)
+                    << QString::number(epsilonSample.quat_y, 'f', 8)
+                    << QString::number(epsilonSample.quat_z, 'f', 8)
+                    << QString::number(epsilonSample.ang_vel_x_radps, 'f', 8)
+                    << QString::number(epsilonSample.ang_vel_y_radps, 'f', 8)
+                    << QString::number(epsilonSample.ang_vel_z_radps, 'f', 8)
+                    << QString::number(epsilonSample.imu_acc_x_mps2, 'f', 6)
+                    << QString::number(epsilonSample.imu_acc_y_mps2, 'f', 6)
+                    << QString::number(epsilonSample.imu_acc_z_mps2, 'f', 6)
+                    << QString::number(epsilonSample.imu_gyr_x_radps, 'f', 8)
+                    << QString::number(epsilonSample.imu_gyr_y_radps, 'f', 8)
+                    << QString::number(epsilonSample.imu_gyr_z_radps, 'f', 8)
+                    << QString::number(epsilonSample.mag_x_mg, 'f', 6)
+                    << QString::number(epsilonSample.mag_y_mg, 'f', 6)
+                    << QString::number(epsilonSample.mag_z_mg, 'f', 6)
+                    << QString::number(epsilonSample.imu_temp_c, 'f', 4)
+                    << QString::number(epsilonSample.pressure_pa, 'f', 4)
+                    << QString::number(epsilonSample.pressure_temp_c, 'f', 4)
+                    << QString::fromStdString(epsilonSample.gnss_fix_text)
+                    << QString::number(epsilonSample.gnss_satellites)
+                    << QString::number(epsilonSample.hdop, 'f', 4)
+                    << QString::number(epsilonSample.vdop, 'f', 4)
+                    << QString::number(epsilonSample.hacc_m, 'f', 4)
+                    << QString::number(epsilonSample.vacc_m, 'f', 4)
+                    << QString::number(epsilonSample.lat_std_m, 'f', 4)
+                    << QString::number(epsilonSample.lon_std_m, 'f', 4)
+                    << QString::number(epsilonSample.height_std_m, 'f', 4)
+                    << (std::isfinite(epsilonSample.diff_age_s) ? QString::number(epsilonSample.diff_age_s, 'f', 4) : QString())
+                    << csvBool(epsilonSample.heading_valid)
+                    << QString::number(epsilonSample.system_status_bits)
+                    << QString::number(epsilonSample.filter_status_bits)
+                    << QString::number(epsilonSample.update_status_bits);
+                appendBool(epsilonSample.valid);
+                row << QString::fromStdString(epsilonSample.error_message);
             }
             else
             {
-                appendEmptyColumns(13);
-            }
-
-            if (isFresh(collectors.imu.get(), imuSample))
-            {
-                row
-                    << QString::number(steadyToEpochUs(imuSample.timestamp))
-                    << QString::number(imuSample.acceleration[0], 'f', 6)
-                    << QString::number(imuSample.acceleration[1], 'f', 6)
-                    << QString::number(imuSample.acceleration[2], 'f', 6)
-                    << QString::number(imuSample.gyroscope[0], 'f', 6)
-                    << QString::number(imuSample.gyroscope[1], 'f', 6)
-                    << QString::number(imuSample.gyroscope[2], 'f', 6)
-                    << QString::number(imuSample.rpy[0], 'f', 6)
-                    << QString::number(imuSample.rpy[1], 'f', 6)
-                    << QString::number(imuSample.rpy[2], 'f', 6);
-                appendBool(imuSample.valid);
-                row << QString::fromStdString(imuSample.error_message);
-            }
-            else
-            {
-                appendEmptyColumns(12);
+                appendEmptyColumns(60);
             }
 
             if (isFresh(collectors.hmp.get(), hmpSample))
             {
                 row
-                    << QString::number(steadyToEpochUs(hmpSample.timestamp))
                     << QString::number(hmpSample.temperature, 'f', 6)
                     << QString::number(hmpSample.humidity, 'f', 6);
-                appendBool(hmpSample.valid);
-                row << QString::fromStdString(hmpSample.error_message);
             }
             else
             {
-                appendEmptyColumns(5);
+                appendEmptyColumns(2);
             }
 
             if (isFresh(collectors.ptb.get(), ptbSample))
             {
-                row << QString::number(steadyToEpochUs(ptbSample.timestamp))
-                    << QString::number(ptbSample.pressure_hpa, 'f', 6);
-                appendBool(ptbSample.valid);
-                row << QString::fromStdString(ptbSample.error_message);
+                row << QString::number(ptbSample.pressure_hpa, 'f', 6);
             }
             else
             {
-                appendEmptyColumns(4);
+                appendEmptyColumns(1);
             }
 
             if (isFresh(collectors.lidar.get(), lidarSample))
             {
                 row
-                    << QString::number(steadyToEpochUs(lidarSample.timestamp))
                     << QString::number(lidarSample.distance_m, 'f', 6)
                     << QString::number(lidarSample.signal_strength);
                 appendBool(lidarSample.valid);
-                row << QString::fromStdString(lidarSample.error_message);
             }
             else
             {
-                appendEmptyColumns(4);
+                appendEmptyColumns(3);
             }
 
             {
@@ -3675,8 +3965,8 @@ bool MainWindow::startRecordingSession()
     if (!copyImuRawFormatDocumentToSession())
     {
         log(QString(is_english_
-            ? "Warning: failed to copy IMU raw format document into session folder"
-            : "警告：未能将 IMU 原始格式说明复制到当前会话目录"));
+            ? "Warning: failed to copy EPSILON raw format document into session folder"
+            : "警告：未能将 EPSILON 原始格式说明复制到当前会话目录"));
     }
     writeSessionMetadata();
     writeDeviceConfigSnapshot();
@@ -3839,12 +4129,26 @@ void MainWindow::writeSensorsHeader()
     out.setEncoding(QStringConverter::Utf8);
     out.setGenerateByteOrderMark(true);
     out
-        << "record_timestamp_us,record_timestamp_utc,"
-        << "rtk_timestamp_us,rtk_lat,rtk_lon,rtk_alt,rtk_fix,rtk_sat,rtk_heading,rtk_pitch,rtk_vel_n,rtk_vel_e,rtk_vel_d,rtk_valid,rtk_error_message,"
-        << "imu_timestamp_us,imu_ax,imu_ay,imu_az,imu_gx,imu_gy,imu_gz,imu_roll,imu_pitch,imu_yaw,imu_valid,imu_error_message,"
-        << "th_timestamp_us,temp_c,humidity_rh,th_valid,th_error_message,"
-        << "baro_timestamp_us,baro_hpa,baro_valid,baro_error_message,"
-        << "tf03_distance_m,tf03_signal_strength,tf03_valid,tf03_error_message\n";
+        << "record_timestamp_us,"
+        << "epsilon_host_timestamp_us,epsilon_device_timestamp_us,epsilon_utc_unix_s,epsilon_utc_microseconds,"
+        << "nav_lat_deg,nav_lon_deg,nav_height_m,"
+        << "ecef_x_m,ecef_y_m,ecef_z_m,"
+        << "ned_n_m,ned_e_m,ned_d_m,"
+        << "vel_n_mps,vel_e_mps,vel_d_mps,"
+        << "body_vel_x_mps,body_vel_y_mps,body_vel_z_mps,"
+        << "body_acc_x_mps2,body_acc_y_mps2,body_acc_z_mps2,"
+        << "roll_deg,pitch_deg,yaw_deg,"
+        << "quat_w,quat_x,quat_y,quat_z,"
+        << "ang_vel_x_radps,ang_vel_y_radps,ang_vel_z_radps,"
+        << "imu_acc_x_mps2,imu_acc_y_mps2,imu_acc_z_mps2,"
+        << "imu_gyr_x_radps,imu_gyr_y_radps,imu_gyr_z_radps,"
+        << "mag_x_mg,mag_y_mg,mag_z_mg,"
+        << "imu_temp_c,pressure_pa,pressure_temp_c,"
+        << "gnss_fix,gnss_satellites,hdop,vdop,hacc_m,vacc_m,"
+        << "lat_std_m,lon_std_m,height_std_m,diff_age_s,"
+        << "heading_valid,system_status_bits,filter_status_bits,update_status_bits,"
+        << "epsilon_valid,epsilon_error_message,"
+        << "hmp_temperature_c,hmp_humidity_rh,ptb_pressure_hpa,lidar_distance_m,lidar_signal_strength,lidar_valid\n";
     out.flush();
 }
 
@@ -3990,7 +4294,7 @@ void MainWindow::updateRecordingActionStates()
     const bool recordingSourceAvailable = is_connected_ || tcpConnected;
     const bool sessionOpen = sensors_file_ && sensors_file_->isOpen();
     const bool recordingActive = sessionOpen && !recording_paused_ && recording_thread_running_.load();
-    const bool uiBusy = connection_attempt_in_progress_ || port_detection_in_progress_;
+    const bool uiBusy = connection_attempt_in_progress_ || port_detection_in_progress_ || epsilon_reconfigure_in_progress_;
     const bool canStart = recordingSourceAvailable && !uiBusy && (!sessionOpen || recording_paused_);
     const bool canPause = !uiBusy && recordingActive;
     const bool canStop = sessionOpen && !uiBusy;
@@ -4012,15 +4316,20 @@ void MainWindow::updateRecordingActionStates()
 void MainWindow::updateConnectionStatus(bool connected)
 {
     is_connected_ = connected;
-    const bool inputsEnabled = !connected && !connection_attempt_in_progress_ && !port_detection_in_progress_;
+    const bool uiBusy = connection_attempt_in_progress_ || port_detection_in_progress_ || epsilon_reconfigure_in_progress_;
+    const bool inputsEnabled = !connected && !uiBusy;
 
     connect_btn_->setEnabled(inputsEnabled);
     cancel_connect_btn_->setEnabled(connection_attempt_in_progress_);
-    disconnect_btn_->setEnabled(connected && !connection_attempt_in_progress_);
+    disconnect_btn_->setEnabled(connected && !connection_attempt_in_progress_ && !epsilon_reconfigure_in_progress_);
     refresh_ports_btn_->setEnabled(inputsEnabled);
+    if (epsilon_reconfigure_action_)
+    {
+        epsilon_reconfigure_action_->setEnabled(!uiBusy);
+    }
     if (auto_detect_ports_btn_)
     {
-        auto_detect_ports_btn_->setEnabled(!connected && !connection_attempt_in_progress_);
+        auto_detect_ports_btn_->setEnabled(!connected && !connection_attempt_in_progress_ && !epsilon_reconfigure_in_progress_);
         auto_detect_ports_btn_->setText(port_detection_in_progress_
             ? (is_english_ ? "Cancel Auto Detect" : "取消自动识别")
             : (is_english_ ? "Auto Detect Ports" : "自动识别串口"));
@@ -4030,32 +4339,31 @@ void MainWindow::updateConnectionStatus(bool connected)
                            : "扫描可用串口，并将识别出的设备自动填入对应端口。"));
     }
 
-    gnss_port_combo_->setEnabled(inputsEnabled);
-    imu_port_combo_->setEnabled(inputsEnabled);
-    ptb_port_combo_->setEnabled(inputsEnabled);
-    hmp_port_combo_->setEnabled(inputsEnabled);
-    lidar_port_combo_->setEnabled(inputsEnabled);
-    gnss_baud_combo_->setEnabled(inputsEnabled);
-    imu_baud_combo_->setEnabled(inputsEnabled);
-    ptb_baud_combo_->setEnabled(inputsEnabled);
-    hmp_baud_combo_->setEnabled(inputsEnabled);
-    lidar_baud_combo_->setEnabled(inputsEnabled);
-    if (imu_format_combo_)
-    {
-        imu_format_combo_->setEnabled(!connection_attempt_in_progress_ && !port_detection_in_progress_);
-    }
+    if (epsilon_port_combo_) epsilon_port_combo_->setEnabled(inputsEnabled);
+    if (ptb_port_combo_) ptb_port_combo_->setEnabled(inputsEnabled);
+    if (hmp_port_combo_) hmp_port_combo_->setEnabled(inputsEnabled);
+    if (lidar_port_combo_) lidar_port_combo_->setEnabled(inputsEnabled);
+    if (epsilon_baud_combo_) epsilon_baud_combo_->setEnabled(inputsEnabled);
+    if (ptb_baud_combo_) ptb_baud_combo_->setEnabled(inputsEnabled);
+    if (hmp_baud_combo_) hmp_baud_combo_->setEnabled(inputsEnabled);
+    if (lidar_baud_combo_) lidar_baud_combo_->setEnabled(inputsEnabled);
     for (QPushButton* button : {imu_apply_btn_, imu_hi91_btn_, imu_hi92_btn_, imu_baud_115200_btn_, imu_baud_921600_btn_,
                                 imu_rate_100_btn_, imu_rate_200_btn_, imu_rate_500_btn_, imu_rate_1000_btn_})
     {
         if (button)
         {
-            button->setEnabled(!connection_attempt_in_progress_ && !port_detection_in_progress_);
+            button->setEnabled(!connection_attempt_in_progress_ && !port_detection_in_progress_ && !epsilon_reconfigure_in_progress_);
         }
     }
 
     if (port_detection_in_progress_)
     {
         status_label_->setText(is_english_ ? "Detecting Ports..." : "正在识别串口...");
+        status_label_->setProperty("status", "connecting");
+    }
+    else if (epsilon_reconfigure_in_progress_)
+    {
+        status_label_->setText(is_english_ ? "Reconfiguring EPSILON..." : "正在重配 EPSILON...");
         status_label_->setProperty("status", "connecting");
     }
     else if (connection_attempt_in_progress_)
@@ -4078,15 +4386,27 @@ void MainWindow::updateConnectionStatus(bool connected)
     updateRecordingActionStates();
 }
 
+bool MainWindow::anyCollectorRunning() const
+{
+    const CollectorSnapshot collectors = snapshotCollectors();
+    return (collectors.epsilon && collectors.epsilon->isRunning()) ||
+        (collectors.gnss && collectors.gnss->isRunning()) ||
+        (collectors.imu && collectors.imu->isRunning()) ||
+        (collectors.ptb && collectors.ptb->isRunning()) ||
+        (collectors.hmp && collectors.hmp->isRunning()) ||
+        (collectors.lidar && collectors.lidar->isRunning());
+}
+
 MainWindow::CollectorSnapshot MainWindow::snapshotCollectors() const
 {
     std::lock_guard<std::mutex> lock(collector_mutex_);
-    return {gnss_collector_, imu_collector_, ptb_collector_, hmp_collector_, lidar_collector_};
+    return {epsilon_collector_, gnss_collector_, imu_collector_, ptb_collector_, hmp_collector_, lidar_collector_};
 }
 
 void MainWindow::setCollectors(CollectorSnapshot collectors)
 {
     std::lock_guard<std::mutex> lock(collector_mutex_);
+    epsilon_collector_ = std::move(collectors.epsilon);
     gnss_collector_ = std::move(collectors.gnss);
     imu_collector_ = std::move(collectors.imu);
     ptb_collector_ = std::move(collectors.ptb);
@@ -4099,6 +4419,7 @@ void MainWindow::stopAllCollectors()
     CollectorSnapshot collectors;
     {
         std::lock_guard<std::mutex> lock(collector_mutex_);
+        collectors.epsilon = std::move(epsilon_collector_);
         collectors.gnss = std::move(gnss_collector_);
         collectors.imu = std::move(imu_collector_);
         collectors.ptb = std::move(ptb_collector_);
@@ -4106,6 +4427,10 @@ void MainWindow::stopAllCollectors()
         collectors.lidar = std::move(lidar_collector_);
     }
 
+    if (collectors.epsilon)
+    {
+        collectors.epsilon->stop();
+    }
     if (collectors.gnss)
     {
         collectors.gnss->stop();
@@ -4150,6 +4475,10 @@ void MainWindow::onRefreshPortsClicked()
     QStringList ports = getAvailablePorts();
 
     auto updateCombo = [this, &ports](QComboBox* combo) {
+        if (!combo)
+        {
+            return;
+        }
         QString current = combo->currentText();
         combo->clear();
         combo->addItem(is_english_ ? "-- Select --" : "-- 选择 --");
@@ -4165,8 +4494,7 @@ void MainWindow::onRefreshPortsClicked()
         }
     };
 
-    updateCombo(gnss_port_combo_);
-    updateCombo(imu_port_combo_);
+    updateCombo(epsilon_port_combo_);
     updateCombo(ptb_port_combo_);
     updateCombo(hmp_port_combo_);
     updateCombo(lidar_port_combo_);
@@ -4205,13 +4533,7 @@ void MainWindow::onAutoDetectPortsClicked()
     log(is_english_ ? "Starting automatic serial-port detection..." : "开始自动识别串口...");
     showBusyStatusTaskProgress(is_english_ ? "Detecting Ports..." : "正在识别串口...");
 
-    const QString imuProbeBaudText = imu_baud_combo_ ? imu_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
-    bool imuProbeBaudOk = false;
-    const int imuProbeBaud = imuProbeBaudText.toInt(&imuProbeBaudOk);
-    const int effectiveImuProbeBaud = imuProbeBaudOk && imuProbeBaud > 0 ? imuProbeBaud : 921600;
-    const QString effectiveImuProbeBaudText = QString::number(effectiveImuProbeBaud);
-
-    port_detection_thread_ = std::thread([this, effectiveImuProbeBaud, effectiveImuProbeBaudText]() {
+    port_detection_thread_ = std::thread([this]() {
         struct ProbeSpec
         {
             QString key;
@@ -4255,11 +4577,10 @@ void MainWindow::onAutoDetectPortsClicked()
                 };
 
                 QHash<QString, QString> plannedPorts{
-                    {"gnss", normalizePort(gnss_port_combo_->currentText())},
-                    {"imu", normalizePort(imu_port_combo_->currentText())},
-                    {"ptb", normalizePort(ptb_port_combo_->currentText())},
-                    {"hmp", normalizePort(hmp_port_combo_->currentText())},
-                    {"lidar", normalizePort(lidar_port_combo_->currentText())},
+                    {"epsilon", normalizePort(epsilon_port_combo_ ? epsilon_port_combo_->currentText() : QString())},
+                    {"ptb", normalizePort(ptb_port_combo_ ? ptb_port_combo_->currentText() : QString())},
+                    {"hmp", normalizePort(hmp_port_combo_ ? hmp_port_combo_->currentText() : QString())},
+                    {"lidar", normalizePort(lidar_port_combo_ ? lidar_port_combo_->currentText() : QString())},
                 };
 
                 QHash<QString, QString> detectedBaud;
@@ -4304,19 +4625,14 @@ void MainWindow::onAutoDetectPortsClicked()
                     }
                 }
 
-                applySelection(gnss_port_combo_, plannedPorts.value("gnss", selectText));
-                applySelection(imu_port_combo_, plannedPorts.value("imu", selectText));
+                applySelection(epsilon_port_combo_, plannedPorts.value("epsilon", selectText));
                 applySelection(ptb_port_combo_, plannedPorts.value("ptb", selectText));
                 applySelection(hmp_port_combo_, plannedPorts.value("hmp", selectText));
                 applySelection(lidar_port_combo_, plannedPorts.value("lidar", selectText));
 
-                if (plannedPorts.value("gnss", selectText) != selectText && detectedBaud.contains("gnss"))
+                if (plannedPorts.value("epsilon", selectText) != selectText && detectedBaud.contains("epsilon") && epsilon_baud_combo_)
                 {
-                    gnss_baud_combo_->setCurrentText(detectedBaud.value("gnss"));
-                }
-                if (plannedPorts.value("imu", selectText) != selectText && detectedBaud.contains("imu"))
-                {
-                    imu_baud_combo_->setCurrentText(detectedBaud.value("imu"));
+                    epsilon_baud_combo_->setCurrentText(detectedBaud.value("epsilon"));
                 }
                 if (plannedPorts.value("ptb", selectText) != selectText && detectedBaud.contains("ptb"))
                 {
@@ -4351,16 +4667,17 @@ void MainWindow::onAutoDetectPortsClicked()
         };
 
         QVector<ProbeSpec> probe_specs = {
-            {"gnss", "GNSS", "115200", [](const QString& port_name) {
-                const auto probeResult = VaporView::probeSerialPortForHeader(
-                    port_name,
-                    {QStringLiteral("115200")},
-                    VaporView::SerialHeaderProbeKind::GnssPvt);
-                return probeResult.matched;
+            {"epsilon", "EPSILON", "921600", [probeCollector](const QString& port_name) {
+                auto collector = std::make_unique<VaporView::EpsilonCollector>();
+                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(921600));
             }},
-            {"imu", "IMU", effectiveImuProbeBaudText, [probeCollector, effectiveImuProbeBaud](const QString& port_name) {
-                auto collector = std::make_unique<VaporView::ImuCollector>();
-                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(effectiveImuProbeBaud));
+            {"epsilon", "EPSILON", "460800", [probeCollector](const QString& port_name) {
+                auto collector = std::make_unique<VaporView::EpsilonCollector>();
+                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(460800));
+            }},
+            {"epsilon", "EPSILON", "115200", [probeCollector](const QString& port_name) {
+                auto collector = std::make_unique<VaporView::EpsilonCollector>();
+                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(115200));
             }},
             {"lidar", "TFA1500-L", "500000", [probeCollector](const QString& port_name) {
                 auto collector = std::make_unique<VaporView::LidarCollector>();
@@ -4442,14 +4759,20 @@ void MainWindow::onAutoDetectPortsClicked()
             }
         }
 
+        QSet<QString> reportedMissing;
         for (const ProbeSpec& spec : probe_specs)
         {
+            if (reportedMissing.contains(spec.key))
+            {
+                continue;
+            }
             const bool found = std::any_of(detections.cbegin(), detections.cend(),
                 [&spec](const DetectionResult& result) { return result.key == spec.key; });
             if (!found)
             {
                 postLog(QString(english ? "[Auto Detect] %1 not found" : "[自动识别] 未找到 %1").arg(spec.label));
             }
+            reportedMissing.insert(spec.key);
         }
 
         postLog(QString(english ? "Auto detect finished: identified %1 device(s)." : "自动识别完成：共识别出 %1 个设备。")
@@ -4471,51 +4794,52 @@ void MainWindow::onConnectClicked()
 
     log(is_english_ ? "Connecting..." : "正在连接...");
 
+    current_epsilon_ = VaporView::EpsilonData();
     current_gnss_ = VaporView::GnssData();
     current_imu_ = VaporView::ImuData();
     current_ptb_ = VaporView::PtbData();
     current_hmp_ = VaporView::HmpData();
     current_lidar_ = VaporView::LidarData();
 
-    gnss_panel_->updateData(current_gnss_, 0);
-    imu_panel_->updateData(current_imu_, 0);
-    ptb_panel_->updateData(current_ptb_);
-    hmp_panel_->updateData(current_hmp_);
-    lidar_panel_->updateData(current_lidar_);
+    if (epsilon_panel_) epsilon_panel_->updateData(current_epsilon_);
+    if (ptb_panel_) ptb_panel_->updateData(current_ptb_);
+    if (hmp_panel_) hmp_panel_->updateData(current_hmp_);
+    if (lidar_panel_) lidar_panel_->updateData(current_lidar_);
 
-    gnss_panel_->updateRate(0.0);
-    imu_panel_->updateRate(0.0);
-    ptb_panel_->updateRate(0.0);
-    hmp_panel_->updateRate(0.0);
-    lidar_panel_->updateRate(0.0);
+    if (epsilon_panel_) epsilon_panel_->updateRate(0.0);
+    if (ptb_panel_) ptb_panel_->updateRate(0.0);
+    if (hmp_panel_) hmp_panel_->updateRate(0.0);
+    if (lidar_panel_) lidar_panel_->updateRate(0.0);
 
     const bool english = is_english_;
     const QString selectText = english ? "-- Select --" : "-- 选择 --";
-    const QString gnssPort = gnss_port_combo_->currentText();
-    const QString imuPort = imu_port_combo_->currentText();
+    const QString epsilonPort = epsilon_port_combo_ ? epsilon_port_combo_->currentText().trimmed() : QString();
     const QString ptbPort = ptb_port_combo_->currentText();
     const QString hmpPort = hmp_port_combo_->currentText();
     const QString lidarPort = lidar_port_combo_->currentText();
-    const QString gnssBaudText = gnss_baud_combo_->currentText();
-    const QString imuBaudText = imu_baud_combo_->currentText();
+    const QString epsilonBaudText = epsilon_baud_combo_ ? epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
     const QString ptbBaudText = ptb_baud_combo_->currentText();
     const QString hmpBaudText = hmp_baud_combo_->currentText();
     const QString lidarBaudText = lidar_baud_combo_->currentText();
-    const int gnssRate = parseRate(gnss_rate_combo_->currentText());
-    const int imuRate = parseRate(imu_rate_combo_->currentText());
+    const int epsilonRate = parseRate(epsilon_rate_combo_ ? epsilon_rate_combo_->currentText() : QStringLiteral("100"));
     const int ptbRate = parseRate(ptb_rate_combo_->currentText());
     const int hmpRate = parseRate(hmp_rate_combo_->currentText());
     const QString lidarRateText = lidar_rate_combo_->currentText();
     const bool skipLidarDeviceRate = isLidarRateUnspecified(lidarRateText);
     const int lidarRate = effectiveLidarSampleRate(lidarRateText);
+    QSettings settings("VaporView", "MainWindow");
+    const bool epsilonConfigLikelyMatches =
+        !epsilonPort.isEmpty() &&
+        epsilonPort != selectText &&
+        settings.value("epsilon_last_config_port").toString() == epsilonPort &&
+        settings.value("epsilon_last_config_baud").toString() == epsilonBaudText &&
+        settings.value("epsilon_last_config_rate_hz", -1).toInt() == epsilonRate;
     const int selectedDeviceCount =
-        ((gnssPort != selectText && !gnssPort.isEmpty()) ? 1 : 0) +
-        ((imuPort != selectText && !imuPort.isEmpty()) ? 1 : 0) +
+        ((epsilonPort != selectText && !epsilonPort.isEmpty()) ? 1 : 0) +
         ((ptbPort != selectText && !ptbPort.isEmpty()) ? 1 : 0) +
         ((hmpPort != selectText && !hmpPort.isEmpty()) ? 1 : 0) +
         ((lidarPort != selectText && !lidarPort.isEmpty()) ? 1 : 0);
-    gnss_sample_rate_ = gnssRate;
-    imu_sample_rate_ = imuRate;
+    epsilon_sample_rate_ = epsilonRate;
     ptb_sample_rate_ = ptbRate;
     hmp_sample_rate_ = hmpRate;
     lidar_sample_rate_ = lidarRate;
@@ -4528,18 +4852,16 @@ void MainWindow::onConnectClicked()
     connection_thread_ = std::thread([this,
                                       english,
                                       selectText,
-                                      gnssPort,
-                                      imuPort,
+                                      epsilonPort,
                                       ptbPort,
                                       hmpPort,
                                       lidarPort,
-                                      gnssBaudText,
-                                      imuBaudText,
+                                      epsilonBaudText,
                                       ptbBaudText,
                                       hmpBaudText,
                                       lidarBaudText,
-                                      gnssRate,
-                                      imuRate,
+                                      epsilonConfigLikelyMatches,
+                                      epsilonRate,
                                       ptbRate,
                                       hmpRate,
                                       lidarRate,
@@ -4556,10 +4878,15 @@ void MainWindow::onConnectClicked()
         auto finishOnUi = [this](bool connected) {
             QMetaObject::invokeMethod(this, [this, connected]() { finishConnectionAttempt(connected); }, Qt::QueuedConnection);
         };
+        auto persistEpsilonConfig = [epsilonPort, epsilonBaudText, epsilonRate]() {
+            QSettings settings("VaporView", "MainWindow");
+            settings.setValue("epsilon_last_config_port", epsilonPort);
+            settings.setValue("epsilon_last_config_baud", epsilonBaudText);
+            settings.setValue("epsilon_last_config_rate_hz", epsilonRate);
+        };
 
         CollectorSnapshot collectors;
-        collectors.gnss = std::make_shared<VaporView::GnssCollector>();
-        collectors.imu = std::make_shared<VaporView::ImuCollector>();
+        collectors.epsilon = std::make_shared<VaporView::EpsilonCollector>();
         collectors.ptb = std::make_shared<VaporView::PtbCollector>();
         collectors.hmp = std::make_shared<VaporView::HmpCollector>();
         collectors.lidar = std::make_shared<VaporView::LidarCollector>();
@@ -4571,41 +4898,23 @@ void MainWindow::onConnectClicked()
         };
         auto cancelCallback = [this]() { return cancel_connection_requested_.load(); };
 
-        collectors.gnss->setSampleRate(gnssRate);
-        collectors.imu->setSampleRate(imuRate);
+        collectors.epsilon->setSampleRate(epsilonRate);
         collectors.ptb->setSampleRate(ptbRate);
         collectors.hmp->setSampleRate(hmpRate);
         collectors.lidar->setSampleRate(lidarRate);
 
-        collectors.gnss->setLogCallback(logCallback);
-        collectors.imu->setLogCallback(logCallback);
+        collectors.epsilon->setLogCallback(logCallback);
         collectors.ptb->setLogCallback(logCallback);
         collectors.hmp->setLogCallback(logCallback);
         collectors.lidar->setLogCallback(logCallback);
-        collectors.gnss->setCancelCallback(cancelCallback);
-        collectors.imu->setCancelCallback(cancelCallback);
+        collectors.epsilon->setCancelCallback(cancelCallback);
         collectors.ptb->setCancelCallback(cancelCallback);
         collectors.hmp->setCancelCallback(cancelCallback);
         collectors.lidar->setCancelCallback(cancelCallback);
-        collectors.imu->setRawPacketCallback([this](uint64_t hostTimestampUs, uint8_t frameTag, const uint8_t* data, size_t size) {
+        collectors.epsilon->setRawFrameCallback([this](uint64_t hostTimestampUs, uint8_t packetId, uint8_t serialNumber, const uint8_t* packet_data, size_t size) {
             if (!recording_thread_running_.load())
             {
                 return;
-            }
-
-            if (imu_recording_rate_hz_ > 0)
-            {
-                const quint64 minIntervalUs = 1000000ULL / static_cast<quint64>(imu_recording_rate_hz_);
-                const quint64 lastTimestampUs = last_imu_record_timestamp_us_.load();
-                if (lastTimestampUs != 0 && hostTimestampUs > lastTimestampUs && hostTimestampUs - lastTimestampUs < minIntervalUs)
-                {
-                    return;
-                }
-                last_imu_record_timestamp_us_.store(static_cast<quint64>(hostTimestampUs));
-            }
-            else
-            {
-                last_imu_record_timestamp_us_.store(static_cast<quint64>(hostTimestampUs));
             }
 
             std::lock_guard<std::mutex> lock(recording_files_mutex_);
@@ -4618,11 +4927,11 @@ void MainWindow::onConnectClicked()
                 0x524D5549u,
                 static_cast<quint32>(size),
                 static_cast<quint64>(hostTimestampUs),
-                static_cast<quint8>(frameTag),
-                {0, 0, 0}
+                static_cast<quint8>(packetId),
+                {serialNumber, 0, 0}
             };
             imu_raw_file_->write(reinterpret_cast<const char*>(&header), sizeof(header));
-            imu_raw_file_->write(reinterpret_cast<const char*>(data), static_cast<qint64>(size));
+            imu_raw_file_->write(reinterpret_cast<const char*>(packet_data), static_cast<qint64>(size));
         });
 
         int total_devices = 0;
@@ -4698,35 +5007,29 @@ void MainWindow::onConnectClicked()
         postLog(english ? "========== Starting Connection ==========" : "========== 开始连接 ==========");
         if (abortIfRequested()) return;
 
-        if (connectCollector("GNSS", gnssPort, gnssBaudText, collectors.gnss.get(),
-                             VaporView::SerialConfig::N81(gnssBaudText.toInt()),
+        if (connectCollector("EPSILON", epsilonPort, epsilonBaudText, collectors.epsilon.get(),
+                             VaporView::SerialConfig::N81(epsilonBaudText.toInt()),
                              [&]() {
-                                 collectors.gnss->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onGnssDataReady", Qt::QueuedConnection); });
-                                 collectors.gnss->setSampleRate(gnssRate);
-                                 collectors.gnss->setDeviceSampleRate(gnssRate);
-                                 postLog(QString(english ? "[GNSS] Sample rate set to %1 Hz" : "[GNSS] 采样频率设置为 %1 Hz").arg(gnssRate));
-                                 if (collectors.gnss->startStreaming()) return true;
-                                 postLog(english ? "[GNSS] Failed to start data stream." : "[GNSS] 启动数据流失败。");
-                                 return false;
-                             }) < 0) return;
-
-        if (connectCollector("IMU", imuPort, imuBaudText, collectors.imu.get(),
-                             VaporView::SerialConfig::N81(imuBaudText.toInt()),
-                             [&]() {
-                                 const QString imuFormat = imu_format_combo_
-                                     ? imu_format_combo_->currentText().trimmed().toUpper()
-                                     : QStringLiteral("HI91");
-                                 collectors.imu->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onImuDataReady", Qt::QueuedConnection); });
-                                 collectors.imu->setSampleRate(imuRate);
-                                 collectors.imu->setOutputMessageType(imuFormat.toStdString());
-                                 collectors.imu->setDeviceSampleRate(imuRate);
-                                 postLog(QString(english
-                                                     ? "[IMU] Output format set to %1, sample rate command sent: %2 Hz"
-                                                     : "[IMU] 输出格式已设为 %1，已发送采样频率指令：%2 Hz")
-                                             .arg(imuFormat)
-                                             .arg(imuRate));
-                                 if (collectors.imu->startStreaming()) return true;
-                                 postLog(english ? "[IMU] Failed to start data stream." : "[IMU] 启动数据流失败。");
+                                 collectors.epsilon->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onEpsilonDataReady", Qt::QueuedConnection); });
+                                 collectors.epsilon->setSampleRate(epsilonRate);
+                                 if (epsilonConfigLikelyMatches)
+                                 {
+                                     postLog(english
+                                                 ? "[EPSILON] Using the last saved device output profile; skipping automatic reconfiguration."
+                                                 : "[EPSILON] 使用上次已保存的设备输出配置，跳过自动重配。");
+                                 }
+                                 else if (!collectors.epsilon->setDeviceSampleRate(epsilonRate))
+                                 {
+                                     postLog(QString(english ? "[EPSILON] Failed to configure output rate %1 Hz" : "[EPSILON] 配置输出频率 %1 Hz 失败").arg(epsilonRate));
+                                     return false;
+                                 }
+                                 else
+                                 {
+                                     persistEpsilonConfig();
+                                     postLog(QString(english ? "[EPSILON] Output rate set to %1 Hz" : "[EPSILON] 输出频率已设为 %1 Hz").arg(epsilonRate));
+                                 }
+                                 if (collectors.epsilon->startStreaming()) return true;
+                                 postLog(english ? "[EPSILON] Failed to start navigation stream." : "[EPSILON] 启动导航数据流失败。");
                                  return false;
                              }) < 0) return;
 
@@ -4823,6 +5126,15 @@ void MainWindow::onGnssDataReady()
     }
 }
 
+void MainWindow::onEpsilonDataReady()
+{
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.epsilon)
+    {
+        current_epsilon_ = collectors.epsilon->getLatestData();
+    }
+}
+
 void MainWindow::onImuDataReady()
 {
     const CollectorSnapshot collectors = snapshotCollectors();
@@ -4863,22 +5175,14 @@ void MainWindow::onRefreshTimer()
 {
     const CollectorSnapshot collectors = snapshotCollectors();
 
-    const quint64 gnssTimestampUs = current_gnss_.valid ? steadyToEpochUs(current_gnss_.timestamp) : 0;
-    gnss_panel_->updateData(current_gnss_, gnssTimestampUs);
-    imu_panel_->updateData(current_imu_, gnssTimestampUs);
-    ptb_panel_->updateData(current_ptb_);
-    hmp_panel_->updateData(current_hmp_);
-    lidar_panel_->updateData(current_lidar_);
+    if (epsilon_panel_) epsilon_panel_->updateData(current_epsilon_);
+    if (ptb_panel_) ptb_panel_->updateData(current_ptb_);
+    if (hmp_panel_) hmp_panel_->updateData(current_hmp_);
+    if (lidar_panel_) lidar_panel_->updateData(current_lidar_);
 
-    if (collectors.gnss)
+    if (collectors.epsilon && epsilon_panel_)
     {
-        const double rate = collectors.gnss->getActualRate();
-        gnss_panel_->updateRate(rate);
-    }
-    if (collectors.imu)
-    {
-        const double rate = collectors.imu->getActualRate();
-        imu_panel_->updateRate(rate);
+        epsilon_panel_->updateRate(collectors.epsilon->getActualRate());
     }
     if (collectors.ptb)
     {
@@ -4915,4 +5219,146 @@ void MainWindow::onRtkConfigClicked()
     rtk_config_dialog_->show();
     rtk_config_dialog_->raise();
     rtk_config_dialog_->activateWindow();
+}
+
+void MainWindow::onReconfigureEpsilonClicked()
+{
+    if (connection_attempt_in_progress_ || port_detection_in_progress_ || epsilon_reconfigure_in_progress_)
+    {
+        return;
+    }
+
+    if (recording_thread_running_.load())
+    {
+        log(is_english_ ? "Stop recording before reconfiguring EPSILON output."
+                        : "请先结束记录，再重新配置 EPSILON 输出。");
+        return;
+    }
+
+    const QString selectText = is_english_ ? "-- Select --" : "-- 选择 --";
+    const QString epsilonPort = epsilon_port_combo_ ? epsilon_port_combo_->currentText().trimmed() : QString();
+    if (epsilonPort.isEmpty() || epsilonPort == selectText)
+    {
+        log(is_english_ ? "Select an EPSILON serial port first." : "请先选择 EPSILON 串口。");
+        return;
+    }
+
+    const QString epsilonBaudText = epsilon_baud_combo_ ? epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
+    bool baudOk = false;
+    const int epsilonBaud = epsilonBaudText.toInt(&baudOk);
+    if (!baudOk || epsilonBaud <= 0)
+    {
+        log(QString(is_english_ ? "Invalid EPSILON baud rate: %1" : "EPSILON 波特率无效: %1").arg(epsilonBaudText));
+        return;
+    }
+
+    const int epsilonRate = parseRate(epsilon_rate_combo_ ? epsilon_rate_combo_->currentText() : QStringLiteral("100"));
+    epsilon_sample_rate_ = epsilonRate;
+
+    if (epsilon_reconfigure_thread_.joinable())
+    {
+        epsilon_reconfigure_thread_.join();
+    }
+
+    const std::shared_ptr<VaporView::EpsilonCollector> liveCollector = snapshotCollectors().epsilon;
+    const bool shouldRestartCollector = liveCollector && liveCollector->isRunning();
+    const bool english = is_english_;
+
+    epsilon_reconfigure_in_progress_ = true;
+    showBusyStatusTaskProgress(english ? "Reconfiguring EPSILON..." : "正在重配 EPSILON...");
+    updateConnectionStatus(is_connected_);
+    log(QString(english ? "[EPSILON] Starting manual output reconfiguration: %1 @ %2, target %3 Hz"
+                        : "[EPSILON] 开始手动重配输出: %1 @ %2，目标 %3 Hz")
+            .arg(epsilonPort, epsilonBaudText)
+            .arg(epsilonRate));
+
+    epsilon_reconfigure_thread_ = std::thread([this,
+                                               english,
+                                               epsilonPort,
+                                               epsilonBaud,
+                                               epsilonBaudText,
+                                               epsilonRate,
+                                               liveCollector,
+                                               shouldRestartCollector]() {
+        auto postLog = [this](const QString& message) {
+            QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
+        };
+        auto finishOnUi = [this]() {
+            QMetaObject::invokeMethod(this, [this]() {
+                epsilon_reconfigure_in_progress_ = false;
+                hideStatusTaskProgress();
+                updateConnectionStatus(anyCollectorRunning());
+            }, Qt::QueuedConnection);
+        };
+
+        std::shared_ptr<VaporView::EpsilonCollector> collector = shouldRestartCollector && liveCollector
+            ? liveCollector
+            : std::make_shared<VaporView::EpsilonCollector>();
+
+        collector->setLogCallback([this](const std::string& msg) {
+            const QString qmsg = QString::fromStdString(msg);
+            QMetaObject::invokeMethod(this, [this, qmsg]() { log(qmsg); }, Qt::QueuedConnection);
+        });
+        collector->setSampleRate(epsilonRate);
+
+        if (shouldRestartCollector)
+        {
+            postLog(english
+                        ? "[EPSILON] Temporarily stopping the live stream for manual reconfiguration."
+                        : "[EPSILON] 为手动重配临时停止当前数据流。");
+            collector->stop();
+        }
+
+        if (!collector->start(epsilonPort.toStdString(), VaporView::SerialConfig::N81(epsilonBaud)))
+        {
+            postLog(QString(english ? "[EPSILON] Failed to open %1 for manual reconfiguration: %2"
+                                    : "[EPSILON] 打开 %1 进行手动重配失败: %2")
+                        .arg(epsilonPort, QString::fromStdString(collector->getLastError())));
+            finishOnUi();
+            return;
+        }
+
+        if (!collector->setDeviceSampleRate(epsilonRate))
+        {
+            postLog(QString(english ? "[EPSILON] Manual reconfiguration failed on %1 @ %2."
+                                    : "[EPSILON] 在 %1 @ %2 上执行手动重配失败。")
+                        .arg(epsilonPort, epsilonBaudText));
+            collector->stop();
+            finishOnUi();
+            return;
+        }
+
+        {
+            QSettings settings("VaporView", "MainWindow");
+            settings.setValue("epsilon_last_config_port", epsilonPort);
+            settings.setValue("epsilon_last_config_baud", epsilonBaudText);
+            settings.setValue("epsilon_last_config_rate_hz", epsilonRate);
+        }
+
+        if (shouldRestartCollector)
+        {
+            if (!collector->startStreaming())
+            {
+                postLog(english
+                            ? "[EPSILON] Reconfiguration succeeded, but failed to restart the live navigation stream."
+                            : "[EPSILON] 重配已完成，但重新启动实时导航流失败。");
+                collector->stop();
+                finishOnUi();
+                return;
+            }
+
+            postLog(QString(english ? "[EPSILON] Manual reconfiguration completed and live stream restarted on %1."
+                                    : "[EPSILON] 手动重配完成，已在 %1 上恢复实时数据流。")
+                        .arg(epsilonPort));
+        }
+        else
+        {
+            collector->stop();
+            postLog(QString(english ? "[EPSILON] Manual reconfiguration completed on %1. You can connect normally now."
+                                    : "[EPSILON] 已在 %1 上完成手动重配，现在可以正常连接。")
+                        .arg(epsilonPort));
+        }
+
+        finishOnUi();
+    });
 }

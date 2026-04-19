@@ -90,6 +90,28 @@ private:
   GnssData latest_data_;
 };
 
+class EpsilonCollector : public DataCollector
+{
+public:
+  using RawFrameCallback = std::function<void(uint64_t host_timestamp_us,
+                                              uint8_t packet_id,
+                                              uint8_t serial_number,
+                                              const uint8_t* frame,
+                                              size_t size)>;
+
+  EpsilonData getLatestData();
+  bool setDeviceSampleRate(int hz) override;
+  bool checkDeviceResponse() override;
+  void setRawFrameCallback(RawFrameCallback callback);
+
+protected:
+  void run() override;
+
+private:
+  EpsilonData latest_data_;
+  RawFrameCallback raw_frame_callback_;
+};
+
 class ImuCollector : public DataCollector
 {
 public:

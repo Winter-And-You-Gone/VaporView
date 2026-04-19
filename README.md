@@ -4,11 +4,10 @@
 
 当前版本支持以下设备类型：
 
-- GNSS / RTK：UM982，解析 `PVTSLN`
-- IMU：HiPNUC，解析 `HI81 / HI83 / HI91`
+- EPSILON：组合导航一体机，解析 `FDILink`
 - PTB210：气压计
 - HMP3：温湿度传感器
-- TF03：激光测距模块
+- TF03 / TFA1500-L：激光测距模块
 
 ## 功能特性
 
@@ -18,15 +17,15 @@
 - 本地 TCP 波形监视，支持按 LabVIEW 参考协议读取 `127.0.0.1:8888` 的波形图1/波形图4数据
 - 中英文界面切换
 - 连接会话自动记录，按可配置频率聚合写入 CSV
-- `session_*/sensors/imu_raw.dat` 原始 IMU 二进制记录
+- `session_*/sensors/epsilon_raw.dat` 已校验 EPSILON `FDILink` 原始帧归档
 - RTK NTRIP 配置对话框，内置 RTKLIB 流服务实现 RTCM 转发
 - 实时日志面板与连接状态提示
 
 ## 记录格式说明
 
-IMU 原始记录格式说明见：
+EPSILON 原始记录格式说明见：
 
-- [imu_raw_dat_format.md](C:/WorkSpace/NAV/VaporView/docs/imu_raw_dat_format.md)
+- [epsilon_raw_dat_format.md](D:/Project/GPS/VaporView/docs/epsilon_raw_dat_format.md)
 
 ## 项目结构
 
@@ -55,15 +54,11 @@ VaporView/
 │   ├── combo_arrow_up.xpm
 │   └── modern_style.qss
 ├── third_party/
-│   ├── hipnuc_driver/
-│   │   ├── hipnuc_dec.c
-│   │   └── hipnuc_dec.h
 │   ├── rtklib/
 │   │   ├── LICENSE.txt
 │   │   └── src/
-│   └── um982_driver/
-│       ├── pvtsln_data.hpp
-│       └── pvtsln_parser.cpp
+│   ├── um982_driver/           # legacy reference
+│   └── hipnuc_driver/          # legacy reference
 └── python/
     ├── __init__.py
     ├── config_manager.py
@@ -73,11 +68,11 @@ VaporView/
 
 ## 第三方源码
 
-仓库已包含构建所需的第三方协议与 RTK 相关源码：
+仓库已包含构建所需的第三方源码：
 
-- `third_party/um982_driver`：UM982 `PVTSLN` 解析器
-- `third_party/hipnuc_driver`：HiPNUC IMU 解码器
 - `third_party/rtklib`：RTKLIB `strsvr` 相关流服务实现
+- `third_party/um982_driver`：旧 UM982 代码，当前仅保留作历史参考
+- `third_party/hipnuc_driver`：旧 HiPNUC 代码，当前仅保留作历史参考
 
 ## 依赖要求
 
@@ -141,8 +136,7 @@ Qt SerialPort 当前主要用于枚举可用串口，实际数据读写由仓库
 
 `src/data_collector.cpp` 实现了各设备对应的采集线程：
 
-- `GnssCollector`
-- `ImuCollector`
+- `EpsilonCollector`
 - `PtbCollector`
 - `HmpCollector`
 - `LidarCollector`
@@ -168,28 +162,27 @@ Qt SerialPort 当前主要用于枚举可用串口，实际数据读写由仓库
 
 ## 设备支持
 
-### GNSS / RTK
+### EPSILON
 
-- 协议：`PVTSLN`
-- 解析器：`third_party/um982_driver/pvtsln_parser.cpp`
-- 连接检测：等待串口流中出现 `$` 或 `#`
-- 设备采样率命令：`PVTSLNA COM3 <interval>`
+- 协议：`FDILink`
+- 默认串口参数：`921600 N81`
+- 连接检测：扫描有效 `FDILink` 帧并校验 `CRC8 / CRC16`
+- 设备配置命令：`#fconfig`、`#fmsg`、`#fsave`、`#freboot`
+
+当前运行时会自动维护以下输出报文：
+
+- 高频：`0x40 IMU`、`0x41 AHRS`、`0x42 INS/GPS`、`0x50 SYS_STATE`
+- 低频：`0x59 RAW_GNSS`、`0x5A SATELLITE`、`0x5C GEODETIC_POS`、`0x5D ECEF_POS`
+
+当前支持的 UI 采样率：
+
+- `20, 50, 100, 200 Hz`
 
 说明：
 
-- UI 允许输入 `1-500 Hz`
-- 设备侧实际限制为 `1-20 Hz`
-
-### IMU
-
-- 协议：`HI81 / HI83 / HI91`
-- 解析器：`third_party/hipnuc_driver/hipnuc_dec.c`
-- 连接检测：调用 `hipnuc_input()` 直到解出有效包
-- 设备采样率命令：`LOG HI91 ONTIME <period>`
-
-当前支持的设备采样率：
-
-- `1, 2, 5, 10, 20, 50, 100, 200, 500 Hz`
+- 高频报文按 UI 频率下发
+- 低频报文固定为 `min(UI频率, 20 Hz)`
+- 程序仅在检测到 `#fmsg` 配置不匹配时才写入并保存设备配置
 
 ### PTB210
 
@@ -237,7 +230,7 @@ GUI 现在使用手动控制的会话记录策略：
 
 - 点击“连接”后，程序只建立设备连接，不会自动开始录制
 - 工具栏提供 `开始记录`、`暂停记录`、`结束记录` 三个按钮
-- “数据 -> 记录频率” 菜单可分别配置 `波形`、`IMU`、`其余设备` 三类记录频率
+- “数据 -> 记录频率” 菜单可分别配置 `波形`、`EPSILON原始帧`、`其余设备` 三类记录策略
 - 只要至少有一个串口设备在线，或者 TCP 波形链路已经连接成功，就可以点击 `开始记录`
 - `开始记录` 会创建新的 `session_*` 目录；如果当前 session 只是暂停，则会继续写入同一个 session
 - `暂停记录` 会同时暂停 `devices.csv` 和波形 `.dat` 的写入，但不会结束当前 session
@@ -269,7 +262,7 @@ data/
 
 - `session.json`：本次 session 的索引文件，记录开始时间、波形参数、时间戳单位、分文件策略和各输出路径
 - `waveform/`：保存 TCP 面板“归一化二次谐波”的二进制波形文件
-- `sensors/devices.csv`：保存 RTK、IMU、温湿度、气压、TF03 的低速状态快照
+- `sensors/devices.csv`：保存 EPSILON、温湿度、气压、TF03 的低速状态快照
 - `logs/event_log.csv`：保存开始采集、停止采集、重连、告警等事件
 - `logs/error_log.txt`：保存写盘失败、设备异常、断连等错误信息
 - `config/device_config.json`：保存本次采集使用的串口、TCP、采样率和分段配置快照
@@ -279,7 +272,7 @@ data/
 - 默认保存根目录为项目根目录下的 `data/`
 - 可通过 GUI 菜单手动选择其他记录根目录，程序会记住上次选择
 - `devices.csv` 由独立记录线程按“其余设备”记录频率写入，每行记录当前时刻的最新有效设备快照
-- `imu_raw.dat` 默认按“原始包”写入，也可以通过“IMU”记录频率菜单限频保存
+- `epsilon_raw.dat` 固定保存完整且已校验的 `FDILink` 原始帧
 - TCP 面板中的“归一化二次谐波”默认按“收到一帧存一帧”导出到 `.dat`，也可以通过“波形”记录频率菜单限频保存
 - 每帧 `.dat` 数据格式固定为 `uint64 时间戳 + 50000 个 float32`
 - 波形写盘采用“采集回调 + 缓冲队列 + 独立写盘线程”结构
@@ -324,16 +317,14 @@ CMake 中仍然保留了 `BUILD_PYTHON_BINDINGS` 选项，目的是未来通过 
 
 ### Windows 默认值
 
-- GNSS：`COM3 @ 115200 N81`
-- IMU：`COM4 @ 115200 N81`
+- EPSILON：`COM3 @ 921600 N81`
 - PTB210：`COM5 @ 9600 E71`
 - HMP3：`COM6 @ 19200 N82`
 - TF03：`COM7 @ 115200 N81`
 
 ### 非 Windows 默认值
 
-- GNSS：`/dev/ttyCOM3`
-- IMU：`/dev/ttyIMU`
+- EPSILON：`/dev/ttyEPSILON`
 - PTB210：`/dev/ttyBARO`
 - HMP3：`/dev/ttyHMP`
 - TF03：`/dev/ttyTF03`

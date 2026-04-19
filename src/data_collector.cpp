@@ -3,9 +3,13 @@
 #include "pvtsln_data.hpp"
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <iomanip>
+#include <limits>
+#include <map>
+#include <regex>
 #include <sstream>
 #include <vector>
 
@@ -113,6 +117,321 @@ uint64_t systemTimestampUs()
 {
   return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
       std::chrono::system_clock::now().time_since_epoch()).count());
+}
+
+constexpr uint8_t kFdilinkFrameHead = 0xFC;
+constexpr uint8_t kFdilinkFrameTail = 0xFD;
+constexpr double kRadToDeg = 57.295779513082320876798154814105;
+constexpr int kEpsilonDefaultBaud = 921600;
+
+constexpr uint8_t kMsgImu = 0x40;
+constexpr uint8_t kMsgAhrs = 0x41;
+constexpr uint8_t kMsgInsGps = 0x42;
+constexpr uint8_t kMsgSystemState = 0x50;
+constexpr uint8_t kMsgRawGnss = 0x59;
+constexpr uint8_t kMsgSatellites = 0x5A;
+constexpr uint8_t kMsgGeodeticPos = 0x5C;
+constexpr uint8_t kMsgEcefPos = 0x5D;
+
+uint8_t fdilinkCrc8(const uint8_t* data, size_t len)
+{
+  static const uint8_t table[] = {
+      0, 94, 188, 226, 97, 63, 221, 131, 194, 156, 126, 32, 163, 253, 31, 65,
+      157, 195, 33, 127, 252, 162, 64, 30, 95, 1, 227, 189, 62, 96, 130, 220,
+      35, 125, 159, 193, 66, 28, 254, 160, 225, 191, 93, 3, 128, 222, 60, 98,
+      190, 224, 2, 92, 223, 129, 99, 61, 124, 34, 192, 158, 29, 67, 161, 255,
+      70, 24, 250, 164, 39, 121, 155, 197, 132, 218, 56, 102, 229, 187, 89, 7,
+      219, 133, 103, 57, 186, 228, 6, 88, 25, 71, 165, 251, 120, 38, 196, 154,
+      101, 59, 217, 135, 4, 90, 184, 230, 167, 249, 27, 69, 198, 152, 122, 36,
+      248, 166, 68, 26, 153, 199, 37, 123, 58, 100, 134, 216, 91, 5, 231, 185,
+      140, 210, 48, 110, 237, 179, 81, 15, 78, 16, 242, 172, 47, 113, 147, 205,
+      17, 79, 173, 243, 112, 46, 204, 146, 211, 141, 111, 49, 178, 236, 14, 80,
+      175, 241, 19, 77, 206, 144, 114, 44, 109, 51, 209, 143, 12, 82, 176, 238,
+      50, 108, 142, 208, 83, 13, 239, 177, 240, 174, 76, 18, 145, 207, 45, 115,
+      202, 148, 118, 40, 171, 245, 23, 73, 8, 86, 180, 234, 105, 55, 213, 139,
+      87, 9, 235, 181, 54, 104, 138, 212, 149, 203, 41, 119, 244, 170, 72, 22,
+      233, 183, 85, 11, 136, 214, 52, 106, 43, 117, 151, 201, 74, 20, 246, 168,
+      116, 42, 200, 150, 21, 75, 169, 247, 182, 232, 10, 84, 215, 137, 107, 53};
+  uint8_t crc = 0;
+  for (size_t i = 0; i < len; ++i)
+  {
+    crc = table[crc ^ data[i]];
+  }
+  return crc;
+}
+
+uint16_t fdilinkCrc16(const uint8_t* data, size_t len)
+{
+  static const uint16_t table[256] = {
+      0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50A5, 0x60C6, 0x70E7,
+      0x8108, 0x9129, 0xA14A, 0xB16B, 0xC18C, 0xD1AD, 0xE1CE, 0xF1EF,
+      0x1231, 0x0210, 0x3273, 0x2252, 0x52B5, 0x4294, 0x72F7, 0x62D6,
+      0x9339, 0x8318, 0xB37B, 0xA35A, 0xD3BD, 0xC39C, 0xF3FF, 0xE3DE,
+      0x2462, 0x3443, 0x0420, 0x1401, 0x64E6, 0x74C7, 0x44A4, 0x5485,
+      0xA56A, 0xB54B, 0x8528, 0x9509, 0xE5EE, 0xF5CF, 0xC5AC, 0xD58D,
+      0x3653, 0x2672, 0x1611, 0x0630, 0x76D7, 0x66F6, 0x5695, 0x46B4,
+      0xB75B, 0xA77A, 0x9719, 0x8738, 0xF7DF, 0xE7FE, 0xD79D, 0xC7BC,
+      0x48C4, 0x58E5, 0x6886, 0x78A7, 0x0840, 0x1861, 0x2802, 0x3823,
+      0xC9CC, 0xD9ED, 0xE98E, 0xF9AF, 0x8948, 0x9969, 0xA90A, 0xB92B,
+      0x5AF5, 0x4AD4, 0x7AB7, 0x6A96, 0x1A71, 0x0A50, 0x3A33, 0x2A12,
+      0xDBFD, 0xCBDC, 0xFBBF, 0xEB9E, 0x9B79, 0x8B58, 0xBB3B, 0xAB1A,
+      0x6CA6, 0x7C87, 0x4CE4, 0x5CC5, 0x2C22, 0x3C03, 0x0C60, 0x1C41,
+      0xEDAE, 0xFD8F, 0xCDEC, 0xDDCD, 0xAD2A, 0xBD0B, 0x8D68, 0x9D49,
+      0x7E97, 0x6EB6, 0x5ED5, 0x4EF4, 0x3E13, 0x2E32, 0x1E51, 0x0E70,
+      0xFF9F, 0xEFBE, 0xDFDD, 0xCFFC, 0xBF1B, 0xAF3A, 0x9F59, 0x8F78,
+      0x9188, 0x81A9, 0xB1CA, 0xA1EB, 0xD10C, 0xC12D, 0xF14E, 0xE16F,
+      0x1080, 0x00A1, 0x30C2, 0x20E3, 0x5004, 0x4025, 0x7046, 0x6067,
+      0x83B9, 0x9398, 0xA3FB, 0xB3DA, 0xC33D, 0xD31C, 0xE37F, 0xF35E,
+      0x02B1, 0x1290, 0x22F3, 0x32D2, 0x4235, 0x5214, 0x6277, 0x7256,
+      0xB5EA, 0xA5CB, 0x95A8, 0x8589, 0xF56E, 0xE54F, 0xD52C, 0xC50D,
+      0x34E2, 0x24C3, 0x14A0, 0x0481, 0x7466, 0x6447, 0x5424, 0x4405,
+      0xA7DB, 0xB7FA, 0x8799, 0x97B8, 0xE75F, 0xF77E, 0xC71D, 0xD73C,
+      0x26D3, 0x36F2, 0x0691, 0x16B0, 0x6657, 0x7676, 0x4615, 0x5634,
+      0xD94C, 0xC96D, 0xF90E, 0xE92F, 0x99C8, 0x89E9, 0xB98A, 0xA9AB,
+      0x5844, 0x4865, 0x7806, 0x6827, 0x18C0, 0x08E1, 0x3882, 0x28A3,
+      0xCB7D, 0xDB5C, 0xEB3F, 0xFB1E, 0x8BF9, 0x9BD8, 0xABBB, 0xBB9A,
+      0x4A75, 0x5A54, 0x6A37, 0x7A16, 0x0AF1, 0x1AD0, 0x2AB3, 0x3A92,
+      0xFD2E, 0xED0F, 0xDD6C, 0xCD4D, 0xBDAA, 0xAD8B, 0x9DE8, 0x8DC9,
+      0x7C26, 0x6C07, 0x5C64, 0x4C45, 0x3CA2, 0x2C83, 0x1CE0, 0x0CC1,
+      0xEF1F, 0xFF3E, 0xCF5D, 0xDF7C, 0xAF9B, 0xBFBA, 0x8FD9, 0x9FF8,
+      0x6E17, 0x7E36, 0x4E55, 0x5E74, 0x2E93, 0x3EB2, 0x0ED1, 0x1EF0};
+  uint16_t crc = 0;
+  for (size_t i = 0; i < len; ++i)
+  {
+    crc = table[((crc >> 8) ^ data[i]) & 0xFFu] ^ static_cast<uint16_t>(crc << 8);
+  }
+  return crc;
+}
+
+uint16_t readU16LE(const uint8_t* data)
+{
+  return static_cast<uint16_t>(data[0]) |
+      (static_cast<uint16_t>(data[1]) << 8);
+}
+
+uint32_t readU32LE(const uint8_t* data)
+{
+  return static_cast<uint32_t>(data[0]) |
+      (static_cast<uint32_t>(data[1]) << 8) |
+      (static_cast<uint32_t>(data[2]) << 16) |
+      (static_cast<uint32_t>(data[3]) << 24);
+}
+
+int64_t readI64LE(const uint8_t* data)
+{
+  uint64_t value = 0;
+  for (int i = 0; i < 8; ++i)
+  {
+    value |= static_cast<uint64_t>(data[i]) << (8 * i);
+  }
+  return static_cast<int64_t>(value);
+}
+
+float readFloatLE(const uint8_t* data)
+{
+  float value = 0.0f;
+  std::memcpy(&value, data, sizeof(float));
+  return value;
+}
+
+double readDoubleLE(const uint8_t* data)
+{
+  double value = 0.0;
+  std::memcpy(&value, data, sizeof(double));
+  return value;
+}
+
+double radToDeg(double radians)
+{
+  return radians * kRadToDeg;
+}
+
+std::string epsilonGnssFixName(int fix_code)
+{
+  switch (fix_code)
+  {
+  case 0: return "NO_GPS";
+  case 1: return "NO_FIX";
+  case 2: return "2D";
+  case 3: return "3D";
+  case 4: return "DGPS";
+  case 5: return "RTK_FLOAT";
+  case 6: return "RTK_FIXED";
+  case 7: return "STATIC";
+  case 8: return "PPP";
+  case 9: return "RTK_DUAL";
+  default: return "UNKNOWN";
+  }
+}
+
+bool isSupportedEpsilonRate(int hz)
+{
+  return hz == 20 || hz == 50 || hz == 100 || hz == 200;
+}
+
+std::map<uint8_t, int> desiredEpsilonPacketRates(int hz)
+{
+  const int navLowRate = std::min(hz, 20);
+  return {
+      {kMsgImu, hz},
+      {kMsgAhrs, hz},
+      {kMsgInsGps, hz},
+      {kMsgSystemState, hz},
+      {kMsgRawGnss, navLowRate},
+      {kMsgSatellites, navLowRate},
+      {kMsgGeodeticPos, navLowRate},
+      {kMsgEcefPos, navLowRate},
+  };
+}
+
+std::string trimAscii(const std::string& input)
+{
+  const auto first = input.find_first_not_of(" \r\n\t");
+  if (first == std::string::npos)
+  {
+    return std::string();
+  }
+  const auto last = input.find_last_not_of(" \r\n\t");
+  return input.substr(first, last - first + 1);
+}
+
+std::map<uint8_t, int> parseFmsgResponse(const std::string& response)
+{
+  std::map<uint8_t, int> rates;
+  std::istringstream stream(response);
+  std::string line;
+  const std::regex pattern(R"(\[([0-9A-Fa-f]{2})\]\s+(-?\d+(?:\.\d+)?)\s*Hz)", std::regex::icase);
+  while (std::getline(stream, line))
+  {
+    std::smatch match;
+    if (!std::regex_search(line, match, pattern))
+    {
+      continue;
+    }
+    const int packetId = std::stoi(match[1].str(), nullptr, 16);
+    const double parsedRate = std::stod(match[2].str());
+    const int rate = static_cast<int>(std::round(parsedRate));
+    rates[static_cast<uint8_t>(packetId)] = std::max(0, rate);
+  }
+  return rates;
+}
+
+bool readValidFdilinkFrame(SerialPort& serial,
+                           std::vector<uint8_t>& buffer,
+                           std::vector<uint8_t>* frame,
+                           int timeout_ms,
+                           uint8_t* packet_id = nullptr,
+                           uint8_t* serial_number = nullptr)
+{
+  buffer.clear();
+  const auto start = std::chrono::steady_clock::now();
+  uint8_t chunk[512];
+  while (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count() < timeout_ms)
+  {
+    const ssize_t readBytes = serial.read(chunk, sizeof(chunk));
+    if (readBytes > 0)
+    {
+      buffer.insert(buffer.end(), chunk, chunk + readBytes);
+      while (buffer.size() >= 8)
+      {
+        const auto it = std::find(buffer.begin(), buffer.end(), kFdilinkFrameHead);
+        if (it == buffer.end())
+        {
+          buffer.clear();
+          break;
+        }
+        if (it != buffer.begin())
+        {
+          buffer.erase(buffer.begin(), it);
+        }
+        if (buffer.size() < 8)
+        {
+          break;
+        }
+        const size_t payloadSize = buffer[2];
+        const size_t frameSize = 8 + payloadSize;
+        if (buffer.size() < frameSize)
+        {
+          break;
+        }
+        if (fdilinkCrc8(buffer.data(), 4) != buffer[4] ||
+            fdilinkCrc16(buffer.data() + 7, payloadSize) !=
+                static_cast<uint16_t>((static_cast<uint16_t>(buffer[5]) << 8) | buffer[6]) ||
+            buffer[frameSize - 1] != kFdilinkFrameTail)
+        {
+          buffer.erase(buffer.begin());
+          continue;
+        }
+        if (frame)
+        {
+          frame->assign(buffer.begin(), buffer.begin() + static_cast<std::ptrdiff_t>(frameSize));
+        }
+        if (packet_id)
+        {
+          *packet_id = buffer[1];
+        }
+        if (serial_number)
+        {
+          *serial_number = buffer[3];
+        }
+        buffer.erase(buffer.begin(), buffer.begin() + static_cast<std::ptrdiff_t>(frameSize));
+        return true;
+      }
+    }
+    sleepMs(20);
+  }
+  return false;
+}
+
+bool containsEpsilonAsciiAck(const std::string& text)
+{
+  return text.find("*#OK") != std::string::npos ||
+      text.find("#OK") != std::string::npos ||
+      text.find("ERROR") != std::string::npos ||
+      text.find("error") != std::string::npos;
+}
+
+std::string readPrintableSerialResponse(SerialPort& serial, int totalWaitMs, bool stopOnAck)
+{
+  std::string filtered;
+  const auto start = std::chrono::steady_clock::now();
+  auto lastDataTime = start;
+  bool sawAck = false;
+  uint8_t chunk[256];
+
+  while (true)
+  {
+    const auto now = std::chrono::steady_clock::now();
+    const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+    const auto idleMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastDataTime).count();
+    if (elapsedMs >= totalWaitMs && (!stopOnAck || !sawAck || idleMs >= 120))
+    {
+      break;
+    }
+
+    const ssize_t n = serial.read(chunk, sizeof(chunk));
+    if (n > 0)
+    {
+      lastDataTime = std::chrono::steady_clock::now();
+      for (ssize_t i = 0; i < n; ++i)
+      {
+        const char ch = static_cast<char>(chunk[i]);
+        if (ch == '\r' || ch == '\n' || ch == '\t' || (ch >= 0x20 && ch <= 0x7E))
+        {
+          filtered.push_back(ch);
+        }
+      }
+      if (stopOnAck && containsEpsilonAsciiAck(filtered))
+      {
+        sawAck = true;
+      }
+      continue;
+    }
+
+    sleepMs(20);
+  }
+
+  return filtered;
 }
 
 const char* lidarProtocolName(LidarProtocol protocol)
@@ -974,6 +1293,529 @@ void GnssCollector::run()
   }
 }
 
+EpsilonData EpsilonCollector::getLatestData()
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  return latest_data_;
+}
+
+void EpsilonCollector::setRawFrameCallback(RawFrameCallback callback)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  raw_frame_callback_ = std::move(callback);
+}
+
+bool EpsilonCollector::checkDeviceResponse()
+{
+  std::vector<uint8_t> buffer;
+  std::vector<uint8_t> frame;
+  uint8_t packetId = 0;
+  if (!readValidFdilinkFrame(serial_, buffer, &frame, 2500, &packetId, nullptr))
+  {
+    log("EPSILON: no navigation frame detected, trying command-mode handshake");
+
+    auto sendCommandForProbe = [this](const std::string& command, int waitMs) {
+      const ssize_t written = serial_.write(command.c_str(), command.size());
+      if (written != static_cast<ssize_t>(command.size()))
+      {
+        return std::string();
+      }
+      sleepMs(waitMs);
+      return readPrintableSerialResponse(serial_, std::max(waitMs, 600), true);
+    };
+
+    serial_.flush();
+    sleepMs(80);
+
+    const std::string configResponse = sendCommandForProbe("#fconfig\r\n", 1500);
+    if (!configResponse.empty())
+    {
+      std::istringstream stream(configResponse);
+      std::string line;
+      while (std::getline(stream, line))
+      {
+        const std::string trimmed = trimAscii(line);
+        if (!trimmed.empty())
+        {
+          log("[EPSILON RX] " + trimmed);
+        }
+      }
+    }
+
+    if (!containsEpsilonAsciiAck(configResponse))
+    {
+      return false;
+    }
+
+    const std::string fmsgResponse = sendCommandForProbe("#fmsg\r\n", 1500);
+    if (!fmsgResponse.empty())
+    {
+      std::istringstream stream(fmsgResponse);
+      std::string line;
+      int lineCount = 0;
+      while (std::getline(stream, line) && lineCount < 12)
+      {
+        const std::string trimmed = trimAscii(line);
+        if (!trimmed.empty())
+        {
+          log("[EPSILON RX] " + trimmed);
+          ++lineCount;
+        }
+      }
+    }
+
+    sendCommandForProbe("#fdeconfig\r\n", 1500);
+    if (readValidFdilinkFrame(serial_, buffer, &frame, 2500, &packetId, nullptr))
+    {
+      log("EPSILON: recovered navigation stream with FDILink frame " + std::to_string(packetId));
+      return true;
+    }
+
+    log("EPSILON: device responds to commands, but no navigation frame was restored yet");
+    return true;
+  }
+
+  log("EPSILON: detected FDILink frame " + std::to_string(packetId));
+  return true;
+}
+
+bool EpsilonCollector::setDeviceSampleRate(int hz)
+{
+  if (!isSupportedEpsilonRate(hz))
+  {
+    log("EPSILON: unsupported output rate " + std::to_string(hz) + " Hz");
+    return false;
+  }
+  if (!serial_.isOpen())
+  {
+    log("EPSILON: serial port is not open");
+    return false;
+  }
+
+  auto readAsciiResponse = [this](int totalWaitMs) {
+    const std::string filtered = readPrintableSerialResponse(serial_, totalWaitMs, true);
+    std::istringstream stream(filtered);
+    std::string line;
+    while (std::getline(stream, line))
+    {
+      const std::string trimmed = trimAscii(line);
+      if (!trimmed.empty())
+      {
+        log("[EPSILON RX] " + trimmed);
+      }
+    }
+    return filtered;
+  };
+
+  auto sendAsciiCommand = [this, &readAsciiResponse](const std::string& command, int waitMs) {
+    log("[EPSILON TX] " + trimAscii(command));
+    const ssize_t written = serial_.write(command.c_str(), command.size());
+    if (written != static_cast<ssize_t>(command.size()))
+    {
+      log("EPSILON: failed to send command: " + trimAscii(command));
+      return std::string();
+    }
+    if (waitMs > 0)
+    {
+      sleepMs(waitMs);
+    }
+    const std::string response = readAsciiResponse(std::max(180, waitMs));
+    if (command != "y\r\n" &&
+        !containsEpsilonAsciiAck(response))
+    {
+      log("EPSILON: no explicit ASCII acknowledgement for command: " + trimAscii(command));
+    }
+    return response;
+  };
+
+  constexpr int kConfigCommandWaitMs = 1500;
+  serial_.flush();
+  sleepMs(80);
+
+  sendAsciiCommand("#fconfig\r\n", kConfigCommandWaitMs);
+  const std::string fmsgResponse = sendAsciiCommand("#fmsg\r\n", kConfigCommandWaitMs);
+  const auto currentRates = parseFmsgResponse(fmsgResponse);
+  const auto desiredRates = desiredEpsilonPacketRates(hz);
+
+  bool needsReconfigure = currentRates.size() < desiredRates.size();
+  for (const auto& entry : desiredRates)
+  {
+    const auto it = currentRates.find(entry.first);
+    if (it == currentRates.end() || it->second != entry.second)
+    {
+      needsReconfigure = true;
+      break;
+    }
+  }
+
+  if (needsReconfigure)
+  {
+    for (const auto& entry : desiredRates)
+    {
+      char command[32];
+      std::snprintf(command, sizeof(command), "#fmsg %02X %d\r\n", entry.first, entry.second);
+      sendAsciiCommand(command, kConfigCommandWaitMs);
+    }
+    sendAsciiCommand("#fsave\r\n", kConfigCommandWaitMs);
+    sendAsciiCommand("#fdeconfig\r\n", kConfigCommandWaitMs);
+
+    std::vector<uint8_t> frameBuffer;
+    std::vector<uint8_t> frame;
+    uint8_t packetId = 0;
+    if (!readValidFdilinkFrame(serial_, frameBuffer, &frame, 6000, &packetId, nullptr))
+    {
+      log("EPSILON: configuration saved, but no FDILink frame was observed after leaving config mode");
+    }
+    else
+    {
+      log("EPSILON: output configuration updated, saved, and navigation stream restored");
+    }
+  }
+  else
+  {
+    log("EPSILON: output configuration already matches requested rates");
+    sendAsciiCommand("#fdeconfig\r\n", kConfigCommandWaitMs);
+    std::vector<uint8_t> frameBuffer;
+    std::vector<uint8_t> frame;
+    uint8_t packetId = 0;
+    if (readValidFdilinkFrame(serial_, frameBuffer, &frame, 3000, &packetId, nullptr))
+    {
+      log("EPSILON: returned to navigation mode with FDILink frame " + std::to_string(packetId));
+    }
+    else
+    {
+      log("EPSILON: configuration query completed, but navigation stream is still silent");
+    }
+  }
+
+  sample_rate_hz_.store(hz);
+  return true;
+}
+
+void EpsilonCollector::run()
+{
+  std::vector<uint8_t> buffer;
+  buffer.reserve(8192);
+  uint8_t chunk[1024];
+  bool havePreviousSerial = false;
+  uint8_t previousSerial = 0;
+  uint64_t droppedFrames = 0;
+  struct PacketRateTracker
+  {
+    int count = 0;
+    double rate_hz = 0.0;
+    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+
+    void record()
+    {
+      const auto now = std::chrono::steady_clock::now();
+      ++count;
+      const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+      if (elapsed >= 1000)
+      {
+        rate_hz = count * 1000.0 / elapsed;
+        count = 0;
+        start = now;
+      }
+    }
+  };
+  PacketRateTracker imuRateTracker;
+  PacketRateTracker ahrsRateTracker;
+  PacketRateTracker insGpsRateTracker;
+  PacketRateTracker sysStateRateTracker;
+  PacketRateTracker rawGnssRateTracker;
+  PacketRateTracker satelliteRateTracker;
+  PacketRateTracker geodeticRateTracker;
+  PacketRateTracker ecefRateTracker;
+
+  auto consumeFrame = [this,
+                       &havePreviousSerial,
+                       &previousSerial,
+                       &droppedFrames,
+                       &imuRateTracker,
+                       &ahrsRateTracker,
+                       &insGpsRateTracker,
+                       &sysStateRateTracker,
+                       &rawGnssRateTracker,
+                       &satelliteRateTracker,
+                       &geodeticRateTracker,
+                       &ecefRateTracker](const std::vector<uint8_t>& frame, uint64_t hostTimestampUs) {
+    if (frame.size() < 8)
+    {
+      return;
+    }
+
+    const uint8_t packetId = frame[1];
+    const uint8_t serialNumber = frame[3];
+    const size_t payloadSize = frame[2];
+    if (frame.size() != payloadSize + 8)
+    {
+      return;
+    }
+    const uint8_t* payload = frame.data() + 7;
+
+    if (havePreviousSerial)
+    {
+      const uint8_t expected = static_cast<uint8_t>(previousSerial + 1);
+      if (serialNumber != expected)
+      {
+        const uint8_t delta = static_cast<uint8_t>(serialNumber - expected);
+        droppedFrames += delta;
+      }
+    }
+    havePreviousSerial = true;
+    previousSerial = serialNumber;
+
+    switch (packetId)
+    {
+    case kMsgImu:
+      imuRateTracker.record();
+      break;
+    case kMsgAhrs:
+      ahrsRateTracker.record();
+      break;
+    case kMsgInsGps:
+      insGpsRateTracker.record();
+      break;
+    case kMsgSystemState:
+      sysStateRateTracker.record();
+      break;
+    case kMsgRawGnss:
+      rawGnssRateTracker.record();
+      break;
+    case kMsgSatellites:
+      satelliteRateTracker.record();
+      break;
+    case kMsgGeodeticPos:
+      geodeticRateTracker.record();
+      break;
+    case kMsgEcefPos:
+      ecefRateTracker.record();
+      break;
+    default:
+      break;
+    }
+
+    DataCallback callback;
+    RawFrameCallback rawCallback;
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      latest_data_.last_packet_id = packetId;
+      latest_data_.last_serial_number = serialNumber;
+      latest_data_.raw_frame_count += 1;
+      latest_data_.dropped_frame_count = droppedFrames;
+      latest_data_.timestamp = std::chrono::steady_clock::now();
+      latest_data_.valid = true;
+      latest_data_.error_message.clear();
+      latest_data_.imu_packet_rate_hz = imuRateTracker.rate_hz;
+      latest_data_.ahrs_packet_rate_hz = ahrsRateTracker.rate_hz;
+      latest_data_.insgps_packet_rate_hz = insGpsRateTracker.rate_hz;
+      latest_data_.sys_state_packet_rate_hz = sysStateRateTracker.rate_hz;
+      latest_data_.raw_gnss_packet_rate_hz = rawGnssRateTracker.rate_hz;
+      latest_data_.satellite_packet_rate_hz = satelliteRateTracker.rate_hz;
+      latest_data_.geodetic_packet_rate_hz = geodeticRateTracker.rate_hz;
+      latest_data_.ecef_packet_rate_hz = ecefRateTracker.rate_hz;
+
+      if (packetId == kMsgImu && payloadSize >= 56)
+      {
+        latest_data_.imu_gyr_x_radps = readFloatLE(payload + 0);
+        latest_data_.imu_gyr_y_radps = readFloatLE(payload + 4);
+        latest_data_.imu_gyr_z_radps = readFloatLE(payload + 8);
+        latest_data_.imu_acc_x_mps2 = readFloatLE(payload + 12);
+        latest_data_.imu_acc_y_mps2 = readFloatLE(payload + 16);
+        latest_data_.imu_acc_z_mps2 = readFloatLE(payload + 20);
+        latest_data_.mag_x_mg = readFloatLE(payload + 24);
+        latest_data_.mag_y_mg = readFloatLE(payload + 28);
+        latest_data_.mag_z_mg = readFloatLE(payload + 32);
+        latest_data_.imu_temp_c = readFloatLE(payload + 36);
+        latest_data_.pressure_pa = readFloatLE(payload + 40);
+        latest_data_.pressure_temp_c = readFloatLE(payload + 44);
+        latest_data_.device_timestamp_us = static_cast<uint64_t>(readI64LE(payload + 48));
+      }
+      else if (packetId == kMsgAhrs && payloadSize >= 48)
+      {
+        latest_data_.ang_vel_x_radps = readFloatLE(payload + 0);
+        latest_data_.ang_vel_y_radps = readFloatLE(payload + 4);
+        latest_data_.ang_vel_z_radps = readFloatLE(payload + 8);
+        latest_data_.roll_deg = radToDeg(readFloatLE(payload + 12));
+        latest_data_.pitch_deg = radToDeg(readFloatLE(payload + 16));
+        latest_data_.yaw_deg = radToDeg(readFloatLE(payload + 20));
+        latest_data_.quat_w = readFloatLE(payload + 24);
+        latest_data_.quat_x = readFloatLE(payload + 28);
+        latest_data_.quat_y = readFloatLE(payload + 32);
+        latest_data_.quat_z = readFloatLE(payload + 36);
+        latest_data_.device_timestamp_us = static_cast<uint64_t>(readI64LE(payload + 40));
+      }
+      else if (packetId == kMsgInsGps && payloadSize >= 72)
+      {
+        latest_data_.body_vel_x_mps = readFloatLE(payload + 0);
+        latest_data_.body_vel_y_mps = readFloatLE(payload + 4);
+        latest_data_.body_vel_z_mps = readFloatLE(payload + 8);
+        latest_data_.body_acc_x_mps2 = readFloatLE(payload + 12);
+        latest_data_.body_acc_y_mps2 = readFloatLE(payload + 16);
+        latest_data_.body_acc_z_mps2 = readFloatLE(payload + 20);
+        latest_data_.ned_n_m = readFloatLE(payload + 24);
+        latest_data_.ned_e_m = readFloatLE(payload + 28);
+        latest_data_.ned_d_m = readFloatLE(payload + 32);
+        latest_data_.vel_n_mps = readFloatLE(payload + 36);
+        latest_data_.vel_e_mps = readFloatLE(payload + 40);
+        latest_data_.vel_d_mps = readFloatLE(payload + 44);
+        latest_data_.pressure_altitude_m = readFloatLE(payload + 60);
+        latest_data_.device_timestamp_us = static_cast<uint64_t>(readI64LE(payload + 64));
+      }
+      else if (packetId == kMsgSystemState && payloadSize >= 14)
+      {
+        latest_data_.system_status_bits = readU16LE(payload + 0);
+        latest_data_.filter_status_bits = readU16LE(payload + 2);
+        latest_data_.update_status_bits = readU16LE(payload + 4);
+        latest_data_.utc_unix_s = readU32LE(payload + 6);
+        latest_data_.utc_microseconds = readU32LE(payload + 10);
+        latest_data_.gnss_fix_code = static_cast<int>((latest_data_.filter_status_bits >> 4) & 0x0F);
+        latest_data_.gnss_fix_text = epsilonGnssFixName(latest_data_.gnss_fix_code);
+        if (payloadSize >= 38)
+        {
+          latest_data_.latitude_deg = radToDeg(readDoubleLE(payload + 14));
+          latest_data_.longitude_deg = radToDeg(readDoubleLE(payload + 22));
+          latest_data_.height_m = readDoubleLE(payload + 30);
+        }
+        if (payloadSize >= 50)
+        {
+          latest_data_.vel_n_mps = readFloatLE(payload + 38);
+          latest_data_.vel_e_mps = readFloatLE(payload + 42);
+          latest_data_.vel_d_mps = readFloatLE(payload + 46);
+        }
+        if (payloadSize >= 62)
+        {
+          latest_data_.body_acc_x_mps2 = readFloatLE(payload + 50);
+          latest_data_.body_acc_y_mps2 = readFloatLE(payload + 54);
+          latest_data_.body_acc_z_mps2 = readFloatLE(payload + 58);
+        }
+        if (payloadSize >= 78)
+        {
+          latest_data_.roll_deg = radToDeg(readFloatLE(payload + 66));
+          latest_data_.pitch_deg = radToDeg(readFloatLE(payload + 70));
+          latest_data_.yaw_deg = radToDeg(readFloatLE(payload + 74));
+        }
+        if (payloadSize >= 90)
+        {
+          latest_data_.ang_vel_x_radps = readFloatLE(payload + 78);
+          latest_data_.ang_vel_y_radps = readFloatLE(payload + 82);
+          latest_data_.ang_vel_z_radps = readFloatLE(payload + 86);
+        }
+        if (payloadSize >= 102)
+        {
+          latest_data_.lat_std_m = readFloatLE(payload + 90);
+          latest_data_.lon_std_m = readFloatLE(payload + 94);
+          latest_data_.height_std_m = readFloatLE(payload + 98);
+        }
+      }
+      else if (packetId == kMsgRawGnss && payloadSize >= 74)
+      {
+        latest_data_.lat_std_m = readFloatLE(payload + 44);
+        latest_data_.lon_std_m = readFloatLE(payload + 48);
+        latest_data_.height_std_m = readFloatLE(payload + 52);
+        latest_data_.diff_age_s = readFloatLE(payload + 64);
+        const uint16_t rawGnssStatus = readU16LE(payload + 72);
+        latest_data_.heading_valid = ((rawGnssStatus >> 8) & 0x01u) != 0;
+      }
+      else if (packetId == kMsgSatellites && payloadSize >= 13)
+      {
+        latest_data_.hdop = readFloatLE(payload + 0);
+        latest_data_.vdop = readFloatLE(payload + 4);
+        latest_data_.gnss_satellites = static_cast<int>(payload[8]) +
+            static_cast<int>(payload[9]) +
+            static_cast<int>(payload[10]) +
+            static_cast<int>(payload[11]) +
+            static_cast<int>(payload[12]);
+      }
+      else if (packetId == kMsgGeodeticPos && payloadSize >= 32)
+      {
+        latest_data_.latitude_deg = radToDeg(readDoubleLE(payload + 0));
+        latest_data_.longitude_deg = radToDeg(readDoubleLE(payload + 8));
+        latest_data_.height_m = readDoubleLE(payload + 16);
+        latest_data_.hacc_m = readFloatLE(payload + 24);
+        latest_data_.vacc_m = readFloatLE(payload + 28);
+      }
+      else if (packetId == kMsgEcefPos && payloadSize >= 24)
+      {
+        latest_data_.ecef_x_m = readDoubleLE(payload + 0);
+        latest_data_.ecef_y_m = readDoubleLE(payload + 8);
+        latest_data_.ecef_z_m = readDoubleLE(payload + 16);
+      }
+
+      callback = data_callback_;
+      rawCallback = raw_frame_callback_;
+    }
+
+    if (rawCallback)
+    {
+      rawCallback(hostTimestampUs, packetId, serialNumber, frame.data(), frame.size());
+    }
+
+    recordDataReceived();
+    if (callback && shouldEmitData())
+    {
+      updateLastEmitTime();
+      callback();
+    }
+  };
+
+  while (running_.load())
+  {
+    const ssize_t n = serial_.read(chunk, sizeof(chunk));
+    if (n <= 0)
+    {
+      sleepMs(5);
+      continue;
+    }
+
+    buffer.insert(buffer.end(), chunk, chunk + n);
+    while (buffer.size() >= 8)
+    {
+      const auto head = std::find(buffer.begin(), buffer.end(), kFdilinkFrameHead);
+      if (head == buffer.end())
+      {
+        buffer.clear();
+        break;
+      }
+      if (head != buffer.begin())
+      {
+        buffer.erase(buffer.begin(), head);
+      }
+      if (buffer.size() < 8)
+      {
+        break;
+      }
+
+      const size_t payloadSize = buffer[2];
+      const size_t frameSize = payloadSize + 8;
+      if (buffer.size() < frameSize)
+      {
+        break;
+      }
+
+      const uint16_t headerCrc16 = static_cast<uint16_t>((static_cast<uint16_t>(buffer[5]) << 8) | buffer[6]);
+      const bool crc8Ok = fdilinkCrc8(buffer.data(), 4) == buffer[4];
+      const bool crc16Ok = fdilinkCrc16(buffer.data() + 7, payloadSize) == headerCrc16;
+      const bool tailOk = buffer[frameSize - 1] == kFdilinkFrameTail;
+      if (!crc8Ok || !crc16Ok || !tailOk)
+      {
+        if (!crc8Ok || !crc16Ok)
+        {
+          std::lock_guard<std::mutex> lock(mutex_);
+          latest_data_.error_message = !crc8Ok ? "FDILink CRC8 mismatch" : "FDILink CRC16 mismatch";
+        }
+        buffer.erase(buffer.begin());
+        continue;
+      }
+
+      std::vector<uint8_t> frame(buffer.begin(), buffer.begin() + static_cast<std::ptrdiff_t>(frameSize));
+      buffer.erase(buffer.begin(), buffer.begin() + static_cast<std::ptrdiff_t>(frameSize));
+      consumeFrame(frame, systemTimestampUs());
+    }
+  }
+}
+
 ImuData ImuCollector::getLatestData()
 {
   std::lock_guard<std::mutex> lock(mutex_);
@@ -1358,7 +2200,7 @@ bool PtbCollector::checkDeviceResponse()
     }
     try
     {
-      std::stod(value);
+      (void)std::stod(value);
       return true;
     }
     catch (const std::exception&)

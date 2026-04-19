@@ -36,6 +36,7 @@ class RtkConfigDialog;
 class QFile;
 class TcpWavePanel;
 class SessionViewerWindow;
+class EpsilonPanel;
 
 class GnssPanel : public QWidget
 {
@@ -43,7 +44,7 @@ class GnssPanel : public QWidget
 
 public:
     explicit GnssPanel(QWidget *parent = nullptr);
-    void updateData(const VaporView::GnssData& data, quint64 timestamp_us = 0);
+    void updateData(const VaporView::GnssData& gnss_data, quint64 timestamp_us = 0);
     void updateRate(double hz);
     void setEnglish(bool english);
 
@@ -112,7 +113,7 @@ class ImuPanel : public QWidget
 
 public:
     explicit ImuPanel(QWidget *parent = nullptr);
-    void updateData(const VaporView::ImuData& data, quint64 gnss_timestamp_us = 0);
+    void updateData(const VaporView::ImuData& imu_data, quint64 gnss_timestamp_us = 0);
     void updateRate(double hz);
     void setEnglish(bool english);
 
@@ -172,7 +173,7 @@ class PtbPanel : public QWidget
 
 public:
     explicit PtbPanel(QWidget *parent = nullptr);
-    void updateData(const VaporView::PtbData& data);
+    void updateData(const VaporView::PtbData& ptb_data);
     void updateRate(double hz);
     void setEnglish(bool english);
 
@@ -193,7 +194,7 @@ class HmpPanel : public QWidget
 
 public:
     explicit HmpPanel(QWidget *parent = nullptr);
-    void updateData(const VaporView::HmpData& data);
+    void updateData(const VaporView::HmpData& hmp_data);
     void updateRate(double hz);
     void setEnglish(bool english);
 
@@ -216,7 +217,7 @@ class LidarPanel : public QWidget
 
 public:
     explicit LidarPanel(QWidget *parent = nullptr);
-    void updateData(const VaporView::LidarData& data);
+    void updateData(const VaporView::LidarData& lidar_data);
     void updateRate(double hz);
     void setEnglish(bool english);
 
@@ -244,6 +245,7 @@ public:
 private slots:
     void onConnectClicked();
     void onDisconnectClicked();
+    void onEpsilonDataReady();
     void onGnssDataReady();
     void onImuDataReady();
     void onPtbDataReady();
@@ -256,6 +258,7 @@ private slots:
     void onChooseRecordingDirectoryClicked();
     void onToggleFullScreen();
     void onSwitchLanguage();
+    void onReconfigureEpsilonClicked();
     void onGlobalRateChanged(const QString& text);
     void onGnssRateChanged(const QString& text);
     void onImuRateChanged(const QString& text);
@@ -274,6 +277,7 @@ private slots:
 private:
     struct CollectorSnapshot
     {
+        std::shared_ptr<VaporView::EpsilonCollector> epsilon;
         std::shared_ptr<VaporView::GnssCollector> gnss;
         std::shared_ptr<VaporView::ImuCollector> imu;
         std::shared_ptr<VaporView::PtbCollector> ptb;
@@ -322,6 +326,7 @@ private:
     quint64 steadyToEpochUs(const std::chrono::steady_clock::time_point& timePoint) const;
     void runWaveformWriter();
     void updateConnectionStatus(bool connected);
+    bool anyCollectorRunning() const;
     QStringList getAvailablePorts();
     void setEnglish(bool english);
     void setFontScale(int percent);
@@ -351,6 +356,7 @@ private:
     QWidget *central_widget_;
     QVBoxLayout *main_layout_;
 
+    EpsilonPanel *epsilon_panel_;
     GnssPanel *gnss_panel_;
     ImuPanel *imu_panel_;
     PtbPanel *ptb_panel_;
@@ -363,11 +369,13 @@ private:
     QLabel *recording_status_label_;
     QPushButton *auto_detect_ports_btn_;
 
+    QComboBox *epsilon_port_combo_;
     QComboBox *gnss_port_combo_;
     QComboBox *imu_port_combo_;
     QComboBox *ptb_port_combo_;
     QComboBox *hmp_port_combo_;
     QComboBox *lidar_port_combo_;
+    QComboBox *epsilon_baud_combo_;
     QComboBox *gnss_baud_combo_;
     QComboBox *imu_baud_combo_;
     QComboBox *ptb_baud_combo_;
@@ -385,6 +393,7 @@ private:
     QAction *lang_action_;
     QAction *clear_log_action_;
     QAction *session_viewer_action_;
+    QAction *epsilon_reconfigure_action_;
     QAction *recording_directory_action_;
     QAction *exit_action_;
     QAction *about_action_;
@@ -401,6 +410,7 @@ private:
     QGroupBox *data_group_;
     QGroupBox *log_group_;
     QGroupBox *tcp_wave_group_;
+    QGroupBox *epsilon_group_;
     QGroupBox *gnss_group_;
     QGroupBox *imu_group_;
     QGroupBox *ptb_group_;
@@ -408,6 +418,7 @@ private:
     QGroupBox *env_group_;
     QGroupBox *lidar_group_;
 
+    QLabel *epsilon_lbl_;
     QLabel *gnss_lbl_;
     QLabel *imu_lbl_;
     QLabel *ptb_lbl_;
@@ -415,12 +426,14 @@ private:
     QLabel *lidar_lbl_;
     QLabel *data_inline_title_lbl_;
     QLabel *log_inline_title_lbl_;
+    QLabel *epsilon_inline_title_lbl_;
     QLabel *gnss_inline_title_lbl_;
     QLabel *imu_inline_title_lbl_;
     QLabel *env_inline_title_lbl_;
     QLabel *config_inline_title_lbl_;
     QLabel *global_rate_lbl_;
     QLabel *waveform_split_lbl_;
+    QLabel *epsilon_rate_lbl_;
     QLabel *gnss_rate_lbl_;
     QLabel *imu_rate_lbl_;
     QLabel *ptb_rate_lbl_;
@@ -429,6 +442,7 @@ private:
 
     QComboBox *global_rate_combo_;
     QSpinBox *waveform_split_spin_;
+    QComboBox *epsilon_rate_combo_;
     QComboBox *gnss_rate_combo_;
     QComboBox *imu_rate_combo_;
     QComboBox *ptb_rate_combo_;
@@ -446,6 +460,7 @@ private:
     QPushButton *imu_rate_1000_btn_;
 
     mutable std::mutex collector_mutex_;
+    std::shared_ptr<VaporView::EpsilonCollector> epsilon_collector_;
     std::shared_ptr<VaporView::GnssCollector> gnss_collector_;
     std::shared_ptr<VaporView::ImuCollector> imu_collector_;
     std::shared_ptr<VaporView::PtbCollector> ptb_collector_;
@@ -454,6 +469,7 @@ private:
 
     QTimer *refresh_timer_;
 
+    VaporView::EpsilonData current_epsilon_;
     VaporView::GnssData current_gnss_;
     VaporView::ImuData current_imu_;
     VaporView::PtbData current_ptb_;
@@ -465,10 +481,12 @@ private:
     bool has_inline_progress_log_;
     bool connection_attempt_in_progress_;
     bool port_detection_in_progress_;
+    bool epsilon_reconfigure_in_progress_;
     bool is_connected_;
     std::atomic<bool> cancel_connection_requested_;
     std::thread connection_thread_;
     std::thread port_detection_thread_;
+    std::thread epsilon_reconfigure_thread_;
     std::thread recording_thread_;
     std::atomic<bool> recording_thread_running_;
     std::thread waveform_writer_thread_;
@@ -479,6 +497,7 @@ private:
     QString base_style_sheet_;
     QSize base_window_size_;
     QSize base_minimum_window_size_;
+    int epsilon_sample_rate_;
     int gnss_sample_rate_;
     int imu_sample_rate_;
     int ptb_sample_rate_;
