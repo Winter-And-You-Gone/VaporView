@@ -260,6 +260,20 @@ std::map<uint8_t, int> groupedEpsilonPacketRates(int baseRateHz)
     };
 }
 
+std::map<uint8_t, int> defaultEpsilonPacketRates()
+{
+    return {
+        {0x40, 250},
+        {0x41, 50},
+        {0x42, 100},
+        {0x50, 100},
+        {0x59, 10},
+        {0x5A, 1},
+        {0x5C, 10},
+        {0x5D, 10},
+    };
+}
+
 bool epsilonPacketRateSupported(const EpsilonPacketConfigOption& option, int rateHz)
 {
     return std::find(option.supported_rates_hz.cbegin(), option.supported_rates_hz.cend(), rateHz) != option.supported_rates_hz.cend();
@@ -267,7 +281,8 @@ bool epsilonPacketRateSupported(const EpsilonPacketConfigOption& option, int rat
 
 std::map<uint8_t, int> loadCustomEpsilonPacketRates(QSettings& settings, int fallbackBaseRateHz)
 {
-    std::map<uint8_t, int> packetRates = groupedEpsilonPacketRates(fallbackBaseRateHz);
+    Q_UNUSED(fallbackBaseRateHz);
+    std::map<uint8_t, int> packetRates = defaultEpsilonPacketRates();
     for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
     {
         const int fallbackRate = packetRates[option.packet_id];
@@ -279,7 +294,7 @@ std::map<uint8_t, int> loadCustomEpsilonPacketRates(QSettings& settings, int fal
 
 std::map<uint8_t, int> effectiveEpsilonPacketRates(QSettings& settings, int baseRateHz, bool *usingCustomProfile = nullptr)
 {
-    const bool useCustomProfile = settings.value("epsilon_custom_packet_rates_enabled", false).toBool();
+    const bool useCustomProfile = settings.value("epsilon_custom_packet_rates_enabled", true).toBool();
     if (usingCustomProfile)
     {
         *usingCustomProfile = useCustomProfile;
@@ -5504,9 +5519,12 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
 
     const int groupedRateHz = parseRate(epsilon_rate_combo_ ? epsilon_rate_combo_->currentText() : QStringLiteral("100"));
     QSettings settings("VaporView", "MainWindow");
-    const bool customEnabled = settings.value("epsilon_custom_packet_rates_enabled", false).toBool();
+    const bool customEnabled = settings.value("epsilon_custom_packet_rates_enabled", true).toBool();
+    const std::map<uint8_t, int> defaultRates = defaultEpsilonPacketRates();
     const std::map<uint8_t, int> groupedRates = groupedEpsilonPacketRates(groupedRateHz);
-    const std::map<uint8_t, int> initialRates = loadCustomEpsilonPacketRates(settings, groupedRateHz);
+    const std::map<uint8_t, int> initialRates = customEnabled
+        ? loadCustomEpsilonPacketRates(settings, groupedRateHz)
+        : groupedRates;
 
     QDialog dialog(this);
     dialog.setModal(true);
@@ -5516,8 +5534,8 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
 
     auto *hintLabel = new QLabel(
         is_english_
-            ? QStringLiteral("Configured from the local EPSILON ground-station profile. Each row shows the packet's maximum supported rate. If any packet differs from the grouped defaults, the custom profile will be enabled automatically when you save.")
-            : QStringLiteral("配置范围来自本地 EPSILON 官方地面站配置。每一行都显示该数据包支持的最大频率。只要任一数据包偏离分组默认值，保存时就会自动启用自定义配置。"),
+            ? QStringLiteral("Configured from the local EPSILON ground-station profile. The recommended default profile prioritizes stable time and 3D navigation output. Each row shows the packet's maximum supported rate. If any packet differs from the grouped profile, the custom profile will be enabled automatically when you save.")
+            : QStringLiteral("配置范围来自本地 EPSILON 官方地面站配置。推荐默认配置优先保证稳定的时间与三维导航输出。每一行都显示该数据包支持的最大频率。只要任一数据包偏离分组模式，保存时就会自动启用自定义配置。"),
         &dialog);
     hintLabel->setWordWrap(true);
     layout->addWidget(hintLabel);
@@ -5559,10 +5577,30 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     }
 
     auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    QPushButton *defaultsButton = buttonBox->addButton(
-        is_english_ ? QStringLiteral("Use Grouped Defaults") : QStringLiteral("恢复分组默认值"),
+    QPushButton *recommendedDefaultsButton = buttonBox->addButton(
+        is_english_ ? QStringLiteral("Use Recommended Defaults") : QStringLiteral("恢复推荐默认值"),
         QDialogButtonBox::ResetRole);
-    connect(defaultsButton, &QPushButton::clicked, &dialog, [&packetCombos, groupedRates, enableCustomCheck]() {
+    connect(recommendedDefaultsButton, &QPushButton::clicked, &dialog, [&packetCombos, defaultRates, enableCustomCheck]() {
+        enableCustomCheck->setChecked(true);
+        for (const auto& entry : packetCombos)
+        {
+            const auto it = defaultRates.find(entry.first);
+            if (it == defaultRates.end())
+            {
+                continue;
+            }
+            QComboBox *combo = entry.second;
+            const int index = combo ? combo->findData(it->second) : -1;
+            if (combo && index >= 0)
+            {
+                combo->setCurrentIndex(index);
+            }
+        }
+    });
+    QPushButton *groupedDefaultsButton = buttonBox->addButton(
+        is_english_ ? QStringLiteral("Use Grouped Profile") : QStringLiteral("切换到分组模式"),
+        QDialogButtonBox::ActionRole);
+    connect(groupedDefaultsButton, &QPushButton::clicked, &dialog, [&packetCombos, groupedRates, enableCustomCheck]() {
         enableCustomCheck->setChecked(false);
         for (const auto& entry : packetCombos)
         {
@@ -5614,14 +5652,18 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     {
         log(is_english_
                 ? "[EPSILON] Packet-rate overrides detected, so the custom packet-rate profile has been enabled automatically."
-                : "[EPSILON] 检测到包频率已偏离分组默认值，已自动启用自定义包频率配置。");
+                : "[EPSILON] 检测到包频率已偏离分组模式，已自动启用自定义包频率配置。");
     }
 
     if (effectiveCustomEnabled)
     {
         log(QString(is_english_
-                        ? "[EPSILON] Custom packet-rate profile saved: %1"
-                        : "[EPSILON] 已保存自定义包频率配置: %1")
+                        ? ((savedPacketRates == defaultRates)
+                               ? "[EPSILON] Recommended default packet-rate profile saved: %1"
+                               : "[EPSILON] Custom packet-rate profile saved: %1")
+                        : ((savedPacketRates == defaultRates)
+                               ? "[EPSILON] 已保存推荐默认包频率配置: %1"
+                               : "[EPSILON] 已保存自定义包频率配置: %1"))
                 .arg(epsilonPacketRatesSummary(savedPacketRates)));
     }
     else
