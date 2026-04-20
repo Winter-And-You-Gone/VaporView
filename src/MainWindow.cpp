@@ -5516,8 +5516,8 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
 
     auto *hintLabel = new QLabel(
         is_english_
-            ? QStringLiteral("Configured from the local EPSILON ground-station profile. Each row shows the packet's maximum supported rate.")
-            : QStringLiteral("配置范围来自本地 EPSILON 官方地面站配置。每一行都显示该数据包支持的最大频率。"),
+            ? QStringLiteral("Configured from the local EPSILON ground-station profile. Each row shows the packet's maximum supported rate. If any packet differs from the grouped defaults, the custom profile will be enabled automatically when you save.")
+            : QStringLiteral("配置范围来自本地 EPSILON 官方地面站配置。每一行都显示该数据包支持的最大频率。只要任一数据包偏离分组默认值，保存时就会自动启用自定义配置。"),
         &dialog);
     hintLabel->setWordWrap(true);
     layout->addWidget(hintLabel);
@@ -5596,10 +5596,28 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
         savedPacketRates[option.packet_id] = rateHz;
         settings.setValue(epsilonPacketRateSettingsKey(option.packet_id), rateHz);
     }
-    settings.setValue("epsilon_custom_packet_rates_enabled", enableCustomCheck->isChecked());
+    bool hasCustomOverrides = false;
+    for (const auto& entry : savedPacketRates)
+    {
+        const auto groupedIt = groupedRates.find(entry.first);
+        if (groupedIt != groupedRates.end() && groupedIt->second != entry.second)
+        {
+            hasCustomOverrides = true;
+            break;
+        }
+    }
+    const bool effectiveCustomEnabled = enableCustomCheck->isChecked() || hasCustomOverrides;
+    settings.setValue("epsilon_custom_packet_rates_enabled", effectiveCustomEnabled);
     settings.remove("epsilon_last_config_signature");
 
-    if (enableCustomCheck->isChecked())
+    if (hasCustomOverrides && !enableCustomCheck->isChecked())
+    {
+        log(is_english_
+                ? "[EPSILON] Packet-rate overrides detected, so the custom packet-rate profile has been enabled automatically."
+                : "[EPSILON] 检测到包频率已偏离分组默认值，已自动启用自定义包频率配置。");
+    }
+
+    if (effectiveCustomEnabled)
     {
         log(QString(is_english_
                         ? "[EPSILON] Custom packet-rate profile saved: %1"
