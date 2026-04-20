@@ -965,6 +965,19 @@ void RtkConfigDialog::saveSettings()
     settings.setValue("reconnect", reconnect_combo_->currentText());
 }
 
+void RtkConfigDialog::setPreferredOutputPortAndBaud(const QString& portName, const QString& baudText)
+{
+    refreshPortCombos();
+    if (!portName.trimmed().isEmpty() && output_port_combo_)
+    {
+        output_port_combo_->setCurrentText(portName.trimmed());
+    }
+    if (!baudText.trimmed().isEmpty() && baudrate_combo_)
+    {
+        baudrate_combo_->setCurrentText(baudText.trimmed());
+    }
+}
+
 bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config, QString *description) const
 {
     const QString server = server_edit_->text().trimmed();

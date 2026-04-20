@@ -447,6 +447,98 @@ std::string readPrintableSerialResponse(SerialPort& serial, int totalWaitMs, boo
   return filtered;
 }
 
+using EpsilonLogFn = std::function<void(const std::string&)>;
+
+std::string readLoggedEpsilonAsciiResponse(SerialPort& serial, const EpsilonLogFn& logFn, int totalWaitMs)
+{
+  const std::string filtered = readPrintableSerialResponse(serial, totalWaitMs, true);
+  std::istringstream stream(filtered);
+  std::string line;
+  while (std::getline(stream, line))
+  {
+    const std::string trimmed = trimAscii(line);
+    if (!trimmed.empty())
+    {
+      logFn("[EPSILON RX] " + trimmed);
+    }
+  }
+  return filtered;
+}
+
+std::string sendLoggedEpsilonAsciiCommand(SerialPort& serial,
+                                          const EpsilonLogFn& logFn,
+                                          const std::string& command,
+                                          int waitMs)
+{
+  logFn("[EPSILON TX] " + trimAscii(command));
+  const ssize_t written = serial.write(command.c_str(), command.size());
+  if (written != static_cast<ssize_t>(command.size()))
+  {
+    logFn("EPSILON: failed to send command: " + trimAscii(command));
+    return std::string();
+  }
+  if (waitMs > 0)
+  {
+    sleepMs(waitMs);
+  }
+  const std::string response = readLoggedEpsilonAsciiResponse(serial, logFn, std::max(180, waitMs));
+  if (command != "y\r\n" && !containsEpsilonAsciiAck(response))
+  {
+    logFn("EPSILON: no explicit ASCII acknowledgement for command: " + trimAscii(command));
+  }
+  return response;
+}
+
+bool waitForEpsilonNavigationStreamRestore(SerialPort& serial,
+                                           const EpsilonLogFn& logFn,
+                                           int timeoutMs,
+                                           const char* successMessage,
+                                           const char* failureMessage)
+{
+  std::vector<uint8_t> frameBuffer;
+  std::vector<uint8_t> frame;
+  uint8_t packetId = 0;
+  if (!readValidFdilinkFrame(serial, frameBuffer, &frame, timeoutMs, &packetId, nullptr))
+  {
+    logFn(failureMessage);
+    return false;
+  }
+
+  if (successMessage && std::strlen(successMessage) > 0)
+  {
+    if (std::string(successMessage).find("%u") != std::string::npos)
+    {
+      char buffer[256];
+      std::snprintf(buffer, sizeof(buffer), successMessage, static_cast<unsigned>(packetId));
+      logFn(buffer);
+    }
+    else
+    {
+      logFn(successMessage);
+    }
+  }
+  return true;
+}
+
+int epsilonSerialBaudToParamValue(int baudRate)
+{
+  switch (baudRate)
+  {
+  case 9600: return 1;
+  case 19200: return 2;
+  case 38400: return 3;
+  case 76800: return 4;
+  case 115200: return 5;
+  case 230400: return 6;
+  case 460800: return 7;
+  case 921600: return 8;
+  case 2625000: return 9;
+  case 5250000: return 10;
+  case 10500000: return 11;
+  default: return 0;
+  }
+}
+
 const char* lidarProtocolName(LidarProtocol protocol)
 {
   switch (protocol)
@@ -1432,48 +1524,14 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
     }
   }
 
-  auto readAsciiResponse = [this](int totalWaitMs) {
-    const std::string filtered = readPrintableSerialResponse(serial_, totalWaitMs, true);
-    std::istringstream stream(filtered);
-    std::string line;
-    while (std::getline(stream, line))
-    {
-      const std::string trimmed = trimAscii(line);
-      if (!trimmed.empty())
-      {
-        log("[EPSILON RX] " + trimmed);
-      }
-    }
-    return filtered;
-  };
-
-  auto sendAsciiCommand = [this, &readAsciiResponse](const std::string& command, int waitMs) {
-    log("[EPSILON TX] " + trimAscii(command));
-    const ssize_t written = serial_.write(command.c_str(), command.size());
-    if (written != static_cast<ssize_t>(command.size()))
-    {
-      log("EPSILON: failed to send command: " + trimAscii(command));
-      return std::string();
-    }
-    if (waitMs > 0)
-    {
-      sleepMs(waitMs);
-    }
-    const std::string response = readAsciiResponse(std::max(180, waitMs));
-    if (command != "y\r\n" &&
-        !containsEpsilonAsciiAck(response))
-    {
-      log("EPSILON: no explicit ASCII acknowledgement for command: " + trimAscii(command));
-    }
-    return response;
-  };
+  const EpsilonLogFn logFn = [this](const std::string& message) { log(message); };
 
   constexpr int kConfigCommandWaitMs = 1500;
   serial_.flush();
   sleepMs(80);
 
-  sendAsciiCommand("#fconfig\r\n", kConfigCommandWaitMs);
-  const std::string fmsgResponse = sendAsciiCommand("#fmsg\r\n", kConfigCommandWaitMs);
+  sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fconfig\r\n", kConfigCommandWaitMs);
+  const std::string fmsgResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fmsg\r\n", kConfigCommandWaitMs);
   const auto currentRates = parseFmsgResponse(fmsgResponse);
 
   bool needsReconfigure = currentRates.size() < packetRates.size();
@@ -1493,39 +1551,73 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
     {
       char command[32];
       std::snprintf(command, sizeof(command), "#fmsg %02X %d\r\n", entry.first, entry.second);
-      sendAsciiCommand(command, kConfigCommandWaitMs);
+      sendLoggedEpsilonAsciiCommand(serial_, logFn, command, kConfigCommandWaitMs);
     }
-    sendAsciiCommand("#fsave\r\n", kConfigCommandWaitMs);
-    sendAsciiCommand("#fdeconfig\r\n", kConfigCommandWaitMs);
+    sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fsave\r\n", kConfigCommandWaitMs);
+    sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fdeconfig\r\n", kConfigCommandWaitMs);
 
-    std::vector<uint8_t> frameBuffer;
-    std::vector<uint8_t> frame;
-    uint8_t packetId = 0;
-    if (!readValidFdilinkFrame(serial_, frameBuffer, &frame, 6000, &packetId, nullptr))
-    {
-      log("EPSILON: configuration saved, but no FDILink frame was observed after leaving config mode");
-    }
-    else
-    {
-      log("EPSILON: output configuration updated, saved, and navigation stream restored");
-    }
+    waitForEpsilonNavigationStreamRestore(serial_,
+                                          logFn,
+                                          6000,
+                                          "EPSILON: output configuration updated, saved, and navigation stream restored",
+                                          "EPSILON: configuration saved, but no FDILink frame was observed after leaving config mode");
   }
   else
   {
     log("EPSILON: output configuration already matches requested packet rates");
-    sendAsciiCommand("#fdeconfig\r\n", kConfigCommandWaitMs);
-    std::vector<uint8_t> frameBuffer;
-    std::vector<uint8_t> frame;
-    uint8_t packetId = 0;
-    if (readValidFdilinkFrame(serial_, frameBuffer, &frame, 3000, &packetId, nullptr))
-    {
-      log("EPSILON: returned to navigation mode with FDILink frame " + std::to_string(packetId));
-    }
-    else
-    {
-      log("EPSILON: configuration query completed, but navigation stream is still silent");
-    }
+    sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fdeconfig\r\n", kConfigCommandWaitMs);
+    waitForEpsilonNavigationStreamRestore(serial_,
+                                          logFn,
+                                          3000,
+                                          "EPSILON: returned to navigation mode with FDILink frame %u",
+                                          "EPSILON: configuration query completed, but navigation stream is still silent");
   }
+  return true;
+}
+
+bool EpsilonCollector::configureRtcmPort(int portIndex, int baudRate)
+{
+  if (portIndex < 1 || portIndex > 5)
+  {
+    log("EPSILON: invalid communication port index for RTCM configuration");
+    return false;
+  }
+  if (!serial_.isOpen())
+  {
+    log("EPSILON: serial port is not open");
+    return false;
+  }
+
+  const int baudParamValue = epsilonSerialBaudToParamValue(baudRate);
+  if (baudParamValue == 0)
+  {
+    log("EPSILON: unsupported RTCM serial baud rate " + std::to_string(baudRate));
+    return false;
+  }
+
+  const EpsilonLogFn logFn = [this](const std::string& message) { log(message); };
+  constexpr int kConfigCommandWaitMs = 1500;
+
+  serial_.flush();
+  sleepMs(80);
+
+  sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fconfig\r\n", kConfigCommandWaitMs);
+
+  char command[64];
+  std::snprintf(command, sizeof(command), "#fparam set COMM_STREAM_TYP%d 3\r\n", portIndex);
+  sendLoggedEpsilonAsciiCommand(serial_, logFn, command, kConfigCommandWaitMs);
+
+  std::snprintf(command, sizeof(command), "#fparam set COMM_BAUD%d %d\r\n", portIndex, baudParamValue);
+  sendLoggedEpsilonAsciiCommand(serial_, logFn, command, kConfigCommandWaitMs);
+
+  sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fsave\r\n", kConfigCommandWaitMs);
+  sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fdeconfig\r\n", kConfigCommandWaitMs);
+
+  waitForEpsilonNavigationStreamRestore(serial_,
+                                        logFn,
+                                        6000,
+                                        "EPSILON: RTCM port configuration saved and navigation stream restored",
+                                        "EPSILON: RTCM port configuration was sent, but no FDILink frame was observed after leaving config mode");
   return true;
 }
 

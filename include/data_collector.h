@@ -103,6 +103,7 @@ public:
   EpsilonData getLatestData();
   bool setDeviceSampleRate(int hz) override;
   bool setOutputPacketRates(const std::map<uint8_t, int>& packet_rates);
+  bool configureRtcmPort(int port_index, int baud_rate);
   bool checkDeviceResponse() override;
   void setRawFrameCallback(RawFrameCallback callback);
 

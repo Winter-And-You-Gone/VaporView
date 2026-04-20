@@ -36,6 +36,7 @@ public:
     bool isRunning() const;
     void setEnglish(bool english);
     void setFontScale(int percent);
+    void setPreferredOutputPortAndBaud(const QString& portName, const QString& baudText);
 
 private slots:
     void onStartClicked();

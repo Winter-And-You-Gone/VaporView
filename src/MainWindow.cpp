@@ -1551,6 +1551,7 @@ MainWindow::MainWindow(QWidget *parent)
     , clear_log_action_(nullptr)
     , session_viewer_action_(nullptr)
     , epsilon_reconfigure_action_(nullptr)
+    , epsilon_rtcm_port_action_(nullptr)
     , epsilon_packet_rates_action_(nullptr)
     , recording_directory_action_(nullptr)
     , exit_action_(nullptr)
@@ -2480,6 +2481,10 @@ void MainWindow::setupMenuBar()
     connect(epsilon_packet_rates_action_, &QAction::triggered, this, &MainWindow::onConfigureEpsilonPacketRatesClicked);
     devices_menu_->addAction(epsilon_packet_rates_action_);
 
+    epsilon_rtcm_port_action_ = new QAction(this);
+    connect(epsilon_rtcm_port_action_, &QAction::triggered, this, &MainWindow::onConfigureEpsilonRtcmPortClicked);
+    devices_menu_->addAction(epsilon_rtcm_port_action_);
+
     epsilon_reconfigure_action_ = new QAction(this);
     connect(epsilon_reconfigure_action_, &QAction::triggered, this, &MainWindow::onReconfigureEpsilonClicked);
     devices_menu_->addAction(epsilon_reconfigure_action_);
@@ -2656,6 +2661,11 @@ void MainWindow::setupToolBar()
     rtk_config_action_->setIcon(style()->standardIcon(QStyle::SP_ComputerIcon));
     connect(rtk_config_action_, &QAction::triggered, this, &MainWindow::onRtkConfigClicked);
     toolbar->addAction(rtk_config_action_);
+    if (devices_menu_)
+    {
+        devices_menu_->addSeparator();
+        devices_menu_->addAction(rtk_config_action_);
+    }
 
     toolbar->addSeparator();
 
@@ -3101,6 +3111,10 @@ void MainWindow::setEnglish(bool english)
     if (epsilon_packet_rates_action_)
     {
         epsilon_packet_rates_action_->setText(english ? "EPSILON Packet Rates..." : "设置EPSILON包频率...");
+    }
+    if (epsilon_rtcm_port_action_)
+    {
+        epsilon_rtcm_port_action_->setText(english ? "Configure EPSILON RTCM Port..." : "配置EPSILON RTCM串口...");
     }
     if (epsilon_reconfigure_action_)
     {
@@ -4585,6 +4599,10 @@ void MainWindow::updateConnectionStatus(bool connected)
     {
         epsilon_reconfigure_action_->setEnabled(!uiBusy);
     }
+    if (epsilon_rtcm_port_action_)
+    {
+        epsilon_rtcm_port_action_->setEnabled(!uiBusy);
+    }
     if (epsilon_packet_rates_action_)
     {
         epsilon_packet_rates_action_->setEnabled(!uiBusy);
@@ -5503,11 +5521,249 @@ void MainWindow::onRtkConfigClicked()
     {
         rtk_config_dialog_ = new RtkConfigDialog(this);
     }
+    {
+        QSettings settings("VaporView", "MainWindow");
+        const QString preferredOutputPort = settings.value("epsilon_rtcm_forward_port").toString().trimmed();
+        const QString preferredBaud = settings.value("epsilon_rtcm_forward_baud", "115200").toString().trimmed();
+        if (!preferredOutputPort.isEmpty())
+        {
+            rtk_config_dialog_->setPreferredOutputPortAndBaud(preferredOutputPort, preferredBaud);
+        }
+    }
     rtk_config_dialog_->setFontScale(font_scale_percent_);
     rtk_config_dialog_->setEnglish(is_english_);
     rtk_config_dialog_->show();
     rtk_config_dialog_->raise();
     rtk_config_dialog_->activateWindow();
+}
+
+void MainWindow::onConfigureEpsilonRtcmPortClicked()
+{
+    if (connection_attempt_in_progress_ || port_detection_in_progress_ || epsilon_reconfigure_in_progress_)
+    {
+        return;
+    }
+
+    if (recording_thread_running_.load())
+    {
+        log(is_english_ ? "Stop recording before configuring the EPSILON RTCM port."
+                        : "请先结束记录，再配置 EPSILON RTCM 串口。");
+        return;
+    }
+
+    const QString selectText = is_english_ ? "-- Select --" : "-- 选择 --";
+    const QString epsilonPort = epsilon_port_combo_ ? epsilon_port_combo_->currentText().trimmed() : QString();
+    if (epsilonPort.isEmpty() || epsilonPort == selectText)
+    {
+        log(is_english_ ? "Select the EPSILON main serial port first."
+                        : "请先选择 EPSILON 主串口。");
+        return;
+    }
+
+    const QString epsilonBaudText = epsilon_baud_combo_ ? epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
+    bool epsilonBaudOk = false;
+    const int epsilonBaud = epsilonBaudText.toInt(&epsilonBaudOk);
+    if (!epsilonBaudOk || epsilonBaud <= 0)
+    {
+        log(QString(is_english_ ? "Invalid EPSILON baud rate: %1" : "EPSILON 波特率无效: %1").arg(epsilonBaudText));
+        return;
+    }
+
+    QSettings settings("VaporView", "MainWindow");
+    const QStringList availablePorts = getAvailablePorts();
+
+    QDialog dialog(this);
+    dialog.setModal(true);
+    dialog.setWindowTitle(is_english_ ? "Configure EPSILON RTCM Port" : "配置 EPSILON RTCM 串口");
+
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *hintLabel = new QLabel(
+        is_english_
+            ? QStringLiteral("This configures EPSILON communication port 2 as an RTCM input port, saves the output-forwarding serial port on this PC, and prepares the RTK dialog to stream RTCM continuously into EPSILON.")
+            : QStringLiteral("这个功能会把 EPSILON 的第二通信串口配置为 RTCM 输入口，同时保存本机用于转发 RTCM 的串口与波特率，并为后续 RTK 配置对话框做好预填。"),
+        &dialog);
+    hintLabel->setWordWrap(true);
+    layout->addWidget(hintLabel);
+
+    auto *formLayout = new QFormLayout();
+    formLayout->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    layout->addLayout(formLayout);
+
+    auto *mainPortValue = new QLabel(QStringLiteral("%1 @ %2").arg(epsilonPort, epsilonBaudText), &dialog);
+    formLayout->addRow(is_english_ ? "EPSILON Main Port:" : "EPSILON 主串口：", mainPortValue);
+
+    auto *deviceRtcmPortValue = new QLabel(is_english_ ? "COMM2 (RTCM)" : "串口2（RTCM）", &dialog);
+    formLayout->addRow(is_english_ ? "Device RTCM Port:" : "设备 RTCM 串口：", deviceRtcmPortValue);
+
+    auto *forwardPortCombo = new QComboBox(&dialog);
+    forwardPortCombo->setEditable(true);
+    forwardPortCombo->addItem(selectText);
+    forwardPortCombo->addItems(availablePorts);
+    const QString savedForwardPort = settings.value("epsilon_rtcm_forward_port").toString().trimmed();
+    if (!savedForwardPort.isEmpty())
+    {
+        forwardPortCombo->setCurrentText(savedForwardPort);
+    }
+    formLayout->addRow(is_english_ ? "PC RTCM Forward Port:" : "本机 RTCM 转发串口：", forwardPortCombo);
+
+    auto *forwardBaudCombo = new QComboBox(&dialog);
+    forwardBaudCombo->addItems({QStringLiteral("115200"),
+                                QStringLiteral("230400"),
+                                QStringLiteral("460800"),
+                                QStringLiteral("921600")});
+    forwardBaudCombo->setCurrentText(settings.value("epsilon_rtcm_forward_baud", "115200").toString());
+    formLayout->addRow(is_english_ ? "RTCM Port Baud:" : "RTCM 串口波特率：", forwardBaudCombo);
+
+    auto *openRtkConfigCheck = new QCheckBox(
+        is_english_ ? "Open RTK Config after success" : "成功后打开 RTK 配置",
+        &dialog);
+    openRtkConfigCheck->setChecked(true);
+    layout->addWidget(openRtkConfigCheck);
+
+    auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttonBox);
+
+    if (dialog.exec() != QDialog::Accepted)
+    {
+        return;
+    }
+
+    const QString forwardPort = forwardPortCombo->currentText().trimmed();
+    if (forwardPort.isEmpty() || forwardPort == selectText)
+    {
+        log(is_english_ ? "Select the PC serial port that is wired to EPSILON port 2."
+                        : "请选择连接到 EPSILON 第二串口的本机串口。");
+        return;
+    }
+
+    bool forwardBaudOk = false;
+    const QString forwardBaudText = forwardBaudCombo->currentText().trimmed();
+    const int forwardBaud = forwardBaudText.toInt(&forwardBaudOk);
+    if (!forwardBaudOk || forwardBaud <= 0)
+    {
+        log(QString(is_english_ ? "Invalid RTCM forwarding baud rate: %1" : "RTCM 转发波特率无效: %1").arg(forwardBaudText));
+        return;
+    }
+
+    if (epsilon_reconfigure_thread_.joinable())
+    {
+        epsilon_reconfigure_thread_.join();
+    }
+
+    const std::shared_ptr<VaporView::EpsilonCollector> liveCollector = snapshotCollectors().epsilon;
+    const bool shouldRestartCollector = liveCollector && liveCollector->isRunning();
+    const bool shouldOpenRtkDialog = openRtkConfigCheck->isChecked();
+    const bool english = is_english_;
+
+    epsilon_reconfigure_in_progress_ = true;
+    showBusyStatusTaskProgress(english ? "Configuring EPSILON RTCM Port..." : "正在配置 EPSILON RTCM 串口...");
+    updateConnectionStatus(is_connected_);
+    log(QString(english
+                    ? "[EPSILON] Configuring communication port 2 as RTCM: main %1 @ %2, RTCM forward port %3 @ %4"
+                    : "[EPSILON] 正在把第二通信串口配置为 RTCM：主串口 %1 @ %2，RTCM 转发串口 %3 @ %4")
+            .arg(epsilonPort, epsilonBaudText, forwardPort, forwardBaudText));
+
+    epsilon_reconfigure_thread_ = std::thread([this,
+                                               english,
+                                               epsilonPort,
+                                               epsilonBaud,
+                                               epsilonBaudText,
+                                               forwardPort,
+                                               forwardBaud,
+                                               forwardBaudText,
+                                               liveCollector,
+                                               shouldRestartCollector,
+                                               shouldOpenRtkDialog]() {
+        auto postLog = [this](const QString& message) {
+            QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
+        };
+        auto finishOnUi = [this, shouldOpenRtkDialog]() {
+            QMetaObject::invokeMethod(this, [this, shouldOpenRtkDialog]() {
+                epsilon_reconfigure_in_progress_ = false;
+                hideStatusTaskProgress();
+                updateConnectionStatus(anyCollectorRunning());
+                if (shouldOpenRtkDialog)
+                {
+                    onRtkConfigClicked();
+                }
+            }, Qt::QueuedConnection);
+        };
+
+        std::shared_ptr<VaporView::EpsilonCollector> collector = shouldRestartCollector && liveCollector
+            ? liveCollector
+            : std::make_shared<VaporView::EpsilonCollector>();
+
+        collector->setLogCallback([this](const std::string& msg) {
+            const QString qmsg = QString::fromStdString(msg);
+            QMetaObject::invokeMethod(this, [this, qmsg]() { log(qmsg); }, Qt::QueuedConnection);
+        });
+
+        if (shouldRestartCollector)
+        {
+            postLog(english
+                        ? "[EPSILON] Temporarily stopping the live stream for RTCM-port configuration."
+                        : "[EPSILON] 为配置 RTCM 串口临时停止当前数据流。");
+            collector->stop();
+        }
+
+        if (!collector->start(epsilonPort.toStdString(), VaporView::SerialConfig::N81(epsilonBaud)))
+        {
+            postLog(QString(english ? "[EPSILON] Failed to open %1 for RTCM-port configuration: %2"
+                                    : "[EPSILON] 打开 %1 进行 RTCM 串口配置失败: %2")
+                        .arg(epsilonPort, QString::fromStdString(collector->getLastError())));
+            finishOnUi();
+            return;
+        }
+
+        if (!collector->configureRtcmPort(2, forwardBaud))
+        {
+            postLog(QString(english ? "[EPSILON] Failed to configure communication port 2 as RTCM on %1 @ %2."
+                                    : "[EPSILON] 在 %1 @ %2 上把第二通信串口配置为 RTCM 失败。")
+                        .arg(epsilonPort, epsilonBaudText));
+            collector->stop();
+            finishOnUi();
+            return;
+        }
+
+        {
+            QSettings mainSettings("VaporView", "MainWindow");
+            mainSettings.setValue("epsilon_rtcm_forward_port", forwardPort);
+            mainSettings.setValue("epsilon_rtcm_forward_baud", forwardBaudText);
+            QSettings rtkSettings("VaporView", "RtkConfig");
+            rtkSettings.setValue("output_port", forwardPort);
+            rtkSettings.setValue("baudrate", forwardBaudText);
+        }
+
+        if (shouldRestartCollector)
+        {
+            if (!collector->startStreaming())
+            {
+                postLog(english
+                            ? "[EPSILON] RTCM-port configuration succeeded, but failed to restart the live navigation stream."
+                            : "[EPSILON] RTCM 串口配置已完成，但重新启动实时导航流失败。");
+                collector->stop();
+                finishOnUi();
+                return;
+            }
+
+            postLog(QString(english
+                                ? "[EPSILON] RTCM port is ready. EPSILON live stream restarted on %1, and RTK forwarding is prefilled for %2 @ %3."
+                                : "[EPSILON] RTCM 串口已就绪，已在 %1 上恢复 EPSILON 实时数据流，并为 %2 @ %3 预填 RTK 转发配置。")
+                        .arg(epsilonPort, forwardPort, forwardBaudText));
+        }
+        else
+        {
+            collector->stop();
+            postLog(QString(english
+                                ? "[EPSILON] RTCM port is ready on %1. RTK forwarding is prefilled for %2 @ %3."
+                                : "[EPSILON] 已在 %1 上完成 RTCM 串口配置，并为 %2 @ %3 预填 RTK 转发配置。")
+                        .arg(epsilonPort, forwardPort, forwardBaudText));
+        }
+
+        finishOnUi();
+    });
 }
 
 void MainWindow::onConfigureEpsilonPacketRatesClicked()

@@ -259,6 +259,7 @@ private slots:
     void onToggleFullScreen();
     void onSwitchLanguage();
     void onReconfigureEpsilonClicked();
+    void onConfigureEpsilonRtcmPortClicked();
     void onConfigureEpsilonPacketRatesClicked();
     void onGlobalRateChanged(const QString& text);
     void onGnssRateChanged(const QString& text);
@@ -395,6 +396,7 @@ private:
     QAction *clear_log_action_;
     QAction *session_viewer_action_;
     QAction *epsilon_reconfigure_action_;
+    QAction *epsilon_rtcm_port_action_;
     QAction *epsilon_packet_rates_action_;
     QAction *recording_directory_action_;
     QAction *exit_action_;
