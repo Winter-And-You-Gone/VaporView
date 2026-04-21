@@ -223,6 +223,8 @@ struct EpsilonPacketConfigOption
     std::vector<int> supported_rates_hz;
 };
 
+constexpr int kEpsilonPacketConfigApplyVersion = 2;
+
 const std::vector<EpsilonPacketConfigOption>& epsilonPacketConfigOptions()
 {
     static const std::vector<EpsilonPacketConfigOption> kOptions = {
@@ -245,19 +247,37 @@ QString epsilonPacketRateSettingsKey(quint8 packetId)
         .toUpper();
 }
 
+int nearestSupportedEpsilonPacketRate(const EpsilonPacketConfigOption& option, int desiredRateHz)
+{
+    int fallbackRateHz = 0;
+    for (int rateHz : option.supported_rates_hz)
+    {
+        if (rateHz == desiredRateHz)
+        {
+            return rateHz;
+        }
+        if (rateHz <= desiredRateHz)
+        {
+            fallbackRateHz = rateHz;
+        }
+    }
+    return fallbackRateHz;
+}
+
 std::map<uint8_t, int> groupedEpsilonPacketRates(int baseRateHz)
 {
     const int lowRateHz = std::min(baseRateHz, 20);
-    return {
-        {0x40, baseRateHz},
-        {0x41, baseRateHz},
-        {0x42, baseRateHz},
-        {0x50, baseRateHz},
-        {0x59, lowRateHz},
-        {0x5A, lowRateHz},
-        {0x5C, lowRateHz},
-        {0x5D, lowRateHz},
-    };
+    std::map<uint8_t, int> rates;
+    for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
+    {
+        const int desiredRateHz =
+            (option.packet_id == 0x59 || option.packet_id == 0x5A ||
+             option.packet_id == 0x5C || option.packet_id == 0x5D)
+                ? lowRateHz
+                : baseRateHz;
+        rates[option.packet_id] = nearestSupportedEpsilonPacketRate(option, desiredRateHz);
+    }
+    return rates;
 }
 
 std::map<uint8_t, int> defaultEpsilonPacketRates()
@@ -5119,6 +5139,7 @@ void MainWindow::onConnectClicked()
     const bool epsilonConfigLikelyMatches =
         !epsilonPort.isEmpty() &&
         epsilonPort != selectText &&
+        settings.value("epsilon_last_config_apply_version").toInt() == kEpsilonPacketConfigApplyVersion &&
         settings.value("epsilon_last_config_port").toString() == epsilonPort &&
         settings.value("epsilon_last_config_baud").toString() == epsilonBaudText &&
         settings.value("epsilon_last_config_signature").toString() == epsilonDesiredPacketSignature;
@@ -5177,6 +5198,7 @@ void MainWindow::onConnectClicked()
             settings.setValue("epsilon_last_config_baud", epsilonBaudText);
             settings.setValue("epsilon_last_config_rate_hz", epsilonRate);
             settings.setValue("epsilon_last_config_signature", epsilonDesiredPacketSignature);
+            settings.setValue("epsilon_last_config_apply_version", kEpsilonPacketConfigApplyVersion);
         };
 
         CollectorSnapshot collectors;
@@ -5905,6 +5927,7 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     const bool effectiveCustomEnabled = enableCustomCheck->isChecked() || hasCustomOverrides;
     settings.setValue("epsilon_custom_packet_rates_enabled", effectiveCustomEnabled);
     settings.remove("epsilon_last_config_signature");
+    settings.remove("epsilon_last_config_apply_version");
 
     if (hasCustomOverrides && !enableCustomCheck->isChecked())
     {
@@ -6073,6 +6096,7 @@ void MainWindow::onReconfigureEpsilonClicked()
             settings.setValue("epsilon_last_config_baud", epsilonBaudText);
             settings.setValue("epsilon_last_config_rate_hz", epsilonRate);
             settings.setValue("epsilon_last_config_signature", desiredPacketRateSignature);
+            settings.setValue("epsilon_last_config_apply_version", kEpsilonPacketConfigApplyVersion);
         }
 
         if (shouldRestartCollector)

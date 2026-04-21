@@ -335,27 +335,44 @@ bool isSupportedEpsilonRate(int hz)
   return hz == 20 || hz == 50 || hz == 100 || hz == 200;
 }
 
-bool isSupportedEpsilonPacketRate(uint8_t packet_id, int hz)
+const std::vector<int>& supportedEpsilonPacketRates(uint8_t packet_id)
 {
   static const std::vector<int> kCommonRates = {0, 1, 2, 5, 10, 20, 50, 100, 250, 500};
   static const std::vector<int> kImuRates = {0, 1, 2, 5, 10, 20, 50, 100, 200, 250, 500, 1000};
+  return packet_id == kMsgImu ? kImuRates : kCommonRates;
+}
 
-  const std::vector<int>* supported_rates = &kCommonRates;
-  if (packet_id == kMsgImu)
+bool isSupportedEpsilonPacketRate(uint8_t packet_id, int hz)
+{
+  const std::vector<int>& supported_rates = supportedEpsilonPacketRates(packet_id);
+  return std::find(supported_rates.cbegin(), supported_rates.cend(), hz) != supported_rates.cend();
+}
+
+int nearestSupportedEpsilonPacketRate(uint8_t packet_id, int desired_hz)
+{
+  int fallback_hz = 0;
+  for (int hz : supportedEpsilonPacketRates(packet_id))
   {
-    supported_rates = &kImuRates;
+    if (hz == desired_hz)
+    {
+      return hz;
+    }
+    if (hz <= desired_hz)
+    {
+      fallback_hz = hz;
+    }
   }
-  return std::find(supported_rates->cbegin(), supported_rates->cend(), hz) != supported_rates->cend();
+  return fallback_hz;
 }
 
 std::map<uint8_t, int> desiredEpsilonPacketRates(int hz)
 {
   const int navLowRate = std::min(hz, 20);
   return {
-      {kMsgImu, hz},
-      {kMsgAhrs, hz},
-      {kMsgInsGps, hz},
-      {kMsgSystemState, hz},
+      {kMsgImu, nearestSupportedEpsilonPacketRate(kMsgImu, hz)},
+      {kMsgAhrs, nearestSupportedEpsilonPacketRate(kMsgAhrs, hz)},
+      {kMsgInsGps, nearestSupportedEpsilonPacketRate(kMsgInsGps, hz)},
+      {kMsgSystemState, nearestSupportedEpsilonPacketRate(kMsgSystemState, hz)},
       {kMsgRawGnss, navLowRate},
       {kMsgSatellites, navLowRate},
       {kMsgGeodeticPos, navLowRate},
