@@ -1637,15 +1637,13 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
       sendLoggedEpsilonAsciiCommand(serial_, logFn, command, kConfigCommandWaitMs);
     }
     sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fsave\r\n", kConfigCommandWaitMs);
-    log("EPSILON: packet-rate changes require a device reboot before the live stream uses the new rates");
-    sendLoggedEpsilonAsciiCommand(serial_, logFn, "#freboot\r\n", kConfigCommandWaitMs);
-    sendLoggedEpsilonAsciiCommand(serial_, logFn, "Y\r\n", 500);
+    sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fdeconfig\r\n", kConfigCommandWaitMs);
 
     waitForEpsilonNavigationStreamRestore(serial_,
                                           logFn,
-                                          12000,
-                                          "EPSILON: output configuration updated, saved, rebooted, and navigation stream restored with FDILink frame %u",
-                                          "EPSILON: configuration saved and reboot was requested, but no FDILink frame was observed afterward");
+                                          6000,
+                                          "EPSILON: output configuration updated, saved, and navigation stream restored with FDILink frame %u",
+                                          "EPSILON: configuration saved, but no FDILink frame was observed after leaving config mode");
   }
   else
   {

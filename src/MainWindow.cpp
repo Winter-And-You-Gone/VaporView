@@ -301,8 +301,7 @@ bool epsilonPacketRateSupported(const EpsilonPacketConfigOption& option, int rat
 
 std::map<uint8_t, int> loadCustomEpsilonPacketRates(QSettings& settings, int fallbackBaseRateHz)
 {
-    Q_UNUSED(fallbackBaseRateHz);
-    std::map<uint8_t, int> packetRates = defaultEpsilonPacketRates();
+    std::map<uint8_t, int> packetRates = groupedEpsilonPacketRates(fallbackBaseRateHz);
     for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
     {
         const int fallbackRate = packetRates[option.packet_id];
@@ -314,7 +313,13 @@ std::map<uint8_t, int> loadCustomEpsilonPacketRates(QSettings& settings, int fal
 
 std::map<uint8_t, int> effectiveEpsilonPacketRates(QSettings& settings, int baseRateHz, bool *usingCustomProfile = nullptr)
 {
-    const bool useCustomProfile = settings.value("epsilon_custom_packet_rates_enabled", true).toBool();
+    bool useCustomProfile = settings.value("epsilon_custom_packet_rates_enabled", false).toBool();
+    if (useCustomProfile &&
+        !settings.value("epsilon_custom_packet_rates_user_saved", false).toBool() &&
+        loadCustomEpsilonPacketRates(settings, baseRateHz) == defaultEpsilonPacketRates())
+    {
+        useCustomProfile = false;
+    }
     if (usingCustomProfile)
     {
         *usingCustomProfile = useCustomProfile;
@@ -5799,7 +5804,7 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
 
     const int groupedRateHz = parseRate(epsilon_rate_combo_ ? epsilon_rate_combo_->currentText() : QStringLiteral("100"));
     QSettings settings("VaporView", "MainWindow");
-    const bool customEnabled = settings.value("epsilon_custom_packet_rates_enabled", true).toBool();
+    const bool customEnabled = settings.value("epsilon_custom_packet_rates_enabled", false).toBool();
     const std::map<uint8_t, int> defaultRates = defaultEpsilonPacketRates();
     const std::map<uint8_t, int> groupedRates = groupedEpsilonPacketRates(groupedRateHz);
     const std::map<uint8_t, int> initialRates = customEnabled
@@ -5926,6 +5931,7 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     }
     const bool effectiveCustomEnabled = enableCustomCheck->isChecked() || hasCustomOverrides;
     settings.setValue("epsilon_custom_packet_rates_enabled", effectiveCustomEnabled);
+    settings.setValue("epsilon_custom_packet_rates_user_saved", effectiveCustomEnabled);
     settings.remove("epsilon_last_config_signature");
     settings.remove("epsilon_last_config_apply_version");
 
