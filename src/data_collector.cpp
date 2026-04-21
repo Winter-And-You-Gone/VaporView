@@ -487,11 +487,18 @@ bool containsEpsilonAsciiAck(const std::string& text)
       text.find("error") != std::string::npos;
 }
 
+bool containsEpsilonAsciiOk(const std::string& text)
+{
+  return text.find("*#OK") != std::string::npos ||
+      text.find("#OK") != std::string::npos;
+}
+
 std::string readPrintableSerialResponse(SerialPort& serial, int totalWaitMs, bool stopOnAck)
 {
   std::string filtered;
   const auto start = std::chrono::steady_clock::now();
   auto lastDataTime = start;
+  auto ackTime = start;
   bool sawAck = false;
   uint8_t chunk[256];
 
@@ -500,7 +507,9 @@ std::string readPrintableSerialResponse(SerialPort& serial, int totalWaitMs, boo
     const auto now = std::chrono::steady_clock::now();
     const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
     const auto idleMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - lastDataTime).count();
-    if (elapsedMs >= totalWaitMs && (!stopOnAck || !sawAck || idleMs >= 120))
+    const auto ackAgeMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - ackTime).count();
+    if (elapsedMs >= totalWaitMs &&
+        (!stopOnAck || !sawAck || idleMs >= 120 || ackAgeMs >= 250))
     {
       break;
     }
@@ -517,9 +526,10 @@ std::string readPrintableSerialResponse(SerialPort& serial, int totalWaitMs, boo
           filtered.push_back(ch);
         }
       }
-      if (stopOnAck && containsEpsilonAsciiAck(filtered))
+      if (stopOnAck && !sawAck && containsEpsilonAsciiAck(filtered))
       {
         sawAck = true;
+        ackTime = std::chrono::steady_clock::now();
       }
       continue;
     }
@@ -564,10 +574,14 @@ std::string sendLoggedEpsilonAsciiCommand(SerialPort& serial,
   {
     sleepMs(waitMs);
   }
-  const std::string response = readLoggedEpsilonAsciiResponse(serial, logFn, std::max(180, waitMs));
+  const std::string response = waitMs > 0
+      ? readLoggedEpsilonAsciiResponse(serial, logFn, std::max(180, waitMs))
+      : std::string();
   const std::string trimmedCommand = trimAscii(command);
   const bool expectedPrompt = trimmedCommand == "#freboot" && response.find("(y/n)") != std::string::npos;
-  if (command != "y\r\n" && command != "Y\r\n" && !expectedPrompt && !containsEpsilonAsciiAck(response))
+  const bool expectedFmsgList = trimmedCommand == "#fmsg" && response.find("MSG_") != std::string::npos;
+  if (command != "y\r\n" && command != "Y\r\n" && !expectedPrompt &&
+      !expectedFmsgList && !containsEpsilonAsciiAck(response))
   {
     logFn("EPSILON: no explicit ASCII acknowledgement for command: " + trimmedCommand);
   }
@@ -585,11 +599,18 @@ bool rebootEpsilonAndReopenSerial(SerialPort& serial,
     return false;
   }
 
-  sendLoggedEpsilonAsciiCommand(serial, logFn, "#freboot\r\n", 2000);
-  sendLoggedEpsilonAsciiCommand(serial, logFn, "y\r\n", 1500);
+  const std::string rebootResponse = sendLoggedEpsilonAsciiCommand(serial, logFn, "#freboot\r\n", 2000);
+  if (rebootResponse.find("(y/n)") == std::string::npos)
+  {
+    logFn("EPSILON: reboot command did not return the confirmation prompt");
+    return false;
+  }
+
+  sendLoggedEpsilonAsciiCommand(serial, logFn, "y\r\n", 0);
+  sleepMs(150);
 
   serial.close();
-  logFn("EPSILON: device reboot requested; waiting for the serial port to return");
+  logFn("EPSILON: reboot confirmed; waiting for the serial port to return");
   sleepMs(4000);
 
   constexpr int kReopenAttempts = 20;
@@ -1651,12 +1672,22 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
   }
 
   const EpsilonLogFn logFn = [this](const std::string& message) { log(message); };
+  auto failPacketConfiguration = [this, &logFn](const std::string& message) {
+    log(message);
+    sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fdeconfig\r\n", 700);
+    return false;
+  };
 
   constexpr int kConfigCommandWaitMs = 1500;
   serial_.flush();
   sleepMs(80);
 
-  sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fconfig\r\n", kConfigCommandWaitMs);
+  const std::string configResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fconfig\r\n", kConfigCommandWaitMs);
+  if (!containsEpsilonAsciiOk(configResponse))
+  {
+    return failPacketConfiguration("EPSILON: failed to enter configuration mode; packet rates were not changed");
+  }
+
   const std::string fmsgResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fmsg\r\n", kConfigCommandWaitMs);
   const auto currentRates = parseFmsgResponse(fmsgResponse);
 
@@ -1681,9 +1712,23 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
     {
       char command[32];
       std::snprintf(command, sizeof(command), "#fmsg %02X %d\r\n", entry.first, entry.second);
-      sendLoggedEpsilonAsciiCommand(serial_, logFn, command, kConfigCommandWaitMs);
+      const std::string response = sendLoggedEpsilonAsciiCommand(serial_, logFn, command, kConfigCommandWaitMs);
+      if (!containsEpsilonAsciiOk(response))
+      {
+        std::ostringstream oss;
+        oss << "EPSILON: failed to set packet 0x" << std::uppercase << std::hex
+            << std::setw(2) << std::setfill('0') << static_cast<int>(entry.first)
+            << " output rate; packet-rate configuration was not saved";
+        return failPacketConfiguration(oss.str());
+      }
     }
-    sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fsave\r\n", kConfigCommandWaitMs);
+
+    const std::string saveResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fsave\r\n", kConfigCommandWaitMs);
+    if (!containsEpsilonAsciiOk(saveResponse))
+    {
+      return failPacketConfiguration("EPSILON: failed to save packet-rate configuration");
+    }
+
     if (!rebootEpsilonAndReopenSerial(serial_, port_name_, serial_config_, logFn))
     {
       return false;
@@ -1754,25 +1799,25 @@ bool EpsilonCollector::configureRtcmPort(int portIndex, int baudRate)
   };
 
   const std::string configResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fconfig\r\n", kConfigCommandWaitMs);
-  if (!containsEpsilonAsciiAck(configResponse))
+  if (!containsEpsilonAsciiOk(configResponse))
   {
     return failConfiguration("EPSILON: failed to enter configuration mode; RTCM port was not changed");
   }
 
   char command[64];
   std::snprintf(command, sizeof(command), "#fparam set COMM_STREAM_TYP%d 3\r\n", portIndex);
-  if (!containsEpsilonAsciiAck(sendLoggedEpsilonAsciiCommand(serial_, logFn, command, kConfigCommandWaitMs)))
+  if (!containsEpsilonAsciiOk(sendLoggedEpsilonAsciiCommand(serial_, logFn, command, kConfigCommandWaitMs)))
   {
     return failConfiguration("EPSILON: failed to set the RTCM stream type; RTCM port was not saved");
   }
 
   std::snprintf(command, sizeof(command), "#fparam set COMM_BAUD%d %d\r\n", portIndex, baudParamValue);
-  if (!containsEpsilonAsciiAck(sendLoggedEpsilonAsciiCommand(serial_, logFn, command, kConfigCommandWaitMs)))
+  if (!containsEpsilonAsciiOk(sendLoggedEpsilonAsciiCommand(serial_, logFn, command, kConfigCommandWaitMs)))
   {
     return failConfiguration("EPSILON: failed to set the RTCM port baud rate; RTCM port was not saved");
   }
 
-  if (!containsEpsilonAsciiAck(sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fsave\r\n", kConfigCommandWaitMs)))
+  if (!containsEpsilonAsciiOk(sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fsave\r\n", kConfigCommandWaitMs)))
   {
     return failConfiguration("EPSILON: failed to save the RTCM port configuration");
   }
