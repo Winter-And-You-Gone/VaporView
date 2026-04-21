@@ -2,6 +2,7 @@
 #include "hipnuc_dec.h"
 #include "pvtsln_data.hpp"
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -23,23 +24,6 @@ void sleepMs(int ms)
   {
     std::this_thread::sleep_for(std::chrono::milliseconds(ms));
   }
-}
-
-ssize_t readAccumulated(SerialPort& serial, uint8_t* buffer, size_t capacity, int total_wait_ms, int step_ms = 20)
-{
-  size_t total = 0;
-  int elapsed = 0;
-  while (elapsed < total_wait_ms && total < capacity)
-  {
-    ssize_t n = serial.read(buffer + total, capacity - total);
-    if (n > 0)
-    {
-      total += static_cast<size_t>(n);
-    }
-    sleepMs(step_ms);
-    elapsed += step_ms;
-  }
-  return static_cast<ssize_t>(total);
 }
 
 std::string formatDetectionProgress(const char* action, int attempt, int total_attempts, double remaining_seconds)
@@ -132,6 +116,25 @@ constexpr uint8_t kMsgRawGnss = 0x59;
 constexpr uint8_t kMsgSatellites = 0x5A;
 constexpr uint8_t kMsgGeodeticPos = 0x5C;
 constexpr uint8_t kMsgEcefPos = 0x5D;
+constexpr uint8_t kMsgMainMavlinkTunnel = 0xF0;
+
+constexpr uint8_t kMavlinkV1Stx = 0xFE;
+constexpr uint8_t kMavlinkMsgHeartbeat = 0;
+constexpr uint8_t kMavlinkMsgSysStatus = 1;
+constexpr uint8_t kMavlinkMsgGpsRawInt = 24;
+constexpr uint8_t kMavlinkMsgAttitude = 30;
+constexpr uint8_t kMavlinkMsgLocalPositionNed = 32;
+constexpr uint8_t kMavlinkMsgGlobalPositionInt = 33;
+constexpr uint8_t kMavlinkMsgFdiTelemetryF = 150;
+
+constexpr uint16_t kFdiTelemetrySystemInformation = 1155;
+constexpr uint16_t kFdiTelemetrySystemsAndClock = 1156;
+
+constexpr int kAqmavDatasetGps = 4;
+constexpr int kAqmavDatasetUkf = 5;
+constexpr int kAqmavDatasetImu = 12;
+constexpr int kAqmavDatasetImuRaw = 16;
+constexpr int kAqmavDatasetSystemsAndClock = 23;
 
 uint8_t fdilinkCrc8(const uint8_t* data, size_t len)
 {
@@ -217,6 +220,26 @@ uint32_t readU32LE(const uint8_t* data)
       (static_cast<uint32_t>(data[3]) << 24);
 }
 
+int16_t readI16LE(const uint8_t* data)
+{
+  return static_cast<int16_t>(readU16LE(data));
+}
+
+int32_t readI32LE(const uint8_t* data)
+{
+  return static_cast<int32_t>(readU32LE(data));
+}
+
+uint64_t readU64LE(const uint8_t* data)
+{
+  uint64_t value = 0;
+  for (int i = 0; i < 8; ++i)
+  {
+    value |= static_cast<uint64_t>(data[i]) << (8 * i);
+  }
+  return value;
+}
+
 int64_t readI64LE(const uint8_t* data)
 {
   uint64_t value = 0;
@@ -244,6 +267,48 @@ double readDoubleLE(const uint8_t* data)
 double radToDeg(double radians)
 {
   return radians * kRadToDeg;
+}
+
+int64_t daysFromCivil(int year, unsigned month, unsigned day)
+{
+  year -= month <= 2 ? 1 : 0;
+  const int era = (year >= 0 ? year : year - 399) / 400;
+  const unsigned yearOfEra = static_cast<unsigned>(year - era * 400);
+  const unsigned monthPrime = month > 2 ? month - 3 : month + 9;
+  const unsigned dayOfYear = (153 * monthPrime + 2) / 5 + day - 1;
+  const unsigned dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear;
+  return static_cast<int64_t>(era) * 146097 + static_cast<int64_t>(dayOfEra) - 719468;
+}
+
+bool utcPartsToUnix(int year, int month, int day, int hour, int minute, double second,
+    uint64_t& unixSeconds, uint32_t& microseconds)
+{
+  if (year >= 0 && year < 100)
+  {
+    year += 2000;
+  }
+  if (year < 1970 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31 ||
+      hour < 0 || hour > 23 || minute < 0 || minute > 59 || second < 0.0 || second >= 61.0)
+  {
+    return false;
+  }
+
+  const int wholeSecond = static_cast<int>(std::floor(second));
+  const double fractionalSecond = second - wholeSecond;
+  const int64_t days = daysFromCivil(year, static_cast<unsigned>(month), static_cast<unsigned>(day));
+  if (days < 0)
+  {
+    return false;
+  }
+
+  unixSeconds = static_cast<uint64_t>(days * 86400 + hour * 3600 + minute * 60 + wholeSecond);
+  microseconds = static_cast<uint32_t>(std::lround(fractionalSecond * 1000000.0));
+  if (microseconds >= 1000000u)
+  {
+    unixSeconds += 1;
+    microseconds -= 1000000u;
+  }
+  return true;
 }
 
 std::string epsilonGnssFixName(int fix_code)
@@ -1736,14 +1801,6 @@ void EpsilonCollector::run()
       latest_data_.timestamp = std::chrono::steady_clock::now();
       latest_data_.valid = true;
       latest_data_.error_message.clear();
-      latest_data_.imu_packet_rate_hz = imuRateTracker.rate_hz;
-      latest_data_.ahrs_packet_rate_hz = ahrsRateTracker.rate_hz;
-      latest_data_.insgps_packet_rate_hz = insGpsRateTracker.rate_hz;
-      latest_data_.sys_state_packet_rate_hz = sysStateRateTracker.rate_hz;
-      latest_data_.raw_gnss_packet_rate_hz = rawGnssRateTracker.rate_hz;
-      latest_data_.satellite_packet_rate_hz = satelliteRateTracker.rate_hz;
-      latest_data_.geodetic_packet_rate_hz = geodeticRateTracker.rate_hz;
-      latest_data_.ecef_packet_rate_hz = ecefRateTracker.rate_hz;
 
       if (packetId == kMsgImu && payloadSize >= 56)
       {
@@ -1871,6 +1928,228 @@ void EpsilonCollector::run()
         latest_data_.ecef_y_m = readDoubleLE(payload + 8);
         latest_data_.ecef_z_m = readDoubleLE(payload + 16);
       }
+      else if (packetId == kMsgMainMavlinkTunnel && payloadSize >= 8)
+      {
+        std::vector<uint8_t> mavlinkPayload(payloadSize);
+        for (size_t i = 0; i < payloadSize; ++i)
+        {
+          mavlinkPayload[i] = static_cast<uint8_t>(~payload[i]);
+        }
+
+        for (size_t offset = 0; offset + 8 <= mavlinkPayload.size();)
+        {
+          if (mavlinkPayload[offset] != kMavlinkV1Stx)
+          {
+            ++offset;
+            continue;
+          }
+
+          const size_t mavlinkPayloadSize = mavlinkPayload[offset + 1];
+          const size_t mavlinkFrameSize = mavlinkPayloadSize + 8;
+          if (offset + mavlinkFrameSize > mavlinkPayload.size())
+          {
+            break;
+          }
+
+          const uint8_t mavlinkMessageId = mavlinkPayload[offset + 5];
+          const uint8_t* mavlinkData = mavlinkPayload.data() + offset + 6;
+          switch (mavlinkMessageId)
+          {
+          case kMavlinkMsgHeartbeat:
+            sysStateRateTracker.record();
+            break;
+          case kMavlinkMsgSysStatus:
+            sysStateRateTracker.record();
+            break;
+          case kMavlinkMsgGpsRawInt:
+            if (mavlinkPayloadSize >= 30)
+            {
+              rawGnssRateTracker.record();
+              latest_data_.device_timestamp_us = readU64LE(mavlinkData + 0);
+              latest_data_.latitude_deg = readI32LE(mavlinkData + 8) / 10000000.0;
+              latest_data_.longitude_deg = readI32LE(mavlinkData + 12) / 10000000.0;
+              latest_data_.height_m = readI32LE(mavlinkData + 16) / 1000.0;
+              const uint16_t eph = readU16LE(mavlinkData + 20);
+              const uint16_t epv = readU16LE(mavlinkData + 22);
+              if (eph != 0xFFFFu)
+              {
+                latest_data_.hacc_m = eph / 100.0;
+                latest_data_.lat_std_m = latest_data_.hacc_m;
+                latest_data_.lon_std_m = latest_data_.hacc_m;
+              }
+              if (epv != 0xFFFFu)
+              {
+                latest_data_.vacc_m = epv / 100.0;
+                latest_data_.height_std_m = latest_data_.vacc_m;
+              }
+              latest_data_.gnss_fix_code = static_cast<int>(mavlinkData[28]);
+              latest_data_.gnss_fix_text = epsilonGnssFixName(latest_data_.gnss_fix_code);
+              latest_data_.gnss_satellites = static_cast<int>(mavlinkData[29]);
+            }
+            break;
+          case kMavlinkMsgAttitude:
+            if (mavlinkPayloadSize >= 28)
+            {
+              ahrsRateTracker.record();
+              latest_data_.device_timestamp_us = static_cast<uint64_t>(readU32LE(mavlinkData + 0)) * 1000u;
+              latest_data_.roll_deg = radToDeg(readFloatLE(mavlinkData + 4));
+              latest_data_.pitch_deg = radToDeg(readFloatLE(mavlinkData + 8));
+              latest_data_.yaw_deg = radToDeg(readFloatLE(mavlinkData + 12));
+              latest_data_.ang_vel_x_radps = readFloatLE(mavlinkData + 16);
+              latest_data_.ang_vel_y_radps = readFloatLE(mavlinkData + 20);
+              latest_data_.ang_vel_z_radps = readFloatLE(mavlinkData + 24);
+            }
+            break;
+          case kMavlinkMsgLocalPositionNed:
+            if (mavlinkPayloadSize >= 28)
+            {
+              insGpsRateTracker.record();
+              latest_data_.device_timestamp_us = static_cast<uint64_t>(readU32LE(mavlinkData + 0)) * 1000u;
+              latest_data_.ned_n_m = readFloatLE(mavlinkData + 4);
+              latest_data_.ned_e_m = readFloatLE(mavlinkData + 8);
+              latest_data_.ned_d_m = readFloatLE(mavlinkData + 12);
+              latest_data_.vel_n_mps = readFloatLE(mavlinkData + 16);
+              latest_data_.vel_e_mps = readFloatLE(mavlinkData + 20);
+              latest_data_.vel_d_mps = readFloatLE(mavlinkData + 24);
+            }
+            break;
+          case kMavlinkMsgGlobalPositionInt:
+            if (mavlinkPayloadSize >= 28)
+            {
+              geodeticRateTracker.record();
+              latest_data_.device_timestamp_us = static_cast<uint64_t>(readU32LE(mavlinkData + 0)) * 1000u;
+              latest_data_.latitude_deg = readI32LE(mavlinkData + 4) / 10000000.0;
+              latest_data_.longitude_deg = readI32LE(mavlinkData + 8) / 10000000.0;
+              latest_data_.height_m = readI32LE(mavlinkData + 12) / 1000.0;
+              latest_data_.vel_n_mps = readI16LE(mavlinkData + 20) / 100.0;
+              latest_data_.vel_e_mps = readI16LE(mavlinkData + 22) / 100.0;
+              latest_data_.vel_d_mps = readI16LE(mavlinkData + 24) / 100.0;
+            }
+            break;
+          case kMavlinkMsgFdiTelemetryF:
+            if (mavlinkPayloadSize >= 80)
+            {
+              std::array<float, 20> values{};
+              for (size_t i = 0; i < values.size(); ++i)
+              {
+                values[i] = readFloatLE(mavlinkData + i * sizeof(float));
+              }
+
+              int datasetIndex = -1;
+              if (mavlinkPayloadSize >= 81)
+              {
+                datasetIndex = static_cast<int>(mavlinkData[80]);
+              }
+              if ((datasetIndex < 0 || datasetIndex >= kAqmavDatasetSystemsAndClock + 8) && mavlinkPayloadSize >= 82)
+              {
+                datasetIndex = static_cast<int>(readU16LE(mavlinkData + 80));
+              }
+
+              const uint16_t statusDataset = static_cast<uint16_t>(std::lround(values[19]));
+              if (datasetIndex == kAqmavDatasetImu)
+              {
+                ahrsRateTracker.record();
+                imuRateTracker.record();
+                latest_data_.roll_deg = values[0];
+                latest_data_.pitch_deg = values[1];
+                latest_data_.yaw_deg = values[2];
+                latest_data_.imu_gyr_x_radps = values[3];
+                latest_data_.imu_gyr_y_radps = values[4];
+                latest_data_.imu_gyr_z_radps = values[5];
+                latest_data_.ang_vel_x_radps = values[3];
+                latest_data_.ang_vel_y_radps = values[4];
+                latest_data_.ang_vel_z_radps = values[5];
+                latest_data_.imu_acc_x_mps2 = values[6];
+                latest_data_.imu_acc_y_mps2 = values[7];
+                latest_data_.imu_acc_z_mps2 = values[8];
+                latest_data_.mag_x_mg = values[9];
+                latest_data_.mag_y_mg = values[10];
+                latest_data_.mag_z_mg = values[11];
+                latest_data_.imu_temp_c = values[12];
+                latest_data_.pressure_pa = values[19];
+              }
+              else if (datasetIndex == kAqmavDatasetImuRaw)
+              {
+                imuRateTracker.record();
+                latest_data_.imu_acc_x_mps2 = values[0];
+                latest_data_.imu_acc_y_mps2 = values[1];
+                latest_data_.imu_acc_z_mps2 = values[2];
+                latest_data_.imu_gyr_x_radps = values[3];
+                latest_data_.imu_gyr_y_radps = values[4];
+                latest_data_.imu_gyr_z_radps = values[5];
+                latest_data_.mag_x_mg = values[6];
+                latest_data_.mag_y_mg = values[7];
+                latest_data_.mag_z_mg = values[8];
+              }
+              else if (datasetIndex == kAqmavDatasetUkf)
+              {
+                insGpsRateTracker.record();
+                latest_data_.quat_w = values[6];
+                latest_data_.quat_x = values[7];
+                latest_data_.quat_y = values[8];
+                latest_data_.quat_z = values[9];
+                latest_data_.ned_n_m = values[10];
+                latest_data_.ned_e_m = values[11];
+                latest_data_.ned_d_m = values[12];
+                latest_data_.vel_n_mps = values[13];
+                latest_data_.vel_e_mps = values[14];
+                latest_data_.vel_d_mps = values[15];
+              }
+              else if (datasetIndex == kAqmavDatasetGps)
+              {
+                rawGnssRateTracker.record();
+                latest_data_.hacc_m = values[0];
+                latest_data_.vacc_m = values[1];
+                latest_data_.height_m = values[3];
+                latest_data_.hdop = values[4];
+                latest_data_.vel_n_mps = values[6];
+                latest_data_.vel_e_mps = values[7];
+                latest_data_.vel_d_mps = values[8];
+                latest_data_.gnss_fix_code = static_cast<int>(std::lround(values[14]));
+                latest_data_.gnss_fix_text = epsilonGnssFixName(latest_data_.gnss_fix_code);
+                latest_data_.gnss_satellites = static_cast<int>(std::lround(values[15]));
+              }
+
+              if (datasetIndex == kAqmavDatasetSystemsAndClock || statusDataset == kFdiTelemetrySystemsAndClock)
+              {
+                sysStateRateTracker.record();
+                uint64_t utcSeconds = 0;
+                uint32_t utcMicroseconds = 0;
+                if (utcPartsToUnix(
+                        static_cast<int>(std::lround(values[7])),
+                        static_cast<int>(std::lround(values[8])),
+                        static_cast<int>(std::lround(values[9])),
+                        static_cast<int>(std::lround(values[10])),
+                        static_cast<int>(std::lround(values[11])),
+                        static_cast<double>(values[12]),
+                        utcSeconds,
+                        utcMicroseconds))
+                {
+                  latest_data_.utc_unix_s = utcSeconds;
+                  latest_data_.utc_microseconds = utcMicroseconds;
+                }
+              }
+              else if (statusDataset == kFdiTelemetrySystemInformation)
+              {
+                latest_data_.imu_temp_c = values[14];
+              }
+            }
+            break;
+          default:
+            break;
+          }
+          offset += mavlinkFrameSize;
+        }
+      }
+
+      latest_data_.imu_packet_rate_hz = imuRateTracker.rate_hz;
+      latest_data_.ahrs_packet_rate_hz = ahrsRateTracker.rate_hz;
+      latest_data_.insgps_packet_rate_hz = insGpsRateTracker.rate_hz;
+      latest_data_.sys_state_packet_rate_hz = sysStateRateTracker.rate_hz;
+      latest_data_.raw_gnss_packet_rate_hz = rawGnssRateTracker.rate_hz;
+      latest_data_.satellite_packet_rate_hz = satelliteRateTracker.rate_hz;
+      latest_data_.geodetic_packet_rate_hz = geodeticRateTracker.rate_hz;
+      latest_data_.ecef_packet_rate_hz = ecefRateTracker.rate_hz;
 
       callback = data_callback_;
       rawCallback = raw_frame_callback_;
