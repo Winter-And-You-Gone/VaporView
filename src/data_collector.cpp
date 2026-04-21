@@ -548,7 +548,7 @@ std::string sendLoggedEpsilonAsciiCommand(SerialPort& serial,
     sleepMs(waitMs);
   }
   const std::string response = readLoggedEpsilonAsciiResponse(serial, logFn, std::max(180, waitMs));
-  if (command != "y\r\n" && !containsEpsilonAsciiAck(response))
+  if (command != "y\r\n" && command != "Y\r\n" && !containsEpsilonAsciiAck(response))
   {
     logFn("EPSILON: no explicit ASCII acknowledgement for command: " + trimAscii(command));
   }
@@ -1620,13 +1620,15 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
       sendLoggedEpsilonAsciiCommand(serial_, logFn, command, kConfigCommandWaitMs);
     }
     sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fsave\r\n", kConfigCommandWaitMs);
-    sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fdeconfig\r\n", kConfigCommandWaitMs);
+    log("EPSILON: packet-rate changes require a device reboot before the live stream uses the new rates");
+    sendLoggedEpsilonAsciiCommand(serial_, logFn, "#freboot\r\n", kConfigCommandWaitMs);
+    sendLoggedEpsilonAsciiCommand(serial_, logFn, "Y\r\n", 500);
 
     waitForEpsilonNavigationStreamRestore(serial_,
                                           logFn,
-                                          6000,
-                                          "EPSILON: output configuration updated, saved, and navigation stream restored",
-                                          "EPSILON: configuration saved, but no FDILink frame was observed after leaving config mode");
+                                          12000,
+                                          "EPSILON: output configuration updated, saved, rebooted, and navigation stream restored with FDILink frame %u",
+                                          "EPSILON: configuration saved and reboot was requested, but no FDILink frame was observed afterward");
   }
   else
   {
