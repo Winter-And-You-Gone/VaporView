@@ -112,6 +112,8 @@ constexpr uint8_t kMsgImu = 0x40;
 constexpr uint8_t kMsgAhrs = 0x41;
 constexpr uint8_t kMsgInsGps = 0x42;
 constexpr uint8_t kMsgSystemState = 0x50;
+constexpr uint8_t kMsgUnixTime = 0x51;
+constexpr uint8_t kMsgFormattedTime = 0x52;
 constexpr uint8_t kMsgRawGnss = 0x59;
 constexpr uint8_t kMsgSatellites = 0x5A;
 constexpr uint8_t kMsgGeodeticPos = 0x5C;
@@ -127,7 +129,6 @@ constexpr uint8_t kMavlinkMsgLocalPositionNed = 32;
 constexpr uint8_t kMavlinkMsgGlobalPositionInt = 33;
 constexpr uint8_t kMavlinkMsgFdiTelemetryF = 150;
 
-constexpr uint16_t kFdiTelemetrySystemInformation = 1155;
 constexpr uint16_t kFdiTelemetrySystemsAndClock = 1156;
 
 constexpr int kAqmavDatasetGps = 4;
@@ -1895,8 +1896,36 @@ void EpsilonCollector::run()
           latest_data_.height_std_m = readFloatLE(payload + 98);
         }
       }
+      else if (packetId == kMsgUnixTime && payloadSize >= 8)
+      {
+        sysStateRateTracker.record();
+        latest_data_.utc_unix_s = readU32LE(payload + 0);
+        latest_data_.utc_microseconds = readU32LE(payload + 4);
+      }
+      else if (packetId == kMsgFormattedTime && payloadSize >= 15)
+      {
+        sysStateRateTracker.record();
+        const uint32_t microseconds = readU32LE(payload + 0);
+        uint64_t utcSeconds = 0;
+        uint32_t utcMicroseconds = 0;
+        if (utcPartsToUnix(
+                static_cast<int>(readU16LE(payload + 4)),
+                static_cast<int>(payload[8]),
+                static_cast<int>(payload[9]),
+                static_cast<int>(payload[12]),
+                static_cast<int>(payload[13]),
+                static_cast<double>(payload[14]) + microseconds / 1000000.0,
+                utcSeconds,
+                utcMicroseconds))
+        {
+          latest_data_.utc_unix_s = utcSeconds;
+          latest_data_.utc_microseconds = utcMicroseconds;
+        }
+      }
       else if (packetId == kMsgRawGnss && payloadSize >= 74)
       {
+        latest_data_.utc_unix_s = readU32LE(payload + 0);
+        latest_data_.utc_microseconds = readU32LE(payload + 4);
         latest_data_.lat_std_m = readFloatLE(payload + 44);
         latest_data_.lon_std_m = readFloatLE(payload + 48);
         latest_data_.height_std_m = readFloatLE(payload + 52);
@@ -2110,7 +2139,8 @@ void EpsilonCollector::run()
                 latest_data_.gnss_satellites = static_cast<int>(std::lround(values[15]));
               }
 
-              if (datasetIndex == kAqmavDatasetSystemsAndClock || statusDataset == kFdiTelemetrySystemsAndClock)
+              if ((datasetIndex == kAqmavDatasetSystemsAndClock || statusDataset == kFdiTelemetrySystemsAndClock) &&
+                  latest_data_.utc_unix_s == 0)
               {
                 sysStateRateTracker.record();
                 uint64_t utcSeconds = 0;
@@ -2128,10 +2158,6 @@ void EpsilonCollector::run()
                   latest_data_.utc_unix_s = utcSeconds;
                   latest_data_.utc_microseconds = utcMicroseconds;
                 }
-              }
-              else if (statusDataset == kFdiTelemetrySystemInformation)
-              {
-                latest_data_.imu_temp_c = values[14];
               }
             }
             break;

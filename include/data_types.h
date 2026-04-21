@@ -4,6 +4,7 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -134,10 +135,10 @@ struct EpsilonData
   double quat_y = 0.0;
   double quat_z = 0.0;
 
-  double imu_temp_c = 0.0;
-  double pressure_pa = 0.0;
-  double pressure_temp_c = 0.0;
-  double pressure_altitude_m = 0.0;
+  double imu_temp_c = std::numeric_limits<double>::quiet_NaN();
+  double pressure_pa = std::numeric_limits<double>::quiet_NaN();
+  double pressure_temp_c = std::numeric_limits<double>::quiet_NaN();
+  double pressure_altitude_m = std::numeric_limits<double>::quiet_NaN();
 
   double hdop = 0.0;
   double vdop = 0.0;

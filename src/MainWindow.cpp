@@ -425,8 +425,8 @@ public:
         const bool gnss_fix_valid = epsilon_data.gnss_fix_code >= 2;
         const bool utc_valid = gnss_fix_valid && epsilon_data.utc_unix_s > 0;
         const bool pressure_valid = std::isfinite(epsilon_data.pressure_pa) &&
-                                    epsilon_data.pressure_pa > 0.0 &&
-                                    std::isfinite(epsilon_data.pressure_altitude_m);
+                                    epsilon_data.pressure_pa > 0.0;
+        const bool pressure_altitude_valid = std::isfinite(epsilon_data.pressure_altitude_m);
 
         const QString utcText = utc_valid
             ? QDateTime::fromSecsSinceEpoch(static_cast<qint64>(epsilon_data.utc_unix_s), QTimeZone::UTC)
@@ -478,9 +478,11 @@ public:
                      : QString());
         setValue(QStringLiteral("pressure"),
                  pressure_valid
-                     ? QStringLiteral("%1 Pa | Alt %2 m")
+                     ? QStringLiteral("%1 Pa | Alt %2")
                            .arg(epsilon_data.pressure_pa, 0, 'f', 2)
-                           .arg(epsilon_data.pressure_altitude_m, 0, 'f', 2)
+                           .arg(pressure_altitude_valid
+                                    ? QStringLiteral("%1 m").arg(epsilon_data.pressure_altitude_m, 0, 'f', 2)
+                                    : QStringLiteral("--"))
                      : QString());
         setValue(QStringLiteral("dop"),
                  gnss_fix_valid && std::isfinite(epsilon_data.hdop) && std::isfinite(epsilon_data.vdop)
