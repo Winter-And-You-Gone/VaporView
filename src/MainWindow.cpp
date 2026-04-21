@@ -6086,7 +6086,7 @@ void MainWindow::onReconfigureEpsilonClicked()
             return;
         }
 
-        if (!collector->setOutputPacketRates(desiredPacketRates))
+        if (!collector->setOutputPacketRates(desiredPacketRates, true))
         {
             postLog(QString(english ? "[EPSILON] Manual reconfiguration failed on %1 @ %2."
                                     : "[EPSILON] 在 %1 @ %2 上执行手动重配失败。")

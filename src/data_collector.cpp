@@ -565,11 +565,48 @@ std::string sendLoggedEpsilonAsciiCommand(SerialPort& serial,
     sleepMs(waitMs);
   }
   const std::string response = readLoggedEpsilonAsciiResponse(serial, logFn, std::max(180, waitMs));
-  if (command != "y\r\n" && command != "Y\r\n" && !containsEpsilonAsciiAck(response))
+  const std::string trimmedCommand = trimAscii(command);
+  const bool expectedPrompt = trimmedCommand == "#freboot" && response.find("(y/n)") != std::string::npos;
+  if (command != "y\r\n" && command != "Y\r\n" && !expectedPrompt && !containsEpsilonAsciiAck(response))
   {
-    logFn("EPSILON: no explicit ASCII acknowledgement for command: " + trimAscii(command));
+    logFn("EPSILON: no explicit ASCII acknowledgement for command: " + trimmedCommand);
   }
   return response;
+}
+
+bool rebootEpsilonAndReopenSerial(SerialPort& serial,
+                                  const std::string& portName,
+                                  const SerialConfig& config,
+                                  const EpsilonLogFn& logFn)
+{
+  if (portName.empty())
+  {
+    logFn("EPSILON: cannot reopen after reboot because the port name is unknown");
+    return false;
+  }
+
+  sendLoggedEpsilonAsciiCommand(serial, logFn, "#freboot\r\n", 2000);
+  sendLoggedEpsilonAsciiCommand(serial, logFn, "y\r\n", 1500);
+
+  serial.close();
+  logFn("EPSILON: device reboot requested; waiting for the serial port to return");
+  sleepMs(4000);
+
+  constexpr int kReopenAttempts = 20;
+  for (int attempt = 1; attempt <= kReopenAttempts; ++attempt)
+  {
+    if (serial.open(portName, config))
+    {
+      serial.flush();
+      sleepMs(500);
+      logFn("EPSILON: serial port reopened after device reboot");
+      return true;
+    }
+    sleepMs(500);
+  }
+
+  logFn("EPSILON: failed to reopen serial port after device reboot");
+  return false;
 }
 
 bool waitForEpsilonNavigationStreamRestore(SerialPort& serial,
@@ -1146,6 +1183,7 @@ bool DataCollector::start(const std::string& port, const SerialConfig& config)
     return false;
   }
 
+  port_name_ = port;
   serial_config_ = config;
 
   if (!initialize())
@@ -1582,7 +1620,7 @@ bool EpsilonCollector::setDeviceSampleRate(int hz)
   return true;
 }
 
-bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packetRates)
+bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packetRates, bool forceApply)
 {
   if (packetRates.empty())
   {
@@ -1592,6 +1630,11 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
   if (!serial_.isOpen())
   {
     log("EPSILON: serial port is not open");
+    return false;
+  }
+  if (running_.load())
+  {
+    log("EPSILON: stop the live stream before applying packet-rate changes; use the EPSILON reconfigure action");
     return false;
   }
   for (const auto& entry : packetRates)
@@ -1628,8 +1671,12 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
     }
   }
 
-  if (needsReconfigure)
+  if (needsReconfigure || forceApply)
   {
+    if (!needsReconfigure && forceApply)
+    {
+      log("EPSILON: output configuration matches requested packet rates; reapplying and rebooting to activate the standard FDILink stream");
+    }
     for (const auto& entry : packetRates)
     {
       char command[32];
@@ -1637,13 +1684,19 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
       sendLoggedEpsilonAsciiCommand(serial_, logFn, command, kConfigCommandWaitMs);
     }
     sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fsave\r\n", kConfigCommandWaitMs);
-    sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fdeconfig\r\n", kConfigCommandWaitMs);
+    if (!rebootEpsilonAndReopenSerial(serial_, port_name_, serial_config_, logFn))
+    {
+      return false;
+    }
 
-    waitForEpsilonNavigationStreamRestore(serial_,
-                                          logFn,
-                                          6000,
-                                          "EPSILON: output configuration updated, saved, and navigation stream restored with FDILink frame %u",
-                                          "EPSILON: configuration saved, but no FDILink frame was observed after leaving config mode");
+    if (!waitForEpsilonNavigationStreamRestore(serial_,
+                                               logFn,
+                                               8000,
+                                               "EPSILON: output configuration saved, rebooted, and navigation stream restored with FDILink frame %u",
+                                               "EPSILON: configuration saved and rebooted, but no FDILink frame was observed after the port returned"))
+    {
+      return false;
+    }
   }
   else
   {
