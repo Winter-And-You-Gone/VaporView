@@ -3322,6 +3322,14 @@ void MainWindow::setEnglish(bool english)
     if (lidar_panel_) lidar_panel_->setEnglish(english);
     if (tcp_wave_panel_) tcp_wave_panel_->setEnglish(english);
 
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.epsilon) collectors.epsilon->setEnglish(english);
+    if (collectors.gnss) collectors.gnss->setEnglish(english);
+    if (collectors.imu) collectors.imu->setEnglish(english);
+    if (collectors.ptb) collectors.ptb->setEnglish(english);
+    if (collectors.hmp) collectors.hmp->setEnglish(english);
+    if (collectors.lidar) collectors.lidar->setEnglish(english);
+
     if (rtk_config_dialog_)
     {
         rtk_config_dialog_->setEnglish(english);
@@ -4719,6 +4727,13 @@ void MainWindow::setCollectors(CollectorSnapshot collectors)
     ptb_collector_ = std::move(collectors.ptb);
     hmp_collector_ = std::move(collectors.hmp);
     lidar_collector_ = std::move(collectors.lidar);
+
+    if (epsilon_collector_) epsilon_collector_->setEnglish(is_english_);
+    if (gnss_collector_) gnss_collector_->setEnglish(is_english_);
+    if (imu_collector_) imu_collector_->setEnglish(is_english_);
+    if (ptb_collector_) ptb_collector_->setEnglish(is_english_);
+    if (hmp_collector_) hmp_collector_->setEnglish(is_english_);
+    if (lidar_collector_) lidar_collector_->setEnglish(is_english_);
 }
 
 void MainWindow::stopAllCollectors()
@@ -5724,6 +5739,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
             ? liveCollector
             : std::make_shared<VaporView::EpsilonCollector>();
 
+        collector->setEnglish(english);
         collector->setLogCallback([this](const std::string& msg) {
             const QString qmsg = QString::fromStdString(msg);
             QMetaObject::invokeMethod(this, [this, qmsg]() { log(qmsg); }, Qt::QueuedConnection);
@@ -6063,6 +6079,7 @@ void MainWindow::onReconfigureEpsilonClicked()
             ? liveCollector
             : std::make_shared<VaporView::EpsilonCollector>();
 
+        collector->setEnglish(english);
         collector->setLogCallback([this](const std::string& msg) {
             const QString qmsg = QString::fromStdString(msg);
             QMetaObject::invokeMethod(this, [this, qmsg]() { log(qmsg); }, Qt::QueuedConnection);

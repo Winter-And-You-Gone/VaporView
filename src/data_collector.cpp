@@ -560,6 +560,7 @@ std::string readLoggedEpsilonAsciiResponse(SerialPort& serial, const EpsilonLogF
 
 std::string sendLoggedEpsilonAsciiCommand(SerialPort& serial,
                                           const EpsilonLogFn& logFn,
+                                          bool english,
                                           const std::string& command,
                                           int waitMs)
 {
@@ -567,7 +568,8 @@ std::string sendLoggedEpsilonAsciiCommand(SerialPort& serial,
   const ssize_t written = serial.write(command.c_str(), command.size());
   if (written != static_cast<ssize_t>(command.size()))
   {
-    logFn("EPSILON: failed to send command: " + trimAscii(command));
+    logFn(std::string(english ? "EPSILON: failed to send command: " : "EPSILON：命令发送失败：") +
+          trimAscii(command));
     return std::string();
   }
   if (waitMs > 0)
@@ -583,7 +585,10 @@ std::string sendLoggedEpsilonAsciiCommand(SerialPort& serial,
   if (command != "y\r\n" && command != "Y\r\n" && !expectedPrompt &&
       !expectedFmsgList && !containsEpsilonAsciiAck(response))
   {
-    logFn("EPSILON: no explicit ASCII acknowledgement for command: " + trimmedCommand);
+    logFn(std::string(english
+                          ? "EPSILON: no explicit ASCII acknowledgement for command: "
+                          : "EPSILON：命令未收到明确 ASCII 确认：") +
+          trimmedCommand);
   }
   return response;
 }
@@ -591,26 +596,33 @@ std::string sendLoggedEpsilonAsciiCommand(SerialPort& serial,
 bool rebootEpsilonAndReopenSerial(SerialPort& serial,
                                   const std::string& portName,
                                   const SerialConfig& config,
-                                  const EpsilonLogFn& logFn)
+                                  const EpsilonLogFn& logFn,
+                                  bool english)
 {
   if (portName.empty())
   {
-    logFn("EPSILON: cannot reopen after reboot because the port name is unknown");
+    logFn(english
+              ? "EPSILON: cannot reopen after reboot because the port name is unknown"
+              : "EPSILON：串口名未知，重启后无法重新打开串口");
     return false;
   }
 
-  const std::string rebootResponse = sendLoggedEpsilonAsciiCommand(serial, logFn, "#freboot\r\n", 2000);
+  const std::string rebootResponse = sendLoggedEpsilonAsciiCommand(serial, logFn, english, "#freboot\r\n", 2000);
   if (rebootResponse.find("(y/n)") == std::string::npos)
   {
-    logFn("EPSILON: reboot command did not return the confirmation prompt");
+    logFn(english
+              ? "EPSILON: reboot command did not return the confirmation prompt"
+              : "EPSILON：重启命令没有返回确认提示");
     return false;
   }
 
-  sendLoggedEpsilonAsciiCommand(serial, logFn, "y\r\n", 0);
+  sendLoggedEpsilonAsciiCommand(serial, logFn, english, "y\r\n", 0);
   sleepMs(150);
 
   serial.close();
-  logFn("EPSILON: reboot confirmed; waiting for the serial port to return");
+  logFn(english
+            ? "EPSILON: reboot confirmed; waiting for the serial port to return"
+            : "EPSILON：已确认重启，等待串口恢复");
   sleepMs(4000);
 
   constexpr int kReopenAttempts = 20;
@@ -620,13 +632,17 @@ bool rebootEpsilonAndReopenSerial(SerialPort& serial,
     {
       serial.flush();
       sleepMs(500);
-      logFn("EPSILON: serial port reopened after device reboot");
+      logFn(english
+                ? "EPSILON: serial port reopened after device reboot"
+                : "EPSILON：设备重启后已重新打开串口");
       return true;
     }
     sleepMs(500);
   }
 
-  logFn("EPSILON: failed to reopen serial port after device reboot");
+  logFn(english
+            ? "EPSILON: failed to reopen serial port after device reboot"
+            : "EPSILON：设备重启后重新打开串口失败");
   return false;
 }
 
@@ -1272,6 +1288,11 @@ void DataCollector::setCancelCallback(CancelCallback callback)
   cancel_callback_ = std::move(callback);
 }
 
+void DataCollector::setEnglish(bool english)
+{
+  log_english_.store(english);
+}
+
 void DataCollector::log(const std::string& message)
 {
   LogCallback callback;
@@ -1283,6 +1304,11 @@ void DataCollector::log(const std::string& message)
   {
     callback(message);
   }
+}
+
+bool DataCollector::isEnglishLog() const
+{
+  return log_english_.load();
 }
 
 bool DataCollector::isCancelRequested() const
@@ -1554,12 +1580,15 @@ void EpsilonCollector::setRawFrameCallback(RawFrameCallback callback)
 
 bool EpsilonCollector::checkDeviceResponse()
 {
+  const bool english = isEnglishLog();
   std::vector<uint8_t> buffer;
   std::vector<uint8_t> frame;
   uint8_t packetId = 0;
   if (!readValidFdilinkFrame(serial_, buffer, &frame, 2500, &packetId, nullptr))
   {
-    log("EPSILON: no navigation frame detected, trying command-mode handshake");
+    log(english
+            ? "EPSILON: no navigation frame detected, trying command-mode handshake"
+            : "EPSILON：未检测到导航数据帧，尝试进入命令模式握手");
 
     auto sendCommandForProbe = [this](const std::string& command, int waitMs) {
       const ssize_t written = serial_.write(command.c_str(), command.size());
@@ -1614,15 +1643,21 @@ bool EpsilonCollector::checkDeviceResponse()
     sendCommandForProbe("#fdeconfig\r\n", 1500);
     if (readValidFdilinkFrame(serial_, buffer, &frame, 2500, &packetId, nullptr))
     {
-      log("EPSILON: recovered navigation stream with FDILink frame " + std::to_string(packetId));
+      log(std::string(english
+                          ? "EPSILON: recovered navigation stream with FDILink frame "
+                          : "EPSILON：已恢复导航数据流，FDILink 数据包 ") +
+          std::to_string(packetId));
       return true;
     }
 
-    log("EPSILON: device responds to commands, but no navigation frame was restored yet");
+    log(english
+            ? "EPSILON: device responds to commands, but no navigation frame was restored yet"
+            : "EPSILON：设备可响应命令，但导航数据流尚未恢复");
     return true;
   }
 
-  log("EPSILON: detected FDILink frame " + std::to_string(packetId));
+  log(std::string(english ? "EPSILON: detected FDILink frame " : "EPSILON：检测到 FDILink 数据包 ") +
+      std::to_string(packetId));
   return true;
 }
 
@@ -1630,7 +1665,8 @@ bool EpsilonCollector::setDeviceSampleRate(int hz)
 {
   if (!isSupportedEpsilonRate(hz))
   {
-    log("EPSILON: unsupported output rate " + std::to_string(hz) + " Hz");
+    log(std::string(isEnglishLog() ? "EPSILON: unsupported output rate " : "EPSILON：不支持的输出频率 ") +
+        std::to_string(hz) + " Hz");
     return false;
   }
   if (!setOutputPacketRates(desiredEpsilonPacketRates(hz)))
@@ -1643,19 +1679,24 @@ bool EpsilonCollector::setDeviceSampleRate(int hz)
 
 bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packetRates, bool forceApply)
 {
+  const bool english = isEnglishLog();
   if (packetRates.empty())
   {
-    log("EPSILON: no packet rates were provided for configuration");
+    log(english
+            ? "EPSILON: no packet rates were provided for configuration"
+            : "EPSILON：没有可用于配置的数据包频率");
     return false;
   }
   if (!serial_.isOpen())
   {
-    log("EPSILON: serial port is not open");
+    log(english ? "EPSILON: serial port is not open" : "EPSILON：串口未打开");
     return false;
   }
   if (running_.load())
   {
-    log("EPSILON: stop the live stream before applying packet-rate changes; use the EPSILON reconfigure action");
+    log(english
+            ? "EPSILON: stop the live stream before applying packet-rate changes; use the EPSILON reconfigure action"
+            : "EPSILON：修改数据包频率前请先停止实时数据流，或使用 EPSILON 重配功能");
     return false;
   }
   for (const auto& entry : packetRates)
@@ -1663,7 +1704,9 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
     if (!isSupportedEpsilonPacketRate(entry.first, entry.second))
     {
       std::ostringstream oss;
-      oss << "EPSILON: unsupported packet rate " << entry.second << " Hz for packet 0x"
+      oss << (english ? "EPSILON: unsupported packet rate " : "EPSILON：数据包频率不受支持：")
+          << entry.second << " Hz"
+          << (english ? " for packet 0x" : "，数据包 0x")
           << std::uppercase << std::hex << std::setw(2) << std::setfill('0')
           << static_cast<int>(entry.first);
       log(oss.str());
@@ -1672,9 +1715,9 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
   }
 
   const EpsilonLogFn logFn = [this](const std::string& message) { log(message); };
-  auto failPacketConfiguration = [this, &logFn](const std::string& message) {
+  auto failPacketConfiguration = [this, &logFn, english](const std::string& message) {
     log(message);
-    sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fdeconfig\r\n", 700);
+    sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fdeconfig\r\n", 700);
     return false;
   };
 
@@ -1682,13 +1725,15 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
   serial_.flush();
   sleepMs(80);
 
-  const std::string configResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fconfig\r\n", kConfigCommandWaitMs);
+  const std::string configResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fconfig\r\n", kConfigCommandWaitMs);
   if (!containsEpsilonAsciiOk(configResponse))
   {
-    return failPacketConfiguration("EPSILON: failed to enter configuration mode; packet rates were not changed");
+    return failPacketConfiguration(english
+                                       ? "EPSILON: failed to enter configuration mode; packet rates were not changed"
+                                       : "EPSILON：进入配置模式失败，数据包频率未修改");
   }
 
-  const std::string fmsgResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fmsg\r\n", kConfigCommandWaitMs);
+  const std::string fmsgResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fmsg\r\n", kConfigCommandWaitMs);
   const auto currentRates = parseFmsgResponse(fmsgResponse);
 
   bool needsReconfigure = currentRates.size() < packetRates.size();
@@ -1706,30 +1751,37 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
   {
     if (!needsReconfigure && forceApply)
     {
-      log("EPSILON: output configuration matches requested packet rates; reapplying and rebooting to activate the standard FDILink stream");
+      log(english
+              ? "EPSILON: output configuration matches requested packet rates; reapplying and rebooting to activate the standard FDILink stream"
+              : "EPSILON：当前输出配置已匹配目标频率，仍将重新下发并重启以激活标准 FDILink 数据流");
     }
     for (const auto& entry : packetRates)
     {
       char command[32];
       std::snprintf(command, sizeof(command), "#fmsg %02X %d\r\n", entry.first, entry.second);
-      const std::string response = sendLoggedEpsilonAsciiCommand(serial_, logFn, command, kConfigCommandWaitMs);
+      const std::string response = sendLoggedEpsilonAsciiCommand(serial_, logFn, english, command, kConfigCommandWaitMs);
       if (!containsEpsilonAsciiOk(response))
       {
         std::ostringstream oss;
-        oss << "EPSILON: failed to set packet 0x" << std::uppercase << std::hex
+        oss << (english ? "EPSILON: failed to set packet 0x" : "EPSILON：设置数据包 0x")
+            << std::uppercase << std::hex
             << std::setw(2) << std::setfill('0') << static_cast<int>(entry.first)
-            << " output rate; packet-rate configuration was not saved";
+            << (english
+                    ? " output rate; packet-rate configuration was not saved"
+                    : " 输出频率失败，数据包频率配置未保存");
         return failPacketConfiguration(oss.str());
       }
     }
 
-    const std::string saveResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fsave\r\n", kConfigCommandWaitMs);
+    const std::string saveResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fsave\r\n", kConfigCommandWaitMs);
     if (!containsEpsilonAsciiOk(saveResponse))
     {
-      return failPacketConfiguration("EPSILON: failed to save packet-rate configuration");
+      return failPacketConfiguration(english
+                                         ? "EPSILON: failed to save packet-rate configuration"
+                                         : "EPSILON：保存数据包频率配置失败");
     }
 
-    if (!rebootEpsilonAndReopenSerial(serial_, port_name_, serial_config_, logFn))
+    if (!rebootEpsilonAndReopenSerial(serial_, port_name_, serial_config_, logFn, english))
     {
       return false;
     }
@@ -1737,52 +1789,70 @@ bool EpsilonCollector::setOutputPacketRates(const std::map<uint8_t, int>& packet
     if (!waitForEpsilonNavigationStreamRestore(serial_,
                                                logFn,
                                                8000,
-                                               "EPSILON: output configuration saved, rebooted, and navigation stream restored with FDILink frame %u",
-                                               "EPSILON: configuration saved and rebooted, but no FDILink frame was observed after the port returned"))
+                                               english
+                                                   ? "EPSILON: output configuration saved, rebooted, and navigation stream restored with FDILink frame %u"
+                                                   : "EPSILON：输出配置已保存并重启，导航数据流已恢复，FDILink 数据包 %u",
+                                               english
+                                                   ? "EPSILON: configuration saved and rebooted, but no FDILink frame was observed after the port returned"
+                                                   : "EPSILON：配置已保存并重启，但串口恢复后没有检测到 FDILink 数据包"))
     {
       return false;
     }
   }
   else
   {
-    log("EPSILON: output configuration already matches requested packet rates");
-    sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fdeconfig\r\n", kConfigCommandWaitMs);
+    log(english
+            ? "EPSILON: output configuration already matches requested packet rates"
+            : "EPSILON：当前输出配置已匹配目标数据包频率");
+    sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fdeconfig\r\n", kConfigCommandWaitMs);
     waitForEpsilonNavigationStreamRestore(serial_,
                                           logFn,
                                           3000,
-                                          "EPSILON: returned to navigation mode with FDILink frame %u",
-                                          "EPSILON: configuration query completed, but navigation stream is still silent");
+                                          english
+                                              ? "EPSILON: returned to navigation mode with FDILink frame %u"
+                                              : "EPSILON：已返回导航模式，检测到 FDILink 数据包 %u",
+                                          english
+                                              ? "EPSILON: configuration query completed, but navigation stream is still silent"
+                                              : "EPSILON：配置查询已完成，但导航数据流仍无输出");
   }
   return true;
 }
 
 bool EpsilonCollector::configureRtcmPort(int portIndex, int baudRate)
 {
+  const bool english = isEnglishLog();
   if (portIndex < 1 || portIndex > 5)
   {
-    log("EPSILON: invalid communication port index for RTCM configuration");
+    log(english
+            ? "EPSILON: invalid communication port index for RTCM configuration"
+            : "EPSILON：RTCM 串口配置的通信端口编号无效");
     return false;
   }
   if (portIndex == 1)
   {
-    log("EPSILON: refusing to change communication port 1 because it must remain the Main port");
+    log(english
+            ? "EPSILON: refusing to change communication port 1 because it must remain the Main port"
+            : "EPSILON：拒绝修改通信端口 1，该端口必须保持 Main");
     return false;
   }
   if (!serial_.isOpen())
   {
-    log("EPSILON: serial port is not open");
+    log(english ? "EPSILON: serial port is not open" : "EPSILON：串口未打开");
     return false;
   }
   if (running_.load())
   {
-    log("EPSILON: stop the live stream before configuring the RTCM port");
+    log(english
+            ? "EPSILON: stop the live stream before configuring the RTCM port"
+            : "EPSILON：配置 RTCM 串口前请先停止实时数据流");
     return false;
   }
 
   const int baudParamValue = epsilonSerialBaudToParamValue(baudRate);
   if (baudParamValue == 0)
   {
-    log("EPSILON: unsupported RTCM serial baud rate " + std::to_string(baudRate));
+    log(std::string(english ? "EPSILON: unsupported RTCM serial baud rate " : "EPSILON：不支持的 RTCM 串口波特率 ") +
+        std::to_string(baudRate));
     return false;
   }
 
@@ -1792,37 +1862,45 @@ bool EpsilonCollector::configureRtcmPort(int portIndex, int baudRate)
   serial_.flush();
   sleepMs(80);
 
-  const auto failConfiguration = [this, &logFn](const std::string& message) {
+  const auto failConfiguration = [this, &logFn, english](const std::string& message) {
     log(message);
-    sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fdeconfig\r\n", kConfigCommandWaitMs);
+    sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fdeconfig\r\n", kConfigCommandWaitMs);
     return false;
   };
 
-  const std::string configResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fconfig\r\n", kConfigCommandWaitMs);
+  const std::string configResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fconfig\r\n", kConfigCommandWaitMs);
   if (!containsEpsilonAsciiOk(configResponse))
   {
-    return failConfiguration("EPSILON: failed to enter configuration mode; RTCM port was not changed");
+    return failConfiguration(english
+                                 ? "EPSILON: failed to enter configuration mode; RTCM port was not changed"
+                                 : "EPSILON：进入配置模式失败，RTCM 串口未修改");
   }
 
   char command[64];
   std::snprintf(command, sizeof(command), "#fparam set COMM_STREAM_TYP%d 3\r\n", portIndex);
-  if (!containsEpsilonAsciiOk(sendLoggedEpsilonAsciiCommand(serial_, logFn, command, kConfigCommandWaitMs)))
+  if (!containsEpsilonAsciiOk(sendLoggedEpsilonAsciiCommand(serial_, logFn, english, command, kConfigCommandWaitMs)))
   {
-    return failConfiguration("EPSILON: failed to set the RTCM stream type; RTCM port was not saved");
+    return failConfiguration(english
+                                 ? "EPSILON: failed to set the RTCM stream type; RTCM port was not saved"
+                                 : "EPSILON：设置 RTCM 数据流类型失败，RTCM 串口配置未保存");
   }
 
   std::snprintf(command, sizeof(command), "#fparam set COMM_BAUD%d %d\r\n", portIndex, baudParamValue);
-  if (!containsEpsilonAsciiOk(sendLoggedEpsilonAsciiCommand(serial_, logFn, command, kConfigCommandWaitMs)))
+  if (!containsEpsilonAsciiOk(sendLoggedEpsilonAsciiCommand(serial_, logFn, english, command, kConfigCommandWaitMs)))
   {
-    return failConfiguration("EPSILON: failed to set the RTCM port baud rate; RTCM port was not saved");
+    return failConfiguration(english
+                                 ? "EPSILON: failed to set the RTCM port baud rate; RTCM port was not saved"
+                                 : "EPSILON：设置 RTCM 串口波特率失败，RTCM 串口配置未保存");
   }
 
-  if (!containsEpsilonAsciiOk(sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fsave\r\n", kConfigCommandWaitMs)))
+  if (!containsEpsilonAsciiOk(sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fsave\r\n", kConfigCommandWaitMs)))
   {
-    return failConfiguration("EPSILON: failed to save the RTCM port configuration");
+    return failConfiguration(english
+                                 ? "EPSILON: failed to save the RTCM port configuration"
+                                 : "EPSILON：保存 RTCM 串口配置失败");
   }
 
-  if (!rebootEpsilonAndReopenSerial(serial_, port_name_, serial_config_, logFn))
+  if (!rebootEpsilonAndReopenSerial(serial_, port_name_, serial_config_, logFn, english))
   {
     return false;
   }
@@ -1830,8 +1908,12 @@ bool EpsilonCollector::configureRtcmPort(int portIndex, int baudRate)
   return waitForEpsilonNavigationStreamRestore(serial_,
                                                logFn,
                                                8000,
-                                               "EPSILON: RTCM port configuration saved, rebooted, and navigation stream restored",
-                                               "EPSILON: RTCM port configuration was saved and rebooted, but no FDILink frame was observed after the port returned");
+                                               english
+                                                   ? "EPSILON: RTCM port configuration saved, rebooted, and navigation stream restored"
+                                                   : "EPSILON：RTCM 串口配置已保存并重启，导航数据流已恢复",
+                                               english
+                                                   ? "EPSILON: RTCM port configuration was saved and rebooted, but no FDILink frame was observed after the port returned"
+                                                   : "EPSILON：RTCM 串口配置已保存并重启，但串口恢复后没有检测到 FDILink 数据包");
 }
 
 void EpsilonCollector::run()
