@@ -1718,9 +1718,19 @@ bool EpsilonCollector::configureRtcmPort(int portIndex, int baudRate)
     log("EPSILON: invalid communication port index for RTCM configuration");
     return false;
   }
+  if (portIndex == 1)
+  {
+    log("EPSILON: refusing to change communication port 1 because it must remain the Main port");
+    return false;
+  }
   if (!serial_.isOpen())
   {
     log("EPSILON: serial port is not open");
+    return false;
+  }
+  if (running_.load())
+  {
+    log("EPSILON: stop the live stream before configuring the RTCM port");
     return false;
   }
 
@@ -1737,24 +1747,46 @@ bool EpsilonCollector::configureRtcmPort(int portIndex, int baudRate)
   serial_.flush();
   sleepMs(80);
 
-  sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fconfig\r\n", kConfigCommandWaitMs);
+  const auto failConfiguration = [this, &logFn](const std::string& message) {
+    log(message);
+    sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fdeconfig\r\n", kConfigCommandWaitMs);
+    return false;
+  };
+
+  const std::string configResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fconfig\r\n", kConfigCommandWaitMs);
+  if (!containsEpsilonAsciiAck(configResponse))
+  {
+    return failConfiguration("EPSILON: failed to enter configuration mode; RTCM port was not changed");
+  }
 
   char command[64];
   std::snprintf(command, sizeof(command), "#fparam set COMM_STREAM_TYP%d 3\r\n", portIndex);
-  sendLoggedEpsilonAsciiCommand(serial_, logFn, command, kConfigCommandWaitMs);
+  if (!containsEpsilonAsciiAck(sendLoggedEpsilonAsciiCommand(serial_, logFn, command, kConfigCommandWaitMs)))
+  {
+    return failConfiguration("EPSILON: failed to set the RTCM stream type; RTCM port was not saved");
+  }
 
   std::snprintf(command, sizeof(command), "#fparam set COMM_BAUD%d %d\r\n", portIndex, baudParamValue);
-  sendLoggedEpsilonAsciiCommand(serial_, logFn, command, kConfigCommandWaitMs);
+  if (!containsEpsilonAsciiAck(sendLoggedEpsilonAsciiCommand(serial_, logFn, command, kConfigCommandWaitMs)))
+  {
+    return failConfiguration("EPSILON: failed to set the RTCM port baud rate; RTCM port was not saved");
+  }
 
-  sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fsave\r\n", kConfigCommandWaitMs);
-  sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fdeconfig\r\n", kConfigCommandWaitMs);
+  if (!containsEpsilonAsciiAck(sendLoggedEpsilonAsciiCommand(serial_, logFn, "#fsave\r\n", kConfigCommandWaitMs)))
+  {
+    return failConfiguration("EPSILON: failed to save the RTCM port configuration");
+  }
 
-  waitForEpsilonNavigationStreamRestore(serial_,
-                                        logFn,
-                                        6000,
-                                        "EPSILON: RTCM port configuration saved and navigation stream restored",
-                                        "EPSILON: RTCM port configuration was sent, but no FDILink frame was observed after leaving config mode");
-  return true;
+  if (!rebootEpsilonAndReopenSerial(serial_, port_name_, serial_config_, logFn))
+  {
+    return false;
+  }
+
+  return waitForEpsilonNavigationStreamRestore(serial_,
+                                               logFn,
+                                               8000,
+                                               "EPSILON: RTCM port configuration saved, rebooted, and navigation stream restored",
+                                               "EPSILON: RTCM port configuration was saved and rebooted, but no FDILink frame was observed after the port returned");
 }
 
 void EpsilonCollector::run()

@@ -5708,12 +5708,12 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
         auto postLog = [this](const QString& message) {
             QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
         };
-        auto finishOnUi = [this, shouldOpenRtkDialog]() {
-            QMetaObject::invokeMethod(this, [this, shouldOpenRtkDialog]() {
+        auto finishOnUi = [this](bool openRtkDialog) {
+            QMetaObject::invokeMethod(this, [this, openRtkDialog]() {
                 epsilon_reconfigure_in_progress_ = false;
                 hideStatusTaskProgress();
                 updateConnectionStatus(anyCollectorRunning());
-                if (shouldOpenRtkDialog)
+                if (openRtkDialog)
                 {
                     onRtkConfigClicked();
                 }
@@ -5742,7 +5742,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
             postLog(QString(english ? "[EPSILON] Failed to open %1 for RTCM-port configuration: %2"
                                     : "[EPSILON] 打开 %1 进行 RTCM 串口配置失败: %2")
                         .arg(epsilonPort, QString::fromStdString(collector->getLastError())));
-            finishOnUi();
+            finishOnUi(false);
             return;
         }
 
@@ -5752,7 +5752,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
                                     : "[EPSILON] 在 %1 @ %2 上把第二通信串口配置为 RTCM 失败。")
                         .arg(epsilonPort, epsilonBaudText));
             collector->stop();
-            finishOnUi();
+            finishOnUi(false);
             return;
         }
 
@@ -5773,7 +5773,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
                             ? "[EPSILON] RTCM-port configuration succeeded, but failed to restart the live navigation stream."
                             : "[EPSILON] RTCM 串口配置已完成，但重新启动实时导航流失败。");
                 collector->stop();
-                finishOnUi();
+                finishOnUi(false);
                 return;
             }
 
@@ -5791,7 +5791,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
                         .arg(epsilonPort, forwardPort, forwardBaudText));
         }
 
-        finishOnUi();
+        finishOnUi(shouldOpenRtkDialog);
     });
 }
 
