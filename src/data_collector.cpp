@@ -1972,7 +1972,7 @@ void EpsilonCollector::run()
         latest_data_.utc_unix_s = readU32LE(payload + 0);
         latest_data_.utc_microseconds = readU32LE(payload + 4);
       }
-      else if (packetId == kMsgFormattedTime && payloadSize >= 15)
+      else if (packetId == kMsgFormattedTime && payloadSize >= 14)
       {
         sysStateRateTracker.record();
         const uint32_t microseconds = readU32LE(payload + 0);
@@ -1982,9 +1982,9 @@ void EpsilonCollector::run()
                 static_cast<int>(readU16LE(payload + 4)),
                 static_cast<int>(payload[8]),
                 static_cast<int>(payload[9]),
+                static_cast<int>(payload[11]),
                 static_cast<int>(payload[12]),
-                static_cast<int>(payload[13]),
-                static_cast<double>(payload[14]) + microseconds / 1000000.0,
+                static_cast<double>(payload[13]) + microseconds / 1000000.0,
                 utcSeconds,
                 utcMicroseconds))
         {
@@ -2001,17 +2001,15 @@ void EpsilonCollector::run()
         latest_data_.height_std_m = readFloatLE(payload + 52);
         latest_data_.diff_age_s = readFloatLE(payload + 64);
         const uint16_t rawGnssStatus = readU16LE(payload + 72);
+        latest_data_.gnss_fix_code = static_cast<int>(rawGnssStatus & 0x0Fu);
+        latest_data_.gnss_fix_text = epsilonGnssFixName(latest_data_.gnss_fix_code);
         latest_data_.heading_valid = ((rawGnssStatus >> 8) & 0x01u) != 0;
       }
-      else if (packetId == kMsgSatellites && payloadSize >= 13)
+      else if (packetId == kMsgSatellites && payloadSize >= 9)
       {
         latest_data_.hdop = readFloatLE(payload + 0);
         latest_data_.vdop = readFloatLE(payload + 4);
-        latest_data_.gnss_satellites = static_cast<int>(payload[8]) +
-            static_cast<int>(payload[9]) +
-            static_cast<int>(payload[10]) +
-            static_cast<int>(payload[11]) +
-            static_cast<int>(payload[12]);
+        latest_data_.gnss_satellites = static_cast<int>(payload[8]);
       }
       else if (packetId == kMsgGeodeticPos && payloadSize >= 32)
       {

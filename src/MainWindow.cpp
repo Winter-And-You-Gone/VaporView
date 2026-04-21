@@ -448,7 +448,7 @@ public:
                 .arg(c, 0, 'f', decimals);
         };
         const bool gnss_fix_valid = epsilon_data.gnss_fix_code >= 2;
-        const bool utc_valid = gnss_fix_valid && epsilon_data.utc_unix_s > 0;
+        const bool utc_valid = epsilon_data.utc_unix_s > 0;
         const bool pressure_valid = std::isfinite(epsilon_data.pressure_pa) &&
                                     epsilon_data.pressure_pa > 0.0;
         const bool pressure_altitude_valid = std::isfinite(epsilon_data.pressure_altitude_m);
@@ -471,7 +471,7 @@ public:
         ecef_packet_rate_hz_ = epsilon_data.ecef_packet_rate_hz;
         refreshRateLabel();
         setValue(QStringLiteral("fix"), QString::fromStdString(epsilon_data.gnss_fix_text));
-        setValue(QStringLiteral("sat"), gnss_fix_valid && epsilon_data.gnss_satellites > 0 ? QString::number(epsilon_data.gnss_satellites) : QString());
+        setValue(QStringLiteral("sat"), epsilon_data.gnss_satellites > 0 ? QString::number(epsilon_data.gnss_satellites) : QString());
         setValue(QStringLiteral("llh"), gnss_fix_valid ? triple(epsilon_data.latitude_deg, epsilon_data.longitude_deg, epsilon_data.height_m, 8) : QString());
         setValue(QStringLiteral("ecef"), gnss_fix_valid ? triple(epsilon_data.ecef_x_m, epsilon_data.ecef_y_m, epsilon_data.ecef_z_m, 4) : QString());
         setValue(QStringLiteral("ned_pos"), gnss_fix_valid ? triple(epsilon_data.ned_n_m, epsilon_data.ned_e_m, epsilon_data.ned_d_m, 4) : QString());
