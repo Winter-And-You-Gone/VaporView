@@ -24,6 +24,7 @@
 #include <QTextBlock>
 #include <QTextCursor>
 #include <QTimer>
+#include <QTimeZone>
 #include <QUrl>
 #include <QUrlQuery>
 #include <cmath>
@@ -39,6 +40,7 @@ constexpr int kGgaStaleTimeoutMs = 1500;
 constexpr int kGgaMaxVisibleLines = 200;
 constexpr int kRtkLogVisibleLines = 5;
 constexpr int kRtkHttpTimeoutMs = 5000;
+constexpr const char *kEpsilonMainGgaSourceKey = "__epsilon_main__";
 const QRegularExpression kGgaSentencePattern("^\\$..GGA,");
 
 QStringList buildProbeBaudList(const QComboBox *baudrateCombo)
@@ -193,6 +195,84 @@ bool isUsableEpsilonNmeaPosition(const VaporView::EpsilonData &data)
         (std::abs(data.latitude_deg) > 1e-9 || std::abs(data.longitude_deg) > 1e-9);
 }
 
+QString wrapNmeaSentence(const QString &body)
+{
+    unsigned char checksum = 0;
+    const QByteArray bytes = body.toLatin1();
+    for (char ch : bytes)
+    {
+        checksum ^= static_cast<unsigned char>(ch);
+    }
+
+    return QStringLiteral("$%1*%2")
+        .arg(body)
+        .arg(static_cast<int>(checksum), 2, 16, QLatin1Char('0'))
+        .toUpper();
+}
+
+QString formatNmeaCoordinate(double degrees, int degreeWidth)
+{
+    const double absoluteDegrees = std::abs(degrees);
+    const int wholeDegrees = static_cast<int>(std::floor(absoluteDegrees));
+    const double minutes = (absoluteDegrees - wholeDegrees) * 60.0;
+    QString minutesText = QString::number(minutes, 'f', 6);
+    if (minutes < 10.0)
+    {
+        minutesText.prepend(QLatin1Char('0'));
+    }
+
+    return QStringLiteral("%1%2")
+        .arg(wholeDegrees, degreeWidth, 10, QLatin1Char('0'))
+        .arg(minutesText);
+}
+
+QString ggaTimeFieldFromEpsilon(const VaporView::EpsilonData &data)
+{
+    QDateTime utc = QDateTime::currentDateTimeUtc();
+    if (data.utc_unix_s > 0)
+    {
+        utc = QDateTime::fromSecsSinceEpoch(static_cast<qint64>(data.utc_unix_s), QTimeZone::UTC)
+            .addMSecs(static_cast<qint64>(data.utc_microseconds / 1000));
+    }
+
+    const QTime time = utc.time();
+    return QStringLiteral("%1%2%3.%4")
+        .arg(time.hour(), 2, 10, QLatin1Char('0'))
+        .arg(time.minute(), 2, 10, QLatin1Char('0'))
+        .arg(time.second(), 2, 10, QLatin1Char('0'))
+        .arg(time.msec() / 10, 2, 10, QLatin1Char('0'));
+}
+
+QString buildEpsilonGgaSentence(const VaporView::EpsilonData &data)
+{
+    if (!isUsableEpsilonNmeaPosition(data))
+    {
+        return {};
+    }
+
+    const QString latitude = formatNmeaCoordinate(data.latitude_deg, 2);
+    const QString longitude = formatNmeaCoordinate(data.longitude_deg, 3);
+    const QString northSouth = data.latitude_deg < 0.0 ? QStringLiteral("S") : QStringLiteral("N");
+    const QString eastWest = data.longitude_deg < 0.0 ? QStringLiteral("W") : QStringLiteral("E");
+    const int satellites = std::clamp(data.gnss_satellites, 0, 99);
+    const double hdop = std::isfinite(data.hdop) && data.hdop > 0.0 ? data.hdop : 1.0;
+    const double altitude = std::isfinite(data.height_m) ? data.height_m : 0.0;
+    const double diffAge = std::isfinite(data.diff_age_s) && data.diff_age_s > 0.0 ? data.diff_age_s : 0.0;
+
+    const QString body = QStringLiteral("GPGGA,%1,%2,%3,%4,%5,1,%6,%7,%8,M,0.0,M,%9,")
+        .arg(ggaTimeFieldFromEpsilon(data),
+             latitude,
+             northSouth,
+             longitude,
+             eastWest)
+        .arg(satellites, 2, 10, QLatin1Char('0'))
+        .arg(QString::number(hdop, 'f', 1),
+             QString::number(altitude, 'f', 3),
+             diffAge > 0.0 ? QString::number(diffAge, 'f', 1) : QString());
+
+    return wrapNmeaSentence(body);
+}
+
 QString buildMockGgaSentence()
 {
     const QTime utc = QDateTime::currentDateTimeUtc().time();
@@ -206,17 +286,7 @@ QString buildMockGgaSentence()
         "GPGGA,%1,3000.0000,N,12000.0000,E,1,12,1.0,0.0,M,0.0,M,,")
         .arg(timeField);
 
-    unsigned char checksum = 0;
-    const QByteArray bytes = body.toLatin1();
-    for (char ch : bytes)
-    {
-        checksum ^= static_cast<unsigned char>(ch);
-    }
-
-    return QStringLiteral("$%1*%2")
-        .arg(body)
-        .arg(static_cast<int>(checksum), 2, 16, QLatin1Char('0'))
-        .toUpper();
+    return wrapNmeaSentence(body);
 }
 
 QString formatRtkStatusLine(const RtkStreamStats &stats, const QString &fallbackMessage)
@@ -457,6 +527,8 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , last_rtk_status_message_()
     , gga_last_open_attempt_()
     , gga_last_sentence_time_()
+    , gga_last_epsilon_sample_time_()
+    , gga_last_epsilon_device_timestamp_us_(0)
     , gga_has_sentence_time_(false)
     , gga_monitor_enabled_(false)
 {
@@ -727,6 +799,7 @@ QString RtkConfigDialog::textFor(const QString& english, const QString& chinese)
 void RtkConfigDialog::setEnglish(bool english)
 {
     is_english_ = english;
+    refreshPortCombos();
 
     setWindowTitle(textFor("RTK NTRIP Configuration", "RTK NTRIP 配置"));
     config_group_->setTitle(textFor("NTRIP Server Configuration", "NTRIP 服务器配置"));
@@ -1013,11 +1086,10 @@ void RtkConfigDialog::loadSettings()
     refreshPortCombos();
 #ifdef _WIN32
     output_port_combo_->setCurrentText(settings.value("output_port", "COM1").toString());
-    gga_port_combo_->setCurrentText(settings.value("gga_port", "COM1").toString());
 #else
     output_port_combo_->setCurrentText(settings.value("output_port", "/dev/ttyCOM3").toString());
-    gga_port_combo_->setCurrentText(settings.value("gga_port", "/dev/ttyS0").toString());
 #endif
+    applySavedGgaSource(settings.value("gga_source", settings.value("gga_port", QString::fromLatin1(kEpsilonMainGgaSourceKey))).toString());
     baudrate_combo_->setCurrentText(settings.value("baudrate", "115200").toString());
     timeout_combo_->setCurrentText(settings.value("timeout", "5000").toString());
     reconnect_combo_->setCurrentText(settings.value("reconnect", "1000").toString());
@@ -1035,7 +1107,8 @@ void RtkConfigDialog::saveSettings()
     settings.setValue("mountpoint", mountpoint_edit_->text());
     settings.setValue("heading_length_cm", heading_length_edit_->text());
     settings.setValue("output_port", output_port_combo_->currentText());
-    settings.setValue("gga_port", gga_port_combo_->currentText());
+    settings.setValue("gga_source", savedGgaSourceValue());
+    settings.setValue("gga_port", isMainGgaSourceSelected() ? QString() : ggaPortName());
     settings.setValue("baudrate", baudrate_combo_->currentText());
     settings.setValue("timeout", timeout_combo_->currentText());
     settings.setValue("reconnect", reconnect_combo_->currentText());
@@ -1225,6 +1298,62 @@ void RtkConfigDialog::onRtkStatusTimer()
     pollRtkServiceStatus(false);
 }
 
+QString RtkConfigDialog::mainGgaSourceLabel() const
+{
+    return textFor("EPSILON main port (generated GGA)", "EPSILON 主串口（生成GGA）");
+}
+
+bool RtkConfigDialog::isMainGgaSourceSelected() const
+{
+    if (!gga_port_combo_)
+    {
+        return true;
+    }
+
+    const QVariant data = gga_port_combo_->currentData();
+    if (data.toString() == QString::fromLatin1(kEpsilonMainGgaSourceKey))
+    {
+        return true;
+    }
+
+    const QString text = gga_port_combo_->currentText().trimmed();
+    return text == QString::fromLatin1(kEpsilonMainGgaSourceKey) ||
+        text == mainGgaSourceLabel() ||
+        (text.contains(QStringLiteral("EPSILON"), Qt::CaseInsensitive) &&
+         (text.contains(QStringLiteral("main"), Qt::CaseInsensitive) ||
+          text.contains(QStringLiteral("主串口"), Qt::CaseInsensitive)));
+}
+
+QString RtkConfigDialog::savedGgaSourceValue() const
+{
+    return isMainGgaSourceSelected()
+        ? QString::fromLatin1(kEpsilonMainGgaSourceKey)
+        : ggaPortName();
+}
+
+void RtkConfigDialog::applySavedGgaSource(const QString& source)
+{
+    if (!gga_port_combo_)
+    {
+        return;
+    }
+
+    const QString trimmed = source.trimmed();
+    if (trimmed.isEmpty() ||
+        trimmed == QString::fromLatin1(kEpsilonMainGgaSourceKey) ||
+        trimmed == mainGgaSourceLabel() ||
+        (trimmed.contains(QStringLiteral("EPSILON"), Qt::CaseInsensitive) &&
+         (trimmed.contains(QStringLiteral("main"), Qt::CaseInsensitive) ||
+          trimmed.contains(QStringLiteral("主串口"), Qt::CaseInsensitive))))
+    {
+        const int mainIndex = gga_port_combo_->findData(QString::fromLatin1(kEpsilonMainGgaSourceKey));
+        gga_port_combo_->setCurrentIndex(mainIndex >= 0 ? mainIndex : 0);
+        return;
+    }
+
+    gga_port_combo_->setCurrentText(trimmed);
+}
+
 QString RtkConfigDialog::ggaPortName() const
 {
     if (!gga_port_combo_)
@@ -1296,13 +1425,16 @@ void RtkConfigDialog::updateGgaMonitorText()
         return;
     }
 
-    gga_port_info_label_->setText(textFor("GGA Port:", "GGA串口:"));
+    gga_port_info_label_->setText(textFor("GGA Source:", "GGA来源:"));
 
     if (gga_status_message_.isEmpty())
     {
+        const bool mainSource = isMainGgaSourceSelected();
         updateGgaStatusLabel(
             gga_monitor_enabled_
-                ? textFor("Status: Waiting for serial data", "状态: 正在等待串口数据")
+                ? (mainSource
+                    ? textFor("Status: Waiting for EPSILON main-port position", "状态: 正在等待 EPSILON 主串口定位")
+                    : textFor("Status: Waiting for serial data", "状态: 正在等待串口数据"))
                 : textFor("Status: Click button to read GGA", "状态: 点击按钮开始读取GGA"),
             false);
     }
@@ -1329,6 +1461,8 @@ void RtkConfigDialog::startGgaMonitor()
     gga_buffer_.clear();
     gga_recent_intervals_sec_.clear();
     gga_has_sentence_time_ = false;
+    gga_last_epsilon_sample_time_ = std::chrono::steady_clock::time_point();
+    gga_last_epsilon_device_timestamp_us_ = 0;
     updateGgaFrequency(0.0);
     gga_status_message_.clear();
     updateGgaMonitorText();
@@ -1356,6 +1490,8 @@ void RtkConfigDialog::stopGgaMonitor()
     gga_buffer_.clear();
     gga_recent_intervals_sec_.clear();
     gga_has_sentence_time_ = false;
+    gga_last_epsilon_sample_time_ = std::chrono::steady_clock::time_point();
+    gga_last_epsilon_device_timestamp_us_ = 0;
     gga_monitor_enabled_ = false;
     gga_status_message_.clear();
     updateGgaFrequency(0.0);
@@ -1368,6 +1504,15 @@ bool RtkConfigDialog::tryOpenGgaPort()
     if (!gga_monitor_enabled_)
     {
         return false;
+    }
+
+    if (isMainGgaSourceSelected())
+    {
+        if (gga_serial_.isOpen())
+        {
+            gga_serial_.close();
+        }
+        return true;
     }
 
     if (gga_serial_.isOpen())
@@ -1386,7 +1531,7 @@ bool RtkConfigDialog::tryOpenGgaPort()
     const std::string port = ggaPortName().toStdString();
     if (port.empty())
     {
-        updateGgaStatusLabel(textFor("Status: Please select a GGA port", "状态: 请选择 GGA 串口"), false);
+        updateGgaStatusLabel(textFor("Status: Please select a GGA source", "状态: 请选择 GGA 来源"), false);
         return false;
     }
 
@@ -1406,6 +1551,55 @@ bool RtkConfigDialog::tryOpenGgaPort()
     updateGgaStatusLabel(textFor("Status: Listening on %1", "状态: 正在监听 %1").arg(ggaPortName()), true);
     updateGgaMonitorText();
     return true;
+}
+
+void RtkConfigDialog::pollMainGgaSource()
+{
+    if (!gga_monitor_enabled_)
+    {
+        return;
+    }
+
+    if (!epsilon_data_provider_)
+    {
+        updateGgaStatusLabel(
+            textFor("Status: EPSILON main-port source is not connected", "状态: EPSILON 主串口来源未接入"),
+            false);
+        return;
+    }
+
+    const VaporView::EpsilonData data = epsilon_data_provider_();
+    if (!isUsableEpsilonNmeaPosition(data))
+    {
+        updateGgaStatusLabel(
+            textFor("Status: Waiting for valid EPSILON main-port position", "状态: 正在等待有效的 EPSILON 主串口定位"),
+            false);
+        return;
+    }
+
+    const bool sameSample =
+        data.timestamp == gga_last_epsilon_sample_time_ &&
+        data.device_timestamp_us == gga_last_epsilon_device_timestamp_us_;
+    if (sameSample && gga_has_sentence_time_)
+    {
+        return;
+    }
+
+    const QString sentence = buildEpsilonGgaSentence(data);
+    if (sentence.isEmpty())
+    {
+        updateGgaStatusLabel(
+            textFor("Status: Failed to build GGA from EPSILON position", "状态: EPSILON 定位无法组装 GGA"),
+            false);
+        return;
+    }
+
+    gga_last_epsilon_sample_time_ = data.timestamp;
+    gga_last_epsilon_device_timestamp_us_ = data.device_timestamp_us;
+    handleGgaSentence(sentence);
+    updateGgaStatusLabel(
+        textFor("Status: Reading generated GGA from EPSILON main port", "状态: 正在读取 EPSILON 主串口生成的 GGA"),
+        true);
 }
 
 void RtkConfigDialog::onGgaToggleClicked()
@@ -1679,6 +1873,27 @@ void RtkConfigDialog::trimGgaDisplay()
 
 void RtkConfigDialog::onGgaPollTimer()
 {
+    if (isMainGgaSourceSelected())
+    {
+        if (gga_serial_.isOpen())
+        {
+            gga_serial_.close();
+        }
+        pollMainGgaSource();
+        if (gga_has_sentence_time_)
+        {
+            const auto now = std::chrono::steady_clock::now();
+            const auto staleMs = std::chrono::duration_cast<std::chrono::milliseconds>(now - gga_last_sentence_time_).count();
+            if (staleMs > kGgaStaleTimeoutMs)
+            {
+                gga_recent_intervals_sec_.clear();
+                updateGgaFrequency(0.0);
+                updateGgaStatusLabel(textFor("Status: Waiting for next EPSILON main-port position", "状态: 正在等待下一帧 EPSILON 主串口定位"), false);
+            }
+        }
+        return;
+    }
+
     if (!tryOpenGgaPort())
     {
         return;
@@ -1738,11 +1953,10 @@ void RtkConfigDialog::refreshPortCombos()
     {
         const QSignalBlocker blocker(gga_port_combo_);
         gga_port_combo_->clear();
+        gga_port_combo_->addItem(mainGgaSourceLabel(), QString::fromLatin1(kEpsilonMainGgaSourceKey));
+        gga_port_combo_->insertSeparator(gga_port_combo_->count());
         gga_port_combo_->addItems(ports);
-        if (!currentGga.isEmpty())
-        {
-            gga_port_combo_->setCurrentText(currentGga);
-        }
+        applySavedGgaSource(currentGga);
     }
 }
 
@@ -1877,7 +2091,7 @@ void RtkConfigDialog::applyDetectedOutputAndGgaPort(const QString& portName, con
     }
     if (gga_port_combo_)
     {
-        gga_port_combo_->setCurrentText(portName);
+        applySavedGgaSource(QString::fromLatin1(kEpsilonMainGgaSourceKey));
     }
     if (!baudText.isEmpty() && baudrate_combo_)
     {
@@ -1887,8 +2101,8 @@ void RtkConfigDialog::applyDetectedOutputAndGgaPort(const QString& portName, con
     const QString appliedBaud = !baudText.isEmpty() && baudrate_combo_
         ? baudText
         : (baudrate_combo_ ? baudrate_combo_->currentText() : QString());
-    appendLog(textFor("Auto detect applied: output and GGA ports set to %1 @ %2.",
-                      "自动识别已应用：输出串口和 GGA 串口已设置为 %1 @ %2。")
+    appendLog(textFor("Auto detect applied: output port set to %1 @ %2; GGA source remains EPSILON main port.",
+                      "自动识别已应用：输出串口已设置为 %1 @ %2；GGA 来源保持 EPSILON 主串口。")
                   .arg(portName, appliedBaud));
 }
 
@@ -2355,7 +2569,8 @@ void RtkConfigDialog::onSaveConfigClicked()
     settings.setValue("mountpoint", mountpoint_edit_->text());
     settings.setValue("heading_length_cm", heading_length_edit_->text());
     settings.setValue("output_port", output_port_combo_->currentText());
-    settings.setValue("gga_port", gga_port_combo_->currentText());
+    settings.setValue("gga_source", savedGgaSourceValue());
+    settings.setValue("gga_port", isMainGgaSourceSelected() ? QString() : ggaPortName());
     settings.setValue("baudrate", baudrate_combo_->currentText());
     settings.setValue("timeout", timeout_combo_->currentText());
     settings.setValue("reconnect", reconnect_combo_->currentText());
@@ -2382,7 +2597,7 @@ void RtkConfigDialog::onLoadConfigClicked()
     mountpoint_edit_->setText(settings.value("mountpoint", "").toString());
     heading_length_edit_->setText(settings.value("heading_length_cm", "").toString());
     output_port_combo_->setCurrentText(settings.value("output_port", "").toString());
-    gga_port_combo_->setCurrentText(settings.value("gga_port", "").toString());
+    applySavedGgaSource(settings.value("gga_source", settings.value("gga_port", QString::fromLatin1(kEpsilonMainGgaSourceKey))).toString());
     baudrate_combo_->setCurrentText(settings.value("baudrate", "115200").toString());
     timeout_combo_->setCurrentText(settings.value("timeout", "5000").toString());
     reconnect_combo_->setCurrentText(settings.value("reconnect", "1000").toString());

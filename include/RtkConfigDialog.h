@@ -15,6 +15,7 @@
 #include <QHBoxLayout>
 #include <QGridLayout>
 #include <chrono>
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <memory>
@@ -76,6 +77,11 @@ private:
     void handleGgaSentence(const QString& sentence);
     void trimGgaDisplay();
     bool tryOpenGgaPort();
+    bool isMainGgaSourceSelected() const;
+    QString mainGgaSourceLabel() const;
+    QString savedGgaSourceValue() const;
+    void applySavedGgaSource(const QString& source);
+    void pollMainGgaSource();
     int currentGgaBaudrate() const;
     int currentOutputBaudrate() const;
     QString ggaPortName() const;
@@ -158,6 +164,8 @@ private:
     QString gga_status_message_;
     std::chrono::steady_clock::time_point gga_last_open_attempt_;
     std::chrono::steady_clock::time_point gga_last_sentence_time_;
+    std::chrono::steady_clock::time_point gga_last_epsilon_sample_time_;
+    uint64_t gga_last_epsilon_device_timestamp_us_;
     std::deque<double> gga_recent_intervals_sec_;
     bool gga_has_sentence_time_;
     bool gga_monitor_enabled_;
