@@ -92,6 +92,56 @@ struct NoSignalTestResult
     qint64 receivedRtcmBytes = 0;
 };
 
+QString describeNoSignalTestFailure(const NoSignalTestResult& result, bool english)
+{
+    if (!result.runtimeError.isEmpty())
+    {
+        return result.runtimeError;
+    }
+
+    if (!result.linkReady)
+    {
+        return english
+            ? QStringLiteral("The local loopback serial link did not become ready within timeout.")
+            : QStringLiteral("超时时间内本地 loopback 模拟串口链路未进入可用状态。");
+    }
+
+    const QString rtklibMessage = result.finalMessage.trimmed();
+    const bool inputDisconnected = rtklibMessage.contains(QStringLiteral("(0) disconnected"), Qt::CaseInsensitive);
+    if (inputDisconnected)
+    {
+        return english
+            ? QStringLiteral("The local 127.0.0.1 loopback link is only the mock serial used by this test and is already connected. "
+                             "The NTRIP input stream is disconnected, so no RTCM data can be returned. "
+                             "Check the caster address, port, mountpoint, account/password, and network access.\n"
+                             "RTKLIB status: %1")
+                  .arg(rtklibMessage)
+            : QStringLiteral("127.0.0.1 是本次测试使用的本地 loopback 模拟串口，已经连上；真正断开的是 NTRIP 输入流，"
+                             "因此不会有 RTCM 数据返回。请检查差分服务器地址、端口、挂载点、账号密码和网络连接。\n"
+                             "RTKLIB 状态: %1")
+                  .arg(rtklibMessage);
+    }
+
+    if (result.inputBytes <= 0)
+    {
+        return english
+            ? QStringLiteral("The test GGA was injected through the local loopback, but no bytes were received from the NTRIP caster. "
+                             "Check whether the caster requires a different mountpoint, valid credentials, or a real rover position.\n"
+                             "RTKLIB status: %1")
+                  .arg(rtklibMessage.isEmpty() ? QStringLiteral("--") : rtklibMessage)
+            : QStringLiteral("测试 GGA 已通过本地 loopback 注入，但没有从 NTRIP 差分服务器收到任何字节。"
+                             "请检查挂载点、账号密码，或该服务是否要求真实流动站位置。\n"
+                             "RTKLIB 状态: %1")
+                  .arg(rtklibMessage.isEmpty() ? QStringLiteral("--") : rtklibMessage);
+    }
+
+    return rtklibMessage.isEmpty()
+        ? (english
+              ? QStringLiteral("No RTCM data returned within timeout.")
+              : QStringLiteral("超时时间内未收到 RTCM 返回数据。"))
+        : rtklibMessage;
+}
+
 QComboBox *createTimingComboBox(QWidget *parent, const QString &defaultValue)
 {
     auto *combo = new QComboBox(parent);
@@ -2206,13 +2256,7 @@ void RtkConfigDialog::onTestClicked()
                 return;
             }
 
-            const QString detail = !result.runtimeError.isEmpty()
-                ? result.runtimeError
-                : (!result.linkReady
-                    ? self->textFor("RTK loopback link did not become ready within timeout.", "超时时间内 RTK loopback 链路未进入可用状态。")
-                    : (result.finalMessage.isEmpty()
-                        ? self->textFor("No RTCM data returned within timeout.", "超时时间内未收到 RTCM 返回数据。")
-                        : result.finalMessage));
+            const QString detail = describeNoSignalTestFailure(result, self->is_english_);
             self->appendLog(self->textFor("No-signal RTK test finished without RTCM response: %1", "无信号 RTK 测试结束，未收到 RTCM 返回: %1").arg(detail));
             QMessageBox::warning(
                 self,
