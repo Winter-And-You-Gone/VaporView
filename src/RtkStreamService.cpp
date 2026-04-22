@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <string>
 
 namespace
@@ -73,6 +74,16 @@ QString trimRtklibMessage(const char *message)
     }
     return text;
 }
+
+bool hasValidNmeaPosition(const RtkStreamConfig &config)
+{
+    return config.sendNmeaGga &&
+        std::isfinite(config.nmeaLatitudeDeg) &&
+        std::isfinite(config.nmeaLongitudeDeg) &&
+        std::isfinite(config.nmeaHeightM) &&
+        std::abs(config.nmeaLatitudeDeg) <= 90.0 &&
+        std::abs(config.nmeaLongitudeDeg) <= 180.0;
+}
 }
 
 struct RtkStreamService::Impl
@@ -130,15 +141,27 @@ bool RtkStreamService::start(const RtkStreamConfig &config, QString *errorMessag
     std::array<char *, 2> nullCommands = {nullptr, nullptr};
     std::array<char *, 2> nullPeriodicCommands = {nullptr, nullptr};
     std::array<int, 2> streamTypes = {STR_NTRIPCLI, outputStreamType};
+    std::array<double, 3> nmeaPos = {};
+    const bool sendNmeaGga = hasValidNmeaPosition(config);
+    if (sendNmeaGga)
+    {
+        const double llh[] = {
+            config.nmeaLatitudeDeg * D2R,
+            config.nmeaLongitudeDeg * D2R,
+            config.nmeaHeightM,
+        };
+        pos2ecef(llh, nmeaPos.data());
+    }
+
     std::array<int, 8> options = {
         (std::max)(1000, config.timeoutMs),
         (std::max)(100, config.reconnectMs),
         2000,
         32768,
         10,
-        0,
+        sendNmeaGga ? (std::max)(1000, config.nmeaGgaCycleMs) : 0,
         30,
-        (std::max)(0, config.relayBack),
+        sendNmeaGga ? 0 : (std::max)(0, config.relayBack),
     };
 
     if (!strsvrstart(
@@ -150,7 +173,7 @@ bool RtkStreamService::start(const RtkStreamConfig &config, QString *errorMessag
             nullConverters.data(),
             nullCommands.data(),
             nullPeriodicCommands.data(),
-            nullptr))
+            sendNmeaGga ? nmeaPos.data() : nullptr))
     {
         impl_->running = false;
         if (errorMessage)

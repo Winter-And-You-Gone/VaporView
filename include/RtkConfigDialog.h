@@ -16,10 +16,12 @@
 #include <QGridLayout>
 #include <chrono>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <atomic>
 #include <thread>
 
+#include "data_types.h"
 #include "serial_port.h"
 #include "RtkStreamService.h"
 
@@ -37,6 +39,7 @@ public:
     void setEnglish(bool english);
     void setFontScale(int percent);
     void setPreferredOutputPortAndBaud(const QString& portName, const QString& baudText);
+    void setEpsilonDataProvider(std::function<VaporView::EpsilonData()> provider);
 
 private slots:
     void onStartClicked();
@@ -143,6 +146,7 @@ private:
     bool is_running_;
     bool is_english_;
     int font_scale_percent_;
+    std::function<VaporView::EpsilonData()> epsilon_data_provider_;
     QSize base_dialog_size_;
     QSize base_minimum_dialog_size_;
     QString config_file_path_;

@@ -27,6 +27,7 @@
 #include <QUrl>
 #include <QUrlQuery>
 #include <cmath>
+#include <utility>
 
 #include "serial_probe_utils.h"
 
@@ -90,6 +91,7 @@ struct NoSignalTestResult
     qint64 inputBytes = 0;
     qint64 outputBytes = 0;
     qint64 receivedRtcmBytes = 0;
+    bool generatedGga = false;
 };
 
 QString describeNoSignalTestFailure(const NoSignalTestResult& result, bool english)
@@ -124,6 +126,19 @@ QString describeNoSignalTestFailure(const NoSignalTestResult& result, bool engli
 
     if (result.inputBytes <= 0)
     {
+        if (result.generatedGga)
+        {
+            return english
+                ? QStringLiteral("The EPSILON main-port position was sent to the NTRIP caster as GGA, but no bytes were received. "
+                                 "Check whether the caster requires a different mountpoint, valid credentials, or a different rover position.\n"
+                                 "RTKLIB status: %1")
+                      .arg(rtklibMessage.isEmpty() ? QStringLiteral("--") : rtklibMessage)
+                : QStringLiteral("已把 EPSILON 主串口定位组装成 GGA 发给 NTRIP 差分服务器，但没有收到任何字节。"
+                                 "请检查挂载点、账号密码，或该服务是否要求不同的流动站位置。\n"
+                                 "RTKLIB 状态: %1")
+                      .arg(rtklibMessage.isEmpty() ? QStringLiteral("--") : rtklibMessage);
+        }
+
         return english
             ? QStringLiteral("The test GGA was injected through the local loopback, but no bytes were received from the NTRIP caster. "
                              "Check whether the caster requires a different mountpoint, valid credentials, or a real rover position.\n"
@@ -165,6 +180,17 @@ int comboIntValue(const QComboBox *combo, int defaultValue)
     bool ok = false;
     const int value = combo->currentText().toInt(&ok);
     return ok ? value : defaultValue;
+}
+
+bool isUsableEpsilonNmeaPosition(const VaporView::EpsilonData &data)
+{
+    return data.valid &&
+        std::isfinite(data.latitude_deg) &&
+        std::isfinite(data.longitude_deg) &&
+        std::isfinite(data.height_m) &&
+        std::abs(data.latitude_deg) <= 90.0 &&
+        std::abs(data.longitude_deg) <= 180.0 &&
+        (std::abs(data.latitude_deg) > 1e-9 || std::abs(data.longitude_deg) > 1e-9);
 }
 
 QString buildMockGgaSentence()
@@ -1028,6 +1054,11 @@ void RtkConfigDialog::setPreferredOutputPortAndBaud(const QString& portName, con
     }
 }
 
+void RtkConfigDialog::setEpsilonDataProvider(std::function<VaporView::EpsilonData()> provider)
+{
+    epsilon_data_provider_ = std::move(provider);
+}
+
 bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config, QString *description) const
 {
     const QString server = server_edit_->text().trimmed();
@@ -1040,6 +1071,10 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config, QString *des
     const int baudrate = baudrate_combo_->currentText().toInt(&baudrateOk);
     const int timeout = comboIntValue(timeout_combo_, 5000);
     const int reconnect = comboIntValue(reconnect_combo_, 1000);
+    const VaporView::EpsilonData epsilonData = epsilon_data_provider_
+        ? epsilon_data_provider_()
+        : VaporView::EpsilonData();
+    const bool hasEpsilonPosition = isUsableEpsilonNmeaPosition(epsilonData);
 
     if (server.isEmpty() || mountpoint.isEmpty() || outputPort.isEmpty())
     {
@@ -1057,6 +1092,12 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config, QString *des
         config->baudrate = baudrateOk ? baudrate : 115200;
         config->timeoutMs = timeout;
         config->reconnectMs = reconnect;
+        config->relayBack = hasEpsilonPosition ? 0 : 1;
+        config->sendNmeaGga = hasEpsilonPosition;
+        config->nmeaGgaCycleMs = 1000;
+        config->nmeaLatitudeDeg = epsilonData.latitude_deg;
+        config->nmeaLongitudeDeg = epsilonData.longitude_deg;
+        config->nmeaHeightM = epsilonData.height_m;
     }
 
     QString ntripUrl;
@@ -1082,8 +1123,18 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config, QString *des
         const QString serialUrl = QString("serial://%1:%2:8:n:1:off")
             .arg(outputPort)
             .arg(baudrateOk ? baudrate : 115200);
-        *description = textFor("Embedded RTK stream: %1 -> %2", "内嵌 RTK 流服务: %1 -> %2")
-            .arg(ntripUrl, serialUrl);
+        const QString ggaSource = hasEpsilonPosition
+            ? textFor("GGA source: EPSILON main-port position [%1, %2, %3 m] at 1 Hz",
+                      "GGA 来源: EPSILON 主串口定位 [%1, %2, %3 m]，1Hz")
+                  .arg(QString::number(epsilonData.latitude_deg, 'f', 8),
+                       QString::number(epsilonData.longitude_deg, 'f', 8),
+                       QString::number(epsilonData.height_m, 'f', 3))
+            : textFor("GGA source: output-port relay fallback; connect EPSILON main port first to generate GGA without reading from the RTCM port.",
+                      "GGA 来源: 输出口回读兼容模式；请先连接 EPSILON 主串口，才能不依赖 RTCM 串口生成 GGA。");
+        *description = textFor("Embedded RTK stream: %1 -> %2\n%3",
+                               "内嵌 RTK 流服务: %1 -> %2\n%3")
+            .arg(ntripUrl, serialUrl)
+            .arg(ggaSource);
     }
 
     return true;
@@ -1983,6 +2034,16 @@ void RtkConfigDialog::onStartClicked()
 
     appendLog(textFor("Starting RTK service...", "正在启动 RTK 服务..."));
     appendLog(description);
+    if (config.sendNmeaGga)
+    {
+        appendLog(textFor("NTRIP GGA will be generated from the EPSILON main-port position; RTCM is written only to the configured output port.",
+                          "将使用 EPSILON 主串口定位生成 NTRIP GGA；RTCM 只写入配置的输出串口。"));
+    }
+    else
+    {
+        appendLog(textFor("No valid EPSILON main-port position is available, so RTK service keeps output-port GGA relay fallback.",
+                          "当前没有可用的 EPSILON 主串口定位，RTK 服务保留输出口回读 GGA 的兼容模式。"));
+    }
 
     QString errorMessage;
     if (rtk_service_ && rtk_service_->start(config, &errorMessage))
@@ -2094,11 +2155,17 @@ void RtkConfigDialog::onTestClicked()
         }
         else
         {
+            const bool useGeneratedGga = config.sendNmeaGga;
             config.outputMode = RtkStreamConfig::OutputMode::TcpClient;
             config.outputPathOverride = QStringLiteral("127.0.0.1:%1").arg(mockSerialServer.serverPort());
-            config.relayBack = 1;
+            config.relayBack = useGeneratedGga ? 0 : 1;
             queueLog(self->textFor("Using loopback mock serial on 127.0.0.1:%1", "正在使用 127.0.0.1:%1 的 loopback 模拟串口")
                 .arg(mockSerialServer.serverPort()));
+            if (useGeneratedGga)
+            {
+                queueLog(self->textFor("The test will send EPSILON-position GGA directly to NTRIP; loopback only receives RTCM.",
+                                       "本次测试将把 EPSILON 定位 GGA 直接发给 NTRIP；loopback 只接收 RTCM。"));
+            }
 
             std::unique_ptr<RtkStreamService> testService = std::make_unique<RtkStreamService>();
             QString errorMessage;
@@ -2116,6 +2183,7 @@ void RtkConfigDialog::onTestClicked()
                 int rtcmResponseBursts = 0;
                 bool loggedMockGgaTemplate = false;
                 std::unique_ptr<QTcpSocket> mockSerialPeer;
+                result.generatedGga = useGeneratedGga;
 
                 while (!self->shutdown_requested_.load() && timer.elapsed() < 15000)
                 {
@@ -2147,9 +2215,12 @@ void RtkConfigDialog::onTestClicked()
                         mockSerialPeer->state() == QAbstractSocket::ConnectedState && !stillConnecting)
                     {
                         result.linkReady = true;
-                        const QString mockGga = buildMockGgaSentence();
-                        queueLog(self->textFor("Injecting GGA at 1 Hz: %1", "已按 1Hz 频率注入 GGA 数据: %1").arg(mockGga));
-                        loggedMockGgaTemplate = true;
+                        if (!useGeneratedGga)
+                        {
+                            const QString mockGga = buildMockGgaSentence();
+                            queueLog(self->textFor("Injecting GGA at 1 Hz: %1", "已按 1Hz 频率注入 GGA 数据: %1").arg(mockGga));
+                            loggedMockGgaTemplate = true;
+                        }
                     }
 
                     if (mockSerialPeer)
@@ -2169,7 +2240,7 @@ void RtkConfigDialog::onTestClicked()
                         }
                     }
 
-                    if (result.linkReady && mockSerialPeer && timer.elapsed() - lastInjectMs >= 1000)
+                    if (!useGeneratedGga && result.linkReady && mockSerialPeer && timer.elapsed() - lastInjectMs >= 1000)
                     {
                         const QString mockGga = buildMockGgaSentence();
                         if (!loggedMockGgaTemplate)

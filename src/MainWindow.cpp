@@ -5565,6 +5565,10 @@ void MainWindow::onRtkConfigClicked()
     {
         rtk_config_dialog_ = new RtkConfigDialog(this);
     }
+    rtk_config_dialog_->setEpsilonDataProvider([this]() {
+        const CollectorSnapshot collectors = snapshotCollectors();
+        return collectors.epsilon ? collectors.epsilon->getLatestData() : current_epsilon_;
+    });
     {
         QSettings settings("VaporView", "MainWindow");
         const QString preferredOutputPort = settings.value("epsilon_rtcm_forward_port").toString().trimmed();

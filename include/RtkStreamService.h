@@ -26,6 +26,11 @@ struct RtkStreamConfig
     int timeoutMs = 5000;
     int reconnectMs = 1000;
     int relayBack = 1;
+    bool sendNmeaGga = false;
+    int nmeaGgaCycleMs = 1000;
+    double nmeaLatitudeDeg = 0.0;
+    double nmeaLongitudeDeg = 0.0;
+    double nmeaHeightM = 0.0;
 };
 
 struct RtkStreamStats
