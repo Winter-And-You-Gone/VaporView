@@ -37,7 +37,8 @@
 
 namespace
 {
-constexpr int kGgaPollIntervalMs = 50;
+constexpr int kGgaSendCycleMs = 1000;
+constexpr int kGgaPollIntervalMs = kGgaSendCycleMs / 2;
 constexpr int kGgaReconnectIntervalMs = 1500;
 constexpr int kGgaStaleTimeoutMs = 1500;
 constexpr int kGgaMaxVisibleLines = 200;
@@ -609,8 +610,8 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , is_english_(false)
     , font_scale_percent_(100)
     , epsilon_main_baudrate_(921600)
-    , base_dialog_size_(700, 0)
-    , base_minimum_dialog_size_(620, 0)
+    , base_dialog_size_(980, 0)
+    , base_minimum_dialog_size_(900, 0)
     , rtk_status_timer_(nullptr)
     , gga_poll_timer_(nullptr)
     , last_rtk_status_message_()
@@ -689,6 +690,8 @@ void RtkConfigDialog::setupUi()
     config_layout_ = new QGridLayout(config_group_);
     config_layout_->setSpacing(6);
     config_layout_->setContentsMargins(10, 30, 10, 10);
+    config_layout_->setColumnStretch(1, 2);
+    config_layout_->setColumnStretch(5, 1);
 
     int row = 0;
     server_label_ = new QLabel(this);
@@ -701,27 +704,25 @@ void RtkConfigDialog::setupUi()
     port_edit_ = new QLineEdit(this);
     port_edit_->setText("2101");
     config_layout_->addWidget(port_edit_, row, 3);
+
+    mountpoint_label_ = new QLabel(this);
+    config_layout_->addWidget(mountpoint_label_, row, 4);
+    mountpoint_edit_ = new QLineEdit(this);
+    config_layout_->addWidget(mountpoint_edit_, row, 5);
+    fetch_mountpoints_btn_ = new QPushButton(this);
+    connect(fetch_mountpoints_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onFetchMountpointsClicked);
+    config_layout_->addWidget(fetch_mountpoints_btn_, row, 6);
     row++;
 
     username_label_ = new QLabel(this);
     config_layout_->addWidget(username_label_, row, 0);
     username_edit_ = new QLineEdit(this);
-    config_layout_->addWidget(username_edit_, row, 1, 1, 3);
-    row++;
+    config_layout_->addWidget(username_edit_, row, 1, 1, 2);
 
     password_label_ = new QLabel(this);
-    config_layout_->addWidget(password_label_, row, 0);
+    config_layout_->addWidget(password_label_, row, 3);
     password_edit_ = new QLineEdit(this);
-    config_layout_->addWidget(password_edit_, row, 1, 1, 3);
-    row++;
-
-    mountpoint_label_ = new QLabel(this);
-    config_layout_->addWidget(mountpoint_label_, row, 0);
-    mountpoint_edit_ = new QLineEdit(this);
-    config_layout_->addWidget(mountpoint_edit_, row, 1);
-    fetch_mountpoints_btn_ = new QPushButton(this);
-    connect(fetch_mountpoints_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onFetchMountpointsClicked);
-    config_layout_->addWidget(fetch_mountpoints_btn_, row, 2, 1, 2);
+    config_layout_->addWidget(password_edit_, row, 4, 1, 3);
     row++;
 
     main_layout_->addWidget(config_group_);
@@ -731,6 +732,7 @@ void RtkConfigDialog::setupUi()
     output_layout_->setSpacing(6);
     output_layout_->setContentsMargins(10, 30, 10, 10);
     output_layout_->setColumnStretch(1, 1);
+    output_layout_->setColumnStretch(5, 1);
 
     row = 0;
     output_port_label_ = new QLabel(this);
@@ -746,14 +748,13 @@ void RtkConfigDialog::setupUi()
     auto_detect_ports_btn_ = new QPushButton(this);
     connect(auto_detect_ports_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onAutoDetectPortsClicked);
     output_layout_->addWidget(auto_detect_ports_btn_, row, 3);
-    row++;
 
     baudrate_label_ = new QLabel(this);
-    output_layout_->addWidget(baudrate_label_, row, 0);
+    output_layout_->addWidget(baudrate_label_, row, 4);
     baudrate_combo_ = new QComboBox(this);
     baudrate_combo_->addItems({"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"});
     baudrate_combo_->setCurrentText("115200");
-    output_layout_->addWidget(baudrate_combo_, row, 1);
+    output_layout_->addWidget(baudrate_combo_, row, 5);
     row++;
 
     auto *lever_label_widget = new QWidget(this);
@@ -793,23 +794,22 @@ void RtkConfigDialog::setupUi()
     lever_edit_layout->addWidget(new QLabel(QStringLiteral("Z"), this));
     main_antenna_lever_z_edit_ = createLeverEdit();
     lever_edit_layout->addWidget(main_antenna_lever_z_edit_);
-    output_layout_->addWidget(lever_edit_widget, row, 1, 1, 2);
+    output_layout_->addWidget(lever_edit_widget, row, 1, 1, 4);
 
     apply_main_antenna_lever_btn_ = new QPushButton(this);
     connect(apply_main_antenna_lever_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onApplyMainAntennaLeverArmClicked);
-    output_layout_->addWidget(apply_main_antenna_lever_btn_, row, 3);
+    output_layout_->addWidget(apply_main_antenna_lever_btn_, row, 5);
     row++;
 
     timeout_label_ = new QLabel(this);
     output_layout_->addWidget(timeout_label_, row, 0);
     timeout_combo_ = createTimingComboBox(this, "5000");
     output_layout_->addWidget(timeout_combo_, row, 1);
-    row++;
 
     reconnect_label_ = new QLabel(this);
-    output_layout_->addWidget(reconnect_label_, row, 0);
+    output_layout_->addWidget(reconnect_label_, row, 2);
     reconnect_combo_ = createTimingComboBox(this, "1000");
-    output_layout_->addWidget(reconnect_combo_, row, 1);
+    output_layout_->addWidget(reconnect_combo_, row, 3, 1, 3);
     row++;
 
     main_layout_->addWidget(output_group_);
@@ -929,7 +929,7 @@ void RtkConfigDialog::setEnglish(bool english)
     gga_group_->setTitle(textFor("GGA Monitor", "GGA 监视"));
     log_group_->setTitle(textFor("RTK Service Log", "RTK 服务日志"));
 
-    server_label_->setText(textFor("Server:", "服务器:"));
+    server_label_->setText(textFor("Server Address:", "服务器地址:"));
     port_label_->setText(textFor("Port:", "端口:"));
     username_label_->setText(textFor("Username:", "用户名:"));
     password_label_->setText(textFor("Password:", "密码:"));
@@ -1001,7 +1001,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
         config_layout_->setHorizontalSpacing(scalePixels(6));
         config_layout_->setVerticalSpacing(scalePixels(10));
         config_layout_->setContentsMargins(scalePixels(10), scalePixels(30), scalePixels(10), scalePixels(10));
-        for (int row = 0; row < 4; ++row)
+        for (int row = 0; row < 2; ++row)
         {
             config_layout_->setRowMinimumHeight(row, scalePixels(42));
         }
@@ -1014,7 +1014,8 @@ void RtkConfigDialog::applyScaledUiMetrics()
         output_layout_->setContentsMargins(scalePixels(10), scalePixels(30), scalePixels(10), scalePixels(10));
         output_layout_->setColumnMinimumWidth(2, scalePixels(88));
         output_layout_->setColumnMinimumWidth(3, scalePixels(108));
-        for (int row = 0; row < 6; ++row)
+        output_layout_->setColumnMinimumWidth(4, scalePixels(74));
+        for (int row = 0; row < 3; ++row)
         {
             output_layout_->setRowMinimumHeight(row, scalePixels(40));
         }
@@ -1058,17 +1059,20 @@ void RtkConfigDialog::applyScaledUiMetrics()
         log_text_container_layout_->setSpacing(0);
     }
 
+    server_edit_->setMinimumWidth(scalePixels(220));
     server_edit_->setMinimumHeight(scalePixels(34));
     port_edit_->setMaximumWidth(scalePixels(80));
     port_edit_->setMinimumHeight(scalePixels(34));
+    username_edit_->setMinimumWidth(scalePixels(180));
     username_edit_->setMinimumHeight(scalePixels(34));
+    password_edit_->setMinimumWidth(scalePixels(180));
     password_edit_->setMinimumHeight(scalePixels(34));
     mountpoint_edit_->setMinimumHeight(scalePixels(34));
-    mountpoint_edit_->setMinimumWidth(scalePixels(180));
+    mountpoint_edit_->setMinimumWidth(scalePixels(150));
 
     output_port_combo_->setMinimumWidth(scalePixels(200));
     output_port_combo_->setMinimumHeight(scalePixels(30));
-    baudrate_combo_->setMinimumWidth(scalePixels(200));
+    baudrate_combo_->setMinimumWidth(scalePixels(140));
     baudrate_combo_->setMinimumHeight(scalePixels(30));
     if (main_antenna_lever_help_btn_)
     {
@@ -1087,11 +1091,11 @@ void RtkConfigDialog::applyScaledUiMetrics()
             edit->setMinimumHeight(scalePixels(34));
         }
     }
-    timeout_combo_->setMinimumWidth(scalePixels(200));
+    timeout_combo_->setMinimumWidth(scalePixels(140));
     timeout_combo_->setMinimumHeight(scalePixels(30));
-    reconnect_combo_->setMinimumWidth(scalePixels(200));
+    reconnect_combo_->setMinimumWidth(scalePixels(140));
     reconnect_combo_->setMinimumHeight(scalePixels(30));
-    gga_port_combo_->setMinimumWidth(scalePixels(160));
+    gga_port_combo_->setMinimumWidth(scalePixels(240));
     gga_port_combo_->setMinimumHeight(scalePixels(30));
 
     gga_status_label_->setMinimumHeight(scalePixels(24));
@@ -1324,7 +1328,7 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config, QString *des
         config->reconnectMs = reconnect;
         config->relayBack = hasEpsilonPosition ? 0 : 1;
         config->sendNmeaGga = hasEpsilonPosition;
-        config->nmeaGgaCycleMs = 1000;
+        config->nmeaGgaCycleMs = kGgaSendCycleMs;
         config->nmeaLatitudeDeg = epsilonData.latitude_deg;
         config->nmeaLongitudeDeg = epsilonData.longitude_deg;
         config->nmeaHeightM = epsilonData.height_m;
