@@ -308,6 +308,7 @@ private:
     void hideStatusTaskProgress();
     void rebuildRecordingRateMenu();
     void setRecordingExportRateHz(int rate, bool should_log = true);
+    bool applyEpsilonMainAntennaLeverArm(double x_m, double y_m, double z_m, QString *error_message);
     void setImuRecordingRateHz(int rate, bool should_log = true);
     void setWaveformRecordingRateHz(int rate, bool should_log = true);
     QString defaultRecordingDirectory() const;

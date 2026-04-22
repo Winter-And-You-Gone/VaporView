@@ -12,9 +12,11 @@
 #include <QDateTime>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDoubleValidator>
 #include <QFontMetrics>
 #include <QIntValidator>
 #include <QLabel>
+#include <QLocale>
 #include <QElapsedTimer>
 #include <QRegularExpression>
 #include <QSerialPortInfo>
@@ -25,6 +27,7 @@
 #include <QTextCursor>
 #include <QTimer>
 #include <QTimeZone>
+#include <QToolButton>
 #include <QUrl>
 #include <QUrlQuery>
 #include <cmath>
@@ -567,7 +570,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , mountpoint_label_(nullptr)
     , output_port_label_(nullptr)
     , baudrate_label_(nullptr)
-    , heading_length_label_(nullptr)
+    , main_antenna_lever_label_(nullptr)
     , timeout_label_(nullptr)
     , reconnect_label_(nullptr)
     , gga_port_info_label_(nullptr)
@@ -578,7 +581,9 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , username_edit_(nullptr)
     , password_edit_(nullptr)
     , mountpoint_edit_(nullptr)
-    , heading_length_edit_(nullptr)
+    , main_antenna_lever_x_edit_(nullptr)
+    , main_antenna_lever_y_edit_(nullptr)
+    , main_antenna_lever_z_edit_(nullptr)
     , output_port_combo_(nullptr)
     , baudrate_combo_(nullptr)
     , timeout_combo_(nullptr)
@@ -593,7 +598,8 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , refresh_ports_btn_(nullptr)
     , auto_detect_ports_btn_(nullptr)
     , fetch_mountpoints_btn_(nullptr)
-    , apply_heading_length_btn_(nullptr)
+    , main_antenna_lever_help_btn_(nullptr)
+    , apply_main_antenna_lever_btn_(nullptr)
     , save_config_btn_(nullptr)
     , load_config_btn_(nullptr)
     , clear_log_btn_(nullptr)
@@ -602,6 +608,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , is_running_(false)
     , is_english_(false)
     , font_scale_percent_(100)
+    , epsilon_main_baudrate_(921600)
     , base_dialog_size_(700, 0)
     , base_minimum_dialog_size_(620, 0)
     , rtk_status_timer_(nullptr)
@@ -749,15 +756,48 @@ void RtkConfigDialog::setupUi()
     output_layout_->addWidget(baudrate_combo_, row, 1);
     row++;
 
-    heading_length_label_ = new QLabel(this);
-    output_layout_->addWidget(heading_length_label_, row, 0);
-    heading_length_edit_ = new QLineEdit(this);
-    heading_length_edit_->setValidator(new QIntValidator(0, 300000, heading_length_edit_));
-    output_layout_->addWidget(heading_length_edit_, row, 1);
+    auto *lever_label_widget = new QWidget(this);
+    auto *lever_label_layout = new QHBoxLayout(lever_label_widget);
+    lever_label_layout->setContentsMargins(0, 0, 0, 0);
+    lever_label_layout->setSpacing(4);
+    main_antenna_lever_label_ = new QLabel(this);
+    lever_label_layout->addWidget(main_antenna_lever_label_);
+    main_antenna_lever_help_btn_ = new QToolButton(this);
+    main_antenna_lever_help_btn_->setText(QStringLiteral("?"));
+    main_antenna_lever_help_btn_->setAutoRaise(true);
+    main_antenna_lever_help_btn_->setCursor(Qt::PointingHandCursor);
+    connect(main_antenna_lever_help_btn_, &QToolButton::clicked, this, &RtkConfigDialog::onMainAntennaLeverHelpClicked);
+    lever_label_layout->addWidget(main_antenna_lever_help_btn_);
+    lever_label_layout->addStretch();
+    output_layout_->addWidget(lever_label_widget, row, 0);
 
-    apply_heading_length_btn_ = new QPushButton(this);
-    connect(apply_heading_length_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onApplyHeadingLengthClicked);
-    output_layout_->addWidget(apply_heading_length_btn_, row, 2);
+    auto *lever_edit_widget = new QWidget(this);
+    auto *lever_edit_layout = new QHBoxLayout(lever_edit_widget);
+    lever_edit_layout->setContentsMargins(0, 0, 0, 0);
+    lever_edit_layout->setSpacing(4);
+    auto createLeverEdit = [this]() {
+        auto *edit = new QLineEdit(this);
+        auto *validator = new QDoubleValidator(-10000.0, 10000.0, 4, edit);
+        validator->setNotation(QDoubleValidator::StandardNotation);
+        edit->setValidator(validator);
+        edit->setAlignment(Qt::AlignRight);
+        edit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        return edit;
+    };
+    lever_edit_layout->addWidget(new QLabel(QStringLiteral("X"), this));
+    main_antenna_lever_x_edit_ = createLeverEdit();
+    lever_edit_layout->addWidget(main_antenna_lever_x_edit_);
+    lever_edit_layout->addWidget(new QLabel(QStringLiteral("Y"), this));
+    main_antenna_lever_y_edit_ = createLeverEdit();
+    lever_edit_layout->addWidget(main_antenna_lever_y_edit_);
+    lever_edit_layout->addWidget(new QLabel(QStringLiteral("Z"), this));
+    main_antenna_lever_z_edit_ = createLeverEdit();
+    lever_edit_layout->addWidget(main_antenna_lever_z_edit_);
+    output_layout_->addWidget(lever_edit_widget, row, 1, 1, 2);
+
+    apply_main_antenna_lever_btn_ = new QPushButton(this);
+    connect(apply_main_antenna_lever_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onApplyMainAntennaLeverArmClicked);
+    output_layout_->addWidget(apply_main_antenna_lever_btn_, row, 3);
     row++;
 
     timeout_label_ = new QLabel(this);
@@ -896,18 +936,21 @@ void RtkConfigDialog::setEnglish(bool english)
     mountpoint_label_->setText(textFor("Mountpoint:", "挂载点:"));
     output_port_label_->setText(textFor("Output Port:", "输出串口:"));
     baudrate_label_->setText(textFor("Baudrate:", "波特率:"));
-    heading_length_label_->setText(textFor("Baseline Length (cm):", "基线长度（双天线间距）(cm):"));
+    main_antenna_lever_label_->setText(textFor("Main Antenna Lever Arm (m):", "主天线杆臂 (m):"));
     timeout_label_->setText(textFor("Timeout (ms):", "超时 (ms):"));
     reconnect_label_->setText(textFor("Reconnect (ms):", "重连间隔 (ms):"));
 
     server_edit_->setPlaceholderText(textFor("e.g. rtk.ntrip.org", "例如: rtk.ntrip.org"));
     mountpoint_edit_->setPlaceholderText(textFor("e.g. RTCM33", "例如: RTCM33"));
-    heading_length_edit_->setPlaceholderText(textFor("e.g. 134", "例如: 134"));
+    main_antenna_lever_x_edit_->setPlaceholderText(textFor("forward", "前向"));
+    main_antenna_lever_y_edit_->setPlaceholderText(textFor("right", "右向"));
+    main_antenna_lever_z_edit_->setPlaceholderText(textFor("down", "下向"));
+    main_antenna_lever_help_btn_->setToolTip(mainAntennaLeverArmHelpText());
 
     refresh_ports_btn_->setText(textFor("Refresh", "刷新"));
     auto_detect_ports_btn_->setText(textFor("Auto Detect", "自动识别"));
     fetch_mountpoints_btn_->setText(textFor("Detect Mountpoints", "检测挂载点"));
-    apply_heading_length_btn_->setText(textFor("Apply Baseline", "下发基线长度"));
+    apply_main_antenna_lever_btn_->setText(textFor("Apply Lever Arm", "下发杆臂"));
     start_btn_->setText(textFor("Start", "启动"));
     stop_btn_->setText(textFor("Stop", "停止"));
     test_btn_->setText(textFor("Test Connection", "测试连接"));
@@ -1027,8 +1070,23 @@ void RtkConfigDialog::applyScaledUiMetrics()
     output_port_combo_->setMinimumHeight(scalePixels(30));
     baudrate_combo_->setMinimumWidth(scalePixels(200));
     baudrate_combo_->setMinimumHeight(scalePixels(30));
-    heading_length_edit_->setMinimumWidth(scalePixels(200));
-    heading_length_edit_->setMinimumHeight(scalePixels(34));
+    if (main_antenna_lever_help_btn_)
+    {
+        const int helpSize = scalePixels(22);
+        main_antenna_lever_help_btn_->setFixedSize(helpSize, helpSize);
+        main_antenna_lever_help_btn_->setStyleSheet(QString(
+            "QToolButton { border: 1px solid #9e9e9e; border-radius: %1px; color: #555555; font-weight: bold; }"
+            "QToolButton:hover { background: #eeeeee; }")
+            .arg(helpSize / 2));
+    }
+    for (QLineEdit *edit : {main_antenna_lever_x_edit_, main_antenna_lever_y_edit_, main_antenna_lever_z_edit_})
+    {
+        if (edit)
+        {
+            edit->setMinimumWidth(scalePixels(70));
+            edit->setMinimumHeight(scalePixels(34));
+        }
+    }
     timeout_combo_->setMinimumWidth(scalePixels(200));
     timeout_combo_->setMinimumHeight(scalePixels(30));
     reconnect_combo_->setMinimumWidth(scalePixels(200));
@@ -1065,7 +1123,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
     applyButtonWidth(refresh_ports_btn_, 80);
     applyButtonWidth(auto_detect_ports_btn_, 96);
-    applyButtonWidth(apply_heading_length_btn_, 120);
+    applyButtonWidth(apply_main_antenna_lever_btn_, 132);
     applyButtonWidth(fetch_mountpoints_btn_, 128);
     applyButtonWidth(start_btn_, 80);
     applyButtonWidth(stop_btn_, 80);
@@ -1164,7 +1222,9 @@ void RtkConfigDialog::loadSettings()
     username_edit_->setText(settings.value("username", "").toString());
     password_edit_->setText(settings.value("password", "").toString());
     mountpoint_edit_->setText(settings.value("mountpoint", "").toString());
-    heading_length_edit_->setText(settings.value("heading_length_cm", "").toString());
+    main_antenna_lever_x_edit_->setText(settings.value("main_antenna_lever_x_m", "").toString());
+    main_antenna_lever_y_edit_->setText(settings.value("main_antenna_lever_y_m", "").toString());
+    main_antenna_lever_z_edit_->setText(settings.value("main_antenna_lever_z_m", "").toString());
     refreshPortCombos();
 #ifdef _WIN32
     output_port_combo_->setCurrentText(settings.value("output_port", "COM1").toString());
@@ -1187,7 +1247,9 @@ void RtkConfigDialog::saveSettings()
     settings.setValue("username", username_edit_->text());
     settings.setValue("password", password_edit_->text());
     settings.setValue("mountpoint", mountpoint_edit_->text());
-    settings.setValue("heading_length_cm", heading_length_edit_->text());
+    settings.setValue("main_antenna_lever_x_m", main_antenna_lever_x_edit_->text());
+    settings.setValue("main_antenna_lever_y_m", main_antenna_lever_y_edit_->text());
+    settings.setValue("main_antenna_lever_z_m", main_antenna_lever_z_edit_->text());
     settings.setValue("output_port", output_port_combo_->currentText());
     settings.setValue("gga_source", savedGgaSourceValue());
     settings.setValue("gga_port", isMainGgaSourceSelected() ? QString() : ggaPortName());
@@ -1209,9 +1271,22 @@ void RtkConfigDialog::setPreferredOutputPortAndBaud(const QString& portName, con
     }
 }
 
+void RtkConfigDialog::setEpsilonMainPortAndBaud(const QString& portName, const QString& baudText)
+{
+    epsilon_main_port_ = portName.trimmed();
+    bool ok = false;
+    const int baudrate = baudText.trimmed().toInt(&ok);
+    epsilon_main_baudrate_ = ok ? baudrate : 921600;
+}
+
 void RtkConfigDialog::setEpsilonDataProvider(std::function<VaporView::EpsilonData()> provider)
 {
     epsilon_data_provider_ = std::move(provider);
+}
+
+void RtkConfigDialog::setEpsilonMainAntennaLeverArmApplier(std::function<bool(double, double, double, QString*)> applier)
+{
+    epsilon_main_antenna_lever_arm_applier_ = std::move(applier);
 }
 
 bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config, QString *description) const
@@ -1301,7 +1376,7 @@ void RtkConfigDialog::updateButtonStates()
     start_btn_->setEnabled(!is_running_ && !busy);
     stop_btn_->setEnabled(is_running_ && !busy);
     test_btn_->setEnabled(!is_running_ && !busy);
-    apply_heading_length_btn_->setEnabled(!is_running_ && !busy);
+    apply_main_antenna_lever_btn_->setEnabled(!is_running_ && !busy);
     fetch_mountpoints_btn_->setEnabled(!busy);
     refresh_ports_btn_->setEnabled(!busy);
     auto_detect_ports_btn_->setEnabled(!busy);
@@ -1786,51 +1861,136 @@ bool RtkConfigDialog::sendReceiverCommands(const QStringList& commands, QString 
     return true;
 }
 
-void RtkConfigDialog::onApplyHeadingLengthClicked()
+QString RtkConfigDialog::mainAntennaLeverArmHelpText() const
+{
+    return textFor(
+        QStringLiteral("Main antenna lever arm is the GNSS main antenna phase-center position in the EPSILON/IMU frame, used to compensate the offset between the antenna and IMU during GNSS/INS fusion.\n\n"
+                       "Measure from the EPSILON module center to the GNSS main antenna phase center. Enter X/Y/Z in meters in the module frame: X forward, Y right, Z down. If the antenna is above the module, Z is negative.\n\n"
+                       "Command sent to EPSILON main port: #fconfig -> #fantearm x y z -> #fsave -> #fdeconfig."),
+        QStringLiteral("主天线杆臂是 GNSS 主天线相位中心在 EPSILON/IMU 模组坐标系下的位置，用来补偿天线与惯导不重合带来的 GNSS/INS 杆臂误差。\n\n"
+                       "测量时从 EPSILON 模组中心量到 GNSS 主天线相位中心，分别填写 X/Y/Z，单位米；坐标系为模组坐标系：X 向前、Y 向右、Z 向下。天线在模组上方时，Z 为负值。\n\n"
+                       "下发到 EPSILON 主串口的命令：#fconfig -> #fantearm x y z -> #fsave -> #fdeconfig。"));
+}
+
+void RtkConfigDialog::onMainAntennaLeverHelpClicked()
+{
+    QMessageBox::information(
+        this,
+        textFor("Main Antenna Lever Arm", "主天线杆臂"),
+        mainAntennaLeverArmHelpText());
+}
+
+bool RtkConfigDialog::parseMainAntennaLeverArm(double *x, double *y, double *z, QString *errorMessage) const
+{
+    auto parseValue = [this, errorMessage](const QLineEdit *edit, const QString& axis, double *value) {
+        const QString original = edit ? edit->text().trimmed() : QString();
+        if (original.isEmpty())
+        {
+            if (errorMessage)
+            {
+                *errorMessage = textFor("Enter %1 lever-arm value in meters. Use 0 if the offset is unknown.",
+                                        "请输入 %1 方向杆臂值，单位米；未知可填 0。").arg(axis);
+            }
+            return false;
+        }
+
+        QString normalized = original;
+        normalized.replace(QLatin1Char(','), QLatin1Char('.'));
+        bool ok = false;
+        double parsed = QLocale::c().toDouble(normalized, &ok);
+        if (!ok)
+        {
+            parsed = normalized.toDouble(&ok);
+        }
+
+        if (!ok || !std::isfinite(parsed))
+        {
+            if (errorMessage)
+            {
+                *errorMessage = textFor("Invalid %1 lever-arm value: %2",
+                                        "%1 方向杆臂值无效: %2").arg(axis, original);
+            }
+            return false;
+        }
+
+        *value = parsed;
+        return true;
+    };
+
+    return parseValue(main_antenna_lever_x_edit_, QStringLiteral("X"), x) &&
+        parseValue(main_antenna_lever_y_edit_, QStringLiteral("Y"), y) &&
+        parseValue(main_antenna_lever_z_edit_, QStringLiteral("Z"), z);
+}
+
+void RtkConfigDialog::onApplyMainAntennaLeverArmClicked()
 {
     if (is_running_)
     {
         QMessageBox::warning(
             this,
             textFor("RTK Running", "RTK 运行中"),
-            textFor("Stop the RTK service before changing the dual-antenna baseline length.",
-                    "请先停止 RTK 服务，再修改基线长度（双天线间距）。"));
+            textFor("Stop the RTK service before changing the EPSILON main antenna lever arm.",
+                    "请先停止 RTK 服务，再修改 EPSILON 主天线杆臂。"));
         return;
     }
 
-    const QString lengthText = heading_length_edit_ ? heading_length_edit_->text().trimmed() : QString();
-    bool lengthOk = false;
-    const int lengthCm = lengthText.toInt(&lengthOk);
-    if (!lengthOk || lengthCm <= 0)
+    double x = 0.0;
+    double y = 0.0;
+    double z = 0.0;
+    QString errorMessage;
+    if (!parseMainAntennaLeverArm(&x, &y, &z, &errorMessage))
     {
         QMessageBox::warning(
             this,
-            textFor("Invalid Length", "长度无效"),
-            textFor("Enter a positive dual-antenna baseline length in centimeters, for example 134.",
-                    "请输入正整数的基线长度（双天线间距，单位 cm），例如 134。"));
+            textFor("Invalid Lever Arm", "杆臂无效"),
+            errorMessage);
         return;
     }
 
-    QString errorMessage;
-    const QStringList commands = {
-        QStringLiteral("CONFIG HEADING FIXLENGTH"),
-        QStringLiteral("CONFIG HEADING LENGTH %1 1").arg(lengthCm),
-        QStringLiteral("SAVECONFIG")
-    };
-
-    if (!sendReceiverCommands(commands, &errorMessage))
+    if (!epsilon_main_antenna_lever_arm_applier_)
     {
-        QMessageBox::warning(this, textFor("Command Failed", "命令发送失败"), errorMessage);
+        QMessageBox::warning(
+            this,
+            textFor("EPSILON Unavailable", "EPSILON 不可用"),
+            textFor("EPSILON main-port command channel is not available. Open this dialog from the main window after selecting the EPSILON main port.",
+                    "EPSILON 主串口命令通道不可用。请在主页面选择 EPSILON 主串口后再打开此配置。"));
+        return;
+    }
+
+    const QString values = QStringLiteral("X=%1 m, Y=%2 m, Z=%3 m")
+        .arg(QString::number(x, 'f', 4),
+             QString::number(y, 'f', 4),
+             QString::number(z, 'f', 4));
+    const QString target = epsilon_main_port_.isEmpty()
+        ? textFor("selected EPSILON main port", "已选择的 EPSILON 主串口")
+        : QStringLiteral("%1 @ %2").arg(epsilon_main_port_).arg(epsilon_main_baudrate_);
+    appendLog(textFor("Applying EPSILON main antenna lever arm via %1: %2",
+                      "正在通过 %1 下发 EPSILON 主天线杆臂: %2").arg(target, values));
+
+    errorMessage.clear();
+    if (!epsilon_main_antenna_lever_arm_applier_(x, y, z, &errorMessage))
+    {
+        QMessageBox::warning(
+            this,
+            textFor("Command Failed", "命令发送失败"),
+            errorMessage.isEmpty()
+                ? textFor("Failed to apply EPSILON main antenna lever arm.",
+                          "EPSILON 主天线杆臂下发失败。")
+                : errorMessage);
         return;
     }
 
     saveSettings();
-    appendLog(textFor("Dual-antenna baseline updated to %1 cm.", "基线长度（双天线间距）已更新为 %1 cm。").arg(lengthCm));
+    appendLog(textFor("EPSILON main antenna lever arm updated: %1",
+                      "EPSILON 主天线杆臂已更新: %1").arg(values));
     QMessageBox::information(
         this,
-        textFor("Baseline Updated", "基线长度已更新"),
-        textFor("The RTK receiver has been sent the dual-antenna baseline command: %1 cm.",
-                "已向 RTK 模块下发基线长度（双天线间距）命令：%1 cm。").arg(lengthCm));
+        textFor("Lever Arm Updated", "杆臂已更新"),
+        textFor("EPSILON has been sent: #fantearm %1 %2 %3",
+                "已向 EPSILON 下发: #fantearm %1 %2 %3")
+            .arg(QString::number(x, 'f', 4),
+                 QString::number(y, 'f', 4),
+                 QString::number(z, 'f', 4)));
 }
 
 void RtkConfigDialog::processGgaBuffer()
@@ -2651,7 +2811,9 @@ void RtkConfigDialog::onSaveConfigClicked()
     settings.setValue("username", username_edit_->text());
     settings.setValue("password", password_edit_->text());
     settings.setValue("mountpoint", mountpoint_edit_->text());
-    settings.setValue("heading_length_cm", heading_length_edit_->text());
+    settings.setValue("main_antenna_lever_x_m", main_antenna_lever_x_edit_->text());
+    settings.setValue("main_antenna_lever_y_m", main_antenna_lever_y_edit_->text());
+    settings.setValue("main_antenna_lever_z_m", main_antenna_lever_z_edit_->text());
     settings.setValue("output_port", output_port_combo_->currentText());
     settings.setValue("gga_source", savedGgaSourceValue());
     settings.setValue("gga_port", isMainGgaSourceSelected() ? QString() : ggaPortName());
@@ -2679,7 +2841,9 @@ void RtkConfigDialog::onLoadConfigClicked()
     username_edit_->setText(settings.value("username", "").toString());
     password_edit_->setText(settings.value("password", "").toString());
     mountpoint_edit_->setText(settings.value("mountpoint", "").toString());
-    heading_length_edit_->setText(settings.value("heading_length_cm", "").toString());
+    main_antenna_lever_x_edit_->setText(settings.value("main_antenna_lever_x_m", "").toString());
+    main_antenna_lever_y_edit_->setText(settings.value("main_antenna_lever_y_m", "").toString());
+    main_antenna_lever_z_edit_->setText(settings.value("main_antenna_lever_z_m", "").toString());
     output_port_combo_->setCurrentText(settings.value("output_port", "").toString());
     applySavedGgaSource(settings.value("gga_source", settings.value("gga_port", QString::fromLatin1(kEpsilonMainGgaSourceKey))).toString());
     baudrate_combo_->setCurrentText(settings.value("baudrate", "115200").toString());

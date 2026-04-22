@@ -108,6 +108,7 @@ public:
   bool setDeviceSampleRate(int hz) override;
   bool setOutputPacketRates(const std::map<uint8_t, int>& packet_rates, bool force_apply = false);
   bool configureRtcmPort(int port_index, int baud_rate);
+  bool configureMainAntennaLeverArm(double x_m, double y_m, double z_m);
   bool checkDeviceResponse() override;
   void setRawFrameCallback(RawFrameCallback callback);
 

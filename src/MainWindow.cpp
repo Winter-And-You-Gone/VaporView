@@ -5559,6 +5559,160 @@ void MainWindow::onClearLogClicked()
     log(is_english_ ? "Log cleared" : "日志已清空");
 }
 
+bool MainWindow::applyEpsilonMainAntennaLeverArm(double xM, double yM, double zM, QString *errorMessage)
+{
+    auto fail = [errorMessage](const QString& message) {
+        if (errorMessage)
+        {
+            *errorMessage = message;
+        }
+        return false;
+    };
+
+    if (connection_attempt_in_progress_ || port_detection_in_progress_ || epsilon_reconfigure_in_progress_)
+    {
+        return fail(is_english_
+            ? QStringLiteral("EPSILON is busy. Wait for the current connection or configuration task to finish.")
+            : QStringLiteral("EPSILON 当前正忙，请等待连接或配置任务结束后再试。"));
+    }
+
+    if (recording_thread_running_.load())
+    {
+        return fail(is_english_
+            ? QStringLiteral("Stop recording before configuring the EPSILON main antenna lever arm.")
+            : QStringLiteral("请先结束记录，再配置 EPSILON 主天线杆臂。"));
+    }
+
+    const QString epsilonPort = epsilon_port_combo_ ? epsilon_port_combo_->currentText().trimmed() : QString();
+    if (epsilonPort.isEmpty() || epsilonPort.startsWith(QStringLiteral("--")))
+    {
+        return fail(is_english_
+            ? QStringLiteral("Select the EPSILON main serial port first.")
+            : QStringLiteral("请先选择 EPSILON 主串口。"));
+    }
+
+    const QString epsilonBaudText = epsilon_baud_combo_ ? epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
+    bool baudOk = false;
+    const int epsilonBaud = epsilonBaudText.toInt(&baudOk);
+    if (!baudOk || epsilonBaud <= 0)
+    {
+        return fail(QString(is_english_ ? "Invalid EPSILON baud rate: %1" : "EPSILON 波特率无效: %1").arg(epsilonBaudText));
+    }
+
+    const bool english = is_english_;
+    const QString values = QStringLiteral("X=%1 m, Y=%2 m, Z=%3 m")
+        .arg(QString::number(xM, 'f', 4),
+             QString::number(yM, 'f', 4),
+             QString::number(zM, 'f', 4));
+    const std::shared_ptr<VaporView::EpsilonCollector> liveCollector = snapshotCollectors().epsilon;
+    const bool shouldRestartCollector = liveCollector && liveCollector->isRunning();
+
+    epsilon_reconfigure_in_progress_ = true;
+    showBusyStatusTaskProgress(english ? "Configuring EPSILON Lever Arm..." : "正在配置 EPSILON 主天线杆臂...");
+    updateConnectionStatus(is_connected_);
+    QApplication::processEvents();
+
+    log(QString(english
+                    ? "[EPSILON] Applying main antenna lever arm on %1 @ %2: %3"
+                    : "[EPSILON] 正在通过主串口 %1 @ %2 下发主天线杆臂：%3")
+            .arg(epsilonPort, epsilonBaudText, values));
+
+    std::shared_ptr<VaporView::EpsilonCollector> collector = shouldRestartCollector && liveCollector
+        ? liveCollector
+        : std::make_shared<VaporView::EpsilonCollector>();
+
+    collector->setEnglish(english);
+    collector->setLogCallback([this](const std::string& msg) {
+        const QString qmsg = QString::fromStdString(msg);
+        QMetaObject::invokeMethod(this, [this, qmsg]() { log(qmsg); }, Qt::QueuedConnection);
+    });
+
+    if (shouldRestartCollector)
+    {
+        log(english
+                ? "[EPSILON] Temporarily stopping the live stream for main antenna lever-arm configuration."
+                : "[EPSILON] 为配置主天线杆臂临时停止当前数据流。");
+        collector->stop();
+    }
+
+    bool commandSucceeded = false;
+    QString failureMessage;
+    if (!collector->start(epsilonPort.toStdString(), VaporView::SerialConfig::N81(epsilonBaud)))
+    {
+        failureMessage = QString(english
+                ? "[EPSILON] Failed to open %1 for main antenna lever-arm configuration: %2"
+                : "[EPSILON] 打开 %1 进行主天线杆臂配置失败: %2")
+            .arg(epsilonPort, QString::fromStdString(collector->getLastError()));
+        log(failureMessage);
+    }
+    else if (!collector->configureMainAntennaLeverArm(xM, yM, zM))
+    {
+        failureMessage = QString(english
+                ? "[EPSILON] Failed to configure main antenna lever arm on %1 @ %2."
+                : "[EPSILON] 在 %1 @ %2 上配置主天线杆臂失败。")
+            .arg(epsilonPort, epsilonBaudText);
+        log(failureMessage);
+    }
+    else
+    {
+        commandSucceeded = true;
+    }
+
+    bool restartSucceeded = true;
+    if (shouldRestartCollector)
+    {
+        if (!collector->startStreaming())
+        {
+            restartSucceeded = false;
+            log(english
+                    ? "[EPSILON] Main antenna lever-arm command finished, but failed to restart the live navigation stream."
+                    : "[EPSILON] 主天线杆臂命令已结束，但重新启动实时导航流失败。");
+            collector->stop();
+        }
+        else
+        {
+            log(QString(english
+                            ? "[EPSILON] Main antenna lever arm applied and live stream restarted on %1."
+                            : "[EPSILON] 主天线杆臂已下发，并已在 %1 上恢复实时数据流。")
+                    .arg(epsilonPort));
+        }
+    }
+    else
+    {
+        collector->stop();
+        if (commandSucceeded)
+        {
+            log(QString(english
+                            ? "[EPSILON] Main antenna lever arm applied on %1."
+                            : "[EPSILON] 已在 %1 上完成主天线杆臂配置。")
+                    .arg(epsilonPort));
+        }
+    }
+
+    epsilon_reconfigure_in_progress_ = false;
+    hideStatusTaskProgress();
+    updateConnectionStatus(anyCollectorRunning());
+    QApplication::processEvents();
+
+    if (!commandSucceeded)
+    {
+        return fail(failureMessage.isEmpty()
+            ? (english
+                ? QStringLiteral("Failed to apply EPSILON main antenna lever arm.")
+                : QStringLiteral("EPSILON 主天线杆臂下发失败。"))
+            : failureMessage);
+    }
+
+    if (!restartSucceeded)
+    {
+        return fail(english
+            ? QStringLiteral("The lever arm was sent, but the EPSILON live stream could not be restarted. Reconnect EPSILON manually.")
+            : QStringLiteral("杆臂已下发，但 EPSILON 实时数据流未能恢复。请手动重新连接 EPSILON。"));
+    }
+
+    return true;
+}
+
 void MainWindow::onRtkConfigClicked()
 {
     if (!rtk_config_dialog_)
@@ -5569,6 +5723,14 @@ void MainWindow::onRtkConfigClicked()
         const CollectorSnapshot collectors = snapshotCollectors();
         return collectors.epsilon ? collectors.epsilon->getLatestData() : current_epsilon_;
     });
+    rtk_config_dialog_->setEpsilonMainAntennaLeverArmApplier([this](double x, double y, double z, QString *errorMessage) {
+        return applyEpsilonMainAntennaLeverArm(x, y, z, errorMessage);
+    });
+    {
+        const QString epsilonPort = epsilon_port_combo_ ? epsilon_port_combo_->currentText().trimmed() : QString();
+        const QString epsilonBaud = epsilon_baud_combo_ ? epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
+        rtk_config_dialog_->setEpsilonMainPortAndBaud(epsilonPort, epsilonBaud);
+    }
     {
         QSettings settings("VaporView", "MainWindow");
         const QString preferredOutputPort = settings.value("epsilon_rtcm_forward_port").toString().trimmed();

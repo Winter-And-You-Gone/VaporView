@@ -8,6 +8,7 @@
 #include <QTextEdit>
 #include <QLabel>
 #include <QGroupBox>
+#include <QToolButton>
 #include <QSizePolicy>
 #include <QScrollBar>
 #include <QTimer>
@@ -40,7 +41,9 @@ public:
     void setEnglish(bool english);
     void setFontScale(int percent);
     void setPreferredOutputPortAndBaud(const QString& portName, const QString& baudText);
+    void setEpsilonMainPortAndBaud(const QString& portName, const QString& baudText);
     void setEpsilonDataProvider(std::function<VaporView::EpsilonData()> provider);
+    void setEpsilonMainAntennaLeverArmApplier(std::function<bool(double, double, double, QString*)> applier);
 
 private slots:
     void onStartClicked();
@@ -51,7 +54,8 @@ private slots:
     void onRefreshPortsClicked();
     void onFetchMountpointsClicked();
     void onAutoDetectPortsClicked();
-    void onApplyHeadingLengthClicked();
+    void onApplyMainAntennaLeverArmClicked();
+    void onMainAntennaLeverHelpClicked();
     void onSaveConfigClicked();
     void onLoadConfigClicked();
     void onClearLogClicked();
@@ -90,6 +94,8 @@ private:
     void joinBackgroundTasks();
     bool isBackgroundTaskRunning() const;
     bool sendReceiverCommands(const QStringList& commands, QString *errorMessage = nullptr);
+    bool parseMainAntennaLeverArm(double *x, double *y, double *z, QString *errorMessage = nullptr) const;
+    QString mainAntennaLeverArmHelpText() const;
     void applyDetectedOutputAndGgaPort(const QString& portName, const QString& baudText);
 
     QVBoxLayout *main_layout_;
@@ -116,7 +122,7 @@ private:
     QLabel *mountpoint_label_;
     QLabel *output_port_label_;
     QLabel *baudrate_label_;
-    QLabel *heading_length_label_;
+    QLabel *main_antenna_lever_label_;
     QLabel *timeout_label_;
     QLabel *reconnect_label_;
     QLabel *gga_port_info_label_;
@@ -127,7 +133,9 @@ private:
     QLineEdit *username_edit_;
     QLineEdit *password_edit_;
     QLineEdit *mountpoint_edit_;
-    QLineEdit *heading_length_edit_;
+    QLineEdit *main_antenna_lever_x_edit_;
+    QLineEdit *main_antenna_lever_y_edit_;
+    QLineEdit *main_antenna_lever_z_edit_;
     QComboBox *output_port_combo_;
     QComboBox *baudrate_combo_;
     QComboBox *timeout_combo_;
@@ -142,7 +150,8 @@ private:
     QPushButton *refresh_ports_btn_;
     QPushButton *auto_detect_ports_btn_;
     QPushButton *fetch_mountpoints_btn_;
-    QPushButton *apply_heading_length_btn_;
+    QToolButton *main_antenna_lever_help_btn_;
+    QPushButton *apply_main_antenna_lever_btn_;
     QPushButton *save_config_btn_;
     QPushButton *load_config_btn_;
     QPushButton *clear_log_btn_;
@@ -153,6 +162,9 @@ private:
     bool is_english_;
     int font_scale_percent_;
     std::function<VaporView::EpsilonData()> epsilon_data_provider_;
+    std::function<bool(double, double, double, QString*)> epsilon_main_antenna_lever_arm_applier_;
+    QString epsilon_main_port_;
+    int epsilon_main_baudrate_;
     QSize base_dialog_size_;
     QSize base_minimum_dialog_size_;
     QString config_file_path_;

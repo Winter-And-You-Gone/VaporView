@@ -1916,6 +1916,78 @@ bool EpsilonCollector::configureRtcmPort(int portIndex, int baudRate)
                                                    : "EPSILON：RTCM 串口配置已保存并重启，但串口恢复后没有检测到 FDILink 数据包");
 }
 
+bool EpsilonCollector::configureMainAntennaLeverArm(double xM, double yM, double zM)
+{
+  const bool english = isEnglishLog();
+  if (!std::isfinite(xM) || !std::isfinite(yM) || !std::isfinite(zM))
+  {
+    log(english
+            ? "EPSILON: invalid main antenna lever-arm value"
+            : "EPSILON：主天线杆臂数值无效");
+    return false;
+  }
+  if (!serial_.isOpen())
+  {
+    log(english ? "EPSILON: serial port is not open" : "EPSILON：串口未打开");
+    return false;
+  }
+  if (running_.load())
+  {
+    log(english
+            ? "EPSILON: stop the live stream before configuring the main antenna lever arm"
+            : "EPSILON：配置主天线杆臂前请先停止实时数据流");
+    return false;
+  }
+
+  const EpsilonLogFn logFn = [this](const std::string& message) { log(message); };
+  constexpr int kConfigCommandWaitMs = 1500;
+
+  serial_.flush();
+  sleepMs(80);
+
+  const auto failConfiguration = [this, &logFn, english](const std::string& message) {
+    log(message);
+    sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fdeconfig\r\n", kConfigCommandWaitMs);
+    return false;
+  };
+
+  const std::string configResponse = sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fconfig\r\n", kConfigCommandWaitMs);
+  if (!containsEpsilonAsciiOk(configResponse))
+  {
+    return failConfiguration(english
+                                 ? "EPSILON: failed to enter configuration mode; main antenna lever arm was not changed"
+                                 : "EPSILON：进入配置模式失败，主天线杆臂未修改");
+  }
+
+  char command[128];
+  std::snprintf(command, sizeof(command), "#fantearm %.6f %.6f %.6f\r\n", xM, yM, zM);
+  if (!containsEpsilonAsciiOk(sendLoggedEpsilonAsciiCommand(serial_, logFn, english, command, kConfigCommandWaitMs)))
+  {
+    return failConfiguration(english
+                                 ? "EPSILON: failed to set the main antenna lever arm; configuration was not saved"
+                                 : "EPSILON：设置主天线杆臂失败，配置未保存");
+  }
+
+  if (!containsEpsilonAsciiOk(sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fsave\r\n", kConfigCommandWaitMs)))
+  {
+    return failConfiguration(english
+                                 ? "EPSILON: failed to save the main antenna lever-arm configuration"
+                                 : "EPSILON：保存主天线杆臂配置失败");
+  }
+
+  sendLoggedEpsilonAsciiCommand(serial_, logFn, english, "#fdeconfig\r\n", kConfigCommandWaitMs);
+
+  return waitForEpsilonNavigationStreamRestore(serial_,
+                                               logFn,
+                                               5000,
+                                               english
+                                                   ? "EPSILON: main antenna lever arm saved and navigation stream restored"
+                                                   : "EPSILON：主天线杆臂已保存，导航数据流已恢复",
+                                               english
+                                                   ? "EPSILON: main antenna lever arm was saved, but no FDILink frame was observed after leaving config mode"
+                                                   : "EPSILON：主天线杆臂已保存，但退出配置模式后未检测到 FDILink 数据包");
+}
+
 void EpsilonCollector::run()
 {
   std::vector<uint8_t> buffer;
