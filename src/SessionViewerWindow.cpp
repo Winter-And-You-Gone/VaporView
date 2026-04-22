@@ -2030,11 +2030,21 @@ bool SessionViewerWindow::loadSensorsCsv()
     });
     const int epsilonValidIndex = findHeaderIndex(csv_headers_, {QStringLiteral("epsilon_valid"), QStringLiteral("rtk_valid")});
     const int gnssFixIndex = findHeaderIndex(csv_headers_, {QStringLiteral("gnss_fix"), QStringLiteral("rtk_fix")});
-    const int hmpTemperatureIndex = findHeaderIndex(csv_headers_, {QStringLiteral("hmp_temperature_c")});
-    const int hmpHumidityIndex = findHeaderIndex(csv_headers_, {QStringLiteral("hmp_humidity_rh"), QStringLiteral("humidity_rh")});
-    const int ptbPressureIndex = findHeaderIndex(csv_headers_, {QStringLiteral("ptb_pressure_hpa")});
     const int thValidIndex = findHeaderIndex(csv_headers_, {QStringLiteral("th_valid")});
     const int baroValidIndex = findHeaderIndex(csv_headers_, {QStringLiteral("baro_valid")});
+    const bool hasLegacyThermometerColumns =
+        findHeaderIndex(csv_headers_, {QStringLiteral("th_timestamp_us"), QStringLiteral("th_valid")}) >= 0;
+    const bool hasLegacyBarometerColumns =
+        findHeaderIndex(csv_headers_, {QStringLiteral("baro_timestamp_us"), QStringLiteral("baro_valid")}) >= 0;
+    const int hmpTemperatureIndex = findHeaderIndex(csv_headers_,
+        hasLegacyThermometerColumns
+            ? QStringList{QStringLiteral("hmp_temperature_c"), QStringLiteral("temp_c")}
+            : QStringList{QStringLiteral("hmp_temperature_c")});
+    const int hmpHumidityIndex = findHeaderIndex(csv_headers_, {QStringLiteral("hmp_humidity_rh"), QStringLiteral("humidity_rh")});
+    const int ptbPressureIndex = findHeaderIndex(csv_headers_,
+        hasLegacyBarometerColumns
+            ? QStringList{QStringLiteral("ptb_pressure_hpa"), QStringLiteral("baro_hpa"), QStringLiteral("baro_pa")}
+            : QStringList{QStringLiteral("ptb_pressure_hpa")});
     QStringList displayHeaders;
     displayHeaders.reserve(csv_headers_.size() + 2);
     displayHeaders << (is_english_ ? "No." : "序号");
@@ -2107,6 +2117,11 @@ bool SessionViewerWindow::loadSensorsCsv()
         if (ptbPressureIndex >= 0 && baroValid)
         {
             pressureValue = parseOptionalDouble(csvValueAt(fields, ptbPressureIndex));
+            const QString pressureHeader = csv_headers_.value(ptbPressureIndex).trimmed().toLower();
+            if (std::isfinite(pressureValue) && pressureHeader.endsWith(QStringLiteral("_pa")))
+            {
+                pressureValue /= 100.0;
+            }
         }
         pressure_values_.push_back(pressureValue);
 
