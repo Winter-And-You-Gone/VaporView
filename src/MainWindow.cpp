@@ -434,9 +434,6 @@ public:
                 label->setToolTip(display_text);
             }
         };
-        auto formatNumber = [](double value, int decimals) {
-            return std::isfinite(value) ? QString::number(value, 'f', decimals) : QString();
-        };
         auto triple = [&](double a, double b, double c, int decimals = 6) {
             if (!std::isfinite(a) || !std::isfinite(b) || !std::isfinite(c))
             {
@@ -492,10 +489,6 @@ public:
                            .arg(epsilon_data.quat_z, 0, 'f', 6)
                      : QString());
         setValue(QStringLiteral("mag"), triple(epsilon_data.mag_x_mg, epsilon_data.mag_y_mg, epsilon_data.mag_z_mg, 3));
-        setValue(QStringLiteral("temp"),
-                 std::isfinite(epsilon_data.imu_temp_c)
-                     ? QStringLiteral("%1 C").arg(formatNumber(epsilon_data.imu_temp_c, 2))
-                     : QString());
         setValue(QStringLiteral("dop"),
                  gnss_fix_valid && std::isfinite(epsilon_data.hdop) && std::isfinite(epsilon_data.vdop)
                      ? QStringLiteral("HDOP %1 / VDOP %2")
@@ -632,7 +625,6 @@ private:
         addField(grid, row++, 1, QStringLiteral("rpy"), QStringLiteral("姿态角[deg]:"), QStringLiteral("RPY [deg]:"));
         addField(grid, row++, 1, QStringLiteral("quat"), QStringLiteral("四元数:"), QStringLiteral("Quaternion:"));
         addField(grid, row++, 1, QStringLiteral("mag"), QStringLiteral("磁场[mG]:"), QStringLiteral("Mag [mG]:"));
-        addField(grid, row++, 1, QStringLiteral("temp"), QStringLiteral("IMU温度:"), QStringLiteral("IMU Temp:"));
         addField(grid, row++, 1, QStringLiteral("dop"), QStringLiteral("DOP:"), QStringLiteral("DOP:"));
         addField(grid, row++, 1, QStringLiteral("acc"), QStringLiteral("定位精度[m]:"), QStringLiteral("Accuracy [m]:"));
         addField(grid, row++, 1, QStringLiteral("std"), QStringLiteral("坐标标准差[m]:"), QStringLiteral("Coord Std [m]:"));
@@ -4076,7 +4068,6 @@ void MainWindow::startRecordingWorkers()
                     << QString::number(epsilonSample.mag_x_mg, 'f', 6)
                     << QString::number(epsilonSample.mag_y_mg, 'f', 6)
                     << QString::number(epsilonSample.mag_z_mg, 'f', 6)
-                    << QString::number(epsilonSample.imu_temp_c, 'f', 4)
                     << QString::fromStdString(epsilonSample.gnss_fix_text)
                     << QString::number(epsilonSample.gnss_satellites)
                     << QString::number(epsilonSample.hdop, 'f', 4)
@@ -4096,7 +4087,7 @@ void MainWindow::startRecordingWorkers()
             }
             else
             {
-                appendEmptyColumns(58);
+                appendEmptyColumns(57);
             }
 
             if (isFresh(collectors.hmp.get(), hmpSample))
@@ -4434,7 +4425,6 @@ void MainWindow::writeSensorsHeader()
         << "imu_acc_x_mps2,imu_acc_y_mps2,imu_acc_z_mps2,"
         << "imu_gyr_x_radps,imu_gyr_y_radps,imu_gyr_z_radps,"
         << "mag_x_mg,mag_y_mg,mag_z_mg,"
-        << "imu_temp_c,"
         << "gnss_fix,gnss_satellites,hdop,vdop,hacc_m,vacc_m,"
         << "lat_std_m,lon_std_m,height_std_m,diff_age_s,"
         << "heading_valid,system_status_bits,filter_status_bits,update_status_bits,"

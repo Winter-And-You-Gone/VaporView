@@ -69,7 +69,7 @@ struct ImuData
   std::array<double, 3> rpy{};
   std::array<double, 4> quaternion{};
 
-  double temperature = 0.0;
+  double temperature = std::numeric_limits<double>::quiet_NaN();
   double air_pressure = std::numeric_limits<double>::quiet_NaN();
 
   uint64_t system_time_us = 0;

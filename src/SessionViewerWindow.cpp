@@ -58,6 +58,8 @@ constexpr int kSessionViewerPlotRightMargin = 10;
 constexpr int kSessionViewerPlotTopMargin = 12;
 constexpr int kSessionViewerPlotBottomMargin = 28;
 constexpr int kSessionViewerWaveBottomMargin = 30;
+constexpr int kSessionViewerPeakSearchStartIndex = 10000;
+constexpr int kSessionViewerPeakSearchEndIndex = 50000;
 const QColor kHighlightedCsvRowColor("#c7e3ff");
 const QColor kSecondaryHighlightedCsvRowColor("#e8f3ff");
 const QColor kDefaultCsvRowColor("#ffffff");
@@ -304,6 +306,41 @@ QString formatGuideValue(double value, int decimals, const QString& unit = QStri
     }
     const QString number = QString::number(value, 'f', decimals);
     return unit.isEmpty() ? number : QStringLiteral("%1 %2").arg(number, unit);
+}
+
+float waveformPeakValue(const float* samples, int sampleCount)
+{
+    if (!samples || sampleCount <= 0)
+    {
+        return std::numeric_limits<float>::quiet_NaN();
+    }
+
+    const int startIndex = std::min(kSessionViewerPeakSearchStartIndex, sampleCount);
+    const int endIndex = std::min(kSessionViewerPeakSearchEndIndex, sampleCount);
+    if (startIndex >= endIndex)
+    {
+        return std::numeric_limits<float>::quiet_NaN();
+    }
+
+    bool hasPeak = false;
+    float peakValue = std::numeric_limits<float>::lowest();
+    for (int index = startIndex; index < endIndex; ++index)
+    {
+        const float value = samples[index];
+        if (!std::isfinite(value))
+        {
+            continue;
+        }
+        hasPeak = true;
+        peakValue = std::max(peakValue, value);
+    }
+
+    return hasPeak ? peakValue : std::numeric_limits<float>::quiet_NaN();
+}
+
+float waveformPeakValue(const QVector<float>& samples)
+{
+    return waveformPeakValue(samples.constData(), samples.size());
 }
 
 double haversineDistanceMeters(double lat1Deg, double lon1Deg, double lat2Deg, double lon2Deg)
@@ -1934,10 +1971,9 @@ bool SessionViewerWindow::loadSensorsCsv()
     });
     const int epsilonValidIndex = findHeaderIndex(csv_headers_, {QStringLiteral("epsilon_valid"), QStringLiteral("rtk_valid")});
     const int gnssFixIndex = findHeaderIndex(csv_headers_, {QStringLiteral("gnss_fix"), QStringLiteral("rtk_fix")});
-    const int hmpTemperatureIndex = findHeaderIndex(csv_headers_, {QStringLiteral("hmp_temperature_c"), QStringLiteral("temp_c")});
+    const int hmpTemperatureIndex = findHeaderIndex(csv_headers_, {QStringLiteral("hmp_temperature_c")});
     const int hmpHumidityIndex = findHeaderIndex(csv_headers_, {QStringLiteral("hmp_humidity_rh"), QStringLiteral("humidity_rh")});
     const int ptbPressureIndex = findHeaderIndex(csv_headers_, {QStringLiteral("ptb_pressure_hpa")});
-    const int epsilonImuTempIndex = findHeaderIndex(csv_headers_, {QStringLiteral("imu_temp_c"), QStringLiteral("temp_c"), QStringLiteral("hmp_temperature_c")});
     const int thValidIndex = findHeaderIndex(csv_headers_, {QStringLiteral("th_valid")});
     const int baroValidIndex = findHeaderIndex(csv_headers_, {QStringLiteral("baro_valid")});
     QStringList displayHeaders;
@@ -2001,10 +2037,6 @@ bool SessionViewerWindow::loadSensorsCsv()
         if (hmpTemperatureIndex >= 0 && thValid)
         {
             temperatureValue = parseOptionalDouble(csvValueAt(fields, hmpTemperatureIndex));
-        }
-        if (!std::isfinite(temperatureValue) && epsilonImuTempIndex >= 0)
-        {
-            temperatureValue = parseOptionalDouble(csvValueAt(fields, epsilonImuTempIndex));
         }
         temperature_values_.push_back(temperatureValue);
 
@@ -2212,6 +2244,20 @@ void SessionViewerWindow::applyPeakFilter()
             : std::numeric_limits<float>::quiet_NaN());
     }
 
+    const bool hasRawPeakValues = std::any_of(waveform_peak_raw_values_.cbegin(), waveform_peak_raw_values_.cend(),
+        [](float value) { return std::isfinite(value); });
+    const bool hasFilteredPeakValues = std::any_of(waveform_peak_values_.cbegin(), waveform_peak_values_.cend(),
+        [](float value) { return std::isfinite(value); });
+    if (hasRawPeakValues && !hasFilteredPeakValues && peak_filter_settings_.mode != PeakFilterMode::None)
+    {
+        waveform_peak_values_ = waveform_peak_raw_values_;
+        peak_filter_settings_.mode = PeakFilterMode::None;
+        updatePeakFilterButtonText();
+        setStatusText(is_english_
+            ? QStringLiteral("Peak filter removed every peak; showing raw peak values instead.")
+            : QStringLiteral("峰值过滤条件筛掉了全部峰值，已改为显示原始峰值。"));
+    }
+
     if (waveform_peak_plot_)
     {
         static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPeakValues(waveform_peak_values_);
@@ -2263,8 +2309,7 @@ bool SessionViewerWindow::loadWaveformPeakSeries()
             std::memcpy(&timestampUs, block.constData(), sizeof(quint64));
             waveform_timestamps_us_.push_back(timestampUs);
             std::memcpy(frameSamples.data(), block.constData() + sizeof(quint64), static_cast<size_t>(points_per_frame_) * sizeof(float));
-            const auto peakIt = std::max_element(frameSamples.cbegin(), frameSamples.cend());
-            waveform_peak_raw_values_.push_back(peakIt == frameSamples.cend() ? 0.0f : *peakIt);
+            waveform_peak_raw_values_.push_back(waveformPeakValue(frameSamples));
         }
     }
 
@@ -2498,7 +2543,7 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
     const auto minMax = std::minmax_element(samples.cbegin(), samples.cend());
     const float rawPeakValue = frameIndex < static_cast<quint64>(waveform_peak_raw_values_.size())
         ? waveform_peak_raw_values_.at(static_cast<int>(frameIndex))
-        : *minMax.second;
+        : waveformPeakValue(samples);
     const float filteredPeakValue = frameIndex < static_cast<quint64>(waveform_peak_values_.size())
         ? waveform_peak_values_.at(static_cast<int>(frameIndex))
         : rawPeakValue;

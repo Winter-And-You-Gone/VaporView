@@ -2115,7 +2115,7 @@ void EpsilonCollector::run()
         latest_data_.mag_x_mg = readFloatLE(payload + 24);
         latest_data_.mag_y_mg = readFloatLE(payload + 28);
         latest_data_.mag_z_mg = readFloatLE(payload + 32);
-        latest_data_.imu_temp_c = readFloatLE(payload + 36);
+        latest_data_.imu_temp_c = std::numeric_limits<double>::quiet_NaN();
         latest_data_.pressure_pa = std::numeric_limits<double>::quiet_NaN();
         latest_data_.pressure_temp_c = std::numeric_limits<double>::quiet_NaN();
         latest_data_.device_timestamp_us = static_cast<uint64_t>(readI64LE(payload + 48));
@@ -2393,7 +2393,7 @@ void EpsilonCollector::run()
                 latest_data_.mag_x_mg = values[9];
                 latest_data_.mag_y_mg = values[10];
                 latest_data_.mag_z_mg = values[11];
-                latest_data_.imu_temp_c = values[12];
+                latest_data_.imu_temp_c = std::numeric_limits<double>::quiet_NaN();
                 latest_data_.pressure_pa = std::numeric_limits<double>::quiet_NaN();
                 latest_data_.pressure_temp_c = std::numeric_limits<double>::quiet_NaN();
                 latest_data_.pressure_altitude_m = std::numeric_limits<double>::quiet_NaN();
@@ -2711,7 +2711,7 @@ void ImuCollector::run()
             sample.quaternion[1] = raw.hi83.quat[1];
             sample.quaternion[2] = raw.hi83.quat[2];
             sample.quaternion[3] = raw.hi83.quat[3];
-            sample.temperature = raw.hi83.temperature;
+            sample.temperature = std::numeric_limits<double>::quiet_NaN();
             sample.air_pressure = std::numeric_limits<double>::quiet_NaN();
           }
           else if (raw.hi91.tag == 0x91)
@@ -2733,7 +2733,7 @@ void ImuCollector::run()
             sample.quaternion[1] = raw.hi91.quat[1];
             sample.quaternion[2] = raw.hi91.quat[2];
             sample.quaternion[3] = raw.hi91.quat[3];
-            sample.temperature = static_cast<double>(raw.hi91.temp);
+            sample.temperature = std::numeric_limits<double>::quiet_NaN();
             sample.air_pressure = std::numeric_limits<double>::quiet_NaN();
           }
           else if (raw.hi92.tag == 0x92)
@@ -2754,7 +2754,7 @@ void ImuCollector::run()
             sample.quaternion[1] = static_cast<double>(raw.hi92.quat[1]) * 0.0001;
             sample.quaternion[2] = static_cast<double>(raw.hi92.quat[2]) * 0.0001;
             sample.quaternion[3] = static_cast<double>(raw.hi92.quat[3]) * 0.0001;
-            sample.temperature = static_cast<double>(raw.hi92.temp);
+            sample.temperature = std::numeric_limits<double>::quiet_NaN();
             sample.air_pressure = std::numeric_limits<double>::quiet_NaN();
           }
           else if (raw.hi81.tag == 0x81)
@@ -2771,7 +2771,7 @@ void ImuCollector::run()
             sample.rpy[0] = raw.hi81.roll / 100.0;
             sample.rpy[1] = raw.hi81.pitch / 100.0;
             sample.rpy[2] = raw.hi81.yaw / 100.0;
-            sample.temperature = static_cast<double>(raw.hi81.temperature);
+            sample.temperature = std::numeric_limits<double>::quiet_NaN();
           }
 
           if (sample.valid)
