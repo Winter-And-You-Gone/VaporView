@@ -6,6 +6,8 @@
 #include <QStringList>
 #include <QVector>
 
+#include "TcpWaveEncoding.h"
+
 struct RtkTrackPoint
 {
     double latitude = 0.0;
@@ -83,6 +85,7 @@ private:
         quint64 harmonic_payload_offset = 0;
         quint32 harmonic_payload_size = 0;
         quint64 timestamp_us = 0;
+        VaporView::TcpFloatEncoding float_encoding = VaporView::TcpFloatEncoding::Unknown;
     };
 
     void setupUi();

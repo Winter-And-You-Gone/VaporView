@@ -71,6 +71,7 @@ if(WIN32 AND MINGW)
 endif()
 
 find_package(Threads REQUIRED)
+include(CTest)
 
 set(UM982_DRIVER_DIR ${CMAKE_SOURCE_DIR}/third_party/um982_driver)
 set(HIPNUC_DRIVER_DIR ${CMAKE_SOURCE_DIR}/third_party/hipnuc_driver)
@@ -144,6 +145,7 @@ set(NAV_SOURCES
     src/MainWindow.cpp
     src/serial_port.cpp
     src/data_collector.cpp
+    src/TcpWaveEncoding.cpp
     src/TcpWavePanel.cpp
     src/SessionViewerWindow.cpp
     src/TrajectoryViewerDialog.cpp
@@ -158,6 +160,7 @@ set(NAV_HEADERS
     include/serial_port.h
     include/data_types.h
     include/data_collector.h
+    include/TcpWaveEncoding.h
     include/TcpWavePanel.h
     include/SessionViewerWindow.h
     include/TrajectoryViewerDialog.h
@@ -217,21 +220,34 @@ target_link_libraries(VaporView PRIVATE
 )
 
 add_custom_command(TARGET VaporView POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/resources
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:VaporView>/resources
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/resources/modern_style.qss
-        ${CMAKE_BINARY_DIR}/resources/modern_style.qss
+        $<TARGET_FILE_DIR:VaporView>/resources/modern_style.qss
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/resources/combo_arrow_down.xpm
-        ${CMAKE_BINARY_DIR}/resources/combo_arrow_down.xpm
+        $<TARGET_FILE_DIR:VaporView>/resources/combo_arrow_down.xpm
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/resources/combo_arrow_up.xpm
-        ${CMAKE_BINARY_DIR}/resources/combo_arrow_up.xpm
+        $<TARGET_FILE_DIR:VaporView>/resources/combo_arrow_up.xpm
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/resources/app.ico
-        ${CMAKE_BINARY_DIR}/resources/app.ico
+        $<TARGET_FILE_DIR:VaporView>/resources/app.ico
     COMMENT "Copying resources to build directory"
 )
+
+if(BUILD_TESTING)
+    add_executable(tcp_wave_encoding_test
+        tests/tcp_wave_encoding_test.cpp
+        src/TcpWaveEncoding.cpp
+        include/TcpWaveEncoding.h
+    )
+    target_include_directories(tcp_wave_encoding_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+    )
+    target_link_libraries(tcp_wave_encoding_test PRIVATE Qt6::Core)
+    add_test(NAME tcp_wave_encoding_test COMMAND tcp_wave_encoding_test)
+endif()
 
 if(WIN32 AND MINGW)
     if(QT_WINDEPLOYQT_EXECUTABLE)

@@ -23,7 +23,6 @@
 #include <QtEndian>
 #include <algorithm>
 #include <cmath>
-#include <cstring>
 #include <functional>
 #include <limits>
 
@@ -63,22 +62,6 @@ QString headerOrderLabel(bool english, TcpWavePanel::HeaderByteOrder order)
     case TcpWavePanel::HeaderByteOrder::Unknown:
     default:
         return english ? "unknown" : "未知";
-    }
-}
-
-QString floatEncodingLabel(bool english, TcpWavePanel::FloatEncoding encoding)
-{
-    switch (encoding)
-    {
-    case TcpWavePanel::FloatEncoding::LittleEndian:
-        return english ? "little-endian float32" : "小端 float32";
-    case TcpWavePanel::FloatEncoding::BigEndian:
-        return english ? "big-endian float32" : "大端 float32";
-    case TcpWavePanel::FloatEncoding::WordSwappedLittleEndian:
-        return english ? "word-swapped float32" : "16位字交换 float32";
-    case TcpWavePanel::FloatEncoding::Unknown:
-    default:
-        return english ? "unknown float32" : "未知 float32";
     }
 }
 
@@ -1104,7 +1087,7 @@ void TcpWavePanel::processBuffer()
             ++frame_count_;
             updateFrameRateDisplay(QDateTime::currentMSecsSinceEpoch());
             const quint64 frameTimestampUs = static_cast<quint64>(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()) * 1000ULL;
-            emit rawWaveFrameReady(frameTimestampUs, pending_wave1_payload_, wave4Payload);
+            emit rawWaveFrameReady(frameTimestampUs, pending_wave1_payload_, wave4Payload, float_encoding_);
             emit normalizedSecondHarmonicFrameReady(
                 frameTimestampUs,
                 wave4_history_);
@@ -1137,7 +1120,7 @@ void TcpWavePanel::processBuffer()
                 .arg(host_edit_->text())
                 .arg(port_spin_->value())
                 .arg(frame_count_)
-                .arg(floatEncodingLabel(is_english_, float_encoding_)));
+                .arg(VaporView::tcpFloatEncodingLabel(is_english_, float_encoding_)));
 
             pending_wave1_payload_.clear();
             pending_wave1_.clear();
@@ -1280,136 +1263,21 @@ bool TcpWavePanel::tryConsumePayload(QVector<float>& output, QByteArray *rawPayl
     }
     if (float_encoding_ == FloatEncoding::Unknown)
     {
-        float_encoding_ = autoDetectFloatEncoding(payload);
+        float_encoding_ = VaporView::autoDetectTcpFloatEncoding(payload);
         setStatusText(QString(is_english_
             ? "Detected float payload format: %1"
             : "已识别浮点负载格式: %1")
-            .arg(floatEncodingLabel(is_english_, float_encoding_)));
+            .arg(VaporView::tcpFloatEncodingLabel(is_english_, float_encoding_)));
     }
     output = decodeFloatPayload(payload);
     expected_payload_size_ = 0;
     return true;
 }
 
-float TcpWavePanel::decodeFloatSample(const char *raw, FloatEncoding encoding) const
-{
-    quint32 bits = 0;
-    switch (encoding)
-    {
-    case FloatEncoding::LittleEndian:
-        bits = qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(raw));
-        break;
-    case FloatEncoding::BigEndian:
-        bits = qFromBigEndian<quint32>(reinterpret_cast<const uchar*>(raw));
-        break;
-    case FloatEncoding::WordSwappedLittleEndian:
-    {
-        const uchar ordered[4] = {
-            static_cast<uchar>(raw[0]),
-            static_cast<uchar>(raw[1]),
-            static_cast<uchar>(raw[3]),
-            static_cast<uchar>(raw[2]),
-        };
-        bits = qFromLittleEndian<quint32>(ordered);
-        break;
-    }
-    case FloatEncoding::Unknown:
-    default:
-        bits = qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(raw));
-        break;
-    }
-
-    float value = 0.0f;
-    std::memcpy(&value, &bits, sizeof(float));
-    return value;
-}
-
-TcpWavePanel::FloatEncoding TcpWavePanel::autoDetectFloatEncoding(const QByteArray& payload) const
-{
-    const FloatEncoding candidates[] = {
-        FloatEncoding::LittleEndian,
-        FloatEncoding::BigEndian,
-        FloatEncoding::WordSwappedLittleEndian,
-    };
-    const int sampleCount = std::min(static_cast<int>(payload.size() / kFloatSize), 1024);
-    double bestScore = -std::numeric_limits<double>::infinity();
-    FloatEncoding bestEncoding = FloatEncoding::LittleEndian;
-
-    for (FloatEncoding encoding : candidates)
-    {
-        double score = 0.0;
-        float previous = 0.0f;
-        bool hasPrevious = false;
-        for (int i = 0; i < sampleCount; ++i)
-        {
-            const float value = decodeFloatSample(payload.constData() + i * kFloatSize, encoding);
-            if (!std::isfinite(value))
-            {
-                score -= 1000.0;
-                continue;
-            }
-
-            const double magnitude = std::fabs(static_cast<double>(value));
-            score += 100.0;
-            if (magnitude < 10.0)
-            {
-                score += 20.0;
-            }
-            else if (magnitude < 1000.0)
-            {
-                score += 5.0;
-            }
-            else if (magnitude > 1.0e6)
-            {
-                score -= 200.0;
-            }
-
-            if (hasPrevious)
-            {
-                const double delta = std::fabs(static_cast<double>(value) - static_cast<double>(previous));
-                if (delta < 0.1)
-                {
-                    score += 5.0;
-                }
-                else if (delta < 1.0)
-                {
-                    score += 3.0;
-                }
-                else if (delta < 10.0)
-                {
-                    score += 1.0;
-                }
-                else if (delta > 1.0e4)
-                {
-                    score -= 25.0;
-                }
-            }
-
-            previous = value;
-            hasPrevious = true;
-        }
-
-        if (score > bestScore)
-        {
-            bestScore = score;
-            bestEncoding = encoding;
-        }
-    }
-
-    return bestEncoding;
-}
-
 QVector<float> TcpWavePanel::decodeFloatPayload(const QByteArray& payload) const
 {
-    QVector<float> values;
-    const int count = payload.size() / kFloatSize;
-    values.resize(count);
     const FloatEncoding encoding = float_encoding_ == FloatEncoding::Unknown
         ? FloatEncoding::LittleEndian
         : float_encoding_;
-    for (int i = 0; i < count; ++i)
-    {
-        values[i] = decodeFloatSample(payload.constData() + i * kFloatSize, encoding);
-    }
-    return values;
+    return VaporView::decodeTcpFloatPayload(payload, encoding);
 }

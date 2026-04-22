@@ -15,12 +15,11 @@ namespace VaporView
 
 enum class LidarProtocol
 {
-  Unknown,
-  TF03,
-  TFA1500DistanceFrame,
-  TFA1500LowFrequencyFrame,
-  TFA1500HighFrequency,
-  ObservedAaB7Frame
+  Unknown = 0,
+  TFA1500DistanceFrame = 2,
+  TFA1500LowFrequencyFrame = 3,
+  TFA1500HighFrequency = 4,
+  ObservedAaB7Frame = 5
 };
 
 class DataCollector
@@ -212,9 +211,7 @@ private:
   LidarData latest_data_;
   RawFrameCallback raw_frame_callback_;
 
-  static constexpr uint8_t TF03_HEADER = 0x59;
   static constexpr uint8_t TFA1500_HEADER = 0x5C;
-  static constexpr size_t TF03_FRAME_SIZE = 9;
   static constexpr size_t TFA1500_FRAME_SIZE = 5;
 
   LidarProtocol active_protocol_ = LidarProtocol::Unknown;
@@ -225,7 +222,6 @@ private:
   bool ensureTfa1500DistanceOutput();
   bool ensureTfa1500LowFrequencyContinuous();
   void stopTfa1500Streaming();
-  static bool parseTf03Frame(const uint8_t* frame, size_t size, LidarData& sample);
   static bool parseTfa1500Frame(const uint8_t* frame, size_t size, LidarData& sample);
 };
 

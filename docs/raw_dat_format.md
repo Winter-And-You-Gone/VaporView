@@ -27,7 +27,7 @@
 | 偏移 | 类型 | 字段 | 说明 |
 | ---: | --- | --- | --- |
 | 0 | char[8] | magic | 固定为 `VVRAWDAT` |
-| 8 | uint32 | version | 当前为 `1` |
+| 8 | uint32 | version | 当前为 `2` |
 | 12 | uint32 | header_size | 当前文件头大小，当前为 `20` |
 | 16 | uint16 | source_id | 数据源编号 |
 | 18 | uint16 | reserved | 保留，当前为 `0` |
@@ -52,8 +52,8 @@
 - EPSILON：`record_type` 为 FDILink packet id，例如 `0x40 / 0x41 / 0x42 / 0x50`；`flags` 低 8 位保存 FDILink serial number。
 - PTB：`record_type = 1`，`flags = 0`。
 - HMP：`record_type = 0x03`，对应 Modbus function code。
-- LIDAR：`record_type` 使用程序内 `LidarProtocol` 枚举值：`1=TF03`，`2=TFA1500DistanceFrame`，`3=TFA1500LowFrequencyFrame`，`4=TFA1500HighFrequency`，`5=ObservedAaB7Frame`。
-- TCP 波形：`record_type = 1`，`flags` bit0 表示 payload 内含两个 length-prefixed 子 payload。
+- LIDAR：`record_type` 使用程序内 `LidarProtocol` 枚举值：`1` 为历史保留值，当前不再生成；`2=TFA1500DistanceFrame`，`3=TFA1500LowFrequencyFrame`，`4=TFA1500HighFrequency`，`5=ObservedAaB7Frame`。
+- TCP 波形：`record_type = 1`，`flags` bit0 表示 payload 内含两个 length-prefixed 子 payload；`flags` bits8-9 记录 payload 浮点编码，`0=legacy/unknown`、`1=little-endian float32`、`2=big-endian float32`、`3=word-swapped float32`。
 
 ## TCP 波形 payload
 
@@ -66,7 +66,7 @@
 | 8 | byte[] | 原始信号 payload |
 | 8 + raw_size | byte[] | 二次谐波 payload |
 
-这两个子 payload 是 TCP 帧长度头之后的原始负载，不包含 4 字节长度头；浮点字节序保持接收时的原始编码。
+这两个子 payload 是 TCP 帧长度头之后的原始负载，不包含 4 字节长度头；浮点字节序保持接收时的原始编码。`version=2` 的新记录通过记录头 `flags` bits8-9 保存该编码；旧 `version=1` 文件没有编码元数据，Session Viewer 会按 payload 内容自动探测后再回放。
 
 ## 与 CSV 对齐
 

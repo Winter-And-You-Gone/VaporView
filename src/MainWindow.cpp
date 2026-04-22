@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 #include "RtkConfigDialog.h"
 #include "SessionViewerWindow.h"
+#include "TcpWaveEncoding.h"
 #include "TcpWavePanel.h"
 #include "data_collector.h"
 #include "data_types.h"
@@ -69,9 +70,15 @@ constexpr int kMainPageInputHeight = 30;
 constexpr int kMainPageButtonHeight = 38;
 constexpr int kEpsilonTitleColumnWidth = 170;
 constexpr int kEpsilonValueColumnMinWidth = 320;
+constexpr int kPtbMinSampleRateHz = 1;
+constexpr int kPtbMaxSampleRateHz = 70;
+constexpr int kDefaultEpsilonSampleRateHz = 100;
+constexpr int kDefaultPtbSampleRateHz = 20;
+constexpr int kDefaultHmpSampleRateHz = 20;
+constexpr int kDefaultLidarSampleRateHz = 100;
 constexpr quint64 kImuPpsSyncWindowUs = 2ULL * 1000ULL * 1000ULL;
 constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
-constexpr quint32 kUnifiedRawFormatVersion = 1u;
+constexpr quint32 kUnifiedRawFormatVersion = 2u;
 constexpr quint32 kUnifiedRawRecordMarker = 0x44525756u;
 constexpr quint16 kRawSourceEpsilon = 1u;
 constexpr quint16 kRawSourcePtb = 2u;
@@ -80,6 +87,11 @@ constexpr quint16 kRawSourceLidar = 4u;
 constexpr quint16 kRawSourceTcpWave = 5u;
 constexpr quint16 kRawRecordTypeGeneric = 1u;
 constexpr quint32 kRawTcpWaveCombinedPayloadFlag = 0x00000001u;
+
+int clampPtbSampleRate(int hz)
+{
+    return std::clamp(hz, kPtbMinSampleRateHz, kPtbMaxSampleRateHz);
+}
 
 #pragma pack(push, 1)
 struct UnifiedRawFileHeader
@@ -1538,6 +1550,8 @@ MainWindow::MainWindow(QWidget *parent)
     , log_text_edit_(nullptr)
     , status_label_(nullptr)
     , status_task_progress_bar_(nullptr)
+    , status_task_spinner_label_(nullptr)
+    , status_task_spinner_timer_(nullptr)
     , recording_status_label_(nullptr)
     , auto_detect_ports_btn_(nullptr)
     , epsilon_port_combo_(nullptr)
@@ -1652,15 +1666,16 @@ MainWindow::MainWindow(QWidget *parent)
     , base_font_point_size_(0.0)
     , base_window_size_(1440, 860)
     , base_minimum_window_size_(800, 600)
-    , epsilon_sample_rate_(100)
+    , epsilon_sample_rate_(kDefaultEpsilonSampleRateHz)
     , gnss_sample_rate_(1)
     , imu_sample_rate_(200)
-    , ptb_sample_rate_(1)
-    , hmp_sample_rate_(1)
-    , lidar_sample_rate_(1)
+    , ptb_sample_rate_(kDefaultPtbSampleRateHz)
+    , hmp_sample_rate_(kDefaultHmpSampleRateHz)
+    , lidar_sample_rate_(kDefaultLidarSampleRateHz)
     , recording_export_rate_hz_(20)
     , imu_recording_rate_hz_(0)
     , waveform_recording_rate_hz_(0)
+    , status_task_spinner_index_(0)
     , steady_clock_anchor_(std::chrono::steady_clock::now())
     , system_clock_anchor_(std::chrono::system_clock::now())
     , sensors_file_(nullptr)
@@ -1772,10 +1787,26 @@ MainWindow::~MainWindow()
 
 void MainWindow::loadModernStyleSheet()
 {
-    QString stylePath = QCoreApplication::applicationDirPath() + "/../resources/modern_style.qss";
-    QFile styleFile(stylePath);
+    const QDir appDir(QCoreApplication::applicationDirPath());
+    const QStringList styleCandidates = {
+        appDir.filePath("resources/modern_style.qss"),
+        appDir.filePath("../resources/modern_style.qss"),
+        appDir.filePath("../../resources/modern_style.qss"),
+    };
+
+    QString stylePath;
+    QFile styleFile;
+    for (const QString& candidate : styleCandidates)
+    {
+        styleFile.setFileName(QDir::cleanPath(candidate));
+        if (styleFile.open(QFile::ReadOnly | QFile::Text))
+        {
+            stylePath = styleFile.fileName();
+            break;
+        }
+    }
     
-    if (styleFile.open(QFile::ReadOnly | QFile::Text))
+    if (styleFile.isOpen())
     {
         base_style_sheet_ = QString::fromUtf8(styleFile.readAll());
         styleFile.close();
@@ -2586,7 +2617,7 @@ void MainWindow::setupMenuBar()
             "- EPSILON Integrated Navigation (FDILink)\n"
             "- PTB210 Barometer\n"
             "- HMP3 Temperature/Humidity Sensor\n"
-            "- TF03 / TFA1500-L Laser Rangefinder\n\n"
+            "- TFA1500-L Laser Rangefinder\n\n"
             "Press F11 for fullscreen mode." :
             "VaporView 应用程序\n\n"
             "版本 1.0.0\n\n"
@@ -2595,7 +2626,7 @@ void MainWindow::setupMenuBar()
             "- EPSILON 组合导航一体机 (FDILink)\n"
             "- PTB210 气压计\n"
             "- HMP3 温湿度传感器\n"
-            "- TF03 / TFA1500-L 激光测距模块\n\n"
+            "- TFA1500-L 激光测距模块\n\n"
             "按 F11 进入全屏模式。";
         QMessageBox::about(this, title, text);
     });
@@ -2696,8 +2727,63 @@ void MainWindow::setupStatusBar()
     status_task_progress_bar_->setFormat(QString());
     statusBar()->addWidget(status_task_progress_bar_);
 
+    status_task_spinner_label_ = new QLabel(this);
+    status_task_spinner_label_->setObjectName("statusTaskSpinner");
+    status_task_spinner_label_->setAlignment(Qt::AlignCenter);
+    status_task_spinner_label_->setFixedSize(18, 18);
+    status_task_spinner_label_->setVisible(false);
+    statusBar()->addWidget(status_task_spinner_label_);
+
+    status_task_spinner_timer_ = new QTimer(this);
+    status_task_spinner_timer_->setInterval(120);
+    connect(status_task_spinner_timer_, &QTimer::timeout, this, [this]() {
+        if (!status_task_spinner_label_ || !status_task_spinner_label_->isVisible())
+        {
+            return;
+        }
+        static const QStringList frames = {
+            QStringLiteral("◐"),
+            QStringLiteral("◓"),
+            QStringLiteral("◑"),
+            QStringLiteral("◒"),
+        };
+        status_task_spinner_label_->setText(frames.at(status_task_spinner_index_ % frames.size()));
+        status_task_spinner_index_ = (status_task_spinner_index_ + 1) % frames.size();
+    });
+
     recording_status_label_ = new QLabel(this);
     statusBar()->addPermanentWidget(recording_status_label_);
+}
+
+void MainWindow::startStatusTaskSpinner()
+{
+    if (!status_task_spinner_label_ || !status_task_spinner_timer_)
+    {
+        return;
+    }
+
+    status_task_spinner_label_->setVisible(true);
+    if (!status_task_spinner_timer_->isActive())
+    {
+        status_task_spinner_index_ = 0;
+        status_task_spinner_label_->setText(QStringLiteral("◐"));
+        status_task_spinner_timer_->start();
+    }
+}
+
+void MainWindow::stopStatusTaskSpinner()
+{
+    if (status_task_spinner_timer_)
+    {
+        status_task_spinner_timer_->stop();
+    }
+    if (status_task_spinner_label_)
+    {
+        status_task_spinner_label_->clear();
+        status_task_spinner_label_->setToolTip(QString());
+        status_task_spinner_label_->setVisible(false);
+    }
+    status_task_spinner_index_ = 0;
 }
 
 void MainWindow::showStatusTaskProgress(const QString& label, int value, int maximum)
@@ -2714,6 +2800,11 @@ void MainWindow::showStatusTaskProgress(const QString& label, int value, int max
     status_task_progress_bar_->setValue(normalizedValue);
     status_task_progress_bar_->setFormat(QStringLiteral("%1 %p%").arg(label));
     status_task_progress_bar_->setToolTip(label);
+    if (status_task_spinner_label_)
+    {
+        status_task_spinner_label_->setToolTip(label);
+    }
+    startStatusTaskSpinner();
 }
 
 void MainWindow::showBusyStatusTaskProgress(const QString& label)
@@ -2724,9 +2815,15 @@ void MainWindow::showBusyStatusTaskProgress(const QString& label)
     }
 
     status_task_progress_bar_->setVisible(true);
-    status_task_progress_bar_->setRange(0, 0);
+    status_task_progress_bar_->setRange(0, 100);
+    status_task_progress_bar_->setValue(0);
     status_task_progress_bar_->setFormat(label);
     status_task_progress_bar_->setToolTip(label);
+    if (status_task_spinner_label_)
+    {
+        status_task_spinner_label_->setToolTip(label);
+    }
+    startStatusTaskSpinner();
 }
 
 void MainWindow::hideStatusTaskProgress()
@@ -2741,6 +2838,7 @@ void MainWindow::hideStatusTaskProgress()
     status_task_progress_bar_->setValue(0);
     status_task_progress_bar_->setFormat(QString());
     status_task_progress_bar_->setToolTip(QString());
+    stopStatusTaskSpinner();
 }
 
 void MainWindow::setupCentralWidget()
@@ -2824,7 +2922,7 @@ void MainWindow::setupConfigPanel()
 
     auto createRateCombo = [this](int maxRate = 500) {
         auto *combo = new QComboBox(this);
-        const QList<int> supportedRates = {1, 2, 5, 10, 20, 50, 100, 200, 250, 500, 1000};
+        const QList<int> supportedRates = {1, 2, 5, 10, 20, 50, 70, 100, 200, 250, 500, 1000};
         for (int rate : supportedRates)
         {
             if (rate <= maxRate)
@@ -2851,6 +2949,19 @@ void MainWindow::setupConfigPanel()
         combo->setFixedHeight(kMainPageInputHeight);
         combo->setFixedWidth(100);
         return combo;
+    };
+
+    auto addNoSetRateOption = [this](QComboBox *combo) {
+        if (!combo)
+        {
+            return;
+        }
+        if (combo->findText(QStringLiteral("No Set")) < 0 &&
+            combo->findText(QStringLiteral("不设定")) < 0)
+        {
+            combo->addItem(is_english_ ? QStringLiteral("No Set") : QStringLiteral("不设定"));
+        }
+        combo->setValidator(nullptr);
     };
 
     auto createPortRow = [this, config_layout, &baudRates, &ports, &createRateCombo](QLabel*& lbl, QComboBox*& portCombo, QComboBox*& baudCombo, QLabel*& rateLbl, QComboBox*& rateCombo, const QString& defaultPort, const QString& defaultBaud, int row, int maxRate = 500) {
@@ -2923,12 +3034,12 @@ void MainWindow::setupConfigPanel()
 
 #ifdef _WIN32
     createPortRow(epsilon_lbl_, epsilon_port_combo_, epsilon_baud_combo_, epsilon_rate_lbl_, epsilon_rate_combo_, "COM3", "921600", row++, 200);
-    createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "COM5", "9600", row++);
+    createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "COM5", "9600", row++, kPtbMaxSampleRateHz);
     createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "COM6", "19200", row++);
     createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "COM7", "500000", row++, 100);
 #else
     createPortRow(epsilon_lbl_, epsilon_port_combo_, epsilon_baud_combo_, epsilon_rate_lbl_, epsilon_rate_combo_, "/dev/ttyEPSILON", "921600", row++, 200);
-    createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "/dev/ttyBARO", "9600", row++);
+    createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "/dev/ttyBARO", "9600", row++, kPtbMaxSampleRateHz);
     createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "/dev/ttyHMP", "19200", row++);
     createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "/dev/ttyLidar", "500000", row++, 100);
 #endif
@@ -2941,10 +3052,9 @@ void MainWindow::setupConfigPanel()
         config_layout->addWidget(epsilon_rate_combo_, 1, 4, Qt::AlignVCenter);
     }
 
-    if (lidar_rate_combo_)
+    for (QComboBox *combo : {epsilon_rate_combo_, ptb_rate_combo_, hmp_rate_combo_, lidar_rate_combo_})
     {
-        lidar_rate_combo_->addItem(is_english_ ? "No Set" : "不设定");
-        lidar_rate_combo_->setValidator(nullptr);
+        addNoSetRateOption(combo);
     }
 
     connect(epsilon_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onGnssRateChanged);
@@ -3150,7 +3260,7 @@ void MainWindow::setEnglish(bool english)
     if (imu_lbl_) imu_lbl_->setText(english ? "IMU:" : "IMU:");
     if (ptb_lbl_) ptb_lbl_->setText(english ? "PTB210:" : "PTB210:");
     if (hmp_lbl_) hmp_lbl_->setText(english ? "HMP3:" : "HMP3:");
-    if (lidar_lbl_) lidar_lbl_->setText(english ? "TF03 / TFA1500-L:" : "TF03 / TFA1500-L:");
+    if (lidar_lbl_) lidar_lbl_->setText(english ? "TFA1500-L:" : "TFA1500-L:");
 
     if (config_inline_title_lbl_)
     {
@@ -3234,14 +3344,27 @@ void MainWindow::setEnglish(bool english)
     ptb_rate_lbl_->setText(english ? "Rate:" : "频率:");
     hmp_rate_lbl_->setText(english ? "Rate:" : "频率:");
     lidar_rate_lbl_->setText(english ? "Rate:" : "频率:");
-    if (lidar_rate_combo_)
+    for (QComboBox *combo : {epsilon_rate_combo_, ptb_rate_combo_, hmp_rate_combo_, lidar_rate_combo_})
     {
+        if (!combo)
+        {
+            continue;
+        }
+        const QSignalBlocker blocker(combo);
         const QString oldText = english ? QStringLiteral("不设定") : QStringLiteral("No Set");
         const QString newText = english ? QStringLiteral("No Set") : QStringLiteral("不设定");
-        const int idx = lidar_rate_combo_->findText(oldText);
+        const int idx = combo->findText(oldText);
         if (idx >= 0)
         {
-            lidar_rate_combo_->setItemText(idx, newText);
+            combo->setItemText(idx, newText);
+        }
+        else if (combo->findText(newText) < 0)
+        {
+            combo->addItem(newText);
+        }
+        if (isRateUnspecified(combo->currentText()))
+        {
+            combo->setCurrentText(newText);
         }
     }
 
@@ -3330,42 +3453,45 @@ int MainWindow::parseRate(const QString& text) const
     return 20;
 }
 
-bool MainWindow::isLidarRateUnspecified(const QString& text) const
+bool MainWindow::isRateUnspecified(const QString& text) const
 {
     const QString trimmed = text.trimmed();
     return trimmed.compare(QStringLiteral("No Set"), Qt::CaseInsensitive) == 0
         || trimmed == QStringLiteral("不设定");
 }
 
-int MainWindow::effectiveLidarSampleRate(const QString& text) const
+int MainWindow::effectiveRateOrDefault(const QString& text, int defaultRate, int maxRate) const
 {
-    if (isLidarRateUnspecified(text))
+    const int boundedDefault = std::clamp(defaultRate, 1, std::max(1, maxRate));
+    if (isRateUnspecified(text))
     {
-        return 100;
+        return boundedDefault;
     }
-    return std::min(parseRate(text), 100);
+    return std::clamp(parseRate(text), 1, std::max(1, maxRate));
 }
 
 void MainWindow::onGlobalRateChanged(const QString& text)
 {
     int rate = parseRate(text);
+    const bool skipEpsilonDeviceRate = epsilon_rate_combo_ && isRateUnspecified(epsilon_rate_combo_->currentText());
+    const bool skipPtbDeviceRate = ptb_rate_combo_ && isRateUnspecified(ptb_rate_combo_->currentText());
+    const bool skipHmpDeviceRate = hmp_rate_combo_ && isRateUnspecified(hmp_rate_combo_->currentText());
+    const bool skipLidarDeviceRate = lidar_rate_combo_ && isRateUnspecified(lidar_rate_combo_->currentText());
 
-    epsilon_sample_rate_ = std::clamp(rate, 20, 200);
-    ptb_sample_rate_ = rate;
-    hmp_sample_rate_ = rate;
+    epsilon_sample_rate_ = skipEpsilonDeviceRate ? kDefaultEpsilonSampleRateHz : std::clamp(rate, 20, 200);
+    ptb_sample_rate_ = skipPtbDeviceRate ? kDefaultPtbSampleRateHz : clampPtbSampleRate(rate);
+    hmp_sample_rate_ = skipHmpDeviceRate ? kDefaultHmpSampleRateHz : rate;
+    lidar_sample_rate_ = skipLidarDeviceRate ? kDefaultLidarSampleRateHz : std::min(rate, 100);
 
     if (epsilon_rate_combo_) epsilon_rate_combo_->blockSignals(true);
     if (ptb_rate_combo_) ptb_rate_combo_->blockSignals(true);
     if (hmp_rate_combo_) hmp_rate_combo_->blockSignals(true);
     if (lidar_rate_combo_) lidar_rate_combo_->blockSignals(true);
 
-    if (epsilon_rate_combo_) epsilon_rate_combo_->setCurrentText(QString::number(epsilon_sample_rate_));
-    if (ptb_rate_combo_) ptb_rate_combo_->setCurrentText(text);
-    if (hmp_rate_combo_) hmp_rate_combo_->setCurrentText(text);
-    if (lidar_rate_combo_ && !isLidarRateUnspecified(lidar_rate_combo_->currentText()))
-    {
-        lidar_rate_combo_->setCurrentText(QString::number(std::min(rate, 100)));
-    }
+    if (epsilon_rate_combo_ && !skipEpsilonDeviceRate) epsilon_rate_combo_->setCurrentText(QString::number(epsilon_sample_rate_));
+    if (ptb_rate_combo_ && !skipPtbDeviceRate) ptb_rate_combo_->setCurrentText(QString::number(ptb_sample_rate_));
+    if (hmp_rate_combo_ && !skipHmpDeviceRate) hmp_rate_combo_->setCurrentText(text);
+    if (lidar_rate_combo_ && !skipLidarDeviceRate) lidar_rate_combo_->setCurrentText(QString::number(lidar_sample_rate_));
 
     if (epsilon_rate_combo_) epsilon_rate_combo_->blockSignals(false);
     if (ptb_rate_combo_) ptb_rate_combo_->blockSignals(false);
@@ -3382,24 +3508,31 @@ void MainWindow::onGlobalRateChanged(const QString& text)
     if (collectors.epsilon && collectors.epsilon->isRunning())
     {
         collectors.epsilon->setSampleRate(epsilonCallbackRate);
-        collectors.epsilon->setOutputPacketRates(epsilonDesiredPacketRates);
+        if (!skipEpsilonDeviceRate)
+        {
+            collectors.epsilon->setOutputPacketRates(epsilonDesiredPacketRates);
+        }
     }
     if (collectors.ptb && collectors.ptb->isRunning())
     {
-        collectors.ptb->setSampleRate(rate);
-        collectors.ptb->setDeviceSampleRate(rate);
+        collectors.ptb->setSampleRate(ptb_sample_rate_);
+        if (!skipPtbDeviceRate && !collectors.ptb->setDeviceSampleRate(ptb_sample_rate_))
+        {
+            log(QString(is_english_
+                ? "PTB sample rate command failed for %1 Hz"
+                : "PTB采样频率命令下发失败：%1 Hz").arg(ptb_sample_rate_));
+        }
     }
     if (collectors.hmp && collectors.hmp->isRunning())
     {
-        collectors.hmp->setSampleRate(rate);
+        collectors.hmp->setSampleRate(hmp_sample_rate_);
     }
     if (collectors.lidar && collectors.lidar->isRunning())
     {
-        const int lidarRate = std::min(rate, 100);
-        collectors.lidar->setSampleRate(lidarRate);
-        if (!isLidarRateUnspecified(lidar_rate_combo_->currentText()))
+        collectors.lidar->setSampleRate(lidar_sample_rate_);
+        if (!skipLidarDeviceRate)
         {
-            collectors.lidar->setDeviceSampleRate(lidarRate);
+            collectors.lidar->setDeviceSampleRate(lidar_sample_rate_);
         }
     }
     
@@ -3414,11 +3547,24 @@ void MainWindow::onGlobalRateChanged(const QString& text)
     {
         log(QString(is_english_ ? "All rates set to %1 Hz" : "所有频率已设置为 %1 Hz").arg(rate));
     }
+    if (skipEpsilonDeviceRate || skipPtbDeviceRate || skipHmpDeviceRate || skipLidarDeviceRate)
+    {
+        log(is_english_
+            ? "Devices set to No Set keep their output-rate commands disabled."
+            : "已选择“不设定”的设备保持不下发输出频率命令。");
+    }
+    if (!skipPtbDeviceRate && ptb_sample_rate_ != rate)
+    {
+        log(QString(is_english_
+            ? "PTB sample rate capped at %1 Hz"
+            : "PTB采样频率已限制为 %1 Hz").arg(ptb_sample_rate_));
+    }
 }
 
 void MainWindow::onGnssRateChanged(const QString& text)
 {
-    epsilon_sample_rate_ = parseRate(text);
+    const bool skipDeviceRate = isRateUnspecified(text);
+    epsilon_sample_rate_ = effectiveRateOrDefault(text, kDefaultEpsilonSampleRateHz, 200);
     QSettings settings("VaporView", "MainWindow");
     bool epsilonUsesCustomPacketRates = false;
     const std::map<uint8_t, int> epsilonDesiredPacketRates =
@@ -3428,12 +3574,18 @@ void MainWindow::onGnssRateChanged(const QString& text)
     if (collectors.epsilon)
     {
         collectors.epsilon->setSampleRate(epsilonCallbackRate);
-        if (collectors.epsilon->isRunning())
+        if (collectors.epsilon->isRunning() && !skipDeviceRate)
         {
             collectors.epsilon->setOutputPacketRates(epsilonDesiredPacketRates);
         }
     }
-    if (epsilonUsesCustomPacketRates)
+    if (skipDeviceRate)
+    {
+        log(is_english_
+            ? "EPSILON output-rate command disabled; using the current device output."
+            : "已禁用 EPSILON 输出频率下发，使用设备当前输出。");
+    }
+    else if (epsilonUsesCustomPacketRates)
     {
         log(QString(is_english_
                         ? "EPSILON grouped rate was set to %1 Hz, but the saved custom packet-rate profile remains active."
@@ -3453,31 +3605,79 @@ void MainWindow::onImuRateChanged(const QString& text)
 
 void MainWindow::onPtbRateChanged(const QString& text)
 {
-    ptb_sample_rate_ = parseRate(text);
+    const bool skipDeviceRate = isRateUnspecified(text);
+    const int requestedRate = parseRate(text);
+    ptb_sample_rate_ = skipDeviceRate ? kDefaultPtbSampleRateHz : clampPtbSampleRate(requestedRate);
+    if (skipDeviceRate)
+    {
+        const CollectorSnapshot collectors = snapshotCollectors();
+        if (collectors.ptb)
+        {
+            collectors.ptb->setSampleRate(ptb_sample_rate_);
+        }
+        log(is_english_
+            ? "PTB sample-rate command disabled; using the current device output."
+            : "已禁用 PTB 采样频率下发，使用设备当前输出。");
+        return;
+    }
+
+    if (ptb_rate_combo_ && ptb_rate_combo_->currentText() != QString::number(ptb_sample_rate_))
+    {
+        QSignalBlocker blocker(ptb_rate_combo_);
+        ptb_rate_combo_->setCurrentText(QString::number(ptb_sample_rate_));
+    }
+
     const CollectorSnapshot collectors = snapshotCollectors();
     if (collectors.ptb)
     {
         collectors.ptb->setSampleRate(ptb_sample_rate_);
         if (collectors.ptb->isRunning())
         {
-            collectors.ptb->setDeviceSampleRate(ptb_sample_rate_);
+            if (!collectors.ptb->setDeviceSampleRate(ptb_sample_rate_))
+            {
+                log(QString(is_english_
+                    ? "PTB sample rate command failed for %1 Hz"
+                    : "PTB采样频率命令下发失败：%1 Hz").arg(ptb_sample_rate_));
+                return;
+            }
         }
     }
-    log(QString(is_english_ ? "PTB sample rate set to %1 Hz" : "PTB采样频率已设置为 %1 Hz").arg(ptb_sample_rate_));
+    if (requestedRate != ptb_sample_rate_)
+    {
+        log(QString(is_english_
+            ? "PTB sample rate set to %1 Hz (capped from %2 Hz)"
+            : "PTB采样频率已设置为 %1 Hz（由 %2 Hz 限制）")
+            .arg(ptb_sample_rate_)
+            .arg(requestedRate));
+    }
+    else
+    {
+        log(QString(is_english_ ? "PTB sample rate set to %1 Hz" : "PTB采样频率已设置为 %1 Hz").arg(ptb_sample_rate_));
+    }
 }
 
 void MainWindow::onHmpRateChanged(const QString& text)
 {
-    hmp_sample_rate_ = parseRate(text);
+    const bool skipDeviceRate = isRateUnspecified(text);
+    hmp_sample_rate_ = effectiveRateOrDefault(text, kDefaultHmpSampleRateHz);
     const CollectorSnapshot collectors = snapshotCollectors();
     if (collectors.hmp) collectors.hmp->setSampleRate(hmp_sample_rate_);
-    log(QString(is_english_ ? "HMP sample rate set to %1 Hz" : "HMP采样频率已设置为 %1 Hz").arg(hmp_sample_rate_));
+    if (skipDeviceRate)
+    {
+        log(is_english_
+            ? "HMP polling-rate selection left unset; using the default host polling rate."
+            : "HMP 轮询频率保持不设定，使用默认主机轮询频率。");
+    }
+    else
+    {
+        log(QString(is_english_ ? "HMP sample rate set to %1 Hz" : "HMP采样频率已设置为 %1 Hz").arg(hmp_sample_rate_));
+    }
 }
 
 void MainWindow::onLidarRateChanged(const QString& text)
 {
-    const bool skipDeviceRate = isLidarRateUnspecified(text);
-    lidar_sample_rate_ = effectiveLidarSampleRate(text);
+    const bool skipDeviceRate = isRateUnspecified(text);
+    lidar_sample_rate_ = effectiveRateOrDefault(text, kDefaultLidarSampleRateHz, 100);
     const CollectorSnapshot collectors = snapshotCollectors();
     if (collectors.lidar)
     {
@@ -3500,10 +3700,17 @@ void MainWindow::onLidarRateChanged(const QString& text)
 void MainWindow::applyAllSampleRates()
 {
     int rate = parseRate(global_rate_combo_->currentText());
+    const bool skipEpsilonDeviceRate = epsilon_rate_combo_ && isRateUnspecified(epsilon_rate_combo_->currentText());
+    const bool skipPtbDeviceRate = ptb_rate_combo_ && isRateUnspecified(ptb_rate_combo_->currentText());
+    const bool skipHmpDeviceRate = hmp_rate_combo_ && isRateUnspecified(hmp_rate_combo_->currentText());
+    const bool skipLidarDeviceRate = lidar_rate_combo_ && isRateUnspecified(lidar_rate_combo_->currentText());
     const CollectorSnapshot collectors = snapshotCollectors();
     QSettings settings("VaporView", "MainWindow");
     bool epsilonUsesCustomPacketRates = false;
-    const int epsilonRate = std::clamp(rate, 20, 200);
+    const int epsilonRate = skipEpsilonDeviceRate ? kDefaultEpsilonSampleRateHz : std::clamp(rate, 20, 200);
+    const int ptbRate = skipPtbDeviceRate ? kDefaultPtbSampleRateHz : clampPtbSampleRate(rate);
+    const int hmpRate = skipHmpDeviceRate ? kDefaultHmpSampleRateHz : rate;
+    const int lidarRate = skipLidarDeviceRate ? kDefaultLidarSampleRateHz : std::min(rate, 100);
     const std::map<uint8_t, int> epsilonDesiredPacketRates =
         effectiveEpsilonPacketRates(settings, epsilonRate, &epsilonUsesCustomPacketRates);
     const int epsilonCallbackRate = epsilonPacketCallbackRate(epsilonDesiredPacketRates, epsilonRate);
@@ -3511,22 +3718,29 @@ void MainWindow::applyAllSampleRates()
     if (collectors.epsilon && collectors.epsilon->isRunning())
     {
         collectors.epsilon->setSampleRate(epsilonCallbackRate);
-        collectors.epsilon->setOutputPacketRates(epsilonDesiredPacketRates);
+        if (!skipEpsilonDeviceRate)
+        {
+            collectors.epsilon->setOutputPacketRates(epsilonDesiredPacketRates);
+        }
     }
     if (collectors.ptb && collectors.ptb->isRunning())
     {
-        collectors.ptb->setSampleRate(rate);
-        collectors.ptb->setDeviceSampleRate(rate);
+        collectors.ptb->setSampleRate(ptbRate);
+        if (!skipPtbDeviceRate && !collectors.ptb->setDeviceSampleRate(ptbRate))
+        {
+            log(QString(is_english_
+                ? "PTB sample rate command failed for %1 Hz"
+                : "PTB采样频率命令下发失败：%1 Hz").arg(ptbRate));
+        }
     }
     if (collectors.hmp && collectors.hmp->isRunning())
     {
-        collectors.hmp->setSampleRate(rate);
+        collectors.hmp->setSampleRate(hmpRate);
     }
     if (collectors.lidar && collectors.lidar->isRunning())
     {
-        const int lidarRate = std::min(rate, 100);
         collectors.lidar->setSampleRate(lidarRate);
-        if (!isLidarRateUnspecified(lidar_rate_combo_->currentText()))
+        if (!skipLidarDeviceRate)
         {
             collectors.lidar->setDeviceSampleRate(lidarRate);
         }
@@ -3537,13 +3751,10 @@ void MainWindow::applyAllSampleRates()
     hmp_rate_combo_->blockSignals(true);
     lidar_rate_combo_->blockSignals(true);
 
-    if (epsilon_rate_combo_) epsilon_rate_combo_->setCurrentText(QString::number(epsilonRate));
-    ptb_rate_combo_->setCurrentText(QString::number(rate));
-    hmp_rate_combo_->setCurrentText(QString::number(rate));
-    if (!isLidarRateUnspecified(lidar_rate_combo_->currentText()))
-    {
-        lidar_rate_combo_->setCurrentText(QString::number(std::min(rate, 100)));
-    }
+    if (epsilon_rate_combo_ && !skipEpsilonDeviceRate) epsilon_rate_combo_->setCurrentText(QString::number(epsilonRate));
+    if (ptb_rate_combo_ && !skipPtbDeviceRate) ptb_rate_combo_->setCurrentText(QString::number(ptbRate));
+    if (hmp_rate_combo_ && !skipHmpDeviceRate) hmp_rate_combo_->setCurrentText(QString::number(rate));
+    if (lidar_rate_combo_ && !skipLidarDeviceRate) lidar_rate_combo_->setCurrentText(QString::number(lidarRate));
 
     if (epsilon_rate_combo_) epsilon_rate_combo_->blockSignals(false);
     ptb_rate_combo_->blockSignals(false);
@@ -3552,13 +3763,23 @@ void MainWindow::applyAllSampleRates()
 
     gnss_sample_rate_ = rate;
     imu_sample_rate_ = rate;
-    ptb_sample_rate_ = rate;
-    hmp_sample_rate_ = rate;
-    lidar_sample_rate_ = isLidarRateUnspecified(lidar_rate_combo_->currentText())
-        ? 100
-        : std::min(rate, 100);
+    ptb_sample_rate_ = ptbRate;
+    hmp_sample_rate_ = hmpRate;
+    lidar_sample_rate_ = lidarRate;
 
     log(QString(is_english_ ? "All rates set to %1 Hz" : "所有频率已设置为 %1 Hz").arg(rate));
+    if (skipEpsilonDeviceRate || skipPtbDeviceRate || skipHmpDeviceRate || skipLidarDeviceRate)
+    {
+        log(is_english_
+            ? "Devices set to No Set keep their output-rate commands disabled."
+            : "已选择“不设定”的设备保持不下发输出频率命令。");
+    }
+    if (!skipPtbDeviceRate && ptbRate != rate)
+    {
+        log(QString(is_english_
+            ? "PTB sample rate capped at %1 Hz"
+            : "PTB采样频率已限制为 %1 Hz").arg(ptbRate));
+    }
 }
 
 void MainWindow::onToggleFullScreen()
@@ -4036,7 +4257,7 @@ void MainWindow::writeDeviceConfigSnapshot()
     addSerialConfig("epsilon", epsilon_port_combo_, epsilon_baud_combo_, epsilon_rate_combo_);
     addSerialConfig("ptb", ptb_port_combo_, ptb_baud_combo_, ptb_rate_combo_);
     addSerialConfig("hmp", hmp_port_combo_, hmp_baud_combo_, hmp_rate_combo_);
-    addSerialConfig("tf03", lidar_port_combo_, lidar_baud_combo_, lidar_rate_combo_);
+    addSerialConfig("lidar", lidar_port_combo_, lidar_baud_combo_, lidar_rate_combo_);
     root["sensors"] = sensors;
 
     QFile file(device_config_filename_);
@@ -4403,6 +4624,16 @@ void MainWindow::stopRecording(bool announce)
         writeSessionMetadata(recordingTimestampUtc());
     }
 
+    if (announce)
+    {
+        log(QString(is_english_
+            ? "Stopped recording (%1 sensor rows, %2 waveform frames): %3"
+            : "记录已结束（设备 %1 行，波形 %2 帧）: %3")
+            .arg(entryCount)
+            .arg(waveformCount)
+            .arg(sessionPath));
+    }
+
     closeUnifiedRawDatFiles();
 
     {
@@ -4454,15 +4685,6 @@ void MainWindow::stopRecording(bool announce)
     device_config_filename_.clear();
     updateRecordingStatusLabel();
 
-    if (announce)
-    {
-        log(QString(is_english_
-            ? "Stopped recording (%1 sensor rows, %2 waveform frames): %3"
-            : "记录已结束（设备 %1 行，波形 %2 帧）: %3")
-            .arg(entryCount)
-            .arg(waveformCount)
-            .arg(sessionPath));
-    }
 }
 
 void MainWindow::writeSensorsHeader()
@@ -4498,7 +4720,10 @@ void MainWindow::writeSensorsHeader()
     out.flush();
 }
 
-void MainWindow::onTcpRawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload)
+void MainWindow::onTcpRawWaveFrameReady(quint64 timestampUs,
+                                        QByteArray rawSignalPayload,
+                                        QByteArray harmonicPayload,
+                                        VaporView::TcpFloatEncoding floatEncoding)
 {
     if (!recording_thread_running_.load() || recording_paused_)
     {
@@ -4534,7 +4759,7 @@ void MainWindow::onTcpRawWaveFrameReady(quint64 timestampUs, QByteArray rawSigna
                               raw_tcp_wave_record_count_,
                               kRawSourceTcpWave,
                               kRawRecordTypeGeneric,
-                              kRawTcpWaveCombinedPayloadFlag,
+                              kRawTcpWaveCombinedPayloadFlag | VaporView::tcpFloatEncodingToRawDatFlags(floatEncoding),
                               timestampUs,
                               payload.constData(),
                               static_cast<size_t>(payload.size())))
@@ -4807,13 +5032,36 @@ void MainWindow::onAutoDetectPortsClicked()
     log(is_english_ ? "Starting automatic serial-port detection..." : "开始自动识别串口...");
     showBusyStatusTaskProgress(is_english_ ? "Detecting Ports..." : "正在识别串口...");
 
-    port_detection_thread_ = std::thread([this]() {
+    const QString selectedEpsilonPort = epsilon_port_combo_ ? epsilon_port_combo_->currentText().trimmed() : QString();
+    const QString selectedPtbPort = ptb_port_combo_ ? ptb_port_combo_->currentText().trimmed() : QString();
+    const QString selectedHmpPort = hmp_port_combo_ ? hmp_port_combo_->currentText().trimmed() : QString();
+    const QString selectedLidarPort = lidar_port_combo_ ? lidar_port_combo_->currentText().trimmed() : QString();
+    const QString selectedEpsilonBaud = epsilon_baud_combo_ ? epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
+    const QString selectedPtbBaud = ptb_baud_combo_ ? ptb_baud_combo_->currentText().trimmed() : QStringLiteral("9600");
+    const QString selectedHmpBaud = hmp_baud_combo_ ? hmp_baud_combo_->currentText().trimmed() : QStringLiteral("19200");
+    const QString selectedLidarBaud = lidar_baud_combo_ ? lidar_baud_combo_->currentText().trimmed() : QStringLiteral("500000");
+
+    port_detection_thread_ = std::thread([this,
+                                          selectedEpsilonPort,
+                                          selectedPtbPort,
+                                          selectedHmpPort,
+                                          selectedLidarPort,
+                                          selectedEpsilonBaud,
+                                          selectedPtbBaud,
+                                          selectedHmpBaud,
+                                          selectedLidarBaud]() {
         struct ProbeSpec
         {
             QString key;
             QString label;
             QString baud_text;
             std::function<bool(const QString&)> probe;
+        };
+
+        struct SelectedProbeSpec
+        {
+            ProbeSpec spec;
+            QString port_name;
         };
 
         struct DetectionResult
@@ -4850,14 +5098,22 @@ void MainWindow::onAutoDetectPortsClicked()
                     return (value.isEmpty() || value == selectText) ? selectText : value;
                 };
 
-                QHash<QString, QString> plannedPorts{
-                    {"epsilon", normalizePort(epsilon_port_combo_ ? epsilon_port_combo_->currentText() : QString())},
-                    {"ptb", normalizePort(ptb_port_combo_ ? ptb_port_combo_->currentText() : QString())},
-                    {"hmp", normalizePort(hmp_port_combo_ ? hmp_port_combo_->currentText() : QString())},
-                    {"lidar", normalizePort(lidar_port_combo_ ? lidar_port_combo_->currentText() : QString())},
+                QHash<QString, QComboBox*> portCombos{
+                    {"epsilon", epsilon_port_combo_},
+                    {"ptb", ptb_port_combo_},
+                    {"hmp", hmp_port_combo_},
+                    {"lidar", lidar_port_combo_},
                 };
-
-                QHash<QString, QString> detectedBaud;
+                QHash<QString, QComboBox*> baudCombos{
+                    {"epsilon", epsilon_baud_combo_},
+                    {"ptb", ptb_baud_combo_},
+                    {"hmp", hmp_baud_combo_},
+                    {"lidar", lidar_baud_combo_},
+                };
+                QHash<QString, QString> detectedPorts;
+                QHash<QString, QString> detectedBauds;
+                QSet<QString> detectedKeys;
+                QSet<QString> detectedPortNames;
                 for (const DetectionResult& detection : detections)
                 {
                     const QString portName = normalizePort(detection.port_name);
@@ -4865,60 +5121,36 @@ void MainWindow::onAutoDetectPortsClicked()
                     {
                         continue;
                     }
-                    if (!plannedPorts.contains(detection.key))
+                    if (!portCombos.contains(detection.key))
                     {
                         continue;
                     }
-                    plannedPorts[detection.key] = portName;
-                    detectedBaud[detection.key] = detection.baud_text;
+                    detectedPorts[detection.key] = portName;
+                    detectedBauds[detection.key] = detection.baud_text;
+                    detectedKeys.insert(detection.key);
+                    detectedPortNames.insert(portName);
                 }
 
-                QHash<QString, int> portUseCount;
-                for (auto it = plannedPorts.cbegin(); it != plannedPorts.cend(); ++it)
+                for (auto it = portCombos.cbegin(); it != portCombos.cend(); ++it)
                 {
-                    if (it.value() != selectText)
+                    if (!detectedKeys.contains(it.key()) && detectedPortNames.contains(normalizePort(it.value() ? it.value()->currentText() : QString())))
                     {
-                        portUseCount[it.value()] += 1;
+                        applySelection(it.value(), selectText);
                     }
                 }
 
-                QSet<QString> duplicatePorts;
-                for (auto it = portUseCount.cbegin(); it != portUseCount.cend(); ++it)
+                for (const DetectionResult& detection : detections)
                 {
-                    if (it.value() > 1)
+                    const QString portName = detectedPorts.value(detection.key);
+                    if (portName.isEmpty())
                     {
-                        duplicatePorts.insert(it.key());
+                        continue;
                     }
-                }
-
-                for (auto it = plannedPorts.begin(); it != plannedPorts.end(); ++it)
-                {
-                    if (duplicatePorts.contains(it.value()))
+                    applySelection(portCombos.value(detection.key), portName);
+                    if (QComboBox *baudCombo = baudCombos.value(detection.key, nullptr))
                     {
-                        it.value() = selectText;
+                        baudCombo->setCurrentText(detectedBauds.value(detection.key));
                     }
-                }
-
-                applySelection(epsilon_port_combo_, plannedPorts.value("epsilon", selectText));
-                applySelection(ptb_port_combo_, plannedPorts.value("ptb", selectText));
-                applySelection(hmp_port_combo_, plannedPorts.value("hmp", selectText));
-                applySelection(lidar_port_combo_, plannedPorts.value("lidar", selectText));
-
-                if (plannedPorts.value("epsilon", selectText) != selectText && detectedBaud.contains("epsilon") && epsilon_baud_combo_)
-                {
-                    epsilon_baud_combo_->setCurrentText(detectedBaud.value("epsilon"));
-                }
-                if (plannedPorts.value("ptb", selectText) != selectText && detectedBaud.contains("ptb"))
-                {
-                    ptb_baud_combo_->setCurrentText(detectedBaud.value("ptb"));
-                }
-                if (plannedPorts.value("hmp", selectText) != selectText && detectedBaud.contains("hmp"))
-                {
-                    hmp_baud_combo_->setCurrentText(detectedBaud.value("hmp"));
-                }
-                if (plannedPorts.value("lidar", selectText) != selectText && detectedBaud.contains("lidar"))
-                {
-                    lidar_baud_combo_->setCurrentText(detectedBaud.value("lidar"));
                 }
 
                 port_detection_in_progress_ = false;
@@ -4940,39 +5172,92 @@ void MainWindow::onAutoDetectPortsClicked()
             return responded;
         };
 
-        QVector<ProbeSpec> probe_specs = {
-            {"epsilon", "EPSILON", "921600", [probeCollector](const QString& port_name) {
-                auto collector = std::make_unique<VaporView::EpsilonCollector>();
-                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(921600));
-            }},
-            {"epsilon", "EPSILON", "460800", [probeCollector](const QString& port_name) {
-                auto collector = std::make_unique<VaporView::EpsilonCollector>();
-                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(460800));
-            }},
-            {"epsilon", "EPSILON", "115200", [probeCollector](const QString& port_name) {
-                auto collector = std::make_unique<VaporView::EpsilonCollector>();
-                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(115200));
-            }},
-            {"lidar", "TFA1500-L", "500000", [probeCollector](const QString& port_name) {
-                auto collector = std::make_unique<VaporView::LidarCollector>();
-                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(500000));
-            }},
-            {"lidar", "TF03", "115200", [probeCollector](const QString& port_name) {
-                auto collector = std::make_unique<VaporView::LidarCollector>();
-                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(115200));
-            }},
-            {"ptb", "PTB210", "9600", [probeCollector](const QString& port_name) {
-                auto collector = std::make_unique<VaporView::PtbCollector>();
-                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::E71(9600));
-            }},
-            {"hmp", "HMP3", "19200", [probeCollector](const QString& port_name) {
-                auto collector = std::make_unique<VaporView::HmpCollector>();
-                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N82(19200));
-            }},
+        const QString epsilonDefaultBaud = QStringLiteral("921600");
+        const QString ptbDefaultBaud = QStringLiteral("9600");
+        const QString hmpDefaultBaud = QStringLiteral("19200");
+        const QString lidarDefaultBaud = QStringLiteral("500000");
+        auto normalizeBaud = [](const QString& baud, const QString& fallback) {
+            const QString trimmed = baud.trimmed();
+            bool ok = false;
+            const int value = trimmed.toInt(&ok);
+            return ok && value > 0 ? trimmed : fallback;
+        };
+        const QHash<QString, QString> deviceLabels{
+            {"epsilon", "EPSILON"},
+            {"ptb", "PTB210"},
+            {"hmp", "HMP3"},
+            {"lidar", "TFA1500-L"},
         };
 
+        auto makeEpsilonProbe = [probeCollector](const QString& baudText) {
+            const int baud = baudText.toInt();
+            return ProbeSpec{"epsilon", "EPSILON", baudText, [probeCollector, baud](const QString& port_name) {
+                auto collector = std::make_unique<VaporView::EpsilonCollector>();
+                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(baud));
+            }};
+        };
+        auto makePtbProbe = [probeCollector](const QString& baudText) {
+            const int baud = baudText.toInt();
+            return ProbeSpec{"ptb", "PTB210", baudText, [probeCollector, baud](const QString& port_name) {
+                auto collector = std::make_unique<VaporView::PtbCollector>();
+                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::E71(baud));
+            }};
+        };
+        auto makeHmpProbe = [probeCollector](const QString& baudText) {
+            const int baud = baudText.toInt();
+            return ProbeSpec{"hmp", "HMP3", baudText, [probeCollector, baud](const QString& port_name) {
+                auto collector = std::make_unique<VaporView::HmpCollector>();
+                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N82(baud));
+            }};
+        };
+        auto makeLidarProbe = [probeCollector](const QString& baudText) {
+            const int baud = baudText.toInt();
+            return ProbeSpec{"lidar", "TFA1500-L", baudText, [probeCollector, baud](const QString& port_name) {
+                auto collector = std::make_unique<VaporView::LidarCollector>();
+                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(baud));
+            }};
+        };
+        auto addUniqueProbe = [](QVector<ProbeSpec>& specs, QSet<QString>& seen, ProbeSpec spec) {
+            const QString id = spec.key + QLatin1Char('@') + spec.baud_text;
+            if (seen.contains(id))
+            {
+                return;
+            }
+            seen.insert(id);
+            specs.push_back(std::move(spec));
+        };
+
+        auto addSelectedProbe = [](QVector<SelectedProbeSpec>& specs, QSet<QString>& seen, ProbeSpec spec, const QString& portName) {
+            const QString normalizedPort = portName.trimmed();
+            if (normalizedPort.isEmpty() || normalizedPort.startsWith(QStringLiteral("--")))
+            {
+                return;
+            }
+            const QString id = spec.key + QLatin1Char('@') + normalizedPort + QLatin1Char('@') + spec.baud_text;
+            if (seen.contains(id))
+            {
+                return;
+            }
+            seen.insert(id);
+            specs.push_back({std::move(spec), normalizedPort});
+        };
+
+        QVector<SelectedProbeSpec> selected_probe_specs;
+        QSet<QString> seenSelectedProbeIds;
+        addSelectedProbe(selected_probe_specs, seenSelectedProbeIds, makeEpsilonProbe(normalizeBaud(selectedEpsilonBaud, epsilonDefaultBaud)), selectedEpsilonPort);
+        addSelectedProbe(selected_probe_specs, seenSelectedProbeIds, makePtbProbe(normalizeBaud(selectedPtbBaud, ptbDefaultBaud)), selectedPtbPort);
+        addSelectedProbe(selected_probe_specs, seenSelectedProbeIds, makeHmpProbe(normalizeBaud(selectedHmpBaud, hmpDefaultBaud)), selectedHmpPort);
+        addSelectedProbe(selected_probe_specs, seenSelectedProbeIds, makeLidarProbe(normalizeBaud(selectedLidarBaud, lidarDefaultBaud)), selectedLidarPort);
+
+        QVector<ProbeSpec> default_probe_specs;
+        QSet<QString> seenDefaultProbeIds;
+        addUniqueProbe(default_probe_specs, seenDefaultProbeIds, makeEpsilonProbe(epsilonDefaultBaud));
+        addUniqueProbe(default_probe_specs, seenDefaultProbeIds, makePtbProbe(ptbDefaultBaud));
+        addUniqueProbe(default_probe_specs, seenDefaultProbeIds, makeHmpProbe(hmpDefaultBaud));
+        addUniqueProbe(default_probe_specs, seenDefaultProbeIds, makeLidarProbe(lidarDefaultBaud));
+
         QStringList port_names = getAvailablePorts();
-        if (port_names.isEmpty())
+        if (port_names.isEmpty() && selected_probe_specs.isEmpty())
         {
             postLog(english ? "Auto detect stopped: no serial ports found." : "自动识别结束：当前没有发现可用串口。");
             finishOnUi({});
@@ -4980,73 +5265,136 @@ void MainWindow::onAutoDetectPortsClicked()
         }
 
         QVector<DetectionResult> detections;
-        postLog(QString(english ? "Auto detect: probing %1 serial ports..." : "自动识别：开始探测 %1 个串口...")
+        QSet<QString> detectedKeys;
+        QSet<QString> detectedPorts;
+        QSet<QString> attemptedProbeIds;
+        postLog(QString(english ? "Auto detect: selected settings first, then %1 serial port(s) with default bauds."
+                                 : "自动识别：先探测已选配置，再用默认波特率探测 %1 个串口。")
                     .arg(port_names.size()));
 
-        for (const QString& port_name : port_names)
-        {
-            if (cancelRequested())
+        auto probeAttemptId = [](const ProbeSpec& spec, const QString& portName) {
+            return spec.key + QLatin1Char('@') + portName + QLatin1Char('@') + spec.baud_text;
+        };
+        auto recordDetection = [&](const ProbeSpec& spec, const QString& portName) {
+            detections.push_back({spec.key, portName, spec.baud_text});
+            detectedKeys.insert(spec.key);
+            detectedPorts.insert(portName);
+            postLog(QString(english ? "[Auto Detect] Identified %1 on %2 @ %3" : "[自动识别] 已识别 %1: %2 @ %3")
+                        .arg(spec.label, portName, spec.baud_text));
+        };
+        auto finishCanceled = [&]() {
+            postLog(QString(english
+                ? "Auto detect canceled; keeping %1 identified device(s)."
+                : "自动识别已取消；保留已识别出的 %1 个设备。")
+                .arg(detections.size()));
+            finishOnUi(std::move(detections));
+        };
+
+        auto runSelectedProbePhase = [&](const QString& phaseLabel, const QVector<SelectedProbeSpec>& specs) {
+            if (specs.isEmpty())
             {
-                postLog(english ? "Auto detect canceled." : "自动识别已取消。");
-                finishOnUi(std::move(detections));
-                return;
+                return true;
             }
 
-            bool matched = false;
-
-            for (const ProbeSpec& spec : probe_specs)
+            postLog(QString(english ? "[Auto Detect] %1" : "[自动识别] %1").arg(phaseLabel));
+            for (const SelectedProbeSpec& selectedSpec : specs)
             {
+                const ProbeSpec& spec = selectedSpec.spec;
+                if (detectedKeys.contains(spec.key))
+                {
+                    continue;
+                }
                 if (cancelRequested())
                 {
-                    postLog(english ? "Auto detect canceled." : "自动识别已取消。");
-                    finishOnUi(std::move(detections));
-                    return;
+                    finishCanceled();
+                    return false;
                 }
-
-                const bool already_detected = std::any_of(detections.cbegin(), detections.cend(),
-                    [&spec](const DetectionResult& result) { return result.key == spec.key; });
-                if (already_detected)
+                if (detectedPorts.contains(selectedSpec.port_name))
                 {
                     continue;
                 }
 
-                postLog(QString(english ? "[Auto Detect] Probing %1 on %2 @ %3..." : "[自动识别] 正在探测 %1: %2 @ %3 ...")
-                            .arg(spec.label, port_name, spec.baud_text));
+                const QString attemptId = probeAttemptId(spec, selectedSpec.port_name);
+                attemptedProbeIds.insert(attemptId);
+                postLog(QString(english ? "[Auto Detect] Probing selected %1 on %2 @ %3..." : "[自动识别] 正在探测已选 %1: %2 @ %3 ...")
+                            .arg(spec.label, selectedSpec.port_name, spec.baud_text));
 
-                const bool responded = spec.probe(port_name);
-                if (!responded)
+                if (spec.probe(selectedSpec.port_name))
                 {
-                    continue;
+                    recordDetection(spec, selectedSpec.port_name);
                 }
-
-                detections.push_back({spec.key, port_name, spec.baud_text});
-                postLog(QString(english ? "[Auto Detect] Identified %1 on %2 @ %3" : "[自动识别] 已识别 %1: %2 @ %3")
-                            .arg(spec.label, port_name, spec.baud_text));
-                matched = true;
-                break;
             }
+            return true;
+        };
 
-            if (!matched)
+        auto runDefaultProbePhase = [&](const QString& phaseLabel, const QVector<ProbeSpec>& specs) {
+            if (specs.isEmpty() || port_names.isEmpty())
             {
-                postLog(QString(english ? "[Auto Detect] No known device signature found on %1" : "[自动识别] 未在 %1 上识别到已知设备")
-                            .arg(port_name));
+                return true;
             }
+
+            postLog(QString(english ? "[Auto Detect] %1" : "[自动识别] %1").arg(phaseLabel));
+            for (const ProbeSpec& spec : specs)
+            {
+                if (detectedKeys.contains(spec.key))
+                {
+                    continue;
+                }
+
+                for (const QString& port_name : port_names)
+                {
+                    if (cancelRequested())
+                    {
+                        finishCanceled();
+                        return false;
+                    }
+                    if (detectedPorts.contains(port_name))
+                    {
+                        continue;
+                    }
+                    const QString attemptId = probeAttemptId(spec, port_name);
+                    if (attemptedProbeIds.contains(attemptId))
+                    {
+                        continue;
+                    }
+                    attemptedProbeIds.insert(attemptId);
+
+                    postLog(QString(english ? "[Auto Detect] Probing %1 on %2 @ %3..." : "[自动识别] 正在探测 %1: %2 @ %3 ...")
+                                .arg(spec.label, port_name, spec.baud_text));
+
+                    if (!spec.probe(port_name))
+                    {
+                        continue;
+                    }
+
+                    recordDetection(spec, port_name);
+                    break;
+                }
+            }
+            return true;
+        };
+
+        if (!runSelectedProbePhase(english
+                ? "Selected port/baud pass: probing the current configured port for each device."
+                : "已选串口/波特率阶段：先探测每个设备当前配置的串口。",
+                selected_probe_specs))
+        {
+            return;
+        }
+        if (!runDefaultProbePhase(english
+                ? "Default baud pass: probing remaining devices on available ports."
+                : "默认波特率阶段：使用各设备默认波特率探测剩余串口。",
+                default_probe_specs))
+        {
+            return;
         }
 
-        QSet<QString> reportedMissing;
-        for (const ProbeSpec& spec : probe_specs)
+        for (auto it = deviceLabels.cbegin(); it != deviceLabels.cend(); ++it)
         {
-            if (reportedMissing.contains(spec.key))
+            if (!detectedKeys.contains(it.key()))
             {
-                continue;
+                postLog(QString(english ? "[Auto Detect] %1 not found" : "[自动识别] 未找到 %1").arg(it.value()));
             }
-            const bool found = std::any_of(detections.cbegin(), detections.cend(),
-                [&spec](const DetectionResult& result) { return result.key == spec.key; });
-            if (!found)
-            {
-                postLog(QString(english ? "[Auto Detect] %1 not found" : "[自动识别] 未找到 %1").arg(spec.label));
-            }
-            reportedMissing.insert(spec.key);
         }
 
         postLog(QString(english ? "Auto detect finished: identified %1 device(s)." : "自动识别完成：共识别出 %1 个设备。")
@@ -5095,12 +5443,18 @@ void MainWindow::onConnectClicked()
     const QString ptbBaudText = ptb_baud_combo_->currentText();
     const QString hmpBaudText = hmp_baud_combo_->currentText();
     const QString lidarBaudText = lidar_baud_combo_->currentText();
-    const int epsilonRate = parseRate(epsilon_rate_combo_ ? epsilon_rate_combo_->currentText() : QStringLiteral("100"));
-    const int ptbRate = parseRate(ptb_rate_combo_->currentText());
-    const int hmpRate = parseRate(hmp_rate_combo_->currentText());
-    const QString lidarRateText = lidar_rate_combo_->currentText();
-    const bool skipLidarDeviceRate = isLidarRateUnspecified(lidarRateText);
-    const int lidarRate = effectiveLidarSampleRate(lidarRateText);
+    const QString epsilonRateText = epsilon_rate_combo_ ? epsilon_rate_combo_->currentText() : QStringLiteral("100");
+    const QString ptbRateText = ptb_rate_combo_ ? ptb_rate_combo_->currentText() : QStringLiteral("20");
+    const QString hmpRateText = hmp_rate_combo_ ? hmp_rate_combo_->currentText() : QStringLiteral("20");
+    const QString lidarRateText = lidar_rate_combo_ ? lidar_rate_combo_->currentText() : QStringLiteral("100");
+    const bool skipEpsilonDeviceRate = isRateUnspecified(epsilonRateText);
+    const bool skipPtbDeviceRate = isRateUnspecified(ptbRateText);
+    const bool skipHmpDeviceRate = isRateUnspecified(hmpRateText);
+    const bool skipLidarDeviceRate = isRateUnspecified(lidarRateText);
+    const int epsilonRate = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
+    const int ptbRate = clampPtbSampleRate(effectiveRateOrDefault(ptbRateText, kDefaultPtbSampleRateHz, kPtbMaxSampleRateHz));
+    const int hmpRate = effectiveRateOrDefault(hmpRateText, kDefaultHmpSampleRateHz);
+    const int lidarRate = effectiveRateOrDefault(lidarRateText, kDefaultLidarSampleRateHz, 100);
     QSettings settings("VaporView", "MainWindow");
     bool epsilonUsesCustomPacketRates = false;
     const std::map<uint8_t, int> epsilonDesiredPacketRates =
@@ -5151,6 +5505,9 @@ void MainWindow::onConnectClicked()
                                       ptbRate,
                                       hmpRate,
                                       lidarRate,
+                                      skipEpsilonDeviceRate,
+                                      skipPtbDeviceRate,
+                                      skipHmpDeviceRate,
                                       skipLidarDeviceRate,
                                       connectionProgressSteps]() {
         auto postLog = [this](const QString& message) {
@@ -5335,7 +5692,11 @@ void MainWindow::onConnectClicked()
                              [&]() {
                                  collectors.epsilon->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onEpsilonDataReady", Qt::QueuedConnection); });
                                  collectors.epsilon->setSampleRate(epsilonCallbackRate);
-                                 if (epsilonConfigLikelyMatches)
+                                 if (skipEpsilonDeviceRate)
+                                 {
+                                     postLog(english ? "[EPSILON] Skip output-rate command; using the current device output." : "[EPSILON] 跳过输出频率下发，使用设备当前输出。");
+                                 }
+                                 else if (epsilonConfigLikelyMatches)
                                  {
                                      postLog(QString(english
                                                          ? "[EPSILON] Using the last saved %1 profile; skipping automatic reconfiguration."
@@ -5376,8 +5737,22 @@ void MainWindow::onConnectClicked()
                              [&]() {
                                  collectors.ptb->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onPtbDataReady", Qt::QueuedConnection); });
                                  collectors.ptb->setSampleRate(ptbRate);
-                                 collectors.ptb->setDeviceSampleRate(ptbRate);
-                                 postLog(QString(english ? "[PTB] Sample rate set to %1 Hz" : "[PTB] 采样频率设置为 %1 Hz").arg(ptbRate));
+                                 if (skipPtbDeviceRate)
+                                 {
+                                     postLog(english ? "[PTB] Skip sample-rate command; using the current device output." : "[PTB] 跳过采样频率下发，使用设备当前输出。");
+                                 }
+                                 else if (!collectors.ptb->setDeviceSampleRate(ptbRate))
+                                 {
+                                     postLog(QString(english
+                                                       ? "[PTB] Failed to set sample rate to %1 Hz."
+                                                       : "[PTB] 采样频率设置为 %1 Hz 失败。")
+                                                 .arg(ptbRate));
+                                     return false;
+                                 }
+                                 else
+                                 {
+                                     postLog(QString(english ? "[PTB] Sample rate set to %1 Hz" : "[PTB] 采样频率设置为 %1 Hz").arg(ptbRate));
+                                 }
                                  if (collectors.ptb->startStreaming()) return true;
                                  postLog(english ? "[PTB] Failed to start data stream." : "[PTB] 启动数据流失败。");
                                  return false;
@@ -5388,7 +5763,14 @@ void MainWindow::onConnectClicked()
                              [&]() {
                                  collectors.hmp->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onHmpDataReady", Qt::QueuedConnection); });
                                  collectors.hmp->setSampleRate(hmpRate);
-                                 postLog(QString(english ? "[HMP] Sample rate set to %1 Hz" : "[HMP] 采样频率设置为 %1 Hz").arg(hmpRate));
+                                 if (skipHmpDeviceRate)
+                                 {
+                                     postLog(english ? "[HMP] Polling-rate selection left unset; using the default host polling rate." : "[HMP] 轮询频率保持不设定，使用默认主机轮询频率。");
+                                 }
+                                 else
+                                 {
+                                     postLog(QString(english ? "[HMP] Sample rate set to %1 Hz" : "[HMP] 采样频率设置为 %1 Hz").arg(hmpRate));
+                                 }
                                  if (collectors.hmp->startStreaming()) return true;
                                  postLog(english ? "[HMP] Failed to start data stream." : "[HMP] 启动数据流失败。");
                                  return false;
@@ -5971,7 +6353,8 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
         return;
     }
 
-    const int groupedRateHz = parseRate(epsilon_rate_combo_ ? epsilon_rate_combo_->currentText() : QStringLiteral("100"));
+    const QString epsilonRateText = epsilon_rate_combo_ ? epsilon_rate_combo_->currentText() : QStringLiteral("100");
+    const int groupedRateHz = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
     QSettings settings("VaporView", "MainWindow");
     const bool customEnabled = settings.value("epsilon_custom_packet_rates_enabled", false).toBool();
     const std::map<uint8_t, int> defaultRates = defaultEpsilonPacketRates();
@@ -6132,7 +6515,10 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
 
     const QString selectText = is_english_ ? "-- Select --" : "-- 选择 --";
     const QString epsilonPort = epsilon_port_combo_ ? epsilon_port_combo_->currentText().trimmed() : QString();
-    if (!recording_thread_running_.load() && !epsilonPort.isEmpty() && epsilonPort != selectText)
+    if (!recording_thread_running_.load() &&
+        !epsilonPort.isEmpty() &&
+        epsilonPort != selectText &&
+        !isRateUnspecified(epsilonRateText))
     {
         log(is_english_
                 ? "[EPSILON] Applying the saved packet-rate profile now..."
@@ -6178,7 +6564,16 @@ void MainWindow::onReconfigureEpsilonClicked()
         return;
     }
 
-    const int epsilonRate = parseRate(epsilon_rate_combo_ ? epsilon_rate_combo_->currentText() : QStringLiteral("100"));
+    const QString epsilonRateText = epsilon_rate_combo_ ? epsilon_rate_combo_->currentText() : QStringLiteral("100");
+    if (isRateUnspecified(epsilonRateText))
+    {
+        log(is_english_
+            ? "[EPSILON] Output-rate command is disabled because the EPSILON rate is set to No Set."
+            : "[EPSILON] EPSILON 频率为“不设定”，已跳过输出频率下发。");
+        return;
+    }
+
+    const int epsilonRate = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
     epsilon_sample_rate_ = epsilonRate;
     QSettings settings("VaporView", "MainWindow");
     bool usingCustomPacketProfile = false;

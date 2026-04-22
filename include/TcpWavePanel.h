@@ -1,6 +1,8 @@
 #ifndef VaporView_TCP_WAVE_PANEL_H_
 #define VaporView_TCP_WAVE_PANEL_H_
 
+#include "TcpWaveEncoding.h"
+
 #include <QByteArray>
 #include <QWidget>
 #include <QVector>
@@ -50,17 +52,11 @@ public:
         BigEndian
     };
 
-    enum class FloatEncoding
-    {
-        Unknown,
-        LittleEndian,
-        BigEndian,
-        WordSwappedLittleEndian
-    };
+    using FloatEncoding = VaporView::TcpFloatEncoding;
 
 signals:
     void normalizedSecondHarmonicFrameReady(quint64 timestampUs, QVector<float> samples);
-    void rawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload);
+    void rawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload, VaporView::TcpFloatEncoding floatEncoding);
     void connectionStateChanged(bool connected);
 
 private slots:
@@ -92,8 +88,6 @@ private:
     qint32 decodeHeaderValue(const char *raw, HeaderByteOrder order) const;
     bool tryConsumeHeader();
     bool tryConsumePayload(QVector<float>& output, QByteArray *rawPayload = nullptr);
-    float decodeFloatSample(const char *raw, FloatEncoding encoding) const;
-    FloatEncoding autoDetectFloatEncoding(const QByteArray& payload) const;
     QVector<float> decodeFloatPayload(const QByteArray& payload) const;
 
     QLineEdit *host_edit_;

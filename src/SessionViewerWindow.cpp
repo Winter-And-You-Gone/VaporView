@@ -2357,6 +2357,7 @@ bool SessionViewerWindow::loadUnifiedRawTcpWaveFrames()
                 frame.harmonic_payload_offset = static_cast<quint64>(payloadOffset) + sizeof(quint32) * 2ULL + rawSignalSize;
                 frame.harmonic_payload_size = harmonicSize;
                 frame.timestamp_us = timestampUs;
+                frame.float_encoding = VaporView::tcpFloatEncodingFromRawDatFlags(flags);
                 raw_tcp_wave_frames_.push_back(frame);
                 if (points_per_frame_ <= 0)
                 {
@@ -2725,15 +2726,10 @@ bool SessionViewerWindow::readWaveformFrameSamples(quint64 frameIndex, quint64& 
             return false;
         }
 
-        const int sampleCount = payload.size() / static_cast<int>(kFloatBytes);
-        samples.resize(sampleCount);
-        for (int i = 0; i < sampleCount; ++i)
-        {
-            const quint32 bits = qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(payload.constData() + i * static_cast<int>(kFloatBytes)));
-            float value = 0.0f;
-            std::memcpy(&value, &bits, sizeof(value));
-            samples[i] = value;
-        }
+        const VaporView::TcpFloatEncoding encoding = frame.float_encoding == VaporView::TcpFloatEncoding::Unknown
+            ? VaporView::autoDetectTcpFloatEncoding(payload)
+            : frame.float_encoding;
+        samples = VaporView::decodeTcpFloatPayload(payload, encoding);
         timestampUs = frame.timestamp_us;
         return true;
     }

@@ -3,6 +3,7 @@
 
 #include "data_collector.h"
 #include "data_types.h"
+#include "TcpWaveEncoding.h"
 #include <QByteArray>
 #include <QMainWindow>
 #include <QLabel>
@@ -270,7 +271,7 @@ private slots:
     void onOpenSessionViewerClicked();
     void onFontScaleTriggered(QAction *action);
     void onCancelConnectClicked();
-    void onTcpRawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload);
+    void onTcpRawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload, VaporView::TcpFloatEncoding floatEncoding);
     void onStartRecordingClicked();
     void onPauseRecordingClicked();
     void onStopRecordingClicked();
@@ -299,6 +300,8 @@ private:
     void showStatusTaskProgress(const QString& label, int value, int maximum);
     void showBusyStatusTaskProgress(const QString& label);
     void hideStatusTaskProgress();
+    void startStatusTaskSpinner();
+    void stopStatusTaskSpinner();
     void rebuildRecordingRateMenu();
     void setRecordingExportRateHz(int rate, bool should_log = true);
     bool applyEpsilonMainAntennaLeverArm(double x_m, double y_m, double z_m, QString *error_message);
@@ -342,8 +345,8 @@ private:
     int scalePixels(int pixels) const;
     void applyAllSampleRates();
     int parseRate(const QString& text) const;
-    bool isLidarRateUnspecified(const QString& text) const;
-    int effectiveLidarSampleRate(const QString& text) const;
+    bool isRateUnspecified(const QString& text) const;
+    int effectiveRateOrDefault(const QString& text, int defaultRate, int maxRate = 1000) const;
     void loadRememberedInputState();
     void saveRememberedInputState() const;
     void bindRememberedInputState();
@@ -372,6 +375,8 @@ private:
     QTextEdit *log_text_edit_;
     QLabel *status_label_;
     QProgressBar *status_task_progress_bar_;
+    QLabel *status_task_spinner_label_;
+    QTimer *status_task_spinner_timer_;
     QLabel *recording_status_label_;
     QPushButton *auto_detect_ports_btn_;
 
@@ -516,6 +521,7 @@ private:
     int recording_export_rate_hz_;
     int imu_recording_rate_hz_;
     int waveform_recording_rate_hz_;
+    int status_task_spinner_index_;
     std::chrono::steady_clock::time_point steady_clock_anchor_;
     std::chrono::system_clock::time_point system_clock_anchor_;
     std::unique_ptr<QFile> sensors_file_;
