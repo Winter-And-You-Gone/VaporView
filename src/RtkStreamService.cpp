@@ -1,5 +1,7 @@
 #include "RtkStreamService.h"
 
+#include <QStringList>
+
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -11,10 +13,18 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
+#include <map>
+#include <vector>
 #include <string>
+
+extern "C" int strsvrpeek(strsvr_t *svr, uint8_t *buff, int nmax);
 
 namespace
 {
+constexpr int kRtcmPeekChunkSize = 4096;
+constexpr int kRtcmFirstBytesLimit = 32;
+
 QString sanitizeField(const QString &value)
 {
     QString sanitized = value.trimmed();
@@ -84,6 +94,54 @@ bool hasValidNmeaPosition(const RtkStreamConfig &config)
         std::abs(config.nmeaLatitudeDeg) <= 90.0 &&
         std::abs(config.nmeaLongitudeDeg) <= 180.0;
 }
+
+QString bytesToHex(const std::vector<uint8_t> &bytes)
+{
+    QStringList parts;
+    parts.reserve(static_cast<int>(bytes.size()));
+    for (uint8_t byte : bytes)
+    {
+        parts.append(QString::number(byte, 16).rightJustified(2, QLatin1Char('0')).toUpper());
+    }
+    return parts.join(QLatin1Char(' '));
+}
+
+QString bytesToAsciiPreview(const std::vector<uint8_t> &bytes)
+{
+    QString preview;
+    preview.reserve(static_cast<int>(bytes.size()));
+    for (uint8_t byte : bytes)
+    {
+        if (byte >= 0x20 && byte <= 0x7E)
+        {
+            preview.append(QChar(static_cast<char>(byte)));
+        }
+        else if (byte == '\r' || byte == '\n' || byte == '\t')
+        {
+            preview.append(QLatin1Char(' '));
+        }
+        else
+        {
+            preview.append(QLatin1Char('.'));
+        }
+    }
+    return preview.simplified();
+}
+
+QString formatMessageTypes(const std::map<int, int> &messageTypeCounts)
+{
+    QStringList parts;
+    int emitted = 0;
+    for (const auto &entry : messageTypeCounts)
+    {
+        parts.append(QStringLiteral("%1x%2").arg(entry.first).arg(entry.second));
+        if (++emitted >= 8)
+        {
+            break;
+        }
+    }
+    return parts.join(QStringLiteral(", "));
+}
 }
 
 struct RtkStreamService::Impl
@@ -91,6 +149,137 @@ struct RtkStreamService::Impl
     strsvr_t server{};
     bool initialized = false;
     bool running = false;
+    std::vector<uint8_t> rtcmParseBuffer;
+    std::vector<uint8_t> firstInputBytes;
+    std::map<int, int> rtcmMessageTypeCounts;
+    std::uint64_t rtcmDiagnosticBytes = 0;
+    int rtcm3FrameCount = 0;
+    int rtcm3CrcOkCount = 0;
+    int rtcm3CrcFailCount = 0;
+    int nonRtcmByteCount = 0;
+
+    void resetDiagnostics()
+    {
+        rtcmParseBuffer.clear();
+        firstInputBytes.clear();
+        rtcmMessageTypeCounts.clear();
+        rtcmDiagnosticBytes = 0;
+        rtcm3FrameCount = 0;
+        rtcm3CrcOkCount = 0;
+        rtcm3CrcFailCount = 0;
+        nonRtcmByteCount = 0;
+    }
+
+    void appendDiagnosticBytes(const uint8_t *data, int size)
+    {
+        if (!data || size <= 0)
+        {
+            return;
+        }
+
+        rtcmDiagnosticBytes += static_cast<std::uint64_t>(size);
+        for (int i = 0; i < size && static_cast<int>(firstInputBytes.size()) < kRtcmFirstBytesLimit; ++i)
+        {
+            firstInputBytes.push_back(data[i]);
+        }
+
+        rtcmParseBuffer.insert(rtcmParseBuffer.end(), data, data + size);
+        parseRtcm3Frames();
+    }
+
+    void parseRtcm3Frames()
+    {
+        while (!rtcmParseBuffer.empty())
+        {
+            const auto sync = std::find(rtcmParseBuffer.begin(), rtcmParseBuffer.end(), static_cast<uint8_t>(0xD3));
+            if (sync == rtcmParseBuffer.end())
+            {
+                nonRtcmByteCount += static_cast<int>(rtcmParseBuffer.size());
+                rtcmParseBuffer.clear();
+                return;
+            }
+
+            if (sync != rtcmParseBuffer.begin())
+            {
+                nonRtcmByteCount += static_cast<int>(std::distance(rtcmParseBuffer.begin(), sync));
+                rtcmParseBuffer.erase(rtcmParseBuffer.begin(), sync);
+            }
+
+            if (rtcmParseBuffer.size() < 3)
+            {
+                return;
+            }
+
+            if ((rtcmParseBuffer[1] & 0xFCU) != 0U)
+            {
+                ++nonRtcmByteCount;
+                rtcmParseBuffer.erase(rtcmParseBuffer.begin());
+                continue;
+            }
+
+            const int payloadLength = ((rtcmParseBuffer[1] & 0x03) << 8) | rtcmParseBuffer[2];
+            const int frameLength = 3 + payloadLength + 3;
+            if (static_cast<int>(rtcmParseBuffer.size()) < frameLength)
+            {
+                return;
+            }
+
+            ++rtcm3FrameCount;
+            const uint32_t expectedCrc =
+                (static_cast<uint32_t>(rtcmParseBuffer[3 + payloadLength]) << 16) |
+                (static_cast<uint32_t>(rtcmParseBuffer[4 + payloadLength]) << 8) |
+                static_cast<uint32_t>(rtcmParseBuffer[5 + payloadLength]);
+            const uint32_t actualCrc = rtk_crc24q(rtcmParseBuffer.data(), 3 + payloadLength);
+            if (actualCrc == expectedCrc)
+            {
+                ++rtcm3CrcOkCount;
+            }
+            else
+            {
+                ++rtcm3CrcFailCount;
+            }
+
+            if (payloadLength >= 2)
+            {
+                const int messageType =
+                    (static_cast<int>(rtcmParseBuffer[3]) << 4) |
+                    (static_cast<int>(rtcmParseBuffer[4]) >> 4);
+                ++rtcmMessageTypeCounts[messageType];
+            }
+
+            rtcmParseBuffer.erase(rtcmParseBuffer.begin(), rtcmParseBuffer.begin() + frameLength);
+        }
+
+        if (rtcmParseBuffer.size() > 2048)
+        {
+            const int discardCount = static_cast<int>(rtcmParseBuffer.size() - 2048);
+            nonRtcmByteCount += discardCount;
+            rtcmParseBuffer.erase(rtcmParseBuffer.begin(), rtcmParseBuffer.end() - 2048);
+        }
+    }
+
+    void collectPeekDiagnostics()
+    {
+        if (!running || !server.state)
+        {
+            return;
+        }
+
+        std::array<uint8_t, kRtcmPeekChunkSize> buffer = {};
+        while (true)
+        {
+            const int readBytes = strsvrpeek(&server, buffer.data(), static_cast<int>(buffer.size()));
+            if (readBytes <= 0)
+            {
+                break;
+            }
+            appendDiagnosticBytes(buffer.data(), readBytes);
+            if (readBytes < static_cast<int>(buffer.size()))
+            {
+                break;
+            }
+        }
+    }
 };
 
 RtkStreamService::RtkStreamService()
@@ -121,6 +310,7 @@ bool RtkStreamService::start(const RtkStreamConfig &config, QString *errorMessag
     }
 
     stop();
+    impl_->resetDiagnostics();
 
     const QString ntripPath = buildNtripPath(config);
     const int outputStreamType = config.outputMode == RtkStreamConfig::OutputMode::TcpClient
@@ -210,6 +400,7 @@ RtkStreamStats RtkStreamService::stats() const
 {
     RtkStreamStats result;
     result.running = isRunning();
+    impl_->collectPeekDiagnostics();
 
     std::array<int, 2> stat = {};
     std::array<int, 2> logStat = {};
@@ -234,7 +425,16 @@ RtkStreamStats RtkStreamService::stats() const
     result.outputBytes = bytes[1];
     result.inputBps = bps[0];
     result.outputBps = bps[1];
+    result.rtcmDiagnosticBytes = impl_->rtcmDiagnosticBytes;
+    result.rtcm3FrameCount = impl_->rtcm3FrameCount;
+    result.rtcm3CrcOkCount = impl_->rtcm3CrcOkCount;
+    result.rtcm3CrcFailCount = impl_->rtcm3CrcFailCount;
+    result.nonRtcmByteCount = impl_->nonRtcmByteCount;
+    result.rtcm3PendingBytes = static_cast<int>(impl_->rtcmParseBuffer.size());
     result.streamStateMask = mask;
+    result.firstInputHex = bytesToHex(impl_->firstInputBytes);
+    result.firstInputAscii = bytesToAsciiPreview(impl_->firstInputBytes);
+    result.rtcmMessageTypes = formatMessageTypes(impl_->rtcmMessageTypeCounts);
     result.message = trimRtklibMessage(message.data());
     return result;
 }

@@ -289,15 +289,97 @@ QString buildMockGgaSentence()
     return wrapNmeaSentence(body);
 }
 
-QString formatRtkStatusLine(const RtkStreamStats &stats, const QString &fallbackMessage)
+QString formatRtcmDiagnostic(const RtkStreamStats &stats, bool english)
+{
+    if (stats.inputBytes <= 0 && stats.rtcmDiagnosticBytes == 0)
+    {
+        return english
+            ? QStringLiteral("RTCM diagnostic: no caster bytes received yet")
+            : QStringLiteral("RTCM诊断: 尚未收到服务器字节");
+    }
+
+    if (stats.rtcmDiagnosticBytes == 0)
+    {
+        return english
+            ? QStringLiteral("RTCM diagnostic: waiting for raw input bytes")
+            : QStringLiteral("RTCM诊断: 正在等待原始输入字节");
+    }
+
+    QStringList parts;
+    parts << (english
+        ? QStringLiteral("RTCM diagnostic: inspected %1 B").arg(stats.rtcmDiagnosticBytes)
+        : QStringLiteral("RTCM诊断: 已检查 %1 B").arg(stats.rtcmDiagnosticBytes));
+
+    if (stats.rtcm3FrameCount > 0)
+    {
+        parts << (english
+            ? QStringLiteral("RTCM3/D3 frames %1, CRC ok %2, bad %3")
+                  .arg(stats.rtcm3FrameCount)
+                  .arg(stats.rtcm3CrcOkCount)
+                  .arg(stats.rtcm3CrcFailCount)
+            : QStringLiteral("RTCM3/D3帧 %1，CRC正确 %2，错误 %3")
+                  .arg(stats.rtcm3FrameCount)
+                  .arg(stats.rtcm3CrcOkCount)
+                  .arg(stats.rtcm3CrcFailCount));
+    }
+    else
+    {
+        parts << (english
+            ? QStringLiteral("no complete RTCM3/D3 frame yet")
+            : QStringLiteral("尚无完整RTCM3/D3帧"));
+    }
+
+    if (stats.nonRtcmByteCount > 0)
+    {
+        parts << (english
+            ? QStringLiteral("non-RTCM bytes %1").arg(stats.nonRtcmByteCount)
+            : QStringLiteral("非RTCM字节 %1").arg(stats.nonRtcmByteCount));
+    }
+
+    if (stats.rtcm3PendingBytes > 0)
+    {
+        parts << (english
+            ? QStringLiteral("pending %1 B").arg(stats.rtcm3PendingBytes)
+            : QStringLiteral("待拼帧 %1 B").arg(stats.rtcm3PendingBytes));
+    }
+
+    if (!stats.rtcmMessageTypes.isEmpty())
+    {
+        parts << (english
+            ? QStringLiteral("MT %1").arg(stats.rtcmMessageTypes)
+            : QStringLiteral("消息类型 %1").arg(stats.rtcmMessageTypes));
+    }
+
+    if (!stats.firstInputHex.isEmpty())
+    {
+        parts << (english
+            ? QStringLiteral("first bytes %1").arg(stats.firstInputHex)
+            : QStringLiteral("首字节 %1").arg(stats.firstInputHex));
+    }
+
+    if (stats.rtcm3FrameCount == 0 &&
+        !stats.firstInputAscii.isEmpty() &&
+        stats.firstInputAscii.contains(QRegularExpression(QStringLiteral("[A-Za-z]"))))
+    {
+        parts << (english
+            ? QStringLiteral("ASCII preview \"%1\"").arg(stats.firstInputAscii.left(48))
+            : QStringLiteral("文本预览 \"%1\"").arg(stats.firstInputAscii.left(48)));
+    }
+
+    return parts.join(QStringLiteral("; "));
+}
+
+QString formatRtkStatusLine(const RtkStreamStats &stats, const QString &fallbackMessage, bool english)
 {
     const QString message = stats.message.isEmpty() ? fallbackMessage : stats.message;
-    return QString("%1 [%2] %3 B %4 bps %5")
+    const QString base = QString("%1 [%2] %3 B %4 bps %5")
         .arg(QDateTime::currentDateTime().toString("yyyy/MM/dd hh:mm:ss"))
         .arg(stats.streamStateMask.isEmpty() ? QStringLiteral("-----") : stats.streamStateMask)
         .arg(QString::number(stats.inputBytes).rightJustified(10, QLatin1Char(' ')))
         .arg(QString::number(stats.inputBps).rightJustified(7, QLatin1Char(' ')))
         .arg(message);
+    const QString diagnostic = formatRtcmDiagnostic(stats, english);
+    return diagnostic.isEmpty() ? base : QStringLiteral("%1 | %2").arg(base, diagnostic);
 }
 
 QUrl buildRtkUrl(const QString &server, const QString &port, const QString &path = QString())
@@ -1263,7 +1345,8 @@ void RtkConfigDialog::pollRtkServiceStatus(bool forceLog)
 
     const QString summaryLine = formatRtkStatusLine(
         stats,
-        textFor("Streaming RTCM data", "正在转发 RTCM 数据"));
+        textFor("Streaming RTCM data", "正在转发 RTCM 数据"),
+        is_english_);
 
     if ((forceLog || is_running_) && !message.isEmpty())
     {
@@ -2417,7 +2500,8 @@ void RtkConfigDialog::onTestClicked()
                     {
                         queueRawLog(formatRtkStatusLine(
                             finalStats,
-                            self->textFor("Running no-signal RTK test", "正在执行无信号 RTK 测试")));
+                            self->textFor("Running no-signal RTK test", "正在执行无信号 RTK 测试"),
+                            self->is_english_));
                         lastStatusLogMs = timer.elapsed();
                     }
 

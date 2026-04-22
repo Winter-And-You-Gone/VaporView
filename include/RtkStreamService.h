@@ -4,6 +4,7 @@
 #include <QString>
 
 #include <array>
+#include <cstdint>
 #include <memory>
 
 struct RtkStreamConfig
@@ -40,8 +41,17 @@ struct RtkStreamStats
     int outputBytes = 0;
     int inputBps = 0;
     int outputBps = 0;
+    std::uint64_t rtcmDiagnosticBytes = 0;
+    int rtcm3FrameCount = 0;
+    int rtcm3CrcOkCount = 0;
+    int rtcm3CrcFailCount = 0;
+    int nonRtcmByteCount = 0;
+    int rtcm3PendingBytes = 0;
     std::array<int, 5> streamStates = {};
     QString streamStateMask;
+    QString firstInputHex;
+    QString firstInputAscii;
+    QString rtcmMessageTypes;
     QString message;
 };
 
