@@ -45,9 +45,11 @@
 #include <QSettings>
 #include <QThread>
 #include <QVector>
+#include <QtEndian>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <map>
 #include <memory>
 #include <vector>
@@ -69,6 +71,16 @@ constexpr int kEpsilonTitleColumnWidth = 170;
 constexpr int kEpsilonValueColumnMinWidth = 320;
 constexpr quint64 kImuPpsSyncWindowUs = 2ULL * 1000ULL * 1000ULL;
 constexpr char kImuRawMagic[8] = {'V', 'V', 'E', 'P', 'S', 'R', 'A', 'W'};
+constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
+constexpr quint32 kUnifiedRawFormatVersion = 1u;
+constexpr quint32 kUnifiedRawRecordMarker = 0x44525756u;
+constexpr quint16 kRawSourceEpsilon = 1u;
+constexpr quint16 kRawSourcePtb = 2u;
+constexpr quint16 kRawSourceHmp = 3u;
+constexpr quint16 kRawSourceLidar = 4u;
+constexpr quint16 kRawSourceTcpWave = 5u;
+constexpr quint16 kRawRecordTypeGeneric = 1u;
+constexpr quint32 kRawTcpWaveCombinedPayloadFlag = 0x00000001u;
 
 #pragma pack(push, 1)
 struct ImuRawFileHeader
@@ -85,6 +97,27 @@ struct ImuRawRecordHeader
     quint64 host_timestamp_us;
     quint8 frame_tag;
     quint8 reserved[3];
+};
+
+struct UnifiedRawFileHeader
+{
+    char magic[8];
+    quint32 version;
+    quint32 header_size;
+    quint16 source_id;
+    quint16 reserved;
+};
+
+struct UnifiedRawRecordHeader
+{
+    quint32 marker;
+    quint32 header_size;
+    quint64 host_timestamp_us;
+    quint32 payload_size;
+    quint16 source_id;
+    quint16 record_type;
+    quint32 flags;
+    quint64 sequence;
 };
 #pragma pack(pop)
 
@@ -1660,6 +1693,11 @@ MainWindow::MainWindow(QWidget *parent)
     , system_clock_anchor_(std::chrono::system_clock::now())
     , sensors_file_(nullptr)
     , imu_raw_file_(nullptr)
+    , raw_epsilon_file_(nullptr)
+    , raw_ptb_file_(nullptr)
+    , raw_hmp_file_(nullptr)
+    , raw_lidar_file_(nullptr)
+    , raw_tcp_wave_file_(nullptr)
     , event_log_file_(nullptr)
     , error_log_file_(nullptr)
     , recording_directory_()
@@ -1670,6 +1708,12 @@ MainWindow::MainWindow(QWidget *parent)
     , sensors_filename_()
     , imu_raw_filename_()
     , imu_raw_doc_filename_()
+    , raw_epsilon_filename_()
+    , raw_ptb_filename_()
+    , raw_hmp_filename_()
+    , raw_lidar_filename_()
+    , raw_tcp_wave_filename_()
+    , raw_dat_doc_filename_()
     , session_metadata_filename_()
     , event_log_filename_()
     , error_log_filename_()
@@ -1678,6 +1722,11 @@ MainWindow::MainWindow(QWidget *parent)
     , recording_entry_count_(0)
     , waveform_frame_count_(0)
     , waveform_file_count_(0)
+    , raw_epsilon_record_count_(0)
+    , raw_ptb_record_count_(0)
+    , raw_hmp_record_count_(0)
+    , raw_lidar_record_count_(0)
+    , raw_tcp_wave_record_count_(0)
     , last_imu_record_timestamp_us_(0)
     , last_waveform_record_timestamp_us_(0)
     , rtk_config_action_(nullptr)
@@ -3070,6 +3119,8 @@ void MainWindow::setupDataPanels()
     tcp_wave_panel_->attachWaveformSplitControls(waveform_split_lbl_, waveform_split_spin_);
     connect(tcp_wave_panel_, &TcpWavePanel::normalizedSecondHarmonicFrameReady,
             this, &MainWindow::onNormalizedSecondHarmonicFrameReady);
+    connect(tcp_wave_panel_, &TcpWavePanel::rawWaveFrameReady,
+            this, &MainWindow::onTcpRawWaveFrameReady);
     connect(tcp_wave_panel_, &TcpWavePanel::connectionStateChanged, this, [this](bool) {
         updateRecordingActionStates();
     });
@@ -3773,6 +3824,7 @@ bool MainWindow::prepareRecordingSessionLayout(const QString& recordsPath, const
     if (!recordsDir.mkpath(finalSessionName) ||
         !sessionDir.mkpath("waveform") ||
         !sessionDir.mkpath("sensors") ||
+        !sessionDir.mkpath("raw") ||
         !sessionDir.mkpath("logs") ||
         !sessionDir.mkpath("config"))
     {
@@ -3785,6 +3837,12 @@ bool MainWindow::prepareRecordingSessionLayout(const QString& recordsPath, const
     sensors_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("sensors/devices.csv"));
     imu_raw_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("sensors/epsilon_raw.dat"));
     imu_raw_doc_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("epsilon_raw_dat_format.md"));
+    raw_epsilon_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw/epsilon.dat"));
+    raw_ptb_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw/ptb.dat"));
+    raw_hmp_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw/hmp.dat"));
+    raw_lidar_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw/lidar.dat"));
+    raw_tcp_wave_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw/tcp_wave.dat"));
+    raw_dat_doc_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw_dat_format.md"));
     session_metadata_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("session.json"));
     event_log_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("logs/event_log.csv"));
     error_log_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("logs/error_log.txt"));
@@ -3813,6 +3871,132 @@ bool MainWindow::copyImuRawFormatDocumentToSession()
 
     QFile::remove(imu_raw_doc_filename_);
     return QFile::copy(sourcePath, imu_raw_doc_filename_);
+}
+
+bool MainWindow::copyRawDatFormatDocumentToSession()
+{
+    if (session_directory_.isEmpty() || raw_dat_doc_filename_.isEmpty())
+    {
+        return false;
+    }
+
+    const QString repositoryRoot = locateRepositoryRoot();
+    if (repositoryRoot.isEmpty())
+    {
+        return false;
+    }
+
+    const QString sourcePath = QDir(repositoryRoot).filePath("docs/raw_dat_format.md");
+    if (!QFileInfo::exists(sourcePath))
+    {
+        return false;
+    }
+
+    QFile::remove(raw_dat_doc_filename_);
+    return QFile::copy(sourcePath, raw_dat_doc_filename_);
+}
+
+bool MainWindow::openUnifiedRawDatFile(std::unique_ptr<QFile>& file, const QString& filename, quint16 sourceId)
+{
+    if (filename.isEmpty())
+    {
+        return false;
+    }
+
+    file = std::make_unique<QFile>(filename);
+    if (!file->open(QIODevice::WriteOnly | QIODevice::Truncate))
+    {
+        file.reset();
+        return false;
+    }
+
+    UnifiedRawFileHeader header{};
+    std::memcpy(header.magic, kUnifiedRawMagic, sizeof(header.magic));
+    header.version = qToLittleEndian(kUnifiedRawFormatVersion);
+    header.header_size = qToLittleEndian(static_cast<quint32>(sizeof(UnifiedRawFileHeader)));
+    header.source_id = qToLittleEndian(sourceId);
+    header.reserved = 0;
+
+    if (file->write(reinterpret_cast<const char*>(&header), sizeof(header)) != static_cast<qint64>(sizeof(header)))
+    {
+        file->close();
+        file.reset();
+        return false;
+    }
+
+    file->flush();
+    return true;
+}
+
+void MainWindow::writeUnifiedRawRecord(QFile *file,
+                                       std::atomic<quint64>& recordCount,
+                                       quint16 sourceId,
+                                       quint16 recordType,
+                                       quint32 flags,
+                                       quint64 hostTimestampUs,
+                                       const void *payload,
+                                       size_t payloadSize)
+{
+    if (!file || !file->isOpen() || (payloadSize > 0 && !payload) ||
+        payloadSize > static_cast<size_t>(std::numeric_limits<quint32>::max()))
+    {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lock(recording_files_mutex_);
+    if (!file->isOpen())
+    {
+        return;
+    }
+
+    const quint64 sequence = recordCount.load(std::memory_order_relaxed);
+    UnifiedRawRecordHeader header{};
+    header.marker = qToLittleEndian(kUnifiedRawRecordMarker);
+    header.header_size = qToLittleEndian(static_cast<quint32>(sizeof(UnifiedRawRecordHeader)));
+    header.host_timestamp_us = qToLittleEndian(hostTimestampUs);
+    header.payload_size = qToLittleEndian(static_cast<quint32>(payloadSize));
+    header.source_id = qToLittleEndian(sourceId);
+    header.record_type = qToLittleEndian(recordType);
+    header.flags = qToLittleEndian(flags);
+    header.sequence = qToLittleEndian(sequence);
+
+    if (file->write(reinterpret_cast<const char*>(&header), sizeof(header)) != static_cast<qint64>(sizeof(header)))
+    {
+        return;
+    }
+    if (payloadSize > 0 &&
+        file->write(reinterpret_cast<const char*>(payload), static_cast<qint64>(payloadSize)) != static_cast<qint64>(payloadSize))
+    {
+        return;
+    }
+
+    recordCount.store(sequence + 1, std::memory_order_relaxed);
+}
+
+void MainWindow::closeUnifiedRawDatFiles()
+{
+    std::lock_guard<std::mutex> lock(recording_files_mutex_);
+    for (QFile *file : {raw_epsilon_file_.get(),
+                       raw_ptb_file_.get(),
+                       raw_hmp_file_.get(),
+                       raw_lidar_file_.get(),
+                       raw_tcp_wave_file_.get()})
+    {
+        if (file && file->isOpen())
+        {
+            file->flush();
+            file->close();
+        }
+    }
+}
+
+void MainWindow::resetUnifiedRawDatFiles()
+{
+    raw_epsilon_file_.reset();
+    raw_ptb_file_.reset();
+    raw_hmp_file_.reset();
+    raw_lidar_file_.reset();
+    raw_tcp_wave_file_.reset();
 }
 
 void MainWindow::appendEventLogLine(const QString& level, const QString& message)
@@ -3884,6 +4068,7 @@ void MainWindow::writeSessionMetadata(const QString& endTimeUtc)
     root["sensor_export_rate_hz"] = recording_export_rate_hz_;
     root["other_devices_export_rate_hz"] = recording_export_rate_hz_;
     root["epsilon_raw_export_mode"] = QStringLiteral("verified_fdilink_frames");
+    root["raw_dat_format_version"] = static_cast<int>(kUnifiedRawFormatVersion);
     root["waveform_export_rate_hz"] = waveform_recording_rate_hz_;
     root["waveform_export_mode"] = waveform_recording_rate_hz_ > 0 ? QStringLiteral("throttled") : QStringLiteral("per_frame");
     root["waveform_value_type"] = QStringLiteral("float32");
@@ -3894,11 +4079,32 @@ void MainWindow::writeSessionMetadata(const QString& endTimeUtc)
     root["waveform_frames"] = QString::number(waveform_frame_count_.load());
     root["waveform_file_count"] = QString::number(waveform_file_count_.load());
 
+    QJsonObject rawFiles;
+    auto addRawFile = [&rawFiles, &sessionDir](const QString& name,
+                                               const QString& filename,
+                                               quint16 sourceId,
+                                               quint64 recordCount) {
+        QJsonObject raw;
+        raw["path"] = sessionDir.relativeFilePath(filename);
+        raw["source_id"] = static_cast<int>(sourceId);
+        raw["format_version"] = static_cast<int>(kUnifiedRawFormatVersion);
+        raw["record_count"] = QString::number(recordCount);
+        rawFiles[name] = raw;
+    };
+    addRawFile(QStringLiteral("epsilon"), raw_epsilon_filename_, kRawSourceEpsilon, raw_epsilon_record_count_.load());
+    addRawFile(QStringLiteral("ptb"), raw_ptb_filename_, kRawSourcePtb, raw_ptb_record_count_.load());
+    addRawFile(QStringLiteral("hmp"), raw_hmp_filename_, kRawSourceHmp, raw_hmp_record_count_.load());
+    addRawFile(QStringLiteral("lidar"), raw_lidar_filename_, kRawSourceLidar, raw_lidar_record_count_.load());
+    addRawFile(QStringLiteral("tcp_wave"), raw_tcp_wave_filename_, kRawSourceTcpWave, raw_tcp_wave_record_count_.load());
+    root["raw_files"] = rawFiles;
+
     QJsonObject paths;
     paths["waveform_directory"] = sessionDir.relativeFilePath(waveform_directory_);
+    paths["raw_directory"] = QStringLiteral("raw");
     paths["devices_csv"] = sessionDir.relativeFilePath(sensors_filename_);
     paths["epsilon_raw_dat"] = sessionDir.relativeFilePath(imu_raw_filename_);
     paths["epsilon_raw_format_doc"] = sessionDir.relativeFilePath(imu_raw_doc_filename_);
+    paths["raw_format_doc"] = sessionDir.relativeFilePath(raw_dat_doc_filename_);
     paths["event_log"] = sessionDir.relativeFilePath(event_log_filename_);
     paths["error_log"] = sessionDir.relativeFilePath(error_log_filename_);
     paths["device_config"] = sessionDir.relativeFilePath(device_config_filename_);
@@ -3927,6 +4133,7 @@ void MainWindow::writeDeviceConfigSnapshot()
     root["sensor_export_rate_hz"] = recording_export_rate_hz_;
     root["other_devices_export_rate_hz"] = recording_export_rate_hz_;
     root["epsilon_raw_export_mode"] = QStringLiteral("verified_fdilink_frames");
+    root["raw_dat_format_version"] = static_cast<int>(kUnifiedRawFormatVersion);
     root["waveform_export_rate_hz"] = waveform_recording_rate_hz_;
     root["waveform_export_mode"] = waveform_recording_rate_hz_ > 0 ? QStringLiteral("throttled") : QStringLiteral("per_frame");
     root["waveform_split_minutes"] = waveform_split_minutes_;
@@ -3940,6 +4147,12 @@ void MainWindow::writeDeviceConfigSnapshot()
     waveform["value_type"] = QStringLiteral("float32");
     waveform["timestamp_type"] = QStringLiteral("uint64");
     root["waveform"] = waveform;
+
+    QJsonObject raw;
+    raw["directory"] = QStringLiteral("raw");
+    raw["format_doc"] = QStringLiteral("raw_dat_format.md");
+    raw["mode"] = QStringLiteral("per_verified_raw_frame_or_response");
+    root["raw_dat"] = raw;
 
     QJsonObject sensors;
     auto addSerialConfig = [&sensors](const QString& name, QComboBox* port, QComboBox* baud, QComboBox* rate) {
@@ -4204,10 +4417,16 @@ bool MainWindow::startRecordingSession()
     if (!sensors_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
         !imu_raw_file_->open(QIODevice::WriteOnly | QIODevice::Truncate) ||
         !event_log_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
-        !error_log_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+        !error_log_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
+        !openUnifiedRawDatFile(raw_epsilon_file_, raw_epsilon_filename_, kRawSourceEpsilon) ||
+        !openUnifiedRawDatFile(raw_ptb_file_, raw_ptb_filename_, kRawSourcePtb) ||
+        !openUnifiedRawDatFile(raw_hmp_file_, raw_hmp_filename_, kRawSourceHmp) ||
+        !openUnifiedRawDatFile(raw_lidar_file_, raw_lidar_filename_, kRawSourceLidar) ||
+        !openUnifiedRawDatFile(raw_tcp_wave_file_, raw_tcp_wave_filename_, kRawSourceTcpWave))
     {
         sensors_file_.reset();
         imu_raw_file_.reset();
+        resetUnifiedRawDatFiles();
         event_log_file_.reset();
         error_log_file_.reset();
         QMessageBox::warning(
@@ -4222,6 +4441,11 @@ bool MainWindow::startRecordingSession()
     recording_entry_count_.store(0);
     waveform_frame_count_.store(0);
     waveform_file_count_.store(0);
+    raw_epsilon_record_count_.store(0);
+    raw_ptb_record_count_.store(0);
+    raw_hmp_record_count_.store(0);
+    raw_lidar_record_count_.store(0);
+    raw_tcp_wave_record_count_.store(0);
     {
         std::lock_guard<std::mutex> lock(waveform_queue_mutex_);
         waveform_queue_.clear();
@@ -4249,6 +4473,12 @@ bool MainWindow::startRecordingSession()
         log(QString(is_english_
             ? "Warning: failed to copy EPSILON raw format document into session folder"
             : "警告：未能将 EPSILON 原始格式说明复制到当前会话目录"));
+    }
+    if (!copyRawDatFormatDocumentToSession())
+    {
+        log(QString(is_english_
+            ? "Warning: failed to copy unified raw DAT format document into session folder"
+            : "警告：未能将统一 raw DAT 格式说明复制到当前会话目录"));
     }
     writeSessionMetadata();
     writeDeviceConfigSnapshot();
@@ -4342,6 +4572,8 @@ void MainWindow::stopRecording(bool announce)
         writeSessionMetadata(recordingTimestampUtc());
     }
 
+    closeUnifiedRawDatFiles();
+
     {
         std::lock_guard<std::mutex> lock(recording_files_mutex_);
         if (sensors_file_ && sensors_file_->isOpen())
@@ -4368,11 +4600,17 @@ void MainWindow::stopRecording(bool announce)
 
     sensors_file_.reset();
     imu_raw_file_.reset();
+    resetUnifiedRawDatFiles();
     event_log_file_.reset();
     error_log_file_.reset();
     recording_entry_count_.store(0);
     waveform_frame_count_.store(0);
     waveform_file_count_.store(0);
+    raw_epsilon_record_count_.store(0);
+    raw_ptb_record_count_.store(0);
+    raw_hmp_record_count_.store(0);
+    raw_lidar_record_count_.store(0);
+    raw_tcp_wave_record_count_.store(0);
     recording_paused_ = false;
     session_directory_.clear();
     session_name_.clear();
@@ -4381,6 +4619,12 @@ void MainWindow::stopRecording(bool announce)
     sensors_filename_.clear();
     imu_raw_filename_.clear();
     imu_raw_doc_filename_.clear();
+    raw_epsilon_filename_.clear();
+    raw_ptb_filename_.clear();
+    raw_hmp_filename_.clear();
+    raw_lidar_filename_.clear();
+    raw_tcp_wave_filename_.clear();
+    raw_dat_doc_filename_.clear();
     session_metadata_filename_.clear();
     event_log_filename_.clear();
     error_log_filename_.clear();
@@ -4460,6 +4704,48 @@ void MainWindow::onNormalizedSecondHarmonicFrameReady(quint64 timestampUs, QVect
         waveform_queue_.push_back(std::move(frame));
     }
     waveform_queue_cv_.notify_one();
+}
+
+void MainWindow::onTcpRawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload)
+{
+    if (!waveform_writer_running_.load())
+    {
+        return;
+    }
+
+    if (static_cast<quint64>(rawSignalPayload.size()) > std::numeric_limits<quint32>::max() ||
+        static_cast<quint64>(harmonicPayload.size()) > std::numeric_limits<quint32>::max())
+    {
+        return;
+    }
+
+    QByteArray payload;
+    payload.resize(static_cast<int>(sizeof(quint32) * 2 + rawSignalPayload.size() + harmonicPayload.size()));
+    char *cursor = payload.data();
+    const quint32 rawSize = qToLittleEndian(static_cast<quint32>(rawSignalPayload.size()));
+    const quint32 harmonicSize = qToLittleEndian(static_cast<quint32>(harmonicPayload.size()));
+    std::memcpy(cursor, &rawSize, sizeof(rawSize));
+    cursor += sizeof(rawSize);
+    std::memcpy(cursor, &harmonicSize, sizeof(harmonicSize));
+    cursor += sizeof(harmonicSize);
+    if (!rawSignalPayload.isEmpty())
+    {
+        std::memcpy(cursor, rawSignalPayload.constData(), rawSignalPayload.size());
+        cursor += rawSignalPayload.size();
+    }
+    if (!harmonicPayload.isEmpty())
+    {
+        std::memcpy(cursor, harmonicPayload.constData(), harmonicPayload.size());
+    }
+
+    writeUnifiedRawRecord(raw_tcp_wave_file_.get(),
+                          raw_tcp_wave_record_count_,
+                          kRawSourceTcpWave,
+                          kRawRecordTypeGeneric,
+                          kRawTcpWaveCombinedPayloadFlag,
+                          timestampUs,
+                          payload.constData(),
+                          static_cast<size_t>(payload.size()));
 }
 
 void MainWindow::runWaveformWriter()
@@ -5227,21 +5513,72 @@ void MainWindow::onConnectClicked()
                 return;
             }
 
-            std::lock_guard<std::mutex> lock(recording_files_mutex_);
-            if (!imu_raw_file_ || !imu_raw_file_->isOpen())
+            {
+                std::lock_guard<std::mutex> lock(recording_files_mutex_);
+                if (imu_raw_file_ && imu_raw_file_->isOpen())
+                {
+                    const ImuRawRecordHeader header{
+                        0x524D5549u,
+                        static_cast<quint32>(size),
+                        static_cast<quint64>(hostTimestampUs),
+                        static_cast<quint8>(packetId),
+                        {serialNumber, 0, 0}
+                    };
+                    imu_raw_file_->write(reinterpret_cast<const char*>(&header), sizeof(header));
+                    imu_raw_file_->write(reinterpret_cast<const char*>(packet_data), static_cast<qint64>(size));
+                }
+            }
+
+            writeUnifiedRawRecord(raw_epsilon_file_.get(),
+                                  raw_epsilon_record_count_,
+                                  kRawSourceEpsilon,
+                                  packetId,
+                                  serialNumber,
+                                  static_cast<quint64>(hostTimestampUs),
+                                  packet_data,
+                                  size);
+        });
+        collectors.ptb->setRawResponseCallback([this](uint64_t hostTimestampUs, const uint8_t* data, size_t size) {
+            if (!recording_thread_running_.load())
             {
                 return;
             }
-
-            const ImuRawRecordHeader header{
-                0x524D5549u,
-                static_cast<quint32>(size),
-                static_cast<quint64>(hostTimestampUs),
-                static_cast<quint8>(packetId),
-                {serialNumber, 0, 0}
-            };
-            imu_raw_file_->write(reinterpret_cast<const char*>(&header), sizeof(header));
-            imu_raw_file_->write(reinterpret_cast<const char*>(packet_data), static_cast<qint64>(size));
+            writeUnifiedRawRecord(raw_ptb_file_.get(),
+                                  raw_ptb_record_count_,
+                                  kRawSourcePtb,
+                                  kRawRecordTypeGeneric,
+                                  0u,
+                                  static_cast<quint64>(hostTimestampUs),
+                                  data,
+                                  size);
+        });
+        collectors.hmp->setRawResponseCallback([this](uint64_t hostTimestampUs, const uint8_t* data, size_t size) {
+            if (!recording_thread_running_.load())
+            {
+                return;
+            }
+            writeUnifiedRawRecord(raw_hmp_file_.get(),
+                                  raw_hmp_record_count_,
+                                  kRawSourceHmp,
+                                  0x03u,
+                                  0u,
+                                  static_cast<quint64>(hostTimestampUs),
+                                  data,
+                                  size);
+        });
+        collectors.lidar->setRawFrameCallback([this](uint64_t hostTimestampUs, VaporView::LidarProtocol protocol, const uint8_t* frame, size_t size) {
+            if (!recording_thread_running_.load())
+            {
+                return;
+            }
+            writeUnifiedRawRecord(raw_lidar_file_.get(),
+                                  raw_lidar_record_count_,
+                                  kRawSourceLidar,
+                                  static_cast<quint16>(protocol),
+                                  0u,
+                                  static_cast<quint64>(hostTimestampUs),
+                                  frame,
+                                  size);
         });
 
         int total_devices = 0;

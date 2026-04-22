@@ -3,6 +3,7 @@
 
 #include "data_collector.h"
 #include "data_types.h"
+#include <QByteArray>
 #include <QMainWindow>
 #include <QLabel>
 #include <QVBoxLayout>
@@ -272,6 +273,7 @@ private slots:
     void onFontScaleTriggered(QAction *action);
     void onCancelConnectClicked();
     void onNormalizedSecondHarmonicFrameReady(quint64 timestampUs, QVector<float> samples);
+    void onTcpRawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload);
     void onStartRecordingClicked();
     void onPauseRecordingClicked();
     void onStopRecordingClicked();
@@ -321,6 +323,18 @@ private:
     void writeSensorsHeader();
     bool prepareRecordingSessionLayout(const QString& recordsPath, const QString& sessionName);
     bool copyImuRawFormatDocumentToSession();
+    bool copyRawDatFormatDocumentToSession();
+    bool openUnifiedRawDatFile(std::unique_ptr<QFile>& file, const QString& filename, quint16 sourceId);
+    void writeUnifiedRawRecord(QFile *file,
+                               std::atomic<quint64>& recordCount,
+                               quint16 sourceId,
+                               quint16 recordType,
+                               quint32 flags,
+                               quint64 hostTimestampUs,
+                               const void *payload,
+                               size_t payloadSize);
+    void closeUnifiedRawDatFiles();
+    void resetUnifiedRawDatFiles();
     void writeSessionMetadata(const QString& endTimeUtc = QString());
     void writeDeviceConfigSnapshot();
     void appendEventLogLine(const QString& level, const QString& message);
@@ -522,6 +536,11 @@ private:
     std::chrono::system_clock::time_point system_clock_anchor_;
     std::unique_ptr<QFile> sensors_file_;
     std::unique_ptr<QFile> imu_raw_file_;
+    std::unique_ptr<QFile> raw_epsilon_file_;
+    std::unique_ptr<QFile> raw_ptb_file_;
+    std::unique_ptr<QFile> raw_hmp_file_;
+    std::unique_ptr<QFile> raw_lidar_file_;
+    std::unique_ptr<QFile> raw_tcp_wave_file_;
     std::unique_ptr<QFile> event_log_file_;
     std::unique_ptr<QFile> error_log_file_;
     QString recording_directory_;
@@ -532,6 +551,12 @@ private:
     QString sensors_filename_;
     QString imu_raw_filename_;
     QString imu_raw_doc_filename_;
+    QString raw_epsilon_filename_;
+    QString raw_ptb_filename_;
+    QString raw_hmp_filename_;
+    QString raw_lidar_filename_;
+    QString raw_tcp_wave_filename_;
+    QString raw_dat_doc_filename_;
     QString session_metadata_filename_;
     QString event_log_filename_;
     QString error_log_filename_;
@@ -540,6 +565,11 @@ private:
     std::atomic<qint64> recording_entry_count_;
     std::atomic<qint64> waveform_frame_count_;
     std::atomic<qint64> waveform_file_count_;
+    std::atomic<quint64> raw_epsilon_record_count_;
+    std::atomic<quint64> raw_ptb_record_count_;
+    std::atomic<quint64> raw_hmp_record_count_;
+    std::atomic<quint64> raw_lidar_record_count_;
+    std::atomic<quint64> raw_tcp_wave_record_count_;
     std::atomic<quint64> last_imu_record_timestamp_us_;
     std::atomic<quint64> last_waveform_record_timestamp_us_;
     std::mutex recording_files_mutex_;

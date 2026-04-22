@@ -145,9 +145,12 @@ private:
 class PtbCollector : public DataCollector
 {
 public:
+  using RawResponseCallback = std::function<void(uint64_t host_timestamp_us, const uint8_t* data, size_t size)>;
+
   PtbData getLatestData();
   bool setDeviceSampleRate(int hz) override;
   bool checkDeviceResponse() override;
+  void setRawResponseCallback(RawResponseCallback callback);
 
 protected:
   void run() override;
@@ -156,6 +159,7 @@ protected:
 
 private:
   PtbData latest_data_;
+  RawResponseCallback raw_response_callback_;
   static constexpr const char* PTB_CMD_PRESSURE = ".P\r";
   static constexpr const char* PTB_CMD_CONTINUOUS = ".BP\r";
   static constexpr const char* PTB_CMD_STOP = "\r";
@@ -164,8 +168,11 @@ private:
 class HmpCollector : public DataCollector
 {
 public:
+  using RawResponseCallback = std::function<void(uint64_t host_timestamp_us, const uint8_t* data, size_t size)>;
+
   HmpData getLatestData();
   bool checkDeviceResponse() override;
+  void setRawResponseCallback(RawResponseCallback callback);
 
 protected:
   void run() override;
@@ -173,6 +180,7 @@ protected:
 
 private:
   HmpData latest_data_;
+  RawResponseCallback raw_response_callback_;
 
   static constexpr uint8_t HMP3_SLAVE_ADDR = 240;
   static constexpr uint16_t HMP3_REG_HUMIDITY = 0x0000;
@@ -185,9 +193,15 @@ private:
 class LidarCollector : public DataCollector
 {
 public:
+  using RawFrameCallback = std::function<void(uint64_t host_timestamp_us,
+                                             LidarProtocol protocol,
+                                             const uint8_t* frame,
+                                             size_t size)>;
+
   LidarData getLatestData();
   bool setDeviceSampleRate(int hz) override;
   bool checkDeviceResponse() override;
+  void setRawFrameCallback(RawFrameCallback callback);
 
 protected:
   void run() override;
@@ -196,6 +210,7 @@ protected:
 
 private:
   LidarData latest_data_;
+  RawFrameCallback raw_frame_callback_;
 
   static constexpr uint8_t TF03_HEADER = 0x59;
   static constexpr uint8_t TFA1500_HEADER = 0x5C;

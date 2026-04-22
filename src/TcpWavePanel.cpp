@@ -486,6 +486,7 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , peak_clear_button_(nullptr)
     , control_layout_(nullptr)
     , socket_(nullptr)
+    , pending_wave1_payload_()
     , peak_plot_scatter_mode_(true)
     , parse_mode_(ParseMode::AutoDetect)
     , read_state_(ReadState::Wave1Header)
@@ -885,6 +886,7 @@ void TcpWavePanel::onToggleConnectionClicked()
     wave1_history_.clear();
     wave4_history_.clear();
     peak_history_.clear();
+    pending_wave1_payload_.clear();
     pending_wave1_.clear();
     if (peak_plot_)
     {
@@ -1043,7 +1045,7 @@ void TcpWavePanel::processBuffer()
             read_state_ = ReadState::Wave1Payload;
             break;
         case ReadState::Wave1Payload:
-            if (!tryConsumePayload(pending_wave1_))
+            if (!tryConsumePayload(pending_wave1_, &pending_wave1_payload_))
             {
                 return;
             }
@@ -1059,7 +1061,8 @@ void TcpWavePanel::processBuffer()
         case ReadState::Wave4Payload:
         {
             QVector<float> wave4;
-            if (!tryConsumePayload(wave4))
+            QByteArray wave4Payload;
+            if (!tryConsumePayload(wave4, &wave4Payload))
             {
                 return;
             }
@@ -1074,6 +1077,7 @@ void TcpWavePanel::processBuffer()
                     : "已丢弃异常TCP帧，原始信号最大值=%1，二次谐波最大值=%2，等待下一帧...")
                     .arg(formatWaveValue(wave1MaxMagnitude, 3))
                     .arg(formatWaveValue(wave4MaxMagnitude, 3)));
+                pending_wave1_payload_.clear();
                 pending_wave1_.clear();
                 float_encoding_ = FloatEncoding::Unknown;
                 resetParserState();
@@ -1099,8 +1103,10 @@ void TcpWavePanel::processBuffer()
             }
             ++frame_count_;
             updateFrameRateDisplay(QDateTime::currentMSecsSinceEpoch());
+            const quint64 frameTimestampUs = static_cast<quint64>(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()) * 1000ULL;
+            emit rawWaveFrameReady(frameTimestampUs, pending_wave1_payload_, wave4Payload);
             emit normalizedSecondHarmonicFrameReady(
-                static_cast<quint64>(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()) * 1000ULL,
+                frameTimestampUs,
                 wave4_history_);
 
             const auto describeRange = [](const QVector<float>& values) {
@@ -1133,6 +1139,7 @@ void TcpWavePanel::processBuffer()
                 .arg(frame_count_)
                 .arg(floatEncodingLabel(is_english_, float_encoding_)));
 
+            pending_wave1_payload_.clear();
             pending_wave1_.clear();
             resetParserState();
             break;
@@ -1258,7 +1265,7 @@ bool TcpWavePanel::tryConsumeHeader()
     return true;
 }
 
-bool TcpWavePanel::tryConsumePayload(QVector<float>& output)
+bool TcpWavePanel::tryConsumePayload(QVector<float>& output, QByteArray *rawPayload)
 {
     if (buffer_.size() < expected_payload_size_)
     {
@@ -1267,6 +1274,10 @@ bool TcpWavePanel::tryConsumePayload(QVector<float>& output)
 
     const QByteArray payload = buffer_.left(expected_payload_size_);
     buffer_.remove(0, expected_payload_size_);
+    if (rawPayload)
+    {
+        *rawPayload = payload;
+    }
     if (float_encoding_ == FloatEncoding::Unknown)
     {
         float_encoding_ = autoDetectFloatEncoding(payload);

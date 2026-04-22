@@ -1,6 +1,7 @@
 #ifndef VaporView_TCP_WAVE_PANEL_H_
 #define VaporView_TCP_WAVE_PANEL_H_
 
+#include <QByteArray>
 #include <QWidget>
 #include <QVector>
 
@@ -59,6 +60,7 @@ public:
 
 signals:
     void normalizedSecondHarmonicFrameReady(quint64 timestampUs, QVector<float> samples);
+    void rawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload);
     void connectionStateChanged(bool connected);
 
 private slots:
@@ -89,7 +91,7 @@ private:
     bool isValidPayloadSize(qint32 candidate) const;
     qint32 decodeHeaderValue(const char *raw, HeaderByteOrder order) const;
     bool tryConsumeHeader();
-    bool tryConsumePayload(QVector<float>& output);
+    bool tryConsumePayload(QVector<float>& output, QByteArray *rawPayload = nullptr);
     float decodeFloatSample(const char *raw, FloatEncoding encoding) const;
     FloatEncoding autoDetectFloatEncoding(const QByteArray& payload) const;
     QVector<float> decodeFloatPayload(const QByteArray& payload) const;
@@ -120,6 +122,7 @@ private:
     QTcpSocket *socket_;
 
     QByteArray buffer_;
+    QByteArray pending_wave1_payload_;
     QVector<float> wave1_history_;
     QVector<float> wave4_history_;
     QVector<float> peak_history_;

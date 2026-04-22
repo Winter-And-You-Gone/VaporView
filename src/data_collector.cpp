@@ -12,6 +12,7 @@
 #include <map>
 #include <regex>
 #include <sstream>
+#include <utility>
 #include <vector>
 
 namespace VaporView
@@ -859,7 +860,7 @@ bool parseObservedAaB7FrameLocal(const uint8_t* frame, size_t size, LidarData& s
   return true;
 }
 
-bool extractNextTf03Sample(std::vector<uint8_t>& buffer, LidarData& sample)
+bool extractNextTf03Sample(std::vector<uint8_t>& buffer, LidarData& sample, std::vector<uint8_t>* raw_frame = nullptr)
 {
   while (buffer.size() >= kTf03FrameSize)
   {
@@ -886,6 +887,10 @@ bool extractNextTf03Sample(std::vector<uint8_t>& buffer, LidarData& sample)
     }
     if (parseTf03FrameLocal(&(*header), kTf03FrameSize, sample))
     {
+      if (raw_frame)
+      {
+        raw_frame->assign(header, header + kTf03FrameSize);
+      }
       buffer.erase(buffer.begin(), header + kTf03FrameSize);
       return true;
     }
@@ -894,7 +899,7 @@ bool extractNextTf03Sample(std::vector<uint8_t>& buffer, LidarData& sample)
   return false;
 }
 
-bool extractNextTfa1500Sample(std::vector<uint8_t>& buffer, LidarData& sample)
+bool extractNextTfa1500Sample(std::vector<uint8_t>& buffer, LidarData& sample, std::vector<uint8_t>* raw_frame = nullptr)
 {
   while (buffer.size() >= kTfa1500FrameSize)
   {
@@ -911,6 +916,10 @@ bool extractNextTfa1500Sample(std::vector<uint8_t>& buffer, LidarData& sample)
     }
     if (parseTfa1500FrameLocal(&(*header), kTfa1500FrameSize, sample))
     {
+      if (raw_frame)
+      {
+        raw_frame->assign(header, header + kTfa1500FrameSize);
+      }
       buffer.erase(buffer.begin(), header + kTfa1500FrameSize);
       return true;
     }
@@ -919,7 +928,7 @@ bool extractNextTfa1500Sample(std::vector<uint8_t>& buffer, LidarData& sample)
   return false;
 }
 
-bool extractNextTfa1500LowFrequencySample(std::vector<uint8_t>& buffer, LidarData& sample)
+bool extractNextTfa1500LowFrequencySample(std::vector<uint8_t>& buffer, LidarData& sample, std::vector<uint8_t>* raw_frame = nullptr)
 {
   while (buffer.size() >= kTfa1500LowFrequencyMinFrameSize)
   {
@@ -940,6 +949,10 @@ bool extractNextTfa1500LowFrequencySample(std::vector<uint8_t>& buffer, LidarDat
     size_t consumed_size = 0;
     if (parseTfa1500LowFrequencyFrameLocal(&(*header), static_cast<size_t>(remaining), sample, consumed_size))
     {
+      if (raw_frame)
+      {
+        raw_frame->assign(header, header + consumed_size);
+      }
       buffer.erase(buffer.begin(), header + consumed_size);
       return true;
     }
@@ -955,7 +968,7 @@ bool extractNextTfa1500LowFrequencySample(std::vector<uint8_t>& buffer, LidarDat
   return false;
 }
 
-bool extractNextObservedAaB7Sample(std::vector<uint8_t>& buffer, LidarData& sample)
+bool extractNextObservedAaB7Sample(std::vector<uint8_t>& buffer, LidarData& sample, std::vector<uint8_t>* raw_frame = nullptr)
 {
   while (buffer.size() >= kObservedAaB7FrameSize)
   {
@@ -974,6 +987,10 @@ bool extractNextObservedAaB7Sample(std::vector<uint8_t>& buffer, LidarData& samp
 
     if (parseObservedAaB7FrameLocal(&(*header), static_cast<size_t>(std::distance(header, buffer.end())), sample))
     {
+      if (raw_frame)
+      {
+        raw_frame->assign(header, header + kObservedAaB7FrameSize);
+      }
       buffer.erase(buffer.begin(), header + kObservedAaB7FrameSize);
       return true;
     }
@@ -983,11 +1000,15 @@ bool extractNextObservedAaB7Sample(std::vector<uint8_t>& buffer, LidarData& samp
   return false;
 }
 
-bool extractNextLidarSample(std::vector<uint8_t>& buffer, LidarProtocol protocol_hint, LidarData& sample, LidarProtocol& detected_protocol)
+bool extractNextLidarSample(std::vector<uint8_t>& buffer,
+                            LidarProtocol protocol_hint,
+                            LidarData& sample,
+                            LidarProtocol& detected_protocol,
+                            std::vector<uint8_t>* raw_frame = nullptr)
 {
   if (protocol_hint == LidarProtocol::TF03)
   {
-    if (extractNextTf03Sample(buffer, sample))
+    if (extractNextTf03Sample(buffer, sample, raw_frame))
     {
       detected_protocol = LidarProtocol::TF03;
       return true;
@@ -997,7 +1018,7 @@ bool extractNextLidarSample(std::vector<uint8_t>& buffer, LidarProtocol protocol
 
   if (protocol_hint == LidarProtocol::TFA1500HighFrequency)
   {
-    if (extractNextTfa1500Sample(buffer, sample))
+    if (extractNextTfa1500Sample(buffer, sample, raw_frame))
     {
       detected_protocol = LidarProtocol::TFA1500HighFrequency;
       return true;
@@ -1007,7 +1028,7 @@ bool extractNextLidarSample(std::vector<uint8_t>& buffer, LidarProtocol protocol
 
   if (protocol_hint == LidarProtocol::TFA1500DistanceFrame)
   {
-    if (extractNextTfa1500Sample(buffer, sample))
+    if (extractNextTfa1500Sample(buffer, sample, raw_frame))
     {
       detected_protocol = LidarProtocol::TFA1500DistanceFrame;
       return true;
@@ -1017,7 +1038,7 @@ bool extractNextLidarSample(std::vector<uint8_t>& buffer, LidarProtocol protocol
 
   if (protocol_hint == LidarProtocol::TFA1500LowFrequencyFrame)
   {
-    if (extractNextTfa1500LowFrequencySample(buffer, sample))
+    if (extractNextTfa1500LowFrequencySample(buffer, sample, raw_frame))
     {
       detected_protocol = LidarProtocol::TFA1500LowFrequencyFrame;
       return true;
@@ -1027,7 +1048,7 @@ bool extractNextLidarSample(std::vector<uint8_t>& buffer, LidarProtocol protocol
 
   if (protocol_hint == LidarProtocol::ObservedAaB7Frame)
   {
-    if (extractNextObservedAaB7Sample(buffer, sample))
+    if (extractNextObservedAaB7Sample(buffer, sample, raw_frame))
     {
       detected_protocol = LidarProtocol::ObservedAaB7Frame;
       return true;
@@ -1057,7 +1078,7 @@ bool extractNextLidarSample(std::vector<uint8_t>& buffer, LidarProtocol protocol
     if (earliest == tf03)
     {
       std::vector<uint8_t> slice(tf03, buffer.end());
-      if (extractNextTf03Sample(slice, sample))
+      if (extractNextTf03Sample(slice, sample, raw_frame))
       {
         detected_protocol = LidarProtocol::TF03;
         buffer.assign(slice.begin(), slice.end());
@@ -1075,7 +1096,7 @@ bool extractNextLidarSample(std::vector<uint8_t>& buffer, LidarProtocol protocol
     if (earliest == tfa)
     {
       std::vector<uint8_t> slice(tfa, buffer.end());
-      if (extractNextTfa1500Sample(slice, sample))
+      if (extractNextTfa1500Sample(slice, sample, raw_frame))
       {
         detected_protocol = LidarProtocol::TFA1500DistanceFrame;
         buffer.assign(slice.begin(), slice.end());
@@ -1093,7 +1114,7 @@ bool extractNextLidarSample(std::vector<uint8_t>& buffer, LidarProtocol protocol
     if (earliest == tfa_low)
     {
       std::vector<uint8_t> slice(tfa_low, buffer.end());
-      if (extractNextTfa1500LowFrequencySample(slice, sample))
+      if (extractNextTfa1500LowFrequencySample(slice, sample, raw_frame))
       {
         detected_protocol = LidarProtocol::TFA1500LowFrequencyFrame;
         buffer.assign(slice.begin(), slice.end());
@@ -1111,7 +1132,7 @@ bool extractNextLidarSample(std::vector<uint8_t>& buffer, LidarProtocol protocol
     if (earliest == aa_b7)
     {
       std::vector<uint8_t> slice(aa_b7, buffer.end());
-      if (extractNextObservedAaB7Sample(slice, sample))
+      if (extractNextObservedAaB7Sample(slice, sample, raw_frame))
       {
         detected_protocol = LidarProtocol::ObservedAaB7Frame;
         buffer.assign(slice.begin(), slice.end());
@@ -1139,7 +1160,14 @@ enum class HmpParseResult
   CrcError
 };
 
-HmpParseResult parseHmpResponse(const uint8_t* buffer, size_t size, float& humidity, float& temperature, uint8_t& exception_code, uint8_t function_code)
+HmpParseResult parseHmpResponse(const uint8_t* buffer,
+                                size_t size,
+                                float& humidity,
+                                float& temperature,
+                                uint8_t& exception_code,
+                                uint8_t function_code,
+                                size_t* frame_offset = nullptr,
+                                size_t* frame_size = nullptr)
 {
   constexpr uint8_t kSlaveAddr = 240;
   const uint8_t exception_fc = static_cast<uint8_t>(function_code | 0x80);
@@ -1157,6 +1185,14 @@ HmpParseResult parseHmpResponse(const uint8_t* buffer, size_t size, float& humid
       uint16_t calc_crc = modbusCrc16Local(buffer + i, 3);
       if (recv_crc == calc_crc)
       {
+        if (frame_offset)
+        {
+          *frame_offset = i;
+        }
+        if (frame_size)
+        {
+          *frame_size = 5;
+        }
         exception_code = buffer[i + 2];
         return HmpParseResult::Exception;
       }
@@ -1182,6 +1218,14 @@ HmpParseResult parseHmpResponse(const uint8_t* buffer, size_t size, float& humid
 
       if (byte_count >= 8)
       {
+        if (frame_offset)
+        {
+          *frame_offset = i;
+        }
+        if (frame_size)
+        {
+          *frame_size = frame_len;
+        }
         uint16_t reg0 = static_cast<uint16_t>(buffer[i + 3] << 8) | buffer[i + 4];
         uint16_t reg1 = static_cast<uint16_t>(buffer[i + 5] << 8) | buffer[i + 6];
         uint16_t reg2 = static_cast<uint16_t>(buffer[i + 7] << 8) | buffer[i + 8];
@@ -2834,6 +2878,12 @@ PtbData PtbCollector::getLatestData()
   return latest_data_;
 }
 
+void PtbCollector::setRawResponseCallback(RawResponseCallback callback)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  raw_response_callback_ = std::move(callback);
+}
+
 bool PtbCollector::setDeviceSampleRate(int hz)
 {
   if (hz < 1 || hz > 70)
@@ -3025,7 +3075,7 @@ void PtbCollector::run()
     return true;
   };
 
-  auto processLine = [this](std::string line) -> bool {
+  auto processLine = [this](std::string line, const std::string& raw_line) -> bool {
     while (!line.empty() && (line.back() == '\r' || line.back() == '\n' || line.back() == ' '))
     {
       line.pop_back();
@@ -3040,6 +3090,8 @@ void PtbCollector::run()
     {
       double pressure = std::stod(line);
       DataCallback callback;
+      RawResponseCallback raw_callback;
+      const uint64_t host_timestamp_us = systemTimestampUs();
       {
         std::lock_guard<std::mutex> lock(mutex_);
         latest_data_.pressure_hpa = pressure;
@@ -3047,9 +3099,15 @@ void PtbCollector::run()
         latest_data_.timestamp = std::chrono::steady_clock::now();
         latest_data_.error_message.clear();
         callback = data_callback_;
+        raw_callback = raw_response_callback_;
       }
 
       recordDataReceived();
+
+      if (raw_callback && !raw_line.empty())
+      {
+        raw_callback(host_timestamp_us, reinterpret_cast<const uint8_t*>(raw_line.data()), raw_line.size());
+      }
 
       if (callback && shouldEmitData())
       {
@@ -3085,14 +3143,15 @@ void PtbCollector::run()
       size_t line_end = std::string::npos;
       while ((line_end = buffer.find_first_of("\r\n")) != std::string::npos)
       {
-        const std::string line = buffer.substr(0, line_end);
+        const std::string raw_line = buffer.substr(0, line_end + 1);
+        const std::string line = raw_line;
         buffer.erase(0, line_end + 1);
         while (!buffer.empty() && (buffer.front() == '\r' || buffer.front() == '\n'))
         {
           buffer.erase(0, 1);
         }
 
-        if (processLine(line))
+        if (processLine(line, raw_line))
         {
           last_data_time = std::chrono::steady_clock::now();
         }
@@ -3122,6 +3181,12 @@ HmpData HmpCollector::getLatestData()
 {
   std::lock_guard<std::mutex> lock(mutex_);
   return latest_data_;
+}
+
+void HmpCollector::setRawResponseCallback(RawResponseCallback callback)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  raw_response_callback_ = std::move(callback);
 }
 
 bool HmpCollector::initialize()
@@ -3250,6 +3315,8 @@ void HmpCollector::run()
     float temperature = 0.0f;
     uint8_t exception_code = 0;
     HmpParseResult parsed = HmpParseResult::None;
+    size_t raw_frame_offset = 0;
+    size_t raw_frame_size = 0;
     size_t total = 0;
     int elapsed_wait_ms = 0;
     constexpr int step_ms = 25;
@@ -3260,7 +3327,7 @@ void HmpCollector::run()
       if (chunk > 0)
       {
         total += static_cast<size_t>(chunk);
-        parsed = parseHmpResponse(response, total, humidity, temperature, exception_code, 0x03);
+        parsed = parseHmpResponse(response, total, humidity, temperature, exception_code, 0x03, &raw_frame_offset, &raw_frame_size);
         if (parsed != HmpParseResult::None)
         {
           break;
@@ -3273,12 +3340,14 @@ void HmpCollector::run()
 
     if (parsed == HmpParseResult::None && total > 0)
     {
-      parsed = parseHmpResponse(response, total, humidity, temperature, exception_code, 0x03);
+      parsed = parseHmpResponse(response, total, humidity, temperature, exception_code, 0x03, &raw_frame_offset, &raw_frame_size);
     }
 
     if (parsed == HmpParseResult::Data)
     {
       DataCallback callback;
+      RawResponseCallback raw_callback;
+      const uint64_t host_timestamp_us = systemTimestampUs();
       {
         std::lock_guard<std::mutex> lock(mutex_);
         latest_data_.humidity = humidity;
@@ -3287,9 +3356,15 @@ void HmpCollector::run()
         latest_data_.timestamp = std::chrono::steady_clock::now();
         latest_data_.error_message.clear();
         callback = data_callback_;
+        raw_callback = raw_response_callback_;
       }
 
       recordDataReceived();
+
+      if (raw_callback && raw_frame_size > 0 && raw_frame_offset + raw_frame_size <= total)
+      {
+        raw_callback(host_timestamp_us, response + raw_frame_offset, raw_frame_size);
+      }
 
       if (callback && shouldEmitData())
       {
@@ -3324,6 +3399,12 @@ LidarData LidarCollector::getLatestData()
 {
   std::lock_guard<std::mutex> lock(mutex_);
   return latest_data_;
+}
+
+void LidarCollector::setRawFrameCallback(RawFrameCallback callback)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  raw_frame_callback_ = std::move(callback);
 }
 
 bool LidarCollector::initialize()
@@ -3659,17 +3740,26 @@ void LidarCollector::run()
       {
         LidarData sample;
         LidarProtocol detected_protocol = active_protocol_;
-        if (extractNextLidarSample(buffer, active_protocol_, sample, detected_protocol))
+        std::vector<uint8_t> raw_frame;
+        if (extractNextLidarSample(buffer, active_protocol_, sample, detected_protocol, &raw_frame))
         {
           active_protocol_ = detected_protocol;
           DataCallback callback;
+          RawFrameCallback raw_callback;
+          const uint64_t host_timestamp_us = systemTimestampUs();
           {
             std::lock_guard<std::mutex> lock(mutex_);
             latest_data_ = sample;
             callback = data_callback_;
+            raw_callback = raw_frame_callback_;
           }
 
           recordDataReceived();
+
+          if (raw_callback && !raw_frame.empty())
+          {
+            raw_callback(host_timestamp_us, active_protocol_, raw_frame.data(), raw_frame.size());
+          }
 
           if (callback && shouldEmitData())
           {
