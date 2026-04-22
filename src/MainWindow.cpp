@@ -449,9 +449,6 @@ public:
         };
         const bool gnss_fix_valid = epsilon_data.gnss_fix_code >= 2;
         const bool utc_valid = epsilon_data.utc_unix_s > 0;
-        const bool pressure_valid = std::isfinite(epsilon_data.pressure_pa) &&
-                                    epsilon_data.pressure_pa > 0.0;
-        const bool pressure_altitude_valid = std::isfinite(epsilon_data.pressure_altitude_m);
 
         const QString utcText = utc_valid
             ? QDateTime::fromSecsSinceEpoch(static_cast<qint64>(epsilon_data.utc_unix_s), QTimeZone::UTC)
@@ -496,18 +493,8 @@ public:
                      : QString());
         setValue(QStringLiteral("mag"), triple(epsilon_data.mag_x_mg, epsilon_data.mag_y_mg, epsilon_data.mag_z_mg, 3));
         setValue(QStringLiteral("temp"),
-                 (std::isfinite(epsilon_data.imu_temp_c) || std::isfinite(epsilon_data.pressure_temp_c))
-                     ? QStringLiteral("%1 C / %2 C")
-                           .arg(formatNumber(epsilon_data.imu_temp_c, 2).isEmpty() ? QStringLiteral("--") : formatNumber(epsilon_data.imu_temp_c, 2))
-                           .arg(formatNumber(epsilon_data.pressure_temp_c, 2).isEmpty() ? QStringLiteral("--") : formatNumber(epsilon_data.pressure_temp_c, 2))
-                     : QString());
-        setValue(QStringLiteral("pressure"),
-                 pressure_valid
-                     ? QStringLiteral("%1 Pa | Alt %2")
-                           .arg(epsilon_data.pressure_pa, 0, 'f', 2)
-                           .arg(pressure_altitude_valid
-                                    ? QStringLiteral("%1 m").arg(epsilon_data.pressure_altitude_m, 0, 'f', 2)
-                                    : QStringLiteral("--"))
+                 std::isfinite(epsilon_data.imu_temp_c)
+                     ? QStringLiteral("%1 C").arg(formatNumber(epsilon_data.imu_temp_c, 2))
                      : QString());
         setValue(QStringLiteral("dop"),
                  gnss_fix_valid && std::isfinite(epsilon_data.hdop) && std::isfinite(epsilon_data.vdop)
@@ -645,8 +632,7 @@ private:
         addField(grid, row++, 1, QStringLiteral("rpy"), QStringLiteral("姿态角[deg]:"), QStringLiteral("RPY [deg]:"));
         addField(grid, row++, 1, QStringLiteral("quat"), QStringLiteral("四元数:"), QStringLiteral("Quaternion:"));
         addField(grid, row++, 1, QStringLiteral("mag"), QStringLiteral("磁场[mG]:"), QStringLiteral("Mag [mG]:"));
-        addField(grid, row++, 1, QStringLiteral("temp"), QStringLiteral("温度[IMU/气压]:"), QStringLiteral("Temp [IMU/Baro]:"));
-        addField(grid, row++, 1, QStringLiteral("pressure"), QStringLiteral("气压/气压高:"), QStringLiteral("Pressure/Altitude:"));
+        addField(grid, row++, 1, QStringLiteral("temp"), QStringLiteral("IMU温度:"), QStringLiteral("IMU Temp:"));
         addField(grid, row++, 1, QStringLiteral("dop"), QStringLiteral("DOP:"), QStringLiteral("DOP:"));
         addField(grid, row++, 1, QStringLiteral("acc"), QStringLiteral("定位精度[m]:"), QStringLiteral("Accuracy [m]:"));
         addField(grid, row++, 1, QStringLiteral("std"), QStringLiteral("坐标标准差[m]:"), QStringLiteral("Coord Std [m]:"));
@@ -4091,8 +4077,6 @@ void MainWindow::startRecordingWorkers()
                     << QString::number(epsilonSample.mag_y_mg, 'f', 6)
                     << QString::number(epsilonSample.mag_z_mg, 'f', 6)
                     << QString::number(epsilonSample.imu_temp_c, 'f', 4)
-                    << QString::number(epsilonSample.pressure_pa, 'f', 4)
-                    << QString::number(epsilonSample.pressure_temp_c, 'f', 4)
                     << QString::fromStdString(epsilonSample.gnss_fix_text)
                     << QString::number(epsilonSample.gnss_satellites)
                     << QString::number(epsilonSample.hdop, 'f', 4)
@@ -4112,7 +4096,7 @@ void MainWindow::startRecordingWorkers()
             }
             else
             {
-                appendEmptyColumns(60);
+                appendEmptyColumns(58);
             }
 
             if (isFresh(collectors.hmp.get(), hmpSample))
@@ -4450,7 +4434,7 @@ void MainWindow::writeSensorsHeader()
         << "imu_acc_x_mps2,imu_acc_y_mps2,imu_acc_z_mps2,"
         << "imu_gyr_x_radps,imu_gyr_y_radps,imu_gyr_z_radps,"
         << "mag_x_mg,mag_y_mg,mag_z_mg,"
-        << "imu_temp_c,pressure_pa,pressure_temp_c,"
+        << "imu_temp_c,"
         << "gnss_fix,gnss_satellites,hdop,vdop,hacc_m,vacc_m,"
         << "lat_std_m,lon_std_m,height_std_m,diff_age_s,"
         << "heading_valid,system_status_bits,filter_status_bits,update_status_bits,"

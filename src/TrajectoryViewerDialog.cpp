@@ -1131,8 +1131,11 @@ void TrajectoryViewerDialog::updateSummary()
     double maxLat = -std::numeric_limits<double>::infinity();
     double minLon = std::numeric_limits<double>::infinity();
     double maxLon = -std::numeric_limits<double>::infinity();
+    double minHeight = std::numeric_limits<double>::infinity();
+    double maxHeight = -std::numeric_limits<double>::infinity();
     double minPeak = std::numeric_limits<double>::infinity();
     double maxPeak = -std::numeric_limits<double>::infinity();
+    bool hasHeightRange = false;
     bool hasPeakRange = false;
     for (const RtkTrackPoint& point : track_points_)
     {
@@ -1140,6 +1143,12 @@ void TrajectoryViewerDialog::updateSummary()
         maxLat = std::max(maxLat, point.latitude);
         minLon = std::min(minLon, point.longitude);
         maxLon = std::max(maxLon, point.longitude);
+        if (point.has_height && std::isfinite(point.height_m))
+        {
+            hasHeightRange = true;
+            minHeight = std::min(minHeight, point.height_m);
+            maxHeight = std::max(maxHeight, point.height_m);
+        }
         if (point.has_peak_value && std::isfinite(point.peak_value))
         {
             hasPeakRange = true;
@@ -1148,15 +1157,28 @@ void TrajectoryViewerDialog::updateSummary()
         }
     }
 
+    const QString heightRangeText = hasHeightRange
+        ? (is_english_
+            ? QStringLiteral(" Height %1 to %2 m, change %3 m.")
+                  .arg(QString::number(minHeight, 'f', 3),
+                       QString::number(maxHeight, 'f', 3),
+                       QString::number(maxHeight - minHeight, 'f', 3))
+            : QStringLiteral("高度范围 %1 到 %2 m，变化区间 %3 m。")
+                  .arg(QString::number(minHeight, 'f', 3),
+                       QString::number(maxHeight, 'f', 3),
+                       QString::number(maxHeight - minHeight, 'f', 3)))
+        : QString();
+
     summary_label_->setText(QString(is_english_
-        ? "Showing %1 %2 points. Latitude %3 to %4, longitude %5 to %6."
-        : "正在显示 %1 个%2点。纬度范围 %3 到 %4，经度范围 %5 到 %6。")
+        ? "Showing %1 %2 points. Latitude %3 to %4, longitude %5 to %6.%7"
+        : "正在显示 %1 个%2点。纬度范围 %3 到 %4，经度范围 %5 到 %6。%7")
         .arg(track_points_.size())
         .arg(is_english_ ? english_track_label_ : chinese_track_label_)
         .arg(QString::number(minLat, 'f', 7))
         .arg(QString::number(maxLat, 'f', 7))
         .arg(QString::number(minLon, 'f', 7))
-        .arg(QString::number(maxLon, 'f', 7)));
+        .arg(QString::number(maxLon, 'f', 7))
+        .arg(heightRangeText));
 
     if (!hasPeakRange)
     {

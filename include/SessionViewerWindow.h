@@ -10,8 +10,10 @@ struct RtkTrackPoint
 {
     double latitude = 0.0;
     double longitude = 0.0;
+    double height_m = 0.0;
     quint64 timestamp_us = 0;
     float peak_value = 0.0f;
+    bool has_height = false;
     bool has_peak_value = false;
 };
 

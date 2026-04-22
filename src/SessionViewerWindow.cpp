@@ -306,43 +306,6 @@ QString formatGuideValue(double value, int decimals, const QString& unit = QStri
     return unit.isEmpty() ? number : QStringLiteral("%1 %2").arg(number, unit);
 }
 
-int estimateImuRateHz(const QVector<quint64>& timestampsUs)
-{
-    QVector<double> deltasSeconds;
-    deltasSeconds.reserve(std::max<qsizetype>(0, timestampsUs.size() - 1));
-    quint64 previousTimestampUs = 0;
-    for (quint64 timestampUs : timestampsUs)
-    {
-        if (timestampUs == 0)
-        {
-            continue;
-        }
-        if (previousTimestampUs != 0 && timestampUs > previousTimestampUs)
-        {
-            const double deltaSeconds = static_cast<double>(timestampUs - previousTimestampUs) / 1000000.0;
-            if (deltaSeconds > 1e-4 && deltaSeconds < 1.0)
-            {
-                deltasSeconds.push_back(deltaSeconds);
-            }
-        }
-        previousTimestampUs = timestampUs;
-    }
-
-    if (deltasSeconds.isEmpty())
-    {
-        return 20;
-    }
-
-    std::sort(deltasSeconds.begin(), deltasSeconds.end());
-    const double medianDeltaSeconds = deltasSeconds.at(deltasSeconds.size() / 2);
-    if (medianDeltaSeconds <= 1e-6)
-    {
-        return 20;
-    }
-
-    return std::clamp(static_cast<int>(std::lround(1.0 / medianDeltaSeconds)), 1, 1000);
-}
-
 double haversineDistanceMeters(double lat1Deg, double lon1Deg, double lat2Deg, double lon2Deg)
 {
     constexpr double kEarthRadiusMeters = 6371000.0;
@@ -1963,6 +1926,7 @@ bool SessionViewerWindow::loadSensorsCsv()
     const int epsilonHostTimestampIndex = findHeaderIndex(csv_headers_, {QStringLiteral("epsilon_host_timestamp_us")});
     const int navLatIndex = findHeaderIndex(csv_headers_, {QStringLiteral("nav_lat_deg"), QStringLiteral("rtk_lat")});
     const int navLonIndex = findHeaderIndex(csv_headers_, {QStringLiteral("nav_lon_deg"), QStringLiteral("rtk_lon")});
+    const int navHeightIndex = findHeaderIndex(csv_headers_, {QStringLiteral("nav_height_m"), QStringLiteral("rtk_height"), QStringLiteral("height_m"), QStringLiteral("altitude_m")});
     const int trackTimestampIndex = findHeaderIndex(csv_headers_, {
         QStringLiteral("epsilon_host_timestamp_us"),
         QStringLiteral("record_timestamp_us"),
@@ -1972,10 +1936,8 @@ bool SessionViewerWindow::loadSensorsCsv()
     const int gnssFixIndex = findHeaderIndex(csv_headers_, {QStringLiteral("gnss_fix"), QStringLiteral("rtk_fix")});
     const int hmpTemperatureIndex = findHeaderIndex(csv_headers_, {QStringLiteral("hmp_temperature_c"), QStringLiteral("temp_c")});
     const int hmpHumidityIndex = findHeaderIndex(csv_headers_, {QStringLiteral("hmp_humidity_rh"), QStringLiteral("humidity_rh")});
-    const int ptbPressureIndex = findHeaderIndex(csv_headers_, {QStringLiteral("ptb_pressure_hpa"), QStringLiteral("baro_hpa")});
+    const int ptbPressureIndex = findHeaderIndex(csv_headers_, {QStringLiteral("ptb_pressure_hpa")});
     const int epsilonImuTempIndex = findHeaderIndex(csv_headers_, {QStringLiteral("imu_temp_c"), QStringLiteral("temp_c"), QStringLiteral("hmp_temperature_c")});
-    const int epsilonPressureTempIndex = findHeaderIndex(csv_headers_, {QStringLiteral("pressure_temp_c")});
-    const int epsilonPressureIndex = findHeaderIndex(csv_headers_, {QStringLiteral("pressure_pa"), QStringLiteral("baro_pa"), QStringLiteral("baro_hpa")});
     const int thValidIndex = findHeaderIndex(csv_headers_, {QStringLiteral("th_valid")});
     const int baroValidIndex = findHeaderIndex(csv_headers_, {QStringLiteral("baro_valid")});
     QStringList displayHeaders;
@@ -2044,10 +2006,6 @@ bool SessionViewerWindow::loadSensorsCsv()
         {
             temperatureValue = parseOptionalDouble(csvValueAt(fields, epsilonImuTempIndex));
         }
-        if (!std::isfinite(temperatureValue) && epsilonPressureTempIndex >= 0)
-        {
-            temperatureValue = parseOptionalDouble(csvValueAt(fields, epsilonPressureTempIndex));
-        }
         temperature_values_.push_back(temperatureValue);
 
         humidity_values_.push_back((hmpHumidityIndex >= 0 && thValid)
@@ -2058,15 +2016,6 @@ bool SessionViewerWindow::loadSensorsCsv()
         if (ptbPressureIndex >= 0 && baroValid)
         {
             pressureValue = parseOptionalDouble(csvValueAt(fields, ptbPressureIndex));
-        }
-        if (!std::isfinite(pressureValue) && epsilonPressureIndex >= 0)
-        {
-            pressureValue = parseOptionalDouble(csvValueAt(fields, epsilonPressureIndex));
-            const QString pressureHeader = csv_headers_.value(epsilonPressureIndex).trimmed().toLower();
-            if (std::isfinite(pressureValue) && pressureHeader.endsWith(QStringLiteral("_pa")))
-            {
-                pressureValue /= 100.0;
-            }
         }
         pressure_values_.push_back(pressureValue);
 
@@ -2092,6 +2041,12 @@ bool SessionViewerWindow::loadSensorsCsv()
             RtkTrackPoint point;
             point.latitude = lat;
             point.longitude = lon;
+            const double height = parseOptionalDouble(csvValueAt(fields, navHeightIndex));
+            if (std::isfinite(height))
+            {
+                point.height_m = height;
+                point.has_height = true;
+            }
             point.timestamp_us = timestampOk ? trackTimestampUs : csv_timestamps_us_.last();
             if (!rtk_track_points_.isEmpty())
             {
