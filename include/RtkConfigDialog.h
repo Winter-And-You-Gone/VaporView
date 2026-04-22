@@ -27,6 +27,8 @@
 #include "serial_port.h"
 #include "RtkStreamService.h"
 
+class QCloseEvent;
+
 class RtkConfigDialog : public QDialog
 {
     Q_OBJECT
@@ -44,6 +46,9 @@ public:
     void setEpsilonMainPortAndBaud(const QString& portName, const QString& baudText);
     void setEpsilonDataProvider(std::function<VaporView::EpsilonData()> provider);
     void setEpsilonMainAntennaLeverArmApplier(std::function<bool(double, double, double, QString*)> applier);
+
+protected:
+    void closeEvent(QCloseEvent *event) override;
 
 private slots:
     void onStartClicked();

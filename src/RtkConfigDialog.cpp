@@ -12,6 +12,7 @@
 #include <QDateTime>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QCloseEvent>
 #include <QDoubleValidator>
 #include <QFontMetrics>
 #include <QIntValidator>
@@ -657,6 +658,18 @@ RtkConfigDialog::~RtkConfigDialog()
     stopGgaMonitor();
     joinBackgroundTasks();
     saveSettings();
+}
+
+void RtkConfigDialog::closeEvent(QCloseEvent *event)
+{
+    saveSettings();
+    event->ignore();
+    hide();
+    if (is_running_ || gga_monitor_enabled_)
+    {
+        appendLog(textFor("RTK config window hidden; running tasks continue in background.",
+                          "RTK 配置窗口已隐藏；运行中的任务会继续在后台执行。"));
+    }
 }
 
 void RtkConfigDialog::joinBackgroundTasks()

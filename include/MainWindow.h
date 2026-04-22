@@ -466,6 +466,7 @@ private:
     QComboBox *hmp_rate_combo_;
     QComboBox *lidar_rate_combo_;
     QComboBox *imu_format_combo_;
+    QPushButton *epsilon_packet_rates_btn_;
     QPushButton *imu_apply_btn_;
     QPushButton *imu_hi91_btn_;
     QPushButton *imu_hi92_btn_;

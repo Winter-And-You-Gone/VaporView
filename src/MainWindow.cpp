@@ -41,6 +41,9 @@
 #include <QSerialPortInfo>
 #include <QRegularExpression>
 #include <QHash>
+#include <QIcon>
+#include <QPainter>
+#include <QPixmap>
 #include <QSet>
 #include <QSignalBlocker>
 #include <QSettings>
@@ -91,6 +94,39 @@ constexpr quint32 kRawTcpWaveCombinedPayloadFlag = 0x00000001u;
 int clampPtbSampleRate(int hz)
 {
     return std::clamp(hz, kPtbMinSampleRateHz, kPtbMaxSampleRateHz);
+}
+
+QIcon createRtkSatelliteIcon()
+{
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    const QColor bodyColor(54, 107, 191);
+    const QColor fillColor(229, 240, 255);
+    const QColor signalColor(22, 150, 112);
+
+    painter.setPen(QPen(bodyColor, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter.setBrush(fillColor);
+    painter.save();
+    painter.translate(14, 11);
+    painter.rotate(-25);
+    painter.drawRoundedRect(QRectF(-4, -3, 8, 6), 1.5, 1.5);
+    painter.drawLine(QPointF(-8, 0), QPointF(-4, 0));
+    painter.drawLine(QPointF(4, 0), QPointF(8, 0));
+    painter.drawRect(QRectF(-14, -4, 6, 8));
+    painter.drawRect(QRectF(8, -4, 6, 8));
+    painter.restore();
+
+    painter.setPen(QPen(signalColor, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawLine(QPointF(18, 15), QPointF(24, 23));
+    painter.drawArc(QRectF(19, 16, 10, 10), 210 * 16, 80 * 16);
+    painter.drawArc(QRectF(16, 13, 16, 16), 210 * 16, 80 * 16);
+
+    return QIcon(pixmap);
 }
 
 #pragma pack(push, 1)
@@ -1636,6 +1672,7 @@ MainWindow::MainWindow(QWidget *parent)
     , hmp_rate_combo_(nullptr)
     , lidar_rate_combo_(nullptr)
     , imu_format_combo_(nullptr)
+    , epsilon_packet_rates_btn_(nullptr)
     , imu_apply_btn_(nullptr)
     , imu_hi91_btn_(nullptr)
     , imu_hi92_btn_(nullptr)
@@ -2683,7 +2720,7 @@ void MainWindow::setupToolBar()
     toolbar->addAction(stop_recording_btn_);
 
     rtk_config_action_ = new QAction(this);
-    rtk_config_action_->setIcon(style()->standardIcon(QStyle::SP_ComputerIcon));
+    rtk_config_action_->setIcon(createRtkSatelliteIcon());
     connect(rtk_config_action_, &QAction::triggered, this, &MainWindow::onRtkConfigClicked);
     toolbar->addAction(rtk_config_action_);
     if (devices_menu_)
@@ -2939,18 +2976,6 @@ void MainWindow::setupConfigPanel()
         return combo;
     };
 
-    auto createEpsilonRateCombo = [this]() {
-        auto *combo = new QComboBox(this);
-        for (int rate : {20, 50, 100, 200})
-        {
-            combo->addItem(QString::number(rate));
-        }
-        combo->setCurrentText(QStringLiteral("100"));
-        combo->setFixedHeight(kMainPageInputHeight);
-        combo->setFixedWidth(100);
-        return combo;
-    };
-
     auto addNoSetRateOption = [this](QComboBox *combo) {
         if (!combo)
         {
@@ -3021,15 +3046,6 @@ void MainWindow::setupConfigPanel()
     connect(auto_detect_ports_btn_, &QPushButton::clicked, this, &MainWindow::onAutoDetectPortsClicked);
     config_layout->addWidget(auto_detect_ports_btn_, 0, 1, 1, 2, Qt::AlignVCenter | Qt::AlignLeft);
 
-    global_rate_lbl_ = new QLabel(this);
-    global_rate_lbl_->setObjectName("fieldLabel");
-    global_rate_lbl_->setFixedHeight(kMainPageInputHeight);
-    config_layout->addWidget(global_rate_lbl_, 0, 3, Qt::AlignVCenter | Qt::AlignRight);
-
-    global_rate_combo_ = createRateCombo();
-    config_layout->addWidget(global_rate_combo_, 0, 4, Qt::AlignVCenter);
-    connect(global_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onGlobalRateChanged);
-
     int row = 1;
 
 #ifdef _WIN32
@@ -3048,16 +3064,19 @@ void MainWindow::setupConfigPanel()
     {
         config_layout->removeWidget(epsilon_rate_combo_);
         delete epsilon_rate_combo_;
-        epsilon_rate_combo_ = createEpsilonRateCombo();
-        config_layout->addWidget(epsilon_rate_combo_, 1, 4, Qt::AlignVCenter);
+        epsilon_rate_combo_ = nullptr;
+        epsilon_packet_rates_btn_ = new QPushButton(this);
+        epsilon_packet_rates_btn_->setFixedHeight(kMainPageInputHeight);
+        epsilon_packet_rates_btn_->setMinimumWidth(140);
+        connect(epsilon_packet_rates_btn_, &QPushButton::clicked, this, &MainWindow::onConfigureEpsilonPacketRatesClicked);
+        config_layout->addWidget(epsilon_packet_rates_btn_, 1, 4, Qt::AlignVCenter);
     }
 
-    for (QComboBox *combo : {epsilon_rate_combo_, ptb_rate_combo_, hmp_rate_combo_, lidar_rate_combo_})
+    for (QComboBox *combo : {ptb_rate_combo_, hmp_rate_combo_, lidar_rate_combo_})
     {
         addNoSetRateOption(combo);
     }
 
-    connect(epsilon_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onGnssRateChanged);
     connect(ptb_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onPtbRateChanged);
     connect(hmp_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onHmpRateChanged);
     connect(lidar_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onLidarRateChanged);
@@ -3300,8 +3319,15 @@ void MainWindow::setEnglish(bool english)
     {
         env_inline_title_lbl_->setText(english ? "Environment / Range" : "环境与测距");
     }
-    global_rate_lbl_->setText(english ? "Global Rate:" : "统一频率:");
-    if (epsilon_rate_lbl_) epsilon_rate_lbl_->setText(english ? "Rate:" : "频率:");
+    if (global_rate_lbl_) global_rate_lbl_->setText(english ? "Global Rate:" : "统一频率:");
+    if (epsilon_rate_lbl_) epsilon_rate_lbl_->setText(english ? "Packets:" : "包频率:");
+    if (epsilon_packet_rates_btn_)
+    {
+        epsilon_packet_rates_btn_->setText(english ? "Packet Rates..." : "配置EPSILON包频率...");
+        epsilon_packet_rates_btn_->setToolTip(english
+            ? "Configure EPSILON packet output rates"
+            : "配置 EPSILON 各数据包输出频率");
+    }
     if (gnss_rate_lbl_) gnss_rate_lbl_->setText(english ? "Rate:" : "频率:");
     if (imu_rate_lbl_) imu_rate_lbl_->setText(english ? "Rate:" : "频率:");
     if (imu_apply_btn_)
@@ -3344,7 +3370,7 @@ void MainWindow::setEnglish(bool english)
     ptb_rate_lbl_->setText(english ? "Rate:" : "频率:");
     hmp_rate_lbl_->setText(english ? "Rate:" : "频率:");
     lidar_rate_lbl_->setText(english ? "Rate:" : "频率:");
-    for (QComboBox *combo : {epsilon_rate_combo_, ptb_rate_combo_, hmp_rate_combo_, lidar_rate_combo_})
+    for (QComboBox *combo : {ptb_rate_combo_, hmp_rate_combo_, lidar_rate_combo_})
     {
         if (!combo)
         {
@@ -3699,7 +3725,7 @@ void MainWindow::onLidarRateChanged(const QString& text)
 
 void MainWindow::applyAllSampleRates()
 {
-    int rate = parseRate(global_rate_combo_->currentText());
+    int rate = parseRate(global_rate_combo_ ? global_rate_combo_->currentText() : QString::number(kDefaultHmpSampleRateHz));
     const bool skipEpsilonDeviceRate = epsilon_rate_combo_ && isRateUnspecified(epsilon_rate_combo_->currentText());
     const bool skipPtbDeviceRate = ptb_rate_combo_ && isRateUnspecified(ptb_rate_combo_->currentText());
     const bool skipHmpDeviceRate = hmp_rate_combo_ && isRateUnspecified(hmp_rate_combo_->currentText());
@@ -4254,7 +4280,7 @@ void MainWindow::writeDeviceConfigSnapshot()
         obj["rate_hz"] = rate ? rate->currentText() : QString();
         sensors[name] = obj;
     };
-    addSerialConfig("epsilon", epsilon_port_combo_, epsilon_baud_combo_, epsilon_rate_combo_);
+    addSerialConfig("epsilon", epsilon_port_combo_, epsilon_baud_combo_, nullptr);
     addSerialConfig("ptb", ptb_port_combo_, ptb_baud_combo_, ptb_rate_combo_);
     addSerialConfig("hmp", hmp_port_combo_, hmp_baud_combo_, hmp_rate_combo_);
     addSerialConfig("lidar", lidar_port_combo_, lidar_baud_combo_, lidar_rate_combo_);
