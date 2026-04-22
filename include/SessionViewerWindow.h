@@ -169,6 +169,8 @@ private:
     QVector<float> waveform_peak_raw_values_;
     QVector<float> waveform_peak_values_;
     PeakFilterSettings peak_filter_settings_;
+    int peak_search_start_index_;
+    int peak_search_end_index_;
     bool is_english_;
     bool updating_frame_controls_;
     bool waveform_peak_scatter_mode_;

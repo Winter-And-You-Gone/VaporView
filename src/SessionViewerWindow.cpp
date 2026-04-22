@@ -58,8 +58,8 @@ constexpr int kSessionViewerPlotRightMargin = 10;
 constexpr int kSessionViewerPlotTopMargin = 12;
 constexpr int kSessionViewerPlotBottomMargin = 28;
 constexpr int kSessionViewerWaveBottomMargin = 30;
-constexpr int kSessionViewerPeakSearchStartIndex = 10000;
-constexpr int kSessionViewerPeakSearchEndIndex = 50000;
+constexpr int kDefaultPeakSearchStartIndex = 10000;
+constexpr int kDefaultPeakSearchEndIndex = 50000;
 const QColor kHighlightedCsvRowColor("#c7e3ff");
 const QColor kSecondaryHighlightedCsvRowColor("#e8f3ff");
 const QColor kDefaultCsvRowColor("#ffffff");
@@ -308,15 +308,15 @@ QString formatGuideValue(double value, int decimals, const QString& unit = QStri
     return unit.isEmpty() ? number : QStringLiteral("%1 %2").arg(number, unit);
 }
 
-float waveformPeakValue(const float* samples, int sampleCount)
+float waveformPeakValue(const float* samples, int sampleCount, int searchStartIndex, int searchEndIndex)
 {
     if (!samples || sampleCount <= 0)
     {
         return std::numeric_limits<float>::quiet_NaN();
     }
 
-    const int startIndex = std::min(kSessionViewerPeakSearchStartIndex, sampleCount);
-    const int endIndex = std::min(kSessionViewerPeakSearchEndIndex, sampleCount);
+    const int startIndex = std::clamp(searchStartIndex, 0, sampleCount);
+    const int endIndex = std::clamp(searchEndIndex, 0, sampleCount);
     if (startIndex >= endIndex)
     {
         return std::numeric_limits<float>::quiet_NaN();
@@ -338,9 +338,9 @@ float waveformPeakValue(const float* samples, int sampleCount)
     return hasPeak ? peakValue : std::numeric_limits<float>::quiet_NaN();
 }
 
-float waveformPeakValue(const QVector<float>& samples)
+float waveformPeakValue(const QVector<float>& samples, int searchStartIndex, int searchEndIndex)
 {
-    return waveformPeakValue(samples.constData(), samples.size());
+    return waveformPeakValue(samples.constData(), samples.size(), searchStartIndex, searchEndIndex);
 }
 
 double haversineDistanceMeters(double lat1Deg, double lon1Deg, double lat2Deg, double lon2Deg)
@@ -516,9 +516,16 @@ public:
         , plot_mode_(PlotMode::Scatter)
         , view_start_index_(0)
         , view_count_(0)
+        , is_english_(false)
     {
         setFixedHeight(kSessionViewerPlotHeight);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    }
+
+    void setEnglish(bool english)
+    {
+        is_english_ = english;
+        update();
     }
 
     void setPeakValues(const QVector<float>& values)
@@ -619,7 +626,7 @@ protected:
         if (peak_values_.isEmpty())
         {
             painter.setPen(QColor("#5e7698"));
-            painter.drawText(plotRect, Qt::AlignCenter, QObject::tr("No peak overview"));
+            painter.drawText(plotRect, Qt::AlignCenter, is_english_ ? QStringLiteral("No peak overview") : QStringLiteral("没有峰值概览"));
             return;
         }
 
@@ -644,7 +651,7 @@ protected:
         {
             painter.setPen(QColor("#5e7698"));
             painter.drawText(plotRect, Qt::AlignCenter,
-                QObject::tr("All visible peaks were filtered out"));
+                is_english_ ? QStringLiteral("No valid peak values") : QStringLiteral("无有效峰值"));
             return;
         }
 
@@ -813,6 +820,7 @@ private:
     PlotMode plot_mode_;
     int view_start_index_;
     int view_count_;
+    bool is_english_;
     std::function<void(int, int, int)> on_view_changed_;
 };
 
@@ -1167,6 +1175,8 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , waveform_peak_raw_values_()
     , waveform_peak_values_()
     , peak_filter_settings_()
+    , peak_search_start_index_(kDefaultPeakSearchStartIndex)
+    , peak_search_end_index_(kDefaultPeakSearchEndIndex)
     , is_english_(false)
     , updating_frame_controls_(false)
     , waveform_peak_scatter_mode_(true)
@@ -1199,6 +1209,12 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     }
     peak_filter_settings_.min_value = settings.value("peak_filter/min_value", 0.0).toDouble();
     peak_filter_settings_.max_value = settings.value("peak_filter/max_value", 0.0).toDouble();
+    peak_search_start_index_ = std::max(0, settings.value("peak_search/start_index", kDefaultPeakSearchStartIndex).toInt());
+    peak_search_end_index_ = settings.value("peak_search/end_index", kDefaultPeakSearchEndIndex).toInt();
+    if (peak_search_end_index_ <= peak_search_start_index_)
+    {
+        peak_search_end_index_ = peak_search_start_index_ + 1;
+    }
     updatePeakFilterButtonText();
     const QString lastSession = settings.value("last_session_directory").toString();
     if (!lastSession.isEmpty())
@@ -1478,6 +1494,10 @@ void SessionViewerWindow::updateTexts()
     waveform_group_->setTitle(is_english_ ? "Normalized Second Harmonic" : "归一化二次谐波");
     waveform_plot_title_->setText(is_english_ ? "Current Frame Waveform" : "当前帧波形");
     waveform_peak_plot_title_->setText(is_english_ ? "Peak Value of Each Frame" : "每帧峰值");
+    if (waveform_peak_plot_)
+    {
+        static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setEnglish(is_english_);
+    }
     temperature_plot_title_->setText(is_english_ ? "Temperature" : "温度");
     humidity_plot_title_->setText(is_english_ ? "Humidity" : "湿度");
     pressure_plot_title_->setText(is_english_ ? "Pressure" : "气压");
@@ -1558,8 +1578,10 @@ void SessionViewerWindow::updatePeakFilterButtonText()
         return;
     }
 
-    waveform_peak_filter_btn_->setText(QStringLiteral("%1:%2")
-        .arg(is_english_ ? QStringLiteral("Peak Filter") : QStringLiteral("峰值过滤"))
+    waveform_peak_filter_btn_->setText(QStringLiteral("%1:%2-%3 / %4")
+        .arg(is_english_ ? QStringLiteral("Peak") : QStringLiteral("峰值"))
+        .arg(peak_search_start_index_)
+        .arg(peak_search_end_index_)
         .arg(peakFilterModeText(peak_filter_settings_.mode)));
 }
 
@@ -2244,20 +2266,6 @@ void SessionViewerWindow::applyPeakFilter()
             : std::numeric_limits<float>::quiet_NaN());
     }
 
-    const bool hasRawPeakValues = std::any_of(waveform_peak_raw_values_.cbegin(), waveform_peak_raw_values_.cend(),
-        [](float value) { return std::isfinite(value); });
-    const bool hasFilteredPeakValues = std::any_of(waveform_peak_values_.cbegin(), waveform_peak_values_.cend(),
-        [](float value) { return std::isfinite(value); });
-    if (hasRawPeakValues && !hasFilteredPeakValues && peak_filter_settings_.mode != PeakFilterMode::None)
-    {
-        waveform_peak_values_ = waveform_peak_raw_values_;
-        peak_filter_settings_.mode = PeakFilterMode::None;
-        updatePeakFilterButtonText();
-        setStatusText(is_english_
-            ? QStringLiteral("Peak filter removed every peak; showing raw peak values instead.")
-            : QStringLiteral("峰值过滤条件筛掉了全部峰值，已改为显示原始峰值。"));
-    }
-
     if (waveform_peak_plot_)
     {
         static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPeakValues(waveform_peak_values_);
@@ -2309,7 +2317,7 @@ bool SessionViewerWindow::loadWaveformPeakSeries()
             std::memcpy(&timestampUs, block.constData(), sizeof(quint64));
             waveform_timestamps_us_.push_back(timestampUs);
             std::memcpy(frameSamples.data(), block.constData() + sizeof(quint64), static_cast<size_t>(points_per_frame_) * sizeof(float));
-            waveform_peak_raw_values_.push_back(waveformPeakValue(frameSamples));
+            waveform_peak_raw_values_.push_back(waveformPeakValue(frameSamples, peak_search_start_index_, peak_search_end_index_));
         }
     }
 
@@ -2415,11 +2423,23 @@ void SessionViewerWindow::onTogglePeakPlotModeClicked()
 void SessionViewerWindow::onConfigurePeakFilterClicked()
 {
     QDialog dialog(this);
-    dialog.setWindowTitle(is_english_ ? QStringLiteral("Peak Filter") : QStringLiteral("峰值过滤"));
+    dialog.setWindowTitle(is_english_ ? QStringLiteral("Peak Settings") : QStringLiteral("峰值设置"));
 
     auto *layout = new QVBoxLayout(&dialog);
     auto *formLayout = new QFormLayout();
     formLayout->setContentsMargins(0, 0, 0, 0);
+
+    auto *searchStartSpin = new QSpinBox(&dialog);
+    searchStartSpin->setRange(0, 10000000);
+    searchStartSpin->setSingleStep(1000);
+    searchStartSpin->setValue(peak_search_start_index_);
+    formLayout->addRow(is_english_ ? QStringLiteral("Search Start") : QStringLiteral("搜索起点"), searchStartSpin);
+
+    auto *searchEndSpin = new QSpinBox(&dialog);
+    searchEndSpin->setRange(1, 10000000);
+    searchEndSpin->setSingleStep(1000);
+    searchEndSpin->setValue(peak_search_end_index_);
+    formLayout->addRow(is_english_ ? QStringLiteral("Search End") : QStringLiteral("搜索终点"), searchEndSpin);
 
     auto *modeCombo = new QComboBox(&dialog);
     modeCombo->addItem(is_english_ ? QStringLiteral("Off") : QStringLiteral("关闭"), static_cast<int>(PeakFilterMode::None));
@@ -2437,8 +2457,8 @@ void SessionViewerWindow::onConfigurePeakFilterClicked()
 
     auto *hintLabel = new QLabel(
         is_english_
-            ? QStringLiteral("IQR removes statistical outliers. Keep Range keeps only values inside [min, max]. Exclude Range removes values inside [min, max].")
-            : QStringLiteral("IQR 会过滤统计异常值。保留区间只保留 [最小值, 最大值] 内的峰值。排除区间会过滤 [最小值, 最大值] 内的峰值。"),
+            ? QStringLiteral("Peak search uses sample indexes [start, end). IQR removes statistical outliers. Keep Range keeps only values inside [min, max]. Exclude Range removes values inside [min, max]. If no peak remains after filtering, the plot shows no valid values.")
+            : QStringLiteral("峰值搜索使用采样点下标 [起点, 终点)。IQR 会过滤统计异常值。保留区间只保留 [最小值, 最大值] 内的峰值。排除区间会过滤 [最小值, 最大值] 内的峰值。过滤后没有峰值时，趋势图显示无有效值。"),
         &dialog);
     hintLabel->setWordWrap(true);
     layout->addWidget(hintLabel);
@@ -2457,16 +2477,31 @@ void SessionViewerWindow::onConfigurePeakFilterClicked()
     bool maxOk = false;
     const double minValue = minEdit->text().trimmed().toDouble(&minOk);
     const double maxValue = maxEdit->text().trimmed().toDouble(&maxOk);
+    const int searchStart = searchStartSpin->value();
+    const int searchEnd = searchEndSpin->value();
     const PeakFilterMode mode = static_cast<PeakFilterMode>(modeCombo->currentData().toInt());
+    if (searchEnd <= searchStart)
+    {
+        QMessageBox::warning(
+            this,
+            is_english_ ? QStringLiteral("Peak Settings") : QStringLiteral("峰值设置"),
+            is_english_ ? QStringLiteral("Search End must be greater than Search Start.") : QStringLiteral("搜索终点必须大于搜索起点。"));
+        return;
+    }
     if ((mode == PeakFilterMode::KeepRange || mode == PeakFilterMode::ExcludeRange) && (!minOk || !maxOk))
     {
         QMessageBox::warning(
             this,
-            is_english_ ? QStringLiteral("Peak Filter") : QStringLiteral("峰值过滤"),
+            is_english_ ? QStringLiteral("Peak Settings") : QStringLiteral("峰值设置"),
             is_english_ ? QStringLiteral("Please enter valid numeric range values.") : QStringLiteral("请输入有效的数值区间。"));
         return;
     }
 
+    const bool peakSearchChanged =
+        peak_search_start_index_ != searchStart ||
+        peak_search_end_index_ != searchEnd;
+    peak_search_start_index_ = searchStart;
+    peak_search_end_index_ = searchEnd;
     peak_filter_settings_.mode = mode;
     if (minOk)
     {
@@ -2494,9 +2529,18 @@ void SessionViewerWindow::onConfigurePeakFilterClicked()
     settings.setValue("peak_filter/mode", modeKey);
     settings.setValue("peak_filter/min_value", peak_filter_settings_.min_value);
     settings.setValue("peak_filter/max_value", peak_filter_settings_.max_value);
+    settings.setValue("peak_search/start_index", peak_search_start_index_);
+    settings.setValue("peak_search/end_index", peak_search_end_index_);
 
     updatePeakFilterButtonText();
-    applyPeakFilter();
+    if (peakSearchChanged && !waveform_segments_.isEmpty())
+    {
+        loadWaveformPeakSeries();
+    }
+    else
+    {
+        applyPeakFilter();
+    }
 }
 
 bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
@@ -2543,7 +2587,7 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
     const auto minMax = std::minmax_element(samples.cbegin(), samples.cend());
     const float rawPeakValue = frameIndex < static_cast<quint64>(waveform_peak_raw_values_.size())
         ? waveform_peak_raw_values_.at(static_cast<int>(frameIndex))
-        : waveformPeakValue(samples);
+        : waveformPeakValue(samples, peak_search_start_index_, peak_search_end_index_);
     const float filteredPeakValue = frameIndex < static_cast<quint64>(waveform_peak_values_.size())
         ? waveform_peak_values_.at(static_cast<int>(frameIndex))
         : rawPeakValue;
@@ -2554,9 +2598,7 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
         : QString(is_english_ ? "%1 Hz export" : "%1 Hz 导出").arg(waveform_export_rate_hz_);
     const QString peakText = std::isfinite(filteredPeakValue)
         ? QString::number(filteredPeakValue, 'f', 6)
-        : (is_english_
-            ? QStringLiteral("%1 (filtered)").arg(QString::number(rawPeakValue, 'f', 6))
-            : QStringLiteral("%1（已过滤）").arg(QString::number(rawPeakValue, 'f', 6)));
+        : (is_english_ ? QStringLiteral("No valid value") : QStringLiteral("无有效值"));
     frame_info_label_->setText(QString(is_english_
         ? "Frame %1 / %2 | %3 | %4 | min=%5 max=%6 peak=%7 | %8"
         : "第 %1 / %2 帧 | %3 | %4 | min=%5 max=%6 峰值=%7 | %8")
