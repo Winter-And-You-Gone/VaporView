@@ -70,7 +70,6 @@ constexpr int kMainPageButtonHeight = 38;
 constexpr int kEpsilonTitleColumnWidth = 170;
 constexpr int kEpsilonValueColumnMinWidth = 320;
 constexpr quint64 kImuPpsSyncWindowUs = 2ULL * 1000ULL * 1000ULL;
-constexpr char kImuRawMagic[8] = {'V', 'V', 'E', 'P', 'S', 'R', 'A', 'W'};
 constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
 constexpr quint32 kUnifiedRawFormatVersion = 1u;
 constexpr quint32 kUnifiedRawRecordMarker = 0x44525756u;
@@ -83,22 +82,6 @@ constexpr quint16 kRawRecordTypeGeneric = 1u;
 constexpr quint32 kRawTcpWaveCombinedPayloadFlag = 0x00000001u;
 
 #pragma pack(push, 1)
-struct ImuRawFileHeader
-{
-    char magic[8];
-    quint32 version;
-    quint32 header_size;
-};
-
-struct ImuRawRecordHeader
-{
-    quint32 marker;
-    quint32 payload_size;
-    quint64 host_timestamp_us;
-    quint8 frame_tag;
-    quint8 reserved[3];
-};
-
 struct UnifiedRawFileHeader
 {
     char magic[8];
@@ -129,13 +112,6 @@ QString recordingTimestampUtc()
 QString recordingSessionDirectoryTimestamp()
 {
     return QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss");
-}
-
-QString waveformSegmentTimestamp(quint64 timestampUs)
-{
-    return QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(timestampUs / 1000ULL), QTimeZone::UTC)
-        .toLocalTime()
-        .toString("yyyy-MM-dd_HH-mm-ss");
 }
 
 QString csvEscape(const QString &value)
@@ -1632,7 +1608,6 @@ MainWindow::MainWindow(QWidget *parent)
     , env_inline_title_lbl_(nullptr)
     , config_inline_title_lbl_(nullptr)
     , global_rate_lbl_(nullptr)
-    , waveform_split_lbl_(nullptr)
     , epsilon_rate_lbl_(nullptr)
     , gnss_rate_lbl_(nullptr)
     , imu_rate_lbl_(nullptr)
@@ -1640,7 +1615,6 @@ MainWindow::MainWindow(QWidget *parent)
     , hmp_rate_lbl_(nullptr)
     , lidar_rate_lbl_(nullptr)
     , global_rate_combo_(nullptr)
-    , waveform_split_spin_(nullptr)
     , epsilon_rate_combo_(nullptr)
     , gnss_rate_combo_(nullptr)
     , imu_rate_combo_(nullptr)
@@ -1673,7 +1647,6 @@ MainWindow::MainWindow(QWidget *parent)
     , is_connected_(false)
     , cancel_connection_requested_(false)
     , recording_thread_running_(false)
-    , waveform_writer_running_(false)
     , recording_paused_(false)
     , font_scale_percent_(100)
     , base_font_point_size_(0.0)
@@ -1688,11 +1661,9 @@ MainWindow::MainWindow(QWidget *parent)
     , recording_export_rate_hz_(20)
     , imu_recording_rate_hz_(0)
     , waveform_recording_rate_hz_(0)
-    , waveform_split_minutes_(1)
     , steady_clock_anchor_(std::chrono::steady_clock::now())
     , system_clock_anchor_(std::chrono::system_clock::now())
     , sensors_file_(nullptr)
-    , imu_raw_file_(nullptr)
     , raw_epsilon_file_(nullptr)
     , raw_ptb_file_(nullptr)
     , raw_hmp_file_(nullptr)
@@ -1706,8 +1677,6 @@ MainWindow::MainWindow(QWidget *parent)
     , session_start_time_utc_()
     , session_start_time_us_(0)
     , sensors_filename_()
-    , imu_raw_filename_()
-    , imu_raw_doc_filename_()
     , raw_epsilon_filename_()
     , raw_ptb_filename_()
     , raw_hmp_filename_()
@@ -1718,7 +1687,6 @@ MainWindow::MainWindow(QWidget *parent)
     , event_log_filename_()
     , error_log_filename_()
     , device_config_filename_()
-    , waveform_directory_()
     , recording_entry_count_(0)
     , waveform_frame_count_(0)
     , waveform_file_count_(0)
@@ -1728,7 +1696,6 @@ MainWindow::MainWindow(QWidget *parent)
     , raw_lidar_record_count_(0)
     , raw_tcp_wave_record_count_(0)
     , last_imu_record_timestamp_us_(0)
-    , last_waveform_record_timestamp_us_(0)
     , rtk_config_action_(nullptr)
     , rtk_config_dialog_(nullptr)
     , tcp_wave_panel_(nullptr)
@@ -1748,11 +1715,6 @@ MainWindow::MainWindow(QWidget *parent)
     {
         recording_directory_ = defaultRecordingDirectory();
     }
-    waveform_split_minutes_ = settings.value("waveform_split_minutes", 1).toInt();
-    if (waveform_split_minutes_ < 1 || waveform_split_minutes_ > 5)
-    {
-        waveform_split_minutes_ = 1;
-    }
     recording_export_rate_hz_ = settings.value("recording_export_rate_hz", 20).toInt();
     if (recording_export_rate_hz_ < 1 || recording_export_rate_hz_ > 200)
     {
@@ -1763,11 +1725,7 @@ MainWindow::MainWindow(QWidget *parent)
     {
         imu_recording_rate_hz_ = 0;
     }
-    waveform_recording_rate_hz_ = settings.value("waveform_recording_rate_hz", 0).toInt();
-    if (waveform_recording_rate_hz_ < 0 || waveform_recording_rate_hz_ > 1000)
-    {
-        waveform_recording_rate_hz_ = 0;
-    }
+    waveform_recording_rate_hz_ = 0;
 
     loadModernStyleSheet();
     
@@ -2106,13 +2064,13 @@ void MainWindow::rebuildRecordingRateMenu()
     };
 
     buildSubmenu(recording_rate_menu_,
-                 is_english_ ? QStringLiteral("Waveform") : QStringLiteral("波形"),
-                 QVector<int>{1, 2, 5, 10, 20, 50, 100, 200, 500, 1000},
-                 std::clamp(waveform_recording_rate_hz_, 0, 1000),
+                 is_english_ ? QStringLiteral("TCP Wave Raw") : QStringLiteral("TCP波形原始帧"),
+                 {},
+                 0,
                  true,
-                 QStringLiteral("Per frame"),
-                 QStringLiteral("每帧"),
-                 [this](int rate) { setWaveformRecordingRateHz(rate); });
+                 QStringLiteral("Complete TCP frames"),
+                 QStringLiteral("完整TCP帧"),
+                 [this](int) { setWaveformRecordingRateHz(0); });
 
     buildSubmenu(recording_rate_menu_,
                  is_english_ ? QStringLiteral("EPSILON Raw") : QStringLiteral("EPSILON原始帧"),
@@ -2166,7 +2124,8 @@ void MainWindow::setImuRecordingRateHz(int rate, bool should_log)
 
 void MainWindow::setWaveformRecordingRateHz(int rate, bool should_log)
 {
-    const int normalizedRate = std::clamp(rate, 0, 1000);
+    Q_UNUSED(rate);
+    const int normalizedRate = 0;
     const bool changed = waveform_recording_rate_hz_ != normalizedRate;
     waveform_recording_rate_hz_ = normalizedRate;
     rebuildRecordingRateMenu();
@@ -2174,10 +2133,9 @@ void MainWindow::setWaveformRecordingRateHz(int rate, bool should_log)
 
     if (changed && should_log)
     {
-        const QString text = waveform_recording_rate_hz_ == 0
-            ? (is_english_ ? QStringLiteral("Waveform recording set to per-frame mode") : QStringLiteral("波形记录已设置为每帧模式"))
-            : QString(is_english_ ? "Waveform recording rate set to %1 Hz" : "波形记录频率已设置为 %1 Hz").arg(waveform_recording_rate_hz_);
-        log(text);
+        log(is_english_
+            ? QStringLiteral("TCP wave raw recording keeps every complete TCP frame")
+            : QStringLiteral("TCP 波形原始记录固定保存每组完整 TCP 帧"));
     }
 }
 
@@ -2216,15 +2174,8 @@ void MainWindow::loadRememberedInputState()
 
     recording_export_rate_hz_ = std::clamp(settings.value("recording_export_rate_hz", recording_export_rate_hz_).toInt(), 1, 200);
     imu_recording_rate_hz_ = std::clamp(settings.value("imu_recording_rate_hz", imu_recording_rate_hz_).toInt(), 0, 1000);
-    waveform_recording_rate_hz_ = std::clamp(settings.value("waveform_recording_rate_hz", waveform_recording_rate_hz_).toInt(), 0, 1000);
+    waveform_recording_rate_hz_ = 0;
     rebuildRecordingRateMenu();
-
-    if (waveform_split_spin_)
-    {
-        const QSignalBlocker blocker(waveform_split_spin_);
-        waveform_split_spin_->setValue(settings.value("waveform_split_minutes", waveform_split_spin_->value()).toInt());
-        waveform_split_minutes_ = waveform_split_spin_->value();
-    }
 }
 
 void MainWindow::saveRememberedInputState() const
@@ -2256,11 +2207,6 @@ void MainWindow::saveRememberedInputState() const
     settings.setValue("recording_export_rate_hz", recording_export_rate_hz_);
     settings.setValue("imu_recording_rate_hz", imu_recording_rate_hz_);
     settings.setValue("waveform_recording_rate_hz", waveform_recording_rate_hz_);
-
-    if (waveform_split_spin_)
-    {
-        settings.setValue("waveform_split_minutes", waveform_split_spin_->value());
-    }
 }
 
 void MainWindow::bindRememberedInputState()
@@ -2289,12 +2235,6 @@ void MainWindow::bindRememberedInputState()
     bindCombo(hmp_rate_combo_);
     bindCombo(lidar_rate_combo_);
 
-    if (waveform_split_spin_)
-    {
-        connect(waveform_split_spin_, &QSpinBox::valueChanged, this, [this](int) {
-            saveRememberedInputState();
-        });
-    }
 }
 
 void MainWindow::setImuFormatSelection(const QString& format)
@@ -3091,34 +3031,8 @@ void MainWindow::setupDataPanels()
     tcpWaveLayout->setContentsMargins(0, 0, 0, 0);
     tcpWaveLayout->setSpacing(0);
 
-    waveform_split_lbl_ = new QLabel(this);
-    waveform_split_lbl_->setObjectName("fieldLabel");
-    waveform_split_lbl_->setFixedHeight(kMainPageInputHeight);
-
-    waveform_split_spin_ = new QSpinBox(this);
-    waveform_split_spin_->setRange(1, 5);
-    waveform_split_spin_->setValue(waveform_split_minutes_);
-    waveform_split_spin_->setSuffix(is_english_ ? " min" : " 分钟");
-    waveform_split_spin_->setFixedHeight(kMainPageInputHeight);
-    waveform_split_spin_->setFixedWidth(100);
-    connect(waveform_split_spin_, &QSpinBox::valueChanged, this, [this](int value) {
-        waveform_split_minutes_ = value;
-        QSettings settings("VaporView", "MainWindow");
-        settings.setValue("waveform_split_minutes", waveform_split_minutes_);
-        if (waveform_split_spin_)
-        {
-            waveform_split_spin_->setSuffix(is_english_ ? " min" : " 分钟");
-        }
-        log(QString(is_english_
-            ? "Waveform split duration set to %1 minute(s)"
-            : "波形分文件时长已设置为 %1 分钟").arg(value));
-    });
-
     tcp_wave_panel_ = new TcpWavePanel(this);
     tcp_wave_panel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    tcp_wave_panel_->attachWaveformSplitControls(waveform_split_lbl_, waveform_split_spin_);
-    connect(tcp_wave_panel_, &TcpWavePanel::normalizedSecondHarmonicFrameReady,
-            this, &MainWindow::onNormalizedSecondHarmonicFrameReady);
     connect(tcp_wave_panel_, &TcpWavePanel::rawWaveFrameReady,
             this, &MainWindow::onTcpRawWaveFrameReady);
     connect(tcp_wave_panel_, &TcpWavePanel::connectionStateChanged, this, [this](bool) {
@@ -3277,18 +3191,6 @@ void MainWindow::setEnglish(bool english)
         env_inline_title_lbl_->setText(english ? "Environment / Range" : "环境与测距");
     }
     global_rate_lbl_->setText(english ? "Global Rate:" : "统一频率:");
-    waveform_split_lbl_->setText(english ? "Wave Split:" : "波形分段:");
-    if (waveform_split_spin_)
-    {
-        waveform_split_spin_->setSuffix(english ? " min" : " 分钟");
-        const QString tooltip = english
-            ? "Controls how long each waveform .dat file keeps recording before a new segment file is created. "
-              "For example, 1 minute means the waveform writer rolls to a new file every minute."
-            : "用于控制每个波形 .dat 文件连续记录多久后切换到新的分段文件。"
-              "例如设置为 1 分钟时，波形写盘线程会每分钟滚动生成一个新文件。";
-        waveform_split_lbl_->setToolTip(tooltip);
-        waveform_split_spin_->setToolTip(tooltip);
-    }
     if (epsilon_rate_lbl_) epsilon_rate_lbl_->setText(english ? "Rate:" : "频率:");
     if (gnss_rate_lbl_) gnss_rate_lbl_->setText(english ? "Rate:" : "频率:");
     if (imu_rate_lbl_) imu_rate_lbl_->setText(english ? "Rate:" : "频率:");
@@ -3822,7 +3724,6 @@ bool MainWindow::prepareRecordingSessionLayout(const QString& recordsPath, const
 
     QDir sessionDir(finalSessionDirectory);
     if (!recordsDir.mkpath(finalSessionName) ||
-        !sessionDir.mkpath("waveform") ||
         !sessionDir.mkpath("sensors") ||
         !sessionDir.mkpath("raw") ||
         !sessionDir.mkpath("logs") ||
@@ -3833,10 +3734,7 @@ bool MainWindow::prepareRecordingSessionLayout(const QString& recordsPath, const
 
     session_name_ = finalSessionName;
     session_directory_ = QDir::fromNativeSeparators(finalSessionDirectory);
-    waveform_directory_ = QDir::fromNativeSeparators(sessionDir.filePath("waveform"));
     sensors_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("sensors/devices.csv"));
-    imu_raw_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("sensors/epsilon_raw.dat"));
-    imu_raw_doc_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("epsilon_raw_dat_format.md"));
     raw_epsilon_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw/epsilon.dat"));
     raw_ptb_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw/ptb.dat"));
     raw_hmp_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw/hmp.dat"));
@@ -3848,29 +3746,6 @@ bool MainWindow::prepareRecordingSessionLayout(const QString& recordsPath, const
     error_log_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("logs/error_log.txt"));
     device_config_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("config/device_config.json"));
     return true;
-}
-
-bool MainWindow::copyImuRawFormatDocumentToSession()
-{
-    if (session_directory_.isEmpty() || imu_raw_doc_filename_.isEmpty())
-    {
-        return false;
-    }
-
-    const QString repositoryRoot = locateRepositoryRoot();
-    if (repositoryRoot.isEmpty())
-    {
-        return false;
-    }
-
-    const QString sourcePath = QDir(repositoryRoot).filePath("docs/epsilon_raw_dat_format.md");
-    if (!QFileInfo::exists(sourcePath))
-    {
-        return false;
-    }
-
-    QFile::remove(imu_raw_doc_filename_);
-    return QFile::copy(sourcePath, imu_raw_doc_filename_);
 }
 
 bool MainWindow::copyRawDatFormatDocumentToSession()
@@ -3928,7 +3803,7 @@ bool MainWindow::openUnifiedRawDatFile(std::unique_ptr<QFile>& file, const QStri
     return true;
 }
 
-void MainWindow::writeUnifiedRawRecord(QFile *file,
+bool MainWindow::writeUnifiedRawRecord(QFile *file,
                                        std::atomic<quint64>& recordCount,
                                        quint16 sourceId,
                                        quint16 recordType,
@@ -3940,13 +3815,13 @@ void MainWindow::writeUnifiedRawRecord(QFile *file,
     if (!file || !file->isOpen() || (payloadSize > 0 && !payload) ||
         payloadSize > static_cast<size_t>(std::numeric_limits<quint32>::max()))
     {
-        return;
+        return false;
     }
 
     std::lock_guard<std::mutex> lock(recording_files_mutex_);
     if (!file->isOpen())
     {
-        return;
+        return false;
     }
 
     const quint64 sequence = recordCount.load(std::memory_order_relaxed);
@@ -3962,15 +3837,16 @@ void MainWindow::writeUnifiedRawRecord(QFile *file,
 
     if (file->write(reinterpret_cast<const char*>(&header), sizeof(header)) != static_cast<qint64>(sizeof(header)))
     {
-        return;
+        return false;
     }
     if (payloadSize > 0 &&
         file->write(reinterpret_cast<const char*>(payload), static_cast<qint64>(payloadSize)) != static_cast<qint64>(payloadSize))
     {
-        return;
+        return false;
     }
 
     recordCount.store(sequence + 1, std::memory_order_relaxed);
+    return true;
 }
 
 void MainWindow::closeUnifiedRawDatFiles()
@@ -4067,14 +3943,13 @@ void MainWindow::writeSessionMetadata(const QString& endTimeUtc)
     root["waveform_points_per_frame"] = 50000;
     root["sensor_export_rate_hz"] = recording_export_rate_hz_;
     root["other_devices_export_rate_hz"] = recording_export_rate_hz_;
-    root["epsilon_raw_export_mode"] = QStringLiteral("verified_fdilink_frames");
+    root["raw_export_mode"] = QStringLiteral("unified_raw_dat");
     root["raw_dat_format_version"] = static_cast<int>(kUnifiedRawFormatVersion);
-    root["waveform_export_rate_hz"] = waveform_recording_rate_hz_;
-    root["waveform_export_mode"] = waveform_recording_rate_hz_ > 0 ? QStringLiteral("throttled") : QStringLiteral("per_frame");
+    root["waveform_export_rate_hz"] = 0;
+    root["waveform_export_mode"] = QStringLiteral("per_frame");
     root["waveform_value_type"] = QStringLiteral("float32");
     root["waveform_timestamp_type"] = QStringLiteral("uint64");
     root["timestamp_unit"] = QStringLiteral("microseconds");
-    root["waveform_split_minutes"] = waveform_split_minutes_;
     root["sensor_rows"] = QString::number(recording_entry_count_.load());
     root["waveform_frames"] = QString::number(waveform_frame_count_.load());
     root["waveform_file_count"] = QString::number(waveform_file_count_.load());
@@ -4099,11 +3974,8 @@ void MainWindow::writeSessionMetadata(const QString& endTimeUtc)
     root["raw_files"] = rawFiles;
 
     QJsonObject paths;
-    paths["waveform_directory"] = sessionDir.relativeFilePath(waveform_directory_);
     paths["raw_directory"] = QStringLiteral("raw");
     paths["devices_csv"] = sessionDir.relativeFilePath(sensors_filename_);
-    paths["epsilon_raw_dat"] = sessionDir.relativeFilePath(imu_raw_filename_);
-    paths["epsilon_raw_format_doc"] = sessionDir.relativeFilePath(imu_raw_doc_filename_);
     paths["raw_format_doc"] = sessionDir.relativeFilePath(raw_dat_doc_filename_);
     paths["event_log"] = sessionDir.relativeFilePath(event_log_filename_);
     paths["error_log"] = sessionDir.relativeFilePath(error_log_filename_);
@@ -4132,17 +4004,16 @@ void MainWindow::writeDeviceConfigSnapshot()
     root["epsilon_schema_version"] = QStringLiteral("epsilon.v1");
     root["sensor_export_rate_hz"] = recording_export_rate_hz_;
     root["other_devices_export_rate_hz"] = recording_export_rate_hz_;
-    root["epsilon_raw_export_mode"] = QStringLiteral("verified_fdilink_frames");
+    root["raw_export_mode"] = QStringLiteral("unified_raw_dat");
     root["raw_dat_format_version"] = static_cast<int>(kUnifiedRawFormatVersion);
-    root["waveform_export_rate_hz"] = waveform_recording_rate_hz_;
-    root["waveform_export_mode"] = waveform_recording_rate_hz_ > 0 ? QStringLiteral("throttled") : QStringLiteral("per_frame");
-    root["waveform_split_minutes"] = waveform_split_minutes_;
+    root["waveform_export_rate_hz"] = 0;
+    root["waveform_export_mode"] = QStringLiteral("per_frame");
 
     QJsonObject waveform;
     waveform["host"] = tcp_wave_panel_ ? tcp_wave_panel_->host() : QStringLiteral("127.0.0.1");
     waveform["port"] = tcp_wave_panel_ ? tcp_wave_panel_->port() : 8888;
-    waveform["frame_rate_hz"] = waveform_recording_rate_hz_;
-    waveform["frame_rate_mode"] = waveform_recording_rate_hz_ > 0 ? QStringLiteral("throttled") : QStringLiteral("per_frame");
+    waveform["frame_rate_hz"] = 0;
+    waveform["frame_rate_mode"] = QStringLiteral("per_frame");
     waveform["points_per_frame"] = 50000;
     waveform["value_type"] = QStringLiteral("float32");
     waveform["timestamp_type"] = QStringLiteral("uint64");
@@ -4179,23 +4050,13 @@ void MainWindow::writeDeviceConfigSnapshot()
 
 void MainWindow::startRecordingWorkers()
 {
-    if (recording_thread_running_.load() || waveform_writer_running_.load())
+    if (recording_thread_running_.load())
     {
         return;
     }
 
     recording_paused_ = false;
     last_imu_record_timestamp_us_.store(0);
-    last_waveform_record_timestamp_us_.store(0);
-    {
-        std::lock_guard<std::mutex> lock(waveform_queue_mutex_);
-        waveform_queue_.clear();
-    }
-
-    waveform_writer_running_.store(true);
-    waveform_writer_thread_ = std::thread([this]() {
-        runWaveformWriter();
-    });
 
     QFile *filePtr = sensors_file_.get();
     recording_thread_running_.store(true);
@@ -4369,13 +4230,6 @@ void MainWindow::stopRecordingWorkers()
     {
         recording_thread_.join();
     }
-
-    waveform_writer_running_.store(false);
-    waveform_queue_cv_.notify_all();
-    if (waveform_writer_thread_.joinable())
-    {
-        waveform_writer_thread_.join();
-    }
 }
 
 bool MainWindow::startRecordingSession()
@@ -4411,11 +4265,9 @@ bool MainWindow::startRecordingSession()
     }
 
     sensors_file_ = std::make_unique<QFile>(sensors_filename_);
-    imu_raw_file_ = std::make_unique<QFile>(imu_raw_filename_);
     event_log_file_ = std::make_unique<QFile>(event_log_filename_);
     error_log_file_ = std::make_unique<QFile>(error_log_filename_);
     if (!sensors_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
-        !imu_raw_file_->open(QIODevice::WriteOnly | QIODevice::Truncate) ||
         !event_log_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
         !error_log_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
         !openUnifiedRawDatFile(raw_epsilon_file_, raw_epsilon_filename_, kRawSourceEpsilon) ||
@@ -4425,7 +4277,6 @@ bool MainWindow::startRecordingSession()
         !openUnifiedRawDatFile(raw_tcp_wave_file_, raw_tcp_wave_filename_, kRawSourceTcpWave))
     {
         sensors_file_.reset();
-        imu_raw_file_.reset();
         resetUnifiedRawDatFiles();
         event_log_file_.reset();
         error_log_file_.reset();
@@ -4447,33 +4298,13 @@ bool MainWindow::startRecordingSession()
     raw_lidar_record_count_.store(0);
     raw_tcp_wave_record_count_.store(0);
     {
-        std::lock_guard<std::mutex> lock(waveform_queue_mutex_);
-        waveform_queue_.clear();
-    }
-
-    {
         QTextStream eventOut(event_log_file_.get());
         eventOut.setEncoding(QStringConverter::Utf8);
         eventOut << "timestamp_utc,timestamp_us,level,message\n";
         eventOut.flush();
     }
 
-    {
-        const ImuRawFileHeader imuHeader{{kImuRawMagic[0], kImuRawMagic[1], kImuRawMagic[2], kImuRawMagic[3],
-                                          kImuRawMagic[4], kImuRawMagic[5], kImuRawMagic[6], kImuRawMagic[7]},
-                                         1u,
-                                         static_cast<quint32>(sizeof(ImuRawFileHeader))};
-        imu_raw_file_->write(reinterpret_cast<const char*>(&imuHeader), sizeof(imuHeader));
-        imu_raw_file_->flush();
-    }
-
     writeSensorsHeader();
-    if (!copyImuRawFormatDocumentToSession())
-    {
-        log(QString(is_english_
-            ? "Warning: failed to copy EPSILON raw format document into session folder"
-            : "警告：未能将 EPSILON 原始格式说明复制到当前会话目录"));
-    }
     if (!copyRawDatFormatDocumentToSession())
     {
         log(QString(is_english_
@@ -4581,11 +4412,6 @@ void MainWindow::stopRecording(bool announce)
             sensors_file_->flush();
             sensors_file_->close();
         }
-        if (imu_raw_file_ && imu_raw_file_->isOpen())
-        {
-            imu_raw_file_->flush();
-            imu_raw_file_->close();
-        }
         if (event_log_file_ && event_log_file_->isOpen())
         {
             event_log_file_->flush();
@@ -4599,7 +4425,6 @@ void MainWindow::stopRecording(bool announce)
     }
 
     sensors_file_.reset();
-    imu_raw_file_.reset();
     resetUnifiedRawDatFiles();
     event_log_file_.reset();
     error_log_file_.reset();
@@ -4617,8 +4442,6 @@ void MainWindow::stopRecording(bool announce)
     session_start_time_utc_.clear();
     session_start_time_us_ = 0;
     sensors_filename_.clear();
-    imu_raw_filename_.clear();
-    imu_raw_doc_filename_.clear();
     raw_epsilon_filename_.clear();
     raw_ptb_filename_.clear();
     raw_hmp_filename_.clear();
@@ -4629,8 +4452,6 @@ void MainWindow::stopRecording(bool announce)
     event_log_filename_.clear();
     error_log_filename_.clear();
     device_config_filename_.clear();
-    waveform_directory_.clear();
-
     updateRecordingStatusLabel();
 
     if (announce)
@@ -4677,38 +4498,9 @@ void MainWindow::writeSensorsHeader()
     out.flush();
 }
 
-void MainWindow::onNormalizedSecondHarmonicFrameReady(quint64 timestampUs, QVector<float> samples)
-{
-    if (!waveform_writer_running_.load())
-    {
-        return;
-    }
-
-    if (waveform_recording_rate_hz_ > 0)
-    {
-        const quint64 minIntervalUs = 1000000ULL / static_cast<quint64>(waveform_recording_rate_hz_);
-        const quint64 lastTimestampUs = last_waveform_record_timestamp_us_.load();
-        if (lastTimestampUs != 0 && timestampUs > lastTimestampUs && timestampUs - lastTimestampUs < minIntervalUs)
-        {
-            return;
-        }
-    }
-    last_waveform_record_timestamp_us_.store(timestampUs);
-
-    WaveformFrame frame;
-    frame.timestamp_us = timestampUs;
-    frame.samples = std::move(samples);
-
-    {
-        std::lock_guard<std::mutex> lock(waveform_queue_mutex_);
-        waveform_queue_.push_back(std::move(frame));
-    }
-    waveform_queue_cv_.notify_one();
-}
-
 void MainWindow::onTcpRawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload)
 {
-    if (!waveform_writer_running_.load())
+    if (!recording_thread_running_.load() || recording_paused_)
     {
         return;
     }
@@ -4738,120 +4530,20 @@ void MainWindow::onTcpRawWaveFrameReady(quint64 timestampUs, QByteArray rawSigna
         std::memcpy(cursor, harmonicPayload.constData(), harmonicPayload.size());
     }
 
-    writeUnifiedRawRecord(raw_tcp_wave_file_.get(),
-                          raw_tcp_wave_record_count_,
-                          kRawSourceTcpWave,
-                          kRawRecordTypeGeneric,
-                          kRawTcpWaveCombinedPayloadFlag,
-                          timestampUs,
-                          payload.constData(),
-                          static_cast<size_t>(payload.size()));
-}
-
-void MainWindow::runWaveformWriter()
-{
-    constexpr int kExpectedSamplesPerFrame = 50000;
-    const quint64 kSegmentDurationUs = static_cast<quint64>(std::max(1, waveform_split_minutes_)) * 60ULL * 1000ULL * 1000ULL;
-
-    std::unique_ptr<QFile> waveformFile;
-    quint64 currentSegmentStartUs = 0;
-
-    auto openSegment = [&](quint64 segmentStartUs) -> bool {
-        const QString filename = QDir(waveform_directory_).filePath(
-            QString("waveform_%1.dat").arg(waveformSegmentTimestamp(segmentStartUs)));
-        waveformFile = std::make_unique<QFile>(filename);
-        if (!waveformFile->open(QIODevice::WriteOnly | QIODevice::Truncate))
-        {
-            QMetaObject::invokeMethod(this, [this, filename]() {
-                const QString message = QString(is_english_
-                    ? "Failed to open waveform file: %1"
-                    : "无法打开波形文件: %1").arg(filename);
-                log(message);
-                appendErrorLogLine(message);
-            }, Qt::QueuedConnection);
-            waveformFile.reset();
-            return false;
-        }
-
-        currentSegmentStartUs = segmentStartUs;
-        waveform_file_count_.fetch_add(1);
-        return true;
-    };
-
-    while (true)
+    if (writeUnifiedRawRecord(raw_tcp_wave_file_.get(),
+                              raw_tcp_wave_record_count_,
+                              kRawSourceTcpWave,
+                              kRawRecordTypeGeneric,
+                              kRawTcpWaveCombinedPayloadFlag,
+                              timestampUs,
+                              payload.constData(),
+                              static_cast<size_t>(payload.size())))
     {
-        WaveformFrame frame;
-        {
-            std::unique_lock<std::mutex> lock(waveform_queue_mutex_);
-            waveform_queue_cv_.wait(lock, [this]() {
-                return !waveform_writer_running_.load() || !waveform_queue_.empty();
-            });
-            if (waveform_queue_.empty() && !waveform_writer_running_.load())
-            {
-                break;
-            }
-            if (waveform_queue_.empty())
-            {
-                continue;
-            }
-            frame = std::move(waveform_queue_.front());
-            waveform_queue_.pop_front();
-        }
-
-        if (frame.samples.size() != kExpectedSamplesPerFrame)
-        {
-            QMetaObject::invokeMethod(this, [this, sampleCount = frame.samples.size()]() {
-                const QString message = QString(is_english_
-                    ? "Skipped waveform frame with unexpected sample count: %1"
-                    : "已跳过采样点数量异常的波形帧: %1").arg(sampleCount);
-                log(message);
-                appendErrorLogLine(message);
-            }, Qt::QueuedConnection);
-            continue;
-        }
-
-        const quint64 segmentStartUs = frame.timestamp_us - (frame.timestamp_us % kSegmentDurationUs);
-        if (!waveformFile || currentSegmentStartUs != segmentStartUs)
-        {
-            if (waveformFile && waveformFile->isOpen())
-            {
-                waveformFile->flush();
-                waveformFile->close();
-            }
-            if (!openSegment(segmentStartUs))
-            {
-                continue;
-            }
-        }
-
-        QByteArray block;
-        block.resize(static_cast<int>(sizeof(quint64) + kExpectedSamplesPerFrame * sizeof(float)));
-        std::memcpy(block.data(), &frame.timestamp_us, sizeof(quint64));
-        std::memcpy(block.data() + sizeof(quint64), frame.samples.constData(), kExpectedSamplesPerFrame * sizeof(float));
-
-        if (waveformFile->write(block) != block.size())
-        {
-            const QString filename = waveformFile->fileName();
-            QMetaObject::invokeMethod(this, [this, filename]() {
-                const QString message = QString(is_english_
-                    ? "Failed to write waveform frame into %1"
-                    : "写入波形帧失败: %1").arg(filename);
-                log(message);
-                appendErrorLogLine(message);
-            }, Qt::QueuedConnection);
-            continue;
-        }
-
         waveform_frame_count_.fetch_add(1);
+        waveform_file_count_.store(1);
         QMetaObject::invokeMethod(this, [this]() {
             updateRecordingStatusLabel();
         }, Qt::QueuedConnection);
-    }
-
-    if (waveformFile && waveformFile->isOpen())
-    {
-        waveformFile->flush();
-        waveformFile->close();
     }
 }
 
@@ -5511,22 +5203,6 @@ void MainWindow::onConnectClicked()
             if (!recording_thread_running_.load())
             {
                 return;
-            }
-
-            {
-                std::lock_guard<std::mutex> lock(recording_files_mutex_);
-                if (imu_raw_file_ && imu_raw_file_->isOpen())
-                {
-                    const ImuRawRecordHeader header{
-                        0x524D5549u,
-                        static_cast<quint32>(size),
-                        static_cast<quint64>(hostTimestampUs),
-                        static_cast<quint8>(packetId),
-                        {serialNumber, 0, 0}
-                    };
-                    imu_raw_file_->write(reinterpret_cast<const char*>(&header), sizeof(header));
-                    imu_raw_file_->write(reinterpret_cast<const char*>(packet_data), static_cast<qint64>(size));
-                }
             }
 
             writeUnifiedRawRecord(raw_epsilon_file_.get(),

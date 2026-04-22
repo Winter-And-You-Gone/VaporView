@@ -42,6 +42,7 @@
 #include <QWidget>
 #include <QStringConverter>
 #include <QTimeZone>
+#include <QtEndian>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -60,6 +61,10 @@ constexpr int kSessionViewerPlotBottomMargin = 28;
 constexpr int kSessionViewerWaveBottomMargin = 30;
 constexpr int kDefaultPeakSearchStartIndex = 10000;
 constexpr int kDefaultPeakSearchEndIndex = 50000;
+constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
+constexpr quint32 kUnifiedRawRecordMarker = 0x44525756u;
+constexpr quint16 kRawSourceTcpWave = 5u;
+constexpr quint32 kRawTcpWaveCombinedPayloadFlag = 0x00000001u;
 const QColor kHighlightedCsvRowColor("#c7e3ff");
 const QColor kSecondaryHighlightedCsvRowColor("#e8f3ff");
 const QColor kDefaultCsvRowColor("#ffffff");
@@ -67,6 +72,30 @@ const QColor kCurrentGuideLineColor("#ffb347");
 const QColor kCurrentGuideLabelFillColor("#8b4a00");
 const QColor kCurrentGuideLabelBorderColor("#5f3000");
 const QColor kCurrentGuideLabelTextColor("#fff7ea");
+
+#pragma pack(push, 1)
+struct UnifiedRawFileHeader
+{
+    char magic[8];
+    quint32 version;
+    quint32 header_size;
+    quint16 source_id;
+    quint16 reserved;
+};
+
+struct UnifiedRawRecordHeader
+{
+    quint32 marker;
+    quint32 header_size;
+    quint64 host_timestamp_us;
+    quint32 payload_size;
+    quint16 source_id;
+    quint16 record_type;
+    quint32 flags;
+    quint64 sequence;
+};
+#pragma pack(pop)
+
 QString csvValueAt(const QStringList& fields, int index)
 {
     if (index < 0 || index >= fields.size())
@@ -1161,6 +1190,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , metadata_filename_()
     , sensors_csv_filename_()
     , waveform_directory_()
+    , raw_tcp_wave_filename_()
     , session_name_()
     , start_time_utc_()
     , end_time_utc_()
@@ -1172,6 +1202,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , rtk_track_points_()
     , waveform_timestamps_us_()
     , waveform_segments_()
+    , raw_tcp_wave_frames_()
     , waveform_peak_raw_values_()
     , waveform_peak_values_()
     , peak_filter_settings_()
@@ -1687,6 +1718,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     metadata_filename_.clear();
     sensors_csv_filename_.clear();
     waveform_directory_.clear();
+    raw_tcp_wave_filename_.clear();
     session_name_.clear();
     start_time_utc_.clear();
     end_time_utc_.clear();
@@ -1698,6 +1730,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     rtk_track_points_.clear();
     waveform_timestamps_us_.clear();
     waveform_segments_.clear();
+    raw_tcp_wave_frames_.clear();
     waveform_peak_raw_values_.clear();
     waveform_peak_values_.clear();
     total_sensor_rows_ = 0;
@@ -1949,8 +1982,12 @@ bool SessionViewerWindow::loadSessionMetadata(const QString& sessionDirectory)
 
     const QString csvRelativePath = paths.value(QStringLiteral("devices_csv")).toString(QStringLiteral("sensors/devices.csv"));
     const QString waveformRelativePath = paths.value(QStringLiteral("waveform_directory")).toString(QStringLiteral("waveform"));
+    const QJsonObject rawFiles = root.value(QStringLiteral("raw_files")).toObject();
+    const QJsonObject tcpWaveRaw = rawFiles.value(QStringLiteral("tcp_wave")).toObject();
+    const QString rawTcpWaveRelativePath = tcpWaveRaw.value(QStringLiteral("path")).toString(QStringLiteral("raw/tcp_wave.dat"));
     sensors_csv_filename_ = QDir(sessionDirectory).filePath(csvRelativePath);
     waveform_directory_ = QDir(sessionDirectory).filePath(waveformRelativePath);
+    raw_tcp_wave_filename_ = QDir(sessionDirectory).filePath(rawTcpWaveRelativePath);
     return true;
 }
 
@@ -2167,12 +2204,24 @@ bool SessionViewerWindow::loadSensorsCsv()
 bool SessionViewerWindow::loadWaveformSegments()
 {
     waveform_segments_.clear();
+    raw_tcp_wave_frames_.clear();
     total_waveform_frames_ = 0;
+
+    if (loadUnifiedRawTcpWaveFrames() && !raw_tcp_wave_frames_.isEmpty())
+    {
+        total_waveform_frames_ = static_cast<quint64>(raw_tcp_wave_frames_.size());
+        return true;
+    }
 
     QDir dir(waveform_directory_);
     if (!dir.exists())
     {
-        setStatusText(QString(is_english_ ? "Waveform directory does not exist: %1" : "波形目录不存在: %1").arg(waveform_directory_));
+        if (!QFileInfo::exists(raw_tcp_wave_filename_))
+        {
+            setStatusText(QString(is_english_
+                ? "No raw TCP wave file or legacy waveform directory was found."
+                : "没有找到 raw TCP 波形文件，也没有找到旧版 waveform 目录。"));
+        }
         return true;
     }
 
@@ -2200,6 +2249,111 @@ bool SessionViewerWindow::loadWaveformSegments()
         segment.frame_count = frameCount;
         waveform_segments_.push_back(segment);
         total_waveform_frames_ += frameCount;
+    }
+
+    return true;
+}
+
+bool SessionViewerWindow::loadUnifiedRawTcpWaveFrames()
+{
+    if (raw_tcp_wave_filename_.isEmpty() || !QFileInfo::exists(raw_tcp_wave_filename_))
+    {
+        return true;
+    }
+
+    QFile file(raw_tcp_wave_filename_);
+    if (!file.open(QIODevice::ReadOnly))
+    {
+        setStatusText(QString(is_english_ ? "Failed to open raw TCP wave file: %1" : "打开 raw TCP 波形文件失败: %1").arg(raw_tcp_wave_filename_));
+        return false;
+    }
+
+    UnifiedRawFileHeader fileHeader{};
+    if (file.read(reinterpret_cast<char*>(&fileHeader), sizeof(fileHeader)) != static_cast<qint64>(sizeof(fileHeader)) ||
+        std::memcmp(fileHeader.magic, kUnifiedRawMagic, sizeof(fileHeader.magic)) != 0)
+    {
+        setStatusText(QString(is_english_ ? "Invalid raw TCP wave DAT header: %1" : "raw TCP 波形 DAT 文件头无效: %1").arg(raw_tcp_wave_filename_));
+        return false;
+    }
+
+    const quint32 fileHeaderSize = qFromLittleEndian(fileHeader.header_size);
+    const quint16 sourceId = qFromLittleEndian(fileHeader.source_id);
+    if (fileHeaderSize < sizeof(UnifiedRawFileHeader) || sourceId != kRawSourceTcpWave)
+    {
+        setStatusText(QString(is_english_ ? "Unexpected raw TCP wave DAT source: %1" : "raw TCP 波形 DAT 数据源不匹配: %1").arg(raw_tcp_wave_filename_));
+        return false;
+    }
+    if (fileHeaderSize > sizeof(UnifiedRawFileHeader) && !file.seek(fileHeaderSize))
+    {
+        return false;
+    }
+
+    while (!file.atEnd())
+    {
+        const qint64 recordStart = file.pos();
+        UnifiedRawRecordHeader recordHeader{};
+        const qint64 headerBytes = file.read(reinterpret_cast<char*>(&recordHeader), sizeof(recordHeader));
+        if (headerBytes == 0)
+        {
+            break;
+        }
+        if (headerBytes != static_cast<qint64>(sizeof(recordHeader)))
+        {
+            setStatusText(QString(is_english_ ? "Incomplete raw TCP wave record header in %1" : "%1 中存在不完整 raw TCP 波形记录头").arg(raw_tcp_wave_filename_));
+            return false;
+        }
+
+        const quint32 marker = qFromLittleEndian(recordHeader.marker);
+        const quint32 recordHeaderSize = qFromLittleEndian(recordHeader.header_size);
+        const quint64 timestampUs = qFromLittleEndian(recordHeader.host_timestamp_us);
+        const quint32 payloadSize = qFromLittleEndian(recordHeader.payload_size);
+        const quint16 recordSourceId = qFromLittleEndian(recordHeader.source_id);
+        const quint32 flags = qFromLittleEndian(recordHeader.flags);
+        if (marker != kUnifiedRawRecordMarker || recordHeaderSize < sizeof(UnifiedRawRecordHeader))
+        {
+            setStatusText(QString(is_english_ ? "Invalid raw TCP wave record marker in %1" : "%1 中存在无效 raw TCP 波形记录标记").arg(raw_tcp_wave_filename_));
+            return false;
+        }
+
+        const qint64 payloadOffset = recordStart + static_cast<qint64>(recordHeaderSize);
+        const qint64 nextRecord = payloadOffset + static_cast<qint64>(payloadSize);
+        if (!file.seek(payloadOffset))
+        {
+            return false;
+        }
+
+        if (recordSourceId == kRawSourceTcpWave && (flags & kRawTcpWaveCombinedPayloadFlag) != 0 && payloadSize >= sizeof(quint32) * 2)
+        {
+            quint32 rawSignalSizeLe = 0;
+            quint32 harmonicSizeLe = 0;
+            if (file.read(reinterpret_cast<char*>(&rawSignalSizeLe), sizeof(rawSignalSizeLe)) != static_cast<qint64>(sizeof(rawSignalSizeLe)) ||
+                file.read(reinterpret_cast<char*>(&harmonicSizeLe), sizeof(harmonicSizeLe)) != static_cast<qint64>(sizeof(harmonicSizeLe)))
+            {
+                return false;
+            }
+
+            const quint32 rawSignalSize = qFromLittleEndian(rawSignalSizeLe);
+            const quint32 harmonicSize = qFromLittleEndian(harmonicSizeLe);
+            const quint64 requiredPayloadSize = static_cast<quint64>(sizeof(quint32) * 2) + rawSignalSize + harmonicSize;
+            if (requiredPayloadSize <= payloadSize && harmonicSize > 0 && harmonicSize % kFloatBytes == 0)
+            {
+                RawTcpWaveFrame frame;
+                frame.filename = raw_tcp_wave_filename_;
+                frame.harmonic_payload_offset = static_cast<quint64>(payloadOffset) + sizeof(quint32) * 2ULL + rawSignalSize;
+                frame.harmonic_payload_size = harmonicSize;
+                frame.timestamp_us = timestampUs;
+                raw_tcp_wave_frames_.push_back(frame);
+                if (points_per_frame_ <= 0)
+                {
+                    points_per_frame_ = static_cast<int>(harmonicSize / kFloatBytes);
+                }
+            }
+        }
+
+        if (!file.seek(nextRecord))
+        {
+            break;
+        }
     }
 
     return true;
@@ -2285,40 +2439,25 @@ bool SessionViewerWindow::loadWaveformPeakSeries()
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPeakValues({});
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setCurrentFrame(-1);
 
-    if (waveform_segments_.isEmpty() || points_per_frame_ <= 0)
+    if ((waveform_segments_.isEmpty() && raw_tcp_wave_frames_.isEmpty()) || points_per_frame_ <= 0)
     {
         return true;
     }
 
-    const quint64 frameBytes = kWaveformTimestampBytes + static_cast<quint64>(points_per_frame_) * kFloatBytes;
-    QVector<float> frameSamples(points_per_frame_);
     waveform_peak_raw_values_.reserve(static_cast<int>(std::min<quint64>(total_waveform_frames_, static_cast<quint64>(std::numeric_limits<int>::max()))));
     waveform_timestamps_us_.reserve(static_cast<int>(std::min<quint64>(total_waveform_frames_, static_cast<quint64>(std::numeric_limits<int>::max()))));
 
-    for (const WaveformSegment& segment : waveform_segments_)
+    for (quint64 frameIndex = 0; frameIndex < total_waveform_frames_; ++frameIndex)
     {
-        QFile file(segment.filename);
-        if (!file.open(QIODevice::ReadOnly))
+        quint64 timestampUs = 0;
+        QVector<float> frameSamples;
+        if (!readWaveformFrameSamples(frameIndex, timestampUs, frameSamples))
         {
-            setStatusText(QString(is_english_ ? "Failed to scan waveform file: %1" : "扫描波形文件失败: %1").arg(segment.filename));
             return false;
         }
 
-        for (quint64 frame = 0; frame < segment.frame_count; ++frame)
-        {
-            const QByteArray block = file.read(static_cast<qint64>(frameBytes));
-            if (block.size() != static_cast<int>(frameBytes))
-            {
-                setStatusText(QString(is_english_ ? "Incomplete waveform frame in %1" : "%1 中的波形帧不完整").arg(segment.filename));
-                return false;
-            }
-
-            quint64 timestampUs = 0;
-            std::memcpy(&timestampUs, block.constData(), sizeof(quint64));
-            waveform_timestamps_us_.push_back(timestampUs);
-            std::memcpy(frameSamples.data(), block.constData() + sizeof(quint64), static_cast<size_t>(points_per_frame_) * sizeof(float));
-            waveform_peak_raw_values_.push_back(waveformPeakValue(frameSamples, peak_search_start_index_, peak_search_end_index_));
-        }
+        waveform_timestamps_us_.push_back(timestampUs);
+        waveform_peak_raw_values_.push_back(waveformPeakValue(frameSamples, peak_search_start_index_, peak_search_end_index_));
     }
 
     applyPeakFilter();
@@ -2339,13 +2478,14 @@ void SessionViewerWindow::updateSummaryLabels()
     waveform_export_rate_value_->setText(hasSession
         ? formatMeasuredRateText(waveform_timestamps_us_, waveform_export_rate_hz_, waveform_export_mode_)
         : QStringLiteral("---"));
-    waveform_files_value_->setText(hasSession ? QString::number(waveform_segments_.size()) : QStringLiteral("---"));
+    const int waveformFileCount = raw_tcp_wave_frames_.isEmpty() ? waveform_segments_.size() : 1;
+    waveform_files_value_->setText(hasSession ? QString::number(waveformFileCount) : QStringLiteral("---"));
     waveform_frames_value_->setText(hasSession ? QString::number(total_waveform_frames_) : QStringLiteral("---"));
 }
 
 void SessionViewerWindow::updateWaveformControls()
 {
-    const bool hasFrames = total_waveform_frames_ > 0 && !waveform_segments_.isEmpty();
+    const bool hasFrames = total_waveform_frames_ > 0 && (!waveform_segments_.isEmpty() || !raw_tcp_wave_frames_.isEmpty());
     const QSignalBlocker sliderBlocker(frame_slider_);
     const QSignalBlocker spinBlocker(frame_spin_);
     frame_slider_->setEnabled(hasFrames);
@@ -2533,7 +2673,7 @@ void SessionViewerWindow::onConfigurePeakFilterClicked()
     settings.setValue("peak_search/end_index", peak_search_end_index_);
 
     updatePeakFilterButtonText();
-    if (peakSearchChanged && !waveform_segments_.isEmpty())
+    if (peakSearchChanged && (!waveform_segments_.isEmpty() || !raw_tcp_wave_frames_.isEmpty()))
     {
         loadWaveformPeakSeries();
     }
@@ -2543,8 +2683,46 @@ void SessionViewerWindow::onConfigurePeakFilterClicked()
     }
 }
 
-bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
+bool SessionViewerWindow::readWaveformFrameSamples(quint64 frameIndex, quint64& timestampUs, QVector<float>& samples)
 {
+    timestampUs = 0;
+    samples.clear();
+
+    if (!raw_tcp_wave_frames_.isEmpty())
+    {
+        if (frameIndex >= static_cast<quint64>(raw_tcp_wave_frames_.size()))
+        {
+            return false;
+        }
+
+        const RawTcpWaveFrame& frame = raw_tcp_wave_frames_.at(static_cast<int>(frameIndex));
+        QFile file(frame.filename);
+        if (!file.open(QIODevice::ReadOnly) || !file.seek(static_cast<qint64>(frame.harmonic_payload_offset)))
+        {
+            setStatusText(QString(is_english_ ? "Failed to read raw TCP wave file: %1" : "读取 raw TCP 波形文件失败: %1").arg(frame.filename));
+            return false;
+        }
+
+        const QByteArray payload = file.read(static_cast<qint64>(frame.harmonic_payload_size));
+        if (payload.size() != static_cast<int>(frame.harmonic_payload_size) || payload.size() % static_cast<int>(kFloatBytes) != 0)
+        {
+            setStatusText(QString(is_english_ ? "Incomplete raw TCP wave frame in %1" : "%1 中的 raw TCP 波形帧不完整").arg(frame.filename));
+            return false;
+        }
+
+        const int sampleCount = payload.size() / static_cast<int>(kFloatBytes);
+        samples.resize(sampleCount);
+        for (int i = 0; i < sampleCount; ++i)
+        {
+            const quint32 bits = qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(payload.constData() + i * static_cast<int>(kFloatBytes)));
+            float value = 0.0f;
+            std::memcpy(&value, &bits, sizeof(value));
+            samples[i] = value;
+        }
+        timestampUs = frame.timestamp_us;
+        return true;
+    }
+
     if (waveform_segments_.isEmpty() || frameIndex >= total_waveform_frames_)
     {
         return false;
@@ -2576,11 +2754,21 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
         return false;
     }
 
-    quint64 timestampUs = 0;
     std::memcpy(&timestampUs, block.constData(), sizeof(quint64));
-
-    QVector<float> samples(points_per_frame_);
+    samples.resize(points_per_frame_);
     std::memcpy(samples.data(), block.constData() + sizeof(quint64), static_cast<size_t>(points_per_frame_) * sizeof(float));
+    return true;
+}
+
+bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
+{
+    quint64 timestampUs = 0;
+    QVector<float> samples;
+    if (!readWaveformFrameSamples(frameIndex, timestampUs, samples))
+    {
+        return false;
+    }
+
     static_cast<SessionWavePlotWidget*>(waveform_plot_)->setSamples(samples);
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setCurrentFrame(static_cast<int>(frameIndex));
 
@@ -2593,6 +2781,17 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
         : rawPeakValue;
     const QString frameTime = formatTimestampUs(timestampUs);
     const QString csvMatchText = highlightClosestSensorRow(timestampUs);
+    QString sourceFilename = raw_tcp_wave_frames_.isEmpty() ? QString() : raw_tcp_wave_filename_;
+    if (sourceFilename.isEmpty())
+    {
+        const auto sourceIt = std::find_if(waveform_segments_.cbegin(), waveform_segments_.cend(), [frameIndex](const WaveformSegment& segment) {
+            return frameIndex >= segment.start_frame && frameIndex < segment.start_frame + segment.frame_count;
+        });
+        if (sourceIt != waveform_segments_.cend())
+        {
+            sourceFilename = sourceIt->filename;
+        }
+    }
     const QString waveformExportText = (waveform_export_mode_ == QStringLiteral("per_frame") || waveform_export_rate_hz_ <= 0)
         ? (is_english_ ? QStringLiteral("per-frame export") : QStringLiteral("逐帧导出"))
         : QString(is_english_ ? "%1 Hz export" : "%1 Hz 导出").arg(waveform_export_rate_hz_);
@@ -2609,7 +2808,7 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
         .arg(QString::number(*minMax.first, 'f', 6))
         .arg(QString::number(*minMax.second, 'f', 6))
         .arg(peakText)
-        .arg(QFileInfo(it->filename).fileName())
+        .arg(QFileInfo(sourceFilename).fileName())
         + (csvMatchText.isEmpty() ? QString() : QStringLiteral(" | ") + csvMatchText));
     return true;
 }

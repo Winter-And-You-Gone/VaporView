@@ -77,6 +77,14 @@ private:
         quint64 frame_count = 0;
     };
 
+    struct RawTcpWaveFrame
+    {
+        QString filename;
+        quint64 harmonic_payload_offset = 0;
+        quint32 harmonic_payload_size = 0;
+        quint64 timestamp_us = 0;
+    };
+
     void setupUi();
     void updateTexts();
     void updateSummaryLabels();
@@ -92,6 +100,8 @@ private:
     bool loadWaveformSegments();
     bool loadWaveformPeakSeries();
     bool loadWaveformFrame(quint64 frameIndex);
+    bool loadUnifiedRawTcpWaveFrames();
+    bool readWaveformFrameSamples(quint64 frameIndex, quint64& timestampUs, QVector<float>& samples);
     int findClosestCsvRow(quint64 timestampUs) const;
     void applyPeakFilter();
     void updateRtkTrackPeakValues();
@@ -155,6 +165,7 @@ private:
     QString metadata_filename_;
     QString sensors_csv_filename_;
     QString waveform_directory_;
+    QString raw_tcp_wave_filename_;
     QString session_name_;
     QString start_time_utc_;
     QString end_time_utc_;
@@ -166,6 +177,7 @@ private:
     QVector<RtkTrackPoint> rtk_track_points_;
     QVector<quint64> waveform_timestamps_us_;
     QVector<WaveformSegment> waveform_segments_;
+    QVector<RawTcpWaveFrame> raw_tcp_wave_frames_;
     QVector<float> waveform_peak_raw_values_;
     QVector<float> waveform_peak_values_;
     PeakFilterSettings peak_filter_settings_;

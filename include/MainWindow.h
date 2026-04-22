@@ -26,9 +26,7 @@
 #include <QLineEdit>
 #include <QVector>
 #include <atomic>
-#include <condition_variable>
 #include <cstdint>
-#include <deque>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -272,7 +270,6 @@ private slots:
     void onOpenSessionViewerClicked();
     void onFontScaleTriggered(QAction *action);
     void onCancelConnectClicked();
-    void onNormalizedSecondHarmonicFrameReady(quint64 timestampUs, QVector<float> samples);
     void onTcpRawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload);
     void onStartRecordingClicked();
     void onPauseRecordingClicked();
@@ -287,12 +284,6 @@ private:
         std::shared_ptr<VaporView::PtbCollector> ptb;
         std::shared_ptr<VaporView::HmpCollector> hmp;
         std::shared_ptr<VaporView::LidarCollector> lidar;
-    };
-
-    struct WaveformFrame
-    {
-        quint64 timestamp_us = 0;
-        QVector<float> samples;
     };
 
     void setupMenuBar();
@@ -322,10 +313,9 @@ private:
     void stopRecordingWorkers();
     void writeSensorsHeader();
     bool prepareRecordingSessionLayout(const QString& recordsPath, const QString& sessionName);
-    bool copyImuRawFormatDocumentToSession();
     bool copyRawDatFormatDocumentToSession();
     bool openUnifiedRawDatFile(std::unique_ptr<QFile>& file, const QString& filename, quint16 sourceId);
-    void writeUnifiedRawRecord(QFile *file,
+    bool writeUnifiedRawRecord(QFile *file,
                                std::atomic<quint64>& recordCount,
                                quint16 sourceId,
                                quint16 recordType,
@@ -341,7 +331,6 @@ private:
     void appendErrorLogLine(const QString& message);
     quint64 currentTimestampUs() const;
     quint64 steadyToEpochUs(const std::chrono::steady_clock::time_point& timePoint) const;
-    void runWaveformWriter();
     void updateConnectionStatus(bool connected);
     bool anyCollectorRunning() const;
     QStringList getAvailablePorts();
@@ -457,7 +446,6 @@ private:
     QLabel *env_inline_title_lbl_;
     QLabel *config_inline_title_lbl_;
     QLabel *global_rate_lbl_;
-    QLabel *waveform_split_lbl_;
     QLabel *epsilon_rate_lbl_;
     QLabel *gnss_rate_lbl_;
     QLabel *imu_rate_lbl_;
@@ -466,7 +454,6 @@ private:
     QLabel *lidar_rate_lbl_;
 
     QComboBox *global_rate_combo_;
-    QSpinBox *waveform_split_spin_;
     QComboBox *epsilon_rate_combo_;
     QComboBox *gnss_rate_combo_;
     QComboBox *imu_rate_combo_;
@@ -514,8 +501,6 @@ private:
     std::thread epsilon_reconfigure_thread_;
     std::thread recording_thread_;
     std::atomic<bool> recording_thread_running_;
-    std::thread waveform_writer_thread_;
-    std::atomic<bool> waveform_writer_running_;
     bool recording_paused_;
     int font_scale_percent_;
     double base_font_point_size_;
@@ -531,11 +516,9 @@ private:
     int recording_export_rate_hz_;
     int imu_recording_rate_hz_;
     int waveform_recording_rate_hz_;
-    int waveform_split_minutes_;
     std::chrono::steady_clock::time_point steady_clock_anchor_;
     std::chrono::system_clock::time_point system_clock_anchor_;
     std::unique_ptr<QFile> sensors_file_;
-    std::unique_ptr<QFile> imu_raw_file_;
     std::unique_ptr<QFile> raw_epsilon_file_;
     std::unique_ptr<QFile> raw_ptb_file_;
     std::unique_ptr<QFile> raw_hmp_file_;
@@ -549,8 +532,6 @@ private:
     QString session_start_time_utc_;
     quint64 session_start_time_us_;
     QString sensors_filename_;
-    QString imu_raw_filename_;
-    QString imu_raw_doc_filename_;
     QString raw_epsilon_filename_;
     QString raw_ptb_filename_;
     QString raw_hmp_filename_;
@@ -561,7 +542,6 @@ private:
     QString event_log_filename_;
     QString error_log_filename_;
     QString device_config_filename_;
-    QString waveform_directory_;
     std::atomic<qint64> recording_entry_count_;
     std::atomic<qint64> waveform_frame_count_;
     std::atomic<qint64> waveform_file_count_;
@@ -571,11 +551,7 @@ private:
     std::atomic<quint64> raw_lidar_record_count_;
     std::atomic<quint64> raw_tcp_wave_record_count_;
     std::atomic<quint64> last_imu_record_timestamp_us_;
-    std::atomic<quint64> last_waveform_record_timestamp_us_;
     std::mutex recording_files_mutex_;
-    std::mutex waveform_queue_mutex_;
-    std::condition_variable waveform_queue_cv_;
-    std::deque<WaveformFrame> waveform_queue_;
 
     QAction *rtk_config_action_;
     RtkConfigDialog *rtk_config_dialog_;

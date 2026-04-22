@@ -14,10 +14,7 @@
 | `raw/lidar.dat` | 4 | 已识别协议且校验通过的完整测距帧 |
 | `raw/tcp_wave.dat` | 5 | TCP 原始信号 payload 和二次谐波 payload |
 
-旧兼容输出仍会保留：
-
-- `sensors/epsilon_raw.dat`
-- `waveform/*.dat`
+新记录会话只写这些统一 raw DAT 文件，不再额外生成旧版 `sensors/epsilon_raw.dat` 或 `waveform/*.dat`。数据查看器仍保留对旧会话 `waveform/*.dat` 的读取兼容。
 
 ## 字节序
 

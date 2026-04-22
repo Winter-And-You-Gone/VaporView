@@ -21,7 +21,7 @@
 - TCP 波形监视，默认连接 `127.0.0.1:8888`，显示原始信号、归一化二次谐波和峰值趋势。
 - RTK NTRIP 配置对话框，基于内置 RTKLIB `strsvr` 把 NTRIP 输入转发到串口或 TCP Client 输出。
 - 会话记录：手动开始、暂停、结束，按配置写入 `session_*` 目录。
-- 数据查看器：读取已记录的 `session.json`、`devices.csv` 和 `waveform/*.dat`，显示波形、峰值、温湿度、气压和关联 CSV 行。
+- 数据查看器：读取已记录的 `session.json`、`devices.csv` 和 `raw/tcp_wave.dat`，同时兼容旧会话的 `waveform/*.dat`，显示波形、峰值、温湿度、气压和关联 CSV 行。
 - 轨迹查看器：从会话 CSV 中提取 RTK 轨迹点，支持 OpenStreetMap、天地图矢量和天地图卫星底图；天地图底图需要用户提供 Key。
 - 诊断脚本：EPSILON 串口探测、EPSILON 主口恢复、TCP 波形模拟发送。
 
@@ -38,7 +38,8 @@ VaporView/
 │   └── vaporview_icon_minimal.svg
 ├── docs/
 │   ├── epsilon_raw_dat_format.md
-│   └── imu_raw_dat_format.md
+│   ├── imu_raw_dat_format.md
+│   └── raw_dat_format.md
 ├── include/
 │   ├── MainWindow.h
 │   ├── RangeSelectionAxisWidget.h
@@ -183,7 +184,7 @@ Qt `SerialPort` 模块当前用于枚举可用串口；实际采集读写使用�
 - 串口探测优先读取有效 `FDILink` 帧；如果未检测到导航流，会尝试 `#fconfig`、`#fmsg`、`#fdeconfig` 命令模式握手并恢复导航流。
 - UI 分组采样率只提供 `20`、`50`、`100`、`200 Hz`。
 - 设备命令使用 `#fconfig`、`#fmsg`、`#fsave`、`#freboot`、`#fdeconfig`、`#fparam`、`#fantearm`。
-- 记录侧只把校验通过的完整 `FDILink` 原始帧写入 `sensors/epsilon_raw.dat`。
+- 记录侧只把校验通过的完整 `FDILink` 原始帧写入统一 raw 文件 `raw/epsilon.dat`。
 
 当前解析和频率统计覆盖的 EPSILON 报文：
 
@@ -350,13 +351,15 @@ RTK 功能由 `src/RtkConfigDialog.cpp` 和 `src/RtkStreamService.cpp` 实现。
 data/
 └── session_yyyy-MM-dd_HH-mm-ss/
     ├── session.json
-    ├── epsilon_raw_dat_format.md
-    ├── waveform/
-    │   ├── waveform_yyyy-MM-dd_HH-mm-ss.dat
-    │   └── ...
+    ├── raw_dat_format.md
+    ├── raw/
+    │   ├── epsilon.dat
+    │   ├── ptb.dat
+    │   ├── hmp.dat
+    │   ├── lidar.dat
+    │   └── tcp_wave.dat
     ├── sensors/
-    │   ├── devices.csv
-    │   └── epsilon_raw.dat
+    │   └── devices.csv
     ├── logs/
     │   ├── event_log.csv
     │   └── error_log.txt
@@ -368,9 +371,10 @@ data/
 
 | 分类 | 当前行为 |
 | --- | --- |
-| 波形 | `每帧` 或 `1/2/5/10/20/50/100/200/500/1000 Hz` 限频 |
-| EPSILON 原始帧 | 固定保存完整已校验 `FDILink` 帧 |
-| 其余设备 | `1/2/5/10/20/50/100/200 Hz` |
+| TCP 波形 raw | 每组完整 TCP 原始信号 + 二次谐波 payload 写入 `raw/tcp_wave.dat` |
+| EPSILON 原始帧 | 固定保存完整已校验 `FDILink` 帧到 `raw/epsilon.dat` |
+| PTB / HMP / Lidar 原始响应 | 保存有效原始响应或完整协议帧到统一 raw DAT |
+| CSV 摘要 | `1/2/5/10/20/50/100/200 Hz` |
 
 `session.json` 当前字段包括：
 
@@ -383,16 +387,17 @@ data/
 - `waveform_points_per_frame`
 - `sensor_export_rate_hz`
 - `other_devices_export_rate_hz`
-- `epsilon_raw_export_mode`
+- `raw_export_mode`
+- `raw_dat_format_version`
 - `waveform_export_rate_hz`
 - `waveform_export_mode`
 - `waveform_value_type`
 - `waveform_timestamp_type`
 - `timestamp_unit`
-- `waveform_split_minutes`
 - `sensor_rows`
 - `waveform_frames`
 - `waveform_file_count`
+- `raw_files`
 - `paths`
 
 `device_config.json` 当前记录：
@@ -422,33 +427,19 @@ data/
 - EPSILON 有效性和错误信息
 - HMP 温度 / 湿度、PTB 气压、Lidar 距离 / 信号强度 / 有效性
 
-### `sensors/epsilon_raw.dat`
+### `raw/*.dat`
 
-`epsilon_raw.dat` 格式说明见 [docs/epsilon_raw_dat_format.md](docs/epsilon_raw_dat_format.md)。
+统一 raw DAT 格式说明见 [docs/raw_dat_format.md](docs/raw_dat_format.md)。
 
 当前写入逻辑：
 
-- 文件头 magic 为 `VVEPSRAW`
-- 格式版本为 `1`
-- 每条记录 marker 为 `0x524D5549`
-- 记录主机 Unix epoch 微秒时间
-- 记录 `packet id`
-- `reserved[0]` 保存 FDILink `serial number`
-- payload 为完整 `FDILink` 帧字节，不是解码后的字段
-- 只写入 CRC 和帧尾校验通过的完整帧
+- `raw/epsilon.dat`：完整已校验 EPSILON `FDILink` 帧。
+- `raw/ptb.dat`：PTB210 有效压力响应原始行字节。
+- `raw/hmp.dat`：HMP3 完整 Modbus 数据响应帧。
+- `raw/lidar.dat`：已识别协议且校验通过的完整测距帧。
+- `raw/tcp_wave.dat`：每组 TCP 原始信号 payload 和二次谐波 payload。
 
-### `waveform/*.dat`
-
-波形文件由独立写盘线程写入。
-
-当前格式：
-
-- 无文件头。
-- 每帧固定 `8 + 50000 * 4` 字节。
-- 前 `8` 字节为 `uint64` 时间戳，单位微秒。
-- 后续为 `50000` 个 float32，内容为 TCP 面板收到的“归一化二次谐波”波形。
-- 文件按 `waveform_split_minutes` 分段，当前 UI 范围为 `1` 到 `5` 分钟。
-- 文件名使用本地时间 `waveform_yyyy-MM-dd_HH-mm-ss.dat`。
+新会话不再生成旧版 `sensors/epsilon_raw.dat` 或 `waveform/*.dat`。数据查看器仍保留旧 `waveform/*.dat` 的读取兼容。
 
 ## 数据查看器与轨迹查看器
 
@@ -457,7 +448,7 @@ data/
 - 可选择 session 目录或 `session.json`。
 - 读取 `session.json` 中的相对路径。
 - 读取 `sensors/devices.csv` 并显示表格。
-- 扫描 `waveform/*.dat`，按 `waveform_points_per_frame` 计算总帧数。
+- 优先读取 `raw/tcp_wave.dat`；旧会话没有该文件时，回退扫描 `waveform/*.dat`。
 - 支持帧滑块和数字框定位。
 - 对每帧波形计算峰值，默认峰值搜索区间为 `[10000, 50000)`。
 - 峰值过滤支持无过滤、IQR 离群过滤、保留范围、排除范围。
@@ -526,7 +517,7 @@ CMake 中保留了 `BUILD_PYTHON_BINDINGS` 选项，但默认关闭。当前仓�
 
 - 仓库没有顶层 `LICENSE` 文件。
 - `BUILD_PYTHON_BINDINGS=ON` 当前不可用，因为缺少 `python/bindings.cpp`。
-- `docs/imu_raw_dat_format.md` 描述的是 HiPNUC / HI91 原始记录格式；当前主窗口会话记录写入的是 `sensors/epsilon_raw.dat`，并会把 `docs/epsilon_raw_dat_format.md` 复制到 session 根目录。
+- `docs/imu_raw_dat_format.md` 和 `docs/epsilon_raw_dat_format.md` 保留为旧格式说明；当前主窗口新会话使用统一 `raw/*.dat`，并把 `docs/raw_dat_format.md` 复制到 session 根目录。
 - `data/` 为本地记录输出目录，已被 `.gitignore` 忽略。
 - `scripts/` 目录已被 `.gitignore` 忽略规则覆盖，但仓库中已有跟踪的 `scripts/mock_tcp_waveform_sender.py` 和 `scripts/recover_epsilon_main.ps1`。
 
