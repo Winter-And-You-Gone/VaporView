@@ -110,7 +110,8 @@ QIcon createToolbarIcon(const QColor& color, DrawFn draw)
 
         QPainter painter(&pixmap);
         painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.translate(4.0, 4.0);
+        painter.translate(2.0, 2.0);
+        painter.scale(28.0 / 24.0, 28.0 / 24.0);
         painter.setPen(QPen(iconColor, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
         painter.setBrush(Qt::NoBrush);
         draw(painter);
