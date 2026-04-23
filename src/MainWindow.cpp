@@ -139,8 +139,13 @@ QIcon createRefreshIcon()
 QIcon createConnectIcon()
 {
     return createToolbarIcon(kToolbarGreen, [](QPainter& painter) {
-        painter.drawLine(QPointF(5, 13), QPointF(10, 18));
-        painter.drawLine(QPointF(10, 18), QPointF(20, 6));
+        painter.drawLine(QPointF(4, 20), QPointF(9, 15));
+        painter.drawLine(QPointF(15, 9), QPointF(20, 4));
+        painter.drawRoundedRect(QRectF(8, 8, 8, 8), 2, 2);
+        painter.drawLine(QPointF(10, 6), QPointF(14, 10));
+        painter.drawLine(QPointF(14, 6), QPointF(18, 10));
+        painter.drawLine(QPointF(6, 10), QPointF(10, 14));
+        painter.drawLine(QPointF(10, 18), QPointF(14, 14));
     });
 }
 
@@ -155,9 +160,14 @@ QIcon createCancelIcon()
 QIcon createDisconnectIcon()
 {
     return createToolbarIcon(kToolbarRed, [](QPainter& painter) {
-        painter.drawLine(QPointF(7, 7), QPointF(17, 17));
-        painter.drawLine(QPointF(17, 7), QPointF(7, 17));
-        painter.drawRoundedRect(QRectF(5, 5, 14, 14), 3, 3);
+        painter.drawLine(QPointF(3, 20), QPointF(7, 16));
+        painter.drawLine(QPointF(17, 7), QPointF(21, 3));
+        painter.drawRoundedRect(QRectF(6, 11, 6, 6), 1.5, 1.5);
+        painter.drawRoundedRect(QRectF(13, 4, 6, 6), 1.5, 1.5);
+        painter.drawLine(QPointF(8, 9), QPointF(11, 12));
+        painter.drawLine(QPointF(12, 8), QPointF(15, 11));
+        painter.drawLine(QPointF(14, 13), QPointF(17, 16));
+        painter.drawLine(QPointF(17, 13), QPointF(14, 16));
     });
 }
 
@@ -726,7 +736,7 @@ private:
 
         const QString totalText = is_english_
             ? QStringLiteral("Total %1").arg(formatRateValue(total_rate_hz_))
-            : QStringLiteral("总帧率 %1").arg(formatRateValue(total_rate_hz_));
+            : QStringLiteral("总频率 %1").arg(formatRateValue(total_rate_hz_));
 
         const QStringList parts = {
             totalText,
@@ -5727,7 +5737,7 @@ void MainWindow::onConnectClicked()
                                   packet_data,
                                   size);
         });
-        collectors.ptb->setRawResponseCallback([this](uint64_t hostTimestampUs, const uint8_t* data, size_t size) {
+        collectors.ptb->setRawResponseCallback([this](uint64_t hostTimestampUs, const uint8_t* responseData, size_t size) {
             if (!recording_thread_running_.load())
             {
                 return;
@@ -5738,10 +5748,10 @@ void MainWindow::onConnectClicked()
                                   kRawRecordTypeGeneric,
                                   0u,
                                   static_cast<quint64>(hostTimestampUs),
-                                  data,
+                                  responseData,
                                   size);
         });
-        collectors.hmp->setRawResponseCallback([this](uint64_t hostTimestampUs, const uint8_t* data, size_t size) {
+        collectors.hmp->setRawResponseCallback([this](uint64_t hostTimestampUs, const uint8_t* responseData, size_t size) {
             if (!recording_thread_running_.load())
             {
                 return;
@@ -5752,7 +5762,7 @@ void MainWindow::onConnectClicked()
                                   0x03u,
                                   0u,
                                   static_cast<quint64>(hostTimestampUs),
-                                  data,
+                                  responseData,
                                   size);
         });
         collectors.lidar->setRawFrameCallback([this](uint64_t hostTimestampUs, VaporView::LidarProtocol protocol, const uint8_t* frame, size_t size) {

@@ -1,5 +1,6 @@
 #include "SessionViewerWindow.h"
 #include "RangeSelectionAxisWidget.h"
+#include "RawDataParserWindow.h"
 #include "TrajectoryViewerDialog.h"
 
 #include <QByteArray>
@@ -1142,6 +1143,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , choose_session_btn_(nullptr)
     , reload_btn_(nullptr)
     , trajectory_view_btn_(nullptr)
+    , raw_data_parser_btn_(nullptr)
     , clear_view_btn_(nullptr)
     , status_label_(nullptr)
     , summary_group_(nullptr)
@@ -1213,6 +1215,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , waveform_peak_scatter_mode_(true)
     , highlighted_csv_rows_()
     , trajectory_viewer_dialog_(nullptr)
+    , raw_data_parser_window_(nullptr)
     , points_per_frame_(50000)
     , sensor_export_rate_hz_(10)
     , waveform_export_rate_hz_(10)
@@ -1250,7 +1253,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     const QString lastSession = settings.value("last_session_directory").toString();
     if (!lastSession.isEmpty())
     {
-        openSessionPath(lastSession);
+        restoreLastSessionPath(lastSession);
     }
 }
 
@@ -1295,13 +1298,17 @@ void SessionViewerWindow::setupUi()
     connect(trajectory_view_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onViewTrajectoryClicked);
     controlLayout->addWidget(trajectory_view_btn_, 0, 4);
 
+    raw_data_parser_btn_ = new QPushButton(this);
+    connect(raw_data_parser_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onRawDataParserClicked);
+    controlLayout->addWidget(raw_data_parser_btn_, 0, 5);
+
     clear_view_btn_ = new QPushButton(this);
     connect(clear_view_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onClearViewClicked);
-    controlLayout->addWidget(clear_view_btn_, 0, 5);
+    controlLayout->addWidget(clear_view_btn_, 0, 6);
 
     status_label_ = new QLabel(this);
     status_label_->setWordWrap(true);
-    controlLayout->addWidget(status_label_, 1, 0, 1, 6);
+    controlLayout->addWidget(status_label_, 1, 0, 1, 7);
 
     mainLayout->addLayout(controlLayout);
 
@@ -1520,6 +1527,7 @@ void SessionViewerWindow::updateTexts()
     choose_session_btn_->setText(is_english_ ? "Open Data..." : "打开数据...");
     reload_btn_->setText(is_english_ ? "Reload" : "重新加载");
     trajectory_view_btn_->setText(is_english_ ? "View Trajectory" : "轨迹查看");
+    raw_data_parser_btn_->setText(is_english_ ? "Raw Data Parser..." : "原始数据解析...");
     clear_view_btn_->setText(is_english_ ? "Clear Page" : "清空页面");
     summary_group_->setTitle(is_english_ ? "Data Summary" : "数据概览");
     waveform_group_->setTitle(is_english_ ? "Normalized Second Harmonic" : "归一化二次谐波");
@@ -1571,6 +1579,10 @@ void SessionViewerWindow::updateTexts()
     if (trajectory_viewer_dialog_)
     {
         trajectory_viewer_dialog_->setEnglish(is_english_);
+    }
+    if (raw_data_parser_window_)
+    {
+        raw_data_parser_window_->setEnglish(is_english_);
     }
 }
 
@@ -1770,6 +1782,25 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     setStatusText(is_english_ ? "The current page has been cleared." : "当前页面内容已清空。");
 }
 
+void SessionViewerWindow::restoreLastSessionPath(const QString& path)
+{
+    const QString sessionDirectory = resolveSessionDirectory(path);
+    if (sessionDirectory.isEmpty())
+    {
+        return;
+    }
+
+    clearLoadedData(false);
+    session_directory_ = sessionDirectory;
+    if (session_path_edit_)
+    {
+        session_path_edit_->setText(session_directory_);
+    }
+    setStatusText(is_english_
+        ? "Restored the last session path only. Click Reload to load its CSV and waveform files."
+        : "已恢复上次会话路径，尚未读取大文件；点击“重新加载”后再加载 CSV 和波形数据。");
+}
+
 QString SessionViewerWindow::formatMeasuredRateText(const QVector<quint64>& timestampsUs, int metadataRateHz, const QString& metadataMode) const
 {
     const double measuredRateHz = calculateMeasuredRateHz(timestampsUs);
@@ -1893,6 +1924,29 @@ void SessionViewerWindow::onViewTrajectoryClicked()
     trajectory_viewer_dialog_->show();
     trajectory_viewer_dialog_->raise();
     trajectory_viewer_dialog_->activateWindow();
+}
+
+void SessionViewerWindow::onRawDataParserClicked()
+{
+    if (session_directory_.isEmpty())
+    {
+        QMessageBox::information(this,
+            is_english_ ? "Raw Data Parser" : "原始数据解析器",
+            is_english_ ? "Choose or restore a session directory first."
+                        : "请先选择或恢复一个 session 目录。");
+        return;
+    }
+
+    if (!raw_data_parser_window_)
+    {
+        raw_data_parser_window_ = new RawDataParserWindow(this);
+    }
+
+    raw_data_parser_window_->setEnglish(is_english_);
+    raw_data_parser_window_->openSessionPath(session_directory_);
+    raw_data_parser_window_->show();
+    raw_data_parser_window_->raise();
+    raw_data_parser_window_->activateWindow();
 }
 
 bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)

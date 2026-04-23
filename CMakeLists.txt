@@ -147,6 +147,7 @@ set(NAV_SOURCES
     src/data_collector.cpp
     src/TcpWaveEncoding.cpp
     src/TcpWavePanel.cpp
+    src/RawDataParserWindow.cpp
     src/SessionViewerWindow.cpp
     src/TrajectoryViewerDialog.cpp
     src/RtkConfigDialog.cpp
@@ -162,6 +163,7 @@ set(NAV_HEADERS
     include/data_collector.h
     include/TcpWaveEncoding.h
     include/TcpWavePanel.h
+    include/RawDataParserWindow.h
     include/SessionViewerWindow.h
     include/TrajectoryViewerDialog.h
     include/RtkConfigDialog.h

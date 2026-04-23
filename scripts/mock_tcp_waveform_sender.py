@@ -17,9 +17,11 @@ import argparse
 import array
 import math
 import random
+import signal
 import socket
 import struct
 import sys
+import threading
 import time
 from typing import Iterable
 
@@ -29,6 +31,7 @@ DEFAULT_PORT = 8888
 DEFAULT_SAMPLES = 50_000
 DEFAULT_RATE_HZ = 10.0
 DEFAULT_PEAK_INDEX = 25_000
+SOCKET_TIMEOUT_SECONDS = 0.5
 
 
 def little_endian_float_bytes(values: Iterable[float]) -> bytes:
@@ -76,12 +79,16 @@ def build_wave_pair(
     )
 
 
-def send_payload(sock: socket.socket, payload: bytes) -> None:
+def send_payload(sock: socket.socket, payload: bytes, stop_event: threading.Event) -> None:
+    if stop_event.is_set():
+        raise InterruptedError
     sock.sendall(struct.pack("<i", len(payload)))
+    if stop_event.is_set():
+        raise InterruptedError
     sock.sendall(payload)
 
 
-def serve(args: argparse.Namespace) -> None:
+def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
     if args.samples <= 0:
         raise ValueError("--samples must be positive")
     if args.rate <= 0.0:
@@ -97,20 +104,26 @@ def serve(args: argparse.Namespace) -> None:
     frame_interval = 1.0 / args.rate
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        server.settimeout(SOCKET_TIMEOUT_SECONDS)
         server.bind((args.host, args.port))
         server.listen(1)
         print(f"Listening on {args.host}:{args.port}; set VaporView TCP host to 127.0.0.1 and port to {args.port}.")
         print(f"Frame: two payloads, {args.samples} float32 samples each, {args.rate:g} Hz.")
+        print("Press Ctrl+C to stop.")
 
         frame_index = 0
-        while True:
-            conn, address = server.accept()
+        while not stop_event.is_set():
+            try:
+                conn, address = server.accept()
+            except socket.timeout:
+                continue
             with conn:
+                conn.settimeout(SOCKET_TIMEOUT_SECONDS)
                 print(f"Client connected from {address[0]}:{address[1]}")
                 next_send_time = time.perf_counter()
                 frames_sent_to_client = 0
                 try:
-                    while True:
+                    while not stop_event.is_set():
                         raw_payload, harmonic_payload, center, peak_value = build_wave_pair(
                             frame_index=frame_index,
                             sample_count=args.samples,
@@ -120,8 +133,8 @@ def serve(args: argparse.Namespace) -> None:
                             noise=args.noise,
                             move_peak=args.move_peak,
                         )
-                        send_payload(conn, raw_payload)
-                        send_payload(conn, harmonic_payload)
+                        send_payload(conn, raw_payload, stop_event)
+                        send_payload(conn, harmonic_payload, stop_event)
 
                         if frame_index % max(1, int(args.rate)) == 0:
                             print(
@@ -139,11 +152,18 @@ def serve(args: argparse.Namespace) -> None:
                         next_send_time += frame_interval
                         delay = next_send_time - time.perf_counter()
                         if delay > 0.0:
-                            time.sleep(delay)
+                            stop_event.wait(delay)
                         else:
                             next_send_time = time.perf_counter()
+                    break
                 except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
                     print("Client disconnected; waiting for the next connection.")
+                except socket.timeout:
+                    if stop_event.is_set():
+                        break
+                    print("Client send timed out; waiting for the next connection.")
+                except InterruptedError:
+                    break
 
 
 def parse_args() -> argparse.Namespace:
@@ -162,14 +182,26 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    stop_event = threading.Event()
+
+    def request_stop(signum: int, _frame: object) -> None:
+        del signum
+        stop_event.set()
+
+    signal.signal(signal.SIGINT, request_stop)
+    signal.signal(signal.SIGTERM, request_stop)
+    if hasattr(signal, "SIGBREAK"):
+        signal.signal(signal.SIGBREAK, request_stop)
+
     try:
-        serve(parse_args())
+        serve(parse_args(), stop_event)
     except KeyboardInterrupt:
-        print("\nStopped.")
-        return 0
+        stop_event.set()
     except Exception as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
+    if stop_event.is_set():
+        print("\nStopped.")
     return 0
 
 

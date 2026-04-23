@@ -31,6 +31,7 @@ class QWidget;
 class QGridLayout;
 class QResizeEvent;
 class QShowEvent;
+class RawDataParserWindow;
 class TrajectoryViewerDialog;
 
 class SessionViewerWindow : public QMainWindow
@@ -51,6 +52,7 @@ private slots:
     void onReloadClicked();
     void onClearViewClicked();
     void onViewTrajectoryClicked();
+    void onRawDataParserClicked();
     void onFrameSliderChanged(int value);
     void onFrameSpinChanged(int value);
     void onTogglePeakPlotModeClicked();
@@ -95,6 +97,7 @@ private:
     void updateWaveformControls();
     void setStatusText(const QString& text);
     void clearLoadedData(bool clearPathEdit = true);
+    void restoreLastSessionPath(const QString& path);
     QString resolveSessionDirectory(const QString& path) const;
     QString formatMeasuredRateText(const QVector<quint64>& timestampsUs, int metadataRateHz, const QString& metadataMode) const;
     bool loadSessionDirectory(QString sessionDirectory);
@@ -119,6 +122,7 @@ private:
     QPushButton *choose_session_btn_;
     QPushButton *reload_btn_;
     QPushButton *trajectory_view_btn_;
+    QPushButton *raw_data_parser_btn_;
     QPushButton *clear_view_btn_;
     QLabel *status_label_;
     QGroupBox *summary_group_;
@@ -191,6 +195,7 @@ private:
     bool waveform_peak_scatter_mode_;
     QVector<int> highlighted_csv_rows_;
     TrajectoryViewerDialog *trajectory_viewer_dialog_;
+    RawDataParserWindow *raw_data_parser_window_;
     int points_per_frame_;
     int sensor_export_rate_hz_;
     int waveform_export_rate_hz_;

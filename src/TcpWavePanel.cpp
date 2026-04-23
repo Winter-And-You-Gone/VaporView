@@ -131,6 +131,12 @@ public:
         update();
     }
 
+    void setEmptyText(const QString& text)
+    {
+        empty_text_ = text;
+        update();
+    }
+
 protected:
     void paintEvent(QPaintEvent *event) override
     {
@@ -146,7 +152,7 @@ protected:
             painter.setPen(QPen(QColor("#cfd7e3"), 1));
             painter.drawRect(emptyPlotRect);
             painter.setPen(QColor("#7a8899"));
-            painter.drawText(emptyPlotRect, Qt::AlignCenter, tr("No data"));
+            painter.drawText(emptyPlotRect, Qt::AlignCenter, empty_text_);
             return;
         }
 
@@ -213,6 +219,7 @@ protected:
 private:
     QColor line_color_;
     QVector<float> samples_;
+    QString empty_text_ = QStringLiteral("No data");
 };
 
 class PeakTrendPlotWidget : public QWidget
@@ -281,6 +288,12 @@ public:
         notifyViewChanged();
     }
 
+    void setEmptyText(const QString& text)
+    {
+        empty_text_ = text;
+        update();
+    }
+
 protected:
     void paintEvent(QPaintEvent *event) override
     {
@@ -296,7 +309,7 @@ protected:
             painter.setPen(QPen(QColor("#cfd7e3"), 1));
             painter.drawRect(emptyPlotRect);
             painter.setPen(QColor("#7a8899"));
-            painter.drawText(emptyPlotRect, Qt::AlignCenter, QObject::tr("No peak data"));
+            painter.drawText(emptyPlotRect, Qt::AlignCenter, empty_text_);
             return;
         }
 
@@ -440,6 +453,7 @@ private:
     PlotMode plot_mode_;
     int view_start_index_;
     int view_count_;
+    QString empty_text_ = QStringLiteral("No peak data");
     std::function<void(int, int, int)> on_view_changed_;
 };
 
@@ -465,9 +479,11 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , wave1_plot_(nullptr)
     , wave4_plot_(nullptr)
     , peak_plot_(nullptr)
+    , peak_range_axis_(nullptr)
     , peak_mode_button_(nullptr)
     , peak_clear_button_(nullptr)
     , control_layout_(nullptr)
+    , top_controls_layout_(nullptr)
     , socket_(nullptr)
     , pending_wave1_payload_()
     , peak_plot_scatter_mode_(true)
@@ -507,17 +523,25 @@ void TcpWavePanel::setupUi()
     control_layout_->setHorizontalSpacing(1);
     control_layout_->setVerticalSpacing(4);
 
+    top_controls_layout_ = new QHBoxLayout();
+    top_controls_layout_->setContentsMargins(0, 0, 0, 0);
+    top_controls_layout_->setSpacing(0);
+    control_layout_->addLayout(top_controls_layout_, 0, 0, 1, 6, Qt::AlignVCenter | Qt::AlignLeft);
+
     panel_title_label_ = new QLabel(this);
     panel_title_label_->setObjectName("sectionTitleLabel");
-    control_layout_->addWidget(panel_title_label_, 0, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    top_controls_layout_->addWidget(panel_title_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    top_controls_layout_->addSpacing(42);
 
     frame_rate_label_ = new QLabel(this);
     frame_rate_label_->setObjectName("fieldLabel");
-    control_layout_->addWidget(frame_rate_label_, 0, 1, Qt::AlignVCenter | Qt::AlignLeft);
+    frame_rate_label_->setMinimumWidth(118);
+    top_controls_layout_->addWidget(frame_rate_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    top_controls_layout_->addSpacing(42);
 
     auto *hostRowLayout = new QHBoxLayout();
     hostRowLayout->setContentsMargins(0, 0, 0, 0);
-    hostRowLayout->setSpacing(1);
+    hostRowLayout->setSpacing(4);
     host_label_ = new QLabel(this);
     host_label_->setObjectName("fieldLabel");
     hostRowLayout->addWidget(host_label_, 0, Qt::AlignVCenter | Qt::AlignRight);
@@ -528,11 +552,12 @@ void TcpWavePanel::setupUi()
     host_edit_->setMinimumWidth(90);
     host_edit_->setMaximumWidth(110);
     hostRowLayout->addWidget(host_edit_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    control_layout_->addLayout(hostRowLayout, 0, 2, Qt::AlignVCenter | Qt::AlignLeft);
+    top_controls_layout_->addLayout(hostRowLayout, 0);
+    top_controls_layout_->addSpacing(28);
 
     auto *portRowLayout = new QHBoxLayout();
     portRowLayout->setContentsMargins(0, 0, 0, 0);
-    portRowLayout->setSpacing(1);
+    portRowLayout->setSpacing(4);
     port_label_ = new QLabel(this);
     port_label_->setObjectName("fieldLabel");
     portRowLayout->addWidget(port_label_, 0, Qt::AlignVCenter | Qt::AlignRight);
@@ -543,13 +568,15 @@ void TcpWavePanel::setupUi()
     port_spin_->setFixedHeight(kTcpControlHeight);
     port_spin_->setFixedWidth(108);
     portRowLayout->addWidget(port_spin_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    control_layout_->addLayout(portRowLayout, 0, 3, Qt::AlignVCenter | Qt::AlignLeft);
+    top_controls_layout_->addLayout(portRowLayout, 0);
+    top_controls_layout_->addSpacing(28);
 
     connect_button_ = new QPushButton(this);
     connect_button_->setObjectName("compactTcpStartButton");
     connect_button_->setFixedHeight(kTcpButtonHeight);
     connect(connect_button_, &QPushButton::clicked, this, &TcpWavePanel::onToggleConnectionClicked);
-    control_layout_->addWidget(connect_button_, 0, 5, Qt::AlignVCenter | Qt::AlignLeft);
+    top_controls_layout_->addWidget(connect_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    top_controls_layout_->addStretch(1);
 
     status_label_ = new QLabel(this);
     status_label_->setWordWrap(true);
@@ -635,20 +662,20 @@ void TcpWavePanel::setupUi()
     peak_plot_ = new PeakTrendPlotWidget(this);
     peak_plot_->setPlotMode(peak_plot_scatter_mode_ ? PeakTrendPlotWidget::PlotMode::Scatter : PeakTrendPlotWidget::PlotMode::Polyline);
     peakLayout->addWidget(peak_plot_);
-    auto *peakRangeAxis = new RangeSelectionAxisWidget(this);
-    peak_plot_->setViewChangedCallback([peakRangeAxis](int totalCount, int startIndex, int visibleCount) {
-        if (peakRangeAxis)
+    peak_range_axis_ = new RangeSelectionAxisWidget(this);
+    peak_plot_->setViewChangedCallback([this](int totalCount, int startIndex, int visibleCount) {
+        if (peak_range_axis_)
         {
-            peakRangeAxis->setRange(totalCount, startIndex, visibleCount);
+            peak_range_axis_->setRange(totalCount, startIndex, visibleCount);
         }
     });
-    peakRangeAxis->setRangeChangedCallback([this](int startIndex, int visibleCount) {
+    peak_range_axis_->setRangeChangedCallback([this](int startIndex, int visibleCount) {
         if (peak_plot_)
         {
             peak_plot_->setViewRange(startIndex, visibleCount);
         }
     });
-    peakLayout->addWidget(peakRangeAxis);
+    peakLayout->addWidget(peak_range_axis_);
     mainLayout->addWidget(peak_group_, 0);
 
     connect(host_edit_, &QLineEdit::textChanged, this, [this](const QString&) {
@@ -693,8 +720,8 @@ void TcpWavePanel::setEnglish(bool english)
     host_label_->setText(english ? "TCP Host:" : "TCP主机:");
     port_label_->setText(english ? "Port:" : "端口:");
     connect_button_->setText(socket_ && socket_->state() == QAbstractSocket::ConnectedState
-        ? (english ? "Stop" : "停止")
-        : (english ? "Start" : "启动"));
+        ? (english ? "Disconnect" : "断开")
+        : (english ? "Connect" : "连接"));
     wave1_group_->setTitle(QString());
     wave4_group_->setTitle(QString());
     peak_group_->setTitle(QString());
@@ -709,6 +736,22 @@ void TcpWavePanel::setEnglish(bool english)
     if (peak_title_label_)
     {
         peak_title_label_->setText(english ? "Normalized Second Harmonic Peak Trend" : "归一化二次谐波峰值趋势");
+    }
+    if (wave1_plot_)
+    {
+        wave1_plot_->setEmptyText(english ? QStringLiteral("No data") : QStringLiteral("暂无数据"));
+    }
+    if (wave4_plot_)
+    {
+        wave4_plot_->setEmptyText(english ? QStringLiteral("No data") : QStringLiteral("暂无数据"));
+    }
+    if (peak_plot_)
+    {
+        peak_plot_->setEmptyText(english ? QStringLiteral("No peak data") : QStringLiteral("暂无峰值数据"));
+    }
+    if (peak_range_axis_)
+    {
+        peak_range_axis_->setEmptyText(english ? QStringLiteral("No range") : QStringLiteral("暂无数据"));
     }
     if (peak_clear_button_)
     {
@@ -779,7 +822,7 @@ void TcpWavePanel::updateFrameRateDisplay(qint64 arrivalTimeMs)
 
 void TcpWavePanel::attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox)
 {
-    if (!control_layout_ || !label || !spinBox)
+    if (!top_controls_layout_ || !label || !spinBox)
     {
         return;
     }
@@ -788,10 +831,11 @@ void TcpWavePanel::attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox)
     spinBox->setParent(this);
     auto *splitRowLayout = new QHBoxLayout();
     splitRowLayout->setContentsMargins(0, 0, 0, 0);
-    splitRowLayout->setSpacing(1);
+    splitRowLayout->setSpacing(4);
     splitRowLayout->addWidget(label, 0, Qt::AlignVCenter | Qt::AlignRight);
     splitRowLayout->addWidget(spinBox, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    control_layout_->addLayout(splitRowLayout, 0, 4, Qt::AlignVCenter | Qt::AlignLeft);
+    top_controls_layout_->insertSpacing(std::max(0, top_controls_layout_->count() - 2), 28);
+    top_controls_layout_->insertLayout(std::max(0, top_controls_layout_->count() - 2), splitRowLayout, 0);
 }
 
 QString TcpWavePanel::host() const
@@ -1000,7 +1044,7 @@ void TcpWavePanel::setConnectedUiState(bool connected)
     }
 
     connect_button_->setEnabled(true);
-    connect_button_->setText(active ? (is_english_ ? "Stop" : "停止") : (is_english_ ? "Start" : "启动"));
+    connect_button_->setText(active ? (is_english_ ? "Disconnect" : "断开") : (is_english_ ? "Connect" : "连接"));
 }
 
 void TcpWavePanel::setStatusText(const QString& text)

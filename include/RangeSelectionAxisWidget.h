@@ -3,6 +3,7 @@
 
 #include <QMouseEvent>
 #include <QPainter>
+#include <QString>
 #include <QWidget>
 
 #include <algorithm>
@@ -20,6 +21,7 @@ public:
         , drag_mode_(DragMode::None)
         , drag_anchor_index_(0)
         , drag_anchor_count_(0)
+        , empty_text_(tr("No range"))
     {
         applySizing();
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -67,6 +69,12 @@ public:
         update();
     }
 
+    void setEmptyText(const QString& text)
+    {
+        empty_text_ = text;
+        update();
+    }
+
 protected:
     void paintEvent(QPaintEvent *event) override
     {
@@ -86,7 +94,7 @@ protected:
         if (total_count_ <= 0)
         {
             painter.setPen(QColor("#7a8899"));
-            painter.drawText(rect(), Qt::AlignCenter, tr("No range"));
+            painter.drawText(rect(), Qt::AlignCenter, empty_text_);
             return;
         }
 
@@ -340,6 +348,7 @@ private:
     DragMode drag_mode_;
     int drag_anchor_index_;
     int drag_anchor_count_;
+    QString empty_text_;
     std::function<void(int, int)> on_range_changed_;
 };
 
