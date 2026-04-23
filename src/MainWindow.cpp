@@ -43,6 +43,7 @@
 #include <QHash>
 #include <QIcon>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPixmap>
 #include <QSet>
 #include <QSignalBlocker>
@@ -96,31 +97,31 @@ int clampPtbSampleRate(int hz)
     return std::clamp(hz, kPtbMinSampleRateHz, kPtbMaxSampleRateHz);
 }
 
-QIcon createRtkRadarIcon()
+QIcon createRtkSatelliteIcon()
 {
     QPixmap pixmap(32, 32);
     pixmap.fill(Qt::transparent);
 
     QPainter painter(&pixmap);
     painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.translate(4.0, 4.0);
+    painter.scale(1.0, 1.0);
 
-    const QColor radarColor(45, 92, 168);
-    const QColor fillColor(226, 239, 255);
-    const QColor signalColor(25, 151, 115);
-
-    painter.setPen(QPen(radarColor, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    painter.setBrush(fillColor);
-    painter.drawPie(QRectF(6, 8, 16, 16), 205 * 16, 110 * 16);
-    painter.setBrush(radarColor);
-    painter.drawEllipse(QPointF(14, 19), 2.2, 2.2);
-    painter.drawLine(QPointF(14, 21), QPointF(14, 27));
-    painter.drawLine(QPointF(8, 28), QPointF(20, 28));
-    painter.drawLine(QPointF(10, 25), QPointF(18, 25));
-
-    painter.setPen(QPen(signalColor, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    const QColor iconColor(67, 83, 108);
+    painter.setPen(QPen(iconColor, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
     painter.setBrush(Qt::NoBrush);
-    painter.drawArc(QRectF(15, 4, 12, 12), 300 * 16, 70 * 16);
-    painter.drawArc(QRectF(12, 1, 18, 18), 300 * 16, 70 * 16);
+    painter.drawLine(QPointF(13, 7), QPointF(9, 3));
+    painter.drawLine(QPointF(9, 3), QPointF(5, 7));
+    painter.drawLine(QPointF(5, 7), QPointF(9, 11));
+    painter.drawLine(QPointF(17, 11), QPointF(21, 15));
+    painter.drawLine(QPointF(21, 15), QPointF(17, 19));
+    painter.drawLine(QPointF(17, 19), QPointF(13, 15));
+    painter.drawLine(QPointF(8, 12), QPointF(12, 16));
+    painter.drawLine(QPointF(12, 16), QPointF(18, 10));
+    painter.drawLine(QPointF(18, 10), QPointF(14, 6));
+    painter.drawLine(QPointF(14, 6), QPointF(8, 12));
+    painter.drawLine(QPointF(16, 8), QPointF(19, 5));
+    painter.drawArc(QRectF(3, 15, 12, 12), 90 * 16, 90 * 16);
 
     return QIcon(pixmap);
 }
@@ -133,28 +134,30 @@ QIcon createWaveformViewerIcon()
     QPainter painter(&pixmap);
     painter.setRenderHint(QPainter::Antialiasing, true);
 
-    const QColor frameColor(67, 83, 108);
-    const QColor fillColor(246, 249, 252);
-    const QColor waveColor(40, 135, 196);
+    painter.translate(4.0, 4.0);
 
-    painter.setPen(QPen(frameColor, 1.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    painter.setBrush(fillColor);
-    painter.drawRoundedRect(QRectF(4, 7, 24, 18), 3, 3);
+    const QColor iconColor(67, 83, 108);
+    painter.setPen(QPen(iconColor, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter.setBrush(Qt::NoBrush);
 
-    painter.setPen(QPen(QColor(194, 204, 216), 1.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    painter.drawLine(QPointF(8, 16), QPointF(25, 16));
-
-    painter.setPen(QPen(waveColor, 2.2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    const QPointF points[] = {
-        QPointF(7, 16),
-        QPointF(10, 16),
-        QPointF(12, 11),
-        QPointF(15, 21),
-        QPointF(18, 13),
-        QPointF(21, 16),
-        QPointF(25, 16),
-    };
-    painter.drawPolyline(points, static_cast<int>(sizeof(points) / sizeof(points[0])));
+    QPainterPath path;
+    path.moveTo(2, 13);
+    path.cubicTo(3.1, 13, 4, 12.1, 4, 11);
+    path.lineTo(4, 7);
+    path.cubicTo(4, 5.9, 4.9, 5, 6, 5);
+    path.cubicTo(7.1, 5, 8, 5.9, 8, 7);
+    path.lineTo(8, 20);
+    path.cubicTo(8, 21.1, 8.9, 22, 10, 22);
+    path.cubicTo(11.1, 22, 12, 21.1, 12, 20);
+    path.lineTo(12, 4);
+    path.cubicTo(12, 2.9, 12.9, 2, 14, 2);
+    path.cubicTo(15.1, 2, 16, 2.9, 16, 4);
+    path.lineTo(16, 17);
+    path.cubicTo(16, 18.1, 16.9, 19, 18, 19);
+    path.cubicTo(19.1, 19, 20, 18.1, 20, 17);
+    path.lineTo(20, 13);
+    path.cubicTo(20, 11.9, 20.9, 11, 22, 11);
+    painter.drawPath(path);
 
     return QIcon(pixmap);
 }
@@ -2750,7 +2753,7 @@ void MainWindow::setupToolBar()
     toolbar->addAction(stop_recording_btn_);
 
     rtk_config_action_ = new QAction(this);
-    rtk_config_action_->setIcon(createRtkRadarIcon());
+    rtk_config_action_->setIcon(createRtkSatelliteIcon());
     connect(rtk_config_action_, &QAction::triggered, this, &MainWindow::onRtkConfigClicked);
     toolbar->addAction(rtk_config_action_);
     if (devices_menu_)
