@@ -526,6 +526,8 @@ struct RawDataParserWindow::Impl
     QPushButton *export_csv_btn = nullptr;
     QPushButton *export_json_btn = nullptr;
     QPushButton *export_bin_btn = nullptr;
+    QPushButton *export_decoded_csv_btn = nullptr;
+    QPushButton *export_decoded_json_btn = nullptr;
     QTableView *record_table = nullptr;
     RawRecordModel *record_model = nullptr;
     QTreeWidget *detail_tree = nullptr;
@@ -551,6 +553,9 @@ struct RawDataParserWindow::Impl
     void exportFilteredCsv();
     void exportSelectedJson();
     void exportSelectedPayload();
+    void exportDecodedCsv();
+    void exportDecodedJson();
+    QJsonObject decodedRecordToJson(const RawRecordIndex& record, const RawDecodedRecord& decoded) const;
     int currentRecordIndex() const;
     int selectedSourceId() const;
     bool parseFilterNumber(const QLineEdit *edit, quint64& value) const;
@@ -607,6 +612,8 @@ void RawDataParserWindow::Impl::setupUi()
     export_csv_btn = new QPushButton(owner);
     export_json_btn = new QPushButton(owner);
     export_bin_btn = new QPushButton(owner);
+    export_decoded_csv_btn = new QPushButton(owner);
+    export_decoded_json_btn = new QPushButton(owner);
 
     device_combo->setMinimumWidth(170);
     type_filter->setFixedWidth(170);
@@ -663,6 +670,14 @@ void RawDataParserWindow::Impl::setupUi()
     filterRow2->addWidget(export_json_btn, 0);
     filterRow2->addWidget(export_bin_btn, 0);
     filterLayout->addLayout(filterRow2);
+
+    auto *filterRow3 = new QHBoxLayout();
+    filterRow3->setContentsMargins(0, 0, 0, 0);
+    filterRow3->setSpacing(8);
+    filterRow3->addStretch(1);
+    filterRow3->addWidget(export_decoded_csv_btn, 0);
+    filterRow3->addWidget(export_decoded_json_btn, 0);
+    filterLayout->addLayout(filterRow3);
     mainLayout->addWidget(filterGroup);
 
     auto *splitter = new QSplitter(Qt::Horizontal, owner);
@@ -733,6 +748,8 @@ void RawDataParserWindow::Impl::setupUi()
     QObject::connect(export_csv_btn, &QPushButton::clicked, owner, [this]() { exportFilteredCsv(); });
     QObject::connect(export_json_btn, &QPushButton::clicked, owner, [this]() { exportSelectedJson(); });
     QObject::connect(export_bin_btn, &QPushButton::clicked, owner, [this]() { exportSelectedPayload(); });
+    QObject::connect(export_decoded_csv_btn, &QPushButton::clicked, owner, [this]() { exportDecodedCsv(); });
+    QObject::connect(export_decoded_json_btn, &QPushButton::clicked, owner, [this]() { exportDecodedJson(); });
 }
 
 void RawDataParserWindow::Impl::setEnglish(bool value)
@@ -740,9 +757,11 @@ void RawDataParserWindow::Impl::setEnglish(bool value)
     english = value;
     owner->setWindowTitle(english ? QStringLiteral("Raw Data Parser") : QStringLiteral("原始数据解析器"));
     reload_btn->setText(english ? QStringLiteral("Reload") : QStringLiteral("重新加载"));
-    export_csv_btn->setText(english ? QStringLiteral("Export CSV") : QStringLiteral("导出CSV"));
-    export_json_btn->setText(english ? QStringLiteral("Export JSON") : QStringLiteral("导出JSON"));
-    export_bin_btn->setText(english ? QStringLiteral("Export BIN") : QStringLiteral("导出BIN"));
+    export_csv_btn->setText(english ? QStringLiteral("Export List CSV") : QStringLiteral("导出列表CSV"));
+    export_json_btn->setText(english ? QStringLiteral("Export Selected JSON") : QStringLiteral("导出选中JSON"));
+    export_bin_btn->setText(english ? QStringLiteral("Export Selected BIN") : QStringLiteral("导出选中BIN"));
+    export_decoded_csv_btn->setText(english ? QStringLiteral("Export Decoded CSV") : QStringLiteral("导出解析CSV"));
+    export_decoded_json_btn->setText(english ? QStringLiteral("Export Decoded JSON") : QStringLiteral("导出解析JSON"));
     abnormal_only->setText(english ? QStringLiteral("Issues only") : QStringLiteral("只看异常"));
     type_filter->setPlaceholderText(english ? QStringLiteral("type, e.g. 0x40") : QStringLiteral("类型，如 0x40"));
     time_from->setPlaceholderText(english ? QStringLiteral("from us") : QStringLiteral("起始us"));
@@ -1306,7 +1325,7 @@ int RawDataParserWindow::Impl::currentRecordIndex() const
 void RawDataParserWindow::Impl::exportFilteredCsv()
 {
     const QString filename = QFileDialog::getSaveFileName(owner,
-        english ? QStringLiteral("Export Raw Records CSV") : QStringLiteral("导出原始记录CSV"),
+        english ? QStringLiteral("Export Raw Record List CSV") : QStringLiteral("导出原始记录列表CSV"),
         QDir(session_directory).filePath(QStringLiteral("raw_records.csv")),
         QStringLiteral("CSV (*.csv)"));
     if (filename.isEmpty())
@@ -1339,32 +1358,14 @@ void RawDataParserWindow::Impl::exportFilteredCsv()
             << record.record_offset << ','
             << record.payload_offset << '\n';
     }
-    file.commit();
+    if (!file.commit())
+    {
+        QMessageBox::warning(owner, owner->windowTitle(), english ? QStringLiteral("Failed to save CSV file.") : QStringLiteral("保存 CSV 文件失败。"));
+    }
 }
 
-void RawDataParserWindow::Impl::exportSelectedJson()
+QJsonObject RawDataParserWindow::Impl::decodedRecordToJson(const RawRecordIndex& record, const RawDecodedRecord& decoded) const
 {
-    const int recordIndex = currentRecordIndex();
-    if (recordIndex < 0 || recordIndex >= records.size())
-    {
-        QMessageBox::information(owner,
-            owner->windowTitle(),
-            english ? QStringLiteral("Select one raw record before exporting JSON.")
-                    : QStringLiteral("请先在记录列表中选择一条原始记录，再导出 JSON。"));
-        return;
-    }
-    const RawRecordIndex& record = records.at(recordIndex);
-    const RawDecodedRecord decoded = decodeRecord(record);
-
-    const QString filename = QFileDialog::getSaveFileName(owner,
-        english ? QStringLiteral("Export Decoded Record JSON") : QStringLiteral("导出解析记录JSON"),
-        QDir(session_directory).filePath(QStringLiteral("raw_record_%1.json").arg(record.sequence)),
-        QStringLiteral("JSON (*.json)"));
-    if (filename.isEmpty())
-    {
-        return;
-    }
-
     QJsonObject root;
     root["title"] = decoded.title;
     root["ok"] = decoded.ok;
@@ -1393,6 +1394,31 @@ void RawDataParserWindow::Impl::exportSelectedJson()
         fields.push_back(object);
     }
     root["fields"] = fields;
+    return root;
+}
+
+void RawDataParserWindow::Impl::exportSelectedJson()
+{
+    const int recordIndex = currentRecordIndex();
+    if (recordIndex < 0 || recordIndex >= records.size())
+    {
+        QMessageBox::information(owner,
+            owner->windowTitle(),
+            english ? QStringLiteral("Select one raw record before exporting JSON.")
+                    : QStringLiteral("请先在记录列表中选择一条原始记录，再导出 JSON。"));
+        return;
+    }
+    const RawRecordIndex& record = records.at(recordIndex);
+    const RawDecodedRecord decoded = decodeRecord(record);
+
+    const QString filename = QFileDialog::getSaveFileName(owner,
+        english ? QStringLiteral("Export Selected Decoded Record JSON") : QStringLiteral("导出选中解析记录JSON"),
+        QDir(session_directory).filePath(QStringLiteral("raw_record_%1.json").arg(record.sequence)),
+        QStringLiteral("JSON (*.json)"));
+    if (filename.isEmpty())
+    {
+        return;
+    }
 
     QSaveFile file(filename);
     if (!file.open(QIODevice::WriteOnly))
@@ -1400,7 +1426,7 @@ void RawDataParserWindow::Impl::exportSelectedJson()
         QMessageBox::warning(owner, owner->windowTitle(), english ? QStringLiteral("Failed to open export file.") : QStringLiteral("无法打开导出文件。"));
         return;
     }
-    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    file.write(QJsonDocument(decodedRecordToJson(record, decoded)).toJson(QJsonDocument::Indented));
     if (!file.commit())
     {
         QMessageBox::warning(owner, owner->windowTitle(), english ? QStringLiteral("Failed to save JSON file.") : QStringLiteral("保存 JSON 文件失败。"));
@@ -1438,6 +1464,155 @@ void RawDataParserWindow::Impl::exportSelectedPayload()
     if (!file.commit())
     {
         QMessageBox::warning(owner, owner->windowTitle(), english ? QStringLiteral("Failed to save BIN file.") : QStringLiteral("保存 BIN 文件失败。"));
+    }
+}
+
+void RawDataParserWindow::Impl::exportDecodedCsv()
+{
+    if (visible_rows.isEmpty())
+    {
+        QMessageBox::information(owner,
+            owner->windowTitle(),
+            english ? QStringLiteral("No filtered records to export.")
+                    : QStringLiteral("当前过滤结果为空，没有可导出的解析记录。"));
+        return;
+    }
+
+    const QString filename = QFileDialog::getSaveFileName(owner,
+        english ? QStringLiteral("Export Decoded Fields CSV") : QStringLiteral("导出解析字段CSV"),
+        QDir(session_directory).filePath(QStringLiteral("raw_decoded_fields.csv")),
+        QStringLiteral("CSV (*.csv)"));
+    if (filename.isEmpty())
+    {
+        return;
+    }
+
+    QSaveFile file(filename);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        QMessageBox::warning(owner, owner->windowTitle(), english ? QStringLiteral("Failed to open export file.") : QStringLiteral("无法打开导出文件。"));
+        return;
+    }
+
+    QProgressDialog progress(english ? QStringLiteral("Exporting decoded fields...") : QStringLiteral("正在导出解析字段..."),
+                             english ? QStringLiteral("Cancel") : QStringLiteral("取消"),
+                             0,
+                             visible_rows.size(),
+                             owner);
+    progress.setWindowModality(Qt::WindowModal);
+
+    QTextStream out(&file);
+    out.setEncoding(QStringConverter::Utf8);
+    out << "row,timestamp_us,time,device,source_id,record_type,flags,sequence,payload_size,file,record_offset,payload_offset,record_title,record_ok,record_status,record_summary,field_group,field_name,field_raw,field_value,field_unit,field_offset,field_length,field_note,field_abnormal\n";
+    for (int row = 0; row < visible_rows.size(); ++row)
+    {
+        if (row % 100 == 0)
+        {
+            progress.setValue(row);
+            QApplication::processEvents();
+            if (progress.wasCanceled())
+            {
+                return;
+            }
+        }
+
+        const RawRecordIndex& record = records.at(visible_rows.at(row));
+        const RawDecodedRecord decoded = decodeRecord(record);
+        for (const RawDecodedField& field : decoded.fields)
+        {
+            out << row + 1 << ','
+                << record.host_timestamp_us << ','
+                << csvEscape(formatTimestamp(record.host_timestamp_us)) << ','
+                << csvEscape(record.device_name) << ','
+                << record.source_id << ','
+                << csvEscape(formatHex(record.record_type)) << ','
+                << csvEscape(formatHex(record.flags, 8)) << ','
+                << record.sequence << ','
+                << record.payload_size << ','
+                << csvEscape(QDir::toNativeSeparators(record.filename)) << ','
+                << record.record_offset << ','
+                << record.payload_offset << ','
+                << csvEscape(decoded.title) << ','
+                << (decoded.ok ? 1 : 0) << ','
+                << csvEscape(decoded.status) << ','
+                << csvEscape(decoded.summary) << ','
+                << csvEscape(field.group) << ','
+                << csvEscape(field.name) << ','
+                << csvEscape(field.raw_value) << ','
+                << csvEscape(field.value) << ','
+                << csvEscape(field.unit) << ','
+                << field.offset << ','
+                << field.length << ','
+                << csvEscape(field.note) << ','
+                << (field.abnormal ? 1 : 0) << '\n';
+        }
+    }
+    progress.setValue(visible_rows.size());
+    if (!file.commit())
+    {
+        QMessageBox::warning(owner, owner->windowTitle(), english ? QStringLiteral("Failed to save decoded CSV file.") : QStringLiteral("保存解析 CSV 文件失败。"));
+    }
+}
+
+void RawDataParserWindow::Impl::exportDecodedJson()
+{
+    if (visible_rows.isEmpty())
+    {
+        QMessageBox::information(owner,
+            owner->windowTitle(),
+            english ? QStringLiteral("No filtered records to export.")
+                    : QStringLiteral("当前过滤结果为空，没有可导出的解析记录。"));
+        return;
+    }
+
+    const QString filename = QFileDialog::getSaveFileName(owner,
+        english ? QStringLiteral("Export Decoded Records JSON") : QStringLiteral("导出解析记录JSON"),
+        QDir(session_directory).filePath(QStringLiteral("raw_decoded_records.json")),
+        QStringLiteral("JSON (*.json)"));
+    if (filename.isEmpty())
+    {
+        return;
+    }
+
+    QProgressDialog progress(english ? QStringLiteral("Exporting decoded records...") : QStringLiteral("正在导出解析记录..."),
+                             english ? QStringLiteral("Cancel") : QStringLiteral("取消"),
+                             0,
+                             visible_rows.size(),
+                             owner);
+    progress.setWindowModality(Qt::WindowModal);
+
+    QJsonArray recordArray;
+    for (int row = 0; row < visible_rows.size(); ++row)
+    {
+        if (row % 100 == 0)
+        {
+            progress.setValue(row);
+            QApplication::processEvents();
+            if (progress.wasCanceled())
+            {
+                return;
+            }
+        }
+        const RawRecordIndex& record = records.at(visible_rows.at(row));
+        recordArray.push_back(decodedRecordToJson(record, decodeRecord(record)));
+    }
+    progress.setValue(visible_rows.size());
+
+    QJsonObject root;
+    root["session"] = QDir::toNativeSeparators(session_directory);
+    root["filtered_record_count"] = visible_rows.size();
+    root["records"] = recordArray;
+
+    QSaveFile file(filename);
+    if (!file.open(QIODevice::WriteOnly))
+    {
+        QMessageBox::warning(owner, owner->windowTitle(), english ? QStringLiteral("Failed to open export file.") : QStringLiteral("无法打开导出文件。"));
+        return;
+    }
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    if (!file.commit())
+    {
+        QMessageBox::warning(owner, owner->windowTitle(), english ? QStringLiteral("Failed to save decoded JSON file.") : QStringLiteral("保存解析 JSON 文件失败。"));
     }
 }
 
