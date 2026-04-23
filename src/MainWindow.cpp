@@ -3398,7 +3398,9 @@ void MainWindow::setEnglish(bool english)
     start_recording_btn_->setText(english ? "Start Recording" : "开始记录");
     pause_recording_btn_->setText(english ? "Pause Recording" : "暂停记录");
     stop_recording_btn_->setText(english ? "Stop Recording" : "结束记录");
-    clear_log_action_->setText(english ? "Clear" : "清空");
+    clear_log_action_->setText(english ? "Clear Log" : "清空日志");
+    clear_log_action_->setToolTip(english ? "Clear Log" : "清空日志");
+    clear_log_action_->setStatusTip(english ? "Clear Log" : "清空日志");
     fullscreen_toolbar_action_->setText(english ? "Fullscreen" : "全屏");
     rtk_config_action_->setText(english ? "RTK Config" : "RTK配置");
 
