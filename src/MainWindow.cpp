@@ -91,75 +91,170 @@ constexpr quint16 kRawSourceLidar = 4u;
 constexpr quint16 kRawSourceTcpWave = 5u;
 constexpr quint16 kRawRecordTypeGeneric = 1u;
 constexpr quint32 kRawTcpWaveCombinedPayloadFlag = 0x00000001u;
+const QColor kToolbarBlue(40, 105, 190);
+const QColor kToolbarGreen(35, 150, 95);
+const QColor kToolbarRed(205, 72, 72);
+const QColor kToolbarDisabled(145, 150, 158);
 
 int clampPtbSampleRate(int hz)
 {
     return std::clamp(hz, kPtbMinSampleRateHz, kPtbMaxSampleRateHz);
 }
 
+template <typename DrawFn>
+QIcon createToolbarIcon(const QColor& color, DrawFn draw)
+{
+    auto render = [&draw](const QColor& iconColor) {
+        QPixmap pixmap(32, 32);
+        pixmap.fill(Qt::transparent);
+
+        QPainter painter(&pixmap);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.translate(4.0, 4.0);
+        painter.setPen(QPen(iconColor, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        painter.setBrush(Qt::NoBrush);
+        draw(painter);
+        return pixmap;
+    };
+
+    QIcon icon;
+    icon.addPixmap(render(color), QIcon::Normal);
+    icon.addPixmap(render(kToolbarDisabled), QIcon::Disabled);
+    return icon;
+}
+
+QIcon createRefreshIcon()
+{
+    return createToolbarIcon(kToolbarBlue, [](QPainter& painter) {
+        painter.drawArc(QRectF(4, 4, 16, 16), 35 * 16, 255 * 16);
+        painter.drawLine(QPointF(18, 4), QPointF(20, 9));
+        painter.drawLine(QPointF(18, 4), QPointF(13, 5));
+        painter.drawArc(QRectF(4, 4, 16, 16), 215 * 16, 255 * 16);
+        painter.drawLine(QPointF(6, 20), QPointF(4, 15));
+        painter.drawLine(QPointF(6, 20), QPointF(11, 19));
+    });
+}
+
+QIcon createConnectIcon()
+{
+    return createToolbarIcon(kToolbarGreen, [](QPainter& painter) {
+        painter.drawLine(QPointF(5, 13), QPointF(10, 18));
+        painter.drawLine(QPointF(10, 18), QPointF(20, 6));
+    });
+}
+
+QIcon createCancelIcon()
+{
+    return createToolbarIcon(kToolbarRed, [](QPainter& painter) {
+        painter.drawLine(QPointF(6, 6), QPointF(18, 18));
+        painter.drawLine(QPointF(18, 6), QPointF(6, 18));
+    });
+}
+
+QIcon createDisconnectIcon()
+{
+    return createToolbarIcon(kToolbarRed, [](QPainter& painter) {
+        painter.drawLine(QPointF(7, 7), QPointF(17, 17));
+        painter.drawLine(QPointF(17, 7), QPointF(7, 17));
+        painter.drawRoundedRect(QRectF(5, 5, 14, 14), 3, 3);
+    });
+}
+
+QIcon createPlayIcon()
+{
+    return createToolbarIcon(kToolbarGreen, [](QPainter& painter) {
+        QPainterPath path;
+        path.moveTo(8, 5);
+        path.lineTo(19, 12);
+        path.lineTo(8, 19);
+        path.closeSubpath();
+        painter.setBrush(painter.pen().color());
+        painter.drawPath(path);
+    });
+}
+
+QIcon createPauseIcon()
+{
+    return createToolbarIcon(kToolbarBlue, [](QPainter& painter) {
+        painter.drawLine(QPointF(9, 6), QPointF(9, 18));
+        painter.drawLine(QPointF(15, 6), QPointF(15, 18));
+    });
+}
+
+QIcon createStopIcon()
+{
+    return createToolbarIcon(kToolbarRed, [](QPainter& painter) {
+        painter.setBrush(painter.pen().color());
+        painter.drawRoundedRect(QRectF(7, 7, 10, 10), 1.5, 1.5);
+    });
+}
+
 QIcon createRtkSatelliteIcon()
 {
-    QPixmap pixmap(32, 32);
-    pixmap.fill(Qt::transparent);
+    return createToolbarIcon(kToolbarBlue, [](QPainter& painter) {
+        painter.drawLine(QPointF(13, 7), QPointF(9, 3));
+        painter.drawLine(QPointF(9, 3), QPointF(5, 7));
+        painter.drawLine(QPointF(5, 7), QPointF(9, 11));
+        painter.drawLine(QPointF(17, 11), QPointF(21, 15));
+        painter.drawLine(QPointF(21, 15), QPointF(17, 19));
+        painter.drawLine(QPointF(17, 19), QPointF(13, 15));
+        painter.drawLine(QPointF(8, 12), QPointF(12, 16));
+        painter.drawLine(QPointF(12, 16), QPointF(18, 10));
+        painter.drawLine(QPointF(18, 10), QPointF(14, 6));
+        painter.drawLine(QPointF(14, 6), QPointF(8, 12));
+        painter.drawLine(QPointF(16, 8), QPointF(19, 5));
+        painter.drawArc(QRectF(3, 15, 12, 12), 90 * 16, 90 * 16);
+    });
+}
 
-    QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-    painter.translate(4.0, 4.0);
-    painter.scale(1.0, 1.0);
-
-    const QColor iconColor(67, 83, 108);
-    painter.setPen(QPen(iconColor, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    painter.setBrush(Qt::NoBrush);
-    painter.drawLine(QPointF(13, 7), QPointF(9, 3));
-    painter.drawLine(QPointF(9, 3), QPointF(5, 7));
-    painter.drawLine(QPointF(5, 7), QPointF(9, 11));
-    painter.drawLine(QPointF(17, 11), QPointF(21, 15));
-    painter.drawLine(QPointF(21, 15), QPointF(17, 19));
-    painter.drawLine(QPointF(17, 19), QPointF(13, 15));
-    painter.drawLine(QPointF(8, 12), QPointF(12, 16));
-    painter.drawLine(QPointF(12, 16), QPointF(18, 10));
-    painter.drawLine(QPointF(18, 10), QPointF(14, 6));
-    painter.drawLine(QPointF(14, 6), QPointF(8, 12));
-    painter.drawLine(QPointF(16, 8), QPointF(19, 5));
-    painter.drawArc(QRectF(3, 15, 12, 12), 90 * 16, 90 * 16);
-
-    return QIcon(pixmap);
+QIcon createClearLogIcon()
+{
+    return createToolbarIcon(kToolbarBlue, [](QPainter& painter) {
+        painter.drawLine(QPointF(8, 6), QPointF(17, 6));
+        painter.drawLine(QPointF(10, 4), QPointF(15, 4));
+        painter.drawLine(QPointF(6, 8), QPointF(19, 8));
+        painter.drawRoundedRect(QRectF(8, 8, 9, 12), 1.5, 1.5);
+        painter.drawLine(QPointF(10.5, 11), QPointF(10.5, 17));
+        painter.drawLine(QPointF(14.5, 11), QPointF(14.5, 17));
+    });
 }
 
 QIcon createWaveformViewerIcon()
 {
-    QPixmap pixmap(32, 32);
-    pixmap.fill(Qt::transparent);
+    return createToolbarIcon(kToolbarBlue, [](QPainter& painter) {
+        QPainterPath path;
+        path.moveTo(2, 13);
+        path.cubicTo(3.1, 13, 4, 12.1, 4, 11);
+        path.lineTo(4, 7);
+        path.cubicTo(4, 5.9, 4.9, 5, 6, 5);
+        path.cubicTo(7.1, 5, 8, 5.9, 8, 7);
+        path.lineTo(8, 20);
+        path.cubicTo(8, 21.1, 8.9, 22, 10, 22);
+        path.cubicTo(11.1, 22, 12, 21.1, 12, 20);
+        path.lineTo(12, 4);
+        path.cubicTo(12, 2.9, 12.9, 2, 14, 2);
+        path.cubicTo(15.1, 2, 16, 2.9, 16, 4);
+        path.lineTo(16, 17);
+        path.cubicTo(16, 18.1, 16.9, 19, 18, 19);
+        path.cubicTo(19.1, 19, 20, 18.1, 20, 17);
+        path.lineTo(20, 13);
+        path.cubicTo(20, 11.9, 20.9, 11, 22, 11);
+        painter.drawPath(path);
+    });
+}
 
-    QPainter painter(&pixmap);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-
-    painter.translate(4.0, 4.0);
-
-    const QColor iconColor(67, 83, 108);
-    painter.setPen(QPen(iconColor, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    painter.setBrush(Qt::NoBrush);
-
-    QPainterPath path;
-    path.moveTo(2, 13);
-    path.cubicTo(3.1, 13, 4, 12.1, 4, 11);
-    path.lineTo(4, 7);
-    path.cubicTo(4, 5.9, 4.9, 5, 6, 5);
-    path.cubicTo(7.1, 5, 8, 5.9, 8, 7);
-    path.lineTo(8, 20);
-    path.cubicTo(8, 21.1, 8.9, 22, 10, 22);
-    path.cubicTo(11.1, 22, 12, 21.1, 12, 20);
-    path.lineTo(12, 4);
-    path.cubicTo(12, 2.9, 12.9, 2, 14, 2);
-    path.cubicTo(15.1, 2, 16, 2.9, 16, 4);
-    path.lineTo(16, 17);
-    path.cubicTo(16, 18.1, 16.9, 19, 18, 19);
-    path.cubicTo(19.1, 19, 20, 18.1, 20, 17);
-    path.lineTo(20, 13);
-    path.cubicTo(20, 11.9, 20.9, 11, 22, 11);
-    painter.drawPath(path);
-
-    return QIcon(pixmap);
+QIcon createFullscreenIcon()
+{
+    return createToolbarIcon(kToolbarBlue, [](QPainter& painter) {
+        painter.drawLine(QPointF(5, 10), QPointF(5, 5));
+        painter.drawLine(QPointF(5, 5), QPointF(10, 5));
+        painter.drawLine(QPointF(19, 10), QPointF(19, 5));
+        painter.drawLine(QPointF(19, 5), QPointF(14, 5));
+        painter.drawLine(QPointF(5, 14), QPointF(5, 19));
+        painter.drawLine(QPointF(5, 19), QPointF(10, 19));
+        painter.drawLine(QPointF(19, 14), QPointF(19, 19));
+        painter.drawLine(QPointF(19, 19), QPointF(14, 19));
+    });
 }
 
 #pragma pack(push, 1)
@@ -2709,25 +2804,25 @@ void MainWindow::setupToolBar()
     toolbar->setMovable(false);
 
     refresh_ports_btn_ = new QAction(this);
-    refresh_ports_btn_->setIcon(style()->standardIcon(QStyle::SP_BrowserReload));
+    refresh_ports_btn_->setIcon(createRefreshIcon());
     connect(refresh_ports_btn_, &QAction::triggered, this, &MainWindow::onRefreshPortsClicked);
     toolbar->addAction(refresh_ports_btn_);
 
     toolbar->addSeparator();
 
     connect_btn_ = new QAction(this);
-    connect_btn_->setIcon(style()->standardIcon(QStyle::SP_DialogYesButton));
+    connect_btn_->setIcon(createConnectIcon());
     connect(connect_btn_, &QAction::triggered, this, &MainWindow::onConnectClicked);
     toolbar->addAction(connect_btn_);
 
     cancel_connect_btn_ = new QAction(this);
-    cancel_connect_btn_->setIcon(style()->standardIcon(QStyle::SP_BrowserStop));
+    cancel_connect_btn_->setIcon(createCancelIcon());
     cancel_connect_btn_->setEnabled(false);
     connect(cancel_connect_btn_, &QAction::triggered, this, &MainWindow::onCancelConnectClicked);
     toolbar->addAction(cancel_connect_btn_);
 
     disconnect_btn_ = new QAction(this);
-    disconnect_btn_->setIcon(style()->standardIcon(QStyle::SP_DialogNoButton));
+    disconnect_btn_->setIcon(createDisconnectIcon());
     disconnect_btn_->setEnabled(false);
     connect(disconnect_btn_, &QAction::triggered, this, &MainWindow::onDisconnectClicked);
     toolbar->addAction(disconnect_btn_);
@@ -2735,19 +2830,19 @@ void MainWindow::setupToolBar()
     toolbar->addSeparator();
 
     start_recording_btn_ = new QAction(this);
-    start_recording_btn_->setIcon(style()->standardIcon(QStyle::SP_MediaPlay));
+    start_recording_btn_->setIcon(createPlayIcon());
     start_recording_btn_->setEnabled(false);
     connect(start_recording_btn_, &QAction::triggered, this, &MainWindow::onStartRecordingClicked);
     toolbar->addAction(start_recording_btn_);
 
     pause_recording_btn_ = new QAction(this);
-    pause_recording_btn_->setIcon(style()->standardIcon(QStyle::SP_MediaPause));
+    pause_recording_btn_->setIcon(createPauseIcon());
     pause_recording_btn_->setEnabled(false);
     connect(pause_recording_btn_, &QAction::triggered, this, &MainWindow::onPauseRecordingClicked);
     toolbar->addAction(pause_recording_btn_);
 
     stop_recording_btn_ = new QAction(this);
-    stop_recording_btn_->setIcon(style()->standardIcon(QStyle::SP_MediaStop));
+    stop_recording_btn_->setIcon(createStopIcon());
     stop_recording_btn_->setEnabled(false);
     connect(stop_recording_btn_, &QAction::triggered, this, &MainWindow::onStopRecordingClicked);
     toolbar->addAction(stop_recording_btn_);
@@ -2765,6 +2860,7 @@ void MainWindow::setupToolBar()
     toolbar->addSeparator();
 
     clear_log_action_ = new QAction(this);
+    clear_log_action_->setIcon(createClearLogIcon());
     connect(clear_log_action_, &QAction::triggered, this, &MainWindow::onClearLogClicked);
     toolbar->addAction(clear_log_action_);
 
@@ -2776,7 +2872,7 @@ void MainWindow::setupToolBar()
     toolbar->addSeparator();
 
     fullscreen_toolbar_action_ = new QAction(this);
-    fullscreen_toolbar_action_->setIcon(style()->standardIcon(QStyle::SP_TitleBarMaxButton));
+    fullscreen_toolbar_action_->setIcon(createFullscreenIcon());
     connect(fullscreen_toolbar_action_, &QAction::triggered, this, &MainWindow::onToggleFullScreen);
     toolbar->addAction(fullscreen_toolbar_action_);
 }
