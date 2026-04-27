@@ -26,6 +26,7 @@
 #include <QMouseEvent>
 #include <QMessageBox>
 #include <QPainter>
+#include <QPixmap>
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -586,6 +587,7 @@ public:
         , view_start_index_(0)
         , view_count_(0)
         , is_english_(false)
+        , plot_cache_valid_(false)
     {
         setFixedHeight(kSessionViewerPlotHeight);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -594,6 +596,7 @@ public:
     void setEnglish(bool english)
     {
         is_english_ = english;
+        invalidatePlotCache();
         update();
     }
 
@@ -609,12 +612,14 @@ public:
         }
         normalizeView(keepTail);
         notifyViewChanged();
+        invalidatePlotCache();
         update();
     }
 
     void setCurrentFrame(int frameIndex)
     {
         current_frame_index_ = frameIndex;
+        bool viewChanged = false;
         if (current_frame_index_ >= 0 &&
             current_frame_index_ < static_cast<int>(peak_values_.size()) &&
             (current_frame_index_ < visibleStartIndex() ||
@@ -624,6 +629,11 @@ public:
             view_start_index_ = std::clamp(current_frame_index_ - count / 2, 0, std::max(0, static_cast<int>(peak_values_.size()) - count));
             normalizeView(false);
             notifyViewChanged();
+            viewChanged = true;
+        }
+        if (viewChanged)
+        {
+            invalidatePlotCache();
         }
         update();
     }
@@ -631,6 +641,7 @@ public:
     void setPlotMode(PlotMode mode)
     {
         plot_mode_ = mode;
+        invalidatePlotCache();
         update();
     }
 
@@ -654,6 +665,7 @@ public:
         }
 
         notifyViewChanged();
+        invalidatePlotCache();
         update();
     }
 
@@ -670,13 +682,55 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
+        ensurePlotCache();
+        painter.drawPixmap(0, 0, plot_cache_);
+        drawCurrentFrameMarker(painter, cached_plot_);
+    }
+
+private:
+    struct CachedPlot
+    {
+        QRectF plot_rect;
+        QVector<QPointF> points;
+        int start_index = 0;
+        int count = 0;
+        float min_value = 0.0f;
+        float max_value = 0.0f;
+        bool has_values = false;
+    };
+
+    void invalidatePlotCache()
+    {
+        plot_cache_valid_ = false;
+    }
+
+    void ensurePlotCache()
+    {
+        if (plot_cache_valid_ && plot_cache_.size() == size())
+        {
+            return;
+        }
+
+        plot_cache_ = QPixmap(size());
+        plot_cache_.fill(QColor("#ffffff"));
+        QPainter cachePainter(&plot_cache_);
+        cachePainter.setRenderHint(QPainter::Antialiasing, true);
+        renderPlotBase(cachePainter, cached_plot_);
+        plot_cache_valid_ = true;
+    }
+
+    void renderPlotBase(QPainter& painter, CachedPlot& cache)
+    {
         painter.fillRect(rect(), QColor("#ffffff"));
+        cache = CachedPlot{};
 
         const QRectF plotRect = rect().adjusted(
             kSessionViewerPlotLeftMargin,
             kSessionViewerPlotTopMargin,
             -kSessionViewerPlotRightMargin,
             -kSessionViewerPlotBottomMargin);
+        cache.plot_rect = plotRect;
+
         painter.setPen(QPen(QColor("#c7d7ea"), 1));
         for (int i = 0; i <= 5; ++i)
         {
@@ -701,6 +755,8 @@ protected:
 
         const int startIndex = visibleStartIndex();
         const int count = visibleCount();
+        cache.start_index = startIndex;
+        cache.count = count;
         QVector<int> finiteIndices;
         finiteIndices.reserve(count);
         float minValue = std::numeric_limits<float>::max();
@@ -730,29 +786,31 @@ protected:
             minValue -= pad;
             maxValue += pad;
         }
+        cache.min_value = minValue;
+        cache.max_value = maxValue;
+        cache.has_values = true;
 
-        QVector<QPointF> points;
-        points.reserve(count);
+        cache.points.reserve(count);
         for (int i = 0; i < count; ++i)
         {
             const double ratio = count == 1 ? 0.5 : static_cast<double>(i) / static_cast<double>(count - 1);
             const float value = peak_values_.at(startIndex + i);
             if (!std::isfinite(value))
             {
-                points.push_back(QPointF(std::numeric_limits<qreal>::quiet_NaN(), std::numeric_limits<qreal>::quiet_NaN()));
+                cache.points.push_back(QPointF(std::numeric_limits<qreal>::quiet_NaN(), std::numeric_limits<qreal>::quiet_NaN()));
                 continue;
             }
             const double normalized = (value - minValue) / std::max(1e-6f, maxValue - minValue);
-            points.push_back(QPointF(plotRect.left() + ratio * plotRect.width(),
+            cache.points.push_back(QPointF(plotRect.left() + ratio * plotRect.width(),
                 plotRect.bottom() - normalized * plotRect.height()));
         }
 
         const QColor seriesColor("#66d0ff");
-        if (plot_mode_ == PlotMode::Polyline && points.size() >= 2)
+        if (plot_mode_ == PlotMode::Polyline && cache.points.size() >= 2)
         {
             painter.setPen(QPen(seriesColor, 1.5));
             QPolygonF segment;
-            for (const QPointF& point : points)
+            for (const QPointF& point : cache.points)
             {
                 if (!std::isfinite(point.x()) || !std::isfinite(point.y()))
                 {
@@ -774,7 +832,7 @@ protected:
         {
             painter.setPen(Qt::NoPen);
             painter.setBrush(seriesColor);
-            for (const QPointF& point : points)
+            for (const QPointF& point : cache.points)
             {
                 if (!std::isfinite(point.x()) || !std::isfinite(point.y()))
                 {
@@ -784,43 +842,46 @@ protected:
             }
         }
 
-        if (current_frame_index_ >= startIndex && current_frame_index_ < (startIndex + count))
-        {
-            const QPointF currentPoint = points.at(current_frame_index_ - startIndex);
-            if (std::isfinite(currentPoint.x()) && std::isfinite(currentPoint.y()))
-            {
-                painter.setPen(Qt::NoPen);
-                painter.setBrush(kCurrentGuideLineColor);
-                painter.drawEllipse(currentPoint, 4.0, 4.0);
-            }
-        }
-
         painter.setPen(QColor("#4f647a"));
         painter.drawText(QRectF(4, plotRect.top() - 2, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 4));
         painter.drawText(QRectF(4, plotRect.center().y() - 8, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter,
                          QString::number((maxValue + minValue) * 0.5, 'f', 4));
         painter.drawText(QRectF(4, plotRect.bottom() - 8, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(minValue, 'f', 4));
         drawXAxisTicks(painter, plotRect, startIndex, startIndex + count, 5, QColor("#4f647a"));
-
-        if (current_frame_index_ >= startIndex && current_frame_index_ < (startIndex + count))
-        {
-            const QPointF currentPoint = points.at(current_frame_index_ - startIndex);
-            if (std::isfinite(currentPoint.x()) && std::isfinite(currentPoint.y()))
-            {
-                drawCurrentPointGuides(
-                    painter,
-                    plotRect,
-                    currentPoint,
-                    QString::number(current_frame_index_ + 1),
-                    formatGuideValue(peak_values_.at(current_frame_index_), 4));
-                painter.setPen(Qt::NoPen);
-                painter.setBrush(kCurrentGuideLineColor);
-                painter.drawEllipse(currentPoint, 4.0, 4.0);
-            }
-        }
     }
 
-private:
+    void drawCurrentFrameMarker(QPainter& painter, const CachedPlot& cache)
+    {
+        if (!cache.has_values ||
+            current_frame_index_ < cache.start_index ||
+            current_frame_index_ >= (cache.start_index + cache.count))
+        {
+            return;
+        }
+
+        const int pointIndex = current_frame_index_ - cache.start_index;
+        if (pointIndex < 0 || pointIndex >= cache.points.size())
+        {
+            return;
+        }
+
+        const QPointF currentPoint = cache.points.at(pointIndex);
+        if (!std::isfinite(currentPoint.x()) || !std::isfinite(currentPoint.y()))
+        {
+            return;
+        }
+
+        drawCurrentPointGuides(
+            painter,
+            cache.plot_rect,
+            currentPoint,
+            QString::number(current_frame_index_ + 1),
+            formatGuideValue(peak_values_.at(current_frame_index_), 4));
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(kCurrentGuideLineColor);
+        painter.drawEllipse(currentPoint, 4.0, 4.0);
+    }
+
     int visibleStartIndex() const
     {
         const int totalCount = static_cast<int>(peak_values_.size());
@@ -883,6 +944,9 @@ private:
     int view_start_index_;
     int view_count_;
     bool is_english_;
+    bool plot_cache_valid_;
+    QPixmap plot_cache_;
+    CachedPlot cached_plot_;
     std::function<void(int, int, int)> on_view_changed_;
 };
 
