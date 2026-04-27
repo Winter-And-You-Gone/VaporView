@@ -1401,6 +1401,8 @@ void SessionViewerWindow::setupUi()
 
     frame_slider_ = new QSlider(Qt::Horizontal, this);
     frame_slider_->setEnabled(false);
+    frame_slider_->setTracking(false);
+    connect(frame_slider_, &QSlider::sliderMoved, this, &SessionViewerWindow::onFrameSliderMoved);
     connect(frame_slider_, &QSlider::valueChanged, this, &SessionViewerWindow::onFrameSliderChanged);
     frameLayout->addWidget(frame_slider_, 0, 1);
 
@@ -2793,6 +2795,27 @@ void SessionViewerWindow::updateWaveformControls()
     frame_total_label_->setText(hasFrames
         ? QStringLiteral("/ %1").arg(total_waveform_frames_)
         : QStringLiteral("/ 0"));
+}
+
+void SessionViewerWindow::onFrameSliderMoved(int value)
+{
+    if (updating_frame_controls_)
+    {
+        return;
+    }
+
+    updating_frame_controls_ = true;
+    frame_spin_->setValue(value);
+    updating_frame_controls_ = false;
+
+    if (value > 0)
+    {
+        frame_info_label_->setText(QString(is_english_
+            ? "Frame %1 / %2 selected. Release the slider to load it."
+            : "已选择第 %1 / %2 帧，松开滑块后加载。")
+            .arg(value)
+            .arg(total_waveform_frames_));
+    }
 }
 
 void SessionViewerWindow::onFrameSliderChanged(int value)

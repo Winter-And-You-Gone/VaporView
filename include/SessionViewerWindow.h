@@ -55,6 +55,7 @@ private slots:
     void onClearViewClicked();
     void onViewTrajectoryClicked();
     void onRawDataParserClicked();
+    void onFrameSliderMoved(int value);
     void onFrameSliderChanged(int value);
     void onFrameSpinChanged(int value);
     void onToggleWaveformFrameFilterClicked();
