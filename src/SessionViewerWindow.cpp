@@ -968,6 +968,7 @@ public:
         , plot_mode_(PlotMode::Polyline)
         , view_start_index_(0)
         , view_count_(0)
+        , plot_cache_valid_(false)
     {
         setFixedHeight(kSessionViewerPlotHeight);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -981,6 +982,7 @@ public:
             current_index_ = -1;
         }
         normalizeView();
+        invalidatePlotCache();
         update();
     }
 
@@ -993,6 +995,7 @@ public:
     void setPlotMode(PlotMode mode)
     {
         plot_mode_ = mode;
+        invalidatePlotCache();
         update();
     }
 
@@ -1002,6 +1005,7 @@ public:
         {
             view_start_index_ = 0;
             view_count_ = 0;
+            invalidatePlotCache();
             update();
             return;
         }
@@ -1017,6 +1021,7 @@ public:
             view_count_ = count;
             normalizeView();
         }
+        invalidatePlotCache();
         update();
     }
 
@@ -1027,7 +1032,46 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
+        ensurePlotCache();
+        painter.drawPixmap(0, 0, plot_cache_);
+        drawCurrentIndexMarker(painter, cached_plot_);
+    }
+
+private:
+    struct CachedPlot
+    {
+        QRectF plot_rect;
+        int start_index = 0;
+        int count = 0;
+        double min_value = 0.0;
+        double max_value = 0.0;
+        bool has_values = false;
+    };
+
+    void invalidatePlotCache()
+    {
+        plot_cache_valid_ = false;
+    }
+
+    void ensurePlotCache()
+    {
+        if (plot_cache_valid_ && plot_cache_.size() == size())
+        {
+            return;
+        }
+
+        plot_cache_ = QPixmap(size());
+        plot_cache_.fill(QColor("#ffffff"));
+        QPainter cachePainter(&plot_cache_);
+        cachePainter.setRenderHint(QPainter::Antialiasing, true);
+        renderPlotBase(cachePainter, cached_plot_);
+        plot_cache_valid_ = true;
+    }
+
+    void renderPlotBase(QPainter& painter, CachedPlot& cache)
+    {
         painter.fillRect(rect(), QColor("#ffffff"));
+        cache = CachedPlot{};
 
         if (values_.isEmpty())
         {
@@ -1071,6 +1115,10 @@ protected:
             kSessionViewerPlotTopMargin,
             -kSessionViewerPlotRightMargin,
             -kSessionViewerPlotBottomMargin);
+        cache.plot_rect = plotRect;
+        cache.start_index = startIndex;
+        cache.count = count;
+
         painter.setPen(QPen(QColor("#e3e8ef"), 1));
         for (int i = 0; i <= 5; ++i)
         {
@@ -1093,6 +1141,9 @@ protected:
             return;
         }
 
+        cache.min_value = minValue;
+        cache.max_value = maxValue;
+        cache.has_values = true;
         drawSeries(painter, plotRect, startIndex, count, minValue, maxValue);
 
         painter.setPen(QColor("#5e6b78"));
@@ -1100,26 +1151,33 @@ protected:
         painter.drawText(QRectF(4, plotRect.center().y() - fm.height() * 0.5, leftMargin - 8, fm.height()), Qt::AlignRight | Qt::AlignVCenter, midLabel);
         painter.drawText(QRectF(4, plotRect.bottom() - fm.height() + 2, leftMargin - 8, fm.height()), Qt::AlignRight | Qt::AlignVCenter, minLabel);
         drawXAxisTicks(painter, plotRect, startIndex, startIndex + count, 5, QColor("#5e6b78"));
-
-        if (current_index_ >= startIndex && current_index_ < (startIndex + count) && std::isfinite(values_.at(current_index_)))
-        {
-            const int relativeIndex = current_index_ - startIndex;
-            const qreal x = plotRect.left() + (count == 1 ? 0.0 : (static_cast<qreal>(relativeIndex) / static_cast<qreal>(count - 1)) * plotRect.width());
-            const qreal normalized = (values_.at(current_index_) - minValue) / std::max(1e-9, maxValue - minValue);
-            const qreal y = plotRect.bottom() - normalized * plotRect.height();
-            drawCurrentPointGuides(
-                painter,
-                plotRect,
-                QPointF(x, y),
-                QString::number(current_index_ + 1),
-                formatGuideValue(values_.at(current_index_), 3, unit_));
-            painter.setPen(Qt::NoPen);
-            painter.setBrush(line_color_);
-            painter.drawEllipse(QPointF(x, y), 3.0, 3.0);
-        }
     }
 
-private:
+    void drawCurrentIndexMarker(QPainter& painter, const CachedPlot& cache)
+    {
+        if (!cache.has_values ||
+            current_index_ < cache.start_index ||
+            current_index_ >= (cache.start_index + cache.count) ||
+            !std::isfinite(values_.at(current_index_)))
+        {
+            return;
+        }
+
+        const int relativeIndex = current_index_ - cache.start_index;
+        const qreal x = cache.plot_rect.left() + (cache.count == 1 ? 0.0 : (static_cast<qreal>(relativeIndex) / static_cast<qreal>(cache.count - 1)) * cache.plot_rect.width());
+        const qreal normalized = (values_.at(current_index_) - cache.min_value) / std::max(1e-9, cache.max_value - cache.min_value);
+        const qreal y = cache.plot_rect.bottom() - normalized * cache.plot_rect.height();
+        drawCurrentPointGuides(
+            painter,
+            cache.plot_rect,
+            QPointF(x, y),
+            QString::number(current_index_ + 1),
+            formatGuideValue(values_.at(current_index_), 3, unit_));
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(line_color_);
+        painter.drawEllipse(QPointF(x, y), 3.0, 3.0);
+    }
+
     int visibleStartIndex() const
     {
         if (values_.isEmpty())
@@ -1204,17 +1262,6 @@ private:
         {
             painter.drawPoint(segment.first());
         }
-
-        if (current_index_ >= startIndex && current_index_ < (startIndex + count) && std::isfinite(values_.at(current_index_)))
-        {
-            const int relativeIndex = current_index_ - startIndex;
-            const qreal x = plotRect.left() + (count == 1 ? 0.0 : (static_cast<qreal>(relativeIndex) / static_cast<qreal>(count - 1)) * plotRect.width());
-            const qreal normalized = (values_.at(current_index_) - minValue) / std::max(1e-9, maxValue - minValue);
-            const qreal y = plotRect.bottom() - normalized * plotRect.height();
-            painter.setPen(Qt::NoPen);
-            painter.setBrush(line_color_);
-            painter.drawEllipse(QPointF(x, y), 3.0, 3.0);
-        }
     }
 
     QColor line_color_;
@@ -1225,6 +1272,9 @@ private:
     PlotMode plot_mode_;
     int view_start_index_;
     int view_count_;
+    bool plot_cache_valid_;
+    QPixmap plot_cache_;
+    CachedPlot cached_plot_;
 };
 
 SessionViewerWindow::SessionViewerWindow(QWidget *parent)
@@ -3180,6 +3230,10 @@ bool SessionViewerWindow::previewWaveformFrame(quint64 frameIndex)
     int firstSampleIndex = 0;
     static_cast<SessionWavePlotWidget*>(waveform_plot_)->setSamples(visibleWaveformSamples(samples, firstSampleIndex), firstSampleIndex);
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setCurrentFrame(static_cast<int>(frameIndex));
+    const int previewCsvRow = timestampUs == 0 ? -1 : findClosestCsvRow(timestampUs);
+    static_cast<SingleSeriesTrendPlotWidget*>(temperature_plot_)->setCurrentIndex(previewCsvRow);
+    static_cast<SingleSeriesTrendPlotWidget*>(humidity_plot_)->setCurrentIndex(previewCsvRow);
+    static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setCurrentIndex(previewCsvRow);
     frame_info_label_->setText(QString(is_english_
         ? "Previewing frame %1 / %2. Release the slider to sync CSV and details."
         : "正在预览第 %1 / %2 帧。松开滑块后同步 CSV 和详细信息。")
