@@ -1,27 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
 
-if(WIN32 AND NOT DEFINED CMAKE_RC_COMPILER)
-    set(_vaporview_windres_candidates)
-    foreach(_vaporview_compiler_var CMAKE_C_COMPILER CMAKE_CXX_COMPILER)
-        if(DEFINED ${_vaporview_compiler_var})
-            get_filename_component(_vaporview_compiler_dir "${${_vaporview_compiler_var}}" DIRECTORY)
-            list(APPEND _vaporview_windres_candidates "${_vaporview_compiler_dir}/windres.exe")
-        endif()
-    endforeach()
-
-    foreach(_vaporview_windres_candidate IN LISTS _vaporview_windres_candidates)
-        if(EXISTS "${_vaporview_windres_candidate}")
-            set(CMAKE_RC_COMPILER "${_vaporview_windres_candidate}" CACHE FILEPATH "Windows resource compiler" FORCE)
-            break()
-        endif()
-    endforeach()
-
-    unset(_vaporview_windres_candidate)
-    unset(_vaporview_windres_candidates)
-    unset(_vaporview_compiler_dir)
-    unset(_vaporview_compiler_var)
-endif()
-
 project(VaporView VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
@@ -38,35 +16,13 @@ option(BUILD_PYTHON_BINDINGS "Build Python bindings with pybind11" OFF)
 find_package(Qt6 COMPONENTS Core Widgets SerialPort Network REQUIRED)
 set(QT_LIBRARIES Qt6::Core Qt6::Widgets Qt6::SerialPort Qt6::Network)
 
-if(WIN32 AND MINGW)
+if(WIN32)
     find_program(QT_WINDEPLOYQT_EXECUTABLE
         NAMES windeployqt6 windeployqt
         HINTS
+            "${Qt6_DIR}/../../../bin"
             ${CMAKE_PREFIX_PATH}/bin
             ENV PATH
-    )
-
-    find_program(MSYS_BASH_EXECUTABLE
-        NAMES bash
-        HINTS
-            C:/msys64/usr/bin
-            ENV PATH
-    )
-
-    unset(POWERSHELL_EXECUTABLE CACHE)
-    find_program(POWERSHELL_EXECUTABLE
-        NAMES powershell pwsh
-        HINTS ENV PATH
-    )
-
-    get_filename_component(MINGW_RUNTIME_DIR "${CMAKE_CXX_COMPILER}" DIRECTORY)
-    get_filename_component(QT_RUNTIME_DIR "${Qt6_DIR}/../../../bin" ABSOLUTE)
-
-    set(VAPORVIEW_RUNTIME_COPY_SCRIPT "${CMAKE_CURRENT_BINARY_DIR}/CopyRuntimeDependencies.cmake")
-    configure_file(
-        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/CopyRuntimeDependencies.cmake.in"
-        "${VAPORVIEW_RUNTIME_COPY_SCRIPT}"
-        @ONLY
     )
 endif()
 
@@ -204,7 +160,7 @@ else()
 endif()
 
 if(MSVC)
-    target_compile_options(VaporView PRIVATE /FI"${CMAKE_SOURCE_DIR}/include/compiler_compat.h" /Zc:__cplusplus /permissive-)
+    target_compile_options(VaporView PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /Zc:__cplusplus /permissive-)
 endif()
 
 target_include_directories(VaporView PRIVATE
@@ -251,40 +207,15 @@ if(BUILD_TESTING)
     add_test(NAME tcp_wave_encoding_test COMMAND tcp_wave_encoding_test)
 endif()
 
-if(WIN32 AND MINGW)
-    if(QT_WINDEPLOYQT_EXECUTABLE)
-        add_custom_command(TARGET VaporView POST_BUILD
-            COMMAND ${QT_WINDEPLOYQT_EXECUTABLE}
-                --release
-                --compiler-runtime
-                --no-translations
-                --no-system-dxc-compiler
-                $<TARGET_FILE:VaporView>
-            COMMENT "Deploying Qt runtime for VaporView"
-        )
-    endif()
-
-    if(EXISTS "${VAPORVIEW_RUNTIME_COPY_SCRIPT}")
-        add_custom_command(TARGET VaporView POST_BUILD
-            COMMAND ${CMAKE_COMMAND}
-                -DVAPORVIEW_RUNTIME_TARGET=$<TARGET_FILE:VaporView>
-                -DVAPORVIEW_RUNTIME_DESTINATION=$<TARGET_FILE_DIR:VaporView>
-                -P "${VAPORVIEW_RUNTIME_COPY_SCRIPT}"
-            COMMENT "Copying MinGW runtime dependencies for VaporView"
-        )
-    elseif(POWERSHELL_EXECUTABLE AND MSYS_BASH_EXECUTABLE
-       AND EXISTS "${CMAKE_SOURCE_DIR}/scripts/deploy_mingw_runtime.ps1")
-        add_custom_command(TARGET VaporView POST_BUILD
-            COMMAND ${POWERSHELL_EXECUTABLE}
-                -NoProfile
-                -ExecutionPolicy Bypass
-                -File "${CMAKE_SOURCE_DIR}/scripts/deploy_mingw_runtime.ps1"
-                -BuildDir "$<TARGET_FILE_DIR:VaporView>"
-                -RuntimeDir "${MINGW_RUNTIME_DIR}"
-                -BashExe "${MSYS_BASH_EXECUTABLE}"
-            COMMENT "Copying MinGW runtime dependencies for VaporView"
-        )
-    endif()
+if(WIN32 AND QT_WINDEPLOYQT_EXECUTABLE)
+    add_custom_command(TARGET VaporView POST_BUILD
+        COMMAND ${QT_WINDEPLOYQT_EXECUTABLE}
+            --compiler-runtime
+            --no-translations
+            --no-system-dxc-compiler
+            $<TARGET_FILE:VaporView>
+        COMMENT "Deploying Qt runtime for VaporView"
+    )
 endif()
 
 if(MSVC)
@@ -324,7 +255,7 @@ if(BUILD_PYTHON_BINDINGS)
     )
 
     if(MSVC)
-        target_compile_options(VaporView_bindings PRIVATE /FI"${CMAKE_SOURCE_DIR}/include/compiler_compat.h" /Zc:__cplusplus /permissive-)
+        target_compile_options(VaporView_bindings PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /Zc:__cplusplus /permissive-)
     endif()
 
     target_link_libraries(VaporView_bindings PRIVATE

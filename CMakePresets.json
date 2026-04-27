@@ -1,0 +1,71 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "windows-msvc2022-x64-release",
+      "displayName": "Windows x64 Release (MSVC 2022 + Qt 6 MSVC)",
+      "description": "Build with Visual Studio 2022 MSVC, Qt 6 msvc2022_64, CMake, and Ninja.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/Release",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_PREFIX_PATH": "D:/QT/6.8.3/msvc2022_64",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    },
+    {
+      "name": "linux-arm64-gcc-release",
+      "displayName": "Linux ARM64 Release (GCC + Qt 6)",
+      "description": "Build natively on Linux ARM64 with GCC/G++, Qt 6, CMake, and Ninja.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/Release",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-msvc2022-x64-release",
+      "configurePreset": "windows-msvc2022-x64-release"
+    },
+    {
+      "name": "linux-arm64-gcc-release",
+      "configurePreset": "linux-arm64-gcc-release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "windows-msvc2022-x64-release",
+      "configurePreset": "windows-msvc2022-x64-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-arm64-gcc-release",
+      "configurePreset": "linux-arm64-gcc-release",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

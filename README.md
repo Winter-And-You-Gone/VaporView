@@ -2,6 +2,11 @@
 
 `VaporView` 是一个基于 Qt Widgets 的桌面程序。当前主界面面向 EPSILON 组合导航、PTB210 气压计、HMP3 温湿度传感器、TFA1500-L 激光测距模块和本地 TCP 波形流，提供串口接入、实时数据显示、RTK/NTRIP 转发、会话记录、离线查看和轨迹查看能力。
 
+仓库统一使用以下编译工具链：
+
+- Windows 64 位：MSVC 2022 + Qt 6 MSVC Kit + CMake + Ninja。
+- Linux ARM64：GCC/G++ + Qt 6 + CMake + Ninja。
+
 本文档只描述当前仓库中可以直接从代码、构建脚本和随仓库文档确认的内容。对应代码入口主要是：
 
 - `CMakeLists.txt`
@@ -30,9 +35,8 @@
 ```text
 VaporView/
 ├── CMakeLists.txt
+├── CMakePresets.json
 ├── README.md
-├── cmake/
-│   └── CopyRuntimeDependencies.cmake.in
 ├── design/
 │   ├── vaporview_icon_concept.svg
 │   └── vaporview_icon_minimal.svg
@@ -65,6 +69,8 @@ VaporView/
 │   ├── combo_arrow_up.xpm
 │   └── modern_style.qss
 ├── scripts/
+│   ├── build-linux-arm64.sh
+│   ├── build-windows-msvc2022.ps1
 │   ├── mock_tcp_waveform_sender.py
 │   └── recover_epsilon_main.ps1
 ├── src/
@@ -92,41 +98,72 @@ VaporView/
 - `third_party/rtklib` 参与当前 RTK 流服务构建，并带有 `third_party/rtklib/LICENSE.txt`。
 - `third_party/um982_driver` 和 `third_party/hipnuc_driver` 的源码仍被 `CMakeLists.txt` 编入 `VaporView`，但当前主窗口配置面板没有把 UM982 或独立 HiPNUC IMU 作为可选择设备行展示。
 
-## 依赖要求
+## 统一工具链
 
-- CMake `3.16+`
-- 支持 C++17 的 C/C++ 编译器
-- Qt 6，当前 CMake 必需组件：
-  - `Core`
-  - `Widgets`
-  - `SerialPort`
-  - `Network`
-- Windows 下如使用 MinGW / UCRT64，CMake 会在满足条件时查找 `windeployqt6` / `windeployqt`，并使用 `cmake/CopyRuntimeDependencies.cmake.in` 生成运行时依赖复制脚本。
+以后各平台统一使用本节工具链，不再使用 Windows MinGW / MSYS2 / UCRT64 作为项目交付验证链。
+
+### Windows 64 位
+
+- Visual Studio 2022 Build Tools，安装 `Desktop development with C++` / MSVC x64 工具。
+- Qt 6 MSVC Kit，例如本机当前路径：`D:\QT\6.8.3\msvc2022_64`。
+- CMake，推荐 `3.21+`，本仓库提供 `CMakePresets.json`。
+- Ninja，优先使用 VS2022 CMake Tools 随附的 `ninja.exe`。
+
+本机如果缺少 VS2022 Build Tools，可以并排安装到 VS2022 目录，不覆盖已有 VS 或 Qt：
+
+```powershell
+winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --accept-package-agreements --accept-source-agreements --override "--quiet --wait --norestart --nocache --installPath `"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools`" --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.VC.CMake.Project --add Microsoft.VisualStudio.Component.Windows11SDK.22621"
+```
+
+如 Qt 6 MSVC Kit 不在默认路径，设置环境变量或传参：
+
+```powershell
+$env:VAPORVIEW_QT_MSVC_PREFIX = "D:\QT\6.8.3\msvc2022_64"
+```
+
+### Linux ARM64
+
+- ARM64 Linux 原生环境。
+- GCC/G++。
+- Qt 6 开发包。
+- CMake `3.21+`。
+- Ninja。
+
+Ubuntu / Debian ARM64 上可使用：
+
+```bash
+sudo apt update
+sudo apt install -y build-essential cmake ninja-build qt6-base-dev qt6-serialport-dev
+```
+
+如 Qt 6 安装在非系统路径，设置：
+
+```bash
+export VAPORVIEW_QT6_PREFIX=/opt/Qt/6.x/gcc_arm64
+```
+
+Qt 6 当前 CMake 必需组件：
+
+- `Core`
+- `Widgets`
+- `SerialPort`
+- `Network`
 
 ## 构建
 
-仓库约定使用 `build/Release` 作为本地交付验证目录。
+仓库约定所有平台统一使用 `build/Release` 作为本地构建和交付验证目录。
 
-当前本机已有的 `build/Release/CMakeCache.txt` 显示：
-
-- `CMAKE_GENERATOR:INTERNAL=Ninja`
-- `CMAKE_PREFIX_PATH:UNINITIALIZED=F:/msys64/ucrt64`
-- `Qt6_DIR:PATH=F:/msys64/ucrt64/lib/cmake/Qt6`
-
-在相同环境下复用现有配置：
+Windows 64 位构建：
 
 ```powershell
-cmake --build build/Release
+powershell -ExecutionPolicy Bypass -File .\scripts\build-windows-msvc2022.ps1 -Action Rebuild
 ```
 
-重新生成 `build/Release` 时，按本机当前 Qt 路径可使用：
+Linux ARM64 构建：
 
-```powershell
-cmake -S . -B build/Release -G Ninja -DCMAKE_PREFIX_PATH=F:/msys64/ucrt64
-cmake --build build/Release
+```bash
+./scripts/build-linux-arm64.sh rebuild
 ```
-
-如 Qt 安装路径不同，替换 `CMAKE_PREFIX_PATH` 为实际 Qt 6 前缀路径。
 
 当前 CMake 目标：
 
