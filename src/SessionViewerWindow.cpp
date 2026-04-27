@@ -10,6 +10,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QEventLoop>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -25,6 +26,7 @@
 #include <QMouseEvent>
 #include <QMessageBox>
 #include <QPainter>
+#include <QProgressDialog>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollArea>
@@ -1171,6 +1173,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , raw_data_parser_btn_(nullptr)
     , clear_view_btn_(nullptr)
     , status_label_(nullptr)
+    , loading_dialog_(nullptr)
     , summary_group_(nullptr)
     , summary_layout_(nullptr)
     , session_name_title_(nullptr)
@@ -1242,6 +1245,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , updating_frame_controls_(false)
     , waveform_peak_scatter_mode_(true)
     , waveform_show_filtered_frame_(false)
+    , session_loading_(false)
     , highlighted_csv_rows_()
     , trajectory_viewer_dialog_(nullptr)
     , raw_data_parser_window_(nullptr)
@@ -1781,6 +1785,58 @@ void SessionViewerWindow::setStatusText(const QString& text)
     }
 }
 
+void SessionViewerWindow::beginSessionLoading(const QString& text)
+{
+    session_loading_ = true;
+    if (central_widget_)
+    {
+        central_widget_->setEnabled(false);
+    }
+
+    if (!loading_dialog_)
+    {
+        loading_dialog_ = new QProgressDialog(this);
+        loading_dialog_->setWindowModality(Qt::WindowModal);
+        loading_dialog_->setCancelButton(nullptr);
+        loading_dialog_->setMinimumDuration(0);
+        loading_dialog_->setAutoClose(false);
+        loading_dialog_->setAutoReset(false);
+        loading_dialog_->setRange(0, 0);
+        loading_dialog_->setMinimumWidth(360);
+    }
+
+    loading_dialog_->setWindowTitle(is_english_ ? "Loading Data" : "正在加载数据");
+    updateSessionLoadingText(text);
+    loading_dialog_->show();
+    loading_dialog_->raise();
+    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+}
+
+void SessionViewerWindow::updateSessionLoadingText(const QString& text)
+{
+    setStatusText(text);
+    if (!session_loading_ || !loading_dialog_)
+    {
+        return;
+    }
+
+    loading_dialog_->setLabelText(text);
+    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+}
+
+void SessionViewerWindow::finishSessionLoading()
+{
+    session_loading_ = false;
+    if (loading_dialog_)
+    {
+        loading_dialog_->hide();
+    }
+    if (central_widget_)
+    {
+        central_widget_->setEnabled(true);
+    }
+}
+
 void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
 {
     session_directory_.clear();
@@ -2026,27 +2082,37 @@ void SessionViewerWindow::onRawDataParserClicked()
 
 bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
 {
+    beginSessionLoading(is_english_ ? "Preparing to load session data..." : "正在准备加载会话数据...");
     clearLoadedData(false);
 
     const QString normalized = QDir::fromNativeSeparators(sessionDirectory);
     session_directory_ = normalized;
+    updateSessionLoadingText(is_english_ ? "Reading session metadata..." : "正在读取会话元数据...");
     if (!loadSessionMetadata(normalized))
     {
+        finishSessionLoading();
         return false;
     }
+    updateSessionLoadingText(is_english_ ? "Reading sensors CSV..." : "正在读取传感器 CSV...");
     if (!loadSensorsCsv())
     {
+        finishSessionLoading();
         return false;
     }
+    updateSessionLoadingText(is_english_ ? "Indexing waveform files..." : "正在索引波形文件...");
     if (!loadWaveformSegments())
     {
+        finishSessionLoading();
         return false;
     }
+    updateSessionLoadingText(is_english_ ? "Calculating waveform peak series..." : "正在计算波形峰值序列...");
     if (!loadWaveformPeakSeries())
     {
+        finishSessionLoading();
         return false;
     }
 
+    updateSessionLoadingText(is_english_ ? "Updating viewer..." : "正在更新显示...");
     session_path_edit_->setText(session_directory_);
     updateSummaryLabels();
     updateWaveformControls();
@@ -2063,6 +2129,7 @@ bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
     }
 
     setStatusText(QString(is_english_ ? "Loaded session: %1" : "已加载会话: %1").arg(session_directory_));
+    finishSessionLoading();
     return true;
 }
 
@@ -2294,6 +2361,14 @@ bool SessionViewerWindow::loadSensorsCsv()
             }
             rtk_track_points_.push_back(point);
         }
+
+        if (session_loading_ && rows.size() % 5000 == 0)
+        {
+            updateSessionLoadingText(QString(is_english_
+                ? "Reading sensors CSV... %1 rows"
+                : "正在读取传感器 CSV... %1 行")
+                .arg(rows.size()));
+        }
     }
 
     csv_table_->setRowCount(rows.size());
@@ -2313,6 +2388,15 @@ bool SessionViewerWindow::loadSensorsCsv()
             auto *item = new QTableWidgetItem(csvValueAt(fields, col));
             item->setBackground(kDefaultCsvRowColor);
             csv_table_->setItem(row, col + 2, item);
+        }
+
+        if (session_loading_ && (row + 1) % 5000 == 0)
+        {
+            updateSessionLoadingText(QString(is_english_
+                ? "Rendering CSV table... %1/%2 rows"
+                : "正在渲染 CSV 表格... %1/%2 行")
+                .arg(row + 1)
+                .arg(rows.size()));
         }
     }
 
@@ -2372,8 +2456,9 @@ bool SessionViewerWindow::loadWaveformSegments()
     const QStringList files = dir.entryList(QStringList() << QStringLiteral("*.dat"), QDir::Files, QDir::Name);
     const quint64 frameBytes = kWaveformTimestampBytes + static_cast<quint64>(points_per_frame_) * kFloatBytes;
 
-    for (const QString& filename : files)
+    for (int fileIndex = 0; fileIndex < files.size(); ++fileIndex)
     {
+        const QString& filename = files.at(fileIndex);
         const QString absolutePath = dir.filePath(filename);
         const QFileInfo info(absolutePath);
         if (frameBytes == 0 || info.size() < static_cast<qint64>(frameBytes))
@@ -2393,6 +2478,15 @@ bool SessionViewerWindow::loadWaveformSegments()
         segment.frame_count = frameCount;
         waveform_segments_.push_back(segment);
         total_waveform_frames_ += frameCount;
+
+        if (session_loading_ && (fileIndex + 1) % 20 == 0)
+        {
+            updateSessionLoadingText(QString(is_english_
+                ? "Indexing waveform files... %1/%2 files"
+                : "正在索引波形文件... %1/%2 个文件")
+                .arg(fileIndex + 1)
+                .arg(files.size()));
+        }
     }
 
     return true;
@@ -2491,6 +2585,13 @@ bool SessionViewerWindow::loadUnifiedRawTcpWaveFrames()
                 if (points_per_frame_ <= 0)
                 {
                     points_per_frame_ = static_cast<int>(harmonicSize / kFloatBytes);
+                }
+                if (session_loading_ && raw_tcp_wave_frames_.size() % 2000 == 0)
+                {
+                    updateSessionLoadingText(QString(is_english_
+                        ? "Indexing raw TCP waveform frames... %1 frames"
+                        : "正在索引 raw TCP 波形帧... %1 帧")
+                        .arg(raw_tcp_wave_frames_.size()));
                 }
             }
         }
@@ -2592,6 +2693,7 @@ bool SessionViewerWindow::loadWaveformPeakSeries()
     waveform_peak_raw_values_.reserve(static_cast<int>(std::min<quint64>(total_waveform_frames_, static_cast<quint64>(std::numeric_limits<int>::max()))));
     waveform_timestamps_us_.reserve(static_cast<int>(std::min<quint64>(total_waveform_frames_, static_cast<quint64>(std::numeric_limits<int>::max()))));
 
+    const quint64 progressInterval = std::max<quint64>(1, total_waveform_frames_ / 100);
     for (quint64 frameIndex = 0; frameIndex < total_waveform_frames_; ++frameIndex)
     {
         quint64 timestampUs = 0;
@@ -2603,6 +2705,14 @@ bool SessionViewerWindow::loadWaveformPeakSeries()
 
         waveform_timestamps_us_.push_back(timestampUs);
         waveform_peak_raw_values_.push_back(waveformPeakValue(frameSamples, peak_search_start_index_, peak_search_end_index_));
+        if (session_loading_ && ((frameIndex + 1) == total_waveform_frames_ || (frameIndex + 1) % progressInterval == 0))
+        {
+            updateSessionLoadingText(QString(is_english_
+                ? "Calculating waveform peak series... %1/%2 frames"
+                : "正在计算波形峰值序列... %1/%2 帧")
+                .arg(frameIndex + 1)
+                .arg(total_waveform_frames_));
+        }
     }
 
     applyPeakFilter();

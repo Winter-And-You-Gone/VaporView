@@ -22,6 +22,7 @@ struct RtkTrackPoint
 class QGroupBox;
 class QLabel;
 class QLineEdit;
+class QProgressDialog;
 class QPushButton;
 class QScrollArea;
 class QSlider;
@@ -98,6 +99,9 @@ private:
     void relayoutSummaryFields();
     void updateWaveformControls();
     void setStatusText(const QString& text);
+    void beginSessionLoading(const QString& text);
+    void updateSessionLoadingText(const QString& text);
+    void finishSessionLoading();
     void clearLoadedData(bool clearPathEdit = true);
     void restoreLastSessionPath(const QString& path);
     QString resolveSessionDirectory(const QString& path) const;
@@ -129,6 +133,7 @@ private:
     QPushButton *raw_data_parser_btn_;
     QPushButton *clear_view_btn_;
     QLabel *status_label_;
+    QProgressDialog *loading_dialog_;
     QGroupBox *summary_group_;
     QGridLayout *summary_layout_;
     QLabel *session_name_title_;
@@ -201,6 +206,7 @@ private:
     bool updating_frame_controls_;
     bool waveform_peak_scatter_mode_;
     bool waveform_show_filtered_frame_;
+    bool session_loading_;
     QVector<int> highlighted_csv_rows_;
     TrajectoryViewerDialog *trajectory_viewer_dialog_;
     RawDataParserWindow *raw_data_parser_window_;
