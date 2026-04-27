@@ -3575,10 +3575,8 @@ void MainWindow::onOpenSessionViewerClicked()
         session_viewer_window_->setEnglish(is_english_);
     }
 
-    if (!session_directory_.isEmpty())
-    {
-        session_viewer_window_->openSessionPath(session_directory_);
-    }
+    session_viewer_window_->setDefaultDataDirectory(
+        recording_directory_.isEmpty() ? defaultRecordingDirectory() : recording_directory_);
 
     session_viewer_window_->show();
     session_viewer_window_->raise();

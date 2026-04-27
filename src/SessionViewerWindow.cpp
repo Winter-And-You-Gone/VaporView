@@ -398,6 +398,41 @@ int sessionViewerAxisTextWidth(const QFontMetrics& fm, const QStringList& labels
     return maxWidth;
 }
 
+QString formatAxisTickValue(int value)
+{
+    return QString::number(value);
+}
+
+void drawXAxisTicks(QPainter& painter,
+                    const QRectF& plotRect,
+                    int startValue,
+                    int endValue,
+                    int segmentCount,
+                    const QColor& textColor)
+{
+    const int segments = std::max(1, segmentCount);
+    const int span = std::max(0, endValue - startValue);
+    const QFontMetrics fm = painter.fontMetrics();
+    painter.save();
+    painter.setPen(textColor);
+    for (int i = 0; i <= segments; ++i)
+    {
+        const qreal ratio = static_cast<qreal>(i) / static_cast<qreal>(segments);
+        const qreal x = plotRect.left() + plotRect.width() * ratio;
+        const int value = startValue + static_cast<int>(std::llround(static_cast<double>(span) * ratio));
+        const QString label = formatAxisTickValue(value);
+        const int labelWidth = fm.horizontalAdvance(label) + 8;
+        const qreal labelLeft = std::clamp(x - labelWidth * 0.5,
+            plotRect.left(),
+            std::max(plotRect.left(), plotRect.right() - static_cast<qreal>(labelWidth)));
+        painter.drawLine(QPointF(x, plotRect.bottom()), QPointF(x, plotRect.bottom() + 4));
+        painter.drawText(QRectF(labelLeft, plotRect.bottom() + 6, labelWidth, fm.height()),
+            Qt::AlignHCenter | Qt::AlignVCenter,
+            label);
+    }
+    painter.restore();
+}
+
 void drawGuideTag(QPainter& painter, const QRectF& rect, const QString& text, Qt::Alignment alignment)
 {
     painter.save();
@@ -444,14 +479,16 @@ class SessionWavePlotWidget : public QWidget
 public:
     explicit SessionWavePlotWidget(QWidget *parent = nullptr)
         : QWidget(parent)
+        , first_sample_index_(0)
     {
         setFixedHeight(kSessionViewerPlotHeight);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     }
 
-    void setSamples(const QVector<float>& samples)
+    void setSamples(const QVector<float>& samples, int firstSampleIndex = 0)
     {
         samples_ = samples;
+        first_sample_index_ = std::max(0, firstSampleIndex);
         update();
     }
 
@@ -470,9 +507,9 @@ protected:
             -kSessionViewerPlotRightMargin,
             -kSessionViewerWaveBottomMargin);
         painter.setPen(QPen(QColor("#f0d000"), 1));
-        for (int i = 0; i <= 10; ++i)
+        for (int i = 0; i <= 5; ++i)
         {
-            const qreal x = plotRect.left() + plotRect.width() * i / 10.0;
+            const qreal x = plotRect.left() + plotRect.width() * i / 5.0;
             painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
         }
         for (int i = 0; i <= 8; ++i)
@@ -523,12 +560,12 @@ protected:
         painter.drawText(QRectF(4, plotRect.center().y() - 8, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter,
                          QString::number((maxValue + minValue) * 0.5, 'f', 4));
         painter.drawText(QRectF(4, plotRect.bottom() - 8, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(minValue, 'f', 4));
-        painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 6, plotRect.width(), 16), Qt::AlignRight | Qt::AlignVCenter,
-                         QStringLiteral("%1 samples").arg(samples_.size()));
+        drawXAxisTicks(painter, plotRect, first_sample_index_, first_sample_index_ + samples_.size(), 5, QColor("#334155"));
     }
 
 private:
     QVector<float> samples_;
+    int first_sample_index_;
 };
 
 class SessionPeakPlotWidget : public QWidget
@@ -639,9 +676,9 @@ protected:
             -kSessionViewerPlotRightMargin,
             -kSessionViewerPlotBottomMargin);
         painter.setPen(QPen(QColor("#c7d7ea"), 1));
-        for (int i = 0; i <= 10; ++i)
+        for (int i = 0; i <= 5; ++i)
         {
-            const qreal x = plotRect.left() + plotRect.width() * i / 10.0;
+            const qreal x = plotRect.left() + plotRect.width() * i / 5.0;
             painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
         }
         for (int i = 0; i <= 6; ++i)
@@ -761,14 +798,7 @@ protected:
         painter.drawText(QRectF(4, plotRect.center().y() - 8, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter,
                          QString::number((maxValue + minValue) * 0.5, 'f', 4));
         painter.drawText(QRectF(4, plotRect.bottom() - 8, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(minValue, 'f', 4));
-        painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 6, plotRect.width() * 0.55, 16),
-                         Qt::AlignLeft | Qt::AlignVCenter,
-                         QString("%1-%2 / %3")
-                             .arg(startIndex + 1)
-                             .arg(startIndex + count)
-                             .arg(peak_values_.size()));
-        painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 6, plotRect.width(), 16), Qt::AlignRight | Qt::AlignVCenter,
-                         QStringLiteral("%1 frames").arg(count));
+        drawXAxisTicks(painter, plotRect, startIndex, startIndex + count, 5, QColor("#4f647a"));
 
         if (current_frame_index_ >= startIndex && current_frame_index_ < (startIndex + count))
         {
@@ -976,9 +1006,9 @@ protected:
             -kSessionViewerPlotRightMargin,
             -kSessionViewerPlotBottomMargin);
         painter.setPen(QPen(QColor("#e3e8ef"), 1));
-        for (int i = 0; i <= 10; ++i)
+        for (int i = 0; i <= 5; ++i)
         {
-            const qreal x = plotRect.left() + plotRect.width() * i / 10.0;
+            const qreal x = plotRect.left() + plotRect.width() * i / 5.0;
             painter.drawLine(QPointF(x, plotRect.top()), QPointF(x, plotRect.bottom()));
         }
         for (int i = 0; i <= 6; ++i)
@@ -1003,12 +1033,7 @@ protected:
         painter.drawText(QRectF(4, plotRect.top() - 2, leftMargin - 8, fm.height()), Qt::AlignRight | Qt::AlignVCenter, maxLabel);
         painter.drawText(QRectF(4, plotRect.center().y() - fm.height() * 0.5, leftMargin - 8, fm.height()), Qt::AlignRight | Qt::AlignVCenter, midLabel);
         painter.drawText(QRectF(4, plotRect.bottom() - fm.height() + 2, leftMargin - 8, fm.height()), Qt::AlignRight | Qt::AlignVCenter, minLabel);
-        painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 4, plotRect.width() * 0.55, 16),
-                         Qt::AlignLeft | Qt::AlignVCenter,
-                         QString("%1-%2 / %3").arg(startIndex + 1).arg(startIndex + count).arg(values_.size()));
-        painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 4, plotRect.width(), 16),
-                         Qt::AlignRight | Qt::AlignVCenter,
-                         QStringLiteral("%1 samples").arg(count));
+        drawXAxisTicks(painter, plotRect, startIndex, startIndex + count, 5, QColor("#5e6b78"));
 
         if (current_index_ >= startIndex && current_index_ < (startIndex + count) && std::isfinite(values_.at(current_index_)))
         {
@@ -1175,6 +1200,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , waveform_plot_title_(nullptr)
     , waveform_plot_(nullptr)
     , waveform_peak_plot_title_(nullptr)
+    , waveform_frame_filter_btn_(nullptr)
     , waveform_peak_filter_btn_(nullptr)
     , waveform_peak_mode_btn_(nullptr)
     , waveform_peak_plot_(nullptr)
@@ -1193,6 +1219,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , sensors_csv_filename_()
     , waveform_directory_()
     , raw_tcp_wave_filename_()
+    , default_data_directory_()
     , session_name_()
     , start_time_utc_()
     , end_time_utc_()
@@ -1205,6 +1232,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , waveform_timestamps_us_()
     , waveform_segments_()
     , raw_tcp_wave_frames_()
+    , current_waveform_frame_samples_()
     , waveform_peak_raw_values_()
     , waveform_peak_values_()
     , peak_filter_settings_()
@@ -1213,6 +1241,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , is_english_(false)
     , updating_frame_controls_(false)
     , waveform_peak_scatter_mode_(true)
+    , waveform_show_filtered_frame_(false)
     , highlighted_csv_rows_()
     , trajectory_viewer_dialog_(nullptr)
     , raw_data_parser_window_(nullptr)
@@ -1249,6 +1278,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     {
         peak_search_end_index_ = peak_search_start_index_ + 1;
     }
+    default_data_directory_ = QDir::fromNativeSeparators(settings.value("default_data_directory").toString());
     updatePeakFilterButtonText();
     const QString lastSession = settings.value("last_session_directory").toString();
     if (!lastSession.isEmpty())
@@ -1402,6 +1432,8 @@ void SessionViewerWindow::setupUi()
     waveformPeakRangeAxis->setCompactMode(true);
     waveformPeakRangeAxis->setMinimumWidth(240);
     peakHeaderLayout->addWidget(waveformPeakRangeAxis, 1, Qt::AlignVCenter);
+    waveform_frame_filter_btn_ = new QPushButton(this);
+    peakHeaderLayout->addWidget(waveform_frame_filter_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
     waveform_peak_filter_btn_ = new QPushButton(this);
     peakHeaderLayout->addWidget(waveform_peak_filter_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
     waveform_peak_mode_btn_ = new QPushButton(this);
@@ -1411,6 +1443,7 @@ void SessionViewerWindow::setupUi()
     waveform_peak_plot_ = new SessionPeakPlotWidget(this);
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPlotMode(
         waveform_peak_scatter_mode_ ? SessionPeakPlotWidget::PlotMode::Scatter : SessionPeakPlotWidget::PlotMode::Polyline);
+    connect(waveform_frame_filter_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onToggleWaveformFrameFilterClicked);
     connect(waveform_peak_filter_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onConfigurePeakFilterClicked);
     connect(waveform_peak_mode_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onTogglePeakPlotModeClicked);
     waveformLayout->addWidget(waveform_peak_plot_, 1);
@@ -1509,6 +1542,17 @@ void SessionViewerWindow::setEnglish(bool english)
     updateTexts();
 }
 
+void SessionViewerWindow::setDefaultDataDirectory(const QString& directory)
+{
+    const QString normalized = QDir::fromNativeSeparators(directory.trimmed());
+    default_data_directory_ = normalized;
+    if (!normalized.isEmpty())
+    {
+        QSettings settings("VaporView", "SessionViewer");
+        settings.setValue("default_data_directory", normalized);
+    }
+}
+
 void SessionViewerWindow::resizeEvent(QResizeEvent *event)
 {
     QMainWindow::resizeEvent(event);
@@ -1540,6 +1584,7 @@ void SessionViewerWindow::updateTexts()
     temperature_plot_title_->setText(is_english_ ? "Temperature" : "温度");
     humidity_plot_title_->setText(is_english_ ? "Humidity" : "湿度");
     pressure_plot_title_->setText(is_english_ ? "Pressure" : "气压");
+    updateWaveformFrameFilterButtonText();
     updatePeakPlotModeButtonText();
     updatePeakFilterButtonText();
     csv_group_->setTitle(is_english_ ? "Sensors CSV" : "传感器 CSV");
@@ -1584,6 +1629,18 @@ void SessionViewerWindow::updateTexts()
     {
         raw_data_parser_window_->setEnglish(is_english_);
     }
+}
+
+void SessionViewerWindow::updateWaveformFrameFilterButtonText()
+{
+    if (!waveform_frame_filter_btn_)
+    {
+        return;
+    }
+
+    waveform_frame_filter_btn_->setText(waveform_show_filtered_frame_
+        ? (is_english_ ? "Show Full Frame" : "显示完整波形")
+        : (is_english_ ? "Show Filtered Frame" : "显示过滤波形"));
 }
 
 void SessionViewerWindow::updatePeakPlotModeButtonText()
@@ -1743,6 +1800,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     waveform_timestamps_us_.clear();
     waveform_segments_.clear();
     raw_tcp_wave_frames_.clear();
+    current_waveform_frame_samples_.clear();
     waveform_peak_raw_values_.clear();
     waveform_peak_values_.clear();
     total_sensor_rows_ = 0;
@@ -1878,7 +1936,24 @@ bool SessionViewerWindow::openSessionPath(const QString& path)
 void SessionViewerWindow::onChooseSessionClicked()
 {
     QSettings settings("VaporView", "SessionViewer");
-    const QString initialDir = settings.value("last_session_directory", QDir::currentPath()).toString();
+    QString initialDir = default_data_directory_;
+    if (initialDir.isEmpty())
+    {
+        initialDir = settings.value("default_data_directory").toString();
+    }
+    if (initialDir.isEmpty())
+    {
+        const QString lastSession = settings.value("last_session_directory").toString();
+        const QString lastSessionDirectory = resolveSessionDirectory(lastSession);
+        if (!lastSessionDirectory.isEmpty())
+        {
+            initialDir = QFileInfo(lastSessionDirectory).absolutePath();
+        }
+    }
+    if (initialDir.isEmpty() || !QFileInfo(initialDir).isDir())
+    {
+        initialDir = QDir::currentPath();
+    }
     const QString sessionDirectory = QFileDialog::getExistingDirectory(
         this,
         is_english_ ? "Choose Data Directory" : "选择数据目录",
@@ -2616,6 +2691,36 @@ void SessionViewerWindow::onFrameSpinChanged(int value)
     }
 }
 
+QVector<float> SessionViewerWindow::visibleWaveformSamples(const QVector<float>& samples, int& firstSampleIndex) const
+{
+    firstSampleIndex = 0;
+    if (!waveform_show_filtered_frame_ || samples.isEmpty())
+    {
+        return samples;
+    }
+
+    const int sampleCount = static_cast<int>(samples.size());
+    const int startIndex = std::clamp(peak_search_start_index_, 0, sampleCount);
+    const int endIndex = std::clamp(peak_search_end_index_, 0, sampleCount);
+    if (startIndex >= endIndex)
+    {
+        return samples;
+    }
+
+    firstSampleIndex = startIndex;
+    return samples.mid(startIndex, endIndex - startIndex);
+}
+
+void SessionViewerWindow::onToggleWaveformFrameFilterClicked()
+{
+    waveform_show_filtered_frame_ = !waveform_show_filtered_frame_;
+    updateWaveformFrameFilterButtonText();
+    int firstSampleIndex = 0;
+    static_cast<SessionWavePlotWidget*>(waveform_plot_)->setSamples(
+        visibleWaveformSamples(current_waveform_frame_samples_, firstSampleIndex),
+        firstSampleIndex);
+}
+
 void SessionViewerWindow::onTogglePeakPlotModeClicked()
 {
     waveform_peak_scatter_mode_ = !waveform_peak_scatter_mode_;
@@ -2834,7 +2939,9 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
         return false;
     }
 
-    static_cast<SessionWavePlotWidget*>(waveform_plot_)->setSamples(samples);
+    current_waveform_frame_samples_ = samples;
+    int firstSampleIndex = 0;
+    static_cast<SessionWavePlotWidget*>(waveform_plot_)->setSamples(visibleWaveformSamples(samples, firstSampleIndex), firstSampleIndex);
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setCurrentFrame(static_cast<int>(frameIndex));
 
     const auto minMax = std::minmax_element(samples.cbegin(), samples.cend());

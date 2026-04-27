@@ -41,6 +41,7 @@ class SessionViewerWindow : public QMainWindow
 public:
     explicit SessionViewerWindow(QWidget *parent = nullptr);
     void setEnglish(bool english);
+    void setDefaultDataDirectory(const QString& directory);
     bool openSessionPath(const QString& path);
 
 protected:
@@ -55,6 +56,7 @@ private slots:
     void onRawDataParserClicked();
     void onFrameSliderChanged(int value);
     void onFrameSpinChanged(int value);
+    void onToggleWaveformFrameFilterClicked();
     void onTogglePeakPlotModeClicked();
     void onConfigurePeakFilterClicked();
 
@@ -113,9 +115,11 @@ private:
     void updateRtkTrackPeakValues();
     void syncEnvironmentRangeToWaveformRange(int startFrameIndex, int visibleFrameCount);
     QString highlightClosestSensorRow(quint64 timestampUs);
+    void updateWaveformFrameFilterButtonText();
     void updatePeakPlotModeButtonText();
     void updatePeakFilterButtonText();
     QString peakFilterModeText(PeakFilterMode mode) const;
+    QVector<float> visibleWaveformSamples(const QVector<float>& samples, int& firstSampleIndex) const;
 
     QWidget *central_widget_;
     QLineEdit *session_path_edit_;
@@ -154,6 +158,7 @@ private:
     QLabel *waveform_plot_title_;
     QWidget *waveform_plot_;
     QLabel *waveform_peak_plot_title_;
+    QPushButton *waveform_frame_filter_btn_;
     QPushButton *waveform_peak_filter_btn_;
     QPushButton *waveform_peak_mode_btn_;
     QWidget *waveform_peak_plot_;
@@ -173,6 +178,7 @@ private:
     QString sensors_csv_filename_;
     QString waveform_directory_;
     QString raw_tcp_wave_filename_;
+    QString default_data_directory_;
     QString session_name_;
     QString start_time_utc_;
     QString end_time_utc_;
@@ -185,6 +191,7 @@ private:
     QVector<quint64> waveform_timestamps_us_;
     QVector<WaveformSegment> waveform_segments_;
     QVector<RawTcpWaveFrame> raw_tcp_wave_frames_;
+    QVector<float> current_waveform_frame_samples_;
     QVector<float> waveform_peak_raw_values_;
     QVector<float> waveform_peak_values_;
     PeakFilterSettings peak_filter_settings_;
@@ -193,6 +200,7 @@ private:
     bool is_english_;
     bool updating_frame_controls_;
     bool waveform_peak_scatter_mode_;
+    bool waveform_show_filtered_frame_;
     QVector<int> highlighted_csv_rows_;
     TrajectoryViewerDialog *trajectory_viewer_dialog_;
     RawDataParserWindow *raw_data_parser_window_;
