@@ -2,11 +2,16 @@
 #include "RangeSelectionAxisWidget.h"
 #include <QAbstractSocket>
 #include <QByteArray>
+#include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPaintEvent>
@@ -34,8 +39,8 @@ constexpr int kMaxPayloadBytes = 16 * 1024 * 1024;
 constexpr int kPreferredPayloadBytes = 200000;
 constexpr int kTcpControlHeight = 30;
 constexpr int kTcpButtonHeight = 38;
-constexpr int kPeakSearchStartIndex = 10000;
-constexpr int kPeakSearchEndIndex = 50000;
+constexpr int kDefaultPeakSearchStartIndex = 0;
+constexpr int kDefaultPeakSearchEndIndex = 0;
 constexpr qint64 kFrameRateWindowMs = 5000;
 constexpr double kMaxReasonableWaveMagnitude = 1.0e6;
 
@@ -110,6 +115,59 @@ bool isReasonableWavePayload(const QVector<float>& values, double maxMagnitude, 
         *observedMaxMagnitude = observedMax;
     }
     return true;
+}
+
+double percentileValue(QVector<double> values, double percentile)
+{
+    if (values.isEmpty())
+    {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+
+    std::sort(values.begin(), values.end());
+    const double clampedPercentile = std::clamp(percentile, 0.0, 1.0);
+    const double scaledIndex = clampedPercentile * static_cast<double>(values.size() - 1);
+    const int lowerIndex = static_cast<int>(std::floor(scaledIndex));
+    const int upperIndex = static_cast<int>(std::ceil(scaledIndex));
+    if (lowerIndex == upperIndex)
+    {
+        return values.at(lowerIndex);
+    }
+
+    const double fraction = scaledIndex - static_cast<double>(lowerIndex);
+    return values.at(lowerIndex) * (1.0 - fraction) + values.at(upperIndex) * fraction;
+}
+
+float waveformPeakValue(const QVector<float>& samples, int searchStartIndex, int searchEndIndex)
+{
+    if (samples.isEmpty())
+    {
+        return std::numeric_limits<float>::quiet_NaN();
+    }
+
+    const int sampleCount = samples.size();
+    const int startIndex = std::clamp(searchStartIndex, 0, sampleCount);
+    const int endIndex = searchEndIndex <= 0
+        ? sampleCount
+        : std::clamp(searchEndIndex, 0, sampleCount);
+    if (startIndex >= endIndex)
+    {
+        return std::numeric_limits<float>::quiet_NaN();
+    }
+
+    bool hasPeak = false;
+    float peakValue = std::numeric_limits<float>::lowest();
+    for (int index = startIndex; index < endIndex; ++index)
+    {
+        const float value = samples.at(index);
+        if (!std::isfinite(value))
+        {
+            continue;
+        }
+        hasPeak = true;
+        peakValue = std::max(peakValue, value);
+    }
+    return hasPeak ? peakValue : std::numeric_limits<float>::quiet_NaN();
 }
 }
 
@@ -315,11 +373,27 @@ protected:
 
         const int startIndex = visibleStartIndex();
         const int count = visibleCount();
-        const auto visibleBegin = peak_values_.cbegin() + startIndex;
-        const auto visibleEnd = visibleBegin + count;
-        auto [minIt, maxIt] = std::minmax_element(visibleBegin, visibleEnd);
-        float minValue = *minIt;
-        float maxValue = *maxIt;
+        QVector<int> finiteIndices;
+        finiteIndices.reserve(count);
+        float minValue = std::numeric_limits<float>::max();
+        float maxValue = std::numeric_limits<float>::lowest();
+        for (int i = 0; i < count; ++i)
+        {
+            const float value = peak_values_.at(startIndex + i);
+            if (!std::isfinite(value))
+            {
+                continue;
+            }
+            finiteIndices.push_back(i);
+            minValue = std::min(minValue, value);
+            maxValue = std::max(maxValue, value);
+        }
+        if (finiteIndices.isEmpty())
+        {
+            painter.setPen(QColor("#7a8899"));
+            painter.drawText(rect().adjusted(18, 8, -2, -18), Qt::AlignCenter, empty_text_);
+            return;
+        }
         if (std::fabs(maxValue - minValue) < 1e-6f)
         {
             const float pad = std::max(1e-6f, std::fabs(maxValue) * 0.05f + 1e-6f);
@@ -357,6 +431,12 @@ protected:
         {
             const double ratio = count == 1 ? 0.5 : static_cast<double>(i) / static_cast<double>(count - 1);
             const float value = peak_values_.at(startIndex + i);
+            if (!std::isfinite(value))
+            {
+                points.push_back(QPointF(std::numeric_limits<qreal>::quiet_NaN(),
+                                         std::numeric_limits<qreal>::quiet_NaN()));
+                continue;
+            }
             const double normalized = (value - minValue) / std::max(1e-6f, maxValue - minValue);
             points.push_back(QPointF(plotRect.left() + ratio * plotRect.width(),
                                      plotRect.bottom() - normalized * plotRect.height()));
@@ -366,7 +446,24 @@ protected:
         if (plot_mode_ == PlotMode::Polyline && points.size() >= 2)
         {
             painter.setPen(QPen(seriesColor, 1.5));
-            painter.drawPolyline(QPolygonF(points));
+            QPolygonF segment;
+            for (const QPointF& point : points)
+            {
+                if (!std::isfinite(point.x()) || !std::isfinite(point.y()))
+                {
+                    if (segment.size() >= 2)
+                    {
+                        painter.drawPolyline(segment);
+                    }
+                    segment.clear();
+                    continue;
+                }
+                segment.push_back(point);
+            }
+            if (segment.size() >= 2)
+            {
+                painter.drawPolyline(segment);
+            }
         }
         else
         {
@@ -374,6 +471,10 @@ protected:
             painter.setBrush(seriesColor);
             for (const QPointF& point : points)
             {
+                if (!std::isfinite(point.x()) || !std::isfinite(point.y()))
+                {
+                    continue;
+                }
                 painter.drawEllipse(point, 2.5, 2.5);
             }
         }
@@ -480,12 +581,17 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , wave4_plot_(nullptr)
     , peak_plot_(nullptr)
     , peak_range_axis_(nullptr)
+    , peak_filter_button_(nullptr)
     , peak_mode_button_(nullptr)
     , peak_clear_button_(nullptr)
     , control_layout_(nullptr)
     , top_controls_layout_(nullptr)
     , socket_(nullptr)
     , pending_wave1_payload_()
+    , peak_raw_history_()
+    , peak_filter_settings_()
+    , peak_search_start_index_(kDefaultPeakSearchStartIndex)
+    , peak_search_end_index_(kDefaultPeakSearchEndIndex)
     , peak_plot_scatter_mode_(true)
     , parse_mode_(ParseMode::AutoDetect)
     , read_state_(ReadState::Wave1Header)
@@ -645,6 +751,12 @@ void TcpWavePanel::setupUi()
     peak_title_label_ = new QLabel(this);
     peak_title_label_->setObjectName("sectionTitleLabel");
     peakHeaderLayout->addWidget(peak_title_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    peak_filter_button_ = new QPushButton(this);
+    peak_filter_button_->setObjectName("compactTcpButton");
+    peak_filter_button_->setFixedHeight(kTcpButtonHeight);
+    peak_filter_button_->setMinimumWidth(134);
+    connect(peak_filter_button_, &QPushButton::clicked, this, &TcpWavePanel::onConfigurePeakFilterClicked);
+    peakHeaderLayout->addWidget(peak_filter_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     peak_mode_button_ = new QPushButton(this);
     peak_mode_button_->setObjectName("compactTcpButton");
     peak_mode_button_->setFixedHeight(kTcpButtonHeight);
@@ -691,6 +803,27 @@ void TcpWavePanel::loadRememberedInputState()
     QSettings settings("VaporView", "TcpWavePanel");
     const QString hostValue = settings.value("connection/host", host_edit_->text()).toString();
     const int portValue = settings.value("connection/port", port_spin_->value()).toInt();
+    const QString peakFilterMode = settings.value("peak_filter/mode", QStringLiteral("none")).toString().trimmed().toLower();
+    if (peakFilterMode == QStringLiteral("iqr"))
+    {
+        peak_filter_settings_.mode = PeakFilterMode::IqrOutlier;
+    }
+    else if (peakFilterMode == QStringLiteral("keep_range"))
+    {
+        peak_filter_settings_.mode = PeakFilterMode::KeepRange;
+    }
+    else if (peakFilterMode == QStringLiteral("exclude_range"))
+    {
+        peak_filter_settings_.mode = PeakFilterMode::ExcludeRange;
+    }
+    else
+    {
+        peak_filter_settings_.mode = PeakFilterMode::None;
+    }
+    peak_filter_settings_.min_value = settings.value("peak_filter/min_value", 0.0).toDouble();
+    peak_filter_settings_.max_value = settings.value("peak_filter/max_value", 0.0).toDouble();
+    peak_search_start_index_ = std::max(0, settings.value("peak_search/start_index", kDefaultPeakSearchStartIndex).toInt());
+    peak_search_end_index_ = std::max(0, settings.value("peak_search/end_index", kDefaultPeakSearchEndIndex).toInt());
 
     {
         const QSignalBlocker hostBlocker(host_edit_);
@@ -700,6 +833,8 @@ void TcpWavePanel::loadRememberedInputState()
         const QSignalBlocker portBlocker(port_spin_);
         port_spin_->setValue(portValue);
     }
+
+    updatePeakFilterButtonText();
 }
 
 void TcpWavePanel::saveRememberedInputState() const
@@ -707,6 +842,25 @@ void TcpWavePanel::saveRememberedInputState() const
     QSettings settings("VaporView", "TcpWavePanel");
     settings.setValue("connection/host", host_edit_->text());
     settings.setValue("connection/port", port_spin_->value());
+
+    QString modeKey = QStringLiteral("none");
+    if (peak_filter_settings_.mode == PeakFilterMode::IqrOutlier)
+    {
+        modeKey = QStringLiteral("iqr");
+    }
+    else if (peak_filter_settings_.mode == PeakFilterMode::KeepRange)
+    {
+        modeKey = QStringLiteral("keep_range");
+    }
+    else if (peak_filter_settings_.mode == PeakFilterMode::ExcludeRange)
+    {
+        modeKey = QStringLiteral("exclude_range");
+    }
+    settings.setValue("peak_filter/mode", modeKey);
+    settings.setValue("peak_filter/min_value", peak_filter_settings_.min_value);
+    settings.setValue("peak_filter/max_value", peak_filter_settings_.max_value);
+    settings.setValue("peak_search/start_index", peak_search_start_index_);
+    settings.setValue("peak_search/end_index", peak_search_end_index_);
 }
 
 void TcpWavePanel::setEnglish(bool english)
@@ -763,6 +917,7 @@ void TcpWavePanel::setEnglish(bool english)
 
     wave1_info_label_->setText(english ? "waiting for raw-signal frame" : "等待原始信号数据帧");
     wave4_info_label_->setText(english ? "waiting for normalized second harmonic frame" : "等待归一化二次谐波数据帧");
+    updatePeakFilterButtonText();
     updatePeakPlotModeButtonText();
 
     if (!socket_ || socket_->state() != QAbstractSocket::ConnectedState)
@@ -781,6 +936,111 @@ void TcpWavePanel::updatePeakPlotModeButtonText()
     peak_mode_button_->setText(peak_plot_scatter_mode_
         ? (is_english_ ? "Show Polyline" : "切换到折线图")
         : (is_english_ ? "Show Scatter" : "切换到散点图"));
+}
+
+QString TcpWavePanel::peakFilterModeText(PeakFilterMode mode) const
+{
+    switch (mode)
+    {
+    case PeakFilterMode::IqrOutlier:
+        return is_english_ ? QStringLiteral("IQR") : QStringLiteral("IQR");
+    case PeakFilterMode::KeepRange:
+        return is_english_ ? QStringLiteral("Keep") : QStringLiteral("保留");
+    case PeakFilterMode::ExcludeRange:
+        return is_english_ ? QStringLiteral("Exclude") : QStringLiteral("排除");
+    case PeakFilterMode::None:
+    default:
+        return is_english_ ? QStringLiteral("Off") : QStringLiteral("关闭");
+    }
+}
+
+void TcpWavePanel::updatePeakFilterButtonText()
+{
+    if (!peak_filter_button_)
+    {
+        return;
+    }
+
+    const QString searchEndText = peak_search_end_index_ <= 0
+        ? (is_english_ ? QStringLiteral("end") : QStringLiteral("末尾"))
+        : QString::number(peak_search_end_index_);
+    peak_filter_button_->setText(QStringLiteral("%1:%2-%3 / %4")
+        .arg(is_english_ ? QStringLiteral("Peak") : QStringLiteral("峰值"))
+        .arg(peak_search_start_index_)
+        .arg(searchEndText)
+        .arg(peakFilterModeText(peak_filter_settings_.mode)));
+}
+
+float TcpWavePanel::currentWaveformPeakValue(const QVector<float>& samples) const
+{
+    return waveformPeakValue(samples, peak_search_start_index_, peak_search_end_index_);
+}
+
+void TcpWavePanel::rebuildPeakHistory()
+{
+    peak_history_.clear();
+    peak_history_.reserve(peak_raw_history_.size());
+
+    QVector<double> finiteValues;
+    finiteValues.reserve(peak_raw_history_.size());
+    for (float value : peak_raw_history_)
+    {
+        if (std::isfinite(value))
+        {
+            finiteValues.push_back(static_cast<double>(value));
+        }
+    }
+
+    double iqrLowerBound = -std::numeric_limits<double>::infinity();
+    double iqrUpperBound = std::numeric_limits<double>::infinity();
+    if (peak_filter_settings_.mode == PeakFilterMode::IqrOutlier && finiteValues.size() >= 4)
+    {
+        const double q1 = percentileValue(finiteValues, 0.25);
+        const double q3 = percentileValue(finiteValues, 0.75);
+        if (std::isfinite(q1) && std::isfinite(q3))
+        {
+            const double iqr = q3 - q1;
+            const double padding = std::max(1e-6, iqr * 1.5);
+            iqrLowerBound = q1 - padding;
+            iqrUpperBound = q3 + padding;
+        }
+    }
+
+    const double rangeMin = std::min(peak_filter_settings_.min_value, peak_filter_settings_.max_value);
+    const double rangeMax = std::max(peak_filter_settings_.min_value, peak_filter_settings_.max_value);
+    for (float rawValue : peak_raw_history_)
+    {
+        bool keepValue = std::isfinite(rawValue);
+        if (keepValue)
+        {
+            const double value = static_cast<double>(rawValue);
+            switch (peak_filter_settings_.mode)
+            {
+            case PeakFilterMode::IqrOutlier:
+                keepValue = value >= iqrLowerBound && value <= iqrUpperBound;
+                break;
+            case PeakFilterMode::KeepRange:
+                keepValue = value >= rangeMin && value <= rangeMax;
+                break;
+            case PeakFilterMode::ExcludeRange:
+                keepValue = !(value >= rangeMin && value <= rangeMax);
+                break;
+            case PeakFilterMode::None:
+            default:
+                keepValue = true;
+                break;
+            }
+        }
+
+        peak_history_.push_back(keepValue
+            ? rawValue
+            : std::numeric_limits<float>::quiet_NaN());
+    }
+
+    if (peak_plot_)
+    {
+        peak_plot_->setPeakValues(peak_history_);
+    }
 }
 
 void TcpWavePanel::resetFrameRateDisplay()
@@ -912,6 +1172,7 @@ void TcpWavePanel::onToggleConnectionClicked()
     buffer_.clear();
     wave1_history_.clear();
     wave4_history_.clear();
+    peak_raw_history_.clear();
     peak_history_.clear();
     pending_wave1_payload_.clear();
     pending_wave1_.clear();
@@ -944,10 +1205,124 @@ void TcpWavePanel::onTogglePeakPlotModeClicked()
 
 void TcpWavePanel::onClearPeakPlotClicked()
 {
+    peak_raw_history_.clear();
     peak_history_.clear();
     if (peak_plot_)
     {
         peak_plot_->setPeakValues({});
+    }
+}
+
+void TcpWavePanel::onConfigurePeakFilterClicked()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(is_english_ ? QStringLiteral("Peak Settings") : QStringLiteral("峰值设置"));
+
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *formLayout = new QFormLayout();
+    formLayout->setContentsMargins(0, 0, 0, 0);
+
+    auto *searchStartSpin = new QSpinBox(&dialog);
+    searchStartSpin->setRange(0, 10000000);
+    searchStartSpin->setSingleStep(1000);
+    searchStartSpin->setValue(peak_search_start_index_);
+    formLayout->addRow(is_english_ ? QStringLiteral("Search Start") : QStringLiteral("搜索起点"), searchStartSpin);
+
+    auto *searchEndSpin = new QSpinBox(&dialog);
+    searchEndSpin->setRange(0, 10000000);
+    searchEndSpin->setSingleStep(1000);
+    searchEndSpin->setSpecialValueText(is_english_ ? QStringLiteral("Full Frame") : QStringLiteral("整帧"));
+    searchEndSpin->setValue(std::max(0, peak_search_end_index_));
+    formLayout->addRow(is_english_ ? QStringLiteral("Search End") : QStringLiteral("搜索终点"), searchEndSpin);
+
+    auto *modeCombo = new QComboBox(&dialog);
+    modeCombo->addItem(is_english_ ? QStringLiteral("Off") : QStringLiteral("关闭"), static_cast<int>(PeakFilterMode::None));
+    modeCombo->addItem(is_english_ ? QStringLiteral("IQR Outlier Filter") : QStringLiteral("IQR 异常值过滤"), static_cast<int>(PeakFilterMode::IqrOutlier));
+    modeCombo->addItem(is_english_ ? QStringLiteral("Keep Range") : QStringLiteral("保留区间"), static_cast<int>(PeakFilterMode::KeepRange));
+    modeCombo->addItem(is_english_ ? QStringLiteral("Exclude Range") : QStringLiteral("排除区间"), static_cast<int>(PeakFilterMode::ExcludeRange));
+    modeCombo->setCurrentIndex(std::max(0, modeCombo->findData(static_cast<int>(peak_filter_settings_.mode))));
+    formLayout->addRow(is_english_ ? QStringLiteral("Method") : QStringLiteral("方式"), modeCombo);
+
+    auto *minEdit = new QLineEdit(QString::number(peak_filter_settings_.min_value, 'f', 6), &dialog);
+    auto *maxEdit = new QLineEdit(QString::number(peak_filter_settings_.max_value, 'f', 6), &dialog);
+    formLayout->addRow(is_english_ ? QStringLiteral("Range Min") : QStringLiteral("区间最小值"), minEdit);
+    formLayout->addRow(is_english_ ? QStringLiteral("Range Max") : QStringLiteral("区间最大值"), maxEdit);
+    layout->addLayout(formLayout);
+
+    auto *hintLabel = new QLabel(
+        is_english_
+            ? QStringLiteral("Peak search uses sample indexes [start, end). Search End = Full Frame uses all remaining samples. IQR removes statistical outliers. Keep Range keeps only values inside [min, max]. Exclude Range removes values inside [min, max]. If you change the search window, the existing live trend is cleared and new frames use the updated range.")
+            : QStringLiteral("峰值搜索使用采样点下标 [起点, 终点)。搜索终点为“整帧”时表示一直搜索到本帧末尾。IQR 会过滤统计异常值。保留区间只保留 [最小值, 最大值] 内的峰值。排除区间会过滤 [最小值, 最大值] 内的峰值。修改搜索窗口后，已有实时趋势会清空，后续新帧按新区间计算。"),
+        &dialog);
+    hintLabel->setWordWrap(true);
+    layout->addWidget(hintLabel);
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    layout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    if (dialog.exec() != QDialog::Accepted)
+    {
+        return;
+    }
+
+    bool minOk = false;
+    bool maxOk = false;
+    const double minValue = minEdit->text().trimmed().toDouble(&minOk);
+    const double maxValue = maxEdit->text().trimmed().toDouble(&maxOk);
+    const int searchStart = searchStartSpin->value();
+    const int searchEnd = searchEndSpin->value();
+    const PeakFilterMode mode = static_cast<PeakFilterMode>(modeCombo->currentData().toInt());
+    if (searchEnd > 0 && searchEnd <= searchStart)
+    {
+        QMessageBox::warning(
+            this,
+            is_english_ ? QStringLiteral("Peak Settings") : QStringLiteral("峰值设置"),
+            is_english_ ? QStringLiteral("Search End must be greater than Search Start, or set to Full Frame.") : QStringLiteral("搜索终点必须大于搜索起点，或者设置为整帧。"));
+        return;
+    }
+    if ((mode == PeakFilterMode::KeepRange || mode == PeakFilterMode::ExcludeRange) && (!minOk || !maxOk))
+    {
+        QMessageBox::warning(
+            this,
+            is_english_ ? QStringLiteral("Peak Settings") : QStringLiteral("峰值设置"),
+            is_english_ ? QStringLiteral("Please enter valid numeric range values.") : QStringLiteral("请输入有效的数值区间。"));
+        return;
+    }
+
+    const bool peakSearchChanged =
+        peak_search_start_index_ != searchStart ||
+        peak_search_end_index_ != searchEnd;
+    peak_search_start_index_ = searchStart;
+    peak_search_end_index_ = searchEnd;
+    peak_filter_settings_.mode = mode;
+    if (minOk)
+    {
+        peak_filter_settings_.min_value = minValue;
+    }
+    if (maxOk)
+    {
+        peak_filter_settings_.max_value = maxValue;
+    }
+
+    saveRememberedInputState();
+    updatePeakFilterButtonText();
+    if (peakSearchChanged)
+    {
+        peak_raw_history_.clear();
+        peak_history_.clear();
+        if (peak_plot_)
+        {
+            peak_plot_->setPeakValues({});
+        }
+        setStatusText(is_english_
+            ? QStringLiteral("Peak search range updated. Existing live peak trend was cleared; new frames will use the new range.")
+            : QStringLiteral("峰值搜索区间已更新，现有实时峰值趋势已清空；后续新帧将按新区间计算。"));
+    }
+    else
+    {
+        rebuildPeakHistory();
     }
 }
 
@@ -1115,19 +1490,12 @@ void TcpWavePanel::processBuffer()
             wave4_history_ = wave4;
             wave1_plot_->setSamples(wave1_history_);
             wave4_plot_->setSamples(wave4_history_);
-            const int sampleCount = static_cast<int>(wave4_history_.size());
-            const int peakStart = std::min(kPeakSearchStartIndex, sampleCount);
-            const int peakEnd = std::min(kPeakSearchEndIndex, sampleCount);
-            const auto peakBegin = wave4_history_.cbegin() + peakStart;
-            const auto peakFinish = wave4_history_.cbegin() + peakEnd;
-            const auto peakIt = peakBegin < peakFinish
-                ? std::max_element(peakBegin, peakFinish)
-                : wave4_history_.cend();
-            peak_history_.push_back(peakIt == wave4_history_.cend() ? 0.0f : *peakIt);
-            if (peak_plot_)
-            {
-                peak_plot_->setPeakValues(peak_history_);
-            }
+            const float rawPeakValue = currentWaveformPeakValue(wave4_history_);
+            peak_raw_history_.push_back(rawPeakValue);
+            rebuildPeakHistory();
+            const float displayedPeakValue = peak_history_.isEmpty()
+                ? rawPeakValue
+                : peak_history_.back();
             ++frame_count_;
             updateFrameRateDisplay(QDateTime::currentMSecsSinceEpoch());
             const quint64 frameTimestampUs = static_cast<quint64>(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()) * 1000ULL;
@@ -1153,10 +1521,27 @@ void TcpWavePanel::processBuffer()
                 .arg(pending_wave1_.size())
                 .arg(describeRange(pending_wave1_)));
             wave4_info_label_->setText(QString(is_english_
-                ? "normalized second harmonic: %1 samples, %2"
-                : "归一化二次谐波: %1 个采样点，%2")
+                ? "normalized second harmonic: %1 samples, %2, %3"
+                : "归一化二次谐波: %1 个采样点，%2，%3")
                 .arg(wave4.size())
-                .arg(describeRange(wave4)));
+                .arg(describeRange(wave4))
+                .arg([this, rawPeakValue, displayedPeakValue]() {
+                    const QString rawPeakText = std::isfinite(rawPeakValue)
+                        ? formatWaveValue(rawPeakValue, 6)
+                        : QStringLiteral("--");
+                    const QString displayedPeakText = std::isfinite(displayedPeakValue)
+                        ? formatWaveValue(displayedPeakValue, 6)
+                        : (is_english_ ? QStringLiteral("filtered") : QStringLiteral("已过滤"));
+                    if (peak_filter_settings_.mode == PeakFilterMode::None ||
+                        (!std::isfinite(rawPeakValue) && !std::isfinite(displayedPeakValue)) ||
+                        (std::isfinite(rawPeakValue) && std::isfinite(displayedPeakValue) &&
+                         std::fabs(static_cast<double>(rawPeakValue) - static_cast<double>(displayedPeakValue)) < 1e-9))
+                    {
+                        return QString(is_english_ ? "peak=%1" : "峰值=%1").arg(rawPeakText);
+                    }
+                    return QString(is_english_ ? "peak(raw/show)=%1/%2" : "峰值(原始/显示)=%1/%2")
+                        .arg(rawPeakText, displayedPeakText);
+                }()));
 
             setStatusText(QString(is_english_
                 ? "Receiving frame %3 from %1:%2, float format: %4"

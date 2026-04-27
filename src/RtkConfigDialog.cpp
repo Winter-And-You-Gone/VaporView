@@ -195,8 +195,14 @@ bool isUsableEpsilonNmeaPosition(const VaporView::EpsilonData &data)
         std::isfinite(data.latitude_deg) &&
         std::isfinite(data.longitude_deg) &&
         std::isfinite(data.height_m) &&
+        std::isfinite(data.hdop) &&
         std::abs(data.latitude_deg) <= 90.0 &&
         std::abs(data.longitude_deg) <= 180.0 &&
+        std::abs(data.height_m) <= 20000.0 &&
+        data.gnss_fix_code > 0 &&
+        data.gnss_satellites >= 4 &&
+        data.hdop > 0.0 &&
+        data.hdop <= 50.0 &&
         (std::abs(data.latitude_deg) > 1e-9 || std::abs(data.longitude_deg) > 1e-9);
 }
 

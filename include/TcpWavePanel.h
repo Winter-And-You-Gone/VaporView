@@ -70,8 +70,24 @@ private slots:
     void onSocketError();
     void onTogglePeakPlotModeClicked();
     void onClearPeakPlotClicked();
+    void onConfigurePeakFilterClicked();
 
 private:
+    enum class PeakFilterMode
+    {
+        None,
+        IqrOutlier,
+        KeepRange,
+        ExcludeRange
+    };
+
+    struct PeakFilterSettings
+    {
+        PeakFilterMode mode = PeakFilterMode::None;
+        double min_value = 0.0;
+        double max_value = 0.0;
+    };
+
     void setupUi();
     void setupSocket();
     void recreateSocket();
@@ -80,6 +96,8 @@ private:
     void loadRememberedInputState();
     void saveRememberedInputState() const;
     void updatePeakPlotModeButtonText();
+    void updatePeakFilterButtonText();
+    QString peakFilterModeText(PeakFilterMode mode) const;
     void resetFrameRateDisplay();
     void updateFrameRateDisplay(qint64 arrivalTimeMs);
     void setStatusText(const QString& text);
@@ -91,6 +109,8 @@ private:
     bool tryConsumeHeader();
     bool tryConsumePayload(QVector<float>& output, QByteArray *rawPayload = nullptr);
     QVector<float> decodeFloatPayload(const QByteArray& payload) const;
+    float currentWaveformPeakValue(const QVector<float>& samples) const;
+    void rebuildPeakHistory();
 
     QLineEdit *host_edit_;
     QSpinBox *port_spin_;
@@ -113,6 +133,7 @@ private:
     WavePlotWidget *wave4_plot_;
     PeakTrendPlotWidget *peak_plot_;
     RangeSelectionAxisWidget *peak_range_axis_;
+    QPushButton *peak_filter_button_;
     QPushButton *peak_mode_button_;
     QPushButton *peak_clear_button_;
     QGridLayout *control_layout_;
@@ -123,8 +144,12 @@ private:
     QByteArray pending_wave1_payload_;
     QVector<float> wave1_history_;
     QVector<float> wave4_history_;
+    QVector<float> peak_raw_history_;
     QVector<float> peak_history_;
     QVector<float> pending_wave1_;
+    PeakFilterSettings peak_filter_settings_;
+    int peak_search_start_index_;
+    int peak_search_end_index_;
     bool peak_plot_scatter_mode_;
     ParseMode parse_mode_;
     ReadState read_state_;
