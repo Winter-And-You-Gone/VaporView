@@ -3234,6 +3234,7 @@ bool SessionViewerWindow::previewWaveformFrame(quint64 frameIndex)
     static_cast<SingleSeriesTrendPlotWidget*>(temperature_plot_)->setCurrentIndex(previewCsvRow);
     static_cast<SingleSeriesTrendPlotWidget*>(humidity_plot_)->setCurrentIndex(previewCsvRow);
     static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setCurrentIndex(previewCsvRow);
+    previewClosestSensorRow(timestampUs);
     frame_info_label_->setText(QString(is_english_
         ? "Previewing frame %1 / %2. Release the slider to sync CSV and details."
         : "正在预览第 %1 / %2 帧。松开滑块后同步 CSV 和详细信息。")
@@ -3397,6 +3398,26 @@ void SessionViewerWindow::syncEnvironmentRangeToWaveformRange(int startFrameInde
     static_cast<SingleSeriesTrendPlotWidget*>(temperature_plot_)->setViewRange(csvStart, csvCount);
     static_cast<SingleSeriesTrendPlotWidget*>(humidity_plot_)->setViewRange(csvStart, csvCount);
     static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setViewRange(csvStart, csvCount);
+}
+
+void SessionViewerWindow::previewClosestSensorRow(quint64 timestampUs)
+{
+    if (timestampUs == 0 || csv_timestamps_us_.isEmpty() || csv_table_->rowCount() == 0)
+    {
+        return;
+    }
+
+    const int row = findClosestCsvRow(timestampUs);
+    if (row < 0 || row >= csv_table_->rowCount())
+    {
+        return;
+    }
+
+    csv_table_->setCurrentCell(row, 0, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+    if (QTableWidgetItem *item = csv_table_->item(row, 0))
+    {
+        csv_table_->scrollToItem(item, QAbstractItemView::PositionAtCenter);
+    }
 }
 
 QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs)

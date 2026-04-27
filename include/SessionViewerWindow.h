@@ -120,6 +120,7 @@ private:
     void applyPeakFilter();
     void updateRtkTrackPeakValues();
     void syncEnvironmentRangeToWaveformRange(int startFrameIndex, int visibleFrameCount);
+    void previewClosestSensorRow(quint64 timestampUs);
     QString highlightClosestSensorRow(quint64 timestampUs);
     void updateWaveformFrameFilterButtonText();
     void updatePeakPlotModeButtonText();
