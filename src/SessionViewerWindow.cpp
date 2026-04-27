@@ -2810,11 +2810,7 @@ void SessionViewerWindow::onFrameSliderMoved(int value)
 
     if (value > 0)
     {
-        frame_info_label_->setText(QString(is_english_
-            ? "Frame %1 / %2 selected. Release the slider to load it."
-            : "已选择第 %1 / %2 帧，松开滑块后加载。")
-            .arg(value)
-            .arg(total_waveform_frames_));
+        previewWaveformFrame(static_cast<quint64>(value - 1));
     }
 }
 
@@ -3104,6 +3100,27 @@ bool SessionViewerWindow::readWaveformFrameSamples(quint64 frameIndex, quint64& 
     std::memcpy(&timestampUs, block.constData(), sizeof(quint64));
     samples.resize(points_per_frame_);
     std::memcpy(samples.data(), block.constData() + sizeof(quint64), static_cast<size_t>(points_per_frame_) * sizeof(float));
+    return true;
+}
+
+bool SessionViewerWindow::previewWaveformFrame(quint64 frameIndex)
+{
+    quint64 timestampUs = 0;
+    QVector<float> samples;
+    if (!readWaveformFrameSamples(frameIndex, timestampUs, samples))
+    {
+        return false;
+    }
+
+    current_waveform_frame_samples_ = samples;
+    int firstSampleIndex = 0;
+    static_cast<SessionWavePlotWidget*>(waveform_plot_)->setSamples(visibleWaveformSamples(samples, firstSampleIndex), firstSampleIndex);
+    static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setCurrentFrame(static_cast<int>(frameIndex));
+    frame_info_label_->setText(QString(is_english_
+        ? "Previewing frame %1 / %2. Release the slider to sync CSV and details."
+        : "正在预览第 %1 / %2 帧。松开滑块后同步 CSV 和详细信息。")
+        .arg(frameIndex + 1)
+        .arg(total_waveform_frames_));
     return true;
 }
 

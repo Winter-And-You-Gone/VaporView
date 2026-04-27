@@ -112,6 +112,7 @@ private:
     bool loadSensorsCsv();
     bool loadWaveformSegments();
     bool loadWaveformPeakSeries();
+    bool previewWaveformFrame(quint64 frameIndex);
     bool loadWaveformFrame(quint64 frameIndex);
     bool loadUnifiedRawTcpWaveFrames();
     bool readWaveformFrameSamples(quint64 frameIndex, quint64& timestampUs, QVector<float>& samples);
