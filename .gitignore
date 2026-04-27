@@ -25,6 +25,7 @@ CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 *.autosave
+scripts/*.local.ps1
 .idea/
 .vscode/
 .trae/

@@ -105,7 +105,7 @@ VaporView/
 ### Windows 64 位
 
 - Visual Studio 2022 Build Tools，安装 `Desktop development with C++` / MSVC x64 工具。
-- Qt 6 MSVC Kit，例如本机当前路径：`D:\QT\6.8.3\msvc2022_64`。
+- Qt 6 MSVC Kit，路径由每台机器本地配置提供。
 - CMake，推荐 `3.21+`，本仓库提供 `CMakePresets.json`。
 - Ninja，优先使用 VS2022 CMake Tools 随附的 `ninja.exe`。
 
@@ -115,10 +115,17 @@ VaporView/
 winget install --id Microsoft.VisualStudio.2022.BuildTools --exact --accept-package-agreements --accept-source-agreements --override "--quiet --wait --norestart --nocache --installPath `"C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools`" --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.VC.CMake.Project --add Microsoft.VisualStudio.Component.Windows11SDK.22621"
 ```
 
-如 Qt 6 MSVC Kit 不在默认路径，设置环境变量或传参：
+Windows 构建入口脚本 `scripts/build-windows-msvc2022.ps1` 是可同步的通用脚本，不保存本机固定路径。每台机器可以设置环境变量或传参：
 
 ```powershell
-$env:VAPORVIEW_QT_MSVC_PREFIX = "D:\QT\6.8.3\msvc2022_64"
+$env:VAPORVIEW_QT_MSVC_PREFIX = "<本机 Qt 6 MSVC Kit 路径>"
+powershell -ExecutionPolicy Bypass -File .\scripts\build-windows-msvc2022.ps1 -Action Rebuild
+```
+
+也可以新建本地包装脚本 `scripts/build-windows-msvc2022.local.ps1`，在其中写入本机 Qt / VS / CMake / Ninja 路径后转调用通用脚本；`scripts/*.local.ps1` 已被 `.gitignore` 忽略，不参与同步。
+
+```powershell
+.\scripts\build-windows-msvc2022.local.ps1 -Action Rebuild
 ```
 
 ### Linux ARM64
@@ -544,7 +551,8 @@ CMake 中保留了 `BUILD_PYTHON_BINDINGS` 选项，但默认关闭。当前仓�
 - `BUILD_PYTHON_BINDINGS=ON` 当前不可用，因为缺少 `python/bindings.cpp`。
 - `docs/imu_raw_dat_format.md` 和 `docs/epsilon_raw_dat_format.md` 保留为旧格式说明；当前主窗口新会话使用统一 `raw/*.dat`，并把 `docs/raw_dat_format.md` 复制到 session 根目录。
 - `data/` 为本地记录输出目录，已被 `.gitignore` 忽略。
-- `scripts/` 目录已被 `.gitignore` 忽略规则覆盖，但仓库中已有跟踪的 `scripts/mock_tcp_waveform_sender.py` 和 `scripts/recover_epsilon_main.ps1`。
+- `scripts/` 目录保留当前交付和诊断入口脚本：`build-windows-msvc2022.ps1`、`build-linux-arm64.sh`、`mock_tcp_waveform_sender.py` 和 `recover_epsilon_main.ps1`。
+- `scripts/*.local.ps1` 为本机路径包装脚本，已被 `.gitignore` 忽略，不作为仓库交付内容同步。
 
 ## 许可证
 
