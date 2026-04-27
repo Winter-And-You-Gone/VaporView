@@ -2607,16 +2607,29 @@ bool SessionViewerWindow::loadUnifiedRawTcpWaveFrames()
 
 void SessionViewerWindow::applyPeakFilter()
 {
+    if (session_loading_)
+    {
+        updateSessionLoadingText(is_english_ ? "Applying peak filter..." : "正在应用峰值过滤...");
+    }
     waveform_peak_values_.clear();
     waveform_peak_values_.reserve(waveform_peak_raw_values_.size());
 
     QVector<double> finiteValues;
     finiteValues.reserve(waveform_peak_raw_values_.size());
-    for (float value : waveform_peak_raw_values_)
+    for (int index = 0; index < waveform_peak_raw_values_.size(); ++index)
     {
+        const float value = waveform_peak_raw_values_.at(index);
         if (std::isfinite(value))
         {
             finiteValues.push_back(static_cast<double>(value));
+        }
+        if (session_loading_ && (index + 1) % 100000 == 0)
+        {
+            updateSessionLoadingText(QString(is_english_
+                ? "Preparing peak filter... %1/%2 values"
+                : "正在准备峰值过滤... %1/%2 个值")
+                .arg(index + 1)
+                .arg(waveform_peak_raw_values_.size()));
         }
     }
 
@@ -2637,8 +2650,9 @@ void SessionViewerWindow::applyPeakFilter()
 
     const double rangeMin = std::min(peak_filter_settings_.min_value, peak_filter_settings_.max_value);
     const double rangeMax = std::max(peak_filter_settings_.min_value, peak_filter_settings_.max_value);
-    for (float rawValue : waveform_peak_raw_values_)
+    for (int index = 0; index < waveform_peak_raw_values_.size(); ++index)
     {
+        const float rawValue = waveform_peak_raw_values_.at(index);
         bool keepValue = std::isfinite(rawValue);
         if (keepValue)
         {
@@ -2664,8 +2678,20 @@ void SessionViewerWindow::applyPeakFilter()
         waveform_peak_values_.push_back(keepValue
             ? rawValue
             : std::numeric_limits<float>::quiet_NaN());
+        if (session_loading_ && ((index + 1) == waveform_peak_raw_values_.size() || (index + 1) % 100000 == 0))
+        {
+            updateSessionLoadingText(QString(is_english_
+                ? "Applying peak filter... %1/%2 values"
+                : "正在应用峰值过滤... %1/%2 个值")
+                .arg(index + 1)
+                .arg(waveform_peak_raw_values_.size()));
+        }
     }
 
+    if (session_loading_)
+    {
+        updateSessionLoadingText(is_english_ ? "Refreshing filtered plots..." : "正在刷新过滤后的图表...");
+    }
     if (waveform_peak_plot_)
     {
         static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPeakValues(waveform_peak_values_);
@@ -2833,6 +2859,9 @@ void SessionViewerWindow::onToggleWaveformFrameFilterClicked()
 
 void SessionViewerWindow::onTogglePeakPlotModeClicked()
 {
+    beginSessionLoading(waveform_peak_scatter_mode_
+        ? (is_english_ ? "Switching to polyline plots..." : "正在切换到折线图...")
+        : (is_english_ ? "Switching to scatter plots..." : "正在切换到散点图..."));
     waveform_peak_scatter_mode_ = !waveform_peak_scatter_mode_;
     updatePeakPlotModeButtonText();
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPlotMode(
@@ -2843,6 +2872,12 @@ void SessionViewerWindow::onTogglePeakPlotModeClicked()
         waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
     static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setPlotMode(
         waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
+    updateSessionLoadingText(is_english_ ? "Refreshing plots..." : "正在刷新图表...");
+    waveform_peak_plot_->repaint();
+    temperature_plot_->repaint();
+    humidity_plot_->repaint();
+    pressure_plot_->repaint();
+    finishSessionLoading();
 }
 
 void SessionViewerWindow::onConfigurePeakFilterClicked()
@@ -2958,13 +2993,22 @@ void SessionViewerWindow::onConfigurePeakFilterClicked()
     settings.setValue("peak_search/end_index", peak_search_end_index_);
 
     updatePeakFilterButtonText();
+    beginSessionLoading(peakSearchChanged
+        ? (is_english_ ? "Recalculating waveform peak series..." : "正在重新计算波形峰值序列...")
+        : (is_english_ ? "Applying peak filter..." : "正在应用峰值过滤..."));
     if (peakSearchChanged && (!waveform_segments_.isEmpty() || !raw_tcp_wave_frames_.isEmpty()))
     {
-        loadWaveformPeakSeries();
+        const bool loaded = loadWaveformPeakSeries();
+        finishSessionLoading();
+        if (!loaded)
+        {
+            return;
+        }
     }
     else
     {
         applyPeakFilter();
+        finishSessionLoading();
     }
 }
 
