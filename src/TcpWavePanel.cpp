@@ -22,6 +22,7 @@
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QTcpSocket>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <QWheelEvent>
 #include <QDateTime>
@@ -41,6 +42,8 @@ constexpr int kTcpControlHeight = 30;
 constexpr int kTcpButtonHeight = 38;
 constexpr int kDefaultPeakSearchStartIndex = 0;
 constexpr int kDefaultPeakSearchEndIndex = 0;
+constexpr int kPeakTrendFrameWindow = 1000;
+constexpr int kLiveDisplayRefreshMs = 20;
 constexpr qint64 kFrameRateWindowMs = 5000;
 constexpr double kMaxReasonableWaveMagnitude = 1.0e6;
 
@@ -358,7 +361,7 @@ protected:
         QWidget::paintEvent(event);
 
         QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setRenderHint(QPainter::Antialiasing, false);
         painter.fillRect(rect(), QColor("#ffffff"));
 
         if (peak_values_.isEmpty())
@@ -425,31 +428,21 @@ protected:
         painter.setPen(QPen(QColor("#cfd7e3"), 1));
         painter.drawRect(plotRect);
 
-        QVector<QPointF> points;
-        points.reserve(count);
-        for (int i = 0; i < count; ++i)
-        {
-            const double ratio = count == 1 ? 0.5 : static_cast<double>(i) / static_cast<double>(count - 1);
-            const float value = peak_values_.at(startIndex + i);
-            if (!std::isfinite(value))
-            {
-                points.push_back(QPointF(std::numeric_limits<qreal>::quiet_NaN(),
-                                         std::numeric_limits<qreal>::quiet_NaN()));
-                continue;
-            }
-            const double normalized = (value - minValue) / std::max(1e-6f, maxValue - minValue);
-            points.push_back(QPointF(plotRect.left() + ratio * plotRect.width(),
-                                     plotRect.bottom() - normalized * plotRect.height()));
-        }
-
         const QColor seriesColor("#ef8f35");
-        if (plot_mode_ == PlotMode::Polyline && points.size() >= 2)
+        if (plot_mode_ == PlotMode::Polyline && count >= 2)
         {
             painter.setPen(QPen(seriesColor, 1.5));
             QPolygonF segment;
-            for (const QPointF& point : points)
+            const int sampledCount = std::max(2, std::min(count, static_cast<int>(std::ceil(plotRect.width())) + 1));
+            segment.reserve(sampledCount);
+            for (int sample = 0; sample < sampledCount; ++sample)
             {
-                if (!std::isfinite(point.x()) || !std::isfinite(point.y()))
+                const int i = std::clamp(
+                    static_cast<int>(std::llround(static_cast<double>(sample) * (count - 1) / (sampledCount - 1))),
+                    0,
+                    count - 1);
+                const float value = peak_values_.at(startIndex + i);
+                if (!std::isfinite(value))
                 {
                     if (segment.size() >= 2)
                     {
@@ -458,7 +451,11 @@ protected:
                     segment.clear();
                     continue;
                 }
-                segment.push_back(point);
+
+                const double ratio = static_cast<double>(i) / static_cast<double>(count - 1);
+                const double normalized = (value - minValue) / std::max(1e-6f, maxValue - minValue);
+                segment.push_back(QPointF(plotRect.left() + ratio * plotRect.width(),
+                                          plotRect.bottom() - normalized * plotRect.height()));
             }
             if (segment.size() >= 2)
             {
@@ -467,16 +464,23 @@ protected:
         }
         else
         {
+            painter.setRenderHint(QPainter::Antialiasing, true);
             painter.setPen(Qt::NoPen);
             painter.setBrush(seriesColor);
-            for (const QPointF& point : points)
+            for (int i = 0; i < count; ++i)
             {
-                if (!std::isfinite(point.x()) || !std::isfinite(point.y()))
+                const float value = peak_values_.at(startIndex + i);
+                if (!std::isfinite(value))
                 {
                     continue;
                 }
+                const double ratio = count == 1 ? 0.5 : static_cast<double>(i) / static_cast<double>(count - 1);
+                const double normalized = (value - minValue) / std::max(1e-6f, maxValue - minValue);
+                const QPointF point(plotRect.left() + ratio * plotRect.width(),
+                                    plotRect.bottom() - normalized * plotRect.height());
                 painter.drawEllipse(point, 2.5, 2.5);
             }
+            painter.setRenderHint(QPainter::Antialiasing, false);
         }
 
         painter.setPen(QColor("#5e6b78"));
@@ -587,8 +591,12 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , control_layout_(nullptr)
     , top_controls_layout_(nullptr)
     , socket_(nullptr)
+    , live_display_timer_(nullptr)
     , pending_wave1_payload_()
     , peak_raw_history_()
+    , pending_wave1_info_text_()
+    , pending_wave4_info_text_()
+    , pending_live_status_text_()
     , peak_filter_settings_()
     , peak_search_start_index_(kDefaultPeakSearchStartIndex)
     , peak_search_end_index_(kDefaultPeakSearchEndIndex)
@@ -600,6 +608,7 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , expected_payload_size_(0)
     , frame_count_(0)
     , frame_arrival_times_ms_()
+    , live_display_dirty_(false)
     , is_english_(false)
 {
     setupUi();
@@ -796,6 +805,12 @@ void TcpWavePanel::setupUi()
     connect(port_spin_, &QSpinBox::valueChanged, this, [this](int) {
         saveRememberedInputState();
     });
+
+    live_display_timer_ = new QTimer(this);
+    live_display_timer_->setTimerType(Qt::PreciseTimer);
+    live_display_timer_->setInterval(kLiveDisplayRefreshMs);
+    connect(live_display_timer_, &QTimer::timeout, this, &TcpWavePanel::updateLiveDisplay);
+    live_display_timer_->start();
 }
 
 void TcpWavePanel::loadRememberedInputState()
@@ -889,7 +904,9 @@ void TcpWavePanel::setEnglish(bool english)
     }
     if (peak_title_label_)
     {
-        peak_title_label_->setText(english ? "Normalized Second Harmonic Peak Trend" : "归一化二次谐波峰值趋势");
+        peak_title_label_->setText(english
+            ? QString("Normalized Second Harmonic Peak Trend (latest %1 frames)").arg(kPeakTrendFrameWindow)
+            : QString("归一化二次谐波峰值趋势（最近%1帧）").arg(kPeakTrendFrameWindow));
     }
     if (wave1_plot_)
     {
@@ -1037,10 +1054,7 @@ void TcpWavePanel::rebuildPeakHistory()
             : std::numeric_limits<float>::quiet_NaN());
     }
 
-    if (peak_plot_)
-    {
-        peak_plot_->setPeakValues(peak_history_);
-    }
+    live_display_dirty_ = true;
 }
 
 void TcpWavePanel::resetFrameRateDisplay()
@@ -1078,6 +1092,40 @@ void TcpWavePanel::updateFrameRateDisplay(qint64 arrivalTimeMs)
 
     frame_rate_label_->setText(QString(is_english_ ? "Realtime: %1 Hz" : "实时频率: %1 Hz")
         .arg(QString::number(rateHz, 'f', 2)));
+}
+
+void TcpWavePanel::updateLiveDisplay()
+{
+    if (!live_display_dirty_)
+    {
+        return;
+    }
+
+    live_display_dirty_ = false;
+    if (wave1_plot_)
+    {
+        wave1_plot_->setSamples(wave1_history_);
+    }
+    if (wave4_plot_)
+    {
+        wave4_plot_->setSamples(wave4_history_);
+    }
+    if (peak_plot_)
+    {
+        peak_plot_->setPeakValues(peak_history_);
+    }
+    if (wave1_info_label_ && !pending_wave1_info_text_.isEmpty())
+    {
+        wave1_info_label_->setText(pending_wave1_info_text_);
+    }
+    if (wave4_info_label_ && !pending_wave4_info_text_.isEmpty())
+    {
+        wave4_info_label_->setText(pending_wave4_info_text_);
+    }
+    if (!pending_live_status_text_.isEmpty())
+    {
+        setStatusText(pending_live_status_text_);
+    }
 }
 
 void TcpWavePanel::attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox)
@@ -1486,12 +1534,14 @@ void TcpWavePanel::processBuffer()
                 break;
             }
 
-            wave1_history_ = pending_wave1_;
-            wave4_history_ = wave4;
-            wave1_plot_->setSamples(wave1_history_);
-            wave4_plot_->setSamples(wave4_history_);
+            wave1_history_ = std::move(pending_wave1_);
+            wave4_history_ = std::move(wave4);
             const float rawPeakValue = currentWaveformPeakValue(wave4_history_);
             peak_raw_history_.push_back(rawPeakValue);
+            if (peak_raw_history_.size() > kPeakTrendFrameWindow)
+            {
+                peak_raw_history_.remove(0, peak_raw_history_.size() - kPeakTrendFrameWindow);
+            }
             rebuildPeakHistory();
             const float displayedPeakValue = peak_history_.isEmpty()
                 ? rawPeakValue
@@ -1515,16 +1565,16 @@ void TcpWavePanel::processBuffer()
                     .arg(formatWaveValue(*maxIt, 6));
             };
 
-            wave1_info_label_->setText(QString(is_english_
+            pending_wave1_info_text_ = QString(is_english_
                 ? "raw signal: %1 samples, %2"
                 : "原始信号: %1 个采样点，%2")
-                .arg(pending_wave1_.size())
-                .arg(describeRange(pending_wave1_)));
-            wave4_info_label_->setText(QString(is_english_
+                .arg(wave1_history_.size())
+                .arg(describeRange(wave1_history_));
+            pending_wave4_info_text_ = QString(is_english_
                 ? "normalized second harmonic: %1 samples, %2, %3"
                 : "归一化二次谐波: %1 个采样点，%2，%3")
-                .arg(wave4.size())
-                .arg(describeRange(wave4))
+                .arg(wave4_history_.size())
+                .arg(describeRange(wave4_history_))
                 .arg([this, rawPeakValue, displayedPeakValue]() {
                     const QString rawPeakText = std::isfinite(rawPeakValue)
                         ? formatWaveValue(rawPeakValue, 6)
@@ -1541,15 +1591,16 @@ void TcpWavePanel::processBuffer()
                     }
                     return QString(is_english_ ? "peak(raw/show)=%1/%2" : "峰值(原始/显示)=%1/%2")
                         .arg(rawPeakText, displayedPeakText);
-                }()));
+                }());
 
-            setStatusText(QString(is_english_
+            pending_live_status_text_ = QString(is_english_
                 ? "Receiving frame %3 from %1:%2, float format: %4"
                 : "正在接收来自 %1:%2 的数据帧，第 %3 帧，浮点格式: %4")
                 .arg(host_edit_->text())
                 .arg(port_spin_->value())
                 .arg(frame_count_)
-                .arg(VaporView::tcpFloatEncodingLabel(is_english_, float_encoding_)));
+                .arg(VaporView::tcpFloatEncodingLabel(is_english_, float_encoding_));
+            live_display_dirty_ = true;
 
             pending_wave1_payload_.clear();
             pending_wave1_.clear();

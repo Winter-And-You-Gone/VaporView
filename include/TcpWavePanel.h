@@ -13,6 +13,7 @@ class QPushButton;
 class QGroupBox;
 class QSpinBox;
 class QTcpSocket;
+class QTimer;
 class QGridLayout;
 class QHBoxLayout;
 class WavePlotWidget;
@@ -100,6 +101,7 @@ private:
     QString peakFilterModeText(PeakFilterMode mode) const;
     void resetFrameRateDisplay();
     void updateFrameRateDisplay(qint64 arrivalTimeMs);
+    void updateLiveDisplay();
     void setStatusText(const QString& text);
     void resetParserState();
     void processBuffer();
@@ -139,6 +141,7 @@ private:
     QGridLayout *control_layout_;
     QHBoxLayout *top_controls_layout_;
     QTcpSocket *socket_;
+    QTimer *live_display_timer_;
 
     QByteArray buffer_;
     QByteArray pending_wave1_payload_;
@@ -147,6 +150,9 @@ private:
     QVector<float> peak_raw_history_;
     QVector<float> peak_history_;
     QVector<float> pending_wave1_;
+    QString pending_wave1_info_text_;
+    QString pending_wave4_info_text_;
+    QString pending_live_status_text_;
     PeakFilterSettings peak_filter_settings_;
     int peak_search_start_index_;
     int peak_search_end_index_;
@@ -158,6 +164,7 @@ private:
     int expected_payload_size_;
     qint64 frame_count_;
     QVector<qint64> frame_arrival_times_ms_;
+    bool live_display_dirty_;
     bool is_english_;
 };
 
