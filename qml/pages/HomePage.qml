@@ -389,10 +389,10 @@ Item {
                         axisColor: ApplicationWindow.window.chartAxis
                         emptyColor: ApplicationWindow.window.muted
                         uiScale: ApplicationWindow.window.scaleFactor
-                        maxVisualSamples: 500
-                        sourcePointCount: Math.max(1, Math.min(500, waveformBackend.peakTotalCount))
+                        maxVisualSamples: 200
+                        sourcePointCount: Math.max(1, Math.min(200, waveformBackend.peakTotalCount))
                         xStartIndex: 0
-                        xEndIndex: Math.max(0, Math.min(499, waveformBackend.peakTotalCount - 1))
+                        xEndIndex: Math.max(0, Math.min(199, waveformBackend.peakTotalCount - 1))
                     }
                 }
 

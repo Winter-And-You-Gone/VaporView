@@ -244,6 +244,7 @@ public:
     Q_INVOKABLE void disconnectDevices();
     Q_INVOKABLE void cancelConnect();
     Q_INVOKABLE void clearLog();
+    Q_INVOKABLE void appendLogLine(const QString& message, const QString& level = QStringLiteral("info"));
     Q_INVOKABLE void updateDevicePort(const QString& id, const QString& port);
     Q_INVOKABLE void updateDeviceBaud(const QString& id, int baud);
     Q_INVOKABLE void updateDeviceSampleRate(const QString& id, int hz);

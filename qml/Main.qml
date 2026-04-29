@@ -68,24 +68,6 @@ ApplicationWindow {
         applyIconLibrary(appBackend.loadIconLibrary())
     }
 
-    Connections {
-        target: appBackend
-        function onNotificationRequested(level, message) {
-            toastLevel = level
-            toastText = message
-            toastTimer.restart()
-        }
-    }
-
-    property string toastText: ""
-    property string toastLevel: "info"
-
-    Timer {
-        id: toastTimer
-        interval: 3200
-        onTriggered: toastText = ""
-    }
-
     ColumnLayout {
         anchors.fill: parent
         spacing: 0
@@ -122,30 +104,6 @@ ApplicationWindow {
                     return homePage
                 }
             }
-        }
-    }
-
-    Rectangle {
-        visible: toastText.length > 0
-        anchors.right: parent.right
-        anchors.top: parent.top
-        anchors.margins: 14
-        width: Math.min(520, parent.width - 28)
-        height: Math.max(42, toastLabel.implicitHeight + 18)
-        radius: 6
-        color: toastLevel === "error" ? "#7f1d1d" : toastLevel === "warning" ? "#7c4a03" : "#164e63"
-        border.color: "#ffffff22"
-        z: 20
-
-        Text {
-            id: toastLabel
-            anchors.fill: parent
-            anchors.margins: 10
-            text: toastText
-            color: "white"
-            font.pixelSize: 12 * root.scaleFactor
-            wrapMode: Text.Wrap
-            verticalAlignment: Text.AlignVCenter
         }
     }
 

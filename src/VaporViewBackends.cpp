@@ -845,6 +845,18 @@ void DeviceBackend::clearLog()
     emit logLinesChanged();
 }
 
+void DeviceBackend::appendLogLine(const QString& message, const QString& level)
+{
+    Q_UNUSED(level);
+    const QString line = QStringLiteral("[%1] %2").arg(QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss")), message);
+    log_lines_.append(line);
+    while (log_lines_.size() > 600)
+    {
+        log_lines_.removeFirst();
+    }
+    emit logLinesChanged();
+}
+
 void DeviceBackend::updateDevicePort(const QString& id, const QString& port)
 {
     devices_.setDeviceValue(id, DeviceModel::PortRole, port);
@@ -879,13 +891,7 @@ void DeviceBackend::setEnglish(bool english)
 
 void DeviceBackend::log(const QString& message, const QString& level)
 {
-    const QString line = QStringLiteral("[%1] %2").arg(QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss")), message);
-    log_lines_.append(line);
-    while (log_lines_.size() > 600)
-    {
-        log_lines_.removeFirst();
-    }
-    emit logLinesChanged();
+    appendLogLine(message, level);
     emit notificationRequested(level, message);
 }
 

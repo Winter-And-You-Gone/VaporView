@@ -82,16 +82,15 @@ int main(int argc, char *argv[])
         sessionBackend.refreshSessions();
     });
 
-    auto forwardNotification = [&appBackend](const QString& level, const QString& message) {
-        appBackend.notify(level, message);
+    auto appendNotificationToLog = [&deviceBackend](const QString& level, const QString& message) {
+        deviceBackend.appendLogLine(message, level);
     };
-    QObject::connect(&deviceBackend, &DeviceBackend::notificationRequested, &appBackend, forwardNotification);
-    QObject::connect(&waveformBackend, &WaveformBackend::notificationRequested, &appBackend, forwardNotification);
-    QObject::connect(&recordingBackend, &RecordingBackend::notificationRequested, &appBackend, forwardNotification);
-    QObject::connect(&rtkBackend, &RtkBackend::notificationRequested, &appBackend, forwardNotification);
-    QObject::connect(&sessionBackend, &SessionBackend::notificationRequested, &appBackend, forwardNotification);
-    QObject::connect(&rawParserBackend, &RawParserBackend::notificationRequested, &appBackend, forwardNotification);
-    QObject::connect(&settingsBackend, &SettingsBackend::notificationRequested, &appBackend, forwardNotification);
+    QObject::connect(&waveformBackend, &WaveformBackend::notificationRequested, &deviceBackend, appendNotificationToLog);
+    QObject::connect(&recordingBackend, &RecordingBackend::notificationRequested, &deviceBackend, appendNotificationToLog);
+    QObject::connect(&rtkBackend, &RtkBackend::notificationRequested, &deviceBackend, appendNotificationToLog);
+    QObject::connect(&sessionBackend, &SessionBackend::notificationRequested, &deviceBackend, appendNotificationToLog);
+    QObject::connect(&rawParserBackend, &RawParserBackend::notificationRequested, &deviceBackend, appendNotificationToLog);
+    QObject::connect(&settingsBackend, &SettingsBackend::notificationRequested, &deviceBackend, appendNotificationToLog);
 
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty(QStringLiteral("appBackend"), &appBackend);
