@@ -391,6 +391,7 @@ QString AppBackend::t(const QString& key) const
         {"home.coordinateTitle", "坐标 / 姿态摘要"}, {"home.latitude", "纬度"}, {"home.longitude", "经度"},
         {"home.altitude", "高度"}, {"home.velocity", "速度"}, {"home.heading", "航向角"}, {"home.pitch", "俯仰角"},
         {"home.rtkStatus", "RTK 状态"}, {"home.satellites", "卫星数"}, {"home.gnssTime", "GNSS 时间"},
+        {"home.localTime", "本地时间"},
         {"home.envTitle", "环境摘要"}, {"home.temperature", "温度"}, {"home.humidity", "湿度"},
         {"home.pressure", "气压"}, {"home.laserRange", "激光测距"}, {"home.recTitle", "记录 / 系统摘要"},
         {"home.recStatus", "记录状态"}, {"home.recDuration", "记录时长"}, {"home.recSize", "文件大小"},
@@ -440,6 +441,7 @@ QString AppBackend::t(const QString& key) const
         {"home.coordinateTitle", "Position & Attitude"}, {"home.latitude", "Latitude"}, {"home.longitude", "Longitude"},
         {"home.altitude", "Altitude"}, {"home.velocity", "Velocity"}, {"home.heading", "Heading"}, {"home.pitch", "Pitch"},
         {"home.rtkStatus", "RTK Status"}, {"home.satellites", "Satellites"}, {"home.gnssTime", "GNSS Time"},
+        {"home.localTime", "Local Time"},
         {"home.envTitle", "Environment"}, {"home.temperature", "Temperature"}, {"home.humidity", "Humidity"},
         {"home.pressure", "Pressure"}, {"home.laserRange", "Laser Range"}, {"home.recTitle", "Recording & System"},
         {"home.recStatus", "Rec Status"}, {"home.recDuration", "Duration"}, {"home.recSize", "File Size"},
@@ -649,6 +651,13 @@ QVariantMap DeviceBackend::coordinateData() const
 {
     QMutexLocker lock(&data_mutex_);
     const auto e = current_epsilon_;
+    const bool utcValid = e.utc_unix_s > 0;
+    const qint64 utcMs = utcValid
+        ? static_cast<qint64>(e.utc_unix_s) * 1000 + static_cast<qint64>(e.utc_microseconds / 1000)
+        : 0;
+    const QDateTime utcDateTime = utcValid
+        ? QDateTime::fromMSecsSinceEpoch(utcMs, Qt::UTC)
+        : QDateTime();
     return {
         {QStringLiteral("latitude"), e.latitude_deg},
         {QStringLiteral("longitude"), e.longitude_deg},
@@ -659,9 +668,12 @@ QVariantMap DeviceBackend::coordinateData() const
         {QStringLiteral("roll"), e.roll_deg},
         {QStringLiteral("rtkStatus"), QString::fromStdString(e.gnss_fix_text)},
         {QStringLiteral("satellites"), e.gnss_satellites},
-        {QStringLiteral("ppsLocked"), e.utc_unix_s > 0},
-        {QStringLiteral("timestamp"), e.utc_unix_s > 0
-            ? QDateTime::fromSecsSinceEpoch(static_cast<qint64>(e.utc_unix_s), Qt::UTC).toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"))
+        {QStringLiteral("ppsLocked"), utcValid},
+        {QStringLiteral("timestamp"), utcValid
+            ? utcDateTime.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz"))
+            : QStringLiteral("---")},
+        {QStringLiteral("localTime"), utcValid
+            ? utcDateTime.toLocalTime().toString(QStringLiteral("HH:mm:ss.zzz"))
             : QStringLiteral("---")},
         {QStringLiteral("valid"), e.valid},
     };
@@ -2054,6 +2066,13 @@ QString RecordingBackend::durationText() const
         return QStringLiteral("00:00:00");
     }
     const qint64 elapsedSec = static_cast<qint64>((currentTimestampUs() - session_start_time_us_) / 1000000ULL);
+    return formatDuration(elapsedSec);
+}
+
+QString RecordingBackend::systemUptimeText() const
+{
+    const auto elapsed = std::chrono::steady_clock::now() - steady_clock_anchor_;
+    const qint64 elapsedSec = std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
     return formatDuration(elapsedSec);
 }
 

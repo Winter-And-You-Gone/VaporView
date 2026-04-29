@@ -7,21 +7,21 @@ Rectangle {
     property string value: "---"
     property string unit: ""
     color: ApplicationWindow.window.card
-    border.color: ApplicationWindow.window.border
+    border.width: 0
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.leftMargin: 12
-        anchors.rightMargin: 12
-        anchors.topMargin: 8
-        anchors.bottomMargin: 8
-        spacing: 2
+        anchors.leftMargin: 16
+        anchors.rightMargin: 16
+        anchors.topMargin: 10
+        anchors.bottomMargin: 10
+        spacing: 6
 
         Text {
             Layout.fillWidth: true
-            text: tile.label.toUpperCase()
+            text: tile.label
             color: ApplicationWindow.window.muted
-            font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+            font.pixelSize: 12 * ApplicationWindow.window.scaleFactor
             font.weight: Font.Medium
             elide: Text.ElideRight
         }
@@ -30,19 +30,20 @@ Rectangle {
             Layout.fillWidth: true
             spacing: 4
             Text {
-                Layout.fillWidth: true
                 text: tile.value
                 color: ApplicationWindow.window.text
-                font.pixelSize: 14 * ApplicationWindow.window.scaleFactor
-                font.weight: Font.DemiBold
+                font.pixelSize: 18 * ApplicationWindow.window.scaleFactor
+                font.weight: Font.Bold
                 elide: Text.ElideRight
             }
             Text {
                 text: tile.unit
                 color: ApplicationWindow.window.muted
-                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                font.pixelSize: 12 * ApplicationWindow.window.scaleFactor
                 visible: tile.unit.length > 0
+                verticalAlignment: Text.AlignBottom
             }
+            Item { Layout.fillWidth: true }
         }
     }
 }

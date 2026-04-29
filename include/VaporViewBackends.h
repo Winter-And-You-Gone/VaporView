@@ -379,6 +379,7 @@ class RecordingBackend : public QObject
     Q_PROPERTY(QString diskRemainingText READ diskRemainingText NOTIFY recordingStatsChanged)
     Q_PROPERTY(QString diskTotalText READ diskTotalText NOTIFY recordingStatsChanged)
     Q_PROPERTY(QString durationText READ durationText NOTIFY recordingStatsChanged)
+    Q_PROPERTY(QString systemUptimeText READ systemUptimeText NOTIFY recordingStatsChanged)
     Q_PROPERTY(int exportRateHz READ exportRateHz WRITE setExportRateHz NOTIFY exportRateHzChanged)
     Q_PROPERTY(int waveformExportRateHz READ waveformExportRateHz WRITE setWaveformExportRateHz NOTIFY exportRateHzChanged)
 
@@ -398,6 +399,7 @@ public:
     QString diskRemainingText() const;
     QString diskTotalText() const;
     QString durationText() const;
+    QString systemUptimeText() const;
     int exportRateHz() const;
     int waveformExportRateHz() const;
 
