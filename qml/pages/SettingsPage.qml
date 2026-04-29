@@ -15,7 +15,7 @@ Item {
         var library = "lucide"
         if (index === 1) library = "tabler"
         else if (index === 2) library = "phosphor"
-        ApplicationWindow.window.iconLibrary = library
+        ApplicationWindow.window.applyIconLibrary(library)
         appBackend.saveIconLibrary(library)
     }
 
@@ -61,7 +61,7 @@ Item {
                         Layout.preferredWidth: 160
                         model: ["Lucide", "Tabler Icons", "Phosphor Icons"]
                         currentIndex: iconLibraryIndex()
-                        onActivated: setIconLibrary(currentIndex)
+                        onActivated: index => setIconLibrary(index)
                     }
                 }
             }
@@ -151,11 +151,11 @@ Item {
             ToolbarButton {
                 iconName: "rotate-ccw"
                 text: ApplicationWindow.window.t("settings.reset")
-                onClicked: {
-                    settingsBackend.reset()
-                    ApplicationWindow.window.iconLibrary = "lucide"
+                    onClicked: {
+                        settingsBackend.reset()
+                        ApplicationWindow.window.applyIconLibrary("lucide")
+                    }
                 }
-            }
             Item { Layout.fillWidth: true }
         }
     }

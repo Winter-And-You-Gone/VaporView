@@ -1,9 +1,11 @@
 import QtQuick
+import QtQuick.Controls.Basic
 
 Canvas {
     id: icon
     property string name: ""
     property string library: ApplicationWindow.window ? ApplicationWindow.window.iconLibrary : "lucide"
+    property int libraryRevision: ApplicationWindow.window ? ApplicationWindow.window.iconLibraryRevision : 0
     property color iconColor: ApplicationWindow.window ? ApplicationWindow.window.text : "#020817"
     property real stroke: 1.8
 
@@ -12,6 +14,7 @@ Canvas {
 
     onNameChanged: requestPaint()
     onLibraryChanged: requestPaint()
+    onLibraryRevisionChanged: requestPaint()
     onIconColorChanged: requestPaint()
     onStrokeChanged: requestPaint()
     onPaint: {
@@ -81,6 +84,69 @@ Canvas {
             case "scan":
                 rect(5, 5, 14, 14); line(8, 12, 16, 12)
                 return
+            case "refresh-cw":
+                ctx.beginPath(); ctx.arc(x(12), y(12), 7 * s, -0.65, Math.PI * 1.25); ctx.stroke()
+                poly([[18,4],[20,9],[15,8]], false)
+                return
+            case "play":
+                path([[9,6],[18,12],[9,18]], true)
+                return
+            case "pause":
+                rect(8, 5, 3, 14); rect(13, 5, 3, 14)
+                return
+            case "square":
+                rect(7, 7, 10, 10)
+                return
+            case "zap":
+                path([[13,2],[5,14],[11,14],[9,22],[19,9],[13,9]], true)
+                return
+            case "cpu":
+                rect(6, 6, 12, 12); rect(9, 9, 6, 6)
+                line(8, 2, 8, 5); line(12, 2, 12, 5); line(16, 2, 16, 5)
+                line(8, 19, 8, 22); line(12, 19, 12, 22); line(16, 19, 16, 22)
+                line(2, 8, 5, 8); line(2, 12, 5, 12); line(2, 16, 5, 16)
+                line(19, 8, 22, 8); line(19, 12, 22, 12); line(19, 16, 22, 16)
+                return
+            case "layout-dashboard":
+                rect(4, 4, 7, 7); rect(13, 4, 7, 4); rect(4, 13, 7, 7); rect(13, 10, 7, 10)
+                return
+            case "table-properties":
+                rect(4, 5, 16, 14); line(4, 11, 20, 11); line(10, 5, 10, 19); line(15, 5, 15, 19)
+                return
+            case "activity":
+                poly([[3,13],[7,13],[9,8],[12,18],[15,6],[17,13],[21,13]], false)
+                return
+            case "folder-open":
+                poly([[3,7],[9,7],[11,9],[21,9],[19,19],[3,19]], true)
+                line(3, 7, 3, 19)
+                return
+            case "satellite":
+                rect(8, 8, 8, 8); line(12, 16, 12, 22); line(7, 22, 17, 22); line(4, 4, 8, 8); line(16, 16, 20, 20)
+                return
+            case "file-code":
+                poly([[14,3],[6,3],[6,21],[18,21],[18,7],[14,3]], false); line(14, 3, 14, 7); line(14, 7, 18, 7); line(11, 12, 9, 14); line(9, 14, 11, 16); line(14, 12, 16, 14); line(16, 14, 14, 16)
+                return
+            case "upload":
+                line(12, 16, 12, 4); poly([[7,9],[12,4],[17,9]], false); rect(5, 17, 14, 3)
+                return
+            case "download":
+                line(12, 4, 12, 16); poly([[7,11],[12,16],[17,11]], false); rect(5, 17, 14, 3)
+                return
+            case "trash-2":
+                line(4, 7, 20, 7); rect(7, 7, 10, 13); line(9, 4, 15, 4); line(10, 11, 10, 17); line(14, 11, 14, 17)
+                return
+            case "save":
+                rect(5, 4, 14, 16); line(8, 4, 8, 10); line(16, 4, 16, 10); line(8, 15, 16, 15); line(8, 18, 16, 18)
+                return
+            case "rotate-ccw":
+                ctx.beginPath(); ctx.arc(x(12), y(12), 7 * s, Math.PI * 0.1, Math.PI * 1.65); ctx.stroke()
+                poly([[5,4],[5,10],[11,10]], false)
+                return
+            case "wifi":
+                ctx.beginPath(); ctx.arc(x(12), y(17), 2 * s, Math.PI, 0); ctx.stroke()
+                ctx.beginPath(); ctx.arc(x(12), y(17), 6 * s, Math.PI, 0); ctx.stroke()
+                ctx.beginPath(); ctx.arc(x(12), y(17), 10 * s, Math.PI, 0); ctx.stroke()
+                return
             case "settings":
                 circle(12, 12, 3); circle(12, 12, 7.5); line(12, 3, 12, 5); line(12, 19, 12, 21); line(3, 12, 5, 12); line(19, 12, 21, 12)
                 return
@@ -110,6 +176,56 @@ Canvas {
                 return
             case "zap":
                 path([[13,2],[5,13],[11,13],[9,22],[19,10],[13,10]], true)
+                return
+            case "scan":
+                circle(12, 12, 8); line(7, 12, 17, 12); line(12, 7, 12, 17)
+                return
+            case "refresh-cw":
+                ctx.beginPath(); ctx.arc(x(12), y(12), 7 * s, -0.9, Math.PI * 1.1); ctx.stroke()
+                path([[17,4],[20,5],[19,8]], false)
+                return
+            case "cpu":
+                rect(7, 7, 10, 10); circle(12, 12, 3); line(12, 2, 12, 5); line(12, 19, 12, 22); line(2, 12, 5, 12); line(19, 12, 22, 12)
+                return
+            case "layout-dashboard":
+                circle(8, 8, 3); circle(16, 8, 3); circle(8, 16, 3); circle(16, 16, 3)
+                return
+            case "table-properties":
+                rect(4, 5, 16, 14); line(4, 10, 20, 10); line(8, 14, 16, 14); line(8, 17, 14, 17)
+                return
+            case "activity":
+                ctx.beginPath(); ctx.moveTo(x(3), y(13)); ctx.bezierCurveTo(x(7), y(13), x(7), y(5), x(11), y(5)); ctx.bezierCurveTo(x(15), y(5), x(13), y(19), x(17), y(19)); ctx.bezierCurveTo(x(19), y(19), x(20), y(13), x(21), y(13)); ctx.stroke()
+                return
+            case "folder-open":
+                ctx.beginPath(); ctx.moveTo(x(4), y(8)); ctx.quadraticCurveTo(x(4), y(6), x(6), y(6)); ctx.lineTo(x(10), y(6)); ctx.lineTo(x(12), y(9)); ctx.lineTo(x(20), y(9)); ctx.quadraticCurveTo(x(21), y(9), x(20), y(11)); ctx.lineTo(x(18), y(19)); ctx.lineTo(x(4), y(19)); ctx.closePath(); ctx.stroke()
+                return
+            case "satellite":
+                circle(12, 12, 4); line(12, 16, 12, 22); line(8, 22, 16, 22); line(5, 5, 9, 9); line(15, 15, 19, 19)
+                return
+            case "file-code":
+                poly([[14,3],[7,3],[7,21],[17,21],[17,7],[14,3]], false); line(14, 3, 14, 7); line(14, 7, 17, 7); line(9, 15, 12, 11); line(12, 11, 15, 15)
+                return
+            case "settings":
+                circle(12, 12, 4); ctx.beginPath(); ctx.arc(x(12), y(12), 8 * s, 0.2, Math.PI * 1.8); ctx.stroke(); line(12, 2, 12, 5); line(12, 19, 12, 22); line(2, 12, 5, 12); line(19, 12, 22, 12)
+                return
+            case "upload":
+                ctx.beginPath(); ctx.moveTo(x(5), y(18)); ctx.quadraticCurveTo(x(5), y(20), x(7), y(20)); ctx.lineTo(x(17), y(20)); ctx.quadraticCurveTo(x(19), y(20), x(19), y(18)); ctx.stroke(); line(12, 16, 12, 4); poly([[7,9],[12,4],[17,9]], false)
+                return
+            case "download":
+                ctx.beginPath(); ctx.moveTo(x(5), y(18)); ctx.quadraticCurveTo(x(5), y(20), x(7), y(20)); ctx.lineTo(x(17), y(20)); ctx.quadraticCurveTo(x(19), y(20), x(19), y(18)); ctx.stroke(); line(12, 4, 12, 16); poly([[7,11],[12,16],[17,11]], false)
+                return
+            case "trash-2":
+                ctx.beginPath(); ctx.moveTo(x(7), y(8)); ctx.lineTo(x(17), y(8)); ctx.lineTo(x(16), y(20)); ctx.lineTo(x(8), y(20)); ctx.closePath(); ctx.stroke(); line(5, 8, 19, 8); line(9, 5, 15, 5)
+                return
+            case "save":
+                rect(5, 4, 14, 16); circle(12, 16, 3); line(8, 4, 8, 10); line(16, 4, 16, 10)
+                return
+            case "rotate-ccw":
+                ctx.beginPath(); ctx.arc(x(12), y(12), 7 * s, Math.PI * 0.15, Math.PI * 1.75); ctx.stroke()
+                path([[4,5],[4,10],[9,10]], false)
+                return
+            case "wifi":
+                circle(12, 19, 1.5); ctx.beginPath(); ctx.arc(x(12), y(19), 6 * s, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke(); ctx.beginPath(); ctx.arc(x(12), y(19), 10 * s, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke()
                 return
             }
         }

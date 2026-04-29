@@ -16,6 +16,7 @@ ApplicationWindow {
     property string currentPage: "home"
     property string lang: appBackend.language
     property string iconLibrary: "lucide"
+    property int iconLibraryRevision: 0
     property bool dark: appBackend.dark
     property real scaleFactor: appBackend.fontScale / 100
 
@@ -44,10 +45,23 @@ ApplicationWindow {
         return appBackend.t(key)
     }
 
+    function normalizeIconLibrary(library) {
+        var normalized = String(library || "lucide").toLowerCase()
+        if (normalized === "tabler icons") normalized = "tabler"
+        else if (normalized === "phosphor icons") normalized = "phosphor"
+        if (normalized !== "tabler" && normalized !== "phosphor") normalized = "lucide"
+        return normalized
+    }
+
+    function applyIconLibrary(library) {
+        iconLibrary = normalizeIconLibrary(library)
+        iconLibraryRevision += 1
+    }
+
     color: bg
 
     Component.onCompleted: {
-        iconLibrary = appBackend.loadIconLibrary()
+        applyIconLibrary(appBackend.loadIconLibrary())
     }
 
     Connections {
