@@ -6,19 +6,15 @@ Rectangle {
     property string label: ""
     readonly property bool isRecording: status === "recording" || status === "active" || status === "error"
     readonly property bool isOnline: status === "online"
-    readonly property color tone: isOnline ? (ApplicationWindow.window.dark ? "#4ade80" : "#22c55e")
-                                : isRecording ? (ApplicationWindow.window.dark ? "#f87171" : "#ef4444")
-                                : (ApplicationWindow.window.dark ? "#fbbf24" : "#f59e0b")
-    readonly property color fill: isOnline
-                                  ? (ApplicationWindow.window.dark ? Qt.rgba(0.290, 0.871, 0.502, 0.10) : Qt.rgba(0.133, 0.773, 0.369, 0.10))
-                                  : isRecording
-                                    ? (ApplicationWindow.window.dark ? Qt.rgba(0.973, 0.443, 0.443, 0.10) : Qt.rgba(0.937, 0.267, 0.267, 0.10))
-                                    : (ApplicationWindow.window.dark ? Qt.rgba(0.984, 0.749, 0.141, 0.10) : Qt.rgba(0.961, 0.620, 0.043, 0.10))
-    readonly property color stroke: isOnline
-                                    ? (ApplicationWindow.window.dark ? Qt.rgba(0.290, 0.871, 0.502, 0.20) : Qt.rgba(0.133, 0.773, 0.369, 0.20))
-                                    : isRecording
-                                      ? (ApplicationWindow.window.dark ? Qt.rgba(0.973, 0.443, 0.443, 0.20) : Qt.rgba(0.937, 0.267, 0.267, 0.20))
-                                      : (ApplicationWindow.window.dark ? Qt.rgba(0.984, 0.749, 0.141, 0.20) : Qt.rgba(0.961, 0.620, 0.043, 0.20))
+    readonly property color tone: isOnline ? "#22c55e"
+                                : isRecording ? "#ef4444"
+                                : "#f59e0b"
+    readonly property color fill: isOnline ? "#1A22C55E"
+                                : isRecording ? "#1AEF4444"
+                                : "#1AF59E0B"
+    readonly property color stroke: isOnline ? "#3322C55E"
+                                  : isRecording ? "#33EF4444"
+                                  : "#33F59E0B"
 
     implicitWidth: dot.width + labelText.implicitWidth + 24
     implicitHeight: 22
