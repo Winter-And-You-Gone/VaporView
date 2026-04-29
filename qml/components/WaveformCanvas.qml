@@ -11,14 +11,44 @@ Canvas {
     property real xSamplePeriod: 0.05
     property bool showDemoWhenEmpty: true
 
+    Component.onCompleted: requestPaint()
     onSamplesChanged: requestPaint()
     onLineColorChanged: requestPaint()
     onScatterChanged: requestPaint()
     onYMinChanged: requestPaint()
     onYMaxChanged: requestPaint()
+    onWidthChanged: requestPaint()
+    onHeightChanged: requestPaint()
+    onVisibleChanged: if (visible) requestPaint()
+
+    function sampleCount(list) {
+        if (!list)
+            return 0
+        if (list.length !== undefined)
+            return list.length
+        if (list.count !== undefined)
+            return list.count
+        return 0
+    }
+
+    function sampleValue(list, index) {
+        var value = Number(list[index])
+        return isNaN(value) ? 0 : value
+    }
+
     onPaint: {
+        if (width <= 0 || height <= 0)
+            return
+
         var ctx = getContext("2d")
-        ctx.reset()
+        if (ctx.reset) {
+            ctx.reset()
+        } else {
+            ctx.setTransform(1, 0, 0, 1, 0, 0)
+            ctx.globalAlpha = 1
+            ctx.lineWidth = 1
+            ctx.setLineDash([])
+        }
         ctx.fillStyle = ApplicationWindow.window.secondary
         ctx.fillRect(0, 0, width, height)
 
@@ -28,7 +58,13 @@ Canvas {
         var marginRight = 8
         var chartW = Math.max(1, width - marginLeft - marginRight)
         var chartH = Math.max(1, height - marginTop - marginBottom)
-        var drawSamples = samples && samples.length >= 2 ? samples : []
+        var incomingCount = sampleCount(samples)
+        var drawSamples = []
+        if (incomingCount >= 2) {
+            for (var si = 0; si < incomingCount; ++si) {
+                drawSamples.push(sampleValue(samples, si))
+            }
+        }
         if (drawSamples.length < 2 && showDemoWhenEmpty) {
             drawSamples = []
             var mid = (yMin + yMax) / 2

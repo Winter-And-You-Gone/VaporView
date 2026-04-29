@@ -77,7 +77,16 @@ Item {
                                         height: 30
                                         text: ""
                                         padding: 0
-                                        onClicked: ApplicationWindow.window.currentPage = "devices"
+                                        enabled: kind === "tcp" || !deviceBackend.busy
+                                        onClicked: {
+                                            if (kind === "tcp") {
+                                                waveformBackend.toggleConnection()
+                                            } else if (connected) {
+                                                deviceBackend.disconnectDevices()
+                                            } else {
+                                                deviceBackend.connectDevices()
+                                            }
+                                        }
 
                                         contentItem: LucideIcon {
                                             anchors.centerIn: parent
