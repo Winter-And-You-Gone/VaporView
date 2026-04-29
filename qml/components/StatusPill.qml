@@ -6,15 +6,16 @@ Rectangle {
     property string label: ""
     readonly property bool isRecording: status === "recording" || status === "active" || status === "error"
     readonly property bool isOnline: status === "online"
-    readonly property color tone: isOnline ? (ApplicationWindow.window.dark ? "#4ade80" : "#15803d")
-                                : isRecording ? (ApplicationWindow.window.dark ? "#fb7185" : "#be123c")
-                                : (ApplicationWindow.window.dark ? "#fbbf24" : "#b45309")
-    readonly property color fill: isOnline ? (ApplicationWindow.window.dark ? "#052e16" : "#dcfce7")
-                                : isRecording ? (ApplicationWindow.window.dark ? "#4c0519" : "#ffe4e6")
-                                : (ApplicationWindow.window.dark ? "#451a03" : "#fef3c7")
-    readonly property color stroke: isOnline ? (ApplicationWindow.window.dark ? "#166534" : "#86efac")
-                                  : isRecording ? (ApplicationWindow.window.dark ? "#9f1239" : "#fda4af")
-                                  : (ApplicationWindow.window.dark ? "#92400e" : "#fcd34d")
+    readonly property color fill: isOnline ? "#16a34a"
+                                : isRecording ? "#e11d48"
+                                : "#f59e0b"
+    readonly property color tone: "#ffffff"
+    readonly property color dotColor: isOnline ? "#bbf7d0"
+                                     : isRecording ? "#ffe4e6"
+                                     : "#fef3c7"
+    readonly property color stroke: isOnline ? "#22c55e"
+                                  : isRecording ? "#fb7185"
+                                  : "#fbbf24"
 
     implicitWidth: dot.width + labelText.implicitWidth + 24
     implicitHeight: 22
@@ -32,7 +33,7 @@ Rectangle {
             height: 8
             radius: 4
             anchors.verticalCenter: parent.verticalCenter
-            color: tone
+            color: dotColor
         }
 
         Text {
