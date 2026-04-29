@@ -22,6 +22,7 @@ Item {
     property int sourcePointCount: 0
     property int xStartIndex: 0
     property int xEndIndex: -1
+    property int xAxisLabelOffset: 1
     property real lineWidth: 1.5
     property real fillTopOpacity: 0.15
     property real fillBottomOpacity: 0.01
@@ -206,7 +207,7 @@ Item {
                                            : labelCenter - width / 2
             y: chart.height - chart.marginBottom + 3
             width: 54
-            text: chart.formatIndexLabel(chart.effectiveXStart + (chart.effectiveXEnd - chart.effectiveXStart) * index / 5)
+            text: chart.formatIndexLabel(chart.effectiveXStart + (chart.effectiveXEnd - chart.effectiveXStart) * index / 5 + chart.xAxisLabelOffset)
             color: chart.axisColor
             opacity: 1.0
             font.pixelSize: Math.round(10 * chart.uiScale)

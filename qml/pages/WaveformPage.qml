@@ -137,9 +137,9 @@ Item {
                     emptyColor: ApplicationWindow.window.muted
                     uiScale: ApplicationWindow.window.scaleFactor
                     maxVisualSamples: 1000
-                    sourcePointCount: Math.max(1, Math.min(1001, waveformBackend.peakTotalCount + 1))
+                    sourcePointCount: Math.max(1, Math.min(1000, waveformBackend.peakTotalCount))
                     xStartIndex: 0
-                    xEndIndex: Math.max(0, Math.min(1000, waveformBackend.peakTotalCount))
+                    xEndIndex: Math.max(0, Math.min(999, waveformBackend.peakTotalCount - 1))
                 }
             }
         }
