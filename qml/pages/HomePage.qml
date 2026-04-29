@@ -362,11 +362,11 @@ Item {
                         spacing: 8
                         ToolbarButton {
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 28
+                            width: 76
                             height: 26
                             iconName: "trash-2"
                             iconSize: 13
-                            text: ""
+                            text: ApplicationWindow.window.t("home.clearLog")
                             variant: "secondary"
                             ToolTip.text: ApplicationWindow.window.t("home.clearLog")
                             ToolTip.visible: hovered
@@ -407,10 +407,11 @@ Item {
                         axisColor: ApplicationWindow.window.chartAxis
                         emptyColor: ApplicationWindow.window.muted
                         uiScale: ApplicationWindow.window.scaleFactor
+                        tailWindow: true
                         maxVisualSamples: 200
                         sourcePointCount: Math.max(1, Math.min(200, waveformBackend.peakTotalCount))
-                        xStartIndex: Math.max(0, waveformBackend.peakTotalCount - 200)
-                        xEndIndex: Math.max(0, waveformBackend.peakTotalCount - 1)
+                        xStartIndex: 0
+                        xEndIndex: Math.max(0, Math.min(199, waveformBackend.peakTotalCount - 1))
                     }
                 }
 

@@ -18,6 +18,7 @@ Item {
     property real yMax: 1.2
     property bool autoScaleY: true
     property bool showDemoWhenEmpty: true
+    property bool tailWindow: false
     property int maxVisualSamples: 220
     property int sourcePointCount: 0
     property int xStartIndex: 0
@@ -64,10 +65,12 @@ Item {
         var values = []
         var count = sampleCount(list)
         if (count >= 2) {
-            var stride = Math.max(1, Math.ceil(count / maxVisualSamples))
-            for (var i = 0; i < count; i += stride)
+            var start = tailWindow && count > maxVisualSamples ? count - maxVisualSamples : 0
+            var displayCount = count - start
+            var stride = Math.max(1, Math.ceil(displayCount / maxVisualSamples))
+            for (var i = start; i < count; i += stride)
                 values.push(sampleValue(list, i))
-            if ((count - 1) % stride !== 0)
+            if ((count - 1 - start) % stride !== 0)
                 values.push(sampleValue(list, count - 1))
         }
         if (values.length < 2 && showDemoWhenEmpty) {
