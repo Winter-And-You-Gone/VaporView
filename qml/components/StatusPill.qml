@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls.Basic
 
 Rectangle {
     id: pill
@@ -6,8 +7,8 @@ Rectangle {
     property string label: ""
     readonly property bool isRecording: status === "recording" || status === "active" || status === "error"
     readonly property bool isOnline: status === "online"
-    readonly property bool darkMode: ApplicationWindow.window ? ApplicationWindow.window.dark : false
-    readonly property real uiScale: ApplicationWindow.window ? ApplicationWindow.window.scaleFactor : 1
+    readonly property bool darkMode: appBackend.dark
+    readonly property real uiScale: appBackend.fontScale / 100
     readonly property color onlineTone: darkMode ? "#4ade80" : "#22c55e"
     readonly property color recordingTone: darkMode ? "#f87171" : "#ef4444"
     readonly property color inactiveTone: darkMode ? "#94a3b8" : "#64748b"

@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
 Rectangle {
@@ -6,7 +7,9 @@ Rectangle {
     property string label: ""
     property string value: "---"
     property string unit: ""
-    color: ApplicationWindow.window.card
+    readonly property bool darkMode: appBackend.dark
+    readonly property real uiScale: appBackend.fontScale / 100
+    color: darkMode ? "#020817" : "#ffffff"
     border.width: 0
 
     ColumnLayout {
@@ -20,9 +23,9 @@ Rectangle {
         Text {
             Layout.fillWidth: true
             text: tile.label
-            color: ApplicationWindow.window.muted
+            color: darkMode ? "#94a3b8" : "#64748b"
             opacity: 0.9
-            font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+            font.pixelSize: 10 * tile.uiScale
             font.weight: Font.Medium
             elide: Text.ElideRight
         }
@@ -32,16 +35,16 @@ Rectangle {
             spacing: 4
             Text {
                 text: tile.value
-                color: ApplicationWindow.window.text
-                font.pixelSize: 17 * ApplicationWindow.window.scaleFactor
+                color: darkMode ? "#f8fafc" : "#020817"
+                font.pixelSize: 17 * tile.uiScale
                 font.weight: Font.Bold
                 elide: Text.ElideRight
             }
             Text {
                 text: tile.unit
-                color: ApplicationWindow.window.muted
+                color: darkMode ? "#94a3b8" : "#64748b"
                 opacity: 0.9
-                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                font.pixelSize: 10 * tile.uiScale
                 visible: tile.unit.length > 0
                 verticalAlignment: Text.AlignBottom
             }
