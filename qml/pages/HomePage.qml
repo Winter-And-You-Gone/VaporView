@@ -61,17 +61,17 @@ Item {
                                     height: statusRow.height
                                     spacing: 6
 
-                                    readonly property bool deviceActive: connected || online
+                                    readonly property bool deviceHealthy: connected && online
 
                                     StatusPill {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        status: deviceActive ? "online" : "warning"
+                                        status: deviceHealthy ? "online" : online ? "warning" : "offline"
                                         label: ApplicationWindow.window.t(nameKey)
                                     }
 
                                     Button {
                                         id: linkButton
-                                        property bool active: deviceActive
+                                        property bool active: connected
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: 30
                                         height: 30
