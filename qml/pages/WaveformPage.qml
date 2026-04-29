@@ -36,6 +36,9 @@ Item {
                     samples: waveformBackend.peakSamples
                     scatter: waveformBackend.scatterMode
                     lineColor: ApplicationWindow.window.primary
+                    yMin: 1.0
+                    yMax: 1.4
+                    xSamplePeriod: 1
                 }
             }
         }

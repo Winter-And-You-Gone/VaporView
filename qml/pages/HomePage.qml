@@ -24,27 +24,13 @@ Item {
                     anchors.margins: 8
                     Repeater {
                         model: deviceBackend.devices
-                        delegate: Rectangle {
+                        delegate: Item {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 30
-                            radius: 5
-                            color: connected ? Qt.rgba(ApplicationWindow.window.ok.r,
-                                                       ApplicationWindow.window.ok.g,
-                                                       ApplicationWindow.window.ok.b,
-                                                       0.10)
-                                             : ApplicationWindow.window.secondary
-                            border.color: connected ? Qt.rgba(ApplicationWindow.window.ok.r,
-                                                              ApplicationWindow.window.ok.g,
-                                                              ApplicationWindow.window.ok.b,
-                                                              0.20)
-                                                    : ApplicationWindow.window.border
-                            Text {
+                            StatusPill {
                                 anchors.centerIn: parent
-                                text: displayName + "  " + (connected ? Math.round(actualRate * 10) / 10 + " Hz" : "--")
-                                color: connected ? ApplicationWindow.window.ok : ApplicationWindow.window.muted
-                                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
-                                font.bold: connected
-                                elide: Text.ElideRight
+                                status: connected ? "online" : "warning"
+                                label: displayName + "  " + (connected ? Math.round(actualRate * 10) / 10 + " Hz" : "--")
                             }
                         }
                     }
@@ -161,6 +147,9 @@ Item {
                     samples: waveformBackend.peakSamples
                     scatter: waveformBackend.scatterMode
                     lineColor: ApplicationWindow.window.primary
+                    yMin: 1.0
+                    yMax: 1.4
+                    xSamplePeriod: 1
                 }
             }
         }
