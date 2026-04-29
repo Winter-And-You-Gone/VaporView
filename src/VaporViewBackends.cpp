@@ -47,6 +47,7 @@ constexpr quint16 kRawRecordTypeGeneric = 1u;
 constexpr quint32 kRawTcpWaveCombinedPayloadFlag = 0x00000001u;
 constexpr int kFloatSize = 4;
 constexpr int kMaxTcpPayloadSize = 4 * 1024 * 1024;
+constexpr int kLiveDisplayRefreshMs = 20;
 constexpr int kPeakTrendFrameWindow = 1000;
 
 #pragma pack(push, 1)
@@ -1631,6 +1632,10 @@ WaveformBackend::WaveformBackend(QObject *parent)
     , frame_rate_(0.0)
     , filter_enabled_(false)
     , scatter_mode_(false)
+    , live_display_dirty_(false)
+    , samples_dirty_(false)
+    , peak_dirty_(false)
+    , frame_rate_dirty_(false)
     , filter_min_(0.0)
     , filter_max_(0.0)
 {
@@ -1639,6 +1644,8 @@ WaveformBackend::WaveformBackend(QObject *parent)
     connect(&socket_, &QTcpSocket::connected, this, &WaveformBackend::onSocketConnected);
     connect(&socket_, &QTcpSocket::disconnected, this, &WaveformBackend::onSocketDisconnected);
     connect(&socket_, &QAbstractSocket::errorOccurred, this, &WaveformBackend::onSocketError);
+    connect(&live_display_timer_, &QTimer::timeout, this, &WaveformBackend::updateLiveDisplay);
+    live_display_timer_.start(kLiveDisplayRefreshMs);
 }
 
 WaveformBackend::~WaveformBackend()
@@ -1747,6 +1754,8 @@ void WaveformBackend::clearPeakHistory()
     peak_history_.clear();
     peak_samples_cache_.clear();
     peak_total_count_ = 0;
+    peak_dirty_ = false;
+    live_display_dirty_ = samples_dirty_ || frame_rate_dirty_;
     emit peakSamplesChanged();
 }
 
@@ -1924,8 +1933,56 @@ void WaveformBackend::updateFrameRate(qint64 nowMs)
         if (span > 0)
         {
             frame_rate_ = static_cast<double>(frame_arrivals_ms_.size() - 1) * 1000.0 / static_cast<double>(span);
-            emit frameRateChanged();
+            markLiveDisplayDirty(false, false, true);
         }
+    }
+}
+
+void WaveformBackend::markLiveDisplayDirty(bool samples, bool peak, bool frameRate)
+{
+    live_display_dirty_ = true;
+    samples_dirty_ = samples_dirty_ || samples;
+    peak_dirty_ = peak_dirty_ || peak;
+    frame_rate_dirty_ = frame_rate_dirty_ || frameRate;
+}
+
+void WaveformBackend::updateLiveDisplay()
+{
+    if (!live_display_dirty_)
+    {
+        return;
+    }
+
+    const bool emitSamples = samples_dirty_;
+    const bool emitPeak = peak_dirty_;
+    const bool emitFrameRate = frame_rate_dirty_;
+
+    live_display_dirty_ = false;
+    samples_dirty_ = false;
+    peak_dirty_ = false;
+    frame_rate_dirty_ = false;
+
+    if (emitSamples)
+    {
+        raw_samples_cache_ = vectorToVariantList(raw_history_);
+        harmonic_samples_cache_ = vectorToVariantList(harmonic_history_);
+    }
+    if (emitPeak)
+    {
+        peak_samples_cache_ = vectorToVariantList(peak_history_, kPeakTrendFrameWindow);
+    }
+
+    if (emitFrameRate)
+    {
+        emit frameRateChanged();
+    }
+    if (emitSamples)
+    {
+        emit samplesChanged();
+    }
+    if (emitPeak)
+    {
+        emit peakSamplesChanged();
     }
 }
 
@@ -1972,10 +2029,9 @@ void WaveformBackend::processBuffer()
             }
             raw_history_ = samples;
             pending_raw_payload_ = payload;
-            raw_samples_cache_ = vectorToVariantList(raw_history_);
             read_state_ = ReadState::HarmonicHeader;
             progressed = true;
-            emit samplesChanged();
+            markLiveDisplayDirty(true, false, false);
         }
         if (read_state_ == ReadState::HarmonicPayload)
         {
@@ -1986,22 +2042,30 @@ void WaveformBackend::processBuffer()
                 continue;
             }
             harmonic_history_ = samples;
-            harmonic_samples_cache_ = vectorToVariantList(harmonic_history_);
             const auto maxIt = std::max_element(harmonic_history_.cbegin(), harmonic_history_.cend());
             if (maxIt != harmonic_history_.cend())
             {
                 ++peak_total_count_;
-                peak_raw_history_.append(*maxIt);
+                const float peakValue = *maxIt;
+                peak_raw_history_.append(peakValue);
                 while (peak_raw_history_.size() > kPeakTrendFrameWindow)
                 {
                     peak_raw_history_.removeFirst();
                 }
-                rebuildFilteredPeakHistory();
+                if (!filter_enabled_ || (peakValue >= filter_min_ && peakValue <= filter_max_))
+                {
+                    peak_history_.append(peakValue);
+                    while (peak_history_.size() > kPeakTrendFrameWindow)
+                    {
+                        peak_history_.removeFirst();
+                    }
+                }
+                markLiveDisplayDirty(false, true, false);
             }
             ++frame_count_;
             const quint64 timestampUs = currentTimestampUs();
             updateFrameRate(QDateTime::currentMSecsSinceEpoch());
-            emit samplesChanged();
+            markLiveDisplayDirty(true, false, false);
             emit rawWaveFrameReady(timestampUs, pending_raw_payload_, harmonicPayload, float_encoding_);
             read_state_ = ReadState::RawHeader;
             progressed = true;

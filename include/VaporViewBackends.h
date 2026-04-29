@@ -317,6 +317,7 @@ private slots:
     void onSocketConnected();
     void onSocketDisconnected();
     void onSocketError();
+    void updateLiveDisplay();
 
 private:
     enum class ReadState
@@ -344,6 +345,7 @@ private:
     qint32 decodeHeaderValue(const char *raw, HeaderByteOrder order) const;
     QVariantList vectorToVariantList(const QVector<float>& values, int maxCount = 700) const;
     void updateFrameRate(qint64 nowMs);
+    void markLiveDisplayDirty(bool samples, bool peak, bool frameRate);
     void rebuildFilteredPeakHistory();
 
     QTcpSocket socket_;
@@ -359,6 +361,7 @@ private:
     QVariantList raw_samples_cache_;
     QVariantList harmonic_samples_cache_;
     QVariantList peak_samples_cache_;
+    QTimer live_display_timer_;
     ReadState read_state_;
     HeaderByteOrder header_byte_order_;
     VaporView::TcpFloatEncoding float_encoding_;
@@ -369,6 +372,10 @@ private:
     double frame_rate_;
     bool filter_enabled_;
     bool scatter_mode_;
+    bool live_display_dirty_;
+    bool samples_dirty_;
+    bool peak_dirty_;
+    bool frame_rate_dirty_;
     double filter_min_;
     double filter_max_;
 };
