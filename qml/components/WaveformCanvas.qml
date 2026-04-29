@@ -166,6 +166,7 @@ Item {
     Repeater {
         model: 5
         Text {
+            z: 10
             x: 0
             y: chart.marginTop + chart.chartHeight * index / 4 - height / 2
             width: chart.marginLeft - 6
@@ -182,7 +183,11 @@ Item {
     Repeater {
         model: 6
         Text {
-            x: chart.marginLeft + chart.chartWidth * index / 5 - width / 2
+            readonly property real labelCenter: chart.marginLeft + chart.chartWidth * index / 5
+            z: 10
+            x: index === 0 ? chart.marginLeft
+                            : index === 5 ? chart.marginLeft + chart.chartWidth - width
+                                           : labelCenter - width / 2
             y: chart.height - chart.marginBottom + 3
             width: 54
             text: chart.formatIndexLabel(chart.effectiveXStart + (chart.effectiveXEnd - chart.effectiveXStart) * index / 5)
@@ -190,7 +195,7 @@ Item {
             opacity: 0.9
             font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
             font.weight: Font.DemiBold
-            horizontalAlignment: Text.AlignHCenter
+            horizontalAlignment: index === 0 ? Text.AlignLeft : index === 5 ? Text.AlignRight : Text.AlignHCenter
         }
     }
 

@@ -26,6 +26,8 @@ Rectangle {
                 anchors.fill: parent
                 radius: card.radius
                 color: ApplicationWindow.window.cardHeader
+                border.color: ApplicationWindow.window.border
+                border.width: 1
             }
 
             Rectangle {

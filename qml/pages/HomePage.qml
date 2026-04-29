@@ -293,9 +293,9 @@ Item {
                     scatter: waveformBackend.scatterMode
                     lineColor: ApplicationWindow.window.primary
                     maxVisualSamples: 1000
-                    sourcePointCount: 1001
+                    sourcePointCount: Math.max(1, Math.min(1001, waveformBackend.peakTotalCount + 1))
                     xStartIndex: 0
-                    xEndIndex: 1000
+                    xEndIndex: Math.max(0, Math.min(1000, waveformBackend.peakTotalCount))
                 }
             }
         }
