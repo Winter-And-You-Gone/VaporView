@@ -83,7 +83,7 @@ Item {
                                             anchors.centerIn: parent
                                             width: 16
                                             height: 16
-                                            name: linkButton.active ? "link" : "unlink"
+                                            name: linkButton.active ? "unlink" : "link"
                                             iconColor: linkButton.active ? ApplicationWindow.window.ok : ApplicationWindow.window.warning
                                             stroke: 2
                                         }
