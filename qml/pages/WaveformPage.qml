@@ -104,12 +104,15 @@ Item {
                     spacing: 8
                     ToolbarButton {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 58
+                        width: 28
                         height: 26
                         iconName: "trash-2"
                         iconSize: 13
-                        text: appBackend.language === "en" ? "Clear" : "清空"
+                        text: ""
                         variant: "secondary"
+                        ToolTip.text: appBackend.language === "en" ? "Clear" : "清空"
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 400
                         onClicked: waveformBackend.clearPeakHistory()
                     }
                     ToolbarButton {
@@ -148,8 +151,8 @@ Item {
                     uiScale: ApplicationWindow.window.scaleFactor
                     maxVisualSamples: 1000
                     sourcePointCount: Math.max(1, Math.min(1000, waveformBackend.peakTotalCount))
-                    xStartIndex: 0
-                    xEndIndex: Math.max(0, Math.min(999, waveformBackend.peakTotalCount - 1))
+                    xStartIndex: Math.max(0, waveformBackend.peakTotalCount - 1000)
+                    xEndIndex: Math.max(0, waveformBackend.peakTotalCount - 1)
                 }
             }
         }

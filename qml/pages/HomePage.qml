@@ -362,12 +362,15 @@ Item {
                         spacing: 8
                         ToolbarButton {
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 58
+                            width: 28
                             height: 26
                             iconName: "trash-2"
                             iconSize: 13
-                            text: ApplicationWindow.window.t("home.clearLog")
+                            text: ""
                             variant: "secondary"
+                            ToolTip.text: ApplicationWindow.window.t("home.clearLog")
+                            ToolTip.visible: hovered
+                            ToolTip.delay: 400
                             onClicked: waveformBackend.clearPeakHistory()
                         }
                         ToolbarButton {
@@ -406,8 +409,8 @@ Item {
                         uiScale: ApplicationWindow.window.scaleFactor
                         maxVisualSamples: 200
                         sourcePointCount: Math.max(1, Math.min(200, waveformBackend.peakTotalCount))
-                        xStartIndex: 0
-                        xEndIndex: Math.max(0, Math.min(199, waveformBackend.peakTotalCount - 1))
+                        xStartIndex: Math.max(0, waveformBackend.peakTotalCount - 200)
+                        xEndIndex: Math.max(0, waveformBackend.peakTotalCount - 1)
                     }
                 }
 
