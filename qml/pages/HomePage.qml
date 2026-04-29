@@ -190,7 +190,8 @@ Item {
                                     Layout.fillWidth: true
                                     text: ApplicationWindow.window.t("home.rtkStatus")
                                     color: ApplicationWindow.window.muted
-                                    font.pixelSize: 12 * ApplicationWindow.window.scaleFactor
+                                    opacity: 0.9
+                                    font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                                     font.weight: Font.Medium
                                     elide: Text.ElideRight
                                 }

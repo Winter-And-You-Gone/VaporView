@@ -23,8 +23,11 @@ ApplicationWindow {
     readonly property color bg: dark ? "#020817" : "#ffffff"
     readonly property color card: dark ? "#020817" : "#ffffff"
     readonly property color cardAlt: dark ? "#1e293b" : "#f1f5f9"
+    readonly property color cardHeader: dark ? "#0d1424" : "#f9fbfd"
     readonly property color secondary: cardAlt
     readonly property color border: dark ? "#1e293b" : "#e2e8f0"
+    readonly property color chartGrid: dark ? "#334155" : "#cbd5e1"
+    readonly property color chartAxis: dark ? "#94a3b8" : "#64748b"
     readonly property color text: dark ? "#f8fafc" : "#020817"
     readonly property color muted: dark ? "#94a3b8" : "#64748b"
     readonly property color primary: "#0f172a"

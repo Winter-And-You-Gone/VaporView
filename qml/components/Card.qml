@@ -25,7 +25,7 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 radius: card.radius
-                color: ApplicationWindow.window.cardAlt
+                color: ApplicationWindow.window.cardHeader
             }
 
             Rectangle {
@@ -33,7 +33,7 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 height: card.radius
-                color: ApplicationWindow.window.cardAlt
+                color: ApplicationWindow.window.cardHeader
             }
 
             Rectangle {

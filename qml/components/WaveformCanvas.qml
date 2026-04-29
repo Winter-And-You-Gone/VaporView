@@ -128,8 +128,8 @@ Item {
             y: chart.marginTop
             width: 1
             height: chart.chartHeight
-            color: ApplicationWindow.window.border
-            opacity: 0.68
+            color: ApplicationWindow.window.chartGrid
+            opacity: 0.85
         }
     }
 
@@ -140,8 +140,8 @@ Item {
             y: chart.marginTop + chart.chartHeight * index / 4
             width: chart.chartWidth
             height: 1
-            color: ApplicationWindow.window.border
-            opacity: 0.68
+            color: ApplicationWindow.window.chartGrid
+            opacity: 0.85
         }
     }
 
@@ -150,8 +150,8 @@ Item {
         y: chart.marginTop
         width: 1
         height: chart.chartHeight
-        color: ApplicationWindow.window.text
-        opacity: 0.22
+        color: ApplicationWindow.window.chartAxis
+        opacity: 0.75
     }
 
     Rectangle {
@@ -159,8 +159,8 @@ Item {
         y: chart.marginTop + chart.chartHeight - 1
         width: chart.chartWidth
         height: 1
-        color: ApplicationWindow.window.text
-        opacity: 0.22
+        color: ApplicationWindow.window.chartAxis
+        opacity: 0.75
     }
 
     Repeater {
@@ -170,8 +170,8 @@ Item {
             y: chart.marginTop + chart.chartHeight * index / 4 - height / 2
             width: chart.marginLeft - 6
             text: chart.formatAxisValue(chart.effectiveYMax - (chart.effectiveYMax - chart.effectiveYMin) * index / 4)
-            color: ApplicationWindow.window.text
-            opacity: 0.78
+            color: ApplicationWindow.window.chartAxis
+            opacity: 0.9
             font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
             font.weight: Font.DemiBold
             horizontalAlignment: Text.AlignRight
@@ -186,8 +186,8 @@ Item {
             y: chart.height - chart.marginBottom + 3
             width: 54
             text: chart.formatIndexLabel(chart.effectiveXStart + (chart.effectiveXEnd - chart.effectiveXStart) * index / 5)
-            color: ApplicationWindow.window.text
-            opacity: 0.78
+            color: ApplicationWindow.window.chartAxis
+            opacity: 0.9
             font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
             font.weight: Font.DemiBold
             horizontalAlignment: Text.AlignHCenter

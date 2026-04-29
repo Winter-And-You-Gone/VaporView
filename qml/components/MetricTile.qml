@@ -21,7 +21,8 @@ Rectangle {
             Layout.fillWidth: true
             text: tile.label
             color: ApplicationWindow.window.muted
-            font.pixelSize: 12 * ApplicationWindow.window.scaleFactor
+            opacity: 0.9
+            font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
             font.weight: Font.Medium
             elide: Text.ElideRight
         }
@@ -32,14 +33,15 @@ Rectangle {
             Text {
                 text: tile.value
                 color: ApplicationWindow.window.text
-                font.pixelSize: 18 * ApplicationWindow.window.scaleFactor
+                font.pixelSize: 17 * ApplicationWindow.window.scaleFactor
                 font.weight: Font.Bold
                 elide: Text.ElideRight
             }
             Text {
                 text: tile.unit
                 color: ApplicationWindow.window.muted
-                font.pixelSize: 12 * ApplicationWindow.window.scaleFactor
+                opacity: 0.9
+                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                 visible: tile.unit.length > 0
                 verticalAlignment: Text.AlignBottom
             }
