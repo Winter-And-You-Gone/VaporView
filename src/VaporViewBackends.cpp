@@ -14,6 +14,7 @@
 #include <QSaveFile>
 #include <QSerialPortInfo>
 #include <QSet>
+#include <QStorageInfo>
 #include <QStringConverter>
 #include <QTextStream>
 #include <QThread>
@@ -254,6 +255,25 @@ QString formatBytes(qint64 bytes)
         return QStringLiteral("%1 MB").arg(QString::number(mb, 'f', 1));
     }
     return QStringLiteral("%1 GB").arg(QString::number(mb / 1024.0, 'f', 2));
+}
+
+QStorageInfo storageInfoForPath(const QString& path)
+{
+    QString probe = path.trimmed();
+    if (probe.isEmpty())
+    {
+        probe = QCoreApplication::applicationDirPath();
+    }
+
+    QFileInfo info(probe);
+    QDir dir(info.isDir() ? info.absoluteFilePath() : info.absolutePath());
+    while (!dir.exists() && dir.cdUp())
+    {
+    }
+
+    QStorageInfo storage(dir.exists() ? dir.absolutePath() : QCoreApplication::applicationDirPath());
+    storage.refresh();
+    return storage;
 }
 
 QString formatDuration(qint64 seconds)
@@ -2002,6 +2022,31 @@ QString RecordingBackend::fileSizeText() const
     return formatBytes(total);
 }
 
+QString RecordingBackend::recordUsageText() const
+{
+    return fileSizeText();
+}
+
+QString RecordingBackend::diskRemainingText() const
+{
+    const QStorageInfo storage = storageInfoForPath(recording_directory_);
+    if (!storage.isValid() || !storage.isReady())
+    {
+        return QStringLiteral("--");
+    }
+    return formatBytes(storage.bytesAvailable());
+}
+
+QString RecordingBackend::diskTotalText() const
+{
+    const QStorageInfo storage = storageInfoForPath(recording_directory_);
+    if (!storage.isValid() || !storage.isReady())
+    {
+        return QStringLiteral("--");
+    }
+    return formatBytes(storage.bytesTotal());
+}
+
 QString RecordingBackend::durationText() const
 {
     if (session_start_time_us_ == 0)
@@ -2022,6 +2067,7 @@ void RecordingBackend::setRecordingDirectory(const QString& directory)
     recording_directory_ = normalized;
     QSettings(QStringLiteral("VaporView"), QStringLiteral("MainWindow")).setValue(QStringLiteral("recording_directory"), recording_directory_);
     emit recordingDirectoryChanged();
+    emit recordingStatsChanged();
 }
 
 void RecordingBackend::setExportRateHz(int hz)
@@ -2693,8 +2739,8 @@ void RecordingBackend::updateStats()
     if (sensors_file_ && sensors_file_->isOpen())
     {
         writeSessionMetadata();
-        emit recordingStatsChanged();
     }
+    emit recordingStatsChanged();
 }
 
 RtkBackend::RtkBackend(DeviceBackend *deviceBackend, QObject *parent)

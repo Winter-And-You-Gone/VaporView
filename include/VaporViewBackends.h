@@ -375,6 +375,9 @@ class RecordingBackend : public QObject
     Q_PROPERTY(qint64 sensorRows READ sensorRows NOTIFY recordingStatsChanged)
     Q_PROPERTY(qint64 waveformFrames READ waveformFrames NOTIFY recordingStatsChanged)
     Q_PROPERTY(QString fileSizeText READ fileSizeText NOTIFY recordingStatsChanged)
+    Q_PROPERTY(QString recordUsageText READ recordUsageText NOTIFY recordingStatsChanged)
+    Q_PROPERTY(QString diskRemainingText READ diskRemainingText NOTIFY recordingStatsChanged)
+    Q_PROPERTY(QString diskTotalText READ diskTotalText NOTIFY recordingStatsChanged)
     Q_PROPERTY(QString durationText READ durationText NOTIFY recordingStatsChanged)
     Q_PROPERTY(int exportRateHz READ exportRateHz WRITE setExportRateHz NOTIFY exportRateHzChanged)
     Q_PROPERTY(int waveformExportRateHz READ waveformExportRateHz WRITE setWaveformExportRateHz NOTIFY exportRateHzChanged)
@@ -391,6 +394,9 @@ public:
     qint64 sensorRows() const;
     qint64 waveformFrames() const;
     QString fileSizeText() const;
+    QString recordUsageText() const;
+    QString diskRemainingText() const;
+    QString diskTotalText() const;
     QString durationText() const;
     int exportRateHz() const;
     int waveformExportRateHz() const;

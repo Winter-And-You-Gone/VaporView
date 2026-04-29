@@ -41,10 +41,27 @@ Rectangle {
             status: recordingBackend.recording ? "recording" : "warning"
             label: recordingBackend.recording ? ApplicationWindow.window.t("topbar.recording") : recordingBackend.paused ? ApplicationWindow.window.t("topbar.paused") : ApplicationWindow.window.t("topbar.stopped")
         }
-        Text {
-            text: recordingBackend.fileSizeText + " | " + recordingBackend.durationText
-            color: ApplicationWindow.window.muted
-            font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+        RowLayout {
+            spacing: 10
+            Layout.maximumWidth: 360
+            Text {
+                text: ApplicationWindow.window.t("topbar.recordUsage") + ": " + recordingBackend.recordUsageText
+                color: ApplicationWindow.window.muted
+                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                elide: Text.ElideRight
+            }
+            Text {
+                text: ApplicationWindow.window.t("topbar.diskRemaining") + ": " + recordingBackend.diskRemainingText
+                color: ApplicationWindow.window.muted
+                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                elide: Text.ElideRight
+            }
+            Text {
+                text: ApplicationWindow.window.t("topbar.totalDisk") + ": " + recordingBackend.diskTotalText
+                color: ApplicationWindow.window.muted
+                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                elide: Text.ElideRight
+            }
         }
         ToolbarButton {
             text: deviceBackend.connected ? ApplicationWindow.window.t("topbar.disconnect") : ApplicationWindow.window.t("topbar.connect")
