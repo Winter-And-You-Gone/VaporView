@@ -116,6 +116,23 @@ Item {
         return Math.round(value).toString()
     }
 
+    function xTickLabelValue(tickIndex, tickCount) {
+        var displayStart = effectiveXStart + xAxisLabelOffset
+        var displayEnd = effectiveXEnd + xAxisLabelOffset
+        var lastTick = Math.max(1, tickCount - 1)
+        var rawValue = displayStart + (displayEnd - displayStart) * tickIndex / lastTick
+        if (tickIndex === 0 || tickIndex === lastTick)
+            return Math.round(rawValue)
+
+        var span = Math.abs(displayEnd - displayStart)
+        if (span <= 0)
+            return Math.round(rawValue)
+
+        var roughStep = span / lastTick
+        var roundTo = Math.pow(10, Math.max(0, Math.floor(Math.log(roughStep) / Math.LN10)))
+        return Math.round(rawValue / roundTo) * roundTo
+    }
+
     function px(index) {
         if (pointCount <= 1)
             return marginLeft
@@ -207,7 +224,7 @@ Item {
                                            : labelCenter - width / 2
             y: chart.height - chart.marginBottom + 3
             width: 54
-            text: chart.formatIndexLabel(chart.effectiveXStart + (chart.effectiveXEnd - chart.effectiveXStart) * index / 5 + chart.xAxisLabelOffset)
+            text: chart.formatIndexLabel(chart.xTickLabelValue(index, 6))
             color: chart.axisColor
             opacity: 1.0
             font.pixelSize: Math.round(10 * chart.uiScale)
