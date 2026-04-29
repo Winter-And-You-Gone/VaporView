@@ -362,8 +362,6 @@ Item {
                         spacing: 8
                         ToolbarButton {
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 76
-                            height: 26
                             iconName: "trash-2"
                             iconSize: 13
                             text: ApplicationWindow.window.t("home.clearLog")
@@ -375,8 +373,6 @@ Item {
                         }
                         ToolbarButton {
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 72
-                            height: 26
                             iconName: "activity"
                             iconSize: 13
                             text: page.trendToggleText()
