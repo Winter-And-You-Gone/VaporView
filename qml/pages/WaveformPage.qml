@@ -102,12 +102,15 @@ Item {
                 title: ApplicationWindow.window.t("waveform.peakTrend")
                 headerRight: Row {
                     spacing: 8
-                    Text {
+                    ToolbarButton {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: page.waveHeaderText("peak")
-                        color: ApplicationWindow.window.muted
-                        font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
-                        font.weight: Font.Medium
+                        width: 58
+                        height: 26
+                        iconName: "trash-2"
+                        iconSize: 13
+                        text: appBackend.language === "en" ? "Clear" : "清空"
+                        variant: "secondary"
+                        onClicked: waveformBackend.clearPeakHistory()
                     }
                     ToolbarButton {
                         anchors.verticalCenter: parent.verticalCenter
@@ -118,6 +121,13 @@ Item {
                         text: page.trendToggleText()
                         variant: "secondary"
                         onClicked: waveformBackend.scatterMode = !waveformBackend.scatterMode
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: page.waveHeaderText("peak")
+                        color: ApplicationWindow.window.muted
+                        font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+                        font.weight: Font.Medium
                     }
                 }
                 WaveformCanvas {

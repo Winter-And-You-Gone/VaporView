@@ -40,6 +40,11 @@ Item {
         return waveformBackend.scatterMode ? (english ? "Line" : "折线") : (english ? "Scatter" : "散点")
     }
 
+    function joinedLogLines() {
+        var lines = deviceBackend.logLines
+        return lines && lines.length > 0 ? lines.join("\n") : ""
+    }
+
     ScrollView {
         anchors.fill: parent
         anchors.margins: 12
@@ -355,12 +360,15 @@ Item {
                     title: ApplicationWindow.window.t("waveform.peakTrend")
                     headerRight: Row {
                         spacing: 8
-                        Text {
+                        ToolbarButton {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: page.waveHeaderText("peak")
-                            color: ApplicationWindow.window.muted
-                            font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
-                            font.weight: Font.Medium
+                            width: 58
+                            height: 26
+                            iconName: "trash-2"
+                            iconSize: 13
+                            text: ApplicationWindow.window.t("home.clearLog")
+                            variant: "secondary"
+                            onClicked: waveformBackend.clearPeakHistory()
                         }
                         ToolbarButton {
                             anchors.verticalCenter: parent.verticalCenter
@@ -371,6 +379,13 @@ Item {
                             text: page.trendToggleText()
                             variant: "secondary"
                             onClicked: waveformBackend.scatterMode = !waveformBackend.scatterMode
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: page.waveHeaderText("peak")
+                            color: ApplicationWindow.window.muted
+                            font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+                            font.weight: Font.Medium
                         }
                     }
                     WaveformCanvas {
@@ -408,24 +423,30 @@ Item {
                         onClicked: deviceBackend.clearLog()
                     }
 
-                    ListView {
-                        id: homeLogList
+                    ScrollView {
                         anchors.fill: parent
                         anchors.margins: 8
                         clip: true
-                        spacing: 4
-                        model: deviceBackend.logLines
-                        onCountChanged: if (count > 0) positionViewAtEnd()
-                        Component.onCompleted: if (count > 0) positionViewAtEnd()
                         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-                        delegate: Text {
-                            width: homeLogList.width
-                            text: modelData
-                            color: ApplicationWindow.window.muted
+                        TextArea {
+                            id: homeLogText
+                            text: page.joinedLogLines()
+                            readOnly: true
+                            selectByMouse: true
+                            selectByKeyboard: true
+                            wrapMode: TextEdit.Wrap
+                            color: ApplicationWindow.window.text
+                            selectedTextColor: ApplicationWindow.window.primaryForeground
+                            selectionColor: ApplicationWindow.window.primary
                             font.family: "Consolas"
                             font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
-                            wrapMode: Text.Wrap
+                            padding: 0
+                            leftPadding: 0
+                            rightPadding: 0
+                            topPadding: 0
+                            bottomPadding: 0
+                            background: Rectangle { color: "transparent" }
                         }
                     }
 
