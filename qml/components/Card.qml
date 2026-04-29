@@ -10,7 +10,7 @@ Rectangle {
 
     radius: 8
     color: ApplicationWindow.window.card
-    border.color: ApplicationWindow.window.border
+    border.width: 0
     clip: true
 
     ColumnLayout {
@@ -26,8 +26,7 @@ Rectangle {
                 anchors.fill: parent
                 radius: card.radius
                 color: ApplicationWindow.window.cardHeader
-                border.color: ApplicationWindow.window.border
-                border.width: 1
+                border.width: 0
             }
 
             Rectangle {
@@ -81,5 +80,14 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
         }
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        z: 20
+        radius: card.radius
+        color: "transparent"
+        border.color: ApplicationWindow.window.border
+        border.width: 1
     }
 }
