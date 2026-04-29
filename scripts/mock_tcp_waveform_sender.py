@@ -8,7 +8,9 @@ one frame as:
     int32 little-endian payload byte count + raw float32 samples
     int32 little-endian payload byte count + normalized-second-harmonic samples
 
-The default 50,000 samples match VaporView's waveform recorder.
+By default the generated sample throughput is fixed at 500,000 points per
+second per wave. The per-frame sample count is derived from the requested frame
+rate, so 10 Hz sends 50,000 points per frame and 100 Hz sends 5,000 points.
 """
 
 from __future__ import annotations
@@ -28,11 +30,24 @@ from typing import Iterable
 
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 8888
-DEFAULT_SAMPLES = 50_000
+DEFAULT_SAMPLES_PER_SECOND = 500_000
 DEFAULT_RATE_HZ = 10.0
-DEFAULT_PEAK_INDEX = 25_000
+REFERENCE_SAMPLE_COUNT = 50_000
+REFERENCE_PEAK_WIDTH = 520.0
 DEFAULT_PRECOMPUTE_FRAMES = 120
 SOCKET_TIMEOUT_SECONDS = 0.5
+
+
+def samples_for_rate(rate_hz: float, samples_per_second: int) -> int:
+    if rate_hz <= 0.0:
+        raise ValueError("--rate must be positive")
+    if samples_per_second <= 0:
+        raise ValueError("--samples-per-second must be positive")
+    return max(1, int(round(samples_per_second / rate_hz)))
+
+
+def default_peak_width(sample_count: int) -> float:
+    return max(1.0, REFERENCE_PEAK_WIDTH * sample_count / REFERENCE_SAMPLE_COUNT)
 
 
 def little_endian_float_bytes(values: Iterable[float]) -> bytes:
@@ -148,16 +163,20 @@ def precompute_frames(args: argparse.Namespace, peak_index: int) -> list[tuple[b
 
 
 def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
+    if args.samples is None:
+        args.samples = samples_for_rate(args.rate, args.samples_per_second)
     if args.samples <= 0:
         raise ValueError("--samples must be positive")
     if args.rate <= 0.0:
         raise ValueError("--rate must be positive")
+    if args.peak_width is None:
+        args.peak_width = default_peak_width(args.samples)
     if args.peak_width <= 0.0:
         raise ValueError("--peak-width must be positive")
 
     peak_index = args.peak_index
     if peak_index is None:
-        peak_index = DEFAULT_PEAK_INDEX if args.samples == DEFAULT_SAMPLES else args.samples // 2
+        peak_index = args.samples // 2
     peak_index = max(0, min(args.samples - 1, peak_index))
 
     frame_interval = 1.0 / args.rate
@@ -169,7 +188,10 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
         server.bind((args.host, args.port))
         server.listen(1)
         print(f"Listening on {args.host}:{args.port}; set VaporView TCP host to 127.0.0.1 and port to {args.port}.")
-        print(f"Frame: two payloads, {args.samples} float32 samples each, {args.rate:g} Hz.")
+        print(
+            f"Frame: two payloads, {args.samples} float32 samples each, {args.rate:g} Hz "
+            f"({args.samples * args.rate:g} points/s per wave)."
+        )
         if replay_frames:
             print(f"Mode: precomputed replay, {len(replay_frames)} frame(s) looped.")
         else:
@@ -250,11 +272,33 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Send mock VaporView TCP waveform frames with a visible peak.")
     parser.add_argument("--host", default=DEFAULT_HOST, help=f"Listen address, default {DEFAULT_HOST}")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"Listen port, default {DEFAULT_PORT}")
-    parser.add_argument("--samples", type=int, default=DEFAULT_SAMPLES, help=f"Samples per wave, default {DEFAULT_SAMPLES}")
+    parser.add_argument(
+        "--samples",
+        type=int,
+        default=None,
+        help=(
+            "Samples per wave frame. Default is derived from --samples-per-second / --rate, "
+            "for example 50000 at 10 Hz and 5000 at 100 Hz."
+        ),
+    )
+    parser.add_argument(
+        "--samples-per-second",
+        type=int,
+        default=DEFAULT_SAMPLES_PER_SECOND,
+        help=(
+            "Generated sample throughput per wave, used when --samples is omitted. "
+            f"Default {DEFAULT_SAMPLES_PER_SECOND}."
+        ),
+    )
     parser.add_argument("--rate", type=float, default=DEFAULT_RATE_HZ, help=f"Frames per second, default {DEFAULT_RATE_HZ:g}")
-    parser.add_argument("--peak-index", type=int, default=None, help="Peak center sample index, default middle / 25000")
+    parser.add_argument("--peak-index", type=int, default=None, help="Peak center sample index, default middle")
     parser.add_argument("--peak", type=float, default=1.0, help="Peak amplitude in the harmonic wave, default 1.0")
-    parser.add_argument("--peak-width", type=float, default=520.0, help="Gaussian peak width in samples, default 520")
+    parser.add_argument(
+        "--peak-width",
+        type=float,
+        default=None,
+        help="Gaussian peak width in samples, default scales from 520 at 50000 samples/frame",
+    )
     parser.add_argument("--noise", type=float, default=0.01, help="Uniform noise amplitude, default 0.01")
     parser.add_argument("--move-peak", action="store_true", help="Move the peak slowly across frames")
     parser.add_argument("--frames", type=int, default=0, help="Frames to send before exiting; 0 means run forever")
