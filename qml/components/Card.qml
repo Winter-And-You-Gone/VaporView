@@ -17,11 +17,32 @@ Rectangle {
         anchors.fill: parent
         spacing: 0
 
-        Rectangle {
+        Item {
+            id: header
             Layout.fillWidth: true
             Layout.preferredHeight: 32
-            color: ApplicationWindow.window.cardAlt
-            border.color: ApplicationWindow.window.border
+
+            Rectangle {
+                anchors.fill: parent
+                radius: card.radius
+                color: ApplicationWindow.window.cardAlt
+            }
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: card.radius
+                color: ApplicationWindow.window.cardAlt
+            }
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 1
+                color: ApplicationWindow.window.border
+            }
 
             RowLayout {
                 anchors.fill: parent

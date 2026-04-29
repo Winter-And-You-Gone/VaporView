@@ -129,7 +129,7 @@ Item {
             width: 1
             height: chart.chartHeight
             color: ApplicationWindow.window.border
-            opacity: 0.55
+            opacity: 0.68
         }
     }
 
@@ -141,8 +141,26 @@ Item {
             width: chart.chartWidth
             height: 1
             color: ApplicationWindow.window.border
-            opacity: 0.55
+            opacity: 0.68
         }
+    }
+
+    Rectangle {
+        x: chart.marginLeft
+        y: chart.marginTop
+        width: 1
+        height: chart.chartHeight
+        color: ApplicationWindow.window.text
+        opacity: 0.22
+    }
+
+    Rectangle {
+        x: chart.marginLeft
+        y: chart.marginTop + chart.chartHeight - 1
+        width: chart.chartWidth
+        height: 1
+        color: ApplicationWindow.window.text
+        opacity: 0.22
     }
 
     Repeater {
