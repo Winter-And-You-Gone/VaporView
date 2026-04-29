@@ -1,7 +1,8 @@
 import QtQuick
 
-Canvas {
-    id: canvas
+Item {
+    id: chart
+
     property var samples: []
     property color lineColor: ApplicationWindow.window.waveformRaw
     property bool scatter: false
@@ -10,16 +11,18 @@ Canvas {
     property real yMax: 1.2
     property real xSamplePeriod: 0.05
     property bool showDemoWhenEmpty: true
+    property int maxVisualSamples: 220
 
-    Component.onCompleted: requestPaint()
-    onSamplesChanged: requestPaint()
-    onLineColorChanged: requestPaint()
-    onScatterChanged: requestPaint()
-    onYMinChanged: requestPaint()
-    onYMaxChanged: requestPaint()
-    onWidthChanged: requestPaint()
-    onHeightChanged: requestPaint()
-    onVisibleChanged: if (visible) requestPaint()
+    readonly property int marginLeft: 32
+    readonly property int marginTop: 8
+    readonly property int marginBottom: 18
+    readonly property int marginRight: 8
+    readonly property real chartWidth: Math.max(1, width - marginLeft - marginRight)
+    readonly property real chartHeight: Math.max(1, height - marginTop - marginBottom)
+    readonly property var drawSamples: buildDisplaySamples(samples)
+    readonly property int pointCount: drawSamples.length
+
+    clip: true
 
     function sampleCount(list) {
         if (!list)
@@ -36,102 +39,136 @@ Canvas {
         return isNaN(value) ? 0 : value
     }
 
-    onPaint: {
-        if (width <= 0 || height <= 0)
-            return
-
-        var ctx = getContext("2d")
-        if (ctx.reset) {
-            ctx.reset()
-        } else {
-            ctx.setTransform(1, 0, 0, 1, 0, 0)
-            ctx.globalAlpha = 1
-            ctx.lineWidth = 1
-            ctx.setLineDash([])
+    function buildDisplaySamples(list) {
+        var values = []
+        var count = sampleCount(list)
+        if (count >= 2) {
+            var stride = Math.max(1, Math.ceil(count / maxVisualSamples))
+            for (var i = 0; i < count; i += stride)
+                values.push(sampleValue(list, i))
+            if ((count - 1) % stride !== 0)
+                values.push(sampleValue(list, count - 1))
         }
-        ctx.fillStyle = ApplicationWindow.window.secondary
-        ctx.fillRect(0, 0, width, height)
-
-        var marginLeft = 32
-        var marginTop = 8
-        var marginBottom = 18
-        var marginRight = 8
-        var chartW = Math.max(1, width - marginLeft - marginRight)
-        var chartH = Math.max(1, height - marginTop - marginBottom)
-        var incomingCount = sampleCount(samples)
-        var drawSamples = []
-        if (incomingCount >= 2) {
-            for (var si = 0; si < incomingCount; ++si) {
-                drawSamples.push(sampleValue(samples, si))
-            }
-        }
-        if (drawSamples.length < 2 && showDemoWhenEmpty) {
-            drawSamples = []
+        if (values.length < 2 && showDemoWhenEmpty) {
             var mid = (yMin + yMax) / 2
             var amp = Math.max(0.001, (yMax - yMin) * 0.32)
-            for (var di = 0; di < 400; ++di) {
-                drawSamples.push(mid + amp * Math.sin(di * 0.075) + amp * 0.24 * Math.sin(di * 0.27))
-            }
+            for (var di = 0; di < maxVisualSamples; ++di)
+                values.push(mid + amp * Math.sin(di * 0.075) + amp * 0.24 * Math.sin(di * 0.27))
         }
+        return values
+    }
 
-        ctx.strokeStyle = ApplicationWindow.window.border
-        ctx.lineWidth = 0.5
-        ctx.setLineDash([2, 2])
-        for (var gx = 0; gx <= 10; ++gx) {
-            var x = marginLeft + chartW * gx / 10
-            ctx.beginPath()
-            ctx.moveTo(x, marginTop)
-            ctx.lineTo(x, marginTop + chartH)
-            ctx.stroke()
-        }
-        for (var gy = 0; gy <= 4; ++gy) {
-            var y = marginTop + chartH * gy / 4
-            ctx.beginPath()
-            ctx.moveTo(marginLeft, y)
-            ctx.lineTo(marginLeft + chartW, y)
-            ctx.stroke()
-        }
-        ctx.setLineDash([])
+    function px(index) {
+        if (pointCount <= 1)
+            return marginLeft
+        return marginLeft + index * chartWidth / (pointCount - 1)
+    }
 
-        ctx.fillStyle = ApplicationWindow.window.text
-        ctx.font = "600 " + Math.round(10 * ApplicationWindow.window.scaleFactor) + "px sans-serif"
-        ctx.textAlign = "right"
-        ctx.textBaseline = "middle"
-        for (var yl = 0; yl <= 4; ++yl) {
-            var value = yMax - (yMax - yMin) * yl / 4
-            ctx.fillText(value.toFixed(1), marginLeft - 6, marginTop + chartH * yl / 4)
-        }
-        ctx.textAlign = "center"
-        ctx.textBaseline = "alphabetic"
-        for (var xl = 0; xl <= 5; ++xl) {
-            var tx = marginLeft + chartW * xl / 5
-            var seconds = ((drawSamples.length > 1 ? drawSamples.length - 1 : 0) * xSamplePeriod * xl / 5)
-            ctx.fillText(seconds.toFixed(1) + "s", tx, height - 4)
-        }
+    function py(value) {
+        var clamped = Math.max(yMin, Math.min(yMax, Number(value)))
+        return marginTop + (yMax - clamped) * chartHeight / Math.max(0.000001, yMax - yMin)
+    }
 
-        if (drawSamples.length < 2) {
-            return
-        }
+    Rectangle {
+        anchors.fill: parent
+        color: ApplicationWindow.window.secondary
+    }
 
-        function px(i) { return marginLeft + i * chartW / (drawSamples.length - 1) }
-        function py(v) {
-            var clamped = Math.max(yMin, Math.min(yMax, v))
-            return marginTop + (yMax - clamped) * chartH / Math.max(0.000001, yMax - yMin)
+    Repeater {
+        model: 11
+        Rectangle {
+            x: chart.marginLeft + chart.chartWidth * index / 10
+            y: chart.marginTop
+            width: 1
+            height: chart.chartHeight
+            color: ApplicationWindow.window.border
+            opacity: 0.55
         }
+    }
 
-        ctx.strokeStyle = lineColor
-        ctx.fillStyle = lineColor
-        ctx.lineWidth = 1.5
-        ctx.beginPath()
-        ctx.moveTo(px(0), py(drawSamples[0]))
-        for (var j = 1; j < drawSamples.length; ++j) {
-            if (scatter) {
-                ctx.moveTo(px(j), py(drawSamples[j]))
-                ctx.arc(px(j), py(drawSamples[j]), 2, 0, Math.PI * 2)
-            } else {
-                ctx.lineTo(px(j), py(drawSamples[j]))
-            }
+    Repeater {
+        model: 5
+        Rectangle {
+            x: chart.marginLeft
+            y: chart.marginTop + chart.chartHeight * index / 4
+            width: chart.chartWidth
+            height: 1
+            color: ApplicationWindow.window.border
+            opacity: 0.55
         }
-        scatter ? ctx.fill() : ctx.stroke()
+    }
+
+    Repeater {
+        model: 5
+        Text {
+            x: 0
+            y: chart.marginTop + chart.chartHeight * index / 4 - height / 2
+            width: chart.marginLeft - 6
+            text: (chart.yMax - (chart.yMax - chart.yMin) * index / 4).toFixed(1)
+            color: ApplicationWindow.window.text
+            opacity: 0.78
+            font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+            font.weight: Font.DemiBold
+            horizontalAlignment: Text.AlignRight
+            verticalAlignment: Text.AlignVCenter
+        }
+    }
+
+    Repeater {
+        model: 6
+        Text {
+            x: chart.marginLeft + chart.chartWidth * index / 5 - width / 2
+            y: chart.height - chart.marginBottom + 2
+            width: 48
+            text: ((Math.max(0, chart.pointCount - 1) * chart.xSamplePeriod * index / 5)).toFixed(1) + "s"
+            color: ApplicationWindow.window.text
+            opacity: 0.78
+            font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+            font.weight: Font.DemiBold
+            horizontalAlignment: Text.AlignHCenter
+        }
+    }
+
+    Repeater {
+        model: chart.scatter ? 0 : Math.max(0, chart.pointCount - 1)
+        Rectangle {
+            readonly property real x1: chart.px(index)
+            readonly property real y1: chart.py(chart.drawSamples[index])
+            readonly property real x2: chart.px(index + 1)
+            readonly property real y2: chart.py(chart.drawSamples[index + 1])
+            readonly property real dx: x2 - x1
+            readonly property real dy: y2 - y1
+
+            x: x1
+            y: y1 - height / 2
+            width: Math.max(1, Math.sqrt(dx * dx + dy * dy))
+            height: 2
+            radius: 1
+            color: chart.lineColor
+            antialiasing: true
+            transformOrigin: Item.Left
+            rotation: Math.atan2(dy, dx) * 180 / Math.PI
+        }
+    }
+
+    Repeater {
+        model: chart.scatter ? chart.pointCount : 0
+        Rectangle {
+            width: 5
+            height: 5
+            radius: 2.5
+            x: chart.px(index) - width / 2
+            y: chart.py(chart.drawSamples[index]) - height / 2
+            color: chart.lineColor
+            antialiasing: true
+        }
+    }
+
+    Text {
+        visible: chart.pointCount < 2 && !chart.showDemoWhenEmpty
+        anchors.centerIn: parent
+        text: chart.emptyText
+        color: ApplicationWindow.window.muted
+        font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
     }
 }
