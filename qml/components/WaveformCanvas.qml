@@ -12,6 +12,7 @@ Item {
     property real uiScale: 1.0
     property bool scatter: false
     property bool fillUnderLine: false
+    property bool hardLineCorners: false
     property string emptyText: "No data"
     property real yMin: -1.2
     property real yMax: 1.2
@@ -250,8 +251,8 @@ Item {
                 ctx.lineTo(chart.px(j), chart.py(chart.drawSamples[j]))
             ctx.strokeStyle = chart.rgbaString(chart.lineColor, chart.lineColor.a)
             ctx.lineWidth = chart.lineWidth
-            ctx.lineJoin = "round"
-            ctx.lineCap = "round"
+            ctx.lineJoin = chart.hardLineCorners ? "miter" : "round"
+            ctx.lineCap = chart.hardLineCorners ? "butt" : "round"
             ctx.stroke()
         }
     }
@@ -263,6 +264,7 @@ Item {
         function onPlotBackgroundChanged() { lineLayer.requestPaint() }
         function onScatterChanged() { lineLayer.requestPaint() }
         function onFillUnderLineChanged() { lineLayer.requestPaint() }
+        function onHardLineCornersChanged() { lineLayer.requestPaint() }
         function onYMinChanged() { lineLayer.requestPaint() }
         function onYMaxChanged() { lineLayer.requestPaint() }
         function onAutoScaleYChanged() { lineLayer.requestPaint() }

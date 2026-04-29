@@ -29,6 +29,11 @@ Item {
                (english ? "Latest peak: " : "最新峰值: ") + peakValueText()
     }
 
+    function trendToggleText() {
+        var english = appBackend.language === "en"
+        return waveformBackend.scatterMode ? (english ? "Line" : "折线") : (english ? "Scatter" : "散点")
+    }
+
     RowLayout {
         anchors.fill: parent
         anchors.margins: 12
@@ -95,11 +100,25 @@ Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 title: ApplicationWindow.window.t("waveform.peakTrend")
-                headerRight: Text {
-                    text: page.waveHeaderText("peak")
-                    color: ApplicationWindow.window.muted
-                    font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
-                    font.weight: Font.Medium
+                headerRight: Row {
+                    spacing: 8
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: page.waveHeaderText("peak")
+                        color: ApplicationWindow.window.muted
+                        font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+                        font.weight: Font.Medium
+                    }
+                    ToolbarButton {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 72
+                        height: 26
+                        iconName: "activity"
+                        iconSize: 13
+                        text: page.trendToggleText()
+                        variant: "secondary"
+                        onClicked: waveformBackend.scatterMode = !waveformBackend.scatterMode
+                    }
                 }
                 WaveformCanvas {
                     anchors.fill: parent
@@ -107,6 +126,7 @@ Item {
                     samples: waveformBackend.peakSamples
                     scatter: waveformBackend.scatterMode
                     fillUnderLine: !waveformBackend.scatterMode
+                    hardLineCorners: true
                     lineColor: ApplicationWindow.window.text
                     yMin: 1.0
                     yMax: 1.4
@@ -174,11 +194,6 @@ Item {
                     text: ApplicationWindow.window.t("waveform.filterSwitch")
                     checked: waveformBackend.filterEnabled
                     onToggled: waveformBackend.filterEnabled = checked
-                }
-                CheckBox {
-                    text: "Scatter trend"
-                    checked: waveformBackend.scatterMode
-                    onToggled: waveformBackend.scatterMode = checked
                 }
                 RowLayout {
                     Layout.fillWidth: true
