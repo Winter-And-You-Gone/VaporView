@@ -128,8 +128,16 @@ Item {
 
                                         background: Rectangle {
                                             radius: 8
-                                            color: linkButton.active ? "#1A22C55E" : ApplicationWindow.window.secondary
-                                            border.color: linkButton.active ? "#3322C55E" : ApplicationWindow.window.border
+                                            color: linkButton.active
+                                                   ? "#1A22C55E"
+                                                   : (ApplicationWindow.window.dark
+                                                      ? Qt.rgba(0.58, 0.64, 0.72, 0.10)
+                                                      : Qt.rgba(0.39, 0.45, 0.55, 0.10))
+                                            border.color: linkButton.active
+                                                          ? "#3322C55E"
+                                                          : (ApplicationWindow.window.dark
+                                                             ? Qt.rgba(0.58, 0.64, 0.72, 0.30)
+                                                             : Qt.rgba(0.39, 0.45, 0.55, 0.30))
                                         }
                                     }
                                 }
