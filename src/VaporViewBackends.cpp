@@ -48,7 +48,7 @@ constexpr quint16 kRawRecordTypeGeneric = 1u;
 constexpr quint32 kRawTcpWaveCombinedPayloadFlag = 0x00000001u;
 constexpr int kFloatSize = 4;
 constexpr int kMaxTcpPayloadSize = 4 * 1024 * 1024;
-constexpr int kLiveDisplayRefreshMs = 20;
+constexpr int kLiveDisplayRefreshMs = 11;
 constexpr int kPeakTrendFrameWindow = 1000;
 
 #pragma pack(push, 1)
