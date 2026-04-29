@@ -122,14 +122,14 @@ Item {
                                             width: 16
                                             height: 16
                                             name: linkButton.active ? "unlink" : "link"
-                                            iconColor: linkButton.active ? ApplicationWindow.window.ok : ApplicationWindow.window.warning
+                                            iconColor: linkButton.active ? ApplicationWindow.window.ok : ApplicationWindow.window.muted
                                             stroke: 2
                                         }
 
                                         background: Rectangle {
                                             radius: 8
-                                            color: linkButton.active ? "#1A22C55E" : "#1AF59E0B"
-                                            border.color: linkButton.active ? "#3322C55E" : "#33F59E0B"
+                                            color: linkButton.active ? "#1A22C55E" : ApplicationWindow.window.secondary
+                                            border.color: linkButton.active ? "#3322C55E" : ApplicationWindow.window.border
                                         }
                                     }
                                 }

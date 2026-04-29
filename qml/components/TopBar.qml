@@ -33,6 +33,7 @@ Rectangle {
             font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
             elide: Text.ElideMiddle
         }
+        Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 24; color: ApplicationWindow.window.border }
         StatusPill {
             status: deviceBackend.connected ? "online" : "warning"
             label: deviceBackend.connected ? ApplicationWindow.window.t("topbar.systemOnline") : ApplicationWindow.window.t("topbar.partialOffline")
@@ -41,6 +42,7 @@ Rectangle {
             status: recordingBackend.recording ? "recording" : "warning"
             label: recordingBackend.recording ? ApplicationWindow.window.t("topbar.recording") : recordingBackend.paused ? ApplicationWindow.window.t("topbar.paused") : ApplicationWindow.window.t("topbar.stopped")
         }
+        Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 24; color: ApplicationWindow.window.border }
         RowLayout {
             spacing: 10
             Layout.maximumWidth: 360
@@ -63,6 +65,7 @@ Rectangle {
                 elide: Text.ElideRight
             }
         }
+        Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 24; color: ApplicationWindow.window.border }
         ToolbarButton {
             iconName: deviceBackend.connected ? "unlink" : "link"
             text: deviceBackend.connected ? ApplicationWindow.window.t("topbar.disconnect") : ApplicationWindow.window.t("topbar.connect")
@@ -77,6 +80,7 @@ Rectangle {
             variant: "danger"
             onClicked: deviceBackend.cancelConnect()
         }
+        Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 24; color: ApplicationWindow.window.border }
         ToolbarButton {
             iconName: recordingBackend.recording ? "square" : "play"
             text: recordingBackend.recording ? ApplicationWindow.window.t("topbar.stop") : ApplicationWindow.window.t("topbar.start")
@@ -89,6 +93,7 @@ Rectangle {
             enabled: recordingBackend.recording || recordingBackend.paused
             onClicked: recordingBackend.paused ? recordingBackend.startRecording() : recordingBackend.pauseRecording()
         }
+        Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 24; color: ApplicationWindow.window.border }
         ToolbarButton {
             text: appBackend.language === "zh" ? "EN" : "中"
             onClicked: appBackend.toggleLanguage()
