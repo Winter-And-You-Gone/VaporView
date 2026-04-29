@@ -126,7 +126,7 @@ Item {
                     WaveformCanvas {
                         samples: sessionBackend.waveformPreview
                         lineColor: ApplicationWindow.window.primary
-                        plotBackground: ApplicationWindow.window.secondary
+                        plotBackground: ApplicationWindow.window.chartPlot
                         gridColor: ApplicationWindow.window.chartGrid
                         axisColor: ApplicationWindow.window.chartAxis
                         emptyColor: ApplicationWindow.window.muted

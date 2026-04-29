@@ -11,6 +11,30 @@ Item {
         return isNaN(n) ? "--" : n.toFixed(decimals)
     }
 
+    function frameRateText() {
+        var hz = Number(waveformBackend.frameRate)
+        return hz > 0 ? hz.toFixed(0) + " Hz" : "-- Hz"
+    }
+
+    function peakValueText() {
+        var peak = Number(waveformBackend.latestPeak)
+        return peak > 0 ? peak.toFixed(3) + "V" : "--"
+    }
+
+    function waveHeaderText(kind) {
+        var english = appBackend.language === "en"
+        if (kind === "raw")
+            return (english ? "Rate: " : "帧率: ") + frameRateText() + "    " +
+                   (english ? "Range: +/-1.2V" : "信号范围: ±1.2V") + "    " +
+                   (english ? "Timestamp: " : "当前时间戳: ") + (deviceBackend.coordinateData.localTime || "--")
+        if (kind === "harmonic")
+            return (english ? "Rate: " : "帧率: ") + frameRateText() + "    " +
+                   (english ? "Peak: " : "峰值: ") + peakValueText()
+        return (english ? "Filter: " : "滤波状态: ") +
+               (waveformBackend.filterEnabled ? (english ? "Enabled" : "已启用") : (english ? "Disabled" : "未启用")) + "    " +
+               (english ? "Latest peak: " : "最新峰值: ") + peakValueText()
+    }
+
     ScrollView {
         anchors.fill: parent
         anchors.margins: 12
@@ -256,14 +280,21 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     title: ApplicationWindow.window.t("waveform.rawData")
+                    headerRight: Text {
+                        text: page.waveHeaderText("raw")
+                        color: ApplicationWindow.window.muted
+                        font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+                        font.weight: Font.Medium
+                    }
                     WaveformCanvas {
                         anchors.fill: parent
                         anchors.margins: 8
                         samples: waveformBackend.rawSamples
-                        sourcePointCount: waveformBackend.rawSampleCount
+                        sourcePointCount: waveformBackend.rawSampleCount > 1 ? waveformBackend.rawSampleCount : 201
                         xStartIndex: 0
-                        xEndIndex: Math.max(0, waveformBackend.rawSampleCount - 1)
-                        plotBackground: ApplicationWindow.window.secondary
+                        xEndIndex: waveformBackend.rawSampleCount > 1 ? waveformBackend.rawSampleCount - 1 : 200
+                        autoScaleY: waveformBackend.rawSampleCount > 1
+                        plotBackground: ApplicationWindow.window.chartPlot
                         gridColor: ApplicationWindow.window.chartGrid
                         axisColor: ApplicationWindow.window.chartAxis
                         emptyColor: ApplicationWindow.window.muted
@@ -275,14 +306,21 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     title: ApplicationWindow.window.t("waveform.secondHarmonic")
+                    headerRight: Text {
+                        text: page.waveHeaderText("harmonic")
+                        color: ApplicationWindow.window.muted
+                        font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+                        font.weight: Font.Medium
+                    }
                     WaveformCanvas {
                         anchors.fill: parent
                         anchors.margins: 8
                         samples: waveformBackend.harmonicSamples
-                        sourcePointCount: waveformBackend.harmonicSampleCount
+                        sourcePointCount: waveformBackend.harmonicSampleCount > 1 ? waveformBackend.harmonicSampleCount : 201
                         xStartIndex: 0
-                        xEndIndex: Math.max(0, waveformBackend.harmonicSampleCount - 1)
-                        plotBackground: ApplicationWindow.window.secondary
+                        xEndIndex: waveformBackend.harmonicSampleCount > 1 ? waveformBackend.harmonicSampleCount - 1 : 200
+                        autoScaleY: waveformBackend.harmonicSampleCount > 1
+                        plotBackground: ApplicationWindow.window.chartPlot
                         gridColor: ApplicationWindow.window.chartGrid
                         axisColor: ApplicationWindow.window.chartAxis
                         emptyColor: ApplicationWindow.window.muted
@@ -296,13 +334,22 @@ Item {
                 width: parent.width
                 height: 180
                 title: ApplicationWindow.window.t("waveform.peakTrend")
+                headerRight: Text {
+                    text: page.waveHeaderText("peak")
+                    color: ApplicationWindow.window.muted
+                    font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+                    font.weight: Font.Medium
+                }
                 WaveformCanvas {
                     anchors.fill: parent
                     anchors.margins: 8
                     samples: waveformBackend.peakSamples
-                    scatter: waveformBackend.scatterMode
-                    lineColor: ApplicationWindow.window.primary
-                    plotBackground: ApplicationWindow.window.secondary
+                    scatter: false
+                    lineColor: ApplicationWindow.window.text
+                    yMin: 1.0
+                    yMax: 1.4
+                    autoScaleY: waveformBackend.peakSamples.length > 1
+                    plotBackground: ApplicationWindow.window.chartPlot
                     gridColor: ApplicationWindow.window.chartGrid
                     axisColor: ApplicationWindow.window.chartAxis
                     emptyColor: ApplicationWindow.window.muted
