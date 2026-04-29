@@ -343,50 +343,99 @@ Item {
                 }
             }
 
-            Card {
+            GridLayout {
                 width: parent.width
                 height: 180
-                title: ApplicationWindow.window.t("waveform.peakTrend")
-                headerRight: Row {
-                    spacing: 8
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: page.waveHeaderText("peak")
-                        color: ApplicationWindow.window.muted
-                        font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
-                        font.weight: Font.Medium
+                columns: 2
+                columnSpacing: 12
+
+                Card {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    title: ApplicationWindow.window.t("waveform.peakTrend")
+                    headerRight: Row {
+                        spacing: 8
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: page.waveHeaderText("peak")
+                            color: ApplicationWindow.window.muted
+                            font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+                            font.weight: Font.Medium
+                        }
+                        ToolbarButton {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 72
+                            height: 26
+                            iconName: "activity"
+                            iconSize: 13
+                            text: page.trendToggleText()
+                            variant: "secondary"
+                            onClicked: waveformBackend.scatterMode = !waveformBackend.scatterMode
+                        }
                     }
-                    ToolbarButton {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 72
-                        height: 26
-                        iconName: "activity"
-                        iconSize: 13
-                        text: page.trendToggleText()
-                        variant: "secondary"
-                        onClicked: waveformBackend.scatterMode = !waveformBackend.scatterMode
+                    WaveformCanvas {
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        samples: waveformBackend.peakSamples
+                        scatter: waveformBackend.scatterMode
+                        fillUnderLine: !waveformBackend.scatterMode
+                        hardLineCorners: true
+                        lineColor: ApplicationWindow.window.text
+                        yMin: 1.0
+                        yMax: 1.4
+                        autoScaleY: waveformBackend.peakSamples.length > 1
+                        plotBackground: ApplicationWindow.window.chartPlot
+                        gridColor: ApplicationWindow.window.chartGrid
+                        axisColor: ApplicationWindow.window.chartAxis
+                        emptyColor: ApplicationWindow.window.muted
+                        uiScale: ApplicationWindow.window.scaleFactor
+                        maxVisualSamples: 500
+                        sourcePointCount: Math.max(1, Math.min(500, waveformBackend.peakTotalCount))
+                        xStartIndex: 0
+                        xEndIndex: Math.max(0, Math.min(499, waveformBackend.peakTotalCount - 1))
                     }
                 }
-                WaveformCanvas {
-                    anchors.fill: parent
-                    anchors.margins: 8
-                    samples: waveformBackend.peakSamples
-                    scatter: waveformBackend.scatterMode
-                    fillUnderLine: !waveformBackend.scatterMode
-                    hardLineCorners: true
-                    lineColor: ApplicationWindow.window.text
-                    yMin: 1.0
-                    yMax: 1.4
-                    autoScaleY: waveformBackend.peakSamples.length > 1
-                    plotBackground: ApplicationWindow.window.chartPlot
-                    gridColor: ApplicationWindow.window.chartGrid
-                    axisColor: ApplicationWindow.window.chartAxis
-                    emptyColor: ApplicationWindow.window.muted
-                    uiScale: ApplicationWindow.window.scaleFactor
-                    maxVisualSamples: 1000
-                    sourcePointCount: Math.max(1, Math.min(1000, waveformBackend.peakTotalCount))
-                    xStartIndex: 0
-                    xEndIndex: Math.max(0, Math.min(999, waveformBackend.peakTotalCount - 1))
+
+                Card {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    title: ApplicationWindow.window.t("home.systemLog")
+                    headerRight: ToolbarButton {
+                        iconName: "trash-2"
+                        iconSize: 13
+                        text: ApplicationWindow.window.t("home.clearLog")
+                        variant: "secondary"
+                        onClicked: deviceBackend.clearLog()
+                    }
+
+                    ListView {
+                        id: homeLogList
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        clip: true
+                        spacing: 4
+                        model: deviceBackend.logLines
+                        onCountChanged: if (count > 0) positionViewAtEnd()
+                        Component.onCompleted: if (count > 0) positionViewAtEnd()
+                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                        delegate: Text {
+                            width: homeLogList.width
+                            text: modelData
+                            color: ApplicationWindow.window.muted
+                            font.family: "Consolas"
+                            font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+                            wrapMode: Text.Wrap
+                        }
+                    }
+
+                    Text {
+                        visible: deviceBackend.logLines.length === 0
+                        anchors.centerIn: parent
+                        text: ApplicationWindow.window.t("home.noLog")
+                        color: ApplicationWindow.window.muted
+                        font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
+                    }
                 }
             }
         }
