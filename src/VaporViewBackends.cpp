@@ -47,7 +47,7 @@ constexpr quint16 kRawRecordTypeGeneric = 1u;
 constexpr quint32 kRawTcpWaveCombinedPayloadFlag = 0x00000001u;
 constexpr int kFloatSize = 4;
 constexpr int kMaxTcpPayloadSize = 4 * 1024 * 1024;
-constexpr int kPeakTrendFrameWindow = 500;
+constexpr int kPeakTrendFrameWindow = 1000;
 
 #pragma pack(push, 1)
 struct UnifiedRawFileHeader
@@ -1627,6 +1627,7 @@ WaveformBackend::WaveformBackend(QObject *parent)
     , float_encoding_(VaporView::TcpFloatEncoding::Unknown)
     , expected_payload_size_(0)
     , frame_count_(0)
+    , peak_total_count_(0)
     , frame_rate_(0.0)
     , filter_enabled_(false)
     , scatter_mode_(true)
@@ -1654,6 +1655,13 @@ double WaveformBackend::frameRate() const { return frame_rate_; }
 QVariantList WaveformBackend::rawSamples() const { return raw_samples_cache_; }
 QVariantList WaveformBackend::harmonicSamples() const { return harmonic_samples_cache_; }
 QVariantList WaveformBackend::peakSamples() const { return peak_samples_cache_; }
+int WaveformBackend::rawSampleCount() const { return raw_history_.size(); }
+int WaveformBackend::harmonicSampleCount() const { return harmonic_history_.size(); }
+int WaveformBackend::peakTotalCount() const
+{
+    return peak_total_count_ > std::numeric_limits<int>::max() ? std::numeric_limits<int>::max()
+                                                               : static_cast<int>(peak_total_count_);
+}
 bool WaveformBackend::filterEnabled() const { return filter_enabled_; }
 bool WaveformBackend::scatterMode() const { return scatter_mode_; }
 double WaveformBackend::latestPeak() const { return peak_history_.isEmpty() ? 0.0 : peak_history_.last(); }
@@ -1738,6 +1746,7 @@ void WaveformBackend::clearPeakHistory()
     peak_raw_history_.clear();
     peak_history_.clear();
     peak_samples_cache_.clear();
+    peak_total_count_ = 0;
     emit peakSamplesChanged();
 }
 
@@ -1892,8 +1901,10 @@ QVariantList WaveformBackend::vectorToVariantList(const QVector<float>& values, 
     {
         return list;
     }
-    const int stride = std::max(1, static_cast<int>(values.size()) / std::max(1, maxCount));
-    for (int i = 0; i < values.size(); i += stride)
+    const int valueCount = static_cast<int>(values.size());
+    const int safeMaxCount = std::max(1, maxCount);
+    const int stride = std::max(1, (valueCount + safeMaxCount - 1) / safeMaxCount);
+    for (int i = 0; i < valueCount; i += stride)
     {
         list.append(values.at(i));
     }
@@ -1979,6 +1990,7 @@ void WaveformBackend::processBuffer()
             const auto maxIt = std::max_element(harmonic_history_.cbegin(), harmonic_history_.cend());
             if (maxIt != harmonic_history_.cend())
             {
+                ++peak_total_count_;
                 peak_raw_history_.append(*maxIt);
                 while (peak_raw_history_.size() > kPeakTrendFrameWindow)
                 {

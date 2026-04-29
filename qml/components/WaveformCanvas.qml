@@ -9,18 +9,28 @@ Item {
     property string emptyText: "No data"
     property real yMin: -1.2
     property real yMax: 1.2
-    property real xSamplePeriod: 0.05
+    property bool autoScaleY: true
     property bool showDemoWhenEmpty: true
     property int maxVisualSamples: 220
+    property int sourcePointCount: 0
+    property int xStartIndex: 0
+    property int xEndIndex: -1
 
-    readonly property int marginLeft: 32
+    readonly property int marginLeft: 42
     readonly property int marginTop: 8
-    readonly property int marginBottom: 18
-    readonly property int marginRight: 8
+    readonly property int marginBottom: 22
+    readonly property int marginRight: 10
     readonly property real chartWidth: Math.max(1, width - marginLeft - marginRight)
     readonly property real chartHeight: Math.max(1, height - marginTop - marginBottom)
     readonly property var drawSamples: buildDisplaySamples(samples)
     readonly property int pointCount: drawSamples.length
+    readonly property var yRange: computeYRange(drawSamples)
+    readonly property real effectiveYMin: yRange[0]
+    readonly property real effectiveYMax: yRange[1]
+    readonly property int effectiveSourceCount: Math.max(sourcePointCount, sampleCount(samples), pointCount)
+    readonly property int effectiveXStart: Math.max(0, xStartIndex)
+    readonly property int effectiveXEnd: xEndIndex >= effectiveXStart ? xEndIndex
+                                                                      : Math.max(effectiveXStart, effectiveXStart + Math.max(0, effectiveSourceCount - 1))
 
     clip: true
 
@@ -58,6 +68,43 @@ Item {
         return values
     }
 
+    function computeYRange(values) {
+        if (!autoScaleY || values.length < 1)
+            return [yMin, yMax]
+
+        var minValue = Number.POSITIVE_INFINITY
+        var maxValue = Number.NEGATIVE_INFINITY
+        for (var i = 0; i < values.length; ++i) {
+            var value = Number(values[i])
+            if (isNaN(value))
+                continue
+            minValue = Math.min(minValue, value)
+            maxValue = Math.max(maxValue, value)
+        }
+
+        if (!isFinite(minValue) || !isFinite(maxValue))
+            return [yMin, yMax]
+
+        var span = maxValue - minValue
+        var pad = span > 0 ? span * 0.12 : Math.max(0.5, Math.abs(maxValue) * 0.08)
+        return [minValue - pad, maxValue + pad]
+    }
+
+    function formatAxisValue(value) {
+        var absValue = Math.abs(value)
+        if (absValue >= 1000)
+            return value.toFixed(0)
+        if (absValue >= 10)
+            return value.toFixed(1)
+        return value.toFixed(2)
+    }
+
+    function formatIndexLabel(value) {
+        if (value >= 10000)
+            return Math.round(value / 1000) + "k"
+        return Math.round(value).toString()
+    }
+
     function px(index) {
         if (pointCount <= 1)
             return marginLeft
@@ -65,8 +112,8 @@ Item {
     }
 
     function py(value) {
-        var clamped = Math.max(yMin, Math.min(yMax, Number(value)))
-        return marginTop + (yMax - clamped) * chartHeight / Math.max(0.000001, yMax - yMin)
+        var clamped = Math.max(effectiveYMin, Math.min(effectiveYMax, Number(value)))
+        return marginTop + (effectiveYMax - clamped) * chartHeight / Math.max(0.000001, effectiveYMax - effectiveYMin)
     }
 
     Rectangle {
@@ -104,7 +151,7 @@ Item {
             x: 0
             y: chart.marginTop + chart.chartHeight * index / 4 - height / 2
             width: chart.marginLeft - 6
-            text: (chart.yMax - (chart.yMax - chart.yMin) * index / 4).toFixed(1)
+            text: chart.formatAxisValue(chart.effectiveYMax - (chart.effectiveYMax - chart.effectiveYMin) * index / 4)
             color: ApplicationWindow.window.text
             opacity: 0.78
             font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
@@ -118,9 +165,9 @@ Item {
         model: 6
         Text {
             x: chart.marginLeft + chart.chartWidth * index / 5 - width / 2
-            y: chart.height - chart.marginBottom + 2
-            width: 48
-            text: ((Math.max(0, chart.pointCount - 1) * chart.xSamplePeriod * index / 5)).toFixed(1) + "s"
+            y: chart.height - chart.marginBottom + 3
+            width: 54
+            text: chart.formatIndexLabel(chart.effectiveXStart + (chart.effectiveXEnd - chart.effectiveXStart) * index / 5)
             color: ApplicationWindow.window.text
             opacity: 0.78
             font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)

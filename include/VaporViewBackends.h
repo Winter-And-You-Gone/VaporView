@@ -263,6 +263,9 @@ class WaveformBackend : public QObject
     Q_PROPERTY(QVariantList rawSamples READ rawSamples NOTIFY samplesChanged)
     Q_PROPERTY(QVariantList harmonicSamples READ harmonicSamples NOTIFY samplesChanged)
     Q_PROPERTY(QVariantList peakSamples READ peakSamples NOTIFY peakSamplesChanged)
+    Q_PROPERTY(int rawSampleCount READ rawSampleCount NOTIFY samplesChanged)
+    Q_PROPERTY(int harmonicSampleCount READ harmonicSampleCount NOTIFY samplesChanged)
+    Q_PROPERTY(int peakTotalCount READ peakTotalCount NOTIFY peakSamplesChanged)
     Q_PROPERTY(bool filterEnabled READ filterEnabled WRITE setFilterEnabled NOTIFY filterChanged)
     Q_PROPERTY(bool scatterMode READ scatterMode WRITE setScatterMode NOTIFY filterChanged)
     Q_PROPERTY(double latestPeak READ latestPeak NOTIFY peakSamplesChanged)
@@ -279,6 +282,9 @@ public:
     QVariantList rawSamples() const;
     QVariantList harmonicSamples() const;
     QVariantList peakSamples() const;
+    int rawSampleCount() const;
+    int harmonicSampleCount() const;
+    int peakTotalCount() const;
     bool filterEnabled() const;
     bool scatterMode() const;
     double latestPeak() const;
@@ -358,6 +364,7 @@ private:
     VaporView::TcpFloatEncoding float_encoding_;
     int expected_payload_size_;
     qint64 frame_count_;
+    qint64 peak_total_count_;
     QVector<qint64> frame_arrivals_ms_;
     double frame_rate_;
     bool filter_enabled_;

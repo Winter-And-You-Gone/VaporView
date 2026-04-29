@@ -255,13 +255,29 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     title: ApplicationWindow.window.t("waveform.rawData")
-                    WaveformCanvas { anchors.fill: parent; anchors.margins: 8; samples: waveformBackend.rawSamples; lineColor: ApplicationWindow.window.waveformRaw }
+                    WaveformCanvas {
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        samples: waveformBackend.rawSamples
+                        sourcePointCount: waveformBackend.rawSampleCount
+                        xStartIndex: 0
+                        xEndIndex: Math.max(0, waveformBackend.rawSampleCount - 1)
+                        lineColor: ApplicationWindow.window.waveformRaw
+                    }
                 }
                 Card {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     title: ApplicationWindow.window.t("waveform.secondHarmonic")
-                    WaveformCanvas { anchors.fill: parent; anchors.margins: 8; samples: waveformBackend.harmonicSamples; lineColor: ApplicationWindow.window.waveformHarmonic }
+                    WaveformCanvas {
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        samples: waveformBackend.harmonicSamples
+                        sourcePointCount: waveformBackend.harmonicSampleCount
+                        xStartIndex: 0
+                        xEndIndex: Math.max(0, waveformBackend.harmonicSampleCount - 1)
+                        lineColor: ApplicationWindow.window.waveformHarmonic
+                    }
                 }
             }
 
@@ -275,9 +291,10 @@ Item {
                     samples: waveformBackend.peakSamples
                     scatter: waveformBackend.scatterMode
                     lineColor: ApplicationWindow.window.primary
-                    yMin: 1.0
-                    yMax: 1.4
-                    xSamplePeriod: 1
+                    maxVisualSamples: 1000
+                    sourcePointCount: waveformBackend.peakSamples.length
+                    xStartIndex: Math.max(0, waveformBackend.peakTotalCount - waveformBackend.peakSamples.length)
+                    xEndIndex: Math.max(0, waveformBackend.peakTotalCount - 1)
                 }
             }
         }
