@@ -25,6 +25,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <utility>
 
 namespace
 {
@@ -1618,8 +1619,251 @@ bool DeviceBackend::applyEpsilonMainAntennaLeverArm(double xM, double yM, double
     return ok;
 }
 
+TcpWaveReceiverWorker::TcpWaveReceiverWorker(QObject *parent)
+    : QObject(parent)
+    , socket_(nullptr)
+    , read_state_(ReadState::RawHeader)
+    , header_byte_order_(HeaderByteOrder::Unknown)
+    , float_encoding_(VaporView::TcpFloatEncoding::Unknown)
+    , expected_payload_size_(0)
+{
+}
+
+TcpWaveReceiverWorker::~TcpWaveReceiverWorker()
+{
+    stop();
+}
+
+void TcpWaveReceiverWorker::connectToHost(const QString& host, int port)
+{
+    if (socket_ && socket_->state() != QAbstractSocket::UnconnectedState)
+    {
+        return;
+    }
+    if (!socket_)
+    {
+        socket_ = new QTcpSocket(this);
+        connect(socket_, &QTcpSocket::readyRead, this, &TcpWaveReceiverWorker::onReadyRead);
+        connect(socket_, &QTcpSocket::connected, this, &TcpWaveReceiverWorker::onSocketConnected);
+        connect(socket_, &QTcpSocket::disconnected, this, &TcpWaveReceiverWorker::onSocketDisconnected);
+        connect(socket_, &QAbstractSocket::errorOccurred, this, &TcpWaveReceiverWorker::onSocketError);
+    }
+    resetStreamState();
+    socket_->connectToHost(host, static_cast<quint16>(std::clamp(port, 1, 65535)));
+}
+
+void TcpWaveReceiverWorker::disconnectFromHost()
+{
+    if (socket_ && socket_->state() != QAbstractSocket::UnconnectedState)
+    {
+        socket_->disconnectFromHost();
+    }
+}
+
+void TcpWaveReceiverWorker::stop()
+{
+    if (!socket_)
+    {
+        return;
+    }
+    socket_->disconnect(this);
+    socket_->close();
+    delete socket_;
+    socket_ = nullptr;
+    resetStreamState();
+}
+
+void TcpWaveReceiverWorker::resetStreamState()
+{
+    buffer_.clear();
+    pending_raw_payload_.clear();
+    pending_raw_samples_.clear();
+    read_state_ = ReadState::RawHeader;
+    header_byte_order_ = HeaderByteOrder::Unknown;
+    float_encoding_ = VaporView::TcpFloatEncoding::Unknown;
+    expected_payload_size_ = 0;
+    frame_arrivals_ms_.clear();
+}
+
+void TcpWaveReceiverWorker::onSocketConnected()
+{
+    emit connected();
+}
+
+void TcpWaveReceiverWorker::onSocketDisconnected()
+{
+    emit disconnected();
+}
+
+void TcpWaveReceiverWorker::onSocketError()
+{
+    emit socketError(socket_ ? socket_->errorString() : QStringLiteral("TCP socket error."));
+}
+
+void TcpWaveReceiverWorker::onReadyRead()
+{
+    if (!socket_)
+    {
+        return;
+    }
+    buffer_.append(socket_->readAll());
+    processBuffer();
+}
+
+bool TcpWaveReceiverWorker::isValidPayloadSize(qint32 candidate) const
+{
+    return candidate > 0 && candidate <= kMaxTcpPayloadSize && candidate % kFloatSize == 0;
+}
+
+qint32 TcpWaveReceiverWorker::decodeHeaderValue(const char *raw, HeaderByteOrder order) const
+{
+    return order == HeaderByteOrder::BigEndian
+        ? qFromBigEndian<qint32>(reinterpret_cast<const uchar*>(raw))
+        : qFromLittleEndian<qint32>(reinterpret_cast<const uchar*>(raw));
+}
+
+bool TcpWaveReceiverWorker::tryConsumeHeader()
+{
+    if (buffer_.size() < 4)
+    {
+        return false;
+    }
+
+    HeaderByteOrder order = header_byte_order_;
+    qint32 size = 0;
+    if (order == HeaderByteOrder::Unknown)
+    {
+        const qint32 little = decodeHeaderValue(buffer_.constData(), HeaderByteOrder::LittleEndian);
+        const qint32 big = decodeHeaderValue(buffer_.constData(), HeaderByteOrder::BigEndian);
+        if (isValidPayloadSize(little))
+        {
+            order = HeaderByteOrder::LittleEndian;
+            size = little;
+        }
+        else if (isValidPayloadSize(big))
+        {
+            order = HeaderByteOrder::BigEndian;
+            size = big;
+        }
+        else
+        {
+            buffer_.remove(0, 1);
+            return true;
+        }
+    }
+    else
+    {
+        size = decodeHeaderValue(buffer_.constData(), order);
+        if (!isValidPayloadSize(size))
+        {
+            header_byte_order_ = HeaderByteOrder::Unknown;
+            buffer_.remove(0, 1);
+            return true;
+        }
+    }
+
+    header_byte_order_ = order;
+    expected_payload_size_ = size;
+    buffer_.remove(0, 4);
+    return true;
+}
+
+bool TcpWaveReceiverWorker::tryConsumePayload(QVector<float>& output, QByteArray *rawPayload)
+{
+    if (expected_payload_size_ <= 0 || buffer_.size() < expected_payload_size_)
+    {
+        return false;
+    }
+    const QByteArray payload = buffer_.left(expected_payload_size_);
+    buffer_.remove(0, expected_payload_size_);
+    if (float_encoding_ == VaporView::TcpFloatEncoding::Unknown)
+    {
+        float_encoding_ = VaporView::autoDetectTcpFloatEncoding(payload);
+    }
+    output = VaporView::decodeTcpFloatPayload(payload, float_encoding_);
+    if (rawPayload)
+    {
+        *rawPayload = payload;
+    }
+    expected_payload_size_ = 0;
+    return true;
+}
+
+double TcpWaveReceiverWorker::updateFrameRate(qint64 nowMs)
+{
+    frame_arrivals_ms_.append(nowMs);
+    while (frame_arrivals_ms_.size() > 60)
+    {
+        frame_arrivals_ms_.removeFirst();
+    }
+    if (frame_arrivals_ms_.size() < 2)
+    {
+        return 0.0;
+    }
+    const qint64 span = frame_arrivals_ms_.last() - frame_arrivals_ms_.first();
+    return span > 0 ? static_cast<double>(frame_arrivals_ms_.size() - 1) * 1000.0 / static_cast<double>(span) : 0.0;
+}
+
+void TcpWaveReceiverWorker::processBuffer()
+{
+    bool progressed = true;
+    while (progressed)
+    {
+        progressed = false;
+        if (read_state_ == ReadState::RawHeader || read_state_ == ReadState::HarmonicHeader)
+        {
+            progressed = tryConsumeHeader();
+            if (progressed && expected_payload_size_ > 0)
+            {
+                read_state_ = (read_state_ == ReadState::RawHeader) ? ReadState::RawPayload : ReadState::HarmonicPayload;
+            }
+        }
+        if (read_state_ == ReadState::RawPayload)
+        {
+            QVector<float> rawSamples;
+            QByteArray payload;
+            if (!tryConsumePayload(rawSamples, &payload))
+            {
+                continue;
+            }
+            pending_raw_payload_ = payload;
+            pending_raw_samples_ = std::move(rawSamples);
+            read_state_ = ReadState::HarmonicHeader;
+            progressed = true;
+        }
+        if (read_state_ == ReadState::HarmonicPayload)
+        {
+            QVector<float> harmonicSamples;
+            QByteArray harmonicPayload;
+            if (!tryConsumePayload(harmonicSamples, &harmonicPayload))
+            {
+                continue;
+            }
+            float peakValue = std::numeric_limits<float>::quiet_NaN();
+            const auto maxIt = std::max_element(harmonicSamples.cbegin(), harmonicSamples.cend());
+            if (maxIt != harmonicSamples.cend())
+            {
+                peakValue = *maxIt;
+            }
+            const double frameRate = updateFrameRate(QDateTime::currentMSecsSinceEpoch());
+            emit frameDecoded(
+                currentTimestampUs(),
+                pending_raw_payload_,
+                harmonicPayload,
+                float_encoding_,
+                pending_raw_samples_,
+                harmonicSamples,
+                peakValue,
+                frameRate);
+            read_state_ = ReadState::RawHeader;
+            progressed = true;
+        }
+    }
+}
+
 WaveformBackend::WaveformBackend(QObject *parent)
     : QObject(parent)
+    , receiver_worker_(new TcpWaveReceiverWorker)
     , host_(QStringLiteral("127.0.0.1"))
     , port_(8888)
     , status_text_(QStringLiteral("Disconnected"))
@@ -1630,6 +1874,7 @@ WaveformBackend::WaveformBackend(QObject *parent)
     , frame_count_(0)
     , peak_total_count_(0)
     , frame_rate_(0.0)
+    , connected_(false)
     , filter_enabled_(false)
     , scatter_mode_(false)
     , live_display_dirty_(false)
@@ -1640,10 +1885,19 @@ WaveformBackend::WaveformBackend(QObject *parent)
     , filter_max_(0.0)
 {
     loadSettings();
-    connect(&socket_, &QTcpSocket::readyRead, this, &WaveformBackend::onReadyRead);
-    connect(&socket_, &QTcpSocket::connected, this, &WaveformBackend::onSocketConnected);
-    connect(&socket_, &QTcpSocket::disconnected, this, &WaveformBackend::onSocketDisconnected);
-    connect(&socket_, &QAbstractSocket::errorOccurred, this, &WaveformBackend::onSocketError);
+    qRegisterMetaType<QVector<float>>("QVector<float>");
+    receiver_worker_->moveToThread(&receiver_thread_);
+    connect(&receiver_thread_, &QThread::finished, receiver_worker_, &QObject::deleteLater);
+    connect(receiver_worker_, &TcpWaveReceiverWorker::connected, this, &WaveformBackend::onSocketConnected);
+    connect(receiver_worker_, &TcpWaveReceiverWorker::disconnected, this, &WaveformBackend::onSocketDisconnected);
+    connect(receiver_worker_, &TcpWaveReceiverWorker::socketError, this, [this](const QString& message) {
+        connected_ = false;
+        setStatusText(message);
+        emit connectedChanged();
+        emit notificationRequested(QStringLiteral("error"), message);
+    });
+    connect(receiver_worker_, &TcpWaveReceiverWorker::frameDecoded, this, &WaveformBackend::onWorkerFrameDecoded);
+    receiver_thread_.start();
     connect(&live_display_timer_, &QTimer::timeout, this, &WaveformBackend::updateLiveDisplay);
     live_display_timer_.start(kLiveDisplayRefreshMs);
 }
@@ -1651,12 +1905,17 @@ WaveformBackend::WaveformBackend(QObject *parent)
 WaveformBackend::~WaveformBackend()
 {
     saveSettings();
-    socket_.disconnectFromHost();
+    if (receiver_thread_.isRunning())
+    {
+        QMetaObject::invokeMethod(receiver_worker_, "stop", Qt::BlockingQueuedConnection);
+        receiver_thread_.quit();
+        receiver_thread_.wait();
+    }
 }
 
 QString WaveformBackend::host() const { return host_; }
 int WaveformBackend::port() const { return port_; }
-bool WaveformBackend::connected() const { return socket_.state() == QAbstractSocket::ConnectedState; }
+bool WaveformBackend::connected() const { return connected_; }
 QString WaveformBackend::statusText() const { return status_text_; }
 double WaveformBackend::frameRate() const { return frame_rate_; }
 QVariantList WaveformBackend::rawSamples() const { return raw_samples_cache_; }
@@ -1720,7 +1979,7 @@ void WaveformBackend::setScatterMode(bool scatter)
 
 void WaveformBackend::connectToHost()
 {
-    if (connected() || socket_.state() == QAbstractSocket::ConnectingState)
+    if (connected() || status_text_ == QStringLiteral("Connecting..."))
     {
         return;
     }
@@ -1730,17 +1989,22 @@ void WaveformBackend::connectToHost()
     header_byte_order_ = HeaderByteOrder::Unknown;
     expected_payload_size_ = 0;
     setStatusText(QStringLiteral("Connecting..."));
-    socket_.connectToHost(host_, static_cast<quint16>(port_));
+    QMetaObject::invokeMethod(
+        receiver_worker_,
+        "connectToHost",
+        Qt::QueuedConnection,
+        Q_ARG(QString, host_),
+        Q_ARG(int, port_));
 }
 
 void WaveformBackend::disconnectFromHost()
 {
-    if (socket_.state() == QAbstractSocket::UnconnectedState)
+    if (!connected() && status_text_ != QStringLiteral("Connecting..."))
     {
         return;
     }
     setStatusText(QStringLiteral("Disconnecting..."));
-    socket_.disconnectFromHost();
+    QMetaObject::invokeMethod(receiver_worker_, "disconnectFromHost", Qt::QueuedConnection);
 }
 
 void WaveformBackend::toggleConnection()
@@ -1800,6 +2064,7 @@ void WaveformBackend::setStatusText(const QString& text)
 
 void WaveformBackend::onSocketConnected()
 {
+    connected_ = true;
     setStatusText(QStringLiteral("Connected"));
     emit connectedChanged();
     emit notificationRequested(QStringLiteral("info"), QStringLiteral("TCP wave source connected."));
@@ -1807,6 +2072,7 @@ void WaveformBackend::onSocketConnected()
 
 void WaveformBackend::onSocketDisconnected()
 {
+    connected_ = false;
     setStatusText(QStringLiteral("Disconnected"));
     emit connectedChanged();
     emit notificationRequested(QStringLiteral("info"), QStringLiteral("TCP wave source disconnected."));
@@ -1814,8 +2080,53 @@ void WaveformBackend::onSocketDisconnected()
 
 void WaveformBackend::onSocketError()
 {
+    connected_ = false;
     setStatusText(socket_.errorString());
+    emit connectedChanged();
     emit notificationRequested(QStringLiteral("error"), socket_.errorString());
+}
+
+void WaveformBackend::onWorkerFrameDecoded(
+    quint64 timestampUs,
+    QByteArray rawSignalPayload,
+    QByteArray harmonicPayload,
+    VaporView::TcpFloatEncoding floatEncoding,
+    QVector<float> rawSamples,
+    QVector<float> harmonicSamples,
+    float peakValue,
+    double frameRate)
+{
+    raw_history_ = std::move(rawSamples);
+    harmonic_history_ = std::move(harmonicSamples);
+    float_encoding_ = floatEncoding;
+
+    if (std::isfinite(peakValue))
+    {
+        ++peak_total_count_;
+        peak_raw_history_.append(peakValue);
+        while (peak_raw_history_.size() > kPeakTrendFrameWindow)
+        {
+            peak_raw_history_.removeFirst();
+        }
+        if (!filter_enabled_ || (peakValue >= filter_min_ && peakValue <= filter_max_))
+        {
+            peak_history_.append(peakValue);
+            while (peak_history_.size() > kPeakTrendFrameWindow)
+            {
+                peak_history_.removeFirst();
+            }
+        }
+        markLiveDisplayDirty(false, true, false);
+    }
+
+    ++frame_count_;
+    if (frameRate > 0.0)
+    {
+        frame_rate_ = frameRate;
+        markLiveDisplayDirty(false, false, true);
+    }
+    markLiveDisplayDirty(true, false, false);
+    emit rawWaveFrameReady(timestampUs, std::move(rawSignalPayload), std::move(harmonicPayload), floatEncoding);
 }
 
 void WaveformBackend::onReadyRead()

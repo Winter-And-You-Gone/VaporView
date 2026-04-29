@@ -49,6 +49,7 @@ int main(int argc, char *argv[])
     }
 
     qRegisterMetaType<VaporView::TcpFloatEncoding>("VaporView::TcpFloatEncoding");
+    qRegisterMetaType<QVector<float>>("QVector<float>");
 
     AppBackend appBackend;
     DeviceBackend deviceBackend;

@@ -15,6 +15,7 @@
 #include <QSettings>
 #include <QStringList>
 #include <QTcpSocket>
+#include <QThread>
 #include <QTimer>
 #include <QVariantList>
 #include <QVector>
@@ -119,6 +120,74 @@ public:
 
 private:
     QVector<Device> devices_;
+};
+
+class TcpWaveReceiverWorker : public QObject
+{
+    Q_OBJECT
+
+public:
+    explicit TcpWaveReceiverWorker(QObject *parent = nullptr);
+    ~TcpWaveReceiverWorker() override;
+
+public slots:
+    void connectToHost(const QString& host, int port);
+    void disconnectFromHost();
+    void stop();
+
+signals:
+    void connected();
+    void disconnected();
+    void socketError(const QString& message);
+    void frameDecoded(
+        quint64 timestampUs,
+        QByteArray rawSignalPayload,
+        QByteArray harmonicPayload,
+        VaporView::TcpFloatEncoding floatEncoding,
+        QVector<float> rawSamples,
+        QVector<float> harmonicSamples,
+        float peakValue,
+        double frameRate);
+
+private slots:
+    void onReadyRead();
+    void onSocketConnected();
+    void onSocketDisconnected();
+    void onSocketError();
+
+private:
+    enum class ReadState
+    {
+        RawHeader,
+        RawPayload,
+        HarmonicHeader,
+        HarmonicPayload,
+    };
+
+    enum class HeaderByteOrder
+    {
+        Unknown,
+        LittleEndian,
+        BigEndian,
+    };
+
+    void resetStreamState();
+    void processBuffer();
+    bool tryConsumeHeader();
+    bool tryConsumePayload(QVector<float>& output, QByteArray *rawPayload);
+    bool isValidPayloadSize(qint32 candidate) const;
+    qint32 decodeHeaderValue(const char *raw, HeaderByteOrder order) const;
+    double updateFrameRate(qint64 nowMs);
+
+    QTcpSocket *socket_;
+    QByteArray buffer_;
+    QByteArray pending_raw_payload_;
+    QVector<float> pending_raw_samples_;
+    ReadState read_state_;
+    HeaderByteOrder header_byte_order_;
+    VaporView::TcpFloatEncoding float_encoding_;
+    int expected_payload_size_;
+    QVector<qint64> frame_arrivals_ms_;
 };
 
 class DeviceBackend : public QObject
@@ -317,6 +386,15 @@ private slots:
     void onSocketConnected();
     void onSocketDisconnected();
     void onSocketError();
+    void onWorkerFrameDecoded(
+        quint64 timestampUs,
+        QByteArray rawSignalPayload,
+        QByteArray harmonicPayload,
+        VaporView::TcpFloatEncoding floatEncoding,
+        QVector<float> rawSamples,
+        QVector<float> harmonicSamples,
+        float peakValue,
+        double frameRate);
     void updateLiveDisplay();
 
 private:
@@ -349,6 +427,8 @@ private:
     void rebuildFilteredPeakHistory();
 
     QTcpSocket socket_;
+    QThread receiver_thread_;
+    TcpWaveReceiverWorker *receiver_worker_;
     QString host_;
     int port_;
     QString status_text_;
@@ -370,6 +450,7 @@ private:
     qint64 peak_total_count_;
     QVector<qint64> frame_arrivals_ms_;
     double frame_rate_;
+    bool connected_;
     bool filter_enabled_;
     bool scatter_mode_;
     bool live_display_dirty_;
