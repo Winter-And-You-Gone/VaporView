@@ -3,6 +3,7 @@ import QtQuick
 Canvas {
     id: icon
     property string name: ""
+    property string library: appBackend.iconLibrary
     property color iconColor: ApplicationWindow.window ? ApplicationWindow.window.text : "#020817"
     property real stroke: 1.8
 
@@ -10,6 +11,7 @@ Canvas {
     implicitHeight: 18
 
     onNameChanged: requestPaint()
+    onLibraryChanged: requestPaint()
     onIconColorChanged: requestPaint()
     onStrokeChanged: requestPaint()
     onPaint: {
@@ -55,10 +57,62 @@ Canvas {
             ctx.stroke()
         }
 
+        var lib = library === "tabler" || library === "phosphor" ? library : "lucide"
+        var strokeWidth = stroke
+        if (lib === "tabler") strokeWidth = 2.0
+        if (lib === "phosphor") strokeWidth = 1.65
         ctx.strokeStyle = iconColor
-        ctx.lineWidth = stroke * s
+        ctx.lineWidth = strokeWidth * s
         ctx.lineCap = "round"
         ctx.lineJoin = "round"
+
+        if (lib === "tabler") {
+            switch (name) {
+            case "link":
+                ctx.beginPath(); ctx.arc(x(9), y(12), 4 * s, Math.PI * 0.55, Math.PI * 1.45); ctx.stroke()
+                ctx.beginPath(); ctx.arc(x(15), y(12), 4 * s, -Math.PI * 0.45, Math.PI * 0.45); ctx.stroke()
+                line(9, 12, 15, 12)
+                return
+            case "unlink":
+                line(4, 4, 20, 20)
+                ctx.beginPath(); ctx.arc(x(9), y(12), 4 * s, Math.PI * 0.6, Math.PI * 1.4); ctx.stroke()
+                ctx.beginPath(); ctx.arc(x(15), y(12), 4 * s, -Math.PI * 0.4, Math.PI * 0.4); ctx.stroke()
+                return
+            case "scan":
+                rect(5, 5, 14, 14); line(8, 12, 16, 12)
+                return
+            case "settings":
+                circle(12, 12, 3); circle(12, 12, 7.5); line(12, 3, 12, 5); line(12, 19, 12, 21); line(3, 12, 5, 12); line(19, 12, 21, 12)
+                return
+            }
+        } else if (lib === "phosphor") {
+            switch (name) {
+            case "link":
+                line(9, 15, 15, 9)
+                ctx.beginPath(); ctx.moveTo(x(8), y(9)); ctx.bezierCurveTo(x(10), y(7), x(12), y(7), x(14), y(9)); ctx.stroke()
+                ctx.beginPath(); ctx.moveTo(x(10), y(15)); ctx.bezierCurveTo(x(12), y(17), x(14), y(17), x(16), y(15)); ctx.stroke()
+                circle(8, 16, 3)
+                circle(16, 8, 3)
+                return
+            case "unlink":
+                line(4, 4, 20, 20)
+                circle(8, 16, 3)
+                circle(16, 8, 3)
+                return
+            case "play":
+                ctx.beginPath(); ctx.moveTo(x(8), y(5)); ctx.lineTo(x(19), y(12)); ctx.lineTo(x(8), y(19)); ctx.closePath(); ctx.fillStyle = iconColor; ctx.fill()
+                return
+            case "square":
+                ctx.fillStyle = iconColor; ctx.fillRect(x(7), y(7), 10 * s, 10 * s)
+                return
+            case "pause":
+                ctx.fillStyle = iconColor; ctx.fillRect(x(8), y(5), 3.5 * s, 14 * s); ctx.fillRect(x(13), y(5), 3.5 * s, 14 * s)
+                return
+            case "zap":
+                path([[13,2],[5,13],[11,13],[9,22],[19,10],[13,10]], true)
+                return
+            }
+        }
 
         switch (name) {
         case "link":

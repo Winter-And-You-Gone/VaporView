@@ -5,6 +5,12 @@ import QtQuick.Dialogs
 import "../components"
 
 Item {
+    function iconLibraryIndex() {
+        if (appBackend.iconLibrary === "tabler") return 1
+        if (appBackend.iconLibrary === "phosphor") return 2
+        return 0
+    }
+
     FolderDialog {
         id: recordFolderDialog
         title: ApplicationWindow.window.t("settings.recordDir")
@@ -20,11 +26,12 @@ Item {
 
         Card {
             Layout.fillWidth: true
-            Layout.preferredHeight: 150
+            Layout.preferredHeight: 180
             title: ApplicationWindow.window.t("settings.languageTheme")
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 12
+                spacing: 8
                 RowLayout {
                     Layout.fillWidth: true
                     Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.language"); color: ApplicationWindow.window.muted; font.pixelSize: 11 }
@@ -38,6 +45,20 @@ Item {
                     Layout.fillWidth: true
                     Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.theme"); color: ApplicationWindow.window.muted; font.pixelSize: 11 }
                     ToolbarButton { iconName: "settings"; text: appBackend.dark ? ApplicationWindow.window.t("settings.light") : ApplicationWindow.window.t("settings.dark"); onClicked: appBackend.toggleTheme() }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.iconLibrary"); color: ApplicationWindow.window.muted; font.pixelSize: 11 }
+                    ComboBox {
+                        Layout.preferredWidth: 160
+                        model: ["Lucide", "Tabler Icons", "Phosphor Icons"]
+                        currentIndex: iconLibraryIndex()
+                        onActivated: {
+                            if (currentIndex === 1) appBackend.iconLibrary = "tabler"
+                            else if (currentIndex === 2) appBackend.iconLibrary = "phosphor"
+                            else appBackend.iconLibrary = "lucide"
+                        }
+                    }
                 }
             }
         }

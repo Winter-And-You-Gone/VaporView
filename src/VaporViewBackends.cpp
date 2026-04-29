@@ -309,17 +309,20 @@ AppBackend::AppBackend(QObject *parent)
     , language_(QStringLiteral("zh"))
     , dark_(false)
     , font_scale_(100)
+    , icon_library_(QStringLiteral("lucide"))
 {
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
     language_ = settings.value(QStringLiteral("ui_language"), QStringLiteral("zh")).toString();
     dark_ = settings.value(QStringLiteral("qml_dark"), false).toBool();
     font_scale_ = settings.value(QStringLiteral("font_scale_percent"), 100).toInt();
+    setIconLibrary(settings.value(QStringLiteral("icon_library"), QStringLiteral("lucide")).toString());
 }
 
 QString AppBackend::language() const { return language_; }
 bool AppBackend::english() const { return language_ == QStringLiteral("en"); }
 bool AppBackend::dark() const { return dark_; }
 int AppBackend::fontScale() const { return font_scale_; }
+QString AppBackend::iconLibrary() const { return icon_library_; }
 QString AppBackend::version() const { return QStringLiteral("1.0.0"); }
 
 void AppBackend::setLanguage(const QString& language)
@@ -360,6 +363,30 @@ void AppBackend::setFontScale(int percent)
     font_scale_ = clamped;
     QSettings(QStringLiteral("VaporView"), QStringLiteral("MainWindow")).setValue(QStringLiteral("font_scale_percent"), font_scale_);
     emit fontScaleChanged();
+}
+
+void AppBackend::setIconLibrary(const QString& library)
+{
+    QString normalized = library.trimmed().toLower();
+    if (normalized == QStringLiteral("tabler icons"))
+    {
+        normalized = QStringLiteral("tabler");
+    }
+    else if (normalized == QStringLiteral("phosphor icons"))
+    {
+        normalized = QStringLiteral("phosphor");
+    }
+    if (normalized != QStringLiteral("tabler") && normalized != QStringLiteral("phosphor"))
+    {
+        normalized = QStringLiteral("lucide");
+    }
+    if (icon_library_ == normalized)
+    {
+        return;
+    }
+    icon_library_ = normalized;
+    QSettings(QStringLiteral("VaporView"), QStringLiteral("MainWindow")).setValue(QStringLiteral("icon_library"), icon_library_);
+    emit iconLibraryChanged();
 }
 
 void AppBackend::toggleLanguage()
@@ -424,6 +451,7 @@ QString AppBackend::t(const QString& key) const
         {"settings.light", "亮色"}, {"settings.dark", "暗色"}, {"settings.recordDir", "记录目录"},
         {"settings.browse", "浏览"}, {"settings.defaultSampleRate", "默认采样率"}, {"settings.displayDensity", "显示密度"},
         {"settings.fontScale", "字体比例"}, {"settings.advancedDiag", "高级诊断"}, {"settings.about", "关于"},
+        {"settings.iconLibrary", "图标库"},
         {"settings.aboutText", "VaporView 机载水汽检测系统"}, {"settings.version", "版本"}, {"settings.save", "保存"},
         {"settings.reset", "重置"}, {"unit.m", "m"}, {"unit.ms", "m/s"}, {"unit.deg", "°"}, {"unit.celsius", "°C"},
         {"unit.percent", "%"}, {"unit.kpa", "kPa"}, {"unit.hz", "Hz"}, {"unit.v", "V"}, {"unit.gb", "GB"},
@@ -474,6 +502,7 @@ QString AppBackend::t(const QString& key) const
         {"settings.light", "Light"}, {"settings.dark", "Dark"}, {"settings.recordDir", "Record Directory"},
         {"settings.browse", "Browse"}, {"settings.defaultSampleRate", "Default Sample Rate"}, {"settings.displayDensity", "Display Density"},
         {"settings.fontScale", "Font Scale"}, {"settings.advancedDiag", "Advanced Diag"}, {"settings.about", "About"},
+        {"settings.iconLibrary", "Icon Library"},
         {"settings.aboutText", "VaporView Airborne System"}, {"settings.version", "Version"}, {"settings.save", "Save"},
         {"settings.reset", "Reset"}, {"unit.m", "m"}, {"unit.ms", "m/s"}, {"unit.deg", "°"}, {"unit.celsius", "°C"},
         {"unit.percent", "%"}, {"unit.kpa", "kPa"}, {"unit.hz", "Hz"}, {"unit.v", "V"}, {"unit.gb", "GB"},
@@ -3351,5 +3380,6 @@ void SettingsBackend::reset()
     app_backend_->setEnglish(false);
     app_backend_->setDark(false);
     app_backend_->setFontScale(100);
+    app_backend_->setIconLibrary(QStringLiteral("lucide"));
     emit notificationRequested(QStringLiteral("info"), QStringLiteral("Settings reset."));
 }

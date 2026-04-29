@@ -33,6 +33,7 @@ class AppBackend : public QObject
     Q_PROPERTY(bool english READ english WRITE setEnglish NOTIFY languageChanged)
     Q_PROPERTY(bool dark READ dark WRITE setDark NOTIFY darkChanged)
     Q_PROPERTY(int fontScale READ fontScale WRITE setFontScale NOTIFY fontScaleChanged)
+    Q_PROPERTY(QString iconLibrary READ iconLibrary WRITE setIconLibrary NOTIFY iconLibraryChanged)
     Q_PROPERTY(QString version READ version CONSTANT)
 
 public:
@@ -42,6 +43,7 @@ public:
     bool english() const;
     bool dark() const;
     int fontScale() const;
+    QString iconLibrary() const;
     QString version() const;
 
     Q_INVOKABLE QString t(const QString& key) const;
@@ -54,17 +56,20 @@ public slots:
     void setEnglish(bool english);
     void setDark(bool dark);
     void setFontScale(int percent);
+    void setIconLibrary(const QString& library);
 
 signals:
     void languageChanged();
     void darkChanged();
     void fontScaleChanged();
+    void iconLibraryChanged();
     void notificationRequested(const QString& level, const QString& message);
 
 private:
     QString language_;
     bool dark_;
     int font_scale_;
+    QString icon_library_;
 };
 
 class DeviceModel : public QAbstractListModel
