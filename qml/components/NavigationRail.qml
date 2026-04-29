@@ -11,14 +11,14 @@ Rectangle {
     border.color: ApplicationWindow.window.border
 
     readonly property var items: [
-        { key: "home", label: "nav.home", icon: "HOME" },
-        { key: "devices", label: "nav.devices", icon: "CPU" },
-        { key: "detailedData", label: "nav.detailedData", icon: "DATA" },
-        { key: "waveform", label: "nav.waveform", icon: "WAV" },
-        { key: "sessions", label: "nav.sessions", icon: "DIR" },
-        { key: "rtk", label: "nav.rtk", icon: "RTK" },
-        { key: "rawParser", label: "nav.rawParser", icon: "RAW" },
-        { key: "settings", label: "nav.settings", icon: "SET" }
+        { key: "home", label: "nav.home", icon: "layout-dashboard" },
+        { key: "devices", label: "nav.devices", icon: "cpu" },
+        { key: "detailedData", label: "nav.detailedData", icon: "table-properties" },
+        { key: "waveform", label: "nav.waveform", icon: "activity" },
+        { key: "sessions", label: "nav.sessions", icon: "folder-open" },
+        { key: "rtk", label: "nav.rtk", icon: "satellite" },
+        { key: "rawParser", label: "nav.rawParser", icon: "file-code" },
+        { key: "settings", label: "nav.settings", icon: "settings" }
     ]
 
     Column {
@@ -35,7 +35,7 @@ Rectangle {
                 property bool active: rail.currentPage === modelData.key
                 onClicked: rail.navigate(modelData.key)
                 background: Rectangle {
-                    radius: 6
+                    radius: 8
                     color: active ? Qt.rgba(ApplicationWindow.window.primary.r,
                                             ApplicationWindow.window.primary.g,
                                             ApplicationWindow.window.primary.b,
@@ -45,12 +45,13 @@ Rectangle {
                 contentItem: Column {
                     anchors.centerIn: parent
                     spacing: 1
-                    Text {
+                    LucideIcon {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: modelData.icon
-                        color: active ? ApplicationWindow.window.primary : ApplicationWindow.window.muted
-                        font.pixelSize: 9 * ApplicationWindow.window.scaleFactor
-                        font.bold: true
+                        width: 18
+                        height: 18
+                        name: modelData.icon
+                        iconColor: active ? ApplicationWindow.window.primary : ApplicationWindow.window.muted
+                        stroke: 1.8
                     }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter

@@ -1,9 +1,12 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Layouts
 
 Button {
     id: control
     property string variant: "secondary"
+    property string iconName: ""
+    property real iconSize: 16
     property color primaryColor: ApplicationWindow.window.primary
     property color dangerColor: ApplicationWindow.window.danger
     property color primaryForeground: ApplicationWindow.window.primaryForeground
@@ -15,22 +18,42 @@ Button {
     topPadding: 5
     bottomPadding: 5
 
-    contentItem: Text {
-        text: control.text
-        font: control.font
-        color: control.enabled
+    readonly property color foreground: control.enabled
                ? (control.variant === "primary" ? control.primaryForeground
                   : control.variant === "danger" ? control.dangerColor
                   : ApplicationWindow.window.text)
                : ApplicationWindow.window.muted
-        horizontalAlignment: Text.AlignHCenter
-        verticalAlignment: Text.AlignVCenter
-        elide: Text.ElideRight
+
+    contentItem: RowLayout {
+        spacing: control.iconName.length > 0 && control.text.length > 0 ? 6 : 0
+
+        Item { Layout.fillWidth: true }
+
+        LucideIcon {
+            visible: control.iconName.length > 0
+            Layout.preferredWidth: control.iconSize
+            Layout.preferredHeight: control.iconSize
+            name: control.iconName
+            iconColor: control.foreground
+            stroke: 2
+        }
+
+        Text {
+            visible: control.text.length > 0
+            text: control.text
+            font: control.font
+            color: control.foreground
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+        }
+
+        Item { Layout.fillWidth: true }
     }
 
     background: Rectangle {
         implicitHeight: 28
-        radius: 5
+        radius: 8
         color: !control.enabled ? ApplicationWindow.window.cardAlt
              : control.down ? downBase
              : control.hovered ? hoverBase

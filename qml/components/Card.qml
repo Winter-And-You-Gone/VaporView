@@ -8,7 +8,7 @@ Rectangle {
     property Item headerRight
     default property alias content: body.data
 
-    radius: 6
+    radius: 8
     color: ApplicationWindow.window.card
     border.color: ApplicationWindow.window.border
     clip: true

@@ -33,7 +33,7 @@ Item {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 78
-            radius: 6
+            radius: 8
             color: ApplicationWindow.window.cardAlt
             border.color: ApplicationWindow.window.border
             border.width: 1
@@ -51,11 +51,11 @@ Item {
 
         RowLayout {
             Layout.fillWidth: true
-            ToolbarButton { text: ApplicationWindow.window.t("rawParser.dropZone"); variant: "primary"; onClicked: rawFileDialog.open() }
-            ToolbarButton { text: ApplicationWindow.window.t("rawParser.export") + " CSV"; onClicked: { exportDialog.mode = "csv"; exportDialog.open() } }
-            ToolbarButton { text: ApplicationWindow.window.t("rawParser.export") + " JSON"; onClicked: { exportDialog.mode = "json"; exportDialog.open() } }
-            ToolbarButton { text: ApplicationWindow.window.t("rawParser.export") + " BIN"; onClicked: { exportDialog.mode = "bin"; exportDialog.open() } }
-            ToolbarButton { text: ApplicationWindow.window.t("rawParser.clearAll"); variant: "danger"; onClicked: rawParserBackend.clear() }
+            ToolbarButton { iconName: "upload"; text: ApplicationWindow.window.t("rawParser.dropZone"); variant: "primary"; onClicked: rawFileDialog.open() }
+            ToolbarButton { iconName: "download"; text: ApplicationWindow.window.t("rawParser.export") + " CSV"; onClicked: { exportDialog.mode = "csv"; exportDialog.open() } }
+            ToolbarButton { iconName: "download"; text: ApplicationWindow.window.t("rawParser.export") + " JSON"; onClicked: { exportDialog.mode = "json"; exportDialog.open() } }
+            ToolbarButton { iconName: "download"; text: ApplicationWindow.window.t("rawParser.export") + " BIN"; onClicked: { exportDialog.mode = "bin"; exportDialog.open() } }
+            ToolbarButton { iconName: "trash-2"; text: ApplicationWindow.window.t("rawParser.clearAll"); variant: "danger"; onClicked: rawParserBackend.clear() }
             Item { Layout.fillWidth: true }
             Text { text: rawParserBackend.records.length + " " + ApplicationWindow.window.t("rawParser.records"); color: ApplicationWindow.window.muted; font.pixelSize: 11 }
         }

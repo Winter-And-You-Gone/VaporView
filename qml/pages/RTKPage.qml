@@ -38,11 +38,11 @@ Item {
                 }
                 RowLayout {
                     Layout.fillWidth: true
-                    ToolbarButton { text: rtkBackend.running ? "Stop" : "Start"; variant: rtkBackend.running ? "danger" : "primary"; onClicked: rtkBackend.running ? rtkBackend.stop() : rtkBackend.start() }
-                    ToolbarButton { text: ApplicationWindow.window.t("rtk.testConnection"); onClicked: rtkBackend.testConnection() }
-                    ToolbarButton { text: ApplicationWindow.window.t("rtk.saveConfig"); onClicked: rtkBackend.saveConfig() }
+                    ToolbarButton { iconName: rtkBackend.running ? "square" : "wifi"; text: rtkBackend.running ? "Stop" : "Start"; variant: rtkBackend.running ? "danger" : "primary"; onClicked: rtkBackend.running ? rtkBackend.stop() : rtkBackend.start() }
+                    ToolbarButton { iconName: "scan"; text: ApplicationWindow.window.t("rtk.testConnection"); onClicked: rtkBackend.testConnection() }
+                    ToolbarButton { iconName: "save"; text: ApplicationWindow.window.t("rtk.saveConfig"); onClicked: rtkBackend.saveConfig() }
                 }
-                ToolbarButton { text: "Apply Lever Arm"; onClicked: rtkBackend.applyMainAntennaLeverArm(Number(leverX.text), Number(leverY.text), Number(leverZ.text)) }
+                ToolbarButton { iconName: "activity"; text: "Apply Lever Arm"; onClicked: rtkBackend.applyMainAntennaLeverArm(Number(leverX.text), Number(leverY.text), Number(leverZ.text)) }
                 Item { Layout.fillHeight: true }
             }
         }

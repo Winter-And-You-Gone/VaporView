@@ -15,7 +15,7 @@ Rectangle {
         Rectangle {
             Layout.preferredWidth: 24
             Layout.preferredHeight: 24
-            radius: 4
+            radius: 6
             color: ApplicationWindow.window.primary
             Text { anchors.centerIn: parent; text: "V"; color: "white"; font.pixelSize: 11; font.bold: true }
         }
@@ -64,6 +64,7 @@ Rectangle {
             }
         }
         ToolbarButton {
+            iconName: deviceBackend.connected ? "unlink" : "link"
             text: deviceBackend.connected ? ApplicationWindow.window.t("topbar.disconnect") : ApplicationWindow.window.t("topbar.connect")
             variant: deviceBackend.connected ? "danger" : "primary"
             enabled: !deviceBackend.busy
@@ -71,16 +72,19 @@ Rectangle {
         }
         ToolbarButton {
             visible: deviceBackend.connectionInProgress
+            iconName: "square"
             text: ApplicationWindow.window.t("topbar.cancel")
             variant: "danger"
             onClicked: deviceBackend.cancelConnect()
         }
         ToolbarButton {
+            iconName: recordingBackend.recording ? "square" : "play"
             text: recordingBackend.recording ? ApplicationWindow.window.t("topbar.stop") : ApplicationWindow.window.t("topbar.start")
             variant: recordingBackend.recording ? "danger" : "primary"
             onClicked: recordingBackend.recording ? recordingBackend.stopRecording() : recordingBackend.startRecording()
         }
         ToolbarButton {
+            iconName: recordingBackend.paused ? "play" : "pause"
             text: recordingBackend.paused ? ApplicationWindow.window.t("topbar.resume") : ApplicationWindow.window.t("topbar.pause")
             enabled: recordingBackend.recording || recordingBackend.paused
             onClicked: recordingBackend.paused ? recordingBackend.startRecording() : recordingBackend.pauseRecording()

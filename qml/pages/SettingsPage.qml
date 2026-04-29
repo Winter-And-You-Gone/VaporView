@@ -37,7 +37,7 @@ Item {
                 RowLayout {
                     Layout.fillWidth: true
                     Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.theme"); color: ApplicationWindow.window.muted; font.pixelSize: 11 }
-                    ToolbarButton { text: appBackend.dark ? ApplicationWindow.window.t("settings.light") : ApplicationWindow.window.t("settings.dark"); onClicked: appBackend.toggleTheme() }
+                    ToolbarButton { iconName: "settings"; text: appBackend.dark ? ApplicationWindow.window.t("settings.light") : ApplicationWindow.window.t("settings.dark"); onClicked: appBackend.toggleTheme() }
                 }
             }
         }
@@ -54,7 +54,7 @@ Item {
                     text: settingsBackend.recordDirectory
                     onEditingFinished: settingsBackend.recordDirectory = text
                 }
-                ToolbarButton { text: ApplicationWindow.window.t("settings.browse"); onClicked: recordFolderDialog.open() }
+                ToolbarButton { iconName: "folder-open"; text: ApplicationWindow.window.t("settings.browse"); onClicked: recordFolderDialog.open() }
             }
         }
 
@@ -122,8 +122,8 @@ Item {
         RowLayout {
             Layout.columnSpan: 2
             Layout.fillWidth: true
-            ToolbarButton { text: ApplicationWindow.window.t("settings.save"); variant: "primary"; onClicked: settingsBackend.save() }
-            ToolbarButton { text: ApplicationWindow.window.t("settings.reset"); onClicked: settingsBackend.reset() }
+            ToolbarButton { iconName: "save"; text: ApplicationWindow.window.t("settings.save"); variant: "primary"; onClicked: settingsBackend.save() }
+            ToolbarButton { iconName: "rotate-ccw"; text: ApplicationWindow.window.t("settings.reset"); onClicked: settingsBackend.reset() }
             Item { Layout.fillWidth: true }
         }
     }

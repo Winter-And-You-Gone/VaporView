@@ -71,6 +71,7 @@ Item {
                 }
                 ToolbarButton {
                     Layout.fillWidth: true
+                    iconName: waveformBackend.connected ? "unlink" : "link"
                     text: waveformBackend.connected ? ApplicationWindow.window.t("topbar.disconnect") : ApplicationWindow.window.t("devices.connect")
                     variant: waveformBackend.connected ? "danger" : "primary"
                     onClicked: waveformBackend.toggleConnection()
@@ -105,10 +106,11 @@ Item {
                 }
                 ToolbarButton {
                     Layout.fillWidth: true
+                    iconName: "activity"
                     text: "Apply Peak Filter"
                     onClicked: waveformBackend.configurePeakFilter(Number(minPeak.text), Number(maxPeak.text), waveformBackend.filterEnabled)
                 }
-                ToolbarButton { Layout.fillWidth: true; text: "Clear Peak"; onClicked: waveformBackend.clearPeakHistory() }
+                ToolbarButton { Layout.fillWidth: true; iconName: "trash-2"; text: "Clear Peak"; onClicked: waveformBackend.clearPeakHistory() }
                 Item { Layout.fillHeight: true }
                 Text {
                     Layout.fillWidth: true

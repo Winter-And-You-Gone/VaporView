@@ -23,7 +23,7 @@ Item {
             Rectangle {
                 width: parent.width
                 height: 58
-                radius: 6
+                radius: 8
                 color: ApplicationWindow.window.card
                 border.color: ApplicationWindow.window.border
                 clip: true
@@ -75,21 +75,21 @@ Item {
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: 30
                                         height: 30
-                                        text: "↗"
+                                        text: ""
                                         padding: 0
                                         onClicked: ApplicationWindow.window.currentPage = "devices"
 
-                                        contentItem: Text {
-                                            text: linkButton.text
-                                            color: linkButton.active ? ApplicationWindow.window.ok : ApplicationWindow.window.warning
-                                            font.pixelSize: 14 * ApplicationWindow.window.scaleFactor
-                                            font.weight: Font.Bold
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
+                                        contentItem: LucideIcon {
+                                            anchors.centerIn: parent
+                                            width: 16
+                                            height: 16
+                                            name: linkButton.active ? "link" : "unlink"
+                                            iconColor: linkButton.active ? ApplicationWindow.window.ok : ApplicationWindow.window.warning
+                                            stroke: 2
                                         }
 
                                         background: Rectangle {
-                                            radius: 5
+                                            radius: 8
                                             color: linkButton.active ? "#1A22C55E" : "#1AF59E0B"
                                             border.color: linkButton.active ? "#3322C55E" : "#33F59E0B"
                                         }
@@ -106,7 +106,8 @@ Item {
                     }
 
                     ToolbarButton {
-                        text: (deviceBackend.autoDetectInProgress ? ApplicationWindow.window.t("topbar.cancel") : "↯  " + ApplicationWindow.window.t("home.autoDetect"))
+                        iconName: deviceBackend.autoDetectInProgress ? "square" : "zap"
+                        text: (deviceBackend.autoDetectInProgress ? ApplicationWindow.window.t("topbar.cancel") : ApplicationWindow.window.t("home.autoDetect"))
                         variant: "secondary"
                         onClicked: deviceBackend.autoDetectPortsOrCancel()
                     }

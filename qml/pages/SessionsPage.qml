@@ -29,8 +29,8 @@ Item {
                 anchors.margins: 8
                 RowLayout {
                     Layout.fillWidth: true
-                    ToolbarButton { text: ApplicationWindow.window.t("settings.browse"); onClicked: folderDialog.open() }
-                    ToolbarButton { text: "Reload"; onClicked: sessionBackend.refreshSessions() }
+                    ToolbarButton { iconName: "folder-open"; text: ApplicationWindow.window.t("settings.browse"); onClicked: folderDialog.open() }
+                    ToolbarButton { iconName: "refresh-cw"; text: "Reload"; onClicked: sessionBackend.refreshSessions() }
                     Text { Layout.fillWidth: true; text: sessionBackend.recordingDirectory; color: ApplicationWindow.window.muted; font.pixelSize: 10; elide: Text.ElideMiddle }
                 }
                 ListView {
@@ -84,9 +84,21 @@ Item {
                 TabBar {
                     id: tabs
                     Layout.fillWidth: true
-                    TabButton { text: ApplicationWindow.window.t("sessions.csvPreview") }
-                    TabButton { text: ApplicationWindow.window.t("sessions.waveformPreview") }
-                    TabButton { text: ApplicationWindow.window.t("sessions.sessionInfo") }
+                    TabButton {
+                        id: csvTab
+                        text: ApplicationWindow.window.t("sessions.csvPreview")
+                        background: Rectangle { radius: 8; color: csvTab.checked ? ApplicationWindow.window.secondary : "transparent" }
+                    }
+                    TabButton {
+                        id: waveformTab
+                        text: ApplicationWindow.window.t("sessions.waveformPreview")
+                        background: Rectangle { radius: 8; color: waveformTab.checked ? ApplicationWindow.window.secondary : "transparent" }
+                    }
+                    TabButton {
+                        id: infoTab
+                        text: ApplicationWindow.window.t("sessions.sessionInfo")
+                        background: Rectangle { radius: 8; color: infoTab.checked ? ApplicationWindow.window.secondary : "transparent" }
+                    }
                 }
 
                 StackLayout {
