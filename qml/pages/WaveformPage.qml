@@ -25,6 +25,11 @@ Item {
                     sourcePointCount: waveformBackend.rawSampleCount
                     xStartIndex: 0
                     xEndIndex: Math.max(0, waveformBackend.rawSampleCount - 1)
+                    plotBackground: ApplicationWindow.window.secondary
+                    gridColor: ApplicationWindow.window.chartGrid
+                    axisColor: ApplicationWindow.window.chartAxis
+                    emptyColor: ApplicationWindow.window.muted
+                    uiScale: ApplicationWindow.window.scaleFactor
                     lineColor: ApplicationWindow.window.waveformRaw
                 }
             }
@@ -39,6 +44,11 @@ Item {
                     sourcePointCount: waveformBackend.harmonicSampleCount
                     xStartIndex: 0
                     xEndIndex: Math.max(0, waveformBackend.harmonicSampleCount - 1)
+                    plotBackground: ApplicationWindow.window.secondary
+                    gridColor: ApplicationWindow.window.chartGrid
+                    axisColor: ApplicationWindow.window.chartAxis
+                    emptyColor: ApplicationWindow.window.muted
+                    uiScale: ApplicationWindow.window.scaleFactor
                     lineColor: ApplicationWindow.window.waveformHarmonic
                 }
             }
@@ -52,6 +62,11 @@ Item {
                     samples: waveformBackend.peakSamples
                     scatter: waveformBackend.scatterMode
                     lineColor: ApplicationWindow.window.primary
+                    plotBackground: ApplicationWindow.window.secondary
+                    gridColor: ApplicationWindow.window.chartGrid
+                    axisColor: ApplicationWindow.window.chartAxis
+                    emptyColor: ApplicationWindow.window.muted
+                    uiScale: ApplicationWindow.window.scaleFactor
                     maxVisualSamples: 1000
                     sourcePointCount: Math.max(1, Math.min(1001, waveformBackend.peakTotalCount + 1))
                     xStartIndex: 0

@@ -4,7 +4,12 @@ Item {
     id: chart
 
     property var samples: []
-    property color lineColor: ApplicationWindow.window.waveformRaw
+    property color lineColor: "#496083"
+    property color plotBackground: "#f1f5f9"
+    property color gridColor: "#cbd5e1"
+    property color axisColor: "#64748b"
+    property color emptyColor: "#64748b"
+    property real uiScale: 1.0
     property bool scatter: false
     property string emptyText: "No data"
     property real yMin: -1.2
@@ -118,7 +123,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        color: ApplicationWindow.window.secondary
+        color: chart.plotBackground
     }
 
     Repeater {
@@ -128,8 +133,8 @@ Item {
             y: chart.marginTop
             width: 1
             height: chart.chartHeight
-            color: ApplicationWindow.window.chartGrid
-            opacity: 0.85
+            color: chart.gridColor
+            opacity: 1.0
         }
     }
 
@@ -140,8 +145,8 @@ Item {
             y: chart.marginTop + chart.chartHeight * index / 4
             width: chart.chartWidth
             height: 1
-            color: ApplicationWindow.window.chartGrid
-            opacity: 0.85
+            color: chart.gridColor
+            opacity: 1.0
         }
     }
 
@@ -150,8 +155,8 @@ Item {
         y: chart.marginTop
         width: 1
         height: chart.chartHeight
-        color: ApplicationWindow.window.chartAxis
-        opacity: 0.75
+        color: chart.axisColor
+        opacity: 1.0
     }
 
     Rectangle {
@@ -159,8 +164,8 @@ Item {
         y: chart.marginTop + chart.chartHeight - 1
         width: chart.chartWidth
         height: 1
-        color: ApplicationWindow.window.chartAxis
-        opacity: 0.75
+        color: chart.axisColor
+        opacity: 1.0
     }
 
     Repeater {
@@ -171,9 +176,9 @@ Item {
             y: chart.marginTop + chart.chartHeight * index / 4 - height / 2
             width: chart.marginLeft - 6
             text: chart.formatAxisValue(chart.effectiveYMax - (chart.effectiveYMax - chart.effectiveYMin) * index / 4)
-            color: ApplicationWindow.window.chartAxis
-            opacity: 0.9
-            font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+            color: chart.axisColor
+            opacity: 1.0
+            font.pixelSize: Math.round(10 * chart.uiScale)
             font.weight: Font.DemiBold
             horizontalAlignment: Text.AlignRight
             verticalAlignment: Text.AlignVCenter
@@ -191,9 +196,9 @@ Item {
             y: chart.height - chart.marginBottom + 3
             width: 54
             text: chart.formatIndexLabel(chart.effectiveXStart + (chart.effectiveXEnd - chart.effectiveXStart) * index / 5)
-            color: ApplicationWindow.window.chartAxis
-            opacity: 0.9
-            font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+            color: chart.axisColor
+            opacity: 1.0
+            font.pixelSize: Math.round(10 * chart.uiScale)
             font.weight: Font.DemiBold
             horizontalAlignment: index === 0 ? Text.AlignLeft : index === 5 ? Text.AlignRight : Text.AlignHCenter
         }
@@ -238,7 +243,7 @@ Item {
         visible: chart.pointCount < 2 && !chart.showDemoWhenEmpty
         anchors.centerIn: parent
         text: chart.emptyText
-        color: ApplicationWindow.window.muted
-        font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
+        color: chart.emptyColor
+        font.pixelSize: 11 * chart.uiScale
     }
 }

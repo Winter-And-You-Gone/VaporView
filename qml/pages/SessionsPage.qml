@@ -126,6 +126,11 @@ Item {
                     WaveformCanvas {
                         samples: sessionBackend.waveformPreview
                         lineColor: ApplicationWindow.window.primary
+                        plotBackground: ApplicationWindow.window.secondary
+                        gridColor: ApplicationWindow.window.chartGrid
+                        axisColor: ApplicationWindow.window.chartAxis
+                        emptyColor: ApplicationWindow.window.muted
+                        uiScale: ApplicationWindow.window.scaleFactor
                         emptyText: ApplicationWindow.window.t("sessions.waveformPreview")
                     }
                     ScrollView {
