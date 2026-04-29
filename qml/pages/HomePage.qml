@@ -345,6 +345,7 @@ Item {
                     anchors.margins: 8
                     samples: waveformBackend.peakSamples
                     scatter: false
+                    fillUnderLine: true
                     lineColor: ApplicationWindow.window.text
                     yMin: 1.0
                     yMax: 1.4

@@ -11,6 +11,7 @@ Item {
     property color emptyColor: "#64748b"
     property real uiScale: 1.0
     property bool scatter: false
+    property bool fillUnderLine: false
     property string emptyText: "No data"
     property real yMin: -1.2
     property real yMax: 1.2
@@ -20,6 +21,9 @@ Item {
     property int sourcePointCount: 0
     property int xStartIndex: 0
     property int xEndIndex: -1
+    property real lineWidth: 1.5
+    property real fillTopOpacity: 0.15
+    property real fillBottomOpacity: 0.01
 
     readonly property int marginLeft: 42
     readonly property int marginTop: 8
@@ -121,6 +125,12 @@ Item {
         return marginTop + (effectiveYMax - clamped) * chartHeight / Math.max(0.000001, effectiveYMax - effectiveYMin)
     }
 
+    function rgbaString(colorValue, opacity) {
+        return "rgba(" + Math.round(colorValue.r * 255) + "," +
+               Math.round(colorValue.g * 255) + "," +
+               Math.round(colorValue.b * 255) + "," + opacity + ")"
+    }
+
     Rectangle {
         anchors.fill: parent
         color: chart.plotBackground
@@ -204,27 +214,68 @@ Item {
         }
     }
 
-    Repeater {
-        model: chart.scatter ? 0 : Math.max(0, chart.pointCount - 1)
-        Rectangle {
-            readonly property real x1: chart.px(index)
-            readonly property real y1: chart.py(chart.drawSamples[index])
-            readonly property real x2: chart.px(index + 1)
-            readonly property real y2: chart.py(chart.drawSamples[index + 1])
-            readonly property real dx: x2 - x1
-            readonly property real dy: y2 - y1
+    Canvas {
+        id: lineLayer
+        anchors.fill: parent
+        antialiasing: true
 
-            x: x1
-            y: y1 - height / 2
-            width: Math.max(1, Math.sqrt(dx * dx + dy * dy))
-            height: 2
-            radius: 1
-            color: chart.lineColor
-            antialiasing: true
-            transformOrigin: Item.Left
-            rotation: Math.atan2(dy, dx) * 180 / Math.PI
+        onPaint: {
+            var ctx = getContext("2d")
+            ctx.clearRect(0, 0, lineLayer.width, lineLayer.height)
+            if (chart.scatter || chart.pointCount < 2)
+                return
+
+            ctx.beginPath()
+            ctx.moveTo(chart.px(0), chart.py(chart.drawSamples[0]))
+            for (var i = 1; i < chart.pointCount; ++i)
+                ctx.lineTo(chart.px(i), chart.py(chart.drawSamples[i]))
+
+            if (chart.fillUnderLine) {
+                var lastX = chart.px(chart.pointCount - 1)
+                var baselineY = chart.marginTop + chart.chartHeight
+                ctx.lineTo(lastX, baselineY)
+                ctx.lineTo(chart.px(0), baselineY)
+                ctx.closePath()
+
+                var grad = ctx.createLinearGradient(0, chart.marginTop, 0, baselineY)
+                grad.addColorStop(0, chart.rgbaString(chart.lineColor, chart.fillTopOpacity))
+                grad.addColorStop(1, chart.rgbaString(chart.lineColor, chart.fillBottomOpacity))
+                ctx.fillStyle = grad
+                ctx.fill()
+            }
+
+            ctx.beginPath()
+            ctx.moveTo(chart.px(0), chart.py(chart.drawSamples[0]))
+            for (var j = 1; j < chart.pointCount; ++j)
+                ctx.lineTo(chart.px(j), chart.py(chart.drawSamples[j]))
+            ctx.strokeStyle = chart.rgbaString(chart.lineColor, chart.lineColor.a)
+            ctx.lineWidth = chart.lineWidth
+            ctx.lineJoin = "round"
+            ctx.lineCap = "round"
+            ctx.stroke()
         }
     }
+
+    Connections {
+        target: chart
+        function onDrawSamplesChanged() { lineLayer.requestPaint() }
+        function onLineColorChanged() { lineLayer.requestPaint() }
+        function onPlotBackgroundChanged() { lineLayer.requestPaint() }
+        function onScatterChanged() { lineLayer.requestPaint() }
+        function onFillUnderLineChanged() { lineLayer.requestPaint() }
+        function onYMinChanged() { lineLayer.requestPaint() }
+        function onYMaxChanged() { lineLayer.requestPaint() }
+        function onAutoScaleYChanged() { lineLayer.requestPaint() }
+        function onSourcePointCountChanged() { lineLayer.requestPaint() }
+        function onXStartIndexChanged() { lineLayer.requestPaint() }
+        function onXEndIndexChanged() { lineLayer.requestPaint() }
+        function onLineWidthChanged() { lineLayer.requestPaint() }
+        function onFillTopOpacityChanged() { lineLayer.requestPaint() }
+        function onFillBottomOpacityChanged() { lineLayer.requestPaint() }
+    }
+
+    onWidthChanged: lineLayer.requestPaint()
+    onHeightChanged: lineLayer.requestPaint()
 
     Repeater {
         model: chart.scatter ? chart.pointCount : 0

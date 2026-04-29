@@ -106,6 +106,7 @@ Item {
                     anchors.margins: 8
                     samples: waveformBackend.peakSamples
                     scatter: waveformBackend.scatterMode
+                    fillUnderLine: !waveformBackend.scatterMode
                     lineColor: ApplicationWindow.window.text
                     yMin: 1.0
                     yMax: 1.4

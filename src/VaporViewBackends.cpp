@@ -1630,7 +1630,7 @@ WaveformBackend::WaveformBackend(QObject *parent)
     , peak_total_count_(0)
     , frame_rate_(0.0)
     , filter_enabled_(false)
-    , scatter_mode_(true)
+    , scatter_mode_(false)
     , filter_min_(0.0)
     , filter_max_(0.0)
 {
