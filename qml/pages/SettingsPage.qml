@@ -1,0 +1,130 @@
+import QtQuick
+import QtQuick.Controls.Basic
+import QtQuick.Layouts
+import QtQuick.Dialogs
+import "../components"
+
+Item {
+    FolderDialog {
+        id: recordFolderDialog
+        title: ApplicationWindow.window.t("settings.recordDir")
+        onAccepted: settingsBackend.recordDirectory = selectedFolder.toString().replace("file:///", "")
+    }
+
+    GridLayout {
+        anchors.fill: parent
+        anchors.margins: 12
+        columns: 2
+        columnSpacing: 12
+        rowSpacing: 12
+
+        Card {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 150
+            title: ApplicationWindow.window.t("settings.languageTheme")
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.language"); color: ApplicationWindow.window.muted; font.pixelSize: 11 }
+                    ComboBox {
+                        model: ["zh", "en"]
+                        currentIndex: appBackend.language === "zh" ? 0 : 1
+                        onActivated: appBackend.language = currentText
+                    }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.theme"); color: ApplicationWindow.window.muted; font.pixelSize: 11 }
+                    ToolbarButton { text: appBackend.dark ? ApplicationWindow.window.t("settings.light") : ApplicationWindow.window.t("settings.dark"); onClicked: appBackend.toggleTheme() }
+                }
+            }
+        }
+
+        Card {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 150
+            title: ApplicationWindow.window.t("settings.recordDir")
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                TextField {
+                    Layout.fillWidth: true
+                    text: settingsBackend.recordDirectory
+                    onEditingFinished: settingsBackend.recordDirectory = text
+                }
+                ToolbarButton { text: ApplicationWindow.window.t("settings.browse"); onClicked: recordFolderDialog.open() }
+            }
+        }
+
+        Card {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 150
+            title: ApplicationWindow.window.t("settings.defaultSampleRate")
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text { Layout.fillWidth: true; text: "Sensor CSV"; color: ApplicationWindow.window.muted; font.pixelSize: 11 }
+                    SpinBox { from: 1; to: 200; value: recordingBackend.exportRateHz; onValueModified: recordingBackend.exportRateHz = value }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text { Layout.fillWidth: true; text: "Waveform"; color: ApplicationWindow.window.muted; font.pixelSize: 11 }
+                    SpinBox { from: 0; to: 200; value: recordingBackend.waveformExportRateHz; onValueModified: recordingBackend.waveformExportRateHz = value }
+                }
+            }
+        }
+
+        Card {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 150
+            title: ApplicationWindow.window.t("settings.displayDensity")
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.fontScale"); color: ApplicationWindow.window.muted; font.pixelSize: 11 }
+                    Slider { Layout.fillWidth: true; from: 70; to: 150; stepSize: 5; value: appBackend.fontScale; onMoved: appBackend.fontScale = value }
+                    Text { text: appBackend.fontScale + "%"; color: ApplicationWindow.window.text; font.pixelSize: 11 }
+                }
+            }
+        }
+
+        Card {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 150
+            title: ApplicationWindow.window.t("settings.advancedDiag")
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                Text { Layout.fillWidth: true; text: "Backend: QObject/QML in-process"; color: ApplicationWindow.window.muted; font.pixelSize: 11 }
+                Text { Layout.fillWidth: true; text: "Collectors: existing C++ serial services"; color: ApplicationWindow.window.muted; font.pixelSize: 11 }
+                Text { Layout.fillWidth: true; text: "Raw DAT: format v2"; color: ApplicationWindow.window.muted; font.pixelSize: 11 }
+            }
+        }
+
+        Card {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 150
+            title: ApplicationWindow.window.t("settings.about")
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 12
+                Text { Layout.fillWidth: true; text: settingsBackend.aboutText; color: ApplicationWindow.window.text; font.bold: true; font.pixelSize: 12 }
+                Text { text: ApplicationWindow.window.t("settings.version") + ": " + appBackend.version; color: ApplicationWindow.window.muted; font.pixelSize: 11 }
+            }
+        }
+
+        RowLayout {
+            Layout.columnSpan: 2
+            Layout.fillWidth: true
+            ToolbarButton { text: ApplicationWindow.window.t("settings.save"); variant: "primary"; onClicked: settingsBackend.save() }
+            ToolbarButton { text: ApplicationWindow.window.t("settings.reset"); onClicked: settingsBackend.reset() }
+            Item { Layout.fillWidth: true }
+        }
+    }
+}

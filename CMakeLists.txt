@@ -13,8 +13,12 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 option(BUILD_PYTHON_BINDINGS "Build Python bindings with pybind11" OFF)
 
-find_package(Qt6 COMPONENTS Core Widgets SerialPort Network REQUIRED)
-set(QT_LIBRARIES Qt6::Core Qt6::Widgets Qt6::SerialPort Qt6::Network)
+find_package(Qt6 COMPONENTS Core Qml Quick QuickControls2 SerialPort Network REQUIRED)
+if(COMMAND qt_policy)
+    qt_policy(SET QTP0001 NEW)
+    qt_policy(SET QTP0004 NEW)
+endif()
+set(QT_LIBRARIES Qt6::Core Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::SerialPort Qt6::Network)
 
 if(WIN32)
     find_program(QT_WINDEPLOYQT_EXECUTABLE
@@ -98,43 +102,27 @@ endif()
 
 set(NAV_SOURCES
     src/main.cpp
-    src/MainWindow.cpp
+    src/VaporViewBackends.cpp
     src/serial_port.cpp
     src/data_collector.cpp
     src/TcpWaveEncoding.cpp
-    src/TcpWavePanel.cpp
-    src/RawDataParserWindow.cpp
-    src/SessionViewerWindow.cpp
-    src/TrajectoryViewerDialog.cpp
-    src/RtkConfigDialog.cpp
     src/RtkStreamService.cpp
     ${UM982_DRIVER_DIR}/pvtsln_parser.cpp
     ${HIPNUC_DRIVER_DIR}/hipnuc_dec.c
 )
 
 set(NAV_HEADERS
-    include/MainWindow.h
+    include/VaporViewBackends.h
     include/serial_port.h
     include/data_types.h
     include/data_collector.h
     include/TcpWaveEncoding.h
-    include/TcpWavePanel.h
-    include/RawDataParserWindow.h
-    include/SessionViewerWindow.h
-    include/TrajectoryViewerDialog.h
-    include/RtkConfigDialog.h
     include/RtkStreamService.h
     ${UM982_DRIVER_DIR}/pvtsln_data.hpp
     ${HIPNUC_DRIVER_DIR}/hipnuc_dec.h
 )
 
 set(NAV_UI_FILES
-)
-
-set(NAV_RESOURCES
-    resources/modern_style.qss
-    resources/combo_arrow_down.xpm
-    resources/combo_arrow_up.xpm
 )
 
 set(NAV_WIN_RESOURCES)
@@ -147,7 +135,6 @@ if(WIN32)
         ${NAV_SOURCES}
         ${NAV_HEADERS}
         ${NAV_UI_FILES}
-        ${NAV_RESOURCES}
         ${NAV_WIN_RESOURCES}
     )
 else()
@@ -155,9 +142,20 @@ else()
         ${NAV_SOURCES}
         ${NAV_HEADERS}
         ${NAV_UI_FILES}
-        ${NAV_RESOURCES}
     )
 endif()
+
+file(GLOB_RECURSE VAPORVIEW_QML_FILES CONFIGURE_DEPENDS
+    RELATIVE ${CMAKE_SOURCE_DIR}
+    qml/*.qml
+)
+
+qt_add_qml_module(VaporView
+    URI VaporView
+    VERSION 1.0
+    QML_FILES
+        ${VAPORVIEW_QML_FILES}
+)
 
 if(MSVC)
     target_compile_options(VaporView PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /Zc:__cplusplus /permissive-)
@@ -179,15 +177,6 @@ target_link_libraries(VaporView PRIVATE
 
 add_custom_command(TARGET VaporView POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:VaporView>/resources
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_SOURCE_DIR}/resources/modern_style.qss
-        $<TARGET_FILE_DIR:VaporView>/resources/modern_style.qss
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_SOURCE_DIR}/resources/combo_arrow_down.xpm
-        $<TARGET_FILE_DIR:VaporView>/resources/combo_arrow_down.xpm
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_SOURCE_DIR}/resources/combo_arrow_up.xpm
-        $<TARGET_FILE_DIR:VaporView>/resources/combo_arrow_up.xpm
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/resources/app.ico
         $<TARGET_FILE_DIR:VaporView>/resources/app.ico
@@ -213,6 +202,8 @@ if(WIN32 AND QT_WINDEPLOYQT_EXECUTABLE)
             --compiler-runtime
             --no-translations
             --no-system-dxc-compiler
+            --qmldir
+            ${CMAKE_SOURCE_DIR}/qml
             $<TARGET_FILE:VaporView>
         COMMENT "Deploying Qt runtime for VaporView"
     )
