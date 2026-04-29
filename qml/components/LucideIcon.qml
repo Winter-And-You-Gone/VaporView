@@ -3,7 +3,7 @@ import QtQuick
 Canvas {
     id: icon
     property string name: ""
-    property string library: appBackend.iconLibrary
+    property string library: ApplicationWindow.window ? ApplicationWindow.window.iconLibrary : "lucide"
     property color iconColor: ApplicationWindow.window ? ApplicationWindow.window.text : "#020817"
     property real stroke: 1.8
 

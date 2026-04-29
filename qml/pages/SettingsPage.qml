@@ -6,9 +6,17 @@ import "../components"
 
 Item {
     function iconLibraryIndex() {
-        if (appBackend.iconLibrary === "tabler") return 1
-        if (appBackend.iconLibrary === "phosphor") return 2
+        if (ApplicationWindow.window.iconLibrary === "tabler") return 1
+        if (ApplicationWindow.window.iconLibrary === "phosphor") return 2
         return 0
+    }
+
+    function setIconLibrary(index) {
+        var library = "lucide"
+        if (index === 1) library = "tabler"
+        else if (index === 2) library = "phosphor"
+        ApplicationWindow.window.iconLibrary = library
+        appBackend.saveIconLibrary(library)
     }
 
     FolderDialog {
@@ -53,11 +61,7 @@ Item {
                         Layout.preferredWidth: 160
                         model: ["Lucide", "Tabler Icons", "Phosphor Icons"]
                         currentIndex: iconLibraryIndex()
-                        onActivated: {
-                            if (currentIndex === 1) appBackend.iconLibrary = "tabler"
-                            else if (currentIndex === 2) appBackend.iconLibrary = "phosphor"
-                            else appBackend.iconLibrary = "lucide"
-                        }
+                        onActivated: setIconLibrary(currentIndex)
                     }
                 }
             }
@@ -144,7 +148,14 @@ Item {
             Layout.columnSpan: 2
             Layout.fillWidth: true
             ToolbarButton { iconName: "save"; text: ApplicationWindow.window.t("settings.save"); variant: "primary"; onClicked: settingsBackend.save() }
-            ToolbarButton { iconName: "rotate-ccw"; text: ApplicationWindow.window.t("settings.reset"); onClicked: settingsBackend.reset() }
+            ToolbarButton {
+                iconName: "rotate-ccw"
+                text: ApplicationWindow.window.t("settings.reset")
+                onClicked: {
+                    settingsBackend.reset()
+                    ApplicationWindow.window.iconLibrary = "lucide"
+                }
+            }
             Item { Layout.fillWidth: true }
         }
     }

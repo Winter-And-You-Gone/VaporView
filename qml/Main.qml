@@ -15,6 +15,7 @@ ApplicationWindow {
 
     property string currentPage: "home"
     property string lang: appBackend.language
+    property string iconLibrary: "lucide"
     property bool dark: appBackend.dark
     property real scaleFactor: appBackend.fontScale / 100
 
@@ -44,6 +45,10 @@ ApplicationWindow {
     }
 
     color: bg
+
+    Component.onCompleted: {
+        iconLibrary = appBackend.loadIconLibrary()
+    }
 
     Connections {
         target: appBackend

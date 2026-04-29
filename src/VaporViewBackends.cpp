@@ -302,6 +302,24 @@ QVariantMap makeMetric(const QString& label, const QString& value, const QString
 {
     return QVariantMap{{QStringLiteral("label"), label}, {QStringLiteral("value"), value}, {QStringLiteral("unit"), unit}};
 }
+
+QString normalizeIconLibrary(const QString& library)
+{
+    QString normalized = library.trimmed().toLower();
+    if (normalized == QStringLiteral("tabler icons"))
+    {
+        normalized = QStringLiteral("tabler");
+    }
+    else if (normalized == QStringLiteral("phosphor icons"))
+    {
+        normalized = QStringLiteral("phosphor");
+    }
+    if (normalized != QStringLiteral("tabler") && normalized != QStringLiteral("phosphor"))
+    {
+        normalized = QStringLiteral("lucide");
+    }
+    return normalized;
+}
 }  // namespace
 
 AppBackend::AppBackend(QObject *parent)
@@ -309,20 +327,17 @@ AppBackend::AppBackend(QObject *parent)
     , language_(QStringLiteral("zh"))
     , dark_(false)
     , font_scale_(100)
-    , icon_library_(QStringLiteral("lucide"))
 {
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
     language_ = settings.value(QStringLiteral("ui_language"), QStringLiteral("zh")).toString();
     dark_ = settings.value(QStringLiteral("qml_dark"), false).toBool();
     font_scale_ = settings.value(QStringLiteral("font_scale_percent"), 100).toInt();
-    setIconLibrary(settings.value(QStringLiteral("icon_library"), QStringLiteral("lucide")).toString());
 }
 
 QString AppBackend::language() const { return language_; }
 bool AppBackend::english() const { return language_ == QStringLiteral("en"); }
 bool AppBackend::dark() const { return dark_; }
 int AppBackend::fontScale() const { return font_scale_; }
-QString AppBackend::iconLibrary() const { return icon_library_; }
 QString AppBackend::version() const { return QStringLiteral("1.0.0"); }
 
 void AppBackend::setLanguage(const QString& language)
@@ -365,28 +380,16 @@ void AppBackend::setFontScale(int percent)
     emit fontScaleChanged();
 }
 
-void AppBackend::setIconLibrary(const QString& library)
+QString AppBackend::loadIconLibrary() const
 {
-    QString normalized = library.trimmed().toLower();
-    if (normalized == QStringLiteral("tabler icons"))
-    {
-        normalized = QStringLiteral("tabler");
-    }
-    else if (normalized == QStringLiteral("phosphor icons"))
-    {
-        normalized = QStringLiteral("phosphor");
-    }
-    if (normalized != QStringLiteral("tabler") && normalized != QStringLiteral("phosphor"))
-    {
-        normalized = QStringLiteral("lucide");
-    }
-    if (icon_library_ == normalized)
-    {
-        return;
-    }
-    icon_library_ = normalized;
-    QSettings(QStringLiteral("VaporView"), QStringLiteral("MainWindow")).setValue(QStringLiteral("icon_library"), icon_library_);
-    emit iconLibraryChanged();
+    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+    return normalizeIconLibrary(settings.value(QStringLiteral("icon_library"), QStringLiteral("lucide")).toString());
+}
+
+void AppBackend::saveIconLibrary(const QString& library)
+{
+    QSettings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"))
+        .setValue(QStringLiteral("icon_library"), normalizeIconLibrary(library));
 }
 
 void AppBackend::toggleLanguage()
@@ -3380,6 +3383,6 @@ void SettingsBackend::reset()
     app_backend_->setEnglish(false);
     app_backend_->setDark(false);
     app_backend_->setFontScale(100);
-    app_backend_->setIconLibrary(QStringLiteral("lucide"));
+    app_backend_->saveIconLibrary(QStringLiteral("lucide"));
     emit notificationRequested(QStringLiteral("info"), QStringLiteral("Settings reset."));
 }
