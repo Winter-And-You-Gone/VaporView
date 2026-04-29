@@ -672,9 +672,7 @@ QVariantMap DeviceBackend::coordinateData() const
         {QStringLiteral("timestamp"), utcValid
             ? utcDateTime.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz"))
             : QStringLiteral("---")},
-        {QStringLiteral("localTime"), utcValid
-            ? utcDateTime.toLocalTime().toString(QStringLiteral("HH:mm:ss.zzz"))
-            : QStringLiteral("---")},
+        {QStringLiteral("localTime"), QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss.zzz"))},
         {QStringLiteral("valid"), e.valid},
     };
 }
