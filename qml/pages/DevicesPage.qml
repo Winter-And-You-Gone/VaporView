@@ -308,7 +308,7 @@ Item {
                                     page.updateTcpEndpoint(hostField.text, tcpPortField.text)
                                     waveformBackend.toggleConnection()
                                 } else {
-                                    connected ? deviceBackend.disconnectDevices() : deviceBackend.connectDevices()
+                                    connected ? deviceBackend.disconnectDevice(id) : deviceBackend.connectDevice(id)
                                 }
                             }
                         }

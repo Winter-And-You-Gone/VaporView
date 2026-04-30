@@ -26,7 +26,7 @@ ApplicationWindow {
     readonly property color cardHeader: dark ? "#0d1424" : "#f9fbfd"
     readonly property color secondary: cardAlt
     readonly property color border: dark ? "#1e293b" : "#e2e8f0"
-    readonly property color chartPlot: dark ? "#0f172a" : "#ffffff"
+    readonly property color chartPlot: card
     readonly property color chartGrid: dark ? "#334155" : "#e5edf6"
     readonly property color chartAxis: dark ? "#cbd5e1" : "#020817"
     readonly property color text: dark ? "#f8fafc" : "#020817"

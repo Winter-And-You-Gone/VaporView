@@ -1023,6 +1023,45 @@ void DeviceBackend::stopAllCollectors()
     emit connectionStateChanged();
 }
 
+bool DeviceBackend::stopCollector(const QString& id)
+{
+    std::shared_ptr<VaporView::EpsilonCollector> epsilon;
+    std::shared_ptr<VaporView::PtbCollector> ptb;
+    std::shared_ptr<VaporView::HmpCollector> hmp;
+    std::shared_ptr<VaporView::LidarCollector> lidar;
+    {
+        std::lock_guard<std::mutex> lock(collector_mutex_);
+        if (id == QStringLiteral("epsilon"))
+        {
+            epsilon = std::move(collectors_.epsilon);
+        }
+        else if (id == QStringLiteral("ptb"))
+        {
+            ptb = std::move(collectors_.ptb);
+        }
+        else if (id == QStringLiteral("hmp"))
+        {
+            hmp = std::move(collectors_.hmp);
+        }
+        else if (id == QStringLiteral("lidar"))
+        {
+            lidar = std::move(collectors_.lidar);
+        }
+    }
+    const bool hadCollector = epsilon || ptb || hmp || lidar;
+    if (epsilon) epsilon->stop();
+    if (ptb) ptb->stop();
+    if (hmp) hmp->stop();
+    if (lidar) lidar->stop();
+    devices_.setDeviceValue(id, DeviceModel::ConnectedRole, false);
+    devices_.setDeviceValue(id, DeviceModel::OnlineRole, false);
+    devices_.setDeviceValue(id, DeviceModel::StatusTextRole, QStringLiteral("Not connected"));
+    devices_.setDeviceValue(id, DeviceModel::ActualRateRole, 0.0);
+    connected_ = anySerialCollectorRunning();
+    emit connectionStateChanged();
+    return hadCollector;
+}
+
 void DeviceBackend::updateDeviceRates()
 {
     for (const QString& id : {QStringLiteral("epsilon"), QStringLiteral("ptb"), QStringLiteral("hmp"), QStringLiteral("lidar")})
@@ -1475,6 +1514,271 @@ void DeviceBackend::connectDevices()
     });
 }
 
+void DeviceBackend::connectDevice(const QString& id)
+{
+    const DeviceModel::Device device = devices_.deviceAt(id);
+    if (device.id.isEmpty() || device.kind != QStringLiteral("serial"))
+    {
+        log(is_english_ ? QStringLiteral("This device is not a serial collector.")
+                        : QStringLiteral("该设备不是串口采集设备。"), QStringLiteral("warning"));
+        return;
+    }
+    if (busy())
+    {
+        return;
+    }
+    if (connection_thread_.joinable())
+    {
+        connection_thread_.join();
+    }
+
+    cancel_requested_.store(false);
+    setBusyState(true, false, false);
+    setStatusText(is_english_ ? QStringLiteral("Connecting...") : QStringLiteral("正在连接..."));
+    setProgress(0, 3);
+    const bool english = is_english_;
+    log(QString(english ? "========== Starting %1 Connection =========="
+                        : "========== 开始连接 %1 ==========")
+            .arg(device.display_name));
+
+    connection_thread_ = std::thread([this, device, english]() {
+        auto post = [this](auto fn) {
+            QMetaObject::invokeMethod(this, std::move(fn), Qt::QueuedConnection);
+        };
+        const QString placeholder = selectPlaceholder();
+        auto validPort = [&placeholder](const QString& port) {
+            return !port.trimmed().isEmpty() && !port.trimmed().startsWith(QStringLiteral("--")) && port.trimmed() != placeholder;
+        };
+        auto finish = [this, post, english](bool ok) mutable {
+            post([this, english, ok]() {
+                connected_ = anySerialCollectorRunning();
+                setBusyState(false, false, false);
+                setProgress(0, 1);
+                setStatusText(connected_ ? (english ? QStringLiteral("Connected") : QStringLiteral("已连接"))
+                                         : (english ? QStringLiteral("Disconnected") : QStringLiteral("未连接")));
+                if (!ok)
+                {
+                    emit connectionStateChanged();
+                }
+            });
+        };
+        if (!validPort(device.port))
+        {
+            post([this, device, english]() {
+                log(QString(english ? "[%1] Skipped (not selected)" : "[%1] 跳过 (未选择)").arg(device.display_name), QStringLiteral("warning"));
+            });
+            finish(false);
+            return;
+        }
+
+        auto logCallback = [this](const std::string& msg) {
+            const QString qmsg = QString::fromStdString(msg);
+            QMetaObject::invokeMethod(this, [this, qmsg]() { log(qmsg); }, Qt::QueuedConnection);
+        };
+        auto cancelCallback = [this]() { return cancel_requested_.load(); };
+
+        auto fail = [this, post, device, english](const QString& text) mutable {
+            post([this, device, text, english]() {
+                Q_UNUSED(english);
+                log(QStringLiteral("[%1] %2").arg(device.display_name, text), QStringLiteral("error"));
+            });
+        };
+
+        post([this, device, english]() {
+            setProgress(1, 3);
+            log(QString(english ? "[%1] Opening %2 @ %3..." : "[%1] 正在打开 %2 @ %3 ...")
+                    .arg(device.display_name, device.port)
+                    .arg(device.baud_rate));
+        });
+
+        bool ok = false;
+        CollectorSnapshot snapshot = snapshotCollectors();
+
+        if (device.id == QStringLiteral("epsilon"))
+        {
+            auto collector = std::make_shared<VaporView::EpsilonCollector>();
+            collector->setLogCallback(logCallback);
+            collector->setCancelCallback(cancelCallback);
+            bool usingCustom = false;
+            const auto rates = effectiveEpsilonPacketRates(device.sample_rate, &usingCustom);
+            collector->setSampleRate(epsilonPacketCallbackRate(rates, device.sample_rate));
+            collector->setRawFrameCallback([this](uint64_t hostTimestampUs, uint8_t packetId, uint8_t serialNumber, const uint8_t* data, size_t size) {
+                const QByteArray payload(reinterpret_cast<const char*>(data), static_cast<int>(size));
+                QMetaObject::invokeMethod(this, [this, hostTimestampUs, packetId, serialNumber, payload]() {
+                    emit epsilonRawFrame(hostTimestampUs, packetId, serialNumber, payload);
+                }, Qt::QueuedConnection);
+            });
+            if (!collector->start(device.port.toStdString(), VaporView::SerialConfig::N81(device.baud_rate)))
+            {
+                fail(QString(english ? "Failed to open port: %1" : "打开端口失败: %1").arg(QString::fromStdString(collector->getLastError())));
+                finish(false);
+                return;
+            }
+            post([this]() { setProgress(2, 3); });
+            if (!collector->checkDeviceResponse() || !collector->setOutputPacketRates(rates))
+            {
+                collector->stop();
+                fail(english ? QStringLiteral("Device not responding or packet-rate setup failed.")
+                             : QStringLiteral("设备无响应或包频率配置失败。"));
+                finish(false);
+                return;
+            }
+            collector->setDataCallback([this]() {
+                QMetaObject::invokeMethod(this, [this]() {
+                    const auto snapshot = snapshotCollectors();
+                    if (!snapshot.epsilon) return;
+                    {
+                        QMutexLocker lock(&data_mutex_);
+                        current_epsilon_ = snapshot.epsilon->getLatestData();
+                    }
+                    emit dataChanged();
+                }, Qt::QueuedConnection);
+            });
+            ok = collector->startStreaming();
+            if (ok) snapshot.epsilon = collector;
+        }
+        else if (device.id == QStringLiteral("ptb"))
+        {
+            auto collector = std::make_shared<VaporView::PtbCollector>();
+            collector->setLogCallback(logCallback);
+            collector->setCancelCallback(cancelCallback);
+            collector->setSampleRate(device.sample_rate);
+            collector->setRawResponseCallback([this](uint64_t hostTimestampUs, const uint8_t* data, size_t size) {
+                const QByteArray payload(reinterpret_cast<const char*>(data), static_cast<int>(size));
+                QMetaObject::invokeMethod(this, [this, hostTimestampUs, payload]() { emit ptbRawFrame(hostTimestampUs, payload); }, Qt::QueuedConnection);
+            });
+            if (!collector->start(device.port.toStdString(), VaporView::SerialConfig::E71(device.baud_rate)))
+            {
+                fail(QString(english ? "Failed to open port: %1" : "打开端口失败: %1").arg(QString::fromStdString(collector->getLastError())));
+                finish(false);
+                return;
+            }
+            post([this]() { setProgress(2, 3); });
+            if (!collector->checkDeviceResponse())
+            {
+                collector->stop();
+                fail(english ? QStringLiteral("Device not responding.") : QStringLiteral("设备无响应。"));
+                finish(false);
+                return;
+            }
+            collector->setDataCallback([this]() {
+                QMetaObject::invokeMethod(this, [this]() {
+                    const auto snapshot = snapshotCollectors();
+                    if (!snapshot.ptb) return;
+                    {
+                        QMutexLocker lock(&data_mutex_);
+                        current_ptb_ = snapshot.ptb->getLatestData();
+                    }
+                    emit dataChanged();
+                }, Qt::QueuedConnection);
+            });
+            collector->setDeviceSampleRate(device.sample_rate);
+            ok = collector->startStreaming();
+            if (ok) snapshot.ptb = collector;
+        }
+        else if (device.id == QStringLiteral("hmp"))
+        {
+            auto collector = std::make_shared<VaporView::HmpCollector>();
+            collector->setLogCallback(logCallback);
+            collector->setCancelCallback(cancelCallback);
+            collector->setSampleRate(device.sample_rate);
+            collector->setRawResponseCallback([this](uint64_t hostTimestampUs, const uint8_t* data, size_t size) {
+                const QByteArray payload(reinterpret_cast<const char*>(data), static_cast<int>(size));
+                QMetaObject::invokeMethod(this, [this, hostTimestampUs, payload]() { emit hmpRawFrame(hostTimestampUs, payload); }, Qt::QueuedConnection);
+            });
+            if (!collector->start(device.port.toStdString(), VaporView::SerialConfig::N82(device.baud_rate)))
+            {
+                fail(QString(english ? "Failed to open port: %1" : "打开端口失败: %1").arg(QString::fromStdString(collector->getLastError())));
+                finish(false);
+                return;
+            }
+            post([this]() { setProgress(2, 3); });
+            if (!collector->checkDeviceResponse())
+            {
+                collector->stop();
+                fail(english ? QStringLiteral("Device not responding.") : QStringLiteral("设备无响应。"));
+                finish(false);
+                return;
+            }
+            collector->setDataCallback([this]() {
+                QMetaObject::invokeMethod(this, [this]() {
+                    const auto snapshot = snapshotCollectors();
+                    if (!snapshot.hmp) return;
+                    {
+                        QMutexLocker lock(&data_mutex_);
+                        current_hmp_ = snapshot.hmp->getLatestData();
+                    }
+                    emit dataChanged();
+                }, Qt::QueuedConnection);
+            });
+            ok = collector->startStreaming();
+            if (ok) snapshot.hmp = collector;
+        }
+        else if (device.id == QStringLiteral("lidar"))
+        {
+            auto collector = std::make_shared<VaporView::LidarCollector>();
+            collector->setLogCallback(logCallback);
+            collector->setCancelCallback(cancelCallback);
+            collector->setSampleRate(device.sample_rate);
+            collector->setRawFrameCallback([this](uint64_t hostTimestampUs, VaporView::LidarProtocol protocol, const uint8_t* data, size_t size) {
+                const QByteArray payload(reinterpret_cast<const char*>(data), static_cast<int>(size));
+                QMetaObject::invokeMethod(this, [this, hostTimestampUs, protocol, payload]() {
+                    emit lidarRawFrame(hostTimestampUs, static_cast<int>(protocol), payload);
+                }, Qt::QueuedConnection);
+            });
+            if (!collector->start(device.port.toStdString(), VaporView::SerialConfig::N81(device.baud_rate)))
+            {
+                fail(QString(english ? "Failed to open port: %1" : "打开端口失败: %1").arg(QString::fromStdString(collector->getLastError())));
+                finish(false);
+                return;
+            }
+            post([this]() { setProgress(2, 3); });
+            if (!collector->checkDeviceResponse())
+            {
+                collector->stop();
+                fail(english ? QStringLiteral("Device not responding.") : QStringLiteral("设备无响应。"));
+                finish(false);
+                return;
+            }
+            collector->setDataCallback([this]() {
+                QMetaObject::invokeMethod(this, [this]() {
+                    const auto snapshot = snapshotCollectors();
+                    if (!snapshot.lidar) return;
+                    {
+                        QMutexLocker lock(&data_mutex_);
+                        current_lidar_ = snapshot.lidar->getLatestData();
+                    }
+                    emit dataChanged();
+                }, Qt::QueuedConnection);
+            });
+            collector->setDeviceSampleRate(device.sample_rate);
+            ok = collector->startStreaming();
+            if (ok) snapshot.lidar = collector;
+        }
+
+        if (!ok)
+        {
+            fail(english ? QStringLiteral("Failed to start streaming.") : QStringLiteral("启动连续采集失败。"));
+            finish(false);
+            return;
+        }
+
+        setCollectors(snapshot);
+        post([this, device, english]() {
+            setProgress(3, 3);
+            devices_.setDeviceValue(device.id, DeviceModel::ConnectedRole, true);
+            devices_.setDeviceValue(device.id, DeviceModel::OnlineRole, true);
+            devices_.setDeviceValue(device.id, DeviceModel::StatusTextRole, QStringLiteral("Connected"));
+            connected_ = true;
+            log(QString(english ? "[%1] Connected on %2 @ %3" : "[%1] 已连接: %2 @ %3")
+                    .arg(device.display_name, device.port)
+                    .arg(device.baud_rate));
+            emit connectionStateChanged();
+        });
+        finish(true);
+    });
+}
+
 void DeviceBackend::disconnectDevices()
 {
     log(is_english_ ? QStringLiteral("Disconnecting...") : QStringLiteral("正在断开..."));
@@ -1488,6 +1792,25 @@ void DeviceBackend::disconnectDevices()
     setBusyState(false, false, false);
     setStatusText(is_english_ ? QStringLiteral("Disconnected") : QStringLiteral("未连接"));
     log(is_english_ ? QStringLiteral("Disconnected") : QStringLiteral("已断开"));
+}
+
+void DeviceBackend::disconnectDevice(const QString& id)
+{
+    const DeviceModel::Device device = devices_.deviceAt(id);
+    if (device.id.isEmpty() || device.kind != QStringLiteral("serial"))
+    {
+        return;
+    }
+    if (connection_in_progress_)
+    {
+        cancelConnect();
+        return;
+    }
+    const bool stopped = stopCollector(id);
+    setStatusText(connected_ ? (is_english_ ? QStringLiteral("Connected") : QStringLiteral("已连接"))
+                             : (is_english_ ? QStringLiteral("Disconnected") : QStringLiteral("未连接")));
+    log(stopped ? QString(is_english_ ? "[%1] Disconnected" : "[%1] 已断开").arg(device.display_name)
+                : QString(is_english_ ? "[%1] Was not connected" : "[%1] 未连接").arg(device.display_name));
 }
 
 void DeviceBackend::cancelConnect()
@@ -1927,6 +2250,7 @@ WaveformBackend::WaveformBackend(QObject *parent)
     , frame_rate_(0.0)
     , connected_(false)
     , filter_enabled_(false)
+    , harmonic_filtered_view_(false)
     , scatter_mode_(false)
     , live_display_dirty_(false)
     , samples_dirty_(false)
@@ -1974,7 +2298,10 @@ bool WaveformBackend::connected() const { return connected_; }
 QString WaveformBackend::statusText() const { return status_text_; }
 double WaveformBackend::frameRate() const { return frame_rate_; }
 QVariantList WaveformBackend::rawSamples() const { return raw_samples_cache_; }
-QVariantList WaveformBackend::harmonicSamples() const { return harmonic_samples_cache_; }
+QVariantList WaveformBackend::harmonicSamples() const
+{
+    return harmonic_filtered_view_ && filter_enabled_ ? harmonic_filtered_samples_cache_ : harmonic_samples_cache_;
+}
 QVariantList WaveformBackend::peakSamples() const { return peak_samples_cache_; }
 int WaveformBackend::rawSampleCount() const { return raw_history_.size(); }
 int WaveformBackend::harmonicSampleCount() const { return harmonic_history_.size(); }
@@ -1984,6 +2311,9 @@ int WaveformBackend::peakTotalCount() const
                                                                : static_cast<int>(peak_total_count_);
 }
 bool WaveformBackend::filterEnabled() const { return filter_enabled_; }
+double WaveformBackend::filterMin() const { return filter_min_; }
+double WaveformBackend::filterMax() const { return filter_max_; }
+bool WaveformBackend::harmonicFilteredView() const { return harmonic_filtered_view_; }
 bool WaveformBackend::scatterMode() const { return scatter_mode_; }
 double WaveformBackend::latestPeak() const { return peak_history_.isEmpty() ? 0.0 : peak_history_.last(); }
 
@@ -2019,6 +2349,19 @@ void WaveformBackend::setFilterEnabled(bool enabled)
     }
     filter_enabled_ = enabled;
     rebuildFilteredPeakHistory();
+    harmonic_filtered_samples_cache_ = vectorToFilteredVariantList(harmonic_history_);
+    emit samplesChanged();
+    emit filterChanged();
+}
+
+void WaveformBackend::setHarmonicFilteredView(bool enabled)
+{
+    if (harmonic_filtered_view_ == enabled)
+    {
+        return;
+    }
+    harmonic_filtered_view_ = enabled;
+    emit samplesChanged();
     emit filterChanged();
 }
 
@@ -2098,6 +2441,8 @@ void WaveformBackend::configurePeakFilter(double minValue, double maxValue, bool
     filter_max_ = std::max(minValue, maxValue);
     filter_enabled_ = enabled;
     rebuildFilteredPeakHistory();
+    harmonic_filtered_samples_cache_ = vectorToFilteredVariantList(harmonic_history_);
+    emit samplesChanged();
     emit filterChanged();
 }
 
@@ -2314,6 +2659,27 @@ QVariantList WaveformBackend::vectorToVariantList(const QVector<float>& values, 
     return list;
 }
 
+QVariantList WaveformBackend::vectorToFilteredVariantList(const QVector<float>& values, int maxCount) const
+{
+    QVariantList list;
+    if (values.isEmpty())
+    {
+        return list;
+    }
+    const int valueCount = static_cast<int>(values.size());
+    const int safeMaxCount = std::max(1, maxCount);
+    const int stride = std::max(1, (valueCount + safeMaxCount - 1) / safeMaxCount);
+    const double rangeMin = std::min(filter_min_, filter_max_);
+    const double rangeMax = std::max(filter_min_, filter_max_);
+    const double quietNaN = std::numeric_limits<double>::quiet_NaN();
+    for (int i = 0; i < valueCount; i += stride)
+    {
+        const double value = values.at(i);
+        list.append(value >= rangeMin && value <= rangeMax ? QVariant(value) : QVariant(quietNaN));
+    }
+    return list;
+}
+
 void WaveformBackend::updateFrameRate(qint64 nowMs)
 {
     frame_arrivals_ms_.append(nowMs);
@@ -2360,6 +2726,7 @@ void WaveformBackend::updateLiveDisplay()
     {
         raw_samples_cache_ = vectorToVariantList(raw_history_);
         harmonic_samples_cache_ = vectorToVariantList(harmonic_history_);
+        harmonic_filtered_samples_cache_ = vectorToFilteredVariantList(harmonic_history_);
     }
     if (emitPeak)
     {

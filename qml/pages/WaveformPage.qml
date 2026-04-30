@@ -34,6 +34,69 @@ Item {
         return waveformBackend.scatterMode ? (english ? "Line" : "折线") : (english ? "Scatter" : "散点")
     }
 
+    function filterButtonText() {
+        var english = appBackend.language === "en"
+        return waveformBackend.filterEnabled ? (english ? "Filter On" : "滤波开") : (english ? "Filter" : "过滤")
+    }
+
+    function harmonicViewButtonText() {
+        var english = appBackend.language === "en"
+        return waveformBackend.harmonicFilteredView ? (english ? "Full" : "完整") : (english ? "Filtered" : "过滤")
+    }
+
+    Popup {
+        id: peakFilterPopup
+        modal: true
+        focus: true
+        width: 300
+        padding: 12
+        anchors.centerIn: Overlay.overlay
+        background: Rectangle {
+            radius: 8
+            color: ApplicationWindow.window.card
+            border.color: ApplicationWindow.window.border
+        }
+        ColumnLayout {
+            width: parent.width
+            spacing: 10
+            Text {
+                Layout.fillWidth: true
+                text: appBackend.language === "en" ? "Peak Filter" : "峰值过滤"
+                color: ApplicationWindow.window.text
+                font.pixelSize: Math.round(13 * ApplicationWindow.window.scaleFactor)
+                font.bold: true
+            }
+            CheckBox {
+                id: popupFilterEnabled
+                text: ApplicationWindow.window.t("waveform.filterSwitch")
+                checked: waveformBackend.filterEnabled
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                TextField { id: popupMinPeak; Layout.fillWidth: true; placeholderText: "Min"; text: Number(waveformBackend.filterMin).toString() }
+                TextField { id: popupMaxPeak; Layout.fillWidth: true; placeholderText: "Max"; text: Number(waveformBackend.filterMax).toString() }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                ToolbarButton { text: appBackend.language === "en" ? "Cancel" : "取消"; onClicked: peakFilterPopup.close() }
+                ToolbarButton {
+                    text: appBackend.language === "en" ? "Apply" : "应用"
+                    variant: "primary"
+                    onClicked: {
+                        waveformBackend.configurePeakFilter(Number(popupMinPeak.text), Number(popupMaxPeak.text), popupFilterEnabled.checked)
+                        peakFilterPopup.close()
+                    }
+                }
+            }
+        }
+        onOpened: {
+            popupFilterEnabled.checked = waveformBackend.filterEnabled
+            popupMinPeak.text = Number(waveformBackend.filterMin).toString()
+            popupMaxPeak.text = Number(waveformBackend.filterMax).toString()
+        }
+    }
+
     RowLayout {
         anchors.fill: parent
         anchors.margins: 12
@@ -74,11 +137,23 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 180
                 title: ApplicationWindow.window.t("waveform.secondHarmonic")
-                headerRight: Text {
-                    text: page.waveHeaderText("harmonic")
-                    color: ApplicationWindow.window.muted
-                    font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
-                    font.weight: Font.Medium
+                headerRight: Row {
+                    spacing: 8
+                    ToolbarButton {
+                        anchors.verticalCenter: parent.verticalCenter
+                        iconName: "activity"
+                        iconSize: 13
+                        text: page.harmonicViewButtonText()
+                        variant: "secondary"
+                        onClicked: waveformBackend.harmonicFilteredView = !waveformBackend.harmonicFilteredView
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: page.waveHeaderText("harmonic")
+                        color: ApplicationWindow.window.muted
+                        font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+                        font.weight: Font.Medium
+                    }
                 }
                 WaveformCanvas {
                     anchors.fill: parent
@@ -120,6 +195,14 @@ Item {
                         text: page.trendToggleText()
                         variant: "secondary"
                         onClicked: waveformBackend.scatterMode = !waveformBackend.scatterMode
+                    }
+                    ToolbarButton {
+                        anchors.verticalCenter: parent.verticalCenter
+                        iconName: "settings"
+                        iconSize: 13
+                        text: page.filterButtonText()
+                        variant: "secondary"
+                        onClicked: peakFilterPopup.open()
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter

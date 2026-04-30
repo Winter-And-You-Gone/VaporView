@@ -247,7 +247,9 @@ public:
     Q_INVOKABLE void refreshPorts();
     Q_INVOKABLE void autoDetectPortsOrCancel();
     Q_INVOKABLE void connectDevices();
+    Q_INVOKABLE void connectDevice(const QString& id);
     Q_INVOKABLE void disconnectDevices();
+    Q_INVOKABLE void disconnectDevice(const QString& id);
     Q_INVOKABLE void cancelConnect();
     Q_INVOKABLE void clearLog();
     Q_INVOKABLE void appendLogLine(const QString& message, const QString& level = QStringLiteral("info"));
@@ -291,6 +293,7 @@ private:
     CollectorSnapshot snapshotCollectors() const;
     void setCollectors(CollectorSnapshot collectors);
     void stopAllCollectors();
+    bool stopCollector(const QString& id);
     void log(const QString& message, const QString& level = QStringLiteral("info"));
     void setBusyState(bool connectionBusy, bool detectBusy, bool reconfigureBusy);
     void setStatusText(const QString& text);
@@ -343,6 +346,9 @@ class WaveformBackend : public QObject
     Q_PROPERTY(int harmonicSampleCount READ harmonicSampleCount NOTIFY samplesChanged)
     Q_PROPERTY(int peakTotalCount READ peakTotalCount NOTIFY peakSamplesChanged)
     Q_PROPERTY(bool filterEnabled READ filterEnabled WRITE setFilterEnabled NOTIFY filterChanged)
+    Q_PROPERTY(double filterMin READ filterMin NOTIFY filterChanged)
+    Q_PROPERTY(double filterMax READ filterMax NOTIFY filterChanged)
+    Q_PROPERTY(bool harmonicFilteredView READ harmonicFilteredView WRITE setHarmonicFilteredView NOTIFY filterChanged)
     Q_PROPERTY(bool scatterMode READ scatterMode WRITE setScatterMode NOTIFY filterChanged)
     Q_PROPERTY(double latestPeak READ latestPeak NOTIFY peakSamplesChanged)
 
@@ -362,6 +368,9 @@ public:
     int harmonicSampleCount() const;
     int peakTotalCount() const;
     bool filterEnabled() const;
+    double filterMin() const;
+    double filterMax() const;
+    bool harmonicFilteredView() const;
     bool scatterMode() const;
     double latestPeak() const;
 
@@ -376,6 +385,7 @@ public slots:
     void setHost(const QString& host);
     void setPort(int port);
     void setFilterEnabled(bool enabled);
+    void setHarmonicFilteredView(bool enabled);
     void setScatterMode(bool scatter);
 
 signals:
@@ -433,6 +443,7 @@ private:
     bool isValidPayloadSize(qint32 candidate) const;
     qint32 decodeHeaderValue(const char *raw, HeaderByteOrder order) const;
     QVariantList vectorToVariantList(const QVector<float>& values, int maxCount = 700) const;
+    QVariantList vectorToFilteredVariantList(const QVector<float>& values, int maxCount = 700) const;
     void updateFrameRate(qint64 nowMs);
     void markLiveDisplayDirty(bool samples, bool peak, bool frameRate);
     void rebuildFilteredPeakHistory();
@@ -451,6 +462,7 @@ private:
     QVector<float> peak_history_;
     QVariantList raw_samples_cache_;
     QVariantList harmonic_samples_cache_;
+    QVariantList harmonic_filtered_samples_cache_;
     QVariantList peak_samples_cache_;
     QTimer live_display_timer_;
     ReadState read_state_;
@@ -463,6 +475,7 @@ private:
     double frame_rate_;
     bool connected_;
     bool filter_enabled_;
+    bool harmonic_filtered_view_;
     bool scatter_mode_;
     bool live_display_dirty_;
     bool samples_dirty_;

@@ -58,7 +58,7 @@ Item {
 
     function sampleValue(list, index) {
         var value = Number(list[index])
-        return isNaN(value) ? 0 : value
+        return value
     }
 
     function buildDisplaySamples(list) {
@@ -143,6 +143,8 @@ Item {
     }
 
     function py(value) {
+        if (isNaN(Number(value)))
+            return NaN
         var clamped = Math.max(effectiveYMin, Math.min(effectiveYMax, Number(value)))
         return marginTop + (effectiveYMax - clamped) * chartHeight / Math.max(0.000001, effectiveYMax - effectiveYMin)
     }
@@ -248,11 +250,22 @@ Item {
                 return
 
             ctx.beginPath()
-            ctx.moveTo(chart.px(0), chart.py(chart.drawSamples[0]))
-            for (var i = 1; i < chart.pointCount; ++i)
-                ctx.lineTo(chart.px(i), chart.py(chart.drawSamples[i]))
+            var pathStarted = false
+            for (var i = 0; i < chart.pointCount; ++i) {
+                var y = chart.py(chart.drawSamples[i])
+                if (isNaN(y)) {
+                    pathStarted = false
+                    continue
+                }
+                if (!pathStarted) {
+                    ctx.moveTo(chart.px(i), y)
+                    pathStarted = true
+                } else {
+                    ctx.lineTo(chart.px(i), y)
+                }
+            }
 
-            if (chart.fillUnderLine) {
+            if (chart.fillUnderLine && pathStarted) {
                 var lastX = chart.px(chart.pointCount - 1)
                 var baselineY = chart.marginTop + chart.chartHeight
                 ctx.lineTo(lastX, baselineY)
@@ -267,9 +280,20 @@ Item {
             }
 
             ctx.beginPath()
-            ctx.moveTo(chart.px(0), chart.py(chart.drawSamples[0]))
-            for (var j = 1; j < chart.pointCount; ++j)
-                ctx.lineTo(chart.px(j), chart.py(chart.drawSamples[j]))
+            pathStarted = false
+            for (var j = 0; j < chart.pointCount; ++j) {
+                var strokeY = chart.py(chart.drawSamples[j])
+                if (isNaN(strokeY)) {
+                    pathStarted = false
+                    continue
+                }
+                if (!pathStarted) {
+                    ctx.moveTo(chart.px(j), strokeY)
+                    pathStarted = true
+                } else {
+                    ctx.lineTo(chart.px(j), strokeY)
+                }
+            }
             ctx.strokeStyle = chart.rgbaString(chart.lineColor, chart.lineColor.a)
             ctx.lineWidth = chart.lineWidth
             ctx.lineJoin = chart.hardLineCorners ? "miter" : "round"
@@ -303,6 +327,7 @@ Item {
     Repeater {
         model: chart.scatter ? chart.pointCount : 0
         Rectangle {
+            visible: !isNaN(Number(chart.drawSamples[index]))
             width: 5
             height: 5
             radius: 2.5
