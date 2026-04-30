@@ -49,6 +49,12 @@ Item {
             .replace("Disconnect All", "Disconnect")
     }
 
+    function disconnectAllDevices() {
+        if (waveformBackend.connected)
+            waveformBackend.disconnectFromHost()
+        deviceBackend.disconnectDevices()
+    }
+
     function rateText(value) {
         var hz = Number(value)
         if (!isFinite(hz) || hz <= 0.05)
@@ -173,7 +179,7 @@ Item {
             ToolbarButton { iconName: "refresh-cw"; text: ApplicationWindow.window.t("devices.refreshPorts"); onClicked: deviceBackend.refreshPorts() }
             Item { Layout.fillWidth: true }
             ToolbarButton { iconName: "link"; text: ApplicationWindow.window.t("devices.connectAll"); variant: "primary"; enabled: !deviceBackend.busy; onClicked: deviceBackend.connectDevices() }
-            ToolbarButton { iconName: "unlink"; text: ApplicationWindow.window.t("devices.disconnectAll"); variant: "danger"; enabled: !deviceBackend.busy || deviceBackend.connected; onClicked: deviceBackend.disconnectDevices() }
+            ToolbarButton { iconName: "unlink"; text: ApplicationWindow.window.t("devices.disconnectAll"); variant: "danger"; enabled: !deviceBackend.busy || deviceBackend.connected || waveformBackend.connected; onClicked: page.disconnectAllDevices() }
         }
 
         GridView {
