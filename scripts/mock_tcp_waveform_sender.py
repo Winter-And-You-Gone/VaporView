@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import argparse
 import array
+import ctypes
+import contextlib
 import math
 import random
 import signal
@@ -37,11 +39,40 @@ REFERENCE_PEAK_WIDTH = 520.0
 DEFAULT_PRECOMPUTE_FRAMES = 120
 SOCKET_TIMEOUT_SECONDS = 0.5
 DEFAULT_REPORT_INTERVAL_SECONDS = 1.0
+DEFAULT_SEND_BUFFER_BYTES = 4 * 1024 * 1024
+SPIN_WAIT_SECONDS = 0.001
 
 
 def log(message: str = "", *, error: bool = False) -> None:
     stream = sys.stderr if error else sys.stdout
     print(message, file=stream, flush=True)
+
+
+@contextlib.contextmanager
+def high_resolution_timer() -> Iterable[None]:
+    winmm = None
+    if sys.platform.startswith("win"):
+        try:
+            winmm = ctypes.WinDLL("winmm")
+            winmm.timeBeginPeriod(1)
+        except Exception:
+            winmm = None
+    try:
+        yield
+    finally:
+        if winmm is not None:
+            winmm.timeEndPeriod(1)
+
+
+def wait_until(target_time: float, stop_event: threading.Event) -> None:
+    while not stop_event.is_set():
+        remaining = target_time - time.perf_counter()
+        if remaining <= 0.0:
+            return
+        if remaining > SPIN_WAIT_SECONDS:
+            stop_event.wait(remaining - SPIN_WAIT_SECONDS)
+        else:
+            time.sleep(0)
 
 
 def samples_for_rate(rate_hz: float, samples_per_second: int) -> int:
@@ -236,6 +267,7 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
                 continue
             with conn:
                 conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                conn.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, args.send_buffer)
                 conn.settimeout(SOCKET_TIMEOUT_SECONDS)
                 log(f"Client connected from {address[0]}:{address[1]}")
                 next_send_time = time.perf_counter()
@@ -283,6 +315,12 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
                                 f"throughput={actual_mib:.2f} MiB/s, "
                                 f"peak index={center}, harmonic peak={peak_value:.4f}"
                             )
+                            if actual_rate < args.rate * 0.9:
+                                log(
+                                    "warning: actual rate is below target; sendall is being delayed by Python CPU time "
+                                    "or TCP backpressure from the receiving application.",
+                                    error=True,
+                                )
 
                         frame_index += 1
                         frames_sent_to_client += 1
@@ -291,9 +329,8 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
                             return
 
                         next_send_time += frame_interval
-                        delay = next_send_time - time.perf_counter()
-                        if delay > 0.0:
-                            stop_event.wait(delay)
+                        if next_send_time > time.perf_counter():
+                            wait_until(next_send_time, stop_event)
                         else:
                             next_send_time = time.perf_counter()
                     break
@@ -356,6 +393,12 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_REPORT_INTERVAL_SECONDS,
         help=f"Seconds between runtime stats lines, default {DEFAULT_REPORT_INTERVAL_SECONDS:g}.",
     )
+    parser.add_argument(
+        "--send-buffer",
+        type=int,
+        default=DEFAULT_SEND_BUFFER_BYTES,
+        help=f"TCP send buffer bytes, default {DEFAULT_SEND_BUFFER_BYTES}.",
+    )
     return parser.parse_args()
 
 
@@ -378,7 +421,8 @@ def main() -> int:
         signal.signal(signal.SIGBREAK, request_stop)
 
     try:
-        serve(parse_args(), stop_event)
+        with high_resolution_timer():
+            serve(parse_args(), stop_event)
     except KeyboardInterrupt:
         stop_event.set()
     except Exception as exc:

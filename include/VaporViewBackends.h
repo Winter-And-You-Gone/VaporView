@@ -133,21 +133,25 @@ public:
 public slots:
     void connectToHost(const QString& host, int port);
     void disconnectFromHost();
+    void setRawFrameForwardingEnabled(bool enabled);
     void stop();
 
 signals:
     void connected();
     void disconnected();
     void socketError(const QString& message);
-    void frameDecoded(
+    void displayFrameDecoded(
+        QVector<float> rawSamples,
+        QVector<float> harmonicSamples);
+    void frameMetricsDecoded(
+        quint64 timestampUs,
+        float peakValue,
+        double frameRate);
+    void rawFrameDecoded(
         quint64 timestampUs,
         QByteArray rawSignalPayload,
         QByteArray harmonicPayload,
-        VaporView::TcpFloatEncoding floatEncoding,
-        QVector<float> rawSamples,
-        QVector<float> harmonicSamples,
-        float peakValue,
-        double frameRate);
+        VaporView::TcpFloatEncoding floatEncoding);
 
 private slots:
     void onReadyRead();
@@ -188,6 +192,8 @@ private:
     VaporView::TcpFloatEncoding float_encoding_;
     int expected_payload_size_;
     QVector<qint64> frame_arrivals_ms_;
+    qint64 last_display_emit_ms_;
+    bool raw_frame_forwarding_enabled_;
 };
 
 class DeviceBackend : public QObject
@@ -364,6 +370,7 @@ public:
     Q_INVOKABLE void toggleConnection();
     Q_INVOKABLE void clearPeakHistory();
     Q_INVOKABLE void configurePeakFilter(double minValue, double maxValue, bool enabled);
+    void setRawFrameForwardingEnabled(bool enabled);
 
 public slots:
     void setHost(const QString& host);
@@ -387,15 +394,18 @@ private slots:
     void onSocketConnected();
     void onSocketDisconnected();
     void onSocketError();
-    void onWorkerFrameDecoded(
+    void onWorkerDisplayFrameDecoded(
+        QVector<float> rawSamples,
+        QVector<float> harmonicSamples);
+    void onWorkerFrameMetricsDecoded(
+        quint64 timestampUs,
+        float peakValue,
+        double frameRate);
+    void onWorkerRawFrameDecoded(
         quint64 timestampUs,
         QByteArray rawSignalPayload,
         QByteArray harmonicPayload,
-        VaporView::TcpFloatEncoding floatEncoding,
-        QVector<float> rawSamples,
-        QVector<float> harmonicSamples,
-        float peakValue,
-        double frameRate);
+        VaporView::TcpFloatEncoding floatEncoding);
     void updateLiveDisplay();
 
 private:
@@ -458,6 +468,7 @@ private:
     bool samples_dirty_;
     bool peak_dirty_;
     bool frame_rate_dirty_;
+    bool raw_frame_forwarding_enabled_;
     double filter_min_;
     double filter_max_;
 };

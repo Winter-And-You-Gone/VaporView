@@ -8,6 +8,9 @@ Rectangle {
     readonly property bool anyDeviceConnected: deviceBackend.connected || waveformBackend.connected
 
     function connectAllDevices() {
+        if (appBackend.english)
+            deviceBackend.appendLogLine("Global connection requested: 4 serial devices plus 1 TCP waveform source.", "info")
+        deviceBackend.appendLogLine("全局连接已发起：4 个串口设备 + 1 个 TCP 波形源。", "info")
         if (!waveformBackend.connected)
             waveformBackend.connectToHost()
         if (!deviceBackend.connected && !deviceBackend.busy)
@@ -30,12 +33,13 @@ Rectangle {
         anchors.rightMargin: 10
         spacing: 10
 
-        Rectangle {
+        Image {
             Layout.preferredWidth: 24
             Layout.preferredHeight: 24
-            radius: 6
-            color: ApplicationWindow.window.primary
-            Text { anchors.centerIn: parent; text: "V"; color: "white"; font.pixelSize: 11; font.bold: true }
+            source: "../assets/logo/vaporview_logo.png"
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+            mipmap: true
         }
         Text {
             text: ApplicationWindow.window.t("app.title")

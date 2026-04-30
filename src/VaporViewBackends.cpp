@@ -61,6 +61,26 @@ QString translatedTcpSocketMessage(const QString& message)
     return message;
 }
 
+QString chineseTcpSocketMessage(const QString& message)
+{
+    if (message.contains(QStringLiteral("connection refused"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("refused"), Qt::CaseInsensitive))
+    {
+        return QStringLiteral("TCP 波形源连接被拒绝，请确认 mock_tcp_waveform_sender.py 已启动，主机和端口配置正确。");
+    }
+    if (message.contains(QStringLiteral("timed out"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("timeout"), Qt::CaseInsensitive))
+    {
+        return QStringLiteral("TCP 波形源发送或连接超时，请检查波形源进程和网络状态。");
+    }
+    if (message.contains(QStringLiteral("host"), Qt::CaseInsensitive) &&
+        message.contains(QStringLiteral("found"), Qt::CaseInsensitive))
+    {
+        return QStringLiteral("TCP 波形源主机不可达或无法解析，请检查 IP 地址。");
+    }
+    return QStringLiteral("TCP 波形源错误：%1").arg(message);
+}
+
 #pragma pack(push, 1)
 struct UnifiedRawFileHeader
 {
@@ -1446,8 +1466,8 @@ void DeviceBackend::connectDevices()
             setProgress(0, 1);
             setStatusText(connected_ ? (english ? QStringLiteral("Connected") : QStringLiteral("已连接"))
                                      : (english ? QStringLiteral("Disconnected") : QStringLiteral("未连接")));
-            log(QString(english ? "========== Connection Summary: %1/%2 devices connected =========="
-                                : "========== 连接摘要: %1/%2 设备已连接 ==========")
+            log(QString(english ? "========== Serial Connection Summary: %1/%2 serial devices connected =========="
+                                : "========== 串口连接摘要: %1/%2 个串口设备已连接 ==========")
                     .arg(connectedCount)
                     .arg(total));
             emit connectionStateChanged();
@@ -1646,6 +1666,8 @@ TcpWaveReceiverWorker::TcpWaveReceiverWorker(QObject *parent)
     , header_byte_order_(HeaderByteOrder::Unknown)
     , float_encoding_(VaporView::TcpFloatEncoding::Unknown)
     , expected_payload_size_(0)
+    , last_display_emit_ms_(0)
+    , raw_frame_forwarding_enabled_(false)
 {
 }
 
@@ -1680,6 +1702,11 @@ void TcpWaveReceiverWorker::disconnectFromHost()
     }
 }
 
+void TcpWaveReceiverWorker::setRawFrameForwardingEnabled(bool enabled)
+{
+    raw_frame_forwarding_enabled_ = enabled;
+}
+
 void TcpWaveReceiverWorker::stop()
 {
     if (!socket_)
@@ -1703,6 +1730,7 @@ void TcpWaveReceiverWorker::resetStreamState()
     float_encoding_ = VaporView::TcpFloatEncoding::Unknown;
     expected_payload_size_ = 0;
     frame_arrivals_ms_.clear();
+    last_display_emit_ms_ = 0;
 }
 
 void TcpWaveReceiverWorker::onSocketConnected()
@@ -1865,16 +1893,19 @@ void TcpWaveReceiverWorker::processBuffer()
             {
                 peakValue = *maxIt;
             }
-            const double frameRate = updateFrameRate(QDateTime::currentMSecsSinceEpoch());
-            emit frameDecoded(
-                currentTimestampUs(),
-                pending_raw_payload_,
-                harmonicPayload,
-                float_encoding_,
-                pending_raw_samples_,
-                harmonicSamples,
-                peakValue,
-                frameRate);
+            const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+            const quint64 timestampUs = currentTimestampUs();
+            const double frameRate = updateFrameRate(nowMs);
+            emit frameMetricsDecoded(timestampUs, peakValue, frameRate);
+            if (raw_frame_forwarding_enabled_)
+            {
+                emit rawFrameDecoded(timestampUs, pending_raw_payload_, harmonicPayload, float_encoding_);
+            }
+            if (last_display_emit_ms_ == 0 || nowMs - last_display_emit_ms_ >= kLiveDisplayRefreshMs)
+            {
+                last_display_emit_ms_ = nowMs;
+                emit displayFrameDecoded(std::move(pending_raw_samples_), std::move(harmonicSamples));
+            }
             read_state_ = ReadState::RawHeader;
             progressed = true;
         }
@@ -1901,6 +1932,7 @@ WaveformBackend::WaveformBackend(QObject *parent)
     , samples_dirty_(false)
     , peak_dirty_(false)
     , frame_rate_dirty_(false)
+    , raw_frame_forwarding_enabled_(false)
     , filter_min_(0.0)
     , filter_max_(0.0)
 {
@@ -1911,13 +1943,15 @@ WaveformBackend::WaveformBackend(QObject *parent)
     connect(receiver_worker_, &TcpWaveReceiverWorker::connected, this, &WaveformBackend::onSocketConnected);
     connect(receiver_worker_, &TcpWaveReceiverWorker::disconnected, this, &WaveformBackend::onSocketDisconnected);
     connect(receiver_worker_, &TcpWaveReceiverWorker::socketError, this, [this](const QString& message) {
-        const QString translatedMessage = translatedTcpSocketMessage(message);
         connected_ = false;
-        setStatusText(translatedMessage);
+        setStatusText(translatedTcpSocketMessage(message));
         emit connectedChanged();
-        emit notificationRequested(QStringLiteral("error"), translatedMessage);
+        emit notificationRequested(QStringLiteral("error"), message);
+        emit notificationRequested(QStringLiteral("error"), chineseTcpSocketMessage(message));
     });
-    connect(receiver_worker_, &TcpWaveReceiverWorker::frameDecoded, this, &WaveformBackend::onWorkerFrameDecoded);
+    connect(receiver_worker_, &TcpWaveReceiverWorker::displayFrameDecoded, this, &WaveformBackend::onWorkerDisplayFrameDecoded);
+    connect(receiver_worker_, &TcpWaveReceiverWorker::frameMetricsDecoded, this, &WaveformBackend::onWorkerFrameMetricsDecoded);
+    connect(receiver_worker_, &TcpWaveReceiverWorker::rawFrameDecoded, this, &WaveformBackend::onWorkerRawFrameDecoded);
     receiver_thread_.start();
     connect(&live_display_timer_, &QTimer::timeout, this, &WaveformBackend::updateLiveDisplay);
     live_display_timer_.start(kLiveDisplayRefreshMs);
@@ -2033,6 +2067,20 @@ void WaveformBackend::toggleConnection()
     connected() ? disconnectFromHost() : connectToHost();
 }
 
+void WaveformBackend::setRawFrameForwardingEnabled(bool enabled)
+{
+    if (raw_frame_forwarding_enabled_ == enabled)
+    {
+        return;
+    }
+    raw_frame_forwarding_enabled_ = enabled;
+    QMetaObject::invokeMethod(
+        receiver_worker_,
+        "setRawFrameForwardingEnabled",
+        Qt::QueuedConnection,
+        Q_ARG(bool, enabled));
+}
+
 void WaveformBackend::clearPeakHistory()
 {
     peak_raw_history_.clear();
@@ -2089,6 +2137,7 @@ void WaveformBackend::onSocketConnected()
     setStatusText(QStringLiteral("Connected"));
     emit connectedChanged();
     emit notificationRequested(QStringLiteral("info"), QStringLiteral("TCP wave source connected."));
+    emit notificationRequested(QStringLiteral("info"), QStringLiteral("TCP 波形源已连接。"));
 }
 
 void WaveformBackend::onSocketDisconnected()
@@ -2097,30 +2146,34 @@ void WaveformBackend::onSocketDisconnected()
     setStatusText(QStringLiteral("Disconnected"));
     emit connectedChanged();
     emit notificationRequested(QStringLiteral("info"), QStringLiteral("TCP wave source disconnected."));
+    emit notificationRequested(QStringLiteral("info"), QStringLiteral("TCP 波形源已断开。"));
 }
 
 void WaveformBackend::onSocketError()
 {
-    const QString translatedMessage = translatedTcpSocketMessage(socket_.errorString());
+    const QString message = socket_.errorString();
     connected_ = false;
-    setStatusText(translatedMessage);
+    setStatusText(translatedTcpSocketMessage(message));
     emit connectedChanged();
-    emit notificationRequested(QStringLiteral("error"), translatedMessage);
+    emit notificationRequested(QStringLiteral("error"), message);
+    emit notificationRequested(QStringLiteral("error"), chineseTcpSocketMessage(message));
 }
 
-void WaveformBackend::onWorkerFrameDecoded(
-    quint64 timestampUs,
-    QByteArray rawSignalPayload,
-    QByteArray harmonicPayload,
-    VaporView::TcpFloatEncoding floatEncoding,
+void WaveformBackend::onWorkerDisplayFrameDecoded(
     QVector<float> rawSamples,
-    QVector<float> harmonicSamples,
-    float peakValue,
-    double frameRate)
+    QVector<float> harmonicSamples)
 {
     raw_history_ = std::move(rawSamples);
     harmonic_history_ = std::move(harmonicSamples);
-    float_encoding_ = floatEncoding;
+    markLiveDisplayDirty(true, false, false);
+}
+
+void WaveformBackend::onWorkerFrameMetricsDecoded(
+    quint64 timestampUs,
+    float peakValue,
+    double frameRate)
+{
+    Q_UNUSED(timestampUs);
 
     if (std::isfinite(peakValue))
     {
@@ -2147,7 +2200,15 @@ void WaveformBackend::onWorkerFrameDecoded(
         frame_rate_ = frameRate;
         markLiveDisplayDirty(false, false, true);
     }
-    markLiveDisplayDirty(true, false, false);
+}
+
+void WaveformBackend::onWorkerRawFrameDecoded(
+    quint64 timestampUs,
+    QByteArray rawSignalPayload,
+    QByteArray harmonicPayload,
+    VaporView::TcpFloatEncoding floatEncoding)
+{
+    float_encoding_ = floatEncoding;
     emit rawWaveFrameReady(timestampUs, std::move(rawSignalPayload), std::move(harmonicPayload), floatEncoding);
 }
 
@@ -2999,6 +3060,7 @@ void RecordingBackend::startRecordingWorkers()
         return;
     }
     recording_paused_ = false;
+    waveform_backend_->setRawFrameForwardingEnabled(true);
     QFile *filePtr = sensors_file_.get();
     recording_thread_running_.store(true);
     recording_thread_ = std::thread([this, filePtr]() {
@@ -3129,6 +3191,7 @@ void RecordingBackend::stopRecordingWorkers()
     {
         recording_thread_.join();
     }
+    waveform_backend_->setRawFrameForwardingEnabled(false);
 }
 
 void RecordingBackend::onEpsilonRawFrame(quint64 hostTimestampUs, int packetId, int serialNumber, QByteArray payload)
