@@ -62,6 +62,14 @@ Item {
         return hz >= 10 ? hz.toFixed(1) : hz.toFixed(2)
     }
 
+    function runDeviceTest(deviceId) {
+        if (deviceId === "epsilon") {
+            epsilonRatesPopup.open()
+        } else {
+            deviceBackend.appendLogLine(ApplicationWindow.window.t("devices.testNotAvailable"), "warning")
+        }
+    }
+
     component FieldLabel: Text {
         color: ApplicationWindow.window.muted
         font.pixelSize: 12 * ApplicationWindow.window.scaleFactor
@@ -308,11 +316,11 @@ Item {
                         ToolbarButton {
                             iconName: "flask-conical"
                             text: ""
-                            enabled: id === "epsilon" && !deviceBackend.busy
+                            enabled: !deviceBackend.busy
                             ToolTip.text: id === "epsilon" ? "EPS Rates" : ApplicationWindow.window.t("devices.test")
                             ToolTip.visible: hovered
                             ToolTip.delay: 400
-                            onClicked: epsilonRatesPopup.open()
+                            onClicked: page.runDeviceTest(id)
                         }
 
                         ToolbarButton {

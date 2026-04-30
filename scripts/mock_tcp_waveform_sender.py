@@ -25,8 +25,6 @@ import struct
 import sys
 import threading
 import time
-from datetime import datetime
-from pathlib import Path
 from typing import Iterable
 
 
@@ -39,24 +37,11 @@ REFERENCE_PEAK_WIDTH = 520.0
 DEFAULT_PRECOMPUTE_FRAMES = 120
 SOCKET_TIMEOUT_SECONDS = 0.5
 DEFAULT_REPORT_INTERVAL_SECONDS = 1.0
-LOG_PATH = Path(__file__).with_name("mock_tcp_waveform_sender.log")
-LOG_LOCK = threading.Lock()
 
 
 def log(message: str = "", *, error: bool = False) -> None:
     stream = sys.stderr if error else sys.stdout
-    try:
-        print(message, file=stream, flush=True)
-    except Exception:
-        pass
-
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with LOG_LOCK:
-        try:
-            with LOG_PATH.open("a", encoding="utf-8") as handle:
-                handle.write(f"[{timestamp}] {message}\n")
-        except Exception:
-            pass
+    print(message, file=stream, flush=True)
 
 
 def samples_for_rate(rate_hz: float, samples_per_second: int) -> int:
@@ -233,7 +218,6 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
             log(f"Mode: precomputed replay, {len(replay_frames)} frame(s) looped.")
         else:
             log("Mode: live generation; high rates may be CPU-bound in Python.")
-        log(f"Log file: {LOG_PATH}")
         log("Press Ctrl+C to stop.")
 
         frame_index = 0
@@ -382,7 +366,7 @@ def main() -> int:
         sys.stderr.reconfigure(line_buffering=True)
 
     stop_event = threading.Event()
-    log(f"Starting mock TCP waveform sender. Log file: {LOG_PATH}")
+    log("Starting mock TCP waveform sender.")
 
     def request_stop(signum: int, _frame: object) -> None:
         del signum

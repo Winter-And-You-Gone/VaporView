@@ -36,10 +36,7 @@ Rectangle {
                 onClicked: rail.navigate(modelData.key)
                 background: Rectangle {
                     radius: 8
-                    color: active ? Qt.rgba(ApplicationWindow.window.primary.r,
-                                            ApplicationWindow.window.primary.g,
-                                            ApplicationWindow.window.primary.b,
-                                            0.10)
+                    color: active ? ApplicationWindow.window.navActiveFill
                                   : hovered ? ApplicationWindow.window.secondary : "transparent"
                 }
                 contentItem: Column {
@@ -50,14 +47,14 @@ Rectangle {
                         width: 18
                         height: 18
                         name: modelData.icon
-                        iconColor: active ? ApplicationWindow.window.primary : ApplicationWindow.window.muted
+                        iconColor: active ? ApplicationWindow.window.navActive : ApplicationWindow.window.muted
                         stroke: 1.8
                     }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
                         width: 44
                         text: ApplicationWindow.window.t(modelData.label)
-                        color: active ? ApplicationWindow.window.primary : ApplicationWindow.window.muted
+                        color: active ? ApplicationWindow.window.navActive : ApplicationWindow.window.muted
                         font.pixelSize: 8 * ApplicationWindow.window.scaleFactor
                         horizontalAlignment: Text.AlignHCenter
                         elide: Text.ElideRight

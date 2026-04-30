@@ -106,6 +106,9 @@ Item {
                                     Button {
                                         id: linkButton
                                         property bool active: connected
+                                        readonly property bool connecting: kind === "tcp"
+                                            ? waveformBackend.statusText === "Connecting..."
+                                            : deviceBackend.connectionInProgress && !connected
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: 30
                                         height: 30
@@ -122,23 +125,49 @@ Item {
                                             }
                                         }
 
-                                        contentItem: LucideIcon {
-                                            anchors.centerIn: parent
-                                            width: 16
-                                            height: 16
-                                            name: linkButton.active ? "unlink" : "link"
-                                            iconColor: linkButton.active ? ApplicationWindow.window.ok : ApplicationWindow.window.muted
-                                            stroke: 2
+                                        contentItem: Item {
+                                            LucideIcon {
+                                                id: linkIcon
+                                                anchors.centerIn: parent
+                                                width: 16
+                                                height: 16
+                                                name: linkButton.active ? "unlink" : "link"
+                                                iconColor: linkButton.connecting
+                                                    ? ApplicationWindow.window.warning
+                                                    : linkButton.active ? ApplicationWindow.window.ok : ApplicationWindow.window.muted
+                                                stroke: 2
+
+                                                RotationAnimation on rotation {
+                                                    id: spinAnimation
+                                                    running: linkButton.connecting
+                                                    loops: Animation.Infinite
+                                                    from: 0
+                                                    to: 360
+                                                    duration: 800
+                                                    onRunningChanged: {
+                                                        if (!running)
+                                                            linkIcon.rotation = 0
+                                                    }
+                                                }
+                                            }
                                         }
 
                                         background: Rectangle {
                                             radius: 8
-                                            color: linkButton.active
+                                            color: linkButton.connecting
+                                                   ? (ApplicationWindow.window.dark
+                                                      ? Qt.rgba(0.98, 0.75, 0.14, 0.14)
+                                                      : Qt.rgba(0.96, 0.62, 0.04, 0.12))
+                                                   : linkButton.active
                                                    ? "#1A22C55E"
                                                    : (ApplicationWindow.window.dark
                                                       ? Qt.rgba(0.58, 0.64, 0.72, 0.10)
                                                       : Qt.rgba(0.39, 0.45, 0.55, 0.10))
-                                            border.color: linkButton.active
+                                            border.color: linkButton.connecting
+                                                          ? (ApplicationWindow.window.dark
+                                                             ? Qt.rgba(0.98, 0.75, 0.14, 0.34)
+                                                             : Qt.rgba(0.96, 0.62, 0.04, 0.30))
+                                                          : linkButton.active
                                                           ? "#3322C55E"
                                                           : (ApplicationWindow.window.dark
                                                              ? Qt.rgba(0.58, 0.64, 0.72, 0.30)

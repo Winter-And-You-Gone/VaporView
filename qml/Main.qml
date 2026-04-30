@@ -34,6 +34,8 @@ ApplicationWindow {
     readonly property color primary: "#0f172a"
     readonly property color primaryForeground: "#f8fafc"
     readonly property color primaryHover: "#1e293b"
+    readonly property color navActive: dark ? "#e2e8f0" : primary
+    readonly property color navActiveFill: dark ? Qt.rgba(0.89, 0.93, 0.98, 0.14) : Qt.rgba(0.06, 0.09, 0.16, 0.10)
     readonly property color danger: dark ? "#f87171" : "#ef4444"
     readonly property color dangerSoft: dark ? Qt.rgba(0.973, 0.443, 0.443, 0.10) : Qt.rgba(0.937, 0.267, 0.267, 0.10)
     readonly property color dangerSoftHover: dark ? Qt.rgba(0.973, 0.443, 0.443, 0.20) : Qt.rgba(0.937, 0.267, 0.267, 0.20)
