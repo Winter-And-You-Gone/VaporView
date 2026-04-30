@@ -138,6 +138,29 @@ Item {
         }
     }
 
+    component UnitFieldLabel: RowLayout {
+        property string label: ""
+        property string unit: ""
+
+        Layout.fillWidth: true
+        spacing: 3
+
+        FieldLabel {
+            text: parent.label
+        }
+
+        Text {
+            visible: parent.unit.length > 0
+            text: "(" + parent.unit + ")"
+            color: ApplicationWindow.window.muted
+            opacity: 0.75
+            font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+            verticalAlignment: Text.AlignVCenter
+        }
+
+        Item { Layout.fillWidth: true }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: 12
@@ -227,20 +250,11 @@ Item {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 12
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 3
-                            FieldLabel {
-                                text: kind === "tcp"
-                                    ? ApplicationWindow.window.t("devices.receiveRate")
-                                    : ApplicationWindow.window.t("devices.sampleRate")
-                            }
-                            Text {
-                                text: "(" + ApplicationWindow.window.t("unit.hz") + ")"
-                                color: ApplicationWindow.window.muted
-                                opacity: 0.75
-                                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
-                            }
+                        UnitFieldLabel {
+                            label: kind === "tcp"
+                                ? ApplicationWindow.window.t("devices.receiveRate")
+                                : ApplicationWindow.window.t("devices.sampleRate")
+                            unit: ApplicationWindow.window.t("unit.hz")
                         }
                         DeviceComboBox {
                             visible: kind !== "tcp"
