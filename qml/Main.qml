@@ -41,8 +41,8 @@ ApplicationWindow {
     readonly property color ok: dark ? "#4ade80" : "#22c55e"
     readonly property color warning: dark ? "#fbbf24" : "#f59e0b"
     readonly property color offline: dark ? "#94a3b8" : "#64748b"
-    readonly property color waveformRaw: "#496083"
-    readonly property color waveformHarmonic: "#496083"
+    readonly property color waveformRaw: dark ? "#8fb3e6" : "#496083"
+    readonly property color waveformHarmonic: waveformRaw
 
     function t(key) {
         appBackend.language

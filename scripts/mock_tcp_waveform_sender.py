@@ -25,6 +25,8 @@ import struct
 import sys
 import threading
 import time
+from datetime import datetime
+from pathlib import Path
 from typing import Iterable
 
 
@@ -37,6 +39,24 @@ REFERENCE_PEAK_WIDTH = 520.0
 DEFAULT_PRECOMPUTE_FRAMES = 120
 SOCKET_TIMEOUT_SECONDS = 0.5
 DEFAULT_REPORT_INTERVAL_SECONDS = 1.0
+LOG_PATH = Path(__file__).with_name("mock_tcp_waveform_sender.log")
+LOG_LOCK = threading.Lock()
+
+
+def log(message: str = "", *, error: bool = False) -> None:
+    stream = sys.stderr if error else sys.stdout
+    try:
+        print(message, file=stream, flush=True)
+    except Exception:
+        pass
+
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with LOG_LOCK:
+        try:
+            with LOG_PATH.open("a", encoding="utf-8") as handle:
+                handle.write(f"[{timestamp}] {message}\n")
+        except Exception:
+            pass
 
 
 def samples_for_rate(rate_hz: float, samples_per_second: int) -> int:
@@ -140,7 +160,7 @@ def precompute_frames(args: argparse.Namespace, peak_index: int) -> list[tuple[b
     frame_count = max(1, frame_count)
 
     started = time.perf_counter()
-    print(f"Precomputing {frame_count} frame(s) for fast replay...", flush=True)
+    log(f"Precomputing {frame_count} frame(s) for fast replay...")
     frames = [
         build_frame_bytes(
             frame_index=frame_index,
@@ -155,10 +175,9 @@ def precompute_frames(args: argparse.Namespace, peak_index: int) -> list[tuple[b
     ]
     elapsed = time.perf_counter() - started
     total_bytes = sum(len(frame[0]) for frame in frames)
-    print(
+    log(
         f"Precomputed {frame_count} frame(s), {total_bytes / (1024 * 1024):.1f} MiB "
-        f"in {elapsed:.2f}s. Use --precompute-frames 0 for live generation.",
-        flush=True,
+        f"in {elapsed:.2f}s. Use --precompute-frames 0 for live generation."
     )
     return frames
 
@@ -187,11 +206,10 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
     points_per_frame_total = args.samples * 2
     points_per_second_per_wave = args.samples * args.rate
     points_per_second_total = points_per_frame_total * args.rate
-    print(
+    log(
         f"Configuration: samples/frame/wave={args.samples:,}, points/frame total={points_per_frame_total:,}, "
         f"target={args.rate:g} Hz, target throughput={points_per_second_per_wave:,.0f} points/s/wave "
-        f"({points_per_second_total:,.0f} points/s total).",
-        flush=True,
+        f"({points_per_second_total:,.0f} points/s total)."
     )
     replay_frames = precompute_frames(args, peak_index)
 
@@ -200,24 +218,23 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
         server.settimeout(SOCKET_TIMEOUT_SECONDS)
         server.bind((args.host, args.port))
         server.listen(1)
-        print(f"Listening on {args.host}:{args.port}; set VaporView TCP host to 127.0.0.1 and port to {args.port}.", flush=True)
-        print(
+        log(f"Listening on {args.host}:{args.port}; set VaporView TCP host to 127.0.0.1 and port to {args.port}.")
+        log(
             f"Frame: two payloads, {args.samples} float32 samples each, {args.rate:g} Hz "
-            f"({args.samples * args.rate:g} points/s per wave).",
-            flush=True,
+            f"({args.samples * args.rate:g} points/s per wave)."
         )
-        print(
+        log(
             f"Stats: samples/frame/wave={args.samples:,}, points/frame total={points_per_frame_total:,}, "
             f"frame bytes={frame_bytes:,}, target={args.rate:g} Hz, "
             f"target throughput={points_per_second_per_wave:,.0f} points/s/wave "
-            f"({points_per_second_total:,.0f} points/s total).",
-            flush=True,
+            f"({points_per_second_total:,.0f} points/s total)."
         )
         if replay_frames:
-            print(f"Mode: precomputed replay, {len(replay_frames)} frame(s) looped.", flush=True)
+            log(f"Mode: precomputed replay, {len(replay_frames)} frame(s) looped.")
         else:
-            print("Mode: live generation; high rates may be CPU-bound in Python.", flush=True)
-        print("Press Ctrl+C to stop.", flush=True)
+            log("Mode: live generation; high rates may be CPU-bound in Python.")
+        log(f"Log file: {LOG_PATH}")
+        log("Press Ctrl+C to stop.")
 
         frame_index = 0
         last_idle_report_time = time.perf_counter()
@@ -228,16 +245,15 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
                 now = time.perf_counter()
                 if now - last_idle_report_time >= args.report_interval:
                     last_idle_report_time = now
-                    print(
+                    log(
                         f"waiting for client: samples/frame/wave={args.samples:,}, "
-                        f"target={args.rate:g} Hz, target points/s/wave={points_per_second_per_wave:,.0f}",
-                        flush=True,
+                        f"target={args.rate:g} Hz, target points/s/wave={points_per_second_per_wave:,.0f}"
                     )
                 continue
             with conn:
                 conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 conn.settimeout(SOCKET_TIMEOUT_SECONDS)
-                print(f"Client connected from {address[0]}:{address[1]}", flush=True)
+                log(f"Client connected from {address[0]}:{address[1]}")
                 next_send_time = time.perf_counter()
                 last_report_time = next_send_time
                 frames_since_report = 0
@@ -275,20 +291,19 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
                             last_report_time = now
                             frames_since_report = 0
                             bytes_since_report = 0
-                            print(
+                            log(
                                 f"sent frame {frame_index:06d}: samples/frame/wave={args.samples:,}, "
                                 f"target={args.rate:g} Hz, actual={actual_rate:.2f} Hz, "
                                 f"points/s/wave={actual_points_per_wave:,.0f}, "
                                 f"points/s total={actual_points_total:,.0f}, "
                                 f"throughput={actual_mib:.2f} MiB/s, "
-                                f"peak index={center}, harmonic peak={peak_value:.4f}",
-                                flush=True,
+                                f"peak index={center}, harmonic peak={peak_value:.4f}"
                             )
 
                         frame_index += 1
                         frames_sent_to_client += 1
                         if args.frames > 0 and frames_sent_to_client >= args.frames:
-                            print(f"Sent {frames_sent_to_client} frame(s); exiting because --frames was set.", flush=True)
+                            log(f"Sent {frames_sent_to_client} frame(s); exiting because --frames was set.")
                             return
 
                         next_send_time += frame_interval
@@ -299,11 +314,11 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
                             next_send_time = time.perf_counter()
                     break
                 except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
-                    print("Client disconnected; waiting for the next connection.", flush=True)
+                    log("Client disconnected; waiting for the next connection.")
                 except socket.timeout:
                     if stop_event.is_set():
                         break
-                    print("Client send timed out; waiting for the next connection.", flush=True)
+                    log("Client send timed out; waiting for the next connection.")
                 except InterruptedError:
                     break
 
@@ -367,6 +382,7 @@ def main() -> int:
         sys.stderr.reconfigure(line_buffering=True)
 
     stop_event = threading.Event()
+    log(f"Starting mock TCP waveform sender. Log file: {LOG_PATH}")
 
     def request_stop(signum: int, _frame: object) -> None:
         del signum
@@ -382,10 +398,10 @@ def main() -> int:
     except KeyboardInterrupt:
         stop_event.set()
     except Exception as exc:
-        print(f"ERROR: {exc}", file=sys.stderr, flush=True)
+        log(f"ERROR: {exc}", error=True)
         return 1
     if stop_event.is_set():
-        print("\nStopped.", flush=True)
+        log("\nStopped.")
     return 0
 
 

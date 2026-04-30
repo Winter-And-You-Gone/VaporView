@@ -51,6 +51,16 @@ constexpr int kMaxTcpPayloadSize = 4 * 1024 * 1024;
 constexpr int kLiveDisplayRefreshMs = 11;
 constexpr int kPeakTrendFrameWindow = 1000;
 
+QString translatedTcpSocketMessage(const QString& message)
+{
+    if (message.contains(QStringLiteral("connection refused"), Qt::CaseInsensitive) ||
+        message.contains(QStringLiteral("refused"), Qt::CaseInsensitive))
+    {
+        return message + QStringLiteral("；中文：连接被拒绝，请确认波形源或 mock_tcp_waveform_sender.py 已启动，主机和端口配置正确。");
+    }
+    return message;
+}
+
 #pragma pack(push, 1)
 struct UnifiedRawFileHeader
 {
@@ -1899,10 +1909,11 @@ WaveformBackend::WaveformBackend(QObject *parent)
     connect(receiver_worker_, &TcpWaveReceiverWorker::connected, this, &WaveformBackend::onSocketConnected);
     connect(receiver_worker_, &TcpWaveReceiverWorker::disconnected, this, &WaveformBackend::onSocketDisconnected);
     connect(receiver_worker_, &TcpWaveReceiverWorker::socketError, this, [this](const QString& message) {
+        const QString translatedMessage = translatedTcpSocketMessage(message);
         connected_ = false;
-        setStatusText(message);
+        setStatusText(translatedMessage);
         emit connectedChanged();
-        emit notificationRequested(QStringLiteral("error"), message);
+        emit notificationRequested(QStringLiteral("error"), translatedMessage);
     });
     connect(receiver_worker_, &TcpWaveReceiverWorker::frameDecoded, this, &WaveformBackend::onWorkerFrameDecoded);
     receiver_thread_.start();
@@ -2088,10 +2099,11 @@ void WaveformBackend::onSocketDisconnected()
 
 void WaveformBackend::onSocketError()
 {
+    const QString translatedMessage = translatedTcpSocketMessage(socket_.errorString());
     connected_ = false;
-    setStatusText(socket_.errorString());
+    setStatusText(translatedMessage);
     emit connectedChanged();
-    emit notificationRequested(QStringLiteral("error"), socket_.errorString());
+    emit notificationRequested(QStringLiteral("error"), translatedMessage);
 }
 
 void WaveformBackend::onWorkerFrameDecoded(
