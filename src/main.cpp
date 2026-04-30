@@ -77,6 +77,10 @@ int main(int argc, char *argv[])
             QStringLiteral("%1:%2").arg(waveformBackend.host()).arg(waveformBackend.port()),
             waveformBackend.frameRate());
     });
+    deviceBackend.setWaveformDeviceState(
+        waveformBackend.connected(),
+        QStringLiteral("%1:%2").arg(waveformBackend.host()).arg(waveformBackend.port()),
+        waveformBackend.frameRate());
     QObject::connect(&recordingBackend, &RecordingBackend::sessionCompleted, &sessionBackend, [&](const QString&) {
         sessionBackend.setRecordingDirectory(recordingBackend.recordingDirectory());
         sessionBackend.refreshSessions();

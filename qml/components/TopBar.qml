@@ -5,7 +5,9 @@ import QtQuick.Layouts
 Rectangle {
     id: topBar
 
-    readonly property bool anyDeviceConnected: deviceBackend.connected || waveformBackend.connected
+    readonly property bool serialConnected: deviceBackend.connected
+    readonly property bool tcpConnected: waveformBackend.connected
+    readonly property bool anyDeviceConnected: serialConnected || tcpConnected
 
     function connectAllDevices() {
         if (appBackend.english)
@@ -18,7 +20,7 @@ Rectangle {
     }
 
     function disconnectAllDevices() {
-        if (waveformBackend.connected)
+        if (waveformBackend.connected || waveformBackend.statusText === "Connecting...")
             waveformBackend.disconnectFromHost()
         if (deviceBackend.connected || deviceBackend.busy)
             deviceBackend.disconnectDevices()
@@ -92,7 +94,7 @@ Rectangle {
             iconName: topBar.anyDeviceConnected ? "unlink" : "link"
             text: topBar.anyDeviceConnected ? ApplicationWindow.window.t("topbar.disconnect") : ApplicationWindow.window.t("topbar.connect")
             variant: topBar.anyDeviceConnected ? "danger" : "primary"
-            enabled: !deviceBackend.busy || waveformBackend.connected
+            enabled: true
             onClicked: topBar.anyDeviceConnected ? topBar.disconnectAllDevices() : topBar.connectAllDevices()
         }
         ToolbarButton {

@@ -158,29 +158,31 @@ Item {
                                     spacing: 6
 
                                     readonly property bool deviceHealthy: connected && online
+                                    readonly property bool effectiveConnected: kind === "tcp" ? waveformBackend.connected : connected
+                                    readonly property bool effectiveConnecting: kind === "tcp"
+                                        ? waveformBackend.statusText === "Connecting..."
+                                        : deviceBackend.connectionInProgress && !connected
 
                                     StatusPill {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        status: deviceHealthy ? "online" : online ? "warning" : "offline"
+                                        status: effectiveConnected && online ? "online" : online ? "warning" : "offline"
                                         label: ApplicationWindow.window.t(nameKey)
                                     }
 
                                     Button {
                                         id: linkButton
-                                        property bool active: connected
-                                        readonly property bool connecting: kind === "tcp"
-                                            ? waveformBackend.statusText === "Connecting..."
-                                            : deviceBackend.connectionInProgress && !connected
+                                        property bool active: effectiveConnected
+                                        readonly property bool connecting: effectiveConnecting
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: 30
                                         height: 30
                                         text: ""
                                         padding: 0
-                                        enabled: kind === "tcp" || !deviceBackend.busy
+                                        enabled: kind === "tcp" || !deviceBackend.busy || effectiveConnected
                                         onClicked: {
                                             if (kind === "tcp") {
                                                 waveformBackend.toggleConnection()
-                                            } else if (connected) {
+                                            } else if (effectiveConnected) {
                                                 deviceBackend.disconnectDevice(id)
                                             } else {
                                                 deviceBackend.connectDevice(id)
