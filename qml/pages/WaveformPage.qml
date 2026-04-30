@@ -136,7 +136,7 @@ Item {
                     scatter: waveformBackend.scatterMode
                     fillUnderLine: !waveformBackend.scatterMode
                     hardLineCorners: true
-                    lineColor: ApplicationWindow.window.text
+                    lineColor: ApplicationWindow.window.waveformRaw
                     yMin: 1.0
                     yMax: 1.4
                     autoScaleY: waveformBackend.peakSamples.length > 1

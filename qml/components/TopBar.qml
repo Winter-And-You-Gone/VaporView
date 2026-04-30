@@ -3,6 +3,24 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
 Rectangle {
+    id: topBar
+
+    readonly property bool anyDeviceConnected: deviceBackend.connected || waveformBackend.connected
+
+    function connectAllDevices() {
+        if (!waveformBackend.connected)
+            waveformBackend.connectToHost()
+        if (!deviceBackend.connected && !deviceBackend.busy)
+            deviceBackend.connectDevices()
+    }
+
+    function disconnectAllDevices() {
+        if (waveformBackend.connected)
+            waveformBackend.disconnectFromHost()
+        if (deviceBackend.connected || deviceBackend.busy)
+            deviceBackend.disconnectDevices()
+    }
+
     color: ApplicationWindow.window.card
     border.color: ApplicationWindow.window.border
 
@@ -67,11 +85,11 @@ Rectangle {
         }
         Rectangle { Layout.preferredWidth: 1; Layout.preferredHeight: 24; color: ApplicationWindow.window.border }
         ToolbarButton {
-            iconName: deviceBackend.connected ? "unlink" : "link"
-            text: deviceBackend.connected ? ApplicationWindow.window.t("topbar.disconnect") : ApplicationWindow.window.t("topbar.connect")
-            variant: deviceBackend.connected ? "danger" : "primary"
-            enabled: !deviceBackend.busy
-            onClicked: deviceBackend.connected ? deviceBackend.disconnectDevices() : deviceBackend.connectDevices()
+            iconName: topBar.anyDeviceConnected ? "unlink" : "link"
+            text: topBar.anyDeviceConnected ? ApplicationWindow.window.t("topbar.disconnect") : ApplicationWindow.window.t("topbar.connect")
+            variant: topBar.anyDeviceConnected ? "danger" : "primary"
+            enabled: !deviceBackend.busy || waveformBackend.connected
+            onClicked: topBar.anyDeviceConnected ? topBar.disconnectAllDevices() : topBar.connectAllDevices()
         }
         ToolbarButton {
             visible: deviceBackend.connectionInProgress

@@ -187,6 +187,12 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
     points_per_frame_total = args.samples * 2
     points_per_second_per_wave = args.samples * args.rate
     points_per_second_total = points_per_frame_total * args.rate
+    print(
+        f"Configuration: samples/frame/wave={args.samples:,}, points/frame total={points_per_frame_total:,}, "
+        f"target={args.rate:g} Hz, target throughput={points_per_second_per_wave:,.0f} points/s/wave "
+        f"({points_per_second_total:,.0f} points/s total).",
+        flush=True,
+    )
     replay_frames = precompute_frames(args, peak_index)
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
@@ -194,33 +200,44 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
         server.settimeout(SOCKET_TIMEOUT_SECONDS)
         server.bind((args.host, args.port))
         server.listen(1)
-        print(f"Listening on {args.host}:{args.port}; set VaporView TCP host to 127.0.0.1 and port to {args.port}.")
+        print(f"Listening on {args.host}:{args.port}; set VaporView TCP host to 127.0.0.1 and port to {args.port}.", flush=True)
         print(
             f"Frame: two payloads, {args.samples} float32 samples each, {args.rate:g} Hz "
-            f"({args.samples * args.rate:g} points/s per wave)."
+            f"({args.samples * args.rate:g} points/s per wave).",
+            flush=True,
         )
         print(
             f"Stats: samples/frame/wave={args.samples:,}, points/frame total={points_per_frame_total:,}, "
             f"frame bytes={frame_bytes:,}, target={args.rate:g} Hz, "
             f"target throughput={points_per_second_per_wave:,.0f} points/s/wave "
-            f"({points_per_second_total:,.0f} points/s total)."
+            f"({points_per_second_total:,.0f} points/s total).",
+            flush=True,
         )
         if replay_frames:
-            print(f"Mode: precomputed replay, {len(replay_frames)} frame(s) looped.")
+            print(f"Mode: precomputed replay, {len(replay_frames)} frame(s) looped.", flush=True)
         else:
-            print("Mode: live generation; high rates may be CPU-bound in Python.")
-        print("Press Ctrl+C to stop.")
+            print("Mode: live generation; high rates may be CPU-bound in Python.", flush=True)
+        print("Press Ctrl+C to stop.", flush=True)
 
         frame_index = 0
+        last_idle_report_time = time.perf_counter()
         while not stop_event.is_set():
             try:
                 conn, address = server.accept()
             except socket.timeout:
+                now = time.perf_counter()
+                if now - last_idle_report_time >= args.report_interval:
+                    last_idle_report_time = now
+                    print(
+                        f"waiting for client: samples/frame/wave={args.samples:,}, "
+                        f"target={args.rate:g} Hz, target points/s/wave={points_per_second_per_wave:,.0f}",
+                        flush=True,
+                    )
                 continue
             with conn:
                 conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 conn.settimeout(SOCKET_TIMEOUT_SECONDS)
-                print(f"Client connected from {address[0]}:{address[1]}")
+                print(f"Client connected from {address[0]}:{address[1]}", flush=True)
                 next_send_time = time.perf_counter()
                 last_report_time = next_send_time
                 frames_since_report = 0
@@ -271,7 +288,7 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
                         frame_index += 1
                         frames_sent_to_client += 1
                         if args.frames > 0 and frames_sent_to_client >= args.frames:
-                            print(f"Sent {frames_sent_to_client} frame(s); exiting because --frames was set.")
+                            print(f"Sent {frames_sent_to_client} frame(s); exiting because --frames was set.", flush=True)
                             return
 
                         next_send_time += frame_interval
@@ -282,11 +299,11 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
                             next_send_time = time.perf_counter()
                     break
                 except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
-                    print("Client disconnected; waiting for the next connection.")
+                    print("Client disconnected; waiting for the next connection.", flush=True)
                 except socket.timeout:
                     if stop_event.is_set():
                         break
-                    print("Client send timed out; waiting for the next connection.")
+                    print("Client send timed out; waiting for the next connection.", flush=True)
                 except InterruptedError:
                     break
 
@@ -344,6 +361,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(line_buffering=True)
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(line_buffering=True)
+
     stop_event = threading.Event()
 
     def request_stop(signum: int, _frame: object) -> None:
@@ -360,10 +382,10 @@ def main() -> int:
     except KeyboardInterrupt:
         stop_event.set()
     except Exception as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
+        print(f"ERROR: {exc}", file=sys.stderr, flush=True)
         return 1
     if stop_event.is_set():
-        print("\nStopped.")
+        print("\nStopped.", flush=True)
     return 0
 
 
