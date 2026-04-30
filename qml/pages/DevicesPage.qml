@@ -49,6 +49,13 @@ Item {
             .replace("Disconnect All", "Disconnect")
     }
 
+    function rateText(value) {
+        var hz = Number(value)
+        if (!isFinite(hz) || hz <= 0.05)
+            return "--"
+        return hz >= 10 ? hz.toFixed(1) : hz.toFixed(2)
+    }
+
     component FieldLabel: Text {
         color: ApplicationWindow.window.muted
         font.pixelSize: 12 * ApplicationWindow.window.scaleFactor
@@ -223,7 +230,11 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 3
-                            FieldLabel { text: ApplicationWindow.window.t("devices.sampleRate") }
+                            FieldLabel {
+                                text: kind === "tcp"
+                                    ? ApplicationWindow.window.t("devices.receiveRate")
+                                    : ApplicationWindow.window.t("devices.sampleRate")
+                            }
                             Text {
                                 text: "(" + ApplicationWindow.window.t("unit.hz") + ")"
                                 color: ApplicationWindow.window.muted
@@ -232,6 +243,7 @@ Item {
                             }
                         }
                         DeviceComboBox {
+                            visible: kind !== "tcp"
                             model: deviceBackend.supportedRates(id)
                             currentIndex: page.selectIndex(model, sampleRate)
                             enabled: kind !== "tcp" && !connected && !deviceBackend.busy
@@ -239,7 +251,7 @@ Item {
                         }
                         DeviceTextField {
                             visible: kind === "tcp"
-                            text: String(sampleRate)
+                            text: page.rateText(actualRate)
                             enabled: false
                         }
                     }
