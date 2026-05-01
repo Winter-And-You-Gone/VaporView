@@ -181,7 +181,8 @@ Linux ARM64 构建：
 构建后主程序位置：
 
 ```text
-build/Release/VaporView.exe
+Windows: build/Release/VaporView.exe
+Linux:   build/Release/VaporView
 ```
 
 ## 主程序架构

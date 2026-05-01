@@ -79,8 +79,12 @@ else()
     target_compile_options(rtklib_strsvr PRIVATE -w)
 endif()
 
+target_link_libraries(rtklib_strsvr PUBLIC Threads::Threads)
+
 if(WIN32)
     target_link_libraries(rtklib_strsvr PUBLIC ws2_32 winmm)
+elseif(UNIX)
+    target_link_libraries(rtklib_strsvr PUBLIC m)
 endif()
 
 if(EXISTS ${RTKLIB_STR2STR_SOURCE})
@@ -173,7 +177,6 @@ target_include_directories(VaporView PRIVATE
 
 target_link_libraries(VaporView PRIVATE
     ${QT_LIBRARIES}
-    Threads::Threads
     rtklib_strsvr
 )
 

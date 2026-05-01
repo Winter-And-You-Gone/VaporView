@@ -3062,7 +3062,12 @@ QStringList MainWindow::getAvailablePorts()
     const auto infos = QSerialPortInfo::availablePorts();
     for (const QSerialPortInfo& info : infos)
     {
+#ifdef _WIN32
         ports.append(info.portName());
+#else
+        const QString path = info.systemLocation();
+        ports.append(path.isEmpty() ? info.portName() : path);
+#endif
     }
 
     ports.removeDuplicates();

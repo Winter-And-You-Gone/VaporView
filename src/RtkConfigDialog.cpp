@@ -1252,7 +1252,7 @@ void RtkConfigDialog::loadSettings()
 #ifdef _WIN32
     output_port_combo_->setCurrentText(settings.value("output_port", "COM1").toString());
 #else
-    output_port_combo_->setCurrentText(settings.value("output_port", "/dev/ttyCOM3").toString());
+    output_port_combo_->setCurrentText(settings.value("output_port", "/dev/ttyS0").toString());
 #endif
     applySavedGgaSource(settings.value("gga_source", settings.value("gga_port", QString::fromLatin1(kEpsilonMainGgaSourceKey))).toString());
     baudrate_combo_->setCurrentText(settings.value("baudrate", "115200").toString());
@@ -2232,7 +2232,12 @@ QStringList RtkConfigDialog::getAvailablePorts() const
     const auto infos = QSerialPortInfo::availablePorts();
     for (const QSerialPortInfo& info : infos)
     {
+#ifdef _WIN32
         ports.append(info.portName());
+#else
+        const QString path = info.systemLocation();
+        ports.append(path.isEmpty() ? info.portName() : path);
+#endif
     }
 
     ports.removeDuplicates();
