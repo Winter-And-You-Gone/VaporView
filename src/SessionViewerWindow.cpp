@@ -1434,6 +1434,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
         0.5,
         QSize(kSessionViewerMinimumWidth, kSessionViewerMinimumHeight)));
     setEnglish(false);
+    VaporView::centerWindowOnScreen(this, parent);
 
     QSettings settings("VaporView", "SessionViewer");
     const QString peakFilterMode = settings.value("peak_filter/mode", QStringLiteral("none")).toString().trimmed().toLower();

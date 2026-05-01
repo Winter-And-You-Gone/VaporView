@@ -19,6 +19,15 @@ QSize defaultWindowSizeWithinScreenFraction(const QWidget *contextWidget,
                                             const QSize& minimumSize = QSize(),
                                             const QSize& fallbackAvailableSize = QSize(1440, 860));
 
+void centerWindowOnScreen(QWidget *window,
+                          const QWidget *contextWidget = nullptr,
+                          const QSize& fallbackAvailableSize = QSize(1440, 860));
+
+int defaultFontScalePercentForScreen(const QWidget *contextWidget,
+                                     int normalPercent = 100,
+                                     int minimumPercent = 80,
+                                     const QSize& fallbackAvailableSize = QSize(1920, 1080));
+
 }
 
 #endif

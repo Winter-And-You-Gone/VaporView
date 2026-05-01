@@ -639,6 +639,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     loadSettings();
     setFontScale(100);
     setEnglish(false);
+    VaporView::centerWindowOnScreen(this, parent);
 
     config_file_path_ = QDir::homePath() + "/.config/VaporView/rtk_config.ini";
 

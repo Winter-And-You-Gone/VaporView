@@ -1901,7 +1901,9 @@ MainWindow::MainWindow(QWidget *parent)
     base_font_point_size_ = currentPointSize > 0.0 ? currentPointSize : 10.0;
 
     QSettings settings("VaporView", "MainWindow");
-    font_scale_percent_ = settings.value("font_scale_percent", 100).toInt();
+    font_scale_percent_ = settings.value(
+        "font_scale_percent",
+        VaporView::defaultFontScalePercentForScreen(this)).toInt();
     if (font_scale_percent_ < 70 || font_scale_percent_ > 150)
     {
         font_scale_percent_ = 100;
@@ -1952,6 +1954,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     setEnglish(false);
     applyStyleConfiguration();
+    VaporView::centerWindowOnScreen(this);
 
     updateRecordingStatusLabel();
     updateConnectionStatus(false);
@@ -3599,6 +3602,7 @@ void MainWindow::onOpenSessionViewerClicked()
     session_viewer_window_->setDefaultDataDirectory(
         recording_directory_.isEmpty() ? defaultRecordingDirectory() : recording_directory_);
 
+    VaporView::centerWindowOnScreen(session_viewer_window_, this);
     session_viewer_window_->show();
     session_viewer_window_->raise();
     session_viewer_window_->activateWindow();
@@ -6298,6 +6302,7 @@ void MainWindow::onRtkConfigClicked()
     }
     rtk_config_dialog_->setFontScale(font_scale_percent_);
     rtk_config_dialog_->setEnglish(is_english_);
+    VaporView::centerWindowOnScreen(rtk_config_dialog_, this);
     rtk_config_dialog_->show();
     rtk_config_dialog_->raise();
     rtk_config_dialog_->activateWindow();

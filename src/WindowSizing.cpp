@@ -1,6 +1,8 @@
 #include "WindowSizing.h"
 
 #include <QGuiApplication>
+#include <QPoint>
+#include <QRect>
 #include <QScreen>
 #include <QWidget>
 #include <algorithm>
@@ -18,18 +20,40 @@ QSize validOrFallback(QSize size, const QSize& fallback)
     return size;
 }
 
-QSize screenAvailableSize(const QWidget *contextWidget, const QSize& fallbackAvailableSize)
+const QScreen *screenForWidget(const QWidget *contextWidget)
 {
     const QScreen *screen = contextWidget ? contextWidget->screen() : nullptr;
     if (!screen)
     {
         screen = QGuiApplication::primaryScreen();
     }
+    return screen;
+}
+
+QRect fallbackAvailableGeometry(const QSize& fallbackAvailableSize)
+{
+    return QRect(QPoint(0, 0), validOrFallback(QSize(), fallbackAvailableSize));
+}
+
+QRect screenAvailableGeometry(const QWidget *contextWidget, const QSize& fallbackAvailableSize)
+{
+    const QScreen *screen = screenForWidget(contextWidget);
     if (!screen)
     {
-        return validOrFallback(QSize(), fallbackAvailableSize);
+        return fallbackAvailableGeometry(fallbackAvailableSize);
     }
-    return validOrFallback(screen->availableGeometry().size(), fallbackAvailableSize);
+
+    const QRect availableGeometry = screen->availableGeometry();
+    if (!availableGeometry.isValid() || availableGeometry.width() <= 0 || availableGeometry.height() <= 0)
+    {
+        return fallbackAvailableGeometry(fallbackAvailableSize);
+    }
+    return availableGeometry;
+}
+
+QSize screenAvailableSize(const QWidget *contextWidget, const QSize& fallbackAvailableSize)
+{
+    return screenAvailableGeometry(contextWidget, fallbackAvailableSize).size();
 }
 
 QSize boundedMinimumSize(const QSize& minimumSize, const QSize& maximumSize)
@@ -71,6 +95,62 @@ QSize defaultWindowSizeWithinScreenFraction(const QWidget *contextWidget,
     const QSize normalizedMinimumSize = boundedMinimumSize(minimumSize, maximumSize);
     const QSize normalizedPreferredSize = preferredSize.isValid() ? preferredSize : maximumSize;
     return normalizedPreferredSize.boundedTo(maximumSize).expandedTo(normalizedMinimumSize).boundedTo(maximumSize);
+}
+
+void centerWindowOnScreen(QWidget *window, const QWidget *contextWidget, const QSize& fallbackAvailableSize)
+{
+    if (!window)
+    {
+        return;
+    }
+    if (window->isMaximized() || window->isFullScreen())
+    {
+        return;
+    }
+
+    const QRect availableGeometry = screenAvailableGeometry(contextWidget ? contextWidget : window, fallbackAvailableSize);
+    const QRect windowFrame(QPoint(0, 0), window->frameGeometry().size().isValid()
+        ? window->frameGeometry().size()
+        : window->size());
+    const QPoint centeredTopLeft(
+        availableGeometry.left() + std::max(0, (availableGeometry.width() - windowFrame.width()) / 2),
+        availableGeometry.top() + std::max(0, (availableGeometry.height() - windowFrame.height()) / 2));
+    window->move(centeredTopLeft);
+}
+
+int defaultFontScalePercentForScreen(const QWidget *contextWidget,
+                                     int normalPercent,
+                                     int minimumPercent,
+                                     const QSize& fallbackAvailableSize)
+{
+    minimumPercent = std::clamp(minimumPercent, 50, normalPercent);
+    const QSize availableSize = screenAvailableSize(contextWidget, fallbackAvailableSize);
+
+    int percent = normalPercent;
+    if (availableSize.height() <= 720 || availableSize.width() <= 1280)
+    {
+        percent = 80;
+    }
+    else if (availableSize.height() <= 900 || availableSize.width() <= 1440)
+    {
+        percent = 90;
+    }
+
+    const QScreen *screen = screenForWidget(contextWidget);
+    if (screen)
+    {
+        const qreal logicalDpi = std::max(screen->logicalDotsPerInch(), 1.0);
+        if (logicalDpi >= 144.0)
+        {
+            percent = std::min(percent, 85);
+        }
+        else if (logicalDpi >= 120.0)
+        {
+            percent = std::min(percent, 90);
+        }
+    }
+
+    return std::clamp(percent, minimumPercent, normalPercent);
 }
 
 }
