@@ -45,7 +45,6 @@ int main(int argc, char *argv[])
     {
         mainWindow.setWindowIcon(app.windowIcon());
     }
-    mainWindow.resize(1024, 768);
     mainWindow.show();
 
     return app.exec();

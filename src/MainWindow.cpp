@@ -25,6 +25,7 @@
 #include <QJsonObject>
 #include <QTimeZone>
 #include <QGridLayout>
+#include <QGuiApplication>
 #include <QFrame>
 #include <QScrollArea>
 #include <QSplitter>
@@ -32,6 +33,7 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QScrollBar>
+#include <QScreen>
 #include <QShortcut>
 #include <QSpacerItem>
 #include <QStringList>
@@ -80,6 +82,8 @@ constexpr int kDefaultEpsilonSampleRateHz = 100;
 constexpr int kDefaultPtbSampleRateHz = 20;
 constexpr int kDefaultHmpSampleRateHz = 20;
 constexpr int kDefaultLidarSampleRateHz = 100;
+constexpr int kFallbackMainWindowWidth = 1440;
+constexpr int kFallbackMainWindowHeight = 860;
 constexpr quint64 kImuPpsSyncWindowUs = 2ULL * 1000ULL * 1000ULL;
 constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
 constexpr quint32 kUnifiedRawFormatVersion = 2u;
@@ -310,6 +314,26 @@ QString csvEscape(const QString &value)
         escaped = QString("\"%1\"").arg(escaped);
     }
     return escaped;
+}
+
+QSize defaultMainWindowSize(const QSize& minimumSize)
+{
+    const QScreen *screen = QGuiApplication::primaryScreen();
+    if (!screen)
+    {
+        return QSize(kFallbackMainWindowWidth, kFallbackMainWindowHeight).expandedTo(minimumSize);
+    }
+
+    const QSize availableSize = screen->availableGeometry().size();
+    if (!availableSize.isValid())
+    {
+        return QSize(kFallbackMainWindowWidth, kFallbackMainWindowHeight).expandedTo(minimumSize);
+    }
+
+    const QSize halfScreenSize(
+        std::max(1, availableSize.width() / 2),
+        std::max(1, availableSize.height() / 2));
+    return halfScreenSize.expandedTo(minimumSize);
 }
 
 QString csvBool(bool value)
@@ -1840,7 +1864,7 @@ MainWindow::MainWindow(QWidget *parent)
     , recording_paused_(false)
     , font_scale_percent_(100)
     , base_font_point_size_(0.0)
-    , base_window_size_(1440, 860)
+    , base_window_size_(kFallbackMainWindowWidth, kFallbackMainWindowHeight)
     , base_minimum_window_size_(800, 600)
     , epsilon_sample_rate_(kDefaultEpsilonSampleRateHz)
     , gnss_sample_rate_(1)
@@ -1927,6 +1951,7 @@ MainWindow::MainWindow(QWidget *parent)
     loadRememberedInputState();
     bindRememberedInputState();
 
+    base_window_size_ = defaultMainWindowSize(base_minimum_window_size_);
     resize(base_window_size_);
     setMinimumSize(base_minimum_window_size_);
 
