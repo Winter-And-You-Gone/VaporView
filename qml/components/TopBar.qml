@@ -38,7 +38,9 @@ Rectangle {
         Image {
             Layout.preferredWidth: 24
             Layout.preferredHeight: 24
-            source: "../assets/logo/vaporview_logo.png"
+            source: ApplicationWindow.window.dark
+                    ? "../assets/logo/vaporview_logo_dark.png"
+                    : "../assets/logo/vaporview_logo_light.png"
             fillMode: Image.PreserveAspectFit
             smooth: true
             mipmap: true

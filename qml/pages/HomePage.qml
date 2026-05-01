@@ -5,6 +5,8 @@ import "../components"
 
 Item {
     id: page
+    property bool logAutoFollow: true
+    property bool logProgrammaticScroll: false
 
     function numberText(value, decimals) {
         var n = Number(value)
@@ -490,10 +492,18 @@ Item {
                     }
 
                     ScrollView {
+                        id: homeLogScroll
                         anchors.fill: parent
                         anchors.margins: 8
                         clip: true
-                        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                        ScrollBar.vertical: ScrollBar {
+                            id: homeLogBar
+                            policy: ScrollBar.AsNeeded
+                            onPositionChanged: {
+                                if (!page.logProgrammaticScroll && (pressed || homeLogText.hovered))
+                                    page.logAutoFollow = position + size >= 0.98
+                            }
+                        }
 
                         TextArea {
                             id: homeLogText
@@ -501,6 +511,7 @@ Item {
                             readOnly: true
                             selectByMouse: true
                             selectByKeyboard: true
+                            hoverEnabled: true
                             wrapMode: TextEdit.Wrap
                             color: ApplicationWindow.window.text
                             selectedTextColor: ApplicationWindow.window.primaryForeground
@@ -513,6 +524,23 @@ Item {
                             topPadding: 0
                             bottomPadding: 0
                             background: Rectangle { color: "transparent" }
+
+                            onTextChanged: {
+                                if (!page.logAutoFollow)
+                                    return
+                                page.logProgrammaticScroll = true
+                                cursorPosition = length
+                                Qt.callLater(function() {
+                                    homeLogBar.position = Math.max(0, 1 - homeLogBar.size)
+                                    page.logProgrammaticScroll = false
+                                })
+                            }
+
+                            WheelHandler {
+                                onWheel: Qt.callLater(function() {
+                                    page.logAutoFollow = homeLogBar.position + homeLogBar.size >= 0.98
+                                })
+                            }
                         }
                     }
 

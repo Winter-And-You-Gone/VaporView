@@ -2391,7 +2391,7 @@ double WaveformBackend::frameRate() const { return frame_rate_; }
 QVariantList WaveformBackend::rawSamples() const { return raw_samples_cache_; }
 QVariantList WaveformBackend::harmonicSamples() const
 {
-    return harmonic_filtered_view_ && filter_enabled_ ? harmonic_filtered_samples_cache_ : harmonic_samples_cache_;
+    return harmonic_filtered_view_ ? harmonic_filtered_samples_cache_ : harmonic_samples_cache_;
 }
 QVariantList WaveformBackend::peakSamples() const { return peak_samples_cache_; }
 int WaveformBackend::rawSampleCount() const { return raw_history_.size(); }
@@ -2838,6 +2838,10 @@ QVariantList WaveformBackend::vectorToFilteredVariantList(const QVector<float>& 
     const int valueCount = static_cast<int>(values.size());
     const int safeMaxCount = std::max(1, maxCount);
     const int stride = std::max(1, (valueCount + safeMaxCount - 1) / safeMaxCount);
+    const int searchStart = std::clamp(peak_search_start_index_, 0, valueCount);
+    const int searchEnd = peak_search_end_index_ <= 0
+        ? valueCount
+        : std::clamp(peak_search_end_index_, 0, valueCount);
     const double rangeMin = std::min(filter_min_, filter_max_);
     const double rangeMax = std::max(filter_min_, filter_max_);
     const double quietNaN = std::numeric_limits<double>::quiet_NaN();
@@ -2847,8 +2851,9 @@ QVariantList WaveformBackend::vectorToFilteredVariantList(const QVector<float>& 
     {
         QVector<double> finiteValues;
         finiteValues.reserve(valueCount);
-        for (float value : values)
+        for (int index = searchStart; index < searchEnd; ++index)
         {
+            const float value = values.at(index);
             if (std::isfinite(value))
             {
                 finiteValues.push_back(static_cast<double>(value));
@@ -2870,7 +2875,7 @@ QVariantList WaveformBackend::vectorToFilteredVariantList(const QVector<float>& 
     for (int i = 0; i < valueCount; i += stride)
     {
         const double value = values.at(i);
-        bool keepValue = std::isfinite(value);
+        bool keepValue = i >= searchStart && i < searchEnd && std::isfinite(value);
         if (keepValue)
         {
             switch (peak_filter_mode_)
