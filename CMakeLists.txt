@@ -112,6 +112,7 @@ set(NAV_SOURCES
     src/TrajectoryViewerDialog.cpp
     src/RtkConfigDialog.cpp
     src/RtkStreamService.cpp
+    src/WindowSizing.cpp
     ${UM982_DRIVER_DIR}/pvtsln_parser.cpp
     ${HIPNUC_DRIVER_DIR}/hipnuc_dec.c
 )
@@ -128,6 +129,7 @@ set(NAV_HEADERS
     include/TrajectoryViewerDialog.h
     include/RtkConfigDialog.h
     include/RtkStreamService.h
+    include/WindowSizing.h
     ${UM982_DRIVER_DIR}/pvtsln_data.hpp
     ${HIPNUC_DRIVER_DIR}/hipnuc_dec.h
 )

@@ -2,6 +2,7 @@
 #include "RangeSelectionAxisWidget.h"
 #include "RawDataParserWindow.h"
 #include "TrajectoryViewerDialog.h"
+#include "WindowSizing.h"
 
 #include <QByteArray>
 #include <QComboBox>
@@ -65,6 +66,10 @@ constexpr int kSessionViewerPlotBottomMargin = 28;
 constexpr int kSessionViewerWaveBottomMargin = 30;
 constexpr int kDefaultPeakSearchStartIndex = 10000;
 constexpr int kDefaultPeakSearchEndIndex = 50000;
+constexpr int kSessionViewerPreferredWidth = 1320;
+constexpr int kSessionViewerPreferredHeight = 860;
+constexpr int kSessionViewerMinimumWidth = 800;
+constexpr int kSessionViewerMinimumHeight = 520;
 constexpr int kMaxTrendPointsPerPixel = 2;
 constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
 constexpr quint32 kUnifiedRawRecordMarker = 0x44525756u;
@@ -1423,7 +1428,11 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , total_waveform_frames_(0)
 {
     setupUi();
-    resize(1320, 860);
+    resize(VaporView::defaultWindowSizeWithinScreenFraction(
+        this,
+        QSize(kSessionViewerPreferredWidth, kSessionViewerPreferredHeight),
+        0.5,
+        QSize(kSessionViewerMinimumWidth, kSessionViewerMinimumHeight)));
     setEnglish(false);
 
     QSettings settings("VaporView", "SessionViewer");

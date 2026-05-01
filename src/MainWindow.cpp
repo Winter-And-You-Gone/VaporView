@@ -3,6 +3,7 @@
 #include "SessionViewerWindow.h"
 #include "TcpWaveEncoding.h"
 #include "TcpWavePanel.h"
+#include "WindowSizing.h"
 #include "data_collector.h"
 #include "data_types.h"
 #include "serial_probe_utils.h"
@@ -25,7 +26,6 @@
 #include <QJsonObject>
 #include <QTimeZone>
 #include <QGridLayout>
-#include <QGuiApplication>
 #include <QFrame>
 #include <QScrollArea>
 #include <QSplitter>
@@ -33,7 +33,6 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QScrollBar>
-#include <QScreen>
 #include <QShortcut>
 #include <QSpacerItem>
 #include <QStringList>
@@ -314,26 +313,6 @@ QString csvEscape(const QString &value)
         escaped = QString("\"%1\"").arg(escaped);
     }
     return escaped;
-}
-
-QSize defaultMainWindowSize(const QSize& minimumSize)
-{
-    const QScreen *screen = QGuiApplication::primaryScreen();
-    if (!screen)
-    {
-        return QSize(kFallbackMainWindowWidth, kFallbackMainWindowHeight).expandedTo(minimumSize);
-    }
-
-    const QSize availableSize = screen->availableGeometry().size();
-    if (!availableSize.isValid())
-    {
-        return QSize(kFallbackMainWindowWidth, kFallbackMainWindowHeight).expandedTo(minimumSize);
-    }
-
-    const QSize halfScreenSize(
-        std::max(1, availableSize.width() / 2),
-        std::max(1, availableSize.height() / 2));
-    return halfScreenSize.expandedTo(minimumSize);
 }
 
 QString csvBool(bool value)
@@ -1951,7 +1930,10 @@ MainWindow::MainWindow(QWidget *parent)
     loadRememberedInputState();
     bindRememberedInputState();
 
-    base_window_size_ = defaultMainWindowSize(base_minimum_window_size_);
+    base_window_size_ = VaporView::screenFractionSize(
+        this,
+        0.5,
+        QSize(kFallbackMainWindowWidth, kFallbackMainWindowHeight)).expandedTo(base_minimum_window_size_);
     resize(base_window_size_);
     setMinimumSize(base_minimum_window_size_);
 

@@ -1,4 +1,5 @@
 #include "RtkConfigDialog.h"
+#include "WindowSizing.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -15,6 +16,7 @@
 #include <QCloseEvent>
 #include <QDoubleValidator>
 #include <QFontMetrics>
+#include <QFrame>
 #include <QIntValidator>
 #include <QLabel>
 #include <QLocale>
@@ -22,6 +24,7 @@
 #include <QRegularExpression>
 #include <QSerialPortInfo>
 #include <QSignalBlocker>
+#include <QScrollArea>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTextBlock>
@@ -45,6 +48,9 @@ constexpr int kGgaStaleTimeoutMs = 1500;
 constexpr int kGgaMaxVisibleLines = 200;
 constexpr int kRtkLogVisibleLines = 5;
 constexpr int kRtkHttpTimeoutMs = 5000;
+constexpr int kRtkPreferredDialogWidth = 980;
+constexpr int kRtkMinimumDialogWidth = 640;
+constexpr int kRtkMinimumDialogHeight = 420;
 constexpr const char *kEpsilonMainGgaSourceKey = "__epsilon_main__";
 const QRegularExpression kGgaSentencePattern("^\\$..GGA,");
 
@@ -617,8 +623,8 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , is_english_(false)
     , font_scale_percent_(100)
     , epsilon_main_baudrate_(921600)
-    , base_dialog_size_(980, 0)
-    , base_minimum_dialog_size_(900, 0)
+    , base_dialog_size_(kRtkPreferredDialogWidth, 0)
+    , base_minimum_dialog_size_(kRtkMinimumDialogWidth, kRtkMinimumDialogHeight)
     , rtk_status_timer_(nullptr)
     , gga_poll_timer_(nullptr)
     , last_rtk_status_message_()
@@ -701,7 +707,21 @@ bool RtkConfigDialog::isBackgroundTaskRunning() const
 
 void RtkConfigDialog::setupUi()
 {
-    main_layout_ = new QVBoxLayout(this);
+    auto *outerLayout = new QVBoxLayout(this);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+    outerLayout->setSpacing(0);
+
+    auto *scrollArea = new QScrollArea(this);
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    outerLayout->addWidget(scrollArea);
+
+    auto *contentWidget = new QWidget(scrollArea);
+    scrollArea->setWidget(contentWidget);
+
+    main_layout_ = new QVBoxLayout(contentWidget);
     main_layout_->setSpacing(8);
     main_layout_->setContentsMargins(12, 12, 12, 12);
 
@@ -1183,14 +1203,24 @@ void RtkConfigDialog::applyScaledUiMetrics()
         main_layout_->invalidate();
     }
 
-    const QSize layoutHint = layout() ? layout()->sizeHint() : QSize();
-    const QSize targetMinimumSize(
-        std::max(scalePixels(base_minimum_dialog_size_.width()), layoutHint.width()),
-        std::max(scalePixels(base_minimum_dialog_size_.height()), layoutHint.height()));
+    const QSize layoutHint = main_layout_ ? main_layout_->sizeHint() : QSize();
+    const QSize minimumDialogSize(scalePixels(base_minimum_dialog_size_.width()), scalePixels(base_minimum_dialog_size_.height()));
+    const QSize targetMinimumSize = minimumDialogSize.boundedTo(VaporView::screenFractionSize(this));
     setMinimumSize(targetMinimumSize);
     if (!isMaximized() && !isFullScreen())
     {
-        resize(size().expandedTo(targetMinimumSize).expandedTo(QSize(scalePixels(base_dialog_size_.width()), scalePixels(base_dialog_size_.height()))));
+        const QSize preferredDialogSize(
+            scalePixels(base_dialog_size_.width()),
+            std::max(minimumDialogSize.height(), layoutHint.height()));
+        const QSize targetSize = VaporView::defaultWindowSizeWithinScreenFraction(
+            this,
+            preferredDialogSize,
+            0.5,
+            targetMinimumSize);
+        if (targetSize != size())
+        {
+            resize(targetSize);
+        }
     }
 }
 
@@ -1204,9 +1234,15 @@ void RtkConfigDialog::setFontScale(int percent)
     QSize targetSize = size();
     if (!isMaximized() && !isFullScreen())
     {
-        targetSize = QSize(
-            std::max(1, static_cast<int>(std::lround(base_dialog_size_.width() * percent / 100.0))),
-            std::max(1, static_cast<int>(std::lround(base_dialog_size_.height() * percent / 100.0)))
+        targetSize = VaporView::defaultWindowSizeWithinScreenFraction(
+            this,
+            QSize(
+                std::max(1, static_cast<int>(std::lround(base_dialog_size_.width() * percent / 100.0))),
+                std::max(1, height())),
+            0.5,
+            QSize(
+                std::max(1, static_cast<int>(std::lround(base_minimum_dialog_size_.width() * percent / 100.0))),
+                std::max(1, static_cast<int>(std::lround(base_minimum_dialog_size_.height() * percent / 100.0))))
         );
     }
 
@@ -1215,7 +1251,7 @@ void RtkConfigDialog::setFontScale(int percent)
         applyScaledUiMetrics();
         if (!isMaximized() && !isFullScreen())
         {
-            targetSize = targetSize.expandedTo(minimumSize());
+            targetSize = targetSize.expandedTo(minimumSize()).boundedTo(VaporView::screenFractionSize(this));
             if (targetSize != size())
             {
                 resize(targetSize);
@@ -1228,7 +1264,7 @@ void RtkConfigDialog::setFontScale(int percent)
     applyScaledUiMetrics();
     if (!isMaximized() && !isFullScreen())
     {
-        targetSize = targetSize.expandedTo(minimumSize());
+        targetSize = targetSize.expandedTo(minimumSize()).boundedTo(VaporView::screenFractionSize(this));
         if (targetSize != size())
         {
             resize(targetSize);
