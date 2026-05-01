@@ -83,6 +83,8 @@ constexpr int kDefaultHmpSampleRateHz = 20;
 constexpr int kDefaultLidarSampleRateHz = 100;
 constexpr int kFallbackMainWindowWidth = 1440;
 constexpr int kFallbackMainWindowHeight = 860;
+constexpr qreal kMainWindowDefaultScreenFraction = 0.5;
+constexpr qreal kMainWindowMinimumScreenFraction = 0.25;
 constexpr quint64 kImuPpsSyncWindowUs = 2ULL * 1000ULL * 1000ULL;
 constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
 constexpr quint32 kUnifiedRawFormatVersion = 2u;
@@ -1930,10 +1932,17 @@ MainWindow::MainWindow(QWidget *parent)
     loadRememberedInputState();
     bindRememberedInputState();
 
-    base_window_size_ = VaporView::screenFractionSize(
+    const QSize fallbackMainWindowSize(kFallbackMainWindowWidth, kFallbackMainWindowHeight);
+    base_minimum_window_size_ = VaporView::screenFractionSize(
         this,
-        0.5,
-        QSize(kFallbackMainWindowWidth, kFallbackMainWindowHeight)).expandedTo(base_minimum_window_size_);
+        kMainWindowMinimumScreenFraction,
+        fallbackMainWindowSize);
+    base_window_size_ = VaporView::defaultWindowSizeWithinScreenFraction(
+        this,
+        fallbackMainWindowSize,
+        kMainWindowDefaultScreenFraction,
+        base_minimum_window_size_,
+        fallbackMainWindowSize);
     resize(base_window_size_);
     setMinimumSize(base_minimum_window_size_);
 
