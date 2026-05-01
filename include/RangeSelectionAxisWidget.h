@@ -47,25 +47,43 @@ public:
 
     void setRange(int totalCount, int startIndex, int visibleCount)
     {
-        total_count_ = std::max(0, totalCount);
-        if (total_count_ <= 0)
+        const int normalizedTotal = std::max(0, totalCount);
+        if (normalizedTotal <= 0)
         {
+            if (total_count_ == 0 && start_index_ == 0 && visible_count_ == 0)
+            {
+                return;
+            }
+            total_count_ = 0;
             start_index_ = 0;
             visible_count_ = 0;
             update();
             return;
         }
 
-        if (visibleCount <= 0 || visibleCount >= total_count_)
+        int normalizedStart = 0;
+        int normalizedVisible = 0;
+        if (visibleCount <= 0 || visibleCount >= normalizedTotal)
         {
-            start_index_ = 0;
-            visible_count_ = total_count_;
+            normalizedStart = 0;
+            normalizedVisible = normalizedTotal;
         }
         else
         {
-            visible_count_ = std::clamp(visibleCount, 1, total_count_);
-            start_index_ = std::clamp(startIndex, 0, std::max(0, total_count_ - visible_count_));
+            normalizedVisible = std::clamp(visibleCount, 1, normalizedTotal);
+            normalizedStart = std::clamp(startIndex, 0, std::max(0, normalizedTotal - normalizedVisible));
         }
+
+        if (total_count_ == normalizedTotal &&
+            start_index_ == normalizedStart &&
+            visible_count_ == normalizedVisible)
+        {
+            return;
+        }
+
+        total_count_ = normalizedTotal;
+        start_index_ = normalizedStart;
+        visible_count_ = normalizedVisible;
         update();
     }
 

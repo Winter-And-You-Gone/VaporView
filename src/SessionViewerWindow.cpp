@@ -65,6 +65,7 @@ constexpr int kSessionViewerPlotBottomMargin = 28;
 constexpr int kSessionViewerWaveBottomMargin = 30;
 constexpr int kDefaultPeakSearchStartIndex = 10000;
 constexpr int kDefaultPeakSearchEndIndex = 50000;
+constexpr int kMaxTrendPointsPerPixel = 2;
 constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
 constexpr quint32 kUnifiedRawRecordMarker = 0x44525756u;
 constexpr quint16 kRawSourceTcpWave = 5u;
@@ -401,6 +402,24 @@ int sessionViewerAxisTextWidth(const QFontMetrics& fm, const QStringList& labels
     return maxWidth;
 }
 
+int trendRenderPointCount(int visibleCount, const QRectF& plotRect)
+{
+    const int pixelBudget = std::max(2, static_cast<int>(std::ceil(plotRect.width())) * kMaxTrendPointsPerPixel);
+    return std::clamp(visibleCount, 0, pixelBudget);
+}
+
+int trendRelativeIndexForDrawPoint(int drawIndex, int drawCount, int visibleCount)
+{
+    if (visibleCount <= 1 || drawCount <= 1)
+    {
+        return 0;
+    }
+    return std::clamp(static_cast<int>(std::llround(
+        static_cast<double>(drawIndex) * static_cast<double>(visibleCount - 1) / static_cast<double>(drawCount - 1))),
+        0,
+        visibleCount - 1);
+}
+
 QString formatAxisTickValue(int value)
 {
     return QString::number(value);
@@ -618,6 +637,11 @@ public:
 
     void setCurrentFrame(int frameIndex)
     {
+        if (current_frame_index_ == frameIndex)
+        {
+            return;
+        }
+
         current_frame_index_ = frameIndex;
         bool viewChanged = false;
         if (current_frame_index_ >= 0 &&
@@ -662,6 +686,15 @@ public:
             view_start_index_ = startIndex;
             view_count_ = count;
             normalizeView(false);
+        }
+
+        const int normalizedStart = visibleStartIndex();
+        const int normalizedCount = visibleCount();
+        if (cached_plot_.start_index == normalizedStart &&
+            cached_plot_.count == normalizedCount &&
+            plot_cache_valid_)
+        {
+            return;
         }
 
         notifyViewChanged();
@@ -757,10 +790,9 @@ private:
         const int count = visibleCount();
         cache.start_index = startIndex;
         cache.count = count;
-        QVector<int> finiteIndices;
-        finiteIndices.reserve(count);
         float minValue = std::numeric_limits<float>::max();
         float maxValue = std::numeric_limits<float>::lowest();
+        bool hasFiniteValues = false;
         for (int i = 0; i < count; ++i)
         {
             const float value = peak_values_.at(startIndex + i);
@@ -768,11 +800,11 @@ private:
             {
                 continue;
             }
-            finiteIndices.push_back(i);
+            hasFiniteValues = true;
             minValue = std::min(minValue, value);
             maxValue = std::max(maxValue, value);
         }
-        if (finiteIndices.isEmpty())
+        if (!hasFiniteValues)
         {
             painter.setPen(QColor("#5e7698"));
             painter.drawText(plotRect, Qt::AlignCenter,
@@ -790,11 +822,13 @@ private:
         cache.max_value = maxValue;
         cache.has_values = true;
 
-        cache.points.reserve(count);
-        for (int i = 0; i < count; ++i)
+        const int drawCount = trendRenderPointCount(count, plotRect);
+        cache.points.reserve(drawCount);
+        for (int drawIndex = 0; drawIndex < drawCount; ++drawIndex)
         {
-            const double ratio = count == 1 ? 0.5 : static_cast<double>(i) / static_cast<double>(count - 1);
-            const float value = peak_values_.at(startIndex + i);
+            const int relativeIndex = trendRelativeIndexForDrawPoint(drawIndex, drawCount, count);
+            const double ratio = count == 1 ? 0.5 : static_cast<double>(relativeIndex) / static_cast<double>(count - 1);
+            const float value = peak_values_.at(startIndex + relativeIndex);
             if (!std::isfinite(value))
             {
                 cache.points.push_back(QPointF(std::numeric_limits<qreal>::quiet_NaN(), std::numeric_limits<qreal>::quiet_NaN()));
@@ -859,24 +893,29 @@ private:
             return;
         }
 
-        const int pointIndex = current_frame_index_ - cache.start_index;
-        if (pointIndex < 0 || pointIndex >= cache.points.size())
+        const int relativeIndex = current_frame_index_ - cache.start_index;
+        if (relativeIndex < 0 || relativeIndex >= cache.count)
         {
             return;
         }
 
-        const QPointF currentPoint = cache.points.at(pointIndex);
-        if (!std::isfinite(currentPoint.x()) || !std::isfinite(currentPoint.y()))
+        const float value = peak_values_.at(current_frame_index_);
+        if (!std::isfinite(value))
         {
             return;
         }
 
+        const qreal x = cache.plot_rect.left() + (cache.count == 1
+            ? 0.0
+            : (static_cast<qreal>(relativeIndex) / static_cast<qreal>(cache.count - 1)) * cache.plot_rect.width());
+        const qreal normalized = (value - cache.min_value) / std::max(1e-6f, cache.max_value - cache.min_value);
+        const QPointF currentPoint(x, cache.plot_rect.bottom() - normalized * cache.plot_rect.height());
         drawCurrentPointGuides(
             painter,
             cache.plot_rect,
             currentPoint,
             QString::number(current_frame_index_ + 1),
-            formatGuideValue(peak_values_.at(current_frame_index_), 4));
+            formatGuideValue(value, 4));
         painter.setPen(Qt::NoPen);
         painter.setBrush(kCurrentGuideLineColor);
         painter.drawEllipse(currentPoint, 4.0, 4.0);
@@ -988,6 +1027,11 @@ public:
 
     void setCurrentIndex(int index)
     {
+        if (current_index_ == index)
+        {
+            return;
+        }
+
         current_index_ = index;
         update();
     }
@@ -1020,6 +1064,12 @@ public:
             view_start_index_ = startIndex;
             view_count_ = count;
             normalizeView();
+        }
+        if (cached_plot_.start_index == visibleStartIndex() &&
+            cached_plot_.count == visibleCount() &&
+            plot_cache_valid_)
+        {
+            return;
         }
         invalidatePlotCache();
         update();
@@ -1228,8 +1278,10 @@ private:
             painter.setPen(Qt::NoPen);
             painter.setBrush(line_color_);
         }
-        for (int relativeIndex = 0; relativeIndex < count; ++relativeIndex)
+        const int drawCount = trendRenderPointCount(count, plotRect);
+        for (int drawIndex = 0; drawIndex < drawCount; ++drawIndex)
         {
+            const int relativeIndex = trendRelativeIndexForDrawPoint(drawIndex, drawCount, count);
             const int i = startIndex + relativeIndex;
             const double value = values_.at(i);
             if (!std::isfinite(value))
@@ -1616,7 +1668,6 @@ void SessionViewerWindow::setupUi()
         });
     waveformPeakRangeAxis->setRangeChangedCallback([this](int startIndex, int visibleCount) {
         static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setViewRange(startIndex, visibleCount);
-        syncEnvironmentRangeToWaveformRange(startIndex, visibleCount);
     });
     upperLayout->addWidget(waveform_group_, 1);
 
