@@ -36,7 +36,10 @@ Item {
 
     function filterButtonText() {
         var english = appBackend.language === "en"
-        return waveformBackend.filterEnabled ? (english ? "Filter On" : "滤波开") : (english ? "Filter" : "过滤")
+        if (waveformBackend.peakFilterMode === 1) return "IQR"
+        if (waveformBackend.peakFilterMode === 2) return english ? "Keep" : "保留"
+        if (waveformBackend.peakFilterMode === 3) return english ? "Exclude" : "排除"
+        return english ? "Filter" : "过滤"
     }
 
     function harmonicViewButtonText() {
@@ -44,58 +47,7 @@ Item {
         return waveformBackend.harmonicFilteredView ? (english ? "Full" : "完整") : (english ? "Filtered" : "过滤")
     }
 
-    Popup {
-        id: peakFilterPopup
-        modal: true
-        focus: true
-        width: 300
-        padding: 12
-        anchors.centerIn: Overlay.overlay
-        background: Rectangle {
-            radius: 8
-            color: ApplicationWindow.window.card
-            border.color: ApplicationWindow.window.border
-        }
-        ColumnLayout {
-            width: parent.width
-            spacing: 10
-            Text {
-                Layout.fillWidth: true
-                text: appBackend.language === "en" ? "Peak Filter" : "峰值过滤"
-                color: ApplicationWindow.window.text
-                font.pixelSize: Math.round(13 * ApplicationWindow.window.scaleFactor)
-                font.bold: true
-            }
-            CheckBox {
-                id: popupFilterEnabled
-                text: ApplicationWindow.window.t("waveform.filterSwitch")
-                checked: waveformBackend.filterEnabled
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                TextField { id: popupMinPeak; Layout.fillWidth: true; placeholderText: "Min"; text: Number(waveformBackend.filterMin).toString() }
-                TextField { id: popupMaxPeak; Layout.fillWidth: true; placeholderText: "Max"; text: Number(waveformBackend.filterMax).toString() }
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                ToolbarButton { text: appBackend.language === "en" ? "Cancel" : "取消"; onClicked: peakFilterPopup.close() }
-                ToolbarButton {
-                    text: appBackend.language === "en" ? "Apply" : "应用"
-                    variant: "primary"
-                    onClicked: {
-                        waveformBackend.configurePeakFilter(Number(popupMinPeak.text), Number(popupMaxPeak.text), popupFilterEnabled.checked)
-                        peakFilterPopup.close()
-                    }
-                }
-            }
-        }
-        onOpened: {
-            popupFilterEnabled.checked = waveformBackend.filterEnabled
-            popupMinPeak.text = Number(waveformBackend.filterMin).toString()
-            popupMaxPeak.text = Number(waveformBackend.filterMax).toString()
-        }
-    }
+    PeakFilterPopup { id: peakFilterPopup }
 
     RowLayout {
         anchors.fill: parent
@@ -283,21 +235,11 @@ Item {
                     Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("waveform.peakValue"); color: ApplicationWindow.window.muted; font.pixelSize: 11 }
                     Text { text: Number(waveformBackend.latestPeak).toFixed(4) + " V"; color: ApplicationWindow.window.text; font.family: "Consolas"; font.pixelSize: 11 }
                 }
-                CheckBox {
-                    text: ApplicationWindow.window.t("waveform.filterSwitch")
-                    checked: waveformBackend.filterEnabled
-                    onToggled: waveformBackend.filterEnabled = checked
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    TextField { id: minPeak; Layout.fillWidth: true; placeholderText: "Min"; text: "-1000" }
-                    TextField { id: maxPeak; Layout.fillWidth: true; placeholderText: "Max"; text: "1000" }
-                }
                 ToolbarButton {
                     Layout.fillWidth: true
-                    iconName: "activity"
-                    text: "Apply Peak Filter"
-                    onClicked: waveformBackend.configurePeakFilter(Number(minPeak.text), Number(maxPeak.text), waveformBackend.filterEnabled)
+                    iconName: "settings"
+                    text: appBackend.language === "en" ? "Peak Settings" : "峰值设置"
+                    onClicked: peakFilterPopup.open()
                 }
                 ToolbarButton { Layout.fillWidth: true; iconName: "trash-2"; text: "Clear Peak"; onClicked: waveformBackend.clearPeakHistory() }
                 Item { Layout.fillHeight: true }

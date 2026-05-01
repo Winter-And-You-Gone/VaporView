@@ -42,7 +42,10 @@ Item {
 
     function filterButtonText() {
         var english = appBackend.language === "en"
-        return waveformBackend.filterEnabled ? (english ? "Filter On" : "滤波开") : (english ? "Filter" : "过滤")
+        if (waveformBackend.peakFilterMode === 1) return "IQR"
+        if (waveformBackend.peakFilterMode === 2) return english ? "Keep" : "保留"
+        if (waveformBackend.peakFilterMode === 3) return english ? "Exclude" : "排除"
+        return english ? "Filter" : "过滤"
     }
 
     function harmonicViewButtonText() {
@@ -55,57 +58,7 @@ Item {
         return lines && lines.length > 0 ? lines.join("\n") : ""
     }
 
-    Popup {
-        id: peakFilterPopup
-        modal: true
-        focus: true
-        width: 300
-        padding: 12
-        anchors.centerIn: Overlay.overlay
-        background: Rectangle {
-            radius: 8
-            color: ApplicationWindow.window.card
-            border.color: ApplicationWindow.window.border
-        }
-        ColumnLayout {
-            width: parent.width
-            spacing: 10
-            Text {
-                Layout.fillWidth: true
-                text: appBackend.language === "en" ? "Peak Filter" : "峰值过滤"
-                color: ApplicationWindow.window.text
-                font.pixelSize: Math.round(13 * ApplicationWindow.window.scaleFactor)
-                font.bold: true
-            }
-            CheckBox {
-                text: ApplicationWindow.window.t("waveform.filterSwitch")
-                checked: waveformBackend.filterEnabled
-                onToggled: waveformBackend.filterEnabled = checked
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                TextField { id: homeFilterMin; Layout.fillWidth: true; placeholderText: "Min"; text: Number(waveformBackend.filterMin).toString() }
-                TextField { id: homeFilterMax; Layout.fillWidth: true; placeholderText: "Max"; text: Number(waveformBackend.filterMax).toString() }
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                ToolbarButton { text: appBackend.language === "en" ? "Cancel" : "取消"; onClicked: peakFilterPopup.close() }
-                ToolbarButton {
-                    text: appBackend.language === "en" ? "Apply" : "应用"
-                    variant: "primary"
-                    onClicked: {
-                        waveformBackend.configurePeakFilter(Number(homeFilterMin.text), Number(homeFilterMax.text), waveformBackend.filterEnabled)
-                        peakFilterPopup.close()
-                    }
-                }
-            }
-        }
-        onOpened: {
-            homeFilterMin.text = Number(waveformBackend.filterMin).toString()
-            homeFilterMax.text = Number(waveformBackend.filterMax).toString()
-        }
-    }
+    PeakFilterPopup { id: peakFilterPopup }
 
     ScrollView {
         anchors.fill: parent

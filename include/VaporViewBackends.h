@@ -134,6 +134,7 @@ public slots:
     void connectToHost(const QString& host, int port);
     void disconnectFromHost();
     void setRawFrameForwardingEnabled(bool enabled);
+    void setPeakSearchWindow(int startIndex, int endIndex);
     void stop();
 
 signals:
@@ -194,6 +195,8 @@ private:
     QVector<qint64> frame_arrivals_ms_;
     qint64 last_display_emit_ms_;
     bool raw_frame_forwarding_enabled_;
+    int peak_search_start_index_;
+    int peak_search_end_index_;
 };
 
 class DeviceBackend : public QObject
@@ -348,6 +351,9 @@ class WaveformBackend : public QObject
     Q_PROPERTY(bool filterEnabled READ filterEnabled WRITE setFilterEnabled NOTIFY filterChanged)
     Q_PROPERTY(double filterMin READ filterMin NOTIFY filterChanged)
     Q_PROPERTY(double filterMax READ filterMax NOTIFY filterChanged)
+    Q_PROPERTY(int peakFilterMode READ peakFilterMode NOTIFY filterChanged)
+    Q_PROPERTY(int peakSearchStartIndex READ peakSearchStartIndex NOTIFY filterChanged)
+    Q_PROPERTY(int peakSearchEndIndex READ peakSearchEndIndex NOTIFY filterChanged)
     Q_PROPERTY(bool harmonicFilteredView READ harmonicFilteredView WRITE setHarmonicFilteredView NOTIFY filterChanged)
     Q_PROPERTY(bool scatterMode READ scatterMode WRITE setScatterMode NOTIFY filterChanged)
     Q_PROPERTY(double latestPeak READ latestPeak NOTIFY peakSamplesChanged)
@@ -370,6 +376,9 @@ public:
     bool filterEnabled() const;
     double filterMin() const;
     double filterMax() const;
+    int peakFilterMode() const;
+    int peakSearchStartIndex() const;
+    int peakSearchEndIndex() const;
     bool harmonicFilteredView() const;
     bool scatterMode() const;
     double latestPeak() const;
@@ -379,6 +388,7 @@ public:
     Q_INVOKABLE void toggleConnection();
     Q_INVOKABLE void clearPeakHistory();
     Q_INVOKABLE void configurePeakFilter(double minValue, double maxValue, bool enabled);
+    Q_INVOKABLE void configurePeakSettings(int startIndex, int endIndex, int mode, double minValue, double maxValue);
     void setRawFrameForwardingEnabled(bool enabled);
 
 public slots:
@@ -475,6 +485,9 @@ private:
     double frame_rate_;
     bool connected_;
     bool filter_enabled_;
+    int peak_filter_mode_;
+    int peak_search_start_index_;
+    int peak_search_end_index_;
     bool harmonic_filtered_view_;
     bool scatter_mode_;
     bool live_display_dirty_;

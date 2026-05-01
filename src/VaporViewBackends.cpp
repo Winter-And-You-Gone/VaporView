@@ -50,6 +50,16 @@ constexpr int kFloatSize = 4;
 constexpr int kMaxTcpPayloadSize = 4 * 1024 * 1024;
 constexpr int kLiveDisplayRefreshMs = 11;
 constexpr int kPeakTrendFrameWindow = 1000;
+constexpr int kDefaultPeakSearchStartIndex = 0;
+constexpr int kDefaultPeakSearchEndIndex = 0;
+
+enum PeakFilterMode
+{
+    PeakFilterNone = 0,
+    PeakFilterIqrOutlier = 1,
+    PeakFilterKeepRange = 2,
+    PeakFilterExcludeRange = 3,
+};
 
 QString translatedTcpSocketMessage(const QString& message)
 {
@@ -79,6 +89,81 @@ QString chineseTcpSocketMessage(const QString& message)
         return QStringLiteral("TCP 波形源主机不可达或无法解析，请检查 IP 地址。");
     }
     return QStringLiteral("TCP 波形源错误：%1").arg(message);
+}
+
+double percentileValue(QVector<double> values, double percentile)
+{
+    if (values.isEmpty())
+    {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    std::sort(values.begin(), values.end());
+    const double clampedPercentile = std::clamp(percentile, 0.0, 1.0);
+    const double scaledIndex = clampedPercentile * static_cast<double>(values.size() - 1);
+    const int lowerIndex = static_cast<int>(std::floor(scaledIndex));
+    const int upperIndex = static_cast<int>(std::ceil(scaledIndex));
+    if (lowerIndex == upperIndex)
+    {
+        return values.at(lowerIndex);
+    }
+    const double fraction = scaledIndex - static_cast<double>(lowerIndex);
+    return values.at(lowerIndex) * (1.0 - fraction) + values.at(upperIndex) * fraction;
+}
+
+float waveformPeakValue(const QVector<float>& samples, int searchStartIndex, int searchEndIndex)
+{
+    if (samples.isEmpty())
+    {
+        return std::numeric_limits<float>::quiet_NaN();
+    }
+    const int sampleCount = samples.size();
+    const int startIndex = std::clamp(searchStartIndex, 0, sampleCount);
+    const int endIndex = searchEndIndex <= 0
+        ? sampleCount
+        : std::clamp(searchEndIndex, 0, sampleCount);
+    if (startIndex >= endIndex)
+    {
+        return std::numeric_limits<float>::quiet_NaN();
+    }
+    bool hasPeak = false;
+    float peakValue = std::numeric_limits<float>::lowest();
+    for (int index = startIndex; index < endIndex; ++index)
+    {
+        const float value = samples.at(index);
+        if (!std::isfinite(value))
+        {
+            continue;
+        }
+        hasPeak = true;
+        peakValue = std::max(peakValue, value);
+    }
+    return hasPeak ? peakValue : std::numeric_limits<float>::quiet_NaN();
+}
+
+int normalizedPeakFilterMode(int mode)
+{
+    return mode >= PeakFilterNone && mode <= PeakFilterExcludeRange ? mode : PeakFilterNone;
+}
+
+QString peakFilterModeKey(int mode)
+{
+    switch (normalizedPeakFilterMode(mode))
+    {
+    case PeakFilterIqrOutlier: return QStringLiteral("iqr");
+    case PeakFilterKeepRange: return QStringLiteral("keep_range");
+    case PeakFilterExcludeRange: return QStringLiteral("exclude_range");
+    case PeakFilterNone:
+    default: return QStringLiteral("none");
+    }
+}
+
+int peakFilterModeFromKey(QString mode)
+{
+    mode = mode.trimmed().toLower();
+    if (mode == QStringLiteral("iqr")) return PeakFilterIqrOutlier;
+    if (mode == QStringLiteral("keep") || mode == QStringLiteral("keep_range")) return PeakFilterKeepRange;
+    if (mode == QStringLiteral("exclude") || mode == QStringLiteral("exclude_range")) return PeakFilterExcludeRange;
+    return PeakFilterNone;
 }
 
 #pragma pack(push, 1)
@@ -1991,6 +2076,8 @@ TcpWaveReceiverWorker::TcpWaveReceiverWorker(QObject *parent)
     , expected_payload_size_(0)
     , last_display_emit_ms_(0)
     , raw_frame_forwarding_enabled_(false)
+    , peak_search_start_index_(kDefaultPeakSearchStartIndex)
+    , peak_search_end_index_(kDefaultPeakSearchEndIndex)
 {
 }
 
@@ -2028,6 +2115,12 @@ void TcpWaveReceiverWorker::disconnectFromHost()
 void TcpWaveReceiverWorker::setRawFrameForwardingEnabled(bool enabled)
 {
     raw_frame_forwarding_enabled_ = enabled;
+}
+
+void TcpWaveReceiverWorker::setPeakSearchWindow(int startIndex, int endIndex)
+{
+    peak_search_start_index_ = std::max(0, startIndex);
+    peak_search_end_index_ = std::max(0, endIndex);
 }
 
 void TcpWaveReceiverWorker::stop()
@@ -2210,12 +2303,7 @@ void TcpWaveReceiverWorker::processBuffer()
             {
                 continue;
             }
-            float peakValue = std::numeric_limits<float>::quiet_NaN();
-            const auto maxIt = std::max_element(harmonicSamples.cbegin(), harmonicSamples.cend());
-            if (maxIt != harmonicSamples.cend())
-            {
-                peakValue = *maxIt;
-            }
+            const float peakValue = waveformPeakValue(harmonicSamples, peak_search_start_index_, peak_search_end_index_);
             const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
             const quint64 timestampUs = currentTimestampUs();
             const double frameRate = updateFrameRate(nowMs);
@@ -2250,6 +2338,9 @@ WaveformBackend::WaveformBackend(QObject *parent)
     , frame_rate_(0.0)
     , connected_(false)
     , filter_enabled_(false)
+    , peak_filter_mode_(PeakFilterNone)
+    , peak_search_start_index_(kDefaultPeakSearchStartIndex)
+    , peak_search_end_index_(kDefaultPeakSearchEndIndex)
     , harmonic_filtered_view_(false)
     , scatter_mode_(false)
     , live_display_dirty_(false)
@@ -2313,9 +2404,22 @@ int WaveformBackend::peakTotalCount() const
 bool WaveformBackend::filterEnabled() const { return filter_enabled_; }
 double WaveformBackend::filterMin() const { return filter_min_; }
 double WaveformBackend::filterMax() const { return filter_max_; }
+int WaveformBackend::peakFilterMode() const { return peak_filter_mode_; }
+int WaveformBackend::peakSearchStartIndex() const { return peak_search_start_index_; }
+int WaveformBackend::peakSearchEndIndex() const { return peak_search_end_index_; }
 bool WaveformBackend::harmonicFilteredView() const { return harmonic_filtered_view_; }
 bool WaveformBackend::scatterMode() const { return scatter_mode_; }
-double WaveformBackend::latestPeak() const { return peak_history_.isEmpty() ? 0.0 : peak_history_.last(); }
+double WaveformBackend::latestPeak() const
+{
+    for (auto it = peak_history_.crbegin(); it != peak_history_.crend(); ++it)
+    {
+        if (std::isfinite(*it))
+        {
+            return *it;
+        }
+    }
+    return 0.0;
+}
 
 void WaveformBackend::setHost(const QString& host)
 {
@@ -2343,14 +2447,20 @@ void WaveformBackend::setPort(int port)
 
 void WaveformBackend::setFilterEnabled(bool enabled)
 {
-    if (filter_enabled_ == enabled)
+    const int nextMode = enabled
+        ? (peak_filter_mode_ == PeakFilterNone ? PeakFilterKeepRange : peak_filter_mode_)
+        : PeakFilterNone;
+    if (filter_enabled_ == enabled && peak_filter_mode_ == nextMode)
     {
         return;
     }
     filter_enabled_ = enabled;
+    peak_filter_mode_ = nextMode;
+    saveSettings();
     rebuildFilteredPeakHistory();
     harmonic_filtered_samples_cache_ = vectorToFilteredVariantList(harmonic_history_);
     emit samplesChanged();
+    emit peakSamplesChanged();
     emit filterChanged();
 }
 
@@ -2424,6 +2534,60 @@ void WaveformBackend::setRawFrameForwardingEnabled(bool enabled)
         Q_ARG(bool, enabled));
 }
 
+void WaveformBackend::configurePeakSettings(int startIndex, int endIndex, int mode, double minValue, double maxValue)
+{
+    const int nextStart = std::max(0, startIndex);
+    const int nextEnd = std::max(0, endIndex);
+    const int nextMode = normalizedPeakFilterMode(mode);
+    if (nextEnd > 0 && nextEnd <= nextStart)
+    {
+        emit notificationRequested(QStringLiteral("warning"), QStringLiteral("搜索终点必须大于搜索起点，或者设置为整帧。"));
+        return;
+    }
+    if ((nextMode == PeakFilterKeepRange || nextMode == PeakFilterExcludeRange) &&
+        (!std::isfinite(minValue) || !std::isfinite(maxValue)))
+    {
+        emit notificationRequested(QStringLiteral("warning"), QStringLiteral("请输入有效的数值区间。"));
+        return;
+    }
+    const bool searchChanged = peak_search_start_index_ != nextStart || peak_search_end_index_ != nextEnd;
+    peak_search_start_index_ = nextStart;
+    peak_search_end_index_ = nextEnd;
+    peak_filter_mode_ = nextMode;
+    filter_enabled_ = peak_filter_mode_ != PeakFilterNone;
+    if (std::isfinite(minValue))
+    {
+        filter_min_ = minValue;
+    }
+    if (std::isfinite(maxValue))
+    {
+        filter_max_ = maxValue;
+    }
+    saveSettings();
+    QMetaObject::invokeMethod(
+        receiver_worker_,
+        "setPeakSearchWindow",
+        Qt::QueuedConnection,
+        Q_ARG(int, peak_search_start_index_),
+        Q_ARG(int, peak_search_end_index_));
+    if (searchChanged)
+    {
+        peak_raw_history_.clear();
+        peak_history_.clear();
+        peak_samples_cache_.clear();
+        peak_total_count_ = 0;
+        emit peakSamplesChanged();
+    }
+    else
+    {
+        rebuildFilteredPeakHistory();
+        emit peakSamplesChanged();
+    }
+    harmonic_filtered_samples_cache_ = vectorToFilteredVariantList(harmonic_history_);
+    emit samplesChanged();
+    emit filterChanged();
+}
+
 void WaveformBackend::clearPeakHistory()
 {
     peak_raw_history_.clear();
@@ -2437,13 +2601,11 @@ void WaveformBackend::clearPeakHistory()
 
 void WaveformBackend::configurePeakFilter(double minValue, double maxValue, bool enabled)
 {
-    filter_min_ = std::min(minValue, maxValue);
-    filter_max_ = std::max(minValue, maxValue);
-    filter_enabled_ = enabled;
-    rebuildFilteredPeakHistory();
-    harmonic_filtered_samples_cache_ = vectorToFilteredVariantList(harmonic_history_);
-    emit samplesChanged();
-    emit filterChanged();
+    configurePeakSettings(peak_search_start_index_,
+                          peak_search_end_index_,
+                          enabled ? PeakFilterKeepRange : PeakFilterNone,
+                          minValue,
+                          maxValue);
 }
 
 void WaveformBackend::loadSettings()
@@ -2451,9 +2613,20 @@ void WaveformBackend::loadSettings()
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("TcpWavePanel"));
     host_ = settings.value(QStringLiteral("connection/host"), host_).toString();
     port_ = settings.value(QStringLiteral("connection/port"), port_).toInt();
-    filter_enabled_ = settings.value(QStringLiteral("peak_filter/enabled"), false).toBool();
+    peak_filter_mode_ = settings.contains(QStringLiteral("peak_filter/mode"))
+        ? peakFilterModeFromKey(settings.value(QStringLiteral("peak_filter/mode"), QStringLiteral("none")).toString())
+        : (settings.value(QStringLiteral("peak_filter/enabled"), false).toBool() ? PeakFilterKeepRange : PeakFilterNone);
+    filter_enabled_ = peak_filter_mode_ != PeakFilterNone;
     filter_min_ = settings.value(QStringLiteral("peak_filter/min_value"), 0.0).toDouble();
     filter_max_ = settings.value(QStringLiteral("peak_filter/max_value"), 0.0).toDouble();
+    peak_search_start_index_ = std::max(0, settings.value(QStringLiteral("peak_search/start_index"), kDefaultPeakSearchStartIndex).toInt());
+    peak_search_end_index_ = std::max(0, settings.value(QStringLiteral("peak_search/end_index"), kDefaultPeakSearchEndIndex).toInt());
+    QMetaObject::invokeMethod(
+        receiver_worker_,
+        "setPeakSearchWindow",
+        Qt::QueuedConnection,
+        Q_ARG(int, peak_search_start_index_),
+        Q_ARG(int, peak_search_end_index_));
 }
 
 void WaveformBackend::saveSettings() const
@@ -2462,8 +2635,11 @@ void WaveformBackend::saveSettings() const
     settings.setValue(QStringLiteral("connection/host"), host_);
     settings.setValue(QStringLiteral("connection/port"), port_);
     settings.setValue(QStringLiteral("peak_filter/enabled"), filter_enabled_);
+    settings.setValue(QStringLiteral("peak_filter/mode"), peakFilterModeKey(peak_filter_mode_));
     settings.setValue(QStringLiteral("peak_filter/min_value"), filter_min_);
     settings.setValue(QStringLiteral("peak_filter/max_value"), filter_max_);
+    settings.setValue(QStringLiteral("peak_search/start_index"), peak_search_start_index_);
+    settings.setValue(QStringLiteral("peak_search/end_index"), peak_search_end_index_);
 }
 
 void WaveformBackend::setStatusText(const QString& text)
@@ -2528,14 +2704,7 @@ void WaveformBackend::onWorkerFrameMetricsDecoded(
         {
             peak_raw_history_.removeFirst();
         }
-        if (!filter_enabled_ || (peakValue >= filter_min_ && peakValue <= filter_max_))
-        {
-            peak_history_.append(peakValue);
-            while (peak_history_.size() > kPeakTrendFrameWindow)
-            {
-                peak_history_.removeFirst();
-            }
-        }
+        rebuildFilteredPeakHistory();
         markLiveDisplayDirty(false, true, false);
     }
 
@@ -2672,10 +2841,56 @@ QVariantList WaveformBackend::vectorToFilteredVariantList(const QVector<float>& 
     const double rangeMin = std::min(filter_min_, filter_max_);
     const double rangeMax = std::max(filter_min_, filter_max_);
     const double quietNaN = std::numeric_limits<double>::quiet_NaN();
+    double iqrLowerBound = -std::numeric_limits<double>::infinity();
+    double iqrUpperBound = std::numeric_limits<double>::infinity();
+    if (peak_filter_mode_ == PeakFilterIqrOutlier)
+    {
+        QVector<double> finiteValues;
+        finiteValues.reserve(valueCount);
+        for (float value : values)
+        {
+            if (std::isfinite(value))
+            {
+                finiteValues.push_back(static_cast<double>(value));
+            }
+        }
+        if (finiteValues.size() >= 4)
+        {
+            const double q1 = percentileValue(finiteValues, 0.25);
+            const double q3 = percentileValue(finiteValues, 0.75);
+            if (std::isfinite(q1) && std::isfinite(q3))
+            {
+                const double iqr = q3 - q1;
+                const double padding = std::max(1e-6, iqr * 1.5);
+                iqrLowerBound = q1 - padding;
+                iqrUpperBound = q3 + padding;
+            }
+        }
+    }
     for (int i = 0; i < valueCount; i += stride)
     {
         const double value = values.at(i);
-        list.append(value >= rangeMin && value <= rangeMax ? QVariant(value) : QVariant(quietNaN));
+        bool keepValue = std::isfinite(value);
+        if (keepValue)
+        {
+            switch (peak_filter_mode_)
+            {
+            case PeakFilterIqrOutlier:
+                keepValue = value >= iqrLowerBound && value <= iqrUpperBound;
+                break;
+            case PeakFilterKeepRange:
+                keepValue = value >= rangeMin && value <= rangeMax;
+                break;
+            case PeakFilterExcludeRange:
+                keepValue = !(value >= rangeMin && value <= rangeMax);
+                break;
+            case PeakFilterNone:
+            default:
+                keepValue = true;
+                break;
+            }
+        }
+        list.append(keepValue ? QVariant(value) : QVariant(quietNaN));
     }
     return list;
 }
@@ -2750,20 +2965,67 @@ void WaveformBackend::updateLiveDisplay()
 void WaveformBackend::rebuildFilteredPeakHistory()
 {
     peak_history_.clear();
+    peak_history_.reserve(peak_raw_history_.size());
+
+    QVector<double> finiteValues;
+    finiteValues.reserve(peak_raw_history_.size());
     for (float value : peak_raw_history_)
     {
-        if (filter_enabled_ && (value < filter_min_ || value > filter_max_))
+        if (std::isfinite(value))
         {
-            continue;
+            finiteValues.push_back(static_cast<double>(value));
         }
-        peak_history_.append(value);
     }
+
+    double iqrLowerBound = -std::numeric_limits<double>::infinity();
+    double iqrUpperBound = std::numeric_limits<double>::infinity();
+    if (peak_filter_mode_ == PeakFilterIqrOutlier && finiteValues.size() >= 4)
+    {
+        const double q1 = percentileValue(finiteValues, 0.25);
+        const double q3 = percentileValue(finiteValues, 0.75);
+        if (std::isfinite(q1) && std::isfinite(q3))
+        {
+            const double iqr = q3 - q1;
+            const double padding = std::max(1e-6, iqr * 1.5);
+            iqrLowerBound = q1 - padding;
+            iqrUpperBound = q3 + padding;
+        }
+    }
+
+    const double rangeMin = std::min(filter_min_, filter_max_);
+    const double rangeMax = std::max(filter_min_, filter_max_);
+    const float quietNaN = std::numeric_limits<float>::quiet_NaN();
+    for (float rawValue : peak_raw_history_)
+    {
+        bool keepValue = std::isfinite(rawValue);
+        if (keepValue)
+        {
+            const double value = static_cast<double>(rawValue);
+            switch (peak_filter_mode_)
+            {
+            case PeakFilterIqrOutlier:
+                keepValue = value >= iqrLowerBound && value <= iqrUpperBound;
+                break;
+            case PeakFilterKeepRange:
+                keepValue = value >= rangeMin && value <= rangeMax;
+                break;
+            case PeakFilterExcludeRange:
+                keepValue = !(value >= rangeMin && value <= rangeMax);
+                break;
+            case PeakFilterNone:
+            default:
+                keepValue = true;
+                break;
+            }
+        }
+        peak_history_.append(keepValue ? rawValue : quietNaN);
+    }
+
     while (peak_history_.size() > kPeakTrendFrameWindow)
     {
         peak_history_.removeFirst();
     }
     peak_samples_cache_ = vectorToVariantList(peak_history_, kPeakTrendFrameWindow);
-    emit peakSamplesChanged();
 }
 
 void WaveformBackend::processBuffer()
@@ -2803,24 +3065,16 @@ void WaveformBackend::processBuffer()
                 continue;
             }
             harmonic_history_ = samples;
-            const auto maxIt = std::max_element(harmonic_history_.cbegin(), harmonic_history_.cend());
-            if (maxIt != harmonic_history_.cend())
+            const float peakValue = waveformPeakValue(harmonic_history_, peak_search_start_index_, peak_search_end_index_);
+            if (std::isfinite(peakValue))
             {
                 ++peak_total_count_;
-                const float peakValue = *maxIt;
                 peak_raw_history_.append(peakValue);
                 while (peak_raw_history_.size() > kPeakTrendFrameWindow)
                 {
                     peak_raw_history_.removeFirst();
                 }
-                if (!filter_enabled_ || (peakValue >= filter_min_ && peakValue <= filter_max_))
-                {
-                    peak_history_.append(peakValue);
-                    while (peak_history_.size() > kPeakTrendFrameWindow)
-                    {
-                        peak_history_.removeFirst();
-                    }
-                }
+                rebuildFilteredPeakHistory();
                 markLiveDisplayDirty(false, true, false);
             }
             ++frame_count_;
