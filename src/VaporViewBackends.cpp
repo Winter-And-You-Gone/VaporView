@@ -2837,11 +2837,16 @@ QVariantList WaveformBackend::vectorToFilteredVariantList(const QVector<float>& 
     }
     const int valueCount = static_cast<int>(values.size());
     const int safeMaxCount = std::max(1, maxCount);
-    const int stride = std::max(1, (valueCount + safeMaxCount - 1) / safeMaxCount);
     const int searchStart = std::clamp(peak_search_start_index_, 0, valueCount);
     const int searchEnd = peak_search_end_index_ <= 0
         ? valueCount
         : std::clamp(peak_search_end_index_, 0, valueCount);
+    if (searchStart >= searchEnd)
+    {
+        return list;
+    }
+    const int windowCount = searchEnd - searchStart;
+    const int windowStride = std::max(1, (windowCount + safeMaxCount - 1) / safeMaxCount);
     const double rangeMin = std::min(filter_min_, filter_max_);
     const double rangeMax = std::max(filter_min_, filter_max_);
     const double quietNaN = std::numeric_limits<double>::quiet_NaN();
@@ -2872,10 +2877,36 @@ QVariantList WaveformBackend::vectorToFilteredVariantList(const QVector<float>& 
             }
         }
     }
-    for (int i = 0; i < valueCount; i += stride)
+    for (int i = searchStart; i < searchEnd; i += windowStride)
     {
         const double value = values.at(i);
-        bool keepValue = i >= searchStart && i < searchEnd && std::isfinite(value);
+        bool keepValue = std::isfinite(value);
+        if (keepValue)
+        {
+            switch (peak_filter_mode_)
+            {
+            case PeakFilterIqrOutlier:
+                keepValue = value >= iqrLowerBound && value <= iqrUpperBound;
+                break;
+            case PeakFilterKeepRange:
+                keepValue = value >= rangeMin && value <= rangeMax;
+                break;
+            case PeakFilterExcludeRange:
+                keepValue = !(value >= rangeMin && value <= rangeMax);
+                break;
+            case PeakFilterNone:
+            default:
+                keepValue = true;
+                break;
+            }
+        }
+        list.append(keepValue ? QVariant(value) : QVariant(quietNaN));
+    }
+    const int lastIndex = searchEnd - 1;
+    if ((lastIndex - searchStart) % windowStride != 0)
+    {
+        const double value = values.at(lastIndex);
+        bool keepValue = std::isfinite(value);
         if (keepValue)
         {
             switch (peak_filter_mode_)

@@ -55,6 +55,29 @@ Item {
         return waveformBackend.harmonicFilteredView ? (english ? "Full" : "完整") : (english ? "Filtered" : "过滤")
     }
 
+    function harmonicXStart() {
+        return waveformBackend.harmonicFilteredView
+                ? Math.max(0, waveformBackend.peakSearchStartIndex)
+                : 0
+    }
+
+    function harmonicXEnd() {
+        var count = waveformBackend.harmonicSampleCount
+        if (count <= 1)
+            return 200
+        if (!waveformBackend.harmonicFilteredView)
+            return count - 1
+        var configuredEnd = waveformBackend.peakSearchEndIndex
+        var endIndex = configuredEnd > 0 ? Math.min(configuredEnd, count) - 1 : count - 1
+        return Math.max(page.harmonicXStart(), endIndex)
+    }
+
+    function harmonicSourceCount() {
+        if (waveformBackend.harmonicSampleCount <= 1)
+            return 201
+        return Math.max(1, page.harmonicXEnd() - page.harmonicXStart() + 1)
+    }
+
     function joinedLogLines() {
         var lines = deviceBackend.logLines
         return lines && lines.length > 0 ? lines.join("\n") : ""
@@ -394,9 +417,9 @@ Item {
                         anchors.fill: parent
                         anchors.margins: 8
                         samples: waveformBackend.harmonicSamples
-                        sourcePointCount: waveformBackend.harmonicSampleCount > 1 ? waveformBackend.harmonicSampleCount : 201
-                        xStartIndex: 0
-                        xEndIndex: waveformBackend.harmonicSampleCount > 1 ? waveformBackend.harmonicSampleCount - 1 : 200
+                        sourcePointCount: page.harmonicSourceCount()
+                        xStartIndex: page.harmonicXStart()
+                        xEndIndex: page.harmonicXEnd()
                         autoScaleY: waveformBackend.harmonicSampleCount > 1
                         plotBackground: ApplicationWindow.window.chartPlot
                         gridColor: ApplicationWindow.window.chartGrid
@@ -491,55 +514,55 @@ Item {
                         onClicked: deviceBackend.clearLog()
                     }
 
-                    ScrollView {
-                        id: homeLogScroll
+                    Flickable {
+                        id: homeLogFlick
                         anchors.fill: parent
                         anchors.margins: 8
                         clip: true
+                        contentWidth: width
+                        contentHeight: Math.max(height, homeLogText.implicitHeight)
+                        boundsBehavior: Flickable.StopAtBounds
+                        interactive: true
+
+                        function scrollToBottom() {
+                            page.logProgrammaticScroll = true
+                            contentY = Math.max(0, contentHeight - height)
+                            Qt.callLater(function() { page.logProgrammaticScroll = false })
+                        }
+
+                        onMovementStarted: page.logAutoFollow = false
+                        onMovementEnded: page.logAutoFollow = contentY >= Math.max(0, contentHeight - height - 2)
+                        onContentHeightChanged: {
+                            if (page.logAutoFollow)
+                                scrollToBottom()
+                        }
+
                         ScrollBar.vertical: ScrollBar {
-                            id: homeLogBar
                             policy: ScrollBar.AsNeeded
-                            onPositionChanged: {
-                                if (!page.logProgrammaticScroll && (pressed || homeLogText.hovered))
-                                    page.logAutoFollow = position + size >= 0.98
+                            onPressedChanged: {
+                                if (!pressed)
+                                    page.logAutoFollow = homeLogFlick.contentY >= Math.max(0, homeLogFlick.contentHeight - homeLogFlick.height - 2)
                             }
                         }
 
-                        TextArea {
+                        TextEdit {
                             id: homeLogText
+                            width: homeLogFlick.width
                             text: page.joinedLogLines()
                             readOnly: true
                             selectByMouse: true
                             selectByKeyboard: true
-                            hoverEnabled: true
-                            wrapMode: TextEdit.Wrap
+                            wrapMode: TextEdit.WrapAtWordBoundaryOrAnywhere
                             color: ApplicationWindow.window.text
                             selectedTextColor: ApplicationWindow.window.primaryForeground
                             selectionColor: ApplicationWindow.window.primary
                             font.family: "Consolas"
                             font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
-                            padding: 0
-                            leftPadding: 0
-                            rightPadding: 0
-                            topPadding: 0
-                            bottomPadding: 0
-                            background: Rectangle { color: "transparent" }
 
                             onTextChanged: {
                                 if (!page.logAutoFollow)
                                     return
-                                page.logProgrammaticScroll = true
-                                cursorPosition = length
-                                Qt.callLater(function() {
-                                    homeLogBar.position = Math.max(0, 1 - homeLogBar.size)
-                                    page.logProgrammaticScroll = false
-                                })
-                            }
-
-                            WheelHandler {
-                                onWheel: Qt.callLater(function() {
-                                    page.logAutoFollow = homeLogBar.position + homeLogBar.size >= 0.98
-                                })
+                                homeLogFlick.scrollToBottom()
                             }
                         }
                     }

@@ -47,6 +47,29 @@ Item {
         return waveformBackend.harmonicFilteredView ? (english ? "Full" : "完整") : (english ? "Filtered" : "过滤")
     }
 
+    function harmonicXStart() {
+        return waveformBackend.harmonicFilteredView
+                ? Math.max(0, waveformBackend.peakSearchStartIndex)
+                : 0
+    }
+
+    function harmonicXEnd() {
+        var count = waveformBackend.harmonicSampleCount
+        if (count <= 1)
+            return 200
+        if (!waveformBackend.harmonicFilteredView)
+            return count - 1
+        var configuredEnd = waveformBackend.peakSearchEndIndex
+        var endIndex = configuredEnd > 0 ? Math.min(configuredEnd, count) - 1 : count - 1
+        return Math.max(page.harmonicXStart(), endIndex)
+    }
+
+    function harmonicSourceCount() {
+        if (waveformBackend.harmonicSampleCount <= 1)
+            return 201
+        return Math.max(1, page.harmonicXEnd() - page.harmonicXStart() + 1)
+    }
+
     PeakFilterPopup { id: peakFilterPopup }
 
     RowLayout {
@@ -111,9 +134,9 @@ Item {
                     anchors.fill: parent
                     anchors.margins: 8
                     samples: waveformBackend.harmonicSamples
-                    sourcePointCount: waveformBackend.harmonicSampleCount > 1 ? waveformBackend.harmonicSampleCount : 201
-                    xStartIndex: 0
-                    xEndIndex: waveformBackend.harmonicSampleCount > 1 ? waveformBackend.harmonicSampleCount - 1 : 200
+                    sourcePointCount: page.harmonicSourceCount()
+                    xStartIndex: page.harmonicXStart()
+                    xEndIndex: page.harmonicXEnd()
                     autoScaleY: waveformBackend.harmonicSampleCount > 1
                     plotBackground: ApplicationWindow.window.chartPlot
                     gridColor: ApplicationWindow.window.chartGrid
@@ -125,7 +148,7 @@ Item {
             }
             Card {
                 Layout.fillWidth: true
-                Layout.fillHeight: true
+                Layout.preferredHeight: 180
                 title: ApplicationWindow.window.t("waveform.peakTrend")
                 headerRight: Row {
                     spacing: 8
