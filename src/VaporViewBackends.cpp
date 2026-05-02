@@ -5056,24 +5056,27 @@ void SessionBackend::updateCsvPreviewForTimestamp(quint64 timestampUs)
     current_csv_row_ = -1;
     secondary_csv_row_ = -1;
     csv_preview_rows_.clear();
-    QVector<int> highlightedRows = closestCsvRows(timestampUs);
+    const QVector<int> highlightedRows = closestCsvRows(timestampUs);
     if (!highlightedRows.isEmpty())
     {
         current_csv_row_ = highlightedRows.value(0, -1);
         secondary_csv_row_ = highlightedRows.value(1, -1);
     }
 
-    QSet<int> insertedRows;
-    auto appendRow = [&](int sourceRow, int rank) {
-        if (sourceRow < 0 || sourceRow >= csv_rows_all_.size() || insertedRows.contains(sourceRow))
+    const QSet<int> highlightedSet(highlightedRows.begin(), highlightedRows.end());
+    const int maxRows = qMin(static_cast<int>(csv_rows_all_.size()), 80);
+    for (int i = 0; i < maxRows; ++i)
+    {
+        int rank = -1;
+        if (highlightedSet.contains(i))
         {
-            return;
+            rank = highlightedRows.indexOf(i);
         }
-        QVariantMap row = csv_rows_all_.at(sourceRow).toMap();
+        QVariantMap row = csv_rows_all_.at(i).toMap();
         row[QStringLiteral("_matchRank")] = rank;
-        if (timestampUs > 0 && sourceRow < csv_timestamps_us_.size())
+        if (timestampUs > 0 && i < csv_timestamps_us_.size())
         {
-            const qint64 deltaUs = static_cast<qint64>(csv_timestamps_us_.at(sourceRow)) - static_cast<qint64>(timestampUs);
+            const qint64 deltaUs = static_cast<qint64>(csv_timestamps_us_.at(i)) - static_cast<qint64>(timestampUs);
             const double deltaMs = static_cast<double>(deltaUs) / 1000.0;
             const QString deltaText = QStringLiteral("%1%2 ms")
                 .arg(deltaMs >= 0.0 ? QStringLiteral("+") : QString())
@@ -5082,16 +5085,6 @@ void SessionBackend::updateCsvPreviewForTimestamp(quint64 timestampUs)
             row[QStringLiteral("_deltaText")] = deltaText;
         }
         csv_preview_rows_.append(row);
-        insertedRows.insert(sourceRow);
-    };
-
-    for (int i = 0; i < highlightedRows.size(); ++i)
-    {
-        appendRow(highlightedRows.at(i), i);
-    }
-    for (int i = 0; i < csv_rows_all_.size() && csv_preview_rows_.size() < 80; ++i)
-    {
-        appendRow(i, -1);
     }
 }
 
