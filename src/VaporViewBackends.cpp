@@ -4950,9 +4950,23 @@ void SessionBackend::loadSessionFrame(int frameIndex)
 
 void SessionBackend::setFrameCursor(int frameIndex)
 {
-    if (loading_ || waveform_frame_index_.isEmpty())
+    if (loading_)
     {
         return;
+    }
+    const QString path = selected_session_.value(QStringLiteral("path")).toString();
+    if (path.isEmpty() || waveform_frame_index_.isEmpty())
+    {
+        return;
+    }
+    const QVariantMap waveform = readWaveformFramePreview(QDir(path).filePath(QStringLiteral("raw/tcp_wave.dat")), frameIndex);
+    if (!waveform.isEmpty())
+    {
+        waveform_raw_preview_ = waveform.value(QStringLiteral("raw")).toList();
+        waveform_harmonic_preview_ = waveform.value(QStringLiteral("harmonic")).toList();
+        waveform_preview_ = waveform_harmonic_preview_;
+        waveform_raw_point_count_ = waveform.value(QStringLiteral("rawPointCount"), waveform_raw_preview_.size()).toInt();
+        waveform_harmonic_point_count_ = waveform.value(QStringLiteral("harmonicPointCount"), waveform_harmonic_preview_.size()).toInt();
     }
     current_frame_index_ = std::clamp(frameIndex, 0, static_cast<int>(waveform_frame_index_.size()) - 1);
     if (current_frame_index_ >= 0 && current_frame_index_ < waveform_timestamps_us_.size())
