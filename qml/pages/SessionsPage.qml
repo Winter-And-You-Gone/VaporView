@@ -43,6 +43,11 @@ Item {
         onAccepted: sessionBackend.setRecordingDirectory(selectedFolder.toString().replace("file:///", ""))
     }
 
+    Component.onCompleted: {
+        if (sessionBackend.sessions.length > 0 && sessionBackend.csvPreviewRows.length === 0)
+            sessionBackend.selectSession(page.selectedIndex)
+    }
+
     component HeaderIconButton: Button {
         id: iconButton
         property string iconName: "refresh-cw"

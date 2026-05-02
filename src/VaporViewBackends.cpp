@@ -4302,6 +4302,7 @@ QVariantMap SessionBackend::sessionSummaryForDirectory(const QString& path) cons
 
 void SessionBackend::refreshSessions()
 {
+    const QString previousPath = selected_session_.value(QStringLiteral("path")).toString();
     sessions_.clear();
     QDir dir(recording_directory_);
     const QFileInfoList entries = dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Time);
@@ -4314,10 +4315,47 @@ void SessionBackend::refreshSessions()
         }
     }
     emit sessionsChanged();
-    if (!sessions_.isEmpty() && selected_session_.isEmpty())
+
+    if (sessions_.isEmpty())
     {
-        selectSession(0);
+        selected_session_.clear();
+        csv_preview_columns_.clear();
+        csv_preview_rows_.clear();
+        waveform_preview_.clear();
+        waveform_raw_preview_.clear();
+        waveform_harmonic_preview_.clear();
+        peak_trend_preview_.clear();
+        temperature_preview_.clear();
+        humidity_preview_.clear();
+        pressure_preview_.clear();
+        emit selectedSessionChanged();
+        return;
     }
+
+    int selectedIndex = -1;
+    for (int i = 0; i < sessions_.size(); ++i)
+    {
+        if (sessions_.at(i).toMap().value(QStringLiteral("path")).toString() == previousPath)
+        {
+            selectedIndex = i;
+            break;
+        }
+    }
+    if (selectedIndex < 0)
+    {
+        selectedIndex = 0;
+    }
+    selected_session_ = sessions_.at(selectedIndex).toMap();
+    csv_preview_columns_.clear();
+    csv_preview_rows_.clear();
+    waveform_preview_.clear();
+    waveform_raw_preview_.clear();
+    waveform_harmonic_preview_.clear();
+    peak_trend_preview_.clear();
+    temperature_preview_.clear();
+    humidity_preview_.clear();
+    pressure_preview_.clear();
+    emit selectedSessionChanged();
 }
 
 void SessionBackend::openSessionPath(const QString& path)
