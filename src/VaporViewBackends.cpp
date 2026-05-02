@@ -4945,7 +4945,22 @@ void SessionBackend::loadSessionFrame(int frameIndex)
     waveform_raw_point_count_ = waveform.value(QStringLiteral("rawPointCount"), waveform_raw_preview_.size()).toInt();
     waveform_harmonic_point_count_ = waveform.value(QStringLiteral("harmonicPointCount"), waveform_harmonic_preview_.size()).toInt();
     updateCsvPreviewForTimestamp(waveform.value(QStringLiteral("timestampUs")).toULongLong());
-    emit selectedSessionChanged();
+    emit frameSelectionChanged();
+}
+
+void SessionBackend::setFrameCursor(int frameIndex)
+{
+    if (loading_ || waveform_frame_index_.isEmpty())
+    {
+        return;
+    }
+    current_frame_index_ = std::clamp(frameIndex, 0, static_cast<int>(waveform_frame_index_.size()) - 1);
+    if (current_frame_index_ >= 0 && current_frame_index_ < waveform_timestamps_us_.size())
+    {
+        const quint64 ts = waveform_timestamps_us_.at(current_frame_index_);
+        current_csv_row_ = findClosestCsvRow(ts);
+        secondary_csv_row_ = -1;
+    }
     emit frameSelectionChanged();
 }
 

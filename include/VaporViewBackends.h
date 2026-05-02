@@ -773,6 +773,7 @@ public:
     Q_INVOKABLE void selectSession(int index);
     Q_INVOKABLE void reloadSelectedSession();
     Q_INVOKABLE void loadSessionFrame(int frameIndex);
+    Q_INVOKABLE void setFrameCursor(int frameIndex);
     Q_INVOKABLE void clear();
 
 public slots:

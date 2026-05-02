@@ -233,7 +233,7 @@ Item {
                     headerRight: Row {
                         spacing: 2
                         HeaderIconButton {
-                            iconName: "sort"
+                            iconName: "arrow-down-up"
                             ToolTip.visible: hovered
                             ToolTip.text: "排序"
                             ToolTip.delay: 400
@@ -507,14 +507,10 @@ Item {
                                 value: page.previewFrame
                                 enabled: sessionBackend.waveformIndexReady && page.maxFrame > 0 && !sessionBackend.loading
                                 live: true
-                                onMoved: {
-                                    page.previewFrame = Math.round(value)
-                                    sessionBackend.loadSessionFrame(page.previewFrame)
-                                }
                                 onValueChanged: {
                                     if (pressed && enabled) {
                                         page.previewFrame = Math.round(value)
-                                        sessionBackend.loadSessionFrame(page.previewFrame)
+                                        sessionBackend.setFrameCursor(page.previewFrame)
                                     }
                                 }
                                 onPressedChanged: {
