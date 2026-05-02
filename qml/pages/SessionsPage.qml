@@ -233,13 +233,13 @@ Item {
                     headerRight: Row {
                         spacing: 2
                         HeaderIconButton {
-                            iconName: "table-properties"
+                            iconName: "sort"
                             ToolTip.visible: hovered
                             ToolTip.text: "排序"
                             ToolTip.delay: 400
                         }
                         HeaderIconButton {
-                            iconName: "scan"
+                            iconName: "filter"
                             ToolTip.visible: hovered
                             ToolTip.text: "筛选"
                             ToolTip.delay: 400
