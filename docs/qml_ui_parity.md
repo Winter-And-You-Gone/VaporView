@@ -9,8 +9,10 @@
 | 设备 | EPSILON 每个 packet row 的完整包频率配置弹窗 | 旧 QWidget 有完整包频率配置弹窗 | QML 目前只有分组保存 / 重配快捷入口 | 需要补一个专用 QML 包频率编辑器，覆盖 packet ID `0x40/0x41/0x42/0x50/0x59/0x5A/0x5C/0x5D`。 |
 | RTK | 检测 mountpoint | 旧 QWidget 可以在后台线程获取 mountpoint 列表 | QML 暂未暴露 | 增加 `RtkBackend::fetchMountpoints()` 和选择弹窗。 |
 | RTK | GGA 实时监视 | 旧 QWidget 有 GGA 文本监视和实测速率显示 | QML 已暴露 RTK 统计，并可从最新 EPSILON 坐标发送 NMEA | 如果现场调试需要，再补完整 GGA 文本 / 频率监视面板。 |
-| Sessions | 轨迹地图视图 | 旧 QWidget 有 OSM / 天地图瓦片地图弹窗 | QML 已显示 session 摘要、CSV 预览和波形预览 | 后续将地图控件迁移为 `QQuickPaintedItem` 或 Qt Location / Map。 |
-| Sessions | 环境曲线与波形 slider 同步 | 旧 QWidget 会把 CSV 行与波形帧预览同步 | QML 目前只预览 CSV 行和第一帧波形 | 增加帧 slider、CSV 行高亮和环境趋势图。 |
+| Sessions | 记录列表筛选 / 排序 / 分页 | 当前后端只按记录目录时间倒序枚举 session，没有筛选、排序切换或分页 API | QML 已按 React 样式显示入口，其中筛选 / 排序 / 翻页为禁用状态，刷新可用 | 后续增加 `SessionBackend` 筛选、排序字段和分页状态后再启用。 |
+| Sessions | 轨迹地图视图 | 旧 QWidget 有 OSM / 天地图瓦片地图弹窗 | QML 已保留“轨迹查看”按钮但禁用 | 后续将地图控件迁移为 `QQuickPaintedItem` 或 Qt Location / Map。 |
+| Sessions | 环境曲线与波形 slider 同步 | 旧 QWidget 会把 CSV 行与波形帧预览同步 | QML 已读取真实 CSV 环境趋势、raw TCP 第一帧波形和峰值趋势；顶部帧 slider 仅展示当前预览位置，暂不支持随机帧跳转 | 后续增加按帧索引加载 raw TCP DAT 的后端接口，并同步 CSV 行高亮。 |
+| Sessions | 导出数据按钮 | 当前 QML 后端没有 session 级导出 API；Raw Parser 页面有 raw 记录导出能力 | QML 已保留“导出数据”按钮但禁用；“原始解析”会打开当前 session 的 raw DAT | 后续将旧 QWidget 的 session 导出逻辑迁入 `SessionBackend` 后启用。 |
 | Sessions | React mock 中出现 MAT / HDF5 导出 | 当前 QWidget 中没有找到 MAT / HDF5 导出器 | 未实现 | 在真实导出需求明确前，按 React mock-only 项处理。 |
 | Raw Parser | 完整解码字段树和异常过滤 | 旧 QWidget 有深度 packet 解码，以及列表 / 选中 BIN / decoded CSV / decoded JSON 导出 | QML 已列出 raw 记录和基础元数据，支持列表 CSV / JSON / 选中 BIN 导出 | 将 `RawDataParserWindow.cpp` 中的 decoder helper 迁入非 Widget 服务后再补齐。 |
 | 设置 | 显示密度 | React mock 包含 compact / normal 密度 | QML 暴露字体比例，默认视觉密度偏紧凑 | 如果用户需要运行时改变间距，再增加持久化 density token。 |

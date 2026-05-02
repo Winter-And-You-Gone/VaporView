@@ -716,8 +716,15 @@ class SessionBackend : public QObject
     Q_PROPERTY(QString recordingDirectory READ recordingDirectory WRITE setRecordingDirectory NOTIFY recordingDirectoryChanged)
     Q_PROPERTY(QVariantList sessions READ sessions NOTIFY sessionsChanged)
     Q_PROPERTY(QVariantMap selectedSession READ selectedSession NOTIFY selectedSessionChanged)
+    Q_PROPERTY(QStringList csvPreviewColumns READ csvPreviewColumns NOTIFY selectedSessionChanged)
     Q_PROPERTY(QVariantList csvPreviewRows READ csvPreviewRows NOTIFY selectedSessionChanged)
     Q_PROPERTY(QVariantList waveformPreview READ waveformPreview NOTIFY selectedSessionChanged)
+    Q_PROPERTY(QVariantList waveformRawPreview READ waveformRawPreview NOTIFY selectedSessionChanged)
+    Q_PROPERTY(QVariantList waveformHarmonicPreview READ waveformHarmonicPreview NOTIFY selectedSessionChanged)
+    Q_PROPERTY(QVariantList peakTrendPreview READ peakTrendPreview NOTIFY selectedSessionChanged)
+    Q_PROPERTY(QVariantList temperaturePreview READ temperaturePreview NOTIFY selectedSessionChanged)
+    Q_PROPERTY(QVariantList humidityPreview READ humidityPreview NOTIFY selectedSessionChanged)
+    Q_PROPERTY(QVariantList pressurePreview READ pressurePreview NOTIFY selectedSessionChanged)
 
 public:
     explicit SessionBackend(QObject *parent = nullptr);
@@ -725,8 +732,15 @@ public:
     QString recordingDirectory() const;
     QVariantList sessions() const;
     QVariantMap selectedSession() const;
+    QStringList csvPreviewColumns() const;
     QVariantList csvPreviewRows() const;
     QVariantList waveformPreview() const;
+    QVariantList waveformRawPreview() const;
+    QVariantList waveformHarmonicPreview() const;
+    QVariantList peakTrendPreview() const;
+    QVariantList temperaturePreview() const;
+    QVariantList humidityPreview() const;
+    QVariantList pressurePreview() const;
 
     Q_INVOKABLE void refreshSessions();
     Q_INVOKABLE void openSessionPath(const QString& path);
@@ -746,13 +760,21 @@ private:
     QVariantMap sessionSummaryForDirectory(const QString& path) const;
     void loadSelectedSession(const QString& path);
     QVariantList readCsvPreview(const QString& csvPath, int maxRows) const;
-    QVariantList readWaveformPreview(const QString& rawPath) const;
+    QVariantMap readWaveformPreviews(const QString& rawPath) const;
+    QVariantMap readSensorTrendPreviews(const QString& csvPath, int maxRows) const;
 
     QString recording_directory_;
     QVariantList sessions_;
     QVariantMap selected_session_;
+    QStringList csv_preview_columns_;
     QVariantList csv_preview_rows_;
     QVariantList waveform_preview_;
+    QVariantList waveform_raw_preview_;
+    QVariantList waveform_harmonic_preview_;
+    QVariantList peak_trend_preview_;
+    QVariantList temperature_preview_;
+    QVariantList humidity_preview_;
+    QVariantList pressure_preview_;
 };
 
 class RawParserBackend : public QObject
