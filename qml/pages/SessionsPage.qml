@@ -13,6 +13,7 @@ Item {
     readonly property int sessionPageCount: Math.max(1, Math.ceil(sessionBackend.sessions.length / sessionsPerPage))
     property int previewFrame: Math.min(maxFrame, Math.max(0, Math.floor(maxFrame * 0.49)))
     readonly property int maxFrame: Math.max(0, Number(sessionBackend.selectedSession.waveformFrames || sessionBackend.selectedSession.frames || sessionBackend.peakTrendPreview.length || 0))
+    property bool trendScatter: false
     readonly property color trendRed: "#ef4444"
     readonly property color trendBlue: ApplicationWindow.window.dark ? "#60a5fa" : "#3b82f6"
     readonly property color trendGreen: "#10b981"
@@ -63,6 +64,17 @@ Item {
     }
 
     onSessionPageCountChanged: sessionPage = Math.min(sessionPage, sessionPageCount - 1)
+
+    Connections {
+        target: sessionBackend
+        function onFrameSelectionChanged() {
+            page.previewFrame = Math.max(0, sessionBackend.currentFrameIndex)
+        }
+        function onSelectedSessionChanged() {
+            if (sessionBackend.currentFrameIndex >= 0)
+                page.previewFrame = sessionBackend.currentFrameIndex
+        }
+    }
 
     component HeaderIconButton: Button {
         id: iconButton
@@ -115,9 +127,16 @@ Item {
 
     component TrendRow: RowLayout {
         property string label: ""
+        property string unit: ""
         property var samples: []
         property color lineColor: ApplicationWindow.window.waveformRaw
         property bool fill: false
+        property bool scatter: false
+        property int sourcePointCount: samples && samples.length !== undefined ? samples.length : 0
+        property int xStartIndex: 0
+        property int xEndIndex: Math.max(0, sourcePointCount - 1)
+        property bool showCursor: false
+        property int cursorIndex: -1
         property int preferredHeight: 126
         property string emptyText: "暂无数据"
 
@@ -141,6 +160,16 @@ Item {
                         horizontalAlignment: Text.AlignHCenter
                     }
                 }
+                Text {
+                    visible: unit.length > 0
+                    text: unit
+                    color: ApplicationWindow.window.muted
+                    font.pixelSize: Math.round(9 * ApplicationWindow.window.scaleFactor)
+                    font.weight: Font.Bold
+                    font.family: "Consolas"
+                    horizontalAlignment: Text.AlignHCenter
+                    width: parent.width
+                }
             }
         }
         Rectangle {
@@ -155,15 +184,21 @@ Item {
                 anchors.fill: parent
                 anchors.margins: 8
                 samples: parent.parent.samples
-                sourcePointCount: Math.max(2, parent.parent.samples.length)
-                xStartIndex: 0
-                xEndIndex: Math.max(1, parent.parent.samples.length - 1)
+                sourcePointCount: Math.max(2, parent.parent.sourcePointCount)
+                xStartIndex: parent.parent.xStartIndex
+                xEndIndex: Math.max(parent.parent.xStartIndex + 1, parent.parent.xEndIndex)
                 autoScaleY: parent.parent.samples.length > 1
                 showDemoWhenEmpty: false
                 fillUnderLine: parent.parent.fill
+                scatter: parent.parent.scatter
                 hardLineCorners: true
                 lineColor: parent.parent.lineColor
                 lineWidth: 1.7
+                maxVisualSamples: Math.max(240, Math.floor(width))
+                showCursor: parent.parent.showCursor
+                cursorSourceIndex: parent.parent.cursorIndex
+                cursorYUnit: parent.parent.unit.length > 0 ? " " + parent.parent.unit : ""
+                cursorColor: parent.parent.lineColor
                 plotBackground: ApplicationWindow.window.chartPlot
                 gridColor: ApplicationWindow.window.chartGrid
                 axisColor: ApplicationWindow.window.chartAxis
@@ -356,11 +391,11 @@ Item {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 28
                                 iconName: "refresh-cw"
-                                text: "重新加载"
+                                text: sessionBackend.loading ? "加载中" : "重新加载"
                                 variant: "primary"
+                                enabled: !sessionBackend.loading && page.selectedPath().length > 0
                                 onClicked: {
                                     sessionBackend.reloadSelectedSession()
-                                    page.previewFrame = Math.min(page.maxFrame, Math.max(0, Math.floor(page.maxFrame * 0.49)))
                                 }
                             }
                             ToolbarButton { Layout.fillWidth: true; Layout.preferredHeight: 28; iconName: "activity"; text: "轨迹查看"; enabled: false }
@@ -409,6 +444,16 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 880
                 title: "波形与环境趋势"
+                headerRight: Row {
+                    spacing: 6
+                    ToolbarButton {
+                        width: 92
+                        height: 26
+                        iconName: "activity"
+                        text: page.trendScatter ? "散点" : "折线"
+                        onClicked: page.trendScatter = !page.trendScatter
+                    }
+                }
 
                 ColumnLayout {
                     anchors.fill: parent
@@ -444,22 +489,89 @@ Item {
                                 from: 0
                                 to: Math.max(1, page.maxFrame - 1)
                                 value: page.previewFrame
-                                enabled: sessionBackend.waveformIndexReady && page.maxFrame > 0
-                                live: false
+                                enabled: sessionBackend.waveformIndexReady && page.maxFrame > 0 && !sessionBackend.loading
+                                live: true
                                 onMoved: {
                                     page.previewFrame = Math.round(value)
                                     sessionBackend.loadSessionFrame(page.previewFrame)
+                                }
+                                onValueChanged: {
+                                    if (pressed && enabled) {
+                                        page.previewFrame = Math.round(value)
+                                        sessionBackend.loadSessionFrame(page.previewFrame)
+                                    }
+                                }
+                                onPressedChanged: {
+                                    if (!pressed && enabled) {
+                                        page.previewFrame = Math.round(value)
+                                        sessionBackend.loadSessionFrame(page.previewFrame)
+                                    }
                                 }
                             }
                         }
                     }
 
-                    TrendRow { label: "原始波形"; samples: sessionBackend.waveformRawPreview; lineColor: ApplicationWindow.window.waveformRaw; emptyText: "暂无原始波形" }
-                    TrendRow { label: "二次谐波"; samples: sessionBackend.waveformHarmonicPreview; lineColor: ApplicationWindow.window.waveformRaw; emptyText: "暂无二次谐波" }
-                    TrendRow { label: "峰值趋势"; samples: sessionBackend.peakTrendPreview; lineColor: ApplicationWindow.window.text; fill: true; emptyText: "暂无峰值趋势" }
-                    TrendRow { label: "温度 (°C)"; samples: sessionBackend.temperaturePreview; lineColor: page.trendRed; emptyText: "暂无温度趋势" }
-                    TrendRow { label: "湿度 (%)"; samples: sessionBackend.humidityPreview; lineColor: page.trendBlue; emptyText: "暂无湿度趋势" }
-                    TrendRow { label: "气压 (hPa)"; samples: sessionBackend.pressurePreview; lineColor: page.trendGreen; emptyText: "暂无气压趋势" }
+                    TrendRow {
+                        label: "原始波形"
+                        samples: sessionBackend.waveformRawPreview
+                        sourcePointCount: Math.max(sessionBackend.waveformRawPointCount, sessionBackend.waveformRawPreview.length)
+                        xEndIndex: Math.max(1, sourcePointCount - 1)
+                        lineColor: ApplicationWindow.window.waveformRaw
+                        emptyText: "暂无原始波形"
+                    }
+                    TrendRow {
+                        label: "二次谐波"
+                        samples: sessionBackend.waveformHarmonicPreview
+                        sourcePointCount: Math.max(sessionBackend.waveformHarmonicPointCount, sessionBackend.waveformHarmonicPreview.length)
+                        xEndIndex: Math.max(1, sourcePointCount - 1)
+                        lineColor: ApplicationWindow.window.waveformRaw
+                        emptyText: "暂无二次谐波"
+                    }
+                    TrendRow {
+                        label: "峰值趋势"
+                        samples: sessionBackend.peakTrendPreview
+                        sourcePointCount: Math.max(page.maxFrame, sessionBackend.peakTrendPreview.length)
+                        xEndIndex: Math.max(1, sourcePointCount - 1)
+                        cursorIndex: sessionBackend.currentFrameIndex
+                        showCursor: sessionBackend.currentFrameIndex >= 0
+                        scatter: page.trendScatter
+                        lineColor: ApplicationWindow.window.text
+                        fill: !page.trendScatter
+                        emptyText: "暂无峰值趋势"
+                    }
+                    TrendRow {
+                        label: "温度"; unit: "°C"
+                        samples: sessionBackend.temperaturePreview
+                        sourcePointCount: sessionBackend.temperaturePreview.length
+                        xEndIndex: Math.max(1, sourcePointCount - 1)
+                        cursorIndex: sessionBackend.currentCsvRow
+                        showCursor: sessionBackend.currentCsvRow >= 0
+                        scatter: page.trendScatter
+                        lineColor: page.trendRed
+                        emptyText: "暂无温度趋势"
+                    }
+                    TrendRow {
+                        label: "湿度"; unit: "%"
+                        samples: sessionBackend.humidityPreview
+                        sourcePointCount: sessionBackend.humidityPreview.length
+                        xEndIndex: Math.max(1, sourcePointCount - 1)
+                        cursorIndex: sessionBackend.currentCsvRow
+                        showCursor: sessionBackend.currentCsvRow >= 0
+                        scatter: page.trendScatter
+                        lineColor: page.trendBlue
+                        emptyText: "暂无湿度趋势"
+                    }
+                    TrendRow {
+                        label: "气压"; unit: "hPa"
+                        samples: sessionBackend.pressurePreview
+                        sourcePointCount: sessionBackend.pressurePreview.length
+                        xEndIndex: Math.max(1, sourcePointCount - 1)
+                        cursorIndex: sessionBackend.currentCsvRow
+                        showCursor: sessionBackend.currentCsvRow >= 0
+                        scatter: page.trendScatter
+                        lineColor: page.trendGreen
+                        emptyText: "暂无气压趋势"
+                    }
                 }
             }
 
@@ -509,11 +621,13 @@ Item {
                             model: sessionBackend.csvPreviewRows
                             delegate: Rectangle {
                                 property var rowData: modelData
+                                property int matchRank: Number(rowData._matchRank === undefined ? -1 : rowData._matchRank)
 
                                 width: tableColumn.width
                                 height: 30
-                                color: index === 4 ? Qt.rgba(ApplicationWindow.window.primary.r, ApplicationWindow.window.primary.g, ApplicationWindow.window.primary.b, ApplicationWindow.window.dark ? 0.22 : 0.10)
-                                                    : (index % 2 === 0 ? ApplicationWindow.window.card : Qt.rgba(ApplicationWindow.window.secondary.r, ApplicationWindow.window.secondary.g, ApplicationWindow.window.secondary.b, ApplicationWindow.window.dark ? 0.20 : 0.14))
+                                color: matchRank === 0 ? Qt.rgba(ApplicationWindow.window.ok.r, ApplicationWindow.window.ok.g, ApplicationWindow.window.ok.b, ApplicationWindow.window.dark ? 0.34 : 0.20)
+                                      : matchRank === 1 ? Qt.rgba(ApplicationWindow.window.ok.r, ApplicationWindow.window.ok.g, ApplicationWindow.window.ok.b, ApplicationWindow.window.dark ? 0.20 : 0.11)
+                                      : (index % 2 === 0 ? ApplicationWindow.window.card : Qt.rgba(ApplicationWindow.window.secondary.r, ApplicationWindow.window.secondary.g, ApplicationWindow.window.secondary.b, ApplicationWindow.window.dark ? 0.20 : 0.14))
 
                                 Rectangle {
                                     anchors.left: parent.left
@@ -534,9 +648,11 @@ Item {
                                             leftPadding: 12
                                             rightPadding: 8
                                             text: rowData[modelData] === undefined ? "" : String(rowData[modelData])
-                                            color: modelData === "gnss_fix" ? ApplicationWindow.window.ok : ApplicationWindow.window.text
+                                            color: modelData === "gnss_fix" ? ApplicationWindow.window.ok
+                                                   : matchRank >= 0 ? ApplicationWindow.window.text
+                                                   : ApplicationWindow.window.text
                                             font.pixelSize: Math.round(9 * ApplicationWindow.window.scaleFactor)
-                                            font.weight: modelData === "gnss_fix" ? Font.Bold : Font.Normal
+                                            font.weight: matchRank === 0 || modelData === "gnss_fix" ? Font.Bold : Font.Normal
                                             font.family: "Consolas"
                                             verticalAlignment: Text.AlignVCenter
                                             elide: Text.ElideRight
@@ -560,6 +676,68 @@ Item {
 
                     ScrollBar.vertical: ScrollBar {}
                     ScrollBar.horizontal: ScrollBar {}
+                }
+            }
+        }
+    }
+
+    Rectangle {
+        visible: sessionBackend.loading
+        z: 100
+        anchors.fill: parent
+        color: Qt.rgba(ApplicationWindow.window.bg.r, ApplicationWindow.window.bg.g, ApplicationWindow.window.bg.b, ApplicationWindow.window.dark ? 0.58 : 0.42)
+
+        Rectangle {
+            anchors.centerIn: parent
+            width: Math.min(460, parent.width - 48)
+            height: 132
+            radius: 8
+            color: ApplicationWindow.window.card
+            border.color: ApplicationWindow.window.border
+            border.width: 1
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 18
+                spacing: 10
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+                    BusyIndicator {
+                        Layout.preferredWidth: 28
+                        Layout.preferredHeight: 28
+                        running: sessionBackend.loading
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: sessionBackend.loadingText || "正在加载记录数据..."
+                        color: ApplicationWindow.window.text
+                        font.pixelSize: Math.round(12 * ApplicationWindow.window.scaleFactor)
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        text: sessionBackend.loadingProgress + "%"
+                        color: ApplicationWindow.window.muted
+                        font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
+                        font.family: "Consolas"
+                    }
+                }
+
+                ProgressBar {
+                    Layout.fillWidth: true
+                    from: 0
+                    to: 100
+                    value: sessionBackend.loadingProgress
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: "大记录会在后台建立索引，界面可保持响应。"
+                    color: ApplicationWindow.window.muted
+                    font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+                    horizontalAlignment: Text.AlignHCenter
                 }
             }
         }

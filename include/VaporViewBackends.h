@@ -726,9 +726,25 @@ class SessionBackend : public QObject
     Q_PROPERTY(QVariantList humidityPreview READ humidityPreview NOTIFY selectedSessionChanged)
     Q_PROPERTY(QVariantList pressurePreview READ pressurePreview NOTIFY selectedSessionChanged)
     Q_PROPERTY(bool waveformIndexReady READ waveformIndexReady NOTIFY selectedSessionChanged)
+    Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
+    Q_PROPERTY(int loadingProgress READ loadingProgress NOTIFY loadingChanged)
+    Q_PROPERTY(QString loadingText READ loadingText NOTIFY loadingChanged)
+    Q_PROPERTY(int currentFrameIndex READ currentFrameIndex NOTIFY frameSelectionChanged)
+    Q_PROPERTY(int currentCsvRow READ currentCsvRow NOTIFY frameSelectionChanged)
+    Q_PROPERTY(int secondaryCsvRow READ secondaryCsvRow NOTIFY frameSelectionChanged)
+    Q_PROPERTY(int waveformRawPointCount READ waveformRawPointCount NOTIFY frameSelectionChanged)
+    Q_PROPERTY(int waveformHarmonicPointCount READ waveformHarmonicPointCount NOTIFY frameSelectionChanged)
 
 public:
     explicit SessionBackend(QObject *parent = nullptr);
+    ~SessionBackend() override
+    {
+        if (session_load_thread_)
+        {
+            session_load_thread_->requestInterruption();
+            session_load_thread_->wait(3000);
+        }
+    }
 
     QString recordingDirectory() const;
     QVariantList sessions() const;
@@ -743,6 +759,14 @@ public:
     QVariantList humidityPreview() const;
     QVariantList pressurePreview() const;
     bool waveformIndexReady() const;
+    bool loading() const;
+    int loadingProgress() const;
+    QString loadingText() const;
+    int currentFrameIndex() const;
+    int currentCsvRow() const;
+    int secondaryCsvRow() const;
+    int waveformRawPointCount() const;
+    int waveformHarmonicPointCount() const;
 
     Q_INVOKABLE void refreshSessions();
     Q_INVOKABLE void openSessionPath(const QString& path);
@@ -758,19 +782,11 @@ signals:
     void recordingDirectoryChanged();
     void sessionsChanged();
     void selectedSessionChanged();
+    void loadingChanged();
+    void frameSelectionChanged();
     void notificationRequested(const QString& level, const QString& message);
 
 private:
-    QVariantMap sessionSummaryForDirectory(const QString& path, bool detailed = false) const;
-    void clearPreviewData();
-    void loadSelectedSession(const QString& path);
-    QVariantList readCsvPreview(const QString& csvPath, int maxRows) const;
-    QVariantMap readWaveformPreviews(const QString& rawPath);
-    QVariantMap readWaveformFramePreview(const QString& rawPath, int frameIndex) const;
-    QVariantMap readSensorTrendPreviews(const QString& csvPath, int maxRows) const;
-    QVariantMap countSensorRowsAndRange(const QString& csvPath) const;
-    int countWaveformFrames(const QString& rawPath) const;
-
     struct WaveformFrameIndex
     {
         quint64 rawPayloadOffset = 0;
@@ -780,6 +796,47 @@ private:
         quint32 flags = 0;
         quint64 timestampUs = 0;
     };
+
+    struct SessionLoadResult
+    {
+        bool ok = false;
+        QString error;
+        QString path;
+        QVariantMap selectedSession;
+        QStringList csvColumns;
+        QVariantList csvRowsAll;
+        QVector<quint64> csvTimestampsUs;
+        QVariantList temperatureValues;
+        QVariantList humidityValues;
+        QVariantList pressureValues;
+        QVariantList rawPreview;
+        QVariantList harmonicPreview;
+        QVariantList peakValues;
+        QVector<quint64> waveformTimestampsUs;
+        QVector<WaveformFrameIndex> waveformFrameIndex;
+        QString waveformIndexPath;
+        int rawPointCount = 0;
+        int harmonicPointCount = 0;
+        int currentFrameIndex = -1;
+    };
+
+    QVariantMap sessionSummaryForDirectory(const QString& path, bool detailed = false) const;
+    void clearPreviewData();
+    void loadSelectedSession(const QString& path);
+    void startLoadingSession(const QString& path);
+    void setLoadingState(bool loading, int progress, const QString& text);
+    void postLoadProgress(int generation, int progress, const QString& text);
+    void applySessionLoadResult(const std::shared_ptr<SessionLoadResult>& result, int generation);
+    QVariantList readCsvPreview(const QString& csvPath, int maxRows) const;
+    QVariantMap readWaveformPreviews(const QString& rawPath);
+    QVariantMap readWaveformFramePreview(const QString& rawPath, int frameIndex) const;
+    QVariantMap readSensorTrendPreviews(const QString& csvPath, int maxRows) const;
+    QVariantMap countSensorRowsAndRange(const QString& csvPath) const;
+    int countWaveformFrames(const QString& rawPath) const;
+    int findClosestCsvRow(quint64 timestampUs) const;
+    QVector<int> closestCsvRows(quint64 timestampUs) const;
+    void updateCsvPreviewForTimestamp(quint64 timestampUs);
+    SessionLoadResult buildSessionLoadResult(const QString& path, int generation);
 
     QString recording_directory_;
     QVariantList sessions_;
@@ -793,8 +850,21 @@ private:
     QVariantList temperature_preview_;
     QVariantList humidity_preview_;
     QVariantList pressure_preview_;
+    QVariantList csv_rows_all_;
+    QVector<quint64> csv_timestamps_us_;
+    QVector<quint64> waveform_timestamps_us_;
     QString waveform_index_path_;
     QVector<WaveformFrameIndex> waveform_frame_index_;
+    QThread *session_load_thread_ = nullptr;
+    int load_generation_ = 0;
+    bool loading_ = false;
+    int loading_progress_ = 0;
+    QString loading_text_;
+    int current_frame_index_ = -1;
+    int current_csv_row_ = -1;
+    int secondary_csv_row_ = -1;
+    int waveform_raw_point_count_ = 0;
+    int waveform_harmonic_point_count_ = 0;
 };
 
 class RawParserBackend : public QObject

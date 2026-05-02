@@ -4308,6 +4308,14 @@ QVariantList SessionBackend::temperaturePreview() const { return temperature_pre
 QVariantList SessionBackend::humidityPreview() const { return humidity_preview_; }
 QVariantList SessionBackend::pressurePreview() const { return pressure_preview_; }
 bool SessionBackend::waveformIndexReady() const { return !waveform_frame_index_.isEmpty(); }
+bool SessionBackend::loading() const { return loading_; }
+int SessionBackend::loadingProgress() const { return loading_progress_; }
+QString SessionBackend::loadingText() const { return loading_text_; }
+int SessionBackend::currentFrameIndex() const { return current_frame_index_; }
+int SessionBackend::currentCsvRow() const { return current_csv_row_; }
+int SessionBackend::secondaryCsvRow() const { return secondary_csv_row_; }
+int SessionBackend::waveformRawPointCount() const { return waveform_raw_point_count_; }
+int SessionBackend::waveformHarmonicPointCount() const { return waveform_harmonic_point_count_; }
 
 void SessionBackend::setRecordingDirectory(const QString& directory)
 {
@@ -4343,16 +4351,30 @@ QVariantMap SessionBackend::sessionSummaryForDirectory(const QString& path, bool
     map[QStringLiteral("framesText")] = QStringLiteral("0 | 0");
     map[QStringLiteral("ratesText")] = QStringLiteral("--- | ---");
 
+    const QDir sessionDir(path);
     qint64 size = 0;
-    QDirIterator it(path, QDir::Files, QDirIterator::Subdirectories);
-    while (it.hasNext())
-    {
-        it.next();
-        size += it.fileInfo().size();
-    }
-    map[QStringLiteral("size")] = formatBytes(size);
+    QStringList countedFiles;
+    auto addFileSize = [&](const QString& relativeOrAbsolutePath) {
+        if (relativeOrAbsolutePath.trimmed().isEmpty())
+        {
+            return;
+        }
+        QFileInfo fileInfo(relativeOrAbsolutePath);
+        if (fileInfo.isRelative())
+        {
+            fileInfo.setFile(sessionDir.filePath(relativeOrAbsolutePath));
+        }
+        const QString absolutePath = QDir::fromNativeSeparators(fileInfo.absoluteFilePath());
+        if (!fileInfo.exists() || !fileInfo.isFile() || countedFiles.contains(absolutePath))
+        {
+            return;
+        }
+        countedFiles.append(absolutePath);
+        size += fileInfo.size();
+    };
+    addFileSize(QStringLiteral("session.json"));
 
-    QFile metadata(QDir(path).filePath(QStringLiteral("session.json")));
+    QFile metadata(sessionDir.filePath(QStringLiteral("session.json")));
     QDateTime startDt;
     QDateTime endDt;
     if (metadata.open(QIODevice::ReadOnly))
@@ -4389,7 +4411,30 @@ QVariantMap SessionBackend::sessionSummaryForDirectory(const QString& path, bool
         {
             map[QStringLiteral("status")] = QStringLiteral("partial");
         }
+
+        const QJsonObject paths = root.value(QStringLiteral("paths")).toObject();
+        addFileSize(paths.value(QStringLiteral("devices_csv")).toString(QStringLiteral("sensors/devices.csv")));
+        addFileSize(paths.value(QStringLiteral("event_log")).toString());
+        addFileSize(paths.value(QStringLiteral("error_log")).toString());
+        addFileSize(paths.value(QStringLiteral("device_config")).toString());
+        addFileSize(paths.value(QStringLiteral("raw_format_doc")).toString());
+
+        const QJsonObject rawFiles = root.value(QStringLiteral("raw_files")).toObject();
+        for (auto it = rawFiles.constBegin(); it != rawFiles.constEnd(); ++it)
+        {
+            addFileSize(it.value().toObject().value(QStringLiteral("path")).toString());
+        }
     }
+    else
+    {
+        addFileSize(QStringLiteral("sensors/devices.csv"));
+        addFileSize(QStringLiteral("raw/epsilon.dat"));
+        addFileSize(QStringLiteral("raw/ptb.dat"));
+        addFileSize(QStringLiteral("raw/hmp.dat"));
+        addFileSize(QStringLiteral("raw/lidar.dat"));
+        addFileSize(QStringLiteral("raw/tcp_wave.dat"));
+    }
+    map[QStringLiteral("size")] = formatBytes(size);
 
     updateSessionSummaryCountText(map);
     return map;
@@ -4444,7 +4489,7 @@ void SessionBackend::openSessionPath(const QString& path)
     {
         return;
     }
-    loadSelectedSession(normalized);
+    startLoadingSession(normalized);
 }
 
 void SessionBackend::selectSession(int index)
@@ -4465,15 +4510,16 @@ void SessionBackend::reloadSelectedSession()
     {
         if (!sessions_.isEmpty())
         {
-            loadSelectedSession(sessions_.constFirst().toMap().value(QStringLiteral("path")).toString());
+            startLoadingSession(sessions_.constFirst().toMap().value(QStringLiteral("path")).toString());
         }
         return;
     }
-    loadSelectedSession(path);
+    startLoadingSession(path);
 }
 
 void SessionBackend::clear()
 {
+    ++load_generation_;
     selected_session_.clear();
     clearPreviewData();
     emit selectedSessionChanged();
@@ -4490,68 +4536,396 @@ void SessionBackend::clearPreviewData()
     temperature_preview_.clear();
     humidity_preview_.clear();
     pressure_preview_.clear();
+    csv_rows_all_.clear();
+    csv_timestamps_us_.clear();
+    waveform_timestamps_us_.clear();
     waveform_index_path_.clear();
     waveform_frame_index_.clear();
+    current_frame_index_ = -1;
+    current_csv_row_ = -1;
+    secondary_csv_row_ = -1;
+    waveform_raw_point_count_ = 0;
+    waveform_harmonic_point_count_ = 0;
+    emit frameSelectionChanged();
 }
 
 void SessionBackend::loadSelectedSession(const QString& path)
 {
-    selected_session_ = sessionSummaryForDirectory(path, false);
-    csv_preview_rows_ = readCsvPreview(QDir(path).filePath(QStringLiteral("sensors/devices.csv")), 80);
-    csv_preview_columns_.clear();
-    if (!csv_preview_rows_.isEmpty())
+    startLoadingSession(path);
+}
+
+void SessionBackend::setLoadingState(bool loading, int progress, const QString& text)
+{
+    const bool changed = loading_ != loading || loading_progress_ != progress || loading_text_ != text;
+    loading_ = loading;
+    loading_progress_ = std::clamp(progress, 0, 100);
+    loading_text_ = text;
+    if (changed)
     {
-        const QVariantMap firstRow = csv_preview_rows_.constFirst().toMap();
-        const QStringList preferred = {
-            QStringLiteral("#"),
-            QStringLiteral("时间偏差"),
-            QStringLiteral("record_timestamp_us"),
-            QStringLiteral("record_timestamp_utc"),
-            QStringLiteral("epsilon_host_timestamp_us"),
-            QStringLiteral("nav_lat_deg"),
-            QStringLiteral("nav_lon_deg"),
-            QStringLiteral("nav_height_m"),
-            QStringLiteral("gnss_fix"),
-            QStringLiteral("gnss_satellites")
-        };
-        for (const QString& key : preferred)
+        emit loadingChanged();
+    }
+}
+
+void SessionBackend::postLoadProgress(int generation, int progress, const QString& text)
+{
+    QMetaObject::invokeMethod(this, [this, generation, progress, text]() {
+        if (generation != load_generation_)
         {
-            if (firstRow.contains(key))
-            {
-                csv_preview_columns_.append(key);
-            }
+            return;
         }
-        for (auto it = firstRow.cbegin(); it != firstRow.cend() && csv_preview_columns_.size() < 12; ++it)
-        {
-            if (!csv_preview_columns_.contains(it.key()))
-            {
-                csv_preview_columns_.append(it.key());
-            }
-        }
+        setLoadingState(true, progress, text);
+    }, Qt::QueuedConnection);
+}
+
+void SessionBackend::startLoadingSession(const QString& path)
+{
+    const QString normalized = QDir::fromNativeSeparators(path.trimmed());
+    if (normalized.isEmpty())
+    {
+        return;
     }
 
-    const QVariantMap waveform = readWaveformPreviews(QDir(path).filePath(QStringLiteral("raw/tcp_wave.dat")));
-    waveform_raw_preview_ = waveform.value(QStringLiteral("raw")).toList();
-    waveform_harmonic_preview_ = waveform.value(QStringLiteral("harmonic")).toList();
-    peak_trend_preview_ = waveform.value(QStringLiteral("peak")).toList();
-    waveform_preview_ = waveform_harmonic_preview_;
-    const int indexedWaveformFrames = waveform.value(QStringLiteral("frameCount")).toInt();
-    if (indexedWaveformFrames > 0)
+    const int generation = ++load_generation_;
+    setLoadingState(true, 1, QStringLiteral("正在准备加载记录数据..."));
+    clearPreviewData();
+    emit selectedSessionChanged();
+
+    if (session_load_thread_)
     {
-        selected_session_[QStringLiteral("frames")] = indexedWaveformFrames;
-        selected_session_[QStringLiteral("waveformFrames")] = indexedWaveformFrames;
+        session_load_thread_->requestInterruption();
+    }
+
+    auto *thread = QThread::create([this, normalized, generation]() {
+        auto result = std::make_shared<SessionLoadResult>(buildSessionLoadResult(normalized, generation));
+        QMetaObject::invokeMethod(this, [this, result, generation]() {
+            applySessionLoadResult(result, generation);
+        }, Qt::QueuedConnection);
+    });
+    session_load_thread_ = thread;
+    connect(thread, &QThread::finished, this, [this, thread]() {
+        if (session_load_thread_ == thread)
+        {
+            session_load_thread_ = nullptr;
+        }
+    });
+    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
+    thread->start();
+}
+
+void SessionBackend::applySessionLoadResult(const std::shared_ptr<SessionLoadResult>& result, int generation)
+{
+    if (generation != load_generation_)
+    {
+        return;
+    }
+    if (!result || !result->ok)
+    {
+        setLoadingState(false, 0, result ? result->error : QStringLiteral("加载记录失败。"));
+        emit notificationRequested(QStringLiteral("error"), result ? result->error : QStringLiteral("加载记录失败。"));
+        return;
+    }
+
+    selected_session_ = result->selectedSession;
+    csv_preview_columns_ = result->csvColumns;
+    csv_rows_all_ = result->csvRowsAll;
+    csv_timestamps_us_ = result->csvTimestampsUs;
+    waveform_timestamps_us_ = result->waveformTimestampsUs;
+    waveform_index_path_ = result->waveformIndexPath;
+    waveform_frame_index_ = result->waveformFrameIndex;
+    waveform_raw_preview_ = result->rawPreview;
+    waveform_harmonic_preview_ = result->harmonicPreview;
+    waveform_preview_ = waveform_harmonic_preview_;
+    peak_trend_preview_ = result->peakValues;
+    temperature_preview_ = result->temperatureValues;
+    humidity_preview_ = result->humidityValues;
+    pressure_preview_ = result->pressureValues;
+    waveform_raw_point_count_ = result->rawPointCount;
+    waveform_harmonic_point_count_ = result->harmonicPointCount;
+    current_frame_index_ = result->currentFrameIndex;
+
+    if (!waveform_frame_index_.isEmpty())
+    {
+        selected_session_[QStringLiteral("frames")] = waveform_frame_index_.size();
+        selected_session_[QStringLiteral("waveformFrames")] = waveform_frame_index_.size();
         updateSessionSummaryCountText(selected_session_);
     }
 
-    const QVariantMap sensors = readSensorTrendPreviews(QDir(path).filePath(QStringLiteral("sensors/devices.csv")), 600);
-    temperature_preview_ = sensors.value(QStringLiteral("temperature")).toList();
-    humidity_preview_ = sensors.value(QStringLiteral("humidity")).toList();
-    pressure_preview_ = sensors.value(QStringLiteral("pressure")).toList();
+    const quint64 timestampUs = current_frame_index_ >= 0 && current_frame_index_ < waveform_timestamps_us_.size()
+        ? waveform_timestamps_us_.at(current_frame_index_)
+        : 0ULL;
+    updateCsvPreviewForTimestamp(timestampUs);
+
+    setLoadingState(false, 100, QStringLiteral("记录数据加载完成。"));
     emit selectedSessionChanged();
+    emit frameSelectionChanged();
+}
+
+SessionBackend::SessionLoadResult SessionBackend::buildSessionLoadResult(const QString& path, int generation)
+{
+    SessionLoadResult result;
+    result.path = path;
+    result.selectedSession = sessionSummaryForDirectory(path, false);
+    postLoadProgress(generation, 8, QStringLiteral("正在读取传感器 CSV..."));
+
+    QFile csvFile(QDir(path).filePath(QStringLiteral("sensors/devices.csv")));
+    if (csvFile.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        QTextStream in(&csvFile);
+        in.setEncoding(QStringConverter::Utf8);
+        const QStringList headers = parseCsvLine(in.readLine());
+        const int timestampIndex = findHeaderIndex(headers, {
+            QStringLiteral("record_timestamp_us"),
+            QStringLiteral("epsilon_host_timestamp_us"),
+            QStringLiteral("rtk_timestamp_us")
+        });
+        const int temperatureIndex = findHeaderIndex(headers, {QStringLiteral("hmp_temperature_c"), QStringLiteral("temp_c")});
+        const int humidityIndex = findHeaderIndex(headers, {QStringLiteral("hmp_humidity_rh"), QStringLiteral("humidity_rh")});
+        const int pressureIndex = findHeaderIndex(headers, {QStringLiteral("ptb_pressure_hpa"), QStringLiteral("baro_hpa"), QStringLiteral("baro_pa")});
+        const int thValidIndex = findHeaderIndex(headers, {QStringLiteral("th_valid")});
+        const int baroValidIndex = findHeaderIndex(headers, {QStringLiteral("baro_valid")});
+        const bool pressureIsPa = pressureIndex >= 0 && headers.value(pressureIndex).trimmed().toLower().endsWith(QStringLiteral("_pa"));
+        quint64 firstTimestampUs = 0;
+        int rowNumber = 0;
+        const QStringList preferred = {
+            QStringLiteral("#"), QStringLiteral("时间偏差"), QStringLiteral("record_timestamp_us"),
+            QStringLiteral("record_timestamp_utc"), QStringLiteral("epsilon_host_timestamp_us"),
+            QStringLiteral("nav_lat_deg"), QStringLiteral("nav_lon_deg"), QStringLiteral("nav_height_m"),
+            QStringLiteral("gnss_fix"), QStringLiteral("gnss_satellites")
+        };
+        result.csvColumns = preferred;
+
+        while (!in.atEnd())
+        {
+            if (QThread::currentThread()->isInterruptionRequested())
+            {
+                result.error = QStringLiteral("记录加载已取消。");
+                return result;
+            }
+            const QString line = in.readLine();
+            if (line.trimmed().isEmpty())
+            {
+                continue;
+            }
+            const QStringList fields = parseCsvLine(line);
+            if (fields.isEmpty())
+            {
+                continue;
+            }
+            QVariantMap row;
+            row[QStringLiteral("#")] = rowNumber + 1;
+            row[QStringLiteral("_sourceRow")] = rowNumber;
+            row[QStringLiteral("_matchRank")] = -1;
+            row[QStringLiteral("时间偏差")] = QString();
+            quint64 timestampUs = 0;
+            if (timestampIndex >= 0 && timestampIndex < fields.size())
+            {
+                bool ok = false;
+                timestampUs = fields.at(timestampIndex).toULongLong(&ok);
+                if (!ok)
+                {
+                    timestampUs = 0;
+                }
+            }
+            if (timestampUs > 0)
+            {
+                if (firstTimestampUs == 0)
+                {
+                    firstTimestampUs = timestampUs;
+                }
+                row[QStringLiteral("record_timestamp_utc")] =
+                    QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(timestampUs / 1000), Qt::UTC).toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz"));
+            }
+            result.csvTimestampsUs.push_back(timestampUs);
+            for (int i = 0; i < std::min(headers.size(), fields.size()); ++i)
+            {
+                row[headers.at(i)] = fields.at(i);
+                if (!result.csvColumns.contains(headers.at(i)) && result.csvColumns.size() < 14)
+                {
+                    result.csvColumns.append(headers.at(i));
+                }
+            }
+            const bool thValid = thValidIndex < 0 || parseBooleanCsvField(fields.value(thValidIndex), true);
+            const bool baroValid = baroValidIndex < 0 || parseBooleanCsvField(fields.value(baroValidIndex), true);
+            double pressure = (pressureIndex >= 0 && baroValid) ? parseOptionalDouble(fields.value(pressureIndex)) : std::numeric_limits<double>::quiet_NaN();
+            if (std::isfinite(pressure) && pressureIsPa)
+            {
+                pressure /= 100.0;
+            }
+            result.temperatureValues.append((temperatureIndex >= 0 && thValid) ? parseOptionalDouble(fields.value(temperatureIndex)) : std::numeric_limits<double>::quiet_NaN());
+            result.humidityValues.append((humidityIndex >= 0 && thValid) ? parseOptionalDouble(fields.value(humidityIndex)) : std::numeric_limits<double>::quiet_NaN());
+            result.pressureValues.append(pressure);
+            result.csvRowsAll.append(row);
+            ++rowNumber;
+            if (rowNumber % 5000 == 0)
+            {
+                postLoadProgress(generation, 8 + std::min(18, rowNumber / 5000), QStringLiteral("正在读取传感器 CSV... %1 行").arg(rowNumber));
+            }
+        }
+
+        if (!result.csvRowsAll.isEmpty())
+        {
+            result.selectedSession[QStringLiteral("sensorRows")] = result.csvRowsAll.size();
+            updateSessionSummaryCountText(result.selectedSession);
+        }
+    }
+
+    postLoadProgress(generation, 28, QStringLiteral("正在索引 TCP 波形帧..."));
+    QFile file(QDir(path).filePath(QStringLiteral("raw/tcp_wave.dat")));
+    if (file.open(QIODevice::ReadOnly) && file.size() > static_cast<qint64>(sizeof(UnifiedRawFileHeader)))
+    {
+        UnifiedRawFileHeader fileHeader{};
+        if (file.read(reinterpret_cast<char*>(&fileHeader), sizeof(fileHeader)) == static_cast<qint64>(sizeof(fileHeader)) &&
+            std::memcmp(fileHeader.magic, kUnifiedRawMagic, sizeof(fileHeader.magic)) == 0)
+        {
+            const quint32 fileHeaderSize = qFromLittleEndian(fileHeader.header_size);
+            const quint16 sourceId = qFromLittleEndian(fileHeader.source_id);
+            if (fileHeaderSize >= sizeof(UnifiedRawFileHeader) && sourceId == kRawSourceTcpWave &&
+                (fileHeaderSize <= sizeof(UnifiedRawFileHeader) || file.seek(fileHeaderSize)))
+            {
+                int frameCount = 0;
+                while (!file.atEnd())
+                {
+                    if (QThread::currentThread()->isInterruptionRequested())
+                    {
+                        result.error = QStringLiteral("记录加载已取消。");
+                        return result;
+                    }
+                    const qint64 recordStart = file.pos();
+                    UnifiedRawRecordHeader header{};
+                    const qint64 headerBytes = file.read(reinterpret_cast<char*>(&header), sizeof(header));
+                    if (headerBytes == 0)
+                    {
+                        break;
+                    }
+                    if (headerBytes != static_cast<qint64>(sizeof(header)))
+                    {
+                        break;
+                    }
+                    const quint32 marker = qFromLittleEndian(header.marker);
+                    const quint32 recordHeaderSize = qFromLittleEndian(header.header_size);
+                    const quint64 timestampUs = qFromLittleEndian(header.host_timestamp_us);
+                    const quint32 payloadSize = qFromLittleEndian(header.payload_size);
+                    const quint16 recordSourceId = qFromLittleEndian(header.source_id);
+                    const quint32 flags = qFromLittleEndian(header.flags);
+                    if (marker != kUnifiedRawRecordMarker || recordHeaderSize < sizeof(UnifiedRawRecordHeader))
+                    {
+                        break;
+                    }
+                    const qint64 payloadOffset = recordStart + static_cast<qint64>(recordHeaderSize);
+                    const qint64 nextRecord = payloadOffset + static_cast<qint64>(payloadSize);
+                    if (!file.seek(payloadOffset))
+                    {
+                        break;
+                    }
+                    if (recordSourceId == kRawSourceTcpWave && (flags & kRawTcpWaveCombinedPayloadFlag) != 0 && payloadSize >= sizeof(quint32) * 2)
+                    {
+                        quint32 rawSizeLe = 0;
+                        quint32 harmonicSizeLe = 0;
+                        if (file.read(reinterpret_cast<char*>(&rawSizeLe), sizeof(rawSizeLe)) != static_cast<qint64>(sizeof(rawSizeLe)) ||
+                            file.read(reinterpret_cast<char*>(&harmonicSizeLe), sizeof(harmonicSizeLe)) != static_cast<qint64>(sizeof(harmonicSizeLe)))
+                        {
+                            break;
+                        }
+                        const quint32 rawSize = qFromLittleEndian(rawSizeLe);
+                        const quint32 harmonicSize = qFromLittleEndian(harmonicSizeLe);
+                        const quint64 requiredPayloadSize = static_cast<quint64>(sizeof(quint32) * 2) + rawSize + harmonicSize;
+                        if (requiredPayloadSize <= payloadSize && harmonicSize > 0 && harmonicSize % kFloatSize == 0)
+                        {
+                            WaveformFrameIndex frame;
+                            frame.rawPayloadOffset = static_cast<quint64>(payloadOffset) + sizeof(quint32) * 2ULL;
+                            frame.rawPayloadSize = rawSize;
+                            frame.harmonicPayloadOffset = frame.rawPayloadOffset + rawSize;
+                            frame.harmonicPayloadSize = harmonicSize;
+                            frame.flags = flags;
+                            frame.timestampUs = timestampUs;
+                            result.waveformFrameIndex.push_back(frame);
+                            result.waveformTimestampsUs.push_back(timestampUs);
+                            ++frameCount;
+                            if (frameCount % 2000 == 0)
+                            {
+                                postLoadProgress(generation, 28, QStringLiteral("正在索引 TCP 波形帧... %1 帧").arg(frameCount));
+                            }
+                        }
+                    }
+                    if (!file.seek(nextRecord))
+                    {
+                        break;
+                    }
+                }
+                if (!result.waveformFrameIndex.isEmpty())
+                {
+                    result.waveformIndexPath = QDir::fromNativeSeparators(QFileInfo(file.fileName()).absoluteFilePath());
+                }
+            }
+        }
+    }
+
+    const int frameTotal = result.waveformFrameIndex.size();
+    if (frameTotal > 0)
+    {
+        result.selectedSession[QStringLiteral("frames")] = frameTotal;
+        result.selectedSession[QStringLiteral("waveformFrames")] = frameTotal;
+        updateSessionSummaryCountText(result.selectedSession);
+    }
+
+    postLoadProgress(generation, 38, QStringLiteral("正在计算峰值趋势..."));
+    QFile waveFile(QDir(path).filePath(QStringLiteral("raw/tcp_wave.dat")));
+    if (waveFile.open(QIODevice::ReadOnly))
+    {
+        const int progressInterval = std::max(1, frameTotal / 100);
+        for (int i = 0; i < frameTotal; ++i)
+        {
+            if (QThread::currentThread()->isInterruptionRequested())
+            {
+                result.error = QStringLiteral("记录加载已取消。");
+                return result;
+            }
+            const WaveformFrameIndex& frame = result.waveformFrameIndex.at(i);
+            const VaporView::TcpFloatEncoding encoding = VaporView::tcpFloatEncodingFromRawDatFlags(frame.flags);
+            if (i == 0 && frame.rawPayloadSize > 0 && waveFile.seek(static_cast<qint64>(frame.rawPayloadOffset)))
+            {
+                const QByteArray raw = waveFile.read(static_cast<qint64>(frame.rawPayloadSize));
+                if (raw.size() == static_cast<int>(frame.rawPayloadSize))
+                {
+                    const QVector<float> rawValues = VaporView::decodeTcpFloatPayload(raw, encoding);
+                    result.rawPointCount = rawValues.size();
+                    result.rawPreview = decimateToVariantList(rawValues, 1200);
+                }
+            }
+            if (frame.harmonicPayloadSize > 0 && waveFile.seek(static_cast<qint64>(frame.harmonicPayloadOffset)))
+            {
+                const QByteArray harmonic = waveFile.read(static_cast<qint64>(frame.harmonicPayloadSize));
+                if (harmonic.size() == static_cast<int>(frame.harmonicPayloadSize))
+                {
+                    const QVector<float> harmonicValues = VaporView::decodeTcpFloatPayload(harmonic, encoding);
+                    if (i == 0)
+                    {
+                        result.harmonicPointCount = harmonicValues.size();
+                        result.harmonicPreview = decimateToVariantList(harmonicValues, 1200);
+                    }
+                    result.peakValues.append(waveformPeakValue(harmonicValues, 0, 0));
+                }
+            }
+            if ((i + 1) % progressInterval == 0 || (i + 1) == frameTotal)
+            {
+                const int progress = 38 + static_cast<int>(std::round(54.0 * static_cast<double>(i + 1) / static_cast<double>(std::max(1, frameTotal))));
+                postLoadProgress(generation, progress, QStringLiteral("正在计算峰值趋势... %1/%2 帧").arg(i + 1).arg(frameTotal));
+            }
+        }
+    }
+
+    result.currentFrameIndex = frameTotal > 0 ? 0 : -1;
+    result.ok = true;
+    postLoadProgress(generation, 96, QStringLiteral("正在更新记录查看页面..."));
+    return result;
 }
 
 void SessionBackend::loadSessionFrame(int frameIndex)
 {
+    if (loading_)
+    {
+        return;
+    }
     const QString path = selected_session_.value(QStringLiteral("path")).toString();
     if (path.isEmpty())
     {
@@ -4564,10 +4938,132 @@ void SessionBackend::loadSessionFrame(int frameIndex)
     {
         return;
     }
+    current_frame_index_ = std::clamp(frameIndex, 0, static_cast<int>(waveform_frame_index_.size()) - 1);
     waveform_raw_preview_ = raw;
     waveform_harmonic_preview_ = harmonic;
     waveform_preview_ = waveform_harmonic_preview_;
+    waveform_raw_point_count_ = waveform.value(QStringLiteral("rawPointCount"), waveform_raw_preview_.size()).toInt();
+    waveform_harmonic_point_count_ = waveform.value(QStringLiteral("harmonicPointCount"), waveform_harmonic_preview_.size()).toInt();
+    updateCsvPreviewForTimestamp(waveform.value(QStringLiteral("timestampUs")).toULongLong());
     emit selectedSessionChanged();
+    emit frameSelectionChanged();
+}
+
+int SessionBackend::findClosestCsvRow(quint64 timestampUs) const
+{
+    if (timestampUs == 0 || csv_timestamps_us_.isEmpty())
+    {
+        return -1;
+    }
+    const auto it = std::lower_bound(csv_timestamps_us_.cbegin(), csv_timestamps_us_.cend(), timestampUs);
+    if (it == csv_timestamps_us_.cbegin())
+    {
+        return 0;
+    }
+    if (it == csv_timestamps_us_.cend())
+    {
+        return static_cast<int>(csv_timestamps_us_.size()) - 1;
+    }
+    const int upperIndex = static_cast<int>(it - csv_timestamps_us_.cbegin());
+    const int lowerIndex = upperIndex - 1;
+    const quint64 lowerDelta = timestampUs >= csv_timestamps_us_.at(lowerIndex)
+        ? timestampUs - csv_timestamps_us_.at(lowerIndex)
+        : csv_timestamps_us_.at(lowerIndex) - timestampUs;
+    const quint64 upperDelta = timestampUs >= csv_timestamps_us_.at(upperIndex)
+        ? timestampUs - csv_timestamps_us_.at(upperIndex)
+        : csv_timestamps_us_.at(upperIndex) - timestampUs;
+    return lowerDelta <= upperDelta ? lowerIndex : upperIndex;
+}
+
+QVector<int> SessionBackend::closestCsvRows(quint64 timestampUs) const
+{
+    QVector<int> rows;
+    if (timestampUs == 0 || csv_timestamps_us_.isEmpty())
+    {
+        return rows;
+    }
+    const auto it = std::lower_bound(csv_timestamps_us_.cbegin(), csv_timestamps_us_.cend(), timestampUs);
+    if (it == csv_timestamps_us_.cbegin())
+    {
+        rows.push_back(0);
+        if (csv_timestamps_us_.size() > 1)
+        {
+            rows.push_back(1);
+        }
+    }
+    else if (it == csv_timestamps_us_.cend())
+    {
+        if (csv_timestamps_us_.size() > 1)
+        {
+            rows.push_back(static_cast<int>(csv_timestamps_us_.size()) - 2);
+        }
+        rows.push_back(static_cast<int>(csv_timestamps_us_.size()) - 1);
+    }
+    else
+    {
+        const int upperIndex = static_cast<int>(it - csv_timestamps_us_.cbegin());
+        rows.push_back(upperIndex - 1);
+        rows.push_back(upperIndex);
+    }
+    std::sort(rows.begin(), rows.end());
+    rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
+    const int primary = findClosestCsvRow(timestampUs);
+    std::sort(rows.begin(), rows.end(), [this, timestampUs, primary](int a, int b) {
+        if (a == primary) return true;
+        if (b == primary) return false;
+        const quint64 deltaA = timestampUs >= csv_timestamps_us_.at(a)
+            ? timestampUs - csv_timestamps_us_.at(a)
+            : csv_timestamps_us_.at(a) - timestampUs;
+        const quint64 deltaB = timestampUs >= csv_timestamps_us_.at(b)
+            ? timestampUs - csv_timestamps_us_.at(b)
+            : csv_timestamps_us_.at(b) - timestampUs;
+        return deltaA < deltaB;
+    });
+    return rows;
+}
+
+void SessionBackend::updateCsvPreviewForTimestamp(quint64 timestampUs)
+{
+    current_csv_row_ = -1;
+    secondary_csv_row_ = -1;
+    csv_preview_rows_.clear();
+    QVector<int> highlightedRows = closestCsvRows(timestampUs);
+    if (!highlightedRows.isEmpty())
+    {
+        current_csv_row_ = highlightedRows.value(0, -1);
+        secondary_csv_row_ = highlightedRows.value(1, -1);
+    }
+
+    QSet<int> insertedRows;
+    auto appendRow = [&](int sourceRow, int rank) {
+        if (sourceRow < 0 || sourceRow >= csv_rows_all_.size() || insertedRows.contains(sourceRow))
+        {
+            return;
+        }
+        QVariantMap row = csv_rows_all_.at(sourceRow).toMap();
+        row[QStringLiteral("_matchRank")] = rank;
+        if (timestampUs > 0 && sourceRow < csv_timestamps_us_.size())
+        {
+            const qint64 deltaUs = static_cast<qint64>(csv_timestamps_us_.at(sourceRow)) - static_cast<qint64>(timestampUs);
+            const double deltaMs = static_cast<double>(deltaUs) / 1000.0;
+            const QString deltaText = QStringLiteral("%1%2 ms")
+                .arg(deltaMs >= 0.0 ? QStringLiteral("+") : QString())
+                .arg(deltaMs, 0, 'f', 3);
+            row[QStringLiteral("时间偏差")] = deltaText;
+            row[QStringLiteral("_deltaText")] = deltaText;
+        }
+        csv_preview_rows_.append(row);
+        insertedRows.insert(sourceRow);
+    };
+
+    for (int i = 0; i < highlightedRows.size(); ++i)
+    {
+        appendRow(highlightedRows.at(i), i);
+    }
+    for (int i = 0; i < csv_rows_all_.size() && csv_preview_rows_.size() < 80; ++i)
+    {
+        appendRow(i, -1);
+    }
 }
 
 QVariantList SessionBackend::readCsvPreview(const QString& csvPath, int maxRows) const
@@ -4784,7 +5280,9 @@ QVariantMap SessionBackend::readWaveformFramePreview(const QString& rawPath, int
         const QByteArray raw = file.read(static_cast<qint64>(frame.rawPayloadSize));
         if (raw.size() == static_cast<int>(frame.rawPayloadSize))
         {
-            result[QStringLiteral("raw")] = decimateToVariantList(VaporView::decodeTcpFloatPayload(raw, encoding), 800);
+            const QVector<float> values = VaporView::decodeTcpFloatPayload(raw, encoding);
+            result[QStringLiteral("rawPointCount")] = values.size();
+            result[QStringLiteral("raw")] = decimateToVariantList(values, 1200);
         }
     }
     if (frame.harmonicPayloadSize > 0 && file.seek(static_cast<qint64>(frame.harmonicPayloadOffset)))
@@ -4792,9 +5290,12 @@ QVariantMap SessionBackend::readWaveformFramePreview(const QString& rawPath, int
         const QByteArray harmonic = file.read(static_cast<qint64>(frame.harmonicPayloadSize));
         if (harmonic.size() == static_cast<int>(frame.harmonicPayloadSize))
         {
-            result[QStringLiteral("harmonic")] = decimateToVariantList(VaporView::decodeTcpFloatPayload(harmonic, encoding), 800);
+            const QVector<float> values = VaporView::decodeTcpFloatPayload(harmonic, encoding);
+            result[QStringLiteral("harmonicPointCount")] = values.size();
+            result[QStringLiteral("harmonic")] = decimateToVariantList(values, 1200);
         }
     }
+    result[QStringLiteral("timestampUs")] = QVariant::fromValue<qulonglong>(frame.timestampUs);
     return result;
 }
 

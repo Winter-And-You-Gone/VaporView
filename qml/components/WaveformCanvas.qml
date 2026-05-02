@@ -27,6 +27,11 @@ Item {
     property real lineWidth: 1.5
     property real fillTopOpacity: 0.15
     property real fillBottomOpacity: 0.01
+    property bool showCursor: false
+    property int cursorSourceIndex: -1
+    property string cursorXUnit: ""
+    property string cursorYUnit: ""
+    property color cursorColor: lineColor
 
     readonly property int marginLeft: 42
     readonly property int marginTop: 8
@@ -43,6 +48,11 @@ Item {
     readonly property int effectiveXStart: Math.max(0, xStartIndex)
     readonly property int effectiveXEnd: xEndIndex >= effectiveXStart ? xEndIndex
                                                                       : Math.max(effectiveXStart, effectiveXStart + Math.max(0, effectiveSourceCount - 1))
+    readonly property bool cursorVisible: showCursor && cursorSourceIndex >= effectiveXStart && cursorSourceIndex <= effectiveXEnd && cursorSampleValue(cursorSourceIndex) === cursorSampleValue(cursorSourceIndex)
+    readonly property real cursorRatio: effectiveXEnd <= effectiveXStart ? 0 : (cursorSourceIndex - effectiveXStart) / (effectiveXEnd - effectiveXStart)
+    readonly property real cursorX: marginLeft + cursorRatio * chartWidth
+    readonly property real cursorY: py(cursorSampleValue(cursorSourceIndex))
+    readonly property real cursorValue: cursorSampleValue(cursorSourceIndex)
 
     clip: true
 
@@ -59,6 +69,16 @@ Item {
     function sampleValue(list, index) {
         var value = Number(list[index])
         return value
+    }
+
+    function cursorSampleValue(sourceIndex) {
+        var count = sampleCount(samples)
+        if (count <= 0)
+            return NaN
+        var sourceCount = Math.max(1, effectiveXEnd - effectiveXStart + 1)
+        var clampedSource = Math.max(effectiveXStart, Math.min(effectiveXEnd, sourceIndex))
+        var sampleIndex = Math.round((clampedSource - effectiveXStart) * (count - 1) / Math.max(1, sourceCount - 1))
+        return sampleValue(samples, Math.max(0, Math.min(count - 1, sampleIndex)))
     }
 
     function buildDisplaySamples(list) {
@@ -117,6 +137,14 @@ Item {
         if (value >= 10000)
             return Math.round(value / 1000) + "k"
         return Math.round(value).toString()
+    }
+
+    function formatCursorX(value) {
+        return formatIndexLabel(value + xAxisLabelOffset) + cursorXUnit
+    }
+
+    function formatCursorY(value) {
+        return formatAxisValue(value) + cursorYUnit
     }
 
     function xTickLabelValue(tickIndex, tickCount) {
@@ -302,9 +330,73 @@ Item {
         }
     }
 
+    Canvas {
+        id: cursorLayer
+        anchors.fill: parent
+        z: 20
+
+        onPaint: {
+            var ctx = getContext("2d")
+            ctx.clearRect(0, 0, width, height)
+            if (!chart.cursorVisible)
+                return
+            ctx.save()
+            ctx.setLineDash([4, 3])
+            ctx.strokeStyle = chart.rgbaString(chart.cursorColor, 0.92)
+            ctx.lineWidth = 1
+            ctx.beginPath()
+            ctx.moveTo(chart.cursorX, chart.marginTop)
+            ctx.lineTo(chart.cursorX, chart.marginTop + chart.chartHeight)
+            ctx.moveTo(chart.marginLeft, chart.cursorY)
+            ctx.lineTo(chart.marginLeft + chart.chartWidth, chart.cursorY)
+            ctx.stroke()
+            ctx.restore()
+        }
+    }
+
+    Rectangle {
+        visible: chart.cursorVisible
+        z: 30
+        width: Math.max(40, xLabel.implicitWidth + 10)
+        height: 18
+        radius: 3
+        color: chart.cursorColor
+        x: Math.max(chart.marginLeft, Math.min(chart.marginLeft + chart.chartWidth - width, chart.cursorX - width / 2))
+        y: chart.marginTop + chart.chartHeight + 3
+        Text {
+            id: xLabel
+            anchors.centerIn: parent
+            text: chart.formatCursorX(chart.cursorSourceIndex)
+            color: "#ffffff"
+            font.pixelSize: Math.round(9 * chart.uiScale)
+            font.weight: Font.Bold
+            font.family: "Consolas"
+        }
+    }
+
+    Rectangle {
+        visible: chart.cursorVisible
+        z: 30
+        width: Math.max(chart.marginLeft - 5, yLabel.implicitWidth + 8)
+        height: 18
+        radius: 3
+        color: chart.cursorColor
+        x: 2
+        y: Math.max(chart.marginTop, Math.min(chart.marginTop + chart.chartHeight - height, chart.cursorY - height / 2))
+        Text {
+            id: yLabel
+            anchors.centerIn: parent
+            text: chart.formatCursorY(chart.cursorValue)
+            color: "#ffffff"
+            font.pixelSize: Math.round(9 * chart.uiScale)
+            font.weight: Font.Bold
+            font.family: "Consolas"
+        }
+    }
+
     Connections {
         target: chart
-        function onDrawSamplesChanged() { lineLayer.requestPaint() }
+        function onDrawSamplesChanged() { lineLayer.requestPaint(); cursorLayer.requestPaint() }
         function onLineColorChanged() { lineLayer.requestPaint() }
         function onPlotBackgroundChanged() { lineLayer.requestPaint() }
         function onScatterChanged() { lineLayer.requestPaint() }
@@ -319,10 +411,16 @@ Item {
         function onLineWidthChanged() { lineLayer.requestPaint() }
         function onFillTopOpacityChanged() { lineLayer.requestPaint() }
         function onFillBottomOpacityChanged() { lineLayer.requestPaint() }
+        function onCursorSourceIndexChanged() { cursorLayer.requestPaint() }
+        function onShowCursorChanged() { cursorLayer.requestPaint() }
+        function onCursorColorChanged() { cursorLayer.requestPaint() }
     }
 
-    onWidthChanged: lineLayer.requestPaint()
-    onHeightChanged: lineLayer.requestPaint()
+    onWidthChanged: { lineLayer.requestPaint(); cursorLayer.requestPaint() }
+    onHeightChanged: { lineLayer.requestPaint(); cursorLayer.requestPaint() }
+    onCursorVisibleChanged: cursorLayer.requestPaint()
+    onCursorXChanged: cursorLayer.requestPaint()
+    onCursorYChanged: cursorLayer.requestPaint()
 
     Repeater {
         model: chart.scatter ? chart.pointCount : 0
