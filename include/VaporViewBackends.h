@@ -769,6 +769,9 @@ public:
     int waveformHarmonicPointCount() const;
 
     Q_INVOKABLE void refreshSessions();
+    Q_INVOKABLE void sortSessions(int mode);
+    Q_INVOKABLE void setSessionFilter(const QString& text);
+    Q_INVOKABLE void clearSessionFilter();
     Q_INVOKABLE void openSessionPath(const QString& path);
     Q_INVOKABLE void selectSession(int index);
     Q_INVOKABLE void reloadSelectedSession();
@@ -837,10 +840,14 @@ private:
     int findClosestCsvRow(quint64 timestampUs) const;
     QVector<int> closestCsvRows(quint64 timestampUs) const;
     void updateCsvPreviewForTimestamp(quint64 timestampUs);
+    void applySessionSortFilter();
     SessionLoadResult buildSessionLoadResult(const QString& path, int generation);
 
     QString recording_directory_;
     QVariantList sessions_;
+    QVariantList all_sessions_;
+    int sort_sessions_mode_ = 0;
+    QString session_filter_text_;
     QVariantMap selected_session_;
     QStringList csv_preview_columns_;
     QVariantList csv_preview_rows_;

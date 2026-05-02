@@ -4454,6 +4454,7 @@ void SessionBackend::refreshSessions()
             sessions_.append(sessionSummaryForDirectory(entry.absoluteFilePath()));
         }
     }
+    all_sessions_ = sessions_;
     emit sessionsChanged();
 
     if (sessions_.isEmpty())
@@ -4480,6 +4481,65 @@ void SessionBackend::refreshSessions()
     selected_session_ = sessions_.at(selectedIndex).toMap();
     clearPreviewData();
     emit selectedSessionChanged();
+}
+
+void SessionBackend::applySessionSortFilter()
+{
+    QVariantList filtered = all_sessions_;
+    if (!session_filter_text_.isEmpty())
+    {
+        QVariantList tmp;
+        for (const QVariant& s : filtered)
+        {
+            if (s.toMap().value(QStringLiteral("name")).toString().contains(session_filter_text_, Qt::CaseInsensitive))
+            {
+                tmp.append(s);
+            }
+        }
+        filtered = tmp;
+    }
+
+    switch (sort_sessions_mode_)
+    {
+    case 1: // date ascending
+        std::sort(filtered.begin(), filtered.end(), [](const QVariant& a, const QVariant& b) {
+            return a.toMap().value(QStringLiteral("date")).toString() < b.toMap().value(QStringLiteral("date")).toString();
+        });
+        break;
+    case 2: // size descending
+        std::sort(filtered.begin(), filtered.end(), [](const QVariant& a, const QVariant& b) {
+            return a.toMap().value(QStringLiteral("size")).toString() > b.toMap().value(QStringLiteral("size")).toString();
+        });
+        break;
+    case 3: // name ascending
+        std::sort(filtered.begin(), filtered.end(), [](const QVariant& a, const QVariant& b) {
+            return a.toMap().value(QStringLiteral("name")).toString().toLower() < b.toMap().value(QStringLiteral("name")).toString().toLower();
+        });
+        break;
+    default: // 0 = date descending (default, directory listing order)
+        break;
+    }
+
+    sessions_ = filtered;
+    emit sessionsChanged();
+}
+
+void SessionBackend::sortSessions(int mode)
+{
+    sort_sessions_mode_ = mode;
+    applySessionSortFilter();
+}
+
+void SessionBackend::setSessionFilter(const QString& text)
+{
+    session_filter_text_ = text.trimmed();
+    applySessionSortFilter();
+}
+
+void SessionBackend::clearSessionFilter()
+{
+    session_filter_text_.clear();
+    applySessionSortFilter();
 }
 
 void SessionBackend::openSessionPath(const QString& path)
@@ -5064,8 +5124,18 @@ void SessionBackend::updateCsvPreviewForTimestamp(quint64 timestampUs)
     }
 
     const QSet<int> highlightedSet(highlightedRows.begin(), highlightedRows.end());
-    const int maxRows = qMin(static_cast<int>(csv_rows_all_.size()), 80);
-    for (int i = 0; i < maxRows; ++i)
+    const int totalRows = static_cast<int>(csv_rows_all_.size());
+    int startRow = 0;
+    if (!highlightedRows.isEmpty() && highlightedRows.first() >= 0)
+    {
+        startRow = highlightedRows.first();
+    }
+    if (startRow + 80 > totalRows)
+    {
+        startRow = std::max(0, totalRows - 80);
+    }
+    const int endRow = std::min(startRow + 80, totalRows);
+    for (int i = startRow; i < endRow; ++i)
     {
         int rank = -1;
         if (highlightedSet.contains(i))

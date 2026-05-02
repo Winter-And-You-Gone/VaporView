@@ -14,6 +14,7 @@ Item {
     property int previewFrame: Math.min(maxFrame, Math.max(0, Math.floor(maxFrame * 0.49)))
     readonly property int maxFrame: Math.max(0, Number(sessionBackend.selectedSession.waveformFrames || sessionBackend.selectedSession.frames || sessionBackend.peakTrendPreview.length || 0))
     property bool trendScatter: false
+    property bool filterVisible: false
     readonly property color trendRed: "#ef4444"
     readonly property color trendBlue: ApplicationWindow.window.dark ? "#60a5fa" : "#3b82f6"
     readonly property color trendGreen: "#10b981"
@@ -233,16 +234,28 @@ Item {
                     headerRight: Row {
                         spacing: 2
                         HeaderIconButton {
+                            property int sortMode: 0
                             iconName: "arrow-down-up"
                             ToolTip.visible: hovered
-                            ToolTip.text: "排序"
+                            ToolTip.text: ["按日期降序", "按日期升序", "按大小降序", "按名称排序"][sortMode]
                             ToolTip.delay: 400
+                            onClicked: {
+                                sortMode = (sortMode + 1) % 4
+                                sessionBackend.sortSessions(sortMode)
+                            }
                         }
                         HeaderIconButton {
                             iconName: "filter"
                             ToolTip.visible: hovered
                             ToolTip.text: "筛选"
                             ToolTip.delay: 400
+                            onClicked: {
+                                filterVisible = !filterVisible
+                                if (!filterVisible) {
+                                    sessionBackend.clearSessionFilter()
+                                    filterInput.text = ""
+                                }
+                            }
                         }
                         HeaderIconButton {
                             iconName: "refresh-cw"
@@ -256,6 +269,64 @@ Item {
                     ColumnLayout {
                         anchors.fill: parent
                         spacing: 0
+
+                        Rectangle {
+                            id: filterBar
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: filterVisible ? 32 : 0
+                            visible: filterVisible
+                            color: "transparent"
+                            clip: true
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 8
+                                anchors.rightMargin: 8
+                                spacing: 4
+                                TextInput {
+                                    id: filterInput
+                                    Layout.fillWidth: true
+                                    color: ApplicationWindow.window.text
+                                    font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+                                    verticalAlignment: Text.AlignVCenter
+                                    onTextChanged: {
+                                        filterTimer.restart()
+                                    }
+
+                                    property bool placeHolder: true
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "搜索记录名称..."
+                                        color: ApplicationWindow.window.muted
+                                        font.pixelSize: parent.font.pixelSize
+                                        visible: parent.text.length === 0
+                                    }
+
+                                    Timer {
+                                        id: filterTimer
+                                        interval: 300
+                                        repeat: false
+                                        onTriggered: {
+                                            if (filterInput.text.length > 0) {
+                                                sessionBackend.setSessionFilter(filterInput.text)
+                                            } else {
+                                                sessionBackend.clearSessionFilter()
+                                            }
+                                        }
+                                    }
+                                }
+                                HeaderIconButton {
+                                    iconName: "square"
+                                    implicitWidth: 16
+                                    implicitHeight: 16
+                                    onClicked: {
+                                        filterVisible = false
+                                        sessionBackend.clearSessionFilter()
+                                        filterInput.text = ""
+                                    }
+                                }
+                            }
+                        }
 
                         Column {
                             id: sessionList
