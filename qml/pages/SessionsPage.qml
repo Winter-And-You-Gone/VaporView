@@ -232,9 +232,25 @@ Item {
                     title: "记录列表"
                     headerRight: Row {
                         spacing: 2
-                        HeaderIconButton { iconName: "settings"; enabled: false }
-                        HeaderIconButton { iconName: "activity"; enabled: false }
-                        HeaderIconButton { iconName: "refresh-cw"; onClicked: sessionBackend.refreshSessions() }
+                        HeaderIconButton {
+                            iconName: "table-properties"
+                            ToolTip.visible: hovered
+                            ToolTip.text: "排序"
+                            ToolTip.delay: 400
+                        }
+                        HeaderIconButton {
+                            iconName: "scan"
+                            ToolTip.visible: hovered
+                            ToolTip.text: "筛选"
+                            ToolTip.delay: 400
+                        }
+                        HeaderIconButton {
+                            iconName: "refresh-cw"
+                            onClicked: sessionBackend.refreshSessions()
+                            ToolTip.visible: hovered
+                            ToolTip.text: "刷新"
+                            ToolTip.delay: 400
+                        }
                     }
 
                     ColumnLayout {
