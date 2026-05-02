@@ -725,6 +725,7 @@ class SessionBackend : public QObject
     Q_PROPERTY(QVariantList temperaturePreview READ temperaturePreview NOTIFY selectedSessionChanged)
     Q_PROPERTY(QVariantList humidityPreview READ humidityPreview NOTIFY selectedSessionChanged)
     Q_PROPERTY(QVariantList pressurePreview READ pressurePreview NOTIFY selectedSessionChanged)
+    Q_PROPERTY(bool waveformIndexReady READ waveformIndexReady NOTIFY selectedSessionChanged)
 
 public:
     explicit SessionBackend(QObject *parent = nullptr);
@@ -741,6 +742,7 @@ public:
     QVariantList temperaturePreview() const;
     QVariantList humidityPreview() const;
     QVariantList pressurePreview() const;
+    bool waveformIndexReady() const;
 
     Q_INVOKABLE void refreshSessions();
     Q_INVOKABLE void openSessionPath(const QString& path);
@@ -763,11 +765,21 @@ private:
     void clearPreviewData();
     void loadSelectedSession(const QString& path);
     QVariantList readCsvPreview(const QString& csvPath, int maxRows) const;
-    QVariantMap readWaveformPreviews(const QString& rawPath) const;
+    QVariantMap readWaveformPreviews(const QString& rawPath);
     QVariantMap readWaveformFramePreview(const QString& rawPath, int frameIndex) const;
     QVariantMap readSensorTrendPreviews(const QString& csvPath, int maxRows) const;
     QVariantMap countSensorRowsAndRange(const QString& csvPath) const;
     int countWaveformFrames(const QString& rawPath) const;
+
+    struct WaveformFrameIndex
+    {
+        quint64 rawPayloadOffset = 0;
+        quint32 rawPayloadSize = 0;
+        quint64 harmonicPayloadOffset = 0;
+        quint32 harmonicPayloadSize = 0;
+        quint32 flags = 0;
+        quint64 timestampUs = 0;
+    };
 
     QString recording_directory_;
     QVariantList sessions_;
@@ -781,6 +793,8 @@ private:
     QVariantList temperature_preview_;
     QVariantList humidity_preview_;
     QVariantList pressure_preview_;
+    QString waveform_index_path_;
+    QVector<WaveformFrameIndex> waveform_frame_index_;
 };
 
 class RawParserBackend : public QObject

@@ -273,6 +273,49 @@ double secondsBetweenUs(quint64 startUs, quint64 endUs)
     return static_cast<double>(endUs - startUs) / 1000000.0;
 }
 
+double summaryDurationSeconds(const QVariantMap& summary)
+{
+    const QDateTime start = QDateTime::fromString(summary.value(QStringLiteral("startTime")).toString(), QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    const QDateTime end = QDateTime::fromString(summary.value(QStringLiteral("endTime")).toString(), QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    if (start.isValid() && end.isValid() && end > start)
+    {
+        return static_cast<double>(start.secsTo(end));
+    }
+
+    const QStringList parts = summary.value(QStringLiteral("duration")).toString().split(QLatin1Char(':'));
+    if (parts.size() == 3)
+    {
+        bool okH = false;
+        bool okM = false;
+        bool okS = false;
+        const int hours = parts.at(0).toInt(&okH);
+        const int minutes = parts.at(1).toInt(&okM);
+        const int seconds = parts.at(2).toInt(&okS);
+        if (okH && okM && okS)
+        {
+            return static_cast<double>(hours * 3600 + minutes * 60 + seconds);
+        }
+    }
+    return 0.0;
+}
+
+void updateSessionSummaryCountText(QVariantMap& summary)
+{
+    const qlonglong waveformFrames = summary.value(QStringLiteral("waveformFrames")).toLongLong();
+    const qlonglong sensorRows = summary.value(QStringLiteral("sensorRows")).toLongLong();
+    const double durationSeconds = summaryDurationSeconds(summary);
+    const QString waveformRate = durationSeconds > 0.0 && waveformFrames > 1
+        ? formatRateHz(static_cast<double>(waveformFrames - 1) / durationSeconds)
+        : summary.value(QStringLiteral("waveformRateHz"), QStringLiteral("---")).toString();
+    const QString sensorRate = durationSeconds > 0.0 && sensorRows > 1
+        ? formatRateHz(static_cast<double>(sensorRows - 1) / durationSeconds)
+        : summary.value(QStringLiteral("sensorRateHz"), QStringLiteral("---")).toString();
+    summary[QStringLiteral("waveformRateHz")] = waveformRate;
+    summary[QStringLiteral("sensorRateHz")] = sensorRate;
+    summary[QStringLiteral("framesText")] = QStringLiteral("%1 | %2").arg(waveformFrames).arg(sensorRows);
+    summary[QStringLiteral("ratesText")] = QStringLiteral("%1 | %2").arg(waveformRate, sensorRate);
+}
+
 int normalizedPeakFilterMode(int mode)
 {
     return mode >= PeakFilterNone && mode <= PeakFilterExcludeRange ? mode : PeakFilterNone;
@@ -546,6 +589,28 @@ QString jsonString(const QJsonObject& object, const QString& key, const QString&
 {
     const QJsonValue value = object.value(key);
     return value.isString() ? value.toString() : fallback;
+}
+
+quint64 jsonUInt64(const QJsonObject& object, const QString& key, quint64 fallback = 0)
+{
+    const QJsonValue value = object.value(key);
+    if (value.isDouble())
+    {
+        return static_cast<quint64>(std::max(0.0, value.toDouble()));
+    }
+    if (value.isString())
+    {
+        bool ok = false;
+        const quint64 parsed = value.toString().toULongLong(&ok);
+        return ok ? parsed : fallback;
+    }
+    return fallback;
+}
+
+int jsonInt(const QJsonObject& object, const QString& key, int fallback = 0)
+{
+    return static_cast<int>(std::min<quint64>(jsonUInt64(object, key, static_cast<quint64>(std::max(0, fallback))),
+                                             static_cast<quint64>(std::numeric_limits<int>::max())));
 }
 
 QVariantMap makeMetric(const QString& label, const QString& value, const QString& unit = QString())
@@ -4242,6 +4307,7 @@ QVariantList SessionBackend::peakTrendPreview() const { return peak_trend_previe
 QVariantList SessionBackend::temperaturePreview() const { return temperature_preview_; }
 QVariantList SessionBackend::humidityPreview() const { return humidity_preview_; }
 QVariantList SessionBackend::pressurePreview() const { return pressure_preview_; }
+bool SessionBackend::waveformIndexReady() const { return !waveform_frame_index_.isEmpty(); }
 
 void SessionBackend::setRecordingDirectory(const QString& directory)
 {
@@ -4258,6 +4324,7 @@ void SessionBackend::setRecordingDirectory(const QString& directory)
 
 QVariantMap SessionBackend::sessionSummaryForDirectory(const QString& path, bool detailed) const
 {
+    Q_UNUSED(detailed);
     QVariantMap map;
     const QFileInfo info(path);
     map[QStringLiteral("path")] = QDir::fromNativeSeparators(info.absoluteFilePath());
@@ -4293,14 +4360,16 @@ QVariantMap SessionBackend::sessionSummaryForDirectory(const QString& path, bool
         const QJsonObject root = QJsonDocument::fromJson(metadata.readAll()).object();
         map[QStringLiteral("name")] = jsonString(root, QStringLiteral("session_name"), info.fileName());
         map[QStringLiteral("date")] = jsonString(root, QStringLiteral("start_time_utc"), map.value(QStringLiteral("date")).toString());
-        map[QStringLiteral("frames")] = root.value(QStringLiteral("waveform_frames")).toInt();
-        map[QStringLiteral("sensorRows")] = root.value(QStringLiteral("sensor_rows")).toInt();
-        map[QStringLiteral("waveformFrames")] = root.value(QStringLiteral("waveform_frames")).toInt();
+        const quint64 waveformFrames = jsonUInt64(root, QStringLiteral("waveform_frames"));
+        const quint64 sensorRows = jsonUInt64(root, QStringLiteral("sensor_rows"));
+        map[QStringLiteral("frames")] = QVariant::fromValue<qlonglong>(static_cast<qlonglong>(std::min<quint64>(waveformFrames, std::numeric_limits<qlonglong>::max())));
+        map[QStringLiteral("sensorRows")] = QVariant::fromValue<qlonglong>(static_cast<qlonglong>(std::min<quint64>(sensorRows, std::numeric_limits<qlonglong>::max())));
+        map[QStringLiteral("waveformFrames")] = QVariant::fromValue<qlonglong>(static_cast<qlonglong>(std::min<quint64>(waveformFrames, std::numeric_limits<qlonglong>::max())));
         map[QStringLiteral("sensorRateHz")] = root.contains(QStringLiteral("sensor_export_rate_hz"))
-            ? QStringLiteral("%1Hz").arg(root.value(QStringLiteral("sensor_export_rate_hz")).toInt())
+            ? QStringLiteral("%1Hz").arg(jsonInt(root, QStringLiteral("sensor_export_rate_hz")))
             : QStringLiteral("---");
         map[QStringLiteral("waveformRateHz")] = root.contains(QStringLiteral("waveform_export_rate_hz"))
-            ? QStringLiteral("%1Hz").arg(root.value(QStringLiteral("waveform_export_rate_hz")).toInt())
+            ? QStringLiteral("%1Hz").arg(jsonInt(root, QStringLiteral("waveform_export_rate_hz")))
             : QStringLiteral("---");
         const QString start = jsonString(root, QStringLiteral("start_time_utc"));
         const QString end = jsonString(root, QStringLiteral("end_time_utc"));
@@ -4322,54 +4391,7 @@ QVariantMap SessionBackend::sessionSummaryForDirectory(const QString& path, bool
         }
     }
 
-    int sensorRows = map.value(QStringLiteral("sensorRows")).toInt();
-    int waveformFrames = map.value(QStringLiteral("waveformFrames")).toInt();
-    double durationSeconds = startDt.isValid() && endDt.isValid()
-        ? static_cast<double>(startDt.secsTo(endDt))
-        : 0.0;
-
-    if (detailed)
-    {
-        const QVariantMap sensorInfo = countSensorRowsAndRange(QDir(path).filePath(QStringLiteral("sensors/devices.csv")));
-        const int countedSensorRows = sensorInfo.value(QStringLiteral("rows")).toInt();
-        if (countedSensorRows > 0)
-        {
-            sensorRows = countedSensorRows;
-            map[QStringLiteral("sensorRows")] = sensorRows;
-        }
-
-        const int countedWaveformFrames = countWaveformFrames(QDir(path).filePath(QStringLiteral("raw/tcp_wave.dat")));
-        if (countedWaveformFrames > 0)
-        {
-            waveformFrames = countedWaveformFrames;
-            map[QStringLiteral("frames")] = waveformFrames;
-            map[QStringLiteral("waveformFrames")] = waveformFrames;
-        }
-
-        if (durationSeconds <= 0.0)
-        {
-            const quint64 firstUs = sensorInfo.value(QStringLiteral("firstTimestampUs")).toULongLong();
-            const quint64 lastUs = sensorInfo.value(QStringLiteral("lastTimestampUs")).toULongLong();
-            durationSeconds = secondsBetweenUs(firstUs, lastUs);
-            if (durationSeconds > 0.0)
-            {
-                map[QStringLiteral("duration")] = formatDuration(static_cast<qint64>(std::llround(durationSeconds)));
-                map[QStringLiteral("startTime")] = QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(firstUs / 1000), Qt::UTC).toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
-                map[QStringLiteral("endTime")] = QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(lastUs / 1000), Qt::UTC).toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
-            }
-        }
-    }
-
-    const QString computedWaveformRate = durationSeconds > 0.0 && waveformFrames > 1
-        ? formatRateHz(static_cast<double>(waveformFrames - 1) / durationSeconds)
-        : map.value(QStringLiteral("waveformRateHz")).toString();
-    const QString computedSensorRate = durationSeconds > 0.0 && sensorRows > 1
-        ? formatRateHz(static_cast<double>(sensorRows - 1) / durationSeconds)
-        : map.value(QStringLiteral("sensorRateHz")).toString();
-    map[QStringLiteral("waveformRateHz")] = computedWaveformRate;
-    map[QStringLiteral("sensorRateHz")] = computedSensorRate;
-    map[QStringLiteral("framesText")] = QStringLiteral("%1 | %2").arg(waveformFrames).arg(sensorRows);
-    map[QStringLiteral("ratesText")] = QStringLiteral("%1 | %2").arg(computedWaveformRate, computedSensorRate);
+    updateSessionSummaryCountText(map);
     return map;
 }
 
@@ -4431,7 +4453,7 @@ void SessionBackend::selectSession(int index)
     {
         return;
     }
-    selected_session_ = sessionSummaryForDirectory(sessions_.at(index).toMap().value(QStringLiteral("path")).toString(), true);
+    selected_session_ = sessions_.at(index).toMap();
     clearPreviewData();
     emit selectedSessionChanged();
 }
@@ -4468,11 +4490,13 @@ void SessionBackend::clearPreviewData()
     temperature_preview_.clear();
     humidity_preview_.clear();
     pressure_preview_.clear();
+    waveform_index_path_.clear();
+    waveform_frame_index_.clear();
 }
 
 void SessionBackend::loadSelectedSession(const QString& path)
 {
-    selected_session_ = sessionSummaryForDirectory(path, true);
+    selected_session_ = sessionSummaryForDirectory(path, false);
     csv_preview_rows_ = readCsvPreview(QDir(path).filePath(QStringLiteral("sensors/devices.csv")), 80);
     csv_preview_columns_.clear();
     if (!csv_preview_rows_.isEmpty())
@@ -4511,6 +4535,13 @@ void SessionBackend::loadSelectedSession(const QString& path)
     waveform_harmonic_preview_ = waveform.value(QStringLiteral("harmonic")).toList();
     peak_trend_preview_ = waveform.value(QStringLiteral("peak")).toList();
     waveform_preview_ = waveform_harmonic_preview_;
+    const int indexedWaveformFrames = waveform.value(QStringLiteral("frameCount")).toInt();
+    if (indexedWaveformFrames > 0)
+    {
+        selected_session_[QStringLiteral("frames")] = indexedWaveformFrames;
+        selected_session_[QStringLiteral("waveformFrames")] = indexedWaveformFrames;
+        updateSessionSummaryCountText(selected_session_);
+    }
 
     const QVariantMap sensors = readSensorTrendPreviews(QDir(path).filePath(QStringLiteral("sensors/devices.csv")), 600);
     temperature_preview_ = sensors.value(QStringLiteral("temperature")).toList();
@@ -4589,12 +4620,15 @@ QVariantList SessionBackend::readCsvPreview(const QString& csvPath, int maxRows)
     return rows;
 }
 
-QVariantMap SessionBackend::readWaveformPreviews(const QString& rawPath) const
+QVariantMap SessionBackend::readWaveformPreviews(const QString& rawPath)
 {
     QVariantMap result;
     QVariantList rawPreview;
     QVariantList harmonicPreview;
     QVariantList peakPreview;
+    waveform_index_path_.clear();
+    waveform_frame_index_.clear();
+
     QFile file(rawPath);
     if (!file.open(QIODevice::ReadOnly))
     {
@@ -4611,135 +4645,155 @@ QVariantMap SessionBackend::readWaveformPreviews(const QString& rawPath) const
         return result;
     }
     const quint32 fileHeaderSize = qFromLittleEndian(fileHeader.header_size);
+    const quint16 sourceId = qFromLittleEndian(fileHeader.source_id);
+    if (fileHeaderSize < sizeof(UnifiedRawFileHeader) || sourceId != kRawSourceTcpWave)
+    {
+        return result;
+    }
     if (fileHeaderSize > sizeof(UnifiedRawFileHeader) && !file.seek(fileHeaderSize))
     {
         return result;
     }
     while (!file.atEnd())
     {
+        const qint64 recordStart = file.pos();
         UnifiedRawRecordHeader header{};
-        if (file.read(reinterpret_cast<char*>(&header), sizeof(header)) != static_cast<qint64>(sizeof(header)))
+        const qint64 headerBytes = file.read(reinterpret_cast<char*>(&header), sizeof(header));
+        if (headerBytes == 0)
+        {
+            break;
+        }
+        if (headerBytes != static_cast<qint64>(sizeof(header)))
         {
             break;
         }
         const quint32 marker = qFromLittleEndian(header.marker);
         const quint32 recordHeaderSize = qFromLittleEndian(header.header_size);
+        const quint64 timestampUs = qFromLittleEndian(header.host_timestamp_us);
+        const quint32 payloadSize = qFromLittleEndian(header.payload_size);
+        const quint16 recordSourceId = qFromLittleEndian(header.source_id);
+        const quint32 flags = qFromLittleEndian(header.flags);
         if (marker != kUnifiedRawRecordMarker || recordHeaderSize < sizeof(UnifiedRawRecordHeader))
         {
             break;
         }
-        if (recordHeaderSize > sizeof(UnifiedRawRecordHeader) && !file.seek(file.pos() + recordHeaderSize - sizeof(UnifiedRawRecordHeader)))
+
+        const qint64 payloadOffset = recordStart + static_cast<qint64>(recordHeaderSize);
+        const qint64 nextRecord = payloadOffset + static_cast<qint64>(payloadSize);
+        if (!file.seek(payloadOffset))
         {
             break;
         }
-        const quint32 payloadSize = qFromLittleEndian(header.payload_size);
-        const QByteArray payload = file.read(payloadSize);
-        if (payload.size() != static_cast<int>(payloadSize) || payload.size() < 8)
+
+        if (recordSourceId == kRawSourceTcpWave && (flags & kRawTcpWaveCombinedPayloadFlag) != 0 && payloadSize >= sizeof(quint32) * 2)
         {
-            break;
-        }
-        const quint32 rawSize = qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(payload.constData()));
-        const quint32 harmonicSize = qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(payload.constData() + 4));
-        if (payload.size() >= static_cast<int>(8 + rawSize + harmonicSize) && harmonicSize > 0)
-        {
-            const VaporView::TcpFloatEncoding encoding = VaporView::tcpFloatEncodingFromRawDatFlags(qFromLittleEndian(header.flags));
-            const QByteArray raw = payload.mid(8, static_cast<int>(rawSize));
-            const QByteArray harmonic = payload.mid(static_cast<int>(8 + rawSize), static_cast<int>(harmonicSize));
-            const auto rawValues = VaporView::decodeTcpFloatPayload(raw, encoding);
-            const auto harmonicValues = VaporView::decodeTcpFloatPayload(harmonic, encoding);
-            if (rawPreview.isEmpty())
-            {
-                rawPreview = decimateToVariantList(rawValues, 800);
-            }
-            if (harmonicPreview.isEmpty())
-            {
-                harmonicPreview = decimateToVariantList(harmonicValues, 800);
-            }
-            const float peak = waveformPeakValue(harmonicValues, 0, 0);
-            if (std::isfinite(peak))
-            {
-                peakPreview.append(peak);
-            }
-            if (!rawPreview.isEmpty() && !harmonicPreview.isEmpty() && peakPreview.size() >= 600)
+            quint32 rawSizeLe = 0;
+            quint32 harmonicSizeLe = 0;
+            if (file.read(reinterpret_cast<char*>(&rawSizeLe), sizeof(rawSizeLe)) != static_cast<qint64>(sizeof(rawSizeLe)) ||
+                file.read(reinterpret_cast<char*>(&harmonicSizeLe), sizeof(harmonicSizeLe)) != static_cast<qint64>(sizeof(harmonicSizeLe)))
             {
                 break;
             }
+
+            const quint32 rawSize = qFromLittleEndian(rawSizeLe);
+            const quint32 harmonicSize = qFromLittleEndian(harmonicSizeLe);
+            const quint64 requiredPayloadSize = static_cast<quint64>(sizeof(quint32) * 2) + rawSize + harmonicSize;
+            if (requiredPayloadSize <= payloadSize && harmonicSize > 0 && harmonicSize % kFloatSize == 0)
+            {
+                WaveformFrameIndex frame;
+                frame.rawPayloadOffset = static_cast<quint64>(payloadOffset) + sizeof(quint32) * 2ULL;
+                frame.rawPayloadSize = rawSize;
+                frame.harmonicPayloadOffset = frame.rawPayloadOffset + rawSize;
+                frame.harmonicPayloadSize = harmonicSize;
+                frame.flags = flags;
+                frame.timestampUs = timestampUs;
+                waveform_frame_index_.push_back(frame);
+
+                const VaporView::TcpFloatEncoding encoding = VaporView::tcpFloatEncodingFromRawDatFlags(flags);
+                if ((rawPreview.isEmpty() || harmonicPreview.isEmpty()) && rawSize > 0)
+                {
+                    if (!file.seek(static_cast<qint64>(frame.rawPayloadOffset)))
+                    {
+                        break;
+                    }
+                    const QByteArray raw = file.read(static_cast<qint64>(rawSize));
+                    if (raw.size() == static_cast<int>(rawSize) && rawPreview.isEmpty())
+                    {
+                        rawPreview = decimateToVariantList(VaporView::decodeTcpFloatPayload(raw, encoding), 800);
+                    }
+                }
+
+                if (!file.seek(static_cast<qint64>(frame.harmonicPayloadOffset)))
+                {
+                    break;
+                }
+                const QByteArray harmonic = file.read(static_cast<qint64>(harmonicSize));
+                if (harmonic.size() == static_cast<int>(harmonicSize))
+                {
+                    const auto harmonicValues = VaporView::decodeTcpFloatPayload(harmonic, encoding);
+                    if (harmonicPreview.isEmpty())
+                    {
+                        harmonicPreview = decimateToVariantList(harmonicValues, 800);
+                    }
+                    if (peakPreview.size() < 600)
+                    {
+                        const float peak = waveformPeakValue(harmonicValues, 0, 0);
+                        if (std::isfinite(peak))
+                        {
+                            peakPreview.append(peak);
+                        }
+                    }
+                }
+            }
         }
+
+        if (!file.seek(nextRecord))
+        {
+            break;
+        }
+    }
+    if (!waveform_frame_index_.isEmpty())
+    {
+        waveform_index_path_ = QDir::fromNativeSeparators(QFileInfo(rawPath).absoluteFilePath());
     }
     result[QStringLiteral("raw")] = rawPreview;
     result[QStringLiteral("harmonic")] = harmonicPreview;
     result[QStringLiteral("peak")] = peakPreview;
+    result[QStringLiteral("frameCount")] = waveform_frame_index_.size();
     return result;
 }
 
 QVariantMap SessionBackend::readWaveformFramePreview(const QString& rawPath, int frameIndex) const
 {
     QVariantMap result;
+    const QString normalizedRawPath = QDir::fromNativeSeparators(QFileInfo(rawPath).absoluteFilePath());
+    if (waveform_frame_index_.isEmpty() || waveform_index_path_ != normalizedRawPath)
+    {
+        return result;
+    }
+    const int targetIndex = std::clamp(frameIndex, 0, static_cast<int>(waveform_frame_index_.size()) - 1);
+    const WaveformFrameIndex& frame = waveform_frame_index_.at(targetIndex);
     QFile file(rawPath);
-    if (!file.open(QIODevice::ReadOnly) || file.size() <= static_cast<qint64>(sizeof(UnifiedRawFileHeader)))
+    if (!file.open(QIODevice::ReadOnly))
     {
         return result;
     }
-
-    UnifiedRawFileHeader fileHeader{};
-    if (file.read(reinterpret_cast<char*>(&fileHeader), sizeof(fileHeader)) != static_cast<qint64>(sizeof(fileHeader)) ||
-        std::memcmp(fileHeader.magic, kUnifiedRawMagic, sizeof(fileHeader.magic)) != 0)
+    const VaporView::TcpFloatEncoding encoding = VaporView::tcpFloatEncodingFromRawDatFlags(frame.flags);
+    if (frame.rawPayloadSize > 0 && file.seek(static_cast<qint64>(frame.rawPayloadOffset)))
     {
-        return result;
-    }
-    const quint32 fileHeaderSize = qFromLittleEndian(fileHeader.header_size);
-    if (fileHeaderSize > sizeof(UnifiedRawFileHeader) && !file.seek(fileHeaderSize))
-    {
-        return result;
-    }
-
-    const int targetIndex = std::max(0, frameIndex);
-    int currentIndex = 0;
-    while (!file.atEnd())
-    {
-        UnifiedRawRecordHeader header{};
-        if (file.read(reinterpret_cast<char*>(&header), sizeof(header)) != static_cast<qint64>(sizeof(header)))
+        const QByteArray raw = file.read(static_cast<qint64>(frame.rawPayloadSize));
+        if (raw.size() == static_cast<int>(frame.rawPayloadSize))
         {
-            break;
-        }
-        const quint32 marker = qFromLittleEndian(header.marker);
-        const quint32 recordHeaderSize = qFromLittleEndian(header.header_size);
-        if (marker != kUnifiedRawRecordMarker || recordHeaderSize < sizeof(UnifiedRawRecordHeader))
-        {
-            break;
-        }
-        if (recordHeaderSize > sizeof(UnifiedRawRecordHeader) && !file.seek(file.pos() + recordHeaderSize - sizeof(UnifiedRawRecordHeader)))
-        {
-            break;
-        }
-
-        const quint32 payloadSize = qFromLittleEndian(header.payload_size);
-        if (currentIndex != targetIndex)
-        {
-            if (!file.seek(file.pos() + payloadSize))
-            {
-                break;
-            }
-            ++currentIndex;
-            continue;
-        }
-
-        const QByteArray payload = file.read(payloadSize);
-        if (payload.size() != static_cast<int>(payloadSize) || payload.size() < 8)
-        {
-            break;
-        }
-        const quint32 rawSize = qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(payload.constData()));
-        const quint32 harmonicSize = qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(payload.constData() + 4));
-        if (payload.size() >= static_cast<int>(8 + rawSize + harmonicSize))
-        {
-            const VaporView::TcpFloatEncoding encoding = VaporView::tcpFloatEncodingFromRawDatFlags(qFromLittleEndian(header.flags));
-            const QByteArray raw = payload.mid(8, static_cast<int>(rawSize));
-            const QByteArray harmonic = payload.mid(static_cast<int>(8 + rawSize), static_cast<int>(harmonicSize));
             result[QStringLiteral("raw")] = decimateToVariantList(VaporView::decodeTcpFloatPayload(raw, encoding), 800);
+        }
+    }
+    if (frame.harmonicPayloadSize > 0 && file.seek(static_cast<qint64>(frame.harmonicPayloadOffset)))
+    {
+        const QByteArray harmonic = file.read(static_cast<qint64>(frame.harmonicPayloadSize));
+        if (harmonic.size() == static_cast<int>(frame.harmonicPayloadSize))
+        {
             result[QStringLiteral("harmonic")] = decimateToVariantList(VaporView::decodeTcpFloatPayload(harmonic, encoding), 800);
         }
-        break;
     }
     return result;
 }

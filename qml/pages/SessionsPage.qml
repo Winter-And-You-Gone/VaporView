@@ -444,7 +444,7 @@ Item {
                                 from: 0
                                 to: Math.max(1, page.maxFrame - 1)
                                 value: page.previewFrame
-                                enabled: page.maxFrame > 0
+                                enabled: sessionBackend.waveformIndexReady && page.maxFrame > 0
                                 live: false
                                 onMoved: {
                                     page.previewFrame = Math.round(value)
