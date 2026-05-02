@@ -8,6 +8,9 @@ Item {
     id: page
 
     property int selectedIndex: 0
+    property int sessionPage: 0
+    readonly property int sessionsPerPage: 3
+    readonly property int sessionPageCount: Math.max(1, Math.ceil(sessionBackend.sessions.length / sessionsPerPage))
     property int previewFrame: Math.min(maxFrame, Math.max(0, Math.floor(maxFrame * 0.49)))
     readonly property int maxFrame: Math.max(0, Number(sessionBackend.selectedSession.frames || sessionBackend.selectedSession.waveformFrames || sessionBackend.peakTrendPreview.length || 0))
     readonly property color trendRed: "#ef4444"
@@ -37,16 +40,28 @@ Item {
         return String(value)
     }
 
+    function pagedSession(row) {
+        var actualIndex = sessionPage * sessionsPerPage + row
+        if (actualIndex < 0 || actualIndex >= sessionBackend.sessions.length)
+            return ({})
+        return sessionBackend.sessions[actualIndex]
+    }
+
+    function selectVisibleSession(row) {
+        var actualIndex = sessionPage * sessionsPerPage + row
+        if (actualIndex < 0 || actualIndex >= sessionBackend.sessions.length)
+            return
+        selectedIndex = actualIndex
+        sessionBackend.selectSession(actualIndex)
+    }
+
     FolderDialog {
         id: folderDialog
         title: ApplicationWindow.window.t("settings.recordDir")
         onAccepted: sessionBackend.setRecordingDirectory(selectedFolder.toString().replace("file:///", ""))
     }
 
-    Component.onCompleted: {
-        if (sessionBackend.sessions.length > 0 && sessionBackend.csvPreviewRows.length === 0)
-            sessionBackend.selectSession(page.selectedIndex)
-    }
+    onSessionPageCountChanged: sessionPage = Math.min(sessionPage, sessionPageCount - 1)
 
     component HeaderIconButton: Button {
         id: iconButton
@@ -112,14 +127,19 @@ Item {
         Item {
             Layout.preferredWidth: 34
             Layout.fillHeight: true
-            Text {
+            Column {
                 anchors.centerIn: parent
-                text: label
-                color: ApplicationWindow.window.muted
-                font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
-                font.weight: Font.Bold
-                rotation: -90
-                horizontalAlignment: Text.AlignHCenter
+                spacing: 1
+                Repeater {
+                    model: label.split("")
+                    delegate: Text {
+                        text: modelData
+                        color: ApplicationWindow.window.muted
+                        font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+                        font.weight: Font.Bold
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                }
             }
         }
         Rectangle {
@@ -185,21 +205,24 @@ Item {
                         anchors.fill: parent
                         spacing: 0
 
-                        ListView {
+                        Column {
                             id: sessionList
                             Layout.fillWidth: true
                             Layout.fillHeight: true
-                            clip: true
-                            model: sessionBackend.sessions
-                            delegate: Rectangle {
+                            Repeater {
+                                model: Math.min(page.sessionsPerPage, Math.max(0, sessionBackend.sessions.length - page.sessionPage * page.sessionsPerPage))
+                                delegate: Rectangle {
+                                property int actualIndex: page.sessionPage * page.sessionsPerPage + index
+                                property var sessionData: page.pagedSession(index)
+
                                 width: sessionList.width
                                 height: 33
-                                color: index === page.selectedIndex ? Qt.rgba(ApplicationWindow.window.primary.r, ApplicationWindow.window.primary.g, ApplicationWindow.window.primary.b, ApplicationWindow.window.dark ? 0.20 : 0.06)
-                                                                   : "transparent"
+                                color: actualIndex === page.selectedIndex ? Qt.rgba(ApplicationWindow.window.primary.r, ApplicationWindow.window.primary.g, ApplicationWindow.window.primary.b, ApplicationWindow.window.dark ? 0.20 : 0.06)
+                                                                         : "transparent"
                                 border.width: 0
 
                                 Rectangle {
-                                    visible: index === page.selectedIndex
+                                    visible: actualIndex === page.selectedIndex
                                     anchors.left: parent.left
                                     anchors.top: parent.top
                                     anchors.bottom: parent.bottom
@@ -216,10 +239,7 @@ Item {
                                 }
                                 MouseArea {
                                     anchors.fill: parent
-                                    onClicked: {
-                                        page.selectedIndex = index
-                                        sessionBackend.selectSession(index)
-                                    }
+                                    onClicked: page.selectVisibleSession(index)
                                 }
                                 RowLayout {
                                     anchors.fill: parent
@@ -228,20 +248,21 @@ Item {
                                     spacing: 8
                                     Text {
                                         Layout.fillWidth: true
-                                        text: modelData.name || "---"
+                                        text: sessionData.name || "---"
                                         color: ApplicationWindow.window.text
                                         font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
                                         font.weight: Font.DemiBold
                                         elide: Text.ElideRight
                                     }
                                     Text {
-                                        text: page.sessionSizeText(modelData.size)
+                                        text: page.sessionSizeText(sessionData.size)
                                         color: ApplicationWindow.window.muted
                                         font.pixelSize: Math.round(9 * ApplicationWindow.window.scaleFactor)
                                         font.family: "Consolas"
                                     }
                                 }
                             }
+                        }
                         }
 
                         Rectangle {
@@ -261,14 +282,24 @@ Item {
                                     font.pixelSize: Math.round(9 * ApplicationWindow.window.scaleFactor)
                                     font.weight: Font.Medium
                                 }
-                                HeaderIconButton { iconName: "chevron-down"; enabled: false; rotation: 90 }
+                                HeaderIconButton {
+                                    iconName: "chevron-down"
+                                    enabled: page.sessionPage > 0
+                                    rotation: 90
+                                    onClicked: page.sessionPage = Math.max(0, page.sessionPage - 1)
+                                }
                                 Text {
-                                    text: sessionBackend.sessions.length > 0 ? "1 / 1" : "0 / 0"
+                                    text: sessionBackend.sessions.length > 0 ? ((page.sessionPage + 1) + " / " + page.sessionPageCount) : "0 / 0"
                                     color: ApplicationWindow.window.text
                                     font.pixelSize: Math.round(9 * ApplicationWindow.window.scaleFactor)
                                     font.weight: Font.Bold
                                 }
-                                HeaderIconButton { iconName: "chevron-down"; enabled: false; rotation: -90 }
+                                HeaderIconButton {
+                                    iconName: "chevron-down"
+                                    enabled: page.sessionPage < page.sessionPageCount - 1
+                                    rotation: -90
+                                    onClicked: page.sessionPage = Math.min(page.sessionPageCount - 1, page.sessionPage + 1)
+                                }
                             }
                         }
                     }
@@ -320,7 +351,7 @@ Item {
                             columnSpacing: 6
                             rowSpacing: 6
 
-                            ToolbarButton { Layout.fillWidth: true; Layout.preferredHeight: 28; iconName: "refresh-cw"; text: "重新加载"; variant: "primary"; onClicked: sessionBackend.refreshSessions() }
+                            ToolbarButton { Layout.fillWidth: true; Layout.preferredHeight: 28; iconName: "refresh-cw"; text: "重新加载"; variant: "primary"; onClicked: sessionBackend.reloadSelectedSession() }
                             ToolbarButton { Layout.fillWidth: true; Layout.preferredHeight: 28; iconName: "activity"; text: "轨迹查看"; enabled: false }
                             ToolbarButton { Layout.fillWidth: true; Layout.preferredHeight: 28; iconName: "file-code"; text: "原始解析"; onClicked: page.openRawParserForSession() }
                             ToolbarButton { Layout.fillWidth: true; Layout.preferredHeight: 28; iconName: "download"; text: "导出数据"; enabled: false }
@@ -375,7 +406,7 @@ Item {
 
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 38
+                        Layout.preferredHeight: 46
                         radius: 6
                         color: Qt.rgba(ApplicationWindow.window.secondary.r, ApplicationWindow.window.secondary.g, ApplicationWindow.window.secondary.b, ApplicationWindow.window.dark ? 0.38 : 0.26)
                         border.color: Qt.rgba(ApplicationWindow.window.border.r, ApplicationWindow.window.border.g, ApplicationWindow.window.border.b, 0.55)
@@ -384,13 +415,6 @@ Item {
                             anchors.fill: parent
                             anchors.margins: 6
                             spacing: 2
-                            Slider {
-                                Layout.fillWidth: true
-                                from: 0
-                                to: Math.max(1, page.maxFrame)
-                                value: page.previewFrame
-                                enabled: false
-                            }
                             RowLayout {
                                 Layout.fillWidth: true
                                 Text { text: "0"; color: ApplicationWindow.window.muted; font.pixelSize: 9; font.family: "Consolas" }
@@ -403,6 +427,13 @@ Item {
                                     horizontalAlignment: Text.AlignHCenter
                                 }
                                 Text { text: String(page.maxFrame); color: ApplicationWindow.window.muted; font.pixelSize: 9; font.family: "Consolas" }
+                            }
+                            Slider {
+                                Layout.fillWidth: true
+                                from: 0
+                                to: Math.max(1, page.maxFrame)
+                                value: page.previewFrame
+                                enabled: false
                             }
                         }
                     }

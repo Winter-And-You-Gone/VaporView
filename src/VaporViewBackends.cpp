@@ -4319,15 +4319,7 @@ void SessionBackend::refreshSessions()
     if (sessions_.isEmpty())
     {
         selected_session_.clear();
-        csv_preview_columns_.clear();
-        csv_preview_rows_.clear();
-        waveform_preview_.clear();
-        waveform_raw_preview_.clear();
-        waveform_harmonic_preview_.clear();
-        peak_trend_preview_.clear();
-        temperature_preview_.clear();
-        humidity_preview_.clear();
-        pressure_preview_.clear();
+        clearPreviewData();
         emit selectedSessionChanged();
         return;
     }
@@ -4346,15 +4338,7 @@ void SessionBackend::refreshSessions()
         selectedIndex = 0;
     }
     selected_session_ = sessions_.at(selectedIndex).toMap();
-    csv_preview_columns_.clear();
-    csv_preview_rows_.clear();
-    waveform_preview_.clear();
-    waveform_raw_preview_.clear();
-    waveform_harmonic_preview_.clear();
-    peak_trend_preview_.clear();
-    temperature_preview_.clear();
-    humidity_preview_.clear();
-    pressure_preview_.clear();
+    clearPreviewData();
     emit selectedSessionChanged();
 }
 
@@ -4374,12 +4358,34 @@ void SessionBackend::selectSession(int index)
     {
         return;
     }
-    loadSelectedSession(sessions_.at(index).toMap().value(QStringLiteral("path")).toString());
+    selected_session_ = sessions_.at(index).toMap();
+    clearPreviewData();
+    emit selectedSessionChanged();
+}
+
+void SessionBackend::reloadSelectedSession()
+{
+    const QString path = selected_session_.value(QStringLiteral("path")).toString();
+    if (path.isEmpty())
+    {
+        if (!sessions_.isEmpty())
+        {
+            loadSelectedSession(sessions_.constFirst().toMap().value(QStringLiteral("path")).toString());
+        }
+        return;
+    }
+    loadSelectedSession(path);
 }
 
 void SessionBackend::clear()
 {
     selected_session_.clear();
+    clearPreviewData();
+    emit selectedSessionChanged();
+}
+
+void SessionBackend::clearPreviewData()
+{
     csv_preview_columns_.clear();
     csv_preview_rows_.clear();
     waveform_preview_.clear();
@@ -4389,7 +4395,6 @@ void SessionBackend::clear()
     temperature_preview_.clear();
     humidity_preview_.clear();
     pressure_preview_.clear();
-    emit selectedSessionChanged();
 }
 
 void SessionBackend::loadSelectedSession(const QString& path)

@@ -745,6 +745,7 @@ public:
     Q_INVOKABLE void refreshSessions();
     Q_INVOKABLE void openSessionPath(const QString& path);
     Q_INVOKABLE void selectSession(int index);
+    Q_INVOKABLE void reloadSelectedSession();
     Q_INVOKABLE void clear();
 
 public slots:
@@ -758,6 +759,7 @@ signals:
 
 private:
     QVariantMap sessionSummaryForDirectory(const QString& path) const;
+    void clearPreviewData();
     void loadSelectedSession(const QString& path);
     QVariantList readCsvPreview(const QString& csvPath, int maxRows) const;
     QVariantMap readWaveformPreviews(const QString& rawPath) const;
