@@ -746,6 +746,7 @@ public:
     Q_INVOKABLE void openSessionPath(const QString& path);
     Q_INVOKABLE void selectSession(int index);
     Q_INVOKABLE void reloadSelectedSession();
+    Q_INVOKABLE void loadSessionFrame(int frameIndex);
     Q_INVOKABLE void clear();
 
 public slots:
@@ -758,12 +759,15 @@ signals:
     void notificationRequested(const QString& level, const QString& message);
 
 private:
-    QVariantMap sessionSummaryForDirectory(const QString& path) const;
+    QVariantMap sessionSummaryForDirectory(const QString& path, bool detailed = false) const;
     void clearPreviewData();
     void loadSelectedSession(const QString& path);
     QVariantList readCsvPreview(const QString& csvPath, int maxRows) const;
     QVariantMap readWaveformPreviews(const QString& rawPath) const;
+    QVariantMap readWaveformFramePreview(const QString& rawPath, int frameIndex) const;
     QVariantMap readSensorTrendPreviews(const QString& csvPath, int maxRows) const;
+    QVariantMap countSensorRowsAndRange(const QString& csvPath) const;
+    int countWaveformFrames(const QString& rawPath) const;
 
     QString recording_directory_;
     QVariantList sessions_;

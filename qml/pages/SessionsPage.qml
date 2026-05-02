@@ -12,7 +12,7 @@ Item {
     readonly property int sessionsPerPage: 3
     readonly property int sessionPageCount: Math.max(1, Math.ceil(sessionBackend.sessions.length / sessionsPerPage))
     property int previewFrame: Math.min(maxFrame, Math.max(0, Math.floor(maxFrame * 0.49)))
-    readonly property int maxFrame: Math.max(0, Number(sessionBackend.selectedSession.frames || sessionBackend.selectedSession.waveformFrames || sessionBackend.peakTrendPreview.length || 0))
+    readonly property int maxFrame: Math.max(0, Number(sessionBackend.selectedSession.waveformFrames || sessionBackend.selectedSession.frames || sessionBackend.peakTrendPreview.length || 0))
     readonly property color trendRed: "#ef4444"
     readonly property color trendBlue: ApplicationWindow.window.dark ? "#60a5fa" : "#3b82f6"
     readonly property color trendGreen: "#10b981"
@@ -53,6 +53,7 @@ Item {
             return
         selectedIndex = actualIndex
         sessionBackend.selectSession(actualIndex)
+        previewFrame = Math.min(maxFrame, Math.max(0, Math.floor(maxFrame * 0.49)))
     }
 
     FolderDialog {
@@ -351,7 +352,17 @@ Item {
                             columnSpacing: 6
                             rowSpacing: 6
 
-                            ToolbarButton { Layout.fillWidth: true; Layout.preferredHeight: 28; iconName: "refresh-cw"; text: "重新加载"; variant: "primary"; onClicked: sessionBackend.reloadSelectedSession() }
+                            ToolbarButton {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 28
+                                iconName: "refresh-cw"
+                                text: "重新加载"
+                                variant: "primary"
+                                onClicked: {
+                                    sessionBackend.reloadSelectedSession()
+                                    page.previewFrame = Math.min(page.maxFrame, Math.max(0, Math.floor(page.maxFrame * 0.49)))
+                                }
+                            }
                             ToolbarButton { Layout.fillWidth: true; Layout.preferredHeight: 28; iconName: "activity"; text: "轨迹查看"; enabled: false }
                             ToolbarButton { Layout.fillWidth: true; Layout.preferredHeight: 28; iconName: "file-code"; text: "原始解析"; onClicked: page.openRawParserForSession() }
                             ToolbarButton { Layout.fillWidth: true; Layout.preferredHeight: 28; iconName: "download"; text: "导出数据"; enabled: false }
@@ -387,8 +398,8 @@ Item {
                         InfoMetric { Layout.fillWidth: true; label: "结束时间"; value: page.metricValue("endTime", "---") }
                         InfoMetric { Layout.fillWidth: true; label: "时长"; value: page.metricValue("duration", "---") }
                         InfoMetric { Layout.fillWidth: true; label: "大小"; value: page.metricValue("size", "0 B") }
-                        InfoMetric { Layout.fillWidth: true; label: "帧数"; value: Number(sessionBackend.selectedSession.frames || 0).toLocaleString(Qt.locale(), "f", 0) }
-                        InfoMetric { Layout.fillWidth: true; label: "波形/设备频率"; value: page.metricValue("waveformRateHz", "---") + " | " + page.metricValue("sensorRateHz", "---") }
+                        InfoMetric { Layout.fillWidth: true; label: "波形帧数 | 设备帧数"; value: page.metricValue("framesText", "0 | 0") }
+                        InfoMetric { Layout.fillWidth: true; label: "波形/设备频率"; value: page.metricValue("ratesText", "--- | ---") }
                         InfoMetric { Layout.fillWidth: true; label: "设备行数"; value: Number(sessionBackend.selectedSession.sensorRows || 0).toLocaleString(Qt.locale(), "f", 0) }
                     }
                 }
@@ -431,9 +442,14 @@ Item {
                             Slider {
                                 Layout.fillWidth: true
                                 from: 0
-                                to: Math.max(1, page.maxFrame)
+                                to: Math.max(1, page.maxFrame - 1)
                                 value: page.previewFrame
-                                enabled: false
+                                enabled: page.maxFrame > 0
+                                live: false
+                                onMoved: {
+                                    page.previewFrame = Math.round(value)
+                                    sessionBackend.loadSessionFrame(page.previewFrame)
+                                }
                             }
                         }
                     }
