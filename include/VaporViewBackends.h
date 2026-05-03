@@ -8,6 +8,7 @@
 
 #include <QAbstractListModel>
 #include <QByteArray>
+#include <QDate>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QMutex>
@@ -792,6 +793,9 @@ public:
     Q_INVOKABLE void sortSessions(int mode);
     Q_INVOKABLE void setSessionFilter(const QString& text);
     Q_INVOKABLE void clearSessionFilter();
+    Q_INVOKABLE void setSessionFilterCriteria(const QVariantMap& criteria);
+    Q_INVOKABLE QVariantMap sessionFilterCriteria() const;
+    Q_INVOKABLE void clearSessionFilters();
     Q_INVOKABLE void openSessionPath(const QString& path);
     Q_INVOKABLE void selectSession(int index);
     Q_INVOKABLE void reloadSelectedSession();
@@ -872,6 +876,13 @@ private:
     QVariantList all_sessions_;
     int sort_sessions_mode_ = 0;
     QString session_filter_text_;
+    QString session_filter_date_preset_;
+    QDate session_filter_start_date_;
+    QDate session_filter_end_date_;
+    int session_filter_min_frames_ = -1;
+    int session_filter_max_frames_ = -1;
+    double session_filter_min_size_mb_ = -1.0;
+    double session_filter_max_size_mb_ = -1.0;
     QVariantMap selected_session_;
     QStringList csv_preview_columns_;
     QVariantList csv_preview_rows_;

@@ -50,8 +50,13 @@ Item {
     property bool cursorLocalSegmentEnabled: false
     property int cursorLocalSegmentRadius: 4
     property real cursorLocalSegmentWidth: 3.2
+    property bool cursorLocalSegmentHaloEnabled: true
+    property real cursorLocalSegmentHaloWidth: 5
+    property color cursorLocalSegmentHaloColor: cursorHaloColor
+    property real cursorLocalSegmentHaloOpacity: 0.95
     property bool cursorAxisMarkerEnabled: false
     property real cursorAxisMarkerSize: 6
+    property bool cursorAxisMarkerHaloEnabled: true
 
     readonly property int marginLeft: 42
     readonly property int marginTop: 8
@@ -195,6 +200,41 @@ Item {
             ctx.moveTo(chart.marginLeft, chart.cursorY)
             ctx.lineTo(chart.marginLeft + chart.chartWidth, chart.cursorY)
         }
+    }
+
+    function drawLocalCursorSegment(ctx, strokeColor, strokeOpacity, strokeWidth) {
+        var center = chart.cursorDisplayIndex(chart.cursorSourceIndex)
+        if (center < 0)
+            return
+
+        var lStart = Math.max(0, center - chart.cursorLocalSegmentRadius)
+        var lEnd = Math.min(chart.pointCount - 1, center + chart.cursorLocalSegmentRadius)
+
+        ctx.save()
+        ctx.setLineDash([])
+        ctx.beginPath()
+
+        var lStarted = false
+        for (var li = lStart; li <= lEnd; ++li) {
+            var ly = chart.py(chart.drawSamples[li])
+            if (isNaN(ly)) {
+                lStarted = false
+                continue
+            }
+            if (!lStarted) {
+                ctx.moveTo(chart.px(li), ly)
+                lStarted = true
+            } else {
+                ctx.lineTo(chart.px(li), ly)
+            }
+        }
+
+        ctx.strokeStyle = chart.rgbaString(strokeColor, strokeOpacity)
+        ctx.lineWidth = strokeWidth
+        ctx.lineJoin = "round"
+        ctx.lineCap = "round"
+        ctx.stroke()
+        ctx.restore()
     }
 
     function xTickLabelValue(tickIndex, tickCount) {
@@ -415,67 +455,72 @@ Item {
             chart.drawCursorCross(ctx)
             ctx.stroke()
 
-            // Local segment highlight (draw before cursor point, on top of lines)
+            // Local segment highlight with halo
             if (chart.cursorLocalSegmentEnabled) {
-                var center = chart.cursorDisplayIndex(chart.cursorSourceIndex)
-                if (center >= 0) {
-                    var lStart = Math.max(0, center - chart.cursorLocalSegmentRadius)
-                    var lEnd = Math.min(chart.pointCount - 1, center + chart.cursorLocalSegmentRadius)
-                    ctx.save()
-                    ctx.setLineDash([])
-                    ctx.beginPath()
-                    var lStarted = false
-                    for (var li = lStart; li <= lEnd; ++li) {
-                        var ly = chart.py(chart.drawSamples[li])
-                        if (isNaN(ly)) {
-                            lStarted = false
-                            continue
-                        }
-                        if (!lStarted) {
-                            ctx.moveTo(chart.px(li), ly)
-                            lStarted = true
-                        } else {
-                            ctx.lineTo(chart.px(li), ly)
-                        }
-                    }
-                    ctx.strokeStyle = chart.rgbaString(chart.cursorColor, 1.0)
-                    ctx.lineWidth = chart.cursorLocalSegmentWidth
-                    ctx.lineJoin = "round"
-                    ctx.lineCap = "round"
-                    ctx.stroke()
-                    ctx.restore()
+                if (chart.cursorLocalSegmentHaloEnabled) {
+                    chart.drawLocalCursorSegment(
+                        ctx,
+                        chart.cursorLocalSegmentHaloColor,
+                        chart.cursorLocalSegmentHaloOpacity,
+                        chart.cursorLocalSegmentWidth + chart.cursorLocalSegmentHaloWidth
+                    )
                 }
+                chart.drawLocalCursorSegment(
+                    ctx,
+                    chart.cursorColor,
+                    1.0,
+                    chart.cursorLocalSegmentWidth
+                )
             }
 
             // Cursor point
             if (chart.cursorPointEnabled) {
                 // Outer background fill
                 ctx.beginPath()
-                ctx.arc(chart.cursorX, chart.cursorY, chart.cursorPointRadius + 3, 0, Math.PI * 2)
+                ctx.arc(chart.cursorX, chart.cursorY, chart.cursorPointRadius + 4, 0, Math.PI * 2)
                 ctx.fillStyle = chart.rgbaString(chart.cursorHaloColor, 0.95)
                 ctx.fill()
 
                 // Cursor color ring
                 ctx.beginPath()
-                ctx.arc(chart.cursorX, chart.cursorY, chart.cursorPointRadius + 1, 0, Math.PI * 2)
+                ctx.arc(chart.cursorX, chart.cursorY, chart.cursorPointRadius + 1.5, 0, Math.PI * 2)
                 ctx.strokeStyle = chart.rgbaString(chart.cursorColor, 1.0)
                 ctx.lineWidth = chart.cursorPointRingWidth
                 ctx.stroke()
 
                 // Inner dot
                 ctx.beginPath()
-                ctx.arc(chart.cursorX, chart.cursorY, Math.max(2, chart.cursorPointRadius - 1.5), 0, Math.PI * 2)
+                ctx.arc(chart.cursorX, chart.cursorY, Math.max(2.5, chart.cursorPointRadius - 1), 0, Math.PI * 2)
                 ctx.fillStyle = chart.rgbaString(chart.cursorColor, 1.0)
                 ctx.fill()
             }
 
-            // Axis markers (triangles at top/bottom of cursorX)
+            // Axis markers with halo
             if (chart.cursorAxisMarkerEnabled) {
                 var s = chart.cursorAxisMarkerSize
                 ctx.save()
                 ctx.setLineDash([])
-                ctx.fillStyle = chart.rgbaString(chart.cursorColor, 1.0)
 
+                if (chart.cursorAxisMarkerHaloEnabled) {
+                    ctx.fillStyle = chart.rgbaString(chart.cursorHaloColor, 0.95)
+                    // top halo
+                    ctx.beginPath()
+                    ctx.moveTo(chart.cursorX, chart.marginTop + s + 2)
+                    ctx.lineTo(chart.cursorX - s - 2, chart.marginTop)
+                    ctx.lineTo(chart.cursorX + s + 2, chart.marginTop)
+                    ctx.closePath()
+                    ctx.fill()
+                    // bottom halo
+                    var bhy = chart.marginTop + chart.chartHeight
+                    ctx.beginPath()
+                    ctx.moveTo(chart.cursorX, bhy - s - 2)
+                    ctx.lineTo(chart.cursorX - s - 2, bhy)
+                    ctx.lineTo(chart.cursorX + s + 2, bhy)
+                    ctx.closePath()
+                    ctx.fill()
+                }
+
+                ctx.fillStyle = chart.rgbaString(chart.cursorColor, 1.0)
                 // top triangle
                 ctx.beginPath()
                 ctx.moveTo(chart.cursorX, chart.marginTop + s)
@@ -604,6 +649,11 @@ Item {
         function onCursorLocalSegmentRadiusChanged() { cursorLayer.requestPaint() }
         function onCursorLocalSegmentWidthChanged() { cursorLayer.requestPaint() }
         function onCursorAxisMarkerEnabledChanged() { cursorLayer.requestPaint() }
+        function onCursorLocalSegmentHaloEnabledChanged() { cursorLayer.requestPaint() }
+        function onCursorLocalSegmentHaloWidthChanged() { cursorLayer.requestPaint() }
+        function onCursorLocalSegmentHaloColorChanged() { cursorLayer.requestPaint() }
+        function onCursorLocalSegmentHaloOpacityChanged() { cursorLayer.requestPaint() }
+        function onCursorAxisMarkerHaloEnabledChanged() { cursorLayer.requestPaint() }
         function onCursorAxisMarkerSizeChanged() { cursorLayer.requestPaint() }
     }
 

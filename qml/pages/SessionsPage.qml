@@ -16,8 +16,8 @@ Item {
     property int pendingSliderFrame: -1
     readonly property int maxFrame: Math.max(0, Number(sessionBackend.selectedSession.waveformFrames || sessionBackend.selectedSession.frames || sessionBackend.peakTrendPreview.length || 0))
     property bool trendScatter: false
-    property bool filterVisible: false
     property bool trendFollowCursor: true
+    property string datePresetValue: "all"
     property int trendViewStart: 0
     property int trendViewEnd: Math.max(0, page.maxFrame - 1)
     property int trendViewSpan: Math.max(1, trendViewEnd - trendViewStart + 1)
@@ -298,12 +298,16 @@ Item {
         property int preferredHeight: 118
         property string emptyText: "暂无数据"
         property color cursorColor: lineColor
+        property color cursorHaloColor: ApplicationWindow.window.chartPlot
         property bool cursorEmphasis: false
         property bool cursorBand: false
         property bool cursorHorizontalLine: true
         property bool cursorVerticalLine: true
         property real cursorLineOpacity: 0.55
         property bool cursorLocalSegment: false
+        property real cursorLocalSegmentWidth: 3.2
+        property real cursorLocalSegmentHaloWidth: 5
+        property color cursorLocalSegmentHaloColor: cursorHaloColor
         property bool cursorAxisMarker: false
 
         spacing: 8
@@ -365,15 +369,19 @@ Item {
                 cursorSourceIndex: parent.parent.cursorIndex
                 cursorYUnit: parent.parent.unit.length > 0 ? " " + parent.parent.unit : ""
                 cursorColor: parent.parent.cursorColor
+                cursorHaloColor: parent.parent.cursorHaloColor
                 cursorBandEnabled: parent.parent.cursorBand
                 cursorPointEnabled: parent.parent.cursorEmphasis
                 cursorHaloEnabled: parent.parent.cursorEmphasis
                 cursorLineWidth: parent.parent.cursorEmphasis ? 2.2 : 1.5
-                cursorPointRadius: parent.parent.cursorEmphasis ? 5 : 4
+                cursorPointRadius: parent.parent.cursorEmphasis ? 6 : 4
                 cursorHorizontalLineEnabled: parent.parent.cursorHorizontalLine
                 cursorVerticalLineEnabled: parent.parent.cursorVerticalLine
                 cursorLineOpacity: parent.parent.cursorLineOpacity
                 cursorLocalSegmentEnabled: parent.parent.cursorLocalSegment
+                cursorLocalSegmentWidth: parent.parent.cursorLocalSegmentWidth
+                cursorLocalSegmentHaloWidth: parent.parent.cursorLocalSegmentHaloWidth
+                cursorLocalSegmentHaloColor: parent.parent.cursorLocalSegmentHaloColor
                 cursorAxisMarkerEnabled: parent.parent.cursorAxisMarker
                 plotBackground: ApplicationWindow.window.chartPlot
                 gridColor: ApplicationWindow.window.chartGrid
@@ -420,17 +428,12 @@ Item {
                             }
                         }
                         HeaderIconButton {
+                            id: filterButton
                             iconName: "filter"
                             ToolTip.visible: hovered
                             ToolTip.text: "筛选"
                             ToolTip.delay: 400
-                            onClicked: {
-                                filterVisible = !filterVisible
-                                if (!filterVisible) {
-                                    sessionBackend.clearSessionFilter()
-                                    filterInput.text = ""
-                                }
-                            }
+                            onClicked: filterPopup.open()
                         }
                         HeaderIconButton {
                             iconName: "refresh-cw"
@@ -445,59 +448,235 @@ Item {
                         anchors.fill: parent
                         spacing: 0
 
-                        Rectangle {
-                            id: filterBar
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: filterVisible ? 32 : 0
-                            visible: filterVisible
-                            color: "transparent"
-                            clip: true
+                        Popup {
+                            id: filterPopup
+                            parent: ApplicationWindow.overlay
+                            modal: true
+                            focus: true
+                            closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                            width: 360
+                            x: Math.max(0, filterButton.x + filterButton.width / 2 - width / 2)
+                            y: filterButton.y + filterButton.height + 8
 
-                            RowLayout {
+                            background: Rectangle {
+                                radius: 10
+                                color: ApplicationWindow.window.card
+                                border.color: ApplicationWindow.window.border
+                                border.width: 1
+                            }
+
+                            ColumnLayout {
                                 anchors.fill: parent
-                                anchors.leftMargin: 8
-                                anchors.rightMargin: 8
-                                spacing: 4
-                                TextInput {
-                                    id: filterInput
-                                    Layout.fillWidth: true
+                                anchors.margins: 12
+                                spacing: 8
+
+                                Text {
+                                    text: "筛选记录"
+                                    font.pixelSize: 11
+                                    font.weight: Font.Bold
                                     color: ApplicationWindow.window.text
-                                    font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+                                }
+
+                                TextField {
+                                    id: filterKeywordInput
+                                    Layout.fillWidth: true
+                                    placeholderText: "关键词 / 记录名 / 路径"
+                                    color: ApplicationWindow.window.text
+                                    font.pixelSize: 10
+                                    background: Rectangle {
+                                        implicitHeight: 26
+                                        radius: 5
+                                        color: ApplicationWindow.window.secondary
+                                        border.color: ApplicationWindow.window.border
+                                        border.width: 1
+                                    }
+                                    leftPadding: 8
                                     verticalAlignment: Text.AlignVCenter
-                                    onTextChanged: {
-                                        filterTimer.restart()
-                                    }
+                                }
 
-                                    property bool placeHolder: true
+                                RowLayout {
+                                    spacing: 6
                                     Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: "搜索记录名称..."
+                                        text: "日期"
+                                        font.pixelSize: 10
                                         color: ApplicationWindow.window.muted
-                                        font.pixelSize: parent.font.pixelSize
-                                        visible: parent.text.length === 0
+                                        Layout.preferredWidth: 28
                                     }
-
-                                    Timer {
-                                        id: filterTimer
-                                        interval: 300
-                                        repeat: false
-                                        onTriggered: {
-                                            if (filterInput.text.length > 0) {
-                                                sessionBackend.setSessionFilter(filterInput.text)
-                                            } else {
-                                                sessionBackend.clearSessionFilter()
-                                            }
+                                    Repeater {
+                                        model: [
+                                            { label: "全部", val: "all" },
+                                            { label: "今天", val: "today" },
+                                            { label: "7天", val: "7d" },
+                                            { label: "30天", val: "30d" },
+                                            { label: "自定义", val: "custom" }
+                                        ]
+                                        delegate: ToolbarButton {
+                                            implicitHeight: 22; implicitWidth: 48
+                                            text: modelData.label; font.pixelSize: 9
+                                            variant: page.datePresetValue === modelData.val ? "primary" : "secondary"
+                                            onClicked: page.datePresetValue = modelData.val
                                         }
                                     }
                                 }
-                                HeaderIconButton {
-                                    iconName: "square"
-                                    implicitWidth: 16
-                                    implicitHeight: 16
-                                    onClicked: {
-                                        filterVisible = false
-                                        sessionBackend.clearSessionFilter()
-                                        filterInput.text = ""
+
+                                RowLayout {
+                                    visible: page.datePresetValue === "custom"
+                                    spacing: 6
+                                    TextField {
+                                        id: startDateInput
+                                        Layout.fillWidth: true
+                                        placeholderText: "开始 yyyy-MM-dd"
+                                        color: ApplicationWindow.window.text
+                                        font.pixelSize: 10
+                                        background: Rectangle {
+                                            implicitHeight: 26
+                                            radius: 5
+                                            color: ApplicationWindow.window.secondary
+                                            border.color: ApplicationWindow.window.border
+                                            border.width: 1
+                                        }
+                                        leftPadding: 8
+                                        verticalAlignment: Text.AlignVCenter
+                                        maximumLength: 10
+                                    }
+                                    Text {
+                                        text: "~"
+                                        color: ApplicationWindow.window.muted
+                                        font.pixelSize: 10
+                                    }
+                                    TextField {
+                                        id: endDateInput
+                                        Layout.fillWidth: true
+                                        placeholderText: "结束 yyyy-MM-dd"
+                                        color: ApplicationWindow.window.text
+                                        font.pixelSize: 10
+                                        background: Rectangle {
+                                            implicitHeight: 26
+                                            radius: 5
+                                            color: ApplicationWindow.window.secondary
+                                            border.color: ApplicationWindow.window.border
+                                            border.width: 1
+                                        }
+                                        leftPadding: 8
+                                        verticalAlignment: Text.AlignVCenter
+                                        maximumLength: 10
+                                    }
+                                }
+
+                                RowLayout {
+                                    spacing: 6
+                                    TextField {
+                                        id: minFramesInput
+                                        Layout.fillWidth: true
+                                        placeholderText: "最小帧数"
+                                        color: ApplicationWindow.window.text
+                                        font.pixelSize: 10
+                                        background: Rectangle {
+                                            implicitHeight: 26
+                                            radius: 5
+                                            color: ApplicationWindow.window.secondary
+                                            border.color: ApplicationWindow.window.border
+                                            border.width: 1
+                                        }
+                                        leftPadding: 8
+                                        verticalAlignment: Text.AlignVCenter
+                                        validator: IntValidator { bottom: 0 }
+                                    }
+                                    TextField {
+                                        id: maxFramesInput
+                                        Layout.fillWidth: true
+                                        placeholderText: "最大帧数"
+                                        color: ApplicationWindow.window.text
+                                        font.pixelSize: 10
+                                        background: Rectangle {
+                                            implicitHeight: 26
+                                            radius: 5
+                                            color: ApplicationWindow.window.secondary
+                                            border.color: ApplicationWindow.window.border
+                                            border.width: 1
+                                        }
+                                        leftPadding: 8
+                                        verticalAlignment: Text.AlignVCenter
+                                        validator: IntValidator { bottom: 0 }
+                                    }
+                                }
+
+                                RowLayout {
+                                    spacing: 6
+                                    TextField {
+                                        id: minSizeInput
+                                        Layout.fillWidth: true
+                                        placeholderText: "最小 MB"
+                                        color: ApplicationWindow.window.text
+                                        font.pixelSize: 10
+                                        background: Rectangle {
+                                            implicitHeight: 26
+                                            radius: 5
+                                            color: ApplicationWindow.window.secondary
+                                            border.color: ApplicationWindow.window.border
+                                            border.width: 1
+                                        }
+                                        leftPadding: 8
+                                        verticalAlignment: Text.AlignVCenter
+                                        validator: DoubleValidator { bottom: 0.0 }
+                                    }
+                                    TextField {
+                                        id: maxSizeInput
+                                        Layout.fillWidth: true
+                                        placeholderText: "最大 MB"
+                                        color: ApplicationWindow.window.text
+                                        font.pixelSize: 10
+                                        background: Rectangle {
+                                            implicitHeight: 26
+                                            radius: 5
+                                            color: ApplicationWindow.window.secondary
+                                            border.color: ApplicationWindow.window.border
+                                            border.width: 1
+                                        }
+                                        leftPadding: 8
+                                        verticalAlignment: Text.AlignVCenter
+                                        validator: DoubleValidator { bottom: 0.0 }
+                                    }
+                                }
+
+                                RowLayout {
+                                    spacing: 8
+                                    Item { Layout.fillWidth: true }
+
+                                    ToolbarButton {
+                                        text: "重置"
+                                        implicitHeight: 26; implicitWidth: 60; font.pixelSize: 9
+                                        onClicked: {
+                                            filterKeywordInput.text = ""
+                                            page.datePresetValue = "all"
+                                            startDateInput.text = ""
+                                            endDateInput.text = ""
+                                            minFramesInput.text = ""
+                                            maxFramesInput.text = ""
+                                            minSizeInput.text = ""
+                                            maxSizeInput.text = ""
+                                            sessionBackend.clearSessionFilters()
+                                            filterPopup.close()
+                                        }
+                                    }
+
+                                    ToolbarButton {
+                                        text: "应用"
+                                        implicitHeight: 26; implicitWidth: 60; font.pixelSize: 9
+                                        onClicked: {
+                                            var criteria = {
+                                                "text": filterKeywordInput.text,
+                                                "datePreset": page.datePresetValue,
+                                                "startDate": startDateInput.text,
+                                                "endDate": endDateInput.text,
+                                                "minWaveformFrames": minFramesInput.text.length > 0 ? parseInt(minFramesInput.text) : -1,
+                                                "maxWaveformFrames": maxFramesInput.text.length > 0 ? parseInt(maxFramesInput.text) : -1,
+                                                "minSizeMb": minSizeInput.text.length > 0 ? parseFloat(minSizeInput.text) : -1,
+                                                "maxSizeMb": maxSizeInput.text.length > 0 ? parseFloat(maxSizeInput.text) : -1
+                                            }
+                                            sessionBackend.setSessionFilterCriteria(criteria)
+                                            filterPopup.close()
+                                        }
                                     }
                                 }
                             }
@@ -982,13 +1161,17 @@ Item {
                         xEndIndex: Math.max(sessionBackend.trendViewStart + 1, sessionBackend.trendViewEnd)
                         cursorIndex: sessionBackend.currentFrameIndex
                         showCursor: sessionBackend.currentFrameIndex >= sessionBackend.trendViewStart && sessionBackend.currentFrameIndex <= sessionBackend.trendViewEnd
-                        cursorColor: ApplicationWindow.window.primary
+                        cursorColor: ApplicationWindow.window.dark ? "#facc15" : ApplicationWindow.window.primary
+                        cursorHaloColor: ApplicationWindow.window.dark ? "#000000" : ApplicationWindow.window.chartPlot
+                        cursorLocalSegmentHaloColor: ApplicationWindow.window.dark ? "#000000" : ApplicationWindow.window.chartPlot
                         cursorEmphasis: true
                         cursorBand: false
                         cursorHorizontalLine: false
                         cursorVerticalLine: true
-                        cursorLineOpacity: 0.35
+                        cursorLineOpacity: ApplicationWindow.window.dark ? 0.75 : 0.35
                         cursorLocalSegment: true
+                        cursorLocalSegmentWidth: ApplicationWindow.window.dark ? 4.2 : 3.2
+                        cursorLocalSegmentHaloWidth: ApplicationWindow.window.dark ? 7 : 5
                         cursorAxisMarker: true
                         scatter: page.trendScatter
                         lineColor: ApplicationWindow.window.text

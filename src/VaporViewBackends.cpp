@@ -4461,6 +4461,7 @@ QVariantMap SessionBackend::sessionSummaryForDirectory(const QString& path, bool
         addFileSize(QStringLiteral("raw/tcp_wave.dat"));
     }
     map[QStringLiteral("size")] = formatBytes(size);
+    map[QStringLiteral("sizeBytes")] = QVariant::fromValue<qlonglong>(static_cast<qlonglong>(size));
 
     updateSessionSummaryCountText(map);
     return map;
@@ -4512,12 +4513,18 @@ void SessionBackend::refreshSessions()
 void SessionBackend::applySessionSortFilter()
 {
     QVariantList filtered = all_sessions_;
+
+    // Text keyword filter
     if (!session_filter_text_.isEmpty())
     {
         QVariantList tmp;
         for (const QVariant& s : filtered)
         {
-            if (s.toMap().value(QStringLiteral("name")).toString().contains(session_filter_text_, Qt::CaseInsensitive))
+            const QVariantMap m = s.toMap();
+            if (m.value(QStringLiteral("name")).toString().contains(session_filter_text_, Qt::CaseInsensitive) ||
+                m.value(QStringLiteral("path")).toString().contains(session_filter_text_, Qt::CaseInsensitive) ||
+                m.value(QStringLiteral("startTime")).toString().contains(session_filter_text_, Qt::CaseInsensitive) ||
+                m.value(QStringLiteral("endTime")).toString().contains(session_filter_text_, Qt::CaseInsensitive))
             {
                 tmp.append(s);
             }
@@ -4525,6 +4532,101 @@ void SessionBackend::applySessionSortFilter()
         filtered = tmp;
     }
 
+    // Date preset filter
+    if (!session_filter_date_preset_.isEmpty() && session_filter_date_preset_ != QStringLiteral("all"))
+    {
+        QDate today = QDate::currentDate();
+        QDate startDate;
+        QDate endDate;
+
+        if (session_filter_date_preset_ == QStringLiteral("today"))
+        {
+            startDate = endDate = today;
+        }
+        else if (session_filter_date_preset_ == QStringLiteral("7d"))
+        {
+            endDate = today;
+            startDate = today.addDays(-6);
+        }
+        else if (session_filter_date_preset_ == QStringLiteral("30d"))
+        {
+            endDate = today;
+            startDate = today.addDays(-29);
+        }
+        else if (session_filter_date_preset_ == QStringLiteral("custom"))
+        {
+            startDate = session_filter_start_date_;
+            endDate = session_filter_end_date_;
+        }
+
+        if (startDate.isValid() && endDate.isValid())
+        {
+            QVariantList tmp;
+            for (const QVariant& s : filtered)
+            {
+                const QVariantMap m = s.toMap();
+                QString dateStr = m.value(QStringLiteral("date")).toString();
+                // date is stored as "yyyy-MM-dd HH:mm" from file lastModified
+                QDate sessionDate = QDateTime::fromString(dateStr.left(16), QStringLiteral("yyyy-MM-dd HH:mm")).date();
+                if (!sessionDate.isValid())
+                {
+                    // Try parsing from startTime as "yyyy-MM-dd HH:mm:ss"
+                    dateStr = m.value(QStringLiteral("startTime")).toString();
+                    sessionDate = QDateTime::fromString(dateStr.left(19), QStringLiteral("yyyy-MM-dd HH:mm:ss")).date();
+                }
+                if (!sessionDate.isValid())
+                {
+                    // Try directory name pattern: yyyy-MM-dd_HH-mm-ss
+                    const QString name = m.value(QStringLiteral("name")).toString();
+                    sessionDate = QDateTime::fromString(name.left(19), QStringLiteral("yyyy-MM-dd_HH-mm-ss")).date();
+                }
+                if (sessionDate.isValid() && sessionDate >= startDate && sessionDate <= endDate)
+                {
+                    tmp.append(s);
+                }
+            }
+            filtered = tmp;
+        }
+    }
+
+    // Min/max waveform frames filter
+    if (session_filter_min_frames_ > 0 || session_filter_max_frames_ > 0)
+    {
+        QVariantList tmp;
+        for (const QVariant& s : filtered)
+        {
+            const QVariantMap m = s.toMap();
+            int frames = m.value(QStringLiteral("waveformFrames")).toInt();
+            // fallback to "frames" field
+            if (frames <= 0)
+                frames = m.value(QStringLiteral("frames")).toInt();
+            if ((session_filter_min_frames_ <= 0 || frames >= session_filter_min_frames_) &&
+                (session_filter_max_frames_ <= 0 || frames <= session_filter_max_frames_))
+            {
+                tmp.append(s);
+            }
+        }
+        filtered = tmp;
+    }
+
+    // Min/max file size filter
+    if (session_filter_min_size_mb_ > 0 || session_filter_max_size_mb_ > 0)
+    {
+        QVariantList tmp;
+        for (const QVariant& s : filtered)
+        {
+            const QVariantMap m = s.toMap();
+            double sizeMb = m.value(QStringLiteral("sizeBytes")).toLongLong() / (1024.0 * 1024.0);
+            if ((session_filter_min_size_mb_ <= 0 || sizeMb >= session_filter_min_size_mb_) &&
+                (session_filter_max_size_mb_ <= 0 || sizeMb <= session_filter_max_size_mb_))
+            {
+                tmp.append(s);
+            }
+        }
+        filtered = tmp;
+    }
+
+    // Sort
     switch (sort_sessions_mode_)
     {
     case 1: // date ascending
@@ -4534,7 +4636,7 @@ void SessionBackend::applySessionSortFilter()
         break;
     case 2: // size descending
         std::sort(filtered.begin(), filtered.end(), [](const QVariant& a, const QVariant& b) {
-            return a.toMap().value(QStringLiteral("size")).toString() > b.toMap().value(QStringLiteral("size")).toString();
+            return a.toMap().value(QStringLiteral("sizeBytes")).toLongLong() > b.toMap().value(QStringLiteral("sizeBytes")).toLongLong();
         });
         break;
     case 3: // name ascending
@@ -4548,6 +4650,48 @@ void SessionBackend::applySessionSortFilter()
 
     sessions_ = filtered;
     emit sessionsChanged();
+}
+
+void SessionBackend::setSessionFilterCriteria(const QVariantMap& criteria)
+{
+    session_filter_text_ = criteria.value(QStringLiteral("text")).toString().trimmed();
+    session_filter_date_preset_ = criteria.value(QStringLiteral("datePreset")).toString();
+    const QString startStr = criteria.value(QStringLiteral("startDate")).toString().trimmed();
+    const QString endStr = criteria.value(QStringLiteral("endDate")).toString().trimmed();
+    session_filter_start_date_ = startStr.isEmpty() ? QDate() : QDate::fromString(startStr, QStringLiteral("yyyy-MM-dd"));
+    session_filter_end_date_ = endStr.isEmpty() ? QDate() : QDate::fromString(endStr, QStringLiteral("yyyy-MM-dd"));
+    session_filter_min_frames_ = criteria.value(QStringLiteral("minWaveformFrames")).toInt();
+    session_filter_max_frames_ = criteria.value(QStringLiteral("maxWaveformFrames")).toInt();
+    session_filter_min_size_mb_ = criteria.value(QStringLiteral("minSizeMb")).toDouble();
+    session_filter_max_size_mb_ = criteria.value(QStringLiteral("maxSizeMb")).toDouble();
+    applySessionSortFilter();
+}
+
+QVariantMap SessionBackend::sessionFilterCriteria() const
+{
+    QVariantMap map;
+    map[QStringLiteral("text")] = session_filter_text_;
+    map[QStringLiteral("datePreset")] = session_filter_date_preset_;
+    map[QStringLiteral("startDate")] = session_filter_start_date_.toString(QStringLiteral("yyyy-MM-dd"));
+    map[QStringLiteral("endDate")] = session_filter_end_date_.toString(QStringLiteral("yyyy-MM-dd"));
+    map[QStringLiteral("minWaveformFrames")] = session_filter_min_frames_;
+    map[QStringLiteral("maxWaveformFrames")] = session_filter_max_frames_;
+    map[QStringLiteral("minSizeMb")] = session_filter_min_size_mb_;
+    map[QStringLiteral("maxSizeMb")] = session_filter_max_size_mb_;
+    return map;
+}
+
+void SessionBackend::clearSessionFilters()
+{
+    session_filter_text_.clear();
+    session_filter_date_preset_.clear();
+    session_filter_start_date_ = QDate();
+    session_filter_end_date_ = QDate();
+    session_filter_min_frames_ = -1;
+    session_filter_max_frames_ = -1;
+    session_filter_min_size_mb_ = -1.0;
+    session_filter_max_size_mb_ = -1.0;
+    applySessionSortFilter();
 }
 
 void SessionBackend::sortSessions(int mode)
