@@ -678,7 +678,7 @@ Item {
 
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 138
+                        Layout.preferredHeight: 124
                         radius: 8
                         color: Qt.rgba(ApplicationWindow.window.secondary.r, ApplicationWindow.window.secondary.g, ApplicationWindow.window.secondary.b, ApplicationWindow.window.dark ? 0.38 : 0.26)
                         border.color: Qt.rgba(ApplicationWindow.window.border.r, ApplicationWindow.window.border.g, ApplicationWindow.window.border.b, 0.55)
@@ -710,19 +710,18 @@ Item {
 
                                 Text {
                                     text: page.maxFrame > 0
-                                        ? page.previewFrame + " / " + page.maxFrame
-                                        : "0 / 0"
+                                        ? page.previewFrame + "/" + page.maxFrame
+                                        : "0/0"
                                     font.pixelSize: 14
                                     font.weight: Font.Bold
                                     font.family: "Consolas"
                                     color: ApplicationWindow.window.primary
+                                    Layout.alignment: Qt.AlignVCenter
                                 }
-
-                                Item { Layout.fillWidth: true }
 
                                 Row {
                                     spacing: 3
-                                    Layout.alignment: Qt.AlignCenter
+                                    Layout.alignment: Qt.AlignVCenter
                                     ToolbarButton {
                                         implicitHeight: 22; implicitWidth: 40
                                         text: "全部"; font.pixelSize: 9
@@ -799,17 +798,20 @@ Item {
 
                                 Text {
                                     text: sessionBackend.waveformIndexReady
-                                        ? sessionBackend.trendViewStart + " - " + sessionBackend.trendViewEnd
-                                        : "0 - 0"
+                                        ? sessionBackend.trendViewStart + "-" + sessionBackend.trendViewEnd
+                                        : "0-0"
                                     font.pixelSize: 13
                                     font.weight: Font.Bold
                                     font.family: "Consolas"
                                     color: ApplicationWindow.window.text
+                                    horizontalAlignment: Text.AlignRight
+                                    Layout.alignment: Qt.AlignVCenter
                                 }
                             }
 
                             RowLayout {
                                 Layout.fillWidth: true
+                                Layout.preferredHeight: 22
                                 spacing: 6
                                 Text {
                                     text: "全局"
@@ -857,6 +859,7 @@ Item {
 
                             RowLayout {
                                 Layout.fillWidth: true
+                                Layout.preferredHeight: 22
                                 spacing: 6
                                 Text {
                                     text: "局部"
