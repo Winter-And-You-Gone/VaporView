@@ -13,11 +13,22 @@ Item {
     readonly property int sessionPageCount: Math.max(1, Math.ceil(sessionBackend.sessions.length / sessionsPerPage))
     property int previewFrame: Math.min(maxFrame, Math.max(0, Math.floor(maxFrame * 0.49)))
     property int lastRequestedFrame: -1
+    property int pendingSliderFrame: -1
     readonly property int maxFrame: Math.max(0, Number(sessionBackend.selectedSession.waveformFrames || sessionBackend.selectedSession.frames || sessionBackend.peakTrendPreview.length || 0))
     property bool trendScatter: false
     property bool filterVisible: false
     property int csvGen: sessionBackend.csvPreviewGeneration
     onCsvGenChanged: scrollCsvToHighlighted()
+
+    Timer {
+        id: frameCursorTimer
+        interval: 16
+        repeat: false
+        onTriggered: {
+            if (page.pendingSliderFrame >= 0)
+                sessionBackend.setFrameCursor(page.pendingSliderFrame)
+        }
+    }
 
     readonly property color trendRed: "#ef4444"
     readonly property color trendBlue: ApplicationWindow.window.dark ? "#60a5fa" : "#3b82f6"
@@ -67,6 +78,7 @@ Item {
         Qt.callLater(function() {
             var rows = sessionBackend.csvPreviewRows
             var scrollIdx = -1
+
             for (var i = 0; i < rows.length; i++) {
                 if (rows[i]) {
                     var rank = rows[i]._matchRank
@@ -76,11 +88,9 @@ Item {
                     }
                 }
             }
-            if (scrollIdx >= 0) {
-                // Highlighted rows are always at the start of the window
-                var targetRow = Math.max(0, scrollIdx - 1)
-                tableFlick.contentY = Math.max(0, 34 + targetRow * 30)
-            }
+
+            if (scrollIdx >= 0)
+                tableFlick.contentY = 0
         })
     }
 
@@ -609,16 +619,22 @@ Item {
                                         var f = Math.round(value)
                                         if (f === page.lastRequestedFrame)
                                             return
+
                                         page.lastRequestedFrame = f
+                                        page.pendingSliderFrame = f
                                         page.previewFrame = f
-                                        sessionBackend.setFrameCursor(f)
+
+                                        if (!frameCursorTimer.running)
+                                            frameCursorTimer.start()
                                     }
                                 }
                                 onPressedChanged: {
                                     if (!pressed && enabled) {
                                         var f = Math.round(value)
                                         page.lastRequestedFrame = f
+                                        page.pendingSliderFrame = -1
                                         page.previewFrame = f
+                                        frameCursorTimer.stop()
                                         sessionBackend.loadSessionFrame(f)
                                     }
                                 }

@@ -52,6 +52,8 @@ constexpr int kLiveDisplayRefreshMs = 11;
 constexpr int kPeakTrendFrameWindow = 1000;
 constexpr int kDefaultPeakSearchStartIndex = 0;
 constexpr int kDefaultPeakSearchEndIndex = 0;
+constexpr int kCsvDragPreviewRows = 16;
+constexpr int kCsvFullPreviewRows = 80;
 
 enum PeakFilterMode
 {
@@ -5016,8 +5018,11 @@ void SessionBackend::loadSessionFrame(int frameIndex)
     waveform_preview_ = waveform_harmonic_preview_;
     waveform_raw_point_count_ = waveform.value(QStringLiteral("rawPointCount"), waveform_raw_preview_.size()).toInt();
     waveform_harmonic_point_count_ = waveform.value(QStringLiteral("harmonicPointCount"), waveform_harmonic_preview_.size()).toInt();
-    updateCsvPreviewForTimestamp(waveform.value(QStringLiteral("timestampUs")).toULongLong());
+
+    // Release path: full 80-row CSV window
+    updateCsvPreviewForTimestamp(waveform.value(QStringLiteral("timestampUs")).toULongLong(), kCsvFullPreviewRows);
     emit frameSelectionChanged();
+    scheduleWaveformPrefetch(current_frame_index_);
 }
 
 void SessionBackend::clearWaveformCache()
@@ -5061,6 +5066,9 @@ QVariantMap SessionBackend::getWaveformFrame(const QString& rawPath, int frameIn
 
 void SessionBackend::setFrameCursor(int frameIndex)
 {
+    QElapsedTimer ft;
+    ft.start();
+
     if (loading_)
     {
         return;
@@ -5084,7 +5092,12 @@ void SessionBackend::setFrameCursor(int frameIndex)
         return;
     }
     const QString rawPath = QDir(path).filePath(QStringLiteral("raw/tcp_wave.dat"));
+
+    QElapsedTimer wft;
+    wft.start();
     const QVariantMap waveform = getWaveformFrame(rawPath, clampedIndex);
+    const qint64 waveformMs = wft.elapsed();
+
     if (!waveform.isEmpty())
     {
         waveform_raw_preview_ = waveform.value(QStringLiteral("raw")).toList();
@@ -5095,43 +5108,38 @@ void SessionBackend::setFrameCursor(int frameIndex)
     }
     current_frame_index_ = clampedIndex;
 
-    // Lightweight CSV preview: 80-row window with highlight in top 2 rows
-    csv_preview_rows_.clear();
-    if (current_frame_index_ >= 0 && current_frame_index_ < waveform_timestamps_us_.size() && !csv_rows_all_.isEmpty())
+    QElapsedTimer cft;
+    cft.start();
+    // Drag path: only 16 CSV rows for lightweight update
+    if (current_frame_index_ >= 0 && current_frame_index_ < waveform_timestamps_us_.size())
     {
         const quint64 ts = waveform_timestamps_us_.at(current_frame_index_);
-        const QVector<int> highlightedRows = closestCsvRows(ts);
-        if (!highlightedRows.isEmpty())
-        {
-            current_csv_row_ = highlightedRows.value(0, -1);
-            secondary_csv_row_ = highlightedRows.value(1, -1);
-        }
-        const int totalRows = static_cast<int>(csv_rows_all_.size());
-        const int anchorRow = current_csv_row_ >= 0 ? current_csv_row_ : 0;
-        const int startRow = std::max(0, anchorRow - 1);
-        const int endRow = std::min(startRow + 80, totalRows);
-        const QSet<int> highlightedSet(highlightedRows.begin(), highlightedRows.end());
-        for (int i = startRow; i < endRow; ++i)
-        {
-            int rank = -1;
-            if (highlightedSet.contains(i))
-                rank = highlightedRows.indexOf(i);
-            QVariantMap row = csv_rows_all_.at(i).toMap();
-            row[QStringLiteral("_matchRank")] = rank;
-            if (ts > 0 && i < csv_timestamps_us_.size())
-            {
-                const qint64 deltaUs = static_cast<qint64>(csv_timestamps_us_.at(i)) - static_cast<qint64>(ts);
-                const double deltaMs = static_cast<double>(deltaUs) / 1000.0;
-                row[QStringLiteral("时间偏差")] = QStringLiteral("%1%2 ms")
-                    .arg(deltaMs >= 0.0 ? QStringLiteral("+") : QString())
-                    .arg(deltaMs, 0, 'f', 3);
-            }
-            csv_preview_rows_.append(row);
-        }
-        ++csv_preview_generation_;
+        updateCsvPreviewForTimestamp(ts, kCsvDragPreviewRows);
     }
+    else
+    {
+        csv_preview_rows_.clear();
+        current_csv_row_ = -1;
+        secondary_csv_row_ = -1;
+    }
+    const qint64 csvMs = cft.elapsed();
+
+    QElapsedTimer eft;
+    eft.start();
     emit frameSelectionChanged();
-    scheduleWaveformPrefetch(current_frame_index_);
+    const qint64 emitMs = eft.elapsed();
+    const qint64 totalMs = ft.elapsed();
+
+    static constexpr bool kSessionSliderPerfLog = true;
+    if constexpr (kSessionSliderPerfLog)
+    {
+        qDebug().noquote() << QStringLiteral("[SessionSlider] frame %1  waveform %2ms  csv %3ms  emit %4ms  total %5ms")
+            .arg(clampedIndex)
+            .arg(waveformMs)
+            .arg(csvMs)
+            .arg(emitMs)
+            .arg(totalMs);
+    }
 }
 
 bool SessionBackend::waveformFrameCached(int frameIndex) const
@@ -5216,47 +5224,39 @@ int SessionBackend::findClosestCsvRow(quint64 timestampUs) const
 QVector<int> SessionBackend::closestCsvRows(quint64 timestampUs) const
 {
     QVector<int> rows;
-    if (timestampUs == 0 || csv_timestamps_us_.isEmpty())
+    if (csv_timestamps_us_.isEmpty())
     {
         return rows;
     }
-    const auto it = std::lower_bound(csv_timestamps_us_.cbegin(), csv_timestamps_us_.cend(), timestampUs);
-    if (it == csv_timestamps_us_.cbegin())
+
+    const int primary = findClosestCsvRow(timestampUs);
+    if (primary < 0)
     {
-        rows.push_back(0);
-        if (csv_timestamps_us_.size() > 1)
-        {
-            rows.push_back(1);
-        }
+        return rows;
     }
-    else if (it == csv_timestamps_us_.cend())
+
+    rows.push_back(primary);
+
+    // Pick the closer adjacent row as secondary
+    const int size = static_cast<int>(csv_timestamps_us_.size());
+    if (primary == 0)
     {
-        if (csv_timestamps_us_.size() > 1)
-        {
-            rows.push_back(static_cast<int>(csv_timestamps_us_.size()) - 2);
-        }
-        rows.push_back(static_cast<int>(csv_timestamps_us_.size()) - 1);
+        if (size > 1)
+            rows.push_back(1);
+    }
+    else if (primary == size - 1)
+    {
+        rows.push_back(primary - 1);
     }
     else
     {
-        const int upperIndex = static_cast<int>(it - csv_timestamps_us_.cbegin());
-        rows.push_back(upperIndex - 1);
-        rows.push_back(upperIndex);
+        const quint64 leftTs = csv_timestamps_us_.at(primary - 1);
+        const quint64 rightTs = csv_timestamps_us_.at(primary + 1);
+        const quint64 leftDelta = timestampUs > leftTs ? timestampUs - leftTs : leftTs - timestampUs;
+        const quint64 rightDelta = timestampUs > rightTs ? timestampUs - rightTs : rightTs - timestampUs;
+        rows.push_back(leftDelta <= rightDelta ? primary - 1 : primary + 1);
     }
-    std::sort(rows.begin(), rows.end());
-    rows.erase(std::unique(rows.begin(), rows.end()), rows.end());
-    const int primary = findClosestCsvRow(timestampUs);
-    std::sort(rows.begin(), rows.end(), [this, timestampUs, primary](int a, int b) {
-        if (a == primary) return true;
-        if (b == primary) return false;
-        const quint64 deltaA = timestampUs >= csv_timestamps_us_.at(a)
-            ? timestampUs - csv_timestamps_us_.at(a)
-            : csv_timestamps_us_.at(a) - timestampUs;
-        const quint64 deltaB = timestampUs >= csv_timestamps_us_.at(b)
-            ? timestampUs - csv_timestamps_us_.at(b)
-            : csv_timestamps_us_.at(b) - timestampUs;
-        return deltaA < deltaB;
-    });
+
     return rows;
 }
 
@@ -5299,6 +5299,56 @@ void SessionBackend::updateCsvPreviewForTimestamp(quint64 timestampUs)
             row[QStringLiteral("时间偏差")] = deltaText;
             row[QStringLiteral("_deltaText")] = deltaText;
         }
+        csv_preview_rows_.append(row);
+    }
+    ++csv_preview_generation_;
+}
+
+void SessionBackend::updateCsvPreviewForTimestamp(quint64 timestampUs, int maxRows)
+{
+    current_csv_row_ = -1;
+    secondary_csv_row_ = -1;
+    csv_preview_rows_.clear();
+
+    if (timestampUs == 0 || csv_rows_all_.isEmpty())
+    {
+        ++csv_preview_generation_;
+        return;
+    }
+
+    const QVector<int> highlightedRows = closestCsvRows(timestampUs);
+    if (!highlightedRows.isEmpty())
+    {
+        current_csv_row_ = highlightedRows.value(0, -1);
+        secondary_csv_row_ = highlightedRows.value(1, -1);
+    }
+
+    const int totalRows = static_cast<int>(csv_rows_all_.size());
+    const int anchorRow = current_csv_row_ >= 0 ? current_csv_row_ : 0;
+    const int startRow = std::max(0, anchorRow - 1);
+    const int endRow = std::min(startRow + maxRows, totalRows);
+    const QSet<int> highlightedSet(highlightedRows.begin(), highlightedRows.end());
+
+    for (int i = startRow; i < endRow; ++i)
+    {
+        int rank = -1;
+        if (highlightedSet.contains(i))
+            rank = highlightedRows.indexOf(i);
+
+        QVariantMap row = csv_rows_all_.at(i).toMap();
+        row[QStringLiteral("_matchRank")] = rank;
+
+        if (i < csv_timestamps_us_.size())
+        {
+            const qint64 deltaUs = static_cast<qint64>(csv_timestamps_us_.at(i)) - static_cast<qint64>(timestampUs);
+            const double deltaMs = static_cast<double>(deltaUs) / 1000.0;
+            const QString deltaText = QStringLiteral("%1%2 ms")
+                .arg(deltaMs >= 0.0 ? QStringLiteral("+") : QString())
+                .arg(deltaMs, 0, 'f', 3);
+            row[QStringLiteral("时间偏差")] = deltaText;
+            row[QStringLiteral("_deltaText")] = deltaText;
+        }
+
         csv_preview_rows_.append(row);
     }
     ++csv_preview_generation_;

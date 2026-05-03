@@ -842,6 +842,7 @@ private:
     int findClosestCsvRow(quint64 timestampUs) const;
     QVector<int> closestCsvRows(quint64 timestampUs) const;
     void updateCsvPreviewForTimestamp(quint64 timestampUs);
+    void updateCsvPreviewForTimestamp(quint64 timestampUs, int maxRows);
     void applySessionSortFilter();
     SessionLoadResult buildSessionLoadResult(const QString& path, int generation);
 
