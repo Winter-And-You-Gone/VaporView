@@ -5324,9 +5324,16 @@ void SessionBackend::updateCsvPreviewForTimestamp(quint64 timestampUs, int maxRo
     }
 
     const int totalRows = static_cast<int>(csv_rows_all_.size());
-    const int anchorRow = current_csv_row_ >= 0 ? current_csv_row_ : 0;
-    const int startRow = std::max(0, anchorRow - 1);
-    const int endRow = std::min(startRow + maxRows, totalRows);
+    // Start at the smaller of the two highlighted rows so both appear within the first 2 positions
+    int startRow = 0;
+    if (current_csv_row_ >= 0)
+    {
+        startRow = current_csv_row_;
+        if (secondary_csv_row_ >= 0)
+            startRow = std::min(current_csv_row_, secondary_csv_row_);
+    }
+    const int safeMaxRows = std::max(1, maxRows);
+    const int endRow = std::min(startRow + safeMaxRows, totalRows);
     const QSet<int> highlightedSet(highlightedRows.begin(), highlightedRows.end());
 
     for (int i = startRow; i < endRow; ++i)
