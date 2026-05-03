@@ -4318,6 +4318,20 @@ QVariantList SessionBackend::peakTrendPreview() const { return peak_trend_previe
 QVariantList SessionBackend::temperaturePreview() const { return temperature_preview_; }
 QVariantList SessionBackend::humidityPreview() const { return humidity_preview_; }
 QVariantList SessionBackend::pressurePreview() const { return pressure_preview_; }
+QVariantList SessionBackend::peakTrendRangePreview() const { return peak_trend_range_preview_; }
+QVariantList SessionBackend::temperatureRangePreview() const { return temperature_range_preview_; }
+QVariantList SessionBackend::humidityRangePreview() const { return humidity_range_preview_; }
+QVariantList SessionBackend::pressureRangePreview() const { return pressure_range_preview_; }
+int SessionBackend::trendViewStart() const { return trend_view_start_; }
+int SessionBackend::trendViewEnd() const { return trend_view_end_; }
+int SessionBackend::csvRangeStartRow() const { return csv_range_start_row_; }
+int SessionBackend::csvRangeEndRow() const { return csv_range_end_row_; }
+int SessionBackend::currentCsvRangeCursorIndex() const
+{
+    if (current_csv_row_ < csv_range_start_row_ || current_csv_row_ > csv_range_end_row_)
+        return -1;
+    return current_csv_row_ - csv_range_start_row_;
+}
 bool SessionBackend::waveformIndexReady() const { return !waveform_frame_index_.isEmpty(); }
 bool SessionBackend::loading() const { return loading_; }
 int SessionBackend::loadingProgress() const { return loading_progress_; }
@@ -4608,6 +4622,18 @@ void SessionBackend::clearPreviewData()
     temperature_preview_.clear();
     humidity_preview_.clear();
     pressure_preview_.clear();
+    peak_trend_full_.clear();
+    temperature_full_.clear();
+    humidity_full_.clear();
+    pressure_full_.clear();
+    peak_trend_range_preview_.clear();
+    temperature_range_preview_.clear();
+    humidity_range_preview_.clear();
+    pressure_range_preview_.clear();
+    trend_view_start_ = 0;
+    trend_view_end_ = 0;
+    csv_range_start_row_ = 0;
+    csv_range_end_row_ = 0;
     csv_rows_all_.clear();
     csv_timestamps_us_.clear();
     waveform_timestamps_us_.clear();
@@ -4712,9 +4738,18 @@ void SessionBackend::applySessionLoadResult(const std::shared_ptr<SessionLoadRes
     temperature_preview_ = result->temperatureValues;
     humidity_preview_ = result->humidityValues;
     pressure_preview_ = result->pressureValues;
+    peak_trend_full_ = result->peakValues;
+    temperature_full_ = result->temperatureValues;
+    humidity_full_ = result->humidityValues;
+    pressure_full_ = result->pressureValues;
     waveform_raw_point_count_ = result->rawPointCount;
     waveform_harmonic_point_count_ = result->harmonicPointCount;
     current_frame_index_ = result->currentFrameIndex;
+
+    // Initialize trend view range to full data
+    trend_view_start_ = 0;
+    trend_view_end_ = std::max(0, static_cast<int>(peak_trend_full_.size()) - 1);
+    rebuildTrendRangePreviews();
 
     if (!waveform_frame_index_.isEmpty())
     {
@@ -4991,6 +5026,79 @@ SessionBackend::SessionLoadResult SessionBackend::buildSessionLoadResult(const Q
     result.ok = true;
     postLoadProgress(generation, 96, QStringLiteral("正在更新记录查看页面..."));
     return result;
+}
+
+void SessionBackend::rebuildTrendRangePreviews()
+{
+    auto decimateSlice = [](const QVariantList& full, int start, int end) -> QVariantList {
+        QVariantList result;
+        const int count = end - start + 1;
+        if (count <= 0)
+            return result;
+        static constexpr int kMaxPreview = 1200;
+        if (count <= kMaxPreview) {
+            for (int i = start; i <= end; ++i)
+                result.append(full.at(i));
+            return result;
+        }
+        const int stride = count / kMaxPreview;
+        for (int i = start; i <= end; i += stride)
+            result.append(full.at(i));
+        if (result.size() < 2)
+            result.append(full.at(end));
+        return result;
+    };
+
+    // Slice peak values: frame index maps directly
+    if (!peak_trend_full_.isEmpty())
+    {
+        const int maxFrame = peak_trend_full_.size() - 1;
+        trend_view_start_ = std::max(0, std::min(trend_view_start_, maxFrame));
+        trend_view_end_ = std::max(0, std::min(trend_view_end_, maxFrame));
+        if (trend_view_end_ < trend_view_start_)
+            trend_view_end_ = trend_view_start_;
+        peak_trend_range_preview_ = decimateSlice(peak_trend_full_, trend_view_start_, trend_view_end_);
+    }
+
+    // Map frame range to CSV time range for sensor trends
+    if (!waveform_timestamps_us_.isEmpty() && !csv_timestamps_us_.isEmpty()
+        && !temperature_full_.isEmpty())
+    {
+        const int tsSize = static_cast<int>(waveform_timestamps_us_.size());
+        const int frameIdx = std::min(trend_view_start_, tsSize - 1);
+        const int frameIdxEnd = std::min(trend_view_end_, tsSize - 1);
+        const quint64 startTs = waveform_timestamps_us_.at(frameIdx);
+        const quint64 endTs = waveform_timestamps_us_.at(frameIdxEnd);
+
+        auto csvIt = std::lower_bound(csv_timestamps_us_.begin(), csv_timestamps_us_.end(), startTs);
+        auto csvEndIt = std::upper_bound(csv_timestamps_us_.begin(), csv_timestamps_us_.end(), endTs);
+
+        const int tempSize = static_cast<int>(temperature_full_.size());
+        csv_range_start_row_ = static_cast<int>(std::distance(csv_timestamps_us_.begin(), csvIt));
+        csv_range_end_row_ = static_cast<int>(std::distance(csv_timestamps_us_.begin(), csvEndIt)) - 1;
+        csv_range_start_row_ = std::max(0, std::min(csv_range_start_row_, tempSize - 1));
+        csv_range_end_row_ = std::max(csv_range_start_row_, std::min(csv_range_end_row_, tempSize - 1));
+
+        temperature_range_preview_ = decimateSlice(temperature_full_, csv_range_start_row_, csv_range_end_row_);
+        humidity_range_preview_ = decimateSlice(humidity_full_, csv_range_start_row_, csv_range_end_row_);
+        pressure_range_preview_ = decimateSlice(pressure_full_, csv_range_start_row_, csv_range_end_row_);
+    }
+    else
+    {
+        csv_range_start_row_ = 0;
+        csv_range_end_row_ = 0;
+        temperature_range_preview_.clear();
+        humidity_range_preview_.clear();
+        pressure_range_preview_.clear();
+    }
+}
+
+void SessionBackend::setTrendViewRange(int startFrame, int endFrame)
+{
+    trend_view_start_ = startFrame;
+    trend_view_end_ = endFrame;
+    rebuildTrendRangePreviews();
+    emit trendViewRangeChanged();
 }
 
 void SessionBackend::loadSessionFrame(int frameIndex)

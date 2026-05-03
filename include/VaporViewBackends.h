@@ -735,6 +735,15 @@ class SessionBackend : public QObject
     Q_PROPERTY(int csvPreviewGeneration READ csvPreviewGeneration NOTIFY frameSelectionChanged)
     Q_PROPERTY(int waveformRawPointCount READ waveformRawPointCount NOTIFY frameSelectionChanged)
     Q_PROPERTY(int waveformHarmonicPointCount READ waveformHarmonicPointCount NOTIFY frameSelectionChanged)
+    Q_PROPERTY(QVariantList peakTrendRangePreview READ peakTrendRangePreview NOTIFY trendViewRangeChanged)
+    Q_PROPERTY(QVariantList temperatureRangePreview READ temperatureRangePreview NOTIFY trendViewRangeChanged)
+    Q_PROPERTY(QVariantList humidityRangePreview READ humidityRangePreview NOTIFY trendViewRangeChanged)
+    Q_PROPERTY(QVariantList pressureRangePreview READ pressureRangePreview NOTIFY trendViewRangeChanged)
+    Q_PROPERTY(int trendViewStart READ trendViewStart NOTIFY trendViewRangeChanged)
+    Q_PROPERTY(int trendViewEnd READ trendViewEnd NOTIFY trendViewRangeChanged)
+    Q_PROPERTY(int csvRangeStartRow READ csvRangeStartRow NOTIFY trendViewRangeChanged)
+    Q_PROPERTY(int csvRangeEndRow READ csvRangeEndRow NOTIFY trendViewRangeChanged)
+    Q_PROPERTY(int currentCsvRangeCursorIndex READ currentCsvRangeCursorIndex NOTIFY trendViewRangeChanged)
 
 public:
     explicit SessionBackend(QObject *parent = nullptr);
@@ -759,6 +768,15 @@ public:
     QVariantList temperaturePreview() const;
     QVariantList humidityPreview() const;
     QVariantList pressurePreview() const;
+    QVariantList peakTrendRangePreview() const;
+    QVariantList temperatureRangePreview() const;
+    QVariantList humidityRangePreview() const;
+    QVariantList pressureRangePreview() const;
+    int trendViewStart() const;
+    int trendViewEnd() const;
+    int csvRangeStartRow() const;
+    int csvRangeEndRow() const;
+    int currentCsvRangeCursorIndex() const;
     bool waveformIndexReady() const;
     bool loading() const;
     int loadingProgress() const;
@@ -779,6 +797,7 @@ public:
     Q_INVOKABLE void reloadSelectedSession();
     Q_INVOKABLE void loadSessionFrame(int frameIndex);
     Q_INVOKABLE void setFrameCursor(int frameIndex);
+    Q_INVOKABLE void setTrendViewRange(int startFrame, int endFrame);
     Q_INVOKABLE void clear();
 
 public slots:
@@ -791,6 +810,7 @@ signals:
     void loadingChanged();
     void frameSelectionChanged();
     void notificationRequested(const QString& level, const QString& message);
+    void trendViewRangeChanged();
 
 private:
     struct WaveformFrameIndex
@@ -844,6 +864,7 @@ private:
     void updateCsvPreviewForTimestamp(quint64 timestampUs);
     void updateCsvPreviewForTimestamp(quint64 timestampUs, int maxRows);
     void applySessionSortFilter();
+    void rebuildTrendRangePreviews();
     SessionLoadResult buildSessionLoadResult(const QString& path, int generation);
 
     QString recording_directory_;
@@ -877,6 +898,18 @@ private:
     int csv_preview_generation_ = 0;
     int waveform_raw_point_count_ = 0;
     int waveform_harmonic_point_count_ = 0;
+    int trend_view_start_ = 0;
+    int trend_view_end_ = 0;
+    int csv_range_start_row_ = 0;
+    int csv_range_end_row_ = 0;
+    QVariantList peak_trend_full_;
+    QVariantList temperature_full_;
+    QVariantList humidity_full_;
+    QVariantList pressure_full_;
+    QVariantList peak_trend_range_preview_;
+    QVariantList temperature_range_preview_;
+    QVariantList humidity_range_preview_;
+    QVariantList pressure_range_preview_;
 
     struct WaveformCacheEntry
     {

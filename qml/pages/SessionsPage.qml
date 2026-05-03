@@ -17,6 +17,10 @@ Item {
     readonly property int maxFrame: Math.max(0, Number(sessionBackend.selectedSession.waveformFrames || sessionBackend.selectedSession.frames || sessionBackend.peakTrendPreview.length || 0))
     property bool trendScatter: false
     property bool filterVisible: false
+    property bool trendFollowCursor: true
+    property int trendViewStart: 0
+    property int trendViewEnd: Math.max(0, page.maxFrame - 1)
+    property int trendViewSpan: Math.max(1, trendViewEnd - trendViewStart + 1)
     property int csvGen: sessionBackend.csvPreviewGeneration
     onCsvGenChanged: scrollCsvToHighlighted()
 
@@ -74,6 +78,63 @@ Item {
         previewFrame = Math.min(maxFrame, Math.max(0, Math.floor(maxFrame * 0.49)))
     }
 
+    function clampTrendViewRange() {
+        var maxIndex = Math.max(0, page.maxFrame - 1)
+        page.trendViewStart = Math.max(0, Math.min(page.trendViewStart, maxIndex))
+        page.trendViewEnd = Math.max(0, Math.min(page.trendViewEnd, maxIndex))
+        if (page.trendViewEnd < page.trendViewStart)
+            page.trendViewEnd = page.trendViewStart
+        page.trendViewSpan = Math.max(1, page.trendViewEnd - page.trendViewStart + 1)
+    }
+
+    function setTrendViewRange(start, end) {
+        page.trendViewStart = Math.round(start)
+        page.trendViewEnd = Math.round(end)
+        page.clampTrendViewRange()
+        sessionBackend.setTrendViewRange(page.trendViewStart, page.trendViewEnd)
+    }
+
+    function centerTrendViewOn(frame) {
+        var span = Math.max(1, page.trendViewSpan)
+        var start = Math.round(frame - span / 2)
+        var end = start + span - 1
+        if (start < 0) {
+            start = 0
+            end = Math.min(page.maxFrame - 1, span - 1)
+        }
+        if (end > page.maxFrame - 1) {
+            end = page.maxFrame - 1
+            start = Math.max(0, end - span + 1)
+        }
+        page.setTrendViewRange(start, end)
+    }
+
+    function zoomTrendView(factor) {
+        var center = Math.round((page.trendViewStart + page.trendViewEnd) / 2)
+        var newSpan = Math.max(10, Math.round(page.trendViewSpan * factor))
+        newSpan = Math.min(newSpan, Math.max(1, page.maxFrame))
+        page.trendViewSpan = newSpan
+        page.centerTrendViewOn(center)
+        page.trendFollowCursor = false
+    }
+
+    function panTrendView(ratio) {
+        var shift = Math.max(1, Math.round(page.trendViewSpan * ratio))
+        page.setTrendViewRange(page.trendViewStart + shift, page.trendViewEnd + shift)
+        page.trendFollowCursor = false
+    }
+
+    function showAllTrendView() {
+        page.trendFollowCursor = false
+        page.setTrendViewRange(0, Math.max(0, page.maxFrame - 1))
+    }
+
+    function setCurrentWindowSpan(span) {
+        page.trendViewSpan = Math.max(1, Math.min(span, Math.max(1, page.maxFrame)))
+        page.trendFollowCursor = true
+        page.centerTrendViewOn(page.previewFrame)
+    }
+
     function scrollCsvToHighlighted() {
         Qt.callLater(function() {
             var rows = sessionBackend.csvPreviewRows
@@ -108,8 +169,11 @@ Item {
             page.previewFrame = Math.max(0, sessionBackend.currentFrameIndex)
         }
         function onSelectedSessionChanged() {
-            if (sessionBackend.currentFrameIndex >= 0)
+            if (sessionBackend.currentFrameIndex >= 0) {
                 page.previewFrame = sessionBackend.currentFrameIndex
+                page.trendFollowCursor = true
+                page.setTrendViewRange(0, Math.max(0, page.maxFrame - 1))
+            }
         }
     }
 
@@ -642,6 +706,9 @@ Item {
                                         page.pendingSliderFrame = f
                                         page.previewFrame = f
 
+                                        if (page.trendFollowCursor)
+                                            page.centerTrendViewOn(f)
+
                                         if (!frameCursorTimer.running)
                                             frameCursorTimer.start()
                                     }
@@ -654,7 +721,92 @@ Item {
                                         page.previewFrame = f
                                         frameCursorTimer.stop()
                                         sessionBackend.loadSessionFrame(f)
+
+                                        if (page.trendFollowCursor)
+                                            page.centerTrendViewOn(f)
                                     }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 30
+                        color: "transparent"
+                        visible: sessionBackend.waveformIndexReady && !sessionBackend.loading
+                        RowLayout {
+                            anchors.fill: parent
+                            spacing: 4
+                            Text {
+                                text: "趋势范围: " + sessionBackend.trendViewStart + " - " + sessionBackend.trendViewEnd + " / " + page.maxFrame
+                                color: ApplicationWindow.window.muted
+                                font.pixelSize: 9
+                                font.family: "Consolas"
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+                            Item { Layout.fillWidth: true }
+                            ToolbarButton {
+                                implicitHeight: 22; implicitWidth: 40
+                                text: "全部"; font.pixelSize: 9
+                                onClicked: page.showAllTrendView()
+                            }
+                            ToolbarButton {
+                                implicitHeight: 22; implicitWidth: 48
+                                text: "±100"; font.pixelSize: 9
+                                onClicked: page.setCurrentWindowSpan(200)
+                            }
+                            ToolbarButton {
+                                implicitHeight: 22; implicitWidth: 48
+                                text: "±500"; font.pixelSize: 9
+                                onClicked: page.setCurrentWindowSpan(1000)
+                            }
+                            ToolbarButton {
+                                implicitHeight: 22; implicitWidth: 40
+                                text: "±2k"; font.pixelSize: 9
+                                onClicked: page.setCurrentWindowSpan(4000)
+                            }
+                            ToolbarButton {
+                                implicitHeight: 22; implicitWidth: 44
+                                text: "±10k"; font.pixelSize: 9
+                                onClicked: page.setCurrentWindowSpan(20000)
+                            }
+                            ToolbarButton {
+                                implicitHeight: 22; implicitWidth: 28
+                                text: "−"; font.pixelSize: 11
+                                ToolTip.visible: hovered; ToolTip.text: "缩小范围"; ToolTip.delay: 400
+                                onClicked: page.zoomTrendView(0.5)
+                            }
+                            ToolbarButton {
+                                implicitHeight: 22; implicitWidth: 28
+                                text: "+"; font.pixelSize: 11
+                                ToolTip.visible: hovered; ToolTip.text: "放大范围"; ToolTip.delay: 400
+                                onClicked: page.zoomTrendView(2.0)
+                            }
+                            ToolbarButton {
+                                implicitHeight: 22; implicitWidth: 26
+                                text: "‹"; font.pixelSize: 11
+                                ToolTip.visible: hovered; ToolTip.text: "左移"; ToolTip.delay: 400
+                                onClicked: page.panTrendView(-0.25)
+                            }
+                            ToolbarButton {
+                                implicitHeight: 22; implicitWidth: 26
+                                text: "›"; font.pixelSize: 11
+                                ToolTip.visible: hovered; ToolTip.text: "右移"; ToolTip.delay: 400
+                                onClicked: page.panTrendView(0.25)
+                            }
+                            CheckBox {
+                                id: followCheck
+                                text: "跟随"
+                                checked: page.trendFollowCursor
+                                font.pixelSize: 9
+                                spacing: 2
+                                indicator.width: 12; indicator.height: 12
+                                contentItem.font.pixelSize: 9
+                                onCheckedChanged: {
+                                    page.trendFollowCursor = checked
+                                    if (checked)
+                                        page.centerTrendViewOn(page.previewFrame)
                                 }
                             }
                         }
@@ -678,11 +830,12 @@ Item {
                     }
                     TrendRow {
                         label: "峰值趋势"
-                        samples: sessionBackend.peakTrendPreview
-                        sourcePointCount: Math.max(page.maxFrame, sessionBackend.peakTrendPreview.length)
-                        xEndIndex: Math.max(1, sourcePointCount - 1)
+                        samples: sessionBackend.peakTrendRangePreview
+                        sourcePointCount: Math.max(1, sessionBackend.trendViewEnd - sessionBackend.trendViewStart + 1)
+                        xStartIndex: sessionBackend.trendViewStart
+                        xEndIndex: Math.max(sessionBackend.trendViewStart + 1, sessionBackend.trendViewEnd)
                         cursorIndex: sessionBackend.currentFrameIndex
-                        showCursor: sessionBackend.currentFrameIndex >= 0
+                        showCursor: sessionBackend.currentFrameIndex >= sessionBackend.trendViewStart && sessionBackend.currentFrameIndex <= sessionBackend.trendViewEnd
                         cursorColor: ApplicationWindow.window.primary
                         cursorEmphasis: true
                         cursorBand: false
@@ -698,33 +851,36 @@ Item {
                     }
                     TrendRow {
                         label: "温度"; unit: "°C"
-                        samples: sessionBackend.temperaturePreview
-                        sourcePointCount: sessionBackend.temperaturePreview.length
-                        xEndIndex: Math.max(1, sourcePointCount - 1)
-                        cursorIndex: sessionBackend.currentCsvRow
-                        showCursor: sessionBackend.currentCsvRow >= 0
+                        samples: sessionBackend.temperatureRangePreview
+                        sourcePointCount: Math.max(1, sessionBackend.csvRangeEndRow - sessionBackend.csvRangeStartRow + 1)
+                        xStartIndex: sessionBackend.csvRangeStartRow
+                        xEndIndex: Math.max(sessionBackend.csvRangeStartRow + 1, sessionBackend.csvRangeEndRow)
+                        cursorIndex: sessionBackend.currentCsvRangeCursorIndex >= 0 ? sessionBackend.currentCsvRow : -1
+                        showCursor: sessionBackend.currentCsvRangeCursorIndex >= 0
                         scatter: page.trendScatter
                         lineColor: page.trendRed
                         emptyText: "暂无温度趋势"
                     }
                     TrendRow {
                         label: "湿度"; unit: "%"
-                        samples: sessionBackend.humidityPreview
-                        sourcePointCount: sessionBackend.humidityPreview.length
-                        xEndIndex: Math.max(1, sourcePointCount - 1)
-                        cursorIndex: sessionBackend.currentCsvRow
-                        showCursor: sessionBackend.currentCsvRow >= 0
+                        samples: sessionBackend.humidityRangePreview
+                        sourcePointCount: Math.max(1, sessionBackend.csvRangeEndRow - sessionBackend.csvRangeStartRow + 1)
+                        xStartIndex: sessionBackend.csvRangeStartRow
+                        xEndIndex: Math.max(sessionBackend.csvRangeStartRow + 1, sessionBackend.csvRangeEndRow)
+                        cursorIndex: sessionBackend.currentCsvRangeCursorIndex >= 0 ? sessionBackend.currentCsvRow : -1
+                        showCursor: sessionBackend.currentCsvRangeCursorIndex >= 0
                         scatter: page.trendScatter
                         lineColor: page.trendBlue
                         emptyText: "暂无湿度趋势"
                     }
                     TrendRow {
                         label: "气压"; unit: "hPa"
-                        samples: sessionBackend.pressurePreview
-                        sourcePointCount: sessionBackend.pressurePreview.length
-                        xEndIndex: Math.max(1, sourcePointCount - 1)
-                        cursorIndex: sessionBackend.currentCsvRow
-                        showCursor: sessionBackend.currentCsvRow >= 0
+                        samples: sessionBackend.pressureRangePreview
+                        sourcePointCount: Math.max(1, sessionBackend.csvRangeEndRow - sessionBackend.csvRangeStartRow + 1)
+                        xStartIndex: sessionBackend.csvRangeStartRow
+                        xEndIndex: Math.max(sessionBackend.csvRangeStartRow + 1, sessionBackend.csvRangeEndRow)
+                        cursorIndex: sessionBackend.currentCsvRangeCursorIndex >= 0 ? sessionBackend.currentCsvRow : -1
+                        showCursor: sessionBackend.currentCsvRangeCursorIndex >= 0
                         scatter: page.trendScatter
                         lineColor: page.trendGreen
                         emptyText: "暂无气压趋势"
