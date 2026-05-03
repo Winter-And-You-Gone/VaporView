@@ -686,28 +686,36 @@ Item {
                         ColumnLayout {
                             anchors.fill: parent
                             anchors.margins: 6
-                            spacing: 2
+                            spacing: 1
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                Text {
+                                    text: "当前帧"
+                                    font.pixelSize: 9
+                                    color: ApplicationWindow.window.muted
+                                }
+                                Item { Layout.fillWidth: true }
+                                Text {
+                                    text: "趋势范围"
+                                    font.pixelSize: 9
+                                    color: ApplicationWindow.window.muted
+                                }
+                            }
 
                             RowLayout {
                                 Layout.fillWidth: true
                                 spacing: 8
 
-                                Column {
-                                    spacing: 1
-                                    Text {
-                                        text: "当前帧"
-                                        font.pixelSize: 9
-                                        color: ApplicationWindow.window.muted
-                                    }
-                                    Text {
-                                        text: page.maxFrame > 0
-                                            ? page.previewFrame + " / " + page.maxFrame
-                                            : "0 / 0"
-                                        font.pixelSize: 14
-                                        font.weight: Font.Bold
-                                        font.family: "Consolas"
-                                        color: ApplicationWindow.window.primary
-                                    }
+                                Text {
+                                    text: page.maxFrame > 0
+                                        ? page.previewFrame + " / " + page.maxFrame
+                                        : "0 / 0"
+                                    font.pixelSize: 14
+                                    font.weight: Font.Bold
+                                    font.family: "Consolas"
+                                    color: ApplicationWindow.window.primary
                                 }
 
                                 Item { Layout.fillWidth: true }
@@ -789,22 +797,14 @@ Item {
 
                                 Item { Layout.fillWidth: true }
 
-                                Column {
-                                    spacing: 1
-                                    Text {
-                                        text: "趋势范围"
-                                        font.pixelSize: 9
-                                        color: ApplicationWindow.window.muted
-                                    }
-                                    Text {
-                                        text: sessionBackend.waveformIndexReady
-                                            ? sessionBackend.trendViewStart + " - " + sessionBackend.trendViewEnd
-                                            : "0 - 0"
-                                        font.pixelSize: 13
-                                        font.weight: Font.Bold
-                                        font.family: "Consolas"
-                                        color: ApplicationWindow.window.text
-                                    }
+                                Text {
+                                    text: sessionBackend.waveformIndexReady
+                                        ? sessionBackend.trendViewStart + " - " + sessionBackend.trendViewEnd
+                                        : "0 - 0"
+                                    font.pixelSize: 13
+                                    font.weight: Font.Bold
+                                    font.family: "Consolas"
+                                    color: ApplicationWindow.window.text
                                 }
                             }
 
