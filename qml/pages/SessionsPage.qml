@@ -1003,6 +1003,7 @@ Item {
                         xEndIndex: Math.max(sessionBackend.csvRangeStartRow + 1, sessionBackend.csvRangeEndRow)
                         cursorIndex: sessionBackend.currentCsvRangeCursorIndex >= 0 ? sessionBackend.currentCsvRow : -1
                         showCursor: sessionBackend.currentCsvRangeCursorIndex >= 0
+                        cursorEmphasis: true
                         scatter: page.trendScatter
                         lineColor: page.trendRed
                         emptyText: "暂无温度趋势"
@@ -1015,6 +1016,7 @@ Item {
                         xEndIndex: Math.max(sessionBackend.csvRangeStartRow + 1, sessionBackend.csvRangeEndRow)
                         cursorIndex: sessionBackend.currentCsvRangeCursorIndex >= 0 ? sessionBackend.currentCsvRow : -1
                         showCursor: sessionBackend.currentCsvRangeCursorIndex >= 0
+                        cursorEmphasis: true
                         scatter: page.trendScatter
                         lineColor: page.trendBlue
                         emptyText: "暂无湿度趋势"
@@ -1027,6 +1029,7 @@ Item {
                         xEndIndex: Math.max(sessionBackend.csvRangeStartRow + 1, sessionBackend.csvRangeEndRow)
                         cursorIndex: sessionBackend.currentCsvRangeCursorIndex >= 0 ? sessionBackend.currentCsvRow : -1
                         showCursor: sessionBackend.currentCsvRangeCursorIndex >= 0
+                        cursorEmphasis: true
                         scatter: page.trendScatter
                         lineColor: page.trendGreen
                         emptyText: "暂无气压趋势"

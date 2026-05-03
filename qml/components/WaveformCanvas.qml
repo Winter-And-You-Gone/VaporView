@@ -178,7 +178,7 @@ Item {
     }
 
     function formatCursorX(value) {
-        return formatIndexLabel(value + xAxisLabelOffset) + cursorXUnit
+        return Math.round(value + xAxisLabelOffset) + cursorXUnit
     }
 
     function formatCursorY(value) {
