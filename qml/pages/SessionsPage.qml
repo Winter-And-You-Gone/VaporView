@@ -685,8 +685,85 @@ Item {
                         border.width: 1
                         ColumnLayout {
                             anchors.fill: parent
-                            anchors.margins: 8
-                            spacing: 4
+                            anchors.margins: 6
+                            spacing: 2
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: false
+                                spacing: 4
+                                Layout.alignment: Qt.AlignHCenter
+                                ToolbarButton {
+                                    implicitHeight: 22; implicitWidth: 40
+                                    text: "全部"; font.pixelSize: 9
+                                    onClicked: page.showAllTrendView()
+                                }
+                                ToolbarButton {
+                                    implicitHeight: 22; implicitWidth: 48
+                                    text: "±100"; font.pixelSize: 9
+                                    onClicked: page.setCurrentWindowSpan(200)
+                                }
+                                ToolbarButton {
+                                    implicitHeight: 22; implicitWidth: 48
+                                    text: "±500"; font.pixelSize: 9
+                                    onClicked: page.setCurrentWindowSpan(1000)
+                                }
+                                ToolbarButton {
+                                    implicitHeight: 22; implicitWidth: 40
+                                    text: "±2k"; font.pixelSize: 9
+                                    onClicked: page.setCurrentWindowSpan(4000)
+                                }
+                                ToolbarButton {
+                                    implicitHeight: 22; implicitWidth: 44
+                                    text: "±10k"; font.pixelSize: 9
+                                    onClicked: page.setCurrentWindowSpan(20000)
+                                }
+                                ToolbarButton {
+                                    implicitHeight: 22; implicitWidth: 28
+                                    text: "−"; font.pixelSize: 11
+                                    ToolTip.visible: hovered; ToolTip.text: "缩小范围"; ToolTip.delay: 400
+                                    onClicked: page.zoomTrendView(0.5)
+                                }
+                                ToolbarButton {
+                                    implicitHeight: 22; implicitWidth: 28
+                                    text: "+"; font.pixelSize: 11
+                                    ToolTip.visible: hovered; ToolTip.text: "放大范围"; ToolTip.delay: 400
+                                    onClicked: page.zoomTrendView(2.0)
+                                }
+                                ToolbarButton {
+                                    implicitHeight: 22; implicitWidth: 26
+                                    text: "‹"; font.pixelSize: 11
+                                    ToolTip.visible: hovered; ToolTip.text: "左移"; ToolTip.delay: 400
+                                    onClicked: page.panTrendView(-0.25)
+                                }
+                                ToolbarButton {
+                                    implicitHeight: 22; implicitWidth: 26
+                                    text: "›"; font.pixelSize: 11
+                                    ToolTip.visible: hovered; ToolTip.text: "右移"; ToolTip.delay: 400
+                                    onClicked: page.panTrendView(0.25)
+                                }
+                                ToolbarButton {
+                                    implicitHeight: 22; implicitWidth: 36
+                                    text: "定位"; font.pixelSize: 9
+                                    onClicked: {
+                                        page.trendFollowCursor = true
+                                        page.centerTrendViewOn(page.previewFrame)
+                                    }
+                                }
+                                CheckBox {
+                                    id: followCheck
+                                    text: "跟随"
+                                    checked: page.trendFollowCursor
+                                    font.pixelSize: 9
+                                    spacing: 2
+                                    indicator.width: 12; indicator.height: 12
+                                    onCheckedChanged: {
+                                        page.trendFollowCursor = checked
+                                        if (checked)
+                                            page.centerTrendViewOn(page.previewFrame)
+                                    }
+                                }
+                            }
 
                             RowLayout {
                                 Layout.fillWidth: true
@@ -724,15 +801,6 @@ Item {
                                         font.weight: Font.Bold
                                         font.family: "Consolas"
                                         color: ApplicationWindow.window.text
-                                    }
-                                }
-                                ToolbarButton {
-                                    implicitHeight: 22; implicitWidth: 36
-                                    text: "定位"; font.pixelSize: 9
-                                    Layout.alignment: Qt.AlignBottom
-                                    onClicked: {
-                                        page.trendFollowCursor = true
-                                        page.centerTrendViewOn(page.previewFrame)
                                     }
                                 }
                             }
@@ -828,73 +896,6 @@ Item {
                                             frameCursorTimer.stop()
                                             sessionBackend.loadSessionFrame(f)
                                         }
-                                    }
-                                }
-                            }
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 4
-                                ToolbarButton {
-                                    implicitHeight: 22; implicitWidth: 40
-                                    text: "全部"; font.pixelSize: 9
-                                    onClicked: page.showAllTrendView()
-                                }
-                                ToolbarButton {
-                                    implicitHeight: 22; implicitWidth: 48
-                                    text: "±100"; font.pixelSize: 9
-                                    onClicked: page.setCurrentWindowSpan(200)
-                                }
-                                ToolbarButton {
-                                    implicitHeight: 22; implicitWidth: 48
-                                    text: "±500"; font.pixelSize: 9
-                                    onClicked: page.setCurrentWindowSpan(1000)
-                                }
-                                ToolbarButton {
-                                    implicitHeight: 22; implicitWidth: 40
-                                    text: "±2k"; font.pixelSize: 9
-                                    onClicked: page.setCurrentWindowSpan(4000)
-                                }
-                                ToolbarButton {
-                                    implicitHeight: 22; implicitWidth: 44
-                                    text: "±10k"; font.pixelSize: 9
-                                    onClicked: page.setCurrentWindowSpan(20000)
-                                }
-                                ToolbarButton {
-                                    implicitHeight: 22; implicitWidth: 28
-                                    text: "−"; font.pixelSize: 11
-                                    ToolTip.visible: hovered; ToolTip.text: "缩小范围"; ToolTip.delay: 400
-                                    onClicked: page.zoomTrendView(0.5)
-                                }
-                                ToolbarButton {
-                                    implicitHeight: 22; implicitWidth: 28
-                                    text: "+"; font.pixelSize: 11
-                                    ToolTip.visible: hovered; ToolTip.text: "放大范围"; ToolTip.delay: 400
-                                    onClicked: page.zoomTrendView(2.0)
-                                }
-                                ToolbarButton {
-                                    implicitHeight: 22; implicitWidth: 26
-                                    text: "‹"; font.pixelSize: 11
-                                    ToolTip.visible: hovered; ToolTip.text: "左移"; ToolTip.delay: 400
-                                    onClicked: page.panTrendView(-0.25)
-                                }
-                                ToolbarButton {
-                                    implicitHeight: 22; implicitWidth: 26
-                                    text: "›"; font.pixelSize: 11
-                                    ToolTip.visible: hovered; ToolTip.text: "右移"; ToolTip.delay: 400
-                                    onClicked: page.panTrendView(0.25)
-                                }
-                                CheckBox {
-                                    id: followCheck
-                                    text: "跟随"
-                                    checked: page.trendFollowCursor
-                                    font.pixelSize: 9
-                                    spacing: 2
-                                    indicator.width: 12; indicator.height: 12
-                                    onCheckedChanged: {
-                                        page.trendFollowCursor = checked
-                                        if (checked)
-                                            page.centerTrendViewOn(page.previewFrame)
                                     }
                                 }
                             }
