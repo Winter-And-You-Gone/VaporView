@@ -4314,6 +4314,7 @@ QString SessionBackend::loadingText() const { return loading_text_; }
 int SessionBackend::currentFrameIndex() const { return current_frame_index_; }
 int SessionBackend::currentCsvRow() const { return current_csv_row_; }
 int SessionBackend::secondaryCsvRow() const { return secondary_csv_row_; }
+int SessionBackend::csvPreviewGeneration() const { return csv_preview_generation_; }
 int SessionBackend::waveformRawPointCount() const { return waveform_raw_point_count_; }
 int SessionBackend::waveformHarmonicPointCount() const { return waveform_harmonic_point_count_; }
 
@@ -5125,8 +5126,7 @@ void SessionBackend::updateCsvPreviewForTimestamp(quint64 timestampUs)
 
     const QSet<int> highlightedSet(highlightedRows.begin(), highlightedRows.end());
     const int totalRows = static_cast<int>(csv_rows_all_.size());
-    const int maxVisible = std::min(totalRows, 80);
-    const int endRow = maxVisible;
+    const int endRow = totalRows;
     for (int i = 0; i < endRow; ++i)
     {
         int rank = -1;
@@ -5148,6 +5148,7 @@ void SessionBackend::updateCsvPreviewForTimestamp(quint64 timestampUs)
         }
         csv_preview_rows_.append(row);
     }
+    ++csv_preview_generation_;
 }
 
 QVariantList SessionBackend::readCsvPreview(const QString& csvPath, int maxRows) const

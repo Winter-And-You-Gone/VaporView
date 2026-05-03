@@ -732,6 +732,7 @@ class SessionBackend : public QObject
     Q_PROPERTY(int currentFrameIndex READ currentFrameIndex NOTIFY frameSelectionChanged)
     Q_PROPERTY(int currentCsvRow READ currentCsvRow NOTIFY frameSelectionChanged)
     Q_PROPERTY(int secondaryCsvRow READ secondaryCsvRow NOTIFY frameSelectionChanged)
+    Q_PROPERTY(int csvPreviewGeneration READ csvPreviewGeneration NOTIFY frameSelectionChanged)
     Q_PROPERTY(int waveformRawPointCount READ waveformRawPointCount NOTIFY frameSelectionChanged)
     Q_PROPERTY(int waveformHarmonicPointCount READ waveformHarmonicPointCount NOTIFY frameSelectionChanged)
 
@@ -765,6 +766,7 @@ public:
     int currentFrameIndex() const;
     int currentCsvRow() const;
     int secondaryCsvRow() const;
+    int csvPreviewGeneration() const;
     int waveformRawPointCount() const;
     int waveformHarmonicPointCount() const;
 
@@ -871,6 +873,7 @@ private:
     int current_frame_index_ = -1;
     int current_csv_row_ = -1;
     int secondary_csv_row_ = -1;
+    int csv_preview_generation_ = 0;
     int waveform_raw_point_count_ = 0;
     int waveform_harmonic_point_count_ = 0;
 };

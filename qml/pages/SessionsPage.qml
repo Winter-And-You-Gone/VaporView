@@ -15,6 +15,9 @@ Item {
     readonly property int maxFrame: Math.max(0, Number(sessionBackend.selectedSession.waveformFrames || sessionBackend.selectedSession.frames || sessionBackend.peakTrendPreview.length || 0))
     property bool trendScatter: false
     property bool filterVisible: false
+    property int csvGen: sessionBackend.csvPreviewGeneration
+    onCsvGenChanged: scrollCsvToHighlighted()
+
     readonly property color trendRed: "#ef4444"
     readonly property color trendBlue: ApplicationWindow.window.dark ? "#60a5fa" : "#3b82f6"
     readonly property color trendGreen: "#10b981"
@@ -56,6 +59,18 @@ Item {
         selectedIndex = actualIndex
         sessionBackend.selectSession(actualIndex)
         previewFrame = Math.min(maxFrame, Math.max(0, Math.floor(maxFrame * 0.49)))
+    }
+
+    function scrollCsvToHighlighted() {
+        Qt.callLater(function() {
+            var rows = sessionBackend.csvPreviewRows
+            for (var i = 0; i < rows.length; i++) {
+                if (rows[i] && rows[i]._matchRank === 0) {
+                    tableFlick.contentY = Math.max(0, 34 + i * 30)
+                    return
+                }
+            }
+        })
     }
 
     FolderDialog {
