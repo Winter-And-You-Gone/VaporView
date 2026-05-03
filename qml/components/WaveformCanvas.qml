@@ -32,6 +32,18 @@ Item {
     property string cursorXUnit: ""
     property string cursorYUnit: ""
     property color cursorColor: lineColor
+    property bool cursorBandEnabled: false
+    property real cursorBandWidth: 7
+    property real cursorBandOpacity: 0.12
+    property color cursorBandColor: cursorColor
+    property bool cursorHaloEnabled: true
+    property real cursorHaloWidth: 4
+    property color cursorHaloColor: plotBackground
+    property real cursorHaloOpacity: 0.95
+    property real cursorLineWidth: 1.5
+    property bool cursorPointEnabled: true
+    property real cursorPointRadius: 4
+    property real cursorPointRingWidth: 2
 
     readonly property int marginLeft: 42
     readonly property int marginTop: 8
@@ -145,6 +157,14 @@ Item {
 
     function formatCursorY(value) {
         return formatAxisValue(value) + cursorYUnit
+    }
+
+    function drawCursorCross(ctx) {
+        ctx.beginPath()
+        ctx.moveTo(chart.cursorX, chart.marginTop)
+        ctx.lineTo(chart.cursorX, chart.marginTop + chart.chartHeight)
+        ctx.moveTo(chart.marginLeft, chart.cursorY)
+        ctx.lineTo(chart.marginLeft + chart.chartWidth, chart.cursorY)
     }
 
     function xTickLabelValue(tickIndex, tickCount) {
@@ -341,15 +361,52 @@ Item {
             if (!chart.cursorVisible)
                 return
             ctx.save()
+
+            // Cursor band (vertical highlight)
+            if (chart.cursorBandEnabled) {
+                ctx.fillStyle = chart.rgbaString(chart.cursorBandColor, chart.cursorBandOpacity)
+                ctx.fillRect(chart.cursorX - chart.cursorBandWidth / 2, chart.marginTop,
+                             chart.cursorBandWidth, chart.chartHeight)
+            }
+
+            // Halo crosshair (thick background-colored)
+            if (chart.cursorHaloEnabled) {
+                ctx.setLineDash([4, 3])
+                ctx.strokeStyle = chart.rgbaString(chart.cursorHaloColor, chart.cursorHaloOpacity)
+                ctx.lineWidth = chart.cursorLineWidth + chart.cursorHaloWidth
+                chart.drawCursorCross(ctx)
+                ctx.stroke()
+            }
+
+            // Foreground crosshair
             ctx.setLineDash([4, 3])
             ctx.strokeStyle = chart.rgbaString(chart.cursorColor, 0.92)
-            ctx.lineWidth = 1
-            ctx.beginPath()
-            ctx.moveTo(chart.cursorX, chart.marginTop)
-            ctx.lineTo(chart.cursorX, chart.marginTop + chart.chartHeight)
-            ctx.moveTo(chart.marginLeft, chart.cursorY)
-            ctx.lineTo(chart.marginLeft + chart.chartWidth, chart.cursorY)
+            ctx.lineWidth = chart.cursorLineWidth
+            chart.drawCursorCross(ctx)
             ctx.stroke()
+
+            // Cursor point
+            if (chart.cursorPointEnabled) {
+                // Outer fill (background color)
+                ctx.beginPath()
+                ctx.arc(chart.cursorX, chart.cursorY, chart.cursorPointRadius, 0, Math.PI * 2)
+                ctx.fillStyle = chart.rgbaString(chart.cursorHaloColor, 0.95)
+                ctx.fill()
+
+                // Middle ring (cursor color)
+                ctx.beginPath()
+                ctx.arc(chart.cursorX, chart.cursorY, chart.cursorPointRadius - 0.5, 0, Math.PI * 2)
+                ctx.strokeStyle = chart.rgbaString(chart.cursorColor, 1.0)
+                ctx.lineWidth = chart.cursorPointRingWidth
+                ctx.stroke()
+
+                // Inner fill (cursor color)
+                ctx.beginPath()
+                ctx.arc(chart.cursorX, chart.cursorY, Math.max(1.5, chart.cursorPointRadius - chart.cursorPointRingWidth - 1.5), 0, Math.PI * 2)
+                ctx.fillStyle = chart.rgbaString(chart.cursorColor, 1.0)
+                ctx.fill()
+            }
+
             ctx.restore()
         }
     }
@@ -439,6 +496,18 @@ Item {
         function onCursorSourceIndexChanged() { cursorLayer.requestPaint() }
         function onShowCursorChanged() { cursorLayer.requestPaint() }
         function onCursorColorChanged() { cursorLayer.requestPaint() }
+        function onCursorBandEnabledChanged() { cursorLayer.requestPaint() }
+        function onCursorBandWidthChanged() { cursorLayer.requestPaint() }
+        function onCursorBandOpacityChanged() { cursorLayer.requestPaint() }
+        function onCursorBandColorChanged() { cursorLayer.requestPaint() }
+        function onCursorHaloEnabledChanged() { cursorLayer.requestPaint() }
+        function onCursorHaloWidthChanged() { cursorLayer.requestPaint() }
+        function onCursorHaloColorChanged() { cursorLayer.requestPaint() }
+        function onCursorHaloOpacityChanged() { cursorLayer.requestPaint() }
+        function onCursorLineWidthChanged() { cursorLayer.requestPaint() }
+        function onCursorPointEnabledChanged() { cursorLayer.requestPaint() }
+        function onCursorPointRadiusChanged() { cursorLayer.requestPaint() }
+        function onCursorPointRingWidthChanged() { cursorLayer.requestPaint() }
     }
 
     onWidthChanged: { lineLayer.requestPaint(); scatterLayer.requestPaint(); cursorLayer.requestPaint() }

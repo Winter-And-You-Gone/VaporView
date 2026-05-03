@@ -176,6 +176,8 @@ Item {
         property int cursorIndex: -1
         property int preferredHeight: 126
         property string emptyText: "暂无数据"
+        property color cursorColor: lineColor
+        property bool cursorEmphasis: false
 
         spacing: 8
         Layout.fillWidth: true
@@ -235,7 +237,13 @@ Item {
                 showCursor: parent.parent.showCursor
                 cursorSourceIndex: parent.parent.cursorIndex
                 cursorYUnit: parent.parent.unit.length > 0 ? " " + parent.parent.unit : ""
-                cursorColor: parent.parent.lineColor
+                cursorColor: parent.parent.cursorColor
+                cursorBandEnabled: parent.parent.cursorEmphasis
+                cursorPointEnabled: parent.parent.cursorEmphasis
+                cursorHaloEnabled: parent.parent.cursorEmphasis
+                cursorLineWidth: parent.parent.cursorEmphasis ? 2.2 : 1.5
+                cursorPointRadius: parent.parent.cursorEmphasis ? 5 : 4
+                cursorBandOpacity: parent.parent.cursorEmphasis ? 0.14 : 0.08
                 plotBackground: ApplicationWindow.window.chartPlot
                 gridColor: ApplicationWindow.window.chartGrid
                 axisColor: ApplicationWindow.window.chartAxis
@@ -665,6 +673,8 @@ Item {
                         xEndIndex: Math.max(1, sourcePointCount - 1)
                         cursorIndex: sessionBackend.currentFrameIndex
                         showCursor: sessionBackend.currentFrameIndex >= 0
+                        cursorColor: ApplicationWindow.window.primary
+                        cursorEmphasis: true
                         scatter: page.trendScatter
                         lineColor: ApplicationWindow.window.text
                         fill: !page.trendScatter
