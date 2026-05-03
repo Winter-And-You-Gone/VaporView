@@ -249,7 +249,7 @@ Item {
         property int xEndIndex: Math.max(0, sourcePointCount - 1)
         property bool showCursor: false
         property int cursorIndex: -1
-        property int preferredHeight: 126
+        property int preferredHeight: 118
         property string emptyText: "暂无数据"
         property color cursorColor: lineColor
         property bool cursorEmphasis: false
@@ -658,7 +658,7 @@ Item {
 
             Card {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 880
+                Layout.preferredHeight: 920
                 title: "波形与环境趋势"
                 headerRight: Row {
                     spacing: 6
@@ -678,218 +678,223 @@ Item {
 
                     Rectangle {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 46
-                        radius: 6
+                        Layout.preferredHeight: 124
+                        radius: 8
                         color: Qt.rgba(ApplicationWindow.window.secondary.r, ApplicationWindow.window.secondary.g, ApplicationWindow.window.secondary.b, ApplicationWindow.window.dark ? 0.38 : 0.26)
                         border.color: Qt.rgba(ApplicationWindow.window.border.r, ApplicationWindow.window.border.g, ApplicationWindow.window.border.b, 0.55)
                         border.width: 1
                         ColumnLayout {
                             anchors.fill: parent
-                            anchors.margins: 6
-                            spacing: 2
-                            RowLayout {
-                                Layout.fillWidth: true
-                                Text { text: "0"; color: ApplicationWindow.window.muted; font.pixelSize: 9; font.family: "Consolas" }
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: "全局帧定位: " + page.previewFrame + " / " + page.maxFrame
-                                    color: ApplicationWindow.window.text
-                                    font.pixelSize: 9
-                                    font.weight: Font.Bold
-                                    horizontalAlignment: Text.AlignHCenter
-                                }
-                                Text { text: String(page.maxFrame); color: ApplicationWindow.window.muted; font.pixelSize: 9; font.family: "Consolas" }
-                            }
-                            Slider {
-                                Layout.fillWidth: true
-                                from: 0
-                                to: Math.max(1, page.maxFrame - 1)
-                                value: page.previewFrame
-                                enabled: sessionBackend.waveformIndexReady && page.maxFrame > 0 && !sessionBackend.loading
-                                live: true
-                                onValueChanged: {
-                                    if (pressed && enabled) {
-                                        var f = Math.round(value)
-                                        if (f === page.lastRequestedFrame)
-                                            return
-
-                                        page.lastRequestedFrame = f
-                                        page.pendingSliderFrame = f
-                                        page.previewFrame = f
-
-                                        if (page.trendFollowCursor)
-                                            page.maybeFollowCursor(f)
-
-                                        if (!frameCursorTimer.running)
-                                            frameCursorTimer.start()
-                                    }
-                                }
-                                onPressedChanged: {
-                                    if (!pressed && enabled) {
-                                        var f = Math.round(value)
-                                        page.lastRequestedFrame = f
-                                        page.pendingSliderFrame = -1
-                                        page.previewFrame = f
-                                        frameCursorTimer.stop()
-                                        sessionBackend.loadSessionFrame(f)
-
-                                        if (page.trendFollowCursor)
-                                            page.maybeFollowCursor(f)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 30
-                        color: "transparent"
-                        visible: sessionBackend.waveformIndexReady && !sessionBackend.loading
-                        RowLayout {
-                            anchors.fill: parent
+                            anchors.margins: 8
                             spacing: 4
-                            Text {
-                                text: "趋势范围: " + sessionBackend.trendViewStart + " - " + sessionBackend.trendViewEnd + " / " + page.maxFrame
-                                color: ApplicationWindow.window.muted
-                                font.pixelSize: 9
-                                font.family: "Consolas"
-                                Layout.alignment: Qt.AlignVCenter
-                            }
-                            Item { Layout.fillWidth: true }
-                            ToolbarButton {
-                                implicitHeight: 22; implicitWidth: 40
-                                text: "全部"; font.pixelSize: 9
-                                onClicked: page.showAllTrendView()
-                            }
-                            ToolbarButton {
-                                implicitHeight: 22; implicitWidth: 48
-                                text: "±100"; font.pixelSize: 9
-                                onClicked: page.setCurrentWindowSpan(200)
-                            }
-                            ToolbarButton {
-                                implicitHeight: 22; implicitWidth: 48
-                                text: "±500"; font.pixelSize: 9
-                                onClicked: page.setCurrentWindowSpan(1000)
-                            }
-                            ToolbarButton {
-                                implicitHeight: 22; implicitWidth: 40
-                                text: "±2k"; font.pixelSize: 9
-                                onClicked: page.setCurrentWindowSpan(4000)
-                            }
-                            ToolbarButton {
-                                implicitHeight: 22; implicitWidth: 44
-                                text: "±10k"; font.pixelSize: 9
-                                onClicked: page.setCurrentWindowSpan(20000)
-                            }
-                            ToolbarButton {
-                                implicitHeight: 22; implicitWidth: 28
-                                text: "−"; font.pixelSize: 11
-                                ToolTip.visible: hovered; ToolTip.text: "缩小范围"; ToolTip.delay: 400
-                                onClicked: page.zoomTrendView(0.5)
-                            }
-                            ToolbarButton {
-                                implicitHeight: 22; implicitWidth: 28
-                                text: "+"; font.pixelSize: 11
-                                ToolTip.visible: hovered; ToolTip.text: "放大范围"; ToolTip.delay: 400
-                                onClicked: page.zoomTrendView(2.0)
-                            }
-                            ToolbarButton {
-                                implicitHeight: 22; implicitWidth: 26
-                                text: "‹"; font.pixelSize: 11
-                                ToolTip.visible: hovered; ToolTip.text: "左移"; ToolTip.delay: 400
-                                onClicked: page.panTrendView(-0.25)
-                            }
-                            ToolbarButton {
-                                implicitHeight: 22; implicitWidth: 26
-                                text: "›"; font.pixelSize: 11
-                                ToolTip.visible: hovered; ToolTip.text: "右移"; ToolTip.delay: 400
-                                onClicked: page.panTrendView(0.25)
-                            }
-                            CheckBox {
-                                id: followCheck
-                                text: "跟随"
-                                checked: page.trendFollowCursor
-                                font.pixelSize: 9
-                                spacing: 2
-                                indicator.width: 12; indicator.height: 12
-                                onCheckedChanged: {
-                                    page.trendFollowCursor = checked
-                                    if (checked)
-                                        page.centerTrendViewOn(page.previewFrame)
-                                }
-                            }
-                        }
-                    }
 
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 46
-                        radius: 6
-                        color: Qt.rgba(ApplicationWindow.window.secondary.r, ApplicationWindow.window.secondary.g, ApplicationWindow.window.secondary.b, ApplicationWindow.window.dark ? 0.38 : 0.26)
-                        border.color: Qt.rgba(ApplicationWindow.window.border.r, ApplicationWindow.window.border.g, ApplicationWindow.window.border.b, 0.55)
-                        border.width: 1
-                        visible: sessionBackend.waveformIndexReady && !sessionBackend.loading && sessionBackend.trendViewEnd > sessionBackend.trendViewStart
-                        ColumnLayout {
-                            anchors.fill: parent
-                            anchors.margins: 6
-                            spacing: 2
                             RowLayout {
                                 Layout.fillWidth: true
-                                Text {
-                                    text: "局部帧定位: " + page.previewFrame
-                                    color: ApplicationWindow.window.text
-                                    font.pixelSize: 9
-                                    font.weight: Font.Bold
-                                    font.family: "Consolas"
+                                spacing: 16
+                                Column {
+                                    spacing: 1
+                                    Text {
+                                        text: "当前帧"
+                                        font.pixelSize: 9
+                                        color: ApplicationWindow.window.muted
+                                    }
+                                    Text {
+                                        text: page.maxFrame > 0
+                                            ? page.previewFrame + " / " + page.maxFrame
+                                            : "0 / 0"
+                                        font.pixelSize: 14
+                                        font.weight: Font.Bold
+                                        font.family: "Consolas"
+                                        color: ApplicationWindow.window.primary
+                                    }
                                 }
                                 Item { Layout.fillWidth: true }
-                                Text {
-                                    text: "范围: " + sessionBackend.trendViewStart + " - " + sessionBackend.trendViewEnd
-                                    color: ApplicationWindow.window.muted
-                                    font.pixelSize: 9
-                                    font.family: "Consolas"
+                                Column {
+                                    spacing: 1
+                                    Text {
+                                        text: "趋势范围"
+                                        font.pixelSize: 9
+                                        color: ApplicationWindow.window.muted
+                                    }
+                                    Text {
+                                        text: sessionBackend.waveformIndexReady
+                                            ? sessionBackend.trendViewStart + " - " + sessionBackend.trendViewEnd
+                                            : "0 - 0"
+                                        font.pixelSize: 13
+                                        font.weight: Font.Bold
+                                        font.family: "Consolas"
+                                        color: ApplicationWindow.window.text
+                                    }
                                 }
                                 ToolbarButton {
                                     implicitHeight: 22; implicitWidth: 36
                                     text: "定位"; font.pixelSize: 9
+                                    Layout.alignment: Qt.AlignBottom
                                     onClicked: {
                                         page.trendFollowCursor = true
                                         page.centerTrendViewOn(page.previewFrame)
                                     }
                                 }
                             }
-                            Slider {
-                                id: localFrameSlider
+
+                            RowLayout {
                                 Layout.fillWidth: true
-                                from: sessionBackend.trendViewStart
-                                to: Math.max(sessionBackend.trendViewStart + 1, sessionBackend.trendViewEnd)
-                                value: Math.max(from, Math.min(to, page.previewFrame))
-                                enabled: sessionBackend.waveformIndexReady &&
-                                         page.maxFrame > 0 &&
-                                         !sessionBackend.loading &&
-                                         sessionBackend.trendViewEnd > sessionBackend.trendViewStart
-                                live: true
-                                onValueChanged: {
-                                    if (pressed && enabled) {
-                                        var f = Math.round(value)
-                                        if (f === page.lastRequestedFrame)
-                                            return
-                                        page.lastRequestedFrame = f
-                                        page.pendingSliderFrame = f
-                                        page.previewFrame = f
-                                        if (!frameCursorTimer.running)
-                                            frameCursorTimer.start()
+                                spacing: 6
+                                Text {
+                                    text: "全局"
+                                    color: ApplicationWindow.window.muted
+                                    font.pixelSize: 9
+                                    font.family: "Consolas"
+                                    Layout.preferredWidth: 28
+                                }
+                                Slider {
+                                    id: globalFrameSlider
+                                    Layout.fillWidth: true
+                                    from: 0
+                                    to: Math.max(1, page.maxFrame - 1)
+                                    value: Math.max(from, Math.min(to, page.previewFrame))
+                                    enabled: sessionBackend.waveformIndexReady && page.maxFrame > 0 && !sessionBackend.loading
+                                    live: true
+                                    onValueChanged: {
+                                        if (pressed && enabled) {
+                                            var f = Math.round(value)
+                                            if (f === page.lastRequestedFrame)
+                                                return
+                                            page.lastRequestedFrame = f
+                                            page.pendingSliderFrame = f
+                                            page.previewFrame = f
+                                            if (page.trendFollowCursor)
+                                                page.maybeFollowCursor(f)
+                                            if (!frameCursorTimer.running)
+                                                frameCursorTimer.start()
+                                        }
+                                    }
+                                    onPressedChanged: {
+                                        if (!pressed && enabled) {
+                                            var f = Math.round(value)
+                                            page.lastRequestedFrame = f
+                                            page.pendingSliderFrame = -1
+                                            page.previewFrame = f
+                                            frameCursorTimer.stop()
+                                            sessionBackend.loadSessionFrame(f)
+                                            if (page.trendFollowCursor)
+                                                page.maybeFollowCursor(f)
+                                        }
                                     }
                                 }
-                                onPressedChanged: {
-                                    if (!pressed && enabled) {
-                                        var f = Math.round(value)
-                                        page.lastRequestedFrame = f
-                                        page.pendingSliderFrame = -1
-                                        page.previewFrame = f
-                                        frameCursorTimer.stop()
-                                        sessionBackend.loadSessionFrame(f)
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 6
+                                Text {
+                                    text: "局部"
+                                    color: ApplicationWindow.window.muted
+                                    font.pixelSize: 9
+                                    font.family: "Consolas"
+                                    Layout.preferredWidth: 28
+                                }
+                                Slider {
+                                    id: localFrameSlider
+                                    Layout.fillWidth: true
+                                    from: sessionBackend.waveformIndexReady ? sessionBackend.trendViewStart : 0
+                                    to: sessionBackend.waveformIndexReady
+                                        ? Math.max(sessionBackend.trendViewStart + 1, sessionBackend.trendViewEnd)
+                                        : 1
+                                    value: Math.max(from, Math.min(to, page.previewFrame))
+                                    enabled: sessionBackend.waveformIndexReady &&
+                                             page.maxFrame > 0 &&
+                                             !sessionBackend.loading &&
+                                             sessionBackend.trendViewEnd > sessionBackend.trendViewStart
+                                    live: true
+                                    onValueChanged: {
+                                        if (pressed && enabled) {
+                                            var f = Math.round(value)
+                                            if (f === page.lastRequestedFrame)
+                                                return
+                                            page.lastRequestedFrame = f
+                                            page.pendingSliderFrame = f
+                                            page.previewFrame = f
+                                            if (!frameCursorTimer.running)
+                                                frameCursorTimer.start()
+                                        }
+                                    }
+                                    onPressedChanged: {
+                                        if (!pressed && enabled) {
+                                            var f = Math.round(value)
+                                            page.lastRequestedFrame = f
+                                            page.pendingSliderFrame = -1
+                                            page.previewFrame = f
+                                            frameCursorTimer.stop()
+                                            sessionBackend.loadSessionFrame(f)
+                                        }
+                                    }
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 4
+                                ToolbarButton {
+                                    implicitHeight: 22; implicitWidth: 40
+                                    text: "全部"; font.pixelSize: 9
+                                    onClicked: page.showAllTrendView()
+                                }
+                                ToolbarButton {
+                                    implicitHeight: 22; implicitWidth: 48
+                                    text: "±100"; font.pixelSize: 9
+                                    onClicked: page.setCurrentWindowSpan(200)
+                                }
+                                ToolbarButton {
+                                    implicitHeight: 22; implicitWidth: 48
+                                    text: "±500"; font.pixelSize: 9
+                                    onClicked: page.setCurrentWindowSpan(1000)
+                                }
+                                ToolbarButton {
+                                    implicitHeight: 22; implicitWidth: 40
+                                    text: "±2k"; font.pixelSize: 9
+                                    onClicked: page.setCurrentWindowSpan(4000)
+                                }
+                                ToolbarButton {
+                                    implicitHeight: 22; implicitWidth: 44
+                                    text: "±10k"; font.pixelSize: 9
+                                    onClicked: page.setCurrentWindowSpan(20000)
+                                }
+                                ToolbarButton {
+                                    implicitHeight: 22; implicitWidth: 28
+                                    text: "−"; font.pixelSize: 11
+                                    ToolTip.visible: hovered; ToolTip.text: "缩小范围"; ToolTip.delay: 400
+                                    onClicked: page.zoomTrendView(0.5)
+                                }
+                                ToolbarButton {
+                                    implicitHeight: 22; implicitWidth: 28
+                                    text: "+"; font.pixelSize: 11
+                                    ToolTip.visible: hovered; ToolTip.text: "放大范围"; ToolTip.delay: 400
+                                    onClicked: page.zoomTrendView(2.0)
+                                }
+                                ToolbarButton {
+                                    implicitHeight: 22; implicitWidth: 26
+                                    text: "‹"; font.pixelSize: 11
+                                    ToolTip.visible: hovered; ToolTip.text: "左移"; ToolTip.delay: 400
+                                    onClicked: page.panTrendView(-0.25)
+                                }
+                                ToolbarButton {
+                                    implicitHeight: 22; implicitWidth: 26
+                                    text: "›"; font.pixelSize: 11
+                                    ToolTip.visible: hovered; ToolTip.text: "右移"; ToolTip.delay: 400
+                                    onClicked: page.panTrendView(0.25)
+                                }
+                                CheckBox {
+                                    id: followCheck
+                                    text: "跟随"
+                                    checked: page.trendFollowCursor
+                                    font.pixelSize: 9
+                                    spacing: 2
+                                    indicator.width: 12; indicator.height: 12
+                                    onCheckedChanged: {
+                                        page.trendFollowCursor = checked
+                                        if (checked)
+                                            page.centerTrendViewOn(page.previewFrame)
                                     }
                                 }
                             }
