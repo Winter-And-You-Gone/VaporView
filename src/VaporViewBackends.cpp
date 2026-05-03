@@ -4644,7 +4644,10 @@ void SessionBackend::applySessionSortFilter()
             return a.toMap().value(QStringLiteral("name")).toString().toLower() < b.toMap().value(QStringLiteral("name")).toString().toLower();
         });
         break;
-    default: // 0 = date descending (default, directory listing order)
+    default: // 0 = date descending (by recorded start time)
+        std::sort(filtered.begin(), filtered.end(), [](const QVariant& a, const QVariant& b) {
+            return a.toMap().value(QStringLiteral("date")).toString() > b.toMap().value(QStringLiteral("date")).toString();
+        });
         break;
     }
 
