@@ -4378,27 +4378,16 @@ QVariantMap SessionBackend::sessionSummaryForDirectory(const QString& path, bool
     map[QStringLiteral("ratesText")] = QStringLiteral("--- | ---");
 
     const QDir sessionDir(path);
+    // Compute total directory size recursively — more reliable than
+    // enumerating specific files which may miss large raw data files.
     qint64 size = 0;
-    QStringList countedFiles;
-    auto addFileSize = [&](const QString& relativeOrAbsolutePath) {
-        if (relativeOrAbsolutePath.trimmed().isEmpty())
+    {
+        QDirIterator dirIt(sessionDir.absolutePath(), QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+        while (dirIt.hasNext())
         {
-            return;
+            size += dirIt.nextFileInfo().size();
         }
-        QFileInfo fileInfo(relativeOrAbsolutePath);
-        if (fileInfo.isRelative())
-        {
-            fileInfo.setFile(sessionDir.filePath(relativeOrAbsolutePath));
-        }
-        const QString absolutePath = QDir::fromNativeSeparators(fileInfo.absoluteFilePath());
-        if (!fileInfo.exists() || !fileInfo.isFile() || countedFiles.contains(absolutePath))
-        {
-            return;
-        }
-        countedFiles.append(absolutePath);
-        size += fileInfo.size();
-    };
-    addFileSize(QStringLiteral("session.json"));
+    }
 
     QFile metadata(sessionDir.filePath(QStringLiteral("session.json")));
     QDateTime startDt;
@@ -4437,28 +4426,6 @@ QVariantMap SessionBackend::sessionSummaryForDirectory(const QString& path, bool
         {
             map[QStringLiteral("status")] = QStringLiteral("partial");
         }
-
-        const QJsonObject paths = root.value(QStringLiteral("paths")).toObject();
-        addFileSize(paths.value(QStringLiteral("devices_csv")).toString(QStringLiteral("sensors/devices.csv")));
-        addFileSize(paths.value(QStringLiteral("event_log")).toString());
-        addFileSize(paths.value(QStringLiteral("error_log")).toString());
-        addFileSize(paths.value(QStringLiteral("device_config")).toString());
-        addFileSize(paths.value(QStringLiteral("raw_format_doc")).toString());
-
-        const QJsonObject rawFiles = root.value(QStringLiteral("raw_files")).toObject();
-        for (auto it = rawFiles.constBegin(); it != rawFiles.constEnd(); ++it)
-        {
-            addFileSize(it.value().toObject().value(QStringLiteral("path")).toString());
-        }
-    }
-    else
-    {
-        addFileSize(QStringLiteral("sensors/devices.csv"));
-        addFileSize(QStringLiteral("raw/epsilon.dat"));
-        addFileSize(QStringLiteral("raw/ptb.dat"));
-        addFileSize(QStringLiteral("raw/hmp.dat"));
-        addFileSize(QStringLiteral("raw/lidar.dat"));
-        addFileSize(QStringLiteral("raw/tcp_wave.dat"));
     }
     map[QStringLiteral("size")] = formatBytes(size);
     map[QStringLiteral("sizeBytes")] = QVariant::fromValue<qlonglong>(static_cast<qlonglong>(size));
