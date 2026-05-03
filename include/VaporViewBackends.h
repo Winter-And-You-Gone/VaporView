@@ -827,6 +827,13 @@ private:
         quint64 timestampUs = 0;
     };
 
+    struct LegacyWaveformSegment
+    {
+        QString filename;
+        quint64 start_frame = 0;
+        quint64 frame_count = 0;
+    };
+
     struct SessionLoadResult
     {
         bool ok = false;
@@ -848,6 +855,10 @@ private:
         int rawPointCount = 0;
         int harmonicPointCount = 0;
         int currentFrameIndex = -1;
+        bool legacyFormat = false;
+        QVector<LegacyWaveformSegment> legacySegments;
+        int legacyPointsPerFrame = 0;
+        QString legacyWaveformPath;
     };
 
     QVariantMap sessionSummaryForDirectory(const QString& path, bool detailed = false) const;
@@ -860,6 +871,7 @@ private:
     QVariantList readCsvPreview(const QString& csvPath, int maxRows) const;
     QVariantMap readWaveformPreviews(const QString& rawPath);
     QVariantMap readWaveformFramePreview(const QString& rawPath, int frameIndex) const;
+    QVariantMap readLegacyWaveformFrame(int frameIndex) const;
     QVariantMap readSensorTrendPreviews(const QString& csvPath, int maxRows) const;
     QVariantMap countSensorRowsAndRange(const QString& csvPath) const;
     int countWaveformFrames(const QString& rawPath) const;
@@ -898,6 +910,10 @@ private:
     QVector<quint64> waveform_timestamps_us_;
     QString waveform_index_path_;
     QVector<WaveformFrameIndex> waveform_frame_index_;
+    bool legacy_format_ = false;
+    QVector<LegacyWaveformSegment> legacy_waveform_segments_;
+    int legacy_points_per_frame_ = 0;
+    QString legacy_waveform_path_;
     QThread *session_load_thread_ = nullptr;
     int load_generation_ = 0;
     bool loading_ = false;

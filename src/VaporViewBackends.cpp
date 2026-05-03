@@ -4332,7 +4332,7 @@ int SessionBackend::currentCsvRangeCursorIndex() const
         return -1;
     return current_csv_row_ - csv_range_start_row_;
 }
-bool SessionBackend::waveformIndexReady() const { return !waveform_frame_index_.isEmpty(); }
+bool SessionBackend::waveformIndexReady() const { return !waveform_frame_index_.isEmpty() || legacy_format_; }
 bool SessionBackend::loading() const { return loading_; }
 int SessionBackend::loadingProgress() const { return loading_progress_; }
 QString SessionBackend::loadingText() const { return loading_text_; }
@@ -4759,6 +4759,10 @@ void SessionBackend::clearPreviewData()
     clearWaveformCache();
     waveform_raw_point_count_ = 0;
     waveform_harmonic_point_count_ = 0;
+    legacy_format_ = false;
+    legacy_waveform_segments_.clear();
+    legacy_points_per_frame_ = 0;
+    legacy_waveform_path_.clear();
     emit frameSelectionChanged();
 }
 
@@ -4845,6 +4849,10 @@ void SessionBackend::applySessionLoadResult(const std::shared_ptr<SessionLoadRes
     waveform_timestamps_us_ = result->waveformTimestampsUs;
     waveform_index_path_ = result->waveformIndexPath;
     waveform_frame_index_ = result->waveformFrameIndex;
+    legacy_format_ = result->legacyFormat;
+    legacy_waveform_segments_ = result->legacySegments;
+    legacy_points_per_frame_ = result->legacyPointsPerFrame;
+    legacy_waveform_path_ = result->legacyWaveformPath;
     waveform_raw_preview_ = result->rawPreview;
     waveform_harmonic_preview_ = result->harmonicPreview;
     waveform_preview_ = waveform_harmonic_preview_;
@@ -4869,6 +4877,13 @@ void SessionBackend::applySessionLoadResult(const std::shared_ptr<SessionLoadRes
     {
         selected_session_[QStringLiteral("frames")] = waveform_frame_index_.size();
         selected_session_[QStringLiteral("waveformFrames")] = waveform_frame_index_.size();
+        updateSessionSummaryCountText(selected_session_);
+    }
+    else if (legacy_format_)
+    {
+        const int legacyCount = static_cast<int>(peak_trend_full_.size());
+        selected_session_[QStringLiteral("frames")] = legacyCount;
+        selected_session_[QStringLiteral("waveformFrames")] = legacyCount;
         updateSessionSummaryCountText(selected_session_);
     }
 
@@ -5082,14 +5097,127 @@ SessionBackend::SessionLoadResult SessionBackend::buildSessionLoadResult(const Q
         }
     }
 
-    const int frameTotal = result.waveformFrameIndex.size();
-    if (frameTotal > 0)
+    // --- Legacy waveform format fallback ---
+    if (result.waveformFrameIndex.isEmpty())
     {
-        result.selectedSession[QStringLiteral("frames")] = frameTotal;
-        result.selectedSession[QStringLiteral("waveformFrames")] = frameTotal;
+        QString waveformDir;
+        if (QDir(path).exists(QStringLiteral("waveform")))
+            waveformDir = QDir(path).filePath(QStringLiteral("waveform"));
+        else if (QDir(path).exists(QStringLiteral("waveforms")))
+            waveformDir = QDir(path).filePath(QStringLiteral("waveforms"));
+
+        if (!waveformDir.isEmpty())
+        {
+            int pointsPerFrame = 50000;
+            QFile metaFile(QDir(path).filePath(QStringLiteral("session.json")));
+            if (metaFile.open(QIODevice::ReadOnly))
+            {
+                const QJsonObject root = QJsonDocument::fromJson(metaFile.readAll()).object();
+                pointsPerFrame = root.value(QStringLiteral("waveform_points_per_frame")).toInt(50000);
+            }
+
+            QDir segDir(waveformDir);
+            const QStringList datFiles = segDir.entryList({QStringLiteral("*.dat")}, QDir::Files, QDir::Name);
+            const quint64 frameBytes = static_cast<quint64>(sizeof(quint64))
+                + static_cast<quint64>(pointsPerFrame) * static_cast<quint64>(kFloatSize);
+
+            QVector<LegacyWaveformSegment> segments;
+            quint64 totalFrames = 0;
+            for (const QString& filename : datFiles)
+            {
+                const QString absPath = segDir.filePath(filename);
+                QFileInfo info(absPath);
+                if (info.size() < static_cast<qint64>(frameBytes))
+                    continue;
+                const quint64 frameCount = static_cast<quint64>(info.size()) / frameBytes;
+                if (frameCount == 0)
+                    continue;
+                LegacyWaveformSegment seg;
+                seg.filename = absPath;
+                seg.start_frame = totalFrames;
+                seg.frame_count = frameCount;
+                segments.push_back(seg);
+                totalFrames += frameCount;
+            }
+
+            if (!segments.isEmpty() && totalFrames > 0)
+            {
+                result.legacyFormat = true;
+                result.legacySegments = segments;
+                result.legacyPointsPerFrame = pointsPerFrame;
+                result.legacyWaveformPath = QDir::fromNativeSeparators(waveformDir);
+
+                const int totalFramesInt = static_cast<int>(totalFrames);
+                result.waveformTimestampsUs.reserve(totalFramesInt);
+                result.peakValues.reserve(totalFramesInt);
+
+                bool firstFrameRead = false;
+                for (int f = 0; f < totalFramesInt; ++f)
+                {
+                    if (QThread::currentThread()->isInterruptionRequested())
+                    {
+                        result.error = QStringLiteral("记录加载已取消。");
+                        return result;
+                    }
+
+                    auto segIt = std::find_if(segments.cbegin(), segments.cend(), [f](const auto& s) {
+                        return static_cast<quint64>(f) >= s.start_frame
+                            && static_cast<quint64>(f) < s.start_frame + s.frame_count;
+                    });
+                    if (segIt == segments.cend())
+                        continue;
+
+                    const quint64 localFrame = static_cast<quint64>(f) - segIt->start_frame;
+                    const quint64 offset = localFrame * frameBytes;
+
+                    QFile segFile(segIt->filename);
+                    if (!segFile.open(QIODevice::ReadOnly) || !segFile.seek(static_cast<qint64>(offset)))
+                        continue;
+
+                    QByteArray block = segFile.read(static_cast<qint64>(frameBytes));
+                    if (block.size() != static_cast<int>(frameBytes))
+                        continue;
+
+                    quint64 timestampUs = 0;
+                    std::memcpy(&timestampUs, block.constData(), sizeof(quint64));
+                    result.waveformTimestampsUs.push_back(timestampUs);
+
+                    QVector<float> samples(pointsPerFrame);
+                    std::memcpy(samples.data(), block.constData() + sizeof(quint64),
+                               static_cast<size_t>(pointsPerFrame) * sizeof(float));
+                    result.peakValues.append(waveformPeakValue(samples, 0, 0));
+
+                    if (!firstFrameRead)
+                    {
+                        result.harmonicPointCount = pointsPerFrame;
+                        result.harmonicPreview = decimateToVariantList(samples, 1200);
+                        firstFrameRead = true;
+                    }
+
+                    if ((f + 1) % std::max(1, totalFramesInt / 100) == 0 || (f + 1) == totalFramesInt)
+                    {
+                        const int progress = 28 + static_cast<int>(std::round(10.0 * static_cast<double>(f + 1)
+                            / static_cast<double>(totalFramesInt)));
+                        postLoadProgress(generation, progress,
+                            QStringLiteral("正在索引传统波形帧... %1/%2 帧").arg(f + 1).arg(totalFramesInt));
+                    }
+                }
+            }
+        }
+    }
+
+    const int frameTotal = result.waveformFrameIndex.size();
+    const int legacyFrameCount = result.legacyFormat ? static_cast<int>(result.peakValues.size()) : 0;
+    const int actualFrameCount = std::max(frameTotal, legacyFrameCount);
+    if (actualFrameCount > 0)
+    {
+        result.selectedSession[QStringLiteral("frames")] = actualFrameCount;
+        result.selectedSession[QStringLiteral("waveformFrames")] = actualFrameCount;
         updateSessionSummaryCountText(result.selectedSession);
     }
 
+    if (!result.legacyFormat)
+    {
     postLoadProgress(generation, 38, QStringLiteral("正在计算峰值趋势..."));
     QFile waveFile(QDir(path).filePath(QStringLiteral("raw/tcp_wave.dat")));
     if (waveFile.open(QIODevice::ReadOnly))
@@ -5135,8 +5263,9 @@ SessionBackend::SessionLoadResult SessionBackend::buildSessionLoadResult(const Q
             }
         }
     }
+    }
 
-    result.currentFrameIndex = frameTotal > 0 ? 0 : -1;
+    result.currentFrameIndex = actualFrameCount > 0 ? 0 : -1;
     result.ok = true;
     postLoadProgress(generation, 96, QStringLiteral("正在更新记录查看页面..."));
     return result;
@@ -5226,7 +5355,10 @@ void SessionBackend::loadSessionFrame(int frameIndex)
     {
         return;
     }
-    const int clampedIndex = std::clamp(frameIndex, 0, static_cast<int>(waveform_frame_index_.size()) - 1);
+    const int maxFrameIndex = legacy_format_
+        ? static_cast<int>(peak_trend_full_.size()) - 1
+        : static_cast<int>(waveform_frame_index_.size()) - 1;
+    const int clampedIndex = std::clamp(frameIndex, 0, maxFrameIndex);
     const QVariantMap waveform = getWaveformFrame(QDir(path).filePath(QStringLiteral("raw/tcp_wave.dat")), clampedIndex);
     const QVariantList raw = waveform.value(QStringLiteral("raw")).toList();
     const QVariantList harmonic = waveform.value(QStringLiteral("harmonic")).toList();
@@ -5271,7 +5403,15 @@ QVariantMap SessionBackend::getWaveformFrame(const QString& rawPath, int frameIn
         }
     }
 
-    QVariantMap result = readWaveformFramePreview(rawPath, frameIndex);
+    QVariantMap result;
+    if (legacy_format_)
+    {
+        result = readLegacyWaveformFrame(frameIndex);
+    }
+    else
+    {
+        result = readWaveformFramePreview(rawPath, frameIndex);
+    }
     if (!result.isEmpty())
     {
         auto& entry = waveform_cache_[waveform_cache_pos_ % kWaveformCacheSize];
@@ -5295,11 +5435,14 @@ void SessionBackend::setFrameCursor(int frameIndex)
     {
         return;
     }
-    if (waveform_frame_index_.isEmpty())
+    if (waveform_frame_index_.isEmpty() && !legacy_format_)
     {
         return;
     }
-    const int clampedIndex = std::clamp(frameIndex, 0, static_cast<int>(waveform_frame_index_.size()) - 1);
+    const int maxFrameIndex = legacy_format_
+        ? static_cast<int>(peak_trend_full_.size()) - 1
+        : static_cast<int>(waveform_frame_index_.size()) - 1;
+    const int clampedIndex = std::clamp(frameIndex, 0, maxFrameIndex);
 
     // Duplicate frame: skip UI update
     if (clampedIndex == current_frame_index_ &&
@@ -5386,7 +5529,7 @@ void SessionBackend::scheduleWaveformPrefetch(int centerFrameIndex)
 
 void SessionBackend::prefetchWaveformFrames(int centerFrameIndex)
 {
-    if (loading_ || waveform_frame_index_.isEmpty())
+    if (loading_ || waveform_frame_index_.isEmpty() || legacy_format_)
     {
         return;
     }
@@ -5813,6 +5956,57 @@ QVariantMap SessionBackend::readWaveformFramePreview(const QString& rawPath, int
         }
     }
     result[QStringLiteral("timestampUs")] = QVariant::fromValue<qulonglong>(frame.timestampUs);
+    return result;
+}
+
+QVariantMap SessionBackend::readLegacyWaveformFrame(int frameIndex) const
+{
+    QVariantMap result;
+    if (!legacy_format_ || legacy_waveform_segments_.isEmpty() || legacy_points_per_frame_ <= 0)
+    {
+        return result;
+    }
+    const int targetIndex = std::clamp(frameIndex, 0, static_cast<int>(legacy_waveform_segments_.size() > 0
+        ? static_cast<int>(legacy_waveform_segments_.last().start_frame + legacy_waveform_segments_.last().frame_count) - 1
+        : 0));
+    const quint64 frameIdx = static_cast<quint64>(targetIndex);
+    const quint64 frameBytes = static_cast<quint64>(sizeof(quint64))
+        + static_cast<quint64>(legacy_points_per_frame_) * static_cast<quint64>(kFloatSize);
+
+    auto segIt = std::find_if(legacy_waveform_segments_.cbegin(), legacy_waveform_segments_.cend(), [frameIdx](const LegacyWaveformSegment& s) {
+        return frameIdx >= s.start_frame && frameIdx < s.start_frame + s.frame_count;
+    });
+    if (segIt == legacy_waveform_segments_.cend())
+    {
+        return result;
+    }
+
+    const quint64 localFrame = frameIdx - segIt->start_frame;
+    const quint64 offset = localFrame * frameBytes;
+
+    QFile file(segIt->filename);
+    if (!file.open(QIODevice::ReadOnly) || !file.seek(static_cast<qint64>(offset)))
+    {
+        return result;
+    }
+
+    QByteArray block = file.read(static_cast<qint64>(frameBytes));
+    if (block.size() != static_cast<int>(frameBytes))
+    {
+        return result;
+    }
+
+    quint64 timestampUs = 0;
+    std::memcpy(&timestampUs, block.constData(), sizeof(quint64));
+    QVector<float> samples(legacy_points_per_frame_);
+    std::memcpy(samples.data(), block.constData() + sizeof(quint64),
+               static_cast<size_t>(legacy_points_per_frame_) * sizeof(float));
+
+    result[QStringLiteral("harmonicPointCount")] = legacy_points_per_frame_;
+    result[QStringLiteral("harmonic")] = decimateToVariantList(samples, 1200);
+    result[QStringLiteral("raw")] = QVariantList();
+    result[QStringLiteral("rawPointCount")] = 0;
+    result[QStringLiteral("timestampUs")] = QVariant::fromValue<qulonglong>(timestampUs);
     return result;
 }
 
