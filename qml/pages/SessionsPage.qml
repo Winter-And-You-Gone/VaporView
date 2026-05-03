@@ -64,12 +64,18 @@ Item {
     function scrollCsvToHighlighted() {
         Qt.callLater(function() {
             var rows = sessionBackend.csvPreviewRows
+            var scrollIdx = -1
             for (var i = 0; i < rows.length; i++) {
-                if (rows[i] && rows[i]._matchRank === 0) {
-                    tableFlick.contentY = Math.max(0, 34 + i * 30)
-                    return
+                if (rows[i]) {
+                    var rank = rows[i]._matchRank
+                    if (rank === 0 || rank === 1) {
+                        if (scrollIdx < 0 || i < scrollIdx)
+                            scrollIdx = i
+                    }
                 }
             }
+            if (scrollIdx >= 0)
+                tableFlick.contentY = Math.max(0, 34 + scrollIdx * 30)
         })
     }
 
