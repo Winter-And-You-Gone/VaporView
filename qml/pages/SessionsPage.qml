@@ -22,6 +22,10 @@ Item {
     property int trendViewEnd: Math.max(0, page.maxFrame - 1)
     property int trendViewSpan: Math.max(1, trendViewEnd - trendViewStart + 1)
     property int csvGen: sessionBackend.csvPreviewGeneration
+    property bool globalSliderDragging: false
+    property bool restoreLocalAfterGlobalDrag: false
+    property int savedTrendViewSpanBeforeGlobalDrag: 0
+    property bool savedTrendFollowBeforeGlobalDrag: true
     onCsvGenChanged: scrollCsvToHighlighted()
 
     Timer {
@@ -144,6 +148,39 @@ Item {
             frame > page.trendViewEnd - margin) {
             page.centerTrendViewOn(frame)
         }
+    }
+
+    function beginGlobalSliderDrag() {
+        if (page.globalSliderDragging)
+            return
+
+        page.globalSliderDragging = true
+        page.savedTrendViewSpanBeforeGlobalDrag = page.trendViewSpan
+        page.savedTrendFollowBeforeGlobalDrag = page.trendFollowCursor
+
+        var totalSpan = Math.max(1, page.maxFrame)
+
+        page.restoreLocalAfterGlobalDrag = page.trendViewSpan < totalSpan
+
+        if (page.restoreLocalAfterGlobalDrag) {
+            page.setTrendViewRange(0, Math.max(0, page.maxFrame - 1))
+        }
+    }
+
+    function endGlobalSliderDrag() {
+        if (!page.globalSliderDragging)
+            return
+
+        page.globalSliderDragging = false
+
+        if (page.restoreLocalAfterGlobalDrag) {
+            var span = Math.max(1, Math.min(page.savedTrendViewSpanBeforeGlobalDrag, Math.max(1, page.maxFrame)))
+            page.trendViewSpan = span
+            page.trendFollowCursor = page.savedTrendFollowBeforeGlobalDrag
+            page.centerTrendViewOn(page.previewFrame)
+        }
+
+        page.restoreLocalAfterGlobalDrag = false
     }
 
     function scrollCsvToHighlighted() {
@@ -688,40 +725,41 @@ Item {
                             anchors.margins: 6
                             spacing: 1
 
-                            RowLayout {
+                            GridLayout {
                                 Layout.fillWidth: true
-                                spacing: 8
+                                columns: 3
+                                columnSpacing: 8
+                                rowSpacing: 1
+
                                 Text {
                                     text: "当前帧"
+                                    Layout.preferredWidth: 135
                                     font.pixelSize: 9
                                     color: ApplicationWindow.window.muted
                                 }
                                 Item { Layout.fillWidth: true }
                                 Text {
                                     text: "趋势范围"
+                                    Layout.preferredWidth: 150
+                                    horizontalAlignment: Text.AlignRight
                                     font.pixelSize: 9
                                     color: ApplicationWindow.window.muted
                                 }
-                            }
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 8
 
                                 Text {
                                     text: page.maxFrame > 0
                                         ? page.previewFrame + "/" + page.maxFrame
                                         : "0/0"
+                                    Layout.preferredWidth: 135
                                     font.pixelSize: 14
                                     font.weight: Font.Bold
                                     font.family: "Consolas"
                                     color: ApplicationWindow.window.primary
-                                    Layout.alignment: Qt.AlignVCenter
+                                    verticalAlignment: Text.AlignVCenter
                                 }
-
                                 Row {
+                                    Layout.fillWidth: true
                                     spacing: 3
-                                    Layout.alignment: Qt.AlignVCenter
                                     ToolbarButton {
                                         implicitHeight: 22; implicitWidth: 40
                                         text: "全部"; font.pixelSize: 9
@@ -779,33 +817,28 @@ Item {
                                             page.centerTrendViewOn(page.previewFrame)
                                         }
                                     }
-                                    CheckBox {
-                                        id: followCheck
-                                        text: "跟随"
-                                        checked: page.trendFollowCursor
+                                    ToolbarButton {
+                                        implicitHeight: 22; implicitWidth: 48
+                                        text: page.trendFollowCursor ? "✓ 跟随" : "跟随"
                                         font.pixelSize: 9
-                                        spacing: 2
-                                        indicator.width: 12; indicator.height: 12
-                                        onCheckedChanged: {
-                                            page.trendFollowCursor = checked
-                                            if (checked)
+                                        onClicked: {
+                                            page.trendFollowCursor = !page.trendFollowCursor
+                                            if (page.trendFollowCursor)
                                                 page.centerTrendViewOn(page.previewFrame)
                                         }
                                     }
                                 }
-
-                                Item { Layout.fillWidth: true }
-
                                 Text {
                                     text: sessionBackend.waveformIndexReady
                                         ? sessionBackend.trendViewStart + "-" + sessionBackend.trendViewEnd
                                         : "0-0"
+                                    Layout.preferredWidth: 150
+                                    horizontalAlignment: Text.AlignRight
                                     font.pixelSize: 13
                                     font.weight: Font.Bold
                                     font.family: "Consolas"
                                     color: ApplicationWindow.window.text
-                                    horizontalAlignment: Text.AlignRight
-                                    Layout.alignment: Qt.AlignVCenter
+                                    verticalAlignment: Text.AlignVCenter
                                 }
                             }
 
@@ -828,6 +861,19 @@ Item {
                                     value: Math.max(from, Math.min(to, page.previewFrame))
                                     enabled: sessionBackend.waveformIndexReady && page.maxFrame > 0 && !sessionBackend.loading
                                     live: true
+                                    onPressedChanged: {
+                                        if (pressed && enabled) {
+                                            page.beginGlobalSliderDrag()
+                                        } else if (!pressed && enabled) {
+                                            var f = Math.round(value)
+                                            page.lastRequestedFrame = f
+                                            page.pendingSliderFrame = -1
+                                            page.previewFrame = f
+                                            frameCursorTimer.stop()
+                                            sessionBackend.loadSessionFrame(f)
+                                            page.endGlobalSliderDrag()
+                                        }
+                                    }
                                     onValueChanged: {
                                         if (pressed && enabled) {
                                             var f = Math.round(value)
@@ -836,22 +882,10 @@ Item {
                                             page.lastRequestedFrame = f
                                             page.pendingSliderFrame = f
                                             page.previewFrame = f
-                                            if (page.trendFollowCursor)
+                                            if (!page.globalSliderDragging && page.trendFollowCursor)
                                                 page.maybeFollowCursor(f)
                                             if (!frameCursorTimer.running)
                                                 frameCursorTimer.start()
-                                        }
-                                    }
-                                    onPressedChanged: {
-                                        if (!pressed && enabled) {
-                                            var f = Math.round(value)
-                                            page.lastRequestedFrame = f
-                                            page.pendingSliderFrame = -1
-                                            page.previewFrame = f
-                                            frameCursorTimer.stop()
-                                            sessionBackend.loadSessionFrame(f)
-                                            if (page.trendFollowCursor)
-                                                page.maybeFollowCursor(f)
                                         }
                                     }
                                 }
