@@ -162,8 +162,18 @@ Item {
     }
 
     function formatIndexLabel(value) {
-        if (value >= 10000)
+        var span = Math.abs(chart.effectiveXEnd - chart.effectiveXStart)
+        var absValue = Math.abs(value)
+
+        if (span <= 10000)
+            return Math.round(value).toString()
+
+        if (absValue >= 10000 && span <= 100000)
+            return (value / 1000).toFixed(1) + "k"
+
+        if (absValue >= 10000)
             return Math.round(value / 1000) + "k"
+
         return Math.round(value).toString()
     }
 

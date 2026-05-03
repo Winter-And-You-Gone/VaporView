@@ -26,6 +26,9 @@ Item {
     property bool restoreLocalAfterGlobalDrag: false
     property int savedTrendViewSpanBeforeGlobalDrag: 0
     property bool savedTrendFollowBeforeGlobalDrag: true
+    property int frozenLocalSliderStart: 0
+    property int frozenLocalSliderEnd: 1
+    property int frozenLocalSliderFrame: 0
     onCsvGenChanged: scrollCsvToHighlighted()
 
     Timer {
@@ -158,8 +161,14 @@ Item {
         page.savedTrendViewSpanBeforeGlobalDrag = page.trendViewSpan
         page.savedTrendFollowBeforeGlobalDrag = page.trendFollowCursor
 
-        var totalSpan = Math.max(1, page.maxFrame)
+        page.frozenLocalSliderStart = sessionBackend.trendViewStart
+        page.frozenLocalSliderEnd = Math.max(sessionBackend.trendViewStart + 1, sessionBackend.trendViewEnd)
+        page.frozenLocalSliderFrame = Math.max(
+            page.frozenLocalSliderStart,
+            Math.min(page.frozenLocalSliderEnd, page.previewFrame)
+        )
 
+        var totalSpan = Math.max(1, page.maxFrame)
         page.restoreLocalAfterGlobalDrag = page.trendViewSpan < totalSpan
 
         if (page.restoreLocalAfterGlobalDrag) {
@@ -905,12 +914,19 @@ Item {
                                 Slider {
                                     id: localFrameSlider
                                     Layout.fillWidth: true
-                                    from: sessionBackend.waveformIndexReady ? sessionBackend.trendViewStart : 0
-                                    to: sessionBackend.waveformIndexReady
-                                        ? Math.max(sessionBackend.trendViewStart + 1, sessionBackend.trendViewEnd)
-                                        : 1
-                                    value: Math.max(from, Math.min(to, page.previewFrame))
-                                    enabled: sessionBackend.waveformIndexReady &&
+                                    from: page.globalSliderDragging
+                                        ? page.frozenLocalSliderStart
+                                        : (sessionBackend.waveformIndexReady ? sessionBackend.trendViewStart : 0)
+                                    to: page.globalSliderDragging
+                                        ? page.frozenLocalSliderEnd
+                                        : (sessionBackend.waveformIndexReady
+                                            ? Math.max(sessionBackend.trendViewStart + 1, sessionBackend.trendViewEnd)
+                                            : 1)
+                                    value: page.globalSliderDragging
+                                        ? page.frozenLocalSliderFrame
+                                        : Math.max(from, Math.min(to, page.previewFrame))
+                                    enabled: !page.globalSliderDragging &&
+                                             sessionBackend.waveformIndexReady &&
                                              page.maxFrame > 0 &&
                                              !sessionBackend.loading &&
                                              sessionBackend.trendViewEnd > sessionBackend.trendViewStart
