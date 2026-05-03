@@ -135,6 +135,17 @@ Item {
         page.centerTrendViewOn(page.previewFrame)
     }
 
+    function maybeFollowCursor(frame) {
+        if (!page.trendFollowCursor)
+            return
+        var span = Math.max(1, page.trendViewSpan)
+        var margin = Math.max(5, Math.round(span * 0.20))
+        if (frame < page.trendViewStart + margin ||
+            frame > page.trendViewEnd - margin) {
+            page.centerTrendViewOn(frame)
+        }
+    }
+
     function scrollCsvToHighlighted() {
         Qt.callLater(function() {
             var rows = sessionBackend.csvPreviewRows
@@ -681,7 +692,7 @@ Item {
                                 Text { text: "0"; color: ApplicationWindow.window.muted; font.pixelSize: 9; font.family: "Consolas" }
                                 Text {
                                     Layout.fillWidth: true
-                                    text: "当前帧: " + page.previewFrame + " / " + page.maxFrame
+                                    text: "全局帧定位: " + page.previewFrame + " / " + page.maxFrame
                                     color: ApplicationWindow.window.text
                                     font.pixelSize: 9
                                     font.weight: Font.Bold
@@ -707,7 +718,7 @@ Item {
                                         page.previewFrame = f
 
                                         if (page.trendFollowCursor)
-                                            page.centerTrendViewOn(f)
+                                            page.maybeFollowCursor(f)
 
                                         if (!frameCursorTimer.running)
                                             frameCursorTimer.start()
@@ -723,7 +734,7 @@ Item {
                                         sessionBackend.loadSessionFrame(f)
 
                                         if (page.trendFollowCursor)
-                                            page.centerTrendViewOn(f)
+                                            page.maybeFollowCursor(f)
                                     }
                                 }
                             }
@@ -806,6 +817,80 @@ Item {
                                     page.trendFollowCursor = checked
                                     if (checked)
                                         page.centerTrendViewOn(page.previewFrame)
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 46
+                        radius: 6
+                        color: Qt.rgba(ApplicationWindow.window.secondary.r, ApplicationWindow.window.secondary.g, ApplicationWindow.window.secondary.b, ApplicationWindow.window.dark ? 0.38 : 0.26)
+                        border.color: Qt.rgba(ApplicationWindow.window.border.r, ApplicationWindow.window.border.g, ApplicationWindow.window.border.b, 0.55)
+                        border.width: 1
+                        visible: sessionBackend.waveformIndexReady && !sessionBackend.loading && sessionBackend.trendViewEnd > sessionBackend.trendViewStart
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 6
+                            spacing: 2
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Text {
+                                    text: "局部帧定位: " + page.previewFrame
+                                    color: ApplicationWindow.window.text
+                                    font.pixelSize: 9
+                                    font.weight: Font.Bold
+                                    font.family: "Consolas"
+                                }
+                                Item { Layout.fillWidth: true }
+                                Text {
+                                    text: "范围: " + sessionBackend.trendViewStart + " - " + sessionBackend.trendViewEnd
+                                    color: ApplicationWindow.window.muted
+                                    font.pixelSize: 9
+                                    font.family: "Consolas"
+                                }
+                                ToolbarButton {
+                                    implicitHeight: 22; implicitWidth: 36
+                                    text: "定位"; font.pixelSize: 9
+                                    onClicked: {
+                                        page.trendFollowCursor = true
+                                        page.centerTrendViewOn(page.previewFrame)
+                                    }
+                                }
+                            }
+                            Slider {
+                                id: localFrameSlider
+                                Layout.fillWidth: true
+                                from: sessionBackend.trendViewStart
+                                to: Math.max(sessionBackend.trendViewStart + 1, sessionBackend.trendViewEnd)
+                                value: Math.max(from, Math.min(to, page.previewFrame))
+                                enabled: sessionBackend.waveformIndexReady &&
+                                         page.maxFrame > 0 &&
+                                         !sessionBackend.loading &&
+                                         sessionBackend.trendViewEnd > sessionBackend.trendViewStart
+                                live: true
+                                onValueChanged: {
+                                    if (pressed && enabled) {
+                                        var f = Math.round(value)
+                                        if (f === page.lastRequestedFrame)
+                                            return
+                                        page.lastRequestedFrame = f
+                                        page.pendingSliderFrame = f
+                                        page.previewFrame = f
+                                        if (!frameCursorTimer.running)
+                                            frameCursorTimer.start()
+                                    }
+                                }
+                                onPressedChanged: {
+                                    if (!pressed && enabled) {
+                                        var f = Math.round(value)
+                                        page.lastRequestedFrame = f
+                                        page.pendingSliderFrame = -1
+                                        page.previewFrame = f
+                                        frameCursorTimer.stop()
+                                        sessionBackend.loadSessionFrame(f)
+                                    }
                                 }
                             }
                         }
