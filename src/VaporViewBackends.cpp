@@ -4605,6 +4605,7 @@ void SessionBackend::clearPreviewData()
     current_frame_index_ = -1;
     current_csv_row_ = -1;
     secondary_csv_row_ = -1;
+    clearWaveformCache();
     waveform_raw_point_count_ = 0;
     waveform_harmonic_point_count_ = 0;
     emit frameSelectionChanged();
@@ -4992,7 +4993,7 @@ void SessionBackend::loadSessionFrame(int frameIndex)
     {
         return;
     }
-    const QVariantMap waveform = readWaveformFramePreview(QDir(path).filePath(QStringLiteral("raw/tcp_wave.dat")), frameIndex);
+    const QVariantMap waveform = getWaveformFrame(QDir(path).filePath(QStringLiteral("raw/tcp_wave.dat")), frameIndex);
     const QVariantList raw = waveform.value(QStringLiteral("raw")).toList();
     const QVariantList harmonic = waveform.value(QStringLiteral("harmonic")).toList();
     if (raw.isEmpty() && harmonic.isEmpty())
@@ -5009,6 +5010,45 @@ void SessionBackend::loadSessionFrame(int frameIndex)
     emit frameSelectionChanged();
 }
 
+void SessionBackend::clearWaveformCache()
+{
+    for (auto& entry : waveform_cache_)
+        entry.frameIndex = -1;
+    waveform_cache_pos_ = 0;
+}
+
+QVariantMap SessionBackend::getWaveformFrame(const QString& rawPath, int frameIndex)
+{
+    for (int i = 0; i < kWaveformCacheSize; ++i)
+    {
+        const auto& entry = waveform_cache_[i];
+        if (entry.frameIndex == frameIndex && entry.rawPointCount > 0)
+        {
+            QVariantMap result;
+            result[QStringLiteral("raw")] = entry.rawPreview;
+            result[QStringLiteral("harmonic")] = entry.harmonicPreview;
+            result[QStringLiteral("rawPointCount")] = entry.rawPointCount;
+            result[QStringLiteral("harmonicPointCount")] = entry.harmonicPointCount;
+            result[QStringLiteral("timestampUs")] = QVariant::fromValue<qulonglong>(entry.timestampUs);
+            return result;
+        }
+    }
+
+    QVariantMap result = readWaveformFramePreview(rawPath, frameIndex);
+    if (!result.isEmpty())
+    {
+        auto& entry = waveform_cache_[waveform_cache_pos_ % kWaveformCacheSize];
+        entry.frameIndex = frameIndex;
+        entry.rawPreview = result.value(QStringLiteral("raw")).toList();
+        entry.harmonicPreview = result.value(QStringLiteral("harmonic")).toList();
+        entry.rawPointCount = result.value(QStringLiteral("rawPointCount")).toInt();
+        entry.harmonicPointCount = result.value(QStringLiteral("harmonicPointCount")).toInt();
+        entry.timestampUs = result.value(QStringLiteral("timestampUs")).value<qulonglong>();
+        ++waveform_cache_pos_;
+    }
+    return result;
+}
+
 void SessionBackend::setFrameCursor(int frameIndex)
 {
     if (loading_)
@@ -5020,7 +5060,9 @@ void SessionBackend::setFrameCursor(int frameIndex)
     {
         return;
     }
-    const QVariantMap waveform = readWaveformFramePreview(QDir(path).filePath(QStringLiteral("raw/tcp_wave.dat")), frameIndex);
+    const int clampedIndex = std::clamp(frameIndex, 0, static_cast<int>(waveform_frame_index_.size()) - 1);
+    const QString rawPath = QDir(path).filePath(QStringLiteral("raw/tcp_wave.dat"));
+    const QVariantMap waveform = getWaveformFrame(rawPath, clampedIndex);
     if (!waveform.isEmpty())
     {
         waveform_raw_preview_ = waveform.value(QStringLiteral("raw")).toList();
@@ -5029,12 +5071,45 @@ void SessionBackend::setFrameCursor(int frameIndex)
         waveform_raw_point_count_ = waveform.value(QStringLiteral("rawPointCount"), waveform_raw_preview_.size()).toInt();
         waveform_harmonic_point_count_ = waveform.value(QStringLiteral("harmonicPointCount"), waveform_harmonic_preview_.size()).toInt();
     }
-    current_frame_index_ = std::clamp(frameIndex, 0, static_cast<int>(waveform_frame_index_.size()) - 1);
-    if (current_frame_index_ >= 0 && current_frame_index_ < waveform_timestamps_us_.size())
+    current_frame_index_ = clampedIndex;
+
+    // Lightweight CSV preview: 80-row window with highlighted rows at top
+    csv_preview_rows_.clear();
+    if (current_frame_index_ >= 0 && current_frame_index_ < waveform_timestamps_us_.size() && !csv_rows_all_.isEmpty())
     {
         const quint64 ts = waveform_timestamps_us_.at(current_frame_index_);
-        current_csv_row_ = findClosestCsvRow(ts);
-        secondary_csv_row_ = -1;
+        const QVector<int> highlightedRows = closestCsvRows(ts);
+        int lowHighlight = 0;
+        if (!highlightedRows.isEmpty())
+        {
+            current_csv_row_ = highlightedRows.value(0, -1);
+            secondary_csv_row_ = highlightedRows.value(1, -1);
+            lowHighlight = highlightedRows.first();
+            if (highlightedRows.size() > 1)
+                lowHighlight = std::min(lowHighlight, highlightedRows.last());
+        }
+        const QSet<int> highlightedSet(highlightedRows.begin(), highlightedRows.end());
+        const int totalRows = static_cast<int>(csv_rows_all_.size());
+        const int startRow = std::min(lowHighlight, std::max(0, totalRows - 80));
+        const int endRow = std::min(startRow + 80, totalRows);
+        for (int i = startRow; i < endRow; ++i)
+        {
+            int rank = -1;
+            if (highlightedSet.contains(i))
+                rank = highlightedRows.indexOf(i);
+            QVariantMap row = csv_rows_all_.at(i).toMap();
+            row[QStringLiteral("_matchRank")] = rank;
+            if (ts > 0 && i < csv_timestamps_us_.size())
+            {
+                const qint64 deltaUs = static_cast<qint64>(csv_timestamps_us_.at(i)) - static_cast<qint64>(ts);
+                const double deltaMs = static_cast<double>(deltaUs) / 1000.0;
+                row[QStringLiteral("时间偏差")] = QStringLiteral("%1%2 ms")
+                    .arg(deltaMs >= 0.0 ? QStringLiteral("+") : QString())
+                    .arg(deltaMs, 0, 'f', 3);
+            }
+            csv_preview_rows_.append(row);
+        }
+        ++csv_preview_generation_;
     }
     emit frameSelectionChanged();
 }

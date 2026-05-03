@@ -876,6 +876,22 @@ private:
     int csv_preview_generation_ = 0;
     int waveform_raw_point_count_ = 0;
     int waveform_harmonic_point_count_ = 0;
+
+    struct WaveformCacheEntry
+    {
+        int frameIndex = -1;
+        QVariantList rawPreview;
+        QVariantList harmonicPreview;
+        int rawPointCount = 0;
+        int harmonicPointCount = 0;
+        quint64 timestampUs = 0;
+    };
+    static constexpr int kWaveformCacheSize = 12;
+    WaveformCacheEntry waveform_cache_[kWaveformCacheSize] = {};
+    int waveform_cache_pos_ = 0;
+
+    QVariantMap getWaveformFrame(const QString& rawPath, int frameIndex);
+    void clearWaveformCache();
 };
 
 class RawParserBackend : public QObject

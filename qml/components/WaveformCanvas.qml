@@ -394,12 +394,37 @@ Item {
         }
     }
 
+    Canvas {
+        id: scatterLayer
+        anchors.fill: parent
+        z: 15
+        antialiasing: true
+        visible: chart.scatter && chart.pointCount > 0
+
+        onPaint: {
+            var ctx = getContext("2d")
+            ctx.clearRect(0, 0, width, height)
+            if (!chart.scatter || chart.pointCount < 1)
+                return
+            ctx.fillStyle = chart.rgbaString(chart.lineColor, chart.lineColor.a)
+            for (var i = 0; i < chart.pointCount; ++i) {
+                var y = chart.py(chart.drawSamples[i])
+                if (isNaN(y))
+                    continue
+                var x = chart.px(i)
+                ctx.beginPath()
+                ctx.arc(x, y, 2.5, 0, Math.PI * 2)
+                ctx.fill()
+            }
+        }
+    }
+
     Connections {
         target: chart
-        function onDrawSamplesChanged() { lineLayer.requestPaint(); cursorLayer.requestPaint() }
-        function onLineColorChanged() { lineLayer.requestPaint() }
+        function onDrawSamplesChanged() { lineLayer.requestPaint(); scatterLayer.requestPaint(); cursorLayer.requestPaint() }
+        function onLineColorChanged() { lineLayer.requestPaint(); scatterLayer.requestPaint() }
         function onPlotBackgroundChanged() { lineLayer.requestPaint() }
-        function onScatterChanged() { lineLayer.requestPaint() }
+        function onScatterChanged() { lineLayer.requestPaint(); scatterLayer.requestPaint() }
         function onFillUnderLineChanged() { lineLayer.requestPaint() }
         function onHardLineCornersChanged() { lineLayer.requestPaint() }
         function onYMinChanged() { lineLayer.requestPaint() }
@@ -416,25 +441,11 @@ Item {
         function onCursorColorChanged() { cursorLayer.requestPaint() }
     }
 
-    onWidthChanged: { lineLayer.requestPaint(); cursorLayer.requestPaint() }
-    onHeightChanged: { lineLayer.requestPaint(); cursorLayer.requestPaint() }
+    onWidthChanged: { lineLayer.requestPaint(); scatterLayer.requestPaint(); cursorLayer.requestPaint() }
+    onHeightChanged: { lineLayer.requestPaint(); scatterLayer.requestPaint(); cursorLayer.requestPaint() }
     onCursorVisibleChanged: cursorLayer.requestPaint()
     onCursorXChanged: cursorLayer.requestPaint()
     onCursorYChanged: cursorLayer.requestPaint()
-
-    Repeater {
-        model: chart.scatter ? chart.pointCount : 0
-        Rectangle {
-            visible: !isNaN(Number(chart.drawSamples[index]))
-            width: 5
-            height: 5
-            radius: 2.5
-            x: chart.px(index) - width / 2
-            y: chart.py(chart.drawSamples[index]) - height / 2
-            color: chart.lineColor
-            antialiasing: true
-        }
-    }
 
     Text {
         visible: chart.pointCount < 2 && !chart.showDemoWhenEmpty
