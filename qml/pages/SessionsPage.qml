@@ -802,7 +802,6 @@ Item {
                                 font.pixelSize: 9
                                 spacing: 2
                                 indicator.width: 12; indicator.height: 12
-                                contentItem.font.pixelSize: 9
                                 onCheckedChanged: {
                                     page.trendFollowCursor = checked
                                     if (checked)
