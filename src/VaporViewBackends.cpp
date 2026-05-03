@@ -4293,6 +4293,15 @@ SessionBackend::SessionBackend(QObject *parent)
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
     recording_directory_ = settings.value(QStringLiteral("recording_directory"), QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("data"))).toString();
     refreshSessions();
+
+    waveform_prefetch_timer_.setSingleShot(true);
+    waveform_prefetch_timer_.setInterval(25);
+    connect(&waveform_prefetch_timer_, &QTimer::timeout, this, [this]() {
+        if (pending_prefetch_frame_index_ >= 0)
+        {
+            prefetchWaveformFrames(pending_prefetch_frame_index_);
+        }
+    });
 }
 
 QString SessionBackend::recordingDirectory() const { return recording_directory_; }
@@ -4993,14 +5002,15 @@ void SessionBackend::loadSessionFrame(int frameIndex)
     {
         return;
     }
-    const QVariantMap waveform = getWaveformFrame(QDir(path).filePath(QStringLiteral("raw/tcp_wave.dat")), frameIndex);
+    const int clampedIndex = std::clamp(frameIndex, 0, static_cast<int>(waveform_frame_index_.size()) - 1);
+    const QVariantMap waveform = getWaveformFrame(QDir(path).filePath(QStringLiteral("raw/tcp_wave.dat")), clampedIndex);
     const QVariantList raw = waveform.value(QStringLiteral("raw")).toList();
     const QVariantList harmonic = waveform.value(QStringLiteral("harmonic")).toList();
     if (raw.isEmpty() && harmonic.isEmpty())
     {
         return;
     }
-    current_frame_index_ = std::clamp(frameIndex, 0, static_cast<int>(waveform_frame_index_.size()) - 1);
+    current_frame_index_ = clampedIndex;
     waveform_raw_preview_ = raw;
     waveform_harmonic_preview_ = harmonic;
     waveform_preview_ = waveform_harmonic_preview_;
@@ -5022,7 +5032,7 @@ QVariantMap SessionBackend::getWaveformFrame(const QString& rawPath, int frameIn
     for (int i = 0; i < kWaveformCacheSize; ++i)
     {
         const auto& entry = waveform_cache_[i];
-        if (entry.frameIndex == frameIndex && entry.rawPointCount > 0)
+        if (entry.frameIndex == frameIndex && (entry.rawPointCount > 0 || entry.harmonicPointCount > 0))
         {
             QVariantMap result;
             result[QStringLiteral("raw")] = entry.rawPreview;
@@ -5055,12 +5065,24 @@ void SessionBackend::setFrameCursor(int frameIndex)
     {
         return;
     }
-    const QString path = selected_session_.value(QStringLiteral("path")).toString();
-    if (path.isEmpty() || waveform_frame_index_.isEmpty())
+    if (waveform_frame_index_.isEmpty())
     {
         return;
     }
     const int clampedIndex = std::clamp(frameIndex, 0, static_cast<int>(waveform_frame_index_.size()) - 1);
+
+    // Duplicate frame: skip UI update
+    if (clampedIndex == current_frame_index_ &&
+        (!waveform_raw_preview_.isEmpty() || !waveform_harmonic_preview_.isEmpty()))
+    {
+        return;
+    }
+
+    const QString path = selected_session_.value(QStringLiteral("path")).toString();
+    if (path.isEmpty())
+    {
+        return;
+    }
     const QString rawPath = QDir(path).filePath(QStringLiteral("raw/tcp_wave.dat"));
     const QVariantMap waveform = getWaveformFrame(rawPath, clampedIndex);
     if (!waveform.isEmpty())
@@ -5073,25 +5095,22 @@ void SessionBackend::setFrameCursor(int frameIndex)
     }
     current_frame_index_ = clampedIndex;
 
-    // Lightweight CSV preview: 80-row window with highlighted rows at top
+    // Lightweight CSV preview: 80-row window with highlight in top 2 rows
     csv_preview_rows_.clear();
     if (current_frame_index_ >= 0 && current_frame_index_ < waveform_timestamps_us_.size() && !csv_rows_all_.isEmpty())
     {
         const quint64 ts = waveform_timestamps_us_.at(current_frame_index_);
         const QVector<int> highlightedRows = closestCsvRows(ts);
-        int lowHighlight = 0;
         if (!highlightedRows.isEmpty())
         {
             current_csv_row_ = highlightedRows.value(0, -1);
             secondary_csv_row_ = highlightedRows.value(1, -1);
-            lowHighlight = highlightedRows.first();
-            if (highlightedRows.size() > 1)
-                lowHighlight = std::min(lowHighlight, highlightedRows.last());
         }
-        const QSet<int> highlightedSet(highlightedRows.begin(), highlightedRows.end());
         const int totalRows = static_cast<int>(csv_rows_all_.size());
-        const int startRow = std::min(lowHighlight, std::max(0, totalRows - 80));
+        const int anchorRow = current_csv_row_ >= 0 ? current_csv_row_ : 0;
+        const int startRow = std::max(0, anchorRow - 1);
         const int endRow = std::min(startRow + 80, totalRows);
+        const QSet<int> highlightedSet(highlightedRows.begin(), highlightedRows.end());
         for (int i = startRow; i < endRow; ++i)
         {
             int rank = -1;
@@ -5112,6 +5131,60 @@ void SessionBackend::setFrameCursor(int frameIndex)
         ++csv_preview_generation_;
     }
     emit frameSelectionChanged();
+    scheduleWaveformPrefetch(current_frame_index_);
+}
+
+bool SessionBackend::waveformFrameCached(int frameIndex) const
+{
+    for (int i = 0; i < kWaveformCacheSize; ++i)
+    {
+        const auto& entry = waveform_cache_[i];
+        if (entry.frameIndex == frameIndex &&
+            (entry.rawPointCount > 0 || entry.harmonicPointCount > 0))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+void SessionBackend::scheduleWaveformPrefetch(int centerFrameIndex)
+{
+    pending_prefetch_frame_index_ = centerFrameIndex;
+    waveform_prefetch_timer_.start();
+}
+
+void SessionBackend::prefetchWaveformFrames(int centerFrameIndex)
+{
+    if (loading_ || waveform_frame_index_.isEmpty())
+    {
+        return;
+    }
+
+    const QString path = selected_session_.value(QStringLiteral("path")).toString();
+    if (path.isEmpty())
+    {
+        return;
+    }
+
+    const QString rawPath = QDir(path).filePath(QStringLiteral("raw/tcp_wave.dat"));
+    static const int offsets[] = {1, -1, 2, -2, 3, -3};
+
+    for (int offset : offsets)
+    {
+        const int index = centerFrameIndex + offset;
+        if (index < 0 || index >= waveform_frame_index_.size())
+        {
+            continue;
+        }
+
+        if (waveformFrameCached(index))
+        {
+            continue;
+        }
+
+        getWaveformFrame(rawPath, index);
+    }
 }
 
 int SessionBackend::findClosestCsvRow(quint64 timestampUs) const

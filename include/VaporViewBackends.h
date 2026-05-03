@@ -892,6 +892,13 @@ private:
 
     QVariantMap getWaveformFrame(const QString& rawPath, int frameIndex);
     void clearWaveformCache();
+
+    QTimer waveform_prefetch_timer_;
+    int pending_prefetch_frame_index_ = -1;
+
+    void scheduleWaveformPrefetch(int centerFrameIndex);
+    void prefetchWaveformFrames(int centerFrameIndex);
+    bool waveformFrameCached(int frameIndex) const;
 };
 
 class RawParserBackend : public QObject

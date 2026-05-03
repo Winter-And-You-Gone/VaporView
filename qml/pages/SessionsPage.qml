@@ -12,6 +12,7 @@ Item {
     readonly property int sessionsPerPage: 3
     readonly property int sessionPageCount: Math.max(1, Math.ceil(sessionBackend.sessions.length / sessionsPerPage))
     property int previewFrame: Math.min(maxFrame, Math.max(0, Math.floor(maxFrame * 0.49)))
+    property int lastRequestedFrame: -1
     readonly property int maxFrame: Math.max(0, Number(sessionBackend.selectedSession.waveformFrames || sessionBackend.selectedSession.frames || sessionBackend.peakTrendPreview.length || 0))
     property bool trendScatter: false
     property bool filterVisible: false
@@ -57,6 +58,7 @@ Item {
         if (actualIndex < 0 || actualIndex >= sessionBackend.sessions.length)
             return
         selectedIndex = actualIndex
+        page.lastRequestedFrame = -1
         sessionBackend.selectSession(actualIndex)
         previewFrame = Math.min(maxFrame, Math.max(0, Math.floor(maxFrame * 0.49)))
     }
@@ -74,8 +76,11 @@ Item {
                     }
                 }
             }
-            if (scrollIdx >= 0)
-                tableFlick.contentY = Math.max(0, 34 + scrollIdx * 30)
+            if (scrollIdx >= 0) {
+                // Highlighted rows are always at the start of the window
+                var targetRow = Math.max(0, scrollIdx - 1)
+                tableFlick.contentY = Math.max(0, 34 + targetRow * 30)
+            }
         })
     }
 
@@ -601,14 +606,20 @@ Item {
                                 live: true
                                 onValueChanged: {
                                     if (pressed && enabled) {
-                                        page.previewFrame = Math.round(value)
-                                        sessionBackend.setFrameCursor(page.previewFrame)
+                                        var f = Math.round(value)
+                                        if (f === page.lastRequestedFrame)
+                                            return
+                                        page.lastRequestedFrame = f
+                                        page.previewFrame = f
+                                        sessionBackend.setFrameCursor(f)
                                     }
                                 }
                                 onPressedChanged: {
                                     if (!pressed && enabled) {
-                                        page.previewFrame = Math.round(value)
-                                        sessionBackend.loadSessionFrame(page.previewFrame)
+                                        var f = Math.round(value)
+                                        page.lastRequestedFrame = f
+                                        page.previewFrame = f
+                                        sessionBackend.loadSessionFrame(f)
                                     }
                                 }
                             }
