@@ -44,6 +44,14 @@ Item {
     property bool cursorPointEnabled: true
     property real cursorPointRadius: 4
     property real cursorPointRingWidth: 2
+    property bool cursorVerticalLineEnabled: true
+    property bool cursorHorizontalLineEnabled: true
+    property real cursorLineOpacity: 0.55
+    property bool cursorLocalSegmentEnabled: false
+    property int cursorLocalSegmentRadius: 4
+    property real cursorLocalSegmentWidth: 3.2
+    property bool cursorAxisMarkerEnabled: false
+    property real cursorAxisMarkerSize: 6
 
     readonly property int marginLeft: 42
     readonly property int marginTop: 8
@@ -91,6 +99,14 @@ Item {
         var clampedSource = Math.max(effectiveXStart, Math.min(effectiveXEnd, sourceIndex))
         var sampleIndex = Math.round((clampedSource - effectiveXStart) * (count - 1) / Math.max(1, sourceCount - 1))
         return sampleValue(samples, Math.max(0, Math.min(count - 1, sampleIndex)))
+    }
+
+    function cursorDisplayIndex(sourceIndex) {
+        if (pointCount <= 0)
+            return -1
+        var sourceCount = Math.max(1, effectiveXEnd - effectiveXStart + 1)
+        var clampedSource = Math.max(effectiveXStart, Math.min(effectiveXEnd, sourceIndex))
+        return Math.round((clampedSource - effectiveXStart) * (pointCount - 1) / Math.max(1, sourceCount - 1))
     }
 
     function buildDisplaySamples(list) {
@@ -161,10 +177,14 @@ Item {
 
     function drawCursorCross(ctx) {
         ctx.beginPath()
-        ctx.moveTo(chart.cursorX, chart.marginTop)
-        ctx.lineTo(chart.cursorX, chart.marginTop + chart.chartHeight)
-        ctx.moveTo(chart.marginLeft, chart.cursorY)
-        ctx.lineTo(chart.marginLeft + chart.chartWidth, chart.cursorY)
+        if (chart.cursorVerticalLineEnabled) {
+            ctx.moveTo(chart.cursorX, chart.marginTop)
+            ctx.lineTo(chart.cursorX, chart.marginTop + chart.chartHeight)
+        }
+        if (chart.cursorHorizontalLineEnabled) {
+            ctx.moveTo(chart.marginLeft, chart.cursorY)
+            ctx.lineTo(chart.marginLeft + chart.chartWidth, chart.cursorY)
+        }
     }
 
     function xTickLabelValue(tickIndex, tickCount) {
@@ -378,33 +398,92 @@ Item {
                 ctx.stroke()
             }
 
-            // Foreground crosshair
+            // Foreground crosshair (property-controlled opacity)
             ctx.setLineDash([4, 3])
-            ctx.strokeStyle = chart.rgbaString(chart.cursorColor, 0.92)
+            ctx.strokeStyle = chart.rgbaString(chart.cursorColor, chart.cursorLineOpacity)
             ctx.lineWidth = chart.cursorLineWidth
             chart.drawCursorCross(ctx)
             ctx.stroke()
 
+            // Local segment highlight (draw before cursor point, on top of lines)
+            if (chart.cursorLocalSegmentEnabled) {
+                var center = chart.cursorDisplayIndex(chart.cursorSourceIndex)
+                if (center >= 0) {
+                    var lStart = Math.max(0, center - chart.cursorLocalSegmentRadius)
+                    var lEnd = Math.min(chart.pointCount - 1, center + chart.cursorLocalSegmentRadius)
+                    ctx.save()
+                    ctx.setLineDash([])
+                    ctx.beginPath()
+                    var lStarted = false
+                    for (var li = lStart; li <= lEnd; ++li) {
+                        var ly = chart.py(chart.drawSamples[li])
+                        if (isNaN(ly)) {
+                            lStarted = false
+                            continue
+                        }
+                        if (!lStarted) {
+                            ctx.moveTo(chart.px(li), ly)
+                            lStarted = true
+                        } else {
+                            ctx.lineTo(chart.px(li), ly)
+                        }
+                    }
+                    ctx.strokeStyle = chart.rgbaString(chart.cursorColor, 1.0)
+                    ctx.lineWidth = chart.cursorLocalSegmentWidth
+                    ctx.lineJoin = "round"
+                    ctx.lineCap = "round"
+                    ctx.stroke()
+                    ctx.restore()
+                }
+            }
+
             // Cursor point
             if (chart.cursorPointEnabled) {
-                // Outer fill (background color)
+                // Outer background fill
                 ctx.beginPath()
-                ctx.arc(chart.cursorX, chart.cursorY, chart.cursorPointRadius, 0, Math.PI * 2)
+                ctx.arc(chart.cursorX, chart.cursorY, chart.cursorPointRadius + 3, 0, Math.PI * 2)
                 ctx.fillStyle = chart.rgbaString(chart.cursorHaloColor, 0.95)
                 ctx.fill()
 
-                // Middle ring (cursor color)
+                // Cursor color ring
                 ctx.beginPath()
-                ctx.arc(chart.cursorX, chart.cursorY, chart.cursorPointRadius - 0.5, 0, Math.PI * 2)
+                ctx.arc(chart.cursorX, chart.cursorY, chart.cursorPointRadius + 1, 0, Math.PI * 2)
                 ctx.strokeStyle = chart.rgbaString(chart.cursorColor, 1.0)
                 ctx.lineWidth = chart.cursorPointRingWidth
                 ctx.stroke()
 
-                // Inner fill (cursor color)
+                // Inner dot
                 ctx.beginPath()
-                ctx.arc(chart.cursorX, chart.cursorY, Math.max(1.5, chart.cursorPointRadius - chart.cursorPointRingWidth - 1.5), 0, Math.PI * 2)
+                ctx.arc(chart.cursorX, chart.cursorY, Math.max(2, chart.cursorPointRadius - 1.5), 0, Math.PI * 2)
                 ctx.fillStyle = chart.rgbaString(chart.cursorColor, 1.0)
                 ctx.fill()
+            }
+
+            // Axis markers (triangles at top/bottom of cursorX)
+            if (chart.cursorAxisMarkerEnabled) {
+                var s = chart.cursorAxisMarkerSize
+                ctx.save()
+                ctx.setLineDash([])
+                ctx.fillStyle = chart.rgbaString(chart.cursorColor, 1.0)
+
+                // top triangle
+                ctx.beginPath()
+                ctx.moveTo(chart.cursorX, chart.marginTop + s)
+                ctx.lineTo(chart.cursorX - s, chart.marginTop)
+                ctx.lineTo(chart.cursorX + s, chart.marginTop)
+                ctx.closePath()
+                ctx.fill()
+
+                // bottom triangle
+                var by = chart.marginTop + chart.chartHeight
+                ctx.beginPath()
+                ctx.moveTo(chart.cursorX, by - s)
+                ctx.lineTo(chart.cursorX - s, by)
+                ctx.lineTo(chart.cursorX + s, by)
+                ctx.closePath()
+                ctx.fill()
+
+                ctx.restore()
             }
 
             ctx.restore()
@@ -508,6 +587,14 @@ Item {
         function onCursorPointEnabledChanged() { cursorLayer.requestPaint() }
         function onCursorPointRadiusChanged() { cursorLayer.requestPaint() }
         function onCursorPointRingWidthChanged() { cursorLayer.requestPaint() }
+        function onCursorVerticalLineEnabledChanged() { cursorLayer.requestPaint() }
+        function onCursorHorizontalLineEnabledChanged() { cursorLayer.requestPaint() }
+        function onCursorLineOpacityChanged() { cursorLayer.requestPaint() }
+        function onCursorLocalSegmentEnabledChanged() { cursorLayer.requestPaint() }
+        function onCursorLocalSegmentRadiusChanged() { cursorLayer.requestPaint() }
+        function onCursorLocalSegmentWidthChanged() { cursorLayer.requestPaint() }
+        function onCursorAxisMarkerEnabledChanged() { cursorLayer.requestPaint() }
+        function onCursorAxisMarkerSizeChanged() { cursorLayer.requestPaint() }
     }
 
     onWidthChanged: { lineLayer.requestPaint(); scatterLayer.requestPaint(); cursorLayer.requestPaint() }

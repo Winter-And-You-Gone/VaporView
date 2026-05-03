@@ -178,6 +178,12 @@ Item {
         property string emptyText: "暂无数据"
         property color cursorColor: lineColor
         property bool cursorEmphasis: false
+        property bool cursorBand: false
+        property bool cursorHorizontalLine: true
+        property bool cursorVerticalLine: true
+        property real cursorLineOpacity: 0.55
+        property bool cursorLocalSegment: false
+        property bool cursorAxisMarker: false
 
         spacing: 8
         Layout.fillWidth: true
@@ -238,12 +244,16 @@ Item {
                 cursorSourceIndex: parent.parent.cursorIndex
                 cursorYUnit: parent.parent.unit.length > 0 ? " " + parent.parent.unit : ""
                 cursorColor: parent.parent.cursorColor
-                cursorBandEnabled: parent.parent.cursorEmphasis
+                cursorBandEnabled: parent.parent.cursorBand
                 cursorPointEnabled: parent.parent.cursorEmphasis
                 cursorHaloEnabled: parent.parent.cursorEmphasis
                 cursorLineWidth: parent.parent.cursorEmphasis ? 2.2 : 1.5
                 cursorPointRadius: parent.parent.cursorEmphasis ? 5 : 4
-                cursorBandOpacity: parent.parent.cursorEmphasis ? 0.14 : 0.08
+                cursorHorizontalLineEnabled: parent.parent.cursorHorizontalLine
+                cursorVerticalLineEnabled: parent.parent.cursorVerticalLine
+                cursorLineOpacity: parent.parent.cursorLineOpacity
+                cursorLocalSegmentEnabled: parent.parent.cursorLocalSegment
+                cursorAxisMarkerEnabled: parent.parent.cursorAxisMarker
                 plotBackground: ApplicationWindow.window.chartPlot
                 gridColor: ApplicationWindow.window.chartGrid
                 axisColor: ApplicationWindow.window.chartAxis
@@ -675,6 +685,12 @@ Item {
                         showCursor: sessionBackend.currentFrameIndex >= 0
                         cursorColor: ApplicationWindow.window.primary
                         cursorEmphasis: true
+                        cursorBand: false
+                        cursorHorizontalLine: false
+                        cursorVerticalLine: true
+                        cursorLineOpacity: 0.35
+                        cursorLocalSegment: true
+                        cursorAxisMarker: true
                         scatter: page.trendScatter
                         lineColor: ApplicationWindow.window.text
                         fill: !page.trendScatter
