@@ -4482,7 +4482,7 @@ void SessionBackend::refreshSessions()
         }
     }
     all_sessions_ = sessions_;
-    emit sessionsChanged();
+    applySessionSortFilter();
 
     if (sessions_.isEmpty())
     {
