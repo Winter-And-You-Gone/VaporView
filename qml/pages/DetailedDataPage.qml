@@ -131,7 +131,9 @@ Item {
         width: parent ? parent.width : 900
 
         property int computedColumns: columns > 0 ? columns : Math.max(1, Math.floor((width + columnGap) / (minCellWidth + columnGap)))
-        property real computedCellWidth: Math.max(minCellWidth, (width - (computedColumns - 1) * columnGap) / computedColumns)
+        property real computedCellWidth: columns > 0
+            ? ((width - (computedColumns - 1) * columnGap) / computedColumns)
+            : Math.max(minCellWidth, (width - (computedColumns - 1) * columnGap) / computedColumns)
 
         height: flow.childrenRect.height
         implicitHeight: flow.childrenRect.height
@@ -314,7 +316,8 @@ Item {
             CardFlow {
                 id: epsilonMidFlow
                 width: parent.width
-                minCardWidth: 430
+                // 3 列需 180*3 + 8*2 = 556，加安全余量
+                minCardWidth: 580
                 itemCount: 2
 
                 Card {
@@ -324,6 +327,7 @@ Item {
 
                     CompactFieldGrid {
                         columns: 3
+                        minCellWidth: 160
                         fields: pickFields(deviceBackend.allDeviceFields.epsilon || [], [
                             "ecef_x_m","ecef_y_m","ecef_z_m",
                             "ned_n_m","ned_e_m","ned_d_m",
@@ -340,6 +344,7 @@ Item {
 
                     CompactFieldGrid {
                         columns: 4
+                        minCellWidth: 130
                         fields: pickFields(deviceBackend.allDeviceFields.epsilon || [], [
                             "body_acc_x_mps2","body_acc_y_mps2","body_acc_z_mps2",
                             "imu_acc_x_mps2","imu_acc_y_mps2","imu_acc_z_mps2",
