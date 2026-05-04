@@ -126,10 +126,11 @@ Item {
         property int minCellWidth: 180
         property int columnGap: 8
         property int rowGap: 8
+        property int columns: 0
 
         width: parent ? parent.width : 900
 
-        property int computedColumns: Math.max(1, Math.floor((width + columnGap) / (minCellWidth + columnGap)))
+        property int computedColumns: columns > 0 ? columns : Math.max(1, Math.floor((width + columnGap) / (minCellWidth + columnGap)))
         property real computedCellWidth: Math.max(minCellWidth, (width - (computedColumns - 1) * columnGap) / computedColumns)
 
         height: flow.childrenRect.height
@@ -322,6 +323,7 @@ Item {
                     title: "EPSILON — 坐标与速度"
 
                     CompactFieldGrid {
+                        columns: 2
                         fields: pickFields(deviceBackend.allDeviceFields.epsilon || [], [
                             "ecef_x_m","ecef_y_m","ecef_z_m",
                             "ned_n_m","ned_e_m","ned_d_m",
@@ -337,6 +339,7 @@ Item {
                     title: "EPSILON — IMU 与磁场"
 
                     CompactFieldGrid {
+                        columns: 4
                         fields: pickFields(deviceBackend.allDeviceFields.epsilon || [], [
                             "body_acc_x_mps2","body_acc_y_mps2","body_acc_z_mps2",
                             "imu_acc_x_mps2","imu_acc_y_mps2","imu_acc_z_mps2",
