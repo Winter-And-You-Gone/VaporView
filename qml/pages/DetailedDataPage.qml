@@ -323,7 +323,7 @@ Item {
                     title: "EPSILON — 坐标与速度"
 
                     CompactFieldGrid {
-                        columns: 2
+                        columns: 3
                         fields: pickFields(deviceBackend.allDeviceFields.epsilon || [], [
                             "ecef_x_m","ecef_y_m","ecef_z_m",
                             "ned_n_m","ned_e_m","ned_d_m",
