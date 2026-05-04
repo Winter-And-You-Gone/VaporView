@@ -35,7 +35,7 @@ Item {
                 color: ApplicationWindow.window.muted
                 font.pixelSize: 8
                 font.family: "Consolas"
-                visible: keyName.length > 0
+                visible: fieldRow.keyName.length > 0
                 Layout.preferredWidth: 70
                 Layout.minimumWidth: 70
                 Layout.maximumWidth: 70
@@ -98,7 +98,7 @@ Item {
 
             Card {
                 width: parent.width
-                height: implicitHeight
+                height: 32 + 12 * 24 + (deviceBackend.allDeviceFields.epsilon || []).length * 28 + 20
                 title: "EPSILON " + ApplicationWindow.window.t("detailed.gnssGroup")
 
                 Column {
@@ -264,7 +264,7 @@ Item {
 
             Card {
                 width: parent.width
-                height: implicitHeight
+                height: 32 + (deviceBackend.allDeviceFields.ptb || []).length * 28 + 20
                 title: "PTB210 " + ApplicationWindow.window.t("detailed.envGroup")
 
                 Column {
@@ -283,7 +283,7 @@ Item {
 
             Card {
                 width: parent.width
-                height: implicitHeight
+                height: 32 + (deviceBackend.allDeviceFields.hmp || []).length * 28 + 20
                 title: "HMP 温湿度"
 
                 Column {
@@ -302,7 +302,7 @@ Item {
 
             Card {
                 width: parent.width
-                height: implicitHeight
+                height: 32 + (deviceBackend.allDeviceFields.lidar || []).length * 28 + 20
                 title: "TFA1500-L LiDAR"
 
                 Column {
@@ -321,7 +321,7 @@ Item {
 
             Card {
                 width: parent.width
-                height: implicitHeight
+                height: 32 + 14 * 28 + 20
                 title: "TCP 波形源"
 
                 Column {
@@ -330,9 +330,9 @@ Item {
                     FieldRow { labelText: "主机"; fieldValue: waveformBackend.host + ":" + waveformBackend.port; keyName: "host" }
                     FieldRow { labelText: "状态"; fieldValue: waveformBackend.statusText; keyName: "status" }
                     FieldRow { labelText: "帧率"; fieldValue: waveformBackend.frameRate.toFixed(1); fieldUnit: "Hz"; keyName: "frameRate" }
-                    FieldRow { labelText: "原始采样"; fieldValue: waveformBackend.rawSampleCount; keyName: "rawSampleCount" }
-                    FieldRow { labelText: "谐波采样"; fieldValue: waveformBackend.harmonicSampleCount; keyName: "harmonicSampleCount" }
-                    FieldRow { labelText: "峰值总数"; fieldValue: waveformBackend.peakTotalCount; keyName: "peakTotalCount" }
+                    FieldRow { labelText: "原始采样"; fieldValue: String(waveformBackend.rawSampleCount); keyName: "rawSampleCount" }
+                    FieldRow { labelText: "谐波采样"; fieldValue: String(waveformBackend.harmonicSampleCount); keyName: "harmonicSampleCount" }
+                    FieldRow { labelText: "峰值总数"; fieldValue: String(waveformBackend.peakTotalCount); keyName: "peakTotalCount" }
                     FieldRow { labelText: "最新峰值"; fieldValue: waveformBackend.latestPeak.toFixed(3); keyName: "latestPeak" }
                     FieldRow { labelText: "过滤"; fieldValue: waveformBackend.filterEnabled ? "开" : "关"; keyName: "filterEnabled" }
                     FieldRow { labelText: "过滤范围"; fieldValue: waveformBackend.filterMin.toFixed(3) + " ~ " + waveformBackend.filterMax.toFixed(3); keyName: "filterRange" }
@@ -345,16 +345,16 @@ Item {
 
             Card {
                 width: parent.width
-                height: implicitHeight
+                height: 32 + 13 * 28 + 20
                 title: ApplicationWindow.window.t("detailed.sysGroup")
 
                 Column {
                     width: parent.width
                     FieldRow { labelText: "连接状态"; fieldValue: deviceBackend.statusText; keyName: "status" }
-                    FieldRow { labelText: "串口数"; fieldValue: deviceBackend.ports.length; keyName: "ports" }
+                    FieldRow { labelText: "串口数"; fieldValue: String(deviceBackend.ports.length); keyName: "ports" }
                     FieldRow { labelText: "记录状态"; fieldValue: recordingBackend.status; keyName: "recording" }
-                    FieldRow { labelText: "传感器行数"; fieldValue: recordingBackend.sensorRows; keyName: "sensorRows" }
-                    FieldRow { labelText: "波形帧数"; fieldValue: recordingBackend.waveformFrames; keyName: "waveformFrames" }
+                    FieldRow { labelText: "传感器行数"; fieldValue: String(recordingBackend.sensorRows); keyName: "sensorRows" }
+                    FieldRow { labelText: "波形帧数"; fieldValue: String(recordingBackend.waveformFrames); keyName: "waveformFrames" }
                     FieldRow { labelText: "文件大小"; fieldValue: recordingBackend.fileSizeText; keyName: "fileSize" }
                     FieldRow { labelText: "磁盘使用"; fieldValue: recordingBackend.recordUsageText; keyName: "recordUsage" }
                     FieldRow { labelText: "磁盘剩余"; fieldValue: recordingBackend.diskRemainingText; keyName: "diskRemaining" }
