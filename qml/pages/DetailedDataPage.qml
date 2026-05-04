@@ -11,6 +11,10 @@ Item {
 
     readonly property int rightScrollPadding: 16
 
+    readonly property int metricCellWidth: 180
+    readonly property int metricCellHeight: 56
+    readonly property int metricCellGap: 8
+
     function peakFilterModeText(mode) {
         switch (mode) {
             case 0: return "无"
@@ -38,6 +42,9 @@ Item {
         { key: "peakFilterMode", label: "模式", value: peakFilterModeText(waveformBackend.peakFilterMode), unit: "" },
         { key: "harmonicFilteredView", label: "谐波过滤", value: waveformBackend.harmonicFilteredView ? "开" : "关", unit: "" },
         { key: "scatterMode", label: "散点模式", value: waveformBackend.scatterMode ? "开" : "关", unit: "" },
+        { key: "host", label: "主机", value: waveformBackend.host + ":" + waveformBackend.port, unit: "" },
+        { key: "filterRange", label: "过滤范围", value: waveformBackend.filterMin.toFixed(3) + " ~ " + waveformBackend.filterMax.toFixed(3), unit: "" },
+        { key: "peakSearchRange", label: "搜索范围", value: waveformBackend.peakSearchStartIndex + " ~ " + waveformBackend.peakSearchEndIndex, unit: "" },
     ]
 
     property var sysFields: [
@@ -56,7 +63,7 @@ Item {
         { key: "waveformRate", label: "波形速率", value: recordingBackend.waveformExportRateHz + " Hz", unit: "" },
     ]
 
-    // ── 紧凑字段卡片 ──
+    // ── 统一尺寸的字段卡片 ──
     component MetricCell: Rectangle {
         id: metricCell
         property string labelText: ""
@@ -64,12 +71,21 @@ Item {
         property string fieldUnit: ""
         property string keyName: ""
 
+        width: page.metricCellWidth
+        height: page.metricCellHeight
+        implicitWidth: page.metricCellWidth
+        implicitHeight: page.metricCellHeight
+
         radius: 6
         color: ApplicationWindow.window.cardHeader
         border.color: ApplicationWindow.window.border
         border.width: 1
-        implicitHeight: 54
-        height: 54
+
+        ToolTip.visible: hoverHandler.hovered && metricCell.fieldValue.length > 12
+        ToolTip.text: metricCell.labelText + "\n" + metricCell.keyName + "\n" + metricCell.fieldValue + (metricCell.fieldUnit.length > 0 ? " " + metricCell.fieldUnit : "")
+        ToolTip.delay: 600
+
+        HoverHandler { id: hoverHandler }
 
         Column {
             anchors.fill: parent
@@ -123,48 +139,30 @@ Item {
     component CompactFieldGrid: Item {
         id: compactGrid
         property var fields: []
-        property int minCellWidth: 180
-        property int columnGap: 8
-        property int rowGap: 8
-        property int columns: 0
+        property int gap: page.metricCellGap
 
         width: parent ? parent.width : 900
-
-        property int computedColumns: columns > 0 ? columns : Math.max(1, Math.floor((width + columnGap) / (minCellWidth + columnGap)))
-        property real computedCellWidth: columns > 0
-            ? ((width - (computedColumns - 1) * columnGap) / computedColumns)
-            : Math.max(minCellWidth, (width - (computedColumns - 1) * columnGap) / computedColumns)
-
         height: flow.childrenRect.height
         implicitHeight: flow.childrenRect.height
 
         Flow {
             id: flow
             width: compactGrid.width
-            spacing: compactGrid.columnGap
+            spacing: compactGrid.gap
 
             Repeater {
                 model: compactGrid.fields || []
 
-                delegate: Item {
-                    width: compactGrid.computedCellWidth
-                    height: 54 + compactGrid.rowGap
-
-                    MetricCell {
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.top: parent.top
-                        height: 54
-
-                        labelText: modelData.label
-                        fieldValue: modelData.value
-                        fieldUnit: modelData.unit
-                        keyName: modelData.key
-                    }
+                delegate: MetricCell {
+                    width: page.metricCellWidth
+                    height: page.metricCellHeight
+                    labelText: modelData.label || ""
+                    fieldValue: String(modelData.value ?? "---")
+                    fieldUnit: modelData.unit || ""
+                    keyName: modelData.key || ""
                 }
             }
         }
-
     }
 
     // ── 通用卡片流式容器 ──
@@ -201,70 +199,8 @@ Item {
         }
     }
 
-    // ── 整行文本字段 ──
-    component FieldRow: Rectangle {
-        id: fieldRow
-        property string labelText: ""
-        property string fieldValue: "---"
-        property string fieldUnit: ""
-        property string keyName: ""
+    // ── 整行文本字段（已弃用，保留字段走 MetricCell 统一布局）──
 
-        width: parent ? parent.width : 900
-        height: 28
-        color: "transparent"
-
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 8
-            anchors.rightMargin: 8
-            spacing: 6
-
-            Text {
-                text: fieldRow.keyName
-                color: ApplicationWindow.window.muted
-                font.pixelSize: 8
-                font.family: "Consolas"
-                visible: fieldRow.keyName.length > 0
-                Layout.preferredWidth: 70
-                Layout.minimumWidth: 70
-                Layout.maximumWidth: 70
-                verticalAlignment: Text.AlignVCenter
-            }
-
-            Text {
-                text: fieldRow.labelText
-                color: ApplicationWindow.window.text
-                font.pixelSize: 12
-                Layout.preferredWidth: 130
-                Layout.minimumWidth: 130
-                Layout.maximumWidth: 130
-                elide: Text.ElideRight
-                verticalAlignment: Text.AlignVCenter
-            }
-
-            Text {
-                text: fieldRow.fieldValue
-                color: ApplicationWindow.window.text
-                font.pixelSize: 12
-                font.weight: Font.Bold
-                font.family: "Consolas"
-                Layout.fillWidth: true
-                elide: Text.ElideRight
-                verticalAlignment: Text.AlignVCenter
-            }
-
-            Text {
-                text: fieldRow.fieldUnit
-                color: ApplicationWindow.window.muted
-                font.pixelSize: 10
-                Layout.preferredWidth: 60
-                Layout.minimumWidth: 60
-                Layout.maximumWidth: 60
-                horizontalAlignment: Text.AlignRight
-                verticalAlignment: Text.AlignVCenter
-            }
-        }
-    }
 
     Flickable {
         id: detailFlick
@@ -303,12 +239,10 @@ Item {
                             "latitude_deg","longitude_deg","height_m",
                             "roll_deg","pitch_deg","yaw_deg",
                             "gnss_satellites","gnss_fix_code","heading_valid",
-                            "utc_unix_s","utc_microseconds","device_timestamp_us"
+                            "utc_unix_s","utc_microseconds","device_timestamp_us",
+                            "gnss_fix_text","error_message"
                         ])
                     }
-
-                    FieldRow { labelText: "GNSS 状态"; fieldValue: pickFields(deviceBackend.allDeviceFields.epsilon || [], ["gnss_fix_text"])[0]?.value ?? "---"; keyName: "gnss_fix_text" }
-                    FieldRow { labelText: "错误信息"; fieldValue: pickFields(deviceBackend.allDeviceFields.epsilon || [], ["error_message"])[0]?.value ?? "---"; keyName: "error_message" }
                 }
             }
 
@@ -326,8 +260,6 @@ Item {
                     title: "EPSILON — 坐标与速度"
 
                     CompactFieldGrid {
-                        columns: 3
-                        minCellWidth: 160
                         fields: pickFields(deviceBackend.allDeviceFields.epsilon || [], [
                             "ecef_x_m","ecef_y_m","ecef_z_m",
                             "ned_n_m","ned_e_m","ned_d_m",
@@ -343,8 +275,6 @@ Item {
                     title: "EPSILON — IMU 与磁场"
 
                     CompactFieldGrid {
-                        columns: 4
-                        minCellWidth: 130
                         fields: pickFields(deviceBackend.allDeviceFields.epsilon || [], [
                             "body_acc_x_mps2","body_acc_y_mps2","body_acc_z_mps2",
                             "imu_acc_x_mps2","imu_acc_y_mps2","imu_acc_z_mps2",
@@ -374,14 +304,10 @@ Item {
                             "raw_frame_count","dropped_frame_count","last_packet_id","last_serial_number",
                             "imu_packet_rate_hz","ahrs_packet_rate_hz","insgps_packet_rate_hz","sys_state_packet_rate_hz",
                             "raw_gnss_packet_rate_hz","satellite_packet_rate_hz","geodetic_packet_rate_hz","ecef_packet_rate_hz",
-                            "valid"
+                            "valid",
+                            "system_status_bits","filter_status_bits","update_status_bits","error_message"
                         ])
                     }
-
-                    FieldRow { labelText: "系统状态位"; fieldValue: pickFields(deviceBackend.allDeviceFields.epsilon || [], ["system_status_bits"])[0]?.value ?? "---"; keyName: "system_status_bits" }
-                    FieldRow { labelText: "滤波状态位"; fieldValue: pickFields(deviceBackend.allDeviceFields.epsilon || [], ["filter_status_bits"])[0]?.value ?? "---"; keyName: "filter_status_bits" }
-                    FieldRow { labelText: "更新状态位"; fieldValue: pickFields(deviceBackend.allDeviceFields.epsilon || [], ["update_status_bits"])[0]?.value ?? "---"; keyName: "update_status_bits" }
-                    FieldRow { labelText: "错误信息"; fieldValue: pickFields(deviceBackend.allDeviceFields.epsilon || [], ["error_message"])[0]?.value ?? "---"; keyName: "error_message" }
                 }
             }
 
@@ -398,8 +324,7 @@ Item {
                     title: "PTB210 气压计"
 
                     CompactFieldGrid {
-                        minCellWidth: 160
-                        fields: pickFields(deviceBackend.allDeviceFields.ptb || [], ["pressure_hpa","valid","timestamp"])
+                        fields: pickFields(deviceBackend.allDeviceFields.ptb || [], ["pressure_hpa","valid","timestamp","error_message"])
                     }
                 }
 
@@ -409,8 +334,7 @@ Item {
                     title: "HMP 温湿度"
 
                     CompactFieldGrid {
-                        minCellWidth: 160
-                        fields: pickFields(deviceBackend.allDeviceFields.hmp || [], ["temperature","humidity","valid","timestamp"])
+                        fields: pickFields(deviceBackend.allDeviceFields.hmp || [], ["temperature","humidity","valid","timestamp","error_message"])
                     }
                 }
 
@@ -420,8 +344,7 @@ Item {
                     title: "TFA1500-L LiDAR"
 
                     CompactFieldGrid {
-                        minCellWidth: 160
-                        fields: pickFields(deviceBackend.allDeviceFields.lidar || [], ["distance_m","signal_strength","valid","timestamp"])
+                        fields: pickFields(deviceBackend.allDeviceFields.lidar || [], ["distance_m","signal_strength","valid","timestamp","error_message"])
                     }
                 }
             }
@@ -438,17 +361,8 @@ Item {
                     height: implicitHeight
                     title: "TCP 波形源"
 
-                    Column {
-                        width: parent.width
-
-                        CompactFieldGrid {
-                            minCellWidth: 180
-                            fields: tcpFields
-                        }
-
-                        FieldRow { labelText: "主机"; fieldValue: waveformBackend.host + ":" + waveformBackend.port; keyName: "host" }
-                        FieldRow { labelText: "过滤范围"; fieldValue: waveformBackend.filterMin.toFixed(3) + " ~ " + waveformBackend.filterMax.toFixed(3); keyName: "filterRange" }
-                        FieldRow { labelText: "搜索范围"; fieldValue: waveformBackend.peakSearchStartIndex + " ~ " + waveformBackend.peakSearchEndIndex; keyName: "peakSearchRange" }
+                    CompactFieldGrid {
+                        fields: tcpFields
                     }
                 }
 
@@ -458,7 +372,6 @@ Item {
                     title: "系统 / 记录"
 
                     CompactFieldGrid {
-                        minCellWidth: 180
                         fields: sysFields
                     }
                 }
