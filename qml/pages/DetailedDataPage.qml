@@ -21,6 +21,8 @@ Item {
         property string fieldUnit: ""
         property string keyName: ""
 
+        width: parent ? parent.width : 900
+        height: 28
         implicitHeight: 28
         color: "transparent"
 
@@ -39,6 +41,7 @@ Item {
                 Layout.preferredWidth: 70
                 Layout.minimumWidth: 70
                 Layout.maximumWidth: 70
+                verticalAlignment: Text.AlignVCenter
             }
 
             Text {
@@ -49,6 +52,7 @@ Item {
                 Layout.minimumWidth: 130
                 Layout.maximumWidth: 130
                 elide: Text.ElideRight
+                verticalAlignment: Text.AlignVCenter
             }
 
             Text {
@@ -59,6 +63,7 @@ Item {
                 font.family: "Consolas"
                 Layout.fillWidth: true
                 elide: Text.ElideRight
+                verticalAlignment: Text.AlignVCenter
             }
 
             Text {
@@ -69,14 +74,19 @@ Item {
                 Layout.minimumWidth: 60
                 Layout.maximumWidth: 60
                 horizontalAlignment: Text.AlignRight
+                verticalAlignment: Text.AlignVCenter
             }
         }
     }
 
     component SectionHeader: Rectangle {
         property string sectionTitle: ""
+
+        width: parent ? parent.width : 900
+        height: 24
         implicitHeight: 24
         color: ApplicationWindow.window.cardHeader
+
         Text {
             anchors.left: parent.left
             anchors.leftMargin: 8
