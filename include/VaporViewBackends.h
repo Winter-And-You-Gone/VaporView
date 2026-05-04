@@ -217,6 +217,7 @@ class DeviceBackend : public QObject
     Q_PROPERTY(QVariantMap environmentData READ environmentData NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap detailedData READ detailedData NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap systemData READ systemData NOTIFY dataChanged)
+    Q_PROPERTY(QVariantMap allDeviceFields READ allDeviceFields NOTIFY dataChanged)
 
 public:
     explicit DeviceBackend(QObject *parent = nullptr);
@@ -236,6 +237,7 @@ public:
     QVariantMap environmentData() const;
     QVariantMap detailedData() const;
     QVariantMap systemData() const;
+    QVariantMap allDeviceFields() const;
 
     VaporView::EpsilonData epsilonData() const;
     VaporView::PtbData ptbData() const;
@@ -309,6 +311,15 @@ private:
     void saveDeviceSettings() const;
     void loadDeviceSettings();
     std::map<uint8_t, int> effectiveEpsilonPacketRates(int baseRateHz, bool *usingCustom = nullptr) const;
+
+    static QVariantList makeEpsilonFields(const VaporView::EpsilonData& e);
+    static QVariantList makePtbFields(const VaporView::PtbData& p);
+    static QVariantList makeHmpFields(const VaporView::HmpData& h);
+    static QVariantList makeLidarFields(const VaporView::LidarData& l);
+    static QString formatDouble(double v, int precision = 3);
+    static QString formatBool(bool v);
+    static QString formatStdString(const std::string& s);
+    static QString formatTimestamp(const std::chrono::steady_clock::time_point& tp);
 
     DeviceModel devices_;
     QStringList ports_;

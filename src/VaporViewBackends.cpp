@@ -1088,6 +1088,225 @@ QVariantMap DeviceBackend::systemData() const
     };
 }
 
+QString DeviceBackend::formatDouble(double v, int precision)
+{
+    return std::isfinite(v) && v != 0.0
+        ? QString::number(v, 'f', precision)
+        : QStringLiteral("---");
+}
+
+QString DeviceBackend::formatBool(bool v)
+{
+    return v ? QStringLiteral("true") : QStringLiteral("false");
+}
+
+QString DeviceBackend::formatStdString(const std::string& s)
+{
+    return s.empty() ? QStringLiteral("---") : QString::fromStdString(s);
+}
+
+QString DeviceBackend::formatTimestamp(const std::chrono::steady_clock::time_point& tp)
+{
+    using namespace std::chrono;
+    if (tp == std::chrono::steady_clock::time_point{})
+        return QStringLiteral("---");
+    const auto age = steady_clock::now() - tp;
+    const auto ms = duration_cast<milliseconds>(age).count();
+    if (ms < 1000)
+        return QStringLiteral("%1 ms").arg(ms);
+    if (ms < 60000)
+        return QStringLiteral("%1 秒前").arg(ms / 1000);
+    if (ms < 3600000)
+        return QStringLiteral("%1 分钟前").arg(ms / 60000);
+    return QStringLiteral("%1 小时前").arg(ms / 3600000);
+}
+
+QVariantList DeviceBackend::makeEpsilonFields(const VaporView::EpsilonData& e)
+{
+    auto f = [](const QString& key, const QString& label, const QString& value, const QString& unit = QString()) {
+        return QVariantMap{
+            {QStringLiteral("key"), key},
+            {QStringLiteral("label"), label},
+            {QStringLiteral("value"), value},
+            {QStringLiteral("unit"), unit},
+        };
+    };
+    QVariantList list;
+
+    // 坐标 (Position)
+    list << f(QStringLiteral("latitude_deg"), QStringLiteral("纬度"), formatDouble(e.latitude_deg, 9), QStringLiteral("deg"));
+    list << f(QStringLiteral("longitude_deg"), QStringLiteral("经度"), formatDouble(e.longitude_deg, 9), QStringLiteral("deg"));
+    list << f(QStringLiteral("height_m"), QStringLiteral("高度"), formatDouble(e.height_m, 3), QStringLiteral("m"));
+    list << f(QStringLiteral("ecef_x_m"), QStringLiteral("ECEF X"), formatDouble(e.ecef_x_m, 3), QStringLiteral("m"));
+    list << f(QStringLiteral("ecef_y_m"), QStringLiteral("ECEF Y"), formatDouble(e.ecef_y_m, 3), QStringLiteral("m"));
+    list << f(QStringLiteral("ecef_z_m"), QStringLiteral("ECEF Z"), formatDouble(e.ecef_z_m, 3), QStringLiteral("m"));
+    list << f(QStringLiteral("ned_n_m"), QStringLiteral("NED N"), formatDouble(e.ned_n_m, 3), QStringLiteral("m"));
+    list << f(QStringLiteral("ned_e_m"), QStringLiteral("NED E"), formatDouble(e.ned_e_m, 3), QStringLiteral("m"));
+    list << f(QStringLiteral("ned_d_m"), QStringLiteral("NED D"), formatDouble(e.ned_d_m, 3), QStringLiteral("m"));
+
+    // 速度 (Velocity)
+    list << f(QStringLiteral("vel_n_mps"), QStringLiteral("北向速度"), formatDouble(e.vel_n_mps, 3), QStringLiteral("m/s"));
+    list << f(QStringLiteral("vel_e_mps"), QStringLiteral("东向速度"), formatDouble(e.vel_e_mps, 3), QStringLiteral("m/s"));
+    list << f(QStringLiteral("vel_d_mps"), QStringLiteral("地向速度"), formatDouble(e.vel_d_mps, 3), QStringLiteral("m/s"));
+    list << f(QStringLiteral("body_vel_x_mps"), QStringLiteral("机体速度 X"), formatDouble(e.body_vel_x_mps, 3), QStringLiteral("m/s"));
+    list << f(QStringLiteral("body_vel_y_mps"), QStringLiteral("机体速度 Y"), formatDouble(e.body_vel_y_mps, 3), QStringLiteral("m/s"));
+    list << f(QStringLiteral("body_vel_z_mps"), QStringLiteral("机体速度 Z"), formatDouble(e.body_vel_z_mps, 3), QStringLiteral("m/s"));
+
+    // 加速度 (Acceleration)
+    list << f(QStringLiteral("body_acc_x_mps2"), QStringLiteral("机体加速度 X"), formatDouble(e.body_acc_x_mps2, 3), QStringLiteral("m/s²"));
+    list << f(QStringLiteral("body_acc_y_mps2"), QStringLiteral("机体加速度 Y"), formatDouble(e.body_acc_y_mps2, 3), QStringLiteral("m/s²"));
+    list << f(QStringLiteral("body_acc_z_mps2"), QStringLiteral("机体加速度 Z"), formatDouble(e.body_acc_z_mps2, 3), QStringLiteral("m/s²"));
+    list << f(QStringLiteral("imu_acc_x_mps2"), QStringLiteral("IMU 加速度 X"), formatDouble(e.imu_acc_x_mps2, 3), QStringLiteral("m/s²"));
+    list << f(QStringLiteral("imu_acc_y_mps2"), QStringLiteral("IMU 加速度 Y"), formatDouble(e.imu_acc_y_mps2, 3), QStringLiteral("m/s²"));
+    list << f(QStringLiteral("imu_acc_z_mps2"), QStringLiteral("IMU 加速度 Z"), formatDouble(e.imu_acc_z_mps2, 3), QStringLiteral("m/s²"));
+
+    // 角速度 (Angular Velocity)
+    list << f(QStringLiteral("imu_gyr_x_radps"), QStringLiteral("IMU 陀螺 X"), formatDouble(e.imu_gyr_x_radps, 6), QStringLiteral("rad/s"));
+    list << f(QStringLiteral("imu_gyr_y_radps"), QStringLiteral("IMU 陀螺 Y"), formatDouble(e.imu_gyr_y_radps, 6), QStringLiteral("rad/s"));
+    list << f(QStringLiteral("imu_gyr_z_radps"), QStringLiteral("IMU 陀螺 Z"), formatDouble(e.imu_gyr_z_radps, 6), QStringLiteral("rad/s"));
+    list << f(QStringLiteral("ang_vel_x_radps"), QStringLiteral("角速度 X"), formatDouble(e.ang_vel_x_radps, 6), QStringLiteral("rad/s"));
+    list << f(QStringLiteral("ang_vel_y_radps"), QStringLiteral("角速度 Y"), formatDouble(e.ang_vel_y_radps, 6), QStringLiteral("rad/s"));
+    list << f(QStringLiteral("ang_vel_z_radps"), QStringLiteral("角速度 Z"), formatDouble(e.ang_vel_z_radps, 6), QStringLiteral("rad/s"));
+
+    // 磁场 (Magnetic)
+    list << f(QStringLiteral("mag_x_mg"), QStringLiteral("磁场 X"), formatDouble(e.mag_x_mg, 3), QStringLiteral("mG"));
+    list << f(QStringLiteral("mag_y_mg"), QStringLiteral("磁场 Y"), formatDouble(e.mag_y_mg, 3), QStringLiteral("mG"));
+    list << f(QStringLiteral("mag_z_mg"), QStringLiteral("磁场 Z"), formatDouble(e.mag_z_mg, 3), QStringLiteral("mG"));
+
+    // 姿态 (Attitude)
+    list << f(QStringLiteral("roll_deg"), QStringLiteral("横滚"), formatDouble(e.roll_deg, 3), QStringLiteral("deg"));
+    list << f(QStringLiteral("pitch_deg"), QStringLiteral("俯仰"), formatDouble(e.pitch_deg, 3), QStringLiteral("deg"));
+    list << f(QStringLiteral("yaw_deg"), QStringLiteral("航向"), formatDouble(e.yaw_deg, 3), QStringLiteral("deg"));
+    list << f(QStringLiteral("quat_w"), QStringLiteral("四元数 W"), formatDouble(e.quat_w, 6));
+    list << f(QStringLiteral("quat_x"), QStringLiteral("四元数 X"), formatDouble(e.quat_x, 6));
+    list << f(QStringLiteral("quat_y"), QStringLiteral("四元数 Y"), formatDouble(e.quat_y, 6));
+    list << f(QStringLiteral("quat_z"), QStringLiteral("四元数 Z"), formatDouble(e.quat_z, 6));
+
+    // 温压 (Temperature / Pressure)
+    list << f(QStringLiteral("imu_temp_c"), QStringLiteral("IMU 温度"), formatDouble(e.imu_temp_c, 2), QStringLiteral("°C"));
+    list << f(QStringLiteral("pressure_pa"), QStringLiteral("气压"), formatDouble(e.pressure_pa, 2), QStringLiteral("Pa"));
+    list << f(QStringLiteral("pressure_temp_c"), QStringLiteral("气压计温度"), formatDouble(e.pressure_temp_c, 2), QStringLiteral("°C"));
+    list << f(QStringLiteral("pressure_altitude_m"), QStringLiteral("气压高度"), formatDouble(e.pressure_altitude_m, 2), QStringLiteral("m"));
+
+    // 精度 (Accuracy)
+    list << f(QStringLiteral("hdop"), QStringLiteral("HDOP"), formatDouble(e.hdop, 2));
+    list << f(QStringLiteral("vdop"), QStringLiteral("VDOP"), formatDouble(e.vdop, 2));
+    list << f(QStringLiteral("hacc_m"), QStringLiteral("水平精度"), formatDouble(e.hacc_m, 3), QStringLiteral("m"));
+    list << f(QStringLiteral("vacc_m"), QStringLiteral("垂直精度"), formatDouble(e.vacc_m, 3), QStringLiteral("m"));
+    list << f(QStringLiteral("lat_std_m"), QStringLiteral("纬度标准差"), formatDouble(e.lat_std_m, 3), QStringLiteral("m"));
+    list << f(QStringLiteral("lon_std_m"), QStringLiteral("经度标准差"), formatDouble(e.lon_std_m, 3), QStringLiteral("m"));
+    list << f(QStringLiteral("height_std_m"), QStringLiteral("高度标准差"), formatDouble(e.height_std_m, 3), QStringLiteral("m"));
+    list << f(QStringLiteral("diff_age_s"), QStringLiteral("差分龄期"), formatDouble(e.diff_age_s, 2), QStringLiteral("s"));
+
+    // 时间 (Time)
+    list << f(QStringLiteral("device_timestamp_us"), QStringLiteral("设备时间戳"),
+              e.device_timestamp_us > 0 ? QString::number(e.device_timestamp_us) : QStringLiteral("---"), QStringLiteral("us"));
+    const bool utcValid = e.utc_unix_s > 0;
+    const QString utcStr = utcValid
+        ? QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(e.utc_unix_s) * 1000 + static_cast<qint64>(e.utc_microseconds / 1000), Qt::UTC)
+              .toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz"))
+        : QStringLiteral("---");
+    list << f(QStringLiteral("utc_unix_s"), QStringLiteral("UTC 时间"), utcStr);
+    list << f(QStringLiteral("utc_microseconds"), QStringLiteral("UTC 微秒"),
+              utcValid ? QString::number(e.utc_microseconds) : QStringLiteral("---"));
+
+    // 状态 (Status)
+    list << f(QStringLiteral("system_status_bits"), QStringLiteral("系统状态位"), QStringLiteral("0x%1").arg(e.system_status_bits, 4, 16, QLatin1Char('0')));
+    list << f(QStringLiteral("filter_status_bits"), QStringLiteral("滤波状态位"), QStringLiteral("0x%1").arg(e.filter_status_bits, 4, 16, QLatin1Char('0')));
+    list << f(QStringLiteral("update_status_bits"), QStringLiteral("更新状态位"), QStringLiteral("0x%1").arg(e.update_status_bits, 4, 16, QLatin1Char('0')));
+    list << f(QStringLiteral("gnss_fix_code"), QStringLiteral("GNSS 固定码"), QString::number(e.gnss_fix_code));
+    list << f(QStringLiteral("gnss_fix_text"), QStringLiteral("GNSS 状态"), formatStdString(e.gnss_fix_text));
+    list << f(QStringLiteral("gnss_satellites"), QStringLiteral("卫星数"), QString::number(e.gnss_satellites));
+    list << f(QStringLiteral("heading_valid"), QStringLiteral("航向有效"), formatBool(e.heading_valid));
+    list << f(QStringLiteral("valid"), QStringLiteral("有效"), formatBool(e.valid));
+    list << f(QStringLiteral("error_message"), QStringLiteral("错误信息"), formatStdString(e.error_message));
+
+    // 计数 (Counters)
+    list << f(QStringLiteral("raw_frame_count"), QStringLiteral("原始帧计数"), QString::number(e.raw_frame_count));
+    list << f(QStringLiteral("dropped_frame_count"), QStringLiteral("丢帧计数"), QString::number(e.dropped_frame_count));
+    list << f(QStringLiteral("last_packet_id"), QStringLiteral("最后包 ID"), QString::number(e.last_packet_id));
+    list << f(QStringLiteral("last_serial_number"), QStringLiteral("最后序列号"), QString::number(e.last_serial_number));
+
+    // 包频率 (Packet Rates)
+    list << f(QStringLiteral("imu_packet_rate_hz"), QStringLiteral("IMU 包率"), formatDouble(e.imu_packet_rate_hz, 1), QStringLiteral("Hz"));
+    list << f(QStringLiteral("ahrs_packet_rate_hz"), QStringLiteral("AHRS 包率"), formatDouble(e.ahrs_packet_rate_hz, 1), QStringLiteral("Hz"));
+    list << f(QStringLiteral("insgps_packet_rate_hz"), QStringLiteral("INSGPS 包率"), formatDouble(e.insgps_packet_rate_hz, 1), QStringLiteral("Hz"));
+    list << f(QStringLiteral("sys_state_packet_rate_hz"), QStringLiteral("系统状态包率"), formatDouble(e.sys_state_packet_rate_hz, 1), QStringLiteral("Hz"));
+    list << f(QStringLiteral("raw_gnss_packet_rate_hz"), QStringLiteral("原始 GNSS 包率"), formatDouble(e.raw_gnss_packet_rate_hz, 1), QStringLiteral("Hz"));
+    list << f(QStringLiteral("satellite_packet_rate_hz"), QStringLiteral("卫星包率"), formatDouble(e.satellite_packet_rate_hz, 1), QStringLiteral("Hz"));
+    list << f(QStringLiteral("geodetic_packet_rate_hz"), QStringLiteral("大地测量包率"), formatDouble(e.geodetic_packet_rate_hz, 1), QStringLiteral("Hz"));
+    list << f(QStringLiteral("ecef_packet_rate_hz"), QStringLiteral("ECEF 包率"), formatDouble(e.ecef_packet_rate_hz, 1), QStringLiteral("Hz"));
+
+    return list;
+}
+
+QVariantList DeviceBackend::makePtbFields(const VaporView::PtbData& p)
+{
+    auto f = [](const QString& key, const QString& label, const QString& value, const QString& unit = QString()) {
+        return QVariantMap{
+            {QStringLiteral("key"), key},
+            {QStringLiteral("label"), label},
+            {QStringLiteral("value"), value},
+            {QStringLiteral("unit"), unit},
+        };
+    };
+    return {
+        f(QStringLiteral("pressure_hpa"), QStringLiteral("气压"), formatDouble(p.pressure_hpa, 2), QStringLiteral("hPa")),
+        f(QStringLiteral("valid"), QStringLiteral("有效"), formatBool(p.valid)),
+        f(QStringLiteral("error_message"), QStringLiteral("错误信息"), formatStdString(p.error_message)),
+        f(QStringLiteral("timestamp"), QStringLiteral("时间"), formatTimestamp(p.timestamp)),
+    };
+}
+
+QVariantList DeviceBackend::makeHmpFields(const VaporView::HmpData& h)
+{
+    auto f = [](const QString& key, const QString& label, const QString& value, const QString& unit = QString()) {
+        return QVariantMap{
+            {QStringLiteral("key"), key},
+            {QStringLiteral("label"), label},
+            {QStringLiteral("value"), value},
+            {QStringLiteral("unit"), unit},
+        };
+    };
+    return {
+        f(QStringLiteral("temperature"), QStringLiteral("温度"), formatDouble(h.temperature, 2), QStringLiteral("°C")),
+        f(QStringLiteral("humidity"), QStringLiteral("湿度"), formatDouble(h.humidity, 2), QStringLiteral("%RH")),
+        f(QStringLiteral("valid"), QStringLiteral("有效"), formatBool(h.valid)),
+        f(QStringLiteral("error_message"), QStringLiteral("错误信息"), formatStdString(h.error_message)),
+        f(QStringLiteral("timestamp"), QStringLiteral("时间"), formatTimestamp(h.timestamp)),
+    };
+}
+
+QVariantList DeviceBackend::makeLidarFields(const VaporView::LidarData& l)
+{
+    auto f = [](const QString& key, const QString& label, const QString& value, const QString& unit = QString()) {
+        return QVariantMap{
+            {QStringLiteral("key"), key},
+            {QStringLiteral("label"), label},
+            {QStringLiteral("value"), value},
+            {QStringLiteral("unit"), unit},
+        };
+    };
+    return {
+        f(QStringLiteral("distance_m"), QStringLiteral("距离"), formatDouble(l.distance_m, 3), QStringLiteral("m")),
+        f(QStringLiteral("signal_strength"), QStringLiteral("信号强度"), QString::number(l.signal_strength)),
+        f(QStringLiteral("valid"), QStringLiteral("有效"), formatBool(l.valid)),
+        f(QStringLiteral("error_message"), QStringLiteral("错误信息"), formatStdString(l.error_message)),
+        f(QStringLiteral("timestamp"), QStringLiteral("时间"), formatTimestamp(l.timestamp)),
+    };
+}
+
+QVariantMap DeviceBackend::allDeviceFields() const
+{
+    QMutexLocker lock(&data_mutex_);
+    return {
+        {QStringLiteral("epsilon"), makeEpsilonFields(current_epsilon_)},
+        {QStringLiteral("ptb"), makePtbFields(current_ptb_)},
+        {QStringLiteral("hmp"), makeHmpFields(current_hmp_)},
+        {QStringLiteral("lidar"), makeLidarFields(current_lidar_)},
+    };
+}
+
 VaporView::EpsilonData DeviceBackend::epsilonData() const
 {
     QMutexLocker lock(&data_mutex_);
