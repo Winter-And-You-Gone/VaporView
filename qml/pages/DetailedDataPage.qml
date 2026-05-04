@@ -116,7 +116,7 @@ Item {
     component CompactFieldGrid: Item {
         id: compactGrid
         property var fields: []
-        property int minCellWidth: 190
+        property int minCellWidth: 180
         property int columnGap: 8
         property int rowGap: 8
 
@@ -125,8 +125,8 @@ Item {
         property int computedColumns: Math.max(1, Math.floor((width + columnGap) / (minCellWidth + columnGap)))
         property real computedCellWidth: Math.max(minCellWidth, (width - (computedColumns - 1) * columnGap) / computedColumns)
 
-        height: flow.implicitHeight
-        implicitHeight: flow.implicitHeight
+        height: flow.childrenRect.height
+        implicitHeight: flow.childrenRect.height
 
         Flow {
             id: flow
@@ -155,6 +155,9 @@ Item {
                 }
             }
         }
+
+        Component.onCompleted: console.log("CompactFieldGrid width", width, "columns", computedColumns)
+        onWidthChanged: console.log("CompactFieldGrid width changed", width, "columns", computedColumns)
     }
 
     // ── 通用卡片流式容器 ──
@@ -168,8 +171,8 @@ Item {
         property int computedColumns: Math.max(1, Math.floor((width + gap) / (minCardWidth + gap)))
         property real computedCardWidth: (width - (computedColumns - 1) * gap) / computedColumns
 
-        height: flow.implicitHeight
-        implicitHeight: flow.implicitHeight
+        height: flow.childrenRect.height
+        implicitHeight: flow.childrenRect.height
 
         default property alias content: flow.data
 
@@ -246,17 +249,23 @@ Item {
         }
     }
 
-    ScrollView {
-        id: detailScroll
+    Flickable {
+        id: detailFlick
         anchors.fill: parent
         anchors.margins: 12
         clip: true
 
-        contentWidth: Math.max(detailScroll.width - 24, 900)
+        boundsBehavior: Flickable.StopAtBounds
+        contentWidth: width
+        contentHeight: detailColumn.implicitHeight
+
+        ScrollBar.vertical: ScrollBar {
+            policy: ScrollBar.AsNeeded
+        }
 
         Column {
             id: detailColumn
-            width: detailScroll.contentWidth
+            width: detailFlick.width
             spacing: 12
 
             // ── EPSILON 1: 定位与姿态 ──
