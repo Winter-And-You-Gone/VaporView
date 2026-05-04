@@ -105,6 +105,27 @@ ApplicationWindow {
                     if (root.currentPage === "settings") return settingsPage
                     return homePage
                 }
+
+                onLoaded: {
+                    if (item) {
+                        item.width = Qt.binding(function() { return pageLoader.width })
+                        item.height = Qt.binding(function() { return pageLoader.height })
+                    }
+                }
+
+                Binding {
+                    target: pageLoader.item
+                    property: "width"
+                    value: pageLoader.width
+                    when: pageLoader.item !== null
+                }
+
+                Binding {
+                    target: pageLoader.item
+                    property: "height"
+                    value: pageLoader.height
+                    when: pageLoader.item !== null
+                }
             }
         }
     }

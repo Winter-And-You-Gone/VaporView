@@ -4,6 +4,11 @@ import QtQuick.Layouts
 import "../components"
 
 Item {
+    id: page
+
+    width: parent ? parent.width : 0
+    height: parent ? parent.height : 0
+
     function peakFilterModeText(mode) {
         switch (mode) {
             case 0: return "无"
@@ -130,8 +135,7 @@ Item {
 
         Flow {
             id: flow
-            anchors.left: parent.left
-            anchors.right: parent.right
+            width: compactGrid.width
             spacing: compactGrid.columnGap
 
             Repeater {
@@ -156,8 +160,8 @@ Item {
             }
         }
 
-        Component.onCompleted: console.log("CompactFieldGrid width", width, "columns", computedColumns)
-        onWidthChanged: console.log("CompactFieldGrid width changed", width, "columns", computedColumns)
+        Component.onCompleted: console.log("[CompactGrid] width", width, "columns", computedColumns, "minCellWidth", minCellWidth)
+        onWidthChanged: console.log("[CompactGrid] width changed", width, "columns", computedColumns)
     }
 
     // ── 通用卡片流式容器 ──
@@ -178,8 +182,7 @@ Item {
 
         Flow {
             id: flow
-            anchors.left: parent.left
-            anchors.right: parent.right
+            width: cardFlow.width
             spacing: cardFlow.gap
         }
     }
@@ -251,13 +254,15 @@ Item {
 
     Flickable {
         id: detailFlick
-        anchors.fill: parent
-        anchors.margins: 12
+        x: 12
+        y: 12
+        width: page.width - 24
+        height: page.height - 24
         clip: true
 
         boundsBehavior: Flickable.StopAtBounds
-        contentWidth: width
-        contentHeight: detailColumn.implicitHeight
+        contentWidth: detailFlick.width
+        contentHeight: detailColumn.height
 
         ScrollBar.vertical: ScrollBar {
             policy: ScrollBar.AsNeeded
@@ -266,7 +271,27 @@ Item {
         Column {
             id: detailColumn
             width: detailFlick.width
+            height: implicitHeight
             spacing: 12
+
+            // ── 调试条 ──
+            Rectangle {
+                width: parent.width
+                height: 24
+                color: "#fee2e2"
+                border.color: "#ef4444"
+                z: 999
+
+                Text {
+                    anchors.centerIn: parent
+                    color: "#991b1b"
+                    font.pixelSize: 12
+                    text: "page=" + page.width
+                          + " flick=" + detailFlick.width
+                          + " column=" + detailColumn.width
+                          + " window=" + ApplicationWindow.window.width
+                }
+            }
 
             // ── EPSILON 1: 定位与姿态 ──
             Card {
@@ -436,6 +461,19 @@ Item {
             }
 
             Item { width: 1; height: 24 }
+        }
+    }
+
+    Component.onCompleted: {
+        console.log("[DetailedPage] page", page.width, page.height)
+        console.log("[DetailedPage] flick", detailFlick.width, detailFlick.height)
+        console.log("[DetailedPage] column", detailColumn.width)
+    }
+
+    Connections {
+        target: page
+        function onWidthChanged() {
+            console.log("[DetailedPage] page width changed", page.width)
         }
     }
 }
