@@ -49,6 +49,7 @@ Item {
         { key: "waveformRate", label: "波形速率", value: recordingBackend.waveformExportRateHz + " Hz", unit: "" },
     ]
 
+    // ── 紧凑字段卡片 ──
     component MetricCell: Rectangle {
         id: metricCell
         property string labelText: ""
@@ -111,35 +112,76 @@ Item {
         }
     }
 
+    // ── 自适应流式字段网格 ──
     component CompactFieldGrid: Item {
         id: compactGrid
         property var fields: []
         property int minCellWidth: 220
+        property int columnGap: 8
+        property int rowGap: 8
 
         width: parent ? parent.width : 900
-        height: grid.implicitHeight
 
-        GridLayout {
-            id: grid
+        property int computedColumns: Math.max(1, Math.floor((width + columnGap) / (minCellWidth + columnGap)))
+        property real computedCellWidth: Math.max(minCellWidth, (width - (computedColumns - 1) * columnGap) / computedColumns)
+
+        height: flow.implicitHeight
+        implicitHeight: flow.implicitHeight
+
+        Flow {
+            id: flow
             anchors.left: parent.left
             anchors.right: parent.right
-            columns: Math.max(1, Math.floor(parent.width / compactGrid.minCellWidth))
-            columnSpacing: 8
-            rowSpacing: 8
+            spacing: compactGrid.columnGap
 
             Repeater {
                 model: compactGrid.fields || []
-                delegate: MetricCell {
-                    Layout.fillWidth: true
-                    labelText: modelData.label
-                    fieldValue: modelData.value
-                    fieldUnit: modelData.unit
-                    keyName: modelData.key
+
+                delegate: Item {
+                    width: compactGrid.computedCellWidth
+                    height: 54 + compactGrid.rowGap
+
+                    MetricCell {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        height: 54
+
+                        labelText: modelData.label
+                        fieldValue: modelData.value
+                        fieldUnit: modelData.unit
+                        keyName: modelData.key
+                    }
                 }
             }
         }
     }
 
+    // ── 通用卡片流式容器 ──
+    component CardFlow: Item {
+        id: cardFlow
+        property int minCardWidth: 420
+        property int gap: 12
+
+        width: parent ? parent.width : 900
+
+        property int computedColumns: Math.max(1, Math.floor((width + gap) / (minCardWidth + gap)))
+        property real computedCardWidth: (width - (computedColumns - 1) * gap) / computedColumns
+
+        height: flow.implicitHeight
+        implicitHeight: flow.implicitHeight
+
+        default property alias content: flow.data
+
+        Flow {
+            id: flow
+            anchors.left: parent.left
+            anchors.right: parent.right
+            spacing: cardFlow.gap
+        }
+    }
+
+    // ── 整行文本字段 ──
     component FieldRow: Rectangle {
         id: fieldRow
         property string labelText: ""
@@ -235,12 +277,13 @@ Item {
             }
 
             // ── EPSILON 2 + 3: 坐标与速度 | IMU 与磁场 ──
-            Row {
+            CardFlow {
+                id: epsilonMidFlow
                 width: parent.width
-                spacing: 12
+                minCardWidth: 430
 
                 Card {
-                    width: (parent.width - 12) / 2
+                    width: epsilonMidFlow.computedCardWidth
                     height: implicitHeight
                     title: "EPSILON — 坐标与速度"
 
@@ -255,7 +298,7 @@ Item {
                 }
 
                 Card {
-                    width: (parent.width - 12) / 2
+                    width: epsilonMidFlow.computedCardWidth
                     height: implicitHeight
                     title: "EPSILON — IMU 与磁场"
 
@@ -300,13 +343,14 @@ Item {
                 }
             }
 
-            // ── PTB / HMP / LiDAR 三列 ──
-            Row {
+            // ── PTB / HMP / LiDAR ──
+            CardFlow {
+                id: envFlow
                 width: parent.width
-                spacing: 12
+                minCardWidth: 280
 
                 Card {
-                    width: (parent.width - 24) / 3
+                    width: envFlow.computedCardWidth
                     height: implicitHeight
                     title: "PTB210 气压计"
 
@@ -317,7 +361,7 @@ Item {
                 }
 
                 Card {
-                    width: (parent.width - 24) / 3
+                    width: envFlow.computedCardWidth
                     height: implicitHeight
                     title: "HMP 温湿度"
 
@@ -328,7 +372,7 @@ Item {
                 }
 
                 Card {
-                    width: (parent.width - 24) / 3
+                    width: envFlow.computedCardWidth
                     height: implicitHeight
                     title: "TFA1500-L LiDAR"
 
@@ -339,13 +383,14 @@ Item {
                 }
             }
 
-            // ── TCP 波形源 + 系统状态 两列 ──
-            Row {
+            // ── TCP 波形源 + 系统状态 ──
+            CardFlow {
+                id: sysFlow
                 width: parent.width
-                spacing: 12
+                minCardWidth: 430
 
                 Card {
-                    width: (parent.width - 12) / 2
+                    width: sysFlow.computedCardWidth
                     height: implicitHeight
                     title: "TCP 波形源"
 
@@ -364,7 +409,7 @@ Item {
                 }
 
                 Card {
-                    width: (parent.width - 12) / 2
+                    width: sysFlow.computedCardWidth
                     height: implicitHeight
                     title: "系统 / 记录"
 
