@@ -169,11 +169,22 @@ Item {
         id: cardFlow
         property int minCardWidth: 420
         property int gap: 12
+        property int itemCount: 1
 
         width: parent ? parent.width : 900
 
-        property int computedColumns: Math.max(1, Math.floor((width + gap) / (minCardWidth + gap)))
-        property real computedCardWidth: (width - (computedColumns - 1) * gap) / computedColumns
+        property int maxColumnsByWidth: Math.max(
+            1,
+            Math.floor((width + gap) / (minCardWidth + gap))
+        )
+
+        property int computedColumns: Math.max(
+            1,
+            Math.min(Math.max(1, itemCount), maxColumnsByWidth)
+        )
+
+        property real computedCardWidth:
+            (width - (computedColumns - 1) * gap) / computedColumns
 
         height: flow.childrenRect.height
         implicitHeight: flow.childrenRect.height
@@ -321,6 +332,7 @@ Item {
                 id: epsilonMidFlow
                 width: parent.width
                 minCardWidth: 430
+                itemCount: 2
 
                 Card {
                     width: epsilonMidFlow.computedCardWidth
@@ -388,6 +400,7 @@ Item {
                 id: envFlow
                 width: parent.width
                 minCardWidth: 280
+                itemCount: 3
 
                 Card {
                     width: envFlow.computedCardWidth
@@ -428,6 +441,7 @@ Item {
                 id: sysFlow
                 width: parent.width
                 minCardWidth: 430
+                itemCount: 2
 
                 Card {
                     width: sysFlow.computedCardWidth
