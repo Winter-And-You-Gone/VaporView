@@ -116,7 +116,7 @@ Item {
     component CompactFieldGrid: Item {
         id: compactGrid
         property var fields: []
-        property int minCellWidth: 220
+        property int minCellWidth: 190
         property int columnGap: 8
         property int rowGap: 8
 
@@ -247,10 +247,16 @@ Item {
     }
 
     ScrollView {
+        id: detailScroll
         anchors.fill: parent
         anchors.margins: 12
+        clip: true
+
+        contentWidth: Math.max(detailScroll.width - 24, 900)
+
         Column {
-            width: Math.max(parent.width - 24, 900)
+            id: detailColumn
+            width: detailScroll.contentWidth
             spacing: 12
 
             // ── EPSILON 1: 定位与姿态 ──
