@@ -8,6 +8,7 @@ Rectangle {
     property Item headerRight
     default property alias content: body.data
 
+    implicitHeight: 32 + body.implicitHeight
     radius: 8
     color: ApplicationWindow.window.card
     border.width: 0
@@ -19,6 +20,7 @@ Rectangle {
 
         Item {
             id: header
+            implicitHeight: 32
             Layout.fillWidth: true
             Layout.preferredHeight: 32
 
@@ -77,6 +79,7 @@ Rectangle {
 
         Item {
             id: body
+            implicitHeight: childrenRect.height
             Layout.fillWidth: true
             Layout.fillHeight: true
         }

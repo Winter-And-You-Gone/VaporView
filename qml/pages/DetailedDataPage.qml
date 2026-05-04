@@ -14,6 +14,132 @@ Item {
         }
     }
 
+    function pickFields(list, keys) {
+        if (!list) return []
+        return list.filter(function(f) { return keys.indexOf(f.key) >= 0 })
+    }
+
+    property var tcpFields: [
+        { key: "connected", label: "连接", value: waveformBackend.connected ? "已连接" : "未连接", unit: "" },
+        { key: "status", label: "状态", value: waveformBackend.statusText, unit: "" },
+        { key: "frameRate", label: "帧率", value: waveformBackend.frameRate.toFixed(1), unit: "Hz" },
+        { key: "rawSampleCount", label: "原始采样", value: String(waveformBackend.rawSampleCount), unit: "" },
+        { key: "harmonicSampleCount", label: "谐波采样", value: String(waveformBackend.harmonicSampleCount), unit: "" },
+        { key: "peakTotalCount", label: "峰值总数", value: String(waveformBackend.peakTotalCount), unit: "" },
+        { key: "latestPeak", label: "最新峰值", value: waveformBackend.latestPeak.toFixed(3), unit: "" },
+        { key: "filterEnabled", label: "过滤", value: waveformBackend.filterEnabled ? "开" : "关", unit: "" },
+        { key: "peakFilterMode", label: "模式", value: peakFilterModeText(waveformBackend.peakFilterMode), unit: "" },
+        { key: "harmonicFilteredView", label: "谐波过滤", value: waveformBackend.harmonicFilteredView ? "开" : "关", unit: "" },
+        { key: "scatterMode", label: "散点模式", value: waveformBackend.scatterMode ? "开" : "关", unit: "" },
+    ]
+
+    property var sysFields: [
+        { key: "status", label: "连接状态", value: deviceBackend.statusText, unit: "" },
+        { key: "ports", label: "串口数", value: String(deviceBackend.ports.length), unit: "" },
+        { key: "recording", label: "记录状态", value: recordingBackend.status, unit: "" },
+        { key: "sensorRows", label: "传感器行数", value: String(recordingBackend.sensorRows), unit: "" },
+        { key: "waveformFrames", label: "波形帧数", value: String(recordingBackend.waveformFrames), unit: "" },
+        { key: "fileSize", label: "文件大小", value: recordingBackend.fileSizeText, unit: "" },
+        { key: "recordUsage", label: "磁盘使用", value: recordingBackend.recordUsageText, unit: "" },
+        { key: "diskRemaining", label: "磁盘剩余", value: recordingBackend.diskRemainingText, unit: "" },
+        { key: "diskTotal", label: "磁盘总量", value: recordingBackend.diskTotalText, unit: "" },
+        { key: "duration", label: "时长", value: recordingBackend.durationText, unit: "" },
+        { key: "uptime", label: "系统运行", value: recordingBackend.systemUptimeText, unit: "" },
+        { key: "exportRate", label: "导出速率", value: recordingBackend.exportRateHz + " Hz", unit: "" },
+        { key: "waveformRate", label: "波形速率", value: recordingBackend.waveformExportRateHz + " Hz", unit: "" },
+    ]
+
+    component MetricCell: Rectangle {
+        id: metricCell
+        property string labelText: ""
+        property string fieldValue: "---"
+        property string fieldUnit: ""
+        property string keyName: ""
+
+        radius: 6
+        color: ApplicationWindow.window.cardHeader
+        border.color: ApplicationWindow.window.border
+        border.width: 1
+        implicitHeight: 54
+        height: 54
+
+        Column {
+            anchors.fill: parent
+            anchors.margins: 6
+            spacing: 2
+
+            Row {
+                width: parent.width
+                spacing: 4
+                Text {
+                    text: metricCell.labelText
+                    color: ApplicationWindow.window.muted
+                    font.pixelSize: 10
+                    elide: Text.ElideRight
+                    width: parent.width - keyText.width - 4
+                }
+                Text {
+                    id: keyText
+                    text: metricCell.keyName
+                    color: ApplicationWindow.window.muted
+                    font.pixelSize: 8
+                    font.family: "Consolas"
+                    visible: metricCell.keyName.length > 0
+                }
+            }
+
+            Row {
+                width: parent.width
+                spacing: 4
+                Text {
+                    text: metricCell.fieldValue
+                    color: ApplicationWindow.window.text
+                    font.pixelSize: 14
+                    font.bold: true
+                    font.family: "Consolas"
+                    elide: Text.ElideRight
+                    width: parent.width - unitText.width - 4
+                }
+                Text {
+                    id: unitText
+                    text: metricCell.fieldUnit
+                    color: ApplicationWindow.window.muted
+                    font.pixelSize: 10
+                    visible: metricCell.fieldUnit.length > 0
+                }
+            }
+        }
+    }
+
+    component CompactFieldGrid: Item {
+        id: compactGrid
+        property var fields: []
+        property int minCellWidth: 220
+
+        width: parent ? parent.width : 900
+        height: grid.implicitHeight
+
+        GridLayout {
+            id: grid
+            anchors.left: parent.left
+            anchors.right: parent.right
+            columns: Math.max(1, Math.floor(parent.width / compactGrid.minCellWidth))
+            columnSpacing: 8
+            rowSpacing: 8
+
+            Repeater {
+                model: compactGrid.fields || []
+                delegate: MetricCell {
+                    Layout.fillWidth: true
+                    labelText: modelData.label
+                    fieldValue: modelData.value
+                    fieldUnit: modelData.unit
+                    keyName: modelData.key
+                }
+            }
+        }
+    }
+
     component FieldRow: Rectangle {
         id: fieldRow
         property string labelText: ""
@@ -23,7 +149,6 @@ Item {
 
         width: parent ? parent.width : 900
         height: 28
-        implicitHeight: 28
         color: "transparent"
 
         RowLayout {
@@ -79,26 +204,6 @@ Item {
         }
     }
 
-    component SectionHeader: Rectangle {
-        property string sectionTitle: ""
-
-        width: parent ? parent.width : 900
-        height: 24
-        implicitHeight: 24
-        color: ApplicationWindow.window.cardHeader
-
-        Text {
-            anchors.left: parent.left
-            anchors.leftMargin: 8
-            anchors.verticalCenter: parent.verticalCenter
-            text: sectionTitle
-            color: ApplicationWindow.window.text
-            font.pixelSize: 10
-            font.bold: true
-            opacity: 0.8
-        }
-    }
-
     ScrollView {
         anchors.fill: parent
         anchors.margins: 12
@@ -106,273 +211,167 @@ Item {
             width: Math.max(parent.width - 24, 900)
             spacing: 12
 
+            // ── EPSILON 1: 定位与姿态 ──
             Card {
                 width: parent.width
-                height: 32 + 12 * 24 + (deviceBackend.allDeviceFields.epsilon || []).length * 28 + 20
-                title: "EPSILON " + ApplicationWindow.window.t("detailed.gnssGroup")
+                height: implicitHeight
+                title: "EPSILON — 定位与姿态"
 
                 Column {
                     width: parent.width
 
-                    SectionHeader { sectionTitle: "坐标" }
-                    Repeater {
-                        model: (deviceBackend.allDeviceFields.epsilon || []).filter(function(f) {
-                            return ["latitude_deg","longitude_deg","height_m","ecef_x_m","ecef_y_m","ecef_z_m","ned_n_m","ned_e_m","ned_d_m"].indexOf(f.key) >= 0;
-                        })
-                        delegate: FieldRow {
-                            labelText: modelData.label
-                            fieldValue: modelData.value
-                            fieldUnit: modelData.unit
-                            keyName: modelData.key
-                        }
+                    CompactFieldGrid {
+                        fields: pickFields(deviceBackend.allDeviceFields.epsilon || [], [
+                            "latitude_deg","longitude_deg","height_m",
+                            "roll_deg","pitch_deg","yaw_deg",
+                            "gnss_satellites","gnss_fix_code","heading_valid",
+                            "utc_unix_s","utc_microseconds","device_timestamp_us"
+                        ])
                     }
 
-                    SectionHeader { sectionTitle: "速度" }
-                    Repeater {
-                        model: (deviceBackend.allDeviceFields.epsilon || []).filter(function(f) {
-                            return ["vel_n_mps","vel_e_mps","vel_d_mps","body_vel_x_mps","body_vel_y_mps","body_vel_z_mps"].indexOf(f.key) >= 0;
-                        })
-                        delegate: FieldRow {
-                            labelText: modelData.label
-                            fieldValue: modelData.value
-                            fieldUnit: modelData.unit
-                            keyName: modelData.key
-                        }
-                    }
+                    FieldRow { labelText: "GNSS 状态"; fieldValue: pickFields(deviceBackend.allDeviceFields.epsilon || [], ["gnss_fix_text"])[0]?.value ?? "---"; keyName: "gnss_fix_text" }
+                    FieldRow { labelText: "错误信息"; fieldValue: pickFields(deviceBackend.allDeviceFields.epsilon || [], ["error_message"])[0]?.value ?? "---"; keyName: "error_message" }
+                }
+            }
 
-                    SectionHeader { sectionTitle: "加速度" }
-                    Repeater {
-                        model: (deviceBackend.allDeviceFields.epsilon || []).filter(function(f) {
-                            return ["body_acc_x_mps2","body_acc_y_mps2","body_acc_z_mps2","imu_acc_x_mps2","imu_acc_y_mps2","imu_acc_z_mps2"].indexOf(f.key) >= 0;
-                        })
-                        delegate: FieldRow {
-                            labelText: modelData.label
-                            fieldValue: modelData.value
-                            fieldUnit: modelData.unit
-                            keyName: modelData.key
-                        }
-                    }
+            // ── EPSILON 2 + 3: 坐标与速度 | IMU 与磁场 ──
+            Row {
+                width: parent.width
+                spacing: 12
 
-                    SectionHeader { sectionTitle: "角速度" }
-                    Repeater {
-                        model: (deviceBackend.allDeviceFields.epsilon || []).filter(function(f) {
-                            return ["imu_gyr_x_radps","imu_gyr_y_radps","imu_gyr_z_radps","ang_vel_x_radps","ang_vel_y_radps","ang_vel_z_radps"].indexOf(f.key) >= 0;
-                        })
-                        delegate: FieldRow {
-                            labelText: modelData.label
-                            fieldValue: modelData.value
-                            fieldUnit: modelData.unit
-                            keyName: modelData.key
-                        }
-                    }
+                Card {
+                    width: (parent.width - 12) / 2
+                    height: implicitHeight
+                    title: "EPSILON — 坐标与速度"
 
-                    SectionHeader { sectionTitle: "磁场" }
-                    Repeater {
-                        model: (deviceBackend.allDeviceFields.epsilon || []).filter(function(f) {
-                            return ["mag_x_mg","mag_y_mg","mag_z_mg"].indexOf(f.key) >= 0;
-                        })
-                        delegate: FieldRow {
-                            labelText: modelData.label
-                            fieldValue: modelData.value
-                            fieldUnit: modelData.unit
-                            keyName: modelData.key
-                        }
+                    CompactFieldGrid {
+                        fields: pickFields(deviceBackend.allDeviceFields.epsilon || [], [
+                            "ecef_x_m","ecef_y_m","ecef_z_m",
+                            "ned_n_m","ned_e_m","ned_d_m",
+                            "vel_n_mps","vel_e_mps","vel_d_mps",
+                            "body_vel_x_mps","body_vel_y_mps","body_vel_z_mps"
+                        ])
                     }
+                }
 
-                    SectionHeader { sectionTitle: "姿态" }
-                    Repeater {
-                        model: (deviceBackend.allDeviceFields.epsilon || []).filter(function(f) {
-                            return ["roll_deg","pitch_deg","yaw_deg","quat_w","quat_x","quat_y","quat_z"].indexOf(f.key) >= 0;
-                        })
-                        delegate: FieldRow {
-                            labelText: modelData.label
-                            fieldValue: modelData.value
-                            fieldUnit: modelData.unit
-                            keyName: modelData.key
-                        }
-                    }
+                Card {
+                    width: (parent.width - 12) / 2
+                    height: implicitHeight
+                    title: "EPSILON — IMU 与磁场"
 
-                    SectionHeader { sectionTitle: "温压" }
-                    Repeater {
-                        model: (deviceBackend.allDeviceFields.epsilon || []).filter(function(f) {
-                            return ["imu_temp_c","pressure_pa","pressure_temp_c","pressure_altitude_m"].indexOf(f.key) >= 0;
-                        })
-                        delegate: FieldRow {
-                            labelText: modelData.label
-                            fieldValue: modelData.value
-                            fieldUnit: modelData.unit
-                            keyName: modelData.key
-                        }
-                    }
-
-                    SectionHeader { sectionTitle: "精度" }
-                    Repeater {
-                        model: (deviceBackend.allDeviceFields.epsilon || []).filter(function(f) {
-                            return ["hdop","vdop","hacc_m","vacc_m","lat_std_m","lon_std_m","height_std_m","diff_age_s"].indexOf(f.key) >= 0;
-                        })
-                        delegate: FieldRow {
-                            labelText: modelData.label
-                            fieldValue: modelData.value
-                            fieldUnit: modelData.unit
-                            keyName: modelData.key
-                        }
-                    }
-
-                    SectionHeader { sectionTitle: "时间" }
-                    Repeater {
-                        model: (deviceBackend.allDeviceFields.epsilon || []).filter(function(f) {
-                            return ["device_timestamp_us","utc_unix_s","utc_microseconds"].indexOf(f.key) >= 0;
-                        })
-                        delegate: FieldRow {
-                            labelText: modelData.label
-                            fieldValue: modelData.value
-                            fieldUnit: modelData.unit
-                            keyName: modelData.key
-                        }
-                    }
-
-                    SectionHeader { sectionTitle: "状态" }
-                    Repeater {
-                        model: (deviceBackend.allDeviceFields.epsilon || []).filter(function(f) {
-                            return ["system_status_bits","filter_status_bits","update_status_bits","gnss_fix_code","gnss_fix_text","gnss_satellites","heading_valid","valid","error_message"].indexOf(f.key) >= 0;
-                        })
-                        delegate: FieldRow {
-                            labelText: modelData.label
-                            fieldValue: modelData.value
-                            fieldUnit: modelData.unit
-                            keyName: modelData.key
-                        }
-                    }
-
-                    SectionHeader { sectionTitle: "计数" }
-                    Repeater {
-                        model: (deviceBackend.allDeviceFields.epsilon || []).filter(function(f) {
-                            return ["raw_frame_count","dropped_frame_count","last_packet_id","last_serial_number"].indexOf(f.key) >= 0;
-                        })
-                        delegate: FieldRow {
-                            labelText: modelData.label
-                            fieldValue: modelData.value
-                            fieldUnit: modelData.unit
-                            keyName: modelData.key
-                        }
-                    }
-
-                    SectionHeader { sectionTitle: "包频率" }
-                    Repeater {
-                        model: (deviceBackend.allDeviceFields.epsilon || []).filter(function(f) {
-                            return ["imu_packet_rate_hz","ahrs_packet_rate_hz","insgps_packet_rate_hz","sys_state_packet_rate_hz","raw_gnss_packet_rate_hz","satellite_packet_rate_hz","geodetic_packet_rate_hz","ecef_packet_rate_hz"].indexOf(f.key) >= 0;
-                        })
-                        delegate: FieldRow {
-                            labelText: modelData.label
-                            fieldValue: modelData.value
-                            fieldUnit: modelData.unit
-                            keyName: modelData.key
-                        }
+                    CompactFieldGrid {
+                        fields: pickFields(deviceBackend.allDeviceFields.epsilon || [], [
+                            "body_acc_x_mps2","body_acc_y_mps2","body_acc_z_mps2",
+                            "imu_acc_x_mps2","imu_acc_y_mps2","imu_acc_z_mps2",
+                            "imu_gyr_x_radps","imu_gyr_y_radps","imu_gyr_z_radps",
+                            "ang_vel_x_radps","ang_vel_y_radps","ang_vel_z_radps",
+                            "mag_x_mg","mag_y_mg","mag_z_mg",
+                            "quat_w","quat_x","quat_y","quat_z",
+                            "imu_temp_c","pressure_pa","pressure_temp_c","pressure_altitude_m"
+                        ])
                     }
                 }
             }
 
+            // ── EPSILON 4: 精度 / 状态 / 计数 / 包频率 ──
             Card {
                 width: parent.width
-                height: 32 + (deviceBackend.allDeviceFields.ptb || []).length * 28 + 20
-                title: "PTB210 " + ApplicationWindow.window.t("detailed.envGroup")
+                height: implicitHeight
+                title: "EPSILON — 精度 / 状态 / 计数 / 包频率"
 
                 Column {
                     width: parent.width
-                    Repeater {
-                        model: deviceBackend.allDeviceFields.ptb || []
-                        delegate: FieldRow {
-                            labelText: modelData.label
-                            fieldValue: modelData.value
-                            fieldUnit: modelData.unit
-                            keyName: modelData.key
-                        }
+
+                    CompactFieldGrid {
+                        fields: pickFields(deviceBackend.allDeviceFields.epsilon || [], [
+                            "hdop","vdop","hacc_m","vacc_m",
+                            "lat_std_m","lon_std_m","height_std_m","diff_age_s",
+                            "raw_frame_count","dropped_frame_count","last_packet_id","last_serial_number",
+                            "imu_packet_rate_hz","ahrs_packet_rate_hz","insgps_packet_rate_hz","sys_state_packet_rate_hz",
+                            "raw_gnss_packet_rate_hz","satellite_packet_rate_hz","geodetic_packet_rate_hz","ecef_packet_rate_hz",
+                            "valid"
+                        ])
+                    }
+
+                    FieldRow { labelText: "系统状态位"; fieldValue: pickFields(deviceBackend.allDeviceFields.epsilon || [], ["system_status_bits"])[0]?.value ?? "---"; keyName: "system_status_bits" }
+                    FieldRow { labelText: "滤波状态位"; fieldValue: pickFields(deviceBackend.allDeviceFields.epsilon || [], ["filter_status_bits"])[0]?.value ?? "---"; keyName: "filter_status_bits" }
+                    FieldRow { labelText: "更新状态位"; fieldValue: pickFields(deviceBackend.allDeviceFields.epsilon || [], ["update_status_bits"])[0]?.value ?? "---"; keyName: "update_status_bits" }
+                    FieldRow { labelText: "错误信息"; fieldValue: pickFields(deviceBackend.allDeviceFields.epsilon || [], ["error_message"])[0]?.value ?? "---"; keyName: "error_message" }
+                }
+            }
+
+            // ── PTB / HMP / LiDAR 三列 ──
+            Row {
+                width: parent.width
+                spacing: 12
+
+                Card {
+                    width: (parent.width - 24) / 3
+                    height: implicitHeight
+                    title: "PTB210 气压计"
+
+                    CompactFieldGrid {
+                        minCellWidth: 160
+                        fields: pickFields(deviceBackend.allDeviceFields.ptb || [], ["pressure_hpa","valid","timestamp"])
+                    }
+                }
+
+                Card {
+                    width: (parent.width - 24) / 3
+                    height: implicitHeight
+                    title: "HMP 温湿度"
+
+                    CompactFieldGrid {
+                        minCellWidth: 160
+                        fields: pickFields(deviceBackend.allDeviceFields.hmp || [], ["temperature","humidity","valid","timestamp"])
+                    }
+                }
+
+                Card {
+                    width: (parent.width - 24) / 3
+                    height: implicitHeight
+                    title: "TFA1500-L LiDAR"
+
+                    CompactFieldGrid {
+                        minCellWidth: 160
+                        fields: pickFields(deviceBackend.allDeviceFields.lidar || [], ["distance_m","signal_strength","valid","timestamp"])
                     }
                 }
             }
 
-            Card {
+            // ── TCP 波形源 + 系统状态 两列 ──
+            Row {
                 width: parent.width
-                height: 32 + (deviceBackend.allDeviceFields.hmp || []).length * 28 + 20
-                title: "HMP 温湿度"
+                spacing: 12
 
-                Column {
-                    width: parent.width
-                    Repeater {
-                        model: deviceBackend.allDeviceFields.hmp || []
-                        delegate: FieldRow {
-                            labelText: modelData.label
-                            fieldValue: modelData.value
-                            fieldUnit: modelData.unit
-                            keyName: modelData.key
+                Card {
+                    width: (parent.width - 12) / 2
+                    height: implicitHeight
+                    title: "TCP 波形源"
+
+                    Column {
+                        width: parent.width
+
+                        CompactFieldGrid {
+                            minCellWidth: 180
+                            fields: tcpFields
                         }
+
+                        FieldRow { labelText: "主机"; fieldValue: waveformBackend.host + ":" + waveformBackend.port; keyName: "host" }
+                        FieldRow { labelText: "过滤范围"; fieldValue: waveformBackend.filterMin.toFixed(3) + " ~ " + waveformBackend.filterMax.toFixed(3); keyName: "filterRange" }
+                        FieldRow { labelText: "搜索范围"; fieldValue: waveformBackend.peakSearchStartIndex + " ~ " + waveformBackend.peakSearchEndIndex; keyName: "peakSearchRange" }
                     }
                 }
-            }
 
-            Card {
-                width: parent.width
-                height: 32 + (deviceBackend.allDeviceFields.lidar || []).length * 28 + 20
-                title: "TFA1500-L LiDAR"
+                Card {
+                    width: (parent.width - 12) / 2
+                    height: implicitHeight
+                    title: "系统 / 记录"
 
-                Column {
-                    width: parent.width
-                    Repeater {
-                        model: deviceBackend.allDeviceFields.lidar || []
-                        delegate: FieldRow {
-                            labelText: modelData.label
-                            fieldValue: modelData.value
-                            fieldUnit: modelData.unit
-                            keyName: modelData.key
-                        }
+                    CompactFieldGrid {
+                        minCellWidth: 180
+                        fields: sysFields
                     }
-                }
-            }
-
-            Card {
-                width: parent.width
-                height: 32 + 14 * 28 + 20
-                title: "TCP 波形源"
-
-                Column {
-                    width: parent.width
-                    FieldRow { labelText: "连接"; fieldValue: waveformBackend.connected ? "已连接" : "未连接"; keyName: "connected" }
-                    FieldRow { labelText: "主机"; fieldValue: waveformBackend.host + ":" + waveformBackend.port; keyName: "host" }
-                    FieldRow { labelText: "状态"; fieldValue: waveformBackend.statusText; keyName: "status" }
-                    FieldRow { labelText: "帧率"; fieldValue: waveformBackend.frameRate.toFixed(1); fieldUnit: "Hz"; keyName: "frameRate" }
-                    FieldRow { labelText: "原始采样"; fieldValue: String(waveformBackend.rawSampleCount); keyName: "rawSampleCount" }
-                    FieldRow { labelText: "谐波采样"; fieldValue: String(waveformBackend.harmonicSampleCount); keyName: "harmonicSampleCount" }
-                    FieldRow { labelText: "峰值总数"; fieldValue: String(waveformBackend.peakTotalCount); keyName: "peakTotalCount" }
-                    FieldRow { labelText: "最新峰值"; fieldValue: waveformBackend.latestPeak.toFixed(3); keyName: "latestPeak" }
-                    FieldRow { labelText: "过滤"; fieldValue: waveformBackend.filterEnabled ? "开" : "关"; keyName: "filterEnabled" }
-                    FieldRow { labelText: "过滤范围"; fieldValue: waveformBackend.filterMin.toFixed(3) + " ~ " + waveformBackend.filterMax.toFixed(3); keyName: "filterRange" }
-                    FieldRow { labelText: "模式"; fieldValue: peakFilterModeText(waveformBackend.peakFilterMode); keyName: "peakFilterMode" }
-                    FieldRow { labelText: "搜索范围"; fieldValue: waveformBackend.peakSearchStartIndex + " ~ " + waveformBackend.peakSearchEndIndex; keyName: "peakSearchRange" }
-                    FieldRow { labelText: "谐波过滤"; fieldValue: waveformBackend.harmonicFilteredView ? "开" : "关"; keyName: "harmonicFilteredView" }
-                    FieldRow { labelText: "散点模式"; fieldValue: waveformBackend.scatterMode ? "开" : "关"; keyName: "scatterMode" }
-                }
-            }
-
-            Card {
-                width: parent.width
-                height: 32 + 13 * 28 + 20
-                title: ApplicationWindow.window.t("detailed.sysGroup")
-
-                Column {
-                    width: parent.width
-                    FieldRow { labelText: "连接状态"; fieldValue: deviceBackend.statusText; keyName: "status" }
-                    FieldRow { labelText: "串口数"; fieldValue: String(deviceBackend.ports.length); keyName: "ports" }
-                    FieldRow { labelText: "记录状态"; fieldValue: recordingBackend.status; keyName: "recording" }
-                    FieldRow { labelText: "传感器行数"; fieldValue: String(recordingBackend.sensorRows); keyName: "sensorRows" }
-                    FieldRow { labelText: "波形帧数"; fieldValue: String(recordingBackend.waveformFrames); keyName: "waveformFrames" }
-                    FieldRow { labelText: "文件大小"; fieldValue: recordingBackend.fileSizeText; keyName: "fileSize" }
-                    FieldRow { labelText: "磁盘使用"; fieldValue: recordingBackend.recordUsageText; keyName: "recordUsage" }
-                    FieldRow { labelText: "磁盘剩余"; fieldValue: recordingBackend.diskRemainingText; keyName: "diskRemaining" }
-                    FieldRow { labelText: "磁盘总量"; fieldValue: recordingBackend.diskTotalText; keyName: "diskTotal" }
-                    FieldRow { labelText: "时长"; fieldValue: recordingBackend.durationText; keyName: "duration" }
-                    FieldRow { labelText: "系统运行"; fieldValue: recordingBackend.systemUptimeText; keyName: "uptime" }
-                    FieldRow { labelText: "导出速率"; fieldValue: recordingBackend.exportRateHz + " Hz"; keyName: "exportRate" }
-                    FieldRow { labelText: "波形速率"; fieldValue: recordingBackend.waveformExportRateHz + " Hz"; keyName: "waveformRate" }
                 }
             }
 
