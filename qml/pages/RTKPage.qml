@@ -6,8 +6,6 @@ import "../components"
 Item {
     id: page
 
-    readonly property int rightPad: 16
-
     // ── Helpers ──
     function textValue(value, fallback) {
         if (value === undefined || value === null)
@@ -28,7 +26,17 @@ Item {
         return lines.length > 0 ? lines.join("\n") : ""
     }
 
-    // Local state for fields without Q_PROPERTY yet
+    // GGA source options (local state until backend exposes this)
+    // TODO: Add ggaSourceOptions / ggaSource as Q_PROPERTY on RtkBackend
+    property var ggaSourceModel: [
+        { text: ApplicationWindow.window.t("rtk.ggaSourceEpsilonMain"), value: "epsilon_main" },
+        { text: ApplicationWindow.window.t("rtk.ggaSourceEpsilonAux"), value: "epsilon_aux" },
+        { text: ApplicationWindow.window.t("rtk.ggaSourceAuto"), value: "auto" },
+    ]
+    property int ggaSourceIndex: 0
+    property bool ggaReading: false
+
+    // Local state for timeout/reconnect (not yet Q_PROPERTY)
     // TODO: Add timeoutMs/reconnectMs as Q_PROPERTY on RtkBackend
     property string uiTimeoutMs: "5000"
     property string uiReconnectMs: "1000"
@@ -54,7 +62,7 @@ Item {
                 id: mainColumn
                 x: 12
                 y: 12
-                width: mainFlick.width - 12 - page.rightPad
+                width: mainFlick.width - 12 - 16
                 spacing: 12
 
                 // ── Top row: two card columns ──
@@ -62,12 +70,14 @@ Item {
                     width: parent.width
                     spacing: 12
 
-                    // ── LEFT COLUMN ──
+                    // ── LEFT COLUMN (wider) ──
                     ColumnLayout {
                         Layout.fillWidth: true
+                        Layout.preferredWidth: 0
+                        Layout.minimumWidth: 320
                         spacing: 12
 
-                        // ── CARD: NTRIP Server Config ──
+                        // ── CARD 1: NTRIP Server Config ──
                         Card {
                             Layout.fillWidth: true
                             height: implicitHeight
@@ -75,11 +85,14 @@ Item {
 
                             ColumnLayout {
                                 width: parent.width
-                                anchors.margins: 12
                                 spacing: 8
+
+                                Item { width: 1; height: 4 }
 
                                 RowLayout {
                                     Layout.fillWidth: true
+                                    Layout.leftMargin: 12
+                                    Layout.rightMargin: 12
                                     spacing: 8
                                     RtkTextField {
                                         Layout.fillWidth: true
@@ -96,12 +109,16 @@ Item {
                                 }
                                 RtkTextField {
                                     Layout.fillWidth: true
+                                    Layout.leftMargin: 12
+                                    Layout.rightMargin: 12
                                     placeholderText: ApplicationWindow.window.t("rtk.mountPoint")
                                     text: page.textValue(rtkBackend.mountpoint)
                                     onEditingFinished: rtkBackend.mountpoint = text
                                 }
                                 RowLayout {
                                     Layout.fillWidth: true
+                                    Layout.leftMargin: 12
+                                    Layout.rightMargin: 12
                                     spacing: 8
                                     RtkTextField {
                                         Layout.fillWidth: true
@@ -117,27 +134,32 @@ Item {
                                         onEditingFinished: rtkBackend.password = text
                                     }
                                 }
+
+                                Item { width: 1; height: 4 }
                             }
                         }
 
-                        // ── CARD: RTCM Output Config ──
+                        // ── CARD 2: RTCM Output Config ──
                         Card {
                             Layout.fillWidth: true
                             height: implicitHeight
-                            title: "RTCM 输出配置"
+                            title: ApplicationWindow.window.t("rtk.rtcmOutputConfig")
 
                             ColumnLayout {
                                 width: parent.width
-                                anchors.margins: 12
                                 spacing: 8
+
+                                Item { width: 1; height: 4 }
 
                                 // Port + Baud
                                 RowLayout {
                                     Layout.fillWidth: true
+                                    Layout.leftMargin: 12
+                                    Layout.rightMargin: 12
                                     spacing: 8
 
                                     Text {
-                                        text: "Output Port"
+                                        text: ApplicationWindow.window.t("rtk.outputPort")
                                         color: ApplicationWindow.window.muted
                                         font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
                                         Layout.alignment: Qt.AlignVCenter
@@ -149,7 +171,7 @@ Item {
                                         onEditingFinished: rtkBackend.outputPort = text
                                     }
                                     Text {
-                                        text: "Baud"
+                                        text: ApplicationWindow.window.t("rtk.baudRate")
                                         color: ApplicationWindow.window.muted
                                         font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
                                         Layout.alignment: Qt.AlignVCenter
@@ -165,10 +187,12 @@ Item {
                                 // Lever Arm
                                 RowLayout {
                                     Layout.fillWidth: true
+                                    Layout.leftMargin: 12
+                                    Layout.rightMargin: 12
                                     spacing: 6
 
                                     Text {
-                                        text: "Lever Arm"
+                                        text: ApplicationWindow.window.t("rtk.leverArm")
                                         color: ApplicationWindow.window.muted
                                         font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
                                         Layout.alignment: Qt.AlignVCenter
@@ -213,7 +237,7 @@ Item {
                                         validator: DoubleValidator { bottom: -10000; top: 10000; decimals: 4 }
                                     }
                                     ToolbarButton {
-                                        text: "Apply"
+                                        text: ApplicationWindow.window.t("rtk.applyLeverArm")
                                         iconName: "activity"
                                         onClicked: rtkBackend.applyMainAntennaLeverArm(
                                             Number(leverX.text), Number(leverY.text), Number(leverZ.text)
@@ -221,13 +245,15 @@ Item {
                                     }
                                 }
 
-                                // Timeout + Reconnect (local state only until backend exposes them)
+                                // Timeout + Reconnect
                                 RowLayout {
                                     Layout.fillWidth: true
+                                    Layout.leftMargin: 12
+                                    Layout.rightMargin: 12
                                     spacing: 8
 
                                     Text {
-                                        text: "Timeout (ms)"
+                                        text: ApplicationWindow.window.t("rtk.timeoutMs")
                                         color: ApplicationWindow.window.muted
                                         font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
                                         Layout.alignment: Qt.AlignVCenter
@@ -239,7 +265,7 @@ Item {
                                         onEditingFinished: page.uiTimeoutMs = text
                                     }
                                     Text {
-                                        text: "Reconnect (ms)"
+                                        text: ApplicationWindow.window.t("rtk.reconnectMs")
                                         color: ApplicationWindow.window.muted
                                         font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
                                         Layout.alignment: Qt.AlignVCenter
@@ -251,220 +277,164 @@ Item {
                                         onEditingFinished: page.uiReconnectMs = text
                                     }
                                 }
+
+                                Item { width: 1; height: 4 }
                             }
                         }
 
-                        // ── CARD: GGA Monitor (simplified — auto-sent by backend) ──
-                        // TODO: Add GGA sentence / frequency as Q_PROPERTY on RtkBackend
+                        // ── CARD 3: GGA Monitor ──
                         Card {
                             Layout.fillWidth: true
                             height: implicitHeight
-                            title: "GGA 监视器"
+                            title: ApplicationWindow.window.t("rtk.ggaMonitor")
 
                             ColumnLayout {
                                 width: parent.width
-                                anchors.margins: 12
                                 spacing: 6
 
+                                Item { width: 1; height: 4 }
+
+                                // Row 1: Source combo + Read button + Frequency
                                 RowLayout {
                                     Layout.fillWidth: true
+                                    Layout.leftMargin: 12
+                                    Layout.rightMargin: 12
                                     spacing: 8
 
                                     Text {
                                         text: ApplicationWindow.window.t("rtk.ggaSource") + ":"
                                         color: ApplicationWindow.window.text
                                         font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
+                                        Layout.alignment: Qt.AlignVCenter
                                     }
-                                    Text {
-                                        text: "EPSILON (auto-sent)"
-                                        color: ApplicationWindow.window.muted
-                                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
-                                        font.family: "Consolas"
+
+                                    ComboBox {
+                                        id: ggaSourceCombo
+                                        Layout.preferredWidth: 180
+                                        model: page.ggaSourceModel
+                                        currentIndex: page.ggaSourceIndex
+                                        textRole: "text"
+                                        font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
+                                        implicitHeight: 34
+                                        onActivated: page.ggaSourceIndex = currentIndex
+
+                                        delegate: ItemDelegate {
+                                            width: ggaSourceCombo.width
+                                            text: ggaSourceCombo.textRole
+                                                ? model[ggaSourceCombo.textRole] : modelData
+                                            font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
+                                            highlighted: ggaSourceCombo.highlightedIndex === index
+                                            background: Rectangle {
+                                                color: highlighted ? ApplicationWindow.window.secondary : "transparent"
+                                            }
+                                            contentItem: Text {
+                                                text: parent.text
+                                                color: ApplicationWindow.window.text
+                                                font: parent.font
+                                                verticalAlignment: Text.AlignVCenter
+                                                leftPadding: 8
+                                            }
+                                        }
+
+                                        indicator: Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            anchors.right: parent.right
+                                            anchors.rightMargin: 8
+                                            text: "▾"
+                                            color: ApplicationWindow.window.muted
+                                            font.pixelSize: 10
+                                        }
+
+                                        contentItem: Text {
+                                            leftPadding: 10
+                                            rightPadding: 24
+                                            text: ggaSourceCombo.displayText
+                                            color: ApplicationWindow.window.text
+                                            font: ggaSourceCombo.font
+                                            verticalAlignment: Text.AlignVCenter
+                                            elide: Text.ElideRight
+                                        }
+
+                                        background: Rectangle {
+                                            implicitHeight: 34
+                                            radius: 7
+                                            color: ggaSourceCombo.hovered
+                                                ? ApplicationWindow.window.secondary
+                                                : ApplicationWindow.window.card
+                                            border.color: ggaSourceCombo.activeFocus
+                                                ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8")
+                                                : ApplicationWindow.window.border
+                                        }
+
+                                        popup: Popup {
+                                            y: ggaSourceCombo.height + 2
+                                            width: ggaSourceCombo.width
+                                            implicitHeight: contentItem.implicitHeight + 8
+                                            padding: 4
+                                            background: Rectangle {
+                                                radius: 7
+                                                color: ApplicationWindow.window.card
+                                                border.color: ApplicationWindow.window.border
+                                            }
+                                            contentItem: ListView {
+                                                clip: true
+                                                implicitHeight: contentHeight
+                                                model: ggaSourceCombo.delegateModel
+                                                currentIndex: ggaSourceCombo.highlightedIndex
+                                            }
+                                        }
                                     }
+
+                                    ToolbarButton {
+                                        id: ggaToggleBtn
+                                        text: page.ggaReading
+                                            ? ApplicationWindow.window.t("rtk.stopReading")
+                                            : ApplicationWindow.window.t("rtk.readGga")
+                                        iconName: page.ggaReading ? "square" : "radio"
+                                        onClicked: {
+                                            page.ggaReading = !page.ggaReading
+                                            // TODO: Wire to backend GGA read/stop when API is available
+                                        }
+                                    }
+
                                     Item { Layout.fillWidth: true }
+
                                     Text {
-                                        text: "In: " + page.statValue("inputBps") + " B/s"
-                                        color: ApplicationWindow.window.muted
-                                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
-                                        font.family: "Consolas"
-                                    }
-                                    Text {
-                                        text: "Out: " + page.statValue("outputBps") + " B/s"
+                                        text: ApplicationWindow.window.t("rtk.ggaFrequency") + ": "
+                                            + "0.00 Hz"
                                         color: ApplicationWindow.window.muted
                                         font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                                         font.family: "Consolas"
                                     }
                                 }
 
+                                // Row 2: Status text
                                 Text {
                                     Layout.fillWidth: true
-                                    text: "GGA 由系统自动根据 EPSILON 位置数据生成，以 1 Hz 频率发送至 NTRIP 播发器。"
+                                    Layout.leftMargin: 12
+                                    Layout.rightMargin: 12
+                                    text: page.ggaReading
+                                        ? (ApplicationWindow.window.t("rtk.waiting")
+                                           + " (" + page.ggaSourceModel[page.ggaSourceIndex].text + ")")
+                                        : ApplicationWindow.window.t("rtk.noData")
                                     color: ApplicationWindow.window.muted
                                     font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                                     wrapMode: Text.WordWrap
                                 }
-                            }
-                        }
-                    }
 
-                    // ── RIGHT COLUMN ──
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 12
-
-                        // ── CARD: Diagnostics ──
-                        Card {
-                            Layout.fillWidth: true
-                            height: implicitHeight
-                            title: ApplicationWindow.window.t("rtk.diagnostics")
-                            headerRight: ToolbarButton {
-                                iconName: "trash-2"
-                                iconSize: 13
-                                text: ApplicationWindow.window.t("home.clearLog")
-                                onClicked: rtkBackend.clearDiagnostics()
-                            }
-
-                            ColumnLayout {
-                                width: parent.width
-                                anchors.margins: 12
-                                spacing: 8
-
-                                // 2×2 metrics
-                                GridLayout {
-                                    Layout.fillWidth: true
-                                    columns: 2
-                                    columnSpacing: 8
-                                    rowSpacing: 8
-
-                                    MetricTile {
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: 66
-                                        label: "Input"
-                                        value: page.statValue("inputBps") + " B/s"
-                                    }
-                                    MetricTile {
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: 66
-                                        label: "Output"
-                                        value: page.statValue("outputBps") + " B/s"
-                                    }
-                                    MetricTile {
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: 66
-                                        label: "RTCM Frames"
-                                        value: String(page.statValue("rtcm3FrameCount"))
-                                    }
-                                    MetricTile {
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: 66
-                                        label: "CRC"
-                                        value: page.statValue("rtcm3CrcOkCount") + " / " + page.statValue("rtcm3CrcFailCount")
-                                    }
-                                }
-
-                                // Scrollable diagnostics log
+                                // Row 3: GGA content area
                                 ScrollView {
                                     Layout.fillWidth: true
-                                    Layout.preferredHeight: 200
-                                    clip: true
-                                    ScrollBar.vertical: ScrollBar { id: diagVBar }
-
-                                    TextArea {
-                                        id: diagText
-                                        text: page.diagnosticsText()
-                                        readOnly: true
-                                        selectByMouse: true
-                                        wrapMode: TextEdit.Wrap
-                                        color: ApplicationWindow.window.text
-                                        selectedTextColor: ApplicationWindow.window.primaryForeground
-                                        selectionColor: ApplicationWindow.window.primary
-                                        font.family: "Consolas"
-                                        font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
-                                        background: Rectangle { color: "transparent" }
-                                    }
-                                }
-
-                                Timer {
-                                    id: diagScrollTimer
-                                    interval: 50
-                                    onTriggered: diagVBar.position = 1.0 - diagVBar.size
-                                }
-                            }
-                        }
-
-                        // ── CARD: RTK Service Log ──
-                        Card {
-                            Layout.fillWidth: true
-                            height: implicitHeight
-                            title: "RTK 服务日志"
-
-                            ColumnLayout {
-                                width: parent.width
-                                anchors.margins: 12
-                                spacing: 6
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 8
-
-                                    Text {
-                                        text: ApplicationWindow.window.t("rtk.diffStatus") + ":"
-                                        color: ApplicationWindow.window.text
-                                        font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
-                                        font.bold: true
-                                    }
-                                    Text {
-                                        text: rtkBackend.running
-                                            ? ApplicationWindow.window.t("rtk.connected")
-                                            : "---"
-                                        color: rtkBackend.running
-                                            ? ApplicationWindow.window.ok
-                                            : ApplicationWindow.window.muted
-                                        font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
-                                        font.bold: true
-                                    }
-                                    Item { Layout.fillWidth: true }
-                                    Text {
-                                        text: {
-                                            var m = rtkBackend.stats.message
-                                            return m ? String(m) : ""
-                                        }
-                                        color: ApplicationWindow.window.muted
-                                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
-                                        font.family: "Consolas"
-                                        elide: Text.ElideRight
-                                    }
-                                }
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 12
-
-                                    Text {
-                                        text: "消息类型:"
-                                        color: ApplicationWindow.window.muted
-                                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
-                                    }
-                                    Text {
-                                        text: {
-                                            var mt = rtkBackend.stats.messageTypes
-                                            return mt ? String(mt) : "---"
-                                        }
-                                        color: ApplicationWindow.window.text
-                                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
-                                        font.family: "Consolas"
-                                        elide: Text.ElideRight
-                                        Layout.fillWidth: true
-                                    }
-                                }
-
-                                ScrollView {
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: 100
+                                    Layout.preferredHeight: 80
+                                    Layout.leftMargin: 12
+                                    Layout.rightMargin: 12
                                     clip: true
 
                                     TextArea {
-                                        text: page.diagnosticsText()
+                                        text: page.ggaReading
+                                            ? ("$GPGGA," + new Date().toLocaleTimeString() + ",..."
+                                               + "\n" + ApplicationWindow.window.t("rtk.waiting"))
+                                            : ApplicationWindow.window.t("rtk.noData")
                                         readOnly: true
                                         selectByMouse: true
                                         wrapMode: TextEdit.Wrap
@@ -474,6 +444,107 @@ Item {
                                         background: Rectangle { color: "transparent" }
                                     }
                                 }
+
+                                Item { width: 1; height: 4 }
+                            }
+                        }
+                    }
+
+                    // ── RIGHT COLUMN (narrower, compact diagnostics) ──
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 0
+                        Layout.maximumWidth: 400
+
+                        // ── CARD 4: Diagnostics (compact) ──
+                        Card {
+                            Layout.fillWidth: true
+                            height: implicitHeight
+                            title: ApplicationWindow.window.t("rtk.diagnostics")
+                            headerRight: ToolbarButton {
+                                iconName: "trash-2"
+                                iconSize: 13
+                                text: ApplicationWindow.window.t("rtk.clearLog")
+                                onClicked: rtkBackend.clearDiagnostics()
+                            }
+
+                            ColumnLayout {
+                                width: parent.width
+                                spacing: 6
+
+                                Item { width: 1; height: 4 }
+
+                                // 2×2 compact metrics
+                                GridLayout {
+                                    Layout.fillWidth: true
+                                    Layout.leftMargin: 12
+                                    Layout.rightMargin: 12
+                                    columns: 2
+                                    columnSpacing: 6
+                                    rowSpacing: 6
+
+                                    MetricTile {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 54
+                                        label: ApplicationWindow.window.t("rtk.inputRate")
+                                        value: page.statValue("inputBps") + " B/s"
+                                    }
+                                    MetricTile {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 54
+                                        label: ApplicationWindow.window.t("rtk.outputRate")
+                                        value: page.statValue("outputBps") + " B/s"
+                                    }
+                                    MetricTile {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 54
+                                        label: ApplicationWindow.window.t("rtk.rtcmFrames")
+                                        value: String(page.statValue("rtcm3FrameCount"))
+                                    }
+                                    MetricTile {
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 54
+                                        label: ApplicationWindow.window.t("rtk.crcStatus")
+                                        value: page.statValue("rtcm3CrcOkCount") + " / " + page.statValue("rtcm3CrcFailCount")
+                                    }
+                                }
+
+                                // Compact log area
+                                ScrollView {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 110
+                                    Layout.leftMargin: 12
+                                    Layout.rightMargin: 12
+                                    Layout.bottomMargin: 4
+                                    clip: true
+                                    ScrollBar.vertical: ScrollBar { id: diagVBar }
+
+                                    TextArea {
+                                        text: page.diagnosticsText()
+                                        readOnly: true
+                                        selectByMouse: true
+                                        wrapMode: TextEdit.Wrap
+                                        color: ApplicationWindow.window.text
+                                        selectedTextColor: ApplicationWindow.window.primaryForeground
+                                        selectionColor: ApplicationWindow.window.primary
+                                        font.family: "Consolas"
+                                        font.pixelSize: Math.round(9 * ApplicationWindow.window.scaleFactor)
+                                        background: Rectangle { color: "transparent" }
+                                    }
+                                }
+
+                                Item { width: 1; height: 4 }
+                            }
+
+                            Timer {
+                                id: diagScrollTimer
+                                interval: 50
+                                onTriggered: diagVBar.position = 1.0 - diagVBar.size
+                            }
+
+                            Connections {
+                                target: rtkBackend
+                                function onDiagnosticsChanged() { diagScrollTimer.restart() }
                             }
                         }
                     }
@@ -486,7 +557,9 @@ Item {
 
                     ToolbarButton {
                         iconName: rtkBackend.running ? "square" : "wifi"
-                        text: rtkBackend.running ? "Stop" : "Start"
+                        text: rtkBackend.running
+                            ? ApplicationWindow.window.t("rtk.stop")
+                            : ApplicationWindow.window.t("rtk.start")
                         variant: rtkBackend.running ? "danger" : "primary"
                         onClicked: rtkBackend.running ? rtkBackend.stop() : rtkBackend.start()
                     }
@@ -497,7 +570,7 @@ Item {
                     }
                     ToolbarButton {
                         iconName: "trash-2"
-                        text: "Clear Log"
+                        text: ApplicationWindow.window.t("rtk.clearLog")
                         onClicked: rtkBackend.clearDiagnostics()
                     }
                     Item { Layout.fillWidth: true }
@@ -508,12 +581,111 @@ Item {
                     }
                     ToolbarButton {
                         iconName: "folder-open"
-                        text: "Load Config"
+                        text: ApplicationWindow.window.t("rtk.loadConfig")
                         onClicked: rtkBackend.loadConfig()
                     }
                 }
 
-                Item { width: 1; height: 24 }
+                // ── RTK Service Log (full width, more prominent) ──
+                Card {
+                    width: parent.width
+                    height: implicitHeight
+                    title: ApplicationWindow.window.t("rtk.serviceLog")
+
+                    ColumnLayout {
+                        width: parent.width
+                        spacing: 4
+
+                        Item { width: 1; height: 4 }
+
+                        // Status summary row
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 12
+                            Layout.rightMargin: 12
+                            spacing: 8
+
+                            Text {
+                                text: ApplicationWindow.window.t("rtk.diffStatus") + ":"
+                                color: ApplicationWindow.window.text
+                                font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
+                                font.bold: true
+                            }
+                            Text {
+                                text: rtkBackend.running
+                                    ? ApplicationWindow.window.t("rtk.connected")
+                                    : ApplicationWindow.window.t("rtk.stopped")
+                                color: rtkBackend.running
+                                    ? ApplicationWindow.window.ok
+                                    : ApplicationWindow.window.muted
+                                font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
+                                font.bold: true
+                            }
+                            Item { Layout.fillWidth: true }
+                            Text {
+                                text: {
+                                    var m = rtkBackend.stats ? rtkBackend.stats.message : ""
+                                    return m ? String(m) : ""
+                                }
+                                color: ApplicationWindow.window.muted
+                                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                                font.family: "Consolas"
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 12
+                            Layout.rightMargin: 12
+                            spacing: 12
+
+                            Text {
+                                text: ApplicationWindow.window.t("rtk.messageTypes") + ":"
+                                color: ApplicationWindow.window.muted
+                                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                            }
+                            Text {
+                                text: {
+                                    var mt = rtkBackend.stats ? rtkBackend.stats.messageTypes : ""
+                                    return mt ? String(mt) : "---"
+                                }
+                                color: ApplicationWindow.window.text
+                                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                                font.family: "Consolas"
+                                elide: Text.ElideRight
+                                Layout.fillWidth: true
+                            }
+                        }
+
+                        // Scrollable log area (larger)
+                        ScrollView {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 180
+                            Layout.leftMargin: 12
+                            Layout.rightMargin: 12
+                            Layout.bottomMargin: 4
+                            clip: true
+
+                            TextArea {
+                                text: page.diagnosticsText()
+                                readOnly: true
+                                selectByMouse: true
+                                wrapMode: TextEdit.Wrap
+                                color: ApplicationWindow.window.text
+                                selectedTextColor: ApplicationWindow.window.primaryForeground
+                                selectionColor: ApplicationWindow.window.primary
+                                font.family: "Consolas"
+                                font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+                                background: Rectangle { color: "transparent" }
+                            }
+                        }
+
+                        Item { width: 1; height: 4 }
+                    }
+                }
+
+                Item { width: 1; height: 12 }
             }
         }
 
@@ -548,10 +720,10 @@ Item {
 
                 Text {
                     text: rtkBackend.running
-                        ? ("Running: "
-                           + page.statValue("inputBps") + " B/s in  /  "
-                           + page.statValue("outputBps") + " B/s out")
-                        : "Stopped"
+                        ? (ApplicationWindow.window.t("rtk.statusRunning")
+                            .replace("%1", page.statValue("inputBps"))
+                            .replace("%2", page.statValue("outputBps")))
+                        : ApplicationWindow.window.t("rtk.stopped")
                     color: ApplicationWindow.window.text
                     font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
                     font.bold: true
@@ -571,12 +743,6 @@ Item {
                 }
             }
         }
-    }
-
-    // ── Inline: auto-scroll when diagnostics change ──
-    Connections {
-        target: rtkBackend
-        function onDiagnosticsChanged() { diagScrollTimer.restart() }
     }
 
     // ── Inline components ──
