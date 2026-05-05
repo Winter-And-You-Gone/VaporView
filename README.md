@@ -2,10 +2,32 @@
 
 `VaporView` 是一个基于 Qt Widgets 的桌面程序。当前主界面面向 EPSILON 组合导航、PTB210 气压计、HMP3 温湿度传感器、TFA1500-L 激光测距模块和本地 TCP 波形流，提供串口接入、实时数据显示、RTK/NTRIP 转发、会话记录、离线查看和轨迹查看能力。
 
-仓库统一使用以下编译工具链：
+## 快速开始
 
-- Windows 64 位：MSVC 2022 + Qt 6 MSVC Kit + CMake + Ninja。
-- Linux ARM64：GCC/G++ + Qt 6 + CMake + Ninja。
+### 依赖
+
+- Qt 6.10.1+（Core, Widgets, SerialPort, Network）
+- CMake 3.16+, Ninja
+- Windows: MSVC 2022 Build Tools
+- Linux ARM64: GCC/G++, `qt6-base-dev`, `qt6-serialport-dev`
+
+### 构建
+
+```powershell
+# Windows
+$env:VAPORVIEW_QT_MSVC_PREFIX = "C:/Qt/6.10.1/msvc2022_64"
+powershell -ExecutionPolicy Bypass -File .\scripts\build-windows-msvc2022.ps1 -Action Rebuild
+
+# Linux ARM64
+./scripts/build-linux-arm64.sh rebuild
+```
+
+### 运行
+
+```text
+Windows: .\build\Release\VaporView.exe
+Linux:   ./build/Release/VaporView
+```
 
 本文档只描述当前仓库中可以直接从代码、构建脚本和随仓库文档确认的内容。对应代码入口主要是：
 
@@ -548,7 +570,6 @@ CMake 中保留了 `BUILD_PYTHON_BINDINGS` 选项，但默认关闭。当前仓�
 
 ## 当前限制
 
-- 仓库没有顶层 `LICENSE` 文件。
 - `BUILD_PYTHON_BINDINGS=ON` 当前不可用，因为缺少 `python/bindings.cpp`。
 - `docs/imu_raw_dat_format.md` 和 `docs/epsilon_raw_dat_format.md` 保留为旧格式说明；当前主窗口新会话使用统一 `raw/*.dat`，并把 `docs/raw_dat_format.md` 复制到 session 根目录。
 - `data/` 为本地记录输出目录，已被 `.gitignore` 忽略。
@@ -557,4 +578,10 @@ CMake 中保留了 `BUILD_PYTHON_BINDINGS` 选项，但默认关闭。当前仓�
 
 ## 许可证
 
-当前仓库没有顶层项目许可证文件。第三方 RTKLIB 源码随仓库保留 `third_party/rtklib/LICENSE.txt`。
+Copyright (C) 2024-2025 Winter.
+
+VaporView 是自由软件：您可以依据自由软件基金会发布的 GNU 通用公共许可证（GPL）第 3 版或（任选）其后版本，重新分发和/或修改本程序。
+
+本程序分发时希望它有用，但**不作任何担保**；甚至没有适销性或特定用途的隐含担保。详见 [LICENSE](LICENSE) 文件。
+
+第三方 RTKLIB 源码随仓库保留 `third_party/rtklib/LICENSE.txt`，采用 BSD 2-Clause 许可证。
