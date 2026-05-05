@@ -657,7 +657,7 @@ Item {
         Component.onCompleted: mpCombo.editText = Qt.binding(function() { return rtkBackend.mountpoint })
 
         onActivated: rtkBackend.setMountpoint(mpCombo.editText)
-        onEditingFinished: rtkBackend.setMountpoint(mpCombo.editText)
+        onAccepted: rtkBackend.setMountpoint(mpCombo.editText)
 
         font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
         implicitHeight: 34

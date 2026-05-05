@@ -4527,7 +4527,7 @@ RtkBackend::RtkBackend(DeviceBackend *deviceBackend, QObject *parent)
     loadConfig();
     connect(&stats_timer_, &QTimer::timeout, this, &RtkBackend::pollStats);
     stats_timer_.start(1000);
-    refreshOutputPortOptions();
+    QTimer::singleShot(0, this, &RtkBackend::refreshOutputPortOptions);
 }
 
 RtkBackend::~RtkBackend()
