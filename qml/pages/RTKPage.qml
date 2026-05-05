@@ -105,10 +105,18 @@ Item {
                                 color: ApplicationWindow.window.muted
                                 font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                             }
-                            RtkTextField {
+                            RtkMountPointCombo {
                                 Layout.fillWidth: true
-                                text: page.textValue(rtkBackend.mountpoint)
-                                onEditingFinished: rtkBackend.mountpoint = text
+                            }
+                            ToolbarButton {
+                                id: detectMountBtn
+                                Layout.fillWidth: true
+                                iconName: "search"
+                                text: rtkBackend.detectingMountPoints
+                                    ? ApplicationWindow.window.t("rtk.detecting")
+                                    : ApplicationWindow.window.t("rtk.detectMountPoints")
+                                enabled: !rtkBackend.detectingMountPoints
+                                onClicked: rtkBackend.detectMountPoints()
                             }
                         }
                     }
@@ -138,7 +146,6 @@ Item {
                             }
                             RtkTextField {
                                 Layout.fillWidth: true
-                                echoMode: TextInput.Password
                                 text: page.textValue(rtkBackend.password)
                                 onEditingFinished: rtkBackend.password = text
                             }
@@ -168,13 +175,31 @@ Item {
                         color: ApplicationWindow.window.muted
                         font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                     }
-                    RtkTextField {
+                    RtkPortComboBox {
                         Layout.fillWidth: true
                         Layout.leftMargin: 12
                         Layout.rightMargin: 12
-                        placeholderText: "e.g. COM3"
-                        text: page.textValue(rtkBackend.outputPort)
-                        onEditingFinished: rtkBackend.outputPort = text
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 12
+                        Layout.rightMargin: 12
+                        spacing: 6
+                        Item { Layout.fillWidth: true }
+                        ToolbarButton {
+                            iconName: "refresh-cw"
+                            implicitWidth: 28
+                            implicitHeight: 28
+                            onClicked: {
+                                deviceBackend.refreshPorts()
+                                rtkBackend.refreshOutputPortOptions()
+                            }
+                        }
+                        ToolbarButton {
+                            iconName: "radio"
+                            text: ApplicationWindow.window.t("rtk.autoDetectPort")
+                            onClicked: deviceBackend.autoDetectPortsOrCancel()
+                        }
                     }
 
                     Text {
@@ -622,6 +647,176 @@ Item {
             border.color: field.activeFocus
                 ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8")
                 : ApplicationWindow.window.border
+        }
+    }
+
+    component RtkMountPointCombo: ComboBox {
+        id: mpCombo
+        editable: true
+        model: rtkBackend.mountPointOptions
+        Component.onCompleted: mpCombo.editText = Qt.binding(function() { return rtkBackend.mountpoint })
+
+        onActivated: rtkBackend.setMountpoint(mpCombo.editText)
+        onEditingFinished: rtkBackend.setMountpoint(mpCombo.editText)
+
+        font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
+        implicitHeight: 34
+
+        delegate: ItemDelegate {
+            width: mpCombo.width
+            text: modelData
+            font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
+            highlighted: mpCombo.highlightedIndex === index
+            background: Rectangle {
+                color: highlighted ? ApplicationWindow.window.secondary : "transparent"
+            }
+            contentItem: Text {
+                text: modelData
+                color: ApplicationWindow.window.text
+                font: parent.font
+                verticalAlignment: Text.AlignVCenter
+                leftPadding: 8
+            }
+        }
+
+        indicator: Text {
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.right: parent.right
+            anchors.rightMargin: 8
+            text: "▾"
+            color: ApplicationWindow.window.muted
+            font.pixelSize: 10
+        }
+
+        contentItem: TextField {
+            leftPadding: 10
+            rightPadding: 24
+            text: mpCombo.editText
+            color: ApplicationWindow.window.text
+            font: mpCombo.font
+            verticalAlignment: Text.AlignVCenter
+            background: null
+        }
+
+        background: Rectangle {
+            implicitHeight: 34
+            radius: 7
+            color: mpCombo.hovered
+                ? ApplicationWindow.window.secondary
+                : ApplicationWindow.window.card
+            border.color: mpCombo.activeFocus
+                ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8")
+                : ApplicationWindow.window.border
+        }
+
+        popup: Popup {
+            y: mpCombo.height + 2
+            width: mpCombo.width
+            implicitHeight: contentItem.implicitHeight + 8
+            padding: 4
+            background: Rectangle {
+                radius: 7
+                color: ApplicationWindow.window.card
+                border.color: ApplicationWindow.window.border
+            }
+            contentItem: ListView {
+                clip: true
+                implicitHeight: contentHeight
+                model: mpCombo.delegateModel
+                currentIndex: mpCombo.highlightedIndex
+            }
+        }
+    }
+
+    component RtkPortComboBox: ComboBox {
+        id: portCombo
+        model: rtkBackend.outputPortOptions
+        textRole: "label"
+        valueRole: "port"
+
+        currentIndex: {
+            var opts = rtkBackend.outputPortOptions
+            for (var i = 0; i < opts.length; ++i) {
+                if (opts[i].port === rtkBackend.outputPort)
+                    return i
+            }
+            return -1
+        }
+
+        onActivated: {
+            var opts = rtkBackend.outputPortOptions
+            if (portCombo.currentIndex >= 0 && portCombo.currentIndex < opts.length)
+                rtkBackend.setOutputPort(opts[portCombo.currentIndex].port)
+        }
+
+        font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
+        implicitHeight: 34
+
+        delegate: ItemDelegate {
+            width: portCombo.width
+            text: modelData ? modelData.label || modelData.port || "" : ""
+            font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
+            highlighted: portCombo.highlightedIndex === index
+            background: Rectangle {
+                color: highlighted ? ApplicationWindow.window.secondary : "transparent"
+            }
+            contentItem: Text {
+                text: modelData ? modelData.label || modelData.port || "" : ""
+                color: (modelData && modelData.occupied)
+                    ? ApplicationWindow.window.muted
+                    : ApplicationWindow.window.text
+                font: parent.font
+                verticalAlignment: Text.AlignVCenter
+                leftPadding: 8
+            }
+        }
+
+        indicator: Text {
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.right: parent.right
+            anchors.rightMargin: 8
+            text: "▾"
+            color: ApplicationWindow.window.muted
+            font.pixelSize: 10
+        }
+
+        contentItem: Text {
+            leftPadding: 10
+            rightPadding: 24
+            text: portCombo.displayText
+            color: ApplicationWindow.window.text
+            font: portCombo.font
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+        }
+
+        background: Rectangle {
+            implicitHeight: 34
+            radius: 7
+            color: portCombo.hovered
+                ? ApplicationWindow.window.secondary
+                : ApplicationWindow.window.card
+            border.color: portCombo.activeFocus
+                ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8")
+                : ApplicationWindow.window.border
+        }
+
+        popup: Popup {
+            y: portCombo.height + 2
+            width: portCombo.width
+            implicitHeight: contentItem.implicitHeight + 8
+            padding: 4
+            background: Rectangle {
+                radius: 7
+                color: ApplicationWindow.window.card
+                border.color: ApplicationWindow.window.border
+            }
+            contentItem: ListView {
+                clip: true
+                implicitHeight: contentHeight
+                model: portCombo.delegateModel
+                currentIndex: portCombo.highlightedIndex
+            }
         }
     }
 

@@ -6,8 +6,10 @@
 #include <QDateTime>
 #include <QDir>
 #include <QDirIterator>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QHash>
+#include <QRegularExpression>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -54,6 +56,144 @@ constexpr int kDefaultPeakSearchStartIndex = 0;
 constexpr int kDefaultPeakSearchEndIndex = 0;
 constexpr int kCsvDragPreviewRows = 16;
 constexpr int kCsvFullPreviewRows = 80;
+constexpr int kRtkHttpTimeoutMs = 5000;
+
+struct HttpResponse
+{
+    int statusCode = 0;
+    QString body;
+    QString error;
+    bool timedOut = false;
+};
+
+struct MountpointFetchResult
+{
+    HttpResponse response;
+    QStringList mountpoints;
+};
+
+QUrl buildRtkUrl(const QString &server, const QString &port, const QString &path = QString())
+{
+    QUrl url;
+    url.setScheme(QStringLiteral("http"));
+    url.setHost(server.trimmed());
+    bool portOk = false;
+    const int parsedPort = port.trimmed().toInt(&portOk);
+    if (portOk)
+        url.setPort(parsedPort);
+    url.setPath(path.isEmpty() ? QStringLiteral("/") : QStringLiteral("/") + path);
+    return url;
+}
+
+HttpResponse performRtkHttpGet(const QUrl &url, const QString &username, const QString &password)
+{
+    HttpResponse result;
+    QTcpSocket socket;
+
+    const QString host = url.host().trimmed();
+    const int port = url.port(80);
+    QString path = url.path();
+    if (path.isEmpty())
+        path = QStringLiteral("/");
+    if (!url.query().isEmpty())
+        path += QStringLiteral("?") + url.query();
+
+    socket.connectToHost(host, static_cast<quint16>(port));
+    if (!socket.waitForConnected(kRtkHttpTimeoutMs))
+    {
+        result.error = socket.errorString();
+        result.timedOut = (socket.error() == QAbstractSocket::SocketTimeoutError);
+        return result;
+    }
+
+    QByteArray requestData;
+    requestData += "GET " + path.toUtf8() + " HTTP/1.0\r\n";
+    requestData += "Host: " + host.toUtf8() + ":" + QByteArray::number(port) + "\r\n";
+    requestData += "User-Agent: NTRIP VaporView/1.0\r\n";
+    requestData += "Ntrip-Version: Ntrip/2.0\r\n";
+    requestData += "Connection: close\r\n";
+    requestData += "Accept: text/plain, */*\r\n";
+
+    if (!username.trimmed().isEmpty())
+    {
+        const QByteArray credentials = QStringLiteral("%1:%2").arg(username.trimmed(), password).toUtf8().toBase64();
+        requestData += "Authorization: Basic " + credentials + "\r\n";
+    }
+    requestData += "\r\n";
+
+    if (socket.write(requestData) != requestData.size() || !socket.waitForBytesWritten(kRtkHttpTimeoutMs))
+    {
+        result.error = socket.errorString();
+        result.timedOut = (socket.error() == QAbstractSocket::SocketTimeoutError);
+        return result;
+    }
+
+    QByteArray rawResponse;
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < kRtkHttpTimeoutMs)
+    {
+        if (socket.waitForReadyRead(200))
+        {
+            rawResponse += socket.readAll();
+            while (socket.bytesAvailable() > 0)
+                rawResponse += socket.readAll();
+        }
+        if (socket.state() == QAbstractSocket::UnconnectedState)
+            break;
+    }
+    rawResponse += socket.readAll();
+    socket.disconnectFromHost();
+
+    if (rawResponse.isEmpty())
+    {
+        result.error = QStringLiteral("No response from server");
+        return result;
+    }
+
+    const int headerEnd = rawResponse.indexOf("\r\n\r\n");
+    QByteArray headerBytes = rawResponse;
+    QByteArray bodyBytes;
+    if (headerEnd >= 0)
+    {
+        headerBytes = rawResponse.left(headerEnd);
+        bodyBytes = rawResponse.mid(headerEnd + 4);
+    }
+    const QList<QByteArray> headerLines = headerBytes.split('\n');
+    const QByteArray statusLine = headerLines.isEmpty() ? QByteArray() : headerLines.first().trimmed();
+    const QRegularExpression statusPattern(QStringLiteral("(^|\\s)(\\d{3})(\\s|$)"));
+    const QRegularExpressionMatch statusMatch = statusPattern.match(QString::fromLatin1(statusLine));
+    result.statusCode = statusMatch.hasMatch() ? statusMatch.captured(2).toInt() : 0;
+
+    if (headerEnd >= 0)
+        result.body = QString::fromLatin1(bodyBytes);
+    else if (statusLine.startsWith("STR;") || statusLine.startsWith("CAS;") || statusLine.startsWith("NET;"))
+    {
+        result.statusCode = 200;
+        result.body = QString::fromLatin1(rawResponse);
+    }
+    else
+        result.body = QString::fromLatin1(rawResponse);
+
+    return result;
+}
+
+QStringList parseMountpoints(const QString &responseBody)
+{
+    QStringList mountpoints;
+    const QStringList lines = responseBody.split(QRegularExpression(QStringLiteral("[\r\n]+")), Qt::SkipEmptyParts);
+    for (const QString &line : lines)
+    {
+        if (!line.startsWith(QStringLiteral("STR;")))
+            continue;
+        const QStringList parts = line.split(QLatin1Char(';'));
+        if (parts.size() > 1 && !parts.at(1).trimmed().isEmpty())
+            mountpoints.append(parts.at(1).trimmed());
+    }
+    mountpoints.removeDuplicates();
+    mountpoints.sort();
+    return mountpoints;
+}
 
 enum PeakFilterMode
 {
@@ -761,8 +901,8 @@ QString AppBackend::t(const QString& key) const
         {"sessions.sessionInfo", "记录信息"}, {"sessions.csvPreview", "CSV 预览"}, {"sessions.waveformPreview", "波形预览"},
         {"sessions.exportTab", "导出"}, {"sessions.name", "名称"}, {"sessions.date", "日期"},
         {"sessions.duration", "时长"}, {"sessions.size", "大小"}, {"sessions.frames", "帧数"}, {"sessions.status", "状态"},
-        {"rtk.ntripConfig", "NTRIP 配置"}, {"rtk.diagnostics", "诊断信息"}, {"rtk.casterAddress", "Caster 地址"},
-        {"rtk.port", "端口"}, {"rtk.mountPoint", "Mount Point"}, {"rtk.username", "用户名"}, {"rtk.password", "密码"},
+        {"rtk.ntripConfig", "NTRIP 配置"}, {"rtk.diagnostics", "诊断信息"}, {"rtk.casterAddress", "服务器地址"},
+        {"rtk.port", "端口"}, {"rtk.mountPoint", "挂载点"}, {"rtk.username", "用户名"}, {"rtk.password", "密码"},
         {"rtk.ggaSource", "GGA 来源"}, {"rtk.testConnection", "测试连接"}, {"rtk.saveConfig", "保存配置"},
         {"rtk.rtcmThroughput", "RTCM 吞吐量"}, {"rtk.ggaUpdateTime", "GGA 更新时间"}, {"rtk.diffStatus", "差分状态"},
         {"rtk.latency", "延迟"}, {"rtk.diagLog", "诊断日志"}, {"rtk.connected", "已连接"},
@@ -781,6 +921,10 @@ QString AppBackend::t(const QString& key) const
 	        {"rtk.readGga", "读取 GGA"}, {"rtk.stopReading", "停止读取"},
 	        {"rtk.ggaFrequency", "真实频率"}, {"rtk.messageTypes", "消息类型"},
 	        {"rtk.waiting", "等待中"}, {"rtk.noData", "无数据"},
+	        {"rtk.detectMountPoints", "检测挂载点"}, {"rtk.detecting", "检测中..."},
+	        {"rtk.noMountPointFound", "未找到挂载点"}, {"rtk.mountPointDetected", "已检测到挂载点"},
+	        {"rtk.refreshPorts", "刷新串口"}, {"rtk.autoDetectPort", "自动识别"},
+	        {"rtk.placeholderPort", "例如 COM3"},
         {"rawParser.dropZone", "选择原始文件或会话目录"}, {"rawParser.parseRecords", "解析记录"},
         {"rawParser.formatInfo", "格式说明"}, {"rawParser.fieldName", "字段名"}, {"rawParser.fieldType", "类型"},
         {"rawParser.export", "导出"}, {"rawParser.clearAll", "清空全部"}, {"rawParser.records", "条记录"},
@@ -849,6 +993,10 @@ QString AppBackend::t(const QString& key) const
 	        {"rtk.readGga", "Read GGA"}, {"rtk.stopReading", "Stop Reading"},
 	        {"rtk.ggaFrequency", "Actual Rate"}, {"rtk.messageTypes", "Message Types"},
 	        {"rtk.waiting", "Waiting"}, {"rtk.noData", "No Data"},
+	        {"rtk.detectMountPoints", "Detect Mount Points"}, {"rtk.detecting", "Detecting..."},
+	        {"rtk.noMountPointFound", "No mount point found"}, {"rtk.mountPointDetected", "Mount points detected"},
+	        {"rtk.refreshPorts", "Refresh Ports"}, {"rtk.autoDetectPort", "Auto Detect"},
+	        {"rtk.placeholderPort", "e.g. COM3"},
         {"rawParser.dropZone", "Choose raw file or session directory"}, {"rawParser.parseRecords", "Parsed Records"},
         {"rawParser.formatInfo", "Format Info"}, {"rawParser.fieldName", "Field Name"}, {"rawParser.fieldType", "Type"},
         {"rawParser.export", "Export"}, {"rawParser.clearAll", "Clear All"}, {"rawParser.records", "records"},
@@ -4379,6 +4527,7 @@ RtkBackend::RtkBackend(DeviceBackend *deviceBackend, QObject *parent)
     loadConfig();
     connect(&stats_timer_, &QTimer::timeout, this, &RtkBackend::pollStats);
     stats_timer_.start(1000);
+    refreshOutputPortOptions();
 }
 
 RtkBackend::~RtkBackend()
@@ -4517,6 +4666,157 @@ void RtkBackend::applyMainAntennaLeverArm(double xM, double yM, double zM)
     appendDiagnostic(ok ? QStringLiteral("Main antenna lever arm applied.")
                         : QStringLiteral("Failed to apply main antenna lever arm."),
                      ok ? QStringLiteral("info") : QStringLiteral("error"));
+}
+
+bool RtkBackend::detectingMountPoints() const { return detecting_mount_points_; }
+QStringList RtkBackend::mountPointOptions() const { return mount_point_options_; }
+QString RtkBackend::mountPointDetectStatus() const { return mount_point_detect_status_; }
+QVariantList RtkBackend::outputPortOptions() const { return output_port_options_; }
+
+void RtkBackend::detectMountPoints()
+{
+    if (detecting_mount_points_)
+        return;
+
+    const QString server = server_.trimmed();
+    const QString port = port_.trimmed();
+    const QString username = username_.trimmed();
+    const QString password = password_;
+
+    if (server.isEmpty() || port.isEmpty())
+    {
+        appendDiagnostic(QStringLiteral("Please enter server address and port first."), QStringLiteral("warning"));
+        return;
+    }
+
+    detecting_mount_points_ = true;
+    mount_point_options_.clear();
+    mount_point_detect_status_.clear();
+    emit detectingMountPointsChanged();
+    emit mountPointOptionsChanged();
+
+    if (fetch_mountpoints_thread_.joinable())
+        fetch_mountpoints_thread_.join();
+
+    appendDiagnostic(QStringLiteral("Fetching mountpoint list from %1:%2...").arg(server, port));
+
+    fetch_mountpoints_thread_ = std::thread([this, server, port, username, password]() {
+        const MountpointFetchResult result = {
+            performRtkHttpGet(buildRtkUrl(server, port), username, password),
+            {}
+        };
+
+        QMetaObject::invokeMethod(this, [this, result]() {
+            detecting_mount_points_ = false;
+            emit detectingMountPointsChanged();
+
+            const HttpResponse &response = result.response;
+            if (response.timedOut || (!response.error.isEmpty() && response.body.trimmed().isEmpty()))
+            {
+                const QString errorText = response.timedOut
+                    ? QStringLiteral("Request timed out")
+                    : response.error;
+                mount_point_detect_status_ = errorText;
+                appendDiagnostic(QStringLiteral("Failed to fetch mountpoint list: %1").arg(errorText), QStringLiteral("error"));
+                emit mountPointOptionsChanged();
+                return;
+            }
+
+            auto parsed = parseMountpoints(response.body);
+            mount_point_options_ = parsed;
+            if (parsed.isEmpty())
+            {
+                mount_point_detect_status_ = QStringLiteral("No mountpoint found");
+                appendDiagnostic(QStringLiteral("No mountpoints found in sourcetable response."));
+            }
+            else
+            {
+                mount_point_detect_status_ = QStringLiteral("Found %1 mountpoint(s)").arg(parsed.size());
+                appendDiagnostic(QStringLiteral("Fetched %1 mountpoints.").arg(parsed.size()));
+            }
+            emit mountPointOptionsChanged();
+        }, Qt::QueuedConnection);
+    });
+}
+
+void RtkBackend::refreshOutputPortOptions()
+{
+    QVariantList options;
+
+    // Collect system serial ports
+    const auto availablePorts = QSerialPortInfo::availablePorts();
+    QSet<QString> systemPorts;
+    for (const auto &info : availablePorts)
+        systemPorts.insert(info.portName());
+
+    // Determine which ports are occupied by which devices
+    QMap<QString, QString> occupiedBy; // port -> device display name
+    const auto devices = device_backend_->devices()->devices();
+    for (const auto &dev : devices)
+    {
+        if (dev.id == QStringLiteral("waveform"))
+            continue; // TCP device, not serial
+        const QString devPort = dev.port.section(QLatin1Char(':'), 0, 0).trimmed();
+        if (!devPort.isEmpty() && devPort != output_port_)
+            occupiedBy[devPort] = dev.display_name;
+    }
+
+    // Build option list: unoccupied first, then occupied
+    QVariantList unoccupied;
+    QVariantList occupied;
+
+    // Add current outputPort first if not empty
+    if (!output_port_.isEmpty())
+    {
+        QVariantMap entry;
+        entry[QStringLiteral("port")] = output_port_;
+        if (occupiedBy.contains(output_port_))
+        {
+            entry[QStringLiteral("label")] = QStringLiteral("%1 (%2)").arg(output_port_, occupiedBy.value(output_port_));
+            entry[QStringLiteral("occupied")] = true;
+            entry[QStringLiteral("usedBy")] = occupiedBy.value(output_port_);
+            occupied.append(entry);
+        }
+        else
+        {
+            entry[QStringLiteral("label")] = output_port_;
+            entry[QStringLiteral("occupied")] = false;
+            entry[QStringLiteral("usedBy")] = QString();
+            unoccupied.append(entry);
+        }
+    }
+
+    // Add all system ports
+    QStringList sortedPorts = QStringList(systemPorts.begin(), systemPorts.end());
+    sortedPorts.sort();
+    for (const QString &portName : sortedPorts)
+    {
+        if (portName == output_port_)
+            continue; // already added
+
+        QVariantMap entry;
+        entry[QStringLiteral("port")] = portName;
+        if (occupiedBy.contains(portName))
+        {
+            entry[QStringLiteral("label")] = QStringLiteral("%1 (%2)").arg(portName, occupiedBy.value(portName));
+            entry[QStringLiteral("occupied")] = true;
+            entry[QStringLiteral("usedBy")] = occupiedBy.value(portName);
+            occupied.append(entry);
+        }
+        else
+        {
+            entry[QStringLiteral("label")] = portName;
+            entry[QStringLiteral("occupied")] = false;
+            entry[QStringLiteral("usedBy")] = QString();
+            unoccupied.append(entry);
+        }
+    }
+
+    options = unoccupied;
+    options.append(occupied);
+
+    output_port_options_ = options;
+    emit outputPortOptionsChanged();
 }
 
 void RtkBackend::pollStats()

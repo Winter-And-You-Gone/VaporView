@@ -663,6 +663,10 @@ class RtkBackend : public QObject
     Q_PROPERTY(bool running READ running NOTIFY runningChanged)
     Q_PROPERTY(QStringList diagnostics READ diagnostics NOTIFY diagnosticsChanged)
     Q_PROPERTY(QVariantMap stats READ stats NOTIFY statsChanged)
+    Q_PROPERTY(bool detectingMountPoints READ detectingMountPoints NOTIFY detectingMountPointsChanged)
+    Q_PROPERTY(QStringList mountPointOptions READ mountPointOptions NOTIFY mountPointOptionsChanged)
+    Q_PROPERTY(QString mountPointDetectStatus READ mountPointDetectStatus NOTIFY mountPointOptionsChanged)
+    Q_PROPERTY(QVariantList outputPortOptions READ outputPortOptions NOTIFY outputPortOptionsChanged)
 
 public:
     explicit RtkBackend(DeviceBackend *deviceBackend, QObject *parent = nullptr);
@@ -678,6 +682,10 @@ public:
     bool running() const;
     QStringList diagnostics() const;
     QVariantMap stats() const;
+    bool detectingMountPoints() const;
+    QStringList mountPointOptions() const;
+    QString mountPointDetectStatus() const;
+    QVariantList outputPortOptions() const;
 
     Q_INVOKABLE void start();
     Q_INVOKABLE void stop();
@@ -686,6 +694,8 @@ public:
     Q_INVOKABLE void loadConfig();
     Q_INVOKABLE void clearDiagnostics();
     Q_INVOKABLE void applyMainAntennaLeverArm(double xM, double yM, double zM);
+    Q_INVOKABLE void detectMountPoints();
+    Q_INVOKABLE void refreshOutputPortOptions();
 
 public slots:
     void setServer(const QString& value);
@@ -701,6 +711,9 @@ signals:
     void runningChanged();
     void diagnosticsChanged();
     void statsChanged();
+    void detectingMountPointsChanged();
+    void mountPointOptionsChanged();
+    void outputPortOptionsChanged();
     void notificationRequested(const QString& level, const QString& message);
 
 private:
@@ -720,6 +733,11 @@ private:
     QStringList diagnostics_;
     QVariantMap stats_;
     QTimer stats_timer_;
+    bool detecting_mount_points_ = false;
+    QStringList mount_point_options_;
+    QString mount_point_detect_status_;
+    QVariantList output_port_options_;
+    std::thread fetch_mountpoints_thread_;
 };
 
 class SessionBackend : public QObject
