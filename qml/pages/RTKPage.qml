@@ -26,7 +26,7 @@ Item {
         return lines.length > 0 ? lines.join("\n") : ""
     }
 
-    // GGA source options (local state until backend exposes this)
+    // ── GGA source model ──
     // TODO: Add ggaSourceOptions / ggaSource as Q_PROPERTY on RtkBackend
     property var ggaSourceModel: [
         { text: ApplicationWindow.window.t("rtk.ggaSourceEpsilonMain"), value: "epsilon_main" },
@@ -36,710 +36,569 @@ Item {
     property int ggaSourceIndex: 0
     property bool ggaReading: false
 
-    // Local state for timeout/reconnect (not yet Q_PROPERTY)
+    // Local state for fields without Q_PROPERTY
     // TODO: Add timeoutMs/reconnectMs as Q_PROPERTY on RtkBackend
     property string uiTimeoutMs: "5000"
     property string uiReconnectMs: "1000"
 
-    ColumnLayout {
+    RowLayout {
         anchors.fill: parent
-        spacing: 0
+        anchors.margins: 12
+        spacing: 12
 
-        // ── Main scrollable area ──
-        Flickable {
-            id: mainFlick
-            Layout.fillWidth: true
+        // ════════════════════════════════════════════════════════
+        // LEFT COLUMN  —  narrow config  (~36%)
+        // ════════════════════════════════════════════════════════
+        ColumnLayout {
+            Layout.preferredWidth: Math.round(parent.width * 0.36)
+            Layout.maximumWidth: Math.round(parent.width * 0.40)
             Layout.fillHeight: true
-            clip: true
-            boundsBehavior: Flickable.StopAtBounds
-            contentWidth: mainFlick.width
-            contentHeight: mainColumn.height + 24
-            ScrollBar.vertical: ScrollBar {
-                policy: ScrollBar.AsNeeded
-            }
+            spacing: 12
 
-            Column {
-                id: mainColumn
-                x: 12
-                y: 12
-                width: mainFlick.width - 12 - 16
-                spacing: 12
+            // ── CARD: NTRIP Server Config ──
+            Card {
+                Layout.fillWidth: true
+                height: implicitHeight
+                title: ApplicationWindow.window.t("rtk.ntripConfig")
 
-                // ── Top row: two card columns ──
-                RowLayout {
-                    width: parent.width
-                    spacing: 12
-
-                    // ── LEFT COLUMN (wider) ──
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Layout.preferredWidth: 0
-                        Layout.minimumWidth: 320
-                        spacing: 12
-
-                        // ── CARD 1: NTRIP Server Config ──
-                        Card {
-                            Layout.fillWidth: true
-                            height: implicitHeight
-                            title: ApplicationWindow.window.t("rtk.ntripConfig")
-
-                            ColumnLayout {
-                                width: parent.width
-                                spacing: 8
-
-                                Item { width: 1; height: 4 }
-
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 12
-                                    Layout.rightMargin: 12
-                                    spacing: 8
-                                    RtkTextField {
-                                        Layout.fillWidth: true
-                                        placeholderText: ApplicationWindow.window.t("rtk.casterAddress")
-                                        text: page.textValue(rtkBackend.server)
-                                        onEditingFinished: rtkBackend.server = text
-                                    }
-                                    RtkTextField {
-                                        Layout.preferredWidth: 100
-                                        placeholderText: ApplicationWindow.window.t("rtk.port")
-                                        text: page.textValue(rtkBackend.port, "2101")
-                                        onEditingFinished: rtkBackend.port = text
-                                    }
-                                }
-                                RtkTextField {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 12
-                                    Layout.rightMargin: 12
-                                    placeholderText: ApplicationWindow.window.t("rtk.mountPoint")
-                                    text: page.textValue(rtkBackend.mountpoint)
-                                    onEditingFinished: rtkBackend.mountpoint = text
-                                }
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 12
-                                    Layout.rightMargin: 12
-                                    spacing: 8
-                                    RtkTextField {
-                                        Layout.fillWidth: true
-                                        placeholderText: ApplicationWindow.window.t("rtk.username")
-                                        text: page.textValue(rtkBackend.username)
-                                        onEditingFinished: rtkBackend.username = text
-                                    }
-                                    RtkTextField {
-                                        Layout.fillWidth: true
-                                        placeholderText: ApplicationWindow.window.t("rtk.password")
-                                        echoMode: TextInput.Password
-                                        text: page.textValue(rtkBackend.password)
-                                        onEditingFinished: rtkBackend.password = text
-                                    }
-                                }
-
-                                Item { width: 1; height: 4 }
-                            }
-                        }
-
-                        // ── CARD 2: RTCM Output Config ──
-                        Card {
-                            Layout.fillWidth: true
-                            height: implicitHeight
-                            title: ApplicationWindow.window.t("rtk.rtcmOutputConfig")
-
-                            ColumnLayout {
-                                width: parent.width
-                                spacing: 8
-
-                                Item { width: 1; height: 4 }
-
-                                // Port + Baud
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 12
-                                    Layout.rightMargin: 12
-                                    spacing: 8
-
-                                    Text {
-                                        text: ApplicationWindow.window.t("rtk.outputPort")
-                                        color: ApplicationWindow.window.muted
-                                        font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
-                                        Layout.alignment: Qt.AlignVCenter
-                                    }
-                                    RtkTextField {
-                                        Layout.fillWidth: true
-                                        placeholderText: "e.g. COM3"
-                                        text: page.textValue(rtkBackend.outputPort)
-                                        onEditingFinished: rtkBackend.outputPort = text
-                                    }
-                                    Text {
-                                        text: ApplicationWindow.window.t("rtk.baudRate")
-                                        color: ApplicationWindow.window.muted
-                                        font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
-                                        Layout.alignment: Qt.AlignVCenter
-                                    }
-                                    RtkTextField {
-                                        Layout.preferredWidth: 100
-                                        text: page.textValue(rtkBackend.outputBaud, "115200")
-                                        inputMethodHints: Qt.ImhDigitsOnly
-                                        onEditingFinished: rtkBackend.outputBaud = Math.max(1, Number(text))
-                                    }
-                                }
-
-                                // Lever Arm
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 12
-                                    Layout.rightMargin: 12
-                                    spacing: 6
-
-                                    Text {
-                                        text: ApplicationWindow.window.t("rtk.leverArm")
-                                        color: ApplicationWindow.window.muted
-                                        font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
-                                        Layout.alignment: Qt.AlignVCenter
-                                    }
-                                    Text {
-                                        text: "X"
-                                        color: ApplicationWindow.window.text
-                                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
-                                        font.bold: true
-                                        Layout.alignment: Qt.AlignVCenter
-                                    }
-                                    RtkTextField {
-                                        id: leverX
-                                        Layout.preferredWidth: 64
-                                        text: "0"
-                                        validator: DoubleValidator { bottom: -10000; top: 10000; decimals: 4 }
-                                    }
-                                    Text {
-                                        text: "Y"
-                                        color: ApplicationWindow.window.text
-                                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
-                                        font.bold: true
-                                        Layout.alignment: Qt.AlignVCenter
-                                    }
-                                    RtkTextField {
-                                        id: leverY
-                                        Layout.preferredWidth: 64
-                                        text: "0"
-                                        validator: DoubleValidator { bottom: -10000; top: 10000; decimals: 4 }
-                                    }
-                                    Text {
-                                        text: "Z"
-                                        color: ApplicationWindow.window.text
-                                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
-                                        font.bold: true
-                                        Layout.alignment: Qt.AlignVCenter
-                                    }
-                                    RtkTextField {
-                                        id: leverZ
-                                        Layout.preferredWidth: 64
-                                        text: "0"
-                                        validator: DoubleValidator { bottom: -10000; top: 10000; decimals: 4 }
-                                    }
-                                    ToolbarButton {
-                                        text: ApplicationWindow.window.t("rtk.applyLeverArm")
-                                        iconName: "activity"
-                                        onClicked: rtkBackend.applyMainAntennaLeverArm(
-                                            Number(leverX.text), Number(leverY.text), Number(leverZ.text)
-                                        )
-                                    }
-                                }
-
-                                // Timeout + Reconnect
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 12
-                                    Layout.rightMargin: 12
-                                    spacing: 8
-
-                                    Text {
-                                        text: ApplicationWindow.window.t("rtk.timeoutMs")
-                                        color: ApplicationWindow.window.muted
-                                        font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
-                                        Layout.alignment: Qt.AlignVCenter
-                                    }
-                                    RtkTextField {
-                                        Layout.fillWidth: true
-                                        text: page.uiTimeoutMs
-                                        inputMethodHints: Qt.ImhDigitsOnly
-                                        onEditingFinished: page.uiTimeoutMs = text
-                                    }
-                                    Text {
-                                        text: ApplicationWindow.window.t("rtk.reconnectMs")
-                                        color: ApplicationWindow.window.muted
-                                        font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
-                                        Layout.alignment: Qt.AlignVCenter
-                                    }
-                                    RtkTextField {
-                                        Layout.fillWidth: true
-                                        text: page.uiReconnectMs
-                                        inputMethodHints: Qt.ImhDigitsOnly
-                                        onEditingFinished: page.uiReconnectMs = text
-                                    }
-                                }
-
-                                Item { width: 1; height: 4 }
-                            }
-                        }
-
-                        // ── CARD 3: GGA Monitor ──
-                        Card {
-                            Layout.fillWidth: true
-                            height: implicitHeight
-                            title: ApplicationWindow.window.t("rtk.ggaMonitor")
-
-                            ColumnLayout {
-                                width: parent.width
-                                spacing: 6
-
-                                Item { width: 1; height: 4 }
-
-                                // Row 1: Source combo + Read button + Frequency
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 12
-                                    Layout.rightMargin: 12
-                                    spacing: 8
-
-                                    Text {
-                                        text: ApplicationWindow.window.t("rtk.ggaSource") + ":"
-                                        color: ApplicationWindow.window.text
-                                        font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
-                                        Layout.alignment: Qt.AlignVCenter
-                                    }
-
-                                    ComboBox {
-                                        id: ggaSourceCombo
-                                        Layout.preferredWidth: 180
-                                        model: page.ggaSourceModel
-                                        currentIndex: page.ggaSourceIndex
-                                        textRole: "text"
-                                        font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
-                                        implicitHeight: 34
-                                        onActivated: page.ggaSourceIndex = currentIndex
-
-                                        delegate: ItemDelegate {
-                                            width: ggaSourceCombo.width
-                                            text: ggaSourceCombo.textRole
-                                                ? model[ggaSourceCombo.textRole] : modelData
-                                            font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
-                                            highlighted: ggaSourceCombo.highlightedIndex === index
-                                            background: Rectangle {
-                                                color: highlighted ? ApplicationWindow.window.secondary : "transparent"
-                                            }
-                                            contentItem: Text {
-                                                text: parent.text
-                                                color: ApplicationWindow.window.text
-                                                font: parent.font
-                                                verticalAlignment: Text.AlignVCenter
-                                                leftPadding: 8
-                                            }
-                                        }
-
-                                        indicator: Text {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            anchors.right: parent.right
-                                            anchors.rightMargin: 8
-                                            text: "▾"
-                                            color: ApplicationWindow.window.muted
-                                            font.pixelSize: 10
-                                        }
-
-                                        contentItem: Text {
-                                            leftPadding: 10
-                                            rightPadding: 24
-                                            text: ggaSourceCombo.displayText
-                                            color: ApplicationWindow.window.text
-                                            font: ggaSourceCombo.font
-                                            verticalAlignment: Text.AlignVCenter
-                                            elide: Text.ElideRight
-                                        }
-
-                                        background: Rectangle {
-                                            implicitHeight: 34
-                                            radius: 7
-                                            color: ggaSourceCombo.hovered
-                                                ? ApplicationWindow.window.secondary
-                                                : ApplicationWindow.window.card
-                                            border.color: ggaSourceCombo.activeFocus
-                                                ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8")
-                                                : ApplicationWindow.window.border
-                                        }
-
-                                        popup: Popup {
-                                            y: ggaSourceCombo.height + 2
-                                            width: ggaSourceCombo.width
-                                            implicitHeight: contentItem.implicitHeight + 8
-                                            padding: 4
-                                            background: Rectangle {
-                                                radius: 7
-                                                color: ApplicationWindow.window.card
-                                                border.color: ApplicationWindow.window.border
-                                            }
-                                            contentItem: ListView {
-                                                clip: true
-                                                implicitHeight: contentHeight
-                                                model: ggaSourceCombo.delegateModel
-                                                currentIndex: ggaSourceCombo.highlightedIndex
-                                            }
-                                        }
-                                    }
-
-                                    ToolbarButton {
-                                        id: ggaToggleBtn
-                                        text: page.ggaReading
-                                            ? ApplicationWindow.window.t("rtk.stopReading")
-                                            : ApplicationWindow.window.t("rtk.readGga")
-                                        iconName: page.ggaReading ? "square" : "radio"
-                                        onClicked: {
-                                            page.ggaReading = !page.ggaReading
-                                            // TODO: Wire to backend GGA read/stop when API is available
-                                        }
-                                    }
-
-                                    Item { Layout.fillWidth: true }
-
-                                    Text {
-                                        text: ApplicationWindow.window.t("rtk.ggaFrequency") + ": "
-                                            + "0.00 Hz"
-                                        color: ApplicationWindow.window.muted
-                                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
-                                        font.family: "Consolas"
-                                    }
-                                }
-
-                                // Row 2: Status text
-                                Text {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 12
-                                    Layout.rightMargin: 12
-                                    text: page.ggaReading
-                                        ? (ApplicationWindow.window.t("rtk.waiting")
-                                           + " (" + page.ggaSourceModel[page.ggaSourceIndex].text + ")")
-                                        : ApplicationWindow.window.t("rtk.noData")
-                                    color: ApplicationWindow.window.muted
-                                    font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
-                                    wrapMode: Text.WordWrap
-                                }
-
-                                // Row 3: GGA content area
-                                ScrollView {
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: 80
-                                    Layout.leftMargin: 12
-                                    Layout.rightMargin: 12
-                                    clip: true
-
-                                    TextArea {
-                                        text: page.ggaReading
-                                            ? ("$GPGGA," + new Date().toLocaleTimeString() + ",..."
-                                               + "\n" + ApplicationWindow.window.t("rtk.waiting"))
-                                            : ApplicationWindow.window.t("rtk.noData")
-                                        readOnly: true
-                                        selectByMouse: true
-                                        wrapMode: TextEdit.Wrap
-                                        color: ApplicationWindow.window.text
-                                        font.family: "Consolas"
-                                        font.pixelSize: Math.round(9 * ApplicationWindow.window.scaleFactor)
-                                        background: Rectangle { color: "transparent" }
-                                    }
-                                }
-
-                                Item { width: 1; height: 4 }
-                            }
-                        }
-                    }
-
-                    // ── RIGHT COLUMN (narrower, compact diagnostics) ──
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        Layout.preferredWidth: 0
-                        Layout.maximumWidth: 400
-
-                        // ── CARD 4: Diagnostics (compact) ──
-                        Card {
-                            Layout.fillWidth: true
-                            height: implicitHeight
-                            title: ApplicationWindow.window.t("rtk.diagnostics")
-                            headerRight: ToolbarButton {
-                                iconName: "trash-2"
-                                iconSize: 13
-                                text: ApplicationWindow.window.t("rtk.clearLog")
-                                onClicked: rtkBackend.clearDiagnostics()
-                            }
-
-                            ColumnLayout {
-                                width: parent.width
-                                spacing: 6
-
-                                Item { width: 1; height: 4 }
-
-                                // 2×2 compact metrics
-                                GridLayout {
-                                    Layout.fillWidth: true
-                                    Layout.leftMargin: 12
-                                    Layout.rightMargin: 12
-                                    columns: 2
-                                    columnSpacing: 6
-                                    rowSpacing: 6
-
-                                    MetricTile {
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: 54
-                                        label: ApplicationWindow.window.t("rtk.inputRate")
-                                        value: page.statValue("inputBps") + " B/s"
-                                    }
-                                    MetricTile {
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: 54
-                                        label: ApplicationWindow.window.t("rtk.outputRate")
-                                        value: page.statValue("outputBps") + " B/s"
-                                    }
-                                    MetricTile {
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: 54
-                                        label: ApplicationWindow.window.t("rtk.rtcmFrames")
-                                        value: String(page.statValue("rtcm3FrameCount"))
-                                    }
-                                    MetricTile {
-                                        Layout.fillWidth: true
-                                        Layout.preferredHeight: 54
-                                        label: ApplicationWindow.window.t("rtk.crcStatus")
-                                        value: page.statValue("rtcm3CrcOkCount") + " / " + page.statValue("rtcm3CrcFailCount")
-                                    }
-                                }
-
-                                // Compact log area
-                                ScrollView {
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: 110
-                                    Layout.leftMargin: 12
-                                    Layout.rightMargin: 12
-                                    Layout.bottomMargin: 4
-                                    clip: true
-                                    ScrollBar.vertical: ScrollBar { id: diagVBar }
-
-                                    TextArea {
-                                        text: page.diagnosticsText()
-                                        readOnly: true
-                                        selectByMouse: true
-                                        wrapMode: TextEdit.Wrap
-                                        color: ApplicationWindow.window.text
-                                        selectedTextColor: ApplicationWindow.window.primaryForeground
-                                        selectionColor: ApplicationWindow.window.primary
-                                        font.family: "Consolas"
-                                        font.pixelSize: Math.round(9 * ApplicationWindow.window.scaleFactor)
-                                        background: Rectangle { color: "transparent" }
-                                    }
-                                }
-
-                                Item { width: 1; height: 4 }
-                            }
-
-                            Timer {
-                                id: diagScrollTimer
-                                interval: 50
-                                onTriggered: diagVBar.position = 1.0 - diagVBar.size
-                            }
-
-                            Connections {
-                                target: rtkBackend
-                                function onDiagnosticsChanged() { diagScrollTimer.restart() }
-                            }
-                        }
-                    }
-                }
-
-                // ── Operation buttons (full width) ──
-                RowLayout {
+                ColumnLayout {
                     width: parent.width
                     spacing: 8
 
-                    ToolbarButton {
-                        iconName: rtkBackend.running ? "square" : "wifi"
-                        text: rtkBackend.running
-                            ? ApplicationWindow.window.t("rtk.stop")
-                            : ApplicationWindow.window.t("rtk.start")
-                        variant: rtkBackend.running ? "danger" : "primary"
-                        onClicked: rtkBackend.running ? rtkBackend.stop() : rtkBackend.start()
+                    Item { width: 1; height: 4 }
+
+                    Text {
+                        Layout.leftMargin: 12
+                        Layout.rightMargin: 12
+                        text: ApplicationWindow.window.t("rtk.casterAddress")
+                        color: ApplicationWindow.window.muted
+                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                     }
-                    ToolbarButton {
-                        iconName: "scan"
-                        text: ApplicationWindow.window.t("rtk.testConnection")
-                        onClicked: rtkBackend.testConnection()
+                    RtkTextField {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 12
+                        Layout.rightMargin: 12
+                        text: page.textValue(rtkBackend.server)
+                        onEditingFinished: rtkBackend.server = text
                     }
-                    ToolbarButton {
-                        iconName: "trash-2"
-                        text: ApplicationWindow.window.t("rtk.clearLog")
-                        onClicked: rtkBackend.clearDiagnostics()
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 12
+                        Layout.rightMargin: 12
+                        spacing: 8
+                        ColumnLayout { Layout.fillWidth: true; spacing: 2
+                            Text {
+                                text: ApplicationWindow.window.t("rtk.port")
+                                color: ApplicationWindow.window.muted
+                                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                            }
+                            RtkTextField {
+                                Layout.fillWidth: true
+                                text: page.textValue(rtkBackend.port, "2101")
+                                onEditingFinished: rtkBackend.port = text
+                            }
+                        }
+                        ColumnLayout { Layout.fillWidth: true; spacing: 2
+                            Text {
+                                text: ApplicationWindow.window.t("rtk.mountPoint")
+                                color: ApplicationWindow.window.muted
+                                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                            }
+                            RtkTextField {
+                                Layout.fillWidth: true
+                                text: page.textValue(rtkBackend.mountpoint)
+                                onEditingFinished: rtkBackend.mountpoint = text
+                            }
+                        }
                     }
-                    Item { Layout.fillWidth: true }
-                    ToolbarButton {
-                        iconName: "save"
-                        text: ApplicationWindow.window.t("rtk.saveConfig")
-                        onClicked: rtkBackend.saveConfig()
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 12
+                        Layout.rightMargin: 12
+                        spacing: 8
+                        ColumnLayout { Layout.fillWidth: true; spacing: 2
+                            Text {
+                                text: ApplicationWindow.window.t("rtk.username")
+                                color: ApplicationWindow.window.muted
+                                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                            }
+                            RtkTextField {
+                                Layout.fillWidth: true
+                                text: page.textValue(rtkBackend.username)
+                                onEditingFinished: rtkBackend.username = text
+                            }
+                        }
+                        ColumnLayout { Layout.fillWidth: true; spacing: 2
+                            Text {
+                                text: ApplicationWindow.window.t("rtk.password")
+                                color: ApplicationWindow.window.muted
+                                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                            }
+                            RtkTextField {
+                                Layout.fillWidth: true
+                                echoMode: TextInput.Password
+                                text: page.textValue(rtkBackend.password)
+                                onEditingFinished: rtkBackend.password = text
+                            }
+                        }
                     }
-                    ToolbarButton {
-                        iconName: "folder-open"
-                        text: ApplicationWindow.window.t("rtk.loadConfig")
-                        onClicked: rtkBackend.loadConfig()
-                    }
+
+                    Item { width: 1; height: 4 }
                 }
+            }
 
-                // ── RTK Service Log (full width, more prominent) ──
-                Card {
+            // ── CARD: RTCM Output Config ──
+            Card {
+                Layout.fillWidth: true
+                height: implicitHeight
+                title: ApplicationWindow.window.t("rtk.rtcmOutputConfig")
+
+                ColumnLayout {
                     width: parent.width
-                    height: implicitHeight
-                    title: ApplicationWindow.window.t("rtk.serviceLog")
+                    spacing: 8
 
-                    ColumnLayout {
-                        width: parent.width
+                    Item { width: 1; height: 4 }
+
+                    Text {
+                        Layout.leftMargin: 12
+                        Layout.rightMargin: 12
+                        text: ApplicationWindow.window.t("rtk.outputPort")
+                        color: ApplicationWindow.window.muted
+                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                    }
+                    RtkTextField {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 12
+                        Layout.rightMargin: 12
+                        placeholderText: "e.g. COM3"
+                        text: page.textValue(rtkBackend.outputPort)
+                        onEditingFinished: rtkBackend.outputPort = text
+                    }
+
+                    Text {
+                        Layout.leftMargin: 12
+                        Layout.rightMargin: 12
+                        text: ApplicationWindow.window.t("rtk.baudRate")
+                        color: ApplicationWindow.window.muted
+                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                    }
+                    RtkTextField {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 12
+                        Layout.rightMargin: 12
+                        text: page.textValue(rtkBackend.outputBaud, "115200")
+                        inputMethodHints: Qt.ImhDigitsOnly
+                        onEditingFinished: rtkBackend.outputBaud = Math.max(1, Number(text))
+                    }
+
+                    // Lever Arm
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 12
+                        Layout.rightMargin: 12
                         spacing: 4
 
-                        Item { width: 1; height: 4 }
-
-                        // Status summary row
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 12
-                            Layout.rightMargin: 12
-                            spacing: 8
-
-                            Text {
-                                text: ApplicationWindow.window.t("rtk.diffStatus") + ":"
-                                color: ApplicationWindow.window.text
-                                font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
-                                font.bold: true
-                            }
-                            Text {
-                                text: rtkBackend.running
-                                    ? ApplicationWindow.window.t("rtk.connected")
-                                    : ApplicationWindow.window.t("rtk.stopped")
-                                color: rtkBackend.running
-                                    ? ApplicationWindow.window.ok
-                                    : ApplicationWindow.window.muted
-                                font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
-                                font.bold: true
-                            }
-                            Item { Layout.fillWidth: true }
-                            Text {
-                                text: {
-                                    var m = rtkBackend.stats ? rtkBackend.stats.message : ""
-                                    return m ? String(m) : ""
-                                }
-                                color: ApplicationWindow.window.muted
-                                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
-                                font.family: "Consolas"
-                                elide: Text.ElideRight
-                            }
+                        Text {
+                            text: ApplicationWindow.window.t("rtk.leverArm")
+                            color: ApplicationWindow.window.muted
+                            font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                            Layout.alignment: Qt.AlignVCenter
                         }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 12
-                            Layout.rightMargin: 12
-                            spacing: 12
-
-                            Text {
-                                text: ApplicationWindow.window.t("rtk.messageTypes") + ":"
-                                color: ApplicationWindow.window.muted
-                                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
-                            }
-                            Text {
-                                text: {
-                                    var mt = rtkBackend.stats ? rtkBackend.stats.messageTypes : ""
-                                    return mt ? String(mt) : "---"
-                                }
-                                color: ApplicationWindow.window.text
-                                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
-                                font.family: "Consolas"
-                                elide: Text.ElideRight
-                                Layout.fillWidth: true
-                            }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: "X"
+                            color: ApplicationWindow.window.text
+                            font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                            font.bold: true
+                            Layout.alignment: Qt.AlignVCenter
                         }
-
-                        // Scrollable log area (larger)
-                        ScrollView {
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 180
-                            Layout.leftMargin: 12
-                            Layout.rightMargin: 12
-                            Layout.bottomMargin: 4
-                            clip: true
-
-                            TextArea {
-                                text: page.diagnosticsText()
-                                readOnly: true
-                                selectByMouse: true
-                                wrapMode: TextEdit.Wrap
-                                color: ApplicationWindow.window.text
-                                selectedTextColor: ApplicationWindow.window.primaryForeground
-                                selectionColor: ApplicationWindow.window.primary
-                                font.family: "Consolas"
-                                font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
-                                background: Rectangle { color: "transparent" }
-                            }
+                        RtkTextField {
+                            id: leverX
+                            Layout.preferredWidth: 56
+                            text: "0"
+                            validator: DoubleValidator { bottom: -10000; top: 10000; decimals: 4 }
                         }
-
-                        Item { width: 1; height: 4 }
+                        Text {
+                            text: "Y"
+                            color: ApplicationWindow.window.text
+                            font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                            font.bold: true
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+                        RtkTextField {
+                            id: leverY
+                            Layout.preferredWidth: 56
+                            text: "0"
+                            validator: DoubleValidator { bottom: -10000; top: 10000; decimals: 4 }
+                        }
+                        Text {
+                            text: "Z"
+                            color: ApplicationWindow.window.text
+                            font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                            font.bold: true
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+                        RtkTextField {
+                            id: leverZ
+                            Layout.preferredWidth: 56
+                            text: "0"
+                            validator: DoubleValidator { bottom: -10000; top: 10000; decimals: 4 }
+                        }
                     }
-                }
+                    ToolbarButton {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 12
+                        Layout.rightMargin: 12
+                        text: ApplicationWindow.window.t("rtk.applyLeverArm")
+                        iconName: "activity"
+                        onClicked: rtkBackend.applyMainAntennaLeverArm(
+                            Number(leverX.text), Number(leverY.text), Number(leverZ.text))
+                    }
 
-                Item { width: 1; height: 12 }
+                    // Timeout + Reconnect
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 12
+                        Layout.rightMargin: 12
+                        spacing: 8
+                        ColumnLayout { Layout.fillWidth: true; spacing: 2
+                            Text {
+                                text: ApplicationWindow.window.t("rtk.timeoutMs")
+                                color: ApplicationWindow.window.muted
+                                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                            }
+                            RtkTextField {
+                                Layout.fillWidth: true
+                                text: page.uiTimeoutMs
+                                inputMethodHints: Qt.ImhDigitsOnly
+                                onEditingFinished: page.uiTimeoutMs = text
+                            }
+                        }
+                        ColumnLayout { Layout.fillWidth: true; spacing: 2
+                            Text {
+                                text: ApplicationWindow.window.t("rtk.reconnectMs")
+                                color: ApplicationWindow.window.muted
+                                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                            }
+                            RtkTextField {
+                                Layout.fillWidth: true
+                                text: page.uiReconnectMs
+                                inputMethodHints: Qt.ImhDigitsOnly
+                                onEditingFinished: page.uiReconnectMs = text
+                            }
+                        }
+                    }
+
+                    Item { width: 1; height: 4 }
+                }
+            }
+
+            // ── Spacer to push buttons to bottom ──
+            Item { Layout.fillHeight: true }
+
+            // ── Operation buttons ──
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                ToolbarButton {
+                    Layout.fillWidth: true
+                    iconName: "wifi"
+                    text: ApplicationWindow.window.t("rtk.start")
+                    enabled: !rtkBackend.running
+                    variant: "primary"
+                    onClicked: rtkBackend.start()
+                }
+                ToolbarButton {
+                    Layout.fillWidth: true
+                    iconName: "square"
+                    text: ApplicationWindow.window.t("rtk.stop")
+                    enabled: rtkBackend.running
+                    variant: "danger"
+                    onClicked: rtkBackend.stop()
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                ToolbarButton {
+                    Layout.fillWidth: true
+                    iconName: "scan"
+                    text: ApplicationWindow.window.t("rtk.testConnection")
+                    onClicked: rtkBackend.testConnection()
+                }
+                ToolbarButton {
+                    Layout.fillWidth: true
+                    iconName: "trash-2"
+                    text: ApplicationWindow.window.t("rtk.clearLog")
+                    onClicked: rtkBackend.clearDiagnostics()
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                ToolbarButton {
+                    Layout.fillWidth: true
+                    iconName: "save"
+                    text: ApplicationWindow.window.t("rtk.saveConfig")
+                    onClicked: rtkBackend.saveConfig()
+                }
+                ToolbarButton {
+                    Layout.fillWidth: true
+                    iconName: "folder-open"
+                    text: ApplicationWindow.window.t("rtk.loadConfig")
+                    onClicked: rtkBackend.loadConfig()
+                }
             }
         }
 
-        // ── Status bar (pinned bottom) ──
-        Rectangle {
+        // ════════════════════════════════════════════════════════
+        // RIGHT COLUMN  —  wide monitoring area  (~64%)
+        // ════════════════════════════════════════════════════════
+        ColumnLayout {
             Layout.fillWidth: true
-            Layout.preferredHeight: 32
-            color: ApplicationWindow.window.card
+            Layout.fillHeight: true
+            spacing: 12
 
-            Rectangle {
-                anchors.top: parent.top
-                anchors.left: parent.left
-                anchors.right: parent.right
-                height: 1
-                color: ApplicationWindow.window.border
+            // ── CARD: GGA Monitor ──
+            Card {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 240
+                title: ApplicationWindow.window.t("rtk.ggaMonitor")
+
+                ColumnLayout {
+                    width: parent.width
+                    spacing: 6
+
+                    Item { width: 1; height: 4 }
+
+                    // Source combo + Read button + Frequency
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 12
+                        Layout.rightMargin: 12
+                        spacing: 8
+
+                        Text {
+                            text: ApplicationWindow.window.t("rtk.ggaSource") + ":"
+                            color: ApplicationWindow.window.text
+                            font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        GgaSourceCombo {
+                            id: ggaSourceCombo
+                            Layout.preferredWidth: 200
+                        }
+
+                        ToolbarButton {
+                            id: ggaToggleBtn
+                            text: page.ggaReading
+                                ? ApplicationWindow.window.t("rtk.stopReading")
+                                : ApplicationWindow.window.t("rtk.readGga")
+                            iconName: page.ggaReading ? "square" : "radio"
+                            onClicked: {
+                                page.ggaReading = !page.ggaReading
+                                // TODO: Wire to backend GGA read/stop when API is available
+                            }
+                        }
+
+                        Item { Layout.fillWidth: true }
+
+                        Text {
+                            text: ApplicationWindow.window.t("rtk.ggaFrequency") + ": 0.00 Hz"
+                            color: ApplicationWindow.window.muted
+                            font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                            font.family: "Consolas"
+                        }
+                    }
+
+                    // Status
+                    Text {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 12
+                        Layout.rightMargin: 12
+                        text: page.ggaReading
+                            ? (ApplicationWindow.window.t("rtk.waiting")
+                               + " (" + page.ggaSourceModel[page.ggaSourceIndex].text + ")")
+                            : ApplicationWindow.window.t("rtk.noData")
+                        color: ApplicationWindow.window.muted
+                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                    }
+
+                    // GGA content area
+                    ScrollView {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.leftMargin: 12
+                        Layout.rightMargin: 12
+                        Layout.bottomMargin: 4
+                        clip: true
+                        ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                        TextArea {
+                            text: page.ggaReading
+                                ? ApplicationWindow.window.t("rtk.waiting") + "..."
+                                : ApplicationWindow.window.t("rtk.noData")
+                            readOnly: true
+                            selectByMouse: true
+                            wrapMode: TextEdit.NoWrap
+                            color: ApplicationWindow.window.text
+                            font.family: "Consolas"
+                            font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+                            background: Rectangle { color: "transparent" }
+                        }
+                    }
+
+                    Item { width: 1; height: 4 }
+                }
             }
 
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 8
+            // ── CARD: RTK Service Log ──
+            Card {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                title: ApplicationWindow.window.t("rtk.serviceLog")
 
-                Rectangle {
-                    width: 8
-                    height: 8
-                    radius: 4
-                    color: rtkBackend.running
-                        ? ApplicationWindow.window.ok
-                        : ApplicationWindow.window.offline
-                }
+                ColumnLayout {
+                    width: parent.width
+                    spacing: 6
 
-                Text {
-                    text: rtkBackend.running
-                        ? (ApplicationWindow.window.t("rtk.statusRunning")
-                            .replace("%1", page.statValue("inputBps"))
-                            .replace("%2", page.statValue("outputBps")))
-                        : ApplicationWindow.window.t("rtk.stopped")
-                    color: ApplicationWindow.window.text
-                    font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
-                    font.bold: true
-                }
+                    Item { width: 1; height: 4 }
 
-                Item { Layout.fillWidth: true }
+                    // Row 1: diff status + message types
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 12
+                        Layout.rightMargin: 12
+                        spacing: 16
 
-                Text {
-                    text: {
-                        var m = rtkBackend.stats ? rtkBackend.stats.message : ""
-                        return m ? String(m) : ""
+                        Text {
+                            text: ApplicationWindow.window.t("rtk.diffStatus") + ":"
+                            color: ApplicationWindow.window.text
+                            font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
+                            font.bold: true
+                        }
+                        Text {
+                            text: rtkBackend.running
+                                ? ApplicationWindow.window.t("rtk.connected")
+                                : ApplicationWindow.window.t("rtk.stopped")
+                            color: rtkBackend.running
+                                ? ApplicationWindow.window.ok
+                                : ApplicationWindow.window.muted
+                            font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
+                            font.bold: true
+                        }
+
+                        Rectangle {
+                            width: 1; height: 14
+                            color: ApplicationWindow.window.border
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+
+                        Text {
+                            text: ApplicationWindow.window.t("rtk.messageTypes") + ":"
+                            color: ApplicationWindow.window.text
+                            font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                            Layout.alignment: Qt.AlignVCenter
+                        }
+                        Text {
+                            text: {
+                                var mt = rtkBackend.stats ? rtkBackend.stats.messageTypes : ""
+                                return mt ? String(mt) : "---"
+                            }
+                            color: ApplicationWindow.window.muted
+                            font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                            font.family: "Consolas"
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                        }
+
+                        Text {
+                            text: {
+                                var m = rtkBackend.stats ? rtkBackend.stats.message : ""
+                                return m ? String(m) : ""
+                            }
+                            color: ApplicationWindow.window.muted
+                            font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                            font.family: "Consolas"
+                            elide: Text.ElideRight
+                        }
                     }
-                    color: ApplicationWindow.window.muted
-                    font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
-                    font.family: "Consolas"
-                    elide: Text.ElideRight
+
+                    // Row 2: diagnostics summary
+                    GridLayout {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 12
+                        Layout.rightMargin: 12
+                        columns: 4
+                        columnSpacing: 8
+                        rowSpacing: 2
+
+                        Text {
+                            text: ApplicationWindow.window.t("rtk.inputRate") + ": "
+                                + page.statValue("inputBps") + " B/s"
+                            color: ApplicationWindow.window.muted
+                            font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                        }
+                        Text {
+                            text: ApplicationWindow.window.t("rtk.outputRate") + ": "
+                                + page.statValue("outputBps") + " B/s"
+                            color: ApplicationWindow.window.muted
+                            font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                        }
+                        Text {
+                            text: ApplicationWindow.window.t("rtk.rtcmFrames") + ": "
+                                + page.statValue("rtcm3FrameCount")
+                            color: ApplicationWindow.window.muted
+                            font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                        }
+                        Text {
+                            text: ApplicationWindow.window.t("rtk.crcStatus") + ": "
+                                + page.statValue("rtcm3CrcOkCount") + " / "
+                                + page.statValue("rtcm3CrcFailCount")
+                            color: ApplicationWindow.window.muted
+                            font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                        }
+                    }
+
+                    // Log area
+                    ScrollView {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.leftMargin: 12
+                        Layout.rightMargin: 12
+                        Layout.bottomMargin: 4
+                        clip: true
+                        ScrollBar.vertical: ScrollBar { id: logVBar }
+
+                        TextArea {
+                            text: page.diagnosticsText()
+                            readOnly: true
+                            selectByMouse: true
+                            wrapMode: TextEdit.Wrap
+                            color: ApplicationWindow.window.text
+                            selectedTextColor: ApplicationWindow.window.primaryForeground
+                            selectionColor: ApplicationWindow.window.primary
+                            font.family: "Consolas"
+                            font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+                            background: Rectangle { color: "transparent" }
+                        }
+                    }
+
+                    Item { width: 1; height: 4 }
+                }
+
+                Timer {
+                    id: logScrollTimer
+                    interval: 50
+                    onTriggered: logVBar.position = 1.0 - logVBar.size
+                }
+
+                Connections {
+                    target: rtkBackend
+                    function onDiagnosticsChanged() { logScrollTimer.restart() }
                 }
             }
         }
@@ -763,6 +622,83 @@ Item {
             border.color: field.activeFocus
                 ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8")
                 : ApplicationWindow.window.border
+        }
+    }
+
+    component GgaSourceCombo: ComboBox {
+        id: ggaCombo
+        model: page.ggaSourceModel
+        currentIndex: page.ggaSourceIndex
+        textRole: "text"
+
+        font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
+        implicitHeight: 34
+
+        onActivated: page.ggaSourceIndex = currentIndex
+
+        delegate: ItemDelegate {
+            width: ggaCombo.width
+            text: ggaCombo.textRole ? model[ggaCombo.textRole] : modelData
+            font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
+            highlighted: ggaCombo.highlightedIndex === index
+            background: Rectangle {
+                color: highlighted ? ApplicationWindow.window.secondary : "transparent"
+            }
+            contentItem: Text {
+                text: parent.text
+                color: ApplicationWindow.window.text
+                font: parent.font
+                verticalAlignment: Text.AlignVCenter
+                leftPadding: 8
+            }
+        }
+
+        indicator: Text {
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.right: parent.right
+            anchors.rightMargin: 8
+            text: "▾"
+            color: ApplicationWindow.window.muted
+            font.pixelSize: 10
+        }
+
+        contentItem: Text {
+            leftPadding: 10
+            rightPadding: 24
+            text: ggaCombo.displayText
+            color: ApplicationWindow.window.text
+            font: ggaCombo.font
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+        }
+
+        background: Rectangle {
+            implicitHeight: 34
+            radius: 7
+            color: ggaCombo.hovered
+                ? ApplicationWindow.window.secondary
+                : ApplicationWindow.window.card
+            border.color: ggaCombo.activeFocus
+                ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8")
+                : ApplicationWindow.window.border
+        }
+
+        popup: Popup {
+            y: ggaCombo.height + 2
+            width: ggaCombo.width
+            implicitHeight: contentItem.implicitHeight + 8
+            padding: 4
+            background: Rectangle {
+                radius: 7
+                color: ApplicationWindow.window.card
+                border.color: ApplicationWindow.window.border
+            }
+            contentItem: ListView {
+                clip: true
+                implicitHeight: contentHeight
+                model: ggaCombo.delegateModel
+                currentIndex: ggaCombo.highlightedIndex
+            }
         }
     }
 }
