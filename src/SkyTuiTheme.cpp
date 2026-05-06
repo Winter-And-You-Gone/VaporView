@@ -97,7 +97,6 @@ void SkyTuiTheme::enableVirtualTerminal()
         {
             mode &= ~ENABLE_ECHO_INPUT;
             mode &= ~ENABLE_LINE_INPUT;
-            mode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
             SetConsoleMode(input, mode);
         }
     }

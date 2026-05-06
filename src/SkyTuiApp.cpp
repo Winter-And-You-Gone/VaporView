@@ -60,6 +60,43 @@ bool isPrintableCommandChar(QChar ch)
     return ch.unicode() >= 32 && ch.unicode() != 127;
 }
 
+QString paletteKey(QString text)
+{
+    text = text.trimmed().toLower();
+    if (text.startsWith(QLatin1Char('/')))
+    {
+        text.remove(0, 1);
+    }
+
+    QString key;
+    for (const QChar ch : text)
+    {
+        if (!ch.isSpace())
+        {
+            key += ch;
+        }
+    }
+    return key;
+}
+
+bool fuzzySubsequence(const QString& needle, const QString& haystack)
+{
+    if (needle.isEmpty())
+    {
+        return true;
+    }
+
+    int pos = 0;
+    for (const QChar ch : haystack)
+    {
+        if (pos < needle.size() && ch == needle.at(pos))
+        {
+            ++pos;
+        }
+    }
+    return pos == needle.size();
+}
+
 bool isAnsiFinalByte(QChar ch)
 {
     const ushort value = ch.unicode();
@@ -146,7 +183,7 @@ void SkyTuiApp::start()
     model_.config = runtime_ ? runtime_->currentConfig() : SkyConfig::defaults();
     refreshStatus();
     appendLog(QStringLiteral("VaporViewSky TUI 已启动"));
-    appendLog(QStringLiteral("输入 /help 查看命令，按 Ctrl+P 打开命令面板。"));
+    appendLog(QStringLiteral("输入 /help 查看命令，输入 / 或按 Ctrl+P 打开命令面板。"));
     startInputThread();
     status_timer_.start();
     scheduleRender();
@@ -225,9 +262,18 @@ void SkyTuiApp::refreshStatus()
     {
         return;
     }
-    model_.status = runtime_->currentStatus();
-    model_.config = runtime_->currentConfig();
-    scheduleRender();
+    const TelemetryStatus status = runtime_->currentStatus();
+    const SkyConfig config = runtime_->currentConfig();
+    const QString signature = statusSignature(status, config);
+    const bool changed = !status_signature_initialized_ || signature != last_status_signature_;
+    model_.status = status;
+    model_.config = config;
+    status_signature_initialized_ = true;
+    last_status_signature_ = signature;
+    if (changed)
+    {
+        scheduleRender();
+    }
 }
 
 void SkyTuiApp::handleKey(const SkyTuiKey& key)
@@ -263,7 +309,7 @@ void SkyTuiApp::handleKey(const SkyTuiKey& key)
         else
         {
             model_.focus = SkyTuiFocus::CommandInput;
-            model_.hint = QStringLiteral("命令输入框已选中：输入命令或按 Ctrl+P 打开命令面板");
+            model_.hint = QStringLiteral("命令输入框已选中：Up/Down 回看历史，输入 / 或按 Ctrl+P 打开命令面板");
         }
         scheduleRender();
         return;
@@ -287,7 +333,9 @@ void SkyTuiApp::handleKey(const SkyTuiKey& key)
         if (model_.focus == SkyTuiFocus::Logs)
         {
             model_.focus = SkyTuiFocus::Status;
-            model_.hint = QStringLiteral("天空端状态已选中：Left 返回日志流，Tab 回到命令输入框");
+            const int statusCount = static_cast<int>(statusPanelLines().size());
+            model_.selected_status_index = std::clamp(model_.selected_status_index, 0, std::max(0, statusCount - 1));
+            model_.hint = QStringLiteral("天空端状态已选中：Up/Down 选择状态行，Left 返回日志流，Tab 回到命令输入框");
         }
         scheduleRender();
         return;
@@ -307,6 +355,14 @@ void SkyTuiApp::handleKey(const SkyTuiKey& key)
             {
                 model_.selected_log_index = std::max(0, model_.selected_log_index - 1);
             }
+        }
+        else if (model_.focus == SkyTuiFocus::Status)
+        {
+            model_.selected_status_index = std::max(0, model_.selected_status_index - 1);
+        }
+        else if (model_.focus == SkyTuiFocus::CommandInput)
+        {
+            selectPreviousHistory();
         }
         else
         {
@@ -331,6 +387,15 @@ void SkyTuiApp::handleKey(const SkyTuiKey& key)
                 model_.selected_log_index = std::min(static_cast<int>(model_.logs.size()) - 1, model_.selected_log_index + 1);
             }
         }
+        else if (model_.focus == SkyTuiFocus::Status)
+        {
+            const int statusCount = static_cast<int>(statusPanelLines().size());
+            model_.selected_status_index = std::min(std::max(0, statusCount - 1), model_.selected_status_index + 1);
+        }
+        else if (model_.focus == SkyTuiFocus::CommandInput)
+        {
+            selectNextHistory();
+        }
         else
         {
             model_.log_scroll = std::max(0, model_.log_scroll - 1);
@@ -354,6 +419,8 @@ void SkyTuiApp::handleKey(const SkyTuiKey& key)
         if (!model_.input_text.isEmpty())
         {
             model_.input_text.chop(1);
+            model_.history_index = -1;
+            model_.draft_input.clear();
         }
         if (!model_.input_text.startsWith(QLatin1Char('/')))
         {
@@ -384,6 +451,8 @@ void SkyTuiApp::handleKey(const SkyTuiKey& key)
         if (isPrintableCommandChar(key.character))
         {
             model_.input_text += key.character;
+            model_.history_index = -1;
+            model_.draft_input.clear();
             if (model_.input_text.startsWith(QLatin1Char('/')))
             {
                 setPaletteVisible(true);
@@ -546,6 +615,8 @@ void SkyTuiApp::executeInput()
     }
 
     model_.input_text.clear();
+    model_.history_index = -1;
+    model_.draft_input.clear();
     setPaletteVisible(false);
     executeCommand(command);
 }
@@ -560,6 +631,14 @@ void SkyTuiApp::executeCommand(const QString& command)
     }
 
     model_.last_command = normalized;
+    if (model_.command_history.isEmpty() || model_.command_history.last() != normalized)
+    {
+        model_.command_history << normalized;
+        while (model_.command_history.size() > 100)
+        {
+            model_.command_history.removeFirst();
+        }
+    }
     model_.show_logo = false;
     appendLog(QStringLiteral("sky> %1").arg(normalized));
     const SkyTuiCommandResult result = controller_.executeCommand(normalized);
@@ -606,8 +685,51 @@ void SkyTuiApp::clearLogs()
 {
     model_.logs.clear();
     model_.log_scroll = 0;
+    model_.selected_log_index = -1;
     model_.hint = QStringLiteral("日志已清空");
     appendLog(QStringLiteral("已清空当前可视日志"));
+}
+
+void SkyTuiApp::selectPreviousHistory()
+{
+    if (model_.command_history.isEmpty())
+    {
+        return;
+    }
+
+    if (model_.history_index < 0)
+    {
+        model_.draft_input = model_.input_text;
+        model_.history_index = static_cast<int>(model_.command_history.size()) - 1;
+    }
+    else
+    {
+        model_.history_index = std::max(0, model_.history_index - 1);
+    }
+
+    model_.input_text = model_.command_history.at(model_.history_index);
+    setPaletteVisible(false);
+}
+
+void SkyTuiApp::selectNextHistory()
+{
+    if (model_.history_index < 0)
+    {
+        return;
+    }
+
+    if (model_.history_index >= static_cast<int>(model_.command_history.size()) - 1)
+    {
+        model_.history_index = -1;
+        model_.input_text.clear();
+        model_.draft_input.clear();
+        setPaletteVisible(false);
+        return;
+    }
+
+    ++model_.history_index;
+    model_.input_text = model_.command_history.at(model_.history_index);
+    setPaletteVisible(false);
 }
 
 void SkyTuiApp::setPaletteVisible(bool visible)
@@ -625,11 +747,16 @@ QList<SkyTuiCommandItem> SkyTuiApp::filteredPalette() const
     QList<SkyTuiCommandItem> filtered;
     const QList<SkyTuiCommandItem> all = controller_.commandPalette();
     const QString prefix = model_.input_text.trimmed().toLower();
+    const QString needle = paletteKey(prefix);
     for (const SkyTuiCommandItem& item : all)
     {
+        const QString command = item.command.toLower();
+        const QString haystack = paletteKey(command);
         if (prefix.isEmpty() ||
             prefix == QStringLiteral("/") ||
-            item.command.toLower().startsWith(prefix))
+            command.startsWith(prefix) ||
+            haystack.startsWith(needle) ||
+            fuzzySubsequence(needle, haystack))
         {
             filtered.push_back(item);
         }
@@ -646,6 +773,35 @@ void SkyTuiApp::clampPaletteSelection()
         return;
     }
     model_.palette_selected = std::clamp(model_.palette_selected, 0, static_cast<int>(items.size()) - 1);
+}
+
+QString SkyTuiApp::statusSignature(const TelemetryStatus& status, const SkyConfig& config) const
+{
+    QStringList parts;
+    parts << QString::number(runtime_ && runtime_->isRunning() ? 1 : 0)
+          << QString::number(status.recording_state)
+          << status.session_name
+          << QString::number(status.disk_free_bytes)
+          << QString::number(status.telemetry_basic_rate_hz, 'f', 3)
+          << QString::number(status.feature_rate_hz, 'f', 3)
+          << QString::number(status.waveform_rate_hz, 'f', 3)
+          << QString::number(status.heartbeat_rate_hz, 'f', 3)
+          << QString::number(status.status_rate_hz, 'f', 3)
+          << QString::number(status.rx_total_frames)
+          << QString::number(status.crc_error_count)
+          << QString::number(runtime_ && runtime_->waveformStreamingEnabled() ? 1 : 0)
+          << QString::fromUtf8(QJsonDocument(config.toJson()).toJson(QJsonDocument::Compact));
+
+    for (const DeviceStatusItem& item : status.devices)
+    {
+        parts << QString::number(static_cast<int>(item.device_id))
+              << QString::number(static_cast<int>(item.state))
+              << QString::number(item.error_code)
+              << QString::number(item.rx_count)
+              << QString::number(item.error_count)
+              << QString::number(item.last_data_time_us);
+    }
+    return parts.join(QLatin1Char('|'));
 }
 
 QString SkyTuiApp::timestamp() const
@@ -940,14 +1096,23 @@ void SkyTuiApp::drawMainPanels(QString& output, int top, int bottom, const SkyTu
     drawBox(output, top, rightLeft, bottom, right, QStringLiteral("天空端状态"), model_.focus == SkyTuiFocus::Status);
     const QStringList lines = statusPanelLines();
     const int contentWidth = std::max(4, right - rightLeft - 3);
+    const int statusRows = std::max(0, bottom - top - 1);
+    const int lineCount = static_cast<int>(lines.size());
+    const int selectedStatus = std::clamp(model_.selected_status_index, 0, std::max(0, lineCount - 1));
+    const int statusStart = std::max(0, std::min(selectedStatus - statusRows / 2, std::max(0, lineCount - statusRows)));
     row = top + 1;
-    for (const QString& line : lines)
+    for (int i = statusStart; i < lineCount; ++i)
     {
         if (row >= bottom)
         {
             break;
         }
-        drawText(output, row++, rightLeft + 2, fitPlain(line, contentWidth));
+        const bool selected = model_.focus == SkyTuiFocus::Status && i == selectedStatus;
+        const QString line = padPlain(fitPlain(lines.at(i), contentWidth), contentWidth);
+        drawText(output, row++, rightLeft + 2,
+                 (selected ? SkyTuiTheme::inverse() + SkyTuiTheme::foreground(SkyTuiTheme::yellow())
+                           : QString()) +
+                     line + SkyTuiTheme::reset());
     }
 }
 
@@ -994,7 +1159,7 @@ void SkyTuiApp::drawInput(QString& output, int row, const SkyTuiTerminalSize& si
 void SkyTuiApp::drawStatusBar(QString& output, int row, const SkyTuiTerminalSize& size) const
 {
     const QString path = QCoreApplication::applicationDirPath();
-    QString left = QStringLiteral(" Tab 焦点  ←/→ 日志/状态  Ctrl+P 面板  Ctrl+L 清屏  Ctrl+C 退出 ");
+    QString left = QStringLiteral(" Tab 焦点  ←/→ 日志/状态  Ctrl+P 或 / 面板  Ctrl+L 清屏  Ctrl+C 退出 ");
     QString right = QStringLiteral(" %1 ").arg(path);
     if (displayWidth(left) + displayWidth(right) > size.columns)
     {

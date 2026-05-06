@@ -66,9 +66,12 @@ private:
     void executeCommand(const QString& command);
     void requestQuit();
     void clearLogs();
+    void selectPreviousHistory();
+    void selectNextHistory();
     void setPaletteVisible(bool visible);
     QList<SkyTuiCommandItem> filteredPalette() const;
     void clampPaletteSelection();
+    QString statusSignature(const TelemetryStatus& status, const SkyConfig& config) const;
     QString timestamp() const;
     QString makeLogLine(const QString& message) const;
     int displayWidth(const QString& text) const;
@@ -99,6 +102,8 @@ private:
     bool started_ = false;
     bool terminal_restored_ = false;
     bool render_pending_ = false;
+    bool status_signature_initialized_ = false;
+    QString last_status_signature_;
 };
 
 }  // namespace VaporView

@@ -98,7 +98,7 @@ SkyTuiCommandResult SkyTuiController::executeCommand(const QString& line)
     }
     else if (command == QStringLiteral("palette"))
     {
-        result.messages << QStringLiteral("按 Ctrl+P、Tab，或输入 / 打开命令面板。");
+        result.messages << QStringLiteral("按 Ctrl+P，或输入 / 打开命令面板。");
     }
     else if (command == QStringLiteral("theme") && tokens.value(1).toLower() == QStringLiteral("dark"))
     {
@@ -165,7 +165,7 @@ QStringList SkyTuiController::helpLines() const
         QStringLiteral("  config show, cfg               # 显示当前配置 JSON"),
         QStringLiteral("  clear, logs, palette, theme dark # 日志、命令面板和主题辅助命令"),
         QStringLiteral("  quit, exit, stop, /quit, /exit # 安全退出天空端"),
-        QStringLiteral("快捷键：Enter 执行，Ctrl+P 命令面板，Tab 切换焦点，Left/Right 切日志/状态，Esc 关闭，Ctrl+L 清屏。"),
+        QStringLiteral("快捷键：Enter 执行，Ctrl+P 或 / 打开命令面板，Tab 切换焦点，Left/Right 切日志/状态，Esc 关闭，Ctrl+L 清屏。"),
     };
 }
 

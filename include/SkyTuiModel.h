@@ -22,11 +22,15 @@ struct SkyTuiModel
     static constexpr int MaxLogLines = 600;
 
     QString input_text;
+    QString draft_input;
+    QStringList command_history;
+    int history_index = -1;
     bool palette_visible = false;
     int palette_selected = 0;
     QStringList logs;
     int log_scroll = 0;
     int selected_log_index = -1;
+    int selected_status_index = 0;
     SkyTuiFocus focus = SkyTuiFocus::CommandInput;
     bool show_logo = true;
     TelemetryStatus status;
