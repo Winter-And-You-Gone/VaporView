@@ -1,5 +1,5 @@
 #include "SkyRuntime.h"
-#include "SkyTuiController.h"
+#include "SkyTuiApp.h"
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
@@ -21,18 +21,29 @@ int main(int argc, char *argv[])
 
     QCommandLineParser parser;
     parser.setApplicationDescription("VaporView Sky TUI");
-    parser.addHelpOption();
-    parser.addVersionOption();
 
+    QCommandLineOption helpOption(QStringList{QStringLiteral("h"), QStringLiteral("help")}, QStringLiteral("Displays help on commandline options."));
+    QCommandLineOption versionOption(QStringLiteral("version"), QStringLiteral("Displays version information."));
     QCommandLineOption telemetryPortOption(QStringLiteral("telemetry-port"), QStringLiteral("Telemetry serial port"), QStringLiteral("port"));
     QCommandLineOption telemetryBaudOption(QStringLiteral("telemetry-baud"), QStringLiteral("Telemetry serial baud"), QStringLiteral("baud"), QStringLiteral("921600"));
     QCommandLineOption skyConfigOption(QStringLiteral("sky-config"), QStringLiteral("Sky config JSON path"), QStringLiteral("path"));
     QCommandLineOption skySimulateOption(QStringLiteral("sky-simulate-data"), QStringLiteral("Generate simulated sky data"));
     QCommandLineOption skyWaveHostOption(QStringLiteral("sky-wave-host"), QStringLiteral("Sky TCP wave host"), QStringLiteral("host"), QStringLiteral("127.0.0.1"));
     QCommandLineOption skyWavePortOption(QStringLiteral("sky-wave-port"), QStringLiteral("Sky TCP wave port"), QStringLiteral("port"), QStringLiteral("8888"));
-    parser.addOptions({telemetryPortOption, telemetryBaudOption, skyConfigOption,
+    parser.addOptions({helpOption, versionOption, telemetryPortOption, telemetryBaudOption, skyConfigOption,
                        skySimulateOption, skyWaveHostOption, skyWavePortOption});
     parser.process(app);
+
+    if (parser.isSet(helpOption))
+    {
+        QTextStream(stdout) << parser.helpText();
+        return 0;
+    }
+    if (parser.isSet(versionOption))
+    {
+        QTextStream(stdout) << app.applicationName() << " " << app.applicationVersion() << "\n";
+        return 0;
+    }
 
     VaporView::SkyRuntimeOptions options;
     options.telemetry_port = parser.value(telemetryPortOption);
@@ -49,9 +60,9 @@ int main(int argc, char *argv[])
     }
 
     VaporView::SkyRuntime runtime(options);
-    VaporView::SkyTuiController tui(&runtime, options);
+    VaporView::SkyTuiApp tui(&runtime, options);
     QObject::connect(&runtime, &VaporView::SkyRuntime::logMessage,
-                     &tui, &VaporView::SkyTuiController::appendLog);
+                     &tui, &VaporView::SkyTuiApp::appendLog);
 
     if (!runtime.start())
     {

@@ -29,6 +29,71 @@ Windows: .\build\Release\VaporView.exe
 Linux:   ./build/Release/VaporView
 ```
 
+### VaporViewSky 天空端全屏 TUI
+
+`VaporViewSky` 是天空端推荐入口。它是独立控制台程序，不创建 Qt Widgets 窗口，适合 PowerShell、CMD、Windows Terminal、Linux terminal 和 SSH 环境。界面采用黑底全屏 TUI：顶部显示渐变 ASCII Logo，中间显示事件日志与天空端状态，右侧显示设备状态，底部提供 `sky>` 输入栏、状态栏和 slash command palette。
+
+`VaporView.exe --mode sky` 仍然保留为兼容后台模式；需要在天空端本机观察状态、输入 `quit` 安全退出、或直接控制设备时，建议使用 `VaporViewSky`。
+
+```powershell
+# Windows 天空端 TUI
+.\build\Release\VaporViewSky.exe --telemetry-port COM50 --telemetry-baud 921600 --sky-simulate-data
+
+# COM10 及以上端口也可以显式使用 Win32 路径
+.\build\Release\VaporViewSky.exe --telemetry-port \\.\COM50 --telemetry-baud 921600 --sky-simulate-data
+```
+
+```bash
+# Linux / macOS 天空端 TUI
+./build/Release/VaporViewSky --telemetry-port /tmp/vapor_sky --telemetry-baud 921600 --sky-simulate-data
+```
+
+旧后台天空端模式仍可使用：
+
+```powershell
+.\build\Release\VaporView.exe --mode sky --telemetry-port COM50 --telemetry-baud 921600 --sky-simulate-data
+```
+
+常用 TUI 命令：
+
+```text
+/help
+/status
+/devices
+/connect all
+/reconnect lidar
+/record start
+/record pause
+/record stop
+/waveform off
+/waveform on
+/config show
+/quit
+```
+
+快捷键：
+
+```text
+Enter 执行命令
+Ctrl+P 打开 command palette
+Tab 打开命令候选
+Esc 关闭候选
+Up/Down 选择候选或滚动日志
+PageUp/PageDown 滚动日志
+Ctrl+L 清空可视日志
+Ctrl+C 安全停止并退出
+```
+
+本机虚拟串口闭环测试：
+
+```text
+Windows: com0com 创建 COM50 <-> COM51
+Linux/macOS: socat -d -d pty,raw,echo=0,link=/tmp/vapor_sky pty,raw,echo=0,link=/tmp/vapor_ground
+
+天空端: VaporViewSky.exe --telemetry-port COM50 --telemetry-baud 921600 --sky-simulate-data
+地面端: VaporView.exe，在首页选择 Remote Sky，连接 COM51 @ 921600
+```
+
 本文档只描述当前仓库中可以直接从代码、构建脚本和随仓库文档确认的内容。对应代码入口主要是：
 
 - `CMakeLists.txt`
@@ -197,6 +262,7 @@ Linux ARM64 构建：
 当前 CMake 目标：
 
 - `VaporView`：主桌面程序。
+- `VaporViewSky`：天空端全屏控制台 TUI 程序。
 - `rtklib_strsvr`：静态库，封装 RTKLIB 流服务所需源码。
 - `str2str`：当 `third_party/rtklib/app/consapp/str2str/str2str.c` 存在时构建。
 
@@ -205,6 +271,8 @@ Linux ARM64 构建：
 ```text
 Windows: build/Release/VaporView.exe
 Linux:   build/Release/VaporView
+Windows: build/Release/VaporViewSky.exe
+Linux:   build/Release/VaporViewSky
 ```
 
 ## 主程序架构

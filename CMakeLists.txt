@@ -153,7 +153,9 @@ set(NAV_HEADERS
 
 set(SKY_TUI_SOURCES
     src/sky_main.cpp
+    src/SkyTuiApp.cpp
     src/SkyTuiController.cpp
+    src/SkyTuiTheme.cpp
     src/serial_port.cpp
     src/data_collector.cpp
     src/TelemetryCodec.cpp
@@ -168,7 +170,10 @@ set(SKY_TUI_SOURCES
 )
 
 set(SKY_TUI_HEADERS
+    include/SkyTuiApp.h
     include/SkyTuiController.h
+    include/SkyTuiModel.h
+    include/SkyTuiTheme.h
     include/serial_port.h
     include/data_types.h
     include/data_collector.h
