@@ -64,11 +64,12 @@ int main(int argc, char *argv[])
     QObject::connect(&runtime, &VaporView::SkyRuntime::logMessage,
                      &tui, &VaporView::SkyTuiApp::appendLog);
 
+    tui.start();
     if (!runtime.start())
     {
-        return 1;
+        tui.appendLog(QStringLiteral("天空端启动失败：数传串口未打开。请检查端口是否存在、是否被占用，COM10 及以上可尝试 \\\\.\\COMxx。"));
+        tui.appendLog(QStringLiteral("TUI 将保持打开，可输入 /status 查看状态，或输入 quit 退出。"));
     }
 
-    tui.start();
     return app.exec();
 }
