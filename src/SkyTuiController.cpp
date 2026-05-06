@@ -8,7 +8,7 @@ namespace
 {
 QString yesNo(bool value)
 {
-    return value ? QStringLiteral("yes") : QStringLiteral("no");
+    return value ? QStringLiteral("是") : QStringLiteral("否");
 }
 
 QString normalizedCommand(QString line)
@@ -94,20 +94,20 @@ SkyTuiCommandResult SkyTuiController::executeCommand(const QString& line)
     }
     else if (command == QStringLiteral("logs"))
     {
-        result.messages << QStringLiteral("Event stream is already focused. Use PageUp/PageDown to scroll.");
+        result.messages << QStringLiteral("日志区已经在主面板中。可用 PageUp/PageDown 滚动查看。");
     }
     else if (command == QStringLiteral("palette"))
     {
-        result.messages << QStringLiteral("Press Ctrl+P, Tab, or type / to open the command palette.");
+        result.messages << QStringLiteral("按 Ctrl+P、Tab，或输入 / 打开命令面板。");
     }
     else if (command == QStringLiteral("theme") && tokens.value(1).toLower() == QStringLiteral("dark"))
     {
-        result.messages << QStringLiteral("Dark terminal theme is active.");
+        result.messages << QStringLiteral("深色终端主题已启用。");
     }
     else
     {
-        result.messages << QStringLiteral("Unknown command: %1").arg(normalized)
-                        << QStringLiteral("Type /help for available commands.");
+        result.messages << QStringLiteral("未知命令：%1").arg(normalized)
+                        << QStringLiteral("输入 /help 查看可用命令。");
     }
 
     return result;
@@ -116,53 +116,55 @@ SkyTuiCommandResult SkyTuiController::executeCommand(const QString& line)
 QList<SkyTuiCommandItem> SkyTuiController::commandPalette() const
 {
     return {
-        {QStringLiteral("/help"), QStringLiteral("Show command help")},
-        {QStringLiteral("/status"), QStringLiteral("Print sky runtime status")},
-        {QStringLiteral("/devices"), QStringLiteral("Print device states")},
-        {QStringLiteral("/connect epsilon"), QStringLiteral("Connect EPSILON on the sky host")},
-        {QStringLiteral("/disconnect epsilon"), QStringLiteral("Disconnect EPSILON")},
-        {QStringLiteral("/reconnect epsilon"), QStringLiteral("Reconnect EPSILON")},
-        {QStringLiteral("/connect ptb"), QStringLiteral("Connect PTB")},
-        {QStringLiteral("/disconnect ptb"), QStringLiteral("Disconnect PTB")},
-        {QStringLiteral("/reconnect ptb"), QStringLiteral("Reconnect PTB")},
-        {QStringLiteral("/connect hmp"), QStringLiteral("Connect HMP")},
-        {QStringLiteral("/disconnect hmp"), QStringLiteral("Disconnect HMP")},
-        {QStringLiteral("/reconnect hmp"), QStringLiteral("Reconnect HMP")},
-        {QStringLiteral("/connect lidar"), QStringLiteral("Connect Lidar")},
-        {QStringLiteral("/disconnect lidar"), QStringLiteral("Disconnect Lidar")},
-        {QStringLiteral("/reconnect lidar"), QStringLiteral("Reconnect Lidar")},
-        {QStringLiteral("/connect wave"), QStringLiteral("Connect Wave TCP source")},
-        {QStringLiteral("/disconnect wave"), QStringLiteral("Disconnect Wave TCP source")},
-        {QStringLiteral("/reconnect wave"), QStringLiteral("Reconnect Wave TCP source")},
-        {QStringLiteral("/connect all"), QStringLiteral("Connect all enabled sky devices")},
-        {QStringLiteral("/disconnect all"), QStringLiteral("Disconnect all sky devices")},
-        {QStringLiteral("/reconnect all"), QStringLiteral("Reconnect all sky devices")},
-        {QStringLiteral("/record start"), QStringLiteral("Start sky session recording")},
-        {QStringLiteral("/record pause"), QStringLiteral("Pause sky session recording")},
-        {QStringLiteral("/record stop"), QStringLiteral("Stop sky session recording")},
-        {QStringLiteral("/waveform on"), QStringLiteral("Enable downsampled waveform streaming")},
-        {QStringLiteral("/waveform off"), QStringLiteral("Disable waveform streaming")},
-        {QStringLiteral("/waveform once"), QStringLiteral("Send one waveform frame now")},
-        {QStringLiteral("/config show"), QStringLiteral("Show current sky_config JSON")},
-        {QStringLiteral("/clear"), QStringLiteral("Clear visible log buffer")},
-        {QStringLiteral("/quit"), QStringLiteral("Stop runtime and exit VaporViewSky")},
+        {QStringLiteral("/help"), QStringLiteral("显示帮助和快捷键说明")},
+        {QStringLiteral("/status"), QStringLiteral("查看天空端运行状态、记录状态和链路统计")},
+        {QStringLiteral("/devices"), QStringLiteral("查看 EPSILON/PTB/HMP/Lidar/Wave TCP 设备状态")},
+        {QStringLiteral("/connect epsilon"), QStringLiteral("请求天空端连接 EPSILON")},
+        {QStringLiteral("/disconnect epsilon"), QStringLiteral("请求天空端断开 EPSILON")},
+        {QStringLiteral("/reconnect epsilon"), QStringLiteral("请求天空端重连 EPSILON")},
+        {QStringLiteral("/connect ptb"), QStringLiteral("请求天空端连接 PTB 气压计")},
+        {QStringLiteral("/disconnect ptb"), QStringLiteral("请求天空端断开 PTB 气压计")},
+        {QStringLiteral("/reconnect ptb"), QStringLiteral("请求天空端重连 PTB 气压计")},
+        {QStringLiteral("/connect hmp"), QStringLiteral("请求天空端连接 HMP 温湿度计")},
+        {QStringLiteral("/disconnect hmp"), QStringLiteral("请求天空端断开 HMP 温湿度计")},
+        {QStringLiteral("/reconnect hmp"), QStringLiteral("请求天空端重连 HMP 温湿度计")},
+        {QStringLiteral("/connect lidar"), QStringLiteral("请求天空端连接激光测距模块")},
+        {QStringLiteral("/disconnect lidar"), QStringLiteral("请求天空端断开激光测距模块")},
+        {QStringLiteral("/reconnect lidar"), QStringLiteral("请求天空端重连激光测距模块")},
+        {QStringLiteral("/connect wave"), QStringLiteral("请求天空端连接二次谐波 TCP 波形源")},
+        {QStringLiteral("/disconnect wave"), QStringLiteral("请求天空端断开二次谐波 TCP 波形源")},
+        {QStringLiteral("/reconnect wave"), QStringLiteral("请求天空端重连二次谐波 TCP 波形源")},
+        {QStringLiteral("/connect all"), QStringLiteral("连接所有已启用的天空端设备")},
+        {QStringLiteral("/disconnect all"), QStringLiteral("断开所有天空端设备")},
+        {QStringLiteral("/reconnect all"), QStringLiteral("重连所有已启用的天空端设备")},
+        {QStringLiteral("/record start"), QStringLiteral("开始天空端本地 session 记录")},
+        {QStringLiteral("/record pause"), QStringLiteral("暂停天空端本地 session 记录")},
+        {QStringLiteral("/record stop"), QStringLiteral("停止天空端本地 session 记录")},
+        {QStringLiteral("/waveform on"), QStringLiteral("开启降采样二次谐波波形下传")},
+        {QStringLiteral("/waveform off"), QStringLiteral("关闭降采样二次谐波波形下传")},
+        {QStringLiteral("/waveform once"), QStringLiteral("立即发送一帧降采样波形")},
+        {QStringLiteral("/config show"), QStringLiteral("显示当前 sky_config JSON 配置")},
+        {QStringLiteral("/clear"), QStringLiteral("清空当前可视日志")},
+        {QStringLiteral("/quit"), QStringLiteral("安全停止天空端并退出 VaporViewSky")},
     };
 }
 
 QStringList SkyTuiController::helpLines() const
 {
     return {
-        QStringLiteral("Commands:"),
-        QStringLiteral("  help, h, /help"),
-        QStringLiteral("  status, s, /status"),
-        QStringLiteral("  devices, /devices"),
-        QStringLiteral("  connect|disconnect|reconnect epsilon|ptb|hmp|lidar|wave|all"),
-        QStringLiteral("  record start|pause|stop"),
-        QStringLiteral("  waveform on|off|once"),
-        QStringLiteral("  config show, cfg"),
-        QStringLiteral("  clear, logs, palette, theme dark"),
-        QStringLiteral("  quit, exit, stop, /quit"),
-        QStringLiteral("Keys: Enter execute, Ctrl+P palette, Tab commands, Esc close, Ctrl+L clear, q quit when input is empty."),
+        QStringLiteral("命令列表："),
+        QStringLiteral("  help, h, /help                 # 显示帮助"),
+        QStringLiteral("  status, s, /status             # 查看天空端运行状态"),
+        QStringLiteral("  devices, /devices              # 查看设备状态"),
+        QStringLiteral("  connect <device>               # 连接设备：epsilon/ptb/hmp/lidar/wave/all"),
+        QStringLiteral("  disconnect <device>            # 断开设备"),
+        QStringLiteral("  reconnect <device>             # 重连设备"),
+        QStringLiteral("  record start|pause|stop        # 控制天空端本地记录"),
+        QStringLiteral("  waveform on|off|once           # 控制二次谐波波形下传"),
+        QStringLiteral("  config show, cfg               # 显示当前配置 JSON"),
+        QStringLiteral("  clear, logs, palette, theme dark # 日志、命令面板和主题辅助命令"),
+        QStringLiteral("  quit, exit, stop, /quit        # 安全退出天空端"),
+        QStringLiteral("快捷键：Enter 执行，Ctrl+P 命令面板，Tab 候选，Esc 关闭，Ctrl+L 清屏，输入框为空时 q 退出。"),
     };
 }
 
@@ -205,14 +207,14 @@ SkyTuiCommandResult SkyTuiController::handleDeviceCommand(const QString& action,
     SkyTuiCommandResult result;
     if (!runtime_)
     {
-        result.messages << QStringLiteral("SkyRuntime is unavailable.");
+        result.messages << QStringLiteral("SkyRuntime 不可用。");
         return result;
     }
 
     SkyDeviceId id = SkyDeviceId::All;
     if (!parseDeviceName(deviceName, id))
     {
-        result.messages << QStringLiteral("Invalid device. Use epsilon, ptb, hmp, lidar, wave, or all.");
+        result.messages << QStringLiteral("设备名无效。可用：epsilon、ptb、hmp、lidar、wave、all。");
         return result;
     }
 
@@ -221,7 +223,7 @@ SkyTuiCommandResult SkyTuiController::handleDeviceCommand(const QString& action,
         if (action == QStringLiteral("connect")) runtime_->connectAllDevices();
         if (action == QStringLiteral("disconnect")) runtime_->disconnectAllDevices();
         if (action == QStringLiteral("reconnect")) runtime_->reconnectAllDevices();
-        result.messages << QStringLiteral("%1 all: ok").arg(action);
+        result.messages << QStringLiteral("%1 all：成功").arg(action);
         return result;
     }
 
@@ -232,7 +234,7 @@ SkyTuiCommandResult SkyTuiController::handleDeviceCommand(const QString& action,
     if (action == QStringLiteral("reconnect")) ok = runtime_->reconnectDevice(id, &error);
 
     result.messages << QStringLiteral("%1 %2: %3")
-                           .arg(action, skyDeviceIdName(id), ok ? QStringLiteral("ok") : commandErrorText(error));
+                           .arg(action, skyDeviceIdName(id), ok ? QStringLiteral("成功") : commandErrorText(error));
     return result;
 }
 
@@ -241,7 +243,7 @@ SkyTuiCommandResult SkyTuiController::handleRecordCommand(const QString& action)
     SkyTuiCommandResult result;
     if (!runtime_)
     {
-        result.messages << QStringLiteral("SkyRuntime is unavailable.");
+        result.messages << QStringLiteral("SkyRuntime 不可用。");
         return result;
     }
 
@@ -261,11 +263,11 @@ SkyTuiCommandResult SkyTuiController::handleRecordCommand(const QString& action)
     }
     else
     {
-        result.messages << QStringLiteral("Usage: record start|pause|stop");
+        result.messages << QStringLiteral("用法：record start|pause|stop");
         return result;
     }
 
-    result.messages << QStringLiteral("record %1: %2").arg(action, ok ? QStringLiteral("ok") : error);
+    result.messages << QStringLiteral("record %1：%2").arg(action, ok ? QStringLiteral("成功") : error);
     return result;
 }
 
@@ -274,28 +276,28 @@ SkyTuiCommandResult SkyTuiController::handleWaveformCommand(const QString& actio
     SkyTuiCommandResult result;
     if (!runtime_)
     {
-        result.messages << QStringLiteral("SkyRuntime is unavailable.");
+        result.messages << QStringLiteral("SkyRuntime 不可用。");
         return result;
     }
 
     if (action == QStringLiteral("on"))
     {
         runtime_->setWaveformStreamingEnabled(true);
-        result.messages << QStringLiteral("waveform streaming: on");
+        result.messages << QStringLiteral("波形下传：开启");
     }
     else if (action == QStringLiteral("off"))
     {
         runtime_->setWaveformStreamingEnabled(false);
-        result.messages << QStringLiteral("waveform streaming: off");
+        result.messages << QStringLiteral("波形下传：关闭");
     }
     else if (action == QStringLiteral("once"))
     {
         runtime_->sendOneWaveformNow();
-        result.messages << QStringLiteral("waveform once: sent if data is available");
+        result.messages << QStringLiteral("已请求立即发送一帧波形，如当前有数据则会发送。");
     }
     else
     {
-        result.messages << QStringLiteral("Usage: waveform on|off|once");
+        result.messages << QStringLiteral("用法：waveform on|off|once");
     }
     return result;
 }
@@ -304,24 +306,24 @@ QStringList SkyTuiController::statusLines() const
 {
     if (!runtime_)
     {
-        return {QStringLiteral("SkyRuntime is unavailable.")};
+        return {QStringLiteral("SkyRuntime 不可用。")};
     }
     const TelemetryStatus status = runtime_->currentStatus();
     return {
-        QStringLiteral("Running: %1").arg(yesNo(runtime_->isRunning())),
-        QStringLiteral("Telemetry port: %1").arg(options_.telemetry_port),
-        QStringLiteral("Telemetry baud: %1").arg(options_.telemetry_baud),
-        QStringLiteral("Recording state: %1").arg(recordingStateText(status.recording_state)),
-        QStringLiteral("Session name: %1").arg(status.session_name.isEmpty() ? QStringLiteral("-") : status.session_name),
-        QStringLiteral("Disk free: %1 bytes").arg(status.disk_free_bytes),
-        QStringLiteral("Basic telemetry rate: %1 Hz").arg(status.telemetry_basic_rate_hz),
-        QStringLiteral("Feature rate: %1 Hz").arg(status.feature_rate_hz),
-        QStringLiteral("Waveform rate: %1 Hz").arg(status.waveform_rate_hz),
-        QStringLiteral("Heartbeat rate: %1 Hz").arg(status.heartbeat_rate_hz),
-        QStringLiteral("Status rate: %1 Hz").arg(status.status_rate_hz),
-        QStringLiteral("Waveform streaming: %1").arg(runtime_->waveformStreamingEnabled() ? QStringLiteral("on") : QStringLiteral("off")),
-        QStringLiteral("RX total frames: %1").arg(status.rx_total_frames),
-        QStringLiteral("CRC error count: %1").arg(status.crc_error_count),
+        QStringLiteral("运行中：%1").arg(yesNo(runtime_->isRunning())),
+        QStringLiteral("数传串口：%1").arg(options_.telemetry_port),
+        QStringLiteral("数传波特率：%1").arg(options_.telemetry_baud),
+        QStringLiteral("记录状态：%1").arg(recordingStateText(status.recording_state)),
+        QStringLiteral("Session：%1").arg(status.session_name.isEmpty() ? QStringLiteral("-") : status.session_name),
+        QStringLiteral("剩余磁盘：%1 bytes").arg(status.disk_free_bytes),
+        QStringLiteral("基础遥测频率：%1 Hz").arg(status.telemetry_basic_rate_hz),
+        QStringLiteral("特征值频率：%1 Hz").arg(status.feature_rate_hz),
+        QStringLiteral("波形频率：%1 Hz").arg(status.waveform_rate_hz),
+        QStringLiteral("心跳频率：%1 Hz").arg(status.heartbeat_rate_hz),
+        QStringLiteral("状态频率：%1 Hz").arg(status.status_rate_hz),
+        QStringLiteral("波形下传：%1").arg(runtime_->waveformStreamingEnabled() ? QStringLiteral("开启") : QStringLiteral("关闭")),
+        QStringLiteral("接收帧数：%1").arg(status.rx_total_frames),
+        QStringLiteral("CRC 错误：%1").arg(status.crc_error_count),
     };
 }
 
@@ -329,13 +331,13 @@ QStringList SkyTuiController::deviceLines() const
 {
     if (!runtime_)
     {
-        return {QStringLiteral("SkyRuntime is unavailable.")};
+        return {QStringLiteral("SkyRuntime 不可用。")};
     }
     QStringList lines;
     const TelemetryStatus status = runtime_->currentStatus();
     for (const DeviceStatusItem& item : status.devices)
     {
-        lines << QStringLiteral("%1: %2 rx=%3 errors=%4 last_us=%5 error_code=%6")
+        lines << QStringLiteral("%1：%2  接收=%3  错误=%4  最近数据(us)=%5  错误码=%6")
                      .arg(skyDeviceIdName(item.device_id),
                           deviceStateName(item.state))
                      .arg(item.rx_count)
@@ -343,17 +345,17 @@ QStringList SkyTuiController::deviceLines() const
                      .arg(item.last_data_time_us)
                      .arg(item.error_code);
     }
-    return lines.isEmpty() ? QStringList{QStringLiteral("No device status available yet.")} : lines;
+    return lines.isEmpty() ? QStringList{QStringLiteral("暂无设备状态。")} : lines;
 }
 
 QStringList SkyTuiController::configLines() const
 {
     if (!runtime_)
     {
-        return {QStringLiteral("SkyRuntime is unavailable.")};
+        return {QStringLiteral("SkyRuntime 不可用。")};
     }
     QStringList lines;
-    lines << QStringLiteral("SkyConfig:");
+    lines << QStringLiteral("天空端配置 SkyConfig：");
     lines << jsonLines(runtime_->currentConfig().toJson());
     return lines;
 }
@@ -363,11 +365,11 @@ QString SkyTuiController::recordingStateText(quint8 state) const
     switch (state)
     {
     case 1:
-        return QStringLiteral("recording");
+        return QStringLiteral("记录中");
     case 2:
-        return QStringLiteral("paused");
+        return QStringLiteral("已暂停");
     default:
-        return QStringLiteral("off");
+        return QStringLiteral("未记录");
     }
 }
 
@@ -376,33 +378,33 @@ QString SkyTuiController::commandErrorText(CommandErrorCode error) const
     switch (error)
     {
     case CommandErrorCode::Ok:
-        return QStringLiteral("ok");
+        return QStringLiteral("成功");
     case CommandErrorCode::DeviceAlreadyConnected:
-        return QStringLiteral("device already connected");
+        return QStringLiteral("设备已连接");
     case CommandErrorCode::DeviceNotConnected:
-        return QStringLiteral("device not connected");
+        return QStringLiteral("设备未连接");
     case CommandErrorCode::DeviceConnectFailed:
-        return QStringLiteral("device connect failed");
+        return QStringLiteral("设备连接失败");
     case CommandErrorCode::DeviceDisconnectFailed:
-        return QStringLiteral("device disconnect failed");
+        return QStringLiteral("设备断开失败");
     case CommandErrorCode::DeviceReconnectFailed:
-        return QStringLiteral("device reconnect failed");
+        return QStringLiteral("设备重连失败");
     case CommandErrorCode::InvalidDeviceId:
-        return QStringLiteral("invalid device id");
+        return QStringLiteral("设备 ID 无效");
     case CommandErrorCode::InvalidPayload:
-        return QStringLiteral("invalid payload");
+        return QStringLiteral("载荷无效");
     case CommandErrorCode::ConfigInvalid:
-        return QStringLiteral("config invalid");
+        return QStringLiteral("配置无效");
     case CommandErrorCode::ConfigApplyFailed:
-        return QStringLiteral("config apply failed");
+        return QStringLiteral("配置应用失败");
     case CommandErrorCode::ConfigSaveFailed:
-        return QStringLiteral("config save failed");
+        return QStringLiteral("配置保存失败");
     case CommandErrorCode::RecordingAlreadyStarted:
-        return QStringLiteral("recording already started");
+        return QStringLiteral("记录已经开始");
     case CommandErrorCode::RecordingNotStarted:
-        return QStringLiteral("recording not started");
+        return QStringLiteral("记录尚未开始");
     default:
-        return QStringLiteral("error %1").arg(static_cast<quint32>(error));
+        return QStringLiteral("错误 %1").arg(static_cast<quint32>(error));
     }
 }
 

@@ -83,7 +83,7 @@ SkyTuiApp::SkyTuiApp(SkyRuntime *runtime, const SkyRuntimeOptions& options, QObj
     if (runtime_)
     {
         connect(runtime_, &SkyRuntime::runningChanged, this, [this](bool running) {
-            appendLog(running ? QStringLiteral("SkyRuntime running") : QStringLiteral("SkyRuntime stopped"));
+            appendLog(running ? QStringLiteral("天空端运行中") : QStringLiteral("天空端已停止"));
         });
     }
 }
@@ -107,8 +107,8 @@ void SkyTuiApp::start()
 
     model_.config = runtime_ ? runtime_->currentConfig() : SkyConfig::defaults();
     refreshStatus();
-    appendLog(QStringLiteral("VaporViewSky TUI started"));
-    appendLog(QStringLiteral("Type /help for commands. Press Ctrl+P for command palette."));
+    appendLog(QStringLiteral("VaporViewSky TUI 已启动"));
+    appendLog(QStringLiteral("输入 /help 查看命令，按 Ctrl+P 打开命令面板。"));
     startInputThread();
     status_timer_.start();
     scheduleRender();
@@ -146,7 +146,7 @@ void SkyTuiApp::render()
     int row = 1;
     drawLogo(output, row, size);
 
-    const int paletteHeight = model_.palette_visible ? std::min(7, std::max(4, size.rows / 5)) : 0;
+    const int paletteHeight = model_.palette_visible ? std::min(8, std::max(5, size.rows / 4)) : 0;
     const int paletteTop = model_.palette_visible ? size.rows - paletteHeight - 2 : size.rows;
     const int mainTop = std::min(row + 1, size.rows - 8);
     const int mainBottom = model_.palette_visible ? paletteTop - 1 : size.rows - 4;
@@ -440,6 +440,7 @@ void SkyTuiApp::executeCommand(const QString& command)
     }
 
     model_.last_command = normalized;
+    model_.show_logo = false;
     appendLog(QStringLiteral("sky> %1").arg(normalized));
     const SkyTuiCommandResult result = controller_.executeCommand(normalized);
     if (result.type == SkyTuiCommandResult::Type::ClearLogs)
@@ -460,7 +461,7 @@ void SkyTuiApp::executeCommand(const QString& command)
         return;
     }
 
-    model_.hint = QStringLiteral("Last command: %1").arg(plainCommand(normalized));
+    model_.hint = QStringLiteral("上一条命令：%1").arg(plainCommand(normalized));
     scheduleRender();
 }
 
@@ -471,12 +472,12 @@ void SkyTuiApp::requestQuit()
         return;
     }
     model_.quitting = true;
-    appendLog(QStringLiteral("Stopping sky runtime..."));
+    appendLog(QStringLiteral("正在停止天空端..."));
     if (runtime_)
     {
         runtime_->stop();
     }
-    appendLog(QStringLiteral("Bye."));
+    appendLog(QStringLiteral("已退出。"));
     restoreTerminal();
     QCoreApplication::quit();
 }
@@ -485,8 +486,8 @@ void SkyTuiApp::clearLogs()
 {
     model_.logs.clear();
     model_.log_scroll = 0;
-    model_.hint = QStringLiteral("Logs cleared");
-    appendLog(QStringLiteral("Visible log buffer cleared"));
+    model_.hint = QStringLiteral("日志已清空");
+    appendLog(QStringLiteral("已清空当前可视日志"));
 }
 
 void SkyTuiApp::setPaletteVisible(bool visible)
@@ -596,12 +597,20 @@ void SkyTuiApp::drawBox(QString& output, int top, int left, int bottom, int righ
 
 void SkyTuiApp::drawLogo(QString& output, int& row, const SkyTuiTerminalSize& size) const
 {
+    const QString title = QStringLiteral("VaporView Sky Mode");
+    if (!model_.show_logo)
+    {
+        drawText(output, row++, 2,
+                 SkyTuiTheme::bold() + SkyTuiTheme::foreground(SkyTuiTheme::yellow()) +
+                     fitPlain(title, size.columns - 4));
+    }
+    else
+    {
     const QStringList logo = SkyTuiTheme::logoLines();
     const int logoWidth = logo.isEmpty() ? 0 : logo.first().size();
     const bool compact = size.rows < 28 || size.columns < logoWidth + 4;
     if (compact)
     {
-        const QString title = QStringLiteral("VaporView Sky Mode");
         const int column = std::max(2, (size.columns - static_cast<int>(title.size())) / 2);
         drawText(output, row++, column,
                  SkyTuiTheme::bold() + SkyTuiTheme::foreground(SkyTuiTheme::yellow()) + title);
@@ -614,23 +623,23 @@ void SkyTuiApp::drawLogo(QString& output, int& row, const SkyTuiTerminalSize& si
             drawText(output, row++, column, SkyTuiTheme::gradientLogoLine(line));
         }
         ++row;
-        const QString title = QStringLiteral("VaporView Sky Mode");
         drawText(output, row++, std::max(2, (size.columns - static_cast<int>(title.size())) / 2),
                  SkyTuiTheme::bold() + SkyTuiTheme::foreground(SkyTuiTheme::yellow()) + title);
     }
+    }
 
     const QString configPath = options_.config_path.isEmpty()
-                                   ? QStringLiteral("(default sky_config.json)")
+                                   ? QStringLiteral("(默认 sky_config.json)")
                                    : options_.config_path;
-    QString summary = QStringLiteral("Port %1 @ %2 | Config %3 | Sim %4 | Wave %5:%6")
+    QString summary = QStringLiteral("数传 %1 @ %2 | 配置 %3 | 模拟数据 %4 | 波形源 %5:%6")
                           .arg(options_.telemetry_port)
                           .arg(options_.telemetry_baud)
                           .arg(configPath)
-                          .arg(options_.simulate_data ? QStringLiteral("on") : QStringLiteral("off"))
+                          .arg(options_.simulate_data ? QStringLiteral("开") : QStringLiteral("关"))
                           .arg(options_.wave_host)
                           .arg(options_.wave_port);
     summary = fitPlain(summary, size.columns - 4);
-    drawText(output, row++, std::max(2, (size.columns - static_cast<int>(summary.size())) / 2),
+    drawText(output, row++, model_.show_logo ? std::max(2, (size.columns - static_cast<int>(summary.size())) / 2) : 2,
              SkyTuiTheme::foreground(SkyTuiTheme::muted()) + summary);
 }
 
@@ -644,7 +653,7 @@ void SkyTuiApp::drawMainPanels(QString& output, int top, int bottom, const SkyTu
     const int leftRight = hasRightPanel ? right - rightWidth - gap : right;
     const int rightLeft = hasRightPanel ? leftRight + gap + 1 : right + 1;
 
-    drawBox(output, top, left, bottom, leftRight, QStringLiteral("Event Stream"));
+    drawBox(output, top, left, bottom, leftRight, QStringLiteral("日志流"));
     const int logRows = std::max(0, bottom - top - 1);
     const int logWidth = std::max(4, leftRight - left - 3);
     const int latestEnd = std::max(0, static_cast<int>(model_.logs.size()) - model_.log_scroll);
@@ -660,7 +669,7 @@ void SkyTuiApp::drawMainPanels(QString& output, int top, int bottom, const SkyTu
     {
         drawText(output, bottom - 1, left + 2,
                  SkyTuiTheme::foreground(SkyTuiTheme::yellow()) +
-                     QStringLiteral("Scrolled back %1 lines. PageDown/Down returns to live.").arg(model_.log_scroll));
+                     QStringLiteral("已向上滚动 %1 行。按 PageDown/Down 回到最新日志。").arg(model_.log_scroll));
     }
 
     if (!hasRightPanel)
@@ -668,7 +677,7 @@ void SkyTuiApp::drawMainPanels(QString& output, int top, int bottom, const SkyTu
         return;
     }
 
-    drawBox(output, top, rightLeft, bottom, right, QStringLiteral("Sky Status"));
+    drawBox(output, top, rightLeft, bottom, right, QStringLiteral("天空端状态"));
     const QStringList lines = statusPanelLines();
     const int contentWidth = std::max(4, right - rightLeft - 3);
     row = top + 1;
@@ -684,7 +693,7 @@ void SkyTuiApp::drawMainPanels(QString& output, int top, int bottom, const SkyTu
 
 void SkyTuiApp::drawPalette(QString& output, int top, int bottom, const SkyTuiTerminalSize& size)
 {
-    drawBox(output, top, 2, bottom, size.columns - 1, QStringLiteral("Command Palette"));
+    drawBox(output, top, 2, bottom, size.columns - 1, QStringLiteral("命令面板"));
     const QList<SkyTuiCommandItem> items = filteredPalette();
     clampPaletteSelection();
     const int maxRows = std::max(0, bottom - top - 1);
@@ -723,7 +732,7 @@ void SkyTuiApp::drawInput(QString& output, int row, const SkyTuiTerminalSize& si
 void SkyTuiApp::drawStatusBar(QString& output, int row, const SkyTuiTerminalSize& size) const
 {
     const QString path = QCoreApplication::applicationDirPath();
-    QString left = QStringLiteral(" tab commands  ctrl+p palette  ctrl+l clear  ctrl+c quit ");
+    QString left = QStringLiteral(" Tab 命令  Ctrl+P 面板  Ctrl+L 清屏  Ctrl+C 退出 ");
     QString right = QStringLiteral(" %1 ").arg(path);
     if (static_cast<int>(left.size() + right.size()) > size.columns)
     {
@@ -746,31 +755,31 @@ void SkyTuiApp::drawStatusBar(QString& output, int row, const SkyTuiTerminalSize
 QStringList SkyTuiApp::statusPanelLines() const
 {
     QStringList lines;
-    lines << QStringLiteral("Running: %1").arg(runtime_ && runtime_->isRunning() ? QStringLiteral("yes") : QStringLiteral("no"))
-          << QStringLiteral("Recording: %1").arg(recordingStateText(model_.status.recording_state))
+    lines << QStringLiteral("运行：%1").arg(runtime_ && runtime_->isRunning() ? QStringLiteral("是") : QStringLiteral("否"))
+          << QStringLiteral("记录：%1").arg(recordingStateText(model_.status.recording_state))
           << QStringLiteral("Session: %1").arg(model_.status.session_name.isEmpty() ? QStringLiteral("-") : model_.status.session_name)
-          << QStringLiteral("Disk: %1").arg(humanBytes(model_.status.disk_free_bytes))
-          << QStringLiteral("Waveform: %1").arg(runtime_ && runtime_->waveformStreamingEnabled() ? QStringLiteral("on") : QStringLiteral("off"))
-          << QStringLiteral("Rates: basic %1Hz").arg(model_.status.telemetry_basic_rate_hz, 0, 'f', 1)
-          << QStringLiteral("       feature %1Hz").arg(model_.status.feature_rate_hz, 0, 'f', 1)
-          << QStringLiteral("       waveform %1Hz").arg(model_.status.waveform_rate_hz, 0, 'f', 1)
-          << QStringLiteral("       heartbeat %1Hz").arg(model_.status.heartbeat_rate_hz, 0, 'f', 1)
-          << QStringLiteral("       status %1Hz").arg(model_.status.status_rate_hz, 0, 'f', 1)
-          << QStringLiteral("RX frames: %1").arg(model_.status.rx_total_frames)
-          << QStringLiteral("CRC errors: %1").arg(model_.status.crc_error_count)
+          << QStringLiteral("磁盘：%1").arg(humanBytes(model_.status.disk_free_bytes))
+          << QStringLiteral("波形下传：%1").arg(runtime_ && runtime_->waveformStreamingEnabled() ? QStringLiteral("开启") : QStringLiteral("关闭"))
+          << QStringLiteral("频率：基础 %1Hz").arg(model_.status.telemetry_basic_rate_hz, 0, 'f', 1)
+          << QStringLiteral("      特征 %1Hz").arg(model_.status.feature_rate_hz, 0, 'f', 1)
+          << QStringLiteral("      波形 %1Hz").arg(model_.status.waveform_rate_hz, 0, 'f', 1)
+          << QStringLiteral("      心跳 %1Hz").arg(model_.status.heartbeat_rate_hz, 0, 'f', 1)
+          << QStringLiteral("      状态 %1Hz").arg(model_.status.status_rate_hz, 0, 'f', 1)
+          << QStringLiteral("接收帧：%1").arg(model_.status.rx_total_frames)
+          << QStringLiteral("CRC 错误：%1").arg(model_.status.crc_error_count)
           << QStringLiteral("");
 
-    lines << SkyTuiTheme::bold() + SkyTuiTheme::foreground(SkyTuiTheme::accent()) + QStringLiteral("Devices") + SkyTuiTheme::reset();
+    lines << SkyTuiTheme::bold() + SkyTuiTheme::foreground(SkyTuiTheme::accent()) + QStringLiteral("设备") + SkyTuiTheme::reset();
     for (const DeviceStatusItem& item : model_.status.devices)
     {
         lines << QStringLiteral("%1: %2")
                      .arg(skyDeviceIdName(item.device_id), deviceStateColored(item.state));
-        lines << QStringLiteral("  rx %1  err %2").arg(item.rx_count).arg(item.error_count);
-        lines << QStringLiteral("  last %1  code %2").arg(item.last_data_time_us).arg(item.error_code);
+        lines << QStringLiteral("  接收 %1  错误 %2").arg(item.rx_count).arg(item.error_count);
+        lines << QStringLiteral("  最近 %1  错误码 %2").arg(item.last_data_time_us).arg(item.error_code);
     }
     if (model_.status.devices.isEmpty())
     {
-        lines << QStringLiteral("No device status yet");
+        lines << QStringLiteral("暂无设备状态");
     }
     return lines;
 }
@@ -798,11 +807,11 @@ QString SkyTuiApp::recordingStateText(quint8 state) const
     switch (state)
     {
     case 1:
-        return QStringLiteral("recording");
+        return QStringLiteral("记录中");
     case 2:
-        return QStringLiteral("paused");
+        return QStringLiteral("已暂停");
     default:
-        return QStringLiteral("off");
+        return QStringLiteral("未记录");
     }
 }
 

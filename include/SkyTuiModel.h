@@ -19,10 +19,11 @@ struct SkyTuiModel
     int palette_selected = 0;
     QStringList logs;
     int log_scroll = 0;
+    bool show_logo = true;
     TelemetryStatus status;
     SkyConfig config = SkyConfig::defaults();
     QString last_command;
-    QString hint = QStringLiteral("Type /help for commands");
+    QString hint = QStringLiteral("输入 /help 查看可用命令");
     bool quitting = false;
 };
 
