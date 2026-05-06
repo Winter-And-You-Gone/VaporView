@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 #include "RtkConfigDialog.h"
 #include "SessionViewerWindow.h"
+#include "SkyDeviceConfigDialog.h"
 #include "TcpWaveEncoding.h"
 #include "TcpWavePanel.h"
 #include "WindowSizing.h"
@@ -1808,6 +1809,9 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_rate_lbl_(nullptr)
     , hmp_rate_lbl_(nullptr)
     , lidar_rate_lbl_(nullptr)
+    , data_source_mode_lbl_(nullptr)
+    , sky_telemetry_port_lbl_(nullptr)
+    , sky_telemetry_baud_lbl_(nullptr)
     , global_rate_combo_(nullptr)
     , epsilon_rate_combo_(nullptr)
     , gnss_rate_combo_(nullptr)
@@ -1815,8 +1819,24 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_rate_combo_(nullptr)
     , hmp_rate_combo_(nullptr)
     , lidar_rate_combo_(nullptr)
+    , data_source_mode_combo_(nullptr)
+    , sky_telemetry_port_combo_(nullptr)
+    , sky_telemetry_baud_combo_(nullptr)
     , imu_format_combo_(nullptr)
     , epsilon_packet_rates_btn_(nullptr)
+    , sky_device_config_btn_(nullptr)
+    , epsilon_remote_connect_btn_(nullptr)
+    , epsilon_remote_disconnect_btn_(nullptr)
+    , epsilon_remote_reconnect_btn_(nullptr)
+    , ptb_remote_connect_btn_(nullptr)
+    , ptb_remote_disconnect_btn_(nullptr)
+    , ptb_remote_reconnect_btn_(nullptr)
+    , hmp_remote_connect_btn_(nullptr)
+    , hmp_remote_disconnect_btn_(nullptr)
+    , hmp_remote_reconnect_btn_(nullptr)
+    , lidar_remote_connect_btn_(nullptr)
+    , lidar_remote_disconnect_btn_(nullptr)
+    , lidar_remote_reconnect_btn_(nullptr)
     , imu_apply_btn_(nullptr)
     , imu_hi91_btn_(nullptr)
     , imu_hi92_btn_(nullptr)
@@ -1840,6 +1860,8 @@ MainWindow::MainWindow(QWidget *parent)
     , port_detection_in_progress_(false)
     , epsilon_reconfigure_in_progress_(false)
     , is_connected_(false)
+    , remote_sky_mode_(false)
+    , remote_recording_state_(0)
     , cancel_connection_requested_(false)
     , recording_thread_running_(false)
     , recording_paused_(false)
@@ -1896,6 +1918,8 @@ MainWindow::MainWindow(QWidget *parent)
     , rtk_config_dialog_(nullptr)
     , tcp_wave_panel_(nullptr)
     , session_viewer_window_(nullptr)
+    , ground_telemetry_service_(nullptr)
+    , sky_device_config_dialog_(nullptr)
 {
     const double currentPointSize = qApp->font().pointSizeF();
     base_font_point_size_ = currentPointSize > 0.0 ? currentPointSize : 10.0;
@@ -1931,6 +1955,21 @@ MainWindow::MainWindow(QWidget *parent)
     setupToolBar();
     setupStatusBar();
     setupCentralWidget();
+    ground_telemetry_service_ = new VaporView::GroundTelemetryService(this);
+    connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::linkOpenChanged,
+            this, &MainWindow::onRemoteLinkOpenChanged);
+    connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::logMessage,
+            this, [this](const QString& message) { log(message); });
+    connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::basicTelemetryUpdated,
+            this, &MainWindow::onRemoteBasicTelemetryUpdated);
+    connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::waveformUpdated,
+            this, &MainWindow::onRemoteWaveformUpdated);
+    connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::waveformFeatureUpdated,
+            this, &MainWindow::onRemoteWaveformFeatureUpdated);
+    connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::statusUpdated,
+            this, &MainWindow::onRemoteTelemetryStatusUpdated);
+    connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::commandAckReceived,
+            this, &MainWindow::onRemoteCommandAckReceived);
     loadRememberedInputState();
     bindRememberedInputState();
 
@@ -2397,11 +2436,34 @@ void MainWindow::loadRememberedInputState()
     loadCombo(ptb_rate_combo_, QStringLiteral("rate/ptb"));
     loadCombo(hmp_rate_combo_, QStringLiteral("rate/hmp"));
     loadCombo(lidar_rate_combo_, QStringLiteral("rate/lidar"));
+    loadCombo(data_source_mode_combo_, QStringLiteral("source/mode"));
+    loadCombo(sky_telemetry_port_combo_, QStringLiteral("telemetry/sky_port"));
+    loadCombo(sky_telemetry_baud_combo_, QStringLiteral("telemetry/sky_baud"));
 
     recording_export_rate_hz_ = std::clamp(settings.value("recording_export_rate_hz", recording_export_rate_hz_).toInt(), 1, 200);
     imu_recording_rate_hz_ = std::clamp(settings.value("imu_recording_rate_hz", imu_recording_rate_hz_).toInt(), 0, 1000);
     waveform_recording_rate_hz_ = 0;
     rebuildRecordingRateMenu();
+
+    const QStringList args = QCoreApplication::arguments();
+    const int sourceIndex = args.indexOf(QStringLiteral("--source"));
+    if (sourceIndex >= 0 && sourceIndex + 1 < args.size() &&
+        args.at(sourceIndex + 1).compare(QStringLiteral("remote"), Qt::CaseInsensitive) == 0 &&
+        data_source_mode_combo_)
+    {
+        data_source_mode_combo_->setCurrentIndex(1);
+    }
+    const int portIndex = args.indexOf(QStringLiteral("--telemetry-port"));
+    if (portIndex >= 0 && portIndex + 1 < args.size() && sky_telemetry_port_combo_)
+    {
+        sky_telemetry_port_combo_->setEditText(args.at(portIndex + 1));
+    }
+    const int baudIndex = args.indexOf(QStringLiteral("--telemetry-baud"));
+    if (baudIndex >= 0 && baudIndex + 1 < args.size() && sky_telemetry_baud_combo_)
+    {
+        sky_telemetry_baud_combo_->setCurrentText(args.at(baudIndex + 1));
+    }
+    onDataSourceModeChanged(data_source_mode_combo_ ? data_source_mode_combo_->currentIndex() : 0);
 }
 
 void MainWindow::saveRememberedInputState() const
@@ -2430,6 +2492,9 @@ void MainWindow::saveRememberedInputState() const
     saveCombo(QStringLiteral("rate/ptb"), ptb_rate_combo_);
     saveCombo(QStringLiteral("rate/hmp"), hmp_rate_combo_);
     saveCombo(QStringLiteral("rate/lidar"), lidar_rate_combo_);
+    saveCombo(QStringLiteral("source/mode"), data_source_mode_combo_);
+    saveCombo(QStringLiteral("telemetry/sky_port"), sky_telemetry_port_combo_);
+    saveCombo(QStringLiteral("telemetry/sky_baud"), sky_telemetry_baud_combo_);
     settings.setValue("recording_export_rate_hz", recording_export_rate_hz_);
     settings.setValue("imu_recording_rate_hz", imu_recording_rate_hz_);
     settings.setValue("waveform_recording_rate_hz", waveform_recording_rate_hz_);
@@ -2460,7 +2525,118 @@ void MainWindow::bindRememberedInputState()
     bindCombo(ptb_rate_combo_);
     bindCombo(hmp_rate_combo_);
     bindCombo(lidar_rate_combo_);
+    bindCombo(data_source_mode_combo_);
+    bindCombo(sky_telemetry_port_combo_);
+    bindCombo(sky_telemetry_baud_combo_);
 
+}
+
+bool MainWindow::isRemoteSkyMode() const
+{
+    return remote_sky_mode_;
+}
+
+void MainWindow::onDataSourceModeChanged(int index)
+{
+    remote_sky_mode_ = index == 1;
+    if (tcp_wave_panel_)
+    {
+        tcp_wave_panel_->setRemoteSkyMode(remote_sky_mode_);
+    }
+    updateSourceModeUi();
+    updateRecordingActionStates();
+}
+
+void MainWindow::updateSourceModeUi()
+{
+    const bool remote = isRemoteSkyMode();
+    const bool localInputsEnabled = !remote && !is_connected_ &&
+        !connection_attempt_in_progress_ && !port_detection_in_progress_ && !epsilon_reconfigure_in_progress_;
+    const QList<QWidget*> localWidgets = {epsilon_port_combo_, epsilon_baud_combo_, ptb_port_combo_, ptb_baud_combo_,
+                                          hmp_port_combo_, hmp_baud_combo_, lidar_port_combo_, lidar_baud_combo_,
+                                          epsilon_packet_rates_btn_, ptb_rate_combo_, hmp_rate_combo_, lidar_rate_combo_};
+    for (QWidget *widget : localWidgets)
+    {
+        if (widget)
+        {
+            widget->setEnabled(localInputsEnabled);
+        }
+    }
+    if (auto_detect_ports_btn_)
+    {
+        auto_detect_ports_btn_->setEnabled(!remote && !is_connected_ && !connection_attempt_in_progress_);
+    }
+    if (sky_telemetry_port_combo_) sky_telemetry_port_combo_->setEnabled(remote && !is_connected_ && !connection_attempt_in_progress_);
+    if (sky_telemetry_baud_combo_) sky_telemetry_baud_combo_->setEnabled(remote && !is_connected_ && !connection_attempt_in_progress_);
+    if (sky_device_config_btn_) sky_device_config_btn_->setEnabled(remote && ground_telemetry_service_ && ground_telemetry_service_->isOpen());
+    setRemoteDeviceButtonsEnabled(remote && ground_telemetry_service_ && ground_telemetry_service_->isOpen());
+}
+
+QPushButton *MainWindow::createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device)
+{
+    auto *button = new QPushButton(text, this);
+    button->setFixedSize(30, kMainPageInputHeight);
+    button->setToolTip(QStringLiteral("%1 %2").arg(static_cast<quint16>(command)).arg(VaporView::skyDeviceIdName(device)));
+    connect(button, &QPushButton::clicked, this, [this, command, device]() {
+        sendRemoteDeviceCommand(command, device);
+    });
+    return button;
+}
+
+void MainWindow::setRemoteDeviceButtonsEnabled(bool enabled)
+{
+    for (QPushButton *button : {epsilon_remote_connect_btn_, epsilon_remote_disconnect_btn_, epsilon_remote_reconnect_btn_,
+                               ptb_remote_connect_btn_, ptb_remote_disconnect_btn_, ptb_remote_reconnect_btn_,
+                               hmp_remote_connect_btn_, hmp_remote_disconnect_btn_, hmp_remote_reconnect_btn_,
+                               lidar_remote_connect_btn_, lidar_remote_disconnect_btn_, lidar_remote_reconnect_btn_})
+    {
+        if (button)
+        {
+            button->setVisible(isRemoteSkyMode());
+            button->setEnabled(enabled);
+        }
+    }
+}
+
+void MainWindow::sendRemoteDeviceCommand(VaporView::CommandId command, VaporView::SkyDeviceId device)
+{
+    if (!ground_telemetry_service_ || !ground_telemetry_service_->isOpen())
+    {
+        log(is_english_ ? "Remote Sky telemetry link is not connected" : "天空端数传链路未连接");
+        return;
+    }
+    ground_telemetry_service_->sendDeviceCommand(command, device);
+}
+
+void MainWindow::updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, VaporView::DeviceState state)
+{
+    QPushButton *connectButton = nullptr;
+    QPushButton *disconnectButton = nullptr;
+    QPushButton *reconnectButton = nullptr;
+    switch (device)
+    {
+    case VaporView::SkyDeviceId::Epsilon:
+        connectButton = epsilon_remote_connect_btn_; disconnectButton = epsilon_remote_disconnect_btn_; reconnectButton = epsilon_remote_reconnect_btn_;
+        break;
+    case VaporView::SkyDeviceId::Ptb:
+        connectButton = ptb_remote_connect_btn_; disconnectButton = ptb_remote_disconnect_btn_; reconnectButton = ptb_remote_reconnect_btn_;
+        break;
+    case VaporView::SkyDeviceId::Hmp:
+        connectButton = hmp_remote_connect_btn_; disconnectButton = hmp_remote_disconnect_btn_; reconnectButton = hmp_remote_reconnect_btn_;
+        break;
+    case VaporView::SkyDeviceId::Lidar:
+        connectButton = lidar_remote_connect_btn_; disconnectButton = lidar_remote_disconnect_btn_; reconnectButton = lidar_remote_reconnect_btn_;
+        break;
+    case VaporView::SkyDeviceId::WaveTcp:
+        if (tcp_wave_panel_) tcp_wave_panel_->setRemoteWaveTcpState(state);
+        return;
+    case VaporView::SkyDeviceId::All:
+        return;
+    }
+    const QString suffix = VaporView::deviceStateName(state).left(1).toUpper();
+    if (connectButton) connectButton->setText(QStringLiteral("C%1").arg(suffix));
+    if (disconnectButton) disconnectButton->setText(QStringLiteral("D"));
+    if (reconnectButton) reconnectButton->setText(QStringLiteral("R"));
 }
 
 void MainWindow::setImuFormatSelection(const QString& format)
@@ -3210,7 +3386,48 @@ void MainWindow::setupConfigPanel()
     connect(auto_detect_ports_btn_, &QPushButton::clicked, this, &MainWindow::onAutoDetectPortsClicked);
     config_layout->addWidget(auto_detect_ports_btn_, 0, 1, 1, 2, Qt::AlignVCenter | Qt::AlignLeft);
 
-    int row = 1;
+    data_source_mode_lbl_ = new QLabel(this);
+    data_source_mode_lbl_->setObjectName("fieldLabel");
+    data_source_mode_combo_ = new QComboBox(this);
+    data_source_mode_combo_->addItem(QStringLiteral("Local"));
+    data_source_mode_combo_->addItem(QStringLiteral("Remote Sky"));
+    data_source_mode_combo_->setFixedHeight(kMainPageInputHeight);
+    connect(data_source_mode_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onDataSourceModeChanged);
+    config_layout->addWidget(data_source_mode_lbl_, 0, 3, Qt::AlignVCenter | Qt::AlignRight);
+    config_layout->addWidget(data_source_mode_combo_, 0, 4, Qt::AlignVCenter);
+
+    sky_device_config_btn_ = new QPushButton(this);
+    sky_device_config_btn_->setFixedHeight(kMainPageButtonHeight);
+    sky_device_config_btn_->setMinimumWidth(150);
+    connect(sky_device_config_btn_, &QPushButton::clicked, this, &MainWindow::onSkyDeviceConfigClicked);
+    config_layout->addWidget(sky_device_config_btn_, 0, 5, Qt::AlignVCenter | Qt::AlignLeft);
+
+    sky_telemetry_port_lbl_ = new QLabel(this);
+    sky_telemetry_port_lbl_->setObjectName("fieldLabel");
+    sky_telemetry_port_combo_ = new QComboBox(this);
+    sky_telemetry_port_combo_->addItems(ports);
+    sky_telemetry_port_combo_->setEditable(true);
+    sky_telemetry_port_combo_->setFixedHeight(kMainPageInputHeight);
+    sky_telemetry_port_combo_->setMinimumWidth(160);
+#ifdef _WIN32
+    sky_telemetry_port_combo_->setEditText(QStringLiteral("COM11"));
+#else
+    sky_telemetry_port_combo_->setEditText(QStringLiteral("/tmp/vapor_ground"));
+#endif
+    sky_telemetry_baud_lbl_ = new QLabel(this);
+    sky_telemetry_baud_lbl_->setObjectName("fieldLabel");
+    sky_telemetry_baud_combo_ = new QComboBox(this);
+    sky_telemetry_baud_combo_->addItems(baudRates);
+    sky_telemetry_baud_combo_->setCurrentText(QStringLiteral("921600"));
+    sky_telemetry_baud_combo_->setFixedHeight(kMainPageInputHeight);
+    sky_telemetry_baud_combo_->setFixedWidth(100);
+    config_layout->addWidget(sky_telemetry_port_lbl_, 1, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    config_layout->addWidget(sky_telemetry_port_combo_, 1, 1, Qt::AlignVCenter);
+    config_layout->addWidget(sky_telemetry_baud_lbl_, 1, 2, Qt::AlignVCenter | Qt::AlignRight);
+    config_layout->addWidget(sky_telemetry_baud_combo_, 1, 3, Qt::AlignVCenter);
+
+    int row = 2;
 
 #ifdef _WIN32
     createPortRow(epsilon_lbl_, epsilon_port_combo_, epsilon_baud_combo_, epsilon_rate_lbl_, epsilon_rate_combo_, "COM3", "921600", row++, 200);
@@ -3224,6 +3441,29 @@ void MainWindow::setupConfigPanel()
     createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "/dev/ttyLidar", "500000", row++, 100);
 #endif
 
+    auto addRemoteButtons = [this, config_layout](int rowIndex,
+                                                  QPushButton*& connectButton,
+                                                  QPushButton*& disconnectButton,
+                                                  QPushButton*& reconnectButton,
+                                                  VaporView::SkyDeviceId device) {
+        auto *buttons = new QWidget(this);
+        auto *layout = new QHBoxLayout(buttons);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(4);
+        connectButton = createRemoteDeviceButton(QStringLiteral("C"), VaporView::CommandId::ConnectDevice, device);
+        disconnectButton = createRemoteDeviceButton(QStringLiteral("D"), VaporView::CommandId::DisconnectDevice, device);
+        reconnectButton = createRemoteDeviceButton(QStringLiteral("R"), VaporView::CommandId::ReconnectDevice, device);
+        layout->addWidget(connectButton);
+        layout->addWidget(disconnectButton);
+        layout->addWidget(reconnectButton);
+        layout->addStretch();
+        config_layout->addWidget(buttons, rowIndex, 5, Qt::AlignVCenter | Qt::AlignLeft);
+    };
+    addRemoteButtons(2, epsilon_remote_connect_btn_, epsilon_remote_disconnect_btn_, epsilon_remote_reconnect_btn_, VaporView::SkyDeviceId::Epsilon);
+    addRemoteButtons(3, ptb_remote_connect_btn_, ptb_remote_disconnect_btn_, ptb_remote_reconnect_btn_, VaporView::SkyDeviceId::Ptb);
+    addRemoteButtons(4, hmp_remote_connect_btn_, hmp_remote_disconnect_btn_, hmp_remote_reconnect_btn_, VaporView::SkyDeviceId::Hmp);
+    addRemoteButtons(5, lidar_remote_connect_btn_, lidar_remote_disconnect_btn_, lidar_remote_reconnect_btn_, VaporView::SkyDeviceId::Lidar);
+
     if (epsilon_rate_combo_)
     {
         config_layout->removeWidget(epsilon_rate_combo_);
@@ -3233,7 +3473,7 @@ void MainWindow::setupConfigPanel()
         epsilon_packet_rates_btn_->setFixedHeight(kMainPageInputHeight);
         epsilon_packet_rates_btn_->setMinimumWidth(140);
         connect(epsilon_packet_rates_btn_, &QPushButton::clicked, this, &MainWindow::onConfigureEpsilonPacketRatesClicked);
-        config_layout->addWidget(epsilon_packet_rates_btn_, 1, 4, Qt::AlignVCenter);
+        config_layout->addWidget(epsilon_packet_rates_btn_, 2, 4, Qt::AlignVCenter);
     }
 
     for (QComboBox *combo : {ptb_rate_combo_, hmp_rate_combo_, lidar_rate_combo_})
@@ -3330,6 +3570,10 @@ void MainWindow::setupDataPanels()
             this, &MainWindow::onTcpRawWaveFrameReady);
     connect(tcp_wave_panel_, &TcpWavePanel::connectionStateChanged, this, [this](bool) {
         updateRecordingActionStates();
+    });
+    connect(tcp_wave_panel_, &TcpWavePanel::remoteWaveTcpConnectionRequested, this, [this](bool connectRequested) {
+        sendRemoteDeviceCommand(connectRequested ? VaporView::CommandId::ConnectDevice : VaporView::CommandId::DisconnectDevice,
+                                VaporView::SkyDeviceId::WaveTcp);
     });
     tcpWaveLayout->addWidget(tcp_wave_panel_);
     main_layout_->addWidget(tcp_wave_group_, 0);
@@ -3451,6 +3695,16 @@ void MainWindow::setEnglish(bool english)
     {
         config_inline_title_lbl_->setText(english ? "Serial Port Configuration" : "串口配置");
     }
+    if (data_source_mode_lbl_) data_source_mode_lbl_->setText(english ? "Source:" : "数据源:");
+    if (sky_telemetry_port_lbl_) sky_telemetry_port_lbl_->setText(english ? "Sky Telemetry:" : "天空端数传:");
+    if (sky_telemetry_baud_lbl_) sky_telemetry_baud_lbl_->setText(english ? "Baud:" : "波特率:");
+    if (sky_device_config_btn_) sky_device_config_btn_->setText(english ? "Sky Device Config" : "天空端设备配置");
+    if (data_source_mode_combo_)
+    {
+        const QSignalBlocker blocker(data_source_mode_combo_);
+        data_source_mode_combo_->setItemText(0, QStringLiteral("Local"));
+        data_source_mode_combo_->setItemText(1, QStringLiteral("Remote Sky"));
+    }
     if (auto_detect_ports_btn_)
     {
         auto_detect_ports_btn_->setText(port_detection_in_progress_
@@ -3567,6 +3821,7 @@ void MainWindow::setEnglish(bool english)
     if (hmp_panel_) hmp_panel_->setEnglish(english);
     if (lidar_panel_) lidar_panel_->setEnglish(english);
     if (tcp_wave_panel_) tcp_wave_panel_->setEnglish(english);
+    if (sky_device_config_dialog_) sky_device_config_dialog_->setEnglish(english);
 
     const CollectorSnapshot collectors = snapshotCollectors();
     if (collectors.epsilon) collectors.epsilon->setEnglish(english);
@@ -4043,6 +4298,29 @@ void MainWindow::updateRecordingStatusLabel()
 {
     if (!recording_status_label_)
     {
+        return;
+    }
+
+    if (isRemoteSkyMode())
+    {
+        if (remote_recording_state_ == 1)
+        {
+            recording_status_label_->setText(is_english_ ? "Sky Recording: On" : "天空端记录: 进行中");
+            recording_status_label_->setProperty("status", "connected");
+        }
+        else if (remote_recording_state_ == 2)
+        {
+            recording_status_label_->setText(is_english_ ? "Sky Recording: Paused" : "天空端记录: 已暂停");
+            recording_status_label_->setProperty("status", "connecting");
+        }
+        else
+        {
+            recording_status_label_->setText(is_english_ ? "Sky Recording: Off" : "天空端记录: 未记录");
+            recording_status_label_->setProperty("status", "disconnected");
+        }
+        recording_status_label_->style()->unpolish(recording_status_label_);
+        recording_status_label_->style()->polish(recording_status_label_);
+        updateRecordingActionStates();
         return;
     }
 
@@ -4752,6 +5030,17 @@ void MainWindow::onChooseRecordingDirectoryClicked()
 
 void MainWindow::onStartRecordingClicked()
 {
+    if (isRemoteSkyMode())
+    {
+        if (!ground_telemetry_service_ || !ground_telemetry_service_->isOpen())
+        {
+            log(is_english_ ? "Connect Remote Sky telemetry before recording" : "开始记录前请先连接天空端数传");
+            return;
+        }
+        ground_telemetry_service_->sendCommand(VaporView::CommandId::StartRecording);
+        return;
+    }
+
     const bool tcpConnected = tcp_wave_panel_ && tcp_wave_panel_->isConnected();
     if (!is_connected_ && !tcpConnected)
     {
@@ -4768,11 +5057,21 @@ void MainWindow::onStartRecordingClicked()
 
 void MainWindow::onPauseRecordingClicked()
 {
+    if (isRemoteSkyMode())
+    {
+        if (ground_telemetry_service_) ground_telemetry_service_->sendCommand(VaporView::CommandId::PauseRecording);
+        return;
+    }
     pauseRecordingSession(true);
 }
 
 void MainWindow::onStopRecordingClicked()
 {
+    if (isRemoteSkyMode())
+    {
+        if (ground_telemetry_service_) ground_telemetry_service_->sendCommand(VaporView::CommandId::StopRecording);
+        return;
+    }
     stopRecording(true);
 }
 
@@ -4965,6 +5264,17 @@ void MainWindow::onTcpRawWaveFrameReady(quint64 timestampUs,
 
 void MainWindow::updateRecordingActionStates()
 {
+    if (isRemoteSkyMode())
+    {
+        const bool linkOpen = ground_telemetry_service_ && ground_telemetry_service_->isOpen();
+        const bool recordingActive = remote_recording_state_ == 1;
+        const bool recordingPaused = remote_recording_state_ == 2;
+        if (start_recording_btn_) start_recording_btn_->setEnabled(linkOpen && !recordingActive);
+        if (pause_recording_btn_) pause_recording_btn_->setEnabled(linkOpen && recordingActive);
+        if (stop_recording_btn_) stop_recording_btn_->setEnabled(linkOpen && (recordingActive || recordingPaused));
+        return;
+    }
+
     const bool tcpConnected = tcp_wave_panel_ && tcp_wave_panel_->isConnected();
     const bool recordingSourceAvailable = is_connected_ || tcpConnected;
     const bool sessionOpen = sensors_file_ && sensors_file_->isOpen();
@@ -5066,6 +5376,7 @@ void MainWindow::updateConnectionStatus(bool connected)
     }
     status_label_->style()->unpolish(status_label_);
     status_label_->style()->polish(status_label_);
+    updateSourceModeUi();
     updateRecordingActionStates();
 }
 
@@ -5596,6 +5907,30 @@ void MainWindow::onAutoDetectPortsClicked()
 
 void MainWindow::onConnectClicked()
 {
+    if (isRemoteSkyMode())
+    {
+        const QString port = sky_telemetry_port_combo_ ? sky_telemetry_port_combo_->currentText().trimmed() : QString();
+        const int baud = sky_telemetry_baud_combo_ ? sky_telemetry_baud_combo_->currentText().toInt() : 921600;
+        if (port.isEmpty())
+        {
+            log(is_english_ ? "Select the Sky telemetry port first" : "请先选择天空端数传串口");
+            return;
+        }
+        log(QString(is_english_ ? "Connecting Remote Sky telemetry: %1 @ %2" : "正在连接天空端数传：%1 @ %2").arg(port).arg(baud));
+        if (ground_telemetry_service_ && ground_telemetry_service_->open(port, baud))
+        {
+            updateConnectionStatus(true);
+            ground_telemetry_service_->sendCommand(VaporView::CommandId::RequestStatus);
+            log(is_english_ ? "Remote Sky telemetry connected" : "天空端数传已连接");
+        }
+        else
+        {
+            updateConnectionStatus(false);
+            log(is_english_ ? "Failed to open Remote Sky telemetry port" : "打开天空端数传串口失败");
+        }
+        return;
+    }
+
     if (connection_thread_.joinable())
     {
         connection_thread_.join();
@@ -6004,6 +6339,19 @@ void MainWindow::onConnectClicked()
 
 void MainWindow::onDisconnectClicked()
 {
+    if (isRemoteSkyMode())
+    {
+        log(is_english_ ? "Disconnecting Remote Sky telemetry..." : "正在断开天空端数传...");
+        if (ground_telemetry_service_)
+        {
+            ground_telemetry_service_->close();
+        }
+        remote_recording_state_ = 0;
+        updateConnectionStatus(false);
+        log(is_english_ ? "Remote Sky disconnected" : "天空端数传已断开");
+        return;
+    }
+
     log(is_english_ ? "Disconnecting..." : "正在断开...");
 
     stopRecording(true);
@@ -6110,6 +6458,116 @@ void MainWindow::onRefreshTimer()
         const double rate = collectors.lidar->getActualRate();
         lidar_panel_->updateRate(rate);
     }
+}
+
+void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& data)
+{
+    const auto now = std::chrono::steady_clock::now();
+    current_epsilon_ = VaporView::EpsilonData();
+    current_epsilon_.valid = true;
+    current_epsilon_.timestamp = now;
+    current_epsilon_.device_timestamp_us = data.epsilon_time_us;
+    current_epsilon_.utc_unix_s = data.host_time_us / 1000000ULL;
+    current_epsilon_.utc_microseconds = static_cast<quint32>(data.host_time_us % 1000000ULL);
+    current_epsilon_.gnss_fix_code = 4;
+    current_epsilon_.gnss_fix_text = "Remote Sky";
+    current_epsilon_.latitude_deg = data.latitude_deg;
+    current_epsilon_.longitude_deg = data.longitude_deg;
+    current_epsilon_.height_m = data.height_m;
+    current_epsilon_.ecef_x_m = data.ecef_x_m;
+    current_epsilon_.ecef_y_m = data.ecef_y_m;
+    current_epsilon_.ecef_z_m = data.ecef_z_m;
+    current_epsilon_.system_status_bits = data.status_bits;
+    current_epsilon_.geodetic_packet_rate_hz = 10.0;
+    current_epsilon_.ecef_packet_rate_hz = 10.0;
+
+    current_lidar_.valid = true;
+    current_lidar_.timestamp = now;
+    current_lidar_.distance_m = data.lidar_height_m;
+    current_hmp_.valid = true;
+    current_hmp_.timestamp = now;
+    current_hmp_.temperature = data.temperature_c;
+    current_hmp_.humidity = data.humidity_percent;
+    current_ptb_.valid = true;
+    current_ptb_.timestamp = now;
+    current_ptb_.pressure_hpa = data.pressure_hpa;
+
+    if (epsilon_panel_) epsilon_panel_->updateData(current_epsilon_);
+    if (lidar_panel_) lidar_panel_->updateData(current_lidar_);
+    if (hmp_panel_) hmp_panel_->updateData(current_hmp_);
+    if (ptb_panel_) ptb_panel_->updateData(current_ptb_);
+}
+
+void MainWindow::onRemoteWaveformUpdated(const VaporView::DownsampledWaveform& waveform)
+{
+    if (tcp_wave_panel_)
+    {
+        tcp_wave_panel_->injectRemoteSecondHarmonicFrame(waveform.host_time_us, waveform.samples);
+    }
+}
+
+void MainWindow::onRemoteWaveformFeatureUpdated(const VaporView::WaveformFeature& feature)
+{
+    if (tcp_wave_panel_)
+    {
+        tcp_wave_panel_->injectRemoteWaveformFeature(feature);
+    }
+}
+
+void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus& status)
+{
+    remote_recording_state_ = status.recording_state;
+    if (epsilon_panel_) epsilon_panel_->updateRate(status.telemetry_basic_rate_hz);
+    if (ptb_panel_) ptb_panel_->updateRate(status.telemetry_basic_rate_hz);
+    if (hmp_panel_) hmp_panel_->updateRate(status.telemetry_basic_rate_hz);
+    if (lidar_panel_) lidar_panel_->updateRate(status.telemetry_basic_rate_hz);
+    for (const VaporView::DeviceStatusItem& item : status.devices)
+    {
+        updateRemoteDeviceButtonText(item.device_id, item.state);
+    }
+    status_label_->setText(QString(is_english_ ? "Remote Sky Online | %1" : "天空端在线 | %1").arg(status.session_name));
+    status_label_->setProperty("status", "connected");
+    status_label_->style()->unpolish(status_label_);
+    status_label_->style()->polish(status_label_);
+    updateRecordingStatusLabel();
+    updateSourceModeUi();
+}
+
+void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
+{
+    const bool ok = ack.result == 0;
+    log(QString(is_english_ ? "Remote ACK command=%1 seq=%2 result=%3 error=%4"
+                            : "远程ACK 命令=%1 序号=%2 结果=%3 错误=%4")
+            .arg(static_cast<quint16>(ack.command_id))
+            .arg(ack.command_seq)
+            .arg(ok ? QStringLiteral("ok") : QStringLiteral("error"))
+            .arg(static_cast<quint32>(ack.error_code)));
+}
+
+void MainWindow::onRemoteLinkOpenChanged(bool open)
+{
+    if (isRemoteSkyMode())
+    {
+        updateConnectionStatus(open);
+    }
+}
+
+void MainWindow::onSkyDeviceConfigClicked()
+{
+    if (!ground_telemetry_service_ || !ground_telemetry_service_->isOpen())
+    {
+        log(is_english_ ? "Connect Remote Sky telemetry before opening the Sky Device Config dialog"
+                        : "打开天空端设备配置前，请先连接天空端数传");
+        return;
+    }
+    if (!sky_device_config_dialog_)
+    {
+        sky_device_config_dialog_ = new VaporView::SkyDeviceConfigDialog(ground_telemetry_service_, this);
+        sky_device_config_dialog_->setEnglish(is_english_);
+    }
+    sky_device_config_dialog_->show();
+    sky_device_config_dialog_->raise();
+    ground_telemetry_service_->requestSkyConfig();
 }
 
 void MainWindow::onClearLogClicked()

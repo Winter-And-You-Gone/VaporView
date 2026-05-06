@@ -105,6 +105,14 @@ set(NAV_SOURCES
     src/MainWindow.cpp
     src/serial_port.cpp
     src/data_collector.cpp
+    src/TelemetryCodec.cpp
+    src/SerialTelemetryLink.cpp
+    src/GroundTelemetryService.cpp
+    src/SkyConfig.cpp
+    src/SkyDeviceManager.cpp
+    src/SkySessionRecorder.cpp
+    src/SkyRuntime.cpp
+    src/SkyDeviceConfigDialog.cpp
     src/TcpWaveEncoding.cpp
     src/TcpWavePanel.cpp
     src/RawDataParserWindow.cpp
@@ -122,6 +130,15 @@ set(NAV_HEADERS
     include/serial_port.h
     include/data_types.h
     include/data_collector.h
+    include/TelemetryTypes.h
+    include/TelemetryCodec.h
+    include/SerialTelemetryLink.h
+    include/GroundTelemetryService.h
+    include/SkyConfig.h
+    include/SkyDeviceManager.h
+    include/SkySessionRecorder.h
+    include/SkyRuntime.h
+    include/SkyDeviceConfigDialog.h
     include/TcpWaveEncoding.h
     include/TcpWavePanel.h
     include/RawDataParserWindow.h
@@ -210,6 +227,20 @@ if(BUILD_TESTING)
     )
     target_link_libraries(tcp_wave_encoding_test PRIVATE Qt6::Core)
     add_test(NAME tcp_wave_encoding_test COMMAND tcp_wave_encoding_test)
+
+    add_executable(telemetry_codec_test
+        tests/telemetry_codec_test.cpp
+        src/TelemetryCodec.cpp
+        src/SkyConfig.cpp
+        include/TelemetryCodec.h
+        include/TelemetryTypes.h
+        include/SkyConfig.h
+    )
+    target_include_directories(telemetry_codec_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+    )
+    target_link_libraries(telemetry_codec_test PRIVATE Qt6::Core)
+    add_test(NAME telemetry_codec_test COMMAND telemetry_codec_test)
 endif()
 
 if(WIN32 AND QT_WINDEPLOYQT_EXECUTABLE)

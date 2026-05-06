@@ -2,6 +2,7 @@
 #define VaporView_TCP_WAVE_PANEL_H_
 
 #include "TcpWaveEncoding.h"
+#include "TelemetryTypes.h"
 
 #include <QByteArray>
 #include <QWidget>
@@ -33,6 +34,10 @@ public:
     int port() const;
     bool isConnected() const;
     void attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox);
+    void setRemoteSkyMode(bool enabled);
+    void setRemoteWaveTcpState(VaporView::DeviceState state);
+    void injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QVector<float>& samples);
+    void injectRemoteWaveformFeature(const VaporView::WaveformFeature& feature);
 
     enum class ParseMode
     {
@@ -61,6 +66,7 @@ signals:
     void normalizedSecondHarmonicFrameReady(quint64 timestampUs, QVector<float> samples);
     void rawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload, VaporView::TcpFloatEncoding floatEncoding);
     void connectionStateChanged(bool connected);
+    void remoteWaveTcpConnectionRequested(bool connectRequested);
 
 private slots:
     void onToggleConnectionClicked();
@@ -166,6 +172,8 @@ private:
     QVector<qint64> frame_arrival_times_ms_;
     bool live_display_dirty_;
     bool is_english_;
+    bool remote_sky_mode_;
+    bool remote_wave_tcp_connected_;
 };
 
 #endif

@@ -3,6 +3,8 @@
 
 #include "data_collector.h"
 #include "data_types.h"
+#include "GroundTelemetryService.h"
+#include "TelemetryTypes.h"
 #include "TcpWaveEncoding.h"
 #include <QByteArray>
 #include <QMainWindow>
@@ -37,6 +39,7 @@ class QFile;
 class TcpWavePanel;
 class SessionViewerWindow;
 class EpsilonPanel;
+namespace VaporView { class SkyDeviceConfigDialog; }
 
 class GnssPanel : public QWidget
 {
@@ -275,6 +278,14 @@ private slots:
     void onStartRecordingClicked();
     void onPauseRecordingClicked();
     void onStopRecordingClicked();
+    void onDataSourceModeChanged(int index);
+    void onSkyDeviceConfigClicked();
+    void onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& data);
+    void onRemoteWaveformUpdated(const VaporView::DownsampledWaveform& waveform);
+    void onRemoteWaveformFeatureUpdated(const VaporView::WaveformFeature& feature);
+    void onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus& status);
+    void onRemoteCommandAckReceived(const VaporView::CommandAck& ack);
+    void onRemoteLinkOpenChanged(bool open);
 
 private:
     struct CollectorSnapshot
@@ -361,6 +372,12 @@ private:
     bool shouldAbortConnectionAttempt();
     void finishConnectionAttempt(bool connected);
     void updateRecordingActionStates();
+    bool isRemoteSkyMode() const;
+    void updateSourceModeUi();
+    void sendRemoteDeviceCommand(VaporView::CommandId command, VaporView::SkyDeviceId device);
+    QPushButton *createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device);
+    void setRemoteDeviceButtonsEnabled(bool enabled);
+    void updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, VaporView::DeviceState state);
 
     QWidget *central_widget_;
     QVBoxLayout *main_layout_;
@@ -457,6 +474,9 @@ private:
     QLabel *ptb_rate_lbl_;
     QLabel *hmp_rate_lbl_;
     QLabel *lidar_rate_lbl_;
+    QLabel *data_source_mode_lbl_;
+    QLabel *sky_telemetry_port_lbl_;
+    QLabel *sky_telemetry_baud_lbl_;
 
     QComboBox *global_rate_combo_;
     QComboBox *epsilon_rate_combo_;
@@ -465,8 +485,24 @@ private:
     QComboBox *ptb_rate_combo_;
     QComboBox *hmp_rate_combo_;
     QComboBox *lidar_rate_combo_;
+    QComboBox *data_source_mode_combo_;
+    QComboBox *sky_telemetry_port_combo_;
+    QComboBox *sky_telemetry_baud_combo_;
     QComboBox *imu_format_combo_;
     QPushButton *epsilon_packet_rates_btn_;
+    QPushButton *sky_device_config_btn_;
+    QPushButton *epsilon_remote_connect_btn_;
+    QPushButton *epsilon_remote_disconnect_btn_;
+    QPushButton *epsilon_remote_reconnect_btn_;
+    QPushButton *ptb_remote_connect_btn_;
+    QPushButton *ptb_remote_disconnect_btn_;
+    QPushButton *ptb_remote_reconnect_btn_;
+    QPushButton *hmp_remote_connect_btn_;
+    QPushButton *hmp_remote_disconnect_btn_;
+    QPushButton *hmp_remote_reconnect_btn_;
+    QPushButton *lidar_remote_connect_btn_;
+    QPushButton *lidar_remote_disconnect_btn_;
+    QPushButton *lidar_remote_reconnect_btn_;
     QPushButton *imu_apply_btn_;
     QPushButton *imu_hi91_btn_;
     QPushButton *imu_hi92_btn_;
@@ -501,6 +537,8 @@ private:
     bool port_detection_in_progress_;
     bool epsilon_reconfigure_in_progress_;
     bool is_connected_;
+    bool remote_sky_mode_;
+    int remote_recording_state_;
     std::atomic<bool> cancel_connection_requested_;
     std::thread connection_thread_;
     std::thread port_detection_thread_;
@@ -564,6 +602,8 @@ private:
     RtkConfigDialog *rtk_config_dialog_;
     TcpWavePanel *tcp_wave_panel_;
     SessionViewerWindow *session_viewer_window_;
+    VaporView::GroundTelemetryService *ground_telemetry_service_;
+    VaporView::SkyDeviceConfigDialog *sky_device_config_dialog_;
 };
 
 #endif
