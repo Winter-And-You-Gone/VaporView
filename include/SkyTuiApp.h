@@ -69,6 +69,7 @@ private:
     void clampPaletteSelection();
     QString timestamp() const;
     QString makeLogLine(const QString& message) const;
+    int displayWidth(const QString& text) const;
     QString fitPlain(const QString& text, int width) const;
     QString padPlain(const QString& text, int width) const;
     void drawText(QString& output, int row, int column, const QString& text) const;

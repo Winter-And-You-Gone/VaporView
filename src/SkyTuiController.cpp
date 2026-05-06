@@ -146,6 +146,7 @@ QList<SkyTuiCommandItem> SkyTuiController::commandPalette() const
         {QStringLiteral("/config show"), QStringLiteral("显示当前 sky_config JSON 配置")},
         {QStringLiteral("/clear"), QStringLiteral("清空当前可视日志")},
         {QStringLiteral("/quit"), QStringLiteral("安全停止天空端并退出 VaporViewSky")},
+        {QStringLiteral("/exit"), QStringLiteral("安全停止天空端并退出 VaporViewSky")},
     };
 }
 
@@ -163,7 +164,7 @@ QStringList SkyTuiController::helpLines() const
         QStringLiteral("  waveform on|off|once           # 控制二次谐波波形下传"),
         QStringLiteral("  config show, cfg               # 显示当前配置 JSON"),
         QStringLiteral("  clear, logs, palette, theme dark # 日志、命令面板和主题辅助命令"),
-        QStringLiteral("  quit, exit, stop, /quit        # 安全退出天空端"),
+        QStringLiteral("  quit, exit, stop, /quit, /exit # 安全退出天空端"),
         QStringLiteral("快捷键：Enter 执行，Ctrl+P 命令面板，Tab 候选，Esc 关闭，Ctrl+L 清屏，输入框为空时 q 退出。"),
     };
 }

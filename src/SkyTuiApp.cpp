@@ -60,6 +60,44 @@ bool isPrintableCommandChar(QChar ch)
     return ch.unicode() >= 32 && ch.unicode() != 127;
 }
 
+bool isAnsiFinalByte(QChar ch)
+{
+    const ushort value = ch.unicode();
+    return value >= 0x40 && value <= 0x7e;
+}
+
+int terminalCellWidth(QChar ch)
+{
+    const ushort value = ch.unicode();
+    if (value < 32 || value == 127)
+    {
+        return 0;
+    }
+
+    const QChar::Category category = ch.category();
+    if (category == QChar::Mark_NonSpacing ||
+        category == QChar::Mark_SpacingCombining ||
+        category == QChar::Mark_Enclosing)
+    {
+        return 0;
+    }
+
+    if ((value >= 0x1100 && value <= 0x115f) ||
+        (value >= 0x2329 && value <= 0x232a) ||
+        (value >= 0x2e80 && value <= 0xa4cf) ||
+        (value >= 0xac00 && value <= 0xd7a3) ||
+        (value >= 0xf900 && value <= 0xfaff) ||
+        (value >= 0xfe10 && value <= 0xfe19) ||
+        (value >= 0xfe30 && value <= 0xfe6f) ||
+        (value >= 0xff00 && value <= 0xff60) ||
+        (value >= 0xffe0 && value <= 0xffe6))
+    {
+        return 2;
+    }
+
+    return 1;
+}
+
 }  // namespace
 
 SkyTuiApp::SkyTuiApp(SkyRuntime *runtime, const SkyRuntimeOptions& options, QObject *parent)
@@ -143,7 +181,7 @@ void SkyTuiApp::render()
     output += SkyTuiTheme::hideCursor();
     output += SkyTuiTheme::clearScreen();
 
-    int row = 1;
+    int row = 2;
     drawLogo(output, row, size);
 
     const int paletteHeight = model_.palette_visible ? std::min(8, std::max(5, size.rows / 4)) : 0;
@@ -170,7 +208,7 @@ void SkyTuiApp::render()
     drawInput(output, size.rows - 2, size);
     drawStatusBar(output, size.rows, size);
 
-    const int cursorColumn = std::min(size.columns, 7 + static_cast<int>(model_.input_text.size()));
+    const int cursorColumn = std::min(size.columns, 7 + displayWidth(model_.input_text));
     output += SkyTuiTheme::moveTo(size.rows - 2, cursorColumn);
     output += SkyTuiTheme::showCursor();
     output += SkyTuiTheme::endSynchronizedUpdate();
@@ -538,13 +576,33 @@ QString SkyTuiApp::makeLogLine(const QString& message) const
     return QStringLiteral("[%1] %2").arg(timestamp(), message);
 }
 
+int SkyTuiApp::displayWidth(const QString& text) const
+{
+    int width = 0;
+    for (int i = 0; i < text.size(); ++i)
+    {
+        const QChar ch = text.at(i);
+        if (ch == QChar(0x1b) && i + 1 < text.size() && text.at(i + 1) == QLatin1Char('['))
+        {
+            i += 2;
+            while (i < text.size() && !isAnsiFinalByte(text.at(i)))
+            {
+                ++i;
+            }
+            continue;
+        }
+        width += terminalCellWidth(ch);
+    }
+    return width;
+}
+
 QString SkyTuiApp::fitPlain(const QString& text, int width) const
 {
     if (width <= 0)
     {
         return QString();
     }
-    if (text.size() <= width)
+    if (displayWidth(text) <= width)
     {
         return text;
     }
@@ -552,15 +610,48 @@ QString SkyTuiApp::fitPlain(const QString& text, int width) const
     {
         return QStringLiteral("…");
     }
-    return text.left(width - 1) + QStringLiteral("…");
+
+    const int targetWidth = width - 1;
+    QString output;
+    int used = 0;
+    for (int i = 0; i < text.size(); ++i)
+    {
+        const QChar ch = text.at(i);
+        if (ch == QChar(0x1b) && i + 1 < text.size() && text.at(i + 1) == QLatin1Char('['))
+        {
+            output += ch;
+            output += text.at(++i);
+            while (i + 1 < text.size())
+            {
+                const QChar seq = text.at(++i);
+                output += seq;
+                if (isAnsiFinalByte(seq))
+                {
+                    break;
+                }
+            }
+            continue;
+        }
+
+        const int charWidth = terminalCellWidth(ch);
+        if (used + charWidth > targetWidth)
+        {
+            break;
+        }
+        output += ch;
+        used += charWidth;
+    }
+    output += QStringLiteral("…");
+    return output;
 }
 
 QString SkyTuiApp::padPlain(const QString& text, int width) const
 {
     QString value = fitPlain(text, width);
-    if (value.size() < width)
+    const int currentWidth = displayWidth(value);
+    if (currentWidth < width)
     {
-        value += QString(width - value.size(), QLatin1Char(' '));
+        value += QString(width - currentWidth, QLatin1Char(' '));
     }
     return value;
 }
@@ -611,7 +702,7 @@ void SkyTuiApp::drawLogo(QString& output, int& row, const SkyTuiTerminalSize& si
     const bool compact = size.rows < 28 || size.columns < logoWidth + 4;
     if (compact)
     {
-        const int column = std::max(2, (size.columns - static_cast<int>(title.size())) / 2);
+        const int column = std::max(2, (size.columns - displayWidth(title)) / 2);
         drawText(output, row++, column,
                  SkyTuiTheme::bold() + SkyTuiTheme::foreground(SkyTuiTheme::yellow()) + title);
     }
@@ -623,7 +714,7 @@ void SkyTuiApp::drawLogo(QString& output, int& row, const SkyTuiTerminalSize& si
             drawText(output, row++, column, SkyTuiTheme::gradientLogoLine(line));
         }
         ++row;
-        drawText(output, row++, std::max(2, (size.columns - static_cast<int>(title.size())) / 2),
+        drawText(output, row++, std::max(2, (size.columns - displayWidth(title)) / 2),
                  SkyTuiTheme::bold() + SkyTuiTheme::foreground(SkyTuiTheme::yellow()) + title);
     }
     }
@@ -639,7 +730,7 @@ void SkyTuiApp::drawLogo(QString& output, int& row, const SkyTuiTerminalSize& si
                           .arg(options_.wave_host)
                           .arg(options_.wave_port);
     summary = fitPlain(summary, size.columns - 4);
-    drawText(output, row++, model_.show_logo ? std::max(2, (size.columns - static_cast<int>(summary.size())) / 2) : 2,
+    drawText(output, row++, model_.show_logo ? std::max(2, (size.columns - displayWidth(summary)) / 2) : 2,
              SkyTuiTheme::foreground(SkyTuiTheme::muted()) + summary);
 }
 
@@ -734,7 +825,7 @@ void SkyTuiApp::drawStatusBar(QString& output, int row, const SkyTuiTerminalSize
     const QString path = QCoreApplication::applicationDirPath();
     QString left = QStringLiteral(" Tab 命令  Ctrl+P 面板  Ctrl+L 清屏  Ctrl+C 退出 ");
     QString right = QStringLiteral(" %1 ").arg(path);
-    if (static_cast<int>(left.size() + right.size()) > size.columns)
+    if (displayWidth(left) + displayWidth(right) > size.columns)
     {
         right.clear();
     }
@@ -745,7 +836,7 @@ void SkyTuiApp::drawStatusBar(QString& output, int row, const SkyTuiTerminalSize
     }
     else
     {
-        bar += QString(std::max(0, size.columns - static_cast<int>(left.size()) - static_cast<int>(right.size())), QLatin1Char(' '));
+        bar += QString(std::max(0, size.columns - displayWidth(left) - displayWidth(right)), QLatin1Char(' '));
         bar += right;
     }
     drawText(output, row, 1,
