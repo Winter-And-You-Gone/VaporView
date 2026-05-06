@@ -28,10 +28,34 @@ class SkyRuntime : public QObject
 
 public:
     explicit SkyRuntime(const SkyRuntimeOptions& options, QObject *parent = nullptr);
+    ~SkyRuntime() override;
+
     bool start();
+    void stop();
+    bool isRunning() const;
+
+    bool connectDevice(SkyDeviceId id, CommandErrorCode *error = nullptr);
+    bool disconnectDevice(SkyDeviceId id, CommandErrorCode *error = nullptr);
+    bool reconnectDevice(SkyDeviceId id, CommandErrorCode *error = nullptr);
+
+    void connectAllDevices();
+    void disconnectAllDevices();
+    void reconnectAllDevices();
+
+    bool startRecording(QString *error = nullptr);
+    bool pauseRecording(QString *error = nullptr);
+    bool stopRecording(QString *error = nullptr);
+
+    TelemetryStatus currentStatus() const;
+    SkyConfig currentConfig() const;
+
+    void setWaveformStreamingEnabled(bool enabled);
+    bool waveformStreamingEnabled() const;
+    void sendOneWaveformNow();
 
 signals:
     void logMessage(const QString& message);
+    void runningChanged(bool running);
 
 private slots:
     void onBytesReceived(const QByteArray& bytes);
@@ -48,6 +72,7 @@ private:
     void sendAck(const CommandMessage& command, CommandErrorCode errorCode = CommandErrorCode::Ok);
     void sendSkyConfig();
     void sendSkyConfigApplyResult(const QJsonObject& result);
+    void sendDownsampledWaveformFrame(bool honorStreamingEnabled);
     void updateTimerIntervals();
     quint64 currentTimestampUs() const;
 
@@ -64,6 +89,7 @@ private:
     quint32 rx_total_frames_ = 0;
     quint64 last_frame_time_us_ = 0;
     SkySessionRecorder session_recorder_;
+    bool running_ = false;
     bool waveform_streaming_enabled_ = true;
 };
 

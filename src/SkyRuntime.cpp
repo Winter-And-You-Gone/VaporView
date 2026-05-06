@@ -42,8 +42,18 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
     connect(&status_timer_, &QTimer::timeout, this, &SkyRuntime::sendTelemetryStatus);
 }
 
+SkyRuntime::~SkyRuntime()
+{
+    stop();
+}
+
 bool SkyRuntime::start()
 {
+    if (running_)
+    {
+        return true;
+    }
+
     SkyConfig config;
     QString configError;
     const QString configPath = options_.config_path.isEmpty() ? defaultConfigPath() : options_.config_path;
@@ -74,8 +84,148 @@ bool SkyRuntime::start()
     waveform_timer_.start();
     heartbeat_timer_.start();
     status_timer_.start();
+    running_ = true;
+    emit runningChanged(true);
     emit logMessage(QStringLiteral("SkyRuntime started on %1 @ %2").arg(options_.telemetry_port).arg(options_.telemetry_baud));
     return true;
+}
+
+void SkyRuntime::stop()
+{
+    if (!running_)
+    {
+        return;
+    }
+
+    basic_timer_.stop();
+    feature_timer_.stop();
+    waveform_timer_.stop();
+    heartbeat_timer_.stop();
+    status_timer_.stop();
+
+    if (session_recorder_.isRecording() || session_recorder_.isPaused())
+    {
+        session_recorder_.stop();
+    }
+
+    device_manager_.setSimulateData(false);
+    device_manager_.disconnectAll();
+    link_.close();
+    running_ = false;
+    emit runningChanged(false);
+    emit logMessage(QStringLiteral("SkyRuntime stopped"));
+}
+
+bool SkyRuntime::isRunning() const
+{
+    return running_;
+}
+
+bool SkyRuntime::connectDevice(SkyDeviceId id, CommandErrorCode *error)
+{
+    return device_manager_.connectDevice(id, error);
+}
+
+bool SkyRuntime::disconnectDevice(SkyDeviceId id, CommandErrorCode *error)
+{
+    return device_manager_.disconnectDevice(id, error);
+}
+
+bool SkyRuntime::reconnectDevice(SkyDeviceId id, CommandErrorCode *error)
+{
+    return device_manager_.reconnectDevice(id, error);
+}
+
+void SkyRuntime::connectAllDevices()
+{
+    device_manager_.connectAll();
+}
+
+void SkyRuntime::disconnectAllDevices()
+{
+    device_manager_.disconnectAll();
+}
+
+void SkyRuntime::reconnectAllDevices()
+{
+    device_manager_.reconnectAll();
+}
+
+bool SkyRuntime::startRecording(QString *error)
+{
+    if (session_recorder_.isRecording())
+    {
+        if (error) *error = QStringLiteral("recording already started");
+        return false;
+    }
+    if (!session_recorder_.start(QCoreApplication::applicationDirPath(), options_.telemetry_port, options_.telemetry_baud, error))
+    {
+        return false;
+    }
+    emit logMessage(QStringLiteral("Sky recording started: %1").arg(session_recorder_.sessionDirectory()));
+    return true;
+}
+
+bool SkyRuntime::pauseRecording(QString *error)
+{
+    if (!session_recorder_.isRecording() && !session_recorder_.isPaused())
+    {
+        if (error) *error = QStringLiteral("recording not started");
+        return false;
+    }
+    session_recorder_.pause();
+    return true;
+}
+
+bool SkyRuntime::stopRecording(QString *error)
+{
+    if (!session_recorder_.isRecording() && !session_recorder_.isPaused())
+    {
+        if (error) *error = QStringLiteral("recording not started");
+        return false;
+    }
+    session_recorder_.stop();
+    emit logMessage(QStringLiteral("Sky recording stopped"));
+    return true;
+}
+
+TelemetryStatus SkyRuntime::currentStatus() const
+{
+    TelemetryStatus status;
+    status.recording_state = session_recorder_.recordingState();
+    status.session_name = session_recorder_.sessionName();
+    status.disk_free_bytes = static_cast<quint64>(QStorageInfo(QCoreApplication::applicationDirPath()).bytesAvailable());
+    status.telemetry_basic_rate_hz = static_cast<float>(device_manager_.config().telemetry.basic_rate_hz);
+    status.waveform_rate_hz = static_cast<float>(device_manager_.config().telemetry.waveform_rate_hz);
+    status.feature_rate_hz = static_cast<float>(device_manager_.config().telemetry.feature_rate_hz);
+    status.heartbeat_rate_hz = static_cast<float>(device_manager_.config().telemetry.heartbeat_rate_hz);
+    status.status_rate_hz = static_cast<float>(device_manager_.config().telemetry.status_rate_hz);
+    status.rx_total_frames = rx_total_frames_;
+    status.crc_error_count = static_cast<quint32>(codec_.crcErrorCount());
+    status.current_seq = next_frame_seq_;
+    status.last_frame_time_us = last_frame_time_us_;
+    status.devices = device_manager_.allStatuses();
+    return status;
+}
+
+SkyConfig SkyRuntime::currentConfig() const
+{
+    return device_manager_.config();
+}
+
+void SkyRuntime::setWaveformStreamingEnabled(bool enabled)
+{
+    waveform_streaming_enabled_ = enabled;
+}
+
+bool SkyRuntime::waveformStreamingEnabled() const
+{
+    return waveform_streaming_enabled_;
+}
+
+void SkyRuntime::sendOneWaveformNow()
+{
+    sendDownsampledWaveformFrame(false);
 }
 
 void SkyRuntime::onBytesReceived(const QByteArray& bytes)
@@ -121,6 +271,11 @@ void SkyRuntime::sendWaveformFeature()
 
 void SkyRuntime::sendDownsampledWaveform()
 {
+    sendDownsampledWaveformFrame(true);
+}
+
+void SkyRuntime::sendDownsampledWaveformFrame(bool honorStreamingEnabled)
+{
     const QVector<float> samples = device_manager_.latestWaveform();
     if (samples.isEmpty())
     {
@@ -128,7 +283,7 @@ void SkyRuntime::sendDownsampledWaveform()
     }
     const quint64 hostTimeUs = currentTimestampUs();
     session_recorder_.recordWaveformSnapshot(hostTimeUs, device_manager_.latestEpsilon().device_timestamp_us, samples);
-    if (!waveform_streaming_enabled_)
+    if (honorStreamingEnabled && !waveform_streaming_enabled_)
     {
         return;
     }
@@ -159,20 +314,7 @@ void SkyRuntime::sendHeartbeat()
 
 void SkyRuntime::sendTelemetryStatus()
 {
-    TelemetryStatus status;
-    status.recording_state = session_recorder_.recordingState();
-    status.session_name = session_recorder_.sessionName();
-    status.disk_free_bytes = static_cast<quint64>(QStorageInfo(QCoreApplication::applicationDirPath()).bytesAvailable());
-    status.telemetry_basic_rate_hz = static_cast<float>(device_manager_.config().telemetry.basic_rate_hz);
-    status.waveform_rate_hz = static_cast<float>(device_manager_.config().telemetry.waveform_rate_hz);
-    status.feature_rate_hz = static_cast<float>(device_manager_.config().telemetry.feature_rate_hz);
-    status.heartbeat_rate_hz = static_cast<float>(device_manager_.config().telemetry.heartbeat_rate_hz);
-    status.status_rate_hz = static_cast<float>(device_manager_.config().telemetry.status_rate_hz);
-    status.rx_total_frames = rx_total_frames_;
-    status.crc_error_count = static_cast<quint32>(codec_.crcErrorCount());
-    status.current_seq = next_frame_seq_;
-    status.last_frame_time_us = last_frame_time_us_;
-    status.devices = device_manager_.allStatuses();
+    const TelemetryStatus status = currentStatus();
     sendFrame(MsgType::TelemetryStatus, TelemetryCodec::serializeTelemetryStatus(status));
 }
 
@@ -215,13 +357,12 @@ void SkyRuntime::handleCommand(const CommandMessage& command)
         }
     {
         QString error;
-        if (!session_recorder_.start(QCoreApplication::applicationDirPath(), options_.telemetry_port, options_.telemetry_baud, &error))
+        if (!startRecording(&error))
         {
             emit logMessage(QStringLiteral("Failed to start sky recording: %1").arg(error));
             sendAck(command, CommandErrorCode::InternalError);
             break;
         }
-        emit logMessage(QStringLiteral("Sky recording started: %1").arg(session_recorder_.sessionDirectory()));
         sendAck(command);
         sendTelemetryStatus();
         break;
@@ -232,7 +373,7 @@ void SkyRuntime::handleCommand(const CommandMessage& command)
             sendAck(command, CommandErrorCode::RecordingNotStarted);
             break;
         }
-        session_recorder_.pause();
+        pauseRecording();
         sendAck(command);
         sendTelemetryStatus();
         break;
@@ -242,8 +383,7 @@ void SkyRuntime::handleCommand(const CommandMessage& command)
             sendAck(command, CommandErrorCode::RecordingNotStarted);
             break;
         }
-        session_recorder_.stop();
-        emit logMessage(QStringLiteral("Sky recording stopped"));
+        stopRecording();
         sendAck(command);
         sendTelemetryStatus();
         break;
@@ -267,16 +407,16 @@ void SkyRuntime::handleCommand(const CommandMessage& command)
         break;
     }
     case CommandId::EnableWaveformStreaming:
-        waveform_streaming_enabled_ = true;
+        setWaveformStreamingEnabled(true);
         sendAck(command);
         break;
     case CommandId::DisableWaveformStreaming:
-        waveform_streaming_enabled_ = false;
+        setWaveformStreamingEnabled(false);
         sendAck(command);
         break;
     case CommandId::RequestOneWaveform:
         sendAck(command);
-        sendDownsampledWaveform();
+        sendOneWaveformNow();
         break;
     case CommandId::RequestStatus:
     case CommandId::QueryDeviceStatus:
@@ -284,26 +424,26 @@ void SkyRuntime::handleCommand(const CommandMessage& command)
         sendTelemetryStatus();
         break;
     case CommandId::ConnectDevice:
-        deviceCommand([this](SkyDeviceId id, CommandErrorCode *error) { return device_manager_.connectDevice(id, error); });
+        deviceCommand([this](SkyDeviceId id, CommandErrorCode *error) { return connectDevice(id, error); });
         break;
     case CommandId::DisconnectDevice:
-        deviceCommand([this](SkyDeviceId id, CommandErrorCode *error) { return device_manager_.disconnectDevice(id, error); });
+        deviceCommand([this](SkyDeviceId id, CommandErrorCode *error) { return disconnectDevice(id, error); });
         break;
     case CommandId::ReconnectDevice:
-        deviceCommand([this](SkyDeviceId id, CommandErrorCode *error) { return device_manager_.reconnectDevice(id, error); });
+        deviceCommand([this](SkyDeviceId id, CommandErrorCode *error) { return reconnectDevice(id, error); });
         break;
     case CommandId::ConnectAllDevices:
-        device_manager_.connectAll();
+        connectAllDevices();
         sendAck(command);
         sendTelemetryStatus();
         break;
     case CommandId::DisconnectAllDevices:
-        device_manager_.disconnectAll();
+        disconnectAllDevices();
         sendAck(command);
         sendTelemetryStatus();
         break;
     case CommandId::ReconnectAllDevices:
-        device_manager_.reconnectAll();
+        reconnectAllDevices();
         sendAck(command);
         sendTelemetryStatus();
         break;

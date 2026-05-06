@@ -151,6 +151,39 @@ set(NAV_HEADERS
     ${HIPNUC_DRIVER_DIR}/hipnuc_dec.h
 )
 
+set(SKY_TUI_SOURCES
+    src/sky_main.cpp
+    src/SkyTuiController.cpp
+    src/serial_port.cpp
+    src/data_collector.cpp
+    src/TelemetryCodec.cpp
+    src/SerialTelemetryLink.cpp
+    src/SkyConfig.cpp
+    src/SkyDeviceManager.cpp
+    src/SkySessionRecorder.cpp
+    src/SkyRuntime.cpp
+    src/TcpWaveEncoding.cpp
+    ${UM982_DRIVER_DIR}/pvtsln_parser.cpp
+    ${HIPNUC_DRIVER_DIR}/hipnuc_dec.c
+)
+
+set(SKY_TUI_HEADERS
+    include/SkyTuiController.h
+    include/serial_port.h
+    include/data_types.h
+    include/data_collector.h
+    include/TelemetryTypes.h
+    include/TelemetryCodec.h
+    include/SerialTelemetryLink.h
+    include/SkyConfig.h
+    include/SkyDeviceManager.h
+    include/SkySessionRecorder.h
+    include/SkyRuntime.h
+    include/TcpWaveEncoding.h
+    ${UM982_DRIVER_DIR}/pvtsln_data.hpp
+    ${HIPNUC_DRIVER_DIR}/hipnuc_dec.h
+)
+
 set(NAV_UI_FILES
 )
 
@@ -196,6 +229,27 @@ target_include_directories(VaporView PRIVATE
 
 target_link_libraries(VaporView PRIVATE
     ${QT_LIBRARIES}
+    rtklib_strsvr
+)
+
+add_executable(VaporViewSky
+    ${SKY_TUI_SOURCES}
+    ${SKY_TUI_HEADERS}
+)
+
+target_include_directories(VaporViewSky PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+    ${RTKLIB_DIR}/src
+    ${UM982_DRIVER_DIR}
+    ${HIPNUC_DRIVER_DIR}
+)
+
+target_link_libraries(VaporViewSky PRIVATE
+    Qt6::Core
+    Qt6::SerialPort
+    Qt6::Network
+    Threads::Threads
     rtklib_strsvr
 )
 
@@ -252,12 +306,26 @@ if(WIN32 AND QT_WINDEPLOYQT_EXECUTABLE)
             $<TARGET_FILE:VaporView>
         COMMENT "Deploying Qt runtime for VaporView"
     )
+    add_custom_command(TARGET VaporViewSky POST_BUILD
+        COMMAND ${QT_WINDEPLOYQT_EXECUTABLE}
+            --compiler-runtime
+            --no-translations
+            --no-system-dxc-compiler
+            $<TARGET_FILE:VaporViewSky>
+        COMMENT "Deploying Qt runtime for VaporViewSky"
+    )
 endif()
 
 if(MSVC)
     target_compile_options(VaporView PRIVATE /W4 /utf-8 /Zc:__cplusplus /permissive-)
+    target_compile_options(VaporViewSky PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /W4 /utf-8 /Zc:__cplusplus /permissive-)
 else()
     target_compile_options(VaporView PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    target_compile_options(VaporViewSky PRIVATE
         -Wall
         -Wextra
         -Wpedantic
@@ -299,7 +367,7 @@ if(BUILD_PYTHON_BINDINGS)
     )
 endif()
 
-install(TARGETS VaporView
+install(TARGETS VaporView VaporViewSky
     RUNTIME DESTINATION bin
 )
 

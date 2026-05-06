@@ -55,6 +55,7 @@ int main(int argc, char *argv[])
             qCritical() << "--telemetry-port is required in sky mode";
             return 2;
         }
+        qInfo().noquote() << "Running sky in background mode. For interactive TUI use VaporViewSky.exe.";
         VaporView::SkyRuntime runtime(options);
         QObject::connect(&runtime, &VaporView::SkyRuntime::logMessage, [](const QString& message) {
             qInfo().noquote() << message;
