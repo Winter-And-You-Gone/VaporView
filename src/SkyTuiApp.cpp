@@ -790,6 +790,7 @@ QString SkyTuiApp::statusSignature(const TelemetryStatus& status, const SkyConfi
           << QString::number(status.rx_total_frames)
           << QString::number(status.crc_error_count)
           << QString::number(runtime_ && runtime_->waveformStreamingEnabled() ? 1 : 0)
+          << QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"))
           << QString::fromUtf8(QJsonDocument(config.toJson()).toJson(QJsonDocument::Compact));
 
     for (const DeviceStatusItem& item : status.devices)
@@ -1008,11 +1009,12 @@ void SkyTuiApp::drawLogo(QString& output, int& row, const SkyTuiTerminalSize& si
     const QString configPath = options_.config_path.isEmpty()
                                    ? QStringLiteral("(默认 sky_config.json)")
                                    : options_.config_path;
-    QString summary = QStringLiteral("数传串口 %1 @ %2 | 配置 %3 | 模拟数据 %4")
+    QString summary = QStringLiteral("数传串口 %1 @ %2 | 配置 %3 | 模拟数据 %4 | 本机时间 %5")
                           .arg(options_.telemetry_port)
                           .arg(options_.telemetry_baud)
                           .arg(configPath)
-                          .arg(options_.simulate_data ? QStringLiteral("开") : QStringLiteral("关"));
+                          .arg(options_.simulate_data ? QStringLiteral("开") : QStringLiteral("关"))
+                          .arg(QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss")));
     const QStringList summaryLines = wrapPlain(summary, size.columns - 4);
     for (const QString& line : summaryLines)
     {
@@ -1075,11 +1077,14 @@ void SkyTuiApp::drawMainPanels(QString& output, int top, int bottom, const SkyTu
     {
         const int logIndex = visualLogs.at(i).first;
         const bool selected = model_.focus == SkyTuiFocus::Logs && logIndex == model_.selected_log_index;
+        const bool commandEcho = model_.logs.at(logIndex).contains(QStringLiteral("] sky> "));
         const SkyTuiRgb color = logIndex == static_cast<int>(model_.logs.size()) - 1 ? SkyTuiTheme::green() : SkyTuiTheme::muted();
         const QString line = padPlain(visualLogs.at(i).second, logWidth);
         drawText(output, row, left + 2,
                  (selected ? SkyTuiTheme::inverse() : QString()) +
-                     SkyTuiTheme::foreground(selected ? SkyTuiTheme::yellow() : color) + line);
+                     (commandEcho && !selected ? SkyTuiTheme::background(SkyTuiRgb{62, 66, 74}) : QString()) +
+                     SkyTuiTheme::foreground(selected || commandEcho ? SkyTuiTheme::yellow() : color) +
+                     line + SkyTuiTheme::reset());
     }
     if (model_.log_scroll > 0 && row <= bottom - 1)
     {
