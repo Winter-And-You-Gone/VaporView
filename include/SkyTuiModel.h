@@ -10,6 +10,13 @@
 namespace VaporView
 {
 
+enum class SkyTuiFocus
+{
+    CommandInput,
+    Logs,
+    Status,
+};
+
 struct SkyTuiModel
 {
     static constexpr int MaxLogLines = 600;
@@ -19,6 +26,8 @@ struct SkyTuiModel
     int palette_selected = 0;
     QStringList logs;
     int log_scroll = 0;
+    int selected_log_index = -1;
+    SkyTuiFocus focus = SkyTuiFocus::CommandInput;
     bool show_logo = true;
     TelemetryStatus status;
     SkyConfig config = SkyConfig::defaults();

@@ -24,6 +24,8 @@ enum class SkyTuiKeyType
     Tab,
     Up,
     Down,
+    Left,
+    Right,
     PageUp,
     PageDown,
     CtrlC,
@@ -72,14 +74,16 @@ private:
     int displayWidth(const QString& text) const;
     QString fitPlain(const QString& text, int width) const;
     QString padPlain(const QString& text, int width) const;
+    QStringList wrapPlain(const QString& text, int width) const;
     void drawText(QString& output, int row, int column, const QString& text) const;
-    void drawBox(QString& output, int top, int left, int bottom, int right, const QString& title) const;
+    void drawBox(QString& output, int top, int left, int bottom, int right, const QString& title, bool focused = false) const;
     void drawLogo(QString& output, int& row, const SkyTuiTerminalSize& size) const;
     void drawMainPanels(QString& output, int top, int bottom, const SkyTuiTerminalSize& size) const;
     void drawPalette(QString& output, int top, int bottom, const SkyTuiTerminalSize& size);
     void drawInput(QString& output, int row, const SkyTuiTerminalSize& size) const;
     void drawStatusBar(QString& output, int row, const SkyTuiTerminalSize& size) const;
     QStringList statusPanelLines() const;
+    QString deviceEndpointText(SkyDeviceId id) const;
     QString deviceStateColored(DeviceState state) const;
     QString recordingStateText(quint8 state) const;
     QString humanBytes(quint64 bytes) const;

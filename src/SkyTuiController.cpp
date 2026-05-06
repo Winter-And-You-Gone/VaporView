@@ -165,7 +165,7 @@ QStringList SkyTuiController::helpLines() const
         QStringLiteral("  config show, cfg               # 显示当前配置 JSON"),
         QStringLiteral("  clear, logs, palette, theme dark # 日志、命令面板和主题辅助命令"),
         QStringLiteral("  quit, exit, stop, /quit, /exit # 安全退出天空端"),
-        QStringLiteral("快捷键：Enter 执行，Ctrl+P 命令面板，Tab 候选，Esc 关闭，Ctrl+L 清屏，输入框为空时 q 退出。"),
+        QStringLiteral("快捷键：Enter 执行，Ctrl+P 命令面板，Tab 切换焦点，Left/Right 切日志/状态，Esc 关闭，Ctrl+L 清屏。"),
     };
 }
 
