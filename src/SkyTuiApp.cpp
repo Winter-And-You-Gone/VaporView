@@ -71,8 +71,9 @@ SkyTuiApp::SkyTuiApp(SkyRuntime *runtime, const SkyRuntimeOptions& options, QObj
 {
     qRegisterMetaType<SkyTuiKey>("VaporView::SkyTuiKey");
 
-    render_timer_.setInterval(120);
-    render_timer_.setTimerType(Qt::CoarseTimer);
+    render_timer_.setInterval(16);
+    render_timer_.setSingleShot(true);
+    render_timer_.setTimerType(Qt::PreciseTimer);
     connect(&render_timer_, &QTimer::timeout, this, &SkyTuiApp::render);
 
     status_timer_.setInterval(500);
@@ -110,8 +111,7 @@ void SkyTuiApp::start()
     appendLog(QStringLiteral("Type /help for commands. Press Ctrl+P for command palette."));
     startInputThread();
     status_timer_.start();
-    render_timer_.start();
-    render();
+    scheduleRender();
 }
 
 void SkyTuiApp::appendLog(const QString& message)
@@ -125,20 +125,21 @@ void SkyTuiApp::appendLog(const QString& message)
     {
         model_.log_scroll = std::min(model_.log_scroll, static_cast<int>(model_.logs.size()));
     }
-    render();
+    scheduleRender();
 }
 
 void SkyTuiApp::render()
 {
+    render_pending_ = false;
     if (!started_ || terminal_restored_)
     {
         return;
     }
 
-    refreshStatus();
     const SkyTuiTerminalSize size = SkyTuiTheme::terminalSize();
     QString output;
     output.reserve(size.columns * size.rows * 2);
+    output += SkyTuiTheme::beginSynchronizedUpdate();
     output += SkyTuiTheme::hideCursor();
     output += SkyTuiTheme::clearScreen();
 
@@ -172,6 +173,7 @@ void SkyTuiApp::render()
     const int cursorColumn = std::min(size.columns, 7 + static_cast<int>(model_.input_text.size()));
     output += SkyTuiTheme::moveTo(size.rows - 2, cursorColumn);
     output += SkyTuiTheme::showCursor();
+    output += SkyTuiTheme::endSynchronizedUpdate();
     writeRaw(output);
 }
 
@@ -183,6 +185,7 @@ void SkyTuiApp::refreshStatus()
     }
     model_.status = runtime_->currentStatus();
     model_.config = runtime_->currentConfig();
+    scheduleRender();
 }
 
 void SkyTuiApp::handleKey(const SkyTuiKey& key)
@@ -203,11 +206,11 @@ void SkyTuiApp::handleKey(const SkyTuiKey& key)
     case SkyTuiKeyType::CtrlP:
     case SkyTuiKeyType::Tab:
         setPaletteVisible(true);
-        render();
+        scheduleRender();
         return;
     case SkyTuiKeyType::Escape:
         setPaletteVisible(false);
-        render();
+        scheduleRender();
         return;
     case SkyTuiKeyType::Up:
         if (model_.palette_visible)
@@ -219,7 +222,7 @@ void SkyTuiApp::handleKey(const SkyTuiKey& key)
         {
             model_.log_scroll = std::min(model_.log_scroll + 1, std::max(0, static_cast<int>(model_.logs.size()) - 1));
         }
-        render();
+        scheduleRender();
         return;
     case SkyTuiKeyType::Down:
         if (model_.palette_visible)
@@ -231,15 +234,15 @@ void SkyTuiApp::handleKey(const SkyTuiKey& key)
         {
             model_.log_scroll = std::max(0, model_.log_scroll - 1);
         }
-        render();
+        scheduleRender();
         return;
     case SkyTuiKeyType::PageUp:
         model_.log_scroll = std::min(model_.log_scroll + 8, std::max(0, static_cast<int>(model_.logs.size()) - 1));
-        render();
+        scheduleRender();
         return;
     case SkyTuiKeyType::PageDown:
         model_.log_scroll = std::max(0, model_.log_scroll - 8);
-        render();
+        scheduleRender();
         return;
     case SkyTuiKeyType::Backspace:
         if (!model_.input_text.isEmpty())
@@ -251,7 +254,7 @@ void SkyTuiApp::handleKey(const SkyTuiKey& key)
             setPaletteVisible(false);
         }
         clampPaletteSelection();
-        render();
+        scheduleRender();
         return;
     case SkyTuiKeyType::Enter:
         executeInput();
@@ -271,10 +274,10 @@ void SkyTuiApp::handleKey(const SkyTuiKey& key)
             }
         }
         clampPaletteSelection();
-        render();
+        scheduleRender();
         return;
     default:
-        render();
+        scheduleRender();
         return;
     }
 }
@@ -400,6 +403,16 @@ void SkyTuiApp::restoreTerminal()
     writeRaw(SkyTuiTheme::leaveAlternateScreen());
 }
 
+void SkyTuiApp::scheduleRender()
+{
+    if (!started_ || terminal_restored_ || render_pending_)
+    {
+        return;
+    }
+    render_pending_ = true;
+    render_timer_.start();
+}
+
 void SkyTuiApp::executeInput()
 {
     QString command = model_.input_text.simplified();
@@ -422,7 +435,7 @@ void SkyTuiApp::executeCommand(const QString& command)
     const QString normalized = command.simplified();
     if (normalized.isEmpty())
     {
-        render();
+        scheduleRender();
         return;
     }
 
@@ -448,7 +461,7 @@ void SkyTuiApp::executeCommand(const QString& command)
     }
 
     model_.hint = QStringLiteral("Last command: %1").arg(plainCommand(normalized));
-    render();
+    scheduleRender();
 }
 
 void SkyTuiApp::requestQuit()

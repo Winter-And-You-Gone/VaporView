@@ -28,6 +28,8 @@ public:
 
     static QString enterAlternateScreen();
     static QString leaveAlternateScreen();
+    static QString beginSynchronizedUpdate();
+    static QString endSynchronizedUpdate();
     static QString clearScreen();
     static QString moveTo(int row, int column);
     static QString hideCursor();

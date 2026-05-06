@@ -138,6 +138,16 @@ QString SkyTuiTheme::leaveAlternateScreen()
     return QStringLiteral("\x1b[?25h\x1b[0m\x1b[?1049l");
 }
 
+QString SkyTuiTheme::beginSynchronizedUpdate()
+{
+    return QStringLiteral("\x1b[?2026h");
+}
+
+QString SkyTuiTheme::endSynchronizedUpdate()
+{
+    return QStringLiteral("\x1b[?2026l");
+}
+
 QString SkyTuiTheme::clearScreen()
 {
     return QStringLiteral("\x1b[2J\x1b[H") + background(kBlack);

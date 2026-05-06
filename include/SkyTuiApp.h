@@ -59,6 +59,7 @@ private slots:
 private:
     void startInputThread();
     void restoreTerminal();
+    void scheduleRender();
     void executeInput();
     void executeCommand(const QString& command);
     void requestQuit();
@@ -92,6 +93,7 @@ private:
     std::thread input_thread_;
     bool started_ = false;
     bool terminal_restored_ = false;
+    bool render_pending_ = false;
 };
 
 }  // namespace VaporView
