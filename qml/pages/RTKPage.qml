@@ -544,7 +544,6 @@ Item {
         RtkLabel { text: parent.label }
         RtkTextField {
             id: input; width: parent.width
-            text: parent.parent.text
             validator: DoubleValidator { bottom: -10000; top: 10000; decimals: 4 }
             onEditingFinished: parent.edit(text)
         }
