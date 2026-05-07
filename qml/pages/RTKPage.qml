@@ -515,7 +515,7 @@ Item {
                                 background: Rectangle { color: "transparent" }
                             }
                         }
-                        Item { height: 4 }
+                        Item { Layout.preferredHeight: 4 }
                     }
                 }
             }
