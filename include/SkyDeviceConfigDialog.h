@@ -5,6 +5,7 @@
 #include "SkyConfig.h"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDialog>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
@@ -26,6 +27,7 @@ public:
     explicit SkyDeviceConfigDialog(GroundTelemetryService *service, QWidget *parent = nullptr);
 
     void setEnglish(bool english);
+    void setFontScale(int percent);
 
 private slots:
     void onReadClicked();
@@ -37,8 +39,8 @@ private slots:
 private:
     struct SerialRow
     {
-        QCheckBox *enabled = nullptr;
-        QLineEdit *port = nullptr;
+        QPushButton *enabled = nullptr;
+        QComboBox *port = nullptr;
         QSpinBox *baud = nullptr;
         QDoubleSpinBox *frequency = nullptr;
         QLabel *enabled_label = nullptr;
@@ -54,15 +56,19 @@ private:
     void setSerialRow(const SerialRow& row, const SerialDeviceConfig& config);
     SerialDeviceConfig serialConfigFromRow(const SerialRow& row) const;
     void updateTexts();
+    void refreshSerialPortOptions();
+    void updateEnableButton(QPushButton *button);
+    void applyDynamicMetrics();
 
     GroundTelemetryService *service_;
     bool is_english_ = false;
+    int font_scale_percent_ = 100;
     SkyConfig current_config_;
     SerialRow epsilon_;
     SerialRow ptb_;
     SerialRow hmp_;
     SerialRow lidar_;
-    QCheckBox *wave_enabled_ = nullptr;
+    QPushButton *wave_enabled_ = nullptr;
     QLineEdit *wave_host_ = nullptr;
     QSpinBox *wave_port_ = nullptr;
     QDoubleSpinBox *wave_frequency_ = nullptr;

@@ -8,8 +8,10 @@
 #include <QJsonDocument>
 #include <QMessageBox>
 #include <QScrollArea>
+#include <QSerialPortInfo>
 #include <QSizePolicy>
 #include <QVBoxLayout>
+#include <QApplication>
 
 namespace VaporView
 {
@@ -44,6 +46,19 @@ void polishConfigField(QWidget *widget)
     widget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 }
 
+void applyComboText(QComboBox *combo, const QString& value)
+{
+    const int index = combo->findText(value);
+    if (index >= 0)
+    {
+        combo->setCurrentIndex(index);
+    }
+    else
+    {
+        combo->setCurrentText(value);
+    }
+}
+
 void setupFormLayout(QFormLayout *layout)
 {
     layout->setContentsMargins(16, 18, 16, 14);
@@ -66,6 +81,8 @@ SkyDeviceConfigDialog::SkyDeviceConfigDialog(GroundTelemetryService *service, QW
     }
     setConfig(SkyConfig::defaults());
     setEnglish(false);
+    refreshSerialPortOptions();
+    applyDynamicMetrics();
 }
 
 void SkyDeviceConfigDialog::setEnglish(bool english)
@@ -74,8 +91,19 @@ void SkyDeviceConfigDialog::setEnglish(bool english)
     updateTexts();
 }
 
+void SkyDeviceConfigDialog::setFontScale(int percent)
+{
+    if (percent < 70 || percent > 150)
+    {
+        return;
+    }
+    font_scale_percent_ = percent;
+    applyDynamicMetrics();
+}
+
 void SkyDeviceConfigDialog::onReadClicked()
 {
+    refreshSerialPortOptions();
     if (service_)
     {
         service_->requestSkyConfig();
@@ -129,23 +157,28 @@ void SkyDeviceConfigDialog::setupUi()
     setMinimumSize(980, 680);
     setStyleSheet(QStringLiteral(
         "SkyDeviceConfigDialog { background-color: #f3f5f7; }"
-        "QGroupBox { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 8px; margin-top: 12px; font-size: 15px; font-weight: bold; color: #1976d2; }"
+        "QGroupBox { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 8px; margin-top: 12px; font-weight: bold; color: #1976d2; }"
         "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 14px; padding: 0 8px; background-color: #ffffff; }"
-        "QLabel { color: #1f2a35; font-size: 14px; }"
-        "QLineEdit, QSpinBox, QDoubleSpinBox { background-color: #ffffff; border: 1px solid #d9dde3; border-radius: 6px; padding: 4px 28px 4px 10px; min-height: 28px; color: #111827; font-size: 14px; }"
+        "QLabel { color: #1f2a35; }"
+        "QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox { background-color: #ffffff; border: 1px solid #d9dde3; border-radius: 6px; padding: 4px 28px 4px 10px; min-height: 28px; color: #111827; }"
         "QLineEdit { padding-right: 10px; }"
-        "QLineEdit:hover, QSpinBox:hover, QDoubleSpinBox:hover { border-color: #b7c0cc; }"
-        "QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus { border: 2px solid #1976d2; }"
+        "QLineEdit:hover, QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover { border-color: #b7c0cc; }"
+        "QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus { border: 2px solid #1976d2; }"
+        "QComboBox::drop-down { width: 26px; border: none; background: transparent; subcontrol-origin: border; subcontrol-position: top right; border-top-right-radius: 6px; border-bottom-right-radius: 6px; }"
+        "QComboBox::drop-down:hover { background-color: #eef4fb; }"
+        "QComboBox::down-arrow { width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid #667085; }"
+        "QComboBox QAbstractItemView { background-color: #ffffff; border: 1px solid #d9dde3; border-radius: 6px; selection-background-color: #e3f2fd; selection-color: #1976d2; outline: none; }"
         "QSpinBox::up-button, QDoubleSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::down-button { width: 22px; border: none; background: transparent; subcontrol-origin: border; }"
         "QSpinBox::up-button, QDoubleSpinBox::up-button { subcontrol-position: top right; border-top-right-radius: 6px; }"
         "QSpinBox::down-button, QDoubleSpinBox::down-button { subcontrol-position: bottom right; border-bottom-right-radius: 6px; }"
         "QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover, QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover { background-color: #eef4fb; }"
         "QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 5px solid #667085; }"
         "QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #667085; }"
-        "QCheckBox::indicator { width: 22px; height: 22px; border-radius: 5px; border: 1px solid #cbd5e1; background-color: #ffffff; }"
-        "QCheckBox::indicator:checked { background-color: #1976d2; border-color: #1976d2; }"
-        "QPlainTextEdit { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; font-size: 13px; }"
+        "QPushButton#skyEnableToggle { background-color: #ffffff; color: #b42318; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: bold; padding: 0; }"
+        "QPushButton#skyEnableToggle:checked { background-color: #1976d2; color: #ffffff; border-color: #1976d2; }"
+        "QPlainTextEdit { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; }"
     ));
+    setFont(qApp->font());
     auto *root = new QVBoxLayout(this);
     root->setContentsMargins(18, 18, 18, 16);
     root->setSpacing(12);
@@ -183,7 +216,13 @@ void SkyDeviceConfigDialog::setupUi()
     wave_group_ = new QGroupBox(QStringLiteral("Wave TCP"), this);
     auto *waveLayout = new QFormLayout(wave_group_);
     setupFormLayout(waveLayout);
-    wave_enabled_ = new QCheckBox(this);
+    wave_enabled_ = new QPushButton(this);
+    wave_enabled_->setObjectName(QStringLiteral("skyEnableToggle"));
+    wave_enabled_->setCheckable(true);
+    wave_enabled_->setFixedSize(kFieldHeight, kFieldHeight);
+    connect(wave_enabled_, &QPushButton::toggled, this, [this](bool) {
+        updateEnableButton(wave_enabled_);
+    });
     wave_host_ = new QLineEdit(this);
     wave_port_ = new QSpinBox(this);
     wave_port_->setRange(1, 65535);
@@ -252,8 +291,16 @@ void SkyDeviceConfigDialog::setupUi()
 SkyDeviceConfigDialog::SerialRow SkyDeviceConfigDialog::createSerialRow(QFormLayout *layout, const QString&)
 {
     SerialRow row;
-    row.enabled = new QCheckBox(this);
-    row.port = new QLineEdit(this);
+    row.enabled = new QPushButton(this);
+    row.enabled->setObjectName(QStringLiteral("skyEnableToggle"));
+    row.enabled->setCheckable(true);
+    row.enabled->setFixedSize(kFieldHeight, kFieldHeight);
+    connect(row.enabled, &QPushButton::toggled, this, [this, button = row.enabled](bool) {
+        updateEnableButton(button);
+    });
+    row.port = new QComboBox(this);
+    row.port->setEditable(true);
+    row.port->setInsertPolicy(QComboBox::NoInsert);
     row.baud = new QSpinBox(this);
     row.baud->setRange(1200, 4000000);
     row.frequency = new QDoubleSpinBox(this);
@@ -277,6 +324,7 @@ void SkyDeviceConfigDialog::setConfig(const SkyConfig& config)
     setSerialRow(hmp_, config.hmp);
     setSerialRow(lidar_, config.lidar);
     wave_enabled_->setChecked(config.wave_tcp.enabled);
+    updateEnableButton(wave_enabled_);
     wave_host_->setText(config.wave_tcp.host);
     wave_port_->setValue(config.wave_tcp.port);
     wave_frequency_->setValue(config.wave_tcp.frequency_hz);
@@ -311,7 +359,8 @@ SkyConfig SkyDeviceConfigDialog::currentConfigFromUi() const
 void SkyDeviceConfigDialog::setSerialRow(const SerialRow& row, const SerialDeviceConfig& config)
 {
     row.enabled->setChecked(config.enabled);
-    row.port->setText(config.port);
+    updateEnableButton(row.enabled);
+    applyComboText(row.port, config.port);
     row.baud->setValue(config.baud_rate);
     row.frequency->setValue(config.frequency_hz);
 }
@@ -320,7 +369,7 @@ SerialDeviceConfig SkyDeviceConfigDialog::serialConfigFromRow(const SerialRow& r
 {
     SerialDeviceConfig config;
     config.enabled = row.enabled->isChecked();
-    config.port = row.port->text().trimmed();
+    config.port = row.port->currentText().trimmed();
     config.baud_rate = row.baud->value();
     config.frequency_hz = row.frequency->value();
     return config;
@@ -355,10 +404,74 @@ void SkyDeviceConfigDialog::updateTexts()
     if (telemetry_waveform_label_) telemetry_waveform_label_->setText(is_english_ ? QStringLiteral("Waveform Hz") : QStringLiteral("波形 Hz"));
     if (telemetry_heartbeat_label_) telemetry_heartbeat_label_->setText(is_english_ ? QStringLiteral("Heartbeat Hz") : QStringLiteral("心跳 Hz"));
     if (telemetry_status_label_) telemetry_status_label_->setText(is_english_ ? QStringLiteral("Status Hz") : QStringLiteral("状态 Hz"));
+    updateEnableButton(epsilon_.enabled);
+    updateEnableButton(ptb_.enabled);
+    updateEnableButton(hmp_.enabled);
+    updateEnableButton(lidar_.enabled);
+    updateEnableButton(wave_enabled_);
     read_button_->setText(is_english_ ? "Read From Sky" : "读取天空端配置");
     apply_button_->setText(is_english_ ? "Apply Config" : "应用配置");
     save_button_->setText(is_english_ ? "Save To Sky" : "保存到天空端");
     close_button_->setText(is_english_ ? "Close" : "关闭");
+}
+
+void SkyDeviceConfigDialog::refreshSerialPortOptions()
+{
+    QStringList ports;
+    for (const QSerialPortInfo& info : QSerialPortInfo::availablePorts())
+    {
+        ports.push_back(info.portName());
+    }
+    ports.removeDuplicates();
+    ports.sort(Qt::CaseInsensitive);
+
+    auto refreshCombo = [&ports](QComboBox *combo) {
+        if (!combo)
+        {
+            return;
+        }
+        const QString current = combo->currentText();
+        combo->blockSignals(true);
+        combo->clear();
+        combo->addItems(ports);
+        combo->setCurrentText(current);
+        combo->blockSignals(false);
+    };
+
+    refreshCombo(epsilon_.port);
+    refreshCombo(ptb_.port);
+    refreshCombo(hmp_.port);
+    refreshCombo(lidar_.port);
+}
+
+void SkyDeviceConfigDialog::updateEnableButton(QPushButton *button)
+{
+    if (!button)
+    {
+        return;
+    }
+    button->setText(button->isChecked() ? QStringLiteral("√") : QStringLiteral("×"));
+    button->setToolTip(button->isChecked()
+                           ? (is_english_ ? QStringLiteral("Enabled") : QStringLiteral("已启用"))
+                           : (is_english_ ? QStringLiteral("Disabled") : QStringLiteral("已禁用")));
+}
+
+void SkyDeviceConfigDialog::applyDynamicMetrics()
+{
+    setFont(qApp->font());
+    const QList<QWidget*> fields = {
+        epsilon_.port, epsilon_.baud, epsilon_.frequency,
+        ptb_.port, ptb_.baud, ptb_.frequency,
+        hmp_.port, hmp_.baud, hmp_.frequency,
+        lidar_.port, lidar_.baud, lidar_.frequency,
+        wave_host_, wave_port_, wave_frequency_, wave_downsample_,
+        telemetry_basic_rate_, telemetry_feature_rate_, telemetry_waveform_rate_,
+        telemetry_heartbeat_rate_, telemetry_status_rate_
+    };
+    for (QWidget *field : fields)
+    {
+        polishConfigField(field);
+    }
 }
 
 }  // namespace VaporView

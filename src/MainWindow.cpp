@@ -2376,6 +2376,10 @@ void MainWindow::setFontScale(int percent)
     {
         rtk_config_dialog_->setFontScale(font_scale_percent_);
     }
+    if (sky_device_config_dialog_)
+    {
+        sky_device_config_dialog_->setFontScale(font_scale_percent_);
+    }
 
     QSettings settings("VaporView", "MainWindow");
     settings.setValue("font_scale_percent", font_scale_percent_);
@@ -7085,6 +7089,7 @@ void MainWindow::onSkyDeviceConfigClicked()
     {
         sky_device_config_dialog_ = new VaporView::SkyDeviceConfigDialog(ground_telemetry_service_, this);
         sky_device_config_dialog_->setEnglish(is_english_);
+        sky_device_config_dialog_->setFontScale(font_scale_percent_);
     }
     sky_device_config_dialog_->show();
     sky_device_config_dialog_->raise();
