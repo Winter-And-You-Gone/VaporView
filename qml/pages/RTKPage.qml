@@ -175,43 +175,24 @@ Item {
                         }
 
                         // Row 4: Auto Reconnect
-                        RowLayout {
-                            Layout.fillWidth: true
-                            CheckBox {
-                                id: autoReconnectCb
-                                text: t("rtk.autoReconnect")
-                                checked: rtkBackend.autoReconnect
-                                onCheckedChanged: rtkBackend.autoReconnect = checked
-                                contentItem: Text {
-                                    text: autoReconnectCb.text
-                                    color: ApplicationWindow.window.text
-                                    font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
-                                    leftPadding: autoReconnectCb.indicator.width + autoReconnectCb.spacing
-                                    verticalAlignment: Text.AlignVCenter
-                                }
-                                indicator: Rectangle {
-                                    implicitWidth: 16; implicitHeight: 16; radius: 4
-                                    color: autoReconnectCb.checked ? ApplicationWindow.window.primary : "transparent"
-                                    border.color: autoReconnectCb.checked ? ApplicationWindow.window.primary : ApplicationWindow.window.border
-                                }
+                        // Row 4: Auto Reconnect
+                        CheckBox {
+                            id: autoReconnectCb
+                            text: t("rtk.autoReconnect")
+                            checked: rtkBackend.autoReconnect
+                            onCheckedChanged: rtkBackend.autoReconnect = checked
+                            contentItem: Text {
+                                text: autoReconnectCb.text
+                                color: ApplicationWindow.window.text
+                                font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
+                                leftPadding: autoReconnectCb.indicator.width + autoReconnectCb.spacing
+                                verticalAlignment: Text.AlignVCenter
                             }
-                        }
-
-                        // Row 5: Test Connection + Save Config
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 8
-                            ToolbarButton {
-                                Layout.fillWidth: true
-                                iconName: "scan"
-                                text: t("rtk.testConnection")
-                                onClicked: rtkBackend.testConnection()
-                            }
-                            ToolbarButton {
-                                Layout.fillWidth: true
-                                iconName: "save"
-                                text: t("rtk.saveConfig")
-                                onClicked: rtkBackend.saveConfig()
+                            indicator: Text {
+                                text: autoReconnectCb.checked ? "✓" : ""
+                                color: autoReconnectCb.checked ? ApplicationWindow.window.primary : ApplicationWindow.window.muted
+                                font.pixelSize: 12 * ApplicationWindow.window.scaleFactor
+                                verticalAlignment: Text.AlignVCenter
                             }
                         }
                     }
@@ -284,7 +265,9 @@ Item {
                             }
                         }
                         ToolbarButton {
+                            Layout.fillWidth: true
                             text: t("rtk.applyLeverArm"); iconName: "activity"
+                            variant: ""
                             onClicked: rtkBackend.applyMainAntennaLeverArm(
                                 Number(leverX.text), Number(leverY.text), Number(leverZ.text))
                         }
