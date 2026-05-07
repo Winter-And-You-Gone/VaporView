@@ -515,6 +515,7 @@ Item {
                                 background: Rectangle { color: "transparent" }
                             }
                         }
+                        Item { height: 4 }
                     }
                 }
             }
