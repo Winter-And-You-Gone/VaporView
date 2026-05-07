@@ -188,11 +188,17 @@ Item {
                                 leftPadding: autoReconnectCb.indicator.width + autoReconnectCb.spacing
                                 verticalAlignment: Text.AlignVCenter
                             }
-                            indicator: Text {
-                                text: autoReconnectCb.checked ? "✓" : ""
-                                color: autoReconnectCb.checked ? ApplicationWindow.window.primary : ApplicationWindow.window.muted
-                                font.pixelSize: 12 * ApplicationWindow.window.scaleFactor
-                                verticalAlignment: Text.AlignVCenter
+                            indicator: Rectangle {
+                                implicitWidth: 16; implicitHeight: 16
+                                radius: 3
+                                color: autoReconnectCb.checked ? ApplicationWindow.window.primary : "transparent"
+                                border.color: autoReconnectCb.checked ? ApplicationWindow.window.primary : ApplicationWindow.window.border
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "✓"
+                                    color: autoReconnectCb.checked ? ApplicationWindow.window.primaryForeground : "transparent"
+                                    font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                                }
                             }
                         }
                     }
@@ -267,9 +273,14 @@ Item {
                         ToolbarButton {
                             Layout.fillWidth: true
                             text: t("rtk.applyLeverArm"); iconName: "activity"
-                            variant: ""
+                            variant: "primary"
                             onClicked: rtkBackend.applyMainAntennaLeverArm(
                                 Number(leverX.text), Number(leverY.text), Number(leverZ.text))
+                            background: Rectangle {
+                                implicitHeight: 28; radius: 8
+                                color: "#1e293b"
+                                border.color: ApplicationWindow.window.border
+                            }
                         }
 
                         // Row 3: Timeout + Reconnect
