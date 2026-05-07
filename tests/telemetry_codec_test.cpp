@@ -116,6 +116,33 @@ void testWaveform()
     require(VaporView::TelemetryCodec::parseDownsampledWaveform(VaporView::TelemetryCodec::serializeDownsampledWaveform(waveform), parsed), "parse waveform");
     require(parsed.samples.size() == 5000, "downsample count");
     require(parsed.samples.at(1234) == 12340.0f, "downsample value");
+
+    VaporView::WaveformFeature feature;
+    feature.host_time_us = 100;
+    feature.epsilon_time_us = 90;
+    feature.original_point_count = 50000;
+    feature.search_start_index = 1000;
+    feature.search_end_index = 8000;
+    feature.channel_id = 4;
+    feature.peak = 0.5f;
+    feature.mean = 0.1f;
+    feature.rms = 0.2f;
+    feature.peak_index = 1200.0f;
+    feature.peak_x = 1200.0f;
+    feature.min_value = -0.1f;
+    feature.max_value = 1.0f;
+    feature.quality_flags = 3;
+    VaporView::WaveformFeature parsedFeature;
+    require(VaporView::TelemetryCodec::parseWaveformFeature(VaporView::TelemetryCodec::serializeWaveformFeature(feature), parsedFeature), "parse feature");
+    require(parsedFeature.search_start_index == feature.search_start_index, "feature search start");
+    require(parsedFeature.search_end_index == feature.search_end_index, "feature search end");
+
+    VaporView::PeakSearchRange range;
+    range.start_index = 123;
+    range.end_index = 456;
+    VaporView::PeakSearchRange parsedRange;
+    require(VaporView::TelemetryCodec::parsePeakSearchRange(VaporView::TelemetryCodec::serializePeakSearchRange(range), parsedRange), "parse peak search range");
+    require(parsedRange.start_index == 123 && parsedRange.end_index == 456, "peak search range values");
 }
 
 void testSkyConfigDiff()

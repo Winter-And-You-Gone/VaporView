@@ -124,6 +124,75 @@ QString deviceStateName(DeviceState state)
     return QStringLiteral("unknown");
 }
 
+QString commandIdName(CommandId id)
+{
+    switch (id)
+    {
+    case CommandId::StartRecording: return QStringLiteral("StartRecording");
+    case CommandId::PauseRecording: return QStringLiteral("PauseRecording");
+    case CommandId::StopRecording: return QStringLiteral("StopRecording");
+    case CommandId::SetTelemetryRate: return QStringLiteral("SetTelemetryRate");
+    case CommandId::SetWaveformRate: return QStringLiteral("SetWaveformRate");
+    case CommandId::SetFeatureRate: return QStringLiteral("SetFeatureRate");
+    case CommandId::EnableWaveformStreaming: return QStringLiteral("EnableWaveformStreaming");
+    case CommandId::DisableWaveformStreaming: return QStringLiteral("DisableWaveformStreaming");
+    case CommandId::RequestOneWaveform: return QStringLiteral("RequestOneWaveform");
+    case CommandId::RequestStatus: return QStringLiteral("RequestStatus");
+    case CommandId::RebootDevice: return QStringLiteral("RebootDevice");
+    case CommandId::QueryDeviceStatus: return QStringLiteral("QueryDeviceStatus");
+    case CommandId::ConnectDevice: return QStringLiteral("ConnectDevice");
+    case CommandId::DisconnectDevice: return QStringLiteral("DisconnectDevice");
+    case CommandId::ReconnectDevice: return QStringLiteral("ReconnectDevice");
+    case CommandId::ConnectAllDevices: return QStringLiteral("ConnectAllDevices");
+    case CommandId::DisconnectAllDevices: return QStringLiteral("DisconnectAllDevices");
+    case CommandId::ReconnectAllDevices: return QStringLiteral("ReconnectAllDevices");
+    case CommandId::GetSkyConfig: return QStringLiteral("GetSkyConfig");
+    case CommandId::SetSkyConfig: return QStringLiteral("SetSkyConfig");
+    case CommandId::SaveSkyConfig: return QStringLiteral("SaveSkyConfig");
+    case CommandId::ReloadSkyConfig: return QStringLiteral("ReloadSkyConfig");
+    case CommandId::SetPeakSearchRange: return QStringLiteral("SetPeakSearchRange");
+    }
+    return QStringLiteral("UnknownCommand");
+}
+
+QString commandErrorCodeText(CommandErrorCode error, bool english)
+{
+    switch (error)
+    {
+    case CommandErrorCode::Ok:
+        return english ? QStringLiteral("Ok") : QStringLiteral("成功");
+    case CommandErrorCode::UnknownCommand:
+        return english ? QStringLiteral("Unknown command") : QStringLiteral("未知命令");
+    case CommandErrorCode::InvalidPayload:
+        return english ? QStringLiteral("Invalid payload") : QStringLiteral("载荷无效");
+    case CommandErrorCode::InvalidDeviceId:
+        return english ? QStringLiteral("Invalid device id") : QStringLiteral("设备ID无效");
+    case CommandErrorCode::DeviceAlreadyConnected:
+        return english ? QStringLiteral("Device already connected") : QStringLiteral("设备已连接");
+    case CommandErrorCode::DeviceNotConnected:
+        return english ? QStringLiteral("Device not connected") : QStringLiteral("设备未连接");
+    case CommandErrorCode::DeviceConnectFailed:
+        return english ? QStringLiteral("Device connect failed") : QStringLiteral("设备连接失败");
+    case CommandErrorCode::DeviceDisconnectFailed:
+        return english ? QStringLiteral("Device disconnect failed") : QStringLiteral("设备断开失败");
+    case CommandErrorCode::DeviceReconnectFailed:
+        return english ? QStringLiteral("Device reconnect failed") : QStringLiteral("设备重连失败");
+    case CommandErrorCode::ConfigInvalid:
+        return english ? QStringLiteral("Invalid config") : QStringLiteral("配置无效");
+    case CommandErrorCode::ConfigApplyFailed:
+        return english ? QStringLiteral("Config apply failed") : QStringLiteral("配置应用失败");
+    case CommandErrorCode::ConfigSaveFailed:
+        return english ? QStringLiteral("Config save failed") : QStringLiteral("配置保存失败");
+    case CommandErrorCode::RecordingAlreadyStarted:
+        return english ? QStringLiteral("Recording already started") : QStringLiteral("记录已开始");
+    case CommandErrorCode::RecordingNotStarted:
+        return english ? QStringLiteral("Recording not started") : QStringLiteral("记录未开始");
+    case CommandErrorCode::InternalError:
+        return english ? QStringLiteral("Internal error") : QStringLiteral("内部错误");
+    }
+    return english ? QStringLiteral("Unknown error") : QStringLiteral("未知错误");
+}
+
 bool skyDeviceIdFromValue(quint8 value, SkyDeviceId& id)
 {
     switch (value)
@@ -359,11 +428,14 @@ bool TelemetryCodec::parseBasicTelemetry(const QByteArray& payload, TelemetryBas
 QByteArray TelemetryCodec::serializeWaveformFeature(const WaveformFeature& feature)
 {
     QByteArray payload;
-    payload.reserve(48);
+    payload.reserve(64);
     appendLe<quint64>(payload, feature.host_time_us);
     appendLe<quint64>(payload, feature.epsilon_time_us);
     appendLe<quint16>(payload, feature.channel_id);
     appendLe<quint16>(payload, 0);
+    appendLe<quint32>(payload, feature.original_point_count);
+    appendLe<quint32>(payload, feature.search_start_index);
+    appendLe<quint32>(payload, feature.search_end_index);
     appendFloatLe(payload, feature.peak);
     appendFloatLe(payload, feature.mean);
     appendFloatLe(payload, feature.rms);
@@ -377,13 +449,28 @@ QByteArray TelemetryCodec::serializeWaveformFeature(const WaveformFeature& featu
 
 bool TelemetryCodec::parseWaveformFeature(const QByteArray& payload, WaveformFeature& feature)
 {
+    feature = WaveformFeature();
     qsizetype offset = 0;
     quint16 reserved = 0;
-    return readLe(payload, offset, feature.host_time_us) &&
-           readLe(payload, offset, feature.epsilon_time_us) &&
-           readLe(payload, offset, feature.channel_id) &&
-           readLe(payload, offset, reserved) &&
-           readFloatLe(payload, offset, feature.peak) &&
+    if (!readLe(payload, offset, feature.host_time_us) ||
+        !readLe(payload, offset, feature.epsilon_time_us) ||
+        !readLe(payload, offset, feature.channel_id) ||
+        !readLe(payload, offset, reserved))
+    {
+        return false;
+    }
+
+    if (payload.size() >= 64)
+    {
+        if (!readLe(payload, offset, feature.original_point_count) ||
+            !readLe(payload, offset, feature.search_start_index) ||
+            !readLe(payload, offset, feature.search_end_index))
+        {
+            return false;
+        }
+    }
+
+    return readFloatLe(payload, offset, feature.peak) &&
            readFloatLe(payload, offset, feature.mean) &&
            readFloatLe(payload, offset, feature.rms) &&
            readFloatLe(payload, offset, feature.peak_index) &&
@@ -615,6 +702,21 @@ bool TelemetryCodec::parseRatePayload(const QByteArray& payload, quint16& hz)
 {
     qsizetype offset = 0;
     return readLe(payload, offset, hz);
+}
+
+QByteArray TelemetryCodec::serializePeakSearchRange(const PeakSearchRange& range)
+{
+    QByteArray payload;
+    appendLe<quint32>(payload, range.start_index);
+    appendLe<quint32>(payload, range.end_index);
+    return payload;
+}
+
+bool TelemetryCodec::parsePeakSearchRange(const QByteArray& payload, PeakSearchRange& range)
+{
+    qsizetype offset = 0;
+    return readLe(payload, offset, range.start_index) &&
+           readLe(payload, offset, range.end_index);
 }
 
 }  // namespace VaporView

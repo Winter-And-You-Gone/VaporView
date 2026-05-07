@@ -55,6 +55,8 @@ QJsonObject waveToJson(const WaveTcpConfig& config)
     object["port"] = config.port;
     object["frequency_hz"] = config.frequency_hz;
     object["downsample_ratio"] = config.downsample_ratio;
+    object["peak_search_start_index"] = config.peak_search_start_index;
+    object["peak_search_end_index"] = config.peak_search_end_index;
     return object;
 }
 
@@ -66,6 +68,8 @@ bool waveFromJson(const QJsonObject& object, WaveTcpConfig& config, QString *err
     if (object.contains("port")) next.port = object.value("port").toInt(next.port);
     if (object.contains("frequency_hz")) next.frequency_hz = object.value("frequency_hz").toDouble(next.frequency_hz);
     if (object.contains("downsample_ratio")) next.downsample_ratio = object.value("downsample_ratio").toInt(next.downsample_ratio);
+    if (object.contains("peak_search_start_index")) next.peak_search_start_index = object.value("peak_search_start_index").toInt(next.peak_search_start_index);
+    if (object.contains("peak_search_end_index")) next.peak_search_end_index = object.value("peak_search_end_index").toInt(next.peak_search_end_index);
     if (next.enabled && next.host.trimmed().isEmpty())
     {
         if (errorMessage) *errorMessage = QStringLiteral("wave_tcp host is empty");
@@ -74,6 +78,12 @@ bool waveFromJson(const QJsonObject& object, WaveTcpConfig& config, QString *err
     if (next.port <= 0 || next.port > 65535 || next.frequency_hz <= 0.0 || next.downsample_ratio <= 0)
     {
         if (errorMessage) *errorMessage = QStringLiteral("wave_tcp port/frequency/downsample_ratio is invalid");
+        return false;
+    }
+    if (next.peak_search_start_index < 0 ||
+        (next.peak_search_end_index > 0 && next.peak_search_end_index <= next.peak_search_start_index))
+    {
+        if (errorMessage) *errorMessage = QStringLiteral("wave_tcp peak search range is invalid");
         return false;
     }
     config = next;
@@ -130,7 +140,9 @@ bool WaveTcpConfig::operator==(const WaveTcpConfig& other) const
            host == other.host &&
            port == other.port &&
            fuzzyEqual(frequency_hz, other.frequency_hz) &&
-           downsample_ratio == other.downsample_ratio;
+           downsample_ratio == other.downsample_ratio &&
+           peak_search_start_index == other.peak_search_start_index &&
+           peak_search_end_index == other.peak_search_end_index;
 }
 
 bool WaveTcpConfig::operator!=(const WaveTcpConfig& other) const
@@ -166,7 +178,7 @@ SkyConfig SkyConfig::defaults()
     config.hmp = {true, QStringLiteral("/dev/ttyHMP"), 19200, 20.0};
     config.lidar = {true, QStringLiteral("/dev/ttyLidar"), 500000, 100.0};
 #endif
-    config.wave_tcp = {true, QStringLiteral("127.0.0.1"), 8888, 10.0, 10};
+    config.wave_tcp = {true, QStringLiteral("127.0.0.1"), 8888, 10.0, 10, 0, 0};
     config.telemetry = {10.0, 10.0, 1.0, 1.0, 1.0};
     return config;
 }

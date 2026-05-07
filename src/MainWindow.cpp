@@ -2051,13 +2051,21 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::commandAckReceived,
             this, &MainWindow::onRemoteCommandAckReceived);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::commandTimedOut,
-            this, [this](VaporView::CommandId commandId, quint16) {
+            this, [this](VaporView::CommandId commandId, quint16 commandSeq) {
                 if (isRemoteSkyMode() && commandId == VaporView::CommandId::RequestStatus && !remote_sky_online_ && status_label_)
                 {
                     status_label_->setText(is_english_ ? "Sky handshake timed out" : "天空端握手超时");
                     status_label_->setProperty("status", "disconnected");
                     status_label_->style()->unpolish(status_label_);
                     status_label_->style()->polish(status_label_);
+                }
+                if (commandId == VaporView::CommandId::SetPeakSearchRange)
+                {
+                    remote_peak_search_commands_.remove(commandSeq);
+                    if (tcp_wave_panel_)
+                    {
+                        tcp_wave_panel_->rejectRemotePeakSearchRange(is_english_ ? QStringLiteral("ACK timed out") : QStringLiteral("ACK 超时"));
+                    }
                 }
             });
     loadRememberedInputState();
@@ -2931,6 +2939,30 @@ void MainWindow::sendRemoteDeviceCommand(VaporView::CommandId command, VaporView
         return;
     }
     ground_telemetry_service_->sendDeviceCommand(command, device);
+}
+
+void MainWindow::sendRemotePeakSearchRange(quint32 startIndex, quint32 endIndex)
+{
+    if (!ground_telemetry_service_ || !ground_telemetry_service_->isOpen())
+    {
+        log(is_english_ ? "Remote Sky telemetry link is not connected" : "天空端数传链路未连接");
+        if (tcp_wave_panel_)
+        {
+            tcp_wave_panel_->rejectRemotePeakSearchRange(is_english_ ? QStringLiteral("link is not connected") : QStringLiteral("数传链路未连接"));
+        }
+        return;
+    }
+    const quint16 seq = ground_telemetry_service_->sendPeakSearchRangeCommand(startIndex, endIndex);
+    VaporView::PeakSearchRange range;
+    range.start_index = startIndex;
+    range.end_index = endIndex;
+    remote_peak_search_commands_.insert(seq, range);
+    log(QString(is_english_
+            ? "Peak search range sent to sky: [%1, %2), seq=%3"
+            : "峰值搜索区间已下发到天空端：[%1, %2)，序号=%3")
+            .arg(startIndex)
+            .arg(endIndex == 0 ? QStringLiteral("end") : QString::number(endIndex))
+            .arg(seq));
 }
 
 void MainWindow::updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, VaporView::DeviceState state)
@@ -3919,6 +3951,8 @@ void MainWindow::setupDataPanels()
         sendRemoteDeviceCommand(connectRequested ? VaporView::CommandId::ConnectDevice : VaporView::CommandId::DisconnectDevice,
                                 VaporView::SkyDeviceId::WaveTcp);
     });
+    connect(tcp_wave_panel_, &TcpWavePanel::remotePeakSearchRangeRequested,
+            this, &MainWindow::sendRemotePeakSearchRange);
     tcpWaveLayout->addWidget(tcp_wave_panel_);
     main_layout_->addWidget(tcp_wave_group_, 0);
 }
@@ -6986,12 +7020,41 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
 void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
 {
     const bool ok = ack.result == 0;
-    log(QString(is_english_ ? "Remote ACK command=%1 seq=%2 result=%3 error=%4"
-                            : "远程ACK 命令=%1 序号=%2 结果=%3 错误=%4")
+    const QString commandName = VaporView::commandIdName(ack.command_id);
+    const QString errorText = VaporView::commandErrorCodeText(ack.error_code, is_english_);
+    log(QString(is_english_ ? "Remote ACK command=%1(%2) seq=%3 result=%4 error=%5(%6)"
+                            : "远程ACK 命令=%1(%2) 序号=%3 结果=%4 错误=%5(%6)")
+            .arg(commandName)
             .arg(static_cast<quint16>(ack.command_id))
             .arg(ack.command_seq)
-            .arg(ok ? QStringLiteral("ok") : QStringLiteral("error"))
+            .arg(ok ? (is_english_ ? QStringLiteral("ok") : QStringLiteral("成功"))
+                    : (is_english_ ? QStringLiteral("error") : QStringLiteral("失败")))
+            .arg(errorText)
             .arg(static_cast<quint32>(ack.error_code)));
+
+    if (ack.command_id == VaporView::CommandId::SetPeakSearchRange)
+    {
+        const auto it = remote_peak_search_commands_.find(ack.command_seq);
+        if (it != remote_peak_search_commands_.end())
+        {
+            const VaporView::PeakSearchRange range = it.value();
+            remote_peak_search_commands_.erase(it);
+            if (tcp_wave_panel_)
+            {
+                if (ok)
+                {
+                    tcp_wave_panel_->applyRemotePeakSearchRange(range.start_index, range.end_index);
+                    log(is_english_
+                            ? QStringLiteral("Peak search range accepted. Old remote peak trend was cleared.")
+                            : QStringLiteral("峰值搜索区间已生效，旧远程峰值趋势已清空。"));
+                }
+                else
+                {
+                    tcp_wave_panel_->rejectRemotePeakSearchRange(errorText);
+                }
+            }
+        }
+    }
 }
 
 void MainWindow::onRemoteLinkOpenChanged(bool open)

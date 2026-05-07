@@ -384,6 +384,7 @@ private:
     QString remoteTelemetrySummaryText() const;
     void updateRemoteTelemetrySummaryLabel();
     void sendRemoteDeviceCommand(VaporView::CommandId command, VaporView::SkyDeviceId device);
+    void sendRemotePeakSearchRange(quint32 startIndex, quint32 endIndex);
     QPushButton *createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device);
     void setRemoteDeviceButtonsEnabled(bool enabled);
     void updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, VaporView::DeviceState state);
@@ -557,6 +558,7 @@ private:
     QHash<VaporView::SkyDeviceId, VaporView::DeviceState> remote_device_states_;
     QHash<VaporView::SkyDeviceId, qint64> remote_last_data_ms_;
     QHash<int, QVector<qint64>> remote_packet_arrivals_ms_;
+    QHash<quint16, VaporView::PeakSearchRange> remote_peak_search_commands_;
     qint64 remote_last_status_ms_;
     VaporView::TelemetryStatus remote_status_;
     std::atomic<bool> cancel_connection_requested_;

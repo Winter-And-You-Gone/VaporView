@@ -25,6 +25,7 @@ public:
     quint16 sendCommand(CommandId commandId, const QByteArray& payload = QByteArray());
     quint16 sendDeviceCommand(CommandId commandId, SkyDeviceId deviceId);
     quint16 sendRateCommand(CommandId commandId, quint16 hz);
+    quint16 sendPeakSearchRangeCommand(quint32 startIndex, quint32 endIndex);
     quint16 requestSkyConfig();
     quint16 setSkyConfig(const QJsonObject& config);
     quint16 saveSkyConfig();

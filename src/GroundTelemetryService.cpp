@@ -84,6 +84,14 @@ quint16 GroundTelemetryService::sendRateCommand(CommandId commandId, quint16 hz)
     return sendCommand(commandId, TelemetryCodec::serializeRatePayload(hz));
 }
 
+quint16 GroundTelemetryService::sendPeakSearchRangeCommand(quint32 startIndex, quint32 endIndex)
+{
+    PeakSearchRange range;
+    range.start_index = startIndex;
+    range.end_index = endIndex;
+    return sendCommand(CommandId::SetPeakSearchRange, TelemetryCodec::serializePeakSearchRange(range));
+}
+
 quint16 GroundTelemetryService::requestSkyConfig()
 {
     return sendCommand(CommandId::GetSkyConfig);
@@ -122,7 +130,8 @@ void GroundTelemetryService::onRetryTimer()
         if (pending.retry_count >= kCommandMaxRetries)
         {
             expired.push_back(it.key());
-            emit logMessage(QStringLiteral("命令 %1 序号 %2 超时（未收到天空端 ACK）")
+            emit logMessage(QStringLiteral("命令 %1(%2) 序号 %3 超时：未收到天空端 ACK")
+                                .arg(commandIdName(pending.command.command_id))
                                 .arg(static_cast<quint16>(pending.command.command_id))
                                 .arg(pending.command.command_seq));
             emit commandTimedOut(pending.command.command_id, pending.command.command_seq);

@@ -38,6 +38,8 @@ public:
     void setRemoteWaveTcpState(VaporView::DeviceState state);
     void injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QVector<float>& samples);
     void injectRemoteWaveformFeature(const VaporView::WaveformFeature& feature);
+    void applyRemotePeakSearchRange(quint32 startIndex, quint32 endIndex);
+    void rejectRemotePeakSearchRange(const QString& reason);
 
     enum class ParseMode
     {
@@ -67,6 +69,7 @@ signals:
     void rawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload, VaporView::TcpFloatEncoding floatEncoding);
     void connectionStateChanged(bool connected);
     void remoteWaveTcpConnectionRequested(bool connectRequested);
+    void remotePeakSearchRangeRequested(quint32 startIndex, quint32 endIndex);
 
 private slots:
     void onToggleConnectionClicked();

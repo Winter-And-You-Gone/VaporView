@@ -60,6 +60,7 @@ enum class CommandId : quint16
     SetSkyConfig = 31,
     SaveSkyConfig = 32,
     ReloadSkyConfig = 33,
+    SetPeakSearchRange = 34,
 };
 
 enum class SkyDeviceId : quint8
@@ -160,6 +161,9 @@ struct WaveformFeature
 {
     quint64 host_time_us = 0;
     quint64 epsilon_time_us = 0;
+    quint32 original_point_count = 0;
+    quint32 search_start_index = 0;
+    quint32 search_end_index = 0;
     quint16 channel_id = 0;
     float peak = 0.0f;
     float mean = 0.0f;
@@ -169,6 +173,12 @@ struct WaveformFeature
     float min_value = 0.0f;
     float max_value = 0.0f;
     quint32 quality_flags = 0;
+};
+
+struct PeakSearchRange
+{
+    quint32 start_index = 0;
+    quint32 end_index = 0;
 };
 
 struct DeviceStatusItem
@@ -215,6 +225,8 @@ struct CommandAck
 
 QString skyDeviceIdName(SkyDeviceId id);
 QString deviceStateName(DeviceState state);
+QString commandIdName(CommandId id);
+QString commandErrorCodeText(CommandErrorCode error, bool english = false);
 bool skyDeviceIdFromValue(quint8 value, SkyDeviceId& id);
 
 }  // namespace VaporView

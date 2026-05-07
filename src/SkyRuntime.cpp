@@ -124,6 +124,7 @@ void SkyRuntime::stop()
     link_.close();
     running_ = false;
     started_time_us_ = 0;
+    last_sent_feature_time_us_ = 0;
     emit runningChanged(false);
     emit logMessage(QStringLiteral("SkyRuntime stopped"));
 }
@@ -359,6 +360,11 @@ void SkyRuntime::sendWaveformFeature()
     {
         return;
     }
+    if (feature.host_time_us == 0 || feature.host_time_us == last_sent_feature_time_us_)
+    {
+        return;
+    }
+    last_sent_feature_time_us_ = feature.host_time_us;
     peak_trend_.push_back(feature.peak);
     while (peak_trend_.size() > 256)
     {
@@ -507,6 +513,26 @@ void SkyRuntime::handleCommand(const CommandMessage& command)
         device_manager_.applyConfig(config);
         updateTimerIntervals();
         sendAck(command);
+        break;
+    }
+    case CommandId::SetPeakSearchRange:
+    {
+        PeakSearchRange range;
+        if (!TelemetryCodec::parsePeakSearchRange(command.payload, range))
+        {
+            sendAck(command, CommandErrorCode::InvalidPayload);
+            break;
+        }
+        CommandErrorCode error = CommandErrorCode::Ok;
+        if (!device_manager_.setPeakSearchRange(range.start_index, range.end_index, &error))
+        {
+            sendAck(command, error);
+            break;
+        }
+        last_sent_feature_time_us_ = 0;
+        peak_trend_.clear();
+        sendAck(command);
+        sendTelemetryStatus();
         break;
     }
     case CommandId::EnableWaveformStreaming:

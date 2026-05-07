@@ -62,7 +62,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     basicOut << "host_time_us,epsilon_time_us,latitude_deg,longitude_deg,height_m,ecef_x_m,ecef_y_m,ecef_z_m,lidar_height_m,temperature_c,humidity_percent,pressure_hpa,status_bits,filter_status_bits,update_status_bits,gnss_fix_code,validity_flags\n";
 
     QTextStream featureOut(&feature_record_file_);
-    featureOut << "host_time_us,epsilon_time_us,channel_id,peak,mean,rms,peak_index,peak_x,min_value,max_value,quality_flags\n";
+    featureOut << "host_time_us,epsilon_time_us,original_point_count,search_start_index,search_end_index,channel_id,peak,mean,rms,peak_index,peak_x,min_value,max_value,quality_flags\n";
 
     QTextStream waveformOut(&waveform_index_file_);
     waveformOut << "host_time_us,epsilon_time_us,point_count,filename\n";
@@ -173,6 +173,9 @@ void SkySessionRecorder::recordWaveformFeature(const WaveformFeature& feature)
     QTextStream out(&feature_record_file_);
     out << feature.host_time_us << ','
         << feature.epsilon_time_us << ','
+        << feature.original_point_count << ','
+        << feature.search_start_index << ','
+        << feature.search_end_index << ','
         << feature.channel_id << ','
         << feature.peak << ','
         << feature.mean << ','

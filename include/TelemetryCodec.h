@@ -47,6 +47,8 @@ public:
     static bool parseDeviceCommand(const QByteArray& payload, SkyDeviceId& id);
     static QByteArray serializeRatePayload(quint16 hz);
     static bool parseRatePayload(const QByteArray& payload, quint16& hz);
+    static QByteArray serializePeakSearchRange(const PeakSearchRange& range);
+    static bool parsePeakSearchRange(const QByteArray& payload, PeakSearchRange& range);
 
 private:
     quint32 max_payload_size_;

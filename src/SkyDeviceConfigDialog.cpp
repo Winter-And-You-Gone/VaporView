@@ -193,6 +193,7 @@ SkyDeviceConfigDialog::SerialRow SkyDeviceConfigDialog::createSerialRow(QFormLay
 
 void SkyDeviceConfigDialog::setConfig(const SkyConfig& config)
 {
+    current_config_ = config;
     setSerialRow(epsilon_, config.epsilon);
     setSerialRow(ptb_, config.ptb);
     setSerialRow(hmp_, config.hmp);
@@ -211,7 +212,7 @@ void SkyDeviceConfigDialog::setConfig(const SkyConfig& config)
 
 SkyConfig SkyDeviceConfigDialog::currentConfigFromUi() const
 {
-    SkyConfig config;
+    SkyConfig config = current_config_;
     config.epsilon = serialConfigFromRow(epsilon_);
     config.ptb = serialConfigFromRow(ptb_);
     config.hmp = serialConfigFromRow(hmp_);

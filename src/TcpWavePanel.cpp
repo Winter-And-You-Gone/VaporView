@@ -931,7 +931,7 @@ void TcpWavePanel::setEnglish(bool english)
     }
     if (peak_clear_button_)
     {
-        peak_clear_button_->setText(english ? "Clear" : "清空");
+        peak_clear_button_->setText(english ? "Clear Trend" : "清空趋势");
     }
     hint_label_->setText(english
         ? "This TCP sender is likely single-client. Do not open the LabVIEW VI receiver and VaporView on port 8888 at the same time."
@@ -956,8 +956,8 @@ void TcpWavePanel::updatePeakPlotModeButtonText()
     }
 
     peak_mode_button_->setText(peak_plot_scatter_mode_
-        ? (is_english_ ? "Show Polyline" : "切换到折线图")
-        : (is_english_ ? "Show Scatter" : "切换到散点图"));
+        ? (is_english_ ? "Trend: Line" : "趋势显示：折线")
+        : (is_english_ ? "Trend: Scatter" : "趋势显示：散点"));
 }
 
 QString TcpWavePanel::peakFilterModeText(PeakFilterMode mode) const
@@ -987,7 +987,7 @@ void TcpWavePanel::updatePeakFilterButtonText()
         ? (is_english_ ? QStringLiteral("end") : QStringLiteral("末尾"))
         : QString::number(peak_search_end_index_);
     peak_filter_button_->setText(QStringLiteral("%1:%2-%3 / %4")
-        .arg(is_english_ ? QStringLiteral("Peak") : QStringLiteral("峰值"))
+        .arg(is_english_ ? QStringLiteral("Search") : QStringLiteral("峰值搜索"))
         .arg(peak_search_start_index_)
         .arg(searchEndText)
         .arg(peakFilterModeText(peak_filter_settings_.mode)));
@@ -1228,13 +1228,6 @@ void TcpWavePanel::injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QV
     }
     wave1_history_.clear();
     wave4_history_ = samples;
-    const float rawPeakValue = currentWaveformPeakValue(wave4_history_);
-    peak_raw_history_.push_back(rawPeakValue);
-    if (peak_raw_history_.size() > kPeakTrendFrameWindow)
-    {
-        peak_raw_history_.remove(0, peak_raw_history_.size() - kPeakTrendFrameWindow);
-    }
-    rebuildPeakHistory();
     ++frame_count_;
     updateFrameRateDisplay(QDateTime::currentMSecsSinceEpoch());
     pending_wave1_info_text_ = is_english_ ? "Remote Sky source" : "天空端远程源";
@@ -1250,6 +1243,10 @@ void TcpWavePanel::injectRemoteWaveformFeature(const VaporView::WaveformFeature&
     {
         return;
     }
+    if (!std::isfinite(feature.peak))
+    {
+        return;
+    }
     peak_raw_history_.push_back(feature.peak);
     if (peak_raw_history_.size() > kPeakTrendFrameWindow)
     {
@@ -1259,7 +1256,38 @@ void TcpWavePanel::injectRemoteWaveformFeature(const VaporView::WaveformFeature&
     pending_live_status_text_ = QString(is_english_ ? "Remote feature: peak %1 rms %2" : "远程特征值：峰值 %1 RMS %2")
         .arg(feature.peak, 0, 'g', 4)
         .arg(feature.rms, 0, 'g', 4);
+    if (feature.search_start_index > 0 || feature.search_end_index > 0)
+    {
+        pending_live_status_text_ += QString(is_english_ ? " | search [%1, %2), index %3" : " | 搜索区间 [%1, %2)，峰值下标 %3")
+            .arg(feature.search_start_index)
+            .arg(feature.search_end_index == 0 ? QStringLiteral("end") : QString::number(feature.search_end_index))
+            .arg(feature.peak_index, 0, 'f', 0);
+    }
     live_display_dirty_ = true;
+}
+
+void TcpWavePanel::applyRemotePeakSearchRange(quint32 startIndex, quint32 endIndex)
+{
+    peak_search_start_index_ = static_cast<int>(startIndex);
+    peak_search_end_index_ = static_cast<int>(endIndex);
+    peak_raw_history_.clear();
+    peak_history_.clear();
+    if (peak_plot_)
+    {
+        peak_plot_->setPeakValues({});
+    }
+    saveRememberedInputState();
+    updatePeakFilterButtonText();
+    setStatusText(is_english_
+        ? QStringLiteral("Peak search range accepted by sky. Waiting for the next feature frame.")
+        : QStringLiteral("峰值搜索区间已下发到天空端，等待下一帧特征值。"));
+}
+
+void TcpWavePanel::rejectRemotePeakSearchRange(const QString& reason)
+{
+    setStatusText(is_english_
+        ? QStringLiteral("Sky rejected peak search range: %1").arg(reason)
+        : QStringLiteral("天空端拒绝峰值搜索区间：%1").arg(reason));
 }
 
 void TcpWavePanel::setupSocket()
@@ -1371,7 +1399,7 @@ void TcpWavePanel::onClearPeakPlotClicked()
 void TcpWavePanel::onConfigurePeakFilterClicked()
 {
     QDialog dialog(this);
-    dialog.setWindowTitle(is_english_ ? QStringLiteral("Peak Settings") : QStringLiteral("峰值设置"));
+    dialog.setWindowTitle(is_english_ ? QStringLiteral("Peak Search Range") : QStringLiteral("峰值搜索区间"));
 
     auto *layout = new QVBoxLayout(&dialog);
     auto *formLayout = new QFormLayout();
@@ -1396,7 +1424,7 @@ void TcpWavePanel::onConfigurePeakFilterClicked()
     modeCombo->addItem(is_english_ ? QStringLiteral("Keep Range") : QStringLiteral("保留区间"), static_cast<int>(PeakFilterMode::KeepRange));
     modeCombo->addItem(is_english_ ? QStringLiteral("Exclude Range") : QStringLiteral("排除区间"), static_cast<int>(PeakFilterMode::ExcludeRange));
     modeCombo->setCurrentIndex(std::max(0, modeCombo->findData(static_cast<int>(peak_filter_settings_.mode))));
-    formLayout->addRow(is_english_ ? QStringLiteral("Method") : QStringLiteral("方式"), modeCombo);
+    formLayout->addRow(is_english_ ? QStringLiteral("Trend Filter") : QStringLiteral("趋势过滤"), modeCombo);
 
     auto *minEdit = new QLineEdit(QString::number(peak_filter_settings_.min_value, 'f', 6), &dialog);
     auto *maxEdit = new QLineEdit(QString::number(peak_filter_settings_.max_value, 'f', 6), &dialog);
@@ -1433,7 +1461,7 @@ void TcpWavePanel::onConfigurePeakFilterClicked()
     {
         QMessageBox::warning(
             this,
-            is_english_ ? QStringLiteral("Peak Settings") : QStringLiteral("峰值设置"),
+            is_english_ ? QStringLiteral("Peak Search Range") : QStringLiteral("峰值搜索区间"),
             is_english_ ? QStringLiteral("Search End must be greater than Search Start, or set to Full Frame.") : QStringLiteral("搜索终点必须大于搜索起点，或者设置为整帧。"));
         return;
     }
@@ -1441,7 +1469,7 @@ void TcpWavePanel::onConfigurePeakFilterClicked()
     {
         QMessageBox::warning(
             this,
-            is_english_ ? QStringLiteral("Peak Settings") : QStringLiteral("峰值设置"),
+            is_english_ ? QStringLiteral("Trend Filter") : QStringLiteral("趋势过滤"),
             is_english_ ? QStringLiteral("Please enter valid numeric range values.") : QStringLiteral("请输入有效的数值区间。"));
         return;
     }
@@ -1449,8 +1477,6 @@ void TcpWavePanel::onConfigurePeakFilterClicked()
     const bool peakSearchChanged =
         peak_search_start_index_ != searchStart ||
         peak_search_end_index_ != searchEnd;
-    peak_search_start_index_ = searchStart;
-    peak_search_end_index_ = searchEnd;
     peak_filter_settings_.mode = mode;
     if (minOk)
     {
@@ -1461,22 +1487,38 @@ void TcpWavePanel::onConfigurePeakFilterClicked()
         peak_filter_settings_.max_value = maxValue;
     }
 
-    saveRememberedInputState();
-    updatePeakFilterButtonText();
     if (peakSearchChanged)
     {
-        peak_raw_history_.clear();
-        peak_history_.clear();
-        if (peak_plot_)
+        if (remote_sky_mode_)
         {
-            peak_plot_->setPeakValues({});
+            saveRememberedInputState();
+            updatePeakFilterButtonText();
+            emit remotePeakSearchRangeRequested(static_cast<quint32>(searchStart), static_cast<quint32>(searchEnd));
+            setStatusText(is_english_
+                ? QStringLiteral("Remote Sky: peak search range sent to sky; waiting for ACK.")
+                : QStringLiteral("Remote Sky 模式：峰值搜索区间已发送到天空端，等待 ACK。"));
         }
-        setStatusText(is_english_
-            ? QStringLiteral("Peak search range updated. Existing live peak trend was cleared; new frames will use the new range.")
-            : QStringLiteral("峰值搜索区间已更新，现有实时峰值趋势已清空；后续新帧将按新区间计算。"));
+        else
+        {
+            peak_search_start_index_ = searchStart;
+            peak_search_end_index_ = searchEnd;
+            peak_raw_history_.clear();
+            peak_history_.clear();
+            if (peak_plot_)
+            {
+                peak_plot_->setPeakValues({});
+            }
+            saveRememberedInputState();
+            updatePeakFilterButtonText();
+            setStatusText(is_english_
+                ? QStringLiteral("Peak search range updated. Existing live peak trend was cleared; new frames will use the new range.")
+                : QStringLiteral("峰值搜索区间已更新，现有实时峰值趋势已清空；后续新帧将按新区间计算。"));
+        }
     }
     else
     {
+        saveRememberedInputState();
+        updatePeakFilterButtonText();
         rebuildPeakHistory();
     }
 }

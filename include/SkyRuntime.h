@@ -125,6 +125,7 @@ private:
     bool running_ = false;
     bool waveform_streaming_enabled_ = true;
     quint64 started_time_us_ = 0;
+    quint64 last_sent_feature_time_us_ = 0;
     QVector<float> peak_trend_;
 };
 

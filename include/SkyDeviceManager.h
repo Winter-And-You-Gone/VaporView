@@ -42,6 +42,7 @@ public:
     DeviceStatusItem status(SkyDeviceId id) const;
     QVector<DeviceStatusItem> allStatuses() const;
     ApplyConfigResult applyConfig(const SkyConfig& newConfig);
+    bool setPeakSearchRange(quint32 startIndex, quint32 endIndex, CommandErrorCode *errorCode = nullptr);
 
     EpsilonData latestEpsilon() const;
     PtbData latestPtb() const;

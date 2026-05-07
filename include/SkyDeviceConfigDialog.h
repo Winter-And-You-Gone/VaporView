@@ -57,6 +57,7 @@ private:
 
     GroundTelemetryService *service_;
     bool is_english_ = false;
+    SkyConfig current_config_;
     SerialRow epsilon_;
     SerialRow ptb_;
     SerialRow hmp_;

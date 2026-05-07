@@ -261,6 +261,24 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& newConfig)
     return result;
 }
 
+bool SkyDeviceManager::setPeakSearchRange(quint32 startIndex, quint32 endIndex, CommandErrorCode *errorCode)
+{
+    if (startIndex > static_cast<quint32>(std::numeric_limits<int>::max()) ||
+        endIndex > static_cast<quint32>(std::numeric_limits<int>::max()) ||
+        (endIndex > 0 && endIndex <= startIndex))
+    {
+        if (errorCode) *errorCode = CommandErrorCode::ConfigInvalid;
+        return false;
+    }
+    config_.wave_tcp.peak_search_start_index = static_cast<int>(startIndex);
+    config_.wave_tcp.peak_search_end_index = static_cast<int>(endIndex);
+    emit logMessage(QStringLiteral("Wave TCP peak search range updated: [%1, %2)")
+                        .arg(startIndex)
+                        .arg(endIndex == 0 ? QStringLiteral("end") : QString::number(endIndex)));
+    if (errorCode) *errorCode = CommandErrorCode::Ok;
+    return true;
+}
+
 EpsilonData SkyDeviceManager::latestEpsilon() const
 {
     return latest_epsilon_;
@@ -637,33 +655,63 @@ void SkyDeviceManager::publishWaveform(const QVector<float>& harmonic)
     {
         return;
     }
+    const int sampleCount = harmonic.size();
+    const int searchStart = std::clamp(config_.wave_tcp.peak_search_start_index, 0, sampleCount);
+    const int searchEnd = config_.wave_tcp.peak_search_end_index <= 0
+        ? sampleCount
+        : std::clamp(config_.wave_tcp.peak_search_end_index, 0, sampleCount);
+
     double sum = 0.0;
     double sq = 0.0;
     float minValue = std::numeric_limits<float>::infinity();
     float maxValue = -std::numeric_limits<float>::infinity();
-    int peakIndex = 0;
+    bool hasSearchPeak = false;
+    float searchPeak = -std::numeric_limits<float>::infinity();
+    int peakIndex = -1;
+    int finiteCount = 0;
     for (int i = 0; i < harmonic.size(); ++i)
     {
         const float value = harmonic.at(i);
+        if (!std::isfinite(value))
+        {
+            continue;
+        }
+        ++finiteCount;
         sum += value;
         sq += static_cast<double>(value) * value;
         if (value < minValue) minValue = value;
-        if (value > maxValue)
+        if (value > maxValue) maxValue = value;
+        if (i >= searchStart && i < searchEnd && value > searchPeak)
         {
-            maxValue = value;
+            hasSearchPeak = true;
+            searchPeak = value;
             peakIndex = i;
         }
     }
+    if (finiteCount <= 0 || !std::isfinite(minValue) || !std::isfinite(maxValue) || searchStart >= searchEnd || !hasSearchPeak)
+    {
+        latest_feature_ = WaveformFeature();
+        latest_feature_.host_time_us = nowUs();
+        latest_feature_.original_point_count = static_cast<quint32>(sampleCount);
+        latest_feature_.search_start_index = static_cast<quint32>(searchStart);
+        latest_feature_.search_end_index = static_cast<quint32>(searchEnd);
+        latest_feature_.quality_flags = 1u;
+        return;
+    }
     latest_feature_.host_time_us = nowUs();
     latest_feature_.epsilon_time_us = latest_epsilon_.device_timestamp_us;
+    latest_feature_.original_point_count = static_cast<quint32>(sampleCount);
+    latest_feature_.search_start_index = static_cast<quint32>(searchStart);
+    latest_feature_.search_end_index = static_cast<quint32>(searchEnd);
     latest_feature_.channel_id = 4;
-    latest_feature_.peak = maxValue;
-    latest_feature_.mean = static_cast<float>(sum / harmonic.size());
-    latest_feature_.rms = static_cast<float>(std::sqrt(sq / harmonic.size()));
+    latest_feature_.peak = searchPeak;
+    latest_feature_.mean = static_cast<float>(sum / finiteCount);
+    latest_feature_.rms = static_cast<float>(std::sqrt(sq / finiteCount));
     latest_feature_.peak_index = static_cast<float>(peakIndex);
     latest_feature_.peak_x = static_cast<float>(peakIndex);
     latest_feature_.min_value = minValue;
     latest_feature_.max_value = maxValue;
+    latest_feature_.quality_flags = 0;
     emit waveformUpdated(latest_feature_.host_time_us, harmonic);
     emit waveformFeatureUpdated(latest_feature_);
 }
