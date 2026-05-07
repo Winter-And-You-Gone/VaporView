@@ -54,22 +54,34 @@ bool isAnsiFinalByte(QChar ch)
     return value >= 0x40 && value <= 0x7e;
 }
 
+enum class AnsiParseState
+{
+    None,
+    Escape,
+    Csi,
+};
+
 QString stripAnsi(const QString& text)
 {
     QString out;
-    bool inAnsi = false;
+    AnsiParseState state = AnsiParseState::None;
     for (const QChar ch : text)
     {
-        if (!inAnsi && ch == QChar(0x1b))
+        if (state == AnsiParseState::None && ch == QChar(0x1b))
         {
-            inAnsi = true;
+            state = AnsiParseState::Escape;
             continue;
         }
-        if (inAnsi)
+        if (state == AnsiParseState::Escape)
+        {
+            state = ch == QLatin1Char('[') ? AnsiParseState::Csi : AnsiParseState::None;
+            continue;
+        }
+        if (state == AnsiParseState::Csi)
         {
             if (isAnsiFinalByte(ch))
             {
-                inAnsi = false;
+                state = AnsiParseState::None;
             }
             continue;
         }
@@ -109,19 +121,24 @@ int cellWidth(QChar ch)
 int displayWidth(const QString& text)
 {
     int width = 0;
-    bool inAnsi = false;
+    AnsiParseState state = AnsiParseState::None;
     for (const QChar ch : text)
     {
-        if (!inAnsi && ch == QChar(0x1b))
+        if (state == AnsiParseState::None && ch == QChar(0x1b))
         {
-            inAnsi = true;
+            state = AnsiParseState::Escape;
             continue;
         }
-        if (inAnsi)
+        if (state == AnsiParseState::Escape)
+        {
+            state = ch == QLatin1Char('[') ? AnsiParseState::Csi : AnsiParseState::None;
+            continue;
+        }
+        if (state == AnsiParseState::Csi)
         {
             if (isAnsiFinalByte(ch))
             {
-                inAnsi = false;
+                state = AnsiParseState::None;
             }
             continue;
         }
@@ -208,21 +225,27 @@ QStringList visibleLogoLines(const QString& logo)
         {
             int removed = 0;
             int pos = 0;
-            bool inAnsi = false;
+            AnsiParseState state = AnsiParseState::None;
             while (pos < line.size() && removed < commonIndent)
             {
                 const QChar ch = line.at(pos);
-                if (!inAnsi && ch == QChar(0x1b))
+                if (state == AnsiParseState::None && ch == QChar(0x1b))
                 {
-                    inAnsi = true;
+                    state = AnsiParseState::Escape;
                     ++pos;
                     continue;
                 }
-                if (inAnsi)
+                if (state == AnsiParseState::Escape)
+                {
+                    state = ch == QLatin1Char('[') ? AnsiParseState::Csi : AnsiParseState::None;
+                    ++pos;
+                    continue;
+                }
+                if (state == AnsiParseState::Csi)
                 {
                     if (isAnsiFinalByte(ch))
                     {
-                        inAnsi = false;
+                        state = AnsiParseState::None;
                     }
                     ++pos;
                     continue;
@@ -252,6 +275,12 @@ void drawCenteredText(int row, const QString& text, const SkyTuiTerminalSize& si
 
 void drawLogo(const QStringList& lines, const SkyTuiTerminalSize& size, int top)
 {
+    int logoWidth = 0;
+    for (const QString& line : lines)
+    {
+        logoWidth = std::max(logoWidth, displayWidth(line));
+    }
+    const int baseColumn = std::max(1, (size.columns - logoWidth) / 2 + 1);
     int row = top;
     for (const QString& line : lines)
     {
@@ -259,9 +288,7 @@ void drawLogo(const QStringList& lines, const SkyTuiTerminalSize& size, int top)
         {
             break;
         }
-        const int width = displayWidth(line);
-        const int column = std::max(1, (size.columns - width) / 2 + 1);
-        writeRaw(SkyTuiTheme::moveTo(row++, column) + SkyTuiTheme::background(SkyTuiRgb{0, 0, 0}) +
+        writeRaw(SkyTuiTheme::moveTo(row++, baseColumn) + SkyTuiTheme::background(SkyTuiRgb{0, 0, 0}) +
                  forceBlackBackground(line) + SkyTuiTheme::reset());
     }
 }
