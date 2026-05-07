@@ -13,6 +13,7 @@
 #include <QThread>
 #include <algorithm>
 #include <iostream>
+#include <limits>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -75,6 +76,12 @@ QString stripAnsi(const QString& text)
         out += ch;
     }
     return out;
+}
+
+QString forceBlackBackground(QString text)
+{
+    text.replace(QStringLiteral("\x1b[0m"), QStringLiteral("\x1b[0m\x1b[48;2;0;0;0m"));
+    return text;
 }
 
 int cellWidth(QChar ch)
@@ -179,13 +186,68 @@ QStringList visibleLogoLines(const QString& logo)
     {
         lines.removeFirst();
     }
+
+    int commonIndent = std::numeric_limits<int>::max();
+    for (const QString& line : lines)
+    {
+        const QString plain = stripAnsi(line);
+        if (plain.trimmed().isEmpty())
+        {
+            continue;
+        }
+        int indent = 0;
+        while (indent < plain.size() && plain.at(indent) == QLatin1Char(' '))
+        {
+            ++indent;
+        }
+        commonIndent = std::min(commonIndent, indent);
+    }
+    if (commonIndent > 0 && commonIndent < std::numeric_limits<int>::max())
+    {
+        for (QString& line : lines)
+        {
+            int removed = 0;
+            int pos = 0;
+            bool inAnsi = false;
+            while (pos < line.size() && removed < commonIndent)
+            {
+                const QChar ch = line.at(pos);
+                if (!inAnsi && ch == QChar(0x1b))
+                {
+                    inAnsi = true;
+                    ++pos;
+                    continue;
+                }
+                if (inAnsi)
+                {
+                    if (isAnsiFinalByte(ch))
+                    {
+                        inAnsi = false;
+                    }
+                    ++pos;
+                    continue;
+                }
+                if (ch != QLatin1Char(' '))
+                {
+                    break;
+                }
+                ++removed;
+                ++pos;
+            }
+            if (pos > 0)
+            {
+                line.remove(0, pos);
+            }
+        }
+    }
     return lines;
 }
 
 void drawCenteredText(int row, const QString& text, const SkyTuiTerminalSize& size, const QString& style = QString())
 {
     const int column = std::max(1, (size.columns - displayWidth(text)) / 2 + 1);
-    writeRaw(SkyTuiTheme::moveTo(row, column) + style + text + SkyTuiTheme::reset());
+    writeRaw(SkyTuiTheme::moveTo(row, column) + SkyTuiTheme::background(SkyTuiRgb{0, 0, 0}) +
+             style + text + SkyTuiTheme::reset());
 }
 
 void drawLogo(const QStringList& lines, const SkyTuiTerminalSize& size, int top)
@@ -199,7 +261,8 @@ void drawLogo(const QStringList& lines, const SkyTuiTerminalSize& size, int top)
         }
         const int width = displayWidth(line);
         const int column = std::max(1, (size.columns - width) / 2 + 1);
-        writeRaw(SkyTuiTheme::moveTo(row++, column) + line + SkyTuiTheme::reset());
+        writeRaw(SkyTuiTheme::moveTo(row++, column) + SkyTuiTheme::background(SkyTuiRgb{0, 0, 0}) +
+                 forceBlackBackground(line) + SkyTuiTheme::reset());
     }
 }
 
@@ -315,7 +378,10 @@ SkyStartupDecision showSkyStartupScreen(const QString& logo_path)
 {
     SkyTuiTheme::enableVirtualTerminal();
     setStartupInputMode();
-    writeRaw(SkyTuiTheme::enterAlternateScreen() + SkyTuiTheme::clearScreen() + SkyTuiTheme::hideCursor());
+    writeRaw(SkyTuiTheme::enterAlternateScreen() +
+             SkyTuiTheme::background(SkyTuiRgb{0, 0, 0}) +
+             SkyTuiTheme::clearScreen() +
+             SkyTuiTheme::hideCursor());
 
     const SkyTuiTerminalSize size = SkyTuiTheme::terminalSize();
     const QStringList logoLines = visibleLogoLines(loadLogo(logo_path));
