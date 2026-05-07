@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Layouts
 import "../components"
 
 Item {
@@ -26,7 +27,8 @@ Item {
     function diffStatusText() {
         if (!rtkBackend.running) return t("rtk.statusDisconnected")
         var stats = rtkBackend.stats || {}
-        if (stats.inputBps > 0) return t("rtk.connected")
+        var msg = stats.message || ""
+        if (msg.indexOf("connected") >= 0 || stats.inputBps > 0) return t("rtk.connected")
         return t("rtk.statusRunning")
     }
 
@@ -37,7 +39,7 @@ Item {
         return ApplicationWindow.window.warning
     }
 
-    function diagJoined() {
+    function diagnosticsText() {
         var lines = rtkBackend.diagnostics || []
         return lines.length > 0 ? lines.join("\n") : ""
     }
@@ -63,6 +65,9 @@ Item {
     property string uiLeverY: "0"
     property string uiLeverZ: "0"
 
+    // ══════════════════════════════════════════════
+    // Flickable root — top-aligned, no fillHeight stretch
+    // ══════════════════════════════════════════════
     Flickable {
         id: rtkFlick
         anchors.fill: parent
@@ -70,75 +75,73 @@ Item {
         clip: true
         boundsBehavior: Flickable.StopAtBounds
 
-        readonly property int gap: 8
-        readonly property int pad: 12
-        readonly property real availW: width - pad
-        readonly property bool narrow: availW < 980
+        readonly property int scrollPad: 12
 
         contentWidth: width
-        contentHeight: Math.max(mainContent.height, height)
+        contentHeight: Math.max(mainRow.implicitHeight, height)
 
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        ScrollBar.vertical: ScrollBar {
+            policy: ScrollBar.AsNeeded
+        }
 
-        Item {
-            id: mainContent
-            width: rtkFlick.availW
+        RowLayout {
+            id: mainRow
+            x: 0
+            y: 0
+            width: rtkFlick.width - rtkFlick.scrollPad
+            height: implicitHeight
+            spacing: 8
 
-            readonly property real leftW: rtkFlick.narrow
-                ? width
-                : Math.max(400, Math.min(width * 0.33, 520))
-            readonly property real rightW: rtkFlick.narrow
-                ? width
-                : width - leftW - rtkFlick.gap
-
-            height: Math.max(leftColumn.height, rightColumn.height)
-
-            // ═══════ LEFT — configuration ═══════
-            Column {
+            // ═══════ LEFT COLUMN — Configuration ═══════
+            ColumnLayout {
                 id: leftColumn
-                x: 0; y: 0
-                width: mainContent.leftW
-                spacing: rtkFlick.gap
+                Layout.preferredWidth: Math.max(360, Math.min(mainRow.width * 0.34, 520))
+                Layout.minimumWidth: 340
+                Layout.alignment: Qt.AlignTop
+                spacing: 8
 
+                // ── NTRIP Config ──
                 Card {
-                    id: ntripCard
-                    width: parent.width
-                    height: implicitHeight
+                    Layout.fillWidth: true
                     title: t("rtk.ntripConfig")
 
                     RtkCardColumn {
-                        spacing: 8
+                        id: ntripContent
 
-                        Row {
-                            width: parent.width; spacing: 8
-                            Column { width: parent.width - 96; spacing: 2
+                        // Row 1: Server + Port
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            ColumnLayout { Layout.fillWidth: true; spacing: 2
                                 RtkLabel { text: t("rtk.casterAddress") }
                                 RtkTextField {
-                                    width: parent.width
+                                    Layout.fillWidth: true
                                     text: page.textValue(rtkBackend.server)
                                     onEditingFinished: rtkBackend.server = text
                                 }
                             }
-                            Column { width: 88; spacing: 2
+                            ColumnLayout { Layout.preferredWidth: 90; spacing: 2
                                 RtkLabel { text: t("rtk.port") }
                                 RtkTextField {
-                                    width: parent.width
+                                    Layout.fillWidth: true
                                     text: page.textValue(rtkBackend.port, "2101")
                                     onEditingFinished: rtkBackend.port = text
                                 }
                             }
                         }
 
-                        Row {
-                            width: parent.width; spacing: 8
-                            Column { width: parent.width - 108; spacing: 2
+                        // Row 2: Mount Point + Detect
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            ColumnLayout { Layout.fillWidth: true; spacing: 2
                                 RtkLabel { text: t("rtk.mountPoint") }
-                                RtkMountPointCombo { width: parent.width }
+                                RtkMountPointCombo { Layout.fillWidth: true }
                             }
-                            Column { width: 100; spacing: 2
+                            ColumnLayout { Layout.preferredWidth: 100; spacing: 2
                                 RtkLabel { text: " " }
                                 ToolbarButton {
-                                    width: parent.width
+                                    Layout.fillWidth: true
                                     iconName: "search"
                                     text: rtkBackend.detectingMountPoints
                                         ? t("rtk.detecting") : t("rtk.detectMountPoints")
@@ -148,20 +151,22 @@ Item {
                             }
                         }
 
-                        Row {
-                            width: parent.width; spacing: 8
-                            Column { width: (parent.width - 8) / 2; spacing: 2
+                        // Row 3: Username + Password
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            ColumnLayout { Layout.fillWidth: true; spacing: 2
                                 RtkLabel { text: t("rtk.username") }
                                 RtkTextField {
-                                    width: parent.width
+                                    Layout.fillWidth: true
                                     text: page.textValue(rtkBackend.username)
                                     onEditingFinished: rtkBackend.username = text
                                 }
                             }
-                            Column { width: (parent.width - 8) / 2; spacing: 2
+                            ColumnLayout { Layout.fillWidth: true; spacing: 2
                                 RtkLabel { text: t("rtk.password") }
                                 RtkTextField {
-                                    width: parent.width
+                                    Layout.fillWidth: true
                                     echoMode: TextInput.Normal
                                     text: page.textValue(rtkBackend.password)
                                     onEditingFinished: rtkBackend.password = text
@@ -169,34 +174,42 @@ Item {
                             }
                         }
 
-                        CheckBox {
-                            id: autoReconnectCb
-                            text: t("rtk.autoReconnect")
-                            checked: rtkBackend.autoReconnect
-                            onCheckedChanged: rtkBackend.autoReconnect = checked
-                            contentItem: Text {
-                                text: autoReconnectCb.text
-                                color: ApplicationWindow.window.text
-                                font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
-                                leftPadding: autoReconnectCb.indicator.width + autoReconnectCb.spacing
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                            indicator: Rectangle {
-                                implicitWidth: 16; implicitHeight: 16; radius: 4
-                                color: autoReconnectCb.checked ? ApplicationWindow.window.primary : "transparent"
-                                border.color: autoReconnectCb.checked ? ApplicationWindow.window.primary : ApplicationWindow.window.border
+                        // Row 4: Auto Reconnect
+                        RowLayout {
+                            Layout.fillWidth: true
+                            CheckBox {
+                                id: autoReconnectCb
+                                text: t("rtk.autoReconnect")
+                                checked: rtkBackend.autoReconnect
+                                onCheckedChanged: rtkBackend.autoReconnect = checked
+                                contentItem: Text {
+                                    text: autoReconnectCb.text
+                                    color: ApplicationWindow.window.text
+                                    font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
+                                    leftPadding: autoReconnectCb.indicator.width + autoReconnectCb.spacing
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                indicator: Rectangle {
+                                    implicitWidth: 16; implicitHeight: 16; radius: 4
+                                    color: autoReconnectCb.checked ? ApplicationWindow.window.primary : "transparent"
+                                    border.color: autoReconnectCb.checked ? ApplicationWindow.window.primary : ApplicationWindow.window.border
+                                }
                             }
                         }
 
-                        Row {
-                            width: parent.width; spacing: 8
+                        // Row 5: Test Connection + Save Config
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
                             ToolbarButton {
-                                width: (parent.width - 8) / 2; iconName: "scan"
+                                Layout.fillWidth: true
+                                iconName: "scan"
                                 text: t("rtk.testConnection")
                                 onClicked: rtkBackend.testConnection()
                             }
                             ToolbarButton {
-                                width: (parent.width - 8) / 2; iconName: "save"
+                                Layout.fillWidth: true
+                                iconName: "save"
                                 text: t("rtk.saveConfig")
                                 onClicked: rtkBackend.saveConfig()
                             }
@@ -204,25 +217,26 @@ Item {
                     }
                 }
 
+                // ── RTCM Output Config ──
                 Card {
-                    id: rtcmCard
-                    width: parent.width
-                    height: implicitHeight
+                    Layout.fillWidth: true
                     title: t("rtk.rtcmOutputConfig")
 
                     RtkCardColumn {
-                        spacing: 8
+                        id: rtcmContent
 
-                        Row {
-                            width: parent.width; spacing: 8
-                            Column { width: (parent.width - 8) * 0.6; spacing: 2
+                        // Row 1: Output Port + Baud Rate
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            ColumnLayout { Layout.fillWidth: true; spacing: 2
                                 RtkLabel { text: t("rtk.outputPort") }
-                                RtkPortComboBox { width: parent.width }
+                                RtkPortComboBox { Layout.fillWidth: true }
                             }
-                            Column { width: (parent.width - 8) * 0.4; spacing: 2
+                            ColumnLayout { Layout.preferredWidth: 100; spacing: 2
                                 RtkLabel { text: t("rtk.baudRate") }
                                 RtkTextField {
-                                    width: parent.width
+                                    Layout.fillWidth: true
                                     text: page.textValue(rtkBackend.outputBaud, "115200")
                                     inputMethodHints: Qt.ImhDigitsOnly
                                     onEditingFinished: rtkBackend.outputBaud = Math.max(1, Number(text))
@@ -230,38 +244,78 @@ Item {
                             }
                         }
 
-                        RtkLabel { text: t("rtk.leverArm") + " (X, Y, Z)" }
-
-                        Row {
-                            width: parent.width; spacing: 8
-                            LeverInput { id: leverXInput; label: "X"; text: page.uiLeverX; onEdit: page.uiLeverX = value; w: (parent.width - 16) / 3 }
-                            LeverInput { id: leverYInput; label: "Y"; text: page.uiLeverY; onEdit: page.uiLeverY = value; w: (parent.width - 16) / 3 }
-                            LeverInput { id: leverZInput; label: "Z"; text: page.uiLeverZ; onEdit: page.uiLeverZ = value; w: (parent.width - 16) / 3 }
+                        // Row 2: Lever Arm X/Y/Z + Apply
+                        RtkLabel { text: t("rtk.leverArm") }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+                            Text {
+                                text: "X"; color: ApplicationWindow.window.text
+                                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor; font.bold: true
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+                            RtkTextField {
+                                id: leverX; Layout.fillWidth: true
+                                text: page.uiLeverX
+                                validator: DoubleValidator { bottom: -10000; top: 10000; decimals: 4 }
+                                onEditingFinished: page.uiLeverX = text
+                            }
+                            Text {
+                                text: "Y"; color: ApplicationWindow.window.text
+                                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor; font.bold: true
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+                            RtkTextField {
+                                id: leverY; Layout.fillWidth: true
+                                text: page.uiLeverY
+                                validator: DoubleValidator { bottom: -10000; top: 10000; decimals: 4 }
+                                onEditingFinished: page.uiLeverY = text
+                            }
+                            Text {
+                                text: "Z"; color: ApplicationWindow.window.text
+                                font.pixelSize: 10 * ApplicationWindow.window.scaleFactor; font.bold: true
+                                Layout.alignment: Qt.AlignVCenter
+                            }
+                            RtkTextField {
+                                id: leverZ; Layout.fillWidth: true
+                                text: page.uiLeverZ
+                                validator: DoubleValidator { bottom: -10000; top: 10000; decimals: 4 }
+                                onEditingFinished: page.uiLeverZ = text
+                            }
                         }
                         ToolbarButton {
-                            width: parent.width
                             text: t("rtk.applyLeverArm"); iconName: "activity"
                             onClicked: rtkBackend.applyMainAntennaLeverArm(
-                                Number(leverXInput.text), Number(leverYInput.text), Number(leverZInput.text))
+                                Number(leverX.text), Number(leverY.text), Number(leverZ.text))
                         }
 
-                        Row {
-                            width: parent.width; spacing: 8
-                            Column { width: (parent.width - 8) / 2; spacing: 2
+                        // Row 3: Timeout + Reconnect
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            ColumnLayout { Layout.fillWidth: true; spacing: 2
                                 RtkLabel { text: t("rtk.timeoutMs") }
                                 RtkTextField {
-                                    width: parent.width
-                                    text: page.uiTimeoutMs; inputMethodHints: Qt.ImhDigitsOnly
-                                    onEditingFinished: page.uiTimeoutMs = text
+                                    Layout.fillWidth: true
+                                    text: page.uiTimeoutMs
+                                    inputMethodHints: Qt.ImhDigitsOnly
+                                    onEditingFinished: {
+                                        page.uiTimeoutMs = text
+                                        rtkBackend.timeoutMs = Math.max(1, Number(text))
+                                    }
                                     Component.onCompleted: page.uiTimeoutMs = String(rtkBackend.timeoutMs)
                                 }
                             }
-                            Column { width: (parent.width - 8) / 2; spacing: 2
+                            ColumnLayout { Layout.fillWidth: true; spacing: 2
                                 RtkLabel { text: t("rtk.reconnectMs") }
                                 RtkTextField {
-                                    width: parent.width
-                                    text: page.uiReconnectMs; inputMethodHints: Qt.ImhDigitsOnly
-                                    onEditingFinished: page.uiReconnectMs = text
+                                    Layout.fillWidth: true
+                                    text: page.uiReconnectMs
+                                    inputMethodHints: Qt.ImhDigitsOnly
+                                    onEditingFinished: {
+                                        page.uiReconnectMs = text
+                                        rtkBackend.reconnectMs = Math.max(1, Number(text))
+                                    }
                                     Component.onCompleted: page.uiReconnectMs = String(rtkBackend.reconnectMs)
                                 }
                             }
@@ -270,55 +324,56 @@ Item {
                 }
             }
 
-            // ═══════ RIGHT — monitoring ═══════
-            Column {
+            // ═══════ RIGHT COLUMN — Monitoring & Diagnostics ═══════
+            ColumnLayout {
                 id: rightColumn
-                x: rtkFlick.narrow ? 0 : mainContent.leftW + rtkFlick.gap
-                y: rtkFlick.narrow ? leftColumn.height + rtkFlick.gap : 0
-                width: mainContent.rightW
-                spacing: rtkFlick.gap
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignTop
+                spacing: 8
 
+                // ── GGA Monitor ──
                 Card {
                     id: ggaCard
-                    width: parent.width
-                    height: Math.max(210, Math.min(270, leftColumn.height * 0.42))
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Math.max(210, Math.min(270, leftColumn.implicitHeight * 0.42))
+                    Layout.minimumHeight: 180
+                    Layout.maximumHeight: 280
                     title: t("rtk.ggaMonitor")
 
                     RtkCardFix {
-                        Row {
+                        // GGA Source + Generation Rate + Actual Rate
+                        RowLayout {
                             id: ggaTopRow
-                            width: parent.width; spacing: 8
+                            width: parent.width
+                            spacing: 8
 
                             Text {
                                 text: t("rtk.ggaSource") + ":"
                                 color: ApplicationWindow.window.text
                                 font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
-                                anchors.verticalCenter: parent.verticalCenter
+                                Layout.alignment: Qt.AlignVCenter
                             }
-                            GgaSourceCombo { id: ggaSourceCombo; width: 170 }
-
+                            GgaSourceCombo { id: ggaSourceCombo; Layout.preferredWidth: 180 }
                             Text {
                                 text: t("rtk.ggaGenerationRate") + ":"
                                 color: ApplicationWindow.window.text
                                 font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
-                                anchors.verticalCenter: parent.verticalCenter
+                                Layout.alignment: Qt.AlignVCenter
                             }
-                            GgaRateCombo { id: ggaRateCombo; width: 90 }
-
-                            Item { width: 20 }
-
+                            GgaRateCombo { id: ggaRateCombo; Layout.preferredWidth: 90 }
+                            Item { Layout.fillWidth: true }
                             Text {
                                 text: t("rtk.ggaActualRate") + ":"
                                 color: ApplicationWindow.window.muted
                                 font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
-                                anchors.verticalCenter: parent.verticalCenter
+                                Layout.alignment: Qt.AlignVCenter
                             }
                             Text {
                                 text: "0.0 Hz"
-                                color: ApplicationWindow.window.ok
+                                color: ApplicationWindow.window.muted
                                 font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                                 font.family: "Consolas"
-                                anchors.verticalCenter: parent.verticalCenter
+                                Layout.alignment: Qt.AlignVCenter
                             }
                         }
 
@@ -332,50 +387,45 @@ Item {
                         Text {
                             anchors.top: ggaTopRow.bottom
                             anchors.topMargin: 10
+                            anchors.left: parent.left
                             text: t("rtk.ggaStream")
                             color: ApplicationWindow.window.text
                             font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
                             font.bold: true
                         }
 
-                        Rectangle {
-                            anchors.top: ggaTopRow.bottom
-                            anchors.topMargin: 28
+                        ScrollView {
                             anchors.left: parent.left
                             anchors.right: parent.right
+                            anchors.top: ggaTopRow.bottom
+                            anchors.topMargin: 26
                             anchors.bottom: parent.bottom
-                            radius: 6
-                            color: ApplicationWindow.window.secondary
+                            clip: true
+                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-                            ScrollView {
-                                anchors.fill: parent
-                                anchors.margins: 8
-                                clip: true
-                                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
-
-                                TextArea {
-                                    text: rtkBackend.running
-                                        ? (rtkBackend.diagnostics.length > 0
-                                            ? rtkBackend.diagnostics[rtkBackend.diagnostics.length - 1]
-                                            : t("rtk.noDataAvailable"))
-                                        : t("rtk.noDataAvailable")
-                                    readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap
-                                    color: ApplicationWindow.window.text
-                                    font.family: "Consolas"
-                                    font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
-                                    background: Rectangle { color: "transparent" }
-                                }
+                            TextArea {
+                                text: rtkBackend.running
+                                    ? (rtkBackend.diagnostics.length > 0
+                                        ? rtkBackend.diagnostics[rtkBackend.diagnostics.length - 1]
+                                        : t("rtk.noDataAvailable"))
+                                    : t("rtk.noDataAvailable")
+                                readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap
+                                color: ApplicationWindow.window.text
+                                font.family: "Consolas"
+                                font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+                                background: Rectangle { color: "transparent" }
                             }
                         }
                     }
                 }
 
+                // ── Operation Buttons ──
                 Row {
-                    id: operationRow
-                    width: parent.width; spacing: 6
+                    id: operationRow; spacing: 6
 
                     ToolbarButton {
-                        iconName: "wifi"; height: 30
+                        iconName: "wifi"
+                        height: 30
                         text: t("rtk.start"); enabled: !rtkBackend.running; variant: "primary"
                         onClicked: {
                             rtkBackend.timeoutMs = Math.max(1, Number(page.uiTimeoutMs))
@@ -386,27 +436,32 @@ Item {
                         }
                     }
                     ToolbarButton {
-                        iconName: "square"; height: 30
+                        iconName: "square"
+                        height: 30
                         text: t("rtk.stop"); enabled: rtkBackend.running; variant: "danger"
                         onClicked: rtkBackend.stop()
                     }
                     ToolbarButton {
-                        iconName: "scan"; height: 30
+                        iconName: "scan"
+                        height: 30
                         text: t("rtk.testConnection")
                         onClicked: rtkBackend.testConnection()
                     }
                     ToolbarButton {
-                        iconName: "trash-2"; height: 30
+                        iconName: "trash-2"
+                        height: 30
                         text: t("rtk.clearLog")
                         onClicked: rtkBackend.clearDiagnostics()
                     }
                     ToolbarButton {
-                        iconName: "save"; height: 30
+                        iconName: "save"
+                        height: 30
                         text: t("rtk.saveConfig")
                         onClicked: rtkBackend.saveConfig()
                     }
                     ToolbarButton {
-                        iconName: "folder-open"; height: 30
+                        iconName: "folder-open"
+                        height: 30
                         text: t("rtk.loadConfig")
                         onClicked: {
                             rtkBackend.loadConfig()
@@ -416,37 +471,23 @@ Item {
                     }
                 }
 
+                // ── RTK Service Log / Diagnostics ──
                 Card {
-                    id: logCard
-                    width: parent.width
-                    height: Math.max(260, leftColumn.height - ggaCard.height - operationRow.height - rightColumn.spacing * 2)
+                    id: diagCard
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Math.max(260, leftColumn.implicitHeight * 0.52)
+                    Layout.minimumHeight: 240
                     title: t("rtk.serviceLog")
 
                     RtkCardFix {
-                        MetricText {
-                            anchors.left: parent.left; anchors.top: parent.top
-                            label: t("rtk.rtcmThroughput")
-                            value: (page.statNumber("inputBps", 0) + page.statNumber("outputBps", 0)) + " B/s"
-                        }
-                        MetricText {
-                            anchors.left: parent.left; anchors.leftMargin: 170; anchors.top: parent.top
-                            label: t("rtk.ggaUpdateTime")
-                            value: rtkBackend.running ? "0.0 s" : "---"
-                        }
-                        MetricText {
-                            anchors.left: parent.left; anchors.leftMargin: 330; anchors.top: parent.top
-                            label: t("rtk.diffStatus")
-                            value: page.diffStatusText()
-                            valueColor: page.diffStatusColor()
-                        }
-                        MetricText {
-                            anchors.left: parent.left; anchors.leftMargin: 470; anchors.top: parent.top
-                            label: t("rtk.latency")
-                            value: "--- ms"
-                        }
+                        MetricText { anchors.left: parent.left; anchors.top: parent.top; label: t("rtk.rtcmThroughput"); value: (page.statNumber("inputBps",0) + page.statNumber("outputBps",0)) + " B/s" }
+                        MetricText { anchors.left: parent.left; anchors.leftMargin: 170; anchors.top: parent.top; label: t("rtk.ggaUpdateTime"); value: rtkBackend.running ? "0.0 s" : "---" }
+                        MetricText { anchors.left: parent.left; anchors.leftMargin: 330; anchors.top: parent.top; label: t("rtk.diffStatus"); value: page.diffStatusText(); valueColor: page.diffStatusColor() }
+                        MetricText { anchors.left: parent.left; anchors.leftMargin: 470; anchors.top: parent.top; label: t("rtk.latency"); value: "--- ms" }
 
                         Text {
-                            anchors.top: parent.top; anchors.topMargin: 38
+                            anchors.top: parent.top
+                            anchors.topMargin: 38
                             anchors.left: parent.left
                             text: t("rtk.diagLog")
                             color: ApplicationWindow.window.text
@@ -455,14 +496,16 @@ Item {
                         }
 
                         ScrollView {
-                            anchors.left: parent.left; anchors.right: parent.right
-                            anchors.top: parent.top; anchors.topMargin: 56
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.topMargin: 56
                             anchors.bottom: parent.bottom
                             clip: true
                             ScrollBar.vertical: ScrollBar { id: logVBar }
 
                             TextArea {
-                                text: page.diagJoined() ? page.diagJoined() : t("rtk.noDiagnosticLog")
+                                text: page.diagnosticsText() ? page.diagnosticsText() : t("rtk.noDiagnosticLog")
                                 readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap
                                 color: ApplicationWindow.window.text
                                 selectedTextColor: ApplicationWindow.window.primaryForeground
@@ -478,8 +521,10 @@ Item {
         }
     }
 
+    // ── Diagnostics auto-scroll ──
     Timer {
-        id: logScrollTimer; interval: 50
+        id: logScrollTimer
+        interval: 50
         onTriggered: logVBar.position = 1.0 - logVBar.size
     }
     Connections {
@@ -494,60 +539,34 @@ Item {
         }
     }
 
-    // ═══════════════════════════════════════
-    // Components
-    // ═══════════════════════════════════════
+    // ═══════════════════════════════════════════════
+    // Reusable inline components
+    // ═══════════════════════════════════════════════
 
     component RtkLabel: Text {
         color: ApplicationWindow.window.muted
         font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
     }
 
-    component RtkCardColumn: Column {
-        x: 12; y: 10
+    // Content container for natural-height cards — x=12, y=10, width minus 2*12
+    component RtkCardColumn: ColumnLayout {
+        id: col
         width: parent ? parent.width - 24 : 0
-        height: implicitHeight
+        x: 12; y: 10
+        spacing: 8
     }
 
+    // Fixed-height content wrapper — fills the card body with 12px horizontal + 10px vertical paddding
     component RtkCardFix: Item {
+        id: fix
         x: 12; y: 10
         width: parent ? parent.width - 24 : 0
         height: parent ? parent.height - 20 : 0
     }
 
-    component MetricText: Column {
-        property string label: ""
-        property string value: ""
-        property color valueColor: ApplicationWindow.window.text
-        spacing: 2; width: 150
-
-        Text {
-            text: parent.label
-            color: ApplicationWindow.window.muted
-            font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
-        }
-        Text {
-            text: parent.value
-            color: parent.valueColor
-            font.pixelSize: 12 * ApplicationWindow.window.scaleFactor
-            font.bold: true; font.family: "Consolas"
-        }
-    }
-
-    component LeverInput: Column {
-        property string label: ""
-        property alias text: input.text
-        signal edit(string value)
-        property real w: 100
-        spacing: 2; width: w
-
-        RtkLabel { text: parent.label }
-        RtkTextField {
-            id: input; width: parent.width
-            validator: DoubleValidator { bottom: -10000; top: 10000; decimals: 4 }
-            onEditingFinished: parent.edit(text)
-        }
-    }
+    component MetricText: Column { property string label: ""; property string value: ""; property color valueColor: ApplicationWindow.window.text; spacing: 2; width: 150
+        Text { text: parent.label; color: ApplicationWindow.window.muted; font.pixelSize: 10 * ApplicationWindow.window.scaleFactor }
+        Text { text: parent.value; color: parent.valueColor; font.pixelSize: 12 * ApplicationWindow.window.scaleFactor; font.bold: true; font.family: "Consolas" } }
 
     component RtkTextField: TextField {
         id: field
@@ -568,70 +587,191 @@ Item {
 
     component RtkMountPointCombo: ComboBox {
         id: mpCombo
-        editable: true; model: rtkBackend.mountPointOptions
+        editable: true
+        model: rtkBackend.mountPointOptions
         Component.onCompleted: mpCombo.editText = Qt.binding(function() { return rtkBackend.mountpoint })
         onActivated: rtkBackend.setMountpoint(mpCombo.editText)
         onAccepted: rtkBackend.setMountpoint(mpCombo.editText)
-        font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor); implicitHeight: 34
+
+        font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
+        implicitHeight: 34
+
         delegate: ItemDelegate {
             width: mpCombo.width; text: modelData
             font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
             highlighted: mpCombo.highlightedIndex === index
             background: Rectangle { color: highlighted ? ApplicationWindow.window.secondary : "transparent" }
-            contentItem: Text { text: modelData; color: ApplicationWindow.window.text; font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 8 }
+            contentItem: Text {
+                text: modelData; color: ApplicationWindow.window.text
+                font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 8
+            }
         }
-        indicator: Text { anchors.verticalCenter: parent.verticalCenter; anchors.right: parent.right; anchors.rightMargin: 8; text: "▾"; color: ApplicationWindow.window.muted; font.pixelSize: 10 }
-        contentItem: TextField { leftPadding: 10; rightPadding: 24; text: mpCombo.editText; color: ApplicationWindow.window.text; font: mpCombo.font; verticalAlignment: Text.AlignVCenter; background: null }
-        background: Rectangle { implicitHeight: 34; radius: 7; color: mpCombo.hovered ? ApplicationWindow.window.secondary : ApplicationWindow.window.card; border.color: mpCombo.activeFocus ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8") : ApplicationWindow.window.border }
+        indicator: Text {
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.right: parent.right; anchors.rightMargin: 8
+            text: "▾"; color: ApplicationWindow.window.muted; font.pixelSize: 10
+        }
+        contentItem: TextField {
+            leftPadding: 10; rightPadding: 24
+            text: mpCombo.editText; color: ApplicationWindow.window.text
+            font: mpCombo.font; verticalAlignment: Text.AlignVCenter; background: null
+        }
+        background: Rectangle {
+            implicitHeight: 34; radius: 7
+            color: mpCombo.hovered ? ApplicationWindow.window.secondary : ApplicationWindow.window.card
+            border.color: mpCombo.activeFocus
+                ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8")
+                : ApplicationWindow.window.border
+        }
         popup: RtkPopup { popupWidth: mpCombo.width; model: mpCombo.delegateModel; index: mpCombo.highlightedIndex }
     }
 
     component RtkPortComboBox: ComboBox {
         id: portCombo
         model: rtkBackend.outputPortOptions; textRole: "label"; valueRole: "port"
-        currentIndex: { var opts = rtkBackend.outputPortOptions; for (var i = 0; i < opts.length; ++i) if (opts[i].port === rtkBackend.outputPort) return i; return -1 }
-        onActivated: { var opts = rtkBackend.outputPortOptions; if (portCombo.currentIndex >= 0 && portCombo.currentIndex < opts.length) rtkBackend.setOutputPort(opts[portCombo.currentIndex].port) }
-        font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor); implicitHeight: 34
-        delegate: ItemDelegate {
-            width: portCombo.width; text: modelData ? modelData.label || modelData.port || "" : ""
-            font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor); highlighted: portCombo.highlightedIndex === index
-            background: Rectangle { color: highlighted ? ApplicationWindow.window.secondary : "transparent" }
-            contentItem: Text { text: parent.text; color: (modelData && modelData.occupied) ? ApplicationWindow.window.muted : ApplicationWindow.window.text; font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 8 }
+        currentIndex: {
+            var opts = rtkBackend.outputPortOptions
+            for (var i = 0; i < opts.length; ++i)
+                if (opts[i].port === rtkBackend.outputPort) return i
+            return -1
         }
-        indicator: Text { anchors.verticalCenter: parent.verticalCenter; anchors.right: parent.right; anchors.rightMargin: 8; text: "▾"; color: ApplicationWindow.window.muted; font.pixelSize: 10 }
-        contentItem: Text { leftPadding: 10; rightPadding: 24; text: portCombo.displayText; color: ApplicationWindow.window.text; font: portCombo.font; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
-        background: Rectangle { implicitHeight: 34; radius: 7; color: portCombo.hovered ? ApplicationWindow.window.secondary : ApplicationWindow.window.card; border.color: portCombo.activeFocus ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8") : ApplicationWindow.window.border }
+        onActivated: {
+            var opts = rtkBackend.outputPortOptions
+            if (portCombo.currentIndex >= 0 && portCombo.currentIndex < opts.length)
+                rtkBackend.setOutputPort(opts[portCombo.currentIndex].port)
+        }
+        font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
+        implicitHeight: 34
+
+        delegate: ItemDelegate {
+            width: portCombo.width
+            text: modelData ? modelData.label || modelData.port || "" : ""
+            font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
+            highlighted: portCombo.highlightedIndex === index
+            background: Rectangle { color: highlighted ? ApplicationWindow.window.secondary : "transparent" }
+            contentItem: Text {
+                text: parent.text
+                color: (modelData && modelData.occupied) ? ApplicationWindow.window.muted : ApplicationWindow.window.text
+                font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 8
+            }
+        }
+        indicator: Text {
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.right: parent.right; anchors.rightMargin: 8
+            text: "▾"; color: ApplicationWindow.window.muted; font.pixelSize: 10
+        }
+        contentItem: Text {
+            leftPadding: 10; rightPadding: 24
+            text: portCombo.displayText; color: ApplicationWindow.window.text
+            font: portCombo.font; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
+        }
+        background: Rectangle {
+            implicitHeight: 34; radius: 7
+            color: portCombo.hovered ? ApplicationWindow.window.secondary : ApplicationWindow.window.card
+            border.color: portCombo.activeFocus
+                ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8")
+                : ApplicationWindow.window.border
+        }
         popup: RtkPopup { popupWidth: portCombo.width; model: portCombo.delegateModel; index: portCombo.highlightedIndex }
     }
 
     component GgaSourceCombo: ComboBox {
         id: ggaCombo
         model: page.ggaSourceModel; currentIndex: page.ggaSourceIndex; textRole: "text"
-        font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor); implicitHeight: 34; onActivated: page.ggaSourceIndex = currentIndex
-        delegate: ItemDelegate { width: ggaCombo.width; text: ggaCombo.textRole ? model[ggaCombo.textRole] : modelData; font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor); highlighted: ggaCombo.highlightedIndex === index; background: Rectangle { color: highlighted ? ApplicationWindow.window.secondary : "transparent" }; contentItem: Text { text: parent.text; color: ApplicationWindow.window.text; font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 8 } }
-        indicator: Text { anchors.verticalCenter: parent.verticalCenter; anchors.right: parent.right; anchors.rightMargin: 8; text: "▾"; color: ApplicationWindow.window.muted; font.pixelSize: 10 }
-        contentItem: Text { leftPadding: 10; rightPadding: 24; text: ggaCombo.displayText; color: ApplicationWindow.window.text; font: ggaCombo.font; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
-        background: Rectangle { implicitHeight: 34; radius: 7; color: ggaCombo.hovered ? ApplicationWindow.window.secondary : ApplicationWindow.window.card; border.color: ggaCombo.activeFocus ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8") : ApplicationWindow.window.border }
+        font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
+        implicitHeight: 34; onActivated: page.ggaSourceIndex = currentIndex
+        delegate: ItemDelegate {
+            width: ggaCombo.width
+            text: ggaCombo.textRole ? model[ggaCombo.textRole] : modelData
+            font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
+            highlighted: ggaCombo.highlightedIndex === index
+            background: Rectangle { color: highlighted ? ApplicationWindow.window.secondary : "transparent" }
+            contentItem: Text {
+                text: parent.text; color: ApplicationWindow.window.text
+                font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 8
+            }
+        }
+        indicator: Text {
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.right: parent.right; anchors.rightMargin: 8
+            text: "▾"; color: ApplicationWindow.window.muted; font.pixelSize: 10
+        }
+        contentItem: Text {
+            leftPadding: 10; rightPadding: 24
+            text: ggaCombo.displayText; color: ApplicationWindow.window.text
+            font: ggaCombo.font; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
+        }
+        background: Rectangle {
+            implicitHeight: 34; radius: 7
+            color: ggaCombo.hovered ? ApplicationWindow.window.secondary : ApplicationWindow.window.card
+            border.color: ggaCombo.activeFocus
+                ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8")
+                : ApplicationWindow.window.border
+        }
         popup: RtkPopup { popupWidth: ggaCombo.width; model: ggaCombo.delegateModel; index: ggaCombo.highlightedIndex }
     }
 
     component GgaRateCombo: ComboBox {
         id: rateCombo
         model: page.ggaRateModel; textRole: "text"
-        font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor); implicitHeight: 34
-        Component.onCompleted: { for (var i = 0; i < page.ggaRateModel.length; ++i) if (page.ggaRateModel[i].value === rtkBackend.ggaGenerationRateHz) { rateCombo.currentIndex = i; break } }
-        onActivated: { if (rateCombo.currentIndex >= 0) rtkBackend.ggaGenerationRateHz = page.ggaRateModel[rateCombo.currentIndex].value }
-        delegate: ItemDelegate { width: rateCombo.width; text: modelData ? modelData.text || "" : ""; font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor); highlighted: rateCombo.highlightedIndex === index; background: Rectangle { color: highlighted ? ApplicationWindow.window.secondary : "transparent" }; contentItem: Text { text: parent.text; color: ApplicationWindow.window.text; font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 8 } }
-        indicator: Text { anchors.verticalCenter: parent.verticalCenter; anchors.right: parent.right; anchors.rightMargin: 8; text: "▾"; color: ApplicationWindow.window.muted; font.pixelSize: 10 }
-        contentItem: Text { leftPadding: 10; rightPadding: 24; text: rateCombo.displayText; color: ApplicationWindow.window.text; font: rateCombo.font; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
-        background: Rectangle { implicitHeight: 34; radius: 7; color: rateCombo.hovered ? ApplicationWindow.window.secondary : ApplicationWindow.window.card; border.color: rateCombo.activeFocus ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8") : ApplicationWindow.window.border }
+        font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
+        implicitHeight: 34
+        Component.onCompleted: {
+            for (var i = 0; i < page.ggaRateModel.length; ++i) {
+                if (page.ggaRateModel[i].value === rtkBackend.ggaGenerationRateHz) {
+                    rateCombo.currentIndex = i; break
+                }
+            }
+        }
+        onActivated: {
+            if (rateCombo.currentIndex >= 0)
+                rtkBackend.ggaGenerationRateHz = page.ggaRateModel[rateCombo.currentIndex].value
+        }
+        delegate: ItemDelegate {
+            width: rateCombo.width
+            text: modelData ? modelData.text || "" : ""
+            font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
+            highlighted: rateCombo.highlightedIndex === index
+            background: Rectangle { color: highlighted ? ApplicationWindow.window.secondary : "transparent" }
+            contentItem: Text {
+                text: parent.text; color: ApplicationWindow.window.text
+                font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 8
+            }
+        }
+        indicator: Text {
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.right: parent.right; anchors.rightMargin: 8
+            text: "▾"; color: ApplicationWindow.window.muted; font.pixelSize: 10
+        }
+        contentItem: Text {
+            leftPadding: 10; rightPadding: 24
+            text: rateCombo.displayText; color: ApplicationWindow.window.text
+            font: rateCombo.font; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
+        }
+        background: Rectangle {
+            implicitHeight: 34; radius: 7
+            color: rateCombo.hovered ? ApplicationWindow.window.secondary : ApplicationWindow.window.card
+            border.color: rateCombo.activeFocus
+                ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8")
+                : ApplicationWindow.window.border
+        }
         popup: RtkPopup { popupWidth: rateCombo.width; model: rateCombo.delegateModel; index: rateCombo.highlightedIndex }
     }
 
     component RtkPopup: Popup {
-        property real popupWidth: 100; property var model; property int index: 0
-        y: parent.height + 2; width: popupWidth; implicitHeight: contentItem.implicitHeight + 8; padding: 4
-        background: Rectangle { radius: 7; color: ApplicationWindow.window.card; border.color: ApplicationWindow.window.border }
-        contentItem: ListView { clip: true; implicitHeight: contentHeight; model: parent.model; currentIndex: parent.index }
+        property real popupWidth: 100
+        property var model
+        property int index: 0
+        y: parent.height + 2; width: popupWidth
+        implicitHeight: contentItem.implicitHeight + 8; padding: 4
+        background: Rectangle {
+            radius: 7; color: ApplicationWindow.window.card
+            border.color: ApplicationWindow.window.border
+        }
+        contentItem: ListView {
+            clip: true; implicitHeight: contentHeight
+            model: parent.model
+            currentIndex: parent.index
+        }
     }
 }
