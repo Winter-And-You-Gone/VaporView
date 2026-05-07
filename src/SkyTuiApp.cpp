@@ -15,7 +15,6 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
-#include <vector>
 
 #ifdef Q_OS_WIN
 #include <conio.h>
@@ -142,21 +141,6 @@ int terminalCellWidth(QChar ch)
 class SkyTuiScreenBuffer
 {
 public:
-    struct Cell
-    {
-        QChar ch = QLatin1Char(' ');
-        QString style;
-
-        bool operator==(const Cell& other) const
-        {
-            return ch == other.ch && style == other.style;
-        }
-        bool operator!=(const Cell& other) const
-        {
-            return !(*this == other);
-        }
-    };
-
     SkyTuiScreenBuffer() = default;
     SkyTuiScreenBuffer(int rows, int columns)
     {
@@ -167,7 +151,8 @@ public:
     {
         rows_ = std::max(1, rows);
         columns_ = std::max(1, columns);
-        cells_.assign(rows_ * columns_, Cell{QLatin1Char(' '), SkyTuiTheme::reset()});
+        output_.clear();
+        output_.reserve(rows_ * columns_);
     }
 
     int rows() const { return rows_; }
@@ -179,102 +164,22 @@ public:
         {
             return;
         }
-
-        int col = std::max(1, column);
-        QString style = SkyTuiTheme::reset();
-        for (int i = 0; i < text.size() && col <= columns_; ++i)
-        {
-            const QChar ch = text.at(i);
-            if (ch == QChar(0x1b) && i + 1 < text.size() && text.at(i + 1) == QLatin1Char('['))
-            {
-                QString sequence;
-                sequence += ch;
-                sequence += text.at(++i);
-                while (i + 1 < text.size())
-                {
-                    const QChar seq = text.at(++i);
-                    sequence += seq;
-                    if (isAnsiFinalByte(seq))
-                    {
-                        break;
-                    }
-                }
-                if (sequence.contains(QStringLiteral("[0m")))
-                {
-                    style = SkyTuiTheme::reset();
-                }
-                else
-                {
-                    style += sequence;
-                }
-                continue;
-            }
-
-            const int width = std::max(1, terminalCellWidth(ch));
-            setCell(row, col, ch, style);
-            if (width == 2 && col + 1 <= columns_)
-            {
-                setCell(row, col + 1, QChar(), style);
-            }
-            col += width;
-        }
+        output_ += SkyTuiTheme::moveTo(row, std::max(1, column));
+        output_ += text;
+        output_ += SkyTuiTheme::reset();
     }
 
     QString diffToAnsi(const SkyTuiScreenBuffer *previous, bool force) const
     {
-        QString output;
-        QString activeStyle;
-        for (int row = 1; row <= rows_; ++row)
-        {
-            int col = 1;
-            while (col <= columns_)
-            {
-                if (!force && previous && previous->rows_ == rows_ && previous->columns_ == columns_ &&
-                    cell(row, col) == previous->cell(row, col))
-                {
-                    ++col;
-                    continue;
-                }
-
-                const int start = col;
-                output += SkyTuiTheme::moveTo(row, start);
-                while (col <= columns_ &&
-                       (force || !previous || previous->rows_ != rows_ || previous->columns_ != columns_ ||
-                        cell(row, col) != previous->cell(row, col)))
-                {
-                    const Cell& current = cell(row, col);
-                    if (current.style != activeStyle)
-                    {
-                        output += current.style;
-                        activeStyle = current.style;
-                    }
-                    output += current.ch.isNull() ? QLatin1Char(' ') : current.ch;
-                    ++col;
-                }
-            }
-        }
-        output += SkyTuiTheme::reset();
-        return output;
+        Q_UNUSED(previous)
+        Q_UNUSED(force)
+        return output_ + SkyTuiTheme::reset();
     }
 
 private:
-    void setCell(int row, int column, QChar ch, const QString& style)
-    {
-        if (row < 1 || row > rows_ || column < 1 || column > columns_)
-        {
-            return;
-        }
-        cells_[static_cast<size_t>((row - 1) * columns_ + column - 1)] = Cell{ch, style};
-    }
-
-    const Cell& cell(int row, int column) const
-    {
-        return cells_[static_cast<size_t>((row - 1) * columns_ + column - 1)];
-    }
-
     int rows_ = 0;
     int columns_ = 0;
-    std::vector<Cell> cells_;
+    QString output_;
 };
 
 SkyTuiApp::SkyTuiApp(SkyRuntime *runtime, const SkyRuntimeOptions& options, QObject *parent)
