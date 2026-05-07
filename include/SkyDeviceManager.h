@@ -99,6 +99,9 @@ private:
     QTcpSocket *wave_socket_ = nullptr;
     QByteArray wave_buffer_;
     TcpFloatEncoding wave_float_encoding_ = TcpFloatEncoding::Unknown;
+    quint64 wave_frame_count_ = 0;
+    quint64 feature_frame_count_ = 0;
+    quint64 last_feature_compute_time_us_ = 0;
 
     EpsilonData latest_epsilon_;
     PtbData latest_ptb_;

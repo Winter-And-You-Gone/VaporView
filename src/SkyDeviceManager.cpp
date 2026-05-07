@@ -655,6 +655,30 @@ void SkyDeviceManager::publishWaveform(const QVector<float>& harmonic)
     {
         return;
     }
+    ++wave_frame_count_;
+    emit waveformUpdated(nowUs(), harmonic);
+
+    const double targetRateHz = config_.telemetry.feature_rate_hz;
+    if (!(targetRateHz > 0.0) || !std::isfinite(targetRateHz))
+    {
+        return;
+    }
+    const double sourceRateHz = config_.wave_tcp.frequency_hz;
+    const quint64 stride = sourceRateHz > targetRateHz && std::isfinite(sourceRateHz)
+        ? static_cast<quint64>(std::max(1.0, std::round(sourceRateHz / targetRateHz)))
+        : 1ULL;
+    const quint64 now = nowUs();
+    const quint64 minIntervalUs = static_cast<quint64>(std::max(1.0, 1'000'000.0 / targetRateHz));
+    const bool frameStrideDue = stride <= 1ULL || (wave_frame_count_ % stride == 0ULL);
+    if (!frameStrideDue)
+    {
+        return;
+    }
+    if (last_feature_compute_time_us_ != 0ULL && now - last_feature_compute_time_us_ < minIntervalUs)
+    {
+        return;
+    }
+
     const int sampleCount = harmonic.size();
     const int searchStart = std::clamp(config_.wave_tcp.peak_search_start_index, 0, sampleCount);
     const int searchEnd = config_.wave_tcp.peak_search_end_index <= 0
@@ -691,14 +715,15 @@ void SkyDeviceManager::publishWaveform(const QVector<float>& harmonic)
     if (finiteCount <= 0 || !std::isfinite(minValue) || !std::isfinite(maxValue) || searchStart >= searchEnd || !hasSearchPeak)
     {
         latest_feature_ = WaveformFeature();
-        latest_feature_.host_time_us = nowUs();
+        latest_feature_.host_time_us = now;
         latest_feature_.original_point_count = static_cast<quint32>(sampleCount);
         latest_feature_.search_start_index = static_cast<quint32>(searchStart);
         latest_feature_.search_end_index = static_cast<quint32>(searchEnd);
         latest_feature_.quality_flags = 1u;
+        last_feature_compute_time_us_ = now;
         return;
     }
-    latest_feature_.host_time_us = nowUs();
+    latest_feature_.host_time_us = now;
     latest_feature_.epsilon_time_us = latest_epsilon_.device_timestamp_us;
     latest_feature_.original_point_count = static_cast<quint32>(sampleCount);
     latest_feature_.search_start_index = static_cast<quint32>(searchStart);
@@ -712,7 +737,8 @@ void SkyDeviceManager::publishWaveform(const QVector<float>& harmonic)
     latest_feature_.min_value = minValue;
     latest_feature_.max_value = maxValue;
     latest_feature_.quality_flags = 0;
-    emit waveformUpdated(latest_feature_.host_time_us, harmonic);
+    ++feature_frame_count_;
+    last_feature_compute_time_us_ = now;
     emit waveformFeatureUpdated(latest_feature_);
 }
 
@@ -739,6 +765,9 @@ void SkyDeviceManager::invalidateDeviceData(SkyDeviceId id)
     case SkyDeviceId::WaveTcp:
         latest_waveform_.clear();
         latest_feature_ = WaveformFeature();
+        wave_frame_count_ = 0;
+        feature_frame_count_ = 0;
+        last_feature_compute_time_us_ = 0;
         wave_tcp_status_.last_data_time_us = 0;
         break;
     case SkyDeviceId::All:
