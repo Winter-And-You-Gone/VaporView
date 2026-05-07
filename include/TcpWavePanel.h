@@ -36,6 +36,7 @@ public:
     void attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox);
     void setRemoteSkyMode(bool enabled);
     void setRemoteWaveTcpState(VaporView::DeviceState state);
+    void setRemoteFeatureRateHz(double rateHz);
     void injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QVector<float>& samples);
     void injectRemoteWaveformFeature(const VaporView::WaveformFeature& feature);
     void applyRemotePeakSearchRange(quint32 startIndex, quint32 endIndex);
@@ -178,6 +179,8 @@ private:
     bool is_english_;
     bool remote_sky_mode_;
     bool remote_wave_tcp_connected_;
+    quint64 last_remote_feature_time_us_;
+    quint64 remote_expected_feature_interval_us_;
 };
 
 #endif

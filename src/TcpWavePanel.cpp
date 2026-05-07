@@ -612,6 +612,8 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , is_english_(false)
     , remote_sky_mode_(false)
     , remote_wave_tcp_connected_(false)
+    , last_remote_feature_time_us_(0)
+    , remote_expected_feature_interval_us_(0)
 {
     setupUi();
     loadRememberedInputState();
@@ -1210,10 +1212,18 @@ void TcpWavePanel::setRemoteWaveTcpState(VaporView::DeviceState state)
                           .arg(VaporView::deviceStateName(state)));
         if (!remote_wave_tcp_connected_ && wasConnected)
         {
+            last_remote_feature_time_us_ = 0;
             clearRemoteWaveformDisplay(is_english_ ? QStringLiteral("Sky Wave TCP disconnected")
                                                    : QStringLiteral("天空端波形 TCP 已断开"));
         }
     }
+}
+
+void TcpWavePanel::setRemoteFeatureRateHz(double rateHz)
+{
+    remote_expected_feature_interval_us_ = rateHz > 0.0 && std::isfinite(rateHz)
+        ? static_cast<quint64>(std::max(1.0, 1'000'000.0 / rateHz))
+        : 0ULL;
 }
 
 void TcpWavePanel::injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QVector<float>& samples)
@@ -1243,11 +1253,37 @@ void TcpWavePanel::injectRemoteWaveformFeature(const VaporView::WaveformFeature&
     {
         return;
     }
-    if (!std::isfinite(feature.peak))
+    const bool validFeature = feature.quality_flags == 0 && feature.host_time_us > 0 && std::isfinite(feature.peak);
+    if (remote_expected_feature_interval_us_ > 0 && last_remote_feature_time_us_ > 0 && feature.host_time_us > last_remote_feature_time_us_)
     {
+        const quint64 deltaUs = feature.host_time_us - last_remote_feature_time_us_;
+        if (deltaUs > remote_expected_feature_interval_us_ * 3 / 2)
+        {
+            const quint64 missingCount = std::min<quint64>(
+                64ULL,
+                std::max<quint64>(1ULL, deltaUs / remote_expected_feature_interval_us_) - 1ULL);
+            for (quint64 i = 0; i < missingCount; ++i)
+            {
+                peak_raw_history_.push_back(std::numeric_limits<float>::quiet_NaN());
+            }
+        }
+    }
+    if (!validFeature)
+    {
+        peak_raw_history_.push_back(std::numeric_limits<float>::quiet_NaN());
+        last_remote_feature_time_us_ = feature.host_time_us;
+        if (peak_raw_history_.size() > kPeakTrendFrameWindow)
+        {
+            peak_raw_history_.remove(0, peak_raw_history_.size() - kPeakTrendFrameWindow);
+        }
+        rebuildPeakHistory();
+        pending_live_status_text_ = is_english_ ? "Remote feature missing or invalid; leaving a gap"
+                                                : "远程特征值缺失或无效，峰值趋势留空";
+        live_display_dirty_ = true;
         return;
     }
     peak_raw_history_.push_back(feature.peak);
+    last_remote_feature_time_us_ = feature.host_time_us;
     if (peak_raw_history_.size() > kPeakTrendFrameWindow)
     {
         peak_raw_history_.remove(0, peak_raw_history_.size() - kPeakTrendFrameWindow);
@@ -1272,6 +1308,7 @@ void TcpWavePanel::applyRemotePeakSearchRange(quint32 startIndex, quint32 endInd
     peak_search_end_index_ = static_cast<int>(endIndex);
     peak_raw_history_.clear();
     peak_history_.clear();
+    last_remote_feature_time_us_ = 0;
     if (peak_plot_)
     {
         peak_plot_->setPeakValues({});
@@ -1357,6 +1394,7 @@ void TcpWavePanel::onToggleConnectionClicked()
     wave4_history_.clear();
     peak_raw_history_.clear();
     peak_history_.clear();
+    last_remote_feature_time_us_ = 0;
     pending_wave1_payload_.clear();
     pending_wave1_.clear();
     if (peak_plot_)
@@ -1390,6 +1428,7 @@ void TcpWavePanel::onClearPeakPlotClicked()
 {
     peak_raw_history_.clear();
     peak_history_.clear();
+    last_remote_feature_time_us_ = 0;
     if (peak_plot_)
     {
         peak_plot_->setPeakValues({});
@@ -1504,6 +1543,7 @@ void TcpWavePanel::onConfigurePeakFilterClicked()
             peak_search_end_index_ = searchEnd;
             peak_raw_history_.clear();
             peak_history_.clear();
+            last_remote_feature_time_us_ = 0;
             if (peak_plot_)
             {
                 peak_plot_->setPeakValues({});
@@ -1630,6 +1670,7 @@ void TcpWavePanel::clearRemoteWaveformDisplay(const QString& statusText)
     wave4_history_.clear();
     peak_raw_history_.clear();
     peak_history_.clear();
+    last_remote_feature_time_us_ = 0;
     frame_arrival_times_ms_.clear();
     frame_count_ = 0;
     pending_wave1_payload_.clear();

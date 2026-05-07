@@ -356,7 +356,7 @@ void SkyRuntime::sendWaveformFeature()
         return;
     }
     const WaveformFeature feature = device_manager_.latestWaveformFeature();
-    if (!std::isfinite(feature.peak))
+    if (feature.quality_flags != 0 || !std::isfinite(feature.peak))
     {
         return;
     }

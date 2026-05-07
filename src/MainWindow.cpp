@@ -6978,6 +6978,10 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
         log(is_english_ ? "Remote Sky handshake confirmed" : "天空端握手成功");
     }
     remote_status_ = status;
+    if (tcp_wave_panel_)
+    {
+        tcp_wave_panel_->setRemoteFeatureRateHz(status.feature_rate_hz);
+    }
     remote_last_status_ms_ = QDateTime::currentMSecsSinceEpoch();
     remote_recording_state_ = status.recording_state;
     for (const VaporView::DeviceStatusItem& item : status.devices)
