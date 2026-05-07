@@ -1,4 +1,5 @@
 #include "SkyRuntime.h"
+#include "SkyStartupScreen.h"
 #include "SkyTuiApp.h"
 
 #include <QCommandLineParser>
@@ -57,6 +58,11 @@ int main(int argc, char *argv[])
     {
         QTextStream(stderr) << "--telemetry-port is required\n";
         return 2;
+    }
+
+    if (VaporView::showSkyStartupScreen() == VaporView::SkyStartupDecision::Exit)
+    {
+        return 0;
     }
 
     VaporView::SkyRuntime runtime(options);

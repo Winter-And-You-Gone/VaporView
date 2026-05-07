@@ -156,6 +156,7 @@ set(SKY_TUI_SOURCES
     src/SkyTuiApp.cpp
     src/SkyTuiController.cpp
     src/SkyTuiTheme.cpp
+    src/SkyStartupScreen.cpp
     src/serial_port.cpp
     src/data_collector.cpp
     src/TelemetryCodec.cpp
@@ -174,6 +175,7 @@ set(SKY_TUI_HEADERS
     include/SkyTuiController.h
     include/SkyTuiModel.h
     include/SkyTuiTheme.h
+    include/SkyStartupScreen.h
     include/serial_port.h
     include/data_types.h
     include/data_collector.h
@@ -273,6 +275,14 @@ add_custom_command(TARGET VaporView POST_BUILD
         ${CMAKE_SOURCE_DIR}/resources/app.ico
         $<TARGET_FILE_DIR:VaporView>/resources/app.ico
     COMMENT "Copying resources to build directory"
+)
+
+add_custom_command(TARGET VaporViewSky POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:VaporViewSky>/resources
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/resources/sky_startup_logo_ansi.txt
+        $<TARGET_FILE_DIR:VaporViewSky>/resources/sky_startup_logo_ansi.txt
+    COMMENT "Copying VaporViewSky resources to build directory"
 )
 
 if(BUILD_TESTING)
