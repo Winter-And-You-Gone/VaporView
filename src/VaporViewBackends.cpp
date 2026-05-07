@@ -923,8 +923,13 @@ QString AppBackend::t(const QString& key) const
 	        {"rtk.waiting", "等待中"}, {"rtk.noData", "无数据"},
 	        {"rtk.detectMountPoints", "检测挂载点"}, {"rtk.detecting", "检测中..."},
 	        {"rtk.noMountPointFound", "未找到挂载点"}, {"rtk.mountPointDetected", "已检测到挂载点"},
-	        {"rtk.refreshPorts", "刷新串口"}, {"rtk.autoDetectPort", "自动识别"},
-	        {"rtk.placeholderPort", "例如 COM3"},
+        {"rtk.refreshPorts", "刷新串口"}, {"rtk.autoDetectPort", "自动识别"},
+        {"rtk.placeholderPort", "例如 COM3"},
+        {"rtk.autoReconnect", "自动重连"}, {"rtk.ggaGenerationRate", "生成频率"},
+        {"rtk.ggaActualRate", "实时频率"}, {"rtk.ggaStream", "GGA 数据流"},
+        {"rtk.ggaSourceManual", "手动输入"}, {"rtk.ggaSourceExternalNetwork", "外部网络"},
+        {"rtk.noDataAvailable", "暂无数据"}, {"rtk.noDiagnosticLog", "暂无诊断日志"},
+        {"rtk.statusDisconnected", "未连接"}, {"rtk.statusError", "错误"},
         {"rawParser.dropZone", "选择原始文件或会话目录"}, {"rawParser.parseRecords", "解析记录"},
         {"rawParser.formatInfo", "格式说明"}, {"rawParser.fieldName", "字段名"}, {"rawParser.fieldType", "类型"},
         {"rawParser.export", "导出"}, {"rawParser.clearAll", "清空全部"}, {"rawParser.records", "条记录"},
@@ -995,8 +1000,13 @@ QString AppBackend::t(const QString& key) const
 	        {"rtk.waiting", "Waiting"}, {"rtk.noData", "No Data"},
 	        {"rtk.detectMountPoints", "Detect Mount Points"}, {"rtk.detecting", "Detecting..."},
 	        {"rtk.noMountPointFound", "No mount point found"}, {"rtk.mountPointDetected", "Mount points detected"},
-	        {"rtk.refreshPorts", "Refresh Ports"}, {"rtk.autoDetectPort", "Auto Detect"},
-	        {"rtk.placeholderPort", "e.g. COM3"},
+        {"rtk.refreshPorts", "Refresh Ports"}, {"rtk.autoDetectPort", "Auto Detect"},
+        {"rtk.placeholderPort", "e.g. COM3"},
+        {"rtk.autoReconnect", "Auto Reconnect"}, {"rtk.ggaGenerationRate", "Generation Rate"},
+        {"rtk.ggaActualRate", "Actual Rate"}, {"rtk.ggaStream", "GGA Stream"},
+        {"rtk.ggaSourceManual", "Manual Input"}, {"rtk.ggaSourceExternalNetwork", "External Network"},
+        {"rtk.noDataAvailable", "No Data"}, {"rtk.noDiagnosticLog", "No Diagnostic Log"},
+        {"rtk.statusDisconnected", "Disconnected"}, {"rtk.statusError", "Error"},
         {"rawParser.dropZone", "Choose raw file or session directory"}, {"rawParser.parseRecords", "Parsed Records"},
         {"rawParser.formatInfo", "Format Info"}, {"rawParser.fieldName", "Field Name"}, {"rawParser.fieldType", "Type"},
         {"rawParser.export", "Export"}, {"rawParser.clearAll", "Clear All"}, {"rawParser.records", "records"},
@@ -4554,6 +4564,16 @@ void RtkBackend::setMountpoint(const QString& value) { if (mountpoint_ != value)
 void RtkBackend::setOutputPort(const QString& value) { if (output_port_ != value) { output_port_ = value; emit configChanged(); } }
 void RtkBackend::setOutputBaud(int value) { if (output_baud_ != value) { output_baud_ = value; emit configChanged(); } }
 
+bool RtkBackend::autoReconnect() const { return auto_reconnect_; }
+int RtkBackend::timeoutMs() const { return timeout_ms_; }
+int RtkBackend::reconnectMs() const { return reconnect_ms_; }
+int RtkBackend::ggaGenerationRateHz() const { return gga_generation_rate_hz_; }
+
+void RtkBackend::setAutoReconnect(bool value) { if (auto_reconnect_ != value) { auto_reconnect_ = value; emit configChanged(); } }
+void RtkBackend::setTimeoutMs(int value) { if (timeout_ms_ != value && value > 0) { timeout_ms_ = value; emit configChanged(); } }
+void RtkBackend::setReconnectMs(int value) { if (reconnect_ms_ != value && value > 0) { reconnect_ms_ = value; emit configChanged(); } }
+void RtkBackend::setGgaGenerationRateHz(int value) { if (gga_generation_rate_hz_ != value && value > 0) { gga_generation_rate_hz_ = value; emit configChanged(); } }
+
 RtkStreamConfig RtkBackend::buildConfig() const
 {
     RtkStreamConfig config;
@@ -4564,6 +4584,9 @@ RtkStreamConfig RtkBackend::buildConfig() const
     config.mountpoint = mountpoint_.trimmed();
     config.outputPort = output_port_.trimmed();
     config.baudrate = output_baud_;
+    config.timeoutMs = timeout_ms_;
+    config.reconnectMs = reconnect_ms_;
+    config.nmeaGgaCycleMs = 1000 / gga_generation_rate_hz_;
     const QVariantMap coordinate = device_backend_->coordinateData();
     config.sendNmeaGga = true;
     config.nmeaLatitudeDeg = coordinate.value(QStringLiteral("latitude")).toDouble();
@@ -4638,6 +4661,10 @@ void RtkBackend::saveConfig()
     settings.setValue(QStringLiteral("mountpoint"), mountpoint_);
     settings.setValue(QStringLiteral("output_port"), output_port_);
     settings.setValue(QStringLiteral("baudrate"), output_baud_);
+    settings.setValue(QStringLiteral("timeout_ms"), timeout_ms_);
+    settings.setValue(QStringLiteral("reconnect_ms"), reconnect_ms_);
+    settings.setValue(QStringLiteral("auto_reconnect"), auto_reconnect_);
+    settings.setValue(QStringLiteral("gga_generation_rate_hz"), gga_generation_rate_hz_);
     appendDiagnostic(QStringLiteral("RTK configuration saved."));
 }
 
@@ -4651,6 +4678,10 @@ void RtkBackend::loadConfig()
     mountpoint_ = settings.value(QStringLiteral("mountpoint"), mountpoint_).toString();
     output_port_ = settings.value(QStringLiteral("output_port"), settings.value(QStringLiteral("epsilon_rtcm_forward_port")).toString()).toString();
     output_baud_ = settings.value(QStringLiteral("baudrate"), 115200).toInt();
+    timeout_ms_ = settings.value(QStringLiteral("timeout_ms"), 5000).toInt();
+    reconnect_ms_ = settings.value(QStringLiteral("reconnect_ms"), 1000).toInt();
+    auto_reconnect_ = settings.value(QStringLiteral("auto_reconnect"), true).toBool();
+    gga_generation_rate_hz_ = settings.value(QStringLiteral("gga_generation_rate_hz"), 1).toInt();
     emit configChanged();
 }
 

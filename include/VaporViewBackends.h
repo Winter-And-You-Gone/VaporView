@@ -667,6 +667,10 @@ class RtkBackend : public QObject
     Q_PROPERTY(QStringList mountPointOptions READ mountPointOptions NOTIFY mountPointOptionsChanged)
     Q_PROPERTY(QString mountPointDetectStatus READ mountPointDetectStatus NOTIFY mountPointOptionsChanged)
     Q_PROPERTY(QVariantList outputPortOptions READ outputPortOptions NOTIFY outputPortOptionsChanged)
+    Q_PROPERTY(bool autoReconnect READ autoReconnect WRITE setAutoReconnect NOTIFY configChanged)
+    Q_PROPERTY(int timeoutMs READ timeoutMs WRITE setTimeoutMs NOTIFY configChanged)
+    Q_PROPERTY(int reconnectMs READ reconnectMs WRITE setReconnectMs NOTIFY configChanged)
+    Q_PROPERTY(int ggaGenerationRateHz READ ggaGenerationRateHz WRITE setGgaGenerationRateHz NOTIFY configChanged)
 
 public:
     explicit RtkBackend(DeviceBackend *deviceBackend, QObject *parent = nullptr);
@@ -686,6 +690,10 @@ public:
     QStringList mountPointOptions() const;
     QString mountPointDetectStatus() const;
     QVariantList outputPortOptions() const;
+    bool autoReconnect() const;
+    int timeoutMs() const;
+    int reconnectMs() const;
+    int ggaGenerationRateHz() const;
 
     Q_INVOKABLE void start();
     Q_INVOKABLE void stop();
@@ -705,6 +713,10 @@ public slots:
     void setMountpoint(const QString& value);
     void setOutputPort(const QString& value);
     void setOutputBaud(int value);
+    void setAutoReconnect(bool value);
+    void setTimeoutMs(int value);
+    void setReconnectMs(int value);
+    void setGgaGenerationRateHz(int value);
 
 signals:
     void configChanged();
@@ -730,6 +742,10 @@ private:
     QString mountpoint_;
     QString output_port_;
     int output_baud_;
+    int timeout_ms_ = 5000;
+    int reconnect_ms_ = 1000;
+    bool auto_reconnect_ = true;
+    int gga_generation_rate_hz_ = 1;
     QStringList diagnostics_;
     QVariantMap stats_;
     QTimer stats_timer_;
