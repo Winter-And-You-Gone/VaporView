@@ -234,9 +234,9 @@ Item {
 
                         Row {
                             width: parent.width; spacing: 8
-                            LeverInput { label: "X"; text: page.uiLeverX; onEdit: page.uiLeverX = value; w: (parent.width - 16) / 3 }
-                            LeverInput { label: "Y"; text: page.uiLeverY; onEdit: page.uiLeverY = value; w: (parent.width - 16) / 3 }
-                            LeverInput { label: "Z"; text: page.uiLeverZ; onEdit: page.uiLeverZ = value; w: (parent.width - 16) / 3 }
+                            LeverInput { id: leverXInput; label: "X"; text: page.uiLeverX; onEdit: page.uiLeverX = value; w: (parent.width - 16) / 3 }
+                            LeverInput { id: leverYInput; label: "Y"; text: page.uiLeverY; onEdit: page.uiLeverY = value; w: (parent.width - 16) / 3 }
+                            LeverInput { id: leverZInput; label: "Z"; text: page.uiLeverZ; onEdit: page.uiLeverZ = value; w: (parent.width - 16) / 3 }
                         }
                         ToolbarButton {
                             width: parent.width
