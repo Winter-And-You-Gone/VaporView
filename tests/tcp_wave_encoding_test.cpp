@@ -117,5 +117,14 @@ int main()
     const QByteArray legacyPayload = encodeValues(values, VaporView::TcpFloatEncoding::BigEndian);
     failures += VaporView::autoDetectTcpFloatEncoding(legacyPayload) == VaporView::TcpFloatEncoding::BigEndian ? 0 : 1;
 
+    std::vector<float> abruptValues;
+    abruptValues.reserve(2500);
+    for (int i = 0; i < 2500; ++i)
+    {
+        abruptValues.push_back(i >= 1000 && i < 1500 ? 2.0f : -1.0f);
+    }
+    failures += VaporView::autoDetectTcpFloatEncoding(encodeValues(abruptValues, VaporView::TcpFloatEncoding::LittleEndian)) == VaporView::TcpFloatEncoding::LittleEndian ? 0 : 1;
+    failures += VaporView::autoDetectTcpFloatEncoding(encodeValues(abruptValues, VaporView::TcpFloatEncoding::BigEndian)) == VaporView::TcpFloatEncoding::BigEndian ? 0 : 1;
+
     return failures == 0 ? 0 : 1;
 }

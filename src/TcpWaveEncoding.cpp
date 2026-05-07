@@ -116,6 +116,11 @@ TcpFloatEncoding autoDetectTcpFloatEncoding(const QByteArray& payload)
         double score = 0.0;
         float previous = 0.0f;
         bool hasPrevious = false;
+        int finiteCount = 0;
+        int tinyCount = 0;
+        double minValue = std::numeric_limits<double>::infinity();
+        double maxValue = -std::numeric_limits<double>::infinity();
+        double maxMagnitude = 0.0;
         for (int i = 0; i < sampleCount; ++i)
         {
             const float value = decodeTcpFloatSample(payload.constData() + i * kFloatSize, encoding);
@@ -126,6 +131,14 @@ TcpFloatEncoding autoDetectTcpFloatEncoding(const QByteArray& payload)
             }
 
             const double magnitude = std::fabs(static_cast<double>(value));
+            ++finiteCount;
+            if (magnitude < 1.0e-20)
+            {
+                ++tinyCount;
+            }
+            minValue = std::min(minValue, static_cast<double>(value));
+            maxValue = std::max(maxValue, static_cast<double>(value));
+            maxMagnitude = std::max(maxMagnitude, magnitude);
             score += 100.0;
             if (magnitude < 10.0)
             {
@@ -163,6 +176,20 @@ TcpFloatEncoding autoDetectTcpFloatEncoding(const QByteArray& payload)
 
             previous = value;
             hasPrevious = true;
+        }
+
+        if (finiteCount > 0)
+        {
+            const double dynamicRange = maxValue - minValue;
+            const double tinyRatio = static_cast<double>(tinyCount) / static_cast<double>(finiteCount);
+            if (tinyRatio > 0.9 && maxMagnitude < 1.0e-12)
+            {
+                score -= 200.0 * finiteCount;
+            }
+            if (dynamicRange > 1.0e-6)
+            {
+                score += 30.0 * finiteCount;
+            }
         }
 
         if (score > bestScore)

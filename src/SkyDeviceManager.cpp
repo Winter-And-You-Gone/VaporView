@@ -637,7 +637,12 @@ void SkyDeviceManager::processWaveTcpBuffer()
         }
         const QByteArray harmonicPayload = wave_buffer_.mid(static_cast<int>(8 + rawSize), static_cast<int>(harmonicSize));
         wave_buffer_.remove(0, static_cast<int>(8 + rawSize + harmonicSize));
-        wave_float_encoding_ = autoDetectTcpFloatEncoding(harmonicPayload);
+        if (wave_float_encoding_ == TcpFloatEncoding::Unknown)
+        {
+            wave_float_encoding_ = autoDetectTcpFloatEncoding(harmonicPayload);
+            emit logMessage(QStringLiteral("Wave TCP float payload format locked: %1")
+                                .arg(tcpFloatEncodingLabel(false, wave_float_encoding_)));
+        }
         publishWaveform(decodeTcpFloatPayload(harmonicPayload, wave_float_encoding_));
         wave_tcp_status_.rx_count++;
         wave_tcp_status_.last_data_time_us = nowUs();
@@ -765,6 +770,7 @@ void SkyDeviceManager::invalidateDeviceData(SkyDeviceId id)
     case SkyDeviceId::WaveTcp:
         latest_waveform_.clear();
         latest_feature_ = WaveformFeature();
+        wave_float_encoding_ = TcpFloatEncoding::Unknown;
         wave_frame_count_ = 0;
         feature_frame_count_ = 0;
         last_feature_compute_time_us_ = 0;

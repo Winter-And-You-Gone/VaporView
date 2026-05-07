@@ -1254,20 +1254,6 @@ void TcpWavePanel::injectRemoteWaveformFeature(const VaporView::WaveformFeature&
         return;
     }
     const bool validFeature = feature.quality_flags == 0 && feature.host_time_us > 0 && std::isfinite(feature.peak);
-    if (remote_expected_feature_interval_us_ > 0 && last_remote_feature_time_us_ > 0 && feature.host_time_us > last_remote_feature_time_us_)
-    {
-        const quint64 deltaUs = feature.host_time_us - last_remote_feature_time_us_;
-        if (deltaUs > remote_expected_feature_interval_us_ * 3 / 2)
-        {
-            const quint64 missingCount = std::min<quint64>(
-                64ULL,
-                std::max<quint64>(1ULL, deltaUs / remote_expected_feature_interval_us_) - 1ULL);
-            for (quint64 i = 0; i < missingCount; ++i)
-            {
-                peak_raw_history_.push_back(std::numeric_limits<float>::quiet_NaN());
-            }
-        }
-    }
     if (!validFeature)
     {
         peak_raw_history_.push_back(std::numeric_limits<float>::quiet_NaN());
