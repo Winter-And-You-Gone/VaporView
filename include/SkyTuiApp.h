@@ -15,6 +15,8 @@
 namespace VaporView
 {
 
+class SkyTuiScreenBuffer;
+
 enum class SkyTuiKeyType
 {
     Character,
@@ -62,8 +64,10 @@ private:
     void startInputThread();
     void restoreTerminal();
     void scheduleRender();
+    void forceFullRedraw();
     void executeInput();
     void executeCommand(const QString& command);
+    bool handlePageCommand(const QString& normalized);
     void requestQuit();
     void clearLogs();
     void selectPreviousHistory();
@@ -78,15 +82,20 @@ private:
     QString fitPlain(const QString& text, int width) const;
     QString padPlain(const QString& text, int width) const;
     QStringList wrapPlain(const QString& text, int width) const;
-    void drawText(QString& output, int row, int column, const QString& text) const;
-    void drawBox(QString& output, int top, int left, int bottom, int right, const QString& title, bool focused = false) const;
-    void drawLogo(QString& output, int& row, const SkyTuiTerminalSize& size) const;
-    void drawMainPanels(QString& output, int top, int bottom, const SkyTuiTerminalSize& size) const;
-    void drawPalette(QString& output, int top, int bottom, const SkyTuiTerminalSize& size);
-    void drawInput(QString& output, int row, const SkyTuiTerminalSize& size) const;
-    void drawStatusBar(QString& output, int row, const SkyTuiTerminalSize& size) const;
+    void drawText(SkyTuiScreenBuffer& output, int row, int column, const QString& text) const;
+    void drawBox(SkyTuiScreenBuffer& output, int top, int left, int bottom, int right, const QString& title, bool focused = false) const;
+    void drawLogo(SkyTuiScreenBuffer& output, int& row, const SkyTuiTerminalSize& size) const;
+    void drawMainPanels(SkyTuiScreenBuffer& output, int top, int bottom, const SkyTuiTerminalSize& size) const;
+    void drawDeviceOverview(SkyTuiScreenBuffer& output, int top, int bottom, const SkyTuiTerminalSize& size) const;
+    void drawPalette(SkyTuiScreenBuffer& output, int top, int bottom, const SkyTuiTerminalSize& size);
+    void drawInput(SkyTuiScreenBuffer& output, int row, const SkyTuiTerminalSize& size) const;
+    void drawStatusBar(SkyTuiScreenBuffer& output, int row, const SkyTuiTerminalSize& size) const;
     QStringList statusPanelLines() const;
+    QStringList dashboardSummaryLines(int width) const;
+    QStringList renderTerminalWaveform(const QVector<float>& samples, int width, int height) const;
+    void drawLinesInBox(SkyTuiScreenBuffer& output, int top, int left, int bottom, int right, const QString& title, const QStringList& lines) const;
     QString deviceEndpointText(SkyDeviceId id) const;
+    QString freshnessText(bool stale, bool valid) const;
     QString deviceStateColored(DeviceState state) const;
     QString recordingStateText(quint8 state) const;
     QString humanBytes(quint64 bytes) const;
@@ -102,6 +111,9 @@ private:
     bool started_ = false;
     bool terminal_restored_ = false;
     bool render_pending_ = false;
+    bool force_full_redraw_ = true;
+    SkyTuiTerminalSize previous_size_;
+    std::unique_ptr<SkyTuiScreenBuffer> previous_buffer_;
     bool status_signature_initialized_ = false;
     QString last_status_signature_;
 };

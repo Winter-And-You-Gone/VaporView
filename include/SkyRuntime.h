@@ -22,6 +22,36 @@ struct SkyRuntimeOptions
     int wave_port = 8888;
 };
 
+struct SkyDashboardSnapshot
+{
+    quint64 host_time_us = 0;
+    quint64 uptime_ms = 0;
+    EpsilonData epsilon;
+    PtbData ptb;
+    HmpData hmp;
+    LidarData lidar;
+    WaveformFeature waveform_feature;
+    QVector<float> latest_raw_waveform_preview;
+    QVector<float> latest_harmonic_waveform_preview;
+    QVector<float> peak_trend;
+    TelemetryStatus telemetry_status;
+    double epsilon_acquisition_rate_hz = 0.0;
+    double ptb_acquisition_rate_hz = 0.0;
+    double hmp_acquisition_rate_hz = 0.0;
+    double lidar_acquisition_rate_hz = 0.0;
+    double wave_tcp_acquisition_rate_hz = 0.0;
+    double devices_csv_recording_rate_hz = 0.0;
+    double raw_wave_recording_rate_hz = 0.0;
+    double telemetry_basic_rate_hz = 0.0;
+    double waveform_feature_rate_hz = 0.0;
+    double waveform_downsampled_rate_hz = 0.0;
+    bool epsilon_stale = true;
+    bool ptb_stale = true;
+    bool hmp_stale = true;
+    bool lidar_stale = true;
+    bool waveform_stale = true;
+};
+
 class SkyRuntime : public QObject
 {
     Q_OBJECT
@@ -48,6 +78,7 @@ public:
 
     TelemetryStatus currentStatus() const;
     SkyConfig currentConfig() const;
+    SkyDashboardSnapshot dashboardSnapshot() const;
 
     void setWaveformStreamingEnabled(bool enabled);
     bool waveformStreamingEnabled() const;
@@ -75,6 +106,8 @@ private:
     void sendDownsampledWaveformFrame(bool honorStreamingEnabled);
     void updateTimerIntervals();
     quint64 currentTimestampUs() const;
+    QVector<float> waveformPreview(const QVector<float>& samples, int maxPoints) const;
+    bool deviceStale(SkyDeviceId id, quint64 nowUs, quint64 timeoutUs) const;
 
     SkyRuntimeOptions options_;
     SerialTelemetryLink link_;
@@ -91,6 +124,8 @@ private:
     SkySessionRecorder session_recorder_;
     bool running_ = false;
     bool waveform_streaming_enabled_ = true;
+    quint64 started_time_us_ = 0;
+    QVector<float> peak_trend_;
 };
 
 }  // namespace VaporView

@@ -14,6 +14,8 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
+#include <vector>
 
 #ifdef Q_OS_WIN
 #include <conio.h>
@@ -137,6 +139,144 @@ int terminalCellWidth(QChar ch)
 
 }  // namespace
 
+class SkyTuiScreenBuffer
+{
+public:
+    struct Cell
+    {
+        QChar ch = QLatin1Char(' ');
+        QString style;
+
+        bool operator==(const Cell& other) const
+        {
+            return ch == other.ch && style == other.style;
+        }
+        bool operator!=(const Cell& other) const
+        {
+            return !(*this == other);
+        }
+    };
+
+    SkyTuiScreenBuffer() = default;
+    SkyTuiScreenBuffer(int rows, int columns)
+    {
+        resize(rows, columns);
+    }
+
+    void resize(int rows, int columns)
+    {
+        rows_ = std::max(1, rows);
+        columns_ = std::max(1, columns);
+        cells_.assign(rows_ * columns_, Cell{QLatin1Char(' '), SkyTuiTheme::reset()});
+    }
+
+    int rows() const { return rows_; }
+    int columns() const { return columns_; }
+
+    void putText(int row, int column, const QString& text)
+    {
+        if (row < 1 || row > rows_ || column > columns_)
+        {
+            return;
+        }
+
+        int col = std::max(1, column);
+        QString style = SkyTuiTheme::reset();
+        for (int i = 0; i < text.size() && col <= columns_; ++i)
+        {
+            const QChar ch = text.at(i);
+            if (ch == QChar(0x1b) && i + 1 < text.size() && text.at(i + 1) == QLatin1Char('['))
+            {
+                QString sequence;
+                sequence += ch;
+                sequence += text.at(++i);
+                while (i + 1 < text.size())
+                {
+                    const QChar seq = text.at(++i);
+                    sequence += seq;
+                    if (isAnsiFinalByte(seq))
+                    {
+                        break;
+                    }
+                }
+                if (sequence.contains(QStringLiteral("[0m")))
+                {
+                    style = SkyTuiTheme::reset();
+                }
+                else
+                {
+                    style += sequence;
+                }
+                continue;
+            }
+
+            const int width = std::max(1, terminalCellWidth(ch));
+            setCell(row, col, ch, style);
+            if (width == 2 && col + 1 <= columns_)
+            {
+                setCell(row, col + 1, QChar(), style);
+            }
+            col += width;
+        }
+    }
+
+    QString diffToAnsi(const SkyTuiScreenBuffer *previous, bool force) const
+    {
+        QString output;
+        QString activeStyle;
+        for (int row = 1; row <= rows_; ++row)
+        {
+            int col = 1;
+            while (col <= columns_)
+            {
+                if (!force && previous && previous->rows_ == rows_ && previous->columns_ == columns_ &&
+                    cell(row, col) == previous->cell(row, col))
+                {
+                    ++col;
+                    continue;
+                }
+
+                const int start = col;
+                output += SkyTuiTheme::moveTo(row, start);
+                while (col <= columns_ &&
+                       (force || !previous || previous->rows_ != rows_ || previous->columns_ != columns_ ||
+                        cell(row, col) != previous->cell(row, col)))
+                {
+                    const Cell& current = cell(row, col);
+                    if (current.style != activeStyle)
+                    {
+                        output += current.style;
+                        activeStyle = current.style;
+                    }
+                    output += current.ch.isNull() ? QLatin1Char(' ') : current.ch;
+                    ++col;
+                }
+            }
+        }
+        output += SkyTuiTheme::reset();
+        return output;
+    }
+
+private:
+    void setCell(int row, int column, QChar ch, const QString& style)
+    {
+        if (row < 1 || row > rows_ || column < 1 || column > columns_)
+        {
+            return;
+        }
+        cells_[static_cast<size_t>((row - 1) * columns_ + column - 1)] = Cell{ch, style};
+    }
+
+    const Cell& cell(int row, int column) const
+    {
+        return cells_[static_cast<size_t>((row - 1) * columns_ + column - 1)];
+    }
+
+    int rows_ = 0;
+    int columns_ = 0;
+    std::vector<Cell> cells_;
+};
+
 SkyTuiApp::SkyTuiApp(SkyRuntime *runtime, const SkyRuntimeOptions& options, QObject *parent)
     : QObject(parent)
     , runtime_(runtime)
@@ -179,6 +319,7 @@ void SkyTuiApp::start()
     terminal_restored_ = false;
     SkyTuiTheme::enableVirtualTerminal();
     writeRaw(SkyTuiTheme::enterAlternateScreen() + SkyTuiTheme::clearScreen());
+    forceFullRedraw();
 
     model_.config = runtime_ ? runtime_->currentConfig() : SkyConfig::defaults();
     refreshStatus();
@@ -216,14 +357,21 @@ void SkyTuiApp::render()
     }
 
     const SkyTuiTerminalSize size = SkyTuiTheme::terminalSize();
+    const bool resized = !previous_buffer_ ||
+                         previous_size_.columns != size.columns ||
+                         previous_size_.rows != size.rows;
+    SkyTuiScreenBuffer next(size.rows, size.columns);
     QString output;
-    output.reserve(size.columns * size.rows * 2);
+    output.reserve(size.columns * size.rows);
     output += SkyTuiTheme::beginSynchronizedUpdate();
     output += SkyTuiTheme::hideCursor();
-    output += SkyTuiTheme::clearScreen();
+    if (force_full_redraw_ || resized)
+    {
+        output += SkyTuiTheme::clearScreen();
+    }
 
     int row = 2;
-    drawLogo(output, row, size);
+    drawLogo(next, row, size);
 
     const int paletteHeight = model_.palette_visible ? std::min(8, std::max(5, size.rows / 4)) : 0;
     const int paletteTop = model_.palette_visible ? size.rows - paletteHeight - 2 : size.rows;
@@ -231,29 +379,40 @@ void SkyTuiApp::render()
     const int mainBottom = model_.palette_visible ? paletteTop - 1 : size.rows - 4;
     if (mainBottom > mainTop)
     {
-        drawMainPanels(output, mainTop, mainBottom, size);
+        if (model_.current_page == SkyTuiPage::DeviceOverview)
+        {
+            drawDeviceOverview(next, mainTop, mainBottom, size);
+        }
+        else
+        {
+            drawMainPanels(next, mainTop, mainBottom, size);
+        }
     }
 
     if (model_.palette_visible)
     {
-        drawPalette(output, paletteTop, size.rows - 3, size);
+        drawPalette(next, paletteTop, size.rows - 3, size);
     }
     else
     {
-        drawText(output, size.rows - 3, 2,
+        drawText(next, size.rows - 3, 2,
                  SkyTuiTheme::foreground(SkyTuiTheme::muted()) +
                      fitPlain(model_.hint, size.columns - 2) +
                      SkyTuiTheme::reset());
     }
 
-    drawInput(output, size.rows - 2, size);
-    drawStatusBar(output, size.rows, size);
+    drawInput(next, size.rows - 2, size);
+    drawStatusBar(next, size.rows, size);
+    output += next.diffToAnsi(previous_buffer_.get(), force_full_redraw_ || resized);
 
     const int cursorColumn = std::min(size.columns, 7 + displayWidth(model_.input_text));
     output += SkyTuiTheme::moveTo(size.rows - 2, cursorColumn);
     output += SkyTuiTheme::showCursor();
     output += SkyTuiTheme::endSynchronizedUpdate();
     writeRaw(output);
+    previous_buffer_ = std::make_unique<SkyTuiScreenBuffer>(next);
+    previous_size_ = size;
+    force_full_redraw_ = false;
 }
 
 void SkyTuiApp::refreshStatus()
@@ -268,6 +427,7 @@ void SkyTuiApp::refreshStatus()
     const bool changed = !status_signature_initialized_ || signature != last_status_signature_;
     model_.status = status;
     model_.config = config;
+    model_.dashboard = runtime_->dashboardSnapshot();
     status_signature_initialized_ = true;
     last_status_signature_ = signature;
     if (changed)
@@ -314,6 +474,12 @@ void SkyTuiApp::handleKey(const SkyTuiKey& key)
         scheduleRender();
         return;
     case SkyTuiKeyType::Escape:
+        if (model_.current_page != SkyTuiPage::Home && !model_.palette_visible)
+        {
+            model_.current_page = SkyTuiPage::Home;
+            model_.hint = QStringLiteral("已返回首页");
+            forceFullRedraw();
+        }
         setPaletteVisible(false);
         scheduleRender();
         return;
@@ -445,7 +611,17 @@ void SkyTuiApp::handleKey(const SkyTuiKey& key)
         }
         if (key.character == QLatin1Char('q') && model_.input_text.isEmpty() && !model_.palette_visible)
         {
-            requestQuit();
+            if (model_.current_page != SkyTuiPage::Home)
+            {
+                model_.current_page = SkyTuiPage::Home;
+                model_.hint = QStringLiteral("已返回首页");
+                forceFullRedraw();
+                scheduleRender();
+            }
+            else
+            {
+                requestQuit();
+            }
             return;
         }
         if (isPrintableCommandChar(key.character))
@@ -602,6 +778,12 @@ void SkyTuiApp::scheduleRender()
     render_timer_.start();
 }
 
+void SkyTuiApp::forceFullRedraw()
+{
+    force_full_redraw_ = true;
+    previous_buffer_.reset();
+}
+
 void SkyTuiApp::executeInput()
 {
     QString command = model_.input_text.simplified();
@@ -641,6 +823,11 @@ void SkyTuiApp::executeCommand(const QString& command)
     }
     model_.show_logo = false;
     appendLog(QStringLiteral("sky> %1").arg(normalized));
+    if (handlePageCommand(normalized))
+    {
+        scheduleRender();
+        return;
+    }
     const SkyTuiCommandResult result = controller_.executeCommand(normalized);
     if (result.type == SkyTuiCommandResult::Type::ClearLogs)
     {
@@ -662,6 +849,32 @@ void SkyTuiApp::executeCommand(const QString& command)
 
     model_.hint = QStringLiteral("上一条命令：%1").arg(plainCommand(normalized));
     scheduleRender();
+}
+
+bool SkyTuiApp::handlePageCommand(const QString& normalized)
+{
+    const QString command = plainCommand(normalized).toLower();
+    if (command == QStringLiteral("device overview") ||
+        command == QStringLiteral("overview") ||
+        command == QStringLiteral("dev overview") ||
+        command == QStringLiteral("device") ||
+        command == QStringLiteral("devices overview"))
+    {
+        model_.current_page = SkyTuiPage::DeviceOverview;
+        model_.hint = QStringLiteral("设备总览：Esc 或 /home 返回首页，Ctrl+P 打开命令面板");
+        appendLog(QStringLiteral("已打开设备总览页面"));
+        forceFullRedraw();
+        return true;
+    }
+    if (command == QStringLiteral("home"))
+    {
+        model_.current_page = SkyTuiPage::Home;
+        model_.hint = QStringLiteral("已返回首页");
+        appendLog(QStringLiteral("已返回首页"));
+        forceFullRedraw();
+        return true;
+    }
+    return false;
 }
 
 void SkyTuiApp::requestQuit()
@@ -734,17 +947,22 @@ void SkyTuiApp::selectNextHistory()
 
 void SkyTuiApp::setPaletteVisible(bool visible)
 {
+    const bool changed = model_.palette_visible != visible;
     model_.palette_visible = visible;
     if (visible && model_.input_text.isEmpty())
     {
         model_.input_text = QStringLiteral("/");
     }
     clampPaletteSelection();
+    if (changed)
+    {
+        forceFullRedraw();
+    }
 }
 
 QList<SkyTuiCommandItem> SkyTuiApp::filteredPalette() const
 {
-    QList<SkyTuiCommandItem> filtered;
+    QVector<QPair<int, SkyTuiCommandItem>> ranked;
     const QList<SkyTuiCommandItem> all = controller_.commandPalette();
     const QString prefix = model_.input_text.trimmed().toLower();
     const QString needle = paletteKey(prefix);
@@ -752,14 +970,35 @@ QList<SkyTuiCommandItem> SkyTuiApp::filteredPalette() const
     {
         const QString command = item.command.toLower();
         const QString haystack = paletteKey(command);
-        if (prefix.isEmpty() ||
-            prefix == QStringLiteral("/") ||
-            command.startsWith(prefix) ||
-            haystack.startsWith(needle) ||
-            fuzzySubsequence(needle, haystack))
+        int score = 100;
+        if (prefix.isEmpty() || prefix == QStringLiteral("/"))
         {
-            filtered.push_back(item);
+            score = 10;
         }
+        else if (command.startsWith(prefix))
+        {
+            score = 0;
+        }
+        else if (haystack.startsWith(needle))
+        {
+            score = 1;
+        }
+        else if (fuzzySubsequence(needle, haystack))
+        {
+            score = 2;
+        }
+        if (score < 100)
+        {
+            ranked.push_back(qMakePair(score, item));
+        }
+    }
+    std::stable_sort(ranked.begin(), ranked.end(), [](const auto& a, const auto& b) {
+        return a.first < b.first;
+    });
+    QList<SkyTuiCommandItem> filtered;
+    for (const auto& item : ranked)
+    {
+        filtered.push_back(item.second);
     }
     return filtered.isEmpty() ? all : filtered;
 }
@@ -942,14 +1181,12 @@ QStringList SkyTuiApp::wrapPlain(const QString& text, int width) const
     return lines;
 }
 
-void SkyTuiApp::drawText(QString& output, int row, int column, const QString& text) const
+void SkyTuiApp::drawText(SkyTuiScreenBuffer& output, int row, int column, const QString& text) const
 {
-    output += SkyTuiTheme::moveTo(row, column);
-    output += text;
-    output += SkyTuiTheme::reset();
+    output.putText(row, column, text + SkyTuiTheme::reset());
 }
 
-void SkyTuiApp::drawBox(QString& output, int top, int left, int bottom, int right, const QString& title, bool focused) const
+void SkyTuiApp::drawBox(SkyTuiScreenBuffer& output, int top, int left, int bottom, int right, const QString& title, bool focused) const
 {
     if (bottom <= top || right <= left)
     {
@@ -973,7 +1210,7 @@ void SkyTuiApp::drawBox(QString& output, int top, int left, int bottom, int righ
     }
 }
 
-void SkyTuiApp::drawLogo(QString& output, int& row, const SkyTuiTerminalSize& size) const
+void SkyTuiApp::drawLogo(SkyTuiScreenBuffer& output, int& row, const SkyTuiTerminalSize& size) const
 {
     const QString title = QStringLiteral("VaporView Sky Mode");
     if (!model_.show_logo)
@@ -1023,7 +1260,7 @@ void SkyTuiApp::drawLogo(QString& output, int& row, const SkyTuiTerminalSize& si
     }
 }
 
-void SkyTuiApp::drawMainPanels(QString& output, int top, int bottom, const SkyTuiTerminalSize& size) const
+void SkyTuiApp::drawMainPanels(SkyTuiScreenBuffer& output, int top, int bottom, const SkyTuiTerminalSize& size) const
 {
     const bool hasRightPanel = size.columns >= 92;
     const int gap = hasRightPanel ? 2 : 0;
@@ -1121,7 +1358,111 @@ void SkyTuiApp::drawMainPanels(QString& output, int top, int bottom, const SkyTu
     }
 }
 
-void SkyTuiApp::drawPalette(QString& output, int top, int bottom, const SkyTuiTerminalSize& size)
+void SkyTuiApp::drawDeviceOverview(SkyTuiScreenBuffer& output, int top, int bottom, const SkyTuiTerminalSize& size) const
+{
+    const bool twoColumns = size.columns >= 110;
+    const int left = 2;
+    const int right = size.columns - 1;
+    const int gap = twoColumns ? 2 : 0;
+    const int mid = twoColumns ? (left + right - gap) / 2 : right;
+    const int leftRight = twoColumns ? mid : right;
+    const int rightLeft = twoColumns ? mid + gap + 1 : left;
+    int row = top;
+
+    const int summaryHeight = std::min(9, std::max(6, (bottom - top) / 4));
+    QStringList nav;
+    const SkyDashboardSnapshot& d = model_.dashboard;
+    nav << QStringLiteral("Latitude:  %1  %2").arg(d.epsilon.valid ? QString::number(d.epsilon.latitude_deg, 'f', 7) : QStringLiteral("---"),
+                                                freshnessText(d.epsilon_stale, d.epsilon.valid))
+        << QStringLiteral("Longitude: %1").arg(d.epsilon.valid ? QString::number(d.epsilon.longitude_deg, 'f', 7) : QStringLiteral("---"))
+        << QStringLiteral("Height:    %1 m").arg(d.epsilon.valid ? QString::number(d.epsilon.height_m, 'f', 2) : QStringLiteral("---"))
+        << QStringLiteral("Speed:     %1 m/s").arg(d.epsilon.valid ? QString::number(std::hypot(d.epsilon.vel_n_mps, d.epsilon.vel_e_mps), 'f', 2) : QStringLiteral("---"))
+        << QStringLiteral("Satellites:%1").arg(d.epsilon.valid ? QString::number(d.epsilon.gnss_satellites) : QStringLiteral("---"))
+        << QStringLiteral("GNSS Time: %1").arg(d.epsilon.device_timestamp_us > 0 ? QString::number(d.epsilon.device_timestamp_us) : QStringLiteral("---"))
+        << QStringLiteral("Local Time:%1").arg(QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss")))
+        << QStringLiteral("RTK:       %1").arg(d.epsilon.gnss_fix_text.empty() ? QStringLiteral("---") : QString::fromStdString(d.epsilon.gnss_fix_text));
+
+    QStringList env;
+    env << QStringLiteral("Temperature: %1 C  %2").arg(d.hmp.valid ? QString::number(d.hmp.temperature, 'f', 2) : QStringLiteral("---"),
+                                                     freshnessText(d.hmp_stale, d.hmp.valid))
+        << QStringLiteral("Humidity:    %1 %").arg(d.hmp.valid ? QString::number(d.hmp.humidity, 'f', 2) : QStringLiteral("---"))
+        << QStringLiteral("Pressure:    %1 hPa  %2").arg(d.ptb.valid ? QString::number(d.ptb.pressure_hpa, 'f', 2) : QStringLiteral("---"),
+                                                        freshnessText(d.ptb_stale, d.ptb.valid))
+        << QStringLiteral("Lidar Range: %1 m  %2").arg(d.lidar.valid ? QString::number(d.lidar.distance_m, 'f', 2) : QStringLiteral("---"),
+                                                       freshnessText(d.lidar_stale, d.lidar.valid))
+        << QStringLiteral("Lidar Signal:%1").arg(d.lidar.valid ? QString::number(d.lidar.signal_strength) : QStringLiteral("---"))
+        << QStringLiteral("Roll/Pitch/Yaw: %1 / %2 / %3")
+               .arg(d.epsilon.valid ? QString::number(d.epsilon.roll_deg, 'f', 1) : QStringLiteral("---"),
+                    d.epsilon.valid ? QString::number(d.epsilon.pitch_deg, 'f', 1) : QStringLiteral("---"),
+                    d.epsilon.valid ? QString::number(d.epsilon.yaw_deg, 'f', 1) : QStringLiteral("---"));
+
+    if (twoColumns)
+    {
+        drawLinesInBox(output, row, left, row + summaryHeight, leftRight, QStringLiteral("坐标 / 姿态摘要"), nav);
+        drawLinesInBox(output, row, rightLeft, row + summaryHeight, right, QStringLiteral("环境摘要"), env);
+        row += summaryHeight + 1;
+    }
+    else
+    {
+        drawLinesInBox(output, row, left, row + summaryHeight, right, QStringLiteral("坐标 / 姿态摘要"), nav);
+        row += summaryHeight + 1;
+        drawLinesInBox(output, row, left, row + summaryHeight, right, QStringLiteral("环境摘要"), env);
+        row += summaryHeight + 1;
+    }
+
+    const int systemHeight = std::min(8, std::max(5, (bottom - row) / 4));
+    drawLinesInBox(output, row, left, row + systemHeight, right, QStringLiteral("记录 / 系统摘要"), dashboardSummaryLines(right - left - 3));
+    row += systemHeight + 1;
+
+    const int remaining = bottom - row;
+    if (remaining < 8)
+    {
+        return;
+    }
+    const int chartHeight = std::max(5, remaining / 2);
+    const QStringList rawChart = renderTerminalWaveform(d.latest_raw_waveform_preview, std::max(10, leftRight - left - 3), std::max(3, chartHeight - 2));
+    QStringList harmonic = renderTerminalWaveform(d.latest_harmonic_waveform_preview, std::max(10, right - rightLeft - 3), std::max(3, chartHeight - 2));
+    harmonic.prepend(QStringLiteral("peak %1  rms %2  mean %3  min %4  max %5")
+                         .arg(d.waveform_feature.peak, 0, 'f', 4)
+                         .arg(d.waveform_feature.rms, 0, 'f', 4)
+                         .arg(d.waveform_feature.mean, 0, 'f', 4)
+                         .arg(d.waveform_feature.min_value, 0, 'f', 4)
+                         .arg(d.waveform_feature.max_value, 0, 'f', 4));
+    if (twoColumns)
+    {
+        drawLinesInBox(output, row, left, row + chartHeight, leftRight, QStringLiteral("原始数据波形"), rawChart);
+        drawLinesInBox(output, row, rightLeft, row + chartHeight, right, QStringLiteral("归一化二次谐波"), harmonic);
+        row += chartHeight + 1;
+    }
+    else
+    {
+        drawLinesInBox(output, row, left, row + chartHeight, right, QStringLiteral("归一化二次谐波"), harmonic);
+        row += chartHeight + 1;
+    }
+
+    const int lowerBottom = bottom;
+    QStringList logs;
+    const int modelLogCount = static_cast<int>(model_.logs.size());
+    const int logCount = std::min(8, modelLogCount);
+    for (int i = modelLogCount - logCount; i < modelLogCount; ++i)
+    {
+        if (i >= 0)
+        {
+            logs << model_.logs.at(i);
+        }
+    }
+    if (twoColumns && lowerBottom > row + 3)
+    {
+        drawLinesInBox(output, row, left, lowerBottom, leftRight, QStringLiteral("峰值趋势"), renderTerminalWaveform(d.peak_trend, std::max(10, leftRight - left - 3), lowerBottom - row - 2));
+        drawLinesInBox(output, row, rightLeft, lowerBottom, right, QStringLiteral("系统日志"), logs);
+    }
+    else if (lowerBottom > row + 3)
+    {
+        drawLinesInBox(output, row, left, lowerBottom, right, QStringLiteral("系统日志"), logs);
+    }
+}
+
+void SkyTuiApp::drawPalette(SkyTuiScreenBuffer& output, int top, int bottom, const SkyTuiTerminalSize& size)
 {
     drawBox(output, top, 2, bottom, size.columns - 1, QStringLiteral("命令面板"));
     const QList<SkyTuiCommandItem> items = filteredPalette();
@@ -1149,7 +1490,7 @@ void SkyTuiApp::drawPalette(QString& output, int top, int bottom, const SkyTuiTe
     }
 }
 
-void SkyTuiApp::drawInput(QString& output, int row, const SkyTuiTerminalSize& size) const
+void SkyTuiApp::drawInput(SkyTuiScreenBuffer& output, int row, const SkyTuiTerminalSize& size) const
 {
     const QString prompt = QStringLiteral("sky> ");
     const int width = size.columns - 3;
@@ -1161,10 +1502,12 @@ void SkyTuiApp::drawInput(QString& output, int row, const SkyTuiTerminalSize& si
                  padPlain(input, width));
 }
 
-void SkyTuiApp::drawStatusBar(QString& output, int row, const SkyTuiTerminalSize& size) const
+void SkyTuiApp::drawStatusBar(SkyTuiScreenBuffer& output, int row, const SkyTuiTerminalSize& size) const
 {
     const QString path = QCoreApplication::applicationDirPath();
-    QString left = QStringLiteral(" Tab 焦点  ←/→ 日志/状态  Ctrl+P 或 / 面板  Ctrl+L 清屏  Ctrl+C 退出 ");
+    QString left = model_.current_page == SkyTuiPage::DeviceOverview
+                       ? QStringLiteral(" Tab 命令  Ctrl+P 或 / 面板  Esc 首页  Ctrl+L 清屏  Ctrl+C 退出 ")
+                       : QStringLiteral(" Tab 焦点  ←/→ 日志/状态  Ctrl+P 或 / 面板  Ctrl+L 清屏  Ctrl+C 退出 ");
     QString right = QStringLiteral(" %1 ").arg(path);
     if (displayWidth(left) + displayWidth(right) > size.columns)
     {
@@ -1182,6 +1525,126 @@ void SkyTuiApp::drawStatusBar(QString& output, int row, const SkyTuiTerminalSize
     }
     drawText(output, row, 1,
              SkyTuiTheme::inverse() + SkyTuiTheme::foreground(SkyTuiTheme::muted()) + fitPlain(bar, size.columns));
+}
+
+QStringList SkyTuiApp::dashboardSummaryLines(int width) const
+{
+    Q_UNUSED(width)
+    const SkyDashboardSnapshot& d = model_.dashboard;
+    return {
+        QStringLiteral("Frame Count: %1 | Runtime: %2 s | Record: %3 | Session: %4")
+            .arg(d.epsilon.raw_frame_count)
+            .arg(d.uptime_ms / 1000)
+            .arg(recordingStateText(d.telemetry_status.recording_state),
+                 d.telemetry_status.session_name.isEmpty() ? QStringLiteral("-") : d.telemetry_status.session_name),
+        QStringLiteral("Disk Free: %1 | Link RX: %2 | CRC: %3")
+            .arg(humanBytes(d.telemetry_status.disk_free_bytes))
+            .arg(d.telemetry_status.rx_total_frames)
+            .arg(d.telemetry_status.crc_error_count),
+        QStringLiteral("Acquisition: EPSILON %1Hz | PTB %2Hz | HMP %3Hz | Lidar %4Hz | Wave %5Hz")
+            .arg(d.epsilon_acquisition_rate_hz, 0, 'f', 1)
+            .arg(d.ptb_acquisition_rate_hz, 0, 'f', 1)
+            .arg(d.hmp_acquisition_rate_hz, 0, 'f', 1)
+            .arg(d.lidar_acquisition_rate_hz, 0, 'f', 1)
+            .arg(d.wave_tcp_acquisition_rate_hz, 0, 'f', 1),
+        QStringLiteral("Recording: CSV %1Hz | Raw EPSILON full | Raw Wave %2Hz")
+            .arg(d.devices_csv_recording_rate_hz, 0, 'f', 1)
+            .arg(d.raw_wave_recording_rate_hz, 0, 'f', 1),
+        QStringLiteral("Telemetry: Basic %1Hz | Feature %2Hz | Waveform %3Hz | TUI 2Hz snapshot")
+            .arg(d.telemetry_basic_rate_hz, 0, 'f', 1)
+            .arg(d.waveform_feature_rate_hz, 0, 'f', 1)
+            .arg(d.waveform_downsampled_rate_hz, 0, 'f', 1),
+    };
+}
+
+QStringList SkyTuiApp::renderTerminalWaveform(const QVector<float>& samples, int width, int height) const
+{
+    QStringList lines;
+    width = std::max(8, width);
+    height = std::max(3, height);
+    if (samples.isEmpty())
+    {
+        return {QStringLiteral("No waveform data")};
+    }
+
+    float minValue = std::numeric_limits<float>::infinity();
+    float maxValue = -std::numeric_limits<float>::infinity();
+    QVector<float> clean;
+    clean.reserve(samples.size());
+    for (float value : samples)
+    {
+        if (!std::isfinite(value))
+        {
+            continue;
+        }
+        clean.push_back(value);
+        minValue = std::min(minValue, value);
+        maxValue = std::max(maxValue, value);
+    }
+    if (clean.isEmpty() || !std::isfinite(minValue) || !std::isfinite(maxValue))
+    {
+        return {QStringLiteral("No waveform data")};
+    }
+    if (std::abs(maxValue - minValue) < 1.0e-9f)
+    {
+        maxValue += 1.0f;
+        minValue -= 1.0f;
+    }
+
+    QVector<QString> canvas(height, QString(width, QLatin1Char(' ')));
+    const auto yFor = [&](float value) {
+        const double t = (static_cast<double>(value) - minValue) / (maxValue - minValue);
+        return std::clamp(height - 1 - static_cast<int>(std::round(t * (height - 1))), 0, height - 1);
+    };
+    const int zeroRow = minValue <= 0.0f && maxValue >= 0.0f ? yFor(0.0f) : -1;
+    if (zeroRow >= 0)
+    {
+        canvas[zeroRow].fill(QChar(0x2500));
+    }
+    const double step = static_cast<double>(clean.size()) / static_cast<double>(width);
+    const int cleanCount = static_cast<int>(clean.size());
+    for (int x = 0; x < width; ++x)
+    {
+        const int begin = std::clamp(static_cast<int>(x * step), 0, cleanCount - 1);
+        const int end = std::clamp(static_cast<int>((x + 1) * step), begin + 1, cleanCount);
+        float colMin = std::numeric_limits<float>::infinity();
+        float colMax = -std::numeric_limits<float>::infinity();
+        for (int i = begin; i < end; ++i)
+        {
+            colMin = std::min(colMin, clean.at(i));
+            colMax = std::max(colMax, clean.at(i));
+        }
+        const int yMin = yFor(colMin);
+        const int yMax = yFor(colMax);
+        for (int y = std::min(yMin, yMax); y <= std::max(yMin, yMax); ++y)
+        {
+            canvas[y][x] = QChar(0x2588);
+        }
+    }
+    for (const QString& line : canvas)
+    {
+        lines << line;
+    }
+    return lines;
+}
+
+void SkyTuiApp::drawLinesInBox(SkyTuiScreenBuffer& output, int top, int left, int bottom, int right, const QString& title, const QStringList& lines) const
+{
+    drawBox(output, top, left, bottom, right, title);
+    const int width = std::max(4, right - left - 3);
+    int row = top + 1;
+    for (const QString& source : lines)
+    {
+        const QStringList wrapped = wrapPlain(source, width);
+        for (const QString& line : wrapped)
+        {
+            if (row >= bottom)
+            {
+                return;
+            }
+            drawText(output, row++, left + 2, SkyTuiTheme::foreground(SkyTuiTheme::muted()) + padPlain(line, width));
+        }
+    }
 }
 
 QStringList SkyTuiApp::statusPanelLines() const
@@ -1238,6 +1701,19 @@ QString SkyTuiApp::deviceEndpointText(SkyDeviceId id) const
     default:
         return QStringLiteral("端点 -");
     }
+}
+
+QString SkyTuiApp::freshnessText(bool stale, bool valid) const
+{
+    if (!valid)
+    {
+        return SkyTuiTheme::foreground(SkyTuiTheme::muted()) + QStringLiteral("no data") + SkyTuiTheme::reset();
+    }
+    if (stale)
+    {
+        return SkyTuiTheme::foreground(SkyTuiTheme::yellow()) + QStringLiteral("stale") + SkyTuiTheme::reset();
+    }
+    return SkyTuiTheme::foreground(SkyTuiTheme::green()) + QStringLiteral("live") + SkyTuiTheme::reset();
 }
 
 QString SkyTuiApp::deviceStateColored(DeviceState state) const

@@ -8,6 +8,8 @@
 #include <QProcess>
 #include <QStorageInfo>
 #include <algorithm>
+#include <cmath>
+#include <limits>
 
 namespace VaporView
 {
@@ -85,6 +87,7 @@ bool SkyRuntime::start()
     heartbeat_timer_.start();
     status_timer_.start();
     running_ = true;
+    started_time_us_ = currentTimestampUs();
     emit runningChanged(true);
     emit logMessage(QStringLiteral("SkyRuntime started on %1 @ %2").arg(options_.telemetry_port).arg(options_.telemetry_baud));
     return true;
@@ -112,6 +115,7 @@ void SkyRuntime::stop()
     device_manager_.disconnectAll();
     link_.close();
     running_ = false;
+    started_time_us_ = 0;
     emit runningChanged(false);
     emit logMessage(QStringLiteral("SkyRuntime stopped"));
 }
@@ -213,6 +217,43 @@ SkyConfig SkyRuntime::currentConfig() const
     return device_manager_.config();
 }
 
+SkyDashboardSnapshot SkyRuntime::dashboardSnapshot() const
+{
+    SkyDashboardSnapshot snapshot;
+    const quint64 nowUs = currentTimestampUs();
+    const SkyConfig config = device_manager_.config();
+    snapshot.host_time_us = nowUs;
+    snapshot.uptime_ms = started_time_us_ > 0 && nowUs >= started_time_us_ ? (nowUs - started_time_us_) / 1000ULL : 0;
+    snapshot.epsilon = device_manager_.latestEpsilon();
+    snapshot.ptb = device_manager_.latestPtb();
+    snapshot.hmp = device_manager_.latestHmp();
+    snapshot.lidar = device_manager_.latestLidar();
+    snapshot.waveform_feature = device_manager_.latestWaveformFeature();
+    const QVector<float> waveform = device_manager_.latestWaveform();
+    snapshot.latest_harmonic_waveform_preview = waveformPreview(waveform, 2048);
+    snapshot.latest_raw_waveform_preview = snapshot.latest_harmonic_waveform_preview;
+    snapshot.peak_trend = peak_trend_;
+    snapshot.telemetry_status = currentStatus();
+    snapshot.epsilon_acquisition_rate_hz = snapshot.epsilon.imu_packet_rate_hz > 0.0
+                                               ? snapshot.epsilon.imu_packet_rate_hz
+                                               : config.epsilon.frequency_hz;
+    snapshot.ptb_acquisition_rate_hz = config.ptb.frequency_hz;
+    snapshot.hmp_acquisition_rate_hz = config.hmp.frequency_hz;
+    snapshot.lidar_acquisition_rate_hz = config.lidar.frequency_hz;
+    snapshot.wave_tcp_acquisition_rate_hz = config.wave_tcp.frequency_hz;
+    snapshot.devices_csv_recording_rate_hz = config.telemetry.basic_rate_hz;
+    snapshot.raw_wave_recording_rate_hz = config.wave_tcp.frequency_hz;
+    snapshot.telemetry_basic_rate_hz = config.telemetry.basic_rate_hz;
+    snapshot.waveform_feature_rate_hz = config.telemetry.feature_rate_hz;
+    snapshot.waveform_downsampled_rate_hz = config.telemetry.waveform_rate_hz;
+    snapshot.epsilon_stale = deviceStale(SkyDeviceId::Epsilon, nowUs, 2'000'000ULL);
+    snapshot.ptb_stale = deviceStale(SkyDeviceId::Ptb, nowUs, 3'000'000ULL);
+    snapshot.hmp_stale = deviceStale(SkyDeviceId::Hmp, nowUs, 3'000'000ULL);
+    snapshot.lidar_stale = deviceStale(SkyDeviceId::Lidar, nowUs, 2'000'000ULL);
+    snapshot.waveform_stale = deviceStale(SkyDeviceId::WaveTcp, nowUs, 3'000'000ULL);
+    return snapshot;
+}
+
 void SkyRuntime::setWaveformStreamingEnabled(bool enabled)
 {
     waveform_streaming_enabled_ = enabled;
@@ -265,6 +306,14 @@ void SkyRuntime::sendBasicTelemetry()
 void SkyRuntime::sendWaveformFeature()
 {
     const WaveformFeature feature = device_manager_.latestWaveformFeature();
+    if (std::isfinite(feature.peak))
+    {
+        peak_trend_.push_back(feature.peak);
+        while (peak_trend_.size() > 256)
+        {
+            peak_trend_.removeFirst();
+        }
+    }
     session_recorder_.recordWaveformFeature(feature);
     sendFrame(MsgType::WaveformFeature, TelemetryCodec::serializeWaveformFeature(feature));
 }
@@ -540,6 +589,54 @@ void SkyRuntime::updateTimerIntervals()
 quint64 SkyRuntime::currentTimestampUs() const
 {
     return static_cast<quint64>(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()) * 1000ULL;
+}
+
+QVector<float> SkyRuntime::waveformPreview(const QVector<float>& samples, int maxPoints) const
+{
+    QVector<float> preview;
+    if (samples.isEmpty() || maxPoints <= 0)
+    {
+        return preview;
+    }
+    if (samples.size() <= maxPoints)
+    {
+        return samples;
+    }
+    preview.reserve(maxPoints);
+    const double step = static_cast<double>(samples.size()) / static_cast<double>(maxPoints);
+    for (int i = 0; i < maxPoints; ++i)
+    {
+        const int sampleCount = static_cast<int>(samples.size());
+        const int begin = std::clamp(static_cast<int>(i * step), 0, sampleCount - 1);
+        const int end = std::clamp(static_cast<int>((i + 1) * step), begin + 1, sampleCount);
+        float minValue = std::numeric_limits<float>::infinity();
+        float maxValue = -std::numeric_limits<float>::infinity();
+        for (int j = begin; j < end; ++j)
+        {
+            const float value = samples.at(j);
+            if (!std::isfinite(value))
+            {
+                continue;
+            }
+            minValue = std::min(minValue, value);
+            maxValue = std::max(maxValue, value);
+        }
+        if (std::isfinite(minValue) && std::isfinite(maxValue))
+        {
+            preview.push_back(std::abs(maxValue) >= std::abs(minValue) ? maxValue : minValue);
+        }
+        else
+        {
+            preview.push_back(0.0f);
+        }
+    }
+    return preview;
+}
+
+bool SkyRuntime::deviceStale(SkyDeviceId id, quint64 nowUs, quint64 timeoutUs) const
+{
+    const DeviceStatusItem status = device_manager_.status(id);
+    return status.last_data_time_us == 0 || nowUs < status.last_data_time_us || nowUs - status.last_data_time_us > timeoutUs;
 }
 
 }  // namespace VaporView

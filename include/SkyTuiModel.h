@@ -2,6 +2,7 @@
 #define VaporView_SKY_TUI_MODEL_H_
 
 #include "SkyConfig.h"
+#include "SkyRuntime.h"
 #include "TelemetryTypes.h"
 
 #include <QString>
@@ -15,6 +16,12 @@ enum class SkyTuiFocus
     CommandInput,
     Logs,
     Status,
+};
+
+enum class SkyTuiPage
+{
+    Home,
+    DeviceOverview,
 };
 
 struct SkyTuiModel
@@ -32,8 +39,10 @@ struct SkyTuiModel
     int selected_log_index = -1;
     int selected_status_index = 0;
     SkyTuiFocus focus = SkyTuiFocus::CommandInput;
+    SkyTuiPage current_page = SkyTuiPage::Home;
     bool show_logo = true;
     TelemetryStatus status;
+    SkyDashboardSnapshot dashboard;
     SkyConfig config = SkyConfig::defaults();
     QString last_command;
     QString hint = QStringLiteral("输入 /help 查看可用命令");

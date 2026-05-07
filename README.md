@@ -60,6 +60,8 @@ Linux:   ./build/Release/VaporView
 /help
 /status
 /devices
+/device overview
+/home
 /connect all
 /reconnect lidar
 /record start
@@ -71,13 +73,22 @@ Linux:   ./build/Release/VaporView
 /quit
 ```
 
+`/device overview` 会打开天空端设备总览页。该页是终端 TUI 页面，不创建 Qt GUI 窗口，用于在天空端本机查看坐标/姿态、环境量、记录/系统状态、波形预览、峰值趋势和最近日志。页面显示的是低频快照，不按完整高频采集频率重绘界面；完整高频数据仍继续进入天空端采集和本地记录链路。
+
+频率含义：
+
+- `Acquisition Rate`：天空端真实设备采集频率，例如 EPSILON、PTB、HMP、Lidar、Wave TCP 的采集/接收频率。
+- `Recording Rate`：天空端本地 session 写盘频率，例如 CSV 摘要和原始波形记录频率。
+- `Telemetry Rate`：天空端通过数传下发给地面端的频率，例如 `TelemetryBasic`、`WaveformFeature`、`WaveformDownsampled`。
+- `TUI Render Rate`：终端显示刷新频率。TUI 使用 screen buffer diff 局部刷新，布局不变时不会持续 clear screen 全屏重绘。
+
 快捷键：
 
 ```text
 Enter 执行命令
 Ctrl+P 打开 command palette
-Tab 打开命令候选
-Esc 关闭候选
+Tab 切换焦点 / 命令候选
+Esc 关闭候选；在设备总览页返回首页
 Up/Down 选择候选或滚动日志
 PageUp/PageDown 滚动日志
 Ctrl+L 清空可视日志

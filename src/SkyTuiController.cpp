@@ -58,7 +58,14 @@ SkyTuiCommandResult SkyTuiController::executeCommand(const QString& line)
     }
     else if (command == QStringLiteral("devices"))
     {
-        result.messages = deviceLines();
+        if (tokens.value(1).toLower() == QStringLiteral("overview"))
+        {
+            result.messages << QStringLiteral("输入 /device overview 打开设备总览页面。");
+        }
+        else
+        {
+            result.messages = deviceLines();
+        }
     }
     else if (command == QStringLiteral("quit") ||
              command == QStringLiteral("exit") ||
@@ -117,6 +124,10 @@ QList<SkyTuiCommandItem> SkyTuiController::commandPalette() const
 {
     return {
         {QStringLiteral("/help"), QStringLiteral("显示帮助和快捷键说明")},
+        {QStringLiteral("/exit"), QStringLiteral("安全停止天空端并退出 VaporViewSky")},
+        {QStringLiteral("/device overview"), QStringLiteral("打开天空端设备总览仪表盘")},
+        {QStringLiteral("/overview"), QStringLiteral("打开天空端设备总览仪表盘")},
+        {QStringLiteral("/home"), QStringLiteral("返回天空端首页")},
         {QStringLiteral("/status"), QStringLiteral("查看天空端运行状态、记录状态和链路统计")},
         {QStringLiteral("/devices"), QStringLiteral("查看 EPSILON/PTB/HMP/Lidar/Wave TCP 设备状态")},
         {QStringLiteral("/connect epsilon"), QStringLiteral("请求天空端连接 EPSILON")},
@@ -146,7 +157,6 @@ QList<SkyTuiCommandItem> SkyTuiController::commandPalette() const
         {QStringLiteral("/config show"), QStringLiteral("显示当前 sky_config JSON 配置")},
         {QStringLiteral("/clear"), QStringLiteral("清空当前可视日志")},
         {QStringLiteral("/quit"), QStringLiteral("安全停止天空端并退出 VaporViewSky")},
-        {QStringLiteral("/exit"), QStringLiteral("安全停止天空端并退出 VaporViewSky")},
     };
 }
 
@@ -157,6 +167,8 @@ QStringList SkyTuiController::helpLines() const
         QStringLiteral("  help, h, /help                 # 显示帮助"),
         QStringLiteral("  status, s, /status             # 查看天空端运行状态"),
         QStringLiteral("  devices, /devices              # 查看设备状态"),
+        QStringLiteral("  /device overview, /overview    # 打开设备总览页面"),
+        QStringLiteral("  /home                          # 返回首页"),
         QStringLiteral("  connect <device>               # 连接设备：epsilon/ptb/hmp/lidar/wave/all"),
         QStringLiteral("  disconnect <device>            # 断开设备"),
         QStringLiteral("  reconnect <device>             # 重连设备"),
