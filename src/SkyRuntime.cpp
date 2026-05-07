@@ -20,6 +20,14 @@ int intervalMs(double hz)
     return std::max(1, static_cast<int>(1000.0 / std::max(0.001, hz)));
 }
 
+bool connectedAndFresh(const DeviceStatusItem& status, quint64 nowUs, quint64 timeoutUs)
+{
+    return status.state == DeviceState::Connected &&
+           status.last_data_time_us > 0 &&
+           nowUs >= status.last_data_time_us &&
+           nowUs - status.last_data_time_us <= timeoutUs;
+}
+
 QString defaultConfigPath()
 {
     return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("sky_config.json"));
@@ -280,42 +288,81 @@ void SkyRuntime::onBytesReceived(const QByteArray& bytes)
 
 void SkyRuntime::sendBasicTelemetry()
 {
+    const quint64 nowUs = currentTimestampUs();
     const EpsilonData epsilon = device_manager_.latestEpsilon();
     const PtbData ptb = device_manager_.latestPtb();
     const HmpData hmp = device_manager_.latestHmp();
     const LidarData lidar = device_manager_.latestLidar();
 
     TelemetryBasic data;
-    data.host_time_us = currentTimestampUs();
-    data.epsilon_time_us = epsilon.device_timestamp_us;
-    data.latitude_deg = epsilon.latitude_deg;
-    data.longitude_deg = epsilon.longitude_deg;
-    data.height_m = epsilon.height_m;
-    data.ecef_x_m = epsilon.ecef_x_m;
-    data.ecef_y_m = epsilon.ecef_y_m;
-    data.ecef_z_m = epsilon.ecef_z_m;
-    data.lidar_height_m = static_cast<float>(lidar.distance_m);
-    data.temperature_c = static_cast<float>(hmp.temperature);
-    data.humidity_percent = static_cast<float>(hmp.humidity);
-    data.pressure_hpa = static_cast<float>(ptb.pressure_hpa);
-    data.status_bits = epsilon.system_status_bits;
-    data.filter_status_bits = epsilon.filter_status_bits;
-    data.update_status_bits = epsilon.update_status_bits;
-    data.gnss_fix_code = static_cast<quint8>(std::clamp(epsilon.gnss_fix_code, 0, 255));
+    data.host_time_us = nowUs;
+    data.latitude_deg = std::numeric_limits<double>::quiet_NaN();
+    data.longitude_deg = std::numeric_limits<double>::quiet_NaN();
+    data.height_m = std::numeric_limits<double>::quiet_NaN();
+    data.ecef_x_m = std::numeric_limits<double>::quiet_NaN();
+    data.ecef_y_m = std::numeric_limits<double>::quiet_NaN();
+    data.ecef_z_m = std::numeric_limits<double>::quiet_NaN();
+    data.lidar_height_m = std::numeric_limits<float>::quiet_NaN();
+    data.temperature_c = std::numeric_limits<float>::quiet_NaN();
+    data.humidity_percent = std::numeric_limits<float>::quiet_NaN();
+    data.pressure_hpa = std::numeric_limits<float>::quiet_NaN();
+
+    const DeviceStatusItem epsilonStatus = device_manager_.status(SkyDeviceId::Epsilon);
+    if (epsilon.valid && connectedAndFresh(epsilonStatus, nowUs, 2'000'000ULL))
+    {
+        data.validity_flags |= BasicHasEpsilonTime | BasicHasPosition | BasicHasEcef;
+        data.epsilon_time_us = epsilon.device_timestamp_us;
+        data.latitude_deg = epsilon.latitude_deg;
+        data.longitude_deg = epsilon.longitude_deg;
+        data.height_m = epsilon.height_m;
+        data.ecef_x_m = epsilon.ecef_x_m;
+        data.ecef_y_m = epsilon.ecef_y_m;
+        data.ecef_z_m = epsilon.ecef_z_m;
+        data.status_bits = epsilon.system_status_bits;
+        data.filter_status_bits = epsilon.filter_status_bits;
+        data.update_status_bits = epsilon.update_status_bits;
+        data.gnss_fix_code = static_cast<quint8>(std::clamp(epsilon.gnss_fix_code, 0, 255));
+    }
+
+    if (lidar.valid && connectedAndFresh(device_manager_.status(SkyDeviceId::Lidar), nowUs, 2'000'000ULL))
+    {
+        data.validity_flags |= BasicHasLidar;
+        data.lidar_height_m = static_cast<float>(lidar.distance_m);
+    }
+
+    if (hmp.valid && connectedAndFresh(device_manager_.status(SkyDeviceId::Hmp), nowUs, 3'000'000ULL))
+    {
+        data.validity_flags |= BasicHasTemperature | BasicHasHumidity;
+        data.temperature_c = static_cast<float>(hmp.temperature);
+        data.humidity_percent = static_cast<float>(hmp.humidity);
+    }
+
+    if (ptb.valid && connectedAndFresh(device_manager_.status(SkyDeviceId::Ptb), nowUs, 3'000'000ULL))
+    {
+        data.validity_flags |= BasicHasPressure;
+        data.pressure_hpa = static_cast<float>(ptb.pressure_hpa);
+    }
+
     session_recorder_.recordBasicTelemetry(data);
     sendFrame(MsgType::TelemetryBasic, TelemetryCodec::serializeBasicTelemetry(data));
 }
 
 void SkyRuntime::sendWaveformFeature()
 {
-    const WaveformFeature feature = device_manager_.latestWaveformFeature();
-    if (std::isfinite(feature.peak))
+    const quint64 nowUs = currentTimestampUs();
+    if (!connectedAndFresh(device_manager_.status(SkyDeviceId::WaveTcp), nowUs, 3'000'000ULL))
     {
-        peak_trend_.push_back(feature.peak);
-        while (peak_trend_.size() > 256)
-        {
-            peak_trend_.removeFirst();
-        }
+        return;
+    }
+    const WaveformFeature feature = device_manager_.latestWaveformFeature();
+    if (!std::isfinite(feature.peak))
+    {
+        return;
+    }
+    peak_trend_.push_back(feature.peak);
+    while (peak_trend_.size() > 256)
+    {
+        peak_trend_.removeFirst();
     }
     session_recorder_.recordWaveformFeature(feature);
     sendFrame(MsgType::WaveformFeature, TelemetryCodec::serializeWaveformFeature(feature));
@@ -328,12 +375,16 @@ void SkyRuntime::sendDownsampledWaveform()
 
 void SkyRuntime::sendDownsampledWaveformFrame(bool honorStreamingEnabled)
 {
+    const quint64 hostTimeUs = currentTimestampUs();
+    if (!connectedAndFresh(device_manager_.status(SkyDeviceId::WaveTcp), hostTimeUs, 3'000'000ULL))
+    {
+        return;
+    }
     const QVector<float> samples = device_manager_.latestWaveform();
     if (samples.isEmpty())
     {
         return;
     }
-    const quint64 hostTimeUs = currentTimestampUs();
     session_recorder_.recordWaveformSnapshot(hostTimeUs, device_manager_.latestEpsilon().device_timestamp_us, samples);
     if (honorStreamingEnabled && !waveform_streaming_enabled_)
     {
@@ -467,6 +518,11 @@ void SkyRuntime::handleCommand(const CommandMessage& command)
         sendAck(command);
         break;
     case CommandId::RequestOneWaveform:
+        if (!connectedAndFresh(device_manager_.status(SkyDeviceId::WaveTcp), currentTimestampUs(), 3'000'000ULL))
+        {
+            sendAck(command, CommandErrorCode::DeviceNotConnected);
+            break;
+        }
         sendAck(command);
         sendOneWaveformNow();
         break;

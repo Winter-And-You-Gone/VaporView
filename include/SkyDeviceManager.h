@@ -77,6 +77,7 @@ private:
     void disconnectWaveTcp();
     void processWaveTcpBuffer();
     void publishWaveform(const QVector<float>& harmonic);
+    void invalidateDeviceData(SkyDeviceId id);
 
     SkyConfig config_ = SkyConfig::defaults();
     bool simulate_data_ = false;

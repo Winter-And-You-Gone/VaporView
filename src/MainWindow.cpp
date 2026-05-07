@@ -6826,44 +6826,92 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
     noteRemotePacket(VaporView::MsgType::TelemetryBasic);
     const auto now = std::chrono::steady_clock::now();
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    auto hasFlag = [&data](quint32 flag) {
+        return (data.validity_flags & flag) != 0;
+    };
+
     current_epsilon_ = VaporView::EpsilonData();
-    current_epsilon_.valid = true;
-    current_epsilon_.timestamp = now;
-    current_epsilon_.device_timestamp_us = data.epsilon_time_us;
-    current_epsilon_.utc_unix_s = data.host_time_us / 1000000ULL;
-    current_epsilon_.utc_microseconds = static_cast<quint32>(data.host_time_us % 1000000ULL);
-    int gnssFixCode = static_cast<int>(data.gnss_fix_code);
-    if (gnssFixCode == 0 && data.filter_status_bits != 0)
+    if (hasFlag(VaporView::BasicHasEpsilonTime) ||
+        hasFlag(VaporView::BasicHasPosition) ||
+        hasFlag(VaporView::BasicHasEcef))
     {
-        gnssFixCode = static_cast<int>((data.filter_status_bits >> 4) & 0x0F);
+        current_epsilon_.valid = true;
+        current_epsilon_.timestamp = now;
+        current_epsilon_.device_timestamp_us = data.epsilon_time_us;
+        current_epsilon_.utc_unix_s = data.host_time_us / 1000000ULL;
+        current_epsilon_.utc_microseconds = static_cast<quint32>(data.host_time_us % 1000000ULL);
+        int gnssFixCode = static_cast<int>(data.gnss_fix_code);
+        if (gnssFixCode == 0 && data.filter_status_bits != 0)
+        {
+            gnssFixCode = static_cast<int>((data.filter_status_bits >> 4) & 0x0F);
+        }
+        current_epsilon_.gnss_fix_code = gnssFixCode;
+        current_epsilon_.gnss_fix_text = epsilonGnssFixTextForCode(gnssFixCode);
+        if (hasFlag(VaporView::BasicHasPosition))
+        {
+            current_epsilon_.latitude_deg = data.latitude_deg;
+            current_epsilon_.longitude_deg = data.longitude_deg;
+            current_epsilon_.height_m = data.height_m;
+        }
+        if (hasFlag(VaporView::BasicHasEcef))
+        {
+            current_epsilon_.ecef_x_m = data.ecef_x_m;
+            current_epsilon_.ecef_y_m = data.ecef_y_m;
+            current_epsilon_.ecef_z_m = data.ecef_z_m;
+        }
+        current_epsilon_.system_status_bits = data.status_bits;
+        current_epsilon_.filter_status_bits = data.filter_status_bits;
+        current_epsilon_.update_status_bits = data.update_status_bits;
+        remote_last_data_ms_.insert(VaporView::SkyDeviceId::Epsilon, nowMs);
     }
-    current_epsilon_.gnss_fix_code = gnssFixCode;
-    current_epsilon_.gnss_fix_text = epsilonGnssFixTextForCode(gnssFixCode);
-    current_epsilon_.latitude_deg = data.latitude_deg;
-    current_epsilon_.longitude_deg = data.longitude_deg;
-    current_epsilon_.height_m = data.height_m;
-    current_epsilon_.ecef_x_m = data.ecef_x_m;
-    current_epsilon_.ecef_y_m = data.ecef_y_m;
-    current_epsilon_.ecef_z_m = data.ecef_z_m;
-    current_epsilon_.system_status_bits = data.status_bits;
-    current_epsilon_.filter_status_bits = data.filter_status_bits;
-    current_epsilon_.update_status_bits = data.update_status_bits;
+    else
+    {
+        remote_last_data_ms_.remove(VaporView::SkyDeviceId::Epsilon);
+    }
 
-    current_lidar_.valid = true;
-    current_lidar_.timestamp = now;
-    current_lidar_.distance_m = data.lidar_height_m;
-    current_hmp_.valid = true;
-    current_hmp_.timestamp = now;
-    current_hmp_.temperature = data.temperature_c;
-    current_hmp_.humidity = data.humidity_percent;
-    current_ptb_.valid = true;
-    current_ptb_.timestamp = now;
-    current_ptb_.pressure_hpa = data.pressure_hpa;
+    current_lidar_ = VaporView::LidarData();
+    if (hasFlag(VaporView::BasicHasLidar))
+    {
+        current_lidar_.valid = true;
+        current_lidar_.timestamp = now;
+        current_lidar_.distance_m = data.lidar_height_m;
+        remote_last_data_ms_.insert(VaporView::SkyDeviceId::Lidar, nowMs);
+    }
+    else
+    {
+        current_lidar_.error_message = remoteNoDataText(is_english_).toStdString();
+        remote_last_data_ms_.remove(VaporView::SkyDeviceId::Lidar);
+    }
 
-    remote_last_data_ms_.insert(VaporView::SkyDeviceId::Epsilon, nowMs);
-    remote_last_data_ms_.insert(VaporView::SkyDeviceId::Ptb, nowMs);
-    remote_last_data_ms_.insert(VaporView::SkyDeviceId::Hmp, nowMs);
-    remote_last_data_ms_.insert(VaporView::SkyDeviceId::Lidar, nowMs);
+    current_hmp_ = VaporView::HmpData();
+    if (hasFlag(VaporView::BasicHasTemperature) && hasFlag(VaporView::BasicHasHumidity))
+    {
+        current_hmp_.valid = true;
+        current_hmp_.timestamp = now;
+        current_hmp_.temperature = data.temperature_c;
+        current_hmp_.humidity = data.humidity_percent;
+        remote_last_data_ms_.insert(VaporView::SkyDeviceId::Hmp, nowMs);
+    }
+    else
+    {
+        current_hmp_.error_message = remoteNoDataText(is_english_).toStdString();
+        remote_last_data_ms_.remove(VaporView::SkyDeviceId::Hmp);
+    }
+
+    current_ptb_ = VaporView::PtbData();
+    if (hasFlag(VaporView::BasicHasPressure))
+    {
+        current_ptb_.valid = true;
+        current_ptb_.timestamp = now;
+        current_ptb_.pressure_hpa = data.pressure_hpa;
+        remote_last_data_ms_.insert(VaporView::SkyDeviceId::Ptb, nowMs);
+    }
+    else
+    {
+        current_ptb_.error_message = remoteNoDataText(is_english_).toStdString();
+        remote_last_data_ms_.remove(VaporView::SkyDeviceId::Ptb);
+    }
+
     refreshRemoteSkyDataUi();
 }
 
@@ -6902,6 +6950,29 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
     {
         remote_device_states_.insert(item.device_id, item.state);
         updateRemoteDeviceButtonText(item.device_id, item.state);
+        if (item.state != VaporView::DeviceState::Connected)
+        {
+            remote_last_data_ms_.remove(item.device_id);
+            if (item.device_id == VaporView::SkyDeviceId::Epsilon)
+            {
+                current_epsilon_ = VaporView::EpsilonData();
+            }
+            else if (item.device_id == VaporView::SkyDeviceId::Ptb)
+            {
+                current_ptb_ = VaporView::PtbData();
+                current_ptb_.error_message = remoteDisconnectedText(is_english_).toStdString();
+            }
+            else if (item.device_id == VaporView::SkyDeviceId::Hmp)
+            {
+                current_hmp_ = VaporView::HmpData();
+                current_hmp_.error_message = remoteDisconnectedText(is_english_).toStdString();
+            }
+            else if (item.device_id == VaporView::SkyDeviceId::Lidar)
+            {
+                current_lidar_ = VaporView::LidarData();
+                current_lidar_.error_message = remoteDisconnectedText(is_english_).toStdString();
+            }
+        }
     }
     refreshRemoteSkyDataUi();
     status_label_->setText(QString(is_english_ ? "Remote Sky Online | %1" : "天空端在线 | %1").arg(status.session_name));

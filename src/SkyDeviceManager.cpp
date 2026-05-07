@@ -26,11 +26,6 @@ void stopCollector(std::shared_ptr<Collector>& collector)
     }
 }
 
-float finiteOrZero(double value)
-{
-    return std::isfinite(value) ? static_cast<float>(value) : 0.0f;
-}
-
 QJsonObject resultItem(bool changed, bool reconfigured, const DeviceStatusItem& status)
 {
     QJsonObject item;
@@ -136,7 +131,9 @@ bool SkyDeviceManager::disconnectDevice(SkyDeviceId id, CommandErrorCode *errorC
     case SkyDeviceId::All:
         break;
     }
+    invalidateDeviceData(id);
     setState(id, DeviceState::Disconnected);
+    emit logMessage(QStringLiteral("%1 disconnected, data invalidated").arg(skyDeviceIdName(id)));
     if (errorCode) *errorCode = CommandErrorCode::Ok;
     return true;
 }
@@ -299,69 +296,83 @@ void SkyDeviceManager::generateSimulatedData()
     simulate_phase_ += 0.04;
     const quint64 t = nowUs();
 
-    latest_epsilon_.valid = true;
-    latest_epsilon_.timestamp = std::chrono::steady_clock::now();
-    latest_epsilon_.device_timestamp_us = t;
-    latest_epsilon_.utc_unix_s = t / 1000000ULL;
-    latest_epsilon_.utc_microseconds = static_cast<quint32>(t % 1000000ULL);
-    latest_epsilon_.gnss_fix_code = 6;
-    latest_epsilon_.gnss_fix_text = "RTK_FIXED";
-    latest_epsilon_.filter_status_bits = static_cast<uint16_t>(latest_epsilon_.gnss_fix_code << 4);
-    latest_epsilon_.gnss_satellites = 18;
-    latest_epsilon_.latitude_deg = 31.2304 + std::sin(simulate_phase_) * 0.0001;
-    latest_epsilon_.longitude_deg = 121.4737 + std::cos(simulate_phase_) * 0.0001;
-    latest_epsilon_.height_m = 1200.0 + std::sin(simulate_phase_ * 0.7) * 3.0;
-    latest_epsilon_.ecef_x_m = 1000.0 + std::sin(simulate_phase_) * 5.0;
-    latest_epsilon_.ecef_y_m = 2000.0 + std::cos(simulate_phase_) * 5.0;
-    latest_epsilon_.ecef_z_m = 3000.0 + std::sin(simulate_phase_ * 0.5) * 5.0;
-    latest_epsilon_.raw_frame_count++;
-    latest_epsilon_.imu_packet_rate_hz = 100.0;
-    latest_epsilon_.geodetic_packet_rate_hz = 10.0;
-    latest_epsilon_.ecef_packet_rate_hz = 10.0;
-    epsilon_status_.rx_count++;
-    epsilon_status_.last_data_time_us = t;
-    setState(SkyDeviceId::Epsilon, DeviceState::Connected);
-    emit epsilonDataUpdated(latest_epsilon_);
-
-    latest_ptb_.valid = true;
-    latest_ptb_.timestamp = latest_epsilon_.timestamp;
-    latest_ptb_.pressure_hpa = 900.0 + std::sin(simulate_phase_ * 0.3) * 1.5;
-    ptb_status_.rx_count++;
-    ptb_status_.last_data_time_us = t;
-    setState(SkyDeviceId::Ptb, DeviceState::Connected);
-    emit ptbDataUpdated(latest_ptb_);
-
-    latest_hmp_.valid = true;
-    latest_hmp_.timestamp = latest_epsilon_.timestamp;
-    latest_hmp_.temperature = 23.0 + std::sin(simulate_phase_ * 0.2) * 2.0;
-    latest_hmp_.humidity = 45.0 + std::cos(simulate_phase_ * 0.15) * 5.0;
-    hmp_status_.rx_count++;
-    hmp_status_.last_data_time_us = t;
-    setState(SkyDeviceId::Hmp, DeviceState::Connected);
-    emit hmpDataUpdated(latest_hmp_);
-
-    latest_lidar_.valid = true;
-    latest_lidar_.timestamp = latest_epsilon_.timestamp;
-    latest_lidar_.distance_m = 120.0 + std::sin(simulate_phase_ * 0.6) * 8.0;
-    latest_lidar_.signal_strength = 180;
-    lidar_status_.rx_count++;
-    lidar_status_.last_data_time_us = t;
-    setState(SkyDeviceId::Lidar, DeviceState::Connected);
-    emit lidarDataUpdated(latest_lidar_);
-
-    if (latest_waveform_.isEmpty())
+    if (epsilon_status_.state == DeviceState::Connected)
     {
-        latest_waveform_.resize(50000);
+        latest_epsilon_.valid = true;
+        latest_epsilon_.timestamp = std::chrono::steady_clock::now();
+        latest_epsilon_.device_timestamp_us = t;
+        latest_epsilon_.utc_unix_s = t / 1000000ULL;
+        latest_epsilon_.utc_microseconds = static_cast<quint32>(t % 1000000ULL);
+        latest_epsilon_.gnss_fix_code = 6;
+        latest_epsilon_.gnss_fix_text = "RTK_FIXED";
+        latest_epsilon_.filter_status_bits = static_cast<uint16_t>(latest_epsilon_.gnss_fix_code << 4);
+        latest_epsilon_.gnss_satellites = 18;
+        latest_epsilon_.latitude_deg = 31.2304 + std::sin(simulate_phase_) * 0.0001;
+        latest_epsilon_.longitude_deg = 121.4737 + std::cos(simulate_phase_) * 0.0001;
+        latest_epsilon_.height_m = 1200.0 + std::sin(simulate_phase_ * 0.7) * 3.0;
+        latest_epsilon_.ecef_x_m = 1000.0 + std::sin(simulate_phase_) * 5.0;
+        latest_epsilon_.ecef_y_m = 2000.0 + std::cos(simulate_phase_) * 5.0;
+        latest_epsilon_.ecef_z_m = 3000.0 + std::sin(simulate_phase_ * 0.5) * 5.0;
+        latest_epsilon_.raw_frame_count++;
+        latest_epsilon_.imu_packet_rate_hz = 100.0;
+        latest_epsilon_.geodetic_packet_rate_hz = 10.0;
+        latest_epsilon_.ecef_packet_rate_hz = 10.0;
+        epsilon_status_.rx_count++;
+        epsilon_status_.last_data_time_us = t;
+        emit epsilonDataUpdated(latest_epsilon_);
     }
-    for (int i = 0; i < latest_waveform_.size(); ++i)
+
+    const auto timestamp = latest_epsilon_.timestamp.time_since_epoch().count() == 0
+        ? std::chrono::steady_clock::now()
+        : latest_epsilon_.timestamp;
+
+    if (ptb_status_.state == DeviceState::Connected)
     {
-        const double x = static_cast<double>(i) / 500.0;
-        latest_waveform_[i] = static_cast<float>(std::sin(x + simulate_phase_) * 0.05 + std::exp(-std::pow((i - 24000) / 3500.0, 2.0)));
+        latest_ptb_.valid = true;
+        latest_ptb_.timestamp = timestamp;
+        latest_ptb_.pressure_hpa = 900.0 + std::sin(simulate_phase_ * 0.3) * 1.5;
+        ptb_status_.rx_count++;
+        ptb_status_.last_data_time_us = t;
+        emit ptbDataUpdated(latest_ptb_);
     }
-    wave_tcp_status_.rx_count++;
-    wave_tcp_status_.last_data_time_us = t;
-    setState(SkyDeviceId::WaveTcp, DeviceState::Connected);
-    publishWaveform(latest_waveform_);
+
+    if (hmp_status_.state == DeviceState::Connected)
+    {
+        latest_hmp_.valid = true;
+        latest_hmp_.timestamp = timestamp;
+        latest_hmp_.temperature = 23.0 + std::sin(simulate_phase_ * 0.2) * 2.0;
+        latest_hmp_.humidity = 45.0 + std::cos(simulate_phase_ * 0.15) * 5.0;
+        hmp_status_.rx_count++;
+        hmp_status_.last_data_time_us = t;
+        emit hmpDataUpdated(latest_hmp_);
+    }
+
+    if (lidar_status_.state == DeviceState::Connected)
+    {
+        latest_lidar_.valid = true;
+        latest_lidar_.timestamp = timestamp;
+        latest_lidar_.distance_m = 120.0 + std::sin(simulate_phase_ * 0.6) * 8.0;
+        latest_lidar_.signal_strength = 180;
+        lidar_status_.rx_count++;
+        lidar_status_.last_data_time_us = t;
+        emit lidarDataUpdated(latest_lidar_);
+    }
+
+    if (wave_tcp_status_.state == DeviceState::Connected)
+    {
+        if (latest_waveform_.isEmpty())
+        {
+            latest_waveform_.resize(50000);
+        }
+        for (int i = 0; i < latest_waveform_.size(); ++i)
+        {
+            const double x = static_cast<double>(i) / 500.0;
+            latest_waveform_[i] = static_cast<float>(std::sin(x + simulate_phase_) * 0.05 + std::exp(-std::pow((i - 24000) / 3500.0, 2.0)));
+        }
+        wave_tcp_status_.rx_count++;
+        wave_tcp_status_.last_data_time_us = t;
+        publishWaveform(latest_waveform_);
+    }
 }
 
 void SkyDeviceManager::onWaveTcpConnected()
@@ -371,6 +382,7 @@ void SkyDeviceManager::onWaveTcpConnected()
 
 void SkyDeviceManager::onWaveTcpDisconnected()
 {
+    invalidateDeviceData(SkyDeviceId::WaveTcp);
     setState(SkyDeviceId::WaveTcp, DeviceState::Disconnected);
 }
 
@@ -386,6 +398,7 @@ void SkyDeviceManager::onWaveTcpReadyRead()
 
 void SkyDeviceManager::onWaveTcpError()
 {
+    invalidateDeviceData(SkyDeviceId::WaveTcp);
     setState(SkyDeviceId::WaveTcp, DeviceState::Error, 1);
 }
 
@@ -460,6 +473,25 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
 
     setState(id, DeviceState::Connecting);
     auto fail = [&](CommandErrorCode code) {
+        switch (id)
+        {
+        case SkyDeviceId::Epsilon:
+            stopCollector(epsilon_);
+            break;
+        case SkyDeviceId::Ptb:
+            stopCollector(ptb_);
+            break;
+        case SkyDeviceId::Hmp:
+            stopCollector(hmp_);
+            break;
+        case SkyDeviceId::Lidar:
+            stopCollector(lidar_);
+            break;
+        case SkyDeviceId::WaveTcp:
+        case SkyDeviceId::All:
+            break;
+        }
+        invalidateDeviceData(id);
         setState(id, DeviceState::Error, static_cast<quint16>(code));
         if (errorCode) *errorCode = code;
         return false;
@@ -596,6 +628,10 @@ void SkyDeviceManager::processWaveTcpBuffer()
 
 void SkyDeviceManager::publishWaveform(const QVector<float>& harmonic)
 {
+    if (wave_tcp_status_.state != DeviceState::Connected)
+    {
+        return;
+    }
     latest_waveform_ = harmonic;
     if (harmonic.isEmpty())
     {
@@ -630,6 +666,41 @@ void SkyDeviceManager::publishWaveform(const QVector<float>& harmonic)
     latest_feature_.max_value = maxValue;
     emit waveformUpdated(latest_feature_.host_time_us, harmonic);
     emit waveformFeatureUpdated(latest_feature_);
+}
+
+void SkyDeviceManager::invalidateDeviceData(SkyDeviceId id)
+{
+    switch (id)
+    {
+    case SkyDeviceId::Epsilon:
+        latest_epsilon_ = EpsilonData();
+        epsilon_status_.last_data_time_us = 0;
+        break;
+    case SkyDeviceId::Ptb:
+        latest_ptb_ = PtbData();
+        ptb_status_.last_data_time_us = 0;
+        break;
+    case SkyDeviceId::Hmp:
+        latest_hmp_ = HmpData();
+        hmp_status_.last_data_time_us = 0;
+        break;
+    case SkyDeviceId::Lidar:
+        latest_lidar_ = LidarData();
+        lidar_status_.last_data_time_us = 0;
+        break;
+    case SkyDeviceId::WaveTcp:
+        latest_waveform_.clear();
+        latest_feature_ = WaveformFeature();
+        wave_tcp_status_.last_data_time_us = 0;
+        break;
+    case SkyDeviceId::All:
+        invalidateDeviceData(SkyDeviceId::Epsilon);
+        invalidateDeviceData(SkyDeviceId::Ptb);
+        invalidateDeviceData(SkyDeviceId::Hmp);
+        invalidateDeviceData(SkyDeviceId::Lidar);
+        invalidateDeviceData(SkyDeviceId::WaveTcp);
+        break;
+    }
 }
 
 }  // namespace VaporView

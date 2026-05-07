@@ -111,6 +111,17 @@ struct TelemetryFrame
     QByteArray payload;
 };
 
+enum TelemetryBasicValidityFlag : quint32
+{
+    BasicHasEpsilonTime = 1u << 0,
+    BasicHasPosition = 1u << 1,
+    BasicHasEcef = 1u << 2,
+    BasicHasLidar = 1u << 3,
+    BasicHasTemperature = 1u << 4,
+    BasicHasHumidity = 1u << 5,
+    BasicHasPressure = 1u << 6,
+};
+
 struct TelemetryBasic
 {
     quint64 host_time_us = 0;
@@ -129,6 +140,7 @@ struct TelemetryBasic
     quint16 filter_status_bits = 0;
     quint16 update_status_bits = 0;
     quint8 gnss_fix_code = 0;
+    quint32 validity_flags = 0;
 };
 
 struct DownsampledWaveform

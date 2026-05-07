@@ -39,6 +39,13 @@ void testFrameRoundTrip()
     basic.filter_status_bits = 0x0060;
     basic.update_status_bits = 0x0003;
     basic.gnss_fix_code = 6;
+    basic.validity_flags = VaporView::BasicHasEpsilonTime |
+                           VaporView::BasicHasPosition |
+                           VaporView::BasicHasEcef |
+                           VaporView::BasicHasLidar |
+                           VaporView::BasicHasTemperature |
+                           VaporView::BasicHasHumidity |
+                           VaporView::BasicHasPressure;
 
     const QByteArray payload = VaporView::TelemetryCodec::serializeBasicTelemetry(basic);
     const QByteArray frame = codec.encodeFrame(VaporView::MsgType::TelemetryBasic, payload, 7, 99);
@@ -52,6 +59,7 @@ void testFrameRoundTrip()
     require(std::fabs(parsed.latitude_deg - basic.latitude_deg) < 0.000001, "basic latitude");
     require(parsed.filter_status_bits == basic.filter_status_bits, "basic filter status");
     require(parsed.gnss_fix_code == basic.gnss_fix_code, "basic gnss fix");
+    require(parsed.validity_flags == basic.validity_flags, "basic validity flags");
 }
 
 void testCrcError()

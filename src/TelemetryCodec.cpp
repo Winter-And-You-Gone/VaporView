@@ -298,7 +298,7 @@ quint16 TelemetryCodec::crc16Ccitt(const char *data, qsizetype size)
 QByteArray TelemetryCodec::serializeBasicTelemetry(const TelemetryBasic& data)
 {
     QByteArray payload;
-    payload.reserve(83);
+    payload.reserve(87);
     appendLe<quint64>(payload, data.host_time_us);
     appendLe<quint64>(payload, data.epsilon_time_us);
     for (double value : {data.latitude_deg, data.longitude_deg, data.height_m, data.ecef_x_m, data.ecef_y_m, data.ecef_z_m})
@@ -315,11 +315,13 @@ QByteArray TelemetryCodec::serializeBasicTelemetry(const TelemetryBasic& data)
     appendLe<quint16>(payload, data.filter_status_bits);
     appendLe<quint16>(payload, data.update_status_bits);
     payload.append(static_cast<char>(data.gnss_fix_code));
+    appendLe<quint32>(payload, data.validity_flags);
     return payload;
 }
 
 bool TelemetryCodec::parseBasicTelemetry(const QByteArray& payload, TelemetryBasic& data)
 {
+    data = TelemetryBasic();
     qsizetype offset = 0;
     if (!readLe(payload, offset, data.host_time_us) || !readLe(payload, offset, data.epsilon_time_us))
     {
@@ -348,7 +350,9 @@ bool TelemetryCodec::parseBasicTelemetry(const QByteArray& payload, TelemetryBas
     if (offset < payload.size())
     {
         data.gnss_fix_code = static_cast<quint8>(static_cast<unsigned char>(payload.at(offset)));
+        ++offset;
     }
+    (void)readLe(payload, offset, data.validity_flags);
     return true;
 }
 
