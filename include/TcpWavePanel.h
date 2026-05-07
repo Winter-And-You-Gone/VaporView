@@ -109,6 +109,7 @@ private:
     void updateFrameRateDisplay(qint64 arrivalTimeMs);
     void updateLiveDisplay();
     void setStatusText(const QString& text);
+    void clearRemoteWaveformDisplay(const QString& statusText = QString());
     void resetParserState();
     void processBuffer();
     bool trySynchronizeLengthPrefixedStream();

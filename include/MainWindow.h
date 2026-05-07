@@ -28,6 +28,7 @@
 #include <QScrollArea>
 #include <QLineEdit>
 #include <QVector>
+#include <QHash>
 #include <atomic>
 #include <cstdint>
 #include <memory>
@@ -378,6 +379,10 @@ private:
     void refreshRemoteSkyDataUi();
     bool remoteDeviceDataValid(VaporView::SkyDeviceId device, qint64 timeout_ms) const;
     QString remoteDeviceInvalidText(VaporView::SkyDeviceId device, qint64 timeout_ms) const;
+    void noteRemotePacket(VaporView::MsgType type);
+    double remotePacketRate(VaporView::MsgType type) const;
+    QString remoteTelemetrySummaryText() const;
+    void updateRemoteTelemetrySummaryLabel();
     void sendRemoteDeviceCommand(VaporView::CommandId command, VaporView::SkyDeviceId device);
     QPushButton *createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device);
     void setRemoteDeviceButtonsEnabled(bool enabled);
@@ -465,6 +470,7 @@ private:
     QLabel *hmp_lbl_;
     QLabel *lidar_lbl_;
     QLabel *data_inline_title_lbl_;
+    QLabel *data_telemetry_summary_lbl_;
     QLabel *log_inline_title_lbl_;
     QLabel *epsilon_inline_title_lbl_;
     QLabel *gnss_inline_title_lbl_;
@@ -546,9 +552,11 @@ private:
     bool epsilon_reconfigure_in_progress_;
     bool is_connected_;
     bool remote_sky_mode_;
+    bool remote_sky_online_;
     int remote_recording_state_;
     QHash<VaporView::SkyDeviceId, VaporView::DeviceState> remote_device_states_;
     QHash<VaporView::SkyDeviceId, qint64> remote_last_data_ms_;
+    QHash<int, QVector<qint64>> remote_packet_arrivals_ms_;
     qint64 remote_last_status_ms_;
     VaporView::TelemetryStatus remote_status_;
     std::atomic<bool> cancel_connection_requested_;

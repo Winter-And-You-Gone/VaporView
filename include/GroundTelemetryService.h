@@ -37,6 +37,7 @@ signals:
     void waveformFeatureUpdated(const WaveformFeature& feature);
     void statusUpdated(const TelemetryStatus& status);
     void commandAckReceived(const CommandAck& ack);
+    void commandTimedOut(CommandId commandId, quint16 commandSeq);
     void skyConfigReceived(const QJsonObject& config);
     void skyConfigApplyResultReceived(const QJsonObject& result);
 

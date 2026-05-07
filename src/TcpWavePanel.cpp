@@ -1184,13 +1184,19 @@ void TcpWavePanel::setRemoteSkyMode(bool enabled)
         connect_button_->setText(enabled
             ? (remote_wave_tcp_connected_ ? (is_english_ ? "Disconnect Sky Wave" : "断开天空波形")
                                           : (is_english_ ? "Connect Sky Wave" : "连接天空波形"))
-            : (isConnected() ? (is_english_ ? "Disconnect" : "断开")
+                             : (isConnected() ? (is_english_ ? "Disconnect" : "断开")
                              : (is_english_ ? "Connect" : "连接")));
+    }
+    if (enabled && !remote_wave_tcp_connected_)
+    {
+        clearRemoteWaveformDisplay(is_english_ ? QStringLiteral("Sky Wave TCP is not connected")
+                                               : QStringLiteral("天空端波形 TCP 未连接"));
     }
 }
 
 void TcpWavePanel::setRemoteWaveTcpState(VaporView::DeviceState state)
 {
+    const bool wasConnected = remote_wave_tcp_connected_;
     remote_wave_tcp_connected_ = state == VaporView::DeviceState::Connected;
     if (remote_sky_mode_ && connect_button_)
     {
@@ -1202,11 +1208,20 @@ void TcpWavePanel::setRemoteWaveTcpState(VaporView::DeviceState state)
     {
         setStatusText(QString(is_english_ ? "Remote Sky wave TCP: %1" : "天空端波形 TCP：%1")
                           .arg(VaporView::deviceStateName(state)));
+        if (!remote_wave_tcp_connected_ && wasConnected)
+        {
+            clearRemoteWaveformDisplay(is_english_ ? QStringLiteral("Sky Wave TCP disconnected")
+                                                   : QStringLiteral("天空端波形 TCP 已断开"));
+        }
     }
 }
 
 void TcpWavePanel::injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QVector<float>& samples)
 {
+    if (remote_sky_mode_ && !remote_wave_tcp_connected_)
+    {
+        return;
+    }
     if (samples.isEmpty())
     {
         return;
@@ -1231,6 +1246,10 @@ void TcpWavePanel::injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QV
 
 void TcpWavePanel::injectRemoteWaveformFeature(const VaporView::WaveformFeature& feature)
 {
+    if (remote_sky_mode_ && !remote_wave_tcp_connected_)
+    {
+        return;
+    }
     peak_raw_history_.push_back(feature.peak);
     if (peak_raw_history_.size() > kPeakTrendFrameWindow)
     {
@@ -1561,6 +1580,32 @@ void TcpWavePanel::setConnectedUiState(bool connected)
 void TcpWavePanel::setStatusText(const QString& text)
 {
     status_label_->setText(text);
+}
+
+void TcpWavePanel::clearRemoteWaveformDisplay(const QString& statusText)
+{
+    wave1_history_.clear();
+    wave4_history_.clear();
+    peak_raw_history_.clear();
+    peak_history_.clear();
+    frame_arrival_times_ms_.clear();
+    frame_count_ = 0;
+    pending_wave1_payload_.clear();
+    pending_wave1_.clear();
+    pending_wave1_info_text_.clear();
+    pending_wave4_info_text_.clear();
+    pending_live_status_text_.clear();
+    if (wave1_plot_) wave1_plot_->setSamples({});
+    if (wave4_plot_) wave4_plot_->setSamples({});
+    if (peak_plot_) peak_plot_->setPeakValues({});
+    if (wave1_info_label_) wave1_info_label_->setText(QStringLiteral("--"));
+    if (wave4_info_label_) wave4_info_label_->setText(QStringLiteral("--"));
+    resetFrameRateDisplay();
+    if (!statusText.isEmpty())
+    {
+        setStatusText(statusText);
+    }
+    live_display_dirty_ = false;
 }
 
 void TcpWavePanel::resetParserState()

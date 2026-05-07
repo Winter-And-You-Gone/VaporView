@@ -122,9 +122,10 @@ void GroundTelemetryService::onRetryTimer()
         if (pending.retry_count >= kCommandMaxRetries)
         {
             expired.push_back(it.key());
-            emit logMessage(QStringLiteral("Command %1 seq %2 timed out")
+            emit logMessage(QStringLiteral("命令 %1 序号 %2 超时（未收到天空端 ACK）")
                                 .arg(static_cast<quint16>(pending.command.command_id))
                                 .arg(pending.command.command_seq));
+            emit commandTimedOut(pending.command.command_id, pending.command.command_seq);
             continue;
         }
         ++pending.retry_count;

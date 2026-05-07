@@ -1869,6 +1869,7 @@ MainWindow::MainWindow(QWidget *parent)
     , hmp_lbl_(nullptr)
     , lidar_lbl_(nullptr)
     , data_inline_title_lbl_(nullptr)
+    , data_telemetry_summary_lbl_(nullptr)
     , log_inline_title_lbl_(nullptr)
     , epsilon_inline_title_lbl_(nullptr)
     , gnss_inline_title_lbl_(nullptr)
@@ -1938,6 +1939,7 @@ MainWindow::MainWindow(QWidget *parent)
     , epsilon_reconfigure_in_progress_(false)
     , is_connected_(false)
     , remote_sky_mode_(false)
+    , remote_sky_online_(false)
     , remote_recording_state_(0)
     , remote_last_status_ms_(0)
     , cancel_connection_requested_(false)
@@ -2048,6 +2050,16 @@ MainWindow::MainWindow(QWidget *parent)
             this, &MainWindow::onRemoteTelemetryStatusUpdated);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::commandAckReceived,
             this, &MainWindow::onRemoteCommandAckReceived);
+    connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::commandTimedOut,
+            this, [this](VaporView::CommandId commandId, quint16) {
+                if (isRemoteSkyMode() && commandId == VaporView::CommandId::RequestStatus && !remote_sky_online_ && status_label_)
+                {
+                    status_label_->setText(is_english_ ? "Sky handshake timed out" : "天空端握手超时");
+                    status_label_->setProperty("status", "disconnected");
+                    status_label_->style()->unpolish(status_label_);
+                    status_label_->style()->polish(status_label_);
+                }
+            });
     loadRememberedInputState();
     bindRememberedInputState();
 
@@ -2654,13 +2666,16 @@ void MainWindow::updateSourceModeUi()
     if (sky_telemetry_baud_combo_) sky_telemetry_baud_combo_->setVisible(remote);
     if (sky_device_config_btn_) sky_device_config_btn_->setEnabled(remote && ground_telemetry_service_ && ground_telemetry_service_->isOpen());
     setRemoteDeviceButtonsEnabled(remote && ground_telemetry_service_ && ground_telemetry_service_->isOpen());
+    updateRemoteTelemetrySummaryLabel();
 }
 
 void MainWindow::clearRemoteSkyDataUi()
 {
     remote_device_states_.clear();
     remote_last_data_ms_.clear();
+    remote_packet_arrivals_ms_.clear();
     remote_last_status_ms_ = 0;
+    remote_sky_online_ = false;
     remote_status_ = VaporView::TelemetryStatus();
     remote_recording_state_ = 0;
 
@@ -2674,6 +2689,10 @@ void MainWindow::clearRemoteSkyDataUi()
     current_ptb_.error_message = remoteNoDataText(is_english_).toStdString();
     current_hmp_.error_message = remoteNoDataText(is_english_).toStdString();
     current_lidar_.error_message = remoteNoDataText(is_english_).toStdString();
+    if (tcp_wave_panel_)
+    {
+        tcp_wave_panel_->setRemoteWaveTcpState(VaporView::DeviceState::Disconnected);
+    }
 
     if (epsilon_panel_) epsilon_panel_->updateRate(0.0);
     if (ptb_panel_) ptb_panel_->updateRate(0.0);
@@ -2686,6 +2705,7 @@ void MainWindow::clearRemoteSkyDataUi()
     if (hmp_panel_) hmp_panel_->updateData(current_hmp_);
     if (lidar_panel_) lidar_panel_->updateData(current_lidar_);
     updateSourceModeUi();
+    updateRemoteTelemetrySummaryLabel();
     updateRecordingStatusLabel();
 }
 
@@ -2737,6 +2757,82 @@ QString MainWindow::remoteDeviceInvalidText(VaporView::SkyDeviceId device, qint6
     return remoteNoDataText(is_english_);
 }
 
+void MainWindow::noteRemotePacket(VaporView::MsgType type)
+{
+    const int key = static_cast<int>(type);
+    QVector<qint64>& arrivals = remote_packet_arrivals_ms_[key];
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    arrivals.push_back(now);
+    while (!arrivals.isEmpty() && now - arrivals.front() > 5000)
+    {
+        arrivals.removeFirst();
+    }
+}
+
+double MainWindow::remotePacketRate(VaporView::MsgType type) const
+{
+    const QVector<qint64> arrivals = remote_packet_arrivals_ms_.value(static_cast<int>(type));
+    if (arrivals.size() < 2)
+    {
+        return 0.0;
+    }
+    const qint64 elapsedMs = arrivals.back() - arrivals.front();
+    if (elapsedMs <= 0)
+    {
+        return 0.0;
+    }
+    return (arrivals.size() - 1) * 1000.0 / static_cast<double>(elapsedMs);
+}
+
+QString MainWindow::remoteTelemetrySummaryText() const
+{
+    if (!isRemoteSkyMode())
+    {
+        return QString();
+    }
+    if (!ground_telemetry_service_ || !ground_telemetry_service_->isOpen())
+    {
+        return is_english_ ? QStringLiteral("Telemetry: not connected") : QStringLiteral("数传：未连接");
+    }
+
+    auto hasText = [this](VaporView::SkyDeviceId device, qint64 timeoutMs) {
+        return remoteDeviceDataValid(device, timeoutMs)
+            ? (is_english_ ? QStringLiteral("data") : QStringLiteral("有数据"))
+            : (is_english_ ? QStringLiteral("none") : QStringLiteral("无数据"));
+    };
+
+    const QString rates = QString(is_english_
+            ? "Telemetry packets: Basic %1 Hz | Feature %2 Hz | Wave %3 Hz | Status %4 Hz"
+            : "数传数据包频率：基础 %1 Hz | 特征值 %2 Hz | 波形 %3 Hz | 状态 %4 Hz")
+        .arg(remotePacketRate(VaporView::MsgType::TelemetryBasic), 0, 'f', 1)
+        .arg(remotePacketRate(VaporView::MsgType::WaveformFeature), 0, 'f', 1)
+        .arg(remotePacketRate(VaporView::MsgType::WaveformDownsampled), 0, 'f', 1)
+        .arg(remotePacketRate(VaporView::MsgType::TelemetryStatus), 0, 'f', 1);
+
+    const QString devices = QString(is_english_
+            ? "EPSILON %1 | PTB %2 | HMP %3 | Lidar %4 | Wave %5"
+            : "EPSILON %1 | PTB %2 | HMP %3 | Lidar %4 | Wave %5")
+        .arg(hasText(VaporView::SkyDeviceId::Epsilon, 2000),
+             hasText(VaporView::SkyDeviceId::Ptb, 3000),
+             hasText(VaporView::SkyDeviceId::Hmp, 3000),
+             hasText(VaporView::SkyDeviceId::Lidar, 2000),
+             hasText(VaporView::SkyDeviceId::WaveTcp, 3000));
+
+    return QStringLiteral("%1    |    %2").arg(rates, devices);
+}
+
+void MainWindow::updateRemoteTelemetrySummaryLabel()
+{
+    if (!data_telemetry_summary_lbl_)
+    {
+        return;
+    }
+    const QString text = remoteTelemetrySummaryText();
+    data_telemetry_summary_lbl_->setVisible(isRemoteSkyMode());
+    data_telemetry_summary_lbl_->setText(text);
+    data_telemetry_summary_lbl_->setToolTip(text);
+}
+
 void MainWindow::refreshRemoteSkyDataUi()
 {
     VaporView::EpsilonData epsilon = current_epsilon_;
@@ -2786,6 +2882,7 @@ void MainWindow::refreshRemoteSkyDataUi()
     if (ptb_panel_) ptb_panel_->updateData(ptb);
     if (hmp_panel_) hmp_panel_->updateData(hmp);
     if (lidar_panel_) lidar_panel_->updateData(lidar);
+    updateRemoteTelemetrySummaryLabel();
 }
 
 QPushButton *MainWindow::createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device)
@@ -3726,10 +3823,20 @@ void MainWindow::setupDataPanels()
     data_layout->setSpacing(0);
     data_layout->setContentsMargins(0, 0, 0, 0);
 
+    auto *data_title_layout = new QHBoxLayout();
+    data_title_layout->setContentsMargins(6, 2, 6, 0);
+    data_title_layout->setSpacing(12);
     data_inline_title_lbl_ = new QLabel(this);
     data_inline_title_lbl_->setObjectName("sectionTitleLabel");
-    data_inline_title_lbl_->setContentsMargins(6, 2, 6, 0);
-    data_layout->addWidget(data_inline_title_lbl_, 0, Qt::AlignLeft);
+    data_telemetry_summary_lbl_ = new QLabel(this);
+    data_telemetry_summary_lbl_->setObjectName("fieldLabel");
+    data_telemetry_summary_lbl_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    data_telemetry_summary_lbl_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    data_telemetry_summary_lbl_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    data_title_layout->addWidget(data_inline_title_lbl_, 0, Qt::AlignLeft);
+    data_title_layout->addStretch();
+    data_title_layout->addWidget(data_telemetry_summary_lbl_, 1);
+    data_layout->addLayout(data_title_layout);
 
     auto *sensor_splitter = new QSplitter(Qt::Horizontal, data_group_);
     sensor_splitter->setChildrenCollapsible(false);
@@ -3802,6 +3909,13 @@ void MainWindow::setupDataPanels()
         updateRecordingActionStates();
     });
     connect(tcp_wave_panel_, &TcpWavePanel::remoteWaveTcpConnectionRequested, this, [this](bool connectRequested) {
+        if (!connectRequested && tcp_wave_panel_)
+        {
+            remote_device_states_.insert(VaporView::SkyDeviceId::WaveTcp, VaporView::DeviceState::Disconnected);
+            remote_last_data_ms_.remove(VaporView::SkyDeviceId::WaveTcp);
+            tcp_wave_panel_->setRemoteWaveTcpState(VaporView::DeviceState::Disconnected);
+            updateRemoteTelemetrySummaryLabel();
+        }
         sendRemoteDeviceCommand(connectRequested ? VaporView::CommandId::ConnectDevice : VaporView::CommandId::DisconnectDevice,
                                 VaporView::SkyDeviceId::WaveTcp);
     });
@@ -6152,12 +6266,16 @@ void MainWindow::onConnectClicked()
             log(is_english_ ? "Select the Sky telemetry port first" : "请先选择天空端数传串口");
             return;
         }
-        log(QString(is_english_ ? "Connecting Remote Sky telemetry: %1 @ %2" : "正在连接天空端数传：%1 @ %2").arg(port).arg(baud));
+        log(QString(is_english_ ? "Opening Sky telemetry serial port: %1 @ %2" : "正在打开天空端数传串口：%1 @ %2").arg(port).arg(baud));
         if (ground_telemetry_service_ && ground_telemetry_service_->open(port, baud))
         {
             updateConnectionStatus(true);
             ground_telemetry_service_->sendCommand(VaporView::CommandId::RequestStatus);
-            log(is_english_ ? "Remote Sky telemetry connected" : "天空端数传已连接");
+            status_label_->setText(is_english_ ? "Telemetry port open, waiting for Sky handshake" : "数传串口已打开，等待天空端握手");
+            status_label_->setProperty("status", "connecting");
+            status_label_->style()->unpolish(status_label_);
+            status_label_->style()->polish(status_label_);
+            log(is_english_ ? "Telemetry serial port opened; waiting for Sky handshake..." : "数传串口已打开，正在等待天空端握手...");
         }
         else
         {
@@ -6705,6 +6823,7 @@ void MainWindow::onRefreshTimer()
 
 void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& data)
 {
+    noteRemotePacket(VaporView::MsgType::TelemetryBasic);
     const auto now = std::chrono::steady_clock::now();
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
     current_epsilon_ = VaporView::EpsilonData();
@@ -6729,8 +6848,6 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
     current_epsilon_.system_status_bits = data.status_bits;
     current_epsilon_.filter_status_bits = data.filter_status_bits;
     current_epsilon_.update_status_bits = data.update_status_bits;
-    current_epsilon_.geodetic_packet_rate_hz = 10.0;
-    current_epsilon_.ecef_packet_rate_hz = 10.0;
 
     current_lidar_.valid = true;
     current_lidar_.timestamp = now;
@@ -6752,6 +6869,8 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
 
 void MainWindow::onRemoteWaveformUpdated(const VaporView::DownsampledWaveform& waveform)
 {
+    noteRemotePacket(VaporView::MsgType::WaveformDownsampled);
+    remote_last_data_ms_.insert(VaporView::SkyDeviceId::WaveTcp, QDateTime::currentMSecsSinceEpoch());
     if (tcp_wave_panel_)
     {
         tcp_wave_panel_->injectRemoteSecondHarmonicFrame(waveform.host_time_us, waveform.samples);
@@ -6760,6 +6879,8 @@ void MainWindow::onRemoteWaveformUpdated(const VaporView::DownsampledWaveform& w
 
 void MainWindow::onRemoteWaveformFeatureUpdated(const VaporView::WaveformFeature& feature)
 {
+    noteRemotePacket(VaporView::MsgType::WaveformFeature);
+    remote_last_data_ms_.insert(VaporView::SkyDeviceId::WaveTcp, QDateTime::currentMSecsSinceEpoch());
     if (tcp_wave_panel_)
     {
         tcp_wave_panel_->injectRemoteWaveformFeature(feature);
@@ -6768,6 +6889,12 @@ void MainWindow::onRemoteWaveformFeatureUpdated(const VaporView::WaveformFeature
 
 void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus& status)
 {
+    noteRemotePacket(VaporView::MsgType::TelemetryStatus);
+    if (!remote_sky_online_)
+    {
+        remote_sky_online_ = true;
+        log(is_english_ ? "Remote Sky handshake confirmed" : "天空端握手成功");
+    }
     remote_status_ = status;
     remote_last_status_ms_ = QDateTime::currentMSecsSinceEpoch();
     remote_recording_state_ = status.recording_state;
