@@ -515,7 +515,6 @@ Item {
                                 background: Rectangle { color: "transparent" }
                             }
                         }
-                        Item { Layout.preferredHeight: 4 }
                     }
                 }
             }

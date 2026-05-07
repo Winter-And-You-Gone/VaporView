@@ -79,7 +79,7 @@ Rectangle {
 
         Item {
             id: body
-            implicitHeight: childrenRect.height <= 0 ? 0 : childrenRect.y + childrenRect.height
+            implicitHeight: childrenRect.height <= 0 ? 0 : childrenRect.y + childrenRect.height + 12
             Layout.fillWidth: true
             Layout.fillHeight: true
         }
