@@ -1,22 +1,56 @@
 #include "SkyDeviceConfigDialog.h"
 
 #include <QDialogButtonBox>
+#include <QFontMetrics>
+#include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QJsonDocument>
 #include <QMessageBox>
 #include <QScrollArea>
+#include <QSizePolicy>
 #include <QVBoxLayout>
 
 namespace VaporView
 {
 namespace
 {
+constexpr int kFieldDigitCount = 20;
+constexpr int kFieldHeight = 36;
+
 QLabel *addLabeledRow(QFormLayout *layout, const QString& text, QWidget *widget)
 {
     auto *label = new QLabel(text);
     layout->addRow(label, widget);
     return label;
+}
+
+int skyConfigFieldWidth(QWidget *widget)
+{
+    const QFontMetrics metrics(widget->font());
+    return metrics.horizontalAdvance(QString(kFieldDigitCount, QLatin1Char('8'))) + 52;
+}
+
+void polishConfigField(QWidget *widget)
+{
+    if (!widget)
+    {
+        return;
+    }
+    const int width = skyConfigFieldWidth(widget);
+    widget->setMinimumWidth(width);
+    widget->setMaximumWidth(width);
+    widget->setMinimumHeight(kFieldHeight);
+    widget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+}
+
+void setupFormLayout(QFormLayout *layout)
+{
+    layout->setContentsMargins(16, 18, 16, 14);
+    layout->setSpacing(10);
+    layout->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    layout->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
+    layout->setFieldGrowthPolicy(QFormLayout::FieldsStayAtSizeHint);
 }
 }
 
@@ -92,28 +126,63 @@ void SkyDeviceConfigDialog::onApplyResultReceived(const QJsonObject& result)
 
 void SkyDeviceConfigDialog::setupUi()
 {
-    setMinimumSize(720, 680);
+    setMinimumSize(980, 680);
+    setStyleSheet(QStringLiteral(
+        "SkyDeviceConfigDialog { background-color: #f3f5f7; }"
+        "QGroupBox { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 8px; margin-top: 12px; font-size: 15px; font-weight: bold; color: #1976d2; }"
+        "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 14px; padding: 0 8px; background-color: #ffffff; }"
+        "QLabel { color: #1f2a35; font-size: 14px; }"
+        "QLineEdit, QSpinBox, QDoubleSpinBox { background-color: #ffffff; border: 1px solid #d9dde3; border-radius: 6px; padding: 4px 28px 4px 10px; min-height: 28px; color: #111827; font-size: 14px; }"
+        "QLineEdit { padding-right: 10px; }"
+        "QLineEdit:hover, QSpinBox:hover, QDoubleSpinBox:hover { border-color: #b7c0cc; }"
+        "QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus { border: 2px solid #1976d2; }"
+        "QSpinBox::up-button, QDoubleSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::down-button { width: 22px; border: none; background: transparent; subcontrol-origin: border; }"
+        "QSpinBox::up-button, QDoubleSpinBox::up-button { subcontrol-position: top right; border-top-right-radius: 6px; }"
+        "QSpinBox::down-button, QDoubleSpinBox::down-button { subcontrol-position: bottom right; border-bottom-right-radius: 6px; }"
+        "QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover, QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover { background-color: #eef4fb; }"
+        "QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 5px solid #667085; }"
+        "QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #667085; }"
+        "QCheckBox::indicator { width: 22px; height: 22px; border-radius: 5px; border: 1px solid #cbd5e1; background-color: #ffffff; }"
+        "QCheckBox::indicator:checked { background-color: #1976d2; border-color: #1976d2; }"
+        "QPlainTextEdit { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; font-size: 13px; }"
+    ));
     auto *root = new QVBoxLayout(this);
+    root->setContentsMargins(18, 18, 18, 16);
+    root->setSpacing(12);
 
     auto *scroll = new QScrollArea(this);
     scroll->setWidgetResizable(true);
     auto *content = new QWidget(scroll);
     auto *contentLayout = new QVBoxLayout(content);
+    contentLayout->setContentsMargins(8, 8, 8, 8);
+    contentLayout->setSpacing(12);
 
-    auto addSerialGroup = [this, contentLayout](const QString& title, QGroupBox*& group, SerialRow& row) {
+    auto *deviceGrid = new QGridLayout();
+    deviceGrid->setContentsMargins(0, 0, 0, 0);
+    deviceGrid->setHorizontalSpacing(12);
+    deviceGrid->setVerticalSpacing(12);
+    for (int column = 0; column < 3; ++column)
+    {
+        deviceGrid->setColumnStretch(column, 1);
+    }
+    contentLayout->addLayout(deviceGrid);
+
+    auto addSerialGroup = [this, deviceGrid](const QString& title, QGroupBox*& group, SerialRow& row, int rowIndex, int columnIndex) {
         group = new QGroupBox(title, this);
         auto *layout = new QFormLayout(group);
+        setupFormLayout(layout);
         row = createSerialRow(layout, title);
-        contentLayout->addWidget(group);
+        deviceGrid->addWidget(group, rowIndex, columnIndex);
     };
 
-    addSerialGroup(QStringLiteral("EPSILON"), epsilon_group_, epsilon_);
-    addSerialGroup(QStringLiteral("PTB210"), ptb_group_, ptb_);
-    addSerialGroup(QStringLiteral("HMP3"), hmp_group_, hmp_);
-    addSerialGroup(QStringLiteral("TFA1500-L"), lidar_group_, lidar_);
+    addSerialGroup(QStringLiteral("EPSILON"), epsilon_group_, epsilon_, 0, 0);
+    addSerialGroup(QStringLiteral("PTB210"), ptb_group_, ptb_, 0, 1);
+    addSerialGroup(QStringLiteral("HMP3"), hmp_group_, hmp_, 0, 2);
+    addSerialGroup(QStringLiteral("TFA1500-L"), lidar_group_, lidar_, 1, 0);
 
     wave_group_ = new QGroupBox(QStringLiteral("Wave TCP"), this);
     auto *waveLayout = new QFormLayout(wave_group_);
+    setupFormLayout(waveLayout);
     wave_enabled_ = new QCheckBox(this);
     wave_host_ = new QLineEdit(this);
     wave_port_ = new QSpinBox(this);
@@ -123,19 +192,25 @@ void SkyDeviceConfigDialog::setupUi()
     wave_frequency_->setDecimals(1);
     wave_downsample_ = new QSpinBox(this);
     wave_downsample_->setRange(1, 1000);
+    for (QWidget *field : {static_cast<QWidget*>(wave_host_), static_cast<QWidget*>(wave_port_), static_cast<QWidget*>(wave_frequency_), static_cast<QWidget*>(wave_downsample_)})
+    {
+        polishConfigField(field);
+    }
     wave_enabled_label_ = addLabeledRow(waveLayout, QStringLiteral("启用"), wave_enabled_);
     wave_host_label_ = addLabeledRow(waveLayout, QStringLiteral("主机"), wave_host_);
     wave_port_label_ = addLabeledRow(waveLayout, QStringLiteral("端口"), wave_port_);
     wave_frequency_label_ = addLabeledRow(waveLayout, QStringLiteral("频率 Hz"), wave_frequency_);
     wave_downsample_label_ = addLabeledRow(waveLayout, QStringLiteral("降采样倍率"), wave_downsample_);
-    contentLayout->addWidget(wave_group_);
+    deviceGrid->addWidget(wave_group_, 1, 1);
 
     telemetry_group_ = new QGroupBox(QStringLiteral("数传配置"), this);
     auto *telemetryLayout = new QFormLayout(telemetry_group_);
+    setupFormLayout(telemetryLayout);
     auto makeRate = [this]() {
         auto *spin = new QDoubleSpinBox(this);
         spin->setRange(0.1, 200.0);
         spin->setDecimals(1);
+        polishConfigField(spin);
         return spin;
     };
     telemetry_basic_rate_ = makeRate();
@@ -148,7 +223,7 @@ void SkyDeviceConfigDialog::setupUi()
     telemetry_waveform_label_ = addLabeledRow(telemetryLayout, QStringLiteral("波形 Hz"), telemetry_waveform_rate_);
     telemetry_heartbeat_label_ = addLabeledRow(telemetryLayout, QStringLiteral("心跳 Hz"), telemetry_heartbeat_rate_);
     telemetry_status_label_ = addLabeledRow(telemetryLayout, QStringLiteral("状态 Hz"), telemetry_status_rate_);
-    contentLayout->addWidget(telemetry_group_);
+    deviceGrid->addWidget(telemetry_group_, 1, 2);
 
     result_text_ = new QPlainTextEdit(this);
     result_text_->setReadOnly(true);
@@ -184,6 +259,9 @@ SkyDeviceConfigDialog::SerialRow SkyDeviceConfigDialog::createSerialRow(QFormLay
     row.frequency = new QDoubleSpinBox(this);
     row.frequency->setRange(0.1, 1000.0);
     row.frequency->setDecimals(1);
+    polishConfigField(row.port);
+    polishConfigField(row.baud);
+    polishConfigField(row.frequency);
     row.enabled_label = addLabeledRow(layout, QStringLiteral("启用"), row.enabled);
     row.port_label = addLabeledRow(layout, QStringLiteral("串口"), row.port);
     row.baud_label = addLabeledRow(layout, QStringLiteral("波特率"), row.baud);
