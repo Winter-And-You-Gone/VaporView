@@ -298,7 +298,7 @@ quint16 TelemetryCodec::crc16Ccitt(const char *data, qsizetype size)
 QByteArray TelemetryCodec::serializeBasicTelemetry(const TelemetryBasic& data)
 {
     QByteArray payload;
-    payload.reserve(78);
+    payload.reserve(83);
     appendLe<quint64>(payload, data.host_time_us);
     appendLe<quint64>(payload, data.epsilon_time_us);
     for (double value : {data.latitude_deg, data.longitude_deg, data.height_m, data.ecef_x_m, data.ecef_y_m, data.ecef_z_m})
@@ -312,6 +312,9 @@ QByteArray TelemetryCodec::serializeBasicTelemetry(const TelemetryBasic& data)
     appendFloatLe(payload, data.humidity_percent);
     appendFloatLe(payload, data.pressure_hpa);
     appendLe<quint16>(payload, data.status_bits);
+    appendLe<quint16>(payload, data.filter_status_bits);
+    appendLe<quint16>(payload, data.update_status_bits);
+    payload.append(static_cast<char>(data.gnss_fix_code));
     return payload;
 }
 
@@ -332,11 +335,21 @@ bool TelemetryCodec::parseBasicTelemetry(const QByteArray& payload, TelemetryBas
         }
         std::memcpy(value, &bits, sizeof(double));
     }
-    return readFloatLe(payload, offset, data.lidar_height_m) &&
-           readFloatLe(payload, offset, data.temperature_c) &&
-           readFloatLe(payload, offset, data.humidity_percent) &&
-           readFloatLe(payload, offset, data.pressure_hpa) &&
-           readLe(payload, offset, data.status_bits);
+    if (!(readFloatLe(payload, offset, data.lidar_height_m) &&
+          readFloatLe(payload, offset, data.temperature_c) &&
+          readFloatLe(payload, offset, data.humidity_percent) &&
+          readFloatLe(payload, offset, data.pressure_hpa) &&
+          readLe(payload, offset, data.status_bits)))
+    {
+        return false;
+    }
+    (void)readLe(payload, offset, data.filter_status_bits);
+    (void)readLe(payload, offset, data.update_status_bits);
+    if (offset < payload.size())
+    {
+        data.gnss_fix_code = static_cast<quint8>(static_cast<unsigned char>(payload.at(offset)));
+    }
+    return true;
 }
 
 QByteArray TelemetryCodec::serializeWaveformFeature(const WaveformFeature& feature)

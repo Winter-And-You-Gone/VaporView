@@ -59,7 +59,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     }
 
     QTextStream basicOut(&basic_record_file_);
-    basicOut << "host_time_us,epsilon_time_us,latitude_deg,longitude_deg,height_m,ecef_x_m,ecef_y_m,ecef_z_m,lidar_height_m,temperature_c,humidity_percent,pressure_hpa,status_bits\n";
+    basicOut << "host_time_us,epsilon_time_us,latitude_deg,longitude_deg,height_m,ecef_x_m,ecef_y_m,ecef_z_m,lidar_height_m,temperature_c,humidity_percent,pressure_hpa,status_bits,filter_status_bits,update_status_bits,gnss_fix_code\n";
 
     QTextStream featureOut(&feature_record_file_);
     featureOut << "host_time_us,epsilon_time_us,channel_id,peak,mean,rms,peak_index,peak_x,min_value,max_value,quality_flags\n";
@@ -156,7 +156,10 @@ void SkySessionRecorder::recordBasicTelemetry(const TelemetryBasic& data)
         << data.temperature_c << ','
         << data.humidity_percent << ','
         << data.pressure_hpa << ','
-        << data.status_bits << '\n';
+        << data.status_bits << ','
+        << data.filter_status_bits << ','
+        << data.update_status_bits << ','
+        << static_cast<int>(data.gnss_fix_code) << '\n';
     ++telemetry_row_count_;
 }
 

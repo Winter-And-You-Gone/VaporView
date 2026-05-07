@@ -10,6 +10,7 @@
 #include <QDateTime>
 #include <QJsonDocument>
 #include <QPointer>
+#include <QTimeZone>
 #include <QtGlobal>
 #include <algorithm>
 #include <cmath>
@@ -78,6 +79,18 @@ QString paletteKey(QString text)
         }
     }
     return key;
+}
+
+QString formatGnssUtcTimestamp(quint64 timestamp_us)
+{
+    if (timestamp_us == 0)
+    {
+        return QStringLiteral("---");
+    }
+    const QDateTime utc = QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(timestamp_us / 1000ULL), QTimeZone::UTC);
+    return QStringLiteral("%1  时间戳 %2")
+        .arg(utc.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss UTC")))
+        .arg(timestamp_us);
 }
 
 bool fuzzySubsequence(const QString& needle, const QString& haystack)
@@ -1198,9 +1211,13 @@ void SkyTuiApp::drawBox(SkyTuiScreenBuffer& output, int top, int left, int botto
     drawText(output, bottom, left, SkyTuiTheme::foreground(borderColor) + QStringLiteral("+") + horizontal + QStringLiteral("+"));
     if (!title.isEmpty() && width > 6)
     {
+        const int titleContentWidth = std::max(1, width - 6);
+        const QString titleSegment = padPlain(QStringLiteral(" ") + fitPlain(title, titleContentWidth) + QStringLiteral(" "),
+                                              std::min(width - 4, displayWidth(title) + 2));
         drawText(output, top, left + 2,
-                 SkyTuiTheme::bold() + SkyTuiTheme::foreground(focused ? SkyTuiTheme::yellow() : SkyTuiTheme::accent()) +
-                     QStringLiteral(" ") + fitPlain(title, width - 4) + QStringLiteral(" "));
+                 SkyTuiTheme::background(SkyTuiRgb{0, 0, 0}) + SkyTuiTheme::bold() +
+                     SkyTuiTheme::foreground(focused ? SkyTuiTheme::yellow() : SkyTuiTheme::accent()) +
+                     titleSegment);
     }
 }
 
@@ -1379,9 +1396,9 @@ void SkyTuiApp::drawDeviceOverview(SkyTuiScreenBuffer& output, int top, int bott
         << QStringLiteral("高度：%1 m").arg(d.epsilon.valid ? QString::number(d.epsilon.height_m, 'f', 2) : QStringLiteral("---"))
         << QStringLiteral("速度：%1 m/s").arg(d.epsilon.valid ? QString::number(std::hypot(d.epsilon.vel_n_mps, d.epsilon.vel_e_mps), 'f', 2) : QStringLiteral("---"))
         << QStringLiteral("卫星数：%1").arg(d.epsilon.valid ? QString::number(d.epsilon.gnss_satellites) : QStringLiteral("---"))
-        << QStringLiteral("GNSS 时间：%1").arg(d.epsilon.device_timestamp_us > 0 ? QString::number(d.epsilon.device_timestamp_us) : QStringLiteral("---"))
+        << QStringLiteral("GNSS 时间：%1").arg(formatGnssUtcTimestamp(d.epsilon.device_timestamp_us))
         << QStringLiteral("本地时间：%1").arg(QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss")))
-        << QStringLiteral("RTK 状态：%1").arg(d.epsilon.gnss_fix_text.empty() ? QStringLiteral("---") : QString::fromStdString(d.epsilon.gnss_fix_text));
+        << QStringLiteral("GNSS 状态：%1").arg(d.epsilon.gnss_fix_text.empty() ? QStringLiteral("---") : QString::fromStdString(d.epsilon.gnss_fix_text));
 
     QStringList env;
     env << QStringLiteral("温度：%1 °C  %2").arg(d.hmp.valid ? QString::number(d.hmp.temperature, 'f', 2) : QStringLiteral("---"),
@@ -1407,9 +1424,9 @@ void SkyTuiApp::drawDeviceOverview(SkyTuiScreenBuffer& output, int top, int bott
                 .arg(d.epsilon.valid ? QString::number(std::hypot(d.epsilon.vel_n_mps, d.epsilon.vel_e_mps), 'f', 1) : QStringLiteral("---"),
                      d.epsilon.valid ? QString::number(d.epsilon.gnss_satellites) : QStringLiteral("---")),
             QStringLiteral("时间: GNSS %1 / 本地 %2")
-                .arg(d.epsilon.device_timestamp_us > 0 ? QString::number(d.epsilon.device_timestamp_us) : QStringLiteral("---"),
+                .arg(formatGnssUtcTimestamp(d.epsilon.device_timestamp_us),
                      QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"))),
-            QStringLiteral("RTK: %1").arg(d.epsilon.gnss_fix_text.empty() ? QStringLiteral("---") : QString::fromStdString(d.epsilon.gnss_fix_text)),
+            QStringLiteral("GNSS: %1").arg(d.epsilon.gnss_fix_text.empty() ? QStringLiteral("---") : QString::fromStdString(d.epsilon.gnss_fix_text)),
         };
         env = {
             QStringLiteral("环境: %1 °C / %2 % / %3 hPa")

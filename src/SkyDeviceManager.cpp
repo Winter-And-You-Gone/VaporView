@@ -304,8 +304,9 @@ void SkyDeviceManager::generateSimulatedData()
     latest_epsilon_.device_timestamp_us = t;
     latest_epsilon_.utc_unix_s = t / 1000000ULL;
     latest_epsilon_.utc_microseconds = static_cast<quint32>(t % 1000000ULL);
-    latest_epsilon_.gnss_fix_code = 4;
-    latest_epsilon_.gnss_fix_text = "Remote";
+    latest_epsilon_.gnss_fix_code = 6;
+    latest_epsilon_.gnss_fix_text = "RTK_FIXED";
+    latest_epsilon_.filter_status_bits = static_cast<uint16_t>(latest_epsilon_.gnss_fix_code << 4);
     latest_epsilon_.gnss_satellites = 18;
     latest_epsilon_.latitude_deg = 31.2304 + std::sin(simulate_phase_) * 0.0001;
     latest_epsilon_.longitude_deg = 121.4737 + std::cos(simulate_phase_) * 0.0001;

@@ -301,8 +301,10 @@ void drawProgress(int percent, int row, const SkyTuiTerminalSize& size)
                         QString(filled, QChar(0x2588)) +
                         QString(barWidth - filled, QChar(0x2591)) +
                         QStringLiteral("]");
-    const QString text = QStringLiteral("%1 %2%").arg(bar).arg(percent, 3, 10, QLatin1Char(' '));
-    drawCenteredText(row, text, size, SkyTuiTheme::foreground(SkyTuiTheme::blue()));
+    const QString percentText = QStringLiteral("%1%").arg(percent, 3, 10, QLatin1Char(' '));
+    drawCenteredText(row - 1, percentText, size,
+                     SkyTuiTheme::foreground(SkyTuiTheme::blue()) + SkyTuiTheme::bold());
+    drawCenteredText(row, bar, size, SkyTuiTheme::foreground(SkyTuiTheme::blue()));
 }
 
 void setStartupInputMode()
@@ -423,7 +425,7 @@ SkyStartupDecision showSkyStartupScreen(const QString& logo_path)
         QThread::msleep(percent < 100 ? 22 : 80);
     }
 
-    const QString message = QStringLiteral("加载完成，按 Enter 进入 TUI，按 Esc 退出");
+    const QString message = QStringLiteral("-- 加载完成，按 Enter 进入 TUI，按 Esc 退出 --");
     drawCenteredText(progressRow + 2, fitPlain(message, size.columns - 4), size,
                      SkyTuiTheme::foreground(SkyTuiTheme::yellow()) + SkyTuiTheme::bold());
     writeRaw(SkyTuiTheme::showCursor());

@@ -36,6 +36,9 @@ void testFrameRoundTrip()
     basic.humidity_percent = 60.0f;
     basic.pressure_hpa = 900.0f;
     basic.status_bits = 0x55AA;
+    basic.filter_status_bits = 0x0060;
+    basic.update_status_bits = 0x0003;
+    basic.gnss_fix_code = 6;
 
     const QByteArray payload = VaporView::TelemetryCodec::serializeBasicTelemetry(basic);
     const QByteArray frame = codec.encodeFrame(VaporView::MsgType::TelemetryBasic, payload, 7, 99);
@@ -47,6 +50,8 @@ void testFrameRoundTrip()
     require(VaporView::TelemetryCodec::parseBasicTelemetry(frames.front().payload, parsed), "parse basic telemetry");
     require(parsed.host_time_us == basic.host_time_us, "basic host time");
     require(std::fabs(parsed.latitude_deg - basic.latitude_deg) < 0.000001, "basic latitude");
+    require(parsed.filter_status_bits == basic.filter_status_bits, "basic filter status");
+    require(parsed.gnss_fix_code == basic.gnss_fix_code, "basic gnss fix");
 }
 
 void testCrcError()

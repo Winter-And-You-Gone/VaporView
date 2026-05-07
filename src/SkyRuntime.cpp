@@ -299,6 +299,9 @@ void SkyRuntime::sendBasicTelemetry()
     data.humidity_percent = static_cast<float>(hmp.humidity);
     data.pressure_hpa = static_cast<float>(ptb.pressure_hpa);
     data.status_bits = epsilon.system_status_bits;
+    data.filter_status_bits = epsilon.filter_status_bits;
+    data.update_status_bits = epsilon.update_status_bits;
+    data.gnss_fix_code = static_cast<quint8>(std::clamp(epsilon.gnss_fix_code, 0, 255));
     session_recorder_.recordBasicTelemetry(data);
     sendFrame(MsgType::TelemetryBasic, TelemetryCodec::serializeBasicTelemetry(data));
 }

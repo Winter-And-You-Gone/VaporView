@@ -126,6 +126,9 @@ struct TelemetryBasic
     float humidity_percent = 0.0f;
     float pressure_hpa = 0.0f;
     quint16 status_bits = 0;
+    quint16 filter_status_bits = 0;
+    quint16 update_status_bits = 0;
+    quint8 gnss_fix_code = 0;
 };
 
 struct DownsampledWaveform

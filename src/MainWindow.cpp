@@ -78,6 +78,24 @@ constexpr int kEpsilonTitleColumnWidth = 170;
 constexpr int kEpsilonValueColumnMinWidth = 320;
 constexpr int kPtbMinSampleRateHz = 1;
 constexpr int kPtbMaxSampleRateHz = 70;
+
+std::string epsilonGnssFixTextForCode(int fix_code)
+{
+    switch (fix_code)
+    {
+    case 0: return "NO_GPS";
+    case 1: return "NO_FIX";
+    case 2: return "2D";
+    case 3: return "3D";
+    case 4: return "DGPS";
+    case 5: return "RTK_FLOAT";
+    case 6: return "RTK_FIXED";
+    case 7: return "STATIC";
+    case 8: return "PPP";
+    case 9: return "RTK_DUAL";
+    default: return "UNKNOWN";
+    }
+}
 constexpr int kDefaultEpsilonSampleRateHz = 100;
 constexpr int kDefaultPtbSampleRateHz = 20;
 constexpr int kDefaultHmpSampleRateHz = 20;
@@ -6469,8 +6487,13 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
     current_epsilon_.device_timestamp_us = data.epsilon_time_us;
     current_epsilon_.utc_unix_s = data.host_time_us / 1000000ULL;
     current_epsilon_.utc_microseconds = static_cast<quint32>(data.host_time_us % 1000000ULL);
-    current_epsilon_.gnss_fix_code = 4;
-    current_epsilon_.gnss_fix_text = "Remote Sky";
+    int gnssFixCode = static_cast<int>(data.gnss_fix_code);
+    if (gnssFixCode == 0 && data.filter_status_bits != 0)
+    {
+        gnssFixCode = static_cast<int>((data.filter_status_bits >> 4) & 0x0F);
+    }
+    current_epsilon_.gnss_fix_code = gnssFixCode;
+    current_epsilon_.gnss_fix_text = epsilonGnssFixTextForCode(gnssFixCode);
     current_epsilon_.latitude_deg = data.latitude_deg;
     current_epsilon_.longitude_deg = data.longitude_deg;
     current_epsilon_.height_m = data.height_m;
@@ -6478,6 +6501,8 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
     current_epsilon_.ecef_y_m = data.ecef_y_m;
     current_epsilon_.ecef_z_m = data.ecef_z_m;
     current_epsilon_.system_status_bits = data.status_bits;
+    current_epsilon_.filter_status_bits = data.filter_status_bits;
+    current_epsilon_.update_status_bits = data.update_status_bits;
     current_epsilon_.geodetic_packet_rate_hz = 10.0;
     current_epsilon_.ecef_packet_rate_hz = 10.0;
 
