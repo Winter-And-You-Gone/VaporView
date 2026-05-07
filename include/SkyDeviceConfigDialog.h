@@ -8,6 +8,8 @@
 #include <QDialog>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
+#include <QGroupBox>
+#include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -39,6 +41,10 @@ private:
         QLineEdit *port = nullptr;
         QSpinBox *baud = nullptr;
         QDoubleSpinBox *frequency = nullptr;
+        QLabel *enabled_label = nullptr;
+        QLabel *port_label = nullptr;
+        QLabel *baud_label = nullptr;
+        QLabel *frequency_label = nullptr;
     };
 
     void setupUi();
@@ -65,6 +71,22 @@ private:
     QDoubleSpinBox *telemetry_waveform_rate_ = nullptr;
     QDoubleSpinBox *telemetry_heartbeat_rate_ = nullptr;
     QDoubleSpinBox *telemetry_status_rate_ = nullptr;
+    QGroupBox *epsilon_group_ = nullptr;
+    QGroupBox *ptb_group_ = nullptr;
+    QGroupBox *hmp_group_ = nullptr;
+    QGroupBox *lidar_group_ = nullptr;
+    QGroupBox *wave_group_ = nullptr;
+    QGroupBox *telemetry_group_ = nullptr;
+    QLabel *wave_enabled_label_ = nullptr;
+    QLabel *wave_host_label_ = nullptr;
+    QLabel *wave_port_label_ = nullptr;
+    QLabel *wave_frequency_label_ = nullptr;
+    QLabel *wave_downsample_label_ = nullptr;
+    QLabel *telemetry_basic_label_ = nullptr;
+    QLabel *telemetry_feature_label_ = nullptr;
+    QLabel *telemetry_waveform_label_ = nullptr;
+    QLabel *telemetry_heartbeat_label_ = nullptr;
+    QLabel *telemetry_status_label_ = nullptr;
     QPushButton *read_button_ = nullptr;
     QPushButton *apply_button_ = nullptr;
     QPushButton *save_button_ = nullptr;
