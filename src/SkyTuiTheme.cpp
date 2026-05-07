@@ -95,6 +95,7 @@ void SkyTuiTheme::enableVirtualTerminal()
         DWORD mode = 0;
         if (GetConsoleMode(input, &mode))
         {
+            mode &= ~ENABLE_PROCESSED_INPUT;
             mode &= ~ENABLE_ECHO_INPUT;
             mode &= ~ENABLE_LINE_INPUT;
             SetConsoleMode(input, mode);
@@ -139,12 +140,12 @@ QString SkyTuiTheme::leaveAlternateScreen()
 
 QString SkyTuiTheme::beginSynchronizedUpdate()
 {
-    return QStringLiteral("\x1b[?2026h");
+    return QString();
 }
 
 QString SkyTuiTheme::endSynchronizedUpdate()
 {
-    return QStringLiteral("\x1b[?2026l");
+    return QString();
 }
 
 QString SkyTuiTheme::clearScreen()

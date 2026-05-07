@@ -17,7 +17,7 @@
 #include <limits>
 
 #ifdef Q_OS_WIN
-#include <conio.h>
+#include <windows.h>
 #ifdef min
 #undef min
 #endif
@@ -230,9 +230,11 @@ void SkyTuiApp::start()
     refreshStatus();
     appendLog(QStringLiteral("VaporViewSky TUI 已启动"));
     appendLog(QStringLiteral("输入 /help 查看命令，输入 / 或按 Ctrl+P 打开命令面板。"));
-    startInputThread();
     status_timer_.start();
-    scheduleRender();
+    render();
+    QTimer::singleShot(0, this, [this]() {
+        startInputThread();
+    });
 }
 
 void SkyTuiApp::appendLog(const QString& message)
@@ -255,6 +257,7 @@ void SkyTuiApp::appendLog(const QString& message)
 
 void SkyTuiApp::render()
 {
+    render_timer_.stop();
     render_pending_ = false;
     if (!started_ || terminal_restored_)
     {
@@ -550,6 +553,21 @@ void SkyTuiApp::handleKey(const SkyTuiKey& key)
 
 void SkyTuiApp::startInputThread()
 {
+    if (input_running_->load())
+    {
+        return;
+    }
+
+#ifdef Q_OS_WIN
+    HANDLE consoleInput = GetStdHandle(STD_INPUT_HANDLE);
+    DWORD consoleMode = 0;
+    if (consoleInput == INVALID_HANDLE_VALUE || !GetConsoleMode(consoleInput, &consoleMode))
+    {
+        appendLog(QStringLiteral("未检测到交互式控制台输入，TUI 已进入只读显示模式。"));
+        return;
+    }
+#endif
+
     input_running_->store(true);
     QPointer<SkyTuiApp> self(this);
     const std::shared_ptr<std::atomic_bool> running = input_running_;
@@ -567,7 +585,11 @@ void SkyTuiApp::startInputThread()
     }
 #endif
 
+#ifdef Q_OS_WIN
+    input_thread_ = std::thread([self, running, consoleInput]() {
+#else
     input_thread_ = std::thread([self, running]() {
+#endif
         auto postKey = [self](const SkyTuiKey& key) {
             if (!self)
             {
@@ -584,32 +606,79 @@ void SkyTuiApp::startInputThread()
         while (running->load())
         {
 #ifdef Q_OS_WIN
-            const int value = _getwch();
+            INPUT_RECORD record;
+            DWORD recordsRead = 0;
+            if (!ReadConsoleInputW(consoleInput, &record, 1, &recordsRead))
+            {
+                break;
+            }
+            if (recordsRead == 0 || record.EventType != KEY_EVENT || !record.Event.KeyEvent.bKeyDown)
+            {
+                continue;
+            }
+
+            const KEY_EVENT_RECORD& event = record.Event.KeyEvent;
             SkyTuiKey key;
-            if (value == 0 || value == 224)
+            switch (event.wVirtualKeyCode)
             {
-                const int code = _getwch();
-                if (code == 72) key.type = SkyTuiKeyType::Up;
-                else if (code == 80) key.type = SkyTuiKeyType::Down;
-                else if (code == 75) key.type = SkyTuiKeyType::Left;
-                else if (code == 77) key.type = SkyTuiKeyType::Right;
-                else if (code == 73) key.type = SkyTuiKeyType::PageUp;
-                else if (code == 81) key.type = SkyTuiKeyType::PageDown;
-                else key.type = SkyTuiKeyType::Unknown;
+            case VK_RETURN:
+                key.type = SkyTuiKeyType::Enter;
+                break;
+            case VK_BACK:
+                key.type = SkyTuiKeyType::Backspace;
+                break;
+            case VK_ESCAPE:
+                key.type = SkyTuiKeyType::Escape;
+                break;
+            case VK_TAB:
+                key.type = SkyTuiKeyType::Tab;
+                break;
+            case VK_UP:
+                key.type = SkyTuiKeyType::Up;
+                break;
+            case VK_DOWN:
+                key.type = SkyTuiKeyType::Down;
+                break;
+            case VK_LEFT:
+                key.type = SkyTuiKeyType::Left;
+                break;
+            case VK_RIGHT:
+                key.type = SkyTuiKeyType::Right;
+                break;
+            case VK_PRIOR:
+                key.type = SkyTuiKeyType::PageUp;
+                break;
+            case VK_NEXT:
+                key.type = SkyTuiKeyType::PageDown;
+                break;
+            default:
+                if (event.uChar.UnicodeChar == 3)
+                {
+                    key.type = SkyTuiKeyType::CtrlC;
+                }
+                else if (event.uChar.UnicodeChar == 12)
+                {
+                    key.type = SkyTuiKeyType::CtrlL;
+                }
+                else if (event.uChar.UnicodeChar == 16)
+                {
+                    key.type = SkyTuiKeyType::CtrlP;
+                }
+                else if (event.uChar.UnicodeChar >= 32 && event.uChar.UnicodeChar != 127)
+                {
+                    key.type = SkyTuiKeyType::Character;
+                    key.character = QChar(event.uChar.UnicodeChar);
+                }
+                else
+                {
+                    key.type = SkyTuiKeyType::Unknown;
+                }
+                break;
             }
-            else if (value == 13) key.type = SkyTuiKeyType::Enter;
-            else if (value == 8) key.type = SkyTuiKeyType::Backspace;
-            else if (value == 27) key.type = SkyTuiKeyType::Escape;
-            else if (value == 9) key.type = SkyTuiKeyType::Tab;
-            else if (value == 3) key.type = SkyTuiKeyType::CtrlC;
-            else if (value == 12) key.type = SkyTuiKeyType::CtrlL;
-            else if (value == 16) key.type = SkyTuiKeyType::CtrlP;
-            else
+            if (key.type != SkyTuiKeyType::Unknown)
             {
-                key.type = SkyTuiKeyType::Character;
-                key.character = QChar(value);
+                postKey(key);
             }
-            postKey(key);
 #else
             unsigned char ch = 0;
             if (read(STDIN_FILENO, &ch, 1) != 1)
