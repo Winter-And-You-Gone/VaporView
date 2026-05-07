@@ -27,6 +27,26 @@ QStringList jsonLines(const QJsonObject& object)
     return json.split(QLatin1Char('\n'));
 }
 
+QString deviceStateText(DeviceState state)
+{
+    switch (state)
+    {
+    case DeviceState::Disabled:
+        return QStringLiteral("已禁用");
+    case DeviceState::Disconnected:
+        return QStringLiteral("未连接");
+    case DeviceState::Connecting:
+        return QStringLiteral("连接中");
+    case DeviceState::Connected:
+        return QStringLiteral("已连接");
+    case DeviceState::Error:
+        return QStringLiteral("错误");
+    case DeviceState::Reconnecting:
+        return QStringLiteral("重连中");
+    }
+    return QStringLiteral("未知");
+}
+
 }  // namespace
 
 SkyTuiController::SkyTuiController(SkyRuntime *runtime, const SkyRuntimeOptions& options, QObject *parent)
@@ -125,8 +145,8 @@ QList<SkyTuiCommandItem> SkyTuiController::commandPalette() const
     return {
         {QStringLiteral("/help"), QStringLiteral("显示帮助和快捷键说明")},
         {QStringLiteral("/exit"), QStringLiteral("安全停止天空端并退出 VaporViewSky")},
-        {QStringLiteral("/device overview"), QStringLiteral("打开天空端设备总览仪表盘")},
-        {QStringLiteral("/overview"), QStringLiteral("打开天空端设备总览仪表盘")},
+        {QStringLiteral("/device overview"), QStringLiteral("打开设备总览")},
+        {QStringLiteral("/overview"), QStringLiteral("打开设备总览")},
         {QStringLiteral("/home"), QStringLiteral("返回天空端首页")},
         {QStringLiteral("/status"), QStringLiteral("查看天空端运行状态、记录状态和链路统计")},
         {QStringLiteral("/devices"), QStringLiteral("查看 EPSILON/PTB/HMP/Lidar/Wave TCP 设备状态")},
@@ -296,12 +316,12 @@ SkyTuiCommandResult SkyTuiController::handleWaveformCommand(const QString& actio
     if (action == QStringLiteral("on"))
     {
         runtime_->setWaveformStreamingEnabled(true);
-        result.messages << QStringLiteral("波形下传：开启");
+        result.messages << QStringLiteral("波形下传：开");
     }
     else if (action == QStringLiteral("off"))
     {
         runtime_->setWaveformStreamingEnabled(false);
-        result.messages << QStringLiteral("波形下传：关闭");
+        result.messages << QStringLiteral("波形下传：关");
     }
     else if (action == QStringLiteral("once"))
     {
@@ -327,14 +347,14 @@ QStringList SkyTuiController::statusLines() const
         QStringLiteral("数传串口：%1").arg(options_.telemetry_port),
         QStringLiteral("数传波特率：%1").arg(options_.telemetry_baud),
         QStringLiteral("记录状态：%1").arg(recordingStateText(status.recording_state)),
-        QStringLiteral("Session：%1").arg(status.session_name.isEmpty() ? QStringLiteral("-") : status.session_name),
-        QStringLiteral("剩余磁盘：%1 bytes").arg(status.disk_free_bytes),
+        QStringLiteral("会话：%1").arg(status.session_name.isEmpty() ? QStringLiteral("-") : status.session_name),
+        QStringLiteral("剩余磁盘：%1 B").arg(status.disk_free_bytes),
         QStringLiteral("基础遥测频率：%1 Hz").arg(status.telemetry_basic_rate_hz),
         QStringLiteral("特征值频率：%1 Hz").arg(status.feature_rate_hz),
         QStringLiteral("波形频率：%1 Hz").arg(status.waveform_rate_hz),
         QStringLiteral("心跳频率：%1 Hz").arg(status.heartbeat_rate_hz),
         QStringLiteral("状态频率：%1 Hz").arg(status.status_rate_hz),
-        QStringLiteral("波形下传：%1").arg(runtime_->waveformStreamingEnabled() ? QStringLiteral("开启") : QStringLiteral("关闭")),
+        QStringLiteral("波形下传：%1").arg(runtime_->waveformStreamingEnabled() ? QStringLiteral("开") : QStringLiteral("关")),
         QStringLiteral("接收帧数：%1").arg(status.rx_total_frames),
         QStringLiteral("CRC 错误：%1").arg(status.crc_error_count),
     };
@@ -352,7 +372,7 @@ QStringList SkyTuiController::deviceLines() const
     {
         lines << QStringLiteral("%1：%2  接收=%3  错误=%4  最近数据(us)=%5  错误码=%6")
                      .arg(skyDeviceIdName(item.device_id),
-                          deviceStateName(item.state))
+                          deviceStateText(item.state))
                      .arg(item.rx_count)
                      .arg(item.error_count)
                      .arg(item.last_data_time_us)

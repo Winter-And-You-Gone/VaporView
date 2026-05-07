@@ -136,6 +136,26 @@ int terminalCellWidth(QChar ch)
     return 1;
 }
 
+QString deviceStateText(DeviceState state)
+{
+    switch (state)
+    {
+    case DeviceState::Disabled:
+        return QStringLiteral("已禁用");
+    case DeviceState::Disconnected:
+        return QStringLiteral("未连接");
+    case DeviceState::Connecting:
+        return QStringLiteral("连接中");
+    case DeviceState::Connected:
+        return QStringLiteral("已连接");
+    case DeviceState::Error:
+        return QStringLiteral("错误");
+    case DeviceState::Reconnecting:
+        return QStringLiteral("重连中");
+    }
+    return QStringLiteral("未知");
+}
+
 }  // namespace
 
 class SkyTuiScreenBuffer
@@ -1226,6 +1246,13 @@ void SkyTuiApp::drawLogo(SkyTuiScreenBuffer& output, int& row, const SkyTuiTermi
                           .arg(configPath)
                           .arg(options_.simulate_data ? QStringLiteral("开") : QStringLiteral("关"))
                           .arg(QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss")));
+    if (displayWidth(summary) > size.columns - 4)
+    {
+        summary = QStringLiteral("VaporViewSky | %1 | %2 | %3")
+                      .arg(options_.telemetry_port)
+                      .arg(options_.telemetry_baud)
+                      .arg(QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss")));
+    }
     const QStringList summaryLines = wrapPlain(summary, size.columns - 4);
     for (const QString& line : summaryLines)
     {
@@ -1346,29 +1373,57 @@ void SkyTuiApp::drawDeviceOverview(SkyTuiScreenBuffer& output, int top, int bott
     const int summaryHeight = std::min(9, std::max(6, (bottom - top) / 4));
     QStringList nav;
     const SkyDashboardSnapshot& d = model_.dashboard;
-    nav << QStringLiteral("Latitude:  %1  %2").arg(d.epsilon.valid ? QString::number(d.epsilon.latitude_deg, 'f', 7) : QStringLiteral("---"),
-                                                freshnessText(d.epsilon_stale, d.epsilon.valid))
-        << QStringLiteral("Longitude: %1").arg(d.epsilon.valid ? QString::number(d.epsilon.longitude_deg, 'f', 7) : QStringLiteral("---"))
-        << QStringLiteral("Height:    %1 m").arg(d.epsilon.valid ? QString::number(d.epsilon.height_m, 'f', 2) : QStringLiteral("---"))
-        << QStringLiteral("Speed:     %1 m/s").arg(d.epsilon.valid ? QString::number(std::hypot(d.epsilon.vel_n_mps, d.epsilon.vel_e_mps), 'f', 2) : QStringLiteral("---"))
-        << QStringLiteral("Satellites:%1").arg(d.epsilon.valid ? QString::number(d.epsilon.gnss_satellites) : QStringLiteral("---"))
-        << QStringLiteral("GNSS Time: %1").arg(d.epsilon.device_timestamp_us > 0 ? QString::number(d.epsilon.device_timestamp_us) : QStringLiteral("---"))
-        << QStringLiteral("Local Time:%1").arg(QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss")))
-        << QStringLiteral("RTK:       %1").arg(d.epsilon.gnss_fix_text.empty() ? QStringLiteral("---") : QString::fromStdString(d.epsilon.gnss_fix_text));
+    nav << QStringLiteral("纬度：%1  %2").arg(d.epsilon.valid ? QString::number(d.epsilon.latitude_deg, 'f', 7) : QStringLiteral("---"),
+                                           freshnessText(d.epsilon_stale, d.epsilon.valid))
+        << QStringLiteral("经度：%1").arg(d.epsilon.valid ? QString::number(d.epsilon.longitude_deg, 'f', 7) : QStringLiteral("---"))
+        << QStringLiteral("高度：%1 m").arg(d.epsilon.valid ? QString::number(d.epsilon.height_m, 'f', 2) : QStringLiteral("---"))
+        << QStringLiteral("速度：%1 m/s").arg(d.epsilon.valid ? QString::number(std::hypot(d.epsilon.vel_n_mps, d.epsilon.vel_e_mps), 'f', 2) : QStringLiteral("---"))
+        << QStringLiteral("卫星数：%1").arg(d.epsilon.valid ? QString::number(d.epsilon.gnss_satellites) : QStringLiteral("---"))
+        << QStringLiteral("GNSS 时间：%1").arg(d.epsilon.device_timestamp_us > 0 ? QString::number(d.epsilon.device_timestamp_us) : QStringLiteral("---"))
+        << QStringLiteral("本地时间：%1").arg(QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss")))
+        << QStringLiteral("RTK 状态：%1").arg(d.epsilon.gnss_fix_text.empty() ? QStringLiteral("---") : QString::fromStdString(d.epsilon.gnss_fix_text));
 
     QStringList env;
-    env << QStringLiteral("Temperature: %1 C  %2").arg(d.hmp.valid ? QString::number(d.hmp.temperature, 'f', 2) : QStringLiteral("---"),
-                                                     freshnessText(d.hmp_stale, d.hmp.valid))
-        << QStringLiteral("Humidity:    %1 %").arg(d.hmp.valid ? QString::number(d.hmp.humidity, 'f', 2) : QStringLiteral("---"))
-        << QStringLiteral("Pressure:    %1 hPa  %2").arg(d.ptb.valid ? QString::number(d.ptb.pressure_hpa, 'f', 2) : QStringLiteral("---"),
-                                                        freshnessText(d.ptb_stale, d.ptb.valid))
-        << QStringLiteral("Lidar Range: %1 m  %2").arg(d.lidar.valid ? QString::number(d.lidar.distance_m, 'f', 2) : QStringLiteral("---"),
-                                                       freshnessText(d.lidar_stale, d.lidar.valid))
-        << QStringLiteral("Lidar Signal:%1").arg(d.lidar.valid ? QString::number(d.lidar.signal_strength) : QStringLiteral("---"))
+    env << QStringLiteral("温度：%1 °C  %2").arg(d.hmp.valid ? QString::number(d.hmp.temperature, 'f', 2) : QStringLiteral("---"),
+                                              freshnessText(d.hmp_stale, d.hmp.valid))
+        << QStringLiteral("湿度：%1 %").arg(d.hmp.valid ? QString::number(d.hmp.humidity, 'f', 2) : QStringLiteral("---"))
+        << QStringLiteral("气压：%1 hPa  %2").arg(d.ptb.valid ? QString::number(d.ptb.pressure_hpa, 'f', 2) : QStringLiteral("---"),
+                                                freshnessText(d.ptb_stale, d.ptb.valid))
+        << QStringLiteral("激光测距：%1 m  %2").arg(d.lidar.valid ? QString::number(d.lidar.distance_m, 'f', 2) : QStringLiteral("---"),
+                                                   freshnessText(d.lidar_stale, d.lidar.valid))
         << QStringLiteral("Roll/Pitch/Yaw: %1 / %2 / %3")
                .arg(d.epsilon.valid ? QString::number(d.epsilon.roll_deg, 'f', 1) : QStringLiteral("---"),
                     d.epsilon.valid ? QString::number(d.epsilon.pitch_deg, 'f', 1) : QStringLiteral("---"),
                     d.epsilon.valid ? QString::number(d.epsilon.yaw_deg, 'f', 1) : QStringLiteral("---"));
+
+    if (size.columns < 90)
+    {
+        nav = {
+            QStringLiteral("LLH: %1, %2, %3 m")
+                .arg(d.epsilon.valid ? QString::number(d.epsilon.latitude_deg, 'f', 4) : QStringLiteral("---"),
+                     d.epsilon.valid ? QString::number(d.epsilon.longitude_deg, 'f', 4) : QStringLiteral("---"),
+                     d.epsilon.valid ? QString::number(d.epsilon.height_m, 'f', 2) : QStringLiteral("---")),
+            QStringLiteral("速度/卫星: %1 m/s / %2")
+                .arg(d.epsilon.valid ? QString::number(std::hypot(d.epsilon.vel_n_mps, d.epsilon.vel_e_mps), 'f', 1) : QStringLiteral("---"),
+                     d.epsilon.valid ? QString::number(d.epsilon.gnss_satellites) : QStringLiteral("---")),
+            QStringLiteral("时间: GNSS %1 / 本地 %2")
+                .arg(d.epsilon.device_timestamp_us > 0 ? QString::number(d.epsilon.device_timestamp_us) : QStringLiteral("---"),
+                     QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"))),
+            QStringLiteral("RTK: %1").arg(d.epsilon.gnss_fix_text.empty() ? QStringLiteral("---") : QString::fromStdString(d.epsilon.gnss_fix_text)),
+        };
+        env = {
+            QStringLiteral("环境: %1 °C / %2 % / %3 hPa")
+                .arg(d.hmp.valid ? QString::number(d.hmp.temperature, 'f', 1) : QStringLiteral("---"),
+                     d.hmp.valid ? QString::number(d.hmp.humidity, 'f', 1) : QStringLiteral("---"),
+                     d.ptb.valid ? QString::number(d.ptb.pressure_hpa, 'f', 1) : QStringLiteral("---")),
+            QStringLiteral("Lidar: %1 m")
+                .arg(d.lidar.valid ? QString::number(d.lidar.distance_m, 'f', 2) : QStringLiteral("---")),
+            QStringLiteral("姿态: Roll/Pitch/Yaw %1 / %2 / %3")
+                .arg(d.epsilon.valid ? QString::number(d.epsilon.roll_deg, 'f', 1) : QStringLiteral("---"),
+                     d.epsilon.valid ? QString::number(d.epsilon.pitch_deg, 'f', 1) : QStringLiteral("---"),
+                     d.epsilon.valid ? QString::number(d.epsilon.yaw_deg, 'f', 1) : QStringLiteral("---")),
+        };
+    }
 
     if (twoColumns)
     {
@@ -1396,7 +1451,7 @@ void SkyTuiApp::drawDeviceOverview(SkyTuiScreenBuffer& output, int top, int bott
     const int chartHeight = std::max(5, remaining / 2);
     const QStringList rawChart = renderTerminalWaveform(d.latest_raw_waveform_preview, std::max(10, leftRight - left - 3), std::max(3, chartHeight - 2));
     QStringList harmonic = renderTerminalWaveform(d.latest_harmonic_waveform_preview, std::max(10, right - rightLeft - 3), std::max(3, chartHeight - 2));
-    harmonic.prepend(QStringLiteral("peak %1  rms %2  mean %3  min %4  max %5")
+    harmonic.prepend(QStringLiteral("峰值 %1  RMS %2  均值 %3  min %4  max %5")
                          .arg(d.waveform_feature.peak, 0, 'f', 4)
                          .arg(d.waveform_feature.rms, 0, 'f', 4)
                          .arg(d.waveform_feature.mean, 0, 'f', 4)
@@ -1503,28 +1558,50 @@ void SkyTuiApp::drawStatusBar(SkyTuiScreenBuffer& output, int row, const SkyTuiT
 
 QStringList SkyTuiApp::dashboardSummaryLines(int width) const
 {
-    Q_UNUSED(width)
     const SkyDashboardSnapshot& d = model_.dashboard;
+    const QString session = d.telemetry_status.session_name.isEmpty() ? QStringLiteral("-") : d.telemetry_status.session_name;
+    if (width > 0 && width < 78)
+    {
+        return {
+            QStringLiteral("记录：%1 | 运行 %2 s | 帧数 %3 | 磁盘 %4")
+                .arg(recordingStateText(d.telemetry_status.recording_state))
+                .arg(d.uptime_ms / 1000)
+                .arg(d.epsilon.raw_frame_count)
+                .arg(humanBytes(d.telemetry_status.disk_free_bytes)),
+            QStringLiteral("采集：EPSILON %1 / PTB %2 / HMP %3 / Lidar %4 / Wave %5 Hz")
+                .arg(d.epsilon_acquisition_rate_hz, 0, 'f', 1)
+                .arg(d.ptb_acquisition_rate_hz, 0, 'f', 1)
+                .arg(d.hmp_acquisition_rate_hz, 0, 'f', 1)
+                .arg(d.lidar_acquisition_rate_hz, 0, 'f', 1)
+                .arg(d.wave_tcp_acquisition_rate_hz, 0, 'f', 1),
+            QStringLiteral("记录频率：CSV %1 / Raw Wave %2 Hz")
+                .arg(d.devices_csv_recording_rate_hz, 0, 'f', 1)
+                .arg(d.raw_wave_recording_rate_hz, 0, 'f', 1),
+            QStringLiteral("数传：基础 %1 / 特征值 %2 / 波形 %3 Hz | TUI 2 Hz")
+                .arg(d.telemetry_basic_rate_hz, 0, 'f', 1)
+                .arg(d.waveform_feature_rate_hz, 0, 'f', 1)
+                .arg(d.waveform_downsampled_rate_hz, 0, 'f', 1),
+        };
+    }
     return {
-        QStringLiteral("Frame Count: %1 | Runtime: %2 s | Record: %3 | Session: %4")
+        QStringLiteral("帧数：%1 | 系统运行：%2 s | 记录：%3 | 会话：%4")
             .arg(d.epsilon.raw_frame_count)
             .arg(d.uptime_ms / 1000)
-            .arg(recordingStateText(d.telemetry_status.recording_state),
-                 d.telemetry_status.session_name.isEmpty() ? QStringLiteral("-") : d.telemetry_status.session_name),
-        QStringLiteral("Disk Free: %1 | Link RX: %2 | CRC: %3")
+            .arg(recordingStateText(d.telemetry_status.recording_state), session),
+        QStringLiteral("剩余磁盘：%1 | 链路 RX：%2 | CRC：%3")
             .arg(humanBytes(d.telemetry_status.disk_free_bytes))
             .arg(d.telemetry_status.rx_total_frames)
             .arg(d.telemetry_status.crc_error_count),
-        QStringLiteral("Acquisition: EPSILON %1Hz | PTB %2Hz | HMP %3Hz | Lidar %4Hz | Wave %5Hz")
+        QStringLiteral("采集频率：EPSILON %1Hz | PTB %2Hz | HMP %3Hz | Lidar %4Hz | Wave %5Hz")
             .arg(d.epsilon_acquisition_rate_hz, 0, 'f', 1)
             .arg(d.ptb_acquisition_rate_hz, 0, 'f', 1)
             .arg(d.hmp_acquisition_rate_hz, 0, 'f', 1)
             .arg(d.lidar_acquisition_rate_hz, 0, 'f', 1)
             .arg(d.wave_tcp_acquisition_rate_hz, 0, 'f', 1),
-        QStringLiteral("Recording: CSV %1Hz | Raw EPSILON full | Raw Wave %2Hz")
+        QStringLiteral("记录频率：CSV %1Hz | Raw EPSILON full | Raw Wave %2Hz")
             .arg(d.devices_csv_recording_rate_hz, 0, 'f', 1)
             .arg(d.raw_wave_recording_rate_hz, 0, 'f', 1),
-        QStringLiteral("Telemetry: Basic %1Hz | Feature %2Hz | Waveform %3Hz | TUI 2Hz snapshot")
+        QStringLiteral("数传频率：基础 %1Hz | 特征值 %2Hz | 波形 %3Hz | TUI 2Hz")
             .arg(d.telemetry_basic_rate_hz, 0, 'f', 1)
             .arg(d.waveform_feature_rate_hz, 0, 'f', 1)
             .arg(d.waveform_downsampled_rate_hz, 0, 'f', 1),
@@ -1538,7 +1615,7 @@ QStringList SkyTuiApp::renderTerminalWaveform(const QVector<float>& samples, int
     height = std::max(3, height);
     if (samples.isEmpty())
     {
-        return {QStringLiteral("No waveform data")};
+        return {QStringLiteral("无波形数据")};
     }
 
     float minValue = std::numeric_limits<float>::infinity();
@@ -1557,7 +1634,7 @@ QStringList SkyTuiApp::renderTerminalWaveform(const QVector<float>& samples, int
     }
     if (clean.isEmpty() || !std::isfinite(minValue) || !std::isfinite(maxValue))
     {
-        return {QStringLiteral("No waveform data")};
+        return {QStringLiteral("无波形数据")};
     }
     if (std::abs(maxValue - minValue) < 1.0e-9f)
     {
@@ -1626,9 +1703,9 @@ QStringList SkyTuiApp::statusPanelLines() const
     QStringList lines;
     lines << QStringLiteral("运行：%1").arg(runtime_ && runtime_->isRunning() ? QStringLiteral("是") : QStringLiteral("否"))
           << QStringLiteral("记录：%1").arg(recordingStateText(model_.status.recording_state))
-          << QStringLiteral("Session: %1").arg(model_.status.session_name.isEmpty() ? QStringLiteral("-") : model_.status.session_name)
+          << QStringLiteral("会话：%1").arg(model_.status.session_name.isEmpty() ? QStringLiteral("-") : model_.status.session_name)
           << QStringLiteral("磁盘：%1").arg(humanBytes(model_.status.disk_free_bytes))
-          << QStringLiteral("波形下传：%1").arg(runtime_ && runtime_->waveformStreamingEnabled() ? QStringLiteral("开启") : QStringLiteral("关闭"))
+          << QStringLiteral("波形下传：%1").arg(runtime_ && runtime_->waveformStreamingEnabled() ? QStringLiteral("开") : QStringLiteral("关"))
           << QStringLiteral("频率：基础 %1Hz").arg(model_.status.telemetry_basic_rate_hz, 0, 'f', 1)
           << QStringLiteral("      特征 %1Hz").arg(model_.status.feature_rate_hz, 0, 'f', 1)
           << QStringLiteral("      波形 %1Hz").arg(model_.status.waveform_rate_hz, 0, 'f', 1)
@@ -1681,13 +1758,13 @@ QString SkyTuiApp::freshnessText(bool stale, bool valid) const
 {
     if (!valid)
     {
-        return SkyTuiTheme::foreground(SkyTuiTheme::muted()) + QStringLiteral("no data") + SkyTuiTheme::reset();
+        return SkyTuiTheme::foreground(SkyTuiTheme::muted()) + QStringLiteral("无数据") + SkyTuiTheme::reset();
     }
     if (stale)
     {
-        return SkyTuiTheme::foreground(SkyTuiTheme::yellow()) + QStringLiteral("stale") + SkyTuiTheme::reset();
+        return SkyTuiTheme::foreground(SkyTuiTheme::yellow()) + QStringLiteral("超时") + SkyTuiTheme::reset();
     }
-    return SkyTuiTheme::foreground(SkyTuiTheme::green()) + QStringLiteral("live") + SkyTuiTheme::reset();
+    return SkyTuiTheme::foreground(SkyTuiTheme::green()) + QStringLiteral("在线") + SkyTuiTheme::reset();
 }
 
 QString SkyTuiApp::deviceStateColored(DeviceState state) const
@@ -1705,7 +1782,7 @@ QString SkyTuiApp::deviceStateColored(DeviceState state) const
     {
         color = SkyTuiTheme::red();
     }
-    return SkyTuiTheme::foreground(color) + deviceStateName(state) + SkyTuiTheme::reset();
+    return SkyTuiTheme::foreground(color) + deviceStateText(state) + SkyTuiTheme::reset();
 }
 
 QString SkyTuiApp::recordingStateText(quint8 state) const
