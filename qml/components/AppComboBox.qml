@@ -3,16 +3,28 @@ import QtQuick.Controls.Basic
 
 ComboBox {
     id: control
+    property string textRole: ""
+    property string valueRole: ""
     font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor
     implicitHeight: ApplicationWindow.window.uiControlHeight
 
+    function displayFor(md) {
+        if (md === undefined || md === null) return ""
+        if (typeof md === "string") return md
+        if (textRole.length > 0 && md[textRole] !== undefined) return String(md[textRole])
+        if (md.label !== undefined) return String(md.label)
+        if (md.text !== undefined) return String(md.text)
+        if (md.port !== undefined) return String(md.port)
+        return String(md)
+    }
+
     delegate: ItemDelegate {
         width: control.width; height: 32
-        text: modelData
+        text: control.displayFor(modelData)
         font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor
         highlighted: control.highlightedIndex === index
         background: Rectangle { color: highlighted ? ApplicationWindow.window.secondary : "transparent" }
-        contentItem: Text { text: modelData; color: ApplicationWindow.window.text; font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 8; elide: Text.ElideRight }
+        contentItem: Text { text: parent.text; color: ApplicationWindow.window.text; font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 8; elide: Text.ElideRight }
     }
     indicator: Text { anchors.verticalCenter: parent.verticalCenter; anchors.right: parent.right; anchors.rightMargin: 8; text: "\u25BE"; color: ApplicationWindow.window.muted; font.pixelSize: 12 }
     contentItem: Text { leftPadding: ApplicationWindow.window.uiControlPaddingX; rightPadding: 28; text: control.displayText; color: ApplicationWindow.window.text; font: control.font; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }

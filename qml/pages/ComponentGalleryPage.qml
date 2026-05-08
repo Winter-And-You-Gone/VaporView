@@ -14,12 +14,10 @@ Item {
 
         Item {
             id: mainContent; width: parent.width - 16
-
             readonly property bool narrow: width < 1050
             readonly property int gap: ApplicationWindow.window.uiSpacing
             readonly property int leftW: narrow ? width : 340
             readonly property int rightW: narrow ? width : width - leftW - gap
-
             height: narrow ? leftPanel.height + gap + rightPanel.height : Math.max(leftPanel.height, rightPanel.height)
 
             Column { id: leftPanel; width: mainContent.leftW; spacing: ApplicationWindow.window.uiSpacing
@@ -67,9 +65,21 @@ Item {
                             ToolbarButton { text: t("components.dangerBtn"); iconName: "trash-2"; variant: "danger" }
                             ToolbarButton { text: t("components.disabled"); iconName: "square"; enabled: false }
                             ToolbarButton { iconName: "zap"; variant: "primary" }
-                            ToolbarButton { text: "Long"; iconName: "settings" }
+                            ToolbarButton { text: t("components.longButton"); iconName: "settings" }
                         }
                         Item { width: 1; height: btnFlow.childrenRect.height }
+                    }
+                }
+
+                Card { width: parent.width; height: implicitHeight; title: t("components.inputs")
+                    CardBody {
+                        Flow { id: inputFlow; width: parent.width; spacing: ApplicationWindow.window.uiSpacing
+                            AppTextField { width: 200; placeholderText: t("components.placeholderText") }
+                            AppTextField { width: 160; placeholderText: t("components.numberPlaceholder"); inputMethodHints: Qt.ImhDigitsOnly }
+                            AppTextField { width: 200; text: t("components.passwordPlain"); echoMode: TextInput.Normal }
+                            AppTextField { width: 160; placeholderText: t("components.disabled"); enabled: false }
+                        }
+                        Item { width: 1; height: inputFlow.childrenRect.height }
                     }
                 }
 
@@ -91,10 +101,10 @@ Item {
                 Card { width: parent.width; height: implicitHeight; title: t("components.statusMetrics")
                     CardBody {
                         Flow { id: pillFlow; width: parent.width; spacing: 6
-                            StatusPill { label: t("components.connected"); status: "online" }
-                            StatusPill { label: t("components.warning"); status: "recording" }
+                            StatusPill { label: t("components.connected"); status: "success" }
+                            StatusPill { label: t("components.warning"); status: "warning" }
                             StatusPill { label: t("components.error"); status: "error" }
-                            StatusPill { label: t("components.offline"); status: "inactive" }
+                            StatusPill { label: t("components.offline"); status: "offline" }
                         }
                         Item { width: 1; height: pillFlow.childrenRect.height }
                         RowLayout { Layout.fillWidth: true; spacing: 8

@@ -5,59 +5,27 @@ Rectangle {
     id: pill
     property string status: "online"
     property string label: ""
-    readonly property bool isRecording: status === "recording" || status === "active" || status === "error"
-    readonly property bool isOnline: status === "online"
-    readonly property bool darkMode: appBackend.dark
-    readonly property real uiScale: appBackend.fontScale / 100
-    readonly property color onlineTone: darkMode ? "#4ade80" : "#22c55e"
-    readonly property color recordingTone: darkMode ? "#f87171" : "#ef4444"
-    readonly property color inactiveTone: darkMode ? "#94a3b8" : "#64748b"
-    readonly property color onlineFill: darkMode ? Qt.rgba(0.29, 0.87, 0.50, 0.12)
-                                                 : Qt.rgba(0.13, 0.77, 0.37, 0.10)
-    readonly property color recordingFill: darkMode ? Qt.rgba(0.97, 0.44, 0.44, 0.12)
-                                                    : Qt.rgba(0.94, 0.27, 0.27, 0.10)
-    readonly property color inactiveFill: darkMode ? "#1e293b" : "#f1f5f9"
-    readonly property color onlineStroke: darkMode ? Qt.rgba(0.29, 0.87, 0.50, 0.30)
-                                                   : Qt.rgba(0.13, 0.77, 0.37, 0.30)
-    readonly property color recordingStroke: darkMode ? Qt.rgba(0.97, 0.44, 0.44, 0.30)
-                                                      : Qt.rgba(0.94, 0.27, 0.27, 0.30)
-    readonly property color inactiveStroke: darkMode ? "#334155" : "#e2e8f0"
-    readonly property color tone: isOnline ? onlineTone
-                                : isRecording ? recordingTone
-                                : inactiveTone
-    readonly property color fill: isOnline ? onlineFill
-                                : isRecording ? recordingFill
-                                : inactiveFill
-    readonly property color stroke: isOnline ? onlineStroke
-                                  : isRecording ? recordingStroke
-                                  : inactiveStroke
+
+    readonly property bool isSuccess: status === "online" || status === "success"
+    readonly property bool isWarning: status === "warning"
+    readonly property bool isDanger: status === "recording" || status === "active" || status === "error" || status === "danger"
+    readonly property bool isInactive: !isSuccess && !isWarning && !isDanger
+
+    readonly property color tone: isSuccess ? ApplicationWindow.window.ok
+        : isWarning ? ApplicationWindow.window.warning
+        : isDanger ? ApplicationWindow.window.danger
+        : ApplicationWindow.window.offline
 
     implicitWidth: dot.width + labelText.implicitWidth + 24
-    implicitHeight: 22
-    radius: 11
-    color: fill
-    border.color: stroke
+    implicitHeight: Math.max(20, ApplicationWindow.window.uiControlHeight * 0.65)
+    radius: implicitHeight / 2
+    color: Qt.rgba(tone.r, tone.g, tone.b, 0.12)
+    border.width: ApplicationWindow.window.uiBorderWidth > 0 ? 1 : 0
+    border.color: Qt.rgba(tone.r, tone.g, tone.b, 0.25)
 
     Row {
-        anchors.centerIn: parent
-        spacing: 6
-
-        Rectangle {
-            id: dot
-            width: 8
-            height: 8
-            radius: 4
-            anchors.verticalCenter: parent.verticalCenter
-            color: tone
-        }
-
-        Text {
-            id: labelText
-            anchors.verticalCenter: parent.verticalCenter
-            text: pill.label
-            color: tone
-            font.pixelSize: 10 * pill.uiScale
-            font.weight: Font.DemiBold
-        }
+        anchors.centerIn: parent; spacing: 6
+        Rectangle { id: dot; width: 8; height: 8; radius: 4; anchors.verticalCenter: parent.verticalCenter; color: tone }
+        Text { id: labelText; anchors.verticalCenter: parent.verticalCenter; text: pill.label; color: tone; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor; font.weight: Font.DemiBold }
     }
 }
