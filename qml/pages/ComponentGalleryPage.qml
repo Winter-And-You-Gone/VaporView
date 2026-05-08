@@ -83,6 +83,22 @@ Item {
                     }
                 }
 
+                Card { width: parent.width; height: implicitHeight; title: t("components.comboboxes")
+                    CardBody {
+                        Flow { id: comboFlow; width: parent.width; spacing: ApplicationWindow.window.uiSpacing
+                            Column { width: 220; spacing: 2
+                                Text { text: t("components.combo"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor }
+                                AppComboBox { width: parent.width; model: ["A","B","C"]; currentIndex: 0 }
+                            }
+                            Column { width: 240; spacing: 2
+                                Text { text: t("components.portCombo"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor }
+                                AppComboBox { width: parent.width; model: ["COM3","COM5","COM7"]; currentIndex: 0 }
+                            }
+                        }
+                        Item { width: 1; height: comboFlow.childrenRect.height }
+                    }
+                }
+
                 Card { width: parent.width; height: implicitHeight; title: t("components.cards")
                     CardBody {
                         Flow { id: cardFlow; width: parent.width; spacing: 8
