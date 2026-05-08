@@ -789,6 +789,7 @@ AppBackend::AppBackend(QObject *parent)
     language_ = settings.value(QStringLiteral("ui_language"), QStringLiteral("zh")).toString();
     dark_ = settings.value(QStringLiteral("qml_dark"), false).toBool();
     font_scale_ = settings.value(QStringLiteral("font_scale_percent"), 100).toInt();
+    loadUiStyle();
 }
 
 QString AppBackend::language() const { return language_; }
@@ -837,6 +838,90 @@ void AppBackend::setFontScale(int percent)
     emit fontScaleChanged();
 }
 
+int AppBackend::uiRadius() const { return ui_radius_; }
+int AppBackend::uiControlHeight() const { return ui_control_height_; }
+int AppBackend::uiButtonHeight() const { return ui_button_height_; }
+int AppBackend::uiCardHeaderHeight() const { return ui_card_header_height_; }
+int AppBackend::uiCardPadding() const { return ui_card_padding_; }
+int AppBackend::uiControlPaddingX() const { return ui_control_padding_x_; }
+int AppBackend::uiSpacing() const { return ui_spacing_; }
+int AppBackend::uiBorderWidth() const { return ui_border_width_; }
+int AppBackend::uiSmallFontSize() const { return ui_small_font_size_; }
+int AppBackend::uiBodyFontSize() const { return ui_body_font_size_; }
+int AppBackend::uiValueFontSize() const { return ui_value_font_size_; }
+bool AppBackend::uiCompactMode() const { return ui_compact_mode_; }
+bool AppBackend::uiShowDebugOutlines() const { return ui_show_debug_outlines_; }
+
+void AppBackend::setUiRadius(int value) { if (ui_radius_ != value && value >= 0 && value <= 16) { ui_radius_ = value; emit uiStyleChanged(); } }
+void AppBackend::setUiControlHeight(int value) { if (ui_control_height_ != value && value >= 28 && value <= 44) { ui_control_height_ = value; emit uiStyleChanged(); } }
+void AppBackend::setUiButtonHeight(int value) { if (ui_button_height_ != value && value >= 28 && value <= 44) { ui_button_height_ = value; emit uiStyleChanged(); } }
+void AppBackend::setUiCardHeaderHeight(int value) { if (ui_card_header_height_ != value && value >= 28 && value <= 44) { ui_card_header_height_ = value; emit uiStyleChanged(); } }
+void AppBackend::setUiCardPadding(int value) { if (ui_card_padding_ != value && value >= 6 && value <= 20) { ui_card_padding_ = value; emit uiStyleChanged(); } }
+void AppBackend::setUiControlPaddingX(int value) { if (ui_control_padding_x_ != value && value >= 6 && value <= 18) { ui_control_padding_x_ = value; emit uiStyleChanged(); } }
+void AppBackend::setUiSpacing(int value) { if (ui_spacing_ != value && value >= 4 && value <= 16) { ui_spacing_ = value; emit uiStyleChanged(); } }
+void AppBackend::setUiBorderWidth(int value) { if (ui_border_width_ != value && value >= 0 && value <= 2) { ui_border_width_ = value; emit uiStyleChanged(); } }
+void AppBackend::setUiSmallFontSize(int value) { if (ui_small_font_size_ != value && value >= 8 && value <= 14) { ui_small_font_size_ = value; emit uiStyleChanged(); } }
+void AppBackend::setUiBodyFontSize(int value) { if (ui_body_font_size_ != value && value >= 10 && value <= 16) { ui_body_font_size_ = value; emit uiStyleChanged(); } }
+void AppBackend::setUiValueFontSize(int value) { if (ui_value_font_size_ != value && value >= 11 && value <= 18) { ui_value_font_size_ = value; emit uiStyleChanged(); } }
+void AppBackend::setUiCompactMode(bool value) { if (ui_compact_mode_ != value) { ui_compact_mode_ = value; emit uiStyleChanged(); } }
+void AppBackend::setUiShowDebugOutlines(bool value) { if (ui_show_debug_outlines_ != value) { ui_show_debug_outlines_ = value; emit uiStyleChanged(); } }
+
+void AppBackend::resetUiStyle()
+{
+    ui_radius_ = 7;
+    ui_control_height_ = 34;
+    ui_button_height_ = 30;
+    ui_card_header_height_ = 32;
+    ui_card_padding_ = 12;
+    ui_control_padding_x_ = 10;
+    ui_spacing_ = 8;
+    ui_border_width_ = 1;
+    ui_small_font_size_ = 10;
+    ui_body_font_size_ = 11;
+    ui_value_font_size_ = 12;
+    ui_compact_mode_ = false;
+    ui_show_debug_outlines_ = false;
+    saveUiStyle();
+    emit uiStyleChanged();
+}
+
+void AppBackend::saveUiStyle()
+{
+    QSettings s(QStringLiteral("VaporView"), QStringLiteral("UiStyle"));
+    s.setValue(QStringLiteral("ui_radius"), ui_radius_);
+    s.setValue(QStringLiteral("ui_control_height"), ui_control_height_);
+    s.setValue(QStringLiteral("ui_button_height"), ui_button_height_);
+    s.setValue(QStringLiteral("ui_card_header_height"), ui_card_header_height_);
+    s.setValue(QStringLiteral("ui_card_padding"), ui_card_padding_);
+    s.setValue(QStringLiteral("ui_control_padding_x"), ui_control_padding_x_);
+    s.setValue(QStringLiteral("ui_spacing"), ui_spacing_);
+    s.setValue(QStringLiteral("ui_border_width"), ui_border_width_);
+    s.setValue(QStringLiteral("ui_small_font_size"), ui_small_font_size_);
+    s.setValue(QStringLiteral("ui_body_font_size"), ui_body_font_size_);
+    s.setValue(QStringLiteral("ui_value_font_size"), ui_value_font_size_);
+    s.setValue(QStringLiteral("ui_compact_mode"), ui_compact_mode_);
+    s.setValue(QStringLiteral("ui_show_debug_outlines"), ui_show_debug_outlines_);
+}
+
+void AppBackend::loadUiStyle()
+{
+    QSettings s(QStringLiteral("VaporView"), QStringLiteral("UiStyle"));
+    ui_radius_ = s.value(QStringLiteral("ui_radius"), 7).toInt();
+    ui_control_height_ = s.value(QStringLiteral("ui_control_height"), 34).toInt();
+    ui_button_height_ = s.value(QStringLiteral("ui_button_height"), 30).toInt();
+    ui_card_header_height_ = s.value(QStringLiteral("ui_card_header_height"), 32).toInt();
+    ui_card_padding_ = s.value(QStringLiteral("ui_card_padding"), 12).toInt();
+    ui_control_padding_x_ = s.value(QStringLiteral("ui_control_padding_x"), 10).toInt();
+    ui_spacing_ = s.value(QStringLiteral("ui_spacing"), 8).toInt();
+    ui_border_width_ = s.value(QStringLiteral("ui_border_width"), 1).toInt();
+    ui_small_font_size_ = s.value(QStringLiteral("ui_small_font_size"), 10).toInt();
+    ui_body_font_size_ = s.value(QStringLiteral("ui_body_font_size"), 11).toInt();
+    ui_value_font_size_ = s.value(QStringLiteral("ui_value_font_size"), 12).toInt();
+    ui_compact_mode_ = s.value(QStringLiteral("ui_compact_mode"), false).toBool();
+    ui_show_debug_outlines_ = s.value(QStringLiteral("ui_show_debug_outlines"), false).toBool();
+    emit uiStyleChanged();
+}
+
 QString AppBackend::loadIconLibrary() const
 {
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
@@ -874,7 +959,7 @@ QString AppBackend::t(const QString& key) const
         {"topbar.connect", "连接"}, {"topbar.disconnect", "断开"}, {"topbar.cancel", "取消"},
         {"topbar.start", "开始记录"}, {"topbar.pause", "暂停"}, {"topbar.resume", "继续"}, {"topbar.stop", "结束记录"},
         {"nav.home", "首页"}, {"nav.devices", "设备"}, {"nav.detailedData", "详细数据"}, {"nav.waveform", "波形"},
-        {"nav.sessions", "记录查看"}, {"nav.rtk", "RTK"}, {"nav.rawParser", "原始解析"}, {"nav.settings", "设置"},
+        {"nav.sessions", "记录查看"}, {"nav.rtk", "RTK"}, {"nav.rawParser", "原始解析"}, {"nav.components", "组件"}, {"nav.settings", "设置"},
         {"home.coordinateTitle", "坐标 / 姿态摘要"}, {"home.latitude", "纬度"}, {"home.longitude", "经度"},
         {"home.altitude", "高度"}, {"home.velocity", "速度"}, {"home.heading", "航向角"}, {"home.pitch", "俯仰角"},
         {"home.rtkStatus", "RTK 状态"}, {"home.satellites", "卫星数"}, {"home.gnssTime", "GNSS 时间"},
@@ -930,6 +1015,19 @@ QString AppBackend::t(const QString& key) const
         {"rtk.ggaSourceManual", "手动输入"}, {"rtk.ggaSourceExternalNetwork", "外部网络"},
         {"rtk.noDataAvailable", "暂无数据"}, {"rtk.noDiagnosticLog", "暂无诊断日志"},
         {"rtk.statusDisconnected", "未连接"}, {"rtk.statusError", "错误"},
+        {"components.title", "组件示例"}, {"components.description", "此页面用于预览和调整 VaporView 全局组件样式。修改后会影响所有页面中使用公共组件的控件。"},
+        {"components.globalStyle", "全局组件参数"}, {"components.radius", "圆角"}, {"components.controlHeight", "控件高度"},
+        {"components.buttonHeight", "按钮高度"}, {"components.cardHeaderHeight", "卡片标题栏高度"}, {"components.cardPadding", "卡片内边距"},
+        {"components.controlPadding", "控件内边距"}, {"components.spacing", "组件间距"}, {"components.borderWidth", "边框宽度"},
+        {"components.fontSmall", "小字体"}, {"components.fontBody", "正文字体"}, {"components.fontValue", "数值字体"},
+        {"components.compactMode", "紧凑模式"}, {"components.debugOutlines", "调试边框"}, {"components.saveStyle", "保存样式"},
+        {"components.resetStyle", "重置样式"}, {"components.buttons", "按钮"}, {"components.inputs", "输入控件"},
+        {"components.comboboxes", "选择框"}, {"components.cards", "卡片"}, {"components.statusMetrics", "状态与指标"},
+        {"components.logs", "日志区"}, {"components.defaultBtn", "默认"}, {"components.primaryBtn", "主要"},
+        {"components.dangerBtn", "危险"}, {"components.disabled", "禁用"}, {"components.iconBtn", "图标"},
+        {"components.textField", "文本框"}, {"components.numberField", "数字"}, {"components.passwordField", "明文密码"},
+        {"components.editableCombo", "可编辑"}, {"components.combo", "普通"}, {"components.staticCard", "普通卡片"},
+        {"components.cardWithAction", "带操作区卡片"},
         {"rawParser.dropZone", "选择原始文件或会话目录"}, {"rawParser.parseRecords", "解析记录"},
         {"rawParser.formatInfo", "格式说明"}, {"rawParser.fieldName", "字段名"}, {"rawParser.fieldType", "类型"},
         {"rawParser.export", "导出"}, {"rawParser.clearAll", "清空全部"}, {"rawParser.records", "条记录"},
@@ -951,7 +1049,7 @@ QString AppBackend::t(const QString& key) const
         {"topbar.connect", "Connect"}, {"topbar.disconnect", "Disconnect"}, {"topbar.cancel", "Cancel"},
         {"topbar.start", "Start Recording"}, {"topbar.pause", "Pause"}, {"topbar.resume", "Resume"}, {"topbar.stop", "Stop Recording"},
         {"nav.home", "Home"}, {"nav.devices", "Devices"}, {"nav.detailedData", "Detailed Data"}, {"nav.waveform", "Waveform"},
-        {"nav.sessions", "Record View"}, {"nav.rtk", "RTK"}, {"nav.rawParser", "Raw Parser"}, {"nav.settings", "Settings"},
+        {"nav.sessions", "Record View"}, {"nav.rtk", "RTK"}, {"nav.rawParser", "Raw Parser"}, {"nav.components", "Components"}, {"nav.settings", "Settings"},
         {"home.coordinateTitle", "Position & Attitude"}, {"home.latitude", "Latitude"}, {"home.longitude", "Longitude"},
         {"home.altitude", "Altitude"}, {"home.velocity", "Velocity"}, {"home.heading", "Heading"}, {"home.pitch", "Pitch"},
         {"home.rtkStatus", "RTK Status"}, {"home.satellites", "Satellites"}, {"home.gnssTime", "GNSS Time"},
@@ -1007,6 +1105,19 @@ QString AppBackend::t(const QString& key) const
         {"rtk.ggaSourceManual", "Manual Input"}, {"rtk.ggaSourceExternalNetwork", "External Network"},
         {"rtk.noDataAvailable", "No Data"}, {"rtk.noDiagnosticLog", "No Diagnostic Log"},
         {"rtk.statusDisconnected", "Disconnected"}, {"rtk.statusError", "Error"},
+        {"components.title", "Components"}, {"components.description", "Preview and tune global VaporView component styles. Changes apply to all pages."},
+        {"components.globalStyle", "Global Style"}, {"components.radius", "Radius"}, {"components.controlHeight", "Control Height"},
+        {"components.buttonHeight", "Button Height"}, {"components.cardHeaderHeight", "Card Header Height"}, {"components.cardPadding", "Card Padding"},
+        {"components.controlPadding", "Control Padding"}, {"components.spacing", "Spacing"}, {"components.borderWidth", "Border Width"},
+        {"components.fontSmall", "Small Font"}, {"components.fontBody", "Body Font"}, {"components.fontValue", "Value Font"},
+        {"components.compactMode", "Compact Mode"}, {"components.debugOutlines", "Debug Outlines"}, {"components.saveStyle", "Save Style"},
+        {"components.resetStyle", "Reset Style"}, {"components.buttons", "Buttons"}, {"components.inputs", "Inputs"},
+        {"components.comboboxes", "Combo Boxes"}, {"components.cards", "Cards"}, {"components.statusMetrics", "Status & Metrics"},
+        {"components.logs", "Logs"}, {"components.defaultBtn", "Default"}, {"components.primaryBtn", "Primary"},
+        {"components.dangerBtn", "Danger"}, {"components.disabled", "Disabled"}, {"components.iconBtn", "Icon"},
+        {"components.textField", "Text Field"}, {"components.numberField", "Number"}, {"components.passwordField", "Plain Password"},
+        {"components.editableCombo", "Editable"}, {"components.combo", "Standard"}, {"components.staticCard", "Card"},
+        {"components.cardWithAction", "Card with Action"},
         {"rawParser.dropZone", "Choose raw file or session directory"}, {"rawParser.parseRecords", "Parsed Records"},
         {"rawParser.formatInfo", "Format Info"}, {"rawParser.fieldName", "Field Name"}, {"rawParser.fieldType", "Type"},
         {"rawParser.export", "Export"}, {"rawParser.clearAll", "Clear All"}, {"rawParser.records", "records"},

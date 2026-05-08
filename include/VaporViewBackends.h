@@ -36,6 +36,19 @@ class AppBackend : public QObject
     Q_PROPERTY(bool dark READ dark WRITE setDark NOTIFY darkChanged)
     Q_PROPERTY(int fontScale READ fontScale WRITE setFontScale NOTIFY fontScaleChanged)
     Q_PROPERTY(QString version READ version CONSTANT)
+    Q_PROPERTY(int uiRadius READ uiRadius WRITE setUiRadius NOTIFY uiStyleChanged)
+    Q_PROPERTY(int uiControlHeight READ uiControlHeight WRITE setUiControlHeight NOTIFY uiStyleChanged)
+    Q_PROPERTY(int uiButtonHeight READ uiButtonHeight WRITE setUiButtonHeight NOTIFY uiStyleChanged)
+    Q_PROPERTY(int uiCardHeaderHeight READ uiCardHeaderHeight WRITE setUiCardHeaderHeight NOTIFY uiStyleChanged)
+    Q_PROPERTY(int uiCardPadding READ uiCardPadding WRITE setUiCardPadding NOTIFY uiStyleChanged)
+    Q_PROPERTY(int uiControlPaddingX READ uiControlPaddingX WRITE setUiControlPaddingX NOTIFY uiStyleChanged)
+    Q_PROPERTY(int uiSpacing READ uiSpacing WRITE setUiSpacing NOTIFY uiStyleChanged)
+    Q_PROPERTY(int uiBorderWidth READ uiBorderWidth WRITE setUiBorderWidth NOTIFY uiStyleChanged)
+    Q_PROPERTY(int uiSmallFontSize READ uiSmallFontSize WRITE setUiSmallFontSize NOTIFY uiStyleChanged)
+    Q_PROPERTY(int uiBodyFontSize READ uiBodyFontSize WRITE setUiBodyFontSize NOTIFY uiStyleChanged)
+    Q_PROPERTY(int uiValueFontSize READ uiValueFontSize WRITE setUiValueFontSize NOTIFY uiStyleChanged)
+    Q_PROPERTY(bool uiCompactMode READ uiCompactMode WRITE setUiCompactMode NOTIFY uiStyleChanged)
+    Q_PROPERTY(bool uiShowDebugOutlines READ uiShowDebugOutlines WRITE setUiShowDebugOutlines NOTIFY uiStyleChanged)
 
 public:
     explicit AppBackend(QObject *parent = nullptr);
@@ -45,6 +58,19 @@ public:
     bool dark() const;
     int fontScale() const;
     QString version() const;
+    int uiRadius() const;
+    int uiControlHeight() const;
+    int uiButtonHeight() const;
+    int uiCardHeaderHeight() const;
+    int uiCardPadding() const;
+    int uiControlPaddingX() const;
+    int uiSpacing() const;
+    int uiBorderWidth() const;
+    int uiSmallFontSize() const;
+    int uiBodyFontSize() const;
+    int uiValueFontSize() const;
+    bool uiCompactMode() const;
+    bool uiShowDebugOutlines() const;
 
     Q_INVOKABLE QString t(const QString& key) const;
     Q_INVOKABLE void toggleLanguage();
@@ -52,23 +78,53 @@ public:
     Q_INVOKABLE void notify(const QString& level, const QString& message);
     Q_INVOKABLE QString loadIconLibrary() const;
     Q_INVOKABLE void saveIconLibrary(const QString& library);
+    Q_INVOKABLE void resetUiStyle();
+    Q_INVOKABLE void saveUiStyle();
+    Q_INVOKABLE void loadUiStyle();
 
 public slots:
     void setLanguage(const QString& language);
     void setEnglish(bool english);
     void setDark(bool dark);
     void setFontScale(int percent);
+    void setUiRadius(int value);
+    void setUiControlHeight(int value);
+    void setUiButtonHeight(int value);
+    void setUiCardHeaderHeight(int value);
+    void setUiCardPadding(int value);
+    void setUiControlPaddingX(int value);
+    void setUiSpacing(int value);
+    void setUiBorderWidth(int value);
+    void setUiSmallFontSize(int value);
+    void setUiBodyFontSize(int value);
+    void setUiValueFontSize(int value);
+    void setUiCompactMode(bool value);
+    void setUiShowDebugOutlines(bool value);
 
 signals:
     void languageChanged();
     void darkChanged();
     void fontScaleChanged();
+    void uiStyleChanged();
     void notificationRequested(const QString& level, const QString& message);
 
 private:
     QString language_;
     bool dark_;
     int font_scale_;
+    int ui_radius_ = 7;
+    int ui_control_height_ = 34;
+    int ui_button_height_ = 30;
+    int ui_card_header_height_ = 32;
+    int ui_card_padding_ = 12;
+    int ui_control_padding_x_ = 10;
+    int ui_spacing_ = 8;
+    int ui_border_width_ = 1;
+    int ui_small_font_size_ = 10;
+    int ui_body_font_size_ = 11;
+    int ui_value_font_size_ = 12;
+    bool ui_compact_mode_ = false;
+    bool ui_show_debug_outlines_ = false;
 };
 
 class DeviceModel : public QAbstractListModel

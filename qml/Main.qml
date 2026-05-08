@@ -20,6 +20,39 @@ ApplicationWindow {
     property bool dark: appBackend.dark
     property real scaleFactor: appBackend.fontScale / 100
 
+    property int uiRadius: 7
+    property int uiControlHeight: 34
+    property int uiButtonHeight: 30
+    property int uiCardHeaderHeight: 32
+    property int uiCardPadding: 12
+    property int uiControlPaddingX: 10
+    property int uiSpacing: 8
+    property int uiBorderWidth: 1
+    property int uiSmallFontSize: 10
+    property int uiBodyFontSize: 11
+    property int uiValueFontSize: 12
+    property bool uiCompactMode: false
+    property bool uiShowDebugOutlines: false
+
+    Connections {
+        target: appBackend
+        function onUiStyleChanged() {
+            root.uiRadius = appBackend.uiRadius
+            root.uiControlHeight = appBackend.uiControlHeight
+            root.uiButtonHeight = appBackend.uiButtonHeight
+            root.uiCardHeaderHeight = appBackend.uiCardHeaderHeight
+            root.uiCardPadding = appBackend.uiCardPadding
+            root.uiControlPaddingX = appBackend.uiControlPaddingX
+            root.uiSpacing = appBackend.uiSpacing
+            root.uiBorderWidth = appBackend.uiBorderWidth
+            root.uiSmallFontSize = appBackend.uiSmallFontSize
+            root.uiBodyFontSize = appBackend.uiBodyFontSize
+            root.uiValueFontSize = appBackend.uiValueFontSize
+            root.uiCompactMode = appBackend.uiCompactMode
+            root.uiShowDebugOutlines = appBackend.uiShowDebugOutlines
+        }
+    }
+
     readonly property color bg: dark ? "#020817" : "#ffffff"
     readonly property color card: dark ? "#020817" : "#ffffff"
     readonly property color cardAlt: dark ? "#1e293b" : "#f1f5f9"
@@ -103,6 +136,7 @@ ApplicationWindow {
                     if (root.currentPage === "rtk") return rtkPage
                     if (root.currentPage === "rawParser") return rawParserPage
                     if (root.currentPage === "settings") return settingsPage
+                    if (root.currentPage === "components") return componentsPage
                     return homePage
                 }
 
@@ -138,4 +172,5 @@ ApplicationWindow {
     Component { id: rtkPage; RTKPage {} }
     Component { id: rawParserPage; RawParserPage {} }
     Component { id: settingsPage; SettingsPage {} }
+    Component { id: componentsPage; ComponentGalleryPage {} }
 }

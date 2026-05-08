@@ -52,8 +52,8 @@ Button {
     }
 
     background: Rectangle {
-        implicitHeight: 28
-        radius: 8
+        implicitHeight: ApplicationWindow.window.uiButtonHeight
+        radius: ApplicationWindow.window.uiRadius
         color: !control.enabled ? ApplicationWindow.window.cardAlt
              : control.down ? downBase
              : control.hovered ? hoverBase

@@ -8,8 +8,8 @@ Rectangle {
     property Item headerRight
     default property alias content: body.data
 
-    implicitHeight: 32 + body.implicitHeight
-    radius: 8
+    implicitHeight: ApplicationWindow.window.uiCardHeaderHeight + body.implicitHeight
+    radius: ApplicationWindow.window.uiRadius
     color: ApplicationWindow.window.card
     border.width: 0
     clip: true
@@ -20,9 +20,9 @@ Rectangle {
 
         Item {
             id: header
-            implicitHeight: 32
+            implicitHeight: ApplicationWindow.window.uiCardHeaderHeight
             Layout.fillWidth: true
-            Layout.preferredHeight: 32
+            Layout.preferredHeight: ApplicationWindow.window.uiCardHeaderHeight
 
             Rectangle {
                 anchors.fill: parent
@@ -49,15 +49,15 @@ Rectangle {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 10
-                anchors.rightMargin: 8
+                anchors.leftMargin: ApplicationWindow.window.uiCardPadding
+                anchors.rightMargin: ApplicationWindow.window.uiCardPadding
                 spacing: 8
 
                 Text {
                     id: titleText
                     Layout.fillWidth: true
                     color: ApplicationWindow.window.text
-                    font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
+                    font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor
                     font.weight: Font.Bold
                     elide: Text.ElideRight
                     verticalAlignment: Text.AlignVCenter

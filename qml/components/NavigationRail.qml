@@ -18,6 +18,7 @@ Rectangle {
         { key: "sessions", label: "nav.sessions", icon: "folder-open" },
         { key: "rtk", label: "nav.rtk", icon: "satellite" },
         { key: "rawParser", label: "nav.rawParser", icon: "file-code" },
+        { key: "components", label: "nav.components", icon: "blocks" },
         { key: "settings", label: "nav.settings", icon: "settings" }
     ]
 
