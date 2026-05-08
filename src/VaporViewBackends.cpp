@@ -790,6 +790,10 @@ AppBackend::AppBackend(QObject *parent)
     dark_ = settings.value(QStringLiteral("qml_dark"), false).toBool();
     font_scale_ = settings.value(QStringLiteral("font_scale_percent"), 100).toInt();
     loadUiStyle();
+
+    QTimer::singleShot(0, this, [this] {
+        emit uiStyleChanged();
+    });
 }
 
 QString AppBackend::language() const { return language_; }
@@ -1028,6 +1032,12 @@ QString AppBackend::t(const QString& key) const
         {"components.textField", "文本框"}, {"components.numberField", "数字"}, {"components.passwordField", "明文密码"},
         {"components.editableCombo", "可编辑"}, {"components.combo", "普通"}, {"components.staticCard", "普通卡片"},
         {"components.cardWithAction", "带操作区卡片"},
+        {"components.placeholder", "占位文本"}, {"components.connected", "已连接"}, {"components.warning", "警告"},
+        {"components.error", "错误"}, {"components.offline", "离线"}, {"components.throughput", "吞吐量"},
+        {"components.latency", "延迟"}, {"components.diagLog", "诊断日志"}, {"components.cardBodyText", "这是卡片内的正文文本。"},
+        {"components.cardActionText", "带标题栏操作按钮的卡片。"}, {"components.action", "操作"},
+        {"components.ntripConnected", "NTRIP 已连接"}, {"components.mountAuto", "挂载点：AUTO"},
+        {"components.rtcmActive", "RTCM 数据流已启用"}, {"components.rateExample", "速率：1250 B/s"},
         {"rawParser.dropZone", "选择原始文件或会话目录"}, {"rawParser.parseRecords", "解析记录"},
         {"rawParser.formatInfo", "格式说明"}, {"rawParser.fieldName", "字段名"}, {"rawParser.fieldType", "类型"},
         {"rawParser.export", "导出"}, {"rawParser.clearAll", "清空全部"}, {"rawParser.records", "条记录"},
@@ -1118,6 +1128,12 @@ QString AppBackend::t(const QString& key) const
         {"components.textField", "Text Field"}, {"components.numberField", "Number"}, {"components.passwordField", "Plain Password"},
         {"components.editableCombo", "Editable"}, {"components.combo", "Standard"}, {"components.staticCard", "Card"},
         {"components.cardWithAction", "Card with Action"},
+        {"components.placeholder", "Placeholder"}, {"components.connected", "Connected"}, {"components.warning", "Warning"},
+        {"components.error", "Error"}, {"components.offline", "Offline"}, {"components.throughput", "Throughput"},
+        {"components.latency", "Latency"}, {"components.diagLog", "Diagnostic Log"}, {"components.cardBodyText", "This is body text inside a card."},
+        {"components.cardActionText", "Card with header action button."}, {"components.action", "Action"},
+        {"components.ntripConnected", "NTRIP connected"}, {"components.mountAuto", "Mount: AUTO"},
+        {"components.rtcmActive", "RTCM stream active"}, {"components.rateExample", "Rate: 1250 B/s"},
         {"rawParser.dropZone", "Choose raw file or session directory"}, {"rawParser.parseRecords", "Parsed Records"},
         {"rawParser.formatInfo", "Format Info"}, {"rawParser.fieldName", "Field Name"}, {"rawParser.fieldType", "Type"},
         {"rawParser.export", "Export"}, {"rawParser.clearAll", "Clear All"}, {"rawParser.records", "records"},
