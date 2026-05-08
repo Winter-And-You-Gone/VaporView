@@ -94,6 +94,14 @@ Item {
                                 Text { text: t("components.portCombo"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor }
                                 AppComboBox { width: parent.width; model: ["COM3","COM5","COM7"]; currentIndex: 0 }
                             }
+                            Column { width: 240; spacing: 2
+                                Text { text: t("components.mountPointCombo"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor }
+                                AppEditableComboBox { width: parent.width; text: "AUTO"; model: ["AUTO", "RTCM33_GR", "RTCM32_GR"] }
+                            }
+                            Column { width: 260; spacing: 2
+                                Text { text: t("components.editableCombo"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor }
+                                AppEditableComboBox { width: parent.width; text: "CUSTOM_MOUNT"; placeholderText: t("components.editableCombo"); model: ["AUTO", "RTCM33_GR", "RTCM32_GR"] }
+                            }
                         }
                         Item { width: 1; height: comboFlow.childrenRect.height }
                     }
