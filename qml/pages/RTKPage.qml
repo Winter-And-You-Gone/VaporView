@@ -176,28 +176,32 @@ Item {
 
                         // Row 4: Auto Reconnect
                         // Row 4: Auto Reconnect
-                        CheckBox {
-                            id: autoReconnectCb
-                            text: t("rtk.autoReconnect")
-                            checked: rtkBackend.autoReconnect
-                            onCheckedChanged: rtkBackend.autoReconnect = checked
-                            contentItem: Text {
-                                text: autoReconnectCb.text
-                                color: ApplicationWindow.window.text
-                                font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
-                                leftPadding: autoReconnectCb.indicator.width + autoReconnectCb.spacing
-                                verticalAlignment: Text.AlignVCenter
-                            }
-                            indicator: Rectangle {
-                                implicitWidth: 16; implicitHeight: 16
-                                radius: 3
-                                color: autoReconnectCb.checked ? ApplicationWindow.window.primary : "transparent"
-                                border.color: autoReconnectCb.checked ? ApplicationWindow.window.primary : ApplicationWindow.window.border
+                        Row {
+                            spacing: 6
+                            Rectangle {
+                                width: 16; height: 16; radius: 3
+                                anchors.verticalCenter: parent.verticalCenter
+                                color: rtkBackend.autoReconnect ? ApplicationWindow.window.primary : "transparent"
+                                border.color: rtkBackend.autoReconnect ? ApplicationWindow.window.primary : ApplicationWindow.window.border
                                 Text {
                                     anchors.centerIn: parent
                                     text: "✓"
-                                    color: autoReconnectCb.checked ? ApplicationWindow.window.primaryForeground : "transparent"
+                                    color: rtkBackend.autoReconnect ? ApplicationWindow.window.primaryForeground : "transparent"
                                     font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: rtkBackend.autoReconnect = !rtkBackend.autoReconnect
+                                }
+                            }
+                            Text {
+                                text: t("rtk.autoReconnect")
+                                color: ApplicationWindow.window.text
+                                font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
+                                anchors.verticalCenter: parent.verticalCenter
+                                MouseArea {
+                                    anchors.fill: parent
+                                    onClicked: rtkBackend.autoReconnect = !rtkBackend.autoReconnect
                                 }
                             }
                         }
@@ -272,7 +276,7 @@ Item {
                         }
                         ToolbarButton {
                             Layout.fillWidth: true
-                            text: t("rtk.applyLeverArm"); iconName: "activity"
+                            text: t("rtk.applyLeverArm"); iconName: "ruler"
                             variant: "primary"
                             onClicked: rtkBackend.applyMainAntennaLeverArm(
                                 Number(leverX.text), Number(leverY.text), Number(leverZ.text))
