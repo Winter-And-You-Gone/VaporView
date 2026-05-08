@@ -102,6 +102,10 @@ Item {
                                 Text { text: t("components.editableCombo"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor }
                                 AppEditableComboBox { width: parent.width; text: "CUSTOM_MOUNT"; placeholderText: t("components.editableCombo"); model: ["AUTO", "RTCM33_GR", "RTCM32_GR"] }
                             }
+                            Column { width: 220; spacing: 2
+                                Text { text: t("components.noOptions"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor }
+                                AppComboBox { width: parent.width; model: [] }
+                            }
                         }
                         Item { width: 1; height: comboFlow.childrenRect.height }
                     }

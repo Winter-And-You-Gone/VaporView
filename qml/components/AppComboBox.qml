@@ -29,17 +29,26 @@ ComboBox {
         contentItem: Text { text: opt.text; color: ApplicationWindow.window.text; font: opt.font; verticalAlignment: Text.AlignVCenter; leftPadding: ApplicationWindow.window.uiControlPaddingX; rightPadding: ApplicationWindow.window.uiControlPaddingX; elide: Text.ElideRight }
     }
 
-    indicator: Item { width: Math.max(32, control.height); height: control.height; x: control.width - width
+    indicator: Item { width: Math.max(40, control.height); height: control.height; x: control.width - width
         Text { anchors.centerIn: parent; text: "\u25BE"; color: ApplicationWindow.window.muted; font.pixelSize: 12 * ApplicationWindow.window.scaleFactor } }
-    contentItem: Text { leftPadding: ApplicationWindow.window.uiControlPaddingX; rightPadding: Math.max(36, control.height); text: control.displayText; color: ApplicationWindow.window.text; font: control.font; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
+    contentItem: Text { leftPadding: ApplicationWindow.window.uiControlPaddingX; rightPadding: Math.max(44, control.height + 4); text: control.displayText; color: ApplicationWindow.window.text; font: control.font; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
     background: Rectangle { implicitHeight: control.implicitHeight; radius: ApplicationWindow.window.uiRadius; color: control.hovered ? ApplicationWindow.window.secondary : ApplicationWindow.window.card; border.width: ApplicationWindow.window.uiBorderWidth; border.color: control.activeFocus || control.popup.visible ? (ApplicationWindow.window.dark ? "#60a5fa" : "#2563eb") : ApplicationWindow.window.border }
 
     popup: Popup {
         id: comboPopup
         y: control.height + 2; width: control.width; padding: 4
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
-        implicitHeight: Math.min(contentItem.implicitHeight + 8, 220)
+        readonly property bool empty: control.count === 0
+        implicitHeight: empty ? (Math.max(30, ApplicationWindow.window.uiControlHeight - 2) + 12) : Math.min(contentItem.implicitHeight + 8, 220)
         background: Rectangle { radius: ApplicationWindow.window.uiRadius; color: ApplicationWindow.window.card; border.width: ApplicationWindow.window.uiBorderWidth; border.color: ApplicationWindow.window.border }
-        contentItem: ListView { clip: true; implicitHeight: contentHeight; model: control.delegateModel; currentIndex: control.highlightedIndex }
+        contentItem: Item {
+            implicitHeight: comboPopup.empty ? Math.max(30, ApplicationWindow.window.uiControlHeight - 2) : listView.implicitHeight
+            ListView { id: listView; anchors.fill: parent; visible: !comboPopup.empty; clip: true; implicitHeight: contentHeight; model: control.delegateModel; currentIndex: control.highlightedIndex }
+            Text {
+                visible: comboPopup.empty; anchors.centerIn: parent
+                text: appBackend.t("components.noOptions"); color: ApplicationWindow.window.muted
+                font.pixelSize: Math.max(10, (ApplicationWindow.window.uiBodyFontSize - 1) * ApplicationWindow.window.scaleFactor)
+            }
+        }
     }
 }

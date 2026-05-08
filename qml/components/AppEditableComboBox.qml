@@ -13,6 +13,8 @@ Item {
     implicitHeight: ApplicationWindow.window.uiControlHeight
     implicitWidth: 220
 
+    readonly property int dropAreaW: Math.max(40, implicitHeight)
+
     function displayFor(md) {
         if (md === undefined || md === null) return ""
         if (typeof md === "string") return md
@@ -39,7 +41,7 @@ Item {
         selectionColor: ApplicationWindow.window.primary
         placeholderTextColor: ApplicationWindow.window.muted
         leftPadding: ApplicationWindow.window.uiControlPaddingX
-        rightPadding: 44
+        rightPadding: control.dropAreaW + 6
         selectByMouse: true
         verticalAlignment: TextInput.AlignVCenter
         background: Rectangle { implicitHeight: control.implicitHeight; radius: ApplicationWindow.window.uiRadius; color: editor.hovered ? ApplicationWindow.window.secondary : ApplicationWindow.window.card; border.width: ApplicationWindow.window.uiBorderWidth; border.color: editor.activeFocus ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8") : ApplicationWindow.window.border }
@@ -47,34 +49,48 @@ Item {
         onAccepted: control.commit()
     }
 
-    Rectangle {
-        anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-        anchors.rightMargin: 2; width: 36; height: parent.height - 4
-        radius: Math.max(4, ApplicationWindow.window.uiRadius - 2)
-        color: dropMa.containsMouse ? ApplicationWindow.window.secondary : "transparent"
-        Text { anchors.centerIn: parent; text: "\u25BE"; color: ApplicationWindow.window.muted; font.pixelSize: 14 }
-        MouseArea { id: dropMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { control.commit(); popup.open() } }
+    Item {
+        id: arrowArea
+        anchors.top: parent.top; anchors.bottom: parent.bottom
+        anchors.right: parent.right; width: control.dropAreaW; z: 11
+        Text { anchors.centerIn: parent; text: "\u25BE"; color: ApplicationWindow.window.muted; font.pixelSize: 12 * ApplicationWindow.window.scaleFactor }
+    }
+
+    MouseArea {
+        anchors.top: parent.top; anchors.bottom: parent.bottom
+        anchors.right: parent.right; width: control.dropAreaW
+        hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+        acceptedButtons: Qt.LeftButton; z: 10
+        onClicked: { control.commit(); popup.open() }
     }
 
     Popup {
         id: popup
         x: 0; y: control.height + 2; width: control.width; padding: 4
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
-        implicitHeight: Math.min(listView.contentHeight + 8, 220)
+        readonly property bool empty: !(control.model && control.model.length > 0)
+        implicitHeight: empty ? (Math.max(30, ApplicationWindow.window.uiControlHeight - 2) + 12) : Math.min(listView.contentHeight + 8, 220)
         background: Rectangle { radius: ApplicationWindow.window.uiRadius; color: ApplicationWindow.window.card; border.width: ApplicationWindow.window.uiBorderWidth; border.color: ApplicationWindow.window.border }
-        contentItem: ListView {
-            id: listView; clip: true; implicitHeight: contentHeight
-            model: control.model || []
-            delegate: ItemDelegate {
-                id: opt
-                width: listView.width
-                height: Math.max(30, ApplicationWindow.window.uiControlHeight - 2)
-                text: control.displayFor(modelData)
+        contentItem: Item {
+            implicitHeight: popup.empty ? Math.max(30, ApplicationWindow.window.uiControlHeight - 2) : listView.implicitHeight
+            ListView {
+                id: listView; anchors.fill: parent; visible: !popup.empty; clip: true; implicitHeight: contentHeight
+                model: control.model || []
+                delegate: ItemDelegate {
+                    id: opt
+                    width: listView.width; height: Math.max(30, ApplicationWindow.window.uiControlHeight - 2)
+                    text: control.displayFor(modelData)
+                    font.pixelSize: Math.max(10, (ApplicationWindow.window.uiBodyFontSize - 1) * ApplicationWindow.window.scaleFactor)
+                    font.bold: false
+                    background: Rectangle { radius: Math.max(4, ApplicationWindow.window.uiRadius - 2); color: opt.hovered ? ApplicationWindow.window.secondary : "transparent" }
+                    contentItem: Text { text: opt.text; color: ApplicationWindow.window.text; font: opt.font; verticalAlignment: Text.AlignVCenter; leftPadding: ApplicationWindow.window.uiControlPaddingX; rightPadding: ApplicationWindow.window.uiControlPaddingX; elide: Text.ElideRight }
+                    onClicked: { var v = control.displayFor(modelData); editor.text = v; control.text = v; control.activated(index, v, modelData); control.accepted(v); popup.close() }
+                }
+            }
+            Text {
+                visible: popup.empty; anchors.centerIn: parent
+                text: appBackend.t("components.noOptions"); color: ApplicationWindow.window.muted
                 font.pixelSize: Math.max(10, (ApplicationWindow.window.uiBodyFontSize - 1) * ApplicationWindow.window.scaleFactor)
-                font.bold: false
-                background: Rectangle { radius: Math.max(4, ApplicationWindow.window.uiRadius - 2); color: opt.hovered ? ApplicationWindow.window.secondary : "transparent" }
-                contentItem: Text { text: opt.text; color: ApplicationWindow.window.text; font: opt.font; verticalAlignment: Text.AlignVCenter; leftPadding: ApplicationWindow.window.uiControlPaddingX; rightPadding: ApplicationWindow.window.uiControlPaddingX; elide: Text.ElideRight }
-                onClicked: { var v = control.displayFor(modelData); editor.text = v; control.text = v; control.activated(index, v, modelData); control.accepted(v); popup.close() }
             }
         }
     }
