@@ -187,7 +187,7 @@ Item {
                                     anchors.centerIn: parent
                                     text: "✓"
                                     color: rtkBackend.autoReconnect ? ApplicationWindow.window.primaryForeground : "transparent"
-                                    font.pixelSize: 13 * ApplicationWindow.window.scaleFactor
+                                    font.pixelSize: 15 * ApplicationWindow.window.scaleFactor
                                 }
                                 MouseArea {
                                     anchors.fill: parent
@@ -276,7 +276,7 @@ Item {
                         }
                         ToolbarButton {
                             Layout.fillWidth: true
-                            text: t("rtk.applyLeverArm"); iconName: "move"
+                            text: t("rtk.applyLeverArm"); iconName: "arrow-down-up"
                             variant: "primary"
                             onClicked: rtkBackend.applyMainAntennaLeverArm(
                                 Number(leverX.text), Number(leverY.text), Number(leverZ.text))
