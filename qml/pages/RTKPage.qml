@@ -65,6 +65,16 @@ Item {
     property string uiLeverY: "0"
     property string uiLeverZ: "0"
 
+    readonly property var mountPointModel: {
+        var result = []
+        function add(v) { v = String(v||"").trim(); if (v.length===0) return; if (result.indexOf(v)<0) result.push(v) }
+        add(rtkBackend.mountpoint && rtkBackend.mountpoint.length > 0 ? rtkBackend.mountpoint : "AUTO")
+        add("AUTO")
+        var opts = rtkBackend.mountPointOptions || []
+        for (var i=0; i<opts.length; ++i) add(opts[i])
+        return result
+    }
+
     // ══════════════════════════════════════════════
     // Flickable root — top-aligned, no fillHeight stretch
     // ══════════════════════════════════════════════
@@ -581,42 +591,100 @@ Item {
     component RtkMountPointCombo: ComboBox {
         id: mpCombo
         editable: true
-        model: rtkBackend.mountPointOptions
-        Component.onCompleted: mpCombo.editText = Qt.binding(function() { return rtkBackend.mountpoint })
-        onActivated: rtkBackend.setMountpoint(mpCombo.editText)
-        onAccepted: rtkBackend.setMountpoint(mpCombo.editText)
-
+        model: page.mountPointModel
         font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
         implicitHeight: 34
+        property int dropAreaW: 42
+
+        Component.onCompleted: {
+            mpCombo.editText = rtkBackend.mountpoint && rtkBackend.mountpoint.length > 0 ? rtkBackend.mountpoint : "AUTO"
+        }
+
+        Connections {
+            target: rtkBackend
+            function onConfigChanged() { if (!mpCombo.activeFocus) syncFromBackend() }
+            function onMountPointOptionsChanged() { if (!mpCombo.activeFocus) syncFromBackend() }
+        }
+
+        function syncFromBackend() {
+            mpCombo.editText = rtkBackend.mountpoint && rtkBackend.mountpoint.length > 0 ? rtkBackend.mountpoint : "AUTO"
+        }
+
+        function commitMountPoint() {
+            var v = String(mpCombo.editText||"").trim()
+            if (v.length === 0) v = "AUTO"
+            if (rtkBackend.mountpoint !== v) rtkBackend.setMountpoint(v)
+            mpCombo.editText = v
+        }
+
+        onAccepted: commitMountPoint()
+
+        onActivated: function(index) {
+            var v = mpCombo.textAt(index)
+            if (v && v.length > 0) { mpCombo.editText = v; rtkBackend.setMountpoint(v) }
+        }
 
         delegate: ItemDelegate {
-            width: mpCombo.width; text: modelData
+            width: mpCombo.width; height: 32
+            text: modelData
             font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
             highlighted: mpCombo.highlightedIndex === index
-            background: Rectangle { color: highlighted ? ApplicationWindow.window.secondary : "transparent" }
+            background: Rectangle { color: highlighted ? ApplicationWindow.window.secondary : "transparent"; radius: 5 }
             contentItem: Text {
                 text: modelData; color: ApplicationWindow.window.text
-                font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 8
+                font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 10; rightPadding: 10; elide: Text.ElideRight
             }
         }
-        indicator: Text {
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.right: parent.right; anchors.rightMargin: 8
-            text: "▾"; color: ApplicationWindow.window.muted; font.pixelSize: 10
+
+        indicator: Item {
+            width: mpCombo.dropAreaW; height: mpCombo.height
+            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+            Text {
+                anchors.centerIn: parent
+                text: "▾"; color: ApplicationWindow.window.muted
+                font.pixelSize: 12 * ApplicationWindow.window.scaleFactor
+            }
         }
+
         contentItem: TextField {
-            leftPadding: 10; rightPadding: 24
-            text: mpCombo.editText; color: ApplicationWindow.window.text
+            id: mountEditor
+            text: mpCombo.editText
+            leftPadding: 10; rightPadding: mpCombo.dropAreaW + 4
+            color: ApplicationWindow.window.text
+            selectedTextColor: ApplicationWindow.window.primaryForeground
+            selectionColor: ApplicationWindow.window.primary
+            placeholderTextColor: ApplicationWindow.window.muted
             font: mpCombo.font; verticalAlignment: Text.AlignVCenter; background: null
+            selectByMouse: true
+            onEditingFinished: mpCombo.commitMountPoint()
         }
+
         background: Rectangle {
             implicitHeight: 34; radius: 7
             color: mpCombo.hovered ? ApplicationWindow.window.secondary : ApplicationWindow.window.card
-            border.color: mpCombo.activeFocus
-                ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8")
-                : ApplicationWindow.window.border
+            border.width: 1
+            border.color: mpCombo.activeFocus ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8") : ApplicationWindow.window.border
         }
-        popup: RtkPopup { popupWidth: mpCombo.width; model: mpCombo.delegateModel; index: mpCombo.highlightedIndex }
+
+        MouseArea {
+            anchors.top: parent.top; anchors.bottom: parent.bottom
+            anchors.right: parent.right; width: mpCombo.dropAreaW
+            cursorShape: Qt.PointingHandCursor
+            acceptedButtons: Qt.LeftButton; hoverEnabled: true; z: 10
+            onPressed: function(mouse) { mouse.accepted = true }
+            onClicked: { mpCombo.commitMountPoint(); mpCombo.popup.open() }
+        }
+
+        popup: Popup {
+            y: mpCombo.height + 2; width: mpCombo.width; padding: 4
+            implicitHeight: Math.min(contentItem.implicitHeight+8, 220*ApplicationWindow.window.scaleFactor)
+            background: Rectangle { radius: 7; color: ApplicationWindow.window.card; border.color: ApplicationWindow.window.border; border.width: 1 }
+            contentItem: ListView {
+                clip: true; implicitHeight: contentHeight
+                model: mpCombo.delegateModel; currentIndex: mpCombo.highlightedIndex
+                ScrollBar.vertical: ScrollBar { policy: contentHeight > height ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
+            }
+        }
     }
 
     component RtkPortComboBox: ComboBox {
