@@ -276,15 +276,10 @@ Item {
                         }
                         ToolbarButton {
                             Layout.fillWidth: true
-                            text: t("rtk.applyLeverArm"); iconName: "arrow-down-up"
+                            text: t("rtk.applyLeverArm"); iconName: "ruler"
                             variant: "primary"
                             onClicked: rtkBackend.applyMainAntennaLeverArm(
                                 Number(leverX.text), Number(leverY.text), Number(leverZ.text))
-                            background: Rectangle {
-                                implicitHeight: 28; radius: 8
-                                color: "#1e293b"
-                                border.color: ApplicationWindow.window.border
-                            }
                         }
 
                         // Row 3: Timeout + Reconnect
