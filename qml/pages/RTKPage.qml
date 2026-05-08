@@ -716,11 +716,8 @@ Item {
                 font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 8
             }
         }
-        indicator: Text {
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.right: parent.right; anchors.rightMargin: 8
-            text: "▾"; color: ApplicationWindow.window.muted; font.pixelSize: 10
-        }
+        indicator: Item { width: Math.max(40, mpCombo.height); height: mpCombo.height; x: mpCombo.width - width
+            AppComboArrow { anchors.fill: parent } }
         contentItem: Text {
             leftPadding: 10; rightPadding: 24
             text: portCombo.displayText; color: ApplicationWindow.window.text
@@ -752,11 +749,8 @@ Item {
                 font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 8
             }
         }
-        indicator: Text {
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.right: parent.right; anchors.rightMargin: 8
-            text: "▾"; color: ApplicationWindow.window.muted; font.pixelSize: 10
-        }
+        indicator: Item { width: Math.max(40, ggaCombo.height); height: ggaCombo.height; x: ggaCombo.width - width
+            AppComboArrow { anchors.fill: parent } }
         contentItem: Text {
             leftPadding: 10; rightPadding: 24
             text: ggaCombo.displayText; color: ApplicationWindow.window.text
@@ -799,11 +793,8 @@ Item {
                 font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 8
             }
         }
-        indicator: Text {
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.right: parent.right; anchors.rightMargin: 8
-            text: "▾"; color: ApplicationWindow.window.muted; font.pixelSize: 10
-        }
+        indicator: Item { width: Math.max(40, rateCombo.height); height: rateCombo.height; x: rateCombo.width - width
+            AppComboArrow { anchors.fill: parent } }
         contentItem: Text {
             leftPadding: 10; rightPadding: 24
             text: rateCombo.displayText; color: ApplicationWindow.window.text
@@ -820,15 +811,9 @@ Item {
     }
 
     component RtkPopup: Popup {
-        property real popupWidth: 100
-        property var model
-        property int index: 0
-        y: parent.height + 2; width: popupWidth
-        implicitHeight: contentItem.implicitHeight + 8; padding: 4
-        background: Rectangle {
-            radius: 7; color: ApplicationWindow.window.card
-            border.color: ApplicationWindow.window.border
-        }
+        property real popupWidth: 100; property var model; property int index: 0
+        y: parent.height + 2; width: popupWidth; implicitHeight: contentItem.implicitHeight + 8; padding: 4
+        background: Rectangle { radius: ApplicationWindow.window.uiRadius; color: ApplicationWindow.window.card; border.width: ApplicationWindow.window.uiBorderWidth; border.color: ApplicationWindow.window.border }
         contentItem: ListView {
             clip: true; implicitHeight: contentHeight
             model: parent.model
