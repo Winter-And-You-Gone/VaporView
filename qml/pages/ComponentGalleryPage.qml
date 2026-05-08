@@ -9,150 +9,122 @@ Item {
 
     Flickable {
         anchors.fill: parent; anchors.margins: 12; clip: true
-        contentWidth: width; contentHeight: Math.max(col.implicitHeight, height)
+        contentWidth: width; contentHeight: Math.max(mainContent.height, height)
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
-        ColumnLayout {
-            id: col; width: parent.width - 24; spacing: 12
+        Item {
+            id: mainContent; width: parent.width - 16
 
-            Card { Layout.fillWidth: true; title: t("components.title")
-                Column { x: 12; y: 10; width: parent.width - 24; height: implicitHeight; spacing: 6
-                    Text { width: parent.width; text: t("components.description"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; wrapMode: Text.WordWrap }
+            readonly property bool narrow: width < 1050
+            readonly property int gap: ApplicationWindow.window.uiSpacing
+            readonly property int leftW: narrow ? width : 340
+            readonly property int rightW: narrow ? width : width - leftW - gap
+
+            height: narrow ? leftPanel.height + gap + rightPanel.height : Math.max(leftPanel.height, rightPanel.height)
+
+            Column { id: leftPanel; width: mainContent.leftW; spacing: ApplicationWindow.window.uiSpacing
+                Card { width: parent.width; height: implicitHeight; title: t("components.title")
+                    CardBody { Text { width: parent.width; text: t("components.description"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; wrapMode: Text.WordWrap } }
                 }
-            }
-
-            Card { Layout.fillWidth: true; title: t("components.globalStyle")
-                Column { x: 12; y: 10; width: parent.width - 24; height: implicitHeight; spacing: 6
-                    StyleSlider { label: t("components.radius"); bp: "uiRadius"; fr: 0; to: 16 }
-                    StyleSlider { label: t("components.controlHeight"); bp: "uiControlHeight"; fr: 28; to: 44 }
-                    StyleSlider { label: t("components.buttonHeight"); bp: "uiButtonHeight"; fr: 28; to: 44 }
-                    StyleSlider { label: t("components.cardHeaderHeight"); bp: "uiCardHeaderHeight"; fr: 28; to: 44 }
-                    StyleSlider { label: t("components.cardPadding"); bp: "uiCardPadding"; fr: 6; to: 20 }
-                    StyleSlider { label: t("components.controlPadding"); bp: "uiControlPaddingX"; fr: 6; to: 18 }
-                    StyleSlider { label: t("components.spacing"); bp: "uiSpacing"; fr: 4; to: 16 }
-                    StyleSlider { label: t("components.borderWidth"); bp: "uiBorderWidth"; fr: 0; to: 2 }
-                    StyleSlider { label: t("components.fontSmall"); bp: "uiSmallFontSize"; fr: 8; to: 14 }
-                    StyleSlider { label: t("components.fontBody"); bp: "uiBodyFontSize"; fr: 10; to: 16 }
-                    StyleSlider { label: t("components.fontValue"); bp: "uiValueFontSize"; fr: 11; to: 18 }
-                    RowLayout { spacing: 8
-                        Text { text: t("components.compactMode") + ":"; color: ApplicationWindow.window.text; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; Layout.preferredWidth: 120 }
-                        Switch { checked: appBackend.uiCompactMode; onCheckedChanged: appBackend.uiCompactMode = checked }
-                    }
-                    RowLayout { spacing: 8
-                        Text { text: t("components.debugOutlines") + ":"; color: ApplicationWindow.window.text; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; Layout.preferredWidth: 120 }
-                        Switch { checked: appBackend.uiShowDebugOutlines; onCheckedChanged: appBackend.uiShowDebugOutlines = checked }
-                    }
-                    Row { spacing: 8
-                        ToolbarButton { text: t("components.saveStyle"); iconName: "save"; variant: "primary"; onClicked: appBackend.saveUiStyle() }
-                        ToolbarButton { text: t("components.resetStyle"); iconName: "rotate-ccw"; onClicked: appBackend.resetUiStyle() }
-                    }
-                }
-            }
-
-            Card { Layout.fillWidth: true; title: t("components.buttons")
-                Column { x: 12; y: 10; width: parent.width - 24; height: implicitHeight; spacing: 8
-                    Flow { width: parent.width; spacing: 6
-                        ToolbarButton { text: t("components.defaultBtn"); iconName: "scan" }
-                        ToolbarButton { text: t("components.primaryBtn"); iconName: "wifi"; variant: "primary" }
-                        ToolbarButton { text: t("components.dangerBtn"); iconName: "trash-2"; variant: "danger" }
-                        ToolbarButton { text: t("components.disabled"); iconName: "square"; enabled: false }
-                        ToolbarButton { iconName: "zap"; variant: "primary" }
-                        ToolbarButton { text: "Long Button Text Here"; iconName: "settings" }
-                    }
-                }
-            }
-
-            Card { Layout.fillWidth: true; title: t("components.inputs")
-                Column { x: 12; y: 10; width: parent.width - 24; height: implicitHeight; spacing: 6
-                    RowLayout { spacing: 8
-                        ColumnLayout { Layout.fillWidth: true; spacing: 2
-                            Text { text: t("components.textField"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor }
-                            TextField { Layout.fillWidth: true; placeholderText: "Placeholder text"; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; color: ApplicationWindow.window.text; leftPadding: ApplicationWindow.window.uiControlPaddingX; rightPadding: ApplicationWindow.window.uiControlPaddingX; background: Rectangle { implicitHeight: ApplicationWindow.window.uiControlHeight; radius: ApplicationWindow.window.uiRadius; color: ApplicationWindow.window.card; border.color: ApplicationWindow.window.border; border.width: ApplicationWindow.window.uiBorderWidth } }
+                Card { width: parent.width; height: implicitHeight; title: t("components.globalStyle")
+                    CardBody {
+                        StyleSlider { lb: t("components.radius"); p: "uiRadius"; fr: 0; to: 16 }
+                        StyleSlider { lb: t("components.controlHeight"); p: "uiControlHeight"; fr: 28; to: 44 }
+                        StyleSlider { lb: t("components.buttonHeight"); p: "uiButtonHeight"; fr: 28; to: 44 }
+                        StyleSlider { lb: t("components.cardHeaderHeight"); p: "uiCardHeaderHeight"; fr: 28; to: 44 }
+                        StyleSlider { lb: t("components.cardPadding"); p: "uiCardPadding"; fr: 6; to: 20 }
+                        StyleSlider { lb: t("components.controlPadding"); p: "uiControlPaddingX"; fr: 6; to: 18 }
+                        StyleSlider { lb: t("components.spacing"); p: "uiSpacing"; fr: 4; to: 16 }
+                        StyleSlider { lb: t("components.borderWidth"); p: "uiBorderWidth"; fr: 0; to: 2 }
+                        StyleSlider { lb: t("components.fontSmall"); p: "uiSmallFontSize"; fr: 8; to: 14 }
+                        StyleSlider { lb: t("components.fontBody"); p: "uiBodyFontSize"; fr: 10; to: 16 }
+                        StyleSlider { lb: t("components.fontValue"); p: "uiValueFontSize"; fr: 11; to: 18 }
+                        RowLayout { spacing: 8
+                            Text { text: t("components.compactMode") + ":"; color: ApplicationWindow.window.text; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; Layout.preferredWidth: 130 }
+                            Switch { checked: appBackend.uiCompactMode; onCheckedChanged: appBackend.uiCompactMode = checked }
                         }
-                        ColumnLayout { Layout.fillWidth: true; spacing: 2
-                            Text { text: t("components.numberField"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor }
-                            TextField { Layout.fillWidth: true; placeholderText: "12345"; inputMethodHints: Qt.ImhDigitsOnly; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; color: ApplicationWindow.window.text; leftPadding: ApplicationWindow.window.uiControlPaddingX; rightPadding: ApplicationWindow.window.uiControlPaddingX; background: Rectangle { implicitHeight: ApplicationWindow.window.uiControlHeight; radius: ApplicationWindow.window.uiRadius; color: ApplicationWindow.window.card; border.color: ApplicationWindow.window.border; border.width: ApplicationWindow.window.uiBorderWidth } }
+                        RowLayout { spacing: 8
+                            Text { text: t("components.debugOutlines") + ":"; color: ApplicationWindow.window.text; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; Layout.preferredWidth: 130 }
+                            Switch { checked: appBackend.uiShowDebugOutlines; onCheckedChanged: appBackend.uiShowDebugOutlines = checked }
+                        }
+                        Row { spacing: 8
+                            ToolbarButton { text: t("components.saveStyle"); iconName: "save"; variant: "primary"; onClicked: appBackend.saveUiStyle() }
+                            ToolbarButton { text: t("components.resetStyle"); iconName: "rotate-ccw"; onClicked: appBackend.resetUiStyle() }
                         }
                     }
                 }
             }
 
-            Card { Layout.fillWidth: true; title: t("components.comboboxes")
-                Column { x: 12; y: 10; width: parent.width - 24; height: implicitHeight; spacing: 6
-                    RowLayout { spacing: 8
-                        ColumnLayout { Layout.fillWidth: true; spacing: 2
-                            Text { text: t("components.combo"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor }
-                            ComboBox { Layout.fillWidth: true; model: ["COM3", "COM4"]; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; implicitHeight: ApplicationWindow.window.uiControlHeight; background: Rectangle { radius: ApplicationWindow.window.uiRadius; color: ApplicationWindow.window.card; border.color: ApplicationWindow.window.border; border.width: ApplicationWindow.window.uiBorderWidth } }
+            Column { id: rightPanel; width: mainContent.rightW; spacing: ApplicationWindow.window.uiSpacing
+                x: mainContent.narrow ? 0 : mainContent.leftW + mainContent.gap
+                y: mainContent.narrow ? leftPanel.height + mainContent.gap : 0
+
+                Card { width: parent.width; height: implicitHeight; title: t("components.buttons")
+                    CardBody {
+                        Flow { id: btnFlow; width: parent.width; spacing: 6
+                            ToolbarButton { text: t("components.defaultBtn"); iconName: "scan" }
+                            ToolbarButton { text: t("components.primaryBtn"); iconName: "wifi"; variant: "primary" }
+                            ToolbarButton { text: t("components.dangerBtn"); iconName: "trash-2"; variant: "danger" }
+                            ToolbarButton { text: t("components.disabled"); iconName: "square"; enabled: false }
+                            ToolbarButton { iconName: "zap"; variant: "primary" }
+                            ToolbarButton { text: "Long"; iconName: "settings" }
                         }
-                        ColumnLayout { Layout.fillWidth: true; spacing: 2
-                            Text { text: t("components.editableCombo"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor }
-                            ComboBox { Layout.fillWidth: true; editable: true; model: ["AUTO", "RTCM32"]; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; implicitHeight: ApplicationWindow.window.uiControlHeight; background: Rectangle { radius: ApplicationWindow.window.uiRadius; color: ApplicationWindow.window.card; border.color: ApplicationWindow.window.border; border.width: ApplicationWindow.window.uiBorderWidth } }
+                        Item { width: 1; height: btnFlow.childrenRect.height }
+                    }
+                }
+
+                Card { width: parent.width; height: implicitHeight; title: t("components.cards")
+                    CardBody {
+                        Flow { id: cardFlow; width: parent.width; spacing: 8
+                            Card { width: 240; height: implicitHeight; title: t("components.staticCard")
+                                CardBody { Text { text: t("components.cardBodyText"); color: ApplicationWindow.window.text; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor } }
+                            }
+                            Card { width: 260; height: implicitHeight; title: t("components.cardWithAction")
+                                headerRight: ToolbarButton { iconName: "zap"; text: t("components.action") }
+                                CardBody { Text { text: t("components.cardActionText"); color: ApplicationWindow.window.text; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor } }
+                            }
+                        }
+                        Item { width: 1; height: cardFlow.childrenRect.height }
+                    }
+                }
+
+                Card { width: parent.width; height: implicitHeight; title: t("components.statusMetrics")
+                    CardBody {
+                        Flow { id: pillFlow; width: parent.width; spacing: 6
+                            StatusPill { label: t("components.connected"); status: "online" }
+                            StatusPill { label: t("components.warning"); status: "recording" }
+                            StatusPill { label: t("components.error"); status: "error" }
+                            StatusPill { label: t("components.offline"); status: "inactive" }
+                        }
+                        Item { width: 1; height: pillFlow.childrenRect.height }
+                        RowLayout { Layout.fillWidth: true; spacing: 8
+                            MetricCell { Layout.fillWidth: true; label: t("components.throughput"); value: "1250"; unit: "B/s" }
+                            MetricCell { Layout.fillWidth: true; label: t("components.latency"); value: "---"; unit: "ms" }
                         }
                     }
                 }
-            }
 
-            Card { Layout.fillWidth: true; title: t("components.cards")
-                Column { x: 12; y: 10; width: parent.width - 24; height: implicitHeight; spacing: 8
-                    Card { width: parent.width; height: implicitHeight; title: t("components.staticCard")
-                        Column { x: 12; y: 10; width: parent.width - 24; height: implicitHeight; spacing: 4
-                            Text { text: "This is body text inside a card."; color: ApplicationWindow.window.text; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor }
-                        }
-                    }
-                    Card { width: parent.width; height: implicitHeight; title: t("components.cardWithAction")
-                        headerRight: ToolbarButton { iconName: "zap"; text: "Action" }
-                        Column { x: 12; y: 10; width: parent.width - 24; height: implicitHeight; spacing: 4
-                            Text { text: "Card with header action button."; color: ApplicationWindow.window.text; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor }
-                        }
-                    }
-                }
-            }
-
-            Card { Layout.fillWidth: true; title: t("components.statusMetrics")
-                Column { x: 12; y: 10; width: parent.width - 24; height: implicitHeight; spacing: 8
-                    Flow { width: parent.width; spacing: 6
-                        Rectangle { implicitWidth: l1.implicitWidth + 12; implicitHeight: 22; radius: 4; color: Qt.rgba(0.29,0.86,0.50,0.12); border.color: Qt.rgba(0.29,0.86,0.50,0.25)
-                            Text { id: l1; text: "Connected"; color: ApplicationWindow.window.ok; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor; font.bold: true; anchors.centerIn: parent } }
-                        Rectangle { implicitWidth: l2.implicitWidth + 12; implicitHeight: 22; radius: 4; color: Qt.rgba(0.98,0.75,0.14,0.12); border.color: Qt.rgba(0.98,0.75,0.14,0.25)
-                            Text { id: l2; text: "Warning"; color: ApplicationWindow.window.warning; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor; font.bold: true; anchors.centerIn: parent } }
-                        Rectangle { implicitWidth: l3.implicitWidth + 12; implicitHeight: 22; radius: 4; color: Qt.rgba(0.97,0.44,0.44,0.12); border.color: Qt.rgba(0.97,0.44,0.44,0.25)
-                            Text { id: l3; text: "Error"; color: ApplicationWindow.window.danger; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor; font.bold: true; anchors.centerIn: parent } }
-                        Rectangle { implicitWidth: l4.implicitWidth + 12; implicitHeight: 22; radius: 4; color: Qt.rgba(0.58,0.64,0.72,0.12); border.color: Qt.rgba(0.58,0.64,0.72,0.25)
-                            Text { id: l4; text: "Offline"; color: ApplicationWindow.window.offline; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor; font.bold: true; anchors.centerIn: parent } }
-                    }
-                    RowLayout { spacing: 8
-                        Rectangle { Layout.fillWidth: true; implicitHeight: 52; radius: ApplicationWindow.window.uiRadius; color: ApplicationWindow.window.cardAlt; border.color: ApplicationWindow.window.border
-                            Column { anchors.centerIn: parent; spacing: 2
-                                Text { text: "Throughput"; color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor }
-                                Text { text: "1250 B/s"; color: ApplicationWindow.window.text; font.pixelSize: ApplicationWindow.window.uiValueFontSize * ApplicationWindow.window.scaleFactor; font.bold: true; font.family: "Consolas" } } }
-                        Rectangle { Layout.fillWidth: true; implicitHeight: 52; radius: ApplicationWindow.window.uiRadius; color: ApplicationWindow.window.cardAlt; border.color: ApplicationWindow.window.border
-                            Column { anchors.centerIn: parent; spacing: 2
-                                Text { text: "Latency"; color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor }
-                                Text { text: "--- ms"; color: ApplicationWindow.window.text; font.pixelSize: ApplicationWindow.window.uiValueFontSize * ApplicationWindow.window.scaleFactor; font.bold: true; font.family: "Consolas" } } }
-                    }
-                }
-            }
-
-            Card { Layout.fillWidth: true; title: t("components.logs")
-                Column { x: 12; y: 10; width: parent.width - 24; height: implicitHeight; spacing: 6
-                    Text { text: "Diagnostic Log"; color: ApplicationWindow.window.text; font.bold: true; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor }
-                    Rectangle { width: parent.width; height: 120; radius: ApplicationWindow.window.uiRadius; color: ApplicationWindow.window.secondary; border.color: ApplicationWindow.window.border
-                        ScrollView { anchors.fill: parent; anchors.margins: 8; clip: true
-                            TextArea { text: "[INFO]  NTRIP connected\n[INFO]  Mount: AUTO\n[INFO]  RTCM stream active\n[DEBUG] Bps: 1250"
-                                readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap; color: ApplicationWindow.window.text; font.family: "Consolas"
-                                font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor; background: Rectangle { color: "transparent" } }
-                        }
+                Card { width: parent.width; height: implicitHeight; title: t("components.logs")
+                    CardBody {
+                        Text { text: t("components.diagLog"); color: ApplicationWindow.window.text; font.bold: true; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor }
+                        LogBox { width: parent.width; height: 100; text: t("components.ntripConnected") + "\n" + t("components.mountAuto") + "\n" + t("components.rtcmActive") + "\n" + t("components.rateExample") }
                     }
                 }
             }
         }
     }
 
+    component CardBody: Column {
+        x: ApplicationWindow.window.uiCardPadding; y: ApplicationWindow.window.uiCardPadding
+        width: parent ? parent.width - ApplicationWindow.window.uiCardPadding * 2 : 0
+        spacing: ApplicationWindow.window.uiSpacing; height: implicitHeight
+    }
+
     component StyleSlider: RowLayout {
-        property string label: ""; property string bp: ""; property int fr: 0; property int to: 10
+        property string lb: ""; property string p: ""; property int fr: 0; property int to: 10
         spacing: 6
-        Text { text: parent.label + ":"; color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; Layout.preferredWidth: 120 }
-        Slider { Layout.fillWidth: true; from: parent.fr; to: parent.to; stepSize: 1; value: appBackend[parent.bp]; onMoved: appBackend[parent.bp] = value }
-        Text { text: appBackend[parent.bp] + " px"; color: ApplicationWindow.window.text; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; font.family: "Consolas"; Layout.preferredWidth: 44; horizontalAlignment: Text.AlignRight }
+        Text { text: parent.lb + ":"; color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; Layout.preferredWidth: 130 }
+        Slider { Layout.fillWidth: true; from: parent.fr; to: parent.to; stepSize: 1; value: appBackend[parent.p]; onMoved: appBackend[parent.p] = Math.round(value) }
+        Text { text: appBackend[parent.p] + " px"; color: ApplicationWindow.window.text; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; font.family: "Consolas"; Layout.preferredWidth: 44; horizontalAlignment: Text.AlignRight }
     }
 }
