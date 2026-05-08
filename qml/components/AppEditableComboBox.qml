@@ -13,7 +13,7 @@ Item {
     implicitHeight: ApplicationWindow.window.uiControlHeight
     implicitWidth: 220
 
-    readonly property int dropAreaW: Math.max(40, implicitHeight)
+    readonly property int dropAreaW: Math.max(40, ApplicationWindow.window.uiControlHeight)
 
     function displayFor(md) {
         if (md === undefined || md === null) return ""
@@ -53,7 +53,7 @@ Item {
         id: arrowArea
         anchors.top: parent.top; anchors.bottom: parent.bottom
         anchors.right: parent.right; width: control.dropAreaW; z: 11
-        Text { anchors.centerIn: parent; text: "\u25BE"; color: ApplicationWindow.window.muted; font.pixelSize: 12 * ApplicationWindow.window.scaleFactor }
+        AppComboArrow { anchors.fill: parent }
     }
 
     MouseArea {
@@ -68,11 +68,12 @@ Item {
         id: popup
         x: 0; y: control.height + 2; width: control.width; padding: 4
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
-        readonly property bool empty: !(control.model && control.model.length > 0)
+        readonly property bool empty: control.modelCount() === 0
+        function modelCount() { if (!control.model) return 0; if (control.model.length !== undefined) return control.model.length; if (control.model.count !== undefined) return control.model.count; return 0 }
         implicitHeight: empty ? (Math.max(30, ApplicationWindow.window.uiControlHeight - 2) + 12) : Math.min(listView.contentHeight + 8, 220)
         background: Rectangle { radius: ApplicationWindow.window.uiRadius; color: ApplicationWindow.window.card; border.width: ApplicationWindow.window.uiBorderWidth; border.color: ApplicationWindow.window.border }
         contentItem: Item {
-            implicitHeight: popup.empty ? Math.max(30, ApplicationWindow.window.uiControlHeight - 2) : listView.implicitHeight
+            implicitHeight: popup.empty ? Math.max(30, ApplicationWindow.window.uiControlHeight - 2) : listView.contentHeight
             ListView {
                 id: listView; anchors.fill: parent; visible: !popup.empty; clip: true; implicitHeight: contentHeight
                 model: control.model || []
@@ -88,9 +89,12 @@ Item {
                 }
             }
             Text {
-                visible: popup.empty; anchors.centerIn: parent
+                visible: popup.empty
+                anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; anchors.right: parent.right
+                anchors.leftMargin: ApplicationWindow.window.uiControlPaddingX; anchors.rightMargin: ApplicationWindow.window.uiControlPaddingX
                 text: appBackend.t("components.noOptions"); color: ApplicationWindow.window.muted
                 font.pixelSize: Math.max(10, (ApplicationWindow.window.uiBodyFontSize - 1) * ApplicationWindow.window.scaleFactor)
+                elide: Text.ElideRight; maximumLineCount: 1
             }
         }
     }

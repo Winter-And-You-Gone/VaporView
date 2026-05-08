@@ -29,8 +29,10 @@ ComboBox {
         contentItem: Text { text: opt.text; color: ApplicationWindow.window.text; font: opt.font; verticalAlignment: Text.AlignVCenter; leftPadding: ApplicationWindow.window.uiControlPaddingX; rightPadding: ApplicationWindow.window.uiControlPaddingX; elide: Text.ElideRight }
     }
 
-    indicator: Item { width: Math.max(40, control.height); height: control.height; x: control.width - width
-        Text { anchors.centerIn: parent; text: "\u25BE"; color: ApplicationWindow.window.muted; font.pixelSize: 12 * ApplicationWindow.window.scaleFactor } }
+    indicator: Item {
+        width: Math.max(40, ApplicationWindow.window.uiControlHeight); height: control.height; x: control.width - width
+        AppComboArrow { anchors.fill: parent }
+    }
     contentItem: Text { leftPadding: ApplicationWindow.window.uiControlPaddingX; rightPadding: Math.max(44, control.height + 4); text: control.displayText; color: ApplicationWindow.window.text; font: control.font; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
     background: Rectangle { implicitHeight: control.implicitHeight; radius: ApplicationWindow.window.uiRadius; color: control.hovered ? ApplicationWindow.window.secondary : ApplicationWindow.window.card; border.width: ApplicationWindow.window.uiBorderWidth; border.color: control.activeFocus || control.popup.visible ? (ApplicationWindow.window.dark ? "#60a5fa" : "#2563eb") : ApplicationWindow.window.border }
 
@@ -39,15 +41,18 @@ ComboBox {
         y: control.height + 2; width: control.width; padding: 4
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
         readonly property bool empty: control.count === 0
-        implicitHeight: empty ? (Math.max(30, ApplicationWindow.window.uiControlHeight - 2) + 12) : Math.min(contentItem.implicitHeight + 8, 220)
+        implicitHeight: empty ? (Math.max(30, ApplicationWindow.window.uiControlHeight - 2) + 12) : Math.min(listView.contentHeight + 8, 220)
         background: Rectangle { radius: ApplicationWindow.window.uiRadius; color: ApplicationWindow.window.card; border.width: ApplicationWindow.window.uiBorderWidth; border.color: ApplicationWindow.window.border }
         contentItem: Item {
-            implicitHeight: comboPopup.empty ? Math.max(30, ApplicationWindow.window.uiControlHeight - 2) : listView.implicitHeight
+            implicitHeight: comboPopup.empty ? Math.max(30, ApplicationWindow.window.uiControlHeight - 2) : listView.contentHeight
             ListView { id: listView; anchors.fill: parent; visible: !comboPopup.empty; clip: true; implicitHeight: contentHeight; model: control.delegateModel; currentIndex: control.highlightedIndex }
             Text {
-                visible: comboPopup.empty; anchors.centerIn: parent
+                visible: comboPopup.empty
+                anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; anchors.right: parent.right
+                anchors.leftMargin: ApplicationWindow.window.uiControlPaddingX; anchors.rightMargin: ApplicationWindow.window.uiControlPaddingX
                 text: appBackend.t("components.noOptions"); color: ApplicationWindow.window.muted
                 font.pixelSize: Math.max(10, (ApplicationWindow.window.uiBodyFontSize - 1) * ApplicationWindow.window.scaleFactor)
+                elide: Text.ElideRight; maximumLineCount: 1
             }
         }
     }
