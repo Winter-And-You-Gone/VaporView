@@ -392,7 +392,7 @@ Item {
                             anchors.right: parent.right
                             anchors.top: ggaTopRow.bottom
                             anchors.topMargin: 26
-                            anchors.bottom: parent.bottom
+                            height: Math.round(80 * ApplicationWindow.window.scaleFactor)
                             clip: true
                             ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
