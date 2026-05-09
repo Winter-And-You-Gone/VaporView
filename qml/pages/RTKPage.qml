@@ -719,7 +719,7 @@ Item {
         indicator: Item { width: Math.max(40, mpCombo.height); height: mpCombo.height; x: mpCombo.width - width
             AppComboArrow { anchors.fill: parent } }
         contentItem: Text {
-            leftPadding: 10; rightPadding: 24
+            leftPadding: 10; rightPadding: Math.max(44, ApplicationWindow.window.uiControlHeight + 4)
             text: portCombo.displayText; color: ApplicationWindow.window.text
             font: portCombo.font; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
         }
@@ -752,7 +752,7 @@ Item {
         indicator: Item { width: Math.max(40, ggaCombo.height); height: ggaCombo.height; x: ggaCombo.width - width
             AppComboArrow { anchors.fill: parent } }
         contentItem: Text {
-            leftPadding: 10; rightPadding: 24
+            leftPadding: 10; rightPadding: Math.max(44, ApplicationWindow.window.uiControlHeight + 4)
             text: ggaCombo.displayText; color: ApplicationWindow.window.text
             font: ggaCombo.font; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
         }
@@ -796,7 +796,7 @@ Item {
         indicator: Item { width: Math.max(40, rateCombo.height); height: rateCombo.height; x: rateCombo.width - width
             AppComboArrow { anchors.fill: parent } }
         contentItem: Text {
-            leftPadding: 10; rightPadding: 24
+            leftPadding: 10; rightPadding: Math.max(44, ApplicationWindow.window.uiControlHeight + 4)
             text: rateCombo.displayText; color: ApplicationWindow.window.text
             font: rateCombo.font; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
         }
@@ -811,13 +811,14 @@ Item {
     }
 
     component RtkPopup: Popup {
+        id: rp
         property real popupWidth: 100; property var model; property int index: 0
         y: parent.height + 2; width: popupWidth; implicitHeight: contentItem.implicitHeight + 8; padding: 4
         background: Rectangle { radius: ApplicationWindow.window.uiRadius; color: ApplicationWindow.window.card; border.width: ApplicationWindow.window.uiBorderWidth; border.color: ApplicationWindow.window.border }
         contentItem: ListView {
             clip: true; implicitHeight: contentHeight
-            model: parent.model
-            currentIndex: parent.index
+            model: rp.model
+            currentIndex: rp.index
         }
     }
 }

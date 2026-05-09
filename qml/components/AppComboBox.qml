@@ -30,8 +30,8 @@ ComboBox {
     }
 
     indicator: Item {
-        width: Math.max(40, ApplicationWindow.window.uiControlHeight); height: control.height; x: control.width - width
-        AppComboArrow { anchors.fill: parent }
+        width: Math.max(40, ApplicationWindow.window.uiControlHeight); height: control.height; x: control.width - width; y: 0; z: 20
+        AppComboArrow { anchors.fill: parent; arrowColor: ApplicationWindow.window.muted }
     }
     contentItem: Text { leftPadding: ApplicationWindow.window.uiControlPaddingX; rightPadding: Math.max(44, control.height + 4); text: control.displayText; color: ApplicationWindow.window.text; font: control.font; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
     background: Rectangle { implicitHeight: control.implicitHeight; radius: ApplicationWindow.window.uiRadius; color: control.hovered ? ApplicationWindow.window.secondary : ApplicationWindow.window.card; border.width: ApplicationWindow.window.uiBorderWidth; border.color: control.activeFocus || control.popup.visible ? (ApplicationWindow.window.dark ? "#60a5fa" : "#2563eb") : ApplicationWindow.window.border }

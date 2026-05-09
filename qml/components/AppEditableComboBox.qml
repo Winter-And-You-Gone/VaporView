@@ -52,15 +52,15 @@ Item {
     Item {
         id: arrowArea
         anchors.top: parent.top; anchors.bottom: parent.bottom
-        anchors.right: parent.right; width: control.dropAreaW; z: 11
-        AppComboArrow { anchors.fill: parent }
+        anchors.right: parent.right; width: control.dropAreaW; z: 20
+        AppComboArrow { anchors.fill: parent; arrowColor: ApplicationWindow.window.muted }
     }
 
     MouseArea {
         anchors.top: parent.top; anchors.bottom: parent.bottom
         anchors.right: parent.right; width: control.dropAreaW
         hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-        acceptedButtons: Qt.LeftButton; z: 10
+        acceptedButtons: Qt.LeftButton; z: 19
         onClicked: { control.commit(); popup.open() }
     }
 
