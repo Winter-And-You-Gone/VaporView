@@ -727,6 +727,8 @@ class RtkBackend : public QObject
     Q_PROPERTY(int timeoutMs READ timeoutMs WRITE setTimeoutMs NOTIFY configChanged)
     Q_PROPERTY(int reconnectMs READ reconnectMs WRITE setReconnectMs NOTIFY configChanged)
     Q_PROPERTY(int ggaGenerationRateHz READ ggaGenerationRateHz WRITE setGgaGenerationRateHz NOTIFY configChanged)
+    Q_PROPERTY(bool testingConnection READ testingConnection NOTIFY testingConnectionChanged)
+
 
 public:
     explicit RtkBackend(DeviceBackend *deviceBackend, QObject *parent = nullptr);
@@ -750,6 +752,7 @@ public:
     int timeoutMs() const;
     int reconnectMs() const;
     int ggaGenerationRateHz() const;
+    bool testingConnection() const;
 
     Q_INVOKABLE void start();
     Q_INVOKABLE void stop();
@@ -783,6 +786,7 @@ signals:
     void mountPointOptionsChanged();
     void outputPortOptionsChanged();
     void notificationRequested(const QString& level, const QString& message);
+    void testingConnectionChanged();
 
 private:
     RtkStreamConfig buildConfig() const;
@@ -801,6 +805,7 @@ private:
     int timeout_ms_ = 5000;
     int reconnect_ms_ = 1000;
     bool auto_reconnect_ = true;
+    bool testing_connection_ = false;
     int gga_generation_rate_hz_ = 1;
     QStringList diagnostics_;
     QVariantMap stats_;

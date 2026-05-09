@@ -1065,6 +1065,13 @@ QString AppBackend::t(const QString& key) const
         {"settings.browse", "浏览"}, {"settings.defaultSampleRate", "默认采样率"}, {"settings.displayDensity", "显示密度"},
         {"settings.fontScale", "字体比例"}, {"settings.advancedDiag", "高级诊断"}, {"settings.about", "关于"},
         {"settings.iconLibrary", "图标库"},
+        {"settings.sensorCsv", "Sensor CSV"}, {"settings.waveform", "波形"},
+        {"settings.languageZh", "中文"}, {"settings.languageEn", "English"},
+        {"settings.backendInfo", "后端：QObject/QML 进程内"},
+        {"settings.collectorsInfo", "采集器：现有 C++ 串口服务"},
+        {"settings.rawDatInfo", "原始 DAT：格式 v2"},
+        {"settings.save", "保存"}, {"settings.reset", "重置"},
+        {"settings.version", "版本"}, {"settings.aboutTitle", "VaporView 1.0.0 - 机载水汽探测"},
         {"settings.aboutText", "VaporView 机载水汽检测系统"}, {"settings.version", "版本"}, {"settings.save", "保存"},
         {"settings.reset", "重置"}, {"unit.m", "m"}, {"unit.ms", "m/s"}, {"unit.deg", "°"}, {"unit.celsius", "°C"},
         {"unit.percent", "%"}, {"unit.kpa", "kPa"}, {"unit.hz", "Hz"}, {"unit.v", "V"}, {"unit.gb", "GB"},
@@ -1180,6 +1187,13 @@ QString AppBackend::t(const QString& key) const
         {"settings.browse", "Browse"}, {"settings.defaultSampleRate", "Default Sample Rate"}, {"settings.displayDensity", "Display Density"},
         {"settings.fontScale", "Font Scale"}, {"settings.advancedDiag", "Advanced Diag"}, {"settings.about", "About"},
         {"settings.iconLibrary", "Icon Library"},
+        {"settings.sensorCsv", "Sensor CSV"}, {"settings.waveform", "Waveform"},
+        {"settings.languageZh", "中文"}, {"settings.languageEn", "English"},
+        {"settings.backendInfo", "Backend: QObject/QML in-process"},
+        {"settings.collectorsInfo", "Collectors: existing C++ serial services"},
+        {"settings.rawDatInfo", "Raw DAT: format v2"},
+        {"settings.save", "Save"}, {"settings.reset", "Reset"},
+        {"settings.version", "Version"}, {"settings.aboutTitle", "VaporView 1.0.0 - Airborne Water Vapor Detection"},
         {"settings.aboutText", "VaporView Airborne System"}, {"settings.version", "Version"}, {"settings.save", "Save"},
         {"settings.reset", "Reset"}, {"unit.m", "m"}, {"unit.ms", "m/s"}, {"unit.deg", "°"}, {"unit.celsius", "°C"},
         {"unit.percent", "%"}, {"unit.kpa", "kPa"}, {"unit.hz", "Hz"}, {"unit.v", "V"}, {"unit.gb", "GB"},
@@ -4805,15 +4819,55 @@ void RtkBackend::stop()
     emit runningChanged();
 }
 
+bool RtkBackend::testingConnection() const { return testing_connection_; }
+
 void RtkBackend::testConnection()
 {
+    if (testing_connection_) {
+        appendDiagnostic(QStringLiteral("连接测试正在进行中，请稍候。"), QStringLiteral("warning"));
+        return;
+    }
     const RtkStreamConfig config = buildConfig();
     if (config.server.isEmpty() || config.port.isEmpty())
     {
         appendDiagnostic(QStringLiteral("请先输入服务器地址和端口。"), QStringLiteral("warning"));
         return;
     }
-    appendDiagnostic(QStringLiteral("RTK 配置完整，可进行连接测试。"));
+    appendDiagnostic(QStringLiteral("RTK 配置完整，开始连接测试。"));
+    testing_connection_ = true;
+    emit testingConnectionChanged();
+
+    QTcpSocket *socket = new QTcpSocket(this);
+    socket->connectToHost(config.server, config.port.toUShort());
+    appendDiagnostic(QStringLiteral("正在连接差分服务器 %1:%2...").arg(config.server, config.port));
+
+    const int timeoutMs = timeout_ms_;
+    QTimer::singleShot(timeoutMs, socket, [this, socket, config]() {
+        if (socket->state() != QAbstractSocket::ConnectedState) {
+            appendDiagnostic(QStringLiteral("连接测试失败：超时"), QStringLiteral("error"));
+            socket->abort();
+            socket->deleteLater();
+            testing_connection_ = false;
+            emit testingConnectionChanged();
+        }
+    });
+
+    QObject::connect(socket, &QTcpSocket::connected, this, [this, socket, config]() {
+        appendDiagnostic(QStringLiteral("已连接到差分服务器。"));
+        appendDiagnostic(QStringLiteral("NTRIP 连接测试成功。差分服务器 %1:%2 可达。").arg(config.server, config.port));
+        socket->disconnectFromHost();
+        socket->deleteLater();
+        testing_connection_ = false;
+        emit testingConnectionChanged();
+    });
+
+    QObject::connect(socket, &QTcpSocket::errorOccurred, this, [this, socket, config](QAbstractSocket::SocketError err) {
+        Q_UNUSED(err)
+        appendDiagnostic(QStringLiteral("连接测试失败：%1").arg(socket->errorString()), QStringLiteral("error"));
+        socket->deleteLater();
+        testing_connection_ = false;
+        emit testingConnectionChanged();
+    });
 }
 
 void RtkBackend::saveConfig()

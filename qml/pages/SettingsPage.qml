@@ -43,10 +43,11 @@ Item {
                 RowLayout {
                     Layout.fillWidth: true
                     Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.language"); color: ApplicationWindow.window.muted; font.pixelSize: 11 }
-                    ComboBox {
-                        model: ["zh", "en"]
+                    AppComboBox {
+                        Layout.preferredWidth: 120
+                        model: [ApplicationWindow.window.t("settings.languageZh"), ApplicationWindow.window.t("settings.languageEn")]
                         currentIndex: appBackend.language === "zh" ? 0 : 1
-                        onActivated: appBackend.language = currentText
+                        onActivated: appBackend.language = index === 0 ? "zh" : "en"
                     }
                 }
                 RowLayout {
@@ -57,11 +58,11 @@ Item {
                 RowLayout {
                     Layout.fillWidth: true
                     Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.iconLibrary"); color: ApplicationWindow.window.muted; font.pixelSize: 11 }
-                    ComboBox {
+                    AppComboBox {
                         Layout.preferredWidth: 160
                         model: ["Lucide", "Tabler Icons", "Phosphor Icons"]
                         currentIndex: iconLibraryIndex()
-                        onActivated: index => setIconLibrary(index)
+                        onActivated: function(idx) { setIconLibrary(idx) }
                     }
                 }
             }
@@ -74,7 +75,7 @@ Item {
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 12
-                TextField {
+                AppTextField {
                     Layout.fillWidth: true
                     text: settingsBackend.recordDirectory
                     onEditingFinished: settingsBackend.recordDirectory = text
@@ -92,12 +93,12 @@ Item {
                 anchors.margins: 12
                 RowLayout {
                     Layout.fillWidth: true
-                    Text { Layout.fillWidth: true; text: "Sensor CSV"; color: ApplicationWindow.window.muted; font.pixelSize: 11 }
+                    Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.sensorCsv"); color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
                     SpinBox { from: 1; to: 200; value: recordingBackend.exportRateHz; onValueModified: recordingBackend.exportRateHz = value }
                 }
                 RowLayout {
                     Layout.fillWidth: true
-                    Text { Layout.fillWidth: true; text: "Waveform"; color: ApplicationWindow.window.muted; font.pixelSize: 11 }
+                    Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.waveform"); color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
                     SpinBox { from: 0; to: 200; value: recordingBackend.waveformExportRateHz; onValueModified: recordingBackend.waveformExportRateHz = value }
                 }
             }
@@ -126,9 +127,9 @@ Item {
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 12
-                Text { Layout.fillWidth: true; text: "Backend: QObject/QML in-process"; color: ApplicationWindow.window.muted; font.pixelSize: 11 }
-                Text { Layout.fillWidth: true; text: "Collectors: existing C++ serial services"; color: ApplicationWindow.window.muted; font.pixelSize: 11 }
-                Text { Layout.fillWidth: true; text: "Raw DAT: format v2"; color: ApplicationWindow.window.muted; font.pixelSize: 11 }
+                Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.backendInfo"); color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
+                Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.collectorsInfo"); color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
+                Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.rawDatInfo"); color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
             }
         }
 

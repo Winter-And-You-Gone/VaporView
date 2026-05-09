@@ -768,11 +768,13 @@ Item {
         font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
         implicitHeight: 34
         Component.onCompleted: {
+            var found = false
             for (var i = 0; i < page.ggaRateModel.length; ++i) {
-                if (page.ggaRateModel[i].value === rtkBackend.ggaGenerationRateHz) {
-                    rateCombo.currentIndex = i; break
+                if (Number(page.ggaRateModel[i].value) === Number(rtkBackend.ggaGenerationRateHz)) {
+                    rateCombo.currentIndex = i; found = true; break
                 }
             }
+            if (!found) rateCombo.currentIndex = 0
         }
         onActivated: {
             if (rateCombo.currentIndex >= 0)
