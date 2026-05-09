@@ -415,7 +415,7 @@ Item {
                                 readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap
                                 color: ApplicationWindow.window.text
                                 font.family: "Consolas"
-                                font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+                                font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor
                                 background: Rectangle { color: "transparent" }
                             }
                         }
@@ -515,7 +515,7 @@ Item {
                                 selectedTextColor: ApplicationWindow.window.primaryForeground
                                 selectionColor: ApplicationWindow.window.primary
                                 font.family: "Consolas"
-                                font.pixelSize: Math.round(10 * ApplicationWindow.window.scaleFactor)
+                                font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor
                                 background: Rectangle { color: "transparent" }
                             }
                         }

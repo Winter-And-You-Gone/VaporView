@@ -10,10 +10,9 @@ Item {
     signal accepted(string text)
     signal activated(int index, string text, var modelData)
 
-    implicitHeight: ApplicationWindow.window.uiControlHeight
+    implicitHeight: 30
     implicitWidth: 220
-
-    readonly property int dropAreaW: Math.max(40, ApplicationWindow.window.uiControlHeight)
+    readonly property int dropAreaW: 34
 
     function displayFor(md) {
         if (md === undefined || md === null) return ""
@@ -35,25 +34,27 @@ Item {
         anchors.fill: parent
         text: control.text
         placeholderText: control.placeholderText
-        font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor
-        color: ApplicationWindow.window.text
+        font.family: "Consolas"
+        font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
+        color: control.enabled ? ApplicationWindow.window.text : ApplicationWindow.window.muted
         selectedTextColor: ApplicationWindow.window.primaryForeground
         selectionColor: ApplicationWindow.window.primary
         placeholderTextColor: ApplicationWindow.window.muted
-        leftPadding: ApplicationWindow.window.uiControlPaddingX
-        rightPadding: control.dropAreaW + 6
+        leftPadding: 10; rightPadding: 28
         selectByMouse: true
         verticalAlignment: TextInput.AlignVCenter
-        background: Rectangle { implicitHeight: control.implicitHeight; radius: ApplicationWindow.window.uiRadius; color: editor.hovered ? ApplicationWindow.window.secondary : ApplicationWindow.window.card; border.width: ApplicationWindow.window.uiBorderWidth; border.color: editor.activeFocus ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8") : ApplicationWindow.window.border }
+        background: Rectangle { implicitHeight: 30; radius: 5; color: control.enabled ? ApplicationWindow.window.bg : ApplicationWindow.window.cardAlt; border.color: editor.activeFocus || popup.visible ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8") : ApplicationWindow.window.border; border.width: 1 }
         onEditingFinished: control.commit()
         onAccepted: control.commit()
     }
 
-    Item {
-        id: arrowArea
-        anchors.top: parent.top; anchors.bottom: parent.bottom
-        anchors.right: parent.right; width: control.dropAreaW; z: 20
-        AppComboArrow { anchors.fill: parent; arrowColor: ApplicationWindow.window.muted }
+    LucideIcon {
+        width: 14; height: 14
+        anchors.right: parent.right; anchors.rightMargin: 10
+        anchors.verticalCenter: parent.verticalCenter
+        name: "chevron-down"
+        iconColor: control.enabled ? ApplicationWindow.window.text : ApplicationWindow.window.muted
+        stroke: 2; z: 20
     }
 
     MouseArea {
@@ -66,36 +67,28 @@ Item {
 
     Popup {
         id: popup
-        x: 0; y: control.height + 2; width: control.width; padding: 4
+        x: 0; y: control.height + 2; width: control.width; padding: 1
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
-        readonly property bool empty: control.modelCount() === 0
+        readonly property bool empty: modelCount() === 0
         function modelCount() { if (!control.model) return 0; if (control.model.length !== undefined) return control.model.length; if (control.model.count !== undefined) return control.model.count; return 0 }
-        implicitHeight: empty ? (Math.max(30, ApplicationWindow.window.uiControlHeight - 2) + 12) : Math.min(listView.contentHeight + 8, 220)
-        background: Rectangle { radius: ApplicationWindow.window.uiRadius; color: ApplicationWindow.window.card; border.width: ApplicationWindow.window.uiBorderWidth; border.color: ApplicationWindow.window.border }
+        implicitHeight: empty ? 32 : Math.min(listView.contentHeight, 220)
+        background: Rectangle { radius: 5; color: ApplicationWindow.window.card; border.color: ApplicationWindow.window.border; border.width: 1 }
         contentItem: Item {
-            implicitHeight: popup.empty ? Math.max(30, ApplicationWindow.window.uiControlHeight - 2) : listView.contentHeight
+            implicitHeight: popup.empty ? 30 : listView.contentHeight
             ListView {
                 id: listView; anchors.fill: parent; visible: !popup.empty; clip: true; implicitHeight: contentHeight
                 model: control.model || []
                 delegate: ItemDelegate {
                     id: opt
-                    width: listView.width; height: Math.max(30, ApplicationWindow.window.uiControlHeight - 2)
+                    width: listView.width; height: 30
                     text: control.displayFor(modelData)
-                    font.pixelSize: Math.max(10, (ApplicationWindow.window.uiBodyFontSize - 1) * ApplicationWindow.window.scaleFactor)
-                    font.bold: false
-                    background: Rectangle { radius: Math.max(4, ApplicationWindow.window.uiRadius - 2); color: opt.hovered ? ApplicationWindow.window.secondary : "transparent" }
-                    contentItem: Text { text: opt.text; color: ApplicationWindow.window.text; font: opt.font; verticalAlignment: Text.AlignVCenter; leftPadding: ApplicationWindow.window.uiControlPaddingX; rightPadding: ApplicationWindow.window.uiControlPaddingX; elide: Text.ElideRight }
+                    font.family: "Consolas"; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor; font.bold: false
+                    background: Rectangle { radius: 5; color: opt.hovered ? ApplicationWindow.window.secondary : "transparent" }
+                    contentItem: Text { text: opt.text; color: ApplicationWindow.window.text; font: opt.font; verticalAlignment: Text.AlignVCenter; leftPadding: 10; rightPadding: 10; elide: Text.ElideRight }
                     onClicked: { var v = control.displayFor(modelData); editor.text = v; control.text = v; control.activated(index, v, modelData); control.accepted(v); popup.close() }
                 }
             }
-            Text {
-                visible: popup.empty
-                anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; anchors.right: parent.right
-                anchors.leftMargin: ApplicationWindow.window.uiControlPaddingX; anchors.rightMargin: ApplicationWindow.window.uiControlPaddingX
-                text: appBackend.t("components.noOptions"); color: ApplicationWindow.window.muted
-                font.pixelSize: Math.max(10, (ApplicationWindow.window.uiBodyFontSize - 1) * ApplicationWindow.window.scaleFactor)
-                elide: Text.ElideRight; maximumLineCount: 1
-            }
+            Text { visible: popup.empty; anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; anchors.right: parent.right; anchors.leftMargin: 10; anchors.rightMargin: 10; text: appBackend.t("components.noOptions"); color: ApplicationWindow.window.muted; font.family: "Consolas"; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor; elide: Text.ElideRight }
         }
     }
 
