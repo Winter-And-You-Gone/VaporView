@@ -4810,8 +4810,10 @@ void RtkBackend::testConnection()
     const RtkStreamConfig config = buildConfig();
     if (config.server.isEmpty() || config.port.isEmpty())
     {
-    appendDiagnostic(QStringLiteral("请先输入服务器地址和端口。"), QStringLiteral("warning"));
-
+        appendDiagnostic(QStringLiteral("请先输入服务器地址和端口。"), QStringLiteral("warning"));
+        return;
+    }
+    appendDiagnostic(QStringLiteral("RTK 配置完整，可进行连接测试。"));
 }
 
 void RtkBackend::saveConfig()
