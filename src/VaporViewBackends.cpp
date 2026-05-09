@@ -4844,9 +4844,25 @@ void RtkBackend::testConnection()
         return;
     }
     RtkStreamConfig config = buildConfig();
-    if (config.server.trimmed().isEmpty() || config.port.trimmed().isEmpty() || config.mountpoint.trimmed().isEmpty()) {
-        appendDiagnostic(QStringLiteral("RTK 配置不完整，请检查服务器、端口和挂载点。"), QStringLiteral("warning"));
+    if (config.server.trimmed().isEmpty() || config.port.trimmed().isEmpty()) {
+        appendDiagnostic(QStringLiteral("RTK 配置不完整，请检查服务器和端口。"), QStringLiteral("warning"));
         return;
+    }
+    if (config.mountpoint.trimmed().isEmpty() || config.mountpoint.trimmed() == QStringLiteral("AUTO")) {
+        QString resolved;
+        if (!mount_point_options_.isEmpty()) {
+            for (const QString& opt : mount_point_options_) {
+                if (opt != QStringLiteral("AUTO")) { resolved = opt; break; }
+            }
+        }
+        if (resolved.isEmpty()) {
+            appendDiagnostic(QStringLiteral("当前挂载点为 AUTO，但没有可用挂载点列表。请先点击【检测挂载点】，或手动选择挂载点后再测试。"), QStringLiteral("warning"));
+            return;
+        }
+        appendDiagnostic(QStringLiteral("挂载点为 AUTO，已自动选择 %1 进行测试。").arg(resolved));
+        config.mountpoint = resolved;
+    } else {
+        config.mountpoint = config.mountpoint.trimmed();
     }
     if (test_connection_thread_.joinable()) test_connection_thread_.join();
     setTestingConnection(true);
@@ -4903,31 +4919,60 @@ void RtkBackend::runStr2strConnectionTest(RtkStreamConfig config)
     QString err;
     if (!testSvc.start(config, &err)) { postLog(QStringLiteral("str2str 测试会话启动失败：%1").arg(err)); sinkServer.close(); finish(); return; }
 
+    auto isSuccess = [](const RtkStreamStats& s) {
+        if (s.rtcm3CrcOkCount >= 4) return true;
+        if (s.rtcm3CrcOkCount >= 3 && s.rtcm3FrameCount >= 3) return true;
+        if (s.rtcm3FrameCount >= 4 && s.rtcmDiagnosticBytes >= 128) return true;
+        return false;
+    };
+
+    constexpr int kMinRtcmTestMs = 2000;
+    const int timeoutMs = std::max(12000, config.timeoutMs * 2);
     std::unique_ptr<QTcpSocket> sink;
     QElapsedTimer timer; timer.start();
-    const int timeout = std::max(6000, config.timeoutMs);
     bool ok = false;
     RtkStreamStats st;
 
-    while (timer.elapsed() < timeout) {
+    qint64 lastLogMs = 0;
+    std::uint64_t lastBytes = 0;
+    int lastFrames = 0, lastCrcOk = 0;
+
+    while (timer.elapsed() < timeoutMs) {
         if (!sink) {
             if (sinkServer.hasPendingConnections() || sinkServer.waitForNewConnection(50))
                 { sink.reset(sinkServer.nextPendingConnection()); postLog(QStringLiteral("本地测试接收端已连接。")); }
         }
         if (sink) { if (sink->bytesAvailable() > 0) sink->readAll(); else sink->waitForReadyRead(10); }
         st = testSvc.stats();
-        if (st.rtcm3CrcOkCount > 0 || st.rtcm3FrameCount > 0 || st.rtcmDiagnosticBytes > 0 || st.inputBytes > 0 || st.inputBps > 0) { ok = true; break; }
+
+        bool changed = st.rtcmDiagnosticBytes != lastBytes || st.rtcm3FrameCount != lastFrames || st.rtcm3CrcOkCount != lastCrcOk;
+        if (changed && timer.elapsed() - lastLogMs >= 1000) {
+            lastLogMs = timer.elapsed(); lastBytes = st.rtcmDiagnosticBytes; lastFrames = st.rtcm3FrameCount; lastCrcOk = st.rtcm3CrcOkCount;
+            postLog(QStringLiteral("等待 RTCM 数据中：原始 %1 字节，RTCM3 帧 %2，CRC 正确 %3，CRC 失败 %4。")
+                .arg(st.rtcmDiagnosticBytes).arg(st.rtcm3FrameCount).arg(st.rtcm3CrcOkCount).arg(st.rtcm3CrcFailCount));
+        }
+        if (timer.elapsed() >= kMinRtcmTestMs && isSuccess(st)) { ok = true; break; }
         QThread::msleep(100);
     }
     st = testSvc.stats();
     testSvc.stop();
     sinkServer.close();
+
     if (ok) {
-        postLog(QStringLiteral("已接收到 RTCM 数据：%1 字节，RTCM3 帧 %2，CRC 正确 %3。").arg(st.rtcmDiagnosticBytes).arg(st.rtcm3FrameCount).arg(st.rtcm3CrcOkCount));
+        postLog(QStringLiteral("已接收到有效 RTCM3 数据：原始 %1 字节，RTCM3 帧 %2，CRC 正确 %3，CRC 失败 %4。")
+            .arg(st.rtcmDiagnosticBytes).arg(st.rtcm3FrameCount).arg(st.rtcm3CrcOkCount).arg(st.rtcm3CrcFailCount));
+        if (!st.rtcmMessageTypes.trimmed().isEmpty())
+            postLog(QStringLiteral("RTCM 消息类型：%1。").arg(st.rtcmMessageTypes));
         postLog(QStringLiteral("NTRIP 数据链路测试成功。"));
     } else {
-        QString d = st.message.trimmed(); if (d.isEmpty()) d = QStringLiteral("未收到 RTCM 数据");
-        postLog(QStringLiteral("测试超时，未收到 RTCM 数据。%1").arg(d));
+        if (st.rtcm3FrameCount > 0 && st.rtcm3CrcOkCount == 0)
+            postLog(QStringLiteral("已收到 RTCM3 帧，但 CRC 校验未通过：RTCM3 帧 %1，CRC 失败 %2。").arg(st.rtcm3FrameCount).arg(st.rtcm3CrcFailCount));
+        else if (st.rtcmDiagnosticBytes > 0)
+            postLog(QStringLiteral("已收到少量数据，但未解析出有效 RTCM3 帧：%1 字节，首段 HEX：%2。").arg(st.rtcmDiagnosticBytes).arg(st.firstInputHex));
+        else
+            postLog(QStringLiteral("测试超时，未收到 RTCM 数据。差分服务器可能可达，但挂载点、账号、GGA 或数据流不可用。"));
+        if (!st.message.trimmed().isEmpty())
+            postLog(QStringLiteral("RTKLIB 状态：%1").arg(st.message.trimmed()));
     }
     finish();
 }
