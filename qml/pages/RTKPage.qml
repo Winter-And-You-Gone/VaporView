@@ -637,19 +637,15 @@ Item {
         }
 
         indicator: Item {
-            width: mpCombo.dropAreaW; height: mpCombo.height
-            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
-            Text {
-                anchors.centerIn: parent
-                text: "▾"; color: ApplicationWindow.window.muted
-                font.pixelSize: 12 * ApplicationWindow.window.scaleFactor
-            }
+            width: Math.max(40, ApplicationWindow.window.uiControlHeight); height: mpCombo.height
+            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; z: 20
+            AppComboArrow { anchors.fill: parent; arrowColor: ApplicationWindow.window.muted }
         }
 
         contentItem: TextField {
             id: mountEditor
             text: mpCombo.editText
-            leftPadding: 10; rightPadding: mpCombo.dropAreaW + 4
+            leftPadding: 10; rightPadding: Math.max(44, ApplicationWindow.window.uiControlHeight + 4)
             color: ApplicationWindow.window.text
             selectedTextColor: ApplicationWindow.window.primaryForeground
             selectionColor: ApplicationWindow.window.primary
