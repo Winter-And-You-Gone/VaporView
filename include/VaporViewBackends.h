@@ -815,6 +815,9 @@ private:
     QString mount_point_detect_status_;
     QVariantList output_port_options_;
     std::thread fetch_mountpoints_thread_;
+    std::thread test_connection_thread_;
+    void setTestingConnection(bool value);
+    void runStr2strConnectionTest(RtkStreamConfig config);
 };
 
 class SessionBackend : public QObject

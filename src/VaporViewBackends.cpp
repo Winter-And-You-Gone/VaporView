@@ -22,7 +22,10 @@
 #include <QThread>
 #include <QUrl>
 #include <QtEndian>
-
+#include <QTcpServer>
+#include <QTcpSocket>
+#include <QMetaObject>
+#include <QJsonArray>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -1013,6 +1016,7 @@ QString AppBackend::t(const QString& key) const
 	        {"rtk.ggaFrequency", "真实频率"}, {"rtk.messageTypes", "消息类型"},
 	        {"rtk.waiting", "等待中"}, {"rtk.noData", "无数据"},
 	        {"rtk.detectMountPoints", "检测挂载点"}, {"rtk.detecting", "检测中..."},
+        {"rtk.testingConnection", "测试中..."},
 	        {"rtk.noMountPointFound", "未找到挂载点"}, {"rtk.mountPointDetected", "已检测到挂载点"},
         {"rtk.refreshPorts", "刷新串口"}, {"rtk.autoDetectPort", "自动识别"},
         {"rtk.placeholderPort", "例如 COM3"},
@@ -1043,6 +1047,9 @@ QString AppBackend::t(const QString& key) const
         {"components.textField", "文本框"}, {"components.numberField", "数字"}, {"components.passwordField", "明文密码"},
         {"components.editableCombo", "可编辑"}, {"components.combo", "普通"}, {"components.staticCard", "普通卡片"},
         {"components.cardWithAction", "带操作区卡片"},
+        {"components.steppers", "数值增减框"}, {"components.normalStepper", "普通数值"},
+        {"components.minStepper", "最小值状态"}, {"components.stepperWithUnit", "带单位"},
+        {"components.disabledStepper", "禁用状态"},
         {"components.placeholderText", "占位文本"}, {"components.numberPlaceholder", "数字输入"},
         {"components.passwordPlain", "明文密码"}, {"components.portCombo", "串口选择"},
         {"components.combo", "普通选择"}, {"components.editableCombo", "输入选择两用框"},
@@ -1135,6 +1142,7 @@ QString AppBackend::t(const QString& key) const
 	        {"rtk.ggaFrequency", "Actual Rate"}, {"rtk.messageTypes", "Message Types"},
 	        {"rtk.waiting", "Waiting"}, {"rtk.noData", "No Data"},
 	        {"rtk.detectMountPoints", "Detect Mount Points"}, {"rtk.detecting", "Detecting..."},
+        {"rtk.testingConnection", "Testing..."},
 	        {"rtk.noMountPointFound", "No mount point found"}, {"rtk.mountPointDetected", "Mount points detected"},
         {"rtk.refreshPorts", "Refresh Ports"}, {"rtk.autoDetectPort", "Auto Detect"},
         {"rtk.placeholderPort", "e.g. COM3"},
@@ -1165,6 +1173,9 @@ QString AppBackend::t(const QString& key) const
         {"components.textField", "Text Field"}, {"components.numberField", "Number"}, {"components.passwordField", "Plain Password"},
         {"components.editableCombo", "Editable"}, {"components.combo", "Standard"}, {"components.staticCard", "Card"},
         {"components.cardWithAction", "Card with Action"},
+        {"components.steppers", "Steppers"}, {"components.normalStepper", "Normal"},
+        {"components.minStepper", "Minimum State"}, {"components.stepperWithUnit", "With Unit"},
+        {"components.disabledStepper", "Disabled"},
         {"components.placeholderText", "Placeholder"}, {"components.numberPlaceholder", "Number Input"},
         {"components.passwordPlain", "Plain Password"}, {"components.portCombo", "Port Combo"},
         {"components.combo", "Standard Combo"}, {"components.editableCombo", "Editable Combo"},
@@ -4722,6 +4733,10 @@ RtkBackend::RtkBackend(DeviceBackend *deviceBackend, QObject *parent)
 RtkBackend::~RtkBackend()
 {
     service_.stop();
+    if (test_connection_thread_.joinable())
+        test_connection_thread_.join();
+    if (fetch_mountpoints_thread_.joinable())
+        fetch_mountpoints_thread_.join();
 }
 
 QString RtkBackend::server() const { return server_; }
@@ -4823,51 +4838,98 @@ bool RtkBackend::testingConnection() const { return testing_connection_; }
 
 void RtkBackend::testConnection()
 {
-    if (testing_connection_) {
-        appendDiagnostic(QStringLiteral("连接测试正在进行中，请稍候。"), QStringLiteral("warning"));
+    if (testing_connection_) return;
+    if (service_.isRunning()) {
+        appendDiagnostic(QStringLiteral("请先停止 RTK 服务，再执行连接测试。"), QStringLiteral("warning"));
         return;
     }
-    const RtkStreamConfig config = buildConfig();
-    if (config.server.isEmpty() || config.port.isEmpty())
-    {
-        appendDiagnostic(QStringLiteral("请先输入服务器地址和端口。"), QStringLiteral("warning"));
+    RtkStreamConfig config = buildConfig();
+    if (config.server.trimmed().isEmpty() || config.port.trimmed().isEmpty() || config.mountpoint.trimmed().isEmpty()) {
+        appendDiagnostic(QStringLiteral("RTK 配置不完整，请检查服务器、端口和挂载点。"), QStringLiteral("warning"));
         return;
     }
+    if (test_connection_thread_.joinable()) test_connection_thread_.join();
+    setTestingConnection(true);
     appendDiagnostic(QStringLiteral("RTK 配置完整，开始连接测试。"));
-    testing_connection_ = true;
+    test_connection_thread_ = std::thread([this, config]() mutable { runStr2strConnectionTest(config); });
+}
+
+void RtkBackend::setTestingConnection(bool value)
+{
+    if (testing_connection_ == value) return;
+    testing_connection_ = value;
     emit testingConnectionChanged();
+}
 
-    QTcpSocket *socket = new QTcpSocket(this);
-    socket->connectToHost(config.server, config.port.toUShort());
-    appendDiagnostic(QStringLiteral("正在连接差分服务器 %1:%2...").arg(config.server, config.port));
+void RtkBackend::runStr2strConnectionTest(RtkStreamConfig config)
+{
+    auto postLog = [this](const QString& msg) {
+        QMetaObject::invokeMethod(this, [this, msg] { appendDiagnostic(msg); }, Qt::QueuedConnection);
+    };
+    auto finish = [this, &postLog]() {
+        postLog(QStringLiteral("测试会话已结束。"));
+        QMetaObject::invokeMethod(this, [this] { setTestingConnection(false); }, Qt::QueuedConnection);
+    };
 
-    const int timeoutMs = timeout_ms_;
-    QTimer::singleShot(timeoutMs, socket, [this, socket, config]() {
-        if (socket->state() != QAbstractSocket::ConnectedState) {
-            appendDiagnostic(QStringLiteral("连接测试失败：超时"), QStringLiteral("error"));
-            socket->abort();
-            socket->deleteLater();
-            testing_connection_ = false;
-            emit testingConnectionChanged();
+    QTcpServer sinkServer;
+    if (!sinkServer.listen(QHostAddress::LocalHost, 0)) {
+        postLog(QStringLiteral("本地测试接收端启动失败：%1").arg(sinkServer.errorString()));
+        finish(); return;
+    }
+    config.outputMode = RtkStreamConfig::OutputMode::TcpClient;
+    config.outputPathOverride = QStringLiteral("127.0.0.1:%1").arg(sinkServer.serverPort());
+    config.sendNmeaGga = true;
+    config.nmeaGgaCycleMs = 1000;
+    config.relayBack = 0;
+
+    bool livePos = false;
+    if (device_backend_) {
+        const auto& epsilon = device_backend_->epsilonData();
+        if (epsilon.valid && std::isfinite(epsilon.latitude_deg) && std::isfinite(epsilon.longitude_deg) && std::abs(epsilon.latitude_deg) <= 90.0 && std::abs(epsilon.longitude_deg) <= 180.0) {
+            config.nmeaLatitudeDeg = epsilon.latitude_deg;
+            config.nmeaLongitudeDeg = epsilon.longitude_deg;
+            config.nmeaHeightM = std::isfinite(epsilon.height_m) ? epsilon.height_m : 10.0;
+            livePos = true;
         }
-    });
+    }
+    if (!livePos) { config.nmeaLatitudeDeg = 30.266666; config.nmeaLongitudeDeg = 120.150000; config.nmeaHeightM = 10.0; }
 
-    QObject::connect(socket, &QTcpSocket::connected, this, [this, socket, config]() {
-        appendDiagnostic(QStringLiteral("已连接到差分服务器。"));
-        appendDiagnostic(QStringLiteral("NTRIP 连接测试成功。差分服务器 %1:%2 可达。").arg(config.server, config.port));
-        socket->disconnectFromHost();
-        socket->deleteLater();
-        testing_connection_ = false;
-        emit testingConnectionChanged();
-    });
+    postLog(QStringLiteral("正在启动 str2str 测试会话..."));
+    postLog(livePos ? QStringLiteral("使用当前 EPSILON 坐标生成 GGA。") : QStringLiteral("使用模拟坐标生成 GGA。"));
+    postLog(QStringLiteral("正在连接差分服务器 %1:%2，请求挂载点 %3...").arg(config.server, config.port, config.mountpoint));
+    postLog(QStringLiteral("正在等待 RTCM 数据..."));
 
-    QObject::connect(socket, &QTcpSocket::errorOccurred, this, [this, socket, config](QAbstractSocket::SocketError err) {
-        Q_UNUSED(err)
-        appendDiagnostic(QStringLiteral("连接测试失败：%1").arg(socket->errorString()), QStringLiteral("error"));
-        socket->deleteLater();
-        testing_connection_ = false;
-        emit testingConnectionChanged();
-    });
+    RtkStreamService testSvc;
+    QString err;
+    if (!testSvc.start(config, &err)) { postLog(QStringLiteral("str2str 测试会话启动失败：%1").arg(err)); sinkServer.close(); finish(); return; }
+
+    std::unique_ptr<QTcpSocket> sink;
+    QElapsedTimer timer; timer.start();
+    const int timeout = std::max(6000, config.timeoutMs);
+    bool ok = false;
+    RtkStreamStats st;
+
+    while (timer.elapsed() < timeout) {
+        if (!sink) {
+            if (sinkServer.hasPendingConnections() || sinkServer.waitForNewConnection(50))
+                { sink.reset(sinkServer.nextPendingConnection()); postLog(QStringLiteral("本地测试接收端已连接。")); }
+        }
+        if (sink) { if (sink->bytesAvailable() > 0) sink->readAll(); else sink->waitForReadyRead(10); }
+        st = testSvc.stats();
+        if (st.rtcm3CrcOkCount > 0 || st.rtcm3FrameCount > 0 || st.rtcmDiagnosticBytes > 0 || st.inputBytes > 0 || st.inputBps > 0) { ok = true; break; }
+        QThread::msleep(100);
+    }
+    st = testSvc.stats();
+    testSvc.stop();
+    sinkServer.close();
+    if (ok) {
+        postLog(QStringLiteral("已接收到 RTCM 数据：%1 字节，RTCM3 帧 %2，CRC 正确 %3。").arg(st.rtcmDiagnosticBytes).arg(st.rtcm3FrameCount).arg(st.rtcm3CrcOkCount));
+        postLog(QStringLiteral("NTRIP 数据链路测试成功。"));
+    } else {
+        QString d = st.message.trimmed(); if (d.isEmpty()) d = QStringLiteral("未收到 RTCM 数据");
+        postLog(QStringLiteral("测试超时，未收到 RTCM 数据。%1").arg(d));
+    }
+    finish();
 }
 
 void RtkBackend::saveConfig()

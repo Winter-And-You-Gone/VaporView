@@ -447,7 +447,8 @@ Item {
                     ToolbarButton {
                         iconName: "scan"
                         height: 30
-                        text: t("rtk.testConnection")
+                        text: rtkBackend.testingConnection ? t("rtk.testingConnection") : t("rtk.testConnection")
+                        enabled: !rtkBackend.testingConnection
                         onClicked: rtkBackend.testConnection()
                     }
                     ToolbarButton {

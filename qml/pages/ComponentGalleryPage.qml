@@ -126,6 +126,30 @@ Item {
                     }
                 }
 
+                Card { width: parent.width; height: implicitHeight; title: t("components.steppers")
+                    CardBody {
+                        Flow { id: stepperFlow; width: parent.width; spacing: ApplicationWindow.window.uiSpacing
+                            Column { width: 180; spacing: 4
+                                Text { text: t("components.normalStepper"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor }
+                                AppStepper { width: parent.width; value: 20; minimumValue: 0; maximumValue: 100; stepSize: 1 }
+                            }
+                            Column { width: 180; spacing: 4
+                                Text { text: t("components.minStepper"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor }
+                                AppStepper { width: parent.width; value: 0; minimumValue: 0; maximumValue: 100; stepSize: 1 }
+                            }
+                            Column { width: 180; spacing: 4
+                                Text { text: t("components.stepperWithUnit"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor }
+                                AppStepper { width: parent.width; value: 10; minimumValue: 1; maximumValue: 20; stepSize: 1; suffix: "Hz" }
+                            }
+                            Column { width: 180; spacing: 4
+                                Text { text: t("components.disabledStepper"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor }
+                                AppStepper { width: parent.width; value: 5; minimumValue: 0; maximumValue: 10; enabled: false }
+                            }
+                        }
+                        Item { width: 1; height: stepperFlow.childrenRect.height }
+                    }
+                }
+
                 Card { width: parent.width; height: implicitHeight; title: t("components.statusMetrics")
                     CardBody {
                         Flow { id: pillFlow; width: parent.width; spacing: 6
