@@ -7,6 +7,20 @@ Item {
     id: page
     function t(key) { appBackend.language; return appBackend.t(key) }
 
+    property var styleSliderCenters: ({})
+    readonly property var styleSliderProps: ["uiRadius","uiControlHeight","uiButtonHeight","uiCardHeaderHeight","uiCardPadding","uiControlPaddingX","uiSpacing","uiBorderWidth","uiSmallFontSize","uiBodyFontSize","uiValueFontSize"]
+
+    function sliderCenter(prop, fallback) {
+        if (styleSliderCenters && styleSliderCenters[prop] !== undefined) return Number(styleSliderCenters[prop])
+        return Number(fallback)
+    }
+    function recenterStyleSliders() {
+        var next = {}
+        for (var i = 0; i < styleSliderProps.length; ++i) { var p = styleSliderProps[i]; next[p] = Math.round(Number(appBackend[p])) }
+        styleSliderCenters = next
+    }
+    Component.onCompleted: recenterStyleSliders()
+
     Flickable {
         anchors.fill: parent; anchors.margins: 12; clip: true
         contentWidth: width; contentHeight: Math.max(mainContent.height, height)
@@ -25,6 +39,7 @@ Item {
                     CardBody { Text { width: parent.width; text: t("components.description"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; wrapMode: Text.WordWrap } }
                 }
                 Card { width: parent.width; height: implicitHeight; title: t("components.globalStyle")
+                    headerRight: ToolbarButton { iconName: "locate-fixed"; text: t("components.recenterSliders"); onClicked: page.recenterStyleSliders() }
                     CardBody {
                         StyleSlider { lb: t("components.radius"); p: "uiRadius"; fr: 0; to: 16 }
                         StyleSlider { lb: t("components.controlHeight"); p: "uiControlHeight"; fr: 28; to: 44 }
@@ -161,6 +176,7 @@ Item {
                         Item { width: 1; height: pillFlow.childrenRect.height }
                         RowLayout { Layout.fillWidth: true; spacing: 8
                             MetricCell { Layout.fillWidth: true; label: t("components.throughput"); value: "1250"; unit: "B/s" }
+                            MetricCell { Layout.fillWidth: true; label: t("components.valueFontPreview"); value: "14712"; unit: "帧" }
                             MetricCell { Layout.fillWidth: true; label: t("components.latency"); value: "---"; unit: "ms" }
                         }
                     }
@@ -184,9 +200,16 @@ Item {
 
     component StyleSlider: RowLayout {
         property string lb: ""; property string p: ""; property int fr: 0; property int to: 10
+
+        readonly property int span: Math.max(1, to - fr)
+        readonly property int half: Math.max(1, Math.round(span / 2))
+        readonly property int center: Math.round(page.sliderCenter(p, Math.round((fr + to) / 2)))
+        readonly property int dynFrom: Math.max(fr, center - half)
+        readonly property int dynTo: dynFrom + span
+
         spacing: 6
         Text { text: parent.lb + ":"; color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; Layout.preferredWidth: 130 }
-        Slider { Layout.fillWidth: true; from: parent.fr; to: parent.to; stepSize: 1; value: appBackend[parent.p]; onMoved: appBackend[parent.p] = Math.round(value) }
+        Slider { Layout.fillWidth: true; from: parent.dynFrom; to: parent.dynTo; stepSize: 1; value: Math.max(parent.dynFrom, Math.min(parent.dynTo, Number(appBackend[parent.p]))); onMoved: appBackend[parent.p] = Math.round(value) }
         Text { text: appBackend[parent.p] + " px"; color: ApplicationWindow.window.text; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; font.family: "Consolas"; Layout.preferredWidth: 44; horizontalAlignment: Text.AlignRight }
     }
 }
