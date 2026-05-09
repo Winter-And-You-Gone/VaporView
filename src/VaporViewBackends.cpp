@@ -986,7 +986,9 @@ QString AppBackend::t(const QString& key) const
         {"waveform.rawData", "原始数据"}, {"waveform.secondHarmonic", "归一化二次谐波"}, {"waveform.peakTrend", "峰值趋势"},
         {"waveform.controlPanel", "控制面板"}, {"waveform.filterSwitch", "滤波开关"}, {"waveform.cutoffFreq", "峰值范围"},
         {"waveform.recordFreq", "记录频率"}, {"waveform.previewControl", "预览控制"}, {"waveform.export", "导出"},
-        {"waveform.peakValue", "峰值"}, {"sessions.sessionTable", "记录列表"}, {"sessions.detailPanel", "详情面板"},
+        {"waveform.peakValue", "峰值"}, {"waveform.clearPeak", "清除峰值"}, {"waveform.peakSettings", "峰值设置"},
+        {"waveform.hostPlaceholder", "主机地址"}, {"waveform.portPlaceholder", "端口"},
+        {"sessions.sessionTable", "记录列表"}, {"sessions.detailPanel", "详情面板"},
         {"sessions.sessionInfo", "记录信息"}, {"sessions.csvPreview", "CSV 预览"}, {"sessions.waveformPreview", "波形预览"},
         {"sessions.exportTab", "导出"}, {"sessions.name", "名称"}, {"sessions.date", "日期"},
         {"sessions.duration", "时长"}, {"sessions.size", "大小"}, {"sessions.frames", "帧数"}, {"sessions.status", "状态"},
@@ -1019,6 +1021,15 @@ QString AppBackend::t(const QString& key) const
         {"rtk.ggaSourceManual", "手动输入"}, {"rtk.ggaSourceExternalNetwork", "外部网络"},
         {"rtk.noDataAvailable", "暂无数据"}, {"rtk.noDiagnosticLog", "暂无诊断日志"},
         {"rtk.statusDisconnected", "未连接"}, {"rtk.statusError", "错误"},
+        {"rtk.logFetchingMountpoints", "正在从 {server}:{port} 获取挂载点列表..."},
+        {"rtk.logFetchedMountpoints", "已获取 {count} 个挂载点。"},
+        {"rtk.logNoMountpoints", "未获取到可用挂载点。"},
+        {"rtk.logMountpointFetchFailed", "获取挂载点失败：{reason}"},
+        {"rtk.logServiceStarted", "RTK 服务已启动。"}, {"rtk.logServiceStopped", "RTK 服务已停止。"},
+        {"rtk.logServiceStartFailed", "RTK 服务启动失败：{reason}"},
+        {"rtk.logConfigSaved", "RTK 配置已保存。"}, {"rtk.logConfigFillRequired", "请填写服务器地址、端口、挂载点和输出串口。"},
+        {"rtk.logConfigOkForTest", "RTK 配置完整，可进行连接测试。"},
+        {"rtk.logLeverArmApplied", "主天线杆臂已下发。"}, {"rtk.logLeverArmApplyFailed", "主天线杆臂下发失败。"},
         {"components.title", "组件示例"}, {"components.description", "此页面用于预览和调整 VaporView 全局组件样式。修改后会影响所有页面中使用公共组件的控件。"},
         {"components.globalStyle", "全局组件参数"}, {"components.radius", "圆角"}, {"components.controlHeight", "控件高度"},
         {"components.buttonHeight", "按钮高度"}, {"components.cardHeaderHeight", "卡片标题栏高度"}, {"components.cardPadding", "卡片内边距"},
@@ -1090,7 +1101,9 @@ QString AppBackend::t(const QString& key) const
         {"waveform.rawData", "Raw Data"}, {"waveform.secondHarmonic", "Normalized Second Harmonic"}, {"waveform.peakTrend", "Peak Trend"},
         {"waveform.controlPanel", "Control Panel"}, {"waveform.filterSwitch", "Filter"}, {"waveform.cutoffFreq", "Peak Range"},
         {"waveform.recordFreq", "Record Freq"}, {"waveform.previewControl", "Preview"}, {"waveform.export", "Export"},
-        {"waveform.peakValue", "Peak"}, {"sessions.sessionTable", "Record List"}, {"sessions.detailPanel", "Details"},
+        {"waveform.peakValue", "Peak"}, {"waveform.clearPeak", "Clear Peak"}, {"waveform.peakSettings", "Peak Settings"},
+        {"waveform.hostPlaceholder", "Host address"}, {"waveform.portPlaceholder", "Port"},
+        {"sessions.sessionTable", "Record List"}, {"sessions.detailPanel", "Details"},
         {"sessions.sessionInfo", "Record Info"}, {"sessions.csvPreview", "CSV Preview"}, {"sessions.waveformPreview", "Waveform Preview"},
         {"sessions.exportTab", "Export"}, {"sessions.name", "Name"}, {"sessions.date", "Date"},
         {"sessions.duration", "Duration"}, {"sessions.size", "Size"}, {"sessions.frames", "Frames"}, {"sessions.status", "Status"},
@@ -1123,6 +1136,15 @@ QString AppBackend::t(const QString& key) const
         {"rtk.ggaSourceManual", "Manual Input"}, {"rtk.ggaSourceExternalNetwork", "External Network"},
         {"rtk.noDataAvailable", "No Data"}, {"rtk.noDiagnosticLog", "No Diagnostic Log"},
         {"rtk.statusDisconnected", "Disconnected"}, {"rtk.statusError", "Error"},
+        {"rtk.logFetchingMountpoints", "Fetching mountpoint list from {server}:{port}..."},
+        {"rtk.logFetchedMountpoints", "Fetched {count} mountpoints."},
+        {"rtk.logNoMountpoints", "No mountpoints available."},
+        {"rtk.logMountpointFetchFailed", "Failed to fetch mountpoints: {reason}"},
+        {"rtk.logServiceStarted", "RTK service started."}, {"rtk.logServiceStopped", "RTK service stopped."},
+        {"rtk.logServiceStartFailed", "Failed to start RTK service: {reason}"},
+        {"rtk.logConfigSaved", "RTK configuration saved."}, {"rtk.logConfigFillRequired", "Please fill server, port, mountpoint and output port."},
+        {"rtk.logConfigOkForTest", "RTK configuration looks complete for a test connection."},
+        {"rtk.logLeverArmApplied", "Main antenna lever arm applied."}, {"rtk.logLeverArmApplyFailed", "Failed to apply lever arm."},
         {"components.title", "Components"}, {"components.description", "Preview and tune global VaporView component styles. Changes apply to all pages."},
         {"components.globalStyle", "Global Style"}, {"components.radius", "Radius"}, {"components.controlHeight", "Control Height"},
         {"components.buttonHeight", "Button Height"}, {"components.cardHeaderHeight", "Card Header Height"}, {"components.cardPadding", "Card Padding"},
@@ -4759,16 +4781,16 @@ void RtkBackend::start()
     const RtkStreamConfig config = buildConfig();
     if (config.server.isEmpty() || config.port.isEmpty() || config.mountpoint.isEmpty() || config.outputPort.isEmpty())
     {
-        appendDiagnostic(QStringLiteral("Please fill server, port, mountpoint and output port."), QStringLiteral("warning"));
+        appendDiagnostic(QStringLiteral("请填写服务器地址、端口、挂载点和输出串口。"), QStringLiteral("warning"));
         return;
     }
     if (!service_.start(config, &error))
     {
-        appendDiagnostic(QStringLiteral("Failed to start RTK: %1").arg(error), QStringLiteral("error"));
+        appendDiagnostic(QStringLiteral("启动 RTK 失败：%1").arg(error), QStringLiteral("error"));
         emit runningChanged();
         return;
     }
-    appendDiagnostic(QStringLiteral("RTK stream started."));
+    appendDiagnostic(QStringLiteral("RTK 服务已启动。"));
     emit runningChanged();
 }
 
@@ -4779,7 +4801,7 @@ void RtkBackend::stop()
         return;
     }
     service_.stop();
-    appendDiagnostic(QStringLiteral("RTK stream stopped."));
+    appendDiagnostic(QStringLiteral("RTK 服务已停止。"));
     emit runningChanged();
 }
 
@@ -4788,10 +4810,8 @@ void RtkBackend::testConnection()
     const RtkStreamConfig config = buildConfig();
     if (config.server.isEmpty() || config.port.isEmpty())
     {
-        appendDiagnostic(QStringLiteral("Please enter server address and port first."), QStringLiteral("warning"));
-        return;
-    }
-    appendDiagnostic(QStringLiteral("RTK configuration looks complete enough to start a stream test."));
+    appendDiagnostic(QStringLiteral("请先输入服务器地址和端口。"), QStringLiteral("warning"));
+
 }
 
 void RtkBackend::saveConfig()
@@ -4808,7 +4828,8 @@ void RtkBackend::saveConfig()
     settings.setValue(QStringLiteral("reconnect_ms"), reconnect_ms_);
     settings.setValue(QStringLiteral("auto_reconnect"), auto_reconnect_);
     settings.setValue(QStringLiteral("gga_generation_rate_hz"), gga_generation_rate_hz_);
-    appendDiagnostic(QStringLiteral("RTK configuration saved."));
+    appendDiagnostic(QStringLiteral("RTK 配置已保存。"));
+
 }
 
 void RtkBackend::loadConfig()
@@ -4837,8 +4858,8 @@ void RtkBackend::clearDiagnostics()
 void RtkBackend::applyMainAntennaLeverArm(double xM, double yM, double zM)
 {
     const bool ok = device_backend_->applyEpsilonMainAntennaLeverArm(xM, yM, zM);
-    appendDiagnostic(ok ? QStringLiteral("Main antenna lever arm applied.")
-                        : QStringLiteral("Failed to apply main antenna lever arm."),
+    appendDiagnostic(ok ? QStringLiteral("主天线杆臂已下发。")
+                        : QStringLiteral("主天线杆臂下发失败。"),
                      ok ? QStringLiteral("info") : QStringLiteral("error"));
 }
 
@@ -4859,7 +4880,7 @@ void RtkBackend::detectMountPoints()
 
     if (server.isEmpty() || port.isEmpty())
     {
-        appendDiagnostic(QStringLiteral("Please enter server address and port first."), QStringLiteral("warning"));
+        appendDiagnostic(QStringLiteral("请先输入服务器地址和端口。"), QStringLiteral("warning"));
         return;
     }
 
@@ -4872,7 +4893,7 @@ void RtkBackend::detectMountPoints()
     if (fetch_mountpoints_thread_.joinable())
         fetch_mountpoints_thread_.join();
 
-    appendDiagnostic(QStringLiteral("Fetching mountpoint list from %1:%2...").arg(server, port));
+    appendDiagnostic(QStringLiteral("正在从 %1:%2 获取挂载点列表...").arg(server, port));
 
     fetch_mountpoints_thread_ = std::thread([this, server, port, username, password]() {
         const MountpointFetchResult result = {
@@ -4891,7 +4912,7 @@ void RtkBackend::detectMountPoints()
                     ? QStringLiteral("Request timed out")
                     : response.error;
                 mount_point_detect_status_ = errorText;
-                appendDiagnostic(QStringLiteral("Failed to fetch mountpoint list: %1").arg(errorText), QStringLiteral("error"));
+                appendDiagnostic(QStringLiteral("获取挂载点列表失败：%1").arg(errorText), QStringLiteral("error"));
                 emit mountPointOptionsChanged();
                 return;
             }
@@ -4901,12 +4922,12 @@ void RtkBackend::detectMountPoints()
             if (parsed.isEmpty())
             {
                 mount_point_detect_status_ = QStringLiteral("No mountpoint found");
-                appendDiagnostic(QStringLiteral("No mountpoints found in sourcetable response."));
+                appendDiagnostic(QStringLiteral("源表中未找到挂载点。"));
             }
             else
             {
                 mount_point_detect_status_ = QStringLiteral("Found %1 mountpoint(s)").arg(parsed.size());
-                appendDiagnostic(QStringLiteral("Fetched %1 mountpoints.").arg(parsed.size()));
+                appendDiagnostic(QStringLiteral("已获取 %1 个挂载点。").arg(parsed.size()));
             }
             emit mountPointOptionsChanged();
         }, Qt::QueuedConnection);

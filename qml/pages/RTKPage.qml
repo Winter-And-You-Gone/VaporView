@@ -712,8 +712,8 @@ Item {
                 font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 8
             }
         }
-        indicator: Item { width: Math.max(40, mpCombo.height); height: mpCombo.height; x: mpCombo.width - width
-            AppComboArrow { anchors.fill: parent } }
+        indicator: Item { width: Math.max(40, ApplicationWindow.window.uiControlHeight); height: portCombo.height; x: portCombo.width - width; y: 0; z: 20
+            AppComboArrow { anchors.fill: parent; arrowColor: ApplicationWindow.window.muted } }
         contentItem: Text {
             leftPadding: 10; rightPadding: Math.max(44, ApplicationWindow.window.uiControlHeight + 4)
             text: portCombo.displayText; color: ApplicationWindow.window.text

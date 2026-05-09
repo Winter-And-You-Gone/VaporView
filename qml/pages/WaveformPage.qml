@@ -222,18 +222,18 @@ Item {
                 anchors.margins: 12
                 spacing: 10
 
-                Text { text: waveformBackend.statusText; color: ApplicationWindow.window.muted; font.pixelSize: 11 }
-                TextField {
+                Text { text: waveformBackend.statusText; color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
+                AppTextField {
                     Layout.fillWidth: true
                     text: waveformBackend.host
-                    placeholderText: "TCP Host"
+                    placeholderText: appBackend.t("waveform.hostPlaceholder")
                     enabled: !waveformBackend.connected
                     onEditingFinished: waveformBackend.host = text
                 }
-                TextField {
+                AppTextField {
                     Layout.fillWidth: true
                     text: String(waveformBackend.port)
-                    placeholderText: "Port"
+                    placeholderText: appBackend.t("waveform.portPlaceholder")
                     enabled: !waveformBackend.connected
                     validator: IntValidator { bottom: 1; top: 65535 }
                     onEditingFinished: waveformBackend.port = Number(text)
@@ -261,10 +261,10 @@ Item {
                 ToolbarButton {
                     Layout.fillWidth: true
                     iconName: "settings"
-                    text: appBackend.language === "en" ? "Peak Settings" : "峰值设置"
+                    text: appBackend.t("waveform.peakSettings")
                     onClicked: peakFilterPopup.open()
                 }
-                ToolbarButton { Layout.fillWidth: true; iconName: "trash-2"; text: "Clear Peak"; onClicked: waveformBackend.clearPeakHistory() }
+                ToolbarButton { Layout.fillWidth: true; iconName: "trash-2"; text: appBackend.t("waveform.clearPeak"); onClicked: waveformBackend.clearPeakHistory() }
                 Item { Layout.fillHeight: true }
                 Text {
                     Layout.fillWidth: true
