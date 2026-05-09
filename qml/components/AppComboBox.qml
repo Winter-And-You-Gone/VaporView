@@ -6,7 +6,7 @@ ComboBox {
     property string displayRoleName: ""
     implicitHeight: 30
     font.family: "Consolas"
-    font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor
+    font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
 
     function displayFor(md) {
         if (md === undefined || md === null) return ""

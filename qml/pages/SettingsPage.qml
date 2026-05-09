@@ -94,12 +94,12 @@ Item {
                 RowLayout {
                     Layout.fillWidth: true
                     Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.sensorCsv"); color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
-                    AppStepper { value: recordingBackend.exportRateHz; minimumValue: 1; maximumValue: 200; stepSize: 1; onValueEdited: function(v) { recordingBackend.exportRateHz = v } }
+                    SpinBox { from: 1; to: 200; value: recordingBackend.exportRateHz; onValueModified: recordingBackend.exportRateHz = value }
                 }
                 RowLayout {
                     Layout.fillWidth: true
                     Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.waveform"); color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
-                    AppStepper { value: recordingBackend.waveformExportRateHz; minimumValue: 0; maximumValue: 200; stepSize: 1; onValueEdited: function(v) { recordingBackend.waveformExportRateHz = v } }
+                    SpinBox { from: 0; to: 200; value: recordingBackend.waveformExportRateHz; onValueModified: recordingBackend.waveformExportRateHz = value }
                 }
             }
         }
