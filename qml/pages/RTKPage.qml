@@ -569,8 +569,8 @@ Item {
     }
 
     component MetricText: Column { property string label: ""; property string value: ""; property color valueColor: ApplicationWindow.window.text; spacing: 2; width: 150
-        Text { text: parent.label; color: ApplicationWindow.window.muted; font.pixelSize: 10 * ApplicationWindow.window.scaleFactor }
-        Text { text: parent.value; color: parent.valueColor; font.pixelSize: 12 * ApplicationWindow.window.scaleFactor; font.bold: true; font.family: "Consolas" } }
+        Text { text: parent.label; color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor }
+        Text { text: parent.value; color: parent.valueColor; font.pixelSize: ApplicationWindow.window.uiValueFontSize * ApplicationWindow.window.scaleFactor; font.bold: true; font.family: "Consolas" } }
 
     component RtkTextField: TextField {
         id: field

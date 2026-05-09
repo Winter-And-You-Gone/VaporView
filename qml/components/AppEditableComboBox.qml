@@ -35,7 +35,7 @@ Item {
         text: control.text
         placeholderText: control.placeholderText
         font.family: "Consolas"
-        font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
+        font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor
         color: control.enabled ? ApplicationWindow.window.text : ApplicationWindow.window.muted
         selectedTextColor: ApplicationWindow.window.primaryForeground
         selectionColor: ApplicationWindow.window.primary
