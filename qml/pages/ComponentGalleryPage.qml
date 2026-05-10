@@ -34,10 +34,7 @@ Item {
                     headerRight: ToolbarButton {
                         iconName: "rotate-ccw"
                         text: t("components.recenterSliders")
-                        onClicked: {
-                            appBackend.resetUiStyle()
-                            Qt.callLater(page.recenterStyleSliders)
-                        }
+                        onClicked: page.recenterStyleSliders()
                     }
                     CardBody {
                         StyleSlider { lb: t("components.radius"); p: "uiRadius"; fr: 0; to: 16 }
@@ -199,14 +196,14 @@ Item {
 
     component StyleSlider: RowLayout {
         property string lb: ""; property string p: ""; property int fr: 0; property int to: 10
-        readonly property int span: Math.max(1, to - fr)
-        readonly property int half: Math.max(1, Math.round(span / 2))
+        readonly property int span: Math.max(2, to - fr)
+        readonly property int half: Math.round(span / 2)
         readonly property int center: Math.round(page.sliderCenter(p, Math.round((fr + to) / 2)))
-        readonly property int dynFrom: Math.max(fr, center - half)
-        readonly property int dynTo: dynFrom + span
+        readonly property int dynFrom: center - half
+        readonly property int dynTo: center + half
         spacing: 6
         Text { text: parent.lb + ":"; color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; Layout.preferredWidth: 130 }
-        Slider { Layout.fillWidth: true; from: parent.dynFrom; to: parent.dynTo; stepSize: 1; value: Math.max(parent.dynFrom, Math.min(parent.dynTo, Number(appBackend[parent.p]))); onMoved: appBackend[parent.p] = Math.round(value) }
+        Slider { Layout.fillWidth: true; from: parent.dynFrom; to: parent.dynTo; stepSize: 1; value: Number(appBackend[parent.p]); onMoved: appBackend[parent.p] = Math.max(parent.fr, Math.min(parent.to, Math.round(value))) }
         Text { text: appBackend[parent.p] + " px"; color: ApplicationWindow.window.text; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; font.family: "Consolas"; Layout.preferredWidth: 44; horizontalAlignment: Text.AlignRight }
     }
 }
