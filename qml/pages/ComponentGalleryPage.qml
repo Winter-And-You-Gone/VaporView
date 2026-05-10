@@ -30,7 +30,7 @@ Item {
                 Card { width: parent.width; height: implicitHeight; title: t("components.title")
                     CardBody { Text { width: parent.width; text: t("components.description"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; wrapMode: Text.WordWrap } }
                 }
-                Card { width: parent.width; height: implicitHeight; title: t("components.globalStyle")
+                Card { width: parent.width + 30; height: implicitHeight; title: t("components.globalStyle")
                     headerRight: ToolbarButton {
                         iconName: "rotate-ccw"
                         text: t("components.recenterSliders")
