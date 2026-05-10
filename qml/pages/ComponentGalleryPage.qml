@@ -54,7 +54,7 @@ Item {
                         Row { spacing: 8
                             ToolbarButton { text: t("components.saveStyle"); iconName: "save"; variant: "primary"; onClicked: appBackend.saveUiStyle() }
                             ToolbarButton { text: t("components.resetStyle"); iconName: "rotate-ccw"; onClicked: appBackend.resetUiStyle() }
-                            ToolbarButton { text: t("components.recenterSliders"); iconName: "locate-fixed"; onClicked: page.recenterStyleSliders() }
+                            ToolbarButton { text: t("components.recenterSliders"); iconName: "rotate-ccw"; onClicked: page.recenterStyleSliders() }
                         }
                     }
                 }
