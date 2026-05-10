@@ -31,7 +31,6 @@ Item {
                     CardBody { Text { width: parent.width; text: t("components.description"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; wrapMode: Text.WordWrap } }
                 }
                 Card { width: parent.width; height: implicitHeight; title: t("components.globalStyle")
-                    headerRight: ToolbarButton { iconName: "locate-fixed"; text: t("components.recenterSliders"); onClicked: page.recenterStyleSliders() }
                     CardBody {
                         StyleSlider { lb: t("components.radius"); p: "uiRadius"; fr: 0; to: 16 }
                         StyleSlider { lb: t("components.controlHeight"); p: "uiControlHeight"; fr: 28; to: 44 }
@@ -55,6 +54,7 @@ Item {
                         Row { spacing: 8
                             ToolbarButton { text: t("components.saveStyle"); iconName: "save"; variant: "primary"; onClicked: appBackend.saveUiStyle() }
                             ToolbarButton { text: t("components.resetStyle"); iconName: "rotate-ccw"; onClicked: appBackend.resetUiStyle() }
+                            ToolbarButton { text: t("components.recenterSliders"); iconName: "locate-fixed"; onClicked: page.recenterStyleSliders() }
                         }
                     }
                 }
