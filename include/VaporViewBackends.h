@@ -301,7 +301,7 @@ public:
     VaporView::LidarData lidarData() const;
     double collectorActualRate(const QString& id) const;
     bool anySerialCollectorRunning() const;
-    QString selectedPort(const QString& id) const;
+    Q_INVOKABLE QString selectedPort(const QString& id) const;
     int selectedBaud(const QString& id) const;
     int selectedSampleRate(const QString& id) const;
 

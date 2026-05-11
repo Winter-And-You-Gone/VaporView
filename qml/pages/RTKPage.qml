@@ -44,11 +44,34 @@ Item {
         return lines.length > 0 ? lines.join("\n") : ""
     }
 
-    property var ggaSourceModel: [
-        { text: t("rtk.ggaSourceEpsilonMain"), value: "epsilon_main" },
-        { text: t("rtk.ggaSourceOtherPort"), value: "serial_other" },
-    ]
+    property var ggaSourceModel: []
     property int ggaSourceIndex: 0
+
+    function refreshGgaSourceModel() {
+        var selectedValue = "epsilon_main"
+        if (ggaSourceIndex >= 0 && ggaSourceIndex < ggaSourceModel.length)
+            selectedValue = ggaSourceModel[ggaSourceIndex].value
+
+        var result = [{ text: t("rtk.ggaSourceEpsilonMain"), value: "epsilon_main" }]
+        var epsilonPort = String(deviceBackend.selectedPort("epsilon") || "")
+        var ports = deviceBackend.ports || []
+        for (var i = 0; i < ports.length; ++i) {
+            var port = String(ports[i] || "")
+            if (port.length > 0 && port !== epsilonPort)
+                result.push({ text: t("rtk.ggaSourceOtherPort").replace("%1", port), value: "serial:" + port })
+        }
+
+        ggaSourceModel = result
+        ggaSourceIndex = 0
+        for (var j = 0; j < result.length; ++j) {
+            if (result[j].value === selectedValue) {
+                ggaSourceIndex = j
+                break
+            }
+        }
+    }
+
+    Component.onCompleted: refreshGgaSourceModel()
 
     property var ggaRateModel: [
         { text: "1 Hz", value: 1 },
@@ -540,6 +563,14 @@ Item {
             page.uiTimeoutMs = String(rtkBackend.timeoutMs)
             page.uiReconnectMs = String(rtkBackend.reconnectMs)
         }
+    }
+    Connections {
+        target: deviceBackend
+        function onPortsChanged() { page.refreshGgaSourceModel() }
+    }
+    Connections {
+        target: appBackend
+        function onLanguageChanged() { page.refreshGgaSourceModel() }
     }
 
     // ═══════════════════════════════════════════════
