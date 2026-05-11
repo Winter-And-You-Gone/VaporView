@@ -6,7 +6,7 @@
 
 ### 依赖
 
-- Qt 6.10.1+（Core, Widgets, SerialPort, Network）
+- Qt 6.10.1+（Core, Widgets, SerialPort, Network, Svg）
 - CMake 3.16+, Ninja
 - Windows: MSVC 2022 Build Tools
 - Linux ARM64: GCC/G++, `qt6-base-dev`, `qt6-serialport-dev`
@@ -165,6 +165,7 @@ VaporView/
 │   ├── app.rc
 │   ├── combo_arrow_down.xpm
 │   ├── combo_arrow_up.xpm
+│   ├── lucide/
 │   └── modern_style.qss
 ├── scripts/
 │   ├── build-linux-arm64.sh
@@ -238,7 +239,7 @@ Ubuntu / Debian ARM64 上可使用：
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential cmake ninja-build qt6-base-dev qt6-serialport-dev
+sudo apt install -y build-essential cmake ninja-build qt6-base-dev qt6-serialport-dev qt6-svg-dev
 ```
 
 如 Qt 6 安装在非系统路径，设置：
@@ -253,6 +254,7 @@ Qt 6 当前 CMake 必需组件：
 - `Widgets`
 - `SerialPort`
 - `Network`
+- `Svg`
 
 ## 构建
 
@@ -292,7 +294,7 @@ Linux:   build/Release/VaporViewSky
 
 - `src/main.cpp` 创建 `QApplication`，设置应用名 `VaporView`、版本 `1.0.0` 和组织名 `VaporView`。
 - `src/MainWindow.cpp` 负责菜单栏、工具栏、状态栏、设备配置区、实时数据区、TCP 波形区、日志区、记录会话和全局设置。
-- `resources/modern_style.qss`、`resources/app.ico`、`resources/combo_arrow_down.xpm`、`resources/combo_arrow_up.xpm` 会在构建后复制到构建目录下的 `resources/`。
+- `resources/modern_style.qss`、`resources/app.ico`、`resources/combo_arrow_down.xpm`、`resources/combo_arrow_up.xpm` 和 `resources/lucide/` 会在构建后复制到构建目录下的 `resources/`。
 
 ### 串口层
 
@@ -664,3 +666,5 @@ VaporView 是自由软件：您可以依据自由软件基金会发布的 GNU �
 本程序分发时希望它有用，但**不作任何担保**；甚至没有适销性或特定用途的隐含担保。详见 [LICENSE](LICENSE) 文件。
 
 第三方 RTKLIB 源码随仓库保留 `third_party/rtklib/LICENSE.txt`，采用 BSD 2-Clause 许可证。
+
+Lucide 图标资源随仓库保留 `resources/lucide/LICENSE`，采用 ISC 许可证。

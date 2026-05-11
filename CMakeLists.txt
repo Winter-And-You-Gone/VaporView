@@ -13,8 +13,8 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 option(BUILD_PYTHON_BINDINGS "Build Python bindings with pybind11" OFF)
 
-find_package(Qt6 COMPONENTS Core Widgets SerialPort Network REQUIRED)
-set(QT_LIBRARIES Qt6::Core Qt6::Widgets Qt6::SerialPort Qt6::Network)
+find_package(Qt6 COMPONENTS Core Widgets SerialPort Network Svg REQUIRED)
+set(QT_LIBRARIES Qt6::Core Qt6::Widgets Qt6::SerialPort Qt6::Network Qt6::Svg)
 
 if(WIN32)
     find_program(QT_WINDEPLOYQT_EXECUTABLE
@@ -200,6 +200,21 @@ set(NAV_RESOURCES
     resources/combo_arrow_up.xpm
 )
 
+set(LUCIDE_RESOURCES
+    resources/lucide/activity.svg
+    resources/lucide/circle-x.svg
+    resources/lucide/maximize.svg
+    resources/lucide/pause.svg
+    resources/lucide/play.svg
+    resources/lucide/plug.svg
+    resources/lucide/refresh-cw.svg
+    resources/lucide/satellite.svg
+    resources/lucide/square.svg
+    resources/lucide/trash-2.svg
+    resources/lucide/unplug.svg
+    resources/lucide/LICENSE
+)
+
 set(NAV_WIN_RESOURCES)
 if(WIN32)
     list(APPEND NAV_WIN_RESOURCES resources/app.rc)
@@ -211,6 +226,7 @@ if(WIN32)
         ${NAV_HEADERS}
         ${NAV_UI_FILES}
         ${NAV_RESOURCES}
+        ${LUCIDE_RESOURCES}
         ${NAV_WIN_RESOURCES}
     )
 else()
@@ -219,6 +235,7 @@ else()
         ${NAV_HEADERS}
         ${NAV_UI_FILES}
         ${NAV_RESOURCES}
+        ${LUCIDE_RESOURCES}
     )
 endif()
 
@@ -274,6 +291,9 @@ add_custom_command(TARGET VaporView POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/resources/app.ico
         $<TARGET_FILE_DIR:VaporView>/resources/app.ico
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/resources/lucide
+        $<TARGET_FILE_DIR:VaporView>/resources/lucide
     COMMENT "Copying resources to build directory"
 )
 
@@ -391,6 +411,10 @@ install(DIRECTORY include/
 )
 
 install(FILES ${NAV_RESOURCES}
+    DESTINATION resources
+)
+
+install(DIRECTORY resources/lucide
     DESTINATION resources
 )
 

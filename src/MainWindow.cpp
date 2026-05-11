@@ -45,8 +45,8 @@
 #include <QHash>
 #include <QIcon>
 #include <QPainter>
-#include <QPainterPath>
 #include <QPixmap>
+#include <QSvgRenderer>
 #include <QSet>
 #include <QSignalBlocker>
 #include <QSettings>
@@ -155,171 +155,108 @@ int clampPtbSampleRate(int hz)
     return std::clamp(hz, kPtbMinSampleRateHz, kPtbMaxSampleRateHz);
 }
 
-template <typename DrawFn>
-QIcon createToolbarIcon(const QColor& color, DrawFn draw)
+QString findResourceFile(const QString& relativePath)
 {
-    auto render = [&draw](const QColor& iconColor) {
-        QPixmap pixmap(32, 32);
-        pixmap.fill(Qt::transparent);
-
-        QPainter painter(&pixmap);
-        painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.translate(2.0, 2.0);
-        painter.scale(28.0 / 24.0, 28.0 / 24.0);
-        painter.setPen(QPen(iconColor, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-        painter.setBrush(Qt::NoBrush);
-        draw(painter);
-        return pixmap;
+    const QString appDir = QApplication::applicationDirPath();
+    const QStringList candidates = {
+        QDir(appDir).filePath(relativePath),
+        QDir(appDir).filePath(QStringLiteral("../") + relativePath),
+        QDir(appDir).filePath(QStringLiteral("../../") + relativePath)
     };
 
+    for (const QString& path : candidates)
+    {
+        if (QFileInfo::exists(path))
+        {
+            return path;
+        }
+    }
+    return QString();
+}
+
+QPixmap renderLucidePixmap(const QByteArray& svgData, const QColor& color)
+{
+    QByteArray tinted = svgData;
+    tinted.replace("currentColor", color.name(QColor::HexRgb).toUtf8());
+
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+
+    QSvgRenderer renderer(tinted);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    renderer.render(&painter, QRectF(2, 2, 28, 28));
+    return pixmap;
+}
+
+QIcon createLucideIcon(const QString& iconName, const QColor& color)
+{
+    QFile file(findResourceFile(QStringLiteral("resources/lucide/%1.svg").arg(iconName)));
+    if (!file.open(QIODevice::ReadOnly))
+    {
+        return QIcon();
+    }
+
+    const QByteArray svgData = file.readAll();
     QIcon icon;
-    icon.addPixmap(render(color), QIcon::Normal);
-    icon.addPixmap(render(kToolbarDisabled), QIcon::Disabled);
+    icon.addPixmap(renderLucidePixmap(svgData, color), QIcon::Normal);
+    icon.addPixmap(renderLucidePixmap(svgData, kToolbarDisabled), QIcon::Disabled);
     return icon;
 }
 
 QIcon createRefreshIcon()
 {
-    return createToolbarIcon(kToolbarBlue, [](QPainter& painter) {
-        painter.drawArc(QRectF(4, 4, 16, 16), 35 * 16, 255 * 16);
-        painter.drawLine(QPointF(18, 4), QPointF(20, 9));
-        painter.drawLine(QPointF(18, 4), QPointF(13, 5));
-        painter.drawArc(QRectF(4, 4, 16, 16), 215 * 16, 255 * 16);
-        painter.drawLine(QPointF(6, 20), QPointF(4, 15));
-        painter.drawLine(QPointF(6, 20), QPointF(11, 19));
-    });
+    return createLucideIcon(QStringLiteral("refresh-cw"), kToolbarBlue);
 }
 
 QIcon createConnectIcon()
 {
-    return createToolbarIcon(kToolbarGreen, [](QPainter& painter) {
-        painter.drawLine(QPointF(4, 20), QPointF(9, 15));
-        painter.drawLine(QPointF(15, 9), QPointF(20, 4));
-        painter.drawRoundedRect(QRectF(8, 8, 8, 8), 2, 2);
-        painter.drawLine(QPointF(10, 6), QPointF(14, 10));
-        painter.drawLine(QPointF(14, 6), QPointF(18, 10));
-        painter.drawLine(QPointF(6, 10), QPointF(10, 14));
-        painter.drawLine(QPointF(10, 18), QPointF(14, 14));
-    });
+    return createLucideIcon(QStringLiteral("plug"), kToolbarGreen);
 }
 
 QIcon createCancelIcon()
 {
-    return createToolbarIcon(kToolbarRed, [](QPainter& painter) {
-        painter.drawLine(QPointF(6, 6), QPointF(18, 18));
-        painter.drawLine(QPointF(18, 6), QPointF(6, 18));
-    });
+    return createLucideIcon(QStringLiteral("circle-x"), kToolbarRed);
 }
 
 QIcon createDisconnectIcon()
 {
-    return createToolbarIcon(kToolbarRed, [](QPainter& painter) {
-        painter.drawLine(QPointF(3, 20), QPointF(7, 16));
-        painter.drawLine(QPointF(17, 7), QPointF(21, 3));
-        painter.drawRoundedRect(QRectF(6, 11, 6, 6), 1.5, 1.5);
-        painter.drawRoundedRect(QRectF(13, 4, 6, 6), 1.5, 1.5);
-        painter.drawLine(QPointF(8, 9), QPointF(11, 12));
-        painter.drawLine(QPointF(12, 8), QPointF(15, 11));
-        painter.drawLine(QPointF(14, 13), QPointF(17, 16));
-        painter.drawLine(QPointF(17, 13), QPointF(14, 16));
-    });
+    return createLucideIcon(QStringLiteral("unplug"), kToolbarRed);
 }
 
 QIcon createPlayIcon()
 {
-    return createToolbarIcon(kToolbarGreen, [](QPainter& painter) {
-        QPainterPath path;
-        path.moveTo(8, 5);
-        path.lineTo(19, 12);
-        path.lineTo(8, 19);
-        path.closeSubpath();
-        painter.setBrush(painter.pen().color());
-        painter.drawPath(path);
-    });
+    return createLucideIcon(QStringLiteral("play"), kToolbarGreen);
 }
 
 QIcon createPauseIcon()
 {
-    return createToolbarIcon(kToolbarBlue, [](QPainter& painter) {
-        painter.drawLine(QPointF(9, 6), QPointF(9, 18));
-        painter.drawLine(QPointF(15, 6), QPointF(15, 18));
-    });
+    return createLucideIcon(QStringLiteral("pause"), kToolbarBlue);
 }
 
 QIcon createStopIcon()
 {
-    return createToolbarIcon(kToolbarRed, [](QPainter& painter) {
-        painter.setBrush(painter.pen().color());
-        painter.drawRoundedRect(QRectF(7, 7, 10, 10), 1.5, 1.5);
-    });
+    return createLucideIcon(QStringLiteral("square"), kToolbarRed);
 }
 
 QIcon createRtkSatelliteIcon()
 {
-    return createToolbarIcon(kToolbarBlue, [](QPainter& painter) {
-        painter.drawLine(QPointF(13, 7), QPointF(9, 3));
-        painter.drawLine(QPointF(9, 3), QPointF(5, 7));
-        painter.drawLine(QPointF(5, 7), QPointF(9, 11));
-        painter.drawLine(QPointF(17, 11), QPointF(21, 15));
-        painter.drawLine(QPointF(21, 15), QPointF(17, 19));
-        painter.drawLine(QPointF(17, 19), QPointF(13, 15));
-        painter.drawLine(QPointF(8, 12), QPointF(12, 16));
-        painter.drawLine(QPointF(12, 16), QPointF(18, 10));
-        painter.drawLine(QPointF(18, 10), QPointF(14, 6));
-        painter.drawLine(QPointF(14, 6), QPointF(8, 12));
-        painter.drawLine(QPointF(16, 8), QPointF(19, 5));
-        painter.drawArc(QRectF(3, 15, 12, 12), 90 * 16, 90 * 16);
-    });
+    return createLucideIcon(QStringLiteral("satellite"), kToolbarBlue);
 }
 
 QIcon createClearLogIcon()
 {
-    return createToolbarIcon(kToolbarBlue, [](QPainter& painter) {
-        painter.drawLine(QPointF(8, 6), QPointF(17, 6));
-        painter.drawLine(QPointF(10, 4), QPointF(15, 4));
-        painter.drawLine(QPointF(6, 8), QPointF(19, 8));
-        painter.drawRoundedRect(QRectF(8, 8, 9, 12), 1.5, 1.5);
-        painter.drawLine(QPointF(10.5, 11), QPointF(10.5, 17));
-        painter.drawLine(QPointF(14.5, 11), QPointF(14.5, 17));
-    });
+    return createLucideIcon(QStringLiteral("trash-2"), kToolbarBlue);
 }
 
 QIcon createWaveformViewerIcon()
 {
-    return createToolbarIcon(kToolbarBlue, [](QPainter& painter) {
-        QPainterPath path;
-        path.moveTo(2, 13);
-        path.cubicTo(3.1, 13, 4, 12.1, 4, 11);
-        path.lineTo(4, 7);
-        path.cubicTo(4, 5.9, 4.9, 5, 6, 5);
-        path.cubicTo(7.1, 5, 8, 5.9, 8, 7);
-        path.lineTo(8, 20);
-        path.cubicTo(8, 21.1, 8.9, 22, 10, 22);
-        path.cubicTo(11.1, 22, 12, 21.1, 12, 20);
-        path.lineTo(12, 4);
-        path.cubicTo(12, 2.9, 12.9, 2, 14, 2);
-        path.cubicTo(15.1, 2, 16, 2.9, 16, 4);
-        path.lineTo(16, 17);
-        path.cubicTo(16, 18.1, 16.9, 19, 18, 19);
-        path.cubicTo(19.1, 19, 20, 18.1, 20, 17);
-        path.lineTo(20, 13);
-        path.cubicTo(20, 11.9, 20.9, 11, 22, 11);
-        painter.drawPath(path);
-    });
+    return createLucideIcon(QStringLiteral("activity"), kToolbarBlue);
 }
 
 QIcon createFullscreenIcon()
 {
-    return createToolbarIcon(kToolbarBlue, [](QPainter& painter) {
-        painter.drawLine(QPointF(5, 10), QPointF(5, 5));
-        painter.drawLine(QPointF(5, 5), QPointF(10, 5));
-        painter.drawLine(QPointF(19, 10), QPointF(19, 5));
-        painter.drawLine(QPointF(19, 5), QPointF(14, 5));
-        painter.drawLine(QPointF(5, 14), QPointF(5, 19));
-        painter.drawLine(QPointF(5, 19), QPointF(10, 19));
-        painter.drawLine(QPointF(19, 14), QPointF(19, 19));
-        painter.drawLine(QPointF(19, 19), QPointF(14, 19));
-    });
+    return createLucideIcon(QStringLiteral("maximize"), kToolbarBlue);
 }
 
 #pragma pack(push, 1)
