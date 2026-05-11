@@ -336,6 +336,7 @@ if(WIN32 AND QT_WINDEPLOYQT_EXECUTABLE)
     add_custom_command(TARGET VaporView POST_BUILD
         COMMAND ${QT_WINDEPLOYQT_EXECUTABLE}
             --compiler-runtime
+            --force
             --no-translations
             --no-system-dxc-compiler
             $<TARGET_FILE:VaporView>
@@ -344,6 +345,7 @@ if(WIN32 AND QT_WINDEPLOYQT_EXECUTABLE)
     add_custom_command(TARGET VaporViewSky POST_BUILD
         COMMAND ${QT_WINDEPLOYQT_EXECUTABLE}
             --compiler-runtime
+            --force
             --no-translations
             --no-system-dxc-compiler
             $<TARGET_FILE:VaporViewSky>
