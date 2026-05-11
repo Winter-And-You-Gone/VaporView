@@ -44,11 +44,17 @@ Item {
         return lines.length > 0 ? lines.join("\n") : ""
     }
 
-    property var ggaSourceModel: [
-        { text: t("rtk.ggaSourceEpsilonMain"), value: "epsilon_main" },
-        { text: t("rtk.ggaSourceManual"), value: "manual" },
-        { text: t("rtk.ggaSourceExternalNetwork"), value: "external" },
-    ]
+    readonly property var ggaSourceModel: {
+        var result = [{ text: t("rtk.ggaSourceEpsilonMain"), value: "epsilon_main" }]
+        var epsilonPort = String(deviceBackend.device(0).port || "")
+        var ports = deviceBackend.ports || []
+        for (var i = 0; i < ports.length; ++i) {
+            var port = String(ports[i] || "")
+            if (port.length > 0 && port !== epsilonPort)
+                result.push({ text: t("rtk.ggaSourceOtherPort").replace("%1", port), value: "serial:" + port })
+        }
+        return result
+    }
     property int ggaSourceIndex: 0
 
     property var ggaRateModel: [
@@ -652,7 +658,7 @@ Item {
     component GgaSourceCombo: AppComboBox {
         id: ggaCombo
         model: page.ggaSourceModel
-        currentIndex: page.ggaSourceIndex
+        currentIndex: Math.min(page.ggaSourceIndex, Math.max(0, page.ggaSourceModel.length - 1))
         textRole: "text"
         displayRoleName: "text"
         onActivated: page.ggaSourceIndex = currentIndex

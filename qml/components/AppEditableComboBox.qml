@@ -63,7 +63,14 @@ Item {
         anchors.right: parent.right; width: control.dropAreaW
         hoverEnabled: true; cursorShape: Qt.PointingHandCursor
         acceptedButtons: Qt.LeftButton; z: 19
-        onClicked: { control.commit(); popup.open() }
+        onClicked: {
+            if (popup.visible) {
+                popup.close()
+            } else {
+                control.commit()
+                popup.open()
+            }
+        }
     }
 
     Popup {
