@@ -589,104 +589,38 @@ Item {
         }
     }
 
-    component RtkMountPointCombo: ComboBox {
+    component RtkMountPointCombo: AppEditableComboBox {
         id: mpCombo
-        editable: true
         model: page.mountPointModel
-        font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
-        implicitHeight: 34
-        property int dropAreaW: 42
-
-        Component.onCompleted: {
-            mpCombo.editText = rtkBackend.mountpoint && rtkBackend.mountpoint.length > 0 ? rtkBackend.mountpoint : "AUTO"
-        }
+        text: rtkBackend.mountpoint && rtkBackend.mountpoint.length > 0 ? rtkBackend.mountpoint : "AUTO"
+        acceptEmptyInput: true
 
         Connections {
             target: rtkBackend
-            function onConfigChanged() { if (!mpCombo.activeFocus) syncFromBackend() }
-            function onMountPointOptionsChanged() { if (!mpCombo.activeFocus) syncFromBackend() }
+            function onConfigChanged() { mpCombo.syncFromBackend() }
+            function onMountPointOptionsChanged() { mpCombo.syncFromBackend() }
         }
 
         function syncFromBackend() {
-            mpCombo.editText = rtkBackend.mountpoint && rtkBackend.mountpoint.length > 0 ? rtkBackend.mountpoint : "AUTO"
+            mpCombo.text = rtkBackend.mountpoint && rtkBackend.mountpoint.length > 0 ? rtkBackend.mountpoint : "AUTO"
         }
 
-        function commitMountPoint() {
-            var v = String(mpCombo.editText||"").trim()
+        function commitMountPoint(value) {
+            var v = String(value || mpCombo.text || "").trim()
             if (v.length === 0) v = "AUTO"
             if (rtkBackend.mountpoint !== v) rtkBackend.setMountpoint(v)
-            mpCombo.editText = v
+            if (mpCombo.text !== v) mpCombo.text = v
         }
 
-        onAccepted: commitMountPoint()
-
-        onActivated: function(index) {
-            var v = mpCombo.textAt(index)
-            if (v && v.length > 0) { mpCombo.editText = v; rtkBackend.setMountpoint(v) }
-        }
-
-        delegate: ItemDelegate {
-            width: mpCombo.width; height: 32
-            text: modelData
-            font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
-            highlighted: mpCombo.highlightedIndex === index
-            background: Rectangle { color: highlighted ? ApplicationWindow.window.secondary : "transparent"; radius: 5 }
-            contentItem: Text {
-                text: modelData; color: ApplicationWindow.window.text
-                font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 10; rightPadding: 10; elide: Text.ElideRight
-            }
-        }
-
-        indicator: Item {
-            width: Math.max(40, ApplicationWindow.window.uiControlHeight); height: mpCombo.height
-            anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; z: 20
-            AppComboArrow { anchors.fill: parent; arrowColor: ApplicationWindow.window.muted }
-        }
-
-        contentItem: TextField {
-            id: mountEditor
-            text: mpCombo.editText
-            leftPadding: 10; rightPadding: Math.max(44, ApplicationWindow.window.uiControlHeight + 4)
-            color: ApplicationWindow.window.text
-            selectedTextColor: ApplicationWindow.window.primaryForeground
-            selectionColor: ApplicationWindow.window.primary
-            placeholderTextColor: ApplicationWindow.window.muted
-            font: mpCombo.font; verticalAlignment: Text.AlignVCenter; background: null
-            selectByMouse: true
-            onEditingFinished: mpCombo.commitMountPoint()
-        }
-
-        background: Rectangle {
-            implicitHeight: 34; radius: 7
-            color: mpCombo.hovered ? ApplicationWindow.window.secondary : ApplicationWindow.window.card
-            border.width: 1
-            border.color: mpCombo.activeFocus ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8") : ApplicationWindow.window.border
-        }
-
-        MouseArea {
-            anchors.top: parent.top; anchors.bottom: parent.bottom
-            anchors.right: parent.right; width: mpCombo.dropAreaW
-            cursorShape: Qt.PointingHandCursor
-            acceptedButtons: Qt.LeftButton; hoverEnabled: true; z: 10
-            onPressed: function(mouse) { mouse.accepted = true }
-            onClicked: { mpCombo.commitMountPoint(); mpCombo.popup.open() }
-        }
-
-        popup: Popup {
-            y: mpCombo.height + 2; width: mpCombo.width; padding: 4
-            implicitHeight: Math.min(contentItem.implicitHeight+8, 220*ApplicationWindow.window.scaleFactor)
-            background: Rectangle { radius: 7; color: ApplicationWindow.window.card; border.color: ApplicationWindow.window.border; border.width: 1 }
-            contentItem: ListView {
-                clip: true; implicitHeight: contentHeight
-                model: mpCombo.delegateModel; currentIndex: mpCombo.highlightedIndex
-                ScrollBar.vertical: ScrollBar { policy: contentHeight > height ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
-            }
-        }
+        onAccepted: function(text) { commitMountPoint(text) }
     }
 
-    component RtkPortComboBox: ComboBox {
+    component RtkPortComboBox: AppComboBox {
         id: portCombo
-        model: rtkBackend.outputPortOptions; textRole: "label"; valueRole: "port"
+        model: rtkBackend.outputPortOptions
+        textRole: "label"
+        valueRole: "port"
+        displayRoleName: "label"
         currentIndex: {
             var opts = rtkBackend.outputPortOptions
             for (var i = 0; i < opts.length; ++i)
@@ -698,76 +632,37 @@ Item {
             if (portCombo.currentIndex >= 0 && portCombo.currentIndex < opts.length)
                 rtkBackend.setOutputPort(opts[portCombo.currentIndex].port)
         }
-        font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
-        implicitHeight: 34
 
         delegate: ItemDelegate {
             width: portCombo.width
-            text: modelData ? modelData.label || modelData.port || "" : ""
-            font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
+            height: ApplicationWindow.window.uiControlHeight
+            text: portCombo.displayFor(modelData)
+            font.family: "Consolas"
+            font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor
             highlighted: portCombo.highlightedIndex === index
-            background: Rectangle { color: highlighted ? ApplicationWindow.window.secondary : "transparent" }
+            background: Rectangle { radius: ApplicationWindow.window.uiRadius; color: highlighted ? ApplicationWindow.window.secondary : "transparent" }
             contentItem: Text {
                 text: parent.text
                 color: (modelData && modelData.occupied) ? ApplicationWindow.window.muted : ApplicationWindow.window.text
-                font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 8
+                font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 10; rightPadding: 10; elide: Text.ElideRight
             }
         }
-        indicator: Item { width: Math.max(40, ApplicationWindow.window.uiControlHeight); height: portCombo.height; x: portCombo.width - width; y: 0; z: 20
-            AppComboArrow { anchors.fill: parent; arrowColor: ApplicationWindow.window.muted } }
-        contentItem: Text {
-            leftPadding: 10; rightPadding: Math.max(44, ApplicationWindow.window.uiControlHeight + 4)
-            text: portCombo.displayText; color: ApplicationWindow.window.text
-            font: portCombo.font; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
-        }
-        background: Rectangle {
-            implicitHeight: 34; radius: 7
-            color: portCombo.hovered ? ApplicationWindow.window.secondary : ApplicationWindow.window.card
-            border.color: portCombo.activeFocus
-                ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8")
-                : ApplicationWindow.window.border
-        }
-        popup: RtkPopup { popupWidth: portCombo.width; model: portCombo.delegateModel; index: portCombo.highlightedIndex }
     }
 
-    component GgaSourceCombo: ComboBox {
+    component GgaSourceCombo: AppComboBox {
         id: ggaCombo
-        model: page.ggaSourceModel; currentIndex: page.ggaSourceIndex; textRole: "text"
-        font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
-        implicitHeight: 34; onActivated: page.ggaSourceIndex = currentIndex
-        delegate: ItemDelegate {
-            width: ggaCombo.width
-            text: ggaCombo.textRole ? model[ggaCombo.textRole] : modelData
-            font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
-            highlighted: ggaCombo.highlightedIndex === index
-            background: Rectangle { color: highlighted ? ApplicationWindow.window.secondary : "transparent" }
-            contentItem: Text {
-                text: parent.text; color: ApplicationWindow.window.text
-                font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 8
-            }
-        }
-        indicator: Item { width: Math.max(40, ggaCombo.height); height: ggaCombo.height; x: ggaCombo.width - width
-            AppComboArrow { anchors.fill: parent } }
-        contentItem: Text {
-            leftPadding: 10; rightPadding: Math.max(44, ApplicationWindow.window.uiControlHeight + 4)
-            text: ggaCombo.displayText; color: ApplicationWindow.window.text
-            font: ggaCombo.font; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
-        }
-        background: Rectangle {
-            implicitHeight: 34; radius: 7
-            color: ggaCombo.hovered ? ApplicationWindow.window.secondary : ApplicationWindow.window.card
-            border.color: ggaCombo.activeFocus
-                ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8")
-                : ApplicationWindow.window.border
-        }
-        popup: RtkPopup { popupWidth: ggaCombo.width; model: ggaCombo.delegateModel; index: ggaCombo.highlightedIndex }
+        model: page.ggaSourceModel
+        currentIndex: page.ggaSourceIndex
+        textRole: "text"
+        displayRoleName: "text"
+        onActivated: page.ggaSourceIndex = currentIndex
     }
 
-    component GgaRateCombo: ComboBox {
+    component GgaRateCombo: AppComboBox {
         id: rateCombo
-        model: page.ggaRateModel; textRole: "text"
-        font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
-        implicitHeight: 34
+        model: page.ggaRateModel
+        textRole: "text"
+        displayRoleName: "text"
         Component.onCompleted: {
             var found = false
             for (var i = 0; i < page.ggaRateModel.length; ++i) {
@@ -780,44 +675,6 @@ Item {
         onActivated: {
             if (rateCombo.currentIndex >= 0)
                 rtkBackend.ggaGenerationRateHz = page.ggaRateModel[rateCombo.currentIndex].value
-        }
-        delegate: ItemDelegate {
-            width: rateCombo.width
-            text: modelData ? modelData.text || "" : ""
-            font.pixelSize: Math.round(11 * ApplicationWindow.window.scaleFactor)
-            highlighted: rateCombo.highlightedIndex === index
-            background: Rectangle { color: highlighted ? ApplicationWindow.window.secondary : "transparent" }
-            contentItem: Text {
-                text: parent.text; color: ApplicationWindow.window.text
-                font: parent.font; verticalAlignment: Text.AlignVCenter; leftPadding: 8
-            }
-        }
-        indicator: Item { width: Math.max(40, rateCombo.height); height: rateCombo.height; x: rateCombo.width - width
-            AppComboArrow { anchors.fill: parent } }
-        contentItem: Text {
-            leftPadding: 10; rightPadding: Math.max(44, ApplicationWindow.window.uiControlHeight + 4)
-            text: rateCombo.displayText; color: ApplicationWindow.window.text
-            font: rateCombo.font; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
-        }
-        background: Rectangle {
-            implicitHeight: 34; radius: 7
-            color: rateCombo.hovered ? ApplicationWindow.window.secondary : ApplicationWindow.window.card
-            border.color: rateCombo.activeFocus
-                ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8")
-                : ApplicationWindow.window.border
-        }
-        popup: RtkPopup { popupWidth: rateCombo.width; model: rateCombo.delegateModel; index: rateCombo.highlightedIndex }
-    }
-
-    component RtkPopup: Popup {
-        id: rp
-        property real popupWidth: 100; property var model; property int index: 0
-        y: parent.height + 2; width: popupWidth; implicitHeight: contentItem.implicitHeight + 8; padding: 4
-        background: Rectangle { radius: ApplicationWindow.window.uiRadius; color: ApplicationWindow.window.card; border.width: ApplicationWindow.window.uiBorderWidth; border.color: ApplicationWindow.window.border }
-        contentItem: ListView {
-            clip: true; implicitHeight: contentHeight
-            model: rp.model
-            currentIndex: rp.index
         }
     }
 }

@@ -4,7 +4,7 @@ import QtQuick.Controls.Basic
 ComboBox {
     id: control
     property string displayRoleName: ""
-    implicitHeight: 30
+    implicitHeight: ApplicationWindow.window.uiControlHeight
     font.family: "Consolas"
     font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor
 
@@ -35,18 +35,18 @@ ComboBox {
     }
 
     background: Rectangle {
-        implicitHeight: 30; radius: 5
+        implicitHeight: ApplicationWindow.window.uiControlHeight; radius: ApplicationWindow.window.uiRadius
         color: control.enabled ? ApplicationWindow.window.bg : ApplicationWindow.window.cardAlt
-        border.color: ApplicationWindow.window.border; border.width: 1
+        border.color: ApplicationWindow.window.border; border.width: ApplicationWindow.window.uiBorderWidth
     }
 
     delegate: ItemDelegate {
         id: opt
-        width: control.width; height: 30
+        width: control.width; height: ApplicationWindow.window.uiControlHeight
         text: control.displayFor(modelData)
-        font.family: "Consolas"; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor; font.bold: false
+        font.family: "Consolas"; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; font.bold: false
         highlighted: control.highlightedIndex === index
-        background: Rectangle { radius: 5; color: (opt.hovered || opt.highlighted) ? ApplicationWindow.window.secondary : "transparent" }
+        background: Rectangle { radius: ApplicationWindow.window.uiRadius; color: (opt.hovered || opt.highlighted) ? ApplicationWindow.window.secondary : "transparent" }
         contentItem: Text { text: opt.text; color: ApplicationWindow.window.text; font: opt.font; verticalAlignment: Text.AlignVCenter; leftPadding: 10; rightPadding: 10; elide: Text.ElideRight }
     }
 
@@ -55,10 +55,10 @@ ComboBox {
         y: control.height + 2; width: control.width; padding: 1
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
         readonly property bool empty: control.count === 0
-        implicitHeight: comboPopup.empty ? 32 : Math.min(contentItem.implicitHeight, 220)
-        background: Rectangle { radius: 5; color: ApplicationWindow.window.card; border.color: ApplicationWindow.window.border; border.width: 1 }
+        implicitHeight: comboPopup.empty ? ApplicationWindow.window.uiControlHeight + 2 : Math.min(contentItem.implicitHeight, 220)
+        background: Rectangle { radius: ApplicationWindow.window.uiRadius; color: ApplicationWindow.window.card; border.color: ApplicationWindow.window.border; border.width: ApplicationWindow.window.uiBorderWidth }
         contentItem: Item {
-            implicitHeight: comboPopup.empty ? 30 : listView.contentHeight
+            implicitHeight: comboPopup.empty ? ApplicationWindow.window.uiControlHeight : listView.contentHeight
             ListView { id: listView; anchors.fill: parent; visible: !comboPopup.empty; clip: true; implicitHeight: contentHeight; model: control.popup.visible ? control.delegateModel : null; currentIndex: control.highlightedIndex; ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded } }
             Text { visible: comboPopup.empty; anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; anchors.right: parent.right; anchors.leftMargin: 10; anchors.rightMargin: 10; text: appBackend.t("components.noOptions"); color: ApplicationWindow.window.muted; font.family: "Consolas"; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor; elide: Text.ElideRight }
         }

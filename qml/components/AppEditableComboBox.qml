@@ -7,10 +7,11 @@ Item {
     property string text: ""
     property string placeholderText: ""
     property string displayRoleName: ""
+    property bool acceptEmptyInput: false
     signal accepted(string text)
     signal activated(int index, string text, var modelData)
 
-    implicitHeight: 30
+    implicitHeight: ApplicationWindow.window.uiControlHeight
     implicitWidth: 220
     readonly property int dropAreaW: 34
 
@@ -26,7 +27,7 @@ Item {
 
     function commit() {
         var v = String(editor.text || "").trim()
-        if (v.length > 0) { control.text = v; control.accepted(v) }
+        if (v.length > 0 || control.acceptEmptyInput) { control.text = v; control.accepted(v) }
     }
 
     TextField {
@@ -43,7 +44,7 @@ Item {
         leftPadding: 10; rightPadding: 28
         selectByMouse: true
         verticalAlignment: TextInput.AlignVCenter
-        background: Rectangle { implicitHeight: 30; radius: 5; color: control.enabled ? ApplicationWindow.window.bg : ApplicationWindow.window.cardAlt; border.color: editor.activeFocus || popup.visible ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8") : ApplicationWindow.window.border; border.width: 1 }
+        background: Rectangle { implicitHeight: ApplicationWindow.window.uiControlHeight; radius: ApplicationWindow.window.uiRadius; color: control.enabled ? ApplicationWindow.window.bg : ApplicationWindow.window.cardAlt; border.color: editor.activeFocus || popup.visible ? (ApplicationWindow.window.dark ? "#60a5fa" : "#1d4ed8") : ApplicationWindow.window.border; border.width: ApplicationWindow.window.uiBorderWidth }
         onEditingFinished: control.commit()
         onAccepted: control.commit()
     }
@@ -71,19 +72,19 @@ Item {
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
         readonly property bool empty: modelCount() === 0
         function modelCount() { if (!control.model) return 0; if (control.model.length !== undefined) return control.model.length; if (control.model.count !== undefined) return control.model.count; return 0 }
-        implicitHeight: empty ? 32 : Math.min(listView.contentHeight, 220)
-        background: Rectangle { radius: 5; color: ApplicationWindow.window.card; border.color: ApplicationWindow.window.border; border.width: 1 }
+        implicitHeight: empty ? ApplicationWindow.window.uiControlHeight + 2 : Math.min(listView.contentHeight, 220)
+        background: Rectangle { radius: ApplicationWindow.window.uiRadius; color: ApplicationWindow.window.card; border.color: ApplicationWindow.window.border; border.width: ApplicationWindow.window.uiBorderWidth }
         contentItem: Item {
-            implicitHeight: popup.empty ? 30 : listView.contentHeight
+            implicitHeight: popup.empty ? ApplicationWindow.window.uiControlHeight : listView.contentHeight
             ListView {
                 id: listView; anchors.fill: parent; visible: !popup.empty; clip: true; implicitHeight: contentHeight
                 model: control.model || []
                 delegate: ItemDelegate {
                     id: opt
-                    width: listView.width; height: 30
+                    width: listView.width; height: ApplicationWindow.window.uiControlHeight
                     text: control.displayFor(modelData)
-                    font.family: "Consolas"; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor; font.bold: false
-                    background: Rectangle { radius: 5; color: opt.hovered ? ApplicationWindow.window.secondary : "transparent" }
+                    font.family: "Consolas"; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; font.bold: false
+                    background: Rectangle { radius: ApplicationWindow.window.uiRadius; color: opt.hovered ? ApplicationWindow.window.secondary : "transparent" }
                     contentItem: Text { text: opt.text; color: ApplicationWindow.window.text; font: opt.font; verticalAlignment: Text.AlignVCenter; leftPadding: 10; rightPadding: 10; elide: Text.ElideRight }
                     onClicked: { var v = control.displayFor(modelData); editor.text = v; control.text = v; control.activated(index, v, modelData); control.accepted(v); popup.close() }
                 }
