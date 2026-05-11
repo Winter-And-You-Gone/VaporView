@@ -22,15 +22,16 @@ Item {
             id: mainContent; width: parent.width - 16
             readonly property bool narrow: width < 1050
             readonly property int gap: ApplicationWindow.window.uiSpacing
+            readonly property int globalStyleOverhang: 30
             readonly property int leftW: narrow ? width : 340
-            readonly property int rightW: narrow ? width : width - leftW - gap
+            readonly property int rightW: narrow ? width : width - leftW - gap - globalStyleOverhang
             height: narrow ? leftPanel.height + gap + rightPanel.height : Math.max(leftPanel.height, rightPanel.height)
 
             Column { id: leftPanel; width: mainContent.leftW; spacing: ApplicationWindow.window.uiSpacing
                 Card { width: parent.width; height: implicitHeight; title: t("components.title")
                     CardBody { Text { width: parent.width; text: t("components.description"); color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; wrapMode: Text.WordWrap } }
                 }
-                Card { width: parent.width + 30; height: implicitHeight; title: t("components.globalStyle")
+                Card { width: parent.width + mainContent.globalStyleOverhang; height: implicitHeight; title: t("components.globalStyle")
                     headerRight: ToolbarButton {
                         iconName: "rotate-ccw"
                         text: t("components.recenterSliders")
@@ -65,7 +66,7 @@ Item {
             }
 
             Column { id: rightPanel; width: mainContent.rightW; spacing: ApplicationWindow.window.uiSpacing
-                x: mainContent.narrow ? 0 : mainContent.leftW + mainContent.gap
+                x: mainContent.narrow ? 0 : mainContent.leftW + mainContent.gap + mainContent.globalStyleOverhang
                 y: mainContent.narrow ? leftPanel.height + mainContent.gap : 0
 
                 Card { width: parent.width; height: implicitHeight; title: t("components.buttons")
