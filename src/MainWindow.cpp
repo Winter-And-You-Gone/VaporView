@@ -3807,6 +3807,15 @@ void MainWindow::setupConfigPanel()
     connect(hmp_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onHmpRateChanged);
     connect(lidar_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onLidarRateChanged);
 
+    data_telemetry_summary_lbl_ = new QLabel(this);
+    data_telemetry_summary_lbl_->setObjectName("fieldLabel");
+    data_telemetry_summary_lbl_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    data_telemetry_summary_lbl_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    data_telemetry_summary_lbl_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    data_telemetry_summary_lbl_->setMinimumHeight(kMainPageInputHeight);
+    data_telemetry_summary_lbl_->setWordWrap(false);
+    config_layout->addWidget(data_telemetry_summary_lbl_, row, 0, 1, 6, Qt::AlignVCenter | Qt::AlignLeft);
+
     config_root_layout->addLayout(config_layout);
     main_layout_->addWidget(config_group_);
 }
@@ -3823,14 +3832,8 @@ void MainWindow::setupDataPanels()
     data_title_layout->setSpacing(12);
     data_inline_title_lbl_ = new QLabel(this);
     data_inline_title_lbl_->setObjectName("sectionTitleLabel");
-    data_telemetry_summary_lbl_ = new QLabel(this);
-    data_telemetry_summary_lbl_->setObjectName("fieldLabel");
-    data_telemetry_summary_lbl_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    data_telemetry_summary_lbl_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    data_telemetry_summary_lbl_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     data_title_layout->addWidget(data_inline_title_lbl_, 0, Qt::AlignLeft);
     data_title_layout->addStretch();
-    data_title_layout->addWidget(data_telemetry_summary_lbl_, 1);
     data_layout->addLayout(data_title_layout);
 
     auto *sensor_splitter = new QSplitter(Qt::Horizontal, data_group_);
