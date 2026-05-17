@@ -111,6 +111,19 @@ QString skyDeviceDisplayName(VaporView::SkyDeviceId device)
     return QStringLiteral("Device");
 }
 
+QString formatBitRate(double bitsPerSecond)
+{
+    if (!std::isfinite(bitsPerSecond) || bitsPerSecond <= 0.0)
+    {
+        return QStringLiteral("0 bps");
+    }
+    if (bitsPerSecond < 1000.0)
+    {
+        return QStringLiteral("%1 bps").arg(bitsPerSecond, 0, 'f', 0);
+    }
+    return QStringLiteral("%1 kbps").arg(bitsPerSecond / 1000.0, 0, 'f', bitsPerSecond < 10000.0 ? 2 : 1);
+}
+
 QString remoteNoDataText(bool english)
 {
     return english ? QStringLiteral("No data") : QStringLiteral("无数据");
@@ -2767,7 +2780,16 @@ QString MainWindow::remoteTelemetrySummaryText() const
              hasText(VaporView::SkyDeviceId::Lidar, 2000),
              hasText(VaporView::SkyDeviceId::WaveTcp, 3000));
 
-    return QStringLiteral("%1    |    %2").arg(rates, devices);
+    const double rxBps = ground_telemetry_service_->receiveBitsPerSecond();
+    const double txBps = ground_telemetry_service_->transmitBitsPerSecond();
+    const QString throughput = QString(is_english_
+            ? "Link rate: Sky->Ground %1 | Ground->Sky %2 | Total %3"
+            : "链路速率：天空→地面 %1 | 地面→天空 %2 | 合计 %3")
+        .arg(formatBitRate(rxBps),
+             formatBitRate(txBps),
+             formatBitRate(rxBps + txBps));
+
+    return QStringLiteral("%1    |    %2    |    %3").arg(rates, throughput, devices);
 }
 
 void MainWindow::updateRemoteTelemetrySummaryLabel()

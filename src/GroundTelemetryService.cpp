@@ -2,6 +2,7 @@
 
 #include <QDateTime>
 #include <QJsonDocument>
+#include <algorithm>
 
 namespace VaporView
 {
@@ -9,6 +10,7 @@ namespace
 {
 constexpr int kCommandRetryIntervalMs = 800;
 constexpr int kCommandMaxRetries = 3;
+constexpr qint64 kBitRateWindowMs = 5000;
 
 quint64 nowUs()
 {
@@ -18,6 +20,32 @@ quint64 nowUs()
 qint64 nowMs()
 {
     return QDateTime::currentMSecsSinceEpoch();
+}
+
+void pruneSamples(QVector<GroundTelemetryService::ByteSample>& samples, qint64 currentMs)
+{
+    while (!samples.isEmpty() && currentMs - samples.front().time_ms > kBitRateWindowMs)
+    {
+        samples.removeFirst();
+    }
+}
+
+double samplesBitsPerSecond(QVector<GroundTelemetryService::ByteSample> samples, qint64 currentMs)
+{
+    pruneSamples(samples, currentMs);
+    if (samples.isEmpty())
+    {
+        return 0.0;
+    }
+    qint64 bytes = 0;
+    qint64 firstMs = currentMs;
+    for (const GroundTelemetryService::ByteSample& sample : samples)
+    {
+        bytes += sample.bytes;
+        firstMs = std::min(firstMs, sample.time_ms);
+    }
+    const qint64 elapsedMs = std::max<qint64>(1000, std::min(kBitRateWindowMs, currentMs - firstMs));
+    return static_cast<double>(bytes) * 8.0 * 1000.0 / static_cast<double>(elapsedMs);
 }
 
 }  // namespace
@@ -38,6 +66,10 @@ bool GroundTelemetryService::open(const QString& portName, int baudRate)
 {
     codec_.reset();
     pending_commands_.clear();
+    rx_byte_samples_.clear();
+    tx_byte_samples_.clear();
+    total_rx_bytes_ = 0;
+    total_tx_bytes_ = 0;
     const bool ok = link_.open(portName, baudRate);
     if (ok)
     {
@@ -50,12 +82,34 @@ void GroundTelemetryService::close()
 {
     retry_timer_.stop();
     pending_commands_.clear();
+    rx_byte_samples_.clear();
+    tx_byte_samples_.clear();
     link_.close();
 }
 
 bool GroundTelemetryService::isOpen() const
 {
     return link_.isOpen();
+}
+
+double GroundTelemetryService::receiveBitsPerSecond() const
+{
+    return samplesBitsPerSecond(rx_byte_samples_, nowMs());
+}
+
+double GroundTelemetryService::transmitBitsPerSecond() const
+{
+    return samplesBitsPerSecond(tx_byte_samples_, nowMs());
+}
+
+quint64 GroundTelemetryService::totalReceivedBytes() const
+{
+    return total_rx_bytes_;
+}
+
+quint64 GroundTelemetryService::totalTransmittedBytes() const
+{
+    return total_tx_bytes_;
 }
 
 quint16 GroundTelemetryService::sendCommand(CommandId commandId, const QByteArray& payload)
@@ -109,6 +163,7 @@ quint16 GroundTelemetryService::saveSkyConfig()
 
 void GroundTelemetryService::onBytesReceived(const QByteArray& bytes)
 {
+    noteReceivedBytes(bytes.size());
     const QVector<TelemetryFrame> frames = codec_.feedBytes(bytes);
     for (const TelemetryFrame& frame : frames)
     {
@@ -234,7 +289,35 @@ void GroundTelemetryService::sendCommandPayload(PendingCommand& pending)
         pending.encodedPayload,
         next_frame_seq_++,
         nowUs());
-    link_.writeBytes(frame);
+    const qint64 written = link_.writeBytes(frame);
+    if (written > 0)
+    {
+        noteTransmittedBytes(written);
+    }
+}
+
+void GroundTelemetryService::noteReceivedBytes(qint64 bytes)
+{
+    if (bytes <= 0)
+    {
+        return;
+    }
+    const qint64 currentMs = nowMs();
+    rx_byte_samples_.push_back({currentMs, bytes});
+    total_rx_bytes_ += static_cast<quint64>(bytes);
+    pruneSamples(rx_byte_samples_, currentMs);
+}
+
+void GroundTelemetryService::noteTransmittedBytes(qint64 bytes)
+{
+    if (bytes <= 0)
+    {
+        return;
+    }
+    const qint64 currentMs = nowMs();
+    tx_byte_samples_.push_back({currentMs, bytes});
+    total_tx_bytes_ += static_cast<quint64>(bytes);
+    pruneSamples(tx_byte_samples_, currentMs);
 }
 
 }  // namespace VaporView
