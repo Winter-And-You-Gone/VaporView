@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """
-Mock VaporView TCP waveform sender.
+VaporView TCP 波形模拟发送器。
 
-VaporView connects as a TCP client. This script listens on a TCP port and sends
-one frame as:
+VaporView 作为 TCP client 连接本脚本。本脚本监听 TCP 端口，并按以下格式发送一帧：
 
     int32 little-endian payload byte count + raw float32 samples
     int32 little-endian payload byte count + normalized-second-harmonic samples
 
-By default the generated sample throughput is fixed at 500,000 points per
-second per wave. The per-frame sample count is derived from the requested frame
-rate, so 10 Hz sends 50,000 points per frame and 100 Hz sends 5,000 points.
+默认每条波形的采样吞吐为 500,000 points/s。每帧点数根据帧率计算，
+例如 10 Hz 每帧 50,000 点，100 Hz 每帧 5,000 点。
+
+当前测试波形为突变矩形波：在 [2/5, 3/5) 区间内有连续 10 个点值为 2，
+该 10 点块按帧周期移动且不会越过区间边缘，其余所有点值均为 -1。
 """
 
 from __future__ import annotations
@@ -20,7 +21,6 @@ import array
 import ctypes
 import contextlib
 import math
-import random
 import signal
 import socket
 import struct
@@ -36,6 +36,9 @@ DEFAULT_SAMPLES_PER_SECOND = 500_000
 DEFAULT_RATE_HZ = 10.0
 REFERENCE_SAMPLE_COUNT = 50_000
 REFERENCE_PEAK_WIDTH = 520.0
+DEFAULT_PEAK_VALUE = 2.0
+DEFAULT_BASELINE_VALUE = -1.0
+DEFAULT_PEAK_BLOCK_POINTS = 10
 DEFAULT_PRECOMPUTE_FRAMES = 120
 SOCKET_TIMEOUT_SECONDS = 0.5
 DEFAULT_REPORT_INTERVAL_SECONDS = 1.0
@@ -77,9 +80,9 @@ def wait_until(target_time: float, stop_event: threading.Event) -> None:
 
 def samples_for_rate(rate_hz: float, samples_per_second: int) -> int:
     if rate_hz <= 0.0:
-        raise ValueError("--rate must be positive")
+        raise ValueError("--rate 必须为正数")
     if samples_per_second <= 0:
-        raise ValueError("--samples-per-second must be positive")
+        raise ValueError("--samples-per-second 必须为正数")
     return max(1, int(round(samples_per_second / rate_hz)))
 
 
@@ -94,6 +97,28 @@ def little_endian_float_bytes(values: Iterable[float]) -> bytes:
     return payload.tobytes()
 
 
+def moving_peak_block_start(
+    frame_index: int,
+    sample_count: int,
+    peak_index: int,
+    block_points: int,
+    move_peak: bool,
+) -> tuple[int, int]:
+    block_points = max(1, min(block_points, sample_count))
+    left = min(max(0, int(sample_count * 2 / 5)), sample_count - block_points)
+    right = min(sample_count, max(left + block_points, int(sample_count * 3 / 5)))
+    last_start = max(left, right - block_points)
+    if last_start <= left:
+        return left, block_points
+    if not move_peak:
+        desired_start = peak_index - block_points // 2
+        return max(left, min(last_start, desired_start)), block_points
+
+    phase = (math.sin(frame_index * 0.11) + 1.0) * 0.5
+    start = left + int(round(phase * (last_start - left)))
+    return max(left, min(last_start, start)), block_points
+
+
 def build_wave_pair(
     frame_index: int,
     sample_count: int,
@@ -103,32 +128,23 @@ def build_wave_pair(
     noise: float,
     move_peak: bool,
 ) -> tuple[bytes, bytes, int, float]:
-    phase = frame_index * 0.14
-    moving_offset = int(math.sin(frame_index * 0.11) * sample_count * 0.08) if move_peak else 0
-    center = max(0, min(sample_count - 1, peak_index + moving_offset))
-
-    raw_values: list[float] = []
-    harmonic_values: list[float] = []
-    inv_two_sigma_sq = 1.0 / (2.0 * peak_width * peak_width)
-
-    for i in range(sample_count):
-        x = i / max(1, sample_count - 1)
-        carrier = math.sin(2.0 * math.pi * (7.0 * x + phase))
-        slow = 0.18 * math.sin(2.0 * math.pi * (1.3 * x + phase * 0.35))
-        jitter = random.uniform(-noise, noise) if noise > 0.0 else 0.0
-
-        distance = i - center
-        peak = peak_amplitude * math.exp(-(distance * distance) * inv_two_sigma_sq)
-        shoulder = 0.25 * peak_amplitude * math.exp(-((distance - peak_width * 2.8) ** 2) * inv_two_sigma_sq * 0.55)
-
-        raw_values.append(0.35 * carrier + slow + 0.08 * peak + jitter)
-        harmonic_values.append(0.03 * carrier + 0.04 * slow + peak + shoulder + 0.35 * jitter)
+    del peak_width, noise
+    start, block_points = moving_peak_block_start(
+        frame_index=frame_index,
+        sample_count=sample_count,
+        peak_index=peak_index,
+        block_points=DEFAULT_PEAK_BLOCK_POINTS,
+        move_peak=move_peak,
+    )
+    values = [DEFAULT_BASELINE_VALUE] * sample_count
+    for i in range(start, start + block_points):
+        values[i] = peak_amplitude
 
     return (
-        little_endian_float_bytes(raw_values),
-        little_endian_float_bytes(harmonic_values),
-        center,
-        max(harmonic_values) if harmonic_values else 0.0,
+        little_endian_float_bytes(values),
+        little_endian_float_bytes(values),
+        start,
+        peak_amplitude if values else 0.0,
     )
 
 
@@ -176,7 +192,7 @@ def precompute_frames(args: argparse.Namespace, peak_index: int) -> list[tuple[b
     frame_count = max(1, frame_count)
 
     started = time.perf_counter()
-    log(f"Precomputing {frame_count} frame(s) for fast replay...")
+    log(f"正在预生成 {frame_count} 帧用于快速回放...")
     frames = [
         build_frame_bytes(
             frame_index=frame_index,
@@ -192,8 +208,8 @@ def precompute_frames(args: argparse.Namespace, peak_index: int) -> list[tuple[b
     elapsed = time.perf_counter() - started
     total_bytes = sum(len(frame[0]) for frame in frames)
     log(
-        f"Precomputed {frame_count} frame(s), {total_bytes / (1024 * 1024):.1f} MiB "
-        f"in {elapsed:.2f}s. Use --precompute-frames 0 for live generation."
+        f"已预生成 {frame_count} 帧，大小 {total_bytes / (1024 * 1024):.1f} MiB，"
+        f"耗时 {elapsed:.2f}s。使用 --precompute-frames 0 可改为实时生成。"
     )
     return frames
 
@@ -202,15 +218,15 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
     if args.samples is None:
         args.samples = samples_for_rate(args.rate, args.samples_per_second)
     if args.samples <= 0:
-        raise ValueError("--samples must be positive")
+        raise ValueError("--samples 必须为正数")
     if args.rate <= 0.0:
-        raise ValueError("--rate must be positive")
+        raise ValueError("--rate 必须为正数")
     if args.peak_width is None:
         args.peak_width = default_peak_width(args.samples)
     if args.peak_width <= 0.0:
-        raise ValueError("--peak-width must be positive")
+        raise ValueError("--peak-width 必须为正数")
     if args.report_interval <= 0.0:
-        raise ValueError("--report-interval must be positive")
+        raise ValueError("--report-interval 必须为正数")
 
     peak_index = args.peak_index
     if peak_index is None:
@@ -223,9 +239,9 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
     points_per_second_per_wave = args.samples * args.rate
     points_per_second_total = points_per_frame_total * args.rate
     log(
-        f"Configuration: samples/frame/wave={args.samples:,}, points/frame total={points_per_frame_total:,}, "
-        f"target={args.rate:g} Hz, target throughput={points_per_second_per_wave:,.0f} points/s/wave "
-        f"({points_per_second_total:,.0f} points/s total)."
+        f"配置：每帧每条波形 {args.samples:,} 点，总点数/帧 {points_per_frame_total:,}，"
+        f"目标帧率 {args.rate:g} Hz，目标吞吐 {points_per_second_per_wave:,.0f} points/s/波形 "
+        f"（合计 {points_per_second_total:,.0f} points/s）。"
     )
     replay_frames = precompute_frames(args, peak_index)
 
@@ -234,22 +250,23 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
         server.settimeout(SOCKET_TIMEOUT_SECONDS)
         server.bind((args.host, args.port))
         server.listen(1)
-        log(f"Listening on {args.host}:{args.port}; set VaporView TCP host to 127.0.0.1 and port to {args.port}.")
+        log(f"正在监听 {args.host}:{args.port}；请将 VaporView TCP 主机设为 127.0.0.1，端口设为 {args.port}。")
         log(
-            f"Frame: two payloads, {args.samples} float32 samples each, {args.rate:g} Hz "
-            f"({args.samples * args.rate:g} points/s per wave)."
+            f"帧格式：两个 payload，每个 payload {args.samples} 个 float32 采样点，帧率 {args.rate:g} Hz "
+            f"（每条波形 {args.samples * args.rate:g} points/s）。"
         )
         log(
-            f"Stats: samples/frame/wave={args.samples:,}, points/frame total={points_per_frame_total:,}, "
-            f"frame bytes={frame_bytes:,}, target={args.rate:g} Hz, "
-            f"target throughput={points_per_second_per_wave:,.0f} points/s/wave "
-            f"({points_per_second_total:,.0f} points/s total)."
+            f"统计：每帧每条波形 {args.samples:,} 点，总点数/帧 {points_per_frame_total:,}，"
+            f"帧字节数 {frame_bytes:,}，目标帧率 {args.rate:g} Hz，"
+            f"目标吞吐 {points_per_second_per_wave:,.0f} points/s/波形 "
+            f"（合计 {points_per_second_total:,.0f} points/s）。"
         )
         if replay_frames:
-            log(f"Mode: precomputed replay, {len(replay_frames)} frame(s) looped.")
+            log(f"模式：预生成回放，循环发送 {len(replay_frames)} 帧。")
         else:
-            log("Mode: live generation; high rates may be CPU-bound in Python.")
-        log("Press Ctrl+C to stop.")
+            log("模式：实时生成；高帧率下可能受 Python CPU 性能限制。")
+        log("波形：连续 10 个点为 2，在 [2/5, 3/5) 区间内周期移动，其余点为 -1。")
+        log("按 Ctrl+C 停止。")
 
         frame_index = 0
         last_idle_report_time = time.perf_counter()
@@ -261,15 +278,15 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
                 if now - last_idle_report_time >= args.report_interval:
                     last_idle_report_time = now
                     log(
-                        f"waiting for client: samples/frame/wave={args.samples:,}, "
-                        f"target={args.rate:g} Hz, target points/s/wave={points_per_second_per_wave:,.0f}"
+                        f"等待客户端连接：每帧每条波形 {args.samples:,} 点，"
+                        f"目标帧率 {args.rate:g} Hz，目标吞吐 {points_per_second_per_wave:,.0f} points/s/波形"
                     )
                 continue
             with conn:
                 conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 conn.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, args.send_buffer)
                 conn.settimeout(SOCKET_TIMEOUT_SECONDS)
-                log(f"Client connected from {address[0]}:{address[1]}")
+                log(f"客户端已连接：{address[0]}:{address[1]}")
                 next_send_time = time.perf_counter()
                 last_report_time = next_send_time
                 frames_since_report = 0
@@ -308,24 +325,23 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
                             frames_since_report = 0
                             bytes_since_report = 0
                             log(
-                                f"sent frame {frame_index:06d}: samples/frame/wave={args.samples:,}, "
-                                f"target={args.rate:g} Hz, actual={actual_rate:.2f} Hz, "
-                                f"points/s/wave={actual_points_per_wave:,.0f}, "
-                                f"points/s total={actual_points_total:,.0f}, "
-                                f"throughput={actual_mib:.2f} MiB/s, "
-                                f"peak index={center}, harmonic peak={peak_value:.4f}"
+                                f"已发送帧 {frame_index:06d}：每帧每条波形 {args.samples:,} 点，"
+                                f"目标 {args.rate:g} Hz，实际 {actual_rate:.2f} Hz，"
+                                f"吞吐 {actual_points_per_wave:,.0f} points/s/波形，"
+                                f"合计 {actual_points_total:,.0f} points/s，"
+                                f"网络吞吐 {actual_mib:.2f} MiB/s，"
+                                f"峰值块起点 {center}，峰值 {peak_value:.4f}"
                             )
                             if actual_rate < args.rate * 0.9:
                                 log(
-                                    "warning: actual rate is below target; sendall is being delayed by Python CPU time "
-                                    "or TCP backpressure from the receiving application.",
+                                    "警告：实际帧率低于目标；sendall 可能受 Python CPU 开销或接收端 TCP 反压影响。",
                                     error=True,
                                 )
 
                         frame_index += 1
                         frames_sent_to_client += 1
                         if args.frames > 0 and frames_sent_to_client >= args.frames:
-                            log(f"Sent {frames_sent_to_client} frame(s); exiting because --frames was set.")
+                            log(f"已发送 {frames_sent_to_client} 帧；由于设置了 --frames，脚本退出。")
                             return
 
                         next_send_time += frame_interval
@@ -335,26 +351,32 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
                             next_send_time = time.perf_counter()
                     break
                 except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
-                    log("Client disconnected; waiting for the next connection.")
+                    log("客户端已断开，等待下一次连接。")
                 except socket.timeout:
                     if stop_event.is_set():
                         break
-                    log("Client send timed out; waiting for the next connection.")
+                    log("客户端发送超时，等待下一次连接。")
                 except InterruptedError:
                     break
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Send mock VaporView TCP waveform frames with a visible peak.")
-    parser.add_argument("--host", default=DEFAULT_HOST, help=f"Listen address, default {DEFAULT_HOST}")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"Listen port, default {DEFAULT_PORT}")
+    parser = argparse.ArgumentParser(description="发送 VaporView TCP 模拟波形帧。")
+    parser._positionals.title = "位置参数"
+    parser._optionals.title = "选项"
+    for action in parser._actions:
+        if action.option_strings == ["-h", "--help"]:
+            action.help = "显示帮助信息并退出"
+            break
+    parser.add_argument("--host", default=DEFAULT_HOST, help=f"监听地址，默认 {DEFAULT_HOST}")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"监听端口，默认 {DEFAULT_PORT}")
     parser.add_argument(
         "--samples",
         type=int,
         default=None,
         help=(
-            "Samples per wave frame. Default is derived from --samples-per-second / --rate, "
-            "for example 50000 at 10 Hz and 5000 at 100 Hz."
+            "每帧每条波形采样点数。默认由 --samples-per-second / --rate 计算，"
+            "例如 10 Hz 时为 50000 点，100 Hz 时为 5000 点。"
         ),
     )
     parser.add_argument(
@@ -362,54 +384,57 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=DEFAULT_SAMPLES_PER_SECOND,
         help=(
-            "Generated sample throughput per wave, used when --samples is omitted. "
-            f"Default {DEFAULT_SAMPLES_PER_SECOND}."
+            "每条波形生成采样吞吐；省略 --samples 时使用。"
+            f"默认 {DEFAULT_SAMPLES_PER_SECOND}。"
         ),
     )
-    parser.add_argument("--rate", type=float, default=DEFAULT_RATE_HZ, help=f"Frames per second, default {DEFAULT_RATE_HZ:g}")
-    parser.add_argument("--peak-index", type=int, default=None, help="Peak center sample index, default middle")
-    parser.add_argument("--peak", type=float, default=1.0, help="Peak amplitude in the harmonic wave, default 1.0")
+    parser.add_argument("--rate", type=float, default=DEFAULT_RATE_HZ, help=f"发送帧率 Hz，默认 {DEFAULT_RATE_HZ:g}")
+    parser.add_argument("--peak-index", type=int, default=None, help="固定峰值块中心采样点；默认中点，仅 --static-peak 时使用")
+    parser.add_argument("--peak", type=float, default=DEFAULT_PEAK_VALUE, help=f"峰值块数值，默认 {DEFAULT_PEAK_VALUE:g}")
     parser.add_argument(
         "--peak-width",
         type=float,
         default=None,
-        help="Gaussian peak width in samples, default scales from 520 at 50000 samples/frame",
+        help="兼容旧参数；当前矩形突变波不使用该参数",
     )
-    parser.add_argument("--noise", type=float, default=0.01, help="Uniform noise amplitude, default 0.01")
-    parser.add_argument("--move-peak", action="store_true", help="Move the peak slowly across frames")
-    parser.add_argument("--frames", type=int, default=0, help="Frames to send before exiting; 0 means run forever")
+    parser.add_argument("--noise", type=float, default=0.0, help="兼容旧参数；当前矩形突变波不叠加噪声")
+    parser.add_argument("--move-peak", dest="move_peak", action="store_true", help="启用峰值块周期移动（默认启用）")
+    parser.add_argument("--static-peak", dest="move_peak", action="store_false", help="固定峰值块位置")
+    parser.set_defaults(move_peak=True)
+    parser.add_argument("--frames", type=int, default=0, help="发送指定帧数后退出；0 表示持续运行")
     parser.add_argument(
         "--precompute-frames",
         type=int,
         default=DEFAULT_PRECOMPUTE_FRAMES,
         help=(
-            "Prebuild this many full frames and loop them while sending. "
-            f"Default {DEFAULT_PRECOMPUTE_FRAMES}; use 0 to generate every frame live."
+            "预生成指定数量的完整帧并循环发送。"
+            f"默认 {DEFAULT_PRECOMPUTE_FRAMES}；设为 0 表示每帧实时生成。"
         ),
     )
     parser.add_argument(
         "--report-interval",
         type=float,
         default=DEFAULT_REPORT_INTERVAL_SECONDS,
-        help=f"Seconds between runtime stats lines, default {DEFAULT_REPORT_INTERVAL_SECONDS:g}.",
+        help=f"运行统计输出间隔秒数，默认 {DEFAULT_REPORT_INTERVAL_SECONDS:g}。",
     )
     parser.add_argument(
         "--send-buffer",
         type=int,
         default=DEFAULT_SEND_BUFFER_BYTES,
-        help=f"TCP send buffer bytes, default {DEFAULT_SEND_BUFFER_BYTES}.",
+        help=f"TCP 发送缓冲区字节数，默认 {DEFAULT_SEND_BUFFER_BYTES}。",
     )
     return parser.parse_args()
 
 
 def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(line_buffering=True)
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
     if hasattr(sys.stderr, "reconfigure"):
-        sys.stderr.reconfigure(line_buffering=True)
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 
     stop_event = threading.Event()
-    log("Starting mock TCP waveform sender.")
+    args = parse_args()
+    log("正在启动 TCP 模拟波形发送器。")
 
     def request_stop(signum: int, _frame: object) -> None:
         del signum
@@ -422,14 +447,14 @@ def main() -> int:
 
     try:
         with high_resolution_timer():
-            serve(parse_args(), stop_event)
+            serve(args, stop_event)
     except KeyboardInterrupt:
         stop_event.set()
     except Exception as exc:
-        log(f"ERROR: {exc}", error=True)
+        log(f"错误：{exc}", error=True)
         return 1
     if stop_event.is_set():
-        log("\nStopped.")
+        log("\n已停止。")
     return 0
 
 
