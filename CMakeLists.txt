@@ -353,6 +353,25 @@ if(WIN32 AND QT_WINDEPLOYQT_EXECUTABLE)
     )
 endif()
 
+if(WIN32)
+    add_custom_command(TARGET VaporView POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+            -D SOURCE_DIR=$<TARGET_FILE_DIR:VaporView>
+            -D TARGET_FILE=$<TARGET_FILE:VaporView>
+            -D STAGE_DIR=${CMAKE_BINARY_DIR}/Release
+            -P ${CMAKE_SOURCE_DIR}/cmake/stage_release.cmake
+        COMMENT "Staging VaporView release runtime"
+    )
+    add_custom_command(TARGET VaporViewSky POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+            -D SOURCE_DIR=$<TARGET_FILE_DIR:VaporViewSky>
+            -D TARGET_FILE=$<TARGET_FILE:VaporViewSky>
+            -D STAGE_DIR=${CMAKE_BINARY_DIR}/Release
+            -P ${CMAKE_SOURCE_DIR}/cmake/stage_release.cmake
+        COMMENT "Staging VaporViewSky release runtime"
+    )
+endif()
+
 if(MSVC)
     target_compile_options(VaporView PRIVATE /W4 /utf-8 /Zc:__cplusplus /permissive-)
     target_compile_options(VaporViewSky PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /W4 /utf-8 /Zc:__cplusplus /permissive-)
