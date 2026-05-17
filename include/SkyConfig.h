@@ -23,7 +23,6 @@ struct WaveTcpConfig
     bool enabled = true;
     QString host = QStringLiteral("127.0.0.1");
     int port = 8888;
-    double frequency_hz = 10.0;
     int downsample_ratio = 10;
     int peak_search_start_index = 0;
     int peak_search_end_index = 0;

@@ -71,7 +71,6 @@ private:
     QPushButton *wave_enabled_ = nullptr;
     QLineEdit *wave_host_ = nullptr;
     QSpinBox *wave_port_ = nullptr;
-    QDoubleSpinBox *wave_frequency_ = nullptr;
     QSpinBox *wave_downsample_ = nullptr;
     QDoubleSpinBox *telemetry_basic_rate_ = nullptr;
     QDoubleSpinBox *telemetry_feature_rate_ = nullptr;
@@ -87,7 +86,6 @@ private:
     QLabel *wave_enabled_label_ = nullptr;
     QLabel *wave_host_label_ = nullptr;
     QLabel *wave_port_label_ = nullptr;
-    QLabel *wave_frequency_label_ = nullptr;
     QLabel *wave_downsample_label_ = nullptr;
     QLabel *telemetry_basic_label_ = nullptr;
     QLabel *telemetry_feature_label_ = nullptr;

@@ -352,6 +352,7 @@ QStringList SkyTuiController::statusLines() const
         QStringLiteral("基础遥测频率：%1 Hz").arg(status.telemetry_basic_rate_hz),
         QStringLiteral("特征值频率：%1 Hz").arg(status.feature_rate_hz),
         QStringLiteral("波形频率：%1 Hz").arg(status.waveform_rate_hz),
+        QStringLiteral("Wave TCP 实际频率：%1 Hz").arg(status.wave_tcp_actual_rate_hz, 0, 'f', 1),
         QStringLiteral("心跳频率：%1 Hz").arg(status.heartbeat_rate_hz),
         QStringLiteral("状态频率：%1 Hz").arg(status.status_rate_hz),
         QStringLiteral("波形下传：%1").arg(runtime_->waveformStreamingEnabled() ? QStringLiteral("开") : QStringLiteral("关")),

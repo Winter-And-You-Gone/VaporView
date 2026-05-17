@@ -226,19 +226,15 @@ void SkyDeviceConfigDialog::setupUi()
     wave_host_ = new QLineEdit(this);
     wave_port_ = new QSpinBox(this);
     wave_port_->setRange(1, 65535);
-    wave_frequency_ = new QDoubleSpinBox(this);
-    wave_frequency_->setRange(0.1, 1000.0);
-    wave_frequency_->setDecimals(1);
     wave_downsample_ = new QSpinBox(this);
     wave_downsample_->setRange(1, 1000);
-    for (QWidget *field : {static_cast<QWidget*>(wave_host_), static_cast<QWidget*>(wave_port_), static_cast<QWidget*>(wave_frequency_), static_cast<QWidget*>(wave_downsample_)})
+    for (QWidget *field : {static_cast<QWidget*>(wave_host_), static_cast<QWidget*>(wave_port_), static_cast<QWidget*>(wave_downsample_)})
     {
         polishConfigField(field);
     }
     wave_enabled_label_ = addLabeledRow(waveLayout, QStringLiteral("启用"), wave_enabled_);
     wave_host_label_ = addLabeledRow(waveLayout, QStringLiteral("主机"), wave_host_);
     wave_port_label_ = addLabeledRow(waveLayout, QStringLiteral("端口"), wave_port_);
-    wave_frequency_label_ = addLabeledRow(waveLayout, QStringLiteral("频率 Hz"), wave_frequency_);
     wave_downsample_label_ = addLabeledRow(waveLayout, QStringLiteral("降采样倍率"), wave_downsample_);
     deviceGrid->addWidget(wave_group_, 1, 1);
 
@@ -327,7 +323,6 @@ void SkyDeviceConfigDialog::setConfig(const SkyConfig& config)
     updateEnableButton(wave_enabled_);
     wave_host_->setText(config.wave_tcp.host);
     wave_port_->setValue(config.wave_tcp.port);
-    wave_frequency_->setValue(config.wave_tcp.frequency_hz);
     wave_downsample_->setValue(config.wave_tcp.downsample_ratio);
     telemetry_basic_rate_->setValue(config.telemetry.basic_rate_hz);
     telemetry_feature_rate_->setValue(config.telemetry.feature_rate_hz);
@@ -346,7 +341,6 @@ SkyConfig SkyDeviceConfigDialog::currentConfigFromUi() const
     config.wave_tcp.enabled = wave_enabled_->isChecked();
     config.wave_tcp.host = wave_host_->text().trimmed();
     config.wave_tcp.port = wave_port_->value();
-    config.wave_tcp.frequency_hz = wave_frequency_->value();
     config.wave_tcp.downsample_ratio = wave_downsample_->value();
     config.telemetry.basic_rate_hz = telemetry_basic_rate_->value();
     config.telemetry.feature_rate_hz = telemetry_feature_rate_->value();
@@ -397,7 +391,6 @@ void SkyDeviceConfigDialog::updateTexts()
     if (wave_enabled_label_) wave_enabled_label_->setText(is_english_ ? QStringLiteral("Enabled") : QStringLiteral("启用"));
     if (wave_host_label_) wave_host_label_->setText(is_english_ ? QStringLiteral("Host") : QStringLiteral("主机"));
     if (wave_port_label_) wave_port_label_->setText(is_english_ ? QStringLiteral("Port") : QStringLiteral("端口"));
-    if (wave_frequency_label_) wave_frequency_label_->setText(is_english_ ? QStringLiteral("Frequency Hz") : QStringLiteral("频率 Hz"));
     if (wave_downsample_label_) wave_downsample_label_->setText(is_english_ ? QStringLiteral("Downsample") : QStringLiteral("降采样倍率"));
     if (telemetry_basic_label_) telemetry_basic_label_->setText(is_english_ ? QStringLiteral("Basic Hz") : QStringLiteral("基础遥测 Hz"));
     if (telemetry_feature_label_) telemetry_feature_label_->setText(is_english_ ? QStringLiteral("Feature Hz") : QStringLiteral("特征值 Hz"));
@@ -464,7 +457,7 @@ void SkyDeviceConfigDialog::applyDynamicMetrics()
         ptb_.port, ptb_.baud, ptb_.frequency,
         hmp_.port, hmp_.baud, hmp_.frequency,
         lidar_.port, lidar_.baud, lidar_.frequency,
-        wave_host_, wave_port_, wave_frequency_, wave_downsample_,
+        wave_host_, wave_port_, wave_downsample_,
         telemetry_basic_rate_, telemetry_feature_rate_, telemetry_waveform_rate_,
         telemetry_heartbeat_rate_, telemetry_status_rate_
     };

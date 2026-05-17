@@ -206,6 +206,7 @@ struct TelemetryStatus
     quint32 current_seq = 0;
     quint64 last_frame_time_us = 0;
     QVector<DeviceStatusItem> devices;
+    float wave_tcp_actual_rate_hz = 0.0f;
 };
 
 struct CommandMessage

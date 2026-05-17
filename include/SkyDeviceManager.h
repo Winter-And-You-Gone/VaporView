@@ -51,6 +51,7 @@ public:
     QVector<float> latestRawWaveform() const;
     QVector<float> latestWaveform() const;
     WaveformFeature latestWaveformFeature() const;
+    double waveTcpActualRateHz() const;
 
 signals:
     void deviceStatusChanged(SkyDeviceId id, DeviceStatusItem status);
@@ -79,6 +80,7 @@ private:
     void disconnectWaveTcp();
     void processWaveTcpBuffer();
     void publishWaveform(const QVector<float>& raw, const QVector<float>& harmonic);
+    void recordWaveTcpFrameTime(quint64 timestampUs);
     void invalidateDeviceData(SkyDeviceId id);
 
     SkyConfig config_ = SkyConfig::defaults();
@@ -103,6 +105,7 @@ private:
     quint64 wave_frame_count_ = 0;
     quint64 feature_frame_count_ = 0;
     quint64 last_feature_compute_time_us_ = 0;
+    QVector<quint64> wave_frame_time_samples_us_;
 
     EpsilonData latest_epsilon_;
     PtbData latest_ptb_;

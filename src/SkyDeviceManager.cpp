@@ -314,6 +314,31 @@ WaveformFeature SkyDeviceManager::latestWaveformFeature() const
     return latest_feature_;
 }
 
+double SkyDeviceManager::waveTcpActualRateHz() const
+{
+    if (wave_tcp_status_.state != DeviceState::Connected || wave_tcp_status_.last_data_time_us == 0)
+    {
+        return 0.0;
+    }
+    const quint64 now = nowUs();
+    if (now < wave_tcp_status_.last_data_time_us || now - wave_tcp_status_.last_data_time_us > 3'000'000ULL)
+    {
+        return 0.0;
+    }
+    if (wave_frame_time_samples_us_.size() < 2)
+    {
+        return 0.0;
+    }
+    const quint64 first = wave_frame_time_samples_us_.first();
+    const quint64 last = wave_frame_time_samples_us_.last();
+    if (last <= first)
+    {
+        return 0.0;
+    }
+    return static_cast<double>(wave_frame_time_samples_us_.size() - 1) * 1'000'000.0 /
+           static_cast<double>(last - first);
+}
+
 void SkyDeviceManager::generateSimulatedData()
 {
     simulate_phase_ += 0.04;
@@ -669,6 +694,7 @@ void SkyDeviceManager::publishWaveform(const QVector<float>& raw, const QVector<
     {
         return;
     }
+    const quint64 now = nowUs();
     latest_raw_waveform_ = raw;
     latest_waveform_ = harmonic;
     if (harmonic.isEmpty())
@@ -676,24 +702,15 @@ void SkyDeviceManager::publishWaveform(const QVector<float>& raw, const QVector<
         return;
     }
     ++wave_frame_count_;
-    emit waveformUpdated(nowUs(), harmonic);
+    recordWaveTcpFrameTime(now);
+    emit waveformUpdated(now, harmonic);
 
     const double targetRateHz = config_.telemetry.feature_rate_hz;
     if (!(targetRateHz > 0.0) || !std::isfinite(targetRateHz))
     {
         return;
     }
-    const double sourceRateHz = config_.wave_tcp.frequency_hz;
-    const quint64 stride = sourceRateHz > targetRateHz && std::isfinite(sourceRateHz)
-        ? static_cast<quint64>(std::max(1.0, std::round(sourceRateHz / targetRateHz)))
-        : 1ULL;
-    const quint64 now = nowUs();
     const quint64 minIntervalUs = static_cast<quint64>(std::max(1.0, 1'000'000.0 / targetRateHz));
-    const bool frameStrideDue = stride <= 1ULL || (wave_frame_count_ % stride == 0ULL);
-    if (!frameStrideDue)
-    {
-        return;
-    }
     if (last_feature_compute_time_us_ != 0ULL && now - last_feature_compute_time_us_ < minIntervalUs)
     {
         return;
@@ -762,6 +779,21 @@ void SkyDeviceManager::publishWaveform(const QVector<float>& raw, const QVector<
     emit waveformFeatureUpdated(latest_feature_);
 }
 
+void SkyDeviceManager::recordWaveTcpFrameTime(quint64 timestampUs)
+{
+    wave_frame_time_samples_us_.push_back(timestampUs);
+    while (!wave_frame_time_samples_us_.isEmpty() &&
+           timestampUs >= wave_frame_time_samples_us_.front() &&
+           timestampUs - wave_frame_time_samples_us_.front() > 5'000'000ULL)
+    {
+        wave_frame_time_samples_us_.removeFirst();
+    }
+    while (wave_frame_time_samples_us_.size() > 2048)
+    {
+        wave_frame_time_samples_us_.removeFirst();
+    }
+}
+
 void SkyDeviceManager::invalidateDeviceData(SkyDeviceId id)
 {
     switch (id)
@@ -790,6 +822,7 @@ void SkyDeviceManager::invalidateDeviceData(SkyDeviceId id)
         wave_frame_count_ = 0;
         feature_frame_count_ = 0;
         last_feature_compute_time_us_ = 0;
+        wave_frame_time_samples_us_.clear();
         wave_tcp_status_.last_data_time_us = 0;
         break;
     case SkyDeviceId::All:

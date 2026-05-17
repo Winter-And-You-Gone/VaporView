@@ -555,6 +555,7 @@ QByteArray TelemetryCodec::serializeTelemetryStatus(const TelemetryStatus& statu
     {
         appendDeviceStatus(payload, item);
     }
+    appendFloatLe(payload, status.wave_tcp_actual_rate_hz);
     return payload;
 }
 
@@ -600,6 +601,17 @@ bool TelemetryCodec::parseTelemetryStatus(const QByteArray& payload, TelemetrySt
             return false;
         }
         status.devices.push_back(item);
+    }
+    if (offset < payload.size())
+    {
+        if (!readFloatLe(payload, offset, status.wave_tcp_actual_rate_hz))
+        {
+            return false;
+        }
+    }
+    else
+    {
+        status.wave_tcp_actual_rate_hz = 0.0f;
     }
     return true;
 }

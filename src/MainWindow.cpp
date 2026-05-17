@@ -2763,13 +2763,17 @@ QString MainWindow::remoteTelemetrySummaryText() const
             : (is_english_ ? QStringLiteral("none") : QStringLiteral("无数据"));
     };
 
+    const QString actualWaveRate = (remote_status_.wave_tcp_actual_rate_hz > 0.0f)
+        ? QStringLiteral("%1 Hz").arg(remote_status_.wave_tcp_actual_rate_hz, 0, 'f', 1)
+        : QStringLiteral("-- Hz");
     const QString rates = QString(is_english_
-            ? "Telemetry packets: Basic %1 Hz | Feature %2 Hz | Wave packets %3 Hz | Status %4 Hz"
-            : "数传数据包频率：基础 %1 Hz | 特征值 %2 Hz | 波形包 %3 Hz | 状态 %4 Hz")
+            ? "Telemetry packets: Basic %1 Hz | Feature %2 Hz | Wave packets %3 Hz | Status %4 Hz | Wave TCP actual %5"
+            : "数传数据包频率：基础 %1 Hz | 特征值 %2 Hz | 波形包 %3 Hz | 状态 %4 Hz | Wave TCP 实际 %5")
         .arg(remotePacketRate(VaporView::MsgType::TelemetryBasic), 0, 'f', 1)
         .arg(remotePacketRate(VaporView::MsgType::WaveformFeature), 0, 'f', 1)
         .arg(remotePacketRate(VaporView::MsgType::WaveformDownsampled), 0, 'f', 1)
-        .arg(remotePacketRate(VaporView::MsgType::TelemetryStatus), 0, 'f', 1);
+        .arg(remotePacketRate(VaporView::MsgType::TelemetryStatus), 0, 'f', 1)
+        .arg(actualWaveRate);
 
     const QString devices = QString(is_english_
             ? "EPSILON %1 | PTB %2 | HMP %3 | Lidar %4 | Wave %5"

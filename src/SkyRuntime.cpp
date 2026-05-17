@@ -241,6 +241,7 @@ TelemetryStatus SkyRuntime::currentStatus() const
     status.current_seq = next_frame_seq_;
     status.last_frame_time_us = last_frame_time_us_;
     status.devices = device_manager_.allStatuses();
+    status.wave_tcp_actual_rate_hz = static_cast<float>(device_manager_.waveTcpActualRateHz());
     return status;
 }
 
@@ -273,9 +274,9 @@ SkyDashboardSnapshot SkyRuntime::dashboardSnapshot() const
     snapshot.ptb_acquisition_rate_hz = config.ptb.frequency_hz;
     snapshot.hmp_acquisition_rate_hz = config.hmp.frequency_hz;
     snapshot.lidar_acquisition_rate_hz = config.lidar.frequency_hz;
-    snapshot.wave_tcp_acquisition_rate_hz = config.wave_tcp.frequency_hz;
+    snapshot.wave_tcp_acquisition_rate_hz = device_manager_.waveTcpActualRateHz();
     snapshot.devices_csv_recording_rate_hz = config.telemetry.basic_rate_hz;
-    snapshot.raw_wave_recording_rate_hz = config.wave_tcp.frequency_hz;
+    snapshot.raw_wave_recording_rate_hz = snapshot.wave_tcp_acquisition_rate_hz;
     snapshot.telemetry_basic_rate_hz = config.telemetry.basic_rate_hz;
     snapshot.waveform_feature_rate_hz = config.telemetry.feature_rate_hz;
     snapshot.waveform_downsampled_rate_hz = config.telemetry.waveform_rate_hz;

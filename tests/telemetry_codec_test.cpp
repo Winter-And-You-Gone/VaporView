@@ -162,6 +162,33 @@ void testSkyConfigDiff()
     require(parsed.epsilon.baud_rate == 115200, "sky config baud");
 }
 
+void testTelemetryStatus()
+{
+    VaporView::TelemetryStatus status;
+    status.recording_state = 1;
+    status.session_name = QStringLiteral("test-session");
+    status.disk_free_bytes = 123456789;
+    status.telemetry_basic_rate_hz = 10.0f;
+    status.waveform_rate_hz = 1.0f;
+    status.feature_rate_hz = 20.0f;
+    status.heartbeat_rate_hz = 1.0f;
+    status.status_rate_hz = 2.0f;
+    status.wave_tcp_actual_rate_hz = 199.5f;
+    VaporView::DeviceStatusItem wave;
+    wave.device_id = VaporView::SkyDeviceId::WaveTcp;
+    wave.state = VaporView::DeviceState::Connected;
+    wave.rx_count = 42;
+    status.devices.push_back(wave);
+
+    VaporView::TelemetryStatus parsed;
+    require(VaporView::TelemetryCodec::parseTelemetryStatus(VaporView::TelemetryCodec::serializeTelemetryStatus(status), parsed),
+            "parse telemetry status");
+    require(parsed.session_name == status.session_name, "status session");
+    require(parsed.devices.size() == 1 && parsed.devices.front().device_id == VaporView::SkyDeviceId::WaveTcp, "status device");
+    require(std::fabs(parsed.wave_tcp_actual_rate_hz - status.wave_tcp_actual_rate_hz) < 0.001f,
+            "status wave tcp actual rate");
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -172,6 +199,7 @@ int main(int argc, char **argv)
     testCommandAndDevicePayload();
     testWaveform();
     testSkyConfigDiff();
+    testTelemetryStatus();
     std::cout << "telemetry_codec_test passed\n";
     return 0;
 }
