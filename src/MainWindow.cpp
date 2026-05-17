@@ -2764,8 +2764,8 @@ QString MainWindow::remoteTelemetrySummaryText() const
     };
 
     const QString rates = QString(is_english_
-            ? "Telemetry packets: Basic %1 Hz | Feature %2 Hz | Wave %3 Hz | Status %4 Hz"
-            : "数传数据包频率：基础 %1 Hz | 特征值 %2 Hz | 波形 %3 Hz | 状态 %4 Hz")
+            ? "Telemetry packets: Basic %1 Hz | Feature %2 Hz | Wave packets %3 Hz | Status %4 Hz"
+            : "数传数据包频率：基础 %1 Hz | 特征值 %2 Hz | 波形包 %3 Hz | 状态 %4 Hz")
         .arg(remotePacketRate(VaporView::MsgType::TelemetryBasic), 0, 'f', 1)
         .arg(remotePacketRate(VaporView::MsgType::WaveformFeature), 0, 'f', 1)
         .arg(remotePacketRate(VaporView::MsgType::WaveformDownsampled), 0, 'f', 1)
@@ -6921,7 +6921,14 @@ void MainWindow::onRemoteWaveformUpdated(const VaporView::DownsampledWaveform& w
     remote_last_data_ms_.insert(VaporView::SkyDeviceId::WaveTcp, QDateTime::currentMSecsSinceEpoch());
     if (tcp_wave_panel_)
     {
-        tcp_wave_panel_->injectRemoteSecondHarmonicFrame(waveform.host_time_us, waveform.samples);
+        if (waveform.channel_id == 1)
+        {
+            tcp_wave_panel_->injectRemoteRawSignalFrame(waveform.host_time_us, waveform.samples);
+        }
+        else if (waveform.channel_id == 4)
+        {
+            tcp_wave_panel_->injectRemoteSecondHarmonicFrame(waveform.host_time_us, waveform.samples);
+        }
     }
 }
 

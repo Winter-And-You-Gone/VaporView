@@ -33,6 +33,29 @@ QString defaultConfigPath()
     return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("sky_config.json"));
 }
 
+DownsampledWaveform makeDownsampledWaveform(const QVector<float>& samples,
+                                            quint64 hostTimeUs,
+                                            quint64 epsilonTimeUs,
+                                            quint16 channelId,
+                                            int ratio)
+{
+    DownsampledWaveform waveform;
+    waveform.host_time_us = hostTimeUs;
+    waveform.epsilon_time_us = epsilonTimeUs;
+    waveform.original_point_count = static_cast<quint32>(samples.size());
+    waveform.channel_id = channelId;
+    waveform.sample_format = 1;
+    waveform.x_start = 0.0f;
+    waveform.x_step = static_cast<float>(ratio);
+    waveform.samples.reserve((samples.size() + ratio - 1) / ratio);
+    for (int i = 0; i < samples.size(); i += ratio)
+    {
+        waveform.samples.push_back(samples.at(i));
+    }
+    waveform.downsampled_point_count = static_cast<quint32>(waveform.samples.size());
+    return waveform;
+}
+
 }  // namespace
 
 SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
@@ -238,9 +261,10 @@ SkyDashboardSnapshot SkyRuntime::dashboardSnapshot() const
     snapshot.hmp = device_manager_.latestHmp();
     snapshot.lidar = device_manager_.latestLidar();
     snapshot.waveform_feature = device_manager_.latestWaveformFeature();
-    const QVector<float> waveform = device_manager_.latestWaveform();
-    snapshot.latest_harmonic_waveform_preview = waveformPreview(waveform, 2048);
-    snapshot.latest_raw_waveform_preview = snapshot.latest_harmonic_waveform_preview;
+    const QVector<float> rawWaveform = device_manager_.latestRawWaveform();
+    const QVector<float> harmonicWaveform = device_manager_.latestWaveform();
+    snapshot.latest_raw_waveform_preview = waveformPreview(rawWaveform, 2048);
+    snapshot.latest_harmonic_waveform_preview = waveformPreview(harmonicWaveform, 2048);
     snapshot.peak_trend = peak_trend_;
     snapshot.telemetry_status = currentStatus();
     snapshot.epsilon_acquisition_rate_hz = snapshot.epsilon.imu_packet_rate_hz > 0.0
@@ -386,32 +410,34 @@ void SkyRuntime::sendDownsampledWaveformFrame(bool honorStreamingEnabled)
     {
         return;
     }
-    const QVector<float> samples = device_manager_.latestWaveform();
-    if (samples.isEmpty())
+    const QVector<float> rawSamples = device_manager_.latestRawWaveform();
+    const QVector<float> harmonicSamples = device_manager_.latestWaveform();
+    if (rawSamples.isEmpty() && harmonicSamples.isEmpty())
     {
         return;
     }
-    session_recorder_.recordWaveformSnapshot(hostTimeUs, device_manager_.latestEpsilon().device_timestamp_us, samples);
+    const quint64 epsilonTimeUs = device_manager_.latestEpsilon().device_timestamp_us;
+    if (!harmonicSamples.isEmpty())
+    {
+        session_recorder_.recordWaveformSnapshot(hostTimeUs, epsilonTimeUs, harmonicSamples);
+    }
     if (honorStreamingEnabled && !waveform_streaming_enabled_)
     {
         return;
     }
     const int ratio = std::max(1, device_manager_.config().wave_tcp.downsample_ratio);
-    DownsampledWaveform waveform;
-    waveform.host_time_us = hostTimeUs;
-    waveform.epsilon_time_us = device_manager_.latestEpsilon().device_timestamp_us;
-    waveform.original_point_count = static_cast<quint32>(samples.size());
-    waveform.channel_id = 4;
-    waveform.sample_format = 1;
-    waveform.x_start = 0.0f;
-    waveform.x_step = static_cast<float>(ratio);
-    waveform.samples.reserve((samples.size() + ratio - 1) / ratio);
-    for (int i = 0; i < samples.size(); i += ratio)
+    if (!rawSamples.isEmpty())
     {
-        waveform.samples.push_back(samples.at(i));
+        const DownsampledWaveform rawWaveform =
+            makeDownsampledWaveform(rawSamples, hostTimeUs, epsilonTimeUs, 1, ratio);
+        sendFrame(MsgType::WaveformDownsampled, TelemetryCodec::serializeDownsampledWaveform(rawWaveform));
     }
-    waveform.downsampled_point_count = static_cast<quint32>(waveform.samples.size());
-    sendFrame(MsgType::WaveformDownsampled, TelemetryCodec::serializeDownsampledWaveform(waveform));
+    if (!harmonicSamples.isEmpty())
+    {
+        const DownsampledWaveform harmonicWaveform =
+            makeDownsampledWaveform(harmonicSamples, hostTimeUs, epsilonTimeUs, 4, ratio);
+        sendFrame(MsgType::WaveformDownsampled, TelemetryCodec::serializeDownsampledWaveform(harmonicWaveform));
+    }
 }
 
 void SkyRuntime::sendHeartbeat()

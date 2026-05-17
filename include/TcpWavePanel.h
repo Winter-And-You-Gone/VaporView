@@ -37,6 +37,7 @@ public:
     void setRemoteSkyMode(bool enabled);
     void setRemoteWaveTcpState(VaporView::DeviceState state);
     void setRemoteFeatureRateHz(double rateHz);
+    void injectRemoteRawSignalFrame(quint64 timestampUs, const QVector<float>& samples);
     void injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QVector<float>& samples);
     void injectRemoteWaveformFeature(const VaporView::WaveformFeature& feature);
     void applyRemotePeakSearchRange(quint32 startIndex, quint32 endIndex);

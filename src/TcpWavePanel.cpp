@@ -1226,6 +1226,24 @@ void TcpWavePanel::setRemoteFeatureRateHz(double rateHz)
         : 0ULL;
 }
 
+void TcpWavePanel::injectRemoteRawSignalFrame(quint64 timestampUs, const QVector<float>& samples)
+{
+    Q_UNUSED(timestampUs);
+    if (remote_sky_mode_ && !remote_wave_tcp_connected_)
+    {
+        return;
+    }
+    if (samples.isEmpty())
+    {
+        return;
+    }
+    wave1_history_ = samples;
+    pending_wave1_info_text_ = QString(is_english_ ? "remote raw signal: %1 samples" : "远程原始信号：%1 点")
+        .arg(samples.size());
+    pending_live_status_text_ = is_english_ ? "Remote raw waveform received" : "已接收远程原始信号";
+    live_display_dirty_ = true;
+}
+
 void TcpWavePanel::injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QVector<float>& samples)
 {
     if (remote_sky_mode_ && !remote_wave_tcp_connected_)
@@ -1236,7 +1254,6 @@ void TcpWavePanel::injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QV
     {
         return;
     }
-    wave1_history_.clear();
     wave4_history_ = samples;
     ++frame_count_;
     updateFrameRateDisplay(QDateTime::currentMSecsSinceEpoch());

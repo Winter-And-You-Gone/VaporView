@@ -299,6 +299,11 @@ LidarData SkyDeviceManager::latestLidar() const
     return latest_lidar_;
 }
 
+QVector<float> SkyDeviceManager::latestRawWaveform() const
+{
+    return latest_raw_waveform_;
+}
+
 QVector<float> SkyDeviceManager::latestWaveform() const
 {
     return latest_waveform_;
@@ -378,6 +383,10 @@ void SkyDeviceManager::generateSimulatedData()
 
     if (wave_tcp_status_.state == DeviceState::Connected)
     {
+        if (latest_raw_waveform_.isEmpty())
+        {
+            latest_raw_waveform_.resize(50000);
+        }
         if (latest_waveform_.isEmpty())
         {
             latest_waveform_.resize(50000);
@@ -385,11 +394,13 @@ void SkyDeviceManager::generateSimulatedData()
         for (int i = 0; i < latest_waveform_.size(); ++i)
         {
             const double x = static_cast<double>(i) / 500.0;
+            latest_raw_waveform_[i] = static_cast<float>(0.4 * std::sin(x * 0.37 + simulate_phase_ * 0.8) +
+                                                         0.15 * std::sin(x * 2.2));
             latest_waveform_[i] = static_cast<float>(std::sin(x + simulate_phase_) * 0.05 + std::exp(-std::pow((i - 24000) / 3500.0, 2.0)));
         }
         wave_tcp_status_.rx_count++;
         wave_tcp_status_.last_data_time_us = t;
-        publishWaveform(latest_waveform_);
+        publishWaveform(latest_raw_waveform_, latest_waveform_);
     }
 }
 
@@ -635,26 +646,30 @@ void SkyDeviceManager::processWaveTcpBuffer()
         {
             return;
         }
+        const QByteArray rawPayload = wave_buffer_.mid(4, static_cast<int>(rawSize));
         const QByteArray harmonicPayload = wave_buffer_.mid(static_cast<int>(8 + rawSize), static_cast<int>(harmonicSize));
         wave_buffer_.remove(0, static_cast<int>(8 + rawSize + harmonicSize));
         if (wave_float_encoding_ == TcpFloatEncoding::Unknown)
         {
-            wave_float_encoding_ = autoDetectTcpFloatEncoding(harmonicPayload);
+            const QByteArray& payloadForDetection = harmonicPayload.isEmpty() ? rawPayload : harmonicPayload;
+            wave_float_encoding_ = autoDetectTcpFloatEncoding(payloadForDetection);
             emit logMessage(QStringLiteral("Wave TCP float payload format locked: %1")
                                 .arg(tcpFloatEncodingLabel(false, wave_float_encoding_)));
         }
-        publishWaveform(decodeTcpFloatPayload(harmonicPayload, wave_float_encoding_));
+        publishWaveform(decodeTcpFloatPayload(rawPayload, wave_float_encoding_),
+                        decodeTcpFloatPayload(harmonicPayload, wave_float_encoding_));
         wave_tcp_status_.rx_count++;
         wave_tcp_status_.last_data_time_us = nowUs();
     }
 }
 
-void SkyDeviceManager::publishWaveform(const QVector<float>& harmonic)
+void SkyDeviceManager::publishWaveform(const QVector<float>& raw, const QVector<float>& harmonic)
 {
     if (wave_tcp_status_.state != DeviceState::Connected)
     {
         return;
     }
+    latest_raw_waveform_ = raw;
     latest_waveform_ = harmonic;
     if (harmonic.isEmpty())
     {
@@ -768,6 +783,7 @@ void SkyDeviceManager::invalidateDeviceData(SkyDeviceId id)
         lidar_status_.last_data_time_us = 0;
         break;
     case SkyDeviceId::WaveTcp:
+        latest_raw_waveform_.clear();
         latest_waveform_.clear();
         latest_feature_ = WaveformFeature();
         wave_float_encoding_ = TcpFloatEncoding::Unknown;

@@ -48,6 +48,7 @@ public:
     PtbData latestPtb() const;
     HmpData latestHmp() const;
     LidarData latestLidar() const;
+    QVector<float> latestRawWaveform() const;
     QVector<float> latestWaveform() const;
     WaveformFeature latestWaveformFeature() const;
 
@@ -77,7 +78,7 @@ private:
     bool connectWaveTcp(CommandErrorCode *errorCode);
     void disconnectWaveTcp();
     void processWaveTcpBuffer();
-    void publishWaveform(const QVector<float>& harmonic);
+    void publishWaveform(const QVector<float>& raw, const QVector<float>& harmonic);
     void invalidateDeviceData(SkyDeviceId id);
 
     SkyConfig config_ = SkyConfig::defaults();
@@ -107,6 +108,7 @@ private:
     PtbData latest_ptb_;
     HmpData latest_hmp_;
     LidarData latest_lidar_;
+    QVector<float> latest_raw_waveform_;
     QVector<float> latest_waveform_;
     WaveformFeature latest_feature_;
 };
