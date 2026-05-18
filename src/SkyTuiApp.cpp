@@ -111,6 +111,18 @@ bool fuzzySubsequence(const QString& needle, const QString& haystack)
     return pos == needle.size();
 }
 
+bool containsAllQueryCharacters(const QString& needle, const QString& haystack)
+{
+    for (const QChar ch : needle)
+    {
+        if (!haystack.contains(ch))
+        {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool isAnsiFinalByte(QChar ch)
 {
     const ushort value = ch.unicode();
@@ -973,14 +985,19 @@ QList<SkyTuiCommandItem> SkyTuiApp::filteredPalette() const
     const QList<SkyTuiCommandItem> all = controller_.commandPalette();
     const QString prefix = model_.input_text.trimmed().toLower();
     const QString needle = paletteKey(prefix);
+    const bool emptyQuery = needle.isEmpty();
     for (const SkyTuiCommandItem& item : all)
     {
         const QString command = item.command.toLower();
         const QString haystack = paletteKey(command);
         int score = 100;
-        if (prefix.isEmpty() || prefix == QStringLiteral("/"))
+        if (emptyQuery)
         {
             score = 10;
+        }
+        else if (!containsAllQueryCharacters(needle, haystack))
+        {
+            continue;
         }
         else if (command.startsWith(prefix))
         {
@@ -1007,7 +1024,7 @@ QList<SkyTuiCommandItem> SkyTuiApp::filteredPalette() const
     {
         filtered.push_back(item.second);
     }
-    return filtered.isEmpty() ? all : filtered;
+    return emptyQuery && filtered.isEmpty() ? all : filtered;
 }
 
 void SkyTuiApp::clampPaletteSelection()
