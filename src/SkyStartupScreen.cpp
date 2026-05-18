@@ -389,9 +389,20 @@ QVector<QStringList> buildRotatingLogoFrames(const QStringList& logoLines)
     return frames;
 }
 
+void clearLine(int row, const SkyTuiTerminalSize& size)
+{
+    if (row < 1 || row > size.rows || size.columns <= 0)
+    {
+        return;
+    }
+    writeRaw(SkyTuiTheme::moveTo(row, 1) + SkyTuiTheme::background(SkyTuiRgb{0, 0, 0}) +
+             QString(size.columns, QLatin1Char(' ')) + SkyTuiTheme::reset());
+}
+
 void drawCenteredText(int row, const QString& text, const SkyTuiTerminalSize& size, const QString& style = QString())
 {
     const int column = std::max(1, (size.columns - displayWidth(text)) / 2 + 1);
+    clearLine(row, size);
     writeRaw(SkyTuiTheme::moveTo(row, column) + SkyTuiTheme::background(SkyTuiRgb{0, 0, 0}) +
              style + text + SkyTuiTheme::reset());
 }
@@ -428,6 +439,41 @@ void drawProgress(int percent, int row, const SkyTuiTerminalSize& size)
     drawCenteredText(row - 1, percentText, size,
                      SkyTuiTheme::foreground(SkyTuiTheme::blue()) + SkyTuiTheme::bold());
     drawCenteredText(row, bar, size, SkyTuiTheme::foreground(SkyTuiTheme::blue()));
+}
+
+QString startupLoadingText(int percent)
+{
+    if (percent < 16)
+    {
+        return QStringLiteral("正在检测终端显示环境...");
+    }
+    if (percent < 32)
+    {
+        return QStringLiteral("正在加载天空端界面资源...");
+    }
+    if (percent < 48)
+    {
+        return QStringLiteral("正在渲染动态 LOGO 动画...");
+    }
+    if (percent < 64)
+    {
+        return QStringLiteral("正在准备键盘输入模式...");
+    }
+    if (percent < 80)
+    {
+        return QStringLiteral("正在检查天空端运行上下文...");
+    }
+    if (percent < 96)
+    {
+        return QStringLiteral("正在准备遥测链路与设备面板...");
+    }
+    return QStringLiteral("正在进入 VaporViewSky TUI...");
+}
+
+void drawLoadingText(int percent, int row, const SkyTuiTerminalSize& size)
+{
+    drawCenteredText(row, fitPlain(startupLoadingText(percent), size.columns - 4), size,
+                     SkyTuiTheme::foreground(SkyTuiTheme::muted()));
 }
 
 void setStartupInputMode()
@@ -569,6 +615,7 @@ SkyStartupDecision showSkyStartupScreen(const QString& logo_path)
     {
         drawNextLogoFrame();
         drawProgress(percent, progressRow, size);
+        drawLoadingText(percent, progressRow + 2, size);
         QThread::msleep(kLogoFrameDelayMs);
     }
 
