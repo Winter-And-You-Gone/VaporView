@@ -146,6 +146,7 @@ QWidget#sectionTitleBar {
     border-top-left-radius: 7px;
     border-top-right-radius: 7px;
     min-height: 40px;
+    max-height: 40px;
 }
 
 QWidget#sectionTitleBar QLabel {
@@ -182,12 +183,15 @@ QLabel#sectionTitleLabel {
     font-weight: bold;
     padding: 0px 10px;
     min-height: 38px;
+    max-height: 38px;
 }
 
 QWidget#sectionTitleBar QLabel#sectionTitleLabel {
     background-color: transparent;
     border: none;
     padding: 0px 10px;
+    min-height: 38px;
+    max-height: 38px;
 }
 
 QLabel#valueLabel {

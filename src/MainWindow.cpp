@@ -74,6 +74,7 @@ constexpr const char *kBaseMarginsRightProperty = "_vv_base_margin_right";
 constexpr const char *kBaseMarginsBottomProperty = "_vv_base_margin_bottom";
 constexpr int kMainPageInputHeight = 30;
 constexpr int kMainPageButtonHeight = 38;
+constexpr int kMainPageTitleBarHeight = kMainPageButtonHeight + 2;
 constexpr int kEpsilonTitleColumnWidth = 170;
 constexpr int kEpsilonValueColumnMinWidth = 320;
 constexpr int kPtbMinSampleRateHz = 1;
@@ -2131,11 +2132,11 @@ void MainWindow::loadModernStyleSheet()
             "QGroupBox { background-color: #fbfcfe; border: 1px solid #dfe4ea; border-top: 40px solid #ffffff; border-radius: 8px; margin-top: 0px; padding: 8px 8px 8px 8px; font-size: 15px; font-weight: bold; color: #333333; }"
             "QGroupBox#sensorGroupBox { margin-top: 0px; background-color: #ffffff; border: 1px solid #dfe4ea; padding: 0px 0px 0px 0px; }"
             "QGroupBox::title { subcontrol-origin: border; subcontrol-position: top left; left: 12px; top: -30px; padding: 0px 2px; background-color: transparent; border: none; border-radius: 0px; color: #1f2937; }"
-            "QWidget#sectionTitleBar { background-color: #ffffff; border-bottom: 2px solid #dfe4ea; border-top-left-radius: 7px; border-top-right-radius: 7px; min-height: 40px; }"
+            "QWidget#sectionTitleBar { background-color: #ffffff; border-bottom: 2px solid #dfe4ea; border-top-left-radius: 7px; border-top-right-radius: 7px; min-height: 40px; max-height: 40px; }"
             "QWidget#sectionTitleBar QLabel { background-color: transparent; border: none; }"
             "QLabel { color: #333333; background-color: transparent; border: none; }"
-            "QLabel#sectionTitleLabel { background-color: #ffffff; border: none; border-bottom: 2px solid #dfe4ea; border-radius: 0px; color: #1f2937; font-size: 16px; font-weight: bold; padding: 0px 10px; min-height: 38px; }"
-            "QWidget#sectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; padding: 0px 10px; }"
+            "QLabel#sectionTitleLabel { background-color: #ffffff; border: none; border-bottom: 2px solid #dfe4ea; border-radius: 0px; color: #1f2937; font-size: 16px; font-weight: bold; padding: 0px 10px; min-height: 38px; max-height: 38px; }"
+            "QWidget#sectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; padding: 0px 10px; min-height: 38px; max-height: 38px; }"
             "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 10px; min-height: 30px; color: #333333; font-size: 14px; }"
             "QComboBox:hover { border-color: #bdbdbd; }"
             "QComboBox:focus { border-color: #1976d2; border-width: 2px; }"
@@ -3726,13 +3727,14 @@ void MainWindow::setupConfigPanel()
 
     auto *configTitleBar = new QWidget(config_group_);
     configTitleBar->setObjectName("sectionTitleBar");
+    configTitleBar->setFixedHeight(kMainPageTitleBarHeight);
     auto *configTitleLayout = new QHBoxLayout(configTitleBar);
     configTitleLayout->setContentsMargins(8, 1, 8, 1);
     configTitleLayout->setSpacing(8);
 
     config_inline_title_lbl_ = new QLabel(this);
     config_inline_title_lbl_->setObjectName("sectionTitleLabel");
-    config_inline_title_lbl_->setFixedHeight(kMainPageInputHeight);
+    config_inline_title_lbl_->setFixedHeight(kMainPageButtonHeight);
     config_inline_title_lbl_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     configTitleLayout->addWidget(config_inline_title_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
@@ -3868,11 +3870,13 @@ void MainWindow::setupDataPanels()
 
     auto *dataTitleBar = new QWidget(data_group_);
     dataTitleBar->setObjectName("sectionTitleBar");
+    dataTitleBar->setFixedHeight(kMainPageTitleBarHeight);
     auto *data_title_layout = new QHBoxLayout(dataTitleBar);
     data_title_layout->setContentsMargins(8, 1, 8, 1);
     data_title_layout->setSpacing(12);
     data_inline_title_lbl_ = new QLabel(this);
     data_inline_title_lbl_->setObjectName("sectionTitleLabel");
+    data_inline_title_lbl_->setFixedHeight(kMainPageButtonHeight);
     data_title_layout->addWidget(data_inline_title_lbl_, 1, Qt::AlignVCenter);
     data_layout->addWidget(dataTitleBar);
 

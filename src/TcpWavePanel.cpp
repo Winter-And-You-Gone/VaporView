@@ -40,6 +40,7 @@ constexpr int kMaxPayloadBytes = 16 * 1024 * 1024;
 constexpr int kPreferredPayloadBytes = 200000;
 constexpr int kTcpControlHeight = 30;
 constexpr int kTcpButtonHeight = 38;
+constexpr int kTcpTitleBarHeight = kTcpButtonHeight + 2;
 constexpr int kDefaultPeakSearchStartIndex = 0;
 constexpr int kDefaultPeakSearchEndIndex = 0;
 constexpr int kPeakTrendFrameWindow = 1000;
@@ -644,6 +645,7 @@ void TcpWavePanel::setupUi()
 
     auto *topControlsBar = new QWidget(this);
     topControlsBar->setObjectName("sectionTitleBar");
+    topControlsBar->setFixedHeight(kTcpTitleBarHeight);
     top_controls_layout_ = new QHBoxLayout(topControlsBar);
     top_controls_layout_->setContentsMargins(8, 1, 8, 1);
     top_controls_layout_->setSpacing(0);
@@ -718,6 +720,7 @@ void TcpWavePanel::setupUi()
     wave1Layout->setContentsMargins(2, 2, 2, 2);
     auto *wave1HeaderBar = new QWidget(wave1_group_);
     wave1HeaderBar->setObjectName("sectionTitleBar");
+    wave1HeaderBar->setFixedHeight(kTcpTitleBarHeight);
     auto *wave1HeaderLayout = new QHBoxLayout(wave1HeaderBar);
     wave1HeaderLayout->setContentsMargins(8, 1, 8, 1);
     wave1HeaderLayout->setSpacing(8);
@@ -740,6 +743,7 @@ void TcpWavePanel::setupUi()
     wave4Layout->setContentsMargins(2, 2, 2, 2);
     auto *wave4HeaderBar = new QWidget(wave4_group_);
     wave4HeaderBar->setObjectName("sectionTitleBar");
+    wave4HeaderBar->setFixedHeight(kTcpTitleBarHeight);
     auto *wave4HeaderLayout = new QHBoxLayout(wave4HeaderBar);
     wave4HeaderLayout->setContentsMargins(8, 1, 8, 1);
     wave4HeaderLayout->setSpacing(8);
@@ -766,6 +770,7 @@ void TcpWavePanel::setupUi()
     peakLayout->setContentsMargins(0, 1, 0, 0);
     auto *peakHeaderBar = new QWidget(peak_group_);
     peakHeaderBar->setObjectName("sectionTitleBar");
+    peakHeaderBar->setFixedHeight(kTcpTitleBarHeight);
     auto *peakHeaderLayout = new QHBoxLayout(peakHeaderBar);
     peakHeaderLayout->setContentsMargins(8, 1, 8, 1);
     peakHeaderLayout->setSpacing(6);
