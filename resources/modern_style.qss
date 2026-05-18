@@ -108,9 +108,9 @@ QStatusBar {
 
 /* 分组框 */
 QGroupBox {
-    background-color: #ffffff;
-    border: 1px solid #e0e0e0;
-    border-top: 30px solid #eef4fb;
+    background-color: #fbfcfe;
+    border: 1px solid #dfe4ea;
+    border-top: 30px solid #ffffff;
     border-radius: 8px;
     margin-top: 0px;
     padding: 8px 8px 8px 8px;
@@ -121,7 +121,8 @@ QGroupBox {
 
 QGroupBox#sensorGroupBox {
     margin-top: 0px;
-    border: 1px solid #e0e0e0;
+    background-color: #ffffff;
+    border: 1px solid #dfe4ea;
     padding: 0px 0px 0px 0px;
 }
 
@@ -134,14 +135,14 @@ QGroupBox::title {
     background-color: transparent;
     border: none;
     border-radius: 0px;
-    color: #1976d2;
+    color: #1f2937;
     font-size: 16px;
     font-weight: bold;
 }
 
 QWidget#sectionTitleBar {
-    background-color: #eef4fb;
-    border-bottom: 1px solid #d7e5f7;
+    background-color: #ffffff;
+    border-bottom: 2px solid #dfe4ea;
     border-top-left-radius: 7px;
     border-top-right-radius: 7px;
 }
@@ -171,11 +172,11 @@ QLabel#fieldLabel {
 }
 
 QLabel#sectionTitleLabel {
-    background-color: #eef4fb;
+    background-color: #ffffff;
     border: none;
-    border-bottom: 1px solid #d7e5f7;
+    border-bottom: 2px solid #dfe4ea;
     border-radius: 0px;
-    color: #1976d2;
+    color: #1f2937;
     font-size: 16px;
     font-weight: bold;
     padding: 4px 10px;
