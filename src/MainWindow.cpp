@@ -2128,10 +2128,14 @@ void MainWindow::loadModernStyleSheet()
             "QToolBar QToolButton:hover { background-color: #f0f0f0; }"
             "QToolBar QToolButton:disabled { color: #bdbdbd; }"
             "QStatusBar { background-color: #ffffff; border-top: 1px solid #e0e0e0; padding: 4px 12px; color: #666666; font-size: 14px; }"
-            "QGroupBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 8px; margin-top: 0px; padding: 1px 1px 1px 1px; font-size: 15px; font-weight: bold; color: #333333; }"
-            "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 12px; padding: 3px 10px; background-color: #eef4fb; border: 1px solid #d7e5f7; border-radius: 5px; color: #1976d2; }"
+            "QGroupBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-top: 30px solid #eef4fb; border-radius: 8px; margin-top: 0px; padding: 8px 8px 8px 8px; font-size: 15px; font-weight: bold; color: #333333; }"
+            "QGroupBox#sensorGroupBox { margin-top: 0px; border: 1px solid #e0e0e0; padding: 0px 0px 0px 0px; }"
+            "QGroupBox::title { subcontrol-origin: border; subcontrol-position: top left; left: 12px; top: -25px; padding: 0px 2px; background-color: transparent; border: none; border-radius: 0px; color: #1976d2; }"
+            "QWidget#sectionTitleBar { background-color: #eef4fb; border-bottom: 1px solid #d7e5f7; border-top-left-radius: 7px; border-top-right-radius: 7px; }"
+            "QWidget#sectionTitleBar QLabel { background-color: transparent; border: none; }"
             "QLabel { color: #333333; background-color: transparent; border: none; }"
-            "QLabel#sectionTitleLabel { background-color: #eef4fb; border: 1px solid #d7e5f7; border-radius: 5px; color: #1976d2; font-size: 16px; font-weight: bold; padding: 3px 10px; min-height: 24px; }"
+            "QLabel#sectionTitleLabel { background-color: #eef4fb; border: none; border-bottom: 1px solid #d7e5f7; border-radius: 0px; color: #1976d2; font-size: 16px; font-weight: bold; padding: 4px 10px; min-height: 24px; }"
+            "QWidget#sectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; padding: 4px 10px; }"
             "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 10px; min-height: 30px; color: #333333; font-size: 14px; }"
             "QComboBox:hover { border-color: #bdbdbd; }"
             "QComboBox:focus { border-color: #1976d2; border-width: 2px; }"
@@ -3616,15 +3620,17 @@ QStringList MainWindow::getAvailablePorts()
 void MainWindow::setupConfigPanel()
 {
     config_group_ = new QGroupBox(this);
+    config_group_->setObjectName("sensorGroupBox");
     config_group_->setMinimumWidth(860);
 
     auto *config_root_layout = new QVBoxLayout(config_group_);
     config_root_layout->setSpacing(8);
-    config_root_layout->setContentsMargins(8, 4, 8, 8);
+    config_root_layout->setContentsMargins(0, 0, 0, 8);
 
     auto *config_layout = new QGridLayout();
     config_layout->setVerticalSpacing(8);
     config_layout->setHorizontalSpacing(8);
+    config_layout->setContentsMargins(8, 0, 8, 0);
     config_layout->setColumnStretch(0, 0);
     config_layout->setColumnStretch(1, 0);
     config_layout->setColumnStretch(2, 0);
@@ -3718,16 +3724,24 @@ void MainWindow::setupConfigPanel()
         config_layout->addWidget(rateCombo, row, 4, Qt::AlignVCenter);
     };
 
+    auto *configTitleBar = new QWidget(config_group_);
+    configTitleBar->setObjectName("sectionTitleBar");
+    auto *configTitleLayout = new QHBoxLayout(configTitleBar);
+    configTitleLayout->setContentsMargins(0, 0, 8, 0);
+    configTitleLayout->setSpacing(8);
+
     config_inline_title_lbl_ = new QLabel(this);
     config_inline_title_lbl_->setObjectName("sectionTitleLabel");
     config_inline_title_lbl_->setFixedHeight(kMainPageInputHeight);
-    config_layout->addWidget(config_inline_title_lbl_, 0, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    config_inline_title_lbl_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    configTitleLayout->addWidget(config_inline_title_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
     auto_detect_ports_btn_ = new QPushButton(this);
     auto_detect_ports_btn_->setFixedHeight(kMainPageButtonHeight);
     auto_detect_ports_btn_->setMinimumWidth(120);
     connect(auto_detect_ports_btn_, &QPushButton::clicked, this, &MainWindow::onAutoDetectPortsClicked);
-    config_layout->addWidget(auto_detect_ports_btn_, 0, 1, 1, 2, Qt::AlignVCenter | Qt::AlignLeft);
+    configTitleLayout->addWidget(auto_detect_ports_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    configTitleLayout->addStretch(1);
 
     data_source_mode_lbl_ = new QLabel(this);
     data_source_mode_lbl_->setObjectName("fieldLabel");
@@ -3737,14 +3751,15 @@ void MainWindow::setupConfigPanel()
     data_source_mode_combo_->setFixedHeight(kMainPageInputHeight);
     connect(data_source_mode_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MainWindow::onDataSourceModeChanged);
-    config_layout->addWidget(data_source_mode_lbl_, 0, 3, Qt::AlignVCenter | Qt::AlignRight);
-    config_layout->addWidget(data_source_mode_combo_, 0, 4, Qt::AlignVCenter);
+    configTitleLayout->addWidget(data_source_mode_lbl_, 0, Qt::AlignVCenter | Qt::AlignRight);
+    configTitleLayout->addWidget(data_source_mode_combo_, 0, Qt::AlignVCenter);
 
     sky_device_config_btn_ = new QPushButton(this);
     sky_device_config_btn_->setFixedHeight(kMainPageButtonHeight);
     sky_device_config_btn_->setMinimumWidth(150);
     connect(sky_device_config_btn_, &QPushButton::clicked, this, &MainWindow::onSkyDeviceConfigClicked);
-    config_layout->addWidget(sky_device_config_btn_, 0, 5, Qt::AlignVCenter | Qt::AlignLeft);
+    configTitleLayout->addWidget(sky_device_config_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    config_root_layout->addWidget(configTitleBar);
 
     sky_telemetry_port_lbl_ = new QLabel(this);
     sky_telemetry_port_lbl_->setObjectName("fieldLabel");
@@ -3765,12 +3780,12 @@ void MainWindow::setupConfigPanel()
     sky_telemetry_baud_combo_->setCurrentText(QStringLiteral("921600"));
     sky_telemetry_baud_combo_->setFixedHeight(kMainPageInputHeight);
     sky_telemetry_baud_combo_->setFixedWidth(100);
-    config_layout->addWidget(sky_telemetry_port_lbl_, 1, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    config_layout->addWidget(sky_telemetry_port_combo_, 1, 1, Qt::AlignVCenter);
-    config_layout->addWidget(sky_telemetry_baud_combo_, 1, 2, Qt::AlignVCenter);
-    config_layout->addWidget(sky_telemetry_baud_lbl_, 1, 3, Qt::AlignVCenter | Qt::AlignRight);
+    config_layout->addWidget(sky_telemetry_port_lbl_, 0, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    config_layout->addWidget(sky_telemetry_port_combo_, 0, 1, Qt::AlignVCenter);
+    config_layout->addWidget(sky_telemetry_baud_combo_, 0, 2, Qt::AlignVCenter);
+    config_layout->addWidget(sky_telemetry_baud_lbl_, 0, 3, Qt::AlignVCenter | Qt::AlignRight);
 
-    int row = 2;
+    int row = 1;
 
 #ifdef _WIN32
     createPortRow(epsilon_lbl_, epsilon_port_combo_, epsilon_baud_combo_, epsilon_rate_lbl_, epsilon_rate_combo_, "COM3", "921600", row++, 200);
@@ -3804,10 +3819,10 @@ void MainWindow::setupConfigPanel()
         layout->addStretch();
         config_layout->addWidget(buttons, rowIndex, 5, Qt::AlignVCenter | Qt::AlignLeft);
     };
-    addRemoteButtons(2, epsilon_remote_buttons_widget_, epsilon_remote_connect_btn_, epsilon_remote_disconnect_btn_, epsilon_remote_reconnect_btn_, VaporView::SkyDeviceId::Epsilon);
-    addRemoteButtons(3, ptb_remote_buttons_widget_, ptb_remote_connect_btn_, ptb_remote_disconnect_btn_, ptb_remote_reconnect_btn_, VaporView::SkyDeviceId::Ptb);
-    addRemoteButtons(4, hmp_remote_buttons_widget_, hmp_remote_connect_btn_, hmp_remote_disconnect_btn_, hmp_remote_reconnect_btn_, VaporView::SkyDeviceId::Hmp);
-    addRemoteButtons(5, lidar_remote_buttons_widget_, lidar_remote_connect_btn_, lidar_remote_disconnect_btn_, lidar_remote_reconnect_btn_, VaporView::SkyDeviceId::Lidar);
+    addRemoteButtons(1, epsilon_remote_buttons_widget_, epsilon_remote_connect_btn_, epsilon_remote_disconnect_btn_, epsilon_remote_reconnect_btn_, VaporView::SkyDeviceId::Epsilon);
+    addRemoteButtons(2, ptb_remote_buttons_widget_, ptb_remote_connect_btn_, ptb_remote_disconnect_btn_, ptb_remote_reconnect_btn_, VaporView::SkyDeviceId::Ptb);
+    addRemoteButtons(3, hmp_remote_buttons_widget_, hmp_remote_connect_btn_, hmp_remote_disconnect_btn_, hmp_remote_reconnect_btn_, VaporView::SkyDeviceId::Hmp);
+    addRemoteButtons(4, lidar_remote_buttons_widget_, lidar_remote_connect_btn_, lidar_remote_disconnect_btn_, lidar_remote_reconnect_btn_, VaporView::SkyDeviceId::Lidar);
 
     if (epsilon_rate_combo_)
     {
@@ -3818,7 +3833,7 @@ void MainWindow::setupConfigPanel()
         epsilon_packet_rates_btn_->setFixedHeight(kMainPageInputHeight);
         epsilon_packet_rates_btn_->setMinimumWidth(140);
         connect(epsilon_packet_rates_btn_, &QPushButton::clicked, this, &MainWindow::onConfigureEpsilonPacketRatesClicked);
-        config_layout->addWidget(epsilon_packet_rates_btn_, 2, 4, Qt::AlignVCenter);
+        config_layout->addWidget(epsilon_packet_rates_btn_, 1, 4, Qt::AlignVCenter);
     }
 
     for (QComboBox *combo : {ptb_rate_combo_, hmp_rate_combo_, lidar_rate_combo_})
@@ -3846,18 +3861,20 @@ void MainWindow::setupConfigPanel()
 void MainWindow::setupDataPanels()
 {
     data_group_ = new QGroupBox(this);
+    data_group_->setObjectName("sensorGroupBox");
     auto *data_layout = new QVBoxLayout(data_group_);
     data_layout->setSpacing(0);
     data_layout->setContentsMargins(0, 0, 0, 0);
 
-    auto *data_title_layout = new QHBoxLayout();
+    auto *dataTitleBar = new QWidget(data_group_);
+    dataTitleBar->setObjectName("sectionTitleBar");
+    auto *data_title_layout = new QHBoxLayout(dataTitleBar);
     data_title_layout->setContentsMargins(6, 2, 6, 0);
     data_title_layout->setSpacing(12);
     data_inline_title_lbl_ = new QLabel(this);
     data_inline_title_lbl_->setObjectName("sectionTitleLabel");
-    data_title_layout->addWidget(data_inline_title_lbl_, 0, Qt::AlignLeft);
-    data_title_layout->addStretch();
-    data_layout->addLayout(data_title_layout);
+    data_title_layout->addWidget(data_inline_title_lbl_, 1, Qt::AlignVCenter);
+    data_layout->addWidget(dataTitleBar);
 
     auto *sensor_splitter = new QSplitter(Qt::Horizontal, data_group_);
     sensor_splitter->setChildrenCollapsible(false);
@@ -3870,7 +3887,7 @@ void MainWindow::setupDataPanels()
     epsilon_layout->setSpacing(0);
     epsilon_inline_title_lbl_ = new QLabel(this);
     epsilon_inline_title_lbl_->setObjectName("sectionTitleLabel");
-    epsilon_layout->addWidget(epsilon_inline_title_lbl_, 0, Qt::AlignLeft);
+    epsilon_layout->addWidget(epsilon_inline_title_lbl_);
     epsilon_panel_ = new EpsilonPanel(this);
     epsilon_layout->addWidget(epsilon_panel_);
     sensor_splitter->addWidget(epsilon_group_);
@@ -3889,7 +3906,7 @@ void MainWindow::setupDataPanels()
     env_layout->setSpacing(0);
     env_inline_title_lbl_ = new QLabel(this);
     env_inline_title_lbl_->setObjectName("sectionTitleLabel");
-    env_layout->addWidget(env_inline_title_lbl_, 0, Qt::AlignLeft);
+    env_layout->addWidget(env_inline_title_lbl_);
 
     lidar_panel_ = new LidarPanel(this);
     env_layout->addWidget(lidar_panel_);
@@ -3964,6 +3981,7 @@ void MainWindow::setupDataPanels()
 void MainWindow::setupLogPanel()
 {
     log_group_ = new QGroupBox(this);
+    log_group_->setObjectName("sensorGroupBox");
     log_group_->setMinimumWidth(120);
     auto *log_layout = new QVBoxLayout(log_group_);
     log_layout->setContentsMargins(0, 0, 0, 0);
@@ -3971,7 +3989,7 @@ void MainWindow::setupLogPanel()
 
     log_inline_title_lbl_ = new QLabel(this);
     log_inline_title_lbl_->setObjectName("sectionTitleLabel");
-    log_layout->addWidget(log_inline_title_lbl_, 0, Qt::AlignLeft);
+    log_layout->addWidget(log_inline_title_lbl_);
 
     log_text_edit_ = new QTextEdit(this);
     log_text_edit_->setReadOnly(true);

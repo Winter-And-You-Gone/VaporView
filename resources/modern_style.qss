@@ -110,9 +110,10 @@ QStatusBar {
 QGroupBox {
     background-color: #ffffff;
     border: 1px solid #e0e0e0;
+    border-top: 30px solid #eef4fb;
     border-radius: 8px;
     margin-top: 0px;
-    padding: 1px 1px 1px 1px;
+    padding: 8px 8px 8px 8px;
     font-size: 15px;
     font-weight: bold;
     color: #333333;
@@ -120,20 +121,34 @@ QGroupBox {
 
 QGroupBox#sensorGroupBox {
     margin-top: 0px;
+    border: 1px solid #e0e0e0;
     padding: 0px 0px 0px 0px;
 }
 
 QGroupBox::title {
-    subcontrol-origin: margin;
+    subcontrol-origin: border;
     subcontrol-position: top left;
     left: 16px;
-    padding: 3px 10px;
-    background-color: #eef4fb;
-    border: 1px solid #d7e5f7;
-    border-radius: 5px;
+    top: -25px;
+    padding: 0px 2px;
+    background-color: transparent;
+    border: none;
+    border-radius: 0px;
     color: #1976d2;
     font-size: 16px;
     font-weight: bold;
+}
+
+QWidget#sectionTitleBar {
+    background-color: #eef4fb;
+    border-bottom: 1px solid #d7e5f7;
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
+}
+
+QWidget#sectionTitleBar QLabel {
+    background-color: transparent;
+    border: none;
 }
 
 /* 标签 */
@@ -157,13 +172,20 @@ QLabel#fieldLabel {
 
 QLabel#sectionTitleLabel {
     background-color: #eef4fb;
-    border: 1px solid #d7e5f7;
-    border-radius: 5px;
+    border: none;
+    border-bottom: 1px solid #d7e5f7;
+    border-radius: 0px;
     color: #1976d2;
     font-size: 16px;
     font-weight: bold;
-    padding: 3px 10px;
+    padding: 4px 10px;
     min-height: 24px;
+}
+
+QWidget#sectionTitleBar QLabel#sectionTitleLabel {
+    background-color: transparent;
+    border: none;
+    padding: 4px 10px;
 }
 
 QLabel#valueLabel {

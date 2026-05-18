@@ -642,10 +642,12 @@ void TcpWavePanel::setupUi()
     control_layout_->setHorizontalSpacing(1);
     control_layout_->setVerticalSpacing(4);
 
-    top_controls_layout_ = new QHBoxLayout();
+    auto *topControlsBar = new QWidget(this);
+    topControlsBar->setObjectName("sectionTitleBar");
+    top_controls_layout_ = new QHBoxLayout(topControlsBar);
     top_controls_layout_->setContentsMargins(0, 0, 0, 0);
     top_controls_layout_->setSpacing(0);
-    control_layout_->addLayout(top_controls_layout_, 0, 0, 1, 6, Qt::AlignVCenter | Qt::AlignLeft);
+    control_layout_->addWidget(topControlsBar, 0, 0, 1, 6);
 
     panel_title_label_ = new QLabel(this);
     panel_title_label_->setObjectName("sectionTitleLabel");
@@ -714,7 +716,9 @@ void TcpWavePanel::setupUi()
     wave1_group_->setObjectName("sensorGroupBox");
     auto *wave1Layout = new QVBoxLayout(wave1_group_);
     wave1Layout->setContentsMargins(2, 2, 2, 2);
-    auto *wave1HeaderLayout = new QHBoxLayout();
+    auto *wave1HeaderBar = new QWidget(wave1_group_);
+    wave1HeaderBar->setObjectName("sectionTitleBar");
+    auto *wave1HeaderLayout = new QHBoxLayout(wave1HeaderBar);
     wave1HeaderLayout->setContentsMargins(0, 0, 0, 0);
     wave1HeaderLayout->setSpacing(8);
     wave1_title_label_ = new QLabel(this);
@@ -725,7 +729,7 @@ void TcpWavePanel::setupUi()
     wave1_info_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     wave1_info_label_->setWordWrap(false);
     wave1HeaderLayout->addWidget(wave1_info_label_, 1, Qt::AlignVCenter | Qt::AlignRight);
-    wave1Layout->addLayout(wave1HeaderLayout);
+    wave1Layout->addWidget(wave1HeaderBar);
     wave1_plot_ = new WavePlotWidget(QColor("#4e79c7"), this);
     wave1Layout->addWidget(wave1_plot_, 1);
     plotsLayout->addWidget(wave1_group_, 1);
@@ -734,7 +738,9 @@ void TcpWavePanel::setupUi()
     wave4_group_->setObjectName("sensorGroupBox");
     auto *wave4Layout = new QVBoxLayout(wave4_group_);
     wave4Layout->setContentsMargins(2, 2, 2, 2);
-    auto *wave4HeaderLayout = new QHBoxLayout();
+    auto *wave4HeaderBar = new QWidget(wave4_group_);
+    wave4HeaderBar->setObjectName("sectionTitleBar");
+    auto *wave4HeaderLayout = new QHBoxLayout(wave4HeaderBar);
     wave4HeaderLayout->setContentsMargins(0, 0, 0, 0);
     wave4HeaderLayout->setSpacing(8);
     wave4_title_label_ = new QLabel(this);
@@ -745,7 +751,7 @@ void TcpWavePanel::setupUi()
     wave4_info_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     wave4_info_label_->setWordWrap(false);
     wave4HeaderLayout->addWidget(wave4_info_label_, 1, Qt::AlignVCenter | Qt::AlignRight);
-    wave4Layout->addLayout(wave4HeaderLayout);
+    wave4Layout->addWidget(wave4HeaderBar);
     wave4_plot_ = new WavePlotWidget(QColor("#ef8f35"), this);
     wave4Layout->addWidget(wave4_plot_, 1);
     plotsLayout->addWidget(wave4_group_, 1);
@@ -758,7 +764,9 @@ void TcpWavePanel::setupUi()
     peak_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::MinimumExpanding);
     auto *peakLayout = new QVBoxLayout(peak_group_);
     peakLayout->setContentsMargins(0, 1, 0, 0);
-    auto *peakHeaderLayout = new QHBoxLayout();
+    auto *peakHeaderBar = new QWidget(peak_group_);
+    peakHeaderBar->setObjectName("sectionTitleBar");
+    auto *peakHeaderLayout = new QHBoxLayout(peakHeaderBar);
     peakHeaderLayout->setContentsMargins(0, 0, 0, 0);
     peakHeaderLayout->setSpacing(6);
     peak_title_label_ = new QLabel(this);
@@ -783,7 +791,7 @@ void TcpWavePanel::setupUi()
     connect(peak_clear_button_, &QPushButton::clicked, this, &TcpWavePanel::onClearPeakPlotClicked);
     peakHeaderLayout->addWidget(peak_clear_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     peakHeaderLayout->addStretch(1);
-    peakLayout->addLayout(peakHeaderLayout);
+    peakLayout->addWidget(peakHeaderBar);
     peak_plot_ = new PeakTrendPlotWidget(this);
     peak_plot_->setPlotMode(peak_plot_scatter_mode_ ? PeakTrendPlotWidget::PlotMode::Scatter : PeakTrendPlotWidget::PlotMode::Polyline);
     peakLayout->addWidget(peak_plot_);
