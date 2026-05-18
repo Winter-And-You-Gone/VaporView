@@ -1890,6 +1890,7 @@ MainWindow::MainWindow(QWidget *parent)
     , is_connected_(false)
     , remote_sky_mode_(false)
     , remote_sky_online_(false)
+    , remote_wave_stream_requested_(false)
     , remote_recording_state_(0)
     , remote_last_status_ms_(0)
     , cancel_connection_requested_(false)
@@ -2638,6 +2639,7 @@ void MainWindow::clearRemoteSkyDataUi()
     remote_packet_arrivals_ms_.clear();
     remote_last_status_ms_ = 0;
     remote_sky_online_ = false;
+    remote_wave_stream_requested_ = false;
     remote_status_ = VaporView::TelemetryStatus();
     remote_recording_state_ = 0;
 
@@ -2952,7 +2954,12 @@ void MainWindow::updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, Vap
         connectButton = lidar_remote_connect_btn_; disconnectButton = lidar_remote_disconnect_btn_; reconnectButton = lidar_remote_reconnect_btn_;
         break;
     case VaporView::SkyDeviceId::WaveTcp:
-        if (tcp_wave_panel_) tcp_wave_panel_->setRemoteWaveTcpState(state);
+        if (tcp_wave_panel_)
+        {
+            tcp_wave_panel_->setRemoteWaveTcpState(remote_wave_stream_requested_ && state == VaporView::DeviceState::Connected
+                ? VaporView::DeviceState::Connected
+                : VaporView::DeviceState::Disconnected);
+        }
         return;
     case VaporView::SkyDeviceId::All:
         return;
@@ -3911,6 +3918,13 @@ void MainWindow::setupDataPanels()
         updateRecordingActionStates();
     });
     connect(tcp_wave_panel_, &TcpWavePanel::remoteWaveTcpConnectionRequested, this, [this](bool connectRequested) {
+        remote_wave_stream_requested_ = false;
+        if (ground_telemetry_service_ && ground_telemetry_service_->isOpen())
+        {
+            ground_telemetry_service_->sendCommand(connectRequested
+                ? VaporView::CommandId::EnableWaveformStreaming
+                : VaporView::CommandId::DisableWaveformStreaming);
+        }
         if (!connectRequested && tcp_wave_panel_)
         {
             remote_device_states_.insert(VaporView::SkyDeviceId::WaveTcp, VaporView::DeviceState::Disconnected);
@@ -6274,6 +6288,7 @@ void MainWindow::onConnectClicked()
         if (ground_telemetry_service_ && ground_telemetry_service_->open(port, baud))
         {
             updateConnectionStatus(true);
+            ground_telemetry_service_->sendCommand(VaporView::CommandId::DisableWaveformStreaming);
             ground_telemetry_service_->sendCommand(VaporView::CommandId::RequestStatus);
             status_label_->setText(is_english_ ? "Telemetry port open, waiting for Sky handshake" : "数传串口已打开，等待天空端握手");
             status_label_->setProperty("status", "connecting");
@@ -6922,6 +6937,10 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
 void MainWindow::onRemoteWaveformUpdated(const VaporView::DownsampledWaveform& waveform)
 {
     noteRemotePacket(VaporView::MsgType::WaveformDownsampled);
+    if (!remote_wave_stream_requested_)
+    {
+        return;
+    }
     remote_last_data_ms_.insert(VaporView::SkyDeviceId::WaveTcp, QDateTime::currentMSecsSinceEpoch());
     if (tcp_wave_panel_)
     {
@@ -6939,6 +6958,10 @@ void MainWindow::onRemoteWaveformUpdated(const VaporView::DownsampledWaveform& w
 void MainWindow::onRemoteWaveformFeatureUpdated(const VaporView::WaveformFeature& feature)
 {
     noteRemotePacket(VaporView::MsgType::WaveformFeature);
+    if (!remote_wave_stream_requested_)
+    {
+        return;
+    }
     remote_last_data_ms_.insert(VaporView::SkyDeviceId::WaveTcp, QDateTime::currentMSecsSinceEpoch());
     if (tcp_wave_panel_)
     {
@@ -7012,6 +7035,25 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
                     : (is_english_ ? QStringLiteral("error") : QStringLiteral("失败")))
             .arg(errorText)
             .arg(static_cast<quint32>(ack.error_code)));
+
+    if (ack.command_id == VaporView::CommandId::EnableWaveformStreaming)
+    {
+        remote_wave_stream_requested_ = ok;
+        updateRemoteDeviceButtonText(VaporView::SkyDeviceId::WaveTcp,
+                                     remote_device_states_.value(VaporView::SkyDeviceId::WaveTcp,
+                                                                 VaporView::DeviceState::Disconnected));
+        if (!ok)
+        {
+            log(is_english_ ? "Remote waveform stream was not enabled" : "远程波形流启用失败");
+        }
+    }
+    else if (ack.command_id == VaporView::CommandId::DisableWaveformStreaming)
+    {
+        remote_wave_stream_requested_ = false;
+        updateRemoteDeviceButtonText(VaporView::SkyDeviceId::WaveTcp,
+                                     remote_device_states_.value(VaporView::SkyDeviceId::WaveTcp,
+                                                                 VaporView::DeviceState::Disconnected));
+    }
 
     if (ack.command_id == VaporView::CommandId::SetPeakSearchRange)
     {
