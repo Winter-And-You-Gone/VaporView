@@ -150,7 +150,7 @@ QString SkyTuiTheme::endSynchronizedUpdate()
 
 QString SkyTuiTheme::clearScreen()
 {
-    return QStringLiteral("\x1b[2J\x1b[H") + background(kBlack);
+    return background(kBlack) + QStringLiteral("\x1b[2J\x1b[3J\x1b[H");
 }
 
 QString SkyTuiTheme::moveTo(int row, int column)

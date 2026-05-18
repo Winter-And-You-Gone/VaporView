@@ -389,14 +389,33 @@ QVector<QStringList> buildRotatingLogoFrames(const QStringList& logoLines)
     return frames;
 }
 
+void fillBackground(const SkyTuiTerminalSize& size)
+{
+    if (size.columns <= 0 || size.rows <= 0)
+    {
+        return;
+    }
+
+    const QString line(size.columns, QLatin1Char(' '));
+    QString output = QStringLiteral("\x1b[?7l") + SkyTuiTheme::background(SkyTuiRgb{0, 0, 0});
+    for (int row = 1; row <= size.rows; ++row)
+    {
+        output += SkyTuiTheme::moveTo(row, 1) + line;
+    }
+    output += QStringLiteral("\x1b[?7h") + SkyTuiTheme::moveTo(1, 1) + SkyTuiTheme::background(SkyTuiRgb{0, 0, 0});
+    writeRaw(output);
+}
+
 void clearLine(int row, const SkyTuiTerminalSize& size)
 {
     if (row < 1 || row > size.rows || size.columns <= 0)
     {
         return;
     }
-    writeRaw(SkyTuiTheme::moveTo(row, 1) + SkyTuiTheme::background(SkyTuiRgb{0, 0, 0}) +
-             QString(size.columns, QLatin1Char(' ')) + SkyTuiTheme::reset());
+    writeRaw(QStringLiteral("\x1b[?7l") +
+             SkyTuiTheme::moveTo(row, 1) + SkyTuiTheme::background(SkyTuiRgb{0, 0, 0}) +
+             QString(size.columns, QLatin1Char(' ')) + QStringLiteral("\x1b[?7h") +
+             SkyTuiTheme::reset());
 }
 
 void drawCenteredText(int row, const QString& text, const SkyTuiTerminalSize& size, const QString& style = QString())
@@ -594,6 +613,7 @@ SkyStartupDecision showSkyStartupScreen(const QString& logo_path)
              SkyTuiTheme::hideCursor());
 
     const SkyTuiTerminalSize size = SkyTuiTheme::terminalSize();
+    fillBackground(size);
     const QStringList logoLines = visibleLogoLines(loadLogo(logo_path));
     const QVector<QStringList> logoFrames = buildRotatingLogoFrames(logoLines);
     const int logoRows = static_cast<int>(logoLines.size());
