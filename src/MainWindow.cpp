@@ -72,9 +72,9 @@ constexpr const char *kBaseMarginsLeftProperty = "_vv_base_margin_left";
 constexpr const char *kBaseMarginsTopProperty = "_vv_base_margin_top";
 constexpr const char *kBaseMarginsRightProperty = "_vv_base_margin_right";
 constexpr const char *kBaseMarginsBottomProperty = "_vv_base_margin_bottom";
-constexpr int kMainPageInputHeight = 30;
-constexpr int kMainPageButtonHeight = 38;
-constexpr int kMainPageTitleBarHeight = kMainPageButtonHeight + 2;
+constexpr int kMainPageInputHeight = 36;
+constexpr int kMainPageButtonHeight = 36;
+constexpr int kMainPageTitleBarHeight = kMainPageButtonHeight + 4;
 constexpr int kEpsilonTitleColumnWidth = 170;
 constexpr int kEpsilonValueColumnMinWidth = 320;
 constexpr int kPtbMinSampleRateHz = 1;
@@ -2135,17 +2135,17 @@ void MainWindow::loadModernStyleSheet()
             "QWidget#sectionTitleBar { background-color: #ffffff; border-bottom: 2px solid #dfe4ea; border-top-left-radius: 7px; border-top-right-radius: 7px; min-height: 40px; max-height: 40px; }"
             "QWidget#sectionTitleBar QLabel { background-color: transparent; border: none; }"
             "QLabel { color: #333333; background-color: transparent; border: none; }"
-            "QLabel#sectionTitleLabel { background-color: #ffffff; border: none; border-bottom: 2px solid #dfe4ea; border-radius: 0px; color: #1f2937; font-size: 16px; font-weight: bold; padding: 0px 10px; min-height: 38px; max-height: 38px; }"
-            "QWidget#sectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; padding: 0px 10px; min-height: 38px; max-height: 38px; }"
-            "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 10px; min-height: 30px; color: #333333; font-size: 14px; }"
+            "QLabel#sectionTitleLabel { background-color: #ffffff; border: none; border-bottom: 2px solid #dfe4ea; border-radius: 0px; color: #1f2937; font-size: 16px; font-weight: bold; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
+            "QWidget#sectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
+            "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 10px; min-height: 36px; max-height: 36px; color: #333333; font-size: 14px; }"
             "QComboBox:hover { border-color: #bdbdbd; }"
             "QComboBox:focus { border-color: #1976d2; border-width: 2px; }"
             "QComboBox QAbstractItemView { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; selection-background-color: #e3f2fd; selection-color: #1976d2; padding: 4px; outline: none; }"
-            "QLineEdit { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 10px; min-height: 30px; color: #333333; font-size: 14px; }"
+            "QLineEdit { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 10px; min-height: 36px; max-height: 36px; color: #333333; font-size: 14px; }"
             "QLineEdit:hover { border-color: #bdbdbd; }"
             "QLineEdit:focus { border-color: #1976d2; border-width: 2px; }"
             "QLineEdit:disabled { background-color: #f5f5f5; color: #bdbdbd; }"
-            "QSpinBox, QDoubleSpinBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 28px 4px 10px; min-height: 30px; color: #333333; font-size: 14px; }"
+            "QSpinBox, QDoubleSpinBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 28px 4px 10px; min-height: 36px; max-height: 36px; color: #333333; font-size: 14px; }"
             "QSpinBox:hover, QDoubleSpinBox:hover { border-color: #bdbdbd; }"
             "QSpinBox:focus, QDoubleSpinBox:focus { border-color: #1976d2; border-width: 2px; }"
             "QSpinBox:disabled, QDoubleSpinBox:disabled { background-color: #f5f5f5; color: #bdbdbd; }"
@@ -2169,12 +2169,12 @@ void MainWindow::loadModernStyleSheet()
             "QSplitter#mainContentSplitter::handle:horizontal:pressed { background-color: rgba(25, 118, 210, 0.28); }"
             "QSplitter::handle:horizontal { width: 0px; }"
             "QSplitter::handle:vertical { height: 0px; }"
-            "QPushButton { background-color: #1976d2; color: #ffffff; border: none; border-radius: 6px; padding: 0px 18px; font-size: 15px; font-weight: 500; min-height: 38px; max-height: 38px; }"
+            "QPushButton { background-color: #1976d2; color: #ffffff; border: none; border-radius: 6px; padding: 0px 18px; font-size: 15px; font-weight: 500; min-height: 36px; max-height: 36px; }"
             "QPushButton:hover { background-color: #1565c0; }"
             "QPushButton:pressed { background-color: #0d47a1; }"
             "QPushButton:disabled { background-color: #bdbdbd; color: #ffffff; }"
-            "QPushButton#compactTcpButton { padding: 0px 14px; min-height: 38px; max-height: 38px; font-size: 14px; }"
-            "QPushButton#compactTcpStartButton { padding: 0px 14px; min-height: 38px; max-height: 38px; font-size: 14px; }"
+            "QPushButton#compactTcpButton { padding: 0px 14px; min-height: 36px; max-height: 36px; font-size: 14px; }"
+            "QPushButton#compactTcpStartButton { padding: 0px 14px; min-height: 36px; max-height: 36px; font-size: 14px; }"
             "QToolTip { background-color: #424242; color: #ffffff; border: none; border-radius: 4px; padding: 6px 10px; font-size: 13px; }";
     }
 
@@ -3729,7 +3729,7 @@ void MainWindow::setupConfigPanel()
     configTitleBar->setObjectName("sectionTitleBar");
     configTitleBar->setFixedHeight(kMainPageTitleBarHeight);
     auto *configTitleLayout = new QHBoxLayout(configTitleBar);
-    configTitleLayout->setContentsMargins(8, 1, 8, 1);
+    configTitleLayout->setContentsMargins(8, 2, 8, 2);
     configTitleLayout->setSpacing(8);
 
     config_inline_title_lbl_ = new QLabel(this);
@@ -3872,7 +3872,7 @@ void MainWindow::setupDataPanels()
     dataTitleBar->setObjectName("sectionTitleBar");
     dataTitleBar->setFixedHeight(kMainPageTitleBarHeight);
     auto *data_title_layout = new QHBoxLayout(dataTitleBar);
-    data_title_layout->setContentsMargins(8, 1, 8, 1);
+    data_title_layout->setContentsMargins(8, 2, 8, 2);
     data_title_layout->setSpacing(12);
     data_inline_title_lbl_ = new QLabel(this);
     data_inline_title_lbl_->setObjectName("sectionTitleLabel");

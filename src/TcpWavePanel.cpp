@@ -38,9 +38,9 @@ constexpr int kHeaderSize = 4;
 constexpr int kFloatSize = 4;
 constexpr int kMaxPayloadBytes = 16 * 1024 * 1024;
 constexpr int kPreferredPayloadBytes = 200000;
-constexpr int kTcpControlHeight = 30;
-constexpr int kTcpButtonHeight = 38;
-constexpr int kTcpTitleBarHeight = kTcpButtonHeight + 2;
+constexpr int kTcpControlHeight = 36;
+constexpr int kTcpButtonHeight = 36;
+constexpr int kTcpTitleBarHeight = kTcpButtonHeight + 4;
 constexpr int kDefaultPeakSearchStartIndex = 0;
 constexpr int kDefaultPeakSearchEndIndex = 0;
 constexpr int kPeakTrendFrameWindow = 1000;
@@ -648,7 +648,7 @@ void TcpWavePanel::setupUi()
     topControlsBar->setObjectName("sectionTitleBar");
     topControlsBar->setFixedHeight(kTcpTitleBarHeight);
     top_controls_layout_ = new QHBoxLayout(topControlsBar);
-    top_controls_layout_->setContentsMargins(8, 1, 8, 1);
+    top_controls_layout_->setContentsMargins(8, 2, 8, 2);
     top_controls_layout_->setSpacing(0);
     control_layout_->addWidget(topControlsBar, 0, 0, 1, 6);
 
@@ -723,7 +723,7 @@ void TcpWavePanel::setupUi()
     wave1HeaderBar->setObjectName("sectionTitleBar");
     wave1HeaderBar->setFixedHeight(kTcpTitleBarHeight);
     auto *wave1HeaderLayout = new QHBoxLayout(wave1HeaderBar);
-    wave1HeaderLayout->setContentsMargins(8, 1, 8, 1);
+    wave1HeaderLayout->setContentsMargins(8, 2, 8, 2);
     wave1HeaderLayout->setSpacing(8);
     wave1_title_label_ = new QLabel(this);
     wave1_title_label_->setObjectName("sectionTitleLabel");
@@ -746,7 +746,7 @@ void TcpWavePanel::setupUi()
     wave4HeaderBar->setObjectName("sectionTitleBar");
     wave4HeaderBar->setFixedHeight(kTcpTitleBarHeight);
     auto *wave4HeaderLayout = new QHBoxLayout(wave4HeaderBar);
-    wave4HeaderLayout->setContentsMargins(8, 1, 8, 1);
+    wave4HeaderLayout->setContentsMargins(8, 2, 8, 2);
     wave4HeaderLayout->setSpacing(8);
     wave4_title_label_ = new QLabel(this);
     wave4_title_label_->setObjectName("sectionTitleLabel");
@@ -773,7 +773,7 @@ void TcpWavePanel::setupUi()
     peakHeaderBar->setObjectName("sectionTitleBar");
     peakHeaderBar->setFixedHeight(kTcpTitleBarHeight);
     auto *peakHeaderLayout = new QHBoxLayout(peakHeaderBar);
-    peakHeaderLayout->setContentsMargins(8, 1, 8, 1);
+    peakHeaderLayout->setContentsMargins(8, 2, 8, 2);
     peakHeaderLayout->setSpacing(6);
     peak_title_label_ = new QLabel(this);
     peak_title_label_->setObjectName("sectionTitleLabel");
