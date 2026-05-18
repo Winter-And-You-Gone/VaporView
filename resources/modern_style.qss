@@ -215,8 +215,8 @@ QComboBox {
     border: 1px solid #e0e0e0;
     border-radius: 6px;
     padding: 4px 10px;
-    min-height: 36px;
-    max-height: 36px;
+    min-height: 26px;
+    max-height: 26px;
     color: #333333;
     font-size: 14px;
 }
@@ -227,7 +227,7 @@ QComboBox:hover {
 
 QComboBox:focus {
     border-color: #1976d2;
-    border-width: 2px;
+    border-width: 1px;
 }
 
 QComboBox::drop-down {
@@ -413,8 +413,8 @@ QLineEdit {
     border: 1px solid #e0e0e0;
     border-radius: 6px;
     padding: 4px 10px;
-    min-height: 36px;
-    max-height: 36px;
+    min-height: 26px;
+    max-height: 26px;
     color: #333333;
     font-size: 14px;
     selection-background-color: #e3f2fd;
@@ -427,7 +427,7 @@ QLineEdit:hover {
 
 QLineEdit:focus {
     border-color: #1976d2;
-    border-width: 2px;
+    border-width: 1px;
 }
 
 QLineEdit:disabled {
@@ -443,8 +443,8 @@ QDoubleSpinBox {
     padding: 4px 28px 4px 10px;
     color: #333333;
     font-size: 14px;
-    min-height: 36px;
-    max-height: 36px;
+    min-height: 26px;
+    max-height: 26px;
 }
 
 QSpinBox:hover,
@@ -455,7 +455,7 @@ QDoubleSpinBox:hover {
 QSpinBox:focus,
 QDoubleSpinBox:focus {
     border-color: #1976d2;
-    border-width: 2px;
+    border-width: 1px;
 }
 
 QSpinBox:disabled,
