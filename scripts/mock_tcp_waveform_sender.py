@@ -11,7 +11,7 @@ VaporView 作为 TCP client 连接本脚本。本脚本监听 TCP 端口，并�
 例如 10 Hz 每帧 50,000 点，100 Hz 每帧 5,000 点。
 
 当前测试波形为突变矩形波：在 [2/5, 3/5) 区间内有连续 10 个点值为 2，
-该 10 点块按帧周期移动且不会越过区间边缘，其余所有点值均为 -1。
+该 10 点块按整数帧周期往返移动且不会越过区间边缘，其余所有点值均为 -1。
 """
 
 from __future__ import annotations
@@ -20,7 +20,6 @@ import argparse
 import array
 import ctypes
 import contextlib
-import math
 import signal
 import socket
 import struct
@@ -40,6 +39,7 @@ DEFAULT_PEAK_VALUE = 2.0
 DEFAULT_BASELINE_VALUE = -1.0
 DEFAULT_PEAK_BLOCK_POINTS = 10
 DEFAULT_PRECOMPUTE_FRAMES = 120
+DEFAULT_MOVE_PERIOD_FRAMES = DEFAULT_PRECOMPUTE_FRAMES
 SOCKET_TIMEOUT_SECONDS = 0.5
 DEFAULT_REPORT_INTERVAL_SECONDS = 1.0
 DEFAULT_SEND_BUFFER_BYTES = 4 * 1024 * 1024
@@ -103,6 +103,7 @@ def moving_peak_block_start(
     peak_index: int,
     block_points: int,
     move_peak: bool,
+    move_period_frames: int,
 ) -> tuple[int, int]:
     block_points = max(1, min(block_points, sample_count))
     left = min(max(0, int(sample_count * 2 / 5)), sample_count - block_points)
@@ -114,7 +115,9 @@ def moving_peak_block_start(
         desired_start = peak_index - block_points // 2
         return max(left, min(last_start, desired_start)), block_points
 
-    phase = (math.sin(frame_index * 0.11) + 1.0) * 0.5
+    period = max(2, move_period_frames)
+    cycle = (frame_index % period) / period
+    phase = 1.0 - abs(cycle * 2.0 - 1.0)
     start = left + int(round(phase * (last_start - left)))
     return max(left, min(last_start, start)), block_points
 
@@ -127,6 +130,7 @@ def build_wave_pair(
     peak_width: float,
     noise: float,
     move_peak: bool,
+    move_period_frames: int,
 ) -> tuple[bytes, bytes, int, float]:
     del peak_width, noise
     start, block_points = moving_peak_block_start(
@@ -135,6 +139,7 @@ def build_wave_pair(
         peak_index=peak_index,
         block_points=DEFAULT_PEAK_BLOCK_POINTS,
         move_peak=move_peak,
+        move_period_frames=move_period_frames,
     )
     values = [DEFAULT_BASELINE_VALUE] * sample_count
     for i in range(start, start + block_points):
@@ -169,6 +174,7 @@ def build_frame_bytes(
     peak_width: float,
     noise: float,
     move_peak: bool,
+    move_period_frames: int,
 ) -> tuple[bytes, int, float]:
     raw_payload, harmonic_payload, center, peak_value = build_wave_pair(
         frame_index=frame_index,
@@ -178,6 +184,7 @@ def build_frame_bytes(
         peak_width=peak_width,
         noise=noise,
         move_peak=move_peak,
+        move_period_frames=move_period_frames,
     )
     return pack_payload(raw_payload) + pack_payload(harmonic_payload), center, peak_value
 
@@ -202,6 +209,7 @@ def precompute_frames(args: argparse.Namespace, peak_index: int) -> list[tuple[b
             peak_width=args.peak_width,
             noise=args.noise,
             move_peak=args.move_peak,
+            move_period_frames=args.move_period_frames,
         )
         for frame_index in range(frame_count)
     ]
@@ -227,6 +235,8 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
         raise ValueError("--peak-width 必须为正数")
     if args.report_interval <= 0.0:
         raise ValueError("--report-interval 必须为正数")
+    if args.move_period_frames <= 1:
+        raise ValueError("--move-period-frames 必须大于 1")
 
     peak_index = args.peak_index
     if peak_index is None:
@@ -265,7 +275,7 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
             log(f"模式：预生成回放，循环发送 {len(replay_frames)} 帧。")
         else:
             log("模式：实时生成；高帧率下可能受 Python CPU 性能限制。")
-        log("波形：连续 10 个点为 2，在 [2/5, 3/5) 区间内周期移动，其余点为 -1。")
+        log(f"波形：连续 10 个点为 2，在 [2/5, 3/5) 区间内以 {args.move_period_frames} 帧周期往返移动，其余点为 -1。")
         log("按 Ctrl+C 停止。")
 
         frame_index = 0
@@ -308,6 +318,7 @@ def serve(args: argparse.Namespace, stop_event: threading.Event) -> None:
                                 peak_width=args.peak_width,
                                 noise=args.noise,
                                 move_peak=args.move_peak,
+                                move_period_frames=args.move_period_frames,
                             )
                             send_payload(conn, raw_payload, stop_event)
                             send_payload(conn, harmonic_payload, stop_event)
@@ -401,6 +412,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--move-peak", dest="move_peak", action="store_true", help="启用峰值块周期移动（默认启用）")
     parser.add_argument("--static-peak", dest="move_peak", action="store_false", help="固定峰值块位置")
     parser.set_defaults(move_peak=True)
+    parser.add_argument(
+        "--move-period-frames",
+        type=int,
+        default=DEFAULT_MOVE_PERIOD_FRAMES,
+        help=(
+            "峰值块往返移动的整数帧周期。默认与预生成帧数一致，"
+            f"为 {DEFAULT_MOVE_PERIOD_FRAMES}，避免预生成循环边界相位跳变。"
+        ),
+    )
     parser.add_argument("--frames", type=int, default=0, help="发送指定帧数后退出；0 表示持续运行")
     parser.add_argument(
         "--precompute-frames",
