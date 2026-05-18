@@ -127,8 +127,10 @@ QGroupBox::title {
     subcontrol-origin: margin;
     subcontrol-position: top left;
     left: 16px;
-    padding: 0px 8px;
-    background-color: #ffffff;
+    padding: 3px 10px;
+    background-color: #eef4fb;
+    border: 1px solid #d7e5f7;
+    border-radius: 5px;
     color: #1976d2;
     font-size: 16px;
     font-weight: bold;
@@ -154,9 +156,14 @@ QLabel#fieldLabel {
 }
 
 QLabel#sectionTitleLabel {
+    background-color: #eef4fb;
+    border: 1px solid #d7e5f7;
+    border-radius: 5px;
     color: #1976d2;
     font-size: 16px;
     font-weight: bold;
+    padding: 3px 10px;
+    min-height: 24px;
 }
 
 QLabel#valueLabel {

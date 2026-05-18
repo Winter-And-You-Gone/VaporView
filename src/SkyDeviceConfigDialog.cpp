@@ -236,7 +236,7 @@ void SkyDeviceConfigDialog::setupUi()
     setStyleSheet(QStringLiteral(
         "QDialog#skyDeviceConfigDialog { background-color: #f3f5f7; }"
         "QDialog#skyDeviceConfigDialog QGroupBox { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 8px; margin-top: 12px; font-weight: bold; color: #1976d2; }"
-        "QDialog#skyDeviceConfigDialog QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 14px; padding: 0 8px; background-color: #ffffff; }"
+        "QDialog#skyDeviceConfigDialog QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 14px; padding: 3px 10px; background-color: #eef4fb; border: 1px solid #d7e5f7; border-radius: 5px; }"
         "QDialog#skyDeviceConfigDialog QLabel { color: #1f2a35; }"
         "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle { background-color: #ffffff; color: #b42318; border: 1px solid #cbd5e1; border-radius: 5px; padding: 0; min-width: 30px; max-width: 30px; min-height: 30px; max-height: 30px; }"
         "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:hover { background-color: #f8fafc; border-color: #94a3b8; }"
