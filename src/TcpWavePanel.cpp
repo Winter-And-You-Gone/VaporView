@@ -645,7 +645,7 @@ void TcpWavePanel::setupUi()
     auto *topControlsBar = new QWidget(this);
     topControlsBar->setObjectName("sectionTitleBar");
     top_controls_layout_ = new QHBoxLayout(topControlsBar);
-    top_controls_layout_->setContentsMargins(8, 8, 8, 8);
+    top_controls_layout_->setContentsMargins(8, 1, 8, 1);
     top_controls_layout_->setSpacing(0);
     control_layout_->addWidget(topControlsBar, 0, 0, 1, 6);
 
@@ -719,7 +719,7 @@ void TcpWavePanel::setupUi()
     auto *wave1HeaderBar = new QWidget(wave1_group_);
     wave1HeaderBar->setObjectName("sectionTitleBar");
     auto *wave1HeaderLayout = new QHBoxLayout(wave1HeaderBar);
-    wave1HeaderLayout->setContentsMargins(8, 8, 8, 8);
+    wave1HeaderLayout->setContentsMargins(8, 1, 8, 1);
     wave1HeaderLayout->setSpacing(8);
     wave1_title_label_ = new QLabel(this);
     wave1_title_label_->setObjectName("sectionTitleLabel");
@@ -741,7 +741,7 @@ void TcpWavePanel::setupUi()
     auto *wave4HeaderBar = new QWidget(wave4_group_);
     wave4HeaderBar->setObjectName("sectionTitleBar");
     auto *wave4HeaderLayout = new QHBoxLayout(wave4HeaderBar);
-    wave4HeaderLayout->setContentsMargins(8, 8, 8, 8);
+    wave4HeaderLayout->setContentsMargins(8, 1, 8, 1);
     wave4HeaderLayout->setSpacing(8);
     wave4_title_label_ = new QLabel(this);
     wave4_title_label_->setObjectName("sectionTitleLabel");
@@ -767,7 +767,7 @@ void TcpWavePanel::setupUi()
     auto *peakHeaderBar = new QWidget(peak_group_);
     peakHeaderBar->setObjectName("sectionTitleBar");
     auto *peakHeaderLayout = new QHBoxLayout(peakHeaderBar);
-    peakHeaderLayout->setContentsMargins(8, 8, 8, 8);
+    peakHeaderLayout->setContentsMargins(8, 1, 8, 1);
     peakHeaderLayout->setSpacing(6);
     peak_title_label_ = new QLabel(this);
     peak_title_label_->setObjectName("sectionTitleLabel");
