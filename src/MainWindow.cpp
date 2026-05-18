@@ -7055,14 +7055,22 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
     const bool ok = ack.result == 0;
     const QString commandName = VaporView::commandIdName(ack.command_id);
     const QString errorText = VaporView::commandErrorCodeText(ack.error_code, is_english_);
-    log(QString(is_english_ ? "Remote ACK command=%1(%2) seq=%3 result=%4 error=%5(%6)"
-                            : "远程ACK 命令=%1(%2) 序号=%3 结果=%4 错误=%5(%6)")
+    const bool noError = ack.error_code == VaporView::CommandErrorCode::Ok;
+    const QString detailLabel = ok && noError
+        ? (is_english_ ? QStringLiteral("detail") : QStringLiteral("详情"))
+        : (is_english_ ? QStringLiteral("error") : QStringLiteral("错误"));
+    const QString detailText = ok && noError
+        ? (is_english_ ? QStringLiteral("no error") : QStringLiteral("无错误"))
+        : errorText;
+    log(QString(is_english_ ? "Remote ACK command=%1(%2) seq=%3 result=%4 %5=%6(%7)"
+                            : "远程ACK 命令=%1(%2) 序号=%3 结果=%4 %5=%6(%7)")
             .arg(commandName)
             .arg(static_cast<quint16>(ack.command_id))
             .arg(ack.command_seq)
             .arg(ok ? (is_english_ ? QStringLiteral("ok") : QStringLiteral("成功"))
                     : (is_english_ ? QStringLiteral("error") : QStringLiteral("失败")))
-            .arg(errorText)
+            .arg(detailLabel)
+            .arg(detailText)
             .arg(static_cast<quint32>(ack.error_code)));
 
     if (ack.command_id == VaporView::CommandId::EnableWaveformStreaming)
