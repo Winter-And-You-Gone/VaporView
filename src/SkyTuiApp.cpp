@@ -1532,7 +1532,14 @@ void SkyTuiApp::drawPalette(SkyTuiScreenBuffer& output, int top, int bottom, con
     clampPaletteSelection();
     const int maxRows = std::max(0, bottom - top - 1);
     const int width = size.columns - 6;
+    const int clearWidth = std::max(0, size.columns - 4);
     const int start = std::max(0, std::min(model_.palette_selected - maxRows / 2, std::max(0, static_cast<int>(items.size()) - maxRows)));
+
+    const QString blankLine(clearWidth, QLatin1Char(' '));
+    for (int clearRow = top + 1; clearRow < bottom; ++clearRow)
+    {
+        drawText(output, clearRow, 3, blankLine);
+    }
 
     int row = top + 1;
     for (int i = start; i < static_cast<int>(items.size()) && row < bottom; ++i, ++row)
