@@ -636,10 +636,11 @@ TcpWavePanel::~TcpWavePanel()
 void TcpWavePanel::setupUi()
 {
     auto *mainLayout = new QVBoxLayout(this);
-    mainLayout->setContentsMargins(4, 4, 4, 4);
+    mainLayout->setContentsMargins(4, 0, 4, 4);
     mainLayout->setSpacing(4);
 
     control_layout_ = new QGridLayout();
+    control_layout_->setContentsMargins(0, 0, 0, 0);
     control_layout_->setHorizontalSpacing(1);
     control_layout_->setVerticalSpacing(4);
 
