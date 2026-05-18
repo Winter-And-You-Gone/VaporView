@@ -2829,34 +2829,50 @@ QString MainWindow::remoteTelemetrySummaryText() const
     const QString actualWaveRate = (remote_status_.wave_tcp_actual_rate_hz > 0.0f)
         ? QStringLiteral("%1 Hz").arg(remote_status_.wave_tcp_actual_rate_hz, 0, 'f', 1)
         : QStringLiteral("-- Hz");
-    const QString rates = QString(is_english_
-            ? "Telemetry packets: Basic %1 Hz | Feature %2 Hz | Wave packets %3 Hz | Status %4 Hz | Wave TCP actual %5"
-            : "数传数据包频率：基础 %1 Hz | 特征值 %2 Hz | 波形包 %3 Hz | 状态 %4 Hz | Wave TCP 实际 %5")
-        .arg(remotePacketRate(VaporView::MsgType::TelemetryBasic), 0, 'f', 1)
-        .arg(remotePacketRate(VaporView::MsgType::WaveformFeature), 0, 'f', 1)
-        .arg(remotePacketRate(VaporView::MsgType::WaveformDownsampled), 0, 'f', 1)
-        .arg(remotePacketRate(VaporView::MsgType::TelemetryStatus), 0, 'f', 1)
-        .arg(actualWaveRate);
-
-    const QString devices = QString(is_english_
-            ? "EPSILON %1 | PTB %2 | HMP %3 | Lidar %4 | Wave %5"
-            : "EPSILON %1 | PTB %2 | HMP %3 | Lidar %4 | Wave %5")
-        .arg(hasText(VaporView::SkyDeviceId::Epsilon, 2000),
-             hasText(VaporView::SkyDeviceId::Ptb, 3000),
-             hasText(VaporView::SkyDeviceId::Hmp, 3000),
-             hasText(VaporView::SkyDeviceId::Lidar, 2000),
-             hasText(VaporView::SkyDeviceId::WaveTcp, 3000));
-
     const double rxBps = ground_telemetry_service_->receiveBitsPerSecond();
     const double txBps = ground_telemetry_service_->transmitBitsPerSecond();
-    const QString throughput = QString(is_english_
-            ? "Link rate: Sky->Ground %1 | Ground->Sky %2 | Total %3"
-            : "链路速率：天空→地面 %1 | 地面→天空 %2 | 合计 %3")
-        .arg(formatBitRate(rxBps),
-             formatBitRate(txBps),
-             formatBitRate(rxBps + txBps));
 
-    return QStringLiteral("%1    |    %2    |    %3").arg(rates, throughput, devices);
+    QStringList lines;
+    if (is_english_)
+    {
+        lines << QStringLiteral("Telemetry packet rates")
+              << QStringLiteral("Basic: %1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryBasic), 0, 'f', 1)
+              << QStringLiteral("Feature: %1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformFeature), 0, 'f', 1)
+              << QStringLiteral("Wave packets: %1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformDownsampled), 0, 'f', 1)
+              << QStringLiteral("Status: %1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryStatus), 0, 'f', 1)
+              << QStringLiteral("Wave TCP actual: %1").arg(actualWaveRate)
+              << QStringLiteral("Link rate")
+              << QStringLiteral("Sky->Ground: %1").arg(formatBitRate(rxBps))
+              << QStringLiteral("Ground->Sky: %1").arg(formatBitRate(txBps))
+              << QStringLiteral("Total: %1").arg(formatBitRate(rxBps + txBps))
+              << QStringLiteral("Device data")
+              << QStringLiteral("EPSILON: %1").arg(hasText(VaporView::SkyDeviceId::Epsilon, 2000))
+              << QStringLiteral("PTB: %1").arg(hasText(VaporView::SkyDeviceId::Ptb, 3000))
+              << QStringLiteral("HMP: %1").arg(hasText(VaporView::SkyDeviceId::Hmp, 3000))
+              << QStringLiteral("Lidar: %1").arg(hasText(VaporView::SkyDeviceId::Lidar, 2000))
+              << QStringLiteral("Wave: %1").arg(hasText(VaporView::SkyDeviceId::WaveTcp, 3000));
+    }
+    else
+    {
+        lines << QStringLiteral("数传数据包频率")
+              << QStringLiteral("基础：%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryBasic), 0, 'f', 1)
+              << QStringLiteral("特征值：%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformFeature), 0, 'f', 1)
+              << QStringLiteral("波形包：%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformDownsampled), 0, 'f', 1)
+              << QStringLiteral("状态：%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryStatus), 0, 'f', 1)
+              << QStringLiteral("Wave TCP 实际：%1").arg(actualWaveRate)
+              << QStringLiteral("链路速率")
+              << QStringLiteral("天空→地面：%1").arg(formatBitRate(rxBps))
+              << QStringLiteral("地面→天空：%1").arg(formatBitRate(txBps))
+              << QStringLiteral("合计：%1").arg(formatBitRate(rxBps + txBps))
+              << QStringLiteral("设备数据")
+              << QStringLiteral("EPSILON：%1").arg(hasText(VaporView::SkyDeviceId::Epsilon, 2000))
+              << QStringLiteral("PTB：%1").arg(hasText(VaporView::SkyDeviceId::Ptb, 3000))
+              << QStringLiteral("HMP：%1").arg(hasText(VaporView::SkyDeviceId::Hmp, 3000))
+              << QStringLiteral("Lidar：%1").arg(hasText(VaporView::SkyDeviceId::Lidar, 2000))
+              << QStringLiteral("Wave：%1").arg(hasText(VaporView::SkyDeviceId::WaveTcp, 3000));
+    }
+
+    return lines.join(QLatin1Char('\n'));
 }
 
 void MainWindow::updateRemoteTelemetrySummaryLabel()
