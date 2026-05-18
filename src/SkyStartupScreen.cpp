@@ -45,6 +45,7 @@ bool g_startup_has_original_termios = false;
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kLogoTerminalAspect = 2.0;
 constexpr int kLogoFrameCount = 24;
+constexpr int kLogoFrameDelayMs = 80;
 
 void writeRaw(const QString& text)
 {
@@ -568,7 +569,7 @@ SkyStartupDecision showSkyStartupScreen(const QString& logo_path)
     {
         drawNextLogoFrame();
         drawProgress(percent, progressRow, size);
-        QThread::msleep(percent < 100 ? 42 : 80);
+        QThread::msleep(kLogoFrameDelayMs);
     }
 
     const QString message = QStringLiteral("-- 加载完成，按 Enter 进入 TUI，按 Esc 退出 --");
@@ -579,7 +580,7 @@ SkyStartupDecision showSkyStartupScreen(const QString& logo_path)
     while (!pollStartupDecision(decision))
     {
         drawNextLogoFrame();
-        QThread::msleep(80);
+        QThread::msleep(kLogoFrameDelayMs);
     }
     restoreStartupInputMode();
     writeRaw(SkyTuiTheme::hideCursor() + SkyTuiTheme::clearScreen() + SkyTuiTheme::leaveAlternateScreen());

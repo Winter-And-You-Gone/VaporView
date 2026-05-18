@@ -555,6 +555,8 @@ private:
     bool remote_sky_mode_;
     bool remote_sky_online_;
     bool remote_wave_stream_requested_;
+    bool remote_wave_stream_enable_pending_;
+    bool remote_wave_stream_auto_start_;
     int remote_recording_state_;
     QHash<VaporView::SkyDeviceId, VaporView::DeviceState> remote_device_states_;
     QHash<VaporView::SkyDeviceId, qint64> remote_last_data_ms_;
