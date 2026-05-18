@@ -162,6 +162,7 @@ constexpr quint32 kRawTcpWaveCombinedPayloadFlag = 0x00000001u;
 const QColor kToolbarBlue(40, 105, 190);
 const QColor kToolbarGreen(35, 150, 95);
 const QColor kToolbarRed(205, 72, 72);
+const QColor kToolbarAmber(220, 150, 35);
 const QColor kToolbarDisabled(145, 150, 158);
 
 int clampPtbSampleRate(int hz)
@@ -271,6 +272,164 @@ QIcon createWaveformViewerIcon()
 QIcon createFullscreenIcon()
 {
     return createLucideIcon(QStringLiteral("maximize"), kToolbarBlue);
+}
+
+QIcon createLanguageIcon()
+{
+    return createLucideIcon(QStringLiteral("languages"), kToolbarBlue);
+}
+
+QIcon createDarkThemeIcon()
+{
+    return createLucideIcon(QStringLiteral("moon"), kToolbarBlue);
+}
+
+QIcon createLightThemeIcon()
+{
+    return createLucideIcon(QStringLiteral("sun"), kToolbarAmber);
+}
+
+QString darkThemeStyleSheet()
+{
+    return QStringLiteral(R"(
+QMainWindow {
+    background-color: #101418;
+}
+QMenuBar,
+QToolBar,
+QStatusBar,
+QMenu,
+QMessageBox {
+    background-color: #151a20;
+    color: #d8dee9;
+    border-color: #2c3440;
+}
+QMenuBar::item,
+QMenu::item,
+QToolBar QToolButton {
+    color: #d8dee9;
+}
+QMenuBar::item:selected,
+QMenu::item:selected,
+QToolBar QToolButton:hover {
+    background-color: #1f2a36;
+    color: #7db7ff;
+}
+QMenuBar::item:pressed,
+QToolBar QToolButton:pressed {
+    background-color: #263545;
+}
+QMenu::separator,
+QToolBar::separator {
+    background-color: #2c3440;
+}
+QGroupBox {
+    background-color: #151a20;
+    border: 1px solid #2c3440;
+    border-top: 40px solid #151a20;
+    color: #d8dee9;
+}
+QGroupBox#sensorGroupBox,
+QWidget#sectionTitleBar,
+QLabel#sectionTitleLabel {
+    background-color: #151a20;
+    border-color: #2c3440;
+    color: #e5e7eb;
+}
+QLabel {
+    color: #d8dee9;
+}
+QLabel#fieldLabel,
+QLabel#rateLabel,
+QLabel#separatorLabel {
+    color: #9aa6b2;
+}
+QLabel#valueLabel,
+QLabel#highlightedValue {
+    color: #8cc8ff;
+    background-color: #162638;
+}
+QComboBox,
+QLineEdit,
+QSpinBox,
+QDoubleSpinBox,
+QTextEdit {
+    background-color: #10151b;
+    border: 1px solid #323c48;
+    color: #e5e7eb;
+    selection-background-color: #245b8f;
+    selection-color: #ffffff;
+}
+QComboBox:hover,
+QLineEdit:hover,
+QSpinBox:hover,
+QDoubleSpinBox:hover {
+    border-color: #4b5a68;
+}
+QComboBox:focus,
+QLineEdit:focus,
+QSpinBox:focus,
+QDoubleSpinBox:focus {
+    border-color: #3b82f6;
+}
+QComboBox:disabled,
+QLineEdit:disabled,
+QSpinBox:disabled,
+QDoubleSpinBox:disabled {
+    background-color: #1b222b;
+    color: #64748b;
+}
+QComboBox QAbstractItemView {
+    background-color: #151a20;
+    border: 1px solid #323c48;
+    color: #e5e7eb;
+    selection-background-color: #1f3f66;
+    selection-color: #ffffff;
+}
+QPushButton:disabled {
+    background-color: #4b5563;
+    color: #cbd5e1;
+}
+QScrollBar:vertical,
+QScrollBar:horizontal {
+    background-color: #111827;
+}
+QScrollBar::handle:vertical,
+QScrollBar::handle:horizontal {
+    background-color: #475569;
+}
+QScrollBar::handle:vertical:hover,
+QScrollBar::handle:horizontal:hover {
+    background-color: #64748b;
+}
+QCheckBox,
+QRadioButton {
+    color: #d8dee9;
+}
+QCheckBox::indicator,
+QRadioButton::indicator {
+    background-color: #10151b;
+    border-color: #64748b;
+}
+QLabel[data-valid="true"] {
+    color: #68d391;
+}
+QLabel[data-valid="false"] {
+    color: #f87171;
+}
+QLabel#statusIndicator[status="connected"] {
+    background-color: #123423;
+    color: #68d391;
+}
+QLabel#statusIndicator[status="disconnected"] {
+    background-color: #3a171b;
+    color: #f87171;
+}
+QLabel#statusIndicator[status="warning"] {
+    background-color: #3a2a12;
+    color: #f6ad55;
+}
+)");
 }
 
 #pragma pack(push, 1)
@@ -1812,6 +1971,7 @@ MainWindow::MainWindow(QWidget *parent)
     , fullscreen_menu_action_(nullptr)
     , fullscreen_toolbar_action_(nullptr)
     , lang_action_(nullptr)
+    , theme_toggle_action_(nullptr)
     , clear_log_action_(nullptr)
     , session_viewer_action_(nullptr)
     , epsilon_reconfigure_action_(nullptr)
@@ -1930,6 +2090,7 @@ MainWindow::MainWindow(QWidget *parent)
     , recording_thread_running_(false)
     , recording_paused_(false)
     , font_scale_percent_(100)
+    , dark_theme_enabled_(false)
     , base_font_point_size_(0.0)
     , base_window_size_(kFallbackMainWindowWidth, kFallbackMainWindowHeight)
     , base_minimum_window_size_(800, 600)
@@ -1996,6 +2157,7 @@ MainWindow::MainWindow(QWidget *parent)
     {
         font_scale_percent_ = 100;
     }
+    dark_theme_enabled_ = settings.value("dark_theme_enabled", false).toBool();
     recording_directory_ = settings.value("recording_directory", defaultRecordingDirectory()).toString();
     if (recording_directory_.isEmpty())
     {
@@ -2211,6 +2373,11 @@ void MainWindow::loadModernStyleSheet()
     applyStyleConfiguration();
 }
 
+QString MainWindow::themedStyleSheet() const
+{
+    return dark_theme_enabled_ ? base_style_sheet_ + darkThemeStyleSheet() : base_style_sheet_;
+}
+
 QString MainWindow::scaledStyleSheet(const QString& styleSheet) const
 {
     const QRegularExpression pixelRegex(R"((\d+)px)");
@@ -2329,7 +2496,7 @@ void MainWindow::applyStyleConfiguration()
     QFont appFont = qApp->font();
     appFont.setPointSizeF(base_font_point_size_ * font_scale_percent_ / 100.0);
     qApp->setFont(appFont);
-    qApp->setStyleSheet(scaledStyleSheet(base_style_sheet_));
+    qApp->setStyleSheet(scaledStyleSheet(themedStyleSheet()));
     applyScaledUiMetrics();
 
     if (!isFullScreen() && !isMaximized())
@@ -3394,6 +3561,7 @@ void MainWindow::setupMenuBar()
     language_menu_ = menuBar()->addMenu("");
 
     lang_action_ = new QAction(this);
+    lang_action_->setIcon(createLanguageIcon());
     connect(lang_action_, &QAction::triggered, this, &MainWindow::onSwitchLanguage);
     language_menu_->addAction(lang_action_);
 
@@ -3503,6 +3671,15 @@ void MainWindow::setupToolBar()
     fullscreen_toolbar_action_->setIcon(createFullscreenIcon());
     connect(fullscreen_toolbar_action_, &QAction::triggered, this, &MainWindow::onToggleFullScreen);
     toolbar->addAction(fullscreen_toolbar_action_);
+
+    toolbar->addSeparator();
+
+    toolbar->addAction(lang_action_);
+
+    theme_toggle_action_ = new QAction(this);
+    connect(theme_toggle_action_, &QAction::triggered, this, &MainWindow::onToggleTheme);
+    toolbar->addAction(theme_toggle_action_);
+    updateThemeAction();
 }
 
 void MainWindow::setupStatusBar()
@@ -4120,6 +4297,9 @@ void MainWindow::setEnglish(bool english)
         language_menu_->setTitle(english ? "&Language" : "语言(&L)");
     }
     lang_action_->setText(english ? "Switch to Chinese" : "切换到英文");
+    lang_action_->setToolTip(english ? "Switch to Chinese" : "切换到英文");
+    lang_action_->setStatusTip(english ? "Switch interface language" : "切换界面语言");
+    updateThemeAction();
 
     if (help_menu_)
     {
@@ -4338,6 +4518,38 @@ void MainWindow::onSwitchLanguage()
     is_english_ = !is_english_;
     setEnglish(is_english_);
     log(is_english_ ? "Language switched to English" : "语言已切换为中文");
+}
+
+void MainWindow::updateThemeAction()
+{
+    if (!theme_toggle_action_)
+    {
+        return;
+    }
+
+    const bool targetLight = dark_theme_enabled_;
+    theme_toggle_action_->setIcon(targetLight ? createLightThemeIcon() : createDarkThemeIcon());
+    theme_toggle_action_->setText(targetLight
+        ? (is_english_ ? "Light Theme" : "亮色模式")
+        : (is_english_ ? "Dark Theme" : "暗色模式"));
+    theme_toggle_action_->setToolTip(targetLight
+        ? (is_english_ ? "Switch to light theme" : "切换到亮色模式")
+        : (is_english_ ? "Switch to dark theme" : "切换到暗色模式"));
+    theme_toggle_action_->setStatusTip(theme_toggle_action_->toolTip());
+}
+
+void MainWindow::onToggleTheme()
+{
+    dark_theme_enabled_ = !dark_theme_enabled_;
+    applyStyleConfiguration();
+    updateThemeAction();
+
+    QSettings settings("VaporView", "MainWindow");
+    settings.setValue("dark_theme_enabled", dark_theme_enabled_);
+
+    log(dark_theme_enabled_
+        ? (is_english_ ? "Theme switched to dark" : "已切换为暗色模式")
+        : (is_english_ ? "Theme switched to light" : "已切换为亮色模式"));
 }
 
 void MainWindow::onFontScaleTriggered(QAction *action)

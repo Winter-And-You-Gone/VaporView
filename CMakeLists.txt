@@ -204,13 +204,16 @@ set(LUCIDE_RESOURCES
     resources/lucide/activity.svg
     resources/lucide/check.svg
     resources/lucide/circle-x.svg
+    resources/lucide/languages.svg
     resources/lucide/maximize.svg
+    resources/lucide/moon.svg
     resources/lucide/pause.svg
     resources/lucide/play.svg
     resources/lucide/plug.svg
     resources/lucide/refresh-cw.svg
     resources/lucide/satellite.svg
     resources/lucide/square.svg
+    resources/lucide/sun.svg
     resources/lucide/trash-2.svg
     resources/lucide/unplug.svg
     resources/lucide/LICENSE

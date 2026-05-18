@@ -275,6 +275,7 @@ private slots:
     void onOpenSessionViewerClicked();
     void onFontScaleTriggered(QAction *action);
     void onCancelConnectClicked();
+    void onToggleTheme();
     void onTcpRawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload, VaporView::TcpFloatEncoding floatEncoding);
     void onStartRecordingClicked();
     void onPauseRecordingClicked();
@@ -352,8 +353,10 @@ private:
     void setEnglish(bool english);
     void setFontScale(int percent);
     void applyStyleConfiguration();
+    QString themedStyleSheet() const;
     QString scaledStyleSheet(const QString& styleSheet) const;
     void applyScaledUiMetrics();
+    void updateThemeAction();
     int scalePixels(int pixels) const;
     void applyAllSampleRates();
     int parseRate(const QString& text) const;
@@ -429,6 +432,7 @@ private:
     QAction *fullscreen_menu_action_;
     QAction *fullscreen_toolbar_action_;
     QAction *lang_action_;
+    QAction *theme_toggle_action_;
     QAction *clear_log_action_;
     QAction *session_viewer_action_;
     QAction *epsilon_reconfigure_action_;
@@ -571,6 +575,7 @@ private:
     std::atomic<bool> recording_thread_running_;
     bool recording_paused_;
     int font_scale_percent_;
+    bool dark_theme_enabled_;
     double base_font_point_size_;
     QString base_style_sheet_;
     QSize base_window_size_;
