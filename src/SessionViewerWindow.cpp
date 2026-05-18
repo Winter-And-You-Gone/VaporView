@@ -27,6 +27,7 @@
 #include <QMouseEvent>
 #include <QMessageBox>
 #include <QPainter>
+#include <QPalette>
 #include <QPixmap>
 #include <QProgressDialog>
 #include <QPushButton>
@@ -82,6 +83,33 @@ const QColor kCurrentGuideLineColor("#ffb347");
 const QColor kCurrentGuideLabelFillColor("#8b4a00");
 const QColor kCurrentGuideLabelBorderColor("#5f3000");
 const QColor kCurrentGuideLabelTextColor("#fff7ea");
+
+struct SessionPlotTheme
+{
+    QColor background;
+    QColor grid;
+    QColor border;
+    QColor text;
+    QColor mutedText;
+};
+
+SessionPlotTheme sessionPlotThemeFor(const QWidget *widget)
+{
+    const QPalette palette = widget->palette();
+    QColor background = palette.color(QPalette::Base);
+    if (!background.isValid() || background.alpha() == 0)
+    {
+        background = palette.color(QPalette::Window);
+    }
+    const bool dark = background.lightness() < 128;
+    return {
+        background,
+        dark ? QColor("#263545") : QColor("#e3e8ef"),
+        dark ? QColor("#3a4654") : QColor("#cfd7e3"),
+        dark ? QColor("#a7b4c2") : QColor("#5e6b78"),
+        dark ? QColor("#8fa1b3") : QColor("#7a8899")
+    };
+}
 
 #pragma pack(push, 1)
 struct UnifiedRawFileHeader
@@ -526,14 +554,16 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.fillRect(rect(), QColor("#ffffff"));
+        const SessionPlotTheme theme = sessionPlotThemeFor(this);
+        const bool dark = theme.background.lightness() < 128;
+        painter.fillRect(rect(), theme.background);
 
         const QRectF plotRect = rect().adjusted(
             kSessionViewerPlotLeftMargin,
             kSessionViewerPlotTopMargin,
             -kSessionViewerPlotRightMargin,
             -kSessionViewerWaveBottomMargin);
-        painter.setPen(QPen(QColor("#f0d000"), 1));
+        painter.setPen(QPen(dark ? theme.grid : QColor("#f0d000"), 1));
         for (int i = 0; i <= 5; ++i)
         {
             const qreal x = plotRect.left() + plotRect.width() * i / 5.0;
@@ -545,12 +575,12 @@ protected:
             painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
         }
 
-        painter.setPen(QPen(QColor("#c9b53a"), 1));
+        painter.setPen(QPen(dark ? theme.border : QColor("#c9b53a"), 1));
         painter.drawRect(plotRect);
 
         if (samples_.isEmpty())
         {
-            painter.setPen(QColor("#64748b"));
+            painter.setPen(dark ? theme.mutedText : QColor("#64748b"));
             painter.drawText(plotRect, Qt::AlignCenter, tr("No waveform frame"));
             return;
         }
@@ -579,15 +609,15 @@ protected:
                                     plotRect.bottom() - normalized * plotRect.height()));
         }
 
-        painter.setPen(QPen(QColor("#1b6416"), 1.4));
+        painter.setPen(QPen(dark ? QColor("#56d364") : QColor("#1b6416"), 1.4));
         painter.drawPolyline(polyline);
 
-        painter.setPen(QColor("#334155"));
+        painter.setPen(dark ? theme.text : QColor("#334155"));
         painter.drawText(QRectF(4, plotRect.top() - 2, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 4));
         painter.drawText(QRectF(4, plotRect.center().y() - 8, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter,
                          QString::number((maxValue + minValue) * 0.5, 'f', 4));
         painter.drawText(QRectF(4, plotRect.bottom() - 8, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(minValue, 'f', 4));
-        drawXAxisTicks(painter, plotRect, first_sample_index_, first_sample_index_ + samples_.size(), 5, QColor("#334155"));
+        drawXAxisTicks(painter, plotRect, first_sample_index_, first_sample_index_ + samples_.size(), 5, dark ? theme.text : QColor("#334155"));
     }
 
 private:
@@ -744,13 +774,15 @@ private:
 
     void ensurePlotCache()
     {
-        if (plot_cache_valid_ && plot_cache_.size() == size())
+        const QColor background = sessionPlotThemeFor(this).background;
+        if (plot_cache_valid_ && plot_cache_.size() == size() && cache_background_ == background)
         {
             return;
         }
 
         plot_cache_ = QPixmap(size());
-        plot_cache_.fill(QColor("#ffffff"));
+        plot_cache_.fill(background);
+        cache_background_ = background;
         QPainter cachePainter(&plot_cache_);
         cachePainter.setRenderHint(QPainter::Antialiasing, true);
         renderPlotBase(cachePainter, cached_plot_);
@@ -759,7 +791,8 @@ private:
 
     void renderPlotBase(QPainter& painter, CachedPlot& cache)
     {
-        painter.fillRect(rect(), QColor("#ffffff"));
+        const SessionPlotTheme theme = sessionPlotThemeFor(this);
+        painter.fillRect(rect(), theme.background);
         cache = CachedPlot{};
 
         const QRectF plotRect = rect().adjusted(
@@ -769,7 +802,7 @@ private:
             -kSessionViewerPlotBottomMargin);
         cache.plot_rect = plotRect;
 
-        painter.setPen(QPen(QColor("#c7d7ea"), 1));
+        painter.setPen(QPen(theme.grid, 1));
         for (int i = 0; i <= 5; ++i)
         {
             const qreal x = plotRect.left() + plotRect.width() * i / 5.0;
@@ -781,12 +814,12 @@ private:
             painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
         }
 
-        painter.setPen(QPen(QColor("#9bb3cc"), 1));
+        painter.setPen(QPen(theme.border, 1));
         painter.drawRect(plotRect);
 
         if (peak_values_.isEmpty())
         {
-            painter.setPen(QColor("#5e7698"));
+            painter.setPen(theme.mutedText);
             painter.drawText(plotRect, Qt::AlignCenter, is_english_ ? QStringLiteral("No peak overview") : QStringLiteral("没有峰值概览"));
             return;
         }
@@ -811,7 +844,7 @@ private:
         }
         if (!hasFiniteValues)
         {
-            painter.setPen(QColor("#5e7698"));
+            painter.setPen(theme.mutedText);
             painter.drawText(plotRect, Qt::AlignCenter,
                 is_english_ ? QStringLiteral("No valid peak values") : QStringLiteral("无有效峰值"));
             return;
@@ -881,12 +914,12 @@ private:
             }
         }
 
-        painter.setPen(QColor("#4f647a"));
+        painter.setPen(theme.text);
         painter.drawText(QRectF(4, plotRect.top() - 2, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 4));
         painter.drawText(QRectF(4, plotRect.center().y() - 8, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter,
                          QString::number((maxValue + minValue) * 0.5, 'f', 4));
         painter.drawText(QRectF(4, plotRect.bottom() - 8, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(minValue, 'f', 4));
-        drawXAxisTicks(painter, plotRect, startIndex, startIndex + count, 5, QColor("#4f647a"));
+        drawXAxisTicks(painter, plotRect, startIndex, startIndex + count, 5, theme.text);
     }
 
     void drawCurrentFrameMarker(QPainter& painter, const CachedPlot& cache)
@@ -990,6 +1023,7 @@ private:
     bool is_english_;
     bool plot_cache_valid_;
     QPixmap plot_cache_;
+    QColor cache_background_;
     CachedPlot cached_plot_;
     std::function<void(int, int, int)> on_view_changed_;
 };
@@ -1110,13 +1144,15 @@ private:
 
     void ensurePlotCache()
     {
-        if (plot_cache_valid_ && plot_cache_.size() == size())
+        const QColor background = sessionPlotThemeFor(this).background;
+        if (plot_cache_valid_ && plot_cache_.size() == size() && cache_background_ == background)
         {
             return;
         }
 
         plot_cache_ = QPixmap(size());
-        plot_cache_.fill(QColor("#ffffff"));
+        plot_cache_.fill(background);
+        cache_background_ = background;
         QPainter cachePainter(&plot_cache_);
         cachePainter.setRenderHint(QPainter::Antialiasing, true);
         renderPlotBase(cachePainter, cached_plot_);
@@ -1125,7 +1161,8 @@ private:
 
     void renderPlotBase(QPainter& painter, CachedPlot& cache)
     {
-        painter.fillRect(rect(), QColor("#ffffff"));
+        const SessionPlotTheme theme = sessionPlotThemeFor(this);
+        painter.fillRect(rect(), theme.background);
         cache = CachedPlot{};
 
         if (values_.isEmpty())
@@ -1135,9 +1172,9 @@ private:
                 kSessionViewerPlotTopMargin,
                 -kSessionViewerPlotRightMargin,
                 -kSessionViewerPlotBottomMargin);
-            painter.setPen(QPen(QColor("#cfd7e3"), 1));
+            painter.setPen(QPen(theme.border, 1));
             painter.drawRect(emptyPlotRect);
-            painter.setPen(QColor("#7a8899"));
+            painter.setPen(theme.mutedText);
             painter.drawText(emptyPlotRect, Qt::AlignCenter, empty_text_);
             return;
         }
@@ -1174,7 +1211,7 @@ private:
         cache.start_index = startIndex;
         cache.count = count;
 
-        painter.setPen(QPen(QColor("#e3e8ef"), 1));
+        painter.setPen(QPen(theme.grid, 1));
         for (int i = 0; i <= 5; ++i)
         {
             const qreal x = plotRect.left() + plotRect.width() * i / 5.0;
@@ -1186,12 +1223,12 @@ private:
             painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
         }
 
-        painter.setPen(QPen(QColor("#cfd7e3"), 1));
+        painter.setPen(QPen(theme.border, 1));
         painter.drawRect(plotRect);
 
         if (!hasFiniteValues)
         {
-            painter.setPen(QColor("#7a8899"));
+            painter.setPen(theme.mutedText);
             painter.drawText(plotRect, Qt::AlignCenter, empty_text_);
             return;
         }
@@ -1201,11 +1238,11 @@ private:
         cache.has_values = true;
         drawSeries(painter, plotRect, startIndex, count, minValue, maxValue);
 
-        painter.setPen(QColor("#5e6b78"));
+        painter.setPen(theme.text);
         painter.drawText(QRectF(4, plotRect.top() - 2, leftMargin - 8, fm.height()), Qt::AlignRight | Qt::AlignVCenter, maxLabel);
         painter.drawText(QRectF(4, plotRect.center().y() - fm.height() * 0.5, leftMargin - 8, fm.height()), Qt::AlignRight | Qt::AlignVCenter, midLabel);
         painter.drawText(QRectF(4, plotRect.bottom() - fm.height() + 2, leftMargin - 8, fm.height()), Qt::AlignRight | Qt::AlignVCenter, minLabel);
-        drawXAxisTicks(painter, plotRect, startIndex, startIndex + count, 5, QColor("#5e6b78"));
+        drawXAxisTicks(painter, plotRect, startIndex, startIndex + count, 5, theme.text);
     }
 
     void drawCurrentIndexMarker(QPainter& painter, const CachedPlot& cache)
@@ -1331,6 +1368,7 @@ private:
     int view_count_;
     bool plot_cache_valid_;
     QPixmap plot_cache_;
+    QColor cache_background_;
     CachedPlot cached_plot_;
 };
 
@@ -1470,12 +1508,14 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
 void SessionViewerWindow::setupUi()
 {
     auto *scrollArea = new QScrollArea(this);
+    scrollArea->setObjectName("sessionViewerScrollArea");
     scrollArea->setWidgetResizable(true);
     scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     setCentralWidget(scrollArea);
 
     central_widget_ = new QWidget(this);
+    central_widget_->setObjectName("sessionViewerCentralWidget");
     scrollArea->setWidget(central_widget_);
 
     auto *mainLayout = new QVBoxLayout(central_widget_);

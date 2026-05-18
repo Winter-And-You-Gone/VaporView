@@ -3,6 +3,7 @@
 
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPalette>
 #include <QString>
 #include <QWidget>
 
@@ -100,18 +101,20 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.fillRect(rect(), QColor("#ffffff"));
+        const QColor background = plotBackground();
+        const bool dark = background.lightness() < 128;
+        painter.fillRect(rect(), background);
 
         const QRectF trackRect = compact_mode_
             ? rect().adjusted(8, 11, -8, -5)
             : rect().adjusted(10, 16, -10, -16);
         painter.setPen(Qt::NoPen);
-        painter.setBrush(QColor("#e7edf5"));
+        painter.setBrush(dark ? QColor("#223044") : QColor("#e7edf5"));
         painter.drawRoundedRect(trackRect, 4, 4);
 
         if (total_count_ <= 0)
         {
-            painter.setPen(QColor("#7a8899"));
+            painter.setPen(dark ? QColor("#8fa1b3") : QColor("#7a8899"));
             painter.drawText(rect(), Qt::AlignCenter, empty_text_);
             return;
         }
@@ -131,7 +134,7 @@ protected:
         painter.drawRoundedRect(leftHandle, 3, 3);
         painter.drawRoundedRect(rightHandle, 3, 3);
 
-        painter.setPen(QColor("#5e6b78"));
+        painter.setPen(dark ? QColor("#a7b4c2") : QColor("#5e6b78"));
         const qreal labelHeight = compact_mode_ ? 10.0 : 14.0;
         painter.drawText(QRectF(trackRect.left(), 0, trackRect.width() * 0.5, labelHeight),
                          Qt::AlignLeft | Qt::AlignVCenter,
@@ -263,6 +266,16 @@ protected:
     }
 
 private:
+    QColor plotBackground() const
+    {
+        QColor background = palette().color(QPalette::Base);
+        if (!background.isValid() || background.alpha() == 0)
+        {
+            background = palette().color(QPalette::Window);
+        }
+        return background;
+    }
+
     void applySizing()
     {
         if (compact_mode_)

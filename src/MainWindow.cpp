@@ -45,11 +45,13 @@
 #include <QHash>
 #include <QIcon>
 #include <QPainter>
+#include <QPalette>
 #include <QPixmap>
 #include <QSvgRenderer>
 #include <QSet>
 #include <QSignalBlocker>
 #include <QSettings>
+#include <QStyle>
 #include <QThread>
 #include <QVector>
 #include <QtEndian>
@@ -295,6 +297,15 @@ QString darkThemeStyleSheet()
 QMainWindow {
     background-color: #101418;
 }
+QWidget#appCentralWidget,
+QWidget#sessionViewerCentralWidget,
+QScrollArea,
+QScrollArea > QWidget,
+QScrollArea > QWidget > QWidget,
+QAbstractScrollArea,
+QSplitter {
+    background-color: #101418;
+}
 QMenuBar,
 QToolBar,
 QStatusBar,
@@ -402,6 +413,16 @@ QScrollBar::handle:vertical:hover,
 QScrollBar::handle:horizontal:hover {
     background-color: #64748b;
 }
+QSplitter::handle,
+QSplitter#mainContentSplitter::handle:horizontal {
+    background-color: #101418;
+}
+QSplitter#mainContentSplitter::handle:horizontal:hover {
+    background-color: #1f2a36;
+}
+QSplitter#mainContentSplitter::handle:horizontal:pressed {
+    background-color: #263545;
+}
 QCheckBox,
 QRadioButton {
     color: #d8dee9;
@@ -430,6 +451,38 @@ QLabel#statusIndicator[status="warning"] {
     color: #f6ad55;
 }
 )");
+}
+
+QPalette themedPalette(bool dark)
+{
+    QPalette palette = qApp->style() ? qApp->style()->standardPalette() : qApp->palette();
+    if (!dark)
+    {
+        return palette;
+    }
+
+    palette.setColor(QPalette::Window, QColor("#101418"));
+    palette.setColor(QPalette::WindowText, QColor("#d8dee9"));
+    palette.setColor(QPalette::Base, QColor("#10151b"));
+    palette.setColor(QPalette::AlternateBase, QColor("#162638"));
+    palette.setColor(QPalette::Text, QColor("#e5e7eb"));
+    palette.setColor(QPalette::Button, QColor("#151a20"));
+    palette.setColor(QPalette::ButtonText, QColor("#e5e7eb"));
+    palette.setColor(QPalette::BrightText, QColor("#ffffff"));
+    palette.setColor(QPalette::Light, QColor("#475569"));
+    palette.setColor(QPalette::Midlight, QColor("#334155"));
+    palette.setColor(QPalette::Mid, QColor("#2c3440"));
+    palette.setColor(QPalette::Dark, QColor("#111827"));
+    palette.setColor(QPalette::Shadow, QColor("#05070a"));
+    palette.setColor(QPalette::Highlight, QColor("#245b8f"));
+    palette.setColor(QPalette::HighlightedText, QColor("#ffffff"));
+    palette.setColor(QPalette::ToolTipBase, QColor("#1b222b"));
+    palette.setColor(QPalette::ToolTipText, QColor("#e5e7eb"));
+    palette.setColor(QPalette::Link, QColor("#7db7ff"));
+    palette.setColor(QPalette::Disabled, QPalette::WindowText, QColor("#64748b"));
+    palette.setColor(QPalette::Disabled, QPalette::Text, QColor("#64748b"));
+    palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor("#94a3b8"));
+    return palette;
 }
 
 #pragma pack(push, 1)
@@ -2495,6 +2548,7 @@ void MainWindow::applyStyleConfiguration()
 {
     QFont appFont = qApp->font();
     appFont.setPointSizeF(base_font_point_size_ * font_scale_percent_ / 100.0);
+    qApp->setPalette(themedPalette(dark_theme_enabled_));
     qApp->setFont(appFont);
     qApp->setStyleSheet(scaledStyleSheet(themedStyleSheet()));
     applyScaledUiMetrics();
@@ -3815,6 +3869,7 @@ void MainWindow::hideStatusTaskProgress()
 void MainWindow::setupCentralWidget()
 {
     central_widget_ = new QWidget(this);
+    central_widget_->setObjectName("appCentralWidget");
     setCentralWidget(central_widget_);
 
     auto *main_h_layout = new QHBoxLayout(central_widget_);

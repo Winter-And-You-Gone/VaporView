@@ -14,6 +14,7 @@
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPalette>
 #include <QPaintEvent>
 #include <QPen>
 #include <QPolygonF>
@@ -87,6 +88,33 @@ QString formatWaveValue(double value, int fixedDecimals)
         return QString::number(value, 'g', 6);
     }
     return QString::number(value, 'f', fixedDecimals);
+}
+
+struct PlotTheme
+{
+    QColor background;
+    QColor grid;
+    QColor border;
+    QColor text;
+    QColor mutedText;
+};
+
+PlotTheme plotThemeFor(const QWidget *widget)
+{
+    const QPalette palette = widget->palette();
+    QColor background = palette.color(QPalette::Base);
+    if (!background.isValid() || background.alpha() == 0)
+    {
+        background = palette.color(QPalette::Window);
+    }
+    const bool dark = background.lightness() < 128;
+    return {
+        background,
+        dark ? QColor("#263545") : QColor("#e3e8ef"),
+        dark ? QColor("#3a4654") : QColor("#cfd7e3"),
+        dark ? QColor("#a7b4c2") : QColor("#5e6b78"),
+        dark ? QColor("#8fa1b3") : QColor("#7a8899")
+    };
 }
 
 bool isReasonableWavePayload(const QVector<float>& values, double maxMagnitude, double *observedMaxMagnitude = nullptr)
@@ -206,14 +234,15 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.fillRect(rect(), QColor("#ffffff"));
+        const PlotTheme theme = plotThemeFor(this);
+        painter.fillRect(rect(), theme.background);
 
         if (samples_.isEmpty())
         {
             const QRectF emptyPlotRect = rect().adjusted(18, 8, -2, -18);
-            painter.setPen(QPen(QColor("#cfd7e3"), 1));
+            painter.setPen(QPen(theme.border, 1));
             painter.drawRect(emptyPlotRect);
-            painter.setPen(QColor("#7a8899"));
+            painter.setPen(theme.mutedText);
             painter.drawText(emptyPlotRect, Qt::AlignCenter, empty_text_);
             return;
         }
@@ -237,7 +266,7 @@ protected:
         const int bottomMargin = fm.height() + 2;
         const QRectF plotRect = rect().adjusted(leftMargin, 8, -2, -bottomMargin);
 
-        painter.setPen(QPen(QColor("#e3e8ef"), 1));
+        painter.setPen(QPen(theme.grid, 1));
         for (int i = 0; i <= 10; ++i)
         {
             const qreal x = plotRect.left() + plotRect.width() * i / 10.0;
@@ -249,7 +278,7 @@ protected:
             painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
         }
 
-        painter.setPen(QPen(QColor("#cfd7e3"), 1));
+        painter.setPen(QPen(theme.border, 1));
         painter.drawRect(plotRect);
 
         const int columns = std::max(2, static_cast<int>(std::floor(plotRect.width())));
@@ -270,7 +299,7 @@ protected:
         painter.setPen(QPen(line_color_, 1.4));
         painter.drawPolyline(polyline);
 
-        painter.setPen(QColor("#5e6b78"));
+        painter.setPen(theme.text);
         painter.drawText(QRectF(2, plotRect.top() - 2, leftMargin - 4, fm.height()), Qt::AlignRight | Qt::AlignVCenter, maxLabel);
         painter.drawText(QRectF(2, plotRect.center().y() - fm.height() * 0.5, leftMargin - 4, fm.height()), Qt::AlignRight | Qt::AlignVCenter, midLabel);
         painter.drawText(QRectF(2, plotRect.bottom() - fm.height() + 2, leftMargin - 4, fm.height()), Qt::AlignRight | Qt::AlignVCenter, minLabel);
@@ -363,14 +392,15 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, false);
-        painter.fillRect(rect(), QColor("#ffffff"));
+        const PlotTheme theme = plotThemeFor(this);
+        painter.fillRect(rect(), theme.background);
 
         if (peak_values_.isEmpty())
         {
             const QRectF emptyPlotRect = rect().adjusted(18, 8, -2, -18);
-            painter.setPen(QPen(QColor("#cfd7e3"), 1));
+            painter.setPen(QPen(theme.border, 1));
             painter.drawRect(emptyPlotRect);
-            painter.setPen(QColor("#7a8899"));
+            painter.setPen(theme.mutedText);
             painter.drawText(emptyPlotRect, Qt::AlignCenter, empty_text_);
             return;
         }
@@ -394,7 +424,7 @@ protected:
         }
         if (finiteIndices.isEmpty())
         {
-            painter.setPen(QColor("#7a8899"));
+            painter.setPen(theme.mutedText);
             painter.drawText(rect().adjusted(18, 8, -2, -18), Qt::AlignCenter, empty_text_);
             return;
         }
@@ -414,7 +444,7 @@ protected:
         const int bottomMargin = fm.height() + 2;
         const QRectF plotRect = rect().adjusted(leftMargin, 8, -2, -bottomMargin);
 
-        painter.setPen(QPen(QColor("#e3e8ef"), 1));
+        painter.setPen(QPen(theme.grid, 1));
         for (int i = 0; i <= 10; ++i)
         {
             const qreal x = plotRect.left() + plotRect.width() * i / 10.0;
@@ -426,7 +456,7 @@ protected:
             painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
         }
 
-        painter.setPen(QPen(QColor("#cfd7e3"), 1));
+        painter.setPen(QPen(theme.border, 1));
         painter.drawRect(plotRect);
 
         const QColor seriesColor("#ef8f35");
@@ -484,7 +514,7 @@ protected:
             painter.setRenderHint(QPainter::Antialiasing, false);
         }
 
-        painter.setPen(QColor("#5e6b78"));
+        painter.setPen(theme.text);
         painter.drawText(QRectF(2, plotRect.top() - 2, leftMargin - 4, fm.height()), Qt::AlignRight | Qt::AlignVCenter, maxLabel);
         painter.drawText(QRectF(2, plotRect.center().y() - fm.height() * 0.5, leftMargin - 4, fm.height()), Qt::AlignRight | Qt::AlignVCenter, midLabel);
         painter.drawText(QRectF(2, plotRect.bottom() - fm.height() + 2, leftMargin - 4, fm.height()), Qt::AlignRight | Qt::AlignVCenter, minLabel);
