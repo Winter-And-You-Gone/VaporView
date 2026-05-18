@@ -1,15 +1,22 @@
 #include "SkyDeviceConfigDialog.h"
 
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QFontMetrics>
+#include <QFile>
+#include <QFileInfo>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QJsonDocument>
 #include <QMessageBox>
+#include <QPainter>
+#include <QPixmap>
 #include <QScrollArea>
 #include <QSerialPortInfo>
 #include <QSizePolicy>
+#include <QSvgRenderer>
 #include <QVBoxLayout>
 #include <QApplication>
 
@@ -19,12 +26,82 @@ namespace
 {
 constexpr int kFieldDigitCount = 20;
 constexpr int kFieldHeight = 36;
+constexpr int kEnableToggleSize = 30;
+constexpr int kEnableToggleIconSize = 16;
+const QColor kEnableToggleOnIcon(255, 255, 255);
+const QColor kEnableToggleOffIcon(180, 35, 24);
 
 QLabel *addLabeledRow(QFormLayout *layout, const QString& text, QWidget *widget)
 {
     auto *label = new QLabel(text);
     layout->addRow(label, widget);
     return label;
+}
+
+QString findResourceFile(const QString& relativePath)
+{
+    const QString appDir = QApplication::applicationDirPath();
+    const QStringList candidates = {
+        QDir(appDir).filePath(relativePath),
+        QDir(appDir).filePath(QStringLiteral("../") + relativePath),
+        QDir(appDir).filePath(QStringLiteral("../../") + relativePath)
+    };
+
+    for (const QString& path : candidates)
+    {
+        if (QFileInfo::exists(path))
+        {
+            return path;
+        }
+    }
+    return QString();
+}
+
+QPixmap renderLucidePixmap(const QByteArray& svgData, const QColor& color)
+{
+    QByteArray tinted = svgData;
+    tinted.replace("currentColor", color.name(QColor::HexRgb).toUtf8());
+
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+
+    QSvgRenderer renderer(tinted);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    renderer.render(&painter, QRectF(2, 2, 28, 28));
+    return pixmap;
+}
+
+QIcon createLucideIcon(const QString& iconName, const QColor& color)
+{
+    QFile file(findResourceFile(QStringLiteral("resources/lucide/%1.svg").arg(iconName)));
+    if (!file.open(QIODevice::ReadOnly))
+    {
+        return QIcon();
+    }
+
+    QIcon icon;
+    icon.addPixmap(renderLucidePixmap(file.readAll(), color), QIcon::Normal);
+    return icon;
+}
+
+QIcon enableToggleIcon(bool enabled)
+{
+    static const QIcon onIcon = createLucideIcon(QStringLiteral("plug"), kEnableToggleOnIcon);
+    static const QIcon offIcon = createLucideIcon(QStringLiteral("unplug"), kEnableToggleOffIcon);
+    return enabled ? onIcon : offIcon;
+}
+
+void configureEnableToggleButton(QPushButton *button)
+{
+    if (!button)
+    {
+        return;
+    }
+    button->setCheckable(true);
+    button->setFixedSize(kEnableToggleSize, kEnableToggleSize);
+    button->setIconSize(QSize(kEnableToggleIconSize, kEnableToggleIconSize));
+    button->setCursor(Qt::PointingHandCursor);
 }
 
 int skyConfigFieldWidth(QWidget *widget)
@@ -161,8 +238,10 @@ void SkyDeviceConfigDialog::setupUi()
         "QDialog#skyDeviceConfigDialog QGroupBox { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 8px; margin-top: 12px; font-weight: bold; color: #1976d2; }"
         "QDialog#skyDeviceConfigDialog QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 14px; padding: 0 8px; background-color: #ffffff; }"
         "QDialog#skyDeviceConfigDialog QLabel { color: #1f2a35; }"
-        "QPushButton#skyEnableToggle { background-color: #ffffff; color: #b42318; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: bold; padding: 0; }"
-        "QPushButton#skyEnableToggle:checked { background-color: #1976d2; color: #ffffff; border-color: #1976d2; }"
+        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle { background-color: #ffffff; color: #b42318; border: 1px solid #cbd5e1; border-radius: 5px; padding: 0; min-width: 30px; max-width: 30px; min-height: 30px; max-height: 30px; }"
+        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:hover { background-color: #f8fafc; border-color: #94a3b8; }"
+        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked { background-color: #1976d2; color: #ffffff; border-color: #1976d2; }"
+        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked:hover { background-color: #1565c0; border-color: #1565c0; }"
         "QDialog#skyDeviceConfigDialog QPlainTextEdit { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; }"
     ));
     setFont(qApp->font());
@@ -205,8 +284,7 @@ void SkyDeviceConfigDialog::setupUi()
     setupFormLayout(waveLayout);
     wave_enabled_ = new QPushButton(this);
     wave_enabled_->setObjectName(QStringLiteral("skyEnableToggle"));
-    wave_enabled_->setCheckable(true);
-    wave_enabled_->setFixedSize(kFieldHeight, kFieldHeight);
+    configureEnableToggleButton(wave_enabled_);
     connect(wave_enabled_, &QPushButton::toggled, this, [this](bool) {
         updateEnableButton(wave_enabled_);
     });
@@ -276,8 +354,7 @@ SkyDeviceConfigDialog::SerialRow SkyDeviceConfigDialog::createSerialRow(QFormLay
     SerialRow row;
     row.enabled = new QPushButton(this);
     row.enabled->setObjectName(QStringLiteral("skyEnableToggle"));
-    row.enabled->setCheckable(true);
-    row.enabled->setFixedSize(kFieldHeight, kFieldHeight);
+    configureEnableToggleButton(row.enabled);
     connect(row.enabled, &QPushButton::toggled, this, [this, button = row.enabled](bool) {
         updateEnableButton(button);
     });
@@ -430,7 +507,9 @@ void SkyDeviceConfigDialog::updateEnableButton(QPushButton *button)
     {
         return;
     }
-    button->setText(button->isChecked() ? QStringLiteral("√") : QStringLiteral("×"));
+    button->setText(QString());
+    button->setIcon(enableToggleIcon(button->isChecked()));
+    button->setIconSize(QSize(kEnableToggleIconSize, kEnableToggleIconSize));
     button->setToolTip(button->isChecked()
                            ? (is_english_ ? QStringLiteral("Enabled") : QStringLiteral("已启用"))
                            : (is_english_ ? QStringLiteral("Disabled") : QStringLiteral("已禁用")));
