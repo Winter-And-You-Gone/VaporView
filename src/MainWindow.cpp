@@ -355,7 +355,10 @@ QLabel#rateLabel,
 QLabel#separatorLabel {
     color: #9aa6b2;
 }
-QLabel#valueLabel,
+QLabel#valueLabel {
+    color: #8cc8ff;
+    background-color: transparent;
+}
 QLabel#highlightedValue {
     color: #8cc8ff;
     background-color: #162638;
