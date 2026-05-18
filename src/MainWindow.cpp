@@ -382,6 +382,37 @@ void applyComboText(QComboBox *combo, const QString& value)
     }
 }
 
+QString sourceModeDisplayText(bool english, int index)
+{
+    return index == 1
+        ? (english ? QStringLiteral("Remote Sky") : QStringLiteral("天空端"))
+        : (english ? QStringLiteral("Local") : QStringLiteral("本地"));
+}
+
+QString sourceModeStorageValue(int index)
+{
+    return index == 1 ? QStringLiteral("remote") : QStringLiteral("local");
+}
+
+int sourceModeIndexFromStoredValue(const QString& value)
+{
+    const QString normalized = value.trimmed().toLower();
+    if (normalized == QStringLiteral("remote") ||
+        normalized == QStringLiteral("remote sky") ||
+        normalized == QStringLiteral("1") ||
+        normalized.contains(QStringLiteral("天空")))
+    {
+        return 1;
+    }
+    if (normalized == QStringLiteral("local") ||
+        normalized == QStringLiteral("0") ||
+        normalized.contains(QStringLiteral("本地")))
+    {
+        return 0;
+    }
+    return -1;
+}
+
 bool shouldMirrorToErrorLog(const QString& message)
 {
     static const QStringList keywords = {
@@ -1819,7 +1850,6 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_lbl_(nullptr)
     , hmp_lbl_(nullptr)
     , lidar_lbl_(nullptr)
-    , data_inline_title_lbl_(nullptr)
     , data_telemetry_summary_lbl_(nullptr)
     , log_inline_title_lbl_(nullptr)
     , epsilon_inline_title_lbl_(nullptr)
@@ -2505,7 +2535,18 @@ void MainWindow::loadRememberedInputState()
     loadCombo(ptb_rate_combo_, QStringLiteral("rate/ptb"));
     loadCombo(hmp_rate_combo_, QStringLiteral("rate/hmp"));
     loadCombo(lidar_rate_combo_, QStringLiteral("rate/lidar"));
-    loadCombo(data_source_mode_combo_, QStringLiteral("source/mode"));
+    if (data_source_mode_combo_)
+    {
+        const QString value = settings.value(
+            QStringLiteral("source/mode"),
+            sourceModeStorageValue(data_source_mode_combo_->currentIndex())).toString();
+        const int index = sourceModeIndexFromStoredValue(value);
+        if (index >= 0)
+        {
+            const QSignalBlocker blocker(data_source_mode_combo_);
+            data_source_mode_combo_->setCurrentIndex(index);
+        }
+    }
     loadCombo(sky_telemetry_port_combo_, QStringLiteral("telemetry/sky_port"));
     loadCombo(sky_telemetry_baud_combo_, QStringLiteral("telemetry/sky_baud"));
 
@@ -2561,7 +2602,10 @@ void MainWindow::saveRememberedInputState() const
     saveCombo(QStringLiteral("rate/ptb"), ptb_rate_combo_);
     saveCombo(QStringLiteral("rate/hmp"), hmp_rate_combo_);
     saveCombo(QStringLiteral("rate/lidar"), lidar_rate_combo_);
-    saveCombo(QStringLiteral("source/mode"), data_source_mode_combo_);
+    if (data_source_mode_combo_)
+    {
+        settings.setValue(QStringLiteral("source/mode"), sourceModeStorageValue(data_source_mode_combo_->currentIndex()));
+    }
     saveCombo(QStringLiteral("telemetry/sky_port"), sky_telemetry_port_combo_);
     saveCombo(QStringLiteral("telemetry/sky_baud"), sky_telemetry_baud_combo_);
     settings.setValue("recording_export_rate_hz", recording_export_rate_hz_);
@@ -3748,8 +3792,8 @@ void MainWindow::setupConfigPanel()
     data_source_mode_lbl_ = new QLabel(this);
     data_source_mode_lbl_->setObjectName("fieldLabel");
     data_source_mode_combo_ = new QComboBox(this);
-    data_source_mode_combo_->addItem(QStringLiteral("Local"));
-    data_source_mode_combo_->addItem(QStringLiteral("Remote Sky"));
+    data_source_mode_combo_->addItem(sourceModeDisplayText(false, 0));
+    data_source_mode_combo_->addItem(sourceModeDisplayText(false, 1));
     data_source_mode_combo_->setFixedHeight(kMainPageInputHeight);
     connect(data_source_mode_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MainWindow::onDataSourceModeChanged);
@@ -3867,18 +3911,6 @@ void MainWindow::setupDataPanels()
     auto *data_layout = new QVBoxLayout(data_group_);
     data_layout->setSpacing(0);
     data_layout->setContentsMargins(0, 0, 0, 0);
-
-    auto *dataTitleBar = new QWidget(data_group_);
-    dataTitleBar->setObjectName("sectionTitleBar");
-    dataTitleBar->setFixedHeight(kMainPageTitleBarHeight);
-    auto *data_title_layout = new QHBoxLayout(dataTitleBar);
-    data_title_layout->setContentsMargins(8, 2, 8, 2);
-    data_title_layout->setSpacing(12);
-    data_inline_title_lbl_ = new QLabel(this);
-    data_inline_title_lbl_->setObjectName("sectionTitleLabel");
-    data_inline_title_lbl_->setFixedHeight(kMainPageButtonHeight);
-    data_title_layout->addWidget(data_inline_title_lbl_, 1, Qt::AlignVCenter);
-    data_layout->addWidget(dataTitleBar);
 
     auto *sensor_splitter = new QSplitter(Qt::Horizontal, data_group_);
     sensor_splitter->setChildrenCollapsible(false);
@@ -4106,8 +4138,8 @@ void MainWindow::setEnglish(bool english)
     if (data_source_mode_combo_)
     {
         const QSignalBlocker blocker(data_source_mode_combo_);
-        data_source_mode_combo_->setItemText(0, QStringLiteral("Local"));
-        data_source_mode_combo_->setItemText(1, QStringLiteral("Remote Sky"));
+        data_source_mode_combo_->setItemText(0, sourceModeDisplayText(english, 0));
+        data_source_mode_combo_->setItemText(1, sourceModeDisplayText(english, 1));
     }
     if (auto_detect_ports_btn_)
     {
@@ -4118,10 +4150,6 @@ void MainWindow::setEnglish(bool english)
             ? (english ? "Stop the current serial-port detection task." : "停止当前串口自动识别任务。")
             : (english ? "Probe available serial ports and automatically assign detected devices."
                        : "扫描可用串口，并将识别出的设备自动填入对应端口。"));
-    }
-    if (data_inline_title_lbl_)
-    {
-        data_inline_title_lbl_->setText(english ? "Sensor Data" : "传感器数据");
     }
     if (log_inline_title_lbl_)
     {
