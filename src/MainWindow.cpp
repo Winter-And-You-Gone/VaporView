@@ -3681,7 +3681,8 @@ void MainWindow::setupConfigPanel()
     config_layout->setColumnStretch(2, 0);
     config_layout->setColumnStretch(3, 0);
     config_layout->setColumnStretch(4, 0);
-    config_layout->setColumnStretch(5, 1);
+    config_layout->setColumnStretch(5, 0);
+    config_layout->setColumnStretch(6, 1);
     config_layout->setColumnMinimumWidth(0, 110);
     config_layout->setColumnMinimumWidth(1, 170);
     config_layout->setColumnMinimumWidth(2, 100);
@@ -3894,11 +3895,11 @@ void MainWindow::setupConfigPanel()
     data_telemetry_summary_lbl_ = new QLabel(this);
     data_telemetry_summary_lbl_->setObjectName("fieldLabel");
     data_telemetry_summary_lbl_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    data_telemetry_summary_lbl_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    data_telemetry_summary_lbl_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    data_telemetry_summary_lbl_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
+    data_telemetry_summary_lbl_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     data_telemetry_summary_lbl_->setMinimumHeight(kMainPageInputHeight);
-    data_telemetry_summary_lbl_->setWordWrap(false);
-    config_layout->addWidget(data_telemetry_summary_lbl_, row, 0, 1, 6, Qt::AlignVCenter | Qt::AlignLeft);
+    data_telemetry_summary_lbl_->setWordWrap(true);
+    config_layout->addWidget(data_telemetry_summary_lbl_, 0, 6, row, 1, Qt::AlignTop | Qt::AlignLeft);
 
     config_root_layout->addLayout(config_layout);
     main_layout_->addWidget(config_group_);
