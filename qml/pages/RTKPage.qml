@@ -174,6 +174,7 @@ Item {
                                 RtkLabel { text: " " }
                                 ToolbarButton {
                                     Layout.fillWidth: true
+                                    height: 30
                                     iconName: "search"
                                     text: rtkBackend.detectingMountPoints
                                         ? t("rtk.detecting") : t("rtk.detectMountPoints")
