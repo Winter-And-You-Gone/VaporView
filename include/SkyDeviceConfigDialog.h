@@ -58,6 +58,7 @@ private:
     void updateTexts();
     void refreshSerialPortOptions();
     void updateEnableButton(QPushButton *button);
+    void updateConfigPreview();
     void applyDynamicMetrics();
 
     GroundTelemetryService *service_;

@@ -202,6 +202,7 @@ set(NAV_RESOURCES
 
 set(LUCIDE_RESOURCES
     resources/lucide/activity.svg
+    resources/lucide/check.svg
     resources/lucide/circle-x.svg
     resources/lucide/maximize.svg
     resources/lucide/pause.svg

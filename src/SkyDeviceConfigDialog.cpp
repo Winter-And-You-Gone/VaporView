@@ -87,8 +87,8 @@ QIcon createLucideIcon(const QString& iconName, const QColor& color)
 
 QIcon enableToggleIcon(bool enabled)
 {
-    static const QIcon onIcon = createLucideIcon(QStringLiteral("plug"), kEnableToggleOnIcon);
-    static const QIcon offIcon = createLucideIcon(QStringLiteral("unplug"), kEnableToggleOffIcon);
+    static const QIcon onIcon = createLucideIcon(QStringLiteral("check"), kEnableToggleOnIcon);
+    static const QIcon offIcon = createLucideIcon(QStringLiteral("circle-x"), kEnableToggleOffIcon);
     return enabled ? onIcon : offIcon;
 }
 
@@ -242,7 +242,7 @@ void SkyDeviceConfigDialog::setupUi()
         "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:hover { background-color: #f8fafc; border-color: #94a3b8; }"
         "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked { background-color: #1976d2; color: #ffffff; border-color: #1976d2; }"
         "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked:hover { background-color: #1565c0; border-color: #1565c0; }"
-        "QDialog#skyDeviceConfigDialog QPlainTextEdit { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; }"
+        "QDialog#skyDeviceConfigDialog QPlainTextEdit { background-color: #ffffff; color: #111827; border: 1px solid #dfe4ea; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; selection-background-color: #e3f2fd; selection-color: #1976d2; }"
     ));
     setFont(qApp->font());
     auto *root = new QVBoxLayout(this);
@@ -393,6 +393,7 @@ void SkyDeviceConfigDialog::setConfig(const SkyConfig& config)
     telemetry_waveform_rate_->setValue(config.telemetry.waveform_rate_hz);
     telemetry_heartbeat_rate_->setValue(config.telemetry.heartbeat_rate_hz);
     telemetry_status_rate_->setValue(config.telemetry.status_rate_hz);
+    updateConfigPreview();
 }
 
 SkyConfig SkyDeviceConfigDialog::currentConfigFromUi() const
@@ -513,6 +514,15 @@ void SkyDeviceConfigDialog::updateEnableButton(QPushButton *button)
     button->setToolTip(button->isChecked()
                            ? (is_english_ ? QStringLiteral("Enabled") : QStringLiteral("已启用"))
                            : (is_english_ ? QStringLiteral("Disabled") : QStringLiteral("已禁用")));
+}
+
+void SkyDeviceConfigDialog::updateConfigPreview()
+{
+    if (!result_text_)
+    {
+        return;
+    }
+    result_text_->setPlainText(QJsonDocument(currentConfigFromUi().toJson()).toJson(QJsonDocument::Indented));
 }
 
 void SkyDeviceConfigDialog::applyDynamicMetrics()
