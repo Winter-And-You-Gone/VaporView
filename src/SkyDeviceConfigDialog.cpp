@@ -155,28 +155,15 @@ void SkyDeviceConfigDialog::onApplyResultReceived(const QJsonObject& result)
 void SkyDeviceConfigDialog::setupUi()
 {
     setMinimumSize(980, 680);
+    setObjectName(QStringLiteral("skyDeviceConfigDialog"));
     setStyleSheet(QStringLiteral(
-        "SkyDeviceConfigDialog { background-color: #f3f5f7; }"
-        "QGroupBox { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 8px; margin-top: 12px; font-weight: bold; color: #1976d2; }"
-        "QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 14px; padding: 0 8px; background-color: #ffffff; }"
-        "QLabel { color: #1f2a35; }"
-        "QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox { background-color: #ffffff; border: 1px solid #d9dde3; border-radius: 6px; padding: 4px 28px 4px 10px; min-height: 28px; color: #111827; }"
-        "QLineEdit { padding-right: 10px; }"
-        "QLineEdit:hover, QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover { border-color: #b7c0cc; }"
-        "QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus { border: 2px solid #1976d2; }"
-        "QComboBox::drop-down { width: 26px; border: none; background: transparent; subcontrol-origin: border; subcontrol-position: top right; border-top-right-radius: 6px; border-bottom-right-radius: 6px; }"
-        "QComboBox::drop-down:hover { background-color: #eef4fb; }"
-        "QComboBox::down-arrow { width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 6px solid #667085; }"
-        "QComboBox QAbstractItemView { background-color: #ffffff; border: 1px solid #d9dde3; border-radius: 6px; selection-background-color: #e3f2fd; selection-color: #1976d2; outline: none; }"
-        "QSpinBox::up-button, QDoubleSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::down-button { width: 22px; border: none; background: transparent; subcontrol-origin: border; }"
-        "QSpinBox::up-button, QDoubleSpinBox::up-button { subcontrol-position: top right; border-top-right-radius: 6px; }"
-        "QSpinBox::down-button, QDoubleSpinBox::down-button { subcontrol-position: bottom right; border-bottom-right-radius: 6px; }"
-        "QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover, QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover { background-color: #eef4fb; }"
-        "QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 5px solid #667085; }"
-        "QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid #667085; }"
+        "QDialog#skyDeviceConfigDialog { background-color: #f3f5f7; }"
+        "QDialog#skyDeviceConfigDialog QGroupBox { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 8px; margin-top: 12px; font-weight: bold; color: #1976d2; }"
+        "QDialog#skyDeviceConfigDialog QGroupBox::title { subcontrol-origin: margin; subcontrol-position: top left; left: 14px; padding: 0 8px; background-color: #ffffff; }"
+        "QDialog#skyDeviceConfigDialog QLabel { color: #1f2a35; }"
         "QPushButton#skyEnableToggle { background-color: #ffffff; color: #b42318; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: bold; padding: 0; }"
         "QPushButton#skyEnableToggle:checked { background-color: #1976d2; color: #ffffff; border-color: #1976d2; }"
-        "QPlainTextEdit { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; }"
+        "QDialog#skyDeviceConfigDialog QPlainTextEdit { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; }"
     ));
     setFont(qApp->font());
     auto *root = new QVBoxLayout(this);
