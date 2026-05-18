@@ -142,7 +142,7 @@ QGroupBox::title {
 
 QWidget#sectionTitleBar {
     background-color: #ffffff;
-    border-bottom: 2px solid #dfe4ea;
+    border-bottom: 1px solid #dfe4ea;
     border-top-left-radius: 7px;
     border-top-right-radius: 7px;
     min-height: 40px;
@@ -176,7 +176,7 @@ QLabel#fieldLabel {
 QLabel#sectionTitleLabel {
     background-color: #ffffff;
     border: none;
-    border-bottom: 2px solid #dfe4ea;
+    border-bottom: 1px solid #dfe4ea;
     border-radius: 0px;
     color: #1f2937;
     font-size: 16px;
