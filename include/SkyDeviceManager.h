@@ -17,6 +17,7 @@ namespace VaporView
 struct ApplyConfigResult
 {
     bool success = true;
+    CommandErrorCode error_code = CommandErrorCode::Ok;
     QJsonObject json;
 };
 
@@ -80,6 +81,10 @@ private:
     void disconnectWaveTcp();
     void processWaveTcpBuffer();
     void publishWaveform(const QVector<float>& raw, const QVector<float>& harmonic);
+    void handleEpsilonData(const EpsilonData& data);
+    void handlePtbData(const PtbData& data);
+    void handleHmpData(const HmpData& data);
+    void handleLidarData(const LidarData& data);
     void recordWaveTcpFrameTime(quint64 timestampUs);
     void invalidateDeviceData(SkyDeviceId id);
 

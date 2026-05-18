@@ -2,6 +2,8 @@
 
 #include <QDateTime>
 #include <QJsonObject>
+#include <QMetaObject>
+#include <QPointer>
 #include <QtEndian>
 #include <algorithm>
 #include <cmath>
@@ -11,6 +13,16 @@ namespace VaporView
 {
 namespace
 {
+constexpr int kWaveTcpHeaderSize = 4;
+constexpr int kWaveTcpFloatSize = 4;
+constexpr quint32 kMaxWaveTcpPayloadBytes = 16u * 1024u * 1024u;
+
+enum class WaveTcpHeaderOrder
+{
+    LittleEndian,
+    BigEndian,
+};
+
 quint64 nowUs()
 {
     return static_cast<quint64>(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()) * 1000ULL;
@@ -34,6 +46,28 @@ QJsonObject resultItem(bool changed, bool reconfigured, const DeviceStatusItem& 
     item["state"] = deviceStateName(status.state);
     item["error_code"] = static_cast<int>(status.error_code);
     return item;
+}
+
+quint32 decodeWaveTcpHeader(const char *raw, WaveTcpHeaderOrder order)
+{
+    const uchar *bytes = reinterpret_cast<const uchar*>(raw);
+    return order == WaveTcpHeaderOrder::LittleEndian
+        ? qFromLittleEndian<quint32>(bytes)
+        : qFromBigEndian<quint32>(bytes);
+}
+
+bool isValidWaveTcpPayloadSize(quint32 size)
+{
+    return size > 0 &&
+           size <= kMaxWaveTcpPayloadBytes &&
+           (size % kWaveTcpFloatSize) == 0;
+}
+
+QString waveTcpHeaderOrderText(WaveTcpHeaderOrder order)
+{
+    return order == WaveTcpHeaderOrder::LittleEndian
+        ? QStringLiteral("little-endian")
+        : QStringLiteral("big-endian");
 }
 
 }  // namespace
@@ -219,7 +253,7 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& newConfig)
     const SkyConfigDiff diff = oldConfig.diff(newConfig);
     config_ = newConfig;
 
-    auto reconfigureSerial = [this](SkyDeviceId id, bool changed, bool enabled) {
+    auto reconfigureDevice = [this, &result](SkyDeviceId id, bool changed, bool enabled) {
         bool reconfigured = false;
         if (changed)
         {
@@ -228,7 +262,15 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& newConfig)
             reconfigured = true;
             if (enabled)
             {
-                connectDevice(id, &ignored);
+                CommandErrorCode connectError = CommandErrorCode::Ok;
+                if (!connectDevice(id, &connectError))
+                {
+                    result.success = false;
+                    if (result.error_code == CommandErrorCode::Ok)
+                    {
+                        result.error_code = connectError;
+                    }
+                }
             }
             else
             {
@@ -238,11 +280,11 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& newConfig)
         return reconfigured;
     };
 
-    const bool epsilonReconfigured = reconfigureSerial(SkyDeviceId::Epsilon, diff.epsilon_changed, config_.epsilon.enabled);
-    const bool ptbReconfigured = reconfigureSerial(SkyDeviceId::Ptb, diff.ptb_changed, config_.ptb.enabled);
-    const bool hmpReconfigured = reconfigureSerial(SkyDeviceId::Hmp, diff.hmp_changed, config_.hmp.enabled);
-    const bool lidarReconfigured = reconfigureSerial(SkyDeviceId::Lidar, diff.lidar_changed, config_.lidar.enabled);
-    const bool waveReconfigured = reconfigureSerial(SkyDeviceId::WaveTcp, diff.wave_tcp_changed, config_.wave_tcp.enabled);
+    const bool epsilonReconfigured = reconfigureDevice(SkyDeviceId::Epsilon, diff.epsilon_changed, config_.epsilon.enabled);
+    const bool ptbReconfigured = reconfigureDevice(SkyDeviceId::Ptb, diff.ptb_changed, config_.ptb.enabled);
+    const bool hmpReconfigured = reconfigureDevice(SkyDeviceId::Hmp, diff.hmp_changed, config_.hmp.enabled);
+    const bool lidarReconfigured = reconfigureDevice(SkyDeviceId::Lidar, diff.lidar_changed, config_.lidar.enabled);
+    const bool waveReconfigured = reconfigureDevice(SkyDeviceId::WaveTcp, diff.wave_tcp_changed, config_.wave_tcp.enabled);
 
     QJsonObject devices;
     devices["epsilon"] = resultItem(diff.epsilon_changed, epsilonReconfigured, epsilon_status_);
@@ -256,6 +298,8 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& newConfig)
     telemetry["timers_updated"] = diff.telemetry_changed;
 
     result.json["success"] = result.success;
+    result.json["error_code"] = static_cast<int>(result.error_code);
+    result.json["error"] = commandErrorCodeText(result.error_code);
     result.json["devices"] = devices;
     result.json["telemetry"] = telemetry;
     return result;
@@ -561,11 +605,24 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
         epsilon_ = std::make_shared<EpsilonCollector>();
         epsilon_->setLogCallback(logCallback);
         epsilon_->setSampleRate(static_cast<int>(config.frequency_hz));
-        epsilon_->setDataCallback([this]() {
-            latest_epsilon_ = epsilon_ ? epsilon_->getLatestData() : EpsilonData();
-            epsilon_status_.rx_count++;
-            epsilon_status_.last_data_time_us = nowUs();
-            emit epsilonDataUpdated(latest_epsilon_);
+        epsilon_->setDataCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<EpsilonCollector>(epsilon_)]() {
+            if (!self)
+            {
+                return;
+            }
+            const std::shared_ptr<EpsilonCollector> collector = weakCollector.lock();
+            if (!collector)
+            {
+                return;
+            }
+            const EpsilonData data = collector->getLatestData();
+            QMetaObject::invokeMethod(self.data(), [self, collector, data]() {
+                if (!self || self->epsilon_ != collector)
+                {
+                    return;
+                }
+                self->handleEpsilonData(data);
+            }, Qt::QueuedConnection);
         });
         if (!epsilon_->start(config.port.toStdString(), SerialConfig::N81(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!epsilon_->checkDeviceResponse()) return fail(CommandErrorCode::DeviceConnectFailed);
@@ -576,11 +633,24 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
         ptb_ = std::make_shared<PtbCollector>();
         ptb_->setLogCallback(logCallback);
         ptb_->setSampleRate(static_cast<int>(config.frequency_hz));
-        ptb_->setDataCallback([this]() {
-            latest_ptb_ = ptb_ ? ptb_->getLatestData() : PtbData();
-            ptb_status_.rx_count++;
-            ptb_status_.last_data_time_us = nowUs();
-            emit ptbDataUpdated(latest_ptb_);
+        ptb_->setDataCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<PtbCollector>(ptb_)]() {
+            if (!self)
+            {
+                return;
+            }
+            const std::shared_ptr<PtbCollector> collector = weakCollector.lock();
+            if (!collector)
+            {
+                return;
+            }
+            const PtbData data = collector->getLatestData();
+            QMetaObject::invokeMethod(self.data(), [self, collector, data]() {
+                if (!self || self->ptb_ != collector)
+                {
+                    return;
+                }
+                self->handlePtbData(data);
+            }, Qt::QueuedConnection);
         });
         if (!ptb_->start(config.port.toStdString(), SerialConfig::E71(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!ptb_->checkDeviceResponse()) return fail(CommandErrorCode::DeviceConnectFailed);
@@ -591,11 +661,24 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
         hmp_ = std::make_shared<HmpCollector>();
         hmp_->setLogCallback(logCallback);
         hmp_->setSampleRate(static_cast<int>(config.frequency_hz));
-        hmp_->setDataCallback([this]() {
-            latest_hmp_ = hmp_ ? hmp_->getLatestData() : HmpData();
-            hmp_status_.rx_count++;
-            hmp_status_.last_data_time_us = nowUs();
-            emit hmpDataUpdated(latest_hmp_);
+        hmp_->setDataCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<HmpCollector>(hmp_)]() {
+            if (!self)
+            {
+                return;
+            }
+            const std::shared_ptr<HmpCollector> collector = weakCollector.lock();
+            if (!collector)
+            {
+                return;
+            }
+            const HmpData data = collector->getLatestData();
+            QMetaObject::invokeMethod(self.data(), [self, collector, data]() {
+                if (!self || self->hmp_ != collector)
+                {
+                    return;
+                }
+                self->handleHmpData(data);
+            }, Qt::QueuedConnection);
         });
         if (!hmp_->start(config.port.toStdString(), SerialConfig::N82(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!hmp_->checkDeviceResponse()) return fail(CommandErrorCode::DeviceConnectFailed);
@@ -605,11 +688,24 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
         lidar_ = std::make_shared<LidarCollector>();
         lidar_->setLogCallback(logCallback);
         lidar_->setSampleRate(static_cast<int>(config.frequency_hz));
-        lidar_->setDataCallback([this]() {
-            latest_lidar_ = lidar_ ? lidar_->getLatestData() : LidarData();
-            lidar_status_.rx_count++;
-            lidar_status_.last_data_time_us = nowUs();
-            emit lidarDataUpdated(latest_lidar_);
+        lidar_->setDataCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<LidarCollector>(lidar_)]() {
+            if (!self)
+            {
+                return;
+            }
+            const std::shared_ptr<LidarCollector> collector = weakCollector.lock();
+            if (!collector)
+            {
+                return;
+            }
+            const LidarData data = collector->getLatestData();
+            QMetaObject::invokeMethod(self.data(), [self, collector, data]() {
+                if (!self || self->lidar_ != collector)
+                {
+                    return;
+                }
+                self->handleLidarData(data);
+            }, Qt::QueuedConnection);
         });
         if (!lidar_->start(config.port.toStdString(), SerialConfig::N81(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!lidar_->checkDeviceResponse()) return fail(CommandErrorCode::DeviceConnectFailed);
@@ -624,6 +720,38 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
     setState(id, DeviceState::Connected);
     if (errorCode) *errorCode = CommandErrorCode::Ok;
     return true;
+}
+
+void SkyDeviceManager::handleEpsilonData(const EpsilonData& data)
+{
+    latest_epsilon_ = data;
+    epsilon_status_.rx_count++;
+    epsilon_status_.last_data_time_us = nowUs();
+    emit epsilonDataUpdated(latest_epsilon_);
+}
+
+void SkyDeviceManager::handlePtbData(const PtbData& data)
+{
+    latest_ptb_ = data;
+    ptb_status_.rx_count++;
+    ptb_status_.last_data_time_us = nowUs();
+    emit ptbDataUpdated(latest_ptb_);
+}
+
+void SkyDeviceManager::handleHmpData(const HmpData& data)
+{
+    latest_hmp_ = data;
+    hmp_status_.rx_count++;
+    hmp_status_.last_data_time_us = nowUs();
+    emit hmpDataUpdated(latest_hmp_);
+}
+
+void SkyDeviceManager::handleLidarData(const LidarData& data)
+{
+    latest_lidar_ = data;
+    lidar_status_.rx_count++;
+    lidar_status_.last_data_time_us = nowUs();
+    emit lidarDataUpdated(latest_lidar_);
 }
 
 bool SkyDeviceManager::connectWaveTcp(CommandErrorCode *errorCode)
@@ -659,26 +787,99 @@ void SkyDeviceManager::disconnectWaveTcp()
 
 void SkyDeviceManager::processWaveTcpBuffer()
 {
-    while (wave_buffer_.size() >= 8)
+    while (wave_buffer_.size() >= kWaveTcpHeaderSize)
     {
-        const quint32 rawSize = qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(wave_buffer_.constData()));
-        if (rawSize > 16u * 1024u * 1024u || wave_buffer_.size() < static_cast<int>(4 + rawSize + 4))
+        bool foundCandidate = false;
+        bool frameComplete = false;
+        int frameOffset = 0;
+        quint32 rawSize = 0;
+        quint32 harmonicSize = 0;
+        WaveTcpHeaderOrder headerOrder = WaveTcpHeaderOrder::LittleEndian;
+
+        const WaveTcpHeaderOrder orders[] = {
+            WaveTcpHeaderOrder::LittleEndian,
+            WaveTcpHeaderOrder::BigEndian,
+        };
+        for (int offset = 0; offset <= wave_buffer_.size() - kWaveTcpHeaderSize && !foundCandidate; ++offset)
+        {
+            for (WaveTcpHeaderOrder order : orders)
+            {
+                const quint32 candidateRawSize = decodeWaveTcpHeader(wave_buffer_.constData() + offset, order);
+                if (!isValidWaveTcpPayloadSize(candidateRawSize))
+                {
+                    continue;
+                }
+
+                const qsizetype secondHeaderOffset =
+                    static_cast<qsizetype>(offset) + kWaveTcpHeaderSize + static_cast<qsizetype>(candidateRawSize);
+                if (secondHeaderOffset + kWaveTcpHeaderSize > wave_buffer_.size())
+                {
+                    foundCandidate = true;
+                    frameOffset = offset;
+                    rawSize = candidateRawSize;
+                    headerOrder = order;
+                    break;
+                }
+
+                const quint32 candidateHarmonicSize = decodeWaveTcpHeader(wave_buffer_.constData() + secondHeaderOffset, order);
+                if (!isValidWaveTcpPayloadSize(candidateHarmonicSize))
+                {
+                    continue;
+                }
+
+                const qsizetype frameSize =
+                    secondHeaderOffset + kWaveTcpHeaderSize + static_cast<qsizetype>(candidateHarmonicSize);
+                foundCandidate = true;
+                frameComplete = frameSize <= wave_buffer_.size();
+                frameOffset = offset;
+                rawSize = candidateRawSize;
+                harmonicSize = candidateHarmonicSize;
+                headerOrder = order;
+                break;
+            }
+        }
+
+        if (!foundCandidate)
+        {
+            const int bytesToDrop = static_cast<int>(
+                std::max<qsizetype>(0, wave_buffer_.size() - (kWaveTcpHeaderSize - 1)));
+            if (bytesToDrop > 0)
+            {
+                wave_buffer_.remove(0, bytesToDrop);
+                emit logMessage(QStringLiteral("Wave TCP resync: discarded %1 byte(s) while looking for a valid frame header")
+                                    .arg(bytesToDrop));
+            }
+            return;
+        }
+
+        if (frameOffset > 0)
+        {
+            wave_buffer_.remove(0, frameOffset);
+            emit logMessage(QStringLiteral("Wave TCP resync: skipped %1 byte(s), header order %2")
+                                .arg(frameOffset)
+                                .arg(waveTcpHeaderOrderText(headerOrder)));
+        }
+
+        if (!frameComplete)
         {
             return;
         }
-        const quint32 harmonicSize = qFromLittleEndian<quint32>(reinterpret_cast<const uchar*>(wave_buffer_.constData() + 4 + rawSize));
-        if (harmonicSize > 16u * 1024u * 1024u || wave_buffer_.size() < static_cast<int>(8 + rawSize + harmonicSize))
-        {
-            return;
-        }
-        const QByteArray rawPayload = wave_buffer_.mid(4, static_cast<int>(rawSize));
-        const QByteArray harmonicPayload = wave_buffer_.mid(static_cast<int>(8 + rawSize), static_cast<int>(harmonicSize));
-        wave_buffer_.remove(0, static_cast<int>(8 + rawSize + harmonicSize));
+
+        const int rawPayloadSize = static_cast<int>(rawSize);
+        const int harmonicPayloadSize = static_cast<int>(harmonicSize);
+        const int rawPayloadOffset = kWaveTcpHeaderSize;
+        const int harmonicHeaderOffset = kWaveTcpHeaderSize + rawPayloadSize;
+        const int harmonicPayloadOffset = harmonicHeaderOffset + kWaveTcpHeaderSize;
+        const int totalFrameSize = harmonicPayloadOffset + harmonicPayloadSize;
+        const QByteArray rawPayload = wave_buffer_.mid(rawPayloadOffset, rawPayloadSize);
+        const QByteArray harmonicPayload = wave_buffer_.mid(harmonicPayloadOffset, harmonicPayloadSize);
+        wave_buffer_.remove(0, totalFrameSize);
         if (wave_float_encoding_ == TcpFloatEncoding::Unknown)
         {
             const QByteArray& payloadForDetection = harmonicPayload.isEmpty() ? rawPayload : harmonicPayload;
             wave_float_encoding_ = autoDetectTcpFloatEncoding(payloadForDetection);
-            emit logMessage(QStringLiteral("Wave TCP float payload format locked: %1")
+            emit logMessage(QStringLiteral("Wave TCP payload format locked: header=%1, float=%2")
+                                .arg(waveTcpHeaderOrderText(headerOrder))
                                 .arg(tcpFloatEncodingLabel(false, wave_float_encoding_)));
         }
         publishWaveform(decodeTcpFloatPayload(rawPayload, wave_float_encoding_),
@@ -753,11 +954,14 @@ void SkyDeviceManager::publishWaveform(const QVector<float>& raw, const QVector<
     {
         latest_feature_ = WaveformFeature();
         latest_feature_.host_time_us = now;
+        latest_feature_.epsilon_time_us = latest_epsilon_.device_timestamp_us;
         latest_feature_.original_point_count = static_cast<quint32>(sampleCount);
         latest_feature_.search_start_index = static_cast<quint32>(searchStart);
         latest_feature_.search_end_index = static_cast<quint32>(searchEnd);
+        latest_feature_.channel_id = 4;
         latest_feature_.quality_flags = 1u;
         last_feature_compute_time_us_ = now;
+        emit waveformFeatureUpdated(latest_feature_);
         return;
     }
     latest_feature_.host_time_us = now;

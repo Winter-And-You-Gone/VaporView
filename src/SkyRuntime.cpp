@@ -381,15 +381,16 @@ void SkyRuntime::sendWaveformFeature()
         return;
     }
     const WaveformFeature feature = device_manager_.latestWaveformFeature();
-    if (feature.quality_flags != 0 || !std::isfinite(feature.peak))
-    {
-        return;
-    }
     if (feature.host_time_us == 0 || feature.host_time_us == last_sent_feature_time_us_)
     {
         return;
     }
     last_sent_feature_time_us_ = feature.host_time_us;
+    if (feature.quality_flags != 0 || !std::isfinite(feature.peak))
+    {
+        sendFrame(MsgType::WaveformFeature, TelemetryCodec::serializeWaveformFeature(feature));
+        return;
+    }
     peak_trend_.push_back(feature.peak);
     while (peak_trend_.size() > 256)
     {
@@ -625,7 +626,10 @@ void SkyRuntime::handleCommand(const CommandMessage& command)
         }
         const ApplyConfigResult result = device_manager_.applyConfig(config);
         updateTimerIntervals();
-        sendAck(command, result.success ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed);
+        const CommandErrorCode errorCode = result.error_code == CommandErrorCode::Ok
+            ? CommandErrorCode::ConfigApplyFailed
+            : result.error_code;
+        sendAck(command, result.success ? CommandErrorCode::Ok : errorCode);
         sendSkyConfigApplyResult(result.json);
         break;
     }
