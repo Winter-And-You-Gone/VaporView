@@ -2128,14 +2128,14 @@ void MainWindow::loadModernStyleSheet()
             "QToolBar QToolButton:hover { background-color: #f0f0f0; }"
             "QToolBar QToolButton:disabled { color: #bdbdbd; }"
             "QStatusBar { background-color: #ffffff; border-top: 1px solid #e0e0e0; padding: 4px 12px; color: #666666; font-size: 14px; }"
-            "QGroupBox { background-color: #fbfcfe; border: 1px solid #dfe4ea; border-top: 30px solid #ffffff; border-radius: 8px; margin-top: 0px; padding: 8px 8px 8px 8px; font-size: 15px; font-weight: bold; color: #333333; }"
+            "QGroupBox { background-color: #fbfcfe; border: 1px solid #dfe4ea; border-top: 44px solid #ffffff; border-radius: 8px; margin-top: 0px; padding: 8px 8px 8px 8px; font-size: 15px; font-weight: bold; color: #333333; }"
             "QGroupBox#sensorGroupBox { margin-top: 0px; background-color: #ffffff; border: 1px solid #dfe4ea; padding: 0px 0px 0px 0px; }"
-            "QGroupBox::title { subcontrol-origin: border; subcontrol-position: top left; left: 12px; top: -25px; padding: 0px 2px; background-color: transparent; border: none; border-radius: 0px; color: #1f2937; }"
-            "QWidget#sectionTitleBar { background-color: #ffffff; border-bottom: 2px solid #dfe4ea; border-top-left-radius: 7px; border-top-right-radius: 7px; }"
+            "QGroupBox::title { subcontrol-origin: border; subcontrol-position: top left; left: 12px; top: -34px; padding: 0px 2px; background-color: transparent; border: none; border-radius: 0px; color: #1f2937; }"
+            "QWidget#sectionTitleBar { background-color: #ffffff; border-bottom: 2px solid #dfe4ea; border-top-left-radius: 7px; border-top-right-radius: 7px; min-height: 44px; }"
             "QWidget#sectionTitleBar QLabel { background-color: transparent; border: none; }"
             "QLabel { color: #333333; background-color: transparent; border: none; }"
-            "QLabel#sectionTitleLabel { background-color: #ffffff; border: none; border-bottom: 2px solid #dfe4ea; border-radius: 0px; color: #1f2937; font-size: 16px; font-weight: bold; padding: 4px 10px; min-height: 24px; }"
-            "QWidget#sectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; padding: 4px 10px; }"
+            "QLabel#sectionTitleLabel { background-color: #ffffff; border: none; border-bottom: 2px solid #dfe4ea; border-radius: 0px; color: #1f2937; font-size: 16px; font-weight: bold; padding: 8px 12px; min-height: 30px; }"
+            "QWidget#sectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; padding: 8px 12px; }"
             "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 10px; min-height: 30px; color: #333333; font-size: 14px; }"
             "QComboBox:hover { border-color: #bdbdbd; }"
             "QComboBox:focus { border-color: #1976d2; border-width: 2px; }"
@@ -3727,7 +3727,7 @@ void MainWindow::setupConfigPanel()
     auto *configTitleBar = new QWidget(config_group_);
     configTitleBar->setObjectName("sectionTitleBar");
     auto *configTitleLayout = new QHBoxLayout(configTitleBar);
-    configTitleLayout->setContentsMargins(0, 0, 8, 0);
+    configTitleLayout->setContentsMargins(8, 8, 8, 8);
     configTitleLayout->setSpacing(8);
 
     config_inline_title_lbl_ = new QLabel(this);
@@ -3869,7 +3869,7 @@ void MainWindow::setupDataPanels()
     auto *dataTitleBar = new QWidget(data_group_);
     dataTitleBar->setObjectName("sectionTitleBar");
     auto *data_title_layout = new QHBoxLayout(dataTitleBar);
-    data_title_layout->setContentsMargins(6, 2, 6, 0);
+    data_title_layout->setContentsMargins(8, 8, 8, 8);
     data_title_layout->setSpacing(12);
     data_inline_title_lbl_ = new QLabel(this);
     data_inline_title_lbl_->setObjectName("sectionTitleLabel");

@@ -110,7 +110,7 @@ QStatusBar {
 QGroupBox {
     background-color: #fbfcfe;
     border: 1px solid #dfe4ea;
-    border-top: 30px solid #ffffff;
+    border-top: 44px solid #ffffff;
     border-radius: 8px;
     margin-top: 0px;
     padding: 8px 8px 8px 8px;
@@ -130,7 +130,7 @@ QGroupBox::title {
     subcontrol-origin: border;
     subcontrol-position: top left;
     left: 16px;
-    top: -25px;
+    top: -34px;
     padding: 0px 2px;
     background-color: transparent;
     border: none;
@@ -145,6 +145,7 @@ QWidget#sectionTitleBar {
     border-bottom: 2px solid #dfe4ea;
     border-top-left-radius: 7px;
     border-top-right-radius: 7px;
+    min-height: 44px;
 }
 
 QWidget#sectionTitleBar QLabel {
@@ -179,14 +180,14 @@ QLabel#sectionTitleLabel {
     color: #1f2937;
     font-size: 16px;
     font-weight: bold;
-    padding: 4px 10px;
-    min-height: 24px;
+    padding: 8px 12px;
+    min-height: 30px;
 }
 
 QWidget#sectionTitleBar QLabel#sectionTitleLabel {
     background-color: transparent;
     border: none;
-    padding: 4px 10px;
+    padding: 8px 12px;
 }
 
 QLabel#valueLabel {
