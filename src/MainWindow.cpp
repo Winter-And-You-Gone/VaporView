@@ -78,8 +78,8 @@ constexpr const char *kBaseMarginsBottomProperty = "_vv_base_margin_bottom";
 constexpr int kMainPageInputHeight = 36;
 constexpr int kMainPageButtonHeight = 36;
 constexpr int kMainPageTitleBarHeight = kMainPageButtonHeight + 4;
-constexpr int kEpsilonTitleColumnWidth = 170;
-constexpr int kEpsilonValueColumnMinWidth = 320;
+constexpr int kEpsilonTitleColumnWidth = 135;
+constexpr int kEpsilonValueColumnMinWidth = 260;
 constexpr int kPtbMinSampleRateHz = 1;
 constexpr int kPtbMaxSampleRateHz = 70;
 
@@ -1135,38 +1135,39 @@ private:
         auto *grid = new QGridLayout();
         grid->setHorizontalSpacing(12);
         grid->setVerticalSpacing(4);
-        grid->setColumnMinimumWidth(0, kEpsilonTitleColumnWidth);
-        grid->setColumnMinimumWidth(1, kEpsilonValueColumnMinWidth);
-        grid->setColumnMinimumWidth(2, kEpsilonTitleColumnWidth);
-        grid->setColumnMinimumWidth(3, kEpsilonValueColumnMinWidth);
-        grid->setColumnStretch(0, 0);
-        grid->setColumnStretch(1, 1);
-        grid->setColumnStretch(2, 0);
-        grid->setColumnStretch(3, 1);
+        for (int column = 0; column < 3; ++column)
+        {
+            grid->setColumnMinimumWidth(column * 2, kEpsilonTitleColumnWidth);
+            grid->setColumnMinimumWidth(column * 2 + 1, kEpsilonValueColumnMinWidth);
+            grid->setColumnStretch(column * 2, 0);
+            grid->setColumnStretch(column * 2 + 1, 1);
+        }
 
         int row = 0;
         addSection(grid, row++, 0, QStringLiteral("run"), QStringLiteral("数据状态"), QStringLiteral("Data Status"));
         addField(grid, row++, 0, QStringLiteral("time_utc"), QStringLiteral("UTC时间:"), QStringLiteral("UTC Time:"));
         addField(grid, row++, 0, QStringLiteral("device_ts"), QStringLiteral("设备时间戳:"), QStringLiteral("Device Timestamp:"));
         addField(grid, row++, 0, QStringLiteral("frames"), QStringLiteral("原始帧/丢帧:"), QStringLiteral("Raw/Dropped Frames:"));
-        addSection(grid, row++, 0, QStringLiteral("position"), QStringLiteral("定位状态"), QStringLiteral("Position Status"));
-        addField(grid, row++, 0, QStringLiteral("fix"), QStringLiteral("GNSS状态:"), QStringLiteral("GNSS Fix:"));
-        addField(grid, row++, 0, QStringLiteral("sat"), QStringLiteral("卫星数:"), QStringLiteral("Satellites:"));
-        addField(grid, row++, 0, QStringLiteral("lat"), QStringLiteral("纬度[deg]:"), QStringLiteral("Latitude [deg]:"));
-        addField(grid, row++, 0, QStringLiteral("lon"), QStringLiteral("经度[deg]:"), QStringLiteral("Longitude [deg]:"));
-        addField(grid, row++, 0, QStringLiteral("height"), QStringLiteral("高度[m]:"), QStringLiteral("Height [m]:"));
-        addField(grid, row++, 0, QStringLiteral("acc"), QStringLiteral("hAcc / vAcc:"), QStringLiteral("hAcc / vAcc:"));
 
         row = 0;
-        addSection(grid, row++, 1, QStringLiteral("motion"), QStringLiteral("姿态与运动"), QStringLiteral("Attitude / Motion"));
-        addField(grid, row++, 1, QStringLiteral("ned_vel"), QStringLiteral("NED速度[m/s]:"), QStringLiteral("NED Velocity [m/s]:"));
-        addField(grid, row++, 1, QStringLiteral("imu_acc"), QStringLiteral("IMU加速度[m/s²]:"), QStringLiteral("IMU Accel [m/s²]:"));
-        addField(grid, row++, 1, QStringLiteral("imu_gyr"), QStringLiteral("IMU角速度[rad/s]:"), QStringLiteral("IMU Gyro [rad/s]:"));
-        addField(grid, row++, 1, QStringLiteral("rpy"), QStringLiteral("姿态角[deg]:"), QStringLiteral("Attitude [deg]:"));
-        addSection(grid, row++, 1, QStringLiteral("health"), QStringLiteral("系统健康"), QStringLiteral("System Health"));
-        addField(grid, row++, 1, QStringLiteral("status_bits"), QStringLiteral("系统状态:"), QStringLiteral("System Status:"));
-        addField(grid, row++, 1, QStringLiteral("filter_bits"), QStringLiteral("滤波状态:"), QStringLiteral("Filter Status:"));
-        addField(grid, row++, 1, QStringLiteral("heading_valid"), QStringLiteral("航向有效:"), QStringLiteral("Heading Valid:"));
+        addSection(grid, row++, 1, QStringLiteral("position"), QStringLiteral("定位状态"), QStringLiteral("Position Status"));
+        addField(grid, row++, 1, QStringLiteral("fix"), QStringLiteral("GNSS状态:"), QStringLiteral("GNSS Fix:"));
+        addField(grid, row++, 1, QStringLiteral("sat"), QStringLiteral("卫星数:"), QStringLiteral("Satellites:"));
+        addField(grid, row++, 1, QStringLiteral("lat"), QStringLiteral("纬度[deg]:"), QStringLiteral("Latitude [deg]:"));
+        addField(grid, row++, 1, QStringLiteral("lon"), QStringLiteral("经度[deg]:"), QStringLiteral("Longitude [deg]:"));
+        addField(grid, row++, 1, QStringLiteral("height"), QStringLiteral("高度[m]:"), QStringLiteral("Height [m]:"));
+        addField(grid, row++, 1, QStringLiteral("acc"), QStringLiteral("hAcc / vAcc:"), QStringLiteral("hAcc / vAcc:"));
+
+        row = 0;
+        addSection(grid, row++, 2, QStringLiteral("motion"), QStringLiteral("姿态与运动"), QStringLiteral("Attitude / Motion"));
+        addField(grid, row++, 2, QStringLiteral("ned_vel"), QStringLiteral("NED速度[m/s]:"), QStringLiteral("NED Velocity [m/s]:"));
+        addField(grid, row++, 2, QStringLiteral("imu_acc"), QStringLiteral("IMU加速度[m/s²]:"), QStringLiteral("IMU Accel [m/s²]:"));
+        addField(grid, row++, 2, QStringLiteral("imu_gyr"), QStringLiteral("IMU角速度[rad/s]:"), QStringLiteral("IMU Gyro [rad/s]:"));
+        addField(grid, row++, 2, QStringLiteral("rpy"), QStringLiteral("姿态角[deg]:"), QStringLiteral("Attitude [deg]:"));
+        addSection(grid, row++, 2, QStringLiteral("health"), QStringLiteral("系统健康"), QStringLiteral("System Health"));
+        addField(grid, row++, 2, QStringLiteral("status_bits"), QStringLiteral("系统状态:"), QStringLiteral("System Status:"));
+        addField(grid, row++, 2, QStringLiteral("filter_bits"), QStringLiteral("滤波状态:"), QStringLiteral("Filter Status:"));
+        addField(grid, row++, 2, QStringLiteral("heading_valid"), QStringLiteral("航向有效:"), QStringLiteral("Heading Valid:"));
 
         layout->addLayout(grid, 0);
         layout->addStretch(1);
@@ -4311,9 +4312,9 @@ void MainWindow::setupDataPanels()
     env_layout->addWidget(hmp_panel_);
 
     sensor_splitter->addWidget(env_group);
-    sensor_splitter->setStretchFactor(0, 7);
-    sensor_splitter->setStretchFactor(1, 3);
-    sensor_splitter->setSizes({860, 360});
+    sensor_splitter->setStretchFactor(0, 8);
+    sensor_splitter->setStretchFactor(1, 2);
+    sensor_splitter->setSizes({980, 240});
 
     data_layout->addWidget(sensor_splitter, 1);
     env_group_ = env_group;
