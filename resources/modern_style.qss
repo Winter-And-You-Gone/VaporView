@@ -25,7 +25,7 @@ QMenuBar::item {
     background-color: transparent;
     padding: 4px 8px;
     border-radius: 4px;
-    color: #333333;
+    color: #000000;
 }
 
 QMenuBar::item:selected {
@@ -48,7 +48,7 @@ QMenu {
 QMenu::item {
     padding: 4px 24px 4px 12px;
     border-radius: 0px;
-    color: #333333;
+    color: #000000;
 }
 
 QMenu::item:selected {
@@ -75,7 +75,7 @@ QToolBar QToolButton {
     border: none;
     border-radius: 4px;
     padding: 6px 10px;
-    color: #555555;
+    color: #000000;
     font-size: 14px;
 }
 
@@ -88,7 +88,7 @@ QToolBar QToolButton:pressed {
 }
 
 QToolBar QToolButton:disabled {
-    color: #bdbdbd;
+    color: #000000;
 }
 
 QToolBar::separator {
@@ -102,7 +102,7 @@ QStatusBar {
     background-color: #ffffff;
     border-top: 1px solid #e0e0e0;
     padding: 4px 12px;
-    color: #666666;
+    color: #000000;
     font-size: 14px;
 }
 
@@ -116,7 +116,7 @@ QGroupBox {
     padding: 8px 8px 8px 8px;
     font-size: 15px;
     font-weight: bold;
-    color: #333333;
+    color: #000000;
 }
 
 QGroupBox#sensorGroupBox {
@@ -135,7 +135,7 @@ QGroupBox::title {
     background-color: transparent;
     border: none;
     border-radius: 0px;
-    color: #1f2937;
+    color: #000000;
     font-size: 16px;
     font-weight: bold;
 }
@@ -156,19 +156,19 @@ QWidget#sectionTitleBar QLabel {
 
 /* 标签 */
 QLabel {
-    color: #333333;
+    color: #000000;
     background-color: transparent;
     border: none;
 }
 
 QLabel#rateLabel {
-    color: #9e9e9e;
+    color: #000000;
     font-size: 13px;
     font-weight: bold;
 }
 
 QLabel#fieldLabel {
-    color: #666666;
+    color: #000000;
     font-size: 14px;
     font-weight: 600;
 }
@@ -180,7 +180,7 @@ QFrame#epsilonSectionCard {
 }
 
 QLabel#epsilonSectionLabel {
-    color: #4b5563;
+    color: #000000;
     background-color: #f8fafc;
     border: none;
     border-right: 1px solid #dfe4ea;
@@ -194,7 +194,7 @@ QLabel#sectionTitleLabel {
     border: none;
     border-bottom: 1px solid #dfe4ea;
     border-radius: 0px;
-    color: #1f2937;
+    color: #000000;
     font-size: 16px;
     font-weight: bold;
     padding: 0px 10px;
@@ -218,7 +218,7 @@ QLabel#valueLabel {
 }
 
 QLabel#separatorLabel {
-    color: #757575;
+    color: #000000;
     font-size: 14px;
     font-weight: bold;
     padding: 0px;
@@ -233,7 +233,7 @@ QComboBox {
     padding: 4px 10px;
     min-height: 26px;
     max-height: 26px;
-    color: #333333;
+    color: #000000;
     font-size: 14px;
 }
 
@@ -244,6 +244,11 @@ QComboBox:hover {
 QComboBox:focus {
     border-color: #1976d2;
     border-width: 1px;
+}
+
+QComboBox:disabled {
+    background-color: #f5f5f5;
+    color: #000000;
 }
 
 QComboBox::drop-down {
@@ -283,14 +288,14 @@ QComboBox QAbstractItemView::item:hover {
 /* 文本编辑框 */
 QTextEdit {
     background-color: #ffffff;
-    color: #222222;
+    color: #000000;
     border: 1px solid #e0e0e0;
     border-radius: 6px;
     padding: 10px;
     font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 13px;
     selection-background-color: #e3f2fd;
-    selection-color: #222222;
+    selection-color: #000000;
 }
 
 /* 滚动条 */
@@ -379,7 +384,7 @@ QMessageBox {
 }
 
 QMessageBox QLabel {
-    color: #333333;
+    color: #000000;
     font-size: 15px;
 }
 
@@ -431,7 +436,7 @@ QLineEdit {
     padding: 4px 10px;
     min-height: 26px;
     max-height: 26px;
-    color: #333333;
+    color: #000000;
     font-size: 14px;
     selection-background-color: #e3f2fd;
     selection-color: #1976d2;
@@ -448,7 +453,7 @@ QLineEdit:focus {
 
 QLineEdit:disabled {
     background-color: #f5f5f5;
-    color: #bdbdbd;
+    color: #000000;
 }
 
 QSpinBox,
@@ -457,7 +462,7 @@ QDoubleSpinBox {
     border: 1px solid #e0e0e0;
     border-radius: 6px;
     padding: 4px 28px 4px 10px;
-    color: #333333;
+    color: #000000;
     font-size: 14px;
     min-height: 26px;
     max-height: 26px;
@@ -477,7 +482,7 @@ QDoubleSpinBox:focus {
 QSpinBox:disabled,
 QDoubleSpinBox:disabled {
     background-color: #f5f5f5;
-    color: #bdbdbd;
+    color: #000000;
 }
 
 QSpinBox::up-button,
@@ -544,7 +549,7 @@ QProgressBar::chunk {
 
 /* 复选框 */
 QCheckBox {
-    color: #333333;
+    color: #000000;
     spacing: 8px;
     font-size: 14px;
 }
@@ -574,7 +579,7 @@ QCheckBox::indicator:checked:after {
 
 /* 单选按钮 */
 QRadioButton {
-    color: #333333;
+    color: #000000;
     spacing: 8px;
     font-size: 14px;
 }
