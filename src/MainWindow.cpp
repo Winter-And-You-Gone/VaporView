@@ -1145,7 +1145,7 @@ private:
         grid->setColumnStretch(3, 1);
 
         int row = 0;
-        addSection(grid, row++, 0, QStringLiteral("run"), QStringLiteral("运行状态"), QStringLiteral("Run Status"));
+        addSection(grid, row++, 0, QStringLiteral("run"), QStringLiteral("数据状态"), QStringLiteral("Data Status"));
         addField(grid, row++, 0, QStringLiteral("time_utc"), QStringLiteral("UTC时间:"), QStringLiteral("UTC Time:"));
         addField(grid, row++, 0, QStringLiteral("device_ts"), QStringLiteral("设备时间戳:"), QStringLiteral("Device Timestamp:"));
         addField(grid, row++, 0, QStringLiteral("frames"), QStringLiteral("原始帧/丢帧:"), QStringLiteral("Raw/Dropped Frames:"));
@@ -1158,7 +1158,7 @@ private:
         addField(grid, row++, 0, QStringLiteral("acc"), QStringLiteral("hAcc / vAcc:"), QStringLiteral("hAcc / vAcc:"));
 
         row = 0;
-        addSection(grid, row++, 1, QStringLiteral("motion"), QStringLiteral("运动状态"), QStringLiteral("Motion Status"));
+        addSection(grid, row++, 1, QStringLiteral("motion"), QStringLiteral("姿态与运动"), QStringLiteral("Attitude / Motion"));
         addField(grid, row++, 1, QStringLiteral("ned_vel"), QStringLiteral("NED速度[m/s]:"), QStringLiteral("NED Velocity [m/s]:"));
         addField(grid, row++, 1, QStringLiteral("imu_acc"), QStringLiteral("IMU加速度[m/s²]:"), QStringLiteral("IMU Accel [m/s²]:"));
         addField(grid, row++, 1, QStringLiteral("imu_gyr"), QStringLiteral("IMU角速度[rad/s]:"), QStringLiteral("IMU Gyro [rad/s]:"));
