@@ -575,6 +575,10 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , output_group_(nullptr)
     , gga_group_(nullptr)
     , log_group_(nullptr)
+    , config_title_label_(nullptr)
+    , output_title_label_(nullptr)
+    , gga_title_label_(nullptr)
+    , log_title_label_(nullptr)
     , gga_text_container_(nullptr)
     , log_text_container_(nullptr)
     , server_label_(nullptr)
@@ -712,6 +716,33 @@ bool RtkConfigDialog::isBackgroundTaskRunning() const
     return fetch_mountpoints_in_progress_.load() || port_detection_in_progress_.load() || test_in_progress_.load();
 }
 
+QVBoxLayout *RtkConfigDialog::createCardLayout(QGroupBox *group, QLabel *&titleLabel)
+{
+    group->setTitle(QString());
+    group->setObjectName(QStringLiteral("rtkCardGroup"));
+
+    auto *cardLayout = new QVBoxLayout(group);
+    cardLayout->setContentsMargins(0, 0, 0, 0);
+    cardLayout->setSpacing(0);
+
+    auto *titleBar = new QWidget(group);
+    titleBar->setObjectName(QStringLiteral("sectionTitleBar"));
+    titleBar->setFixedHeight(40);
+    auto *titleLayout = new QHBoxLayout(titleBar);
+    titleLayout->setContentsMargins(10, 2, 10, 2);
+    titleLayout->setSpacing(0);
+
+    titleLabel = new QLabel(titleBar);
+    titleLabel->setObjectName(QStringLiteral("sectionTitleLabel"));
+    titleLabel->setFixedHeight(36);
+    titleLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    titleLayout->addWidget(titleLabel, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    titleLayout->addStretch(1);
+
+    cardLayout->addWidget(titleBar);
+    return cardLayout;
+}
+
 void RtkConfigDialog::setupUi()
 {
     auto *outerLayout = new QVBoxLayout(this);
@@ -719,6 +750,8 @@ void RtkConfigDialog::setupUi()
     outerLayout->setSpacing(0);
 
     auto *scrollArea = new QScrollArea(this);
+    scrollArea->setObjectName(QStringLiteral("rtkConfigScrollArea"));
+    scrollArea->viewport()->setObjectName(QStringLiteral("rtkConfigViewport"));
     scrollArea->setWidgetResizable(true);
     scrollArea->setFrameShape(QFrame::NoFrame);
     scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
@@ -726,6 +759,7 @@ void RtkConfigDialog::setupUi()
     outerLayout->addWidget(scrollArea);
 
     auto *contentWidget = new QWidget(scrollArea);
+    contentWidget->setObjectName(QStringLiteral("rtkConfigContent"));
     scrollArea->setWidget(contentWidget);
 
     main_layout_ = new QVBoxLayout(contentWidget);
@@ -733,11 +767,13 @@ void RtkConfigDialog::setupUi()
     main_layout_->setContentsMargins(12, 12, 12, 12);
 
     config_group_ = new QGroupBox(this);
-    config_layout_ = new QGridLayout(config_group_);
+    auto *configCardLayout = createCardLayout(config_group_, config_title_label_);
+    config_layout_ = new QGridLayout();
     config_layout_->setSpacing(6);
-    config_layout_->setContentsMargins(10, 30, 10, 10);
+    config_layout_->setContentsMargins(10, 10, 10, 10);
     config_layout_->setColumnStretch(1, 2);
     config_layout_->setColumnStretch(5, 1);
+    configCardLayout->addLayout(config_layout_);
 
     int row = 0;
     server_label_ = new QLabel(this);
@@ -774,11 +810,13 @@ void RtkConfigDialog::setupUi()
     main_layout_->addWidget(config_group_);
 
     output_group_ = new QGroupBox(this);
-    output_layout_ = new QGridLayout(output_group_);
+    auto *outputCardLayout = createCardLayout(output_group_, output_title_label_);
+    output_layout_ = new QGridLayout();
     output_layout_->setSpacing(6);
-    output_layout_->setContentsMargins(10, 30, 10, 10);
+    output_layout_->setContentsMargins(10, 10, 10, 10);
     output_layout_->setColumnStretch(1, 1);
     output_layout_->setColumnStretch(5, 1);
+    outputCardLayout->addLayout(output_layout_);
 
     row = 0;
     output_port_label_ = new QLabel(this);
@@ -861,10 +899,12 @@ void RtkConfigDialog::setupUi()
     main_layout_->addWidget(output_group_);
 
     gga_group_ = new QGroupBox(this);
-    gga_layout_ = new QVBoxLayout(gga_group_);
+    auto *ggaCardLayout = createCardLayout(gga_group_, gga_title_label_);
+    gga_layout_ = new QVBoxLayout();
     gga_layout_->setSpacing(6);
-    gga_layout_->setContentsMargins(10, 30, 10, 12);
+    gga_layout_->setContentsMargins(10, 10, 10, 12);
     gga_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    ggaCardLayout->addLayout(gga_layout_);
 
     gga_header_layout_ = new QHBoxLayout();
     gga_header_layout_->setSpacing(8);
@@ -936,9 +976,11 @@ void RtkConfigDialog::setupUi()
     main_layout_->addLayout(button_layout_);
 
     log_group_ = new QGroupBox(this);
-    log_layout_ = new QVBoxLayout(log_group_);
+    auto *logCardLayout = createCardLayout(log_group_, log_title_label_);
+    log_layout_ = new QVBoxLayout();
     log_layout_->setSpacing(4);
-    log_layout_->setContentsMargins(10, 30, 10, 4);
+    log_layout_->setContentsMargins(10, 10, 10, 4);
+    logCardLayout->addLayout(log_layout_);
 
     log_text_container_ = new QWidget(log_group_);
     log_text_container_layout_ = new QVBoxLayout(log_text_container_);
@@ -970,10 +1012,10 @@ void RtkConfigDialog::setEnglish(bool english)
     refreshPortCombos();
 
     setWindowTitle(textFor("RTK NTRIP Configuration", "RTK NTRIP 配置"));
-    config_group_->setTitle(textFor("NTRIP Server Configuration", "NTRIP 服务器配置"));
-    output_group_->setTitle(textFor("RTCM Output Configuration", "RTCM 输出配置"));
-    gga_group_->setTitle(textFor("GGA Monitor", "GGA 监视"));
-    log_group_->setTitle(textFor("RTK Service Log", "RTK 服务日志"));
+    if (config_title_label_) config_title_label_->setText(textFor("NTRIP Server Configuration", "NTRIP 服务器配置"));
+    if (output_title_label_) output_title_label_->setText(textFor("RTCM Output Configuration", "RTCM 输出配置"));
+    if (gga_title_label_) gga_title_label_->setText(textFor("GGA Monitor", "GGA 监视"));
+    if (log_title_label_) log_title_label_->setText(textFor("RTK Service Log", "RTK 服务日志"));
 
     server_label_->setText(textFor("Server Address:", "服务器地址:"));
     port_label_->setText(textFor("Port:", "端口:"));
@@ -1046,7 +1088,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     {
         config_layout_->setHorizontalSpacing(scalePixels(6));
         config_layout_->setVerticalSpacing(scalePixels(10));
-        config_layout_->setContentsMargins(scalePixels(10), scalePixels(30), scalePixels(10), scalePixels(10));
+        config_layout_->setContentsMargins(scalePixels(10), scalePixels(10), scalePixels(10), scalePixels(10));
         for (int row = 0; row < 2; ++row)
         {
             config_layout_->setRowMinimumHeight(row, scalePixels(42));
@@ -1057,7 +1099,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     {
         output_layout_->setHorizontalSpacing(scalePixels(6));
         output_layout_->setVerticalSpacing(scalePixels(10));
-        output_layout_->setContentsMargins(scalePixels(10), scalePixels(30), scalePixels(10), scalePixels(10));
+        output_layout_->setContentsMargins(scalePixels(10), scalePixels(10), scalePixels(10), scalePixels(10));
         output_layout_->setColumnMinimumWidth(2, scalePixels(88));
         output_layout_->setColumnMinimumWidth(3, scalePixels(108));
         output_layout_->setColumnMinimumWidth(4, scalePixels(74));
@@ -1075,7 +1117,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (gga_layout_)
     {
         gga_layout_->setSpacing(scalePixels(6));
-        gga_layout_->setContentsMargins(scalePixels(10), scalePixels(30), scalePixels(10), scalePixels(12));
+        gga_layout_->setContentsMargins(scalePixels(10), scalePixels(10), scalePixels(10), scalePixels(12));
     }
 
     if (gga_text_container_layout_)
@@ -1096,7 +1138,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (log_layout_)
     {
         log_layout_->setSpacing(scalePixels(4));
-        log_layout_->setContentsMargins(scalePixels(10), scalePixels(30), scalePixels(10), scalePixels(4));
+        log_layout_->setContentsMargins(scalePixels(10), scalePixels(10), scalePixels(10), scalePixels(4));
     }
 
     if (log_text_container_layout_)
@@ -1161,7 +1203,9 @@ void RtkConfigDialog::applyScaledUiMetrics()
                                        gga_frequency_label_->sizeHint().height()});
     const int statusHeight = std::max(gga_status_label_->minimumHeight(), gga_status_label_->sizeHint().height());
     const int verticalSpacing = gga_layout_ ? gga_layout_->spacing() : 0;
-    const int ggaGroupHeight = ggaMargins.top()
+    const int cardTitleBarHeight = 40;
+    const int ggaGroupHeight = cardTitleBarHeight
+        + ggaMargins.top()
         + headerHeight
         + verticalSpacing
         + statusHeight
@@ -1199,7 +1243,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (log_group_ && log_layout_)
     {
         const QMargins logMargins = log_layout_->contentsMargins();
-        const int logGroupHeight = logMargins.top() + logTextHeight + logTextBottomGap + logMargins.bottom();
+        const int logGroupHeight = cardTitleBarHeight + logMargins.top() + logTextHeight + logTextBottomGap + logMargins.bottom();
         log_group_->setFixedHeight(logGroupHeight);
         log_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     }

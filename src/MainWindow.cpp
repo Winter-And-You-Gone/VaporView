@@ -342,20 +342,34 @@ QGroupBox {
     border-top: 40px solid #151a20;
     color: #d8dee9;
 }
-QDialog#rtkConfigDialog QGroupBox {
+QDialog#rtkConfigDialog,
+QWidget#rtkConfigViewport,
+QWidget#rtkConfigContent,
+QScrollArea#rtkConfigScrollArea {
+    background-color: #101418;
+}
+QDialog#rtkConfigDialog QGroupBox#rtkCardGroup {
     background-color: #151a20;
     border: 1px solid #2c3440;
-    border-top: 40px solid #151a20;
+    border-radius: 8px;
+    margin-top: 0px;
+    padding: 0px;
     color: #e5e7eb;
 }
-QDialog#rtkConfigDialog QGroupBox::title {
-    subcontrol-origin: border;
-    subcontrol-position: top left;
-    left: 16px;
-    top: 10px;
-    color: #e5e7eb;
+QDialog#rtkConfigDialog QGroupBox#rtkCardGroup::title {
+    color: transparent;
+}
+QDialog#rtkConfigDialog QWidget#sectionTitleBar {
+    background-color: #151a20;
+    border: none;
+    border-bottom: 1px solid #2c3440;
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
+}
+QDialog#rtkConfigDialog QLabel#sectionTitleLabel {
     background-color: transparent;
     border: none;
+    color: #e5e7eb;
 }
 QGroupBox#sensorGroupBox,
 QWidget#sectionTitleBar,
@@ -2505,8 +2519,11 @@ void MainWindow::loadModernStyleSheet()
             "QGroupBox { background-color: #fbfcfe; border: 1px solid #dfe4ea; border-top: 40px solid #ffffff; border-radius: 8px; margin-top: 0px; padding: 8px 8px 8px 8px; font-size: 15px; font-weight: bold; color: #000000; }"
             "QGroupBox#sensorGroupBox { margin-top: 0px; background-color: #ffffff; border: 1px solid #dfe4ea; padding: 0px 0px 0px 0px; }"
             "QGroupBox::title { subcontrol-origin: border; subcontrol-position: top left; left: 12px; top: -30px; padding: 0px 2px; background-color: transparent; border: none; border-radius: 0px; color: #000000; }"
-            "QDialog#rtkConfigDialog QGroupBox { background-color: #fbfcfe; border: 1px solid #dfe4ea; border-top: 40px solid #ffffff; border-radius: 8px; margin-top: 0px; padding: 0px; color: #000000; }"
-            "QDialog#rtkConfigDialog QGroupBox::title { subcontrol-origin: border; subcontrol-position: top left; left: 16px; top: 10px; padding: 0px 2px; background-color: transparent; border: none; border-radius: 0px; color: #000000; font-size: 16px; font-weight: bold; }"
+            "QDialog#rtkConfigDialog, QWidget#rtkConfigViewport, QWidget#rtkConfigContent, QScrollArea#rtkConfigScrollArea { background-color: #f5f5f5; }"
+            "QDialog#rtkConfigDialog QGroupBox#rtkCardGroup { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 8px; margin-top: 0px; padding: 0px; color: #000000; }"
+            "QDialog#rtkConfigDialog QGroupBox#rtkCardGroup::title { color: transparent; }"
+            "QDialog#rtkConfigDialog QWidget#sectionTitleBar { background-color: #ffffff; border: none; border-bottom: 1px solid #dfe4ea; border-top-left-radius: 7px; border-top-right-radius: 7px; }"
+            "QDialog#rtkConfigDialog QLabel#sectionTitleLabel { background-color: transparent; border: none; color: #000000; }"
             "QWidget#sectionTitleBar { background-color: #ffffff; border-bottom: 1px solid #dfe4ea; border-top-left-radius: 7px; border-top-right-radius: 7px; min-height: 40px; max-height: 40px; }"
             "QWidget#sectionTitleBar QLabel { background-color: transparent; border: none; }"
             "QLabel { color: #000000; background-color: transparent; border: none; }"

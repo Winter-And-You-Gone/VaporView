@@ -102,6 +102,7 @@ private:
     bool parseMainAntennaLeverArm(double *x, double *y, double *z, QString *errorMessage = nullptr) const;
     QString mainAntennaLeverArmHelpText() const;
     void applyDetectedOutputAndGgaPort(const QString& portName, const QString& baudText);
+    QVBoxLayout *createCardLayout(QGroupBox *group, QLabel *&titleLabel);
 
     QVBoxLayout *main_layout_;
     QGridLayout *config_layout_;
@@ -118,6 +119,10 @@ private:
     QGroupBox *output_group_;
     QGroupBox *gga_group_;
     QGroupBox *log_group_;
+    QLabel *config_title_label_;
+    QLabel *output_title_label_;
+    QLabel *gga_title_label_;
+    QLabel *log_title_label_;
     QWidget *gga_text_container_;
     QWidget *log_text_container_;
     QLabel *server_label_;
