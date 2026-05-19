@@ -357,10 +357,14 @@ QLabel#rateLabel,
 QLabel#separatorLabel {
     color: #9aa6b2;
 }
+QFrame#epsilonSectionCard {
+    background-color: #151a20;
+    border: 1px solid #2c3440;
+}
 QLabel#epsilonSectionLabel {
     color: #d8dee9;
     background-color: #18202a;
-    border-top: 1px solid #2c3440;
+    border: none;
     border-bottom: 1px solid #2c3440;
     font-weight: 700;
 }
@@ -1094,11 +1098,34 @@ private:
         QFont font = label->font();
         font.setBold(true);
         label->setFont(font);
-        label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        label->setAlignment(Qt::AlignCenter);
         layout->addWidget(label, row, column * 2, 1, 2);
         section_labels_.insert(key, label);
         section_zh_.insert(key, zhTitle);
         section_en_.insert(key, enTitle);
+    }
+
+    QGridLayout *addSectionCard(QVBoxLayout *columnLayout,
+                                const QString& key,
+                                const QString& zhTitle,
+                                const QString& enTitle)
+    {
+        auto *card = new QFrame(this);
+        card->setObjectName(QStringLiteral("epsilonSectionCard"));
+        card->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+
+        auto *cardLayout = new QGridLayout(card);
+        cardLayout->setContentsMargins(2, 2, 2, 2);
+        cardLayout->setHorizontalSpacing(6);
+        cardLayout->setVerticalSpacing(2);
+        cardLayout->setColumnMinimumWidth(0, kEpsilonTitleColumnWidth);
+        cardLayout->setColumnMinimumWidth(1, kEpsilonValueColumnMinWidth);
+        cardLayout->setColumnStretch(0, 0);
+        cardLayout->setColumnStretch(1, 1);
+
+        addSection(cardLayout, 0, 0, key, zhTitle, enTitle);
+        columnLayout->addWidget(card);
+        return cardLayout;
     }
 
     void addField(QGridLayout *layout,
@@ -1130,7 +1157,7 @@ private:
     void setupUi()
     {
         auto *layout = new QVBoxLayout(this);
-        layout->setContentsMargins(8, 2, 8, 6);
+        layout->setContentsMargins(2, 2, 2, 2);
         layout->setSpacing(2);
 
         if (!rate_label_)
@@ -1140,44 +1167,55 @@ private:
             layout->addWidget(rate_label_, 0, Qt::AlignLeft);
         }
 
-        auto *grid = new QGridLayout();
-        grid->setHorizontalSpacing(12);
-        grid->setVerticalSpacing(2);
-        for (int column = 0; column < 3; ++column)
+        auto *columnsLayout = new QHBoxLayout();
+        columnsLayout->setContentsMargins(0, 0, 0, 0);
+        columnsLayout->setSpacing(2);
+
+        auto createColumn = [columnsLayout]() {
+            auto *columnLayout = new QVBoxLayout();
+            columnLayout->setContentsMargins(0, 0, 0, 0);
+            columnLayout->setSpacing(2);
+            columnsLayout->addLayout(columnLayout, 1);
+            return columnLayout;
+        };
+
+        QVBoxLayout *leftColumn = createColumn();
+        QVBoxLayout *middleColumn = createColumn();
+        QVBoxLayout *rightColumn = createColumn();
+
+        QGridLayout *runGrid = addSectionCard(leftColumn, QStringLiteral("run"), QStringLiteral("数据状态"), QStringLiteral("Data Status"));
+        int row = 1;
+        addField(runGrid, row++, 0, QStringLiteral("time_utc"), QStringLiteral("UTC时间:"), QStringLiteral("UTC Time:"));
+        addField(runGrid, row++, 0, QStringLiteral("device_ts"), QStringLiteral("设备时间戳:"), QStringLiteral("Device Timestamp:"));
+        addField(runGrid, row++, 0, QStringLiteral("frames"), QStringLiteral("原始帧/丢帧:"), QStringLiteral("Raw/Dropped Frames:"));
+
+        QGridLayout *healthGrid = addSectionCard(leftColumn, QStringLiteral("health"), QStringLiteral("系统健康"), QStringLiteral("System Health"));
+        row = 1;
+        addField(healthGrid, row++, 0, QStringLiteral("status_bits"), QStringLiteral("系统状态:"), QStringLiteral("System Status:"));
+        addField(healthGrid, row++, 0, QStringLiteral("filter_bits"), QStringLiteral("滤波状态:"), QStringLiteral("Filter Status:"));
+        addField(healthGrid, row++, 0, QStringLiteral("heading_valid"), QStringLiteral("航向有效:"), QStringLiteral("Heading Valid:"));
+
+        QGridLayout *positionGrid = addSectionCard(middleColumn, QStringLiteral("position"), QStringLiteral("定位状态"), QStringLiteral("Position Status"));
+        row = 1;
+        addField(positionGrid, row++, 0, QStringLiteral("fix"), QStringLiteral("GNSS状态:"), QStringLiteral("GNSS Fix:"));
+        addField(positionGrid, row++, 0, QStringLiteral("sat"), QStringLiteral("卫星数:"), QStringLiteral("Satellites:"));
+        addField(positionGrid, row++, 0, QStringLiteral("lat"), QStringLiteral("纬度[deg]:"), QStringLiteral("Latitude [deg]:"));
+        addField(positionGrid, row++, 0, QStringLiteral("lon"), QStringLiteral("经度[deg]:"), QStringLiteral("Longitude [deg]:"));
+        addField(positionGrid, row++, 0, QStringLiteral("height"), QStringLiteral("高度[m]:"), QStringLiteral("Height [m]:"));
+        addField(positionGrid, row++, 0, QStringLiteral("acc"), QStringLiteral("hAcc / vAcc:"), QStringLiteral("hAcc / vAcc:"));
+
+        QGridLayout *motionGrid = addSectionCard(rightColumn, QStringLiteral("motion"), QStringLiteral("姿态与运动"), QStringLiteral("Attitude / Motion"));
+        row = 1;
+        addField(motionGrid, row++, 0, QStringLiteral("ned_vel"), QStringLiteral("NED速度[m/s]:"), QStringLiteral("NED Velocity [m/s]:"));
+        addField(motionGrid, row++, 0, QStringLiteral("imu_acc"), QStringLiteral("IMU加速度[m/s²]:"), QStringLiteral("IMU Accel [m/s²]:"));
+        addField(motionGrid, row++, 0, QStringLiteral("imu_gyr"), QStringLiteral("IMU角速度[rad/s]:"), QStringLiteral("IMU Gyro [rad/s]:"));
+        addField(motionGrid, row++, 0, QStringLiteral("rpy"), QStringLiteral("姿态角[deg]:"), QStringLiteral("Attitude [deg]:"));
+
+        for (QVBoxLayout *columnLayout : {leftColumn, middleColumn, rightColumn})
         {
-            grid->setColumnMinimumWidth(column * 2, kEpsilonTitleColumnWidth);
-            grid->setColumnMinimumWidth(column * 2 + 1, kEpsilonValueColumnMinWidth);
-            grid->setColumnStretch(column * 2, 0);
-            grid->setColumnStretch(column * 2 + 1, 1);
+            columnLayout->addStretch(1);
         }
-
-        int row = 0;
-        addSection(grid, row++, 0, QStringLiteral("run"), QStringLiteral("数据状态"), QStringLiteral("Data Status"));
-        addField(grid, row++, 0, QStringLiteral("time_utc"), QStringLiteral("UTC时间:"), QStringLiteral("UTC Time:"));
-        addField(grid, row++, 0, QStringLiteral("device_ts"), QStringLiteral("设备时间戳:"), QStringLiteral("Device Timestamp:"));
-        addField(grid, row++, 0, QStringLiteral("frames"), QStringLiteral("原始帧/丢帧:"), QStringLiteral("Raw/Dropped Frames:"));
-        addSection(grid, row++, 0, QStringLiteral("health"), QStringLiteral("系统健康"), QStringLiteral("System Health"));
-        addField(grid, row++, 0, QStringLiteral("status_bits"), QStringLiteral("系统状态:"), QStringLiteral("System Status:"));
-        addField(grid, row++, 0, QStringLiteral("filter_bits"), QStringLiteral("滤波状态:"), QStringLiteral("Filter Status:"));
-        addField(grid, row++, 0, QStringLiteral("heading_valid"), QStringLiteral("航向有效:"), QStringLiteral("Heading Valid:"));
-
-        row = 0;
-        addSection(grid, row++, 1, QStringLiteral("position"), QStringLiteral("定位状态"), QStringLiteral("Position Status"));
-        addField(grid, row++, 1, QStringLiteral("fix"), QStringLiteral("GNSS状态:"), QStringLiteral("GNSS Fix:"));
-        addField(grid, row++, 1, QStringLiteral("sat"), QStringLiteral("卫星数:"), QStringLiteral("Satellites:"));
-        addField(grid, row++, 1, QStringLiteral("lat"), QStringLiteral("纬度[deg]:"), QStringLiteral("Latitude [deg]:"));
-        addField(grid, row++, 1, QStringLiteral("lon"), QStringLiteral("经度[deg]:"), QStringLiteral("Longitude [deg]:"));
-        addField(grid, row++, 1, QStringLiteral("height"), QStringLiteral("高度[m]:"), QStringLiteral("Height [m]:"));
-        addField(grid, row++, 1, QStringLiteral("acc"), QStringLiteral("hAcc / vAcc:"), QStringLiteral("hAcc / vAcc:"));
-
-        row = 0;
-        addSection(grid, row++, 2, QStringLiteral("motion"), QStringLiteral("姿态与运动"), QStringLiteral("Attitude / Motion"));
-        addField(grid, row++, 2, QStringLiteral("ned_vel"), QStringLiteral("NED速度[m/s]:"), QStringLiteral("NED Velocity [m/s]:"));
-        addField(grid, row++, 2, QStringLiteral("imu_acc"), QStringLiteral("IMU加速度[m/s²]:"), QStringLiteral("IMU Accel [m/s²]:"));
-        addField(grid, row++, 2, QStringLiteral("imu_gyr"), QStringLiteral("IMU角速度[rad/s]:"), QStringLiteral("IMU Gyro [rad/s]:"));
-        addField(grid, row++, 2, QStringLiteral("rpy"), QStringLiteral("姿态角[deg]:"), QStringLiteral("Attitude [deg]:"));
-
-        layout->addLayout(grid, 0);
+        layout->addLayout(columnsLayout, 0);
         layout->addStretch(1);
     }
 
@@ -2425,7 +2463,8 @@ void MainWindow::loadModernStyleSheet()
             "QLabel { color: #333333; background-color: transparent; border: none; }"
             "QLabel#sectionTitleLabel { background-color: #ffffff; border: none; border-bottom: 1px solid #dfe4ea; border-radius: 0px; color: #1f2937; font-size: 16px; font-weight: bold; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
             "QWidget#sectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
-            "QLabel#epsilonSectionLabel { color: #4b5563; background-color: #f8fafc; border-top: 1px solid #dfe4ea; border-bottom: 1px solid #dfe4ea; font-size: 14px; font-weight: 700; padding: 3px 6px; }"
+            "QFrame#epsilonSectionCard { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 4px; }"
+            "QLabel#epsilonSectionLabel { color: #4b5563; background-color: #f8fafc; border: none; border-bottom: 1px solid #dfe4ea; font-size: 14px; font-weight: 700; padding: 2px 4px; }"
             "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 10px; min-height: 26px; max-height: 26px; color: #333333; font-size: 14px; }"
             "QComboBox:hover { border-color: #bdbdbd; }"
             "QComboBox:focus { border-color: #1976d2; border-width: 1px; }"
