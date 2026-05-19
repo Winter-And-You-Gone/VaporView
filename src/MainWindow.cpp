@@ -843,6 +843,14 @@ public:
         , rate_label_(nullptr)
         , is_english_(false)
         , total_rate_hz_(0.0)
+        , imu_packet_rate_hz_(0.0)
+        , ahrs_packet_rate_hz_(0.0)
+        , insgps_packet_rate_hz_(0.0)
+        , sys_state_packet_rate_hz_(0.0)
+        , raw_gnss_packet_rate_hz_(0.0)
+        , satellite_packet_rate_hz_(0.0)
+        , geodetic_packet_rate_hz_(0.0)
+        , ecef_packet_rate_hz_(0.0)
     {
         setupUi();
         setEnglish(false);
@@ -881,6 +889,14 @@ public:
         if (!epsilon_data.valid)
         {
             total_rate_hz_ = 0.0;
+            imu_packet_rate_hz_ = 0.0;
+            ahrs_packet_rate_hz_ = 0.0;
+            insgps_packet_rate_hz_ = 0.0;
+            sys_state_packet_rate_hz_ = 0.0;
+            raw_gnss_packet_rate_hz_ = 0.0;
+            satellite_packet_rate_hz_ = 0.0;
+            geodetic_packet_rate_hz_ = 0.0;
+            ecef_packet_rate_hz_ = 0.0;
             refreshRateLabel();
             for (QLabel *label : value_labels_)
             {
@@ -934,6 +950,14 @@ public:
         setValue(QStringLiteral("device_ts"), epsilon_data.device_timestamp_us > 0
             ? QStringLiteral("%1 us").arg(epsilon_data.device_timestamp_us)
             : QString());
+        imu_packet_rate_hz_ = epsilon_data.imu_packet_rate_hz;
+        ahrs_packet_rate_hz_ = epsilon_data.ahrs_packet_rate_hz;
+        insgps_packet_rate_hz_ = epsilon_data.insgps_packet_rate_hz;
+        sys_state_packet_rate_hz_ = epsilon_data.sys_state_packet_rate_hz;
+        raw_gnss_packet_rate_hz_ = epsilon_data.raw_gnss_packet_rate_hz;
+        satellite_packet_rate_hz_ = epsilon_data.satellite_packet_rate_hz;
+        geodetic_packet_rate_hz_ = epsilon_data.geodetic_packet_rate_hz;
+        ecef_packet_rate_hz_ = epsilon_data.ecef_packet_rate_hz;
         refreshRateLabel();
         setValue(QStringLiteral("fix"), QString::fromStdString(epsilon_data.gnss_fix_text));
         setValue(QStringLiteral("sat"), epsilon_data.gnss_satellites > 0 ? QString::number(epsilon_data.gnss_satellites) : QString());
@@ -1035,7 +1059,18 @@ private:
         const QString totalText = is_english_
             ? QStringLiteral("Total Rate: %1").arg(formatRateValue(total_rate_hz_))
             : QStringLiteral("总频率：%1").arg(formatRateValue(total_rate_hz_));
-        const QString text = totalText;
+        const QStringList parts = {
+            totalText,
+            QStringLiteral("40 %1").arg(formatRateValue(imu_packet_rate_hz_)),
+            QStringLiteral("41 %1").arg(formatRateValue(ahrs_packet_rate_hz_)),
+            QStringLiteral("42 %1").arg(formatRateValue(insgps_packet_rate_hz_)),
+            QStringLiteral("50 %1").arg(formatRateValue(sys_state_packet_rate_hz_)),
+            QStringLiteral("59 %1").arg(formatRateValue(raw_gnss_packet_rate_hz_)),
+            QStringLiteral("5A %1").arg(formatRateValue(satellite_packet_rate_hz_)),
+            QStringLiteral("5C %1").arg(formatRateValue(geodetic_packet_rate_hz_)),
+            QStringLiteral("5D %1").arg(formatRateValue(ecef_packet_rate_hz_)),
+        };
+        const QString text = parts.join(QStringLiteral("   |   "));
         rate_label_->setText(text);
         rate_label_->setToolTip(text);
     }
@@ -1142,6 +1177,14 @@ private:
     QHash<QString, QString> title_en_;
     bool is_english_;
     double total_rate_hz_;
+    double imu_packet_rate_hz_;
+    double ahrs_packet_rate_hz_;
+    double insgps_packet_rate_hz_;
+    double sys_state_packet_rate_hz_;
+    double raw_gnss_packet_rate_hz_;
+    double satellite_packet_rate_hz_;
+    double geodetic_packet_rate_hz_;
+    double ecef_packet_rate_hz_;
 };
 
 GnssPanel::GnssPanel(QWidget *parent)
