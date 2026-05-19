@@ -113,6 +113,7 @@ private:
     void resetFrameRateDisplay();
     void updateFrameRateDisplay(qint64 arrivalTimeMs);
     void updateLiveDisplay();
+    void updatePendingRemoteLiveStatus();
     void setStatusText(const QString& text);
     void clearRemoteWaveformDisplay(const QString& statusText = QString());
     void resetParserState();
@@ -165,6 +166,8 @@ private:
     QString pending_wave1_info_text_;
     QString pending_wave4_info_text_;
     QString pending_live_status_text_;
+    QString remote_waveform_status_text_;
+    QString remote_feature_status_text_;
     PeakFilterSettings peak_filter_settings_;
     int peak_search_start_index_;
     int peak_search_end_index_;

@@ -22,6 +22,7 @@
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QSpinBox>
+#include <QStringList>
 #include <QTcpSocket>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -628,6 +629,8 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , pending_wave1_info_text_()
     , pending_wave4_info_text_()
     , pending_live_status_text_()
+    , remote_waveform_status_text_()
+    , remote_feature_status_text_()
     , peak_filter_settings_()
     , peak_search_start_index_(kDefaultPeakSearchStartIndex)
     , peak_search_end_index_(kDefaultPeakSearchEndIndex)
@@ -1179,6 +1182,20 @@ void TcpWavePanel::updateLiveDisplay()
     }
 }
 
+void TcpWavePanel::updatePendingRemoteLiveStatus()
+{
+    QStringList parts;
+    if (!remote_waveform_status_text_.isEmpty())
+    {
+        parts << remote_waveform_status_text_;
+    }
+    if (!remote_feature_status_text_.isEmpty())
+    {
+        parts << remote_feature_status_text_;
+    }
+    pending_live_status_text_ = parts.join(QStringLiteral(" | "));
+}
+
 void TcpWavePanel::attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox)
 {
     if (!top_controls_layout_ || !label || !spinBox)
@@ -1284,10 +1301,9 @@ void TcpWavePanel::injectRemoteRawSignalFrame(quint64 timestampUs, const QVector
     wave1_history_ = samples;
     pending_wave1_info_text_ = QString(is_english_ ? "remote raw signal: %1 samples" : "远程原始信号：%1 点")
         .arg(samples.size());
-    if (peak_raw_history_.isEmpty())
-    {
-        pending_live_status_text_ = is_english_ ? "Remote raw waveform received" : "已接收远程原始信号";
-    }
+    remote_waveform_status_text_ = QString(is_english_ ? "Remote raw waveform: %1 samples" : "远程原始信号：%1 点")
+        .arg(samples.size());
+    updatePendingRemoteLiveStatus();
     live_display_dirty_ = true;
 }
 
@@ -1306,10 +1322,9 @@ void TcpWavePanel::injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QV
     updateFrameRateDisplay(QDateTime::currentMSecsSinceEpoch());
     pending_wave1_info_text_ = is_english_ ? "Remote Sky source" : "天空端远程源";
     pending_wave4_info_text_ = QString(is_english_ ? "%1 samples" : "%1 点").arg(samples.size());
-    if (peak_raw_history_.isEmpty())
-    {
-        pending_live_status_text_ = is_english_ ? "Remote waveform received" : "已接收远程波形";
-    }
+    remote_waveform_status_text_ = QString(is_english_ ? "Remote waveform: %1 samples" : "远程波形：%1 点")
+        .arg(samples.size());
+    updatePendingRemoteLiveStatus();
     live_display_dirty_ = true;
     emit normalizedSecondHarmonicFrameReady(timestampUs, wave4_history_);
 }
@@ -1330,8 +1345,9 @@ void TcpWavePanel::injectRemoteWaveformFeature(const VaporView::WaveformFeature&
             peak_raw_history_.remove(0, peak_raw_history_.size() - kPeakTrendFrameWindow);
         }
         rebuildPeakHistory();
-        pending_live_status_text_ = is_english_ ? "Remote feature missing or invalid; leaving a gap"
-                                                : "远程特征值缺失或无效，峰值趋势留空";
+        remote_feature_status_text_ = is_english_ ? "Remote feature: missing or invalid; leaving a gap"
+                                                  : "远程特征值：缺失或无效，峰值趋势留空";
+        updatePendingRemoteLiveStatus();
         live_display_dirty_ = true;
         return;
     }
@@ -1342,16 +1358,17 @@ void TcpWavePanel::injectRemoteWaveformFeature(const VaporView::WaveformFeature&
         peak_raw_history_.remove(0, peak_raw_history_.size() - kPeakTrendFrameWindow);
     }
     rebuildPeakHistory();
-    pending_live_status_text_ = QString(is_english_ ? "Remote feature: peak %1 rms %2" : "远程特征值：峰值 %1 RMS %2")
+    remote_feature_status_text_ = QString(is_english_ ? "Remote feature: peak %1 rms %2" : "远程特征值：峰值 %1 RMS %2")
         .arg(feature.peak, 0, 'g', 4)
         .arg(feature.rms, 0, 'g', 4);
     if (feature.search_start_index > 0 || feature.search_end_index > 0)
     {
-        pending_live_status_text_ += QString(is_english_ ? " | search [%1, %2), index %3" : " | 搜索区间 [%1, %2)，峰值下标 %3")
+        remote_feature_status_text_ += QString(is_english_ ? ", search [%1, %2), index %3" : "，搜索区间 [%1, %2)，峰值下标 %3")
             .arg(feature.search_start_index)
             .arg(feature.search_end_index == 0 ? QStringLiteral("end") : QString::number(feature.search_end_index))
             .arg(feature.peak_index, 0, 'f', 0);
     }
+    updatePendingRemoteLiveStatus();
     live_display_dirty_ = true;
 }
 
@@ -1731,6 +1748,8 @@ void TcpWavePanel::clearRemoteWaveformDisplay(const QString& statusText)
     pending_wave1_info_text_.clear();
     pending_wave4_info_text_.clear();
     pending_live_status_text_.clear();
+    remote_waveform_status_text_.clear();
+    remote_feature_status_text_.clear();
     if (wave1_plot_) wave1_plot_->setSamples({});
     if (wave4_plot_) wave4_plot_->setSamples({});
     if (peak_plot_) peak_plot_->setPeakValues({});
