@@ -1109,7 +1109,7 @@ private:
         value->setWordWrap(false);
         value->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         value->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
-        value->setMinimumHeight(22);
+        value->setMinimumHeight(20);
         value->setMinimumWidth(kEpsilonValueColumnMinWidth);
         layout->addWidget(title, row, column * 2);
         layout->addWidget(value, row, column * 2 + 1);
@@ -1122,8 +1122,8 @@ private:
     void setupUi()
     {
         auto *layout = new QVBoxLayout(this);
-        layout->setContentsMargins(8, 4, 8, 8);
-        layout->setSpacing(4);
+        layout->setContentsMargins(8, 2, 8, 6);
+        layout->setSpacing(2);
 
         if (!rate_label_)
         {
@@ -1134,7 +1134,7 @@ private:
 
         auto *grid = new QGridLayout();
         grid->setHorizontalSpacing(12);
-        grid->setVerticalSpacing(4);
+        grid->setVerticalSpacing(2);
         for (int column = 0; column < 3; ++column)
         {
             grid->setColumnMinimumWidth(column * 2, kEpsilonTitleColumnWidth);
@@ -1148,6 +1148,10 @@ private:
         addField(grid, row++, 0, QStringLiteral("time_utc"), QStringLiteral("UTC时间:"), QStringLiteral("UTC Time:"));
         addField(grid, row++, 0, QStringLiteral("device_ts"), QStringLiteral("设备时间戳:"), QStringLiteral("Device Timestamp:"));
         addField(grid, row++, 0, QStringLiteral("frames"), QStringLiteral("原始帧/丢帧:"), QStringLiteral("Raw/Dropped Frames:"));
+        addSection(grid, row++, 0, QStringLiteral("health"), QStringLiteral("系统健康"), QStringLiteral("System Health"));
+        addField(grid, row++, 0, QStringLiteral("status_bits"), QStringLiteral("系统状态:"), QStringLiteral("System Status:"));
+        addField(grid, row++, 0, QStringLiteral("filter_bits"), QStringLiteral("滤波状态:"), QStringLiteral("Filter Status:"));
+        addField(grid, row++, 0, QStringLiteral("heading_valid"), QStringLiteral("航向有效:"), QStringLiteral("Heading Valid:"));
 
         row = 0;
         addSection(grid, row++, 1, QStringLiteral("position"), QStringLiteral("定位状态"), QStringLiteral("Position Status"));
@@ -1164,10 +1168,6 @@ private:
         addField(grid, row++, 2, QStringLiteral("imu_acc"), QStringLiteral("IMU加速度[m/s²]:"), QStringLiteral("IMU Accel [m/s²]:"));
         addField(grid, row++, 2, QStringLiteral("imu_gyr"), QStringLiteral("IMU角速度[rad/s]:"), QStringLiteral("IMU Gyro [rad/s]:"));
         addField(grid, row++, 2, QStringLiteral("rpy"), QStringLiteral("姿态角[deg]:"), QStringLiteral("Attitude [deg]:"));
-        addSection(grid, row++, 2, QStringLiteral("health"), QStringLiteral("系统健康"), QStringLiteral("System Health"));
-        addField(grid, row++, 2, QStringLiteral("status_bits"), QStringLiteral("系统状态:"), QStringLiteral("System Status:"));
-        addField(grid, row++, 2, QStringLiteral("filter_bits"), QStringLiteral("滤波状态:"), QStringLiteral("Filter Status:"));
-        addField(grid, row++, 2, QStringLiteral("heading_valid"), QStringLiteral("航向有效:"), QStringLiteral("Heading Valid:"));
 
         layout->addLayout(grid, 0);
         layout->addStretch(1);
@@ -1744,35 +1744,35 @@ PtbPanel::PtbPanel(QWidget *parent)
 
 void PtbPanel::setupUi()
 {
+    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     auto *layout = new QVBoxLayout(this);
-    layout->setSpacing(3);
-    layout->setContentsMargins(6, 2, 6, 6);
+    layout->setSpacing(2);
+    layout->setContentsMargins(6, 1, 6, 4);
 
     rate_label_ = new QLabel(this);
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    rate_label_->setMinimumHeight(22);
-    layout->addWidget(rate_label_);
+    rate_label_->setMinimumHeight(20);
 
     auto *pressLayout = new QHBoxLayout();
     pressLayout->setSpacing(1);
     pressure_lbl_ = new QLabel(this);
     pressure_lbl_->setObjectName("fieldLabel");
-    pressure_lbl_->setMinimumHeight(22);
+    pressure_lbl_->setMinimumHeight(20);
     pressLayout->addWidget(pressure_lbl_);
     pressure_label_ = new QLabel("--- hPa", this);
     pressure_label_->setObjectName("highlightedValue");
-    pressure_label_->setMinimumHeight(22);
+    pressure_label_->setMinimumHeight(20);
     pressLayout->addWidget(pressure_label_);
     pressLayout->addStretch();
+    pressLayout->addWidget(rate_label_);
     layout->addLayout(pressLayout);
 
     status_label_ = new QLabel(this);
     status_label_->setObjectName("statusIndicator");
-    status_label_->setMinimumHeight(22);
+    status_label_->setMinimumHeight(20);
     layout->addWidget(status_label_);
 
-    layout->addStretch();
     setEnglish(false);
 }
 
@@ -1841,48 +1841,48 @@ HmpPanel::HmpPanel(QWidget *parent)
 
 void HmpPanel::setupUi()
 {
+    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     auto *layout = new QVBoxLayout(this);
-    layout->setSpacing(3);
-    layout->setContentsMargins(6, 2, 6, 6);
+    layout->setSpacing(2);
+    layout->setContentsMargins(6, 1, 6, 4);
 
     rate_label_ = new QLabel(this);
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    rate_label_->setMinimumHeight(22);
-    layout->addWidget(rate_label_);
+    rate_label_->setMinimumHeight(20);
 
     auto *tempLayout = new QHBoxLayout();
     tempLayout->setSpacing(1);
     temp_lbl_ = new QLabel(this);
     temp_lbl_->setObjectName("fieldLabel");
-    temp_lbl_->setMinimumHeight(22);
+    temp_lbl_->setMinimumHeight(20);
     tempLayout->addWidget(temp_lbl_);
     temperature_label_ = new QLabel("--- °C", this);
     temperature_label_->setObjectName("highlightedValue");
-    temperature_label_->setMinimumHeight(22);
+    temperature_label_->setMinimumHeight(20);
     tempLayout->addWidget(temperature_label_);
     tempLayout->addStretch();
+    tempLayout->addWidget(rate_label_);
     layout->addLayout(tempLayout);
 
     auto *humidLayout = new QHBoxLayout();
     humidLayout->setSpacing(1);
     humidity_lbl_ = new QLabel(this);
     humidity_lbl_->setObjectName("fieldLabel");
-    humidity_lbl_->setMinimumHeight(22);
+    humidity_lbl_->setMinimumHeight(20);
     humidLayout->addWidget(humidity_lbl_);
     humidity_label_ = new QLabel("--- %RH", this);
     humidity_label_->setObjectName("highlightedValue");
-    humidity_label_->setMinimumHeight(22);
+    humidity_label_->setMinimumHeight(20);
     humidLayout->addWidget(humidity_label_);
     humidLayout->addStretch();
     layout->addLayout(humidLayout);
 
     status_label_ = new QLabel(this);
     status_label_->setObjectName("statusIndicator");
-    status_label_->setMinimumHeight(22);
+    status_label_->setMinimumHeight(20);
     layout->addWidget(status_label_);
 
-    layout->addStretch();
     setEnglish(false);
 }
 
@@ -1961,46 +1961,47 @@ LidarPanel::LidarPanel(QWidget *parent)
 
 void LidarPanel::setupUi()
 {
+    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     auto *layout = new QVBoxLayout(this);
-    layout->setSpacing(3);
-    layout->setContentsMargins(6, 2, 6, 6);
+    layout->setSpacing(2);
+    layout->setContentsMargins(6, 1, 6, 4);
 
     rate_label_ = new QLabel("0.0 Hz", this);
     rate_label_->setObjectName("rateBadge");
-    layout->addWidget(rate_label_, 0, Qt::AlignRight);
+    rate_label_->setMinimumHeight(20);
 
     auto *distanceLayout = new QHBoxLayout();
     distanceLayout->setSpacing(1);
     distance_lbl_ = new QLabel(this);
     distance_lbl_->setObjectName("fieldLabel");
-    distance_lbl_->setMinimumHeight(22);
+    distance_lbl_->setMinimumHeight(20);
     distanceLayout->addWidget(distance_lbl_);
     distance_label_ = new QLabel("--- m", this);
     distance_label_->setObjectName("highlightedValue");
-    distance_label_->setMinimumHeight(22);
+    distance_label_->setMinimumHeight(20);
     distanceLayout->addWidget(distance_label_);
     distanceLayout->addStretch();
+    distanceLayout->addWidget(rate_label_);
     layout->addLayout(distanceLayout);
 
     auto *strengthLayout = new QHBoxLayout();
     strengthLayout->setSpacing(1);
     strength_lbl_ = new QLabel(this);
     strength_lbl_->setObjectName("fieldLabel");
-    strength_lbl_->setMinimumHeight(22);
+    strength_lbl_->setMinimumHeight(20);
     strengthLayout->addWidget(strength_lbl_);
     strength_label_ = new QLabel("---", this);
     strength_label_->setObjectName("valueLabel");
-    strength_label_->setMinimumHeight(22);
+    strength_label_->setMinimumHeight(20);
     strengthLayout->addWidget(strength_label_);
     strengthLayout->addStretch();
     layout->addLayout(strengthLayout);
 
     status_label_ = new QLabel(this);
     status_label_->setObjectName("statusIndicator");
-    status_label_->setMinimumHeight(22);
+    status_label_->setMinimumHeight(20);
     layout->addWidget(status_label_);
 
-    layout->addStretch();
     setEnglish(false);
 }
 
