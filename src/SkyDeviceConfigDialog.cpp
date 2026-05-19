@@ -147,6 +147,48 @@ void setupFormLayout(QFormLayout *layout)
     layout->setFieldGrowthPolicy(QFormLayout::FieldsStayAtSizeHint);
 }
 
+QFormLayout *createCardFormLayout(QGroupBox *group, const QString& title)
+{
+    group->setTitle(QString());
+
+    auto *cardLayout = new QVBoxLayout(group);
+    cardLayout->setContentsMargins(0, 0, 0, 0);
+    cardLayout->setSpacing(0);
+
+    auto *titleBar = new QWidget(group);
+    titleBar->setObjectName(QStringLiteral("skyConfigGroupTitleBar"));
+    titleBar->setFixedHeight(40);
+    auto *titleLayout = new QHBoxLayout(titleBar);
+    titleLayout->setContentsMargins(16, 0, 16, 0);
+    titleLayout->setSpacing(0);
+
+    auto *titleLabel = new QLabel(title, titleBar);
+    titleLabel->setObjectName(QStringLiteral("skyConfigGroupTitleLabel"));
+    titleLayout->addWidget(titleLabel);
+    titleLayout->addStretch();
+    cardLayout->addWidget(titleBar);
+
+    auto *body = new QWidget(group);
+    body->setObjectName(QStringLiteral("skyConfigGroupBody"));
+    auto *formLayout = new QFormLayout(body);
+    setupFormLayout(formLayout);
+    cardLayout->addWidget(body);
+    return formLayout;
+}
+
+void setCardTitle(QGroupBox *group, const QString& title)
+{
+    if (!group)
+    {
+        return;
+    }
+    group->setTitle(QString());
+    if (auto *titleLabel = group->findChild<QLabel*>(QStringLiteral("skyConfigGroupTitleLabel")))
+    {
+        titleLabel->setText(title);
+    }
+}
+
 bool isDarkApplicationPalette()
 {
     const QPalette palette = qApp->palette();
@@ -163,8 +205,10 @@ QString skyDeviceConfigStyleSheet(bool dark)
             "QDialog#skyDeviceConfigDialog QScrollArea { background-color: #f3f5f7; border: none; }"
             "QDialog#skyDeviceConfigDialog QScrollArea > QWidget { background-color: #f3f5f7; }"
             "QDialog#skyDeviceConfigDialog QWidget#skyConfigContent { background-color: #f3f5f7; }"
-            "QDialog#skyDeviceConfigDialog QGroupBox { background-color: #fbfcfe; border: 1px solid #dfe4ea; border-top: 40px solid #ffffff; border-radius: 8px; margin-top: 12px; padding: 8px; font-weight: bold; color: #1f2937; }"
-            "QDialog#skyDeviceConfigDialog QGroupBox::title { subcontrol-origin: border; subcontrol-position: top left; left: 14px; top: -30px; padding: 0 2px; background-color: transparent; border: none; border-radius: 0px; color: #1f2937; }"
+            "QDialog#skyDeviceConfigDialog QGroupBox { background-color: #fbfcfe; border: 1px solid #dfe4ea; border-radius: 8px; margin-top: 0px; padding: 0px; color: #1f2937; }"
+            "QDialog#skyDeviceConfigDialog QWidget#skyConfigGroupTitleBar { background-color: #ffffff; border-bottom: 1px solid #dfe4ea; border-top-left-radius: 7px; border-top-right-radius: 7px; }"
+            "QDialog#skyDeviceConfigDialog QLabel#skyConfigGroupTitleLabel { color: #1f2937; font-size: 15px; font-weight: bold; background-color: transparent; }"
+            "QDialog#skyDeviceConfigDialog QWidget#skyConfigGroupBody { background-color: transparent; }"
             "QDialog#skyDeviceConfigDialog QLabel { color: #1f2a35; }"
             "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle { background-color: #ffffff; color: #b42318; border: 1px solid #cbd5e1; border-radius: 5px; padding: 0; min-width: 30px; max-width: 30px; min-height: 30px; max-height: 30px; }"
             "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:hover { background-color: #f8fafc; border-color: #94a3b8; }"
@@ -179,8 +223,10 @@ QString skyDeviceConfigStyleSheet(bool dark)
         "QDialog#skyDeviceConfigDialog QScrollArea { background-color: #101418; border: none; }"
         "QDialog#skyDeviceConfigDialog QScrollArea > QWidget { background-color: #101418; }"
         "QDialog#skyDeviceConfigDialog QWidget#skyConfigContent { background-color: #101418; }"
-        "QDialog#skyDeviceConfigDialog QGroupBox { background-color: #151a20; border: 1px solid #2c3440; border-top: 40px solid #151a20; border-radius: 8px; margin-top: 12px; padding: 8px; font-weight: bold; color: #e5e7eb; }"
-        "QDialog#skyDeviceConfigDialog QGroupBox::title { subcontrol-origin: border; subcontrol-position: top left; left: 14px; top: -30px; padding: 0 2px; background-color: transparent; border: none; border-radius: 0px; color: #e5e7eb; }"
+        "QDialog#skyDeviceConfigDialog QGroupBox { background-color: #151a20; border: 1px solid #2c3440; border-radius: 8px; margin-top: 0px; padding: 0px; color: #e5e7eb; }"
+        "QDialog#skyDeviceConfigDialog QWidget#skyConfigGroupTitleBar { background-color: #151a20; border-bottom: 1px solid #2c3440; border-top-left-radius: 7px; border-top-right-radius: 7px; }"
+        "QDialog#skyDeviceConfigDialog QLabel#skyConfigGroupTitleLabel { color: #e5e7eb; font-size: 15px; font-weight: bold; background-color: transparent; }"
+        "QDialog#skyDeviceConfigDialog QWidget#skyConfigGroupBody { background-color: transparent; }"
         "QDialog#skyDeviceConfigDialog QLabel { color: #d8dee9; background-color: transparent; }"
         "QDialog#skyDeviceConfigDialog QLineEdit,"
         "QDialog#skyDeviceConfigDialog QComboBox,"
@@ -337,8 +383,7 @@ void SkyDeviceConfigDialog::setupUi()
 
     auto addSerialGroup = [this, deviceGrid](const QString& title, QGroupBox*& group, SerialRow& row, int rowIndex, int columnIndex) {
         group = new QGroupBox(title, this);
-        auto *layout = new QFormLayout(group);
-        setupFormLayout(layout);
+        auto *layout = createCardFormLayout(group, title);
         row = createSerialRow(layout, title);
         deviceGrid->addWidget(group, rowIndex, columnIndex);
     };
@@ -349,8 +394,7 @@ void SkyDeviceConfigDialog::setupUi()
     addSerialGroup(QStringLiteral("TFA1500-L"), lidar_group_, lidar_, 1, 0);
 
     wave_group_ = new QGroupBox(QStringLiteral("Wave TCP"), this);
-    auto *waveLayout = new QFormLayout(wave_group_);
-    setupFormLayout(waveLayout);
+    auto *waveLayout = createCardFormLayout(wave_group_, QStringLiteral("Wave TCP"));
     wave_enabled_ = new QPushButton(this);
     wave_enabled_->setObjectName(QStringLiteral("skyEnableToggle"));
     configureEnableToggleButton(wave_enabled_);
@@ -373,8 +417,7 @@ void SkyDeviceConfigDialog::setupUi()
     deviceGrid->addWidget(wave_group_, 1, 1);
 
     telemetry_group_ = new QGroupBox(QStringLiteral("数传配置"), this);
-    auto *telemetryLayout = new QFormLayout(telemetry_group_);
-    setupFormLayout(telemetryLayout);
+    auto *telemetryLayout = createCardFormLayout(telemetry_group_, QStringLiteral("数传配置"));
     auto makeRate = [this]() {
         auto *spin = new QDoubleSpinBox(this);
         spin->setRange(0.1, 200.0);
@@ -514,12 +557,12 @@ void SkyDeviceConfigDialog::updateTexts()
         if (row.baud_label) row.baud_label->setText(is_english_ ? QStringLiteral("Baud") : QStringLiteral("波特率"));
         if (row.frequency_label) row.frequency_label->setText(is_english_ ? QStringLiteral("Frequency Hz") : QStringLiteral("频率 Hz"));
     };
-    if (epsilon_group_) epsilon_group_->setTitle(QStringLiteral("EPSILON"));
-    if (ptb_group_) ptb_group_->setTitle(QStringLiteral("PTB210"));
-    if (hmp_group_) hmp_group_->setTitle(QStringLiteral("HMP3"));
-    if (lidar_group_) lidar_group_->setTitle(QStringLiteral("TFA1500-L"));
-    if (wave_group_) wave_group_->setTitle(QStringLiteral("Wave TCP"));
-    if (telemetry_group_) telemetry_group_->setTitle(is_english_ ? QStringLiteral("Telemetry") : QStringLiteral("数传配置"));
+    setCardTitle(epsilon_group_, QStringLiteral("EPSILON"));
+    setCardTitle(ptb_group_, QStringLiteral("PTB210"));
+    setCardTitle(hmp_group_, QStringLiteral("HMP3"));
+    setCardTitle(lidar_group_, QStringLiteral("TFA1500-L"));
+    setCardTitle(wave_group_, QStringLiteral("Wave TCP"));
+    setCardTitle(telemetry_group_, is_english_ ? QStringLiteral("Telemetry") : QStringLiteral("数传配置"));
     updateSerialLabels(epsilon_);
     updateSerialLabels(ptb_);
     updateSerialLabels(hmp_);
