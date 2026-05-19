@@ -2,6 +2,7 @@
 
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QEvent>
 #include <QFontMetrics>
 #include <QFile>
 #include <QFileInfo>
@@ -12,6 +13,7 @@
 #include <QJsonDocument>
 #include <QMessageBox>
 #include <QPainter>
+#include <QPalette>
 #include <QPixmap>
 #include <QScrollArea>
 #include <QSerialPortInfo>
@@ -144,6 +146,72 @@ void setupFormLayout(QFormLayout *layout)
     layout->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
     layout->setFieldGrowthPolicy(QFormLayout::FieldsStayAtSizeHint);
 }
+
+bool isDarkApplicationPalette()
+{
+    const QPalette palette = qApp->palette();
+    return palette.color(QPalette::Window).lightness() < 128 ||
+           palette.color(QPalette::Base).lightness() < 128;
+}
+
+QString skyDeviceConfigStyleSheet(bool dark)
+{
+    if (!dark)
+    {
+        return QStringLiteral(
+            "QDialog#skyDeviceConfigDialog { background-color: #f3f5f7; }"
+            "QDialog#skyDeviceConfigDialog QScrollArea { background-color: #f3f5f7; border: none; }"
+            "QDialog#skyDeviceConfigDialog QScrollArea > QWidget { background-color: #f3f5f7; }"
+            "QDialog#skyDeviceConfigDialog QWidget#skyConfigContent { background-color: #f3f5f7; }"
+            "QDialog#skyDeviceConfigDialog QGroupBox { background-color: #fbfcfe; border: 1px solid #dfe4ea; border-top: 40px solid #ffffff; border-radius: 8px; margin-top: 12px; padding: 8px; font-weight: bold; color: #1f2937; }"
+            "QDialog#skyDeviceConfigDialog QGroupBox::title { subcontrol-origin: border; subcontrol-position: top left; left: 14px; top: -30px; padding: 0 2px; background-color: transparent; border: none; border-radius: 0px; color: #1f2937; }"
+            "QDialog#skyDeviceConfigDialog QLabel { color: #1f2a35; }"
+            "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle { background-color: #ffffff; color: #b42318; border: 1px solid #cbd5e1; border-radius: 5px; padding: 0; min-width: 30px; max-width: 30px; min-height: 30px; max-height: 30px; }"
+            "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:hover { background-color: #f8fafc; border-color: #94a3b8; }"
+            "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked { background-color: #1976d2; color: #ffffff; border-color: #1976d2; }"
+            "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked:hover { background-color: #1565c0; border-color: #1565c0; }"
+            "QDialog#skyDeviceConfigDialog QPlainTextEdit { background-color: #ffffff; color: #111827; border: 1px solid #dfe4ea; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; selection-background-color: #e3f2fd; selection-color: #1976d2; }"
+        );
+    }
+
+    return QStringLiteral(
+        "QDialog#skyDeviceConfigDialog { background-color: #101418; }"
+        "QDialog#skyDeviceConfigDialog QScrollArea { background-color: #101418; border: none; }"
+        "QDialog#skyDeviceConfigDialog QScrollArea > QWidget { background-color: #101418; }"
+        "QDialog#skyDeviceConfigDialog QWidget#skyConfigContent { background-color: #101418; }"
+        "QDialog#skyDeviceConfigDialog QGroupBox { background-color: #151a20; border: 1px solid #2c3440; border-top: 40px solid #151a20; border-radius: 8px; margin-top: 12px; padding: 8px; font-weight: bold; color: #e5e7eb; }"
+        "QDialog#skyDeviceConfigDialog QGroupBox::title { subcontrol-origin: border; subcontrol-position: top left; left: 14px; top: -30px; padding: 0 2px; background-color: transparent; border: none; border-radius: 0px; color: #e5e7eb; }"
+        "QDialog#skyDeviceConfigDialog QLabel { color: #d8dee9; background-color: transparent; }"
+        "QDialog#skyDeviceConfigDialog QLineEdit,"
+        "QDialog#skyDeviceConfigDialog QComboBox,"
+        "QDialog#skyDeviceConfigDialog QSpinBox,"
+        "QDialog#skyDeviceConfigDialog QDoubleSpinBox { background-color: #10151b; border: 1px solid #323c48; border-radius: 6px; color: #e5e7eb; selection-background-color: #245b8f; selection-color: #ffffff; }"
+        "QDialog#skyDeviceConfigDialog QLineEdit:hover,"
+        "QDialog#skyDeviceConfigDialog QComboBox:hover,"
+        "QDialog#skyDeviceConfigDialog QSpinBox:hover,"
+        "QDialog#skyDeviceConfigDialog QDoubleSpinBox:hover { border-color: #4b5a68; }"
+        "QDialog#skyDeviceConfigDialog QLineEdit:focus,"
+        "QDialog#skyDeviceConfigDialog QComboBox:focus,"
+        "QDialog#skyDeviceConfigDialog QSpinBox:focus,"
+        "QDialog#skyDeviceConfigDialog QDoubleSpinBox:focus { border-color: #3b82f6; }"
+        "QDialog#skyDeviceConfigDialog QComboBox QAbstractItemView { background-color: #151a20; border: 1px solid #323c48; color: #e5e7eb; selection-background-color: #1f3f66; selection-color: #ffffff; }"
+        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle { background-color: #10151b; color: #f87171; border: 1px solid #323c48; border-radius: 5px; padding: 0; min-width: 30px; max-width: 30px; min-height: 30px; max-height: 30px; }"
+        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:hover { background-color: #1b222b; border-color: #4b5a68; }"
+        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked { background-color: #1976d2; color: #ffffff; border-color: #1976d2; }"
+        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked:hover { background-color: #1565c0; border-color: #1565c0; }"
+        "QDialog#skyDeviceConfigDialog QPlainTextEdit { background-color: #10151b; color: #e5e7eb; border: 1px solid #323c48; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; selection-background-color: #245b8f; selection-color: #ffffff; }"
+        "QDialog#skyDeviceConfigDialog QScrollBar:vertical,"
+        "QDialog#skyDeviceConfigDialog QScrollBar:horizontal { background-color: #111827; border-radius: 6px; }"
+        "QDialog#skyDeviceConfigDialog QScrollBar::handle:vertical,"
+        "QDialog#skyDeviceConfigDialog QScrollBar::handle:horizontal { background-color: #475569; border-radius: 6px; margin: 2px; }"
+        "QDialog#skyDeviceConfigDialog QScrollBar::handle:vertical:hover,"
+        "QDialog#skyDeviceConfigDialog QScrollBar::handle:horizontal:hover { background-color: #64748b; }"
+        "QDialog#skyDeviceConfigDialog QScrollBar::add-line:vertical,"
+        "QDialog#skyDeviceConfigDialog QScrollBar::sub-line:vertical { height: 0px; }"
+        "QDialog#skyDeviceConfigDialog QScrollBar::add-line:horizontal,"
+        "QDialog#skyDeviceConfigDialog QScrollBar::sub-line:horizontal { width: 0px; }"
+    );
+}
 }
 
 SkyDeviceConfigDialog::SkyDeviceConfigDialog(GroundTelemetryService *service, QWidget *parent)
@@ -229,29 +297,30 @@ void SkyDeviceConfigDialog::onApplyResultReceived(const QJsonObject& result)
     result_text_->setPlainText(QJsonDocument(result).toJson(QJsonDocument::Indented));
 }
 
+void SkyDeviceConfigDialog::changeEvent(QEvent *event)
+{
+    QDialog::changeEvent(event);
+    if (event->type() == QEvent::ApplicationPaletteChange || event->type() == QEvent::PaletteChange)
+    {
+        applyThemeStyle();
+    }
+}
+
 void SkyDeviceConfigDialog::setupUi()
 {
     setMinimumSize(980, 680);
     setObjectName(QStringLiteral("skyDeviceConfigDialog"));
-    setStyleSheet(QStringLiteral(
-        "QDialog#skyDeviceConfigDialog { background-color: #f3f5f7; }"
-        "QDialog#skyDeviceConfigDialog QGroupBox { background-color: #fbfcfe; border: 1px solid #dfe4ea; border-top: 40px solid #ffffff; border-radius: 8px; margin-top: 12px; padding: 8px; font-weight: bold; color: #1f2937; }"
-        "QDialog#skyDeviceConfigDialog QGroupBox::title { subcontrol-origin: border; subcontrol-position: top left; left: 14px; top: -30px; padding: 0 2px; background-color: transparent; border: none; border-radius: 0px; }"
-        "QDialog#skyDeviceConfigDialog QLabel { color: #1f2a35; }"
-        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle { background-color: #ffffff; color: #b42318; border: 1px solid #cbd5e1; border-radius: 5px; padding: 0; min-width: 30px; max-width: 30px; min-height: 30px; max-height: 30px; }"
-        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:hover { background-color: #f8fafc; border-color: #94a3b8; }"
-        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked { background-color: #1976d2; color: #ffffff; border-color: #1976d2; }"
-        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked:hover { background-color: #1565c0; border-color: #1565c0; }"
-        "QDialog#skyDeviceConfigDialog QPlainTextEdit { background-color: #ffffff; color: #111827; border: 1px solid #dfe4ea; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; selection-background-color: #e3f2fd; selection-color: #1976d2; }"
-    ));
+    applyThemeStyle();
     setFont(qApp->font());
     auto *root = new QVBoxLayout(this);
     root->setContentsMargins(18, 18, 18, 16);
     root->setSpacing(12);
 
     auto *scroll = new QScrollArea(this);
+    scroll->setObjectName(QStringLiteral("skyConfigScrollArea"));
     scroll->setWidgetResizable(true);
     auto *content = new QWidget(scroll);
+    content->setObjectName(QStringLiteral("skyConfigContent"));
     auto *contentLayout = new QVBoxLayout(content);
     contentLayout->setContentsMargins(8, 8, 8, 8);
     contentLayout->setSpacing(12);
@@ -347,6 +416,8 @@ void SkyDeviceConfigDialog::setupUi()
     buttonLayout->addStretch();
     buttonLayout->addWidget(close_button_);
     root->addLayout(buttonLayout);
+
+    applyThemeStyle();
 }
 
 SkyDeviceConfigDialog::SerialRow SkyDeviceConfigDialog::createSerialRow(QFormLayout *layout, const QString&)
@@ -541,6 +612,11 @@ void SkyDeviceConfigDialog::applyDynamicMetrics()
     {
         polishConfigField(field);
     }
+}
+
+void SkyDeviceConfigDialog::applyThemeStyle()
+{
+    setStyleSheet(skyDeviceConfigStyleSheet(isDarkApplicationPalette()));
 }
 
 }  // namespace VaporView

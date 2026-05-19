@@ -16,6 +16,8 @@
 #include <QPushButton>
 #include <QSpinBox>
 
+class QEvent;
+
 namespace VaporView
 {
 
@@ -35,6 +37,9 @@ private slots:
     void onSaveClicked();
     void onSkyConfigReceived(const QJsonObject& config);
     void onApplyResultReceived(const QJsonObject& result);
+
+protected:
+    void changeEvent(QEvent *event) override;
 
 private:
     struct SerialRow
@@ -60,6 +65,7 @@ private:
     void updateEnableButton(QPushButton *button);
     void updateConfigPreview();
     void applyDynamicMetrics();
+    void applyThemeStyle();
 
     GroundTelemetryService *service_;
     bool is_english_ = false;
