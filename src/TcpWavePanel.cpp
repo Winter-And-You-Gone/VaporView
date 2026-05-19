@@ -631,6 +631,8 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , pending_live_status_text_()
     , remote_waveform_status_text_()
     , remote_feature_status_text_()
+    , remote_feature_peak_text_width_(0)
+    , remote_feature_rms_text_width_(0)
     , peak_filter_settings_()
     , peak_search_start_index_(kDefaultPeakSearchStartIndex)
     , peak_search_end_index_(kDefaultPeakSearchEndIndex)
@@ -736,6 +738,7 @@ void TcpWavePanel::setupUi()
     top_controls_layout_->addStretch(1);
 
     status_label_ = new QLabel(this);
+    status_label_->setTextFormat(Qt::PlainText);
     status_label_->setWordWrap(true);
     control_layout_->addWidget(status_label_, 1, 0, 1, 6);
 
@@ -1269,8 +1272,20 @@ void TcpWavePanel::setRemoteWaveTcpState(VaporView::DeviceState state)
     }
     if (remote_sky_mode_)
     {
-        setStatusText(QString(is_english_ ? "Remote Sky wave TCP: %1" : "天空端波形 TCP：%1")
-                          .arg(VaporView::deviceStateName(state)));
+        const bool hasRemoteDataStatus = !remote_waveform_status_text_.isEmpty() || !remote_feature_status_text_.isEmpty();
+        if (remote_wave_tcp_connected_ && hasRemoteDataStatus)
+        {
+            updatePendingRemoteLiveStatus();
+            if (!pending_live_status_text_.isEmpty())
+            {
+                setStatusText(pending_live_status_text_);
+            }
+        }
+        else
+        {
+            setStatusText(QString(is_english_ ? "Remote Sky wave TCP: %1" : "天空端波形 TCP：%1")
+                              .arg(VaporView::deviceStateName(state)));
+        }
         if (!remote_wave_tcp_connected_ && wasConnected)
         {
             last_remote_feature_time_us_ = 0;
@@ -1358,9 +1373,17 @@ void TcpWavePanel::injectRemoteWaveformFeature(const VaporView::WaveformFeature&
         peak_raw_history_.remove(0, peak_raw_history_.size() - kPeakTrendFrameWindow);
     }
     rebuildPeakHistory();
+    auto formatRemoteFeatureValue = [](double value, int decimals, int& maxWidth) {
+        const QString text = std::isfinite(value)
+            ? QString::number(value, 'f', decimals)
+            : QStringLiteral("--");
+        maxWidth = std::max(maxWidth, static_cast<int>(text.size()));
+        return text.rightJustified(maxWidth, QLatin1Char(' '));
+    };
+    const QString peakText = formatRemoteFeatureValue(feature.peak, 6, remote_feature_peak_text_width_);
+    const QString rmsText = formatRemoteFeatureValue(feature.rms, 4, remote_feature_rms_text_width_);
     remote_feature_status_text_ = QString(is_english_ ? "Remote feature: peak %1 rms %2" : "远程特征值：峰值 %1 RMS %2")
-        .arg(feature.peak, 0, 'g', 4)
-        .arg(feature.rms, 0, 'g', 4);
+        .arg(peakText, rmsText);
     if (feature.search_start_index > 0 || feature.search_end_index > 0)
     {
         remote_feature_status_text_ += QString(is_english_ ? ", search [%1, %2), index %3" : "，搜索区间 [%1, %2)，峰值下标 %3")
@@ -1379,6 +1402,8 @@ void TcpWavePanel::applyRemotePeakSearchRange(quint32 startIndex, quint32 endInd
     peak_raw_history_.clear();
     peak_history_.clear();
     last_remote_feature_time_us_ = 0;
+    remote_feature_peak_text_width_ = 0;
+    remote_feature_rms_text_width_ = 0;
     if (peak_plot_)
     {
         peak_plot_->setPeakValues({});
@@ -1731,7 +1756,10 @@ void TcpWavePanel::setConnectedUiState(bool connected)
 
 void TcpWavePanel::setStatusText(const QString& text)
 {
-    status_label_->setText(text);
+    if (status_label_ && status_label_->text() != text)
+    {
+        status_label_->setText(text);
+    }
 }
 
 void TcpWavePanel::clearRemoteWaveformDisplay(const QString& statusText)
@@ -1750,6 +1778,8 @@ void TcpWavePanel::clearRemoteWaveformDisplay(const QString& statusText)
     pending_live_status_text_.clear();
     remote_waveform_status_text_.clear();
     remote_feature_status_text_.clear();
+    remote_feature_peak_text_width_ = 0;
+    remote_feature_rms_text_width_ = 0;
     if (wave1_plot_) wave1_plot_->setSamples({});
     if (wave4_plot_) wave4_plot_->setSamples({});
     if (peak_plot_) peak_plot_->setPeakValues({});
