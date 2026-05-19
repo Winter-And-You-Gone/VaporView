@@ -738,6 +738,7 @@ void TcpWavePanel::setupUi()
 
     hint_label_ = new QLabel(this);
     hint_label_->setWordWrap(true);
+    hint_label_->setVisible(false);
     control_layout_->addWidget(hint_label_, 2, 0, 1, 6);
 
     mainLayout->addLayout(control_layout_);
@@ -979,9 +980,8 @@ void TcpWavePanel::setEnglish(bool english)
     {
         peak_clear_button_->setText(english ? "Clear Trend" : "清空趋势");
     }
-    hint_label_->setText(english
-        ? "This TCP sender is likely single-client. Do not open the LabVIEW VI receiver and VaporView on port 8888 at the same time."
-        : "这个TCP发送端大概率只支持单客户端。不要同时打开 LabVIEW VI 接收端和 VaporView 去抢同一个 8888 连接。");
+    hint_label_->clear();
+    hint_label_->setVisible(false);
 
     wave1_info_label_->setText(english ? "waiting for raw-signal frame" : "等待原始信号数据帧");
     wave4_info_label_->setText(english ? "waiting for normalized second harmonic frame" : "等待归一化二次谐波数据帧");
@@ -1284,7 +1284,10 @@ void TcpWavePanel::injectRemoteRawSignalFrame(quint64 timestampUs, const QVector
     wave1_history_ = samples;
     pending_wave1_info_text_ = QString(is_english_ ? "remote raw signal: %1 samples" : "远程原始信号：%1 点")
         .arg(samples.size());
-    pending_live_status_text_ = is_english_ ? "Remote raw waveform received" : "已接收远程原始信号";
+    if (peak_raw_history_.isEmpty())
+    {
+        pending_live_status_text_ = is_english_ ? "Remote raw waveform received" : "已接收远程原始信号";
+    }
     live_display_dirty_ = true;
 }
 
@@ -1303,7 +1306,10 @@ void TcpWavePanel::injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QV
     updateFrameRateDisplay(QDateTime::currentMSecsSinceEpoch());
     pending_wave1_info_text_ = is_english_ ? "Remote Sky source" : "天空端远程源";
     pending_wave4_info_text_ = QString(is_english_ ? "%1 samples" : "%1 点").arg(samples.size());
-    pending_live_status_text_ = is_english_ ? "Remote waveform received" : "已接收远程波形";
+    if (peak_raw_history_.isEmpty())
+    {
+        pending_live_status_text_ = is_english_ ? "Remote waveform received" : "已接收远程波形";
+    }
     live_display_dirty_ = true;
     emit normalizedSecondHarmonicFrameReady(timestampUs, wave4_history_);
 }
