@@ -78,6 +78,7 @@ constexpr const char *kBaseMarginsBottomProperty = "_vv_base_margin_bottom";
 constexpr int kMainPageInputHeight = 36;
 constexpr int kMainPageButtonHeight = 36;
 constexpr int kMainPageTitleBarHeight = kMainPageButtonHeight + 4;
+constexpr int kEnvStatusIconSize = 18;
 constexpr int kEpsilonTitleColumnWidth = 135;
 constexpr int kEpsilonValueColumnMinWidth = 260;
 constexpr int kPtbMinSampleRateHz = 1;
@@ -1768,11 +1769,6 @@ void PtbPanel::setupUi()
     pressLayout->addWidget(rate_label_);
     layout->addLayout(pressLayout);
 
-    status_label_ = new QLabel(this);
-    status_label_->setObjectName("statusIndicator");
-    status_label_->setMinimumHeight(20);
-    layout->addWidget(status_label_);
-
     setEnglish(false);
 }
 
@@ -1790,12 +1786,10 @@ void PtbPanel::setEnglish(bool english)
     if (english)
     {
         pressure_lbl_->setText("Pressure:");
-        status_label_->setText("Waiting...");
     }
     else
     {
         pressure_lbl_->setText("气压:");
-        status_label_->setText("等待数据...");
     }
 }
 
@@ -1807,10 +1801,6 @@ void PtbPanel::updateData(const VaporView::PtbData& ptb_data)
         pressure_label_->setProperty("data-valid", true);
         pressure_label_->style()->unpolish(pressure_label_);
         pressure_label_->style()->polish(pressure_label_);
-        status_label_->setText(is_english_ ? "Valid" : "有效");
-        status_label_->setProperty("status", "connected");
-        status_label_->style()->unpolish(status_label_);
-        status_label_->style()->polish(status_label_);
     }
     else
     {
@@ -1818,11 +1808,6 @@ void PtbPanel::updateData(const VaporView::PtbData& ptb_data)
         pressure_label_->setProperty("data-valid", false);
         pressure_label_->style()->unpolish(pressure_label_);
         pressure_label_->style()->polish(pressure_label_);
-        const QString message = QString::fromStdString(ptb_data.error_message);
-        status_label_->setText(message.isEmpty() ? (is_english_ ? QStringLiteral("No data") : QStringLiteral("无数据")) : message);
-        status_label_->setProperty("status", "disconnected");
-        status_label_->style()->unpolish(status_label_);
-        status_label_->style()->polish(status_label_);
     }
 }
 
@@ -1878,11 +1863,6 @@ void HmpPanel::setupUi()
     humidLayout->addStretch();
     layout->addLayout(humidLayout);
 
-    status_label_ = new QLabel(this);
-    status_label_->setObjectName("statusIndicator");
-    status_label_->setMinimumHeight(20);
-    layout->addWidget(status_label_);
-
     setEnglish(false);
 }
 
@@ -1901,13 +1881,11 @@ void HmpPanel::setEnglish(bool english)
     {
         temp_lbl_->setText("Temp:");
         humidity_lbl_->setText("Humidity:");
-        status_label_->setText("Waiting...");
     }
     else
     {
         temp_lbl_->setText("温度:");
         humidity_lbl_->setText("湿度:");
-        status_label_->setText("等待数据...");
     }
 }
 
@@ -1923,10 +1901,6 @@ void HmpPanel::updateData(const VaporView::HmpData& hmp_data)
         humidity_label_->setProperty("data-valid", true);
         humidity_label_->style()->unpolish(humidity_label_);
         humidity_label_->style()->polish(humidity_label_);
-        status_label_->setText(is_english_ ? "Valid" : "有效");
-        status_label_->setProperty("status", "connected");
-        status_label_->style()->unpolish(status_label_);
-        status_label_->style()->polish(status_label_);
     }
     else
     {
@@ -1938,11 +1912,6 @@ void HmpPanel::updateData(const VaporView::HmpData& hmp_data)
         humidity_label_->setProperty("data-valid", false);
         humidity_label_->style()->unpolish(humidity_label_);
         humidity_label_->style()->polish(humidity_label_);
-        const QString message = QString::fromStdString(hmp_data.error_message);
-        status_label_->setText(message.isEmpty() ? (is_english_ ? QStringLiteral("No data") : QStringLiteral("无数据")) : message);
-        status_label_->setProperty("status", "disconnected");
-        status_label_->style()->unpolish(status_label_);
-        status_label_->style()->polish(status_label_);
     }
 }
 
@@ -1997,11 +1966,6 @@ void LidarPanel::setupUi()
     strengthLayout->addStretch();
     layout->addLayout(strengthLayout);
 
-    status_label_ = new QLabel(this);
-    status_label_->setObjectName("statusIndicator");
-    status_label_->setMinimumHeight(20);
-    layout->addWidget(status_label_);
-
     setEnglish(false);
 }
 
@@ -2020,13 +1984,11 @@ void LidarPanel::setEnglish(bool english)
     {
         distance_lbl_->setText("Distance:");
         strength_lbl_->setText("Strength:");
-        status_label_->setText("Waiting...");
     }
     else
     {
         distance_lbl_->setText("距离:");
         strength_lbl_->setText("强度:");
-        status_label_->setText("等待中...");
     }
 }
 
@@ -2039,10 +2001,6 @@ void LidarPanel::updateData(const VaporView::LidarData& lidar_data)
         distance_label_->setProperty("data-valid", true);
         distance_label_->style()->unpolish(distance_label_);
         distance_label_->style()->polish(distance_label_);
-        status_label_->setText(is_english_ ? "Valid" : "有效");
-        status_label_->setProperty("status", "connected");
-        status_label_->style()->unpolish(status_label_);
-        status_label_->style()->polish(status_label_);
     }
     else
     {
@@ -2051,11 +2009,6 @@ void LidarPanel::updateData(const VaporView::LidarData& lidar_data)
         distance_label_->setProperty("data-valid", false);
         distance_label_->style()->unpolish(distance_label_);
         distance_label_->style()->polish(distance_label_);
-        const QString message = QString::fromStdString(lidar_data.error_message);
-        status_label_->setText(message.isEmpty() ? (is_english_ ? QStringLiteral("No data") : QStringLiteral("无数据")) : message);
-        status_label_->setProperty("status", "disconnected");
-        status_label_->style()->unpolish(status_label_);
-        status_label_->style()->polish(status_label_);
     }
 }
 
@@ -2143,6 +2096,9 @@ MainWindow::MainWindow(QWidget *parent)
     , gnss_inline_title_lbl_(nullptr)
     , imu_inline_title_lbl_(nullptr)
     , env_inline_title_lbl_(nullptr)
+    , env_lidar_status_icon_(nullptr)
+    , env_ptb_status_icon_(nullptr)
+    , env_hmp_status_icon_(nullptr)
     , config_inline_title_lbl_(nullptr)
     , global_rate_lbl_(nullptr)
     , epsilon_rate_lbl_(nullptr)
@@ -3024,6 +2980,7 @@ void MainWindow::clearRemoteSkyDataUi()
     if (ptb_panel_) ptb_panel_->updateData(current_ptb_);
     if (hmp_panel_) hmp_panel_->updateData(current_hmp_);
     if (lidar_panel_) lidar_panel_->updateData(current_lidar_);
+    updateEnvironmentStatusIcons(false, false, false);
     updateSourceModeUi();
     updateRemoteTelemetrySummaryLabel();
     updateRecordingStatusLabel();
@@ -3196,6 +3153,30 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     data_telemetry_summary_lbl_->setToolTip(text);
 }
 
+void MainWindow::updateEnvironmentStatusIcons(bool lidarValid, bool ptbValid, bool hmpValid)
+{
+    auto updateIcon = [this](QLabel *label, bool valid, const QString& zhName, const QString& enName) {
+        if (!label)
+        {
+            return;
+        }
+        const QIcon icon = createLucideIcon(valid ? QStringLiteral("check") : QStringLiteral("circle-x"),
+                                            valid ? kToolbarGreen : kToolbarRed);
+        label->setPixmap(icon.pixmap(QSize(kEnvStatusIconSize, kEnvStatusIconSize)));
+        const QString name = is_english_ ? enName : zhName;
+        const QString state = valid
+            ? (is_english_ ? QStringLiteral("valid") : QStringLiteral("有效"))
+            : (is_english_ ? QStringLiteral("no data") : QStringLiteral("无数据"));
+        label->setToolTip(is_english_
+            ? QStringLiteral("%1: %2").arg(name, state)
+            : QStringLiteral("%1：%2").arg(name, state));
+    };
+
+    updateIcon(env_lidar_status_icon_, lidarValid, QStringLiteral("Lidar"), QStringLiteral("Lidar"));
+    updateIcon(env_ptb_status_icon_, ptbValid, QStringLiteral("PTB"), QStringLiteral("PTB"));
+    updateIcon(env_hmp_status_icon_, hmpValid, QStringLiteral("HMP"), QStringLiteral("HMP"));
+}
+
 void MainWindow::refreshRemoteSkyDataUi()
 {
     VaporView::EpsilonData epsilon = current_epsilon_;
@@ -3245,6 +3226,7 @@ void MainWindow::refreshRemoteSkyDataUi()
     if (ptb_panel_) ptb_panel_->updateData(ptb);
     if (hmp_panel_) hmp_panel_->updateData(hmp);
     if (lidar_panel_) lidar_panel_->updateData(lidar);
+    updateEnvironmentStatusIcons(lidarValid, ptbValid, hmpValid);
     updateRemoteTelemetrySummaryLabel();
 }
 
@@ -4299,9 +4281,35 @@ void MainWindow::setupDataPanels()
     auto *env_layout = new QVBoxLayout(env_group);
     env_layout->setContentsMargins(1, 0, 1, 1);
     env_layout->setSpacing(0);
-    env_inline_title_lbl_ = new QLabel(this);
+
+    auto *envTitleBar = new QWidget(env_group);
+    envTitleBar->setObjectName("sectionTitleBar");
+    envTitleBar->setFixedHeight(kMainPageTitleBarHeight);
+    auto *envTitleLayout = new QHBoxLayout(envTitleBar);
+    envTitleLayout->setContentsMargins(8, 2, 8, 2);
+    envTitleLayout->setSpacing(8);
+
+    env_inline_title_lbl_ = new QLabel(envTitleBar);
     env_inline_title_lbl_->setObjectName("sectionTitleLabel");
-    env_layout->addWidget(env_inline_title_lbl_);
+    env_inline_title_lbl_->setFixedHeight(kMainPageButtonHeight);
+    env_inline_title_lbl_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    envTitleLayout->addWidget(env_inline_title_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    envTitleLayout->addStretch(1);
+
+    auto createStatusIcon = [envTitleBar]() {
+        auto *label = new QLabel(envTitleBar);
+        label->setObjectName(QStringLiteral("fieldLabel"));
+        label->setAlignment(Qt::AlignCenter);
+        label->setFixedSize(kEnvStatusIconSize + 4, kEnvStatusIconSize + 4);
+        return label;
+    };
+    env_lidar_status_icon_ = createStatusIcon();
+    env_ptb_status_icon_ = createStatusIcon();
+    env_hmp_status_icon_ = createStatusIcon();
+    envTitleLayout->addWidget(env_lidar_status_icon_, 0, Qt::AlignVCenter);
+    envTitleLayout->addWidget(env_ptb_status_icon_, 0, Qt::AlignVCenter);
+    envTitleLayout->addWidget(env_hmp_status_icon_, 0, Qt::AlignVCenter);
+    env_layout->addWidget(envTitleBar);
 
     lidar_panel_ = new LidarPanel(this);
     env_layout->addWidget(lidar_panel_);
@@ -4311,6 +4319,7 @@ void MainWindow::setupDataPanels()
 
     hmp_panel_ = new HmpPanel(this);
     env_layout->addWidget(hmp_panel_);
+    updateEnvironmentStatusIcons(false, false, false);
 
     sensor_splitter->addWidget(env_group);
     sensor_splitter->setStretchFactor(0, 8);
@@ -4637,6 +4646,10 @@ void MainWindow::setEnglish(bool english)
     if (isRemoteSkyMode())
     {
         refreshRemoteSkyDataUi();
+    }
+    else
+    {
+        updateEnvironmentStatusIcons(current_lidar_.valid, current_ptb_.valid, current_hmp_.valid);
     }
     updateSourceModeUi();
     updateRecordingStatusLabel();
@@ -6790,6 +6803,7 @@ void MainWindow::onConnectClicked()
     if (ptb_panel_) ptb_panel_->updateData(current_ptb_);
     if (hmp_panel_) hmp_panel_->updateData(current_hmp_);
     if (lidar_panel_) lidar_panel_->updateData(current_lidar_);
+    updateEnvironmentStatusIcons(false, false, false);
 
     if (epsilon_panel_) epsilon_panel_->updateRate(0.0);
     if (ptb_panel_) ptb_panel_->updateRate(0.0);
@@ -7282,6 +7296,7 @@ void MainWindow::onRefreshTimer()
     if (ptb_panel_) ptb_panel_->updateData(current_ptb_);
     if (hmp_panel_) hmp_panel_->updateData(current_hmp_);
     if (lidar_panel_) lidar_panel_->updateData(current_lidar_);
+    updateEnvironmentStatusIcons(current_lidar_.valid, current_ptb_.valid, current_hmp_.valid);
 
     if (collectors.epsilon && epsilon_panel_)
     {

@@ -386,6 +386,7 @@ private:
     double remotePacketRate(VaporView::MsgType type) const;
     QString remoteTelemetrySummaryText() const;
     void updateRemoteTelemetrySummaryLabel();
+    void updateEnvironmentStatusIcons(bool lidarValid, bool ptbValid, bool hmpValid);
     void sendRemoteDeviceCommand(VaporView::CommandId command, VaporView::SkyDeviceId device);
     void sendRemotePeakSearchRange(quint32 startIndex, quint32 endIndex);
     QPushButton *createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device);
@@ -480,6 +481,9 @@ private:
     QLabel *gnss_inline_title_lbl_;
     QLabel *imu_inline_title_lbl_;
     QLabel *env_inline_title_lbl_;
+    QLabel *env_lidar_status_icon_;
+    QLabel *env_ptb_status_icon_;
+    QLabel *env_hmp_status_icon_;
     QLabel *config_inline_title_lbl_;
     QLabel *global_rate_lbl_;
     QLabel *epsilon_rate_lbl_;
