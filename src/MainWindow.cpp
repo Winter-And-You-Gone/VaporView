@@ -838,9 +838,9 @@ QString epsilonPacketDialogRowLabel(const EpsilonPacketConfigOption& option, boo
 class EpsilonPanel : public QWidget
 {
 public:
-    explicit EpsilonPanel(QWidget *parent = nullptr)
+    explicit EpsilonPanel(QLabel *rateLabel = nullptr, QWidget *parent = nullptr)
         : QWidget(parent)
-        , rate_label_(nullptr)
+        , rate_label_(rateLabel)
         , is_english_(false)
         , total_rate_hz_(0.0)
         , imu_packet_rate_hz_(0.0)
@@ -1126,9 +1126,12 @@ private:
         layout->setContentsMargins(8, 6, 8, 8);
         layout->setSpacing(6);
 
-        rate_label_ = new QLabel(this);
-        rate_label_->setObjectName(QStringLiteral("rateLabel"));
-        layout->addWidget(rate_label_, 0, Qt::AlignLeft);
+        if (!rate_label_)
+        {
+            rate_label_ = new QLabel(this);
+            rate_label_->setObjectName(QStringLiteral("rateLabel"));
+            layout->addWidget(rate_label_, 0, Qt::AlignLeft);
+        }
 
         auto *grid = new QGridLayout();
         grid->setHorizontalSpacing(12);
@@ -4252,10 +4255,31 @@ void MainWindow::setupDataPanels()
     auto *epsilon_layout = new QVBoxLayout(epsilon_group_);
     epsilon_layout->setContentsMargins(1, 0, 1, 1);
     epsilon_layout->setSpacing(0);
-    epsilon_inline_title_lbl_ = new QLabel(this);
+
+    auto *epsilonTitleBar = new QWidget(epsilon_group_);
+    epsilonTitleBar->setObjectName("sectionTitleBar");
+    epsilonTitleBar->setFixedHeight(kMainPageTitleBarHeight);
+    auto *epsilonTitleLayout = new QHBoxLayout(epsilonTitleBar);
+    epsilonTitleLayout->setContentsMargins(8, 2, 8, 2);
+    epsilonTitleLayout->setSpacing(8);
+
+    epsilon_inline_title_lbl_ = new QLabel(epsilonTitleBar);
     epsilon_inline_title_lbl_->setObjectName("sectionTitleLabel");
-    epsilon_layout->addWidget(epsilon_inline_title_lbl_);
-    epsilon_panel_ = new EpsilonPanel(this);
+    epsilon_inline_title_lbl_->setFixedHeight(kMainPageButtonHeight);
+    epsilon_inline_title_lbl_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    epsilonTitleLayout->addWidget(epsilon_inline_title_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+
+    auto *epsilonRateTitleLabel = new QLabel(epsilonTitleBar);
+    epsilonRateTitleLabel->setObjectName(QStringLiteral("rateLabel"));
+    epsilonRateTitleLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    epsilonRateTitleLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    epsilonRateTitleLabel->setWordWrap(false);
+    epsilonRateTitleLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    epsilonRateTitleLabel->setFixedHeight(kMainPageButtonHeight);
+    epsilonTitleLayout->addWidget(epsilonRateTitleLabel, 1, Qt::AlignVCenter);
+
+    epsilon_layout->addWidget(epsilonTitleBar);
+    epsilon_panel_ = new EpsilonPanel(epsilonRateTitleLabel, this);
     epsilon_layout->addWidget(epsilon_panel_);
     sensor_splitter->addWidget(epsilon_group_);
 
