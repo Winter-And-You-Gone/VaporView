@@ -616,7 +616,20 @@ void SkyDeviceConfigDialog::applyDynamicMetrics()
 
 void SkyDeviceConfigDialog::applyThemeStyle()
 {
-    setStyleSheet(skyDeviceConfigStyleSheet(isDarkApplicationPalette()));
+    if (applying_theme_style_)
+    {
+        return;
+    }
+
+    const QString nextStyleSheet = skyDeviceConfigStyleSheet(isDarkApplicationPalette());
+    if (styleSheet() == nextStyleSheet)
+    {
+        return;
+    }
+
+    applying_theme_style_ = true;
+    setStyleSheet(nextStyleSheet);
+    applying_theme_style_ = false;
 }
 
 }  // namespace VaporView

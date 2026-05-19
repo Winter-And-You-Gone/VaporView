@@ -69,6 +69,7 @@ private:
 
     GroundTelemetryService *service_;
     bool is_english_ = false;
+    bool applying_theme_style_ = false;
     int font_scale_percent_ = 100;
     SkyConfig current_config_;
     SerialRow epsilon_;
