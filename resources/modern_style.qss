@@ -173,6 +173,16 @@ QLabel#fieldLabel {
     font-weight: 600;
 }
 
+QLabel#epsilonSectionLabel {
+    color: #4b5563;
+    background-color: #f8fafc;
+    border-top: 1px solid #dfe4ea;
+    border-bottom: 1px solid #dfe4ea;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 3px 6px;
+}
+
 QLabel#sectionTitleLabel {
     background-color: #ffffff;
     border: none;

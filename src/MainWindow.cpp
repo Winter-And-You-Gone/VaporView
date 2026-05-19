@@ -357,6 +357,13 @@ QLabel#rateLabel,
 QLabel#separatorLabel {
     color: #9aa6b2;
 }
+QLabel#epsilonSectionLabel {
+    color: #d8dee9;
+    background-color: #18202a;
+    border-top: 1px solid #2c3440;
+    border-bottom: 1px solid #2c3440;
+    font-weight: 700;
+}
 QLabel#valueLabel {
     color: #8cc8ff;
     background-color: transparent;
@@ -1083,7 +1090,7 @@ private:
                     const QString& enTitle)
     {
         QLabel *label = new QLabel(this);
-        label->setObjectName(QStringLiteral("fieldLabel"));
+        label->setObjectName(QStringLiteral("epsilonSectionLabel"));
         QFont font = label->font();
         font.setBold(true);
         label->setFont(font);
@@ -1960,7 +1967,7 @@ void LidarPanel::setupUi()
     strength_lbl_->setMinimumHeight(20);
     strengthLayout->addWidget(strength_lbl_);
     strength_label_ = new QLabel("---", this);
-    strength_label_->setObjectName("valueLabel");
+    strength_label_->setObjectName("highlightedValue");
     strength_label_->setMinimumHeight(20);
     strengthLayout->addWidget(strength_label_);
     strengthLayout->addStretch();
@@ -1999,16 +2006,22 @@ void LidarPanel::updateData(const VaporView::LidarData& lidar_data)
         distance_label_->setText(QString::asprintf("%.2f m", lidar_data.distance_m));
         strength_label_->setText(QString::number(lidar_data.signal_strength));
         distance_label_->setProperty("data-valid", true);
+        strength_label_->setProperty("data-valid", true);
         distance_label_->style()->unpolish(distance_label_);
         distance_label_->style()->polish(distance_label_);
+        strength_label_->style()->unpolish(strength_label_);
+        strength_label_->style()->polish(strength_label_);
     }
     else
     {
         distance_label_->setText("--- m");
         strength_label_->setText("---");
         distance_label_->setProperty("data-valid", false);
+        strength_label_->setProperty("data-valid", false);
         distance_label_->style()->unpolish(distance_label_);
         distance_label_->style()->polish(distance_label_);
+        strength_label_->style()->unpolish(strength_label_);
+        strength_label_->style()->polish(strength_label_);
     }
 }
 
@@ -2412,6 +2425,7 @@ void MainWindow::loadModernStyleSheet()
             "QLabel { color: #333333; background-color: transparent; border: none; }"
             "QLabel#sectionTitleLabel { background-color: #ffffff; border: none; border-bottom: 1px solid #dfe4ea; border-radius: 0px; color: #1f2937; font-size: 16px; font-weight: bold; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
             "QWidget#sectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
+            "QLabel#epsilonSectionLabel { color: #4b5563; background-color: #f8fafc; border-top: 1px solid #dfe4ea; border-bottom: 1px solid #dfe4ea; font-size: 14px; font-weight: 700; padding: 3px 6px; }"
             "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 10px; min-height: 26px; max-height: 26px; color: #333333; font-size: 14px; }"
             "QComboBox:hover { border-color: #bdbdbd; }"
             "QComboBox:focus { border-color: #1976d2; border-width: 1px; }"
