@@ -908,15 +908,12 @@ public:
             }
             return;
         }
-        auto triple = [&](double a, double b, double c, int decimals = 6) {
-            if (!std::isfinite(a) || !std::isfinite(b) || !std::isfinite(c))
+        auto scalar = [](double value, int decimals) {
+            if (!std::isfinite(value))
             {
                 return QString();
             }
-            return QStringLiteral("[%1, %2, %3]")
-                .arg(a, 0, 'f', decimals)
-                .arg(b, 0, 'f', decimals)
-                .arg(c, 0, 'f', decimals);
+            return QString::number(value, 'f', decimals);
         };
         auto axisTriple = [&](const QString& firstLabel,
                               const QString& secondLabel,
@@ -961,7 +958,9 @@ public:
         refreshRateLabel();
         setValue(QStringLiteral("fix"), QString::fromStdString(epsilon_data.gnss_fix_text));
         setValue(QStringLiteral("sat"), epsilon_data.gnss_satellites > 0 ? QString::number(epsilon_data.gnss_satellites) : QString());
-        setValue(QStringLiteral("llh"), gnss_fix_valid ? triple(epsilon_data.latitude_deg, epsilon_data.longitude_deg, epsilon_data.height_m, 8) : QString());
+        setValue(QStringLiteral("lat"), gnss_fix_valid ? scalar(epsilon_data.latitude_deg, 8) : QString());
+        setValue(QStringLiteral("lon"), gnss_fix_valid ? scalar(epsilon_data.longitude_deg, 8) : QString());
+        setValue(QStringLiteral("height"), gnss_fix_valid ? scalar(epsilon_data.height_m, 3) : QString());
         setValue(QStringLiteral("ned_vel"), gnss_fix_valid
             ? axisTriple(QStringLiteral("N"), QStringLiteral("E"), QStringLiteral("D"),
                   epsilon_data.vel_n_mps, epsilon_data.vel_e_mps, epsilon_data.vel_d_mps, 3)
@@ -1153,7 +1152,9 @@ private:
         addSection(grid, row++, 0, QStringLiteral("position"), QStringLiteral("定位状态"), QStringLiteral("Position Status"));
         addField(grid, row++, 0, QStringLiteral("fix"), QStringLiteral("GNSS状态:"), QStringLiteral("GNSS Fix:"));
         addField(grid, row++, 0, QStringLiteral("sat"), QStringLiteral("卫星数:"), QStringLiteral("Satellites:"));
-        addField(grid, row++, 0, QStringLiteral("llh"), QStringLiteral("经纬高[deg,m]:"), QStringLiteral("LLH [deg,m]:"));
+        addField(grid, row++, 0, QStringLiteral("lat"), QStringLiteral("纬度[deg]:"), QStringLiteral("Latitude [deg]:"));
+        addField(grid, row++, 0, QStringLiteral("lon"), QStringLiteral("经度[deg]:"), QStringLiteral("Longitude [deg]:"));
+        addField(grid, row++, 0, QStringLiteral("height"), QStringLiteral("高度[m]:"), QStringLiteral("Height [m]:"));
         addField(grid, row++, 0, QStringLiteral("acc"), QStringLiteral("hAcc / vAcc:"), QStringLiteral("hAcc / vAcc:"));
 
         row = 0;
