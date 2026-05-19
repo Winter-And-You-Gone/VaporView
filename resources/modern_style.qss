@@ -140,6 +140,30 @@ QGroupBox::title {
     font-weight: bold;
 }
 
+QDialog#rtkConfigDialog QGroupBox {
+    background-color: #fbfcfe;
+    border: 1px solid #dfe4ea;
+    border-top: 40px solid #ffffff;
+    border-radius: 8px;
+    margin-top: 0px;
+    padding: 0px;
+    color: #000000;
+}
+
+QDialog#rtkConfigDialog QGroupBox::title {
+    subcontrol-origin: border;
+    subcontrol-position: top left;
+    left: 16px;
+    top: 10px;
+    padding: 0px 2px;
+    background-color: transparent;
+    border: none;
+    border-radius: 0px;
+    color: #000000;
+    font-size: 16px;
+    font-weight: bold;
+}
+
 QWidget#sectionTitleBar {
     background-color: #ffffff;
     border-bottom: 1px solid #dfe4ea;
@@ -223,6 +247,11 @@ QLabel#separatorLabel {
     font-weight: bold;
     padding: 0px;
     margin: 0px;
+}
+
+QLabel#rtkStatusLabel {
+    color: #000000;
+    font-weight: bold;
 }
 
 /* 下拉框 */

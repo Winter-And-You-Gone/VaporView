@@ -342,6 +342,21 @@ QGroupBox {
     border-top: 40px solid #151a20;
     color: #d8dee9;
 }
+QDialog#rtkConfigDialog QGroupBox {
+    background-color: #151a20;
+    border: 1px solid #2c3440;
+    border-top: 40px solid #151a20;
+    color: #e5e7eb;
+}
+QDialog#rtkConfigDialog QGroupBox::title {
+    subcontrol-origin: border;
+    subcontrol-position: top left;
+    left: 16px;
+    top: 10px;
+    color: #e5e7eb;
+    background-color: transparent;
+    border: none;
+}
 QGroupBox#sensorGroupBox,
 QWidget#sectionTitleBar,
 QLabel#sectionTitleLabel {
@@ -356,6 +371,10 @@ QLabel#fieldLabel,
 QLabel#rateLabel,
 QLabel#separatorLabel {
     color: #9aa6b2;
+}
+QLabel#rtkStatusLabel {
+    color: #d8dee9;
+    font-weight: bold;
 }
 QFrame#epsilonSectionCard {
     background-color: #151a20;
@@ -2486,12 +2505,15 @@ void MainWindow::loadModernStyleSheet()
             "QGroupBox { background-color: #fbfcfe; border: 1px solid #dfe4ea; border-top: 40px solid #ffffff; border-radius: 8px; margin-top: 0px; padding: 8px 8px 8px 8px; font-size: 15px; font-weight: bold; color: #000000; }"
             "QGroupBox#sensorGroupBox { margin-top: 0px; background-color: #ffffff; border: 1px solid #dfe4ea; padding: 0px 0px 0px 0px; }"
             "QGroupBox::title { subcontrol-origin: border; subcontrol-position: top left; left: 12px; top: -30px; padding: 0px 2px; background-color: transparent; border: none; border-radius: 0px; color: #000000; }"
+            "QDialog#rtkConfigDialog QGroupBox { background-color: #fbfcfe; border: 1px solid #dfe4ea; border-top: 40px solid #ffffff; border-radius: 8px; margin-top: 0px; padding: 0px; color: #000000; }"
+            "QDialog#rtkConfigDialog QGroupBox::title { subcontrol-origin: border; subcontrol-position: top left; left: 16px; top: 10px; padding: 0px 2px; background-color: transparent; border: none; border-radius: 0px; color: #000000; font-size: 16px; font-weight: bold; }"
             "QWidget#sectionTitleBar { background-color: #ffffff; border-bottom: 1px solid #dfe4ea; border-top-left-radius: 7px; border-top-right-radius: 7px; min-height: 40px; max-height: 40px; }"
             "QWidget#sectionTitleBar QLabel { background-color: transparent; border: none; }"
             "QLabel { color: #000000; background-color: transparent; border: none; }"
             "QLabel#rateLabel { color: #000000; font-size: 13px; font-weight: bold; }"
             "QLabel#fieldLabel { color: #000000; font-size: 14px; font-weight: 600; }"
             "QLabel#separatorLabel { color: #000000; font-size: 14px; font-weight: bold; }"
+            "QLabel#rtkStatusLabel { color: #000000; font-weight: bold; }"
             "QLabel#sectionTitleLabel { background-color: #ffffff; border: none; border-bottom: 1px solid #dfe4ea; border-radius: 0px; color: #000000; font-size: 16px; font-weight: bold; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
             "QWidget#sectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
             "QFrame#epsilonSectionCard { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 4px; }"

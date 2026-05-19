@@ -635,6 +635,12 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , gga_has_sentence_time_(false)
     , gga_monitor_enabled_(false)
 {
+    setObjectName(QStringLiteral("rtkConfigDialog"));
+    setWindowFlags(windowFlags()
+                   | Qt::WindowMinimizeButtonHint
+                   | Qt::WindowMaximizeButtonHint);
+    setSizeGripEnabled(true);
+
     setupUi();
     loadSettings();
     setFontScale(100);
@@ -947,9 +953,9 @@ void RtkConfigDialog::setupUi()
     main_layout_->addWidget(log_group_);
 
     status_label_ = new QLabel(this);
+    status_label_->setObjectName(QStringLiteral("rtkStatusLabel"));
     status_label_->setWordWrap(false);
     status_label_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    status_label_->setStyleSheet("QLabel { color: #666666; font-weight: bold; }");
     main_layout_->addWidget(status_label_);
 }
 
@@ -1119,7 +1125,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
         const int helpSize = scalePixels(22);
         main_antenna_lever_help_btn_->setFixedSize(helpSize, helpSize);
         main_antenna_lever_help_btn_->setStyleSheet(QString(
-            "QToolButton { border: 1px solid #9e9e9e; border-radius: %1px; color: #555555; font-weight: bold; }"
+            "QToolButton { border: 1px solid #9e9e9e; border-radius: %1px; color: #000000; font-weight: bold; }"
             "QToolButton:hover { background: #eeeeee; }")
             .arg(helpSize / 2));
     }
@@ -1462,7 +1468,7 @@ void RtkConfigDialog::updateButtonStates()
     else
     {
         status_label_->setText(textFor("Status: Stopped", "状态: 已停止"));
-        status_label_->setStyleSheet("QLabel { color: #666666; font-weight: bold; }");
+        status_label_->setStyleSheet(QString());
     }
 }
 
