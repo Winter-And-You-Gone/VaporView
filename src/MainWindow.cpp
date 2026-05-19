@@ -3246,7 +3246,7 @@ QString MainWindow::remoteTelemetrySummaryText() const
                   << QStringLiteral("特征值：%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformFeature), 0, 'f', 1)
                   << QStringLiteral("波形包：%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformDownsampled), 0, 'f', 1)
                   << QStringLiteral("状态：%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryStatus), 0, 'f', 1)
-                  << QStringLiteral("Wave TCP 实际：%1").arg(actualWaveRate);
+                  << QStringLiteral("波形 TCP 实际：%1").arg(actualWaveRate);
         rightLines << QStringLiteral("链路速率")
                    << QStringLiteral("天空→地面：%1").arg(formatBitRate(rxBps))
                    << QStringLiteral("地面→天空：%1").arg(formatBitRate(txBps))
@@ -3256,13 +3256,15 @@ QString MainWindow::remoteTelemetrySummaryText() const
                    << QStringLiteral("PTB：%1").arg(hasText(VaporView::SkyDeviceId::Ptb, 3000))
                    << QStringLiteral("HMP：%1").arg(hasText(VaporView::SkyDeviceId::Hmp, 3000))
                    << QStringLiteral("Lidar：%1").arg(hasText(VaporView::SkyDeviceId::Lidar, 2000))
-                   << QStringLiteral("Wave：%1").arg(hasText(VaporView::SkyDeviceId::WaveTcp, 3000));
+                   << QStringLiteral("波形：%1").arg(hasText(VaporView::SkyDeviceId::WaveTcp, 3000));
     }
 
+    constexpr int kTelemetrySummaryLeftColumnWidth = 240;
     return QStringLiteral("<table cellspacing=\"0\" cellpadding=\"0\"><tr>"
-                          "<td valign=\"top\">%1</td><td width=\"24\"></td>"
+                          "<td valign=\"top\" width=\"%3\" style=\"width:%3px;\">%1</td><td width=\"24\"></td>"
                           "<td valign=\"top\">%2</td></tr></table>")
-        .arg(joinHtmlLines(leftLines), joinHtmlLines(rightLines));
+        .arg(joinHtmlLines(leftLines), joinHtmlLines(rightLines))
+        .arg(kTelemetrySummaryLeftColumnWidth);
 }
 
 void MainWindow::updateRemoteTelemetrySummaryLabel()
