@@ -1123,8 +1123,8 @@ private:
     void setupUi()
     {
         auto *layout = new QVBoxLayout(this);
-        layout->setContentsMargins(8, 6, 8, 8);
-        layout->setSpacing(6);
+        layout->setContentsMargins(8, 4, 8, 8);
+        layout->setSpacing(4);
 
         if (!rate_label_)
         {
@@ -1135,7 +1135,7 @@ private:
 
         auto *grid = new QGridLayout();
         grid->setHorizontalSpacing(12);
-        grid->setVerticalSpacing(6);
+        grid->setVerticalSpacing(4);
         grid->setColumnMinimumWidth(0, kEpsilonTitleColumnWidth);
         grid->setColumnMinimumWidth(1, kEpsilonValueColumnMinWidth);
         grid->setColumnMinimumWidth(2, kEpsilonTitleColumnWidth);
@@ -1167,7 +1167,8 @@ private:
         addField(grid, row++, 1, QStringLiteral("filter_bits"), QStringLiteral("滤波状态:"), QStringLiteral("Filter Status:"));
         addField(grid, row++, 1, QStringLiteral("heading_valid"), QStringLiteral("航向有效:"), QStringLiteral("Heading Valid:"));
 
-        layout->addLayout(grid);
+        layout->addLayout(grid, 0);
+        layout->addStretch(1);
     }
 
     QLabel *rate_label_;
