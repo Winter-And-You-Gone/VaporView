@@ -19,19 +19,18 @@ Button {
             : theme.text)
         : theme.muted
 
-    implicitHeight: theme.buttonHeight
-
     font.pixelSize: theme.font(theme.smallFontSize)
     font.weight: Font.DemiBold
     leftPadding: theme.controlPaddingX
     rightPadding: theme.controlPaddingX
-    topPadding: 5
-    bottomPadding: 5
+    topPadding: 0
+    bottomPadding: 0
 
     contentItem: RowLayout {
+        anchors.verticalCenter: parent.verticalCenter
         spacing: control.iconName.length > 0 && control.text.length > 0 ? 6 : 0
 
-        Item { Layout.fillWidth: true }
+        Item { Layout.preferredWidth: 0; Layout.fillWidth: true }
 
         LucideIcon {
             visible: control.iconName.length > 0
@@ -52,7 +51,7 @@ Button {
             elide: Text.ElideRight
         }
 
-        Item { Layout.fillWidth: true }
+        Item { Layout.preferredWidth: 0; Layout.fillWidth: true }
     }
 
     background: Rectangle {
