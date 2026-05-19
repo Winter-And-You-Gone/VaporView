@@ -4,25 +4,29 @@ import QtQuick.Layouts
 
 Button {
     id: control
+
     property string variant: "secondary"
     property string iconName: ""
     property real iconSize: 16
-    property color primaryColor: ApplicationWindow.window.primary
-    property color dangerColor: ApplicationWindow.window.danger
-    property color primaryForeground: ApplicationWindow.window.primaryForeground
+    property color primaryColor: theme.primary
+    property color dangerColor: theme.danger
+    property color primaryForeground: theme.primaryForeground
 
-    font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
+    readonly property var theme: ApplicationWindow.window.theme
+    readonly property color foreground: control.enabled
+        ? (control.variant === "primary" ? control.primaryForeground
+            : control.variant === "danger" ? control.dangerColor
+            : theme.text)
+        : theme.muted
+
+    implicitHeight: theme.buttonHeight
+
+    font.pixelSize: theme.font(theme.smallFontSize)
     font.weight: Font.DemiBold
-    leftPadding: 10
-    rightPadding: 10
+    leftPadding: theme.controlPaddingX
+    rightPadding: theme.controlPaddingX
     topPadding: 5
     bottomPadding: 5
-
-    readonly property color foreground: control.enabled
-               ? (control.variant === "primary" ? control.primaryForeground
-                  : control.variant === "danger" ? control.dangerColor
-                  : ApplicationWindow.window.text)
-               : ApplicationWindow.window.muted
 
     contentItem: RowLayout {
         spacing: control.iconName.length > 0 && control.text.length > 0 ? 6 : 0
@@ -52,23 +56,23 @@ Button {
     }
 
     background: Rectangle {
-        implicitHeight: ApplicationWindow.window.uiButtonHeight
-        radius: ApplicationWindow.window.uiRadius
-        color: !control.enabled ? ApplicationWindow.window.cardAlt
-             : control.down ? downBase
-             : control.hovered ? hoverBase
-             : base
+        implicitHeight: theme.buttonHeight
+        radius: theme.radius
+        color: !control.enabled ? theme.surfaceAlt
+            : control.down ? downBase
+            : control.hovered ? hoverBase
+            : base
         border.color: control.variant === "primary" ? control.primaryColor
-                    : control.variant === "danger" ? ApplicationWindow.window.dangerBorder
-                    : ApplicationWindow.window.border
+            : control.variant === "danger" ? theme.dangerBorder
+            : theme.border
         property color base: control.variant === "primary" ? control.primaryColor
-                          : control.variant === "danger" ? ApplicationWindow.window.dangerSoft
-                          : ApplicationWindow.window.bg
-        property color hoverBase: control.variant === "primary" ? ApplicationWindow.window.primaryHover
-                               : control.variant === "danger" ? ApplicationWindow.window.dangerSoftHover
-                               : ApplicationWindow.window.secondary
+            : control.variant === "danger" ? theme.dangerSoft
+            : theme.bg
+        property color hoverBase: control.variant === "primary" ? theme.primaryHover
+            : control.variant === "danger" ? theme.dangerSoftHover
+            : theme.surfaceAlt
         property color downBase: control.variant === "primary" ? control.primaryColor
-                              : control.variant === "danger" ? ApplicationWindow.window.dangerSoftHover
-                              : ApplicationWindow.window.secondary
+            : control.variant === "danger" ? theme.dangerSoftHover
+            : theme.surfaceAlt
     }
 }
