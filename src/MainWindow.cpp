@@ -18,6 +18,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QFileDialog>
+#include <QFont>
 #include <QSaveFile>
 #include <QTextStream>
 #include <QStringConverter>
@@ -842,14 +843,6 @@ public:
         , rate_label_(nullptr)
         , is_english_(false)
         , total_rate_hz_(0.0)
-        , imu_packet_rate_hz_(0.0)
-        , ahrs_packet_rate_hz_(0.0)
-        , insgps_packet_rate_hz_(0.0)
-        , sys_state_packet_rate_hz_(0.0)
-        , raw_gnss_packet_rate_hz_(0.0)
-        , satellite_packet_rate_hz_(0.0)
-        , geodetic_packet_rate_hz_(0.0)
-        , ecef_packet_rate_hz_(0.0)
     {
         setupUi();
         setEnglish(false);
@@ -869,6 +862,10 @@ public:
         {
             it.value()->setText(english ? title_en_.value(it.key()) : title_zh_.value(it.key()));
         }
+        for (auto it = section_labels_.cbegin(); it != section_labels_.cend(); ++it)
+        {
+            it.value()->setText(english ? section_en_.value(it.key()) : section_zh_.value(it.key()));
+        }
     }
 
     void updateData(const VaporView::EpsilonData& epsilon_data)
@@ -884,14 +881,6 @@ public:
         if (!epsilon_data.valid)
         {
             total_rate_hz_ = 0.0;
-            imu_packet_rate_hz_ = 0.0;
-            ahrs_packet_rate_hz_ = 0.0;
-            insgps_packet_rate_hz_ = 0.0;
-            sys_state_packet_rate_hz_ = 0.0;
-            raw_gnss_packet_rate_hz_ = 0.0;
-            satellite_packet_rate_hz_ = 0.0;
-            geodetic_packet_rate_hz_ = 0.0;
-            ecef_packet_rate_hz_ = 0.0;
             refreshRateLabel();
             for (QLabel *label : value_labels_)
             {
@@ -913,6 +902,25 @@ public:
                 .arg(b, 0, 'f', decimals)
                 .arg(c, 0, 'f', decimals);
         };
+        auto axisTriple = [&](const QString& firstLabel,
+                              const QString& secondLabel,
+                              const QString& thirdLabel,
+                              double a,
+                              double b,
+                              double c,
+                              int decimals) {
+            if (!std::isfinite(a) || !std::isfinite(b) || !std::isfinite(c))
+            {
+                return QString();
+            }
+            return QStringLiteral("%1 %2 / %3 %4 / %5 %6")
+                .arg(firstLabel)
+                .arg(a, 0, 'f', decimals)
+                .arg(secondLabel)
+                .arg(b, 0, 'f', decimals)
+                .arg(thirdLabel)
+                .arg(c, 0, 'f', decimals);
+        };
         const bool gnss_fix_valid = epsilon_data.gnss_fix_code >= 2;
         const bool utc_valid = epsilon_data.utc_unix_s > 0;
 
@@ -923,71 +931,43 @@ public:
             : QString();
 
         setValue(QStringLiteral("time_utc"), utcText);
-        setValue(QStringLiteral("device_ts"), epsilon_data.device_timestamp_us > 0 ? QString::number(epsilon_data.device_timestamp_us) : QString());
-        imu_packet_rate_hz_ = epsilon_data.imu_packet_rate_hz;
-        ahrs_packet_rate_hz_ = epsilon_data.ahrs_packet_rate_hz;
-        insgps_packet_rate_hz_ = epsilon_data.insgps_packet_rate_hz;
-        sys_state_packet_rate_hz_ = epsilon_data.sys_state_packet_rate_hz;
-        raw_gnss_packet_rate_hz_ = epsilon_data.raw_gnss_packet_rate_hz;
-        satellite_packet_rate_hz_ = epsilon_data.satellite_packet_rate_hz;
-        geodetic_packet_rate_hz_ = epsilon_data.geodetic_packet_rate_hz;
-        ecef_packet_rate_hz_ = epsilon_data.ecef_packet_rate_hz;
+        setValue(QStringLiteral("device_ts"), epsilon_data.device_timestamp_us > 0
+            ? QStringLiteral("%1 us").arg(epsilon_data.device_timestamp_us)
+            : QString());
         refreshRateLabel();
         setValue(QStringLiteral("fix"), QString::fromStdString(epsilon_data.gnss_fix_text));
         setValue(QStringLiteral("sat"), epsilon_data.gnss_satellites > 0 ? QString::number(epsilon_data.gnss_satellites) : QString());
         setValue(QStringLiteral("llh"), gnss_fix_valid ? triple(epsilon_data.latitude_deg, epsilon_data.longitude_deg, epsilon_data.height_m, 8) : QString());
-        setValue(QStringLiteral("ecef"), gnss_fix_valid ? triple(epsilon_data.ecef_x_m, epsilon_data.ecef_y_m, epsilon_data.ecef_z_m, 4) : QString());
-        setValue(QStringLiteral("ned_pos"), gnss_fix_valid ? triple(epsilon_data.ned_n_m, epsilon_data.ned_e_m, epsilon_data.ned_d_m, 4) : QString());
-        setValue(QStringLiteral("ned_vel"), gnss_fix_valid ? triple(epsilon_data.vel_n_mps, epsilon_data.vel_e_mps, epsilon_data.vel_d_mps, 4) : QString());
-        setValue(QStringLiteral("body_vel"), gnss_fix_valid ? triple(epsilon_data.body_vel_x_mps, epsilon_data.body_vel_y_mps, epsilon_data.body_vel_z_mps, 4) : QString());
-        setValue(QStringLiteral("body_acc"), triple(epsilon_data.body_acc_x_mps2, epsilon_data.body_acc_y_mps2, epsilon_data.body_acc_z_mps2, 4));
-        setValue(QStringLiteral("imu_acc"), triple(epsilon_data.imu_acc_x_mps2, epsilon_data.imu_acc_y_mps2, epsilon_data.imu_acc_z_mps2, 4));
-        setValue(QStringLiteral("imu_gyr"), triple(epsilon_data.imu_gyr_x_radps, epsilon_data.imu_gyr_y_radps, epsilon_data.imu_gyr_z_radps, 6));
-        setValue(QStringLiteral("ang_vel"), triple(epsilon_data.ang_vel_x_radps, epsilon_data.ang_vel_y_radps, epsilon_data.ang_vel_z_radps, 6));
+        setValue(QStringLiteral("ned_vel"), gnss_fix_valid
+            ? axisTriple(QStringLiteral("N"), QStringLiteral("E"), QStringLiteral("D"),
+                  epsilon_data.vel_n_mps, epsilon_data.vel_e_mps, epsilon_data.vel_d_mps, 3)
+            : QString());
+        setValue(QStringLiteral("imu_acc"),
+                 axisTriple(QStringLiteral("X"), QStringLiteral("Y"), QStringLiteral("Z"),
+                     epsilon_data.imu_acc_x_mps2, epsilon_data.imu_acc_y_mps2, epsilon_data.imu_acc_z_mps2, 3));
+        setValue(QStringLiteral("imu_gyr"),
+                 axisTriple(QStringLiteral("X"), QStringLiteral("Y"), QStringLiteral("Z"),
+                     epsilon_data.imu_gyr_x_radps, epsilon_data.imu_gyr_y_radps, epsilon_data.imu_gyr_z_radps, 4));
         setValue(QStringLiteral("rpy"),
-                 triple(epsilon_data.roll_deg, epsilon_data.pitch_deg, epsilon_data.yaw_deg, 4));
-        setValue(QStringLiteral("quat"),
-                 (std::isfinite(epsilon_data.quat_w) &&
-                  std::isfinite(epsilon_data.quat_x) &&
-                  std::isfinite(epsilon_data.quat_y) &&
-                  std::isfinite(epsilon_data.quat_z))
-                     ? QStringLiteral("[%1, %2, %3, %4]")
-                           .arg(epsilon_data.quat_w, 0, 'f', 6)
-                           .arg(epsilon_data.quat_x, 0, 'f', 6)
-                           .arg(epsilon_data.quat_y, 0, 'f', 6)
-                           .arg(epsilon_data.quat_z, 0, 'f', 6)
-                     : QString());
-        setValue(QStringLiteral("mag"), triple(epsilon_data.mag_x_mg, epsilon_data.mag_y_mg, epsilon_data.mag_z_mg, 3));
-        setValue(QStringLiteral("dop"),
-                 gnss_fix_valid && std::isfinite(epsilon_data.hdop) && std::isfinite(epsilon_data.vdop)
-                     ? QStringLiteral("HDOP %1 / VDOP %2")
-                           .arg(epsilon_data.hdop, 0, 'f', 3)
-                           .arg(epsilon_data.vdop, 0, 'f', 3)
-                     : QString());
+                 axisTriple(QStringLiteral("Roll"), QStringLiteral("Pitch"), QStringLiteral("Yaw"),
+                     epsilon_data.roll_deg, epsilon_data.pitch_deg, epsilon_data.yaw_deg, 2));
         setValue(QStringLiteral("acc"),
                  gnss_fix_valid && std::isfinite(epsilon_data.hacc_m) && std::isfinite(epsilon_data.vacc_m)
-                     ? QStringLiteral("hAcc %1 / vAcc %2")
+                     ? QStringLiteral("hAcc %1 m / vAcc %2 m")
                            .arg(epsilon_data.hacc_m, 0, 'f', 3)
                            .arg(epsilon_data.vacc_m, 0, 'f', 3)
                      : QString());
-        setValue(QStringLiteral("std"),
-                 gnss_fix_valid &&
-                         std::isfinite(epsilon_data.lat_std_m) &&
-                         std::isfinite(epsilon_data.lon_std_m) &&
-                         std::isfinite(epsilon_data.height_std_m)
-                     ? QStringLiteral("[%1, %2, %3] m")
-                           .arg(epsilon_data.lat_std_m, 0, 'f', 3)
-                           .arg(epsilon_data.lon_std_m, 0, 'f', 3)
-                           .arg(epsilon_data.height_std_m, 0, 'f', 3)
-                     : QString());
-        setValue(QStringLiteral("heading_valid"), gnss_fix_valid ? (epsilon_data.heading_valid ? QStringLiteral("true") : QStringLiteral("false")) : QString());
-        setValue(QStringLiteral("status_bits"), QStringLiteral("0x%1").arg(epsilon_data.system_status_bits, 4, 16, QLatin1Char('0')).toUpper());
-        setValue(QStringLiteral("filter_bits"), QStringLiteral("0x%1").arg(epsilon_data.filter_status_bits, 4, 16, QLatin1Char('0')).toUpper());
-        setValue(QStringLiteral("update_bits"), QStringLiteral("0x%1").arg(epsilon_data.update_status_bits, 4, 16, QLatin1Char('0')).toUpper());
+        setValue(QStringLiteral("heading_valid"), boolText(epsilon_data.heading_valid));
+        setValue(QStringLiteral("status_bits"), formatSystemStatus(epsilon_data.system_status_bits));
+        setValue(QStringLiteral("filter_bits"), formatFilterStatus(epsilon_data.filter_status_bits, gnss_fix_valid));
         setValue(QStringLiteral("frames"),
-                 QStringLiteral("%1 / dropped %2")
-                     .arg(epsilon_data.raw_frame_count)
-                     .arg(epsilon_data.dropped_frame_count));
+                 is_english_
+                     ? QStringLiteral("raw %1 / dropped %2")
+                           .arg(epsilon_data.raw_frame_count)
+                           .arg(epsilon_data.dropped_frame_count)
+                     : QStringLiteral("原始 %1 / 丢帧 %2")
+                           .arg(epsilon_data.raw_frame_count)
+                           .arg(epsilon_data.dropped_frame_count));
     }
 
 private:
@@ -997,7 +977,52 @@ private:
         {
             return QStringLiteral("-- Hz");
         }
-        return QStringLiteral("%1Hz").arg(hz, 0, 'f', hz >= 100.0 ? 0 : 1);
+        return QStringLiteral("%1 Hz").arg(hz, 0, 'f', hz >= 100.0 ? 0 : 1);
+    }
+
+    QString boolText(bool value) const
+    {
+        if (is_english_)
+        {
+            return value ? QStringLiteral("Yes") : QStringLiteral("No");
+        }
+        return value ? QStringLiteral("是") : QStringLiteral("否");
+    }
+
+    QString formatHex16(quint16 value) const
+    {
+        return QStringLiteral("0x%1").arg(value, 4, 16, QLatin1Char('0')).toUpper();
+    }
+
+    QString formatSystemStatus(quint16 bits) const
+    {
+        if (bits == 0)
+        {
+            return is_english_
+                ? QStringLiteral("%1 OK").arg(formatHex16(bits))
+                : QStringLiteral("%1 正常").arg(formatHex16(bits));
+        }
+        return is_english_
+            ? QStringLiteral("%1 Check").arg(formatHex16(bits))
+            : QStringLiteral("%1 需检查").arg(formatHex16(bits));
+    }
+
+    QString formatFilterStatus(quint16 bits, bool fusionActive) const
+    {
+        QStringList states;
+        if (bits == 0)
+        {
+            states << (is_english_ ? QStringLiteral("not initialized") : QStringLiteral("未初始化"));
+        }
+        else
+        {
+            states << (is_english_ ? QStringLiteral("initialized") : QStringLiteral("已初始化"));
+            if (fusionActive)
+            {
+                states << (is_english_ ? QStringLiteral("position fusion active") : QStringLiteral("定位融合中"));
+            }
+        }
+        return QStringLiteral("%1 %2").arg(formatHex16(bits), states.join(QStringLiteral(" / ")));
     }
 
     void refreshRateLabel()
@@ -1008,23 +1033,30 @@ private:
         }
 
         const QString totalText = is_english_
-            ? QStringLiteral("Total %1").arg(formatRateValue(total_rate_hz_))
-            : QStringLiteral("总频率 %1").arg(formatRateValue(total_rate_hz_));
-
-        const QStringList parts = {
-            totalText,
-            QStringLiteral("40 %1").arg(formatRateValue(imu_packet_rate_hz_)),
-            QStringLiteral("41 %1").arg(formatRateValue(ahrs_packet_rate_hz_)),
-            QStringLiteral("42 %1").arg(formatRateValue(insgps_packet_rate_hz_)),
-            QStringLiteral("50 %1").arg(formatRateValue(sys_state_packet_rate_hz_)),
-            QStringLiteral("59 %1").arg(formatRateValue(raw_gnss_packet_rate_hz_)),
-            QStringLiteral("5A %1").arg(formatRateValue(satellite_packet_rate_hz_)),
-            QStringLiteral("5C %1").arg(formatRateValue(geodetic_packet_rate_hz_)),
-            QStringLiteral("5D %1").arg(formatRateValue(ecef_packet_rate_hz_)),
-        };
-        const QString text = parts.join(QStringLiteral("   |   "));
+            ? QStringLiteral("Total Rate: %1").arg(formatRateValue(total_rate_hz_))
+            : QStringLiteral("总频率：%1").arg(formatRateValue(total_rate_hz_));
+        const QString text = totalText;
         rate_label_->setText(text);
         rate_label_->setToolTip(text);
+    }
+
+    void addSection(QGridLayout *layout,
+                    int row,
+                    int column,
+                    const QString& key,
+                    const QString& zhTitle,
+                    const QString& enTitle)
+    {
+        QLabel *label = new QLabel(this);
+        label->setObjectName(QStringLiteral("fieldLabel"));
+        QFont font = label->font();
+        font.setBold(true);
+        label->setFont(font);
+        label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        layout->addWidget(label, row, column * 2, 1, 2);
+        section_labels_.insert(key, label);
+        section_zh_.insert(key, zhTitle);
+        section_en_.insert(key, enTitle);
     }
 
     void addField(QGridLayout *layout,
@@ -1076,51 +1108,40 @@ private:
         grid->setColumnStretch(3, 1);
 
         int row = 0;
+        addSection(grid, row++, 0, QStringLiteral("run"), QStringLiteral("运行状态"), QStringLiteral("Run Status"));
         addField(grid, row++, 0, QStringLiteral("time_utc"), QStringLiteral("UTC时间:"), QStringLiteral("UTC Time:"));
-        addField(grid, row++, 0, QStringLiteral("device_ts"), QStringLiteral("设备时间戳(us):"), QStringLiteral("Device Timestamp (us):"));
+        addField(grid, row++, 0, QStringLiteral("device_ts"), QStringLiteral("设备时间戳:"), QStringLiteral("Device Timestamp:"));
+        addField(grid, row++, 0, QStringLiteral("frames"), QStringLiteral("原始帧/丢帧:"), QStringLiteral("Raw/Dropped Frames:"));
+        addSection(grid, row++, 0, QStringLiteral("position"), QStringLiteral("定位状态"), QStringLiteral("Position Status"));
         addField(grid, row++, 0, QStringLiteral("fix"), QStringLiteral("GNSS状态:"), QStringLiteral("GNSS Fix:"));
         addField(grid, row++, 0, QStringLiteral("sat"), QStringLiteral("卫星数:"), QStringLiteral("Satellites:"));
         addField(grid, row++, 0, QStringLiteral("llh"), QStringLiteral("经纬高[deg,m]:"), QStringLiteral("LLH [deg,m]:"));
-        addField(grid, row++, 0, QStringLiteral("ecef"), QStringLiteral("ECEF[m]:"), QStringLiteral("ECEF [m]:"));
-        addField(grid, row++, 0, QStringLiteral("ned_pos"), QStringLiteral("NED位置[m]:"), QStringLiteral("NED Position [m]:"));
-        addField(grid, row++, 0, QStringLiteral("ned_vel"), QStringLiteral("NED速度[m/s]:"), QStringLiteral("NED Velocity [m/s]:"));
-        addField(grid, row++, 0, QStringLiteral("body_vel"), QStringLiteral("机体系速度[m/s]:"), QStringLiteral("Body Velocity [m/s]:"));
-        addField(grid, row++, 0, QStringLiteral("body_acc"), QStringLiteral("机体系加速度[m/s²]:"), QStringLiteral("Body Accel [m/s²]:"));
-        addField(grid, row++, 0, QStringLiteral("imu_acc"), QStringLiteral("IMU加速度[m/s²]:"), QStringLiteral("IMU Accel [m/s²]:"));
-        addField(grid, row++, 0, QStringLiteral("imu_gyr"), QStringLiteral("IMU角速度[rad/s]:"), QStringLiteral("IMU Gyro [rad/s]:"));
+        addField(grid, row++, 0, QStringLiteral("acc"), QStringLiteral("hAcc / vAcc:"), QStringLiteral("hAcc / vAcc:"));
 
         row = 0;
-        addField(grid, row++, 1, QStringLiteral("ang_vel"), QStringLiteral("姿态角速度[rad/s]:"), QStringLiteral("Attitude Rates [rad/s]:"));
-        addField(grid, row++, 1, QStringLiteral("rpy"), QStringLiteral("姿态角[deg]:"), QStringLiteral("RPY [deg]:"));
-        addField(grid, row++, 1, QStringLiteral("quat"), QStringLiteral("四元数:"), QStringLiteral("Quaternion:"));
-        addField(grid, row++, 1, QStringLiteral("mag"), QStringLiteral("磁场[mG]:"), QStringLiteral("Mag [mG]:"));
-        addField(grid, row++, 1, QStringLiteral("dop"), QStringLiteral("DOP:"), QStringLiteral("DOP:"));
-        addField(grid, row++, 1, QStringLiteral("acc"), QStringLiteral("定位精度[m]:"), QStringLiteral("Accuracy [m]:"));
-        addField(grid, row++, 1, QStringLiteral("std"), QStringLiteral("坐标标准差[m]:"), QStringLiteral("Coord Std [m]:"));
+        addSection(grid, row++, 1, QStringLiteral("motion"), QStringLiteral("运动状态"), QStringLiteral("Motion Status"));
+        addField(grid, row++, 1, QStringLiteral("ned_vel"), QStringLiteral("NED速度[m/s]:"), QStringLiteral("NED Velocity [m/s]:"));
+        addField(grid, row++, 1, QStringLiteral("imu_acc"), QStringLiteral("IMU加速度[m/s²]:"), QStringLiteral("IMU Accel [m/s²]:"));
+        addField(grid, row++, 1, QStringLiteral("imu_gyr"), QStringLiteral("IMU角速度[rad/s]:"), QStringLiteral("IMU Gyro [rad/s]:"));
+        addField(grid, row++, 1, QStringLiteral("rpy"), QStringLiteral("姿态角[deg]:"), QStringLiteral("Attitude [deg]:"));
+        addSection(grid, row++, 1, QStringLiteral("health"), QStringLiteral("系统健康"), QStringLiteral("System Health"));
+        addField(grid, row++, 1, QStringLiteral("status_bits"), QStringLiteral("系统状态:"), QStringLiteral("System Status:"));
+        addField(grid, row++, 1, QStringLiteral("filter_bits"), QStringLiteral("滤波状态:"), QStringLiteral("Filter Status:"));
         addField(grid, row++, 1, QStringLiteral("heading_valid"), QStringLiteral("航向有效:"), QStringLiteral("Heading Valid:"));
-        addField(grid, row++, 1, QStringLiteral("status_bits"), QStringLiteral("系统状态位:"), QStringLiteral("System Bits:"));
-        addField(grid, row++, 1, QStringLiteral("filter_bits"), QStringLiteral("滤波状态位:"), QStringLiteral("Filter Bits:"));
-        addField(grid, row++, 1, QStringLiteral("update_bits"), QStringLiteral("更新状态位:"), QStringLiteral("Update Bits:"));
-        addField(grid, row++, 1, QStringLiteral("frames"), QStringLiteral("原始帧统计:"), QStringLiteral("Raw Frame Stats:"));
 
         layout->addLayout(grid);
     }
 
     QLabel *rate_label_;
+    QHash<QString, QLabel*> section_labels_;
     QHash<QString, QLabel*> title_labels_;
     QHash<QString, QLabel*> value_labels_;
+    QHash<QString, QString> section_zh_;
+    QHash<QString, QString> section_en_;
     QHash<QString, QString> title_zh_;
     QHash<QString, QString> title_en_;
     bool is_english_;
     double total_rate_hz_;
-    double imu_packet_rate_hz_;
-    double ahrs_packet_rate_hz_;
-    double insgps_packet_rate_hz_;
-    double sys_state_packet_rate_hz_;
-    double raw_gnss_packet_rate_hz_;
-    double satellite_packet_rate_hz_;
-    double geodetic_packet_rate_hz_;
-    double ecef_packet_rate_hz_;
 };
 
 GnssPanel::GnssPanel(QWidget *parent)
