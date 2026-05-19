@@ -365,7 +365,7 @@ QLabel#epsilonSectionLabel {
     color: #d8dee9;
     background-color: #18202a;
     border: none;
-    border-bottom: 1px solid #2c3440;
+    border-right: 1px solid #2c3440;
     font-weight: 700;
 }
 QLabel#valueLabel {
@@ -884,7 +884,8 @@ public:
         }
         for (auto it = section_labels_.cbegin(); it != section_labels_.cend(); ++it)
         {
-            it.value()->setText(english ? section_en_.value(it.key()) : section_zh_.value(it.key()));
+            const QString text = english ? section_en_.value(it.key()) : section_zh_.value(it.key());
+            it.value()->setText(formatSectionTitle(text, english));
         }
     }
 
@@ -1086,20 +1087,40 @@ private:
         rate_label_->setToolTip(text);
     }
 
-    void addSection(QGridLayout *layout,
-                    int row,
-                    int column,
-                    const QString& key,
-                    const QString& zhTitle,
-                    const QString& enTitle)
+    static QString formatSectionTitle(const QString& text, bool english)
     {
-        QLabel *label = new QLabel(this);
+        if (english)
+        {
+            QString formatted = text;
+            formatted.replace(QStringLiteral(" / "), QStringLiteral("\n/\n"));
+            formatted.replace(QChar(' '), QChar('\n'));
+            return formatted;
+        }
+
+        QStringList chars;
+        chars.reserve(text.size());
+        for (const QChar ch : text)
+        {
+            if (!ch.isSpace())
+            {
+                chars.append(QString(ch));
+            }
+        }
+        return chars.join(QChar('\n'));
+    }
+
+    void registerSectionLabel(QLabel *label,
+                              const QString& key,
+                              const QString& zhTitle,
+                              const QString& enTitle)
+    {
         label->setObjectName(QStringLiteral("epsilonSectionLabel"));
         QFont font = label->font();
         font.setBold(true);
         label->setFont(font);
         label->setAlignment(Qt::AlignCenter);
-        layout->addWidget(label, row, column * 2, 1, 2);
+        label->setMinimumWidth(24);
+        label->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Expanding);
         section_labels_.insert(key, label);
         section_zh_.insert(key, zhTitle);
         section_en_.insert(key, enTitle);
@@ -1114,7 +1135,15 @@ private:
         card->setObjectName(QStringLiteral("epsilonSectionCard"));
         card->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
 
-        auto *cardLayout = new QGridLayout(card);
+        auto *outerLayout = new QHBoxLayout(card);
+        outerLayout->setContentsMargins(2, 2, 2, 2);
+        outerLayout->setSpacing(2);
+
+        auto *sectionLabel = new QLabel(card);
+        registerSectionLabel(sectionLabel, key, zhTitle, enTitle);
+        outerLayout->addWidget(sectionLabel);
+
+        auto *cardLayout = new QGridLayout();
         cardLayout->setContentsMargins(2, 2, 2, 2);
         cardLayout->setHorizontalSpacing(6);
         cardLayout->setVerticalSpacing(2);
@@ -1122,8 +1151,7 @@ private:
         cardLayout->setColumnMinimumWidth(1, kEpsilonValueColumnMinWidth);
         cardLayout->setColumnStretch(0, 0);
         cardLayout->setColumnStretch(1, 1);
-
-        addSection(cardLayout, 0, 0, key, zhTitle, enTitle);
+        outerLayout->addLayout(cardLayout, 1);
         columnLayout->addWidget(card);
         return cardLayout;
     }
@@ -1184,19 +1212,19 @@ private:
         QVBoxLayout *rightColumn = createColumn();
 
         QGridLayout *runGrid = addSectionCard(leftColumn, QStringLiteral("run"), QStringLiteral("数据状态"), QStringLiteral("Data Status"));
-        int row = 1;
+        int row = 0;
         addField(runGrid, row++, 0, QStringLiteral("time_utc"), QStringLiteral("UTC时间:"), QStringLiteral("UTC Time:"));
         addField(runGrid, row++, 0, QStringLiteral("device_ts"), QStringLiteral("设备时间戳:"), QStringLiteral("Device Timestamp:"));
         addField(runGrid, row++, 0, QStringLiteral("frames"), QStringLiteral("原始帧/丢帧:"), QStringLiteral("Raw/Dropped Frames:"));
 
         QGridLayout *healthGrid = addSectionCard(leftColumn, QStringLiteral("health"), QStringLiteral("系统健康"), QStringLiteral("System Health"));
-        row = 1;
+        row = 0;
         addField(healthGrid, row++, 0, QStringLiteral("status_bits"), QStringLiteral("系统状态:"), QStringLiteral("System Status:"));
         addField(healthGrid, row++, 0, QStringLiteral("filter_bits"), QStringLiteral("滤波状态:"), QStringLiteral("Filter Status:"));
         addField(healthGrid, row++, 0, QStringLiteral("heading_valid"), QStringLiteral("航向有效:"), QStringLiteral("Heading Valid:"));
 
         QGridLayout *positionGrid = addSectionCard(middleColumn, QStringLiteral("position"), QStringLiteral("定位状态"), QStringLiteral("Position Status"));
-        row = 1;
+        row = 0;
         addField(positionGrid, row++, 0, QStringLiteral("fix"), QStringLiteral("GNSS状态:"), QStringLiteral("GNSS Fix:"));
         addField(positionGrid, row++, 0, QStringLiteral("sat"), QStringLiteral("卫星数:"), QStringLiteral("Satellites:"));
         addField(positionGrid, row++, 0, QStringLiteral("lat"), QStringLiteral("纬度[deg]:"), QStringLiteral("Latitude [deg]:"));
@@ -1205,7 +1233,7 @@ private:
         addField(positionGrid, row++, 0, QStringLiteral("acc"), QStringLiteral("hAcc / vAcc:"), QStringLiteral("hAcc / vAcc:"));
 
         QGridLayout *motionGrid = addSectionCard(rightColumn, QStringLiteral("motion"), QStringLiteral("姿态与运动"), QStringLiteral("Attitude / Motion"));
-        row = 1;
+        row = 0;
         addField(motionGrid, row++, 0, QStringLiteral("ned_vel"), QStringLiteral("NED速度[m/s]:"), QStringLiteral("NED Velocity [m/s]:"));
         addField(motionGrid, row++, 0, QStringLiteral("imu_acc"), QStringLiteral("IMU加速度[m/s²]:"), QStringLiteral("IMU Accel [m/s²]:"));
         addField(motionGrid, row++, 0, QStringLiteral("imu_gyr"), QStringLiteral("IMU角速度[rad/s]:"), QStringLiteral("IMU Gyro [rad/s]:"));
@@ -2464,7 +2492,7 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#sectionTitleLabel { background-color: #ffffff; border: none; border-bottom: 1px solid #dfe4ea; border-radius: 0px; color: #1f2937; font-size: 16px; font-weight: bold; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
             "QWidget#sectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
             "QFrame#epsilonSectionCard { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 4px; }"
-            "QLabel#epsilonSectionLabel { color: #4b5563; background-color: #f8fafc; border: none; border-bottom: 1px solid #dfe4ea; font-size: 14px; font-weight: 700; padding: 2px 4px; }"
+            "QLabel#epsilonSectionLabel { color: #4b5563; background-color: #f8fafc; border: none; border-right: 1px solid #dfe4ea; font-size: 14px; font-weight: 700; padding: 2px; }"
             "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 10px; min-height: 26px; max-height: 26px; color: #333333; font-size: 14px; }"
             "QComboBox:hover { border-color: #bdbdbd; }"
             "QComboBox:focus { border-color: #1976d2; border-width: 1px; }"

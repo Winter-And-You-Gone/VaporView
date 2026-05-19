@@ -183,10 +183,10 @@ QLabel#epsilonSectionLabel {
     color: #4b5563;
     background-color: #f8fafc;
     border: none;
-    border-bottom: 1px solid #dfe4ea;
+    border-right: 1px solid #dfe4ea;
     font-size: 14px;
     font-weight: 700;
-    padding: 2px 4px;
+    padding: 2px;
 }
 
 QLabel#sectionTitleLabel {
