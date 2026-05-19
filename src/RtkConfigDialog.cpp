@@ -1,10 +1,13 @@
 #include "RtkConfigDialog.h"
 #include "WindowSizing.h"
+#include <QApplication>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
 #include <QFormLayout>
+#include <QFile>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QMessageBox>
 #include <QPointer>
 #include <QSettings>
@@ -14,17 +17,22 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QCloseEvent>
+#include <QColor>
 #include <QDoubleValidator>
 #include <QFontMetrics>
 #include <QFrame>
+#include <QIcon>
 #include <QIntValidator>
 #include <QLabel>
 #include <QLocale>
 #include <QElapsedTimer>
+#include <QPainter>
+#include <QPixmap>
 #include <QRegularExpression>
 #include <QSerialPortInfo>
 #include <QSignalBlocker>
 #include <QScrollArea>
+#include <QSvgRenderer>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTextBlock>
@@ -52,7 +60,55 @@ constexpr int kRtkPreferredDialogWidth = 980;
 constexpr int kRtkMinimumDialogWidth = 640;
 constexpr int kRtkMinimumDialogHeight = 420;
 constexpr const char *kEpsilonMainGgaSourceKey = "__epsilon_main__";
+const QColor kRtkHelpIconColor(25, 118, 210);
 const QRegularExpression kGgaSentencePattern("^\\$..GGA,");
+
+QString findResourceFile(const QString& relativePath)
+{
+    const QString appDir = QApplication::applicationDirPath();
+    const QStringList candidates = {
+        QDir(appDir).filePath(relativePath),
+        QDir(appDir).filePath(QStringLiteral("../") + relativePath),
+        QDir(appDir).filePath(QStringLiteral("../../") + relativePath)
+    };
+
+    for (const QString& path : candidates)
+    {
+        if (QFileInfo::exists(path))
+        {
+            return path;
+        }
+    }
+    return QString();
+}
+
+QPixmap renderLucidePixmap(const QByteArray& svgData, const QColor& color)
+{
+    QByteArray tinted = svgData;
+    tinted.replace("currentColor", color.name(QColor::HexRgb).toUtf8());
+
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+
+    QSvgRenderer renderer(tinted);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    renderer.render(&painter, QRectF(2, 2, 28, 28));
+    return pixmap;
+}
+
+QIcon createLucideIcon(const QString& iconName, const QColor& color)
+{
+    QFile file(findResourceFile(QStringLiteral("resources/lucide/%1.svg").arg(iconName)));
+    if (!file.open(QIODevice::ReadOnly))
+    {
+        return QIcon();
+    }
+
+    QIcon icon;
+    icon.addPixmap(renderLucidePixmap(file.readAll(), color), QIcon::Normal);
+    return icon;
+}
 
 QStringList buildProbeBaudList(const QComboBox *baudrateCombo)
 {
@@ -766,6 +822,15 @@ void RtkConfigDialog::setupUi()
     main_layout_->setSpacing(8);
     main_layout_->setContentsMargins(12, 12, 12, 12);
 
+    auto configureFieldLabel = [](QLabel *label) {
+        label->setObjectName(QStringLiteral("fieldLabel"));
+    };
+    auto createFieldLabel = [this, configureFieldLabel](const QString& text = QString()) {
+        auto *label = new QLabel(text, this);
+        configureFieldLabel(label);
+        return label;
+    };
+
     config_group_ = new QGroupBox(this);
     auto *configCardLayout = createCardLayout(config_group_, config_title_label_);
     config_layout_ = new QGridLayout();
@@ -776,18 +841,18 @@ void RtkConfigDialog::setupUi()
     configCardLayout->addLayout(config_layout_);
 
     int row = 0;
-    server_label_ = new QLabel(this);
+    server_label_ = createFieldLabel();
     config_layout_->addWidget(server_label_, row, 0);
     server_edit_ = new QLineEdit(this);
     config_layout_->addWidget(server_edit_, row, 1);
 
-    port_label_ = new QLabel(this);
+    port_label_ = createFieldLabel();
     config_layout_->addWidget(port_label_, row, 2);
     port_edit_ = new QLineEdit(this);
     port_edit_->setText("2101");
     config_layout_->addWidget(port_edit_, row, 3);
 
-    mountpoint_label_ = new QLabel(this);
+    mountpoint_label_ = createFieldLabel();
     config_layout_->addWidget(mountpoint_label_, row, 4);
     mountpoint_edit_ = new QLineEdit(this);
     config_layout_->addWidget(mountpoint_edit_, row, 5);
@@ -796,12 +861,12 @@ void RtkConfigDialog::setupUi()
     config_layout_->addWidget(fetch_mountpoints_btn_, row, 6);
     row++;
 
-    username_label_ = new QLabel(this);
+    username_label_ = createFieldLabel();
     config_layout_->addWidget(username_label_, row, 0);
     username_edit_ = new QLineEdit(this);
     config_layout_->addWidget(username_edit_, row, 1, 1, 2);
 
-    password_label_ = new QLabel(this);
+    password_label_ = createFieldLabel();
     config_layout_->addWidget(password_label_, row, 3);
     password_edit_ = new QLineEdit(this);
     config_layout_->addWidget(password_edit_, row, 4, 1, 3);
@@ -819,7 +884,7 @@ void RtkConfigDialog::setupUi()
     outputCardLayout->addLayout(output_layout_);
 
     row = 0;
-    output_port_label_ = new QLabel(this);
+    output_port_label_ = createFieldLabel();
     output_layout_->addWidget(output_port_label_, row, 0);
     output_port_combo_ = new QComboBox(this);
     output_port_combo_->setEditable(true);
@@ -833,7 +898,7 @@ void RtkConfigDialog::setupUi()
     connect(auto_detect_ports_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onAutoDetectPortsClicked);
     output_layout_->addWidget(auto_detect_ports_btn_, row, 3);
 
-    baudrate_label_ = new QLabel(this);
+    baudrate_label_ = createFieldLabel();
     output_layout_->addWidget(baudrate_label_, row, 4);
     baudrate_combo_ = new QComboBox(this);
     baudrate_combo_->addItems({"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"});
@@ -845,10 +910,10 @@ void RtkConfigDialog::setupUi()
     auto *lever_label_layout = new QHBoxLayout(lever_label_widget);
     lever_label_layout->setContentsMargins(0, 0, 0, 0);
     lever_label_layout->setSpacing(4);
-    main_antenna_lever_label_ = new QLabel(this);
+    main_antenna_lever_label_ = createFieldLabel();
     lever_label_layout->addWidget(main_antenna_lever_label_);
     main_antenna_lever_help_btn_ = new QToolButton(this);
-    main_antenna_lever_help_btn_->setText(QStringLiteral("?"));
+    main_antenna_lever_help_btn_->setIcon(createLucideIcon(QStringLiteral("help-circle"), kRtkHelpIconColor));
     main_antenna_lever_help_btn_->setAutoRaise(true);
     main_antenna_lever_help_btn_->setCursor(Qt::PointingHandCursor);
     connect(main_antenna_lever_help_btn_, &QToolButton::clicked, this, &RtkConfigDialog::onMainAntennaLeverHelpClicked);
@@ -869,13 +934,13 @@ void RtkConfigDialog::setupUi()
         edit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         return edit;
     };
-    lever_edit_layout->addWidget(new QLabel(QStringLiteral("X"), this));
+    lever_edit_layout->addWidget(createFieldLabel(QStringLiteral("X")));
     main_antenna_lever_x_edit_ = createLeverEdit();
     lever_edit_layout->addWidget(main_antenna_lever_x_edit_);
-    lever_edit_layout->addWidget(new QLabel(QStringLiteral("Y"), this));
+    lever_edit_layout->addWidget(createFieldLabel(QStringLiteral("Y")));
     main_antenna_lever_y_edit_ = createLeverEdit();
     lever_edit_layout->addWidget(main_antenna_lever_y_edit_);
-    lever_edit_layout->addWidget(new QLabel(QStringLiteral("Z"), this));
+    lever_edit_layout->addWidget(createFieldLabel(QStringLiteral("Z")));
     main_antenna_lever_z_edit_ = createLeverEdit();
     lever_edit_layout->addWidget(main_antenna_lever_z_edit_);
     output_layout_->addWidget(lever_edit_widget, row, 1, 1, 4);
@@ -885,12 +950,12 @@ void RtkConfigDialog::setupUi()
     output_layout_->addWidget(apply_main_antenna_lever_btn_, row, 5);
     row++;
 
-    timeout_label_ = new QLabel(this);
+    timeout_label_ = createFieldLabel();
     output_layout_->addWidget(timeout_label_, row, 0);
     timeout_combo_ = createTimingComboBox(this, "5000");
     output_layout_->addWidget(timeout_combo_, row, 1);
 
-    reconnect_label_ = new QLabel(this);
+    reconnect_label_ = createFieldLabel();
     output_layout_->addWidget(reconnect_label_, row, 2);
     reconnect_combo_ = createTimingComboBox(this, "1000");
     output_layout_->addWidget(reconnect_combo_, row, 3, 1, 3);
@@ -909,7 +974,7 @@ void RtkConfigDialog::setupUi()
     gga_header_layout_ = new QHBoxLayout();
     gga_header_layout_->setSpacing(8);
 
-    gga_port_info_label_ = new QLabel(this);
+    gga_port_info_label_ = createFieldLabel();
     gga_header_layout_->addWidget(gga_port_info_label_);
 
     gga_port_combo_ = new QComboBox(this);
@@ -921,7 +986,7 @@ void RtkConfigDialog::setupUi()
     gga_header_layout_->addWidget(gga_toggle_btn_);
     gga_header_layout_->addStretch();
 
-    gga_frequency_label_ = new QLabel(this);
+    gga_frequency_label_ = createFieldLabel();
     gga_header_layout_->addWidget(gga_frequency_label_);
     gga_layout_->addLayout(gga_header_layout_);
 
@@ -1166,8 +1231,10 @@ void RtkConfigDialog::applyScaledUiMetrics()
     {
         const int helpSize = scalePixels(22);
         main_antenna_lever_help_btn_->setFixedSize(helpSize, helpSize);
+        const int iconSize = std::max(12, helpSize - scalePixels(6));
+        main_antenna_lever_help_btn_->setIconSize(QSize(iconSize, iconSize));
         main_antenna_lever_help_btn_->setStyleSheet(QString(
-            "QToolButton { border: 1px solid #9e9e9e; border-radius: %1px; color: #000000; font-weight: bold; }"
+            "QToolButton { border: 1px solid #9e9e9e; border-radius: %1px; padding: 0px; }"
             "QToolButton:hover { background: #eeeeee; }")
             .arg(helpSize / 2));
     }
