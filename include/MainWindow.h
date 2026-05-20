@@ -475,6 +475,7 @@ private:
     QLabel *ptb_lbl_;
     QLabel *hmp_lbl_;
     QLabel *lidar_lbl_;
+    QWidget *data_telemetry_summary_card_;
     QLabel *data_telemetry_summary_lbl_;
     QLabel *log_inline_title_lbl_;
     QLabel *epsilon_inline_title_lbl_;

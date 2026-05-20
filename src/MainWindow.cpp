@@ -2231,6 +2231,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_lbl_(nullptr)
     , hmp_lbl_(nullptr)
     , lidar_lbl_(nullptr)
+    , data_telemetry_summary_card_(nullptr)
     , data_telemetry_summary_lbl_(nullptr)
     , log_inline_title_lbl_(nullptr)
     , epsilon_inline_title_lbl_(nullptr)
@@ -3298,12 +3299,12 @@ QString MainWindow::remoteTelemetrySummaryText() const
 
 void MainWindow::updateRemoteTelemetrySummaryLabel()
 {
-    if (!data_telemetry_summary_lbl_)
+    if (!data_telemetry_summary_card_ || !data_telemetry_summary_lbl_)
     {
         return;
     }
     const QString text = remoteTelemetrySummaryText();
-    data_telemetry_summary_lbl_->setVisible(isRemoteSkyMode());
+    data_telemetry_summary_card_->setVisible(isRemoteSkyMode());
     data_telemetry_summary_lbl_->setText(text);
     data_telemetry_summary_lbl_->setToolTip(text);
 }
@@ -4365,15 +4366,24 @@ void MainWindow::setupConfigPanel()
     connect(hmp_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onHmpRateChanged);
     connect(lidar_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onLidarRateChanged);
 
-    data_telemetry_summary_lbl_ = new QLabel(this);
+    data_telemetry_summary_card_ = new QFrame(this);
+    data_telemetry_summary_card_->setObjectName(QStringLiteral("epsilonSectionCard"));
+    data_telemetry_summary_card_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::MinimumExpanding);
+    auto *telemetrySummaryLayout = new QVBoxLayout(data_telemetry_summary_card_);
+    telemetrySummaryLayout->setContentsMargins(8, 6, 8, 6);
+    telemetrySummaryLayout->setSpacing(0);
+
+    data_telemetry_summary_lbl_ = new QLabel(data_telemetry_summary_card_);
     data_telemetry_summary_lbl_->setObjectName("fieldLabel");
     data_telemetry_summary_lbl_->setTextFormat(Qt::RichText);
     data_telemetry_summary_lbl_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    data_telemetry_summary_lbl_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
+    data_telemetry_summary_lbl_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::MinimumExpanding);
     data_telemetry_summary_lbl_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     data_telemetry_summary_lbl_->setMinimumHeight(kMainPageInputHeight);
     data_telemetry_summary_lbl_->setWordWrap(false);
-    config_layout->addWidget(data_telemetry_summary_lbl_, 0, 6, row, 1, Qt::AlignTop | Qt::AlignLeft);
+    telemetrySummaryLayout->addWidget(data_telemetry_summary_lbl_);
+    data_telemetry_summary_card_->setVisible(false);
+    config_layout->addWidget(data_telemetry_summary_card_, 0, 6, row, 1, Qt::AlignTop | Qt::AlignLeft);
 
     config_root_layout->addLayout(config_layout);
     main_layout_->addWidget(config_group_);
