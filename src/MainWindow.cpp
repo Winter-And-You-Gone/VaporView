@@ -4435,7 +4435,7 @@ void MainWindow::setupDataPanels()
 
     auto *env_group = new QGroupBox(this);
     env_group->setObjectName("sensorGroupBox");
-    env_group->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+    env_group->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     auto *env_layout = new QVBoxLayout(env_group);
     env_layout->setContentsMargins(1, 0, 1, 1);
     env_layout->setSpacing(0);
@@ -4479,10 +4479,9 @@ void MainWindow::setupDataPanels()
     env_layout->addWidget(hmp_panel_);
     updateEnvironmentStatusIcons(false, false, false);
 
-    sensor_layout->addWidget(env_group, 0, Qt::AlignLeft | Qt::AlignTop);
-    sensor_layout->addStretch(1);
+    sensor_layout->addWidget(env_group, 1);
 
-    data_layout->addWidget(sensor_row, 0, Qt::AlignLeft | Qt::AlignTop);
+    data_layout->addWidget(sensor_row, 0);
     data_layout->addStretch(1);
     env_group_ = env_group;
 
