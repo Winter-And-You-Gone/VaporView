@@ -3,6 +3,7 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 import "components"
 import "pages"
+import "theme"
 
 ApplicationWindow {
     id: root
@@ -34,31 +35,51 @@ ApplicationWindow {
     property bool uiCompactMode: appBackend.uiCompactMode
     property bool uiShowDebugOutlines: appBackend.uiShowDebugOutlines
 
-    readonly property color bg: dark ? "#020817" : "#ffffff"
-    readonly property color card: dark ? "#020817" : "#ffffff"
-    readonly property color cardAlt: dark ? "#1e293b" : "#f1f5f9"
-    readonly property color cardHeader: dark ? "#0d1424" : "#f9fbfd"
-    readonly property color secondary: cardAlt
-    readonly property color border: dark ? "#1e293b" : "#e2e8f0"
-    readonly property color chartPlot: card
-    readonly property color chartGrid: dark ? "#334155" : "#e5edf6"
-    readonly property color chartAxis: dark ? "#cbd5e1" : "#020817"
-    readonly property color text: dark ? "#f8fafc" : "#020817"
-    readonly property color muted: dark ? "#94a3b8" : "#64748b"
-    readonly property color primary: "#0f172a"
-    readonly property color primaryForeground: "#f8fafc"
-    readonly property color primaryHover: "#1e293b"
-    readonly property color navActive: dark ? "#e2e8f0" : primary
-    readonly property color navActiveFill: dark ? Qt.rgba(0.89, 0.93, 0.98, 0.14) : Qt.rgba(0.06, 0.09, 0.16, 0.10)
-    readonly property color danger: dark ? "#f87171" : "#ef4444"
-    readonly property color dangerSoft: dark ? Qt.rgba(0.973, 0.443, 0.443, 0.10) : Qt.rgba(0.937, 0.267, 0.267, 0.10)
-    readonly property color dangerSoftHover: dark ? Qt.rgba(0.973, 0.443, 0.443, 0.20) : Qt.rgba(0.937, 0.267, 0.267, 0.20)
-    readonly property color dangerBorder: dark ? Qt.rgba(0.973, 0.443, 0.443, 0.30) : Qt.rgba(0.937, 0.267, 0.267, 0.30)
-    readonly property color ok: dark ? "#4ade80" : "#22c55e"
-    readonly property color warning: dark ? "#fbbf24" : "#f59e0b"
-    readonly property color offline: dark ? "#94a3b8" : "#64748b"
-    readonly property color waveformRaw: dark ? "#8fb3e6" : "#496083"
-    readonly property color waveformHarmonic: waveformRaw
+    AppTheme {
+        id: appTheme
+
+        dark: root.dark
+        scaleFactor: root.scaleFactor
+        radius: appBackend.uiRadius
+        controlHeight: appBackend.uiControlHeight
+        buttonHeight: appBackend.uiButtonHeight
+        cardHeaderHeight: appBackend.uiCardHeaderHeight
+        cardPadding: appBackend.uiCardPadding
+        controlPaddingX: appBackend.uiControlPaddingX
+        spacing: appBackend.uiSpacing
+        borderWidth: appBackend.uiBorderWidth
+        smallFontSize: appBackend.uiSmallFontSize
+        bodyFontSize: appBackend.uiBodyFontSize
+        valueFontSize: appBackend.uiValueFontSize
+    }
+
+    readonly property var theme: appTheme
+
+    readonly property color bg: theme.bg
+    readonly property color card: theme.surface
+    readonly property color cardAlt: theme.surfaceAlt
+    readonly property color cardHeader: theme.surfaceHeader
+    readonly property color secondary: theme.surfaceAlt
+    readonly property color border: theme.border
+    readonly property color chartPlot: theme.chartPlot
+    readonly property color chartGrid: theme.chartGrid
+    readonly property color chartAxis: theme.chartAxis
+    readonly property color text: theme.text
+    readonly property color muted: theme.muted
+    readonly property color primary: theme.primary
+    readonly property color primaryForeground: theme.primaryForeground
+    readonly property color primaryHover: theme.primaryHover
+    readonly property color navActive: theme.navActive
+    readonly property color navActiveFill: theme.navActiveFill
+    readonly property color danger: theme.danger
+    readonly property color dangerSoft: theme.dangerSoft
+    readonly property color dangerSoftHover: theme.dangerSoftHover
+    readonly property color dangerBorder: theme.dangerBorder
+    readonly property color ok: theme.ok
+    readonly property color warning: theme.warning
+    readonly property color offline: theme.offline
+    readonly property color waveformRaw: theme.waveformRaw
+    readonly property color waveformHarmonic: theme.waveformHarmonic
 
     function t(key) {
         appBackend.language

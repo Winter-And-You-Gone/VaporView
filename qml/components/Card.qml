@@ -4,13 +4,16 @@ import QtQuick.Layouts
 
 Rectangle {
     id: card
+
     property alias title: titleText.text
     property Item headerRight
     default property alias content: body.data
 
-    implicitHeight: ApplicationWindow.window.uiCardHeaderHeight + body.implicitHeight
-    radius: ApplicationWindow.window.uiRadius
-    color: ApplicationWindow.window.card
+    readonly property var theme: ApplicationWindow.window.theme
+
+    implicitHeight: theme.cardHeaderHeight + body.implicitHeight
+    radius: theme.radius
+    color: theme.surface
     border.width: 0
     clip: true
 
@@ -20,14 +23,15 @@ Rectangle {
 
         Item {
             id: header
-            implicitHeight: ApplicationWindow.window.uiCardHeaderHeight
+
+            implicitHeight: theme.cardHeaderHeight
             Layout.fillWidth: true
-            Layout.preferredHeight: ApplicationWindow.window.uiCardHeaderHeight
+            Layout.preferredHeight: theme.cardHeaderHeight
 
             Rectangle {
                 anchors.fill: parent
                 radius: card.radius
-                color: ApplicationWindow.window.cardHeader
+                color: theme.surfaceHeader
                 border.width: 0
             }
 
@@ -36,28 +40,29 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
                 height: card.radius
-                color: ApplicationWindow.window.cardHeader
+                color: theme.surfaceHeader
             }
 
             Rectangle {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
-                height: 1
-                color: ApplicationWindow.window.border
+                height: theme.borderWidth
+                color: theme.border
             }
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: ApplicationWindow.window.uiCardPadding
-                anchors.rightMargin: ApplicationWindow.window.uiCardPadding
-                spacing: 8
+                anchors.leftMargin: theme.cardPadding
+                anchors.rightMargin: theme.cardPadding
+                spacing: theme.spacing
 
                 Text {
                     id: titleText
+
                     Layout.fillWidth: true
-                    color: ApplicationWindow.window.text
-                    font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor
+                    color: theme.text
+                    font.pixelSize: theme.font(theme.bodyFontSize)
                     font.weight: Font.Bold
                     elide: Text.ElideRight
                     verticalAlignment: Text.AlignVCenter
@@ -65,8 +70,10 @@ Rectangle {
 
                 Item {
                     id: rightSlot
+
                     Layout.preferredWidth: card.headerRight ? card.headerRight.implicitWidth : 0
                     Layout.preferredHeight: 28
+
                     Component.onCompleted: {
                         if (card.headerRight) {
                             card.headerRight.parent = rightSlot
@@ -79,7 +86,8 @@ Rectangle {
 
         Item {
             id: body
-            implicitHeight: childrenRect.height <= 0 ? 0 : childrenRect.y + childrenRect.height + 12
+
+            implicitHeight: childrenRect.height <= 0 ? 0 : childrenRect.y + childrenRect.height + theme.cardPadding
             Layout.fillWidth: true
             Layout.fillHeight: true
         }
@@ -90,7 +98,7 @@ Rectangle {
         z: 20
         radius: card.radius
         color: "transparent"
-        border.color: ApplicationWindow.window.border
-        border.width: 1
+        border.color: theme.border
+        border.width: theme.borderWidth
     }
 }
