@@ -4177,7 +4177,8 @@ void MainWindow::setupCentralWidget()
     main_cards_splitter_->setObjectName("mainCardsSplitter");
     main_cards_splitter_->setChildrenCollapsible(false);
     main_cards_splitter_->setHandleWidth(3);
-    main_cards_splitter_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    main_cards_splitter_->setOpaqueResize(true);
+    main_cards_splitter_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     main_layout_->addWidget(main_cards_splitter_, 0);
     main_layout_->addStretch(1);
 
@@ -4229,6 +4230,8 @@ void MainWindow::setupConfigPanel()
     config_group_ = new QGroupBox(this);
     config_group_->setObjectName("sensorGroupBox");
     config_group_->setMinimumWidth(860);
+    config_group_->setMinimumHeight(96);
+    config_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
 
     auto *config_root_layout = new QVBoxLayout(config_group_);
     config_root_layout->setSpacing(8);
@@ -4481,6 +4484,8 @@ void MainWindow::setupDataPanels()
 {
     data_group_ = new QGroupBox(this);
     data_group_->setObjectName("sensorGroupBox");
+    data_group_->setMinimumHeight(96);
+    data_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
     auto *data_layout = new QVBoxLayout(data_group_);
     data_layout->setSpacing(0);
     data_layout->setContentsMargins(0, 0, 0, 0);
@@ -4591,8 +4596,8 @@ void MainWindow::setupDataPanels()
 
     tcp_wave_group_ = new QGroupBox(this);
     tcp_wave_group_->setObjectName("sensorGroupBox");
-    tcp_wave_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    tcp_wave_group_->setMinimumHeight(430);
+    tcp_wave_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
+    tcp_wave_group_->setMinimumHeight(260);
     auto *tcpWaveLayout = new QVBoxLayout(tcp_wave_group_);
     tcpWaveLayout->setContentsMargins(0, 0, 0, 0);
     tcpWaveLayout->setSpacing(0);
@@ -4634,9 +4639,9 @@ void MainWindow::setupDataPanels()
             this, &MainWindow::sendRemotePeakSearchRange);
     tcpWaveLayout->addWidget(tcp_wave_panel_);
     main_cards_splitter_->addWidget(tcp_wave_group_);
-    main_cards_splitter_->setStretchFactor(0, 0);
-    main_cards_splitter_->setStretchFactor(1, 0);
-    main_cards_splitter_->setStretchFactor(2, 0);
+    main_cards_splitter_->setStretchFactor(0, 1);
+    main_cards_splitter_->setStretchFactor(1, 1);
+    main_cards_splitter_->setStretchFactor(2, 2);
     main_cards_splitter_->setSizes({250, 210, 520});
 }
 
