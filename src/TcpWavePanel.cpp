@@ -1,5 +1,4 @@
 #include "TcpWavePanel.h"
-#include "RangeSelectionAxisWidget.h"
 #include <QAbstractSocket>
 #include <QByteArray>
 #include <QComboBox>
@@ -643,7 +642,6 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , wave1_plot_(nullptr)
     , wave4_plot_(nullptr)
     , peak_plot_(nullptr)
-    , peak_range_axis_(nullptr)
     , peak_filter_button_(nullptr)
     , peak_mode_button_(nullptr)
     , peak_clear_button_(nullptr)
@@ -879,20 +877,6 @@ void TcpWavePanel::setupUi()
     peak_plot_ = new PeakTrendPlotWidget(this);
     peak_plot_->setPlotMode(peak_plot_scatter_mode_ ? PeakTrendPlotWidget::PlotMode::Scatter : PeakTrendPlotWidget::PlotMode::Polyline);
     peakLayout->addWidget(peak_plot_);
-    peak_range_axis_ = new RangeSelectionAxisWidget(this);
-    peak_plot_->setViewChangedCallback([this](int totalCount, int startIndex, int visibleCount) {
-        if (peak_range_axis_)
-        {
-            peak_range_axis_->setRange(totalCount, startIndex, visibleCount);
-        }
-    });
-    peak_range_axis_->setRangeChangedCallback([this](int startIndex, int visibleCount) {
-        if (peak_plot_)
-        {
-            peak_plot_->setViewRange(startIndex, visibleCount);
-        }
-    });
-    peakLayout->addWidget(peak_range_axis_);
     mainLayout->addWidget(peak_group_, 0);
 
     connect(host_edit_, &QLineEdit::textChanged, this, [this](const QString&) {
@@ -1018,10 +1002,6 @@ void TcpWavePanel::setEnglish(bool english)
     if (peak_plot_)
     {
         peak_plot_->setEmptyText(english ? QStringLiteral("No peak data") : QStringLiteral("暂无峰值数据"));
-    }
-    if (peak_range_axis_)
-    {
-        peak_range_axis_->setEmptyText(english ? QStringLiteral("No range") : QStringLiteral("暂无数据"));
     }
     if (peak_clear_button_)
     {

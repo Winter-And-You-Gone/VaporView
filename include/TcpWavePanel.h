@@ -19,7 +19,6 @@ class QGridLayout;
 class QHBoxLayout;
 class WavePlotWidget;
 class PeakTrendPlotWidget;
-class RangeSelectionAxisWidget;
 
 class TcpWavePanel : public QWidget
 {
@@ -147,7 +146,6 @@ private:
     WavePlotWidget *wave1_plot_;
     WavePlotWidget *wave4_plot_;
     PeakTrendPlotWidget *peak_plot_;
-    RangeSelectionAxisWidget *peak_range_axis_;
     QPushButton *peak_filter_button_;
     QPushButton *peak_mode_button_;
     QPushButton *peak_clear_button_;
