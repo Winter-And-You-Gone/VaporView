@@ -87,13 +87,13 @@ constexpr int kEpsilonPositionValueColumnWidth = 230;
 constexpr int kEpsilonMotionValueColumnWidth = 300;
 constexpr int kTelemetrySummaryRateCardWidth = 250;
 constexpr int kTelemetrySummaryInfoCardWidth = 280;
-constexpr int kTelemetrySummaryGapWidth = 16;
+constexpr int kTelemetrySummaryGapWidth = 2;
 constexpr int kTelemetrySummaryRateLabelWidth = 128;
 constexpr int kTelemetrySummaryRateValueWidth = 86;
 constexpr int kTelemetrySummaryInfoLabelWidth = 118;
 constexpr int kTelemetrySummaryInfoValueWidth = 116;
-constexpr int kTelemetrySummaryCardMinWidth = kTelemetrySummaryRateCardWidth + kTelemetrySummaryGapWidth + kTelemetrySummaryInfoCardWidth + 16;
-constexpr int kTelemetrySummaryTitleColumnWidth = 28;
+constexpr int kTelemetrySummaryCardMinWidth = kTelemetrySummaryRateCardWidth + kTelemetrySummaryGapWidth + kTelemetrySummaryInfoCardWidth + 4;
+constexpr int kTelemetrySummaryTitleColumnWidth = kEpsilonSideTitleWidth;
 constexpr int kPtbMinSampleRateHz = 1;
 constexpr int kPtbMaxSampleRateHz = 70;
 
@@ -3251,8 +3251,8 @@ QString MainWindow::remoteTelemetrySummaryText() const
 
     auto rowHtml = [&](const QString& label, const QString& value, int labelWidth, int valueWidth) {
         return QStringLiteral("<tr>"
-                              "<td width=\"%1\" style=\"width:%1px;padding:1px 8px;white-space:nowrap;color:%5;font-weight:600;\">%2</td>"
-                              "<td width=\"%3\" style=\"width:%3px;min-width:%3px;padding:1px 8px;white-space:nowrap;color:%5;font-weight:600;\">%4</td>"
+                              "<td width=\"%1\" style=\"width:%1px;padding:1px 6px;white-space:nowrap;color:%5;font-weight:600;\">%2</td>"
+                              "<td width=\"%3\" style=\"width:%3px;min-width:%3px;padding:1px 6px;white-space:nowrap;color:%5;font-weight:600;\">%4</td>"
                               "</tr>")
             .arg(scalePixels(labelWidth))
             .arg(label.toHtmlEscaped())
@@ -3346,8 +3346,11 @@ QString MainWindow::remoteTelemetrySummaryText() const
     const QString deviceCard = sectionHtml(deviceTitle, deviceRows, kTelemetrySummaryInfoCardWidth);
     return QStringLiteral("<table cellspacing=\"0\" cellpadding=\"0\"><tr>"
                           "<td valign=\"top\">%1</td><td width=\"%4\"></td>"
-                          "<td valign=\"top\">%2<br/>%3</td></tr></table>")
+                          "<td valign=\"top\"><table cellspacing=\"0\" cellpadding=\"0\">"
+                          "<tr><td>%2</td></tr><tr><td height=\"%5\" style=\"height:%5px;\"></td></tr><tr><td>%3</td></tr>"
+                          "</table></td></tr></table>")
         .arg(rateCard, linkCard, deviceCard)
+        .arg(scalePixels(kTelemetrySummaryGapWidth))
         .arg(scalePixels(kTelemetrySummaryGapWidth));
 }
 
@@ -4425,7 +4428,7 @@ void MainWindow::setupConfigPanel()
     data_telemetry_summary_card_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::MinimumExpanding);
     data_telemetry_summary_card_->setMinimumWidth(kTelemetrySummaryCardMinWidth);
     auto *telemetrySummaryLayout = new QVBoxLayout(data_telemetry_summary_card_);
-    telemetrySummaryLayout->setContentsMargins(8, 6, 8, 6);
+    telemetrySummaryLayout->setContentsMargins(2, 2, 2, 2);
     telemetrySummaryLayout->setSpacing(0);
 
     data_telemetry_summary_lbl_ = new QLabel(data_telemetry_summary_card_);
