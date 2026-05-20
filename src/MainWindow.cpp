@@ -1270,27 +1270,19 @@ private:
         QVBoxLayout *middleColumn = createColumn();
         QVBoxLayout *rightColumn = createColumn();
 
-        QGridLayout *runGrid = addSectionCard(leftColumn,
-                                              QStringLiteral("run"),
-                                              QStringLiteral("数据状态"),
-                                              QStringLiteral("Data Status"),
-                                              kEpsilonTitleColumnWidth,
-                                              kEpsilonLeftValueColumnWidth);
-        int row = 0;
-        addField(runGrid, row++, 0, QStringLiteral("time_utc"), QStringLiteral("UTC时间:"), QStringLiteral("UTC Time:"), kEpsilonLeftValueColumnWidth);
-        addField(runGrid, row++, 0, QStringLiteral("device_ts"), QStringLiteral("设备时间戳:"), QStringLiteral("Device Timestamp:"), kEpsilonLeftValueColumnWidth);
-        addField(runGrid, row++, 0, QStringLiteral("frames"), QStringLiteral("原始帧/丢帧:"), QStringLiteral("Raw/Dropped Frames:"), kEpsilonLeftValueColumnWidth);
-
-        QGridLayout *healthGrid = addSectionCard(leftColumn,
-                                                 QStringLiteral("health"),
-                                                 QStringLiteral("系统健康"),
-                                                 QStringLiteral("System Health"),
+        QGridLayout *statusGrid = addSectionCard(leftColumn,
+                                                 QStringLiteral("status"),
+                                                 QStringLiteral("数据与系统状态"),
+                                                 QStringLiteral("Data & System Status"),
                                                  kEpsilonTitleColumnWidth,
                                                  kEpsilonLeftValueColumnWidth);
-        row = 0;
-        addField(healthGrid, row++, 0, QStringLiteral("status_bits"), QStringLiteral("系统状态:"), QStringLiteral("System Status:"), kEpsilonLeftValueColumnWidth);
-        addField(healthGrid, row++, 0, QStringLiteral("filter_bits"), QStringLiteral("滤波状态:"), QStringLiteral("Filter Status:"), kEpsilonLeftValueColumnWidth);
-        addField(healthGrid, row++, 0, QStringLiteral("heading_valid"), QStringLiteral("航向有效:"), QStringLiteral("Heading Valid:"), kEpsilonLeftValueColumnWidth);
+        int row = 0;
+        addField(statusGrid, row++, 0, QStringLiteral("time_utc"), QStringLiteral("UTC时间:"), QStringLiteral("UTC Time:"), kEpsilonLeftValueColumnWidth);
+        addField(statusGrid, row++, 0, QStringLiteral("device_ts"), QStringLiteral("设备时间戳:"), QStringLiteral("Device Timestamp:"), kEpsilonLeftValueColumnWidth);
+        addField(statusGrid, row++, 0, QStringLiteral("frames"), QStringLiteral("原始帧/丢帧:"), QStringLiteral("Raw/Dropped Frames:"), kEpsilonLeftValueColumnWidth);
+        addField(statusGrid, row++, 0, QStringLiteral("status_bits"), QStringLiteral("系统状态:"), QStringLiteral("System Status:"), kEpsilonLeftValueColumnWidth);
+        addField(statusGrid, row++, 0, QStringLiteral("filter_bits"), QStringLiteral("滤波状态:"), QStringLiteral("Filter Status:"), kEpsilonLeftValueColumnWidth);
+        addField(statusGrid, row++, 0, QStringLiteral("heading_valid"), QStringLiteral("航向有效:"), QStringLiteral("Heading Valid:"), kEpsilonLeftValueColumnWidth);
 
         QGridLayout *positionGrid = addSectionCard(middleColumn,
                                                    QStringLiteral("position"),
