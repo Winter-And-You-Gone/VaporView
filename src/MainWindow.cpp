@@ -82,8 +82,7 @@ constexpr int kEnvStatusIconSize = 18;
 constexpr int kEpsilonSideTitleWidth = 24;
 constexpr int kEpsilonTitleColumnWidth = 102;
 constexpr int kEpsilonMotionTitleColumnWidth = 116;
-constexpr int kEpsilonRunValueColumnWidth = 210;
-constexpr int kEpsilonHealthValueColumnWidth = 240;
+constexpr int kEpsilonLeftValueColumnWidth = 240;
 constexpr int kEpsilonPositionValueColumnWidth = 230;
 constexpr int kEpsilonMotionValueColumnWidth = 300;
 constexpr int kPtbMinSampleRateHz = 1;
@@ -902,6 +901,7 @@ public:
         , geodetic_packet_rate_hz_(0.0)
         , ecef_packet_rate_hz_(0.0)
     {
+        setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
         setupUi();
         setEnglish(false);
     }
@@ -1257,22 +1257,22 @@ private:
                                               QStringLiteral("数据状态"),
                                               QStringLiteral("Data Status"),
                                               kEpsilonTitleColumnWidth,
-                                              kEpsilonRunValueColumnWidth);
+                                              kEpsilonLeftValueColumnWidth);
         int row = 0;
-        addField(runGrid, row++, 0, QStringLiteral("time_utc"), QStringLiteral("UTC时间:"), QStringLiteral("UTC Time:"), kEpsilonRunValueColumnWidth);
-        addField(runGrid, row++, 0, QStringLiteral("device_ts"), QStringLiteral("设备时间戳:"), QStringLiteral("Device Timestamp:"), kEpsilonRunValueColumnWidth);
-        addField(runGrid, row++, 0, QStringLiteral("frames"), QStringLiteral("原始帧/丢帧:"), QStringLiteral("Raw/Dropped Frames:"), kEpsilonRunValueColumnWidth);
+        addField(runGrid, row++, 0, QStringLiteral("time_utc"), QStringLiteral("UTC时间:"), QStringLiteral("UTC Time:"), kEpsilonLeftValueColumnWidth);
+        addField(runGrid, row++, 0, QStringLiteral("device_ts"), QStringLiteral("设备时间戳:"), QStringLiteral("Device Timestamp:"), kEpsilonLeftValueColumnWidth);
+        addField(runGrid, row++, 0, QStringLiteral("frames"), QStringLiteral("原始帧/丢帧:"), QStringLiteral("Raw/Dropped Frames:"), kEpsilonLeftValueColumnWidth);
 
         QGridLayout *healthGrid = addSectionCard(leftColumn,
                                                  QStringLiteral("health"),
                                                  QStringLiteral("系统健康"),
                                                  QStringLiteral("System Health"),
                                                  kEpsilonTitleColumnWidth,
-                                                 kEpsilonHealthValueColumnWidth);
+                                                 kEpsilonLeftValueColumnWidth);
         row = 0;
-        addField(healthGrid, row++, 0, QStringLiteral("status_bits"), QStringLiteral("系统状态:"), QStringLiteral("System Status:"), kEpsilonHealthValueColumnWidth);
-        addField(healthGrid, row++, 0, QStringLiteral("filter_bits"), QStringLiteral("滤波状态:"), QStringLiteral("Filter Status:"), kEpsilonHealthValueColumnWidth);
-        addField(healthGrid, row++, 0, QStringLiteral("heading_valid"), QStringLiteral("航向有效:"), QStringLiteral("Heading Valid:"), kEpsilonHealthValueColumnWidth);
+        addField(healthGrid, row++, 0, QStringLiteral("status_bits"), QStringLiteral("系统状态:"), QStringLiteral("System Status:"), kEpsilonLeftValueColumnWidth);
+        addField(healthGrid, row++, 0, QStringLiteral("filter_bits"), QStringLiteral("滤波状态:"), QStringLiteral("Filter Status:"), kEpsilonLeftValueColumnWidth);
+        addField(healthGrid, row++, 0, QStringLiteral("heading_valid"), QStringLiteral("航向有效:"), QStringLiteral("Heading Valid:"), kEpsilonLeftValueColumnWidth);
 
         QGridLayout *positionGrid = addSectionCard(middleColumn,
                                                    QStringLiteral("position"),
@@ -4387,12 +4387,14 @@ void MainWindow::setupDataPanels()
     data_layout->setSpacing(0);
     data_layout->setContentsMargins(0, 0, 0, 0);
 
-    auto *sensor_splitter = new QSplitter(Qt::Horizontal, data_group_);
-    sensor_splitter->setChildrenCollapsible(false);
-    sensor_splitter->setHandleWidth(0);
+    auto *sensor_row = new QWidget(data_group_);
+    auto *sensor_layout = new QHBoxLayout(sensor_row);
+    sensor_layout->setContentsMargins(0, 0, 0, 0);
+    sensor_layout->setSpacing(2);
 
     epsilon_group_ = new QGroupBox(this);
     epsilon_group_->setObjectName("sensorGroupBox");
+    epsilon_group_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
     auto *epsilon_layout = new QVBoxLayout(epsilon_group_);
     epsilon_layout->setContentsMargins(1, 0, 1, 1);
     epsilon_layout->setSpacing(0);
@@ -4422,7 +4424,7 @@ void MainWindow::setupDataPanels()
     epsilon_layout->addWidget(epsilonTitleBar);
     epsilon_panel_ = new EpsilonPanel(epsilonRateTitleLabel, this);
     epsilon_layout->addWidget(epsilon_panel_);
-    sensor_splitter->addWidget(epsilon_group_);
+    sensor_layout->addWidget(epsilon_group_, 0, Qt::AlignLeft | Qt::AlignTop);
 
     gnss_group_ = nullptr;
     imu_group_ = nullptr;
@@ -4433,6 +4435,7 @@ void MainWindow::setupDataPanels()
 
     auto *env_group = new QGroupBox(this);
     env_group->setObjectName("sensorGroupBox");
+    env_group->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
     auto *env_layout = new QVBoxLayout(env_group);
     env_layout->setContentsMargins(1, 0, 1, 1);
     env_layout->setSpacing(0);
@@ -4476,12 +4479,11 @@ void MainWindow::setupDataPanels()
     env_layout->addWidget(hmp_panel_);
     updateEnvironmentStatusIcons(false, false, false);
 
-    sensor_splitter->addWidget(env_group);
-    sensor_splitter->setStretchFactor(0, 8);
-    sensor_splitter->setStretchFactor(1, 2);
-    sensor_splitter->setSizes({980, 240});
+    sensor_layout->addWidget(env_group, 0, Qt::AlignLeft | Qt::AlignTop);
+    sensor_layout->addStretch(1);
 
-    data_layout->addWidget(sensor_splitter, 1);
+    data_layout->addWidget(sensor_row, 0, Qt::AlignLeft | Qt::AlignTop);
+    data_layout->addStretch(1);
     env_group_ = env_group;
 
     lidar_group_ = nullptr;
