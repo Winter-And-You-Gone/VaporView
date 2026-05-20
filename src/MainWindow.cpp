@@ -79,6 +79,11 @@ constexpr int kMainPageInputHeight = 36;
 constexpr int kMainPageButtonHeight = 36;
 constexpr int kMainPageTitleBarHeight = kMainPageButtonHeight + 4;
 constexpr int kEnvStatusIconSize = 18;
+constexpr int kEnvironmentRateLabelMinWidth = 72;
+constexpr int kPtbPressureValueMinWidth = 112;
+constexpr int kHmpValueMinWidth = 92;
+constexpr int kLidarDistanceValueMinWidth = 92;
+constexpr int kLidarStrengthValueMinWidth = 56;
 constexpr int kEpsilonSideTitleWidth = 24;
 constexpr int kEpsilonTitleColumnWidth = 102;
 constexpr int kEpsilonMotionTitleColumnWidth = 116;
@@ -416,10 +421,15 @@ QLabel#epsilonSectionLabel {
 QLabel#valueLabel {
     color: #8cc8ff;
     background-color: transparent;
+    font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
 }
 QLabel#highlightedValue {
     color: #8cc8ff;
     background-color: #162638;
+    font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
+}
+QLabel#rateLabel {
+    font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
 }
 QComboBox,
 QLineEdit,
@@ -1897,6 +1907,7 @@ void PtbPanel::setupUi()
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     rate_label_->setMinimumHeight(20);
+    rate_label_->setMinimumWidth(kEnvironmentRateLabelMinWidth);
 
     auto *pressLayout = new QHBoxLayout();
     pressLayout->setSpacing(1);
@@ -1907,6 +1918,7 @@ void PtbPanel::setupUi()
     pressure_label_ = new QLabel("--- hPa", this);
     pressure_label_->setObjectName("highlightedValue");
     pressure_label_->setMinimumHeight(20);
+    pressure_label_->setMinimumWidth(kPtbPressureValueMinWidth);
     pressLayout->addWidget(pressure_label_);
     pressLayout->addStretch();
     pressLayout->addWidget(rate_label_);
@@ -1978,6 +1990,7 @@ void HmpPanel::setupUi()
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     rate_label_->setMinimumHeight(20);
+    rate_label_->setMinimumWidth(kEnvironmentRateLabelMinWidth);
 
     auto *tempLayout = new QHBoxLayout();
     tempLayout->setSpacing(1);
@@ -1988,6 +2001,7 @@ void HmpPanel::setupUi()
     temperature_label_ = new QLabel("--- °C", this);
     temperature_label_->setObjectName("highlightedValue");
     temperature_label_->setMinimumHeight(20);
+    temperature_label_->setMinimumWidth(kHmpValueMinWidth);
     tempLayout->addWidget(temperature_label_);
     tempLayout->addStretch();
     tempLayout->addWidget(rate_label_);
@@ -2002,6 +2016,7 @@ void HmpPanel::setupUi()
     humidity_label_ = new QLabel("--- %RH", this);
     humidity_label_->setObjectName("highlightedValue");
     humidity_label_->setMinimumHeight(20);
+    humidity_label_->setMinimumWidth(kHmpValueMinWidth);
     humidLayout->addWidget(humidity_label_);
     humidLayout->addStretch();
     layout->addLayout(humidLayout);
@@ -2081,6 +2096,7 @@ void LidarPanel::setupUi()
     rate_label_ = new QLabel("0.0 Hz", this);
     rate_label_->setObjectName("rateLabel");
     rate_label_->setMinimumHeight(20);
+    rate_label_->setMinimumWidth(kEnvironmentRateLabelMinWidth);
 
     auto *distanceLayout = new QHBoxLayout();
     distanceLayout->setSpacing(1);
@@ -2091,6 +2107,7 @@ void LidarPanel::setupUi()
     distance_label_ = new QLabel("--- m", this);
     distance_label_->setObjectName("highlightedValue");
     distance_label_->setMinimumHeight(20);
+    distance_label_->setMinimumWidth(kLidarDistanceValueMinWidth);
     distanceLayout->addWidget(distance_label_);
     distanceLayout->addStretch();
     distanceLayout->addWidget(rate_label_);
@@ -2105,6 +2122,7 @@ void LidarPanel::setupUi()
     strength_label_ = new QLabel("---", this);
     strength_label_->setObjectName("highlightedValue");
     strength_label_->setMinimumHeight(20);
+    strength_label_->setMinimumWidth(kLidarStrengthValueMinWidth);
     strengthLayout->addWidget(strength_label_);
     strengthLayout->addStretch();
     layout->addLayout(strengthLayout);
@@ -2565,7 +2583,7 @@ void MainWindow::loadModernStyleSheet()
             "QWidget#sectionTitleBar { background-color: #ffffff; border-bottom: 1px solid #dfe4ea; border-top-left-radius: 7px; border-top-right-radius: 7px; min-height: 40px; max-height: 40px; }"
             "QWidget#sectionTitleBar QLabel { background-color: transparent; border: none; }"
             "QLabel { color: #000000; background-color: transparent; border: none; }"
-            "QLabel#rateLabel { color: #000000; font-size: 13px; font-weight: bold; }"
+            "QLabel#rateLabel { color: #000000; font-size: 13px; font-weight: bold; font-family: \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace; }"
             "QLabel#fieldLabel { color: #000000; font-size: 14px; font-weight: 600; }"
             "QLabel#separatorLabel { color: #000000; font-size: 14px; font-weight: bold; }"
             "QLabel#rtkStatusLabel { color: #000000; font-weight: bold; }"
@@ -2573,6 +2591,7 @@ void MainWindow::loadModernStyleSheet()
             "QWidget#sectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
             "QFrame#epsilonSectionCard { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 4px; }"
             "QLabel#epsilonSectionLabel { color: #000000; background-color: #f8fafc; border: none; border-right: 1px solid #dfe4ea; font-size: 14px; font-weight: 700; padding: 2px; }"
+            "QLabel#valueLabel, QLabel#highlightedValue { font-family: \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace; }"
             "QComboBox { background-color: #ffffff; border: 1px solid #e0e0e0; border-radius: 6px; padding: 4px 10px; min-height: 26px; max-height: 26px; color: #000000; font-size: 14px; }"
             "QComboBox:hover { border-color: #bdbdbd; }"
             "QComboBox:focus { border-color: #1976d2; border-width: 1px; }"
@@ -3251,7 +3270,8 @@ QString MainWindow::remoteTelemetrySummaryText() const
     auto rowHtml = [&](const QString& label, const QString& value, int labelWidth, int valueWidth) {
         return QStringLiteral("<tr>"
                               "<td width=\"%1\" style=\"width:%1px;padding:1px 6px;white-space:nowrap;color:%5;font-weight:600;\">%2</td>"
-                              "<td width=\"%3\" style=\"width:%3px;min-width:%3px;padding:1px 6px;white-space:nowrap;color:%5;font-weight:600;\">%4</td>"
+                              "<td width=\"%3\" style=\"width:%3px;min-width:%3px;padding:1px 6px;white-space:nowrap;color:%5;font-weight:600;"
+                              "font-family:'Cascadia Mono','Consolas','Courier New',monospace;\">%4</td>"
                               "</tr>")
             .arg(scalePixels(labelWidth))
             .arg(label.toHtmlEscaped())

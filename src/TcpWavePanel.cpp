@@ -6,6 +6,8 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include <QFontDatabase>
+#include <QFontMetrics>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -89,6 +91,29 @@ QString formatWaveValue(double value, int fixedDecimals)
         return QString::number(value, 'g', 6);
     }
     return QString::number(value, 'f', fixedDecimals);
+}
+
+QFont numericFontFrom(const QFont& base)
+{
+    QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    if (base.pointSizeF() > 0.0)
+    {
+        font.setPointSizeF(base.pointSizeF());
+    }
+    font.setWeight(static_cast<QFont::Weight>(base.weight()));
+    font.setBold(base.bold());
+    return font;
+}
+
+int widestTextWidth(const QLabel *label, const QStringList& candidates)
+{
+    const QFontMetrics metrics(label->font());
+    int width = 0;
+    for (const QString& candidate : candidates)
+    {
+        width = std::max(width, metrics.horizontalAdvance(candidate));
+    }
+    return width;
 }
 
 struct PlotTheme
@@ -694,7 +719,14 @@ void TcpWavePanel::setupUi()
 
     frame_rate_label_ = new QLabel(this);
     frame_rate_label_->setObjectName("fieldLabel");
-    frame_rate_label_->setMinimumWidth(118);
+    frame_rate_label_->setFont(numericFontFrom(frame_rate_label_->font()));
+    const int frameRateWidth = std::max(
+        190,
+        widestTextWidth(frame_rate_label_,
+                        {QStringLiteral("实时频率: 0000.00 Hz"),
+                         QStringLiteral("Realtime: 0000.00 Hz")}) + 10);
+    frame_rate_label_->setFixedWidth(frameRateWidth);
+    frame_rate_label_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     top_controls_layout_->addWidget(frame_rate_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     top_controls_layout_->addSpacing(42);
 
@@ -738,6 +770,7 @@ void TcpWavePanel::setupUi()
 
     status_label_ = new QLabel(this);
     status_label_->setObjectName("fieldLabel");
+    status_label_->setFont(numericFontFrom(status_label_->font()));
     status_label_->setTextFormat(Qt::PlainText);
     status_label_->setWordWrap(false);
     status_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -771,6 +804,7 @@ void TcpWavePanel::setupUi()
     wave1HeaderLayout->addWidget(wave1_title_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     wave1_info_label_ = new QLabel(this);
     wave1_info_label_->setObjectName("fieldLabel");
+    wave1_info_label_->setFont(numericFontFrom(wave1_info_label_->font()));
     wave1_info_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     wave1_info_label_->setWordWrap(false);
     wave1HeaderLayout->addWidget(wave1_info_label_, 1, Qt::AlignVCenter | Qt::AlignRight);
@@ -794,6 +828,7 @@ void TcpWavePanel::setupUi()
     wave4HeaderLayout->addWidget(wave4_title_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     wave4_info_label_ = new QLabel(this);
     wave4_info_label_->setObjectName("fieldLabel");
+    wave4_info_label_->setFont(numericFontFrom(wave4_info_label_->font()));
     wave4_info_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     wave4_info_label_->setWordWrap(false);
     wave4HeaderLayout->addWidget(wave4_info_label_, 1, Qt::AlignVCenter | Qt::AlignRight);
