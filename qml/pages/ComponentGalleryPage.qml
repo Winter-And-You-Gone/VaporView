@@ -203,9 +203,9 @@ Item {
         readonly property int dynFrom: center - half
         readonly property int dynTo: center + half
         readonly property bool isFontSize: p.startsWith("ui") && p.indexOf("FontSize") > 0
-        spacing: 6
-        Text { text: parent.lb + ":"; color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; Layout.preferredWidth: 130 }
-        Text { text: appBackend[parent.p] + (parent.isFontSize ? " pt" : " px"); color: ApplicationWindow.window.text; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; font.family: "Consolas"; font.weight: Font.Bold; Layout.preferredWidth: 52; horizontalAlignment: Text.AlignRight }
+        spacing: 8
+        Text { text: parent.lb + ":"; color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor }
+        Text { text: appBackend[parent.p] + (parent.isFontSize ? " pt" : " px"); color: ApplicationWindow.window.text; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; font.family: "Consolas"; font.weight: Font.Bold }
         Slider { Layout.fillWidth: true; from: parent.dynFrom; to: parent.dynTo; stepSize: 1; value: Number(appBackend[parent.p]); onMoved: appBackend[parent.p] = Math.max(parent.fr, Math.min(parent.to, Math.round(value))) }
     }
 }
