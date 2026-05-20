@@ -86,12 +86,12 @@ constexpr int kEpsilonLeftValueColumnWidth = 240;
 constexpr int kEpsilonPositionValueColumnWidth = 230;
 constexpr int kEpsilonMotionValueColumnWidth = 300;
 constexpr int kTelemetrySummaryRateCardWidth = 250;
-constexpr int kTelemetrySummaryInfoCardWidth = 280;
+constexpr int kTelemetrySummaryInfoCardWidth = 250;
 constexpr int kTelemetrySummaryGapWidth = 2;
 constexpr int kTelemetrySummaryRateLabelWidth = 128;
 constexpr int kTelemetrySummaryRateValueWidth = 86;
 constexpr int kTelemetrySummaryInfoLabelWidth = 118;
-constexpr int kTelemetrySummaryInfoValueWidth = 116;
+constexpr int kTelemetrySummaryInfoValueWidth = 86;
 constexpr int kTelemetrySummaryCardMinWidth = kTelemetrySummaryRateCardWidth + kTelemetrySummaryGapWidth + kTelemetrySummaryInfoCardWidth + 4;
 constexpr int kTelemetrySummaryTitleColumnWidth = kEpsilonSideTitleWidth;
 constexpr int kPtbMinSampleRateHz = 1;
@@ -3344,13 +3344,11 @@ QString MainWindow::remoteTelemetrySummaryText() const
     const QString rateCard = sectionHtml(rateTitle, rateRows, kTelemetrySummaryRateCardWidth);
     const QString linkCard = sectionHtml(linkTitle, linkRows, kTelemetrySummaryInfoCardWidth);
     const QString deviceCard = sectionHtml(deviceTitle, deviceRows, kTelemetrySummaryInfoCardWidth);
-    return QStringLiteral("<table cellspacing=\"0\" cellpadding=\"0\"><tr>"
-                          "<td valign=\"top\">%1</td><td width=\"%4\"></td>"
-                          "<td valign=\"top\"><table cellspacing=\"0\" cellpadding=\"0\">"
-                          "<tr><td>%2</td></tr><tr><td height=\"%5\" style=\"height:%5px;\"></td></tr><tr><td>%3</td></tr>"
-                          "</table></td></tr></table>")
+    return QStringLiteral("<table cellspacing=\"%4\" cellpadding=\"0\">"
+                          "<tr><td valign=\"top\" rowspan=\"2\">%1</td><td valign=\"top\">%2</td></tr>"
+                          "<tr><td valign=\"top\">%3</td></tr>"
+                          "</table>")
         .arg(rateCard, linkCard, deviceCard)
-        .arg(scalePixels(kTelemetrySummaryGapWidth))
         .arg(scalePixels(kTelemetrySummaryGapWidth));
 }
 
@@ -4427,6 +4425,7 @@ void MainWindow::setupConfigPanel()
     data_telemetry_summary_card_->setObjectName(QStringLiteral("epsilonSectionCard"));
     data_telemetry_summary_card_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::MinimumExpanding);
     data_telemetry_summary_card_->setMinimumWidth(kTelemetrySummaryCardMinWidth);
+    data_telemetry_summary_card_->setMaximumWidth(kTelemetrySummaryCardMinWidth);
     auto *telemetrySummaryLayout = new QVBoxLayout(data_telemetry_summary_card_);
     telemetrySummaryLayout->setContentsMargins(2, 2, 2, 2);
     telemetrySummaryLayout->setSpacing(0);
