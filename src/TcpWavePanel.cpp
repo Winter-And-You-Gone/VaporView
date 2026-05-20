@@ -741,6 +741,7 @@ void TcpWavePanel::setupUi()
     status_label_->setTextFormat(Qt::PlainText);
     status_label_->setWordWrap(false);
     status_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    status_label_->setVisible(false);
     top_controls_layout_->addSpacing(12);
     top_controls_layout_->addWidget(status_label_, 1, Qt::AlignVCenter | Qt::AlignLeft);
     top_controls_layout_->addStretch(1);
@@ -1256,6 +1257,14 @@ void TcpWavePanel::setRemoteSkyMode(bool enabled)
                              : (isConnected() ? (is_english_ ? "Disconnect" : "断开")
                              : (is_english_ ? "Connect" : "连接")));
     }
+    if (status_label_)
+    {
+        status_label_->setVisible(enabled);
+        if (!enabled)
+        {
+            status_label_->clear();
+        }
+    }
     if (enabled && !remote_wave_tcp_connected_)
     {
         clearRemoteWaveformDisplay(is_english_ ? QStringLiteral("Sky Wave TCP is not connected")
@@ -1762,6 +1771,10 @@ void TcpWavePanel::setStatusText(const QString& text)
     if (status_label_ && status_label_->text() != text)
     {
         status_label_->setText(text);
+    }
+    if (status_label_)
+    {
+        status_label_->setVisible(remote_sky_mode_);
     }
 }
 
