@@ -735,17 +735,20 @@ void TcpWavePanel::setupUi()
     connect_button_->setFixedHeight(kTcpButtonHeight);
     connect(connect_button_, &QPushButton::clicked, this, &TcpWavePanel::onToggleConnectionClicked);
     top_controls_layout_->addWidget(connect_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    top_controls_layout_->addStretch(1);
 
     status_label_ = new QLabel(this);
+    status_label_->setObjectName("fieldLabel");
     status_label_->setTextFormat(Qt::PlainText);
-    status_label_->setWordWrap(true);
-    control_layout_->addWidget(status_label_, 1, 0, 1, 6);
+    status_label_->setWordWrap(false);
+    status_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    top_controls_layout_->addSpacing(12);
+    top_controls_layout_->addWidget(status_label_, 1, Qt::AlignVCenter | Qt::AlignLeft);
+    top_controls_layout_->addStretch(1);
 
     hint_label_ = new QLabel(this);
     hint_label_->setWordWrap(true);
     hint_label_->setVisible(false);
-    control_layout_->addWidget(hint_label_, 2, 0, 1, 6);
+    control_layout_->addWidget(hint_label_, 1, 0, 1, 6);
 
     mainLayout->addLayout(control_layout_);
 
