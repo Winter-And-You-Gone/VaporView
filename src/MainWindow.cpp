@@ -79,8 +79,13 @@ constexpr int kMainPageInputHeight = 36;
 constexpr int kMainPageButtonHeight = 36;
 constexpr int kMainPageTitleBarHeight = kMainPageButtonHeight + 4;
 constexpr int kEnvStatusIconSize = 18;
-constexpr int kEpsilonTitleColumnWidth = 135;
-constexpr int kEpsilonValueColumnMinWidth = 260;
+constexpr int kEpsilonSideTitleWidth = 24;
+constexpr int kEpsilonTitleColumnWidth = 102;
+constexpr int kEpsilonMotionTitleColumnWidth = 116;
+constexpr int kEpsilonRunValueColumnWidth = 210;
+constexpr int kEpsilonHealthValueColumnWidth = 240;
+constexpr int kEpsilonPositionValueColumnWidth = 230;
+constexpr int kEpsilonMotionValueColumnWidth = 300;
 constexpr int kPtbMinSampleRateHz = 1;
 constexpr int kPtbMaxSampleRateHz = 70;
 
@@ -1152,7 +1157,7 @@ private:
         font.setBold(true);
         label->setFont(font);
         label->setAlignment(Qt::AlignCenter);
-        label->setMinimumWidth(24);
+        label->setMinimumWidth(kEpsilonSideTitleWidth);
         label->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Expanding);
         section_labels_.insert(key, label);
         section_zh_.insert(key, zhTitle);
@@ -1162,11 +1167,13 @@ private:
     QGridLayout *addSectionCard(QVBoxLayout *columnLayout,
                                 const QString& key,
                                 const QString& zhTitle,
-                                const QString& enTitle)
+                                const QString& enTitle,
+                                int titleColumnWidth,
+                                int valueColumnWidth)
     {
         auto *card = new QFrame(this);
         card->setObjectName(QStringLiteral("epsilonSectionCard"));
-        card->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
+        card->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Maximum);
 
         auto *outerLayout = new QHBoxLayout(card);
         outerLayout->setContentsMargins(2, 2, 2, 2);
@@ -1180,12 +1187,12 @@ private:
         cardLayout->setContentsMargins(2, 2, 2, 2);
         cardLayout->setHorizontalSpacing(6);
         cardLayout->setVerticalSpacing(2);
-        cardLayout->setColumnMinimumWidth(0, kEpsilonTitleColumnWidth);
-        cardLayout->setColumnMinimumWidth(1, kEpsilonValueColumnMinWidth);
+        cardLayout->setColumnMinimumWidth(0, titleColumnWidth);
+        cardLayout->setColumnMinimumWidth(1, valueColumnWidth);
         cardLayout->setColumnStretch(0, 0);
-        cardLayout->setColumnStretch(1, 1);
-        outerLayout->addLayout(cardLayout, 1);
-        columnLayout->addWidget(card);
+        cardLayout->setColumnStretch(1, 0);
+        outerLayout->addLayout(cardLayout, 0);
+        columnLayout->addWidget(card, 0, Qt::AlignLeft);
         return cardLayout;
     }
 
@@ -1194,7 +1201,8 @@ private:
                   int column,
                   const QString& key,
                   const QString& zhTitle,
-                  const QString& enTitle)
+                  const QString& enTitle,
+                  int valueColumnWidth)
     {
         QLabel *title = new QLabel(this);
         title->setObjectName(QStringLiteral("fieldLabel"));
@@ -1206,7 +1214,7 @@ private:
         value->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         value->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
         value->setMinimumHeight(20);
-        value->setMinimumWidth(kEpsilonValueColumnMinWidth);
+        value->setMinimumWidth(valueColumnWidth);
         layout->addWidget(title, row, column * 2);
         layout->addWidget(value, row, column * 2 + 1);
         title_labels_.insert(key, title);
@@ -1236,7 +1244,7 @@ private:
             auto *columnLayout = new QVBoxLayout();
             columnLayout->setContentsMargins(0, 0, 0, 0);
             columnLayout->setSpacing(2);
-            columnsLayout->addLayout(columnLayout, 1);
+            columnsLayout->addLayout(columnLayout, 0);
             return columnLayout;
         };
 
@@ -1244,38 +1252,59 @@ private:
         QVBoxLayout *middleColumn = createColumn();
         QVBoxLayout *rightColumn = createColumn();
 
-        QGridLayout *runGrid = addSectionCard(leftColumn, QStringLiteral("run"), QStringLiteral("数据状态"), QStringLiteral("Data Status"));
+        QGridLayout *runGrid = addSectionCard(leftColumn,
+                                              QStringLiteral("run"),
+                                              QStringLiteral("数据状态"),
+                                              QStringLiteral("Data Status"),
+                                              kEpsilonTitleColumnWidth,
+                                              kEpsilonRunValueColumnWidth);
         int row = 0;
-        addField(runGrid, row++, 0, QStringLiteral("time_utc"), QStringLiteral("UTC时间:"), QStringLiteral("UTC Time:"));
-        addField(runGrid, row++, 0, QStringLiteral("device_ts"), QStringLiteral("设备时间戳:"), QStringLiteral("Device Timestamp:"));
-        addField(runGrid, row++, 0, QStringLiteral("frames"), QStringLiteral("原始帧/丢帧:"), QStringLiteral("Raw/Dropped Frames:"));
+        addField(runGrid, row++, 0, QStringLiteral("time_utc"), QStringLiteral("UTC时间:"), QStringLiteral("UTC Time:"), kEpsilonRunValueColumnWidth);
+        addField(runGrid, row++, 0, QStringLiteral("device_ts"), QStringLiteral("设备时间戳:"), QStringLiteral("Device Timestamp:"), kEpsilonRunValueColumnWidth);
+        addField(runGrid, row++, 0, QStringLiteral("frames"), QStringLiteral("原始帧/丢帧:"), QStringLiteral("Raw/Dropped Frames:"), kEpsilonRunValueColumnWidth);
 
-        QGridLayout *healthGrid = addSectionCard(leftColumn, QStringLiteral("health"), QStringLiteral("系统健康"), QStringLiteral("System Health"));
+        QGridLayout *healthGrid = addSectionCard(leftColumn,
+                                                 QStringLiteral("health"),
+                                                 QStringLiteral("系统健康"),
+                                                 QStringLiteral("System Health"),
+                                                 kEpsilonTitleColumnWidth,
+                                                 kEpsilonHealthValueColumnWidth);
         row = 0;
-        addField(healthGrid, row++, 0, QStringLiteral("status_bits"), QStringLiteral("系统状态:"), QStringLiteral("System Status:"));
-        addField(healthGrid, row++, 0, QStringLiteral("filter_bits"), QStringLiteral("滤波状态:"), QStringLiteral("Filter Status:"));
-        addField(healthGrid, row++, 0, QStringLiteral("heading_valid"), QStringLiteral("航向有效:"), QStringLiteral("Heading Valid:"));
+        addField(healthGrid, row++, 0, QStringLiteral("status_bits"), QStringLiteral("系统状态:"), QStringLiteral("System Status:"), kEpsilonHealthValueColumnWidth);
+        addField(healthGrid, row++, 0, QStringLiteral("filter_bits"), QStringLiteral("滤波状态:"), QStringLiteral("Filter Status:"), kEpsilonHealthValueColumnWidth);
+        addField(healthGrid, row++, 0, QStringLiteral("heading_valid"), QStringLiteral("航向有效:"), QStringLiteral("Heading Valid:"), kEpsilonHealthValueColumnWidth);
 
-        QGridLayout *positionGrid = addSectionCard(middleColumn, QStringLiteral("position"), QStringLiteral("定位状态"), QStringLiteral("Position Status"));
+        QGridLayout *positionGrid = addSectionCard(middleColumn,
+                                                   QStringLiteral("position"),
+                                                   QStringLiteral("定位状态"),
+                                                   QStringLiteral("Position Status"),
+                                                   kEpsilonTitleColumnWidth,
+                                                   kEpsilonPositionValueColumnWidth);
         row = 0;
-        addField(positionGrid, row++, 0, QStringLiteral("fix"), QStringLiteral("GNSS状态:"), QStringLiteral("GNSS Fix:"));
-        addField(positionGrid, row++, 0, QStringLiteral("sat"), QStringLiteral("卫星数:"), QStringLiteral("Satellites:"));
-        addField(positionGrid, row++, 0, QStringLiteral("lat"), QStringLiteral("纬度[deg]:"), QStringLiteral("Latitude [deg]:"));
-        addField(positionGrid, row++, 0, QStringLiteral("lon"), QStringLiteral("经度[deg]:"), QStringLiteral("Longitude [deg]:"));
-        addField(positionGrid, row++, 0, QStringLiteral("height"), QStringLiteral("高度[m]:"), QStringLiteral("Height [m]:"));
-        addField(positionGrid, row++, 0, QStringLiteral("acc"), QStringLiteral("hAcc / vAcc:"), QStringLiteral("hAcc / vAcc:"));
+        addField(positionGrid, row++, 0, QStringLiteral("fix"), QStringLiteral("GNSS状态:"), QStringLiteral("GNSS Fix:"), kEpsilonPositionValueColumnWidth);
+        addField(positionGrid, row++, 0, QStringLiteral("sat"), QStringLiteral("卫星数:"), QStringLiteral("Satellites:"), kEpsilonPositionValueColumnWidth);
+        addField(positionGrid, row++, 0, QStringLiteral("lat"), QStringLiteral("纬度[deg]:"), QStringLiteral("Latitude [deg]:"), kEpsilonPositionValueColumnWidth);
+        addField(positionGrid, row++, 0, QStringLiteral("lon"), QStringLiteral("经度[deg]:"), QStringLiteral("Longitude [deg]:"), kEpsilonPositionValueColumnWidth);
+        addField(positionGrid, row++, 0, QStringLiteral("height"), QStringLiteral("高度[m]:"), QStringLiteral("Height [m]:"), kEpsilonPositionValueColumnWidth);
+        addField(positionGrid, row++, 0, QStringLiteral("acc"), QStringLiteral("hAcc / vAcc:"), QStringLiteral("hAcc / vAcc:"), kEpsilonPositionValueColumnWidth);
 
-        QGridLayout *motionGrid = addSectionCard(rightColumn, QStringLiteral("motion"), QStringLiteral("姿态与运动"), QStringLiteral("Attitude / Motion"));
+        QGridLayout *motionGrid = addSectionCard(rightColumn,
+                                                 QStringLiteral("motion"),
+                                                 QStringLiteral("姿态与运动"),
+                                                 QStringLiteral("Attitude / Motion"),
+                                                 kEpsilonMotionTitleColumnWidth,
+                                                 kEpsilonMotionValueColumnWidth);
         row = 0;
-        addField(motionGrid, row++, 0, QStringLiteral("ned_vel"), QStringLiteral("NED速度[m/s]:"), QStringLiteral("NED Velocity [m/s]:"));
-        addField(motionGrid, row++, 0, QStringLiteral("imu_acc"), QStringLiteral("IMU加速度[m/s²]:"), QStringLiteral("IMU Accel [m/s²]:"));
-        addField(motionGrid, row++, 0, QStringLiteral("imu_gyr"), QStringLiteral("IMU角速度[rad/s]:"), QStringLiteral("IMU Gyro [rad/s]:"));
-        addField(motionGrid, row++, 0, QStringLiteral("rpy"), QStringLiteral("姿态角[deg]:"), QStringLiteral("Attitude [deg]:"));
+        addField(motionGrid, row++, 0, QStringLiteral("ned_vel"), QStringLiteral("NED速度[m/s]:"), QStringLiteral("NED Velocity [m/s]:"), kEpsilonMotionValueColumnWidth);
+        addField(motionGrid, row++, 0, QStringLiteral("imu_acc"), QStringLiteral("IMU加速度[m/s²]:"), QStringLiteral("IMU Accel [m/s²]:"), kEpsilonMotionValueColumnWidth);
+        addField(motionGrid, row++, 0, QStringLiteral("imu_gyr"), QStringLiteral("IMU角速度[rad/s]:"), QStringLiteral("IMU Gyro [rad/s]:"), kEpsilonMotionValueColumnWidth);
+        addField(motionGrid, row++, 0, QStringLiteral("rpy"), QStringLiteral("姿态角[deg]:"), QStringLiteral("Attitude [deg]:"), kEpsilonMotionValueColumnWidth);
 
         for (QVBoxLayout *columnLayout : {leftColumn, middleColumn, rightColumn})
         {
             columnLayout->addStretch(1);
         }
+        columnsLayout->addStretch(1);
         layout->addLayout(columnsLayout, 0);
         layout->addStretch(1);
     }
