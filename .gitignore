@@ -42,3 +42,5 @@ __pycache__/
 records/
 AGENTS.md
 MEETING*.md
+.claude/
+nul
