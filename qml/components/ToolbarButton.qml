@@ -19,18 +19,24 @@ Button {
             : theme.text)
         : theme.muted
 
+    implicitHeight: theme.buttonHeight
+    verticalPadding: 0
+    horizontalPadding: theme.controlPaddingX
+
     font.pixelSize: theme.font(theme.smallFontSize)
     font.weight: Font.DemiBold
-    leftPadding: theme.controlPaddingX
-    rightPadding: theme.controlPaddingX
-    topPadding: 0
-    bottomPadding: 0
+
+    Component.onCompleted: {
+        topPadding = 0
+        bottomPadding = 0
+        leftPadding = theme.controlPaddingX
+        rightPadding = theme.controlPaddingX
+    }
 
     contentItem: RowLayout {
-        anchors.verticalCenter: parent.verticalCenter
         spacing: control.iconName.length > 0 && control.text.length > 0 ? 6 : 0
 
-        Item { Layout.preferredWidth: 0; Layout.fillWidth: true }
+        Item { Layout.fillWidth: true }
 
         LucideIcon {
             visible: control.iconName.length > 0
@@ -51,11 +57,11 @@ Button {
             elide: Text.ElideRight
         }
 
-        Item { Layout.preferredWidth: 0; Layout.fillWidth: true }
+        Item { Layout.fillWidth: true }
     }
 
     background: Rectangle {
-        implicitHeight: theme.buttonHeight
+        anchors.fill: parent
         radius: theme.radius
         color: !control.enabled ? theme.surfaceAlt
             : control.down ? downBase
