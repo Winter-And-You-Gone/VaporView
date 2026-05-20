@@ -488,20 +488,20 @@ QSplitter::handle,
 QSplitter#mainContentSplitter::handle:horizontal {
     background-color: #101418;
 }
-QSplitter#sensorCardsSplitter::handle:horizontal {
-    width: 8px;
+QSplitter#mainCardsSplitter::handle:vertical {
+    height: 3px;
     background-color: #101418;
 }
 QSplitter#mainContentSplitter::handle:horizontal:hover {
     background-color: #1f2a36;
 }
-QSplitter#sensorCardsSplitter::handle:horizontal:hover {
+QSplitter#mainCardsSplitter::handle:vertical:hover {
     background-color: #1f2a36;
 }
 QSplitter#mainContentSplitter::handle:horizontal:pressed {
     background-color: #263545;
 }
-QSplitter#sensorCardsSplitter::handle:horizontal:pressed {
+QSplitter#mainCardsSplitter::handle:vertical:pressed {
     background-color: #263545;
 }
 QCheckBox,
@@ -2185,6 +2185,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , central_widget_(nullptr)
     , main_layout_(nullptr)
+    , main_cards_splitter_(nullptr)
     , epsilon_panel_(nullptr)
     , gnss_panel_(nullptr)
     , imu_panel_(nullptr)
@@ -2623,11 +2624,11 @@ void MainWindow::loadModernStyleSheet()
             "QScrollBar::handle:horizontal:hover { background-color: #9e9e9e; }"
             "QSplitter::handle { background-color: transparent; }"
             "QSplitter#mainContentSplitter::handle:horizontal { width: 8px; background-color: transparent; }"
-            "QSplitter#sensorCardsSplitter::handle:horizontal { width: 8px; background-color: transparent; }"
+            "QSplitter#mainCardsSplitter::handle:vertical { height: 3px; background-color: transparent; }"
             "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: rgba(25, 118, 210, 0.18); }"
-            "QSplitter#sensorCardsSplitter::handle:horizontal:hover { background-color: rgba(25, 118, 210, 0.18); }"
+            "QSplitter#mainCardsSplitter::handle:vertical:hover { background-color: rgba(25, 118, 210, 0.18); }"
             "QSplitter#mainContentSplitter::handle:horizontal:pressed { background-color: rgba(25, 118, 210, 0.28); }"
-            "QSplitter#sensorCardsSplitter::handle:horizontal:pressed { background-color: rgba(25, 118, 210, 0.28); }"
+            "QSplitter#mainCardsSplitter::handle:vertical:pressed { background-color: rgba(25, 118, 210, 0.28); }"
             "QSplitter::handle:horizontal { width: 0px; }"
             "QSplitter::handle:vertical { height: 0px; }"
             "QPushButton { background-color: #1976d2; color: #ffffff; border: none; border-radius: 6px; padding: 0px 18px; font-size: 15px; font-weight: 500; min-height: 36px; max-height: 36px; }"
@@ -4172,6 +4173,14 @@ void MainWindow::setupCentralWidget()
     main_layout_->setSpacing(0);
     main_layout_->setContentsMargins(0, 0, 0, 0);
 
+    main_cards_splitter_ = new QSplitter(Qt::Vertical, left_widget);
+    main_cards_splitter_->setObjectName("mainCardsSplitter");
+    main_cards_splitter_->setChildrenCollapsible(false);
+    main_cards_splitter_->setHandleWidth(3);
+    main_cards_splitter_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    main_layout_->addWidget(main_cards_splitter_, 0);
+    main_layout_->addStretch(1);
+
     setupConfigPanel();
     setupDataPanels();
 
@@ -4465,7 +4474,7 @@ void MainWindow::setupConfigPanel()
     config_layout->addWidget(data_telemetry_summary_card_, 0, 6, row, 1, Qt::AlignTop | Qt::AlignLeft);
 
     config_root_layout->addLayout(config_layout);
-    main_layout_->addWidget(config_group_);
+    main_cards_splitter_->addWidget(config_group_);
 }
 
 void MainWindow::setupDataPanels()
@@ -4476,15 +4485,14 @@ void MainWindow::setupDataPanels()
     data_layout->setSpacing(0);
     data_layout->setContentsMargins(0, 0, 0, 0);
 
-    auto *sensor_splitter = new QSplitter(Qt::Horizontal, data_group_);
-    sensor_splitter->setObjectName("sensorCardsSplitter");
-    sensor_splitter->setChildrenCollapsible(false);
-    sensor_splitter->setHandleWidth(8);
-    sensor_splitter->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    auto *sensor_row = new QWidget(data_group_);
+    auto *sensor_layout = new QHBoxLayout(sensor_row);
+    sensor_layout->setContentsMargins(0, 0, 0, 0);
+    sensor_layout->setSpacing(2);
 
     epsilon_group_ = new QGroupBox(this);
     epsilon_group_->setObjectName("sensorGroupBox");
-    epsilon_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    epsilon_group_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
     auto *epsilon_layout = new QVBoxLayout(epsilon_group_);
     epsilon_layout->setContentsMargins(1, 0, 1, 1);
     epsilon_layout->setSpacing(0);
@@ -4514,7 +4522,7 @@ void MainWindow::setupDataPanels()
     epsilon_layout->addWidget(epsilonTitleBar);
     epsilon_panel_ = new EpsilonPanel(epsilonRateTitleLabel, this);
     epsilon_layout->addWidget(epsilon_panel_);
-    sensor_splitter->addWidget(epsilon_group_);
+    sensor_layout->addWidget(epsilon_group_, 0, Qt::AlignLeft | Qt::AlignTop);
 
     gnss_group_ = nullptr;
     imu_group_ = nullptr;
@@ -4569,19 +4577,17 @@ void MainWindow::setupDataPanels()
     env_layout->addWidget(hmp_panel_);
     updateEnvironmentStatusIcons(false, false, false);
 
-    sensor_splitter->addWidget(env_group);
-    sensor_splitter->setStretchFactor(0, 4);
-    sensor_splitter->setStretchFactor(1, 1);
-    sensor_splitter->setSizes({1000, 260});
+    sensor_layout->addWidget(env_group, 1);
 
-    data_layout->addWidget(sensor_splitter, 0);
+    data_layout->addWidget(sensor_row, 0);
+    data_layout->addStretch(1);
     env_group_ = env_group;
 
     lidar_group_ = nullptr;
     ptb_group_ = nullptr;
     hmp_group_ = nullptr;
 
-    main_layout_->addWidget(data_group_, 0);
+    main_cards_splitter_->addWidget(data_group_);
 
     tcp_wave_group_ = new QGroupBox(this);
     tcp_wave_group_->setObjectName("sensorGroupBox");
@@ -4627,8 +4633,11 @@ void MainWindow::setupDataPanels()
     connect(tcp_wave_panel_, &TcpWavePanel::remotePeakSearchRangeRequested,
             this, &MainWindow::sendRemotePeakSearchRange);
     tcpWaveLayout->addWidget(tcp_wave_panel_);
-    main_layout_->addWidget(tcp_wave_group_, 0);
-    main_layout_->addStretch(1);
+    main_cards_splitter_->addWidget(tcp_wave_group_);
+    main_cards_splitter_->setStretchFactor(0, 0);
+    main_cards_splitter_->setStretchFactor(1, 0);
+    main_cards_splitter_->setStretchFactor(2, 0);
+    main_cards_splitter_->setSizes({250, 210, 520});
 }
 
 void MainWindow::setupLogPanel()
