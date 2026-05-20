@@ -85,6 +85,14 @@ constexpr int kEpsilonMotionTitleColumnWidth = 116;
 constexpr int kEpsilonLeftValueColumnWidth = 240;
 constexpr int kEpsilonPositionValueColumnWidth = 230;
 constexpr int kEpsilonMotionValueColumnWidth = 300;
+constexpr int kTelemetrySummaryRateCardWidth = 250;
+constexpr int kTelemetrySummaryInfoCardWidth = 280;
+constexpr int kTelemetrySummaryGapWidth = 16;
+constexpr int kTelemetrySummaryRateLabelWidth = 128;
+constexpr int kTelemetrySummaryRateValueWidth = 86;
+constexpr int kTelemetrySummaryInfoLabelWidth = 118;
+constexpr int kTelemetrySummaryInfoValueWidth = 116;
+constexpr int kTelemetrySummaryCardMinWidth = kTelemetrySummaryRateCardWidth + kTelemetrySummaryGapWidth + kTelemetrySummaryInfoCardWidth + 16;
 constexpr int kPtbMinSampleRateHz = 1;
 constexpr int kPtbMaxSampleRateHz = 70;
 
@@ -3221,80 +3229,94 @@ QString MainWindow::remoteTelemetrySummaryText() const
     {
         return QString();
     }
-    if (!ground_telemetry_service_ || !ground_telemetry_service_->isOpen())
-    {
-        return is_english_ ? QStringLiteral("Telemetry: not connected") : QStringLiteral("数传：未连接");
-    }
+    const bool connected = ground_telemetry_service_ && ground_telemetry_service_->isOpen();
 
-    auto hasText = [this](VaporView::SkyDeviceId device, qint64 timeoutMs) {
-        return remoteDeviceDataValid(device, timeoutMs)
+    auto hasText = [this, connected](VaporView::SkyDeviceId device, qint64 timeoutMs) {
+        return connected && remoteDeviceDataValid(device, timeoutMs)
             ? (is_english_ ? QStringLiteral("data") : QStringLiteral("有数据"))
             : (is_english_ ? QStringLiteral("none") : QStringLiteral("无数据"));
     };
 
-    const QString actualWaveRate = (remote_status_.wave_tcp_actual_rate_hz > 0.0f)
+    const QString actualWaveRate = (connected && remote_status_.wave_tcp_actual_rate_hz > 0.0f)
         ? QStringLiteral("%1 Hz").arg(remote_status_.wave_tcp_actual_rate_hz, 0, 'f', 1)
         : QStringLiteral("-- Hz");
-    const double rxBps = ground_telemetry_service_->receiveBitsPerSecond();
-    const double txBps = ground_telemetry_service_->transmitBitsPerSecond();
+    const double rxBps = connected ? ground_telemetry_service_->receiveBitsPerSecond() : 0.0;
+    const double txBps = connected ? ground_telemetry_service_->transmitBitsPerSecond() : 0.0;
 
-    auto joinHtmlLines = [](const QStringList& lines) {
-        QStringList escaped;
-        escaped.reserve(lines.size());
-        for (const QString& line : lines)
-        {
-            escaped << line.toHtmlEscaped();
-        }
-        return escaped.join(QStringLiteral("<br/>"));
+    const QString textColor = dark_theme_enabled_ ? QStringLiteral("#d8dee9") : QStringLiteral("#000000");
+    const QString borderColor = dark_theme_enabled_ ? QStringLiteral("#2c3440") : QStringLiteral("#dfe4ea");
+    const QString cardBg = dark_theme_enabled_ ? QStringLiteral("#151a20") : QStringLiteral("#ffffff");
+    const QString titleBg = dark_theme_enabled_ ? QStringLiteral("#18202a") : QStringLiteral("#f8fafc");
+
+    auto rowHtml = [&](const QString& label, const QString& value, int labelWidth, int valueWidth) {
+        return QStringLiteral("<tr>"
+                              "<td width=\"%1\" style=\"width:%1px;padding:1px 8px;white-space:nowrap;color:%5;font-weight:600;\">%2</td>"
+                              "<td width=\"%3\" style=\"width:%3px;min-width:%3px;padding:1px 8px;white-space:nowrap;color:%5;font-weight:600;\">%4</td>"
+                              "</tr>")
+            .arg(scalePixels(labelWidth))
+            .arg(label.toHtmlEscaped())
+            .arg(scalePixels(valueWidth))
+            .arg(value.toHtmlEscaped())
+            .arg(textColor);
     };
 
-    QStringList leftLines;
-    QStringList rightLines;
+    auto sectionHtml = [&](const QString& title, const QString& rows, int width) {
+        return QStringLiteral("<table cellspacing=\"0\" cellpadding=\"0\" width=\"%1\" "
+                              "style=\"width:%1px;border:1px solid %2;background:%3;\">"
+                              "<tr><td colspan=\"2\" style=\"background:%4;border-bottom:1px solid %2;"
+                              "padding:3px 8px;white-space:nowrap;color:%5;font-weight:700;\">%6</td></tr>"
+                              "%7</table>")
+            .arg(scalePixels(width))
+            .arg(borderColor, cardBg, titleBg, textColor, title.toHtmlEscaped(), rows);
+    };
+
+    QString rateRows;
+    QString linkRows;
+    QString deviceRows;
     if (is_english_)
     {
-        leftLines << QStringLiteral("Telemetry packet rates")
-                  << QStringLiteral("Basic: %1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryBasic), 0, 'f', 1)
-                  << QStringLiteral("Feature: %1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformFeature), 0, 'f', 1)
-                  << QStringLiteral("Wave packets: %1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformDownsampled), 0, 'f', 1)
-                  << QStringLiteral("Status: %1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryStatus), 0, 'f', 1)
-                  << QStringLiteral("Wave TCP actual: %1").arg(actualWaveRate);
-        rightLines << QStringLiteral("Link rate")
-                   << QStringLiteral("Sky->Ground: %1").arg(formatBitRate(rxBps))
-                   << QStringLiteral("Ground->Sky: %1").arg(formatBitRate(txBps))
-                   << QStringLiteral("Total: %1").arg(formatBitRate(rxBps + txBps))
-                   << QStringLiteral("Device data")
-                   << QStringLiteral("EPSILON: %1").arg(hasText(VaporView::SkyDeviceId::Epsilon, 2000))
-                   << QStringLiteral("PTB: %1").arg(hasText(VaporView::SkyDeviceId::Ptb, 3000))
-                   << QStringLiteral("HMP: %1").arg(hasText(VaporView::SkyDeviceId::Hmp, 3000))
-                   << QStringLiteral("Lidar: %1").arg(hasText(VaporView::SkyDeviceId::Lidar, 2000))
-                   << QStringLiteral("Wave: %1").arg(hasText(VaporView::SkyDeviceId::WaveTcp, 3000));
+        rateRows += rowHtml(QStringLiteral("Basic:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryBasic), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
+        rateRows += rowHtml(QStringLiteral("Feature:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformFeature), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
+        rateRows += rowHtml(QStringLiteral("Wave packets:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformDownsampled), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
+        rateRows += rowHtml(QStringLiteral("Status:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryStatus), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
+        rateRows += rowHtml(QStringLiteral("Wave TCP actual:"), actualWaveRate, kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
+        linkRows += rowHtml(QStringLiteral("Sky->Ground:"), formatBitRate(rxBps), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
+        linkRows += rowHtml(QStringLiteral("Ground->Sky:"), formatBitRate(txBps), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
+        linkRows += rowHtml(QStringLiteral("Total:"), formatBitRate(rxBps + txBps), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
+        deviceRows += rowHtml(QStringLiteral("EPSILON:"), hasText(VaporView::SkyDeviceId::Epsilon, 2000), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
+        deviceRows += rowHtml(QStringLiteral("PTB:"), hasText(VaporView::SkyDeviceId::Ptb, 3000), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
+        deviceRows += rowHtml(QStringLiteral("HMP:"), hasText(VaporView::SkyDeviceId::Hmp, 3000), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
+        deviceRows += rowHtml(QStringLiteral("Lidar:"), hasText(VaporView::SkyDeviceId::Lidar, 2000), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
+        deviceRows += rowHtml(QStringLiteral("Wave:"), hasText(VaporView::SkyDeviceId::WaveTcp, 3000), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
     }
     else
     {
-        leftLines << QStringLiteral("数传数据包频率")
-                  << QStringLiteral("基础：%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryBasic), 0, 'f', 1)
-                  << QStringLiteral("特征值：%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformFeature), 0, 'f', 1)
-                  << QStringLiteral("波形包：%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformDownsampled), 0, 'f', 1)
-                  << QStringLiteral("状态：%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryStatus), 0, 'f', 1)
-                  << QStringLiteral("波形 TCP 实际：%1").arg(actualWaveRate);
-        rightLines << QStringLiteral("链路速率")
-                   << QStringLiteral("天空→地面：%1").arg(formatBitRate(rxBps))
-                   << QStringLiteral("地面→天空：%1").arg(formatBitRate(txBps))
-                   << QStringLiteral("合计：%1").arg(formatBitRate(rxBps + txBps))
-                   << QStringLiteral("设备数据")
-                   << QStringLiteral("EPSILON：%1").arg(hasText(VaporView::SkyDeviceId::Epsilon, 2000))
-                   << QStringLiteral("PTB：%1").arg(hasText(VaporView::SkyDeviceId::Ptb, 3000))
-                   << QStringLiteral("HMP：%1").arg(hasText(VaporView::SkyDeviceId::Hmp, 3000))
-                   << QStringLiteral("Lidar：%1").arg(hasText(VaporView::SkyDeviceId::Lidar, 2000))
-                   << QStringLiteral("波形：%1").arg(hasText(VaporView::SkyDeviceId::WaveTcp, 3000));
+        rateRows += rowHtml(QStringLiteral("基础:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryBasic), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
+        rateRows += rowHtml(QStringLiteral("特征值:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformFeature), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
+        rateRows += rowHtml(QStringLiteral("波形包:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformDownsampled), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
+        rateRows += rowHtml(QStringLiteral("状态:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryStatus), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
+        rateRows += rowHtml(QStringLiteral("波形 TCP 实际:"), actualWaveRate, kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
+        linkRows += rowHtml(QStringLiteral("天空→地面:"), formatBitRate(rxBps), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
+        linkRows += rowHtml(QStringLiteral("地面→天空:"), formatBitRate(txBps), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
+        linkRows += rowHtml(QStringLiteral("合计:"), formatBitRate(rxBps + txBps), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
+        deviceRows += rowHtml(QStringLiteral("EPSILON:"), hasText(VaporView::SkyDeviceId::Epsilon, 2000), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
+        deviceRows += rowHtml(QStringLiteral("PTB:"), hasText(VaporView::SkyDeviceId::Ptb, 3000), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
+        deviceRows += rowHtml(QStringLiteral("HMP:"), hasText(VaporView::SkyDeviceId::Hmp, 3000), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
+        deviceRows += rowHtml(QStringLiteral("Lidar:"), hasText(VaporView::SkyDeviceId::Lidar, 2000), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
+        deviceRows += rowHtml(QStringLiteral("波形:"), hasText(VaporView::SkyDeviceId::WaveTcp, 3000), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
     }
 
-    constexpr int kTelemetrySummaryLeftColumnWidth = 240;
+    const QString rateTitle = is_english_ ? QStringLiteral("Telemetry packet rates") : QStringLiteral("数传数据包频率");
+    const QString linkTitle = is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率");
+    const QString deviceTitle = is_english_ ? QStringLiteral("Device data") : QStringLiteral("设备数据");
+    const QString rateCard = sectionHtml(rateTitle, rateRows, kTelemetrySummaryRateCardWidth);
+    const QString linkCard = sectionHtml(linkTitle, linkRows, kTelemetrySummaryInfoCardWidth);
+    const QString deviceCard = sectionHtml(deviceTitle, deviceRows, kTelemetrySummaryInfoCardWidth);
     return QStringLiteral("<table cellspacing=\"0\" cellpadding=\"0\"><tr>"
-                          "<td valign=\"top\" width=\"%3\" style=\"width:%3px;\">%1</td><td width=\"24\"></td>"
-                          "<td valign=\"top\">%2</td></tr></table>")
-        .arg(joinHtmlLines(leftLines), joinHtmlLines(rightLines))
-        .arg(kTelemetrySummaryLeftColumnWidth);
+                          "<td valign=\"top\">%1</td><td width=\"%4\"></td>"
+                          "<td valign=\"top\">%2<br/>%3</td></tr></table>")
+        .arg(rateCard, linkCard, deviceCard)
+        .arg(scalePixels(kTelemetrySummaryGapWidth));
 }
 
 void MainWindow::updateRemoteTelemetrySummaryLabel()
@@ -4369,6 +4391,7 @@ void MainWindow::setupConfigPanel()
     data_telemetry_summary_card_ = new QFrame(this);
     data_telemetry_summary_card_->setObjectName(QStringLiteral("epsilonSectionCard"));
     data_telemetry_summary_card_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::MinimumExpanding);
+    data_telemetry_summary_card_->setMinimumWidth(kTelemetrySummaryCardMinWidth);
     auto *telemetrySummaryLayout = new QVBoxLayout(data_telemetry_summary_card_);
     telemetrySummaryLayout->setContentsMargins(8, 6, 8, 6);
     telemetrySummaryLayout->setSpacing(0);
