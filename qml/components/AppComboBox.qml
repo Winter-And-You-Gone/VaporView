@@ -9,8 +9,16 @@ ComboBox {
     readonly property var theme: ApplicationWindow.window.theme
 
     implicitHeight: theme.controlHeight
+    padding: 0
+
     font.family: "Consolas"
     font.pixelSize: theme.font(theme.bodyFontSize)
+
+    Component.onCompleted: {
+        topPadding = 0
+        bottomPadding = 0
+        padding = 0
+    }
 
     function displayFor(md) {
         if (md === undefined || md === null) return ""
@@ -43,7 +51,7 @@ ComboBox {
     }
 
     background: Rectangle {
-        implicitHeight: theme.controlHeight
+        anchors.fill: parent
         radius: theme.radius
         color: control.enabled ? theme.bg : theme.surfaceAlt
         border.color: theme.border

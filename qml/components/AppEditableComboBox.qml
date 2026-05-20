@@ -38,6 +38,7 @@ Item {
         id: editor
 
         anchors.fill: parent
+        padding: 0
         text: control.text
         placeholderText: control.placeholderText
         font.family: "Consolas"
@@ -50,8 +51,15 @@ Item {
         rightPadding: 28
         selectByMouse: true
         verticalAlignment: TextInput.AlignVCenter
+
+        Component.onCompleted: {
+            topPadding = 0
+            bottomPadding = 0
+            padding = 0
+        }
+
         background: Rectangle {
-            implicitHeight: theme.controlHeight
+            anchors.fill: parent
             radius: theme.radius
             color: control.enabled ? theme.bg : theme.surfaceAlt
             border.color: editor.activeFocus || popup.visible ? theme.focus : theme.border
