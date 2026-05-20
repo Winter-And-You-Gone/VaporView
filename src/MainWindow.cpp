@@ -488,10 +488,20 @@ QSplitter::handle,
 QSplitter#mainContentSplitter::handle:horizontal {
     background-color: #101418;
 }
+QSplitter#sensorCardsSplitter::handle:horizontal {
+    width: 8px;
+    background-color: #101418;
+}
 QSplitter#mainContentSplitter::handle:horizontal:hover {
     background-color: #1f2a36;
 }
+QSplitter#sensorCardsSplitter::handle:horizontal:hover {
+    background-color: #1f2a36;
+}
 QSplitter#mainContentSplitter::handle:horizontal:pressed {
+    background-color: #263545;
+}
+QSplitter#sensorCardsSplitter::handle:horizontal:pressed {
     background-color: #263545;
 }
 QCheckBox,
@@ -2613,8 +2623,11 @@ void MainWindow::loadModernStyleSheet()
             "QScrollBar::handle:horizontal:hover { background-color: #9e9e9e; }"
             "QSplitter::handle { background-color: transparent; }"
             "QSplitter#mainContentSplitter::handle:horizontal { width: 8px; background-color: transparent; }"
+            "QSplitter#sensorCardsSplitter::handle:horizontal { width: 8px; background-color: transparent; }"
             "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: rgba(25, 118, 210, 0.18); }"
+            "QSplitter#sensorCardsSplitter::handle:horizontal:hover { background-color: rgba(25, 118, 210, 0.18); }"
             "QSplitter#mainContentSplitter::handle:horizontal:pressed { background-color: rgba(25, 118, 210, 0.28); }"
+            "QSplitter#sensorCardsSplitter::handle:horizontal:pressed { background-color: rgba(25, 118, 210, 0.28); }"
             "QSplitter::handle:horizontal { width: 0px; }"
             "QSplitter::handle:vertical { height: 0px; }"
             "QPushButton { background-color: #1976d2; color: #ffffff; border: none; border-radius: 6px; padding: 0px 18px; font-size: 15px; font-weight: 500; min-height: 36px; max-height: 36px; }"
@@ -4463,14 +4476,15 @@ void MainWindow::setupDataPanels()
     data_layout->setSpacing(0);
     data_layout->setContentsMargins(0, 0, 0, 0);
 
-    auto *sensor_row = new QWidget(data_group_);
-    auto *sensor_layout = new QHBoxLayout(sensor_row);
-    sensor_layout->setContentsMargins(0, 0, 0, 0);
-    sensor_layout->setSpacing(2);
+    auto *sensor_splitter = new QSplitter(Qt::Horizontal, data_group_);
+    sensor_splitter->setObjectName("sensorCardsSplitter");
+    sensor_splitter->setChildrenCollapsible(false);
+    sensor_splitter->setHandleWidth(8);
+    sensor_splitter->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
     epsilon_group_ = new QGroupBox(this);
     epsilon_group_->setObjectName("sensorGroupBox");
-    epsilon_group_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+    epsilon_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     auto *epsilon_layout = new QVBoxLayout(epsilon_group_);
     epsilon_layout->setContentsMargins(1, 0, 1, 1);
     epsilon_layout->setSpacing(0);
@@ -4500,7 +4514,7 @@ void MainWindow::setupDataPanels()
     epsilon_layout->addWidget(epsilonTitleBar);
     epsilon_panel_ = new EpsilonPanel(epsilonRateTitleLabel, this);
     epsilon_layout->addWidget(epsilon_panel_);
-    sensor_layout->addWidget(epsilon_group_, 0, Qt::AlignLeft | Qt::AlignTop);
+    sensor_splitter->addWidget(epsilon_group_);
 
     gnss_group_ = nullptr;
     imu_group_ = nullptr;
@@ -4555,17 +4569,19 @@ void MainWindow::setupDataPanels()
     env_layout->addWidget(hmp_panel_);
     updateEnvironmentStatusIcons(false, false, false);
 
-    sensor_layout->addWidget(env_group, 1);
+    sensor_splitter->addWidget(env_group);
+    sensor_splitter->setStretchFactor(0, 4);
+    sensor_splitter->setStretchFactor(1, 1);
+    sensor_splitter->setSizes({1000, 260});
 
-    data_layout->addWidget(sensor_row, 0);
-    data_layout->addStretch(1);
+    data_layout->addWidget(sensor_splitter, 0);
     env_group_ = env_group;
 
     lidar_group_ = nullptr;
     ptb_group_ = nullptr;
     hmp_group_ = nullptr;
 
-    main_layout_->addWidget(data_group_, 1);
+    main_layout_->addWidget(data_group_, 0);
 
     tcp_wave_group_ = new QGroupBox(this);
     tcp_wave_group_->setObjectName("sensorGroupBox");
@@ -4612,6 +4628,7 @@ void MainWindow::setupDataPanels()
             this, &MainWindow::sendRemotePeakSearchRange);
     tcpWaveLayout->addWidget(tcp_wave_panel_);
     main_layout_->addWidget(tcp_wave_group_, 0);
+    main_layout_->addStretch(1);
 }
 
 void MainWindow::setupLogPanel()
