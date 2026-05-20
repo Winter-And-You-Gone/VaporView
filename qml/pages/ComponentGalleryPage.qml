@@ -202,9 +202,21 @@ Item {
         readonly property int center: Math.round(page.sliderCenter(p, Math.round((fr + to) / 2)))
         readonly property int dynFrom: center - half
         readonly property int dynTo: center + half
+        readonly property bool isFontSize: p.startsWith("ui") && p.indexOf("FontSize") > 0
         spacing: 6
         Text { text: parent.lb + ":"; color: ApplicationWindow.window.muted; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; Layout.preferredWidth: 130 }
         Slider { Layout.fillWidth: true; from: parent.dynFrom; to: parent.dynTo; stepSize: 1; value: Number(appBackend[parent.p]); onMoved: appBackend[parent.p] = Math.max(parent.fr, Math.min(parent.to, Math.round(value))) }
-        Text { text: appBackend[parent.p] + " px"; color: ApplicationWindow.window.text; font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor; font.family: "Consolas"; Layout.preferredWidth: 44; horizontalAlignment: Text.AlignRight }
+        Rectangle {
+            Layout.preferredWidth: 52; Layout.preferredHeight: 28; radius: 6
+            color: ApplicationWindow.window.surfaceAlt
+            border.color: ApplicationWindow.window.border
+            Text {
+                anchors.centerIn: parent
+                text: appBackend[parent.p] + (parent.isFontSize ? " pt" : " px")
+                color: ApplicationWindow.window.text
+                font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor
+                font.family: "Consolas"; font.weight: Font.Bold
+            }
+        }
     }
 }
