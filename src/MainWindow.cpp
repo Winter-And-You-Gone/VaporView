@@ -92,7 +92,6 @@ constexpr int kTelemetrySummaryRateLabelWidth = 128;
 constexpr int kTelemetrySummaryRateValueWidth = 86;
 constexpr int kTelemetrySummaryInfoLabelWidth = 118;
 constexpr int kTelemetrySummaryInfoValueWidth = 86;
-constexpr int kTelemetrySummaryCardMinWidth = kTelemetrySummaryRateCardWidth + kTelemetrySummaryGapWidth + kTelemetrySummaryInfoCardWidth + 4;
 constexpr int kTelemetrySummaryTitleColumnWidth = kEpsilonSideTitleWidth;
 constexpr int kPtbMinSampleRateHz = 1;
 constexpr int kPtbMaxSampleRateHz = 70;
@@ -4424,8 +4423,6 @@ void MainWindow::setupConfigPanel()
     data_telemetry_summary_card_ = new QFrame(this);
     data_telemetry_summary_card_->setObjectName(QStringLiteral("epsilonSectionCard"));
     data_telemetry_summary_card_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::MinimumExpanding);
-    data_telemetry_summary_card_->setMinimumWidth(kTelemetrySummaryCardMinWidth);
-    data_telemetry_summary_card_->setMaximumWidth(kTelemetrySummaryCardMinWidth);
     auto *telemetrySummaryLayout = new QVBoxLayout(data_telemetry_summary_card_);
     telemetrySummaryLayout->setContentsMargins(2, 2, 2, 2);
     telemetrySummaryLayout->setSpacing(0);
