@@ -93,6 +93,7 @@ constexpr int kTelemetrySummaryRateValueWidth = 86;
 constexpr int kTelemetrySummaryInfoLabelWidth = 118;
 constexpr int kTelemetrySummaryInfoValueWidth = 116;
 constexpr int kTelemetrySummaryCardMinWidth = kTelemetrySummaryRateCardWidth + kTelemetrySummaryGapWidth + kTelemetrySummaryInfoCardWidth + 16;
+constexpr int kTelemetrySummaryTitleColumnWidth = 28;
 constexpr int kPtbMinSampleRateHz = 1;
 constexpr int kPtbMaxSampleRateHz = 70;
 
@@ -3260,14 +3261,45 @@ QString MainWindow::remoteTelemetrySummaryText() const
             .arg(textColor);
     };
 
+    auto verticalTitleHtml = [this](const QString& title) {
+        QStringList parts;
+        if (is_english_)
+        {
+            const QString normalized = QString(title).replace(QStringLiteral(" / "), QStringLiteral(" "));
+            const QStringList words = normalized.split(QChar(' '), Qt::SkipEmptyParts);
+            parts.reserve(words.size());
+            for (const QString& word : words)
+            {
+                parts << word.toHtmlEscaped();
+            }
+        }
+        else
+        {
+            parts.reserve(title.size());
+            for (const QChar ch : title)
+            {
+                if (!ch.isSpace())
+                {
+                    parts << QString(ch).toHtmlEscaped();
+                }
+            }
+        }
+        return parts.join(QStringLiteral("<br/>"));
+    };
+
     auto sectionHtml = [&](const QString& title, const QString& rows, int width) {
         return QStringLiteral("<table cellspacing=\"0\" cellpadding=\"0\" width=\"%1\" "
                               "style=\"width:%1px;border:1px solid %2;background:%3;\">"
-                              "<tr><td colspan=\"2\" style=\"background:%4;border-bottom:1px solid %2;"
-                              "padding:3px 8px;white-space:nowrap;color:%5;font-weight:700;\">%6</td></tr>"
-                              "%7</table>")
+                              "<tr>"
+                              "<td width=\"%6\" valign=\"middle\" align=\"center\" "
+                              "style=\"width:%6px;background:%4;border-right:1px solid %2;"
+                              "padding:2px;color:%5;font-weight:700;\">%7</td>"
+                              "<td valign=\"top\"><table cellspacing=\"0\" cellpadding=\"0\">%8</table></td>"
+                              "</tr></table>")
             .arg(scalePixels(width))
-            .arg(borderColor, cardBg, titleBg, textColor, title.toHtmlEscaped(), rows);
+            .arg(borderColor, cardBg, titleBg, textColor)
+            .arg(scalePixels(kTelemetrySummaryTitleColumnWidth))
+            .arg(verticalTitleHtml(title), rows);
     };
 
     QString rateRows;
