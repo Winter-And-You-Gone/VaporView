@@ -7,7 +7,7 @@ QtObject {
     property real scaleFactor: 1.0
 
     property int radius: 8
-    property int controlHeight: 32
+    property int controlHeight: 30
     property int buttonHeight: 30
     property int cardHeaderHeight: 36
     property int cardPadding: 12
