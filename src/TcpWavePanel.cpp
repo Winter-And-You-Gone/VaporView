@@ -45,6 +45,8 @@ constexpr int kPreferredPayloadBytes = 200000;
 constexpr int kTcpControlHeight = 36;
 constexpr int kTcpButtonHeight = 36;
 constexpr int kTcpTitleBarHeight = kTcpButtonHeight + 4;
+constexpr int kPlotTopMargin = 2;
+constexpr int kPlotRightMargin = 2;
 constexpr int kDefaultPeakSearchStartIndex = 0;
 constexpr int kDefaultPeakSearchEndIndex = 0;
 constexpr int kPeakTrendFrameWindow = 1000;
@@ -265,7 +267,7 @@ protected:
 
         if (samples_.isEmpty())
         {
-            const QRectF emptyPlotRect = rect().adjusted(18, 8, -2, -18);
+            const QRectF emptyPlotRect = rect().adjusted(18, kPlotTopMargin, -kPlotRightMargin, -18);
             painter.setPen(QPen(theme.border, 1));
             painter.drawRect(emptyPlotRect);
             painter.setPen(theme.mutedText);
@@ -290,7 +292,7 @@ protected:
         const int labelWidth = std::max({fm.horizontalAdvance(maxLabel), fm.horizontalAdvance(midLabel), fm.horizontalAdvance(minLabel)});
         const int leftMargin = std::max(18, labelWidth + 4);
         const int bottomMargin = fm.height() + 2;
-        const QRectF plotRect = rect().adjusted(leftMargin, 8, -2, -bottomMargin);
+        const QRectF plotRect = rect().adjusted(leftMargin, kPlotTopMargin, -kPlotRightMargin, -bottomMargin);
 
         painter.setPen(QPen(theme.grid, 1));
         for (int i = 0; i <= 10; ++i)
@@ -423,7 +425,7 @@ protected:
 
         if (peak_values_.isEmpty())
         {
-            const QRectF emptyPlotRect = rect().adjusted(18, 8, -2, -18);
+            const QRectF emptyPlotRect = rect().adjusted(18, kPlotTopMargin, -kPlotRightMargin, -18);
             painter.setPen(QPen(theme.border, 1));
             painter.drawRect(emptyPlotRect);
             painter.setPen(theme.mutedText);
@@ -451,7 +453,7 @@ protected:
         if (finiteIndices.isEmpty())
         {
             painter.setPen(theme.mutedText);
-            painter.drawText(rect().adjusted(18, 8, -2, -18), Qt::AlignCenter, empty_text_);
+            painter.drawText(rect().adjusted(18, kPlotTopMargin, -kPlotRightMargin, -18), Qt::AlignCenter, empty_text_);
             return;
         }
         if (std::fabs(maxValue - minValue) < 1e-6f)
@@ -468,7 +470,7 @@ protected:
         const int labelWidth = std::max({fm.horizontalAdvance(maxLabel), fm.horizontalAdvance(midLabel), fm.horizontalAdvance(minLabel)});
         const int leftMargin = std::max(18, labelWidth + 4);
         const int bottomMargin = fm.height() + 2;
-        const QRectF plotRect = rect().adjusted(leftMargin, 8, -2, -bottomMargin);
+        const QRectF plotRect = rect().adjusted(leftMargin, kPlotTopMargin, -kPlotRightMargin, -bottomMargin);
 
         painter.setPen(QPen(theme.grid, 1));
         for (int i = 0; i <= 10; ++i)
