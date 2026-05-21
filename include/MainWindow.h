@@ -17,6 +17,7 @@
 #include <QToolBar>
 #include <QTextEdit>
 #include <QGroupBox>
+#include <QFrame>
 #include <QComboBox>
 #include <QPushButton>
 #include <QProgressBar>
@@ -459,7 +460,7 @@ private:
 
     QGroupBox *config_group_;
     QGroupBox *data_group_;
-    QGroupBox *log_group_;
+    QFrame *log_group_;
     QGroupBox *tcp_wave_group_;
     QGroupBox *epsilon_group_;
     QGroupBox *gnss_group_;

@@ -496,6 +496,11 @@ QGroupBox#sensorGroupBox {
     padding: 0px;
     color: #e5e7eb;
 }
+QFrame#logPanelFrame {
+    background-color: #151a20;
+    border: 1px solid #2c3440;
+    border-radius: 8px;
+}
 QWidget#sectionTitleBar,
 QLabel#sectionTitleLabel {
     background-color: #151a20;
@@ -2694,6 +2699,7 @@ void MainWindow::loadModernStyleSheet()
             "QStatusBar { background-color: #ffffff; border-top: 1px solid #e0e0e0; padding: 4px 12px; color: #000000; font-size: 14px; }"
             "QGroupBox { background-color: #fbfcfe; border: 1px solid #dfe4ea; border-top: 40px solid #ffffff; border-radius: 8px; margin-top: 0px; padding: 8px 8px 8px 8px; font-size: 15px; font-weight: bold; color: #000000; }"
             "QGroupBox#sensorGroupBox { margin-top: 0px; background-color: #ffffff; border: 1px solid #dfe4ea; padding: 0px 0px 0px 0px; }"
+            "QFrame#logPanelFrame { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 8px; }"
             "QGroupBox::title { subcontrol-origin: border; subcontrol-position: top left; left: 12px; top: -30px; padding: 0px 2px; background-color: transparent; border: none; border-radius: 0px; color: #000000; }"
             "QDialog#rtkConfigDialog, QWidget#rtkConfigViewport, QWidget#rtkConfigContent, QScrollArea#rtkConfigScrollArea { background-color: #f5f5f5; }"
             "QDialog#rtkConfigDialog QGroupBox#rtkCardGroup { background-color: #ffffff; border: 1px solid #dfe4ea; border-radius: 8px; margin-top: 0px; padding: 0px; color: #000000; }"
@@ -4795,18 +4801,31 @@ void MainWindow::setupDataPanels()
 
 void MainWindow::setupLogPanel()
 {
-    log_group_ = new QGroupBox(this);
-    log_group_->setObjectName("sensorGroupBox");
+    log_group_ = new QFrame(this);
+    log_group_->setObjectName("logPanelFrame");
+    log_group_->setFrameShape(QFrame::NoFrame);
+    log_group_->setAttribute(Qt::WA_StyledBackground, true);
     log_group_->setMinimumWidth(120);
     auto *log_layout = new QVBoxLayout(log_group_);
     log_layout->setContentsMargins(0, 0, 0, 0);
     log_layout->setSpacing(0);
 
-    log_inline_title_lbl_ = new QLabel(this);
-    log_inline_title_lbl_->setObjectName("sectionTitleLabel");
-    log_layout->addWidget(log_inline_title_lbl_);
+    auto *logTitleBar = new QWidget(log_group_);
+    logTitleBar->setObjectName("sectionTitleBar");
+    logTitleBar->setFixedHeight(kMainPageTitleBarHeight);
+    auto *logTitleLayout = new QHBoxLayout(logTitleBar);
+    logTitleLayout->setContentsMargins(8, 2, 8, 2);
+    logTitleLayout->setSpacing(8);
 
-    log_text_edit_ = new QTextEdit(this);
+    log_inline_title_lbl_ = new QLabel(logTitleBar);
+    log_inline_title_lbl_->setObjectName("sectionTitleLabel");
+    log_inline_title_lbl_->setFixedHeight(kMainPageButtonHeight);
+    log_inline_title_lbl_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    logTitleLayout->addWidget(log_inline_title_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    logTitleLayout->addStretch(1);
+    log_layout->addWidget(logTitleBar);
+
+    log_text_edit_ = new QTextEdit(log_group_);
     log_text_edit_->setObjectName(QStringLiteral("logTextEdit"));
     log_text_edit_->viewport()->setObjectName(QStringLiteral("logTextViewport"));
     log_text_edit_->setReadOnly(true);
@@ -4897,7 +4916,6 @@ void MainWindow::setEnglish(bool english)
     config_group_->setTitle(QString());
     data_group_->setTitle(QString());
     tcp_wave_group_->setTitle(QString());
-    log_group_->setTitle(QString());
 
     if (epsilon_group_) epsilon_group_->setTitle(QString());
     if (gnss_group_) gnss_group_->setTitle(QString());

@@ -136,6 +136,12 @@ QGroupBox#sensorGroupBox {
     padding: 0px 0px 0px 0px;
 }
 
+QFrame#logPanelFrame {
+    background-color: #ffffff;
+    border: 1px solid #dfe4ea;
+    border-radius: 8px;
+}
+
 QGroupBox::title {
     subcontrol-origin: border;
     subcontrol-position: top left;
