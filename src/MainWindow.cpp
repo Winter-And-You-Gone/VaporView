@@ -79,7 +79,9 @@ constexpr const char *kBaseMarginsBottomProperty = "_vv_base_margin_bottom";
 constexpr int kMainPageInputHeight = 36;
 constexpr int kMainPageButtonHeight = 36;
 constexpr int kMainPageTitleBarHeight = kMainPageButtonHeight + 4;
-constexpr int kConfigCardMinHeight = 250;
+constexpr int kConfigRowsHeight = kMainPageInputHeight * 4 + 4 * 3;
+constexpr int kConfigCardMinHeight = kMainPageTitleBarHeight + 4 + kConfigRowsHeight + 4;
+constexpr int kConfigRemoteCardMinHeight = kConfigCardMinHeight + (kMainPageInputHeight + 4) + 4;
 constexpr int kTcpWaveCardMinHeight = 430;
 constexpr int kMainCardResizeHandleHeight = 3;
 constexpr int kEnvStatusIconSize = 18;
@@ -168,7 +170,8 @@ protected:
         }
 
         const int deltaY = event->globalPosition().toPoint().y() - drag_start_y_;
-        const int nextHeight = std::max(minimum_target_height_, target_start_height_ + deltaY);
+        const int effectiveMinimum = std::max(minimum_target_height_, target_card_->minimumHeight());
+        const int nextHeight = std::max(effectiveMinimum, target_start_height_ + deltaY);
         target_card_->setFixedHeight(nextHeight);
         event->accept();
     }
@@ -3223,6 +3226,16 @@ void MainWindow::updateSourceModeUi()
     if (sky_telemetry_port_combo_) sky_telemetry_port_combo_->setVisible(remote);
     if (sky_telemetry_baud_lbl_) sky_telemetry_baud_lbl_->setVisible(remote);
     if (sky_telemetry_baud_combo_) sky_telemetry_baud_combo_->setVisible(remote);
+    if (config_group_)
+    {
+        const int minimumHeight = remote ? kConfigRemoteCardMinHeight : kConfigCardMinHeight;
+        const bool minimumChanged = config_group_->minimumHeight() != minimumHeight;
+        config_group_->setMinimumHeight(minimumHeight);
+        if (minimumChanged || config_group_->height() < minimumHeight)
+        {
+            config_group_->setFixedHeight(minimumHeight);
+        }
+    }
     if (sky_device_config_btn_) sky_device_config_btn_->setEnabled(remote && ground_telemetry_service_ && ground_telemetry_service_->isOpen());
     setRemoteDeviceButtonsEnabled(remote && ground_telemetry_service_ && ground_telemetry_service_->isOpen());
     updateRemoteTelemetrySummaryLabel();
