@@ -681,8 +681,7 @@ Item {
             text: portCombo.displayFor(modelData)
             font.family: "Consolas"
             font.pixelSize: ApplicationWindow.window.uiBodyFontSize * ApplicationWindow.window.scaleFactor
-            highlighted: portCombo.highlightedIndex === index
-            background: Rectangle { radius: ApplicationWindow.window.uiRadius; color: highlighted ? ApplicationWindow.window.secondary : "transparent" }
+            background: Rectangle { radius: ApplicationWindow.window.uiRadius; color: hovered ? ApplicationWindow.window.secondary : "transparent" }
             contentItem: Text {
                 text: parent.text
                 color: (modelData && modelData.occupied) ? ApplicationWindow.window.muted : ApplicationWindow.window.text

@@ -67,10 +67,9 @@ ComboBox {
         font.family: "Consolas"
         font.pixelSize: theme.font(theme.bodyFontSize)
         font.bold: false
-        highlighted: control.highlightedIndex === index
         background: Rectangle {
             radius: theme.radius
-            color: (opt.hovered || opt.highlighted) ? theme.surfaceAlt : "transparent"
+            color: opt.hovered ? theme.surfaceAlt : "transparent"
         }
         contentItem: Text {
             text: opt.text
