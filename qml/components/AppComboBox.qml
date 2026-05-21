@@ -86,9 +86,8 @@ ComboBox {
     popup: Popup {
         id: comboPopup
 
-        y: control.mapToItem(null, 0, control.height).y + 2
+        y: control.height + 2
         width: control.width
-        margins: 0
         padding: 1
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
         readonly property bool empty: control.count === 0
