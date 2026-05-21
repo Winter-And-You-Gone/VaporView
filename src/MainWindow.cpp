@@ -79,7 +79,6 @@ constexpr int kMainPageInputHeight = 36;
 constexpr int kMainPageButtonHeight = 36;
 constexpr int kMainPageTitleBarHeight = kMainPageButtonHeight + 4;
 constexpr int kConfigCardMinHeight = 250;
-constexpr int kDataCardMinHeight = 230;
 constexpr int kTcpWaveCardMinHeight = 430;
 constexpr int kEnvStatusIconSize = 18;
 constexpr int kEnvironmentRateLabelMinWidth = 72;
@@ -4487,7 +4486,6 @@ void MainWindow::setupDataPanels()
 {
     data_group_ = new QGroupBox(this);
     data_group_->setObjectName("sensorGroupBox");
-    data_group_->setMinimumHeight(kDataCardMinHeight);
     data_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
     auto *data_layout = new QVBoxLayout(data_group_);
     data_layout->setSpacing(0);
@@ -4585,10 +4583,22 @@ void MainWindow::setupDataPanels()
     env_layout->addWidget(hmp_panel_);
     updateEnvironmentStatusIcons(false, false, false);
 
+    const int sensorCardHeight = std::max({
+        epsilon_group_->sizeHint().height(),
+        epsilon_group_->minimumSizeHint().height(),
+        env_group->sizeHint().height(),
+        env_group->minimumSizeHint().height()
+    });
+    epsilon_group_->setFixedHeight(sensorCardHeight);
+    env_group->setFixedHeight(sensorCardHeight);
+    sensor_row->setMinimumHeight(sensorCardHeight);
+
     sensor_layout->addWidget(env_group, 1);
 
     data_layout->addWidget(sensor_row, 0);
     data_layout->addStretch(1);
+    const int dataCardMinHeight = data_group_->minimumSizeHint().height();
+    data_group_->setMinimumHeight(dataCardMinHeight);
     env_group_ = env_group;
 
     lidar_group_ = nullptr;
@@ -4645,7 +4655,7 @@ void MainWindow::setupDataPanels()
     main_cards_splitter_->setStretchFactor(0, 1);
     main_cards_splitter_->setStretchFactor(1, 1);
     main_cards_splitter_->setStretchFactor(2, 2);
-    main_cards_splitter_->setSizes({kConfigCardMinHeight, kDataCardMinHeight, kTcpWaveCardMinHeight});
+    main_cards_splitter_->setSizes({kConfigCardMinHeight, dataCardMinHeight, kTcpWaveCardMinHeight});
 }
 
 void MainWindow::setupLogPanel()
