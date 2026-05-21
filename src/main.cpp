@@ -10,6 +10,7 @@
 #include <QFileInfo>
 #include <QPalette>
 #include <QSettings>
+#include <QTimer>
 #include "MainWindow.h"
 #include "SkyRuntime.h"
 
@@ -50,16 +51,39 @@ QString startupDarkStyleSheet()
     );
 }
 
-void applyStartupTheme(QApplication& app)
+bool startupDarkThemeEnabled()
 {
     const QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
-    if (!settings.value(QStringLiteral("dark_theme_enabled"), false).toBool())
+    return settings.value(QStringLiteral("dark_theme_enabled"), false).toBool();
+}
+
+void applyStartupTheme(QApplication& app, bool darkThemeEnabled)
+{
+    if (!darkThemeEnabled)
     {
         return;
     }
 
     app.setPalette(startupDarkPalette(app.palette()));
     app.setStyleSheet(startupDarkStyleSheet());
+}
+
+void showMainWindow(MainWindow& window, bool hideFirstFrame)
+{
+    if (!hideFirstFrame)
+    {
+        window.show();
+        return;
+    }
+
+    window.setWindowOpacity(0.0);
+    window.show();
+    QTimer::singleShot(0, &window, [&window]() {
+        window.repaint();
+        QTimer::singleShot(16, &window, [&window]() {
+            window.setWindowOpacity(1.0);
+        });
+    });
 }
 }
 
@@ -69,7 +93,8 @@ int main(int argc, char *argv[])
     app.setApplicationName("VaporView");
     app.setApplicationVersion("1.0.0");
     app.setOrganizationName("VaporView");
-    applyStartupTheme(app);
+    const bool startupDarkTheme = startupDarkThemeEnabled();
+    applyStartupTheme(app, startupDarkTheme);
 
     qRegisterMetaType<VaporView::TelemetryBasic>("VaporView::TelemetryBasic");
     qRegisterMetaType<VaporView::DownsampledWaveform>("VaporView::DownsampledWaveform");
@@ -150,7 +175,7 @@ int main(int argc, char *argv[])
     {
         mainWindow.setWindowIcon(app.windowIcon());
     }
-    mainWindow.show();
+    showMainWindow(mainWindow, startupDarkTheme);
 
     return app.exec();
 }
