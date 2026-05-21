@@ -1375,8 +1375,8 @@ private:
 
         QGridLayout *statusGrid = addSectionCard(leftColumn,
                                                  QStringLiteral("status"),
-                                                 QStringLiteral("数据与系统状态"),
-                                                 QStringLiteral("Data & System Status"),
+                                                 QStringLiteral("总体状态"),
+                                                 QStringLiteral("Overall Status"),
                                                  kEpsilonTitleColumnWidth,
                                                  kEpsilonLeftValueColumnWidth);
         int row = 0;
@@ -4675,9 +4675,7 @@ void MainWindow::setupDataPanels()
 
     const int sensorCardHeight = std::max({
         epsilon_group_->sizeHint().height(),
-        epsilon_group_->minimumSizeHint().height(),
-        env_group->sizeHint().height(),
-        env_group->minimumSizeHint().height()
+        epsilon_group_->minimumSizeHint().height()
     });
     epsilon_group_->setFixedHeight(sensorCardHeight);
     env_group->setFixedHeight(sensorCardHeight);
