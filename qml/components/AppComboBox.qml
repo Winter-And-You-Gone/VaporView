@@ -88,10 +88,14 @@ ComboBox {
 
         y: control.height + 2
         width: control.width
+        margins: 0
         padding: 1
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
         readonly property bool empty: control.count === 0
-        implicitHeight: comboPopup.empty ? theme.controlHeight + 2 : Math.min(contentItem.implicitHeight, 220)
+        implicitHeight: comboPopup.empty ? theme.controlHeight + 2 : {
+            var avail = control.Window ? control.Window.height - control.mapToItem(null, 0, 0).y - control.height - 10 : 220
+            return Math.min(contentItem.implicitHeight, 220, avail)
+        }
         background: Rectangle {
             radius: theme.radius
             color: theme.surface
