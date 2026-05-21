@@ -19,19 +19,19 @@ namespace
 QPalette startupDarkPalette(const QPalette& base)
 {
     QPalette palette = base;
-    palette.setColor(QPalette::Window, QColor("#101418"));
+    palette.setColor(QPalette::Window, QColor("#000000"));
     palette.setColor(QPalette::WindowText, QColor("#d8dee9"));
-    palette.setColor(QPalette::Base, QColor("#10151b"));
-    palette.setColor(QPalette::AlternateBase, QColor("#162638"));
+    palette.setColor(QPalette::Base, QColor("#000000"));
+    palette.setColor(QPalette::AlternateBase, QColor("#0b0b0b"));
     palette.setColor(QPalette::Text, QColor("#e5e7eb"));
-    palette.setColor(QPalette::Button, QColor("#151a20"));
+    palette.setColor(QPalette::Button, QColor("#050505"));
     palette.setColor(QPalette::ButtonText, QColor("#e5e7eb"));
     palette.setColor(QPalette::BrightText, QColor("#ffffff"));
     palette.setColor(QPalette::Light, QColor("#475569"));
     palette.setColor(QPalette::Midlight, QColor("#334155"));
     palette.setColor(QPalette::Mid, QColor("#2c3440"));
-    palette.setColor(QPalette::Dark, QColor("#111827"));
-    palette.setColor(QPalette::Shadow, QColor("#05070a"));
+    palette.setColor(QPalette::Dark, QColor("#000000"));
+    palette.setColor(QPalette::Shadow, QColor("#000000"));
     palette.setColor(QPalette::Highlight, QColor("#245b8f"));
     palette.setColor(QPalette::HighlightedText, QColor("#ffffff"));
     palette.setColor(QPalette::ToolTipBase, QColor("#1b222b"));
@@ -46,8 +46,8 @@ QPalette startupDarkPalette(const QPalette& base)
 QString startupDarkStyleSheet()
 {
     return QStringLiteral(
-        "QWidget, QMainWindow { background-color: #101418; color: #d8dee9; }"
-        "QMenuBar, QToolBar, QStatusBar { background-color: #151a20; color: #d8dee9; }"
+        "QWidget, QMainWindow { background-color: #000000; color: #d8dee9; }"
+        "QMenuBar, QToolBar, QStatusBar { background-color: #050505; color: #d8dee9; }"
     );
 }
 

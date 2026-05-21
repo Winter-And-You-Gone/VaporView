@@ -260,6 +260,10 @@ target_link_libraries(VaporView PRIVATE
     rtklib_strsvr
 )
 
+if(WIN32)
+    target_link_libraries(VaporView PRIVATE dwmapi)
+endif()
+
 add_executable(VaporViewSky
     ${SKY_TUI_SOURCES}
     ${SKY_TUI_HEADERS}

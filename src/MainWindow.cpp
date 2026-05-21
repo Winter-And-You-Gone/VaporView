@@ -57,6 +57,13 @@
 #include <QThread>
 #include <QVector>
 #include <QtEndian>
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <dwmapi.h>
+#include <windows.h>
+#endif
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -405,11 +412,52 @@ QIcon createLightThemeIcon()
     return createLucideIcon(QStringLiteral("sun"), kToolbarAmber);
 }
 
+#ifdef Q_OS_WIN
+#ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
+#define DWMWA_USE_IMMERSIVE_DARK_MODE 20
+#endif
+#ifndef DWMWA_CAPTION_COLOR
+#define DWMWA_CAPTION_COLOR 35
+#endif
+#ifndef DWMWA_TEXT_COLOR
+#define DWMWA_TEXT_COLOR 36
+#endif
+#ifndef DWMWA_COLOR_DEFAULT
+#define DWMWA_COLOR_DEFAULT 0xFFFFFFFF
+#endif
+
+void setWindowsTitleBarDark(QWidget *window, bool dark)
+{
+    if (!window)
+    {
+        return;
+    }
+
+    HWND hwnd = reinterpret_cast<HWND>(window->winId());
+    if (!hwnd)
+    {
+        return;
+    }
+
+    const BOOL useDark = dark ? TRUE : FALSE;
+    DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &useDark, sizeof(useDark));
+
+    const COLORREF captionColor = dark ? RGB(0, 0, 0) : DWMWA_COLOR_DEFAULT;
+    const COLORREF textColor = dark ? RGB(229, 231, 235) : DWMWA_COLOR_DEFAULT;
+    DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, &captionColor, sizeof(captionColor));
+    DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, &textColor, sizeof(textColor));
+}
+#else
+void setWindowsTitleBarDark(QWidget *, bool)
+{
+}
+#endif
+
 QString darkThemeStyleSheet()
 {
     return QStringLiteral(R"(
 QMainWindow {
-    background-color: #101418;
+    background-color: #000000;
 }
 QWidget#appCentralWidget,
 QWidget#mainCardsPane,
@@ -423,18 +471,18 @@ QScrollArea#mainCardsScrollArea > QWidget,
 QScrollArea#mainCardsScrollArea > QWidget > QWidget,
 QAbstractScrollArea,
 QSplitter {
-    background-color: #101418;
+    background-color: #000000;
 }
 QSplitter#mainContentSplitter,
 QSplitter#mainContentSplitter > QWidget {
-    background-color: #101418;
+    background-color: #000000;
 }
 QMenuBar,
 QToolBar,
 QStatusBar,
 QMenu,
 QMessageBox {
-    background-color: #151a20;
+    background-color: #050505;
     color: #d8dee9;
     border-color: #2c3440;
 }
@@ -446,31 +494,31 @@ QToolBar QToolButton {
 QMenuBar::item:selected,
 QMenu::item:selected,
 QToolBar QToolButton:hover {
-    background-color: #1f2a36;
+    background-color: #111111;
     color: #7db7ff;
 }
 QMenuBar::item:pressed,
 QToolBar QToolButton:pressed {
-    background-color: #263545;
+    background-color: #171717;
 }
 QMenu::separator,
 QToolBar::separator {
     background-color: #2c3440;
 }
 QGroupBox {
-    background-color: #151a20;
+    background-color: #050505;
     border: 1px solid #2c3440;
-    border-top: 40px solid #151a20;
+    border-top: 40px solid #050505;
     color: #d8dee9;
 }
 QDialog#rtkConfigDialog,
 QWidget#rtkConfigViewport,
 QWidget#rtkConfigContent,
 QScrollArea#rtkConfigScrollArea {
-    background-color: #101418;
+    background-color: #000000;
 }
 QDialog#rtkConfigDialog QGroupBox#rtkCardGroup {
-    background-color: #151a20;
+    background-color: #050505;
     border: 1px solid #2c3440;
     border-radius: 8px;
     margin-top: 0px;
@@ -481,7 +529,7 @@ QDialog#rtkConfigDialog QGroupBox#rtkCardGroup::title {
     color: transparent;
 }
 QDialog#rtkConfigDialog QWidget#sectionTitleBar {
-    background-color: #151a20;
+    background-color: #050505;
     border: none;
     border-bottom: 1px solid #2c3440;
     border-top-left-radius: 7px;
@@ -493,7 +541,7 @@ QDialog#rtkConfigDialog QLabel#sectionTitleLabel {
     color: #e5e7eb;
 }
 QGroupBox#sensorGroupBox {
-    background-color: #151a20;
+    background-color: #050505;
     border: 1px solid #2c3440;
     border-radius: 8px;
     margin-top: 0px;
@@ -501,12 +549,12 @@ QGroupBox#sensorGroupBox {
     color: #e5e7eb;
 }
 QFrame#logPanelFrame {
-    background-color: #151a20;
+    background-color: #050505;
     border: 1px solid #2c3440;
     border-radius: 8px;
 }
 QFrame#logPanelFrame QWidget#sectionTitleBar {
-    background-color: #151a20;
+    background-color: #050505;
     border: none;
     border-bottom: 1px solid #2c3440;
     border-top-left-radius: 7px;
@@ -519,7 +567,7 @@ QFrame#logPanelFrame QLabel#sectionTitleLabel {
 }
 QWidget#sectionTitleBar,
 QLabel#sectionTitleLabel {
-    background-color: #151a20;
+    background-color: #050505;
     border-color: #2c3440;
     color: #e5e7eb;
 }
@@ -536,12 +584,12 @@ QLabel#rtkStatusLabel {
     font-weight: bold;
 }
 QFrame#epsilonSectionCard {
-    background-color: #151a20;
+    background-color: #050505;
     border: 1px solid #2c3440;
 }
 QLabel#epsilonSectionLabel {
     color: #d8dee9;
-    background-color: #18202a;
+    background-color: #0b0b0b;
     border: none;
     border-right: 1px solid #2c3440;
     font-weight: 700;
@@ -564,7 +612,7 @@ QLineEdit,
 QSpinBox,
 QDoubleSpinBox,
 QTextEdit {
-    background-color: #10151b;
+    background-color: #000000;
     border: 1px solid #323c48;
     color: #e5e7eb;
     selection-background-color: #245b8f;
@@ -572,7 +620,7 @@ QTextEdit {
 }
 QTextEdit#logTextEdit,
 QWidget#logTextViewport {
-    background-color: #10151b;
+    background-color: #000000;
 }
 QComboBox:hover,
 QLineEdit:hover,
@@ -590,11 +638,11 @@ QComboBox:disabled,
 QLineEdit:disabled,
 QSpinBox:disabled,
 QDoubleSpinBox:disabled {
-    background-color: #1b222b;
+    background-color: #101010;
     color: #64748b;
 }
 QComboBox QAbstractItemView {
-    background-color: #151a20;
+    background-color: #050505;
     border: 1px solid #323c48;
     color: #e5e7eb;
     selection-background-color: #1f3f66;
@@ -606,11 +654,11 @@ QPushButton:disabled {
 }
 QScrollBar:vertical,
 QScrollBar:horizontal {
-    background-color: #111827;
+    background-color: #000000;
 }
 QScrollArea#mainCardsScrollArea QScrollBar:horizontal,
 QScrollArea#mainCardsScrollArea QScrollBar:vertical {
-    background-color: #101418;
+    background-color: #000000;
 }
 QScrollBar::handle:vertical,
 QScrollBar::handle:horizontal {
@@ -622,24 +670,24 @@ QScrollBar::handle:horizontal:hover {
 }
 QSplitter::handle,
 QSplitter#mainContentSplitter::handle:horizontal {
-    background-color: #101418;
+    background-color: #000000;
 }
 QWidget#mainCardResizeHandle {
     min-height: 3px;
     max-height: 3px;
-    background-color: #101418;
+    background-color: #000000;
 }
 QSplitter#mainContentSplitter::handle:horizontal:hover {
-    background-color: #1f2a36;
+    background-color: #111111;
 }
 QWidget#mainCardResizeHandle:hover {
-    background-color: #1f2a36;
+    background-color: #111111;
 }
 QSplitter#mainContentSplitter::handle:horizontal:pressed {
-    background-color: #263545;
+    background-color: #171717;
 }
 QWidget#mainCardResizeHandle[dragging="true"] {
-    background-color: #263545;
+    background-color: #171717;
 }
 QCheckBox,
 QRadioButton {
@@ -647,7 +695,7 @@ QRadioButton {
 }
 QCheckBox::indicator,
 QRadioButton::indicator {
-    background-color: #10151b;
+    background-color: #000000;
     border-color: #64748b;
 }
 QLabel[data-valid="true"] {
@@ -679,19 +727,19 @@ QPalette themedPalette(bool dark)
         return palette;
     }
 
-    palette.setColor(QPalette::Window, QColor("#101418"));
+    palette.setColor(QPalette::Window, QColor("#000000"));
     palette.setColor(QPalette::WindowText, QColor("#d8dee9"));
-    palette.setColor(QPalette::Base, QColor("#10151b"));
-    palette.setColor(QPalette::AlternateBase, QColor("#162638"));
+    palette.setColor(QPalette::Base, QColor("#000000"));
+    palette.setColor(QPalette::AlternateBase, QColor("#0b0b0b"));
     palette.setColor(QPalette::Text, QColor("#e5e7eb"));
-    palette.setColor(QPalette::Button, QColor("#151a20"));
+    palette.setColor(QPalette::Button, QColor("#050505"));
     palette.setColor(QPalette::ButtonText, QColor("#e5e7eb"));
     palette.setColor(QPalette::BrightText, QColor("#ffffff"));
     palette.setColor(QPalette::Light, QColor("#475569"));
     palette.setColor(QPalette::Midlight, QColor("#334155"));
     palette.setColor(QPalette::Mid, QColor("#2c3440"));
-    palette.setColor(QPalette::Dark, QColor("#111827"));
-    palette.setColor(QPalette::Shadow, QColor("#05070a"));
+    palette.setColor(QPalette::Dark, QColor("#000000"));
+    palette.setColor(QPalette::Shadow, QColor("#000000"));
     palette.setColor(QPalette::Highlight, QColor("#245b8f"));
     palette.setColor(QPalette::HighlightedText, QColor("#ffffff"));
     palette.setColor(QPalette::ToolTipBase, QColor("#1b222b"));
@@ -2911,6 +2959,7 @@ void MainWindow::applyStyleConfiguration()
     qApp->setPalette(themedPalette(dark_theme_enabled_));
     qApp->setFont(appFont);
     qApp->setStyleSheet(scaledStyleSheet(themedStyleSheet()));
+    setWindowsTitleBarDark(this, dark_theme_enabled_);
     applyScaledUiMetrics();
 
     if (!isFullScreen() && !isMaximized())
@@ -3426,8 +3475,8 @@ QString MainWindow::remoteTelemetrySummaryText() const
 
     const QString textColor = dark_theme_enabled_ ? QStringLiteral("#d8dee9") : QStringLiteral("#000000");
     const QString borderColor = dark_theme_enabled_ ? QStringLiteral("#2c3440") : QStringLiteral("#dfe4ea");
-    const QString cardBg = dark_theme_enabled_ ? QStringLiteral("#151a20") : QStringLiteral("#ffffff");
-    const QString titleBg = dark_theme_enabled_ ? QStringLiteral("#18202a") : QStringLiteral("#f8fafc");
+    const QString cardBg = dark_theme_enabled_ ? QStringLiteral("#050505") : QStringLiteral("#ffffff");
+    const QString titleBg = dark_theme_enabled_ ? QStringLiteral("#0b0b0b") : QStringLiteral("#f8fafc");
 
     auto rowHtml = [&](const QString& label, const QString& value, int labelWidth, int valueWidth) {
         return QStringLiteral("<tr>"
