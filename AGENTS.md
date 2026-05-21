@@ -68,6 +68,16 @@ Always use PowerShell (not Bash) for vcvarsall setup to avoid swallowed cmake ou
 ```
 其中 type 为以下之一：`feat`(新功能)、`fix`(修复)、`refactor`(重构)、`style`(样式)、`chore`(杂项)。
 
+## 批量 QML 修改安全规则
+
+对 QML 文件做全局样式替换/重构时，**禁止**使用 task agent 批量自动修改。必须遵循以下流程：
+
+1. **手动逐文件编辑** — 用 Edit 工具逐个文件做精确替换，不要用 `replaceAll` 或模糊匹配
+2. **每改一个文件就 Build** — 确认编译通过且无 QML 语法解析错误
+3. **保持结构完整** — 确保不误删 `{` `}` 标签、`Layout.xxx` 属性、`text: "..."` 等内容
+4. **不信任批量 agent** — task agent 在处理大规模替换时容易因 `replaceAll` 误匹配上下文而损坏结构。即便 diff 看起来只有值替换，也要人工审查关键标签是否缺失
+5. **改完立刻验证启动** — 构建成功后让用户启动 exe 确认窗口正常显示，再继续下一批文件
+
 ## C++ Code Style
 
 ### Naming Conventions
