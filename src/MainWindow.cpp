@@ -406,6 +406,7 @@ QScrollArea,
 QScrollArea > QWidget,
 QScrollArea > QWidget > QWidget,
 QScrollArea#mainCardsScrollArea,
+QWidget#mainCardsViewport,
 QScrollArea#mainCardsScrollArea > QWidget,
 QScrollArea#mainCardsScrollArea > QWidget > QWidget,
 QAbstractScrollArea,
@@ -562,6 +563,10 @@ QPushButton:disabled {
 QScrollBar:vertical,
 QScrollBar:horizontal {
     background-color: #111827;
+}
+QScrollArea#mainCardsScrollArea QScrollBar:horizontal,
+QScrollArea#mainCardsScrollArea QScrollBar:vertical {
+    background-color: #101418;
 }
 QScrollBar::handle:vertical,
 QScrollBar::handle:horizontal {
@@ -2651,7 +2656,7 @@ void MainWindow::loadModernStyleSheet()
         base_style_sheet_ =
             "* { font-family: \"Segoe UI\", \"Microsoft YaHei\", \"PingFang SC\", sans-serif; }"
             "QMainWindow { background-color: #f5f5f5; }"
-            "QWidget#appCentralWidget, QWidget#mainCardsPane, QScrollArea#mainCardsScrollArea, QScrollArea#mainCardsScrollArea > QWidget, QScrollArea#mainCardsScrollArea > QWidget > QWidget, QSplitter { background-color: #f5f5f5; }"
+            "QWidget#appCentralWidget, QWidget#mainCardsPane, QScrollArea#mainCardsScrollArea, QWidget#mainCardsViewport, QScrollArea#mainCardsScrollArea > QWidget, QScrollArea#mainCardsScrollArea > QWidget > QWidget, QSplitter#mainContentSplitter { background-color: #ffffff; }"
             "QMenuBar { background-color: #ffffff; border-bottom: 1px solid #e0e0e0; padding: 4px 8px; }"
             "QMenuBar::item { background-color: transparent; padding: 6px 12px; border-radius: 4px; color: #000000; }"
             "QMenuBar::item:selected { background-color: #e3f2fd; color: #1976d2; }"
@@ -2710,6 +2715,7 @@ void MainWindow::loadModernStyleSheet()
             "QScrollBar:horizontal { background-color: #f5f5f5; height: 12px; border-radius: 6px; }"
             "QScrollBar::handle:horizontal { background-color: #bdbdbd; min-width: 30px; border-radius: 6px; margin: 2px; }"
             "QScrollBar::handle:horizontal:hover { background-color: #9e9e9e; }"
+            "QScrollArea#mainCardsScrollArea QScrollBar:horizontal, QScrollArea#mainCardsScrollArea QScrollBar:vertical { background-color: #ffffff; }"
             "QSplitter::handle { background-color: transparent; }"
             "QSplitter#mainContentSplitter::handle:horizontal { width: 8px; background-color: transparent; }"
             "QWidget#mainCardResizeHandle { min-height: 3px; max-height: 3px; background-color: transparent; }"
@@ -2719,6 +2725,9 @@ void MainWindow::loadModernStyleSheet()
             "QWidget#mainCardResizeHandle[dragging=\"true\"] { background-color: rgba(25, 118, 210, 0.28); }"
             "QSplitter::handle:horizontal { width: 0px; }"
             "QSplitter::handle:vertical { height: 0px; }"
+            "QSplitter#mainContentSplitter::handle:horizontal { width: 8px; background-color: #ffffff; }"
+            "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: rgba(25, 118, 210, 0.18); }"
+            "QSplitter#mainContentSplitter::handle:horizontal:pressed { background-color: rgba(25, 118, 210, 0.28); }"
             "QPushButton { background-color: #1976d2; color: #ffffff; border: none; border-radius: 6px; padding: 0px 18px; font-size: 15px; font-weight: 500; min-height: 36px; max-height: 36px; }"
             "QPushButton:hover { background-color: #1565c0; }"
             "QPushButton:pressed { background-color: #0d47a1; }"
@@ -4267,6 +4276,7 @@ void MainWindow::setupCentralWidget()
 
     auto *left_scroll_area = new QScrollArea(this);
     left_scroll_area->setObjectName("mainCardsScrollArea");
+    left_scroll_area->viewport()->setObjectName("mainCardsViewport");
     left_scroll_area->setWidgetResizable(true);
     left_scroll_area->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     left_scroll_area->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);

@@ -13,6 +13,16 @@ QMainWindow {
     background-color: #f5f5f5;
 }
 
+QWidget#appCentralWidget,
+QWidget#mainCardsPane,
+QScrollArea#mainCardsScrollArea,
+QWidget#mainCardsViewport,
+QScrollArea#mainCardsScrollArea > QWidget,
+QScrollArea#mainCardsScrollArea > QWidget > QWidget,
+QSplitter#mainContentSplitter {
+    background-color: #ffffff;
+}
+
 /* 菜单栏 */
 QMenuBar {
     background-color: #ffffff;
@@ -390,6 +400,11 @@ QScrollArea {
     border: none;
 }
 
+QScrollArea#mainCardsScrollArea QScrollBar:horizontal,
+QScrollArea#mainCardsScrollArea QScrollBar:vertical {
+    background-color: #ffffff;
+}
+
 /* 分割器 */
 QSplitter::handle {
     background-color: transparent;
@@ -405,6 +420,19 @@ QSplitter::handle:vertical {
 
 QSplitter::handle:hover {
     background-color: transparent;
+}
+
+QSplitter#mainContentSplitter::handle:horizontal {
+    width: 8px;
+    background-color: #ffffff;
+}
+
+QSplitter#mainContentSplitter::handle:horizontal:hover {
+    background-color: rgba(25, 118, 210, 0.18);
+}
+
+QSplitter#mainContentSplitter::handle:horizontal:pressed {
+    background-color: rgba(25, 118, 210, 0.28);
 }
 
 /* 工具提示 */
