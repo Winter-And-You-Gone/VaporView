@@ -425,6 +425,10 @@ QAbstractScrollArea,
 QSplitter {
     background-color: #101418;
 }
+QSplitter#mainContentSplitter,
+QSplitter#mainContentSplitter > QWidget {
+    background-color: #101418;
+}
 QMenuBar,
 QToolBar,
 QStatusBar,
@@ -500,6 +504,18 @@ QFrame#logPanelFrame {
     background-color: #151a20;
     border: 1px solid #2c3440;
     border-radius: 8px;
+}
+QFrame#logPanelFrame QWidget#sectionTitleBar {
+    background-color: #151a20;
+    border: none;
+    border-bottom: 1px solid #2c3440;
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
+}
+QFrame#logPanelFrame QLabel#sectionTitleLabel {
+    background-color: transparent;
+    border: none;
+    color: #e5e7eb;
 }
 QWidget#sectionTitleBar,
 QLabel#sectionTitleLabel {
@@ -4302,6 +4318,8 @@ void MainWindow::setupCentralWidget()
 {
     central_widget_ = new QWidget(this);
     central_widget_->setObjectName("appCentralWidget");
+    central_widget_->setAttribute(Qt::WA_StyledBackground, true);
+    central_widget_->setAutoFillBackground(true);
     setCentralWidget(central_widget_);
 
     auto *main_h_layout = new QHBoxLayout(central_widget_);
@@ -4310,6 +4328,8 @@ void MainWindow::setupCentralWidget()
 
     auto *left_widget = new QWidget(this);
     left_widget->setObjectName("mainCardsPane");
+    left_widget->setAttribute(Qt::WA_StyledBackground, true);
+    left_widget->setAutoFillBackground(true);
     main_layout_ = new QVBoxLayout(left_widget);
     main_layout_->setSpacing(0);
     main_layout_->setContentsMargins(0, 0, 0, 0);
@@ -4319,7 +4339,11 @@ void MainWindow::setupCentralWidget()
 
     auto *left_scroll_area = new QScrollArea(this);
     left_scroll_area->setObjectName("mainCardsScrollArea");
+    left_scroll_area->setAttribute(Qt::WA_StyledBackground, true);
+    left_scroll_area->setAutoFillBackground(true);
     left_scroll_area->viewport()->setObjectName("mainCardsViewport");
+    left_scroll_area->viewport()->setAttribute(Qt::WA_StyledBackground, true);
+    left_scroll_area->viewport()->setAutoFillBackground(true);
     left_scroll_area->setWidgetResizable(true);
     left_scroll_area->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     left_scroll_area->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
@@ -4330,6 +4354,8 @@ void MainWindow::setupCentralWidget()
 
     auto *main_splitter = new QSplitter(Qt::Horizontal, central_widget_);
     main_splitter->setObjectName("mainContentSplitter");
+    main_splitter->setAttribute(Qt::WA_StyledBackground, true);
+    main_splitter->setAutoFillBackground(true);
     main_splitter->setChildrenCollapsible(false);
     main_splitter->setHandleWidth(8);
     main_splitter->addWidget(left_scroll_area);
@@ -4805,6 +4831,7 @@ void MainWindow::setupLogPanel()
     log_group_->setObjectName("logPanelFrame");
     log_group_->setFrameShape(QFrame::NoFrame);
     log_group_->setAttribute(Qt::WA_StyledBackground, true);
+    log_group_->setAutoFillBackground(true);
     log_group_->setMinimumWidth(120);
     auto *log_layout = new QVBoxLayout(log_group_);
     log_layout->setContentsMargins(0, 0, 0, 0);
