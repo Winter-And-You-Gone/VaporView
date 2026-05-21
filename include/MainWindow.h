@@ -496,6 +496,7 @@ private:
     QLabel *data_source_mode_lbl_;
     QLabel *sky_telemetry_port_lbl_;
     QLabel *sky_telemetry_baud_lbl_;
+    QWidget *sky_telemetry_row_widget_;
 
     QComboBox *global_rate_combo_;
     QComboBox *epsilon_rate_combo_;

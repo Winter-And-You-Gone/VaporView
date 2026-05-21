@@ -2373,6 +2373,7 @@ MainWindow::MainWindow(QWidget *parent)
     , data_source_mode_lbl_(nullptr)
     , sky_telemetry_port_lbl_(nullptr)
     , sky_telemetry_baud_lbl_(nullptr)
+    , sky_telemetry_row_widget_(nullptr)
     , global_rate_combo_(nullptr)
     , epsilon_rate_combo_(nullptr)
     , gnss_rate_combo_(nullptr)
@@ -3217,6 +3218,7 @@ void MainWindow::updateSourceModeUi()
     }
     if (sky_telemetry_port_combo_) sky_telemetry_port_combo_->setEnabled(remote && !is_connected_ && !connection_attempt_in_progress_);
     if (sky_telemetry_baud_combo_) sky_telemetry_baud_combo_->setEnabled(remote && !is_connected_ && !connection_attempt_in_progress_);
+    if (sky_telemetry_row_widget_) sky_telemetry_row_widget_->setVisible(remote);
     if (sky_telemetry_port_lbl_) sky_telemetry_port_lbl_->setVisible(remote);
     if (sky_telemetry_port_combo_) sky_telemetry_port_combo_->setVisible(remote);
     if (sky_telemetry_baud_lbl_) sky_telemetry_baud_lbl_->setVisible(remote);
@@ -4326,7 +4328,7 @@ void MainWindow::setupConfigPanel()
     config_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
     auto *config_root_layout = new QVBoxLayout(config_group_);
-    config_root_layout->setSpacing(8);
+    config_root_layout->setSpacing(4);
     config_root_layout->setContentsMargins(0, 0, 0, 8);
 
     auto *config_layout = new QGridLayout();
@@ -4484,12 +4486,19 @@ void MainWindow::setupConfigPanel()
     sky_telemetry_baud_combo_->setCurrentText(QStringLiteral("921600"));
     sky_telemetry_baud_combo_->setFixedHeight(kMainPageInputHeight);
     sky_telemetry_baud_combo_->setFixedWidth(100);
-    config_layout->addWidget(sky_telemetry_port_lbl_, 0, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    config_layout->addWidget(sky_telemetry_port_combo_, 0, 1, Qt::AlignVCenter);
-    config_layout->addWidget(sky_telemetry_baud_combo_, 0, 2, Qt::AlignVCenter);
-    config_layout->addWidget(sky_telemetry_baud_lbl_, 0, 3, Qt::AlignVCenter | Qt::AlignRight);
+    sky_telemetry_row_widget_ = new QWidget(config_group_);
+    auto *skyTelemetryLayout = new QHBoxLayout(sky_telemetry_row_widget_);
+    skyTelemetryLayout->setContentsMargins(8, 2, 8, 2);
+    skyTelemetryLayout->setSpacing(8);
+    skyTelemetryLayout->addWidget(sky_telemetry_port_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    skyTelemetryLayout->addWidget(sky_telemetry_port_combo_, 0, Qt::AlignVCenter);
+    skyTelemetryLayout->addWidget(sky_telemetry_baud_combo_, 0, Qt::AlignVCenter);
+    skyTelemetryLayout->addWidget(sky_telemetry_baud_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    skyTelemetryLayout->addStretch(1);
+    sky_telemetry_row_widget_->setVisible(false);
+    config_root_layout->addWidget(sky_telemetry_row_widget_);
 
-    int row = 1;
+    int row = 0;
 
 #ifdef _WIN32
     createPortRow(epsilon_lbl_, epsilon_port_combo_, epsilon_baud_combo_, epsilon_rate_lbl_, epsilon_rate_combo_, "COM3", "921600", row++, 200);
@@ -4523,10 +4532,10 @@ void MainWindow::setupConfigPanel()
         layout->addStretch();
         config_layout->addWidget(buttons, rowIndex, 5, Qt::AlignVCenter | Qt::AlignLeft);
     };
-    addRemoteButtons(1, epsilon_remote_buttons_widget_, epsilon_remote_connect_btn_, epsilon_remote_disconnect_btn_, epsilon_remote_reconnect_btn_, VaporView::SkyDeviceId::Epsilon);
-    addRemoteButtons(2, ptb_remote_buttons_widget_, ptb_remote_connect_btn_, ptb_remote_disconnect_btn_, ptb_remote_reconnect_btn_, VaporView::SkyDeviceId::Ptb);
-    addRemoteButtons(3, hmp_remote_buttons_widget_, hmp_remote_connect_btn_, hmp_remote_disconnect_btn_, hmp_remote_reconnect_btn_, VaporView::SkyDeviceId::Hmp);
-    addRemoteButtons(4, lidar_remote_buttons_widget_, lidar_remote_connect_btn_, lidar_remote_disconnect_btn_, lidar_remote_reconnect_btn_, VaporView::SkyDeviceId::Lidar);
+    addRemoteButtons(0, epsilon_remote_buttons_widget_, epsilon_remote_connect_btn_, epsilon_remote_disconnect_btn_, epsilon_remote_reconnect_btn_, VaporView::SkyDeviceId::Epsilon);
+    addRemoteButtons(1, ptb_remote_buttons_widget_, ptb_remote_connect_btn_, ptb_remote_disconnect_btn_, ptb_remote_reconnect_btn_, VaporView::SkyDeviceId::Ptb);
+    addRemoteButtons(2, hmp_remote_buttons_widget_, hmp_remote_connect_btn_, hmp_remote_disconnect_btn_, hmp_remote_reconnect_btn_, VaporView::SkyDeviceId::Hmp);
+    addRemoteButtons(3, lidar_remote_buttons_widget_, lidar_remote_connect_btn_, lidar_remote_disconnect_btn_, lidar_remote_reconnect_btn_, VaporView::SkyDeviceId::Lidar);
 
     if (epsilon_rate_combo_)
     {
@@ -4537,7 +4546,7 @@ void MainWindow::setupConfigPanel()
         epsilon_packet_rates_btn_->setFixedHeight(kMainPageInputHeight);
         epsilon_packet_rates_btn_->setMinimumWidth(140);
         connect(epsilon_packet_rates_btn_, &QPushButton::clicked, this, &MainWindow::onConfigureEpsilonPacketRatesClicked);
-        config_layout->addWidget(epsilon_packet_rates_btn_, 1, 4, Qt::AlignVCenter);
+        config_layout->addWidget(epsilon_packet_rates_btn_, 0, 4, Qt::AlignVCenter);
     }
 
     for (QComboBox *combo : {ptb_rate_combo_, hmp_rate_combo_, lidar_rate_combo_})
