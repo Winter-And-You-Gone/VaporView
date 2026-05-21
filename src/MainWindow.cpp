@@ -4329,9 +4329,11 @@ void MainWindow::setupConfigPanel()
 
     auto *config_root_layout = new QVBoxLayout(config_group_);
     config_root_layout->setSpacing(4);
-    config_root_layout->setContentsMargins(0, 0, 0, 8);
+    config_root_layout->setContentsMargins(0, 0, 0, 4);
 
-    auto *config_layout = new QGridLayout();
+    auto *config_form_widget = new QWidget(config_group_);
+    config_form_widget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    auto *config_layout = new QGridLayout(config_form_widget);
     config_layout->setVerticalSpacing(4);
     config_layout->setHorizontalSpacing(8);
     config_layout->setContentsMargins(8, 0, 8, 0);
@@ -4577,7 +4579,7 @@ void MainWindow::setupConfigPanel()
     data_telemetry_summary_card_->setVisible(false);
     config_layout->addWidget(data_telemetry_summary_card_, 0, 6, row, 1, Qt::AlignTop | Qt::AlignLeft);
 
-    config_root_layout->addLayout(config_layout);
+    config_root_layout->addWidget(config_form_widget, 0, Qt::AlignTop);
     main_layout_->addWidget(config_group_, 0);
 }
 
