@@ -42,7 +42,7 @@ Item {
                 spacing: 8
                 RowLayout {
                     Layout.fillWidth: true
-                    Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.language"); color: ApplicationWindow.window.muted; font.pixelSize: 11 }
+                    Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.language"); color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
                     AppComboBox {
                         Layout.preferredWidth: 120
                         model: [ApplicationWindow.window.t("settings.languageZh"), ApplicationWindow.window.t("settings.languageEn")]
@@ -52,12 +52,12 @@ Item {
                 }
                 RowLayout {
                     Layout.fillWidth: true
-                    Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.theme"); color: ApplicationWindow.window.muted; font.pixelSize: 11 }
+                    Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.theme"); color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
                     ToolbarButton { iconName: "settings"; text: appBackend.dark ? ApplicationWindow.window.t("settings.light") : ApplicationWindow.window.t("settings.dark"); onClicked: appBackend.toggleTheme() }
                 }
                 RowLayout {
                     Layout.fillWidth: true
-                    Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.iconLibrary"); color: ApplicationWindow.window.muted; font.pixelSize: 11 }
+                    Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.iconLibrary"); color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
                     AppComboBox {
                         Layout.preferredWidth: 160
                         model: ["Lucide", "Tabler Icons", "Phosphor Icons"]
@@ -113,9 +113,9 @@ Item {
                 anchors.margins: 12
                 RowLayout {
                     Layout.fillWidth: true
-                    Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.fontScale"); color: ApplicationWindow.window.muted; font.pixelSize: 11 }
+                    Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.fontScale"); color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
                     Slider { Layout.fillWidth: true; from: 70; to: 150; stepSize: 5; value: appBackend.fontScale; onMoved: appBackend.fontScale = value }
-                    Text { text: appBackend.fontScale + "%"; color: ApplicationWindow.window.text; font.pixelSize: 11 }
+                    Text { text: appBackend.fontScale + "%"; color: ApplicationWindow.window.text; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
                 }
             }
         }
@@ -140,8 +140,8 @@ Item {
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 12
-                Text { Layout.fillWidth: true; text: settingsBackend.aboutText; color: ApplicationWindow.window.text; font.bold: true; font.pixelSize: 12 }
-                Text { text: ApplicationWindow.window.t("settings.version") + ": " + appBackend.version; color: ApplicationWindow.window.muted; font.pixelSize: 11 }
+                Text { Layout.fillWidth: true; text: settingsBackend.aboutText; color: ApplicationWindow.window.text; font.bold: true; font.pixelSize: 12 * ApplicationWindow.window.scaleFactor }
+                Text { text: ApplicationWindow.window.t("settings.version") + ": " + appBackend.version; color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
             }
         }
 

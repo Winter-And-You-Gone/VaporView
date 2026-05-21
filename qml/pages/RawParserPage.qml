@@ -57,7 +57,7 @@ Item {
             ToolbarButton { iconName: "download"; text: ApplicationWindow.window.t("rawParser.export") + " BIN"; onClicked: { exportDialog.mode = "bin"; exportDialog.open() } }
             ToolbarButton { iconName: "trash-2"; text: ApplicationWindow.window.t("rawParser.clearAll"); variant: "danger"; onClicked: rawParserBackend.clear() }
             Item { Layout.fillWidth: true }
-            Text { text: rawParserBackend.records.length + " " + ApplicationWindow.window.t("rawParser.records"); color: ApplicationWindow.window.muted; font.pixelSize: 11 }
+            Text { text: rawParserBackend.records.length + " " + ApplicationWindow.window.t("rawParser.records"); color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
         }
 
         RowLayout {
@@ -84,12 +84,12 @@ Item {
                         RowLayout {
                             anchors.fill: parent
                             anchors.margins: 6
-                            Text { Layout.preferredWidth: 42; text: modelData.index; color: ApplicationWindow.window.muted; font.family: "Consolas"; font.pixelSize: 10 }
-                            Text { Layout.preferredWidth: 170; text: modelData.time; color: ApplicationWindow.window.text; font.family: "Consolas"; font.pixelSize: 10; elide: Text.ElideRight }
-                            Text { Layout.preferredWidth: 88; text: modelData.source; color: ApplicationWindow.window.text; font.pixelSize: 10; elide: Text.ElideRight }
-                            Text { Layout.preferredWidth: 108; text: modelData.recordTypeName; color: ApplicationWindow.window.text; font.pixelSize: 10; elide: Text.ElideRight }
-                            Text { Layout.preferredWidth: 80; text: modelData.payloadSize + " B"; color: ApplicationWindow.window.muted; font.family: "Consolas"; font.pixelSize: 10 }
-                            Text { Layout.fillWidth: true; text: modelData.payloadHex; color: ApplicationWindow.window.muted; font.family: "Consolas"; font.pixelSize: 10; elide: Text.ElideRight }
+                            Text { Layout.preferredWidth: 42; text: modelData.index; color: ApplicationWindow.window.muted; font.family: "Consolas"; font.pixelSize: 10 * ApplicationWindow.window.scaleFactor }
+                            Text { Layout.preferredWidth: 170; text: modelData.time; color: ApplicationWindow.window.text; font.family: "Consolas"; font.pixelSize: 10 * ApplicationWindow.window.scaleFactor; elide: Text.ElideRight }
+                            Text { Layout.preferredWidth: 88; text: modelData.source; color: ApplicationWindow.window.text; font.pixelSize: 10 * ApplicationWindow.window.scaleFactor; elide: Text.ElideRight }
+                            Text { Layout.preferredWidth: 108; text: modelData.recordTypeName; color: ApplicationWindow.window.text; font.pixelSize: 10 * ApplicationWindow.window.scaleFactor; elide: Text.ElideRight }
+                            Text { Layout.preferredWidth: 80; text: modelData.payloadSize + " B"; color: ApplicationWindow.window.muted; font.family: "Consolas"; font.pixelSize: 10 * ApplicationWindow.window.scaleFactor }
+                            Text { Layout.fillWidth: true; text: modelData.payloadHex; color: ApplicationWindow.window.muted; font.family: "Consolas"; font.pixelSize: 10 * ApplicationWindow.window.scaleFactor; elide: Text.ElideRight }
                         }
                     }
                 }
@@ -107,7 +107,7 @@ Item {
                         text: JSON.stringify(rawParserBackend.selectedRecord, null, 2)
                         color: ApplicationWindow.window.text
                         font.family: "Consolas"
-                        font.pixelSize: 10
+                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                         wrapMode: Text.Wrap
                     }
                 }

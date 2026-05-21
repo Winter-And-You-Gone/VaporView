@@ -472,7 +472,7 @@ Item {
 
                                 Text {
                                     text: "筛选记录"
-                                    font.pixelSize: 11
+                                    font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
                                     font.weight: Font.Bold
                                     color: ApplicationWindow.window.text
                                 }
@@ -482,7 +482,7 @@ Item {
                                     Layout.fillWidth: true
                                     placeholderText: "关键词 / 记录名 / 路径"
                                     color: ApplicationWindow.window.text
-                                    font.pixelSize: 10
+                                    font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                                     background: Rectangle {
                                         implicitHeight: 26
                                         radius: 5
@@ -498,7 +498,7 @@ Item {
                                     spacing: 6
                                     Text {
                                         text: "日期"
-                                        font.pixelSize: 10
+                                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                                         color: ApplicationWindow.window.muted
                                         Layout.preferredWidth: 28
                                     }
@@ -512,7 +512,7 @@ Item {
                                         ]
                                         delegate: ToolbarButton {
                                             implicitHeight: 22; implicitWidth: 48
-                                            text: modelData.label; font.pixelSize: 9
+                                             text: modelData.label; font.pixelSize: 9 * ApplicationWindow.window.scaleFactor
                                             variant: page.datePresetValue === modelData.val ? "primary" : "secondary"
                                             onClicked: page.datePresetValue = modelData.val
                                         }
@@ -527,7 +527,7 @@ Item {
                                         Layout.fillWidth: true
                                         placeholderText: "开始 yyyy-MM-dd"
                                         color: ApplicationWindow.window.text
-                                        font.pixelSize: 10
+                                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                                         background: Rectangle {
                                             implicitHeight: 26
                                             radius: 5
@@ -542,14 +542,14 @@ Item {
                                     Text {
                                         text: "~"
                                         color: ApplicationWindow.window.muted
-                                        font.pixelSize: 10
+                                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                                     }
                                     TextField {
                                         id: endDateInput
                                         Layout.fillWidth: true
                                         placeholderText: "结束 yyyy-MM-dd"
                                         color: ApplicationWindow.window.text
-                                        font.pixelSize: 10
+                                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                                         background: Rectangle {
                                             implicitHeight: 26
                                             radius: 5
@@ -570,7 +570,7 @@ Item {
                                         Layout.fillWidth: true
                                         placeholderText: "最小帧数"
                                         color: ApplicationWindow.window.text
-                                        font.pixelSize: 10
+                                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                                         background: Rectangle {
                                             implicitHeight: 26
                                             radius: 5
@@ -587,7 +587,7 @@ Item {
                                         Layout.fillWidth: true
                                         placeholderText: "最大帧数"
                                         color: ApplicationWindow.window.text
-                                        font.pixelSize: 10
+                                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                                         background: Rectangle {
                                             implicitHeight: 26
                                             radius: 5
@@ -608,7 +608,7 @@ Item {
                                         Layout.fillWidth: true
                                         placeholderText: "最小 MB"
                                         color: ApplicationWindow.window.text
-                                        font.pixelSize: 10
+                                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                                         background: Rectangle {
                                             implicitHeight: 26
                                             radius: 5
@@ -625,7 +625,7 @@ Item {
                                         Layout.fillWidth: true
                                         placeholderText: "最大 MB"
                                         color: ApplicationWindow.window.text
-                                        font.pixelSize: 10
+                                        font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                                         background: Rectangle {
                                             implicitHeight: 26
                                             radius: 5
@@ -645,7 +645,7 @@ Item {
 
                                     ToolbarButton {
                                         text: "重置"
-                                        implicitHeight: 26; implicitWidth: 60; font.pixelSize: 9
+                                        implicitHeight: 26; implicitWidth: 60; font.pixelSize: 9 * ApplicationWindow.window.scaleFactor
                                         onClicked: {
                                             filterKeywordInput.text = ""
                                             page.datePresetValue = "all"
@@ -662,7 +662,7 @@ Item {
 
                                     ToolbarButton {
                                         text: "应用"
-                                        implicitHeight: 26; implicitWidth: 60; font.pixelSize: 9
+                                        implicitHeight: 26; implicitWidth: 60; font.pixelSize: 9 * ApplicationWindow.window.scaleFactor
                                         onClicked: {
                                             var criteria = {
                                                 "text": filterKeywordInput.text,
@@ -922,7 +922,7 @@ Item {
                                 Text {
                                     text: "当前帧"
                                     Layout.preferredWidth: 135
-                                    font.pixelSize: 9
+                                    font.pixelSize: 9 * ApplicationWindow.window.scaleFactor
                                     color: ApplicationWindow.window.muted
                                 }
                                 Item { Layout.fillWidth: true }
@@ -930,7 +930,7 @@ Item {
                                     text: "趋势范围"
                                     Layout.preferredWidth: 150
                                     horizontalAlignment: Text.AlignRight
-                                    font.pixelSize: 9
+                                    font.pixelSize: 9 * ApplicationWindow.window.scaleFactor
                                     color: ApplicationWindow.window.muted
                                 }
 
@@ -939,7 +939,7 @@ Item {
                                         ? page.previewFrame + "/" + page.maxFrame
                                         : "0/0"
                                     Layout.preferredWidth: 135
-                                    font.pixelSize: 14
+                                    font.pixelSize: 14 * ApplicationWindow.window.scaleFactor
                                     font.weight: Font.Bold
                                     font.family: "Consolas"
                                     color: ApplicationWindow.window.primary
@@ -950,56 +950,56 @@ Item {
                                     spacing: 3
                                     ToolbarButton {
                                         implicitHeight: 22; implicitWidth: 40
-                                        text: "全部"; font.pixelSize: 9
+                                        text: "全部"; font.pixelSize: 9 * ApplicationWindow.window.scaleFactor
                                         onClicked: page.showAllTrendView()
                                     }
                                     ToolbarButton {
                                         implicitHeight: 22; implicitWidth: 48
-                                        text: "±100"; font.pixelSize: 9
+                                        text: "±100"; font.pixelSize: 9 * ApplicationWindow.window.scaleFactor
                                         onClicked: page.setCurrentWindowSpan(200)
                                     }
                                     ToolbarButton {
                                         implicitHeight: 22; implicitWidth: 48
-                                        text: "±500"; font.pixelSize: 9
+                                        text: "±500"; font.pixelSize: 9 * ApplicationWindow.window.scaleFactor
                                         onClicked: page.setCurrentWindowSpan(1000)
                                     }
                                     ToolbarButton {
                                         implicitHeight: 22; implicitWidth: 40
-                                        text: "±2k"; font.pixelSize: 9
+                                        text: "±2k"; font.pixelSize: 9 * ApplicationWindow.window.scaleFactor
                                         onClicked: page.setCurrentWindowSpan(4000)
                                     }
                                     ToolbarButton {
                                         implicitHeight: 22; implicitWidth: 44
-                                        text: "±10k"; font.pixelSize: 9
+                                        text: "±10k"; font.pixelSize: 9 * ApplicationWindow.window.scaleFactor
                                         onClicked: page.setCurrentWindowSpan(20000)
                                     }
                                     ToolbarButton {
                                         implicitHeight: 22; implicitWidth: 28
-                                        text: "−"; font.pixelSize: 11
+                                        text: "−"; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
                                         ToolTip.visible: hovered; ToolTip.text: "缩小范围"; ToolTip.delay: 400
                                         onClicked: page.zoomTrendView(0.5)
                                     }
                                     ToolbarButton {
                                         implicitHeight: 22; implicitWidth: 28
-                                        text: "+"; font.pixelSize: 11
+                                        text: "+"; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
                                         ToolTip.visible: hovered; ToolTip.text: "放大范围"; ToolTip.delay: 400
                                         onClicked: page.zoomTrendView(2.0)
                                     }
                                     ToolbarButton {
                                         implicitHeight: 22; implicitWidth: 26
-                                        text: "‹"; font.pixelSize: 11
+                                        text: "‹"; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
                                         ToolTip.visible: hovered; ToolTip.text: "左移"; ToolTip.delay: 400
                                         onClicked: page.panTrendView(-0.25)
                                     }
                                     ToolbarButton {
                                         implicitHeight: 22; implicitWidth: 26
-                                        text: "›"; font.pixelSize: 11
+                                        text: "›"; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor
                                         ToolTip.visible: hovered; ToolTip.text: "右移"; ToolTip.delay: 400
                                         onClicked: page.panTrendView(0.25)
                                     }
                                     ToolbarButton {
                                         implicitHeight: 22; implicitWidth: 36
-                                        text: "定位"; font.pixelSize: 9
+                                        text: "定位"; font.pixelSize: 9 * ApplicationWindow.window.scaleFactor
                                         onClicked: {
                                             page.trendFollowCursor = true
                                             page.centerTrendViewOn(page.previewFrame)
@@ -1008,7 +1008,7 @@ Item {
                                     ToolbarButton {
                                         implicitHeight: 22; implicitWidth: 48
                                         text: page.trendFollowCursor ? "✓ 跟随" : "跟随"
-                                        font.pixelSize: 9
+                                        font.pixelSize: 9 * ApplicationWindow.window.scaleFactor
                                         onClicked: {
                                             page.trendFollowCursor = !page.trendFollowCursor
                                             if (page.trendFollowCursor)
@@ -1022,7 +1022,7 @@ Item {
                                         : "0-0"
                                     Layout.preferredWidth: 150
                                     horizontalAlignment: Text.AlignRight
-                                    font.pixelSize: 13
+                                    font.pixelSize: 13 * ApplicationWindow.window.scaleFactor
                                     font.weight: Font.Bold
                                     font.family: "Consolas"
                                     color: ApplicationWindow.window.text
@@ -1037,7 +1037,7 @@ Item {
                                 Text {
                                     text: "全局"
                                     color: ApplicationWindow.window.muted
-                                    font.pixelSize: 9
+                                    font.pixelSize: 9 * ApplicationWindow.window.scaleFactor
                                     font.family: "Consolas"
                                     Layout.preferredWidth: 28
                                 }
@@ -1086,7 +1086,7 @@ Item {
                                 Text {
                                     text: "局部"
                                     color: ApplicationWindow.window.muted
-                                    font.pixelSize: 9
+                                    font.pixelSize: 9 * ApplicationWindow.window.scaleFactor
                                     font.family: "Consolas"
                                     Layout.preferredWidth: 28
                                 }
