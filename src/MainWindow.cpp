@@ -400,10 +400,14 @@ QMainWindow {
     background-color: #101418;
 }
 QWidget#appCentralWidget,
+QWidget#mainCardsPane,
 QWidget#sessionViewerCentralWidget,
 QScrollArea,
 QScrollArea > QWidget,
 QScrollArea > QWidget > QWidget,
+QScrollArea#mainCardsScrollArea,
+QScrollArea#mainCardsScrollArea > QWidget,
+QScrollArea#mainCardsScrollArea > QWidget > QWidget,
 QAbstractScrollArea,
 QSplitter {
     background-color: #101418;
@@ -2647,6 +2651,7 @@ void MainWindow::loadModernStyleSheet()
         base_style_sheet_ =
             "* { font-family: \"Segoe UI\", \"Microsoft YaHei\", \"PingFang SC\", sans-serif; }"
             "QMainWindow { background-color: #f5f5f5; }"
+            "QWidget#appCentralWidget, QWidget#mainCardsPane, QScrollArea#mainCardsScrollArea, QScrollArea#mainCardsScrollArea > QWidget, QScrollArea#mainCardsScrollArea > QWidget > QWidget, QSplitter { background-color: #f5f5f5; }"
             "QMenuBar { background-color: #ffffff; border-bottom: 1px solid #e0e0e0; padding: 4px 8px; }"
             "QMenuBar::item { background-color: transparent; padding: 6px 12px; border-radius: 4px; color: #000000; }"
             "QMenuBar::item:selected { background-color: #e3f2fd; color: #1976d2; }"
@@ -4252,6 +4257,7 @@ void MainWindow::setupCentralWidget()
     main_h_layout->setContentsMargins(2, 2, 2, 2);
 
     auto *left_widget = new QWidget(this);
+    left_widget->setObjectName("mainCardsPane");
     main_layout_ = new QVBoxLayout(left_widget);
     main_layout_->setSpacing(0);
     main_layout_->setContentsMargins(0, 0, 0, 0);
@@ -4260,6 +4266,7 @@ void MainWindow::setupCentralWidget()
     setupDataPanels();
 
     auto *left_scroll_area = new QScrollArea(this);
+    left_scroll_area->setObjectName("mainCardsScrollArea");
     left_scroll_area->setWidgetResizable(true);
     left_scroll_area->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     left_scroll_area->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
