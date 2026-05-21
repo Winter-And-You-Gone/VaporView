@@ -107,7 +107,7 @@ ComboBox {
                 clip: true
                 implicitHeight: contentHeight
                 highlightRangeMode: ListView.NoHighlightRange
-                model: control.popup.visible ? control.delegateModel : null
+                model: control.popup.visible ? control.model : null
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
             }
             Text {
