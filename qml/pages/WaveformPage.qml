@@ -250,13 +250,13 @@ Item {
 
                 RowLayout {
                     Layout.fillWidth: true
-                    Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("home.frameRate"); color: ApplicationWindow.window.muted; font.pixelSize: 11 }
-                    Text { text: Number(waveformBackend.frameRate).toFixed(1) + " Hz"; color: ApplicationWindow.window.text; font.family: "Consolas"; font.pixelSize: 11 }
+                    Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("home.frameRate"); color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
+                    Text { text: Number(waveformBackend.frameRate).toFixed(1) + " Hz"; color: ApplicationWindow.window.text; font.family: "Consolas"; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
                 }
                 RowLayout {
                     Layout.fillWidth: true
-                    Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("waveform.peakValue"); color: ApplicationWindow.window.muted; font.pixelSize: 11 }
-                    Text { text: Number(waveformBackend.latestPeak).toFixed(4) + " V"; color: ApplicationWindow.window.text; font.family: "Consolas"; font.pixelSize: 11 }
+                    Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("waveform.peakValue"); color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
+                    Text { text: Number(waveformBackend.latestPeak).toFixed(4) + " V"; color: ApplicationWindow.window.text; font.family: "Consolas"; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
                 }
                 ToolbarButton {
                     Layout.fillWidth: true
@@ -270,7 +270,7 @@ Item {
                     Layout.fillWidth: true
                     text: ApplicationWindow.window.t("waveform.recordFreq") + ": " + recordingBackend.waveformExportRateHz + " Hz"
                     color: ApplicationWindow.window.muted
-                    font.pixelSize: 10
+                    font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                 }
             }
         }
