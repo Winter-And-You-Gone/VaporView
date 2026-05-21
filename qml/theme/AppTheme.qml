@@ -16,6 +16,7 @@ QtObject {
     property int borderWidth: 1
 
     property int smallFontSize: 11
+    property int captionFontSize: 10
     property int bodyFontSize: 13
     property int valueFontSize: 17
 
