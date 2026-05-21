@@ -4332,7 +4332,7 @@ void MainWindow::setupConfigPanel()
     config_root_layout->setContentsMargins(0, 0, 0, 8);
 
     auto *config_layout = new QGridLayout();
-    config_layout->setVerticalSpacing(8);
+    config_layout->setVerticalSpacing(4);
     config_layout->setHorizontalSpacing(8);
     config_layout->setContentsMargins(8, 0, 8, 0);
     config_layout->setColumnStretch(0, 0);
