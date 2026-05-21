@@ -464,7 +464,7 @@ Item {
                     ToolbarButton {
                         iconName: "square"
                         height: 30
-                        text: t("rtk.stop"); enabled: rtkBackend.running; variant: "danger"
+                        text: t("rtk.stop"); enabled: rtkBackend.running;
                         onClicked: rtkBackend.stop()
                     }
                     ToolbarButton {
