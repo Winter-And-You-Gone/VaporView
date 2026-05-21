@@ -76,6 +76,7 @@ constexpr const char *kBaseMarginsLeftProperty = "_vv_base_margin_left";
 constexpr const char *kBaseMarginsTopProperty = "_vv_base_margin_top";
 constexpr const char *kBaseMarginsRightProperty = "_vv_base_margin_right";
 constexpr const char *kBaseMarginsBottomProperty = "_vv_base_margin_bottom";
+constexpr const char *kMainCardMinimumHeightProperty = "_vv_main_card_minimum_height";
 constexpr int kMainPageInputHeight = 36;
 constexpr int kMainPageButtonHeight = 36;
 constexpr int kMainPageTitleBarHeight = kMainPageButtonHeight + 4;
@@ -142,6 +143,10 @@ public:
         setFixedHeight(kMainCardResizeHandleHeight);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         setProperty("dragging", false);
+        if (target_card_)
+        {
+            target_card_->setProperty(kMainCardMinimumHeightProperty, minimum_target_height_);
+        }
     }
 
 protected:
@@ -170,7 +175,9 @@ protected:
         }
 
         const int deltaY = event->globalPosition().toPoint().y() - drag_start_y_;
-        const int effectiveMinimum = std::max(minimum_target_height_, target_card_->minimumHeight());
+        bool ok = false;
+        const int propertyMinimum = target_card_->property(kMainCardMinimumHeightProperty).toInt(&ok);
+        const int effectiveMinimum = ok ? std::max(minimum_target_height_, propertyMinimum) : minimum_target_height_;
         const int nextHeight = std::max(effectiveMinimum, target_start_height_ + deltaY);
         target_card_->setFixedHeight(nextHeight);
         event->accept();
@@ -3229,7 +3236,9 @@ void MainWindow::updateSourceModeUi()
     if (config_group_)
     {
         const int minimumHeight = remote ? kConfigRemoteCardMinHeight : kConfigCardMinHeight;
-        const bool minimumChanged = config_group_->minimumHeight() != minimumHeight;
+        const int previousMinimum = config_group_->property(kMainCardMinimumHeightProperty).toInt();
+        const bool minimumChanged = previousMinimum != minimumHeight;
+        config_group_->setProperty(kMainCardMinimumHeightProperty, minimumHeight);
         config_group_->setMinimumHeight(minimumHeight);
         if (minimumChanged || config_group_->height() < minimumHeight)
         {
