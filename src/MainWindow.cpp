@@ -80,8 +80,9 @@ constexpr const char *kMainCardMinimumHeightProperty = "_vv_main_card_minimum_he
 constexpr int kMainPageInputHeight = 36;
 constexpr int kMainPageButtonHeight = 36;
 constexpr int kMainPageTitleBarHeight = kMainPageButtonHeight + 4;
-constexpr int kConfigRowsHeight = kMainPageInputHeight * 4 + 4 * 3;
-constexpr int kConfigCardBottomPadding = 8;
+constexpr int kConfigFormBottomPadding = 4;
+constexpr int kConfigRowsHeight = kMainPageInputHeight * 4 + 4 * 3 + kConfigFormBottomPadding;
+constexpr int kConfigCardBottomPadding = 4;
 constexpr int kConfigCardMinHeight = kMainPageTitleBarHeight + 4 + kConfigRowsHeight + kConfigCardBottomPadding;
 constexpr int kConfigRemoteCardMinHeight = kConfigCardMinHeight + (kMainPageInputHeight + 4) + 4;
 constexpr int kTcpWaveCardMinHeight = 430;
@@ -4359,7 +4360,7 @@ void MainWindow::setupConfigPanel()
     auto *config_layout = new QGridLayout(config_form_widget);
     config_layout->setVerticalSpacing(4);
     config_layout->setHorizontalSpacing(8);
-    config_layout->setContentsMargins(8, 0, 8, 0);
+    config_layout->setContentsMargins(8, 0, 8, kConfigFormBottomPadding);
     config_layout->setColumnStretch(0, 0);
     config_layout->setColumnStretch(1, 0);
     config_layout->setColumnStretch(2, 0);
