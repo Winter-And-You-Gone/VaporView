@@ -54,11 +54,22 @@ Item {
 
         var result = [{ text: t("rtk.ggaSourceEpsilonMain"), value: "epsilon_main" }]
         var epsilonPort = String(deviceBackend.selectedPort("epsilon") || "")
+        var ptbPort = String(deviceBackend.selectedPort("ptb") || "")
+        var hmpPort = String(deviceBackend.selectedPort("hmp") || "")
+        var lidarPort = String(deviceBackend.selectedPort("lidar") || "")
+        var rtkOutPort = String(rtkBackend.outputPort || "")
         var ports = deviceBackend.ports || []
         for (var i = 0; i < ports.length; ++i) {
             var port = String(ports[i] || "")
-            if (port.length > 0 && port !== epsilonPort)
-                result.push({ text: t("rtk.ggaSourceOtherPort").replace("%1", port), value: "serial:" + port })
+            if (port.length > 0 && port !== epsilonPort) {
+                var suffix = ""
+                if (port === ptbPort) suffix = t("devices.ptb210")
+                else if (port === hmpPort) suffix = t("devices.hmp")
+                else if (port === lidarPort) suffix = t("devices.tfa1500")
+                else if (port === rtkOutPort) suffix = t("rtk.outputPort")
+                var text = suffix.length > 0 ? port + " " + suffix : port
+                result.push({ text: text, value: "serial:" + port })
+            }
         }
 
         ggaSourceModel = result
