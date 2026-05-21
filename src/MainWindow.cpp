@@ -488,7 +488,14 @@ QDialog#rtkConfigDialog QLabel#sectionTitleLabel {
     border: none;
     color: #e5e7eb;
 }
-QGroupBox#sensorGroupBox,
+QGroupBox#sensorGroupBox {
+    background-color: #151a20;
+    border: 1px solid #2c3440;
+    border-radius: 8px;
+    margin-top: 0px;
+    padding: 0px;
+    color: #e5e7eb;
+}
 QWidget#sectionTitleBar,
 QLabel#sectionTitleLabel {
     background-color: #151a20;
@@ -541,6 +548,10 @@ QTextEdit {
     color: #e5e7eb;
     selection-background-color: #245b8f;
     selection-color: #ffffff;
+}
+QTextEdit#logTextEdit,
+QWidget#logTextViewport {
+    background-color: #10151b;
 }
 QComboBox:hover,
 QLineEdit:hover,
@@ -4796,6 +4807,8 @@ void MainWindow::setupLogPanel()
     log_layout->addWidget(log_inline_title_lbl_);
 
     log_text_edit_ = new QTextEdit(this);
+    log_text_edit_->setObjectName(QStringLiteral("logTextEdit"));
+    log_text_edit_->viewport()->setObjectName(QStringLiteral("logTextViewport"));
     log_text_edit_->setReadOnly(true);
     log_text_edit_->setMinimumWidth(100);
     log_layout->addWidget(log_text_edit_);
