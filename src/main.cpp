@@ -8,8 +8,60 @@
 #include <QIcon>
 #include <QDir>
 #include <QFileInfo>
+#include <QPalette>
+#include <QSettings>
 #include "MainWindow.h"
 #include "SkyRuntime.h"
+
+namespace
+{
+QPalette startupDarkPalette(const QPalette& base)
+{
+    QPalette palette = base;
+    palette.setColor(QPalette::Window, QColor("#101418"));
+    palette.setColor(QPalette::WindowText, QColor("#d8dee9"));
+    palette.setColor(QPalette::Base, QColor("#10151b"));
+    palette.setColor(QPalette::AlternateBase, QColor("#162638"));
+    palette.setColor(QPalette::Text, QColor("#e5e7eb"));
+    palette.setColor(QPalette::Button, QColor("#151a20"));
+    palette.setColor(QPalette::ButtonText, QColor("#e5e7eb"));
+    palette.setColor(QPalette::BrightText, QColor("#ffffff"));
+    palette.setColor(QPalette::Light, QColor("#475569"));
+    palette.setColor(QPalette::Midlight, QColor("#334155"));
+    palette.setColor(QPalette::Mid, QColor("#2c3440"));
+    palette.setColor(QPalette::Dark, QColor("#111827"));
+    palette.setColor(QPalette::Shadow, QColor("#05070a"));
+    palette.setColor(QPalette::Highlight, QColor("#245b8f"));
+    palette.setColor(QPalette::HighlightedText, QColor("#ffffff"));
+    palette.setColor(QPalette::ToolTipBase, QColor("#1b222b"));
+    palette.setColor(QPalette::ToolTipText, QColor("#e5e7eb"));
+    palette.setColor(QPalette::Link, QColor("#7db7ff"));
+    palette.setColor(QPalette::Disabled, QPalette::WindowText, QColor("#64748b"));
+    palette.setColor(QPalette::Disabled, QPalette::Text, QColor("#64748b"));
+    palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor("#94a3b8"));
+    return palette;
+}
+
+QString startupDarkStyleSheet()
+{
+    return QStringLiteral(
+        "QWidget, QMainWindow { background-color: #101418; color: #d8dee9; }"
+        "QMenuBar, QToolBar, QStatusBar { background-color: #151a20; color: #d8dee9; }"
+    );
+}
+
+void applyStartupTheme(QApplication& app)
+{
+    const QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+    if (!settings.value(QStringLiteral("dark_theme_enabled"), false).toBool())
+    {
+        return;
+    }
+
+    app.setPalette(startupDarkPalette(app.palette()));
+    app.setStyleSheet(startupDarkStyleSheet());
+}
+}
 
 int main(int argc, char *argv[])
 {
@@ -17,6 +69,7 @@ int main(int argc, char *argv[])
     app.setApplicationName("VaporView");
     app.setApplicationVersion("1.0.0");
     app.setOrganizationName("VaporView");
+    applyStartupTheme(app);
 
     qRegisterMetaType<VaporView::TelemetryBasic>("VaporView::TelemetryBasic");
     qRegisterMetaType<VaporView::DownsampledWaveform>("VaporView::DownsampledWaveform");
