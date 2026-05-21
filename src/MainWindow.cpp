@@ -78,6 +78,9 @@ constexpr const char *kBaseMarginsBottomProperty = "_vv_base_margin_bottom";
 constexpr int kMainPageInputHeight = 36;
 constexpr int kMainPageButtonHeight = 36;
 constexpr int kMainPageTitleBarHeight = kMainPageButtonHeight + 4;
+constexpr int kConfigCardMinHeight = 250;
+constexpr int kDataCardMinHeight = 230;
+constexpr int kTcpWaveCardMinHeight = 430;
 constexpr int kEnvStatusIconSize = 18;
 constexpr int kEnvironmentRateLabelMinWidth = 72;
 constexpr int kPtbPressureValueMinWidth = 112;
@@ -4230,7 +4233,7 @@ void MainWindow::setupConfigPanel()
     config_group_ = new QGroupBox(this);
     config_group_->setObjectName("sensorGroupBox");
     config_group_->setMinimumWidth(860);
-    config_group_->setMinimumHeight(96);
+    config_group_->setMinimumHeight(kConfigCardMinHeight);
     config_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
 
     auto *config_root_layout = new QVBoxLayout(config_group_);
@@ -4484,7 +4487,7 @@ void MainWindow::setupDataPanels()
 {
     data_group_ = new QGroupBox(this);
     data_group_->setObjectName("sensorGroupBox");
-    data_group_->setMinimumHeight(96);
+    data_group_->setMinimumHeight(kDataCardMinHeight);
     data_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
     auto *data_layout = new QVBoxLayout(data_group_);
     data_layout->setSpacing(0);
@@ -4597,7 +4600,7 @@ void MainWindow::setupDataPanels()
     tcp_wave_group_ = new QGroupBox(this);
     tcp_wave_group_->setObjectName("sensorGroupBox");
     tcp_wave_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
-    tcp_wave_group_->setMinimumHeight(260);
+    tcp_wave_group_->setMinimumHeight(kTcpWaveCardMinHeight);
     auto *tcpWaveLayout = new QVBoxLayout(tcp_wave_group_);
     tcpWaveLayout->setContentsMargins(0, 0, 0, 0);
     tcpWaveLayout->setSpacing(0);
@@ -4642,7 +4645,7 @@ void MainWindow::setupDataPanels()
     main_cards_splitter_->setStretchFactor(0, 1);
     main_cards_splitter_->setStretchFactor(1, 1);
     main_cards_splitter_->setStretchFactor(2, 2);
-    main_cards_splitter_->setSizes({250, 210, 520});
+    main_cards_splitter_->setSizes({kConfigCardMinHeight, kDataCardMinHeight, kTcpWaveCardMinHeight});
 }
 
 void MainWindow::setupLogPanel()
