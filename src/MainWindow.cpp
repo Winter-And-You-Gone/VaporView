@@ -81,7 +81,8 @@ constexpr int kMainPageInputHeight = 36;
 constexpr int kMainPageButtonHeight = 36;
 constexpr int kMainPageTitleBarHeight = kMainPageButtonHeight + 4;
 constexpr int kConfigRowsHeight = kMainPageInputHeight * 4 + 4 * 3;
-constexpr int kConfigCardMinHeight = kMainPageTitleBarHeight + 4 + kConfigRowsHeight + 4;
+constexpr int kConfigCardBottomPadding = 8;
+constexpr int kConfigCardMinHeight = kMainPageTitleBarHeight + 4 + kConfigRowsHeight + kConfigCardBottomPadding;
 constexpr int kConfigRemoteCardMinHeight = kConfigCardMinHeight + (kMainPageInputHeight + 4) + 4;
 constexpr int kTcpWaveCardMinHeight = 430;
 constexpr int kMainCardResizeHandleHeight = 3;
@@ -4351,7 +4352,7 @@ void MainWindow::setupConfigPanel()
 
     auto *config_root_layout = new QVBoxLayout(config_group_);
     config_root_layout->setSpacing(4);
-    config_root_layout->setContentsMargins(0, 0, 0, 4);
+    config_root_layout->setContentsMargins(0, 0, 0, kConfigCardBottomPadding);
 
     auto *config_form_widget = new QWidget(config_group_);
     config_form_widget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
