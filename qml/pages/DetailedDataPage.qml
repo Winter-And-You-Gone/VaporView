@@ -98,7 +98,7 @@ Item {
                 Text {
                     text: metricCell.labelText
                     color: ApplicationWindow.window.muted
-                    font.pixelSize: 10
+                    font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                     elide: Text.ElideRight
                     width: parent.width - keyText.width - 4
                 }
@@ -106,7 +106,7 @@ Item {
                     id: keyText
                     text: metricCell.keyName
                     color: ApplicationWindow.window.muted
-                    font.pixelSize: 8
+                    font.pixelSize: 8 * ApplicationWindow.window.scaleFactor
                     font.family: "Consolas"
                     visible: metricCell.keyName.length > 0
                 }
@@ -118,7 +118,7 @@ Item {
                 Text {
                     text: metricCell.fieldValue
                     color: ApplicationWindow.window.text
-                    font.pixelSize: 14
+                    font.pixelSize: 14 * ApplicationWindow.window.scaleFactor
                     font.bold: true
                     font.family: "Consolas"
                     elide: Text.ElideRight
@@ -128,7 +128,7 @@ Item {
                     id: unitText
                     text: metricCell.fieldUnit
                     color: ApplicationWindow.window.muted
-                    font.pixelSize: 10
+                    font.pixelSize: 10 * ApplicationWindow.window.scaleFactor
                     visible: metricCell.fieldUnit.length > 0
                 }
             }
