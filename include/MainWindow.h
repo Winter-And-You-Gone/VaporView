@@ -37,7 +37,6 @@
 
 class RtkConfigDialog;
 class QFile;
-class QSplitter;
 class TcpWavePanel;
 class SessionViewerWindow;
 class EpsilonPanel;
@@ -396,7 +395,6 @@ private:
 
     QWidget *central_widget_;
     QVBoxLayout *main_layout_;
-    QSplitter *main_cards_splitter_;
 
     EpsilonPanel *epsilon_panel_;
     GnssPanel *gnss_panel_;

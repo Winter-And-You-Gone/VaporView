@@ -15,6 +15,7 @@
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QFile>
 #include <QFileInfo>
 #include <QFileDialog>
@@ -80,6 +81,7 @@ constexpr int kMainPageButtonHeight = 36;
 constexpr int kMainPageTitleBarHeight = kMainPageButtonHeight + 4;
 constexpr int kConfigCardMinHeight = 250;
 constexpr int kTcpWaveCardMinHeight = 430;
+constexpr int kMainCardResizeHandleHeight = 3;
 constexpr int kEnvStatusIconSize = 18;
 constexpr int kEnvironmentRateLabelMinWidth = 72;
 constexpr int kPtbPressureValueMinWidth = 112;
@@ -120,6 +122,85 @@ std::string epsilonGnssFixTextForCode(int fix_code)
     default: return "UNKNOWN";
     }
 }
+
+class MainCardResizeHandle : public QWidget
+{
+public:
+    MainCardResizeHandle(QWidget *targetCard, int minimumTargetHeight, QWidget *parent = nullptr)
+        : QWidget(parent)
+        , target_card_(targetCard)
+        , minimum_target_height_(minimumTargetHeight)
+        , drag_start_y_(0)
+        , target_start_height_(0)
+        , dragging_(false)
+    {
+        setObjectName(QStringLiteral("mainCardResizeHandle"));
+        setAttribute(Qt::WA_Hover, true);
+        setCursor(Qt::SizeVerCursor);
+        setFixedHeight(kMainCardResizeHandleHeight);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        setProperty("dragging", false);
+    }
+
+protected:
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        if (event->button() != Qt::LeftButton || !target_card_)
+        {
+            QWidget::mousePressEvent(event);
+            return;
+        }
+
+        dragging_ = true;
+        drag_start_y_ = event->globalPosition().toPoint().y();
+        target_start_height_ = target_card_->height();
+        setProperty("dragging", true);
+        refreshStyle();
+        event->accept();
+    }
+
+    void mouseMoveEvent(QMouseEvent *event) override
+    {
+        if (!dragging_ || !target_card_)
+        {
+            QWidget::mouseMoveEvent(event);
+            return;
+        }
+
+        const int deltaY = event->globalPosition().toPoint().y() - drag_start_y_;
+        const int nextHeight = std::max(minimum_target_height_, target_start_height_ + deltaY);
+        target_card_->setFixedHeight(nextHeight);
+        event->accept();
+    }
+
+    void mouseReleaseEvent(QMouseEvent *event) override
+    {
+        if (event->button() == Qt::LeftButton && dragging_)
+        {
+            dragging_ = false;
+            setProperty("dragging", false);
+            refreshStyle();
+            event->accept();
+            return;
+        }
+
+        QWidget::mouseReleaseEvent(event);
+    }
+
+private:
+    void refreshStyle()
+    {
+        style()->unpolish(this);
+        style()->polish(this);
+        update();
+    }
+
+    QWidget *target_card_;
+    int minimum_target_height_;
+    int drag_start_y_;
+    int target_start_height_;
+    bool dragging_;
+};
 
 QString skyDeviceDisplayName(VaporView::SkyDeviceId device)
 {
@@ -490,20 +571,21 @@ QSplitter::handle,
 QSplitter#mainContentSplitter::handle:horizontal {
     background-color: #101418;
 }
-QSplitter#mainCardsSplitter::handle:vertical {
-    height: 3px;
+QWidget#mainCardResizeHandle {
+    min-height: 3px;
+    max-height: 3px;
     background-color: #101418;
 }
 QSplitter#mainContentSplitter::handle:horizontal:hover {
     background-color: #1f2a36;
 }
-QSplitter#mainCardsSplitter::handle:vertical:hover {
+QWidget#mainCardResizeHandle:hover {
     background-color: #1f2a36;
 }
 QSplitter#mainContentSplitter::handle:horizontal:pressed {
     background-color: #263545;
 }
-QSplitter#mainCardsSplitter::handle:vertical:pressed {
+QWidget#mainCardResizeHandle[dragging="true"] {
     background-color: #263545;
 }
 QCheckBox,
@@ -2187,7 +2269,6 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , central_widget_(nullptr)
     , main_layout_(nullptr)
-    , main_cards_splitter_(nullptr)
     , epsilon_panel_(nullptr)
     , gnss_panel_(nullptr)
     , imu_panel_(nullptr)
@@ -2626,11 +2707,11 @@ void MainWindow::loadModernStyleSheet()
             "QScrollBar::handle:horizontal:hover { background-color: #9e9e9e; }"
             "QSplitter::handle { background-color: transparent; }"
             "QSplitter#mainContentSplitter::handle:horizontal { width: 8px; background-color: transparent; }"
-            "QSplitter#mainCardsSplitter::handle:vertical { height: 3px; background-color: transparent; }"
+            "QWidget#mainCardResizeHandle { min-height: 3px; max-height: 3px; background-color: transparent; }"
             "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: rgba(25, 118, 210, 0.18); }"
-            "QSplitter#mainCardsSplitter::handle:vertical:hover { background-color: rgba(25, 118, 210, 0.18); }"
+            "QWidget#mainCardResizeHandle:hover { background-color: rgba(25, 118, 210, 0.18); }"
             "QSplitter#mainContentSplitter::handle:horizontal:pressed { background-color: rgba(25, 118, 210, 0.28); }"
-            "QSplitter#mainCardsSplitter::handle:vertical:pressed { background-color: rgba(25, 118, 210, 0.28); }"
+            "QWidget#mainCardResizeHandle[dragging=\"true\"] { background-color: rgba(25, 118, 210, 0.28); }"
             "QSplitter::handle:horizontal { width: 0px; }"
             "QSplitter::handle:vertical { height: 0px; }"
             "QPushButton { background-color: #1976d2; color: #ffffff; border: none; border-radius: 6px; padding: 0px 18px; font-size: 15px; font-weight: 500; min-height: 36px; max-height: 36px; }"
@@ -4175,15 +4256,6 @@ void MainWindow::setupCentralWidget()
     main_layout_->setSpacing(0);
     main_layout_->setContentsMargins(0, 0, 0, 0);
 
-    main_cards_splitter_ = new QSplitter(Qt::Vertical, left_widget);
-    main_cards_splitter_->setObjectName("mainCardsSplitter");
-    main_cards_splitter_->setChildrenCollapsible(false);
-    main_cards_splitter_->setHandleWidth(3);
-    main_cards_splitter_->setOpaqueResize(true);
-    main_cards_splitter_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    main_layout_->addWidget(main_cards_splitter_, 0);
-    main_layout_->addStretch(1);
-
     setupConfigPanel();
     setupDataPanels();
 
@@ -4233,7 +4305,8 @@ void MainWindow::setupConfigPanel()
     config_group_->setObjectName("sensorGroupBox");
     config_group_->setMinimumWidth(860);
     config_group_->setMinimumHeight(kConfigCardMinHeight);
-    config_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
+    config_group_->setFixedHeight(kConfigCardMinHeight);
+    config_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
     auto *config_root_layout = new QVBoxLayout(config_group_);
     config_root_layout->setSpacing(8);
@@ -4479,14 +4552,14 @@ void MainWindow::setupConfigPanel()
     config_layout->addWidget(data_telemetry_summary_card_, 0, 6, row, 1, Qt::AlignTop | Qt::AlignLeft);
 
     config_root_layout->addLayout(config_layout);
-    main_cards_splitter_->addWidget(config_group_);
+    main_layout_->addWidget(config_group_, 0);
 }
 
 void MainWindow::setupDataPanels()
 {
     data_group_ = new QGroupBox(this);
     data_group_->setObjectName("sensorGroupBox");
-    data_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
+    data_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto *data_layout = new QVBoxLayout(data_group_);
     data_layout->setSpacing(0);
     data_layout->setContentsMargins(0, 0, 0, 0);
@@ -4599,18 +4672,21 @@ void MainWindow::setupDataPanels()
     data_layout->addStretch(1);
     const int dataCardMinHeight = data_group_->minimumSizeHint().height();
     data_group_->setMinimumHeight(dataCardMinHeight);
+    data_group_->setFixedHeight(dataCardMinHeight);
     env_group_ = env_group;
 
     lidar_group_ = nullptr;
     ptb_group_ = nullptr;
     hmp_group_ = nullptr;
 
-    main_cards_splitter_->addWidget(data_group_);
+    main_layout_->addWidget(new MainCardResizeHandle(config_group_, kConfigCardMinHeight, this), 0);
+    main_layout_->addWidget(data_group_, 0);
 
     tcp_wave_group_ = new QGroupBox(this);
     tcp_wave_group_->setObjectName("sensorGroupBox");
-    tcp_wave_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Ignored);
     tcp_wave_group_->setMinimumHeight(kTcpWaveCardMinHeight);
+    tcp_wave_group_->setFixedHeight(kTcpWaveCardMinHeight);
+    tcp_wave_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto *tcpWaveLayout = new QVBoxLayout(tcp_wave_group_);
     tcpWaveLayout->setContentsMargins(0, 0, 0, 0);
     tcpWaveLayout->setSpacing(0);
@@ -4651,11 +4727,9 @@ void MainWindow::setupDataPanels()
     connect(tcp_wave_panel_, &TcpWavePanel::remotePeakSearchRangeRequested,
             this, &MainWindow::sendRemotePeakSearchRange);
     tcpWaveLayout->addWidget(tcp_wave_panel_);
-    main_cards_splitter_->addWidget(tcp_wave_group_);
-    main_cards_splitter_->setStretchFactor(0, 1);
-    main_cards_splitter_->setStretchFactor(1, 1);
-    main_cards_splitter_->setStretchFactor(2, 2);
-    main_cards_splitter_->setSizes({kConfigCardMinHeight, dataCardMinHeight, kTcpWaveCardMinHeight});
+    main_layout_->addWidget(new MainCardResizeHandle(data_group_, dataCardMinHeight, this), 0);
+    main_layout_->addWidget(tcp_wave_group_, 0);
+    main_layout_->addStretch(1);
 }
 
 void MainWindow::setupLogPanel()
