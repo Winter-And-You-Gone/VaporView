@@ -77,12 +77,12 @@ Item {
         anchors.leftMargin: 12
         anchors.rightMargin: 12
         anchors.topMargin: 0
-        anchors.bottomMargin: 12
+        anchors.bottomMargin: 0
         spacing: 12
 
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: 12
+            spacing: 0
 
             Card {
                 Layout.fillWidth: true
