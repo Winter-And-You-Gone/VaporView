@@ -2913,6 +2913,28 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    if (custom_title_bar_)
+    {
+        const auto buttons = custom_title_bar_->findChildren<QToolButton *>();
+        for (QToolButton *button : buttons)
+        {
+            if (button)
+            {
+                button->setDefaultAction(nullptr);
+                button->setMenu(nullptr);
+            }
+        }
+        custom_title_bar_->removeEventFilter(this);
+        if (custom_title_label_)
+        {
+            custom_title_label_->removeEventFilter(this);
+        }
+        if (auto *logo = custom_title_bar_->findChild<QLabel *>(QStringLiteral("customTitleLogo")))
+        {
+            logo->removeEventFilter(this);
+        }
+    }
+
     saveRememberedInputState();
     cancel_connection_requested_.store(true);
     if (port_detection_thread_.joinable())
@@ -4628,10 +4650,33 @@ QToolButton *MainWindow::createTitleBarActionButton(QAction *action, QWidget *pa
 {
     auto *button = new QToolButton(parent);
     button->setObjectName(QStringLiteral("titleBarButton"));
-    button->setDefaultAction(action);
     button->setToolButtonStyle(Qt::ToolButtonIconOnly);
     button->setAutoRaise(false);
     button->setFocusPolicy(Qt::NoFocus);
+    if (!action)
+    {
+        button->setEnabled(false);
+        return button;
+    }
+
+    auto syncFromAction = [button, action]() {
+        button->setIcon(action->icon());
+        button->setEnabled(action->isEnabled());
+        button->setVisible(action->isVisible());
+        button->setCheckable(action->isCheckable());
+        button->setChecked(action->isChecked());
+        button->setToolTip(action->toolTip());
+        button->setStatusTip(action->statusTip());
+        button->setWhatsThis(action->whatsThis());
+    };
+    syncFromAction();
+    connect(action, &QAction::changed, button, syncFromAction);
+    connect(button, &QToolButton::clicked, action, [action]() {
+        if (action && action->isEnabled())
+        {
+            action->trigger();
+        }
+    });
     return button;
 }
 
