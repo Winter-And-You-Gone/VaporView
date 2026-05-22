@@ -79,7 +79,6 @@ Item {
 
         ColumnLayout {
             Layout.fillWidth: true
-            Layout.fillHeight: true
             spacing: 12
 
             Card {
