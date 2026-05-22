@@ -85,6 +85,8 @@ ComboBox {
     popup: Popup {
         id: comboPopup
 
+        parent: control
+        x: 0
         y: control.height + 2
         width: control.width
         padding: 1
