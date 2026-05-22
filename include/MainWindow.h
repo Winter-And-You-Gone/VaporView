@@ -38,6 +38,8 @@
 
 class RtkConfigDialog;
 class QFile;
+class QEvent;
+class QToolButton;
 class TcpWavePanel;
 class SessionViewerWindow;
 class EpsilonPanel;
@@ -247,6 +249,13 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
 
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+#ifdef Q_OS_WIN
+    bool nativeEvent(const QByteArray& eventType, void *message, qintptr *result) override;
+#endif
+    void changeEvent(QEvent *event) override;
+
 private slots:
     void onConnectClicked();
     void onDisconnectClicked();
@@ -303,6 +312,7 @@ private:
 
     void setupMenuBar();
     void setupToolBar();
+    void setupCustomTitleBar();
     void setupStatusBar();
     void setupCentralWidget();
     void setupConfigPanel();
@@ -358,6 +368,13 @@ private:
     QString scaledStyleSheet(const QString& styleSheet) const;
     void applyScaledUiMetrics();
     void updateThemeAction();
+    void updateCustomTitleBarTexts();
+    void updateCustomTitleBarStyle();
+    void updateWindowControlButtons();
+    QToolButton *createTitleBarActionButton(QAction *action, QWidget *parent);
+    QToolButton *createTitleBarIconButton(const QString& objectName, QWidget *parent);
+    void addTitleBarSeparator(QHBoxLayout *layout);
+    bool shouldStartWindowMove(QObject *watched) const;
     int scalePixels(int pixels) const;
     void applyAllSampleRates();
     int parseRate(const QString& text) const;
@@ -396,6 +413,12 @@ private:
 
     QWidget *central_widget_;
     QVBoxLayout *main_layout_;
+    QWidget *custom_title_bar_;
+    QLabel *custom_title_label_;
+    QToolButton *title_menu_btn_;
+    QToolButton *window_minimize_btn_;
+    QToolButton *window_maximize_btn_;
+    QToolButton *window_close_btn_;
 
     EpsilonPanel *epsilon_panel_;
     GnssPanel *gnss_panel_;

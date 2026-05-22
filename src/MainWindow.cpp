@@ -13,6 +13,7 @@
 #include <QCheckBox>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QEvent>
 #include <QFormLayout>
 #include <QMessageBox>
 #include <QMouseEvent>
@@ -55,7 +56,9 @@
 #include <QSettings>
 #include <QStyle>
 #include <QThread>
+#include <QToolButton>
 #include <QVector>
+#include <QWindow>
 #include <QtEndian>
 #ifdef Q_OS_WIN
 #ifndef NOMINMAX
@@ -63,6 +66,7 @@
 #endif
 #include <dwmapi.h>
 #include <windows.h>
+#include <windowsx.h>
 #endif
 #include <algorithm>
 #include <cmath>
@@ -410,6 +414,97 @@ QIcon createDarkThemeIcon()
 QIcon createLightThemeIcon()
 {
     return createLucideIcon(QStringLiteral("sun"), kToolbarAmber);
+}
+
+QIcon createTitleBarIcon(const QString& iconName, bool dark)
+{
+    return createLucideIcon(iconName, dark ? QColor("#d8dee9") : QColor("#111827"));
+}
+
+QString customTitleBarStyleSheet(bool dark)
+{
+    if (dark)
+    {
+        return QStringLiteral(R"(
+QWidget#customTitleBar {
+    background-color: #151a20;
+    border-bottom: 1px solid #2c3440;
+}
+QLabel#customTitleLabel {
+    color: #d8dee9;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 0px 8px;
+}
+QLabel#customTitleLogo {
+    background-color: transparent;
+}
+QToolButton#titleBarButton,
+QToolButton#titleBarMenuButton,
+QToolButton#windowMinimizeButton,
+QToolButton#windowMaximizeButton,
+QToolButton#windowCloseButton {
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 0px;
+    margin: 0px;
+}
+QToolButton#titleBarButton:hover,
+QToolButton#titleBarMenuButton:hover,
+QToolButton#windowMinimizeButton:hover,
+QToolButton#windowMaximizeButton:hover {
+    background-color: #1f2a36;
+}
+QToolButton#windowCloseButton:hover {
+    background-color: #dc2626;
+}
+QFrame#titleBarSeparator {
+    background-color: #2c3440;
+    border: none;
+}
+)");
+    }
+
+    return QStringLiteral(R"(
+QWidget#customTitleBar {
+    background-color: #ffffff;
+    border-bottom: 1px solid #dfe4ea;
+}
+QLabel#customTitleLabel {
+    color: #000000;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 0px 8px;
+}
+QLabel#customTitleLogo {
+    background-color: transparent;
+}
+QToolButton#titleBarButton,
+QToolButton#titleBarMenuButton,
+QToolButton#windowMinimizeButton,
+QToolButton#windowMaximizeButton,
+QToolButton#windowCloseButton {
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 0px;
+    margin: 0px;
+}
+QToolButton#titleBarButton:hover,
+QToolButton#titleBarMenuButton:hover,
+QToolButton#windowMinimizeButton:hover,
+QToolButton#windowMaximizeButton:hover {
+    background-color: #f0f0f0;
+}
+QToolButton#windowCloseButton:hover {
+    background-color: #fee2e2;
+}
+QFrame#titleBarSeparator {
+    background-color: #dfe4ea;
+    border: none;
+}
+)");
 }
 
 #ifdef Q_OS_WIN
@@ -2370,6 +2465,12 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , central_widget_(nullptr)
     , main_layout_(nullptr)
+    , custom_title_bar_(nullptr)
+    , custom_title_label_(nullptr)
+    , title_menu_btn_(nullptr)
+    , window_minimize_btn_(nullptr)
+    , window_maximize_btn_(nullptr)
+    , window_close_btn_(nullptr)
     , epsilon_panel_(nullptr)
     , gnss_panel_(nullptr)
     , imu_panel_(nullptr)
@@ -2585,6 +2686,12 @@ MainWindow::MainWindow(QWidget *parent)
     , ground_telemetry_service_(nullptr)
     , sky_device_config_dialog_(nullptr)
 {
+    setWindowFlags(Qt::Window |
+                   Qt::FramelessWindowHint |
+                   Qt::WindowMinimizeButtonHint |
+                   Qt::WindowMaximizeButtonHint |
+                   Qt::WindowCloseButtonHint);
+
     const double currentPointSize = qApp->font().pointSizeF();
     base_font_point_size_ = currentPointSize > 0.0 ? currentPointSize : 10.0;
 
@@ -2711,6 +2818,115 @@ MainWindow::~MainWindow()
     stopAllCollectors();
 }
 
+bool MainWindow::shouldStartWindowMove(QObject *watched) const
+{
+    return watched == custom_title_bar_ ||
+           watched == custom_title_label_ ||
+           (watched && watched->objectName() == QStringLiteral("customTitleLogo"));
+}
+
+bool MainWindow::eventFilter(QObject *watched, QEvent *event)
+{
+    if (shouldStartWindowMove(watched))
+    {
+        if (event->type() == QEvent::MouseButtonDblClick)
+        {
+            auto *mouseEvent = static_cast<QMouseEvent *>(event);
+            if (mouseEvent->button() == Qt::LeftButton && !isFullScreen())
+            {
+                isMaximized() ? showNormal() : showMaximized();
+                updateWindowControlButtons();
+                return true;
+            }
+        }
+        else if (event->type() == QEvent::MouseButtonPress)
+        {
+            auto *mouseEvent = static_cast<QMouseEvent *>(event);
+            if (mouseEvent->button() == Qt::LeftButton && windowHandle())
+            {
+                windowHandle()->startSystemMove();
+                return true;
+            }
+        }
+    }
+
+    return QMainWindow::eventFilter(watched, event);
+}
+
+void MainWindow::changeEvent(QEvent *event)
+{
+    QMainWindow::changeEvent(event);
+    if (event->type() == QEvent::WindowStateChange)
+    {
+        updateWindowControlButtons();
+    }
+}
+
+#ifdef Q_OS_WIN
+bool MainWindow::nativeEvent(const QByteArray& eventType, void *message, qintptr *result)
+{
+    Q_UNUSED(eventType);
+
+    auto *msg = static_cast<MSG *>(message);
+    if (!msg || msg->message != WM_NCHITTEST || isFullScreen() || isMaximized())
+    {
+        return QMainWindow::nativeEvent(eventType, message, result);
+    }
+
+    const int x = GET_X_LPARAM(msg->lParam);
+    const int y = GET_Y_LPARAM(msg->lParam);
+    const QPoint pos = mapFromGlobal(QPoint(x, y));
+    const int borderWidth = scalePixels(8);
+    const bool onLeft = pos.x() >= 0 && pos.x() < borderWidth;
+    const bool onRight = pos.x() <= width() && pos.x() >= width() - borderWidth;
+    const bool onTop = pos.y() >= 0 && pos.y() < borderWidth;
+    const bool onBottom = pos.y() <= height() && pos.y() >= height() - borderWidth;
+
+    if (onTop && onLeft)
+    {
+        *result = HTTOPLEFT;
+        return true;
+    }
+    if (onTop && onRight)
+    {
+        *result = HTTOPRIGHT;
+        return true;
+    }
+    if (onBottom && onLeft)
+    {
+        *result = HTBOTTOMLEFT;
+        return true;
+    }
+    if (onBottom && onRight)
+    {
+        *result = HTBOTTOMRIGHT;
+        return true;
+    }
+    if (onTop)
+    {
+        *result = HTTOP;
+        return true;
+    }
+    if (onBottom)
+    {
+        *result = HTBOTTOM;
+        return true;
+    }
+    if (onLeft)
+    {
+        *result = HTLEFT;
+        return true;
+    }
+    if (onRight)
+    {
+        *result = HTRIGHT;
+        return true;
+    }
+
+    return QMainWindow::nativeEvent(eventType, message, result);
+}
+#endif
+
 void MainWindow::loadModernStyleSheet()
 {
     const QDir appDir(QCoreApplication::applicationDirPath());
@@ -2836,7 +3052,9 @@ void MainWindow::loadModernStyleSheet()
 
 QString MainWindow::themedStyleSheet() const
 {
-    return dark_theme_enabled_ ? base_style_sheet_ + darkThemeStyleSheet() : base_style_sheet_;
+    return dark_theme_enabled_
+        ? base_style_sheet_ + darkThemeStyleSheet() + customTitleBarStyleSheet(true)
+        : base_style_sheet_ + customTitleBarStyleSheet(false);
 }
 
 QString MainWindow::scaledStyleSheet(const QString& styleSheet) const
@@ -2961,6 +3179,7 @@ void MainWindow::applyStyleConfiguration()
     qApp->setStyleSheet(scaledStyleSheet(themedStyleSheet()));
     setWindowsTitleBarDark(this, dark_theme_enabled_);
     applyScaledUiMetrics();
+    updateCustomTitleBarStyle();
 
     if (!isFullScreen() && !isMaximized())
     {
@@ -4147,90 +4366,186 @@ void MainWindow::setupMenuBar()
 
 void MainWindow::setupToolBar()
 {
-    QToolBar *toolbar = addToolBar("");
-    toolbar->setMovable(false);
-
     refresh_ports_btn_ = new QAction(this);
     refresh_ports_btn_->setIcon(createRefreshIcon());
     connect(refresh_ports_btn_, &QAction::triggered, this, &MainWindow::onRefreshPortsClicked);
-    toolbar->addAction(refresh_ports_btn_);
-
-    toolbar->addSeparator();
 
     connect_btn_ = new QAction(this);
     connect_btn_->setIcon(createConnectIcon());
     connect(connect_btn_, &QAction::triggered, this, &MainWindow::onConnectClicked);
-    toolbar->addAction(connect_btn_);
 
     cancel_connect_btn_ = new QAction(this);
     cancel_connect_btn_->setIcon(createCancelIcon());
     cancel_connect_btn_->setEnabled(false);
     connect(cancel_connect_btn_, &QAction::triggered, this, &MainWindow::onCancelConnectClicked);
-    toolbar->addAction(cancel_connect_btn_);
 
     disconnect_btn_ = new QAction(this);
     disconnect_btn_->setIcon(createDisconnectIcon());
     disconnect_btn_->setEnabled(false);
     connect(disconnect_btn_, &QAction::triggered, this, &MainWindow::onDisconnectClicked);
-    toolbar->addAction(disconnect_btn_);
-
-    toolbar->addSeparator();
 
     start_recording_btn_ = new QAction(this);
     start_recording_btn_->setIcon(createPlayIcon());
     start_recording_btn_->setEnabled(false);
     connect(start_recording_btn_, &QAction::triggered, this, &MainWindow::onStartRecordingClicked);
-    toolbar->addAction(start_recording_btn_);
 
     pause_recording_btn_ = new QAction(this);
     pause_recording_btn_->setIcon(createPauseIcon());
     pause_recording_btn_->setEnabled(false);
     connect(pause_recording_btn_, &QAction::triggered, this, &MainWindow::onPauseRecordingClicked);
-    toolbar->addAction(pause_recording_btn_);
 
     stop_recording_btn_ = new QAction(this);
     stop_recording_btn_->setIcon(createStopIcon());
     stop_recording_btn_->setEnabled(false);
     connect(stop_recording_btn_, &QAction::triggered, this, &MainWindow::onStopRecordingClicked);
-    toolbar->addAction(stop_recording_btn_);
 
     rtk_config_action_ = new QAction(this);
     rtk_config_action_->setIcon(createRtkSatelliteIcon());
     connect(rtk_config_action_, &QAction::triggered, this, &MainWindow::onRtkConfigClicked);
-    toolbar->addAction(rtk_config_action_);
     if (devices_menu_)
     {
         devices_menu_->addSeparator();
         devices_menu_->addAction(rtk_config_action_);
     }
 
-    toolbar->addSeparator();
-
     clear_log_action_ = new QAction(this);
     clear_log_action_->setIcon(createClearLogIcon());
     connect(clear_log_action_, &QAction::triggered, this, &MainWindow::onClearLogClicked);
-    toolbar->addAction(clear_log_action_);
-
-    toolbar->addSeparator();
 
     session_viewer_action_->setIcon(createWaveformViewerIcon());
-    toolbar->addAction(session_viewer_action_);
-
-    toolbar->addSeparator();
 
     fullscreen_toolbar_action_ = new QAction(this);
     fullscreen_toolbar_action_->setIcon(createFullscreenIcon());
     connect(fullscreen_toolbar_action_, &QAction::triggered, this, &MainWindow::onToggleFullScreen);
-    toolbar->addAction(fullscreen_toolbar_action_);
-
-    toolbar->addSeparator();
-
-    toolbar->addAction(lang_action_);
 
     theme_toggle_action_ = new QAction(this);
     connect(theme_toggle_action_, &QAction::triggered, this, &MainWindow::onToggleTheme);
-    toolbar->addAction(theme_toggle_action_);
+
+    setupCustomTitleBar();
     updateThemeAction();
+}
+
+void MainWindow::setupCustomTitleBar()
+{
+    custom_title_bar_ = new QWidget(this);
+    custom_title_bar_->setObjectName(QStringLiteral("customTitleBar"));
+    custom_title_bar_->installEventFilter(this);
+
+    auto *titleLayout = new QHBoxLayout(custom_title_bar_);
+    titleLayout->setContentsMargins(10, 0, 8, 0);
+    titleLayout->setSpacing(6);
+
+    auto *logoLabel = new QLabel(custom_title_bar_);
+    logoLabel->setObjectName(QStringLiteral("customTitleLogo"));
+    const QIcon appIcon = !windowIcon().isNull() ? windowIcon() : qApp->windowIcon();
+    if (!appIcon.isNull())
+    {
+        logoLabel->setPixmap(appIcon.pixmap(18, 18));
+    }
+    logoLabel->setFixedSize(24, 24);
+    logoLabel->setAlignment(Qt::AlignCenter);
+    logoLabel->installEventFilter(this);
+    titleLayout->addWidget(logoLabel, 0, Qt::AlignVCenter);
+
+    title_menu_btn_ = createTitleBarIconButton(QStringLiteral("titleBarMenuButton"), custom_title_bar_);
+    title_menu_btn_->setPopupMode(QToolButton::InstantPopup);
+    auto *applicationMenu = new QMenu(title_menu_btn_);
+    if (data_menu_) applicationMenu->addMenu(data_menu_);
+    if (devices_menu_) applicationMenu->addMenu(devices_menu_);
+    if (view_menu_) applicationMenu->addMenu(view_menu_);
+    if (font_menu_) applicationMenu->addMenu(font_menu_);
+    if (language_menu_) applicationMenu->addMenu(language_menu_);
+    if (help_menu_) applicationMenu->addMenu(help_menu_);
+    title_menu_btn_->setMenu(applicationMenu);
+    titleLayout->addWidget(title_menu_btn_, 0, Qt::AlignVCenter);
+
+    custom_title_label_ = new QLabel(QStringLiteral("VaporView"), custom_title_bar_);
+    custom_title_label_->setObjectName(QStringLiteral("customTitleLabel"));
+    custom_title_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    custom_title_label_->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
+    custom_title_label_->installEventFilter(this);
+    titleLayout->addWidget(custom_title_label_, 1);
+
+    titleLayout->addWidget(createTitleBarActionButton(refresh_ports_btn_, custom_title_bar_), 0, Qt::AlignVCenter);
+    addTitleBarSeparator(titleLayout);
+    titleLayout->addWidget(createTitleBarActionButton(connect_btn_, custom_title_bar_), 0, Qt::AlignVCenter);
+    titleLayout->addWidget(createTitleBarActionButton(cancel_connect_btn_, custom_title_bar_), 0, Qt::AlignVCenter);
+    titleLayout->addWidget(createTitleBarActionButton(disconnect_btn_, custom_title_bar_), 0, Qt::AlignVCenter);
+    addTitleBarSeparator(titleLayout);
+    titleLayout->addWidget(createTitleBarActionButton(start_recording_btn_, custom_title_bar_), 0, Qt::AlignVCenter);
+    titleLayout->addWidget(createTitleBarActionButton(pause_recording_btn_, custom_title_bar_), 0, Qt::AlignVCenter);
+    titleLayout->addWidget(createTitleBarActionButton(stop_recording_btn_, custom_title_bar_), 0, Qt::AlignVCenter);
+    titleLayout->addWidget(createTitleBarActionButton(rtk_config_action_, custom_title_bar_), 0, Qt::AlignVCenter);
+    addTitleBarSeparator(titleLayout);
+    titleLayout->addWidget(createTitleBarActionButton(clear_log_action_, custom_title_bar_), 0, Qt::AlignVCenter);
+    titleLayout->addWidget(createTitleBarActionButton(session_viewer_action_, custom_title_bar_), 0, Qt::AlignVCenter);
+    titleLayout->addWidget(createTitleBarActionButton(fullscreen_toolbar_action_, custom_title_bar_), 0, Qt::AlignVCenter);
+    addTitleBarSeparator(titleLayout);
+    titleLayout->addWidget(createTitleBarActionButton(lang_action_, custom_title_bar_), 0, Qt::AlignVCenter);
+    titleLayout->addWidget(createTitleBarActionButton(theme_toggle_action_, custom_title_bar_), 0, Qt::AlignVCenter);
+    addTitleBarSeparator(titleLayout);
+
+    window_minimize_btn_ = createTitleBarIconButton(QStringLiteral("windowMinimizeButton"), custom_title_bar_);
+    connect(window_minimize_btn_, &QToolButton::clicked, this, &QWidget::showMinimized);
+    titleLayout->addWidget(window_minimize_btn_, 0, Qt::AlignVCenter);
+
+    window_maximize_btn_ = createTitleBarIconButton(QStringLiteral("windowMaximizeButton"), custom_title_bar_);
+    connect(window_maximize_btn_, &QToolButton::clicked, this, [this]() {
+        if (isFullScreen())
+        {
+            showNormal();
+            is_fullscreen_ = false;
+        }
+        else if (isMaximized())
+        {
+            showNormal();
+        }
+        else
+        {
+            showMaximized();
+        }
+        updateWindowControlButtons();
+    });
+    titleLayout->addWidget(window_maximize_btn_, 0, Qt::AlignVCenter);
+
+    window_close_btn_ = createTitleBarIconButton(QStringLiteral("windowCloseButton"), custom_title_bar_);
+    connect(window_close_btn_, &QToolButton::clicked, this, &QWidget::close);
+    titleLayout->addWidget(window_close_btn_, 0, Qt::AlignVCenter);
+
+    menuBar()->hide();
+    setMenuWidget(custom_title_bar_);
+    updateCustomTitleBarTexts();
+    updateCustomTitleBarStyle();
+}
+
+QToolButton *MainWindow::createTitleBarActionButton(QAction *action, QWidget *parent)
+{
+    auto *button = new QToolButton(parent);
+    button->setObjectName(QStringLiteral("titleBarButton"));
+    button->setDefaultAction(action);
+    button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    button->setAutoRaise(false);
+    button->setFocusPolicy(Qt::NoFocus);
+    return button;
+}
+
+QToolButton *MainWindow::createTitleBarIconButton(const QString& objectName, QWidget *parent)
+{
+    auto *button = new QToolButton(parent);
+    button->setObjectName(objectName);
+    button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    button->setAutoRaise(false);
+    button->setFocusPolicy(Qt::NoFocus);
+    return button;
+}
+
+void MainWindow::addTitleBarSeparator(QHBoxLayout *layout)
+{
+    auto *separator = new QFrame(custom_title_bar_);
+    separator->setObjectName(QStringLiteral("titleBarSeparator"));
+    separator->setFixedWidth(1);
+    separator->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    layout->addWidget(separator, 0, Qt::AlignVCenter);
 }
 
 void MainWindow::setupStatusBar()
@@ -4967,6 +5282,7 @@ void MainWindow::setEnglish(bool english)
     lang_action_->setToolTip(english ? "Switch to Chinese" : "切换到英文");
     lang_action_->setStatusTip(english ? "Switch interface language" : "切换界面语言");
     updateThemeAction();
+    updateCustomTitleBarTexts();
 
     if (help_menu_)
     {
@@ -5206,6 +5522,84 @@ void MainWindow::updateThemeAction()
         ? (is_english_ ? "Switch to light theme" : "切换到亮色模式")
         : (is_english_ ? "Switch to dark theme" : "切换到暗色模式"));
     theme_toggle_action_->setStatusTip(theme_toggle_action_->toolTip());
+}
+
+void MainWindow::updateCustomTitleBarTexts()
+{
+    if (custom_title_label_)
+    {
+        custom_title_label_->setText(QStringLiteral("VaporView"));
+    }
+    if (title_menu_btn_)
+    {
+        title_menu_btn_->setToolTip(is_english_ ? "Menu" : "菜单");
+        title_menu_btn_->setStatusTip(title_menu_btn_->toolTip());
+    }
+    if (window_minimize_btn_)
+    {
+        window_minimize_btn_->setToolTip(is_english_ ? "Minimize" : "最小化");
+    }
+    if (window_close_btn_)
+    {
+        window_close_btn_->setToolTip(is_english_ ? "Close" : "关闭");
+    }
+    updateWindowControlButtons();
+}
+
+void MainWindow::updateCustomTitleBarStyle()
+{
+    if (!custom_title_bar_)
+    {
+        return;
+    }
+
+    custom_title_bar_->setFixedHeight(scalePixels(48));
+    const QSize actionButtonSize(scalePixels(34), scalePixels(34));
+    const QSize windowButtonSize(scalePixels(44), scalePixels(34));
+    const QSize iconSize(scalePixels(18), scalePixels(18));
+
+    const auto buttons = custom_title_bar_->findChildren<QToolButton *>();
+    for (QToolButton *button : buttons)
+    {
+        if (!button)
+        {
+            continue;
+        }
+        const bool windowButton = button == window_minimize_btn_ ||
+                                  button == window_maximize_btn_ ||
+                                  button == window_close_btn_;
+        button->setFixedSize(windowButton ? windowButtonSize : actionButtonSize);
+        button->setIconSize(iconSize);
+    }
+
+    if (title_menu_btn_)
+    {
+        title_menu_btn_->setIcon(createTitleBarIcon(QStringLiteral("menu"), dark_theme_enabled_));
+    }
+    if (window_minimize_btn_)
+    {
+        window_minimize_btn_->setIcon(createTitleBarIcon(QStringLiteral("minus"), dark_theme_enabled_));
+    }
+    if (window_close_btn_)
+    {
+        window_close_btn_->setIcon(createTitleBarIcon(QStringLiteral("x"), dark_theme_enabled_));
+    }
+    updateWindowControlButtons();
+}
+
+void MainWindow::updateWindowControlButtons()
+{
+    if (!window_maximize_btn_)
+    {
+        return;
+    }
+
+    const bool restoredByClick = isMaximized() || isFullScreen();
+    window_maximize_btn_->setIcon(createTitleBarIcon(restoredByClick ? QStringLiteral("copy") : QStringLiteral("square"),
+                                                     dark_theme_enabled_));
+    window_maximize_btn_->setToolTip(restoredByClick
+        ? (is_english_ ? "Restore" : "还原")
+        : (is_english_ ? "Maximize" : "最大化"));
 }
 
 void MainWindow::onToggleTheme()
@@ -5585,7 +5979,11 @@ void MainWindow::onToggleFullScreen()
     {
         showNormal();
         resize(1280, 720);
-        menuBar()->show();
+        menuBar()->hide();
+        if (custom_title_bar_)
+        {
+            custom_title_bar_->show();
+        }
         is_fullscreen_ = false;
     }
     else
@@ -5593,8 +5991,13 @@ void MainWindow::onToggleFullScreen()
         setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
         showFullScreen();
         menuBar()->hide();
+        if (custom_title_bar_)
+        {
+            custom_title_bar_->show();
+        }
         is_fullscreen_ = true;
     }
+    updateWindowControlButtons();
 }
 
 void MainWindow::log(const QString& message)
