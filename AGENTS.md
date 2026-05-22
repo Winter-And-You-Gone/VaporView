@@ -77,6 +77,7 @@ Always use PowerShell (not Bash) for vcvarsall setup to avoid swallowed cmake ou
 3. **保持结构完整** — 确保不误删 `{` `}` 标签、`Layout.xxx` 属性、`text: "..."` 等内容
 4. **不信任批量 agent** — task agent 在处理大规模替换时容易因 `replaceAll` 误匹配上下文而损坏结构。即便 diff 看起来只有值替换，也要人工审查关键标签是否缺失
 5. **改完立刻验证启动** — 构建成功后让用户启动 exe 确认窗口正常显示，再继续下一批文件
+6. **每次构建后必须测试 exe 能否正常打开** — 如果不能，立即检查本次修改了什么导致的启动失败，定位根因并修复后再提交
 
 ## C++ Code Style
 

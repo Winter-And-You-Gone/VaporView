@@ -1162,23 +1162,6 @@ Item {
                                         border.color: ApplicationWindow.window.theme.bg
                                         border.width: 2
                                     }
-                                    from: page.globalSliderDragging
-                                        ? page.frozenLocalSliderStart
-                                        : (sessionBackend.waveformIndexReady ? sessionBackend.trendViewStart : 0)
-                                    to: page.globalSliderDragging
-                                        ? page.frozenLocalSliderEnd
-                                        : (sessionBackend.waveformIndexReady
-                                            ? Math.max(sessionBackend.trendViewStart + 1, sessionBackend.trendViewEnd)
-                                            : 1)
-                                    value: page.globalSliderDragging
-                                        ? page.frozenLocalSliderFrame
-                                        : Math.max(from, Math.min(to, page.previewFrame))
-                                    enabled: !page.globalSliderDragging &&
-                                             sessionBackend.waveformIndexReady &&
-                                             page.maxFrame > 0 &&
-                                             !sessionBackend.loading &&
-                                             sessionBackend.trendViewEnd > sessionBackend.trendViewStart
-                                    live: true
                                     onValueChanged: {
                                         if (pressed && enabled) {
                                             var f = Math.round(value)
@@ -1201,7 +1184,7 @@ Item {
                                             sessionBackend.loadSessionFrame(f)
                                         }
                                     }
-                                }
+                                 }
                             }
                         }
                     }
