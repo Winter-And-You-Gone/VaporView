@@ -10,6 +10,7 @@
 #include "serial_probe_utils.h"
 #include <QMenu>
 #include <QAction>
+#include <QButtonGroup>
 #include <QCheckBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -33,6 +34,7 @@
 #include <QFrame>
 #include <QScrollArea>
 #include <QSplitter>
+#include <QStackedWidget>
 #include <QTimer>
 #include <QDir>
 #include <QDirIterator>
@@ -71,6 +73,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <functional>
 #include <limits>
 #include <map>
 #include <memory>
@@ -430,9 +433,6 @@ QWidget#customTitleBar {
     background-color: #151a20;
     border-bottom: 1px solid #2c3440;
 }
-QWidget#customTitleBarContainer {
-    background-color: #151a20;
-}
 QLabel#customTitleLabel {
     color: #d8dee9;
     font-size: 15px;
@@ -478,9 +478,6 @@ QFrame#titleBarSeparator {
 QWidget#customTitleBar {
     background-color: #ffffff;
     border-bottom: 1px solid #dfe4ea;
-}
-QWidget#customTitleBarContainer {
-    background-color: #ffffff;
 }
 QLabel#customTitleLabel {
     color: #000000;
@@ -2744,6 +2741,7 @@ MainWindow::MainWindow(QWidget *parent)
     setupToolBar();
     setupStatusBar();
     setupCentralWidget();
+    createTitleApplicationMenuPanel();
     ground_telemetry_service_ = new VaporView::GroundTelemetryService(this);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::linkOpenChanged,
             this, &MainWindow::onRemoteLinkOpenChanged);
@@ -2844,43 +2842,6 @@ bool MainWindow::shouldStartWindowMove(QObject *watched) const
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
-    if (watched == title_menu_btn_)
-    {
-        if (event->type() == QEvent::MouseButtonPress)
-        {
-            auto *mouseEvent = static_cast<QMouseEvent *>(event);
-            if (mouseEvent->button() == Qt::LeftButton)
-            {
-                return true;
-            }
-        }
-        if (event->type() == QEvent::MouseButtonRelease)
-        {
-            auto *mouseEvent = static_cast<QMouseEvent *>(event);
-            if (mouseEvent->button() == Qt::LeftButton)
-            {
-                showTitleApplicationMenu();
-                return true;
-            }
-        }
-    }
-
-    if (watched == custom_title_bar_ &&
-        title_menu_btn_ &&
-        (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonRelease))
-    {
-        auto *mouseEvent = static_cast<QMouseEvent *>(event);
-        if (mouseEvent->button() == Qt::LeftButton &&
-            title_menu_btn_->geometry().contains(mouseEvent->pos()))
-        {
-            if (event->type() == QEvent::MouseButtonRelease)
-            {
-                showTitleApplicationMenu();
-            }
-            return true;
-        }
-    }
-
     if (shouldStartWindowMove(watched))
     {
         if (event->type() == QEvent::MouseButtonDblClick)
@@ -4481,16 +4442,7 @@ void MainWindow::setupToolBar()
 
 void MainWindow::setupCustomTitleBar()
 {
-    auto *titleContainer = new QWidget(this);
-    titleContainer->setObjectName(QStringLiteral("customTitleBarContainer"));
-    titleContainer->setAttribute(Qt::WA_StyledBackground, true);
-
-    auto *titleContainerLayout = new QVBoxLayout(titleContainer);
-    titleContainerLayout->setContentsMargins(0, 0, 0, 0);
-    titleContainerLayout->setSpacing(0);
-    titleContainerLayout->setSizeConstraint(QLayout::SetMinAndMaxSize);
-
-    custom_title_bar_ = new QWidget(titleContainer);
+    custom_title_bar_ = new QWidget(this);
     custom_title_bar_->setObjectName(QStringLiteral("customTitleBar"));
     custom_title_bar_->installEventFilter(this);
 
@@ -4511,7 +4463,7 @@ void MainWindow::setupCustomTitleBar()
     titleLayout->addWidget(logoLabel, 0, Qt::AlignVCenter);
 
     title_menu_btn_ = createTitleBarIconButton(QStringLiteral("titleBarMenuButton"), custom_title_bar_);
-    title_menu_btn_->installEventFilter(this);
+    connect(title_menu_btn_, &QToolButton::clicked, this, &MainWindow::showTitleApplicationMenu);
     titleLayout->addWidget(title_menu_btn_, 0, Qt::AlignVCenter);
 
     custom_title_label_ = new QLabel(QStringLiteral("VaporView"), custom_title_bar_);
@@ -4568,10 +4520,8 @@ void MainWindow::setupCustomTitleBar()
     connect(window_close_btn_, &QToolButton::clicked, this, &QWidget::close);
     titleLayout->addWidget(window_close_btn_, 0, Qt::AlignVCenter);
 
-    titleContainerLayout->addWidget(custom_title_bar_);
-
     menuBar()->hide();
-    setMenuWidget(titleContainer);
+    setMenuWidget(custom_title_bar_);
     updateCustomTitleBarTexts();
     updateCustomTitleBarStyle();
 }
@@ -4606,8 +4556,302 @@ void MainWindow::addTitleBarSeparator(QHBoxLayout *layout)
     layout->addWidget(separator, 0, Qt::AlignVCenter);
 }
 
+void MainWindow::createTitleApplicationMenuPanel()
+{
+    if (title_application_popup_ || !central_widget_)
+    {
+        return;
+    }
+
+    auto cleanText = [](QString value) {
+        value.remove(QLatin1Char('&'));
+        return value;
+    };
+
+    auto *panel = new QFrame(this);
+    panel->setObjectName(QStringLiteral("titleApplicationPopup"));
+    panel->setAttribute(Qt::WA_StyledBackground, true);
+    panel->setFocusPolicy(Qt::NoFocus);
+    panel->hide();
+    title_application_popup_ = panel;
+
+    const QString bg = dark_theme_enabled_ ? QStringLiteral("#1f1f1f") : QStringLiteral("#ffffff");
+    const QString border = dark_theme_enabled_ ? QStringLiteral("#3a3a3a") : QStringLiteral("#dfe4ea");
+    const QString text = dark_theme_enabled_ ? QStringLiteral("#f1f5f9") : QStringLiteral("#111827");
+    const QString subtle = dark_theme_enabled_ ? QStringLiteral("#c4c4c4") : QStringLiteral("#334155");
+    const QString hover = dark_theme_enabled_ ? QStringLiteral("#3a3a3a") : QStringLiteral("#eef4fb");
+    const QString selected = dark_theme_enabled_ ? QStringLiteral("#5a5a5a") : QStringLiteral("#e5e7eb");
+    panel->setStyleSheet(QStringLiteral(R"(
+QFrame#titleApplicationPopup {
+    background-color: %1;
+    border: 1px solid %2;
+    border-radius: 8px;
+}
+QFrame#titlePopupColumn {
+    background-color: transparent;
+    border-right: 1px solid %2;
+}
+QFrame#titlePopupSubmenu {
+    background-color: transparent;
+}
+QLabel#titlePopupSection {
+    color: %4;
+    font-weight: 700;
+    padding: 4px 8px 6px 8px;
+}
+QToolButton#titlePopupCategory,
+QToolButton#titlePopupButton,
+QToolButton#titlePopupChip {
+    color: %3;
+    background-color: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 7px 12px;
+    text-align: left;
+}
+QToolButton#titlePopupCategory:hover,
+QToolButton#titlePopupButton:hover,
+QToolButton#titlePopupChip:hover {
+    background-color: %5;
+}
+QToolButton#titlePopupCategory:checked,
+QToolButton#titlePopupButton:checked,
+QToolButton#titlePopupChip:checked {
+    background-color: %6;
+}
+QFrame#titlePopupSeparator {
+    background-color: %2;
+    border: none;
+}
+)").arg(bg, border, text, subtle, hover, selected));
+
+    auto *rootLayout = new QHBoxLayout(panel);
+    rootLayout->setContentsMargins(6, 6, 6, 6);
+    rootLayout->setSpacing(0);
+
+    auto *categoryColumn = new QFrame(panel);
+    categoryColumn->setObjectName(QStringLiteral("titlePopupColumn"));
+    auto *categoryLayout = new QVBoxLayout(categoryColumn);
+    categoryLayout->setContentsMargins(0, 0, 6, 0);
+    categoryLayout->setSpacing(2);
+
+    auto *stack = new QStackedWidget(panel);
+    stack->setObjectName(QStringLiteral("titlePopupSubmenu"));
+    auto *categoryGroup = new QButtonGroup(panel);
+    categoryGroup->setExclusive(true);
+    connect(categoryGroup, &QButtonGroup::idClicked, stack, &QStackedWidget::setCurrentIndex);
+
+    rootLayout->addWidget(categoryColumn);
+    rootLayout->addWidget(stack);
+
+    auto makePage = [&](const QString& title) {
+        auto *page = new QFrame(panel);
+        page->setObjectName(QStringLiteral("titlePopupSubmenu"));
+        auto *pageLayout = new QVBoxLayout(page);
+        pageLayout->setContentsMargins(8, 4, 0, 0);
+        pageLayout->setSpacing(2);
+
+        auto *label = new QLabel(cleanText(title), page);
+        label->setObjectName(QStringLiteral("titlePopupSection"));
+        pageLayout->addWidget(label);
+
+        const int index = stack->addWidget(page);
+        return std::pair<int, QVBoxLayout *>(index, pageLayout);
+    };
+
+    auto addSeparator = [&](QVBoxLayout *layout) {
+        auto *separator = new QFrame(layout->parentWidget());
+        separator->setObjectName(QStringLiteral("titlePopupSeparator"));
+        separator->setFixedHeight(1);
+        layout->addWidget(separator);
+    };
+
+    auto addActionButton = [&](QVBoxLayout *layout, QAction *source) {
+        if (!layout || !source)
+        {
+            return;
+        }
+        auto *button = new QToolButton(layout->parentWidget());
+        button->setObjectName(QStringLiteral("titlePopupButton"));
+        button->setText(cleanText(source->text()));
+        button->setIcon(source->icon());
+        button->setToolButtonStyle(source->icon().isNull() ? Qt::ToolButtonTextOnly : Qt::ToolButtonTextBesideIcon);
+        button->setIconSize(QSize(scalePixels(16), scalePixels(16)));
+        button->setAutoRaise(false);
+        button->setEnabled(source->isEnabled());
+        button->setCheckable(source->isCheckable());
+        button->setChecked(source->isChecked());
+        button->setFixedHeight(scalePixels(34));
+        button->setMinimumWidth(scalePixels(230));
+        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        connect(button, &QToolButton::clicked, this, [this, source]() {
+            if (title_application_popup_)
+            {
+                title_application_popup_->hide();
+            }
+            source->trigger();
+        });
+        layout->addWidget(button);
+    };
+
+    auto addCommandButton = [&](QVBoxLayout *layout, const QString& label, const std::function<void()>& handler) {
+        if (!layout)
+        {
+            return;
+        }
+        auto *button = new QToolButton(layout->parentWidget());
+        button->setObjectName(QStringLiteral("titlePopupButton"));
+        button->setText(label);
+        button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        button->setAutoRaise(false);
+        button->setFixedHeight(scalePixels(34));
+        button->setMinimumWidth(scalePixels(230));
+        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        connect(button, &QToolButton::clicked, this, [this, handler]() {
+            if (title_application_popup_)
+            {
+                title_application_popup_->hide();
+            }
+            handler();
+        });
+        layout->addWidget(button);
+    };
+
+    auto addRateChips = [&](QVBoxLayout *layout, const QVector<int>& rates, int currentRate) {
+        if (!layout)
+        {
+            return;
+        }
+        auto *row = new QWidget(layout->parentWidget());
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(8, 2, 8, 2);
+        rowLayout->setSpacing(4);
+        for (int rate : rates)
+        {
+            auto *button = new QToolButton(row);
+            button->setObjectName(QStringLiteral("titlePopupChip"));
+            button->setText(QString::number(rate));
+            button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+            button->setAutoRaise(false);
+            button->setCheckable(true);
+            button->setChecked(rate == currentRate);
+            button->setFixedSize(scalePixels(rate >= 100 ? 48 : 38), scalePixels(30));
+            connect(button, &QToolButton::clicked, this, [this, rate]() {
+                if (title_application_popup_)
+                {
+                    title_application_popup_->hide();
+                }
+                setRecordingExportRateHz(rate);
+            });
+            rowLayout->addWidget(button);
+        }
+        rowLayout->addStretch(1);
+        layout->addWidget(row);
+    };
+
+    auto addCategory = [&](const QString& title, int pageIndex, bool checked = false) {
+        auto *button = new QToolButton(categoryColumn);
+        button->setObjectName(QStringLiteral("titlePopupCategory"));
+        button->setText(cleanText(title) + QStringLiteral("    >"));
+        button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        button->setAutoRaise(false);
+        button->setCheckable(true);
+        button->setFixedHeight(scalePixels(36));
+        button->setMinimumWidth(scalePixels(132));
+        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        categoryGroup->addButton(button, pageIndex);
+        categoryLayout->addWidget(button);
+        if (checked)
+        {
+            button->setChecked(true);
+            stack->setCurrentIndex(pageIndex);
+        }
+    };
+
+    const auto dataPage = makePage(data_menu_ ? data_menu_->title() : (is_english_ ? QStringLiteral("Data") : QStringLiteral("数据")));
+    addActionButton(dataPage.second, recording_directory_action_);
+    addCommandButton(dataPage.second,
+                     is_english_ ? QStringLiteral("TCP Wave Raw: Complete frames") : QStringLiteral("TCP波形原始帧：完整TCP帧"),
+                     [this]() { setWaveformRecordingRateHz(0); });
+    addCommandButton(dataPage.second,
+                     is_english_ ? QStringLiteral("EPSILON Raw: Verified frames") : QStringLiteral("EPSILON原始帧：已校验帧"),
+                     [this]() { setImuRecordingRateHz(0); });
+    addRateChips(dataPage.second, QVector<int>{1, 2, 5, 10, 20, 50, 100, 200},
+                 std::clamp(recording_export_rate_hz_, 1, 200));
+    addSeparator(dataPage.second);
+    addActionButton(dataPage.second, exit_action_);
+    dataPage.second->addStretch(1);
+    addCategory(data_menu_ ? data_menu_->title() : (is_english_ ? QStringLiteral("Data") : QStringLiteral("数据")),
+                dataPage.first,
+                true);
+
+    const auto devicePage = makePage(devices_menu_ ? devices_menu_->title() : (is_english_ ? QStringLiteral("Devices") : QStringLiteral("设备")));
+    addActionButton(devicePage.second, epsilon_packet_rates_action_);
+    addActionButton(devicePage.second, epsilon_rtcm_port_action_);
+    addActionButton(devicePage.second, epsilon_reconfigure_action_);
+    addActionButton(devicePage.second, rtk_config_action_);
+    devicePage.second->addStretch(1);
+    addCategory(devices_menu_ ? devices_menu_->title() : (is_english_ ? QStringLiteral("Devices") : QStringLiteral("设备")),
+                devicePage.first);
+
+    const auto viewPage = makePage(view_menu_ ? view_menu_->title() : (is_english_ ? QStringLiteral("View") : QStringLiteral("视图")));
+    addActionButton(viewPage.second, fullscreen_menu_action_);
+    viewPage.second->addStretch(1);
+    addCategory(view_menu_ ? view_menu_->title() : (is_english_ ? QStringLiteral("View") : QStringLiteral("视图")),
+                viewPage.first);
+
+    const auto fontPage = makePage(font_menu_ ? font_menu_->title() : (is_english_ ? QStringLiteral("Font Size") : QStringLiteral("字号")));
+    addActionButton(fontPage.second, font_tiny_action_);
+    addActionButton(fontPage.second, font_extra_small_action_);
+    addActionButton(fontPage.second, font_small_action_);
+    addActionButton(fontPage.second, font_normal_action_);
+    addActionButton(fontPage.second, font_large_action_);
+    addActionButton(fontPage.second, font_extra_large_action_);
+    fontPage.second->addStretch(1);
+    addCategory(font_menu_ ? font_menu_->title() : (is_english_ ? QStringLiteral("Font Size") : QStringLiteral("字号")),
+                fontPage.first);
+
+    const auto languagePage = makePage(language_menu_ ? language_menu_->title() : (is_english_ ? QStringLiteral("Language") : QStringLiteral("语言")));
+    addActionButton(languagePage.second, lang_action_);
+    addActionButton(languagePage.second, theme_toggle_action_);
+    languagePage.second->addStretch(1);
+    addCategory(language_menu_ ? language_menu_->title() : (is_english_ ? QStringLiteral("Language") : QStringLiteral("语言")),
+                languagePage.first);
+
+    const auto helpPage = makePage(help_menu_ ? help_menu_->title() : (is_english_ ? QStringLiteral("Help") : QStringLiteral("帮助")));
+    addActionButton(helpPage.second, about_action_);
+    helpPage.second->addStretch(1);
+    addCategory(help_menu_ ? help_menu_->title() : (is_english_ ? QStringLiteral("Help") : QStringLiteral("帮助")),
+                helpPage.first);
+
+    categoryLayout->addStretch(1);
+    panel->setFixedSize(scalePixels(410), scalePixels(300));
+}
+
 void MainWindow::showTitleApplicationMenu()
 {
+    createTitleApplicationMenuPanel();
+    if (!title_menu_btn_ || !title_application_popup_)
+    {
+        return;
+    }
+
+    if (title_application_popup_->isVisible())
+    {
+        title_application_popup_->hide();
+        return;
+    }
+
+    const QPoint anchor = title_menu_btn_->mapTo(this, QPoint(0, title_menu_btn_->height() + scalePixels(4)));
+    const int panelWidth = title_application_popup_->width() > 0 ? title_application_popup_->width()
+                                                                 : title_application_popup_->sizeHint().width();
+    const int x = std::clamp(anchor.x(), scalePixels(4), std::max(scalePixels(4), width() - panelWidth - scalePixels(4)));
+    title_application_popup_->move(x, anchor.y());
+    title_application_popup_->raise();
+    title_application_popup_->show();
+    return;
+
+#if 0
     if (!title_menu_btn_)
     {
         return;
@@ -4866,6 +5110,7 @@ QFrame#titlePopupSeparator {
     menuContainer->setFixedHeight(custom_title_bar_->height() + popupHost->sizeHint().height());
     menuContainer->updateGeometry();
     popupHost->show();
+#endif
 }
 
 void MainWindow::setupStatusBar()
@@ -5874,11 +6119,6 @@ void MainWindow::updateCustomTitleBarStyle()
     }
 
     custom_title_bar_->setFixedHeight(scalePixels(48));
-    if (QWidget *titleContainer = custom_title_bar_->parentWidget())
-    {
-        const int extraHeight = title_application_popup_ ? title_application_popup_->sizeHint().height() : 0;
-        titleContainer->setFixedHeight(custom_title_bar_->height() + extraHeight);
-    }
     const QSize actionButtonSize(scalePixels(34), scalePixels(34));
     const QSize windowButtonSize(scalePixels(44), scalePixels(34));
     const QSize iconSize(scalePixels(18), scalePixels(18));
@@ -5900,6 +6140,11 @@ void MainWindow::updateCustomTitleBarStyle()
     if (title_menu_btn_)
     {
         title_menu_btn_->setIcon(createTitleBarIcon(QStringLiteral("menu"), dark_theme_enabled_));
+    }
+    if (title_application_popup_)
+    {
+        title_application_popup_->deleteLater();
+        title_application_popup_ = nullptr;
     }
     if (window_minimize_btn_)
     {

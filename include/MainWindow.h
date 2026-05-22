@@ -374,6 +374,7 @@ private:
     QToolButton *createTitleBarActionButton(QAction *action, QWidget *parent);
     QToolButton *createTitleBarIconButton(const QString& objectName, QWidget *parent);
     void addTitleBarSeparator(QHBoxLayout *layout);
+    void createTitleApplicationMenuPanel();
     void showTitleApplicationMenu();
     bool shouldStartWindowMove(QObject *watched) const;
     int scalePixels(int pixels) const;
