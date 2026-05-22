@@ -1062,7 +1062,7 @@ Item {
                                             width: globalFrameSlider.visualPosition * parent.width
                                             height: parent.height
                                             radius: 2
-                                            color: ApplicationWindow.window.theme.primary
+                                            color: ApplicationWindow.window.theme.focus
                                         }
                                     }
                                     handle: Rectangle {
@@ -1071,7 +1071,7 @@ Item {
                                         implicitWidth: 14
                                         implicitHeight: 14
                                         radius: 7
-                                        color: ApplicationWindow.window.theme.primary
+                                        color: ApplicationWindow.window.theme.focus
                                         border.color: ApplicationWindow.window.theme.bg
                                         border.width: 2
                                     }
@@ -1149,7 +1149,7 @@ Item {
                                             width: localFrameSlider.visualPosition * parent.width
                                             height: parent.height
                                             radius: 2
-                                            color: ApplicationWindow.window.theme.primary
+                                            color: ApplicationWindow.window.theme.focus
                                         }
                                     }
                                     handle: Rectangle {
@@ -1158,7 +1158,7 @@ Item {
                                         implicitWidth: 14
                                         implicitHeight: 14
                                         radius: 7
-                                        color: ApplicationWindow.window.theme.primary
+                                        color: ApplicationWindow.window.theme.focus
                                         border.color: ApplicationWindow.window.theme.bg
                                         border.width: 2
                                     }
