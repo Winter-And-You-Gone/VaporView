@@ -29,8 +29,8 @@ Item {
         anchors.fill: parent
         anchors.margins: 12
         columns: 2
-        columnSpacing: 12
-        rowSpacing: 12
+        columnSpacing: 0
+        rowSpacing: 0
 
         Card {
             Layout.fillWidth: true
