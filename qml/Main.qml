@@ -13,7 +13,6 @@ ApplicationWindow {
     minimumHeight: 640
     visible: true
     title: "VaporView"
-    color: dark ? "#020817" : "#ffffff"
 
     property string currentPage: "home"
     property string lang: appBackend.language
