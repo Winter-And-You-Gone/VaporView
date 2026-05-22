@@ -75,6 +75,7 @@ Item {
     RowLayout {
         anchors.fill: parent
         anchors.margins: 12
+        anchors.topMargin: 0
         spacing: 12
 
         ColumnLayout {
