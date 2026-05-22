@@ -16,10 +16,11 @@ Every code change in this repository must be verified and published in this orde
    cd /d X:\Project\GPS\VaporView-QML\build\Release
    cmake --build . --config Release
    ```
-2. Commit the changed files from the repository root.
-3. Push to `origin QML`.
+2. Launch the built executable and verify the main window appears successfully. If the window fails to launch, fix the issue before proceeding. This step is mandatory.
+3. Commit the changed files from the repository root.
+4. Push to `origin QML`.
 
-Do not skip the build. Do not push before the commit succeeds.
+Do not skip the build or the launch test. Do not push before the commit succeeds.
 
 ## Common Commands
 
