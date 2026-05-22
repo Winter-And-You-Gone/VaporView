@@ -1049,6 +1049,32 @@ Item {
                                     value: Math.max(from, Math.min(to, page.previewFrame))
                                     enabled: sessionBackend.waveformIndexReady && page.maxFrame > 0 && !sessionBackend.loading
                                     live: true
+                                    background: Rectangle {
+                                        x: globalFrameSlider.leftPadding
+                                        y: globalFrameSlider.topPadding + globalFrameSlider.availableHeight / 2 - height / 2
+                                        implicitWidth: 200
+                                        implicitHeight: 4
+                                        width: globalFrameSlider.availableWidth
+                                        height: implicitHeight
+                                        radius: 2
+                                        color: ApplicationWindow.window.theme.surfaceAlt
+                                        Rectangle {
+                                            width: globalFrameSlider.visualPosition * parent.width
+                                            height: parent.height
+                                            radius: 2
+                                            color: ApplicationWindow.window.theme.primary
+                                        }
+                                    }
+                                    handle: Rectangle {
+                                        x: globalFrameSlider.leftPadding + globalFrameSlider.visualPosition * (globalFrameSlider.availableWidth - width)
+                                        y: globalFrameSlider.topPadding + globalFrameSlider.availableHeight / 2 - height / 2
+                                        implicitWidth: 14
+                                        implicitHeight: 14
+                                        radius: 7
+                                        color: ApplicationWindow.window.theme.primary
+                                        border.color: ApplicationWindow.window.theme.bg
+                                        border.width: 2
+                                    }
                                     onPressedChanged: {
                                         if (pressed && enabled) {
                                             page.beginGlobalSliderDrag()
@@ -1093,6 +1119,49 @@ Item {
                                 Slider {
                                     id: localFrameSlider
                                     Layout.fillWidth: true
+                                    from: page.globalSliderDragging
+                                        ? page.frozenLocalSliderStart
+                                        : (sessionBackend.waveformIndexReady ? sessionBackend.trendViewStart : 0)
+                                    to: page.globalSliderDragging
+                                        ? page.frozenLocalSliderEnd
+                                        : (sessionBackend.waveformIndexReady
+                                            ? Math.max(sessionBackend.trendViewStart + 1, sessionBackend.trendViewEnd)
+                                            : 1)
+                                    value: page.globalSliderDragging
+                                        ? page.frozenLocalSliderFrame
+                                        : Math.max(from, Math.min(to, page.previewFrame))
+                                    enabled: !page.globalSliderDragging &&
+                                             sessionBackend.waveformIndexReady &&
+                                             page.maxFrame > 0 &&
+                                             !sessionBackend.loading &&
+                                             sessionBackend.trendViewEnd > sessionBackend.trendViewStart
+                                    live: true
+                                    background: Rectangle {
+                                        x: localFrameSlider.leftPadding
+                                        y: localFrameSlider.topPadding + localFrameSlider.availableHeight / 2 - height / 2
+                                        implicitWidth: 200
+                                        implicitHeight: 4
+                                        width: localFrameSlider.availableWidth
+                                        height: implicitHeight
+                                        radius: 2
+                                        color: ApplicationWindow.window.theme.surfaceAlt
+                                        Rectangle {
+                                            width: localFrameSlider.visualPosition * parent.width
+                                            height: parent.height
+                                            radius: 2
+                                            color: ApplicationWindow.window.theme.primary
+                                        }
+                                    }
+                                    handle: Rectangle {
+                                        x: localFrameSlider.leftPadding + localFrameSlider.visualPosition * (localFrameSlider.availableWidth - width)
+                                        y: localFrameSlider.topPadding + localFrameSlider.availableHeight / 2 - height / 2
+                                        implicitWidth: 14
+                                        implicitHeight: 14
+                                        radius: 7
+                                        color: ApplicationWindow.window.theme.primary
+                                        border.color: ApplicationWindow.window.theme.bg
+                                        border.width: 2
+                                    }
                                     from: page.globalSliderDragging
                                         ? page.frozenLocalSliderStart
                                         : (sessionBackend.waveformIndexReady ? sessionBackend.trendViewStart : 0)
