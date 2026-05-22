@@ -82,6 +82,7 @@ Item {
 
         ColumnLayout {
             Layout.fillWidth: true
+            Layout.alignment: Qt.AlignTop
             spacing: 0
 
             Card {
