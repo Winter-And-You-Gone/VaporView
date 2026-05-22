@@ -430,6 +430,9 @@ QWidget#customTitleBar {
     background-color: #151a20;
     border-bottom: 1px solid #2c3440;
 }
+QWidget#customTitleBarContainer {
+    background-color: #151a20;
+}
 QLabel#customTitleLabel {
     color: #d8dee9;
     font-size: 15px;
@@ -475,6 +478,9 @@ QFrame#titleBarSeparator {
 QWidget#customTitleBar {
     background-color: #ffffff;
     border-bottom: 1px solid #dfe4ea;
+}
+QWidget#customTitleBarContainer {
+    background-color: #ffffff;
 }
 QLabel#customTitleLabel {
     color: #000000;
@@ -2838,6 +2844,43 @@ bool MainWindow::shouldStartWindowMove(QObject *watched) const
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
+    if (watched == title_menu_btn_)
+    {
+        if (event->type() == QEvent::MouseButtonPress)
+        {
+            auto *mouseEvent = static_cast<QMouseEvent *>(event);
+            if (mouseEvent->button() == Qt::LeftButton)
+            {
+                return true;
+            }
+        }
+        if (event->type() == QEvent::MouseButtonRelease)
+        {
+            auto *mouseEvent = static_cast<QMouseEvent *>(event);
+            if (mouseEvent->button() == Qt::LeftButton)
+            {
+                showTitleApplicationMenu();
+                return true;
+            }
+        }
+    }
+
+    if (watched == custom_title_bar_ &&
+        title_menu_btn_ &&
+        (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::MouseButtonRelease))
+    {
+        auto *mouseEvent = static_cast<QMouseEvent *>(event);
+        if (mouseEvent->button() == Qt::LeftButton &&
+            title_menu_btn_->geometry().contains(mouseEvent->pos()))
+        {
+            if (event->type() == QEvent::MouseButtonRelease)
+            {
+                showTitleApplicationMenu();
+            }
+            return true;
+        }
+    }
+
     if (shouldStartWindowMove(watched))
     {
         if (event->type() == QEvent::MouseButtonDblClick)
@@ -4438,7 +4481,16 @@ void MainWindow::setupToolBar()
 
 void MainWindow::setupCustomTitleBar()
 {
-    custom_title_bar_ = new QWidget(this);
+    auto *titleContainer = new QWidget(this);
+    titleContainer->setObjectName(QStringLiteral("customTitleBarContainer"));
+    titleContainer->setAttribute(Qt::WA_StyledBackground, true);
+
+    auto *titleContainerLayout = new QVBoxLayout(titleContainer);
+    titleContainerLayout->setContentsMargins(0, 0, 0, 0);
+    titleContainerLayout->setSpacing(0);
+    titleContainerLayout->setSizeConstraint(QLayout::SetMinAndMaxSize);
+
+    custom_title_bar_ = new QWidget(titleContainer);
     custom_title_bar_->setObjectName(QStringLiteral("customTitleBar"));
     custom_title_bar_->installEventFilter(this);
 
@@ -4459,7 +4511,7 @@ void MainWindow::setupCustomTitleBar()
     titleLayout->addWidget(logoLabel, 0, Qt::AlignVCenter);
 
     title_menu_btn_ = createTitleBarIconButton(QStringLiteral("titleBarMenuButton"), custom_title_bar_);
-    connect(title_menu_btn_, &QToolButton::clicked, this, &MainWindow::showTitleApplicationMenu);
+    title_menu_btn_->installEventFilter(this);
     titleLayout->addWidget(title_menu_btn_, 0, Qt::AlignVCenter);
 
     custom_title_label_ = new QLabel(QStringLiteral("VaporView"), custom_title_bar_);
@@ -4516,8 +4568,10 @@ void MainWindow::setupCustomTitleBar()
     connect(window_close_btn_, &QToolButton::clicked, this, &QWidget::close);
     titleLayout->addWidget(window_close_btn_, 0, Qt::AlignVCenter);
 
+    titleContainerLayout->addWidget(custom_title_bar_);
+
     menuBar()->hide();
-    setMenuWidget(custom_title_bar_);
+    setMenuWidget(titleContainer);
     updateCustomTitleBarTexts();
     updateCustomTitleBarStyle();
 }
@@ -4565,13 +4619,38 @@ void MainWindow::showTitleApplicationMenu()
         return;
     }
 
-    auto *popup = new QFrame(this);
+    QWidget *menuContainer = custom_title_bar_ ? custom_title_bar_->parentWidget() : nullptr;
+    auto *containerLayout = menuContainer ? qobject_cast<QVBoxLayout *>(menuContainer->layout()) : nullptr;
+    if (!menuContainer || !containerLayout)
+    {
+        return;
+    }
+
+    auto *popupHost = new QWidget(menuContainer);
+    popupHost->setObjectName(QStringLiteral("titleApplicationPopupHost"));
+    popupHost->setAttribute(Qt::WA_StyledBackground, true);
+    popupHost->setAttribute(Qt::WA_DeleteOnClose, true);
+    popupHost->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+
+    auto *hostLayout = new QHBoxLayout(popupHost);
+    hostLayout->setContentsMargins(0, 0, 0, scalePixels(6));
+    hostLayout->setSpacing(0);
+    hostLayout->addSpacing(scalePixels(36));
+
+    auto *popup = new QFrame(popupHost);
     popup->setObjectName(QStringLiteral("titleApplicationPopup"));
-    popup->setAttribute(Qt::WA_DeleteOnClose, true);
     popup->setAttribute(Qt::WA_StyledBackground, true);
-    title_application_popup_ = popup;
-    connect(popup, &QObject::destroyed, this, [this]() {
+    hostLayout->addWidget(popup, 0, Qt::AlignLeft | Qt::AlignTop);
+    hostLayout->addStretch(1);
+
+    title_application_popup_ = popupHost;
+    connect(popupHost, &QObject::destroyed, this, [this]() {
         title_application_popup_ = nullptr;
+        if (custom_title_bar_ && custom_title_bar_->parentWidget())
+        {
+            custom_title_bar_->parentWidget()->setFixedHeight(custom_title_bar_->height());
+            custom_title_bar_->parentWidget()->updateGeometry();
+        }
     });
 
     const QString bg = dark_theme_enabled_ ? QStringLiteral("#151a20") : QStringLiteral("#ffffff");
@@ -4580,6 +4659,7 @@ void MainWindow::showTitleApplicationMenu()
     const QString subtle = dark_theme_enabled_ ? QStringLiteral("#9fb2c8") : QStringLiteral("#334155");
     const QString hover = dark_theme_enabled_ ? QStringLiteral("#1f2a36") : QStringLiteral("#eef4fb");
     const QString selected = dark_theme_enabled_ ? QStringLiteral("#113252") : QStringLiteral("#dceeff");
+    popupHost->setStyleSheet(QStringLiteral("QWidget#titleApplicationPopupHost { background-color: %1; }").arg(bg));
     popup->setStyleSheet(QStringLiteral(R"(
 QFrame#titleApplicationPopup {
     background-color: %1;
@@ -4779,12 +4859,13 @@ QFrame#titlePopupSeparator {
         addActionButton(about_action_);
     }
 
-    const QPoint popupPos = mapFromGlobal(title_menu_btn_->mapToGlobal(QPoint(0, title_menu_btn_->height() + scalePixels(2))));
     popup->setMinimumWidth(scalePixels(280));
     popup->adjustSize();
-    popup->move(popupPos);
-    popup->show();
-    popup->raise();
+    containerLayout->addWidget(popupHost);
+    popupHost->adjustSize();
+    menuContainer->setFixedHeight(custom_title_bar_->height() + popupHost->sizeHint().height());
+    menuContainer->updateGeometry();
+    popupHost->show();
 }
 
 void MainWindow::setupStatusBar()
@@ -5793,6 +5874,11 @@ void MainWindow::updateCustomTitleBarStyle()
     }
 
     custom_title_bar_->setFixedHeight(scalePixels(48));
+    if (QWidget *titleContainer = custom_title_bar_->parentWidget())
+    {
+        const int extraHeight = title_application_popup_ ? title_application_popup_->sizeHint().height() : 0;
+        titleContainer->setFixedHeight(custom_title_bar_->height() + extraHeight);
+    }
     const QSize actionButtonSize(scalePixels(34), scalePixels(34));
     const QSize windowButtonSize(scalePixels(44), scalePixels(34));
     const QSize iconSize(scalePixels(18), scalePixels(18));
