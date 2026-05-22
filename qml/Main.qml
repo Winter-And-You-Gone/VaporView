@@ -11,7 +11,7 @@ ApplicationWindow {
     height: 860
     minimumWidth: 980
     minimumHeight: 640
-    visible: false
+    visible: true
     title: "VaporView"
 
     property string currentPage: "home"

@@ -119,7 +119,6 @@ int main(int argc, char *argv[])
         if (win)
         {
             win->setColor(appBackend.dark() ? QColor(0x02, 0x08, 0x17) : QColor(0xFF, 0xFF, 0xFF));
-            win->show();
         }
     }
 
