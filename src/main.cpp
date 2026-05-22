@@ -7,6 +7,7 @@
 #include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQuickWindow>
 
 namespace
 {
@@ -110,6 +111,16 @@ int main(int argc, char *argv[])
         QCoreApplication::exit(-1);
     }, Qt::QueuedConnection);
     engine.loadFromModule(QStringLiteral("VaporView"), QStringLiteral("Main"));
+
+    const QList<QObject*> roots = engine.rootObjects();
+    for (QObject* obj : roots)
+    {
+        QQuickWindow* win = qobject_cast<QQuickWindow*>(obj);
+        if (win)
+        {
+            win->setColor(appBackend.dark() ? QColor(0x02, 0x08, 0x17) : QColor(0xFF, 0xFF, 0xFF));
+        }
+    }
 
     return app.exec();
 }
