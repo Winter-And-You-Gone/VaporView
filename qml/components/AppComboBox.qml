@@ -58,41 +58,31 @@ ComboBox {
         border.width: theme.borderWidth
     }
 
-    delegate: ItemDelegate {
-        id: opt
-
-        width: control.width
-        height: theme.controlHeight
-        text: control.displayFor(modelData)
-        font.family: "Consolas"
-        font.pixelSize: theme.font(theme.bodyFontSize)
-        font.bold: false
-        background: Rectangle {
-            radius: theme.radius
-            color: opt.hovered ? theme.surfaceAlt : "transparent"
-        }
-        contentItem: Text {
-            text: opt.text
-            color: theme.text
-            font: opt.font
-            verticalAlignment: Text.AlignVCenter
-            leftPadding: theme.controlPaddingX
-            rightPadding: theme.controlPaddingX
-            elide: Text.ElideRight
+    MouseArea {
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        acceptedButtons: Qt.LeftButton
+        onClicked: {
+            if (comboPopup.visible) {
+                comboPopup.close()
+            } else {
+                comboPopup.open()
+            }
         }
     }
 
-    popup: Popup {
+    Popup {
         id: comboPopup
 
-        parent: control
         x: 0
         y: control.height + 2
         width: control.width
         padding: 1
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
-        readonly property bool empty: control.count === 0
-        implicitHeight: comboPopup.empty ? theme.controlHeight + 2 : Math.min(contentItem.implicitHeight, 220)
+        readonly property bool empty: modelCount() === 0
+        function modelCount() { if (!control.model) return 0; if (control.model.length !== undefined) return control.model.length; if (control.model.count !== undefined) return control.model.count; return 0 }
+        implicitHeight: empty ? theme.controlHeight + 2 : Math.min(listView.contentHeight, 220)
         background: Rectangle {
             radius: theme.radius
             color: theme.surface
@@ -108,9 +98,32 @@ ComboBox {
                 visible: !comboPopup.empty
                 clip: true
                 implicitHeight: contentHeight
-                highlightRangeMode: ListView.NoHighlightRange
-                model: control.popup.visible ? control.delegateModel : null
+                model: control.model || []
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                delegate: ItemDelegate {
+                    id: opt
+
+                    width: listView.width
+                    height: theme.controlHeight
+                    text: control.displayFor(modelData)
+                    font.family: "Consolas"
+                    font.pixelSize: theme.font(theme.bodyFontSize)
+                    font.bold: false
+                    background: Rectangle {
+                        radius: theme.radius
+                        color: opt.hovered ? theme.surfaceAlt : "transparent"
+                    }
+                    contentItem: Text {
+                        text: opt.text
+                        color: theme.text
+                        font: opt.font
+                        verticalAlignment: Text.AlignVCenter
+                        leftPadding: theme.controlPaddingX
+                        rightPadding: theme.controlPaddingX
+                        elide: Text.ElideRight
+                    }
+                    onClicked: { control.currentIndex = index; comboPopup.close() }
+                }
             }
             Text {
                 visible: comboPopup.empty
