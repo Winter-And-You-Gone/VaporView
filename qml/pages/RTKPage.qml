@@ -479,7 +479,7 @@ Item {
                         onClicked: rtkBackend.stop()
                     }
                     ToolbarButton {
-                        iconName: "scan"
+                        iconName: "flask-conical"
                         height: 30
                         text: rtkBackend.testingConnection ? t("rtk.testingConnection") : t("rtk.testConnection")
                         enabled: !rtkBackend.testingConnection
