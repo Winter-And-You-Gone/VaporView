@@ -421,6 +421,34 @@ QIcon createTitleBarIcon(const QString& iconName, bool dark)
     return createLucideIcon(iconName, dark ? QColor("#d8dee9") : QColor("#111827"));
 }
 
+void appendMenuActions(QMenu *target, QMenu *source)
+{
+    if (!target || !source)
+    {
+        return;
+    }
+
+    for (QAction *action : source->actions())
+    {
+        if (!action)
+        {
+            continue;
+        }
+        if (action->isSeparator())
+        {
+            target->addSeparator();
+            continue;
+        }
+        if (QMenu *submenu = action->menu())
+        {
+            auto *copiedSubmenu = target->addMenu(action->text());
+            appendMenuActions(copiedSubmenu, submenu);
+            continue;
+        }
+        target->addAction(action);
+    }
+}
+
 QString customTitleBarStyleSheet(bool dark)
 {
     if (dark)
@@ -4459,29 +4487,16 @@ void MainWindow::setupCustomTitleBar()
     titleLayout->addWidget(logoLabel, 0, Qt::AlignVCenter);
 
     title_menu_btn_ = createTitleBarIconButton(QStringLiteral("titleBarMenuButton"), custom_title_bar_);
-    title_application_menu_ = new QMenu(title_menu_btn_);
-    if (data_menu_) title_application_menu_->addMenu(data_menu_);
-    if (devices_menu_) title_application_menu_->addMenu(devices_menu_);
-    if (view_menu_) title_application_menu_->addMenu(view_menu_);
-    if (font_menu_) title_application_menu_->addMenu(font_menu_);
-    if (language_menu_) title_application_menu_->addMenu(language_menu_);
-    if (help_menu_) title_application_menu_->addMenu(help_menu_);
-    connect(title_menu_btn_, &QToolButton::clicked, this, [this]() {
-        if (!title_menu_btn_ || !title_application_menu_)
-        {
-            return;
-        }
-        const QPoint popupPos = title_menu_btn_->mapToGlobal(QPoint(0, title_menu_btn_->height() + scalePixels(2)));
-        title_application_menu_->popup(popupPos);
-    });
+    title_application_menu_ = new QMenu(this);
+    connect(title_menu_btn_, &QToolButton::clicked, this, &MainWindow::showTitleApplicationMenu);
     titleLayout->addWidget(title_menu_btn_, 0, Qt::AlignVCenter);
 
     custom_title_label_ = new QLabel(QStringLiteral("VaporView"), custom_title_bar_);
     custom_title_label_->setObjectName(QStringLiteral("customTitleLabel"));
-    custom_title_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    custom_title_label_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     custom_title_label_->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
     custom_title_label_->installEventFilter(this);
-    titleLayout->addWidget(custom_title_label_, 1);
+    titleLayout->addWidget(custom_title_label_, 0);
 
     titleLayout->addWidget(createTitleBarActionButton(refresh_ports_btn_, custom_title_bar_), 0, Qt::AlignVCenter);
     addTitleBarSeparator(titleLayout);
@@ -4500,6 +4515,7 @@ void MainWindow::setupCustomTitleBar()
     addTitleBarSeparator(titleLayout);
     titleLayout->addWidget(createTitleBarActionButton(lang_action_, custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(theme_toggle_action_, custom_title_bar_), 0, Qt::AlignVCenter);
+    titleLayout->addStretch(1);
     addTitleBarSeparator(titleLayout);
 
     window_minimize_btn_ = createTitleBarIconButton(QStringLiteral("windowMinimizeButton"), custom_title_bar_);
@@ -4563,6 +4579,39 @@ void MainWindow::addTitleBarSeparator(QHBoxLayout *layout)
     separator->setFixedWidth(1);
     separator->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     layout->addWidget(separator, 0, Qt::AlignVCenter);
+}
+
+void MainWindow::showTitleApplicationMenu()
+{
+    if (!title_menu_btn_ || !title_application_menu_)
+    {
+        return;
+    }
+
+    title_application_menu_->clear();
+    auto appendTopLevelMenu = [this](QMenu *source) {
+        if (!source)
+        {
+            return;
+        }
+        auto *submenu = title_application_menu_->addMenu(source->title());
+        appendMenuActions(submenu, source);
+    };
+
+    appendTopLevelMenu(data_menu_);
+    appendTopLevelMenu(devices_menu_);
+    appendTopLevelMenu(view_menu_);
+    appendTopLevelMenu(font_menu_);
+    appendTopLevelMenu(language_menu_);
+    appendTopLevelMenu(help_menu_);
+
+    if (title_application_menu_->actions().isEmpty())
+    {
+        return;
+    }
+
+    const QPoint popupPos = title_menu_btn_->mapToGlobal(QPoint(0, title_menu_btn_->height() + scalePixels(2)));
+    title_application_menu_->popup(popupPos);
 }
 
 void MainWindow::setupStatusBar()
