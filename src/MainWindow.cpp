@@ -2741,7 +2741,6 @@ MainWindow::MainWindow(QWidget *parent)
     setupToolBar();
     setupStatusBar();
     setupCentralWidget();
-    createTitleApplicationMenuPanel();
     ground_telemetry_service_ = new VaporView::GroundTelemetryService(this);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::linkOpenChanged,
             this, &MainWindow::onRemoteLinkOpenChanged);
@@ -4463,7 +4462,7 @@ void MainWindow::setupCustomTitleBar()
     titleLayout->addWidget(logoLabel, 0, Qt::AlignVCenter);
 
     title_menu_btn_ = createTitleBarIconButton(QStringLiteral("titleBarMenuButton"), custom_title_bar_);
-    connect(title_menu_btn_, &QToolButton::clicked, this, &MainWindow::showTitleApplicationMenu);
+    connect(title_menu_btn_, &QToolButton::pressed, this, &MainWindow::showTitleApplicationMenu);
     titleLayout->addWidget(title_menu_btn_, 0, Qt::AlignVCenter);
 
     custom_title_label_ = new QLabel(QStringLiteral("VaporView"), custom_title_bar_);
@@ -4568,7 +4567,7 @@ void MainWindow::createTitleApplicationMenuPanel()
         return value;
     };
 
-    auto *panel = new QFrame(this);
+    auto *panel = new QFrame(central_widget_);
     panel->setObjectName(QStringLiteral("titleApplicationPopup"));
     panel->setAttribute(Qt::WA_StyledBackground, true);
     panel->setFocusPolicy(Qt::NoFocus);
@@ -4842,275 +4841,17 @@ void MainWindow::showTitleApplicationMenu()
         return;
     }
 
-    const QPoint anchor = title_menu_btn_->mapTo(this, QPoint(0, title_menu_btn_->height() + scalePixels(4)));
+    const QPoint anchor = central_widget_->mapFromGlobal(
+        title_menu_btn_->mapToGlobal(QPoint(0, title_menu_btn_->height() + scalePixels(4))));
     const int panelWidth = title_application_popup_->width() > 0 ? title_application_popup_->width()
                                                                  : title_application_popup_->sizeHint().width();
-    const int x = std::clamp(anchor.x(), scalePixels(4), std::max(scalePixels(4), width() - panelWidth - scalePixels(4)));
-    title_application_popup_->move(x, anchor.y());
+    const int panelHeight = title_application_popup_->height() > 0 ? title_application_popup_->height()
+                                                                   : title_application_popup_->sizeHint().height();
+    const int x = std::clamp(anchor.x(), scalePixels(4), std::max(scalePixels(4), central_widget_->width() - panelWidth - scalePixels(4)));
+    const int y = std::clamp(anchor.y(), scalePixels(4), std::max(scalePixels(4), central_widget_->height() - panelHeight - scalePixels(4)));
+    title_application_popup_->move(x, y);
     title_application_popup_->raise();
     title_application_popup_->show();
-    return;
-
-#if 0
-    if (!title_menu_btn_)
-    {
-        return;
-    }
-
-    if (title_application_popup_)
-    {
-        title_application_popup_->close();
-        return;
-    }
-
-    QWidget *menuContainer = custom_title_bar_ ? custom_title_bar_->parentWidget() : nullptr;
-    auto *containerLayout = menuContainer ? qobject_cast<QVBoxLayout *>(menuContainer->layout()) : nullptr;
-    if (!menuContainer || !containerLayout)
-    {
-        return;
-    }
-
-    auto *popupHost = new QWidget(menuContainer);
-    popupHost->setObjectName(QStringLiteral("titleApplicationPopupHost"));
-    popupHost->setAttribute(Qt::WA_StyledBackground, true);
-    popupHost->setAttribute(Qt::WA_DeleteOnClose, true);
-    popupHost->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-
-    auto *hostLayout = new QHBoxLayout(popupHost);
-    hostLayout->setContentsMargins(0, 0, 0, scalePixels(6));
-    hostLayout->setSpacing(0);
-    hostLayout->addSpacing(scalePixels(36));
-
-    auto *popup = new QFrame(popupHost);
-    popup->setObjectName(QStringLiteral("titleApplicationPopup"));
-    popup->setAttribute(Qt::WA_StyledBackground, true);
-    hostLayout->addWidget(popup, 0, Qt::AlignLeft | Qt::AlignTop);
-    hostLayout->addStretch(1);
-
-    title_application_popup_ = popupHost;
-    connect(popupHost, &QObject::destroyed, this, [this]() {
-        title_application_popup_ = nullptr;
-        if (custom_title_bar_ && custom_title_bar_->parentWidget())
-        {
-            custom_title_bar_->parentWidget()->setFixedHeight(custom_title_bar_->height());
-            custom_title_bar_->parentWidget()->updateGeometry();
-        }
-    });
-
-    const QString bg = dark_theme_enabled_ ? QStringLiteral("#151a20") : QStringLiteral("#ffffff");
-    const QString border = dark_theme_enabled_ ? QStringLiteral("#2c3440") : QStringLiteral("#dfe4ea");
-    const QString text = dark_theme_enabled_ ? QStringLiteral("#d8dee9") : QStringLiteral("#000000");
-    const QString subtle = dark_theme_enabled_ ? QStringLiteral("#9fb2c8") : QStringLiteral("#334155");
-    const QString hover = dark_theme_enabled_ ? QStringLiteral("#1f2a36") : QStringLiteral("#eef4fb");
-    const QString selected = dark_theme_enabled_ ? QStringLiteral("#113252") : QStringLiteral("#dceeff");
-    popupHost->setStyleSheet(QStringLiteral("QWidget#titleApplicationPopupHost { background-color: %1; }").arg(bg));
-    popup->setStyleSheet(QStringLiteral(R"(
-QFrame#titleApplicationPopup {
-    background-color: %1;
-    border: 1px solid %2;
-    border-radius: 8px;
-}
-QLabel#titlePopupSection {
-    color: %4;
-    font-weight: 700;
-    padding: 5px 8px 2px 8px;
-}
-QToolButton#titlePopupButton,
-QToolButton#titlePopupChip {
-    color: %3;
-    background-color: transparent;
-    border: none;
-    border-radius: 6px;
-    padding: 6px 10px;
-    text-align: left;
-}
-QToolButton#titlePopupButton:hover,
-QToolButton#titlePopupChip:hover {
-    background-color: %5;
-}
-QToolButton#titlePopupButton:checked,
-QToolButton#titlePopupChip:checked {
-    background-color: %6;
-}
-QFrame#titlePopupSeparator {
-    background-color: %2;
-    border: none;
-}
-)").arg(bg, border, text, subtle, hover, selected));
-
-    auto *layout = new QVBoxLayout(popup);
-    layout->setContentsMargins(6, 6, 6, 6);
-    layout->setSpacing(2);
-
-    auto cleanText = [](QString value) {
-        value.remove(QLatin1Char('&'));
-        return value;
-    };
-
-    auto closePopup = [this]() {
-        if (title_application_popup_)
-        {
-            title_application_popup_->close();
-        }
-    };
-
-    auto addSection = [&](const QString& title) {
-        if (title.isEmpty())
-        {
-            return;
-        }
-        auto *label = new QLabel(cleanText(title), popup);
-        label->setObjectName(QStringLiteral("titlePopupSection"));
-        layout->addWidget(label);
-    };
-
-    auto addSeparator = [&]() {
-        auto *separator = new QFrame(popup);
-        separator->setObjectName(QStringLiteral("titlePopupSeparator"));
-        separator->setFixedHeight(1);
-        layout->addWidget(separator);
-    };
-
-    auto addActionButton = [&](QAction *source) {
-        if (!source)
-        {
-            return static_cast<QToolButton *>(nullptr);
-        }
-        auto *button = new QToolButton(popup);
-        button->setObjectName(QStringLiteral("titlePopupButton"));
-        button->setText(cleanText(source->text()));
-        button->setIcon(source->icon());
-        button->setToolButtonStyle(source->icon().isNull() ? Qt::ToolButtonTextOnly : Qt::ToolButtonTextBesideIcon);
-        button->setIconSize(QSize(scalePixels(16), scalePixels(16)));
-        button->setAutoRaise(false);
-        button->setEnabled(source->isEnabled());
-        button->setCheckable(source->isCheckable());
-        button->setChecked(source->isChecked());
-        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        button->setFixedHeight(scalePixels(32));
-        connect(button, &QToolButton::clicked, this, [source, closePopup]() {
-            closePopup();
-            if (source)
-            {
-                source->trigger();
-            }
-        });
-        layout->addWidget(button);
-        return button;
-    };
-
-    auto addCommandButton = [&](const QString& label, bool checked, const std::function<void()>& handler) {
-        auto *button = new QToolButton(popup);
-        button->setObjectName(QStringLiteral("titlePopupButton"));
-        button->setText(label);
-        button->setToolButtonStyle(Qt::ToolButtonTextOnly);
-        button->setAutoRaise(false);
-        button->setCheckable(true);
-        button->setChecked(checked);
-        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        button->setFixedHeight(scalePixels(30));
-        connect(button, &QToolButton::clicked, this, [handler, closePopup]() {
-            closePopup();
-            handler();
-        });
-        layout->addWidget(button);
-    };
-
-    auto addRateChips = [&](const QVector<int>& rates, int currentRate) {
-        auto *row = new QWidget(popup);
-        auto *rowLayout = new QHBoxLayout(row);
-        rowLayout->setContentsMargins(0, 0, 0, 0);
-        rowLayout->setSpacing(3);
-        for (int rate : rates)
-        {
-            auto *button = new QToolButton(row);
-            button->setObjectName(QStringLiteral("titlePopupChip"));
-            button->setText(QString::number(rate));
-            button->setToolButtonStyle(Qt::ToolButtonTextOnly);
-            button->setAutoRaise(false);
-            button->setCheckable(true);
-            button->setChecked(rate == currentRate);
-            button->setFixedSize(scalePixels(rate >= 100 ? 46 : 36), scalePixels(28));
-            connect(button, &QToolButton::clicked, this, [this, rate, closePopup]() {
-                closePopup();
-                setRecordingExportRateHz(rate);
-            });
-            rowLayout->addWidget(button);
-        }
-        layout->addWidget(row);
-    };
-
-    if (data_menu_)
-    {
-        addSection(data_menu_->title());
-        addActionButton(recording_directory_action_);
-        addCommandButton(is_english_ ? QStringLiteral("TCP Wave Raw: Complete frames")
-                                     : QStringLiteral("TCP波形原始帧：完整TCP帧"),
-                         true,
-                         [this]() { setWaveformRecordingRateHz(0); });
-        addCommandButton(is_english_ ? QStringLiteral("EPSILON Raw: Verified frames")
-                                     : QStringLiteral("EPSILON原始帧：已校验帧"),
-                         true,
-                         [this]() { setImuRecordingRateHz(0); });
-        addSection(is_english_ ? QStringLiteral("Other Devices Record Rate")
-                               : QStringLiteral("其余设备记录频率"));
-        addRateChips(QVector<int>{1, 2, 5, 10, 20, 50, 100, 200},
-                     std::clamp(recording_export_rate_hz_, 1, 200));
-        addSeparator();
-        addActionButton(exit_action_);
-    }
-
-    if (devices_menu_)
-    {
-        addSeparator();
-        addSection(devices_menu_->title());
-        addActionButton(epsilon_packet_rates_action_);
-        addActionButton(epsilon_rtcm_port_action_);
-        addActionButton(epsilon_reconfigure_action_);
-        addActionButton(rtk_config_action_);
-    }
-
-    if (view_menu_)
-    {
-        addSeparator();
-        addSection(view_menu_->title());
-        addActionButton(fullscreen_menu_action_);
-    }
-
-    if (font_menu_)
-    {
-        addSeparator();
-        addSection(font_menu_->title());
-        addActionButton(font_tiny_action_);
-        addActionButton(font_extra_small_action_);
-        addActionButton(font_small_action_);
-        addActionButton(font_normal_action_);
-        addActionButton(font_large_action_);
-        addActionButton(font_extra_large_action_);
-    }
-
-    if (language_menu_)
-    {
-        addSeparator();
-        addSection(language_menu_->title());
-        addActionButton(lang_action_);
-    }
-
-    if (help_menu_)
-    {
-        addSeparator();
-        addSection(help_menu_->title());
-        addActionButton(about_action_);
-    }
-
-    popup->setMinimumWidth(scalePixels(280));
-    popup->adjustSize();
-    containerLayout->addWidget(popupHost);
-    popupHost->adjustSize();
-    menuContainer->setFixedHeight(custom_title_bar_->height() + popupHost->sizeHint().height());
-    menuContainer->updateGeometry();
-    popupHost->show();
-#endif
 }
 
 void MainWindow::setupStatusBar()
