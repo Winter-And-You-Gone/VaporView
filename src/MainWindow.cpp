@@ -442,10 +442,27 @@ void appendMenuActions(QMenu *target, QMenu *source)
         if (QMenu *submenu = action->menu())
         {
             auto *copiedSubmenu = target->addMenu(action->text());
+            copiedSubmenu->setIcon(action->icon());
+            copiedSubmenu->setEnabled(action->isEnabled());
             appendMenuActions(copiedSubmenu, submenu);
             continue;
         }
-        target->addAction(action);
+
+        auto *copiedAction = new QAction(action->icon(), action->text(), target);
+        copiedAction->setEnabled(action->isEnabled());
+        copiedAction->setCheckable(action->isCheckable());
+        copiedAction->setChecked(action->isChecked());
+        copiedAction->setShortcut(action->shortcut());
+        copiedAction->setToolTip(action->toolTip());
+        copiedAction->setStatusTip(action->statusTip());
+        copiedAction->setData(action->data());
+        QObject::connect(copiedAction, &QAction::triggered, action, [action]() {
+            if (action)
+            {
+                action->trigger();
+            }
+        });
+        target->addAction(copiedAction);
     }
 }
 
