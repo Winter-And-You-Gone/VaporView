@@ -480,6 +480,7 @@ private:
     QMenu *language_menu_;
     QMenu *help_menu_;
     QMenu *recording_rate_menu_;
+    QMenu *title_application_menu_;
 
     QGroupBox *config_group_;
     QGroupBox *data_group_;

@@ -459,6 +459,11 @@ QToolButton#windowMaximizeButton:hover {
 QToolButton#windowCloseButton:hover {
     background-color: #dc2626;
 }
+QWidget#customTitleBar QToolButton::menu-indicator {
+    image: none;
+    width: 0px;
+    height: 0px;
+}
 QFrame#titleBarSeparator {
     background-color: #2c3440;
     border: none;
@@ -499,6 +504,11 @@ QToolButton#windowMaximizeButton:hover {
 }
 QToolButton#windowCloseButton:hover {
     background-color: #fee2e2;
+}
+QWidget#customTitleBar QToolButton::menu-indicator {
+    image: none;
+    width: 0px;
+    height: 0px;
 }
 QFrame#titleBarSeparator {
     background-color: #dfe4ea;
@@ -2529,6 +2539,7 @@ MainWindow::MainWindow(QWidget *parent)
     , language_menu_(nullptr)
     , help_menu_(nullptr)
     , recording_rate_menu_(nullptr)
+    , title_application_menu_(nullptr)
     , config_group_(nullptr)
     , data_group_(nullptr)
     , log_group_(nullptr)
@@ -4448,15 +4459,21 @@ void MainWindow::setupCustomTitleBar()
     titleLayout->addWidget(logoLabel, 0, Qt::AlignVCenter);
 
     title_menu_btn_ = createTitleBarIconButton(QStringLiteral("titleBarMenuButton"), custom_title_bar_);
-    title_menu_btn_->setPopupMode(QToolButton::InstantPopup);
-    auto *applicationMenu = new QMenu(title_menu_btn_);
-    if (data_menu_) applicationMenu->addMenu(data_menu_);
-    if (devices_menu_) applicationMenu->addMenu(devices_menu_);
-    if (view_menu_) applicationMenu->addMenu(view_menu_);
-    if (font_menu_) applicationMenu->addMenu(font_menu_);
-    if (language_menu_) applicationMenu->addMenu(language_menu_);
-    if (help_menu_) applicationMenu->addMenu(help_menu_);
-    title_menu_btn_->setMenu(applicationMenu);
+    title_application_menu_ = new QMenu(title_menu_btn_);
+    if (data_menu_) title_application_menu_->addMenu(data_menu_);
+    if (devices_menu_) title_application_menu_->addMenu(devices_menu_);
+    if (view_menu_) title_application_menu_->addMenu(view_menu_);
+    if (font_menu_) title_application_menu_->addMenu(font_menu_);
+    if (language_menu_) title_application_menu_->addMenu(language_menu_);
+    if (help_menu_) title_application_menu_->addMenu(help_menu_);
+    connect(title_menu_btn_, &QToolButton::clicked, this, [this]() {
+        if (!title_menu_btn_ || !title_application_menu_)
+        {
+            return;
+        }
+        const QPoint popupPos = title_menu_btn_->mapToGlobal(QPoint(0, title_menu_btn_->height() + scalePixels(2)));
+        title_application_menu_->popup(popupPos);
+    });
     titleLayout->addWidget(title_menu_btn_, 0, Qt::AlignVCenter);
 
     custom_title_label_ = new QLabel(QStringLiteral("VaporView"), custom_title_bar_);
