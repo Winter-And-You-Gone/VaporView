@@ -82,7 +82,7 @@ ComboBox {
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
         readonly property bool empty: modelCount() === 0
         function modelCount() { if (!control.model) return 0; if (control.model.length !== undefined) return control.model.length; if (control.model.count !== undefined) return control.model.count; return 0 }
-        implicitHeight: empty ? theme.controlHeight + 2 : Math.min(listView.contentHeight, 220)
+        implicitHeight: empty ? theme.controlHeight + 2 : Math.min(listView.contentHeight + padding * 2, 220)
         background: Rectangle {
             radius: theme.radius
             color: theme.surface
