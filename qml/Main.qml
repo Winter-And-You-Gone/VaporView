@@ -11,8 +11,14 @@ ApplicationWindow {
     height: 860
     minimumWidth: 980
     minimumHeight: 640
-    visible: true
+    visible: false
     title: "VaporView"
+    color: "#ffffff"
+
+    Component.onCompleted: {
+        color = appBackend.dark ? "#020817" : "#ffffff"
+        visible = true
+    }
 
     property string currentPage: "home"
     property string lang: appBackend.language
