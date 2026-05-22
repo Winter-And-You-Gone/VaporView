@@ -4565,7 +4565,7 @@ void MainWindow::showTitleApplicationMenu()
         return;
     }
 
-    auto *popup = new QFrame(this, Qt::Popup | Qt::FramelessWindowHint);
+    auto *popup = new QFrame(this);
     popup->setObjectName(QStringLiteral("titleApplicationPopup"));
     popup->setAttribute(Qt::WA_DeleteOnClose, true);
     popup->setAttribute(Qt::WA_StyledBackground, true);
@@ -4779,13 +4779,12 @@ QFrame#titlePopupSeparator {
         addActionButton(about_action_);
     }
 
-    const QPoint popupPos = title_menu_btn_->mapToGlobal(QPoint(0, title_menu_btn_->height() + scalePixels(2)));
+    const QPoint popupPos = mapFromGlobal(title_menu_btn_->mapToGlobal(QPoint(0, title_menu_btn_->height() + scalePixels(2))));
     popup->setMinimumWidth(scalePixels(280));
     popup->adjustSize();
     popup->move(popupPos);
     popup->show();
     popup->raise();
-    popup->activateWindow();
 }
 
 void MainWindow::setupStatusBar()
