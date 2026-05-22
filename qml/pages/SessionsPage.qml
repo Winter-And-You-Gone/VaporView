@@ -890,7 +890,7 @@ Item {
                     ToolbarButton {
                         width: 92
                         height: 26
-                        iconName: page.trendScatter ? "layout-dashboard" : "activity"
+                        iconName: page.trendScatter ? "chart-scatter" : "chart-spline"
                         text: page.trendScatter ? "散点" : "折线"
                         onClicked: page.trendScatter = !page.trendScatter
                     }
