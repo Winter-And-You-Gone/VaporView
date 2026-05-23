@@ -476,9 +476,6 @@ QFrame#titleApplicationSubMenu {
     border: 1px solid #303030;
     border-radius: 14px;
 }
-QFrame#titleApplicationMainMenu {
-    border-top-left-radius: 0px;
-}
 QFrame#titleApplicationMenuItem {
     background-color: transparent;
     border: none;
@@ -492,7 +489,6 @@ QLabel#titleApplicationMenuText {
     color: #f3f6fb;
     background-color: transparent;
     border: none;
-    font-size: 18px;
     padding: 0px;
 }
 QLabel#titleApplicationMenuShortcut,
@@ -501,7 +497,6 @@ QLabel#titleApplicationMenuCheck {
     color: #d7dce2;
     background-color: transparent;
     border: none;
-    font-size: 18px;
     padding: 0px;
 }
 QLabel#titleApplicationMenuCheck {
@@ -542,9 +537,6 @@ QFrame#titleApplicationSubMenu {
     border: 1px solid #dfe4ea;
     border-radius: 14px;
 }
-QFrame#titleApplicationMainMenu {
-    border-top-left-radius: 0px;
-}
 QFrame#titleApplicationMenuItem {
     background-color: transparent;
     border: none;
@@ -558,7 +550,6 @@ QLabel#titleApplicationMenuText {
     color: #000000;
     background-color: transparent;
     border: none;
-    font-size: 18px;
     padding: 0px;
 }
 QLabel#titleApplicationMenuShortcut,
@@ -567,7 +558,6 @@ QLabel#titleApplicationMenuCheck {
     color: #4b5563;
     background-color: transparent;
     border: none;
-    font-size: 18px;
     padding: 0px;
 }
 QLabel#titleApplicationMenuCheck {
@@ -4779,8 +4769,8 @@ void MainWindow::createTitleApplicationMenuPanel()
     panel->setObjectName(QStringLiteral("titleApplicationPanel"));
     panel->setAttribute(Qt::WA_StyledBackground, true);
     panel->setFocusPolicy(Qt::NoFocus);
-    panel->setStyleSheet(titleApplicationPanelStyleSheet(true));
-    panel->setFixedSize(scalePixels(536), scalePixels(306));
+    panel->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_));
+    panel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     panel->hide();
     title_application_panel_ = panel;
 
@@ -4806,6 +4796,24 @@ void MainWindow::createTitleApplicationMenuPanel()
     {
         QString title;
         QVector<TitleMenuCommand> commands;
+    };
+
+    const int menuVerticalPadding = scalePixels(16);
+    const int rowHeight = scalePixels(40);
+    const int separatorHeight = scalePixels(1);
+    const int mainMenuWidth = scalePixels(180);
+    const int subMenuWidth = scalePixels(288);
+    auto commandRowsHeight = [&](const QVector<TitleMenuCommand>& commands) {
+        int total = menuVerticalPadding * 2;
+        for (const TitleMenuCommand& command : commands)
+        {
+            if (command.separatorBefore)
+            {
+                total += separatorHeight;
+            }
+            total += rowHeight;
+        }
+        return total;
     };
 
     QVector<TitleMenuSection> sections;
@@ -4987,21 +4995,21 @@ void MainWindow::createTitleApplicationMenuPanel()
     auto *mainMenu = new QFrame(panel);
     mainMenu->setObjectName(QStringLiteral("titleApplicationMainMenu"));
     mainMenu->setAttribute(Qt::WA_StyledBackground, true);
-    mainMenu->setFixedWidth(scalePixels(216));
+    mainMenu->setFixedSize(mainMenuWidth, menuVerticalPadding * 2 + rowHeight * sections.size());
     rootLayout->addWidget(mainMenu, 0, Qt::AlignTop);
 
     auto *mainLayout = new QVBoxLayout(mainMenu);
-    mainLayout->setContentsMargins(0, scalePixels(20), 0, scalePixels(20));
+    mainLayout->setContentsMargins(0, menuVerticalPadding, 0, menuVerticalPadding);
     mainLayout->setSpacing(0);
 
     auto *subMenu = new QFrame(panel);
     subMenu->setObjectName(QStringLiteral("titleApplicationSubMenu"));
     subMenu->setAttribute(Qt::WA_StyledBackground, true);
-    subMenu->setFixedWidth(scalePixels(320));
+    subMenu->setFixedWidth(subMenuWidth);
     rootLayout->addWidget(subMenu, 0, Qt::AlignTop);
 
     auto *subLayout = new QVBoxLayout(subMenu);
-    subLayout->setContentsMargins(0, scalePixels(20), 0, scalePixels(20));
+    subLayout->setContentsMargins(0, 0, 0, 0);
     subLayout->setSpacing(0);
     auto *stack = new QStackedWidget(subMenu);
     subLayout->addWidget(stack);
@@ -5017,17 +5025,17 @@ void MainWindow::createTitleApplicationMenuPanel()
         row->setObjectName(QStringLiteral("titleApplicationMenuItem"));
         row->setAttribute(Qt::WA_StyledBackground, true);
         row->setEnabled(enabled);
-        row->setFixedHeight(scalePixels(56));
+        row->setFixedHeight(rowHeight);
         row->setCursor(enabled ? Qt::PointingHandCursor : Qt::ArrowCursor);
 
         auto *rowLayout = new QHBoxLayout(row);
-        rowLayout->setContentsMargins(scalePixels(24), 0, scalePixels(18), 0);
-        rowLayout->setSpacing(scalePixels(12));
+        rowLayout->setContentsMargins(scalePixels(18), 0, scalePixels(16), 0);
+        rowLayout->setSpacing(scalePixels(10));
 
         auto *checkLabel = new QLabel(checked ? QStringLiteral("✓") : QString(), row);
         checkLabel->setObjectName(QStringLiteral("titleApplicationMenuCheck"));
         checkLabel->setEnabled(enabled);
-        checkLabel->setFixedWidth(scalePixels(18));
+        checkLabel->setFixedWidth(scalePixels(16));
         checkLabel->setAlignment(Qt::AlignCenter);
         rowLayout->addWidget(checkLabel);
 
@@ -5051,7 +5059,7 @@ void MainWindow::createTitleApplicationMenuPanel()
             auto *arrowLabel = new QLabel(arrow, row);
             arrowLabel->setObjectName(QStringLiteral("titleApplicationMenuArrow"));
             arrowLabel->setEnabled(enabled);
-            arrowLabel->setFixedWidth(scalePixels(22));
+            arrowLabel->setFixedWidth(scalePixels(18));
             arrowLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
             rowLayout->addWidget(arrowLabel);
         }
@@ -5072,22 +5080,16 @@ void MainWindow::createTitleApplicationMenuPanel()
     {
         QWidget *page = new QWidget(stack);
         page->setObjectName(QStringLiteral("titleApplicationSubPage"));
+        page->setFixedSize(subMenuWidth, commandRowsHeight(sections[sectionIndex].commands));
         auto *pageLayout = new QVBoxLayout(page);
         pageLayout->setContentsMargins(0, 0, 0, 0);
         pageLayout->setSpacing(0);
-        auto *pageScroll = new QScrollArea(page);
-        pageScroll->setObjectName(QStringLiteral("titleApplicationSubScroll"));
-        pageScroll->setWidgetResizable(true);
-        pageScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        pageScroll->setFrameShape(QFrame::NoFrame);
-        pageLayout->addWidget(pageScroll);
-
-        auto *pageContent = new QWidget(pageScroll);
+        auto *pageContent = new QWidget(page);
         pageContent->setObjectName(QStringLiteral("titleApplicationSubPageContent"));
         auto *contentLayout = new QVBoxLayout(pageContent);
-        contentLayout->setContentsMargins(0, 0, 0, 0);
+        contentLayout->setContentsMargins(0, menuVerticalPadding, 0, menuVerticalPadding);
         contentLayout->setSpacing(0);
-        pageScroll->setWidget(pageContent);
+        pageLayout->addWidget(pageContent);
 
         for (const TitleMenuCommand& command : sections[sectionIndex].commands)
         {
@@ -5106,7 +5108,6 @@ void MainWindow::createTitleApplicationMenuPanel()
                                                QString(),
                                                command.enabled ? command.handler : std::function<void()>{}));
         }
-        contentLayout->addStretch(1);
         stack->addWidget(page);
 
         auto *sectionRow = createRow(mainMenu,
@@ -5119,8 +5120,13 @@ void MainWindow::createTitleApplicationMenuPanel()
         sectionRow->setProperty("selected", sectionIndex == 0);
         sectionRows->push_back(sectionRow);
         mainLayout->addWidget(sectionRow);
-        sectionRow->installEventFilter(new MenuItemEventFilter([stack, sectionRows, sectionRow, sectionIndex]() {
+        sectionRow->installEventFilter(new MenuItemEventFilter([this, stack, subMenu, mainMenu, panel, mainMenuWidth, subMenuWidth, sectionRows, sectionRow, sectionIndex]() {
             stack->setCurrentIndex(sectionIndex);
+            if (QWidget *currentPage = stack->currentWidget())
+            {
+                subMenu->setFixedSize(subMenuWidth, currentPage->height());
+                panel->setFixedSize(mainMenuWidth + subMenuWidth, std::max(mainMenu->height(), subMenu->height()));
+            }
             for (QFrame *row : *sectionRows)
             {
                 if (row)
@@ -5135,6 +5141,8 @@ void MainWindow::createTitleApplicationMenuPanel()
     }
     mainLayout->addStretch(1);
     stack->setCurrentIndex(0);
+    subMenu->setFixedSize(subMenuWidth, stack->currentWidget()->height());
+    panel->setFixedSize(mainMenuWidth + subMenuWidth, std::max(mainMenu->height(), subMenu->height()));
 }
 
 void MainWindow::showTitleApplicationMenu()
@@ -5157,8 +5165,6 @@ void MainWindow::showTitleApplicationMenu()
     }
 
     const QPoint anchor = title_menu_btn_->mapTo(this, QPoint(0, title_menu_btn_->height() + scalePixels(4)));
-    const int availableHeight = std::max(scalePixels(180), height() - anchor.y() - scalePixels(4));
-    title_application_panel_->setFixedHeight(std::min(scalePixels(306), availableHeight));
     const int x = std::clamp(anchor.x(),
                              scalePixels(4),
                              std::max(scalePixels(4), width() - title_application_panel_->width() - scalePixels(4)));
@@ -6227,7 +6233,7 @@ void MainWindow::updateCustomTitleBarStyle()
     if (title_application_panel_)
     {
         title_application_panel_->hide();
-        title_application_panel_->setStyleSheet(titleApplicationPanelStyleSheet(true));
+        title_application_panel_->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_));
     }
     if (window_minimize_btn_)
     {
