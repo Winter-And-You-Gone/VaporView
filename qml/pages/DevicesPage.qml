@@ -196,7 +196,7 @@ Item {
             Layout.fillHeight: true
             clip: true
             boundsBehavior: Flickable.StopAtBounds
-            cellWidth: Math.max(200, width / 5)
+            cellWidth: Math.max(360, width / Math.max(1, Math.min(5, Math.floor(width / 360))))
             cellHeight: 258
             model: deviceBackend.devices
 
