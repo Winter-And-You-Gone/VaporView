@@ -118,65 +118,6 @@ private:
     std::function<void()> click_callback_;
 };
 
-class WindowBorderOverlay : public QWidget
-{
-public:
-    explicit WindowBorderOverlay(QWidget *parent)
-        : QWidget(parent)
-    {
-        setAttribute(Qt::WA_TransparentForMouseEvents);
-        setAttribute(Qt::WA_NoSystemBackground);
-        setAttribute(Qt::WA_TranslucentBackground);
-        setFocusPolicy(Qt::NoFocus);
-    }
-
-protected:
-    void paintEvent(QPaintEvent *event) override
-    {
-        Q_UNUSED(event);
-
-        const QWidget *owner = window();
-        if (owner && owner->isFullScreen())
-        {
-            return;
-        }
-
-        const int w = width();
-        const int h = height();
-        if (w <= 0 || h <= 0)
-        {
-            return;
-        }
-
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing, false);
-        painter.setCompositionMode(QPainter::CompositionMode_Source);
-        painter.fillRect(rect(), Qt::transparent);
-
-        const QColor outerColor(125, 125, 125);
-        const QColor middleColor(50, 50, 50);
-        const qreal third = 1.0 / 3.0;
-        const qreal widthF = static_cast<qreal>(w);
-        const qreal heightF = static_cast<qreal>(h);
-
-        painter.fillRect(QRectF(0.0, 0.0, widthF, third), outerColor);
-        painter.fillRect(QRectF(0.0, third, widthF, third), middleColor);
-        painter.fillRect(QRectF(0.0, third * 2.0, widthF, third), outerColor);
-
-        painter.fillRect(QRectF(0.0, heightF - 1.0, widthF, third), outerColor);
-        painter.fillRect(QRectF(0.0, heightF - 1.0 + third, widthF, third), middleColor);
-        painter.fillRect(QRectF(0.0, heightF - third, widthF, third), outerColor);
-
-        painter.fillRect(QRectF(0.0, 0.0, third, heightF), outerColor);
-        painter.fillRect(QRectF(third, 0.0, third, heightF), middleColor);
-        painter.fillRect(QRectF(third * 2.0, 0.0, third, heightF), outerColor);
-
-        painter.fillRect(QRectF(widthF - 1.0, 0.0, third, heightF), outerColor);
-        painter.fillRect(QRectF(widthF - 1.0 + third, 0.0, third, heightF), middleColor);
-        painter.fillRect(QRectF(widthF - third, 0.0, third, heightF), outerColor);
-    }
-};
-
 constexpr const char *kBaseMinWidthProperty = "_vv_base_min_width";
 constexpr const char *kBaseMinHeightProperty = "_vv_base_min_height";
 constexpr const char *kBaseMaxWidthProperty = "_vv_base_max_width";
@@ -2710,7 +2651,10 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , central_widget_(nullptr)
     , main_layout_(nullptr)
-    , window_border_overlay_(nullptr)
+    , window_border_top_(nullptr)
+    , window_border_right_(nullptr)
+    , window_border_bottom_(nullptr)
+    , window_border_left_(nullptr)
     , custom_title_bar_(nullptr)
     , custom_title_label_(nullptr)
     , title_menu_btn_(nullptr)
@@ -2974,10 +2918,7 @@ MainWindow::MainWindow(QWidget *parent)
     setupToolBar();
     setupStatusBar();
     setupCentralWidget();
-    window_border_overlay_ = new WindowBorderOverlay(this);
-    window_border_overlay_->setGeometry(rect());
-    window_border_overlay_->show();
-    window_border_overlay_->raise();
+    setupWindowBorderFrames();
     ground_telemetry_service_ = new VaporView::GroundTelemetryService(this);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::linkOpenChanged,
             this, &MainWindow::onRemoteLinkOpenChanged);
@@ -3164,22 +3105,14 @@ void MainWindow::changeEvent(QEvent *event)
     if (event->type() == QEvent::WindowStateChange)
     {
         updateWindowControlButtons();
-        if (window_border_overlay_)
-        {
-            window_border_overlay_->setVisible(!isFullScreen());
-            window_border_overlay_->raise();
-        }
+        updateWindowBorderFrames();
     }
 }
 
 void MainWindow::resizeEvent(QResizeEvent *event)
 {
     QMainWindow::resizeEvent(event);
-    if (window_border_overlay_)
-    {
-        window_border_overlay_->setGeometry(rect());
-        window_border_overlay_->raise();
-    }
+    updateWindowBorderFrames();
 }
 
 #ifdef Q_OS_WIN
@@ -6477,6 +6410,66 @@ void MainWindow::updateWindowControlButtons()
         ? (is_english_ ? "Restore" : "还原")
         : (is_english_ ? "Maximize" : "最大化"));
     window_maximize_btn_->setStatusTip(window_maximize_btn_->toolTip());
+}
+
+void MainWindow::setupWindowBorderFrames()
+{
+    auto createBorder = [this]() {
+        auto *border = new QFrame(this);
+        border->setAttribute(Qt::WA_TransparentForMouseEvents);
+        border->setFocusPolicy(Qt::NoFocus);
+        border->setFrameShape(QFrame::NoFrame);
+        border->setLineWidth(0);
+        border->setAutoFillBackground(false);
+        return border;
+    };
+
+    window_border_top_ = createBorder();
+    window_border_right_ = createBorder();
+    window_border_bottom_ = createBorder();
+    window_border_left_ = createBorder();
+
+    window_border_top_->hide();
+    window_border_bottom_->setStyleSheet(QStringLiteral("background-color: rgb(50, 50, 50); border: none;"));
+    const QString verticalBorderStyle = QStringLiteral(
+        "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
+        "stop:0 rgb(125, 125, 125), "
+        "stop:0.5 rgb(50, 50, 50), "
+        "stop:1 rgb(125, 125, 125)); "
+        "border: none;"
+    );
+    window_border_left_->setStyleSheet(verticalBorderStyle);
+    window_border_right_->setStyleSheet(verticalBorderStyle);
+
+    updateWindowBorderFrames();
+}
+
+void MainWindow::updateWindowBorderFrames()
+{
+    const bool visible = !isFullScreen();
+    const int borderThickness = 1;
+    if (window_border_top_)
+    {
+        window_border_top_->setVisible(false);
+    }
+    if (window_border_left_)
+    {
+        window_border_left_->setVisible(visible);
+        window_border_left_->setGeometry(0, 0, borderThickness, height());
+        window_border_left_->raise();
+    }
+    if (window_border_right_)
+    {
+        window_border_right_->setVisible(visible);
+        window_border_right_->setGeometry(std::max(0, width() - borderThickness), 0, borderThickness, height());
+        window_border_right_->raise();
+    }
+    if (window_border_bottom_)
+    {
+        window_border_bottom_->setVisible(visible);
+        window_border_bottom_->setGeometry(0, std::max(0, height() - borderThickness), width(), borderThickness);
+        window_border_bottom_->raise();
+    }
 }
 
 void MainWindow::onToggleTheme()
