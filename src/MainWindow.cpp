@@ -4798,10 +4798,13 @@ void MainWindow::createTitleApplicationMenuPanel()
         QVector<TitleMenuCommand> commands;
     };
 
-    const QFontMetrics menuMetrics(font());
+    QFont menuFont = qApp->font();
+    menuFont.setPixelSize(std::max(1, scalePixels(14)));
+    panel->setFont(menuFont);
+    const QFontMetrics menuMetrics(menuFont);
     const int rowVerticalPadding = scalePixels(2);
-    const int menuVerticalPadding = scalePixels(4);
     const int rowHeight = std::max(scalePixels(22), menuMetrics.height() + rowVerticalPadding * 2);
+    const int menuVerticalPadding = std::max(scalePixels(4), rowHeight / 3);
     const int separatorHeight = scalePixels(1);
     const int rowLeftPadding = scalePixels(16);
     const int rowRightPadding = scalePixels(12);
