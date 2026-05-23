@@ -148,9 +148,10 @@ Item {
                 color: ApplicationWindow.window.card
                 border.color: ApplicationWindow.window.border
                 radius: 5
-            }
-        }
-    }
+                }  // ColumnLayout
+            }  // Card
+            }  // Repeater
+        }  // Flow
 
     component UnitFieldLabel: RowLayout {
         property string label: ""
@@ -190,19 +191,21 @@ Item {
             ToolbarButton { iconName: "unlink"; text: ApplicationWindow.window.t("devices.disconnectAll"); variant: "danger"; enabled: !deviceBackend.busy || deviceBackend.connected || waveformBackend.connected; onClicked: page.disconnectAllDevices() }
         }
 
-        GridView {
+        Flow {
             id: grid
             Layout.fillWidth: true
             Layout.fillHeight: true
+            spacing: 12
             clip: true
             boundsBehavior: Flickable.StopAtBounds
-            cellWidth: Math.max(360, width / 3)
-            cellHeight: 258
-            model: deviceBackend.devices
 
-            delegate: Card {
-                width: grid.cellWidth - 12
-                height: grid.cellHeight - 14
+            Repeater {
+                model: deviceBackend.devices
+
+                Card {
+                    readonly property real calcWidth: Math.min(240, (grid.width - grid.spacing * Math.max(0, Math.floor((grid.width + grid.spacing) / 220) - 1)) / Math.max(1, Math.floor((grid.width + grid.spacing) / 220)))
+                    width: calcWidth
+                    height: implicitHeight
                 title: ApplicationWindow.window.t(nameKey)
                 headerRight: StatusPill {
                     status: connected ? "online" : "offline"
@@ -330,9 +333,9 @@ Item {
                             ToolTip.visible: hovered
                             ToolTip.delay: 400
                             onClicked: ApplicationWindow.window.currentPage = "detailedData"
-                        }
                     }
                 }
+            }
             }
         }
     }
