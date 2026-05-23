@@ -363,6 +363,7 @@ private:
     QStringList getAvailablePorts();
     void setEnglish(bool english);
     void setFontScale(int percent);
+    void showAboutDialog();
     void applyStyleConfiguration();
     QString themedStyleSheet() const;
     QString scaledStyleSheet(const QString& styleSheet) const;
@@ -374,6 +375,8 @@ private:
     QToolButton *createTitleBarActionButton(QAction *action, QWidget *parent);
     QToolButton *createTitleBarIconButton(const QString& objectName, QWidget *parent);
     void addTitleBarSeparator(QHBoxLayout *layout);
+    void discardTitleApplicationMenuPanel();
+    void createTitleApplicationMenuPanel();
     void showTitleApplicationMenu();
     bool shouldStartWindowMove(QObject *watched) const;
     int scalePixels(int pixels) const;
@@ -481,7 +484,7 @@ private:
     QMenu *language_menu_;
     QMenu *help_menu_;
     QMenu *recording_rate_menu_;
-    QMenu *title_application_menu_;
+    QFrame *title_application_panel_;
 
     QGroupBox *config_group_;
     QGroupBox *data_group_;

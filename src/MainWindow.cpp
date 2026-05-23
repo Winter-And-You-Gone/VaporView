@@ -422,103 +422,86 @@ QIcon createTitleBarIcon(const QString& iconName, bool dark)
     return createLucideIcon(iconName, dark ? QColor("#d8dee9") : QColor("#111827"));
 }
 
-void appendMenuActions(QMenu *target, QMenu *source)
-{
-    if (!target || !source)
-    {
-        return;
-    }
-
-    for (QAction *action : source->actions())
-    {
-        if (!action)
-        {
-            continue;
-        }
-        if (action->isSeparator())
-        {
-            target->addSeparator();
-            continue;
-        }
-        if (QMenu *submenu = action->menu())
-        {
-            QMenu *copiedSubmenu = target->addMenu(action->text());
-            copiedSubmenu->setIcon(action->icon());
-            copiedSubmenu->setEnabled(action->isEnabled());
-            appendMenuActions(copiedSubmenu, submenu);
-            continue;
-        }
-
-        QAction *copiedAction = new QAction(action->icon(), action->text(), target);
-        copiedAction->setEnabled(action->isEnabled());
-        copiedAction->setCheckable(action->isCheckable());
-        copiedAction->setChecked(action->isChecked());
-        copiedAction->setShortcut(action->shortcut());
-        copiedAction->setToolTip(action->toolTip());
-        copiedAction->setStatusTip(action->statusTip());
-        copiedAction->setData(action->data());
-        QObject::connect(copiedAction, &QAction::triggered, action, [action]() {
-            if (action)
-            {
-                action->trigger();
-            }
-        });
-        target->addAction(copiedAction);
-    }
-}
-
-QString titleApplicationMenuStyleSheet(bool dark)
+QString titleApplicationPanelStyleSheet(bool dark)
 {
     if (dark)
     {
         return QStringLiteral(R"(
-QMenu {
+QFrame#titleApplicationPanel {
     background-color: #242424;
-    color: #f1f5f9;
     border: 1px solid #3a3a3a;
     border-radius: 8px;
-    padding: 6px 0px;
 }
-QMenu::item {
+QLabel#titleApplicationPanelSection {
+    color: #c4c4c4;
+    font-weight: 700;
+    padding: 6px 8px 4px 8px;
+}
+QPushButton#titleApplicationPanelButton {
+    color: #f1f5f9;
     background-color: transparent;
-    padding: 7px 36px 7px 16px;
+    border: none;
+    border-radius: 6px;
+    padding: 7px 10px;
+    text-align: left;
 }
-QMenu::item:selected {
+QPushButton#titleApplicationPanelButton:hover {
+    background-color: #3a3a3a;
+}
+QPushButton#titleApplicationPanelButton:checked {
     background-color: #5a5a5a;
 }
-QMenu::item:disabled {
+QPushButton#titleApplicationPanelButton:disabled {
     color: #8d96a3;
 }
-QMenu::separator {
-    height: 1px;
+QScrollArea#titleApplicationPanelScroll,
+QWidget#titleApplicationPanelContent {
+    background-color: transparent;
+    border: none;
+}
+QFrame#titleApplicationPanelSeparator {
     background-color: #3a3a3a;
-    margin: 6px 8px;
+    border: none;
 }
 )");
     }
 
     return QStringLiteral(R"(
-QMenu {
+QFrame#titleApplicationPanel {
     background-color: #ffffff;
-    color: #000000;
     border: 1px solid #dfe4ea;
     border-radius: 8px;
-    padding: 6px 0px;
 }
-QMenu::item {
+QLabel#titleApplicationPanelSection {
+    color: #000000;
+    font-weight: 700;
+    padding: 6px 8px 4px 8px;
+}
+QPushButton#titleApplicationPanelButton {
+    color: #000000;
     background-color: transparent;
-    padding: 7px 36px 7px 16px;
+    border: none;
+    border-radius: 6px;
+    padding: 7px 10px;
+    text-align: left;
 }
-QMenu::item:selected {
+QPushButton#titleApplicationPanelButton:hover {
+    background-color: #eef4fb;
+}
+QPushButton#titleApplicationPanelButton:checked {
     background-color: #e5e7eb;
 }
-QMenu::item:disabled {
+QPushButton#titleApplicationPanelButton:disabled {
     color: #8d96a3;
 }
-QMenu::separator {
-    height: 1px;
+QScrollArea#titleApplicationPanelScroll,
+QWidget#titleApplicationPanelContent {
+    background-color: transparent;
+    border: none;
+}
+QFrame#titleApplicationPanelSeparator {
     background-color: #dfe4ea;
-    margin: 6px 8px;
+    border: none;
 }
 )");
 }
@@ -2641,7 +2624,7 @@ MainWindow::MainWindow(QWidget *parent)
     , language_menu_(nullptr)
     , help_menu_(nullptr)
     , recording_rate_menu_(nullptr)
-    , title_application_menu_(nullptr)
+    , title_application_panel_(nullptr)
     , config_group_(nullptr)
     , data_group_(nullptr)
     , log_group_(nullptr)
@@ -3343,6 +3326,7 @@ void MainWindow::setFontScale(int percent)
     }
 
     font_scale_percent_ = percent;
+    discardTitleApplicationMenuPanel();
     applyStyleConfiguration();
     if (!isFullScreen() && !isMaximized())
     {
@@ -3445,6 +3429,7 @@ void MainWindow::setRecordingExportRateHz(int rate, bool should_log)
     const bool changed = recording_export_rate_hz_ != normalizedRate;
     recording_export_rate_hz_ = normalizedRate;
     rebuildRecordingRateMenu();
+    discardTitleApplicationMenuPanel();
     saveRememberedInputState();
 
     if (changed && should_log)
@@ -3460,6 +3445,7 @@ void MainWindow::setImuRecordingRateHz(int rate, bool should_log)
     const bool changed = imu_recording_rate_hz_ != normalizedRate;
     imu_recording_rate_hz_ = normalizedRate;
     rebuildRecordingRateMenu();
+    discardTitleApplicationMenuPanel();
     saveRememberedInputState();
 
     if (changed && should_log)
@@ -3477,6 +3463,7 @@ void MainWindow::setWaveformRecordingRateHz(int rate, bool should_log)
     const bool changed = waveform_recording_rate_hz_ != normalizedRate;
     waveform_recording_rate_hz_ = normalizedRate;
     rebuildRecordingRateMenu();
+    discardTitleApplicationMenuPanel();
     saveRememberedInputState();
 
     if (changed && should_log)
@@ -4473,29 +4460,7 @@ void MainWindow::setupMenuBar()
     help_menu_ = menuBar()->addMenu("");
 
     about_action_ = new QAction(this);
-    connect(about_action_, &QAction::triggered, [this]() {
-        QString title = is_english_ ? "About VaporView" : "关于 VaporView";
-        QString text = is_english_ ?
-            "VaporView Application\n\n"
-            "Version 1.0.0\n\n"
-            "Integrated navigation and environment monitoring system.\n\n"
-            "Supported devices:\n"
-            "- EPSILON Integrated Navigation (FDILink)\n"
-            "- PTB210 Barometer\n"
-            "- HMP3 Temperature/Humidity Sensor\n"
-            "- TFA1500-L Laser Rangefinder\n\n"
-            "Press F11 for fullscreen mode." :
-            "VaporView 应用程序\n\n"
-            "版本 1.0.0\n\n"
-            "组合导航与环境监控系统。\n\n"
-            "支持的设备:\n"
-            "- EPSILON 组合导航一体机 (FDILink)\n"
-            "- PTB210 气压计\n"
-            "- HMP3 温湿度传感器\n"
-            "- TFA1500-L 激光测距模块\n\n"
-            "按 F11 进入全屏模式。";
-        QMessageBox::about(this, title, text);
-    });
+    connect(about_action_, &QAction::triggered, this, &MainWindow::showAboutDialog);
     help_menu_->addAction(about_action_);
 }
 
@@ -4699,6 +4664,203 @@ void MainWindow::addTitleBarSeparator(QHBoxLayout *layout)
     layout->addWidget(separator, 0, Qt::AlignVCenter);
 }
 
+void MainWindow::discardTitleApplicationMenuPanel()
+{
+    if (!title_application_panel_)
+    {
+        return;
+    }
+
+    QFrame *panel = title_application_panel_;
+    title_application_panel_ = nullptr;
+    panel->hide();
+    panel->deleteLater();
+}
+
+void MainWindow::createTitleApplicationMenuPanel()
+{
+    if (title_application_panel_ || !central_widget_)
+    {
+        return;
+    }
+
+    auto *panel = new QFrame(this);
+    panel->setObjectName(QStringLiteral("titleApplicationPanel"));
+    panel->setAttribute(Qt::WA_StyledBackground, true);
+    panel->setFocusPolicy(Qt::NoFocus);
+    panel->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_));
+    panel->setFixedSize(scalePixels(330), scalePixels(420));
+    panel->hide();
+    title_application_panel_ = panel;
+
+    auto closePanel = [this]() {
+        if (title_application_panel_)
+        {
+            title_application_panel_->hide();
+        }
+    };
+
+    auto *rootLayout = new QVBoxLayout(panel);
+    rootLayout->setContentsMargins(6, 6, 6, 6);
+    rootLayout->setSpacing(0);
+
+    auto *scrollArea = new QScrollArea(panel);
+    scrollArea->setObjectName(QStringLiteral("titleApplicationPanelScroll"));
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    rootLayout->addWidget(scrollArea);
+
+    auto *content = new QWidget(scrollArea);
+    content->setObjectName(QStringLiteral("titleApplicationPanelContent"));
+    auto *layout = new QVBoxLayout(content);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(2);
+    scrollArea->setWidget(content);
+    auto addSection = [&](const QString& title) {
+        auto *section = new QLabel(title, content);
+        section->setObjectName(QStringLiteral("titleApplicationPanelSection"));
+        layout->addWidget(section);
+    };
+
+    auto addSeparator = [&]() {
+        auto *separator = new QFrame(content);
+        separator->setObjectName(QStringLiteral("titleApplicationPanelSeparator"));
+        separator->setFixedHeight(1);
+        layout->addWidget(separator);
+    };
+
+    auto addButton = [&](const QString& text,
+                         const std::function<void()>& handler,
+                         bool enabled = true,
+                         bool checkable = false,
+                         bool checked = false) {
+        if (text.isEmpty())
+        {
+            return;
+        }
+        auto *button = new QPushButton(text, content);
+        button->setObjectName(QStringLiteral("titleApplicationPanelButton"));
+        button->setFlat(true);
+        button->setEnabled(enabled);
+        button->setCheckable(checkable);
+        button->setChecked(checked);
+        button->setFocusPolicy(Qt::NoFocus);
+        button->setFixedHeight(scalePixels(34));
+        button->setMinimumWidth(scalePixels(292));
+        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        connect(button, &QPushButton::clicked, this, [closePanel, handler]() {
+            closePanel();
+            if (handler)
+            {
+                handler();
+            }
+        });
+        layout->addWidget(button);
+    };
+
+    const bool uiBusy = connection_attempt_in_progress_ || port_detection_in_progress_ || epsilon_reconfigure_in_progress_;
+
+    addSection(is_english_ ? QStringLiteral("Data") : QStringLiteral("数据"));
+    addButton(is_english_ ? QStringLiteral("Recording Folder...") : QStringLiteral("记录目录..."),
+              [this]() { onChooseRecordingDirectoryClicked(); });
+    addButton(is_english_ ? QStringLiteral("TCP Wave Raw: Complete frames") : QStringLiteral("TCP波形原始帧：完整TCP帧"),
+              [this]() { setWaveformRecordingRateHz(0); },
+              true,
+              true,
+              waveform_recording_rate_hz_ == 0);
+    addButton(is_english_ ? QStringLiteral("EPSILON Raw: Verified frames") : QStringLiteral("EPSILON原始帧：已校验帧"),
+              [this]() { setImuRecordingRateHz(0); },
+              true,
+              true,
+              imu_recording_rate_hz_ == 0);
+    addSeparator();
+
+    addSection(is_english_ ? QStringLiteral("Other Devices Record Rate") : QStringLiteral("其余设备记录频率"));
+    for (int rate : QVector<int>{1, 2, 5, 10, 20, 50, 100, 200})
+    {
+        addButton(QStringLiteral("%1 Hz").arg(rate),
+                  [this, rate]() { setRecordingExportRateHz(rate); },
+                  true,
+                  true,
+                  rate == std::clamp(recording_export_rate_hz_, 1, 200));
+    }
+    addSeparator();
+
+    addSection(is_english_ ? QStringLiteral("Devices") : QStringLiteral("设备"));
+    addButton(is_english_ ? QStringLiteral("EPSILON Packet Rates...") : QStringLiteral("设置EPSILON包频率..."),
+              [this]() { onConfigureEpsilonPacketRatesClicked(); },
+              !uiBusy);
+    addButton(is_english_ ? QStringLiteral("Configure EPSILON RTCM Port...") : QStringLiteral("配置EPSILON RTCM串口..."),
+              [this]() { onConfigureEpsilonRtcmPortClicked(); },
+              !uiBusy);
+    addButton(is_english_ ? QStringLiteral("Reconfigure EPSILON Output...") : QStringLiteral("重新配置EPSILON输出..."),
+              [this]() { onReconfigureEpsilonClicked(); },
+              !uiBusy);
+    addButton(is_english_ ? QStringLiteral("RTK Config") : QStringLiteral("RTK配置"),
+              [this]() { onRtkConfigClicked(); },
+              true);
+    addSeparator();
+
+    addSection(is_english_ ? QStringLiteral("View") : QStringLiteral("视图"));
+    addButton(is_english_ ? QStringLiteral("Fullscreen") : QStringLiteral("全屏"),
+              [this]() { onToggleFullScreen(); },
+              true,
+              true,
+              isFullScreen());
+    addSeparator();
+
+    addSection(is_english_ ? QStringLiteral("Font Size") : QStringLiteral("字号"));
+    addButton(is_english_ ? QStringLiteral("Tiny (70%)") : QStringLiteral("超小 (70%)"),
+              [this]() { setFontScale(70); },
+              true,
+              true,
+              font_scale_percent_ == 70);
+    addButton(is_english_ ? QStringLiteral("Extra Small (80%)") : QStringLiteral("特小 (80%)"),
+              [this]() { setFontScale(80); },
+              true,
+              true,
+              font_scale_percent_ == 80);
+    addButton(is_english_ ? QStringLiteral("Small (90%)") : QStringLiteral("小号 (90%)"),
+              [this]() { setFontScale(90); },
+              true,
+              true,
+              font_scale_percent_ == 90);
+    addButton(is_english_ ? QStringLiteral("Normal (100%)") : QStringLiteral("标准 (100%)"),
+              [this]() { setFontScale(100); },
+              true,
+              true,
+              font_scale_percent_ == 100);
+    addButton(is_english_ ? QStringLiteral("Large (115%)") : QStringLiteral("大号 (115%)"),
+              [this]() { setFontScale(115); },
+              true,
+              true,
+              font_scale_percent_ == 115);
+    addButton(is_english_ ? QStringLiteral("Extra Large (130%)") : QStringLiteral("超大 (130%)"),
+              [this]() { setFontScale(130); },
+              true,
+              true,
+              font_scale_percent_ == 130);
+    addSeparator();
+
+    addSection(is_english_ ? QStringLiteral("Language") : QStringLiteral("语言"));
+    addButton(is_english_ ? QStringLiteral("Switch to Chinese") : QStringLiteral("切换到英文"),
+              [this]() { onSwitchLanguage(); });
+    addButton(dark_theme_enabled_
+                  ? (is_english_ ? QStringLiteral("Light Theme") : QStringLiteral("亮色模式"))
+                  : (is_english_ ? QStringLiteral("Dark Theme") : QStringLiteral("暗色模式")),
+              [this]() { onToggleTheme(); });
+    addSeparator();
+
+    addSection(is_english_ ? QStringLiteral("Help") : QStringLiteral("帮助"));
+    addButton(is_english_ ? QStringLiteral("About") : QStringLiteral("关于"),
+              [this]() { showAboutDialog(); });
+    addSeparator();
+    addButton(is_english_ ? QStringLiteral("Exit") : QStringLiteral("退出"),
+              [this]() { close(); });
+    layout->addStretch(1);
+}
+
 void MainWindow::showTitleApplicationMenu()
 {
     if (!title_menu_btn_)
@@ -4706,48 +4868,28 @@ void MainWindow::showTitleApplicationMenu()
         return;
     }
 
-    if (title_application_menu_)
+    createTitleApplicationMenuPanel();
+    if (!title_application_panel_)
     {
-        title_application_menu_->close();
         return;
     }
 
-    auto *menu = new QMenu(this);
-    menu->setObjectName(QStringLiteral("titleApplicationMenu"));
-    menu->setSeparatorsCollapsible(true);
-    menu->setStyleSheet(titleApplicationMenuStyleSheet(dark_theme_enabled_));
-    title_application_menu_ = menu;
-    connect(menu, &QObject::destroyed, this, [this]() {
-        title_application_menu_ = nullptr;
-    });
-    connect(menu, &QMenu::aboutToHide, menu, &QObject::deleteLater);
-
-    auto appendTopLevelMenu = [menu](QMenu *source) {
-        if (!source)
-        {
-            return;
-        }
-        QMenu *submenu = menu->addMenu(source->title());
-        submenu->setIcon(source->icon());
-        submenu->setEnabled(source->isEnabled());
-        appendMenuActions(submenu, source);
-    };
-
-    appendTopLevelMenu(data_menu_);
-    appendTopLevelMenu(devices_menu_);
-    appendTopLevelMenu(view_menu_);
-    appendTopLevelMenu(font_menu_);
-    appendTopLevelMenu(language_menu_);
-    appendTopLevelMenu(help_menu_);
-
-    if (menu->actions().isEmpty())
+    if (title_application_panel_->isVisible())
     {
-        menu->deleteLater();
+        title_application_panel_->hide();
         return;
     }
 
-    const QPoint popupPos = title_menu_btn_->mapToGlobal(QPoint(0, title_menu_btn_->height() + scalePixels(2)));
-    menu->popup(popupPos);
+    const QPoint anchor = title_menu_btn_->mapTo(this, QPoint(0, title_menu_btn_->height() + scalePixels(4)));
+    const int availableHeight = std::max(scalePixels(180), height() - anchor.y() - scalePixels(4));
+    title_application_panel_->setFixedHeight(std::min(scalePixels(420), availableHeight));
+    const int x = std::clamp(anchor.x(),
+                             scalePixels(4),
+                             std::max(scalePixels(4), width() - title_application_panel_->width() - scalePixels(4)));
+    const int y = std::max(anchor.y(), scalePixels(4));
+    title_application_panel_->move(x, y);
+    title_application_panel_->raise();
+    title_application_panel_->show();
 }
 
 void MainWindow::setupStatusBar()
@@ -5485,6 +5627,7 @@ void MainWindow::setEnglish(bool english)
     lang_action_->setStatusTip(english ? "Switch interface language" : "切换界面语言");
     updateThemeAction();
     updateCustomTitleBarTexts();
+    discardTitleApplicationMenuPanel();
 
     if (help_menu_)
     {
@@ -5708,6 +5851,33 @@ void MainWindow::onSwitchLanguage()
     log(is_english_ ? "Language switched to English" : "语言已切换为中文");
 }
 
+void MainWindow::showAboutDialog()
+{
+    const QString title = is_english_ ? QStringLiteral("About VaporView") : QStringLiteral("关于 VaporView");
+    const QString text = is_english_
+        ? QStringLiteral(
+              "VaporView Application\n\n"
+              "Version 1.0.0\n\n"
+              "Integrated navigation and environment monitoring system.\n\n"
+              "Supported devices:\n"
+              "- EPSILON Integrated Navigation (FDILink)\n"
+              "- PTB210 Barometer\n"
+              "- HMP3 Temperature/Humidity Sensor\n"
+              "- TFA1500-L Laser Rangefinder\n\n"
+              "Press F11 for fullscreen mode.")
+        : QStringLiteral(
+              "VaporView 应用程序\n\n"
+              "版本 1.0.0\n\n"
+              "组合导航与环境监控系统。\n\n"
+              "支持的设备:\n"
+              "- EPSILON 组合导航一体机 (FDILink)\n"
+              "- PTB210 气压计\n"
+              "- HMP3 温湿度传感器\n"
+              "- TFA1500-L 激光测距模块\n\n"
+              "按 F11 进入全屏模式。");
+    QMessageBox::about(this, title, text);
+}
+
 void MainWindow::updateThemeAction()
 {
     if (!theme_toggle_action_)
@@ -5778,9 +5948,10 @@ void MainWindow::updateCustomTitleBarStyle()
     {
         title_menu_btn_->setIcon(createTitleBarIcon(QStringLiteral("menu"), dark_theme_enabled_));
     }
-    if (title_application_menu_)
+    if (title_application_panel_)
     {
-        title_application_menu_->close();
+        title_application_panel_->hide();
+        title_application_panel_->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_));
     }
     if (window_minimize_btn_)
     {
@@ -5811,6 +5982,7 @@ void MainWindow::updateWindowControlButtons()
 void MainWindow::onToggleTheme()
 {
     dark_theme_enabled_ = !dark_theme_enabled_;
+    discardTitleApplicationMenuPanel();
     applyStyleConfiguration();
     updateThemeAction();
 
