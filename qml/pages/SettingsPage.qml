@@ -26,7 +26,9 @@ Item {
     }
 
     GridLayout {
-        anchors.fill: parent
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
         anchors.margins: 12
         columns: 2
         columnSpacing: 0
@@ -34,7 +36,7 @@ Item {
 
         Card {
             Layout.fillWidth: true
-            Layout.preferredHeight: 180
+            Layout.columnSpan: 2
             title: ApplicationWindow.window.t("settings.languageTheme")
             ColumnLayout {
                 anchors.fill: parent
@@ -70,7 +72,7 @@ Item {
 
         Card {
             Layout.fillWidth: true
-            Layout.preferredHeight: 150
+            Layout.columnSpan: 2
             title: ApplicationWindow.window.t("settings.recordDir")
             ColumnLayout {
                 anchors.fill: parent
@@ -86,7 +88,6 @@ Item {
 
         Card {
             Layout.fillWidth: true
-            Layout.preferredHeight: 150
             title: ApplicationWindow.window.t("settings.defaultSampleRate")
             ColumnLayout {
                 anchors.fill: parent
@@ -106,7 +107,6 @@ Item {
 
         Card {
             Layout.fillWidth: true
-            Layout.preferredHeight: 150
             title: ApplicationWindow.window.t("settings.displayDensity")
             ColumnLayout {
                 anchors.fill: parent
@@ -122,7 +122,6 @@ Item {
 
         Card {
             Layout.fillWidth: true
-            Layout.preferredHeight: 150
             title: ApplicationWindow.window.t("settings.advancedDiag")
             ColumnLayout {
                 anchors.fill: parent
@@ -135,7 +134,6 @@ Item {
 
         Card {
             Layout.fillWidth: true
-            Layout.preferredHeight: 150
             title: ApplicationWindow.window.t("settings.about")
             ColumnLayout {
                 anchors.fill: parent
