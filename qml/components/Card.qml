@@ -90,6 +90,7 @@ Rectangle {
             implicitHeight: childrenRect.height <= 0 ? 0 : childrenRect.y + childrenRect.height + theme.cardPadding
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.minimumHeight: body.implicitHeight
         }
     }
 

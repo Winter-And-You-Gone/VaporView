@@ -39,7 +39,9 @@ Item {
             Layout.columnSpan: 2
             title: ApplicationWindow.window.t("settings.languageTheme")
             ColumnLayout {
-                anchors.fill: parent
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
                 anchors.margins: 12
                 spacing: 8
                 RowLayout {
@@ -75,7 +77,9 @@ Item {
             Layout.columnSpan: 2
             title: ApplicationWindow.window.t("settings.recordDir")
             ColumnLayout {
-                anchors.fill: parent
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
                 anchors.margins: 12
                 AppTextField {
                     Layout.fillWidth: true
@@ -90,7 +94,9 @@ Item {
             Layout.fillWidth: true
             title: ApplicationWindow.window.t("settings.defaultSampleRate")
             ColumnLayout {
-                anchors.fill: parent
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
                 anchors.margins: 12
                 RowLayout {
                     Layout.fillWidth: true
@@ -109,7 +115,9 @@ Item {
             Layout.fillWidth: true
             title: ApplicationWindow.window.t("settings.displayDensity")
             ColumnLayout {
-                anchors.fill: parent
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
                 anchors.margins: 12
                 RowLayout {
                     Layout.fillWidth: true
@@ -124,7 +132,9 @@ Item {
             Layout.fillWidth: true
             title: ApplicationWindow.window.t("settings.advancedDiag")
             ColumnLayout {
-                anchors.fill: parent
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
                 anchors.margins: 12
                 Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.backendInfo"); color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
                 Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.collectorsInfo"); color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
@@ -136,7 +146,9 @@ Item {
             Layout.fillWidth: true
             title: ApplicationWindow.window.t("settings.about")
             ColumnLayout {
-                anchors.fill: parent
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
                 anchors.margins: 12
                 Text { Layout.fillWidth: true; text: settingsBackend.aboutText; color: ApplicationWindow.window.text; font.bold: true; font.pixelSize: 12 * ApplicationWindow.window.scaleFactor }
                 Text { text: ApplicationWindow.window.t("settings.version") + ": " + appBackend.version; color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
