@@ -37,7 +37,7 @@ Item {
         Card {
             Layout.fillWidth: true
             Layout.columnSpan: 2
-            Layout.preferredHeight: 120
+            Layout.preferredHeight: 160
             title: ApplicationWindow.window.t("settings.languageTheme")
             ColumnLayout {
                 anchors.fill: parent
@@ -74,7 +74,7 @@ Item {
         Card {
             Layout.fillWidth: true
             Layout.columnSpan: 2
-            Layout.preferredHeight: 90
+            Layout.preferredHeight: 130
             title: ApplicationWindow.window.t("settings.recordDir")
             ColumnLayout {
                 anchors.fill: parent
@@ -90,7 +90,7 @@ Item {
 
         Card {
             Layout.fillWidth: true
-            Layout.preferredHeight: 90
+            Layout.preferredHeight: 120
             title: ApplicationWindow.window.t("settings.defaultSampleRate")
             ColumnLayout {
                 anchors.fill: parent
@@ -110,7 +110,7 @@ Item {
 
         Card {
             Layout.fillWidth: true
-            Layout.preferredHeight: 80
+            Layout.preferredHeight: 110
             title: ApplicationWindow.window.t("settings.displayDensity")
             ColumnLayout {
                 anchors.fill: parent
@@ -126,7 +126,7 @@ Item {
 
         Card {
             Layout.fillWidth: true
-            Layout.preferredHeight: 90
+            Layout.preferredHeight: 120
             title: ApplicationWindow.window.t("settings.advancedDiag")
             ColumnLayout {
                 anchors.fill: parent
@@ -139,7 +139,7 @@ Item {
 
         Card {
             Layout.fillWidth: true
-            Layout.preferredHeight: 80
+            Layout.preferredHeight: 110
             title: ApplicationWindow.window.t("settings.about")
             ColumnLayout {
                 anchors.fill: parent
