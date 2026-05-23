@@ -191,21 +191,19 @@ Item {
             ToolbarButton { iconName: "unlink"; text: ApplicationWindow.window.t("devices.disconnectAll"); variant: "danger"; enabled: !deviceBackend.busy || deviceBackend.connected || waveformBackend.connected; onClicked: page.disconnectAllDevices() }
         }
 
-        Flow {
+        GridView {
             id: grid
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 12
             clip: true
             boundsBehavior: Flickable.StopAtBounds
+            cellWidth: Math.max(200, (width - 12) / Math.max(1, Math.floor((width + 12) / 220)))
+            cellHeight: 258
+            model: deviceBackend.devices
 
-            Repeater {
-                model: deviceBackend.devices
-
-                Card {
-                    readonly property real calcWidth: Math.min(240, (grid.width - grid.spacing * Math.max(0, Math.floor((grid.width + grid.spacing) / 220) - 1)) / Math.max(1, Math.floor((grid.width + grid.spacing) / 220)))
-                    width: calcWidth
-                    height: implicitHeight
+            delegate: Card {
+                width: grid.cellWidth - 12
+                height: grid.cellHeight - 14
                 title: ApplicationWindow.window.t(nameKey)
                 headerRight: StatusPill {
                     status: connected ? "online" : "offline"
@@ -335,7 +333,6 @@ Item {
                             onClicked: ApplicationWindow.window.currentPage = "detailedData"
                     }
                 }
-            }
             }
         }
     }
