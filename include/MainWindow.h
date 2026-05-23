@@ -39,6 +39,7 @@
 class RtkConfigDialog;
 class QFile;
 class QEvent;
+class QResizeEvent;
 class QToolButton;
 class TcpWavePanel;
 class SessionViewerWindow;
@@ -254,6 +255,7 @@ protected:
 #ifdef Q_OS_WIN
     bool nativeEvent(const QByteArray& eventType, void *message, qintptr *result) override;
 #endif
+    void resizeEvent(QResizeEvent *event) override;
     void changeEvent(QEvent *event) override;
 
 private slots:
@@ -417,6 +419,7 @@ private:
 
     QWidget *central_widget_;
     QVBoxLayout *main_layout_;
+    QWidget *window_border_overlay_;
     QWidget *custom_title_bar_;
     QLabel *custom_title_label_;
     QToolButton *title_menu_btn_;

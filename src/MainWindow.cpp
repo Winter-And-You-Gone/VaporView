@@ -118,6 +118,65 @@ private:
     std::function<void()> click_callback_;
 };
 
+class WindowBorderOverlay : public QWidget
+{
+public:
+    explicit WindowBorderOverlay(QWidget *parent)
+        : QWidget(parent)
+    {
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        setAttribute(Qt::WA_NoSystemBackground);
+        setAttribute(Qt::WA_TranslucentBackground);
+        setFocusPolicy(Qt::NoFocus);
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        Q_UNUSED(event);
+
+        const QWidget *owner = window();
+        if (owner && owner->isFullScreen())
+        {
+            return;
+        }
+
+        const int w = width();
+        const int h = height();
+        if (w <= 0 || h <= 0)
+        {
+            return;
+        }
+
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, false);
+        painter.setCompositionMode(QPainter::CompositionMode_Source);
+        painter.fillRect(rect(), Qt::transparent);
+
+        const QColor outerColor(125, 125, 125);
+        const QColor middleColor(50, 50, 50);
+        const qreal third = 1.0 / 3.0;
+        const qreal widthF = static_cast<qreal>(w);
+        const qreal heightF = static_cast<qreal>(h);
+
+        painter.fillRect(QRectF(0.0, 0.0, widthF, third), outerColor);
+        painter.fillRect(QRectF(0.0, third, widthF, third), middleColor);
+        painter.fillRect(QRectF(0.0, third * 2.0, widthF, third), outerColor);
+
+        painter.fillRect(QRectF(0.0, heightF - 1.0, widthF, third), outerColor);
+        painter.fillRect(QRectF(0.0, heightF - 1.0 + third, widthF, third), middleColor);
+        painter.fillRect(QRectF(0.0, heightF - third, widthF, third), outerColor);
+
+        painter.fillRect(QRectF(0.0, 0.0, third, heightF), outerColor);
+        painter.fillRect(QRectF(third, 0.0, third, heightF), middleColor);
+        painter.fillRect(QRectF(third * 2.0, 0.0, third, heightF), outerColor);
+
+        painter.fillRect(QRectF(widthF - 1.0, 0.0, third, heightF), outerColor);
+        painter.fillRect(QRectF(widthF - 1.0 + third, 0.0, third, heightF), middleColor);
+        painter.fillRect(QRectF(widthF - third, 0.0, third, heightF), outerColor);
+    }
+};
+
 constexpr const char *kBaseMinWidthProperty = "_vv_base_min_width";
 constexpr const char *kBaseMinHeightProperty = "_vv_base_min_height";
 constexpr const char *kBaseMaxWidthProperty = "_vv_base_max_width";
@@ -2651,6 +2710,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , central_widget_(nullptr)
     , main_layout_(nullptr)
+    , window_border_overlay_(nullptr)
     , custom_title_bar_(nullptr)
     , custom_title_label_(nullptr)
     , title_menu_btn_(nullptr)
@@ -2914,6 +2974,10 @@ MainWindow::MainWindow(QWidget *parent)
     setupToolBar();
     setupStatusBar();
     setupCentralWidget();
+    window_border_overlay_ = new WindowBorderOverlay(this);
+    window_border_overlay_->setGeometry(rect());
+    window_border_overlay_->show();
+    window_border_overlay_->raise();
     ground_telemetry_service_ = new VaporView::GroundTelemetryService(this);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::linkOpenChanged,
             this, &MainWindow::onRemoteLinkOpenChanged);
@@ -3100,6 +3164,21 @@ void MainWindow::changeEvent(QEvent *event)
     if (event->type() == QEvent::WindowStateChange)
     {
         updateWindowControlButtons();
+        if (window_border_overlay_)
+        {
+            window_border_overlay_->setVisible(!isFullScreen());
+            window_border_overlay_->raise();
+        }
+    }
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event)
+{
+    QMainWindow::resizeEvent(event);
+    if (window_border_overlay_)
+    {
+        window_border_overlay_->setGeometry(rect());
+        window_border_overlay_->raise();
     }
 }
 
@@ -4814,6 +4893,7 @@ void MainWindow::createTitleApplicationMenuPanel()
     panel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     panel->hide();
     title_application_panel_ = panel;
+    panel->raise();
 
     auto closePanel = [this]() {
         if (title_application_panel_)
