@@ -54,6 +54,7 @@
 #include <QSet>
 #include <QSignalBlocker>
 #include <QSettings>
+#include <QStackedWidget>
 #include <QStyle>
 #include <QThread>
 #include <QToolButton>
@@ -75,10 +76,48 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <utility>
 #include <vector>
 
 namespace
 {
+class MenuItemEventFilter : public QObject
+{
+public:
+    MenuItemEventFilter(std::function<void()> hoverCallback,
+                        std::function<void()> clickCallback,
+                        QObject *parent)
+        : QObject(parent)
+        , hover_callback_(std::move(hoverCallback))
+        , click_callback_(std::move(clickCallback))
+    {
+    }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        Q_UNUSED(watched);
+        if (event->type() == QEvent::Enter && hover_callback_)
+        {
+            hover_callback_();
+        }
+        else if (event->type() == QEvent::MouseButtonRelease && click_callback_)
+        {
+            auto *mouseEvent = static_cast<QMouseEvent *>(event);
+            if (mouseEvent->button() == Qt::LeftButton)
+            {
+                click_callback_();
+                return true;
+            }
+        }
+        return false;
+    }
+
+private:
+    std::function<void()> hover_callback_;
+    std::function<void()> click_callback_;
+};
+
 constexpr const char *kBaseMinWidthProperty = "_vv_base_min_width";
 constexpr const char *kBaseMinHeightProperty = "_vv_base_min_height";
 constexpr const char *kBaseMaxWidthProperty = "_vv_base_max_width";
@@ -428,39 +467,65 @@ QString titleApplicationPanelStyleSheet(bool dark)
     {
         return QStringLiteral(R"(
 QFrame#titleApplicationPanel {
-    background-color: #242424;
-    border: 1px solid #3a3a3a;
-    border-radius: 8px;
-}
-QLabel#titleApplicationPanelSection {
-    color: #c4c4c4;
-    font-weight: 700;
-    padding: 6px 8px 4px 8px;
-}
-QPushButton#titleApplicationPanelButton {
-    color: #f1f5f9;
     background-color: transparent;
     border: none;
-    border-radius: 6px;
-    padding: 7px 10px;
-    text-align: left;
 }
-QPushButton#titleApplicationPanelButton:hover {
-    background-color: #3a3a3a;
+QFrame#titleApplicationMainMenu,
+QFrame#titleApplicationSubMenu {
+    background-color: #1f1f1f;
+    border: 1px solid #303030;
+    border-radius: 14px;
 }
-QPushButton#titleApplicationPanelButton:checked {
-    background-color: #5a5a5a;
+QFrame#titleApplicationMainMenu {
+    border-top-left-radius: 0px;
 }
-QPushButton#titleApplicationPanelButton:disabled {
-    color: #8d96a3;
+QFrame#titleApplicationMenuItem {
+    background-color: transparent;
+    border: none;
+    border-radius: 0px;
 }
-QScrollArea#titleApplicationPanelScroll,
-QWidget#titleApplicationPanelContent {
+QFrame#titleApplicationMenuItem[selected="true"],
+QFrame#titleApplicationMenuItem:hover {
+    background-color: #3a3a38;
+}
+QLabel#titleApplicationMenuText {
+    color: #f3f6fb;
+    background-color: transparent;
+    border: none;
+    font-size: 18px;
+    padding: 0px;
+}
+QLabel#titleApplicationMenuShortcut,
+QLabel#titleApplicationMenuArrow,
+QLabel#titleApplicationMenuCheck {
+    color: #d7dce2;
+    background-color: transparent;
+    border: none;
+    font-size: 18px;
+    padding: 0px;
+}
+QLabel#titleApplicationMenuCheck {
+    color: #9aa0a6;
+}
+QLabel#titleApplicationMenuText:disabled,
+QLabel#titleApplicationMenuShortcut:disabled,
+QLabel#titleApplicationMenuArrow:disabled,
+QLabel#titleApplicationMenuCheck:disabled {
+    color: #777777;
+}
+QWidget#titleApplicationSubPage {
+    background-color: transparent;
+    border: none;
+}
+QWidget#titleApplicationSubPageContent,
+QScrollArea#titleApplicationSubScroll,
+QScrollArea#titleApplicationSubScroll > QWidget,
+QScrollArea#titleApplicationSubScroll > QWidget > QWidget {
     background-color: transparent;
     border: none;
 }
 QFrame#titleApplicationPanelSeparator {
-    background-color: #3a3a3a;
+    background-color: #4a4a4a;
     border: none;
 }
 )");
@@ -468,34 +533,60 @@ QFrame#titleApplicationPanelSeparator {
 
     return QStringLiteral(R"(
 QFrame#titleApplicationPanel {
+    background-color: transparent;
+    border: none;
+}
+QFrame#titleApplicationMainMenu,
+QFrame#titleApplicationSubMenu {
     background-color: #ffffff;
     border: 1px solid #dfe4ea;
-    border-radius: 8px;
+    border-radius: 14px;
 }
-QLabel#titleApplicationPanelSection {
-    color: #000000;
-    font-weight: 700;
-    padding: 6px 8px 4px 8px;
+QFrame#titleApplicationMainMenu {
+    border-top-left-radius: 0px;
 }
-QPushButton#titleApplicationPanelButton {
+QFrame#titleApplicationMenuItem {
+    background-color: transparent;
+    border: none;
+    border-radius: 0px;
+}
+QFrame#titleApplicationMenuItem[selected="true"],
+QFrame#titleApplicationMenuItem:hover {
+    background-color: #eef4fb;
+}
+QLabel#titleApplicationMenuText {
     color: #000000;
     background-color: transparent;
     border: none;
-    border-radius: 6px;
-    padding: 7px 10px;
-    text-align: left;
+    font-size: 18px;
+    padding: 0px;
 }
-QPushButton#titleApplicationPanelButton:hover {
-    background-color: #eef4fb;
+QLabel#titleApplicationMenuShortcut,
+QLabel#titleApplicationMenuArrow,
+QLabel#titleApplicationMenuCheck {
+    color: #4b5563;
+    background-color: transparent;
+    border: none;
+    font-size: 18px;
+    padding: 0px;
 }
-QPushButton#titleApplicationPanelButton:checked {
-    background-color: #e5e7eb;
+QLabel#titleApplicationMenuCheck {
+    color: #6b7280;
 }
-QPushButton#titleApplicationPanelButton:disabled {
-    color: #8d96a3;
+QLabel#titleApplicationMenuText:disabled,
+QLabel#titleApplicationMenuShortcut:disabled,
+QLabel#titleApplicationMenuArrow:disabled,
+QLabel#titleApplicationMenuCheck:disabled {
+    color: #9ca3af;
 }
-QScrollArea#titleApplicationPanelScroll,
-QWidget#titleApplicationPanelContent {
+QWidget#titleApplicationSubPage {
+    background-color: transparent;
+    border: none;
+}
+QWidget#titleApplicationSubPageContent,
+QScrollArea#titleApplicationSubScroll,
+QScrollArea#titleApplicationSubScroll > QWidget,
+QScrollArea#titleApplicationSubScroll > QWidget > QWidget {
     background-color: transparent;
     border: none;
 }
@@ -4688,8 +4779,8 @@ void MainWindow::createTitleApplicationMenuPanel()
     panel->setObjectName(QStringLiteral("titleApplicationPanel"));
     panel->setAttribute(Qt::WA_StyledBackground, true);
     panel->setFocusPolicy(Qt::NoFocus);
-    panel->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_));
-    panel->setFixedSize(scalePixels(330), scalePixels(420));
+    panel->setStyleSheet(titleApplicationPanelStyleSheet(true));
+    panel->setFixedSize(scalePixels(536), scalePixels(306));
     panel->hide();
     title_application_panel_ = panel;
 
@@ -4700,165 +4791,350 @@ void MainWindow::createTitleApplicationMenuPanel()
         }
     };
 
-    auto *rootLayout = new QVBoxLayout(panel);
-    rootLayout->setContentsMargins(6, 6, 6, 6);
-    rootLayout->setSpacing(0);
-
-    auto *scrollArea = new QScrollArea(panel);
-    scrollArea->setObjectName(QStringLiteral("titleApplicationPanelScroll"));
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scrollArea->setFrameShape(QFrame::NoFrame);
-    rootLayout->addWidget(scrollArea);
-
-    auto *content = new QWidget(scrollArea);
-    content->setObjectName(QStringLiteral("titleApplicationPanelContent"));
-    auto *layout = new QVBoxLayout(content);
-    layout->setContentsMargins(0, 0, 0, 0);
-    layout->setSpacing(2);
-    scrollArea->setWidget(content);
-    auto addSection = [&](const QString& title) {
-        auto *section = new QLabel(title, content);
-        section->setObjectName(QStringLiteral("titleApplicationPanelSection"));
-        layout->addWidget(section);
-    };
-
-    auto addSeparator = [&]() {
-        auto *separator = new QFrame(content);
-        separator->setObjectName(QStringLiteral("titleApplicationPanelSeparator"));
-        separator->setFixedHeight(1);
-        layout->addWidget(separator);
-    };
-
-    auto addButton = [&](const QString& text,
-                         const std::function<void()>& handler,
-                         bool enabled = true,
-                         bool checkable = false,
-                         bool checked = false) {
-        if (text.isEmpty())
-        {
-            return;
-        }
-        auto *button = new QPushButton(text, content);
-        button->setObjectName(QStringLiteral("titleApplicationPanelButton"));
-        button->setFlat(true);
-        button->setEnabled(enabled);
-        button->setCheckable(checkable);
-        button->setChecked(checked);
-        button->setFocusPolicy(Qt::NoFocus);
-        button->setFixedHeight(scalePixels(34));
-        button->setMinimumWidth(scalePixels(292));
-        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        connect(button, &QPushButton::clicked, this, [closePanel, handler]() {
-            closePanel();
-            if (handler)
-            {
-                handler();
-            }
-        });
-        layout->addWidget(button);
-    };
-
     const bool uiBusy = connection_attempt_in_progress_ || port_detection_in_progress_ || epsilon_reconfigure_in_progress_;
 
-    addSection(is_english_ ? QStringLiteral("Data") : QStringLiteral("数据"));
-    addButton(is_english_ ? QStringLiteral("Recording Folder...") : QStringLiteral("记录目录..."),
-              [this]() { onChooseRecordingDirectoryClicked(); });
-    addButton(is_english_ ? QStringLiteral("TCP Wave Raw: Complete frames") : QStringLiteral("TCP波形原始帧：完整TCP帧"),
-              [this]() { setWaveformRecordingRateHz(0); },
-              true,
-              true,
-              waveform_recording_rate_hz_ == 0);
-    addButton(is_english_ ? QStringLiteral("EPSILON Raw: Verified frames") : QStringLiteral("EPSILON原始帧：已校验帧"),
-              [this]() { setImuRecordingRateHz(0); },
-              true,
-              true,
-              imu_recording_rate_hz_ == 0);
-    addSeparator();
+    struct TitleMenuCommand
+    {
+        QString text;
+        QString shortcut;
+        bool enabled = true;
+        bool checked = false;
+        bool separatorBefore = false;
+        std::function<void()> handler;
+    };
+    struct TitleMenuSection
+    {
+        QString title;
+        QVector<TitleMenuCommand> commands;
+    };
 
-    addSection(is_english_ ? QStringLiteral("Other Devices Record Rate") : QStringLiteral("其余设备记录频率"));
+    QVector<TitleMenuSection> sections;
+    TitleMenuSection fileSection{
+        is_english_ ? QStringLiteral("File") : QStringLiteral("文件"),
+        {
+            {is_english_ ? QStringLiteral("Recording Folder...") : QStringLiteral("记录目录..."),
+             QStringLiteral("Ctrl+R"),
+             true,
+             false,
+             false,
+             [this]() { onChooseRecordingDirectoryClicked(); }},
+            {is_english_ ? QStringLiteral("Data Viewer...") : QStringLiteral("数据查看器..."),
+             QString(),
+             true,
+             false,
+             false,
+             [this]() { onOpenSessionViewerClicked(); }},
+            {is_english_ ? QStringLiteral("Exit") : QStringLiteral("退出"),
+             QStringLiteral("Ctrl+Q"),
+             true,
+             false,
+             true,
+             [this]() { close(); }}
+        }
+    };
+
+    TitleMenuSection editSection{
+        is_english_ ? QStringLiteral("Edit") : QStringLiteral("编辑"),
+        {
+            {is_english_ ? QStringLiteral("Clear Log") : QStringLiteral("清空日志"),
+             QString(),
+             true,
+             false,
+             false,
+             [this]() { onClearLogClicked(); }},
+            {is_english_ ? QStringLiteral("Switch to Chinese") : QStringLiteral("切换到英文"),
+             QString(),
+             true,
+             false,
+             true,
+             [this]() { onSwitchLanguage(); }},
+            {dark_theme_enabled_
+                 ? (is_english_ ? QStringLiteral("Light Theme") : QStringLiteral("亮色模式"))
+                 : (is_english_ ? QStringLiteral("Dark Theme") : QStringLiteral("暗色模式")),
+             QString(),
+             true,
+             false,
+             false,
+             [this]() { onToggleTheme(); }}
+        }
+    };
+
+    TitleMenuSection viewSection{
+        is_english_ ? QStringLiteral("View") : QStringLiteral("视图"),
+        {
+            {is_english_ ? QStringLiteral("Fullscreen") : QStringLiteral("全屏"),
+             QStringLiteral("F11"),
+             true,
+             isFullScreen(),
+             false,
+             [this]() { onToggleFullScreen(); }},
+            {is_english_ ? QStringLiteral("Tiny (70%)") : QStringLiteral("超小 (70%)"),
+             QString(),
+             true,
+             font_scale_percent_ == 70,
+             true,
+             [this]() { setFontScale(70); }},
+            {is_english_ ? QStringLiteral("Extra Small (80%)") : QStringLiteral("特小 (80%)"),
+             QString(),
+             true,
+             font_scale_percent_ == 80,
+             false,
+             [this]() { setFontScale(80); }},
+            {is_english_ ? QStringLiteral("Small (90%)") : QStringLiteral("小号 (90%)"),
+             QString(),
+             true,
+             font_scale_percent_ == 90,
+             false,
+             [this]() { setFontScale(90); }},
+            {is_english_ ? QStringLiteral("Normal (100%)") : QStringLiteral("标准 (100%)"),
+             QString(),
+             true,
+             font_scale_percent_ == 100,
+             false,
+             [this]() { setFontScale(100); }},
+            {is_english_ ? QStringLiteral("Large (115%)") : QStringLiteral("大号 (115%)"),
+             QString(),
+             true,
+             font_scale_percent_ == 115,
+             false,
+             [this]() { setFontScale(115); }},
+            {is_english_ ? QStringLiteral("Extra Large (130%)") : QStringLiteral("超大 (130%)"),
+             QString(),
+             true,
+             font_scale_percent_ == 130,
+             false,
+             [this]() { setFontScale(130); }}
+        }
+    };
+
+    TitleMenuSection developerSection{is_english_ ? QStringLiteral("Developer") : QStringLiteral("开发者"), {}};
+    developerSection.commands.push_back(
+        {is_english_ ? QStringLiteral("TCP Wave Raw") : QStringLiteral("TCP波形原始帧"),
+         QString(),
+         true,
+         waveform_recording_rate_hz_ == 0,
+         false,
+         [this]() { setWaveformRecordingRateHz(0); }});
+    developerSection.commands.push_back(
+        {is_english_ ? QStringLiteral("EPSILON Raw") : QStringLiteral("EPSILON原始帧"),
+         QString(),
+         true,
+         imu_recording_rate_hz_ == 0,
+         false,
+         [this]() { setImuRecordingRateHz(0); }});
     for (int rate : QVector<int>{1, 2, 5, 10, 20, 50, 100, 200})
     {
-        addButton(QStringLiteral("%1 Hz").arg(rate),
-                  [this, rate]() { setRecordingExportRateHz(rate); },
-                  true,
-                  true,
-                  rate == std::clamp(recording_export_rate_hz_, 1, 200));
+        developerSection.commands.push_back({
+            QStringLiteral("%1 Hz").arg(rate),
+            QString(),
+            true,
+            rate == std::clamp(recording_export_rate_hz_, 1, 200),
+            rate == 1,
+            [this, rate]() { setRecordingExportRateHz(rate); }
+        });
     }
-    addSeparator();
+    developerSection.commands.push_back(
+        {is_english_ ? QStringLiteral("EPSILON Packet Rates...") : QStringLiteral("设置EPSILON包频率..."),
+         QString(),
+         !uiBusy,
+         false,
+         true,
+         [this]() { onConfigureEpsilonPacketRatesClicked(); }});
+    developerSection.commands.push_back(
+        {is_english_ ? QStringLiteral("Configure EPSILON RTCM Port...") : QStringLiteral("配置EPSILON RTCM串口..."),
+         QString(),
+         !uiBusy,
+         false,
+         false,
+         [this]() { onConfigureEpsilonRtcmPortClicked(); }});
+    developerSection.commands.push_back(
+        {is_english_ ? QStringLiteral("Reconfigure EPSILON Output...") : QStringLiteral("重新配置EPSILON输出..."),
+         QString(),
+         !uiBusy,
+         false,
+         false,
+         [this]() { onReconfigureEpsilonClicked(); }});
+    developerSection.commands.push_back(
+        {is_english_ ? QStringLiteral("RTK Config") : QStringLiteral("RTK配置"),
+         QString(),
+         true,
+         false,
+         true,
+         [this]() { onRtkConfigClicked(); }});
 
-    addSection(is_english_ ? QStringLiteral("Devices") : QStringLiteral("设备"));
-    addButton(is_english_ ? QStringLiteral("EPSILON Packet Rates...") : QStringLiteral("设置EPSILON包频率..."),
-              [this]() { onConfigureEpsilonPacketRatesClicked(); },
-              !uiBusy);
-    addButton(is_english_ ? QStringLiteral("Configure EPSILON RTCM Port...") : QStringLiteral("配置EPSILON RTCM串口..."),
-              [this]() { onConfigureEpsilonRtcmPortClicked(); },
-              !uiBusy);
-    addButton(is_english_ ? QStringLiteral("Reconfigure EPSILON Output...") : QStringLiteral("重新配置EPSILON输出..."),
-              [this]() { onReconfigureEpsilonClicked(); },
-              !uiBusy);
-    addButton(is_english_ ? QStringLiteral("RTK Config") : QStringLiteral("RTK配置"),
-              [this]() { onRtkConfigClicked(); },
-              true);
-    addSeparator();
+    TitleMenuSection helpSection{
+        is_english_ ? QStringLiteral("Help") : QStringLiteral("帮助"),
+        {
+            {is_english_ ? QStringLiteral("About") : QStringLiteral("关于"),
+             QString(),
+             true,
+             false,
+             false,
+             [this]() { showAboutDialog(); }}
+        }
+    };
 
-    addSection(is_english_ ? QStringLiteral("View") : QStringLiteral("视图"));
-    addButton(is_english_ ? QStringLiteral("Fullscreen") : QStringLiteral("全屏"),
-              [this]() { onToggleFullScreen(); },
-              true,
-              true,
-              isFullScreen());
-    addSeparator();
+    sections.push_back(fileSection);
+    sections.push_back(editSection);
+    sections.push_back(viewSection);
+    sections.push_back(developerSection);
+    sections.push_back(helpSection);
 
-    addSection(is_english_ ? QStringLiteral("Font Size") : QStringLiteral("字号"));
-    addButton(is_english_ ? QStringLiteral("Tiny (70%)") : QStringLiteral("超小 (70%)"),
-              [this]() { setFontScale(70); },
-              true,
-              true,
-              font_scale_percent_ == 70);
-    addButton(is_english_ ? QStringLiteral("Extra Small (80%)") : QStringLiteral("特小 (80%)"),
-              [this]() { setFontScale(80); },
-              true,
-              true,
-              font_scale_percent_ == 80);
-    addButton(is_english_ ? QStringLiteral("Small (90%)") : QStringLiteral("小号 (90%)"),
-              [this]() { setFontScale(90); },
-              true,
-              true,
-              font_scale_percent_ == 90);
-    addButton(is_english_ ? QStringLiteral("Normal (100%)") : QStringLiteral("标准 (100%)"),
-              [this]() { setFontScale(100); },
-              true,
-              true,
-              font_scale_percent_ == 100);
-    addButton(is_english_ ? QStringLiteral("Large (115%)") : QStringLiteral("大号 (115%)"),
-              [this]() { setFontScale(115); },
-              true,
-              true,
-              font_scale_percent_ == 115);
-    addButton(is_english_ ? QStringLiteral("Extra Large (130%)") : QStringLiteral("超大 (130%)"),
-              [this]() { setFontScale(130); },
-              true,
-              true,
-              font_scale_percent_ == 130);
-    addSeparator();
+    auto *rootLayout = new QHBoxLayout(panel);
+    rootLayout->setContentsMargins(0, 0, 0, 0);
+    rootLayout->setSpacing(0);
 
-    addSection(is_english_ ? QStringLiteral("Language") : QStringLiteral("语言"));
-    addButton(is_english_ ? QStringLiteral("Switch to Chinese") : QStringLiteral("切换到英文"),
-              [this]() { onSwitchLanguage(); });
-    addButton(dark_theme_enabled_
-                  ? (is_english_ ? QStringLiteral("Light Theme") : QStringLiteral("亮色模式"))
-                  : (is_english_ ? QStringLiteral("Dark Theme") : QStringLiteral("暗色模式")),
-              [this]() { onToggleTheme(); });
-    addSeparator();
+    auto *mainMenu = new QFrame(panel);
+    mainMenu->setObjectName(QStringLiteral("titleApplicationMainMenu"));
+    mainMenu->setAttribute(Qt::WA_StyledBackground, true);
+    mainMenu->setFixedWidth(scalePixels(216));
+    rootLayout->addWidget(mainMenu, 0, Qt::AlignTop);
 
-    addSection(is_english_ ? QStringLiteral("Help") : QStringLiteral("帮助"));
-    addButton(is_english_ ? QStringLiteral("About") : QStringLiteral("关于"),
-              [this]() { showAboutDialog(); });
-    addSeparator();
-    addButton(is_english_ ? QStringLiteral("Exit") : QStringLiteral("退出"),
-              [this]() { close(); });
-    layout->addStretch(1);
+    auto *mainLayout = new QVBoxLayout(mainMenu);
+    mainLayout->setContentsMargins(0, scalePixels(20), 0, scalePixels(20));
+    mainLayout->setSpacing(0);
+
+    auto *subMenu = new QFrame(panel);
+    subMenu->setObjectName(QStringLiteral("titleApplicationSubMenu"));
+    subMenu->setAttribute(Qt::WA_StyledBackground, true);
+    subMenu->setFixedWidth(scalePixels(320));
+    rootLayout->addWidget(subMenu, 0, Qt::AlignTop);
+
+    auto *subLayout = new QVBoxLayout(subMenu);
+    subLayout->setContentsMargins(0, scalePixels(20), 0, scalePixels(20));
+    subLayout->setSpacing(0);
+    auto *stack = new QStackedWidget(subMenu);
+    subLayout->addWidget(stack);
+
+    auto createRow = [&](QWidget *parent,
+                         const QString& text,
+                         const QString& trailingText,
+                         bool enabled,
+                         bool checked,
+                         const QString& arrow,
+                         const std::function<void()>& clickHandler) {
+        auto *row = new QFrame(parent);
+        row->setObjectName(QStringLiteral("titleApplicationMenuItem"));
+        row->setAttribute(Qt::WA_StyledBackground, true);
+        row->setEnabled(enabled);
+        row->setFixedHeight(scalePixels(56));
+        row->setCursor(enabled ? Qt::PointingHandCursor : Qt::ArrowCursor);
+
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(scalePixels(24), 0, scalePixels(18), 0);
+        rowLayout->setSpacing(scalePixels(12));
+
+        auto *checkLabel = new QLabel(checked ? QStringLiteral("✓") : QString(), row);
+        checkLabel->setObjectName(QStringLiteral("titleApplicationMenuCheck"));
+        checkLabel->setEnabled(enabled);
+        checkLabel->setFixedWidth(scalePixels(18));
+        checkLabel->setAlignment(Qt::AlignCenter);
+        rowLayout->addWidget(checkLabel);
+
+        auto *textLabel = new QLabel(text, row);
+        textLabel->setObjectName(QStringLiteral("titleApplicationMenuText"));
+        textLabel->setEnabled(enabled);
+        textLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        rowLayout->addWidget(textLabel, 1);
+
+        if (!trailingText.isEmpty())
+        {
+            auto *shortcutLabel = new QLabel(trailingText, row);
+            shortcutLabel->setObjectName(QStringLiteral("titleApplicationMenuShortcut"));
+            shortcutLabel->setEnabled(enabled);
+            shortcutLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            rowLayout->addWidget(shortcutLabel);
+        }
+
+        if (!arrow.isEmpty())
+        {
+            auto *arrowLabel = new QLabel(arrow, row);
+            arrowLabel->setObjectName(QStringLiteral("titleApplicationMenuArrow"));
+            arrowLabel->setEnabled(enabled);
+            arrowLabel->setFixedWidth(scalePixels(22));
+            arrowLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            rowLayout->addWidget(arrowLabel);
+        }
+
+        if (clickHandler)
+        {
+            row->installEventFilter(new MenuItemEventFilter({}, [closePanel, clickHandler]() {
+                closePanel();
+                clickHandler();
+            }, row));
+        }
+        return row;
+    };
+
+    auto sectionRows = std::make_shared<QVector<QFrame *>>();
+
+    for (int sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex)
+    {
+        QWidget *page = new QWidget(stack);
+        page->setObjectName(QStringLiteral("titleApplicationSubPage"));
+        auto *pageLayout = new QVBoxLayout(page);
+        pageLayout->setContentsMargins(0, 0, 0, 0);
+        pageLayout->setSpacing(0);
+        auto *pageScroll = new QScrollArea(page);
+        pageScroll->setObjectName(QStringLiteral("titleApplicationSubScroll"));
+        pageScroll->setWidgetResizable(true);
+        pageScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        pageScroll->setFrameShape(QFrame::NoFrame);
+        pageLayout->addWidget(pageScroll);
+
+        auto *pageContent = new QWidget(pageScroll);
+        pageContent->setObjectName(QStringLiteral("titleApplicationSubPageContent"));
+        auto *contentLayout = new QVBoxLayout(pageContent);
+        contentLayout->setContentsMargins(0, 0, 0, 0);
+        contentLayout->setSpacing(0);
+        pageScroll->setWidget(pageContent);
+
+        for (const TitleMenuCommand& command : sections[sectionIndex].commands)
+        {
+            if (command.separatorBefore)
+            {
+                auto *separator = new QFrame(pageContent);
+                separator->setObjectName(QStringLiteral("titleApplicationPanelSeparator"));
+                separator->setFixedHeight(1);
+                contentLayout->addWidget(separator);
+            }
+            contentLayout->addWidget(createRow(pageContent,
+                                               command.text,
+                                               command.shortcut,
+                                               command.enabled,
+                                               command.checked,
+                                               QString(),
+                                               command.enabled ? command.handler : std::function<void()>{}));
+        }
+        contentLayout->addStretch(1);
+        stack->addWidget(page);
+
+        auto *sectionRow = createRow(mainMenu,
+                                     sections[sectionIndex].title,
+                                     QString(),
+                                     true,
+                                     false,
+                                     QStringLiteral("›"),
+                                     {});
+        sectionRow->setProperty("selected", sectionIndex == 0);
+        sectionRows->push_back(sectionRow);
+        mainLayout->addWidget(sectionRow);
+        sectionRow->installEventFilter(new MenuItemEventFilter([stack, sectionRows, sectionRow, sectionIndex]() {
+            stack->setCurrentIndex(sectionIndex);
+            for (QFrame *row : *sectionRows)
+            {
+                if (row)
+                {
+                    row->setProperty("selected", row == sectionRow);
+                    row->style()->unpolish(row);
+                    row->style()->polish(row);
+                    row->update();
+                }
+            }
+        }, {}, sectionRow));
+    }
+    mainLayout->addStretch(1);
+    stack->setCurrentIndex(0);
 }
 
 void MainWindow::showTitleApplicationMenu()
@@ -4882,7 +5158,7 @@ void MainWindow::showTitleApplicationMenu()
 
     const QPoint anchor = title_menu_btn_->mapTo(this, QPoint(0, title_menu_btn_->height() + scalePixels(4)));
     const int availableHeight = std::max(scalePixels(180), height() - anchor.y() - scalePixels(4));
-    title_application_panel_->setFixedHeight(std::min(scalePixels(420), availableHeight));
+    title_application_panel_->setFixedHeight(std::min(scalePixels(306), availableHeight));
     const int x = std::clamp(anchor.x(),
                              scalePixels(4),
                              std::max(scalePixels(4), width() - title_application_panel_->width() - scalePixels(4)));
@@ -5951,7 +6227,7 @@ void MainWindow::updateCustomTitleBarStyle()
     if (title_application_panel_)
     {
         title_application_panel_->hide();
-        title_application_panel_->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_));
+        title_application_panel_->setStyleSheet(titleApplicationPanelStyleSheet(true));
     }
     if (window_minimize_btn_)
     {
