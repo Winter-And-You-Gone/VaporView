@@ -4801,8 +4801,14 @@ void MainWindow::createTitleApplicationMenuPanel()
     const int menuVerticalPadding = scalePixels(16);
     const int rowHeight = scalePixels(40);
     const int separatorHeight = scalePixels(1);
-    const int mainMenuWidth = scalePixels(180);
-    const int subMenuWidth = scalePixels(288);
+    const int rowLeftPadding = scalePixels(10);
+    const int rowRightPadding = scalePixels(12);
+    const int rowSpacing = scalePixels(8);
+    const int checkColumnWidth = scalePixels(12);
+    const int arrowColumnWidth = scalePixels(14);
+    const int shortcutGap = scalePixels(28);
+    const int mainMenuMinWidth = scalePixels(112);
+    const int subMenuMinWidth = scalePixels(160);
     auto commandRowsHeight = [&](const QVector<TitleMenuCommand>& commands) {
         int total = menuVerticalPadding * 2;
         for (const TitleMenuCommand& command : commands)
@@ -4988,6 +4994,38 @@ void MainWindow::createTitleApplicationMenuPanel()
     sections.push_back(developerSection);
     sections.push_back(helpSection);
 
+    const QFontMetrics menuMetrics(font());
+    int mainMenuWidth = mainMenuMinWidth;
+    QVector<int> subMenuWidths;
+    subMenuWidths.reserve(sections.size());
+    for (const TitleMenuSection& section : sections)
+    {
+        mainMenuWidth = std::max(mainMenuWidth,
+                                 rowLeftPadding +
+                                     checkColumnWidth +
+                                     rowSpacing +
+                                     menuMetrics.horizontalAdvance(section.title) +
+                                     rowSpacing +
+                                     arrowColumnWidth +
+                                     rowRightPadding);
+
+        int sectionWidth = subMenuMinWidth;
+        for (const TitleMenuCommand& command : section.commands)
+        {
+            int commandWidth = rowLeftPadding +
+                               checkColumnWidth +
+                               rowSpacing +
+                               menuMetrics.horizontalAdvance(command.text) +
+                               rowRightPadding;
+            if (!command.shortcut.isEmpty())
+            {
+                commandWidth += shortcutGap + menuMetrics.horizontalAdvance(command.shortcut);
+            }
+            sectionWidth = std::max(sectionWidth, commandWidth);
+        }
+        subMenuWidths.push_back(sectionWidth);
+    }
+
     auto *rootLayout = new QHBoxLayout(panel);
     rootLayout->setContentsMargins(0, 0, 0, 0);
     rootLayout->setSpacing(0);
@@ -5005,7 +5043,7 @@ void MainWindow::createTitleApplicationMenuPanel()
     auto *subMenu = new QFrame(panel);
     subMenu->setObjectName(QStringLiteral("titleApplicationSubMenu"));
     subMenu->setAttribute(Qt::WA_StyledBackground, true);
-    subMenu->setFixedWidth(subMenuWidth);
+    subMenu->setFixedWidth(subMenuWidths.value(0, subMenuMinWidth));
     rootLayout->addWidget(subMenu, 0, Qt::AlignTop);
 
     auto *subLayout = new QVBoxLayout(subMenu);
@@ -5029,13 +5067,13 @@ void MainWindow::createTitleApplicationMenuPanel()
         row->setCursor(enabled ? Qt::PointingHandCursor : Qt::ArrowCursor);
 
         auto *rowLayout = new QHBoxLayout(row);
-        rowLayout->setContentsMargins(scalePixels(18), 0, scalePixels(16), 0);
-        rowLayout->setSpacing(scalePixels(10));
+        rowLayout->setContentsMargins(rowLeftPadding, 0, rowRightPadding, 0);
+        rowLayout->setSpacing(rowSpacing);
 
         auto *checkLabel = new QLabel(checked ? QStringLiteral("✓") : QString(), row);
         checkLabel->setObjectName(QStringLiteral("titleApplicationMenuCheck"));
         checkLabel->setEnabled(enabled);
-        checkLabel->setFixedWidth(scalePixels(16));
+        checkLabel->setFixedWidth(checkColumnWidth);
         checkLabel->setAlignment(Qt::AlignCenter);
         rowLayout->addWidget(checkLabel);
 
@@ -5059,7 +5097,7 @@ void MainWindow::createTitleApplicationMenuPanel()
             auto *arrowLabel = new QLabel(arrow, row);
             arrowLabel->setObjectName(QStringLiteral("titleApplicationMenuArrow"));
             arrowLabel->setEnabled(enabled);
-            arrowLabel->setFixedWidth(scalePixels(18));
+            arrowLabel->setFixedWidth(arrowColumnWidth);
             arrowLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
             rowLayout->addWidget(arrowLabel);
         }
@@ -5080,7 +5118,8 @@ void MainWindow::createTitleApplicationMenuPanel()
     {
         QWidget *page = new QWidget(stack);
         page->setObjectName(QStringLiteral("titleApplicationSubPage"));
-        page->setFixedSize(subMenuWidth, commandRowsHeight(sections[sectionIndex].commands));
+        page->setFixedSize(subMenuWidths.value(sectionIndex, subMenuMinWidth),
+                           commandRowsHeight(sections[sectionIndex].commands));
         auto *pageLayout = new QVBoxLayout(page);
         pageLayout->setContentsMargins(0, 0, 0, 0);
         pageLayout->setSpacing(0);
@@ -5120,10 +5159,11 @@ void MainWindow::createTitleApplicationMenuPanel()
         sectionRow->setProperty("selected", sectionIndex == 0);
         sectionRows->push_back(sectionRow);
         mainLayout->addWidget(sectionRow);
-        sectionRow->installEventFilter(new MenuItemEventFilter([this, stack, subMenu, mainMenu, panel, mainMenuWidth, subMenuWidth, sectionRows, sectionRow, sectionIndex]() {
+        sectionRow->installEventFilter(new MenuItemEventFilter([this, stack, subMenu, mainMenu, panel, mainMenuWidth, subMenuWidths, sectionRows, sectionRow, sectionIndex]() {
             stack->setCurrentIndex(sectionIndex);
             if (QWidget *currentPage = stack->currentWidget())
             {
+                const int subMenuWidth = subMenuWidths.value(sectionIndex, currentPage->width());
                 subMenu->setFixedSize(subMenuWidth, currentPage->height());
                 panel->setFixedSize(mainMenuWidth + subMenuWidth, std::max(mainMenu->height(), subMenu->height()));
             }
@@ -5141,8 +5181,9 @@ void MainWindow::createTitleApplicationMenuPanel()
     }
     mainLayout->addStretch(1);
     stack->setCurrentIndex(0);
-    subMenu->setFixedSize(subMenuWidth, stack->currentWidget()->height());
-    panel->setFixedSize(mainMenuWidth + subMenuWidth, std::max(mainMenu->height(), subMenu->height()));
+    const int initialSubMenuWidth = subMenuWidths.value(0, subMenuMinWidth);
+    subMenu->setFixedSize(initialSubMenuWidth, stack->currentWidget()->height());
+    panel->setFixedSize(mainMenuWidth + initialSubMenuWidth, std::max(mainMenu->height(), subMenu->height()));
 }
 
 void MainWindow::showTitleApplicationMenu()
