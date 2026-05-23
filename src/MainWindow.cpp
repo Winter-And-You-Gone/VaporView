@@ -97,7 +97,7 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override
     {
         Q_UNUSED(watched);
-        if (event->type() == QEvent::MouseMove && hover_callback_)
+        if ((event->type() == QEvent::Enter || event->type() == QEvent::MouseMove) && hover_callback_)
         {
             hover_callback_();
         }
@@ -5034,15 +5034,11 @@ void MainWindow::createTitleApplicationMenuPanel()
         subMenuWidths.push_back(sectionWidth);
     }
 
-    auto *rootLayout = new QHBoxLayout(panel);
-    rootLayout->setContentsMargins(0, 0, 0, 0);
-    rootLayout->setSpacing(0);
-
     auto *mainMenu = new QFrame(panel);
     mainMenu->setObjectName(QStringLiteral("titleApplicationMainMenu"));
     mainMenu->setAttribute(Qt::WA_StyledBackground, true);
     mainMenu->setFixedSize(mainMenuWidth, menuVerticalPadding * 2 + rowHeight * sections.size());
-    rootLayout->addWidget(mainMenu, 0, Qt::AlignTop);
+    mainMenu->move(0, 0);
 
     auto *mainLayout = new QVBoxLayout(mainMenu);
     mainLayout->setContentsMargins(0, menuVerticalPadding, 0, menuVerticalPadding);
@@ -5052,8 +5048,8 @@ void MainWindow::createTitleApplicationMenuPanel()
     subMenu->setObjectName(QStringLiteral("titleApplicationSubMenu"));
     subMenu->setAttribute(Qt::WA_StyledBackground, true);
     subMenu->setFixedWidth(subMenuWidths.value(0, subMenuMinWidth));
+    subMenu->move(mainMenuWidth, 0);
     subMenu->hide();
-    rootLayout->addWidget(subMenu, 0, Qt::AlignTop);
 
     auto *subLayout = new QVBoxLayout(subMenu);
     subLayout->setContentsMargins(0, 0, 0, 0);
@@ -5188,14 +5184,17 @@ void MainWindow::createTitleApplicationMenuPanel()
         sectionRow->setProperty("selected", false);
         sectionRows->push_back(sectionRow);
         mainLayout->addWidget(sectionRow);
-        sectionRow->installEventFilter(new MenuItemEventFilter([this, stack, subMenu, mainMenu, panel, mainMenuWidth, subMenuWidths, sectionRows, sectionRow, sectionIndex]() {
+        sectionRow->installEventFilter(new MenuItemEventFilter([this, stack, subMenu, mainMenu, panel, mainMenuWidth, menuVerticalPadding, subMenuWidths, sectionRows, sectionRow, sectionIndex]() {
             stack->setCurrentIndex(sectionIndex);
             if (QWidget *currentPage = stack->currentWidget())
             {
                 const int subMenuWidth = subMenuWidths.value(sectionIndex, currentPage->width());
+                const int subMenuTop = std::max(0, sectionRow->y() - menuVerticalPadding);
                 subMenu->setFixedSize(subMenuWidth, currentPage->height());
+                panel->setFixedSize(mainMenuWidth + subMenuWidth, std::max(mainMenu->height(), subMenuTop + subMenu->height()));
+                subMenu->move(mainMenuWidth, subMenuTop);
+                subMenu->raise();
                 subMenu->show();
-                panel->setFixedSize(mainMenuWidth + subMenuWidth, std::max(mainMenu->height(), subMenu->height()));
             }
             for (QFrame *row : *sectionRows)
             {
