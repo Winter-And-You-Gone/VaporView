@@ -666,7 +666,17 @@ QToolButton#titleBarButton:hover,
 QToolButton#titleBarMenuButton:hover,
 QToolButton#windowMinimizeButton:hover,
 QToolButton#windowMaximizeButton:hover {
-    background-color: #F8F8F7;
+    background-color: #EFEEEB;
+}
+QToolButton#titleBarButton:pressed,
+QToolButton#titleBarMenuButton:pressed,
+QToolButton#windowMinimizeButton:pressed,
+QToolButton#windowMaximizeButton:pressed,
+QToolButton#titleBarButton:checked,
+QToolButton#titleBarMenuButton:checked,
+QToolButton#windowMinimizeButton:checked,
+QToolButton#windowMaximizeButton:checked {
+    background-color: #EFEEEB;
 }
 QToolButton#windowCloseButton:hover {
     background-color: #fee2e2;
@@ -3275,7 +3285,7 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton:disabled { background-color: #bdbdbd; color: #ffffff; }"
             "QPushButton#compactTcpButton { padding: 0px 14px; min-height: 36px; max-height: 36px; font-size: 14px; }"
             "QPushButton#compactTcpStartButton { padding: 0px 14px; min-height: 36px; max-height: 36px; font-size: 14px; }"
-            "QToolTip { background-color: #424242; color: #ffffff; border: none; border-radius: 4px; padding: 6px 10px; font-size: 13px; }";
+            "QToolTip { background-color: #323232; color: #ffffff; border: none; border-radius: 6px; padding: 6px 10px; font-size: 13px; }";
     }
 
     applyStyleConfiguration();
@@ -5419,7 +5429,7 @@ void MainWindow::setupCentralWidget()
 
     auto *main_h_layout = new QHBoxLayout(central_widget_);
     main_h_layout->setSpacing(0);
-    main_h_layout->setContentsMargins(4, 4, 4, 4);
+    main_h_layout->setContentsMargins(8, 8, 8, 8);
 
     auto *left_widget = new QWidget(this);
     left_widget->setObjectName("mainCardsPane");
@@ -6023,17 +6033,37 @@ void MainWindow::setEnglish(bool english)
     about_action_->setText(english ? "&About" : "关于(&A)");
 
     refresh_ports_btn_->setText(english ? "Refresh" : "刷新");
+    refresh_ports_btn_->setToolTip(english ? "Refresh ports" : "刷新串口");
+    refresh_ports_btn_->setStatusTip(refresh_ports_btn_->toolTip());
     connect_btn_->setText(english ? "Connect" : "连接");
+    connect_btn_->setToolTip(english ? "Connect" : "连接");
+    connect_btn_->setStatusTip(connect_btn_->toolTip());
     cancel_connect_btn_->setText(english ? "Cancel" : "取消");
+    cancel_connect_btn_->setToolTip(english ? "Cancel connection" : "取消连接");
+    cancel_connect_btn_->setStatusTip(cancel_connect_btn_->toolTip());
     disconnect_btn_->setText(english ? "Disconnect" : "断开");
+    disconnect_btn_->setToolTip(english ? "Disconnect" : "断开连接");
+    disconnect_btn_->setStatusTip(disconnect_btn_->toolTip());
     start_recording_btn_->setText(english ? "Start Recording" : "开始记录");
+    start_recording_btn_->setToolTip(english ? "Start recording" : "开始记录");
+    start_recording_btn_->setStatusTip(start_recording_btn_->toolTip());
     pause_recording_btn_->setText(english ? "Pause Recording" : "暂停记录");
+    pause_recording_btn_->setToolTip(english ? "Pause recording" : "暂停记录");
+    pause_recording_btn_->setStatusTip(pause_recording_btn_->toolTip());
     stop_recording_btn_->setText(english ? "Stop Recording" : "结束记录");
+    stop_recording_btn_->setToolTip(english ? "Stop recording" : "结束记录");
+    stop_recording_btn_->setStatusTip(stop_recording_btn_->toolTip());
     clear_log_action_->setText(english ? "Clear Log" : "清空日志");
     clear_log_action_->setToolTip(english ? "Clear Log" : "清空日志");
     clear_log_action_->setStatusTip(english ? "Clear Log" : "清空日志");
     fullscreen_toolbar_action_->setText(english ? "Fullscreen" : "全屏");
+    fullscreen_toolbar_action_->setToolTip(english ? "Fullscreen" : "全屏");
+    fullscreen_toolbar_action_->setStatusTip(fullscreen_toolbar_action_->toolTip());
     rtk_config_action_->setText(english ? "RTK Config" : "RTK配置");
+    rtk_config_action_->setToolTip(english ? "RTK config" : "RTK配置");
+    rtk_config_action_->setStatusTip(rtk_config_action_->toolTip());
+    session_viewer_action_->setToolTip(english ? "Data viewer" : "数据查看器");
+    session_viewer_action_->setStatusTip(session_viewer_action_->toolTip());
 
     status_label_->setText(english ? "Ready" : "就绪");
 
@@ -6297,10 +6327,12 @@ void MainWindow::updateCustomTitleBarTexts()
     if (window_minimize_btn_)
     {
         window_minimize_btn_->setToolTip(is_english_ ? "Minimize" : "最小化");
+        window_minimize_btn_->setStatusTip(window_minimize_btn_->toolTip());
     }
     if (window_close_btn_)
     {
         window_close_btn_->setToolTip(is_english_ ? "Close" : "关闭");
+        window_close_btn_->setStatusTip(window_close_btn_->toolTip());
     }
     updateWindowControlButtons();
 }
@@ -6315,7 +6347,7 @@ void MainWindow::updateCustomTitleBarStyle()
     custom_title_bar_->setFixedHeight(scalePixels(48));
     const QSize actionButtonSize(scalePixels(34), scalePixels(34));
     const QSize windowButtonSize(scalePixels(44), scalePixels(34));
-    const QSize iconSize(scalePixels(20), scalePixels(20));
+    const QSize iconSize(scalePixels(24), scalePixels(24));
 
     const auto buttons = custom_title_bar_->findChildren<QToolButton *>();
     for (QToolButton *button : buttons)
@@ -6364,6 +6396,7 @@ void MainWindow::updateWindowControlButtons()
     window_maximize_btn_->setToolTip(restoredByClick
         ? (is_english_ ? "Restore" : "还原")
         : (is_english_ ? "Maximize" : "最大化"));
+    window_maximize_btn_->setStatusTip(window_maximize_btn_->toolTip());
 }
 
 void MainWindow::onToggleTheme()

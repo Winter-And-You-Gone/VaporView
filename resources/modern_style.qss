@@ -443,10 +443,10 @@ QSplitter#mainContentSplitter::handle:horizontal:pressed {
 
 /* 工具提示 */
 QToolTip {
-    background-color: #424242;
+    background-color: #323232;
     color: #ffffff;
     border: none;
-    border-radius: 4px;
+    border-radius: 6px;
     padding: 6px 10px;
     font-size: 13px;
 }
