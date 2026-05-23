@@ -36,7 +36,6 @@ Item {
 
         Card {
             Layout.fillWidth: true
-            Layout.columnSpan: 2
             Layout.preferredHeight: 160
             title: ApplicationWindow.window.t("settings.languageTheme")
             ColumnLayout {
@@ -73,7 +72,6 @@ Item {
 
         Card {
             Layout.fillWidth: true
-            Layout.columnSpan: 2
             Layout.preferredHeight: 130
             title: ApplicationWindow.window.t("settings.recordDir")
             ColumnLayout {
