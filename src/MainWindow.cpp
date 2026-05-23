@@ -265,6 +265,52 @@ private:
     bool dragging_;
 };
 
+class WindowResizeHandle : public QWidget
+{
+public:
+    explicit WindowResizeHandle(Qt::Edges edges, QWidget *parent)
+        : QWidget(parent)
+        , edges_(edges)
+    {
+        setFocusPolicy(Qt::NoFocus);
+        setCursor(cursorForEdges(edges_));
+    }
+
+protected:
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        QWidget *topLevelWindow = window();
+        if (event->button() == Qt::LeftButton && topLevelWindow && topLevelWindow->windowHandle())
+        {
+            topLevelWindow->windowHandle()->startSystemResize(edges_);
+            event->accept();
+            return;
+        }
+        QWidget::mousePressEvent(event);
+    }
+
+private:
+    static QCursor cursorForEdges(Qt::Edges edges)
+    {
+        const bool horizontal = edges.testFlag(Qt::LeftEdge) || edges.testFlag(Qt::RightEdge);
+        const bool vertical = edges.testFlag(Qt::TopEdge) || edges.testFlag(Qt::BottomEdge);
+        if (horizontal && vertical)
+        {
+            const bool topLeftBottomRight =
+                (edges.testFlag(Qt::TopEdge) && edges.testFlag(Qt::LeftEdge)) ||
+                (edges.testFlag(Qt::BottomEdge) && edges.testFlag(Qt::RightEdge));
+            return QCursor(topLeftBottomRight ? Qt::SizeFDiagCursor : Qt::SizeBDiagCursor);
+        }
+        if (horizontal)
+        {
+            return QCursor(Qt::SizeHorCursor);
+        }
+        return QCursor(Qt::SizeVerCursor);
+    }
+
+    Qt::Edges edges_;
+};
+
 QString skyDeviceDisplayName(VaporView::SkyDeviceId device)
 {
     switch (device)
@@ -2919,6 +2965,7 @@ MainWindow::MainWindow(QWidget *parent)
     setupStatusBar();
     setupCentralWidget();
     setupWindowBorderFrames();
+    setupWindowResizeHandles();
     ground_telemetry_service_ = new VaporView::GroundTelemetryService(this);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::linkOpenChanged,
             this, &MainWindow::onRemoteLinkOpenChanged);
@@ -3106,6 +3153,7 @@ void MainWindow::changeEvent(QEvent *event)
     {
         updateWindowControlButtons();
         updateWindowBorderFrames();
+        updateWindowResizeHandles();
     }
 }
 
@@ -3113,6 +3161,7 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 {
     QMainWindow::resizeEvent(event);
     updateWindowBorderFrames();
+    updateWindowResizeHandles();
 }
 
 #ifdef Q_OS_WIN
@@ -3130,10 +3179,12 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void *message, qintptr
     const int y = GET_Y_LPARAM(msg->lParam);
     const QPoint pos = mapFromGlobal(QPoint(x, y));
     const int borderWidth = scalePixels(8);
-    const bool onLeft = pos.x() >= 0 && pos.x() < borderWidth;
-    const bool onRight = pos.x() <= width() && pos.x() >= width() - borderWidth;
-    const bool onTop = pos.y() >= 0 && pos.y() < borderWidth;
-    const bool onBottom = pos.y() <= height() && pos.y() >= height() - borderWidth;
+    const bool inWindowX = pos.x() >= 0 && pos.x() < width();
+    const bool inWindowY = pos.y() >= 0 && pos.y() < height();
+    const bool onLeft = inWindowY && pos.x() >= 0 && pos.x() < borderWidth;
+    const bool onRight = inWindowY && pos.x() < width() && pos.x() >= width() - borderWidth;
+    const bool onTop = inWindowX && pos.y() >= 0 && pos.y() < borderWidth;
+    const bool onBottom = inWindowX && pos.y() < height() && pos.y() >= height() - borderWidth;
 
     if (onTop && onLeft)
     {
@@ -6470,6 +6521,66 @@ void MainWindow::updateWindowBorderFrames()
         window_border_bottom_->setGeometry(0, std::max(0, height() - borderThickness), width(), borderThickness);
         window_border_bottom_->raise();
     }
+}
+
+void MainWindow::setupWindowResizeHandles()
+{
+    const QVector<Qt::Edges> edges = {
+        Qt::TopEdge | Qt::LeftEdge,
+        Qt::TopEdge,
+        Qt::TopEdge | Qt::RightEdge,
+        Qt::LeftEdge,
+        Qt::RightEdge,
+        Qt::BottomEdge | Qt::LeftEdge,
+        Qt::BottomEdge,
+        Qt::BottomEdge | Qt::RightEdge,
+    };
+
+    window_resize_handles_.reserve(edges.size());
+    for (Qt::Edges edgeSet : edges)
+    {
+        auto *handle = new WindowResizeHandle(edgeSet, this);
+        handle->setObjectName(QStringLiteral("windowResizeHandle"));
+        window_resize_handles_.append(handle);
+    }
+
+    updateWindowResizeHandles();
+}
+
+void MainWindow::updateWindowResizeHandles()
+{
+    if (window_resize_handles_.size() != 8)
+    {
+        return;
+    }
+
+    const bool visible = !isFullScreen() && !isMaximized();
+    const int thickness = scalePixels(8);
+    const int w = width();
+    const int h = height();
+    const int rightX = std::max(0, w - thickness);
+    const int bottomY = std::max(0, h - thickness);
+
+    const QVector<QRect> geometries = {
+        QRect(0, 0, thickness, thickness),
+        QRect(thickness, 0, std::max(0, w - thickness * 2), thickness),
+        QRect(rightX, 0, thickness, thickness),
+        QRect(0, thickness, thickness, std::max(0, h - thickness * 2)),
+        QRect(rightX, thickness, thickness, std::max(0, h - thickness * 2)),
+        QRect(0, bottomY, thickness, thickness),
+        QRect(thickness, bottomY, std::max(0, w - thickness * 2), thickness),
+        QRect(rightX, bottomY, thickness, thickness),
+    };
+
+    for (int i = 0; i < window_resize_handles_.size(); ++i)
+    {
+        QWidget *handle = window_resize_handles_.at(i);
+        handle->setVisible(visible);
+        handle->setGeometry(geometries.at(i));
+        handle->raise();
+    }
+
+    updateWindowBorderFrames();
 }
 
 void MainWindow::onToggleTheme()

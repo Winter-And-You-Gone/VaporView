@@ -376,6 +376,8 @@ private:
     void updateWindowControlButtons();
     void setupWindowBorderFrames();
     void updateWindowBorderFrames();
+    void setupWindowResizeHandles();
+    void updateWindowResizeHandles();
     QToolButton *createTitleBarActionButton(QAction *action, QWidget *parent);
     QToolButton *createTitleBarIconButton(const QString& objectName, QWidget *parent);
     void addTitleBarSeparator(QHBoxLayout *layout);
@@ -425,6 +427,7 @@ private:
     QFrame *window_border_right_;
     QFrame *window_border_bottom_;
     QFrame *window_border_left_;
+    QVector<QWidget *> window_resize_handles_;
     QWidget *custom_title_bar_;
     QLabel *custom_title_label_;
     QToolButton *title_menu_btn_;
