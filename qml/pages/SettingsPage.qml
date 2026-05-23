@@ -37,11 +37,10 @@ Item {
         Card {
             Layout.fillWidth: true
             Layout.columnSpan: 2
+            Layout.preferredHeight: 120
             title: ApplicationWindow.window.t("settings.languageTheme")
             ColumnLayout {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
+                anchors.fill: parent
                 anchors.margins: 12
                 spacing: 8
                 RowLayout {
@@ -75,11 +74,10 @@ Item {
         Card {
             Layout.fillWidth: true
             Layout.columnSpan: 2
+            Layout.preferredHeight: 90
             title: ApplicationWindow.window.t("settings.recordDir")
             ColumnLayout {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
+                anchors.fill: parent
                 anchors.margins: 12
                 AppTextField {
                     Layout.fillWidth: true
@@ -92,11 +90,10 @@ Item {
 
         Card {
             Layout.fillWidth: true
+            Layout.preferredHeight: 90
             title: ApplicationWindow.window.t("settings.defaultSampleRate")
             ColumnLayout {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
+                anchors.fill: parent
                 anchors.margins: 12
                 RowLayout {
                     Layout.fillWidth: true
@@ -113,11 +110,10 @@ Item {
 
         Card {
             Layout.fillWidth: true
+            Layout.preferredHeight: 80
             title: ApplicationWindow.window.t("settings.displayDensity")
             ColumnLayout {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
+                anchors.fill: parent
                 anchors.margins: 12
                 RowLayout {
                     Layout.fillWidth: true
@@ -130,11 +126,10 @@ Item {
 
         Card {
             Layout.fillWidth: true
+            Layout.preferredHeight: 90
             title: ApplicationWindow.window.t("settings.advancedDiag")
             ColumnLayout {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
+                anchors.fill: parent
                 anchors.margins: 12
                 Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.backendInfo"); color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
                 Text { Layout.fillWidth: true; text: ApplicationWindow.window.t("settings.collectorsInfo"); color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
@@ -144,11 +139,10 @@ Item {
 
         Card {
             Layout.fillWidth: true
+            Layout.preferredHeight: 80
             title: ApplicationWindow.window.t("settings.about")
             ColumnLayout {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
+                anchors.fill: parent
                 anchors.margins: 12
                 Text { Layout.fillWidth: true; text: settingsBackend.aboutText; color: ApplicationWindow.window.text; font.bold: true; font.pixelSize: 12 * ApplicationWindow.window.scaleFactor }
                 Text { text: ApplicationWindow.window.t("settings.version") + ": " + appBackend.version; color: ApplicationWindow.window.muted; font.pixelSize: 11 * ApplicationWindow.window.scaleFactor }
