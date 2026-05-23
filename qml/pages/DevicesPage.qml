@@ -148,10 +148,9 @@ Item {
                 color: ApplicationWindow.window.card
                 border.color: ApplicationWindow.window.border
                 radius: 5
-                }  // ColumnLayout
-            }  // Card
-            }  // Repeater
-        }  // Flow
+            }
+        }
+    }
 
     component UnitFieldLabel: RowLayout {
         property string label: ""
@@ -197,7 +196,7 @@ Item {
             Layout.fillHeight: true
             clip: true
             boundsBehavior: Flickable.StopAtBounds
-            cellWidth: Math.max(200, (width - 12) / Math.max(1, Math.floor((width + 12) / 220)))
+            cellWidth: Math.max(200, width / 5)
             cellHeight: 258
             model: deviceBackend.devices
 
@@ -331,6 +330,7 @@ Item {
                             ToolTip.visible: hovered
                             ToolTip.delay: 400
                             onClicked: ApplicationWindow.window.currentPage = "detailedData"
+                        }
                     }
                 }
             }
