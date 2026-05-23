@@ -461,7 +461,7 @@ QIcon createTitleBarIcon(const QString& iconName, bool dark)
     return createLucideIcon(iconName, dark ? QColor("#d8dee9") : QColor("#111827"));
 }
 
-QString titleApplicationPanelStyleSheet(bool dark)
+QString titleApplicationPanelStyleSheet(bool dark, int cornerRadius = 8)
 {
     if (dark)
     {
@@ -474,7 +474,7 @@ QFrame#titleApplicationMainMenu,
 QFrame#titleApplicationSubMenu {
     background-color: #1f1f1f;
     border: 1px solid #303030;
-    border-radius: 14px;
+    border-radius: %1px;
 }
 QFrame#titleApplicationMenuItem {
     background-color: transparent;
@@ -483,7 +483,7 @@ QFrame#titleApplicationMenuItem {
 }
 QFrame#titleApplicationMenuItem[selected="true"],
 QFrame#titleApplicationMenuItem:hover {
-    background-color: #3a3a38;
+    background-color: #3a3a3a;
 }
 QLabel#titleApplicationMenuText {
     color: #f3f6fb;
@@ -523,7 +523,7 @@ QFrame#titleApplicationPanelSeparator {
     background-color: #4a4a4a;
     border: none;
 }
-)");
+)").arg(cornerRadius);
     }
 
     return QStringLiteral(R"(
@@ -535,7 +535,7 @@ QFrame#titleApplicationMainMenu,
 QFrame#titleApplicationSubMenu {
     background-color: #ffffff;
     border: 1px solid #dfe4ea;
-    border-radius: 14px;
+    border-radius: %1px;
 }
 QFrame#titleApplicationMenuItem {
     background-color: transparent;
@@ -544,7 +544,7 @@ QFrame#titleApplicationMenuItem {
 }
 QFrame#titleApplicationMenuItem[selected="true"],
 QFrame#titleApplicationMenuItem:hover {
-    background-color: #eef4fb;
+    background-color: #eeeeee;
 }
 QLabel#titleApplicationMenuText {
     color: #000000;
@@ -584,7 +584,7 @@ QFrame#titleApplicationPanelSeparator {
     background-color: #dfe4ea;
     border: none;
 }
-)");
+)").arg(cornerRadius);
 }
 
 QString customTitleBarStyleSheet(bool dark)
@@ -4769,7 +4769,6 @@ void MainWindow::createTitleApplicationMenuPanel()
     panel->setObjectName(QStringLiteral("titleApplicationPanel"));
     panel->setAttribute(Qt::WA_StyledBackground, true);
     panel->setFocusPolicy(Qt::NoFocus);
-    panel->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_));
     panel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     panel->hide();
     title_application_panel_ = panel;
@@ -4805,6 +4804,8 @@ void MainWindow::createTitleApplicationMenuPanel()
     const int rowVerticalPadding = scalePixels(2);
     const int rowHeight = std::max(scalePixels(22), menuMetrics.height() + rowVerticalPadding * 2);
     const int menuVerticalPadding = std::max(scalePixels(4), rowHeight / 3);
+    const int menuCornerRadius = std::min(scalePixels(8), menuVerticalPadding);
+    panel->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_, menuCornerRadius));
     const int separatorHeight = scalePixels(1);
     const int rowLeftPadding = scalePixels(16);
     const int rowRightPadding = scalePixels(12);
