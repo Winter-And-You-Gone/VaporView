@@ -2973,10 +2973,13 @@ MainWindow::MainWindow(QWidget *parent)
     updateRecordingStatusLabel();
     updateConnectionStatus(false);
     updateSourceModeUi();
+    qApp->installEventFilter(this);
 }
 
 MainWindow::~MainWindow()
 {
+    qApp->removeEventFilter(this);
+
     if (custom_title_bar_)
     {
         const auto buttons = custom_title_bar_->findChildren<QToolButton *>();
@@ -3026,6 +3029,35 @@ bool MainWindow::shouldStartWindowMove(QObject *watched) const
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
+    if (title_application_panel_ && title_application_panel_->isVisible())
+    {
+        if (event->type() == QEvent::ApplicationDeactivate ||
+            event->type() == QEvent::WindowDeactivate)
+        {
+            title_application_panel_->hide();
+        }
+        else if (event->type() == QEvent::MouseButtonPress)
+        {
+            auto *mouseEvent = static_cast<QMouseEvent *>(event);
+            const QPoint globalPos = mouseEvent->globalPosition().toPoint();
+            auto containsGlobalPoint = [globalPos](const QWidget *widget) {
+                return widget &&
+                       widget->isVisible() &&
+                       QRect(widget->mapToGlobal(QPoint(0, 0)), widget->size()).contains(globalPos);
+            };
+
+            const bool insideMenu =
+                containsGlobalPoint(title_application_panel_->findChild<QFrame *>(QStringLiteral("titleApplicationMainMenu"))) ||
+                containsGlobalPoint(title_application_panel_->findChild<QFrame *>(QStringLiteral("titleApplicationSubMenu")));
+            const bool insideMenuButton = containsGlobalPoint(title_menu_btn_);
+
+            if (!insideMenu && !insideMenuButton)
+            {
+                title_application_panel_->hide();
+            }
+        }
+    }
+
     if (shouldStartWindowMove(watched))
     {
         if (event->type() == QEvent::MouseButtonDblClick)
@@ -5193,7 +5225,8 @@ void MainWindow::createTitleApplicationMenuPanel()
             if (QWidget *currentPage = stack->currentWidget())
             {
                 const int subMenuWidth = subMenuWidths.value(sectionIndex, currentPage->width());
-                const int subMenuTop = std::max(0, sectionRow->y() - menuVerticalPadding);
+                const int subMenuBorderWidth = std::max(1, subMenu->frameWidth());
+                const int subMenuTop = std::max(0, sectionRow->y() - menuVerticalPadding - subMenuBorderWidth);
                 subMenu->setFixedSize(subMenuWidth, currentPage->height());
                 panel->setFixedSize(mainMenuWidth + subMenuWidth, std::max(mainMenu->height(), subMenuTop + subMenu->height()));
                 subMenu->move(mainMenuWidth, subMenuTop);
