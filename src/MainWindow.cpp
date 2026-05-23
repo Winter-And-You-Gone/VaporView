@@ -4803,12 +4803,12 @@ void MainWindow::createTitleApplicationMenuPanel()
     const int menuVerticalPadding = scalePixels(4);
     const int rowHeight = std::max(scalePixels(22), menuMetrics.height() + rowVerticalPadding * 2);
     const int separatorHeight = scalePixels(1);
-    const int rowLeftPadding = scalePixels(2);
-    const int rowRightPadding = scalePixels(6);
-    const int rowSpacing = scalePixels(3);
+    const int rowLeftPadding = scalePixels(16);
+    const int rowRightPadding = scalePixels(12);
+    const int rowSpacing = scalePixels(6);
     const int checkColumnWidth = scalePixels(10);
     const int arrowColumnWidth = scalePixels(14);
-    const int shortcutGap = scalePixels(20);
+    const int shortcutGap = scalePixels(24);
     const int mainMenuMinWidth = scalePixels(72);
     const int subMenuMinWidth = scalePixels(72);
     auto commandRowsHeight = [&](const QVector<TitleMenuCommand>& commands) {
