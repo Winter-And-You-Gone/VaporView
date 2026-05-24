@@ -354,7 +354,8 @@ private:
 
     CollectorSnapshot snapshotCollectors() const;
     void setCollectors(CollectorSnapshot collectors);
-    void stopAllCollectors();
+    void stopAllCollectors(bool updateModel = true);
+    void markAllSerialDevicesDisconnected();
     bool stopCollector(const QString& id);
     void log(const QString& message, const QString& level = QStringLiteral("info"));
     void setBusyState(bool connectionBusy, bool detectBusy, bool reconfigureBusy);
@@ -857,14 +858,7 @@ class SessionBackend : public QObject
 
 public:
     explicit SessionBackend(QObject *parent = nullptr);
-    ~SessionBackend() override
-    {
-        if (session_load_thread_)
-        {
-            session_load_thread_->requestInterruption();
-            session_load_thread_->wait(3000);
-        }
-    }
+    ~SessionBackend() override;
 
     QString recordingDirectory() const;
     QVariantList sessions() const;
@@ -974,6 +968,7 @@ private:
     void clearPreviewData();
     void loadSelectedSession(const QString& path);
     void startLoadingSession(const QString& path);
+    void stopSessionLoadThread();
     void setLoadingState(bool loading, int progress, const QString& text);
     void postLoadProgress(int generation, int progress, const QString& text);
     void applySessionLoadResult(const std::shared_ptr<SessionLoadResult>& result, int generation);

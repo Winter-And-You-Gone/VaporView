@@ -122,7 +122,11 @@ ComboBox {
                         rightPadding: theme.controlPaddingX
                         elide: Text.ElideRight
                     }
-                    onClicked: { control.currentIndex = index; comboPopup.close() }
+                    onClicked: {
+                        control.currentIndex = index
+                        control.activated(index)
+                        comboPopup.close()
+                    }
                 }
             }
             Text {

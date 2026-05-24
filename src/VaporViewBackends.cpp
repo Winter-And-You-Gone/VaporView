@@ -1884,7 +1884,20 @@ void DeviceBackend::setCollectors(CollectorSnapshot collectors)
     collectors_ = std::move(collectors);
 }
 
-void DeviceBackend::stopAllCollectors()
+void DeviceBackend::markAllSerialDevicesDisconnected()
+{
+    for (const QString& id : {QStringLiteral("epsilon"), QStringLiteral("ptb"), QStringLiteral("hmp"), QStringLiteral("lidar")})
+    {
+        devices_.setDeviceValue(id, DeviceModel::ConnectedRole, false);
+        devices_.setDeviceValue(id, DeviceModel::OnlineRole, false);
+        devices_.setDeviceValue(id, DeviceModel::StatusTextRole, QStringLiteral("Not connected"));
+        devices_.setDeviceValue(id, DeviceModel::ActualRateRole, 0.0);
+    }
+    connected_ = false;
+    emit connectionStateChanged();
+}
+
+void DeviceBackend::stopAllCollectors(bool updateModel)
 {
     CollectorSnapshot collectors;
     {
@@ -1896,15 +1909,10 @@ void DeviceBackend::stopAllCollectors()
     if (collectors.ptb) collectors.ptb->stop();
     if (collectors.hmp) collectors.hmp->stop();
     if (collectors.lidar) collectors.lidar->stop();
-    for (const QString& id : {QStringLiteral("epsilon"), QStringLiteral("ptb"), QStringLiteral("hmp"), QStringLiteral("lidar")})
+    if (updateModel)
     {
-        devices_.setDeviceValue(id, DeviceModel::ConnectedRole, false);
-        devices_.setDeviceValue(id, DeviceModel::OnlineRole, false);
-        devices_.setDeviceValue(id, DeviceModel::StatusTextRole, QStringLiteral("Not connected"));
-        devices_.setDeviceValue(id, DeviceModel::ActualRateRole, 0.0);
+        markAllSerialDevicesDisconnected();
     }
-    connected_ = false;
-    emit connectionStateChanged();
 }
 
 bool DeviceBackend::stopCollector(const QString& id)
@@ -2235,8 +2243,9 @@ void DeviceBackend::connectDevices()
             {
                 return false;
             }
-            stopAllCollectors();
+            stopAllCollectors(false);
             post([this, english]() {
+                markAllSerialDevicesDisconnected();
                 setBusyState(false, false, false);
                 setStatusText(english ? QStringLiteral("Connection canceled") : QStringLiteral("连接已取消"));
                 log(english ? QStringLiteral("Connection canceled") : QStringLiteral("连接已取消"));
@@ -4809,11 +4818,31 @@ void RtkBackend::start()
         return;
     }
     QString error;
-    const RtkStreamConfig config = buildConfig();
-    if (config.server.isEmpty() || config.port.isEmpty() || config.mountpoint.isEmpty() || config.outputPort.isEmpty())
+    RtkStreamConfig config = buildConfig();
+    if (config.server.isEmpty() || config.port.isEmpty() || config.outputPort.isEmpty())
     {
         appendDiagnostic(QStringLiteral("请填写服务器地址、端口、挂载点和输出串口。"), QStringLiteral("warning"));
         return;
+    }
+    if (config.mountpoint.isEmpty() || config.mountpoint.compare(QStringLiteral("AUTO"), Qt::CaseInsensitive) == 0)
+    {
+        QString resolvedMountpoint;
+        for (const QString& option : mount_point_options_)
+        {
+            const QString candidate = option.trimmed();
+            if (!candidate.isEmpty() && candidate.compare(QStringLiteral("AUTO"), Qt::CaseInsensitive) != 0)
+            {
+                resolvedMountpoint = candidate;
+                break;
+            }
+        }
+        if (resolvedMountpoint.isEmpty())
+        {
+            appendDiagnostic(QStringLiteral("当前挂载点为 AUTO，但没有可用挂载点列表。请先点击【检测挂载点】，或手动输入挂载点。"), QStringLiteral("warning"));
+            return;
+        }
+        appendDiagnostic(QStringLiteral("挂载点为 AUTO，已自动选择 %1 启动 RTK 服务。").arg(resolvedMountpoint));
+        config.mountpoint = resolvedMountpoint;
     }
     if (!service_.start(config, &error))
     {
@@ -5213,6 +5242,12 @@ SessionBackend::SessionBackend(QObject *parent)
             prefetchWaveformFrames(pending_prefetch_frame_index_);
         }
     });
+}
+
+SessionBackend::~SessionBackend()
+{
+    ++load_generation_;
+    stopSessionLoadThread();
 }
 
 QString SessionBackend::recordingDirectory() const { return recording_directory_; }
@@ -5712,14 +5747,10 @@ void SessionBackend::startLoadingSession(const QString& path)
     }
 
     const int generation = ++load_generation_;
+    stopSessionLoadThread();
     setLoadingState(true, 1, QStringLiteral("正在准备加载记录数据..."));
     clearPreviewData();
     emit selectedSessionChanged();
-
-    if (session_load_thread_)
-    {
-        session_load_thread_->requestInterruption();
-    }
 
     auto *thread = QThread::create([this, normalized, generation]() {
         auto result = std::make_shared<SessionLoadResult>(buildSessionLoadResult(normalized, generation));
@@ -5728,14 +5759,20 @@ void SessionBackend::startLoadingSession(const QString& path)
         }, Qt::QueuedConnection);
     });
     session_load_thread_ = thread;
-    connect(thread, &QThread::finished, this, [this, thread]() {
-        if (session_load_thread_ == thread)
-        {
-            session_load_thread_ = nullptr;
-        }
-    });
-    connect(thread, &QThread::finished, thread, &QObject::deleteLater);
     thread->start();
+}
+
+void SessionBackend::stopSessionLoadThread()
+{
+    if (!session_load_thread_)
+    {
+        return;
+    }
+    QThread *thread = session_load_thread_;
+    session_load_thread_ = nullptr;
+    thread->requestInterruption();
+    thread->wait();
+    delete thread;
 }
 
 void SessionBackend::applySessionLoadResult(const std::shared_ptr<SessionLoadResult>& result, int generation)
