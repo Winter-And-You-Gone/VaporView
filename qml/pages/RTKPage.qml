@@ -512,7 +512,11 @@ Item {
 
                 // ── Operation Buttons ──
                 Row {
-                    id: operationRow; spacing: 6
+                    id: operationRow
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: 0
+                    spacing: 6
 
                     ToolbarButton {
                         iconName: "wifi"
@@ -533,11 +537,25 @@ Item {
                         onClicked: rtkBackend.stop()
                     }
                     ToolbarButton {
+                        id: testConnectionButton
                         iconName: "flask-conical"
                         height: 30
+                        width: Math.ceil(Math.max(testConnectionIdleText.advanceWidth, testConnectionBusyText.advanceWidth)
+                            + iconSize + 6 + leftPadding + rightPadding)
                         text: rtkBackend.testingConnection ? t("rtk.testingConnection") : t("rtk.testConnection")
                         enabled: !rtkBackend.testingConnection
                         onClicked: rtkBackend.testConnection()
+
+                        TextMetrics {
+                            id: testConnectionIdleText
+                            font: testConnectionButton.font
+                            text: t("rtk.testConnection")
+                        }
+                        TextMetrics {
+                            id: testConnectionBusyText
+                            font: testConnectionButton.font
+                            text: t("rtk.testingConnection")
+                        }
                     }
                     ToolbarButton {
                         iconName: "trash-2"
