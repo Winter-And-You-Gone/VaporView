@@ -482,11 +482,6 @@ QIcon createWaveformViewerIcon()
     return createLucideIcon(QStringLiteral("activity"), kToolbarBlue);
 }
 
-QIcon createFullscreenIcon()
-{
-    return createLucideIcon(QStringLiteral("maximize"), kToolbarBlue);
-}
-
 QIcon createLanguageIcon()
 {
     return createLucideIcon(QStringLiteral("languages"), kToolbarBlue);
@@ -2739,8 +2734,6 @@ MainWindow::MainWindow(QWidget *parent)
     , pause_recording_btn_(nullptr)
     , stop_recording_btn_(nullptr)
     , refresh_ports_btn_(nullptr)
-    , fullscreen_menu_action_(nullptr)
-    , fullscreen_toolbar_action_(nullptr)
     , lang_action_(nullptr)
     , theme_toggle_action_(nullptr)
     , clear_log_action_(nullptr)
@@ -2760,7 +2753,6 @@ MainWindow::MainWindow(QWidget *parent)
     , font_extra_large_action_(nullptr)
     , data_menu_(nullptr)
     , devices_menu_(nullptr)
-    , view_menu_(nullptr)
     , font_menu_(nullptr)
     , language_menu_(nullptr)
     , help_menu_(nullptr)
@@ -2849,7 +2841,6 @@ MainWindow::MainWindow(QWidget *parent)
     , hmp_collector_(nullptr)
     , lidar_collector_(nullptr)
     , refresh_timer_(nullptr)
-    , is_fullscreen_(false)
     , is_english_(false)
     , has_inline_progress_log_(false)
     , connection_attempt_in_progress_(false)
@@ -4562,13 +4553,6 @@ void MainWindow::setupMenuBar()
     connect(exit_action_, &QAction::triggered, this, &QMainWindow::close);
     data_menu_->addAction(exit_action_);
 
-    view_menu_ = menuBar()->addMenu("");
-
-    fullscreen_menu_action_ = new QAction(this);
-    fullscreen_menu_action_->setShortcut(QKeySequence(Qt::Key_F11));
-    connect(fullscreen_menu_action_, &QAction::triggered, this, &MainWindow::onToggleFullScreen);
-    view_menu_->addAction(fullscreen_menu_action_);
-
     font_menu_ = menuBar()->addMenu("");
     font_scale_group_ = new QActionGroup(this);
     font_scale_group_->setExclusive(true);
@@ -4700,10 +4684,6 @@ void MainWindow::setupToolBar()
 
     session_viewer_action_->setIcon(createWaveformViewerIcon());
 
-    fullscreen_toolbar_action_ = new QAction(this);
-    fullscreen_toolbar_action_->setIcon(createFullscreenIcon());
-    connect(fullscreen_toolbar_action_, &QAction::triggered, this, &MainWindow::onToggleFullScreen);
-
     theme_toggle_action_ = new QAction(this);
     connect(theme_toggle_action_, &QAction::triggered, this, &MainWindow::onToggleTheme);
 
@@ -4757,7 +4737,6 @@ void MainWindow::setupCustomTitleBar()
     addTitleBarSeparator(titleLayout);
     titleLayout->addWidget(createTitleBarActionButton(clear_log_action_, custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(session_viewer_action_, custom_title_bar_), 0, Qt::AlignVCenter);
-    titleLayout->addWidget(createTitleBarActionButton(fullscreen_toolbar_action_, custom_title_bar_), 0, Qt::AlignVCenter);
     addTitleBarSeparator(titleLayout);
     titleLayout->addWidget(createTitleBarActionButton(lang_action_, custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(theme_toggle_action_, custom_title_bar_), 0, Qt::AlignVCenter);
@@ -4770,12 +4749,7 @@ void MainWindow::setupCustomTitleBar()
 
     window_maximize_btn_ = createTitleBarIconButton(QStringLiteral("windowMaximizeButton"), custom_title_bar_);
     connect(window_maximize_btn_, &QToolButton::clicked, this, [this]() {
-        if (isFullScreen())
-        {
-            showNormal();
-            is_fullscreen_ = false;
-        }
-        else if (isMaximized())
+        if (isMaximized())
         {
             showNormal();
         }
@@ -4988,12 +4962,6 @@ void MainWindow::createTitleApplicationMenuPanel()
     TitleMenuSection viewSection{
         is_english_ ? QStringLiteral("View") : QStringLiteral("视图"),
         {
-            {is_english_ ? QStringLiteral("Fullscreen") : QStringLiteral("全屏"),
-             QStringLiteral("F11"),
-             true,
-             isFullScreen(),
-             false,
-             [this]() { onToggleFullScreen(); }},
             {is_english_ ? QStringLiteral("Tiny (70%)") : QStringLiteral("超小 (70%)"),
              QString(),
              true,
@@ -6062,12 +6030,6 @@ void MainWindow::setEnglish(bool english)
     session_viewer_action_->setText(english ? "Data Viewer..." : "数据查看器...");
     exit_action_->setText(english ? "E&xit" : "退出(&X)");
 
-    if (view_menu_)
-    {
-        view_menu_->setTitle(english ? "&View" : "视图(&V)");
-    }
-    fullscreen_menu_action_->setText(english ? "&Fullscreen" : "全屏(&F)");
-
     if (font_menu_)
     {
         font_menu_->setTitle(english ? "Font &Size" : "字号(&S)");
@@ -6120,9 +6082,6 @@ void MainWindow::setEnglish(bool english)
     clear_log_action_->setText(english ? "Clear Log" : "清空日志");
     clear_log_action_->setToolTip(english ? "Clear Log" : "清空日志");
     clear_log_action_->setStatusTip(english ? "Clear Log" : "清空日志");
-    fullscreen_toolbar_action_->setText(english ? "Fullscreen" : "全屏");
-    fullscreen_toolbar_action_->setToolTip(english ? "Fullscreen" : "全屏");
-    fullscreen_toolbar_action_->setStatusTip(fullscreen_toolbar_action_->toolTip());
     rtk_config_action_->setText(english ? "RTK Config" : "RTK配置");
     rtk_config_action_->setToolTip(english ? "RTK config" : "RTK配置");
     rtk_config_action_->setStatusTip(rtk_config_action_->toolTip());
@@ -6344,8 +6303,7 @@ void MainWindow::showAboutDialog()
               "- EPSILON Integrated Navigation (FDILink)\n"
               "- PTB210 Barometer\n"
               "- HMP3 Temperature/Humidity Sensor\n"
-              "- TFA1500-L Laser Rangefinder\n\n"
-              "Press F11 for fullscreen mode.")
+              "- TFA1500-L Laser Rangefinder")
         : QStringLiteral(
               "VaporView 应用程序\n\n"
               "版本 1.0.0\n\n"
@@ -6354,8 +6312,7 @@ void MainWindow::showAboutDialog()
               "- EPSILON 组合导航一体机 (FDILink)\n"
               "- PTB210 气压计\n"
               "- HMP3 温湿度传感器\n"
-              "- TFA1500-L 激光测距模块\n\n"
-              "按 F11 进入全屏模式。");
+              "- TFA1500-L 激光测距模块");
     QMessageBox::about(this, title, text);
 }
 
@@ -6460,8 +6417,8 @@ void MainWindow::updateWindowControlButtons()
         return;
     }
 
-    const bool restoredByClick = isMaximized() || isFullScreen();
-    window_maximize_btn_->setIcon(createTitleBarIcon(restoredByClick ? QStringLiteral("copy") : QStringLiteral("maximize"),
+    const bool restoredByClick = isMaximized();
+    window_maximize_btn_->setIcon(createTitleBarIcon(restoredByClick ? QStringLiteral("copy") : QStringLiteral("square"),
                                                      dark_theme_enabled_));
     window_maximize_btn_->setToolTip(restoredByClick
         ? (is_english_ ? "Restore" : "还原")
@@ -6959,33 +6916,6 @@ void MainWindow::applyAllSampleRates()
             ? "PTB sample rate capped at %1 Hz"
             : "PTB采样频率已限制为 %1 Hz").arg(ptbRate));
     }
-}
-
-void MainWindow::onToggleFullScreen()
-{
-    if (is_fullscreen_)
-    {
-        showNormal();
-        resize(1280, 720);
-        menuBar()->hide();
-        if (custom_title_bar_)
-        {
-            custom_title_bar_->show();
-        }
-        is_fullscreen_ = false;
-    }
-    else
-    {
-        setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
-        showFullScreen();
-        menuBar()->hide();
-        if (custom_title_bar_)
-        {
-            custom_title_bar_->show();
-        }
-        is_fullscreen_ = true;
-    }
-    updateWindowControlButtons();
 }
 
 void MainWindow::log(const QString& message)

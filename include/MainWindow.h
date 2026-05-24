@@ -272,7 +272,6 @@ private slots:
     void onRefreshPortsClicked();
     void onAutoDetectPortsClicked();
     void onChooseRecordingDirectoryClicked();
-    void onToggleFullScreen();
     void onSwitchLanguage();
     void onReconfigureEpsilonClicked();
     void onConfigureEpsilonRtcmPortClicked();
@@ -469,8 +468,6 @@ private:
     QAction *pause_recording_btn_;
     QAction *stop_recording_btn_;
     QAction *refresh_ports_btn_;
-    QAction *fullscreen_menu_action_;
-    QAction *fullscreen_toolbar_action_;
     QAction *lang_action_;
     QAction *theme_toggle_action_;
     QAction *clear_log_action_;
@@ -490,7 +487,6 @@ private:
     QAction *font_extra_large_action_;
     QMenu *data_menu_;
     QMenu *devices_menu_;
-    QMenu *view_menu_;
     QMenu *font_menu_;
     QMenu *language_menu_;
     QMenu *help_menu_;
@@ -594,7 +590,6 @@ private:
     VaporView::HmpData current_hmp_;
     VaporView::LidarData current_lidar_;
 
-    bool is_fullscreen_;
     bool is_english_;
     bool has_inline_progress_log_;
     bool connection_attempt_in_progress_;
