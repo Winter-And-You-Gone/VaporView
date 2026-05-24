@@ -561,10 +561,6 @@ QScrollArea#titleApplicationSubScroll > QWidget > QWidget {
     background-color: #1f1f1f;
     border: none;
 }
-QFrame#titleApplicationPanelSeparator {
-    background-color: #4a4a4a;
-    border: none;
-}
 )").arg(cornerRadius);
     }
 
@@ -621,10 +617,6 @@ QScrollArea#titleApplicationSubScroll,
 QScrollArea#titleApplicationSubScroll > QWidget,
 QScrollArea#titleApplicationSubScroll > QWidget > QWidget {
     background-color: #FDFDFC;
-    border: none;
-}
-QFrame#titleApplicationPanelSeparator {
-    background-color: #EAEAE9;
     border: none;
 }
 )").arg(cornerRadius);
@@ -825,7 +817,6 @@ QMenuBar::item:pressed,
 QToolBar QToolButton:pressed {
     background-color: #263545;
 }
-QMenu::separator,
 QToolBar::separator {
     background-color: #2c3440;
 }
@@ -3558,14 +3549,12 @@ void MainWindow::rebuildRecordingRateMenu()
         if (allowUnlimited)
         {
             addAction(0, is_english_ ? unlimitedEnglish : unlimitedChinese);
-            submenu->addSeparator();
         }
 
         if (currentRate > 0 && !standardRates.contains(currentRate))
         {
             addAction(currentRate,
                       QStringLiteral("%1 Hz%2").arg(currentRate).arg(is_english_ ? QStringLiteral(" (Custom)") : QStringLiteral("（当前）")));
-            submenu->addSeparator();
         }
 
         for (int rate : standardRates)
@@ -4548,8 +4537,6 @@ void MainWindow::setupMenuBar()
     session_viewer_action_ = new QAction(this);
     connect(session_viewer_action_, &QAction::triggered, this, &MainWindow::onOpenSessionViewerClicked);
 
-    data_menu_->addSeparator();
-
     exit_action_ = new QAction(this);
     exit_action_->setShortcut(QKeySequence::Quit);
     connect(exit_action_, &QAction::triggered, this, &QMainWindow::close);
@@ -4676,7 +4663,6 @@ void MainWindow::setupToolBar()
     connect(rtk_config_action_, &QAction::triggered, this, &MainWindow::onRtkConfigClicked);
     if (devices_menu_)
     {
-        devices_menu_->addSeparator();
         devices_menu_->addAction(rtk_config_action_);
     }
 
@@ -4888,7 +4874,6 @@ void MainWindow::createTitleApplicationMenuPanel()
     const int menuVerticalPadding = std::max(scalePixels(4), rowHeight / 3);
     const int menuCornerRadius = std::min(scalePixels(8), menuVerticalPadding);
     panel->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_, menuCornerRadius));
-    const int separatorHeight = scalePixels(1);
     const int rowLeftPadding = scalePixels(16);
     const int rowRightPadding = scalePixels(12);
     const int rowSpacing = scalePixels(6);
@@ -4898,16 +4883,7 @@ void MainWindow::createTitleApplicationMenuPanel()
     const int mainMenuMinWidth = scalePixels(72);
     const int subMenuMinWidth = scalePixels(72);
     auto commandRowsHeight = [&](const QVector<TitleMenuCommand>& commands) {
-        int total = menuVerticalPadding * 2;
-        for (const TitleMenuCommand& command : commands)
-        {
-            if (command.separatorBefore)
-            {
-                total += separatorHeight;
-            }
-            total += rowHeight;
-        }
-        return total;
+        return menuVerticalPadding * 2 + rowHeight * static_cast<int>(commands.size());
     };
 
     QVector<TitleMenuSection> sections;
@@ -5239,21 +5215,6 @@ void MainWindow::createTitleApplicationMenuPanel()
 
         for (const TitleMenuCommand& command : sections[sectionIndex].commands)
         {
-            if (command.separatorBefore)
-            {
-                auto *separatorRow = new QWidget(pageContent);
-                separatorRow->setObjectName(QStringLiteral("titleApplicationSubPageContent"));
-                separatorRow->setAttribute(Qt::WA_StyledBackground, true);
-                separatorRow->setFixedHeight(separatorHeight);
-                auto *separatorLayout = new QHBoxLayout(separatorRow);
-                separatorLayout->setContentsMargins(rowLeftPadding, 0, rowRightPadding, 0);
-                separatorLayout->setSpacing(0);
-                auto *separator = new QFrame(separatorRow);
-                separator->setObjectName(QStringLiteral("titleApplicationPanelSeparator"));
-                separator->setFixedHeight(1);
-                separatorLayout->addWidget(separator);
-                contentLayout->addWidget(separatorRow);
-            }
             contentLayout->addWidget(createRow(pageContent,
                                                command.text,
                                                command.shortcut,
