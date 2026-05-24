@@ -844,7 +844,7 @@ void TcpWavePanel::setupUi()
     peak_group_->setMinimumHeight(198);
     peak_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::MinimumExpanding);
     auto *peakLayout = new QVBoxLayout(peak_group_);
-    peakLayout->setContentsMargins(0, 1, 0, 0);
+    peakLayout->setContentsMargins(2, 2, 2, 2);
     auto *peakHeaderBar = new QWidget(peak_group_);
     peakHeaderBar->setObjectName("sectionTitleBar");
     peakHeaderBar->setFixedHeight(kTcpTitleBarHeight);

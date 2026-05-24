@@ -935,11 +935,14 @@ QTextEdit {
     selection-background-color: #245b8f;
     selection-color: #ffffff;
 }
-QTextEdit#logTextEdit,
-QWidget#logTextViewport {
-    background-color: #10151b;
+QTextEdit#logTextEdit {
+    background-color: transparent;
     border: none;
     border-radius: 0px;
+}
+QWidget#logTextViewport {
+    background-color: transparent;
+    border: none;
 }
 QComboBox:hover,
 QLineEdit:hover,
@@ -3289,7 +3292,7 @@ void MainWindow::loadModernStyleSheet()
             "QToolBar QToolButton:disabled { color: #000000; }"
             "QStatusBar { background-color: #FDFDFC; border-top: 1px solid #EAEAE9; padding: 4px 12px; color: #000000; font-size: 14px; }"
             "QGroupBox { background-color: #FDFDFC; border: 1px solid #EAEAE9; border-top: 40px solid #FDFDFC; border-radius: 8px; margin-top: 0px; padding: 8px 8px 8px 8px; font-size: 15px; font-weight: bold; color: #000000; }"
-            "QGroupBox#sensorGroupBox { margin-top: 0px; background-color: #FDFDFC; border: 1px solid #EAEAE9; padding: 0px 0px 0px 0px; }"
+            "QGroupBox#sensorGroupBox { margin-top: 0px; background-color: #FDFDFC; border: 1px solid #EAEAE9; border-radius: 8px; padding: 0px 0px 0px 0px; }"
             "QFrame#logPanelFrame { background-color: #FDFDFC; border: 1px solid #EAEAE9; border-radius: 8px; }"
             "QGroupBox::title { subcontrol-origin: border; subcontrol-position: top left; left: 12px; top: -30px; padding: 0px 2px; background-color: transparent; border: none; border-radius: 0px; color: #000000; }"
             "QDialog#rtkConfigDialog, QWidget#rtkConfigViewport, QWidget#rtkConfigContent, QScrollArea#rtkConfigScrollArea { background-color: #FDFDFC; }"
@@ -3330,7 +3333,8 @@ void MainWindow::loadModernStyleSheet()
             "QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { border-bottom: 5px solid #757575; }"
             "QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { border-top: 5px solid #757575; }"
             "QTextEdit { background-color: #FDFDFC; color: #000000; border: 1px solid #EAEAE9; border-radius: 6px; padding: 10px; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; }"
-            "QTextEdit#logTextEdit, QWidget#logTextViewport { background-color: #FDFDFC; border: none; border-radius: 0px; }"
+            "QTextEdit#logTextEdit { background-color: transparent; border: none; border-radius: 0px; }"
+            "QWidget#logTextViewport { background-color: transparent; border: none; }"
             "QScrollBar:vertical { background-color: #F8F8F7; width: 12px; border-radius: 6px; }"
             "QScrollBar::handle:vertical { background-color: #bdbdbd; min-height: 30px; border-radius: 6px; margin: 2px; }"
             "QScrollBar::handle:vertical:hover { background-color: #9e9e9e; }"
@@ -5991,7 +5995,7 @@ void MainWindow::setupLogPanel()
     log_group_->setAutoFillBackground(true);
     log_group_->setMinimumWidth(120);
     auto *log_layout = new QVBoxLayout(log_group_);
-    log_layout->setContentsMargins(0, 0, 0, 0);
+    log_layout->setContentsMargins(1, 1, 1, 1);
     log_layout->setSpacing(0);
 
     auto *logTitleBar = new QWidget(log_group_);
@@ -6018,6 +6022,8 @@ void MainWindow::setupLogPanel()
     log_text_edit_->viewport()->setObjectName(QStringLiteral("logTextViewport"));
     log_text_edit_->setFrameShape(QFrame::NoFrame);
     log_text_edit_->setLineWidth(0);
+    log_text_edit_->setAutoFillBackground(false);
+    log_text_edit_->viewport()->setAutoFillBackground(false);
     log_text_edit_->setReadOnly(true);
     log_text_edit_->setMinimumWidth(100);
     log_layout->addWidget(log_text_edit_);

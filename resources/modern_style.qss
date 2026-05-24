@@ -127,6 +127,7 @@ QGroupBox#sensorGroupBox {
     margin-top: 0px;
     background-color: #FDFDFC;
     border: 1px solid #EAEAE9;
+    border-radius: 8px;
     padding: 0px 0px 0px 0px;
 }
 
@@ -347,11 +348,15 @@ QTextEdit {
     selection-color: #000000;
 }
 
-QTextEdit#logTextEdit,
-QWidget#logTextViewport {
-    background-color: #FDFDFC;
+QTextEdit#logTextEdit {
+    background-color: transparent;
     border: none;
     border-radius: 0px;
+}
+
+QWidget#logTextViewport {
+    background-color: transparent;
+    border: none;
 }
 
 /* 滚动条 */
