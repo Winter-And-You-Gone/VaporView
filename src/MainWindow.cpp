@@ -550,14 +550,15 @@ QLabel#titleApplicationMenuCheck:disabled {
     color: #777777;
 }
 QWidget#titleApplicationSubPage {
-    background-color: transparent;
+    background-color: #1f1f1f;
     border: none;
 }
 QWidget#titleApplicationSubPageContent,
+QStackedWidget#titleApplicationSubStack,
 QScrollArea#titleApplicationSubScroll,
 QScrollArea#titleApplicationSubScroll > QWidget,
 QScrollArea#titleApplicationSubScroll > QWidget > QWidget {
-    background-color: transparent;
+    background-color: #1f1f1f;
     border: none;
 }
 QFrame#titleApplicationPanelSeparator {
@@ -611,14 +612,15 @@ QLabel#titleApplicationMenuCheck:disabled {
     color: #9ca3af;
 }
 QWidget#titleApplicationSubPage {
-    background-color: transparent;
+    background-color: #FDFDFC;
     border: none;
 }
 QWidget#titleApplicationSubPageContent,
+QStackedWidget#titleApplicationSubStack,
 QScrollArea#titleApplicationSubScroll,
 QScrollArea#titleApplicationSubScroll > QWidget,
 QScrollArea#titleApplicationSubScroll > QWidget > QWidget {
-    background-color: transparent;
+    background-color: #FDFDFC;
     border: none;
 }
 QFrame#titleApplicationPanelSeparator {
@@ -4946,7 +4948,7 @@ void MainWindow::createTitleApplicationMenuPanel()
              QString(),
              true,
              false,
-             true,
+             false,
              [this]() { onSwitchLanguage(); }},
             {dark_theme_enabled_
                  ? (is_english_ ? QStringLiteral("Light Theme") : QStringLiteral("亮色模式"))
@@ -5133,6 +5135,8 @@ void MainWindow::createTitleApplicationMenuPanel()
     subLayout->setContentsMargins(0, 0, 0, 0);
     subLayout->setSpacing(0);
     auto *stack = new QStackedWidget(subMenu);
+    stack->setObjectName(QStringLiteral("titleApplicationSubStack"));
+    stack->setAttribute(Qt::WA_StyledBackground, true);
     subLayout->addWidget(stack);
 
     auto createRow = [&](QWidget *parent,
@@ -5219,6 +5223,7 @@ void MainWindow::createTitleApplicationMenuPanel()
     {
         QWidget *page = new QWidget(stack);
         page->setObjectName(QStringLiteral("titleApplicationSubPage"));
+        page->setAttribute(Qt::WA_StyledBackground, true);
         page->setFixedSize(subMenuWidths.value(sectionIndex, subMenuMinWidth),
                            commandRowsHeight(sections[sectionIndex].commands));
         auto *pageLayout = new QVBoxLayout(page);
@@ -5226,6 +5231,7 @@ void MainWindow::createTitleApplicationMenuPanel()
         pageLayout->setSpacing(0);
         auto *pageContent = new QWidget(page);
         pageContent->setObjectName(QStringLiteral("titleApplicationSubPageContent"));
+        pageContent->setAttribute(Qt::WA_StyledBackground, true);
         auto *contentLayout = new QVBoxLayout(pageContent);
         contentLayout->setContentsMargins(0, menuVerticalPadding, 0, menuVerticalPadding);
         contentLayout->setSpacing(0);
@@ -5317,8 +5323,8 @@ void MainWindow::showTitleApplicationMenu()
                              std::max(scalePixels(4), width() - title_application_panel_->width() - scalePixels(4)));
     const int y = std::max(anchor.y(), scalePixels(4));
     title_application_panel_->move(x, y);
-    title_application_panel_->raise();
     title_application_panel_->show();
+    title_application_panel_->raise();
 }
 
 void MainWindow::setupStatusBar()
@@ -6544,6 +6550,10 @@ void MainWindow::updateWindowResizeHandles()
     }
 
     updateWindowBorderFrames();
+    if (title_application_panel_ && title_application_panel_->isVisible())
+    {
+        title_application_panel_->raise();
+    }
 }
 
 void MainWindow::onToggleTheme()
