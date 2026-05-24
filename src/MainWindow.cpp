@@ -508,7 +508,7 @@ QString titleApplicationPanelStyleSheet(bool dark, int cornerRadius = 8)
     {
         return QStringLiteral(R"(
 QFrame#titleApplicationPanel {
-    background-color: #1f1f1f;
+    background-color: transparent;
     border: none;
 }
 QFrame#titleApplicationMainMenu,
@@ -570,7 +570,7 @@ QFrame#titleApplicationPanelSeparator {
 
     return QStringLiteral(R"(
 QFrame#titleApplicationPanel {
-    background-color: #FDFDFC;
+    background-color: transparent;
     border: none;
 }
 QFrame#titleApplicationMainMenu,
