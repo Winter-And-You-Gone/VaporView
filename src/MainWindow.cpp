@@ -6410,8 +6410,9 @@ void MainWindow::updateCustomTitleBarStyle()
 
     custom_title_bar_->setFixedHeight(scalePixels(48));
     const QSize actionButtonSize(scalePixels(34), scalePixels(34));
-    const QSize windowButtonSize(scalePixels(44), scalePixels(34));
+    const QSize windowButtonSize(scalePixels(34), scalePixels(34));
     const QSize iconSize(scalePixels(24), scalePixels(24));
+    const QSize maximizeIconSize(scalePixels(21), scalePixels(21));
 
     const auto buttons = custom_title_bar_->findChildren<QToolButton *>();
     for (QToolButton *button : buttons)
@@ -6425,6 +6426,11 @@ void MainWindow::updateCustomTitleBarStyle()
                                   button == window_close_btn_;
         button->setFixedSize(windowButton ? windowButtonSize : actionButtonSize);
         button->setIconSize(iconSize);
+    }
+
+    if (window_maximize_btn_)
+    {
+        window_maximize_btn_->setIconSize(maximizeIconSize);
     }
 
     if (title_menu_btn_)
@@ -6455,7 +6461,7 @@ void MainWindow::updateWindowControlButtons()
     }
 
     const bool restoredByClick = isMaximized() || isFullScreen();
-    window_maximize_btn_->setIcon(createTitleBarIcon(restoredByClick ? QStringLiteral("copy") : QStringLiteral("square"),
+    window_maximize_btn_->setIcon(createTitleBarIcon(restoredByClick ? QStringLiteral("copy") : QStringLiteral("maximize"),
                                                      dark_theme_enabled_));
     window_maximize_btn_->setToolTip(restoredByClick
         ? (is_english_ ? "Restore" : "还原")
