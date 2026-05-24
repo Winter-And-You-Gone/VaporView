@@ -347,6 +347,13 @@ QTextEdit {
     selection-color: #000000;
 }
 
+QTextEdit#logTextEdit,
+QWidget#logTextViewport {
+    background-color: #FDFDFC;
+    border: none;
+    border-radius: 0px;
+}
+
 /* 滚动条 */
 QScrollBar:vertical {
     background-color: #F8F8F7;

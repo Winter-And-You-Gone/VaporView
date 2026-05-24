@@ -938,6 +938,8 @@ QTextEdit {
 QTextEdit#logTextEdit,
 QWidget#logTextViewport {
     background-color: #10151b;
+    border: none;
+    border-radius: 0px;
 }
 QComboBox:hover,
 QLineEdit:hover,
@@ -3328,6 +3330,7 @@ void MainWindow::loadModernStyleSheet()
             "QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { border-bottom: 5px solid #757575; }"
             "QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { border-top: 5px solid #757575; }"
             "QTextEdit { background-color: #FDFDFC; color: #000000; border: 1px solid #EAEAE9; border-radius: 6px; padding: 10px; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; }"
+            "QTextEdit#logTextEdit, QWidget#logTextViewport { background-color: #FDFDFC; border: none; border-radius: 0px; }"
             "QScrollBar:vertical { background-color: #F8F8F7; width: 12px; border-radius: 6px; }"
             "QScrollBar::handle:vertical { background-color: #bdbdbd; min-height: 30px; border-radius: 6px; margin: 2px; }"
             "QScrollBar::handle:vertical:hover { background-color: #9e9e9e; }"
@@ -6013,6 +6016,8 @@ void MainWindow::setupLogPanel()
     log_text_edit_ = new QTextEdit(log_group_);
     log_text_edit_->setObjectName(QStringLiteral("logTextEdit"));
     log_text_edit_->viewport()->setObjectName(QStringLiteral("logTextViewport"));
+    log_text_edit_->setFrameShape(QFrame::NoFrame);
+    log_text_edit_->setLineWidth(0);
     log_text_edit_->setReadOnly(true);
     log_text_edit_->setMinimumWidth(100);
     log_layout->addWidget(log_text_edit_);
