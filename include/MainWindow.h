@@ -293,7 +293,7 @@ private slots:
     void onStopRecordingClicked();
     void onDataSourceModeChanged(int index);
     void onSkyDeviceConfigClicked();
-    void onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& data);
+    void onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& telemetry);
     void onRemoteWaveformUpdated(const VaporView::DownsampledWaveform& waveform);
     void onRemoteWaveformFeatureUpdated(const VaporView::WaveformFeature& feature);
     void onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus& status);

@@ -9186,13 +9186,13 @@ void MainWindow::onRefreshTimer()
     }
 }
 
-void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& data)
+void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& telemetry)
 {
     noteRemotePacket(VaporView::MsgType::TelemetryBasic);
     const auto now = std::chrono::steady_clock::now();
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-    auto hasFlag = [&data](quint32 flag) {
-        return (data.validity_flags & flag) != 0;
+    auto hasFlag = [&telemetry](quint32 flag) {
+        return (telemetry.validity_flags & flag) != 0;
     };
 
     current_epsilon_ = VaporView::EpsilonData();
@@ -9202,31 +9202,31 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
     {
         current_epsilon_.valid = true;
         current_epsilon_.timestamp = now;
-        current_epsilon_.device_timestamp_us = data.epsilon_time_us;
-        current_epsilon_.utc_unix_s = data.host_time_us / 1000000ULL;
-        current_epsilon_.utc_microseconds = static_cast<quint32>(data.host_time_us % 1000000ULL);
-        int gnssFixCode = static_cast<int>(data.gnss_fix_code);
-        if (gnssFixCode == 0 && data.filter_status_bits != 0)
+        current_epsilon_.device_timestamp_us = telemetry.epsilon_time_us;
+        current_epsilon_.utc_unix_s = telemetry.host_time_us / 1000000ULL;
+        current_epsilon_.utc_microseconds = static_cast<quint32>(telemetry.host_time_us % 1000000ULL);
+        int gnssFixCode = static_cast<int>(telemetry.gnss_fix_code);
+        if (gnssFixCode == 0 && telemetry.filter_status_bits != 0)
         {
-            gnssFixCode = static_cast<int>((data.filter_status_bits >> 4) & 0x0F);
+            gnssFixCode = static_cast<int>((telemetry.filter_status_bits >> 4) & 0x0F);
         }
         current_epsilon_.gnss_fix_code = gnssFixCode;
         current_epsilon_.gnss_fix_text = epsilonGnssFixTextForCode(gnssFixCode);
         if (hasFlag(VaporView::BasicHasPosition))
         {
-            current_epsilon_.latitude_deg = data.latitude_deg;
-            current_epsilon_.longitude_deg = data.longitude_deg;
-            current_epsilon_.height_m = data.height_m;
+            current_epsilon_.latitude_deg = telemetry.latitude_deg;
+            current_epsilon_.longitude_deg = telemetry.longitude_deg;
+            current_epsilon_.height_m = telemetry.height_m;
         }
         if (hasFlag(VaporView::BasicHasEcef))
         {
-            current_epsilon_.ecef_x_m = data.ecef_x_m;
-            current_epsilon_.ecef_y_m = data.ecef_y_m;
-            current_epsilon_.ecef_z_m = data.ecef_z_m;
+            current_epsilon_.ecef_x_m = telemetry.ecef_x_m;
+            current_epsilon_.ecef_y_m = telemetry.ecef_y_m;
+            current_epsilon_.ecef_z_m = telemetry.ecef_z_m;
         }
-        current_epsilon_.system_status_bits = data.status_bits;
-        current_epsilon_.filter_status_bits = data.filter_status_bits;
-        current_epsilon_.update_status_bits = data.update_status_bits;
+        current_epsilon_.system_status_bits = telemetry.status_bits;
+        current_epsilon_.filter_status_bits = telemetry.filter_status_bits;
+        current_epsilon_.update_status_bits = telemetry.update_status_bits;
         remote_last_data_ms_.insert(VaporView::SkyDeviceId::Epsilon, nowMs);
     }
     else
@@ -9239,7 +9239,7 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
     {
         current_lidar_.valid = true;
         current_lidar_.timestamp = now;
-        current_lidar_.distance_m = data.lidar_height_m;
+        current_lidar_.distance_m = telemetry.lidar_height_m;
         remote_last_data_ms_.insert(VaporView::SkyDeviceId::Lidar, nowMs);
     }
     else
@@ -9253,8 +9253,8 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
     {
         current_hmp_.valid = true;
         current_hmp_.timestamp = now;
-        current_hmp_.temperature = data.temperature_c;
-        current_hmp_.humidity = data.humidity_percent;
+        current_hmp_.temperature = telemetry.temperature_c;
+        current_hmp_.humidity = telemetry.humidity_percent;
         remote_last_data_ms_.insert(VaporView::SkyDeviceId::Hmp, nowMs);
     }
     else
@@ -9268,7 +9268,7 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
     {
         current_ptb_.valid = true;
         current_ptb_.timestamp = now;
-        current_ptb_.pressure_hpa = data.pressure_hpa;
+        current_ptb_.pressure_hpa = telemetry.pressure_hpa;
         remote_last_data_ms_.insert(VaporView::SkyDeviceId::Ptb, nowMs);
     }
     else
