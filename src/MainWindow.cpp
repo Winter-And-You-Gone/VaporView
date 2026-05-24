@@ -507,7 +507,8 @@ QString titleApplicationPanelStyleSheet(bool dark, int cornerRadius = 8)
     if (dark)
     {
         return QStringLiteral(R"(
-QFrame#titleApplicationPanel {
+QFrame#titleApplicationPanel,
+QFrame#titleApplicationSubPanel {
     background-color: transparent;
     border: none;
 }
@@ -565,7 +566,8 @@ QScrollArea#titleApplicationSubScroll > QWidget > QWidget {
     }
 
     return QStringLiteral(R"(
-QFrame#titleApplicationPanel {
+QFrame#titleApplicationPanel,
+QFrame#titleApplicationSubPanel {
     background-color: transparent;
     border: none;
 }
@@ -2751,6 +2753,7 @@ MainWindow::MainWindow(QWidget *parent)
     , help_menu_(nullptr)
     , recording_rate_menu_(nullptr)
     , title_application_panel_(nullptr)
+    , title_application_sub_panel_(nullptr)
     , config_group_(nullptr)
     , data_group_(nullptr)
     , log_group_(nullptr)
@@ -3075,12 +3078,22 @@ bool MainWindow::shouldStartWindowMove(QObject *watched) const
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
-    if (title_application_panel_ && title_application_panel_->isVisible())
+    const bool titleMenuVisible =
+        (title_application_panel_ && title_application_panel_->isVisible()) ||
+        (title_application_sub_panel_ && title_application_sub_panel_->isVisible());
+    if (titleMenuVisible)
     {
         if (event->type() == QEvent::ApplicationDeactivate ||
             event->type() == QEvent::WindowDeactivate)
         {
-            title_application_panel_->hide();
+            if (title_application_panel_)
+            {
+                title_application_panel_->hide();
+            }
+            if (title_application_sub_panel_)
+            {
+                title_application_sub_panel_->hide();
+            }
         }
         else if (event->type() == QEvent::MouseButtonPress)
         {
@@ -3093,13 +3106,20 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             };
 
             const bool insideMenu =
-                containsGlobalPoint(title_application_panel_->findChild<QFrame *>(QStringLiteral("titleApplicationMainMenu"))) ||
-                containsGlobalPoint(title_application_panel_->findChild<QFrame *>(QStringLiteral("titleApplicationSubMenu")));
+                containsGlobalPoint(title_application_panel_) ||
+                containsGlobalPoint(title_application_sub_panel_);
             const bool insideMenuButton = containsGlobalPoint(title_menu_btn_);
 
             if (!insideMenu && !insideMenuButton)
             {
-                title_application_panel_->hide();
+                if (title_application_panel_)
+                {
+                    title_application_panel_->hide();
+                }
+                if (title_application_sub_panel_)
+                {
+                    title_application_sub_panel_->hide();
+                }
             }
         }
     }
@@ -4814,15 +4834,25 @@ void MainWindow::addTitleBarSeparator(QHBoxLayout *layout)
 
 void MainWindow::discardTitleApplicationMenuPanel()
 {
-    if (!title_application_panel_)
+    if (!title_application_panel_ && !title_application_sub_panel_)
     {
         return;
     }
 
     QFrame *panel = title_application_panel_;
+    QFrame *subPanel = title_application_sub_panel_;
     title_application_panel_ = nullptr;
-    panel->hide();
-    panel->deleteLater();
+    title_application_sub_panel_ = nullptr;
+    if (panel)
+    {
+        panel->hide();
+        panel->deleteLater();
+    }
+    if (subPanel)
+    {
+        subPanel->hide();
+        subPanel->deleteLater();
+    }
 }
 
 void MainWindow::createTitleApplicationMenuPanel()
@@ -4841,10 +4871,23 @@ void MainWindow::createTitleApplicationMenuPanel()
     title_application_panel_ = panel;
     panel->raise();
 
+    auto *subPanel = new QFrame(this);
+    subPanel->setObjectName(QStringLiteral("titleApplicationSubPanel"));
+    subPanel->setAttribute(Qt::WA_StyledBackground, true);
+    subPanel->setFocusPolicy(Qt::NoFocus);
+    subPanel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    subPanel->hide();
+    title_application_sub_panel_ = subPanel;
+    subPanel->raise();
+
     auto closePanel = [this]() {
         if (title_application_panel_)
         {
             title_application_panel_->hide();
+        }
+        if (title_application_sub_panel_)
+        {
+            title_application_sub_panel_->hide();
         }
     };
 
@@ -4882,6 +4925,7 @@ void MainWindow::createTitleApplicationMenuPanel()
     const int shortcutGap = scalePixels(24);
     const int mainMenuMinWidth = scalePixels(72);
     const int subMenuMinWidth = scalePixels(72);
+    subPanel->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_, menuCornerRadius));
     auto commandRowsHeight = [&](const QVector<TitleMenuCommand>& commands) {
         return menuVerticalPadding * 2 + rowHeight * static_cast<int>(commands.size());
     };
@@ -5100,11 +5144,11 @@ void MainWindow::createTitleApplicationMenuPanel()
     mainLayout->setContentsMargins(0, menuVerticalPadding, 0, menuVerticalPadding);
     mainLayout->setSpacing(0);
 
-    auto *subMenu = new QFrame(panel);
+    auto *subMenu = new QFrame(subPanel);
     subMenu->setObjectName(QStringLiteral("titleApplicationSubMenu"));
     subMenu->setAttribute(Qt::WA_StyledBackground, true);
     subMenu->setFixedWidth(subMenuWidths.value(0, subMenuMinWidth));
-    subMenu->move(mainMenuWidth, 0);
+    subMenu->move(0, 0);
     subMenu->hide();
 
     auto *subLayout = new QVBoxLayout(subMenu);
@@ -5237,7 +5281,7 @@ void MainWindow::createTitleApplicationMenuPanel()
         sectionRow->setProperty("selected", false);
         sectionRows->push_back(sectionRow);
         mainLayout->addWidget(sectionRow);
-        sectionRow->installEventFilter(new MenuItemEventFilter([this, stack, subMenu, mainMenu, panel, mainMenuWidth, menuVerticalPadding, subMenuWidths, sectionRows, sectionRow, sectionIndex]() {
+        sectionRow->installEventFilter(new MenuItemEventFilter([this, stack, subMenu, mainMenu, panel, subPanel, mainMenuWidth, menuVerticalPadding, subMenuWidths, sectionRows, sectionRow, sectionIndex]() {
             stack->setCurrentIndex(sectionIndex);
             if (QWidget *currentPage = stack->currentWidget())
             {
@@ -5245,10 +5289,26 @@ void MainWindow::createTitleApplicationMenuPanel()
                 const int subMenuBorderWidth = std::max(1, subMenu->frameWidth());
                 const int subMenuTop = std::max(0, sectionRow->y() - menuVerticalPadding - subMenuBorderWidth);
                 subMenu->setFixedSize(subMenuWidth, currentPage->height());
-                panel->setFixedSize(mainMenuWidth + subMenuWidth, std::max(mainMenu->height(), subMenuTop + subMenu->height()));
-                subMenu->move(mainMenuWidth, subMenuTop);
+                subPanel->setFixedSize(subMenu->size());
+                const QPoint subMenuPos = panel->mapTo(this, QPoint(mainMenuWidth, subMenuTop));
+                const int popupMargin = scalePixels(4);
+                int subMenuX = subMenuPos.x();
+                if (subMenuX + subPanel->width() > width() - popupMargin)
+                {
+                    subMenuX = panel->x() - subPanel->width();
+                }
+                subMenuX = std::clamp(subMenuX,
+                                      popupMargin,
+                                      std::max(popupMargin, width() - subPanel->width() - popupMargin));
+                const int subMenuY = std::clamp(subMenuPos.y(),
+                                                popupMargin,
+                                                std::max(popupMargin, height() - subPanel->height() - popupMargin));
+                subPanel->move(subMenuX, subMenuY);
+                subMenu->move(0, 0);
                 subMenu->raise();
                 subMenu->show();
+                subPanel->show();
+                subPanel->raise();
             }
             for (QFrame *row : *sectionRows)
             {
@@ -5265,6 +5325,7 @@ void MainWindow::createTitleApplicationMenuPanel()
     mainLayout->addStretch(1);
     stack->setCurrentIndex(0);
     panel->setFixedSize(mainMenuWidth, mainMenu->height());
+    subPanel->setFixedSize(subMenu->width(), 0);
 }
 
 void MainWindow::showTitleApplicationMenu()
@@ -5283,6 +5344,10 @@ void MainWindow::showTitleApplicationMenu()
     if (title_application_panel_->isVisible())
     {
         title_application_panel_->hide();
+        if (title_application_sub_panel_)
+        {
+            title_application_sub_panel_->hide();
+        }
         return;
     }
 
@@ -5292,6 +5357,10 @@ void MainWindow::showTitleApplicationMenu()
                              std::max(scalePixels(4), width() - title_application_panel_->width() - scalePixels(4)));
     const int y = std::max(anchor.y(), scalePixels(4));
     title_application_panel_->move(x, y);
+    if (title_application_sub_panel_)
+    {
+        title_application_sub_panel_->hide();
+    }
     title_application_panel_->show();
     title_application_panel_->raise();
 }
@@ -6374,6 +6443,11 @@ void MainWindow::updateCustomTitleBarStyle()
         title_application_panel_->hide();
         title_application_panel_->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_));
     }
+    if (title_application_sub_panel_)
+    {
+        title_application_sub_panel_->hide();
+        title_application_sub_panel_->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_));
+    }
     if (window_minimize_btn_)
     {
         window_minimize_btn_->setIcon(createTitleBarIcon(QStringLiteral("minus"), dark_theme_enabled_));
@@ -6522,6 +6596,10 @@ void MainWindow::updateWindowResizeHandles()
     if (title_application_panel_ && title_application_panel_->isVisible())
     {
         title_application_panel_->raise();
+    }
+    if (title_application_sub_panel_ && title_application_sub_panel_->isVisible())
+    {
+        title_application_sub_panel_->raise();
     }
 }
 

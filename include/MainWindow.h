@@ -492,6 +492,7 @@ private:
     QMenu *help_menu_;
     QMenu *recording_rate_menu_;
     QFrame *title_application_panel_;
+    QFrame *title_application_sub_panel_;
 
     QGroupBox *config_group_;
     QGroupBox *data_group_;
