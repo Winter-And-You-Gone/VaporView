@@ -4950,19 +4950,20 @@ void RtkBackend::runStr2strConnectionTest(RtkStreamConfig config)
     QString err;
     if (!testSvc.start(config, &err)) { postLog(QStringLiteral("str2str 测试会话启动失败：%1").arg(err)); sinkServer.close(); finish(); return; }
 
-    auto isSuccess = [](const RtkStreamStats& s) {
-        if (s.rtcm3CrcOkCount >= 4) return true;
-        if (s.rtcm3CrcOkCount >= 3 && s.rtcm3FrameCount >= 3) return true;
-        if (s.rtcm3FrameCount >= 4 && s.rtcmDiagnosticBytes >= 128) return true;
-        return false;
-    };
-
-    constexpr int kMinRtcmTestMs = 2000;
+    constexpr int kMinRtcmTestMs = 6000;
+    constexpr int kRequiredRtcmGrowthSamples = 3;
+    constexpr int kRequiredCrcOkFrames = 6;
+    constexpr qint64 kRtcmGrowthSampleIntervalMs = 1000;
+    constexpr qint64 kMaxLastGrowthAgeMs = 2000;
     const int timeoutMs = std::max(12000, config.timeoutMs * 2);
     std::unique_ptr<QTcpSocket> sink;
     QElapsedTimer timer; timer.start();
     bool ok = false;
     RtkStreamStats st;
+    int validRtcmGrowthSamples = 0;
+    int sampledFrames = 0;
+    int sampledCrcOk = 0;
+    qint64 lastGrowthSampleMs = -kRtcmGrowthSampleIntervalMs;
 
     qint64 lastLogMs = 0;
     std::uint64_t lastBytes = 0;
@@ -4982,7 +4983,21 @@ void RtkBackend::runStr2strConnectionTest(RtkStreamConfig config)
             postLog(QStringLiteral("等待 RTCM 数据中：原始 %1 字节，RTCM3 帧 %2，CRC 正确 %3，CRC 失败 %4。")
                 .arg(st.rtcmDiagnosticBytes).arg(st.rtcm3FrameCount).arg(st.rtcm3CrcOkCount).arg(st.rtcm3CrcFailCount));
         }
-        if (timer.elapsed() >= kMinRtcmTestMs && isSuccess(st)) { ok = true; break; }
+        const bool hasNewValidRtcm = st.rtcm3FrameCount > sampledFrames && st.rtcm3CrcOkCount > sampledCrcOk;
+        if (hasNewValidRtcm && timer.elapsed() - lastGrowthSampleMs >= kRtcmGrowthSampleIntervalMs) {
+            ++validRtcmGrowthSamples;
+            sampledFrames = st.rtcm3FrameCount;
+            sampledCrcOk = st.rtcm3CrcOkCount;
+            lastGrowthSampleMs = timer.elapsed();
+        }
+
+        if (timer.elapsed() >= kMinRtcmTestMs &&
+            validRtcmGrowthSamples >= kRequiredRtcmGrowthSamples &&
+            st.rtcm3CrcOkCount >= kRequiredCrcOkFrames &&
+            timer.elapsed() - lastGrowthSampleMs <= kMaxLastGrowthAgeMs) {
+            ok = true;
+            break;
+        }
         QThread::msleep(100);
     }
     st = testSvc.stats();
@@ -4990,13 +5005,16 @@ void RtkBackend::runStr2strConnectionTest(RtkStreamConfig config)
     sinkServer.close();
 
     if (ok) {
-        postLog(QStringLiteral("已接收到有效 RTCM3 数据：原始 %1 字节，RTCM3 帧 %2，CRC 正确 %3，CRC 失败 %4。")
-            .arg(st.rtcmDiagnosticBytes).arg(st.rtcm3FrameCount).arg(st.rtcm3CrcOkCount).arg(st.rtcm3CrcFailCount));
+        postLog(QStringLiteral("已完成 %1 次有效 RTCM3 数据确认：原始 %2 字节，RTCM3 帧 %3，CRC 正确 %4，CRC 失败 %5。")
+            .arg(validRtcmGrowthSamples).arg(st.rtcmDiagnosticBytes).arg(st.rtcm3FrameCount).arg(st.rtcm3CrcOkCount).arg(st.rtcm3CrcFailCount));
         if (!st.rtcmMessageTypes.trimmed().isEmpty())
             postLog(QStringLiteral("RTCM 消息类型：%1。").arg(st.rtcmMessageTypes));
-        postLog(QStringLiteral("NTRIP 数据链路测试成功。"));
+        postLog(QStringLiteral("NTRIP 数据链路多轮测试成功。"));
     } else {
-        if (st.rtcm3FrameCount > 0 && st.rtcm3CrcOkCount == 0)
+        if (st.rtcm3CrcOkCount > 0)
+            postLog(QStringLiteral("已收到有效 RTCM3 数据，但多轮确认不足：有效样本 %1/%2，RTCM3 帧 %3，CRC 正确 %4，CRC 失败 %5。")
+                .arg(validRtcmGrowthSamples).arg(kRequiredRtcmGrowthSamples).arg(st.rtcm3FrameCount).arg(st.rtcm3CrcOkCount).arg(st.rtcm3CrcFailCount));
+        else if (st.rtcm3FrameCount > 0)
             postLog(QStringLiteral("已收到 RTCM3 帧，但 CRC 校验未通过：RTCM3 帧 %1，CRC 失败 %2。").arg(st.rtcm3FrameCount).arg(st.rtcm3CrcFailCount));
         else if (st.rtcmDiagnosticBytes > 0)
             postLog(QStringLiteral("已收到少量数据，但未解析出有效 RTCM3 帧：%1 字节，首段 HEX：%2。").arg(st.rtcmDiagnosticBytes).arg(st.firstInputHex));
