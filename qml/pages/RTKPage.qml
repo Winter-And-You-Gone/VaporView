@@ -39,13 +39,62 @@ Item {
         return ApplicationWindow.window.warning
     }
 
-    function diagnosticsText() {
-        var lines = rtkBackend.diagnostics || []
-        return lines.length > 0 ? lines.join("\n") : ""
-    }
-
     property var ggaSourceModel: []
     property int ggaSourceIndex: 0
+    property bool diagnosticLogAutoFollow: true
+    property bool diagnosticLogProgrammaticScroll: false
+
+    function rebuildDiagnosticLogModel(lines) {
+        diagnosticLogModel.clear()
+        for (var i = 0; i < lines.length; ++i)
+            diagnosticLogModel.append({ entry: String(lines[i]) })
+    }
+
+    function syncDiagnosticLogModel() {
+        var lines = rtkBackend.diagnostics || []
+        var previousCount = diagnosticLogModel.count
+        var changed = false
+        if (lines.length === 0) {
+            if (previousCount > 0)
+                diagnosticLogModel.clear()
+            return
+        }
+
+        if (lines.length > previousCount) {
+            var prefixMatches = true
+            for (var i = 0; i < previousCount; ++i) {
+                if (diagnosticLogModel.get(i).entry !== String(lines[i])) {
+                    prefixMatches = false
+                    break
+                }
+            }
+            if (prefixMatches) {
+                for (var j = previousCount; j < lines.length; ++j)
+                    diagnosticLogModel.append({ entry: String(lines[j]) })
+                changed = true
+            } else {
+                rebuildDiagnosticLogModel(lines)
+                changed = true
+            }
+        } else {
+            var sameLines = lines.length === previousCount
+            for (var k = 0; sameLines && k < lines.length; ++k)
+                sameLines = diagnosticLogModel.get(k).entry === String(lines[k])
+            if (!sameLines) {
+                rebuildDiagnosticLogModel(lines)
+                changed = true
+            }
+        }
+
+        if (diagnosticLogAutoFollow && changed && diagnosticLogModel.count > 0)
+            logScrollTimer.restart()
+    }
+
+    function diagnosticLogAtEnd() {
+        if (!diagnosticsListView || diagnosticsListView.contentHeight <= diagnosticsListView.height)
+            return true
+        return diagnosticsListView.contentY >= Math.max(0, diagnosticsListView.contentHeight - diagnosticsListView.height - 2)
+    }
 
     function refreshGgaSourceModel() {
         var selectedValue = "epsilon_main"
@@ -82,7 +131,12 @@ Item {
         }
     }
 
-    Component.onCompleted: refreshGgaSourceModel()
+    Component.onCompleted: {
+        refreshGgaSourceModel()
+        syncDiagnosticLogModel()
+    }
+
+    ListModel { id: diagnosticLogModel }
 
     property var ggaRateModel: [
         { text: "1 Hz", value: 1 },
@@ -533,24 +587,52 @@ Item {
                             font.bold: true
                         }
 
-                        ScrollView {
+                        ListView {
+                            id: diagnosticsListView
                             anchors.left: parent.left
                             anchors.right: parent.right
                             anchors.top: parent.top
                             anchors.topMargin: 56
                             anchors.bottom: parent.bottom
                             clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            model: diagnosticLogModel
+                            spacing: 2
                             ScrollBar.vertical: ScrollBar { id: logVBar }
 
-                            TextArea {
-                                text: page.diagnosticsText() ? page.diagnosticsText() : t("rtk.noDiagnosticLog")
-                                readOnly: true; selectByMouse: true; wrapMode: TextEdit.Wrap
+                            delegate: TextEdit {
+                                required property string entry
+
+                                width: diagnosticsListView.width
+                                text: entry
+                                readOnly: true
+                                selectByMouse: true
+                                wrapMode: TextEdit.Wrap
                                 color: ApplicationWindow.window.text
                                 selectedTextColor: ApplicationWindow.window.primaryForeground
                                 selectionColor: ApplicationWindow.window.primary
                                 font.family: "Consolas"
                                 font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor
-                                background: Rectangle { color: "transparent" }
+                                textFormat: TextEdit.PlainText
+                            }
+
+                            onMovementStarted: page.diagnosticLogAutoFollow = false
+                            onMovementEnded: page.diagnosticLogAutoFollow = page.diagnosticLogAtEnd()
+                            onContentYChanged: {
+                                if (!page.diagnosticLogProgrammaticScroll && !moving && !dragging)
+                                    page.diagnosticLogAutoFollow = page.diagnosticLogAtEnd()
+                            }
+
+                            Text {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.top: parent.top
+                                visible: diagnosticLogModel.count === 0
+                                text: t("rtk.noDiagnosticLog")
+                                color: ApplicationWindow.window.muted
+                                font.family: "Consolas"
+                                font.pixelSize: ApplicationWindow.window.uiSmallFontSize * ApplicationWindow.window.scaleFactor
+                                wrapMode: Text.Wrap
                             }
                         }
                     }
@@ -563,11 +645,15 @@ Item {
     Timer {
         id: logScrollTimer
         interval: 50
-        onTriggered: logVBar.position = 1.0 - logVBar.size
+        onTriggered: {
+            page.diagnosticLogProgrammaticScroll = true
+            diagnosticsListView.positionViewAtEnd()
+            Qt.callLater(function() { page.diagnosticLogProgrammaticScroll = false })
+        }
     }
     Connections {
         target: rtkBackend
-        function onDiagnosticsChanged() { logScrollTimer.restart() }
+        function onDiagnosticsChanged() { page.syncDiagnosticLogModel() }
     }
     Connections {
         target: rtkBackend
