@@ -5241,10 +5241,18 @@ void MainWindow::createTitleApplicationMenuPanel()
         {
             if (command.separatorBefore)
             {
-                auto *separator = new QFrame(pageContent);
+                auto *separatorRow = new QWidget(pageContent);
+                separatorRow->setObjectName(QStringLiteral("titleApplicationSubPageContent"));
+                separatorRow->setAttribute(Qt::WA_StyledBackground, true);
+                separatorRow->setFixedHeight(separatorHeight);
+                auto *separatorLayout = new QHBoxLayout(separatorRow);
+                separatorLayout->setContentsMargins(rowLeftPadding, 0, rowRightPadding, 0);
+                separatorLayout->setSpacing(0);
+                auto *separator = new QFrame(separatorRow);
                 separator->setObjectName(QStringLiteral("titleApplicationPanelSeparator"));
                 separator->setFixedHeight(1);
-                contentLayout->addWidget(separator);
+                separatorLayout->addWidget(separator);
+                contentLayout->addWidget(separatorRow);
             }
             contentLayout->addWidget(createRow(pageContent,
                                                command.text,
