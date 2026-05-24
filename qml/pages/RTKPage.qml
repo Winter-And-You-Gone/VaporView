@@ -371,13 +371,25 @@ Item {
                                 validator: DoubleValidator { bottom: -10000; top: 10000; decimals: 4 }
                                 onEditingFinished: page.uiLeverZ = text
                             }
-                        }
-                        ToolbarButton {
-                            Layout.fillWidth: true
-                            text: t("rtk.applyLeverArm"); iconName: "ruler"
-                            variant: "primary"
-                            onClicked: rtkBackend.applyMainAntennaLeverArm(
-                                Number(leverX.text), Number(leverY.text), Number(leverZ.text))
+                            ToolbarButton {
+                                id: applyLeverArmButton
+                                readonly property int fixedWidth: Math.ceil(applyLeverArmText.advanceWidth
+                                    + iconSize + 6 + leftPadding + rightPadding)
+                                Layout.preferredWidth: fixedWidth
+                                Layout.minimumWidth: fixedWidth
+                                Layout.maximumWidth: fixedWidth
+                                Layout.alignment: Qt.AlignVCenter
+                                text: t("rtk.applyLeverArm"); iconName: "ruler"
+                                variant: "primary"
+                                onClicked: rtkBackend.applyMainAntennaLeverArm(
+                                    Number(leverX.text), Number(leverY.text), Number(leverZ.text))
+
+                                TextMetrics {
+                                    id: applyLeverArmText
+                                    font: applyLeverArmButton.font
+                                    text: t("rtk.applyLeverArm")
+                                }
+                            }
                         }
 
                         // Row 3: Timeout + Reconnect
@@ -513,9 +525,6 @@ Item {
                 // ── Operation Buttons ──
                 Row {
                     id: operationRow
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-                    Layout.preferredWidth: 0
                     spacing: 6
 
                     ToolbarButton {
