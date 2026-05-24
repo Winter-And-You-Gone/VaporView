@@ -344,7 +344,7 @@ Item {
                                 Layout.alignment: Qt.AlignVCenter
                             }
                             RtkTextField {
-                                id: leverX; Layout.fillWidth: true
+                                id: leverX; Layout.preferredWidth: 65
                                 text: page.uiLeverX
                                 validator: DoubleValidator { bottom: -10000; top: 10000; decimals: 4 }
                                 onEditingFinished: page.uiLeverX = text
@@ -355,7 +355,7 @@ Item {
                                 Layout.alignment: Qt.AlignVCenter
                             }
                             RtkTextField {
-                                id: leverY; Layout.fillWidth: true
+                                id: leverY; Layout.preferredWidth: 65
                                 text: page.uiLeverY
                                 validator: DoubleValidator { bottom: -10000; top: 10000; decimals: 4 }
                                 onEditingFinished: page.uiLeverY = text
@@ -366,7 +366,7 @@ Item {
                                 Layout.alignment: Qt.AlignVCenter
                             }
                             RtkTextField {
-                                id: leverZ; Layout.fillWidth: true
+                                id: leverZ; Layout.preferredWidth: 65
                                 text: page.uiLeverZ
                                 validator: DoubleValidator { bottom: -10000; top: 10000; decimals: 4 }
                                 onEditingFinished: page.uiLeverZ = text
