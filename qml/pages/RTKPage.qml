@@ -547,10 +547,14 @@ Item {
                     }
                     ToolbarButton {
                         id: testConnectionButton
+                        readonly property int fixedWidth: Math.max(Math.round(126 * ApplicationWindow.window.scaleFactor),
+                            Math.ceil(Math.max(testConnectionIdleText.advanceWidth, testConnectionBusyText.advanceWidth)
+                                + iconSize + 6 + leftPadding + rightPadding
+                                + Math.round(24 * ApplicationWindow.window.scaleFactor)))
                         iconName: "flask-conical"
                         height: 30
-                        width: Math.ceil(Math.max(testConnectionIdleText.advanceWidth, testConnectionBusyText.advanceWidth)
-                            + iconSize + 6 + leftPadding + rightPadding)
+                        width: fixedWidth
+                        implicitWidth: fixedWidth
                         text: rtkBackend.testingConnection ? t("rtk.testingConnection") : t("rtk.testConnection")
                         enabled: !rtkBackend.testingConnection
                         onClicked: rtkBackend.testConnection()
