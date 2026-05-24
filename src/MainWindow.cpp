@@ -2704,6 +2704,7 @@ MainWindow::MainWindow(QWidget *parent)
     , hmp_panel_(nullptr)
     , lidar_panel_(nullptr)
     , log_text_edit_(nullptr)
+    , log_clear_btn_(nullptr)
     , status_label_(nullptr)
     , status_task_progress_bar_(nullptr)
     , status_task_spinner_label_(nullptr)
@@ -4743,7 +4744,6 @@ void MainWindow::setupCustomTitleBar()
     titleLayout->addWidget(createTitleBarActionButton(stop_recording_btn_, custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(rtk_config_action_, custom_title_bar_), 0, Qt::AlignVCenter);
     addTitleBarSeparator(titleLayout);
-    titleLayout->addWidget(createTitleBarActionButton(clear_log_action_, custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(session_viewer_action_, custom_title_bar_), 0, Qt::AlignVCenter);
     addTitleBarSeparator(titleLayout);
     titleLayout->addWidget(createTitleBarActionButton(lang_action_, custom_title_bar_), 0, Qt::AlignVCenter);
@@ -4955,32 +4955,6 @@ void MainWindow::createTitleApplicationMenuPanel()
         }
     };
 
-    TitleMenuSection editSection{
-        is_english_ ? QStringLiteral("Edit") : QStringLiteral("编辑"),
-        {
-            {is_english_ ? QStringLiteral("Clear Log") : QStringLiteral("清空日志"),
-             QString(),
-             true,
-             false,
-             false,
-             [this]() { onClearLogClicked(); }},
-            {is_english_ ? QStringLiteral("Switch to Chinese") : QStringLiteral("切换到英文"),
-             QString(),
-             true,
-             false,
-             false,
-             [this]() { onSwitchLanguage(); }},
-            {dark_theme_enabled_
-                 ? (is_english_ ? QStringLiteral("Light Theme") : QStringLiteral("亮色模式"))
-                 : (is_english_ ? QStringLiteral("Dark Theme") : QStringLiteral("暗色模式")),
-             QString(),
-             true,
-             false,
-             false,
-             [this]() { onToggleTheme(); }}
-        }
-    };
-
     TitleMenuSection viewSection{
         is_english_ ? QStringLiteral("View") : QStringLiteral("视图"),
         {
@@ -5091,7 +5065,6 @@ void MainWindow::createTitleApplicationMenuPanel()
     };
 
     sections.push_back(fileSection);
-    sections.push_back(editSection);
     sections.push_back(viewSection);
     sections.push_back(developerSection);
     sections.push_back(helpSection);
@@ -6031,6 +6004,10 @@ void MainWindow::setupLogPanel()
     log_inline_title_lbl_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     logTitleLayout->addWidget(log_inline_title_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     logTitleLayout->addStretch(1);
+    log_clear_btn_ = createTitleBarActionButton(clear_log_action_, logTitleBar);
+    log_clear_btn_->setFixedSize(kMainPageButtonHeight, kMainPageButtonHeight);
+    log_clear_btn_->setIconSize(QSize(kMainPageButtonHeight - 12, kMainPageButtonHeight - 12));
+    logTitleLayout->addWidget(log_clear_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
     log_layout->addWidget(logTitleBar);
 
     log_text_edit_ = new QTextEdit(log_group_);
@@ -6432,6 +6409,11 @@ void MainWindow::updateCustomTitleBarStyle()
     if (window_maximize_btn_)
     {
         window_maximize_btn_->setIconSize(maximizeIconSize);
+    }
+    if (log_clear_btn_)
+    {
+        log_clear_btn_->setFixedSize(actionButtonSize);
+        log_clear_btn_->setIconSize(iconSize);
     }
 
     if (title_menu_btn_)
