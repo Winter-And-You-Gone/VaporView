@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
@@ -31,6 +32,34 @@ bool connectedAndFresh(const DeviceStatusItem& status, quint64 nowUs, quint64 ti
 QString defaultConfigPath()
 {
     return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("sky_config.json"));
+}
+
+QString locateRepositoryRoot()
+{
+    QDir dir(QCoreApplication::applicationDirPath());
+    for (int i = 0; i < 6; ++i)
+    {
+        if (QFileInfo::exists(dir.filePath(QStringLiteral("CMakeLists.txt"))) &&
+            QFileInfo::exists(dir.filePath(QStringLiteral("README.md"))))
+        {
+            return dir.path();
+        }
+        if (!dir.cdUp())
+        {
+            break;
+        }
+    }
+    return QString();
+}
+
+QString defaultRecordingDirectory()
+{
+    const QString repositoryRoot = locateRepositoryRoot();
+    if (!repositoryRoot.isEmpty())
+    {
+        return QDir(repositoryRoot).filePath(QStringLiteral("data"));
+    }
+    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("data"));
 }
 
 DownsampledWaveform makeDownsampledWaveform(const QVector<float>& samples,
@@ -217,7 +246,7 @@ bool SkyRuntime::startRecording(QString *error)
         if (error) *error = QStringLiteral("recording already started");
         return false;
     }
-    if (!session_recorder_.start(QCoreApplication::applicationDirPath(), options_.telemetry_port, options_.telemetry_baud, error))
+    if (!session_recorder_.start(defaultRecordingDirectory(), options_.telemetry_port, options_.telemetry_baud, error))
     {
         return false;
     }
@@ -253,7 +282,7 @@ TelemetryStatus SkyRuntime::currentStatus() const
     TelemetryStatus status;
     status.recording_state = session_recorder_.recordingState();
     status.session_name = session_recorder_.sessionName();
-    status.disk_free_bytes = static_cast<quint64>(QStorageInfo(QCoreApplication::applicationDirPath()).bytesAvailable());
+    status.disk_free_bytes = static_cast<quint64>(QStorageInfo(defaultRecordingDirectory()).bytesAvailable());
     status.telemetry_basic_rate_hz = static_cast<float>(device_manager_.config().telemetry.basic_rate_hz);
     status.waveform_rate_hz = static_cast<float>(device_manager_.config().telemetry.waveform_rate_hz);
     status.feature_rate_hz = static_cast<float>(device_manager_.config().telemetry.feature_rate_hz);

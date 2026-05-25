@@ -80,9 +80,9 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     session_name_ = QStringLiteral("sky_session_%1").arg(timestamp);
 
     QDir recordsDir(baseDirectory);
-    if (!recordsDir.mkpath(QStringLiteral("records")) || !recordsDir.cd(QStringLiteral("records")))
+    if (!recordsDir.exists() && !recordsDir.mkpath(QStringLiteral(".")))
     {
-        if (errorMessage) *errorMessage = QStringLiteral("cannot create records directory");
+        if (errorMessage) *errorMessage = QStringLiteral("cannot create recording directory");
         return false;
     }
     if (!recordsDir.mkpath(session_name_))

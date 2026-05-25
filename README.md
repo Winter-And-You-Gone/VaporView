@@ -105,7 +105,7 @@ Linux/macOS: socat -d -d pty,raw,echo=0,link=/tmp/vapor_sky pty,raw,echo=0,link=
 地面端: VaporView.exe，在首页选择 Remote Sky，连接 COM51 @ 921600
 ```
 
-Remote Sky 模式下，地面端工具栏的“开始记录 / 暂停记录 / 结束记录”会通过数传下发到天空端。天空端收到开始记录命令后在天空端本机创建 `records/sky_session_*`，并把 EPSILON、PTB、HMP、Lidar 和 TCP 波形的原始数据写入统一 `raw/*.dat`；天空端状态包会同步回传记录状态、时长、遥测行数和各 raw 文件记录条数，地面端状态栏实时显示这些关键计数。
+Remote Sky 模式下，地面端工具栏的“开始记录 / 暂停记录 / 结束记录”会通过数传下发到天空端。天空端收到开始记录命令后在普通模式同一个默认 `data/` 目录下创建 `sky_session_*`，并把 EPSILON、PTB、HMP、Lidar 和 TCP 波形的原始数据写入统一 `raw/*.dat`；天空端状态包会同步回传记录状态、时长、遥测行数和各 raw 文件记录条数，地面端状态栏实时显示这些关键计数。
 
 本文档只描述当前仓库中可以直接从代码、构建脚本和随仓库文档确认的内容。对应代码入口主要是：
 
@@ -194,7 +194,7 @@ VaporView/
 
 说明：
 
-- `build/`、`data/`、`records/`、`AGENTS.md` 等本地文件在 `.gitignore` 中忽略，不属于交付源码。
+- `build/`、`data/`、`AGENTS.md` 等本地文件在 `.gitignore` 中忽略，不属于交付源码。
 - `third_party/rtklib` 参与当前 RTK 流服务构建，并带有 `third_party/rtklib/LICENSE.txt`。
 - `third_party/um982_driver` 和 `third_party/hipnuc_driver` 的源码仍被 `CMakeLists.txt` 编入 `VaporView`，但当前主窗口配置面板没有把 UM982 或独立 HiPNUC IMU 作为可选择设备行展示。
 
@@ -478,7 +478,7 @@ RTK 功能由 `src/RtkConfigDialog.cpp` 和 `src/RtkStreamService.cpp` 实现。
 Remote Sky 模式下，记录控制作用在天空端：
 
 - 地面端发送 `StartRecording`、`PauseRecording`、`StopRecording` 命令，不在地面端创建本地 session。
-- 天空端记录目录位于天空端程序目录下的 `records/sky_session_*`。
+- 天空端记录目录位于普通模式同一个默认 `data/` 目录下，目录名为 `sky_session_*`。
 - 天空端 raw 记录使用同一套统一 DAT 格式：`raw/epsilon.dat`、`raw/ptb.dat`、`raw/hmp.dat`、`raw/lidar.dat`、`raw/tcp_wave.dat`。
 - 地面端通过天空端 `TelemetryStatus` 实时显示记录状态、记录时长、遥测行数、raw 总条数和 TCP 波形 raw 条数；状态栏 tooltip 会列出各设备 raw 计数。
 
