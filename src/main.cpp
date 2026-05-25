@@ -146,10 +146,14 @@ int main(int argc, char *argv[])
     }
 
     const QString appDir = QCoreApplication::applicationDirPath();
+    const QString logoFileName = startupDarkTheme
+        ? QStringLiteral("VaporViewLOGO_rgb217_119_87.svg")
+        : QStringLiteral("VaporViewLOGO_black.svg");
+    const QString logoRelativePath = QStringLiteral("resources/VaproViewLOGO/%1").arg(logoFileName);
     const QStringList iconCandidates = {
-        QDir(appDir).filePath("resources/app.ico"),
-        QDir(appDir).filePath("../resources/app.ico"),
-        QDir(appDir).filePath("../../resources/app.ico")
+        QDir(appDir).filePath(logoRelativePath),
+        QDir(appDir).filePath(QStringLiteral("../") + logoRelativePath),
+        QDir(appDir).filePath(QStringLiteral("../../") + logoRelativePath)
     };
 
     QIcon windowIcon;

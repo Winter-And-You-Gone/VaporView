@@ -432,6 +432,46 @@ QIcon createLucideIcon(const QString& iconName, const QColor& color)
     return icon;
 }
 
+QString vaporViewLogoResourcePath(bool dark)
+{
+    return findResourceFile(dark
+        ? QStringLiteral("resources/VaproViewLOGO/VaporViewLOGO_rgb217_119_87.svg")
+        : QStringLiteral("resources/VaproViewLOGO/VaporViewLOGO_black.svg"));
+}
+
+QPixmap renderVaporViewLogo(bool dark, int size, qreal devicePixelRatio)
+{
+    const QString path = vaporViewLogoResourcePath(dark);
+    if (path.isEmpty())
+    {
+        return QPixmap();
+    }
+
+    const qreal dpr = std::max<qreal>(1.0, devicePixelRatio);
+    const int logicalSize = std::max(1, size);
+    const int physicalSize = std::max(1, qCeil(logicalSize * dpr));
+    QPixmap pixmap(physicalSize, physicalSize);
+    pixmap.setDevicePixelRatio(dpr);
+    pixmap.fill(Qt::transparent);
+
+    QSvgRenderer renderer(path);
+    if (!renderer.isValid())
+    {
+        return QPixmap();
+    }
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    renderer.render(&painter, QRectF(0, 0, logicalSize, logicalSize));
+    return pixmap;
+}
+
+QIcon createVaporViewLogoIcon(bool dark)
+{
+    const QString path = vaporViewLogoResourcePath(dark);
+    return path.isEmpty() ? QIcon() : QIcon(path);
+}
+
 QIcon createRefreshIcon()
 {
     return createLucideIcon(QStringLiteral("refresh-cw"), kToolbarBlue);
@@ -2697,6 +2737,7 @@ MainWindow::MainWindow(QWidget *parent)
     , window_border_bottom_(nullptr)
     , window_border_left_(nullptr)
     , custom_title_bar_(nullptr)
+    , custom_logo_label_(nullptr)
     , custom_title_label_(nullptr)
     , title_menu_btn_(nullptr)
     , window_minimize_btn_(nullptr)
@@ -3051,9 +3092,9 @@ MainWindow::~MainWindow()
         {
             custom_title_label_->removeEventFilter(this);
         }
-        if (auto *logo = custom_title_bar_->findChild<QLabel *>(QStringLiteral("customTitleLogo")))
+        if (custom_logo_label_)
         {
-            logo->removeEventFilter(this);
+            custom_logo_label_->removeEventFilter(this);
         }
     }
 
@@ -3078,6 +3119,7 @@ MainWindow::~MainWindow()
 bool MainWindow::shouldStartWindowMove(QObject *watched) const
 {
     return watched == custom_title_bar_ ||
+           watched == custom_logo_label_ ||
            watched == custom_title_label_ ||
            (watched && watched->objectName() == QStringLiteral("customTitleLogo"));
 }
@@ -4717,17 +4759,12 @@ void MainWindow::setupCustomTitleBar()
     titleLayout->setContentsMargins(10, 0, 8, 0);
     titleLayout->setSpacing(6);
 
-    auto *logoLabel = new QLabel(custom_title_bar_);
-    logoLabel->setObjectName(QStringLiteral("customTitleLogo"));
-    const QIcon appIcon = !windowIcon().isNull() ? windowIcon() : qApp->windowIcon();
-    if (!appIcon.isNull())
-    {
-        logoLabel->setPixmap(appIcon.pixmap(18, 18));
-    }
-    logoLabel->setFixedSize(24, 24);
-    logoLabel->setAlignment(Qt::AlignCenter);
-    logoLabel->installEventFilter(this);
-    titleLayout->addWidget(logoLabel, 0, Qt::AlignVCenter);
+    custom_logo_label_ = new QLabel(custom_title_bar_);
+    custom_logo_label_->setObjectName(QStringLiteral("customTitleLogo"));
+    custom_logo_label_->setFixedSize(24, 24);
+    custom_logo_label_->setAlignment(Qt::AlignCenter);
+    custom_logo_label_->installEventFilter(this);
+    titleLayout->addWidget(custom_logo_label_, 0, Qt::AlignVCenter);
 
     title_menu_btn_ = createTitleBarIconButton(QStringLiteral("titleBarMenuButton"), custom_title_bar_);
     connect(title_menu_btn_, &QToolButton::clicked, this, &MainWindow::showTitleApplicationMenu);
@@ -6425,6 +6462,18 @@ void MainWindow::updateCustomTitleBarStyle()
     {
         log_clear_btn_->setFixedSize(actionButtonSize);
         log_clear_btn_->setIconSize(iconSize);
+    }
+    if (custom_logo_label_)
+    {
+        const int logoSize = scalePixels(44);
+        custom_logo_label_->setFixedSize(logoSize, logoSize);
+        custom_logo_label_->setPixmap(renderVaporViewLogo(dark_theme_enabled_, logoSize, custom_logo_label_->devicePixelRatioF()));
+    }
+    const QIcon logoIcon = createVaporViewLogoIcon(dark_theme_enabled_);
+    if (!logoIcon.isNull())
+    {
+        setWindowIcon(logoIcon);
+        qApp->setWindowIcon(logoIcon);
     }
 
     if (title_menu_btn_)

@@ -428,6 +428,7 @@ private:
     QFrame *window_border_left_;
     QVector<QWidget *> window_resize_handles_;
     QWidget *custom_title_bar_;
+    QLabel *custom_logo_label_;
     QLabel *custom_title_label_;
     QToolButton *title_menu_btn_;
     QToolButton *window_minimize_btn_;

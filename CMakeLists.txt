@@ -198,6 +198,9 @@ set(NAV_RESOURCES
     resources/modern_style.qss
     resources/combo_arrow_down.xpm
     resources/combo_arrow_up.xpm
+    resources/VaproViewLOGO/VaporViewLOGO_black.svg
+    resources/VaproViewLOGO/VaporViewLOGO_rgb217_119_87.svg
+    resources/VaproViewLOGO/VaporViewLOGO_white.svg
 )
 
 set(LUCIDE_RESOURCES
@@ -306,6 +309,9 @@ add_custom_command(TARGET VaporView POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/resources/lucide
         $<TARGET_FILE_DIR:VaporView>/resources/lucide
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/resources/VaproViewLOGO
+        $<TARGET_FILE_DIR:VaporView>/resources/VaproViewLOGO
     COMMENT "Copying resources to build directory"
 )
 
