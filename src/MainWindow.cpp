@@ -3614,6 +3614,7 @@ void MainWindow::setFontScale(int percent)
     font_scale_percent_ = percent;
     discardTitleApplicationMenuPanel();
     applyStyleConfiguration();
+    updateSourceModeUi();
     if (!isFullScreen() && !isMaximized())
     {
         targetSize = targetSize.expandedTo(minimumSize()).expandedTo(minimumSizeHint());
@@ -3942,21 +3943,52 @@ void MainWindow::updateSourceModeUi()
     if (sky_telemetry_port_combo_) sky_telemetry_port_combo_->setVisible(remote);
     if (sky_telemetry_baud_lbl_) sky_telemetry_baud_lbl_->setVisible(remote);
     if (sky_telemetry_baud_combo_) sky_telemetry_baud_combo_->setVisible(remote);
-    if (config_group_)
-    {
-        const int minimumHeight = remote ? kConfigRemoteCardMinHeight : kConfigCardMinHeight;
-        const int previousMinimum = config_group_->property(kMainCardMinimumHeightProperty).toInt();
-        const bool minimumChanged = previousMinimum != minimumHeight;
-        config_group_->setProperty(kMainCardMinimumHeightProperty, minimumHeight);
-        config_group_->setMinimumHeight(minimumHeight);
-        if (minimumChanged || config_group_->height() < minimumHeight)
-        {
-            config_group_->setFixedHeight(minimumHeight);
-        }
-    }
     if (sky_device_config_btn_) sky_device_config_btn_->setEnabled(remote && ground_telemetry_service_ && ground_telemetry_service_->isOpen());
     setRemoteDeviceButtonsEnabled(remote && ground_telemetry_service_ && ground_telemetry_service_->isOpen());
     updateRemoteTelemetrySummaryLabel();
+    updateConfigCardHeightForSourceMode();
+}
+
+int MainWindow::scaledConfiguredHeight(QWidget *widget, int baseHeight) const
+{
+    if (widget && widget->property(kBaseMinHeightProperty).isValid())
+    {
+        return scalePixels(baseHeight);
+    }
+    return baseHeight;
+}
+
+void MainWindow::updateConfigCardHeightForSourceMode()
+{
+    if (!config_group_)
+    {
+        return;
+    }
+
+    const bool remote = isRemoteSkyMode();
+    int minimumHeight = scaledConfiguredHeight(config_group_,
+                                              remote ? kConfigRemoteCardMinHeight : kConfigCardMinHeight);
+    if (remote && data_telemetry_summary_card_ && data_telemetry_summary_lbl_)
+    {
+        int summaryHeight = data_telemetry_summary_lbl_->sizeHint().height();
+        if (QLayout *summaryLayout = data_telemetry_summary_card_->layout())
+        {
+            const QMargins margins = summaryLayout->contentsMargins();
+            summaryHeight += margins.top() + margins.bottom();
+        }
+        summaryHeight = std::max(summaryHeight, scaledConfiguredHeight(data_telemetry_summary_lbl_, kMainPageInputHeight));
+        data_telemetry_summary_card_->setMinimumHeight(summaryHeight);
+        minimumHeight += std::max(0, summaryHeight - scaledConfiguredHeight(config_group_, kConfigRowsHeight));
+    }
+
+    const int previousMinimum = config_group_->property(kMainCardMinimumHeightProperty).toInt();
+    const bool minimumChanged = previousMinimum != minimumHeight;
+    config_group_->setProperty(kMainCardMinimumHeightProperty, minimumHeight);
+    config_group_->setMinimumHeight(minimumHeight);
+    if (minimumChanged || config_group_->height() < minimumHeight)
+    {
+        config_group_->setFixedHeight(minimumHeight);
+    }
 }
 
 void MainWindow::clearRemoteSkyDataUi()

@@ -405,6 +405,8 @@ private:
     void updateRecordingActionStates();
     bool isRemoteSkyMode() const;
     void updateSourceModeUi();
+    int scaledConfiguredHeight(QWidget *widget, int baseHeight) const;
+    void updateConfigCardHeightForSourceMode();
     void clearRemoteSkyDataUi();
     void refreshRemoteSkyDataUi();
     bool remoteDeviceDataValid(VaporView::SkyDeviceId device, qint64 timeout_ms) const;
