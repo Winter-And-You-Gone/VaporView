@@ -62,6 +62,14 @@ signals:
     void lidarDataUpdated(const LidarData& data);
     void waveformUpdated(quint64 timestampUs, QVector<float> samples);
     void waveformFeatureUpdated(const WaveformFeature& feature);
+    void epsilonRawFrameReceived(quint64 timestampUs, quint8 packetId, quint8 serialNumber, QByteArray frame);
+    void ptbRawResponseReceived(quint64 timestampUs, QByteArray response);
+    void hmpRawResponseReceived(quint64 timestampUs, QByteArray response);
+    void lidarRawFrameReceived(quint64 timestampUs, quint16 protocol, QByteArray frame);
+    void tcpRawWaveFrameReceived(quint64 timestampUs,
+                                 QByteArray rawPayload,
+                                 QByteArray harmonicPayload,
+                                 TcpFloatEncoding floatEncoding);
     void logMessage(const QString& message);
 
 private slots:

@@ -624,6 +624,30 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
                 self->handleEpsilonData(data);
             }, Qt::QueuedConnection);
         });
+        epsilon_->setRawFrameCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<EpsilonCollector>(epsilon_)](
+                                          uint64_t hostTimestampUs,
+                                          uint8_t packetId,
+                                          uint8_t serialNumber,
+                                          const uint8_t* frameData,
+                                          size_t size) {
+            if (!self || !frameData || size > static_cast<size_t>(std::numeric_limits<int>::max()))
+            {
+                return;
+            }
+            const std::shared_ptr<EpsilonCollector> collector = weakCollector.lock();
+            if (!collector)
+            {
+                return;
+            }
+            const QByteArray frame(reinterpret_cast<const char*>(frameData), static_cast<int>(size));
+            QMetaObject::invokeMethod(self.data(), [self, collector, hostTimestampUs, packetId, serialNumber, frame]() {
+                if (!self || self->epsilon_ != collector)
+                {
+                    return;
+                }
+                emit self->epsilonRawFrameReceived(static_cast<quint64>(hostTimestampUs), packetId, serialNumber, frame);
+            }, Qt::QueuedConnection);
+        });
         if (!epsilon_->start(config.port.toStdString(), SerialConfig::N81(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!epsilon_->checkDeviceResponse()) return fail(CommandErrorCode::DeviceConnectFailed);
         epsilon_->setDeviceSampleRate(static_cast<int>(config.frequency_hz));
@@ -650,6 +674,28 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
                     return;
                 }
                 self->handlePtbData(data);
+            }, Qt::QueuedConnection);
+        });
+        ptb_->setRawResponseCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<PtbCollector>(ptb_)](
+                                         uint64_t hostTimestampUs,
+                                         const uint8_t* responseData,
+                                         size_t size) {
+            if (!self || !responseData || size > static_cast<size_t>(std::numeric_limits<int>::max()))
+            {
+                return;
+            }
+            const std::shared_ptr<PtbCollector> collector = weakCollector.lock();
+            if (!collector)
+            {
+                return;
+            }
+            const QByteArray response(reinterpret_cast<const char*>(responseData), static_cast<int>(size));
+            QMetaObject::invokeMethod(self.data(), [self, collector, hostTimestampUs, response]() {
+                if (!self || self->ptb_ != collector)
+                {
+                    return;
+                }
+                emit self->ptbRawResponseReceived(static_cast<quint64>(hostTimestampUs), response);
             }, Qt::QueuedConnection);
         });
         if (!ptb_->start(config.port.toStdString(), SerialConfig::E71(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
@@ -680,6 +726,28 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
                 self->handleHmpData(data);
             }, Qt::QueuedConnection);
         });
+        hmp_->setRawResponseCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<HmpCollector>(hmp_)](
+                                         uint64_t hostTimestampUs,
+                                         const uint8_t* responseData,
+                                         size_t size) {
+            if (!self || !responseData || size > static_cast<size_t>(std::numeric_limits<int>::max()))
+            {
+                return;
+            }
+            const std::shared_ptr<HmpCollector> collector = weakCollector.lock();
+            if (!collector)
+            {
+                return;
+            }
+            const QByteArray response(reinterpret_cast<const char*>(responseData), static_cast<int>(size));
+            QMetaObject::invokeMethod(self.data(), [self, collector, hostTimestampUs, response]() {
+                if (!self || self->hmp_ != collector)
+                {
+                    return;
+                }
+                emit self->hmpRawResponseReceived(static_cast<quint64>(hostTimestampUs), response);
+            }, Qt::QueuedConnection);
+        });
         if (!hmp_->start(config.port.toStdString(), SerialConfig::N82(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!hmp_->checkDeviceResponse()) return fail(CommandErrorCode::DeviceConnectFailed);
         if (!hmp_->startStreaming()) return fail(CommandErrorCode::DeviceConnectFailed);
@@ -705,6 +773,32 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
                     return;
                 }
                 self->handleLidarData(data);
+            }, Qt::QueuedConnection);
+        });
+        lidar_->setRawFrameCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<LidarCollector>(lidar_)](
+                                        uint64_t hostTimestampUs,
+                                        LidarProtocol protocol,
+                                        const uint8_t* frameData,
+                                        size_t size) {
+            if (!self || !frameData || size > static_cast<size_t>(std::numeric_limits<int>::max()))
+            {
+                return;
+            }
+            const std::shared_ptr<LidarCollector> collector = weakCollector.lock();
+            if (!collector)
+            {
+                return;
+            }
+            const QByteArray frame(reinterpret_cast<const char*>(frameData), static_cast<int>(size));
+            QMetaObject::invokeMethod(self.data(), [self, collector, hostTimestampUs, protocol, frame]() {
+                if (!self || self->lidar_ != collector)
+                {
+                    return;
+                }
+                emit self->lidarRawFrameReceived(
+                    static_cast<quint64>(hostTimestampUs),
+                    static_cast<quint16>(protocol),
+                    frame);
             }, Qt::QueuedConnection);
         });
         if (!lidar_->start(config.port.toStdString(), SerialConfig::N81(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
@@ -882,10 +976,12 @@ void SkyDeviceManager::processWaveTcpBuffer()
                                 .arg(waveTcpHeaderOrderText(headerOrder))
                                 .arg(tcpFloatEncodingLabel(false, wave_float_encoding_)));
         }
+        const quint64 timestampUs = nowUs();
+        emit tcpRawWaveFrameReceived(timestampUs, rawPayload, harmonicPayload, wave_float_encoding_);
         publishWaveform(decodeTcpFloatPayload(rawPayload, wave_float_encoding_),
                         decodeTcpFloatPayload(harmonicPayload, wave_float_encoding_));
         wave_tcp_status_.rx_count++;
-        wave_tcp_status_.last_data_time_us = nowUs();
+        wave_tcp_status_.last_data_time_us = timestampUs;
     }
 }
 

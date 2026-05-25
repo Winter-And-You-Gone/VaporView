@@ -68,6 +68,29 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
     connect(&link_, &SerialTelemetryLink::bytesReceived, this, &SkyRuntime::onBytesReceived);
     connect(&link_, &SerialTelemetryLink::errorOccurred, this, &SkyRuntime::logMessage);
     connect(&device_manager_, &SkyDeviceManager::logMessage, this, &SkyRuntime::logMessage);
+    connect(&device_manager_, &SkyDeviceManager::epsilonRawFrameReceived, this,
+            [this](quint64 timestampUs, quint8 packetId, quint8 serialNumber, const QByteArray& frame) {
+                session_recorder_.recordRawEpsilonFrame(timestampUs, packetId, serialNumber, frame);
+            });
+    connect(&device_manager_, &SkyDeviceManager::ptbRawResponseReceived, this,
+            [this](quint64 timestampUs, const QByteArray& response) {
+                session_recorder_.recordRawPtbResponse(timestampUs, response);
+            });
+    connect(&device_manager_, &SkyDeviceManager::hmpRawResponseReceived, this,
+            [this](quint64 timestampUs, const QByteArray& response) {
+                session_recorder_.recordRawHmpResponse(timestampUs, response);
+            });
+    connect(&device_manager_, &SkyDeviceManager::lidarRawFrameReceived, this,
+            [this](quint64 timestampUs, quint16 protocol, const QByteArray& frame) {
+                session_recorder_.recordRawLidarFrame(timestampUs, protocol, frame);
+            });
+    connect(&device_manager_, &SkyDeviceManager::tcpRawWaveFrameReceived, this,
+            [this](quint64 timestampUs,
+                   const QByteArray& rawPayload,
+                   const QByteArray& harmonicPayload,
+                   TcpFloatEncoding floatEncoding) {
+                session_recorder_.recordRawTcpWaveFrame(timestampUs, rawPayload, harmonicPayload, floatEncoding);
+            });
     connect(&basic_timer_, &QTimer::timeout, this, &SkyRuntime::sendBasicTelemetry);
     connect(&feature_timer_, &QTimer::timeout, this, &SkyRuntime::sendWaveformFeature);
     connect(&waveform_timer_, &QTimer::timeout, this, &SkyRuntime::sendDownsampledWaveform);
@@ -242,6 +265,16 @@ TelemetryStatus SkyRuntime::currentStatus() const
     status.last_frame_time_us = last_frame_time_us_;
     status.devices = device_manager_.allStatuses();
     status.wave_tcp_actual_rate_hz = static_cast<float>(device_manager_.waveTcpActualRateHz());
+    status.recording_start_time_us = session_recorder_.recordingStartTimeUs();
+    status.recording_elapsed_ms = session_recorder_.recordingElapsedMs();
+    status.telemetry_record_count = session_recorder_.telemetryRecordCount();
+    status.waveform_feature_record_count = session_recorder_.waveformFeatureRecordCount();
+    status.waveform_snapshot_record_count = session_recorder_.waveformSnapshotRecordCount();
+    status.raw_epsilon_record_count = session_recorder_.rawEpsilonRecordCount();
+    status.raw_ptb_record_count = session_recorder_.rawPtbRecordCount();
+    status.raw_hmp_record_count = session_recorder_.rawHmpRecordCount();
+    status.raw_lidar_record_count = session_recorder_.rawLidarRecordCount();
+    status.raw_tcp_wave_record_count = session_recorder_.rawTcpWaveRecordCount();
     return status;
 }
 

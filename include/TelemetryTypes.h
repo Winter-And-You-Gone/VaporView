@@ -207,6 +207,16 @@ struct TelemetryStatus
     quint64 last_frame_time_us = 0;
     QVector<DeviceStatusItem> devices;
     float wave_tcp_actual_rate_hz = 0.0f;
+    quint64 recording_start_time_us = 0;
+    quint64 recording_elapsed_ms = 0;
+    quint64 telemetry_record_count = 0;
+    quint64 waveform_feature_record_count = 0;
+    quint64 waveform_snapshot_record_count = 0;
+    quint64 raw_epsilon_record_count = 0;
+    quint64 raw_ptb_record_count = 0;
+    quint64 raw_hmp_record_count = 0;
+    quint64 raw_lidar_record_count = 0;
+    quint64 raw_tcp_wave_record_count = 0;
 };
 
 struct CommandMessage

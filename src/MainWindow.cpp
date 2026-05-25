@@ -353,6 +353,24 @@ QString remoteStaleText(bool english)
     return english ? QStringLiteral("Stale") : QStringLiteral("超时");
 }
 
+QString formatElapsedCompact(quint64 elapsedMs)
+{
+    const quint64 totalSeconds = elapsedMs / 1000ULL;
+    const quint64 hours = totalSeconds / 3600ULL;
+    const quint64 minutes = (totalSeconds / 60ULL) % 60ULL;
+    const quint64 seconds = totalSeconds % 60ULL;
+    if (hours > 0)
+    {
+        return QStringLiteral("%1:%2:%3")
+            .arg(hours)
+            .arg(minutes, 2, 10, QLatin1Char('0'))
+            .arg(seconds, 2, 10, QLatin1Char('0'));
+    }
+    return QStringLiteral("%1:%2")
+        .arg(minutes)
+        .arg(seconds, 2, 10, QLatin1Char('0'));
+}
+
 constexpr int kDefaultEpsilonSampleRateHz = 100;
 constexpr int kDefaultPtbSampleRateHz = 20;
 constexpr int kDefaultHmpSampleRateHz = 20;
@@ -7098,14 +7116,64 @@ void MainWindow::updateRecordingStatusLabel()
 
     if (isRemoteSkyMode())
     {
+        const quint64 rawTotal =
+            remote_status_.raw_epsilon_record_count +
+            remote_status_.raw_ptb_record_count +
+            remote_status_.raw_hmp_record_count +
+            remote_status_.raw_lidar_record_count +
+            remote_status_.raw_tcp_wave_record_count;
+        const QString elapsed = formatElapsedCompact(remote_status_.recording_elapsed_ms);
+        const QString session = remote_status_.session_name.isEmpty()
+            ? QStringLiteral("--")
+            : remote_status_.session_name;
+        const QString detail = is_english_
+            ? QStringLiteral("Session: %1\nElapsed: %2\nTelemetry rows: %3\nWave features: %4\nWave snapshots: %5\nRaw EPSILON: %6\nRaw PTB: %7\nRaw HMP: %8\nRaw Lidar: %9\nRaw TCP wave: %10")
+                  .arg(session)
+                  .arg(elapsed)
+                  .arg(remote_status_.telemetry_record_count)
+                  .arg(remote_status_.waveform_feature_record_count)
+                  .arg(remote_status_.waveform_snapshot_record_count)
+                  .arg(remote_status_.raw_epsilon_record_count)
+                  .arg(remote_status_.raw_ptb_record_count)
+                  .arg(remote_status_.raw_hmp_record_count)
+                  .arg(remote_status_.raw_lidar_record_count)
+                  .arg(remote_status_.raw_tcp_wave_record_count)
+            : QStringLiteral("会话：%1\n时长：%2\n遥测行数：%3\n波形特征：%4\n波形快照：%5\nRaw EPSILON：%6\nRaw PTB：%7\nRaw HMP：%8\nRaw Lidar：%9\nRaw TCP 波形：%10")
+                  .arg(session)
+                  .arg(elapsed)
+                  .arg(remote_status_.telemetry_record_count)
+                  .arg(remote_status_.waveform_feature_record_count)
+                  .arg(remote_status_.waveform_snapshot_record_count)
+                  .arg(remote_status_.raw_epsilon_record_count)
+                  .arg(remote_status_.raw_ptb_record_count)
+                  .arg(remote_status_.raw_hmp_record_count)
+                  .arg(remote_status_.raw_lidar_record_count)
+                  .arg(remote_status_.raw_tcp_wave_record_count);
+        recording_status_label_->setToolTip(detail);
         if (remote_recording_state_ == 1)
         {
-            recording_status_label_->setText(is_english_ ? "Sky Recording: On" : "天空端记录: 进行中");
+            recording_status_label_->setText(
+                QString(is_english_
+                    ? "Sky Recording: On | %1 | Telemetry %2 | Raw %3 | Wave %4 | %5"
+                    : "天空端记录: 进行中 | %1 | 遥测 %2 行 | Raw %3 条 | 波形 %4 帧 | %5")
+                    .arg(elapsed)
+                    .arg(remote_status_.telemetry_record_count)
+                    .arg(rawTotal)
+                    .arg(remote_status_.raw_tcp_wave_record_count)
+                    .arg(session));
             recording_status_label_->setProperty("status", "connected");
         }
         else if (remote_recording_state_ == 2)
         {
-            recording_status_label_->setText(is_english_ ? "Sky Recording: Paused" : "天空端记录: 已暂停");
+            recording_status_label_->setText(
+                QString(is_english_
+                    ? "Sky Recording: Paused | %1 | Telemetry %2 | Raw %3 | Wave %4 | %5"
+                    : "天空端记录: 已暂停 | %1 | 遥测 %2 行 | Raw %3 条 | 波形 %4 帧 | %5")
+                    .arg(elapsed)
+                    .arg(remote_status_.telemetry_record_count)
+                    .arg(rawTotal)
+                    .arg(remote_status_.raw_tcp_wave_record_count)
+                    .arg(session));
             recording_status_label_->setProperty("status", "connecting");
         }
         else

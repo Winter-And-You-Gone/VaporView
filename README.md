@@ -105,6 +105,8 @@ Linux/macOS: socat -d -d pty,raw,echo=0,link=/tmp/vapor_sky pty,raw,echo=0,link=
 地面端: VaporView.exe，在首页选择 Remote Sky，连接 COM51 @ 921600
 ```
 
+Remote Sky 模式下，地面端工具栏的“开始记录 / 暂停记录 / 结束记录”会通过数传下发到天空端。天空端收到开始记录命令后在天空端本机创建 `records/sky_session_*`，并把 EPSILON、PTB、HMP、Lidar 和 TCP 波形的原始数据写入统一 `raw/*.dat`；天空端状态包会同步回传记录状态、时长、遥测行数和各 raw 文件记录条数，地面端状态栏实时显示这些关键计数。
+
 本文档只描述当前仓库中可以直接从代码、构建脚本和随仓库文档确认的内容。对应代码入口主要是：
 
 - `CMakeLists.txt`
@@ -472,6 +474,13 @@ RTK 功能由 `src/RtkConfigDialog.cpp` 和 `src/RtkStreamService.cpp` 实现。
 - “暂停记录”停止记录线程和波形写盘线程，但保留打开的 session。
 - “结束记录”写入结束时间，刷新并关闭 CSV、EPSILON 原始帧、事件日志、错误日志和波形文件。
 - 连接失败或断开时，如果还有未结束的 session，程序会自动结束它。
+
+Remote Sky 模式下，记录控制作用在天空端：
+
+- 地面端发送 `StartRecording`、`PauseRecording`、`StopRecording` 命令，不在地面端创建本地 session。
+- 天空端记录目录位于天空端程序目录下的 `records/sky_session_*`。
+- 天空端 raw 记录使用同一套统一 DAT 格式：`raw/epsilon.dat`、`raw/ptb.dat`、`raw/hmp.dat`、`raw/lidar.dat`、`raw/tcp_wave.dat`。
+- 地面端通过天空端 `TelemetryStatus` 实时显示记录状态、记录时长、遥测行数、raw 总条数和 TCP 波形 raw 条数；状态栏 tooltip 会列出各设备 raw 计数。
 
 默认记录根目录：
 

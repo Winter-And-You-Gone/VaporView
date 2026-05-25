@@ -556,6 +556,16 @@ QByteArray TelemetryCodec::serializeTelemetryStatus(const TelemetryStatus& statu
         appendDeviceStatus(payload, item);
     }
     appendFloatLe(payload, status.wave_tcp_actual_rate_hz);
+    appendLe<quint64>(payload, status.recording_start_time_us);
+    appendLe<quint64>(payload, status.recording_elapsed_ms);
+    appendLe<quint64>(payload, status.telemetry_record_count);
+    appendLe<quint64>(payload, status.waveform_feature_record_count);
+    appendLe<quint64>(payload, status.waveform_snapshot_record_count);
+    appendLe<quint64>(payload, status.raw_epsilon_record_count);
+    appendLe<quint64>(payload, status.raw_ptb_record_count);
+    appendLe<quint64>(payload, status.raw_hmp_record_count);
+    appendLe<quint64>(payload, status.raw_lidar_record_count);
+    appendLe<quint64>(payload, status.raw_tcp_wave_record_count);
     return payload;
 }
 
@@ -613,7 +623,24 @@ bool TelemetryCodec::parseTelemetryStatus(const QByteArray& payload, TelemetrySt
     {
         status.wave_tcp_actual_rate_hz = 0.0f;
     }
-    return true;
+    auto readOptionalU64 = [&payload, &offset](quint64& value) {
+        if (offset >= payload.size())
+        {
+            value = 0;
+            return true;
+        }
+        return readLe(payload, offset, value);
+    };
+    return readOptionalU64(status.recording_start_time_us) &&
+           readOptionalU64(status.recording_elapsed_ms) &&
+           readOptionalU64(status.telemetry_record_count) &&
+           readOptionalU64(status.waveform_feature_record_count) &&
+           readOptionalU64(status.waveform_snapshot_record_count) &&
+           readOptionalU64(status.raw_epsilon_record_count) &&
+           readOptionalU64(status.raw_ptb_record_count) &&
+           readOptionalU64(status.raw_hmp_record_count) &&
+           readOptionalU64(status.raw_lidar_record_count) &&
+           readOptionalU64(status.raw_tcp_wave_record_count);
 }
 
 QByteArray TelemetryCodec::serializeCommand(const CommandMessage& command)
