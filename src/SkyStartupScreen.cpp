@@ -541,6 +541,26 @@ void restoreStartupInputMode()
 #endif
 }
 
+void drainStartupInputEvents()
+{
+#ifdef Q_OS_WIN
+    HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
+    if (input != INVALID_HANDLE_VALUE)
+    {
+        FlushConsoleInputBuffer(input);
+    }
+#else
+    if (!g_startup_has_original_termios)
+    {
+        return;
+    }
+    unsigned char ch = 0;
+    while (read(STDIN_FILENO, &ch, 1) == 1)
+    {
+    }
+#endif
+}
+
 bool pollStartupDecision(SkyStartupDecision& decision)
 {
 #ifdef Q_OS_WIN
@@ -648,6 +668,10 @@ SkyStartupDecision showSkyStartupScreen(const QString& logo_path)
     {
         drawNextLogoFrame();
         QThread::msleep(kLogoFrameDelayMs);
+    }
+    if (decision == SkyStartupDecision::EnterTui)
+    {
+        drainStartupInputEvents();
     }
     restoreStartupInputMode();
     writeRaw(SkyTuiTheme::hideCursor() + SkyTuiTheme::clearScreen() + SkyTuiTheme::leaveAlternateScreen());

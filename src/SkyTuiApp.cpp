@@ -35,6 +35,10 @@ namespace VaporView
 {
 namespace
 {
+#ifdef Q_OS_WIN
+DWORD g_tui_original_input_mode = 0;
+bool g_tui_has_original_input_mode = false;
+#endif
 #ifndef Q_OS_WIN
 termios g_original_termios;
 bool g_has_original_termios = false;
@@ -611,6 +615,13 @@ void SkyTuiApp::startInputThread()
         appendLog(QStringLiteral("未检测到交互式控制台输入，TUI 已进入只读显示模式。"));
         return;
     }
+    g_tui_original_input_mode = consoleMode;
+    g_tui_has_original_input_mode = true;
+    DWORD rawMode = consoleMode;
+    rawMode &= ~ENABLE_LINE_INPUT;
+    rawMode &= ~ENABLE_ECHO_INPUT;
+    rawMode &= ~ENABLE_PROCESSED_INPUT;
+    SetConsoleMode(consoleInput, rawMode);
 #endif
 
     input_running_->store(true);
@@ -778,6 +789,13 @@ void SkyTuiApp::restoreTerminal()
     input_running_->store(false);
     render_timer_.stop();
     status_timer_.stop();
+#ifdef Q_OS_WIN
+    HANDLE consoleInput = GetStdHandle(STD_INPUT_HANDLE);
+    if (g_tui_has_original_input_mode && consoleInput != INVALID_HANDLE_VALUE)
+    {
+        SetConsoleMode(consoleInput, g_tui_original_input_mode);
+    }
+#endif
 #ifndef Q_OS_WIN
     if (g_has_original_termios)
     {
