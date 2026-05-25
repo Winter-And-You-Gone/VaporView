@@ -228,6 +228,9 @@ set(LUCIDE_RESOURCES
 )
 
 set(NAV_WIN_RESOURCES)
+if(WIN32)
+    list(APPEND NAV_WIN_RESOURCES resources/app.rc)
+endif()
 
 if(WIN32)
     add_executable(VaporView WIN32
