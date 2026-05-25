@@ -161,11 +161,10 @@ VaporView/
 │   ├── data_exporter.py
 │   └── file_logger.py
 ├── resources/
-│   ├── app.ico
-│   ├── app.rc
 │   ├── combo_arrow_down.xpm
 │   ├── combo_arrow_up.xpm
 │   ├── lucide/
+│   ├── VaproViewLOGO/
 │   └── modern_style.qss
 ├── scripts/
 │   ├── build-linux-arm64.sh
@@ -294,7 +293,7 @@ Linux:   build/Release/VaporViewSky
 
 - `src/main.cpp` 创建 `QApplication`，设置应用名 `VaporView`、版本 `1.0.0` 和组织名 `VaporView`。
 - `src/MainWindow.cpp` 负责菜单栏、工具栏、状态栏、设备配置区、实时数据区、TCP 波形区、日志区、记录会话和全局设置。
-- `resources/modern_style.qss`、`resources/app.ico`、`resources/combo_arrow_down.xpm`、`resources/combo_arrow_up.xpm` 和 `resources/lucide/` 会在构建后复制到构建目录下的 `resources/`。
+- `resources/modern_style.qss`、`resources/combo_arrow_down.xpm`、`resources/combo_arrow_up.xpm`、`resources/lucide/` 和 `resources/VaproViewLOGO/` 会在构建后复制到构建目录下的 `resources/`。
 
 ### 串口层
 

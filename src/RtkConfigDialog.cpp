@@ -1233,10 +1233,14 @@ void RtkConfigDialog::applyScaledUiMetrics()
         main_antenna_lever_help_btn_->setFixedSize(helpSize, helpSize);
         const int iconSize = std::max(12, helpSize - scalePixels(6));
         main_antenna_lever_help_btn_->setIconSize(QSize(iconSize, iconSize));
-        main_antenna_lever_help_btn_->setStyleSheet(QString(
-            "QToolButton { border: 1px solid #9e9e9e; border-radius: %1px; padding: 0px; }"
-            "QToolButton:hover { background: #eeeeee; }")
-            .arg(helpSize / 2));
+        const bool dark = qApp && qApp->palette().color(QPalette::Window).lightness() < 128;
+        main_antenna_lever_help_btn_->setStyleSheet(dark
+            ? QString("QToolButton { background-color: rgb(217, 119, 87); color: #ffffff; border: none; border-radius: %1px; padding: 0px; }"
+                      "QToolButton:hover { background-color: rgb(217, 119, 87); }")
+                  .arg(helpSize / 2)
+            : QString("QToolButton { border: 1px solid #9e9e9e; border-radius: %1px; padding: 0px; }"
+                      "QToolButton:hover { background: #eeeeee; }")
+                  .arg(helpSize / 2));
     }
     for (QLineEdit *edit : {main_antenna_lever_x_edit_, main_antenna_lever_y_edit_, main_antenna_lever_z_edit_})
     {

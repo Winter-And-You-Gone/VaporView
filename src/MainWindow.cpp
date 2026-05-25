@@ -519,7 +519,7 @@ QIcon createClearLogIcon()
 
 QIcon createWaveformViewerIcon()
 {
-    return createLucideIcon(QStringLiteral("activity"), kToolbarBlue);
+    return createLucideIcon(QStringLiteral("audio-waveform"), kToolbarBlue);
 }
 
 QIcon createLanguageIcon()
@@ -554,8 +554,8 @@ QFrame#titleApplicationSubPanel {
 }
 QFrame#titleApplicationMainMenu,
 QFrame#titleApplicationSubMenu {
-    background-color: #1f1f1f;
-    border: 1px solid #303030;
+    background-color: #121212;
+    border: 1px solid #202020;
     border-radius: %1px;
 }
 QFrame#titleApplicationMenuItem {
@@ -565,7 +565,7 @@ QFrame#titleApplicationMenuItem {
 }
 QFrame#titleApplicationMenuItem[selected="true"],
 QFrame#titleApplicationMenuItem:hover {
-    background-color: #3a3a3a;
+    background-color: #202020;
 }
 QLabel#titleApplicationMenuText {
     color: #f3f6fb;
@@ -591,7 +591,7 @@ QLabel#titleApplicationMenuCheck:disabled {
     color: #777777;
 }
 QWidget#titleApplicationSubPage {
-    background-color: #1f1f1f;
+    background-color: #121212;
     border: none;
 }
 QWidget#titleApplicationSubPageContent,
@@ -599,7 +599,7 @@ QStackedWidget#titleApplicationSubStack,
 QScrollArea#titleApplicationSubScroll,
 QScrollArea#titleApplicationSubScroll > QWidget,
 QScrollArea#titleApplicationSubScroll > QWidget > QWidget {
-    background-color: #1f1f1f;
+    background-color: #121212;
     border: none;
 }
 )").arg(cornerRadius);
@@ -670,8 +670,8 @@ QString customTitleBarStyleSheet(bool dark)
     {
         return QStringLiteral(R"(
 QWidget#customTitleBar {
-    background-color: #151a20;
-    border-bottom: 1px solid #2c3440;
+    background-color: #0D0D0D;
+    border-bottom: 1px solid #202020;
 }
 QLabel#customTitleLabel {
     color: #d8dee9;
@@ -697,10 +697,10 @@ QToolButton#titleBarButton:hover,
 QToolButton#titleBarMenuButton:hover,
 QToolButton#windowMinimizeButton:hover,
 QToolButton#windowMaximizeButton:hover {
-    background-color: #1f2a36;
+    background-color: rgb(18, 18, 18);
 }
 QToolButton#windowCloseButton:hover {
-    background-color: #dc2626;
+    background-color: rgb(18, 18, 18);
 }
 QWidget#customTitleBar QToolButton::menu-indicator {
     image: none;
@@ -708,7 +708,7 @@ QWidget#customTitleBar QToolButton::menu-indicator {
     height: 0px;
 }
 QFrame#titleBarSeparator {
-    background-color: #2c3440;
+    background-color: #202020;
     border: none;
 }
 )");
@@ -800,7 +800,7 @@ void setWindowsTitleBarDark(QWidget *window, bool dark)
     const BOOL useDark = dark ? TRUE : FALSE;
     DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &useDark, sizeof(useDark));
 
-    const COLORREF captionColor = dark ? RGB(0, 0, 0) : DWMWA_COLOR_DEFAULT;
+    const COLORREF captionColor = dark ? RGB(18, 18, 18) : DWMWA_COLOR_DEFAULT;
     const COLORREF textColor = dark ? RGB(229, 231, 235) : DWMWA_COLOR_DEFAULT;
     DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, &captionColor, sizeof(captionColor));
     DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, &textColor, sizeof(textColor));
@@ -815,7 +815,7 @@ QString darkThemeStyleSheet()
 {
     return QStringLiteral(R"(
 QMainWindow {
-    background-color: #101418;
+    background-color: #0D0D0D;
 }
 QWidget#appCentralWidget,
 QWidget#mainCardsPane,
@@ -829,54 +829,63 @@ QScrollArea#mainCardsScrollArea > QWidget,
 QScrollArea#mainCardsScrollArea > QWidget > QWidget,
 QAbstractScrollArea,
 QSplitter {
-    background-color: #101418;
+    background-color: #0D0D0D;
 }
 QSplitter#mainContentSplitter,
 QSplitter#mainContentSplitter > QWidget {
-    background-color: #101418;
+    background-color: #0D0D0D;
 }
 QMenuBar,
 QToolBar,
 QStatusBar,
 QMenu,
 QMessageBox {
-    background-color: #151a20;
+    background-color: #121212;
     color: #d8dee9;
-    border-color: #2c3440;
+    border-color: #202020;
 }
 QMenuBar::item,
 QMenu::item,
 QToolBar QToolButton {
     color: #d8dee9;
 }
+QToolBar QToolButton {
+    background-color: rgb(217, 119, 87);
+}
 QMenuBar::item:selected,
 QMenu::item:selected,
 QToolBar QToolButton:hover {
-    background-color: #1f2a36;
-    color: #7db7ff;
+    background-color: rgb(217, 119, 87);
+    color: #ffffff;
+}
+QToolTip {
+    background-color: #121212;
+    color: #ffffff;
+    border: 1px solid #202020;
 }
 QMenuBar::item:pressed,
 QToolBar QToolButton:pressed {
-    background-color: #263545;
+    background-color: rgb(217, 119, 87);
+    color: #ffffff;
 }
 QToolBar::separator {
-    background-color: #2c3440;
+    background-color: #202020;
 }
 QGroupBox {
-    background-color: #151a20;
-    border: 1px solid #2c3440;
-    border-top: 40px solid #151a20;
+    background-color: #121212;
+    border: 1px solid #202020;
+    border-top: 40px solid #121212;
     color: #d8dee9;
 }
 QDialog#rtkConfigDialog,
 QWidget#rtkConfigViewport,
 QWidget#rtkConfigContent,
 QScrollArea#rtkConfigScrollArea {
-    background-color: #101418;
+    background-color: #0D0D0D;
 }
 QDialog#rtkConfigDialog QGroupBox#rtkCardGroup {
-    background-color: #151a20;
-    border: 1px solid #2c3440;
+    background-color: #121212;
+    border: 1px solid #202020;
     border-radius: 8px;
     margin-top: 0px;
     padding: 0px;
@@ -886,9 +895,9 @@ QDialog#rtkConfigDialog QGroupBox#rtkCardGroup::title {
     color: transparent;
 }
 QDialog#rtkConfigDialog QWidget#sectionTitleBar {
-    background-color: #151a20;
+    background-color: #121212;
     border: none;
-    border-bottom: 1px solid #2c3440;
+    border-bottom: 1px solid #202020;
     border-top-left-radius: 7px;
     border-top-right-radius: 7px;
 }
@@ -898,68 +907,76 @@ QDialog#rtkConfigDialog QLabel#sectionTitleLabel {
     color: #e5e7eb;
 }
 QGroupBox#sensorGroupBox {
-    background-color: #151a20;
-    border: 1px solid #2c3440;
+    background-color: #121212;
+    border: 1px solid #202020;
     border-radius: 8px;
     margin-top: 0px;
     padding: 0px;
     color: #e5e7eb;
 }
 QFrame#logPanelFrame {
-    background-color: #151a20;
-    border: 1px solid #2c3440;
+    background-color: #121212;
+    border: 1px solid #202020;
     border-radius: 8px;
 }
 QFrame#logPanelFrame QWidget#sectionTitleBar {
-    background-color: #151a20;
+    background-color: #121212;
     border: none;
-    border-bottom: 1px solid #2c3440;
+    border-bottom: 1px solid #202020;
     border-top-left-radius: 7px;
     border-top-right-radius: 7px;
+}
+QFrame#logPanelFrame QToolButton#titleBarButton:hover {
+    background-color: #202020;
 }
 QFrame#logPanelFrame QLabel#sectionTitleLabel {
     background-color: transparent;
     border: none;
-    color: #e5e7eb;
+    color: #ffffff;
 }
 QWidget#sectionTitleBar,
 QLabel#sectionTitleLabel {
-    background-color: #151a20;
-    border-color: #2c3440;
-    color: #e5e7eb;
+    background-color: #121212;
+    border-color: #202020;
+    color: #ffffff;
 }
 QLabel {
-    color: #d8dee9;
+    color: #ffffff;
 }
 QLabel#fieldLabel,
 QLabel#rateLabel,
 QLabel#separatorLabel {
-    color: #9aa6b2;
+    color: #ffffff;
 }
 QLabel#rtkStatusLabel {
-    color: #d8dee9;
+    color: #ffffff;
     font-weight: bold;
 }
 QFrame#epsilonSectionCard {
-    background-color: #151a20;
-    border: 1px solid #2c3440;
+    background-color: #121212;
+    border: 1px solid #202020;
 }
 QLabel#epsilonSectionLabel {
-    color: #d8dee9;
-    background-color: #18202a;
+    color: #ffffff;
+    background-color: #121212;
     border: none;
-    border-right: 1px solid #2c3440;
+    border-right: 1px solid #202020;
     font-weight: 700;
 }
 QLabel#valueLabel {
-    color: #8cc8ff;
+    color: #ffffff;
     background-color: transparent;
     font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
 }
 QLabel#highlightedValue {
-    color: #8cc8ff;
-    background-color: #162638;
+    color: #ffffff;
+    background-color: #202020;
     font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
+}
+PtbPanel QLabel#highlightedValue,
+HmpPanel QLabel#highlightedValue,
+LidarPanel QLabel#highlightedValue {
+    background-color: transparent;
 }
 QLabel#rateLabel {
     font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
@@ -969,26 +986,26 @@ QLineEdit,
 QSpinBox,
 QDoubleSpinBox,
 QTextEdit {
-    background-color: #10151b;
-    border: 1px solid #323c48;
+    background-color: #121212;
+    border: 1px solid #202020;
     color: #e5e7eb;
     selection-background-color: #245b8f;
     selection-color: #ffffff;
 }
 QTextEdit#logTextEdit {
-    background-color: transparent;
+    background-color: #121212;
     border: none;
     border-radius: 0px;
 }
 QWidget#logTextViewport {
-    background-color: transparent;
+    background-color: #121212;
     border: none;
 }
 QComboBox:hover,
 QLineEdit:hover,
 QSpinBox:hover,
 QDoubleSpinBox:hover {
-    border-color: #4b5a68;
+    border-color: #202020;
 }
 QComboBox:focus,
 QLineEdit:focus,
@@ -1000,56 +1017,67 @@ QComboBox:disabled,
 QLineEdit:disabled,
 QSpinBox:disabled,
 QDoubleSpinBox:disabled {
-    background-color: #1b222b;
+    background-color: #202020;
     color: #64748b;
 }
 QComboBox QAbstractItemView {
-    background-color: #151a20;
-    border: 1px solid #323c48;
+    background-color: #121212;
+    border: 1px solid #202020;
     color: #e5e7eb;
     selection-background-color: #1f3f66;
     selection-color: #ffffff;
 }
+QPushButton {
+    background-color: rgb(217, 119, 87);
+    color: #ffffff;
+    border: none;
+}
+QPushButton:hover,
+QPushButton:pressed,
+QPushButton:checked {
+    background-color: rgb(217, 119, 87);
+    color: #ffffff;
+}
 QPushButton:disabled {
-    background-color: #4b5563;
+    background-color: #202020;
     color: #cbd5e1;
 }
 QScrollBar:vertical,
 QScrollBar:horizontal {
-    background-color: #111827;
+    background-color: #0C0C0C;
 }
 QScrollArea#mainCardsScrollArea QScrollBar:horizontal,
 QScrollArea#mainCardsScrollArea QScrollBar:vertical {
-    background-color: #101418;
+    background-color: #0D0D0D;
 }
 QScrollBar::handle:vertical,
 QScrollBar::handle:horizontal {
-    background-color: #475569;
+    background-color: #202020;
 }
 QScrollBar::handle:vertical:hover,
 QScrollBar::handle:horizontal:hover {
-    background-color: #64748b;
+    background-color: #202020;
 }
 QSplitter::handle,
 QSplitter#mainContentSplitter::handle:horizontal {
-    background-color: #101418;
+    background-color: #0D0D0D;
 }
 QWidget#mainCardResizeHandle {
     min-height: 3px;
     max-height: 3px;
-    background-color: #101418;
+    background-color: #0D0D0D;
 }
 QSplitter#mainContentSplitter::handle:horizontal:hover {
-    background-color: #1f2a36;
+    background-color: #202020;
 }
 QWidget#mainCardResizeHandle:hover {
-    background-color: #1f2a36;
+    background-color: #202020;
 }
 QSplitter#mainContentSplitter::handle:horizontal:pressed {
-    background-color: #263545;
+    background-color: #202020;
 }
 QWidget#mainCardResizeHandle[dragging="true"] {
-    background-color: #263545;
+    background-color: #202020;
 }
 QCheckBox,
 QRadioButton {
@@ -1057,14 +1085,14 @@ QRadioButton {
 }
 QCheckBox::indicator,
 QRadioButton::indicator {
-    background-color: #10151b;
-    border-color: #64748b;
+    background-color: #121212;
+    border-color: #202020;
 }
 QLabel[data-valid="true"] {
-    color: #68d391;
+    color: #ffffff;
 }
 QLabel[data-valid="false"] {
-    color: #f87171;
+    color: #ffffff;
 }
 QLabel#statusIndicator[status="connected"] {
     background-color: #123423;
@@ -1089,22 +1117,22 @@ QPalette themedPalette(bool dark)
         return palette;
     }
 
-    palette.setColor(QPalette::Window, QColor("#101418"));
+    palette.setColor(QPalette::Window, QColor("#0D0D0D"));
     palette.setColor(QPalette::WindowText, QColor("#d8dee9"));
-    palette.setColor(QPalette::Base, QColor("#10151b"));
-    palette.setColor(QPalette::AlternateBase, QColor("#162638"));
+    palette.setColor(QPalette::Base, QColor("#121212"));
+    palette.setColor(QPalette::AlternateBase, QColor("#202020"));
     palette.setColor(QPalette::Text, QColor("#e5e7eb"));
-    palette.setColor(QPalette::Button, QColor("#151a20"));
+    palette.setColor(QPalette::Button, QColor("#121212"));
     palette.setColor(QPalette::ButtonText, QColor("#e5e7eb"));
     palette.setColor(QPalette::BrightText, QColor("#ffffff"));
-    palette.setColor(QPalette::Light, QColor("#475569"));
-    palette.setColor(QPalette::Midlight, QColor("#334155"));
-    palette.setColor(QPalette::Mid, QColor("#2c3440"));
-    palette.setColor(QPalette::Dark, QColor("#111827"));
-    palette.setColor(QPalette::Shadow, QColor("#05070a"));
+    palette.setColor(QPalette::Light, QColor("#202020"));
+    palette.setColor(QPalette::Midlight, QColor("#202020"));
+    palette.setColor(QPalette::Mid, QColor("#202020"));
+    palette.setColor(QPalette::Dark, QColor("#0C0C0C"));
+    palette.setColor(QPalette::Shadow, QColor("#0C0C0C"));
     palette.setColor(QPalette::Highlight, QColor("#245b8f"));
     palette.setColor(QPalette::HighlightedText, QColor("#ffffff"));
-    palette.setColor(QPalette::ToolTipBase, QColor("#1b222b"));
+    palette.setColor(QPalette::ToolTipBase, QColor("#121212"));
     palette.setColor(QPalette::ToolTipText, QColor("#e5e7eb"));
     palette.setColor(QPalette::Link, QColor("#7db7ff"));
     palette.setColor(QPalette::Disabled, QPalette::WindowText, QColor("#64748b"));
@@ -3396,12 +3424,12 @@ void MainWindow::loadModernStyleSheet()
             "QSplitter#mainContentSplitter::handle:horizontal { width: 8px; background-color: #FCFCFB; }"
             "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: rgba(25, 118, 210, 0.18); }"
             "QSplitter#mainContentSplitter::handle:horizontal:pressed { background-color: rgba(25, 118, 210, 0.28); }"
-            "QPushButton { background-color: #1976d2; color: #ffffff; border: none; border-radius: 6px; padding: 0px 18px; font-size: 15px; font-weight: 500; min-height: 36px; max-height: 36px; }"
+            "QPushButton { background-color: #1976d2; color: #ffffff; border: none; border-radius: 6px; padding: 0px 18px 2px 18px; font-size: 15px; font-weight: 500; min-height: 36px; max-height: 36px; }"
             "QPushButton:hover { background-color: #1565c0; }"
             "QPushButton:pressed { background-color: #0d47a1; }"
             "QPushButton:disabled { background-color: #bdbdbd; color: #ffffff; }"
-            "QPushButton#compactTcpButton { padding: 0px 14px; min-height: 36px; max-height: 36px; font-size: 14px; }"
-            "QPushButton#compactTcpStartButton { padding: 0px 14px; min-height: 36px; max-height: 36px; font-size: 14px; }"
+            "QPushButton#compactTcpButton { padding: 0px 14px 2px 14px; min-height: 36px; max-height: 36px; font-size: 14px; }"
+            "QPushButton#compactTcpStartButton { padding: 0px 14px 2px 14px; min-height: 36px; max-height: 36px; font-size: 14px; }"
             "QToolTip { background-color: #323232; color: #ffffff; border: none; border-radius: 6px; padding: 6px 10px; font-size: 13px; }";
     }
 
@@ -4052,10 +4080,10 @@ QString MainWindow::remoteTelemetrySummaryText() const
     const double rxBps = connected ? ground_telemetry_service_->receiveBitsPerSecond() : 0.0;
     const double txBps = connected ? ground_telemetry_service_->transmitBitsPerSecond() : 0.0;
 
-    const QString textColor = dark_theme_enabled_ ? QStringLiteral("#d8dee9") : QStringLiteral("#000000");
-    const QString borderColor = dark_theme_enabled_ ? QStringLiteral("#2c3440") : QStringLiteral("#EAEAE9");
-    const QString cardBg = dark_theme_enabled_ ? QStringLiteral("#151a20") : QStringLiteral("#FDFDFC");
-    const QString titleBg = dark_theme_enabled_ ? QStringLiteral("#18202a") : QStringLiteral("#F8F8F7");
+    const QString textColor = dark_theme_enabled_ ? QStringLiteral("#ffffff") : QStringLiteral("#000000");
+    const QString borderColor = dark_theme_enabled_ ? QStringLiteral("#202020") : QStringLiteral("#EAEAE9");
+    const QString cardBg = dark_theme_enabled_ ? QStringLiteral("#121212") : QStringLiteral("#FDFDFC");
+    const QString titleBg = dark_theme_enabled_ ? QStringLiteral("#121212") : QStringLiteral("#F8F8F7");
 
     auto rowHtml = [&](const QString& label, const QString& value, int labelWidth, int valueWidth) {
         return QStringLiteral("<tr>"
@@ -5986,6 +6014,8 @@ void MainWindow::setupDataPanels()
     tcp_wave_panel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     connect(tcp_wave_panel_, &TcpWavePanel::rawWaveFrameReady,
             this, &MainWindow::onTcpRawWaveFrameReady);
+    connect(tcp_wave_panel_, &TcpWavePanel::logMessageRequested,
+            this, &MainWindow::log);
     connect(tcp_wave_panel_, &TcpWavePanel::connectionStateChanged, this, [this](bool) {
         updateRecordingActionStates();
     });
@@ -6535,14 +6565,8 @@ void MainWindow::setupWindowBorderFrames()
     window_border_left_ = createBorder();
 
     window_border_top_->hide();
-    window_border_bottom_->setStyleSheet(QStringLiteral("background-color: rgb(50, 50, 50); border: none;"));
-    const QString verticalBorderStyle = QStringLiteral(
-        "background: qlineargradient(x1:0, y1:0, x2:1, y2:0, "
-        "stop:0 rgb(125, 125, 125), "
-        "stop:0.5 rgb(50, 50, 50), "
-        "stop:1 rgb(125, 125, 125)); "
-        "border: none;"
-    );
+    window_border_bottom_->setStyleSheet(QStringLiteral("background-color: #0C0C0C; border: none;"));
+    const QString verticalBorderStyle = QStringLiteral("background-color: #0C0C0C; border: none;");
     window_border_left_->setStyleSheet(verticalBorderStyle);
     window_border_right_->setStyleSheet(verticalBorderStyle);
 

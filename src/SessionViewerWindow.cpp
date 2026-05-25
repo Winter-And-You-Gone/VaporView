@@ -104,8 +104,8 @@ SessionPlotTheme sessionPlotThemeFor(const QWidget *widget)
     const bool dark = background.lightness() < 128;
     return {
         background,
-        dark ? QColor("#263545") : QColor("#e3e8ef"),
-        dark ? QColor("#3a4654") : QColor("#cfd7e3"),
+        dark ? QColor("#202020") : QColor("#e3e8ef"),
+        dark ? QColor("#202020") : QColor("#cfd7e3"),
         dark ? QColor("#a7b4c2") : QColor("#5e6b78"),
         dark ? QColor("#8fa1b3") : QColor("#7a8899")
     };

@@ -69,6 +69,7 @@ signals:
     void normalizedSecondHarmonicFrameReady(quint64 timestampUs, QVector<float> samples);
     void rawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload, VaporView::TcpFloatEncoding floatEncoding);
     void connectionStateChanged(bool connected);
+    void logMessageRequested(const QString& message);
     void remoteWaveTcpConnectionRequested(bool connectRequested);
     void remotePeakSearchRangeRequested(quint32 startIndex, quint32 endIndex);
 

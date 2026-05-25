@@ -473,7 +473,7 @@ QPushButton {
     color: #ffffff;
     border: none;
     border-radius: 6px;
-    padding: 0px 16px;
+    padding: 0px 16px 2px 16px;
     font-size: 15px;
     font-weight: 500;
     min-height: 36px;
@@ -494,14 +494,14 @@ QPushButton:disabled {
 }
 
 QPushButton#compactTcpButton {
-    padding: 0px 14px;
+    padding: 0px 14px 2px 14px;
     min-height: 36px;
     max-height: 36px;
     font-size: 14px;
 }
 
 QPushButton#compactTcpStartButton {
-    padding: 0px 14px;
+    padding: 0px 14px 2px 14px;
     min-height: 36px;
     max-height: 36px;
     font-size: 14px;
@@ -682,7 +682,7 @@ QRadioButton::indicator:checked {
 }
 
 /* 自定义面板样式 */
-GnssPanel, ImuPanel, PtbPanel, HmpPanel {
+GnssPanel, ImuPanel, PtbPanel, HmpPanel, LidarPanel {
     background-color: transparent;
 }
 
@@ -706,6 +706,12 @@ QLabel#highlightedValue {
     padding: 4px 8px;
     background-color: #e3f2fd;
     border-radius: 4px;
+}
+
+PtbPanel QLabel#highlightedValue,
+HmpPanel QLabel#highlightedValue,
+LidarPanel QLabel#highlightedValue {
+    background-color: transparent;
 }
 
 /* 状态指示器 */

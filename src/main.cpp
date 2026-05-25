@@ -19,22 +19,22 @@ namespace
 QPalette startupDarkPalette(const QPalette& base)
 {
     QPalette palette = base;
-    palette.setColor(QPalette::Window, QColor("#101418"));
+    palette.setColor(QPalette::Window, QColor("#0D0D0D"));
     palette.setColor(QPalette::WindowText, QColor("#d8dee9"));
-    palette.setColor(QPalette::Base, QColor("#10151b"));
-    palette.setColor(QPalette::AlternateBase, QColor("#162638"));
+    palette.setColor(QPalette::Base, QColor("#121212"));
+    palette.setColor(QPalette::AlternateBase, QColor("#202020"));
     palette.setColor(QPalette::Text, QColor("#e5e7eb"));
-    palette.setColor(QPalette::Button, QColor("#151a20"));
+    palette.setColor(QPalette::Button, QColor("#121212"));
     palette.setColor(QPalette::ButtonText, QColor("#e5e7eb"));
     palette.setColor(QPalette::BrightText, QColor("#ffffff"));
-    palette.setColor(QPalette::Light, QColor("#475569"));
-    palette.setColor(QPalette::Midlight, QColor("#334155"));
-    palette.setColor(QPalette::Mid, QColor("#2c3440"));
-    palette.setColor(QPalette::Dark, QColor("#111827"));
-    palette.setColor(QPalette::Shadow, QColor("#05070a"));
+    palette.setColor(QPalette::Light, QColor("#202020"));
+    palette.setColor(QPalette::Midlight, QColor("#202020"));
+    palette.setColor(QPalette::Mid, QColor("#202020"));
+    palette.setColor(QPalette::Dark, QColor("#0C0C0C"));
+    palette.setColor(QPalette::Shadow, QColor("#0C0C0C"));
     palette.setColor(QPalette::Highlight, QColor("#245b8f"));
     palette.setColor(QPalette::HighlightedText, QColor("#ffffff"));
-    palette.setColor(QPalette::ToolTipBase, QColor("#1b222b"));
+    palette.setColor(QPalette::ToolTipBase, QColor("#121212"));
     palette.setColor(QPalette::ToolTipText, QColor("#e5e7eb"));
     palette.setColor(QPalette::Link, QColor("#7db7ff"));
     palette.setColor(QPalette::Disabled, QPalette::WindowText, QColor("#64748b"));
@@ -46,8 +46,9 @@ QPalette startupDarkPalette(const QPalette& base)
 QString startupDarkStyleSheet()
 {
     return QStringLiteral(
-        "QWidget, QMainWindow { background-color: #101418; color: #d8dee9; }"
-        "QMenuBar, QToolBar, QStatusBar { background-color: #151a20; color: #d8dee9; }"
+        "QWidget, QMainWindow { background-color: #0D0D0D; color: #d8dee9; }"
+        "QMenuBar, QToolBar, QStatusBar { background-color: #121212; color: #d8dee9; }"
+        "QPushButton { background-color: rgb(217, 119, 87); color: #ffffff; }"
     );
 }
 

@@ -109,7 +109,7 @@ protected:
             ? rect().adjusted(8, 11, -8, -5)
             : rect().adjusted(10, 16, -10, -16);
         painter.setPen(Qt::NoPen);
-        painter.setBrush(dark ? QColor("#223044") : QColor("#e7edf5"));
+        painter.setBrush(dark ? QColor("#202020") : QColor("#e7edf5"));
         painter.drawRoundedRect(trackRect, 4, 4);
 
         if (total_count_ <= 0)

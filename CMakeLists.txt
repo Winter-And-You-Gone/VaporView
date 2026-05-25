@@ -205,6 +205,7 @@ set(NAV_RESOURCES
 
 set(LUCIDE_RESOURCES
     resources/lucide/activity.svg
+    resources/lucide/audio-waveform.svg
     resources/lucide/check.svg
     resources/lucide/circle-x.svg
     resources/lucide/copy.svg
@@ -227,9 +228,6 @@ set(LUCIDE_RESOURCES
 )
 
 set(NAV_WIN_RESOURCES)
-if(WIN32)
-    list(APPEND NAV_WIN_RESOURCES resources/app.rc)
-endif()
 
 if(WIN32)
     add_executable(VaporView WIN32
@@ -303,9 +301,6 @@ add_custom_command(TARGET VaporView POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_SOURCE_DIR}/resources/combo_arrow_up.xpm
         $<TARGET_FILE_DIR:VaporView>/resources/combo_arrow_up.xpm
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_SOURCE_DIR}/resources/app.ico
-        $<TARGET_FILE_DIR:VaporView>/resources/app.ico
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/resources/lucide
         $<TARGET_FILE_DIR:VaporView>/resources/lucide

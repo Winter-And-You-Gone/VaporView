@@ -137,8 +137,8 @@ PlotTheme plotThemeFor(const QWidget *widget)
     const bool dark = background.lightness() < 128;
     return {
         background,
-        dark ? QColor("#263545") : QColor("#e3e8ef"),
-        dark ? QColor("#3a4654") : QColor("#cfd7e3"),
+        dark ? QColor("#202020") : QColor("#e3e8ef"),
+        dark ? QColor("#202020") : QColor("#cfd7e3"),
         dark ? QColor("#a7b4c2") : QColor("#5e6b78"),
         dark ? QColor("#8fa1b3") : QColor("#7a8899")
     };
@@ -1502,16 +1502,27 @@ void TcpWavePanel::onToggleConnectionClicked()
 {
     if (remote_sky_mode_)
     {
-        emit remoteWaveTcpConnectionRequested(!remote_wave_tcp_connected_);
+        const bool connectRequested = !remote_wave_tcp_connected_;
+        emit logMessageRequested(connectRequested
+            ? (is_english_ ? QStringLiteral("Requesting Sky wave TCP connection...")
+                           : QStringLiteral("正在请求连接天空端波形 TCP..."))
+            : (is_english_ ? QStringLiteral("Requesting Sky wave TCP disconnection...")
+                           : QStringLiteral("正在请求断开天空端波形 TCP...")));
+        emit remoteWaveTcpConnectionRequested(connectRequested);
         return;
     }
 
     if (socket_ && socket_->state() != QAbstractSocket::UnconnectedState)
     {
+        emit logMessageRequested(is_english_ ? QStringLiteral("Disconnecting TCP wave link...")
+                                             : QStringLiteral("正在断开 TCP 波形连接..."));
         requestGracefulDisconnect();
         return;
     }
 
+    emit logMessageRequested(QString(is_english_ ? "Connecting TCP wave link: %1:%2..."
+                                                 : "正在连接 TCP 波形：%1:%2...")
+        .arg(host_edit_->text()).arg(port_spin_->value()));
     recreateSocket();
     buffer_.clear();
     wave1_history_.clear();
