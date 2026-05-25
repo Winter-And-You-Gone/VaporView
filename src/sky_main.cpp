@@ -4,7 +4,6 @@
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
-#include <QTextStream>
 
 int main(int argc, char *argv[])
 {

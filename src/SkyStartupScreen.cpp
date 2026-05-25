@@ -625,8 +625,8 @@ bool pollStartupDecision(SkyStartupDecision& decision)
 
 SkyStartupDecision showSkyStartupScreen(const QString& logo_path)
 {
-    SkyTuiTheme::enableVirtualTerminal();
     setStartupInputMode();
+    SkyTuiTheme::enableVirtualTerminal();
     writeRaw(SkyTuiTheme::enterAlternateScreen() +
              SkyTuiTheme::background(SkyTuiRgb{0, 0, 0}) +
              SkyTuiTheme::clearScreen() +

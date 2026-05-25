@@ -88,19 +88,6 @@ void SkyTuiTheme::enableVirtualTerminal()
             SetConsoleMode(output, mode);
         }
     }
-
-    HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
-    if (input != INVALID_HANDLE_VALUE)
-    {
-        DWORD mode = 0;
-        if (GetConsoleMode(input, &mode))
-        {
-            mode &= ~ENABLE_PROCESSED_INPUT;
-            mode &= ~ENABLE_ECHO_INPUT;
-            mode &= ~ENABLE_LINE_INPUT;
-            SetConsoleMode(input, mode);
-        }
-    }
 #endif
 }
 
