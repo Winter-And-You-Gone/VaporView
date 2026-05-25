@@ -2,6 +2,7 @@
 
 #include <QDateTime>
 #include <QDir>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QTextStream>
@@ -54,7 +55,7 @@ quint64 nowUs()
 
 QString timestampForSessionName()
 {
-    return QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
+    return QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
 }
 
 }  // namespace
@@ -76,8 +77,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
 
     closeFiles();
 
-    const QString timestamp = timestampForSessionName();
-    session_name_ = QStringLiteral("sky_session_%1").arg(timestamp);
+    const QString baseSessionName = QStringLiteral("session_%1").arg(timestampForSessionName());
 
     QDir recordsDir(baseDirectory);
     if (!recordsDir.exists() && !recordsDir.mkpath(QStringLiteral(".")))
@@ -85,13 +85,24 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
         if (errorMessage) *errorMessage = QStringLiteral("cannot create recording directory");
         return false;
     }
+
+    QString finalSessionName = baseSessionName;
+    QString finalSessionDirectory = recordsDir.filePath(finalSessionName);
+    int suffix = 1;
+    while (QFileInfo::exists(finalSessionDirectory))
+    {
+        finalSessionName = QStringLiteral("%1_%2").arg(baseSessionName).arg(suffix++);
+        finalSessionDirectory = recordsDir.filePath(finalSessionName);
+    }
+
+    session_name_ = finalSessionName;
     if (!recordsDir.mkpath(session_name_))
     {
         if (errorMessage) *errorMessage = QStringLiteral("cannot create session directory");
         return false;
     }
 
-    session_directory_ = recordsDir.filePath(session_name_);
+    session_directory_ = finalSessionDirectory;
     QDir sessionDir(session_directory_);
     if (!sessionDir.mkpath(QStringLiteral("waveforms")) ||
         !sessionDir.mkpath(QStringLiteral("raw")) ||
