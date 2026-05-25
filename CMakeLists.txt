@@ -355,6 +355,8 @@ if(WIN32 AND QT_WINDEPLOYQT_EXECUTABLE)
             --force
             --no-translations
             --no-system-dxc-compiler
+            --dir
+            $<TARGET_FILE_DIR:VaporView>
             $<TARGET_FILE:VaporView>
         COMMENT "Deploying Qt runtime for VaporView"
     )
@@ -364,6 +366,8 @@ if(WIN32 AND QT_WINDEPLOYQT_EXECUTABLE)
             --force
             --no-translations
             --no-system-dxc-compiler
+            --dir
+            $<TARGET_FILE_DIR:VaporViewSky>
             $<TARGET_FILE:VaporViewSky>
         COMMENT "Deploying Qt runtime for VaporViewSky"
     )
