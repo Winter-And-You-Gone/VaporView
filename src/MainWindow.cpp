@@ -3052,6 +3052,11 @@ MainWindow::MainWindow(QWidget *parent)
                ground_telemetry_service_ &&
                ground_telemetry_service_->linkGeneration() == generation;
     };
+    auto currentOpenRemoteEvent = [this, currentRemoteEvent](quint64 generation) {
+        return currentRemoteEvent(generation) &&
+               ground_telemetry_service_ &&
+               ground_telemetry_service_->isOpen();
+    };
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::linkOpenChanged,
             this, [this, currentRemoteEvent](bool open) {
                 const quint64 generation = ground_telemetry_service_->linkGeneration();
@@ -3068,10 +3073,10 @@ MainWindow::MainWindow(QWidget *parent)
             this, [this](const QString& message) { log(message); },
             Qt::QueuedConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::basicTelemetryUpdated,
-            this, [this, currentRemoteEvent](const VaporView::TelemetryBasic& telemetry) {
+            this, [this, currentOpenRemoteEvent](const VaporView::TelemetryBasic& telemetry) {
                 const quint64 generation = ground_telemetry_service_->linkGeneration();
-                QMetaObject::invokeMethod(this, [this, currentRemoteEvent, generation, telemetry]() {
-                    if (!currentRemoteEvent(generation))
+                QMetaObject::invokeMethod(this, [this, currentOpenRemoteEvent, generation, telemetry]() {
+                    if (!currentOpenRemoteEvent(generation))
                     {
                         return;
                     }
@@ -3080,10 +3085,10 @@ MainWindow::MainWindow(QWidget *parent)
             },
             Qt::DirectConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::waveformUpdated,
-            this, [this, currentRemoteEvent](const VaporView::DownsampledWaveform& waveform) {
+            this, [this, currentOpenRemoteEvent](const VaporView::DownsampledWaveform& waveform) {
                 const quint64 generation = ground_telemetry_service_->linkGeneration();
-                QMetaObject::invokeMethod(this, [this, currentRemoteEvent, generation, waveform]() {
-                    if (!currentRemoteEvent(generation))
+                QMetaObject::invokeMethod(this, [this, currentOpenRemoteEvent, generation, waveform]() {
+                    if (!currentOpenRemoteEvent(generation))
                     {
                         return;
                     }
@@ -3092,10 +3097,10 @@ MainWindow::MainWindow(QWidget *parent)
             },
             Qt::DirectConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::waveformFeatureUpdated,
-            this, [this, currentRemoteEvent](const VaporView::WaveformFeature& feature) {
+            this, [this, currentOpenRemoteEvent](const VaporView::WaveformFeature& feature) {
                 const quint64 generation = ground_telemetry_service_->linkGeneration();
-                QMetaObject::invokeMethod(this, [this, currentRemoteEvent, generation, feature]() {
-                    if (!currentRemoteEvent(generation))
+                QMetaObject::invokeMethod(this, [this, currentOpenRemoteEvent, generation, feature]() {
+                    if (!currentOpenRemoteEvent(generation))
                     {
                         return;
                     }
@@ -3104,10 +3109,10 @@ MainWindow::MainWindow(QWidget *parent)
             },
             Qt::DirectConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::statusUpdated,
-            this, [this, currentRemoteEvent](const VaporView::TelemetryStatus& status) {
+            this, [this, currentOpenRemoteEvent](const VaporView::TelemetryStatus& status) {
                 const quint64 generation = ground_telemetry_service_->linkGeneration();
-                QMetaObject::invokeMethod(this, [this, currentRemoteEvent, generation, status]() {
-                    if (!currentRemoteEvent(generation))
+                QMetaObject::invokeMethod(this, [this, currentOpenRemoteEvent, generation, status]() {
+                    if (!currentOpenRemoteEvent(generation))
                     {
                         return;
                     }
@@ -3116,10 +3121,10 @@ MainWindow::MainWindow(QWidget *parent)
             },
             Qt::DirectConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::commandAckReceived,
-            this, [this, currentRemoteEvent](const VaporView::CommandAck& ack) {
+            this, [this, currentOpenRemoteEvent](const VaporView::CommandAck& ack) {
                 const quint64 generation = ground_telemetry_service_->linkGeneration();
-                QMetaObject::invokeMethod(this, [this, currentRemoteEvent, generation, ack]() {
-                    if (!currentRemoteEvent(generation))
+                QMetaObject::invokeMethod(this, [this, currentOpenRemoteEvent, generation, ack]() {
+                    if (!currentOpenRemoteEvent(generation))
                     {
                         return;
                     }
@@ -4106,6 +4111,24 @@ void MainWindow::clearRemoteSkyDataUi()
     updateEnvironmentStatusIcons(false, false, false);
     updateSourceModeUi();
     updateRemoteTelemetrySummaryLabel();
+    updateRecordingStatusLabel();
+}
+
+void MainWindow::markRemoteSkyLinkClosed()
+{
+    remote_last_status_ms_ = 0;
+    remote_sky_online_ = false;
+    remote_wave_stream_requested_ = false;
+    remote_wave_stream_enable_pending_ = false;
+    remote_packet_arrivals_ms_.clear();
+    remote_recording_state_ = 0;
+    remote_status_.recording_state = 0;
+    if (tcp_wave_panel_)
+    {
+        tcp_wave_panel_->setRemoteWaveTcpState(VaporView::DeviceState::Disconnected);
+    }
+    refreshRemoteSkyDataUi();
+    updateSourceModeUi();
     updateRecordingStatusLabel();
 }
 
@@ -9709,7 +9732,7 @@ void MainWindow::onRemoteLinkOpenChanged(bool open)
     {
         if (!open)
         {
-            clearRemoteSkyDataUi();
+            markRemoteSkyLinkClosed();
         }
         updateConnectionStatus(open);
     }

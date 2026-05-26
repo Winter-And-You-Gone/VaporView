@@ -75,7 +75,17 @@ GroundTelemetryService::GroundTelemetryService(QObject *parent)
 bool GroundTelemetryService::open(const QString& portName, int baudRate)
 {
     codec_.reset();
-    close();
+    if (link_.isOpen())
+    {
+        close();
+    }
+    else
+    {
+        retry_timer_.stop();
+        pending_commands_.clear();
+        rx_byte_samples_.clear();
+        tx_byte_samples_.clear();
+    }
     ++link_generation_;
     pending_commands_.clear();
     rx_byte_samples_.clear();

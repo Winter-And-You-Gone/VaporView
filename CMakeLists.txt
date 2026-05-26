@@ -346,6 +346,20 @@ if(BUILD_TESTING)
     )
     target_link_libraries(telemetry_codec_test PRIVATE Qt6::Core)
     add_test(NAME telemetry_codec_test COMMAND telemetry_codec_test)
+
+    add_executable(sky_session_recorder_test
+        tests/sky_session_recorder_test.cpp
+        src/SkySessionRecorder.cpp
+        src/TcpWaveEncoding.cpp
+        include/SkySessionRecorder.h
+        include/TelemetryTypes.h
+        include/TcpWaveEncoding.h
+    )
+    target_include_directories(sky_session_recorder_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+    )
+    target_link_libraries(sky_session_recorder_test PRIVATE Qt6::Core)
+    add_test(NAME sky_session_recorder_test COMMAND sky_session_recorder_test)
 endif()
 
 if(WIN32 AND QT_WINDEPLOYQT_EXECUTABLE)

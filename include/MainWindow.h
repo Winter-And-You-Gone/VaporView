@@ -408,6 +408,7 @@ private:
     int scaledConfiguredHeight(QWidget *widget, int baseHeight) const;
     void updateConfigCardHeightForSourceMode();
     void clearRemoteSkyDataUi();
+    void markRemoteSkyLinkClosed();
     void refreshRemoteSkyDataUi();
     bool remoteDeviceDataValid(VaporView::SkyDeviceId device, qint64 timeout_ms) const;
     QString remoteDeviceInvalidText(VaporView::SkyDeviceId device, qint64 timeout_ms) const;
