@@ -485,7 +485,7 @@ void SkyRuntime::sendDownsampledWaveformFrame(bool honorStreamingEnabled)
     const quint64 epsilonTimeUs = device_manager_.latestEpsilon().device_timestamp_us;
     if (!harmonicSamples.isEmpty())
     {
-        session_recorder_.recordWaveformSnapshot(hostTimeUs, epsilonTimeUs, harmonicSamples);
+        session_recorder_.recordWaveformSnapshot(hostTimeUs, epsilonTimeUs, rawSamples, harmonicSamples);
     }
     if (honorStreamingEnabled && !waveform_streaming_enabled_)
     {

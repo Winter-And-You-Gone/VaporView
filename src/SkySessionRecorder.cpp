@@ -8,6 +8,7 @@
 #include <QJsonObject>
 #include <QTextStream>
 #include <QtEndian>
+#include <algorithm>
 #include <cstring>
 #include <limits>
 
@@ -64,6 +65,27 @@ QString boolText(bool value)
     return value ? QStringLiteral("true") : QStringLiteral("false");
 }
 
+QByteArray encodeLittleEndianFloatPayload(const QVector<float>& samples)
+{
+    if (samples.size() > std::numeric_limits<int>::max() / static_cast<int>(sizeof(float)))
+    {
+        return QByteArray();
+    }
+
+    QByteArray payload;
+    payload.resize(samples.size() * static_cast<int>(sizeof(float)));
+    char *cursor = payload.data();
+    for (float sample : samples)
+    {
+        quint32 bits = 0;
+        std::memcpy(&bits, &sample, sizeof(bits));
+        const quint32 littleEndianBits = qToLittleEndian(bits);
+        std::memcpy(cursor, &littleEndianBits, sizeof(littleEndianBits));
+        cursor += sizeof(littleEndianBits);
+    }
+    return payload;
+}
+
 }  // namespace
 
 bool SkySessionRecorder::start(const QString& baseDirectory,
@@ -110,8 +132,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
 
     session_directory_ = finalSessionDirectory;
     QDir sessionDir(session_directory_);
-    if (!sessionDir.mkpath(QStringLiteral("waveforms")) ||
-        !sessionDir.mkpath(QStringLiteral("raw")) ||
+    if (!sessionDir.mkpath(QStringLiteral("raw")) ||
         !sessionDir.mkpath(QStringLiteral("sensors")) ||
         !sessionDir.mkpath(QStringLiteral("logs")) ||
         !sessionDir.mkpath(QStringLiteral("config")))
@@ -123,10 +144,8 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     session_metadata_filename_ = sessionDir.filePath(QStringLiteral("session.json"));
     sensors_filename_ = sessionDir.filePath(QStringLiteral("sensors/devices.csv"));
     feature_filename_ = sessionDir.filePath(QStringLiteral("waveform_features.csv"));
-    waveform_index_filename_ = sessionDir.filePath(QStringLiteral("waveform_index.csv"));
     basic_record_file_.setFileName(sensors_filename_);
     feature_record_file_.setFileName(feature_filename_);
-    waveform_index_file_.setFileName(waveform_index_filename_);
     raw_epsilon_filename_ = sessionDir.filePath(QStringLiteral("raw/epsilon.dat"));
     raw_ptb_filename_ = sessionDir.filePath(QStringLiteral("raw/ptb.dat"));
     raw_hmp_filename_ = sessionDir.filePath(QStringLiteral("raw/hmp.dat"));
@@ -135,7 +154,6 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
 
     if (!basic_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !feature_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
-        !waveform_index_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !openRawDatFile(raw_epsilon_file_, raw_epsilon_filename_, kRawSourceEpsilon, errorMessage) ||
         !openRawDatFile(raw_ptb_file_, raw_ptb_filename_, kRawSourcePtb, errorMessage) ||
         !openRawDatFile(raw_hmp_file_, raw_hmp_filename_, kRawSourceHmp, errorMessage) ||
@@ -153,9 +171,6 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     QTextStream featureOut(&feature_record_file_);
     featureOut << "host_time_us,epsilon_time_us,original_point_count,search_start_index,search_end_index,channel_id,peak,mean,rms,peak_index,peak_x,min_value,max_value,quality_flags\n";
 
-    QTextStream waveformOut(&waveform_index_file_);
-    waveformOut << "host_time_us,epsilon_time_us,point_count,filename\n";
-
     session_start_time_utc_ = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
     telemetry_port_ = telemetryPort;
     telemetry_baud_ = telemetryBaud;
@@ -164,11 +179,13 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     telemetry_row_count_ = 0;
     waveform_feature_count_ = 0;
     waveform_file_count_ = 0;
+    waveform_points_per_frame_ = 0;
     raw_epsilon_record_count_ = 0;
     raw_ptb_record_count_ = 0;
     raw_hmp_record_count_ = 0;
     raw_lidar_record_count_ = 0;
     raw_tcp_wave_record_count_ = 0;
+    native_raw_tcp_wave_record_count_ = 0;
     recording_state_ = 1;
     writeSessionMetadata();
     return true;
@@ -247,7 +264,7 @@ quint64 SkySessionRecorder::waveformFeatureRecordCount() const
 
 quint64 SkySessionRecorder::waveformSnapshotRecordCount() const
 {
-    return waveform_file_count_;
+    return raw_tcp_wave_record_count_;
 }
 
 quint64 SkySessionRecorder::rawEpsilonRecordCount() const
@@ -336,29 +353,29 @@ void SkySessionRecorder::recordWaveformFeature(const WaveformFeature& feature)
     ++waveform_feature_count_;
 }
 
-void SkySessionRecorder::recordWaveformSnapshot(quint64 hostTimeUs, quint64 epsilonTimeUs, const QVector<float>& samples)
+void SkySessionRecorder::recordWaveformSnapshot(quint64 hostTimeUs,
+                                                quint64 epsilonTimeUs,
+                                                const QVector<float>& rawSamples,
+                                                const QVector<float>& harmonicSamples)
 {
-    if (!isRecording() || samples.isEmpty() || !waveform_index_file_.isOpen())
+    Q_UNUSED(epsilonTimeUs);
+    if (!isRecording() || (rawSamples.isEmpty() && harmonicSamples.isEmpty()) || native_raw_tcp_wave_record_count_ > 0)
     {
         return;
     }
 
-    QDir sessionDir(session_directory_);
-    const QString filename = QStringLiteral("waveforms/harmonic_%1.bin").arg(hostTimeUs);
-    QFile waveformFile(sessionDir.filePath(filename));
-    if (!waveformFile.open(QIODevice::WriteOnly))
+    const QByteArray rawPayload = encodeLittleEndianFloatPayload(rawSamples);
+    const QByteArray harmonicPayload = encodeLittleEndianFloatPayload(harmonicSamples);
+    if ((!rawSamples.isEmpty() && rawPayload.isEmpty()) ||
+        (!harmonicSamples.isEmpty() && harmonicPayload.isEmpty()))
     {
         return;
     }
-    waveformFile.write(reinterpret_cast<const char *>(samples.constData()),
-                       static_cast<qint64>(samples.size() * sizeof(float)));
 
-    QTextStream out(&waveform_index_file_);
-    out << hostTimeUs << ','
-        << epsilonTimeUs << ','
-        << samples.size() << ','
-        << filename << '\n';
-    ++waveform_file_count_;
+    writeRawTcpWavePayload(hostTimeUs,
+                           rawPayload,
+                           harmonicPayload,
+                           TcpFloatEncoding::LittleEndian);
 }
 
 void SkySessionRecorder::recordRawEpsilonFrame(quint64 hostTimeUs,
@@ -417,40 +434,10 @@ void SkySessionRecorder::recordRawTcpWaveFrame(quint64 hostTimeUs,
                                                const QByteArray& harmonicPayload,
                                                TcpFloatEncoding floatEncoding)
 {
-    if (!isRecording() ||
-        static_cast<quint64>(rawPayload.size()) > std::numeric_limits<quint32>::max() ||
-        static_cast<quint64>(harmonicPayload.size()) > std::numeric_limits<quint32>::max())
+    if (writeRawTcpWavePayload(hostTimeUs, rawPayload, harmonicPayload, floatEncoding))
     {
-        return;
+        ++native_raw_tcp_wave_record_count_;
     }
-
-    QByteArray payload;
-    payload.resize(static_cast<int>(sizeof(quint32) * 2 + rawPayload.size() + harmonicPayload.size()));
-    char *cursor = payload.data();
-    const quint32 rawSize = qToLittleEndian(static_cast<quint32>(rawPayload.size()));
-    const quint32 harmonicSize = qToLittleEndian(static_cast<quint32>(harmonicPayload.size()));
-    std::memcpy(cursor, &rawSize, sizeof(rawSize));
-    cursor += sizeof(rawSize);
-    std::memcpy(cursor, &harmonicSize, sizeof(harmonicSize));
-    cursor += sizeof(harmonicSize);
-    if (!rawPayload.isEmpty())
-    {
-        std::memcpy(cursor, rawPayload.constData(), rawPayload.size());
-        cursor += rawPayload.size();
-    }
-    if (!harmonicPayload.isEmpty())
-    {
-        std::memcpy(cursor, harmonicPayload.constData(), harmonicPayload.size());
-    }
-
-    writeRawRecord(raw_tcp_wave_file_,
-                   raw_tcp_wave_record_count_,
-                   kRawSourceTcpWave,
-                   kRawRecordTypeGeneric,
-                   kRawTcpWaveCombinedPayloadFlag | tcpFloatEncodingToRawDatFlags(floatEncoding),
-                   hostTimeUs,
-                   payload.constData(),
-                   payload.size());
 }
 
 bool SkySessionRecorder::openRawDatFile(QFile& file, const QString& filename, quint16 sourceId, QString *errorMessage)
@@ -524,6 +511,57 @@ bool SkySessionRecorder::writeRawRecord(QFile& file,
     return true;
 }
 
+bool SkySessionRecorder::writeRawTcpWavePayload(quint64 hostTimeUs,
+                                                const QByteArray& rawPayload,
+                                                const QByteArray& harmonicPayload,
+                                                TcpFloatEncoding floatEncoding)
+{
+    if (!isRecording() ||
+        static_cast<quint64>(rawPayload.size()) > std::numeric_limits<quint32>::max() ||
+        static_cast<quint64>(harmonicPayload.size()) > std::numeric_limits<quint32>::max())
+    {
+        return false;
+    }
+
+    QByteArray payload;
+    payload.resize(static_cast<int>(sizeof(quint32) * 2 + rawPayload.size() + harmonicPayload.size()));
+    char *cursor = payload.data();
+    const quint32 rawSize = qToLittleEndian(static_cast<quint32>(rawPayload.size()));
+    const quint32 harmonicSize = qToLittleEndian(static_cast<quint32>(harmonicPayload.size()));
+    std::memcpy(cursor, &rawSize, sizeof(rawSize));
+    cursor += sizeof(rawSize);
+    std::memcpy(cursor, &harmonicSize, sizeof(harmonicSize));
+    cursor += sizeof(harmonicSize);
+    if (!rawPayload.isEmpty())
+    {
+        std::memcpy(cursor, rawPayload.constData(), rawPayload.size());
+        cursor += rawPayload.size();
+    }
+    if (!harmonicPayload.isEmpty())
+    {
+        std::memcpy(cursor, harmonicPayload.constData(), harmonicPayload.size());
+    }
+
+    if (!writeRawRecord(raw_tcp_wave_file_,
+                        raw_tcp_wave_record_count_,
+                        kRawSourceTcpWave,
+                        kRawRecordTypeGeneric,
+                        kRawTcpWaveCombinedPayloadFlag | tcpFloatEncodingToRawDatFlags(floatEncoding),
+                        hostTimeUs,
+                        payload.constData(),
+                        payload.size()))
+    {
+        return false;
+    }
+
+    waveform_file_count_ = 1;
+    if (harmonicPayload.size() > 0 && harmonicPayload.size() % static_cast<int>(sizeof(float)) == 0)
+    {
+        waveform_points_per_frame_ = static_cast<quint64>(harmonicPayload.size() / static_cast<int>(sizeof(float)));
+    }
+    return true;
+}
+
 void SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc)
 {
     if (session_metadata_filename_.isEmpty() || session_directory_.isEmpty())
@@ -545,22 +583,21 @@ void SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc)
     root.insert(QStringLiteral("telemetry_port"), telemetry_port_);
     root.insert(QStringLiteral("telemetry_baud"), telemetry_baud_);
     root.insert(QStringLiteral("epsilon_schema_version"), QStringLiteral("epsilon.v1"));
-    root.insert(QStringLiteral("waveform_points_per_frame"), 0);
+    root.insert(QStringLiteral("waveform_points_per_frame"),
+                static_cast<int>(std::min<quint64>(waveform_points_per_frame_,
+                                                   static_cast<quint64>(std::numeric_limits<int>::max()))));
     root.insert(QStringLiteral("sensor_export_rate_hz"), 0);
     root.insert(QStringLiteral("other_devices_export_rate_hz"), 0);
     root.insert(QStringLiteral("raw_export_mode"), QStringLiteral("unified_raw_dat"));
     root.insert(QStringLiteral("raw_dat_format_version"), static_cast<int>(kUnifiedRawFormatVersion));
     root.insert(QStringLiteral("waveform_export_rate_hz"), 0);
-    const bool hasRawTcpWave = raw_tcp_wave_record_count_ > 0;
-    const quint64 waveformFrameCount = hasRawTcpWave ? raw_tcp_wave_record_count_ : waveform_file_count_;
-    root.insert(QStringLiteral("waveform_export_mode"), hasRawTcpWave ? QStringLiteral("raw_tcp_wave")
-                                                                      : QStringLiteral("per_frame"));
+    root.insert(QStringLiteral("waveform_export_mode"), QStringLiteral("per_frame"));
     root.insert(QStringLiteral("waveform_value_type"), QStringLiteral("float32"));
     root.insert(QStringLiteral("waveform_timestamp_type"), QStringLiteral("uint64"));
     root.insert(QStringLiteral("timestamp_unit"), QStringLiteral("microseconds"));
     root.insert(QStringLiteral("sensor_rows"), QString::number(telemetry_row_count_));
     root.insert(QStringLiteral("waveform_features"), QString::number(waveform_feature_count_));
-    root.insert(QStringLiteral("waveform_frames"), QString::number(waveformFrameCount));
+    root.insert(QStringLiteral("waveform_frames"), QString::number(raw_tcp_wave_record_count_));
     root.insert(QStringLiteral("waveform_file_count"), QString::number(waveform_file_count_));
 
     QJsonObject rawFiles;
@@ -585,9 +622,7 @@ void SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc)
     QJsonObject paths;
     paths.insert(QStringLiteral("raw_directory"), QStringLiteral("raw"));
     paths.insert(QStringLiteral("devices_csv"), sessionDir.relativeFilePath(sensors_filename_));
-    paths.insert(QStringLiteral("waveform_directory"), QStringLiteral("waveforms"));
     paths.insert(QStringLiteral("waveform_features"), sessionDir.relativeFilePath(feature_filename_));
-    paths.insert(QStringLiteral("waveform_index"), sessionDir.relativeFilePath(waveform_index_filename_));
     root.insert(QStringLiteral("paths"), paths);
 
     QFile file(session_metadata_filename_);
@@ -603,7 +638,6 @@ void SkySessionRecorder::closeFiles()
     std::lock_guard<std::mutex> lock(files_mutex_);
     for (QFile *file : {&basic_record_file_,
                         &feature_record_file_,
-                        &waveform_index_file_,
                         &raw_epsilon_file_,
                         &raw_ptb_file_,
                         &raw_hmp_file_,
