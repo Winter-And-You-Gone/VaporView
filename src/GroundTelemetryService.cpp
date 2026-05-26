@@ -58,7 +58,15 @@ GroundTelemetryService::GroundTelemetryService(QObject *parent)
     connect(&link_, &SerialTelemetryLink::bytesReceived, this, [this](const QByteArray& bytes) {
         onBytesReceived(bytes);
     });
-    connect(&link_, &SerialTelemetryLink::openChanged, this, &GroundTelemetryService::linkOpenChanged);
+    connect(&link_, &SerialTelemetryLink::openChanged, this, [this](bool open) {
+        if (!open)
+        {
+            retry_timer_.stop();
+            pending_commands_.clear();
+            ++link_generation_;
+        }
+        emit linkOpenChanged(open);
+    });
     connect(&link_, &SerialTelemetryLink::errorOccurred, this, &GroundTelemetryService::logMessage);
     retry_timer_.setInterval(200);
     connect(&retry_timer_, &QTimer::timeout, this, &GroundTelemetryService::onRetryTimer);
@@ -67,6 +75,8 @@ GroundTelemetryService::GroundTelemetryService(QObject *parent)
 bool GroundTelemetryService::open(const QString& portName, int baudRate)
 {
     codec_.reset();
+    close();
+    ++link_generation_;
     pending_commands_.clear();
     rx_byte_samples_.clear();
     tx_byte_samples_.clear();
@@ -82,16 +92,26 @@ bool GroundTelemetryService::open(const QString& portName, int baudRate)
 
 void GroundTelemetryService::close()
 {
+    const bool wasOpen = link_.isOpen();
     retry_timer_.stop();
     pending_commands_.clear();
     rx_byte_samples_.clear();
     tx_byte_samples_.clear();
     link_.close();
+    if (!wasOpen)
+    {
+        ++link_generation_;
+    }
 }
 
 bool GroundTelemetryService::isOpen() const
 {
     return link_.isOpen();
+}
+
+quint64 GroundTelemetryService::linkGeneration() const
+{
+    return link_generation_;
 }
 
 double GroundTelemetryService::receiveBitsPerSecond() const

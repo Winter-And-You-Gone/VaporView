@@ -479,6 +479,7 @@ Remote Sky 模式下，记录控制作用在天空端：
 
 - 地面端发送 `StartRecording`、`PauseRecording`、`StopRecording` 命令，不在地面端创建本地 session。
 - 天空端记录目录位于普通模式同一个默认 `data/` 目录下，目录名同样为 `session_yyyy-MM-dd_HH-mm-ss`。
+- 天空端会写入 `session.json` 和 `sensors/devices.csv`，因此数据查看器可按普通 session 打开 Remote Sky 记录目录。
 - 天空端 raw 记录使用同一套统一 DAT 格式：`raw/epsilon.dat`、`raw/ptb.dat`、`raw/hmp.dat`、`raw/lidar.dat`、`raw/tcp_wave.dat`。
 - 地面端通过天空端 `TelemetryStatus` 实时显示记录状态、记录时长、遥测行数、raw 总条数和 TCP 波形 raw 条数；状态栏 tooltip 会列出各设备 raw 计数。
 

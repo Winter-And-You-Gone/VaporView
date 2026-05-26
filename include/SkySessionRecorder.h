@@ -64,11 +64,16 @@ private:
                         quint64 hostTimeUs,
                         const void *payload,
                         qsizetype payloadSize);
+    void writeSessionMetadata(const QString& endTimeUtc = QString());
     void closeFiles();
 
     quint8 recording_state_ = 0;
     QString session_name_;
     QString session_directory_;
+    QString session_metadata_filename_;
+    QString sensors_filename_;
+    QString feature_filename_;
+    QString waveform_index_filename_;
     QString raw_epsilon_filename_;
     QString raw_ptb_filename_;
     QString raw_hmp_filename_;
@@ -83,6 +88,9 @@ private:
     QFile raw_lidar_file_;
     QFile raw_tcp_wave_file_;
     mutable std::mutex files_mutex_;
+    QString session_start_time_utc_;
+    QString telemetry_port_;
+    int telemetry_baud_ = 0;
     quint64 recording_start_time_us_ = 0;
     quint64 recording_elapsed_ms_ = 0;
     quint64 telemetry_row_count_ = 0;

@@ -28,6 +28,7 @@ public:
     bool open(const QString& portName, int baudRate);
     void close();
     bool isOpen() const;
+    quint64 linkGeneration() const;
     double receiveBitsPerSecond() const;
     double transmitBitsPerSecond() const;
     quint64 totalReceivedBytes() const;
@@ -74,6 +75,7 @@ private:
     SerialTelemetryLink link_;
     TelemetryCodec codec_;
     QTimer retry_timer_;
+    quint64 link_generation_ = 0;
     quint16 next_frame_seq_ = 1;
     quint16 next_command_seq_ = 1;
     QHash<quint16, PendingCommand> pending_commands_;

@@ -3047,54 +3047,120 @@ MainWindow::MainWindow(QWidget *parent)
     setupWindowBorderFrames();
     setupWindowResizeHandles();
     ground_telemetry_service_ = new VaporView::GroundTelemetryService(this);
+    auto currentRemoteEvent = [this](quint64 generation) {
+        return isRemoteSkyMode() &&
+               ground_telemetry_service_ &&
+               ground_telemetry_service_->linkGeneration() == generation;
+    };
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::linkOpenChanged,
-            this, &MainWindow::onRemoteLinkOpenChanged,
-            Qt::QueuedConnection);
+            this, [this, currentRemoteEvent](bool open) {
+                const quint64 generation = ground_telemetry_service_->linkGeneration();
+                QMetaObject::invokeMethod(this, [this, currentRemoteEvent, generation, open]() {
+                    if (!currentRemoteEvent(generation))
+                    {
+                        return;
+                    }
+                    onRemoteLinkOpenChanged(open);
+                }, Qt::QueuedConnection);
+            },
+            Qt::DirectConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::logMessage,
             this, [this](const QString& message) { log(message); },
             Qt::QueuedConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::basicTelemetryUpdated,
-            this, &MainWindow::onRemoteBasicTelemetryUpdated,
-            Qt::QueuedConnection);
-    connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::waveformUpdated,
-            this, &MainWindow::onRemoteWaveformUpdated,
-            Qt::QueuedConnection);
-    connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::waveformFeatureUpdated,
-            this, &MainWindow::onRemoteWaveformFeatureUpdated,
-            Qt::QueuedConnection);
-    connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::statusUpdated,
-            this, &MainWindow::onRemoteTelemetryStatusUpdated,
-            Qt::QueuedConnection);
-    connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::commandAckReceived,
-            this, &MainWindow::onRemoteCommandAckReceived,
-            Qt::QueuedConnection);
-    connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::commandTimedOut,
-            this, [this](VaporView::CommandId commandId, quint16 commandSeq) {
-                if (isRemoteSkyMode() && commandId == VaporView::CommandId::RequestStatus && !remote_sky_online_ && status_label_)
-                {
-                    status_label_->setText(is_english_ ? "Sky handshake timed out" : "天空端握手超时");
-                    status_label_->setProperty("status", "disconnected");
-                    status_label_->style()->unpolish(status_label_);
-                    status_label_->style()->polish(status_label_);
-                }
-                if (commandId == VaporView::CommandId::SetPeakSearchRange)
-                {
-                    remote_peak_search_commands_.remove(commandSeq);
-                    if (tcp_wave_panel_)
+            this, [this, currentRemoteEvent](const VaporView::TelemetryBasic& telemetry) {
+                const quint64 generation = ground_telemetry_service_->linkGeneration();
+                QMetaObject::invokeMethod(this, [this, currentRemoteEvent, generation, telemetry]() {
+                    if (!currentRemoteEvent(generation))
                     {
-                        tcp_wave_panel_->rejectRemotePeakSearchRange(is_english_ ? QStringLiteral("ACK timed out") : QStringLiteral("ACK 超时"));
+                        return;
                     }
-                }
-                else if (commandId == VaporView::CommandId::EnableWaveformStreaming ||
-                         commandId == VaporView::CommandId::DisableWaveformStreaming)
-                {
-                    remote_wave_stream_enable_pending_ = false;
-                    updateRemoteDeviceButtonText(VaporView::SkyDeviceId::WaveTcp,
-                                                 remote_device_states_.value(VaporView::SkyDeviceId::WaveTcp,
-                                                                             VaporView::DeviceState::Disconnected));
-                }
+                    onRemoteBasicTelemetryUpdated(telemetry);
+                }, Qt::QueuedConnection);
             },
-            Qt::QueuedConnection);
+            Qt::DirectConnection);
+    connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::waveformUpdated,
+            this, [this, currentRemoteEvent](const VaporView::DownsampledWaveform& waveform) {
+                const quint64 generation = ground_telemetry_service_->linkGeneration();
+                QMetaObject::invokeMethod(this, [this, currentRemoteEvent, generation, waveform]() {
+                    if (!currentRemoteEvent(generation))
+                    {
+                        return;
+                    }
+                    onRemoteWaveformUpdated(waveform);
+                }, Qt::QueuedConnection);
+            },
+            Qt::DirectConnection);
+    connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::waveformFeatureUpdated,
+            this, [this, currentRemoteEvent](const VaporView::WaveformFeature& feature) {
+                const quint64 generation = ground_telemetry_service_->linkGeneration();
+                QMetaObject::invokeMethod(this, [this, currentRemoteEvent, generation, feature]() {
+                    if (!currentRemoteEvent(generation))
+                    {
+                        return;
+                    }
+                    onRemoteWaveformFeatureUpdated(feature);
+                }, Qt::QueuedConnection);
+            },
+            Qt::DirectConnection);
+    connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::statusUpdated,
+            this, [this, currentRemoteEvent](const VaporView::TelemetryStatus& status) {
+                const quint64 generation = ground_telemetry_service_->linkGeneration();
+                QMetaObject::invokeMethod(this, [this, currentRemoteEvent, generation, status]() {
+                    if (!currentRemoteEvent(generation))
+                    {
+                        return;
+                    }
+                    onRemoteTelemetryStatusUpdated(status);
+                }, Qt::QueuedConnection);
+            },
+            Qt::DirectConnection);
+    connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::commandAckReceived,
+            this, [this, currentRemoteEvent](const VaporView::CommandAck& ack) {
+                const quint64 generation = ground_telemetry_service_->linkGeneration();
+                QMetaObject::invokeMethod(this, [this, currentRemoteEvent, generation, ack]() {
+                    if (!currentRemoteEvent(generation))
+                    {
+                        return;
+                    }
+                    onRemoteCommandAckReceived(ack);
+                }, Qt::QueuedConnection);
+            },
+            Qt::DirectConnection);
+    connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::commandTimedOut,
+            this, [this, currentRemoteEvent](VaporView::CommandId commandId, quint16 commandSeq) {
+                const quint64 generation = ground_telemetry_service_->linkGeneration();
+                QMetaObject::invokeMethod(this, [this, currentRemoteEvent, generation, commandId, commandSeq]() {
+                    if (!currentRemoteEvent(generation))
+                    {
+                        return;
+                    }
+                    if (isRemoteSkyMode() && commandId == VaporView::CommandId::RequestStatus && !remote_sky_online_ && status_label_)
+                    {
+                        status_label_->setText(is_english_ ? "Sky handshake timed out" : "天空端握手超时");
+                        status_label_->setProperty("status", "disconnected");
+                        status_label_->style()->unpolish(status_label_);
+                        status_label_->style()->polish(status_label_);
+                    }
+                    if (commandId == VaporView::CommandId::SetPeakSearchRange)
+                    {
+                        remote_peak_search_commands_.remove(commandSeq);
+                        if (tcp_wave_panel_)
+                        {
+                            tcp_wave_panel_->rejectRemotePeakSearchRange(is_english_ ? QStringLiteral("ACK timed out") : QStringLiteral("ACK 超时"));
+                        }
+                    }
+                    else if (commandId == VaporView::CommandId::EnableWaveformStreaming ||
+                             commandId == VaporView::CommandId::DisableWaveformStreaming)
+                    {
+                        remote_wave_stream_enable_pending_ = false;
+                        updateRemoteDeviceButtonText(VaporView::SkyDeviceId::WaveTcp,
+                                                     remote_device_states_.value(VaporView::SkyDeviceId::WaveTcp,
+                                                                                 VaporView::DeviceState::Disconnected));
+                    }
+                }, Qt::QueuedConnection);
+            },
+            Qt::DirectConnection);
     loadRememberedInputState();
     bindRememberedInputState();
 

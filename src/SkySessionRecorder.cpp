@@ -1,5 +1,6 @@
 #include "SkySessionRecorder.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
@@ -58,6 +59,11 @@ QString timestampForSessionName()
     return QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
 }
 
+QString boolText(bool value)
+{
+    return value ? QStringLiteral("true") : QStringLiteral("false");
+}
+
 }  // namespace
 
 bool SkySessionRecorder::start(const QString& baseDirectory,
@@ -106,15 +112,21 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     QDir sessionDir(session_directory_);
     if (!sessionDir.mkpath(QStringLiteral("waveforms")) ||
         !sessionDir.mkpath(QStringLiteral("raw")) ||
-        !sessionDir.mkpath(QStringLiteral("sensors")))
+        !sessionDir.mkpath(QStringLiteral("sensors")) ||
+        !sessionDir.mkpath(QStringLiteral("logs")) ||
+        !sessionDir.mkpath(QStringLiteral("config")))
     {
         if (errorMessage) *errorMessage = QStringLiteral("cannot create session subdirectories");
         return false;
     }
 
-    basic_record_file_.setFileName(sessionDir.filePath(QStringLiteral("telemetry_basic.csv")));
-    feature_record_file_.setFileName(sessionDir.filePath(QStringLiteral("waveform_features.csv")));
-    waveform_index_file_.setFileName(sessionDir.filePath(QStringLiteral("waveform_index.csv")));
+    session_metadata_filename_ = sessionDir.filePath(QStringLiteral("session.json"));
+    sensors_filename_ = sessionDir.filePath(QStringLiteral("sensors/devices.csv"));
+    feature_filename_ = sessionDir.filePath(QStringLiteral("waveform_features.csv"));
+    waveform_index_filename_ = sessionDir.filePath(QStringLiteral("waveform_index.csv"));
+    basic_record_file_.setFileName(sensors_filename_);
+    feature_record_file_.setFileName(feature_filename_);
+    waveform_index_file_.setFileName(waveform_index_filename_);
     raw_epsilon_filename_ = sessionDir.filePath(QStringLiteral("raw/epsilon.dat"));
     raw_ptb_filename_ = sessionDir.filePath(QStringLiteral("raw/ptb.dat"));
     raw_hmp_filename_ = sessionDir.filePath(QStringLiteral("raw/hmp.dat"));
@@ -136,7 +148,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     }
 
     QTextStream basicOut(&basic_record_file_);
-    basicOut << "host_time_us,epsilon_time_us,latitude_deg,longitude_deg,height_m,ecef_x_m,ecef_y_m,ecef_z_m,lidar_height_m,temperature_c,humidity_percent,pressure_hpa,status_bits,filter_status_bits,update_status_bits,gnss_fix_code,validity_flags\n";
+    basicOut << "record_timestamp_us,epsilon_host_timestamp_us,epsilon_device_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m,ecef_x_m,ecef_y_m,ecef_z_m,lidar_distance_m,hmp_temperature_c,hmp_humidity_rh,ptb_pressure_hpa,status_bits,filter_status_bits,update_status_bits,gnss_fix,epsilon_valid,lidar_valid,th_valid,baro_valid\n";
 
     QTextStream featureOut(&feature_record_file_);
     featureOut << "host_time_us,epsilon_time_us,original_point_count,search_start_index,search_end_index,channel_id,peak,mean,rms,peak_index,peak_x,min_value,max_value,quality_flags\n";
@@ -144,20 +156,9 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     QTextStream waveformOut(&waveform_index_file_);
     waveformOut << "host_time_us,epsilon_time_us,point_count,filename\n";
 
-    QFile metadata(sessionDir.filePath(QStringLiteral("metadata.json")));
-    if (metadata.open(QIODevice::WriteOnly | QIODevice::Text))
-    {
-        QJsonObject object;
-        object.insert(QStringLiteral("mode"), QStringLiteral("sky"));
-        object.insert(QStringLiteral("session_name"), session_name_);
-        object.insert(QStringLiteral("start_time_utc"), QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
-        object.insert(QStringLiteral("telemetry_port"), telemetryPort);
-        object.insert(QStringLiteral("telemetry_baud"), telemetryBaud);
-        object.insert(QStringLiteral("raw_export_mode"), QStringLiteral("unified_raw_dat"));
-        object.insert(QStringLiteral("raw_dat_format_version"), static_cast<int>(kUnifiedRawFormatVersion));
-        metadata.write(QJsonDocument(object).toJson(QJsonDocument::Indented));
-    }
-
+    session_start_time_utc_ = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
+    telemetry_port_ = telemetryPort;
+    telemetry_baud_ = telemetryBaud;
     recording_start_time_us_ = nowUs();
     recording_elapsed_ms_ = 0;
     telemetry_row_count_ = 0;
@@ -169,6 +170,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     raw_lidar_record_count_ = 0;
     raw_tcp_wave_record_count_ = 0;
     recording_state_ = 1;
+    writeSessionMetadata();
     return true;
 }
 
@@ -188,28 +190,7 @@ void SkySessionRecorder::pause()
 void SkySessionRecorder::stop()
 {
     recording_elapsed_ms_ = recordingElapsedMs();
-    if (!session_directory_.isEmpty())
-    {
-        QFile metadata(QDir(session_directory_).filePath(QStringLiteral("metadata_end.json")));
-        if (metadata.open(QIODevice::WriteOnly | QIODevice::Text))
-        {
-            QJsonObject object;
-            object.insert(QStringLiteral("session_name"), session_name_);
-            object.insert(QStringLiteral("end_time_utc"), QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
-            object.insert(QStringLiteral("elapsed_ms"), QString::number(recording_elapsed_ms_));
-            object.insert(QStringLiteral("telemetry_rows"), QString::number(telemetry_row_count_));
-            object.insert(QStringLiteral("waveform_features"), QString::number(waveform_feature_count_));
-            object.insert(QStringLiteral("waveform_files"), QString::number(waveform_file_count_));
-            QJsonObject rawFiles;
-            rawFiles.insert(QStringLiteral("epsilon"), QString::number(raw_epsilon_record_count_));
-            rawFiles.insert(QStringLiteral("ptb"), QString::number(raw_ptb_record_count_));
-            rawFiles.insert(QStringLiteral("hmp"), QString::number(raw_hmp_record_count_));
-            rawFiles.insert(QStringLiteral("lidar"), QString::number(raw_lidar_record_count_));
-            rawFiles.insert(QStringLiteral("tcp_wave"), QString::number(raw_tcp_wave_record_count_));
-            object.insert(QStringLiteral("raw_records"), rawFiles);
-            metadata.write(QJsonDocument(object).toJson(QJsonDocument::Indented));
-        }
-    }
+    writeSessionMetadata(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
     closeFiles();
     recording_state_ = 0;
 }
@@ -301,7 +282,14 @@ void SkySessionRecorder::recordBasicTelemetry(const TelemetryBasic& data)
         return;
     }
     QTextStream out(&basic_record_file_);
+    const bool hasEpsilon = (data.validity_flags & (BasicHasEpsilonTime | BasicHasPosition | BasicHasEcef)) != 0;
+    const bool hasLidar = (data.validity_flags & BasicHasLidar) != 0;
+    const bool hasTemperatureHumidity =
+        (data.validity_flags & BasicHasTemperature) != 0 &&
+        (data.validity_flags & BasicHasHumidity) != 0;
+    const bool hasPressure = (data.validity_flags & BasicHasPressure) != 0;
     out << data.host_time_us << ','
+        << data.host_time_us << ','
         << data.epsilon_time_us << ','
         << data.latitude_deg << ','
         << data.longitude_deg << ','
@@ -317,7 +305,10 @@ void SkySessionRecorder::recordBasicTelemetry(const TelemetryBasic& data)
         << data.filter_status_bits << ','
         << data.update_status_bits << ','
         << static_cast<int>(data.gnss_fix_code) << ','
-        << data.validity_flags << '\n';
+        << boolText(hasEpsilon) << ','
+        << boolText(hasLidar) << ','
+        << boolText(hasTemperatureHumidity) << ','
+        << boolText(hasPressure) << '\n';
     ++telemetry_row_count_;
 }
 
@@ -531,6 +522,77 @@ bool SkySessionRecorder::writeRawRecord(QFile& file,
     }
     ++recordCount;
     return true;
+}
+
+void SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc)
+{
+    if (session_metadata_filename_.isEmpty() || session_directory_.isEmpty())
+    {
+        return;
+    }
+
+    QDir sessionDir(session_directory_);
+    QJsonObject root;
+    root.insert(QStringLiteral("mode"), QStringLiteral("sky"));
+    root.insert(QStringLiteral("session_name"), session_name_);
+    root.insert(QStringLiteral("start_time_utc"), session_start_time_utc_);
+    root.insert(QStringLiteral("start_time_us"), QString::number(recording_start_time_us_));
+    root.insert(QStringLiteral("end_time_utc"), endTimeUtc);
+    root.insert(QStringLiteral("elapsed_ms"), QString::number(recordingElapsedMs()));
+    root.insert(QStringLiteral("software_version"), QCoreApplication::applicationVersion().isEmpty()
+        ? QStringLiteral("dev")
+        : QCoreApplication::applicationVersion());
+    root.insert(QStringLiteral("telemetry_port"), telemetry_port_);
+    root.insert(QStringLiteral("telemetry_baud"), telemetry_baud_);
+    root.insert(QStringLiteral("epsilon_schema_version"), QStringLiteral("epsilon.v1"));
+    root.insert(QStringLiteral("waveform_points_per_frame"), 0);
+    root.insert(QStringLiteral("sensor_export_rate_hz"), 0);
+    root.insert(QStringLiteral("other_devices_export_rate_hz"), 0);
+    root.insert(QStringLiteral("raw_export_mode"), QStringLiteral("unified_raw_dat"));
+    root.insert(QStringLiteral("raw_dat_format_version"), static_cast<int>(kUnifiedRawFormatVersion));
+    root.insert(QStringLiteral("waveform_export_rate_hz"), 0);
+    root.insert(QStringLiteral("waveform_export_mode"), QStringLiteral("raw_tcp_wave"));
+    root.insert(QStringLiteral("waveform_value_type"), QStringLiteral("float32"));
+    root.insert(QStringLiteral("waveform_timestamp_type"), QStringLiteral("uint64"));
+    root.insert(QStringLiteral("timestamp_unit"), QStringLiteral("microseconds"));
+    root.insert(QStringLiteral("sensor_rows"), QString::number(telemetry_row_count_));
+    root.insert(QStringLiteral("waveform_features"), QString::number(waveform_feature_count_));
+    root.insert(QStringLiteral("waveform_frames"), QString::number(raw_tcp_wave_record_count_));
+    root.insert(QStringLiteral("waveform_file_count"), QString::number(waveform_file_count_));
+
+    QJsonObject rawFiles;
+    auto addRawFile = [&rawFiles, &sessionDir](const QString& name,
+                                               const QString& filename,
+                                               quint16 sourceId,
+                                               quint64 recordCount) {
+        QJsonObject raw;
+        raw.insert(QStringLiteral("path"), sessionDir.relativeFilePath(filename));
+        raw.insert(QStringLiteral("source_id"), static_cast<int>(sourceId));
+        raw.insert(QStringLiteral("format_version"), static_cast<int>(kUnifiedRawFormatVersion));
+        raw.insert(QStringLiteral("record_count"), QString::number(recordCount));
+        rawFiles.insert(name, raw);
+    };
+    addRawFile(QStringLiteral("epsilon"), raw_epsilon_filename_, kRawSourceEpsilon, raw_epsilon_record_count_);
+    addRawFile(QStringLiteral("ptb"), raw_ptb_filename_, kRawSourcePtb, raw_ptb_record_count_);
+    addRawFile(QStringLiteral("hmp"), raw_hmp_filename_, kRawSourceHmp, raw_hmp_record_count_);
+    addRawFile(QStringLiteral("lidar"), raw_lidar_filename_, kRawSourceLidar, raw_lidar_record_count_);
+    addRawFile(QStringLiteral("tcp_wave"), raw_tcp_wave_filename_, kRawSourceTcpWave, raw_tcp_wave_record_count_);
+    root.insert(QStringLiteral("raw_files"), rawFiles);
+
+    QJsonObject paths;
+    paths.insert(QStringLiteral("raw_directory"), QStringLiteral("raw"));
+    paths.insert(QStringLiteral("devices_csv"), sessionDir.relativeFilePath(sensors_filename_));
+    paths.insert(QStringLiteral("waveform_directory"), QStringLiteral("waveforms"));
+    paths.insert(QStringLiteral("waveform_features"), sessionDir.relativeFilePath(feature_filename_));
+    paths.insert(QStringLiteral("waveform_index"), sessionDir.relativeFilePath(waveform_index_filename_));
+    root.insert(QStringLiteral("paths"), paths);
+
+    QFile file(session_metadata_filename_);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+    {
+        return;
+    }
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
 }
 
 void SkySessionRecorder::closeFiles()
