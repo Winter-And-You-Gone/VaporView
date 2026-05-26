@@ -398,7 +398,15 @@ void SkyRuntime::sendBasicTelemetry()
     data.pressure_hpa = std::numeric_limits<float>::quiet_NaN();
 
     const DeviceStatusItem epsilonStatus = device_manager_.status(SkyDeviceId::Epsilon);
-    if (epsilon.valid && connectedAndFresh(epsilonStatus, nowUs, 2'000'000ULL))
+    const DeviceStatusItem lidarStatus = device_manager_.status(SkyDeviceId::Lidar);
+    const DeviceStatusItem hmpStatus = device_manager_.status(SkyDeviceId::Hmp);
+    const DeviceStatusItem ptbStatus = device_manager_.status(SkyDeviceId::Ptb);
+    const bool hasEpsilon = epsilon.valid && connectedAndFresh(epsilonStatus, nowUs, 2'000'000ULL);
+    const bool hasLidar = lidar.valid && connectedAndFresh(lidarStatus, nowUs, 2'000'000ULL);
+    const bool hasHmp = hmp.valid && connectedAndFresh(hmpStatus, nowUs, 3'000'000ULL);
+    const bool hasPtb = ptb.valid && connectedAndFresh(ptbStatus, nowUs, 3'000'000ULL);
+
+    if (hasEpsilon)
     {
         data.validity_flags |= BasicHasEpsilonTime | BasicHasPosition | BasicHasEcef;
         data.epsilon_time_us = epsilon.device_timestamp_us;
@@ -414,26 +422,35 @@ void SkyRuntime::sendBasicTelemetry()
         data.gnss_fix_code = static_cast<quint8>(std::clamp(epsilon.gnss_fix_code, 0, 255));
     }
 
-    if (lidar.valid && connectedAndFresh(device_manager_.status(SkyDeviceId::Lidar), nowUs, 2'000'000ULL))
+    if (hasLidar)
     {
         data.validity_flags |= BasicHasLidar;
         data.lidar_height_m = static_cast<float>(lidar.distance_m);
     }
 
-    if (hmp.valid && connectedAndFresh(device_manager_.status(SkyDeviceId::Hmp), nowUs, 3'000'000ULL))
+    if (hasHmp)
     {
         data.validity_flags |= BasicHasTemperature | BasicHasHumidity;
         data.temperature_c = static_cast<float>(hmp.temperature);
         data.humidity_percent = static_cast<float>(hmp.humidity);
     }
 
-    if (ptb.valid && connectedAndFresh(device_manager_.status(SkyDeviceId::Ptb), nowUs, 3'000'000ULL))
+    if (hasPtb)
     {
         data.validity_flags |= BasicHasPressure;
         data.pressure_hpa = static_cast<float>(ptb.pressure_hpa);
     }
 
-    session_recorder_.recordBasicTelemetry(data);
+    session_recorder_.recordDeviceSnapshot(nowUs,
+                                           epsilonStatus.last_data_time_us != 0 ? epsilonStatus.last_data_time_us : nowUs,
+                                           epsilon,
+                                           hasEpsilon,
+                                           ptb,
+                                           hasPtb,
+                                           hmp,
+                                           hasHmp,
+                                           lidar,
+                                           hasLidar);
     sendFrame(MsgType::TelemetryBasic, TelemetryCodec::serializeBasicTelemetry(data));
 }
 

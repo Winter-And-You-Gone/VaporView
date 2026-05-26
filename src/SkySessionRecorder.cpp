@@ -6,9 +6,11 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QStringList>
 #include <QTextStream>
 #include <QtEndian>
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <limits>
 
@@ -26,6 +28,26 @@ constexpr quint16 kRawSourceLidar = 4u;
 constexpr quint16 kRawSourceTcpWave = 5u;
 constexpr quint16 kRawRecordTypeGeneric = 1u;
 constexpr quint32 kRawTcpWaveCombinedPayloadFlag = 0x00000001u;
+constexpr const char *kDevicesCsvHeader =
+    "record_timestamp_us,"
+    "epsilon_host_timestamp_us,epsilon_device_timestamp_us,epsilon_utc_unix_s,epsilon_utc_microseconds,"
+    "nav_lat_deg,nav_lon_deg,nav_height_m,"
+    "ecef_x_m,ecef_y_m,ecef_z_m,"
+    "ned_n_m,ned_e_m,ned_d_m,"
+    "vel_n_mps,vel_e_mps,vel_d_mps,"
+    "body_vel_x_mps,body_vel_y_mps,body_vel_z_mps,"
+    "body_acc_x_mps2,body_acc_y_mps2,body_acc_z_mps2,"
+    "roll_deg,pitch_deg,yaw_deg,"
+    "quat_w,quat_x,quat_y,quat_z,"
+    "ang_vel_x_radps,ang_vel_y_radps,ang_vel_z_radps,"
+    "imu_acc_x_mps2,imu_acc_y_mps2,imu_acc_z_mps2,"
+    "imu_gyr_x_radps,imu_gyr_y_radps,imu_gyr_z_radps,"
+    "mag_x_mg,mag_y_mg,mag_z_mg,"
+    "gnss_fix,gnss_satellites,hdop,vdop,hacc_m,vacc_m,"
+    "lat_std_m,lon_std_m,height_std_m,diff_age_s,"
+    "heading_valid,system_status_bits,filter_status_bits,update_status_bits,"
+    "epsilon_valid,epsilon_error_message,"
+    "hmp_temperature_c,hmp_humidity_rh,ptb_pressure_hpa,lidar_distance_m,lidar_signal_strength,lidar_valid\n";
 
 #pragma pack(push, 1)
 struct UnifiedRawFileHeader
@@ -63,6 +85,17 @@ QString timestampForSessionName()
 QString boolText(bool value)
 {
     return value ? QStringLiteral("true") : QStringLiteral("false");
+}
+
+QString csvEscape(const QString& value)
+{
+    QString escaped = value;
+    escaped.replace(QStringLiteral("\""), QStringLiteral("\"\""));
+    if (escaped.contains(',') || escaped.contains('"') || escaped.contains('\n') || escaped.contains('\r'))
+    {
+        escaped = QStringLiteral("\"%1\"").arg(escaped);
+    }
+    return escaped;
 }
 
 QByteArray encodeLittleEndianFloatPayload(const QVector<float>& samples)
@@ -166,7 +199,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     }
 
     QTextStream basicOut(&basic_record_file_);
-    basicOut << "record_timestamp_us,epsilon_host_timestamp_us,epsilon_device_timestamp_us,nav_lat_deg,nav_lon_deg,nav_height_m,ecef_x_m,ecef_y_m,ecef_z_m,lidar_distance_m,hmp_temperature_c,hmp_humidity_rh,ptb_pressure_hpa,status_bits,filter_status_bits,update_status_bits,gnss_fix,epsilon_valid,lidar_valid,th_valid,baro_valid\n";
+    basicOut << kDevicesCsvHeader;
 
     QTextStream featureOut(&feature_record_file_);
     featureOut << "host_time_us,epsilon_time_us,original_point_count,search_start_index,search_end_index,channel_id,peak,mean,rms,peak_index,peak_x,min_value,max_value,quality_flags\n";
@@ -294,38 +327,187 @@ quint64 SkySessionRecorder::rawTcpWaveRecordCount() const
 
 void SkySessionRecorder::recordBasicTelemetry(const TelemetryBasic& data)
 {
-    if (!isRecording() || !basic_record_file_.isOpen())
-    {
-        return;
-    }
-    QTextStream out(&basic_record_file_);
     const bool hasEpsilon = (data.validity_flags & (BasicHasEpsilonTime | BasicHasPosition | BasicHasEcef)) != 0;
     const bool hasLidar = (data.validity_flags & BasicHasLidar) != 0;
     const bool hasTemperatureHumidity =
         (data.validity_flags & BasicHasTemperature) != 0 &&
         (data.validity_flags & BasicHasHumidity) != 0;
     const bool hasPressure = (data.validity_flags & BasicHasPressure) != 0;
-    out << data.host_time_us << ','
-        << data.host_time_us << ','
-        << data.epsilon_time_us << ','
-        << QString::number(data.latitude_deg, 'f', 9) << ','
-        << QString::number(data.longitude_deg, 'f', 9) << ','
-        << QString::number(data.height_m, 'f', 6) << ','
-        << QString::number(data.ecef_x_m, 'f', 6) << ','
-        << QString::number(data.ecef_y_m, 'f', 6) << ','
-        << QString::number(data.ecef_z_m, 'f', 6) << ','
-        << QString::number(data.lidar_height_m, 'f', 6) << ','
-        << QString::number(data.temperature_c, 'f', 6) << ','
-        << QString::number(data.humidity_percent, 'f', 6) << ','
-        << QString::number(data.pressure_hpa, 'f', 6) << ','
-        << data.status_bits << ','
-        << data.filter_status_bits << ','
-        << data.update_status_bits << ','
-        << static_cast<int>(data.gnss_fix_code) << ','
-        << boolText(hasEpsilon) << ','
-        << boolText(hasLidar) << ','
-        << boolText(hasTemperatureHumidity) << ','
-        << boolText(hasPressure) << '\n';
+
+    EpsilonData epsilon;
+    epsilon.valid = hasEpsilon;
+    epsilon.device_timestamp_us = data.epsilon_time_us;
+    epsilon.utc_unix_s = data.epsilon_time_us / 1'000'000ULL;
+    epsilon.utc_microseconds = static_cast<quint32>(data.epsilon_time_us % 1'000'000ULL);
+    epsilon.latitude_deg = data.latitude_deg;
+    epsilon.longitude_deg = data.longitude_deg;
+    epsilon.height_m = data.height_m;
+    epsilon.ecef_x_m = data.ecef_x_m;
+    epsilon.ecef_y_m = data.ecef_y_m;
+    epsilon.ecef_z_m = data.ecef_z_m;
+    epsilon.system_status_bits = data.status_bits;
+    epsilon.filter_status_bits = data.filter_status_bits;
+    epsilon.update_status_bits = data.update_status_bits;
+    epsilon.gnss_fix_code = data.gnss_fix_code;
+    epsilon.gnss_fix_text = std::to_string(data.gnss_fix_code);
+
+    PtbData ptb;
+    ptb.valid = hasPressure;
+    ptb.pressure_hpa = data.pressure_hpa;
+
+    HmpData hmp;
+    hmp.valid = hasTemperatureHumidity;
+    hmp.temperature = data.temperature_c;
+    hmp.humidity = data.humidity_percent;
+
+    LidarData lidar;
+    lidar.valid = hasLidar;
+    lidar.distance_m = data.lidar_height_m;
+
+    recordDeviceSnapshot(data.host_time_us,
+                         data.host_time_us,
+                         epsilon,
+                         hasEpsilon,
+                         ptb,
+                         hasPressure,
+                         hmp,
+                         hasTemperatureHumidity,
+                         lidar,
+                         hasLidar);
+}
+
+void SkySessionRecorder::recordDeviceSnapshot(quint64 hostTimeUs,
+                                              quint64 epsilonHostTimeUs,
+                                              const EpsilonData& epsilon,
+                                              bool hasEpsilon,
+                                              const PtbData& ptb,
+                                              bool hasPtb,
+                                              const HmpData& hmp,
+                                              bool hasHmp,
+                                              const LidarData& lidar,
+                                              bool hasLidar)
+{
+    if (!isRecording() || !basic_record_file_.isOpen())
+    {
+        return;
+    }
+
+    QStringList row;
+    row.reserve(64);
+    row << QString::number(hostTimeUs);
+
+    auto appendEmptyColumns = [&row](int count) {
+        for (int i = 0; i < count; ++i)
+        {
+            row << QString();
+        }
+    };
+
+    if (hasEpsilon && epsilon.valid)
+    {
+        row << QString::number(epsilonHostTimeUs)
+            << QString::number(epsilon.device_timestamp_us)
+            << QString::number(epsilon.utc_unix_s)
+            << QString::number(epsilon.utc_microseconds)
+            << QString::number(epsilon.latitude_deg, 'f', 9)
+            << QString::number(epsilon.longitude_deg, 'f', 9)
+            << QString::number(epsilon.height_m, 'f', 6)
+            << QString::number(epsilon.ecef_x_m, 'f', 6)
+            << QString::number(epsilon.ecef_y_m, 'f', 6)
+            << QString::number(epsilon.ecef_z_m, 'f', 6)
+            << QString::number(epsilon.ned_n_m, 'f', 6)
+            << QString::number(epsilon.ned_e_m, 'f', 6)
+            << QString::number(epsilon.ned_d_m, 'f', 6)
+            << QString::number(epsilon.vel_n_mps, 'f', 6)
+            << QString::number(epsilon.vel_e_mps, 'f', 6)
+            << QString::number(epsilon.vel_d_mps, 'f', 6)
+            << QString::number(epsilon.body_vel_x_mps, 'f', 6)
+            << QString::number(epsilon.body_vel_y_mps, 'f', 6)
+            << QString::number(epsilon.body_vel_z_mps, 'f', 6)
+            << QString::number(epsilon.body_acc_x_mps2, 'f', 6)
+            << QString::number(epsilon.body_acc_y_mps2, 'f', 6)
+            << QString::number(epsilon.body_acc_z_mps2, 'f', 6)
+            << QString::number(epsilon.roll_deg, 'f', 6)
+            << QString::number(epsilon.pitch_deg, 'f', 6)
+            << QString::number(epsilon.yaw_deg, 'f', 6)
+            << QString::number(epsilon.quat_w, 'f', 8)
+            << QString::number(epsilon.quat_x, 'f', 8)
+            << QString::number(epsilon.quat_y, 'f', 8)
+            << QString::number(epsilon.quat_z, 'f', 8)
+            << QString::number(epsilon.ang_vel_x_radps, 'f', 8)
+            << QString::number(epsilon.ang_vel_y_radps, 'f', 8)
+            << QString::number(epsilon.ang_vel_z_radps, 'f', 8)
+            << QString::number(epsilon.imu_acc_x_mps2, 'f', 6)
+            << QString::number(epsilon.imu_acc_y_mps2, 'f', 6)
+            << QString::number(epsilon.imu_acc_z_mps2, 'f', 6)
+            << QString::number(epsilon.imu_gyr_x_radps, 'f', 8)
+            << QString::number(epsilon.imu_gyr_y_radps, 'f', 8)
+            << QString::number(epsilon.imu_gyr_z_radps, 'f', 8)
+            << QString::number(epsilon.mag_x_mg, 'f', 6)
+            << QString::number(epsilon.mag_y_mg, 'f', 6)
+            << QString::number(epsilon.mag_z_mg, 'f', 6)
+            << QString::fromStdString(epsilon.gnss_fix_text)
+            << QString::number(epsilon.gnss_satellites)
+            << QString::number(epsilon.hdop, 'f', 4)
+            << QString::number(epsilon.vdop, 'f', 4)
+            << QString::number(epsilon.hacc_m, 'f', 4)
+            << QString::number(epsilon.vacc_m, 'f', 4)
+            << QString::number(epsilon.lat_std_m, 'f', 4)
+            << QString::number(epsilon.lon_std_m, 'f', 4)
+            << QString::number(epsilon.height_std_m, 'f', 4)
+            << (std::isfinite(epsilon.diff_age_s) ? QString::number(epsilon.diff_age_s, 'f', 4) : QString())
+            << boolText(epsilon.heading_valid)
+            << QString::number(epsilon.system_status_bits)
+            << QString::number(epsilon.filter_status_bits)
+            << QString::number(epsilon.update_status_bits)
+            << boolText(true)
+            << QString::fromStdString(epsilon.error_message);
+    }
+    else
+    {
+        appendEmptyColumns(57);
+    }
+
+    if (hasHmp && hmp.valid)
+    {
+        row << QString::number(hmp.temperature, 'f', 6)
+            << QString::number(hmp.humidity, 'f', 6);
+    }
+    else
+    {
+        appendEmptyColumns(2);
+    }
+
+    if (hasPtb && ptb.valid)
+    {
+        row << QString::number(ptb.pressure_hpa, 'f', 6);
+    }
+    else
+    {
+        appendEmptyColumns(1);
+    }
+
+    if (hasLidar && lidar.valid)
+    {
+        row << QString::number(lidar.distance_m, 'f', 6)
+            << QString::number(lidar.signal_strength)
+            << boolText(lidar.valid);
+    }
+    else
+    {
+        appendEmptyColumns(3);
+    }
+
+    QTextStream out(&basic_record_file_);
+    for (int i = 0; i < row.size(); ++i)
+    {
+        if (i > 0)
+        {
+            out << ',';
+        }
+        out << csvEscape(row.at(i));
+    }
+    out << '\n';
     ++telemetry_row_count_;
 }
 

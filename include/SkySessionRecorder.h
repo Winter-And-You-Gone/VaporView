@@ -2,6 +2,7 @@
 #define VaporView_SKY_SESSION_RECORDER_H_
 
 #include "TelemetryTypes.h"
+#include "data_types.h"
 #include "TcpWaveEncoding.h"
 
 #include <QByteArray>
@@ -40,6 +41,16 @@ public:
     quint64 rawTcpWaveRecordCount() const;
 
     void recordBasicTelemetry(const TelemetryBasic& data);
+    void recordDeviceSnapshot(quint64 hostTimeUs,
+                              quint64 epsilonHostTimeUs,
+                              const EpsilonData& epsilon,
+                              bool hasEpsilon,
+                              const PtbData& ptb,
+                              bool hasPtb,
+                              const HmpData& hmp,
+                              bool hasHmp,
+                              const LidarData& lidar,
+                              bool hasLidar);
     void recordWaveformFeature(const WaveformFeature& feature);
     void recordWaveformSnapshot(quint64 hostTimeUs,
                                 quint64 epsilonTimeUs,

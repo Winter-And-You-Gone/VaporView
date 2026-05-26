@@ -16,6 +16,7 @@ namespace
 constexpr int kWaveTcpHeaderSize = 4;
 constexpr int kWaveTcpFloatSize = 4;
 constexpr quint32 kMaxWaveTcpPayloadBytes = 16u * 1024u * 1024u;
+constexpr double kPi = 3.14159265358979323846;
 
 enum class WaveTcpHeaderOrder
 {
@@ -26,6 +27,38 @@ enum class WaveTcpHeaderOrder
 quint64 nowUs()
 {
     return static_cast<quint64>(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()) * 1000ULL;
+}
+
+double degToRad(double degrees)
+{
+    return degrees * kPi / 180.0;
+}
+
+double positiveDegrees(double degrees)
+{
+    double value = std::fmod(degrees, 360.0);
+    if (value < 0.0)
+    {
+        value += 360.0;
+    }
+    return value;
+}
+
+void setQuaternionFromEuler(EpsilonData& data)
+{
+    const double roll = degToRad(data.roll_deg);
+    const double pitch = degToRad(data.pitch_deg);
+    const double yaw = degToRad(data.yaw_deg);
+    const double cr = std::cos(roll * 0.5);
+    const double sr = std::sin(roll * 0.5);
+    const double cp = std::cos(pitch * 0.5);
+    const double sp = std::sin(pitch * 0.5);
+    const double cy = std::cos(yaw * 0.5);
+    const double sy = std::sin(yaw * 0.5);
+    data.quat_w = cr * cp * cy + sr * sp * sy;
+    data.quat_x = sr * cp * cy - cr * sp * sy;
+    data.quat_y = cr * sp * cy + sr * cp * sy;
+    data.quat_z = cr * cp * sy - sr * sp * cy;
 }
 
 template <typename Collector>
@@ -390,6 +423,7 @@ void SkyDeviceManager::generateSimulatedData()
 
     if (epsilon_status_.state == DeviceState::Connected)
     {
+        const double phaseRateRadPerSecond = 0.4;
         latest_epsilon_.valid = true;
         latest_epsilon_.timestamp = std::chrono::steady_clock::now();
         latest_epsilon_.device_timestamp_us = t;
@@ -398,15 +432,63 @@ void SkyDeviceManager::generateSimulatedData()
         latest_epsilon_.gnss_fix_code = 6;
         latest_epsilon_.gnss_fix_text = "RTK_FIXED";
         latest_epsilon_.filter_status_bits = static_cast<uint16_t>(latest_epsilon_.gnss_fix_code << 4);
-        latest_epsilon_.gnss_satellites = 18;
+        latest_epsilon_.gnss_satellites = 18 + static_cast<int>(std::lround(std::sin(simulate_phase_ * 0.12) * 2.0));
         latest_epsilon_.latitude_deg = 31.2304 + std::sin(simulate_phase_) * 0.0001;
         latest_epsilon_.longitude_deg = 121.4737 + std::cos(simulate_phase_) * 0.0001;
         latest_epsilon_.height_m = 1200.0 + std::sin(simulate_phase_ * 0.7) * 3.0;
         latest_epsilon_.ecef_x_m = 1000.0 + std::sin(simulate_phase_) * 5.0;
         latest_epsilon_.ecef_y_m = 2000.0 + std::cos(simulate_phase_) * 5.0;
         latest_epsilon_.ecef_z_m = 3000.0 + std::sin(simulate_phase_ * 0.5) * 5.0;
+        latest_epsilon_.ned_n_m = std::sin(simulate_phase_ * 0.8) * 4.0;
+        latest_epsilon_.ned_e_m = std::cos(simulate_phase_ * 0.6) * 4.0;
+        latest_epsilon_.ned_d_m = -std::sin(simulate_phase_ * 0.4) * 1.5;
+        latest_epsilon_.vel_n_mps = 4.0 * 0.8 * phaseRateRadPerSecond * std::cos(simulate_phase_ * 0.8);
+        latest_epsilon_.vel_e_mps = -4.0 * 0.6 * phaseRateRadPerSecond * std::sin(simulate_phase_ * 0.6);
+        latest_epsilon_.vel_d_mps = -1.5 * 0.4 * phaseRateRadPerSecond * std::cos(simulate_phase_ * 0.4);
+        latest_epsilon_.body_vel_x_mps = latest_epsilon_.vel_n_mps * 0.95 + std::sin(simulate_phase_ * 0.3) * 0.05;
+        latest_epsilon_.body_vel_y_mps = latest_epsilon_.vel_e_mps * 0.95 + std::cos(simulate_phase_ * 0.3) * 0.05;
+        latest_epsilon_.body_vel_z_mps = latest_epsilon_.vel_d_mps;
+        latest_epsilon_.body_acc_x_mps2 =
+            -4.0 * std::pow(0.8 * phaseRateRadPerSecond, 2.0) * std::sin(simulate_phase_ * 0.8);
+        latest_epsilon_.body_acc_y_mps2 =
+            -4.0 * std::pow(0.6 * phaseRateRadPerSecond, 2.0) * std::cos(simulate_phase_ * 0.6);
+        latest_epsilon_.body_acc_z_mps2 =
+            1.5 * std::pow(0.4 * phaseRateRadPerSecond, 2.0) * std::sin(simulate_phase_ * 0.4);
+        latest_epsilon_.roll_deg = std::sin(simulate_phase_ * 0.5) * 2.0;
+        latest_epsilon_.pitch_deg = std::cos(simulate_phase_ * 0.45) * 1.5;
+        latest_epsilon_.yaw_deg = positiveDegrees(85.0 + simulate_phase_ * 8.0 + std::sin(simulate_phase_ * 0.2) * 3.0);
+        setQuaternionFromEuler(latest_epsilon_);
+        latest_epsilon_.ang_vel_x_radps =
+            degToRad(2.0 * 0.5 * phaseRateRadPerSecond * std::cos(simulate_phase_ * 0.5));
+        latest_epsilon_.ang_vel_y_radps =
+            degToRad(-1.5 * 0.45 * phaseRateRadPerSecond * std::sin(simulate_phase_ * 0.45));
+        latest_epsilon_.ang_vel_z_radps =
+            degToRad((8.0 + 3.0 * 0.2 * std::cos(simulate_phase_ * 0.2)) * phaseRateRadPerSecond);
+        latest_epsilon_.imu_acc_x_mps2 = latest_epsilon_.body_acc_x_mps2 + std::sin(simulate_phase_ * 1.3) * 0.02;
+        latest_epsilon_.imu_acc_y_mps2 = latest_epsilon_.body_acc_y_mps2 + std::cos(simulate_phase_ * 1.1) * 0.02;
+        latest_epsilon_.imu_acc_z_mps2 = 9.80665 + latest_epsilon_.body_acc_z_mps2;
+        latest_epsilon_.imu_gyr_x_radps = latest_epsilon_.ang_vel_x_radps;
+        latest_epsilon_.imu_gyr_y_radps = latest_epsilon_.ang_vel_y_radps;
+        latest_epsilon_.imu_gyr_z_radps = latest_epsilon_.ang_vel_z_radps;
+        latest_epsilon_.mag_x_mg = 280.0 + std::sin(simulate_phase_ * 0.2) * 5.0;
+        latest_epsilon_.mag_y_mg = -35.0 + std::cos(simulate_phase_ * 0.25) * 4.0;
+        latest_epsilon_.mag_z_mg = 410.0 + std::sin(simulate_phase_ * 0.18) * 6.0;
+        latest_epsilon_.hdop = 0.65 + std::abs(std::sin(simulate_phase_ * 0.2)) * 0.08;
+        latest_epsilon_.vdop = 0.95 + std::abs(std::cos(simulate_phase_ * 0.17)) * 0.12;
+        latest_epsilon_.hacc_m = 0.018 + std::abs(std::sin(simulate_phase_ * 0.3)) * 0.006;
+        latest_epsilon_.vacc_m = 0.028 + std::abs(std::cos(simulate_phase_ * 0.25)) * 0.008;
+        latest_epsilon_.lat_std_m = latest_epsilon_.hacc_m * 0.7;
+        latest_epsilon_.lon_std_m = latest_epsilon_.hacc_m * 0.8;
+        latest_epsilon_.height_std_m = latest_epsilon_.vacc_m;
+        latest_epsilon_.diff_age_s = 0.8 + std::abs(std::sin(simulate_phase_ * 0.15)) * 0.4;
+        latest_epsilon_.heading_valid = true;
         latest_epsilon_.raw_frame_count++;
         latest_epsilon_.imu_packet_rate_hz = 100.0;
+        latest_epsilon_.ahrs_packet_rate_hz = 50.0;
+        latest_epsilon_.insgps_packet_rate_hz = 50.0;
+        latest_epsilon_.sys_state_packet_rate_hz = 10.0;
+        latest_epsilon_.raw_gnss_packet_rate_hz = 1.0;
+        latest_epsilon_.satellite_packet_rate_hz = 1.0;
         latest_epsilon_.geodetic_packet_rate_hz = 10.0;
         latest_epsilon_.ecef_packet_rate_hz = 10.0;
         epsilon_status_.rx_count++;
