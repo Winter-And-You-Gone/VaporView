@@ -7,7 +7,7 @@
 ### 依赖
 
 - Qt 6.10.1+（Core, Widgets, SerialPort, Network, Svg）
-- CMake 3.16+, Ninja
+- CMake 3.21+, Ninja
 - Windows: MSVC 2022 Build Tools
 - Linux ARM64: GCC/G++, `qt6-base-dev`, `qt6-serialport-dev`
 

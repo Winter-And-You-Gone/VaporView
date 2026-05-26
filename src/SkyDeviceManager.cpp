@@ -940,11 +940,32 @@ bool SkyDeviceManager::connectWaveTcp(CommandErrorCode *errorCode)
     }
     disconnectWaveTcp();
     setState(SkyDeviceId::WaveTcp, DeviceState::Connecting);
-    wave_socket_ = new QTcpSocket(this);
-    connect(wave_socket_, &QTcpSocket::connected, this, &SkyDeviceManager::onWaveTcpConnected);
-    connect(wave_socket_, &QTcpSocket::disconnected, this, &SkyDeviceManager::onWaveTcpDisconnected);
-    connect(wave_socket_, &QTcpSocket::readyRead, this, &SkyDeviceManager::onWaveTcpReadyRead);
-    connect(wave_socket_, &QTcpSocket::errorOccurred, this, &SkyDeviceManager::onWaveTcpError);
+    QTcpSocket *socket = new QTcpSocket(this);
+    wave_socket_ = socket;
+    connect(socket, &QTcpSocket::connected, this, [this, socket]() {
+        if (socket == wave_socket_)
+        {
+            onWaveTcpConnected();
+        }
+    });
+    connect(socket, &QTcpSocket::disconnected, this, [this, socket]() {
+        if (socket == wave_socket_)
+        {
+            onWaveTcpDisconnected();
+        }
+    });
+    connect(socket, &QTcpSocket::readyRead, this, [this, socket]() {
+        if (socket == wave_socket_)
+        {
+            onWaveTcpReadyRead();
+        }
+    });
+    connect(socket, &QTcpSocket::errorOccurred, this, [this, socket](QAbstractSocket::SocketError) {
+        if (socket == wave_socket_)
+        {
+            onWaveTcpError();
+        }
+    });
     wave_socket_->connectToHost(config_.wave_tcp.host, static_cast<quint16>(config_.wave_tcp.port));
     if (errorCode) *errorCode = CommandErrorCode::Ok;
     return true;
