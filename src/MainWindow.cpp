@@ -3057,85 +3057,93 @@ MainWindow::MainWindow(QWidget *parent)
                ground_telemetry_service_ &&
                ground_telemetry_service_->isOpen();
     };
+    auto dispatchRemoteUi = [this](auto handler) {
+        if (QThread::currentThread() == thread())
+        {
+            handler();
+            return;
+        }
+        QMetaObject::invokeMethod(this, std::move(handler), Qt::QueuedConnection);
+    };
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::linkOpenChanged,
-            this, [this, currentRemoteEvent](bool open) {
+            this, [this, currentRemoteEvent, dispatchRemoteUi](bool open) {
                 const quint64 generation = ground_telemetry_service_->linkGeneration();
-                QMetaObject::invokeMethod(this, [this, currentRemoteEvent, generation, open]() {
+                dispatchRemoteUi([this, currentRemoteEvent, generation, open]() {
                     if (!currentRemoteEvent(generation))
                     {
                         return;
                     }
                     onRemoteLinkOpenChanged(open);
-                }, Qt::QueuedConnection);
+                });
             },
             Qt::DirectConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::logMessage,
             this, [this](const QString& message) { log(message); },
             Qt::QueuedConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::basicTelemetryUpdated,
-            this, [this, currentOpenRemoteEvent](const VaporView::TelemetryBasic& telemetry) {
+            this, [this, currentOpenRemoteEvent, dispatchRemoteUi](const VaporView::TelemetryBasic& telemetry) {
                 const quint64 generation = ground_telemetry_service_->linkGeneration();
-                QMetaObject::invokeMethod(this, [this, currentOpenRemoteEvent, generation, telemetry]() {
+                dispatchRemoteUi([this, currentOpenRemoteEvent, generation, telemetry]() {
                     if (!currentOpenRemoteEvent(generation))
                     {
                         return;
                     }
                     onRemoteBasicTelemetryUpdated(telemetry);
-                }, Qt::QueuedConnection);
+                });
             },
             Qt::DirectConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::waveformUpdated,
-            this, [this, currentOpenRemoteEvent](const VaporView::DownsampledWaveform& waveform) {
+            this, [this, currentOpenRemoteEvent, dispatchRemoteUi](const VaporView::DownsampledWaveform& waveform) {
                 const quint64 generation = ground_telemetry_service_->linkGeneration();
-                QMetaObject::invokeMethod(this, [this, currentOpenRemoteEvent, generation, waveform]() {
+                dispatchRemoteUi([this, currentOpenRemoteEvent, generation, waveform]() {
                     if (!currentOpenRemoteEvent(generation))
                     {
                         return;
                     }
                     onRemoteWaveformUpdated(waveform);
-                }, Qt::QueuedConnection);
+                });
             },
             Qt::DirectConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::waveformFeatureUpdated,
-            this, [this, currentOpenRemoteEvent](const VaporView::WaveformFeature& feature) {
+            this, [this, currentOpenRemoteEvent, dispatchRemoteUi](const VaporView::WaveformFeature& feature) {
                 const quint64 generation = ground_telemetry_service_->linkGeneration();
-                QMetaObject::invokeMethod(this, [this, currentOpenRemoteEvent, generation, feature]() {
+                dispatchRemoteUi([this, currentOpenRemoteEvent, generation, feature]() {
                     if (!currentOpenRemoteEvent(generation))
                     {
                         return;
                     }
                     onRemoteWaveformFeatureUpdated(feature);
-                }, Qt::QueuedConnection);
+                });
             },
             Qt::DirectConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::statusUpdated,
-            this, [this, currentOpenRemoteEvent](const VaporView::TelemetryStatus& status) {
+            this, [this, currentOpenRemoteEvent, dispatchRemoteUi](const VaporView::TelemetryStatus& status) {
                 const quint64 generation = ground_telemetry_service_->linkGeneration();
-                QMetaObject::invokeMethod(this, [this, currentOpenRemoteEvent, generation, status]() {
+                dispatchRemoteUi([this, currentOpenRemoteEvent, generation, status]() {
                     if (!currentOpenRemoteEvent(generation))
                     {
                         return;
                     }
                     onRemoteTelemetryStatusUpdated(status);
-                }, Qt::QueuedConnection);
+                });
             },
             Qt::DirectConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::commandAckReceived,
-            this, [this, currentOpenRemoteEvent](const VaporView::CommandAck& ack) {
+            this, [this, currentOpenRemoteEvent, dispatchRemoteUi](const VaporView::CommandAck& ack) {
                 const quint64 generation = ground_telemetry_service_->linkGeneration();
-                QMetaObject::invokeMethod(this, [this, currentOpenRemoteEvent, generation, ack]() {
+                dispatchRemoteUi([this, currentOpenRemoteEvent, generation, ack]() {
                     if (!currentOpenRemoteEvent(generation))
                     {
                         return;
                     }
                     onRemoteCommandAckReceived(ack);
-                }, Qt::QueuedConnection);
+                });
             },
             Qt::DirectConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::commandTimedOut,
-            this, [this, currentRemoteEvent](VaporView::CommandId commandId, quint16 commandSeq) {
+            this, [this, currentRemoteEvent, dispatchRemoteUi](VaporView::CommandId commandId, quint16 commandSeq) {
                 const quint64 generation = ground_telemetry_service_->linkGeneration();
-                QMetaObject::invokeMethod(this, [this, currentRemoteEvent, generation, commandId, commandSeq]() {
+                dispatchRemoteUi([this, currentRemoteEvent, generation, commandId, commandSeq]() {
                     if (!currentRemoteEvent(generation))
                     {
                         return;
@@ -3163,7 +3171,7 @@ MainWindow::MainWindow(QWidget *parent)
                                                      remote_device_states_.value(VaporView::SkyDeviceId::WaveTcp,
                                                                                  VaporView::DeviceState::Disconnected));
                     }
-                }, Qt::QueuedConnection);
+                });
             },
             Qt::DirectConnection);
     loadRememberedInputState();
