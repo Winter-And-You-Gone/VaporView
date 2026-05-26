@@ -94,7 +94,9 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
     , codec_(1024u * 1024u)
     , device_manager_(this)
 {
-    connect(&link_, &SerialTelemetryLink::bytesReceived, this, &SkyRuntime::onBytesReceived);
+    connect(&link_, &SerialTelemetryLink::bytesReceived, this, [this](const QByteArray& bytes) {
+        onBytesReceived(bytes);
+    });
     connect(&link_, &SerialTelemetryLink::errorOccurred, this, &SkyRuntime::logMessage);
     connect(&device_manager_, &SkyDeviceManager::logMessage, this, &SkyRuntime::logMessage);
     connect(&device_manager_, &SkyDeviceManager::epsilonRawFrameReceived, this,

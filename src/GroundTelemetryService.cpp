@@ -55,7 +55,9 @@ GroundTelemetryService::GroundTelemetryService(QObject *parent)
     , link_(this)
     , codec_(1024u * 1024u)
 {
-    connect(&link_, &SerialTelemetryLink::bytesReceived, this, &GroundTelemetryService::onBytesReceived);
+    connect(&link_, &SerialTelemetryLink::bytesReceived, this, [this](const QByteArray& bytes) {
+        onBytesReceived(bytes);
+    });
     connect(&link_, &SerialTelemetryLink::openChanged, this, &GroundTelemetryService::linkOpenChanged);
     connect(&link_, &SerialTelemetryLink::errorOccurred, this, &GroundTelemetryService::logMessage);
     retry_timer_.setInterval(200);
