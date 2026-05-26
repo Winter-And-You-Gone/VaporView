@@ -1,9 +1,11 @@
 #include "SkySessionRecorder.h"
 
 #include <QCoreApplication>
+#include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QStringList>
 #include <QTemporaryDir>
 #include <QtEndian>
 #include <cstring>
@@ -64,6 +66,44 @@ int main(int argc, char *argv[])
     require(error.isEmpty(), "start recorder error text");
     require(recorder.isRecording(), "recorder state");
     require(!recorder.sessionName().isEmpty(), "session name");
+    VaporView::TelemetryBasic basic;
+    basic.host_time_us = 1100;
+    basic.epsilon_time_us = 900;
+    basic.latitude_deg = 31.230412345;
+    basic.longitude_deg = 121.473712345;
+    basic.height_m = 1200.1234567;
+    basic.ecef_x_m = 1000.1234567;
+    basic.ecef_y_m = 2000.1234567;
+    basic.ecef_z_m = 3000.1234567;
+    basic.lidar_height_m = 120.125f;
+    basic.temperature_c = 23.5f;
+    basic.humidity_percent = 45.25f;
+    basic.pressure_hpa = 900.75f;
+    basic.filter_status_bits = 96;
+    basic.gnss_fix_code = 6;
+    basic.validity_flags = VaporView::BasicHasEpsilonTime |
+                           VaporView::BasicHasPosition |
+                           VaporView::BasicHasEcef |
+                           VaporView::BasicHasLidar |
+                           VaporView::BasicHasTemperature |
+                           VaporView::BasicHasHumidity |
+                           VaporView::BasicHasPressure;
+    recorder.recordBasicTelemetry(basic);
+    VaporView::WaveformFeature feature;
+    feature.host_time_us = 1200;
+    feature.epsilon_time_us = 900;
+    feature.original_point_count = 50000;
+    feature.search_start_index = 1000;
+    feature.search_end_index = 1250;
+    feature.channel_id = 4;
+    feature.peak = 0.125f;
+    feature.mean = 0.25f;
+    feature.rms = 0.5f;
+    feature.peak_index = 1249.0f;
+    feature.peak_x = 1249.0f;
+    feature.min_value = -0.75f;
+    feature.max_value = 1.25f;
+    recorder.recordWaveformFeature(feature);
     recorder.recordWaveformSnapshot(1000,
                                     900,
                                     QVector<float>{10.0f, 11.0f},
@@ -81,6 +121,35 @@ int main(int argc, char *argv[])
 
     recorder.stop();
     require(!recorder.isRecording(), "recorder stopped");
+
+    QFile devicesFile(sessionDir + QStringLiteral("/sensors/devices.csv"));
+    require(devicesFile.open(QIODevice::ReadOnly | QIODevice::Text), "open devices csv");
+    const QStringList deviceLines = QString::fromUtf8(devicesFile.readAll()).trimmed().split('\n');
+    require(deviceLines.size() == 2, "devices csv row count");
+    const QStringList deviceCells = deviceLines.at(1).split(',');
+    require(deviceCells.size() == 21, "devices csv column count");
+    require(deviceCells.at(3) == QStringLiteral("31.230412345"), "latitude csv precision");
+    require(deviceCells.at(4) == QStringLiteral("121.473712345"), "longitude csv precision");
+    require(deviceCells.at(5) == QStringLiteral("1200.123457"), "height csv precision");
+    require(deviceCells.at(6) == QStringLiteral("1000.123457"), "ecef x csv precision");
+    require(deviceCells.at(7) == QStringLiteral("2000.123457"), "ecef y csv precision");
+    require(deviceCells.at(8) == QStringLiteral("3000.123457"), "ecef z csv precision");
+    require(deviceCells.at(9) == QStringLiteral("120.125000"), "lidar csv precision");
+    require(deviceCells.at(10) == QStringLiteral("23.500000"), "temperature csv precision");
+    require(deviceCells.at(11) == QStringLiteral("45.250000"), "humidity csv precision");
+    require(deviceCells.at(12) == QStringLiteral("900.750000"), "pressure csv precision");
+
+    QFile featuresFile(sessionDir + QStringLiteral("/waveform_features.csv"));
+    require(featuresFile.open(QIODevice::ReadOnly | QIODevice::Text), "open waveform features csv");
+    const QStringList featureLines = QString::fromUtf8(featuresFile.readAll()).trimmed().split('\n');
+    require(featureLines.size() == 2, "waveform features csv row count");
+    const QStringList featureCells = featureLines.at(1).split(',');
+    require(featureCells.size() == 14, "waveform features csv column count");
+    require(featureCells.at(6) == QStringLiteral("0.125000"), "feature peak csv precision");
+    require(featureCells.at(7) == QStringLiteral("0.250000"), "feature mean csv precision");
+    require(featureCells.at(8) == QStringLiteral("0.500000"), "feature rms csv precision");
+    require(featureCells.at(11) == QStringLiteral("-0.750000"), "feature min csv precision");
+    require(featureCells.at(12) == QStringLiteral("1.250000"), "feature max csv precision");
 
     QFile metadataFile(sessionDir + QStringLiteral("/session.json"));
     require(metadataFile.open(QIODevice::ReadOnly), "open metadata");
