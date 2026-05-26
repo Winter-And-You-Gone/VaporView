@@ -39,15 +39,53 @@ void testFrameRoundTrip()
     basic.filter_status_bits = 0x0060;
     basic.update_status_bits = 0x0003;
     basic.gnss_fix_code = 6;
+    basic.gnss_satellites = 18;
+    basic.lidar_signal_strength = 180;
+    basic.hdop = 0.75f;
+    basic.vdop = 1.25f;
+    basic.hacc_m = 0.012f;
+    basic.vacc_m = 0.034f;
+    basic.heading_valid = true;
+    basic.vel_n_mps = 1.25f;
+    basic.vel_e_mps = -2.5f;
+    basic.vel_d_mps = 0.75f;
+    basic.imu_acc_x_mps2 = 9.1f;
+    basic.imu_acc_y_mps2 = -0.2f;
+    basic.imu_acc_z_mps2 = 0.3f;
+    basic.imu_gyr_x_radps = 0.004f;
+    basic.imu_gyr_y_radps = -0.005f;
+    basic.imu_gyr_z_radps = 0.006f;
+    basic.roll_deg = 1.25f;
+    basic.pitch_deg = -2.5f;
+    basic.yaw_deg = 88.75f;
+    basic.raw_frame_count = 1234;
+    basic.dropped_frame_count = 5;
+    basic.imu_packet_rate_hz = 100.0f;
+    basic.ahrs_packet_rate_hz = 40.0f;
+    basic.insgps_packet_rate_hz = 41.0f;
+    basic.sys_state_packet_rate_hz = 42.0f;
+    basic.raw_gnss_packet_rate_hz = 50.0f;
+    basic.satellite_packet_rate_hz = 59.0f;
+    basic.geodetic_packet_rate_hz = 10.0f;
+    basic.ecef_packet_rate_hz = 11.0f;
     basic.validity_flags = VaporView::BasicHasEpsilonTime |
                            VaporView::BasicHasPosition |
                            VaporView::BasicHasEcef |
                            VaporView::BasicHasLidar |
                            VaporView::BasicHasTemperature |
                            VaporView::BasicHasHumidity |
-                           VaporView::BasicHasPressure;
+                           VaporView::BasicHasPressure |
+                           VaporView::BasicHasGnssQuality |
+                           VaporView::BasicHasNedVelocity |
+                           VaporView::BasicHasImu |
+                           VaporView::BasicHasAttitude |
+                           VaporView::BasicHasLidarStrength |
+                           VaporView::BasicHasEpsilonDiagnostics;
 
     const QByteArray payload = VaporView::TelemetryCodec::serializeBasicTelemetry(basic);
+    VaporView::TelemetryBasic parsedLegacy;
+    require(VaporView::TelemetryCodec::parseBasicTelemetry(payload.left(91), parsedLegacy), "parse legacy basic telemetry");
+    require(parsedLegacy.gnss_satellites == 0, "legacy basic satellites default");
     const QByteArray frame = codec.encodeFrame(VaporView::MsgType::TelemetryBasic, payload, 7, 99);
     const QByteArray noisy = QByteArray("noise") + frame.left(frame.size() / 2);
     require(codec.feedBytes(noisy).isEmpty(), "partial frame should not decode");
@@ -60,6 +98,18 @@ void testFrameRoundTrip()
     require(parsed.filter_status_bits == basic.filter_status_bits, "basic filter status");
     require(parsed.gnss_fix_code == basic.gnss_fix_code, "basic gnss fix");
     require(parsed.validity_flags == basic.validity_flags, "basic validity flags");
+    require(parsed.gnss_satellites == basic.gnss_satellites, "basic satellites");
+    require(parsed.lidar_signal_strength == basic.lidar_signal_strength, "basic lidar strength");
+    require(std::fabs(parsed.hacc_m - basic.hacc_m) < 0.000001f, "basic hacc");
+    require(parsed.heading_valid == basic.heading_valid, "basic heading valid");
+    require(std::fabs(parsed.vel_e_mps - basic.vel_e_mps) < 0.000001f, "basic ned velocity");
+    require(std::fabs(parsed.imu_acc_x_mps2 - basic.imu_acc_x_mps2) < 0.000001f, "basic imu accel");
+    require(std::fabs(parsed.imu_gyr_z_radps - basic.imu_gyr_z_radps) < 0.000001f, "basic imu gyro");
+    require(std::fabs(parsed.yaw_deg - basic.yaw_deg) < 0.000001f, "basic attitude");
+    require(parsed.raw_frame_count == basic.raw_frame_count, "basic raw frame count");
+    require(parsed.dropped_frame_count == basic.dropped_frame_count, "basic dropped frame count");
+    require(std::fabs(parsed.imu_packet_rate_hz - basic.imu_packet_rate_hz) < 0.000001f, "basic imu packet rate");
+    require(std::fabs(parsed.ecef_packet_rate_hz - basic.ecef_packet_rate_hz) < 0.000001f, "basic ecef packet rate");
 }
 
 void testCrcError()

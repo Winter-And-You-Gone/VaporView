@@ -367,7 +367,7 @@ quint16 TelemetryCodec::crc16Ccitt(const char *data, qsizetype size)
 QByteArray TelemetryCodec::serializeBasicTelemetry(const TelemetryBasic& data)
 {
     QByteArray payload;
-    payload.reserve(87);
+    payload.reserve(208);
     appendLe<quint64>(payload, data.host_time_us);
     appendLe<quint64>(payload, data.epsilon_time_us);
     for (double value : {data.latitude_deg, data.longitude_deg, data.height_m, data.ecef_x_m, data.ecef_y_m, data.ecef_z_m})
@@ -385,6 +385,35 @@ QByteArray TelemetryCodec::serializeBasicTelemetry(const TelemetryBasic& data)
     appendLe<quint16>(payload, data.update_status_bits);
     payload.append(static_cast<char>(data.gnss_fix_code));
     appendLe<quint32>(payload, data.validity_flags);
+    appendLe<quint16>(payload, data.gnss_satellites);
+    appendLe<quint16>(payload, data.lidar_signal_strength);
+    appendFloatLe(payload, data.hdop);
+    appendFloatLe(payload, data.vdop);
+    appendFloatLe(payload, data.hacc_m);
+    appendFloatLe(payload, data.vacc_m);
+    payload.append(data.heading_valid ? char(1) : char(0));
+    appendFloatLe(payload, data.vel_n_mps);
+    appendFloatLe(payload, data.vel_e_mps);
+    appendFloatLe(payload, data.vel_d_mps);
+    appendFloatLe(payload, data.imu_acc_x_mps2);
+    appendFloatLe(payload, data.imu_acc_y_mps2);
+    appendFloatLe(payload, data.imu_acc_z_mps2);
+    appendFloatLe(payload, data.imu_gyr_x_radps);
+    appendFloatLe(payload, data.imu_gyr_y_radps);
+    appendFloatLe(payload, data.imu_gyr_z_radps);
+    appendFloatLe(payload, data.roll_deg);
+    appendFloatLe(payload, data.pitch_deg);
+    appendFloatLe(payload, data.yaw_deg);
+    appendLe<quint64>(payload, data.raw_frame_count);
+    appendLe<quint64>(payload, data.dropped_frame_count);
+    appendFloatLe(payload, data.imu_packet_rate_hz);
+    appendFloatLe(payload, data.ahrs_packet_rate_hz);
+    appendFloatLe(payload, data.insgps_packet_rate_hz);
+    appendFloatLe(payload, data.sys_state_packet_rate_hz);
+    appendFloatLe(payload, data.raw_gnss_packet_rate_hz);
+    appendFloatLe(payload, data.satellite_packet_rate_hz);
+    appendFloatLe(payload, data.geodetic_packet_rate_hz);
+    appendFloatLe(payload, data.ecef_packet_rate_hz);
     return payload;
 }
 
@@ -422,6 +451,57 @@ bool TelemetryCodec::parseBasicTelemetry(const QByteArray& payload, TelemetryBas
         ++offset;
     }
     (void)readLe(payload, offset, data.validity_flags);
+    if (offset >= payload.size())
+    {
+        return true;
+    }
+    if (!(readLe(payload, offset, data.gnss_satellites) &&
+          readLe(payload, offset, data.lidar_signal_strength) &&
+          readFloatLe(payload, offset, data.hdop) &&
+          readFloatLe(payload, offset, data.vdop) &&
+          readFloatLe(payload, offset, data.hacc_m) &&
+          readFloatLe(payload, offset, data.vacc_m)))
+    {
+        return false;
+    }
+    if (offset >= payload.size())
+    {
+        return false;
+    }
+    data.heading_valid = payload.at(offset) != 0;
+    ++offset;
+    if (!(readFloatLe(payload, offset, data.vel_n_mps) &&
+          readFloatLe(payload, offset, data.vel_e_mps) &&
+          readFloatLe(payload, offset, data.vel_d_mps) &&
+          readFloatLe(payload, offset, data.imu_acc_x_mps2) &&
+          readFloatLe(payload, offset, data.imu_acc_y_mps2) &&
+          readFloatLe(payload, offset, data.imu_acc_z_mps2) &&
+          readFloatLe(payload, offset, data.imu_gyr_x_radps) &&
+          readFloatLe(payload, offset, data.imu_gyr_y_radps) &&
+          readFloatLe(payload, offset, data.imu_gyr_z_radps) &&
+          readFloatLe(payload, offset, data.roll_deg) &&
+          readFloatLe(payload, offset, data.pitch_deg) &&
+          readFloatLe(payload, offset, data.yaw_deg)))
+    {
+        return false;
+    }
+    if (offset >= payload.size())
+    {
+        return true;
+    }
+    if (!(readLe(payload, offset, data.raw_frame_count) &&
+          readLe(payload, offset, data.dropped_frame_count) &&
+          readFloatLe(payload, offset, data.imu_packet_rate_hz) &&
+          readFloatLe(payload, offset, data.ahrs_packet_rate_hz) &&
+          readFloatLe(payload, offset, data.insgps_packet_rate_hz) &&
+          readFloatLe(payload, offset, data.sys_state_packet_rate_hz) &&
+          readFloatLe(payload, offset, data.raw_gnss_packet_rate_hz) &&
+          readFloatLe(payload, offset, data.satellite_packet_rate_hz) &&
+          readFloatLe(payload, offset, data.geodetic_packet_rate_hz) &&
+          readFloatLe(payload, offset, data.ecef_packet_rate_hz)))
+    {
+        return false;
+    }
     return true;
 }
 

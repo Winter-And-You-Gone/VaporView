@@ -121,6 +121,12 @@ enum TelemetryBasicValidityFlag : quint32
     BasicHasTemperature = 1u << 4,
     BasicHasHumidity = 1u << 5,
     BasicHasPressure = 1u << 6,
+    BasicHasGnssQuality = 1u << 7,
+    BasicHasNedVelocity = 1u << 8,
+    BasicHasImu = 1u << 9,
+    BasicHasAttitude = 1u << 10,
+    BasicHasLidarStrength = 1u << 11,
+    BasicHasEpsilonDiagnostics = 1u << 12,
 };
 
 struct TelemetryBasic
@@ -142,6 +148,35 @@ struct TelemetryBasic
     quint16 update_status_bits = 0;
     quint8 gnss_fix_code = 0;
     quint32 validity_flags = 0;
+    quint16 gnss_satellites = 0;
+    quint16 lidar_signal_strength = 0;
+    float hdop = 0.0f;
+    float vdop = 0.0f;
+    float hacc_m = 0.0f;
+    float vacc_m = 0.0f;
+    bool heading_valid = false;
+    float vel_n_mps = 0.0f;
+    float vel_e_mps = 0.0f;
+    float vel_d_mps = 0.0f;
+    float imu_acc_x_mps2 = 0.0f;
+    float imu_acc_y_mps2 = 0.0f;
+    float imu_acc_z_mps2 = 0.0f;
+    float imu_gyr_x_radps = 0.0f;
+    float imu_gyr_y_radps = 0.0f;
+    float imu_gyr_z_radps = 0.0f;
+    float roll_deg = 0.0f;
+    float pitch_deg = 0.0f;
+    float yaw_deg = 0.0f;
+    quint64 raw_frame_count = 0;
+    quint64 dropped_frame_count = 0;
+    float imu_packet_rate_hz = 0.0f;
+    float ahrs_packet_rate_hz = 0.0f;
+    float insgps_packet_rate_hz = 0.0f;
+    float sys_state_packet_rate_hz = 0.0f;
+    float raw_gnss_packet_rate_hz = 0.0f;
+    float satellite_packet_rate_hz = 0.0f;
+    float geodetic_packet_rate_hz = 0.0f;
+    float ecef_packet_rate_hz = 0.0f;
 };
 
 struct DownsampledWaveform

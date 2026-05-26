@@ -420,12 +420,43 @@ void SkyRuntime::sendBasicTelemetry()
         data.filter_status_bits = epsilon.filter_status_bits;
         data.update_status_bits = epsilon.update_status_bits;
         data.gnss_fix_code = static_cast<quint8>(std::clamp(epsilon.gnss_fix_code, 0, 255));
+        data.validity_flags |= BasicHasGnssQuality | BasicHasNedVelocity | BasicHasImu |
+                               BasicHasAttitude | BasicHasEpsilonDiagnostics;
+        data.gnss_satellites = static_cast<quint16>(std::clamp(epsilon.gnss_satellites, 0, 65535));
+        data.hdop = static_cast<float>(epsilon.hdop);
+        data.vdop = static_cast<float>(epsilon.vdop);
+        data.hacc_m = static_cast<float>(epsilon.hacc_m);
+        data.vacc_m = static_cast<float>(epsilon.vacc_m);
+        data.heading_valid = epsilon.heading_valid;
+        data.vel_n_mps = static_cast<float>(epsilon.vel_n_mps);
+        data.vel_e_mps = static_cast<float>(epsilon.vel_e_mps);
+        data.vel_d_mps = static_cast<float>(epsilon.vel_d_mps);
+        data.imu_acc_x_mps2 = static_cast<float>(epsilon.imu_acc_x_mps2);
+        data.imu_acc_y_mps2 = static_cast<float>(epsilon.imu_acc_y_mps2);
+        data.imu_acc_z_mps2 = static_cast<float>(epsilon.imu_acc_z_mps2);
+        data.imu_gyr_x_radps = static_cast<float>(epsilon.imu_gyr_x_radps);
+        data.imu_gyr_y_radps = static_cast<float>(epsilon.imu_gyr_y_radps);
+        data.imu_gyr_z_radps = static_cast<float>(epsilon.imu_gyr_z_radps);
+        data.roll_deg = static_cast<float>(epsilon.roll_deg);
+        data.pitch_deg = static_cast<float>(epsilon.pitch_deg);
+        data.yaw_deg = static_cast<float>(epsilon.yaw_deg);
+        data.raw_frame_count = epsilon.raw_frame_count;
+        data.dropped_frame_count = epsilon.dropped_frame_count;
+        data.imu_packet_rate_hz = static_cast<float>(epsilon.imu_packet_rate_hz);
+        data.ahrs_packet_rate_hz = static_cast<float>(epsilon.ahrs_packet_rate_hz);
+        data.insgps_packet_rate_hz = static_cast<float>(epsilon.insgps_packet_rate_hz);
+        data.sys_state_packet_rate_hz = static_cast<float>(epsilon.sys_state_packet_rate_hz);
+        data.raw_gnss_packet_rate_hz = static_cast<float>(epsilon.raw_gnss_packet_rate_hz);
+        data.satellite_packet_rate_hz = static_cast<float>(epsilon.satellite_packet_rate_hz);
+        data.geodetic_packet_rate_hz = static_cast<float>(epsilon.geodetic_packet_rate_hz);
+        data.ecef_packet_rate_hz = static_cast<float>(epsilon.ecef_packet_rate_hz);
     }
 
     if (hasLidar)
     {
-        data.validity_flags |= BasicHasLidar;
+        data.validity_flags |= BasicHasLidar | BasicHasLidarStrength;
         data.lidar_height_m = static_cast<float>(lidar.distance_m);
+        data.lidar_signal_strength = lidar.signal_strength;
     }
 
     if (hasHmp)

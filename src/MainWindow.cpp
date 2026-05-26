@@ -9487,6 +9487,21 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
     };
 
     current_epsilon_ = VaporView::EpsilonData();
+    const double unknown = std::numeric_limits<double>::quiet_NaN();
+    current_epsilon_.vel_n_mps = unknown;
+    current_epsilon_.vel_e_mps = unknown;
+    current_epsilon_.vel_d_mps = unknown;
+    current_epsilon_.imu_acc_x_mps2 = unknown;
+    current_epsilon_.imu_acc_y_mps2 = unknown;
+    current_epsilon_.imu_acc_z_mps2 = unknown;
+    current_epsilon_.imu_gyr_x_radps = unknown;
+    current_epsilon_.imu_gyr_y_radps = unknown;
+    current_epsilon_.imu_gyr_z_radps = unknown;
+    current_epsilon_.roll_deg = unknown;
+    current_epsilon_.pitch_deg = unknown;
+    current_epsilon_.yaw_deg = unknown;
+    current_epsilon_.hacc_m = unknown;
+    current_epsilon_.vacc_m = unknown;
     if (hasFlag(VaporView::BasicHasEpsilonTime) ||
         hasFlag(VaporView::BasicHasPosition) ||
         hasFlag(VaporView::BasicHasEcef))
@@ -9518,6 +9533,49 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
         current_epsilon_.system_status_bits = telemetry.status_bits;
         current_epsilon_.filter_status_bits = telemetry.filter_status_bits;
         current_epsilon_.update_status_bits = telemetry.update_status_bits;
+        if (hasFlag(VaporView::BasicHasGnssQuality))
+        {
+            current_epsilon_.gnss_satellites = telemetry.gnss_satellites;
+            current_epsilon_.hdop = telemetry.hdop;
+            current_epsilon_.vdop = telemetry.vdop;
+            current_epsilon_.hacc_m = telemetry.hacc_m;
+            current_epsilon_.vacc_m = telemetry.vacc_m;
+            current_epsilon_.heading_valid = telemetry.heading_valid;
+        }
+        if (hasFlag(VaporView::BasicHasNedVelocity))
+        {
+            current_epsilon_.vel_n_mps = telemetry.vel_n_mps;
+            current_epsilon_.vel_e_mps = telemetry.vel_e_mps;
+            current_epsilon_.vel_d_mps = telemetry.vel_d_mps;
+        }
+        if (hasFlag(VaporView::BasicHasImu))
+        {
+            current_epsilon_.imu_acc_x_mps2 = telemetry.imu_acc_x_mps2;
+            current_epsilon_.imu_acc_y_mps2 = telemetry.imu_acc_y_mps2;
+            current_epsilon_.imu_acc_z_mps2 = telemetry.imu_acc_z_mps2;
+            current_epsilon_.imu_gyr_x_radps = telemetry.imu_gyr_x_radps;
+            current_epsilon_.imu_gyr_y_radps = telemetry.imu_gyr_y_radps;
+            current_epsilon_.imu_gyr_z_radps = telemetry.imu_gyr_z_radps;
+        }
+        if (hasFlag(VaporView::BasicHasAttitude))
+        {
+            current_epsilon_.roll_deg = telemetry.roll_deg;
+            current_epsilon_.pitch_deg = telemetry.pitch_deg;
+            current_epsilon_.yaw_deg = telemetry.yaw_deg;
+        }
+        if (hasFlag(VaporView::BasicHasEpsilonDiagnostics))
+        {
+            current_epsilon_.raw_frame_count = telemetry.raw_frame_count;
+            current_epsilon_.dropped_frame_count = telemetry.dropped_frame_count;
+            current_epsilon_.imu_packet_rate_hz = telemetry.imu_packet_rate_hz;
+            current_epsilon_.ahrs_packet_rate_hz = telemetry.ahrs_packet_rate_hz;
+            current_epsilon_.insgps_packet_rate_hz = telemetry.insgps_packet_rate_hz;
+            current_epsilon_.sys_state_packet_rate_hz = telemetry.sys_state_packet_rate_hz;
+            current_epsilon_.raw_gnss_packet_rate_hz = telemetry.raw_gnss_packet_rate_hz;
+            current_epsilon_.satellite_packet_rate_hz = telemetry.satellite_packet_rate_hz;
+            current_epsilon_.geodetic_packet_rate_hz = telemetry.geodetic_packet_rate_hz;
+            current_epsilon_.ecef_packet_rate_hz = telemetry.ecef_packet_rate_hz;
+        }
         remote_last_data_ms_.insert(VaporView::SkyDeviceId::Epsilon, nowMs);
     }
     else
@@ -9531,6 +9589,10 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
         current_lidar_.valid = true;
         current_lidar_.timestamp = now;
         current_lidar_.distance_m = telemetry.lidar_height_m;
+        if (hasFlag(VaporView::BasicHasLidarStrength))
+        {
+            current_lidar_.signal_strength = telemetry.lidar_signal_strength;
+        }
         remote_last_data_ms_.insert(VaporView::SkyDeviceId::Lidar, nowMs);
     }
     else
