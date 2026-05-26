@@ -750,9 +750,11 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
-        ensurePlotCache();
-        painter.drawPixmap(0, 0, plot_cache_);
-        drawCurrentFrameMarker(painter, cached_plot_);
+        if (ensurePlotCache())
+        {
+            painter.drawPixmap(0, 0, plot_cache_);
+            drawCurrentFrameMarker(painter, cached_plot_);
+        }
     }
 
 private:
@@ -772,12 +774,19 @@ private:
         plot_cache_valid_ = false;
     }
 
-    void ensurePlotCache()
+    bool ensurePlotCache()
     {
         const QColor background = sessionPlotThemeFor(this).background;
         if (plot_cache_valid_ && plot_cache_.size() == size() && cache_background_ == background)
         {
-            return;
+            return true;
+        }
+        if (size().isEmpty())
+        {
+            plot_cache_ = QPixmap();
+            cached_plot_ = CachedPlot{};
+            plot_cache_valid_ = false;
+            return false;
         }
 
         plot_cache_ = QPixmap(size());
@@ -787,6 +796,7 @@ private:
         cachePainter.setRenderHint(QPainter::Antialiasing, true);
         renderPlotBase(cachePainter, cached_plot_);
         plot_cache_valid_ = true;
+        return true;
     }
 
     void renderPlotBase(QPainter& painter, CachedPlot& cache)
@@ -1121,9 +1131,11 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
-        ensurePlotCache();
-        painter.drawPixmap(0, 0, plot_cache_);
-        drawCurrentIndexMarker(painter, cached_plot_);
+        if (ensurePlotCache())
+        {
+            painter.drawPixmap(0, 0, plot_cache_);
+            drawCurrentIndexMarker(painter, cached_plot_);
+        }
     }
 
 private:
@@ -1142,12 +1154,19 @@ private:
         plot_cache_valid_ = false;
     }
 
-    void ensurePlotCache()
+    bool ensurePlotCache()
     {
         const QColor background = sessionPlotThemeFor(this).background;
         if (plot_cache_valid_ && plot_cache_.size() == size() && cache_background_ == background)
         {
-            return;
+            return true;
+        }
+        if (size().isEmpty())
+        {
+            plot_cache_ = QPixmap();
+            cached_plot_ = CachedPlot{};
+            plot_cache_valid_ = false;
+            return false;
         }
 
         plot_cache_ = QPixmap(size());
@@ -1157,6 +1176,7 @@ private:
         cachePainter.setRenderHint(QPainter::Antialiasing, true);
         renderPlotBase(cachePainter, cached_plot_);
         plot_cache_valid_ = true;
+        return true;
     }
 
     void renderPlotBase(QPainter& painter, CachedPlot& cache)
@@ -1467,6 +1487,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , total_sensor_rows_(0)
     , total_waveform_frames_(0)
 {
+    setWindowFlag(Qt::Window, true);
     setupUi();
     resize(VaporView::defaultWindowSizeWithinScreenFraction(
         this,
@@ -1917,7 +1938,7 @@ void SessionViewerWindow::relayoutSummaryFields()
 
     while (summary_layout_->count() > 0)
     {
-        summary_layout_->takeAt(0);
+        delete summary_layout_->takeAt(0);
     }
 
     const QVector<QPair<QLabel*, QLabel*>> longFields = {

@@ -3201,6 +3201,12 @@ MainWindow::~MainWindow()
 {
     qApp->removeEventFilter(this);
 
+    if (session_viewer_window_)
+    {
+        delete session_viewer_window_;
+        session_viewer_window_ = nullptr;
+    }
+
     if (custom_title_bar_)
     {
         const auto buttons = custom_title_bar_->findChildren<QToolButton *>();
@@ -6516,7 +6522,11 @@ void MainWindow::onOpenSessionViewerClicked()
 
     if (!session_viewer_window_)
     {
-        session_viewer_window_ = new SessionViewerWindow(this);
+        session_viewer_window_ = new SessionViewerWindow();
+        session_viewer_window_->setAttribute(Qt::WA_DeleteOnClose, true);
+        connect(session_viewer_window_, &QObject::destroyed, this, [this]() {
+            session_viewer_window_ = nullptr;
+        });
         session_viewer_window_->setEnglish(is_english_);
     }
 
