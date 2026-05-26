@@ -94,6 +94,13 @@ private:
         VaporView::TcpFloatEncoding float_encoding = VaporView::TcpFloatEncoding::Unknown;
     };
 
+    struct IndexedWaveformFrame
+    {
+        QString filename;
+        quint64 timestamp_us = 0;
+        quint32 point_count = 0;
+    };
+
     void setupUi();
     void updateTexts();
     void updateSummaryLabels();
@@ -115,6 +122,7 @@ private:
     bool previewWaveformFrame(quint64 frameIndex);
     bool loadWaveformFrame(quint64 frameIndex);
     bool loadUnifiedRawTcpWaveFrames();
+    bool loadIndexedWaveformFrames();
     bool readWaveformFrameSamples(quint64 frameIndex, quint64& timestampUs, QVector<float>& samples);
     int findClosestCsvRow(quint64 timestampUs) const;
     void applyPeakFilter();
@@ -185,6 +193,7 @@ private:
     QString metadata_filename_;
     QString sensors_csv_filename_;
     QString waveform_directory_;
+    QString waveform_index_filename_;
     QString raw_tcp_wave_filename_;
     QString default_data_directory_;
     QString session_name_;
@@ -199,6 +208,7 @@ private:
     QVector<quint64> waveform_timestamps_us_;
     QVector<WaveformSegment> waveform_segments_;
     QVector<RawTcpWaveFrame> raw_tcp_wave_frames_;
+    QVector<IndexedWaveformFrame> indexed_waveform_frames_;
     QVector<float> current_waveform_frame_samples_;
     QVector<float> waveform_peak_raw_values_;
     QVector<float> waveform_peak_values_;

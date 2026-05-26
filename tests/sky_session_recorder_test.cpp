@@ -2,6 +2,8 @@
 
 #include <QCoreApplication>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTemporaryDir>
 #include <iostream>
 
@@ -32,6 +34,7 @@ int main(int argc, char *argv[])
     require(error.isEmpty(), "start recorder error text");
     require(recorder.isRecording(), "recorder state");
     require(!recorder.sessionName().isEmpty(), "session name");
+    recorder.recordWaveformSnapshot(1000, 900, QVector<float>{1.0f, 2.0f, 3.0f, 4.0f});
 
     const QString sessionDir = recorder.sessionDirectory();
     require(QFileInfo::exists(sessionDir), "session directory");
@@ -44,5 +47,17 @@ int main(int argc, char *argv[])
 
     recorder.stop();
     require(!recorder.isRecording(), "recorder stopped");
+
+    QFile metadataFile(sessionDir + QStringLiteral("/session.json"));
+    require(metadataFile.open(QIODevice::ReadOnly), "open metadata");
+    const QJsonDocument metadata = QJsonDocument::fromJson(metadataFile.readAll());
+    require(metadata.isObject(), "metadata object");
+    const QJsonObject root = metadata.object();
+    require(root.value(QStringLiteral("waveform_export_mode")).toString() == QStringLiteral("per_frame"),
+            "per-frame waveform export mode");
+    require(root.value(QStringLiteral("waveform_frames")).toString().toULongLong() == 1,
+            "waveform frame count");
+    require(root.value(QStringLiteral("waveform_file_count")).toString().toULongLong() == 1,
+            "waveform file count");
     return 0;
 }

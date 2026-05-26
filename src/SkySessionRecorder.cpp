@@ -551,13 +551,16 @@ void SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc)
     root.insert(QStringLiteral("raw_export_mode"), QStringLiteral("unified_raw_dat"));
     root.insert(QStringLiteral("raw_dat_format_version"), static_cast<int>(kUnifiedRawFormatVersion));
     root.insert(QStringLiteral("waveform_export_rate_hz"), 0);
-    root.insert(QStringLiteral("waveform_export_mode"), QStringLiteral("raw_tcp_wave"));
+    const bool hasRawTcpWave = raw_tcp_wave_record_count_ > 0;
+    const quint64 waveformFrameCount = hasRawTcpWave ? raw_tcp_wave_record_count_ : waveform_file_count_;
+    root.insert(QStringLiteral("waveform_export_mode"), hasRawTcpWave ? QStringLiteral("raw_tcp_wave")
+                                                                      : QStringLiteral("per_frame"));
     root.insert(QStringLiteral("waveform_value_type"), QStringLiteral("float32"));
     root.insert(QStringLiteral("waveform_timestamp_type"), QStringLiteral("uint64"));
     root.insert(QStringLiteral("timestamp_unit"), QStringLiteral("microseconds"));
     root.insert(QStringLiteral("sensor_rows"), QString::number(telemetry_row_count_));
     root.insert(QStringLiteral("waveform_features"), QString::number(waveform_feature_count_));
-    root.insert(QStringLiteral("waveform_frames"), QString::number(raw_tcp_wave_record_count_));
+    root.insert(QStringLiteral("waveform_frames"), QString::number(waveformFrameCount));
     root.insert(QStringLiteral("waveform_file_count"), QString::number(waveform_file_count_));
 
     QJsonObject rawFiles;
