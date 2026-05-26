@@ -100,8 +100,10 @@ int main(int argc, char *argv[])
     qRegisterMetaType<VaporView::TelemetryBasic>("VaporView::TelemetryBasic");
     qRegisterMetaType<VaporView::DownsampledWaveform>("VaporView::DownsampledWaveform");
     qRegisterMetaType<VaporView::WaveformFeature>("VaporView::WaveformFeature");
+    qRegisterMetaType<VaporView::DeviceStatusItem>("VaporView::DeviceStatusItem");
     qRegisterMetaType<VaporView::TelemetryStatus>("VaporView::TelemetryStatus");
     qRegisterMetaType<VaporView::CommandAck>("VaporView::CommandAck");
+    qRegisterMetaType<VaporView::CommandId>("VaporView::CommandId");
     qRegisterMetaType<VaporView::SkyDeviceId>("VaporView::SkyDeviceId");
 
     QCommandLineParser parser;

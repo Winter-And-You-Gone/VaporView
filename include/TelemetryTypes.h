@@ -248,6 +248,7 @@ Q_DECLARE_METATYPE(VaporView::WaveformFeature)
 Q_DECLARE_METATYPE(VaporView::DeviceStatusItem)
 Q_DECLARE_METATYPE(VaporView::TelemetryStatus)
 Q_DECLARE_METATYPE(VaporView::CommandAck)
+Q_DECLARE_METATYPE(VaporView::CommandId)
 Q_DECLARE_METATYPE(VaporView::SkyDeviceId)
 
 #endif

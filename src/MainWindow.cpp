@@ -3048,19 +3048,26 @@ MainWindow::MainWindow(QWidget *parent)
     setupWindowResizeHandles();
     ground_telemetry_service_ = new VaporView::GroundTelemetryService(this);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::linkOpenChanged,
-            this, &MainWindow::onRemoteLinkOpenChanged);
+            this, &MainWindow::onRemoteLinkOpenChanged,
+            Qt::QueuedConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::logMessage,
-            this, [this](const QString& message) { log(message); });
+            this, [this](const QString& message) { log(message); },
+            Qt::QueuedConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::basicTelemetryUpdated,
-            this, &MainWindow::onRemoteBasicTelemetryUpdated);
+            this, &MainWindow::onRemoteBasicTelemetryUpdated,
+            Qt::QueuedConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::waveformUpdated,
-            this, &MainWindow::onRemoteWaveformUpdated);
+            this, &MainWindow::onRemoteWaveformUpdated,
+            Qt::QueuedConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::waveformFeatureUpdated,
-            this, &MainWindow::onRemoteWaveformFeatureUpdated);
+            this, &MainWindow::onRemoteWaveformFeatureUpdated,
+            Qt::QueuedConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::statusUpdated,
-            this, &MainWindow::onRemoteTelemetryStatusUpdated);
+            this, &MainWindow::onRemoteTelemetryStatusUpdated,
+            Qt::QueuedConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::commandAckReceived,
-            this, &MainWindow::onRemoteCommandAckReceived);
+            this, &MainWindow::onRemoteCommandAckReceived,
+            Qt::QueuedConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::commandTimedOut,
             this, [this](VaporView::CommandId commandId, quint16 commandSeq) {
                 if (isRemoteSkyMode() && commandId == VaporView::CommandId::RequestStatus && !remote_sky_online_ && status_label_)
@@ -3086,7 +3093,8 @@ MainWindow::MainWindow(QWidget *parent)
                                                  remote_device_states_.value(VaporView::SkyDeviceId::WaveTcp,
                                                                              VaporView::DeviceState::Disconnected));
                 }
-            });
+            },
+            Qt::QueuedConnection);
     loadRememberedInputState();
     bindRememberedInputState();
 
