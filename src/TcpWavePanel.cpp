@@ -58,11 +58,10 @@ constexpr int kLiveDisplayRefreshMs = 20;
 constexpr qint64 kFrameRateWindowMs = 5000;
 constexpr double kMaxReasonableWaveMagnitude = 1.0e6;
 constexpr int kRemoteStatusCountWidth = 6;
-constexpr int kRemoteStatusCountPixelWidth = 46;
-constexpr int kRemoteStatusPeakPixelWidth = 108;
-constexpr int kRemoteStatusRmsPixelWidth = 88;
-constexpr int kRemoteStatusIndexPixelWidth = 54;
-constexpr int kRemoteStatusRangePixelWidth = 104;
+constexpr int kRemoteStatusPeakWidth = 12;
+constexpr int kRemoteStatusRmsWidth = 8;
+constexpr int kRemoteStatusRangeWidth = 15;
+constexpr int kRemoteStatusIndexWidth = 6;
 
 QString hexPreview(const QByteArray& data, int limit = 12)
 {
@@ -138,36 +137,32 @@ QString fixedStatusInteger(qint64 value, int width)
     return fixedStatusText(QString::number(value), width);
 }
 
-QString remoteStatusCell(const QString& text)
+QString fixedStatusField(const QString& text, int width)
 {
-    return QStringLiteral("<td style=\"padding:0 2px;white-space:nowrap;\">%1</td>")
-        .arg(text.toHtmlEscaped());
+    return text.leftJustified(std::max(width, static_cast<int>(text.size())), QLatin1Char(' '));
 }
 
-QString remoteStatusValueCell(const QString& text, int pixelWidth)
+QString fixedStatusFloat(double value, int decimals, int width)
 {
-    return QStringLiteral(
-        "<td width=\"%1\" style=\"width:%1px;min-width:%1px;max-width:%1px;"
-        "padding:0 2px;white-space:nowrap;text-align:left;"
-        "font-family:'Cascadia Mono','Consolas','Courier New',monospace;\">%2</td>")
-        .arg(pixelWidth)
-        .arg(text.toHtmlEscaped());
+    return fixedStatusField(std::isfinite(value)
+                                ? QString::number(value, 'f', decimals)
+                                : QStringLiteral("--"),
+                            width);
 }
 
-QString remoteWaveformStatusCells(bool english, const QString& sampleCountText)
+QString remoteWaveformStatusText(bool english, int sampleCount)
 {
-    return remoteStatusCell(english ? QStringLiteral("Remote pts:") : QStringLiteral("远程点:")) +
-           remoteStatusValueCell(sampleCountText, kRemoteStatusCountPixelWidth);
+    return QStringLiteral("%1 %2")
+        .arg(english ? QStringLiteral("Remote pts:") : QStringLiteral("远程点:"),
+             fixedStatusField(QString::number(sampleCount), kRemoteStatusCountWidth));
 }
 
-QString remoteFeatureStatusCells(bool english, double peak, double rms, quint32 searchStart, quint32 searchEnd, float peakIndex)
+QString remoteFeatureStatusText(bool english, double peak, double rms, quint32 searchStart, quint32 searchEnd, float peakIndex)
 {
-    const QString peakText = std::isfinite(peak) ? QString::number(peak, 'f', 6) : QStringLiteral("--");
-    const QString rmsText = std::isfinite(rms) ? QString::number(rms, 'f', 4) : QStringLiteral("--");
-    QString cells = remoteStatusCell(english ? QStringLiteral("Peak") : QStringLiteral("峰值")) +
-                    remoteStatusValueCell(peakText, kRemoteStatusPeakPixelWidth) +
-                    remoteStatusCell(QStringLiteral("RMS")) +
-                    remoteStatusValueCell(rmsText, kRemoteStatusRmsPixelWidth);
+    QString text = QStringLiteral("%1 %2 RMS %3")
+        .arg(english ? QStringLiteral("Peak") : QStringLiteral("峰值"),
+             fixedStatusFloat(peak, 6, kRemoteStatusPeakWidth),
+             fixedStatusFloat(rms, 4, kRemoteStatusRmsWidth));
     if (searchStart > 0 || searchEnd > 0)
     {
         const QString rangeText = QStringLiteral("[%1,%2)")
@@ -175,26 +170,60 @@ QString remoteFeatureStatusCells(bool english, double peak, double rms, quint32 
             .arg(searchEnd == 0
                      ? (english ? QStringLiteral("end") : QStringLiteral("末尾"))
                      : QString::number(searchEnd));
-        cells += remoteStatusCell(english ? QStringLiteral("Range") : QStringLiteral("区间")) +
-                 remoteStatusValueCell(rangeText, kRemoteStatusRangePixelWidth) +
-                 remoteStatusCell(english ? QStringLiteral("Index") : QStringLiteral("下标")) +
-                 remoteStatusValueCell(QString::number(peakIndex, 'f', 0), kRemoteStatusIndexPixelWidth);
+        text += QStringLiteral(" %1 %2 %3 %4")
+            .arg(english ? QStringLiteral("Range") : QStringLiteral("区间"),
+                 fixedStatusField(rangeText, kRemoteStatusRangeWidth),
+                 english ? QStringLiteral("Index") : QStringLiteral("下标"),
+                 fixedStatusField(QString::number(peakIndex, 'f', 0), kRemoteStatusIndexWidth));
     }
-    return cells;
+    return text;
 }
 
-QString remoteInvalidFeatureStatusCells(bool english)
+QString remoteInvalidFeatureStatusText(bool english)
 {
-    return remoteStatusCell(english ? QStringLiteral("Feature invalid") : QStringLiteral("特征无效"));
+    return english ? QStringLiteral("Feature invalid") : QStringLiteral("特征无效");
 }
 
-QString remoteStatusTable(const QString& cells)
+class CenteredPlainTextLabel : public QLabel
 {
-    return QStringLiteral(
-        "<table cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;white-space:nowrap;\">"
-        "<tr>%1</tr></table>")
-        .arg(cells);
-}
+public:
+    explicit CenteredPlainTextLabel(QWidget *parent = nullptr)
+        : QLabel(parent)
+    {
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        if (textFormat() != Qt::PlainText || wordWrap())
+        {
+            QLabel::paintEvent(event);
+            return;
+        }
+
+        Q_UNUSED(event);
+        const QString value = text();
+        if (value.isEmpty())
+        {
+            return;
+        }
+
+        QPainter painter(this);
+        painter.setFont(font());
+        const QPalette::ColorRole role = foregroundRole() == QPalette::NoRole
+            ? QPalette::WindowText
+            : foregroundRole();
+        const QPalette::ColorGroup group = isEnabled() ? QPalette::Active : QPalette::Disabled;
+        painter.setPen(palette().color(group, role));
+
+        const QRect area = contentsRect();
+        painter.setClipRect(area);
+        const QFontMetrics metrics(font());
+        const QRect textBounds = metrics.tightBoundingRect(value);
+        const int baseline = area.top() + (area.height() - textBounds.height()) / 2 - textBounds.top();
+        painter.drawText(area.left(), baseline, value);
+    }
+};
 
 struct PlotTheme
 {
@@ -845,11 +874,16 @@ void TcpWavePanel::setupUi()
     connect(connect_button_, &QPushButton::clicked, this, &TcpWavePanel::onToggleConnectionClicked);
     top_controls_layout_->addWidget(connect_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
-    status_label_ = new QLabel(this);
+    status_label_ = new CenteredPlainTextLabel(this);
     status_label_->setObjectName("fieldLabel");
     status_label_->setFont(numericFontFrom(status_label_->font()));
+    status_label_->setStyleSheet(QStringLiteral(
+        "QLabel { font-family: \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace;"
+        "font-size: 14px; font-weight: 600; }"));
     status_label_->setTextFormat(Qt::PlainText);
+    status_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     status_label_->setWordWrap(false);
+    status_label_->setFixedHeight(kTcpButtonHeight);
     status_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     status_label_->setMinimumWidth(0);
     status_label_->setVisible(false);
@@ -1300,7 +1334,7 @@ void TcpWavePanel::updatePendingRemoteLiveStatus()
         pending_live_status_text_.clear();
         return;
     }
-    pending_live_status_text_ = remoteStatusTable(parts.join(remoteStatusCell(QStringLiteral("|"))));
+    pending_live_status_text_ = parts.join(QStringLiteral(" | "));
 }
 
 void TcpWavePanel::attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox)
@@ -1429,7 +1463,7 @@ void TcpWavePanel::injectRemoteRawSignalFrame(quint64 timestampUs, const QVector
     wave1_history_ = samples;
     pending_wave1_info_text_ = QString(is_english_ ? "remote raw signal: %1 samples" : "远程原始信号：%1 点")
         .arg(sampleCountText);
-    remote_waveform_status_text_ = remoteWaveformStatusCells(is_english_, QString::number(samples.size()));
+    remote_waveform_status_text_ = remoteWaveformStatusText(is_english_, samples.size());
     updatePendingRemoteLiveStatus();
     live_display_dirty_ = true;
 }
@@ -1450,7 +1484,7 @@ void TcpWavePanel::injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QV
     const QString sampleCountText = fixedStatusInteger(samples.size(), kRemoteStatusCountWidth);
     pending_wave1_info_text_ = is_english_ ? "Remote Sky source" : "天空端远程源";
     pending_wave4_info_text_ = QString(is_english_ ? "%1 samples" : "%1 点").arg(sampleCountText);
-    remote_waveform_status_text_ = remoteWaveformStatusCells(is_english_, QString::number(samples.size()));
+    remote_waveform_status_text_ = remoteWaveformStatusText(is_english_, samples.size());
     updatePendingRemoteLiveStatus();
     live_display_dirty_ = true;
     emit normalizedSecondHarmonicFrameReady(timestampUs, wave4_history_);
@@ -1472,7 +1506,7 @@ void TcpWavePanel::injectRemoteWaveformFeature(const VaporView::WaveformFeature&
             peak_raw_history_.remove(0, peak_raw_history_.size() - kPeakTrendFrameWindow);
         }
         rebuildPeakHistory();
-        remote_feature_status_text_ = remoteInvalidFeatureStatusCells(is_english_);
+        remote_feature_status_text_ = remoteInvalidFeatureStatusText(is_english_);
         updatePendingRemoteLiveStatus();
         live_display_dirty_ = true;
         return;
@@ -1484,7 +1518,7 @@ void TcpWavePanel::injectRemoteWaveformFeature(const VaporView::WaveformFeature&
         peak_raw_history_.remove(0, peak_raw_history_.size() - kPeakTrendFrameWindow);
     }
     rebuildPeakHistory();
-    remote_feature_status_text_ = remoteFeatureStatusCells(is_english_,
+    remote_feature_status_text_ = remoteFeatureStatusText(is_english_,
                                                            feature.peak,
                                                            feature.rms,
                                                            feature.search_start_index,
@@ -1866,9 +1900,7 @@ void TcpWavePanel::setStatusText(const QString& text)
 {
     if (status_label_ && status_label_->text() != text)
     {
-        status_label_->setTextFormat(text.startsWith(QStringLiteral("<table"))
-            ? Qt::RichText
-            : Qt::PlainText);
+        status_label_->setTextFormat(Qt::PlainText);
         status_label_->setText(text);
     }
     if (status_label_)
