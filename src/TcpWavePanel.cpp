@@ -652,6 +652,23 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , panel_title_label_(nullptr)
     , frame_rate_label_(nullptr)
     , status_label_(nullptr)
+    , remote_status_widget_(nullptr)
+    , remote_waveform_label_(nullptr)
+    , remote_waveform_count_label_(nullptr)
+    , remote_waveform_unit_label_(nullptr)
+    , remote_status_separator_label_(nullptr)
+    , remote_peak_label_(nullptr)
+    , remote_peak_value_label_(nullptr)
+    , remote_rms_label_(nullptr)
+    , remote_rms_value_label_(nullptr)
+    , remote_search_label_(nullptr)
+    , remote_search_start_label_(nullptr)
+    , remote_search_comma_label_(nullptr)
+    , remote_search_end_label_(nullptr)
+    , remote_search_close_label_(nullptr)
+    , remote_index_label_(nullptr)
+    , remote_index_value_label_(nullptr)
+    , remote_feature_error_label_(nullptr)
     , hint_label_(nullptr)
     , wave1_title_label_(nullptr)
     , wave4_title_label_(nullptr)
@@ -678,6 +695,12 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , pending_live_status_text_()
     , remote_waveform_status_text_()
     , remote_feature_status_text_()
+    , remote_waveform_count_text_()
+    , remote_peak_text_()
+    , remote_rms_text_()
+    , remote_search_start_text_()
+    , remote_search_end_text_()
+    , remote_peak_index_text_()
     , peak_filter_settings_()
     , peak_search_start_index_(kDefaultPeakSearchStartIndex)
     , peak_search_end_index_(kDefaultPeakSearchEndIndex)
@@ -693,6 +716,11 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , is_english_(false)
     , remote_sky_mode_(false)
     , remote_wave_tcp_connected_(false)
+    , remote_has_waveform_status_(false)
+    , remote_has_feature_status_(false)
+    , remote_feature_is_valid_(false)
+    , remote_has_search_status_(false)
+    , remote_search_end_is_terminal_(false)
     , last_remote_feature_time_us_(0)
     , remote_expected_feature_interval_us_(0)
 {
@@ -794,15 +822,60 @@ void TcpWavePanel::setupUi()
     status_label_->setTextFormat(Qt::PlainText);
     status_label_->setWordWrap(false);
     status_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    const int remoteStatusWidth = std::max(
-        640,
-        widestTextWidth(status_label_,
-                        {QStringLiteral("远程波形：000000 点 | 远程特征值：峰值 -0000.000000 RMS -0000.0000，搜索区间 [000000, 000000)，峰值下标 000000"),
-                         QStringLiteral("Remote waveform: 000000 samples | Remote feature: peak -0000.000000 rms -0000.0000, search [000000, 000000), index 000000")}) + 10);
-    status_label_->setMinimumWidth(remoteStatusWidth);
     status_label_->setVisible(false);
+
+    remote_status_widget_ = new QWidget(this);
+    remote_status_widget_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    auto *remoteStatusLayout = new QHBoxLayout(remote_status_widget_);
+    remoteStatusLayout->setContentsMargins(0, 0, 0, 0);
+    remoteStatusLayout->setSpacing(4);
+    auto makeRemoteTextLabel = [this, remoteStatusLayout]() {
+        auto *label = new QLabel(remote_status_widget_);
+        label->setObjectName("fieldLabel");
+        label->setWordWrap(false);
+        label->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        remoteStatusLayout->addWidget(label, 0, Qt::AlignVCenter | Qt::AlignLeft);
+        return label;
+    };
+    auto makeRemoteValueLabel = [this, remoteStatusLayout](const QString& sample, int minimumWidth) {
+        auto *label = new QLabel(remote_status_widget_);
+        label->setObjectName("remoteStatusValueLabel");
+        label->setFont(numericFontFrom(label->font()));
+        label->setStyleSheet(QStringLiteral(
+            "QLabel#remoteStatusValueLabel {"
+            "font-family: \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace;"
+            "font-size: 14px;"
+            "font-weight: 600;"
+            "}"));
+        label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        label->setWordWrap(false);
+        label->setFixedWidth(std::max(minimumWidth, widestTextWidth(label, {sample}) + 8));
+        remoteStatusLayout->addWidget(label, 0, Qt::AlignVCenter | Qt::AlignLeft);
+        return label;
+    };
+
+    remote_waveform_label_ = makeRemoteTextLabel();
+    remote_waveform_count_label_ = makeRemoteValueLabel(QStringLiteral("000000"), 58);
+    remote_waveform_unit_label_ = makeRemoteTextLabel();
+    remote_status_separator_label_ = makeRemoteTextLabel();
+    remote_peak_label_ = makeRemoteTextLabel();
+    remote_peak_value_label_ = makeRemoteValueLabel(QStringLiteral("-0000.000000"), 108);
+    remote_rms_label_ = makeRemoteTextLabel();
+    remote_rms_value_label_ = makeRemoteValueLabel(QStringLiteral("-0000.0000"), 90);
+    remote_search_label_ = makeRemoteTextLabel();
+    remote_search_start_label_ = makeRemoteValueLabel(QStringLiteral("000000"), 58);
+    remote_search_comma_label_ = makeRemoteTextLabel();
+    remote_search_end_label_ = makeRemoteValueLabel(QStringLiteral("000000"), 58);
+    remote_search_close_label_ = makeRemoteTextLabel();
+    remote_index_label_ = makeRemoteTextLabel();
+    remote_index_value_label_ = makeRemoteValueLabel(QStringLiteral("000000"), 58);
+    remote_feature_error_label_ = makeRemoteTextLabel();
+    updateRemoteStatusLabels();
+    remote_status_widget_->setVisible(false);
+
     top_controls_layout_->addSpacing(12);
     top_controls_layout_->addWidget(status_label_, 1, Qt::AlignVCenter | Qt::AlignLeft);
+    top_controls_layout_->addWidget(remote_status_widget_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     top_controls_layout_->addStretch(1);
 
     hint_label_ = new QLabel(this);
@@ -1040,10 +1113,15 @@ void TcpWavePanel::setEnglish(bool english)
     wave4_info_label_->setText(english ? "waiting for normalized second harmonic frame" : "等待归一化二次谐波数据帧");
     updatePeakFilterButtonText();
     updatePeakPlotModeButtonText();
+    updateRemoteStatusLabels();
 
     if (!socket_ || socket_->state() != QAbstractSocket::ConnectedState)
     {
         setStatusText(english ? "Idle" : "空闲");
+    }
+    if (remote_sky_mode_ && hasRemoteDataStatus())
+    {
+        showRemoteStatusWidgets();
     }
 }
 
@@ -1228,7 +1306,14 @@ void TcpWavePanel::updateLiveDisplay()
     }
     if (!pending_live_status_text_.isEmpty())
     {
-        setStatusText(pending_live_status_text_);
+        if (remote_sky_mode_ && hasRemoteDataStatus())
+        {
+            showRemoteStatusWidgets();
+        }
+        else
+        {
+            setStatusText(pending_live_status_text_);
+        }
     }
 }
 
@@ -1244,6 +1329,87 @@ void TcpWavePanel::updatePendingRemoteLiveStatus()
         parts << remote_feature_status_text_;
     }
     pending_live_status_text_ = parts.join(QStringLiteral(" | "));
+}
+
+bool TcpWavePanel::hasRemoteDataStatus() const
+{
+    return remote_has_waveform_status_ || remote_has_feature_status_;
+}
+
+void TcpWavePanel::updateRemoteStatusLabels()
+{
+    if (remote_waveform_label_) remote_waveform_label_->setText(is_english_ ? QStringLiteral("Remote:") : QStringLiteral("远程:"));
+    if (remote_waveform_unit_label_) remote_waveform_unit_label_->setText(is_english_ ? QStringLiteral("samples") : QStringLiteral("点"));
+    if (remote_status_separator_label_) remote_status_separator_label_->setText(QStringLiteral("|"));
+    if (remote_peak_label_) remote_peak_label_->setText(is_english_ ? QStringLiteral("Peak") : QStringLiteral("峰值"));
+    if (remote_rms_label_) remote_rms_label_->setText(QStringLiteral("RMS"));
+    if (remote_search_label_) remote_search_label_->setText(is_english_ ? QStringLiteral("Range[") : QStringLiteral("区间["));
+    if (remote_search_comma_label_) remote_search_comma_label_->setText(QStringLiteral(","));
+    if (remote_search_close_label_) remote_search_close_label_->setText(QStringLiteral(")"));
+    if (remote_index_label_) remote_index_label_->setText(is_english_ ? QStringLiteral("Index") : QStringLiteral("下标"));
+    if (remote_feature_error_label_) remote_feature_error_label_->setText(is_english_ ? QStringLiteral("Feature invalid") : QStringLiteral("特征无效"));
+
+    if (remote_waveform_count_label_) remote_waveform_count_label_->setText(remote_waveform_count_text_);
+    if (remote_peak_value_label_) remote_peak_value_label_->setText(remote_peak_text_);
+    if (remote_rms_value_label_) remote_rms_value_label_->setText(remote_rms_text_);
+    if (remote_search_start_label_) remote_search_start_label_->setText(remote_search_start_text_);
+    if (remote_search_end_label_)
+    {
+        remote_search_end_label_->setText(remote_search_end_is_terminal_
+            ? (is_english_ ? QStringLiteral("end") : QStringLiteral("末尾"))
+            : remote_search_end_text_);
+    }
+    if (remote_index_value_label_) remote_index_value_label_->setText(remote_peak_index_text_);
+}
+
+void TcpWavePanel::showRemoteStatusWidgets()
+{
+    if (!remote_status_widget_)
+    {
+        return;
+    }
+
+    updateRemoteStatusLabels();
+    const bool showRemoteStatus = remote_sky_mode_ && hasRemoteDataStatus();
+    const bool showWaveform = showRemoteStatus && remote_has_waveform_status_;
+    const bool showFeature = showRemoteStatus && remote_has_feature_status_;
+    const bool showFeatureValues = showFeature && remote_feature_is_valid_;
+    const bool showSearch = showFeatureValues && remote_has_search_status_;
+
+    auto setVisible = [](QLabel *label, bool visible) {
+        if (label) label->setVisible(visible);
+    };
+    setVisible(remote_waveform_label_, showWaveform);
+    setVisible(remote_waveform_count_label_, showWaveform);
+    setVisible(remote_waveform_unit_label_, showWaveform);
+    setVisible(remote_status_separator_label_, showWaveform && showFeature);
+    setVisible(remote_peak_label_, showFeatureValues);
+    setVisible(remote_peak_value_label_, showFeatureValues);
+    setVisible(remote_rms_label_, showFeatureValues);
+    setVisible(remote_rms_value_label_, showFeatureValues);
+    setVisible(remote_search_label_, showSearch);
+    setVisible(remote_search_start_label_, showSearch);
+    setVisible(remote_search_comma_label_, showSearch);
+    setVisible(remote_search_end_label_, showSearch);
+    setVisible(remote_search_close_label_, showSearch);
+    setVisible(remote_index_label_, showSearch);
+    setVisible(remote_index_value_label_, showSearch);
+    setVisible(remote_feature_error_label_, showFeature && !remote_feature_is_valid_);
+
+    remote_status_widget_->setToolTip(pending_live_status_text_);
+    remote_status_widget_->setVisible(showRemoteStatus);
+    if (status_label_)
+    {
+        status_label_->setVisible(remote_sky_mode_ && !showRemoteStatus && !status_label_->text().isEmpty());
+    }
+}
+
+void TcpWavePanel::hideRemoteStatusWidgets()
+{
+    if (remote_status_widget_)
+    {
+        remote_status_widget_->setVisible(false);
+    }
 }
 
 void TcpWavePanel::attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox)
@@ -1302,11 +1468,19 @@ void TcpWavePanel::setRemoteSkyMode(bool enabled)
     }
     if (status_label_)
     {
-        status_label_->setVisible(enabled);
+        status_label_->setVisible(enabled && !hasRemoteDataStatus() && !status_label_->text().isEmpty());
         if (!enabled)
         {
             status_label_->clear();
         }
+    }
+    if (!enabled)
+    {
+        hideRemoteStatusWidgets();
+    }
+    else if (remote_wave_tcp_connected_ && hasRemoteDataStatus())
+    {
+        showRemoteStatusWidgets();
     }
     if (enabled && !remote_wave_tcp_connected_)
     {
@@ -1327,13 +1501,12 @@ void TcpWavePanel::setRemoteWaveTcpState(VaporView::DeviceState state)
     }
     if (remote_sky_mode_)
     {
-        const bool hasRemoteDataStatus = !remote_waveform_status_text_.isEmpty() || !remote_feature_status_text_.isEmpty();
-        if (remote_wave_tcp_connected_ && hasRemoteDataStatus)
+        if (remote_wave_tcp_connected_ && hasRemoteDataStatus())
         {
             updatePendingRemoteLiveStatus();
             if (!pending_live_status_text_.isEmpty())
             {
-                setStatusText(pending_live_status_text_);
+                showRemoteStatusWidgets();
             }
         }
         else
@@ -1369,6 +1542,8 @@ void TcpWavePanel::injectRemoteRawSignalFrame(quint64 timestampUs, const QVector
         return;
     }
     const QString sampleCountText = fixedStatusInteger(samples.size(), kRemoteStatusCountWidth);
+    remote_has_waveform_status_ = true;
+    remote_waveform_count_text_ = QString::number(samples.size());
     wave1_history_ = samples;
     pending_wave1_info_text_ = QString(is_english_ ? "remote raw signal: %1 samples" : "远程原始信号：%1 点")
         .arg(sampleCountText);
@@ -1392,6 +1567,8 @@ void TcpWavePanel::injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QV
     ++frame_count_;
     updateFrameRateDisplay(QDateTime::currentMSecsSinceEpoch());
     const QString sampleCountText = fixedStatusInteger(samples.size(), kRemoteStatusCountWidth);
+    remote_has_waveform_status_ = true;
+    remote_waveform_count_text_ = QString::number(samples.size());
     pending_wave1_info_text_ = is_english_ ? "Remote Sky source" : "天空端远程源";
     pending_wave4_info_text_ = QString(is_english_ ? "%1 samples" : "%1 点").arg(sampleCountText);
     remote_waveform_status_text_ = QString(is_english_ ? "Remote waveform: %1 samples" : "远程波形：%1 点")
@@ -1417,6 +1594,15 @@ void TcpWavePanel::injectRemoteWaveformFeature(const VaporView::WaveformFeature&
             peak_raw_history_.remove(0, peak_raw_history_.size() - kPeakTrendFrameWindow);
         }
         rebuildPeakHistory();
+        remote_has_feature_status_ = true;
+        remote_feature_is_valid_ = false;
+        remote_has_search_status_ = false;
+        remote_search_end_is_terminal_ = false;
+        remote_peak_text_.clear();
+        remote_rms_text_.clear();
+        remote_search_start_text_.clear();
+        remote_search_end_text_.clear();
+        remote_peak_index_text_.clear();
         remote_feature_status_text_ = is_english_ ? "Remote feature: missing or invalid; leaving a gap"
                                                   : "远程特征值：缺失或无效，峰值趋势留空";
         updatePendingRemoteLiveStatus();
@@ -1432,6 +1618,15 @@ void TcpWavePanel::injectRemoteWaveformFeature(const VaporView::WaveformFeature&
     rebuildPeakHistory();
     const QString peakText = fixedStatusFloat(feature.peak, 6, kRemoteStatusPeakWidth);
     const QString rmsText = fixedStatusFloat(feature.rms, 4, kRemoteStatusRmsWidth);
+    remote_has_feature_status_ = true;
+    remote_feature_is_valid_ = true;
+    remote_peak_text_ = QString::number(feature.peak, 'f', 6);
+    remote_rms_text_ = QString::number(feature.rms, 'f', 4);
+    remote_has_search_status_ = feature.search_start_index > 0 || feature.search_end_index > 0;
+    remote_search_start_text_ = QString::number(feature.search_start_index);
+    remote_search_end_is_terminal_ = feature.search_end_index == 0;
+    remote_search_end_text_ = remote_search_end_is_terminal_ ? QString() : QString::number(feature.search_end_index);
+    remote_peak_index_text_ = QString::number(feature.peak_index, 'f', 0);
     remote_feature_status_text_ = QString(is_english_ ? "Remote feature: peak %1 rms %2" : "远程特征值：峰值 %1 RMS %2")
         .arg(peakText, rmsText);
     if (feature.search_start_index > 0 || feature.search_end_index > 0)
@@ -1454,6 +1649,16 @@ void TcpWavePanel::applyRemotePeakSearchRange(quint32 startIndex, quint32 endInd
     peak_raw_history_.clear();
     peak_history_.clear();
     last_remote_feature_time_us_ = 0;
+    remote_feature_status_text_.clear();
+    remote_peak_text_.clear();
+    remote_rms_text_.clear();
+    remote_search_start_text_.clear();
+    remote_search_end_text_.clear();
+    remote_peak_index_text_.clear();
+    remote_has_feature_status_ = false;
+    remote_feature_is_valid_ = false;
+    remote_has_search_status_ = false;
+    remote_search_end_is_terminal_ = false;
     if (peak_plot_)
     {
         peak_plot_->setPeakValues({});
@@ -1817,13 +2022,14 @@ void TcpWavePanel::setConnectedUiState(bool connected)
 
 void TcpWavePanel::setStatusText(const QString& text)
 {
+    hideRemoteStatusWidgets();
     if (status_label_ && status_label_->text() != text)
     {
         status_label_->setText(text);
     }
     if (status_label_)
     {
-        status_label_->setVisible(remote_sky_mode_);
+        status_label_->setVisible(remote_sky_mode_ && !text.isEmpty());
     }
 }
 
@@ -1843,6 +2049,18 @@ void TcpWavePanel::clearRemoteWaveformDisplay(const QString& statusText)
     pending_live_status_text_.clear();
     remote_waveform_status_text_.clear();
     remote_feature_status_text_.clear();
+    remote_waveform_count_text_.clear();
+    remote_peak_text_.clear();
+    remote_rms_text_.clear();
+    remote_search_start_text_.clear();
+    remote_search_end_text_.clear();
+    remote_peak_index_text_.clear();
+    remote_has_waveform_status_ = false;
+    remote_has_feature_status_ = false;
+    remote_feature_is_valid_ = false;
+    remote_has_search_status_ = false;
+    remote_search_end_is_terminal_ = false;
+    hideRemoteStatusWidgets();
     if (wave1_plot_) wave1_plot_->setSamples({});
     if (wave4_plot_) wave4_plot_->setSamples({});
     if (peak_plot_) peak_plot_->setPeakValues({});
