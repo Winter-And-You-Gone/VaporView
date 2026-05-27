@@ -45,9 +45,10 @@ constexpr int kTcpControlHeight = 36;
 constexpr int kTcpButtonHeight = 36;
 constexpr int kTcpTitleBarHeight = kTcpButtonHeight + 4;
 constexpr int kTcpTitleBarPrimarySpacing = 24;
+constexpr int kTcpTitleBarRealtimeHostSpacing = 12;
 constexpr int kTcpTitleBarFieldSpacing = 18;
 constexpr int kTcpTitleBarStatusSpacing = 8;
-constexpr int kTcpFrameRateMinimumWidth = 160;
+constexpr int kTcpFrameRateMinimumWidth = 132;
 constexpr int kPlotTopMargin = 2;
 constexpr int kPlotRightMargin = 2;
 constexpr int kDefaultPeakSearchStartIndex = 0;
@@ -57,10 +58,11 @@ constexpr int kLiveDisplayRefreshMs = 20;
 constexpr qint64 kFrameRateWindowMs = 5000;
 constexpr double kMaxReasonableWaveMagnitude = 1.0e6;
 constexpr int kRemoteStatusCountWidth = 6;
-constexpr int kRemoteStatusCountPixelWidth = 54;
+constexpr int kRemoteStatusCountPixelWidth = 46;
 constexpr int kRemoteStatusPeakPixelWidth = 108;
 constexpr int kRemoteStatusRmsPixelWidth = 88;
 constexpr int kRemoteStatusIndexPixelWidth = 54;
+constexpr int kRemoteStatusRangePixelWidth = 104;
 
 QString hexPreview(const QByteArray& data, int limit = 12)
 {
@@ -154,9 +156,8 @@ QString remoteStatusValueCell(const QString& text, int pixelWidth)
 
 QString remoteWaveformStatusCells(bool english, const QString& sampleCountText)
 {
-    return remoteStatusCell(english ? QStringLiteral("Remote:") : QStringLiteral("远程:")) +
-           remoteStatusValueCell(sampleCountText, kRemoteStatusCountPixelWidth) +
-           remoteStatusCell(english ? QStringLiteral("samples") : QStringLiteral("点"));
+    return remoteStatusCell(english ? QStringLiteral("Remote pts:") : QStringLiteral("远程点:")) +
+           remoteStatusValueCell(sampleCountText, kRemoteStatusCountPixelWidth);
 }
 
 QString remoteFeatureStatusCells(bool english, double peak, double rms, quint32 searchStart, quint32 searchEnd, float peakIndex)
@@ -169,14 +170,13 @@ QString remoteFeatureStatusCells(bool english, double peak, double rms, quint32 
                     remoteStatusValueCell(rmsText, kRemoteStatusRmsPixelWidth);
     if (searchStart > 0 || searchEnd > 0)
     {
-        cells += remoteStatusCell(english ? QStringLiteral("Range[") : QStringLiteral("区间[")) +
-                 remoteStatusValueCell(QString::number(searchStart), kRemoteStatusIndexPixelWidth) +
-                 remoteStatusCell(QStringLiteral(",")) +
-                 remoteStatusValueCell(searchEnd == 0
-                                           ? (english ? QStringLiteral("end") : QStringLiteral("末尾"))
-                                           : QString::number(searchEnd),
-                                       kRemoteStatusIndexPixelWidth) +
-                 remoteStatusCell(QStringLiteral(")")) +
+        const QString rangeText = QStringLiteral("[%1,%2)")
+            .arg(searchStart)
+            .arg(searchEnd == 0
+                     ? (english ? QStringLiteral("end") : QStringLiteral("末尾"))
+                     : QString::number(searchEnd));
+        cells += remoteStatusCell(english ? QStringLiteral("Range") : QStringLiteral("区间")) +
+                 remoteStatusValueCell(rangeText, kRemoteStatusRangePixelWidth) +
                  remoteStatusCell(english ? QStringLiteral("Index") : QStringLiteral("下标")) +
                  remoteStatusValueCell(QString::number(peakIndex, 'f', 0), kRemoteStatusIndexPixelWidth);
     }
@@ -800,12 +800,12 @@ void TcpWavePanel::setupUi()
     const int frameRateWidth = std::max(
         kTcpFrameRateMinimumWidth,
         widestTextWidth(frame_rate_label_,
-                        {QStringLiteral("实时频率: 0000.00 Hz"),
-                         QStringLiteral("Realtime: 0000.00 Hz")}) + 10);
+                        {QStringLiteral("实时频率: 00.00 Hz"),
+                         QStringLiteral("Realtime: 00.00 Hz")}) + 8);
     frame_rate_label_->setFixedWidth(frameRateWidth);
     frame_rate_label_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     top_controls_layout_->addWidget(frame_rate_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    top_controls_layout_->addSpacing(kTcpTitleBarPrimarySpacing);
+    top_controls_layout_->addSpacing(kTcpTitleBarRealtimeHostSpacing);
 
     auto *hostRowLayout = new QHBoxLayout();
     hostRowLayout->setContentsMargins(0, 0, 0, 0);
