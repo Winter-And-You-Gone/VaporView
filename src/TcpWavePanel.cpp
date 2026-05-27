@@ -52,6 +52,10 @@ constexpr int kPeakTrendFrameWindow = 1000;
 constexpr int kLiveDisplayRefreshMs = 20;
 constexpr qint64 kFrameRateWindowMs = 5000;
 constexpr double kMaxReasonableWaveMagnitude = 1.0e6;
+constexpr int kRemoteStatusCountWidth = 6;
+constexpr int kRemoteStatusPeakWidth = 12;
+constexpr int kRemoteStatusRmsWidth = 10;
+constexpr int kRemoteStatusIndexWidth = 6;
 
 QString hexPreview(const QByteArray& data, int limit = 12)
 {
@@ -115,6 +119,24 @@ int widestTextWidth(const QLabel *label, const QStringList& candidates)
         width = std::max(width, metrics.horizontalAdvance(candidate));
     }
     return width;
+}
+
+QString fixedStatusText(const QString& text, int width)
+{
+    return text.rightJustified(std::max(width, static_cast<int>(text.size())), QLatin1Char(' '));
+}
+
+QString fixedStatusInteger(qint64 value, int width)
+{
+    return fixedStatusText(QString::number(value), width);
+}
+
+QString fixedStatusFloat(double value, int decimals, int width)
+{
+    return fixedStatusText(std::isfinite(value)
+                               ? QString::number(value, 'f', decimals)
+                               : QStringLiteral("--"),
+                           width);
 }
 
 struct PlotTheme
@@ -656,8 +678,6 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , pending_live_status_text_()
     , remote_waveform_status_text_()
     , remote_feature_status_text_()
-    , remote_feature_peak_text_width_(0)
-    , remote_feature_rms_text_width_(0)
     , peak_filter_settings_()
     , peak_search_start_index_(kDefaultPeakSearchStartIndex)
     , peak_search_end_index_(kDefaultPeakSearchEndIndex)
@@ -774,6 +794,12 @@ void TcpWavePanel::setupUi()
     status_label_->setTextFormat(Qt::PlainText);
     status_label_->setWordWrap(false);
     status_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    const int remoteStatusWidth = std::max(
+        640,
+        widestTextWidth(status_label_,
+                        {QStringLiteral("远程波形：000000 点 | 远程特征值：峰值 -0000.000000 RMS -0000.0000，搜索区间 [000000, 000000)，峰值下标 000000"),
+                         QStringLiteral("Remote waveform: 000000 samples | Remote feature: peak -0000.000000 rms -0000.0000, search [000000, 000000), index 000000")}) + 10);
+    status_label_->setMinimumWidth(remoteStatusWidth);
     status_label_->setVisible(false);
     top_controls_layout_->addSpacing(12);
     top_controls_layout_->addWidget(status_label_, 1, Qt::AlignVCenter | Qt::AlignLeft);
@@ -1342,11 +1368,12 @@ void TcpWavePanel::injectRemoteRawSignalFrame(quint64 timestampUs, const QVector
     {
         return;
     }
+    const QString sampleCountText = fixedStatusInteger(samples.size(), kRemoteStatusCountWidth);
     wave1_history_ = samples;
     pending_wave1_info_text_ = QString(is_english_ ? "remote raw signal: %1 samples" : "远程原始信号：%1 点")
-        .arg(samples.size());
+        .arg(sampleCountText);
     remote_waveform_status_text_ = QString(is_english_ ? "Remote raw waveform: %1 samples" : "远程原始信号：%1 点")
-        .arg(samples.size());
+        .arg(sampleCountText);
     updatePendingRemoteLiveStatus();
     live_display_dirty_ = true;
 }
@@ -1364,10 +1391,11 @@ void TcpWavePanel::injectRemoteSecondHarmonicFrame(quint64 timestampUs, const QV
     wave4_history_ = samples;
     ++frame_count_;
     updateFrameRateDisplay(QDateTime::currentMSecsSinceEpoch());
+    const QString sampleCountText = fixedStatusInteger(samples.size(), kRemoteStatusCountWidth);
     pending_wave1_info_text_ = is_english_ ? "Remote Sky source" : "天空端远程源";
-    pending_wave4_info_text_ = QString(is_english_ ? "%1 samples" : "%1 点").arg(samples.size());
+    pending_wave4_info_text_ = QString(is_english_ ? "%1 samples" : "%1 点").arg(sampleCountText);
     remote_waveform_status_text_ = QString(is_english_ ? "Remote waveform: %1 samples" : "远程波形：%1 点")
-        .arg(samples.size());
+        .arg(sampleCountText);
     updatePendingRemoteLiveStatus();
     live_display_dirty_ = true;
     emit normalizedSecondHarmonicFrameReady(timestampUs, wave4_history_);
@@ -1402,23 +1430,18 @@ void TcpWavePanel::injectRemoteWaveformFeature(const VaporView::WaveformFeature&
         peak_raw_history_.remove(0, peak_raw_history_.size() - kPeakTrendFrameWindow);
     }
     rebuildPeakHistory();
-    auto formatRemoteFeatureValue = [](double value, int decimals, int& maxWidth) {
-        const QString text = std::isfinite(value)
-            ? QString::number(value, 'f', decimals)
-            : QStringLiteral("--");
-        maxWidth = std::max(maxWidth, static_cast<int>(text.size()));
-        return text.rightJustified(maxWidth, QLatin1Char(' '));
-    };
-    const QString peakText = formatRemoteFeatureValue(feature.peak, 6, remote_feature_peak_text_width_);
-    const QString rmsText = formatRemoteFeatureValue(feature.rms, 4, remote_feature_rms_text_width_);
+    const QString peakText = fixedStatusFloat(feature.peak, 6, kRemoteStatusPeakWidth);
+    const QString rmsText = fixedStatusFloat(feature.rms, 4, kRemoteStatusRmsWidth);
     remote_feature_status_text_ = QString(is_english_ ? "Remote feature: peak %1 rms %2" : "远程特征值：峰值 %1 RMS %2")
         .arg(peakText, rmsText);
     if (feature.search_start_index > 0 || feature.search_end_index > 0)
     {
         remote_feature_status_text_ += QString(is_english_ ? ", search [%1, %2), index %3" : "，搜索区间 [%1, %2)，峰值下标 %3")
-            .arg(feature.search_start_index)
-            .arg(feature.search_end_index == 0 ? QStringLiteral("end") : QString::number(feature.search_end_index))
-            .arg(feature.peak_index, 0, 'f', 0);
+            .arg(fixedStatusInteger(feature.search_start_index, kRemoteStatusIndexWidth))
+            .arg(feature.search_end_index == 0
+                     ? fixedStatusText(QStringLiteral("end"), kRemoteStatusIndexWidth)
+                     : fixedStatusInteger(feature.search_end_index, kRemoteStatusIndexWidth))
+            .arg(fixedStatusFloat(feature.peak_index, 0, kRemoteStatusIndexWidth));
     }
     updatePendingRemoteLiveStatus();
     live_display_dirty_ = true;
@@ -1431,8 +1454,6 @@ void TcpWavePanel::applyRemotePeakSearchRange(quint32 startIndex, quint32 endInd
     peak_raw_history_.clear();
     peak_history_.clear();
     last_remote_feature_time_us_ = 0;
-    remote_feature_peak_text_width_ = 0;
-    remote_feature_rms_text_width_ = 0;
     if (peak_plot_)
     {
         peak_plot_->setPeakValues({});
@@ -1822,8 +1843,6 @@ void TcpWavePanel::clearRemoteWaveformDisplay(const QString& statusText)
     pending_live_status_text_.clear();
     remote_waveform_status_text_.clear();
     remote_feature_status_text_.clear();
-    remote_feature_peak_text_width_ = 0;
-    remote_feature_rms_text_width_ = 0;
     if (wave1_plot_) wave1_plot_->setSamples({});
     if (wave4_plot_) wave4_plot_->setSamples({});
     if (peak_plot_) peak_plot_->setPeakValues({});

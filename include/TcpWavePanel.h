@@ -167,8 +167,6 @@ private:
     QString pending_live_status_text_;
     QString remote_waveform_status_text_;
     QString remote_feature_status_text_;
-    int remote_feature_peak_text_width_;
-    int remote_feature_rms_text_width_;
     PeakFilterSettings peak_filter_settings_;
     int peak_search_start_index_;
     int peak_search_end_index_;
