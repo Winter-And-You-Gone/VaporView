@@ -174,9 +174,9 @@ QString remoteWaveformStatusText(bool english, int sampleCount)
 QString remoteFeatureStatusText(bool english, double peak, double rms, quint32 searchStart, quint32 searchEnd, float peakIndex)
 {
     const QString fieldGap = QStringLiteral("  ");
-    const QString rmsLabel = english ? QStringLiteral("RMS") : QStringLiteral("均方根RMS");
-    QString text = QStringLiteral("%1 %2%3%4 %5")
-        .arg(english ? QStringLiteral("Peak") : QStringLiteral("峰值"),
+    const QString rmsLabel = english ? QStringLiteral("RMS:") : QStringLiteral("均方根RMS:");
+    QString text = QStringLiteral("%1%2%3%4%5")
+        .arg(english ? QStringLiteral("Peak:") : QStringLiteral("峰值:"),
              fixedStatusFloat(peak, 6, kRemoteStatusPeakWidth),
              fieldGap,
              rmsLabel,
@@ -190,10 +190,10 @@ QString remoteFeatureStatusText(bool english, double peak, double rms, quint32 s
                      : QString::number(searchEnd));
         text += QStringLiteral("%1%2 %3%4%5 %6")
             .arg(fieldGap,
-                 english ? QStringLiteral("Range") : QStringLiteral("区间"),
+                 english ? QStringLiteral("Range:") : QStringLiteral("区间:"),
                  fixedStatusField(rangeText, kRemoteStatusRangeWidth),
                  fieldGap,
-                 english ? QStringLiteral("Index") : QStringLiteral("下标"),
+                 english ? QStringLiteral("Index:") : QStringLiteral("下标:"),
                  fixedStatusField(QString::number(peakIndex, 'f', 0), kRemoteStatusIndexWidth));
     }
     return text;
