@@ -617,6 +617,8 @@ private:
     QHash<quint16, VaporView::PeakSearchRange> remote_peak_search_commands_;
     qint64 remote_last_status_ms_;
     VaporView::TelemetryStatus remote_status_;
+    VaporView::TelemetryStatus last_remote_recording_status_;
+    bool has_last_remote_recording_status_;
     std::atomic<bool> cancel_connection_requested_;
     std::thread connection_thread_;
     std::thread port_detection_thread_;
@@ -666,6 +668,14 @@ private:
     QString event_log_filename_;
     QString error_log_filename_;
     QString device_config_filename_;
+    QString last_recording_session_name_;
+    qint64 last_recording_entry_count_;
+    qint64 last_recording_waveform_frame_count_;
+    quint64 last_raw_epsilon_record_count_;
+    quint64 last_raw_ptb_record_count_;
+    quint64 last_raw_hmp_record_count_;
+    quint64 last_raw_lidar_record_count_;
+    quint64 last_raw_tcp_wave_record_count_;
     std::atomic<qint64> recording_entry_count_;
     std::atomic<qint64> waveform_frame_count_;
     std::atomic<qint64> waveform_file_count_;

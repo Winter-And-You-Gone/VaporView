@@ -2989,6 +2989,7 @@ MainWindow::MainWindow(QWidget *parent)
     , remote_wave_stream_auto_start_(true)
     , remote_recording_state_(0)
     , remote_last_status_ms_(0)
+    , has_last_remote_recording_status_(false)
     , cancel_connection_requested_(false)
     , recording_thread_running_(false)
     , recording_paused_(false)
@@ -3033,6 +3034,14 @@ MainWindow::MainWindow(QWidget *parent)
     , event_log_filename_()
     , error_log_filename_()
     , device_config_filename_()
+    , last_recording_session_name_()
+    , last_recording_entry_count_(0)
+    , last_recording_waveform_frame_count_(0)
+    , last_raw_epsilon_record_count_(0)
+    , last_raw_ptb_record_count_(0)
+    , last_raw_hmp_record_count_(0)
+    , last_raw_lidar_record_count_(0)
+    , last_raw_tcp_wave_record_count_(0)
     , recording_entry_count_(0)
     , waveform_frame_count_(0)
     , waveform_file_count_(0)
@@ -7387,42 +7396,78 @@ void MainWindow::updateRecordingStatusLabel()
             recording_status_card_->style()->polish(recording_status_card_);
         }
     };
+    auto localDetailText = [this](const QString& session,
+                                  qlonglong sensorRows,
+                                  qlonglong waveformFrames,
+                                  qulonglong rawEpsilon,
+                                  qulonglong rawPtb,
+                                  qulonglong rawHmp,
+                                  qulonglong rawLidar,
+                                  qulonglong rawTcpWave) {
+        return is_english_
+            ? QStringLiteral("Session: %1\nSensor rows: %2\nWaveform frames: %3\nRaw EPSILON: %4\nRaw PTB: %5\nRaw HMP: %6\nRaw Lidar: %7\nRaw TCP wave: %8")
+                  .arg(session)
+                  .arg(sensorRows)
+                  .arg(waveformFrames)
+                  .arg(rawEpsilon)
+                  .arg(rawPtb)
+                  .arg(rawHmp)
+                  .arg(rawLidar)
+                  .arg(rawTcpWave)
+            : QStringLiteral("会话：%1\n设备行数：%2\n波形帧数：%3\nRaw EPSILON：%4\nRaw PTB：%5\nRaw HMP：%6\nRaw Lidar：%7\nRaw TCP 波形：%8")
+                  .arg(session)
+                  .arg(sensorRows)
+                  .arg(waveformFrames)
+                  .arg(rawEpsilon)
+                  .arg(rawPtb)
+                  .arg(rawHmp)
+                  .arg(rawLidar)
+                  .arg(rawTcpWave);
+    };
 
     if (isRemoteSkyMode())
     {
+        const bool useLastRemoteStatus =
+            remote_status_.session_name.isEmpty() &&
+            remote_status_.telemetry_record_count == 0 &&
+            remote_status_.raw_tcp_wave_record_count == 0 &&
+            has_last_remote_recording_status_;
+        const VaporView::TelemetryStatus& displayStatus = useLastRemoteStatus
+            ? last_remote_recording_status_
+            : remote_status_;
         const quint64 rawTotal =
-            remote_status_.raw_epsilon_record_count +
-            remote_status_.raw_ptb_record_count +
-            remote_status_.raw_hmp_record_count +
-            remote_status_.raw_lidar_record_count +
-            remote_status_.raw_tcp_wave_record_count;
-        const QString elapsed = formatElapsedCompact(remote_status_.recording_elapsed_ms);
-        const QString session = remote_status_.session_name.isEmpty()
+            displayStatus.raw_epsilon_record_count +
+            displayStatus.raw_ptb_record_count +
+            displayStatus.raw_hmp_record_count +
+            displayStatus.raw_lidar_record_count +
+            displayStatus.raw_tcp_wave_record_count;
+        const QString elapsed = formatElapsedCompact(displayStatus.recording_elapsed_ms);
+        const QString session = displayStatus.session_name.isEmpty()
             ? QStringLiteral("--")
-            : remote_status_.session_name;
+            : displayStatus.session_name;
         const QString detail = is_english_
             ? QStringLiteral("Session: %1\nElapsed: %2\nTelemetry rows: %3\nWave features: %4\nWave snapshots: %5\nRaw EPSILON: %6\nRaw PTB: %7\nRaw HMP: %8\nRaw Lidar: %9\nRaw TCP wave: %10")
                   .arg(session)
                   .arg(elapsed)
-                  .arg(remote_status_.telemetry_record_count)
-                  .arg(remote_status_.waveform_feature_record_count)
-                  .arg(remote_status_.waveform_snapshot_record_count)
-                  .arg(remote_status_.raw_epsilon_record_count)
-                  .arg(remote_status_.raw_ptb_record_count)
-                  .arg(remote_status_.raw_hmp_record_count)
-                  .arg(remote_status_.raw_lidar_record_count)
-                  .arg(remote_status_.raw_tcp_wave_record_count)
+                  .arg(displayStatus.telemetry_record_count)
+                  .arg(displayStatus.waveform_feature_record_count)
+                  .arg(displayStatus.waveform_snapshot_record_count)
+                  .arg(displayStatus.raw_epsilon_record_count)
+                  .arg(displayStatus.raw_ptb_record_count)
+                  .arg(displayStatus.raw_hmp_record_count)
+                  .arg(displayStatus.raw_lidar_record_count)
+                  .arg(displayStatus.raw_tcp_wave_record_count)
             : QStringLiteral("会话：%1\n时长：%2\n遥测行数：%3\n波形特征：%4\n波形快照：%5\nRaw EPSILON：%6\nRaw PTB：%7\nRaw HMP：%8\nRaw Lidar：%9\nRaw TCP 波形：%10")
                   .arg(session)
                   .arg(elapsed)
-                  .arg(remote_status_.telemetry_record_count)
-                  .arg(remote_status_.waveform_feature_record_count)
-                  .arg(remote_status_.waveform_snapshot_record_count)
-                  .arg(remote_status_.raw_epsilon_record_count)
-                  .arg(remote_status_.raw_ptb_record_count)
-                  .arg(remote_status_.raw_hmp_record_count)
-                  .arg(remote_status_.raw_lidar_record_count)
-                  .arg(remote_status_.raw_tcp_wave_record_count);
+                  .arg(displayStatus.telemetry_record_count)
+                  .arg(displayStatus.waveform_feature_record_count)
+                  .arg(displayStatus.waveform_snapshot_record_count)
+                  .arg(displayStatus.raw_epsilon_record_count)
+                  .arg(displayStatus.raw_ptb_record_count)
+                  .arg(displayStatus.raw_hmp_record_count)
+                  .arg(displayStatus.raw_lidar_record_count)
+                  .arg(displayStatus.raw_tcp_wave_record_count);
         recording_status_label_->setToolTip(detail);
         if (recording_status_card_)
         {
@@ -7464,25 +7509,15 @@ void MainWindow::updateRecordingStatusLabel()
     {
         const QFileInfo info(session_directory_);
         const QString session = info.fileName().isEmpty() ? QStringLiteral("--") : info.fileName();
-        const QString detail = is_english_
-            ? QStringLiteral("Session: %1\nSensor rows: %2\nWaveform frames: %3\nRaw EPSILON: %4\nRaw PTB: %5\nRaw HMP: %6\nRaw Lidar: %7\nRaw TCP wave: %8")
-                  .arg(session)
-                  .arg(static_cast<qlonglong>(recording_entry_count_.load()))
-                  .arg(static_cast<qlonglong>(waveform_frame_count_.load()))
-                  .arg(static_cast<qulonglong>(raw_epsilon_record_count_.load()))
-                  .arg(static_cast<qulonglong>(raw_ptb_record_count_.load()))
-                  .arg(static_cast<qulonglong>(raw_hmp_record_count_.load()))
-                  .arg(static_cast<qulonglong>(raw_lidar_record_count_.load()))
-                  .arg(static_cast<qulonglong>(raw_tcp_wave_record_count_.load()))
-            : QStringLiteral("会话：%1\n设备行数：%2\n波形帧数：%3\nRaw EPSILON：%4\nRaw PTB：%5\nRaw HMP：%6\nRaw Lidar：%7\nRaw TCP 波形：%8")
-                  .arg(session)
-                  .arg(static_cast<qlonglong>(recording_entry_count_.load()))
-                  .arg(static_cast<qlonglong>(waveform_frame_count_.load()))
-                  .arg(static_cast<qulonglong>(raw_epsilon_record_count_.load()))
-                  .arg(static_cast<qulonglong>(raw_ptb_record_count_.load()))
-                  .arg(static_cast<qulonglong>(raw_hmp_record_count_.load()))
-                  .arg(static_cast<qulonglong>(raw_lidar_record_count_.load()))
-                  .arg(static_cast<qulonglong>(raw_tcp_wave_record_count_.load()));
+        const QString detail = localDetailText(
+            session,
+            static_cast<qlonglong>(recording_entry_count_.load()),
+            static_cast<qlonglong>(waveform_frame_count_.load()),
+            static_cast<qulonglong>(raw_epsilon_record_count_.load()),
+            static_cast<qulonglong>(raw_ptb_record_count_.load()),
+            static_cast<qulonglong>(raw_hmp_record_count_.load()),
+            static_cast<qulonglong>(raw_lidar_record_count_.load()),
+            static_cast<qulonglong>(raw_tcp_wave_record_count_.load()));
         if (recording_paused_)
         {
             recording_status_label_->setText(
@@ -7498,7 +7533,20 @@ void MainWindow::updateRecordingStatusLabel()
     }
     else
     {
-        recording_status_label_->setText(is_english_ ? "Recording: Off" : "记录：未记录");
+        const QString session = last_recording_session_name_.isEmpty()
+            ? QStringLiteral("--")
+            : last_recording_session_name_;
+        const QString detail = localDetailText(
+            session,
+            static_cast<qlonglong>(last_recording_entry_count_),
+            static_cast<qlonglong>(last_recording_waveform_frame_count_),
+            static_cast<qulonglong>(last_raw_epsilon_record_count_),
+            static_cast<qulonglong>(last_raw_ptb_record_count_),
+            static_cast<qulonglong>(last_raw_hmp_record_count_),
+            static_cast<qulonglong>(last_raw_lidar_record_count_),
+            static_cast<qulonglong>(last_raw_tcp_wave_record_count_));
+        recording_status_label_->setText(
+            QString(is_english_ ? "Recording: Off\n%1" : "记录：未记录\n%1").arg(detail));
         setVisualStatus("disconnected");
     }
 
@@ -8261,6 +8309,18 @@ void MainWindow::stopRecording(bool announce)
     const qint64 entryCount = recording_entry_count_.load();
     const qint64 waveformCount = waveform_frame_count_.load();
     const QString sessionPath = session_directory_;
+    last_recording_session_name_ = QFileInfo(sessionPath).fileName();
+    if (last_recording_session_name_.isEmpty())
+    {
+        last_recording_session_name_ = session_name_;
+    }
+    last_recording_entry_count_ = entryCount;
+    last_recording_waveform_frame_count_ = waveformCount;
+    last_raw_epsilon_record_count_ = raw_epsilon_record_count_.load();
+    last_raw_ptb_record_count_ = raw_ptb_record_count_.load();
+    last_raw_hmp_record_count_ = raw_hmp_record_count_.load();
+    last_raw_lidar_record_count_ = raw_lidar_record_count_.load();
+    last_raw_tcp_wave_record_count_ = raw_tcp_wave_record_count_.load();
 
     if (sensors_file_ && sensors_file_->isOpen())
     {
@@ -9828,6 +9888,21 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
         log(is_english_ ? "Remote Sky handshake confirmed" : "天空端握手成功");
     }
     remote_status_ = status;
+    const quint64 rawTotal =
+        status.raw_epsilon_record_count +
+        status.raw_ptb_record_count +
+        status.raw_hmp_record_count +
+        status.raw_lidar_record_count +
+        status.raw_tcp_wave_record_count;
+    if (!status.session_name.isEmpty() ||
+        status.telemetry_record_count > 0 ||
+        status.waveform_feature_record_count > 0 ||
+        status.waveform_snapshot_record_count > 0 ||
+        rawTotal > 0)
+    {
+        last_remote_recording_status_ = status;
+        has_last_remote_recording_status_ = true;
+    }
     if (tcp_wave_panel_)
     {
         tcp_wave_panel_->setRemoteFeatureRateHz(status.feature_rate_hz);
