@@ -3803,7 +3803,7 @@ void MainWindow::setFontScale(int percent)
 
 void MainWindow::rebuildRecordingRateMenu()
 {
-    if (!recording_rate_menu_)
+    if (!recording_rate_menu_ || custom_title_bar_)
     {
         return;
     }
@@ -6377,22 +6377,21 @@ void MainWindow::setupLogPanel()
 
 void MainWindow::setEnglish(bool english)
 {
+    auto setNativeMenuTitle = [this](QMenu *menu, const QString& title) {
+        if (!menu || custom_title_bar_)
+        {
+            return;
+        }
+        menu->setTitle(title);
+    };
+
     is_english_ = english;
 
-    if (data_menu_)
-    {
-        data_menu_->setTitle(english ? "&Data" : "数据(&D)");
-    }
+    setNativeMenuTitle(data_menu_, english ? QStringLiteral("&Data") : QStringLiteral("数据(&D)"));
     recording_directory_action_->setText(english ? "Recording Folder..." : "记录目录...");
-    if (recording_rate_menu_)
-    {
-        recording_rate_menu_->setTitle(english ? "Record Rates" : "记录频率");
-        rebuildRecordingRateMenu();
-    }
-    if (devices_menu_)
-    {
-        devices_menu_->setTitle(english ? "&Devices" : "设备(&E)");
-    }
+    setNativeMenuTitle(recording_rate_menu_, english ? QStringLiteral("Record Rates") : QStringLiteral("记录频率"));
+    rebuildRecordingRateMenu();
+    setNativeMenuTitle(devices_menu_, english ? QStringLiteral("&Devices") : QStringLiteral("设备(&E)"));
     if (epsilon_packet_rates_action_)
     {
         epsilon_packet_rates_action_->setText(english ? "EPSILON Packet Rates..." : "设置EPSILON包频率...");
@@ -6408,10 +6407,7 @@ void MainWindow::setEnglish(bool english)
     session_viewer_action_->setText(english ? "Data Viewer..." : "数据查看器...");
     exit_action_->setText(english ? "E&xit" : "退出(&X)");
 
-    if (font_menu_)
-    {
-        font_menu_->setTitle(english ? "Font &Size" : "字号(&S)");
-    }
+    setNativeMenuTitle(font_menu_, english ? QStringLiteral("Font &Size") : QStringLiteral("字号(&S)"));
     font_tiny_action_->setText(english ? "Tiny (70%)" : "超小 (70%)");
     font_extra_small_action_->setText(english ? "Extra Small (80%)" : "特小 (80%)");
     font_small_action_->setText(english ? "Small (90%)" : "小号 (90%)");
@@ -6419,10 +6415,7 @@ void MainWindow::setEnglish(bool english)
     font_large_action_->setText(english ? "Large (115%)" : "大号 (115%)");
     font_extra_large_action_->setText(english ? "Extra Large (130%)" : "超大 (130%)");
 
-    if (language_menu_)
-    {
-        language_menu_->setTitle(english ? "&Language" : "语言(&L)");
-    }
+    setNativeMenuTitle(language_menu_, english ? QStringLiteral("&Language") : QStringLiteral("语言(&L)"));
     lang_action_->setText(english ? "Switch to Chinese" : "切换到英文");
     lang_action_->setToolTip(english ? "Switch to Chinese" : "切换到英文");
     lang_action_->setStatusTip(english ? "Switch interface language" : "切换界面语言");
@@ -6430,10 +6423,7 @@ void MainWindow::setEnglish(bool english)
     updateCustomTitleBarTexts();
     discardTitleApplicationMenuPanel();
 
-    if (help_menu_)
-    {
-        help_menu_->setTitle(english ? "&Help" : "帮助(&H)");
-    }
+    setNativeMenuTitle(help_menu_, english ? QStringLiteral("&Help") : QStringLiteral("帮助(&H)"));
     about_action_->setText(english ? "&About" : "关于(&A)");
 
     refresh_ports_btn_->setText(english ? "Refresh" : "刷新");
