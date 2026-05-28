@@ -2829,6 +2829,7 @@ MainWindow::MainWindow(QWidget *parent)
     , custom_logo_label_(nullptr)
     , custom_title_label_(nullptr)
     , title_menu_btn_(nullptr)
+    , title_language_btn_(nullptr)
     , window_minimize_btn_(nullptr)
     , window_maximize_btn_(nullptr)
     , window_close_btn_(nullptr)
@@ -2977,6 +2978,7 @@ MainWindow::MainWindow(QWidget *parent)
     , lidar_collector_(nullptr)
     , refresh_timer_(nullptr)
     , is_english_(false)
+    , language_switch_in_progress_(false)
     , has_inline_progress_log_(false)
     , connection_attempt_in_progress_(false)
     , port_detection_in_progress_(false)
@@ -5049,7 +5051,10 @@ void MainWindow::setupCustomTitleBar()
     addTitleBarSeparator(titleLayout);
     titleLayout->addWidget(createTitleBarActionButton(session_viewer_action_, custom_title_bar_), 0, Qt::AlignVCenter);
     addTitleBarSeparator(titleLayout);
-    titleLayout->addWidget(createTitleBarActionButton(lang_action_, custom_title_bar_), 0, Qt::AlignVCenter);
+    title_language_btn_ = createTitleBarIconButton(QStringLiteral("titleBarButton"), custom_title_bar_);
+    title_language_btn_->setAccessibleName(QStringLiteral("titleLanguageButton"));
+    connect(title_language_btn_, &QToolButton::clicked, this, &MainWindow::onSwitchLanguage);
+    titleLayout->addWidget(title_language_btn_, 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(theme_toggle_action_, custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addStretch(1);
     addTitleBarSeparator(titleLayout);
@@ -6667,9 +6672,18 @@ void MainWindow::onOpenSessionViewerClicked()
 
 void MainWindow::onSwitchLanguage()
 {
-    is_english_ = !is_english_;
-    setEnglish(is_english_);
-    log(is_english_ ? "Language switched to English" : "语言已切换为中文");
+    if (language_switch_in_progress_)
+    {
+        return;
+    }
+
+    language_switch_in_progress_ = true;
+    QTimer::singleShot(0, this, [this]() {
+        is_english_ = !is_english_;
+        setEnglish(is_english_);
+        log(is_english_ ? "Language switched to English" : "语言已切换为中文");
+        language_switch_in_progress_ = false;
+    });
 }
 
 void MainWindow::showAboutDialog()
@@ -6725,6 +6739,11 @@ void MainWindow::updateCustomTitleBarTexts()
     {
         title_menu_btn_->setToolTip(is_english_ ? "Menu" : "菜单");
         title_menu_btn_->setStatusTip(title_menu_btn_->toolTip());
+    }
+    if (title_language_btn_)
+    {
+        title_language_btn_->setToolTip(is_english_ ? "Switch to Chinese" : "切换到英文");
+        title_language_btn_->setStatusTip(is_english_ ? "Switch interface language" : "切换界面语言");
     }
     if (window_minimize_btn_)
     {
@@ -6791,6 +6810,10 @@ void MainWindow::updateCustomTitleBarStyle()
     if (title_menu_btn_)
     {
         title_menu_btn_->setIcon(createTitleBarIcon(QStringLiteral("menu"), dark_theme_enabled_));
+    }
+    if (title_language_btn_)
+    {
+        title_language_btn_->setIcon(createLanguageIcon());
     }
     if (title_application_panel_)
     {

@@ -439,6 +439,7 @@ private:
     QLabel *custom_logo_label_;
     QLabel *custom_title_label_;
     QToolButton *title_menu_btn_;
+    QToolButton *title_language_btn_;
     QToolButton *window_minimize_btn_;
     QToolButton *window_maximize_btn_;
     QToolButton *window_close_btn_;
@@ -605,6 +606,7 @@ private:
     VaporView::LidarData current_lidar_;
 
     bool is_english_;
+    bool language_switch_in_progress_;
     bool has_inline_progress_log_;
     bool connection_attempt_in_progress_;
     bool port_detection_in_progress_;
