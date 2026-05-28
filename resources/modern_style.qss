@@ -137,6 +137,32 @@ QFrame#logPanelFrame {
     border-radius: 8px;
 }
 
+QFrame#recordingStatusCard {
+    background-color: #F8F8F7;
+    border: 1px solid #EAEAE9;
+    border-radius: 6px;
+}
+
+QFrame#recordingStatusCard[status="connected"] {
+    border-color: #8fc59e;
+}
+
+QFrame#recordingStatusCard[status="connecting"] {
+    border-color: #e3c46e;
+}
+
+QFrame#recordingStatusCard[status="disconnected"] {
+    border-color: #e5a0a9;
+}
+
+QLabel#recordingStatusLabel {
+    background-color: transparent;
+    border: none;
+    color: #000000;
+    font-size: 14px;
+    font-weight: 600;
+}
+
 QGroupBox::title {
     subcontrol-origin: border;
     subcontrol-position: top left;

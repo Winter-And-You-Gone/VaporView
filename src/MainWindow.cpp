@@ -952,6 +952,27 @@ QFrame#logPanelFrame QLabel#sectionTitleLabel {
     border: none;
     color: #ffffff;
 }
+QFrame#recordingStatusCard {
+    background-color: #181818;
+    border: 1px solid #202020;
+    border-radius: 6px;
+}
+QFrame#recordingStatusCard[status="connected"] {
+    border-color: #2f6f46;
+}
+QFrame#recordingStatusCard[status="connecting"] {
+    border-color: #7c5b1d;
+}
+QFrame#recordingStatusCard[status="disconnected"] {
+    border-color: #6f2f38;
+}
+QLabel#recordingStatusLabel {
+    background-color: transparent;
+    border: none;
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 600;
+}
 QWidget#sectionTitleBar,
 QLabel#sectionTitleLabel {
     background-color: #121212;
@@ -2801,6 +2822,7 @@ MainWindow::MainWindow(QWidget *parent)
     , status_task_progress_bar_(nullptr)
     , status_task_spinner_label_(nullptr)
     , status_task_spinner_timer_(nullptr)
+    , recording_status_card_(nullptr)
     , recording_status_label_(nullptr)
     , auto_detect_ports_btn_(nullptr)
     , epsilon_port_combo_(nullptr)
@@ -3475,6 +3497,11 @@ void MainWindow::loadModernStyleSheet()
             "QGroupBox { background-color: #FDFDFC; border: 1px solid #EAEAE9; border-top: 40px solid #FDFDFC; border-radius: 8px; margin-top: 0px; padding: 8px 8px 8px 8px; font-size: 15px; font-weight: bold; color: #000000; }"
             "QGroupBox#sensorGroupBox { margin-top: 0px; background-color: #FDFDFC; border: 1px solid #EAEAE9; border-radius: 8px; padding: 0px 0px 0px 0px; }"
             "QFrame#logPanelFrame { background-color: #FDFDFC; border: 1px solid #EAEAE9; border-radius: 8px; }"
+            "QFrame#recordingStatusCard { background-color: #F8F8F7; border: 1px solid #EAEAE9; border-radius: 6px; }"
+            "QFrame#recordingStatusCard[status=\"connected\"] { border-color: #8fc59e; }"
+            "QFrame#recordingStatusCard[status=\"connecting\"] { border-color: #e3c46e; }"
+            "QFrame#recordingStatusCard[status=\"disconnected\"] { border-color: #e5a0a9; }"
+            "QLabel#recordingStatusLabel { background-color: transparent; border: none; color: #000000; font-size: 14px; font-weight: 600; }"
             "QGroupBox::title { subcontrol-origin: border; subcontrol-position: top left; left: 12px; top: -30px; padding: 0px 2px; background-color: transparent; border: none; border-radius: 0px; color: #000000; }"
             "QDialog#rtkConfigDialog, QWidget#rtkConfigViewport, QWidget#rtkConfigContent, QScrollArea#rtkConfigScrollArea { background-color: #FDFDFC; }"
             "QDialog#rtkConfigDialog QGroupBox#rtkCardGroup { background-color: #FDFDFC; border: 1px solid #EAEAE9; border-radius: 8px; margin-top: 0px; padding: 0px; color: #000000; }"
@@ -5611,8 +5638,6 @@ void MainWindow::setupStatusBar()
         status_task_spinner_index_ = (status_task_spinner_index_ + 1) % frames.size();
     });
 
-    recording_status_label_ = new QLabel(this);
-    statusBar()->addPermanentWidget(recording_status_label_);
 }
 
 void MainWindow::startStatusTaskSpinner()
@@ -6244,6 +6269,25 @@ void MainWindow::setupLogPanel()
     log_clear_btn_->setIconSize(QSize(kMainPageButtonHeight - 12, kMainPageButtonHeight - 12));
     logTitleLayout->addWidget(log_clear_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
     log_layout->addWidget(logTitleBar);
+
+    recording_status_card_ = new QFrame(log_group_);
+    recording_status_card_->setObjectName(QStringLiteral("recordingStatusCard"));
+    recording_status_card_->setFrameShape(QFrame::NoFrame);
+    recording_status_card_->setAttribute(Qt::WA_StyledBackground, true);
+    recording_status_card_->setAutoFillBackground(true);
+    recording_status_card_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+    auto *recordingStatusLayout = new QHBoxLayout(recording_status_card_);
+    recordingStatusLayout->setContentsMargins(10, 8, 10, 8);
+    recordingStatusLayout->setSpacing(0);
+
+    recording_status_label_ = new QLabel(recording_status_card_);
+    recording_status_label_->setObjectName(QStringLiteral("recordingStatusLabel"));
+    recording_status_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    recording_status_label_->setWordWrap(true);
+    recording_status_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    recording_status_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+    recordingStatusLayout->addWidget(recording_status_label_);
+    log_layout->addWidget(recording_status_card_);
 
     log_text_edit_ = new QTextEdit(log_group_);
     log_text_edit_->setObjectName(QStringLiteral("logTextEdit"));
@@ -7261,6 +7305,24 @@ void MainWindow::updateRecordingStatusLabel()
         return;
     }
 
+    auto setVisualStatus = [this](const char *status) {
+        const QString statusValue = QString::fromLatin1(status);
+        recording_status_label_->setProperty("status", statusValue);
+        if (recording_status_card_)
+        {
+            recording_status_card_->setProperty("status", statusValue);
+        }
+    };
+    auto polishVisualStatus = [this]() {
+        recording_status_label_->style()->unpolish(recording_status_label_);
+        recording_status_label_->style()->polish(recording_status_label_);
+        if (recording_status_card_)
+        {
+            recording_status_card_->style()->unpolish(recording_status_card_);
+            recording_status_card_->style()->polish(recording_status_card_);
+        }
+    };
+
     if (isRemoteSkyMode())
     {
         const quint64 rawTotal =
@@ -7297,6 +7359,10 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(remote_status_.raw_lidar_record_count)
                   .arg(remote_status_.raw_tcp_wave_record_count);
         recording_status_label_->setToolTip(detail);
+        if (recording_status_card_)
+        {
+            recording_status_card_->setToolTip(detail);
+        }
         if (remote_recording_state_ == 1)
         {
             recording_status_label_->setText(
@@ -7308,7 +7374,7 @@ void MainWindow::updateRecordingStatusLabel()
                     .arg(rawTotal)
                     .arg(remote_status_.raw_tcp_wave_record_count)
                     .arg(session));
-            recording_status_label_->setProperty("status", "connected");
+            setVisualStatus("connected");
         }
         else if (remote_recording_state_ == 2)
         {
@@ -7321,15 +7387,14 @@ void MainWindow::updateRecordingStatusLabel()
                     .arg(rawTotal)
                     .arg(remote_status_.raw_tcp_wave_record_count)
                     .arg(session));
-            recording_status_label_->setProperty("status", "connecting");
+            setVisualStatus("connecting");
         }
         else
         {
             recording_status_label_->setText(is_english_ ? "Sky Recording: Off" : "天空端记录: 未记录");
-            recording_status_label_->setProperty("status", "disconnected");
+            setVisualStatus("disconnected");
         }
-        recording_status_label_->style()->unpolish(recording_status_label_);
-        recording_status_label_->style()->polish(recording_status_label_);
+        polishVisualStatus();
         updateRecordingActionStates();
         return;
     }
@@ -7345,7 +7410,7 @@ void MainWindow::updateRecordingStatusLabel()
                     .arg(static_cast<qlonglong>(recording_entry_count_.load()))
                     .arg(static_cast<qlonglong>(waveform_frame_count_.load()))
                     .arg(info.fileName()));
-            recording_status_label_->setProperty("status", "connecting");
+            setVisualStatus("connecting");
         }
         else
         {
@@ -7355,17 +7420,22 @@ void MainWindow::updateRecordingStatusLabel()
                     .arg(static_cast<qlonglong>(recording_entry_count_.load()))
                     .arg(static_cast<qlonglong>(waveform_frame_count_.load()))
                     .arg(info.fileName()));
-            recording_status_label_->setProperty("status", "connected");
+            setVisualStatus("connected");
         }
     }
     else
     {
         recording_status_label_->setText(is_english_ ? "Recording: Off" : "记录: 未记录");
-        recording_status_label_->setProperty("status", "disconnected");
+        setVisualStatus("disconnected");
     }
 
-    recording_status_label_->style()->unpolish(recording_status_label_);
-    recording_status_label_->style()->polish(recording_status_label_);
+    const QString summary = recording_status_label_->text();
+    recording_status_label_->setToolTip(summary);
+    if (recording_status_card_)
+    {
+        recording_status_card_->setToolTip(summary);
+    }
+    polishVisualStatus();
     updateRecordingActionStates();
 }
 

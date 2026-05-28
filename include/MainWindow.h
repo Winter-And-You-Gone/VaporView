@@ -451,6 +451,7 @@ private:
     QProgressBar *status_task_progress_bar_;
     QLabel *status_task_spinner_label_;
     QTimer *status_task_spinner_timer_;
+    QFrame *recording_status_card_;
     QLabel *recording_status_label_;
     QPushButton *auto_detect_ports_btn_;
 
