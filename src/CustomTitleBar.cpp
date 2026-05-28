@@ -270,7 +270,7 @@ protected:
                 auto *mouseEvent = static_cast<QMouseEvent *>(event);
                 if (mouseEvent->button() == Qt::LeftButton && window_->windowHandle())
                 {
-                    if (!isMaximizedForUi())
+                    if (!isWindowStateMaximized())
                     {
                         normal_geometry_ = window_->geometry();
                     }
@@ -542,7 +542,7 @@ private:
             return;
         }
 
-        const bool visible = !window_->isFullScreen() && !isMaximizedForUi();
+        const bool visible = !window_->isFullScreen() && !isWindowStateMaximized();
         const int width = window_->width();
         const int height = window_->height();
         const int border = kResizeBorderWidth;
@@ -597,36 +597,11 @@ private:
         }
     }
 
-    bool isMaximizedForUi() const
+    bool isWindowStateMaximized() const
     {
-        if (!window_ || window_->isFullScreen())
-        {
-            return false;
-        }
-        if (window_->isMaximized() || window_->windowState().testFlag(Qt::WindowMaximized))
-        {
-            return true;
-        }
-
-        const QRect availableGeometry = availableGeometryFor(window_);
-        if (!availableGeometry.isValid())
-        {
-            return false;
-        }
-
-        constexpr int tolerance = 3;
-        const QRect frameGeometry = window_->frameGeometry();
-        const QRect geometry = window_->geometry();
-        auto coversAvailableGeometry = [&](const QRect& rect) {
-            return rect.isValid() &&
-                   rect.left() <= availableGeometry.left() + tolerance &&
-                   rect.top() <= availableGeometry.top() + tolerance &&
-                   rect.right() >= availableGeometry.right() - tolerance &&
-                   rect.bottom() >= availableGeometry.bottom() - tolerance &&
-                   rect.width() >= availableGeometry.width() - tolerance &&
-                   rect.height() >= availableGeometry.height() - tolerance;
-        };
-        return coversAvailableGeometry(frameGeometry) || coversAvailableGeometry(geometry);
+        return window_ &&
+               !window_->isFullScreen() &&
+               (window_->isMaximized() || window_->windowState().testFlag(Qt::WindowMaximized));
     }
 
     void updateMaximizeButton()
@@ -637,7 +612,7 @@ private:
         }
 
         const bool dark = isDarkPalette();
-        const bool restore = isMaximizedForUi();
+        const bool restore = isWindowStateMaximized();
         maximize_button_->setIcon(createLucideIcon(restore ? QStringLiteral("copy") : QStringLiteral("square"), dark));
         maximize_button_->setToolTip(restore ? QStringLiteral("还原") : QStringLiteral("最大化"));
     }
@@ -649,7 +624,7 @@ private:
             return;
         }
 
-        if (isMaximizedForUi())
+        if (isWindowStateMaximized())
         {
             const QRect restoreGeometry = normal_geometry_.isValid()
                 ? normal_geometry_
