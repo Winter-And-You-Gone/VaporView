@@ -1155,8 +1155,8 @@ void TcpWavePanel::setEnglish(bool english)
     hint_label_->clear();
     hint_label_->setVisible(false);
 
-    wave1_info_label_->setText(english ? "waiting for raw-signal frame" : "等待原始信号数据帧");
-    wave4_info_label_->setText(english ? "waiting for normalized second harmonic frame" : "等待归一化二次谐波数据帧");
+    wave1_info_label_->setText(english ? "waiting for frame" : "等待数据帧");
+    wave4_info_label_->setText(english ? "waiting for frame" : "等待数据帧");
     updatePeakFilterButtonText();
     updatePeakPlotModeButtonText();
 
@@ -1495,7 +1495,7 @@ void TcpWavePanel::injectRemoteRawSignalFrame(quint64 timestampUs, const QVector
     }
     const QString sampleCountText = fixedStatusInteger(samples.size(), kRemoteStatusCountWidth);
     wave1_history_ = samples;
-    pending_wave1_info_text_ = QString(is_english_ ? "remote raw signal: %1 samples" : "远程原始信号：%1 点")
+    pending_wave1_info_text_ = QString(is_english_ ? "remote source: %1 samples" : "远程源：%1 点")
         .arg(sampleCountText);
     remote_waveform_status_text_ = remoteWaveformStatusText(is_english_, samples.size());
     updatePendingRemoteLiveStatus();
@@ -2068,13 +2068,13 @@ void TcpWavePanel::processBuffer()
             const QString wave1SampleCount = fixedStatusInteger(wave1_history_.size(), kRemoteStatusCountWidth);
             const QString wave4SampleCount = fixedStatusInteger(wave4_history_.size(), kRemoteStatusCountWidth);
             pending_wave1_info_text_ = QString(is_english_
-                ? "raw signal: %1 samples  %2"
-                : "原始信号: %1 个采样点  %2")
+                ? "%1 samples  %2"
+                : "%1 个采样点  %2")
                 .arg(wave1SampleCount)
                 .arg(describeRange(wave1_history_));
             pending_wave4_info_text_ = QString(is_english_
-                ? "normalized second harmonic: %1 samples  %2  %3"
-                : "归一化二次谐波: %1 个采样点  %2  %3")
+                ? "%1 samples  %2  %3"
+                : "%1 个采样点  %2  %3")
                 .arg(wave4SampleCount)
                 .arg(describeRange(wave4_history_))
                 .arg([this, rawPeakValue, displayedPeakValue]() {
