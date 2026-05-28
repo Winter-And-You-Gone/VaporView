@@ -122,6 +122,28 @@ QString fixedDecimalField(double value, int decimals, int width)
     return fixedTextField(QString::number(value, 'f', decimals), width);
 }
 
+QString fixedSignedTextField(const QString& text, int width)
+{
+    QString displayText = text;
+    if (!displayText.isEmpty() &&
+        displayText.at(0) != QLatin1Char('-') &&
+        displayText.at(0) != QLatin1Char('+'))
+    {
+        displayText.prepend(QLatin1Char(' '));
+    }
+    const int targetWidth = std::max(width, static_cast<int>(displayText.size()));
+    return displayText.leftJustified(targetWidth, QLatin1Char(' '));
+}
+
+QString fixedSignedDecimalField(double value, int decimals, int width)
+{
+    if (!std::isfinite(value))
+    {
+        return fixedSignedTextField(QStringLiteral("---"), width);
+    }
+    return fixedSignedTextField(QString::number(value, 'f', decimals), width);
+}
+
 struct SessionPlotTheme
 {
     QColor background;
@@ -3729,7 +3751,7 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
         ? (is_english_ ? QStringLiteral("per-frame export") : QStringLiteral("逐帧导出"))
         : QString(is_english_ ? "%1 Hz export" : "%1 Hz 导出").arg(fixedDecimalField(waveform_export_rate_hz_, 2, 8));
     const QString peakText = std::isfinite(filteredPeakValue)
-        ? fixedDecimalField(filteredPeakValue, 6, 14)
+        ? fixedSignedDecimalField(filteredPeakValue, 6, 14)
         : fixedTextField(is_english_ ? QStringLiteral("No valid value") : QStringLiteral("无有效值"), 14, Qt::AlignLeft);
     const int frameDigits = std::max(1, static_cast<int>(QString::number(total_waveform_frames_).size()));
     frame_info_label_->setText(QString(is_english_
@@ -3739,8 +3761,8 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
         .arg(fixedIntegerField(total_waveform_frames_, frameDigits))
         .arg(frameTime)
         .arg(waveformExportText)
-        .arg(fixedDecimalField(*minMax.first, 6, 14))
-        .arg(fixedDecimalField(*minMax.second, 6, 14))
+        .arg(fixedSignedDecimalField(*minMax.first, 6, 14))
+        .arg(fixedSignedDecimalField(*minMax.second, 6, 14))
         .arg(peakText)
         .arg(QFileInfo(sourceFilename).fileName())
         + (csvMatchText.isEmpty() ? QString() : QStringLiteral(" | ") + csvMatchText));

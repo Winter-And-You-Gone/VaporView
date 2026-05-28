@@ -173,9 +173,11 @@ QString remoteWaveformStatusText(bool english, int sampleCount)
 
 QString remoteFeatureStatusText(bool english, double peak, double rms, quint32 searchStart, quint32 searchEnd, float peakIndex)
 {
-    QString text = QStringLiteral("%1 %2 RMS %3")
+    const QString fieldGap = QStringLiteral("  ");
+    QString text = QStringLiteral("%1 %2%3RMS %4")
         .arg(english ? QStringLiteral("Peak") : QStringLiteral("峰值"),
              fixedStatusFloat(peak, 6, kRemoteStatusPeakWidth),
+             fieldGap,
              fixedStatusFloat(rms, 4, kRemoteStatusRmsWidth));
     if (searchStart > 0 || searchEnd > 0)
     {
@@ -184,9 +186,11 @@ QString remoteFeatureStatusText(bool english, double peak, double rms, quint32 s
             .arg(searchEnd == 0
                      ? (english ? QStringLiteral("end") : QStringLiteral("末尾"))
                      : QString::number(searchEnd));
-        text += QStringLiteral(" %1 %2 %3 %4")
-            .arg(english ? QStringLiteral("Range") : QStringLiteral("区间"),
+        text += QStringLiteral("%1%2 %3%4%5 %6")
+            .arg(fieldGap,
+                 english ? QStringLiteral("Range") : QStringLiteral("区间"),
                  fixedStatusField(rangeText, kRemoteStatusRangeWidth),
+                 fieldGap,
                  english ? QStringLiteral("Index") : QStringLiteral("下标"),
                  fixedStatusField(QString::number(peakIndex, 'f', 0), kRemoteStatusIndexWidth));
     }
@@ -1361,7 +1365,7 @@ void TcpWavePanel::updatePendingRemoteLiveStatus()
         pending_live_status_text_.clear();
         return;
     }
-    pending_live_status_text_ = parts.join(QStringLiteral(" | "));
+    pending_live_status_text_ = parts.join(QStringLiteral("  "));
 }
 
 void TcpWavePanel::attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox)
