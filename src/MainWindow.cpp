@@ -38,9 +38,11 @@
 #include <QDirIterator>
 #include <QScrollBar>
 #include <QShortcut>
+#include <QScreen>
 #include <QSpacerItem>
 #include <QStringList>
 #include <QApplication>
+#include <QGuiApplication>
 #include <QLayout>
 #include <QIntValidator>
 #include <QSerialPortInfo>
@@ -2996,6 +2998,7 @@ MainWindow::MainWindow(QWidget *parent)
     , base_font_point_size_(0.0)
     , base_window_size_(kFallbackMainWindowWidth, kFallbackMainWindowHeight)
     , base_minimum_window_size_(800, 600)
+    , normal_window_geometry_()
     , epsilon_sample_rate_(kDefaultEpsilonSampleRateHz)
     , gnss_sample_rate_(1)
     , imu_sample_rate_(200)
@@ -3251,6 +3254,7 @@ MainWindow::MainWindow(QWidget *parent)
     setEnglish(false);
     applyStyleConfiguration();
     VaporView::centerWindowOnScreen(this);
+    rememberNormalWindowGeometry();
 
     updateRecordingStatusLabel();
     updateConnectionStatus(false);
@@ -3371,8 +3375,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             auto *mouseEvent = static_cast<QMouseEvent *>(event);
             if (mouseEvent->button() == Qt::LeftButton && !isFullScreen())
             {
-                isMaximized() ? showNormal() : showMaximized();
-                updateWindowControlButtons();
+                toggleWindowMaximized();
                 return true;
             }
         }
@@ -3395,6 +3398,10 @@ void MainWindow::changeEvent(QEvent *event)
     QMainWindow::changeEvent(event);
     if (event->type() == QEvent::WindowStateChange)
     {
+        if (!isWindowMaximizedForUi())
+        {
+            rememberNormalWindowGeometry();
+        }
         updateWindowControlButtons();
         updateWindowBorderFrames();
         updateWindowResizeHandles();
@@ -3404,6 +3411,11 @@ void MainWindow::changeEvent(QEvent *event)
 void MainWindow::resizeEvent(QResizeEvent *event)
 {
     QMainWindow::resizeEvent(event);
+    if (!isWindowMaximizedForUi())
+    {
+        rememberNormalWindowGeometry();
+    }
+    updateWindowControlButtons();
     updateWindowBorderFrames();
     updateWindowResizeHandles();
 }
@@ -3414,7 +3426,7 @@ bool MainWindow::nativeEvent(const QByteArray& eventType, void *message, qintptr
     Q_UNUSED(eventType);
 
     auto *msg = static_cast<MSG *>(message);
-    if (!msg || msg->message != WM_NCHITTEST || isFullScreen() || isMaximized())
+    if (!msg || msg->message != WM_NCHITTEST || isFullScreen() || isWindowMaximizedForUi())
     {
         return QMainWindow::nativeEvent(eventType, message, result);
     }
@@ -5047,17 +5059,7 @@ void MainWindow::setupCustomTitleBar()
     titleLayout->addWidget(window_minimize_btn_, 0, Qt::AlignVCenter);
 
     window_maximize_btn_ = createTitleBarIconButton(QStringLiteral("windowMaximizeButton"), custom_title_bar_);
-    connect(window_maximize_btn_, &QToolButton::clicked, this, [this]() {
-        if (isMaximized())
-        {
-            showNormal();
-        }
-        else
-        {
-            showMaximized();
-        }
-        updateWindowControlButtons();
-    });
+    connect(window_maximize_btn_, &QToolButton::clicked, this, &MainWindow::toggleWindowMaximized);
     titleLayout->addWidget(window_maximize_btn_, 0, Qt::AlignVCenter);
 
     window_close_btn_ = createTitleBarIconButton(QStringLiteral("windowCloseButton"), custom_title_bar_);
@@ -6818,13 +6820,139 @@ void MainWindow::updateWindowControlButtons()
         return;
     }
 
-    const bool restoredByClick = isMaximized();
-    window_maximize_btn_->setIcon(createTitleBarIcon(restoredByClick ? QStringLiteral("copy") : QStringLiteral("square"),
+    const bool shouldRestore = isWindowMaximizedForUi();
+    window_maximize_btn_->setIcon(createTitleBarIcon(shouldRestore ? QStringLiteral("copy") : QStringLiteral("square"),
                                                      dark_theme_enabled_));
-    window_maximize_btn_->setToolTip(restoredByClick
+    window_maximize_btn_->setToolTip(shouldRestore
         ? (is_english_ ? "Restore" : "还原")
         : (is_english_ ? "Maximize" : "最大化"));
     window_maximize_btn_->setStatusTip(window_maximize_btn_->toolTip());
+}
+
+void MainWindow::toggleWindowMaximized()
+{
+    if (isFullScreen())
+    {
+        return;
+    }
+
+    if (isWindowMaximizedForUi())
+    {
+        const QRect restoreGeometry = normal_window_geometry_.isValid()
+            ? normal_window_geometry_
+            : fallbackNormalWindowGeometry();
+        setWindowState(windowState() & ~Qt::WindowMaximized);
+        showNormal();
+        if (restoreGeometry.isValid())
+        {
+            setGeometry(restoreGeometry);
+        }
+    }
+    else
+    {
+        rememberNormalWindowGeometry();
+        showMaximized();
+    }
+
+    updateWindowControlButtons();
+    updateWindowBorderFrames();
+    updateWindowResizeHandles();
+    QTimer::singleShot(0, this, &MainWindow::updateWindowControlButtons);
+    QTimer::singleShot(60, this, &MainWindow::updateWindowControlButtons);
+}
+
+bool MainWindow::isWindowMaximizedForUi() const
+{
+    if (isMaximized() || windowState().testFlag(Qt::WindowMaximized))
+    {
+        return true;
+    }
+    if (isFullScreen())
+    {
+        return false;
+    }
+
+    const QRect availableGeometry = currentScreenAvailableGeometry();
+    if (!availableGeometry.isValid())
+    {
+        return false;
+    }
+
+    const int tolerance = std::max(3, scalePixels(3));
+    auto coversAvailableGeometry = [&](const QRect& rect) {
+        return rect.isValid() &&
+               rect.left() <= availableGeometry.left() + tolerance &&
+               rect.top() <= availableGeometry.top() + tolerance &&
+               rect.right() >= availableGeometry.right() - tolerance &&
+               rect.bottom() >= availableGeometry.bottom() - tolerance &&
+               rect.width() >= availableGeometry.width() - tolerance &&
+               rect.height() >= availableGeometry.height() - tolerance;
+    };
+
+    return coversAvailableGeometry(frameGeometry()) || coversAvailableGeometry(geometry());
+}
+
+void MainWindow::rememberNormalWindowGeometry()
+{
+    if (isFullScreen() || isMaximized() || windowState().testFlag(Qt::WindowMaximized))
+    {
+        return;
+    }
+
+    const QRect currentGeometry = geometry();
+    if (!currentGeometry.isValid() || currentGeometry.width() <= 0 || currentGeometry.height() <= 0)
+    {
+        return;
+    }
+
+    const QRect availableGeometry = currentScreenAvailableGeometry();
+    if (availableGeometry.isValid())
+    {
+        const int tolerance = std::max(3, scalePixels(3));
+        const bool visuallyMaximized =
+            currentGeometry.left() <= availableGeometry.left() + tolerance &&
+            currentGeometry.top() <= availableGeometry.top() + tolerance &&
+            currentGeometry.right() >= availableGeometry.right() - tolerance &&
+            currentGeometry.bottom() >= availableGeometry.bottom() - tolerance &&
+            currentGeometry.width() >= availableGeometry.width() - tolerance &&
+            currentGeometry.height() >= availableGeometry.height() - tolerance;
+        if (visuallyMaximized)
+        {
+            return;
+        }
+    }
+
+    normal_window_geometry_ = currentGeometry;
+}
+
+QRect MainWindow::fallbackNormalWindowGeometry() const
+{
+    const QRect availableGeometry = currentScreenAvailableGeometry();
+    const QSize minimumSize = this->minimumSize().expandedTo(minimumSizeHint());
+    QSize targetSize = base_window_size_.expandedTo(minimumSize);
+    if (availableGeometry.isValid())
+    {
+        targetSize = targetSize.boundedTo(availableGeometry.size()).expandedTo(minimumSize.boundedTo(availableGeometry.size()));
+        const QPoint topLeft(
+            availableGeometry.left() + std::max(0, (availableGeometry.width() - targetSize.width()) / 2),
+            availableGeometry.top() + std::max(0, (availableGeometry.height() - targetSize.height()) / 2));
+        return QRect(topLeft, targetSize);
+    }
+    return QRect(QPoint(80, 80), targetSize);
+}
+
+QRect MainWindow::currentScreenAvailableGeometry() const
+{
+    const QScreen *targetScreen = screen();
+    if (!targetScreen && windowHandle())
+    {
+        targetScreen = windowHandle()->screen();
+    }
+    if (!targetScreen)
+    {
+        targetScreen = QGuiApplication::primaryScreen();
+    }
+    return targetScreen ? targetScreen->availableGeometry() : QRect();
 }
 
 void MainWindow::setupWindowBorderFrames()
@@ -6855,7 +6983,7 @@ void MainWindow::setupWindowBorderFrames()
 
 void MainWindow::updateWindowBorderFrames()
 {
-    const bool visible = !isFullScreen();
+    const bool visible = !isFullScreen() && !isWindowMaximizedForUi();
     const int borderThickness = 1;
     if (window_border_top_)
     {
@@ -6912,7 +7040,7 @@ void MainWindow::updateWindowResizeHandles()
         return;
     }
 
-    const bool visible = !isFullScreen() && !isMaximized();
+    const bool visible = !isFullScreen() && !isWindowMaximizedForUi();
     const int thickness = scalePixels(8);
     const int w = width();
     const int h = height();

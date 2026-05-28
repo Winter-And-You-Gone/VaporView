@@ -373,6 +373,11 @@ private:
     void updateCustomTitleBarTexts();
     void updateCustomTitleBarStyle();
     void updateWindowControlButtons();
+    void toggleWindowMaximized();
+    bool isWindowMaximizedForUi() const;
+    void rememberNormalWindowGeometry();
+    QRect fallbackNormalWindowGeometry() const;
+    QRect currentScreenAvailableGeometry() const;
     void setupWindowBorderFrames();
     void updateWindowBorderFrames();
     void setupWindowResizeHandles();
@@ -632,6 +637,7 @@ private:
     QString base_style_sheet_;
     QSize base_window_size_;
     QSize base_minimum_window_size_;
+    QRect normal_window_geometry_;
     int epsilon_sample_rate_;
     int gnss_sample_rate_;
     int imu_sample_rate_;
