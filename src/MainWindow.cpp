@@ -957,16 +957,16 @@ QFrame#logPanelFrame QLabel#sectionTitleLabel {
     color: #ffffff;
 }
 QFrame#recordingStatusCard {
-    background-color: #181818;
+    background-color: #121212;
     border: 1px solid #202020;
-    border-radius: 6px;
+    border-radius: 8px;
 }
 QFrame#recordingStatusCard QWidget#sectionTitleBar {
     background-color: #121212;
     border: none;
     border-bottom: 1px solid #202020;
-    border-top-left-radius: 5px;
-    border-top-right-radius: 5px;
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
 }
 QFrame#recordingStatusCard QLabel#sectionTitleLabel {
     background-color: transparent;
@@ -974,19 +974,10 @@ QFrame#recordingStatusCard QLabel#sectionTitleLabel {
     color: #ffffff;
 }
 QWidget#recordingStatusBody {
-    background-color: #181818;
+    background-color: #121212;
     border: none;
-    border-bottom-left-radius: 5px;
-    border-bottom-right-radius: 5px;
-}
-QFrame#recordingStatusCard[status="connected"] {
-    border-color: #2f6f46;
-}
-QFrame#recordingStatusCard[status="connecting"] {
-    border-color: #7c5b1d;
-}
-QFrame#recordingStatusCard[status="disconnected"] {
-    border-color: #6f2f38;
+    border-bottom-left-radius: 7px;
+    border-bottom-right-radius: 7px;
 }
 QLabel#recordingStatusLabel {
     background-color: transparent;
@@ -3530,13 +3521,10 @@ void MainWindow::loadModernStyleSheet()
             "QGroupBox { background-color: #FDFDFC; border: 1px solid #EAEAE9; border-top: 40px solid #FDFDFC; border-radius: 8px; margin-top: 0px; padding: 8px 8px 8px 8px; font-size: 15px; font-weight: bold; color: #000000; }"
             "QGroupBox#sensorGroupBox { margin-top: 0px; background-color: #FDFDFC; border: 1px solid #EAEAE9; border-radius: 8px; padding: 0px 0px 0px 0px; }"
             "QFrame#logPanelFrame { background-color: #FDFDFC; border: 1px solid #EAEAE9; border-radius: 8px; }"
-            "QFrame#recordingStatusCard { background-color: #F8F8F7; border: 1px solid #EAEAE9; border-radius: 6px; }"
-            "QFrame#recordingStatusCard QWidget#sectionTitleBar { background-color: #FDFDFC; border: none; border-bottom: 1px solid #EAEAE9; border-top-left-radius: 5px; border-top-right-radius: 5px; }"
+            "QFrame#recordingStatusCard { background-color: #FDFDFC; border: 1px solid #EAEAE9; border-radius: 8px; }"
+            "QFrame#recordingStatusCard QWidget#sectionTitleBar { background-color: #FDFDFC; border: none; border-bottom: 1px solid #EAEAE9; border-top-left-radius: 7px; border-top-right-radius: 7px; }"
             "QFrame#recordingStatusCard QLabel#sectionTitleLabel { background-color: transparent; border: none; }"
-            "QWidget#recordingStatusBody { background-color: #F8F8F7; border: none; border-bottom-left-radius: 5px; border-bottom-right-radius: 5px; }"
-            "QFrame#recordingStatusCard[status=\"connected\"] { border-color: #8fc59e; }"
-            "QFrame#recordingStatusCard[status=\"connecting\"] { border-color: #e3c46e; }"
-            "QFrame#recordingStatusCard[status=\"disconnected\"] { border-color: #e5a0a9; }"
+            "QWidget#recordingStatusBody { background-color: #FDFDFC; border: none; border-bottom-left-radius: 7px; border-bottom-right-radius: 7px; }"
             "QLabel#recordingStatusLabel { background-color: transparent; border: none; color: #000000; font-size: 14px; font-weight: 600; }"
             "QGroupBox::title { subcontrol-origin: border; subcontrol-position: top left; left: 12px; top: -30px; padding: 0px 2px; background-color: transparent; border: none; border-radius: 0px; color: #000000; }"
             "QDialog#rtkConfigDialog, QWidget#rtkConfigViewport, QWidget#rtkConfigContent, QScrollArea#rtkConfigScrollArea { background-color: #FDFDFC; }"

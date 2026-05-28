@@ -143,17 +143,17 @@ QWidget#logSidePanel {
 }
 
 QFrame#recordingStatusCard {
-    background-color: #F8F8F7;
+    background-color: #FDFDFC;
     border: 1px solid #EAEAE9;
-    border-radius: 6px;
+    border-radius: 8px;
 }
 
 QFrame#recordingStatusCard QWidget#sectionTitleBar {
     background-color: #FDFDFC;
     border: none;
     border-bottom: 1px solid #EAEAE9;
-    border-top-left-radius: 5px;
-    border-top-right-radius: 5px;
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
 }
 
 QFrame#recordingStatusCard QLabel#sectionTitleLabel {
@@ -162,22 +162,10 @@ QFrame#recordingStatusCard QLabel#sectionTitleLabel {
 }
 
 QWidget#recordingStatusBody {
-    background-color: #F8F8F7;
+    background-color: #FDFDFC;
     border: none;
-    border-bottom-left-radius: 5px;
-    border-bottom-right-radius: 5px;
-}
-
-QFrame#recordingStatusCard[status="connected"] {
-    border-color: #8fc59e;
-}
-
-QFrame#recordingStatusCard[status="connecting"] {
-    border-color: #e3c46e;
-}
-
-QFrame#recordingStatusCard[status="disconnected"] {
-    border-color: #e5a0a9;
+    border-bottom-left-radius: 7px;
+    border-bottom-right-radius: 7px;
 }
 
 QLabel#recordingStatusLabel {
