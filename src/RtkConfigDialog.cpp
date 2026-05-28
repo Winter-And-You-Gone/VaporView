@@ -927,7 +927,9 @@ void RtkConfigDialog::setupUi()
     lever_label_layout->addWidget(main_antenna_lever_label_);
     main_antenna_lever_help_btn_ = new QToolButton(this);
     main_antenna_lever_help_btn_->setIcon(createLucideIcon(QStringLiteral("help-circle"), kRtkHelpIconColor));
+    main_antenna_lever_help_btn_->setToolButtonStyle(Qt::ToolButtonIconOnly);
     main_antenna_lever_help_btn_->setAutoRaise(true);
+    main_antenna_lever_help_btn_->setFocusPolicy(Qt::NoFocus);
     main_antenna_lever_help_btn_->setCursor(Qt::PointingHandCursor);
     connect(main_antenna_lever_help_btn_, &QToolButton::clicked, this, &RtkConfigDialog::onMainAntennaLeverHelpClicked);
     lever_label_layout->addWidget(main_antenna_lever_help_btn_);
@@ -1249,17 +1251,20 @@ void RtkConfigDialog::applyScaledUiMetrics()
     baudrate_combo_->setMinimumHeight(scalePixels(30));
     if (main_antenna_lever_help_btn_)
     {
-        const int helpSize = scalePixels(22);
+        const int helpSize = scalePixels(26);
         main_antenna_lever_help_btn_->setFixedSize(helpSize, helpSize);
-        const int iconSize = std::max(12, helpSize - scalePixels(6));
+        const int iconSize = std::max(16, helpSize - scalePixels(6));
         main_antenna_lever_help_btn_->setIconSize(QSize(iconSize, iconSize));
         const bool dark = qApp && qApp->palette().color(QPalette::Window).lightness() < 128;
+        main_antenna_lever_help_btn_->setIcon(createLucideIcon(
+            QStringLiteral("help-circle"),
+            dark ? QColor("#8ab4f8") : kRtkHelpIconColor));
         main_antenna_lever_help_btn_->setStyleSheet(dark
-            ? QString("QToolButton { background-color: rgb(217, 119, 87); color: #ffffff; border: none; border-radius: %1px; padding: 0px; }"
-                      "QToolButton:hover { background-color: rgb(217, 119, 87); }")
+            ? QString("QToolButton { background: transparent; border: none; border-radius: %1px; padding: 0px; }"
+                      "QToolButton:hover { background: rgba(138, 180, 248, 0.14); }")
                   .arg(helpSize / 2)
-            : QString("QToolButton { border: 1px solid #9e9e9e; border-radius: %1px; padding: 0px; }"
-                      "QToolButton:hover { background: #eeeeee; }")
+            : QString("QToolButton { background: transparent; border: none; border-radius: %1px; padding: 0px; }"
+                      "QToolButton:hover { background: rgba(25, 118, 210, 0.10); }")
                   .arg(helpSize / 2));
     }
     for (QLineEdit *edit : {main_antenna_lever_x_edit_, main_antenna_lever_y_edit_, main_antenna_lever_z_edit_})
