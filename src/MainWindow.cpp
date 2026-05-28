@@ -477,12 +477,16 @@ QString findResourceFile(const QString& relativePath)
     return QString();
 }
 
-QPixmap renderLucidePixmap(const QByteArray& svgData, const QColor& color)
+QPixmap renderLucidePixmap(const QByteArray& svgData, const QColor& color, qreal devicePixelRatio)
 {
     QByteArray tinted = svgData;
     tinted.replace("currentColor", color.name(QColor::HexRgb).toUtf8());
 
-    QPixmap pixmap(32, 32);
+    const qreal dpr = std::max<qreal>(1.0, devicePixelRatio);
+    constexpr int kLogicalSize = 32;
+    const int physicalSize = std::max(1, static_cast<int>(std::ceil(kLogicalSize * dpr)));
+    QPixmap pixmap(physicalSize, physicalSize);
+    pixmap.setDevicePixelRatio(dpr);
     pixmap.fill(Qt::transparent);
 
     QSvgRenderer renderer(tinted);
@@ -490,6 +494,14 @@ QPixmap renderLucidePixmap(const QByteArray& svgData, const QColor& color)
     painter.setRenderHint(QPainter::Antialiasing, true);
     renderer.render(&painter, QRectF(2, 2, 28, 28));
     return pixmap;
+}
+
+void addLucideIconPixmaps(QIcon& icon, const QByteArray& svgData, const QColor& color, QIcon::Mode mode)
+{
+    for (const qreal dpr : {1.0, 1.25, 1.5, 2.0, 3.0})
+    {
+        icon.addPixmap(renderLucidePixmap(svgData, color, dpr), mode);
+    }
 }
 
 QIcon createLucideIcon(const QString& iconName, const QColor& color)
@@ -502,8 +514,8 @@ QIcon createLucideIcon(const QString& iconName, const QColor& color)
 
     const QByteArray svgData = file.readAll();
     QIcon icon;
-    icon.addPixmap(renderLucidePixmap(svgData, color), QIcon::Normal);
-    icon.addPixmap(renderLucidePixmap(svgData, kToolbarDisabled), QIcon::Disabled);
+    addLucideIconPixmaps(icon, svgData, color, QIcon::Normal);
+    addLucideIconPixmaps(icon, svgData, kToolbarDisabled, QIcon::Disabled);
     return icon;
 }
 
