@@ -137,10 +137,35 @@ QFrame#logPanelFrame {
     border-radius: 8px;
 }
 
+QWidget#logSidePanel {
+    background-color: #FDFDFC;
+    border: none;
+}
+
 QFrame#recordingStatusCard {
     background-color: #F8F8F7;
     border: 1px solid #EAEAE9;
     border-radius: 6px;
+}
+
+QFrame#recordingStatusCard QWidget#sectionTitleBar {
+    background-color: #FDFDFC;
+    border: none;
+    border-bottom: 1px solid #EAEAE9;
+    border-top-left-radius: 5px;
+    border-top-right-radius: 5px;
+}
+
+QFrame#recordingStatusCard QLabel#sectionTitleLabel {
+    background-color: transparent;
+    border: none;
+}
+
+QWidget#recordingStatusBody {
+    background-color: #F8F8F7;
+    border: none;
+    border-bottom-left-radius: 5px;
+    border-bottom-right-radius: 5px;
 }
 
 QFrame#recordingStatusCard[status="connected"] {

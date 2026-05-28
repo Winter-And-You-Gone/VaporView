@@ -452,6 +452,7 @@ private:
     QLabel *status_task_spinner_label_;
     QTimer *status_task_spinner_timer_;
     QFrame *recording_status_card_;
+    QLabel *recording_status_title_lbl_;
     QLabel *recording_status_label_;
     QPushButton *auto_detect_ports_btn_;
 
@@ -502,6 +503,7 @@ private:
 
     QGroupBox *config_group_;
     QGroupBox *data_group_;
+    QWidget *log_side_panel_;
     QFrame *log_group_;
     QGroupBox *tcp_wave_group_;
     QGroupBox *epsilon_group_;
