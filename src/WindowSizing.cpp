@@ -10,7 +10,7 @@
 
 namespace
 {
-constexpr int kChildWindowOpenOffsetPx = 20;
+constexpr int kChildWindowOpenOffsetPx = 100;
 
 QSize validOrFallback(QSize size, const QSize& fallback)
 {
