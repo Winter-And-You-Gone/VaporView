@@ -222,6 +222,9 @@ public:
         , minimize_button_(nullptr)
         , maximize_button_(nullptr)
         , close_button_(nullptr)
+        , border_left_(nullptr)
+        , border_right_(nullptr)
+        , border_bottom_(nullptr)
         , show_maximize_button_(showMaximizeButton)
     {
         if (!window_)
@@ -244,6 +247,7 @@ public:
 
         build();
         createResizeHandles();
+        createWindowBorderFrames();
         window_->installEventFilter(this);
         if (qApp)
         {
@@ -251,6 +255,7 @@ public:
         }
         refreshTheme();
         updateResizeHandles();
+        updateWindowBorderFrames();
     }
 
 protected:
@@ -273,6 +278,7 @@ protected:
             {
                 updateMaximizeButton();
                 updateResizeHandles();
+                updateWindowBorderFrames();
             }
         }
         else if (watched == qApp)
@@ -652,6 +658,64 @@ private:
         }
     }
 
+    void createWindowBorderFrames()
+    {
+        if (!window_)
+        {
+            return;
+        }
+
+        auto createBorder = [this]() {
+            auto *border = new QFrame(window_);
+            border->setAttribute(Qt::WA_TransparentForMouseEvents);
+            border->setFocusPolicy(Qt::NoFocus);
+            border->setFrameShape(QFrame::NoFrame);
+            border->setLineWidth(0);
+            border->setAutoFillBackground(false);
+            border->setStyleSheet(QStringLiteral("background-color: #0C0C0C; border: none;"));
+            return border;
+        };
+
+        border_left_ = createBorder();
+        border_right_ = createBorder();
+        border_bottom_ = createBorder();
+    }
+
+    void updateWindowBorderFrames()
+    {
+        if (!window_)
+        {
+            return;
+        }
+
+        const bool visible = !window_->isFullScreen() && !isWindowStateMaximized();
+        constexpr int borderThickness = 1;
+        if (border_left_)
+        {
+            border_left_->setVisible(visible);
+            border_left_->setGeometry(0, 0, borderThickness, window_->height());
+            border_left_->raise();
+        }
+        if (border_right_)
+        {
+            border_right_->setVisible(visible);
+            border_right_->setGeometry(std::max(0, window_->width() - borderThickness),
+                                       0,
+                                       borderThickness,
+                                       window_->height());
+            border_right_->raise();
+        }
+        if (border_bottom_)
+        {
+            border_bottom_->setVisible(visible);
+            border_bottom_->setGeometry(0,
+                                        std::max(0, window_->height() - borderThickness),
+                                        window_->width(),
+                                        borderThickness);
+            border_bottom_->raise();
+        }
+    }
+
     QCursor cursorForEdges(Qt::Edges edges) const
     {
         const bool horizontal = edges.testFlag(Qt::LeftEdge) || edges.testFlag(Qt::RightEdge);
@@ -783,6 +847,7 @@ private:
         }
         updateMaximizeButton();
         updateResizeHandles();
+        updateWindowBorderFrames();
     }
 
     QWidget *window_;
@@ -795,6 +860,9 @@ private:
     QToolButton *minimize_button_;
     QToolButton *maximize_button_;
     QToolButton *close_button_;
+    QFrame *border_left_;
+    QFrame *border_right_;
+    QFrame *border_bottom_;
     bool show_maximize_button_;
     QRect normal_geometry_;
     QList<QWidget *> resize_handles_;
