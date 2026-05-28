@@ -174,10 +174,12 @@ QString remoteWaveformStatusText(bool english, int sampleCount)
 QString remoteFeatureStatusText(bool english, double peak, double rms, quint32 searchStart, quint32 searchEnd, float peakIndex)
 {
     const QString fieldGap = QStringLiteral("  ");
-    QString text = QStringLiteral("%1 %2%3RMS %4")
+    const QString rmsLabel = english ? QStringLiteral("RMS") : QStringLiteral("均方根RMS");
+    QString text = QStringLiteral("%1 %2%3%4 %5")
         .arg(english ? QStringLiteral("Peak") : QStringLiteral("峰值"),
              fixedStatusFloat(peak, 6, kRemoteStatusPeakWidth),
              fieldGap,
+             rmsLabel,
              fixedStatusFloat(rms, 4, kRemoteStatusRmsWidth));
     if (searchStart > 0 || searchEnd > 0)
     {

@@ -1506,7 +1506,7 @@ void SkyTuiApp::drawDeviceOverview(SkyTuiScreenBuffer& output, int top, int bott
     const int chartHeight = std::max(5, remaining / 2);
     const QStringList rawChart = renderTerminalWaveform(d.latest_raw_waveform_preview, std::max(10, leftRight - left - 3), std::max(3, chartHeight - 2));
     QStringList harmonic = renderTerminalWaveform(d.latest_harmonic_waveform_preview, std::max(10, right - rightLeft - 3), std::max(3, chartHeight - 2));
-    harmonic.prepend(QStringLiteral("峰值 %1  RMS %2  均值 %3  min %4  max %5")
+    harmonic.prepend(QStringLiteral("峰值 %1  均方根RMS %2  均值 %3  min %4  max %5")
                          .arg(d.waveform_feature.peak, 0, 'f', 4)
                          .arg(d.waveform_feature.rms, 0, 'f', 4)
                          .arg(d.waveform_feature.mean, 0, 'f', 4)
