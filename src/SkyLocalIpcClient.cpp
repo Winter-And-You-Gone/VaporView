@@ -177,6 +177,11 @@ quint16 SkyLocalIpcClient::saveConfig()
     return sendCommand(CommandId::SaveSkyConfig);
 }
 
+quint16 SkyLocalIpcClient::requestCoreShutdown()
+{
+    return sendCommand(CommandId::ShutdownCore);
+}
+
 void SkyLocalIpcClient::onConnected()
 {
     connected_time_us_ = currentTimestampUs();

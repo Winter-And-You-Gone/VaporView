@@ -51,6 +51,10 @@ Linux:   ./build/Release/VaporView
 
 # COM10 及以上端口也可以显式使用 Win32 路径
 .\build\Release\VaporViewSkyCore.exe --telemetry-port \\.\COM50 --telemetry-baud 921600 --sky-simulate-data
+
+# 正常退出 SkyCore：在 Core 控制台按 Ctrl+C/Ctrl+Break，或输入 quit 回车
+# 如果 Core 在另一个窗口或后台运行，可用本机 IPC 请求退出
+.\build\Release\VaporViewSkyTui.exe --connect 127.0.0.1:39001 --shutdown-core
 ```
 
 ```bash
@@ -82,8 +86,11 @@ Linux:   ./build/Release/VaporView
 /waveform off
 /waveform on
 /config show
+/core stop
 /quit
 ```
+
+`/quit` 只退出 TUI，独立 `VaporViewSkyCore` 会继续采集、落盘和数传；`/core stop` 会通过本机 IPC 请求 SkyCore 正常退出。
 
 `/device overview` 会打开天空端设备总览页。该页是终端 TUI 页面，不创建 Qt GUI 窗口，用于在天空端本机查看坐标/姿态、环境量、记录/系统状态、波形预览、峰值趋势和最近日志。页面显示的是低频快照，不按完整高频采集频率重绘界面；完整高频数据仍继续进入天空端采集和本地记录链路。
 

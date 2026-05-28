@@ -19,6 +19,22 @@ void require(bool condition, const char *message)
     }
 }
 
+void testProtocolEnumValues()
+{
+    require(static_cast<quint8>(VaporView::MsgType::TelemetryBasic) == 0x01, "MsgType TelemetryBasic value");
+    require(static_cast<quint8>(VaporView::MsgType::WaveformDownsampled) == 0x02, "MsgType WaveformDownsampled value");
+    require(static_cast<quint8>(VaporView::MsgType::WaveformFeature) == 0x03, "MsgType WaveformFeature value");
+    require(static_cast<quint8>(VaporView::MsgType::TelemetryStatus) == 0x04, "MsgType TelemetryStatus value");
+    require(static_cast<quint8>(VaporView::MsgType::Command) == 0x10, "MsgType Command value");
+    require(static_cast<quint8>(VaporView::MsgType::CommandAck) == 0x11, "MsgType CommandAck value");
+    require(static_cast<quint16>(VaporView::CommandId::StartRecording) == 1, "CommandId StartRecording value");
+    require(static_cast<quint16>(VaporView::CommandId::RequestStatus) == 10, "CommandId RequestStatus value");
+    require(static_cast<quint16>(VaporView::CommandId::RebootDevice) == 11, "CommandId RebootDevice value");
+    require(static_cast<quint16>(VaporView::CommandId::ConnectDevice) == 21, "CommandId ConnectDevice value");
+    require(static_cast<quint16>(VaporView::CommandId::SetPeakSearchRange) == 34, "CommandId SetPeakSearchRange value");
+    require(static_cast<quint16>(VaporView::CommandId::ShutdownCore) == 90, "CommandId ShutdownCore value");
+}
+
 void testFrameRoundTrip()
 {
     VaporView::TelemetryCodec codec;
@@ -257,6 +273,7 @@ void testTelemetryStatus()
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
+    testProtocolEnumValues();
     testFrameRoundTrip();
     testCrcError();
     testCommandAndDevicePayload();

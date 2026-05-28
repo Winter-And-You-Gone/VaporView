@@ -117,6 +117,30 @@ int main(int argc, char **argv)
     socket->flush();
 
     require(waitUntil([&]() { return ackReceived && statusReceived; }), "client parses ack and status");
+
+    const quint16 shutdownSeq = client.requestCoreShutdown();
+    require(shutdownSeq != 0, "client sends shutdown request");
+    QVector<VaporView::TelemetryFrame> shutdownFrames;
+    require(waitUntil([&]() {
+        const QByteArray bytes = socket->readAll();
+        if (!bytes.isEmpty())
+        {
+            shutdownFrames += decoder.feedBytes(bytes);
+        }
+        for (const VaporView::TelemetryFrame& frame : shutdownFrames)
+        {
+            VaporView::CommandMessage command;
+            if (frame.type == VaporView::MsgType::Command &&
+                VaporView::TelemetryCodec::parseCommand(frame.payload, command) &&
+                command.command_id == VaporView::CommandId::ShutdownCore &&
+                command.command_seq == shutdownSeq)
+            {
+                return true;
+            }
+        }
+        return false;
+    }), "client sends ShutdownCore command");
+
     std::cout << "sky_local_ipc_client_test passed\n";
     return 0;
 }

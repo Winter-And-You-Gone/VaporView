@@ -1,11 +1,13 @@
 #include "SkyLocalIpcServer.h"
 
 #include <QAbstractSocket>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QHostAddress>
 #include <QJsonDocument>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QTimer>
 
 namespace VaporView
 {
@@ -203,6 +205,25 @@ void SkyLocalIpcServer::dispatchClientFrame(QTcpSocket *socket, const TelemetryF
 
 void SkyLocalIpcServer::handleCommand(QTcpSocket *socket, const CommandMessage& command)
 {
+    if (command.command_id == CommandId::ShutdownCore)
+    {
+        CommandAck ack;
+        ack.command_id = command.command_id;
+        ack.command_seq = command.command_seq;
+        ack.result = 0;
+        ack.error_code = CommandErrorCode::Ok;
+        sendFrame(socket, MsgType::CommandAck, TelemetryCodec::serializeCommandAck(ack));
+        if (socket)
+        {
+            socket->flush();
+        }
+        emit logMessage(QStringLiteral("Sky local IPC shutdown requested"));
+        QTimer::singleShot(100, QCoreApplication::instance(), []() {
+            QCoreApplication::quit();
+        });
+        return;
+    }
+
     if (!runtime_)
     {
         CommandAck ack;

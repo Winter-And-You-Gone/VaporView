@@ -61,6 +61,7 @@ enum class CommandId : quint16
     SaveSkyConfig = 32,
     ReloadSkyConfig = 33,
     SetPeakSearchRange = 34,
+    ShutdownCore = 90,
 };
 
 enum class SkyDeviceId : quint8

@@ -93,6 +93,21 @@ SkyTuiCommandResult SkyTuiController::executeCommand(const QString& line)
     {
         result.type = SkyTuiCommandResult::Type::Quit;
     }
+    else if ((command == QStringLiteral("core") &&
+              (tokens.value(1).toLower() == QStringLiteral("stop") ||
+               tokens.value(1).toLower() == QStringLiteral("shutdown") ||
+               tokens.value(1).toLower() == QStringLiteral("exit") ||
+               tokens.value(1).toLower() == QStringLiteral("quit"))) ||
+             command == QStringLiteral("shutdown-core"))
+    {
+        if (!client_ || !client_->isConnected())
+        {
+            result.messages << QStringLiteral("SkyCore IPC 未连接。");
+            return result;
+        }
+        const quint16 seq = client_->requestCoreShutdown();
+        result.messages << QStringLiteral("SkyCore 退出请求：%1").arg(seq != 0 ? QStringLiteral("已发送") : QStringLiteral("发送失败"));
+    }
     else if (command == QStringLiteral("connect") ||
              command == QStringLiteral("disconnect") ||
              command == QStringLiteral("reconnect"))
@@ -145,6 +160,7 @@ QList<SkyTuiCommandItem> SkyTuiController::commandPalette() const
     return {
         {QStringLiteral("/help"), QStringLiteral("显示帮助和快捷键说明")},
         {QStringLiteral("/exit"), QStringLiteral("退出 TUI，SkyCore 继续运行")},
+        {QStringLiteral("/core stop"), QStringLiteral("请求 SkyCore 正常退出")},
         {QStringLiteral("/device overview"), QStringLiteral("打开设备总览")},
         {QStringLiteral("/overview"), QStringLiteral("打开设备总览")},
         {QStringLiteral("/home"), QStringLiteral("返回天空端首页")},
@@ -197,6 +213,7 @@ QStringList SkyTuiController::helpLines() const
         QStringLiteral("  config show, cfg               # 显示当前配置 JSON"),
         QStringLiteral("  clear, logs, palette, theme dark # 日志、命令面板和主题辅助命令"),
         QStringLiteral("  quit, exit, stop, /quit, /exit # 退出 TUI，SkyCore 继续运行"),
+        QStringLiteral("  core stop, /core stop          # 请求 SkyCore 正常退出"),
         QStringLiteral("快捷键：Enter 执行，Ctrl+P 或 / 打开命令面板，Tab 切换焦点，Left/Right 切日志/状态，Esc 关闭，Ctrl+L 清屏。"),
     };
 }

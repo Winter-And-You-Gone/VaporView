@@ -44,6 +44,7 @@ public:
     quint16 getConfig();
     quint16 setConfig(const SkyConfig& config);
     quint16 saveConfig();
+    quint16 requestCoreShutdown();
 
 signals:
     void connectedChanged(bool connected);

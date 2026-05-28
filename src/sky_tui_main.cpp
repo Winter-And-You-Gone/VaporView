@@ -6,6 +6,7 @@
 #include <QCommandLineParser>
 #include <QCoreApplication>
 #include <QTextStream>
+#include <QTimer>
 
 namespace
 {
@@ -52,7 +53,8 @@ int main(int argc, char *argv[])
     QCommandLineOption ipcPortOption(QStringLiteral("ipc-port"), QStringLiteral("Local IPC port"), QStringLiteral("port"), QStringLiteral("39001"));
     QCommandLineOption autoLaunchCoreOption(QStringLiteral("auto-launch-core"), QStringLiteral("Reserved: auto-launch SkyCore before connecting"));
     QCommandLineOption corePathOption(QStringLiteral("core-path"), QStringLiteral("SkyCore executable path"), QStringLiteral("path"));
-    parser.addOptions({helpOption, versionOption, connectOption, ipcHostOption, ipcPortOption, autoLaunchCoreOption, corePathOption});
+    QCommandLineOption shutdownCoreOption(QStringLiteral("shutdown-core"), QStringLiteral("Send a local IPC request to stop SkyCore and exit"));
+    parser.addOptions({helpOption, versionOption, connectOption, ipcHostOption, ipcPortOption, autoLaunchCoreOption, corePathOption, shutdownCoreOption});
     parser.process(app);
 
     if (parser.isSet(helpOption))
@@ -74,6 +76,36 @@ int main(int argc, char *argv[])
     if (parser.isSet(connectOption))
     {
         applyConnectValue(parser.value(connectOption), options);
+    }
+
+    if (parser.isSet(shutdownCoreOption))
+    {
+        VaporView::SkyLocalIpcClient client;
+        QObject::connect(&client, &VaporView::SkyLocalIpcClient::logMessage, [](const QString& message) {
+            QTextStream(stderr) << message << "\n";
+        });
+        QObject::connect(&client, &VaporView::SkyLocalIpcClient::connectedChanged, &app, [&client](bool connected) {
+            if (connected)
+            {
+                QTextStream(stdout) << "Sending SkyCore shutdown request\n";
+                client.requestCoreShutdown();
+            }
+        });
+        QObject::connect(&client, &VaporView::SkyLocalIpcClient::ackReceived, &app, [&app](const VaporView::CommandAck& ack) {
+            if (ack.command_id == VaporView::CommandId::ShutdownCore)
+            {
+                QTextStream(stdout) << (ack.error_code == VaporView::CommandErrorCode::Ok
+                    ? QStringLiteral("SkyCore accepted shutdown request\n")
+                    : QStringLiteral("SkyCore rejected shutdown request\n"));
+                QTimer::singleShot(300, &app, &QCoreApplication::quit);
+            }
+        });
+        QTimer::singleShot(5000, &app, [&app]() {
+            QTextStream(stderr) << "Timed out waiting for SkyCore shutdown ack\n";
+            app.exit(2);
+        });
+        client.connectToCore(options.ipc_host, static_cast<quint16>(options.ipc_port));
+        return app.exec();
     }
 
     if (VaporView::showSkyStartupScreen() == VaporView::SkyStartupDecision::Exit)

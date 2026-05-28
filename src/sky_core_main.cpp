@@ -5,8 +5,13 @@
 #include <QCoreApplication>
 #include <QTextStream>
 #include <QTimer>
+#include <algorithm>
 #include <atomic>
+#include <cctype>
 #include <csignal>
+#include <iostream>
+#include <string>
+#include <thread>
 
 #ifdef Q_OS_WIN
 #ifndef WIN32_LEAN_AND_MEAN
@@ -22,6 +27,39 @@ std::atomic_bool g_shutdownRequested = false;
 void handleProcessSignal(int)
 {
     g_shutdownRequested.store(true, std::memory_order_relaxed);
+}
+
+bool isShutdownInput(std::string line)
+{
+    line.erase(line.begin(), std::find_if(line.begin(), line.end(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }));
+    line.erase(std::find_if(line.rbegin(), line.rend(), [](unsigned char ch) {
+        return !std::isspace(ch);
+    }).base(), line.end());
+    std::transform(line.begin(), line.end(), line.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+    });
+    return line == "quit" ||
+           line == "exit" ||
+           line == "stop" ||
+           line == "/quit" ||
+           line == "/exit";
+}
+
+void startStdinShutdownWatcher()
+{
+    std::thread([]() {
+        std::string line;
+        while (std::getline(std::cin, line))
+        {
+            if (isShutdownInput(line))
+            {
+                g_shutdownRequested.store(true, std::memory_order_relaxed);
+                return;
+            }
+        }
+    }).detach();
 }
 
 #ifdef Q_OS_WIN
@@ -128,13 +166,16 @@ int main(int argc, char *argv[])
         }
     });
     shutdownTimer.start();
+    startStdinShutdownWatcher();
 
     VaporView::SkyRuntime runtime(options);
     QObject::connect(&runtime, &VaporView::SkyRuntime::logMessage, [](const QString& message) {
         QTextStream(stdout) << message << "\n";
     });
     QObject::connect(&app, &QCoreApplication::aboutToQuit, [&runtime]() {
+        QTextStream(stdout) << "SkyCore stopping runtime\n";
         runtime.stop();
+        QTextStream(stdout) << "SkyCore runtime stopped\n";
     });
 
     VaporView::SkyLocalIpcServer ipcServer(&runtime);
@@ -151,6 +192,7 @@ int main(int argc, char *argv[])
     }
 
     QTextStream(stdout) << "SkyCore profile: " << parser.value(profileOption) << "\n";
+    QTextStream(stdout) << "SkyCore exit: press Ctrl+C/Ctrl+Break, type quit, or send /core stop from SkyTui\n";
     if (!runtime.start())
     {
         return 3;

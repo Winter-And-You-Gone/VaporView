@@ -151,6 +151,7 @@ QString commandIdName(CommandId id)
     case CommandId::SaveSkyConfig: return QStringLiteral("SaveSkyConfig");
     case CommandId::ReloadSkyConfig: return QStringLiteral("ReloadSkyConfig");
     case CommandId::SetPeakSearchRange: return QStringLiteral("SetPeakSearchRange");
+    case CommandId::ShutdownCore: return QStringLiteral("ShutdownCore");
     }
     return QStringLiteral("UnknownCommand");
 }
