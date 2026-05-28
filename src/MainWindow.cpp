@@ -1305,7 +1305,7 @@ void applyComboText(QComboBox *combo, const QString& value)
 QString sourceModeDisplayText(bool english, int index)
 {
     return index == 1
-        ? (english ? QStringLiteral("Remote Sky") : QStringLiteral("天空端"))
+        ? (english ? QStringLiteral("Sky-Ground Receive Mode") : QStringLiteral("天空-地面接收模式"))
         : (english ? QStringLiteral("Local") : QStringLiteral("本地"));
 }
 
@@ -5960,6 +5960,8 @@ void MainWindow::setupConfigPanel()
     data_source_mode_combo_->addItem(sourceModeDisplayText(false, 0));
     data_source_mode_combo_->addItem(sourceModeDisplayText(false, 1));
     data_source_mode_combo_->setFixedHeight(kMainPageInputHeight);
+    data_source_mode_combo_->setMinimumWidth(180);
+    data_source_mode_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     connect(data_source_mode_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MainWindow::onDataSourceModeChanged);
     configTitleLayout->addWidget(data_source_mode_lbl_, 0, Qt::AlignVCenter | Qt::AlignRight);
