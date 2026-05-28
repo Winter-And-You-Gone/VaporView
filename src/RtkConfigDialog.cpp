@@ -19,6 +19,7 @@
 #include <QCloseEvent>
 #include <QColor>
 #include <QDoubleValidator>
+#include <QFontDatabase>
 #include <QFontMetrics>
 #include <QFrame>
 #include <QIcon>
@@ -42,6 +43,7 @@
 #include <QToolButton>
 #include <QUrl>
 #include <QUrlQuery>
+#include <algorithm>
 #include <cmath>
 #include <utility>
 
@@ -62,6 +64,18 @@ constexpr int kRtkMinimumDialogHeight = 420;
 constexpr const char *kEpsilonMainGgaSourceKey = "__epsilon_main__";
 const QColor kRtkHelpIconColor(25, 118, 210);
 const QRegularExpression kGgaSentencePattern("^\\$..GGA,");
+
+QFont numericFontFrom(const QFont& base)
+{
+    QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    if (base.pointSizeF() > 0.0)
+    {
+        font.setPointSizeF(base.pointSizeF());
+    }
+    font.setWeight(static_cast<QFont::Weight>(base.weight()));
+    font.setBold(base.bold());
+    return font;
+}
 
 QString findResourceFile(const QString& relativePath)
 {
@@ -987,6 +1001,13 @@ void RtkConfigDialog::setupUi()
     gga_header_layout_->addStretch();
 
     gga_frequency_label_ = createFieldLabel();
+    gga_frequency_label_->setFont(numericFontFrom(gga_frequency_label_->font()));
+    const QFontMetrics ggaFrequencyMetrics(gga_frequency_label_->font());
+    gga_frequency_label_->setFixedWidth(
+        std::max(
+            ggaFrequencyMetrics.horizontalAdvance(QStringLiteral("Actual Rate: -999.99 Hz")),
+            ggaFrequencyMetrics.horizontalAdvance(QStringLiteral("真实频率: -999.99 Hz"))) + scalePixels(8));
+    gga_frequency_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     gga_header_layout_->addWidget(gga_frequency_label_);
     gga_layout_->addLayout(gga_header_layout_);
 
@@ -1728,7 +1749,9 @@ void RtkConfigDialog::updateGgaFrequency(double hz)
         return;
     }
 
-    gga_frequency_label_->setText(textFor("Actual Rate: %1 Hz", "真实频率: %1 Hz").arg(QString::number(std::max(0.0, hz), 'f', 2)));
+    const QString rateText = QString::number(std::max(0.0, hz), 'f', 2)
+        .rightJustified(7, QLatin1Char(' '));
+    gga_frequency_label_->setText(textFor("Actual Rate: %1 Hz", "真实频率: %1 Hz").arg(rateText));
 }
 
 void RtkConfigDialog::updateGgaStatusLabel(const QString& message, bool healthy)

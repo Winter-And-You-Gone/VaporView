@@ -699,7 +699,14 @@ void RawDataParserWindow::Impl::setupUi()
     detail_tree = new QTreeWidget(owner);
     detail_tree->setColumnCount(6);
     detail_tree->setHeaderLabels({QStringLiteral("Field"), QStringLiteral("Raw"), QStringLiteral("Value"), QStringLiteral("Unit"), QStringLiteral("Offset"), QStringLiteral("Note")});
+    detail_tree->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    detail_tree->header()->setSectionResizeMode(QHeaderView::Interactive);
     detail_tree->header()->setStretchLastSection(true);
+    detail_tree->setColumnWidth(0, 180);
+    detail_tree->setColumnWidth(1, 150);
+    detail_tree->setColumnWidth(2, 210);
+    detail_tree->setColumnWidth(3, 80);
+    detail_tree->setColumnWidth(4, 90);
     detailSplitter->addWidget(detail_tree);
 
     hex_view = new QPlainTextEdit(owner);
@@ -1241,10 +1248,6 @@ void RawDataParserWindow::Impl::showDecodedRecord(const RawRecordIndex& record, 
         }
     }
     detail_tree->expandAll();
-    for (int col = 0; col < detail_tree->columnCount(); ++col)
-    {
-        detail_tree->resizeColumnToContents(col);
-    }
     setHexPayload(payload);
     status_label->setText(QStringLiteral("%1 | %2 | %3")
         .arg(record.device_name, decoded.status, decoded.summary));

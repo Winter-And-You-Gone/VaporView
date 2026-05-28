@@ -21,6 +21,8 @@
 #include <QFileInfo>
 #include <QFileDialog>
 #include <QFont>
+#include <QFontDatabase>
+#include <QFontMetrics>
 #include <QSaveFile>
 #include <QTextStream>
 #include <QStringConverter>
@@ -141,11 +143,6 @@ constexpr int kConfigRemoteCardMinHeight = kConfigCardMinHeight + (kMainPageInpu
 constexpr int kTcpWaveCardMinHeight = 430;
 constexpr int kMainCardResizeHandleHeight = 3;
 constexpr int kEnvStatusIconSize = 18;
-constexpr int kEnvironmentRateLabelMinWidth = 72;
-constexpr int kPtbPressureValueMinWidth = 112;
-constexpr int kHmpValueMinWidth = 92;
-constexpr int kLidarDistanceValueMinWidth = 92;
-constexpr int kLidarStrengthValueMinWidth = 56;
 constexpr int kEpsilonSideTitleWidth = 24;
 constexpr int kEpsilonTitleColumnWidth = 102;
 constexpr int kEpsilonMotionTitleColumnWidth = 116;
@@ -162,6 +159,60 @@ constexpr int kTelemetrySummaryInfoValueWidth = 86;
 constexpr int kTelemetrySummaryTitleColumnWidth = kEpsilonSideTitleWidth;
 constexpr int kPtbMinSampleRateHz = 1;
 constexpr int kPtbMaxSampleRateHz = 70;
+
+QFont numericFontFrom(const QFont& base)
+{
+    QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    if (base.pointSizeF() > 0.0)
+    {
+        font.setPointSizeF(base.pointSizeF());
+    }
+    font.setWeight(static_cast<QFont::Weight>(base.weight()));
+    font.setBold(base.bold());
+    return font;
+}
+
+int widestTextWidth(const QFont& font, const QStringList& candidates)
+{
+    const QFontMetrics metrics(font);
+    int width = 0;
+    for (const QString& candidate : candidates)
+    {
+        width = std::max(width, metrics.horizontalAdvance(candidate));
+    }
+    return width;
+}
+
+void setFixedNumericLabelWidth(QLabel *label, const QStringList& candidates, int padding = 0)
+{
+    if (!label)
+    {
+        return;
+    }
+    label->setFont(numericFontFrom(label->font()));
+    const int width = widestTextWidth(label->font(), candidates) + padding;
+    label->setMinimumWidth(width);
+    label->setMaximumWidth(width);
+    label->setSizePolicy(QSizePolicy::Fixed, label->sizePolicy().verticalPolicy());
+}
+
+QString fixedTextField(const QString& text, int width, Qt::Alignment alignment = Qt::AlignRight)
+{
+    const int targetWidth = std::max(width, static_cast<int>(text.size()));
+    return alignment == Qt::AlignLeft
+        ? text.leftJustified(targetWidth, QLatin1Char(' '))
+        : text.rightJustified(targetWidth, QLatin1Char(' '));
+}
+
+QString fixedDecimalWithUnit(double value, int decimals, int numberWidth, const QString& unit)
+{
+    const QString number = std::isfinite(value)
+        ? QString::number(value, 'f', decimals)
+        : QStringLiteral("---");
+    return unit.isEmpty()
+        ? fixedTextField(number, numberWidth)
+        : QStringLiteral("%1 %2").arg(fixedTextField(number, numberWidth), unit);
+}
 
 std::string epsilonGnssFixTextForCode(int fix_code)
 {
@@ -1711,11 +1762,17 @@ public:
 private:
     QString formatRateValue(double hz) const
     {
+        constexpr int kRateFieldChars = 9; // "-999.9 Hz" keeps signs and separators stable.
+        QString text;
         if (!(hz > 0.0) || !std::isfinite(hz))
         {
-            return QStringLiteral("-- Hz");
+            text = QStringLiteral("-- Hz");
         }
-        return QStringLiteral("%1 Hz").arg(hz, 0, 'f', hz >= 100.0 ? 0 : 1);
+        else
+        {
+            text = QStringLiteral("%1 Hz").arg(hz, 0, 'f', 1);
+        }
+        return text.rightJustified(std::max(kRateFieldChars, static_cast<int>(text.size())), QLatin1Char(' '));
     }
 
     QString boolText(bool value) const
@@ -1899,6 +1956,13 @@ private:
             rate_label_->setObjectName(QStringLiteral("rateLabel"));
             layout->addWidget(rate_label_, 0, Qt::AlignLeft);
         }
+        setFixedNumericLabelWidth(rate_label_,
+            {
+                QStringLiteral("Total Rate: 999.9 Hz   |   40 999.9 Hz   |   41 999.9 Hz   |   42 999.9 Hz   |   50 999.9 Hz   |   59 999.9 Hz   |   5A 999.9 Hz   |   5C 999.9 Hz   |   5D 999.9 Hz"),
+                QStringLiteral("Total Rate: -999.9 Hz   |   40 -999.9 Hz   |   41 -999.9 Hz   |   42 -999.9 Hz   |   50 -999.9 Hz   |   59 -999.9 Hz   |   5A -999.9 Hz   |   5C -999.9 Hz   |   5D -999.9 Hz"),
+                QStringLiteral("总频率：-999.9 Hz   |   40 -999.9 Hz   |   41 -999.9 Hz   |   42 -999.9 Hz   |   50 -999.9 Hz   |   59 -999.9 Hz   |   5A -999.9 Hz   |   5C -999.9 Hz   |   5D -999.9 Hz")
+            },
+            8);
 
         auto *columnsLayout = new QHBoxLayout();
         columnsLayout->setContentsMargins(0, 0, 0, 0);
@@ -2052,7 +2116,8 @@ void GnssPanel::setupUi()
     rate_label_ = new QLabel(this);
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    mainLayout->addWidget(rate_label_);
+    setFixedNumericLabelWidth(rate_label_, {QStringLiteral("-999.9 Hz"), QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 4);
+    mainLayout->addWidget(rate_label_, 0, Qt::AlignRight);
 
     auto *colsLayout = new QHBoxLayout();
     colsLayout->setSpacing(12);
@@ -2132,7 +2197,9 @@ void GnssPanel::updateRate(double hz)
 {
     if (rate_label_)
     {
-        rate_label_->setText(QString::asprintf("%.1f Hz", hz));
+        rate_label_->setText(std::isfinite(hz)
+            ? fixedDecimalWithUnit(hz, 1, 6, QStringLiteral("Hz"))
+            : QStringLiteral("%1 Hz").arg(fixedTextField(QStringLiteral("--"), 6)));
     }
 }
 
@@ -2213,29 +2280,33 @@ void GnssPanel::updateData(const VaporView::GnssData& gnss_data, quint64 timesta
         const QString rawText = timestamp_us > 0 ? QString::number(timestamp_us) + "us" : QStringLiteral("---");
         time_label_->setText(QString("%1\n%2").arg(formattedText, rawText));
 
-        lat_label_->setText(QString::asprintf("%.8f°", gnss_data.latitude));
-        lon_label_->setText(QString::asprintf("%.8f°", gnss_data.longitude));
-        alt_label_->setText(QString::asprintf("%.3f m", gnss_data.altitude));
-        sigma_lat_label_->setText(QString::asprintf("%.3f m", gnss_data.sigma_lat));
-        sigma_lon_label_->setText(QString::asprintf("%.3f m", gnss_data.sigma_lon));
-        sigma_alt_label_->setText(QString::asprintf("%.3f m", gnss_data.sigma_alt));
-        undulation_label_->setText(QString::asprintf("%.3f m", gnss_data.undulation));
-        vel_n_label_->setText(QString::asprintf("%.3f m/s", gnss_data.vel_north));
-        vel_e_label_->setText(QString::asprintf("%.3f m/s", gnss_data.vel_east));
-        vel_ground_label_->setText(QString::asprintf("%.3f m/s", gnss_data.vel_ground));
-        heading_label_->setText(QString::asprintf("%.2f°", gnss_data.heading));
-        pitch_label_->setText(QString::asprintf("%.2f°", gnss_data.heading_pitch));
+        lat_label_->setText(fixedDecimalWithUnit(gnss_data.latitude, 8, 12, QStringLiteral("°")));
+        lon_label_->setText(fixedDecimalWithUnit(gnss_data.longitude, 8, 13, QStringLiteral("°")));
+        alt_label_->setText(fixedDecimalWithUnit(gnss_data.altitude, 3, 10, QStringLiteral("m")));
+        sigma_lat_label_->setText(fixedDecimalWithUnit(gnss_data.sigma_lat, 3, 8, QStringLiteral("m")));
+        sigma_lon_label_->setText(fixedDecimalWithUnit(gnss_data.sigma_lon, 3, 8, QStringLiteral("m")));
+        sigma_alt_label_->setText(fixedDecimalWithUnit(gnss_data.sigma_alt, 3, 8, QStringLiteral("m")));
+        undulation_label_->setText(fixedDecimalWithUnit(gnss_data.undulation, 3, 9, QStringLiteral("m")));
+        vel_n_label_->setText(fixedDecimalWithUnit(gnss_data.vel_north, 3, 9, QStringLiteral("m/s")));
+        vel_e_label_->setText(fixedDecimalWithUnit(gnss_data.vel_east, 3, 9, QStringLiteral("m/s")));
+        vel_ground_label_->setText(fixedDecimalWithUnit(gnss_data.vel_ground, 3, 9, QStringLiteral("m/s")));
+        heading_label_->setText(fixedDecimalWithUnit(gnss_data.heading, 2, 7, QStringLiteral("°")));
+        pitch_label_->setText(fixedDecimalWithUnit(gnss_data.heading_pitch, 2, 7, QStringLiteral("°")));
         heading_type_label_->setText(QString::fromStdString(gnss_data.heading_type));
-        heading_len_label_->setText(QString::asprintf("%.3f m", gnss_data.heading_length));
-        heading_sats_label_->setText(QString("%1/%2").arg(gnss_data.heading_solnsvs).arg(gnss_data.heading_trackedsvs));
-        sats_label_->setText(QString("%1/%2").arg(gnss_data.num_satellites_used).arg(gnss_data.num_satellites_tracked));
-        diff_age_label_->setText(QString::asprintf("%.1f s", gnss_data.diff_age));
-        gdop_label_->setText(QString::asprintf("%.2f", gnss_data.gdop));
-        pdop_label_->setText(QString::asprintf("%.2f", gnss_data.pdop));
-        hdop_label_->setText(QString::asprintf("%.2f", gnss_data.hdop));
-        htdop_label_->setText(QString::asprintf("%.2f", gnss_data.htdop));
-        tdop_label_->setText(QString::asprintf("%.2f", gnss_data.tdop));
-        cutoff_label_->setText(QString::asprintf("%.1f°", gnss_data.elevation_cutoff));
+        heading_len_label_->setText(fixedDecimalWithUnit(gnss_data.heading_length, 3, 9, QStringLiteral("m")));
+        heading_sats_label_->setText(QStringLiteral("%1/%2")
+            .arg(fixedTextField(QString::number(gnss_data.heading_solnsvs), 3),
+                 fixedTextField(QString::number(gnss_data.heading_trackedsvs), 3)));
+        sats_label_->setText(QStringLiteral("%1/%2")
+            .arg(fixedTextField(QString::number(gnss_data.num_satellites_used), 3),
+                 fixedTextField(QString::number(gnss_data.num_satellites_tracked), 3)));
+        diff_age_label_->setText(fixedDecimalWithUnit(gnss_data.diff_age, 1, 6, QStringLiteral("s")));
+        gdop_label_->setText(fixedDecimalWithUnit(gnss_data.gdop, 2, 6, QString()));
+        pdop_label_->setText(fixedDecimalWithUnit(gnss_data.pdop, 2, 6, QString()));
+        hdop_label_->setText(fixedDecimalWithUnit(gnss_data.hdop, 2, 6, QString()));
+        htdop_label_->setText(fixedDecimalWithUnit(gnss_data.htdop, 2, 6, QString()));
+        tdop_label_->setText(fixedDecimalWithUnit(gnss_data.tdop, 2, 6, QString()));
+        cutoff_label_->setText(fixedDecimalWithUnit(gnss_data.elevation_cutoff, 1, 6, QStringLiteral("°")));
     }
     else
     {
@@ -2306,7 +2377,8 @@ void ImuPanel::setupUi()
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     rate_label_->setFixedHeight(24);
-    mainLayout->addWidget(rate_label_);
+    setFixedNumericLabelWidth(rate_label_, {QStringLiteral("-999.9 Hz"), QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 4);
+    mainLayout->addWidget(rate_label_, 0, Qt::AlignRight);
 
     auto *colsLayout = new QHBoxLayout();
     colsLayout->setSpacing(12);
@@ -2381,7 +2453,9 @@ void ImuPanel::updateRate(double hz)
 {
     if (rate_label_)
     {
-        rate_label_->setText(QString::asprintf("%.1f Hz", hz));
+        rate_label_->setText(std::isfinite(hz)
+            ? fixedDecimalWithUnit(hz, 1, 6, QStringLiteral("Hz"))
+            : QStringLiteral("%1 Hz").arg(fixedTextField(QStringLiteral("--"), 6)));
     }
 }
 
@@ -2484,33 +2558,35 @@ void ImuPanel::updateData(const VaporView::ImuData& imu_data, quint64 gnss_times
         }
         else if (ppsValid)
         {
+            const QString deltaText = fixedTextField(QString::number(deltaUs / 1000ULL), 6);
             pps_label_->setText(is_english_
-                ? QString("Valid (Δ%1 ms)").arg(QString::number(deltaUs / 1000ULL))
-                : QString("有效 (差值%1 ms)").arg(QString::number(deltaUs / 1000ULL)));
+                ? QString("Valid (Δ%1 ms)").arg(deltaText)
+                : QString("有效 (差值%1 ms)").arg(deltaText));
         }
         else
         {
+            const QString deltaText = fixedTextField(QString::number(deltaUs / 1000ULL), 6);
             pps_label_->setText(is_english_
-                ? QString("Invalid (Δ%1 ms)").arg(QString::number(deltaUs / 1000ULL))
-                : QString("无效 (差值%1 ms)").arg(QString::number(deltaUs / 1000ULL)));
+                ? QString("Invalid (Δ%1 ms)").arg(deltaText)
+                : QString("无效 (差值%1 ms)").arg(deltaText));
         }
 
-        acc_x_label_->setText(QString::asprintf("%.3f", imu_data.acceleration[0]));
-        acc_y_label_->setText(QString::asprintf("%.3f", imu_data.acceleration[1]));
-        acc_z_label_->setText(QString::asprintf("%.3f", imu_data.acceleration[2]));
+        acc_x_label_->setText(fixedDecimalWithUnit(imu_data.acceleration[0], 3, 8, QString()));
+        acc_y_label_->setText(fixedDecimalWithUnit(imu_data.acceleration[1], 3, 8, QString()));
+        acc_z_label_->setText(fixedDecimalWithUnit(imu_data.acceleration[2], 3, 8, QString()));
 
-        gyr_x_label_->setText(QString::asprintf("%.3f", imu_data.gyroscope[0]));
-        gyr_y_label_->setText(QString::asprintf("%.3f", imu_data.gyroscope[1]));
-        gyr_z_label_->setText(QString::asprintf("%.3f", imu_data.gyroscope[2]));
+        gyr_x_label_->setText(fixedDecimalWithUnit(imu_data.gyroscope[0], 3, 8, QString()));
+        gyr_y_label_->setText(fixedDecimalWithUnit(imu_data.gyroscope[1], 3, 8, QString()));
+        gyr_z_label_->setText(fixedDecimalWithUnit(imu_data.gyroscope[2], 3, 8, QString()));
 
-        roll_label_->setText(QString::asprintf("%.2f°", imu_data.rpy[0]));
-        pitch_label_->setText(QString::asprintf("%.2f°", imu_data.rpy[1]));
-        yaw_label_->setText(QString::asprintf("%.2f°", imu_data.rpy[2]));
+        roll_label_->setText(fixedDecimalWithUnit(imu_data.rpy[0], 2, 7, QStringLiteral("°")));
+        pitch_label_->setText(fixedDecimalWithUnit(imu_data.rpy[1], 2, 7, QStringLiteral("°")));
+        yaw_label_->setText(fixedDecimalWithUnit(imu_data.rpy[2], 2, 7, QStringLiteral("°")));
 
-        quat_w_label_->setText(QString::asprintf("%.4f", imu_data.quaternion[0]));
-        quat_x_label_->setText(QString::asprintf("%.4f", imu_data.quaternion[1]));
-        quat_y_label_->setText(QString::asprintf("%.4f", imu_data.quaternion[2]));
-        quat_z_label_->setText(QString::asprintf("%.4f", imu_data.quaternion[3]));
+        quat_w_label_->setText(fixedDecimalWithUnit(imu_data.quaternion[0], 4, 8, QString()));
+        quat_x_label_->setText(fixedDecimalWithUnit(imu_data.quaternion[1], 4, 8, QString()));
+        quat_y_label_->setText(fixedDecimalWithUnit(imu_data.quaternion[2], 4, 8, QString()));
+        quat_z_label_->setText(fixedDecimalWithUnit(imu_data.quaternion[3], 4, 8, QString()));
     }
     else
     {
@@ -2545,7 +2621,7 @@ void PtbPanel::setupUi()
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     rate_label_->setMinimumHeight(20);
-    rate_label_->setMinimumWidth(kEnvironmentRateLabelMinWidth);
+    setFixedNumericLabelWidth(rate_label_, {QStringLiteral("-999.9 Hz"), QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 4);
 
     auto *pressLayout = new QHBoxLayout();
     pressLayout->setSpacing(1);
@@ -2556,7 +2632,7 @@ void PtbPanel::setupUi()
     pressure_label_ = new QLabel("--- hPa", this);
     pressure_label_->setObjectName("highlightedValue");
     pressure_label_->setMinimumHeight(20);
-    pressure_label_->setMinimumWidth(kPtbPressureValueMinWidth);
+    setFixedNumericLabelWidth(pressure_label_, {QStringLiteral("-9999.99 hPa"), QStringLiteral("9999.99 hPa"), QStringLiteral("--- hPa")}, 18);
     pressLayout->addWidget(pressure_label_);
     pressLayout->addStretch();
     pressLayout->addWidget(rate_label_);
@@ -2569,7 +2645,9 @@ void PtbPanel::updateRate(double hz)
 {
     if (rate_label_)
     {
-        rate_label_->setText((hz > 0.0 && std::isfinite(hz)) ? QString::asprintf("%.1f Hz", hz) : QStringLiteral("-- Hz"));
+        rate_label_->setText((hz > 0.0 && std::isfinite(hz))
+            ? fixedDecimalWithUnit(hz, 1, 6, QStringLiteral("Hz"))
+            : QStringLiteral("%1 Hz").arg(fixedTextField(QStringLiteral("--"), 6)));
     }
 }
 
@@ -2590,14 +2668,14 @@ void PtbPanel::updateData(const VaporView::PtbData& ptb_data)
 {
     if (ptb_data.valid)
     {
-        pressure_label_->setText(QString::asprintf("%.2f hPa", ptb_data.pressure_hpa));
+        pressure_label_->setText(fixedDecimalWithUnit(ptb_data.pressure_hpa, 2, 8, QStringLiteral("hPa")));
         pressure_label_->setProperty("data-valid", true);
         pressure_label_->style()->unpolish(pressure_label_);
         pressure_label_->style()->polish(pressure_label_);
     }
     else
     {
-        pressure_label_->setText("--- hPa");
+        pressure_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 2, 8, QStringLiteral("hPa")));
         pressure_label_->setProperty("data-valid", false);
         pressure_label_->style()->unpolish(pressure_label_);
         pressure_label_->style()->polish(pressure_label_);
@@ -2628,7 +2706,7 @@ void HmpPanel::setupUi()
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     rate_label_->setMinimumHeight(20);
-    rate_label_->setMinimumWidth(kEnvironmentRateLabelMinWidth);
+    setFixedNumericLabelWidth(rate_label_, {QStringLiteral("-999.9 Hz"), QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 4);
 
     auto *tempLayout = new QHBoxLayout();
     tempLayout->setSpacing(1);
@@ -2639,7 +2717,7 @@ void HmpPanel::setupUi()
     temperature_label_ = new QLabel("--- °C", this);
     temperature_label_->setObjectName("highlightedValue");
     temperature_label_->setMinimumHeight(20);
-    temperature_label_->setMinimumWidth(kHmpValueMinWidth);
+    setFixedNumericLabelWidth(temperature_label_, {QStringLiteral("-999.9 °C"), QStringLiteral("999.9 °C"), QStringLiteral("--- °C")}, 18);
     tempLayout->addWidget(temperature_label_);
     tempLayout->addStretch();
     tempLayout->addWidget(rate_label_);
@@ -2654,7 +2732,7 @@ void HmpPanel::setupUi()
     humidity_label_ = new QLabel("--- %RH", this);
     humidity_label_->setObjectName("highlightedValue");
     humidity_label_->setMinimumHeight(20);
-    humidity_label_->setMinimumWidth(kHmpValueMinWidth);
+    setFixedNumericLabelWidth(humidity_label_, {QStringLiteral("-999.9 %RH"), QStringLiteral("100.0 %RH"), QStringLiteral("--- %RH")}, 18);
     humidLayout->addWidget(humidity_label_);
     humidLayout->addStretch();
     layout->addLayout(humidLayout);
@@ -2666,7 +2744,9 @@ void HmpPanel::updateRate(double hz)
 {
     if (rate_label_)
     {
-        rate_label_->setText((hz > 0.0 && std::isfinite(hz)) ? QString::asprintf("%.1f Hz", hz) : QStringLiteral("-- Hz"));
+        rate_label_->setText((hz > 0.0 && std::isfinite(hz))
+            ? fixedDecimalWithUnit(hz, 1, 6, QStringLiteral("Hz"))
+            : QStringLiteral("%1 Hz").arg(fixedTextField(QStringLiteral("--"), 6)));
     }
 }
 
@@ -2689,8 +2769,8 @@ void HmpPanel::updateData(const VaporView::HmpData& hmp_data)
 {
     if (hmp_data.valid)
     {
-        temperature_label_->setText(QString::asprintf("%.1f °C", hmp_data.temperature));
-        humidity_label_->setText(QString::asprintf("%.1f %%RH", hmp_data.humidity));
+        temperature_label_->setText(fixedDecimalWithUnit(hmp_data.temperature, 1, 6, QStringLiteral("°C")));
+        humidity_label_->setText(fixedDecimalWithUnit(hmp_data.humidity, 1, 6, QStringLiteral("%RH")));
         temperature_label_->setProperty("data-valid", true);
         temperature_label_->style()->unpolish(temperature_label_);
         temperature_label_->style()->polish(temperature_label_);
@@ -2700,8 +2780,8 @@ void HmpPanel::updateData(const VaporView::HmpData& hmp_data)
     }
     else
     {
-        temperature_label_->setText("--- °C");
-        humidity_label_->setText("--- %RH");
+        temperature_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 1, 6, QStringLiteral("°C")));
+        humidity_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 1, 6, QStringLiteral("%RH")));
         temperature_label_->setProperty("data-valid", false);
         temperature_label_->style()->unpolish(temperature_label_);
         temperature_label_->style()->polish(temperature_label_);
@@ -2734,7 +2814,8 @@ void LidarPanel::setupUi()
     rate_label_ = new QLabel("0.0 Hz", this);
     rate_label_->setObjectName("rateLabel");
     rate_label_->setMinimumHeight(20);
-    rate_label_->setMinimumWidth(kEnvironmentRateLabelMinWidth);
+    rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    setFixedNumericLabelWidth(rate_label_, {QStringLiteral("-999.9 Hz"), QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 4);
 
     auto *distanceLayout = new QHBoxLayout();
     distanceLayout->setSpacing(1);
@@ -2745,7 +2826,7 @@ void LidarPanel::setupUi()
     distance_label_ = new QLabel("--- m", this);
     distance_label_->setObjectName("highlightedValue");
     distance_label_->setMinimumHeight(20);
-    distance_label_->setMinimumWidth(kLidarDistanceValueMinWidth);
+    setFixedNumericLabelWidth(distance_label_, {QStringLiteral("-9999.99 m"), QStringLiteral("9999.99 m"), QStringLiteral("--- m")}, 18);
     distanceLayout->addWidget(distance_label_);
     distanceLayout->addStretch();
     distanceLayout->addWidget(rate_label_);
@@ -2760,7 +2841,7 @@ void LidarPanel::setupUi()
     strength_label_ = new QLabel("---", this);
     strength_label_->setObjectName("highlightedValue");
     strength_label_->setMinimumHeight(20);
-    strength_label_->setMinimumWidth(kLidarStrengthValueMinWidth);
+    setFixedNumericLabelWidth(strength_label_, {QStringLiteral("-999999"), QStringLiteral("999999"), QStringLiteral("---")}, 18);
     strengthLayout->addWidget(strength_label_);
     strengthLayout->addStretch();
     layout->addLayout(strengthLayout);
@@ -2772,7 +2853,9 @@ void LidarPanel::updateRate(double hz)
 {
     if (rate_label_)
     {
-        rate_label_->setText((hz > 0.0 && std::isfinite(hz)) ? QString::asprintf("%.1f Hz", hz) : QStringLiteral("-- Hz"));
+        rate_label_->setText((hz > 0.0 && std::isfinite(hz))
+            ? fixedDecimalWithUnit(hz, 1, 6, QStringLiteral("Hz"))
+            : QStringLiteral("%1 Hz").arg(fixedTextField(QStringLiteral("--"), 6)));
     }
 }
 
@@ -2795,8 +2878,8 @@ void LidarPanel::updateData(const VaporView::LidarData& lidar_data)
 {
     if (lidar_data.valid)
     {
-        distance_label_->setText(QString::asprintf("%.2f m", lidar_data.distance_m));
-        strength_label_->setText(QString::number(lidar_data.signal_strength));
+        distance_label_->setText(fixedDecimalWithUnit(lidar_data.distance_m, 2, 8, QStringLiteral("m")));
+        strength_label_->setText(fixedTextField(QString::number(lidar_data.signal_strength), 7));
         distance_label_->setProperty("data-valid", true);
         strength_label_->setProperty("data-valid", true);
         distance_label_->style()->unpolish(distance_label_);
@@ -2806,8 +2889,8 @@ void LidarPanel::updateData(const VaporView::LidarData& lidar_data)
     }
     else
     {
-        distance_label_->setText("--- m");
-        strength_label_->setText("---");
+        distance_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 2, 8, QStringLiteral("m")));
+        strength_label_->setText(fixedTextField(QStringLiteral("---"), 7));
         distance_label_->setProperty("data-valid", false);
         strength_label_->setProperty("data-valid", false);
         distance_label_->style()->unpolish(distance_label_);

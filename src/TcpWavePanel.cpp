@@ -51,6 +51,8 @@ constexpr int kTcpTitleBarStatusSpacing = 8;
 constexpr int kTcpFrameRateMinimumWidth = 132;
 constexpr int kPlotTopMargin = 2;
 constexpr int kPlotRightMargin = 2;
+constexpr int kWavePlotLeftMargin = 88;
+constexpr int kPeakPlotLeftMargin = 88;
 constexpr int kDefaultPeakSearchStartIndex = 0;
 constexpr int kDefaultPeakSearchEndIndex = 0;
 constexpr int kPeakTrendFrameWindow = 1000;
@@ -345,6 +347,7 @@ public:
         : QWidget(parent)
         , line_color_(lineColor)
     {
+        setFont(numericFontFrom(font()));
         setMinimumHeight(120);
         setMaximumHeight(150);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -396,8 +399,7 @@ protected:
         const QString midLabel = formatWaveValue((maxValue + minValue) * 0.5, 3);
         const QString minLabel = formatWaveValue(minValue, 3);
         const QFontMetrics fm = painter.fontMetrics();
-        const int labelWidth = std::max({fm.horizontalAdvance(maxLabel), fm.horizontalAdvance(midLabel), fm.horizontalAdvance(minLabel)});
-        const int leftMargin = std::max(18, labelWidth + 4);
+        const int leftMargin = kWavePlotLeftMargin;
         const int bottomMargin = fm.height() + 2;
         const QRectF plotRect = rect().adjusted(leftMargin, kPlotTopMargin, -kPlotRightMargin, -bottomMargin);
 
@@ -463,6 +465,7 @@ public:
         , view_start_index_(0)
         , view_count_(0)
     {
+        setFont(numericFontFrom(font()));
         setMinimumHeight(150);
         setMaximumHeight(190);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -574,8 +577,7 @@ protected:
         const QString midLabel = QString::number((maxValue + minValue) * 0.5, 'f', 3);
         const QString minLabel = QString::number(minValue, 'f', 3);
         const QFontMetrics fm = painter.fontMetrics();
-        const int labelWidth = std::max({fm.horizontalAdvance(maxLabel), fm.horizontalAdvance(midLabel), fm.horizontalAdvance(minLabel)});
-        const int leftMargin = std::max(18, labelWidth + 4);
+        const int leftMargin = kPeakPlotLeftMargin;
         const int bottomMargin = fm.height() + 2;
         const QRectF plotRect = rect().adjusted(leftMargin, kPlotTopMargin, -kPlotRightMargin, -bottomMargin);
 
@@ -829,8 +831,8 @@ void TcpWavePanel::setupUi()
     const int frameRateWidth = std::max(
         kTcpFrameRateMinimumWidth,
         widestTextWidth(frame_rate_label_,
-                        {QStringLiteral("实时频率: 00.00 Hz"),
-                         QStringLiteral("Realtime: 00.00 Hz")}) + 8);
+                        {QStringLiteral("实时频率: -999.99 Hz"),
+                         QStringLiteral("Realtime: -999.99 Hz")}) + 8);
     frame_rate_label_->setFixedWidth(frameRateWidth);
     frame_rate_label_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     top_controls_layout_->addWidget(frame_rate_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
@@ -969,7 +971,15 @@ void TcpWavePanel::setupUi()
     peak_filter_button_ = new QPushButton(this);
     peak_filter_button_->setObjectName("compactTcpButton");
     peak_filter_button_->setFixedHeight(kTcpButtonHeight);
-    peak_filter_button_->setMinimumWidth(134);
+    {
+        const QFontMetrics metrics(peak_filter_button_->font());
+        const int width = std::max({
+            134,
+            metrics.horizontalAdvance(QStringLiteral("Search:999999-999999 / Exclude Range")) + 34,
+            metrics.horizontalAdvance(QStringLiteral("峰值搜索:999999-999999 / 排除区间")) + 34
+        });
+        peak_filter_button_->setFixedWidth(width);
+    }
     connect(peak_filter_button_, &QPushButton::clicked, this, &TcpWavePanel::onConfigurePeakFilterClicked);
     peakHeaderLayout->addWidget(peak_filter_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     peak_mode_button_ = new QPushButton(this);
@@ -1253,7 +1263,8 @@ void TcpWavePanel::resetFrameRateDisplay()
     {
         return;
     }
-    frame_rate_label_->setText(is_english_ ? "Realtime: -- Hz" : "实时频率: -- Hz");
+    frame_rate_label_->setText(QString(is_english_ ? "Realtime: %1 Hz" : "实时频率: %1 Hz")
+        .arg(fixedStatusText(QStringLiteral("--"), 7)));
 }
 
 void TcpWavePanel::updateFrameRateDisplay(qint64 arrivalTimeMs)
@@ -1281,7 +1292,7 @@ void TcpWavePanel::updateFrameRateDisplay(qint64 arrivalTimeMs)
     }
 
     frame_rate_label_->setText(QString(is_english_ ? "Realtime: %1 Hz" : "实时频率: %1 Hz")
-        .arg(QString::number(rateHz, 'f', 2)));
+        .arg(fixedStatusText(QString::number(rateHz, 'f', 2), 7)));
 }
 
 void TcpWavePanel::updateLiveDisplay()
@@ -2020,31 +2031,35 @@ void TcpWavePanel::processBuffer()
             const auto describeRange = [](const QVector<float>& values) {
                 if (values.isEmpty())
                 {
-                    return QStringLiteral("min=0.000 max=0.000");
+                    return QStringLiteral("min=%1 max=%2")
+                        .arg(fixedStatusField(QStringLiteral("0.000"), 14),
+                             fixedStatusField(QStringLiteral("0.000"), 14));
                 }
                 const auto [minIt, maxIt] = std::minmax_element(values.cbegin(), values.cend());
                 return QString("min=%1 max=%2")
-                    .arg(formatWaveValue(*minIt, 6))
-                    .arg(formatWaveValue(*maxIt, 6));
+                    .arg(fixedStatusField(formatWaveValue(*minIt, 6), 14),
+                         fixedStatusField(formatWaveValue(*maxIt, 6), 14));
             };
 
+            const QString wave1SampleCount = fixedStatusInteger(wave1_history_.size(), kRemoteStatusCountWidth);
+            const QString wave4SampleCount = fixedStatusInteger(wave4_history_.size(), kRemoteStatusCountWidth);
             pending_wave1_info_text_ = QString(is_english_
                 ? "raw signal: %1 samples, %2"
                 : "原始信号: %1 个采样点，%2")
-                .arg(wave1_history_.size())
+                .arg(wave1SampleCount)
                 .arg(describeRange(wave1_history_));
             pending_wave4_info_text_ = QString(is_english_
                 ? "normalized second harmonic: %1 samples, %2, %3"
                 : "归一化二次谐波: %1 个采样点，%2，%3")
-                .arg(wave4_history_.size())
+                .arg(wave4SampleCount)
                 .arg(describeRange(wave4_history_))
                 .arg([this, rawPeakValue, displayedPeakValue]() {
                     const QString rawPeakText = std::isfinite(rawPeakValue)
-                        ? formatWaveValue(rawPeakValue, 6)
-                        : QStringLiteral("--");
+                        ? fixedStatusField(formatWaveValue(rawPeakValue, 6), 14)
+                        : fixedStatusField(QStringLiteral("--"), 14);
                     const QString displayedPeakText = std::isfinite(displayedPeakValue)
-                        ? formatWaveValue(displayedPeakValue, 6)
-                        : (is_english_ ? QStringLiteral("filtered") : QStringLiteral("已过滤"));
+                        ? fixedStatusField(formatWaveValue(displayedPeakValue, 6), 14)
+                        : fixedStatusField(is_english_ ? QStringLiteral("filtered") : QStringLiteral("已过滤"), 14);
                     if (peak_filter_settings_.mode == PeakFilterMode::None ||
                         (!std::isfinite(rawPeakValue) && !std::isfinite(displayedPeakValue)) ||
                         (std::isfinite(rawPeakValue) && std::isfinite(displayedPeakValue) &&
@@ -2061,7 +2076,7 @@ void TcpWavePanel::processBuffer()
                 : "正在接收来自 %1:%2 的数据帧，第 %3 帧，浮点格式: %4")
                 .arg(host_edit_->text())
                 .arg(port_spin_->value())
-                .arg(frame_count_)
+                .arg(fixedStatusInteger(frame_count_, 8))
                 .arg(VaporView::tcpFloatEncodingLabel(is_english_, float_encoding_));
             live_display_dirty_ = true;
 

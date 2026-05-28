@@ -17,6 +17,8 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QFontDatabase>
+#include <QFontMetrics>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -62,6 +64,7 @@ constexpr quint64 kWaveformTimestampBytes = sizeof(quint64);
 constexpr quint64 kFloatBytes = sizeof(float);
 constexpr int kSessionViewerPlotHeight = 120;
 constexpr int kSessionViewerPlotLeftMargin = 64;
+constexpr int kSessionViewerTrendPlotLeftMargin = 112;
 constexpr int kSessionViewerPlotRightMargin = 10;
 constexpr int kSessionViewerPlotTopMargin = 12;
 constexpr int kSessionViewerPlotBottomMargin = 28;
@@ -84,6 +87,40 @@ const QColor kCurrentGuideLineColor("#ffb347");
 const QColor kCurrentGuideLabelFillColor("#8b4a00");
 const QColor kCurrentGuideLabelBorderColor("#5f3000");
 const QColor kCurrentGuideLabelTextColor("#fff7ea");
+
+QFont numericFontFrom(const QFont& base)
+{
+    QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    if (base.pointSizeF() > 0.0)
+    {
+        font.setPointSizeF(base.pointSizeF());
+    }
+    font.setWeight(static_cast<QFont::Weight>(base.weight()));
+    font.setBold(base.bold());
+    return font;
+}
+
+QString fixedTextField(const QString& text, int width, Qt::Alignment alignment = Qt::AlignRight)
+{
+    const int targetWidth = std::max(width, static_cast<int>(text.size()));
+    return alignment == Qt::AlignLeft
+        ? text.leftJustified(targetWidth, QLatin1Char(' '))
+        : text.rightJustified(targetWidth, QLatin1Char(' '));
+}
+
+QString fixedIntegerField(qulonglong value, int width)
+{
+    return fixedTextField(QString::number(value), width);
+}
+
+QString fixedDecimalField(double value, int decimals, int width)
+{
+    if (!std::isfinite(value))
+    {
+        return fixedTextField(QStringLiteral("---"), width);
+    }
+    return fixedTextField(QString::number(value, 'f', decimals), width);
+}
 
 struct SessionPlotTheme
 {
@@ -405,15 +442,10 @@ double parseOptionalDouble(const QString& value)
     return ok ? parsed : std::numeric_limits<double>::quiet_NaN();
 }
 
-QString formatOptionalSeriesValue(double value, int decimals, const QString& unit = QString())
+QString formatOptionalSeriesValueFixed(double value, int decimals, int width, const QString& unit = QString())
 {
-    if (!std::isfinite(value))
-    {
-        return QStringLiteral("---");
-    }
-    return unit.isEmpty()
-        ? QString::number(value, 'f', decimals)
-        : QStringLiteral("%1 %2").arg(QString::number(value, 'f', decimals), unit);
+    const QString number = fixedDecimalField(value, decimals, width);
+    return unit.isEmpty() ? number : QStringLiteral("%1 %2").arg(number, unit);
 }
 
 QString formatGuideValue(double value, int decimals, const QString& unit = QString())
@@ -474,16 +506,6 @@ double haversineDistanceMeters(double lat1Deg, double lon1Deg, double lat2Deg, d
         std::cos(lat1) * std::cos(lat2) * std::sin(dLon * 0.5) * std::sin(dLon * 0.5);
     const double c = 2.0 * std::atan2(std::sqrt(a), std::sqrt(std::max(0.0, 1.0 - a)));
     return kEarthRadiusMeters * c;
-}
-
-int sessionViewerAxisTextWidth(const QFontMetrics& fm, const QStringList& labels)
-{
-    int maxWidth = 0;
-    for (const QString& label : labels)
-    {
-        maxWidth = std::max(maxWidth, fm.horizontalAdvance(label));
-    }
-    return maxWidth;
 }
 
 int trendRenderPointCount(int visibleCount, const QRectF& plotRect)
@@ -1109,6 +1131,7 @@ public:
         , view_count_(0)
         , plot_cache_valid_(false)
     {
+        setFont(numericFontFrom(font()));
         setFixedHeight(kSessionViewerPlotHeight);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     }
@@ -1271,8 +1294,7 @@ private:
         const QString midLabel = hasFiniteValues ? formatGuideValue((maxValue + minValue) * 0.5, 3, unit_) : QStringLiteral("---");
         const QString minLabel = hasFiniteValues ? formatGuideValue(minValue, 3, unit_) : QStringLiteral("---");
         const QFontMetrics fm = painter.fontMetrics();
-        const int axisTextWidth = sessionViewerAxisTextWidth(fm, {maxLabel, midLabel, minLabel});
-        const int leftMargin = std::max(kSessionViewerPlotLeftMargin, axisTextWidth + 12);
+        const int leftMargin = kSessionViewerTrendPlotLeftMargin;
         const QRectF plotRect = rect().adjusted(
             leftMargin,
             kSessionViewerPlotTopMargin,
@@ -1720,9 +1742,12 @@ void SessionViewerWindow::setupUi()
     frameLayout->addWidget(frame_spin_, 0, 2);
 
     frame_total_label_ = new QLabel("---", this);
+    frame_total_label_->setFont(numericFontFrom(frame_total_label_->font()));
+    frame_total_label_->setFixedWidth(QFontMetrics(frame_total_label_->font()).horizontalAdvance(QStringLiteral("/ 999999999")) + 8);
     frameLayout->addWidget(frame_total_label_, 0, 3);
 
     frame_info_label_ = new QLabel(this);
+    frame_info_label_->setFont(numericFontFrom(frame_info_label_->font()));
     frame_info_label_->setWordWrap(true);
     frameLayout->addWidget(frame_info_label_, 1, 0, 1, 4);
 
@@ -1795,6 +1820,7 @@ void SessionViewerWindow::setupUi()
     waveformLayout->addWidget(pressure_plot_);
 
     environment_info_label_ = new QLabel(this);
+    environment_info_label_->setFont(numericFontFrom(environment_info_label_->font()));
     environment_info_label_->setWordWrap(true);
     environment_info_label_->setObjectName("fieldLabel");
     waveformLayout->addWidget(environment_info_label_);
@@ -3292,9 +3318,10 @@ void SessionViewerWindow::updateWaveformControls()
         frame_spin_->setValue(0);
     }
 
+    const int totalDigits = std::max(1, static_cast<int>(QString::number(std::max<quint64>(total_waveform_frames_, 1ULL)).size()));
     frame_total_label_->setText(hasFrames
-        ? QStringLiteral("/ %1").arg(total_waveform_frames_)
-        : QStringLiteral("/ 0"));
+        ? QStringLiteral("/ %1").arg(fixedIntegerField(total_waveform_frames_, totalDigits))
+        : QStringLiteral("/ %1").arg(fixedIntegerField(0, totalDigits)));
 }
 
 void SessionViewerWindow::onFrameSliderMoved(int value)
@@ -3651,11 +3678,12 @@ bool SessionViewerWindow::previewWaveformFrame(quint64 frameIndex)
     static_cast<SingleSeriesTrendPlotWidget*>(humidity_plot_)->setCurrentIndex(previewCsvRow);
     static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setCurrentIndex(previewCsvRow);
     previewClosestSensorRow(timestampUs);
+    const int frameDigits = std::max(1, static_cast<int>(QString::number(total_waveform_frames_).size()));
     frame_info_label_->setText(QString(is_english_
         ? "Previewing frame %1 / %2. Release the slider to sync CSV and details."
         : "正在预览第 %1 / %2 帧。松开滑块后同步 CSV 和详细信息。")
-        .arg(frameIndex + 1)
-        .arg(total_waveform_frames_));
+        .arg(fixedIntegerField(frameIndex + 1, frameDigits))
+        .arg(fixedIntegerField(total_waveform_frames_, frameDigits)));
     return true;
 }
 
@@ -3699,19 +3727,20 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
     }
     const QString waveformExportText = (waveform_export_mode_ == QStringLiteral("per_frame") || waveform_export_rate_hz_ <= 0)
         ? (is_english_ ? QStringLiteral("per-frame export") : QStringLiteral("逐帧导出"))
-        : QString(is_english_ ? "%1 Hz export" : "%1 Hz 导出").arg(waveform_export_rate_hz_);
+        : QString(is_english_ ? "%1 Hz export" : "%1 Hz 导出").arg(fixedDecimalField(waveform_export_rate_hz_, 2, 8));
     const QString peakText = std::isfinite(filteredPeakValue)
-        ? QString::number(filteredPeakValue, 'f', 6)
-        : (is_english_ ? QStringLiteral("No valid value") : QStringLiteral("无有效值"));
+        ? fixedDecimalField(filteredPeakValue, 6, 14)
+        : fixedTextField(is_english_ ? QStringLiteral("No valid value") : QStringLiteral("无有效值"), 14, Qt::AlignLeft);
+    const int frameDigits = std::max(1, static_cast<int>(QString::number(total_waveform_frames_).size()));
     frame_info_label_->setText(QString(is_english_
         ? "Frame %1 / %2 | %3 | %4 | min=%5 max=%6 peak=%7 | %8"
         : "第 %1 / %2 帧 | %3 | %4 | min=%5 max=%6 峰值=%7 | %8")
-        .arg(frameIndex + 1)
-        .arg(total_waveform_frames_)
+        .arg(fixedIntegerField(frameIndex + 1, frameDigits))
+        .arg(fixedIntegerField(total_waveform_frames_, frameDigits))
         .arg(frameTime)
         .arg(waveformExportText)
-        .arg(QString::number(*minMax.first, 'f', 6))
-        .arg(QString::number(*minMax.second, 'f', 6))
+        .arg(fixedDecimalField(*minMax.first, 6, 14))
+        .arg(fixedDecimalField(*minMax.second, 6, 14))
         .arg(peakText)
         .arg(QFileInfo(sourceFilename).fileName())
         + (csvMatchText.isEmpty() ? QString() : QStringLiteral(" | ") + csvMatchText));
@@ -3932,9 +3961,11 @@ QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs)
         {
             deltaItem->setText(formatSignedDeltaMs(deltaUs));
         }
+        const QString rowText = fixedIntegerField(row + 1, 8);
+        const QString deltaText = fixedTextField(formatSignedDeltaMs(deltaUs), 12);
         matchParts.append(is_english_
-            ? QString("CSV row %1 (%2)").arg(row + 1).arg(formatSignedDeltaMs(deltaUs))
-            : QString("CSV 第%1行（%2）").arg(row + 1).arg(formatSignedDeltaMs(deltaUs)));
+            ? QString("CSV row %1 (%2)").arg(rowText, deltaText)
+            : QString("CSV 第%1行（%2）").arg(rowText, deltaText));
     }
 
     highlighted_csv_rows_ = rowsToHighlight;
@@ -3964,10 +3995,10 @@ QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs)
         environment_info_label_->setText(QString(is_english_
             ? "Red: temperature %1, blue: humidity %2, green: pressure %3 (CSV row %4)."
             : "红色: 温度 %1，蓝色: 湿度 %2，绿色: 气压 %3（CSV 第%4行）。")
-            .arg(formatOptionalSeriesValue(primaryRow < temperature_values_.size() ? temperature_values_.at(primaryRow) : std::numeric_limits<double>::quiet_NaN(), 2, QStringLiteral("°C")))
-            .arg(formatOptionalSeriesValue(primaryRow < humidity_values_.size() ? humidity_values_.at(primaryRow) : std::numeric_limits<double>::quiet_NaN(), 2, QStringLiteral("%RH")))
-            .arg(formatOptionalSeriesValue(primaryRow < pressure_values_.size() ? pressure_values_.at(primaryRow) : std::numeric_limits<double>::quiet_NaN(), 2, QStringLiteral("hPa")))
-            .arg(primaryRow + 1));
+            .arg(formatOptionalSeriesValueFixed(primaryRow < temperature_values_.size() ? temperature_values_.at(primaryRow) : std::numeric_limits<double>::quiet_NaN(), 2, 8, QStringLiteral("°C")))
+            .arg(formatOptionalSeriesValueFixed(primaryRow < humidity_values_.size() ? humidity_values_.at(primaryRow) : std::numeric_limits<double>::quiet_NaN(), 2, 8, QStringLiteral("%RH")))
+            .arg(formatOptionalSeriesValueFixed(primaryRow < pressure_values_.size() ? pressure_values_.at(primaryRow) : std::numeric_limits<double>::quiet_NaN(), 2, 9, QStringLiteral("hPa")))
+            .arg(fixedIntegerField(primaryRow + 1, 8)));
     }
 
     return matchParts.join(is_english_ ? " | " : " | ");
