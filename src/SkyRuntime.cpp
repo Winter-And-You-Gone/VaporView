@@ -29,6 +29,16 @@ bool connectedAndFresh(const DeviceStatusItem& status, quint64 nowUs, quint64 ti
            nowUs - status.last_data_time_us <= timeoutUs;
 }
 
+CommandAck makeAck(const CommandMessage& command, CommandErrorCode errorCode = CommandErrorCode::Ok)
+{
+    CommandAck ack;
+    ack.command_id = command.command_id;
+    ack.command_seq = command.command_seq;
+    ack.result = errorCode == CommandErrorCode::Ok ? 0 : 1;
+    ack.error_code = errorCode;
+    return ack;
+}
+
 QString defaultConfigPath()
 {
     return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("sky_config.json"));
@@ -352,6 +362,35 @@ SkyDashboardSnapshot SkyRuntime::dashboardSnapshot() const
     return snapshot;
 }
 
+QVector<DownsampledWaveform> SkyRuntime::currentDownsampledWaveforms() const
+{
+    QVector<DownsampledWaveform> waveforms;
+    const quint64 hostTimeUs = currentTimestampUs();
+    if (!connectedAndFresh(device_manager_.status(SkyDeviceId::WaveTcp), hostTimeUs, 3'000'000ULL))
+    {
+        return waveforms;
+    }
+
+    const QVector<float> rawSamples = device_manager_.latestRawWaveform();
+    const QVector<float> harmonicSamples = device_manager_.latestWaveform();
+    if (rawSamples.isEmpty() && harmonicSamples.isEmpty())
+    {
+        return waveforms;
+    }
+
+    const quint64 epsilonTimeUs = device_manager_.latestEpsilon().device_timestamp_us;
+    const int ratio = std::max(1, device_manager_.config().wave_tcp.downsample_ratio);
+    if (!rawSamples.isEmpty())
+    {
+        waveforms.push_back(makeDownsampledWaveform(rawSamples, hostTimeUs, epsilonTimeUs, 1, ratio));
+    }
+    if (!harmonicSamples.isEmpty())
+    {
+        waveforms.push_back(makeDownsampledWaveform(harmonicSamples, hostTimeUs, epsilonTimeUs, 4, ratio));
+    }
+    return waveforms;
+}
+
 void SkyRuntime::setWaveformStreamingEnabled(bool enabled)
 {
     waveform_streaming_enabled_ = enabled;
@@ -583,17 +622,28 @@ void SkyRuntime::dispatchFrame(const TelemetryFrame& frame)
 
 void SkyRuntime::handleCommand(const CommandMessage& command)
 {
+    const SkyCommandResult result = executeCommand(command);
+    sendAck(result.ack);
+    sendCommandResultFrames(result);
+}
+
+SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
+{
+    SkyCommandResult result;
+    result.ack = makeAck(command);
+
     auto deviceCommand = [&](auto method) {
         SkyDeviceId id = SkyDeviceId::All;
         if (!TelemetryCodec::parseDeviceCommand(command.payload, id))
         {
-            sendAck(command, CommandErrorCode::InvalidPayload);
-            return;
+            result.ack = makeAck(command, CommandErrorCode::InvalidPayload);
+            return result;
         }
         CommandErrorCode error = CommandErrorCode::Ok;
         const bool ok = method(id, &error);
-        sendAck(command, ok ? CommandErrorCode::Ok : error);
-        sendTelemetryStatus();
+        result.ack = makeAck(command, ok ? CommandErrorCode::Ok : error);
+        result.send_status = true;
+        return result;
     };
 
     switch (command.command_id)
@@ -601,7 +651,7 @@ void SkyRuntime::handleCommand(const CommandMessage& command)
     case CommandId::StartRecording:
         if (session_recorder_.isRecording())
         {
-            sendAck(command, CommandErrorCode::RecordingAlreadyStarted);
+            result.ack = makeAck(command, CommandErrorCode::RecordingAlreadyStarted);
             break;
         }
     {
@@ -609,32 +659,29 @@ void SkyRuntime::handleCommand(const CommandMessage& command)
         if (!startRecording(&error))
         {
             emit logMessage(QStringLiteral("Failed to start sky recording: %1").arg(error));
-            sendAck(command, CommandErrorCode::InternalError);
+            result.ack = makeAck(command, CommandErrorCode::InternalError);
             break;
         }
-        sendAck(command);
-        sendTelemetryStatus();
+        result.send_status = true;
         break;
     }
     case CommandId::PauseRecording:
         if (!session_recorder_.isRecording() && !session_recorder_.isPaused())
         {
-            sendAck(command, CommandErrorCode::RecordingNotStarted);
+            result.ack = makeAck(command, CommandErrorCode::RecordingNotStarted);
             break;
         }
         pauseRecording();
-        sendAck(command);
-        sendTelemetryStatus();
+        result.send_status = true;
         break;
     case CommandId::StopRecording:
         if (!session_recorder_.isRecording() && !session_recorder_.isPaused())
         {
-            sendAck(command, CommandErrorCode::RecordingNotStarted);
+            result.ack = makeAck(command, CommandErrorCode::RecordingNotStarted);
             break;
         }
         stopRecording();
-        sendAck(command);
-        sendTelemetryStatus();
+        result.send_status = true;
         break;
     case CommandId::SetTelemetryRate:
     case CommandId::SetWaveformRate:
@@ -643,7 +690,7 @@ void SkyRuntime::handleCommand(const CommandMessage& command)
         quint16 hz = 0;
         if (!TelemetryCodec::parseRatePayload(command.payload, hz) || hz == 0)
         {
-            sendAck(command, CommandErrorCode::InvalidPayload);
+            result.ack = makeAck(command, CommandErrorCode::InvalidPayload);
             break;
         }
         SkyConfig config = device_manager_.config();
@@ -652,7 +699,6 @@ void SkyRuntime::handleCommand(const CommandMessage& command)
         if (command.command_id == CommandId::SetFeatureRate) config.telemetry.feature_rate_hz = hz;
         device_manager_.applyConfig(config);
         updateTimerIntervals();
-        sendAck(command);
         break;
     }
     case CommandId::SetPeakSearchRange:
@@ -660,70 +706,58 @@ void SkyRuntime::handleCommand(const CommandMessage& command)
         PeakSearchRange range;
         if (!TelemetryCodec::parsePeakSearchRange(command.payload, range))
         {
-            sendAck(command, CommandErrorCode::InvalidPayload);
+            result.ack = makeAck(command, CommandErrorCode::InvalidPayload);
             break;
         }
         CommandErrorCode error = CommandErrorCode::Ok;
         if (!device_manager_.setPeakSearchRange(range.start_index, range.end_index, &error))
         {
-            sendAck(command, error);
+            result.ack = makeAck(command, error);
             break;
         }
         last_sent_feature_time_us_ = 0;
         peak_trend_.clear();
-        sendAck(command);
-        sendTelemetryStatus();
+        result.send_status = true;
         break;
     }
     case CommandId::EnableWaveformStreaming:
         setWaveformStreamingEnabled(true);
-        sendAck(command);
         break;
     case CommandId::DisableWaveformStreaming:
         setWaveformStreamingEnabled(false);
-        sendAck(command);
         break;
     case CommandId::RequestOneWaveform:
         if (!connectedAndFresh(device_manager_.status(SkyDeviceId::WaveTcp), currentTimestampUs(), 3'000'000ULL))
         {
-            sendAck(command, CommandErrorCode::DeviceNotConnected);
+            result.ack = makeAck(command, CommandErrorCode::DeviceNotConnected);
             break;
         }
-        sendAck(command);
-        sendOneWaveformNow();
+        result.send_one_waveform = true;
         break;
     case CommandId::RequestStatus:
     case CommandId::QueryDeviceStatus:
-        sendAck(command);
-        sendTelemetryStatus();
+        result.send_status = true;
         break;
     case CommandId::ConnectDevice:
-        deviceCommand([this](SkyDeviceId id, CommandErrorCode *error) { return connectDevice(id, error); });
-        break;
+        return deviceCommand([this](SkyDeviceId id, CommandErrorCode *error) { return connectDevice(id, error); });
     case CommandId::DisconnectDevice:
-        deviceCommand([this](SkyDeviceId id, CommandErrorCode *error) { return disconnectDevice(id, error); });
-        break;
+        return deviceCommand([this](SkyDeviceId id, CommandErrorCode *error) { return disconnectDevice(id, error); });
     case CommandId::ReconnectDevice:
-        deviceCommand([this](SkyDeviceId id, CommandErrorCode *error) { return reconnectDevice(id, error); });
-        break;
+        return deviceCommand([this](SkyDeviceId id, CommandErrorCode *error) { return reconnectDevice(id, error); });
     case CommandId::ConnectAllDevices:
         connectAllDevices();
-        sendAck(command);
-        sendTelemetryStatus();
+        result.send_status = true;
         break;
     case CommandId::DisconnectAllDevices:
         disconnectAllDevices();
-        sendAck(command);
-        sendTelemetryStatus();
+        result.send_status = true;
         break;
     case CommandId::ReconnectAllDevices:
         reconnectAllDevices();
-        sendAck(command);
-        sendTelemetryStatus();
+        result.send_status = true;
         break;
     case CommandId::GetSkyConfig:
-        sendAck(command);
-        sendSkyConfig();
+        result.send_sky_config = true;
         break;
     case CommandId::SetSkyConfig:
     {
@@ -733,16 +767,17 @@ void SkyRuntime::handleCommand(const CommandMessage& command)
         if (!document.isObject() || !SkyConfig::fromJson(document.object(), config, &error))
         {
             emit logMessage(QStringLiteral("Invalid sky config: %1").arg(error));
-            sendAck(command, CommandErrorCode::ConfigInvalid);
+            result.ack = makeAck(command, CommandErrorCode::ConfigInvalid);
             break;
         }
-        const ApplyConfigResult result = device_manager_.applyConfig(config);
+        const ApplyConfigResult applyResult = device_manager_.applyConfig(config);
         updateTimerIntervals();
-        const CommandErrorCode errorCode = result.error_code == CommandErrorCode::Ok
+        const CommandErrorCode errorCode = applyResult.error_code == CommandErrorCode::Ok
             ? CommandErrorCode::ConfigApplyFailed
-            : result.error_code;
-        sendAck(command, result.success ? CommandErrorCode::Ok : errorCode);
-        sendSkyConfigApplyResult(result.json);
+            : applyResult.error_code;
+        result.ack = makeAck(command, applyResult.success ? CommandErrorCode::Ok : errorCode);
+        result.send_config_apply_result = true;
+        result.config_apply_result = applyResult.json;
         break;
     }
     case CommandId::SaveSkyConfig:
@@ -752,14 +787,12 @@ void SkyRuntime::handleCommand(const CommandMessage& command)
         if (!device_manager_.config().saveToFile(configPath, &error))
         {
             emit logMessage(QStringLiteral("Failed to save sky config: %1").arg(error));
-            sendAck(command, CommandErrorCode::ConfigSaveFailed);
+            result.ack = makeAck(command, CommandErrorCode::ConfigSaveFailed);
             break;
         }
-        sendAck(command);
         break;
     }
     case CommandId::RebootDevice:
-        sendAck(command);
         QTimer::singleShot(200, this, []() {
             const QString program = QCoreApplication::applicationFilePath();
             QStringList args = QCoreApplication::arguments();
@@ -770,13 +803,35 @@ void SkyRuntime::handleCommand(const CommandMessage& command)
         break;
     case CommandId::ReloadSkyConfig:
     default:
-        sendAck(command, CommandErrorCode::UnknownCommand);
+        result.ack = makeAck(command, CommandErrorCode::UnknownCommand);
         break;
+    }
+    return result;
+}
+
+void SkyRuntime::sendCommandResultFrames(const SkyCommandResult& result)
+{
+    if (result.send_status)
+    {
+        sendTelemetryStatus();
+    }
+    if (result.send_sky_config)
+    {
+        sendSkyConfig();
+    }
+    if (result.send_config_apply_result)
+    {
+        sendSkyConfigApplyResult(result.config_apply_result);
+    }
+    if (result.send_one_waveform)
+    {
+        sendOneWaveformNow();
     }
 }
 
 void SkyRuntime::sendFrame(MsgType type, const QByteArray& payload)
 {
+    emit telemetryFrameReady(type, payload);
     if (!link_.isOpen())
     {
         return;
@@ -784,13 +839,8 @@ void SkyRuntime::sendFrame(MsgType type, const QByteArray& payload)
     link_.writeBytes(codec_.encodeFrame(type, payload, next_frame_seq_++, currentTimestampUs()));
 }
 
-void SkyRuntime::sendAck(const CommandMessage& command, CommandErrorCode errorCode)
+void SkyRuntime::sendAck(const CommandAck& ack)
 {
-    CommandAck ack;
-    ack.command_id = command.command_id;
-    ack.command_seq = command.command_seq;
-    ack.result = errorCode == CommandErrorCode::Ok ? 0 : 1;
-    ack.error_code = errorCode;
     sendFrame(MsgType::CommandAck, TelemetryCodec::serializeCommandAck(ack));
 }
 

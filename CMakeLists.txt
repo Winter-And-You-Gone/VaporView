@@ -100,20 +100,117 @@ if(EXISTS ${RTKLIB_STR2STR_SOURCE})
     endif()
 endif()
 
+set(PROTOCOL_SOURCES
+    src/TelemetryCodec.cpp
+    src/SkyConfig.cpp
+)
+
+set(PROTOCOL_HEADERS
+    include/TelemetryTypes.h
+    include/TelemetryCodec.h
+    include/SkyConfig.h
+)
+
+add_library(vaporview_protocol STATIC
+    ${PROTOCOL_SOURCES}
+    ${PROTOCOL_HEADERS}
+)
+
+target_include_directories(vaporview_protocol PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+target_link_libraries(vaporview_protocol PUBLIC
+    Qt6::Core
+)
+
+set(SKY_CORE_SOURCES
+    src/SkyRuntime.cpp
+    src/SkyDeviceManager.cpp
+    src/SkySessionRecorder.cpp
+    src/SerialTelemetryLink.cpp
+    src/SkyLocalIpcServer.cpp
+    src/TcpWaveEncoding.cpp
+    src/serial_port.cpp
+    src/data_collector.cpp
+    ${UM982_DRIVER_DIR}/pvtsln_parser.cpp
+    ${HIPNUC_DRIVER_DIR}/hipnuc_dec.c
+)
+
+set(SKY_CORE_HEADERS
+    include/SkyRuntime.h
+    include/SkyDashboardTypes.h
+    include/SkyDeviceManager.h
+    include/SkySessionRecorder.h
+    include/SerialTelemetryLink.h
+    include/SkyLocalIpcServer.h
+    include/TcpWaveEncoding.h
+    include/serial_port.h
+    include/data_types.h
+    include/data_collector.h
+    ${UM982_DRIVER_DIR}/pvtsln_data.hpp
+    ${HIPNUC_DRIVER_DIR}/hipnuc_dec.h
+)
+
+add_library(vaporview_sky_core STATIC
+    ${SKY_CORE_SOURCES}
+    ${SKY_CORE_HEADERS}
+)
+
+target_include_directories(vaporview_sky_core PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+    ${UM982_DRIVER_DIR}
+    ${HIPNUC_DRIVER_DIR}
+)
+
+target_link_libraries(vaporview_sky_core PUBLIC
+    vaporview_protocol
+    Qt6::Core
+    Qt6::SerialPort
+    Qt6::Network
+    Threads::Threads
+)
+
+set(SKY_TUI_COMMON_SOURCES
+    src/SkyTuiApp.cpp
+    src/SkyTuiController.cpp
+    src/SkyTuiTheme.cpp
+    src/SkyStartupScreen.cpp
+    src/SkyLocalIpcClient.cpp
+)
+
+set(SKY_TUI_COMMON_HEADERS
+    include/SkyTuiApp.h
+    include/SkyTuiController.h
+    include/SkyTuiModel.h
+    include/SkyTuiTheme.h
+    include/SkyTuiOptions.h
+    include/SkyStartupScreen.h
+    include/SkyLocalIpcClient.h
+)
+
+add_library(vaporview_sky_tui STATIC
+    ${SKY_TUI_COMMON_SOURCES}
+    ${SKY_TUI_COMMON_HEADERS}
+)
+
+target_include_directories(vaporview_sky_tui PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(vaporview_sky_tui PUBLIC
+    vaporview_protocol
+    Qt6::Core
+    Qt6::Network
+)
+
 set(NAV_SOURCES
     src/main.cpp
     src/MainWindow.cpp
-    src/serial_port.cpp
-    src/data_collector.cpp
-    src/TelemetryCodec.cpp
-    src/SerialTelemetryLink.cpp
     src/GroundTelemetryService.cpp
-    src/SkyConfig.cpp
-    src/SkyDeviceManager.cpp
-    src/SkySessionRecorder.cpp
-    src/SkyRuntime.cpp
     src/SkyDeviceConfigDialog.cpp
-    src/TcpWaveEncoding.cpp
     src/TcpWavePanel.cpp
     src/RawDataParserWindow.cpp
     src/SessionViewerWindow.cpp
@@ -121,25 +218,12 @@ set(NAV_SOURCES
     src/RtkConfigDialog.cpp
     src/RtkStreamService.cpp
     src/WindowSizing.cpp
-    ${UM982_DRIVER_DIR}/pvtsln_parser.cpp
-    ${HIPNUC_DRIVER_DIR}/hipnuc_dec.c
 )
 
 set(NAV_HEADERS
     include/MainWindow.h
-    include/serial_port.h
-    include/data_types.h
-    include/data_collector.h
-    include/TelemetryTypes.h
-    include/TelemetryCodec.h
-    include/SerialTelemetryLink.h
     include/GroundTelemetryService.h
-    include/SkyConfig.h
-    include/SkyDeviceManager.h
-    include/SkySessionRecorder.h
-    include/SkyRuntime.h
     include/SkyDeviceConfigDialog.h
-    include/TcpWaveEncoding.h
     include/TcpWavePanel.h
     include/RawDataParserWindow.h
     include/SessionViewerWindow.h
@@ -147,48 +231,13 @@ set(NAV_HEADERS
     include/RtkConfigDialog.h
     include/RtkStreamService.h
     include/WindowSizing.h
-    ${UM982_DRIVER_DIR}/pvtsln_data.hpp
-    ${HIPNUC_DRIVER_DIR}/hipnuc_dec.h
 )
 
 set(SKY_TUI_SOURCES
     src/sky_main.cpp
-    src/SkyTuiApp.cpp
-    src/SkyTuiController.cpp
-    src/SkyTuiTheme.cpp
-    src/SkyStartupScreen.cpp
-    src/serial_port.cpp
-    src/data_collector.cpp
-    src/TelemetryCodec.cpp
-    src/SerialTelemetryLink.cpp
-    src/SkyConfig.cpp
-    src/SkyDeviceManager.cpp
-    src/SkySessionRecorder.cpp
-    src/SkyRuntime.cpp
-    src/TcpWaveEncoding.cpp
-    ${UM982_DRIVER_DIR}/pvtsln_parser.cpp
-    ${HIPNUC_DRIVER_DIR}/hipnuc_dec.c
 )
 
 set(SKY_TUI_HEADERS
-    include/SkyTuiApp.h
-    include/SkyTuiController.h
-    include/SkyTuiModel.h
-    include/SkyTuiTheme.h
-    include/SkyStartupScreen.h
-    include/serial_port.h
-    include/data_types.h
-    include/data_collector.h
-    include/TelemetryTypes.h
-    include/TelemetryCodec.h
-    include/SerialTelemetryLink.h
-    include/SkyConfig.h
-    include/SkyDeviceManager.h
-    include/SkySessionRecorder.h
-    include/SkyRuntime.h
-    include/TcpWaveEncoding.h
-    ${UM982_DRIVER_DIR}/pvtsln_data.hpp
-    ${HIPNUC_DRIVER_DIR}/hipnuc_dec.h
 )
 
 set(NAV_UI_FILES
@@ -265,6 +314,7 @@ target_include_directories(VaporView PRIVATE
 
 target_link_libraries(VaporView PRIVATE
     ${QT_LIBRARIES}
+    vaporview_sky_core
     rtklib_strsvr
 )
 
@@ -286,12 +336,39 @@ target_include_directories(VaporViewSky PRIVATE
 )
 
 target_link_libraries(VaporViewSky PRIVATE
-    Qt6::Core
-    Qt6::SerialPort
-    Qt6::Network
-    Threads::Threads
-    rtklib_strsvr
+    vaporview_sky_core
+    vaporview_sky_tui
 )
+
+add_executable(VaporViewSkyCore
+    src/sky_core_main.cpp
+)
+
+target_include_directories(VaporViewSkyCore PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(VaporViewSkyCore PRIVATE
+    vaporview_sky_core
+)
+
+add_executable(VaporViewSkyTui
+    src/sky_tui_main.cpp
+)
+
+target_include_directories(VaporViewSkyTui PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+
+target_link_libraries(VaporViewSkyTui PRIVATE
+    vaporview_sky_tui
+)
+
+add_dependencies(VaporViewSkyTui VaporViewSkyCore)
+add_dependencies(VaporViewSky VaporViewSkyTui)
+add_dependencies(VaporView VaporViewSky)
 
 add_custom_command(TARGET VaporView POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:VaporView>/resources
@@ -321,45 +398,50 @@ add_custom_command(TARGET VaporViewSky POST_BUILD
     COMMENT "Copying VaporViewSky resources to build directory"
 )
 
+add_custom_command(TARGET VaporViewSkyTui POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:VaporViewSkyTui>/resources
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/resources/sky_startup_logo_ansi.txt
+        $<TARGET_FILE_DIR:VaporViewSkyTui>/resources/sky_startup_logo_ansi.txt
+    COMMENT "Copying VaporViewSkyTui resources to build directory"
+)
+
 if(BUILD_TESTING)
     add_executable(tcp_wave_encoding_test
         tests/tcp_wave_encoding_test.cpp
-        src/TcpWaveEncoding.cpp
-        include/TcpWaveEncoding.h
     )
     target_include_directories(tcp_wave_encoding_test PRIVATE
         ${CMAKE_SOURCE_DIR}/include
     )
-    target_link_libraries(tcp_wave_encoding_test PRIVATE Qt6::Core)
+    target_link_libraries(tcp_wave_encoding_test PRIVATE vaporview_sky_core)
     add_test(NAME tcp_wave_encoding_test COMMAND tcp_wave_encoding_test)
 
     add_executable(telemetry_codec_test
         tests/telemetry_codec_test.cpp
-        src/TelemetryCodec.cpp
-        src/SkyConfig.cpp
-        include/TelemetryCodec.h
-        include/TelemetryTypes.h
-        include/SkyConfig.h
     )
     target_include_directories(telemetry_codec_test PRIVATE
         ${CMAKE_SOURCE_DIR}/include
     )
-    target_link_libraries(telemetry_codec_test PRIVATE Qt6::Core)
+    target_link_libraries(telemetry_codec_test PRIVATE vaporview_protocol)
     add_test(NAME telemetry_codec_test COMMAND telemetry_codec_test)
 
     add_executable(sky_session_recorder_test
         tests/sky_session_recorder_test.cpp
-        src/SkySessionRecorder.cpp
-        src/TcpWaveEncoding.cpp
-        include/SkySessionRecorder.h
-        include/TelemetryTypes.h
-        include/TcpWaveEncoding.h
     )
     target_include_directories(sky_session_recorder_test PRIVATE
         ${CMAKE_SOURCE_DIR}/include
     )
-    target_link_libraries(sky_session_recorder_test PRIVATE Qt6::Core)
+    target_link_libraries(sky_session_recorder_test PRIVATE vaporview_sky_core)
     add_test(NAME sky_session_recorder_test COMMAND sky_session_recorder_test)
+
+    add_executable(sky_local_ipc_client_test
+        tests/sky_local_ipc_client_test.cpp
+    )
+    target_include_directories(sky_local_ipc_client_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+    )
+    target_link_libraries(sky_local_ipc_client_test PRIVATE vaporview_sky_tui)
+    add_test(NAME sky_local_ipc_client_test COMMAND sky_local_ipc_client_test)
 endif()
 
 if(WIN32 AND QT_WINDEPLOYQT_EXECUTABLE)
@@ -385,6 +467,28 @@ if(WIN32 AND QT_WINDEPLOYQT_EXECUTABLE)
             $<TARGET_FILE:VaporViewSky>
         COMMENT "Deploying Qt runtime for VaporViewSky"
     )
+    add_custom_command(TARGET VaporViewSkyCore POST_BUILD
+        COMMAND ${QT_WINDEPLOYQT_EXECUTABLE}
+            --compiler-runtime
+            --force
+            --no-translations
+            --no-system-dxc-compiler
+            --dir
+            $<TARGET_FILE_DIR:VaporViewSkyCore>
+            $<TARGET_FILE:VaporViewSkyCore>
+        COMMENT "Deploying Qt runtime for VaporViewSkyCore"
+    )
+    add_custom_command(TARGET VaporViewSkyTui POST_BUILD
+        COMMAND ${QT_WINDEPLOYQT_EXECUTABLE}
+            --compiler-runtime
+            --force
+            --no-translations
+            --no-system-dxc-compiler
+            --dir
+            $<TARGET_FILE_DIR:VaporViewSkyTui>
+            $<TARGET_FILE:VaporViewSkyTui>
+        COMMENT "Deploying Qt runtime for VaporViewSkyTui"
+    )
 endif()
 
 if(WIN32)
@@ -404,18 +508,64 @@ if(WIN32)
             -P ${CMAKE_SOURCE_DIR}/cmake/stage_release.cmake
         COMMENT "Staging VaporViewSky release runtime"
     )
+    add_custom_command(TARGET VaporViewSkyCore POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+            -D SOURCE_DIR=$<TARGET_FILE_DIR:VaporViewSkyCore>
+            -D TARGET_FILE=$<TARGET_FILE:VaporViewSkyCore>
+            -D STAGE_DIR=${CMAKE_BINARY_DIR}/Release
+            -P ${CMAKE_SOURCE_DIR}/cmake/stage_release.cmake
+        COMMENT "Staging VaporViewSkyCore release runtime"
+    )
+    add_custom_command(TARGET VaporViewSkyTui POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+            -D SOURCE_DIR=$<TARGET_FILE_DIR:VaporViewSkyTui>
+            -D TARGET_FILE=$<TARGET_FILE:VaporViewSkyTui>
+            -D STAGE_DIR=${CMAKE_BINARY_DIR}/Release
+            -P ${CMAKE_SOURCE_DIR}/cmake/stage_release.cmake
+        COMMENT "Staging VaporViewSkyTui release runtime"
+    )
 endif()
 
 if(MSVC)
+    target_compile_options(vaporview_protocol PRIVATE /W4 /utf-8 /Zc:__cplusplus /permissive-)
+    target_compile_options(vaporview_sky_core PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /W4 /utf-8 /Zc:__cplusplus /permissive-)
+    target_compile_options(vaporview_sky_tui PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /W4 /utf-8 /Zc:__cplusplus /permissive-)
     target_compile_options(VaporView PRIVATE /W4 /utf-8 /Zc:__cplusplus /permissive-)
     target_compile_options(VaporViewSky PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /W4 /utf-8 /Zc:__cplusplus /permissive-)
+    target_compile_options(VaporViewSkyCore PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /W4 /utf-8 /Zc:__cplusplus /permissive-)
+    target_compile_options(VaporViewSkyTui PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /W4 /utf-8 /Zc:__cplusplus /permissive-)
 else()
+    target_compile_options(vaporview_protocol PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    target_compile_options(vaporview_sky_core PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    target_compile_options(vaporview_sky_tui PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
     target_compile_options(VaporView PRIVATE
         -Wall
         -Wextra
         -Wpedantic
     )
     target_compile_options(VaporViewSky PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    target_compile_options(VaporViewSkyCore PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    target_compile_options(VaporViewSkyTui PRIVATE
         -Wall
         -Wextra
         -Wpedantic
@@ -457,7 +607,7 @@ if(BUILD_PYTHON_BINDINGS)
     )
 endif()
 
-install(TARGETS VaporView VaporViewSky
+install(TARGETS VaporView VaporViewSky VaporViewSkyCore VaporViewSkyTui
     RUNTIME DESTINATION bin
 )
 

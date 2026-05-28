@@ -29,28 +29,40 @@ Windows: .\build\Release\VaporView.exe
 Linux:   ./build/Release/VaporView
 ```
 
-### VaporViewSky 天空端全屏 TUI
+### VaporViewSkyCore + VaporViewSkyTui
 
-`VaporViewSky` 是天空端推荐入口。它是独立控制台程序，不创建 Qt Widgets 窗口，适合 PowerShell、CMD、Windows Terminal、Linux terminal 和 SSH 环境。界面采用黑底全屏 TUI：顶部显示渐变 ASCII Logo，中间显示事件日志与天空端状态，右侧显示设备状态，底部提供 `sky>` 输入栏、状态栏和 slash command palette。
+天空端推荐拆成两个进程运行：
 
-`VaporView.exe --mode sky` 仍然保留为兼容后台模式；需要在天空端本机观察状态、输入 `quit` 安全退出、或直接控制设备时，建议使用 `VaporViewSky`。
+- `VaporViewSkyCore`：核心采集进程，负责设备采集、本地记录、数传串口和本机 IPC Server。不创建 Qt Widgets 窗口，不依赖 TUI。
+- `VaporViewSkyTui`：本机调试客户端，通过 `127.0.0.1:39001` 连接 SkyCore。TUI 退出或崩溃不影响 SkyCore 继续采集、落盘和数传。
+- `VaporViewSky`：兼容入口，在同一个进程内启动 SkyCore 运行时、本机 IPC 和 TUI，旧命令行仍可用；新现场调试推荐优先使用两个独立进程。
 
 ```powershell
-# Windows 天空端 TUI
-.\build\Release\VaporViewSky.exe --telemetry-port COM50 --telemetry-baud 921600 --sky-simulate-data
+# Windows 飞行模式：只启动核心
+.\build\Release\VaporViewSkyCore.exe --telemetry-port COM50 --telemetry-baud 921600 --profile flight
+
+# Windows 现场调试：窗口 1 启动核心，窗口 2 启动 TUI
+.\build\Release\VaporViewSkyCore.exe --telemetry-port COM50 --telemetry-baud 921600 --profile debug
+.\build\Release\VaporViewSkyTui.exe --connect 127.0.0.1:39001
+
+# 模拟数据调试
+.\build\Release\VaporViewSkyCore.exe --telemetry-port COM50 --telemetry-baud 921600 --sky-simulate-data
+.\build\Release\VaporViewSkyTui.exe --connect 127.0.0.1:39001
 
 # COM10 及以上端口也可以显式使用 Win32 路径
-.\build\Release\VaporViewSky.exe --telemetry-port \\.\COM50 --telemetry-baud 921600 --sky-simulate-data
+.\build\Release\VaporViewSkyCore.exe --telemetry-port \\.\COM50 --telemetry-baud 921600 --sky-simulate-data
 ```
 
 ```bash
-# Linux / macOS 天空端 TUI
-./build/Release/VaporViewSky --telemetry-port /tmp/vapor_sky --telemetry-baud 921600 --sky-simulate-data
+# Linux / macOS
+./build/Release/VaporViewSkyCore --telemetry-port /tmp/vapor_sky --telemetry-baud 921600 --sky-simulate-data
+./build/Release/VaporViewSkyTui --connect 127.0.0.1:39001
 ```
 
-旧后台天空端模式仍可使用：
+兼容入口和旧后台天空端模式仍可使用：
 
 ```powershell
+.\build\Release\VaporViewSky.exe --telemetry-port COM50 --telemetry-baud 921600 --sky-simulate-data
 .\build\Release\VaporView.exe --mode sky --telemetry-port COM50 --telemetry-baud 921600 --sky-simulate-data
 ```
 
@@ -92,7 +104,7 @@ Esc 关闭候选；在设备总览页返回首页
 Up/Down 选择候选或滚动日志
 PageUp/PageDown 滚动日志
 Ctrl+L 清空可视日志
-Ctrl+C 安全停止并退出
+Ctrl+C 退出 TUI；独立 SkyCore 继续运行
 ```
 
 本机虚拟串口闭环测试：
@@ -101,7 +113,7 @@ Ctrl+C 安全停止并退出
 Windows: com0com 创建 COM50 <-> COM51
 Linux/macOS: socat -d -d pty,raw,echo=0,link=/tmp/vapor_sky pty,raw,echo=0,link=/tmp/vapor_ground
 
-天空端: VaporViewSky.exe --telemetry-port COM50 --telemetry-baud 921600 --sky-simulate-data
+天空端: VaporViewSkyCore.exe --telemetry-port COM50 --telemetry-baud 921600 --sky-simulate-data
 地面端: VaporView.exe，在首页选择天空-地面接收模式（英文界面为 Sky-Ground Receive Mode），连接 COM51 @ 921600
 ```
 
@@ -276,7 +288,12 @@ Linux ARM64 构建：
 当前 CMake 目标：
 
 - `VaporView`：主桌面程序。
-- `VaporViewSky`：天空端全屏控制台 TUI 程序。
+- `VaporViewSkyCore`：天空端核心进程。
+- `VaporViewSkyTui`：本机 TUI 调试客户端。
+- `VaporViewSky`：兼容入口，保留旧一条命令启动方式。
+- `vaporview_protocol`：天空-地面和本机 IPC 复用的协议/配置静态库。
+- `vaporview_sky_core`：SkyRuntime、设备采集、记录、数传和 IPC Server 静态库。
+- `vaporview_sky_tui`：TUI 和 IPC Client 静态库。
 - `rtklib_strsvr`：静态库，封装 RTKLIB 流服务所需源码。
 - `str2str`：当 `third_party/rtklib/app/consapp/str2str/str2str.c` 存在时构建。
 
@@ -285,6 +302,10 @@ Linux ARM64 构建：
 ```text
 Windows: build/Release/VaporView.exe
 Linux:   build/Release/VaporView
+Windows: build/Release/VaporViewSkyCore.exe
+Linux:   build/Release/VaporViewSkyCore
+Windows: build/Release/VaporViewSkyTui.exe
+Linux:   build/Release/VaporViewSkyTui
 Windows: build/Release/VaporViewSky.exe
 Linux:   build/Release/VaporViewSky
 ```

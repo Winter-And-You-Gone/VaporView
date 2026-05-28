@@ -2,7 +2,7 @@
 #define VaporView_SKY_TUI_MODEL_H_
 
 #include "SkyConfig.h"
-#include "SkyRuntime.h"
+#include "SkyDashboardTypes.h"
 #include "TelemetryTypes.h"
 
 #include <QString>

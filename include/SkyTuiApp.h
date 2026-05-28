@@ -1,9 +1,10 @@
 #ifndef VaporView_SKY_TUI_APP_H_
 #define VaporView_SKY_TUI_APP_H_
 
-#include "SkyRuntime.h"
+#include "SkyLocalIpcClient.h"
 #include "SkyTuiController.h"
 #include "SkyTuiModel.h"
+#include "SkyTuiOptions.h"
 #include "SkyTuiTheme.h"
 
 #include <QObject>
@@ -47,7 +48,7 @@ class SkyTuiApp : public QObject
     Q_OBJECT
 
 public:
-    SkyTuiApp(SkyRuntime *runtime, const SkyRuntimeOptions& options, QObject *parent = nullptr);
+    SkyTuiApp(SkyLocalIpcClient *client, const SkyTuiOptions& options, QObject *parent = nullptr);
     ~SkyTuiApp() override;
 
     void start();
@@ -100,8 +101,8 @@ private:
     QString recordingStateText(quint8 state) const;
     QString humanBytes(quint64 bytes) const;
 
-    SkyRuntime *runtime_ = nullptr;
-    SkyRuntimeOptions options_;
+    SkyLocalIpcClient *client_ = nullptr;
+    SkyTuiOptions options_;
     SkyTuiController controller_;
     SkyTuiModel model_;
     QTimer render_timer_;

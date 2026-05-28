@@ -1,16 +1,26 @@
-#include "SkyLocalIpcClient.h"
 #include "SkyLocalIpcServer.h"
 #include "SkyRuntime.h"
-#include "SkyStartupScreen.h"
-#include "SkyTuiApp.h"
-#include "SkyTuiOptions.h"
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QMetaObject>
 #include <QTextStream>
+#include <csignal>
 
 namespace
 {
+QCoreApplication *g_app = nullptr;
+
+void handleProcessSignal(int)
+{
+    if (g_app)
+    {
+        QMetaObject::invokeMethod(g_app, []() {
+            QCoreApplication::quit();
+        }, Qt::QueuedConnection);
+    }
+}
+
 void registerTelemetryMetaTypes()
 {
     qRegisterMetaType<VaporView::TelemetryBasic>("VaporView::TelemetryBasic");
@@ -28,13 +38,17 @@ void registerTelemetryMetaTypes()
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
-    app.setApplicationName("VaporViewSky");
+    g_app = &app;
+    std::signal(SIGINT, handleProcessSignal);
+    std::signal(SIGTERM, handleProcessSignal);
+
+    app.setApplicationName("VaporViewSkyCore");
     app.setApplicationVersion("1.0.0");
     app.setOrganizationName("VaporView");
     registerTelemetryMetaTypes();
 
     QCommandLineParser parser;
-    parser.setApplicationDescription("VaporView Sky compatibility TUI");
+    parser.setApplicationDescription("VaporView SkyCore");
 
     QCommandLineOption helpOption(QStringList{QStringLiteral("h"), QStringLiteral("help")}, QStringLiteral("Displays help on commandline options."));
     QCommandLineOption versionOption(QStringLiteral("version"), QStringLiteral("Displays version information."));
@@ -46,8 +60,11 @@ int main(int argc, char *argv[])
     QCommandLineOption skyWavePortOption(QStringLiteral("sky-wave-port"), QStringLiteral("Sky TCP wave port"), QStringLiteral("port"), QStringLiteral("8888"));
     QCommandLineOption ipcHostOption(QStringLiteral("ipc-host"), QStringLiteral("Local IPC host"), QStringLiteral("host"), QStringLiteral("127.0.0.1"));
     QCommandLineOption ipcPortOption(QStringLiteral("ipc-port"), QStringLiteral("Local IPC port"), QStringLiteral("port"), QStringLiteral("39001"));
+    QCommandLineOption profileOption(QStringLiteral("profile"), QStringLiteral("Runtime profile: flight or debug"), QStringLiteral("profile"), QStringLiteral("debug"));
+    QCommandLineOption noIpcOption(QStringLiteral("no-ipc"), QStringLiteral("Disable local IPC server"));
     parser.addOptions({helpOption, versionOption, telemetryPortOption, telemetryBaudOption, skyConfigOption, skySimulateOption,
-                       skyWaveHostOption, skyWavePortOption, ipcHostOption, ipcPortOption});
+                       skyWaveHostOption, skyWavePortOption, ipcHostOption, ipcPortOption,
+                       profileOption, noIpcOption});
     parser.process(app);
 
     if (parser.isSet(helpOption))
@@ -61,55 +78,46 @@ int main(int argc, char *argv[])
         return 0;
     }
 
-    VaporView::SkyRuntimeOptions runtimeOptions;
-    runtimeOptions.telemetry_port = parser.value(telemetryPortOption);
-    runtimeOptions.telemetry_baud = parser.value(telemetryBaudOption).toInt();
-    runtimeOptions.config_path = parser.value(skyConfigOption);
-    runtimeOptions.simulate_data = parser.isSet(skySimulateOption);
-    runtimeOptions.wave_host = parser.value(skyWaveHostOption);
-    runtimeOptions.wave_port = parser.value(skyWavePortOption).toInt();
+    VaporView::SkyRuntimeOptions options;
+    options.telemetry_port = parser.value(telemetryPortOption);
+    options.telemetry_baud = parser.value(telemetryBaudOption).toInt();
+    options.config_path = parser.value(skyConfigOption);
+    options.simulate_data = parser.isSet(skySimulateOption);
+    options.wave_host = parser.value(skyWaveHostOption);
+    options.wave_port = parser.value(skyWavePortOption).toInt();
 
-    if (runtimeOptions.telemetry_port.trimmed().isEmpty())
+    if (options.telemetry_port.trimmed().isEmpty())
     {
         QTextStream(stderr) << "--telemetry-port is required\n";
         return 2;
     }
 
-    if (VaporView::showSkyStartupScreen() == VaporView::SkyStartupDecision::Exit)
-    {
-        return 0;
-    }
-
-    VaporView::SkyRuntime runtime(runtimeOptions);
+    VaporView::SkyRuntime runtime(options);
+    QObject::connect(&runtime, &VaporView::SkyRuntime::logMessage, [](const QString& message) {
+        QTextStream(stdout) << message << "\n";
+    });
     QObject::connect(&app, &QCoreApplication::aboutToQuit, [&runtime]() {
         runtime.stop();
     });
 
     VaporView::SkyLocalIpcServer ipcServer(&runtime);
-    const QString ipcHost = parser.value(ipcHostOption);
-    const auto ipcPort = static_cast<quint16>(parser.value(ipcPortOption).toUShort());
-    if (!ipcServer.listen(ipcHost, ipcPort))
+    QObject::connect(&ipcServer, &VaporView::SkyLocalIpcServer::logMessage, [](const QString& message) {
+        QTextStream(stdout) << message << "\n";
+    });
+
+    if (!parser.isSet(noIpcOption))
     {
-        return 4;
+        if (!ipcServer.listen(parser.value(ipcHostOption), static_cast<quint16>(parser.value(ipcPortOption).toUShort())))
+        {
+            return 4;
+        }
     }
 
-    VaporView::SkyTuiOptions tuiOptions;
-    tuiOptions.ipc_host = ipcHost;
-    tuiOptions.ipc_port = ipcPort;
-    tuiOptions.quit_leaves_core = false;
-
-    VaporView::SkyLocalIpcClient client;
-    VaporView::SkyTuiApp tui(&client, tuiOptions);
-    QObject::connect(&runtime, &VaporView::SkyRuntime::logMessage, &tui, &VaporView::SkyTuiApp::appendLog);
-    QObject::connect(&ipcServer, &VaporView::SkyLocalIpcServer::logMessage, &tui, &VaporView::SkyTuiApp::appendLog);
-
-    tui.start();
+    QTextStream(stdout) << "SkyCore profile: " << parser.value(profileOption) << "\n";
     if (!runtime.start())
     {
-        tui.appendLog(QStringLiteral("天空端启动失败：数传串口未打开。请检查端口是否存在、是否被占用，COM10 及以上可尝试 \\\\.\\COMxx。"));
-        tui.appendLog(QStringLiteral("TUI 将保持打开，可输入 /status 查看状态，或输入 quit 退出。"));
+        return 3;
     }
-    client.connectToCore(tuiOptions.ipc_host, tuiOptions.ipc_port);
 
     return app.exec();
 }

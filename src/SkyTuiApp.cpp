@@ -231,11 +231,11 @@ private:
     QString output_;
 };
 
-SkyTuiApp::SkyTuiApp(SkyRuntime *runtime, const SkyRuntimeOptions& options, QObject *parent)
+SkyTuiApp::SkyTuiApp(SkyLocalIpcClient *client, const SkyTuiOptions& options, QObject *parent)
     : QObject(parent)
-    , runtime_(runtime)
+    , client_(client)
     , options_(options)
-    , controller_(runtime, options, this)
+    , controller_(client, options, this)
     , input_running_(std::make_shared<std::atomic_bool>(false))
 {
     qRegisterMetaType<SkyTuiKey>("VaporView::SkyTuiKey");
@@ -249,10 +249,19 @@ SkyTuiApp::SkyTuiApp(SkyRuntime *runtime, const SkyRuntimeOptions& options, QObj
     status_timer_.setTimerType(Qt::CoarseTimer);
     connect(&status_timer_, &QTimer::timeout, this, &SkyTuiApp::refreshStatus);
 
-    if (runtime_)
+    if (client_)
     {
-        connect(runtime_, &SkyRuntime::runningChanged, this, [this](bool running) {
-            appendLog(running ? QStringLiteral("天空端运行中") : QStringLiteral("天空端已停止"));
+        connect(client_, &SkyLocalIpcClient::connectedChanged, this, [this](bool connected) {
+            appendLog(connected ? QStringLiteral("已连接 SkyCore") : QStringLiteral("已断开 SkyCore"));
+            refreshStatus();
+        });
+        connect(client_, &SkyLocalIpcClient::logMessage, this, &SkyTuiApp::appendLog);
+        connect(client_, &SkyLocalIpcClient::dashboardUpdated, this, &SkyTuiApp::refreshStatus);
+        connect(client_, &SkyLocalIpcClient::ackReceived, this, [this](const CommandAck& ack) {
+            appendLog(QStringLiteral("ACK %1 #%2：%3")
+                          .arg(commandIdName(ack.command_id))
+                          .arg(ack.command_seq)
+                          .arg(commandErrorCodeText(ack.error_code)));
         });
     }
 }
@@ -275,9 +284,10 @@ void SkyTuiApp::start()
     writeRaw(SkyTuiTheme::enterAlternateScreen() + SkyTuiTheme::clearScreen());
     forceFullRedraw();
 
-    model_.config = runtime_ ? runtime_->currentConfig() : SkyConfig::defaults();
+    model_.config = client_ ? client_->currentConfig() : SkyConfig::defaults();
     refreshStatus();
-    appendLog(QStringLiteral("VaporViewSky TUI 已启动"));
+    appendLog(QStringLiteral("VaporViewSkyTui 已启动"));
+    appendLog(QStringLiteral("SkyCore IPC：%1:%2").arg(options_.ipc_host).arg(options_.ipc_port));
     appendLog(QStringLiteral("输入 /help 查看命令，输入 / 或按 Ctrl+P 打开命令面板。"));
     status_timer_.start();
     render();
@@ -374,17 +384,17 @@ void SkyTuiApp::render()
 
 void SkyTuiApp::refreshStatus()
 {
-    if (!runtime_)
+    if (!client_)
     {
         return;
     }
-    const TelemetryStatus status = runtime_->currentStatus();
-    const SkyConfig config = runtime_->currentConfig();
+    const TelemetryStatus status = client_->currentStatus();
+    const SkyConfig config = client_->currentConfig();
     const QString signature = statusSignature(status, config);
     const bool changed = !status_signature_initialized_ || signature != last_status_signature_;
     model_.status = status;
     model_.config = config;
-    model_.dashboard = runtime_->dashboardSnapshot();
+    model_.dashboard = client_->dashboardSnapshot();
     status_signature_initialized_ = true;
     last_status_signature_ = signature;
     if (changed)
@@ -921,12 +931,9 @@ void SkyTuiApp::requestQuit()
         return;
     }
     model_.quitting = true;
-    appendLog(QStringLiteral("正在停止天空端..."));
-    if (runtime_)
-    {
-        runtime_->stop();
-    }
-    appendLog(QStringLiteral("已退出。"));
+    appendLog(options_.quit_leaves_core
+                  ? QStringLiteral("正在退出 TUI，SkyCore 将继续运行。")
+                  : QStringLiteral("正在退出兼容入口，内置 SkyCore 将随进程停止。"));
     restoreTerminal();
     QCoreApplication::quit();
 }
@@ -1059,7 +1066,7 @@ void SkyTuiApp::clampPaletteSelection()
 QString SkyTuiApp::statusSignature(const TelemetryStatus& status, const SkyConfig& config) const
 {
     QStringList parts;
-    parts << QString::number(runtime_ && runtime_->isRunning() ? 1 : 0)
+    parts << QString::number(client_ && client_->isConnected() ? 1 : 0)
           << QString::number(status.recording_state)
           << status.session_name
           << QString::number(status.disk_free_bytes)
@@ -1070,7 +1077,7 @@ QString SkyTuiApp::statusSignature(const TelemetryStatus& status, const SkyConfi
           << QString::number(status.status_rate_hz, 'f', 3)
           << QString::number(status.rx_total_frames)
           << QString::number(status.crc_error_count)
-          << QString::number(runtime_ && runtime_->waveformStreamingEnabled() ? 1 : 0)
+          << QString::number(client_ && client_->waveformStreamingEnabled() ? 1 : 0)
           << QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss"))
           << QString::fromUtf8(QJsonDocument(config.toJson()).toJson(QJsonDocument::Compact));
 
@@ -1289,20 +1296,16 @@ void SkyTuiApp::drawLogo(SkyTuiScreenBuffer& output, int& row, const SkyTuiTermi
     }
     }
 
-    const QString configPath = options_.config_path.isEmpty()
-                                   ? QStringLiteral("(默认 sky_config.json)")
-                                   : options_.config_path;
-    QString summary = QStringLiteral("数传串口 %1 @ %2 | 配置 %3 | 模拟数据 %4 | 本机时间 %5")
-                          .arg(options_.telemetry_port)
-                          .arg(options_.telemetry_baud)
-                          .arg(configPath)
-                          .arg(options_.simulate_data ? QStringLiteral("开") : QStringLiteral("关"))
+    QString summary = QStringLiteral("SkyCore IPC %1:%2 | 连接 %3 | 本机时间 %4")
+                          .arg(options_.ipc_host)
+                          .arg(options_.ipc_port)
+                          .arg(client_ && client_->isConnected() ? QStringLiteral("已连接") : QStringLiteral("未连接"))
                           .arg(QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss")));
     if (displayWidth(summary) > size.columns - 4)
     {
-        summary = QStringLiteral("VaporViewSky | %1 | %2 | %3")
-                      .arg(options_.telemetry_port)
-                      .arg(options_.telemetry_baud)
+        summary = QStringLiteral("VaporViewSkyTui | %1 | %2 | %3")
+                      .arg(options_.ipc_host)
+                      .arg(options_.ipc_port)
                       .arg(QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss")));
     }
     const QStringList summaryLines = wrapPlain(summary, size.columns - 4);
@@ -1760,11 +1763,11 @@ void SkyTuiApp::drawLinesInBox(SkyTuiScreenBuffer& output, int top, int left, in
 QStringList SkyTuiApp::statusPanelLines() const
 {
     QStringList lines;
-    lines << QStringLiteral("运行：%1").arg(runtime_ && runtime_->isRunning() ? QStringLiteral("是") : QStringLiteral("否"))
+    lines << QStringLiteral("IPC：%1").arg(client_ && client_->isConnected() ? QStringLiteral("已连接") : QStringLiteral("未连接"))
           << QStringLiteral("记录：%1").arg(recordingStateText(model_.status.recording_state))
           << QStringLiteral("会话：%1").arg(model_.status.session_name.isEmpty() ? QStringLiteral("-") : model_.status.session_name)
           << QStringLiteral("磁盘：%1").arg(humanBytes(model_.status.disk_free_bytes))
-          << QStringLiteral("波形下传：%1").arg(runtime_ && runtime_->waveformStreamingEnabled() ? QStringLiteral("开") : QStringLiteral("关"))
+          << QStringLiteral("波形下传：%1").arg(client_ && client_->waveformStreamingEnabled() ? QStringLiteral("开") : QStringLiteral("关"))
           << QStringLiteral("频率：基础 %1Hz").arg(model_.status.telemetry_basic_rate_hz, 0, 'f', 1)
           << QStringLiteral("      特征 %1Hz").arg(model_.status.feature_rate_hz, 0, 'f', 1)
           << QStringLiteral("      波形 %1Hz").arg(model_.status.waveform_rate_hz, 0, 'f', 1)

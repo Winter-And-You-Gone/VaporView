@@ -2,10 +2,12 @@
 #define VaporView_SKY_RUNTIME_H_
 
 #include "SerialTelemetryLink.h"
+#include "SkyDashboardTypes.h"
 #include "SkyDeviceManager.h"
 #include "SkySessionRecorder.h"
 #include "TelemetryCodec.h"
 
+#include <QJsonObject>
 #include <QObject>
 #include <QTimer>
 
@@ -22,34 +24,14 @@ struct SkyRuntimeOptions
     int wave_port = 8888;
 };
 
-struct SkyDashboardSnapshot
+struct SkyCommandResult
 {
-    quint64 host_time_us = 0;
-    quint64 uptime_ms = 0;
-    EpsilonData epsilon;
-    PtbData ptb;
-    HmpData hmp;
-    LidarData lidar;
-    WaveformFeature waveform_feature;
-    QVector<float> latest_raw_waveform_preview;
-    QVector<float> latest_harmonic_waveform_preview;
-    QVector<float> peak_trend;
-    TelemetryStatus telemetry_status;
-    double epsilon_acquisition_rate_hz = 0.0;
-    double ptb_acquisition_rate_hz = 0.0;
-    double hmp_acquisition_rate_hz = 0.0;
-    double lidar_acquisition_rate_hz = 0.0;
-    double wave_tcp_acquisition_rate_hz = 0.0;
-    double devices_csv_recording_rate_hz = 0.0;
-    double raw_wave_recording_rate_hz = 0.0;
-    double telemetry_basic_rate_hz = 0.0;
-    double waveform_feature_rate_hz = 0.0;
-    double waveform_downsampled_rate_hz = 0.0;
-    bool epsilon_stale = true;
-    bool ptb_stale = true;
-    bool hmp_stale = true;
-    bool lidar_stale = true;
-    bool waveform_stale = true;
+    CommandAck ack;
+    bool send_status = false;
+    bool send_sky_config = false;
+    bool send_config_apply_result = false;
+    QJsonObject config_apply_result;
+    bool send_one_waveform = false;
 };
 
 class SkyRuntime : public QObject
@@ -79,6 +61,9 @@ public:
     TelemetryStatus currentStatus() const;
     SkyConfig currentConfig() const;
     SkyDashboardSnapshot dashboardSnapshot() const;
+    QVector<DownsampledWaveform> currentDownsampledWaveforms() const;
+
+    SkyCommandResult executeCommand(const CommandMessage& command);
 
     void setWaveformStreamingEnabled(bool enabled);
     bool waveformStreamingEnabled() const;
@@ -87,6 +72,7 @@ public:
 signals:
     void logMessage(const QString& message);
     void runningChanged(bool running);
+    void telemetryFrameReady(MsgType type, QByteArray payload);
 
 private slots:
     void onBytesReceived(const QByteArray& bytes);
@@ -99,8 +85,9 @@ private slots:
 private:
     void dispatchFrame(const TelemetryFrame& frame);
     void handleCommand(const CommandMessage& command);
+    void sendCommandResultFrames(const SkyCommandResult& result);
     void sendFrame(MsgType type, const QByteArray& payload);
-    void sendAck(const CommandMessage& command, CommandErrorCode errorCode = CommandErrorCode::Ok);
+    void sendAck(const CommandAck& ack);
     void sendSkyConfig();
     void sendSkyConfigApplyResult(const QJsonObject& result);
     void sendDownsampledWaveformFrame(bool honorStreamingEnabled);

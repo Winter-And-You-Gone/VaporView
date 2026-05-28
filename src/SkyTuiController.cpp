@@ -49,9 +49,9 @@ QString deviceStateText(DeviceState state)
 
 }  // namespace
 
-SkyTuiController::SkyTuiController(SkyRuntime *runtime, const SkyRuntimeOptions& options, QObject *parent)
+SkyTuiController::SkyTuiController(SkyLocalIpcClient *client, const SkyTuiOptions& options, QObject *parent)
     : QObject(parent)
-    , runtime_(runtime)
+    , client_(client)
     , options_(options)
 {
 }
@@ -144,7 +144,7 @@ QList<SkyTuiCommandItem> SkyTuiController::commandPalette() const
 {
     return {
         {QStringLiteral("/help"), QStringLiteral("显示帮助和快捷键说明")},
-        {QStringLiteral("/exit"), QStringLiteral("安全停止天空端并退出 VaporViewSky")},
+        {QStringLiteral("/exit"), QStringLiteral("退出 TUI，SkyCore 继续运行")},
         {QStringLiteral("/device overview"), QStringLiteral("打开设备总览")},
         {QStringLiteral("/overview"), QStringLiteral("打开设备总览")},
         {QStringLiteral("/home"), QStringLiteral("返回天空端首页")},
@@ -176,7 +176,7 @@ QList<SkyTuiCommandItem> SkyTuiController::commandPalette() const
         {QStringLiteral("/waveform once"), QStringLiteral("立即发送一帧降采样波形")},
         {QStringLiteral("/config show"), QStringLiteral("显示当前 sky_config JSON 配置")},
         {QStringLiteral("/clear"), QStringLiteral("清空当前可视日志")},
-        {QStringLiteral("/quit"), QStringLiteral("安全停止天空端并退出 VaporViewSky")},
+        {QStringLiteral("/quit"), QStringLiteral("退出 TUI，SkyCore 继续运行")},
     };
 }
 
@@ -196,7 +196,7 @@ QStringList SkyTuiController::helpLines() const
         QStringLiteral("  waveform on|off|once           # 控制二次谐波波形下传"),
         QStringLiteral("  config show, cfg               # 显示当前配置 JSON"),
         QStringLiteral("  clear, logs, palette, theme dark # 日志、命令面板和主题辅助命令"),
-        QStringLiteral("  quit, exit, stop, /quit, /exit # 安全退出天空端"),
+        QStringLiteral("  quit, exit, stop, /quit, /exit # 退出 TUI，SkyCore 继续运行"),
         QStringLiteral("快捷键：Enter 执行，Ctrl+P 或 / 打开命令面板，Tab 切换焦点，Left/Right 切日志/状态，Esc 关闭，Ctrl+L 清屏。"),
     };
 }
@@ -238,9 +238,9 @@ bool SkyTuiController::parseDeviceName(const QString& name, SkyDeviceId& id) con
 SkyTuiCommandResult SkyTuiController::handleDeviceCommand(const QString& action, const QString& deviceName)
 {
     SkyTuiCommandResult result;
-    if (!runtime_)
+    if (!client_ || !client_->isConnected())
     {
-        result.messages << QStringLiteral("SkyRuntime 不可用。");
+        result.messages << QStringLiteral("SkyCore IPC 未连接。");
         return result;
     }
 
@@ -253,46 +253,44 @@ SkyTuiCommandResult SkyTuiController::handleDeviceCommand(const QString& action,
 
     if (id == SkyDeviceId::All)
     {
-        if (action == QStringLiteral("connect")) runtime_->connectAllDevices();
-        if (action == QStringLiteral("disconnect")) runtime_->disconnectAllDevices();
-        if (action == QStringLiteral("reconnect")) runtime_->reconnectAllDevices();
-        result.messages << QStringLiteral("%1 all：成功").arg(action);
+        if (action == QStringLiteral("connect")) client_->connectAllDevices();
+        if (action == QStringLiteral("disconnect")) client_->disconnectAllDevices();
+        if (action == QStringLiteral("reconnect")) client_->reconnectAllDevices();
+        result.messages << QStringLiteral("%1 all：已发送").arg(action);
         return result;
     }
 
-    CommandErrorCode error = CommandErrorCode::Ok;
-    bool ok = false;
-    if (action == QStringLiteral("connect")) ok = runtime_->connectDevice(id, &error);
-    if (action == QStringLiteral("disconnect")) ok = runtime_->disconnectDevice(id, &error);
-    if (action == QStringLiteral("reconnect")) ok = runtime_->reconnectDevice(id, &error);
+    quint16 seq = 0;
+    if (action == QStringLiteral("connect")) seq = client_->connectDevice(id);
+    if (action == QStringLiteral("disconnect")) seq = client_->disconnectDevice(id);
+    if (action == QStringLiteral("reconnect")) seq = client_->reconnectDevice(id);
 
     result.messages << QStringLiteral("%1 %2: %3")
-                           .arg(action, skyDeviceIdName(id), ok ? QStringLiteral("成功") : commandErrorText(error));
+                           .arg(action, skyDeviceIdName(id), seq != 0 ? QStringLiteral("已发送") : QStringLiteral("发送失败"));
     return result;
 }
 
 SkyTuiCommandResult SkyTuiController::handleRecordCommand(const QString& action)
 {
     SkyTuiCommandResult result;
-    if (!runtime_)
+    if (!client_ || !client_->isConnected())
     {
-        result.messages << QStringLiteral("SkyRuntime 不可用。");
+        result.messages << QStringLiteral("SkyCore IPC 未连接。");
         return result;
     }
 
-    QString error;
-    bool ok = false;
+    quint16 seq = 0;
     if (action == QStringLiteral("start"))
     {
-        ok = runtime_->startRecording(&error);
+        seq = client_->startRecording();
     }
     else if (action == QStringLiteral("pause"))
     {
-        ok = runtime_->pauseRecording(&error);
+        seq = client_->pauseRecording();
     }
     else if (action == QStringLiteral("stop"))
     {
-        ok = runtime_->stopRecording(&error);
+        seq = client_->stopRecording();
     }
     else
     {
@@ -300,33 +298,33 @@ SkyTuiCommandResult SkyTuiController::handleRecordCommand(const QString& action)
         return result;
     }
 
-    result.messages << QStringLiteral("record %1：%2").arg(action, ok ? QStringLiteral("成功") : error);
+    result.messages << QStringLiteral("record %1：%2").arg(action, seq != 0 ? QStringLiteral("已发送") : QStringLiteral("发送失败"));
     return result;
 }
 
 SkyTuiCommandResult SkyTuiController::handleWaveformCommand(const QString& action)
 {
     SkyTuiCommandResult result;
-    if (!runtime_)
+    if (!client_ || !client_->isConnected())
     {
-        result.messages << QStringLiteral("SkyRuntime 不可用。");
+        result.messages << QStringLiteral("SkyCore IPC 未连接。");
         return result;
     }
 
     if (action == QStringLiteral("on"))
     {
-        runtime_->setWaveformStreamingEnabled(true);
-        result.messages << QStringLiteral("波形下传：开");
+        client_->enableWaveformStreaming();
+        result.messages << QStringLiteral("波形下传：已请求开启");
     }
     else if (action == QStringLiteral("off"))
     {
-        runtime_->setWaveformStreamingEnabled(false);
-        result.messages << QStringLiteral("波形下传：关");
+        client_->disableWaveformStreaming();
+        result.messages << QStringLiteral("波形下传：已请求关闭");
     }
     else if (action == QStringLiteral("once"))
     {
-        runtime_->sendOneWaveformNow();
-        result.messages << QStringLiteral("已请求立即发送一帧波形，如当前有数据则会发送。");
+        client_->requestOneWaveform();
+        result.messages << QStringLiteral("已请求 SkyCore 立即发送一帧波形，如当前有数据则会发送。");
     }
     else
     {
@@ -337,15 +335,14 @@ SkyTuiCommandResult SkyTuiController::handleWaveformCommand(const QString& actio
 
 QStringList SkyTuiController::statusLines() const
 {
-    if (!runtime_)
+    if (!client_)
     {
-        return {QStringLiteral("SkyRuntime 不可用。")};
+        return {QStringLiteral("SkyCore IPC 客户端不可用。")};
     }
-    const TelemetryStatus status = runtime_->currentStatus();
+    const TelemetryStatus status = client_->currentStatus();
     return {
-        QStringLiteral("运行中：%1").arg(yesNo(runtime_->isRunning())),
-        QStringLiteral("数传串口：%1").arg(options_.telemetry_port),
-        QStringLiteral("数传波特率：%1").arg(options_.telemetry_baud),
+        QStringLiteral("IPC 连接：%1").arg(yesNo(client_->isConnected())),
+        QStringLiteral("IPC 地址：%1:%2").arg(options_.ipc_host).arg(options_.ipc_port),
         QStringLiteral("记录状态：%1").arg(recordingStateText(status.recording_state)),
         QStringLiteral("会话：%1").arg(status.session_name.isEmpty() ? QStringLiteral("-") : status.session_name),
         QStringLiteral("剩余磁盘：%1 B").arg(status.disk_free_bytes),
@@ -355,7 +352,7 @@ QStringList SkyTuiController::statusLines() const
         QStringLiteral("Wave TCP 实际频率：%1 Hz").arg(status.wave_tcp_actual_rate_hz, 0, 'f', 1),
         QStringLiteral("心跳频率：%1 Hz").arg(status.heartbeat_rate_hz),
         QStringLiteral("状态频率：%1 Hz").arg(status.status_rate_hz),
-        QStringLiteral("波形下传：%1").arg(runtime_->waveformStreamingEnabled() ? QStringLiteral("开") : QStringLiteral("关")),
+        QStringLiteral("波形下传：%1").arg(client_->waveformStreamingEnabled() ? QStringLiteral("开") : QStringLiteral("关")),
         QStringLiteral("接收帧数：%1").arg(status.rx_total_frames),
         QStringLiteral("CRC 错误：%1").arg(status.crc_error_count),
     };
@@ -363,12 +360,12 @@ QStringList SkyTuiController::statusLines() const
 
 QStringList SkyTuiController::deviceLines() const
 {
-    if (!runtime_)
+    if (!client_)
     {
-        return {QStringLiteral("SkyRuntime 不可用。")};
+        return {QStringLiteral("SkyCore IPC 客户端不可用。")};
     }
     QStringList lines;
-    const TelemetryStatus status = runtime_->currentStatus();
+    const TelemetryStatus status = client_->currentStatus();
     for (const DeviceStatusItem& item : status.devices)
     {
         lines << QStringLiteral("%1：%2  接收=%3  错误=%4  最近数据(us)=%5  错误码=%6")
@@ -384,13 +381,14 @@ QStringList SkyTuiController::deviceLines() const
 
 QStringList SkyTuiController::configLines() const
 {
-    if (!runtime_)
+    if (!client_)
     {
-        return {QStringLiteral("SkyRuntime 不可用。")};
+        return {QStringLiteral("SkyCore IPC 客户端不可用。")};
     }
+    client_->getConfig();
     QStringList lines;
     lines << QStringLiteral("天空端配置 SkyConfig：");
-    lines << jsonLines(runtime_->currentConfig().toJson());
+    lines << jsonLines(client_->currentConfig().toJson());
     return lines;
 }
 

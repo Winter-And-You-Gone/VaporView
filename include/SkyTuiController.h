@@ -1,7 +1,8 @@
 #ifndef VaporView_SKY_TUI_CONTROLLER_H_
 #define VaporView_SKY_TUI_CONTROLLER_H_
 
-#include "SkyRuntime.h"
+#include "SkyLocalIpcClient.h"
+#include "SkyTuiOptions.h"
 
 #include <QObject>
 #include <QStringList>
@@ -33,7 +34,7 @@ class SkyTuiController : public QObject
     Q_OBJECT
 
 public:
-    SkyTuiController(SkyRuntime *runtime, const SkyRuntimeOptions& options, QObject *parent = nullptr);
+    SkyTuiController(SkyLocalIpcClient *client, const SkyTuiOptions& options, QObject *parent = nullptr);
 
     SkyTuiCommandResult executeCommand(const QString& line);
     QList<SkyTuiCommandItem> commandPalette() const;
@@ -50,8 +51,8 @@ private:
     QString recordingStateText(quint8 state) const;
     QString commandErrorText(CommandErrorCode error) const;
 
-    SkyRuntime *runtime_ = nullptr;
-    SkyRuntimeOptions options_;
+    SkyLocalIpcClient *client_ = nullptr;
+    SkyTuiOptions options_;
 };
 
 }  // namespace VaporView
