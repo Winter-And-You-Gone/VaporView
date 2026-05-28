@@ -30,6 +30,7 @@ class QSpinBox;
 class QTableWidget;
 class QWidget;
 class QGridLayout;
+class QEvent;
 class QResizeEvent;
 class QShowEvent;
 class RawDataParserWindow;
@@ -46,6 +47,7 @@ public:
     bool openSessionPath(const QString& path);
 
 protected:
+    void changeEvent(QEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void showEvent(QShowEvent *event) override;
 
@@ -106,6 +108,8 @@ private:
     void updateSummaryLabels();
     void relayoutSummaryFields();
     void updateWaveformControls();
+    void applyCsvTableTheme();
+    void refreshCsvItemTheme();
     void setStatusText(const QString& text);
     void beginSessionLoading(const QString& text);
     void updateSessionLoadingText(const QString& text);

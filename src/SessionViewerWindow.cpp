@@ -11,6 +11,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QEvent>
 #include <QEventLoop>
 #include <QFile>
 #include <QFileDialog>
@@ -93,6 +94,19 @@ struct SessionPlotTheme
     QColor mutedText;
 };
 
+struct SessionTableTheme
+{
+    QColor background;
+    QColor text;
+    QColor grid;
+    QColor headerBackground;
+    QColor headerText;
+    QColor selectedBackground;
+    QColor selectedText;
+    QColor highlightedBackground;
+    QColor secondaryHighlightedBackground;
+};
+
 SessionPlotTheme sessionPlotThemeFor(const QWidget *widget)
 {
     const QPalette palette = widget->palette();
@@ -108,6 +122,43 @@ SessionPlotTheme sessionPlotThemeFor(const QWidget *widget)
         dark ? QColor("#202020") : QColor("#cfd7e3"),
         dark ? QColor("#a7b4c2") : QColor("#5e6b78"),
         dark ? QColor("#8fa1b3") : QColor("#7a8899")
+    };
+}
+
+SessionTableTheme sessionTableThemeFor(const QWidget *widget)
+{
+    const QPalette palette = widget->palette();
+    QColor background = palette.color(QPalette::Base);
+    if (!background.isValid() || background.alpha() == 0)
+    {
+        background = palette.color(QPalette::Window);
+    }
+    const bool dark = background.lightness() < 128;
+    if (dark)
+    {
+        return {
+            QColor("#121212"),
+            QColor("#e5e7eb"),
+            QColor("#2a2a2a"),
+            QColor("#181818"),
+            QColor("#d8dee9"),
+            QColor("#245b8f"),
+            QColor("#ffffff"),
+            QColor("#1d4f78"),
+            QColor("#17384f")
+        };
+    }
+
+    return {
+        kDefaultCsvRowColor,
+        QColor("#1f2933"),
+        QColor("#e5e7eb"),
+        QColor("#ffffff"),
+        QColor("#1f2933"),
+        kHighlightedCsvRowColor,
+        QColor("#1f2933"),
+        kHighlightedCsvRowColor,
+        kSecondaryHighlightedCsvRowColor
     };
 }
 
@@ -1779,15 +1830,10 @@ void SessionViewerWindow::setupUi()
     csv_table_->setSelectionMode(QAbstractItemView::SingleSelection);
     csv_table_->setEditTriggers(QAbstractItemView::NoEditTriggers);
     csv_table_->setWordWrap(false);
-    csv_table_->setStyleSheet(
-        "QTableWidget { background-color: #ffffff; alternate-background-color: #ffffff; gridline-color: #e5e7eb; }"
-        "QTableWidget::item { color: #1f2933; }"
-        "QTableWidget::item:selected { background-color: #c7e3ff; color: #1f2933; }"
-        "QTableWidget::item:selected:active { background-color: #c7e3ff; color: #1f2933; }"
-        "QTableWidget::item:selected:!active { background-color: #c7e3ff; color: #1f2933; }");
     csv_table_->horizontalHeader()->setSectionsMovable(true);
     csv_table_->horizontalHeader()->setDefaultSectionSize(140);
     csv_table_->verticalHeader()->setVisible(false);
+    applyCsvTableTheme();
     csvLayout->addWidget(csv_table_, 1);
 
     summaryWaveSplitter->addWidget(csv_group_);
@@ -1797,10 +1843,107 @@ void SessionViewerWindow::setupUi()
     mainLayout->addWidget(summaryWaveSplitter, 1);
 }
 
+void SessionViewerWindow::applyCsvTableTheme()
+{
+    if (!csv_table_)
+    {
+        return;
+    }
+
+    const SessionTableTheme theme = sessionTableThemeFor(this);
+
+    QPalette tablePalette = csv_table_->palette();
+    tablePalette.setColor(QPalette::Base, theme.background);
+    tablePalette.setColor(QPalette::AlternateBase, theme.background);
+    tablePalette.setColor(QPalette::Text, theme.text);
+    tablePalette.setColor(QPalette::WindowText, theme.text);
+    tablePalette.setColor(QPalette::Highlight, theme.selectedBackground);
+    tablePalette.setColor(QPalette::HighlightedText, theme.selectedText);
+    csv_table_->setPalette(tablePalette);
+    csv_table_->viewport()->setPalette(tablePalette);
+    csv_table_->horizontalHeader()->setPalette(tablePalette);
+
+    csv_table_->setStyleSheet(QStringLiteral(
+        "QTableWidget {"
+        " background-color: %1;"
+        " alternate-background-color: %1;"
+        " color: %2;"
+        " gridline-color: %3;"
+        " selection-background-color: %6;"
+        " selection-color: %7;"
+        "}"
+        "QTableWidget::item { color: %2; }"
+        "QTableWidget::item:selected { background-color: %6; color: %7; }"
+        "QTableWidget::item:selected:active { background-color: %6; color: %7; }"
+        "QTableWidget::item:selected:!active { background-color: %6; color: %7; }"
+        "QHeaderView::section {"
+        " background-color: %4;"
+        " color: %5;"
+        " border: 0px;"
+        " border-right: 1px solid %3;"
+        " border-bottom: 1px solid %3;"
+        " padding: 4px 8px;"
+        "}"
+        "QTableCornerButton::section {"
+        " background-color: %4;"
+        " border: 0px;"
+        " border-right: 1px solid %3;"
+        " border-bottom: 1px solid %3;"
+        "}")
+        .arg(theme.background.name(),
+             theme.text.name(),
+             theme.grid.name(),
+             theme.headerBackground.name(),
+             theme.headerText.name(),
+             theme.selectedBackground.name(),
+             theme.selectedText.name()));
+}
+
+void SessionViewerWindow::refreshCsvItemTheme()
+{
+    if (!csv_table_)
+    {
+        return;
+    }
+
+    const SessionTableTheme theme = sessionTableThemeFor(this);
+    const int currentRow = csv_table_->currentRow();
+    for (int row = 0; row < csv_table_->rowCount(); ++row)
+    {
+        QColor background = theme.background;
+        if (highlighted_csv_rows_.contains(row))
+        {
+            background = (row == currentRow) ? theme.highlightedBackground : theme.secondaryHighlightedBackground;
+        }
+
+        for (int col = 0; col < csv_table_->columnCount(); ++col)
+        {
+            if (QTableWidgetItem *item = csv_table_->item(row, col))
+            {
+                item->setBackground(background);
+                item->setForeground(theme.text);
+            }
+        }
+    }
+    csv_table_->viewport()->update();
+}
+
 void SessionViewerWindow::setEnglish(bool english)
 {
     is_english_ = english;
     updateTexts();
+}
+
+void SessionViewerWindow::changeEvent(QEvent *event)
+{
+    QMainWindow::changeEvent(event);
+    if (event && (event->type() == QEvent::PaletteChange ||
+                  event->type() == QEvent::ApplicationPaletteChange ||
+                  event->type() == QEvent::StyleChange))
+    {
+        applyCsvTableTheme();
+        refreshCsvItemTheme();
+    }
 }
 
 void SessionViewerWindow::setDefaultDataDirectory(const QString& directory)
@@ -2633,21 +2776,25 @@ bool SessionViewerWindow::loadSensorsCsv()
     }
 
     csv_table_->setRowCount(rows.size());
+    const SessionTableTheme tableTheme = sessionTableThemeFor(this);
     for (int row = 0; row < rows.size(); ++row)
     {
         auto *indexItem = new QTableWidgetItem(QString::number(row + 1));
-        indexItem->setBackground(kDefaultCsvRowColor);
+        indexItem->setBackground(tableTheme.background);
+        indexItem->setForeground(tableTheme.text);
         csv_table_->setItem(row, 0, indexItem);
 
         auto *deltaItem = new QTableWidgetItem(QString());
-        deltaItem->setBackground(kDefaultCsvRowColor);
+        deltaItem->setBackground(tableTheme.background);
+        deltaItem->setForeground(tableTheme.text);
         csv_table_->setItem(row, 1, deltaItem);
 
         const QStringList& fields = rows.at(row);
         for (int col = 0; col < csv_headers_.size(); ++col)
         {
             auto *item = new QTableWidgetItem(csvValueAt(fields, col));
-            item->setBackground(kDefaultCsvRowColor);
+            item->setBackground(tableTheme.background);
+            item->setForeground(tableTheme.text);
             csv_table_->setItem(row, col + 2, item);
         }
 
@@ -3729,6 +3876,7 @@ QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs)
     std::sort(rowsToHighlight.begin(), rowsToHighlight.end());
     rowsToHighlight.erase(std::unique(rowsToHighlight.begin(), rowsToHighlight.end()), rowsToHighlight.end());
 
+    const SessionTableTheme tableTheme = sessionTableThemeFor(this);
     for (int previousRow : highlighted_csv_rows_)
     {
         if (previousRow < 0 || previousRow >= csv_table_->rowCount() || rowsToHighlight.contains(previousRow))
@@ -3739,7 +3887,8 @@ QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs)
         {
             if (QTableWidgetItem *item = csv_table_->item(previousRow, col))
             {
-                item->setBackground(kDefaultCsvRowColor);
+                item->setBackground(tableTheme.background);
+                item->setForeground(tableTheme.text);
             }
         }
         if (QTableWidgetItem *deltaItem = csv_table_->item(previousRow, 1))
@@ -3768,12 +3917,13 @@ QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs)
     QStringList matchParts;
     for (int row : rowsToHighlight)
     {
-        const QColor rowColor = (row == primaryRow) ? kHighlightedCsvRowColor : kSecondaryHighlightedCsvRowColor;
+        const QColor rowColor = (row == primaryRow) ? tableTheme.highlightedBackground : tableTheme.secondaryHighlightedBackground;
         for (int col = 0; col < csv_table_->columnCount(); ++col)
         {
             if (QTableWidgetItem *item = csv_table_->item(row, col))
             {
                 item->setBackground(rowColor);
+                item->setForeground(tableTheme.text);
             }
         }
 
