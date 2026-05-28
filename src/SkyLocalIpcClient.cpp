@@ -50,11 +50,18 @@ SkyLocalIpcClient::SkyLocalIpcClient(QObject *parent)
     connect(&socket_, &QTcpSocket::disconnected, this, &SkyLocalIpcClient::onDisconnected);
     connect(&socket_, &QTcpSocket::readyRead, this, &SkyLocalIpcClient::onReadyRead);
     connect(&socket_, &QTcpSocket::errorOccurred, this, &SkyLocalIpcClient::onErrorOccurred);
+    reconnect_timer_.setInterval(1000);
+    reconnect_timer_.setTimerType(Qt::CoarseTimer);
+    connect(&reconnect_timer_, &QTimer::timeout, this, &SkyLocalIpcClient::attemptReconnect);
     updateDashboardRates();
 }
 
 void SkyLocalIpcClient::connectToCore(const QString& host, quint16 port)
 {
+    core_host_ = host;
+    core_port_ = port;
+    user_disconnect_requested_ = false;
+    reconnect_timer_.stop();
     if (socket_.state() != QAbstractSocket::UnconnectedState)
     {
         socket_.abort();
@@ -66,12 +73,33 @@ void SkyLocalIpcClient::connectToCore(const QString& host, quint16 port)
 
 void SkyLocalIpcClient::disconnectFromCore()
 {
+    user_disconnect_requested_ = true;
+    reconnect_timer_.stop();
     socket_.disconnectFromHost();
 }
 
 bool SkyLocalIpcClient::isConnected() const
 {
     return socket_.state() == QAbstractSocket::ConnectedState;
+}
+
+void SkyLocalIpcClient::setAutoReconnectEnabled(bool enabled, int intervalMs)
+{
+    auto_reconnect_enabled_ = enabled;
+    reconnect_timer_.setInterval(std::max(100, intervalMs));
+    if (!auto_reconnect_enabled_)
+    {
+        reconnect_timer_.stop();
+    }
+    else if (!isConnected() && socket_.state() == QAbstractSocket::UnconnectedState)
+    {
+        scheduleReconnect();
+    }
+}
+
+bool SkyLocalIpcClient::autoReconnectEnabled() const
+{
+    return auto_reconnect_enabled_;
 }
 
 TelemetryStatus SkyLocalIpcClient::currentStatus() const
@@ -184,6 +212,7 @@ quint16 SkyLocalIpcClient::requestCoreShutdown()
 
 void SkyLocalIpcClient::onConnected()
 {
+    reconnect_timer_.stop();
     connected_time_us_ = currentTimestampUs();
     emit connectedChanged(true);
     emit logMessage(QStringLiteral("已连接 SkyCore IPC。"));
@@ -197,6 +226,7 @@ void SkyLocalIpcClient::onDisconnected()
 {
     emit connectedChanged(false);
     emit logMessage(QStringLiteral("SkyCore IPC 连接已断开。"));
+    scheduleReconnect();
 }
 
 void SkyLocalIpcClient::onReadyRead()
@@ -211,6 +241,15 @@ void SkyLocalIpcClient::onReadyRead()
 void SkyLocalIpcClient::onErrorOccurred(QAbstractSocket::SocketError error)
 {
     Q_UNUSED(error)
+    if (auto_reconnect_enabled_ && !user_disconnect_requested_)
+    {
+        if (!reconnect_timer_.isActive())
+        {
+            emit logMessage(QStringLiteral("SkyCore IPC 暂不可用：%1，将自动重连。").arg(socket_.errorString()));
+        }
+        scheduleReconnect();
+        return;
+    }
     emit logMessage(QStringLiteral("SkyCore IPC 错误：%1").arg(socket_.errorString()));
 }
 
@@ -232,6 +271,38 @@ quint16 SkyLocalIpcClient::sendCommand(CommandId commandId, const QByteArray& pa
                                                     currentTimestampUs());
     socket_.write(encoded);
     return command.command_seq;
+}
+
+void SkyLocalIpcClient::attemptReconnect()
+{
+    if (!auto_reconnect_enabled_ ||
+        user_disconnect_requested_ ||
+        core_host_.isEmpty() ||
+        core_port_ == 0 ||
+        socket_.state() != QAbstractSocket::UnconnectedState)
+    {
+        return;
+    }
+
+    decoder_.reset();
+    next_frame_seq_ = 1;
+    socket_.connectToHost(core_host_, core_port_);
+}
+
+void SkyLocalIpcClient::scheduleReconnect()
+{
+    if (!auto_reconnect_enabled_ ||
+        user_disconnect_requested_ ||
+        core_host_.isEmpty() ||
+        core_port_ == 0 ||
+        isConnected() ||
+        reconnect_timer_.isActive())
+    {
+        return;
+    }
+
+    emit logMessage(QStringLiteral("SkyCore IPC 将在 %1 ms 后自动重连。").arg(reconnect_timer_.interval()));
+    reconnect_timer_.start();
 }
 
 void SkyLocalIpcClient::dispatchFrame(const TelemetryFrame& frame)

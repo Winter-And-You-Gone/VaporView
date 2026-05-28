@@ -52,6 +52,7 @@ int main(int argc, char **argv)
     require(server.listen(QHostAddress::LocalHost, 0), "listen localhost");
 
     VaporView::SkyLocalIpcClient client;
+    client.setAutoReconnectEnabled(true, 50);
     bool connected = false;
     bool ackReceived = false;
     bool statusReceived = false;
@@ -140,6 +141,12 @@ int main(int argc, char **argv)
         }
         return false;
     }), "client sends ShutdownCore command");
+
+    socket->disconnectFromHost();
+    require(waitUntil([&]() { return !connected; }), "client observes disconnected socket");
+    require(waitUntil([&]() { return connected && server.hasPendingConnections(); }), "client reconnects after disconnect");
+    QTcpSocket *reconnectedSocket = server.nextPendingConnection();
+    require(reconnectedSocket != nullptr, "accept reconnected client");
 
     std::cout << "sky_local_ipc_client_test passed\n";
     return 0;

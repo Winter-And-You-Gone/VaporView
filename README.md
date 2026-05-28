@@ -34,7 +34,7 @@ Linux:   ./build/Release/VaporView
 天空端推荐拆成两个进程运行：
 
 - `VaporViewSkyCore`：核心采集进程，负责设备采集、本地记录、数传串口和本机 IPC Server。不创建 Qt Widgets 窗口，不依赖 TUI。
-- `VaporViewSkyTui`：本机调试客户端，通过 `127.0.0.1:39001` 连接 SkyCore。TUI 退出或崩溃不影响 SkyCore 继续采集、落盘和数传。
+- `VaporViewSkyTui`：本机调试客户端，通过 `127.0.0.1:39001` 连接 SkyCore。TUI 退出或崩溃不影响 SkyCore 继续采集、落盘和数传；SkyCore 重启后 TUI 会自动重连。
 - `VaporViewSky`：兼容入口，在同一个进程内启动 SkyCore 运行时、本机 IPC 和 TUI，旧命令行仍可用；新现场调试推荐优先使用两个独立进程。
 
 ```powershell

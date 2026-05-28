@@ -8,6 +8,7 @@
 #include <QObject>
 #include <QAbstractSocket>
 #include <QTcpSocket>
+#include <QTimer>
 
 namespace VaporView
 {
@@ -22,6 +23,8 @@ public:
     void connectToCore(const QString& host, quint16 port);
     void disconnectFromCore();
     bool isConnected() const;
+    void setAutoReconnectEnabled(bool enabled, int intervalMs = 1000);
+    bool autoReconnectEnabled() const;
 
     TelemetryStatus currentStatus() const;
     SkyConfig currentConfig() const;
@@ -66,6 +69,8 @@ private slots:
 private:
     quint16 sendCommand(CommandId commandId, const QByteArray& payload = QByteArray());
     void dispatchFrame(const TelemetryFrame& frame);
+    void attemptReconnect();
+    void scheduleReconnect();
     void updateFromBasic(const TelemetryBasic& basic);
     void updateFromStatus(const TelemetryStatus& status);
     void updateFromFeature(const WaveformFeature& feature);
@@ -76,8 +81,13 @@ private:
     quint64 currentTimestampUs() const;
 
     QTcpSocket socket_;
+    QTimer reconnect_timer_;
     TelemetryCodec decoder_;
     TelemetryCodec encoder_;
+    QString core_host_;
+    quint16 core_port_ = 0;
+    bool auto_reconnect_enabled_ = false;
+    bool user_disconnect_requested_ = false;
     quint16 next_frame_seq_ = 1;
     quint16 next_command_seq_ = 1;
     TelemetryStatus status_;

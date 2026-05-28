@@ -114,6 +114,7 @@ int main(int argc, char *argv[])
     }
 
     VaporView::SkyLocalIpcClient client;
+    client.setAutoReconnectEnabled(true);
     VaporView::SkyTuiApp tui(&client, options);
     tui.start();
     if (options.auto_launch_core)
