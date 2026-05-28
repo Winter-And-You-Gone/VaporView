@@ -1,4 +1,5 @@
 #include "RtkConfigDialog.h"
+#include "CustomTitleBar.h"
 #include "WindowSizing.h"
 #include <QApplication>
 #include <QVBoxLayout>
@@ -710,12 +711,10 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , gga_monitor_enabled_(false)
 {
     setObjectName(QStringLiteral("rtkConfigDialog"));
-    setWindowFlags(windowFlags()
-                   | Qt::WindowMinimizeButtonHint
-                   | Qt::WindowMaximizeButtonHint);
     setSizeGripEnabled(true);
 
     setupUi();
+    VaporView::installCustomTitleBar(this);
     loadSettings();
     setFontScale(100);
     setEnglish(false);
@@ -2673,6 +2672,7 @@ void RtkConfigDialog::onFetchMountpointsClicked()
                 mountpointDialog.reject();
             });
 
+            VaporView::installCustomTitleBar(&mountpointDialog, false);
             const QString selected = mountpointDialog.exec() == QDialog::Accepted
                 ? mountpointCombo->currentText().trimmed()
                 : QString();

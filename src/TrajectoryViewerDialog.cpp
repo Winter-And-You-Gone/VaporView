@@ -1,4 +1,5 @@
 #include "TrajectoryViewerDialog.h"
+#include "CustomTitleBar.h"
 
 #include <QHBoxLayout>
 #include <QComboBox>
@@ -1088,6 +1089,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     }
 
     updateTexts();
+    VaporView::installCustomTitleBar(this);
 }
 
 void TrajectoryViewerDialog::setEnglish(bool english)

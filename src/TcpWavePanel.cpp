@@ -1,3 +1,4 @@
+#include "CustomTitleBar.h"
 #include "TcpWavePanel.h"
 #include <QAbstractSocket>
 #include <QByteArray>
@@ -1754,6 +1755,7 @@ void TcpWavePanel::onConfigurePeakFilterClicked()
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
 
+    VaporView::installCustomTitleBar(&dialog, false);
     if (dialog.exec() != QDialog::Accepted)
     {
         return;

@@ -1,4 +1,5 @@
 #include "RawDataParserWindow.h"
+#include "CustomTitleBar.h"
 #include "TcpWaveEncoding.h"
 
 #include <QAbstractTableModel>
@@ -567,6 +568,7 @@ RawDataParserWindow::RawDataParserWindow(QWidget *parent)
     , impl_(std::make_unique<Impl>(this))
 {
     impl_->setupUi();
+    VaporView::installCustomTitleBar(this);
     impl_->setEnglish(false);
 }
 

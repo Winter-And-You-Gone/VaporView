@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "CustomTitleBar.h"
 #include "RtkConfigDialog.h"
 #include "SessionViewerWindow.h"
 #include "SkyDeviceConfigDialog.h"
@@ -10558,6 +10559,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     layout->addWidget(buttonBox);
 
+    VaporView::installCustomTitleBar(&dialog, false);
     if (dialog.exec() != QDialog::Accepted)
     {
         return;
@@ -10812,6 +10814,7 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     layout->addWidget(buttonBox);
 
+    VaporView::installCustomTitleBar(&dialog, false);
     if (dialog.exec() != QDialog::Accepted)
     {
         return;

@@ -1,4 +1,5 @@
 #include "SessionViewerWindow.h"
+#include "CustomTitleBar.h"
 #include "RangeSelectionAxisWidget.h"
 #include "RawDataParserWindow.h"
 #include "TrajectoryViewerDialog.h"
@@ -1584,6 +1585,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
 {
     setWindowFlag(Qt::Window, true);
     setupUi();
+    VaporView::installCustomTitleBar(this);
     resize(VaporView::defaultWindowSizeWithinScreenFraction(
         this,
         QSize(kSessionViewerPreferredWidth, kSessionViewerPreferredHeight),
@@ -3496,6 +3498,7 @@ void SessionViewerWindow::onConfigurePeakFilterClicked()
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
 
+    VaporView::installCustomTitleBar(&dialog, false);
     if (dialog.exec() != QDialog::Accepted)
     {
         return;

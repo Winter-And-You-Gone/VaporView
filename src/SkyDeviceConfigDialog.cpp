@@ -1,4 +1,5 @@
 #include "SkyDeviceConfigDialog.h"
+#include "CustomTitleBar.h"
 
 #include <QDialogButtonBox>
 #include <QDir>
@@ -270,6 +271,7 @@ SkyDeviceConfigDialog::SkyDeviceConfigDialog(GroundTelemetryService *service, QW
     , service_(service)
 {
     setupUi();
+    VaporView::installCustomTitleBar(this);
     if (service_)
     {
         connect(service_, &GroundTelemetryService::skyConfigReceived, this, &SkyDeviceConfigDialog::onSkyConfigReceived);

@@ -217,6 +217,7 @@ set(NAV_SOURCES
     src/TrajectoryViewerDialog.cpp
     src/RtkConfigDialog.cpp
     src/RtkStreamService.cpp
+    src/CustomTitleBar.cpp
     src/WindowSizing.cpp
 )
 
@@ -230,6 +231,7 @@ set(NAV_HEADERS
     include/TrajectoryViewerDialog.h
     include/RtkConfigDialog.h
     include/RtkStreamService.h
+    include/CustomTitleBar.h
     include/WindowSizing.h
 )
 
