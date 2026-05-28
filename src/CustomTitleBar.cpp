@@ -22,6 +22,7 @@
 #include <QSvgRenderer>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <QVariant>
 #include <QVector>
 #include <QWidget>
 #include <QWindow>
@@ -45,7 +46,13 @@ namespace
 constexpr int kTitleBarHeight = 48;
 constexpr int kTitleBarButtonSize = 34;
 constexpr int kTitleBarIconSize = 24;
+constexpr int kTitleBarMaximizeIconSize = 21;
 constexpr int kResizeBorderWidth = 8;
+constexpr const char *kMainWindowProperty = "vaporViewMainWindow";
+constexpr const char *kEnglishProperty = "vaporViewEnglish";
+constexpr const char *kDarkThemeProperty = "vaporViewDarkTheme";
+const QColor kToolbarBlue(40, 105, 190);
+const QColor kToolbarAmber(220, 150, 35);
 
 QString findResourceFile(const QString& relativePath)
 {
@@ -88,7 +95,7 @@ QPixmap renderLucidePixmap(const QByteArray& svgData, const QColor& color)
     return pixmap;
 }
 
-QIcon createLucideIcon(const QString& iconName, bool dark)
+QIcon createLucideIcon(const QString& iconName, const QColor& iconColor)
 {
     QFile file(findResourceFile(QStringLiteral("resources/lucide/%1.svg").arg(iconName)));
     if (!file.open(QIODevice::ReadOnly))
@@ -97,9 +104,18 @@ QIcon createLucideIcon(const QString& iconName, bool dark)
     }
 
     QIcon icon;
-    const QColor iconColor = dark ? QColor("#d8dee9") : QColor("#111827");
     icon.addPixmap(renderLucidePixmap(file.readAll(), iconColor), QIcon::Normal);
     return icon;
+}
+
+QIcon createTitleBarIcon(const QString& iconName, bool dark)
+{
+    return createLucideIcon(iconName, dark ? QColor("#d8dee9") : QColor("#111827"));
+}
+
+QIcon createToolbarIcon(const QString& iconName, const QColor& color = kToolbarBlue)
+{
+    return createLucideIcon(iconName, color);
 }
 
 QString logoResourcePath(bool dark)
@@ -201,6 +217,8 @@ public:
         , title_bar_(nullptr)
         , logo_label_(nullptr)
         , title_label_(nullptr)
+        , language_button_(nullptr)
+        , theme_button_(nullptr)
         , minimize_button_(nullptr)
         , maximize_button_(nullptr)
         , close_button_(nullptr)
@@ -227,6 +245,10 @@ public:
         build();
         createResizeHandles();
         window_->installEventFilter(this);
+        if (qApp)
+        {
+            qApp->installEventFilter(this);
+        }
         refreshTheme();
         updateResizeHandles();
     }
@@ -251,6 +273,15 @@ protected:
             {
                 updateMaximizeButton();
                 updateResizeHandles();
+            }
+        }
+        else if (watched == qApp)
+        {
+            if (event->type() == QEvent::ApplicationPaletteChange ||
+                event->type() == QEvent::PaletteChange ||
+                event->type() == QEvent::DynamicPropertyChange)
+            {
+                refreshTheme();
             }
         }
 
@@ -399,6 +430,20 @@ private:
         layout->addWidget(title_label_, 0, Qt::AlignVCenter);
         layout->addStretch(1);
 
+        language_button_ = createWindowButton(QStringLiteral("titleBarButton"), bar);
+        language_button_->setAccessibleName(QStringLiteral("titleLanguageButton"));
+        QObject::connect(language_button_, &QToolButton::clicked, this, [this]() {
+            invokeMainWindowSlot("onSwitchLanguage");
+        });
+        layout->addWidget(language_button_, 0, Qt::AlignVCenter);
+
+        theme_button_ = createWindowButton(QStringLiteral("titleBarButton"), bar);
+        theme_button_->setAccessibleName(QStringLiteral("titleThemeButton"));
+        QObject::connect(theme_button_, &QToolButton::clicked, this, [this]() {
+            invokeMainWindowSlot("onToggleTheme");
+        });
+        layout->addWidget(theme_button_, 0, Qt::AlignVCenter);
+
         addSeparator(layout, bar);
 
         if (show_maximize_button_)
@@ -408,6 +453,7 @@ private:
             layout->addWidget(minimize_button_, 0, Qt::AlignVCenter);
 
             maximize_button_ = createWindowButton(QStringLiteral("windowMaximizeButton"), bar);
+            maximize_button_->setIconSize(QSize(kTitleBarMaximizeIconSize, kTitleBarMaximizeIconSize));
             QObject::connect(maximize_button_, &QToolButton::clicked, this, [this]() {
                 toggleMaximized();
             });
@@ -474,15 +520,104 @@ private:
         }
         if (minimize_button_)
         {
-            minimize_button_->setIcon(createLucideIcon(QStringLiteral("minus"), dark));
-            minimize_button_->setToolTip(QStringLiteral("最小化"));
+            minimize_button_->setIcon(createTitleBarIcon(QStringLiteral("minus"), dark));
         }
         if (close_button_)
         {
-            close_button_->setIcon(createLucideIcon(QStringLiteral("x"), dark));
-            close_button_->setToolTip(QStringLiteral("关闭"));
+            close_button_->setIcon(createTitleBarIcon(QStringLiteral("x"), dark));
         }
+        updateLanguageAndThemeButtons();
+        updateWindowButtonTexts();
         updateMaximizeButton();
+    }
+
+    QObject *mainWindowObject() const
+    {
+        for (QWidget *widget = window_; widget; widget = widget->parentWidget())
+        {
+            if (widget->property(kMainWindowProperty).toBool())
+            {
+                return widget;
+            }
+        }
+
+        if (!qApp)
+        {
+            return nullptr;
+        }
+        for (QWidget *widget : QApplication::topLevelWidgets())
+        {
+            if (widget && widget->property(kMainWindowProperty).toBool())
+            {
+                return widget;
+            }
+        }
+        return nullptr;
+    }
+
+    void invokeMainWindowSlot(const char *slotName)
+    {
+        QObject *mainWindow = mainWindowObject();
+        if (!mainWindow || !slotName)
+        {
+            return;
+        }
+        QMetaObject::invokeMethod(mainWindow, slotName, Qt::QueuedConnection);
+    }
+
+    bool isEnglish() const
+    {
+        return qApp && qApp->property(kEnglishProperty).toBool();
+    }
+
+    bool isDarkThemeEnabled() const
+    {
+        if (qApp)
+        {
+            const QVariant value = qApp->property(kDarkThemeProperty);
+            if (value.isValid())
+            {
+                return value.toBool();
+            }
+        }
+        return isDarkPalette();
+    }
+
+    void updateLanguageAndThemeButtons()
+    {
+        const bool english = isEnglish();
+        const bool dark = isDarkThemeEnabled();
+        if (language_button_)
+        {
+            language_button_->setIcon(createToolbarIcon(QStringLiteral("languages")));
+            language_button_->setToolTip(english ? QStringLiteral("Switch to Chinese") : QStringLiteral("切换到英文"));
+            language_button_->setStatusTip(english ? QStringLiteral("Switch interface language") : QStringLiteral("切换界面语言"));
+        }
+        if (theme_button_)
+        {
+            theme_button_->setIcon(dark
+                ? createToolbarIcon(QStringLiteral("sun"), kToolbarAmber)
+                : createToolbarIcon(QStringLiteral("moon")));
+            theme_button_->setToolTip(dark
+                ? (english ? QStringLiteral("Switch to light theme") : QStringLiteral("切换到亮色模式"))
+                : (english ? QStringLiteral("Switch to dark theme") : QStringLiteral("切换到暗色模式")));
+            theme_button_->setStatusTip(theme_button_->toolTip());
+        }
+    }
+
+    void updateWindowButtonTexts()
+    {
+        const bool english = isEnglish();
+        if (minimize_button_)
+        {
+            minimize_button_->setToolTip(english ? QStringLiteral("Minimize") : QStringLiteral("最小化"));
+            minimize_button_->setStatusTip(minimize_button_->toolTip());
+        }
+        if (close_button_)
+        {
+            close_button_->setToolTip(english ? QStringLiteral("Close") : QStringLiteral("关闭"));
+            close_button_->setStatusTip(close_button_->toolTip());
+        }
     }
 
     void createResizeHandles()
@@ -613,8 +748,12 @@ private:
 
         const bool dark = isDarkPalette();
         const bool restore = isWindowStateMaximized();
-        maximize_button_->setIcon(createLucideIcon(restore ? QStringLiteral("copy") : QStringLiteral("square"), dark));
-        maximize_button_->setToolTip(restore ? QStringLiteral("还原") : QStringLiteral("最大化"));
+        const bool english = isEnglish();
+        maximize_button_->setIcon(createTitleBarIcon(restore ? QStringLiteral("copy") : QStringLiteral("square"), dark));
+        maximize_button_->setToolTip(restore
+            ? (english ? QStringLiteral("Restore") : QStringLiteral("还原"))
+            : (english ? QStringLiteral("Maximize") : QStringLiteral("最大化")));
+        maximize_button_->setStatusTip(maximize_button_->toolTip());
     }
 
     void toggleMaximized()
@@ -651,6 +790,8 @@ private:
     QWidget *title_bar_;
     QLabel *logo_label_;
     QLabel *title_label_;
+    QToolButton *language_button_;
+    QToolButton *theme_button_;
     QToolButton *minimize_button_;
     QToolButton *maximize_button_;
     QToolButton *close_button_;

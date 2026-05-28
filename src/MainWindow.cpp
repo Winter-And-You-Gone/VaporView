@@ -449,6 +449,9 @@ const QColor kToolbarGreen(35, 150, 95);
 const QColor kToolbarRed(205, 72, 72);
 const QColor kToolbarAmber(220, 150, 35);
 const QColor kToolbarDisabled(145, 150, 158);
+constexpr const char *kMainWindowProperty = "vaporViewMainWindow";
+constexpr const char *kEnglishProperty = "vaporViewEnglish";
+constexpr const char *kDarkThemeProperty = "vaporViewDarkTheme";
 
 int clampPtbSampleRate(int hz)
 {
@@ -3148,6 +3151,7 @@ MainWindow::MainWindow(QWidget *parent)
                    Qt::WindowMinimizeButtonHint |
                    Qt::WindowMaximizeButtonHint |
                    Qt::WindowCloseButtonHint);
+    setProperty(kMainWindowProperty, true);
 
     const double currentPointSize = qApp->font().pointSizeF();
     base_font_point_size_ = currentPointSize > 0.0 ? currentPointSize : 10.0;
@@ -3161,6 +3165,10 @@ MainWindow::MainWindow(QWidget *parent)
         font_scale_percent_ = 100;
     }
     dark_theme_enabled_ = settings.value("dark_theme_enabled", false).toBool();
+    if (qApp)
+    {
+        qApp->setProperty(kDarkThemeProperty, dark_theme_enabled_);
+    }
     recording_directory_ = settings.value("recording_directory", defaultRecordingDirectory()).toString();
     if (recording_directory_.isEmpty())
     {
@@ -6468,6 +6476,10 @@ void MainWindow::setEnglish(bool english)
     };
 
     is_english_ = english;
+    if (qApp)
+    {
+        qApp->setProperty(kEnglishProperty, is_english_);
+    }
 
     setNativeMenuTitle(data_menu_, english ? QStringLiteral("&Data") : QStringLiteral("数据(&D)"));
     recording_directory_action_->setText(english ? "Recording Folder..." : "记录目录...");
@@ -7175,6 +7187,10 @@ void MainWindow::updateWindowResizeHandles()
 void MainWindow::onToggleTheme()
 {
     dark_theme_enabled_ = !dark_theme_enabled_;
+    if (qApp)
+    {
+        qApp->setProperty(kDarkThemeProperty, dark_theme_enabled_);
+    }
     discardTitleApplicationMenuPanel();
     applyStyleConfiguration();
     updateThemeAction();
