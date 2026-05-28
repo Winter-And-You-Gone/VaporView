@@ -146,7 +146,14 @@ QString fixedStatusField(const QString& text, int width)
 
 QString fixedNumericStatusField(const QString& text, int width)
 {
-    return fixedStatusText(text, width);
+    QString displayText = text;
+    if (!displayText.isEmpty() &&
+        displayText.at(0) != QLatin1Char('-') &&
+        displayText.at(0) != QLatin1Char('+'))
+    {
+        displayText.prepend(QLatin1Char(' '));
+    }
+    return displayText.leftJustified(std::max(width, static_cast<int>(displayText.size())), QLatin1Char(' '));
 }
 
 QString fixedStatusFloat(double value, int decimals, int width)
