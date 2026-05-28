@@ -15,11 +15,19 @@ QMainWindow {
 
 QWidget#appCentralWidget,
 QWidget#mainCardsPane,
+QMainWindow#sessionViewerWindow,
+QWidget#sessionViewerCentralWidget,
+QWidget#sessionViewerViewport,
+QWidget#sessionViewerContentPane,
 QScrollArea#mainCardsScrollArea,
+QScrollArea#sessionViewerScrollArea,
 QWidget#mainCardsViewport,
 QScrollArea#mainCardsScrollArea > QWidget,
 QScrollArea#mainCardsScrollArea > QWidget > QWidget,
-QSplitter#mainContentSplitter {
+QScrollArea#sessionViewerScrollArea > QWidget,
+QScrollArea#sessionViewerScrollArea > QWidget > QWidget,
+QSplitter#mainContentSplitter,
+QSplitter#sessionViewerContentSplitter {
     background-color: #FDFDFC;
 }
 

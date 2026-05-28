@@ -1530,8 +1530,17 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
 
 void SessionViewerWindow::setupUi()
 {
+    setObjectName("sessionViewerWindow");
+    setAttribute(Qt::WA_StyledBackground, true);
+    setAutoFillBackground(true);
+
     auto *scrollArea = new QScrollArea(this);
     scrollArea->setObjectName("sessionViewerScrollArea");
+    scrollArea->setAttribute(Qt::WA_StyledBackground, true);
+    scrollArea->setAutoFillBackground(true);
+    scrollArea->viewport()->setObjectName("sessionViewerViewport");
+    scrollArea->viewport()->setAttribute(Qt::WA_StyledBackground, true);
+    scrollArea->viewport()->setAutoFillBackground(true);
     scrollArea->setWidgetResizable(true);
     scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
@@ -1539,6 +1548,8 @@ void SessionViewerWindow::setupUi()
 
     central_widget_ = new QWidget(this);
     central_widget_->setObjectName("sessionViewerCentralWidget");
+    central_widget_->setAttribute(Qt::WA_StyledBackground, true);
+    central_widget_->setAutoFillBackground(true);
     scrollArea->setWidget(central_widget_);
 
     auto *mainLayout = new QVBoxLayout(central_widget_);
@@ -1586,8 +1597,14 @@ void SessionViewerWindow::setupUi()
     mainLayout->addLayout(controlLayout);
 
     auto *summaryWaveSplitter = new QSplitter(Qt::Vertical, this);
+    summaryWaveSplitter->setObjectName("sessionViewerContentSplitter");
+    summaryWaveSplitter->setAttribute(Qt::WA_StyledBackground, true);
+    summaryWaveSplitter->setAutoFillBackground(true);
 
     auto *upperWidget = new QWidget(this);
+    upperWidget->setObjectName("sessionViewerContentPane");
+    upperWidget->setAttribute(Qt::WA_StyledBackground, true);
+    upperWidget->setAutoFillBackground(true);
     auto *upperLayout = new QVBoxLayout(upperWidget);
     upperLayout->setContentsMargins(0, 0, 0, 0);
     upperLayout->setSpacing(8);

@@ -837,7 +837,14 @@ QMainWindow {
 }
 QWidget#appCentralWidget,
 QWidget#mainCardsPane,
+QMainWindow#sessionViewerWindow,
 QWidget#sessionViewerCentralWidget,
+QWidget#sessionViewerViewport,
+QWidget#sessionViewerContentPane,
+QScrollArea#sessionViewerScrollArea,
+QScrollArea#sessionViewerScrollArea > QWidget,
+QScrollArea#sessionViewerScrollArea > QWidget > QWidget,
+QSplitter#sessionViewerContentSplitter,
 QScrollArea,
 QScrollArea > QWidget,
 QScrollArea > QWidget > QWidget,
@@ -3506,7 +3513,7 @@ void MainWindow::loadModernStyleSheet()
         base_style_sheet_ =
             "* { font-family: \"Segoe UI\", \"Microsoft YaHei\", \"PingFang SC\", sans-serif; }"
             "QMainWindow { background-color: #FDFDFC; }"
-            "QWidget#appCentralWidget, QWidget#mainCardsPane, QWidget#logSidePanel, QScrollArea#mainCardsScrollArea, QWidget#mainCardsViewport, QScrollArea#mainCardsScrollArea > QWidget, QScrollArea#mainCardsScrollArea > QWidget > QWidget, QSplitter#mainContentSplitter { background-color: #FDFDFC; }"
+            "QWidget#appCentralWidget, QWidget#mainCardsPane, QWidget#logSidePanel, QMainWindow#sessionViewerWindow, QWidget#sessionViewerCentralWidget, QWidget#sessionViewerViewport, QWidget#sessionViewerContentPane, QScrollArea#mainCardsScrollArea, QScrollArea#sessionViewerScrollArea, QWidget#mainCardsViewport, QScrollArea#mainCardsScrollArea > QWidget, QScrollArea#mainCardsScrollArea > QWidget > QWidget, QScrollArea#sessionViewerScrollArea > QWidget, QScrollArea#sessionViewerScrollArea > QWidget > QWidget, QSplitter#mainContentSplitter, QSplitter#sessionViewerContentSplitter { background-color: #FDFDFC; }"
             "QMenuBar { background-color: #FDFDFC; border-bottom: 1px solid #EAEAE9; padding: 4px 8px; }"
             "QMenuBar::item { background-color: transparent; padding: 6px 12px; border-radius: 4px; color: #000000; }"
             "QMenuBar::item:selected { background-color: #e3f2fd; color: #1976d2; }"
