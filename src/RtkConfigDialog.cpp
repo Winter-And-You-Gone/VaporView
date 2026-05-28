@@ -711,7 +711,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , gga_monitor_enabled_(false)
 {
     setObjectName(QStringLiteral("rtkConfigDialog"));
-    setSizeGripEnabled(true);
+    setSizeGripEnabled(false);
 
     setupUi();
     VaporView::installCustomTitleBar(this);

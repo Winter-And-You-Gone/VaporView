@@ -5728,6 +5728,8 @@ void MainWindow::showTitleApplicationMenu()
 
 void MainWindow::setupStatusBar()
 {
+    statusBar()->setSizeGripEnabled(false);
+
     status_label_ = new QLabel(this);
     statusBar()->addWidget(status_label_);
 

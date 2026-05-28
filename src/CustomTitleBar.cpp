@@ -1,6 +1,7 @@
 #include "CustomTitleBar.h"
 
 #include <QApplication>
+#include <QDialog>
 #include <QDir>
 #include <QEvent>
 #include <QFile>
@@ -232,6 +233,10 @@ public:
             return;
         }
 
+        if (auto *dialog = qobject_cast<QDialog *>(window_))
+        {
+            dialog->setSizeGripEnabled(false);
+        }
         window_->setProperty("customTitleBarWindow", true);
         window_->setAttribute(Qt::WA_StyledBackground, true);
         Qt::WindowFlags flags = window_->windowFlags();
