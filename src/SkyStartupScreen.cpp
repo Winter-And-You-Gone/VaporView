@@ -561,66 +561,6 @@ void drainStartupInputEvents()
 #endif
 }
 
-bool pollStartupDecision(SkyStartupDecision& decision)
-{
-#ifdef Q_OS_WIN
-    HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
-    DWORD eventCount = 0;
-    if (input == INVALID_HANDLE_VALUE || !GetNumberOfConsoleInputEvents(input, &eventCount))
-    {
-        decision = SkyStartupDecision::EnterTui;
-        return true;
-    }
-    while (eventCount-- > 0)
-    {
-        INPUT_RECORD record;
-        DWORD recordsRead = 0;
-        if (!ReadConsoleInputW(input, &record, 1, &recordsRead))
-        {
-            decision = SkyStartupDecision::EnterTui;
-            return true;
-        }
-        if (recordsRead == 0 || record.EventType != KEY_EVENT || !record.Event.KeyEvent.bKeyDown)
-        {
-            continue;
-        }
-        const WORD key = record.Event.KeyEvent.wVirtualKeyCode;
-        if (key == VK_RETURN)
-        {
-            decision = SkyStartupDecision::EnterTui;
-            return true;
-        }
-        if (key == VK_ESCAPE)
-        {
-            decision = SkyStartupDecision::Exit;
-            return true;
-        }
-    }
-    return false;
-#else
-    if (!g_startup_has_original_termios)
-    {
-        decision = SkyStartupDecision::EnterTui;
-        return true;
-    }
-    unsigned char ch = 0;
-    if (read(STDIN_FILENO, &ch, 1) == 1)
-    {
-        if (ch == 13 || ch == 10)
-        {
-            decision = SkyStartupDecision::EnterTui;
-            return true;
-        }
-        if (ch == 27)
-        {
-            decision = SkyStartupDecision::Exit;
-            return true;
-        }
-    }
-    return false;
-#endif
-}
-
 }  // namespace
 
 SkyStartupDecision showSkyStartupScreen(const QString& logo_path)
@@ -659,23 +599,15 @@ SkyStartupDecision showSkyStartupScreen(const QString& logo_path)
         QThread::msleep(kLogoFrameDelayMs);
     }
 
-    const QString message = QStringLiteral("-- 加载完成，按 Enter 进入 TUI，按 Esc 退出 --");
+    const QString message = QStringLiteral("-- 加载完成，正在进入 TUI --");
     drawCenteredText(progressRow + 2, fitPlain(message, size.columns - 4), size,
                      SkyTuiTheme::foreground(SkyTuiTheme::yellow()) + SkyTuiTheme::bold());
 
-    SkyStartupDecision decision = SkyStartupDecision::EnterTui;
-    while (!pollStartupDecision(decision))
-    {
-        drawNextLogoFrame();
-        QThread::msleep(kLogoFrameDelayMs);
-    }
-    if (decision == SkyStartupDecision::EnterTui)
-    {
-        drainStartupInputEvents();
-    }
+    QThread::msleep(kLogoFrameDelayMs * 2);
+    drainStartupInputEvents();
     restoreStartupInputMode();
     writeRaw(SkyTuiTheme::hideCursor() + SkyTuiTheme::clearScreen() + SkyTuiTheme::leaveAlternateScreen());
-    return decision;
+    return SkyStartupDecision::EnterTui;
 }
 
 }  // namespace VaporView
