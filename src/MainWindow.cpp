@@ -1954,15 +1954,13 @@ private:
         {
             rate_label_ = new QLabel(this);
             rate_label_->setObjectName(QStringLiteral("rateLabel"));
-            layout->addWidget(rate_label_, 0, Qt::AlignLeft);
+            rate_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+            layout->addWidget(rate_label_);
         }
-        setFixedNumericLabelWidth(rate_label_,
-            {
-                QStringLiteral("Total Rate: 999.9 Hz   |   40 999.9 Hz   |   41 999.9 Hz   |   42 999.9 Hz   |   50 999.9 Hz   |   59 999.9 Hz   |   5A 999.9 Hz   |   5C 999.9 Hz   |   5D 999.9 Hz"),
-                QStringLiteral("Total Rate: -999.9 Hz   |   40 -999.9 Hz   |   41 -999.9 Hz   |   42 -999.9 Hz   |   50 -999.9 Hz   |   59 -999.9 Hz   |   5A -999.9 Hz   |   5C -999.9 Hz   |   5D -999.9 Hz"),
-                QStringLiteral("总频率：-999.9 Hz   |   40 -999.9 Hz   |   41 -999.9 Hz   |   42 -999.9 Hz   |   50 -999.9 Hz   |   59 -999.9 Hz   |   5A -999.9 Hz   |   5C -999.9 Hz   |   5D -999.9 Hz")
-            },
-            8);
+        rate_label_->setFont(numericFontFrom(rate_label_->font()));
+        rate_label_->setMinimumWidth(0);
+        rate_label_->setMaximumWidth(QWIDGETSIZE_MAX);
+        rate_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
 
         auto *columnsLayout = new QHBoxLayout();
         columnsLayout->setContentsMargins(0, 0, 0, 0);
@@ -5893,9 +5891,9 @@ void MainWindow::setupCentralWidget()
     main_splitter->setHandleWidth(8);
     main_splitter->addWidget(left_scroll_area);
     main_splitter->addWidget(log_side_panel_);
-    main_splitter->setStretchFactor(0, 6);
+    main_splitter->setStretchFactor(0, 8);
     main_splitter->setStretchFactor(1, 1);
-    main_splitter->setSizes({1120, 260});
+    main_splitter->setSizes({1600, 260});
     main_h_layout->addWidget(main_splitter);
 }
 
