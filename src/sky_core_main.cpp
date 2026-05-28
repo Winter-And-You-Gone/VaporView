@@ -3,23 +3,44 @@
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
-#include <QMetaObject>
 #include <QTextStream>
+#include <QTimer>
+#include <atomic>
 #include <csignal>
+
+#ifdef Q_OS_WIN
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
 
 namespace
 {
-QCoreApplication *g_app = nullptr;
+std::atomic_bool g_shutdownRequested = false;
 
 void handleProcessSignal(int)
 {
-    if (g_app)
+    g_shutdownRequested.store(true, std::memory_order_relaxed);
+}
+
+#ifdef Q_OS_WIN
+BOOL WINAPI handleConsoleControl(DWORD controlType)
+{
+    switch (controlType)
     {
-        QMetaObject::invokeMethod(g_app, []() {
-            QCoreApplication::quit();
-        }, Qt::QueuedConnection);
+    case CTRL_C_EVENT:
+    case CTRL_BREAK_EVENT:
+    case CTRL_CLOSE_EVENT:
+    case CTRL_LOGOFF_EVENT:
+    case CTRL_SHUTDOWN_EVENT:
+        g_shutdownRequested.store(true, std::memory_order_relaxed);
+        return TRUE;
+    default:
+        return FALSE;
     }
 }
+#endif
 
 void registerTelemetryMetaTypes()
 {
@@ -38,9 +59,14 @@ void registerTelemetryMetaTypes()
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
-    g_app = &app;
     std::signal(SIGINT, handleProcessSignal);
     std::signal(SIGTERM, handleProcessSignal);
+#ifdef SIGBREAK
+    std::signal(SIGBREAK, handleProcessSignal);
+#endif
+#ifdef Q_OS_WIN
+    SetConsoleCtrlHandler(handleConsoleControl, TRUE);
+#endif
 
     app.setApplicationName("VaporViewSkyCore");
     app.setApplicationVersion("1.0.0");
@@ -91,6 +117,17 @@ int main(int argc, char *argv[])
         QTextStream(stderr) << "--telemetry-port is required\n";
         return 2;
     }
+
+    QTimer shutdownTimer;
+    shutdownTimer.setInterval(100);
+    QObject::connect(&shutdownTimer, &QTimer::timeout, &app, [&app]() {
+        if (g_shutdownRequested.exchange(false, std::memory_order_relaxed))
+        {
+            QTextStream(stdout) << "SkyCore shutdown requested\n";
+            QCoreApplication::quit();
+        }
+    });
+    shutdownTimer.start();
 
     VaporView::SkyRuntime runtime(options);
     QObject::connect(&runtime, &VaporView::SkyRuntime::logMessage, [](const QString& message) {
