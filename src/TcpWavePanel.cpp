@@ -144,12 +144,17 @@ QString fixedStatusField(const QString& text, int width)
     return text.leftJustified(std::max(width, static_cast<int>(text.size())), QLatin1Char(' '));
 }
 
+QString fixedNumericStatusField(const QString& text, int width)
+{
+    return fixedStatusText(text, width);
+}
+
 QString fixedStatusFloat(double value, int decimals, int width)
 {
-    return fixedStatusField(std::isfinite(value)
-                                ? QString::number(value, 'f', decimals)
-                                : QStringLiteral("--"),
-                            width);
+    return fixedNumericStatusField(std::isfinite(value)
+                                       ? QString::number(value, 'f', decimals)
+                                       : QStringLiteral("--"),
+                                   width);
 }
 
 QString remoteWaveformStatusText(bool english, int sampleCount)
@@ -919,9 +924,11 @@ void TcpWavePanel::setupUi()
     wave1_info_label_ = new QLabel(this);
     wave1_info_label_->setObjectName("fieldLabel");
     wave1_info_label_->setFont(numericFontFrom(wave1_info_label_->font()));
-    wave1_info_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    wave1_info_label_->setTextFormat(Qt::PlainText);
+    wave1_info_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     wave1_info_label_->setWordWrap(false);
-    wave1HeaderLayout->addWidget(wave1_info_label_, 1, Qt::AlignVCenter | Qt::AlignRight);
+    wave1_info_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    wave1HeaderLayout->addWidget(wave1_info_label_, 1);
     wave1Layout->addWidget(wave1HeaderBar);
     wave1_plot_ = new WavePlotWidget(QColor("#4e79c7"), this);
     wave1Layout->addWidget(wave1_plot_, 1);
@@ -943,9 +950,11 @@ void TcpWavePanel::setupUi()
     wave4_info_label_ = new QLabel(this);
     wave4_info_label_->setObjectName("fieldLabel");
     wave4_info_label_->setFont(numericFontFrom(wave4_info_label_->font()));
-    wave4_info_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    wave4_info_label_->setTextFormat(Qt::PlainText);
+    wave4_info_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     wave4_info_label_->setWordWrap(false);
-    wave4HeaderLayout->addWidget(wave4_info_label_, 1, Qt::AlignVCenter | Qt::AlignRight);
+    wave4_info_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    wave4HeaderLayout->addWidget(wave4_info_label_, 1);
     wave4Layout->addWidget(wave4HeaderBar);
     wave4_plot_ = new WavePlotWidget(QColor("#ef8f35"), this);
     wave4Layout->addWidget(wave4_plot_, 1);
@@ -2032,33 +2041,33 @@ void TcpWavePanel::processBuffer()
                 if (values.isEmpty())
                 {
                     return QStringLiteral("min=%1 max=%2")
-                        .arg(fixedStatusField(QStringLiteral("0.000"), 14),
-                             fixedStatusField(QStringLiteral("0.000"), 14));
+                        .arg(fixedNumericStatusField(QStringLiteral("0.000000"), 14),
+                             fixedNumericStatusField(QStringLiteral("0.000000"), 14));
                 }
                 const auto [minIt, maxIt] = std::minmax_element(values.cbegin(), values.cend());
                 return QString("min=%1 max=%2")
-                    .arg(fixedStatusField(formatWaveValue(*minIt, 6), 14),
-                         fixedStatusField(formatWaveValue(*maxIt, 6), 14));
+                    .arg(fixedNumericStatusField(formatWaveValue(*minIt, 6), 14),
+                         fixedNumericStatusField(formatWaveValue(*maxIt, 6), 14));
             };
 
             const QString wave1SampleCount = fixedStatusInteger(wave1_history_.size(), kRemoteStatusCountWidth);
             const QString wave4SampleCount = fixedStatusInteger(wave4_history_.size(), kRemoteStatusCountWidth);
             pending_wave1_info_text_ = QString(is_english_
-                ? "raw signal: %1 samples, %2"
-                : "原始信号: %1 个采样点，%2")
+                ? "raw signal: %1 samples  %2"
+                : "原始信号: %1 个采样点  %2")
                 .arg(wave1SampleCount)
                 .arg(describeRange(wave1_history_));
             pending_wave4_info_text_ = QString(is_english_
-                ? "normalized second harmonic: %1 samples, %2, %3"
-                : "归一化二次谐波: %1 个采样点，%2，%3")
+                ? "normalized second harmonic: %1 samples  %2  %3"
+                : "归一化二次谐波: %1 个采样点  %2  %3")
                 .arg(wave4SampleCount)
                 .arg(describeRange(wave4_history_))
                 .arg([this, rawPeakValue, displayedPeakValue]() {
                     const QString rawPeakText = std::isfinite(rawPeakValue)
-                        ? fixedStatusField(formatWaveValue(rawPeakValue, 6), 14)
-                        : fixedStatusField(QStringLiteral("--"), 14);
+                        ? fixedNumericStatusField(formatWaveValue(rawPeakValue, 6), 14)
+                        : fixedNumericStatusField(QStringLiteral("--"), 14);
                     const QString displayedPeakText = std::isfinite(displayedPeakValue)
-                        ? fixedStatusField(formatWaveValue(displayedPeakValue, 6), 14)
+                        ? fixedNumericStatusField(formatWaveValue(displayedPeakValue, 6), 14)
                         : fixedStatusField(is_english_ ? QStringLiteral("filtered") : QStringLiteral("已过滤"), 14);
                     if (peak_filter_settings_.mode == PeakFilterMode::None ||
                         (!std::isfinite(rawPeakValue) && !std::isfinite(displayedPeakValue)) ||
