@@ -10,6 +10,7 @@
 
 namespace
 {
+constexpr int kChildWindowOpenOffsetPx = 20;
 
 QSize validOrFallback(QSize size, const QSize& fallback)
 {
@@ -28,6 +29,13 @@ const QScreen *screenForWidget(const QWidget *contextWidget)
         screen = QGuiApplication::primaryScreen();
     }
     return screen;
+}
+
+int childWindowOpenOffsetForScreen(const QWidget *contextWidget)
+{
+    const QScreen *screen = screenForWidget(contextWidget);
+    const qreal devicePixelRatio = screen ? std::max<qreal>(1.0, screen->devicePixelRatio()) : 1.0;
+    return std::max(1, static_cast<int>(std::lround(kChildWindowOpenOffsetPx / devicePixelRatio)));
 }
 
 QRect fallbackAvailableGeometry(const QSize& fallbackAvailableSize)
@@ -109,13 +117,24 @@ void centerWindowOnScreen(QWidget *window, const QWidget *contextWidget, const Q
     }
 
     const QRect availableGeometry = screenAvailableGeometry(contextWidget ? contextWidget : window, fallbackAvailableSize);
-    const QRect windowFrame(QPoint(0, 0), window->frameGeometry().size().isValid()
-        ? window->frameGeometry().size()
-        : window->size());
+    const QRect windowFrame(QPoint(0, 0), window->size().isValid()
+        ? window->size()
+        : window->frameGeometry().size());
     const QPoint centeredTopLeft(
         availableGeometry.left() + std::max(0, (availableGeometry.width() - windowFrame.width()) / 2),
         availableGeometry.top() + std::max(0, (availableGeometry.height() - windowFrame.height()) / 2));
-    window->move(centeredTopLeft);
+    QPoint targetTopLeft = centeredTopLeft;
+    if (contextWidget && contextWidget != window)
+    {
+        const int childWindowOpenOffset = childWindowOpenOffsetForScreen(contextWidget);
+        targetTopLeft += QPoint(childWindowOpenOffset, childWindowOpenOffset);
+    }
+
+    const int maxLeft = availableGeometry.left() + std::max(0, availableGeometry.width() - windowFrame.width());
+    const int maxTop = availableGeometry.top() + std::max(0, availableGeometry.height() - windowFrame.height());
+    targetTopLeft.setX(std::clamp(targetTopLeft.x(), availableGeometry.left(), maxLeft));
+    targetTopLeft.setY(std::clamp(targetTopLeft.y(), availableGeometry.top(), maxTop));
+    window->move(targetTopLeft);
 }
 
 int defaultFontScalePercentForScreen(const QWidget *contextWidget,
