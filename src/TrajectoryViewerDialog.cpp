@@ -1,23 +1,35 @@
 #include "TrajectoryViewerDialog.h"
 #include "CustomTitleBar.h"
 
+#include <QApplication>
+#include <QDir>
+#include <QEvent>
+#include <QFile>
+#include <QFileInfo>
 #include <QHBoxLayout>
 #include <QComboBox>
+#include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QPainter>
+#include <QPalette>
 #include <QPixmap>
 #include <QProgressBar>
 #include <QSet>
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QSizePolicy>
+#include <QSvgRenderer>
+#include <QTimer>
 #include <QToolButton>
 #include <QUrl>
 #include <QUrlQuery>
 #include <QVBoxLayout>
+#include <QWidgetAction>
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <QWidget>
@@ -36,6 +48,8 @@ constexpr int kMaxZoom = 19;
 constexpr int kTianDiTuMaxZoom = 18;
 constexpr int kMinZoom = 1;
 constexpr int kMapMargin = 12;
+constexpr int kTitleBarButtonSize = 34;
+constexpr int kTitleBarIconSize = 24;
 
 enum class TileProvider
 {
@@ -160,6 +174,65 @@ QString tiandituHostForTile(int tileX, int tileY, const QString& layerSuffix)
     const int layerSeed = qHash(layerSuffix) & 0x7fffffff;
     const int shard = std::abs(tileX * 31 + tileY * 17 + layerSeed) % 8;
     return QStringLiteral("t%1.tianditu.gov.cn").arg(shard);
+}
+
+QString findResourceFile(const QString& relativePath)
+{
+    const QString appDir = QApplication::applicationDirPath();
+    const QStringList candidates = {
+        QDir(appDir).filePath(relativePath),
+        QDir(appDir).filePath(QStringLiteral("../") + relativePath),
+        QDir(appDir).filePath(QStringLiteral("../../") + relativePath)
+    };
+
+    for (const QString& path : candidates)
+    {
+        if (QFileInfo::exists(path))
+        {
+            return path;
+        }
+    }
+    return QString();
+}
+
+bool isDarkPalette()
+{
+    const QPalette palette = qApp->palette();
+    return palette.color(QPalette::Window).lightness() < 128 ||
+           palette.color(QPalette::Base).lightness() < 128;
+}
+
+QPixmap renderLucidePixmap(const QByteArray& svgData, const QColor& color)
+{
+    QByteArray tinted = svgData;
+    tinted.replace("currentColor", color.name(QColor::HexRgb).toUtf8());
+
+    QPixmap pixmap(32, 32);
+    pixmap.fill(Qt::transparent);
+
+    QSvgRenderer renderer(tinted);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    renderer.render(&painter, QRectF(2, 2, 28, 28));
+    return pixmap;
+}
+
+QIcon createLucideIcon(const QString& iconName, const QColor& color)
+{
+    QFile file(findResourceFile(QStringLiteral("resources/lucide/%1.svg").arg(iconName)));
+    if (!file.open(QIODevice::ReadOnly))
+    {
+        return QIcon();
+    }
+
+    QIcon icon;
+    icon.addPixmap(renderLucidePixmap(file.readAll(), color), QIcon::Normal);
+    return icon;
+}
+
+QIcon createTitleBarIcon(const QString& iconName, bool dark)
+{
+    return createLucideIcon(iconName, dark ? QColor("#d8dee9") : QColor("#111827"));
 }
 
 QColor defaultTrackColor()
@@ -880,8 +953,8 @@ private:
         else if (isTianDiTuProvider(tile_provider_) && tianditu_key_.trimmed().isEmpty())
         {
             statusText = is_english_
-                ? QStringLiteral("Tianditu is selected but no key is configured.")
-                : QStringLiteral("当前已选择天地图，但尚未配置 Key。");
+                ? QStringLiteral("Tianditu is selected but no key is configured. Use the key button in the title bar to add one.")
+                : QStringLiteral("当前已选择天地图，但尚未配置 Key。请点击标题栏钥匙按钮添加 Key。");
         }
         else if (totalVisible <= 0)
         {
@@ -962,6 +1035,9 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , map_widget_(new TrajectoryMapWidget(this))
     , map_source_combo_(new QComboBox(this))
     , tianditu_key_edit_(new QLineEdit(this))
+    , tianditu_key_button_(new QToolButton(this))
+    , tianditu_key_menu_(new QMenu(this))
+    , tianditu_key_menu_label_(new QLabel(this))
     , zoom_in_button_(new QToolButton(this))
     , zoom_out_button_(new QToolButton(this))
     , reset_view_button_(new QToolButton(this))
@@ -1013,27 +1089,60 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     map_source_combo_->setToolTip(is_english_ ? QStringLiteral("Map source") : QStringLiteral("底图来源"));
 
     tianditu_key_edit_->setObjectName(QStringLiteral("trajectoryTiandituKeyEdit"));
-    tianditu_key_edit_->setFixedWidth(200);
+    tianditu_key_edit_->setFixedWidth(260);
     tianditu_key_edit_->setClearButtonEnabled(true);
     tianditu_key_edit_->setToolTip(is_english_ ? QStringLiteral("Tianditu tile key") : QStringLiteral("天地图瓦片 Key"));
 
+    tianditu_key_menu_->setObjectName(QStringLiteral("trajectoryTiandituKeyMenu"));
+    auto *keyMenuWidget = new QWidget(tianditu_key_menu_);
+    auto *keyMenuLayout = new QVBoxLayout(keyMenuWidget);
+    keyMenuLayout->setContentsMargins(10, 10, 10, 10);
+    keyMenuLayout->setSpacing(6);
+    tianditu_key_menu_label_->setObjectName(QStringLiteral("trajectoryTiandituKeyMenuLabel"));
+    tianditu_key_menu_label_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    keyMenuLayout->addWidget(tianditu_key_menu_label_);
+    tianditu_key_edit_->setParent(keyMenuWidget);
+    keyMenuLayout->addWidget(tianditu_key_edit_);
+    auto *keyWidgetAction = new QWidgetAction(tianditu_key_menu_);
+    keyWidgetAction->setDefaultWidget(keyMenuWidget);
+    tianditu_key_menu_->addAction(keyWidgetAction);
+    connect(tianditu_key_menu_, &QMenu::aboutToShow, this, [this]() {
+        QTimer::singleShot(0, this, [this]() {
+            if (!tianditu_key_edit_)
+            {
+                return;
+            }
+            tianditu_key_edit_->setFocus(Qt::PopupFocusReason);
+            tianditu_key_edit_->selectAll();
+        });
+    });
+
     auto configureTitleBarButton = [](QToolButton *button, const QString& objectName, int width) {
         button->setObjectName(objectName);
-        button->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        button->setToolButtonStyle(Qt::ToolButtonIconOnly);
         button->setAutoRaise(false);
         button->setFocusPolicy(Qt::NoFocus);
         button->setFixedSize(width, 34);
+        button->setIconSize(QSize(kTitleBarIconSize, kTitleBarIconSize));
     };
-    configureTitleBarButton(zoom_in_button_, QStringLiteral("titleBarButton"), 34);
-    configureTitleBarButton(zoom_out_button_, QStringLiteral("titleBarButton"), 34);
-    configureTitleBarButton(reset_view_button_, QStringLiteral("titleBarButton"), 44);
-    zoom_in_button_->setText(QStringLiteral("+"));
-    zoom_out_button_->setText(QStringLiteral("-"));
+    configureTitleBarButton(tianditu_key_button_, QStringLiteral("titleBarButton"), kTitleBarButtonSize);
+    configureTitleBarButton(zoom_in_button_, QStringLiteral("titleBarButton"), kTitleBarButtonSize);
+    configureTitleBarButton(zoom_out_button_, QStringLiteral("titleBarButton"), kTitleBarButtonSize);
+    configureTitleBarButton(reset_view_button_, QStringLiteral("titleBarButton"), kTitleBarButtonSize);
+    tianditu_key_button_->setPopupMode(QToolButton::InstantPopup);
+    tianditu_key_button_->setMenu(tianditu_key_menu_);
 
     connect(map_source_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &TrajectoryViewerDialog::applyMapSourceSelection);
     connect(tianditu_key_edit_, &QLineEdit::editingFinished,
             this, &TrajectoryViewerDialog::applyTiandituKeyEdit);
+    connect(tianditu_key_edit_, &QLineEdit::returnPressed, this, [this]() {
+        applyTiandituKeyEdit();
+        if (tianditu_key_menu_)
+        {
+            tianditu_key_menu_->hide();
+        }
+    });
     connect(zoom_in_button_, &QToolButton::clicked, this, [this]() {
         static_cast<TrajectoryMapWidget*>(map_widget_)->zoomIn();
     });
@@ -1050,11 +1159,10 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
         tianditu_key_edit_->setText(tiandituKey);
         mapWidget->setTianDiTuKey(tiandituKey);
         const QString provider = settings.value(tileProviderSettingKey(), QStringLiteral("osm")).toString().trimmed().toLower();
-        const bool hasTiandituKey = !tiandituKey.isEmpty();
         const TileProvider providerEnum =
-            provider == QStringLiteral("tianditu_img") && hasTiandituKey
+            provider == QStringLiteral("tianditu_img")
                 ? TileProvider::TianDiTuSatellite
-                : (provider == QStringLiteral("tianditu") || provider == QStringLiteral("tianditu_vec")) && hasTiandituKey
+                : (provider == QStringLiteral("tianditu") || provider == QStringLiteral("tianditu_vec"))
                     ? TileProvider::TianDiTuVector
                     : TileProvider::OpenStreetMap;
         mapWidget->setTileProvider(providerEnum);
@@ -1086,7 +1194,7 @@ void TrajectoryViewerDialog::installTitleBarControls()
     controlsLayout->setContentsMargins(0, 0, 0, 0);
     controlsLayout->setSpacing(6);
     controlsLayout->addWidget(map_source_combo_, 0, Qt::AlignVCenter);
-    controlsLayout->addWidget(tianditu_key_edit_, 0, Qt::AlignVCenter);
+    controlsLayout->addWidget(tianditu_key_button_, 0, Qt::AlignVCenter);
     controlsLayout->addWidget(zoom_in_button_, 0, Qt::AlignVCenter);
     controlsLayout->addWidget(zoom_out_button_, 0, Qt::AlignVCenter);
     controlsLayout->addWidget(reset_view_button_, 0, Qt::AlignVCenter);
@@ -1108,6 +1216,7 @@ void TrajectoryViewerDialog::applyMapSourceSelection(int index)
     auto *mapWidget = static_cast<TrajectoryMapWidget*>(map_widget_);
     const TileProvider selectedProvider = tileProviderFromComboIndex(index);
     const QString tiandituKey = tianditu_key_edit_ ? tianditu_key_edit_->text().trimmed() : QString();
+    const bool missingTiandituKey = isTianDiTuProvider(selectedProvider) && tiandituKey.isEmpty();
 
     QSettings settings("VaporView", "TrajectoryViewer");
     if (tiandituKey.isEmpty())
@@ -1123,10 +1232,11 @@ void TrajectoryViewerDialog::applyMapSourceSelection(int index)
     mapWidget->setTileProvider(selectedProvider);
     settings.setValue(tileProviderSettingKey(), tileProviderKey(selectedProvider));
 
-    if (isTianDiTuProvider(selectedProvider) && tiandituKey.isEmpty() && tianditu_key_edit_)
+    if (missingTiandituKey)
     {
-        tianditu_key_edit_->setFocus(Qt::TabFocusReason);
-        tianditu_key_edit_->selectAll();
+        QTimer::singleShot(0, this, [this]() {
+            showTiandituKeyMenu();
+        });
     }
     updateTexts();
 }
@@ -1140,16 +1250,16 @@ void TrajectoryViewerDialog::applyTiandituKeyEdit()
 
     auto *mapWidget = static_cast<TrajectoryMapWidget*>(map_widget_);
     const QString tiandituKey = tianditu_key_edit_->text().trimmed();
+    if (tianditu_key_edit_->text() != tiandituKey)
+    {
+        QSignalBlocker blocker(tianditu_key_edit_);
+        tianditu_key_edit_->setText(tiandituKey);
+    }
     QSettings settings("VaporView", "TrajectoryViewer");
     if (tiandituKey.isEmpty())
     {
         settings.remove(tiandituKeySettingKey());
         mapWidget->setTianDiTuKey(QString());
-        if (isTianDiTuProvider(mapWidget->tileProvider()))
-        {
-            mapWidget->setTileProvider(TileProvider::OpenStreetMap);
-            settings.setValue(tileProviderSettingKey(), tileProviderKey(TileProvider::OpenStreetMap));
-        }
     }
     else
     {
@@ -1157,6 +1267,16 @@ void TrajectoryViewerDialog::applyTiandituKeyEdit()
         mapWidget->setTianDiTuKey(tiandituKey);
     }
     updateTexts();
+}
+
+void TrajectoryViewerDialog::showTiandituKeyMenu()
+{
+    if (!tianditu_key_button_ || !tianditu_key_menu_)
+    {
+        return;
+    }
+
+    tianditu_key_menu_->popup(tianditu_key_button_->mapToGlobal(QPoint(0, tianditu_key_button_->height())));
 }
 
 void TrajectoryViewerDialog::setEnglish(bool english)
@@ -1181,6 +1301,41 @@ void TrajectoryViewerDialog::setTrackPoints(const QVector<RtkTrackPoint>& points
     track_points_ = points;
     static_cast<TrajectoryMapWidget*>(map_widget_)->setTrackPoints(points);
     updateSummary();
+}
+
+void TrajectoryViewerDialog::changeEvent(QEvent *event)
+{
+    QDialog::changeEvent(event);
+    if (!event)
+    {
+        return;
+    }
+
+    if (event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange)
+    {
+        updateTitleBarIcons();
+    }
+}
+
+void TrajectoryViewerDialog::updateTitleBarIcons()
+{
+    const bool dark = isDarkPalette();
+    if (tianditu_key_button_)
+    {
+        tianditu_key_button_->setIcon(createTitleBarIcon(QStringLiteral("key"), dark));
+    }
+    if (zoom_in_button_)
+    {
+        zoom_in_button_->setIcon(createTitleBarIcon(QStringLiteral("zoom-in"), dark));
+    }
+    if (zoom_out_button_)
+    {
+        zoom_out_button_->setIcon(createTitleBarIcon(QStringLiteral("zoom-out"), dark));
+    }
+    if (reset_view_button_)
+    {
+        reset_view_button_->setIcon(createTitleBarIcon(QStringLiteral("maximize"), dark));
+    }
 }
 
 void TrajectoryViewerDialog::updateSummary()
@@ -1290,6 +1445,15 @@ void TrajectoryViewerDialog::updateTexts()
         map_source_combo_->setCurrentIndex(tileProviderComboIndex(provider));
     }
     map_source_combo_->setToolTip(is_english_ ? QStringLiteral("Map source") : QStringLiteral("底图来源"));
+    if (tianditu_key_menu_label_)
+    {
+        tianditu_key_menu_label_->setText(is_english_ ? QStringLiteral("Tianditu Key") : QStringLiteral("天地图 Key"));
+    }
+    if (tianditu_key_button_)
+    {
+        tianditu_key_button_->setToolTip(is_english_ ? QStringLiteral("Tianditu key") : QStringLiteral("天地图 Key"));
+        tianditu_key_button_->setStatusTip(tianditu_key_button_->toolTip());
+    }
     tianditu_key_edit_->setPlaceholderText(is_english_ ? QStringLiteral("Tianditu Key") : QStringLiteral("天地图 Key"));
     tianditu_key_edit_->setToolTip(
         is_english_
@@ -1299,10 +1463,14 @@ void TrajectoryViewerDialog::updateTexts()
         is_english_
             ? QStringLiteral("Shows the loading progress of the currently visible base map tiles.")
             : QStringLiteral("显示当前可见区域底图瓦片的加载进度。"));
-    zoom_in_button_->setText(QStringLiteral("+"));
-    zoom_out_button_->setText(QStringLiteral("-"));
-    reset_view_button_->setText(is_english_ ? QStringLiteral("Fit") : QStringLiteral("适应"));
+    zoom_in_button_->setText(QString());
+    zoom_out_button_->setText(QString());
+    reset_view_button_->setText(QString());
     zoom_in_button_->setToolTip(is_english_ ? QStringLiteral("Zoom in") : QStringLiteral("放大"));
     zoom_out_button_->setToolTip(is_english_ ? QStringLiteral("Zoom out") : QStringLiteral("缩小"));
     reset_view_button_->setToolTip(is_english_ ? QStringLiteral("Fit track") : QStringLiteral("适应轨迹"));
+    zoom_in_button_->setStatusTip(zoom_in_button_->toolTip());
+    zoom_out_button_->setStatusTip(zoom_out_button_->toolTip());
+    reset_view_button_->setStatusTip(reset_view_button_->toolTip());
+    updateTitleBarIcons();
 }

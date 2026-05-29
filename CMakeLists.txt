@@ -260,6 +260,7 @@ set(LUCIDE_RESOURCES
     resources/lucide/check.svg
     resources/lucide/circle-x.svg
     resources/lucide/copy.svg
+    resources/lucide/key.svg
     resources/lucide/languages.svg
     resources/lucide/maximize.svg
     resources/lucide/menu.svg
@@ -275,6 +276,8 @@ set(LUCIDE_RESOURCES
     resources/lucide/trash-2.svg
     resources/lucide/unplug.svg
     resources/lucide/x.svg
+    resources/lucide/zoom-in.svg
+    resources/lucide/zoom-out.svg
     resources/lucide/LICENSE
 )
 

@@ -8,7 +8,9 @@
 
 class QLabel;
 class QComboBox;
+class QEvent;
 class QLineEdit;
+class QMenu;
 class QProgressBar;
 class QToolButton;
 class QWidget;
@@ -22,10 +24,15 @@ public:
     void setTrackLabel(const QString& englishLabel, const QString& chineseLabel);
     void setTrackPoints(const QVector<RtkTrackPoint>& points);
 
+protected:
+    void changeEvent(QEvent *event) override;
+
 private:
     void installTitleBarControls();
     void applyMapSourceSelection(int index);
     void applyTiandituKeyEdit();
+    void showTiandituKeyMenu();
+    void updateTitleBarIcons();
     void updateTexts();
     void updateSummary();
 
@@ -36,6 +43,9 @@ private:
     QWidget *map_widget_;
     QComboBox *map_source_combo_;
     QLineEdit *tianditu_key_edit_;
+    QToolButton *tianditu_key_button_;
+    QMenu *tianditu_key_menu_;
+    QLabel *tianditu_key_menu_label_;
     QToolButton *zoom_in_button_;
     QToolButton *zoom_out_button_;
     QToolButton *reset_view_button_;
