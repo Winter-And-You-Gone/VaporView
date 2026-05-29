@@ -938,7 +938,6 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , zoom_out_button_(new QPushButton(this))
     , reset_view_button_(new QPushButton(this))
     , delete_tianditu_key_button_(new QPushButton(this))
-    , close_button_(new QPushButton(this))
     , is_english_(false)
     , english_track_label_(QStringLiteral("RTK trajectory"))
     , chinese_track_label_(QStringLiteral("RTK轨迹"))
@@ -966,7 +965,6 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     map_progress_bar_->setMaximum(1);
     map_progress_bar_->setValue(0);
     mainLayout->addWidget(map_progress_bar_);
-    mainLayout->addWidget(map_widget_, 1);
 
     auto *mapWidget = static_cast<TrajectoryMapWidget*>(map_widget_);
     mapWidget->setStatusCallback([this](const QString& text) {
@@ -1064,9 +1062,8 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     buttonLayout->addWidget(reset_view_button_);
     buttonLayout->addWidget(delete_tianditu_key_button_);
     buttonLayout->addStretch(1);
-    connect(close_button_, &QPushButton::clicked, this, &QDialog::accept);
-    buttonLayout->addWidget(close_button_);
     mainLayout->addLayout(buttonLayout);
+    mainLayout->addWidget(map_widget_, 1);
 
     {
         QSettings settings("VaporView", "TrajectoryViewer");
@@ -1237,5 +1234,4 @@ void TrajectoryViewerDialog::updateTexts()
         is_english_
             ? QStringLiteral("Delete the saved Tianditu key. If Tianditu is active, the map source falls back to OpenStreetMap.")
             : QStringLiteral("删除已保存的天地图 Key。如果当前正在使用天地图，会自动切回 OpenStreetMap。"));
-    close_button_->setText(is_english_ ? QStringLiteral("Close") : QStringLiteral("关闭"));
 }

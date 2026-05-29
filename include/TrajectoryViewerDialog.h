@@ -35,7 +35,6 @@ private:
     QPushButton *zoom_out_button_;
     QPushButton *reset_view_button_;
     QPushButton *delete_tianditu_key_button_;
-    QPushButton *close_button_;
     bool is_english_;
     QString english_track_label_;
     QString chinese_track_label_;
