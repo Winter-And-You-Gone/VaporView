@@ -19,6 +19,7 @@
 #include <QPalette>
 #include <QPixmap>
 #include <QProgressBar>
+#include <QQueue>
 #include <QSet>
 #include <QSettings>
 #include <QSignalBlocker>
@@ -50,6 +51,7 @@ constexpr int kMinZoom = 1;
 constexpr int kMapMargin = 12;
 constexpr int kTitleBarButtonSize = 34;
 constexpr int kTitleBarIconSize = 24;
+constexpr int kMaxConcurrentTileRequests = 8;
 
 enum class TileProvider
 {
@@ -145,6 +147,13 @@ struct TileLayerSpec
     QString endpoint_path;
     QString layer;
     QString format;
+};
+
+struct TileFetchRequest
+{
+    QString key;
+    QNetworkRequest request;
+    int generation;
 };
 
 QVector<TileLayerSpec> tileLayerSpecs(TileProvider provider)
@@ -328,6 +337,10 @@ public:
         , dragging_(false)
         , drag_start_pos_()
         , drag_start_center_world_pixel_()
+        , active_tile_request_count_(0)
+        , tile_request_generation_(0)
+        , feedback_update_scheduled_(false)
+        , repaint_update_requested_(false)
         , english_track_label_(QStringLiteral("RTK trajectory"))
         , chinese_track_label_(QStringLiteral("RTK轨迹"))
     {
@@ -359,10 +372,7 @@ public:
     {
         track_points_ = points;
         manual_view_active_ = false;
-        tile_cache_.clear();
-        pending_tiles_.clear();
-        failed_tiles_.clear();
-        last_tile_error_.clear();
+        resetTileLoadingState(true);
         refreshViewport();
         update();
     }
@@ -383,10 +393,7 @@ public:
         tile_provider_ = provider;
         zoom_ = std::min(zoom_, providerMaxZoom(tile_provider_));
         fit_zoom_ = std::min(fit_zoom_, providerMaxZoom(tile_provider_));
-        tile_cache_.clear();
-        pending_tiles_.clear();
-        failed_tiles_.clear();
-        last_tile_error_.clear();
+        resetTileLoadingState(true);
         requestVisibleTiles();
         updateLoadFeedback();
         update();
@@ -407,10 +414,7 @@ public:
         tianditu_key_ = trimmed;
         if (isTianDiTuProvider(tile_provider_))
         {
-            tile_cache_.clear();
-            pending_tiles_.clear();
-            failed_tiles_.clear();
-            last_tile_error_.clear();
+            resetTileLoadingState(true);
             requestVisibleTiles();
             updateLoadFeedback();
             update();
@@ -551,6 +555,122 @@ protected:
     }
 
 private:
+    void resetTileLoadingState(bool clearCache)
+    {
+        if (clearCache)
+        {
+            tile_cache_.clear();
+        }
+        pending_tiles_.clear();
+        queued_tile_requests_.clear();
+        failed_tiles_.clear();
+        last_tile_error_.clear();
+        active_tile_request_count_ = 0;
+        ++tile_request_generation_;
+    }
+
+    void enqueueTileRequest(const QString& key, const QNetworkRequest& request)
+    {
+        if (tile_cache_.contains(key) || pending_tiles_.contains(key))
+        {
+            return;
+        }
+
+        pending_tiles_.insert(key);
+        queued_tile_requests_.enqueue({key, request, tile_request_generation_});
+    }
+
+    void pruneQueuedTileRequests()
+    {
+        QQueue<TileFetchRequest> retainedRequests;
+        while (!queued_tile_requests_.isEmpty())
+        {
+            const TileFetchRequest request = queued_tile_requests_.dequeue();
+            if (request.generation == tile_request_generation_ &&
+                current_visible_tile_keys_.contains(request.key) &&
+                pending_tiles_.contains(request.key))
+            {
+                retainedRequests.enqueue(request);
+                continue;
+            }
+            pending_tiles_.remove(request.key);
+        }
+        queued_tile_requests_ = retainedRequests;
+    }
+
+    void processTileRequestQueue()
+    {
+        while (active_tile_request_count_ < kMaxConcurrentTileRequests && !queued_tile_requests_.isEmpty())
+        {
+            const TileFetchRequest tileRequest = queued_tile_requests_.dequeue();
+            if (tileRequest.generation != tile_request_generation_ ||
+                !current_visible_tile_keys_.contains(tileRequest.key) ||
+                !pending_tiles_.contains(tileRequest.key))
+            {
+                pending_tiles_.remove(tileRequest.key);
+                continue;
+            }
+
+            ++active_tile_request_count_;
+            QNetworkReply *reply = manager_->get(tileRequest.request);
+            QObject::connect(reply, &QNetworkReply::finished, this, [this, reply, key = tileRequest.key, generation = tileRequest.generation]() {
+                reply->deleteLater();
+                if (generation != tile_request_generation_)
+                {
+                    return;
+                }
+
+                active_tile_request_count_ = std::max(0, active_tile_request_count_ - 1);
+                pending_tiles_.remove(key);
+                if (!reply->error())
+                {
+                    QPixmap tile;
+                    tile.loadFromData(reply->readAll());
+                    if (!tile.isNull())
+                    {
+                        failed_tiles_.remove(key);
+                        tile_cache_.insert(key, tile);
+                    }
+                    else
+                    {
+                        failed_tiles_.insert(key);
+                        last_tile_error_ = is_english_
+                            ? QStringLiteral("The tile response could not be decoded as an image.")
+                            : QStringLiteral("收到的瓦片响应无法解码为图像。");
+                    }
+                }
+                else
+                {
+                    failed_tiles_.insert(key);
+                    last_tile_error_ = reply->errorString();
+                }
+
+                scheduleLoadFeedbackUpdate(true);
+                processTileRequestQueue();
+            });
+        }
+    }
+
+    void scheduleLoadFeedbackUpdate(bool repaint)
+    {
+        repaint_update_requested_ = repaint_update_requested_ || repaint;
+        if (feedback_update_scheduled_)
+        {
+            return;
+        }
+
+        feedback_update_scheduled_ = true;
+        QTimer::singleShot(0, this, [this]() {
+            feedback_update_scheduled_ = false;
+            updateLoadFeedback();
+            if (repaint_update_requested_)
+            {
+                repaint_update_requested_ = false;
+                update();
+            }
+        });
+    }
+
     void refreshViewport()
     {
         if (track_points_.isEmpty())
@@ -673,7 +793,6 @@ private:
                         continue;
                     }
 
-                    pending_tiles_.insert(key);
                     QUrl tileUrl;
                     if (tile_provider_ == TileProvider::OpenStreetMap)
                     {
@@ -710,39 +829,13 @@ private:
                     {
                         request.setRawHeader("User-Agent", "VaporView/1.0");
                     }
-                    QNetworkReply *reply = manager_->get(request);
-                    QObject::connect(reply, &QNetworkReply::finished, this, [this, reply, key]() {
-                    pending_tiles_.remove(key);
-                    if (!reply->error())
-                    {
-                        QPixmap tile;
-                        tile.loadFromData(reply->readAll());
-                        if (!tile.isNull())
-                        {
-                            failed_tiles_.remove(key);
-                            tile_cache_.insert(key, tile);
-                        }
-                        else
-                        {
-                            failed_tiles_.insert(key);
-                            last_tile_error_ = is_english_
-                                ? QStringLiteral("The tile response could not be decoded as an image.")
-                                : QStringLiteral("收到的瓦片响应无法解码为图像。");
-                        }
-                    }
-                    else
-                    {
-                        failed_tiles_.insert(key);
-                        last_tile_error_ = reply->errorString();
-                    }
-                    reply->deleteLater();
-                    updateLoadFeedback();
-                    update();
-                    });
+                    enqueueTileRequest(key, request);
                 }
             }
         }
         current_visible_tile_keys_ = visibleKeys;
+        pruneQueuedTileRequests();
+        processTileRequestQueue();
         failed_tiles_ = failed_tiles_.intersect(current_visible_tile_keys_);
         updateLoadFeedback();
     }
@@ -1005,6 +1098,7 @@ private:
     QVector<RtkTrackPoint> track_points_;
     QHash<QString, QPixmap> tile_cache_;
     QSet<QString> pending_tiles_;
+    QQueue<TileFetchRequest> queued_tile_requests_;
     QSet<QString> current_visible_tile_keys_;
     QSet<QString> failed_tiles_;
     bool is_english_;
@@ -1019,6 +1113,10 @@ private:
     bool dragging_;
     QPointF drag_start_pos_;
     QPointF drag_start_center_world_pixel_;
+    int active_tile_request_count_;
+    int tile_request_generation_;
+    bool feedback_update_scheduled_;
+    bool repaint_update_requested_;
     QString english_track_label_;
     QString chinese_track_label_;
     std::function<void(const QString&)> status_callback_;
