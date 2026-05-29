@@ -760,7 +760,12 @@ QLabel#highlightedValue {
 PtbPanel QLabel#highlightedValue,
 HmpPanel QLabel#highlightedValue,
 LidarPanel QLabel#highlightedValue {
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-size: 14px;
+    font-weight: 600;
     background-color: transparent;
+    padding: 0px;
+    border-radius: 0px;
 }
 
 /* 状态指示器 */

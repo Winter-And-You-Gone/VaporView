@@ -167,13 +167,14 @@ constexpr int kPtbMaxSampleRateHz = 70;
 
 QFont numericFontFrom(const QFont& base)
 {
-    QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-    if (base.pointSizeF() > 0.0)
-    {
-        font.setPointSizeF(base.pointSizeF());
-    }
-    font.setWeight(static_cast<QFont::Weight>(base.weight()));
-    font.setBold(base.bold());
+    QFont font(base);
+    font.setFamilies({
+        QStringLiteral("Consolas"),
+        QStringLiteral("Monaco"),
+        QStringLiteral("Courier New")
+    });
+    font.setStyleHint(QFont::Monospace);
+    font.setFixedPitch(true);
     return font;
 }
 
@@ -1199,7 +1200,9 @@ QLabel#epsilonSectionLabel {
 QLabel#valueLabel {
     color: #ffffff;
     background-color: transparent;
-    font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-size: 14px;
+    font-weight: 600;
 }
 QLabel#highlightedValue {
     color: #ffffff;
@@ -1209,7 +1212,12 @@ QLabel#highlightedValue {
 PtbPanel QLabel#highlightedValue,
 HmpPanel QLabel#highlightedValue,
 LidarPanel QLabel#highlightedValue {
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-size: 14px;
+    font-weight: 600;
     background-color: transparent;
+    padding: 0px;
+    border-radius: 0px;
 }
 QLabel#rateLabel {
     font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
@@ -2853,7 +2861,7 @@ void HmpPanel::setupUi()
     humidity_label_ = new QLabel("--- %RH", this);
     humidity_label_->setObjectName("highlightedValue");
     humidity_label_->setMinimumHeight(20);
-    setFixedNumericLabelWidth(humidity_label_, {QStringLiteral("-9999.9 %RH"), QStringLiteral("9999.9 %RH"), QStringLiteral("100.0 %RH"), QStringLiteral("--- %RH")}, 18);
+    setFixedNumericLabelWidth(humidity_label_, {QStringLiteral("-9999.9 %RH"), QStringLiteral("9999.9 %RH"), QStringLiteral("100.0 %RH"), QStringLiteral("--- %RH")}, 28);
     humidLayout->addWidget(humidity_label_);
     humidLayout->addStretch();
     layout->addLayout(humidLayout);
@@ -3771,7 +3779,9 @@ void MainWindow::loadModernStyleSheet()
             "QWidget#sectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
             "QFrame#epsilonSectionCard { background-color: #FDFDFC; border: 1px solid #EAEAE9; border-radius: 4px; }"
             "QLabel#epsilonSectionLabel { color: #000000; background-color: #F8F8F7; border: none; border-right: 1px solid #EAEAE9; font-size: 14px; font-weight: 700; padding: 2px; }"
-            "QLabel#valueLabel, QLabel#highlightedValue { font-family: \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace; }"
+            "QLabel#valueLabel { font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 14px; font-weight: 600; }"
+            "QLabel#highlightedValue { font-family: \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace; }"
+            "PtbPanel QLabel#highlightedValue, HmpPanel QLabel#highlightedValue, LidarPanel QLabel#highlightedValue { font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 14px; font-weight: 600; background-color: transparent; padding: 0px; border-radius: 0px; }"
             "QComboBox { background-color: #FDFDFC; border: 1px solid #EAEAE9; border-radius: 6px; padding: 4px 10px; min-height: 26px; max-height: 26px; color: #000000; font-size: 14px; }"
             "QComboBox:hover { border-color: #bdbdbd; }"
             "QComboBox:focus { border-color: #1976d2; border-width: 1px; }"
