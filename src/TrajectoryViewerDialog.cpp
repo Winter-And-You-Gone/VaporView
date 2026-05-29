@@ -1187,7 +1187,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     map_source_combo_->setToolTip(is_english_ ? QStringLiteral("Map source") : QStringLiteral("底图来源"));
 
     tianditu_key_edit_->setObjectName(QStringLiteral("trajectoryTiandituKeyEdit"));
-    tianditu_key_edit_->setFixedWidth(260);
+    tianditu_key_edit_->setFixedWidth(390);
     tianditu_key_edit_->setClearButtonEnabled(true);
     tianditu_key_edit_->setToolTip(is_english_ ? QStringLiteral("Tianditu tile key") : QStringLiteral("天地图瓦片 Key"));
 
@@ -1302,7 +1302,7 @@ void TrajectoryViewerDialog::installTitleBarControls()
     {
         if (titleLayout->itemAt(i)->spacerItem())
         {
-            insertIndex = i + 1;
+            insertIndex = i;
             break;
         }
     }
