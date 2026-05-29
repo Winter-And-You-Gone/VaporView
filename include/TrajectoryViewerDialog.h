@@ -7,9 +7,10 @@
 #include <QVector>
 
 class QLabel;
-class QPushButton;
 class QComboBox;
+class QLineEdit;
 class QProgressBar;
+class QToolButton;
 class QWidget;
 
 class TrajectoryViewerDialog : public QDialog
@@ -22,6 +23,9 @@ public:
     void setTrackPoints(const QVector<RtkTrackPoint>& points);
 
 private:
+    void installTitleBarControls();
+    void applyMapSourceSelection(int index);
+    void applyTiandituKeyEdit();
     void updateTexts();
     void updateSummary();
 
@@ -31,10 +35,11 @@ private:
     QProgressBar *map_progress_bar_;
     QWidget *map_widget_;
     QComboBox *map_source_combo_;
-    QPushButton *zoom_in_button_;
-    QPushButton *zoom_out_button_;
-    QPushButton *reset_view_button_;
-    QPushButton *delete_tianditu_key_button_;
+    QLineEdit *tianditu_key_edit_;
+    QToolButton *zoom_in_button_;
+    QToolButton *zoom_out_button_;
+    QToolButton *reset_view_button_;
+    QWidget *title_bar_controls_;
     bool is_english_;
     QString english_track_label_;
     QString chinese_track_label_;
