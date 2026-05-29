@@ -132,6 +132,8 @@ constexpr const char *kBaseMarginsLeftProperty = "_vv_base_margin_left";
 constexpr const char *kBaseMarginsTopProperty = "_vv_base_margin_top";
 constexpr const char *kBaseMarginsRightProperty = "_vv_base_margin_right";
 constexpr const char *kBaseMarginsBottomProperty = "_vv_base_margin_bottom";
+constexpr const char *kNumericWidthCandidatesProperty = "_vv_numeric_width_candidates";
+constexpr const char *kNumericWidthPaddingProperty = "_vv_numeric_width_padding";
 constexpr const char *kMainCardMinimumHeightProperty = "_vv_main_card_minimum_height";
 constexpr int kMainPageInputHeight = 36;
 constexpr int kMainPageButtonHeight = 36;
@@ -184,17 +186,59 @@ int widestTextWidth(const QFont& font, const QStringList& candidates)
     return width;
 }
 
-void setFixedNumericLabelWidth(QLabel *label, const QStringList& candidates, int padding = 0)
+void applyFixedNumericLabelWidth(QLabel *label, const QStringList& candidates, int padding = 0)
 {
     if (!label)
     {
         return;
     }
     label->setFont(numericFontFrom(label->font()));
-    const int width = widestTextWidth(label->font(), candidates) + padding;
+    QStringList widthCandidates = candidates;
+    if (!label->text().isEmpty())
+    {
+        widthCandidates.append(label->text());
+    }
+    const int width = widestTextWidth(label->font(), widthCandidates) + padding;
     label->setMinimumWidth(width);
     label->setMaximumWidth(width);
     label->setSizePolicy(QSizePolicy::Fixed, label->sizePolicy().verticalPolicy());
+}
+
+void setFixedNumericLabelWidth(QLabel *label, const QStringList& candidates, int padding = 0)
+{
+    if (!label)
+    {
+        return;
+    }
+    label->setProperty(kNumericWidthCandidatesProperty, candidates);
+    label->setProperty(kNumericWidthPaddingProperty, padding);
+    applyFixedNumericLabelWidth(label, candidates, padding);
+}
+
+void refreshFixedNumericLabelWidth(QLabel *label)
+{
+    if (!label)
+    {
+        return;
+    }
+    const QStringList widthCandidates = label->property(kNumericWidthCandidatesProperty).toStringList();
+    if (widthCandidates.isEmpty())
+    {
+        return;
+    }
+    const int padding = label->property(kNumericWidthPaddingProperty).toInt();
+    applyFixedNumericLabelWidth(label, widthCandidates, std::max(0, padding));
+}
+
+void polishNumericLabel(QLabel *label)
+{
+    if (!label)
+    {
+        return;
+    }
+    label->style()->unpolish(label);
+    label->style()->polish(label);
+    refreshFixedNumericLabelWidth(label);
 }
 
 QString fixedTextField(const QString& text, int width, Qt::Alignment alignment = Qt::AlignRight)
@@ -2684,15 +2728,13 @@ void PtbPanel::updateData(const VaporView::PtbData& ptb_data)
     {
         pressure_label_->setText(fixedDecimalWithUnit(ptb_data.pressure_hpa, 2, 8, QStringLiteral("hPa")));
         pressure_label_->setProperty("data-valid", true);
-        pressure_label_->style()->unpolish(pressure_label_);
-        pressure_label_->style()->polish(pressure_label_);
+        polishNumericLabel(pressure_label_);
     }
     else
     {
         pressure_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 2, 8, QStringLiteral("hPa")));
         pressure_label_->setProperty("data-valid", false);
-        pressure_label_->style()->unpolish(pressure_label_);
-        pressure_label_->style()->polish(pressure_label_);
+        polishNumericLabel(pressure_label_);
     }
 }
 
@@ -2786,22 +2828,18 @@ void HmpPanel::updateData(const VaporView::HmpData& hmp_data)
         temperature_label_->setText(fixedDecimalWithUnit(hmp_data.temperature, 1, 6, QStringLiteral("°C")));
         humidity_label_->setText(fixedDecimalWithUnit(hmp_data.humidity, 1, 6, QStringLiteral("%RH")));
         temperature_label_->setProperty("data-valid", true);
-        temperature_label_->style()->unpolish(temperature_label_);
-        temperature_label_->style()->polish(temperature_label_);
+        polishNumericLabel(temperature_label_);
         humidity_label_->setProperty("data-valid", true);
-        humidity_label_->style()->unpolish(humidity_label_);
-        humidity_label_->style()->polish(humidity_label_);
+        polishNumericLabel(humidity_label_);
     }
     else
     {
         temperature_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 1, 6, QStringLiteral("°C")));
         humidity_label_->setText(fixedDecimalWithUnit(std::numeric_limits<double>::quiet_NaN(), 1, 6, QStringLiteral("%RH")));
         temperature_label_->setProperty("data-valid", false);
-        temperature_label_->style()->unpolish(temperature_label_);
-        temperature_label_->style()->polish(temperature_label_);
+        polishNumericLabel(temperature_label_);
         humidity_label_->setProperty("data-valid", false);
-        humidity_label_->style()->unpolish(humidity_label_);
-        humidity_label_->style()->polish(humidity_label_);
+        polishNumericLabel(humidity_label_);
     }
 }
 
@@ -2896,10 +2934,8 @@ void LidarPanel::updateData(const VaporView::LidarData& lidar_data)
         strength_label_->setText(fixedTextField(QString::number(lidar_data.signal_strength), 7));
         distance_label_->setProperty("data-valid", true);
         strength_label_->setProperty("data-valid", true);
-        distance_label_->style()->unpolish(distance_label_);
-        distance_label_->style()->polish(distance_label_);
-        strength_label_->style()->unpolish(strength_label_);
-        strength_label_->style()->polish(strength_label_);
+        polishNumericLabel(distance_label_);
+        polishNumericLabel(strength_label_);
     }
     else
     {
@@ -2907,10 +2943,8 @@ void LidarPanel::updateData(const VaporView::LidarData& lidar_data)
         strength_label_->setText(fixedTextField(QStringLiteral("---"), 7));
         distance_label_->setProperty("data-valid", false);
         strength_label_->setProperty("data-valid", false);
-        distance_label_->style()->unpolish(distance_label_);
-        distance_label_->style()->polish(distance_label_);
-        strength_label_->style()->unpolish(strength_label_);
-        strength_label_->style()->polish(strength_label_);
+        polishNumericLabel(distance_label_);
+        polishNumericLabel(strength_label_);
     }
 }
 
@@ -3796,6 +3830,16 @@ void MainWindow::applyScaledUiMetrics()
         {
             rememberBaseMetric(widget, kBaseMaxHeightProperty, maximumHeight);
             widget->setMaximumHeight(std::max(1, scalePixels(widget->property(kBaseMaxHeightProperty).toInt())));
+        }
+
+        if (auto *label = qobject_cast<QLabel *>(widget))
+        {
+            const QStringList widthCandidates = label->property(kNumericWidthCandidatesProperty).toStringList();
+            if (!widthCandidates.isEmpty())
+            {
+                const int padding = label->property(kNumericWidthPaddingProperty).toInt();
+                applyFixedNumericLabelWidth(label, widthCandidates, std::max(0, scalePixels(padding)));
+            }
         }
     };
 
