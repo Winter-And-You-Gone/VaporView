@@ -6,16 +6,21 @@
 #include "SkyDeviceManager.h"
 #include "SkySessionRecorder.h"
 #include "TelemetryCodec.h"
+#include "TelemetryLink.h"
 
 #include <QJsonObject>
 #include <QObject>
 #include <QTimer>
+#include <memory>
 
 namespace VaporView
 {
 
 struct SkyRuntimeOptions
 {
+    TelemetryTransportType telemetry_transport = TelemetryTransportType::Tcp;
+    QString telemetry_host = QStringLiteral("0.0.0.0");
+    int telemetry_tcp_port = 39100;
     QString telemetry_port;
     int telemetry_baud = 921600;
     QString config_path;
@@ -97,7 +102,7 @@ private:
     bool deviceStale(SkyDeviceId id, quint64 nowUs, quint64 timeoutUs) const;
 
     SkyRuntimeOptions options_;
-    SerialTelemetryLink link_;
+    std::unique_ptr<TelemetryLink> link_;
     TelemetryCodec codec_;
     SkyDeviceManager device_manager_;
     QTimer basic_timer_;

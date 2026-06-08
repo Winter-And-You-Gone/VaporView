@@ -126,6 +126,21 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
                                int telemetryBaud,
                                QString *errorMessage)
 {
+    return start(baseDirectory,
+                 telemetryPort,
+                 telemetryBaud,
+                 errorMessage,
+                 QStringLiteral("serial"),
+                 telemetryPort);
+}
+
+bool SkySessionRecorder::start(const QString& baseDirectory,
+                               const QString& telemetryPort,
+                               int telemetryBaud,
+                               QString *errorMessage,
+                               const QString& telemetryTransport,
+                               const QString& telemetryEndpoint)
+{
     if (recording_state_ == 2 && !session_directory_.isEmpty())
     {
         const quint64 now = nowUs();
@@ -207,6 +222,8 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     session_start_time_utc_ = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
     telemetry_port_ = telemetryPort;
     telemetry_baud_ = telemetryBaud;
+    telemetry_transport_ = telemetryTransport.trimmed().isEmpty() ? QStringLiteral("serial") : telemetryTransport.trimmed();
+    telemetry_endpoint_ = telemetryEndpoint.trimmed().isEmpty() ? telemetryPort : telemetryEndpoint.trimmed();
     recording_start_time_us_ = nowUs();
     recording_elapsed_ms_ = 0;
     telemetry_row_count_ = 0;
@@ -764,6 +781,8 @@ void SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc)
         : QCoreApplication::applicationVersion());
     root.insert(QStringLiteral("telemetry_port"), telemetry_port_);
     root.insert(QStringLiteral("telemetry_baud"), telemetry_baud_);
+    root.insert(QStringLiteral("telemetry_transport"), telemetry_transport_);
+    root.insert(QStringLiteral("telemetry_endpoint"), telemetry_endpoint_);
     root.insert(QStringLiteral("epsilon_schema_version"), QStringLiteral("epsilon.v1"));
     root.insert(QStringLiteral("waveform_points_per_frame"),
                 static_cast<int>(std::min<quint64>(waveform_points_per_frame_,

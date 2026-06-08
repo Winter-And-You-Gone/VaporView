@@ -114,26 +114,52 @@ int main(int argc, char *argv[])
     QCommandLineOption sourceOption(QStringLiteral("source"), QStringLiteral("Ground source: local or remote"), QStringLiteral("source"), QStringLiteral("local"));
     QCommandLineOption telemetryPortOption(QStringLiteral("telemetry-port"), QStringLiteral("Telemetry serial port"), QStringLiteral("port"));
     QCommandLineOption telemetryBaudOption(QStringLiteral("telemetry-baud"), QStringLiteral("Telemetry serial baud"), QStringLiteral("baud"), QStringLiteral("921600"));
+    QCommandLineOption telemetryTransportOption(QStringLiteral("telemetry-transport"), QStringLiteral("Telemetry transport: tcp or serial"), QStringLiteral("transport"), QStringLiteral("tcp"));
+    QCommandLineOption telemetryHostOption(QStringLiteral("telemetry-host"), QStringLiteral("Telemetry TCP listen host"), QStringLiteral("host"), QStringLiteral("0.0.0.0"));
+    QCommandLineOption telemetryTcpPortOption(QStringLiteral("telemetry-tcp-port"), QStringLiteral("Telemetry TCP listen port"), QStringLiteral("port"), QStringLiteral("39100"));
     QCommandLineOption skyConfigOption(QStringLiteral("sky-config"), QStringLiteral("Sky config JSON path"), QStringLiteral("path"));
     QCommandLineOption skySimulateOption(QStringLiteral("sky-simulate-data"), QStringLiteral("Generate simulated sky data"));
     QCommandLineOption skyWaveHostOption(QStringLiteral("sky-wave-host"), QStringLiteral("Sky TCP wave host"), QStringLiteral("host"), QStringLiteral("127.0.0.1"));
     QCommandLineOption skyWavePortOption(QStringLiteral("sky-wave-port"), QStringLiteral("Sky TCP wave port"), QStringLiteral("port"), QStringLiteral("8888"));
-    parser.addOptions({modeOption, sourceOption, telemetryPortOption, telemetryBaudOption, skyConfigOption,
+    parser.addOptions({modeOption, sourceOption, telemetryPortOption, telemetryBaudOption,
+                       telemetryTransportOption, telemetryHostOption, telemetryTcpPortOption,
+                       skyConfigOption,
                        skySimulateOption, skyWaveHostOption, skyWavePortOption});
     parser.process(app);
 
     if (parser.value(modeOption).compare(QStringLiteral("sky"), Qt::CaseInsensitive) == 0)
     {
         VaporView::SkyRuntimeOptions options;
+        VaporView::TelemetryTransportType transport = VaporView::TelemetryTransportType::Tcp;
+        if (!VaporView::parseTelemetryTransport(parser.value(telemetryTransportOption), transport))
+        {
+            qCritical() << "--telemetry-transport must be tcp or serial";
+            return 2;
+        }
+        if (!parser.isSet(telemetryTransportOption) && parser.isSet(telemetryPortOption))
+        {
+            transport = VaporView::TelemetryTransportType::Serial;
+            qInfo().noquote() << "Compatibility: --telemetry-port without --telemetry-transport selects serial telemetry";
+        }
+        options.telemetry_transport = transport;
+        options.telemetry_host = parser.value(telemetryHostOption);
+        options.telemetry_tcp_port = parser.value(telemetryTcpPortOption).toInt();
         options.telemetry_port = parser.value(telemetryPortOption);
         options.telemetry_baud = parser.value(telemetryBaudOption).toInt();
         options.config_path = parser.value(skyConfigOption);
         options.simulate_data = parser.isSet(skySimulateOption);
         options.wave_host = parser.value(skyWaveHostOption);
         options.wave_port = parser.value(skyWavePortOption).toInt();
-        if (options.telemetry_port.trimmed().isEmpty())
+        if (options.telemetry_transport == VaporView::TelemetryTransportType::Serial &&
+            options.telemetry_port.trimmed().isEmpty())
         {
-            qCritical() << "--telemetry-port is required in sky mode";
+            qCritical() << "--telemetry-port is required for serial telemetry in sky mode";
+            return 2;
+        }
+        if (options.telemetry_transport == VaporView::TelemetryTransportType::Tcp &&
+            (options.telemetry_tcp_port <= 0 || options.telemetry_tcp_port > 65535))
+        {
+            qCritical() << "--telemetry-tcp-port must be 1-65535";
             return 2;
         }
         qInfo().noquote() << "Running sky in background mode. For split sky mode use VaporViewSkyCore.exe and VaporViewSkyTui.exe.";

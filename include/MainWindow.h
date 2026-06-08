@@ -409,6 +409,7 @@ private:
     void finishConnectionAttempt(bool connected);
     void updateRecordingActionStates();
     bool isRemoteSkyMode() const;
+    bool isRemoteSkyTcpMode() const;
     void updateSourceModeUi();
     int scaledConfiguredHeight(QWidget *widget, int baseHeight) const;
     void updateConfigCardHeightForSourceMode();
@@ -545,8 +546,11 @@ private:
     QLabel *hmp_rate_lbl_;
     QLabel *lidar_rate_lbl_;
     QLabel *data_source_mode_lbl_;
+    QLabel *sky_telemetry_transport_lbl_;
     QLabel *sky_telemetry_port_lbl_;
     QLabel *sky_telemetry_baud_lbl_;
+    QLabel *sky_telemetry_tcp_host_lbl_;
+    QLabel *sky_telemetry_tcp_port_lbl_;
     QWidget *sky_telemetry_row_widget_;
 
     QComboBox *global_rate_combo_;
@@ -557,8 +561,11 @@ private:
     QComboBox *hmp_rate_combo_;
     QComboBox *lidar_rate_combo_;
     QComboBox *data_source_mode_combo_;
+    QComboBox *sky_telemetry_transport_combo_;
     QComboBox *sky_telemetry_port_combo_;
     QComboBox *sky_telemetry_baud_combo_;
+    QLineEdit *sky_telemetry_tcp_host_edit_;
+    QSpinBox *sky_telemetry_tcp_port_spin_;
     QComboBox *imu_format_combo_;
     QPushButton *epsilon_packet_rates_btn_;
     QPushButton *sky_device_config_btn_;

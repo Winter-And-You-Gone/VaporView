@@ -21,6 +21,12 @@ public:
                const QString& telemetryPort,
                int telemetryBaud,
                QString *errorMessage = nullptr);
+    bool start(const QString& baseDirectory,
+               const QString& telemetryPort,
+               int telemetryBaud,
+               QString *errorMessage,
+               const QString& telemetryTransport,
+               const QString& telemetryEndpoint = QString());
     void pause();
     void stop();
 
@@ -107,6 +113,8 @@ private:
     QString session_start_time_utc_;
     QString telemetry_port_;
     int telemetry_baud_ = 0;
+    QString telemetry_transport_ = QStringLiteral("serial");
+    QString telemetry_endpoint_;
     quint64 recording_start_time_us_ = 0;
     quint64 recording_elapsed_ms_ = 0;
     quint64 telemetry_row_count_ = 0;

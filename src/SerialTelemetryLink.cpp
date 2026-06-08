@@ -6,7 +6,7 @@ namespace VaporView
 {
 
 SerialTelemetryLink::SerialTelemetryLink(QObject *parent)
-    : QObject(parent)
+    : TelemetryLink(parent)
 {
     connect(&port_, &QSerialPort::readyRead, this, &SerialTelemetryLink::onReadyRead);
     connect(&port_, &QSerialPort::errorOccurred, this, &SerialTelemetryLink::onErrorOccurred);
@@ -49,6 +49,13 @@ bool SerialTelemetryLink::isOpen() const
 QString SerialTelemetryLink::portName() const
 {
     return requested_port_name_;
+}
+
+QString SerialTelemetryLink::endpointDescription() const
+{
+    return QStringLiteral("serial://%1:%2:8:n:1:off")
+        .arg(requested_port_name_)
+        .arg(port_.baudRate());
 }
 
 qint64 SerialTelemetryLink::writeBytes(const QByteArray& bytes)

@@ -3139,8 +3139,11 @@ MainWindow::MainWindow(QWidget *parent)
     , hmp_rate_lbl_(nullptr)
     , lidar_rate_lbl_(nullptr)
     , data_source_mode_lbl_(nullptr)
+    , sky_telemetry_transport_lbl_(nullptr)
     , sky_telemetry_port_lbl_(nullptr)
     , sky_telemetry_baud_lbl_(nullptr)
+    , sky_telemetry_tcp_host_lbl_(nullptr)
+    , sky_telemetry_tcp_port_lbl_(nullptr)
     , sky_telemetry_row_widget_(nullptr)
     , global_rate_combo_(nullptr)
     , epsilon_rate_combo_(nullptr)
@@ -3150,8 +3153,11 @@ MainWindow::MainWindow(QWidget *parent)
     , hmp_rate_combo_(nullptr)
     , lidar_rate_combo_(nullptr)
     , data_source_mode_combo_(nullptr)
+    , sky_telemetry_transport_combo_(nullptr)
     , sky_telemetry_port_combo_(nullptr)
     , sky_telemetry_baud_combo_(nullptr)
+    , sky_telemetry_tcp_host_edit_(nullptr)
+    , sky_telemetry_tcp_port_spin_(nullptr)
     , imu_format_combo_(nullptr)
     , epsilon_packet_rates_btn_(nullptr)
     , sky_device_config_btn_(nullptr)
@@ -4204,6 +4210,20 @@ void MainWindow::loadRememberedInputState()
     }
     loadCombo(sky_telemetry_port_combo_, QStringLiteral("telemetry/sky_port"));
     loadCombo(sky_telemetry_baud_combo_, QStringLiteral("telemetry/sky_baud"));
+    if (sky_telemetry_transport_combo_)
+    {
+        const QString transport = settings.value(QStringLiteral("telemetry/transport"), QStringLiteral("tcp")).toString();
+        const int index = sky_telemetry_transport_combo_->findData(transport);
+        sky_telemetry_transport_combo_->setCurrentIndex(index >= 0 ? index : 0);
+    }
+    if (sky_telemetry_tcp_host_edit_)
+    {
+        sky_telemetry_tcp_host_edit_->setText(settings.value(QStringLiteral("telemetry/tcp_host"), QStringLiteral("192.168.1.2")).toString());
+    }
+    if (sky_telemetry_tcp_port_spin_)
+    {
+        sky_telemetry_tcp_port_spin_->setValue(settings.value(QStringLiteral("telemetry/tcp_port"), 39100).toInt());
+    }
 
     recording_export_rate_hz_ = std::clamp(settings.value("recording_export_rate_hz", recording_export_rate_hz_).toInt(), 1, 200);
     imu_recording_rate_hz_ = std::clamp(settings.value("imu_recording_rate_hz", imu_recording_rate_hz_).toInt(), 0, 1000);
@@ -4227,6 +4247,26 @@ void MainWindow::loadRememberedInputState()
     if (baudIndex >= 0 && baudIndex + 1 < args.size() && sky_telemetry_baud_combo_)
     {
         sky_telemetry_baud_combo_->setCurrentText(args.at(baudIndex + 1));
+    }
+    const int transportIndex = args.indexOf(QStringLiteral("--telemetry-transport"));
+    if (transportIndex >= 0 && transportIndex + 1 < args.size() && sky_telemetry_transport_combo_)
+    {
+        const QString transport = args.at(transportIndex + 1).trimmed().toLower();
+        const int comboIndex = sky_telemetry_transport_combo_->findData(transport);
+        if (comboIndex >= 0)
+        {
+            sky_telemetry_transport_combo_->setCurrentIndex(comboIndex);
+        }
+    }
+    const int hostIndex = args.indexOf(QStringLiteral("--telemetry-host"));
+    if (hostIndex >= 0 && hostIndex + 1 < args.size() && sky_telemetry_tcp_host_edit_)
+    {
+        sky_telemetry_tcp_host_edit_->setText(args.at(hostIndex + 1));
+    }
+    const int tcpPortIndex = args.indexOf(QStringLiteral("--telemetry-tcp-port"));
+    if (tcpPortIndex >= 0 && tcpPortIndex + 1 < args.size() && sky_telemetry_tcp_port_spin_)
+    {
+        sky_telemetry_tcp_port_spin_->setValue(args.at(tcpPortIndex + 1).toInt());
     }
     onDataSourceModeChanged(data_source_mode_combo_ ? data_source_mode_combo_->currentIndex() : 0);
 }
@@ -4263,6 +4303,18 @@ void MainWindow::saveRememberedInputState() const
     }
     saveCombo(QStringLiteral("telemetry/sky_port"), sky_telemetry_port_combo_);
     saveCombo(QStringLiteral("telemetry/sky_baud"), sky_telemetry_baud_combo_);
+    if (sky_telemetry_transport_combo_)
+    {
+        settings.setValue(QStringLiteral("telemetry/transport"), sky_telemetry_transport_combo_->currentData().toString());
+    }
+    if (sky_telemetry_tcp_host_edit_)
+    {
+        settings.setValue(QStringLiteral("telemetry/tcp_host"), sky_telemetry_tcp_host_edit_->text().trimmed());
+    }
+    if (sky_telemetry_tcp_port_spin_)
+    {
+        settings.setValue(QStringLiteral("telemetry/tcp_port"), sky_telemetry_tcp_port_spin_->value());
+    }
     settings.setValue("recording_export_rate_hz", recording_export_rate_hz_);
     settings.setValue("imu_recording_rate_hz", imu_recording_rate_hz_);
     settings.setValue("waveform_recording_rate_hz", waveform_recording_rate_hz_);
@@ -4294,14 +4346,36 @@ void MainWindow::bindRememberedInputState()
     bindCombo(hmp_rate_combo_);
     bindCombo(lidar_rate_combo_);
     bindCombo(data_source_mode_combo_);
+    bindCombo(sky_telemetry_transport_combo_);
     bindCombo(sky_telemetry_port_combo_);
     bindCombo(sky_telemetry_baud_combo_);
+    if (sky_telemetry_tcp_host_edit_)
+    {
+        connect(sky_telemetry_tcp_host_edit_, &QLineEdit::textChanged, this, [this](const QString&) {
+            saveRememberedInputState();
+        });
+    }
+    if (sky_telemetry_tcp_port_spin_)
+    {
+        connect(sky_telemetry_tcp_port_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int) {
+            saveRememberedInputState();
+        });
+    }
 
 }
 
 bool MainWindow::isRemoteSkyMode() const
 {
     return remote_sky_mode_;
+}
+
+bool MainWindow::isRemoteSkyTcpMode() const
+{
+    if (!sky_telemetry_transport_combo_)
+    {
+        return true;
+    }
+    return sky_telemetry_transport_combo_->currentData().toString() != QStringLiteral("serial");
 }
 
 void MainWindow::onDataSourceModeChanged(int index)
@@ -4335,13 +4409,24 @@ void MainWindow::updateSourceModeUi()
     {
         auto_detect_ports_btn_->setEnabled(!remote && !is_connected_ && !connection_attempt_in_progress_);
     }
-    if (sky_telemetry_port_combo_) sky_telemetry_port_combo_->setEnabled(remote && !is_connected_ && !connection_attempt_in_progress_);
-    if (sky_telemetry_baud_combo_) sky_telemetry_baud_combo_->setEnabled(remote && !is_connected_ && !connection_attempt_in_progress_);
+    const bool remoteInputsEnabled = remote && !is_connected_ && !connection_attempt_in_progress_;
+    const bool tcpTelemetry = isRemoteSkyTcpMode();
+    if (sky_telemetry_transport_combo_) sky_telemetry_transport_combo_->setEnabled(remoteInputsEnabled);
+    if (sky_telemetry_port_combo_) sky_telemetry_port_combo_->setEnabled(remoteInputsEnabled && !tcpTelemetry);
+    if (sky_telemetry_baud_combo_) sky_telemetry_baud_combo_->setEnabled(remoteInputsEnabled && !tcpTelemetry);
+    if (sky_telemetry_tcp_host_edit_) sky_telemetry_tcp_host_edit_->setEnabled(remoteInputsEnabled && tcpTelemetry);
+    if (sky_telemetry_tcp_port_spin_) sky_telemetry_tcp_port_spin_->setEnabled(remoteInputsEnabled && tcpTelemetry);
     if (sky_telemetry_row_widget_) sky_telemetry_row_widget_->setVisible(remote);
-    if (sky_telemetry_port_lbl_) sky_telemetry_port_lbl_->setVisible(remote);
-    if (sky_telemetry_port_combo_) sky_telemetry_port_combo_->setVisible(remote);
-    if (sky_telemetry_baud_lbl_) sky_telemetry_baud_lbl_->setVisible(remote);
-    if (sky_telemetry_baud_combo_) sky_telemetry_baud_combo_->setVisible(remote);
+    if (sky_telemetry_transport_lbl_) sky_telemetry_transport_lbl_->setVisible(remote);
+    if (sky_telemetry_transport_combo_) sky_telemetry_transport_combo_->setVisible(remote);
+    if (sky_telemetry_port_lbl_) sky_telemetry_port_lbl_->setVisible(remote && !tcpTelemetry);
+    if (sky_telemetry_port_combo_) sky_telemetry_port_combo_->setVisible(remote && !tcpTelemetry);
+    if (sky_telemetry_baud_lbl_) sky_telemetry_baud_lbl_->setVisible(remote && !tcpTelemetry);
+    if (sky_telemetry_baud_combo_) sky_telemetry_baud_combo_->setVisible(remote && !tcpTelemetry);
+    if (sky_telemetry_tcp_host_lbl_) sky_telemetry_tcp_host_lbl_->setVisible(remote && tcpTelemetry);
+    if (sky_telemetry_tcp_host_edit_) sky_telemetry_tcp_host_edit_->setVisible(remote && tcpTelemetry);
+    if (sky_telemetry_tcp_port_lbl_) sky_telemetry_tcp_port_lbl_->setVisible(remote && tcpTelemetry);
+    if (sky_telemetry_tcp_port_spin_) sky_telemetry_tcp_port_spin_->setVisible(remote && tcpTelemetry);
     if (sky_device_config_btn_) sky_device_config_btn_->setEnabled(remote && ground_telemetry_service_ && ground_telemetry_service_->isOpen());
     setRemoteDeviceButtonsEnabled(remote && ground_telemetry_service_ && ground_telemetry_service_->isOpen());
     updateRemoteTelemetrySummaryLabel();
@@ -6224,6 +6309,35 @@ void MainWindow::setupConfigPanel()
     configTitleLayout->addWidget(sky_device_config_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     config_root_layout->addWidget(configTitleBar);
 
+    sky_telemetry_transport_lbl_ = new QLabel(this);
+    sky_telemetry_transport_lbl_->setObjectName("fieldLabel");
+    sky_telemetry_transport_combo_ = new QComboBox(this);
+    sky_telemetry_transport_combo_->addItem(QStringLiteral("TCP"), QStringLiteral("tcp"));
+    sky_telemetry_transport_combo_->addItem(QStringLiteral("Serial"), QStringLiteral("serial"));
+    sky_telemetry_transport_combo_->setFixedHeight(kMainPageInputHeight);
+    sky_telemetry_transport_combo_->setFixedWidth(110);
+    connect(sky_telemetry_transport_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [this](int) {
+                updateSourceModeUi();
+                saveRememberedInputState();
+            });
+
+    sky_telemetry_tcp_host_lbl_ = new QLabel(this);
+    sky_telemetry_tcp_host_lbl_->setObjectName("fieldLabel");
+    sky_telemetry_tcp_host_edit_ = new QLineEdit(this);
+    sky_telemetry_tcp_host_edit_->setText(QStringLiteral("192.168.1.2"));
+    sky_telemetry_tcp_host_edit_->setFixedHeight(kMainPageInputHeight);
+    sky_telemetry_tcp_host_edit_->setMinimumWidth(150);
+    sky_telemetry_tcp_host_edit_->setMaximumWidth(180);
+
+    sky_telemetry_tcp_port_lbl_ = new QLabel(this);
+    sky_telemetry_tcp_port_lbl_->setObjectName("fieldLabel");
+    sky_telemetry_tcp_port_spin_ = new QSpinBox(this);
+    sky_telemetry_tcp_port_spin_->setRange(1, 65535);
+    sky_telemetry_tcp_port_spin_->setValue(39100);
+    sky_telemetry_tcp_port_spin_->setFixedHeight(kMainPageInputHeight);
+    sky_telemetry_tcp_port_spin_->setFixedWidth(100);
+
     sky_telemetry_port_lbl_ = new QLabel(this);
     sky_telemetry_port_lbl_->setObjectName("fieldLabel");
     sky_telemetry_port_combo_ = new QComboBox(this);
@@ -6247,10 +6361,16 @@ void MainWindow::setupConfigPanel()
     auto *skyTelemetryLayout = new QHBoxLayout(sky_telemetry_row_widget_);
     skyTelemetryLayout->setContentsMargins(8, 2, 8, 2);
     skyTelemetryLayout->setSpacing(8);
+    skyTelemetryLayout->addWidget(sky_telemetry_transport_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    skyTelemetryLayout->addWidget(sky_telemetry_transport_combo_, 0, Qt::AlignVCenter);
+    skyTelemetryLayout->addWidget(sky_telemetry_tcp_host_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    skyTelemetryLayout->addWidget(sky_telemetry_tcp_host_edit_, 0, Qt::AlignVCenter);
+    skyTelemetryLayout->addWidget(sky_telemetry_tcp_port_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    skyTelemetryLayout->addWidget(sky_telemetry_tcp_port_spin_, 0, Qt::AlignVCenter);
     skyTelemetryLayout->addWidget(sky_telemetry_port_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     skyTelemetryLayout->addWidget(sky_telemetry_port_combo_, 0, Qt::AlignVCenter);
-    skyTelemetryLayout->addWidget(sky_telemetry_baud_combo_, 0, Qt::AlignVCenter);
     skyTelemetryLayout->addWidget(sky_telemetry_baud_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    skyTelemetryLayout->addWidget(sky_telemetry_baud_combo_, 0, Qt::AlignVCenter);
     skyTelemetryLayout->addStretch(1);
     sky_telemetry_row_widget_->setVisible(false);
     config_root_layout->addWidget(sky_telemetry_row_widget_);
@@ -6719,8 +6839,11 @@ void MainWindow::setEnglish(bool english)
         config_inline_title_lbl_->setText(english ? "Serial Port Configuration" : "串口配置");
     }
     if (data_source_mode_lbl_) data_source_mode_lbl_->setText(english ? "Source:" : "数据源:");
-    if (sky_telemetry_port_lbl_) sky_telemetry_port_lbl_->setText(english ? "Sky Telemetry Port:" : "天空端数传串口:");
-    if (sky_telemetry_baud_lbl_) sky_telemetry_baud_lbl_->setText(QStringLiteral("--"));
+    if (sky_telemetry_transport_lbl_) sky_telemetry_transport_lbl_->setText(english ? "Link:" : "链路:");
+    if (sky_telemetry_tcp_host_lbl_) sky_telemetry_tcp_host_lbl_->setText(english ? "Sky IP:" : "天空端IP:");
+    if (sky_telemetry_tcp_port_lbl_) sky_telemetry_tcp_port_lbl_->setText(english ? "Port:" : "端口:");
+    if (sky_telemetry_port_lbl_) sky_telemetry_port_lbl_->setText(english ? "Serial:" : "串口:");
+    if (sky_telemetry_baud_lbl_) sky_telemetry_baud_lbl_->setText(english ? "Baud:" : "波特率:");
     if (sky_device_config_btn_) sky_device_config_btn_->setText(english ? "Sky Device Config" : "天空端设备配置");
     if (data_source_mode_combo_)
     {
@@ -9505,29 +9628,50 @@ void MainWindow::onConnectClicked()
     if (isRemoteSkyMode())
     {
         clearRemoteSkyDataUi();
-        const QString port = sky_telemetry_port_combo_ ? sky_telemetry_port_combo_->currentText().trimmed() : QString();
-        const int baud = sky_telemetry_baud_combo_ ? sky_telemetry_baud_combo_->currentText().toInt() : 921600;
-        if (port.isEmpty())
+        const bool tcpTelemetry = isRemoteSkyTcpMode();
+        bool opened = false;
+        QString openedText;
+        if (tcpTelemetry)
         {
-            log(is_english_ ? "Select the Sky telemetry port first" : "请先选择天空端数传串口");
-            return;
+            const QString host = sky_telemetry_tcp_host_edit_ ? sky_telemetry_tcp_host_edit_->text().trimmed() : QString();
+            const int tcpPort = sky_telemetry_tcp_port_spin_ ? sky_telemetry_tcp_port_spin_->value() : 39100;
+            if (host.isEmpty())
+            {
+                log(is_english_ ? "Enter the Sky telemetry IP first" : "请先输入天空端数传 IP");
+                return;
+            }
+            openedText = QStringLiteral("%1:%2").arg(host).arg(tcpPort);
+            log(QString(is_english_ ? "Connecting Sky telemetry TCP: %1" : "正在连接天空端 TCP 数传：%1").arg(openedText));
+            opened = ground_telemetry_service_ && ground_telemetry_service_->openTcp(host, static_cast<quint16>(tcpPort));
         }
-        log(QString(is_english_ ? "Opening Sky telemetry serial port: %1 @ %2" : "正在打开天空端数传串口：%1 @ %2").arg(port).arg(baud));
-        if (ground_telemetry_service_ && ground_telemetry_service_->open(port, baud))
+        else
+        {
+            const QString port = sky_telemetry_port_combo_ ? sky_telemetry_port_combo_->currentText().trimmed() : QString();
+            const int baud = sky_telemetry_baud_combo_ ? sky_telemetry_baud_combo_->currentText().toInt() : 921600;
+            if (port.isEmpty())
+            {
+                log(is_english_ ? "Select the Sky telemetry port first" : "请先选择天空端数传串口");
+                return;
+            }
+            openedText = QStringLiteral("%1 @ %2").arg(port).arg(baud);
+            log(QString(is_english_ ? "Opening Sky telemetry serial port: %1" : "正在打开天空端数传串口：%1").arg(openedText));
+            opened = ground_telemetry_service_ && ground_telemetry_service_->open(port, baud);
+        }
+        if (opened)
         {
             updateConnectionStatus(true);
             ground_telemetry_service_->sendCommand(VaporView::CommandId::DisableWaveformStreaming);
             ground_telemetry_service_->sendCommand(VaporView::CommandId::RequestStatus);
-            status_label_->setText(is_english_ ? "Telemetry port open, waiting for Sky handshake" : "数传串口已打开，等待天空端握手");
+            status_label_->setText(is_english_ ? "Telemetry link open, waiting for Sky handshake" : "数传链路已打开，等待天空端握手");
             status_label_->setProperty("status", "connecting");
             status_label_->style()->unpolish(status_label_);
             status_label_->style()->polish(status_label_);
-            log(is_english_ ? "Telemetry serial port opened; waiting for Sky handshake..." : "数传串口已打开，正在等待天空端握手...");
+            log(QString(is_english_ ? "Telemetry link opened (%1); waiting for Sky handshake..." : "数传链路已打开（%1），正在等待天空端握手...").arg(openedText));
         }
         else
         {
             updateConnectionStatus(false);
-            log(is_english_ ? "Failed to open Remote Sky telemetry port" : "打开天空端数传串口失败");
+            log(is_english_ ? "Failed to open Remote Sky telemetry link" : "打开天空端数传链路失败");
         }
         return;
     }

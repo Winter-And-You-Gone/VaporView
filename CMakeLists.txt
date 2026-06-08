@@ -102,12 +102,14 @@ endif()
 
 set(PROTOCOL_SOURCES
     src/TelemetryCodec.cpp
+    src/TelemetryLink.cpp
     src/SkyConfig.cpp
 )
 
 set(PROTOCOL_HEADERS
     include/TelemetryTypes.h
     include/TelemetryCodec.h
+    include/TelemetryLink.h
     include/SkyConfig.h
 )
 
@@ -129,6 +131,7 @@ set(SKY_CORE_SOURCES
     src/SkyDeviceManager.cpp
     src/SkySessionRecorder.cpp
     src/SerialTelemetryLink.cpp
+    src/TcpTelemetryLink.cpp
     src/SkyLocalIpcServer.cpp
     src/TcpWaveEncoding.cpp
     src/serial_port.cpp
@@ -143,6 +146,7 @@ set(SKY_CORE_HEADERS
     include/SkyDeviceManager.h
     include/SkySessionRecorder.h
     include/SerialTelemetryLink.h
+    include/TcpTelemetryLink.h
     include/SkyLocalIpcServer.h
     include/TcpWaveEncoding.h
     include/serial_port.h
@@ -429,6 +433,15 @@ if(BUILD_TESTING)
     )
     target_link_libraries(telemetry_codec_test PRIVATE vaporview_protocol)
     add_test(NAME telemetry_codec_test COMMAND telemetry_codec_test)
+
+    add_executable(telemetry_tcp_link_test
+        tests/telemetry_tcp_link_test.cpp
+    )
+    target_include_directories(telemetry_tcp_link_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+    )
+    target_link_libraries(telemetry_tcp_link_test PRIVATE vaporview_sky_core)
+    add_test(NAME telemetry_tcp_link_test COMMAND telemetry_tcp_link_test)
 
     add_executable(sky_session_recorder_test
         tests/sky_session_recorder_test.cpp

@@ -1,5 +1,8 @@
 #include "SkyRuntime.h"
 
+#include "SerialTelemetryLink.h"
+#include "TcpTelemetryLink.h"
+
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -11,6 +14,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <memory>
 
 namespace VaporView
 {
@@ -100,14 +104,9 @@ DownsampledWaveform makeDownsampledWaveform(const QVector<float>& samples,
 SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
     : QObject(parent)
     , options_(options)
-    , link_(this)
     , codec_(1024u * 1024u)
     , device_manager_(this)
 {
-    connect(&link_, &SerialTelemetryLink::bytesReceived, this, [this](const QByteArray& bytes) {
-        onBytesReceived(bytes);
-    });
-    connect(&link_, &SerialTelemetryLink::errorOccurred, this, &SkyRuntime::logMessage);
     connect(&device_manager_, &SkyDeviceManager::logMessage, this, &SkyRuntime::logMessage);
     connect(&device_manager_, &SkyDeviceManager::epsilonRawFrameReceived, this,
             [this](quint64 timestampUs, quint8 packetId, quint8 serialNumber, const QByteArray& frame) {
@@ -168,10 +167,41 @@ bool SkyRuntime::start()
     device_manager_.loadConfig(config);
     device_manager_.setSimulateData(options_.simulate_data);
 
-    if (!link_.open(options_.telemetry_port, options_.telemetry_baud))
+    auto attachLinkSignals = [this](TelemetryLink *link) {
+        connect(link, &TelemetryLink::bytesReceived, this, [this](const QByteArray& bytes) {
+            onBytesReceived(bytes);
+        });
+        connect(link, &TelemetryLink::errorOccurred, this, &SkyRuntime::logMessage);
+    };
+
+    if (options_.telemetry_transport == TelemetryTransportType::Serial)
     {
-        emit logMessage(QStringLiteral("Failed to open telemetry port %1").arg(options_.telemetry_port));
-        return false;
+        if (options_.telemetry_port.trimmed().isEmpty())
+        {
+            emit logMessage(QStringLiteral("Telemetry serial port is empty"));
+            return false;
+        }
+        auto link = std::make_unique<SerialTelemetryLink>();
+        attachLinkSignals(link.get());
+        if (!link->open(options_.telemetry_port, options_.telemetry_baud))
+        {
+            emit logMessage(QStringLiteral("Failed to open telemetry port %1").arg(options_.telemetry_port));
+            return false;
+        }
+        link_ = std::move(link);
+    }
+    else
+    {
+        auto link = std::make_unique<TcpTelemetryLink>();
+        attachLinkSignals(link.get());
+        if (!link->listen(options_.telemetry_host, static_cast<quint16>(options_.telemetry_tcp_port)))
+        {
+            emit logMessage(QStringLiteral("Failed to listen telemetry TCP endpoint %1:%2")
+                                .arg(options_.telemetry_host)
+                                .arg(options_.telemetry_tcp_port));
+            return false;
+        }
+        link_ = std::move(link);
     }
 
     device_manager_.connectAll();
@@ -184,7 +214,7 @@ bool SkyRuntime::start()
     running_ = true;
     started_time_us_ = currentTimestampUs();
     emit runningChanged(true);
-    emit logMessage(QStringLiteral("SkyRuntime started on %1 @ %2").arg(options_.telemetry_port).arg(options_.telemetry_baud));
+    emit logMessage(QStringLiteral("SkyRuntime started on %1").arg(link_ ? link_->endpointDescription() : QString()));
     return true;
 }
 
@@ -208,7 +238,11 @@ void SkyRuntime::stop()
 
     device_manager_.setSimulateData(false);
     device_manager_.disconnectAll();
-    link_.close();
+    if (link_)
+    {
+        link_->close();
+        link_.reset();
+    }
     running_ = false;
     started_time_us_ = 0;
     last_sent_feature_time_us_ = 0;
@@ -258,7 +292,15 @@ bool SkyRuntime::startRecording(QString *error)
         if (error) *error = QStringLiteral("recording already started");
         return false;
     }
-    if (!session_recorder_.start(defaultRecordingDirectory(), options_.telemetry_port, options_.telemetry_baud, error))
+    const QString transport = telemetryTransportName(options_.telemetry_transport);
+    const QString endpoint = link_ ? link_->endpointDescription() : QString();
+    const QString legacyPort = options_.telemetry_transport == TelemetryTransportType::Tcp
+        ? endpoint
+        : options_.telemetry_port;
+    const int legacyBaud = options_.telemetry_transport == TelemetryTransportType::Tcp
+        ? 0
+        : options_.telemetry_baud;
+    if (!session_recorder_.start(defaultRecordingDirectory(), legacyPort, legacyBaud, error, transport, endpoint))
     {
         return false;
     }
@@ -832,11 +874,11 @@ void SkyRuntime::sendCommandResultFrames(const SkyCommandResult& result)
 void SkyRuntime::sendFrame(MsgType type, const QByteArray& payload)
 {
     emit telemetryFrameReady(type, payload);
-    if (!link_.isOpen())
+    if (!link_ || !link_->isOpen())
     {
         return;
     }
-    link_.writeBytes(codec_.encodeFrame(type, payload, next_frame_seq_++, currentTimestampUs()));
+    link_->writeBytes(codec_.encodeFrame(type, payload, next_frame_seq_++, currentTimestampUs()));
 }
 
 void SkyRuntime::sendAck(const CommandAck& ack)

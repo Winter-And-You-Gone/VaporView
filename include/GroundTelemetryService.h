@@ -1,13 +1,14 @@
 #ifndef VaporView_GROUND_TELEMETRY_SERVICE_H_
 #define VaporView_GROUND_TELEMETRY_SERVICE_H_
 
-#include "SerialTelemetryLink.h"
 #include "TelemetryCodec.h"
+#include "TelemetryLink.h"
 
 #include <QHash>
 #include <QObject>
 #include <QTimer>
 #include <QVector>
+#include <memory>
 
 namespace VaporView
 {
@@ -26,8 +27,11 @@ public:
     explicit GroundTelemetryService(QObject *parent = nullptr);
 
     bool open(const QString& portName, int baudRate);
+    bool openTcp(const QString& host, quint16 port);
     void close();
     bool isOpen() const;
+    TelemetryTransportType transportType() const;
+    QString endpointDescription() const;
     quint64 linkGeneration() const;
     double receiveBitsPerSecond() const;
     double transmitBitsPerSecond() const;
@@ -69,10 +73,13 @@ private:
 
     void dispatchFrame(const TelemetryFrame& frame);
     void sendCommandPayload(PendingCommand& pending);
+    bool openLink(std::unique_ptr<TelemetryLink> link);
+    void attachLinkSignals();
     void noteReceivedBytes(qint64 bytes);
     void noteTransmittedBytes(qint64 bytes);
 
-    SerialTelemetryLink link_;
+    std::unique_ptr<TelemetryLink> link_;
+    TelemetryTransportType transport_type_ = TelemetryTransportType::Tcp;
     TelemetryCodec codec_;
     QTimer retry_timer_;
     quint64 link_generation_ = 0;

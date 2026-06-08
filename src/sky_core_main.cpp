@@ -118,6 +118,9 @@ int main(int argc, char *argv[])
     QCommandLineOption versionOption(QStringLiteral("version"), QStringLiteral("Displays version information."));
     QCommandLineOption telemetryPortOption(QStringLiteral("telemetry-port"), QStringLiteral("Telemetry serial port"), QStringLiteral("port"));
     QCommandLineOption telemetryBaudOption(QStringLiteral("telemetry-baud"), QStringLiteral("Telemetry serial baud"), QStringLiteral("baud"), QStringLiteral("921600"));
+    QCommandLineOption telemetryTransportOption(QStringLiteral("telemetry-transport"), QStringLiteral("Telemetry transport: tcp or serial"), QStringLiteral("transport"), QStringLiteral("tcp"));
+    QCommandLineOption telemetryHostOption(QStringLiteral("telemetry-host"), QStringLiteral("Telemetry TCP listen host"), QStringLiteral("host"), QStringLiteral("0.0.0.0"));
+    QCommandLineOption telemetryTcpPortOption(QStringLiteral("telemetry-tcp-port"), QStringLiteral("Telemetry TCP listen port"), QStringLiteral("port"), QStringLiteral("39100"));
     QCommandLineOption skyConfigOption(QStringLiteral("sky-config"), QStringLiteral("Sky config JSON path"), QStringLiteral("path"));
     QCommandLineOption skySimulateOption(QStringLiteral("sky-simulate-data"), QStringLiteral("Generate simulated sky data"));
     QCommandLineOption skyWaveHostOption(QStringLiteral("sky-wave-host"), QStringLiteral("Sky TCP wave host"), QStringLiteral("host"), QStringLiteral("127.0.0.1"));
@@ -126,7 +129,9 @@ int main(int argc, char *argv[])
     QCommandLineOption ipcPortOption(QStringLiteral("ipc-port"), QStringLiteral("Local IPC port"), QStringLiteral("port"), QStringLiteral("39001"));
     QCommandLineOption profileOption(QStringLiteral("profile"), QStringLiteral("Runtime profile: flight or debug"), QStringLiteral("profile"), QStringLiteral("debug"));
     QCommandLineOption noIpcOption(QStringLiteral("no-ipc"), QStringLiteral("Disable local IPC server"));
-    parser.addOptions({helpOption, versionOption, telemetryPortOption, telemetryBaudOption, skyConfigOption, skySimulateOption,
+    parser.addOptions({helpOption, versionOption, telemetryPortOption, telemetryBaudOption,
+                       telemetryTransportOption, telemetryHostOption, telemetryTcpPortOption,
+                       skyConfigOption, skySimulateOption,
                        skyWaveHostOption, skyWavePortOption, ipcHostOption, ipcPortOption,
                        profileOption, noIpcOption});
     parser.process(app);
@@ -143,6 +148,20 @@ int main(int argc, char *argv[])
     }
 
     VaporView::SkyRuntimeOptions options;
+    VaporView::TelemetryTransportType transport = VaporView::TelemetryTransportType::Tcp;
+    if (!VaporView::parseTelemetryTransport(parser.value(telemetryTransportOption), transport))
+    {
+        QTextStream(stderr) << "--telemetry-transport must be tcp or serial\n";
+        return 2;
+    }
+    if (!parser.isSet(telemetryTransportOption) && parser.isSet(telemetryPortOption))
+    {
+        transport = VaporView::TelemetryTransportType::Serial;
+        QTextStream(stdout) << "Compatibility: --telemetry-port without --telemetry-transport selects serial telemetry\n";
+    }
+    options.telemetry_transport = transport;
+    options.telemetry_host = parser.value(telemetryHostOption);
+    options.telemetry_tcp_port = parser.value(telemetryTcpPortOption).toInt();
     options.telemetry_port = parser.value(telemetryPortOption);
     options.telemetry_baud = parser.value(telemetryBaudOption).toInt();
     options.config_path = parser.value(skyConfigOption);
@@ -150,9 +169,16 @@ int main(int argc, char *argv[])
     options.wave_host = parser.value(skyWaveHostOption);
     options.wave_port = parser.value(skyWavePortOption).toInt();
 
-    if (options.telemetry_port.trimmed().isEmpty())
+    if (options.telemetry_transport == VaporView::TelemetryTransportType::Serial &&
+        options.telemetry_port.trimmed().isEmpty())
     {
-        QTextStream(stderr) << "--telemetry-port is required\n";
+        QTextStream(stderr) << "--telemetry-port is required for serial telemetry\n";
+        return 2;
+    }
+    if (options.telemetry_transport == VaporView::TelemetryTransportType::Tcp &&
+        (options.telemetry_tcp_port <= 0 || options.telemetry_tcp_port > 65535))
+    {
+        QTextStream(stderr) << "--telemetry-tcp-port must be 1-65535\n";
         return 2;
     }
 

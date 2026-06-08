@@ -1,14 +1,15 @@
 #ifndef VaporView_SERIAL_TELEMETRY_LINK_H_
 #define VaporView_SERIAL_TELEMETRY_LINK_H_
 
-#include <QObject>
+#include "TelemetryLink.h"
+
 #include <QSerialPort>
 #include <QString>
 
 namespace VaporView
 {
 
-class SerialTelemetryLink : public QObject
+class SerialTelemetryLink : public TelemetryLink
 {
     Q_OBJECT
 
@@ -16,15 +17,11 @@ public:
     explicit SerialTelemetryLink(QObject *parent = nullptr);
 
     bool open(const QString& portName, int baudRate);
-    void close();
-    bool isOpen() const;
+    void close() override;
+    bool isOpen() const override;
     QString portName() const;
-    qint64 writeBytes(const QByteArray& bytes);
-
-signals:
-    void bytesReceived(const QByteArray& bytes);
-    void openChanged(bool open);
-    void errorOccurred(const QString& error);
+    QString endpointDescription() const override;
+    qint64 writeBytes(const QByteArray& bytes) override;
 
 private slots:
     void onReadyRead();

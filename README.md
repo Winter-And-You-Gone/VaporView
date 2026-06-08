@@ -33,24 +33,28 @@ Linux:   ./build/Release/VaporView
 
 天空端推荐拆成两个进程运行：
 
-- `VaporViewSkyCore`：核心采集进程，负责设备采集、本地记录、数传串口和本机 IPC Server。不创建 Qt Widgets 窗口，不依赖 TUI。
+- `VaporViewSkyCore`：核心采集进程，负责设备采集、本地记录、天空-地面数传链路和本机 IPC Server。不创建 Qt Widgets 窗口，不依赖 TUI。天空-地面数传默认使用 TCP Server `0.0.0.0:39100`，也可切回串口。
 - `VaporViewSkyTui`：本机调试客户端，通过 `127.0.0.1:39001` 连接 SkyCore。TUI 退出或崩溃不影响 SkyCore 继续采集、落盘和数传；SkyCore 重启后 TUI 会自动重连。
 - `VaporViewSky`：兼容入口，在同一个进程内启动 SkyCore 运行时、本机 IPC 和 TUI，旧命令行仍可用；新现场调试推荐优先使用两个独立进程。
 
 ```powershell
-# Windows 飞行模式：只启动核心
-.\build\Release\VaporViewSkyCore.exe --telemetry-port COM50 --telemetry-baud 921600 --profile flight
+# Windows 飞行模式：只启动核心，默认 TCP 数传 0.0.0.0:39100
+.\build\Release\VaporViewSkyCore.exe --profile flight
 
 # Windows 现场调试：窗口 1 启动核心，窗口 2 启动 TUI
-.\build\Release\VaporViewSkyCore.exe --telemetry-port COM50 --telemetry-baud 921600 --profile debug
+.\build\Release\VaporViewSkyCore.exe --profile debug
 .\build\Release\VaporViewSkyTui.exe --connect 127.0.0.1:39001
 
 # 模拟数据调试
-.\build\Release\VaporViewSkyCore.exe --telemetry-port COM50 --telemetry-baud 921600 --sky-simulate-data
+.\build\Release\VaporViewSkyCore.exe --sky-simulate-data
 .\build\Release\VaporViewSkyTui.exe --connect 127.0.0.1:39001
 
-# COM10 及以上端口也可以显式使用 Win32 路径
-.\build\Release\VaporViewSkyCore.exe --telemetry-port \\.\COM50 --telemetry-baud 921600 --sky-simulate-data
+# 显式 TCP 参数
+.\build\Release\VaporViewSkyCore.exe --telemetry-transport tcp --telemetry-host 0.0.0.0 --telemetry-tcp-port 39100 --sky-simulate-data
+
+# 串口兼容模式；COM10 及以上端口也可以显式使用 Win32 路径
+.\build\Release\VaporViewSkyCore.exe --telemetry-transport serial --telemetry-port COM50 --telemetry-baud 921600 --sky-simulate-data
+.\build\Release\VaporViewSkyCore.exe --telemetry-transport serial --telemetry-port \\.\COM50 --telemetry-baud 921600 --sky-simulate-data
 
 # 正常退出 SkyCore：在 Core 控制台按 Ctrl+C/Ctrl+Break，或输入 quit 回车
 # 如果 Core 在另一个窗口或后台运行，可用本机 IPC 请求退出
@@ -59,13 +63,20 @@ Linux:   ./build/Release/VaporView
 
 ```bash
 # Linux / macOS
-./build/Release/VaporViewSkyCore --telemetry-port /tmp/vapor_sky --telemetry-baud 921600 --sky-simulate-data
+./build/Release/VaporViewSkyCore --sky-simulate-data
 ./build/Release/VaporViewSkyTui --connect 127.0.0.1:39001
+
+# 串口兼容模式
+./build/Release/VaporViewSkyCore --telemetry-transport serial --telemetry-port /tmp/vapor_sky --telemetry-baud 921600 --sky-simulate-data
 ```
 
 兼容入口和旧后台天空端模式仍可使用：
 
 ```powershell
+.\build\Release\VaporViewSky.exe --sky-simulate-data
+.\build\Release\VaporView.exe --mode sky --sky-simulate-data
+
+# 旧串口命令仍兼容：只传 --telemetry-port 且未传 --telemetry-transport 时，会自动按串口模式运行
 .\build\Release\VaporViewSky.exe --telemetry-port COM50 --telemetry-baud 921600 --sky-simulate-data
 .\build\Release\VaporView.exe --mode sky --telemetry-port COM50 --telemetry-baud 921600 --sky-simulate-data
 ```
@@ -114,15 +125,28 @@ Ctrl+L 清空可视日志
 Ctrl+C 退出 TUI；独立 SkyCore 继续运行
 ```
 
+天空-地面 TCP 闭环测试：
+
+```text
+天空端: VaporViewSkyCore.exe --sky-simulate-data
+地面端: VaporView.exe，在首页选择天空-地面接收模式（英文界面为 Sky-Ground Receive Mode），链路类型默认 TCP。现场默认连接 Sky IP 192.168.1.2、Port 39100；本机测试可改为 127.0.0.1、39100。
+```
+
 本机虚拟串口闭环测试：
 
 ```text
 Windows: com0com 创建 COM50 <-> COM51
 Linux/macOS: socat -d -d pty,raw,echo=0,link=/tmp/vapor_sky pty,raw,echo=0,link=/tmp/vapor_ground
 
-天空端: VaporViewSkyCore.exe --telemetry-port COM50 --telemetry-baud 921600 --sky-simulate-data
-地面端: VaporView.exe，在首页选择天空-地面接收模式（英文界面为 Sky-Ground Receive Mode），连接 COM51 @ 921600
+天空端: VaporViewSkyCore.exe --telemetry-transport serial --telemetry-port COM50 --telemetry-baud 921600 --sky-simulate-data
+地面端: VaporView.exe，在首页选择天空-地面接收模式（英文界面为 Sky-Ground Receive Mode），链路类型切到 Serial，连接 COM51 @ 921600
 ```
+
+H300 网桥使用说明：
+
+- H300 网口可作为透明网桥使用。使用 TCP 数传时，天空端机器运行 `VaporViewSkyCore` 并监听 `0.0.0.0:39100`，地面端机器在天空-地面接收模式下连接天空端 IP，默认 `192.168.1.2:39100`。
+- 电脑和天空端设备需要手动配置到同一网段的静态 IP，例如天空端 `192.168.1.2`、地面端 `192.168.1.5`。H300 不负责替应用层自动分配 VaporView 的 TCP 端点。
+- 串口数传仍可用，但 H300 模块 TTL 串口固定 `115200 bps`。如果通过 H300 TTL 串口做兼容链路，需要同时把天空端和地面端串口遥测波特率改为 `115200`。
 
 天空-地面接收模式下，地面端工具栏的“开始记录 / 暂停记录 / 结束记录”会通过数传下发到天空端。天空端收到开始记录命令后在普通模式同一个默认 `data/` 目录下创建 `session_yyyy-MM-dd_HH-mm-ss`，并把 EPSILON、PTB、HMP、Lidar 和 TCP 波形的原始数据写入统一 `raw/*.dat`；天空端状态包会同步回传记录状态、时长、遥测行数和各 raw 文件记录条数，地面端状态栏实时显示这些关键计数。
 

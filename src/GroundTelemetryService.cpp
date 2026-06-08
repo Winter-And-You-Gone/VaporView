@@ -1,8 +1,12 @@
 #include "GroundTelemetryService.h"
 
+#include "SerialTelemetryLink.h"
+#include "TcpTelemetryLink.h"
+
 #include <QDateTime>
 #include <QJsonDocument>
 #include <algorithm>
+#include <memory>
 
 namespace VaporView
 {
@@ -52,62 +56,50 @@ double samplesBitsPerSecond(QVector<GroundTelemetryService::ByteSample> samples,
 
 GroundTelemetryService::GroundTelemetryService(QObject *parent)
     : QObject(parent)
-    , link_(this)
     , codec_(1024u * 1024u)
 {
-    connect(&link_, &SerialTelemetryLink::bytesReceived, this, [this](const QByteArray& bytes) {
-        onBytesReceived(bytes);
-    });
-    connect(&link_, &SerialTelemetryLink::openChanged, this, [this](bool open) {
-        if (!open)
-        {
-            retry_timer_.stop();
-            pending_commands_.clear();
-            ++link_generation_;
-        }
-        emit linkOpenChanged(open);
-    });
-    connect(&link_, &SerialTelemetryLink::errorOccurred, this, &GroundTelemetryService::logMessage);
     retry_timer_.setInterval(200);
     connect(&retry_timer_, &QTimer::timeout, this, &GroundTelemetryService::onRetryTimer);
 }
 
 bool GroundTelemetryService::open(const QString& portName, int baudRate)
 {
-    codec_.reset();
-    if (link_.isOpen())
+    auto link = std::make_unique<SerialTelemetryLink>();
+    const bool ok = link->open(portName, baudRate);
+    if (!ok)
     {
-        close();
+        emit logMessage(QStringLiteral("Failed to open telemetry serial port: %1").arg(portName));
+        return false;
     }
-    else
+    transport_type_ = TelemetryTransportType::Serial;
+    return openLink(std::move(link));
+}
+
+bool GroundTelemetryService::openTcp(const QString& host, quint16 port)
+{
+    auto link = std::make_unique<TcpTelemetryLink>();
+    const bool ok = link->connectToHost(host, port);
+    if (!ok)
     {
-        retry_timer_.stop();
-        pending_commands_.clear();
-        rx_byte_samples_.clear();
-        tx_byte_samples_.clear();
+        emit logMessage(QStringLiteral("Failed to connect telemetry TCP endpoint: %1:%2").arg(host).arg(port));
+        return false;
     }
-    ++link_generation_;
-    pending_commands_.clear();
-    rx_byte_samples_.clear();
-    tx_byte_samples_.clear();
-    total_rx_bytes_ = 0;
-    total_tx_bytes_ = 0;
-    const bool ok = link_.open(portName, baudRate);
-    if (ok)
-    {
-        retry_timer_.start();
-    }
-    return ok;
+    transport_type_ = TelemetryTransportType::Tcp;
+    return openLink(std::move(link));
 }
 
 void GroundTelemetryService::close()
 {
-    const bool wasOpen = link_.isOpen();
+    const bool wasOpen = link_ && link_->isOpen();
     retry_timer_.stop();
     pending_commands_.clear();
     rx_byte_samples_.clear();
     tx_byte_samples_.clear();
-    link_.close();
+    if (link_)
+    {
+        link_->close();
+        link_.reset();
+    }
     if (!wasOpen)
     {
         ++link_generation_;
@@ -116,7 +108,17 @@ void GroundTelemetryService::close()
 
 bool GroundTelemetryService::isOpen() const
 {
-    return link_.isOpen();
+    return link_ && link_->isOpen();
+}
+
+TelemetryTransportType GroundTelemetryService::transportType() const
+{
+    return transport_type_;
+}
+
+QString GroundTelemetryService::endpointDescription() const
+{
+    return link_ ? link_->endpointDescription() : QString();
 }
 
 quint64 GroundTelemetryService::linkGeneration() const
@@ -312,7 +314,7 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
 
 void GroundTelemetryService::sendCommandPayload(PendingCommand& pending)
 {
-    if (!link_.isOpen())
+    if (!link_ || !link_->isOpen())
     {
         return;
     }
@@ -321,11 +323,53 @@ void GroundTelemetryService::sendCommandPayload(PendingCommand& pending)
         pending.encodedPayload,
         next_frame_seq_++,
         nowUs());
-    const qint64 written = link_.writeBytes(frame);
+    const qint64 written = link_->writeBytes(frame);
     if (written > 0)
     {
         noteTransmittedBytes(written);
     }
+}
+
+bool GroundTelemetryService::openLink(std::unique_ptr<TelemetryLink> link)
+{
+    codec_.reset();
+    close();
+    link_ = std::move(link);
+    attachLinkSignals();
+    ++link_generation_;
+    pending_commands_.clear();
+    rx_byte_samples_.clear();
+    tx_byte_samples_.clear();
+    total_rx_bytes_ = 0;
+    total_tx_bytes_ = 0;
+    if (link_ && link_->isOpen())
+    {
+        retry_timer_.start();
+        emit linkOpenChanged(true);
+        return true;
+    }
+    return false;
+}
+
+void GroundTelemetryService::attachLinkSignals()
+{
+    if (!link_)
+    {
+        return;
+    }
+    connect(link_.get(), &TelemetryLink::bytesReceived, this, [this](const QByteArray& bytes) {
+        onBytesReceived(bytes);
+    });
+    connect(link_.get(), &TelemetryLink::openChanged, this, [this](bool open) {
+        if (!open)
+        {
+            retry_timer_.stop();
+            pending_commands_.clear();
+            ++link_generation_;
+        }
+        emit linkOpenChanged(open);
+    });
+    connect(link_.get(), &TelemetryLink::errorOccurred, this, &GroundTelemetryService::logMessage);
 }
 
 void GroundTelemetryService::noteReceivedBytes(qint64 bytes)
