@@ -136,6 +136,11 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
     connect(&waveform_timer_, &QTimer::timeout, this, &SkyRuntime::sendDownsampledWaveform);
     connect(&heartbeat_timer_, &QTimer::timeout, this, &SkyRuntime::sendHeartbeat);
     connect(&status_timer_, &QTimer::timeout, this, &SkyRuntime::sendTelemetryStatus);
+    basic_timer_.setTimerType(Qt::PreciseTimer);
+    feature_timer_.setTimerType(Qt::PreciseTimer);
+    waveform_timer_.setTimerType(Qt::PreciseTimer);
+    heartbeat_timer_.setTimerType(Qt::PreciseTimer);
+    status_timer_.setTimerType(Qt::PreciseTimer);
 }
 
 SkyRuntime::~SkyRuntime()

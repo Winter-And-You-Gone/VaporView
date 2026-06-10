@@ -93,7 +93,12 @@ qint64 TcpTelemetryLink::writeBytes(const QByteArray& bytes)
     {
         return -1;
     }
-    return socket_->write(bytes);
+    const qint64 written = socket_->write(bytes);
+    if (written > 0)
+    {
+        socket_->flush();
+    }
+    return written;
 }
 
 void TcpTelemetryLink::onNewConnection()
@@ -162,6 +167,7 @@ void TcpTelemetryLink::attachSocket(QTcpSocket *socket)
 {
     socket_ = socket;
     socket_->setParent(this);
+    socket_->setSocketOption(QAbstractSocket::LowDelayOption, 1);
     connect(socket_, &QTcpSocket::readyRead, this, &TcpTelemetryLink::onReadyRead);
     connect(socket_, &QTcpSocket::disconnected, this, &TcpTelemetryLink::onSocketDisconnected);
     connect(socket_, &QTcpSocket::connected, this, [this]() {
