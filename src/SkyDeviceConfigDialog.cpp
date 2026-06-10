@@ -449,13 +449,18 @@ void SkyDeviceConfigDialog::setupUi()
     result_text_->setMinimumHeight(160);
     contentLayout->addWidget(result_text_);
     scroll->setWidget(content);
-    root->addWidget(scroll);
+    root->addWidget(scroll, 1);
 
-    auto *buttonLayout = new QHBoxLayout();
-    read_button_ = new QPushButton(this);
-    apply_button_ = new QPushButton(this);
-    save_button_ = new QPushButton(this);
-    close_button_ = new QPushButton(this);
+    auto *buttonBar = new QWidget(this);
+    buttonBar->setObjectName(QStringLiteral("skyConfigButtonBar"));
+    buttonBar->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    auto *buttonLayout = new QHBoxLayout(buttonBar);
+    buttonLayout->setContentsMargins(0, 0, 0, 0);
+    buttonLayout->setSpacing(8);
+    read_button_ = new QPushButton(buttonBar);
+    apply_button_ = new QPushButton(buttonBar);
+    save_button_ = new QPushButton(buttonBar);
+    close_button_ = new QPushButton(buttonBar);
     connect(read_button_, &QPushButton::clicked, this, &SkyDeviceConfigDialog::onReadClicked);
     connect(apply_button_, &QPushButton::clicked, this, &SkyDeviceConfigDialog::onApplyClicked);
     connect(save_button_, &QPushButton::clicked, this, &SkyDeviceConfigDialog::onSaveClicked);
@@ -465,7 +470,7 @@ void SkyDeviceConfigDialog::setupUi()
     buttonLayout->addWidget(save_button_);
     buttonLayout->addStretch();
     buttonLayout->addWidget(close_button_);
-    root->addLayout(buttonLayout);
+    root->addWidget(buttonBar);
 
     applyThemeStyle();
 }
