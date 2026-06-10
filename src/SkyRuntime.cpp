@@ -413,23 +413,15 @@ QVector<DownsampledWaveform> SkyRuntime::currentDownsampledWaveforms() const
         return waveforms;
     }
 
-    const QVector<float> rawSamples = device_manager_.latestRawWaveform();
     const QVector<float> harmonicSamples = device_manager_.latestWaveform();
-    if (rawSamples.isEmpty() && harmonicSamples.isEmpty())
+    if (harmonicSamples.isEmpty())
     {
         return waveforms;
     }
 
     const quint64 epsilonTimeUs = device_manager_.latestEpsilon().device_timestamp_us;
     const int ratio = std::max(1, device_manager_.config().wave_tcp.downsample_ratio);
-    if (!rawSamples.isEmpty())
-    {
-        waveforms.push_back(makeDownsampledWaveform(rawSamples, hostTimeUs, epsilonTimeUs, 1, ratio));
-    }
-    if (!harmonicSamples.isEmpty())
-    {
-        waveforms.push_back(makeDownsampledWaveform(harmonicSamples, hostTimeUs, epsilonTimeUs, 4, ratio));
-    }
+    waveforms.push_back(makeDownsampledWaveform(harmonicSamples, hostTimeUs, epsilonTimeUs, 4, ratio));
     return waveforms;
 }
 
@@ -620,19 +612,14 @@ void SkyRuntime::sendDownsampledWaveformFrame(bool honorStreamingEnabled)
     {
         return;
     }
+    if (harmonicSamples.isEmpty())
+    {
+        return;
+    }
     const int ratio = std::max(1, device_manager_.config().wave_tcp.downsample_ratio);
-    if (!rawSamples.isEmpty())
-    {
-        const DownsampledWaveform rawWaveform =
-            makeDownsampledWaveform(rawSamples, hostTimeUs, epsilonTimeUs, 1, ratio);
-        sendFrame(MsgType::WaveformDownsampled, TelemetryCodec::serializeDownsampledWaveform(rawWaveform));
-    }
-    if (!harmonicSamples.isEmpty())
-    {
-        const DownsampledWaveform harmonicWaveform =
-            makeDownsampledWaveform(harmonicSamples, hostTimeUs, epsilonTimeUs, 4, ratio);
-        sendFrame(MsgType::WaveformDownsampled, TelemetryCodec::serializeDownsampledWaveform(harmonicWaveform));
-    }
+    const DownsampledWaveform harmonicWaveform =
+        makeDownsampledWaveform(harmonicSamples, hostTimeUs, epsilonTimeUs, 4, ratio);
+    sendFrame(MsgType::WaveformDownsampled, TelemetryCodec::serializeDownsampledWaveform(harmonicWaveform));
 }
 
 void SkyRuntime::sendHeartbeat()
