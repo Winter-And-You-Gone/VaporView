@@ -419,7 +419,9 @@ private:
     bool remoteDeviceDataValid(VaporView::SkyDeviceId device, qint64 timeout_ms) const;
     QString remoteDeviceInvalidText(VaporView::SkyDeviceId device, qint64 timeout_ms) const;
     void noteRemotePacket(VaporView::MsgType type);
+    void noteRemoteWaveformPacket(quint16 channelId);
     double remotePacketRate(VaporView::MsgType type) const;
+    double remoteWaveformPacketRate(quint16 channelId) const;
     QString remoteTelemetrySummaryText() const;
     void updateRemoteTelemetrySummaryLabel();
     void updateEnvironmentStatusIcons(bool lidarValid, bool ptbValid, bool hmpValid);
@@ -628,6 +630,7 @@ private:
     QHash<VaporView::SkyDeviceId, VaporView::DeviceState> remote_device_states_;
     QHash<VaporView::SkyDeviceId, qint64> remote_last_data_ms_;
     QHash<int, QVector<qint64>> remote_packet_arrivals_ms_;
+    QHash<int, QVector<qint64>> remote_waveform_channel_arrivals_ms_;
     QHash<quint16, VaporView::PeakSearchRange> remote_peak_search_commands_;
     qint64 remote_last_status_ms_;
     VaporView::TelemetryStatus remote_status_;

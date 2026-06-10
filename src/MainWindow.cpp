@@ -162,8 +162,32 @@ constexpr int kTelemetrySummaryRateValueWidth = 86;
 constexpr int kTelemetrySummaryInfoLabelWidth = 118;
 constexpr int kTelemetrySummaryInfoValueWidth = 86;
 constexpr int kTelemetrySummaryTitleColumnWidth = kEpsilonSideTitleWidth;
+constexpr int kRemotePacketRateWindowMs = 5000;
 constexpr int kPtbMinSampleRateHz = 1;
 constexpr int kPtbMaxSampleRateHz = 70;
+
+void notePacketArrival(QVector<qint64>& arrivals, qint64 now)
+{
+    arrivals.push_back(now);
+    while (!arrivals.isEmpty() && now - arrivals.front() > kRemotePacketRateWindowMs)
+    {
+        arrivals.removeFirst();
+    }
+}
+
+double packetRateFromArrivals(const QVector<qint64>& arrivals)
+{
+    if (arrivals.size() < 2)
+    {
+        return 0.0;
+    }
+    const qint64 elapsedMs = arrivals.back() - arrivals.front();
+    if (elapsedMs <= 0)
+    {
+        return 0.0;
+    }
+    return (arrivals.size() - 1) * 1000.0 / static_cast<double>(elapsedMs);
+}
 
 QFont numericFontFrom(const QFont& base)
 {
@@ -4480,6 +4504,7 @@ void MainWindow::clearRemoteSkyDataUi()
     remote_device_states_.clear();
     remote_last_data_ms_.clear();
     remote_packet_arrivals_ms_.clear();
+    remote_waveform_channel_arrivals_ms_.clear();
     remote_last_status_ms_ = 0;
     remote_sky_online_ = false;
     remote_wave_stream_requested_ = false;
@@ -4526,6 +4551,7 @@ void MainWindow::markRemoteSkyLinkClosed()
     remote_wave_stream_requested_ = false;
     remote_wave_stream_enable_pending_ = false;
     remote_packet_arrivals_ms_.clear();
+    remote_waveform_channel_arrivals_ms_.clear();
     remote_recording_state_ = 0;
     remote_status_.recording_state = 0;
     if (tcp_wave_panel_)
@@ -4589,27 +4615,23 @@ void MainWindow::noteRemotePacket(VaporView::MsgType type)
 {
     const int key = static_cast<int>(type);
     QVector<qint64>& arrivals = remote_packet_arrivals_ms_[key];
-    const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    arrivals.push_back(now);
-    while (!arrivals.isEmpty() && now - arrivals.front() > 5000)
-    {
-        arrivals.removeFirst();
-    }
+    notePacketArrival(arrivals, QDateTime::currentMSecsSinceEpoch());
+}
+
+void MainWindow::noteRemoteWaveformPacket(quint16 channelId)
+{
+    QVector<qint64>& arrivals = remote_waveform_channel_arrivals_ms_[static_cast<int>(channelId)];
+    notePacketArrival(arrivals, QDateTime::currentMSecsSinceEpoch());
 }
 
 double MainWindow::remotePacketRate(VaporView::MsgType type) const
 {
-    const QVector<qint64> arrivals = remote_packet_arrivals_ms_.value(static_cast<int>(type));
-    if (arrivals.size() < 2)
-    {
-        return 0.0;
-    }
-    const qint64 elapsedMs = arrivals.back() - arrivals.front();
-    if (elapsedMs <= 0)
-    {
-        return 0.0;
-    }
-    return (arrivals.size() - 1) * 1000.0 / static_cast<double>(elapsedMs);
+    return packetRateFromArrivals(remote_packet_arrivals_ms_.value(static_cast<int>(type)));
+}
+
+double MainWindow::remoteWaveformPacketRate(quint16 channelId) const
+{
+    return packetRateFromArrivals(remote_waveform_channel_arrivals_ms_.value(static_cast<int>(channelId)));
 }
 
 QString MainWindow::remoteTelemetrySummaryText() const
@@ -4698,7 +4720,9 @@ QString MainWindow::remoteTelemetrySummaryText() const
     {
         rateRows += rowHtml(QStringLiteral("Basic:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryBasic), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
         rateRows += rowHtml(QStringLiteral("Feature:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformFeature), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
-        rateRows += rowHtml(QStringLiteral("Wave packets:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformDownsampled), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
+        rateRows += rowHtml(QStringLiteral("Wave total:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformDownsampled), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
+        rateRows += rowHtml(QStringLiteral("Wave raw:"), QStringLiteral("%1 Hz").arg(remoteWaveformPacketRate(1), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
+        rateRows += rowHtml(QStringLiteral("Wave harm.:"), QStringLiteral("%1 Hz").arg(remoteWaveformPacketRate(4), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
         rateRows += rowHtml(QStringLiteral("Status:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryStatus), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
         rateRows += rowHtml(QStringLiteral("Wave TCP actual:"), actualWaveRate, kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
         linkRows += rowHtml(QStringLiteral("Sky->Ground:"), formatBitRate(rxBps), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
@@ -4714,7 +4738,9 @@ QString MainWindow::remoteTelemetrySummaryText() const
     {
         rateRows += rowHtml(QStringLiteral("基础:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryBasic), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
         rateRows += rowHtml(QStringLiteral("特征值:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformFeature), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
-        rateRows += rowHtml(QStringLiteral("波形包:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformDownsampled), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
+        rateRows += rowHtml(QStringLiteral("波形总包:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformDownsampled), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
+        rateRows += rowHtml(QStringLiteral("原始波形:"), QStringLiteral("%1 Hz").arg(remoteWaveformPacketRate(1), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
+        rateRows += rowHtml(QStringLiteral("谐波波形:"), QStringLiteral("%1 Hz").arg(remoteWaveformPacketRate(4), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
         rateRows += rowHtml(QStringLiteral("状态:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryStatus), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
         rateRows += rowHtml(QStringLiteral("波形 TCP 实际:"), actualWaveRate, kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
         linkRows += rowHtml(QStringLiteral("天空→地面:"), formatBitRate(rxBps), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
@@ -10373,6 +10399,7 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
 void MainWindow::onRemoteWaveformUpdated(const VaporView::DownsampledWaveform& waveform)
 {
     noteRemotePacket(VaporView::MsgType::WaveformDownsampled);
+    noteRemoteWaveformPacket(waveform.channel_id);
     if (!remote_wave_stream_requested_)
     {
         return;
