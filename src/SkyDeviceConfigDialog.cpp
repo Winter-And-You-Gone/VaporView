@@ -8,7 +8,6 @@
 #include <QFontMetrics>
 #include <QFile>
 #include <QFileInfo>
-#include <QFrame>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -16,10 +15,10 @@
 #include <QJsonDocument>
 #include <QJsonParseError>
 #include <QMessageBox>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPalette>
 #include <QPixmap>
-#include <QPropertyAnimation>
 #include <QScrollArea>
 #include <QSerialPortInfo>
 #include <QSizePolicy>
@@ -27,6 +26,7 @@
 #include <QStackedWidget>
 #include <QStyle>
 #include <QSvgRenderer>
+#include <QVariantAnimation>
 #include <QVBoxLayout>
 #include <QApplication>
 
@@ -287,34 +287,19 @@ class ConfigModeSwitch : public QWidget
 public:
     explicit ConfigModeSwitch(QWidget *parent = nullptr)
         : QWidget(parent)
-        , thumb_(new QFrame(this))
-        , animation_(new QPropertyAnimation(thumb_, "geometry", this))
+        , animation_(new QVariantAnimation(this))
     {
         setObjectName(QStringLiteral("skyConfigModeSwitch"));
         setFixedHeight(34);
         setMinimumWidth(244);
         setCursor(Qt::PointingHandCursor);
         setAttribute(Qt::WA_StyledBackground, false);
-
-        thumb_->setObjectName(QStringLiteral("skyConfigModeThumb"));
-        thumb_->lower();
         animation_->setDuration(180);
         animation_->setEasingCurve(QEasingCurve::OutCubic);
-
-        for (int i = 0; i < 2; ++i)
-        {
-            buttons_[i] = new QPushButton(this);
-            buttons_[i]->setObjectName(QStringLiteral("skyConfigModeButton"));
-            buttons_[i]->setFlat(true);
-            buttons_[i]->setFocusPolicy(Qt::NoFocus);
-            buttons_[i]->setCursor(Qt::PointingHandCursor);
-            connect(buttons_[i], &QPushButton::clicked, this, [this, i]() {
-                if (onModeRequested)
-                {
-                    onModeRequested(i);
-                }
-            });
-        }
+        connect(animation_, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
+            thumb_position_ = value.toDouble();
+            update();
+        });
 
         refreshTheme();
     }
@@ -323,27 +308,26 @@ public:
     {
         labels_[0] = visualLabel;
         labels_[1] = rawLabel;
-        buttons_[0]->setText(labels_[0]);
-        buttons_[1]->setText(labels_[1]);
 
         QFontMetrics metrics(font());
         const int textWidth = std::max(metrics.horizontalAdvance(labels_[0]), metrics.horizontalAdvance(labels_[1]));
         setMinimumWidth(std::max(244, textWidth * 2 + 64));
-        updateButtonGeometry();
+        updateGeometry();
+        update();
     }
 
     void setCurrentIndex(int index, bool animate = true)
     {
         index = std::clamp(index, 0, 1);
-        if (current_index_ == index && !animation_->state())
+        if (current_index_ == index && animation_->state() == QAbstractAnimation::Stopped)
         {
-            updateButtonStyles();
+            update();
             return;
         }
 
         current_index_ = index;
         moveThumb(animate);
-        updateButtonStyles();
+        update();
     }
 
     void refreshTheme()
@@ -353,15 +337,17 @@ public:
         thumb_color_ = dark ? QColor(217, 119, 87) : QColor("#1976d2");
         inactive_text_color_ = dark ? QColor("#cbd5e1") : QColor("#475569");
         active_text_color_ = QColor("#ffffff");
-        thumb_->setStyleSheet(QStringLiteral("QFrame#skyConfigModeThumb { background-color: %1; border-radius: 14px; }")
-                                  .arg(thumb_color_.name(QColor::HexRgb)));
-        updateButtonStyles();
         update();
     }
 
     std::function<void(int)> onModeRequested;
 
 protected:
+    QSize sizeHint() const override
+    {
+        return QSize(std::max(minimumWidth(), 244), 34);
+    }
+
     void paintEvent(QPaintEvent *) override
     {
         QPainter painter(this);
@@ -369,74 +355,83 @@ protected:
         painter.setPen(Qt::NoPen);
         painter.setBrush(background_color_);
         painter.drawRoundedRect(rect(), height() / 2.0, height() / 2.0);
+
+        const QRectF thumbRect = thumbGeometryForPosition(thumb_position_);
+        painter.setBrush(thumb_color_);
+        painter.drawRoundedRect(thumbRect, thumbRect.height() / 2.0, thumbRect.height() / 2.0);
+
+        QFont textFont = font();
+        textFont.setWeight(QFont::DemiBold);
+        painter.setFont(textFont);
+        const QRect leftRect(0, 0, width() / 2, height());
+        const QRect rightRect(width() / 2, 0, width() - width() / 2, height());
+        for (int i = 0; i < 2; ++i)
+        {
+            painter.setPen(i == current_index_ ? active_text_color_ : inactive_text_color_);
+            painter.drawText(i == 0 ? leftRect : rightRect, Qt::AlignCenter, labels_[i]);
+        }
     }
 
-    void resizeEvent(QResizeEvent *) override
+    void mouseReleaseEvent(QMouseEvent *event) override
     {
-        updateButtonGeometry();
-        moveThumb(false);
+        if (event->button() == Qt::LeftButton && rect().contains(event->pos()))
+        {
+            const int index = event->position().x() < width() / 2.0 ? 0 : 1;
+            if (onModeRequested)
+            {
+                onModeRequested(index);
+            }
+            event->accept();
+            return;
+        }
+        QWidget::mouseReleaseEvent(event);
+    }
+
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        if (event->button() == Qt::LeftButton)
+        {
+            event->accept();
+            return;
+        }
+        QWidget::mousePressEvent(event);
     }
 
 private:
-    QRect thumbGeometryForIndex(int index) const
+    QRectF thumbGeometryForPosition(double position) const
     {
         constexpr int margin = 3;
-        const int segmentWidth = std::max(1, (width() - margin * 2) / 2);
-        return QRect(margin + segmentWidth * index,
-                     margin,
-                     segmentWidth,
-                     std::max(1, height() - margin * 2));
-    }
-
-    void updateButtonGeometry()
-    {
-        const int segmentWidth = std::max(1, width() / 2);
-        buttons_[0]->setGeometry(0, 0, segmentWidth, height());
-        buttons_[1]->setGeometry(segmentWidth, 0, width() - segmentWidth, height());
-        for (QPushButton *button : buttons_)
-        {
-            button->raise();
-        }
-        thumb_->lower();
+        const double segmentWidth = std::max(1.0, (width() - margin * 2) / 2.0);
+        return QRectF(margin + segmentWidth * position,
+                      margin,
+                      segmentWidth,
+                      std::max(1, height() - margin * 2));
     }
 
     void moveThumb(bool animate)
     {
-        const QRect target = thumbGeometryForIndex(current_index_);
         if (!animate)
         {
             animation_->stop();
-            thumb_->setGeometry(target);
+            thumb_position_ = static_cast<double>(current_index_);
+            update();
             return;
         }
 
         animation_->stop();
-        animation_->setStartValue(thumb_->geometry().isValid() ? thumb_->geometry() : thumbGeometryForIndex(current_index_ == 0 ? 1 : 0));
-        animation_->setEndValue(target);
+        animation_->setStartValue(thumb_position_);
+        animation_->setEndValue(static_cast<double>(current_index_));
         animation_->start();
     }
 
-    void updateButtonStyles()
-    {
-        for (int i = 0; i < 2; ++i)
-        {
-            const QColor color = i == current_index_ ? active_text_color_ : inactive_text_color_;
-            buttons_[i]->setStyleSheet(QStringLiteral(
-                "QPushButton#skyConfigModeButton { background-color: transparent; border: none; border-radius: 14px; color: %1; padding: 0 12px; font-weight: 600; }"
-                "QPushButton#skyConfigModeButton:hover { background-color: transparent; }")
-                .arg(color.name(QColor::HexRgb)));
-        }
-    }
-
-    QFrame *thumb_ = nullptr;
-    QPushButton *buttons_[2] = {nullptr, nullptr};
-    QPropertyAnimation *animation_ = nullptr;
+    QVariantAnimation *animation_ = nullptr;
     QString labels_[2];
     QColor background_color_;
     QColor thumb_color_;
     QColor active_text_color_;
     QColor inactive_text_color_;
     int current_index_ = 0;
+    double thumb_position_ = 0.0;
 };
 
 SkyDeviceConfigDialog::SkyDeviceConfigDialog(GroundTelemetryService *service, QWidget *parent)
