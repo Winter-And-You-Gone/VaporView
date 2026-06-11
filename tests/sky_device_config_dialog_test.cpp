@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QGroupBox>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPushButton>
@@ -78,13 +79,42 @@ int main(int argc, char **argv)
     for (QPushButton *button : enableButtons)
     {
         require(button->parentWidget() != nullptr, "enable button parent exists");
-        require(button->parentWidget()->objectName() == QStringLiteral("skyConfigGroupTitleBar"),
-                "enable button is in card title bar");
+        require(button->parentWidget()->objectName() == QStringLiteral("skyConfigEnableTitleAction"),
+                "enable button is in title action");
+        require(button->parentWidget()->parentWidget() != nullptr &&
+                    button->parentWidget()->parentWidget()->objectName() == QStringLiteral("skyConfigGroupTitleBar"),
+                "enable button action is in card title bar");
+    }
+    const QList<QLabel*> enableLabels = dialog.findChildren<QLabel *>(QStringLiteral("skyConfigEnableTitleLabel"));
+    require(enableLabels.size() == 5, "five enable labels");
+    for (QLabel *label : enableLabels)
+    {
+        require(label->text() == QStringLiteral("启用"), "enable label text");
+        require(label->parentWidget() != nullptr &&
+                    label->parentWidget()->objectName() == QStringLiteral("skyConfigEnableTitleAction"),
+                "enable label is in title action");
     }
     const QList<QLabel*> labels = dialog.findChildren<QLabel *>();
     for (QLabel *label : labels)
     {
-        require(label->text() != QStringLiteral("启用"), "enabled label removed from form body");
+        if (label->text() == QStringLiteral("启用"))
+        {
+            require(label->objectName() == QStringLiteral("skyConfigEnableTitleLabel"),
+                    "enabled label only appears in title bar");
+        }
+    }
+    const QList<QGroupBox*> groups = dialog.findChildren<QGroupBox *>();
+    require(!groups.isEmpty(), "config groups exist");
+    for (QGroupBox *group : groups)
+    {
+        auto *titleLabel = group->findChild<QLabel *>(QStringLiteral("skyConfigGroupTitleLabel"));
+        const QString title = titleLabel ? titleLabel->text() : QString();
+        if (title == QStringLiteral("EPSILON") ||
+            title == QStringLiteral("PTB210") ||
+            title == QStringLiteral("HMP3"))
+        {
+            require(group->height() <= group->sizeHint().height() + 12, "top row cards are not stretched vertically");
+        }
     }
 
     auto *stack = dialog.findChild<QStackedWidget *>();

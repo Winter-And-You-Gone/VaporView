@@ -158,9 +158,25 @@ void setupFormLayout(QFormLayout *layout)
     layout->setFieldGrowthPolicy(QFormLayout::FieldsStayAtSizeHint);
 }
 
+QWidget *createEnableTitleAction(QWidget *parent, QLabel *&label, QPushButton *button)
+{
+    auto *container = new QWidget(parent);
+    container->setObjectName(QStringLiteral("skyConfigEnableTitleAction"));
+    auto *layout = new QHBoxLayout(container);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(8);
+
+    label = new QLabel(container);
+    label->setObjectName(QStringLiteral("skyConfigEnableTitleLabel"));
+    layout->addWidget(label, 0, Qt::AlignVCenter);
+    layout->addWidget(button, 0, Qt::AlignVCenter);
+    return container;
+}
+
 QFormLayout *createCardFormLayout(QGroupBox *group, const QString& title, QWidget *titleAction = nullptr)
 {
     group->setTitle(QString());
+    group->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
 
     auto *cardLayout = new QVBoxLayout(group);
     cardLayout->setContentsMargins(0, 0, 0, 0);
@@ -186,6 +202,7 @@ QFormLayout *createCardFormLayout(QGroupBox *group, const QString& title, QWidge
 
     auto *body = new QWidget(group);
     body->setObjectName(QStringLiteral("skyConfigGroupBody"));
+    body->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     auto *formLayout = new QFormLayout(body);
     setupFormLayout(formLayout);
     cardLayout->addWidget(body);
@@ -225,6 +242,7 @@ QString skyDeviceConfigStyleSheet(bool dark)
             "QDialog#skyDeviceConfigDialog QGroupBox { background-color: #fbfcfe; border: 1px solid #dfe4ea; border-radius: 8px; margin-top: 0px; padding: 0px; color: #1f2937; }"
             "QDialog#skyDeviceConfigDialog QWidget#skyConfigGroupTitleBar { background-color: #ffffff; border-bottom: 1px solid #dfe4ea; border-top-left-radius: 7px; border-top-right-radius: 7px; }"
             "QDialog#skyDeviceConfigDialog QLabel#skyConfigGroupTitleLabel { color: #1f2937; font-size: 15px; font-weight: bold; background-color: transparent; }"
+            "QDialog#skyDeviceConfigDialog QLabel#skyConfigEnableTitleLabel { color: #1f2937; font-size: 14px; font-weight: normal; background-color: transparent; }"
             "QDialog#skyDeviceConfigDialog QWidget#skyConfigGroupBody { background-color: transparent; }"
             "QDialog#skyDeviceConfigDialog QLabel { color: #1f2a35; }"
             "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus { color: #64748b; padding: 2px 4px; }"
@@ -246,6 +264,7 @@ QString skyDeviceConfigStyleSheet(bool dark)
         "QDialog#skyDeviceConfigDialog QGroupBox { background-color: #121212; border: 1px solid #202020; border-radius: 8px; margin-top: 0px; padding: 0px; color: #e5e7eb; }"
         "QDialog#skyDeviceConfigDialog QWidget#skyConfigGroupTitleBar { background-color: #121212; border-bottom: 1px solid #202020; border-top-left-radius: 7px; border-top-right-radius: 7px; }"
         "QDialog#skyDeviceConfigDialog QLabel#skyConfigGroupTitleLabel { color: #e5e7eb; font-size: 15px; font-weight: bold; background-color: transparent; }"
+        "QDialog#skyDeviceConfigDialog QLabel#skyConfigEnableTitleLabel { color: #d8dee9; font-size: 14px; font-weight: normal; background-color: transparent; }"
         "QDialog#skyDeviceConfigDialog QWidget#skyConfigGroupBody { background-color: transparent; }"
         "QDialog#skyDeviceConfigDialog QLabel { color: #d8dee9; background-color: transparent; }"
         "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus { color: #94a3b8; padding: 2px 4px; }"
@@ -624,12 +643,17 @@ void SkyDeviceConfigDialog::setupUi()
     {
         deviceGrid->setColumnStretch(column, 1);
     }
+    for (int row = 0; row < 2; ++row)
+    {
+        deviceGrid->setRowStretch(row, 0);
+    }
     contentLayout->addLayout(deviceGrid);
+    contentLayout->addStretch(1);
 
     auto addSerialGroup = [this, deviceGrid](const QString& title, QGroupBox*& group, SerialRow& row, int rowIndex, int columnIndex) {
         group = new QGroupBox(title, this);
         row = createSerialRow(title);
-        auto *layout = createCardFormLayout(group, title, row.enabled);
+        auto *layout = createCardFormLayout(group, title, createEnableTitleAction(group, row.enabled_label, row.enabled));
         createSerialFields(layout, row);
         deviceGrid->addWidget(group, rowIndex, columnIndex);
     };
@@ -646,7 +670,10 @@ void SkyDeviceConfigDialog::setupUi()
     connect(wave_enabled_, &QPushButton::toggled, this, [this](bool) {
         updateEnableButton(wave_enabled_);
     });
-    auto *waveLayout = createCardFormLayout(wave_group_, QStringLiteral("Wave TCP"), wave_enabled_);
+    auto *waveLayout = createCardFormLayout(
+        wave_group_,
+        QStringLiteral("Wave TCP"),
+        createEnableTitleAction(wave_group_, wave_enabled_label_, wave_enabled_));
     wave_host_ = new QLineEdit(this);
     wave_port_ = new QSpinBox(this);
     wave_port_->setRange(1, 65535);
@@ -819,6 +846,7 @@ void SkyDeviceConfigDialog::updateTexts()
 {
     setWindowTitle(is_english_ ? "Sky Device Config" : "天空端设备配置");
     auto updateSerialLabels = [this](const SerialRow& row) {
+        if (row.enabled_label) row.enabled_label->setText(is_english_ ? QStringLiteral("Enabled") : QStringLiteral("启用"));
         if (row.port_label) row.port_label->setText(is_english_ ? QStringLiteral("Port") : QStringLiteral("串口"));
         if (row.baud_label) row.baud_label->setText(is_english_ ? QStringLiteral("Baud") : QStringLiteral("波特率"));
         if (row.frequency_label) row.frequency_label->setText(is_english_ ? QStringLiteral("Frequency Hz") : QStringLiteral("频率 Hz"));
@@ -833,6 +861,7 @@ void SkyDeviceConfigDialog::updateTexts()
     updateSerialLabels(ptb_);
     updateSerialLabels(hmp_);
     updateSerialLabels(lidar_);
+    if (wave_enabled_label_) wave_enabled_label_->setText(is_english_ ? QStringLiteral("Enabled") : QStringLiteral("启用"));
     if (wave_host_label_) wave_host_label_->setText(is_english_ ? QStringLiteral("Host") : QStringLiteral("主机"));
     if (wave_port_label_) wave_port_label_->setText(is_english_ ? QStringLiteral("Port") : QStringLiteral("端口"));
     if (wave_downsample_label_) wave_downsample_label_->setText(is_english_ ? QStringLiteral("Downsample") : QStringLiteral("降采样倍率"));
