@@ -441,6 +441,10 @@ SkyDeviceConfigDialog::SkyDeviceConfigDialog(GroundTelemetryService *service, QW
     setWindowFlag(Qt::Window, true);
     setupUi();
     VaporView::installCustomTitleBar(this);
+    mode_switch_ = new ConfigModeSwitch();
+    mode_switch_->onModeRequested = [this](int index) {
+        setConfigMode(index == 0 ? ConfigMode::Visual : ConfigMode::Raw);
+    };
     VaporView::addWidgetToCustomTitleBar(this, mode_switch_);
     if (service_)
     {
@@ -588,11 +592,6 @@ void SkyDeviceConfigDialog::setupUi()
     auto *root = new QVBoxLayout(this);
     root->setContentsMargins(18, 18, 18, 16);
     root->setSpacing(12);
-
-    mode_switch_ = new ConfigModeSwitch(this);
-    mode_switch_->onModeRequested = [this](int index) {
-        setConfigMode(index == 0 ? ConfigMode::Visual : ConfigMode::Raw);
-    };
 
     mode_stack_ = new QStackedWidget(this);
     visual_page_ = new QWidget(mode_stack_);

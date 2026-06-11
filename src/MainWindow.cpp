@@ -6323,7 +6323,6 @@ void MainWindow::setupConfigPanel()
     auto_detect_ports_btn_->setMinimumWidth(120);
     connect(auto_detect_ports_btn_, &QPushButton::clicked, this, &MainWindow::onAutoDetectPortsClicked);
     configTitleLayout->addWidget(auto_detect_ports_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    configTitleLayout->addStretch(1);
 
     data_source_mode_lbl_ = new QLabel(this);
     data_source_mode_lbl_->setObjectName("fieldLabel");
@@ -6343,6 +6342,7 @@ void MainWindow::setupConfigPanel()
     sky_device_config_btn_->setMinimumWidth(150);
     connect(sky_device_config_btn_, &QPushButton::clicked, this, &MainWindow::onSkyDeviceConfigClicked);
     configTitleLayout->addWidget(sky_device_config_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    configTitleLayout->addStretch(1);
     config_root_layout->addWidget(configTitleBar);
 
     sky_telemetry_transport_lbl_ = new QLabel(this);

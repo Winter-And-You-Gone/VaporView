@@ -443,6 +443,28 @@ if(BUILD_TESTING)
     target_link_libraries(telemetry_tcp_link_test PRIVATE vaporview_sky_core)
     add_test(NAME telemetry_tcp_link_test COMMAND telemetry_tcp_link_test)
 
+    add_executable(sky_device_config_dialog_test
+        tests/sky_device_config_dialog_test.cpp
+        src/SkyDeviceConfigDialog.cpp
+        src/CustomTitleBar.cpp
+        src/GroundTelemetryService.cpp
+        include/SkyDeviceConfigDialog.h
+        include/GroundTelemetryService.h
+    )
+    target_include_directories(sky_device_config_dialog_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_link_libraries(sky_device_config_dialog_test PRIVATE
+        vaporview_sky_core
+        Qt6::Widgets
+        Qt6::Svg
+    )
+    if(WIN32)
+        target_link_libraries(sky_device_config_dialog_test PRIVATE dwmapi)
+    endif()
+    add_test(NAME sky_device_config_dialog_test COMMAND sky_device_config_dialog_test)
+
     add_executable(sky_session_recorder_test
         tests/sky_session_recorder_test.cpp
     )
