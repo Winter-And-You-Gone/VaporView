@@ -17,6 +17,8 @@
 #include <QSpinBox>
 
 class QEvent;
+class QStackedWidget;
+class QWidget;
 
 namespace VaporView
 {
@@ -42,6 +44,12 @@ protected:
     void changeEvent(QEvent *event) override;
 
 private:
+    enum class ConfigMode
+    {
+        Visual,
+        Raw
+    };
+
     struct SerialRow
     {
         QPushButton *enabled = nullptr;
@@ -64,6 +72,11 @@ private:
     void refreshSerialPortOptions();
     void updateEnableButton(QPushButton *button);
     void updateConfigPreview();
+    void setConfigMode(ConfigMode mode);
+    void updateModeSwitch();
+    void syncRawTextFromVisual();
+    bool configFromRawText(SkyConfig& config, QString *errorMessage) const;
+    void setRawStatus(const QString& message, bool error = false);
     void applyDynamicMetrics();
     void applyThemeStyle();
 
@@ -104,7 +117,14 @@ private:
     QPushButton *apply_button_ = nullptr;
     QPushButton *save_button_ = nullptr;
     QPushButton *close_button_ = nullptr;
-    QPlainTextEdit *result_text_ = nullptr;
+    ConfigMode config_mode_ = ConfigMode::Visual;
+    QPushButton *visual_mode_button_ = nullptr;
+    QPushButton *raw_mode_button_ = nullptr;
+    QStackedWidget *mode_stack_ = nullptr;
+    QWidget *visual_page_ = nullptr;
+    QWidget *raw_page_ = nullptr;
+    QPlainTextEdit *raw_config_text_ = nullptr;
+    QLabel *raw_status_label_ = nullptr;
 };
 
 }  // namespace VaporView

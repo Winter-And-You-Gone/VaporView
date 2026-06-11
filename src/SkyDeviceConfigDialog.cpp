@@ -12,6 +12,7 @@
 #include <QHBoxLayout>
 #include <QIcon>
 #include <QJsonDocument>
+#include <QJsonParseError>
 #include <QMessageBox>
 #include <QPainter>
 #include <QPalette>
@@ -19,6 +20,9 @@
 #include <QScrollArea>
 #include <QSerialPortInfo>
 #include <QSizePolicy>
+#include <QSignalBlocker>
+#include <QStackedWidget>
+#include <QStyle>
 #include <QSvgRenderer>
 #include <QVBoxLayout>
 #include <QApplication>
@@ -206,11 +210,18 @@ QString skyDeviceConfigStyleSheet(bool dark)
             "QDialog#skyDeviceConfigDialog QScrollArea { background-color: #f3f5f7; border: none; }"
             "QDialog#skyDeviceConfigDialog QScrollArea > QWidget { background-color: #f3f5f7; }"
             "QDialog#skyDeviceConfigDialog QWidget#skyConfigContent { background-color: #f3f5f7; }"
+            "QDialog#skyDeviceConfigDialog QWidget#skyConfigRawPage { background-color: #f3f5f7; }"
             "QDialog#skyDeviceConfigDialog QGroupBox { background-color: #fbfcfe; border: 1px solid #dfe4ea; border-radius: 8px; margin-top: 0px; padding: 0px; color: #1f2937; }"
             "QDialog#skyDeviceConfigDialog QWidget#skyConfigGroupTitleBar { background-color: #ffffff; border-bottom: 1px solid #dfe4ea; border-top-left-radius: 7px; border-top-right-radius: 7px; }"
             "QDialog#skyDeviceConfigDialog QLabel#skyConfigGroupTitleLabel { color: #1f2937; font-size: 15px; font-weight: bold; background-color: transparent; }"
             "QDialog#skyDeviceConfigDialog QWidget#skyConfigGroupBody { background-color: transparent; }"
             "QDialog#skyDeviceConfigDialog QLabel { color: #1f2a35; }"
+            "QDialog#skyDeviceConfigDialog QWidget#skyConfigModeSwitch { background-color: #e5e7eb; border-radius: 18px; padding: 3px; }"
+            "QDialog#skyDeviceConfigDialog QPushButton#skyConfigModeButton { background-color: transparent; color: #475569; border: none; border-radius: 15px; padding: 6px 18px; min-height: 30px; font-weight: 600; }"
+            "QDialog#skyDeviceConfigDialog QPushButton#skyConfigModeButton:hover { background-color: #f8fafc; color: #1f2937; }"
+            "QDialog#skyDeviceConfigDialog QPushButton#skyConfigModeButton:checked { background-color: #1976d2; color: #ffffff; }"
+            "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus { color: #64748b; padding: 2px 4px; }"
+            "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus[status=\"error\"] { color: #b42318; }"
             "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle { background-color: #ffffff; color: #b42318; border: 1px solid #cbd5e1; border-radius: 5px; padding: 0; min-width: 30px; max-width: 30px; min-height: 30px; max-height: 30px; }"
             "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:hover { background-color: #f8fafc; border-color: #94a3b8; }"
             "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked { background-color: #1976d2; color: #ffffff; border-color: #1976d2; }"
@@ -224,11 +235,18 @@ QString skyDeviceConfigStyleSheet(bool dark)
         "QDialog#skyDeviceConfigDialog QScrollArea { background-color: #0D0D0D; border: none; }"
         "QDialog#skyDeviceConfigDialog QScrollArea > QWidget { background-color: #0D0D0D; }"
         "QDialog#skyDeviceConfigDialog QWidget#skyConfigContent { background-color: #0D0D0D; }"
+        "QDialog#skyDeviceConfigDialog QWidget#skyConfigRawPage { background-color: #0D0D0D; }"
         "QDialog#skyDeviceConfigDialog QGroupBox { background-color: #121212; border: 1px solid #202020; border-radius: 8px; margin-top: 0px; padding: 0px; color: #e5e7eb; }"
         "QDialog#skyDeviceConfigDialog QWidget#skyConfigGroupTitleBar { background-color: #121212; border-bottom: 1px solid #202020; border-top-left-radius: 7px; border-top-right-radius: 7px; }"
         "QDialog#skyDeviceConfigDialog QLabel#skyConfigGroupTitleLabel { color: #e5e7eb; font-size: 15px; font-weight: bold; background-color: transparent; }"
         "QDialog#skyDeviceConfigDialog QWidget#skyConfigGroupBody { background-color: transparent; }"
         "QDialog#skyDeviceConfigDialog QLabel { color: #d8dee9; background-color: transparent; }"
+        "QDialog#skyDeviceConfigDialog QWidget#skyConfigModeSwitch { background-color: #1f2937; border-radius: 18px; padding: 3px; }"
+        "QDialog#skyDeviceConfigDialog QPushButton#skyConfigModeButton { background-color: transparent; color: #cbd5e1; border: none; border-radius: 15px; padding: 6px 18px; min-height: 30px; font-weight: 600; }"
+        "QDialog#skyDeviceConfigDialog QPushButton#skyConfigModeButton:hover { background-color: #273449; color: #ffffff; }"
+        "QDialog#skyDeviceConfigDialog QPushButton#skyConfigModeButton:checked { background-color: rgb(217, 119, 87); color: #ffffff; }"
+        "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus { color: #94a3b8; padding: 2px 4px; }"
+        "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus[status=\"error\"] { color: #fca5a5; }"
         "QDialog#skyDeviceConfigDialog QLineEdit,"
         "QDialog#skyDeviceConfigDialog QComboBox,"
         "QDialog#skyDeviceConfigDialog QSpinBox,"
@@ -315,13 +333,34 @@ void SkyDeviceConfigDialog::onApplyClicked()
     {
         return;
     }
-    const SkyConfig config = currentConfigFromUi();
+
+    SkyConfig config;
     QString error;
+    if (config_mode_ == ConfigMode::Raw)
+    {
+        if (!configFromRawText(config, &error))
+        {
+            setRawStatus(error, true);
+            QMessageBox::warning(this, is_english_ ? "Invalid Config" : "配置无效", error);
+            return;
+        }
+        setConfig(config);
+        setConfigMode(ConfigMode::Raw);
+    }
+    else
+    {
+        config = currentConfigFromUi();
+    }
+
     if (!config.validate(&error))
     {
+        setRawStatus(error, true);
         QMessageBox::warning(this, is_english_ ? "Invalid Config" : "配置无效", error);
         return;
     }
+    current_config_ = config;
+    syncRawTextFromVisual();
+    setRawStatus(is_english_ ? QStringLiteral("Config sent to sky.") : QStringLiteral("配置已发送到天空端。"));
     service_->setSkyConfig(config.toJson());
 }
 
@@ -339,16 +378,45 @@ void SkyDeviceConfigDialog::onSkyConfigReceived(const QJsonObject& object)
     QString error;
     if (!SkyConfig::fromJson(object, config, &error))
     {
-        result_text_->setPlainText(QStringLiteral("Invalid config from sky: %1").arg(error));
+        if (raw_config_text_)
+        {
+            raw_config_text_->setPlainText(QJsonDocument(object).toJson(QJsonDocument::Indented));
+        }
+        if (mode_stack_ && raw_page_)
+        {
+            config_mode_ = ConfigMode::Raw;
+            mode_stack_->setCurrentWidget(raw_page_);
+            updateModeSwitch();
+        }
+        setRawStatus(QStringLiteral("Invalid config from sky: %1").arg(error), true);
         return;
     }
     setConfig(config);
-    result_text_->setPlainText(QJsonDocument(object).toJson(QJsonDocument::Indented));
+    syncRawTextFromVisual();
+    setRawStatus(is_english_ ? QStringLiteral("Config read from sky.") : QStringLiteral("已读取天空端配置。"));
 }
 
 void SkyDeviceConfigDialog::onApplyResultReceived(const QJsonObject& result)
 {
-    result_text_->setPlainText(QJsonDocument(result).toJson(QJsonDocument::Indented));
+    const bool success = result.value(QStringLiteral("success")).toBool(false);
+    const QString error = result.value(QStringLiteral("error")).toString();
+    QString message;
+    if (success)
+    {
+        message = is_english_ ? QStringLiteral("Sky accepted the config.") : QStringLiteral("天空端已应用配置。");
+    }
+    else
+    {
+        message = error.isEmpty()
+            ? (is_english_ ? QStringLiteral("Sky failed to apply the config.") : QStringLiteral("天空端应用配置失败。"))
+            : (is_english_ ? QStringLiteral("Sky failed to apply the config: %1").arg(error)
+                           : QStringLiteral("天空端应用配置失败：%1").arg(error));
+    }
+    setRawStatus(message, !success);
+    if (raw_status_label_)
+    {
+        raw_status_label_->setToolTip(QString::fromUtf8(QJsonDocument(result).toJson(QJsonDocument::Indented)));
+    }
 }
 
 void SkyDeviceConfigDialog::changeEvent(QEvent *event)
@@ -370,7 +438,51 @@ void SkyDeviceConfigDialog::setupUi()
     root->setContentsMargins(18, 18, 18, 16);
     root->setSpacing(12);
 
-    auto *scroll = new QScrollArea(this);
+    auto *modeRow = new QWidget(this);
+    auto *modeRowLayout = new QHBoxLayout(modeRow);
+    modeRowLayout->setContentsMargins(0, 0, 0, 0);
+    modeRowLayout->setSpacing(0);
+
+    auto *modeSwitch = new QWidget(modeRow);
+    modeSwitch->setObjectName(QStringLiteral("skyConfigModeSwitch"));
+    modeSwitch->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    auto *modeLayout = new QHBoxLayout(modeSwitch);
+    modeLayout->setContentsMargins(3, 3, 3, 3);
+    modeLayout->setSpacing(0);
+
+    visual_mode_button_ = new QPushButton(modeSwitch);
+    raw_mode_button_ = new QPushButton(modeSwitch);
+    for (QPushButton *button : {visual_mode_button_, raw_mode_button_})
+    {
+        button->setObjectName(QStringLiteral("skyConfigModeButton"));
+        button->setCheckable(true);
+        button->setAutoExclusive(true);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setMinimumWidth(116);
+    }
+    connect(visual_mode_button_, &QPushButton::clicked, this, [this]() {
+        setConfigMode(ConfigMode::Visual);
+    });
+    connect(raw_mode_button_, &QPushButton::clicked, this, [this]() {
+        setConfigMode(ConfigMode::Raw);
+    });
+    modeLayout->addWidget(visual_mode_button_);
+    modeLayout->addWidget(raw_mode_button_);
+    modeRowLayout->addStretch();
+    modeRowLayout->addWidget(modeSwitch);
+    modeRowLayout->addStretch();
+    root->addWidget(modeRow);
+
+    mode_stack_ = new QStackedWidget(this);
+    visual_page_ = new QWidget(mode_stack_);
+    raw_page_ = new QWidget(mode_stack_);
+    raw_page_->setObjectName(QStringLiteral("skyConfigRawPage"));
+
+    auto *visualLayout = new QVBoxLayout(visual_page_);
+    visualLayout->setContentsMargins(0, 0, 0, 0);
+    visualLayout->setSpacing(0);
+
+    auto *scroll = new QScrollArea(visual_page_);
     scroll->setObjectName(QStringLiteral("skyConfigScrollArea"));
     scroll->setWidgetResizable(true);
     auto *content = new QWidget(scroll);
@@ -445,12 +557,25 @@ void SkyDeviceConfigDialog::setupUi()
     telemetry_status_label_ = addLabeledRow(telemetryLayout, QStringLiteral("状态 Hz"), telemetry_status_rate_);
     deviceGrid->addWidget(telemetry_group_, 1, 2);
 
-    result_text_ = new QPlainTextEdit(this);
-    result_text_->setReadOnly(true);
-    result_text_->setMinimumHeight(160);
-    contentLayout->addWidget(result_text_);
     scroll->setWidget(content);
-    root->addWidget(scroll, 1);
+    visualLayout->addWidget(scroll);
+
+    auto *rawLayout = new QVBoxLayout(raw_page_);
+    rawLayout->setContentsMargins(8, 8, 8, 8);
+    rawLayout->setSpacing(8);
+    raw_status_label_ = new QLabel(raw_page_);
+    raw_status_label_->setObjectName(QStringLiteral("skyConfigRawStatus"));
+    raw_status_label_->setWordWrap(true);
+    raw_config_text_ = new QPlainTextEdit(raw_page_);
+    raw_config_text_->setLineWrapMode(QPlainTextEdit::NoWrap);
+    raw_config_text_->setMinimumHeight(360);
+    rawLayout->addWidget(raw_status_label_);
+    rawLayout->addWidget(raw_config_text_, 1);
+
+    mode_stack_->addWidget(visual_page_);
+    mode_stack_->addWidget(raw_page_);
+    mode_stack_->setCurrentWidget(visual_page_);
+    root->addWidget(mode_stack_, 1);
 
     auto *buttonBar = new QWidget(this);
     buttonBar->setObjectName(QStringLiteral("skyConfigButtonBar"));
@@ -474,6 +599,7 @@ void SkyDeviceConfigDialog::setupUi()
     root->addWidget(buttonBar);
 
     applyThemeStyle();
+    updateModeSwitch();
 }
 
 SkyDeviceConfigDialog::SerialRow SkyDeviceConfigDialog::createSerialRow(QFormLayout *layout, const QString&)
@@ -598,6 +724,14 @@ void SkyDeviceConfigDialog::updateTexts()
     apply_button_->setText(is_english_ ? "Apply Config" : "应用配置");
     save_button_->setText(is_english_ ? "Save To Sky" : "保存到天空端");
     close_button_->setText(is_english_ ? "Close" : "关闭");
+    if (visual_mode_button_) visual_mode_button_->setText(is_english_ ? QStringLiteral("Visual Config") : QStringLiteral("可视化配置"));
+    if (raw_mode_button_) raw_mode_button_->setText(is_english_ ? QStringLiteral("Raw Config") : QStringLiteral("原始配置"));
+    if (raw_status_label_ && raw_status_label_->text().isEmpty())
+    {
+        setRawStatus(is_english_
+                         ? QStringLiteral("Edit the same JSON used by the sky config file.")
+                         : QStringLiteral("可直接编辑天空端配置文件使用的 JSON。"));
+    }
 }
 
 void SkyDeviceConfigDialog::refreshSerialPortOptions()
@@ -645,11 +779,135 @@ void SkyDeviceConfigDialog::updateEnableButton(QPushButton *button)
 
 void SkyDeviceConfigDialog::updateConfigPreview()
 {
-    if (!result_text_)
+    if (!raw_config_text_)
     {
         return;
     }
-    result_text_->setPlainText(QJsonDocument(currentConfigFromUi().toJson()).toJson(QJsonDocument::Indented));
+    if (config_mode_ == ConfigMode::Visual || raw_config_text_->toPlainText().trimmed().isEmpty())
+    {
+        syncRawTextFromVisual();
+    }
+}
+
+void SkyDeviceConfigDialog::setConfigMode(ConfigMode mode)
+{
+    if (mode == config_mode_)
+    {
+        if (mode_stack_)
+        {
+            mode_stack_->setCurrentWidget(mode == ConfigMode::Raw ? raw_page_ : visual_page_);
+        }
+        updateModeSwitch();
+        return;
+    }
+
+    if (mode == ConfigMode::Raw)
+    {
+        syncRawTextFromVisual();
+        config_mode_ = ConfigMode::Raw;
+        if (mode_stack_ && raw_page_)
+        {
+            mode_stack_->setCurrentWidget(raw_page_);
+        }
+        setRawStatus(is_english_
+                         ? QStringLiteral("Edit the same JSON used by the sky config file.")
+                         : QStringLiteral("可直接编辑天空端配置文件使用的 JSON。"));
+        updateModeSwitch();
+        return;
+    }
+
+    if (config_mode_ == ConfigMode::Raw)
+    {
+        SkyConfig config;
+        QString error;
+        if (!configFromRawText(config, &error))
+        {
+            setRawStatus(error, true);
+            updateModeSwitch();
+            return;
+        }
+        setConfig(config);
+    }
+
+    config_mode_ = ConfigMode::Visual;
+    if (mode_stack_ && visual_page_)
+    {
+        mode_stack_->setCurrentWidget(visual_page_);
+    }
+    setRawStatus(is_english_
+                     ? QStringLiteral("Raw config is synchronized with the visual form.")
+                     : QStringLiteral("原始配置已与可视化表单同步。"));
+    updateModeSwitch();
+}
+
+void SkyDeviceConfigDialog::updateModeSwitch()
+{
+    if (visual_mode_button_)
+    {
+        const QSignalBlocker blocker(visual_mode_button_);
+        visual_mode_button_->setChecked(config_mode_ == ConfigMode::Visual);
+    }
+    if (raw_mode_button_)
+    {
+        const QSignalBlocker blocker(raw_mode_button_);
+        raw_mode_button_->setChecked(config_mode_ == ConfigMode::Raw);
+    }
+}
+
+void SkyDeviceConfigDialog::syncRawTextFromVisual()
+{
+    if (!raw_config_text_)
+    {
+        return;
+    }
+    const QSignalBlocker blocker(raw_config_text_);
+    raw_config_text_->setPlainText(QJsonDocument(currentConfigFromUi().toJson()).toJson(QJsonDocument::Indented));
+}
+
+bool SkyDeviceConfigDialog::configFromRawText(SkyConfig& config, QString *errorMessage) const
+{
+    if (!raw_config_text_)
+    {
+        if (errorMessage) *errorMessage = QStringLiteral("Raw config editor is unavailable");
+        return false;
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(raw_config_text_->toPlainText().toUtf8(), &parseError);
+    if (parseError.error != QJsonParseError::NoError)
+    {
+        if (errorMessage)
+        {
+            *errorMessage = is_english_
+                ? QStringLiteral("JSON parse error at offset %1: %2").arg(parseError.offset).arg(parseError.errorString())
+                : QStringLiteral("JSON 解析错误，位置 %1：%2").arg(parseError.offset).arg(parseError.errorString());
+        }
+        return false;
+    }
+    if (!document.isObject())
+    {
+        if (errorMessage)
+        {
+            *errorMessage = is_english_
+                ? QStringLiteral("Sky config JSON root must be an object.")
+                : QStringLiteral("天空端配置 JSON 根节点必须是对象。");
+        }
+        return false;
+    }
+    return SkyConfig::fromJson(document.object(), config, errorMessage);
+}
+
+void SkyDeviceConfigDialog::setRawStatus(const QString& message, bool error)
+{
+    if (!raw_status_label_)
+    {
+        return;
+    }
+    raw_status_label_->setText(message);
+    raw_status_label_->setProperty("status", error ? QStringLiteral("error") : QStringLiteral("normal"));
+    raw_status_label_->style()->unpolish(raw_status_label_);
+    raw_status_label_->style()->polish(raw_status_label_);
+    raw_status_label_->setToolTip(message);
 }
 
 void SkyDeviceConfigDialog::applyDynamicMetrics()
