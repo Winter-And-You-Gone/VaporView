@@ -151,8 +151,8 @@ void applyComboText(QComboBox *combo, const QString& value)
 
 void setupFormLayout(QFormLayout *layout)
 {
-    layout->setContentsMargins(16, 18, 16, 14);
-    layout->setSpacing(10);
+    layout->setContentsMargins(12, 12, 12, 12);
+    layout->setSpacing(8);
     layout->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     layout->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
     layout->setFieldGrowthPolicy(QFormLayout::FieldsStayAtSizeHint);
@@ -170,7 +170,7 @@ QFormLayout *createCardFormLayout(QGroupBox *group, const QString& title)
     titleBar->setObjectName(QStringLiteral("skyConfigGroupTitleBar"));
     titleBar->setFixedHeight(40);
     auto *titleLayout = new QHBoxLayout(titleBar);
-    titleLayout->setContentsMargins(16, 0, 16, 0);
+    titleLayout->setContentsMargins(12, 0, 12, 0);
     titleLayout->setSpacing(0);
 
     auto *titleLabel = new QLabel(title, titleBar);
@@ -590,8 +590,8 @@ void SkyDeviceConfigDialog::setupUi()
     applyThemeStyle();
     setFont(qApp->font());
     auto *root = new QVBoxLayout(this);
-    root->setContentsMargins(18, 18, 18, 16);
-    root->setSpacing(12);
+    root->setContentsMargins(8, 8, 8, 10);
+    root->setSpacing(8);
 
     mode_stack_ = new QStackedWidget(this);
     visual_page_ = new QWidget(mode_stack_);
@@ -608,13 +608,13 @@ void SkyDeviceConfigDialog::setupUi()
     auto *content = new QWidget(scroll);
     content->setObjectName(QStringLiteral("skyConfigContent"));
     auto *contentLayout = new QVBoxLayout(content);
-    contentLayout->setContentsMargins(8, 8, 8, 8);
-    contentLayout->setSpacing(12);
+    contentLayout->setContentsMargins(0, 0, 0, 0);
+    contentLayout->setSpacing(8);
 
     auto *deviceGrid = new QGridLayout();
     deviceGrid->setContentsMargins(0, 0, 0, 0);
-    deviceGrid->setHorizontalSpacing(12);
-    deviceGrid->setVerticalSpacing(12);
+    deviceGrid->setHorizontalSpacing(8);
+    deviceGrid->setVerticalSpacing(8);
     for (int column = 0; column < 3; ++column)
     {
         deviceGrid->setColumnStretch(column, 1);
@@ -681,7 +681,7 @@ void SkyDeviceConfigDialog::setupUi()
     visualLayout->addWidget(scroll);
 
     auto *rawLayout = new QVBoxLayout(raw_page_);
-    rawLayout->setContentsMargins(8, 8, 8, 8);
+    rawLayout->setContentsMargins(0, 0, 0, 0);
     rawLayout->setSpacing(8);
     raw_status_label_ = new QLabel(raw_page_);
     raw_status_label_->setObjectName(QStringLiteral("skyConfigRawStatus"));
