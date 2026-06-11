@@ -158,7 +158,7 @@ void setupFormLayout(QFormLayout *layout)
     layout->setFieldGrowthPolicy(QFormLayout::FieldsStayAtSizeHint);
 }
 
-QFormLayout *createCardFormLayout(QGroupBox *group, const QString& title)
+QFormLayout *createCardFormLayout(QGroupBox *group, const QString& title, QWidget *titleAction = nullptr)
 {
     group->setTitle(QString());
 
@@ -177,6 +177,11 @@ QFormLayout *createCardFormLayout(QGroupBox *group, const QString& title)
     titleLabel->setObjectName(QStringLiteral("skyConfigGroupTitleLabel"));
     titleLayout->addWidget(titleLabel);
     titleLayout->addStretch();
+    if (titleAction)
+    {
+        titleAction->setParent(titleBar);
+        titleLayout->addWidget(titleAction, 0, Qt::AlignVCenter | Qt::AlignRight);
+    }
     cardLayout->addWidget(titleBar);
 
     auto *body = new QWidget(group);
@@ -623,8 +628,9 @@ void SkyDeviceConfigDialog::setupUi()
 
     auto addSerialGroup = [this, deviceGrid](const QString& title, QGroupBox*& group, SerialRow& row, int rowIndex, int columnIndex) {
         group = new QGroupBox(title, this);
-        auto *layout = createCardFormLayout(group, title);
-        row = createSerialRow(layout, title);
+        row = createSerialRow(title);
+        auto *layout = createCardFormLayout(group, title, row.enabled);
+        createSerialFields(layout, row);
         deviceGrid->addWidget(group, rowIndex, columnIndex);
     };
 
@@ -634,13 +640,13 @@ void SkyDeviceConfigDialog::setupUi()
     addSerialGroup(QStringLiteral("TFA1500-L"), lidar_group_, lidar_, 1, 0);
 
     wave_group_ = new QGroupBox(QStringLiteral("Wave TCP"), this);
-    auto *waveLayout = createCardFormLayout(wave_group_, QStringLiteral("Wave TCP"));
     wave_enabled_ = new QPushButton(this);
     wave_enabled_->setObjectName(QStringLiteral("skyEnableToggle"));
     configureEnableToggleButton(wave_enabled_);
     connect(wave_enabled_, &QPushButton::toggled, this, [this](bool) {
         updateEnableButton(wave_enabled_);
     });
+    auto *waveLayout = createCardFormLayout(wave_group_, QStringLiteral("Wave TCP"), wave_enabled_);
     wave_host_ = new QLineEdit(this);
     wave_port_ = new QSpinBox(this);
     wave_port_->setRange(1, 65535);
@@ -650,7 +656,6 @@ void SkyDeviceConfigDialog::setupUi()
     {
         polishConfigField(field);
     }
-    wave_enabled_label_ = addLabeledRow(waveLayout, QStringLiteral("启用"), wave_enabled_);
     wave_host_label_ = addLabeledRow(waveLayout, QStringLiteral("主机"), wave_host_);
     wave_port_label_ = addLabeledRow(waveLayout, QStringLiteral("端口"), wave_port_);
     wave_downsample_label_ = addLabeledRow(waveLayout, QStringLiteral("降采样倍率"), wave_downsample_);
@@ -722,7 +727,7 @@ void SkyDeviceConfigDialog::setupUi()
     updateModeSwitch();
 }
 
-SkyDeviceConfigDialog::SerialRow SkyDeviceConfigDialog::createSerialRow(QFormLayout *layout, const QString&)
+SkyDeviceConfigDialog::SerialRow SkyDeviceConfigDialog::createSerialRow(const QString&)
 {
     SerialRow row;
     row.enabled = new QPushButton(this);
@@ -731,6 +736,11 @@ SkyDeviceConfigDialog::SerialRow SkyDeviceConfigDialog::createSerialRow(QFormLay
     connect(row.enabled, &QPushButton::toggled, this, [this, button = row.enabled](bool) {
         updateEnableButton(button);
     });
+    return row;
+}
+
+void SkyDeviceConfigDialog::createSerialFields(QFormLayout *layout, SerialRow& row)
+{
     row.port = new QComboBox(this);
     row.port->setEditable(true);
     row.port->setInsertPolicy(QComboBox::NoInsert);
@@ -742,11 +752,9 @@ SkyDeviceConfigDialog::SerialRow SkyDeviceConfigDialog::createSerialRow(QFormLay
     polishConfigField(row.port);
     polishConfigField(row.baud);
     polishConfigField(row.frequency);
-    row.enabled_label = addLabeledRow(layout, QStringLiteral("启用"), row.enabled);
     row.port_label = addLabeledRow(layout, QStringLiteral("串口"), row.port);
     row.baud_label = addLabeledRow(layout, QStringLiteral("波特率"), row.baud);
     row.frequency_label = addLabeledRow(layout, QStringLiteral("频率 Hz"), row.frequency);
-    return row;
 }
 
 void SkyDeviceConfigDialog::setConfig(const SkyConfig& config)
@@ -811,7 +819,6 @@ void SkyDeviceConfigDialog::updateTexts()
 {
     setWindowTitle(is_english_ ? "Sky Device Config" : "天空端设备配置");
     auto updateSerialLabels = [this](const SerialRow& row) {
-        if (row.enabled_label) row.enabled_label->setText(is_english_ ? QStringLiteral("Enabled") : QStringLiteral("启用"));
         if (row.port_label) row.port_label->setText(is_english_ ? QStringLiteral("Port") : QStringLiteral("串口"));
         if (row.baud_label) row.baud_label->setText(is_english_ ? QStringLiteral("Baud") : QStringLiteral("波特率"));
         if (row.frequency_label) row.frequency_label->setText(is_english_ ? QStringLiteral("Frequency Hz") : QStringLiteral("频率 Hz"));
@@ -826,7 +833,6 @@ void SkyDeviceConfigDialog::updateTexts()
     updateSerialLabels(ptb_);
     updateSerialLabels(hmp_);
     updateSerialLabels(lidar_);
-    if (wave_enabled_label_) wave_enabled_label_->setText(is_english_ ? QStringLiteral("Enabled") : QStringLiteral("启用"));
     if (wave_host_label_) wave_host_label_->setText(is_english_ ? QStringLiteral("Host") : QStringLiteral("主机"));
     if (wave_port_label_) wave_port_label_->setText(is_english_ ? QStringLiteral("Port") : QStringLiteral("端口"));
     if (wave_downsample_label_) wave_downsample_label_->setText(is_english_ ? QStringLiteral("Downsample") : QStringLiteral("降采样倍率"));

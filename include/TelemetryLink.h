@@ -31,6 +31,7 @@ signals:
     void bytesReceived(const QByteArray& bytes);
     void openChanged(bool open);
     void errorOccurred(const QString& error);
+    void statusMessage(const QString& message);
 };
 
 QString telemetryTransportName(TelemetryTransportType type);

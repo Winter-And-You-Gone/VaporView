@@ -370,6 +370,7 @@ void GroundTelemetryService::attachLinkSignals()
         emit linkOpenChanged(open);
     });
     connect(link_.get(), &TelemetryLink::errorOccurred, this, &GroundTelemetryService::logMessage);
+    connect(link_.get(), &TelemetryLink::statusMessage, this, &GroundTelemetryService::logMessage);
 }
 
 void GroundTelemetryService::noteReceivedBytes(qint64 bytes)

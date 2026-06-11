@@ -3,7 +3,9 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QLabel>
 #include <QMouseEvent>
+#include <QPushButton>
 #include <QStackedWidget>
 #include <QWidget>
 #include <algorithm>
@@ -70,6 +72,20 @@ int main(int argc, char **argv)
     auto *modeSwitch = dialog.findChild<QWidget *>(QStringLiteral("skyConfigModeSwitch"));
     require(modeSwitch != nullptr, "mode switch exists");
     require(modeSwitch->isVisible(), "mode switch visible");
+
+    const QList<QPushButton*> enableButtons = dialog.findChildren<QPushButton *>(QStringLiteral("skyEnableToggle"));
+    require(enableButtons.size() == 5, "five enable buttons");
+    for (QPushButton *button : enableButtons)
+    {
+        require(button->parentWidget() != nullptr, "enable button parent exists");
+        require(button->parentWidget()->objectName() == QStringLiteral("skyConfigGroupTitleBar"),
+                "enable button is in card title bar");
+    }
+    const QList<QLabel*> labels = dialog.findChildren<QLabel *>();
+    for (QLabel *label : labels)
+    {
+        require(label->text() != QStringLiteral("启用"), "enabled label removed from form body");
+    }
 
     auto *stack = dialog.findChild<QStackedWidget *>();
     require(stack != nullptr, "mode stack exists");

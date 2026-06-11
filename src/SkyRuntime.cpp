@@ -177,6 +177,7 @@ bool SkyRuntime::start()
             onBytesReceived(bytes);
         });
         connect(link, &TelemetryLink::errorOccurred, this, &SkyRuntime::logMessage);
+        connect(link, &TelemetryLink::statusMessage, this, &SkyRuntime::logMessage);
     };
 
     if (options_.telemetry_transport == TelemetryTransportType::Serial)

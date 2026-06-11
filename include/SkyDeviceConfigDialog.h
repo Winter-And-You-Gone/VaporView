@@ -58,14 +58,14 @@ private:
         QComboBox *port = nullptr;
         QSpinBox *baud = nullptr;
         QDoubleSpinBox *frequency = nullptr;
-        QLabel *enabled_label = nullptr;
         QLabel *port_label = nullptr;
         QLabel *baud_label = nullptr;
         QLabel *frequency_label = nullptr;
     };
 
     void setupUi();
-    SerialRow createSerialRow(QFormLayout *layout, const QString& title);
+    SerialRow createSerialRow(const QString& title);
+    void createSerialFields(QFormLayout *layout, SerialRow& row);
     void setConfig(const SkyConfig& config);
     SkyConfig currentConfigFromUi() const;
     void setSerialRow(const SerialRow& row, const SerialDeviceConfig& config);
@@ -106,7 +106,6 @@ private:
     QGroupBox *lidar_group_ = nullptr;
     QGroupBox *wave_group_ = nullptr;
     QGroupBox *telemetry_group_ = nullptr;
-    QLabel *wave_enabled_label_ = nullptr;
     QLabel *wave_host_label_ = nullptr;
     QLabel *wave_port_label_ = nullptr;
     QLabel *wave_downsample_label_ = nullptr;

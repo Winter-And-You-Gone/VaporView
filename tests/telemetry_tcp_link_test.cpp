@@ -3,6 +3,7 @@
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QStringList>
 #include <cstdlib>
 #include <iostream>
 
@@ -43,12 +44,16 @@ int main(int argc, char **argv)
     VaporView::TcpTelemetryLink server;
     bool serverOpen = false;
     bool serverClosed = false;
+    QStringList serverStatusMessages;
     QObject::connect(&server, &VaporView::TelemetryLink::openChanged, [&](bool open) {
         serverOpen = open;
         if (!open)
         {
             serverClosed = true;
         }
+    });
+    QObject::connect(&server, &VaporView::TelemetryLink::statusMessage, [&](const QString& message) {
+        serverStatusMessages.push_back(message);
     });
     require(server.listen(QStringLiteral("127.0.0.1"), 0), "server listen");
     const quint16 port = server.localPort();
@@ -71,6 +76,16 @@ int main(int argc, char **argv)
 
     require(client.connectToHost(QStringLiteral("127.0.0.1"), port), "client connect");
     require(waitUntil([&]() { return clientOpen; }), "client open signal");
+    require(waitUntil([&]() {
+        for (const QString& message : serverStatusMessages)
+        {
+            if (message.contains(QStringLiteral("client connected")))
+            {
+                return true;
+            }
+        }
+        return false;
+    }), "server logs client connect");
     require(waitUntil([&]() { return server.writeBytes(QByteArrayLiteral("sky")) > 0; }), "server write");
     require(waitUntil([&]() { return clientBytes == QByteArrayLiteral("sky"); }), "client receives bytes");
     require(client.writeBytes(QByteArrayLiteral("ground")) > 0, "client write");
@@ -117,6 +132,16 @@ int main(int argc, char **argv)
     require(replacement.connectToHost(QStringLiteral("127.0.0.1"), port), "replacement connect");
     require(waitUntil([&]() { return replacementOpen; }), "replacement open signal");
     require(waitUntil([&]() { return !clientOpen; }), "old client closed on replacement");
+    require(waitUntil([&]() {
+        for (const QString& message : serverStatusMessages)
+        {
+            if (message.contains(QStringLiteral("client replaced")))
+            {
+                return true;
+            }
+        }
+        return false;
+    }), "server logs client replacement");
     require(waitUntil([&]() { return server.writeBytes(QByteArrayLiteral("probe")) > 0; }), "replacement attached");
     replacementBytes.clear();
     require(waitUntil([&]() {

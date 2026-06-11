@@ -22,6 +22,7 @@ bool TcpTelemetryLink::listen(const QString& host, quint16 port)
     }
     open_emitted_ = true;
     emit openChanged(true);
+    emit statusMessage(QStringLiteral("TCP telemetry server listening on %1:%2").arg(host_).arg(server_.serverPort()));
     return true;
 }
 
@@ -45,6 +46,7 @@ bool TcpTelemetryLink::connectToHost(const QString& host, quint16 port)
         open_emitted_ = true;
         emit openChanged(true);
     }
+    emit statusMessage(QStringLiteral("TCP telemetry connected to %1:%2").arg(host_).arg(port_));
     return true;
 }
 
@@ -113,12 +115,15 @@ void TcpTelemetryLink::onNewConnection()
         const bool hadClient = socket_ && socket_->state() == QAbstractSocket::ConnectedState;
         if (hadClient)
         {
-            emit errorOccurred(QStringLiteral("TCP telemetry client replaced by %1:%2")
+            emit statusMessage(QStringLiteral("TCP telemetry client replaced by %1:%2")
                                    .arg(next->peerAddress().toString())
                                    .arg(next->peerPort()));
         }
         closeSocket();
         attachSocket(next);
+        emit statusMessage(QStringLiteral("TCP telemetry client connected from %1:%2")
+                               .arg(next->peerAddress().toString())
+                               .arg(next->peerPort()));
     }
 }
 
@@ -143,8 +148,10 @@ void TcpTelemetryLink::onSocketDisconnected()
     {
         return;
     }
+    const QString peer = QStringLiteral("%1:%2").arg(socket_->peerAddress().toString()).arg(socket_->peerPort());
     socket_->deleteLater();
     socket_ = nullptr;
+    emit statusMessage(QStringLiteral("TCP telemetry client disconnected from %1").arg(peer));
     if (role_ == Role::Client && open_emitted_)
     {
         open_emitted_ = false;
