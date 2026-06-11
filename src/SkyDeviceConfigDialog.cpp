@@ -270,6 +270,7 @@ SkyDeviceConfigDialog::SkyDeviceConfigDialog(GroundTelemetryService *service, QW
     : QDialog(parent)
     , service_(service)
 {
+    setWindowFlag(Qt::Window, true);
     setupUi();
     VaporView::installCustomTitleBar(this);
     if (service_)

@@ -1145,6 +1145,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , chinese_track_label_(QStringLiteral("RTK轨迹"))
     , track_points_()
 {
+    setWindowFlag(Qt::Window, true);
     setModal(false);
     resize(920, 640);
 

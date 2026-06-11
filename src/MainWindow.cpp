@@ -3513,6 +3513,16 @@ MainWindow::~MainWindow()
 {
     qApp->removeEventFilter(this);
 
+    if (sky_device_config_dialog_)
+    {
+        delete sky_device_config_dialog_;
+        sky_device_config_dialog_ = nullptr;
+    }
+    if (rtk_config_dialog_)
+    {
+        delete rtk_config_dialog_;
+        rtk_config_dialog_ = nullptr;
+    }
     if (session_viewer_window_)
     {
         delete session_viewer_window_;
@@ -7032,6 +7042,7 @@ void MainWindow::onOpenSessionViewerClicked()
     if (!session_viewer_window_)
     {
         session_viewer_window_ = new SessionViewerWindow();
+        session_viewer_window_->setAttribute(Qt::WA_QuitOnClose, false);
         session_viewer_window_->setAttribute(Qt::WA_DeleteOnClose, true);
         connect(session_viewer_window_, &QObject::destroyed, this, [this]() {
             session_viewer_window_ = nullptr;
@@ -10599,12 +10610,15 @@ void MainWindow::onSkyDeviceConfigClicked()
     }
     if (!sky_device_config_dialog_)
     {
-        sky_device_config_dialog_ = new VaporView::SkyDeviceConfigDialog(ground_telemetry_service_, this);
+        sky_device_config_dialog_ = new VaporView::SkyDeviceConfigDialog(ground_telemetry_service_);
+        sky_device_config_dialog_->setAttribute(Qt::WA_QuitOnClose, false);
         sky_device_config_dialog_->setEnglish(is_english_);
         sky_device_config_dialog_->setFontScale(font_scale_percent_);
     }
+    VaporView::centerWindowOnScreen(sky_device_config_dialog_, this);
     sky_device_config_dialog_->show();
     sky_device_config_dialog_->raise();
+    sky_device_config_dialog_->activateWindow();
     ground_telemetry_service_->requestSkyConfig();
 }
 
@@ -10773,7 +10787,8 @@ void MainWindow::onRtkConfigClicked()
 {
     if (!rtk_config_dialog_)
     {
-        rtk_config_dialog_ = new RtkConfigDialog(this);
+        rtk_config_dialog_ = new RtkConfigDialog();
+        rtk_config_dialog_->setAttribute(Qt::WA_QuitOnClose, false);
     }
     rtk_config_dialog_->setEpsilonDataProvider([this]() {
         const CollectorSnapshot collectors = snapshotCollectors();

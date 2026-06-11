@@ -1625,6 +1625,20 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     }
 }
 
+SessionViewerWindow::~SessionViewerWindow()
+{
+    if (trajectory_viewer_dialog_)
+    {
+        delete trajectory_viewer_dialog_;
+        trajectory_viewer_dialog_ = nullptr;
+    }
+    if (raw_data_parser_window_)
+    {
+        delete raw_data_parser_window_;
+        raw_data_parser_window_ = nullptr;
+    }
+}
+
 void SessionViewerWindow::setupUi()
 {
     setObjectName("sessionViewerWindow");
@@ -2498,12 +2512,18 @@ void SessionViewerWindow::onViewTrajectoryClicked()
 
     if (!trajectory_viewer_dialog_)
     {
-        trajectory_viewer_dialog_ = new TrajectoryViewerDialog(this);
+        trajectory_viewer_dialog_ = new TrajectoryViewerDialog();
+        trajectory_viewer_dialog_->setAttribute(Qt::WA_QuitOnClose, false);
+        trajectory_viewer_dialog_->setAttribute(Qt::WA_DeleteOnClose, true);
+        connect(trajectory_viewer_dialog_, &QObject::destroyed, this, [this]() {
+            trajectory_viewer_dialog_ = nullptr;
+        });
     }
 
     trajectory_viewer_dialog_->setEnglish(is_english_);
     trajectory_viewer_dialog_->setTrackLabel(QStringLiteral("RTK trajectory"), QStringLiteral("RTK轨迹"));
     trajectory_viewer_dialog_->setTrackPoints(rtk_track_points_);
+    VaporView::centerWindowOnScreen(trajectory_viewer_dialog_, this);
     trajectory_viewer_dialog_->show();
     trajectory_viewer_dialog_->raise();
     trajectory_viewer_dialog_->activateWindow();
@@ -2522,11 +2542,17 @@ void SessionViewerWindow::onRawDataParserClicked()
 
     if (!raw_data_parser_window_)
     {
-        raw_data_parser_window_ = new RawDataParserWindow(this);
+        raw_data_parser_window_ = new RawDataParserWindow();
+        raw_data_parser_window_->setAttribute(Qt::WA_QuitOnClose, false);
+        raw_data_parser_window_->setAttribute(Qt::WA_DeleteOnClose, true);
+        connect(raw_data_parser_window_, &QObject::destroyed, this, [this]() {
+            raw_data_parser_window_ = nullptr;
+        });
     }
 
     raw_data_parser_window_->setEnglish(is_english_);
     raw_data_parser_window_->openSessionPath(session_directory_);
+    VaporView::centerWindowOnScreen(raw_data_parser_window_, this);
     raw_data_parser_window_->show();
     raw_data_parser_window_->raise();
     raw_data_parser_window_->activateWindow();

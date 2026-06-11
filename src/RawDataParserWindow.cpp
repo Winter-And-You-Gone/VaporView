@@ -567,6 +567,7 @@ RawDataParserWindow::RawDataParserWindow(QWidget *parent)
     : QMainWindow(parent)
     , impl_(std::make_unique<Impl>(this))
 {
+    setWindowFlag(Qt::Window, true);
     impl_->setupUi();
     VaporView::installCustomTitleBar(this);
     impl_->setEnglish(false);

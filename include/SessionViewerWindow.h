@@ -42,6 +42,7 @@ class SessionViewerWindow : public QMainWindow
 
 public:
     explicit SessionViewerWindow(QWidget *parent = nullptr);
+    ~SessionViewerWindow() override;
     void setEnglish(bool english);
     void setDefaultDataDirectory(const QString& directory);
     bool openSessionPath(const QString& path);

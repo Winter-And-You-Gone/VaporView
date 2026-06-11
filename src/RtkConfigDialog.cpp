@@ -710,6 +710,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , gga_has_sentence_time_(false)
     , gga_monitor_enabled_(false)
 {
+    setWindowFlag(Qt::Window, true);
     setObjectName(QStringLiteral("rtkConfigDialog"));
     setSizeGripEnabled(false);
 
