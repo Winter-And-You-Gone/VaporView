@@ -23,6 +23,8 @@ class QWidget;
 namespace VaporView
 {
 
+class ConfigModeSwitch;
+
 class SkyDeviceConfigDialog : public QDialog
 {
     Q_OBJECT
@@ -118,8 +120,7 @@ private:
     QPushButton *save_button_ = nullptr;
     QPushButton *close_button_ = nullptr;
     ConfigMode config_mode_ = ConfigMode::Visual;
-    QPushButton *visual_mode_button_ = nullptr;
-    QPushButton *raw_mode_button_ = nullptr;
+    ConfigModeSwitch *mode_switch_ = nullptr;
     QStackedWidget *mode_stack_ = nullptr;
     QWidget *visual_page_ = nullptr;
     QWidget *raw_page_ = nullptr;

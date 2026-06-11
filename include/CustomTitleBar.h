@@ -7,6 +7,7 @@ namespace VaporView
 {
 
 void installCustomTitleBar(QWidget *window, bool showMaximizeButton = true);
+bool addWidgetToCustomTitleBar(QWidget *window, QWidget *widget);
 
 }  // namespace VaporView
 

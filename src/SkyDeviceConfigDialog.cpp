@@ -3,10 +3,12 @@
 
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QEasingCurve>
 #include <QEvent>
 #include <QFontMetrics>
 #include <QFile>
 #include <QFileInfo>
+#include <QFrame>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -17,6 +19,7 @@
 #include <QPainter>
 #include <QPalette>
 #include <QPixmap>
+#include <QPropertyAnimation>
 #include <QScrollArea>
 #include <QSerialPortInfo>
 #include <QSizePolicy>
@@ -26,6 +29,9 @@
 #include <QSvgRenderer>
 #include <QVBoxLayout>
 #include <QApplication>
+
+#include <algorithm>
+#include <functional>
 
 namespace VaporView
 {
@@ -216,10 +222,6 @@ QString skyDeviceConfigStyleSheet(bool dark)
             "QDialog#skyDeviceConfigDialog QLabel#skyConfigGroupTitleLabel { color: #1f2937; font-size: 15px; font-weight: bold; background-color: transparent; }"
             "QDialog#skyDeviceConfigDialog QWidget#skyConfigGroupBody { background-color: transparent; }"
             "QDialog#skyDeviceConfigDialog QLabel { color: #1f2a35; }"
-            "QDialog#skyDeviceConfigDialog QWidget#skyConfigModeSwitch { background-color: #e5e7eb; border-radius: 18px; padding: 3px; }"
-            "QDialog#skyDeviceConfigDialog QPushButton#skyConfigModeButton { background-color: transparent; color: #475569; border: none; border-radius: 15px; padding: 6px 18px; min-height: 30px; font-weight: 600; }"
-            "QDialog#skyDeviceConfigDialog QPushButton#skyConfigModeButton:hover { background-color: #f8fafc; color: #1f2937; }"
-            "QDialog#skyDeviceConfigDialog QPushButton#skyConfigModeButton:checked { background-color: #1976d2; color: #ffffff; }"
             "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus { color: #64748b; padding: 2px 4px; }"
             "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus[status=\"error\"] { color: #b42318; }"
             "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle { background-color: #ffffff; color: #b42318; border: 1px solid #cbd5e1; border-radius: 5px; padding: 0; min-width: 30px; max-width: 30px; min-height: 30px; max-height: 30px; }"
@@ -241,10 +243,6 @@ QString skyDeviceConfigStyleSheet(bool dark)
         "QDialog#skyDeviceConfigDialog QLabel#skyConfigGroupTitleLabel { color: #e5e7eb; font-size: 15px; font-weight: bold; background-color: transparent; }"
         "QDialog#skyDeviceConfigDialog QWidget#skyConfigGroupBody { background-color: transparent; }"
         "QDialog#skyDeviceConfigDialog QLabel { color: #d8dee9; background-color: transparent; }"
-        "QDialog#skyDeviceConfigDialog QWidget#skyConfigModeSwitch { background-color: #1f2937; border-radius: 18px; padding: 3px; }"
-        "QDialog#skyDeviceConfigDialog QPushButton#skyConfigModeButton { background-color: transparent; color: #cbd5e1; border: none; border-radius: 15px; padding: 6px 18px; min-height: 30px; font-weight: 600; }"
-        "QDialog#skyDeviceConfigDialog QPushButton#skyConfigModeButton:hover { background-color: #273449; color: #ffffff; }"
-        "QDialog#skyDeviceConfigDialog QPushButton#skyConfigModeButton:checked { background-color: rgb(217, 119, 87); color: #ffffff; }"
         "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus { color: #94a3b8; padding: 2px 4px; }"
         "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus[status=\"error\"] { color: #fca5a5; }"
         "QDialog#skyDeviceConfigDialog QLineEdit,"
@@ -284,6 +282,163 @@ QString skyDeviceConfigStyleSheet(bool dark)
 }
 }
 
+class ConfigModeSwitch : public QWidget
+{
+public:
+    explicit ConfigModeSwitch(QWidget *parent = nullptr)
+        : QWidget(parent)
+        , thumb_(new QFrame(this))
+        , animation_(new QPropertyAnimation(thumb_, "geometry", this))
+    {
+        setObjectName(QStringLiteral("skyConfigModeSwitch"));
+        setFixedHeight(34);
+        setMinimumWidth(244);
+        setCursor(Qt::PointingHandCursor);
+        setAttribute(Qt::WA_StyledBackground, false);
+
+        thumb_->setObjectName(QStringLiteral("skyConfigModeThumb"));
+        thumb_->lower();
+        animation_->setDuration(180);
+        animation_->setEasingCurve(QEasingCurve::OutCubic);
+
+        for (int i = 0; i < 2; ++i)
+        {
+            buttons_[i] = new QPushButton(this);
+            buttons_[i]->setObjectName(QStringLiteral("skyConfigModeButton"));
+            buttons_[i]->setFlat(true);
+            buttons_[i]->setFocusPolicy(Qt::NoFocus);
+            buttons_[i]->setCursor(Qt::PointingHandCursor);
+            connect(buttons_[i], &QPushButton::clicked, this, [this, i]() {
+                if (onModeRequested)
+                {
+                    onModeRequested(i);
+                }
+            });
+        }
+
+        refreshTheme();
+    }
+
+    void setLabels(const QString& visualLabel, const QString& rawLabel)
+    {
+        labels_[0] = visualLabel;
+        labels_[1] = rawLabel;
+        buttons_[0]->setText(labels_[0]);
+        buttons_[1]->setText(labels_[1]);
+
+        QFontMetrics metrics(font());
+        const int textWidth = std::max(metrics.horizontalAdvance(labels_[0]), metrics.horizontalAdvance(labels_[1]));
+        setMinimumWidth(std::max(244, textWidth * 2 + 64));
+        updateButtonGeometry();
+    }
+
+    void setCurrentIndex(int index, bool animate = true)
+    {
+        index = std::clamp(index, 0, 1);
+        if (current_index_ == index && !animation_->state())
+        {
+            updateButtonStyles();
+            return;
+        }
+
+        current_index_ = index;
+        moveThumb(animate);
+        updateButtonStyles();
+    }
+
+    void refreshTheme()
+    {
+        const bool dark = isDarkApplicationPalette();
+        background_color_ = dark ? QColor("#1f2937") : QColor("#e5e7eb");
+        thumb_color_ = dark ? QColor(217, 119, 87) : QColor("#1976d2");
+        inactive_text_color_ = dark ? QColor("#cbd5e1") : QColor("#475569");
+        active_text_color_ = QColor("#ffffff");
+        thumb_->setStyleSheet(QStringLiteral("QFrame#skyConfigModeThumb { background-color: %1; border-radius: 14px; }")
+                                  .arg(thumb_color_.name(QColor::HexRgb)));
+        updateButtonStyles();
+        update();
+    }
+
+    std::function<void(int)> onModeRequested;
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(background_color_);
+        painter.drawRoundedRect(rect(), height() / 2.0, height() / 2.0);
+    }
+
+    void resizeEvent(QResizeEvent *) override
+    {
+        updateButtonGeometry();
+        moveThumb(false);
+    }
+
+private:
+    QRect thumbGeometryForIndex(int index) const
+    {
+        constexpr int margin = 3;
+        const int segmentWidth = std::max(1, (width() - margin * 2) / 2);
+        return QRect(margin + segmentWidth * index,
+                     margin,
+                     segmentWidth,
+                     std::max(1, height() - margin * 2));
+    }
+
+    void updateButtonGeometry()
+    {
+        const int segmentWidth = std::max(1, width() / 2);
+        buttons_[0]->setGeometry(0, 0, segmentWidth, height());
+        buttons_[1]->setGeometry(segmentWidth, 0, width() - segmentWidth, height());
+        for (QPushButton *button : buttons_)
+        {
+            button->raise();
+        }
+        thumb_->lower();
+    }
+
+    void moveThumb(bool animate)
+    {
+        const QRect target = thumbGeometryForIndex(current_index_);
+        if (!animate)
+        {
+            animation_->stop();
+            thumb_->setGeometry(target);
+            return;
+        }
+
+        animation_->stop();
+        animation_->setStartValue(thumb_->geometry().isValid() ? thumb_->geometry() : thumbGeometryForIndex(current_index_ == 0 ? 1 : 0));
+        animation_->setEndValue(target);
+        animation_->start();
+    }
+
+    void updateButtonStyles()
+    {
+        for (int i = 0; i < 2; ++i)
+        {
+            const QColor color = i == current_index_ ? active_text_color_ : inactive_text_color_;
+            buttons_[i]->setStyleSheet(QStringLiteral(
+                "QPushButton#skyConfigModeButton { background-color: transparent; border: none; border-radius: 14px; color: %1; padding: 0 12px; font-weight: 600; }"
+                "QPushButton#skyConfigModeButton:hover { background-color: transparent; }")
+                .arg(color.name(QColor::HexRgb)));
+        }
+    }
+
+    QFrame *thumb_ = nullptr;
+    QPushButton *buttons_[2] = {nullptr, nullptr};
+    QPropertyAnimation *animation_ = nullptr;
+    QString labels_[2];
+    QColor background_color_;
+    QColor thumb_color_;
+    QColor active_text_color_;
+    QColor inactive_text_color_;
+    int current_index_ = 0;
+};
+
 SkyDeviceConfigDialog::SkyDeviceConfigDialog(GroundTelemetryService *service, QWidget *parent)
     : QDialog(parent)
     , service_(service)
@@ -291,6 +446,7 @@ SkyDeviceConfigDialog::SkyDeviceConfigDialog(GroundTelemetryService *service, QW
     setWindowFlag(Qt::Window, true);
     setupUi();
     VaporView::installCustomTitleBar(this);
+    VaporView::addWidgetToCustomTitleBar(this, mode_switch_);
     if (service_)
     {
         connect(service_, &GroundTelemetryService::skyConfigReceived, this, &SkyDeviceConfigDialog::onSkyConfigReceived);
@@ -438,40 +594,10 @@ void SkyDeviceConfigDialog::setupUi()
     root->setContentsMargins(18, 18, 18, 16);
     root->setSpacing(12);
 
-    auto *modeRow = new QWidget(this);
-    auto *modeRowLayout = new QHBoxLayout(modeRow);
-    modeRowLayout->setContentsMargins(0, 0, 0, 0);
-    modeRowLayout->setSpacing(0);
-
-    auto *modeSwitch = new QWidget(modeRow);
-    modeSwitch->setObjectName(QStringLiteral("skyConfigModeSwitch"));
-    modeSwitch->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    auto *modeLayout = new QHBoxLayout(modeSwitch);
-    modeLayout->setContentsMargins(3, 3, 3, 3);
-    modeLayout->setSpacing(0);
-
-    visual_mode_button_ = new QPushButton(modeSwitch);
-    raw_mode_button_ = new QPushButton(modeSwitch);
-    for (QPushButton *button : {visual_mode_button_, raw_mode_button_})
-    {
-        button->setObjectName(QStringLiteral("skyConfigModeButton"));
-        button->setCheckable(true);
-        button->setAutoExclusive(true);
-        button->setCursor(Qt::PointingHandCursor);
-        button->setMinimumWidth(116);
-    }
-    connect(visual_mode_button_, &QPushButton::clicked, this, [this]() {
-        setConfigMode(ConfigMode::Visual);
-    });
-    connect(raw_mode_button_, &QPushButton::clicked, this, [this]() {
-        setConfigMode(ConfigMode::Raw);
-    });
-    modeLayout->addWidget(visual_mode_button_);
-    modeLayout->addWidget(raw_mode_button_);
-    modeRowLayout->addStretch();
-    modeRowLayout->addWidget(modeSwitch);
-    modeRowLayout->addStretch();
-    root->addWidget(modeRow);
+    mode_switch_ = new ConfigModeSwitch(this);
+    mode_switch_->onModeRequested = [this](int index) {
+        setConfigMode(index == 0 ? ConfigMode::Visual : ConfigMode::Raw);
+    };
 
     mode_stack_ = new QStackedWidget(this);
     visual_page_ = new QWidget(mode_stack_);
@@ -724,8 +850,11 @@ void SkyDeviceConfigDialog::updateTexts()
     apply_button_->setText(is_english_ ? "Apply Config" : "应用配置");
     save_button_->setText(is_english_ ? "Save To Sky" : "保存到天空端");
     close_button_->setText(is_english_ ? "Close" : "关闭");
-    if (visual_mode_button_) visual_mode_button_->setText(is_english_ ? QStringLiteral("Visual Config") : QStringLiteral("可视化配置"));
-    if (raw_mode_button_) raw_mode_button_->setText(is_english_ ? QStringLiteral("Raw Config") : QStringLiteral("原始配置"));
+    if (mode_switch_)
+    {
+        mode_switch_->setLabels(is_english_ ? QStringLiteral("Visual Config") : QStringLiteral("可视化配置"),
+                                is_english_ ? QStringLiteral("Raw Config") : QStringLiteral("原始配置"));
+    }
     if (raw_status_label_ && raw_status_label_->text().isEmpty())
     {
         setRawStatus(is_english_
@@ -842,15 +971,9 @@ void SkyDeviceConfigDialog::setConfigMode(ConfigMode mode)
 
 void SkyDeviceConfigDialog::updateModeSwitch()
 {
-    if (visual_mode_button_)
+    if (mode_switch_)
     {
-        const QSignalBlocker blocker(visual_mode_button_);
-        visual_mode_button_->setChecked(config_mode_ == ConfigMode::Visual);
-    }
-    if (raw_mode_button_)
-    {
-        const QSignalBlocker blocker(raw_mode_button_);
-        raw_mode_button_->setChecked(config_mode_ == ConfigMode::Raw);
+        mode_switch_->setCurrentIndex(config_mode_ == ConfigMode::Visual ? 0 : 1);
     }
 }
 
@@ -944,6 +1067,10 @@ void SkyDeviceConfigDialog::applyThemeStyle()
     applying_theme_style_ = true;
     setStyleSheet(nextStyleSheet);
     applying_theme_style_ = false;
+    if (mode_switch_)
+    {
+        mode_switch_->refreshTheme();
+    }
 }
 
 }  // namespace VaporView

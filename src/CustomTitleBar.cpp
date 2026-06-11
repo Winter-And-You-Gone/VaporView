@@ -884,4 +884,40 @@ void installCustomTitleBar(QWidget *window, bool showMaximizeButton)
     new CustomTitleBarController(window, showMaximizeButton);
 }
 
+bool addWidgetToCustomTitleBar(QWidget *window, QWidget *widget)
+{
+    if (!window || !widget)
+    {
+        return false;
+    }
+
+    auto *bar = window->findChild<QWidget *>(QStringLiteral("customTitleBar"));
+    if (!bar)
+    {
+        return false;
+    }
+
+    auto *layout = qobject_cast<QHBoxLayout *>(bar->layout());
+    if (!layout)
+    {
+        return false;
+    }
+
+    int insertIndex = layout->count();
+    for (int i = 0; i < layout->count(); ++i)
+    {
+        QLayoutItem *item = layout->itemAt(i);
+        QWidget *itemWidget = item ? item->widget() : nullptr;
+        if (itemWidget && itemWidget->accessibleName() == QStringLiteral("titleLanguageButton"))
+        {
+            insertIndex = i;
+            break;
+        }
+    }
+
+    widget->setParent(bar);
+    layout->insertWidget(insertIndex, widget, 0, Qt::AlignVCenter);
+    return true;
+}
+
 }  // namespace VaporView
