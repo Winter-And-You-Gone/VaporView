@@ -5580,13 +5580,13 @@ void MainWindow::createTitleApplicationMenuPanel()
     panel->setFont(menuFont);
     subPanel->setFont(menuFont);
     const QFontMetrics menuMetrics(menuFont);
-    const int rowVerticalPadding = scalePixels(2);
-    const int rowHeight = std::max(scalePixels(22), menuMetrics.height() + rowVerticalPadding * 2);
-    const int menuVerticalPadding = std::max(scalePixels(4), rowHeight / 3);
+    const int rowVerticalPadding = scalePixels(4);
+    const int rowHeight = std::max(scalePixels(28), menuMetrics.height() + rowVerticalPadding * 2);
+    const int menuVerticalPadding = std::max(scalePixels(6), rowHeight / 3);
     const int menuCornerRadius = std::min(scalePixels(8), menuVerticalPadding);
     panel->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_, menuCornerRadius));
-    const int rowLeftPadding = scalePixels(16);
-    const int rowRightPadding = scalePixels(12);
+    const int rowLeftPadding = scalePixels(18);
+    const int rowRightPadding = scalePixels(14);
     const int rowSpacing = scalePixels(6);
     const int checkColumnWidth = scalePixels(10);
     const int arrowColumnWidth = scalePixels(14);
