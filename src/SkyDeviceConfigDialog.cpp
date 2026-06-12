@@ -27,6 +27,7 @@
 #include <QStackedWidget>
 #include <QStyle>
 #include <QSvgRenderer>
+#include <QTimer>
 #include <QVariantAnimation>
 #include <QVBoxLayout>
 #include <QApplication>
@@ -44,9 +45,12 @@ constexpr int kCardFormHorizontalMargin = 10;
 constexpr int kCardFormSpacing = 6;
 constexpr int kEnableToggleSize = 30;
 constexpr int kEnableToggleIconSize = 22;
+constexpr int kModeSwitchAnimationMs = 220;
+constexpr int kModeSwitchDeferredWorkDelayMs = 16;
 constexpr int kDialogPreferredWidth = 980;
 constexpr int kDialogMinimumWidth = 640;
 constexpr int kDialogMinimumHeight = 420;
+constexpr const char *kModeSwitchCurrentIndexProperty = "currentIndex";
 const QColor kEnableToggleOnIcon(22, 163, 74);
 const QColor kEnableToggleOffIcon(220, 38, 38);
 
@@ -343,8 +347,9 @@ public:
         setMinimumWidth(244);
         setCursor(Qt::PointingHandCursor);
         setAttribute(Qt::WA_StyledBackground, false);
-        animation_->setDuration(180);
-        animation_->setEasingCurve(QEasingCurve::OutCubic);
+        setProperty(kModeSwitchCurrentIndexProperty, current_index_);
+        animation_->setDuration(kModeSwitchAnimationMs);
+        animation_->setEasingCurve(QEasingCurve::OutQuint);
         connect(animation_, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
             thumb_position_ = value.toDouble();
             update();
@@ -368,13 +373,14 @@ public:
     void setCurrentIndex(int index, bool animate = true)
     {
         index = std::clamp(index, 0, 1);
-        if (current_index_ == index && animation_->state() == QAbstractAnimation::Stopped)
+        if (current_index_ == index)
         {
             update();
             return;
         }
 
         current_index_ = index;
+        setProperty(kModeSwitchCurrentIndexProperty, current_index_);
         moveThumb(animate);
         update();
     }
@@ -426,9 +432,13 @@ protected:
         if (event->button() == Qt::LeftButton && rect().contains(event->pos()))
         {
             const int index = event->position().x() < width() / 2.0 ? 0 : 1;
-            if (onModeRequested)
+            if (index != current_index_)
             {
-                onModeRequested(index);
+                setCurrentIndex(index, true);
+                if (onModeRequested)
+                {
+                    onModeRequested(index);
+                }
             }
             event->accept();
             return;
@@ -492,7 +502,14 @@ SkyDeviceConfigDialog::SkyDeviceConfigDialog(GroundTelemetryService *service, QW
     VaporView::installCustomTitleBar(this);
     mode_switch_ = new ConfigModeSwitch();
     mode_switch_->onModeRequested = [this](int index) {
-        setConfigMode(index == 0 ? ConfigMode::Visual : ConfigMode::Raw);
+        const ConfigMode requestedMode = index == 0 ? ConfigMode::Visual : ConfigMode::Raw;
+        QTimer::singleShot(kModeSwitchDeferredWorkDelayMs, this, [this, requestedMode]() {
+            const bool applied = setConfigMode(requestedMode);
+            if (!applied)
+            {
+                updateModeSwitch();
+            }
+        });
     };
     VaporView::addWidgetToCustomTitleBar(this, mode_switch_);
     if (service_)
@@ -977,7 +994,7 @@ void SkyDeviceConfigDialog::updateConfigPreview()
     }
 }
 
-void SkyDeviceConfigDialog::setConfigMode(ConfigMode mode)
+bool SkyDeviceConfigDialog::setConfigMode(ConfigMode mode)
 {
     if (mode == config_mode_)
     {
@@ -986,7 +1003,7 @@ void SkyDeviceConfigDialog::setConfigMode(ConfigMode mode)
             mode_stack_->setCurrentWidget(mode == ConfigMode::Raw ? raw_page_ : visual_page_);
         }
         updateModeSwitch();
-        return;
+        return true;
     }
 
     if (mode == ConfigMode::Raw)
@@ -1001,7 +1018,7 @@ void SkyDeviceConfigDialog::setConfigMode(ConfigMode mode)
                          ? QStringLiteral("Edit the same JSON used by the sky config file.")
                          : QStringLiteral("可直接编辑天空端配置文件使用的 JSON。"));
         updateModeSwitch();
-        return;
+        return true;
     }
 
     if (config_mode_ == ConfigMode::Raw)
@@ -1012,7 +1029,7 @@ void SkyDeviceConfigDialog::setConfigMode(ConfigMode mode)
         {
             setRawStatus(error, true);
             updateModeSwitch();
-            return;
+            return false;
         }
         setConfig(config);
     }
@@ -1026,6 +1043,7 @@ void SkyDeviceConfigDialog::setConfigMode(ConfigMode mode)
                      ? QStringLiteral("Raw config is synchronized with the visual form.")
                      : QStringLiteral("原始配置已与可视化表单同步。"));
     updateModeSwitch();
+    return true;
 }
 
 void SkyDeviceConfigDialog::updateModeSwitch()

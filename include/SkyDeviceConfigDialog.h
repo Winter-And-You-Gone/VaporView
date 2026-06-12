@@ -75,7 +75,7 @@ private:
     void refreshSerialPortOptions();
     void updateEnableButton(QPushButton *button);
     void updateConfigPreview();
-    void setConfigMode(ConfigMode mode);
+    bool setConfigMode(ConfigMode mode);
     void updateModeSwitch();
     void syncRawTextFromVisual();
     bool configFromRawText(SkyConfig& config, QString *errorMessage) const;

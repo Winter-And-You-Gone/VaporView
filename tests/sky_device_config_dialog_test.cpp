@@ -38,7 +38,7 @@ void processEventsFor(int timeoutMs)
     }
 }
 
-void clickWidget(QWidget *widget, double xRatio)
+void clickWidget(QWidget *widget, double xRatio, int waitMs = 250)
 {
     require(widget != nullptr, "click widget exists");
     const QPointF localPos(std::clamp(xRatio, 0.0, 1.0) * widget->width(),
@@ -58,7 +58,10 @@ void clickWidget(QWidget *widget, double xRatio)
                         Qt::NoButton,
                         Qt::NoModifier);
     QCoreApplication::sendEvent(widget, &release);
-    processEventsFor(250);
+    if (waitMs > 0)
+    {
+        processEventsFor(waitMs);
+    }
 }
 
 bool isTitleBarButton(QToolButton *button)
@@ -254,13 +257,22 @@ int main(int argc, char **argv)
     require(stack->currentWidget() != nullptr, "initial stack page exists");
     require(stack->currentWidget()->objectName() != QStringLiteral("skyConfigRawPage"),
             "initial visual page selected");
+    require(modeSwitch->property("currentIndex").toInt() == 0, "initial mode switch index");
 
-    clickWidget(modeSwitch, 0.75);
+    clickWidget(modeSwitch, 0.75, 0);
+    processEventsFor(5);
+    require(modeSwitch->property("currentIndex").toInt() == 1, "mode switch thumb moves before page work");
+    require(stack->currentWidget() && stack->currentWidget()->objectName() != QStringLiteral("skyConfigRawPage"),
+            "raw page is deferred until thumb movement starts");
+    processEventsFor(80);
     require(stack->currentWidget() && stack->currentWidget()->objectName() == QStringLiteral("skyConfigRawPage"),
             "raw page selected");
     requireTitleBarHoverStillWorks(dialog);
 
-    clickWidget(modeSwitch, 0.25);
+    clickWidget(modeSwitch, 0.25, 0);
+    processEventsFor(5);
+    require(modeSwitch->property("currentIndex").toInt() == 0, "mode switch thumb returns before page work");
+    processEventsFor(80);
     require(stack->currentWidget() && stack->currentWidget()->objectName() != QStringLiteral("skyConfigRawPage"),
             "visual page selected");
     requireTitleBarHoverStillWorks(dialog);
