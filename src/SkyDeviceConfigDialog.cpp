@@ -46,7 +46,7 @@ constexpr int kCardFormSpacing = 6;
 constexpr int kEnableToggleSize = 30;
 constexpr int kEnableToggleIconSize = 22;
 constexpr int kModeSwitchAnimationMs = 220;
-constexpr int kModeSwitchDeferredWorkDelayMs = 16;
+constexpr int kModeSwitchDeferredWorkDelayMs = kModeSwitchAnimationMs + 20;
 constexpr int kDialogPreferredWidth = 980;
 constexpr int kDialogMinimumWidth = 640;
 constexpr int kDialogMinimumHeight = 420;
@@ -503,7 +503,12 @@ SkyDeviceConfigDialog::SkyDeviceConfigDialog(GroundTelemetryService *service, QW
     mode_switch_ = new ConfigModeSwitch();
     mode_switch_->onModeRequested = [this](int index) {
         const ConfigMode requestedMode = index == 0 ? ConfigMode::Visual : ConfigMode::Raw;
-        QTimer::singleShot(kModeSwitchDeferredWorkDelayMs, this, [this, requestedMode]() {
+        const int requestSerial = ++mode_switch_request_serial_;
+        QTimer::singleShot(kModeSwitchDeferredWorkDelayMs, this, [this, requestedMode, requestSerial]() {
+            if (requestSerial != mode_switch_request_serial_)
+            {
+                return;
+            }
             const bool applied = setConfigMode(requestedMode);
             if (!applied)
             {

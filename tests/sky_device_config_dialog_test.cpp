@@ -264,7 +264,10 @@ int main(int argc, char **argv)
     require(modeSwitch->property("currentIndex").toInt() == 1, "mode switch thumb moves before page work");
     require(stack->currentWidget() && stack->currentWidget()->objectName() != QStringLiteral("skyConfigRawPage"),
             "raw page is deferred until thumb movement starts");
-    processEventsFor(80);
+    processEventsFor(120);
+    require(stack->currentWidget() && stack->currentWidget()->objectName() != QStringLiteral("skyConfigRawPage"),
+            "raw page stays deferred during thumb animation");
+    processEventsFor(160);
     require(stack->currentWidget() && stack->currentWidget()->objectName() == QStringLiteral("skyConfigRawPage"),
             "raw page selected");
     requireTitleBarHoverStillWorks(dialog);
@@ -272,7 +275,10 @@ int main(int argc, char **argv)
     clickWidget(modeSwitch, 0.25, 0);
     processEventsFor(5);
     require(modeSwitch->property("currentIndex").toInt() == 0, "mode switch thumb returns before page work");
-    processEventsFor(80);
+    processEventsFor(120);
+    require(stack->currentWidget() && stack->currentWidget()->objectName() == QStringLiteral("skyConfigRawPage"),
+            "visual page stays deferred during thumb animation");
+    processEventsFor(160);
     require(stack->currentWidget() && stack->currentWidget()->objectName() != QStringLiteral("skyConfigRawPage"),
             "visual page selected");
     requireTitleBarHoverStillWorks(dialog);

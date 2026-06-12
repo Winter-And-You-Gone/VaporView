@@ -122,6 +122,7 @@ private:
     QPushButton *save_button_ = nullptr;
     QPushButton *close_button_ = nullptr;
     ConfigMode config_mode_ = ConfigMode::Visual;
+    int mode_switch_request_serial_ = 0;
     ConfigModeSwitch *mode_switch_ = nullptr;
     QStackedWidget *mode_stack_ = nullptr;
     QWidget *visual_page_ = nullptr;
