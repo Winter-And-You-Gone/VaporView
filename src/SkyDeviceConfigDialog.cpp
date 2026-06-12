@@ -38,8 +38,10 @@ namespace VaporView
 {
 namespace
 {
-constexpr int kFieldDigitCount = 20;
+constexpr int kFieldDigitCount = 9;
 constexpr int kFieldHeight = 36;
+constexpr int kCardFormHorizontalMargin = 10;
+constexpr int kCardFormSpacing = 6;
 constexpr int kEnableToggleSize = 30;
 constexpr int kEnableToggleIconSize = 16;
 constexpr int kDialogPreferredWidth = 980;
@@ -155,8 +157,8 @@ void applyComboText(QComboBox *combo, const QString& value)
 
 void setupFormLayout(QFormLayout *layout)
 {
-    layout->setContentsMargins(12, 12, 12, 12);
-    layout->setSpacing(8);
+    layout->setContentsMargins(kCardFormHorizontalMargin, 12, kCardFormHorizontalMargin, 12);
+    layout->setSpacing(kCardFormSpacing);
     layout->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     layout->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
     layout->setFieldGrowthPolicy(QFormLayout::FieldsStayAtSizeHint);
@@ -642,7 +644,7 @@ void SkyDeviceConfigDialog::setupUi()
     deviceGrid->setContentsMargins(0, 0, 0, 0);
     deviceGrid->setHorizontalSpacing(8);
     deviceGrid->setVerticalSpacing(8);
-    for (int column = 0; column < 3; ++column)
+    for (int column = 0; column < 4; ++column)
     {
         deviceGrid->setColumnStretch(column, 1);
     }
@@ -664,7 +666,7 @@ void SkyDeviceConfigDialog::setupUi()
     addSerialGroup(QStringLiteral("EPSILON"), epsilon_group_, epsilon_, 0, 0);
     addSerialGroup(QStringLiteral("PTB210"), ptb_group_, ptb_, 0, 1);
     addSerialGroup(QStringLiteral("HMP3"), hmp_group_, hmp_, 0, 2);
-    addSerialGroup(QStringLiteral("TFA1500-L"), lidar_group_, lidar_, 1, 0);
+    addSerialGroup(QStringLiteral("TFA1500-L"), lidar_group_, lidar_, 0, 3);
 
     wave_group_ = new QGroupBox(QStringLiteral("Wave TCP"), this);
     wave_enabled_ = new QPushButton(this);
@@ -689,7 +691,7 @@ void SkyDeviceConfigDialog::setupUi()
     wave_host_label_ = addLabeledRow(waveLayout, QStringLiteral("主机"), wave_host_);
     wave_port_label_ = addLabeledRow(waveLayout, QStringLiteral("端口"), wave_port_);
     wave_downsample_label_ = addLabeledRow(waveLayout, QStringLiteral("降采样倍率"), wave_downsample_);
-    deviceGrid->addWidget(wave_group_, 1, 1);
+    deviceGrid->addWidget(wave_group_, 1, 0);
 
     telemetry_group_ = new QGroupBox(QStringLiteral("数传配置"), this);
     auto *telemetryLayout = createCardFormLayout(telemetry_group_, QStringLiteral("数传配置"));
@@ -710,7 +712,7 @@ void SkyDeviceConfigDialog::setupUi()
     telemetry_waveform_label_ = addLabeledRow(telemetryLayout, QStringLiteral("波形 Hz"), telemetry_waveform_rate_);
     telemetry_heartbeat_label_ = addLabeledRow(telemetryLayout, QStringLiteral("心跳 Hz"), telemetry_heartbeat_rate_);
     telemetry_status_label_ = addLabeledRow(telemetryLayout, QStringLiteral("状态 Hz"), telemetry_status_rate_);
-    deviceGrid->addWidget(telemetry_group_, 1, 2);
+    deviceGrid->addWidget(telemetry_group_, 1, 1);
 
     scroll->setWidget(content);
     visualLayout->addWidget(scroll);

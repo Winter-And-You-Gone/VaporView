@@ -128,7 +128,9 @@ int main(int argc, char **argv)
     require(dialog.size().height() >= dialog.minimumSize().height(), "dialog opens at minimum height");
     const QSize screenLimit = VaporView::screenFractionSize(&dialog);
     const QSize expectedMinimum = QSize(640, 420).boundedTo(screenLimit);
-    require(dialog.minimumSize() == expectedMinimum, "dialog minimum size follows child window policy");
+    require(dialog.minimumSize().height() == expectedMinimum.height(), "dialog minimum height follows child window policy");
+    require(dialog.minimumSize().width() >= expectedMinimum.width(), "dialog minimum width preserves content");
+    require(dialog.minimumSize().width() <= std::max(980, screenLimit.width()), "dialog minimum width fits default window policy");
     require(dialog.size().width() <= std::max(980, screenLimit.width()), "dialog width follows child window policy");
     require(dialog.size().height() <= screenLimit.height(), "dialog height follows screen fraction");
     auto *modeSwitch = dialog.findChild<QWidget *>(QStringLiteral("skyConfigModeSwitch"));
@@ -166,17 +168,32 @@ int main(int argc, char **argv)
     }
     const QList<QGroupBox*> groups = dialog.findChildren<QGroupBox *>();
     require(!groups.isEmpty(), "config groups exist");
+    QGroupBox *epsilonGroup = nullptr;
+    QGroupBox *ptbGroup = nullptr;
+    QGroupBox *hmpGroup = nullptr;
+    QGroupBox *lidarGroup = nullptr;
     for (QGroupBox *group : groups)
     {
         auto *titleLabel = group->findChild<QLabel *>(QStringLiteral("skyConfigGroupTitleLabel"));
         const QString title = titleLabel ? titleLabel->text() : QString();
+        if (title == QStringLiteral("EPSILON")) epsilonGroup = group;
+        if (title == QStringLiteral("PTB210")) ptbGroup = group;
+        if (title == QStringLiteral("HMP3")) hmpGroup = group;
+        if (title == QStringLiteral("TFA1500-L")) lidarGroup = group;
         if (title == QStringLiteral("EPSILON") ||
             title == QStringLiteral("PTB210") ||
-            title == QStringLiteral("HMP3"))
+            title == QStringLiteral("HMP3") ||
+            title == QStringLiteral("TFA1500-L"))
         {
             require(group->height() <= group->sizeHint().height() + 12, "top row cards are not stretched vertically");
         }
     }
+    require(epsilonGroup && ptbGroup && hmpGroup && lidarGroup, "four sensor cards exist");
+    const int topRowTolerance = 4;
+    require(std::abs(epsilonGroup->y() - ptbGroup->y()) <= topRowTolerance, "EPSILON and PTB are on first row");
+    require(std::abs(epsilonGroup->y() - hmpGroup->y()) <= topRowTolerance, "EPSILON and HMP are on first row");
+    require(std::abs(epsilonGroup->y() - lidarGroup->y()) <= topRowTolerance, "fourth sensor card is on first row");
+    require(lidarGroup->x() > hmpGroup->x(), "fourth sensor card is in fourth column");
 
     auto *stack = dialog.findChild<QStackedWidget *>();
     require(stack != nullptr, "mode stack exists");
