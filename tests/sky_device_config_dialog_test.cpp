@@ -8,6 +8,7 @@
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QStackedWidget>
+#include <QToolButton>
 #include <QWidget>
 #include <algorithm>
 #include <cstdlib>
@@ -56,6 +57,46 @@ void clickWidget(QWidget *widget, double xRatio)
                         Qt::NoModifier);
     QCoreApplication::sendEvent(widget, &release);
     processEventsFor(250);
+}
+
+bool isTitleBarButton(QToolButton *button)
+{
+    if (!button)
+    {
+        return false;
+    }
+
+    const QString name = button->objectName();
+    return name == QStringLiteral("titleBarButton") ||
+           name == QStringLiteral("windowMinimizeButton") ||
+           name == QStringLiteral("windowMaximizeButton") ||
+           name == QStringLiteral("windowCloseButton");
+}
+
+void requireTitleBarHoverStillWorks(VaporView::SkyDeviceConfigDialog& dialog)
+{
+    const QList<QToolButton*> buttons = dialog.findChildren<QToolButton *>();
+    int checkedButtons = 0;
+    for (QToolButton *button : buttons)
+    {
+        if (!isTitleBarButton(button))
+        {
+            continue;
+        }
+
+        ++checkedButtons;
+        QEvent enter(QEvent::Enter);
+        QCoreApplication::sendEvent(button, &enter);
+        processEventsFor(20);
+        require(button->property("titleBarHover").toBool(), "title bar button hover enabled");
+
+        QEvent leave(QEvent::Leave);
+        QCoreApplication::sendEvent(button, &leave);
+        processEventsFor(20);
+        require(!button->property("titleBarHover").toBool(), "title bar button hover cleared");
+    }
+
+    require(checkedButtons >= 5, "all title bar buttons checked");
 }
 
 }  // namespace
@@ -126,10 +167,12 @@ int main(int argc, char **argv)
     clickWidget(modeSwitch, 0.75);
     require(stack->currentWidget() && stack->currentWidget()->objectName() == QStringLiteral("skyConfigRawPage"),
             "raw page selected");
+    requireTitleBarHoverStillWorks(dialog);
 
     clickWidget(modeSwitch, 0.25);
     require(stack->currentWidget() && stack->currentWidget()->objectName() != QStringLiteral("skyConfigRawPage"),
             "visual page selected");
+    requireTitleBarHoverStillWorks(dialog);
 
     dialog.close();
     processEventsFor(100);

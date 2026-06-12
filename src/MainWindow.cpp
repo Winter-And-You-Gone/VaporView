@@ -913,10 +913,15 @@ QToolButton#windowCloseButton {
 QToolButton#titleBarButton:hover,
 QToolButton#titleBarMenuButton:hover,
 QToolButton#windowMinimizeButton:hover,
-QToolButton#windowMaximizeButton:hover {
+QToolButton#windowMaximizeButton:hover,
+QToolButton#titleBarButton[titleBarHover="true"],
+QToolButton#titleBarMenuButton[titleBarHover="true"],
+QToolButton#windowMinimizeButton[titleBarHover="true"],
+QToolButton#windowMaximizeButton[titleBarHover="true"] {
     background-color: rgb(18, 18, 18);
 }
-QToolButton#windowCloseButton:hover {
+QToolButton#windowCloseButton:hover,
+QToolButton#windowCloseButton[titleBarHover="true"] {
     background-color: rgb(18, 18, 18);
 }
 QWidget#customTitleBar QToolButton::menu-indicator {
@@ -959,7 +964,11 @@ QToolButton#windowCloseButton {
 QToolButton#titleBarButton:hover,
 QToolButton#titleBarMenuButton:hover,
 QToolButton#windowMinimizeButton:hover,
-QToolButton#windowMaximizeButton:hover {
+QToolButton#windowMaximizeButton:hover,
+QToolButton#titleBarButton[titleBarHover="true"],
+QToolButton#titleBarMenuButton[titleBarHover="true"],
+QToolButton#windowMinimizeButton[titleBarHover="true"],
+QToolButton#windowMaximizeButton[titleBarHover="true"] {
     background-color: #EFEEEB;
 }
 QToolButton#titleBarButton:pressed,
@@ -972,7 +981,8 @@ QToolButton#windowMinimizeButton:checked,
 QToolButton#windowMaximizeButton:checked {
     background-color: #EFEEEB;
 }
-QToolButton#windowCloseButton:hover {
+QToolButton#windowCloseButton:hover,
+QToolButton#windowCloseButton[titleBarHover="true"] {
     background-color: #fee2e2;
 }
 QWidget#customTitleBar QToolButton::menu-indicator {

@@ -1,6 +1,7 @@
 #include "CustomTitleBar.h"
 
 #include <QApplication>
+#include <QCursor>
 #include <QDialog>
 #include <QDir>
 #include <QEvent>
@@ -21,6 +22,7 @@
 #include <QScreen>
 #include <QSizePolicy>
 #include <QSvgRenderer>
+#include <QStyle>
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <QVariant>
@@ -52,6 +54,8 @@ constexpr int kResizeBorderWidth = 8;
 constexpr const char *kMainWindowProperty = "vaporViewMainWindow";
 constexpr const char *kEnglishProperty = "vaporViewEnglish";
 constexpr const char *kDarkThemeProperty = "vaporViewDarkTheme";
+constexpr const char *kTitleBarButtonProperty = "customTitleBarButton";
+constexpr const char *kTitleBarHoverProperty = "titleBarHover";
 const QColor kToolbarBlue(40, 105, 190);
 const QColor kToolbarAmber(220, 150, 35);
 
@@ -117,6 +121,23 @@ QIcon createTitleBarIcon(const QString& iconName, bool dark)
 QIcon createToolbarIcon(const QString& iconName, const QColor& color = kToolbarBlue)
 {
     return createLucideIcon(iconName, color);
+}
+
+void setTitleBarButtonHovered(QWidget *button, bool hovered)
+{
+    if (!button || button->property(kTitleBarHoverProperty).toBool() == hovered)
+    {
+        if (button)
+        {
+            button->update();
+        }
+        return;
+    }
+
+    button->setProperty(kTitleBarHoverProperty, hovered);
+    button->style()->unpolish(button);
+    button->style()->polish(button);
+    button->update();
 }
 
 QString logoResourcePath(bool dark)
@@ -324,6 +345,27 @@ protected:
 
         if (auto *handle = qobject_cast<QWidget *>(watched))
         {
+            if (isMouseHoverEvent(event->type()) && belongsToWindow(handle))
+            {
+                syncTitleBarButtonHoverFromCursor();
+            }
+
+            if (handle->property(kTitleBarButtonProperty).toBool())
+            {
+                if (event->type() == QEvent::Enter ||
+                    event->type() == QEvent::HoverEnter ||
+                    event->type() == QEvent::HoverMove ||
+                    event->type() == QEvent::MouseMove)
+                {
+                    setTitleBarButtonHovered(handle, true);
+                }
+                else if (event->type() == QEvent::Leave ||
+                         event->type() == QEvent::HoverLeave)
+                {
+                    setTitleBarButtonHovered(handle, false);
+                }
+            }
+
             if (handle->property("customTitleBarResizeHandle").toBool() &&
                 event->type() == QEvent::MouseButtonPress)
             {
@@ -479,16 +521,67 @@ private:
         return bar;
     }
 
-    QToolButton *createWindowButton(const QString& objectName, QWidget *parent) const
+    QToolButton *createWindowButton(const QString& objectName, QWidget *parent)
     {
         auto *button = new QToolButton(parent);
         button->setObjectName(objectName);
+        button->setProperty(kTitleBarButtonProperty, true);
+        button->setProperty(kTitleBarHoverProperty, false);
+        button->setAttribute(Qt::WA_Hover, true);
+        button->setMouseTracking(true);
+        button->installEventFilter(this);
+        title_bar_buttons_.append(button);
         button->setToolButtonStyle(Qt::ToolButtonIconOnly);
         button->setAutoRaise(false);
         button->setFocusPolicy(Qt::NoFocus);
         button->setFixedSize(kTitleBarButtonSize, kTitleBarButtonSize);
         button->setIconSize(QSize(kTitleBarIconSize, kTitleBarIconSize));
         return button;
+    }
+
+    bool isMouseHoverEvent(QEvent::Type type) const
+    {
+        return type == QEvent::Enter ||
+               type == QEvent::Leave ||
+               type == QEvent::HoverEnter ||
+               type == QEvent::HoverLeave ||
+               type == QEvent::HoverMove ||
+               type == QEvent::MouseMove ||
+               type == QEvent::MouseButtonPress ||
+               type == QEvent::MouseButtonRelease;
+    }
+
+    bool belongsToWindow(QWidget *widget) const
+    {
+        for (QWidget *current = widget; current; current = current->parentWidget())
+        {
+            if (current == window_)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void syncTitleBarButtonHoverFromCursor()
+    {
+        if (!title_bar_ || !title_bar_->isVisible())
+        {
+            return;
+        }
+
+        const QPoint cursorPos = QCursor::pos();
+        for (QWidget *button : title_bar_buttons_)
+        {
+            if (!button)
+            {
+                continue;
+            }
+            const bool hovered = button->isVisible() &&
+                                 button->isEnabled() &&
+                                 QRect(button->mapToGlobal(QPoint(0, 0)), button->size()).contains(cursorPos);
+            setTitleBarButtonHovered(button, hovered);
+        }
     }
 
     void addSeparator(QHBoxLayout *layout, QWidget *parent) const
@@ -870,6 +963,7 @@ private:
     QFrame *border_bottom_;
     bool show_maximize_button_;
     QRect normal_geometry_;
+    QList<QWidget *> title_bar_buttons_;
     QList<QWidget *> resize_handles_;
 };
 }  // namespace
