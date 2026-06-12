@@ -389,7 +389,7 @@ public:
     void refreshTheme()
     {
         const bool dark = isDarkApplicationPalette();
-        background_color_ = dark ? QColor("#121212") : QColor("#EFEEEB");
+        background_color_ = dark ? QColor("#121212") : QColor("#FDFDFC");
         border_color_ = dark ? QColor("#202020") : QColor("#EAEAE9");
         thumb_color_ = dark ? QColor(217, 119, 87) : QColor("#1976d2");
         inactive_text_color_ = dark ? QColor("#d8dee9") : QColor("#475569");
