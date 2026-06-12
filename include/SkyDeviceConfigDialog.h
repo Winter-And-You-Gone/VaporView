@@ -81,6 +81,7 @@ private:
     bool configFromRawText(SkyConfig& config, QString *errorMessage) const;
     void setRawStatus(const QString& message, bool error = false);
     void applyDynamicMetrics();
+    void applyWindowSizing();
     void applyThemeStyle();
 
     GroundTelemetryService *service_;

@@ -1,5 +1,6 @@
 #include "SkyDeviceConfigDialog.h"
 #include "CustomTitleBar.h"
+#include "WindowSizing.h"
 
 #include <QDialogButtonBox>
 #include <QDir>
@@ -41,8 +42,9 @@ constexpr int kFieldDigitCount = 20;
 constexpr int kFieldHeight = 36;
 constexpr int kEnableToggleSize = 30;
 constexpr int kEnableToggleIconSize = 16;
-constexpr int kDialogDefaultWidth = 980;
-constexpr int kDialogDefaultHeight = 680;
+constexpr int kDialogPreferredWidth = 980;
+constexpr int kDialogMinimumWidth = 640;
+constexpr int kDialogMinimumHeight = 420;
 const QColor kEnableToggleOnIcon(255, 255, 255);
 const QColor kEnableToggleOffIcon(180, 35, 24);
 
@@ -611,9 +613,6 @@ void SkyDeviceConfigDialog::changeEvent(QEvent *event)
 
 void SkyDeviceConfigDialog::setupUi()
 {
-    const QSize defaultSize(kDialogDefaultWidth, kDialogDefaultHeight);
-    setMinimumSize(defaultSize);
-    resize(defaultSize);
     setObjectName(QStringLiteral("skyDeviceConfigDialog"));
     applyThemeStyle();
     setFont(qApp->font());
@@ -1081,6 +1080,32 @@ void SkyDeviceConfigDialog::applyDynamicMetrics()
     for (QWidget *field : fields)
     {
         polishConfigField(field);
+    }
+    applyWindowSizing();
+}
+
+void SkyDeviceConfigDialog::applyWindowSizing()
+{
+    const QSize screenLimit = screenFractionSize(this);
+    const QSize targetMinimumSize = QSize(kDialogMinimumWidth, kDialogMinimumHeight).boundedTo(screenLimit);
+    setMinimumSize(targetMinimumSize);
+
+    if (isMaximized() || isFullScreen())
+    {
+        return;
+    }
+
+    if (layout())
+    {
+        layout()->invalidate();
+    }
+    const QSize hint = sizeHint();
+    const QSize preferredSize(kDialogPreferredWidth,
+                              std::max(targetMinimumSize.height(), hint.height()));
+    const QSize targetSize = defaultWindowSizeWithinScreenFraction(this, preferredSize, 0.5, targetMinimumSize);
+    if (targetSize != size())
+    {
+        resize(targetSize);
     }
 }
 

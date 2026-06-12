@@ -1,7 +1,9 @@
 #include "SkyDeviceConfigDialog.h"
+#include "WindowSizing.h"
 
 #include <QApplication>
 #include <QCoreApplication>
+#include <QCursor>
 #include <QElapsedTimer>
 #include <QGroupBox>
 #include <QLabel>
@@ -85,14 +87,25 @@ void requireTitleBarHoverStillWorks(VaporView::SkyDeviceConfigDialog& dialog)
         }
 
         ++checkedButtons;
+        const QPoint localCenter = button->rect().center();
+        const QPoint globalCenter = button->mapToGlobal(localCenter);
+        QCursor::setPos(globalCenter);
+        processEventsFor(20);
         QEvent enter(QEvent::Enter);
         QCoreApplication::sendEvent(button, &enter);
-        processEventsFor(20);
+        QMouseEvent move(QEvent::MouseMove,
+                         localCenter,
+                         globalCenter,
+                         Qt::NoButton,
+                         Qt::NoButton,
+                         Qt::NoModifier);
+        QCoreApplication::sendEvent(button, &move);
         require(button->property("titleBarHover").toBool(), "title bar button hover enabled");
 
+        const QPoint outside = dialog.mapToGlobal(QPoint(2, dialog.height() - 2));
+        QCursor::setPos(outside);
         QEvent leave(QEvent::Leave);
         QCoreApplication::sendEvent(button, &leave);
-        processEventsFor(20);
         require(!button->property("titleBarHover").toBool(), "title bar button hover cleared");
     }
 
@@ -113,6 +126,11 @@ int main(int argc, char **argv)
     require(dialog.isVisible(), "dialog visible");
     require(dialog.size().width() >= dialog.minimumSize().width(), "dialog opens at minimum width");
     require(dialog.size().height() >= dialog.minimumSize().height(), "dialog opens at minimum height");
+    const QSize screenLimit = VaporView::screenFractionSize(&dialog);
+    const QSize expectedMinimum = QSize(640, 420).boundedTo(screenLimit);
+    require(dialog.minimumSize() == expectedMinimum, "dialog minimum size follows child window policy");
+    require(dialog.size().width() <= std::max(980, screenLimit.width()), "dialog width follows child window policy");
+    require(dialog.size().height() <= screenLimit.height(), "dialog height follows screen fraction");
     auto *modeSwitch = dialog.findChild<QWidget *>(QStringLiteral("skyConfigModeSwitch"));
     require(modeSwitch != nullptr, "mode switch exists");
     require(modeSwitch->isVisible(), "mode switch visible");

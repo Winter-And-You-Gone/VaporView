@@ -447,6 +447,7 @@ if(BUILD_TESTING)
         tests/sky_device_config_dialog_test.cpp
         src/SkyDeviceConfigDialog.cpp
         src/CustomTitleBar.cpp
+        src/WindowSizing.cpp
         src/GroundTelemetryService.cpp
         include/SkyDeviceConfigDialog.h
         include/GroundTelemetryService.h
