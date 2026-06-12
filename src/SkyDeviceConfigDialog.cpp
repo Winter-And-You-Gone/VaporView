@@ -19,6 +19,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPalette>
+#include <QPen>
 #include <QPixmap>
 #include <QScrollArea>
 #include <QSerialPortInfo>
@@ -388,9 +389,10 @@ public:
     void refreshTheme()
     {
         const bool dark = isDarkApplicationPalette();
-        background_color_ = dark ? QColor("#1f2937") : QColor("#e5e7eb");
+        background_color_ = dark ? QColor("#121212") : QColor("#EFEEEB");
+        border_color_ = dark ? QColor("#202020") : QColor("#EAEAE9");
         thumb_color_ = dark ? QColor(217, 119, 87) : QColor("#1976d2");
-        inactive_text_color_ = dark ? QColor("#cbd5e1") : QColor("#475569");
+        inactive_text_color_ = dark ? QColor("#d8dee9") : QColor("#475569");
         active_text_color_ = QColor("#ffffff");
         update();
     }
@@ -407,11 +409,14 @@ protected:
     {
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.setPen(Qt::NoPen);
+        painter.setPen(QPen(border_color_, 1));
         painter.setBrush(background_color_);
-        painter.drawRoundedRect(rect(), height() / 2.0, height() / 2.0);
+        painter.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5),
+                                height() / 2.0,
+                                height() / 2.0);
 
         const QRectF thumbRect = thumbGeometryForPosition(thumb_position_);
+        painter.setPen(Qt::NoPen);
         painter.setBrush(thumb_color_);
         painter.drawRoundedRect(thumbRect, thumbRect.height() / 2.0, thumbRect.height() / 2.0);
 
@@ -486,6 +491,7 @@ private:
     QVariantAnimation *animation_ = nullptr;
     QString labels_[2];
     QColor background_color_;
+    QColor border_color_;
     QColor thumb_color_;
     QColor active_text_color_;
     QColor inactive_text_color_;
