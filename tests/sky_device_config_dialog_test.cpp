@@ -111,6 +111,8 @@ int main(int argc, char **argv)
     processEventsFor(250);
 
     require(dialog.isVisible(), "dialog visible");
+    require(dialog.size().width() >= dialog.minimumSize().width(), "dialog opens at minimum width");
+    require(dialog.size().height() >= dialog.minimumSize().height(), "dialog opens at minimum height");
     auto *modeSwitch = dialog.findChild<QWidget *>(QStringLiteral("skyConfigModeSwitch"));
     require(modeSwitch != nullptr, "mode switch exists");
     require(modeSwitch->isVisible(), "mode switch visible");

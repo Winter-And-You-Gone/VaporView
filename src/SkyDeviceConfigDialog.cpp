@@ -41,6 +41,8 @@ constexpr int kFieldDigitCount = 20;
 constexpr int kFieldHeight = 36;
 constexpr int kEnableToggleSize = 30;
 constexpr int kEnableToggleIconSize = 16;
+constexpr int kDialogDefaultWidth = 980;
+constexpr int kDialogDefaultHeight = 680;
 const QColor kEnableToggleOnIcon(255, 255, 255);
 const QColor kEnableToggleOffIcon(180, 35, 24);
 
@@ -609,7 +611,9 @@ void SkyDeviceConfigDialog::changeEvent(QEvent *event)
 
 void SkyDeviceConfigDialog::setupUi()
 {
-    setMinimumSize(980, 680);
+    const QSize defaultSize(kDialogDefaultWidth, kDialogDefaultHeight);
+    setMinimumSize(defaultSize);
+    resize(defaultSize);
     setObjectName(QStringLiteral("skyDeviceConfigDialog"));
     applyThemeStyle();
     setFont(qApp->font());
