@@ -5575,8 +5575,10 @@ void MainWindow::createTitleApplicationMenuPanel()
     };
 
     QFont menuFont = qApp->font();
-    menuFont.setPixelSize(std::max(1, scalePixels(14)));
+    menuFont.setPixelSize(std::max(1, scalePixels(16)));
+    menuFont.setWeight(QFont::Medium);
     panel->setFont(menuFont);
+    subPanel->setFont(menuFont);
     const QFontMetrics menuMetrics(menuFont);
     const int rowVerticalPadding = scalePixels(2);
     const int rowHeight = std::max(scalePixels(22), menuMetrics.height() + rowVerticalPadding * 2);
