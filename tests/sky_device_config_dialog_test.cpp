@@ -147,7 +147,18 @@ int main(int argc, char **argv)
         require(button->parentWidget()->parentWidget() != nullptr &&
                     button->parentWidget()->parentWidget()->objectName() == QStringLiteral("skyConfigGroupTitleBar"),
                 "enable button action is in card title bar");
+        require(button->isFlat(), "enable button is a flat icon button");
+        require(button->text().isEmpty(), "enable button has no text");
+        require(!button->icon().isNull(), "enable button has an icon");
     }
+    const bool firstEnableChecked = enableButtons.front()->isChecked();
+    const qint64 firstEnableIconKey = enableButtons.front()->icon().cacheKey();
+    enableButtons.front()->setChecked(!firstEnableChecked);
+    processEventsFor(50);
+    require(enableButtons.front()->icon().cacheKey() != firstEnableIconKey,
+            "enable button icon changes between check and x");
+    enableButtons.front()->setChecked(firstEnableChecked);
+    processEventsFor(50);
     const QList<QLabel*> enableLabels = dialog.findChildren<QLabel *>(QStringLiteral("skyConfigEnableTitleLabel"));
     require(enableLabels.size() == 5, "five enable labels");
     for (QLabel *label : enableLabels)
