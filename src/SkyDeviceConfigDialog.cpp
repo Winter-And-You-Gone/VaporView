@@ -57,6 +57,16 @@ QLabel *addLabeledRow(QFormLayout *layout, const QString& text, QWidget *widget)
     return label;
 }
 
+QLabel *addLabeledGridCell(QGridLayout *layout, int row, int column, const QString& text, QWidget *widget)
+{
+    auto *label = new QLabel(text);
+    label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    const int gridColumn = column * 2;
+    layout->addWidget(label, row, gridColumn, Qt::AlignLeft | Qt::AlignVCenter);
+    layout->addWidget(widget, row, gridColumn + 1, Qt::AlignLeft | Qt::AlignVCenter);
+    return label;
+}
+
 QString findResourceFile(const QString& relativePath)
 {
     const QString appDir = QApplication::applicationDirPath();
@@ -179,7 +189,7 @@ QWidget *createEnableTitleAction(QWidget *parent, QLabel *&label, QPushButton *b
     return container;
 }
 
-QFormLayout *createCardFormLayout(QGroupBox *group, const QString& title, QWidget *titleAction = nullptr)
+QWidget *createCardBody(QGroupBox *group, const QString& title, QWidget *titleAction = nullptr)
 {
     group->setTitle(QString());
     group->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
@@ -209,9 +219,15 @@ QFormLayout *createCardFormLayout(QGroupBox *group, const QString& title, QWidge
     auto *body = new QWidget(group);
     body->setObjectName(QStringLiteral("skyConfigGroupBody"));
     body->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    cardLayout->addWidget(body);
+    return body;
+}
+
+QFormLayout *createCardFormLayout(QGroupBox *group, const QString& title, QWidget *titleAction = nullptr)
+{
+    auto *body = createCardBody(group, title, titleAction);
     auto *formLayout = new QFormLayout(body);
     setupFormLayout(formLayout);
-    cardLayout->addWidget(body);
     return formLayout;
 }
 
@@ -694,7 +710,7 @@ void SkyDeviceConfigDialog::setupUi()
     deviceGrid->addWidget(wave_group_, 1, 0);
 
     telemetry_group_ = new QGroupBox(QStringLiteral("数传配置"), this);
-    auto *telemetryLayout = createCardFormLayout(telemetry_group_, QStringLiteral("数传配置"));
+    auto *telemetryBody = createCardBody(telemetry_group_, QStringLiteral("数传配置"));
     auto makeRate = [this]() {
         auto *spin = new QDoubleSpinBox(this);
         spin->setRange(0.1, 200.0);
@@ -707,12 +723,18 @@ void SkyDeviceConfigDialog::setupUi()
     telemetry_waveform_rate_ = makeRate();
     telemetry_heartbeat_rate_ = makeRate();
     telemetry_status_rate_ = makeRate();
-    telemetry_basic_label_ = addLabeledRow(telemetryLayout, QStringLiteral("基础遥测 Hz"), telemetry_basic_rate_);
-    telemetry_feature_label_ = addLabeledRow(telemetryLayout, QStringLiteral("特征值 Hz"), telemetry_feature_rate_);
-    telemetry_waveform_label_ = addLabeledRow(telemetryLayout, QStringLiteral("波形 Hz"), telemetry_waveform_rate_);
-    telemetry_heartbeat_label_ = addLabeledRow(telemetryLayout, QStringLiteral("心跳 Hz"), telemetry_heartbeat_rate_);
-    telemetry_status_label_ = addLabeledRow(telemetryLayout, QStringLiteral("状态 Hz"), telemetry_status_rate_);
-    deviceGrid->addWidget(telemetry_group_, 1, 1);
+    auto *telemetryGrid = new QGridLayout(telemetryBody);
+    telemetryGrid->setContentsMargins(kCardFormHorizontalMargin, 12, kCardFormHorizontalMargin, 12);
+    telemetryGrid->setHorizontalSpacing(12);
+    telemetryGrid->setVerticalSpacing(kCardFormSpacing);
+    telemetryGrid->setColumnStretch(1, 1);
+    telemetryGrid->setColumnStretch(3, 1);
+    telemetry_basic_label_ = addLabeledGridCell(telemetryGrid, 0, 0, QStringLiteral("基础遥测 Hz"), telemetry_basic_rate_);
+    telemetry_feature_label_ = addLabeledGridCell(telemetryGrid, 0, 1, QStringLiteral("特征值 Hz"), telemetry_feature_rate_);
+    telemetry_waveform_label_ = addLabeledGridCell(telemetryGrid, 1, 0, QStringLiteral("波形 Hz"), telemetry_waveform_rate_);
+    telemetry_heartbeat_label_ = addLabeledGridCell(telemetryGrid, 1, 1, QStringLiteral("心跳 Hz"), telemetry_heartbeat_rate_);
+    telemetry_status_label_ = addLabeledGridCell(telemetryGrid, 2, 0, QStringLiteral("状态 Hz"), telemetry_status_rate_);
+    deviceGrid->addWidget(telemetry_group_, 1, 1, 1, 2);
 
     scroll->setWidget(content);
     visualLayout->addWidget(scroll);

@@ -172,6 +172,8 @@ int main(int argc, char **argv)
     QGroupBox *ptbGroup = nullptr;
     QGroupBox *hmpGroup = nullptr;
     QGroupBox *lidarGroup = nullptr;
+    QGroupBox *waveGroup = nullptr;
+    QGroupBox *telemetryGroup = nullptr;
     for (QGroupBox *group : groups)
     {
         auto *titleLabel = group->findChild<QLabel *>(QStringLiteral("skyConfigGroupTitleLabel"));
@@ -180,6 +182,8 @@ int main(int argc, char **argv)
         if (title == QStringLiteral("PTB210")) ptbGroup = group;
         if (title == QStringLiteral("HMP3")) hmpGroup = group;
         if (title == QStringLiteral("TFA1500-L")) lidarGroup = group;
+        if (title == QStringLiteral("Wave TCP")) waveGroup = group;
+        if (title == QStringLiteral("数传配置")) telemetryGroup = group;
         if (title == QStringLiteral("EPSILON") ||
             title == QStringLiteral("PTB210") ||
             title == QStringLiteral("HMP3") ||
@@ -194,6 +198,40 @@ int main(int argc, char **argv)
     require(std::abs(epsilonGroup->y() - hmpGroup->y()) <= topRowTolerance, "EPSILON and HMP are on first row");
     require(std::abs(epsilonGroup->y() - lidarGroup->y()) <= topRowTolerance, "fourth sensor card is on first row");
     require(lidarGroup->x() > hmpGroup->x(), "fourth sensor card is in fourth column");
+    require(waveGroup && telemetryGroup, "wave and telemetry cards exist");
+    require(std::abs(waveGroup->y() - telemetryGroup->y()) <= topRowTolerance, "wide telemetry card is on second row");
+    require(telemetryGroup->width() > waveGroup->width() * 3 / 2, "telemetry card spans two columns");
+    require(telemetryGroup->height() <= telemetryGroup->sizeHint().height() + 12, "telemetry card is not stretched vertically");
+    auto findTelemetryLabel = [telemetryGroup](const QString& text) -> QLabel * {
+        const QList<QLabel*> labels = telemetryGroup->findChildren<QLabel *>();
+        for (QLabel *label : labels)
+        {
+            if (label->text() == text)
+            {
+                return label;
+            }
+        }
+        return nullptr;
+    };
+    QLabel *basicRateLabel = findTelemetryLabel(QStringLiteral("基础遥测 Hz"));
+    QLabel *featureRateLabel = findTelemetryLabel(QStringLiteral("特征值 Hz"));
+    QLabel *waveformRateLabel = findTelemetryLabel(QStringLiteral("波形 Hz"));
+    QLabel *heartbeatRateLabel = findTelemetryLabel(QStringLiteral("心跳 Hz"));
+    QLabel *statusRateLabel = findTelemetryLabel(QStringLiteral("状态 Hz"));
+    require(basicRateLabel && featureRateLabel && waveformRateLabel && heartbeatRateLabel && statusRateLabel,
+            "telemetry rate labels exist");
+    require(std::abs(basicRateLabel->x() - waveformRateLabel->x()) <= 4 &&
+                std::abs(basicRateLabel->x() - statusRateLabel->x()) <= 4,
+            "telemetry left column has three rows");
+    require(waveformRateLabel->y() > basicRateLabel->y() &&
+                statusRateLabel->y() > waveformRateLabel->y(),
+            "telemetry left column rows are vertical");
+    require(std::abs(featureRateLabel->x() - heartbeatRateLabel->x()) <= 4,
+            "telemetry right column has rows");
+    require(heartbeatRateLabel->y() > featureRateLabel->y(),
+            "telemetry right column rows are vertical");
+    require(featureRateLabel->x() > basicRateLabel->x(),
+            "telemetry right column is beside left column");
 
     auto *stack = dialog.findChild<QStackedWidget *>();
     require(stack != nullptr, "mode stack exists");
