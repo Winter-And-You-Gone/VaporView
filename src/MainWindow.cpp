@@ -770,7 +770,8 @@ QFrame#titleApplicationSubPanel {
     border: none;
 }
 QFrame#titleApplicationMainMenu,
-QFrame#titleApplicationSubMenu {
+QFrame#titleApplicationSubMenu,
+QFrame#titleApplicationNestedMenu {
     background-color: #121212;
     border: 1px solid #202020;
     border-radius: %1px;
@@ -829,7 +830,8 @@ QFrame#titleApplicationSubPanel {
     border: none;
 }
 QFrame#titleApplicationMainMenu,
-QFrame#titleApplicationSubMenu {
+QFrame#titleApplicationSubMenu,
+QFrame#titleApplicationNestedMenu {
     background-color: #FDFDFC;
     border: 1px solid #EAEAE9;
     border-radius: %1px;
@@ -4130,25 +4132,25 @@ void MainWindow::rebuildRecordingRateMenu()
     };
 
     buildSubmenu(recording_rate_menu_,
-                 is_english_ ? QStringLiteral("TCP Wave Raw") : QStringLiteral("TCP波形原始帧"),
+                 is_english_ ? QStringLiteral("TCP wave raw recording") : QStringLiteral("TCP波形原始记录"),
                  {},
                  0,
                  true,
-                 QStringLiteral("Complete TCP frames"),
-                 QStringLiteral("完整TCP帧"),
+                 QStringLiteral("Record every complete TCP frame"),
+                 QStringLiteral("记录完整TCP原始帧"),
                  [this](int) { setWaveformRecordingRateHz(0); });
 
     buildSubmenu(recording_rate_menu_,
-                 is_english_ ? QStringLiteral("EPSILON Raw") : QStringLiteral("EPSILON原始帧"),
+                 is_english_ ? QStringLiteral("EPSILON raw recording") : QStringLiteral("EPSILON原始记录"),
                  {},
                  0,
                  true,
-                 QStringLiteral("Verified FDILink frames"),
-                 QStringLiteral("已校验FDILink原始帧"),
+                 QStringLiteral("Record verified FDILink raw frames"),
+                 QStringLiteral("记录已校验FDILink原始帧"),
                  [this](int) { setImuRecordingRateHz(0); });
 
     buildSubmenu(recording_rate_menu_,
-                 is_english_ ? QStringLiteral("Other devices") : QStringLiteral("其余设备"),
+                 is_english_ ? QStringLiteral("Device CSV recording rate") : QStringLiteral("设备CSV记录频率"),
                  QVector<int>{1, 2, 5, 10, 20, 50, 100, 200},
                  std::clamp(recording_export_rate_hz_, 1, 200),
                  false,
@@ -5564,6 +5566,7 @@ void MainWindow::createTitleApplicationMenuPanel()
         bool checked = false;
         bool separatorBefore = false;
         std::function<void()> handler;
+        QVector<TitleMenuCommand> submenu;
     };
     struct TitleMenuSection
     {
@@ -5589,7 +5592,7 @@ void MainWindow::createTitleApplicationMenuPanel()
     const int mainMenuMinWidth = scalePixels(72);
     const int subMenuMinWidth = scalePixels(72);
     subPanel->setStyleSheet(titleApplicationPanelStyleSheet(dark_theme_enabled_, menuCornerRadius));
-    auto commandRowsHeight = [&](const QVector<TitleMenuCommand>& commands) {
+    auto commandRowsHeight = [menuVerticalPadding, rowHeight](const QVector<TitleMenuCommand>& commands) {
         return menuVerticalPadding * 2 + rowHeight * static_cast<int>(commands.size());
     };
 
@@ -5662,30 +5665,39 @@ void MainWindow::createTitleApplicationMenuPanel()
 
     TitleMenuSection developerSection{is_english_ ? QStringLiteral("Developer") : QStringLiteral("开发者"), {}};
     developerSection.commands.push_back(
-        {is_english_ ? QStringLiteral("TCP Wave Raw") : QStringLiteral("TCP波形原始帧"),
+        {is_english_ ? QStringLiteral("TCP wave: record every raw frame") : QStringLiteral("TCP波形：记录完整原始帧"),
          QString(),
          true,
          waveform_recording_rate_hz_ == 0,
          false,
          [this]() { setWaveformRecordingRateHz(0); }});
     developerSection.commands.push_back(
-        {is_english_ ? QStringLiteral("EPSILON Raw") : QStringLiteral("EPSILON原始帧"),
+        {is_english_ ? QStringLiteral("EPSILON: record verified raw frames") : QStringLiteral("EPSILON：记录已校验原始帧"),
          QString(),
          true,
          imu_recording_rate_hz_ == 0,
          false,
          [this]() { setImuRecordingRateHz(0); }});
+    QVector<TitleMenuCommand> csvRateCommands;
     for (int rate : QVector<int>{1, 2, 5, 10, 20, 50, 100, 200})
     {
-        developerSection.commands.push_back({
+        csvRateCommands.push_back({
             QStringLiteral("%1 Hz").arg(rate),
             QString(),
             true,
             rate == std::clamp(recording_export_rate_hz_, 1, 200),
-            rate == 1,
+            false,
             [this, rate]() { setRecordingExportRateHz(rate); }
         });
     }
+    developerSection.commands.push_back(
+        {is_english_ ? QStringLiteral("Device CSV recording rate") : QStringLiteral("设备CSV记录频率"),
+         QStringLiteral("%1 Hz").arg(std::clamp(recording_export_rate_hz_, 1, 200)),
+         true,
+         false,
+         true,
+         {},
+         csvRateCommands});
     developerSection.commands.push_back(
         {is_english_ ? QStringLiteral("EPSILON Packet Rates...") : QStringLiteral("设置EPSILON包频率..."),
          QString(),
@@ -5765,6 +5777,10 @@ void MainWindow::createTitleApplicationMenuPanel()
             {
                 commandWidth += shortcutGap + menuMetrics.horizontalAdvance(command.shortcut);
             }
+            if (!command.submenu.isEmpty())
+            {
+                commandWidth += rowSpacing + arrowColumnWidth;
+            }
             sectionWidth = std::max(sectionWidth, commandWidth);
         }
         subMenuWidths.push_back(sectionWidth);
@@ -5787,6 +5803,11 @@ void MainWindow::createTitleApplicationMenuPanel()
     subMenu->move(0, 0);
     subMenu->hide();
 
+    auto *nestedMenu = new QFrame(subPanel);
+    nestedMenu->setObjectName(QStringLiteral("titleApplicationNestedMenu"));
+    nestedMenu->setAttribute(Qt::WA_StyledBackground, true);
+    nestedMenu->hide();
+
     auto *subLayout = new QVBoxLayout(subMenu);
     subLayout->setContentsMargins(0, 0, 0, 0);
     subLayout->setSpacing(0);
@@ -5795,14 +5816,32 @@ void MainWindow::createTitleApplicationMenuPanel()
     stack->setAttribute(Qt::WA_StyledBackground, true);
     subLayout->addWidget(stack);
 
-    auto createRow = [&](QWidget *parent,
-                         const QString& text,
-                          const QString& trailingText,
-                          bool enabled,
-                          bool checked,
-                          bool reserveCheckColumn,
-                          const QString& arrow,
-                          const std::function<void()>& clickHandler) {
+    auto *nestedLayout = new QVBoxLayout(nestedMenu);
+    nestedLayout->setContentsMargins(0, menuVerticalPadding, 0, menuVerticalPadding);
+    nestedLayout->setSpacing(0);
+
+    std::function<QFrame *(QWidget *,
+                           const QString&,
+                           const QString&,
+                           bool,
+                           bool,
+                           bool,
+                           const QString&,
+                           const std::function<void()>&)> createRow =
+        [closePanel,
+         rowHeight,
+         rowLeftPadding,
+         rowRightPadding,
+         rowSpacing,
+         checkColumnWidth,
+         arrowColumnWidth](QWidget *parent,
+                           const QString& text,
+                           const QString& trailingText,
+                           bool enabled,
+                           bool checked,
+                           bool reserveCheckColumn,
+                           const QString& arrow,
+                           const std::function<void()>& clickHandler) {
         auto *row = new QFrame(parent);
         row->setObjectName(QStringLiteral("titleApplicationMenuItem"));
         row->setAttribute(Qt::WA_StyledBackground, true);
@@ -5875,6 +5914,76 @@ void MainWindow::createTitleApplicationMenuPanel()
 
     auto sectionRows = std::make_shared<QVector<QFrame *>>();
 
+    auto hideNestedMenu = [subPanel, subMenu, nestedMenu]() {
+        nestedMenu->hide();
+        subPanel->setFixedSize(subMenu->size());
+    };
+
+    auto clearLayout = [](QLayout *layout) {
+        while (QLayoutItem *item = layout->takeAt(0))
+        {
+            if (QWidget *widget = item->widget())
+            {
+                widget->hide();
+                widget->deleteLater();
+            }
+            delete item;
+        }
+    };
+
+    auto showNestedMenu = [=](const QVector<TitleMenuCommand>& commands, QFrame *sourceRow) {
+        if (commands.isEmpty() || !sourceRow)
+        {
+            hideNestedMenu();
+            return;
+        }
+
+        clearLayout(nestedLayout);
+        bool needsCheckColumn = false;
+        int nestedWidth = subMenuMinWidth;
+        for (const TitleMenuCommand& command : commands)
+        {
+            needsCheckColumn = needsCheckColumn || command.checked;
+        }
+        for (const TitleMenuCommand& command : commands)
+        {
+            int commandWidth = rowLeftPadding + menuMetrics.horizontalAdvance(command.text) + rowRightPadding;
+            if (needsCheckColumn)
+            {
+                commandWidth += checkColumnWidth + rowSpacing;
+            }
+            if (!command.shortcut.isEmpty())
+            {
+                commandWidth += shortcutGap + menuMetrics.horizontalAdvance(command.shortcut);
+            }
+            nestedWidth = std::max(nestedWidth, commandWidth);
+        }
+
+        for (const TitleMenuCommand& command : commands)
+        {
+            nestedLayout->addWidget(createRow(nestedMenu,
+                                             command.text,
+                                             command.shortcut,
+                                             command.enabled,
+                                             command.checked,
+                                             needsCheckColumn,
+                                             QString(),
+                                             command.enabled ? command.handler : std::function<void()>{}));
+        }
+
+        const int nestedHeight = commandRowsHeight(commands);
+        const int sourceY = sourceRow->mapTo(subPanel, QPoint(0, 0)).y();
+        const int nestedY = std::clamp(sourceY,
+                                       0,
+                                       std::max(0, std::max(subMenu->height(), nestedHeight) - nestedHeight));
+        nestedMenu->setFixedSize(nestedWidth, nestedHeight);
+        nestedMenu->move(subMenu->width(), nestedY);
+        nestedMenu->show();
+        nestedMenu->raise();
+        subPanel->setFixedSize(subMenu->width() + nestedMenu->width(),
+                               std::max(subMenu->height(), nestedY + nestedMenu->height()));
+    };
+
     for (int sectionIndex = 0; sectionIndex < sections.size(); ++sectionIndex)
     {
         QWidget *page = new QWidget(stack);
@@ -5895,14 +6004,25 @@ void MainWindow::createTitleApplicationMenuPanel()
 
         for (const TitleMenuCommand& command : sections[sectionIndex].commands)
         {
-            contentLayout->addWidget(createRow(pageContent,
-                                               command.text,
-                                               command.shortcut,
-                                               command.enabled,
-                                               command.checked,
-                                               subMenuNeedsCheckColumn.value(sectionIndex, false),
-                                               QString(),
-                                               command.enabled ? command.handler : std::function<void()>{}));
+            QFrame *commandRow = createRow(pageContent,
+                                           command.text,
+                                           command.shortcut,
+                                           command.enabled,
+                                           command.checked,
+                                           subMenuNeedsCheckColumn.value(sectionIndex, false),
+                                           command.submenu.isEmpty() ? QString() : QStringLiteral("›"),
+                                           command.enabled && command.submenu.isEmpty() ? command.handler : std::function<void()>{});
+            contentLayout->addWidget(commandRow);
+            if (!command.submenu.isEmpty())
+            {
+                commandRow->installEventFilter(new MenuItemEventFilter([showNestedMenu, command, commandRow]() {
+                    showNestedMenu(command.submenu, commandRow);
+                }, {}, commandRow));
+            }
+            else
+            {
+                commandRow->installEventFilter(new MenuItemEventFilter(hideNestedMenu, {}, commandRow));
+            }
         }
         stack->addWidget(page);
 
@@ -5917,7 +6037,8 @@ void MainWindow::createTitleApplicationMenuPanel()
         sectionRow->setProperty("selected", false);
         sectionRows->push_back(sectionRow);
         mainLayout->addWidget(sectionRow);
-        sectionRow->installEventFilter(new MenuItemEventFilter([this, stack, subMenu, mainMenu, panel, subPanel, mainMenuWidth, menuVerticalPadding, subMenuWidths, sectionRows, sectionRow, sectionIndex]() {
+        sectionRow->installEventFilter(new MenuItemEventFilter([this, stack, subMenu, mainMenu, panel, subPanel, mainMenuWidth, menuVerticalPadding, subMenuWidths, sectionRows, sectionRow, sectionIndex, nestedMenu]() {
+            nestedMenu->hide();
             stack->setCurrentIndex(sectionIndex);
             if (QWidget *currentPage = stack->currentWidget())
             {
