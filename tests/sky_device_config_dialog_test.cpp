@@ -139,6 +139,10 @@ int main(int argc, char **argv)
 
     const QList<QPushButton*> enableButtons = dialog.findChildren<QPushButton *>(QStringLiteral("skyEnableToggle"));
     require(enableButtons.size() == 5, "five enable buttons");
+    require(dialog.styleSheet().contains(QStringLiteral("QPushButton#skyEnableToggle:hover { background-color:")),
+            "enable button has hover background style");
+    require(!dialog.styleSheet().contains(QStringLiteral("QPushButton#skyEnableToggle:hover { background-color: transparent")),
+            "enable button hover background is visible");
     for (QPushButton *button : enableButtons)
     {
         require(button->parentWidget() != nullptr, "enable button parent exists");
@@ -150,6 +154,7 @@ int main(int argc, char **argv)
         require(button->isFlat(), "enable button is a flat icon button");
         require(button->text().isEmpty(), "enable button has no text");
         require(!button->icon().isNull(), "enable button has an icon");
+        require(button->iconSize() == QSize(22, 22), "enable button icon is larger");
     }
     const bool firstEnableChecked = enableButtons.front()->isChecked();
     const qint64 firstEnableIconKey = enableButtons.front()->icon().cacheKey();

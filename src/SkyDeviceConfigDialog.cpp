@@ -43,7 +43,7 @@ constexpr int kFieldHeight = 36;
 constexpr int kCardFormHorizontalMargin = 10;
 constexpr int kCardFormSpacing = 6;
 constexpr int kEnableToggleSize = 30;
-constexpr int kEnableToggleIconSize = 16;
+constexpr int kEnableToggleIconSize = 22;
 constexpr int kDialogPreferredWidth = 980;
 constexpr int kDialogMinimumWidth = 640;
 constexpr int kDialogMinimumHeight = 420;
@@ -270,11 +270,11 @@ QString skyDeviceConfigStyleSheet(bool dark)
             "QDialog#skyDeviceConfigDialog QLabel { color: #1f2a35; }"
             "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus { color: #64748b; padding: 2px 4px; }"
             "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus[status=\"error\"] { color: #b42318; }"
-            "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle { background-color: transparent; border: none; border-radius: 0px; padding: 0; min-width: 30px; max-width: 30px; min-height: 30px; max-height: 30px; }"
-            "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:hover,"
-            "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:pressed,"
-            "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked,"
-            "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked:hover { background-color: transparent; border: none; }"
+            "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle { background-color: transparent; border: none; border-radius: 6px; padding: 0; min-width: 30px; max-width: 30px; min-height: 30px; max-height: 30px; }"
+            "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:hover { background-color: #EFEEEB; border: none; }"
+            "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:pressed { background-color: #EFEEEB; border: none; }"
+            "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked { background-color: transparent; border: none; }"
+            "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked:hover { background-color: #EFEEEB; border: none; }"
             "QDialog#skyDeviceConfigDialog QPlainTextEdit { background-color: #ffffff; color: #111827; border: 1px solid #dfe4ea; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; selection-background-color: #e3f2fd; selection-color: #1976d2; }"
         );
     }
@@ -311,11 +311,11 @@ QString skyDeviceConfigStyleSheet(bool dark)
         "QDialog#skyDeviceConfigDialog QPushButton:pressed,"
         "QDialog#skyDeviceConfigDialog QPushButton:checked { background-color: rgb(217, 119, 87); color: #ffffff; }"
         "QDialog#skyDeviceConfigDialog QPushButton:disabled { background-color: #202020; color: #cbd5e1; }"
-        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle { background-color: transparent; border: none; border-radius: 0px; padding: 0; min-width: 30px; max-width: 30px; min-height: 30px; max-height: 30px; }"
-        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:hover,"
-        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:pressed,"
-        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked,"
-        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked:hover { background-color: transparent; border: none; }"
+        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle { background-color: transparent; border: none; border-radius: 6px; padding: 0; min-width: 30px; max-width: 30px; min-height: 30px; max-height: 30px; }"
+        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:hover { background-color: rgb(18, 18, 18); border: none; }"
+        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:pressed { background-color: rgb(18, 18, 18); border: none; }"
+        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked { background-color: transparent; border: none; }"
+        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked:hover { background-color: rgb(18, 18, 18); border: none; }"
         "QDialog#skyDeviceConfigDialog QPlainTextEdit { background-color: #121212; color: #e5e7eb; border: 1px solid #202020; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; selection-background-color: #245b8f; selection-color: #ffffff; }"
         "QDialog#skyDeviceConfigDialog QScrollBar:vertical,"
         "QDialog#skyDeviceConfigDialog QScrollBar:horizontal { background-color: #0C0C0C; border-radius: 6px; }"
