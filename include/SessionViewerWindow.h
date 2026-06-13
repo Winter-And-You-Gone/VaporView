@@ -22,6 +22,7 @@ struct RtkTrackPoint
 class QGroupBox;
 class QLabel;
 class QLineEdit;
+class QProgressBar;
 class QProgressDialog;
 class QPushButton;
 class QScrollArea;
@@ -152,6 +153,8 @@ private:
     QPushButton *clear_view_btn_;
     QLabel *status_label_;
     QProgressDialog *loading_dialog_;
+    QLabel *loading_dialog_label_;
+    QProgressBar *loading_dialog_progress_bar_;
     QGroupBox *summary_group_;
     QGridLayout *summary_layout_;
     QLabel *session_name_title_;

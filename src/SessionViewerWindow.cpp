@@ -33,6 +33,7 @@
 #include <QPainter>
 #include <QPalette>
 #include <QPixmap>
+#include <QProgressBar>
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QRegularExpression>
@@ -1499,6 +1500,8 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , clear_view_btn_(nullptr)
     , status_label_(nullptr)
     , loading_dialog_(nullptr)
+    , loading_dialog_label_(nullptr)
+    , loading_dialog_progress_bar_(nullptr)
     , summary_group_(nullptr)
     , summary_layout_(nullptr)
     , session_name_title_(nullptr)
@@ -2337,6 +2340,23 @@ void SessionViewerWindow::beginSessionLoading(const QString& text)
         loading_dialog_->setAttribute(Qt::WA_StyledBackground, true);
         loading_dialog_->setAutoFillBackground(true);
         VaporView::installCustomTitleBar(loading_dialog_, false);
+        if (QWidget *content = loading_dialog_->findChild<QWidget *>(QStringLiteral("customTitleBarContent")))
+        {
+            auto *layout = qobject_cast<QVBoxLayout *>(content->layout());
+            if (!layout)
+            {
+                layout = new QVBoxLayout(content);
+            }
+            loading_dialog_label_ = new QLabel(content);
+            loading_dialog_label_->setAlignment(Qt::AlignCenter);
+            loading_dialog_label_->setWordWrap(true);
+            loading_dialog_progress_bar_ = new QProgressBar(content);
+            loading_dialog_progress_bar_->setRange(0, 0);
+            loading_dialog_progress_bar_->setTextVisible(false);
+            loading_dialog_progress_bar_->setMinimumHeight(14);
+            layout->addWidget(loading_dialog_label_);
+            layout->addWidget(loading_dialog_progress_bar_);
+        }
     }
 
     loading_dialog_->setWindowTitle(is_english_ ? "Loading Data" : "正在加载数据");
@@ -2356,6 +2376,14 @@ void SessionViewerWindow::updateSessionLoadingText(const QString& text)
     }
 
     loading_dialog_->setLabelText(text);
+    if (loading_dialog_label_)
+    {
+        loading_dialog_label_->setText(text);
+    }
+    if (loading_dialog_progress_bar_)
+    {
+        loading_dialog_progress_bar_->setVisible(true);
+    }
     QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
 }
 
