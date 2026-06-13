@@ -1703,6 +1703,7 @@ void SessionViewerWindow::setupUi()
 
     status_label_ = new QLabel(this);
     status_label_->setWordWrap(true);
+    status_label_->setFocusPolicy(Qt::StrongFocus);
     controlLayout->addWidget(status_label_, 1, 0, 1, 7);
 
     mainLayout->addLayout(controlLayout);
@@ -2268,6 +2269,11 @@ void SessionViewerWindow::setSessionLoadingControlsEnabled(bool enabled)
 void SessionViewerWindow::beginSessionLoading(const QString& text)
 {
     session_loading_ = true;
+    if (status_label_)
+    {
+        // Keep QScrollArea from following focus down to the CSV table when buttons are disabled.
+        status_label_->setFocus(Qt::OtherFocusReason);
+    }
     setSessionLoadingControlsEnabled(false);
 
     if (!loading_dialog_)
