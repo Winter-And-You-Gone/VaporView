@@ -37,7 +37,6 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollArea>
-#include <QScrollBar>
 #include <QResizeEvent>
 #include <QSettings>
 #include <QShowEvent>
@@ -48,7 +47,6 @@
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTextStream>
-#include <QTimer>
 #include <QWheelEvent>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -2327,24 +2325,6 @@ void SessionViewerWindow::finishSessionLoading()
     setSessionLoadingControlsEnabled(true);
 }
 
-void SessionViewerWindow::scrollSessionViewToTop()
-{
-    auto *scrollArea = qobject_cast<QScrollArea *>(QMainWindow::centralWidget());
-    if (!scrollArea)
-    {
-        return;
-    }
-
-    if (QScrollBar *verticalBar = scrollArea->verticalScrollBar())
-    {
-        verticalBar->setValue(verticalBar->minimum());
-    }
-    if (QScrollBar *horizontalBar = scrollArea->horizontalScrollBar())
-    {
-        horizontalBar->setValue(horizontalBar->minimum());
-    }
-}
-
 void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
 {
     session_directory_.clear();
@@ -2565,7 +2545,6 @@ void SessionViewerWindow::onClearViewClicked()
             session_path_edit_->setText(session_directory_);
         }
     }
-    scrollSessionViewToTop();
 }
 
 void SessionViewerWindow::onViewTrajectoryClicked()
@@ -2630,7 +2609,6 @@ void SessionViewerWindow::onRawDataParserClicked()
 bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
 {
     beginSessionLoading(is_english_ ? "Preparing to load session data..." : "正在准备加载会话数据...");
-    scrollSessionViewToTop();
     clearLoadedData(false);
 
     const QString normalized = QDir::fromNativeSeparators(sessionDirectory);
@@ -2667,7 +2645,13 @@ bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
 
     if (total_waveform_frames_ > 0)
     {
-        onFrameSpinChanged(1);
+        {
+            const QSignalBlocker sliderBlocker(frame_slider_);
+            const QSignalBlocker spinBlocker(frame_spin_);
+            frame_slider_->setValue(1);
+            frame_spin_->setValue(1);
+        }
+        loadWaveformFrame(0, false);
     }
     else
     {
@@ -2678,8 +2662,6 @@ bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
 
     setStatusText(QString(is_english_ ? "Loaded session: %1" : "已加载会话: %1").arg(session_directory_));
     finishSessionLoading();
-    scrollSessionViewToTop();
-    QTimer::singleShot(0, this, &SessionViewerWindow::scrollSessionViewToTop);
     return true;
 }
 
@@ -3850,7 +3832,7 @@ bool SessionViewerWindow::previewWaveformFrame(quint64 frameIndex)
     return true;
 }
 
-bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
+bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex, bool scrollToCsvRow)
 {
     quint64 timestampUs = 0;
     QVector<float> samples;
@@ -3872,7 +3854,7 @@ bool SessionViewerWindow::loadWaveformFrame(quint64 frameIndex)
         ? waveform_peak_values_.at(static_cast<int>(frameIndex))
         : rawPeakValue;
     const QString frameTime = formatTimestampUs(timestampUs);
-    const QString csvMatchText = highlightClosestSensorRow(timestampUs);
+    const QString csvMatchText = highlightClosestSensorRow(timestampUs, scrollToCsvRow);
     QString sourceFilename = raw_tcp_wave_frames_.isEmpty() ? QString() : raw_tcp_wave_filename_;
     if (sourceFilename.isEmpty() && frameIndex < static_cast<quint64>(indexed_waveform_frames_.size()))
     {
@@ -4014,25 +3996,10 @@ void SessionViewerWindow::syncEnvironmentRangeToWaveformRange(int startFrameInde
 
 void SessionViewerWindow::previewClosestSensorRow(quint64 timestampUs)
 {
-    if (timestampUs == 0 || csv_timestamps_us_.isEmpty() || csv_table_->rowCount() == 0)
-    {
-        return;
-    }
-
-    const int row = findClosestCsvRow(timestampUs);
-    if (row < 0 || row >= csv_table_->rowCount())
-    {
-        return;
-    }
-
-    csv_table_->setCurrentCell(row, 0, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
-    if (QTableWidgetItem *item = csv_table_->item(row, 0))
-    {
-        csv_table_->scrollToItem(item, QAbstractItemView::PositionAtCenter);
-    }
+    highlightClosestSensorRow(timestampUs, false);
 }
 
-QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs)
+QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs, bool scrollToCsvRow)
 {
     if (csv_timestamps_us_.isEmpty() || csv_table_->rowCount() == 0)
     {
@@ -4137,12 +4104,13 @@ QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs)
         static_cast<SingleSeriesTrendPlotWidget*>(temperature_plot_)->setCurrentIndex(primaryRow);
         static_cast<SingleSeriesTrendPlotWidget*>(humidity_plot_)->setCurrentIndex(primaryRow);
         static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setCurrentIndex(primaryRow);
-        csv_table_->selectRow(primaryRow);
-        csv_table_->setCurrentCell(primaryRow, 0, QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
-        const int topVisibleRow = rowsToHighlight.isEmpty() ? primaryRow : rowsToHighlight.first();
-        if (QTableWidgetItem *item = csv_table_->item(topVisibleRow, 0))
+        if (scrollToCsvRow)
         {
-            csv_table_->scrollToItem(item, QAbstractItemView::PositionAtTop);
+            const int topVisibleRow = rowsToHighlight.isEmpty() ? primaryRow : rowsToHighlight.first();
+            if (QTableWidgetItem *item = csv_table_->item(topVisibleRow, 0))
+            {
+                csv_table_->scrollToItem(item, QAbstractItemView::PositionAtTop);
+            }
         }
     }
     else

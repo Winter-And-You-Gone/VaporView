@@ -116,7 +116,6 @@ private:
     void updateSessionLoadingText(const QString& text);
     void finishSessionLoading();
     void setSessionLoadingControlsEnabled(bool enabled);
-    void scrollSessionViewToTop();
     void clearLoadedData(bool clearPathEdit = true);
     void restoreLastSessionPath(const QString& path);
     QString resolveSessionDirectory(const QString& path) const;
@@ -127,7 +126,7 @@ private:
     bool loadWaveformSegments();
     bool loadWaveformPeakSeries();
     bool previewWaveformFrame(quint64 frameIndex);
-    bool loadWaveformFrame(quint64 frameIndex);
+    bool loadWaveformFrame(quint64 frameIndex, bool scrollToCsvRow = true);
     bool loadUnifiedRawTcpWaveFrames();
     bool loadIndexedWaveformFrames();
     bool readWaveformFrameSamples(quint64 frameIndex, quint64& timestampUs, QVector<float>& samples);
@@ -136,7 +135,7 @@ private:
     void updateRtkTrackPeakValues();
     void syncEnvironmentRangeToWaveformRange(int startFrameIndex, int visibleFrameCount);
     void previewClosestSensorRow(quint64 timestampUs);
-    QString highlightClosestSensorRow(quint64 timestampUs);
+    QString highlightClosestSensorRow(quint64 timestampUs, bool scrollToCsvRow = true);
     void updateWaveformFrameFilterButtonText();
     void updatePeakPlotModeButtonText();
     void updatePeakFilterButtonText();
