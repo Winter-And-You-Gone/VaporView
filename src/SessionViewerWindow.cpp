@@ -2008,6 +2008,7 @@ void SessionViewerWindow::changeEvent(QEvent *event)
     {
         applyCsvTableTheme();
         refreshCsvItemTheme();
+        updateSessionLoadingDialogTheme();
     }
 }
 
@@ -2266,6 +2267,52 @@ void SessionViewerWindow::setSessionLoadingControlsEnabled(bool enabled)
     }
 }
 
+void SessionViewerWindow::updateSessionLoadingDialogTheme()
+{
+    if (!loading_dialog_)
+    {
+        return;
+    }
+
+    const QPalette sourcePalette = palette();
+    QColor windowColor = sourcePalette.color(QPalette::Window);
+    if (!windowColor.isValid() || windowColor.alpha() == 0)
+    {
+        windowColor = sourcePalette.color(QPalette::Base);
+    }
+    const bool dark = windowColor.lightness() < 128;
+    const QColor panelColor = dark ? QColor(QStringLiteral("#0D0D0D")) : QColor(QStringLiteral("#FDFDFC"));
+    const QColor fieldColor = dark ? QColor(QStringLiteral("#121212")) : QColor(QStringLiteral("#EEF0F3"));
+    const QColor borderColor = dark ? QColor(QStringLiteral("#202020")) : QColor(QStringLiteral("#D8DDE5"));
+    const QColor textColor = dark ? QColor(QStringLiteral("#F9FAFB")) : QColor(QStringLiteral("#111827"));
+    const QColor chunkColor = dark ? QColor(QStringLiteral("#D97757")) : QColor(QStringLiteral("#4B5563"));
+
+    QPalette loadingPalette = loading_dialog_->palette();
+    loadingPalette.setColor(QPalette::Window, panelColor);
+    loadingPalette.setColor(QPalette::Base, panelColor);
+    loadingPalette.setColor(QPalette::Text, textColor);
+    loadingPalette.setColor(QPalette::WindowText, textColor);
+    loading_dialog_->setPalette(loadingPalette);
+
+    if (QWidget *content = loading_dialog_->findChild<QWidget *>(QStringLiteral("customTitleBarContent")))
+    {
+        content->setAutoFillBackground(true);
+        content->setPalette(loadingPalette);
+        if (auto *layout = qobject_cast<QVBoxLayout *>(content->layout()))
+        {
+            layout->setContentsMargins(22, 18, 22, 18);
+            layout->setSpacing(14);
+        }
+    }
+
+    loading_dialog_->setStyleSheet(QStringLiteral(
+        "QProgressDialog, QWidget#customTitleBarContent { background-color: %1; color: %2; }"
+        "QWidget#customTitleBarContent QLabel { background-color: transparent; color: %2; font-size: 14px; }"
+        "QWidget#customTitleBarContent QProgressBar { background-color: %3; border: 1px solid %4; border-radius: 4px; min-height: 10px; text-align: center; color: %2; }"
+        "QWidget#customTitleBarContent QProgressBar::chunk { background-color: %5; border-radius: 3px; }")
+        .arg(panelColor.name(), textColor.name(), fieldColor.name(), borderColor.name(), chunkColor.name()));
+}
+
 void SessionViewerWindow::beginSessionLoading(const QString& text)
 {
     session_loading_ = true;
@@ -2289,20 +2336,11 @@ void SessionViewerWindow::beginSessionLoading(const QString& text)
         loading_dialog_->setMinimumWidth(360);
         loading_dialog_->setAttribute(Qt::WA_StyledBackground, true);
         loading_dialog_->setAutoFillBackground(true);
-        QPalette loadingPalette = loading_dialog_->palette();
-        loadingPalette.setColor(QPalette::Window, QColor("#fdfdfc"));
-        loadingPalette.setColor(QPalette::Base, QColor("#ffffff"));
-        loadingPalette.setColor(QPalette::Text, QColor("#111827"));
-        loadingPalette.setColor(QPalette::WindowText, QColor("#111827"));
-        loading_dialog_->setPalette(loadingPalette);
-        loading_dialog_->setStyleSheet(QStringLiteral(
-            "QProgressDialog { background-color: #fdfdfc; color: #111827; }"
-            "QProgressDialog QLabel { background-color: transparent; color: #111827; }"
-            "QProgressBar { background-color: #eef0f3; border: 1px solid #d8dde5; border-radius: 4px; min-height: 10px; }"
-            "QProgressBar::chunk { background-color: #4b5563; border-radius: 3px; }"));
+        VaporView::installCustomTitleBar(loading_dialog_, false);
     }
 
     loading_dialog_->setWindowTitle(is_english_ ? "Loading Data" : "正在加载数据");
+    updateSessionLoadingDialogTheme();
     updateSessionLoadingText(text);
     loading_dialog_->show();
     loading_dialog_->raise();
