@@ -115,6 +115,7 @@ private:
     void setStatusText(const QString& text);
     void beginSessionLoading(const QString& text);
     void updateSessionLoadingText(const QString& text);
+    void updateSessionLoadingProgress(const QString& text, int percent);
     void finishSessionLoading();
     void setSessionLoadingControlsEnabled(bool enabled);
     void updateSessionLoadingDialogTheme();
@@ -133,7 +134,7 @@ private:
     bool loadIndexedWaveformFrames();
     bool readWaveformFrameSamples(quint64 frameIndex, quint64& timestampUs, QVector<float>& samples);
     int findClosestCsvRow(quint64 timestampUs) const;
-    void applyPeakFilter();
+    void applyPeakFilter(int startPercent = 0, int endPercent = 96);
     void updateRtkTrackPeakValues();
     void syncEnvironmentRangeToWaveformRange(int startFrameIndex, int visibleFrameCount);
     void previewClosestSensorRow(quint64 timestampUs);
@@ -155,6 +156,7 @@ private:
     QProgressDialog *loading_dialog_;
     QLabel *loading_dialog_label_;
     QProgressBar *loading_dialog_progress_bar_;
+    int loading_dialog_progress_percent_;
     QGroupBox *summary_group_;
     QGridLayout *summary_layout_;
     QLabel *session_name_title_;

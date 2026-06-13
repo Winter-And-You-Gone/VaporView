@@ -115,6 +115,17 @@ QString fixedIntegerField(qulonglong value, int width)
     return fixedTextField(QString::number(value), width);
 }
 
+int rangedProgressPercent(quint64 done, quint64 total, int startPercent, int endPercent)
+{
+    if (total == 0)
+    {
+        return std::clamp(startPercent, 0, 100);
+    }
+    const double ratio = std::clamp(static_cast<double>(done) / static_cast<double>(total), 0.0, 1.0);
+    const int value = startPercent + static_cast<int>(std::lround(ratio * (endPercent - startPercent)));
+    return std::clamp(value, 0, 100);
+}
+
 QString fixedDecimalField(double value, int decimals, int width)
 {
     if (!std::isfinite(value))
@@ -1502,6 +1513,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , loading_dialog_(nullptr)
     , loading_dialog_label_(nullptr)
     , loading_dialog_progress_bar_(nullptr)
+    , loading_dialog_progress_percent_(0)
     , summary_group_(nullptr)
     , summary_layout_(nullptr)
     , session_name_title_(nullptr)
@@ -2335,7 +2347,7 @@ void SessionViewerWindow::beginSessionLoading(const QString& text)
         loading_dialog_->setMinimumDuration(0);
         loading_dialog_->setAutoClose(false);
         loading_dialog_->setAutoReset(false);
-        loading_dialog_->setRange(0, 0);
+        loading_dialog_->setRange(0, 100);
         loading_dialog_->setMinimumWidth(360);
         loading_dialog_->setAttribute(Qt::WA_StyledBackground, true);
         loading_dialog_->setAutoFillBackground(true);
@@ -2351,8 +2363,10 @@ void SessionViewerWindow::beginSessionLoading(const QString& text)
             loading_dialog_label_->setAlignment(Qt::AlignCenter);
             loading_dialog_label_->setWordWrap(true);
             loading_dialog_progress_bar_ = new QProgressBar(content);
-            loading_dialog_progress_bar_->setRange(0, 0);
-            loading_dialog_progress_bar_->setTextVisible(false);
+            loading_dialog_progress_bar_->setRange(0, 100);
+            loading_dialog_progress_bar_->setValue(0);
+            loading_dialog_progress_bar_->setFormat(QStringLiteral("%p%"));
+            loading_dialog_progress_bar_->setTextVisible(true);
             loading_dialog_progress_bar_->setMinimumHeight(14);
             layout->addWidget(loading_dialog_label_);
             layout->addWidget(loading_dialog_progress_bar_);
@@ -2360,8 +2374,9 @@ void SessionViewerWindow::beginSessionLoading(const QString& text)
     }
 
     loading_dialog_->setWindowTitle(is_english_ ? "Loading Data" : "正在加载数据");
+    loading_dialog_progress_percent_ = 0;
     updateSessionLoadingDialogTheme();
-    updateSessionLoadingText(text);
+    updateSessionLoadingProgress(text, 0);
     loading_dialog_->show();
     loading_dialog_->raise();
     QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
@@ -2376,6 +2391,7 @@ void SessionViewerWindow::updateSessionLoadingText(const QString& text)
     }
 
     loading_dialog_->setLabelText(text);
+    loading_dialog_->setValue(loading_dialog_progress_percent_);
     if (loading_dialog_label_)
     {
         loading_dialog_label_->setText(text);
@@ -2383,12 +2399,24 @@ void SessionViewerWindow::updateSessionLoadingText(const QString& text)
     if (loading_dialog_progress_bar_)
     {
         loading_dialog_progress_bar_->setVisible(true);
+        loading_dialog_progress_bar_->setRange(0, 100);
+        loading_dialog_progress_bar_->setValue(loading_dialog_progress_percent_);
     }
     QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
 }
 
+void SessionViewerWindow::updateSessionLoadingProgress(const QString& text, int percent)
+{
+    loading_dialog_progress_percent_ = std::clamp(percent, 0, 100);
+    updateSessionLoadingText(text);
+}
+
 void SessionViewerWindow::finishSessionLoading()
 {
+    if (loading_dialog_)
+    {
+        updateSessionLoadingProgress(status_label_ ? status_label_->text() : QString(), 100);
+    }
     session_loading_ = false;
     if (loading_dialog_)
     {
@@ -2685,32 +2713,32 @@ bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
 
     const QString normalized = QDir::fromNativeSeparators(sessionDirectory);
     session_directory_ = normalized;
-    updateSessionLoadingText(is_english_ ? "Reading session metadata..." : "正在读取会话元数据...");
+    updateSessionLoadingProgress(is_english_ ? "Reading session metadata..." : "正在读取会话元数据...", 3);
     if (!loadSessionMetadata(normalized))
     {
         finishSessionLoading();
         return false;
     }
-    updateSessionLoadingText(is_english_ ? "Reading sensors CSV..." : "正在读取传感器 CSV...");
+    updateSessionLoadingProgress(is_english_ ? "Reading sensors CSV..." : "正在读取传感器 CSV...", 8);
     if (!loadSensorsCsv())
     {
         finishSessionLoading();
         return false;
     }
-    updateSessionLoadingText(is_english_ ? "Indexing waveform files..." : "正在索引波形文件...");
+    updateSessionLoadingProgress(is_english_ ? "Indexing waveform files..." : "正在索引波形文件...", 36);
     if (!loadWaveformSegments())
     {
         finishSessionLoading();
         return false;
     }
-    updateSessionLoadingText(is_english_ ? "Calculating waveform peak series..." : "正在计算波形峰值序列...");
+    updateSessionLoadingProgress(is_english_ ? "Calculating waveform peak series..." : "正在计算波形峰值序列...", 45);
     if (!loadWaveformPeakSeries())
     {
         finishSessionLoading();
         return false;
     }
 
-    updateSessionLoadingText(is_english_ ? "Updating viewer..." : "正在更新显示...");
+    updateSessionLoadingProgress(is_english_ ? "Updating viewer..." : "正在更新显示...", 98);
     session_path_edit_->setText(session_directory_);
     updateSummaryLabels();
     updateWaveformControls();
@@ -2965,10 +2993,11 @@ bool SessionViewerWindow::loadSensorsCsv()
 
         if (session_loading_ && rows.size() % 5000 == 0)
         {
-            updateSessionLoadingText(QString(is_english_
+            updateSessionLoadingProgress(QString(is_english_
                 ? "Reading sensors CSV... %1 rows"
                 : "正在读取传感器 CSV... %1 行")
-                .arg(rows.size()));
+                .arg(rows.size()),
+                rangedProgressPercent(static_cast<quint64>(rows.size()), total_sensor_rows_, 8, 24));
         }
     }
 
@@ -2997,11 +3026,12 @@ bool SessionViewerWindow::loadSensorsCsv()
 
         if (session_loading_ && (row + 1) % 5000 == 0)
         {
-            updateSessionLoadingText(QString(is_english_
+            updateSessionLoadingProgress(QString(is_english_
                 ? "Rendering CSV table... %1/%2 rows"
                 : "正在渲染 CSV 表格... %1/%2 行")
                 .arg(row + 1)
-                .arg(rows.size()));
+                .arg(rows.size()),
+                rangedProgressPercent(static_cast<quint64>(row + 1), static_cast<quint64>(rows.size()), 24, 36));
         }
     }
 
@@ -3093,11 +3123,12 @@ bool SessionViewerWindow::loadWaveformSegments()
 
         if (session_loading_ && (fileIndex + 1) % 20 == 0)
         {
-            updateSessionLoadingText(QString(is_english_
+            updateSessionLoadingProgress(QString(is_english_
                 ? "Indexing waveform files... %1/%2 files"
                 : "正在索引波形文件... %1/%2 个文件")
                 .arg(fileIndex + 1)
-                .arg(files.size()));
+                .arg(files.size()),
+                rangedProgressPercent(static_cast<quint64>(fileIndex + 1), static_cast<quint64>(files.size()), 36, 45));
         }
     }
 
@@ -3274,10 +3305,14 @@ bool SessionViewerWindow::loadUnifiedRawTcpWaveFrames()
                 }
                 if (session_loading_ && raw_tcp_wave_frames_.size() % 2000 == 0)
                 {
-                    updateSessionLoadingText(QString(is_english_
+                    updateSessionLoadingProgress(QString(is_english_
                         ? "Indexing raw TCP waveform frames... %1 frames"
                         : "正在索引 raw TCP 波形帧... %1 帧")
-                        .arg(raw_tcp_wave_frames_.size()));
+                        .arg(raw_tcp_wave_frames_.size()),
+                        rangedProgressPercent(static_cast<quint64>(std::max<qint64>(0, nextRecord)),
+                                              static_cast<quint64>(std::max<qint64>(1, file.size())),
+                                              36,
+                                              45));
                 }
             }
         }
@@ -3291,11 +3326,14 @@ bool SessionViewerWindow::loadUnifiedRawTcpWaveFrames()
     return true;
 }
 
-void SessionViewerWindow::applyPeakFilter()
+void SessionViewerWindow::applyPeakFilter(int startPercent, int endPercent)
 {
+    const int clampedStart = std::clamp(startPercent, 0, 100);
+    const int clampedEnd = std::clamp(endPercent, clampedStart, 100);
+    const int prepareEnd = clampedStart + (clampedEnd - clampedStart) / 3;
     if (session_loading_)
     {
-        updateSessionLoadingText(is_english_ ? "Applying peak filter..." : "正在应用峰值过滤...");
+        updateSessionLoadingProgress(is_english_ ? "Applying peak filter..." : "正在应用峰值过滤...", clampedStart);
     }
     waveform_peak_values_.clear();
     waveform_peak_values_.reserve(waveform_peak_raw_values_.size());
@@ -3311,11 +3349,15 @@ void SessionViewerWindow::applyPeakFilter()
         }
         if (session_loading_ && (index + 1) % 100000 == 0)
         {
-            updateSessionLoadingText(QString(is_english_
+            updateSessionLoadingProgress(QString(is_english_
                 ? "Preparing peak filter... %1/%2 values"
                 : "正在准备峰值过滤... %1/%2 个值")
                 .arg(index + 1)
-                .arg(waveform_peak_raw_values_.size()));
+                .arg(waveform_peak_raw_values_.size()),
+                rangedProgressPercent(static_cast<quint64>(index + 1),
+                                      static_cast<quint64>(waveform_peak_raw_values_.size()),
+                                      clampedStart,
+                                      prepareEnd));
         }
     }
 
@@ -3366,17 +3408,21 @@ void SessionViewerWindow::applyPeakFilter()
             : std::numeric_limits<float>::quiet_NaN());
         if (session_loading_ && ((index + 1) == waveform_peak_raw_values_.size() || (index + 1) % 100000 == 0))
         {
-            updateSessionLoadingText(QString(is_english_
+            updateSessionLoadingProgress(QString(is_english_
                 ? "Applying peak filter... %1/%2 values"
                 : "正在应用峰值过滤... %1/%2 个值")
                 .arg(index + 1)
-                .arg(waveform_peak_raw_values_.size()));
+                .arg(waveform_peak_raw_values_.size()),
+                rangedProgressPercent(static_cast<quint64>(index + 1),
+                                      static_cast<quint64>(waveform_peak_raw_values_.size()),
+                                      prepareEnd,
+                                      std::max(prepareEnd, clampedEnd - 1)));
         }
     }
 
     if (session_loading_)
     {
-        updateSessionLoadingText(is_english_ ? "Refreshing filtered plots..." : "正在刷新过滤后的图表...");
+        updateSessionLoadingProgress(is_english_ ? "Refreshing filtered plots..." : "正在刷新过滤后的图表...", clampedEnd);
     }
     if (waveform_peak_plot_)
     {
@@ -3427,15 +3473,16 @@ bool SessionViewerWindow::loadWaveformPeakSeries()
         waveform_peak_raw_values_.push_back(waveformPeakValue(frameSamples, peak_search_start_index_, peak_search_end_index_));
         if (session_loading_ && ((frameIndex + 1) == total_waveform_frames_ || (frameIndex + 1) % progressInterval == 0))
         {
-            updateSessionLoadingText(QString(is_english_
+            updateSessionLoadingProgress(QString(is_english_
                 ? "Calculating waveform peak series... %1/%2 frames"
                 : "正在计算波形峰值序列... %1/%2 帧")
                 .arg(frameIndex + 1)
-                .arg(total_waveform_frames_));
+                .arg(total_waveform_frames_),
+                rangedProgressPercent(frameIndex + 1, total_waveform_frames_, 45, 90));
         }
     }
 
-    applyPeakFilter();
+    applyPeakFilter(90, 97);
     return true;
 }
 
@@ -3589,7 +3636,7 @@ void SessionViewerWindow::onTogglePeakPlotModeClicked()
         waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
     static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setPlotMode(
         waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
-    updateSessionLoadingText(is_english_ ? "Refreshing plots..." : "正在刷新图表...");
+    updateSessionLoadingProgress(is_english_ ? "Refreshing plots..." : "正在刷新图表...", 80);
     waveform_peak_plot_->repaint();
     temperature_plot_->repaint();
     humidity_plot_->repaint();
