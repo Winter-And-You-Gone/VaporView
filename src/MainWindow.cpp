@@ -10,8 +10,12 @@
 #include "data_types.h"
 #include "serial_probe_utils.h"
 #include <QMenu>
+#include <QAbstractItemView>
+#include <QAbstractSpinBox>
 #include <QAction>
+#include <QButtonGroup>
 #include <QCheckBox>
+#include <QDateTimeEdit>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QEvent>
@@ -163,6 +167,10 @@ constexpr int kTelemetrySummaryInfoLabelWidth = 118;
 constexpr int kTelemetrySummaryInfoValueWidth = 86;
 constexpr int kTelemetrySummaryTitleColumnWidth = kEpsilonSideTitleWidth;
 constexpr int kRemotePacketRateWindowMs = 5000;
+constexpr qint64 kTcpRecordingStatusRefreshMs = 500;
+constexpr quint64 kTcpRawRecordQueueWarningBytes = 32ULL * 1024ULL * 1024ULL;
+constexpr quint64 kTcpRawRecordQueueMaxBytes = 256ULL * 1024ULL * 1024ULL;
+constexpr qint64 kTcpRawRecordQueueWarningIntervalMs = 5000;
 constexpr int kPtbMinSampleRateHz = 1;
 constexpr int kPtbMaxSampleRateHz = 70;
 
@@ -724,6 +732,11 @@ QIcon createStopIcon()
     return createLucideIcon(QStringLiteral("square"), kToolbarRed);
 }
 
+QIcon createTimerIcon()
+{
+    return createLucideIcon(QStringLiteral("timer"), kToolbarBlue);
+}
+
 QIcon createRtkSatelliteIcon()
 {
     return createLucideIcon(QStringLiteral("satellite"), kToolbarBlue);
@@ -732,6 +745,11 @@ QIcon createRtkSatelliteIcon()
 QIcon createClearLogIcon()
 {
     return createLucideIcon(QStringLiteral("trash-2"), kToolbarBlue);
+}
+
+QIcon createLogFilterIcon()
+{
+    return createLucideIcon(QStringLiteral("list-filter"), kToolbarBlue);
 }
 
 QIcon createWaveformViewerIcon()
@@ -3086,6 +3104,7 @@ MainWindow::MainWindow(QWidget *parent)
     , hmp_panel_(nullptr)
     , lidar_panel_(nullptr)
     , log_text_edit_(nullptr)
+    , log_filter_btn_(nullptr)
     , log_clear_btn_(nullptr)
     , status_label_(nullptr)
     , status_task_progress_bar_(nullptr)
@@ -3110,12 +3129,14 @@ MainWindow::MainWindow(QWidget *parent)
     , connect_btn_(nullptr)
     , cancel_connect_btn_(nullptr)
     , disconnect_btn_(nullptr)
+    , scheduled_recording_action_(nullptr)
     , start_recording_btn_(nullptr)
     , pause_recording_btn_(nullptr)
     , stop_recording_btn_(nullptr)
     , refresh_ports_btn_(nullptr)
     , lang_action_(nullptr)
     , theme_toggle_action_(nullptr)
+    , log_filter_ack_action_(nullptr)
     , clear_log_action_(nullptr)
     , session_viewer_action_(nullptr)
     , epsilon_reconfigure_action_(nullptr)
@@ -3229,7 +3250,9 @@ MainWindow::MainWindow(QWidget *parent)
     , hmp_collector_(nullptr)
     , lidar_collector_(nullptr)
     , refresh_timer_(nullptr)
+    , scheduled_recording_timer_(nullptr)
     , is_english_(false)
+    , log_filter_ack_enabled_(false)
     , language_switch_in_progress_(false)
     , has_inline_progress_log_(false)
     , connection_attempt_in_progress_(false)
@@ -3263,6 +3286,16 @@ MainWindow::MainWindow(QWidget *parent)
     , imu_recording_rate_hz_(0)
     , waveform_recording_rate_hz_(0)
     , status_task_spinner_index_(0)
+    , scheduled_recording_mode_(ScheduledRecordingMode::None)
+    , scheduled_recording_phase_(ScheduledRecordingPhase::Idle)
+    , scheduled_recording_duration_seconds_(10 * 60)
+    , scheduled_recording_interval_seconds_(60 * 60)
+    , scheduled_recording_fixed_count_enabled_(false)
+    , scheduled_recording_total_runs_(1)
+    , scheduled_recording_completed_runs_(0)
+    , scheduled_recording_next_start_()
+    , scheduled_recording_stop_time_()
+    , scheduled_recording_round_observed_session_(false)
     , steady_clock_anchor_(std::chrono::steady_clock::now())
     , system_clock_anchor_(std::chrono::system_clock::now())
     , sensors_file_(nullptr)
@@ -3297,6 +3330,7 @@ MainWindow::MainWindow(QWidget *parent)
     , last_raw_hmp_record_count_(0)
     , last_raw_lidar_record_count_(0)
     , last_raw_tcp_wave_record_count_(0)
+    , last_tcp_recording_status_update_ms_(0)
     , recording_entry_count_(0)
     , waveform_frame_count_(0)
     , waveform_file_count_(0)
@@ -3306,6 +3340,10 @@ MainWindow::MainWindow(QWidget *parent)
     , raw_lidar_record_count_(0)
     , raw_tcp_wave_record_count_(0)
     , last_imu_record_timestamp_us_(0)
+    , tcp_raw_recording_worker_running_(false)
+    , tcp_raw_record_queue_bytes_(0)
+    , tcp_raw_record_dropped_count_(0)
+    , last_tcp_raw_queue_warning_ms_(0)
     , rtk_config_action_(nullptr)
     , rtk_config_dialog_(nullptr)
     , tcp_wave_panel_(nullptr)
@@ -3509,6 +3547,11 @@ MainWindow::MainWindow(QWidget *parent)
     refresh_timer_ = new QTimer(this);
     connect(refresh_timer_, &QTimer::timeout, this, &MainWindow::onRefreshTimer);
     refresh_timer_->start(100);
+
+    scheduled_recording_timer_ = new QTimer(this);
+    scheduled_recording_timer_->setInterval(1000);
+    scheduled_recording_timer_->setTimerType(Qt::CoarseTimer);
+    connect(scheduled_recording_timer_, &QTimer::timeout, this, &MainWindow::onScheduledRecordingTick);
 
     setEnglish(false);
     applyStyleConfiguration();
@@ -5341,6 +5384,10 @@ void MainWindow::setupToolBar()
     disconnect_btn_->setEnabled(false);
     connect(disconnect_btn_, &QAction::triggered, this, &MainWindow::onDisconnectClicked);
 
+    scheduled_recording_action_ = new QAction(this);
+    scheduled_recording_action_->setIcon(createTimerIcon());
+    connect(scheduled_recording_action_, &QAction::triggered, this, &MainWindow::onScheduledRecordingClicked);
+
     start_recording_btn_ = new QAction(this);
     start_recording_btn_->setIcon(createPlayIcon());
     start_recording_btn_->setEnabled(false);
@@ -5367,6 +5414,15 @@ void MainWindow::setupToolBar()
     clear_log_action_ = new QAction(this);
     clear_log_action_->setIcon(createClearLogIcon());
     connect(clear_log_action_, &QAction::triggered, this, &MainWindow::onClearLogClicked);
+
+    log_filter_ack_action_ = new QAction(this);
+    log_filter_ack_action_->setIcon(createLogFilterIcon());
+    log_filter_ack_action_->setCheckable(true);
+    connect(log_filter_ack_action_, &QAction::toggled, this, [this](bool checked) {
+        log_filter_ack_enabled_ = checked;
+        updateLogFilterAction();
+        renderLogView();
+    });
 
     session_viewer_action_->setIcon(createWaveformViewerIcon());
 
@@ -5411,9 +5467,11 @@ void MainWindow::setupCustomTitleBar()
     titleLayout->addWidget(createTitleBarActionButton(cancel_connect_btn_, custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(disconnect_btn_, custom_title_bar_), 0, Qt::AlignVCenter);
     addTitleBarSeparator(titleLayout);
+    titleLayout->addWidget(createTitleBarActionButton(scheduled_recording_action_, custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(start_recording_btn_, custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(pause_recording_btn_, custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(stop_recording_btn_, custom_title_bar_), 0, Qt::AlignVCenter);
+    addTitleBarSeparator(titleLayout);
     titleLayout->addWidget(createTitleBarActionButton(rtk_config_action_, custom_title_bar_), 0, Qt::AlignVCenter);
     addTitleBarSeparator(titleLayout);
     titleLayout->addWidget(createTitleBarActionButton(session_viewer_action_, custom_title_bar_), 0, Qt::AlignVCenter);
@@ -5493,6 +5551,7 @@ void MainWindow::addTitleBarSeparator(QHBoxLayout *layout)
     auto *separator = new QFrame(custom_title_bar_);
     separator->setObjectName(QStringLiteral("titleBarSeparator"));
     separator->setFixedWidth(1);
+    separator->setFixedHeight(scalePixels(28));
     separator->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     layout->addWidget(separator, 0, Qt::AlignVCenter);
 }
@@ -6881,6 +6940,10 @@ void MainWindow::setupLogPanel()
     log_inline_title_lbl_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     logTitleLayout->addWidget(log_inline_title_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     logTitleLayout->addStretch(1);
+    log_filter_btn_ = createTitleBarActionButton(log_filter_ack_action_, logTitleBar);
+    log_filter_btn_->setFixedSize(kMainPageButtonHeight, kMainPageButtonHeight);
+    log_filter_btn_->setIconSize(QSize(kMainPageButtonHeight - 12, kMainPageButtonHeight - 12));
+    logTitleLayout->addWidget(log_filter_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
     log_clear_btn_ = createTitleBarActionButton(clear_log_action_, logTitleBar);
     log_clear_btn_->setFixedSize(kMainPageButtonHeight, kMainPageButtonHeight);
     log_clear_btn_->setIconSize(QSize(kMainPageButtonHeight - 12, kMainPageButtonHeight - 12));
@@ -6967,6 +7030,7 @@ void MainWindow::setEnglish(bool english)
     disconnect_btn_->setText(english ? "Disconnect" : "断开");
     disconnect_btn_->setToolTip(english ? "Disconnect" : "断开连接");
     disconnect_btn_->setStatusTip(disconnect_btn_->toolTip());
+    updateScheduledRecordingAction();
     start_recording_btn_->setText(english ? "Start Recording" : "开始记录");
     start_recording_btn_->setToolTip(english ? "Start recording" : "开始记录");
     start_recording_btn_->setStatusTip(start_recording_btn_->toolTip());
@@ -6979,6 +7043,7 @@ void MainWindow::setEnglish(bool english)
     clear_log_action_->setText(english ? "Clear Log" : "清空日志");
     clear_log_action_->setToolTip(english ? "Clear Log" : "清空日志");
     clear_log_action_->setStatusTip(english ? "Clear Log" : "清空日志");
+    updateLogFilterAction();
     rtk_config_action_->setText(english ? "RTK Config" : "RTK配置");
     rtk_config_action_->setToolTip(english ? "RTK config" : "RTK配置");
     rtk_config_action_->setStatusTip(rtk_config_action_->toolTip());
@@ -7316,6 +7381,11 @@ void MainWindow::updateCustomTitleBarStyle()
     {
         log_clear_btn_->setFixedSize(actionButtonSize);
         log_clear_btn_->setIconSize(iconSize);
+    }
+    if (log_filter_btn_)
+    {
+        log_filter_btn_->setFixedSize(actionButtonSize);
+        log_filter_btn_->setIconSize(iconSize);
     }
     if (custom_logo_label_)
     {
@@ -8001,8 +8071,23 @@ void MainWindow::applyAllSampleRates()
 
 void MainWindow::log(const QString& message)
 {
+    auto scrollLogToBottom = [this]() {
+        if (log_text_edit_)
+        {
+            log_text_edit_->ensureCursorVisible();
+            if (QScrollBar *scrollBar = log_text_edit_->verticalScrollBar())
+            {
+                scrollBar->setValue(scrollBar->maximum());
+            }
+        }
+    };
+
     if (message.startsWith('\r'))
     {
+        if (!log_text_edit_)
+        {
+            return;
+        }
         const QString inlineMessage = message.mid(1);
         QTextCursor cursor = log_text_edit_->textCursor();
         cursor.movePosition(QTextCursor::End);
@@ -8024,19 +8109,17 @@ void MainWindow::log(const QString& message)
         }
 
         log_text_edit_->setTextCursor(cursor);
-        log_text_edit_->ensureCursorVisible();
-        if (QScrollBar *scrollBar = log_text_edit_->verticalScrollBar())
-        {
-            scrollBar->setValue(scrollBar->maximum());
-        }
+        scrollLogToBottom();
         return;
     }
 
     QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
-    log_text_edit_->append(QString("[%1] %2").arg(timestamp, message));
-    if (QScrollBar *scrollBar = log_text_edit_->verticalScrollBar())
+    const QString displayLine = QString("[%1] %2").arg(timestamp, message);
+    log_entries_.append(displayLine);
+    if (log_text_edit_ && shouldShowLogLine(displayLine))
     {
-        scrollBar->setValue(scrollBar->maximum());
+        log_text_edit_->append(displayLine);
+        scrollLogToBottom();
     }
     has_inline_progress_log_ = false;
 
@@ -8045,6 +8128,57 @@ void MainWindow::log(const QString& message)
     {
         appendErrorLogLine(message);
     }
+}
+
+bool MainWindow::shouldShowLogLine(const QString& line) const
+{
+    if (log_filter_ack_enabled_ && line.contains(QStringLiteral("ACK"), Qt::CaseInsensitive))
+    {
+        return false;
+    }
+    return true;
+}
+
+void MainWindow::renderLogView()
+{
+    if (!log_text_edit_)
+    {
+        return;
+    }
+
+    log_text_edit_->clear();
+    for (const QString& line : log_entries_)
+    {
+        if (shouldShowLogLine(line))
+        {
+            log_text_edit_->append(line);
+        }
+    }
+    has_inline_progress_log_ = false;
+    if (QScrollBar *scrollBar = log_text_edit_->verticalScrollBar())
+    {
+        scrollBar->setValue(scrollBar->maximum());
+    }
+}
+
+void MainWindow::updateLogFilterAction()
+{
+    if (!log_filter_ack_action_)
+    {
+        return;
+    }
+
+    log_filter_ack_action_->setChecked(log_filter_ack_enabled_);
+    log_filter_ack_action_->setText(is_english_ ? QStringLiteral("Filter ACK Logs")
+                                                : QStringLiteral("过滤 ACK 日志"));
+    log_filter_ack_action_->setToolTip(log_filter_ack_enabled_
+        ? (is_english_
+              ? QStringLiteral("ACK log filtering is on. Click to show all cached logs.")
+              : QStringLiteral("ACK 日志过滤已开启，点击后显示全部缓存日志。"))
+        : (is_english_
+              ? QStringLiteral("Hide ACK logs from the display only")
+              : QStringLiteral("仅从显示中隐藏 ACK 日志")));
+    log_filter_ack_action_->setStatusTip(log_filter_ack_action_->toolTip());
 }
 
 void MainWindow::updateRecordingStatusLabel()
@@ -8099,6 +8233,10 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(rawLidar)
                   .arg(rawTcpWave);
     };
+    auto appendScheduledLine = [this](const QString& text) {
+        const QString scheduledLine = scheduledRecordingStatusLine();
+        return scheduledLine.isEmpty() ? text : QStringLiteral("%1\n%2").arg(text, scheduledLine);
+    };
 
     if (isRemoteSkyMode())
     {
@@ -8143,17 +8281,18 @@ void MainWindow::updateRecordingStatusLabel()
                   .arg(displayStatus.raw_hmp_record_count)
                   .arg(displayStatus.raw_lidar_record_count)
                   .arg(displayStatus.raw_tcp_wave_record_count);
-        recording_status_label_->setToolTip(detail);
+        const QString detailWithSchedule = appendScheduledLine(detail);
+        recording_status_label_->setToolTip(detailWithSchedule);
         if (recording_status_card_)
         {
-            recording_status_card_->setToolTip(detail);
+            recording_status_card_->setToolTip(detailWithSchedule);
         }
         if (remote_recording_state_ == 1)
         {
             recording_status_label_->setText(
                 QString(is_english_ ? "Sky Recording: On\n%1\nRaw total: %2"
                                     : "天空端记录：进行中\n%1\nRaw 总数：%2")
-                    .arg(detail)
+                    .arg(detailWithSchedule)
                     .arg(rawTotal));
             setVisualStatus("connected");
         }
@@ -8162,7 +8301,7 @@ void MainWindow::updateRecordingStatusLabel()
             recording_status_label_->setText(
                 QString(is_english_ ? "Sky Recording: Paused\n%1\nRaw total: %2"
                                     : "天空端记录：已暂停\n%1\nRaw 总数：%2")
-                    .arg(detail)
+                    .arg(detailWithSchedule)
                     .arg(rawTotal));
             setVisualStatus("connecting");
         }
@@ -8171,7 +8310,7 @@ void MainWindow::updateRecordingStatusLabel()
             recording_status_label_->setText(
                 QString(is_english_ ? "Sky Recording: Off\n%1\nRaw total: %2"
                                     : "天空端记录：未记录\n%1\nRaw 总数：%2")
-                    .arg(detail)
+                    .arg(detailWithSchedule)
                     .arg(rawTotal));
             setVisualStatus("disconnected");
         }
@@ -8196,13 +8335,15 @@ void MainWindow::updateRecordingStatusLabel()
         if (recording_paused_)
         {
             recording_status_label_->setText(
-                QString(is_english_ ? "Recording: Paused\n%1" : "记录：已暂停\n%1").arg(detail));
+                QString(is_english_ ? "Recording: Paused\n%1" : "记录：已暂停\n%1")
+                    .arg(appendScheduledLine(detail)));
             setVisualStatus("connecting");
         }
         else
         {
             recording_status_label_->setText(
-                QString(is_english_ ? "Recording: On\n%1" : "记录：进行中\n%1").arg(detail));
+                QString(is_english_ ? "Recording: On\n%1" : "记录：进行中\n%1")
+                    .arg(appendScheduledLine(detail)));
             setVisualStatus("connected");
         }
     }
@@ -8221,7 +8362,8 @@ void MainWindow::updateRecordingStatusLabel()
             static_cast<qulonglong>(last_raw_lidar_record_count_),
             static_cast<qulonglong>(last_raw_tcp_wave_record_count_));
         recording_status_label_->setText(
-            QString(is_english_ ? "Recording: Off\n%1" : "记录：未记录\n%1").arg(detail));
+            QString(is_english_ ? "Recording: Off\n%1" : "记录：未记录\n%1")
+                .arg(appendScheduledLine(detail)));
         setVisualStatus("disconnected");
     }
 
@@ -8413,6 +8555,155 @@ bool MainWindow::writeUnifiedRawRecord(QFile *file,
 
     recordCount.store(sequence + 1, std::memory_order_relaxed);
     return true;
+}
+
+void MainWindow::startTcpRawRecordingWorker()
+{
+    stopTcpRawRecordingWorker();
+
+    {
+        std::lock_guard<std::mutex> lock(tcp_raw_record_queue_mutex_);
+        tcp_raw_record_queue_.clear();
+        tcp_raw_record_queue_bytes_ = 0;
+        tcp_raw_record_dropped_count_ = 0;
+        last_tcp_raw_queue_warning_ms_ = 0;
+        tcp_raw_recording_worker_running_ = true;
+    }
+
+    tcp_raw_recording_thread_ = std::thread([this]() {
+        while (true)
+        {
+            TcpRawRecord record;
+            {
+                std::unique_lock<std::mutex> lock(tcp_raw_record_queue_mutex_);
+                tcp_raw_record_queue_cv_.wait(lock, [this]() {
+                    return !tcp_raw_record_queue_.empty() || !tcp_raw_recording_worker_running_;
+                });
+                if (tcp_raw_record_queue_.empty() && !tcp_raw_recording_worker_running_)
+                {
+                    break;
+                }
+
+                record = std::move(tcp_raw_record_queue_.front());
+                tcp_raw_record_queue_.pop_front();
+                tcp_raw_record_queue_bytes_ -= static_cast<quint64>(record.payload.size());
+            }
+
+            if (writeUnifiedRawRecord(raw_tcp_wave_file_.get(),
+                                      raw_tcp_wave_record_count_,
+                                      kRawSourceTcpWave,
+                                      kRawRecordTypeGeneric,
+                                      record.flags,
+                                      record.timestamp_us,
+                                      record.payload.constData(),
+                                      static_cast<size_t>(record.payload.size())))
+            {
+                waveform_frame_count_.fetch_add(1);
+                waveform_file_count_.store(1);
+                const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+                const qint64 lastStatusUpdateMs = last_tcp_recording_status_update_ms_.load();
+                if (lastStatusUpdateMs <= 0 ||
+                    nowMs - lastStatusUpdateMs >= kTcpRecordingStatusRefreshMs)
+                {
+                    last_tcp_recording_status_update_ms_.store(nowMs);
+                    QMetaObject::invokeMethod(this, [this]() {
+                        updateRecordingStatusLabel();
+                    }, Qt::QueuedConnection);
+                }
+            }
+        }
+    });
+}
+
+void MainWindow::stopTcpRawRecordingWorker()
+{
+    {
+        std::lock_guard<std::mutex> lock(tcp_raw_record_queue_mutex_);
+        tcp_raw_recording_worker_running_ = false;
+    }
+    tcp_raw_record_queue_cv_.notify_all();
+
+    if (tcp_raw_recording_thread_.joinable())
+    {
+        tcp_raw_recording_thread_.join();
+    }
+
+    quint64 droppedCount = 0;
+    {
+        std::lock_guard<std::mutex> lock(tcp_raw_record_queue_mutex_);
+        droppedCount = tcp_raw_record_dropped_count_;
+        tcp_raw_record_queue_.clear();
+        tcp_raw_record_queue_bytes_ = 0;
+        tcp_raw_record_dropped_count_ = 0;
+        last_tcp_raw_queue_warning_ms_ = 0;
+    }
+
+    if (droppedCount > 0)
+    {
+        log(QString(is_english_
+            ? "Warning: dropped %1 TCP raw frames because the recording queue was full."
+            : "警告：TCP 原始记录队列已满，已丢弃 %1 帧。")
+            .arg(droppedCount));
+    }
+}
+
+bool MainWindow::enqueueTcpRawRecord(TcpRawRecord record)
+{
+    const quint64 payloadBytes = static_cast<quint64>(record.payload.size());
+    QString warningMessage;
+    bool enqueued = false;
+    {
+        std::lock_guard<std::mutex> lock(tcp_raw_record_queue_mutex_);
+        if (!tcp_raw_recording_worker_running_)
+        {
+            return false;
+        }
+
+        const quint64 nextBytes = tcp_raw_record_queue_bytes_ + payloadBytes;
+        const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+        if (nextBytes > kTcpRawRecordQueueMaxBytes)
+        {
+            ++tcp_raw_record_dropped_count_;
+            if (last_tcp_raw_queue_warning_ms_ <= 0 ||
+                nowMs - last_tcp_raw_queue_warning_ms_ >= kTcpRawRecordQueueWarningIntervalMs)
+            {
+                last_tcp_raw_queue_warning_ms_ = nowMs;
+                warningMessage = QString(is_english_
+                    ? "TCP raw recording queue is full (%1 MiB). Dropping incoming raw frames to keep the TCP link responsive."
+                    : "TCP 原始记录队列已满（%1 MiB）。为保持 TCP 链路响应，正在丢弃新到原始帧。")
+                    .arg(tcp_raw_record_queue_bytes_ / (1024ULL * 1024ULL));
+            }
+        }
+        else
+        {
+            tcp_raw_record_queue_bytes_ = nextBytes;
+            tcp_raw_record_queue_.push_back(std::move(record));
+            enqueued = true;
+            if (nextBytes >= kTcpRawRecordQueueWarningBytes &&
+                (last_tcp_raw_queue_warning_ms_ <= 0 ||
+                 nowMs - last_tcp_raw_queue_warning_ms_ >= kTcpRawRecordQueueWarningIntervalMs))
+            {
+                last_tcp_raw_queue_warning_ms_ = nowMs;
+                warningMessage = QString(is_english_
+                    ? "TCP raw recording queue backlog is %1 MiB. Disk writes may be slower than the incoming stream."
+                    : "TCP 原始记录队列积压 %1 MiB，磁盘写入可能慢于数据流。")
+                    .arg(nextBytes / (1024ULL * 1024ULL));
+            }
+        }
+    }
+
+    if (!warningMessage.isEmpty())
+    {
+        QMetaObject::invokeMethod(this, [this, warningMessage]() {
+            log(warningMessage);
+        }, Qt::QueuedConnection);
+    }
+
+    if (enqueued)
+    {
+        tcp_raw_record_queue_cv_.notify_one();
+    }
+    return enqueued;
 }
 
 void MainWindow::closeUnifiedRawDatFiles()
@@ -8623,6 +8914,7 @@ void MainWindow::startRecordingWorkers()
 
     recording_paused_ = false;
     last_imu_record_timestamp_us_.store(0);
+    startTcpRawRecordingWorker();
 
     QFile *filePtr = sensors_file_.get();
     recording_thread_running_.store(true);
@@ -8796,6 +9088,7 @@ void MainWindow::stopRecordingWorkers()
     {
         recording_thread_.join();
     }
+    stopTcpRawRecordingWorker();
 }
 
 bool MainWindow::startRecordingSession()
@@ -8863,6 +9156,7 @@ bool MainWindow::startRecordingSession()
     raw_hmp_record_count_.store(0);
     raw_lidar_record_count_.store(0);
     raw_tcp_wave_record_count_.store(0);
+    last_tcp_recording_status_update_ms_.store(0);
     {
         QTextStream eventOut(event_log_file_.get());
         eventOut.setEncoding(QStringConverter::Utf8);
@@ -8902,6 +9196,863 @@ void MainWindow::onChooseRecordingDirectoryClicked()
     QSettings settings("VaporView", "MainWindow");
     settings.setValue("recording_directory", recording_directory_);
     log(QString(is_english_ ? "Recording folder set to: %1" : "记录目录已设置为: %1").arg(recording_directory_));
+}
+
+QString MainWindow::formatScheduledDateTime(const QDateTime& dateTime) const
+{
+    return dateTime.isValid()
+        ? dateTime.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"))
+        : QStringLiteral("--");
+}
+
+QString MainWindow::formatScheduledDuration(int seconds) const
+{
+    seconds = std::max(0, seconds);
+    const int hours = seconds / 3600;
+    const int minutes = (seconds % 3600) / 60;
+    const int secs = seconds % 60;
+    if (is_english_)
+    {
+        return QStringLiteral("%1h %2m %3s").arg(hours).arg(minutes).arg(secs);
+    }
+    return QStringLiteral("%1小时%2分%3秒").arg(hours).arg(minutes).arg(secs);
+}
+
+QString MainWindow::scheduledRecordingSummary() const
+{
+    if (scheduled_recording_mode_ == ScheduledRecordingMode::None)
+    {
+        return is_english_ ? QStringLiteral("Configure scheduled recording")
+                           : QStringLiteral("配置定时记录");
+    }
+
+    const QString runText = scheduled_recording_fixed_count_enabled_
+        ? (is_english_
+              ? QStringLiteral("%1 / %2 rounds").arg(scheduled_recording_completed_runs_).arg(scheduled_recording_total_runs_)
+              : QStringLiteral("已完成 %1 / %2 次").arg(scheduled_recording_completed_runs_).arg(scheduled_recording_total_runs_))
+        : (is_english_ ? QStringLiteral("loop until canceled") : QStringLiteral("循环直到取消"));
+    const QString duration = formatScheduledDuration(scheduled_recording_duration_seconds_);
+
+    if (scheduled_recording_phase_ == ScheduledRecordingPhase::Recording)
+    {
+        return is_english_
+            ? QStringLiteral("Scheduled recording: recording until %1, duration %2, %3")
+                  .arg(formatScheduledDateTime(scheduled_recording_stop_time_), duration, runText)
+            : QStringLiteral("定时记录：记录中，计划 %1 停止，时长 %2，%3")
+                  .arg(formatScheduledDateTime(scheduled_recording_stop_time_), duration, runText);
+    }
+
+    if (scheduled_recording_mode_ == ScheduledRecordingMode::FixedTime)
+    {
+        return is_english_
+            ? QStringLiteral("Scheduled recording: starts at %1, duration %2")
+                  .arg(formatScheduledDateTime(scheduled_recording_next_start_), duration)
+            : QStringLiteral("定时记录：%1 开始，记录 %2")
+                  .arg(formatScheduledDateTime(scheduled_recording_next_start_), duration);
+    }
+
+    return is_english_
+        ? QStringLiteral("Scheduled recording: next start %1, duration %2, interval %3, %4")
+              .arg(formatScheduledDateTime(scheduled_recording_next_start_),
+                   duration,
+                   formatScheduledDuration(scheduled_recording_interval_seconds_),
+                   runText)
+        : QStringLiteral("定时记录：下次 %1 开始，记录 %2，间隔 %3，%4")
+              .arg(formatScheduledDateTime(scheduled_recording_next_start_),
+                   duration,
+                   formatScheduledDuration(scheduled_recording_interval_seconds_),
+                   runText);
+}
+
+QString MainWindow::scheduledRecordingStatusLine() const
+{
+    if (scheduled_recording_mode_ == ScheduledRecordingMode::None)
+    {
+        return QString();
+    }
+
+    const QString countText = scheduled_recording_fixed_count_enabled_
+        ? (is_english_
+              ? QStringLiteral(" (%1/%2)").arg(scheduled_recording_completed_runs_).arg(scheduled_recording_total_runs_)
+              : QStringLiteral("（%1/%2）").arg(scheduled_recording_completed_runs_).arg(scheduled_recording_total_runs_))
+        : QString();
+
+    if (scheduled_recording_phase_ == ScheduledRecordingPhase::Recording)
+    {
+        return is_english_
+            ? QStringLiteral("Schedule: recording, stops at %1%2")
+                  .arg(formatScheduledDateTime(scheduled_recording_stop_time_), countText)
+            : QStringLiteral("定时：记录中，%1 停止%2")
+                  .arg(formatScheduledDateTime(scheduled_recording_stop_time_), countText);
+    }
+
+    return is_english_
+        ? QStringLiteral("Schedule: next start %1%2")
+              .arg(formatScheduledDateTime(scheduled_recording_next_start_), countText)
+        : QStringLiteral("定时：下次 %1 开始%2")
+              .arg(formatScheduledDateTime(scheduled_recording_next_start_), countText);
+}
+
+void MainWindow::updateScheduledRecordingAction()
+{
+    if (!scheduled_recording_action_)
+    {
+        return;
+    }
+
+    const bool active = scheduled_recording_mode_ != ScheduledRecordingMode::None;
+    scheduled_recording_action_->setText(is_english_ ? "Scheduled Recording" : "定时记录");
+    scheduled_recording_action_->setToolTip(active ? scheduledRecordingSummary()
+                                                   : (is_english_ ? QStringLiteral("Configure scheduled recording")
+                                                                  : QStringLiteral("配置定时记录")));
+    scheduled_recording_action_->setStatusTip(scheduled_recording_action_->toolTip());
+    scheduled_recording_action_->setCheckable(false);
+    scheduled_recording_action_->setChecked(false);
+}
+
+void MainWindow::configureScheduledRecording(ScheduledRecordingMode mode,
+                                             int durationSeconds,
+                                             int intervalSeconds,
+                                             bool fixedCountEnabled,
+                                             int totalRuns,
+                                             const QDateTime& firstStartTime)
+{
+    if (mode == ScheduledRecordingMode::None)
+    {
+        cancelScheduledRecording(false);
+        return;
+    }
+
+    scheduled_recording_mode_ = mode;
+    scheduled_recording_phase_ = ScheduledRecordingPhase::WaitingToStart;
+    scheduled_recording_duration_seconds_ = std::max(1, durationSeconds);
+    scheduled_recording_interval_seconds_ = std::max(1, intervalSeconds);
+    scheduled_recording_fixed_count_enabled_ = fixedCountEnabled;
+    scheduled_recording_total_runs_ = std::clamp(totalRuns, 1, 999);
+    scheduled_recording_completed_runs_ = 0;
+    scheduled_recording_next_start_ = firstStartTime.isValid() ? firstStartTime : QDateTime::currentDateTime();
+    scheduled_recording_stop_time_ = QDateTime();
+    scheduled_recording_round_observed_session_ = false;
+
+    if (scheduled_recording_timer_ && !scheduled_recording_timer_->isActive())
+    {
+        scheduled_recording_timer_->start();
+    }
+
+    log(QString(is_english_ ? "Scheduled recording configured: %1"
+                            : "定时记录已配置：%1")
+            .arg(scheduledRecordingSummary()));
+    updateScheduledRecordingAction();
+    updateRecordingStatusLabel();
+    onScheduledRecordingTick();
+}
+
+void MainWindow::cancelScheduledRecording(bool announce)
+{
+    const bool wasActive = scheduled_recording_mode_ != ScheduledRecordingMode::None;
+    scheduled_recording_mode_ = ScheduledRecordingMode::None;
+    scheduled_recording_phase_ = ScheduledRecordingPhase::Idle;
+    scheduled_recording_next_start_ = QDateTime();
+    scheduled_recording_stop_time_ = QDateTime();
+    scheduled_recording_completed_runs_ = 0;
+    scheduled_recording_round_observed_session_ = false;
+
+    if (scheduled_recording_timer_)
+    {
+        scheduled_recording_timer_->stop();
+    }
+
+    if (announce && wasActive)
+    {
+        log(is_english_ ? "Scheduled recording canceled" : "定时记录已取消");
+    }
+    updateScheduledRecordingAction();
+    updateRecordingStatusLabel();
+}
+
+void MainWindow::scheduleNextIntervalRecording(const QDateTime& fromTime)
+{
+    scheduled_recording_phase_ = ScheduledRecordingPhase::WaitingToStart;
+    scheduled_recording_next_start_ = fromTime.addSecs(std::max(1, scheduled_recording_interval_seconds_));
+    scheduled_recording_stop_time_ = QDateTime();
+    scheduled_recording_round_observed_session_ = false;
+}
+
+void MainWindow::completeScheduledRecordingRound(bool counted)
+{
+    if (counted)
+    {
+        ++scheduled_recording_completed_runs_;
+    }
+
+    const bool fixedDone = scheduled_recording_fixed_count_enabled_ &&
+                           scheduled_recording_completed_runs_ >= scheduled_recording_total_runs_;
+    if (scheduled_recording_mode_ == ScheduledRecordingMode::FixedTime || fixedDone)
+    {
+        log(QString(is_english_ ? "Scheduled recording completed: %1"
+                                : "定时记录已完成：%1")
+                .arg(scheduledRecordingSummary()));
+        cancelScheduledRecording(false);
+        return;
+    }
+
+    scheduleNextIntervalRecording(QDateTime::currentDateTime());
+    log(QString(is_english_ ? "Scheduled recording next start: %1"
+                            : "定时记录下次开始：%1")
+            .arg(formatScheduledDateTime(scheduled_recording_next_start_)));
+    updateScheduledRecordingAction();
+    updateRecordingStatusLabel();
+}
+
+bool MainWindow::canStartScheduledRecordingNow() const
+{
+    return scheduledRecordingStartBlockReason().isEmpty();
+}
+
+QString MainWindow::scheduledRecordingStartBlockReason() const
+{
+    if (isRemoteSkyMode())
+    {
+        if (!ground_telemetry_service_)
+        {
+            return is_english_
+                ? QStringLiteral("Remote Sky telemetry service is not initialized.")
+                : QStringLiteral("天空端数传服务未初始化。");
+        }
+        if (!ground_telemetry_service_->isOpen())
+        {
+            return is_english_
+                ? QStringLiteral("Remote Sky telemetry is not connected.")
+                : QStringLiteral("天空端数传未连接。");
+        }
+        if (remote_recording_state_ == 1)
+        {
+            const QString sessionName = has_last_remote_recording_status_ &&
+                                            !last_remote_recording_status_.session_name.isEmpty()
+                                        ? last_remote_recording_status_.session_name
+                                        : QString();
+            if (!sessionName.isEmpty())
+            {
+                return is_english_
+                    ? QStringLiteral("Remote Sky is already recording session %1.").arg(sessionName)
+                    : QStringLiteral("天空端已经在记录中，会话：%1。").arg(sessionName);
+            }
+            return is_english_
+                ? QStringLiteral("Remote Sky is already recording.")
+                : QStringLiteral("天空端已经在记录中。");
+        }
+        return QString();
+    }
+
+    const bool tcpConnected = tcp_wave_panel_ && tcp_wave_panel_->isConnected();
+    const bool recordingSourceAvailable = is_connected_ || tcpConnected;
+    if (!recordingSourceAvailable)
+    {
+        return is_english_
+            ? QStringLiteral("No local recording source is connected.")
+            : QStringLiteral("本地记录源未连接。");
+    }
+    if (connection_attempt_in_progress_)
+    {
+        return is_english_
+            ? QStringLiteral("A connection attempt is still in progress.")
+            : QStringLiteral("连接流程正在进行。");
+    }
+    if (port_detection_in_progress_)
+    {
+        return is_english_
+            ? QStringLiteral("Serial-port auto detection is still in progress.")
+            : QStringLiteral("串口自动识别正在进行。");
+    }
+    if (epsilon_reconfigure_in_progress_)
+    {
+        return is_english_
+            ? QStringLiteral("EPSILON reconfiguration is still in progress.")
+            : QStringLiteral("EPSILON 配置流程正在进行。");
+    }
+    if (sensors_file_ && sensors_file_->isOpen() && !recording_paused_)
+    {
+        return is_english_
+            ? QStringLiteral("A local recording session is already running.")
+            : QStringLiteral("本地记录已经在进行中。");
+    }
+    return QString();
+}
+
+bool MainWindow::scheduledRecordingSessionOpen() const
+{
+    if (isRemoteSkyMode())
+    {
+        return remote_recording_state_ == 1 || remote_recording_state_ == 2;
+    }
+    return sensors_file_ && sensors_file_->isOpen();
+}
+
+bool MainWindow::tryStartScheduledRecording(QString *failureReason)
+{
+    const QString blockReason = scheduledRecordingStartBlockReason();
+    if (!blockReason.isEmpty())
+    {
+        if (failureReason)
+        {
+            *failureReason = blockReason;
+        }
+        return false;
+    }
+
+    if (isRemoteSkyMode())
+    {
+        const quint16 seq = ground_telemetry_service_
+            ? ground_telemetry_service_->sendCommand(VaporView::CommandId::StartRecording)
+            : 0;
+        if (seq != 0)
+        {
+            log(is_english_ ? "Scheduled recording start command sent"
+                            : "定时记录开始命令已发送");
+        }
+        else if (failureReason)
+        {
+            *failureReason = is_english_
+                ? QStringLiteral("Failed to send the remote start command.")
+                : QStringLiteral("远程开始记录命令发送失败。");
+        }
+        return seq != 0;
+    }
+
+    const bool started = startRecordingSession() && sensors_file_ && sensors_file_->isOpen() && !recording_paused_;
+    if (!started && failureReason)
+    {
+        *failureReason = is_english_
+            ? QStringLiteral("Local recording session failed to open.")
+            : QStringLiteral("本地记录会话打开失败。");
+    }
+    return started;
+}
+
+bool MainWindow::tryStopScheduledRecording()
+{
+    if (isRemoteSkyMode())
+    {
+        if (!ground_telemetry_service_ || !ground_telemetry_service_->isOpen())
+        {
+            return false;
+        }
+        const quint16 seq = ground_telemetry_service_->sendCommand(VaporView::CommandId::StopRecording);
+        if (seq != 0)
+        {
+            log(is_english_ ? "Scheduled recording stop command sent"
+                            : "定时记录停止命令已发送");
+        }
+        return seq != 0;
+    }
+
+    if (sensors_file_ && sensors_file_->isOpen())
+    {
+        stopRecording(true);
+    }
+    return true;
+}
+
+void MainWindow::onScheduledRecordingTick()
+{
+    if (scheduled_recording_mode_ == ScheduledRecordingMode::None)
+    {
+        return;
+    }
+
+    const QDateTime now = QDateTime::currentDateTime();
+    if (scheduled_recording_phase_ == ScheduledRecordingPhase::WaitingToStart)
+    {
+        if (!scheduled_recording_next_start_.isValid() || now < scheduled_recording_next_start_)
+        {
+            updateScheduledRecordingAction();
+            return;
+        }
+
+        QString failureReason;
+        if (tryStartScheduledRecording(&failureReason))
+        {
+            scheduled_recording_phase_ = ScheduledRecordingPhase::Recording;
+            scheduled_recording_stop_time_ = now.addSecs(std::max(1, scheduled_recording_duration_seconds_));
+            scheduled_recording_round_observed_session_ = scheduledRecordingSessionOpen();
+            updateScheduledRecordingAction();
+            updateRecordingStatusLabel();
+            return;
+        }
+
+        log(QString(is_english_
+                ? "Scheduled recording could not start: %1"
+                : "定时记录未能启动：%1")
+                .arg(failureReason.isEmpty()
+                         ? (is_english_ ? QStringLiteral("Unknown reason.")
+                                        : QStringLiteral("未知原因。"))
+                         : failureReason));
+        if (scheduled_recording_mode_ == ScheduledRecordingMode::FixedTime)
+        {
+            cancelScheduledRecording(false);
+            return;
+        }
+
+        scheduleNextIntervalRecording(now);
+        updateScheduledRecordingAction();
+        updateRecordingStatusLabel();
+        return;
+    }
+
+    if (scheduled_recording_phase_ != ScheduledRecordingPhase::Recording)
+    {
+        return;
+    }
+
+    if (scheduledRecordingSessionOpen())
+    {
+        scheduled_recording_round_observed_session_ = true;
+    }
+    else if (scheduled_recording_round_observed_session_)
+    {
+        completeScheduledRecordingRound(true);
+        return;
+    }
+
+    if (scheduled_recording_stop_time_.isValid() && now >= scheduled_recording_stop_time_)
+    {
+        if (tryStopScheduledRecording())
+        {
+            completeScheduledRecordingRound(true);
+        }
+        else
+        {
+            log(is_english_
+                    ? "Scheduled recording could not stop because the recording link is unavailable."
+                    : "定时记录未能停止：当前记录链路不可用。");
+        }
+    }
+
+    updateScheduledRecordingAction();
+    updateRecordingStatusLabel();
+}
+
+void MainWindow::onScheduledRecordingClicked()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(is_english_ ? QStringLiteral("Scheduled Recording")
+                                      : QStringLiteral("定时记录"));
+
+    auto *dialogLayout = new QVBoxLayout(&dialog);
+    dialogLayout->setContentsMargins(0, 0, 0, 0);
+    dialogLayout->setSpacing(0);
+
+    auto *bodyWidget = new QWidget(&dialog);
+    auto *rootLayout = new QVBoxLayout(bodyWidget);
+    rootLayout->setContentsMargins(16, 14, 16, 14);
+    rootLayout->setSpacing(12);
+    dialogLayout->addWidget(bodyWidget);
+
+    if (scheduled_recording_mode_ != ScheduledRecordingMode::None)
+    {
+        auto *summaryLabel = new QLabel(scheduledRecordingSummary(), bodyWidget);
+        summaryLabel->setWordWrap(true);
+        summaryLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        rootLayout->addWidget(summaryLabel);
+    }
+
+    const int scheduledLabelWidth = scalePixels(is_english_ ? 142 : 84);
+    auto createScheduledRowLabel = [scheduledLabelWidth](const QString& text, QWidget *parent) {
+        auto *label = new QLabel(text, parent);
+        label->setFixedWidth(scheduledLabelWidth);
+        label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        label->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        return label;
+    };
+    auto createScheduledRow = [&createScheduledRowLabel](QWidget *parent,
+                                                         const QString& labelText,
+                                                         QWidget *field,
+                                                         bool expandField = true) {
+        auto *row = new QWidget(parent);
+        auto *layout = new QHBoxLayout(row);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(8);
+        layout->addWidget(createScheduledRowLabel(labelText, row), 0, Qt::AlignVCenter);
+        if (expandField)
+        {
+            QSizePolicy policy = field->sizePolicy();
+            policy.setHorizontalPolicy(QSizePolicy::Expanding);
+            field->setSizePolicy(policy);
+            layout->addWidget(field, 1);
+        }
+        else
+        {
+            layout->addWidget(field, 0, Qt::AlignLeft | Qt::AlignVCenter);
+            layout->addStretch(1);
+        }
+        return row;
+    };
+
+    auto *modeCombo = new QComboBox(bodyWidget);
+    modeCombo->addItem(is_english_ ? QStringLiteral("Interval schedule") : QStringLiteral("周期执行"));
+    modeCombo->addItem(is_english_ ? QStringLiteral("Start at local time") : QStringLiteral("指定时间点"));
+    modeCombo->setMaxVisibleItems(2);
+    for (int i = 0; i < modeCombo->count(); ++i)
+    {
+        modeCombo->setItemData(i, QSize(0, scalePixels(42)), Qt::SizeHintRole);
+    }
+    auto applyModeComboPopupStyle = [this, modeCombo]() {
+        if (!modeCombo || !modeCombo->view())
+        {
+            return;
+        }
+
+        const QColor popupBase = dark_theme_enabled_ ? QColor(QStringLiteral("#0D0D0D")) : QColor(QStringLiteral("#FDFDFC"));
+        const QColor popupBorder = dark_theme_enabled_ ? QColor(QStringLiteral("#202020")) : QColor(QStringLiteral("#EAEAE9"));
+        const QColor popupText = dark_theme_enabled_ ? QColor(QStringLiteral("#F9FAFB")) : QColor(QStringLiteral("#000000"));
+        const QColor popupHighlight = dark_theme_enabled_ ? QColor(QStringLiteral("#242424")) : QColor(QStringLiteral("#EEEEEC"));
+        const QColor popupHighlightText = dark_theme_enabled_ ? QColor(QStringLiteral("#F9FAFB")) : QColor(QStringLiteral("#000000"));
+        QPalette popupPalette = modeCombo->view()->palette();
+        popupPalette.setColor(QPalette::Base, popupBase);
+        popupPalette.setColor(QPalette::Text, popupText);
+        popupPalette.setColor(QPalette::Highlight, popupHighlight);
+        popupPalette.setColor(QPalette::HighlightedText, popupHighlightText);
+        modeCombo->view()->setPalette(popupPalette);
+        modeCombo->view()->setMouseTracking(true);
+        modeCombo->view()->setStyleSheet(QStringLiteral(
+            "QAbstractItemView { background-color: %1; border: 1px solid %2; color: %3; outline: 0px; padding: 4px; selection-background-color: %4; selection-color: %5; }"
+            "QAbstractItemView::item { padding-left: 12px; padding-right: 12px; border: 0px; border-radius: 4px; background-color: transparent; }"
+            "QAbstractItemView::item:hover, QAbstractItemView::item:selected, QAbstractItemView::item:selected:active, QAbstractItemView::item:selected:!active { background-color: %4; color: %5; }")
+                .arg(popupBase.name(), popupBorder.name(), popupText.name(), popupHighlight.name(), popupHighlightText.name()));
+    };
+    applyModeComboPopupStyle();
+    rootLayout->addWidget(createScheduledRow(bodyWidget,
+                                             is_english_ ? QStringLiteral("Mode:") : QStringLiteral("模式:"),
+                                             modeCombo));
+
+    auto makeScheduledSpinStyle = [this]() {
+        const QString hoverColor = dark_theme_enabled_
+            ? QStringLiteral("#202020")
+            : QStringLiteral("#EAEAE9");
+        const QString pressedColor = dark_theme_enabled_
+            ? QStringLiteral("#2A2A2A")
+            : QStringLiteral("#DEDEDC");
+        return QStringLiteral(
+            "QSpinBox::up-button:hover, QSpinBox::down-button:hover, QDateTimeEdit::up-button:hover, QDateTimeEdit::down-button:hover { background-color: %1; }"
+            "QSpinBox::up-button:pressed, QSpinBox::down-button:pressed, QDateTimeEdit::up-button:pressed, QDateTimeEdit::down-button:pressed { background-color: %2; }"
+            "QSpinBox::up-button:disabled, QSpinBox::down-button:disabled, QDateTimeEdit::up-button:disabled, QDateTimeEdit::down-button:disabled { background-color: transparent; }")
+                .arg(hoverColor, pressedColor);
+    };
+    const QString scheduledSpinStyle = makeScheduledSpinStyle();
+    auto createDurationInput = [this, scheduledSpinStyle](QWidget *parent, QSpinBox *&hours, QSpinBox *&minutes, QSpinBox *&seconds) {
+        auto *widget = new QWidget(parent);
+        auto *layout = new QHBoxLayout(widget);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(6);
+        hours = new QSpinBox(widget);
+        minutes = new QSpinBox(widget);
+        seconds = new QSpinBox(widget);
+        for (QSpinBox *spin : {hours, minutes, seconds})
+        {
+            spin->setButtonSymbols(QAbstractSpinBox::UpDownArrows);
+            spin->setAlignment(Qt::AlignRight);
+            spin->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+            spin->setStyleSheet(scheduledSpinStyle);
+        }
+        hours->setRange(0, 999);
+        minutes->setRange(0, 59);
+        seconds->setRange(0, 59);
+        hours->setSuffix(is_english_ ? QStringLiteral(" h") : QStringLiteral(" 时"));
+        minutes->setSuffix(is_english_ ? QStringLiteral(" m") : QStringLiteral(" 分"));
+        seconds->setSuffix(is_english_ ? QStringLiteral(" s") : QStringLiteral(" 秒"));
+        layout->addWidget(hours, 1);
+        layout->addWidget(minutes, 1);
+        layout->addWidget(seconds, 1);
+        return widget;
+    };
+
+    QSpinBox *durationHours = nullptr;
+    QSpinBox *durationMinutes = nullptr;
+    QSpinBox *durationSeconds = nullptr;
+    rootLayout->addWidget(createScheduledRow(bodyWidget,
+                                             is_english_ ? QStringLiteral("Record duration:")
+                                                         : QStringLiteral("记录时长:"),
+                                             createDurationInput(bodyWidget, durationHours, durationMinutes, durationSeconds)));
+
+    auto setDurationValue = [](QSpinBox *hours, QSpinBox *minutes, QSpinBox *seconds, int totalSeconds) {
+        totalSeconds = std::max(0, totalSeconds);
+        if (hours) hours->setValue(totalSeconds / 3600);
+        if (minutes) minutes->setValue((totalSeconds % 3600) / 60);
+        if (seconds) seconds->setValue(totalSeconds % 60);
+    };
+    auto readDurationValue = [](QSpinBox *hours, QSpinBox *minutes, QSpinBox *seconds) {
+        return (hours ? hours->value() : 0) * 3600 +
+               (minutes ? minutes->value() : 0) * 60 +
+               (seconds ? seconds->value() : 0);
+    };
+    setDurationValue(durationHours, durationMinutes, durationSeconds, scheduled_recording_duration_seconds_);
+
+    auto *stack = new QStackedWidget(bodyWidget);
+
+    auto *intervalPage = new QWidget(stack);
+    auto *intervalLayout = new QVBoxLayout(intervalPage);
+    intervalLayout->setContentsMargins(0, 0, 0, 0);
+    intervalLayout->setSpacing(12);
+    auto makeScheduledToggleStyle = [this]() {
+        const QString textColor = dark_theme_enabled_
+            ? QStringLiteral("#F9FAFB")
+            : QStringLiteral("#000000");
+        return QStringLiteral(
+            "QToolButton { background-color: transparent; border: 0px; border-radius: 0px; color: %1; padding: 2px 4px; margin: 0px; }"
+            "QToolButton:hover, QToolButton:checked, QToolButton:pressed, QToolButton:focus { background-color: transparent; border: 0px; }"
+            "QToolButton::menu-indicator { image: none; width: 0px; height: 0px; }")
+                .arg(textColor);
+    };
+    const QString scheduledToggleStyle = makeScheduledToggleStyle();
+    auto updateScheduledToggleIcon = [this](QToolButton *button) {
+        if (!button)
+        {
+            return;
+        }
+        const QColor checkedColor = dark_theme_enabled_
+            ? QColor(QStringLiteral("#D97757"))
+            : kToolbarBlue;
+        button->setIcon(createLucideIcon(button->isChecked()
+            ? QStringLiteral("square-check-big")
+            : QStringLiteral("square"),
+            button->isChecked() ? checkedColor : kToolbarDisabled));
+        button->setIconSize(QSize(26, 26));
+    };
+    auto createScheduledToggle = [scheduledToggleStyle, updateScheduledToggleIcon](const QString& text, QWidget *parent) {
+        auto *button = new QToolButton(parent);
+        button->setText(text);
+        button->setCheckable(true);
+        button->setAutoRaise(true);
+        button->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        button->setFocusPolicy(Qt::NoFocus);
+        button->setCursor(Qt::PointingHandCursor);
+        button->setStyleSheet(scheduledToggleStyle);
+        updateScheduledToggleIcon(button);
+        QObject::connect(button, &QToolButton::toggled, button, [button, updateScheduledToggleIcon]() {
+            updateScheduledToggleIcon(button);
+        });
+        return button;
+    };
+
+    QSpinBox *intervalHours = nullptr;
+    QSpinBox *intervalMinutes = nullptr;
+    QSpinBox *intervalSeconds = nullptr;
+    intervalLayout->addWidget(createScheduledRow(intervalPage,
+                                                 is_english_ ? QStringLiteral("Interval:")
+                                                             : QStringLiteral("间隔时长:"),
+                                                 createDurationInput(intervalPage, intervalHours, intervalMinutes, intervalSeconds)));
+    setDurationValue(intervalHours, intervalMinutes, intervalSeconds, scheduled_recording_interval_seconds_);
+
+    auto *immediateCheck = createScheduledToggle(is_english_ ? QStringLiteral("Start first round immediately")
+                                                             : QStringLiteral("首次立即开始"),
+                                                 intervalPage);
+    immediateCheck->setChecked(true);
+    intervalLayout->addWidget(createScheduledRow(intervalPage, QString(), immediateCheck, false));
+
+    auto *countWidget = new QWidget(intervalPage);
+    auto *countLayout = new QHBoxLayout(countWidget);
+    countLayout->setContentsMargins(0, 0, 0, 0);
+    countLayout->setSpacing(10);
+    auto *loopCheck = createScheduledToggle(is_english_ ? QStringLiteral("Loop until canceled")
+                                                        : QStringLiteral("循环直到取消"),
+                                            countWidget);
+    auto *fixedCheck = createScheduledToggle(is_english_ ? QStringLiteral("Fixed count")
+                                                         : QStringLiteral("固定次数"),
+                                             countWidget);
+    auto *countGroup = new QButtonGroup(countWidget);
+    countGroup->setExclusive(true);
+    countGroup->addButton(loopCheck);
+    countGroup->addButton(fixedCheck);
+    auto *countSpin = new QSpinBox(countWidget);
+    countSpin->setRange(1, 999);
+    countSpin->setValue(std::clamp(scheduled_recording_total_runs_, 1, 999));
+    countSpin->setEnabled(scheduled_recording_fixed_count_enabled_);
+    countSpin->setStyleSheet(scheduledSpinStyle);
+    loopCheck->setChecked(!scheduled_recording_fixed_count_enabled_);
+    fixedCheck->setChecked(scheduled_recording_fixed_count_enabled_);
+    QObject::connect(fixedCheck, &QToolButton::toggled, countSpin, &QWidget::setEnabled);
+    countLayout->addWidget(loopCheck);
+    countLayout->addWidget(fixedCheck);
+    countLayout->addWidget(countSpin);
+    countLayout->addStretch(1);
+    intervalLayout->addWidget(createScheduledRow(intervalPage,
+                                                 is_english_ ? QStringLiteral("Repeat:")
+                                                             : QStringLiteral("重复:"),
+                                                 countWidget));
+    intervalLayout->addStretch(1);
+    stack->addWidget(intervalPage);
+
+    auto *fixedTimePage = new QWidget(stack);
+    auto *fixedTimeLayout = new QVBoxLayout(fixedTimePage);
+    fixedTimeLayout->setContentsMargins(0, 0, 0, 0);
+    fixedTimeLayout->setSpacing(12);
+    auto *fixedTimeEdit = new QDateTimeEdit(fixedTimePage);
+    fixedTimeEdit->setCalendarPopup(true);
+    fixedTimeEdit->setDisplayFormat(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    fixedTimeEdit->setDateTime(scheduled_recording_mode_ == ScheduledRecordingMode::FixedTime &&
+                                   scheduled_recording_next_start_.isValid()
+                               ? scheduled_recording_next_start_
+                               : QDateTime::currentDateTime().addSecs(5 * 60));
+    fixedTimeEdit->setStyleSheet(scheduledSpinStyle);
+    fixedTimeLayout->addWidget(createScheduledRow(fixedTimePage,
+                                                  is_english_ ? QStringLiteral("Start time:")
+                                                              : QStringLiteral("开始时间:"),
+                                                  fixedTimeEdit));
+    fixedTimeLayout->addStretch(1);
+    stack->addWidget(fixedTimePage);
+    rootLayout->addWidget(stack);
+
+    auto applyScheduledDialogLocalStyle = [applyModeComboPopupStyle,
+                                           makeScheduledSpinStyle,
+                                           makeScheduledToggleStyle,
+                                           durationHours,
+                                           durationMinutes,
+                                           durationSeconds,
+                                           intervalHours,
+                                           intervalMinutes,
+                                           intervalSeconds,
+                                           countSpin,
+                                           fixedTimeEdit,
+                                           immediateCheck,
+                                           loopCheck,
+                                           fixedCheck,
+                                           updateScheduledToggleIcon]() {
+        applyModeComboPopupStyle();
+
+        const QString spinStyle = makeScheduledSpinStyle();
+        for (QSpinBox *spin : {durationHours, durationMinutes, durationSeconds,
+                               intervalHours, intervalMinutes, intervalSeconds,
+                               countSpin})
+        {
+            if (spin)
+            {
+                spin->setStyleSheet(spinStyle);
+            }
+        }
+        if (fixedTimeEdit)
+        {
+            fixedTimeEdit->setStyleSheet(spinStyle);
+        }
+
+        const QString toggleStyle = makeScheduledToggleStyle();
+        for (QToolButton *button : {immediateCheck, loopCheck, fixedCheck})
+        {
+            if (button)
+            {
+                button->setStyleSheet(toggleStyle);
+                updateScheduledToggleIcon(button);
+            }
+        }
+    };
+    applyScheduledDialogLocalStyle();
+    if (theme_toggle_action_)
+    {
+        QObject::connect(theme_toggle_action_, &QAction::changed, &dialog,
+                         [applyScheduledDialogLocalStyle]() {
+                             applyScheduledDialogLocalStyle();
+                         });
+    }
+
+    modeCombo->setCurrentIndex(scheduled_recording_mode_ == ScheduledRecordingMode::FixedTime ? 1 : 0);
+    stack->setCurrentIndex(modeCombo->currentIndex());
+    QObject::connect(modeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+                     stack, &QStackedWidget::setCurrentIndex);
+
+    auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, bodyWidget);
+    if (!is_english_)
+    {
+        if (auto *okButton = buttonBox->button(QDialogButtonBox::Ok))
+        {
+            okButton->setText(QStringLiteral("确定"));
+        }
+        if (auto *cancelButton = buttonBox->button(QDialogButtonBox::Cancel))
+        {
+            cancelButton->setText(QStringLiteral("取消"));
+        }
+    }
+    QPushButton *cancelScheduleButton = nullptr;
+    if (scheduled_recording_mode_ != ScheduledRecordingMode::None)
+    {
+        cancelScheduleButton = buttonBox->addButton(is_english_ ? QStringLiteral("Cancel Schedule")
+                                                                : QStringLiteral("取消定时"),
+                                                    QDialogButtonBox::DestructiveRole);
+        QObject::connect(cancelScheduleButton, &QPushButton::clicked, &dialog, [this, &dialog]() {
+            cancelScheduledRecording(true);
+            dialog.reject();
+        });
+    }
+    QObject::connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    QObject::connect(buttonBox, &QDialogButtonBox::accepted, &dialog, [this,
+                                                                       &dialog,
+                                                                       modeCombo,
+                                                                       durationHours,
+                                                                       durationMinutes,
+                                                                       durationSeconds,
+                                                                       intervalHours,
+                                                                       intervalMinutes,
+                                                                       intervalSeconds,
+                                                                       immediateCheck,
+                                                                       fixedCheck,
+                                                                       countSpin,
+                                                                       fixedTimeEdit,
+                                                                       readDurationValue]() {
+        const int recordDuration = readDurationValue(durationHours, durationMinutes, durationSeconds);
+        if (recordDuration <= 0)
+        {
+            QMessageBox::warning(&dialog,
+                                 is_english_ ? QStringLiteral("Scheduled Recording") : QStringLiteral("定时记录"),
+                                 is_english_ ? QStringLiteral("Record duration must be at least 1 second.")
+                                             : QStringLiteral("记录时长至少需要 1 秒。"));
+            return;
+        }
+
+        const QDateTime now = QDateTime::currentDateTime();
+        if (modeCombo->currentIndex() == 0)
+        {
+            const int intervalDuration = readDurationValue(intervalHours, intervalMinutes, intervalSeconds);
+            if (intervalDuration <= 0)
+            {
+                QMessageBox::warning(&dialog,
+                                     is_english_ ? QStringLiteral("Scheduled Recording") : QStringLiteral("定时记录"),
+                                     is_english_ ? QStringLiteral("Interval must be at least 1 second.")
+                                                 : QStringLiteral("间隔时长至少需要 1 秒。"));
+                return;
+            }
+            configureScheduledRecording(ScheduledRecordingMode::Interval,
+                                        recordDuration,
+                                        intervalDuration,
+                                        fixedCheck && fixedCheck->isChecked(),
+                                        countSpin ? countSpin->value() : 1,
+                                        immediateCheck && immediateCheck->isChecked()
+                                            ? now
+                                            : now.addSecs(intervalDuration));
+            dialog.accept();
+            return;
+        }
+
+        const QDateTime startTime = fixedTimeEdit ? fixedTimeEdit->dateTime() : QDateTime();
+        if (!startTime.isValid() || startTime < now)
+        {
+            QMessageBox::warning(&dialog,
+                                 is_english_ ? QStringLiteral("Scheduled Recording") : QStringLiteral("定时记录"),
+                                 is_english_ ? QStringLiteral("Start time must be in the future.")
+                                             : QStringLiteral("开始时间必须晚于当前时间。"));
+            return;
+        }
+        configureScheduledRecording(ScheduledRecordingMode::FixedTime,
+                                    recordDuration,
+                                    1,
+                                    true,
+                                    1,
+                                    startTime);
+        dialog.accept();
+    });
+
+    rootLayout->addWidget(buttonBox);
+    VaporView::installCustomTitleBar(&dialog, false);
+    dialog.resize(scalePixels(is_english_ ? 470 : 400), dialog.sizeHint().height());
+    dialog.exec();
+    updateScheduledRecordingAction();
 }
 
 void MainWindow::onStartRecordingClicked()
@@ -9045,6 +10196,7 @@ void MainWindow::stopRecording(bool announce)
     raw_hmp_record_count_.store(0);
     raw_lidar_record_count_.store(0);
     raw_tcp_wave_record_count_.store(0);
+    last_tcp_recording_status_update_ms_.store(0);
     recording_paused_ = false;
     session_directory_.clear();
     session_name_.clear();
@@ -9133,21 +10285,11 @@ void MainWindow::onTcpRawWaveFrameReady(quint64 timestampUs,
         std::memcpy(cursor, harmonicPayload.constData(), harmonicPayload.size());
     }
 
-    if (writeUnifiedRawRecord(raw_tcp_wave_file_.get(),
-                              raw_tcp_wave_record_count_,
-                              kRawSourceTcpWave,
-                              kRawRecordTypeGeneric,
-                              kRawTcpWaveCombinedPayloadFlag | VaporView::tcpFloatEncodingToRawDatFlags(floatEncoding),
-                              timestampUs,
-                              payload.constData(),
-                              static_cast<size_t>(payload.size())))
-    {
-        waveform_frame_count_.fetch_add(1);
-        waveform_file_count_.store(1);
-        QMetaObject::invokeMethod(this, [this]() {
-            updateRecordingStatusLabel();
-        }, Qt::QueuedConnection);
-    }
+    TcpRawRecord record;
+    record.timestamp_us = timestampUs;
+    record.flags = kRawTcpWaveCombinedPayloadFlag | VaporView::tcpFloatEncodingToRawDatFlags(floatEncoding);
+    record.payload = std::move(payload);
+    enqueueTcpRawRecord(std::move(record));
 }
 
 void MainWindow::updateRecordingActionStates()
@@ -9160,6 +10302,7 @@ void MainWindow::updateRecordingActionStates()
         if (start_recording_btn_) start_recording_btn_->setEnabled(linkOpen && !recordingActive);
         if (pause_recording_btn_) pause_recording_btn_->setEnabled(linkOpen && recordingActive);
         if (stop_recording_btn_) stop_recording_btn_->setEnabled(linkOpen && (recordingActive || recordingPaused));
+        updateScheduledRecordingAction();
         return;
     }
 
@@ -9184,6 +10327,7 @@ void MainWindow::updateRecordingActionStates()
     {
         stop_recording_btn_->setEnabled(canStop);
     }
+    updateScheduledRecordingAction();
 }
 
 void MainWindow::updateConnectionStatus(bool connected)
@@ -10757,6 +11901,7 @@ void MainWindow::onSkyDeviceConfigClicked()
 
 void MainWindow::onClearLogClicked()
 {
+    log_entries_.clear();
     log_text_edit_->clear();
     has_inline_progress_log_ = false;
     log(is_english_ ? "Log cleared" : "日志已清空");

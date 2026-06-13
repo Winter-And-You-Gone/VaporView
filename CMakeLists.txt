@@ -266,6 +266,7 @@ set(LUCIDE_RESOURCES
     resources/lucide/copy.svg
     resources/lucide/key.svg
     resources/lucide/languages.svg
+    resources/lucide/list-filter.svg
     resources/lucide/maximize.svg
     resources/lucide/menu.svg
     resources/lucide/minus.svg
@@ -275,8 +276,10 @@ set(LUCIDE_RESOURCES
     resources/lucide/plug.svg
     resources/lucide/refresh-cw.svg
     resources/lucide/satellite.svg
+    resources/lucide/square-check-big.svg
     resources/lucide/square.svg
     resources/lucide/sun.svg
+    resources/lucide/timer.svg
     resources/lucide/trash-2.svg
     resources/lucide/unplug.svg
     resources/lucide/x.svg

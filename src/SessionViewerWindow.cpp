@@ -37,6 +37,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QResizeEvent>
 #include <QSettings>
 #include <QShowEvent>
@@ -47,6 +48,7 @@
 #include <QTableWidget>
 #include <QTableWidgetItem>
 #include <QTextStream>
+#include <QTimer>
 #include <QWheelEvent>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -2249,24 +2251,51 @@ void SessionViewerWindow::setStatusText(const QString& text)
     }
 }
 
+void SessionViewerWindow::setSessionLoadingControlsEnabled(bool enabled)
+{
+    if (choose_session_btn_) choose_session_btn_->setEnabled(enabled);
+    if (reload_btn_) reload_btn_->setEnabled(enabled);
+    if (raw_data_parser_btn_) raw_data_parser_btn_->setEnabled(enabled);
+    if (clear_view_btn_) clear_view_btn_->setEnabled(enabled);
+    if (waveform_frame_filter_btn_) waveform_frame_filter_btn_->setEnabled(enabled);
+    if (waveform_peak_filter_btn_) waveform_peak_filter_btn_->setEnabled(enabled);
+    if (waveform_peak_mode_btn_) waveform_peak_mode_btn_->setEnabled(enabled);
+    if (trajectory_view_btn_) trajectory_view_btn_->setEnabled(enabled && !rtk_track_points_.isEmpty());
+    if (enabled)
+    {
+        updateWaveformControls();
+    }
+}
+
 void SessionViewerWindow::beginSessionLoading(const QString& text)
 {
     session_loading_ = true;
-    if (central_widget_)
-    {
-        central_widget_->setEnabled(false);
-    }
+    setSessionLoadingControlsEnabled(false);
 
     if (!loading_dialog_)
     {
         loading_dialog_ = new QProgressDialog(this);
-        loading_dialog_->setWindowModality(Qt::WindowModal);
+        loading_dialog_->setWindowModality(Qt::NonModal);
+        loading_dialog_->setModal(false);
         loading_dialog_->setCancelButton(nullptr);
         loading_dialog_->setMinimumDuration(0);
         loading_dialog_->setAutoClose(false);
         loading_dialog_->setAutoReset(false);
         loading_dialog_->setRange(0, 0);
         loading_dialog_->setMinimumWidth(360);
+        loading_dialog_->setAttribute(Qt::WA_StyledBackground, true);
+        loading_dialog_->setAutoFillBackground(true);
+        QPalette loadingPalette = loading_dialog_->palette();
+        loadingPalette.setColor(QPalette::Window, QColor("#fdfdfc"));
+        loadingPalette.setColor(QPalette::Base, QColor("#ffffff"));
+        loadingPalette.setColor(QPalette::Text, QColor("#111827"));
+        loadingPalette.setColor(QPalette::WindowText, QColor("#111827"));
+        loading_dialog_->setPalette(loadingPalette);
+        loading_dialog_->setStyleSheet(QStringLiteral(
+            "QProgressDialog { background-color: #fdfdfc; color: #111827; }"
+            "QProgressDialog QLabel { background-color: transparent; color: #111827; }"
+            "QProgressBar { background-color: #eef0f3; border: 1px solid #d8dde5; border-radius: 4px; min-height: 10px; }"
+            "QProgressBar::chunk { background-color: #4b5563; border-radius: 3px; }"));
     }
 
     loading_dialog_->setWindowTitle(is_english_ ? "Loading Data" : "正在加载数据");
@@ -2295,9 +2324,24 @@ void SessionViewerWindow::finishSessionLoading()
     {
         loading_dialog_->hide();
     }
-    if (central_widget_)
+    setSessionLoadingControlsEnabled(true);
+}
+
+void SessionViewerWindow::scrollSessionViewToTop()
+{
+    auto *scrollArea = qobject_cast<QScrollArea *>(QMainWindow::centralWidget());
+    if (!scrollArea)
     {
-        central_widget_->setEnabled(true);
+        return;
+    }
+
+    if (QScrollBar *verticalBar = scrollArea->verticalScrollBar())
+    {
+        verticalBar->setValue(verticalBar->minimum());
+    }
+    if (QScrollBar *horizontalBar = scrollArea->horizontalScrollBar())
+    {
+        horizontalBar->setValue(horizontalBar->minimum());
     }
 }
 
@@ -2492,11 +2536,36 @@ void SessionViewerWindow::onReloadClicked()
 {
     if (session_directory_.isEmpty())
     {
-        setStatusText(is_english_ ? "No session is currently loaded." : "当前没有已加载的会话。");
-        return;
+        QSettings settings("VaporView", "SessionViewer");
+        const QString lastSessionDirectory = resolveSessionDirectory(settings.value("last_session_directory").toString());
+        if (lastSessionDirectory.isEmpty())
+        {
+            setStatusText(is_english_ ? "No session is currently loaded." : "当前没有已加载的会话。");
+            return;
+        }
+        session_directory_ = lastSessionDirectory;
+        if (session_path_edit_)
+        {
+            session_path_edit_->setText(session_directory_);
+        }
     }
 
     loadSessionDirectory(session_directory_);
+}
+
+void SessionViewerWindow::onClearViewClicked()
+{
+    const QString previousSessionDirectory = session_directory_;
+    clearLoadedData(previousSessionDirectory.isEmpty());
+    if (!previousSessionDirectory.isEmpty())
+    {
+        session_directory_ = previousSessionDirectory;
+        if (session_path_edit_)
+        {
+            session_path_edit_->setText(session_directory_);
+        }
+    }
+    scrollSessionViewToTop();
 }
 
 void SessionViewerWindow::onViewTrajectoryClicked()
@@ -2561,6 +2630,7 @@ void SessionViewerWindow::onRawDataParserClicked()
 bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
 {
     beginSessionLoading(is_english_ ? "Preparing to load session data..." : "正在准备加载会话数据...");
+    scrollSessionViewToTop();
     clearLoadedData(false);
 
     const QString normalized = QDir::fromNativeSeparators(sessionDirectory);
@@ -2608,12 +2678,9 @@ bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
 
     setStatusText(QString(is_english_ ? "Loaded session: %1" : "已加载会话: %1").arg(session_directory_));
     finishSessionLoading();
+    scrollSessionViewToTop();
+    QTimer::singleShot(0, this, &SessionViewerWindow::scrollSessionViewToTop);
     return true;
-}
-
-void SessionViewerWindow::onClearViewClicked()
-{
-    clearLoadedData(true);
 }
 
 bool SessionViewerWindow::loadSessionMetadata(const QString& sessionDirectory)
@@ -3480,51 +3547,96 @@ void SessionViewerWindow::onConfigurePeakFilterClicked()
 {
     QDialog dialog(this);
     dialog.setWindowTitle(is_english_ ? QStringLiteral("Peak Settings") : QStringLiteral("峰值设置"));
+    VaporView::installCustomTitleBar(&dialog, false);
 
-    auto *layout = new QVBoxLayout(&dialog);
-    auto *formLayout = new QFormLayout();
+    QWidget *content = dialog.findChild<QWidget *>(QStringLiteral("customTitleBarContent"));
+    if (!content)
+    {
+        content = &dialog;
+    }
+    auto *layout = qobject_cast<QVBoxLayout *>(content->layout());
+    if (!layout)
+    {
+        layout = new QVBoxLayout(content);
+    }
+    layout->setContentsMargins(22, 18, 22, 18);
+    layout->setSpacing(14);
+
+    auto *formWidget = new QWidget(content);
+    auto *formLayout = new QGridLayout(formWidget);
     formLayout->setContentsMargins(0, 0, 0, 0);
+    formLayout->setHorizontalSpacing(14);
+    formLayout->setVerticalSpacing(10);
+    const int labelColumnWidth = is_english_ ? 104 : 86;
+    const int inputColumnWidth = 240;
+    auto addFormRow = [formWidget, formLayout, labelColumnWidth](int row, const QString& labelText, QWidget *editor) {
+        auto *label = new QLabel(labelText, formWidget);
+        label->setMinimumWidth(labelColumnWidth);
+        label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        editor->setMinimumHeight(34);
+        formLayout->addWidget(label, row, 0, Qt::AlignRight | Qt::AlignVCenter);
+        formLayout->addWidget(editor, row, 1);
+    };
 
-    auto *searchStartSpin = new QSpinBox(&dialog);
+    auto *searchStartSpin = new QSpinBox(formWidget);
     searchStartSpin->setRange(0, 10000000);
     searchStartSpin->setSingleStep(1000);
     searchStartSpin->setValue(peak_search_start_index_);
-    formLayout->addRow(is_english_ ? QStringLiteral("Search Start") : QStringLiteral("搜索起点"), searchStartSpin);
+    searchStartSpin->setMinimumWidth(inputColumnWidth);
+    addFormRow(0, is_english_ ? QStringLiteral("Search Start") : QStringLiteral("搜索起点"), searchStartSpin);
 
-    auto *searchEndSpin = new QSpinBox(&dialog);
+    auto *searchEndSpin = new QSpinBox(formWidget);
     searchEndSpin->setRange(1, 10000000);
     searchEndSpin->setSingleStep(1000);
     searchEndSpin->setValue(peak_search_end_index_);
-    formLayout->addRow(is_english_ ? QStringLiteral("Search End") : QStringLiteral("搜索终点"), searchEndSpin);
+    searchEndSpin->setMinimumWidth(inputColumnWidth);
+    addFormRow(1, is_english_ ? QStringLiteral("Search End") : QStringLiteral("搜索终点"), searchEndSpin);
 
-    auto *modeCombo = new QComboBox(&dialog);
+    auto *modeCombo = new QComboBox(formWidget);
     modeCombo->addItem(is_english_ ? QStringLiteral("Off") : QStringLiteral("关闭"), static_cast<int>(PeakFilterMode::None));
     modeCombo->addItem(is_english_ ? QStringLiteral("IQR Outlier Filter") : QStringLiteral("IQR 异常值过滤"), static_cast<int>(PeakFilterMode::IqrOutlier));
     modeCombo->addItem(is_english_ ? QStringLiteral("Keep Range") : QStringLiteral("保留区间"), static_cast<int>(PeakFilterMode::KeepRange));
     modeCombo->addItem(is_english_ ? QStringLiteral("Exclude Range") : QStringLiteral("排除区间"), static_cast<int>(PeakFilterMode::ExcludeRange));
     modeCombo->setCurrentIndex(std::max(0, modeCombo->findData(static_cast<int>(peak_filter_settings_.mode))));
-    formLayout->addRow(is_english_ ? QStringLiteral("Method") : QStringLiteral("方式"), modeCombo);
+    modeCombo->setMinimumWidth(inputColumnWidth);
+    addFormRow(2, is_english_ ? QStringLiteral("Method") : QStringLiteral("方式"), modeCombo);
 
-    auto *minEdit = new QLineEdit(QString::number(peak_filter_settings_.min_value, 'f', 6), &dialog);
-    auto *maxEdit = new QLineEdit(QString::number(peak_filter_settings_.max_value, 'f', 6), &dialog);
-    formLayout->addRow(is_english_ ? QStringLiteral("Range Min") : QStringLiteral("区间最小值"), minEdit);
-    formLayout->addRow(is_english_ ? QStringLiteral("Range Max") : QStringLiteral("区间最大值"), maxEdit);
-    layout->addLayout(formLayout);
+    auto *minEdit = new QLineEdit(QString::number(peak_filter_settings_.min_value, 'f', 6), formWidget);
+    auto *maxEdit = new QLineEdit(QString::number(peak_filter_settings_.max_value, 'f', 6), formWidget);
+    minEdit->setMinimumWidth(inputColumnWidth);
+    maxEdit->setMinimumWidth(inputColumnWidth);
+    addFormRow(3, is_english_ ? QStringLiteral("Range Min") : QStringLiteral("区间最小值"), minEdit);
+    addFormRow(4, is_english_ ? QStringLiteral("Range Max") : QStringLiteral("区间最大值"), maxEdit);
+    formLayout->setColumnMinimumWidth(0, labelColumnWidth);
+    formLayout->setColumnMinimumWidth(1, inputColumnWidth);
+    formLayout->setColumnStretch(1, 1);
+    layout->addWidget(formWidget);
 
     auto *hintLabel = new QLabel(
         is_english_
             ? QStringLiteral("Peak search uses sample indexes [start, end). IQR removes statistical outliers. Keep Range keeps only values inside [min, max]. Exclude Range removes values inside [min, max]. If no peak remains after filtering, the plot shows no valid values.")
             : QStringLiteral("峰值搜索使用采样点下标 [起点, 终点)。IQR 会过滤统计异常值。保留区间只保留 [最小值, 最大值] 内的峰值。排除区间会过滤 [最小值, 最大值] 内的峰值。过滤后没有峰值时，趋势图显示无有效值。"),
-        &dialog);
+        content);
     hintLabel->setWordWrap(true);
+    hintLabel->setMinimumWidth(labelColumnWidth + inputColumnWidth + formLayout->horizontalSpacing());
+    hintLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     layout->addWidget(hintLabel);
 
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, content);
+    if (QPushButton *okButton = buttons->button(QDialogButtonBox::Ok))
+    {
+        okButton->setText(is_english_ ? QStringLiteral("OK") : QStringLiteral("确定"));
+    }
+    if (QPushButton *cancelButton = buttons->button(QDialogButtonBox::Cancel))
+    {
+        cancelButton->setText(is_english_ ? QStringLiteral("Cancel") : QStringLiteral("取消"));
+    }
     layout->addWidget(buttons);
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
 
-    VaporView::installCustomTitleBar(&dialog, false);
+    dialog.setMinimumSize(is_english_ ? QSize(520, 430) : QSize(500, 420));
+    dialog.resize(dialog.minimumSize());
     if (dialog.exec() != QDialog::Accepted)
     {
         return;

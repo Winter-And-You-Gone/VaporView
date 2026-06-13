@@ -117,12 +117,13 @@ private:
     void setStatusText(const QString& text);
     void clearRemoteWaveformDisplay(const QString& statusText = QString());
     void resetParserState();
+    void scheduleDeferredProcessBuffer();
     void processBuffer();
     bool trySynchronizeLengthPrefixedStream();
     bool isValidPayloadSize(qint32 candidate) const;
     qint32 decodeHeaderValue(const char *raw, HeaderByteOrder order) const;
     bool tryConsumeHeader();
-    bool tryConsumePayload(QVector<float>& output, QByteArray *rawPayload = nullptr);
+    bool tryConsumePayload(QByteArray& rawPayload);
     QVector<float> decodeFloatPayload(const QByteArray& payload) const;
     float currentWaveformPeakValue(const QVector<float>& samples) const;
     void rebuildPeakHistory();
@@ -161,7 +162,6 @@ private:
     QVector<float> wave4_history_;
     QVector<float> peak_raw_history_;
     QVector<float> peak_history_;
-    QVector<float> pending_wave1_;
     QString pending_wave1_info_text_;
     QString pending_wave4_info_text_;
     QString pending_live_status_text_;
@@ -178,7 +178,11 @@ private:
     int expected_payload_size_;
     qint64 frame_count_;
     QVector<qint64> frame_arrival_times_ms_;
+    qint64 last_live_decode_time_ms_;
+    qint64 last_frame_rate_label_update_ms_;
+    qint64 last_backlog_warning_ms_;
     bool live_display_dirty_;
+    bool process_buffer_pending_;
     bool is_english_;
     bool remote_sky_mode_;
     bool remote_wave_tcp_connected_;

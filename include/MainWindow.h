@@ -19,6 +19,7 @@
 #include <QGroupBox>
 #include <QFrame>
 #include <QComboBox>
+#include <QDateTime>
 #include <QPushButton>
 #include <QProgressBar>
 #include <QSpinBox>
@@ -31,7 +32,9 @@
 #include <QVector>
 #include <QHash>
 #include <atomic>
+#include <condition_variable>
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -288,6 +291,8 @@ private slots:
     void onCancelConnectClicked();
     void onToggleTheme();
     void onTcpRawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload, VaporView::TcpFloatEncoding floatEncoding);
+    void onScheduledRecordingClicked();
+    void onScheduledRecordingTick();
     void onStartRecordingClicked();
     void onPauseRecordingClicked();
     void onStopRecordingClicked();
@@ -311,6 +316,27 @@ private:
         std::shared_ptr<VaporView::LidarCollector> lidar;
     };
 
+    enum class ScheduledRecordingMode
+    {
+        None,
+        Interval,
+        FixedTime
+    };
+
+    enum class ScheduledRecordingPhase
+    {
+        Idle,
+        WaitingToStart,
+        Recording
+    };
+
+    struct TcpRawRecord
+    {
+        quint64 timestamp_us = 0;
+        quint32 flags = 0;
+        QByteArray payload;
+    };
+
     void setupMenuBar();
     void setupToolBar();
     void setupCustomTitleBar();
@@ -327,6 +353,9 @@ private:
     void hideStatusTaskProgress();
     void startStatusTaskSpinner();
     void stopStatusTaskSpinner();
+    void updateLogFilterAction();
+    void renderLogView();
+    bool shouldShowLogLine(const QString& line) const;
     void rebuildRecordingRateMenu();
     void setRecordingExportRateHz(int rate, bool should_log = true);
     bool applyEpsilonMainAntennaLeverArm(double x_m, double y_m, double z_m, QString *error_message);
@@ -334,6 +363,25 @@ private:
     void setWaveformRecordingRateHz(int rate, bool should_log = true);
     QString defaultRecordingDirectory() const;
     QString locateRepositoryRoot() const;
+    void configureScheduledRecording(ScheduledRecordingMode mode,
+                                     int durationSeconds,
+                                     int intervalSeconds,
+                                     bool fixedCountEnabled,
+                                     int totalRuns,
+                                     const QDateTime& firstStartTime);
+    void cancelScheduledRecording(bool announce = true);
+    void scheduleNextIntervalRecording(const QDateTime& fromTime);
+    void completeScheduledRecordingRound(bool counted);
+    bool canStartScheduledRecordingNow() const;
+    QString scheduledRecordingStartBlockReason() const;
+    bool scheduledRecordingSessionOpen() const;
+    bool tryStartScheduledRecording(QString *failureReason = nullptr);
+    bool tryStopScheduledRecording();
+    QString scheduledRecordingSummary() const;
+    QString scheduledRecordingStatusLine() const;
+    QString formatScheduledDateTime(const QDateTime& dateTime) const;
+    QString formatScheduledDuration(int seconds) const;
+    void updateScheduledRecordingAction();
     bool startRecordingSession();
     void pauseRecordingSession(bool announce = true);
     void stopRecording(bool announce = true);
@@ -351,6 +399,9 @@ private:
                                quint64 hostTimestampUs,
                                const void *payload,
                                size_t payloadSize);
+    void startTcpRawRecordingWorker();
+    void stopTcpRawRecordingWorker();
+    bool enqueueTcpRawRecord(TcpRawRecord record);
     void closeUnifiedRawDatFiles();
     void resetUnifiedRawDatFiles();
     void writeSessionMetadata(const QString& endTimeUtc = QString());
@@ -455,6 +506,7 @@ private:
     LidarPanel *lidar_panel_;
 
     QTextEdit *log_text_edit_;
+    QToolButton *log_filter_btn_;
     QToolButton *log_clear_btn_;
     QLabel *status_label_;
     QProgressBar *status_task_progress_bar_;
@@ -480,12 +532,14 @@ private:
     QAction *connect_btn_;
     QAction *cancel_connect_btn_;
     QAction *disconnect_btn_;
+    QAction *scheduled_recording_action_;
     QAction *start_recording_btn_;
     QAction *pause_recording_btn_;
     QAction *stop_recording_btn_;
     QAction *refresh_ports_btn_;
     QAction *lang_action_;
     QAction *theme_toggle_action_;
+    QAction *log_filter_ack_action_;
     QAction *clear_log_action_;
     QAction *session_viewer_action_;
     QAction *epsilon_reconfigure_action_;
@@ -606,6 +660,7 @@ private:
     std::shared_ptr<VaporView::LidarCollector> lidar_collector_;
 
     QTimer *refresh_timer_;
+    QTimer *scheduled_recording_timer_;
 
     VaporView::EpsilonData current_epsilon_;
     VaporView::GnssData current_gnss_;
@@ -615,6 +670,7 @@ private:
     VaporView::LidarData current_lidar_;
 
     bool is_english_;
+    bool log_filter_ack_enabled_;
     bool language_switch_in_progress_;
     bool has_inline_progress_log_;
     bool connection_attempt_in_progress_;
@@ -660,6 +716,17 @@ private:
     int imu_recording_rate_hz_;
     int waveform_recording_rate_hz_;
     int status_task_spinner_index_;
+    ScheduledRecordingMode scheduled_recording_mode_;
+    ScheduledRecordingPhase scheduled_recording_phase_;
+    int scheduled_recording_duration_seconds_;
+    int scheduled_recording_interval_seconds_;
+    bool scheduled_recording_fixed_count_enabled_;
+    int scheduled_recording_total_runs_;
+    int scheduled_recording_completed_runs_;
+    QDateTime scheduled_recording_next_start_;
+    QDateTime scheduled_recording_stop_time_;
+    bool scheduled_recording_round_observed_session_;
+    QVector<QString> log_entries_;
     std::chrono::steady_clock::time_point steady_clock_anchor_;
     std::chrono::system_clock::time_point system_clock_anchor_;
     std::unique_ptr<QFile> sensors_file_;
@@ -694,6 +761,7 @@ private:
     quint64 last_raw_hmp_record_count_;
     quint64 last_raw_lidar_record_count_;
     quint64 last_raw_tcp_wave_record_count_;
+    std::atomic<qint64> last_tcp_recording_status_update_ms_;
     std::atomic<qint64> recording_entry_count_;
     std::atomic<qint64> waveform_frame_count_;
     std::atomic<qint64> waveform_file_count_;
@@ -704,6 +772,14 @@ private:
     std::atomic<quint64> raw_tcp_wave_record_count_;
     std::atomic<quint64> last_imu_record_timestamp_us_;
     std::mutex recording_files_mutex_;
+    std::thread tcp_raw_recording_thread_;
+    std::mutex tcp_raw_record_queue_mutex_;
+    std::condition_variable tcp_raw_record_queue_cv_;
+    std::deque<TcpRawRecord> tcp_raw_record_queue_;
+    bool tcp_raw_recording_worker_running_;
+    quint64 tcp_raw_record_queue_bytes_;
+    quint64 tcp_raw_record_dropped_count_;
+    qint64 last_tcp_raw_queue_warning_ms_;
 
     QAction *rtk_config_action_;
     RtkConfigDialog *rtk_config_dialog_;

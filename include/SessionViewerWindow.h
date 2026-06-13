@@ -115,6 +115,8 @@ private:
     void beginSessionLoading(const QString& text);
     void updateSessionLoadingText(const QString& text);
     void finishSessionLoading();
+    void setSessionLoadingControlsEnabled(bool enabled);
+    void scrollSessionViewToTop();
     void clearLoadedData(bool clearPathEdit = true);
     void restoreLastSessionPath(const QString& path);
     QString resolveSessionDirectory(const QString& path) const;

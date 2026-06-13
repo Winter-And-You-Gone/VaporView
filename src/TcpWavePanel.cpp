@@ -58,6 +58,11 @@ constexpr int kDefaultPeakSearchStartIndex = 0;
 constexpr int kDefaultPeakSearchEndIndex = 0;
 constexpr int kPeakTrendFrameWindow = 1000;
 constexpr int kLiveDisplayRefreshMs = 20;
+constexpr int kFrameRateLabelRefreshMs = 250;
+constexpr int kProcessBufferMaxFramesPerPass = 32;
+constexpr qint64 kProcessBufferBudgetMs = 8;
+constexpr int kTcpBufferBacklogWarningBytes = 4 * 1024 * 1024;
+constexpr qint64 kTcpBufferBacklogWarningIntervalMs = 5000;
 constexpr qint64 kFrameRateWindowMs = 5000;
 constexpr double kMaxReasonableWaveMagnitude = 1.0e6;
 constexpr int kRemoteStatusCountWidth = 6;
@@ -796,7 +801,11 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , expected_payload_size_(0)
     , frame_count_(0)
     , frame_arrival_times_ms_()
+    , last_live_decode_time_ms_(0)
+    , last_frame_rate_label_update_ms_(0)
+    , last_backlog_warning_ms_(0)
     , live_display_dirty_(false)
+    , process_buffer_pending_(false)
     , is_english_(false)
     , remote_sky_mode_(false)
     , remote_wave_tcp_connected_(false)
@@ -1282,6 +1291,7 @@ void TcpWavePanel::rebuildPeakHistory()
 
 void TcpWavePanel::resetFrameRateDisplay()
 {
+    last_frame_rate_label_update_ms_ = 0;
     if (!frame_rate_label_)
     {
         return;
@@ -1303,6 +1313,13 @@ void TcpWavePanel::updateFrameRateDisplay(qint64 arrivalTimeMs)
     {
         frame_arrival_times_ms_.removeFirst();
     }
+
+    if (last_frame_rate_label_update_ms_ > 0 &&
+        arrivalTimeMs - last_frame_rate_label_update_ms_ < kFrameRateLabelRefreshMs)
+    {
+        return;
+    }
+    last_frame_rate_label_update_ms_ = arrivalTimeMs;
 
     double rateHz = 0.0;
     if (frame_arrival_times_ms_.size() >= 2)
@@ -1667,7 +1684,6 @@ void TcpWavePanel::onToggleConnectionClicked()
     peak_history_.clear();
     last_remote_feature_time_us_ = 0;
     pending_wave1_payload_.clear();
-    pending_wave1_.clear();
     if (peak_plot_)
     {
         peak_plot_->setPeakValues({});
@@ -1677,6 +1693,9 @@ void TcpWavePanel::onToggleConnectionClicked()
     header_byte_order_ = HeaderByteOrder::Unknown;
     float_encoding_ = FloatEncoding::Unknown;
     frame_count_ = 0;
+    last_live_decode_time_ms_ = 0;
+    last_backlog_warning_ms_ = 0;
+    process_buffer_pending_ = false;
     frame_arrival_times_ms_.clear();
     resetFrameRateDisplay();
     setStatusText(QString(is_english_ ? "Connecting to %1:%2..." : "正在连接 %1:%2...")
@@ -1839,6 +1858,10 @@ void TcpWavePanel::onSocketConnected()
 {
     setConnectedUiState(true);
     emit connectionStateChanged(true);
+    emit logMessageRequested(QString(is_english_
+        ? "TCP wave link connected: %1:%2"
+        : "TCP 波形已连接：%1:%2")
+        .arg(host_edit_->text()).arg(port_spin_->value()));
     setStatusText(QString(is_english_
         ? "Connected to %1:%2, waiting for the first frame..."
         : "已连接到 %1:%2，正在等待首帧数据...")
@@ -1847,8 +1870,18 @@ void TcpWavePanel::onSocketConnected()
 
 void TcpWavePanel::onSocketDisconnected()
 {
+    const QString reason = socket_ && socket_->error() != QAbstractSocket::UnknownSocketError
+        ? socket_->errorString()
+        : (is_english_ ? QStringLiteral("connection closed") : QStringLiteral("连接已关闭"));
     setConnectedUiState(false);
     emit connectionStateChanged(false);
+    emit logMessageRequested(QString(is_english_
+        ? "TCP wave link disconnected: %1; received frames=%2, buffered bytes=%3, expected payload=%4"
+        : "TCP 波形已断开：%1；已接收帧=%2，客户端缓冲=%3 字节，当前期望负载=%4 字节")
+        .arg(reason)
+        .arg(frame_count_)
+        .arg(static_cast<qlonglong>(buffer_.size()))
+        .arg(expected_payload_size_));
     if (frame_count_ > 0)
     {
         setStatusText(QString(is_english_
@@ -1865,8 +1898,27 @@ void TcpWavePanel::onSocketDisconnected()
 
 void TcpWavePanel::onSocketReadyRead()
 {
+    if (!socket_)
+    {
+        return;
+    }
+
     buffer_.append(socket_->readAll());
-    processBuffer();
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    if (buffer_.size() >= kTcpBufferBacklogWarningBytes &&
+        (last_backlog_warning_ms_ <= 0 ||
+         nowMs - last_backlog_warning_ms_ >= kTcpBufferBacklogWarningIntervalMs))
+    {
+        last_backlog_warning_ms_ = nowMs;
+        emit logMessageRequested(QString(is_english_
+            ? "TCP wave receive backlog is %1 bytes; UI processing may be falling behind."
+            : "TCP 波形接收缓冲已积压 %1 字节；界面处理可能跟不上数据流。")
+            .arg(static_cast<qlonglong>(buffer_.size())));
+    }
+    if (!process_buffer_pending_)
+    {
+        processBuffer();
+    }
 }
 
 void TcpWavePanel::onSocketStateChanged()
@@ -1908,7 +1960,14 @@ void TcpWavePanel::onSocketError()
     {
         return;
     }
-    setStatusText(socket_->errorString());
+    const QString errorText = socket_->errorString();
+    setStatusText(errorText);
+    emit logMessageRequested(QString(is_english_
+        ? "TCP wave socket error: %1; received frames=%2, buffered bytes=%3"
+        : "TCP 波形 socket 错误：%1；已接收帧=%2，客户端缓冲=%3 字节")
+        .arg(errorText)
+        .arg(frame_count_)
+        .arg(static_cast<qlonglong>(buffer_.size())));
     if (socket_->state() == QAbstractSocket::UnconnectedState)
     {
         setConnectedUiState(false);
@@ -1954,12 +2013,13 @@ void TcpWavePanel::clearRemoteWaveformDisplay(const QString& statusText)
     frame_arrival_times_ms_.clear();
     frame_count_ = 0;
     pending_wave1_payload_.clear();
-    pending_wave1_.clear();
     pending_wave1_info_text_.clear();
     pending_wave4_info_text_.clear();
     pending_live_status_text_.clear();
     remote_waveform_status_text_.clear();
     remote_feature_status_text_.clear();
+    last_live_decode_time_ms_ = 0;
+    last_frame_rate_label_update_ms_ = 0;
     if (wave1_plot_) wave1_plot_->setSamples({});
     if (wave4_plot_) wave4_plot_->setSamples({});
     if (peak_plot_) peak_plot_->setPeakValues({});
@@ -1979,8 +2039,25 @@ void TcpWavePanel::resetParserState()
     expected_payload_size_ = 0;
 }
 
+void TcpWavePanel::scheduleDeferredProcessBuffer()
+{
+    if (process_buffer_pending_)
+    {
+        return;
+    }
+
+    process_buffer_pending_ = true;
+    QTimer::singleShot(0, this, [this]() {
+        processBuffer();
+    });
+}
+
 void TcpWavePanel::processBuffer()
 {
+    process_buffer_pending_ = false;
+    const qint64 passStartMs = QDateTime::currentMSecsSinceEpoch();
+    int completedFramesThisPass = 0;
+
     while (true)
     {
         switch (read_state_)
@@ -1993,7 +2070,7 @@ void TcpWavePanel::processBuffer()
             read_state_ = ReadState::Wave1Payload;
             break;
         case ReadState::Wave1Payload:
-            if (!tryConsumePayload(pending_wave1_, &pending_wave1_payload_))
+            if (!tryConsumePayload(pending_wave1_payload_))
             {
                 return;
             }
@@ -2008,105 +2085,124 @@ void TcpWavePanel::processBuffer()
             break;
         case ReadState::Wave4Payload:
         {
-            QVector<float> wave4;
             QByteArray wave4Payload;
-            if (!tryConsumePayload(wave4, &wave4Payload))
+            if (!tryConsumePayload(wave4Payload))
             {
                 return;
             }
 
-            double wave1MaxMagnitude = 0.0;
-            double wave4MaxMagnitude = 0.0;
-            if (!isReasonableWavePayload(pending_wave1_, kMaxReasonableWaveMagnitude, &wave1MaxMagnitude) ||
-                !isReasonableWavePayload(wave4, kMaxReasonableWaveMagnitude, &wave4MaxMagnitude))
-            {
-                setStatusText(QString(is_english_
-                    ? "Dropped abnormal TCP frame, raw max=%1, harmonic max=%2. Waiting for next frame..."
-                    : "已丢弃异常TCP帧，原始信号最大值=%1，二次谐波最大值=%2，等待下一帧...")
-                    .arg(formatWaveValue(wave1MaxMagnitude, 3))
-                    .arg(formatWaveValue(wave4MaxMagnitude, 3)));
-                pending_wave1_payload_.clear();
-                pending_wave1_.clear();
-                float_encoding_ = FloatEncoding::Unknown;
-                resetParserState();
-                break;
-            }
-
-            wave1_history_ = std::move(pending_wave1_);
-            wave4_history_ = std::move(wave4);
-            const float rawPeakValue = currentWaveformPeakValue(wave4_history_);
-            peak_raw_history_.push_back(rawPeakValue);
-            if (peak_raw_history_.size() > kPeakTrendFrameWindow)
-            {
-                peak_raw_history_.remove(0, peak_raw_history_.size() - kPeakTrendFrameWindow);
-            }
-            rebuildPeakHistory();
-            const float displayedPeakValue = peak_history_.isEmpty()
-                ? rawPeakValue
-                : peak_history_.back();
+            const qint64 arrivalTimeMs = QDateTime::currentMSecsSinceEpoch();
+            const quint64 frameTimestampUs =
+                static_cast<quint64>(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()) * 1000ULL;
             ++frame_count_;
-            updateFrameRateDisplay(QDateTime::currentMSecsSinceEpoch());
-            const quint64 frameTimestampUs = static_cast<quint64>(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()) * 1000ULL;
+            updateFrameRateDisplay(arrivalTimeMs);
             emit rawWaveFrameReady(frameTimestampUs, pending_wave1_payload_, wave4Payload, float_encoding_);
-            emit normalizedSecondHarmonicFrameReady(
-                frameTimestampUs,
-                wave4_history_);
 
-            const auto describeRange = [](const QVector<float>& values) {
-                if (values.isEmpty())
+            const bool updateLiveFrame =
+                last_live_decode_time_ms_ <= 0 ||
+                arrivalTimeMs - last_live_decode_time_ms_ >= kLiveDisplayRefreshMs;
+            if (updateLiveFrame)
+            {
+                last_live_decode_time_ms_ = arrivalTimeMs;
+                QVector<float> wave1 = decodeFloatPayload(pending_wave1_payload_);
+                QVector<float> wave4 = decodeFloatPayload(wave4Payload);
+
+                double wave1MaxMagnitude = 0.0;
+                double wave4MaxMagnitude = 0.0;
+                if (!isReasonableWavePayload(wave1, kMaxReasonableWaveMagnitude, &wave1MaxMagnitude) ||
+                    !isReasonableWavePayload(wave4, kMaxReasonableWaveMagnitude, &wave4MaxMagnitude))
                 {
-                    return QStringLiteral("min=%1 max=%2")
-                        .arg(fixedNumericStatusField(QStringLiteral("0.000000"), 14),
-                             fixedNumericStatusField(QStringLiteral("0.000000"), 14));
+                    setStatusText(QString(is_english_
+                        ? "Dropped abnormal TCP display frame, raw max=%1, harmonic max=%2. Raw recording continues..."
+                        : "已跳过异常 TCP 显示帧，原始信号最大值=%1，二次谐波最大值=%2，原始记录继续...")
+                        .arg(formatWaveValue(wave1MaxMagnitude, 3))
+                        .arg(formatWaveValue(wave4MaxMagnitude, 3)));
+                    float_encoding_ = FloatEncoding::Unknown;
                 }
-                const auto [minIt, maxIt] = std::minmax_element(values.cbegin(), values.cend());
-                return QString("min=%1 max=%2")
-                    .arg(fixedNumericStatusField(formatWaveValue(*minIt, 6), 14),
-                         fixedNumericStatusField(formatWaveValue(*maxIt, 6), 14));
-            };
-
-            const QString wave1SampleCount = fixedStatusInteger(wave1_history_.size(), kRemoteStatusCountWidth);
-            const QString wave4SampleCount = fixedStatusInteger(wave4_history_.size(), kRemoteStatusCountWidth);
-            pending_wave1_info_text_ = QString(is_english_
-                ? "%1 samples  %2"
-                : "%1 个采样点  %2")
-                .arg(wave1SampleCount)
-                .arg(describeRange(wave1_history_));
-            pending_wave4_info_text_ = QString(is_english_
-                ? "%1 samples  %2  %3"
-                : "%1 个采样点  %2  %3")
-                .arg(wave4SampleCount)
-                .arg(describeRange(wave4_history_))
-                .arg([this, rawPeakValue, displayedPeakValue]() {
-                    const QString rawPeakText = std::isfinite(rawPeakValue)
-                        ? fixedNumericStatusField(formatWaveValue(rawPeakValue, 6), 14)
-                        : fixedNumericStatusField(QStringLiteral("--"), 14);
-                    const QString displayedPeakText = std::isfinite(displayedPeakValue)
-                        ? fixedNumericStatusField(formatWaveValue(displayedPeakValue, 6), 14)
-                        : fixedStatusField(is_english_ ? QStringLiteral("filtered") : QStringLiteral("已过滤"), 14);
-                    if (peak_filter_settings_.mode == PeakFilterMode::None ||
-                        (!std::isfinite(rawPeakValue) && !std::isfinite(displayedPeakValue)) ||
-                        (std::isfinite(rawPeakValue) && std::isfinite(displayedPeakValue) &&
-                         std::fabs(static_cast<double>(rawPeakValue) - static_cast<double>(displayedPeakValue)) < 1e-9))
+                else
+                {
+                    wave1_history_ = std::move(wave1);
+                    wave4_history_ = std::move(wave4);
+                    const float rawPeakValue = currentWaveformPeakValue(wave4_history_);
+                    peak_raw_history_.push_back(rawPeakValue);
+                    if (peak_raw_history_.size() > kPeakTrendFrameWindow)
                     {
-                        return QString(is_english_ ? "peak=%1" : "峰值=%1").arg(rawPeakText);
+                        peak_raw_history_.remove(0, peak_raw_history_.size() - kPeakTrendFrameWindow);
                     }
-                    return QString(is_english_ ? "peak(raw/show)=%1/%2" : "峰值(原始/显示)=%1/%2")
-                        .arg(rawPeakText, displayedPeakText);
-                }());
+                    rebuildPeakHistory();
+                    const float displayedPeakValue = peak_history_.isEmpty()
+                        ? rawPeakValue
+                        : peak_history_.back();
+                    emit normalizedSecondHarmonicFrameReady(
+                        frameTimestampUs,
+                        wave4_history_);
 
-            pending_live_status_text_ = QString(is_english_
-                ? "Receiving frame %3 from %1:%2, float format: %4"
-                : "正在接收来自 %1:%2 的数据帧，第 %3 帧，浮点格式: %4")
-                .arg(host_edit_->text())
-                .arg(port_spin_->value())
-                .arg(fixedStatusInteger(frame_count_, 8))
-                .arg(VaporView::tcpFloatEncodingLabel(is_english_, float_encoding_));
-            live_display_dirty_ = true;
+                    const auto describeRange = [](const QVector<float>& values) {
+                        if (values.isEmpty())
+                        {
+                            return QStringLiteral("min=%1 max=%2")
+                                .arg(fixedNumericStatusField(QStringLiteral("0.000000"), 14),
+                                     fixedNumericStatusField(QStringLiteral("0.000000"), 14));
+                        }
+                        const auto [minIt, maxIt] = std::minmax_element(values.cbegin(), values.cend());
+                        return QString("min=%1 max=%2")
+                            .arg(fixedNumericStatusField(formatWaveValue(*minIt, 6), 14),
+                                 fixedNumericStatusField(formatWaveValue(*maxIt, 6), 14));
+                    };
+
+                    const QString wave1SampleCount = fixedStatusInteger(wave1_history_.size(), kRemoteStatusCountWidth);
+                    const QString wave4SampleCount = fixedStatusInteger(wave4_history_.size(), kRemoteStatusCountWidth);
+                    pending_wave1_info_text_ = QString(is_english_
+                        ? "%1 samples  %2"
+                        : "%1 个采样点  %2")
+                        .arg(wave1SampleCount)
+                        .arg(describeRange(wave1_history_));
+                    pending_wave4_info_text_ = QString(is_english_
+                        ? "%1 samples  %2  %3"
+                        : "%1 个采样点  %2  %3")
+                        .arg(wave4SampleCount)
+                        .arg(describeRange(wave4_history_))
+                        .arg([this, rawPeakValue, displayedPeakValue]() {
+                            const QString rawPeakText = std::isfinite(rawPeakValue)
+                                ? fixedNumericStatusField(formatWaveValue(rawPeakValue, 6), 14)
+                                : fixedNumericStatusField(QStringLiteral("--"), 14);
+                            const QString displayedPeakText = std::isfinite(displayedPeakValue)
+                                ? fixedNumericStatusField(formatWaveValue(displayedPeakValue, 6), 14)
+                                : fixedStatusField(is_english_ ? QStringLiteral("filtered") : QStringLiteral("已过滤"), 14);
+                            if (peak_filter_settings_.mode == PeakFilterMode::None ||
+                                (!std::isfinite(rawPeakValue) && !std::isfinite(displayedPeakValue)) ||
+                                (std::isfinite(rawPeakValue) && std::isfinite(displayedPeakValue) &&
+                                 std::fabs(static_cast<double>(rawPeakValue) - static_cast<double>(displayedPeakValue)) < 1e-9))
+                            {
+                                return QString(is_english_ ? "peak=%1" : "峰值=%1").arg(rawPeakText);
+                            }
+                            return QString(is_english_ ? "peak(raw/show)=%1/%2" : "峰值(原始/显示)=%1/%2")
+                                .arg(rawPeakText, displayedPeakText);
+                        }());
+
+                    pending_live_status_text_ = QString(is_english_
+                        ? "Receiving frame %3 from %1:%2, float format: %4"
+                        : "正在接收来自 %1:%2 的数据帧，第 %3 帧，浮点格式: %4")
+                        .arg(host_edit_->text())
+                        .arg(port_spin_->value())
+                        .arg(fixedStatusInteger(frame_count_, 8))
+                        .arg(VaporView::tcpFloatEncodingLabel(is_english_, float_encoding_));
+                    live_display_dirty_ = true;
+                }
+            }
 
             pending_wave1_payload_.clear();
-            pending_wave1_.clear();
             resetParserState();
+            ++completedFramesThisPass;
+            if (completedFramesThisPass >= kProcessBufferMaxFramesPerPass ||
+                QDateTime::currentMSecsSinceEpoch() - passStartMs >= kProcessBufferBudgetMs)
+            {
+                if (!buffer_.isEmpty())
+                {
+                    scheduleDeferredProcessBuffer();
+                }
+                return;
+            }
             break;
         }
         }
@@ -2230,28 +2326,23 @@ bool TcpWavePanel::tryConsumeHeader()
     return true;
 }
 
-bool TcpWavePanel::tryConsumePayload(QVector<float>& output, QByteArray *rawPayload)
+bool TcpWavePanel::tryConsumePayload(QByteArray& rawPayload)
 {
     if (buffer_.size() < expected_payload_size_)
     {
         return false;
     }
 
-    const QByteArray payload = buffer_.left(expected_payload_size_);
+    rawPayload = buffer_.left(expected_payload_size_);
     buffer_.remove(0, expected_payload_size_);
-    if (rawPayload)
-    {
-        *rawPayload = payload;
-    }
     if (float_encoding_ == FloatEncoding::Unknown)
     {
-        float_encoding_ = VaporView::autoDetectTcpFloatEncoding(payload);
+        float_encoding_ = VaporView::autoDetectTcpFloatEncoding(rawPayload);
         setStatusText(QString(is_english_
             ? "Detected float payload format: %1"
             : "已识别浮点负载格式: %1")
             .arg(VaporView::tcpFloatEncodingLabel(is_english_, float_encoding_)));
     }
-    output = decodeFloatPayload(payload);
     expected_payload_size_ = 0;
     return true;
 }
