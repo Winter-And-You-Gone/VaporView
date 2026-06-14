@@ -68,6 +68,7 @@
 #include <QThread>
 #include <QToolButton>
 #include <QVector>
+#include <QWidgetAction>
 #include <QWindow>
 #include <QtEndian>
 #ifdef Q_OS_WIN
@@ -750,6 +751,11 @@ QIcon createClearLogIcon()
 QIcon createLogFilterIcon()
 {
     return createLucideIcon(QStringLiteral("list-filter"), kToolbarBlue);
+}
+
+QIcon createMenuCheckIcon()
+{
+    return createLucideIcon(QStringLiteral("check"), kToolbarBlue);
 }
 
 QIcon createWaveformViewerIcon()
@@ -3137,6 +3143,9 @@ MainWindow::MainWindow(QWidget *parent)
     , lang_action_(nullptr)
     , theme_toggle_action_(nullptr)
     , log_filter_ack_action_(nullptr)
+    , log_filter_config_action_(nullptr)
+    , log_filter_connection_action_(nullptr)
+    , log_filter_recording_action_(nullptr)
     , clear_log_action_(nullptr)
     , session_viewer_action_(nullptr)
     , epsilon_reconfigure_action_(nullptr)
@@ -3254,6 +3263,9 @@ MainWindow::MainWindow(QWidget *parent)
     , scheduled_recording_timer_(nullptr)
     , is_english_(false)
     , log_filter_ack_enabled_(false)
+    , log_filter_config_enabled_(false)
+    , log_filter_connection_enabled_(false)
+    , log_filter_recording_enabled_(false)
     , language_switch_in_progress_(false)
     , has_inline_progress_log_(false)
     , connection_attempt_in_progress_(false)
@@ -5416,16 +5428,57 @@ void MainWindow::setupToolBar()
     clear_log_action_->setIcon(createClearLogIcon());
     connect(clear_log_action_, &QAction::triggered, this, &MainWindow::onClearLogClicked);
 
-    log_filter_ack_action_ = new QAction(this);
-    log_filter_ack_action_->setIcon(createLogFilterIcon());
-    log_filter_ack_action_->setCheckable(true);
-    connect(log_filter_ack_action_, &QAction::toggled, this, [this](bool checked) {
-        log_filter_ack_enabled_ = checked;
-        updateLogFilterAction();
-        renderLogView();
-    });
+    auto createLogFilterAction = [this](bool *enabled) {
+        auto *action = new QWidgetAction(this);
+        action->setCheckable(false);
+        auto *row = new QPushButton();
+        row->setObjectName(QStringLiteral("logFilterMenuItem"));
+        row->setFlat(true);
+        row->setCursor(Qt::PointingHandCursor);
+        row->setFocusPolicy(Qt::NoFocus);
+        row->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        row->setMinimumHeight(scalePixels(36));
+        auto *rowLayout = new QHBoxLayout(row);
+        rowLayout->setContentsMargins(scalePixels(24), scalePixels(8), scalePixels(14), scalePixels(8));
+        rowLayout->setSpacing(scalePixels(8));
+
+        auto *textLabel = new QLabel(row);
+        textLabel->setObjectName(QStringLiteral("logFilterMenuText"));
+        textLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+        rowLayout->addWidget(textLabel, 1);
+
+        auto *checkLabel = new QLabel(row);
+        checkLabel->setObjectName(QStringLiteral("logFilterMenuCheck"));
+        checkLabel->setFixedWidth(scalePixels(22));
+        checkLabel->setAlignment(Qt::AlignCenter);
+        rowLayout->addWidget(checkLabel, 0, Qt::AlignVCenter);
+
+        action->setDefaultWidget(row);
+        connect(row, &QPushButton::clicked, this, [this, action]() {
+            action->trigger();
+            if (log_filter_menu_)
+            {
+                log_filter_menu_->hide();
+            }
+        });
+        connect(action, &QAction::triggered, this, [this, enabled]() {
+            *enabled = !*enabled;
+            updateLogFilterAction();
+            renderLogView();
+        });
+        return action;
+    };
+
+    log_filter_ack_action_ = createLogFilterAction(&log_filter_ack_enabled_);
+    log_filter_config_action_ = createLogFilterAction(&log_filter_config_enabled_);
+    log_filter_connection_action_ = createLogFilterAction(&log_filter_connection_enabled_);
+    log_filter_recording_action_ = createLogFilterAction(&log_filter_recording_enabled_);
+
     log_filter_menu_ = new QMenu(this);
     log_filter_menu_->addAction(log_filter_ack_action_);
+    log_filter_menu_->addAction(log_filter_config_action_);
+    log_filter_menu_->addAction(log_filter_connection_action_);
+    log_filter_menu_->addAction(log_filter_recording_action_);
 
     session_viewer_action_->setIcon(createWaveformViewerIcon());
 
@@ -6950,11 +7003,30 @@ void MainWindow::setupLogPanel()
     log_filter_btn_->setFocusPolicy(Qt::NoFocus);
     log_filter_btn_->setIcon(createLogFilterIcon());
     log_filter_btn_->setStyleSheet(QStringLiteral("QToolButton::menu-indicator { image: none; width: 0px; height: 0px; }"));
-    log_filter_btn_->setPopupMode(QToolButton::InstantPopup);
-    log_filter_btn_->setMenu(log_filter_menu_);
+    log_filter_btn_->setPopupMode(QToolButton::DelayedPopup);
     if (log_filter_menu_)
     {
+        connect(log_filter_btn_, &QToolButton::clicked, this, [this]() {
+            if (!log_filter_btn_ || !log_filter_menu_)
+            {
+                return;
+            }
+            const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+            const qint64 lastHideMs = log_filter_btn_->property("logFilterMenuHideMs").toLongLong();
+            if (log_filter_menu_->isVisible() || (lastHideMs > 0 && nowMs - lastHideMs < 250))
+            {
+                log_filter_menu_->hide();
+                log_filter_btn_->setDown(false);
+                return;
+            }
+            log_filter_btn_->setDown(true);
+            updateLogFilterAction();
+            const QSize menuSize = log_filter_menu_->sizeHint();
+            const QPoint anchor = log_filter_btn_->mapToGlobal(QPoint(log_filter_btn_->width(), log_filter_btn_->height()));
+            log_filter_menu_->popup(QPoint(anchor.x() - menuSize.width(), anchor.y()));
+        });
         connect(log_filter_menu_, &QMenu::aboutToHide, log_filter_btn_, [button = log_filter_btn_]() {
+            button->setProperty("logFilterMenuHideMs", QDateTime::currentMSecsSinceEpoch());
             QTimer::singleShot(0, button, [button]() {
                 button->setDown(false);
                 button->setChecked(false);
@@ -8161,6 +8233,40 @@ bool MainWindow::shouldShowLogLine(const QString& line) const
     {
         return false;
     }
+    if (log_filter_config_enabled_ &&
+        (line.contains(QStringLiteral("配置"), Qt::CaseInsensitive) ||
+         line.contains(QStringLiteral("config"), Qt::CaseInsensitive) ||
+         line.contains(QStringLiteral("频率"), Qt::CaseInsensitive) ||
+         line.contains(QStringLiteral("波特率"), Qt::CaseInsensitive) ||
+         line.contains(QStringLiteral("output rate"), Qt::CaseInsensitive) ||
+         line.contains(QStringLiteral("sample rate"), Qt::CaseInsensitive) ||
+         line.contains(QStringLiteral("rate"), Qt::CaseInsensitive)))
+    {
+        return false;
+    }
+    if (log_filter_connection_enabled_ &&
+        (line.contains(QStringLiteral("连接"), Qt::CaseInsensitive) ||
+         line.contains(QStringLiteral("断开"), Qt::CaseInsensitive) ||
+         line.contains(QStringLiteral("串口"), Qt::CaseInsensitive) ||
+         line.contains(QStringLiteral("端口"), Qt::CaseInsensitive) ||
+         line.contains(QStringLiteral("connect"), Qt::CaseInsensitive) ||
+         line.contains(QStringLiteral("disconnect"), Qt::CaseInsensitive) ||
+         line.contains(QStringLiteral("port"), Qt::CaseInsensitive) ||
+         line.contains(QStringLiteral("telemetry link"), Qt::CaseInsensitive) ||
+         line.contains(QStringLiteral("handshake"), Qt::CaseInsensitive)))
+    {
+        return false;
+    }
+    if (log_filter_recording_enabled_ &&
+        (line.contains(QStringLiteral("记录"), Qt::CaseInsensitive) ||
+         line.contains(QStringLiteral("定时"), Qt::CaseInsensitive) ||
+         line.contains(QStringLiteral("recording"), Qt::CaseInsensitive) ||
+         line.contains(QStringLiteral("record"), Qt::CaseInsensitive) ||
+         line.contains(QStringLiteral("session"), Qt::CaseInsensitive) ||
+         line.contains(QStringLiteral("schedule"), Qt::CaseInsensitive)))
+    {
+        return false;
+    }
     return true;
 }
 
@@ -8193,17 +8299,98 @@ void MainWindow::updateLogFilterAction()
         return;
     }
 
-    log_filter_ack_action_->setChecked(log_filter_ack_enabled_);
-    log_filter_ack_action_->setText(is_english_ ? QStringLiteral("Filter ACK Logs")
-                                                : QStringLiteral("过滤 ACK 日志"));
-    log_filter_ack_action_->setToolTip(log_filter_ack_enabled_
-        ? (is_english_
-              ? QStringLiteral("ACK log filtering is on. Click to show all cached logs.")
-              : QStringLiteral("ACK 日志过滤已开启，点击后显示全部缓存日志。"))
-        : (is_english_
-              ? QStringLiteral("Hide ACK logs from the display only")
-              : QStringLiteral("仅从显示中隐藏 ACK 日志")));
-    log_filter_ack_action_->setStatusTip(log_filter_ack_action_->toolTip());
+    const QIcon checkIcon = createMenuCheckIcon();
+    const QString rowStyle = dark_theme_enabled_
+        ? QStringLiteral(
+              "QPushButton#logFilterMenuItem { border: none; border-radius: 0px; background: transparent; padding: 0px; }"
+              "QPushButton#logFilterMenuItem:hover { background-color: #202020; }"
+              "QLabel#logFilterMenuText { color: #f3f6fb; background: transparent; border: none; }"
+              "QLabel#logFilterMenuCheck { background: transparent; border: none; }")
+        : QStringLiteral(
+              "QPushButton#logFilterMenuItem { border: none; border-radius: 0px; background: transparent; padding: 0px; }"
+              "QPushButton#logFilterMenuItem:hover { background-color: #e3f2fd; }"
+              "QLabel#logFilterMenuText { color: #000000; background: transparent; border: none; }"
+              "QLabel#logFilterMenuCheck { background: transparent; border: none; }");
+    const QStringList filterTexts = is_english_
+        ? QStringList{
+              QStringLiteral("Filter ACK logs"),
+              QStringLiteral("Filter config and rate logs"),
+              QStringLiteral("Filter connection and port logs"),
+              QStringLiteral("Filter recording and schedule logs")}
+        : QStringList{
+              QStringLiteral("过滤 ACK 日志"),
+              QStringLiteral("过滤配置和频率日志"),
+              QStringLiteral("过滤连接和端口日志"),
+              QStringLiteral("过滤记录和定时日志")};
+    const QFontMetrics filterTextMetrics(qApp ? qApp->font() : font());
+    int filterTextWidth = 0;
+    for (const QString& text : filterTexts)
+    {
+        filterTextWidth = std::max(filterTextWidth, filterTextMetrics.horizontalAdvance(text));
+    }
+    const int checkSlotWidth = scalePixels(22);
+    const int menuItemWidth = scalePixels(24) + filterTextWidth + scalePixels(8) + checkSlotWidth + scalePixels(14);
+
+    const auto updateAction = [this, &checkIcon, &rowStyle, filterTextWidth, checkSlotWidth, menuItemWidth](QAction *action,
+                                                            bool enabled,
+                                                            const QString& englishText,
+                                                            const QString& chineseText,
+                                                            const QString& englishDetail,
+                                                            const QString& chineseDetail) {
+        if (!action)
+        {
+            return;
+        }
+        const QString text = is_english_ ? englishText : chineseText;
+        const QString detail = is_english_ ? englishDetail : chineseDetail;
+        action->setText(text);
+        action->setToolTip(detail);
+        action->setStatusTip(action->toolTip());
+
+        auto *widgetAction = qobject_cast<QWidgetAction *>(action);
+        auto *row = widgetAction ? qobject_cast<QPushButton *>(widgetAction->defaultWidget()) : nullptr;
+        auto *textLabel = row ? row->findChild<QLabel *>(QStringLiteral("logFilterMenuText")) : nullptr;
+        auto *checkLabel = row ? row->findChild<QLabel *>(QStringLiteral("logFilterMenuCheck")) : nullptr;
+        if (!row || !textLabel || !checkLabel)
+        {
+            action->setIcon(enabled ? checkIcon : QIcon());
+            return;
+        }
+
+        row->setStyleSheet(rowStyle);
+        row->setFixedWidth(menuItemWidth);
+        textLabel->setText(text);
+        textLabel->setFixedWidth(filterTextWidth);
+        checkLabel->setFixedWidth(checkSlotWidth);
+        const QSize checkSize(scalePixels(16), scalePixels(16));
+        checkLabel->setPixmap(enabled ? checkIcon.pixmap(checkSize) : QPixmap());
+    };
+
+    updateAction(log_filter_ack_action_,
+                 log_filter_ack_enabled_,
+                 QStringLiteral("Filter ACK logs"),
+                 QStringLiteral("过滤 ACK 日志"),
+                 QStringLiteral("Hide remote ACK command result logs from the display"),
+                 QStringLiteral("仅从显示中隐藏远程 ACK 命令结果日志"));
+    updateAction(log_filter_config_action_,
+                 log_filter_config_enabled_,
+                 QStringLiteral("Filter config and rate logs"),
+                 QStringLiteral("过滤配置和频率日志"),
+                 QStringLiteral("Hide configuration, baud-rate, and output-rate logs from the display"),
+                 QStringLiteral("仅从显示中隐藏配置、波特率和输出频率日志"));
+    updateAction(log_filter_connection_action_,
+                 log_filter_connection_enabled_,
+                 QStringLiteral("Filter connection and port logs"),
+                 QStringLiteral("过滤连接和端口日志"),
+                 QStringLiteral("Hide connection, disconnection, port, and handshake logs from the display"),
+                 QStringLiteral("仅从显示中隐藏连接、断开、端口和握手日志"));
+    updateAction(log_filter_recording_action_,
+                 log_filter_recording_enabled_,
+                 QStringLiteral("Filter recording and schedule logs"),
+                 QStringLiteral("过滤记录和定时日志"),
+                 QStringLiteral("Hide recording session and scheduled-recording logs from the display"),
+                 QStringLiteral("仅从显示中隐藏记录会话和定时记录日志"));
+
     if (log_filter_menu_)
     {
         log_filter_menu_->setTitle(is_english_ ? QStringLiteral("Log Filters")
@@ -8214,7 +8401,7 @@ void MainWindow::updateLogFilterAction()
         log_filter_btn_->setIcon(createLogFilterIcon());
         log_filter_btn_->setToolTip(is_english_ ? QStringLiteral("Log filters")
                                                 : QStringLiteral("日志过滤"));
-        log_filter_btn_->setStatusTip(log_filter_ack_action_->toolTip());
+        log_filter_btn_->setStatusTip(log_filter_btn_->toolTip());
     }
 }
 

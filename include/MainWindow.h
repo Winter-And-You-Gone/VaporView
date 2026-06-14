@@ -540,6 +540,9 @@ private:
     QAction *lang_action_;
     QAction *theme_toggle_action_;
     QAction *log_filter_ack_action_;
+    QAction *log_filter_config_action_;
+    QAction *log_filter_connection_action_;
+    QAction *log_filter_recording_action_;
     QAction *clear_log_action_;
     QAction *session_viewer_action_;
     QAction *epsilon_reconfigure_action_;
@@ -672,6 +675,9 @@ private:
 
     bool is_english_;
     bool log_filter_ack_enabled_;
+    bool log_filter_config_enabled_;
+    bool log_filter_connection_enabled_;
+    bool log_filter_recording_enabled_;
     bool language_switch_in_progress_;
     bool has_inline_progress_log_;
     bool connection_attempt_in_progress_;
