@@ -561,6 +561,7 @@ private:
     QMenu *language_menu_;
     QMenu *help_menu_;
     QMenu *recording_rate_menu_;
+    QMenu *log_filter_menu_;
     QFrame *title_application_panel_;
     QFrame *title_application_sub_panel_;
 

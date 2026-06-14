@@ -3158,6 +3158,7 @@ MainWindow::MainWindow(QWidget *parent)
     , language_menu_(nullptr)
     , help_menu_(nullptr)
     , recording_rate_menu_(nullptr)
+    , log_filter_menu_(nullptr)
     , title_application_panel_(nullptr)
     , title_application_sub_panel_(nullptr)
     , config_group_(nullptr)
@@ -5423,6 +5424,8 @@ void MainWindow::setupToolBar()
         updateLogFilterAction();
         renderLogView();
     });
+    log_filter_menu_ = new QMenu(this);
+    log_filter_menu_->addAction(log_filter_ack_action_);
 
     session_viewer_action_->setIcon(createWaveformViewerIcon());
 
@@ -6940,7 +6943,29 @@ void MainWindow::setupLogPanel()
     log_inline_title_lbl_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     logTitleLayout->addWidget(log_inline_title_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     logTitleLayout->addStretch(1);
-    log_filter_btn_ = createTitleBarActionButton(log_filter_ack_action_, logTitleBar);
+    log_filter_btn_ = new QToolButton(logTitleBar);
+    log_filter_btn_->setObjectName(QStringLiteral("titleBarButton"));
+    log_filter_btn_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    log_filter_btn_->setAutoRaise(false);
+    log_filter_btn_->setFocusPolicy(Qt::NoFocus);
+    log_filter_btn_->setIcon(createLogFilterIcon());
+    log_filter_btn_->setStyleSheet(QStringLiteral("QToolButton::menu-indicator { image: none; width: 0px; height: 0px; }"));
+    log_filter_btn_->setPopupMode(QToolButton::InstantPopup);
+    log_filter_btn_->setMenu(log_filter_menu_);
+    if (log_filter_menu_)
+    {
+        connect(log_filter_menu_, &QMenu::aboutToHide, log_filter_btn_, [button = log_filter_btn_]() {
+            QTimer::singleShot(0, button, [button]() {
+                button->setDown(false);
+                button->setChecked(false);
+                button->setProperty("titleBarHover", false);
+                button->clearFocus();
+                button->style()->unpolish(button);
+                button->style()->polish(button);
+                button->update();
+            });
+        });
+    }
     log_filter_btn_->setFixedSize(kMainPageButtonHeight, kMainPageButtonHeight);
     log_filter_btn_->setIconSize(QSize(kMainPageButtonHeight - 12, kMainPageButtonHeight - 12));
     logTitleLayout->addWidget(log_filter_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
@@ -8179,6 +8204,18 @@ void MainWindow::updateLogFilterAction()
               ? QStringLiteral("Hide ACK logs from the display only")
               : QStringLiteral("仅从显示中隐藏 ACK 日志")));
     log_filter_ack_action_->setStatusTip(log_filter_ack_action_->toolTip());
+    if (log_filter_menu_)
+    {
+        log_filter_menu_->setTitle(is_english_ ? QStringLiteral("Log Filters")
+                                               : QStringLiteral("日志过滤"));
+    }
+    if (log_filter_btn_)
+    {
+        log_filter_btn_->setIcon(createLogFilterIcon());
+        log_filter_btn_->setToolTip(is_english_ ? QStringLiteral("Log filters")
+                                                : QStringLiteral("日志过滤"));
+        log_filter_btn_->setStatusTip(log_filter_ack_action_->toolTip());
+    }
 }
 
 void MainWindow::updateRecordingStatusLabel()
