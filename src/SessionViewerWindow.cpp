@@ -2300,7 +2300,7 @@ void SessionViewerWindow::updateSessionLoadingDialogTheme()
     const QColor fieldColor = dark ? QColor(QStringLiteral("#121212")) : QColor(QStringLiteral("#EEF0F3"));
     const QColor borderColor = dark ? QColor(QStringLiteral("#202020")) : QColor(QStringLiteral("#D8DDE5"));
     const QColor textColor = dark ? QColor(QStringLiteral("#F9FAFB")) : QColor(QStringLiteral("#111827"));
-    const QColor chunkColor = dark ? QColor(QStringLiteral("#D97757")) : QColor(QStringLiteral("#4B5563"));
+    const QColor chunkColor = dark ? QColor(QStringLiteral("#D97757")) : QColor(QStringLiteral("#245B8F"));
 
     QPalette loadingPalette = loading_dialog_->palette();
     loadingPalette.setColor(QPalette::Window, panelColor);
