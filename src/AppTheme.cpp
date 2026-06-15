@@ -53,6 +53,11 @@ constexpr const char *kLightPrimaryHover = "#236ABD";
 constexpr const char *kLightPrimaryPressed = "#1D5AA3";
 constexpr const char *kLightPrimarySubtle = "#E7F0FC";
 constexpr const char *kLightPrimarySubtlePressed = "#D4E5F8";
+constexpr const char *kLightToolbarBlue = "#5CA8F5";
+constexpr const char *kLightToolbarGreen = "#82A95F";
+constexpr const char *kLightToolbarRed = "#D96852";
+constexpr const char *kLightToolbarAmber = "#E58B67";
+constexpr const char *kLightToolbarDisabled = "#BCBAB3";
 constexpr const char *kClaudeLightCanvas = "#FDFDFC";
 constexpr const char *kClaudeLightSurface = "#FFFFFF";
 constexpr const char *kClaudeLightAlt = "#F7F7F6";
@@ -300,15 +305,15 @@ QColor appThemeColor(AppThemeColor color, bool dark)
     case AppThemeColor::AccentWarmHover:
         return hexColor("#E98A67");
     case AppThemeColor::ToolbarBlue:
-        return hexColor(kBrandBlue);
+        return hexColor(kLightToolbarBlue);
     case AppThemeColor::ToolbarGreen:
-        return hexColor(kBrandGreen);
+        return hexColor(kLightToolbarGreen);
     case AppThemeColor::ToolbarRed:
-        return hexColor("#C8543D");
+        return hexColor(kLightToolbarRed);
     case AppThemeColor::ToolbarAmber:
-        return hexColor(kBrandOrange);
+        return hexColor(kLightToolbarAmber);
     case AppThemeColor::ToolbarDisabled:
-        return hexColor(kBrandMidGray);
+        return hexColor(kLightToolbarDisabled);
     case AppThemeColor::Success:
         return hexColor(dark ? "#AFC38B" : kBrandGreen);
     case AppThemeColor::SuccessBackground:
