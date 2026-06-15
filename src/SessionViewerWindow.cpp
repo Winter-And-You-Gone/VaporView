@@ -667,7 +667,7 @@ protected:
             kSessionViewerPlotTopMargin,
             -kSessionViewerPlotRightMargin,
             -kSessionViewerWaveBottomMargin);
-        painter.setPen(QPen(dark ? theme.grid : appThemeColor(AppThemeColor::PlotLightGuide, false), 1));
+        painter.setPen(QPen(theme.grid, 1));
         for (int i = 0; i <= 5; ++i)
         {
             const qreal x = plotRect.left() + plotRect.width() * i / 5.0;
@@ -679,7 +679,7 @@ protected:
             painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
         }
 
-        painter.setPen(QPen(dark ? theme.border : appThemeColor(AppThemeColor::PlotLightGuideBorder, false), 1));
+        painter.setPen(QPen(theme.border, 1));
         painter.drawRect(plotRect);
 
         if (samples_.isEmpty())
