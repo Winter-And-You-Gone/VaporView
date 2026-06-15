@@ -41,6 +41,14 @@ struct ThemeReplacement
     AppThemeColor color;
 };
 
+constexpr const char *kBrandDark = "#141413";
+constexpr const char *kBrandLight = "#FAF9F5";
+constexpr const char *kBrandMidGray = "#B0AEA5";
+constexpr const char *kBrandLightGray = "#E8E6DC";
+constexpr const char *kBrandOrange = "#D97757";
+constexpr const char *kBrandBlue = "#6A9BCC";
+constexpr const char *kBrandGreen = "#788C5D";
+
 const ThemeReplacement kColorTokens[] = {
     {"@vv-window", AppThemeColor::Window},
     {"@vv-surface-raised", AppThemeColor::SurfaceRaised},
@@ -183,263 +191,263 @@ QColor appThemeColor(AppThemeColor color, bool dark)
     switch (color)
     {
     case AppThemeColor::Window:
-        return hexColor(dark ? "#0D0D0D" : "#FDFDFC");
+        return hexColor(dark ? kBrandDark : kBrandLight);
     case AppThemeColor::Surface:
-        return hexColor(dark ? "#121212" : "#FDFDFC");
+        return hexColor(dark ? "#1C1B19" : kBrandLight);
     case AppThemeColor::SurfaceRaised:
-        return hexColor(dark ? "#181818" : "#FFFFFF");
+        return hexColor(dark ? "#23221F" : "#FFFFFF");
     case AppThemeColor::SurfaceAlt:
-        return hexColor(dark ? "#202020" : "#F8F8F7");
+        return hexColor(dark ? "#2A2925" : "#F2F0E8");
     case AppThemeColor::SurfaceSubtle:
-        return hexColor(dark ? "#242424" : "#EEEEEC");
+        return hexColor(dark ? "#33312C" : kBrandLightGray);
     case AppThemeColor::SurfaceSunken:
-        return hexColor(dark ? "#0C0C0C" : "#FCFCFB");
+        return hexColor(dark ? "#0F0F0E" : "#F4F2EA");
     case AppThemeColor::Border:
-        return hexColor(dark ? "#202020" : "#EAEAE9");
+        return hexColor(dark ? "#34322D" : "#E1DED4");
     case AppThemeColor::BorderStrong:
-        return hexColor(dark ? "#2A2A2A" : "#BDBDBD");
+        return hexColor(dark ? "#4C4941" : kBrandMidGray);
     case AppThemeColor::Text:
-        return hexColor(dark ? "#E5E7EB" : "#000000");
+        return hexColor(dark ? kBrandLight : kBrandDark);
     case AppThemeColor::TextStrong:
-        return hexColor(dark ? "#F9FAFB" : "#111827");
+        return hexColor(dark ? "#FFFFFF" : kBrandDark);
     case AppThemeColor::TextTitle:
-        return hexColor(dark ? "#D8DEE9" : "#000000");
+        return hexColor(dark ? kBrandLight : kBrandDark);
     case AppThemeColor::TextSecondary:
-        return hexColor(dark ? "#A7B4C2" : "#5E6B78");
+        return hexColor(dark ? "#D3D0C6" : "#615F58");
     case AppThemeColor::TextMuted:
-        return hexColor(dark ? "#8FA1B3" : "#7A8899");
+        return hexColor(dark ? kBrandMidGray : "#7A776E");
     case AppThemeColor::TextDisabled:
-        return hexColor(dark ? "#64748B" : "#9CA3AF");
+        return hexColor(dark ? "#7D7A70" : kBrandMidGray);
     case AppThemeColor::TextDisabledStrong:
-        return hexColor(dark ? "#CBD5E1" : "#FFFFFF");
+        return hexColor(dark ? kBrandLightGray : kBrandLight);
     case AppThemeColor::TextInverse:
-        return hexColor("#FFFFFF");
+        return hexColor(kBrandLight);
     case AppThemeColor::FieldBackground:
-        return hexColor(dark ? "#121212" : "#EEF0F3");
+        return hexColor(dark ? "#1C1B19" : "#F4F2EA");
     case AppThemeColor::FieldBorder:
-        return hexColor(dark ? "#202020" : "#D8DDE5");
+        return hexColor(dark ? "#34322D" : "#D8D5C8");
     case AppThemeColor::ConfigWindow:
-        return hexColor(dark ? "#0D0D0D" : "#F3F5F7");
+        return hexColor(dark ? kBrandDark : "#F4F2EA");
     case AppThemeColor::ConfigSurface:
-        return hexColor(dark ? "#121212" : "#FBFCFE");
+        return hexColor(dark ? "#1C1B19" : kBrandLight);
     case AppThemeColor::ConfigBorder:
-        return hexColor(dark ? "#202020" : "#DFE4EA");
+        return hexColor(dark ? "#34322D" : "#D8D5C8");
     case AppThemeColor::ConfigTitleText:
-        return hexColor(dark ? "#E5E7EB" : "#1F2937");
+        return hexColor(dark ? kBrandLight : kBrandDark);
     case AppThemeColor::ConfigText:
-        return hexColor(dark ? "#D8DEE9" : "#1F2A35");
+        return hexColor(dark ? "#E8E6DC" : "#292825");
     case AppThemeColor::ConfigMutedText:
-        return hexColor(dark ? "#94A3B8" : "#64748B");
+        return hexColor(dark ? kBrandMidGray : "#7A776E");
     case AppThemeColor::ConfigToggleInactiveText:
-        return hexColor(dark ? "#D8DEE9" : "#475569");
+        return hexColor(dark ? kBrandLightGray : "#615F58");
     case AppThemeColor::Primary:
-        return hexColor(dark ? "#D97757" : "#1976D2");
+        return hexColor(kBrandOrange);
     case AppThemeColor::PrimaryHover:
-        return hexColor(dark ? "#D97757" : "#1565C0");
+        return hexColor(dark ? "#E98A67" : "#C96747");
     case AppThemeColor::PrimaryPressed:
-        return hexColor(dark ? "#D97757" : "#0D47A1");
+        return hexColor(dark ? "#F09A7D" : "#B85A3D");
     case AppThemeColor::PrimarySubtle:
-        return hexColor(dark ? "#1F3F66" : "#E3F2FD");
+        return hexColor(dark ? "#3A211A" : "#F3DFD7");
     case AppThemeColor::PrimarySubtlePressed:
-        return hexColor(dark ? "#245B8F" : "#BBDEFB");
+        return hexColor(dark ? "#5A3024" : "#EAC7BA");
     case AppThemeColor::Focus:
-        return hexColor(dark ? "#3B82F6" : "#1976D2");
+        return hexColor(kBrandBlue);
     case AppThemeColor::Link:
-        return hexColor(dark ? "#7DB7FF" : "#1976D2");
+        return hexColor(kBrandBlue);
     case AppThemeColor::TooltipBackground:
-        return hexColor(dark ? "#121212" : "#323232");
+        return hexColor(dark ? "#1C1B19" : kBrandDark);
     case AppThemeColor::DisabledFill:
-        return hexColor(dark ? "#202020" : "#BDBDBD");
+        return hexColor(dark ? "#34322D" : kBrandLightGray);
     case AppThemeColor::ControlArrow:
-        return hexColor(dark ? "#8FA1B3" : "#757575");
+        return hexColor(dark ? kBrandMidGray : "#7A776E");
     case AppThemeColor::ScrollbarHandle:
-        return hexColor(dark ? "#475569" : "#BDBDBD");
+        return hexColor(dark ? "#4C4941" : kBrandMidGray);
     case AppThemeColor::ScrollbarHandleHover:
-        return hexColor(dark ? "#64748B" : "#9E9E9E");
+        return hexColor(dark ? "#68645B" : "#8E8A80");
     case AppThemeColor::TitleBarHover:
-        return hexColor(dark ? "#121212" : "#EFEEEB");
+        return hexColor(dark ? "#23221F" : kBrandLightGray);
     case AppThemeColor::CloseHover:
-        return hexColor(dark ? "#121212" : "#FEE2E2");
+        return hexColor(dark ? "#3A211A" : "#F1DAD2");
     case AppThemeColor::MenuPanel:
-        return hexColor(dark ? "#121212" : "#FDFDFC");
+        return hexColor(dark ? "#1C1B19" : kBrandLight);
     case AppThemeColor::MenuHover:
-        return hexColor(dark ? "#202020" : "#EEEEEE");
+        return hexColor(dark ? "#2A2925" : kBrandLightGray);
     case AppThemeColor::MenuText:
-        return hexColor(dark ? "#F3F6FB" : "#000000");
+        return hexColor(dark ? kBrandLight : kBrandDark);
     case AppThemeColor::MenuMetaText:
-        return hexColor(dark ? "#D7DCE2" : "#4B5563");
+        return hexColor(dark ? "#D3D0C6" : "#615F58");
     case AppThemeColor::MenuCheckText:
-        return hexColor(dark ? "#9AA0A6" : "#6B7280");
+        return hexColor(dark ? "#AFC38B" : kBrandGreen);
     case AppThemeColor::MenuDisabledText:
-        return hexColor(dark ? "#777777" : "#9CA3AF");
+        return hexColor(dark ? "#7D7A70" : kBrandMidGray);
     case AppThemeColor::AccentWarm:
-        return hexColor("#D97757");
+        return hexColor(kBrandOrange);
     case AppThemeColor::AccentWarmHover:
-        return hexColor("#EF8F35");
+        return hexColor("#E98A67");
     case AppThemeColor::ToolbarBlue:
-        return QColor(40, 105, 190);
+        return hexColor(kBrandBlue);
     case AppThemeColor::ToolbarGreen:
-        return QColor(35, 150, 95);
+        return hexColor(kBrandGreen);
     case AppThemeColor::ToolbarRed:
-        return QColor(205, 72, 72);
+        return hexColor("#C8543D");
     case AppThemeColor::ToolbarAmber:
-        return QColor(220, 150, 35);
+        return hexColor(kBrandOrange);
     case AppThemeColor::ToolbarDisabled:
-        return QColor(145, 150, 158);
+        return hexColor(kBrandMidGray);
     case AppThemeColor::Success:
-        return hexColor(dark ? "#68D391" : "#43A047");
+        return hexColor(dark ? "#AFC38B" : kBrandGreen);
     case AppThemeColor::SuccessBackground:
-        return hexColor(dark ? "#123423" : "#E8F5E9");
+        return hexColor(dark ? "#202719" : "#EEF1E8");
     case AppThemeColor::Danger:
-        return hexColor(dark ? "#F87171" : "#E53935");
+        return hexColor(dark ? "#F09A7D" : "#C8543D");
     case AppThemeColor::DangerBackground:
-        return hexColor(dark ? "#3A171B" : "#FFEBEE");
+        return hexColor(dark ? "#341C17" : "#F5DED6");
     case AppThemeColor::Warning:
-        return hexColor(dark ? "#F6AD55" : "#EF6C00");
+        return hexColor(dark ? "#E9A07D" : kBrandOrange);
     case AppThemeColor::WarningBackground:
-        return hexColor(dark ? "#3A2A12" : "#FFF3E0");
+        return hexColor(dark ? "#352016" : "#F4E3D8");
     case AppThemeColor::Orange:
-        return hexColor("#FB8C00");
+        return hexColor(kBrandOrange);
     case AppThemeColor::OrangeBackground:
-        return hexColor("#FFF3E0");
+        return hexColor("#F4E3D8");
     case AppThemeColor::ErrorText:
-        return hexColor(dark ? "#FCA5A5" : "#B42318");
+        return hexColor(dark ? "#F09A7D" : "#A6422F");
     case AppThemeColor::ErrorHighlight:
-        return hexColor("#FFE1E1");
+        return hexColor("#F4D5CB");
     case AppThemeColor::SearchHighlight:
-        return hexColor("#FFEF9A");
+        return hexColor("#F3D1C4");
     case AppThemeColor::PlotGrid:
-        return hexColor(dark ? "#202020" : "#E3E8EF");
+        return hexColor(dark ? "#34322D" : kBrandLightGray);
     case AppThemeColor::PlotBorder:
-        return hexColor(dark ? "#202020" : "#CFD7E3");
+        return hexColor(dark ? "#34322D" : "#D8D5C8");
     case AppThemeColor::PlotText:
-        return hexColor(dark ? "#A7B4C2" : "#5E6B78");
+        return hexColor(dark ? "#D3D0C6" : "#615F58");
     case AppThemeColor::PlotMutedText:
-        return hexColor(dark ? "#8FA1B3" : "#7A8899");
+        return hexColor(dark ? kBrandMidGray : "#7A776E");
     case AppThemeColor::PlotAxisStrong:
-        return hexColor(dark ? "#A7B4C2" : "#334155");
+        return hexColor(dark ? kBrandLight : kBrandDark);
     case AppThemeColor::PlotLightGuide:
-        return hexColor("#F0D000");
+        return hexColor(kBrandOrange);
     case AppThemeColor::PlotLightGuideBorder:
-        return hexColor("#C9B53A");
+        return hexColor("#B96449");
     case AppThemeColor::PlotPositive:
-        return hexColor(dark ? "#56D364" : "#1B6416");
+        return hexColor(dark ? "#AFC38B" : kBrandGreen);
     case AppThemeColor::PlotSeriesSky:
-        return hexColor("#66D0FF");
+        return hexColor(kBrandBlue);
     case AppThemeColor::PlotSeriesTemperature:
-        return hexColor("#D14343");
+        return hexColor("#C8543D");
     case AppThemeColor::PlotSeriesHumidity:
-        return hexColor("#2F7FD3");
+        return hexColor(kBrandBlue);
     case AppThemeColor::PlotSeriesPressure:
-        return hexColor("#2F9D57");
+        return hexColor(kBrandGreen);
     case AppThemeColor::PlotSeriesWaveBlue:
-        return hexColor("#4E79C7");
+        return hexColor(kBrandBlue);
     case AppThemeColor::PlotSeriesWaveOrange:
-        return hexColor("#EF8F35");
+        return hexColor(kBrandOrange);
     case AppThemeColor::PlotCurrentGuideLine:
-        return hexColor("#FFB347");
+        return hexColor(kBrandOrange);
     case AppThemeColor::PlotCurrentGuideLabelFill:
-        return hexColor("#8B4A00");
+        return hexColor("#7A3D2D");
     case AppThemeColor::PlotCurrentGuideLabelBorder:
-        return hexColor("#5F3000");
+        return hexColor("#5B2F25");
     case AppThemeColor::PlotCurrentGuideLabelText:
-        return hexColor("#FFF7EA");
+        return hexColor(kBrandLight);
     case AppThemeColor::ProgressChunk:
-        return hexColor(dark ? "#D97757" : "#245B8F");
+        return hexColor(kBrandOrange);
     case AppThemeColor::RangeSelectorBackground:
-        return hexColor(dark ? "#202020" : "#E7EDF5");
+        return hexColor(dark ? "#34322D" : kBrandLightGray);
     case AppThemeColor::RangeSelectorHandle:
-        return hexColor("#7FB3FF");
+        return hexColor(kBrandBlue);
     case AppThemeColor::RangeSelectorHandleActive:
-        return hexColor("#2F6FD6");
+        return hexColor(kBrandOrange);
     case AppThemeColor::TableDefaultRow:
         return hexColor("#FFFFFF");
     case AppThemeColor::TableText:
-        return hexColor("#1F2933");
+        return hexColor(kBrandDark);
     case AppThemeColor::TableGrid:
-        return hexColor("#E5E7EB");
+        return hexColor(kBrandLightGray);
     case AppThemeColor::TableHighlightedRow:
-        return hexColor("#C7E3FF");
+        return hexColor("#E5EEF6");
     case AppThemeColor::TableSecondaryHighlightedRow:
-        return hexColor("#E8F3FF");
+        return hexColor("#EEF1E8");
     case AppThemeColor::TableDarkSecondaryHighlight:
-        return hexColor("#17384F");
+        return hexColor("#2A3A2A");
     case AppThemeColor::PopupHighlight:
-        return hexColor(dark ? "#242424" : "#EEEEEC");
+        return hexColor(dark ? "#2A2925" : kBrandLightGray);
     case AppThemeColor::PopupHighlightPressed:
-        return hexColor(dark ? "#2A2A2A" : "#DEDEDC");
+        return hexColor(dark ? "#34322D" : "#D8D5C8");
     case AppThemeColor::MapCanvas:
-        return hexColor("#F7FAFC");
+        return hexColor(kBrandLight);
     case AppThemeColor::MapViewport:
-        return hexColor("#EEF4FB");
+        return hexColor("#F2F0E8");
     case AppThemeColor::MapTileBackground:
-        return hexColor("#EDF2F7");
+        return hexColor(kBrandLightGray);
     case AppThemeColor::MapTileBorder:
-        return hexColor("#D7DEE7");
+        return hexColor("#D8D5C8");
     case AppThemeColor::MapText:
-        return hexColor("#4A5568");
+        return hexColor("#615F58");
     case AppThemeColor::MapMutedText:
-        return hexColor("#718096");
+        return hexColor("#7A776E");
     case AppThemeColor::MapBoundary:
-        return hexColor("#CBD5E1");
+        return hexColor(kBrandMidGray);
     case AppThemeColor::MapGrid:
-        return QColor(255, 255, 255, 120);
+        return QColor(250, 249, 245, 120);
     case AppThemeColor::TrackDefault:
-        return hexColor("#2563EB");
+        return hexColor(kBrandBlue);
     case AppThemeColor::TrackStart:
-        return hexColor("#16A34A");
+        return hexColor(kBrandGreen);
     case AppThemeColor::TrackEnd:
-        return hexColor("#DC2626");
+        return hexColor("#C8543D");
     case AppThemeColor::Heatmap0:
-        return hexColor("#1D4ED8");
+        return hexColor("#2F5F91");
     case AppThemeColor::Heatmap1:
-        return hexColor("#2563EB");
+        return hexColor(kBrandBlue);
     case AppThemeColor::Heatmap2:
-        return hexColor("#38BDF8");
+        return hexColor("#93B5D8");
     case AppThemeColor::Heatmap3:
-        return hexColor("#22D3EE");
+        return hexColor(kBrandGreen);
     case AppThemeColor::Heatmap4:
-        return hexColor("#67E8F9");
+        return hexColor("#A8B68A");
     case AppThemeColor::Heatmap5:
-        return hexColor("#A3E635");
+        return hexColor("#D7B982");
     case AppThemeColor::Heatmap6:
-        return hexColor("#FDE047");
+        return hexColor(kBrandOrange);
     case AppThemeColor::Heatmap7:
-        return hexColor("#DC2626");
+        return hexColor("#C8543D");
     case AppThemeColor::RtkHealthy:
-        return hexColor("#2E7D32");
+        return hexColor(kBrandGreen);
     case AppThemeColor::RtkWarning:
-        return hexColor("#A26A00");
+        return hexColor(kBrandOrange);
     case AppThemeColor::HelpIcon:
-        return hexColor(dark ? "#8AB4F8" : "#1976D2");
+        return hexColor(kBrandBlue);
     case AppThemeColor::HelpIconHover:
-        return hexColor(dark ? "#8AB4F8" : "#1976D2");
+        return hexColor(dark ? "#93B5D8" : kBrandBlue);
     case AppThemeColor::TuiBackground:
-        return QColor(0, 0, 0);
+        return hexColor(kBrandDark);
     case AppThemeColor::TuiAccent:
-        return QColor(100, 155, 255);
+        return hexColor(kBrandBlue);
     case AppThemeColor::TuiMuted:
-        return QColor(135, 143, 156);
+        return hexColor(kBrandMidGray);
     case AppThemeColor::TuiGreen:
-        return QColor(95, 220, 150);
+        return hexColor(kBrandGreen);
     case AppThemeColor::TuiYellow:
-        return QColor(255, 218, 55);
+        return hexColor(kBrandOrange);
     case AppThemeColor::TuiRed:
-        return QColor(255, 110, 110);
+        return hexColor("#C8543D");
     case AppThemeColor::TuiBlue:
-        return QColor(100, 155, 255);
+        return hexColor(kBrandBlue);
     case AppThemeColor::TuiGradient0:
-        return QColor(255, 238, 80);
+        return hexColor(kBrandLight);
     case AppThemeColor::TuiGradient1:
-        return QColor(255, 218, 55);
+        return hexColor(kBrandLightGray);
     case AppThemeColor::TuiGradient2:
-        return QColor(255, 185, 55);
+        return hexColor(kBrandMidGray);
     case AppThemeColor::TuiGradient3:
-        return QColor(245, 135, 95);
+        return hexColor(kBrandGreen);
     case AppThemeColor::TuiGradient4:
-        return QColor(190, 110, 190);
+        return hexColor(kBrandBlue);
     case AppThemeColor::TuiGradient5:
-        return QColor(100, 155, 255);
+        return hexColor(kBrandOrange);
     case AppThemeColor::White:
         return hexColor("#FFFFFF");
     case AppThemeColor::Black:
@@ -516,7 +524,7 @@ QPalette appThemePalette(bool dark, const QPalette& basePalette)
     palette.setColor(QPalette::Link, appThemeColor(AppThemeColor::Link, true));
     palette.setColor(QPalette::Disabled, QPalette::WindowText, appThemeColor(AppThemeColor::TextDisabled, true));
     palette.setColor(QPalette::Disabled, QPalette::Text, appThemeColor(AppThemeColor::TextDisabled, true));
-    palette.setColor(QPalette::Disabled, QPalette::ButtonText, hexColor("#94A3B8"));
+    palette.setColor(QPalette::Disabled, QPalette::ButtonText, appThemeColor(AppThemeColor::TextDisabled, true));
     return palette;
 }
 
