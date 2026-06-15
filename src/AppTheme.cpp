@@ -48,6 +48,11 @@ constexpr const char *kBrandLightGray = "#E8E6DC";
 constexpr const char *kBrandOrange = "#D97757";
 constexpr const char *kBrandBlue = "#6A9BCC";
 constexpr const char *kBrandGreen = "#788C5D";
+constexpr const char *kLightPrimary = "#339CFF";
+constexpr const char *kLightPrimaryHover = "#1F8BE8";
+constexpr const char *kLightPrimaryPressed = "#0D73CF";
+constexpr const char *kLightPrimarySubtle = "#E6F3FF";
+constexpr const char *kLightPrimarySubtlePressed = "#CFE8FF";
 constexpr const char *kClaudeLightCanvas = "#FDFDFC";
 constexpr const char *kClaudeLightSurface = "#FFFFFF";
 constexpr const char *kClaudeLightAlt = "#F7F7F6";
@@ -251,15 +256,15 @@ QColor appThemeColor(AppThemeColor color, bool dark)
     case AppThemeColor::ConfigToggleInactiveText:
         return hexColor(dark ? kBrandLightGray : kClaudeLightTextSecondary);
     case AppThemeColor::Primary:
-        return hexColor(kBrandOrange);
+        return hexColor(dark ? kBrandOrange : kLightPrimary);
     case AppThemeColor::PrimaryHover:
-        return hexColor(dark ? "#E98A67" : "#C96747");
+        return hexColor(dark ? "#E98A67" : kLightPrimaryHover);
     case AppThemeColor::PrimaryPressed:
-        return hexColor(dark ? "#F09A7D" : "#B85A3D");
+        return hexColor(dark ? "#F09A7D" : kLightPrimaryPressed);
     case AppThemeColor::PrimarySubtle:
-        return hexColor(dark ? "#3A211A" : "#F3DFD7");
+        return hexColor(dark ? "#3A211A" : kLightPrimarySubtle);
     case AppThemeColor::PrimarySubtlePressed:
-        return hexColor(dark ? "#5A3024" : "#EAC7BA");
+        return hexColor(dark ? "#5A3024" : kLightPrimarySubtlePressed);
     case AppThemeColor::Focus:
         return hexColor(kBrandBlue);
     case AppThemeColor::Link:
@@ -363,7 +368,7 @@ QColor appThemeColor(AppThemeColor color, bool dark)
     case AppThemeColor::PlotCurrentGuideLabelText:
         return hexColor(kBrandLight);
     case AppThemeColor::ProgressChunk:
-        return hexColor(kBrandOrange);
+        return hexColor(dark ? kBrandOrange : kLightPrimary);
     case AppThemeColor::RangeSelectorBackground:
         return hexColor(dark ? "#34322D" : kClaudeLightSubtle);
     case AppThemeColor::RangeSelectorHandle:
