@@ -359,9 +359,9 @@ QColor appThemeColor(AppThemeColor color, bool dark)
     case AppThemeColor::PlotSeriesHumidity:
         return hexColor(kBrandBlue);
     case AppThemeColor::PlotSeriesPressure:
-        return hexColor(kBrandGreen);
+        return hexColor("#40C977");
     case AppThemeColor::PlotSeriesWaveBlue:
-        return hexColor(kBrandBlue);
+        return hexColor(dark ? kBrandBlue : kLightPrimary);
     case AppThemeColor::PlotSeriesWaveOrange:
         return hexColor(kBrandOrange);
     case AppThemeColor::PlotCurrentGuideLine:
@@ -387,9 +387,9 @@ QColor appThemeColor(AppThemeColor color, bool dark)
     case AppThemeColor::TableGrid:
         return hexColor(kClaudeLightBorder);
     case AppThemeColor::TableHighlightedRow:
-        return hexColor("#E5EEF6");
+        return hexColor("#D7E8FA");
     case AppThemeColor::TableSecondaryHighlightedRow:
-        return hexColor("#EEF1E8");
+        return hexColor("#EEF6FF");
     case AppThemeColor::TableDarkSecondaryHighlight:
         return hexColor("#2A3A2A");
     case AppThemeColor::PopupHighlight:

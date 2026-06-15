@@ -713,7 +713,7 @@ protected:
                                     plotRect.bottom() - normalized * plotRect.height()));
         }
 
-        painter.setPen(QPen(appThemeColor(AppThemeColor::PlotPositive, dark), 1.4));
+        painter.setPen(QPen(appThemeColor(AppThemeColor::PlotSeriesWaveBlue, dark), 1.4));
         painter.drawPolyline(polyline);
 
         painter.setPen(dark ? theme.text : appThemeColor(AppThemeColor::PlotAxisStrong, false));
