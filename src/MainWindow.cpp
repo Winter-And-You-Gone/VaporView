@@ -68,6 +68,7 @@
 #include <QStyle>
 #include <QThread>
 #include <QToolButton>
+#include <QVariant>
 #include <QVector>
 #include <QWidgetAction>
 #include <QWindow>
@@ -646,6 +647,7 @@ void addLucideIconPixmaps(QIcon& icon, const QByteArray& svgData, const QColor& 
     }
 }
 
+bool isDarkToolbarTheme();
 QColor toolbarColor(AppThemeColor color);
 
 QIcon createLucideIcon(const QString& iconName, const QColor& color)
@@ -790,9 +792,25 @@ QIcon createTitleBarIcon(const QString& iconName, bool dark)
         : appThemeColor(AppThemeColor::TextStrong, false));
 }
 
+bool isDarkToolbarTheme()
+{
+    if (qApp)
+    {
+        const QVariant value = qApp->property(kAppDarkThemeProperty);
+        if (value.isValid())
+        {
+            return value.toBool();
+        }
+        const QPalette palette = qApp->palette();
+        return palette.color(QPalette::Window).lightness() < 128 ||
+               palette.color(QPalette::Base).lightness() < 128;
+    }
+    return false;
+}
+
 QColor toolbarColor(AppThemeColor color)
 {
-    return appThemeColor(color, false);
+    return appThemeColor(color, isDarkToolbarTheme());
 }
 
 QString titleApplicationPanelStyleSheet(bool dark, int cornerRadius = 8)
@@ -4079,6 +4097,7 @@ void MainWindow::applyStyleConfiguration()
     qApp->setStyleSheet(scaledStyleSheet(themedStyleSheet()));
     setWindowsTitleBarDark(this, dark_theme_enabled_);
     applyScaledUiMetrics();
+    updateThemedIcons();
     updateCustomTitleBarStyle();
 
     if (!isFullScreen() && !isMaximized())
@@ -7402,6 +7421,63 @@ void MainWindow::updateThemeAction()
         ? (is_english_ ? "Switch to light theme" : "切换到亮色模式")
         : (is_english_ ? "Switch to dark theme" : "切换到暗色模式"));
     theme_toggle_action_->setStatusTip(theme_toggle_action_->toolTip());
+}
+
+void MainWindow::updateThemedIcons()
+{
+    if (lang_action_)
+    {
+        lang_action_->setIcon(createLanguageIcon());
+    }
+    if (refresh_ports_btn_)
+    {
+        refresh_ports_btn_->setIcon(createRefreshIcon());
+    }
+    if (connect_btn_)
+    {
+        connect_btn_->setIcon(createConnectIcon());
+    }
+    if (cancel_connect_btn_)
+    {
+        cancel_connect_btn_->setIcon(createCancelIcon());
+    }
+    if (disconnect_btn_)
+    {
+        disconnect_btn_->setIcon(createDisconnectIcon());
+    }
+    if (scheduled_recording_action_)
+    {
+        scheduled_recording_action_->setIcon(createTimerIcon());
+    }
+    if (start_recording_btn_)
+    {
+        start_recording_btn_->setIcon(createPlayIcon());
+    }
+    if (pause_recording_btn_)
+    {
+        pause_recording_btn_->setIcon(createPauseIcon());
+    }
+    if (stop_recording_btn_)
+    {
+        stop_recording_btn_->setIcon(createStopIcon());
+    }
+    if (rtk_config_action_)
+    {
+        rtk_config_action_->setIcon(createRtkSatelliteIcon());
+    }
+    if (clear_log_action_)
+    {
+        clear_log_action_->setIcon(createClearLogIcon());
+    }
+    if (session_viewer_action_)
+    {
+        session_viewer_action_->setIcon(createWaveformViewerIcon());
+    }
+    if (log_filter_btn_)
+    {
+        log_filter_btn_->setIcon(createLogFilterIcon());
+    }
+    updateLogFilterAction();
 }
 
 void MainWindow::updateCustomTitleBarTexts()

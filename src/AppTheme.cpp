@@ -305,7 +305,7 @@ QColor appThemeColor(AppThemeColor color, bool dark)
     case AppThemeColor::AccentWarmHover:
         return hexColor("#E98A67");
     case AppThemeColor::ToolbarBlue:
-        return hexColor(kLightToolbarBlue);
+        return hexColor(dark ? kBrandOrange : kLightToolbarBlue);
     case AppThemeColor::ToolbarGreen:
         return hexColor(kLightToolbarGreen);
     case AppThemeColor::ToolbarRed:

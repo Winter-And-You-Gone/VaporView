@@ -421,6 +421,7 @@ private:
     QString scaledStyleSheet(const QString& styleSheet) const;
     void applyScaledUiMetrics();
     void updateThemeAction();
+    void updateThemedIcons();
     void updateCustomTitleBarTexts();
     void updateCustomTitleBarStyle();
     void updateWindowControlButtons();

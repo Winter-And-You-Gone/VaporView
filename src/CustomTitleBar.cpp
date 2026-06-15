@@ -58,7 +58,22 @@ constexpr const char *kTitleBarButtonProperty = "customTitleBarButton";
 constexpr const char *kTitleBarHoverProperty = "titleBarHover";
 QColor toolbarColor(AppThemeColor color)
 {
-    return appThemeColor(color, false);
+    bool dark = false;
+    if (qApp)
+    {
+        const QVariant value = qApp->property(kAppDarkThemeProperty);
+        if (value.isValid())
+        {
+            dark = value.toBool();
+        }
+        else
+        {
+            const QPalette palette = qApp->palette();
+            dark = palette.color(QPalette::Window).lightness() < 128 ||
+                   palette.color(QPalette::Base).lightness() < 128;
+        }
+    }
+    return appThemeColor(color, dark);
 }
 
 QString findResourceFile(const QString& relativePath)
