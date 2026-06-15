@@ -387,11 +387,11 @@ QColor appThemeColor(AppThemeColor color, bool dark)
     case AppThemeColor::TableGrid:
         return hexColor(kClaudeLightBorder);
     case AppThemeColor::TableHighlightedRow:
-        return hexColor("#D7E8FA");
+        return hexColor(dark ? "#244F7A" : "#D7E8FA");
     case AppThemeColor::TableSecondaryHighlightedRow:
-        return hexColor("#EEF6FF");
+        return hexColor(dark ? "#1B344F" : "#EEF6FF");
     case AppThemeColor::TableDarkSecondaryHighlight:
-        return hexColor("#2A3A2A");
+        return hexColor("#1B344F");
     case AppThemeColor::PopupHighlight:
         return hexColor(dark ? "#2A2925" : kClaudeLightSubtle);
     case AppThemeColor::PopupHighlightPressed:

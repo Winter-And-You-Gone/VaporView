@@ -210,10 +210,10 @@ SessionTableTheme sessionTableThemeFor(const QWidget *widget)
             appThemeColor(AppThemeColor::PlotBorder, true),
             appThemeColor(AppThemeColor::SurfaceRaised, true),
             appThemeColor(AppThemeColor::TextTitle, true),
-            appThemeColor(AppThemeColor::PrimarySubtlePressed, true),
+            appThemeColor(AppThemeColor::TableHighlightedRow, true),
             appThemeColor(AppThemeColor::White, true),
-            appThemeColor(AppThemeColor::PrimarySubtle, true),
-            appThemeColor(AppThemeColor::TableDarkSecondaryHighlight, true)
+            appThemeColor(AppThemeColor::TableHighlightedRow, true),
+            appThemeColor(AppThemeColor::TableSecondaryHighlightedRow, true)
         };
     }
 
