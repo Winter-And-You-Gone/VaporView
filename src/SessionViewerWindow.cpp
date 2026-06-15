@@ -70,7 +70,7 @@ constexpr quint64 kWaveformTimestampBytes = sizeof(quint64);
 constexpr quint64 kFloatBytes = sizeof(float);
 constexpr int kSessionViewerPlotHeight = 120;
 constexpr int kSessionViewerPlotLeftMargin = 64;
-constexpr int kSessionViewerTrendPlotLeftMargin = 112;
+constexpr int kSessionViewerTrendPlotLeftPadding = 16;
 constexpr int kSessionViewerPlotRightMargin = 10;
 constexpr int kSessionViewerPlotTopMargin = 12;
 constexpr int kSessionViewerPlotBottomMargin = 28;
@@ -487,6 +487,27 @@ QString formatGuideValue(double value, int decimals, const QString& unit = QStri
     }
     const QString number = QString::number(value, 'f', decimals);
     return unit.isEmpty() ? number : QStringLiteral("%1 %2").arg(number, unit);
+}
+
+int trendPlotLeftMargin(const QFontMetrics& fm,
+                        const QString& maxLabel = QString(),
+                        const QString& midLabel = QString(),
+                        const QString& minLabel = QString())
+{
+    int labelWidth = fm.horizontalAdvance(formatGuideValue(9999.999, 3, QStringLiteral("hPa")));
+    if (!maxLabel.isEmpty())
+    {
+        labelWidth = std::max(labelWidth, fm.horizontalAdvance(maxLabel));
+    }
+    if (!midLabel.isEmpty())
+    {
+        labelWidth = std::max(labelWidth, fm.horizontalAdvance(midLabel));
+    }
+    if (!minLabel.isEmpty())
+    {
+        labelWidth = std::max(labelWidth, fm.horizontalAdvance(minLabel));
+    }
+    return labelWidth + kSessionViewerTrendPlotLeftPadding;
 }
 
 float waveformPeakValue(const float* samples, int sampleCount, int searchStartIndex, int searchEndIndex)
@@ -1293,8 +1314,10 @@ private:
 
         if (values_.isEmpty())
         {
+            const QFontMetrics fm = painter.fontMetrics();
+            const int leftMargin = trendPlotLeftMargin(fm);
             const QRectF emptyPlotRect = rect().adjusted(
-                kSessionViewerPlotLeftMargin,
+                leftMargin,
                 kSessionViewerPlotTopMargin,
                 -kSessionViewerPlotRightMargin,
                 -kSessionViewerPlotBottomMargin);
@@ -1326,7 +1349,7 @@ private:
         const QString midLabel = hasFiniteValues ? formatGuideValue((maxValue + minValue) * 0.5, 3, unit_) : QStringLiteral("---");
         const QString minLabel = hasFiniteValues ? formatGuideValue(minValue, 3, unit_) : QStringLiteral("---");
         const QFontMetrics fm = painter.fontMetrics();
-        const int leftMargin = kSessionViewerTrendPlotLeftMargin;
+        const int leftMargin = trendPlotLeftMargin(fm, maxLabel, midLabel, minLabel);
         const QRectF plotRect = rect().adjusted(
             leftMargin,
             kSessionViewerPlotTopMargin,
