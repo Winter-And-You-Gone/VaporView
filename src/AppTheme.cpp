@@ -48,6 +48,16 @@ constexpr const char *kBrandLightGray = "#E8E6DC";
 constexpr const char *kBrandOrange = "#D97757";
 constexpr const char *kBrandBlue = "#6A9BCC";
 constexpr const char *kBrandGreen = "#788C5D";
+constexpr const char *kClaudeLightCanvas = "#FDFDFC";
+constexpr const char *kClaudeLightSurface = "#FFFFFF";
+constexpr const char *kClaudeLightAlt = "#F7F7F6";
+constexpr const char *kClaudeLightSubtle = "#F2F2F2";
+constexpr const char *kClaudeLightPressed = "#E8E8E5";
+constexpr const char *kClaudeLightBorder = "#E5E5E2";
+constexpr const char *kClaudeLightBorderStrong = "#B8B7B0";
+constexpr const char *kClaudeLightTextSecondary = "#5F5F5A";
+constexpr const char *kClaudeLightTextMuted = "#8B8A84";
+constexpr const char *kClaudeLightTextDisabled = "#A6A49D";
 
 const ThemeReplacement kColorTokens[] = {
     {"@vv-window", AppThemeColor::Window},
@@ -191,21 +201,21 @@ QColor appThemeColor(AppThemeColor color, bool dark)
     switch (color)
     {
     case AppThemeColor::Window:
-        return hexColor(dark ? kBrandDark : kBrandLight);
+        return hexColor(dark ? kBrandDark : kClaudeLightCanvas);
     case AppThemeColor::Surface:
-        return hexColor(dark ? "#1C1B19" : kBrandLight);
+        return hexColor(dark ? "#1C1B19" : kClaudeLightCanvas);
     case AppThemeColor::SurfaceRaised:
-        return hexColor(dark ? "#23221F" : "#FFFFFF");
+        return hexColor(dark ? "#23221F" : kClaudeLightSurface);
     case AppThemeColor::SurfaceAlt:
-        return hexColor(dark ? "#2A2925" : "#F2F0E8");
+        return hexColor(dark ? "#2A2925" : kClaudeLightAlt);
     case AppThemeColor::SurfaceSubtle:
-        return hexColor(dark ? "#33312C" : kBrandLightGray);
+        return hexColor(dark ? "#33312C" : kClaudeLightSubtle);
     case AppThemeColor::SurfaceSunken:
-        return hexColor(dark ? "#0F0F0E" : "#F4F2EA");
+        return hexColor(dark ? "#0F0F0E" : kClaudeLightAlt);
     case AppThemeColor::Border:
-        return hexColor(dark ? "#34322D" : "#E1DED4");
+        return hexColor(dark ? "#34322D" : kClaudeLightBorder);
     case AppThemeColor::BorderStrong:
-        return hexColor(dark ? "#4C4941" : kBrandMidGray);
+        return hexColor(dark ? "#4C4941" : kClaudeLightBorderStrong);
     case AppThemeColor::Text:
         return hexColor(dark ? kBrandLight : kBrandDark);
     case AppThemeColor::TextStrong:
@@ -213,33 +223,33 @@ QColor appThemeColor(AppThemeColor color, bool dark)
     case AppThemeColor::TextTitle:
         return hexColor(dark ? kBrandLight : kBrandDark);
     case AppThemeColor::TextSecondary:
-        return hexColor(dark ? "#D3D0C6" : "#615F58");
+        return hexColor(dark ? "#D3D0C6" : kClaudeLightTextSecondary);
     case AppThemeColor::TextMuted:
-        return hexColor(dark ? kBrandMidGray : "#7A776E");
+        return hexColor(dark ? kBrandMidGray : kClaudeLightTextMuted);
     case AppThemeColor::TextDisabled:
-        return hexColor(dark ? "#7D7A70" : kBrandMidGray);
+        return hexColor(dark ? "#7D7A70" : kClaudeLightTextDisabled);
     case AppThemeColor::TextDisabledStrong:
-        return hexColor(dark ? kBrandLightGray : kBrandLight);
+        return hexColor(dark ? kBrandLightGray : kClaudeLightCanvas);
     case AppThemeColor::TextInverse:
-        return hexColor(kBrandLight);
+        return hexColor(kClaudeLightSurface);
     case AppThemeColor::FieldBackground:
-        return hexColor(dark ? "#1C1B19" : "#F4F2EA");
+        return hexColor(dark ? "#1C1B19" : kClaudeLightSurface);
     case AppThemeColor::FieldBorder:
-        return hexColor(dark ? "#34322D" : "#D8D5C8");
+        return hexColor(dark ? "#34322D" : kClaudeLightBorder);
     case AppThemeColor::ConfigWindow:
-        return hexColor(dark ? kBrandDark : "#F4F2EA");
+        return hexColor(dark ? kBrandDark : kClaudeLightCanvas);
     case AppThemeColor::ConfigSurface:
-        return hexColor(dark ? "#1C1B19" : kBrandLight);
+        return hexColor(dark ? "#1C1B19" : kClaudeLightSurface);
     case AppThemeColor::ConfigBorder:
-        return hexColor(dark ? "#34322D" : "#D8D5C8");
+        return hexColor(dark ? "#34322D" : kClaudeLightBorder);
     case AppThemeColor::ConfigTitleText:
         return hexColor(dark ? kBrandLight : kBrandDark);
     case AppThemeColor::ConfigText:
         return hexColor(dark ? "#E8E6DC" : "#292825");
     case AppThemeColor::ConfigMutedText:
-        return hexColor(dark ? kBrandMidGray : "#7A776E");
+        return hexColor(dark ? kBrandMidGray : kClaudeLightTextMuted);
     case AppThemeColor::ConfigToggleInactiveText:
-        return hexColor(dark ? kBrandLightGray : "#615F58");
+        return hexColor(dark ? kBrandLightGray : kClaudeLightTextSecondary);
     case AppThemeColor::Primary:
         return hexColor(kBrandOrange);
     case AppThemeColor::PrimaryHover:
@@ -257,29 +267,29 @@ QColor appThemeColor(AppThemeColor color, bool dark)
     case AppThemeColor::TooltipBackground:
         return hexColor(dark ? "#1C1B19" : kBrandDark);
     case AppThemeColor::DisabledFill:
-        return hexColor(dark ? "#34322D" : kBrandLightGray);
+        return hexColor(dark ? "#34322D" : kClaudeLightPressed);
     case AppThemeColor::ControlArrow:
-        return hexColor(dark ? kBrandMidGray : "#7A776E");
+        return hexColor(dark ? kBrandMidGray : kClaudeLightTextMuted);
     case AppThemeColor::ScrollbarHandle:
-        return hexColor(dark ? "#4C4941" : kBrandMidGray);
+        return hexColor(dark ? "#4C4941" : kClaudeLightBorderStrong);
     case AppThemeColor::ScrollbarHandleHover:
-        return hexColor(dark ? "#68645B" : "#8E8A80");
+        return hexColor(dark ? "#68645B" : "#94938D");
     case AppThemeColor::TitleBarHover:
-        return hexColor(dark ? "#23221F" : kBrandLightGray);
+        return hexColor(dark ? "#23221F" : kClaudeLightSubtle);
     case AppThemeColor::CloseHover:
         return hexColor(dark ? "#3A211A" : "#F1DAD2");
     case AppThemeColor::MenuPanel:
-        return hexColor(dark ? "#1C1B19" : kBrandLight);
+        return hexColor(dark ? "#1C1B19" : kClaudeLightSurface);
     case AppThemeColor::MenuHover:
-        return hexColor(dark ? "#2A2925" : kBrandLightGray);
+        return hexColor(dark ? "#2A2925" : kClaudeLightSubtle);
     case AppThemeColor::MenuText:
         return hexColor(dark ? kBrandLight : kBrandDark);
     case AppThemeColor::MenuMetaText:
-        return hexColor(dark ? "#D3D0C6" : "#615F58");
+        return hexColor(dark ? "#D3D0C6" : kClaudeLightTextSecondary);
     case AppThemeColor::MenuCheckText:
         return hexColor(dark ? "#AFC38B" : kBrandGreen);
     case AppThemeColor::MenuDisabledText:
-        return hexColor(dark ? "#7D7A70" : kBrandMidGray);
+        return hexColor(dark ? "#7D7A70" : kClaudeLightTextDisabled);
     case AppThemeColor::AccentWarm:
         return hexColor(kBrandOrange);
     case AppThemeColor::AccentWarmHover:
@@ -317,13 +327,13 @@ QColor appThemeColor(AppThemeColor color, bool dark)
     case AppThemeColor::SearchHighlight:
         return hexColor("#F3D1C4");
     case AppThemeColor::PlotGrid:
-        return hexColor(dark ? "#34322D" : kBrandLightGray);
+        return hexColor(dark ? "#34322D" : kClaudeLightPressed);
     case AppThemeColor::PlotBorder:
-        return hexColor(dark ? "#34322D" : "#D8D5C8");
+        return hexColor(dark ? "#34322D" : kClaudeLightBorder);
     case AppThemeColor::PlotText:
-        return hexColor(dark ? "#D3D0C6" : "#615F58");
+        return hexColor(dark ? "#D3D0C6" : kClaudeLightTextSecondary);
     case AppThemeColor::PlotMutedText:
-        return hexColor(dark ? kBrandMidGray : "#7A776E");
+        return hexColor(dark ? kBrandMidGray : kClaudeLightTextMuted);
     case AppThemeColor::PlotAxisStrong:
         return hexColor(dark ? kBrandLight : kBrandDark);
     case AppThemeColor::PlotLightGuide:
@@ -355,7 +365,7 @@ QColor appThemeColor(AppThemeColor color, bool dark)
     case AppThemeColor::ProgressChunk:
         return hexColor(kBrandOrange);
     case AppThemeColor::RangeSelectorBackground:
-        return hexColor(dark ? "#34322D" : kBrandLightGray);
+        return hexColor(dark ? "#34322D" : kClaudeLightSubtle);
     case AppThemeColor::RangeSelectorHandle:
         return hexColor(kBrandBlue);
     case AppThemeColor::RangeSelectorHandleActive:
@@ -365,7 +375,7 @@ QColor appThemeColor(AppThemeColor color, bool dark)
     case AppThemeColor::TableText:
         return hexColor(kBrandDark);
     case AppThemeColor::TableGrid:
-        return hexColor(kBrandLightGray);
+        return hexColor(kClaudeLightBorder);
     case AppThemeColor::TableHighlightedRow:
         return hexColor("#E5EEF6");
     case AppThemeColor::TableSecondaryHighlightedRow:
@@ -373,25 +383,25 @@ QColor appThemeColor(AppThemeColor color, bool dark)
     case AppThemeColor::TableDarkSecondaryHighlight:
         return hexColor("#2A3A2A");
     case AppThemeColor::PopupHighlight:
-        return hexColor(dark ? "#2A2925" : kBrandLightGray);
+        return hexColor(dark ? "#2A2925" : kClaudeLightSubtle);
     case AppThemeColor::PopupHighlightPressed:
-        return hexColor(dark ? "#34322D" : "#D8D5C8");
+        return hexColor(dark ? "#34322D" : kClaudeLightPressed);
     case AppThemeColor::MapCanvas:
-        return hexColor(kBrandLight);
+        return hexColor(kClaudeLightCanvas);
     case AppThemeColor::MapViewport:
-        return hexColor("#F2F0E8");
+        return hexColor(kClaudeLightAlt);
     case AppThemeColor::MapTileBackground:
-        return hexColor(kBrandLightGray);
+        return hexColor(kClaudeLightSubtle);
     case AppThemeColor::MapTileBorder:
-        return hexColor("#D8D5C8");
+        return hexColor(kClaudeLightBorder);
     case AppThemeColor::MapText:
-        return hexColor("#615F58");
+        return hexColor(kClaudeLightTextSecondary);
     case AppThemeColor::MapMutedText:
-        return hexColor("#7A776E");
+        return hexColor(kClaudeLightTextMuted);
     case AppThemeColor::MapBoundary:
         return hexColor(kBrandMidGray);
     case AppThemeColor::MapGrid:
-        return QColor(250, 249, 245, 120);
+        return QColor(253, 253, 252, 120);
     case AppThemeColor::TrackDefault:
         return hexColor(kBrandBlue);
     case AppThemeColor::TrackStart:
