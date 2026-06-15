@@ -494,7 +494,7 @@ int trendPlotLeftMargin(const QFontMetrics& fm,
                         const QString& midLabel = QString(),
                         const QString& minLabel = QString())
 {
-    int labelWidth = fm.horizontalAdvance(formatGuideValue(9999.999, 3, QStringLiteral("hPa")));
+    int labelWidth = fm.horizontalAdvance(formatGuideValue(9999.999, 3));
     if (!maxLabel.isEmpty())
     {
         labelWidth = std::max(labelWidth, fm.horizontalAdvance(maxLabel));
@@ -1345,9 +1345,9 @@ private:
         }
 
         const bool hasFiniteValues = std::isfinite(minValue) && std::isfinite(maxValue);
-        const QString maxLabel = hasFiniteValues ? formatGuideValue(maxValue, 3, unit_) : QStringLiteral("---");
-        const QString midLabel = hasFiniteValues ? formatGuideValue((maxValue + minValue) * 0.5, 3, unit_) : QStringLiteral("---");
-        const QString minLabel = hasFiniteValues ? formatGuideValue(minValue, 3, unit_) : QStringLiteral("---");
+        const QString maxLabel = hasFiniteValues ? formatGuideValue(maxValue, 3) : QStringLiteral("---");
+        const QString midLabel = hasFiniteValues ? formatGuideValue((maxValue + minValue) * 0.5, 3) : QStringLiteral("---");
+        const QString minLabel = hasFiniteValues ? formatGuideValue(minValue, 3) : QStringLiteral("---");
         const QFontMetrics fm = painter.fontMetrics();
         const int leftMargin = trendPlotLeftMargin(fm, maxLabel, midLabel, minLabel);
         const QRectF plotRect = rect().adjusted(
@@ -1412,7 +1412,7 @@ private:
             cache.plot_rect,
             QPointF(x, y),
             QString::number(current_index_ + 1),
-            formatGuideValue(values_.at(current_index_), 3, unit_));
+            formatGuideValue(values_.at(current_index_), 3));
         painter.setPen(Qt::NoPen);
         painter.setBrush(line_color_);
         painter.drawEllipse(QPointF(x, y), 3.0, 3.0);
@@ -2086,9 +2086,9 @@ void SessionViewerWindow::updateTexts()
     {
         static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setEnglish(is_english_);
     }
-    temperature_plot_title_->setText(is_english_ ? "Temperature" : "温度");
-    humidity_plot_title_->setText(is_english_ ? "Humidity" : "湿度");
-    pressure_plot_title_->setText(is_english_ ? "Pressure" : "气压");
+    temperature_plot_title_->setText(is_english_ ? "Temperature  °C" : "温度  ℃");
+    humidity_plot_title_->setText(is_english_ ? "Humidity  %RH" : "湿度  %RH");
+    pressure_plot_title_->setText(is_english_ ? "Pressure  hPa" : "气压  hPa");
     updateWaveformFrameFilterButtonText();
     updatePeakPlotModeButtonText();
     updatePeakFilterButtonText();
