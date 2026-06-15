@@ -139,6 +139,14 @@ QGroupBox#sensorGroupBox {
     padding: 0px 0px 0px 0px;
 }
 
+QGroupBox#sensorRowContainer {
+    margin-top: 0px;
+    background-color: transparent;
+    border: none;
+    border-radius: 0px;
+    padding: 0px 0px 0px 0px;
+}
+
 QFrame#logPanelFrame {
     background-color: @vv-surface;
     border: 1px solid @vv-border;

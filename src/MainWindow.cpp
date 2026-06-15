@@ -1210,6 +1210,13 @@ QGroupBox#sensorGroupBox {
     padding: 0px;
     color: @vv-text;
 }
+QGroupBox#sensorRowContainer {
+    background-color: transparent;
+    border: none;
+    border-radius: 0px;
+    margin-top: 0px;
+    padding: 0px;
+}
 QFrame#logPanelFrame {
     background-color: @vv-surface;
     border: 1px solid @vv-border;
@@ -3868,6 +3875,7 @@ void MainWindow::loadModernStyleSheet()
             "QStatusBar { background-color: @vv-surface; border-top: 1px solid @vv-border; padding: 4px 12px; color: @vv-text; font-size: 14px; }"
             "QGroupBox { background-color: @vv-surface; border: 1px solid @vv-border; border-top: 40px solid @vv-surface; border-radius: 8px; margin-top: 0px; padding: 8px 8px 8px 8px; font-size: 15px; font-weight: bold; color: @vv-text; }"
             "QGroupBox#sensorGroupBox { margin-top: 0px; background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; padding: 0px 0px 0px 0px; }"
+            "QGroupBox#sensorRowContainer { margin-top: 0px; background-color: transparent; border: none; border-radius: 0px; padding: 0px 0px 0px 0px; }"
             "QFrame#logPanelFrame { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
             "QFrame#recordingStatusCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
             "QFrame#recordingStatusCard QWidget#sectionTitleBar { background-color: @vv-surface; border: none; border-bottom: 1px solid @vv-border; border-top-left-radius: 7px; border-top-right-radius: 7px; }"
@@ -6755,7 +6763,7 @@ void MainWindow::setupConfigPanel()
 void MainWindow::setupDataPanels()
 {
     data_group_ = new QGroupBox(this);
-    data_group_->setObjectName("sensorGroupBox");
+    data_group_->setObjectName("sensorRowContainer");
     data_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto *data_layout = new QVBoxLayout(data_group_);
     data_layout->setSpacing(0);
