@@ -1,6 +1,8 @@
 #ifndef VaporView_RANGE_SELECTION_AXIS_WIDGET_H_
 #define VaporView_RANGE_SELECTION_AXIS_WIDGET_H_
 
+#include "AppTheme.h"
+
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPalette>
@@ -109,12 +111,12 @@ protected:
             ? rect().adjusted(8, 11, -8, -5)
             : rect().adjusted(10, 16, -10, -16);
         painter.setPen(Qt::NoPen);
-        painter.setBrush(dark ? QColor("#202020") : QColor("#e7edf5"));
+        painter.setBrush(VaporView::appThemeColor(VaporView::AppThemeColor::RangeSelectorBackground, dark));
         painter.drawRoundedRect(trackRect, 4, 4);
 
         if (total_count_ <= 0)
         {
-            painter.setPen(dark ? QColor("#8fa1b3") : QColor("#7a8899"));
+            painter.setPen(VaporView::appThemeColor(VaporView::AppThemeColor::TextMuted, dark));
             painter.drawText(rect(), Qt::AlignCenter, empty_text_);
             return;
         }
@@ -125,16 +127,16 @@ protected:
         const qreal rightX = positionForIndex(endIndex, trackRect);
         const QRectF selectionRect(leftX, trackRect.top(), std::max(8.0, rightX - leftX), trackRect.height());
 
-        painter.setBrush(QColor("#7fb3ff"));
+        painter.setBrush(VaporView::appThemeColor(VaporView::AppThemeColor::RangeSelectorHandle, dark));
         painter.drawRoundedRect(selectionRect, 4, 4);
 
         const QRectF leftHandle(leftX - 4, trackRect.top() - 4, 8, trackRect.height() + 8);
         const QRectF rightHandle(rightX - 4, trackRect.top() - 4, 8, trackRect.height() + 8);
-        painter.setBrush(QColor("#2f6fd6"));
+        painter.setBrush(VaporView::appThemeColor(VaporView::AppThemeColor::RangeSelectorHandleActive, dark));
         painter.drawRoundedRect(leftHandle, 3, 3);
         painter.drawRoundedRect(rightHandle, 3, 3);
 
-        painter.setPen(dark ? QColor("#a7b4c2") : QColor("#5e6b78"));
+        painter.setPen(VaporView::appThemeColor(VaporView::AppThemeColor::PlotText, dark));
         const qreal labelHeight = compact_mode_ ? 10.0 : 14.0;
         painter.drawText(QRectF(trackRect.left(), 0, trackRect.width() * 0.5, labelHeight),
                          Qt::AlignLeft | Qt::AlignVCenter,

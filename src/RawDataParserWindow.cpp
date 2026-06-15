@@ -1,3 +1,4 @@
+#include "AppTheme.h"
 #include "RawDataParserWindow.h"
 #include "CustomTitleBar.h"
 #include "TcpWaveEncoding.h"
@@ -47,6 +48,9 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+
+using VaporView::AppThemeColor;
+using VaporView::appThemeColor;
 
 namespace
 {
@@ -1246,7 +1250,7 @@ void RawDataParserWindow::Impl::showDecodedRecord(const RawRecordIndex& record, 
         {
             for (int col = 0; col < detail_tree->columnCount(); ++col)
             {
-                item->setBackground(col, QColor("#ffe1e1"));
+                item->setBackground(col, appThemeColor(AppThemeColor::ErrorHighlight, false));
             }
         }
     }
@@ -1294,7 +1298,7 @@ void RawDataParserWindow::Impl::highlightHexRange(int offset, int length)
     {
         const int end = std::min<int>(offset + length, static_cast<int>(current_hex_positions.size()));
         QTextCharFormat format;
-        format.setBackground(QColor("#ffef9a"));
+        format.setBackground(appThemeColor(AppThemeColor::SearchHighlight, false));
         for (int i = offset; i < end; ++i)
         {
             QTextEdit::ExtraSelection selection;

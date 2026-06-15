@@ -126,6 +126,19 @@ target_link_libraries(vaporview_protocol PUBLIC
     Qt6::Core
 )
 
+add_library(vaporview_app_theme STATIC
+    src/AppTheme.cpp
+    include/AppTheme.h
+)
+
+target_include_directories(vaporview_app_theme PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+target_link_libraries(vaporview_app_theme PUBLIC
+    Qt6::Widgets
+)
+
 set(SKY_CORE_SOURCES
     src/SkyRuntime.cpp
     src/SkyDeviceManager.cpp
@@ -205,9 +218,11 @@ target_include_directories(vaporview_sky_tui PUBLIC
 )
 
 target_link_libraries(vaporview_sky_tui PUBLIC
+    vaporview_app_theme
     vaporview_protocol
     Qt6::Core
     Qt6::Network
+    Qt6::Widgets
 )
 
 set(NAV_SOURCES
@@ -226,6 +241,7 @@ set(NAV_SOURCES
 )
 
 set(NAV_HEADERS
+    include/AppTheme.h
     include/MainWindow.h
     include/GroundTelemetryService.h
     include/SkyDeviceConfigDialog.h
@@ -326,6 +342,7 @@ target_include_directories(VaporView PRIVATE
 
 target_link_libraries(VaporView PRIVATE
     ${QT_LIBRARIES}
+    vaporview_app_theme
     vaporview_sky_core
     rtklib_strsvr
 )
@@ -460,6 +477,7 @@ if(BUILD_TESTING)
         ${CMAKE_SOURCE_DIR}/src
     )
     target_link_libraries(sky_device_config_dialog_test PRIVATE
+        vaporview_app_theme
         vaporview_sky_core
         Qt6::Widgets
         Qt6::Svg
@@ -572,6 +590,7 @@ endif()
 
 if(MSVC)
     target_compile_options(vaporview_protocol PRIVATE /W4 /utf-8 /Zc:__cplusplus /permissive-)
+    target_compile_options(vaporview_app_theme PRIVATE /W4 /utf-8 /Zc:__cplusplus /permissive-)
     target_compile_options(vaporview_sky_core PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /W4 /utf-8 /Zc:__cplusplus /permissive-)
     target_compile_options(vaporview_sky_tui PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /W4 /utf-8 /Zc:__cplusplus /permissive-)
     target_compile_options(VaporView PRIVATE /W4 /utf-8 /Zc:__cplusplus /permissive-)
@@ -580,6 +599,11 @@ if(MSVC)
     target_compile_options(VaporViewSkyTui PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /W4 /utf-8 /Zc:__cplusplus /permissive-)
 else()
     target_compile_options(vaporview_protocol PRIVATE
+        -Wall
+        -Wextra
+        -Wpedantic
+    )
+    target_compile_options(vaporview_app_theme PRIVATE
         -Wall
         -Wextra
         -Wpedantic

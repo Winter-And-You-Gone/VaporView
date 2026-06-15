@@ -184,6 +184,7 @@ private:
     VaporView::SerialPort gga_serial_;
     QString gga_buffer_;
     QString gga_status_message_;
+    bool gga_status_healthy_;
     std::chrono::steady_clock::time_point gga_last_open_attempt_;
     std::chrono::steady_clock::time_point gga_last_sentence_time_;
     std::chrono::steady_clock::time_point gga_last_epsilon_sample_time_;

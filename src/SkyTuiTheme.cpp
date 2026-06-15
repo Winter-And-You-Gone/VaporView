@@ -5,6 +5,7 @@
 #endif
 
 #include "SkyTuiTheme.h"
+#include "AppTheme.h"
 
 #include <QtGlobal>
 #include <algorithm>
@@ -26,21 +27,19 @@ namespace VaporView
 {
 namespace
 {
-const SkyTuiRgb kBlack{0, 0, 0};
-const SkyTuiRgb kAccent{100, 155, 255};
-const SkyTuiRgb kMuted{135, 143, 156};
-const SkyTuiRgb kGreen{95, 220, 150};
-const SkyTuiRgb kYellow{255, 218, 55};
-const SkyTuiRgb kRed{255, 110, 110};
-const SkyTuiRgb kBlue{100, 155, 255};
+SkyTuiRgb tuiRgb(AppThemeColor color)
+{
+    const QColor value = appThemeColor(color, true);
+    return {value.red(), value.green(), value.blue()};
+}
 
-const SkyTuiRgb kGradient[] = {
-    {255, 238, 80},
-    {255, 218, 55},
-    {255, 185, 55},
-    {245, 135, 95},
-    {190, 110, 190},
-    {100, 155, 255},
+const AppThemeColor kGradient[] = {
+    AppThemeColor::TuiGradient0,
+    AppThemeColor::TuiGradient1,
+    AppThemeColor::TuiGradient2,
+    AppThemeColor::TuiGradient3,
+    AppThemeColor::TuiGradient4,
+    AppThemeColor::TuiGradient5,
 };
 
 SkyTuiRgb interpolate(const SkyTuiRgb& a, const SkyTuiRgb& b, double t)
@@ -58,16 +57,16 @@ SkyTuiRgb gradientAt(double x)
     const int count = static_cast<int>(sizeof(kGradient) / sizeof(kGradient[0]));
     if (x <= 0.0)
     {
-        return kGradient[0];
+        return tuiRgb(kGradient[0]);
     }
     if (x >= 1.0)
     {
-        return kGradient[count - 1];
+        return tuiRgb(kGradient[count - 1]);
     }
     const double scaled = x * (count - 1);
     const int index = static_cast<int>(scaled);
     const double local = scaled - index;
-    return interpolate(kGradient[index], kGradient[std::min(index + 1, count - 1)], local);
+    return interpolate(tuiRgb(kGradient[index]), tuiRgb(kGradient[std::min(index + 1, count - 1)]), local);
 }
 
 }  // namespace
@@ -137,7 +136,7 @@ QString SkyTuiTheme::endSynchronizedUpdate()
 
 QString SkyTuiTheme::clearScreen()
 {
-    return background(kBlack) + QStringLiteral("\x1b[2J\x1b[3J\x1b[H");
+    return background(tuiRgb(AppThemeColor::TuiBackground)) + QStringLiteral("\x1b[2J\x1b[3J\x1b[H");
 }
 
 QString SkyTuiTheme::moveTo(int row, int column)
@@ -157,7 +156,7 @@ QString SkyTuiTheme::showCursor()
 
 QString SkyTuiTheme::reset()
 {
-    return QStringLiteral("\x1b[0m") + background(kBlack);
+    return QStringLiteral("\x1b[0m") + background(tuiRgb(AppThemeColor::TuiBackground));
 }
 
 QString SkyTuiTheme::bold()
@@ -187,32 +186,32 @@ QString SkyTuiTheme::background(const SkyTuiRgb& color)
 
 SkyTuiRgb SkyTuiTheme::accent()
 {
-    return kAccent;
+    return tuiRgb(AppThemeColor::TuiAccent);
 }
 
 SkyTuiRgb SkyTuiTheme::muted()
 {
-    return kMuted;
+    return tuiRgb(AppThemeColor::TuiMuted);
 }
 
 SkyTuiRgb SkyTuiTheme::green()
 {
-    return kGreen;
+    return tuiRgb(AppThemeColor::TuiGreen);
 }
 
 SkyTuiRgb SkyTuiTheme::yellow()
 {
-    return kYellow;
+    return tuiRgb(AppThemeColor::TuiYellow);
 }
 
 SkyTuiRgb SkyTuiTheme::red()
 {
-    return kRed;
+    return tuiRgb(AppThemeColor::TuiRed);
 }
 
 SkyTuiRgb SkyTuiTheme::blue()
 {
-    return kBlue;
+    return tuiRgb(AppThemeColor::TuiBlue);
 }
 
 QStringList SkyTuiTheme::logoLines()

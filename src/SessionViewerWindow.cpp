@@ -1,3 +1,4 @@
+#include "AppTheme.h"
 #include "SessionViewerWindow.h"
 #include "CustomTitleBar.h"
 #include "RangeSelectionAxisWidget.h"
@@ -60,6 +61,9 @@
 #include <functional>
 #include <limits>
 
+using VaporView::AppThemeColor;
+using VaporView::appThemeColor;
+
 namespace
 {
 constexpr quint64 kWaveformTimestampBytes = sizeof(quint64);
@@ -82,14 +86,6 @@ constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
 constexpr quint32 kUnifiedRawRecordMarker = 0x44525756u;
 constexpr quint16 kRawSourceTcpWave = 5u;
 constexpr quint32 kRawTcpWaveCombinedPayloadFlag = 0x00000001u;
-const QColor kHighlightedCsvRowColor("#c7e3ff");
-const QColor kSecondaryHighlightedCsvRowColor("#e8f3ff");
-const QColor kDefaultCsvRowColor("#ffffff");
-const QColor kCurrentGuideLineColor("#ffb347");
-const QColor kCurrentGuideLabelFillColor("#8b4a00");
-const QColor kCurrentGuideLabelBorderColor("#5f3000");
-const QColor kCurrentGuideLabelTextColor("#fff7ea");
-
 QFont numericFontFrom(const QFont& base)
 {
     QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
@@ -190,10 +186,10 @@ SessionPlotTheme sessionPlotThemeFor(const QWidget *widget)
     const bool dark = background.lightness() < 128;
     return {
         background,
-        dark ? QColor("#202020") : QColor("#e3e8ef"),
-        dark ? QColor("#202020") : QColor("#cfd7e3"),
-        dark ? QColor("#a7b4c2") : QColor("#5e6b78"),
-        dark ? QColor("#8fa1b3") : QColor("#7a8899")
+        appThemeColor(AppThemeColor::PlotGrid, dark),
+        appThemeColor(AppThemeColor::PlotBorder, dark),
+        appThemeColor(AppThemeColor::PlotText, dark),
+        appThemeColor(AppThemeColor::PlotMutedText, dark)
     };
 }
 
@@ -209,28 +205,28 @@ SessionTableTheme sessionTableThemeFor(const QWidget *widget)
     if (dark)
     {
         return {
-            QColor("#121212"),
-            QColor("#e5e7eb"),
-            QColor("#2a2a2a"),
-            QColor("#181818"),
-            QColor("#d8dee9"),
-            QColor("#245b8f"),
-            QColor("#ffffff"),
-            QColor("#1d4f78"),
-            QColor("#17384f")
+            appThemeColor(AppThemeColor::Surface, true),
+            appThemeColor(AppThemeColor::Text, true),
+            appThemeColor(AppThemeColor::PlotBorder, true),
+            appThemeColor(AppThemeColor::SurfaceRaised, true),
+            appThemeColor(AppThemeColor::TextTitle, true),
+            appThemeColor(AppThemeColor::PrimarySubtlePressed, true),
+            appThemeColor(AppThemeColor::White, true),
+            appThemeColor(AppThemeColor::PrimarySubtle, true),
+            appThemeColor(AppThemeColor::TableDarkSecondaryHighlight, true)
         };
     }
 
     return {
-        kDefaultCsvRowColor,
-        QColor("#1f2933"),
-        QColor("#e5e7eb"),
-        QColor("#ffffff"),
-        QColor("#1f2933"),
-        kHighlightedCsvRowColor,
-        QColor("#1f2933"),
-        kHighlightedCsvRowColor,
-        kSecondaryHighlightedCsvRowColor
+        appThemeColor(AppThemeColor::TableDefaultRow, false),
+        appThemeColor(AppThemeColor::TableText, false),
+        appThemeColor(AppThemeColor::TableGrid, false),
+        appThemeColor(AppThemeColor::White, false),
+        appThemeColor(AppThemeColor::TableText, false),
+        appThemeColor(AppThemeColor::TableHighlightedRow, false),
+        appThemeColor(AppThemeColor::TableText, false),
+        appThemeColor(AppThemeColor::TableHighlightedRow, false),
+        appThemeColor(AppThemeColor::TableSecondaryHighlightedRow, false)
     };
 }
 
@@ -599,10 +595,10 @@ void drawXAxisTicks(QPainter& painter,
 void drawGuideTag(QPainter& painter, const QRectF& rect, const QString& text, Qt::Alignment alignment)
 {
     painter.save();
-    painter.setPen(QPen(kCurrentGuideLabelBorderColor, 1));
-    painter.setBrush(kCurrentGuideLabelFillColor);
+    painter.setPen(QPen(appThemeColor(AppThemeColor::PlotCurrentGuideLabelBorder, false), 1));
+    painter.setBrush(appThemeColor(AppThemeColor::PlotCurrentGuideLabelFill, false));
     painter.drawRoundedRect(rect, 4.0, 4.0);
-    painter.setPen(kCurrentGuideLabelTextColor);
+    painter.setPen(appThemeColor(AppThemeColor::PlotCurrentGuideLabelText, false));
     painter.drawText(rect.adjusted(4, 0, -4, 0), alignment | Qt::AlignVCenter, text);
     painter.restore();
 }
@@ -614,7 +610,7 @@ void drawCurrentPointGuides(QPainter& painter,
                             const QString& yLabel)
 {
     painter.save();
-    painter.setPen(QPen(kCurrentGuideLineColor, 1, Qt::DashLine));
+    painter.setPen(QPen(appThemeColor(AppThemeColor::PlotCurrentGuideLine, false), 1, Qt::DashLine));
     painter.drawLine(QPointF(currentPoint.x(), plotRect.top()), QPointF(currentPoint.x(), plotRect.bottom()));
     painter.drawLine(QPointF(plotRect.left(), currentPoint.y()), QPointF(plotRect.right(), currentPoint.y()));
 
@@ -671,7 +667,7 @@ protected:
             kSessionViewerPlotTopMargin,
             -kSessionViewerPlotRightMargin,
             -kSessionViewerWaveBottomMargin);
-        painter.setPen(QPen(dark ? theme.grid : QColor("#f0d000"), 1));
+        painter.setPen(QPen(dark ? theme.grid : appThemeColor(AppThemeColor::PlotLightGuide, false), 1));
         for (int i = 0; i <= 5; ++i)
         {
             const qreal x = plotRect.left() + plotRect.width() * i / 5.0;
@@ -683,12 +679,12 @@ protected:
             painter.drawLine(QPointF(plotRect.left(), y), QPointF(plotRect.right(), y));
         }
 
-        painter.setPen(QPen(dark ? theme.border : QColor("#c9b53a"), 1));
+        painter.setPen(QPen(dark ? theme.border : appThemeColor(AppThemeColor::PlotLightGuideBorder, false), 1));
         painter.drawRect(plotRect);
 
         if (samples_.isEmpty())
         {
-            painter.setPen(dark ? theme.mutedText : QColor("#64748b"));
+            painter.setPen(dark ? theme.mutedText : appThemeColor(AppThemeColor::TextDisabled, false));
             painter.drawText(plotRect, Qt::AlignCenter, tr("No waveform frame"));
             return;
         }
@@ -717,15 +713,16 @@ protected:
                                     plotRect.bottom() - normalized * plotRect.height()));
         }
 
-        painter.setPen(QPen(dark ? QColor("#56d364") : QColor("#1b6416"), 1.4));
+        painter.setPen(QPen(appThemeColor(AppThemeColor::PlotPositive, dark), 1.4));
         painter.drawPolyline(polyline);
 
-        painter.setPen(dark ? theme.text : QColor("#334155"));
+        painter.setPen(dark ? theme.text : appThemeColor(AppThemeColor::PlotAxisStrong, false));
         painter.drawText(QRectF(4, plotRect.top() - 2, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 4));
         painter.drawText(QRectF(4, plotRect.center().y() - 8, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter,
                          QString::number((maxValue + minValue) * 0.5, 'f', 4));
         painter.drawText(QRectF(4, plotRect.bottom() - 8, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(minValue, 'f', 4));
-        drawXAxisTicks(painter, plotRect, first_sample_index_, first_sample_index_ + samples_.size(), 5, dark ? theme.text : QColor("#334155"));
+        drawXAxisTicks(painter, plotRect, first_sample_index_, first_sample_index_ + samples_.size(), 5,
+                       dark ? theme.text : appThemeColor(AppThemeColor::PlotAxisStrong, false));
     }
 
 private:
@@ -995,7 +992,7 @@ private:
                 plotRect.bottom() - normalized * plotRect.height()));
         }
 
-        const QColor seriesColor("#66d0ff");
+        const QColor seriesColor = appThemeColor(AppThemeColor::PlotSeriesSky, false);
         if (plot_mode_ == PlotMode::Polyline && cache.points.size() >= 2)
         {
             painter.setPen(QPen(seriesColor, 1.5));
@@ -1073,7 +1070,7 @@ private:
             QString::number(current_frame_index_ + 1),
             formatGuideValue(value, 4));
         painter.setPen(Qt::NoPen);
-        painter.setBrush(kCurrentGuideLineColor);
+        painter.setBrush(appThemeColor(AppThemeColor::PlotCurrentGuideLine, false));
         painter.drawEllipse(currentPoint, 4.0, 4.0);
     }
 
@@ -1843,7 +1840,7 @@ void SessionViewerWindow::setupUi()
     temperature_plot_title_ = new QLabel(this);
     temperature_plot_title_->setObjectName("fieldLabel");
     waveformLayout->addWidget(temperature_plot_title_);
-    temperature_plot_ = new SingleSeriesTrendPlotWidget(QColor("#d14343"),
+    temperature_plot_ = new SingleSeriesTrendPlotWidget(appThemeColor(AppThemeColor::PlotSeriesTemperature, false),
         is_english_ ? "No temperature series" : "没有温度趋势数据",
         QStringLiteral("°C"),
         this);
@@ -1854,7 +1851,7 @@ void SessionViewerWindow::setupUi()
     humidity_plot_title_ = new QLabel(this);
     humidity_plot_title_->setObjectName("fieldLabel");
     waveformLayout->addWidget(humidity_plot_title_);
-    humidity_plot_ = new SingleSeriesTrendPlotWidget(QColor("#2f7fd3"),
+    humidity_plot_ = new SingleSeriesTrendPlotWidget(appThemeColor(AppThemeColor::PlotSeriesHumidity, false),
         is_english_ ? "No humidity series" : "没有湿度趋势数据",
         QStringLiteral("%RH"),
         this);
@@ -1865,7 +1862,7 @@ void SessionViewerWindow::setupUi()
     pressure_plot_title_ = new QLabel(this);
     pressure_plot_title_->setObjectName("fieldLabel");
     waveformLayout->addWidget(pressure_plot_title_);
-    pressure_plot_ = new SingleSeriesTrendPlotWidget(QColor("#2f9d57"),
+    pressure_plot_ = new SingleSeriesTrendPlotWidget(appThemeColor(AppThemeColor::PlotSeriesPressure, false),
         is_english_ ? "No pressure series" : "没有气压趋势数据",
         QStringLiteral("hPa"),
         this);
@@ -2296,11 +2293,11 @@ void SessionViewerWindow::updateSessionLoadingDialogTheme()
         windowColor = sourcePalette.color(QPalette::Base);
     }
     const bool dark = windowColor.lightness() < 128;
-    const QColor panelColor = dark ? QColor(QStringLiteral("#0D0D0D")) : QColor(QStringLiteral("#FDFDFC"));
-    const QColor fieldColor = dark ? QColor(QStringLiteral("#121212")) : QColor(QStringLiteral("#EEF0F3"));
-    const QColor borderColor = dark ? QColor(QStringLiteral("#202020")) : QColor(QStringLiteral("#D8DDE5"));
-    const QColor textColor = dark ? QColor(QStringLiteral("#F9FAFB")) : QColor(QStringLiteral("#111827"));
-    const QColor chunkColor = dark ? QColor(QStringLiteral("#D97757")) : QColor(QStringLiteral("#245B8F"));
+    const QColor panelColor = appThemeColor(dark ? AppThemeColor::Window : AppThemeColor::Surface, dark);
+    const QColor fieldColor = appThemeColor(AppThemeColor::FieldBackground, dark);
+    const QColor borderColor = appThemeColor(AppThemeColor::FieldBorder, dark);
+    const QColor textColor = appThemeColor(AppThemeColor::TextStrong, dark);
+    const QColor chunkColor = appThemeColor(AppThemeColor::ProgressChunk, dark);
 
     QPalette loadingPalette = loading_dialog_->palette();
     loadingPalette.setColor(QPalette::Window, panelColor);

@@ -1,4 +1,5 @@
 #include "CustomTitleBar.h"
+#include "AppTheme.h"
 #include "TcpWavePanel.h"
 #include <QAbstractSocket>
 #include <QByteArray>
@@ -35,6 +36,9 @@
 #include <cmath>
 #include <functional>
 #include <limits>
+
+using VaporView::AppThemeColor;
+using VaporView::appThemeColor;
 
 namespace
 {
@@ -271,10 +275,10 @@ PlotTheme plotThemeFor(const QWidget *widget)
     const bool dark = background.lightness() < 128;
     return {
         background,
-        dark ? QColor("#202020") : QColor("#e3e8ef"),
-        dark ? QColor("#202020") : QColor("#cfd7e3"),
-        dark ? QColor("#a7b4c2") : QColor("#5e6b78"),
-        dark ? QColor("#8fa1b3") : QColor("#7a8899")
+        appThemeColor(AppThemeColor::PlotGrid, dark),
+        appThemeColor(AppThemeColor::PlotBorder, dark),
+        appThemeColor(AppThemeColor::PlotText, dark),
+        appThemeColor(AppThemeColor::PlotMutedText, dark)
     };
 }
 
@@ -620,7 +624,7 @@ protected:
         painter.setPen(QPen(theme.border, 1));
         painter.drawRect(plotRect);
 
-        const QColor seriesColor("#ef8f35");
+        const QColor seriesColor = appThemeColor(AppThemeColor::PlotSeriesWaveOrange, false);
         if (plot_mode_ == PlotMode::Polyline && count >= 2)
         {
             painter.setPen(QPen(seriesColor, 1.5));
@@ -953,7 +957,7 @@ void TcpWavePanel::setupUi()
     wave1_info_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     wave1HeaderLayout->addWidget(wave1_info_label_, 1);
     wave1Layout->addWidget(wave1HeaderBar);
-    wave1_plot_ = new WavePlotWidget(QColor("#4e79c7"), this);
+    wave1_plot_ = new WavePlotWidget(appThemeColor(AppThemeColor::PlotSeriesWaveBlue, false), this);
     wave1Layout->addWidget(wave1_plot_, 1);
     plotsLayout->addWidget(wave1_group_, 1);
 
@@ -979,7 +983,7 @@ void TcpWavePanel::setupUi()
     wave4_info_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     wave4HeaderLayout->addWidget(wave4_info_label_, 1);
     wave4Layout->addWidget(wave4HeaderBar);
-    wave4_plot_ = new WavePlotWidget(QColor("#ef8f35"), this);
+    wave4_plot_ = new WavePlotWidget(appThemeColor(AppThemeColor::PlotSeriesWaveOrange, false), this);
     wave4Layout->addWidget(wave4_plot_, 1);
     plotsLayout->addWidget(wave4_group_, 1);
 

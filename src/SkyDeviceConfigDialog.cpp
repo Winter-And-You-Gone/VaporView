@@ -1,4 +1,5 @@
 #include "SkyDeviceConfigDialog.h"
+#include "AppTheme.h"
 #include "CustomTitleBar.h"
 #include "WindowSizing.h"
 
@@ -52,9 +53,6 @@ constexpr int kDialogPreferredWidth = 980;
 constexpr int kDialogMinimumWidth = 640;
 constexpr int kDialogMinimumHeight = 420;
 constexpr const char *kModeSwitchCurrentIndexProperty = "currentIndex";
-const QColor kEnableToggleOnIcon(22, 163, 74);
-const QColor kEnableToggleOffIcon(220, 38, 38);
-
 QLabel *addLabeledRow(QFormLayout *layout, const QString& text, QWidget *widget)
 {
     auto *label = new QLabel(text);
@@ -121,8 +119,8 @@ QIcon createLucideIcon(const QString& iconName, const QColor& color)
 
 QIcon enableToggleIcon(bool enabled)
 {
-    static const QIcon onIcon = createLucideIcon(QStringLiteral("check"), kEnableToggleOnIcon);
-    static const QIcon offIcon = createLucideIcon(QStringLiteral("x"), kEnableToggleOffIcon);
+    static const QIcon onIcon = createLucideIcon(QStringLiteral("check"), appThemeColor(AppThemeColor::TrackStart, false));
+    static const QIcon offIcon = createLucideIcon(QStringLiteral("x"), appThemeColor(AppThemeColor::TrackEnd, false));
     return enabled ? onIcon : offIcon;
 }
 
@@ -252,87 +250,85 @@ void setCardTitle(QGroupBox *group, const QString& title)
 
 bool isDarkApplicationPalette()
 {
-    const QPalette palette = qApp->palette();
-    return palette.color(QPalette::Window).lightness() < 128 ||
-           palette.color(QPalette::Base).lightness() < 128;
+    return qApp && isDarkThemePalette(qApp->palette());
 }
 
 QString skyDeviceConfigStyleSheet(bool dark)
 {
     if (!dark)
     {
-        return QStringLiteral(
-            "QDialog#skyDeviceConfigDialog { background-color: #f3f5f7; }"
-            "QDialog#skyDeviceConfigDialog QScrollArea { background-color: #f3f5f7; border: none; }"
-            "QDialog#skyDeviceConfigDialog QScrollArea > QWidget { background-color: #f3f5f7; }"
-            "QDialog#skyDeviceConfigDialog QWidget#skyConfigContent { background-color: #f3f5f7; }"
-            "QDialog#skyDeviceConfigDialog QWidget#skyConfigRawPage { background-color: #f3f5f7; }"
-            "QDialog#skyDeviceConfigDialog QGroupBox { background-color: #fbfcfe; border: 1px solid #dfe4ea; border-radius: 8px; margin-top: 0px; padding: 0px; color: #1f2937; }"
-            "QDialog#skyDeviceConfigDialog QWidget#skyConfigGroupTitleBar { background-color: #ffffff; border-bottom: 1px solid #dfe4ea; border-top-left-radius: 7px; border-top-right-radius: 7px; }"
-            "QDialog#skyDeviceConfigDialog QLabel#skyConfigGroupTitleLabel { color: #1f2937; font-size: 15px; font-weight: bold; background-color: transparent; }"
-            "QDialog#skyDeviceConfigDialog QLabel#skyConfigEnableTitleLabel { color: #1f2937; font-size: 14px; font-weight: normal; background-color: transparent; }"
+        return applyAppThemeTokens(QStringLiteral(
+            "QDialog#skyDeviceConfigDialog { background-color: @vv-config-window; }"
+            "QDialog#skyDeviceConfigDialog QScrollArea { background-color: @vv-config-window; border: none; }"
+            "QDialog#skyDeviceConfigDialog QScrollArea > QWidget { background-color: @vv-config-window; }"
+            "QDialog#skyDeviceConfigDialog QWidget#skyConfigContent { background-color: @vv-config-window; }"
+            "QDialog#skyDeviceConfigDialog QWidget#skyConfigRawPage { background-color: @vv-config-window; }"
+            "QDialog#skyDeviceConfigDialog QGroupBox { background-color: @vv-config-surface; border: 1px solid @vv-config-border; border-radius: 8px; margin-top: 0px; padding: 0px; color: @vv-config-title-text; }"
+            "QDialog#skyDeviceConfigDialog QWidget#skyConfigGroupTitleBar { background-color: @vv-white; border-bottom: 1px solid @vv-config-border; border-top-left-radius: 7px; border-top-right-radius: 7px; }"
+            "QDialog#skyDeviceConfigDialog QLabel#skyConfigGroupTitleLabel { color: @vv-config-title-text; font-size: 15px; font-weight: bold; background-color: transparent; }"
+            "QDialog#skyDeviceConfigDialog QLabel#skyConfigEnableTitleLabel { color: @vv-config-title-text; font-size: 14px; font-weight: normal; background-color: transparent; }"
             "QDialog#skyDeviceConfigDialog QWidget#skyConfigGroupBody { background-color: transparent; }"
-            "QDialog#skyDeviceConfigDialog QLabel { color: #1f2a35; }"
-            "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus { color: #64748b; padding: 2px 4px; }"
-            "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus[status=\"error\"] { color: #b42318; }"
+            "QDialog#skyDeviceConfigDialog QLabel { color: @vv-config-text; }"
+            "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus { color: @vv-config-muted-text; padding: 2px 4px; }"
+            "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus[status=\"error\"] { color: @vv-error-text; }"
             "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle { background-color: transparent; border: none; border-radius: 6px; padding: 0; min-width: 30px; max-width: 30px; min-height: 30px; max-height: 30px; }"
-            "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:hover { background-color: #EFEEEB; border: none; }"
-            "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:pressed { background-color: #EFEEEB; border: none; }"
+            "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:hover { background-color: @vv-title-hover; border: none; }"
+            "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:pressed { background-color: @vv-title-hover; border: none; }"
             "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked { background-color: transparent; border: none; }"
-            "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked:hover { background-color: #EFEEEB; border: none; }"
-            "QDialog#skyDeviceConfigDialog QPlainTextEdit { background-color: #ffffff; color: #111827; border: 1px solid #dfe4ea; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; selection-background-color: #e3f2fd; selection-color: #1976d2; }"
-        );
+            "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked:hover { background-color: @vv-title-hover; border: none; }"
+            "QDialog#skyDeviceConfigDialog QPlainTextEdit { background-color: @vv-white; color: @vv-text-strong; border: 1px solid @vv-config-border; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; selection-background-color: @vv-primary-subtle; selection-color: @vv-primary; }"
+        ), false);
     }
 
-    return QStringLiteral(
-        "QDialog#skyDeviceConfigDialog { background-color: #0D0D0D; }"
-        "QDialog#skyDeviceConfigDialog QScrollArea { background-color: #0D0D0D; border: none; }"
-        "QDialog#skyDeviceConfigDialog QScrollArea > QWidget { background-color: #0D0D0D; }"
-        "QDialog#skyDeviceConfigDialog QWidget#skyConfigContent { background-color: #0D0D0D; }"
-        "QDialog#skyDeviceConfigDialog QWidget#skyConfigRawPage { background-color: #0D0D0D; }"
-        "QDialog#skyDeviceConfigDialog QGroupBox { background-color: #121212; border: 1px solid #202020; border-radius: 8px; margin-top: 0px; padding: 0px; color: #e5e7eb; }"
-        "QDialog#skyDeviceConfigDialog QWidget#skyConfigGroupTitleBar { background-color: #121212; border-bottom: 1px solid #202020; border-top-left-radius: 7px; border-top-right-radius: 7px; }"
-        "QDialog#skyDeviceConfigDialog QLabel#skyConfigGroupTitleLabel { color: #e5e7eb; font-size: 15px; font-weight: bold; background-color: transparent; }"
-        "QDialog#skyDeviceConfigDialog QLabel#skyConfigEnableTitleLabel { color: #d8dee9; font-size: 14px; font-weight: normal; background-color: transparent; }"
+    return applyAppThemeTokens(QStringLiteral(
+        "QDialog#skyDeviceConfigDialog { background-color: @vv-config-window; }"
+        "QDialog#skyDeviceConfigDialog QScrollArea { background-color: @vv-config-window; border: none; }"
+        "QDialog#skyDeviceConfigDialog QScrollArea > QWidget { background-color: @vv-config-window; }"
+        "QDialog#skyDeviceConfigDialog QWidget#skyConfigContent { background-color: @vv-config-window; }"
+        "QDialog#skyDeviceConfigDialog QWidget#skyConfigRawPage { background-color: @vv-config-window; }"
+        "QDialog#skyDeviceConfigDialog QGroupBox { background-color: @vv-config-surface; border: 1px solid @vv-config-border; border-radius: 8px; margin-top: 0px; padding: 0px; color: @vv-config-title-text; }"
+        "QDialog#skyDeviceConfigDialog QWidget#skyConfigGroupTitleBar { background-color: @vv-config-surface; border-bottom: 1px solid @vv-config-border; border-top-left-radius: 7px; border-top-right-radius: 7px; }"
+        "QDialog#skyDeviceConfigDialog QLabel#skyConfigGroupTitleLabel { color: @vv-config-title-text; font-size: 15px; font-weight: bold; background-color: transparent; }"
+        "QDialog#skyDeviceConfigDialog QLabel#skyConfigEnableTitleLabel { color: @vv-config-text; font-size: 14px; font-weight: normal; background-color: transparent; }"
         "QDialog#skyDeviceConfigDialog QWidget#skyConfigGroupBody { background-color: transparent; }"
-        "QDialog#skyDeviceConfigDialog QLabel { color: #d8dee9; background-color: transparent; }"
-        "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus { color: #94a3b8; padding: 2px 4px; }"
-        "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus[status=\"error\"] { color: #fca5a5; }"
+        "QDialog#skyDeviceConfigDialog QLabel { color: @vv-config-text; background-color: transparent; }"
+        "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus { color: @vv-config-muted-text; padding: 2px 4px; }"
+        "QDialog#skyDeviceConfigDialog QLabel#skyConfigRawStatus[status=\"error\"] { color: @vv-error-text; }"
         "QDialog#skyDeviceConfigDialog QLineEdit,"
         "QDialog#skyDeviceConfigDialog QComboBox,"
         "QDialog#skyDeviceConfigDialog QSpinBox,"
-        "QDialog#skyDeviceConfigDialog QDoubleSpinBox { background-color: #121212; border: 1px solid #202020; border-radius: 6px; color: #e5e7eb; selection-background-color: #245b8f; selection-color: #ffffff; }"
+        "QDialog#skyDeviceConfigDialog QDoubleSpinBox { background-color: @vv-config-surface; border: 1px solid @vv-config-border; border-radius: 6px; color: @vv-config-title-text; selection-background-color: @vv-primary-subtle-pressed; selection-color: @vv-white; }"
         "QDialog#skyDeviceConfigDialog QLineEdit:hover,"
         "QDialog#skyDeviceConfigDialog QComboBox:hover,"
         "QDialog#skyDeviceConfigDialog QSpinBox:hover,"
-        "QDialog#skyDeviceConfigDialog QDoubleSpinBox:hover { border-color: #202020; }"
+        "QDialog#skyDeviceConfigDialog QDoubleSpinBox:hover { border-color: @vv-config-border; }"
         "QDialog#skyDeviceConfigDialog QLineEdit:focus,"
         "QDialog#skyDeviceConfigDialog QComboBox:focus,"
         "QDialog#skyDeviceConfigDialog QSpinBox:focus,"
-        "QDialog#skyDeviceConfigDialog QDoubleSpinBox:focus { border-color: #3b82f6; }"
-        "QDialog#skyDeviceConfigDialog QComboBox QAbstractItemView { background-color: #121212; border: 1px solid #202020; color: #e5e7eb; selection-background-color: #1f3f66; selection-color: #ffffff; }"
-        "QDialog#skyDeviceConfigDialog QPushButton { background-color: rgb(217, 119, 87); color: #ffffff; border: none; }"
+        "QDialog#skyDeviceConfigDialog QDoubleSpinBox:focus { border-color: @vv-focus; }"
+        "QDialog#skyDeviceConfigDialog QComboBox QAbstractItemView { background-color: @vv-config-surface; border: 1px solid @vv-config-border; color: @vv-config-title-text; selection-background-color: @vv-primary-subtle; selection-color: @vv-white; }"
+        "QDialog#skyDeviceConfigDialog QPushButton { background-color: @vv-primary; color: @vv-white; border: none; }"
         "QDialog#skyDeviceConfigDialog QPushButton:hover,"
         "QDialog#skyDeviceConfigDialog QPushButton:pressed,"
-        "QDialog#skyDeviceConfigDialog QPushButton:checked { background-color: rgb(217, 119, 87); color: #ffffff; }"
-        "QDialog#skyDeviceConfigDialog QPushButton:disabled { background-color: #202020; color: #cbd5e1; }"
+        "QDialog#skyDeviceConfigDialog QPushButton:checked { background-color: @vv-primary; color: @vv-white; }"
+        "QDialog#skyDeviceConfigDialog QPushButton:disabled { background-color: @vv-config-border; color: @vv-text-disabled-strong; }"
         "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle { background-color: transparent; border: none; border-radius: 6px; padding: 0; min-width: 30px; max-width: 30px; min-height: 30px; max-height: 30px; }"
-        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:hover { background-color: rgb(18, 18, 18); border: none; }"
-        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:pressed { background-color: rgb(18, 18, 18); border: none; }"
+        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:hover { background-color: @vv-title-hover; border: none; }"
+        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:pressed { background-color: @vv-title-hover; border: none; }"
         "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked { background-color: transparent; border: none; }"
-        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked:hover { background-color: rgb(18, 18, 18); border: none; }"
-        "QDialog#skyDeviceConfigDialog QPlainTextEdit { background-color: #121212; color: #e5e7eb; border: 1px solid #202020; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; selection-background-color: #245b8f; selection-color: #ffffff; }"
+        "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked:hover { background-color: @vv-title-hover; border: none; }"
+        "QDialog#skyDeviceConfigDialog QPlainTextEdit { background-color: @vv-config-surface; color: @vv-config-title-text; border: 1px solid @vv-config-border; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; selection-background-color: @vv-primary-subtle-pressed; selection-color: @vv-white; }"
         "QDialog#skyDeviceConfigDialog QScrollBar:vertical,"
-        "QDialog#skyDeviceConfigDialog QScrollBar:horizontal { background-color: #0C0C0C; border-radius: 6px; }"
+        "QDialog#skyDeviceConfigDialog QScrollBar:horizontal { background-color: @vv-surface-sunken; border-radius: 6px; }"
         "QDialog#skyDeviceConfigDialog QScrollBar::handle:vertical,"
-        "QDialog#skyDeviceConfigDialog QScrollBar::handle:horizontal { background-color: #202020; border-radius: 6px; margin: 2px; }"
+        "QDialog#skyDeviceConfigDialog QScrollBar::handle:horizontal { background-color: @vv-config-border; border-radius: 6px; margin: 2px; }"
         "QDialog#skyDeviceConfigDialog QScrollBar::handle:vertical:hover,"
-        "QDialog#skyDeviceConfigDialog QScrollBar::handle:horizontal:hover { background-color: #202020; }"
+        "QDialog#skyDeviceConfigDialog QScrollBar::handle:horizontal:hover { background-color: @vv-config-border; }"
         "QDialog#skyDeviceConfigDialog QScrollBar::add-line:vertical,"
         "QDialog#skyDeviceConfigDialog QScrollBar::sub-line:vertical { height: 0px; }"
         "QDialog#skyDeviceConfigDialog QScrollBar::add-line:horizontal,"
         "QDialog#skyDeviceConfigDialog QScrollBar::sub-line:horizontal { width: 0px; }"
-    );
+    ), true);
 }
 }
 
@@ -389,11 +385,11 @@ public:
     void refreshTheme()
     {
         const bool dark = isDarkApplicationPalette();
-        background_color_ = dark ? QColor("#121212") : QColor("#FDFDFC");
-        border_color_ = dark ? QColor("#202020") : QColor("#EAEAE9");
-        thumb_color_ = dark ? QColor(217, 119, 87) : QColor("#1976d2");
-        inactive_text_color_ = dark ? QColor("#d8dee9") : QColor("#475569");
-        active_text_color_ = QColor("#ffffff");
+        background_color_ = appThemeColor(dark ? AppThemeColor::ConfigSurface : AppThemeColor::Surface, dark);
+        border_color_ = appThemeColor(dark ? AppThemeColor::ConfigBorder : AppThemeColor::Border, dark);
+        thumb_color_ = appThemeColor(AppThemeColor::Primary, dark);
+        inactive_text_color_ = appThemeColor(AppThemeColor::ConfigToggleInactiveText, dark);
+        active_text_color_ = appThemeColor(AppThemeColor::White, dark);
         update();
     }
 

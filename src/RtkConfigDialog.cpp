@@ -1,3 +1,4 @@
+#include "AppTheme.h"
 #include "RtkConfigDialog.h"
 #include "CustomTitleBar.h"
 #include "WindowSizing.h"
@@ -50,6 +51,13 @@
 
 #include "serial_probe_utils.h"
 
+using VaporView::AppThemeColor;
+using VaporView::appThemeColor;
+using VaporView::appThemeColorName;
+using VaporView::appThemeRgba;
+using VaporView::isDarkThemeEnabled;
+using VaporView::isDarkThemePalette;
+
 namespace
 {
 constexpr int kGgaSendCycleMs = 1000;
@@ -63,7 +71,6 @@ constexpr int kRtkPreferredDialogWidth = 980;
 constexpr int kRtkMinimumDialogWidth = 640;
 constexpr int kRtkMinimumDialogHeight = 420;
 constexpr const char *kEpsilonMainGgaSourceKey = "__epsilon_main__";
-const QColor kRtkHelpIconColor(25, 118, 210);
 const QRegularExpression kGgaSentencePattern("^\\$..GGA,");
 
 QFont numericFontFrom(const QFont& base)
@@ -76,6 +83,12 @@ QFont numericFontFrom(const QFont& base)
     font.setWeight(static_cast<QFont::Weight>(base.weight()));
     font.setBold(base.bold());
     return font;
+}
+
+QString boldLabelColorStyle(AppThemeColor color)
+{
+    return QStringLiteral("QLabel { color: %1; font-weight: bold; }")
+        .arg(appThemeColorName(color, isDarkThemeEnabled()));
 }
 
 QString findResourceFile(const QString& relativePath)
@@ -703,6 +716,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , rtk_status_timer_(nullptr)
     , gga_poll_timer_(nullptr)
     , last_rtk_status_message_()
+    , gga_status_healthy_(false)
     , gga_last_open_attempt_()
     , gga_last_sentence_time_()
     , gga_last_epsilon_sample_time_()
@@ -927,7 +941,9 @@ void RtkConfigDialog::setupUi()
     main_antenna_lever_label_ = createFieldLabel();
     lever_label_layout->addWidget(main_antenna_lever_label_);
     main_antenna_lever_help_btn_ = new QToolButton(this);
-    main_antenna_lever_help_btn_->setIcon(createLucideIcon(QStringLiteral("help-circle"), kRtkHelpIconColor));
+    main_antenna_lever_help_btn_->setIcon(createLucideIcon(
+        QStringLiteral("help-circle"),
+        appThemeColor(AppThemeColor::HelpIcon, isDarkThemeEnabled())));
     main_antenna_lever_help_btn_->setToolButtonStyle(Qt::ToolButtonIconOnly);
     main_antenna_lever_help_btn_->setAutoRaise(true);
     main_antenna_lever_help_btn_->setFocusPolicy(Qt::NoFocus);
@@ -1256,17 +1272,15 @@ void RtkConfigDialog::applyScaledUiMetrics()
         main_antenna_lever_help_btn_->setFixedSize(helpSize, helpSize);
         const int iconSize = std::max(16, helpSize - scalePixels(6));
         main_antenna_lever_help_btn_->setIconSize(QSize(iconSize, iconSize));
-        const bool dark = qApp && qApp->palette().color(QPalette::Window).lightness() < 128;
+        const bool dark = qApp && isDarkThemePalette(qApp->palette());
         main_antenna_lever_help_btn_->setIcon(createLucideIcon(
             QStringLiteral("help-circle"),
-            dark ? QColor("#8ab4f8") : kRtkHelpIconColor));
-        main_antenna_lever_help_btn_->setStyleSheet(dark
-            ? QString("QToolButton { background: transparent; border: none; border-radius: %1px; padding: 0px; }"
-                      "QToolButton:hover { background: rgba(138, 180, 248, 0.14); }")
-                  .arg(helpSize / 2)
-            : QString("QToolButton { background: transparent; border: none; border-radius: %1px; padding: 0px; }"
-                      "QToolButton:hover { background: rgba(25, 118, 210, 0.10); }")
-                  .arg(helpSize / 2));
+            appThemeColor(AppThemeColor::HelpIcon, dark)));
+        main_antenna_lever_help_btn_->setStyleSheet(
+            QString("QToolButton { background: transparent; border: none; border-radius: %1px; padding: 0px; }"
+                    "QToolButton:hover { background: %2; }")
+                .arg(helpSize / 2)
+                .arg(appThemeRgba(AppThemeColor::HelpIcon, dark, dark ? 0.14 : 0.10)));
     }
     for (QLineEdit *edit : {main_antenna_lever_x_edit_, main_antenna_lever_y_edit_, main_antenna_lever_z_edit_})
     {
@@ -1599,12 +1613,12 @@ void RtkConfigDialog::updateButtonStates()
                 ? textFor("Status: Detecting serial ports", "状态: 正在识别串口")
             : textFor("Status: Running no-signal RTK test", "状态: 正在执行无信号 RTK 测试");
         status_label_->setText(busyText);
-        status_label_->setStyleSheet("QLabel { color: #ef6c00; font-weight: bold; }");
+        status_label_->setStyleSheet(boldLabelColorStyle(AppThemeColor::Warning));
     }
     else if (is_running_)
     {
         status_label_->setText(textFor("Status: Running", "状态: 运行中"));
-        status_label_->setStyleSheet("QLabel { color: #43a047; font-weight: bold; }");
+        status_label_->setStyleSheet(boldLabelColorStyle(AppThemeColor::Success));
     }
     else
     {
@@ -1654,7 +1668,7 @@ void RtkConfigDialog::pollRtkServiceStatus(bool forceLog)
             textFor("Status: Running (%1 bps in / %2 bps out)", "状态: 运行中 (%1 bps 输入 / %2 bps 输出)")
                 .arg(stats.inputBps)
                 .arg(stats.outputBps));
-        status_label_->setStyleSheet("QLabel { color: #43a047; font-weight: bold; }");
+        status_label_->setStyleSheet(boldLabelColorStyle(AppThemeColor::Success));
     }
 }
 
@@ -1767,9 +1781,9 @@ void RtkConfigDialog::updateGgaStatusLabel(const QString& message, bool healthy)
     }
 
     gga_status_message_ = message;
-    const QString color = healthy ? QStringLiteral("#2e7d32") : QStringLiteral("#a26a00");
+    gga_status_healthy_ = healthy;
     gga_status_label_->setText(message);
-    gga_status_label_->setStyleSheet(QString("QLabel { color: %1; font-weight: bold; }").arg(color));
+    gga_status_label_->setStyleSheet(boldLabelColorStyle(healthy ? AppThemeColor::RtkHealthy : AppThemeColor::RtkWarning));
 }
 
 void RtkConfigDialog::updateGgaMonitorButton()
@@ -1807,8 +1821,7 @@ void RtkConfigDialog::updateGgaMonitorText()
     }
     else if (gga_status_message_.startsWith("Status:") || gga_status_message_.startsWith("状态:"))
     {
-        const bool healthy = gga_status_label_->styleSheet().contains("#2e7d32");
-        updateGgaStatusLabel(gga_status_message_, healthy);
+        updateGgaStatusLabel(gga_status_message_, gga_status_healthy_);
     }
 
     if (gga_frequency_label_->text().isEmpty())

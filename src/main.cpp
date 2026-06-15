@@ -11,47 +11,12 @@
 #include <QPalette>
 #include <QSettings>
 #include <QTimer>
+#include "AppTheme.h"
 #include "MainWindow.h"
 #include "SkyRuntime.h"
 
 namespace
 {
-QPalette startupDarkPalette(const QPalette& base)
-{
-    QPalette palette = base;
-    palette.setColor(QPalette::Window, QColor("#0D0D0D"));
-    palette.setColor(QPalette::WindowText, QColor("#d8dee9"));
-    palette.setColor(QPalette::Base, QColor("#121212"));
-    palette.setColor(QPalette::AlternateBase, QColor("#202020"));
-    palette.setColor(QPalette::Text, QColor("#e5e7eb"));
-    palette.setColor(QPalette::Button, QColor("#121212"));
-    palette.setColor(QPalette::ButtonText, QColor("#e5e7eb"));
-    palette.setColor(QPalette::BrightText, QColor("#ffffff"));
-    palette.setColor(QPalette::Light, QColor("#202020"));
-    palette.setColor(QPalette::Midlight, QColor("#202020"));
-    palette.setColor(QPalette::Mid, QColor("#202020"));
-    palette.setColor(QPalette::Dark, QColor("#0C0C0C"));
-    palette.setColor(QPalette::Shadow, QColor("#0C0C0C"));
-    palette.setColor(QPalette::Highlight, QColor("#245b8f"));
-    palette.setColor(QPalette::HighlightedText, QColor("#ffffff"));
-    palette.setColor(QPalette::ToolTipBase, QColor("#121212"));
-    palette.setColor(QPalette::ToolTipText, QColor("#e5e7eb"));
-    palette.setColor(QPalette::Link, QColor("#7db7ff"));
-    palette.setColor(QPalette::Disabled, QPalette::WindowText, QColor("#64748b"));
-    palette.setColor(QPalette::Disabled, QPalette::Text, QColor("#64748b"));
-    palette.setColor(QPalette::Disabled, QPalette::ButtonText, QColor("#94a3b8"));
-    return palette;
-}
-
-QString startupDarkStyleSheet()
-{
-    return QStringLiteral(
-        "QWidget, QMainWindow { background-color: #0D0D0D; color: #d8dee9; }"
-        "QMenuBar, QToolBar, QStatusBar { background-color: #121212; color: #d8dee9; }"
-        "QPushButton { background-color: rgb(217, 119, 87); color: #ffffff; }"
-    );
-}
-
 bool startupDarkThemeEnabled()
 {
     const QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
@@ -65,8 +30,8 @@ void applyStartupTheme(QApplication& app, bool darkThemeEnabled)
         return;
     }
 
-    app.setPalette(startupDarkPalette(app.palette()));
-    app.setStyleSheet(startupDarkStyleSheet());
+    app.setPalette(VaporView::appThemePalette(true, app.palette()));
+    app.setStyleSheet(VaporView::startupAppThemeStyleSheet(true));
 }
 
 void showMainWindow(MainWindow& window, bool hideFirstFrame)

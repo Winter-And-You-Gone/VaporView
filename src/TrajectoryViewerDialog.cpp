@@ -1,3 +1,4 @@
+#include "AppTheme.h"
 #include "TrajectoryViewerDialog.h"
 #include "CustomTitleBar.h"
 
@@ -40,6 +41,10 @@
 #include <cmath>
 #include <functional>
 #include <limits>
+
+using VaporView::AppThemeColor;
+using VaporView::appThemeColor;
+using VaporView::isDarkThemePalette;
 
 namespace
 {
@@ -206,9 +211,7 @@ QString findResourceFile(const QString& relativePath)
 
 bool isDarkPalette()
 {
-    const QPalette palette = qApp->palette();
-    return palette.color(QPalette::Window).lightness() < 128 ||
-           palette.color(QPalette::Base).lightness() < 128;
+    return qApp && isDarkThemePalette(qApp->palette());
 }
 
 QPixmap renderLucidePixmap(const QByteArray& svgData, const QColor& color)
@@ -241,12 +244,14 @@ QIcon createLucideIcon(const QString& iconName, const QColor& color)
 
 QIcon createTitleBarIcon(const QString& iconName, bool dark)
 {
-    return createLucideIcon(iconName, dark ? QColor("#d8dee9") : QColor("#111827"));
+    return createLucideIcon(iconName, dark
+        ? appThemeColor(AppThemeColor::TextTitle, true)
+        : appThemeColor(AppThemeColor::TextStrong, false));
 }
 
 QColor defaultTrackColor()
 {
-    return QColor("#2563eb");
+    return appThemeColor(AppThemeColor::TrackDefault, false);
 }
 
 QColor interpolateColor(const QColor& first, const QColor& second, double ratio)
@@ -261,14 +266,14 @@ QColor interpolateColor(const QColor& first, const QColor& second, double ratio)
 QColor heatmapColorAt(double normalized)
 {
     static const std::array<std::pair<double, QColor>, 8> stops = {{
-        {0.00, QColor("#1d4ed8")},
-        {0.14, QColor("#2563eb")},
-        {0.28, QColor("#38bdf8")},
-        {0.42, QColor("#22d3ee")},
-        {0.56, QColor("#67e8f9")},
-        {0.70, QColor("#a3e635")},
-        {0.84, QColor("#fde047")},
-        {1.00, QColor("#dc2626")}
+        {0.00, appThemeColor(AppThemeColor::Heatmap0, false)},
+        {0.14, appThemeColor(AppThemeColor::Heatmap1, false)},
+        {0.28, appThemeColor(AppThemeColor::Heatmap2, false)},
+        {0.42, appThemeColor(AppThemeColor::Heatmap3, false)},
+        {0.56, appThemeColor(AppThemeColor::Heatmap4, false)},
+        {0.70, appThemeColor(AppThemeColor::Heatmap5, false)},
+        {0.84, appThemeColor(AppThemeColor::Heatmap6, false)},
+        {1.00, appThemeColor(AppThemeColor::Heatmap7, false)}
     }};
 
     const double clamped = std::clamp(normalized, 0.0, 1.0);
@@ -523,14 +528,14 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
-        painter.fillRect(rect(), QColor("#f7fafc"));
+        painter.fillRect(rect(), appThemeColor(AppThemeColor::MapCanvas, false));
 
         const QRectF mapRect = rect().adjusted(kMapMargin, kMapMargin, -kMapMargin, -kMapMargin - 18);
-        painter.fillRect(mapRect, QColor("#eef4fb"));
+        painter.fillRect(mapRect, appThemeColor(AppThemeColor::MapViewport, false));
 
         if (track_points_.isEmpty())
         {
-            painter.setPen(QColor("#718096"));
+            painter.setPen(appThemeColor(AppThemeColor::MapMutedText, false));
             painter.drawRoundedRect(mapRect, 8.0, 8.0);
             painter.drawText(mapRect, Qt::AlignCenter,
                 is_english_
@@ -543,7 +548,7 @@ protected:
         drawFallbackGrid(painter, mapRect);
         drawTrack(painter, mapRect);
 
-        painter.setPen(QColor("#4a5568"));
+        painter.setPen(appThemeColor(AppThemeColor::MapText, false));
         painter.drawText(QRectF(mapRect.left(), mapRect.bottom() + 2, mapRect.width(), 16),
             Qt::AlignLeft | Qt::AlignVCenter,
             mapAttributionText(tile_provider_, is_english_));
@@ -875,8 +880,8 @@ private:
                 }
                 if (!drewTile)
                 {
-                    painter.fillRect(tileRect, QColor("#edf2f7"));
-                    painter.setPen(QPen(QColor("#d7dee7"), 1));
+                    painter.fillRect(tileRect, appThemeColor(AppThemeColor::MapTileBackground, false));
+                    painter.setPen(QPen(appThemeColor(AppThemeColor::MapTileBorder, false), 1));
                     painter.drawRect(tileRect);
                 }
             }
@@ -886,7 +891,7 @@ private:
     void drawFallbackGrid(QPainter& painter, const QRectF& mapRect)
     {
         painter.save();
-        painter.setPen(QPen(QColor(255, 255, 255, 120), 1));
+        painter.setPen(QPen(appThemeColor(AppThemeColor::MapGrid, false), 1));
         for (int i = 1; i < 6; ++i)
         {
             const qreal x = mapRect.left() + mapRect.width() * i / 6.0;
@@ -956,14 +961,14 @@ private:
         if (!polyline.isEmpty())
         {
             painter.setPen(Qt::NoPen);
-            painter.setBrush(QColor("#16a34a"));
+            painter.setBrush(appThemeColor(AppThemeColor::TrackStart, false));
             painter.drawEllipse(polyline.first(), 5.0, 5.0);
-            painter.setBrush(QColor("#dc2626"));
+            painter.setBrush(appThemeColor(AppThemeColor::TrackEnd, false));
             painter.drawEllipse(polyline.last(), 5.0, 5.0);
         }
         painter.restore();
 
-        painter.setPen(QPen(QColor("#cbd5e1"), 1));
+        painter.setPen(QPen(appThemeColor(AppThemeColor::MapBoundary, false), 1));
         painter.drawRoundedRect(mapRect, 8.0, 8.0);
     }
 

@@ -1,4 +1,5 @@
 #include "CustomTitleBar.h"
+#include "AppTheme.h"
 
 #include <QApplication>
 #include <QCursor>
@@ -53,11 +54,12 @@ constexpr int kTitleBarMaximizeIconSize = 21;
 constexpr int kResizeBorderWidth = 8;
 constexpr const char *kMainWindowProperty = "vaporViewMainWindow";
 constexpr const char *kEnglishProperty = "vaporViewEnglish";
-constexpr const char *kDarkThemeProperty = "vaporViewDarkTheme";
 constexpr const char *kTitleBarButtonProperty = "customTitleBarButton";
 constexpr const char *kTitleBarHoverProperty = "titleBarHover";
-const QColor kToolbarBlue(40, 105, 190);
-const QColor kToolbarAmber(220, 150, 35);
+QColor toolbarColor(AppThemeColor color)
+{
+    return appThemeColor(color, false);
+}
 
 QString findResourceFile(const QString& relativePath)
 {
@@ -115,10 +117,12 @@ QIcon createLucideIcon(const QString& iconName, const QColor& iconColor)
 
 QIcon createTitleBarIcon(const QString& iconName, bool dark)
 {
-    return createLucideIcon(iconName, dark ? QColor("#d8dee9") : QColor("#111827"));
+    return createLucideIcon(iconName, dark
+        ? appThemeColor(AppThemeColor::TextTitle, true)
+        : appThemeColor(AppThemeColor::TextStrong, false));
 }
 
-QIcon createToolbarIcon(const QString& iconName, const QColor& color = kToolbarBlue)
+QIcon createToolbarIcon(const QString& iconName, const QColor& color = toolbarColor(AppThemeColor::ToolbarBlue))
 {
     return createLucideIcon(iconName, color);
 }
@@ -218,8 +222,14 @@ void setWindowsTitleBarDark(QWidget *window, bool dark)
     const BOOL useDark = dark ? TRUE : FALSE;
     DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &useDark, sizeof(useDark));
 
-    const COLORREF captionColor = dark ? RGB(18, 18, 18) : DWMWA_COLOR_DEFAULT;
-    const COLORREF textColor = dark ? RGB(229, 231, 235) : DWMWA_COLOR_DEFAULT;
+    const QColor themeCaptionColor = appThemeColor(AppThemeColor::Surface, true);
+    const QColor themeTextColor = appThemeColor(AppThemeColor::Text, true);
+    const COLORREF captionColor = dark
+        ? RGB(themeCaptionColor.red(), themeCaptionColor.green(), themeCaptionColor.blue())
+        : DWMWA_COLOR_DEFAULT;
+    const COLORREF textColor = dark
+        ? RGB(themeTextColor.red(), themeTextColor.green(), themeTextColor.blue())
+        : DWMWA_COLOR_DEFAULT;
     DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, &captionColor, sizeof(captionColor));
     DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, &textColor, sizeof(textColor));
 }
@@ -604,7 +614,7 @@ private:
     void refreshTheme()
     {
         const bool dark = isDarkPalette();
-        const QColor background = dark ? QColor("#0D0D0D") : QColor("#FDFDFC");
+        const QColor background = appThemeColor(dark ? AppThemeColor::Window : AppThemeColor::Surface, dark);
         setWindowsTitleBarDark(window_, dark);
         for (QWidget *widget : {window_, content_})
         {
@@ -678,7 +688,7 @@ private:
     {
         if (qApp)
         {
-            const QVariant value = qApp->property(kDarkThemeProperty);
+            const QVariant value = qApp->property(kAppDarkThemeProperty);
             if (value.isValid())
             {
                 return value.toBool();
@@ -700,7 +710,7 @@ private:
         if (theme_button_)
         {
             theme_button_->setIcon(dark
-                ? createToolbarIcon(QStringLiteral("sun"), kToolbarAmber)
+                ? createToolbarIcon(QStringLiteral("sun"), toolbarColor(AppThemeColor::ToolbarAmber))
                 : createToolbarIcon(QStringLiteral("moon")));
             theme_button_->setToolTip(dark
                 ? (english ? QStringLiteral("Switch to light theme") : QStringLiteral("切换到亮色模式"))
@@ -770,7 +780,8 @@ private:
             border->setFrameShape(QFrame::NoFrame);
             border->setLineWidth(0);
             border->setAutoFillBackground(false);
-            border->setStyleSheet(QStringLiteral("background-color: #0C0C0C; border: none;"));
+            border->setStyleSheet(QStringLiteral("background-color: %1; border: none;")
+                .arg(appThemeColorName(AppThemeColor::SurfaceSunken, isDarkThemeEnabled())));
             return border;
         };
 
