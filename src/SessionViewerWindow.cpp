@@ -70,7 +70,7 @@ constexpr quint64 kWaveformTimestampBytes = sizeof(quint64);
 constexpr quint64 kFloatBytes = sizeof(float);
 constexpr int kSessionViewerPlotHeight = 120;
 constexpr int kSessionViewerPlotLeftMargin = 64;
-constexpr int kSessionViewerTrendPlotLeftPadding = 16;
+constexpr int kSessionViewerTrendPlotLeftPadding = 8;
 constexpr int kSessionViewerPlotRightMargin = 10;
 constexpr int kSessionViewerPlotTopMargin = 12;
 constexpr int kSessionViewerPlotBottomMargin = 28;
@@ -489,10 +489,10 @@ QString formatGuideValue(double value, int decimals, const QString& unit = QStri
     return unit.isEmpty() ? number : QStringLiteral("%1 %2").arg(number, unit);
 }
 
-int trendPlotLeftMargin(const QFontMetrics& fm,
-                        const QString& maxLabel = QString(),
-                        const QString& midLabel = QString(),
-                        const QString& minLabel = QString())
+int dataPlotLeftMargin(const QFontMetrics& fm,
+                       const QString& maxLabel = QString(),
+                       const QString& midLabel = QString(),
+                       const QString& minLabel = QString())
 {
     int labelWidth = fm.horizontalAdvance(formatGuideValue(9999.999, 3));
     if (!maxLabel.isEmpty())
@@ -507,7 +507,7 @@ int trendPlotLeftMargin(const QFontMetrics& fm,
     {
         labelWidth = std::max(labelWidth, fm.horizontalAdvance(minLabel));
     }
-    return labelWidth + kSessionViewerTrendPlotLeftPadding;
+    return std::max(kSessionViewerPlotLeftMargin, labelWidth + kSessionViewerTrendPlotLeftPadding);
 }
 
 float waveformPeakValue(const float* samples, int sampleCount, int searchStartIndex, int searchEndIndex)
@@ -683,8 +683,10 @@ protected:
         const bool dark = theme.background.lightness() < 128;
         painter.fillRect(rect(), theme.background);
 
+        const QFontMetrics fm = painter.fontMetrics();
+        const int leftMargin = dataPlotLeftMargin(fm);
         const QRectF plotRect = rect().adjusted(
-            kSessionViewerPlotLeftMargin,
+            leftMargin,
             kSessionViewerPlotTopMargin,
             -kSessionViewerPlotRightMargin,
             -kSessionViewerWaveBottomMargin);
@@ -738,10 +740,10 @@ protected:
         painter.drawPolyline(polyline);
 
         painter.setPen(dark ? theme.text : appThemeColor(AppThemeColor::PlotAxisStrong, false));
-        painter.drawText(QRectF(4, plotRect.top() - 2, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 4));
-        painter.drawText(QRectF(4, plotRect.center().y() - 8, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter,
+        painter.drawText(QRectF(4, plotRect.top() - 2, leftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 4));
+        painter.drawText(QRectF(4, plotRect.center().y() - 8, leftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter,
                          QString::number((maxValue + minValue) * 0.5, 'f', 4));
-        painter.drawText(QRectF(4, plotRect.bottom() - 8, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(minValue, 'f', 4));
+        painter.drawText(QRectF(4, plotRect.bottom() - 8, leftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(minValue, 'f', 4));
         drawXAxisTicks(painter, plotRect, first_sample_index_, first_sample_index_ + samples_.size(), 5,
                        dark ? theme.text : appThemeColor(AppThemeColor::PlotAxisStrong, false));
     }
@@ -931,8 +933,10 @@ private:
         painter.fillRect(rect(), theme.background);
         cache = CachedPlot{};
 
+        const QFontMetrics fm = painter.fontMetrics();
+        const int leftMargin = dataPlotLeftMargin(fm);
         const QRectF plotRect = rect().adjusted(
-            kSessionViewerPlotLeftMargin,
+            leftMargin,
             kSessionViewerPlotTopMargin,
             -kSessionViewerPlotRightMargin,
             -kSessionViewerPlotBottomMargin);
@@ -1051,10 +1055,10 @@ private:
         }
 
         painter.setPen(theme.text);
-        painter.drawText(QRectF(4, plotRect.top() - 2, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 4));
-        painter.drawText(QRectF(4, plotRect.center().y() - 8, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter,
+        painter.drawText(QRectF(4, plotRect.top() - 2, leftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(maxValue, 'f', 4));
+        painter.drawText(QRectF(4, plotRect.center().y() - 8, leftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter,
                          QString::number((maxValue + minValue) * 0.5, 'f', 4));
-        painter.drawText(QRectF(4, plotRect.bottom() - 8, kSessionViewerPlotLeftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(minValue, 'f', 4));
+        painter.drawText(QRectF(4, plotRect.bottom() - 8, leftMargin - 8, 16), Qt::AlignRight | Qt::AlignVCenter, QString::number(minValue, 'f', 4));
         drawXAxisTicks(painter, plotRect, startIndex, startIndex + count, 5, theme.text);
     }
 
@@ -1315,7 +1319,7 @@ private:
         if (values_.isEmpty())
         {
             const QFontMetrics fm = painter.fontMetrics();
-            const int leftMargin = trendPlotLeftMargin(fm);
+            const int leftMargin = dataPlotLeftMargin(fm);
             const QRectF emptyPlotRect = rect().adjusted(
                 leftMargin,
                 kSessionViewerPlotTopMargin,
@@ -1349,7 +1353,7 @@ private:
         const QString midLabel = hasFiniteValues ? formatGuideValue((maxValue + minValue) * 0.5, 3) : QStringLiteral("---");
         const QString minLabel = hasFiniteValues ? formatGuideValue(minValue, 3) : QStringLiteral("---");
         const QFontMetrics fm = painter.fontMetrics();
-        const int leftMargin = trendPlotLeftMargin(fm, maxLabel, midLabel, minLabel);
+        const int leftMargin = dataPlotLeftMargin(fm, maxLabel, midLabel, minLabel);
         const QRectF plotRect = rect().adjusted(
             leftMargin,
             kSessionViewerPlotTopMargin,

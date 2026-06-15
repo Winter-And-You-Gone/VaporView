@@ -379,7 +379,7 @@ QColor appThemeColor(AppThemeColor color, bool dark)
     case AppThemeColor::RangeSelectorHandle:
         return hexColor(kBrandBlue);
     case AppThemeColor::RangeSelectorHandleActive:
-        return hexColor(kBrandOrange);
+        return hexColor(dark ? kBrandBlue : kLightPrimary);
     case AppThemeColor::TableDefaultRow:
         return hexColor("#FFFFFF");
     case AppThemeColor::TableText:
