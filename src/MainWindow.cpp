@@ -55,6 +55,7 @@
 #include <QIntValidator>
 #include <QSerialPortInfo>
 #include <QRegularExpression>
+#include <QResizeEvent>
 #include <QHash>
 #include <QIcon>
 #include <QPainter>
@@ -161,6 +162,7 @@ constexpr int kConfigCardBottomPadding = 4;
 constexpr int kConfigCardMinHeight = kMainPageTitleBarHeight + 4 + kConfigRowsHeight + kConfigCardBottomPadding;
 constexpr int kConfigRemoteCardMinHeight = kConfigCardMinHeight + (kMainPageInputHeight + 4) + 4;
 constexpr int kTcpWaveCardMinHeight = 430;
+constexpr int kCompactTcpWaveCardMinHeight = 560;
 constexpr int kMainCardResizeHandleHeight = 3;
 constexpr int kEnvStatusIconSize = 18;
 constexpr int kEpsilonSideTitleWidth = 24;
@@ -1810,7 +1812,8 @@ public:
     explicit EpsilonPanel(QLabel *rateLabel = nullptr, QWidget *parent = nullptr)
         : QWidget(parent)
         , rate_label_(rateLabel)
-        , columns_layout_(nullptr)
+        , cards_layout_(nullptr)
+        , current_card_columns_(0)
         , is_english_(false)
         , compact_layout_(false)
         , total_rate_hz_(0.0)
@@ -1847,22 +1850,15 @@ public:
             const QString text = english ? section_en_.value(it.key()) : section_zh_.value(it.key());
             it.value()->setText(formatSectionTitle(text, english));
         }
+        updateCardGridLayout(true);
     }
 
     void setCompactLayout(bool compact)
     {
-        if (compact_layout_ == compact)
-        {
-            return;
-        }
+        const bool changed = compact_layout_ != compact;
         compact_layout_ = compact;
-        if (columns_layout_)
-        {
-            columns_layout_->setDirection(compact ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
-            columns_layout_->setSpacing(compact ? 4 : 2);
-            columns_layout_->invalidate();
-            columns_layout_->activate();
-        }
+        setSizePolicy(compact ? QSizePolicy::Expanding : QSizePolicy::Maximum, QSizePolicy::Preferred);
+        updateCardGridLayout(changed);
         if (layout())
         {
             layout()->invalidate();
@@ -1986,6 +1982,13 @@ public:
                      : QStringLiteral("原始 %1 / 丢帧 %2")
                            .arg(epsilon_data.raw_frame_count)
                            .arg(epsilon_data.dropped_frame_count));
+    }
+
+protected:
+    void resizeEvent(QResizeEvent *event) override
+    {
+        QWidget::resizeEvent(event);
+        updateCardGridLayout();
     }
 
 private:
@@ -2114,8 +2117,119 @@ private:
         section_en_.insert(key, enTitle);
     }
 
-    QGridLayout *addSectionCard(QVBoxLayout *columnLayout,
-                                const QString& key,
+    int availableCardWidth() const
+    {
+        int availableWidth = contentsRect().width();
+        if (availableWidth <= 0)
+        {
+            if (const QWidget *parent = parentWidget())
+            {
+                availableWidth = parent->contentsRect().width() - 4;
+            }
+        }
+        return availableWidth;
+    }
+
+    int desiredCardColumns() const
+    {
+        if (section_cards_.isEmpty())
+        {
+            return 1;
+        }
+
+        const int availableWidth = availableCardWidth();
+        if (availableWidth <= 0)
+        {
+            return compact_layout_ ? 1 : 3;
+        }
+
+        QVector<int> widths;
+        widths.reserve(section_cards_.size());
+        for (const QFrame *card : section_cards_)
+        {
+            widths.push_back(std::max(card->minimumSizeHint().width(), card->sizeHint().width()));
+        }
+
+        const int gap = std::max(0, cards_layout_ ? cards_layout_->horizontalSpacing() : 0);
+        const int cardCount = widths.size();
+        int allWidth = 0;
+        for (int width : widths)
+        {
+            allWidth += width;
+        }
+        allWidth += gap * std::max(0, cardCount - 1);
+        if (cardCount >= 3 && availableWidth >= allWidth)
+        {
+            return 3;
+        }
+
+        if (cardCount >= 2)
+        {
+            const int firstRowWidth = widths.at(0) + widths.at(1) + gap;
+            const int wrappedRowWidth = cardCount >= 3 ? widths.at(2) : 0;
+            if (availableWidth >= std::max(firstRowWidth, wrappedRowWidth))
+            {
+                return 2;
+            }
+        }
+
+        return 1;
+    }
+
+    void updateCardGridLayout(bool force = false)
+    {
+        if (!cards_layout_ || section_cards_.isEmpty())
+        {
+            return;
+        }
+
+        cards_layout_->setHorizontalSpacing(compact_layout_ ? 4 : 2);
+        cards_layout_->setVerticalSpacing(compact_layout_ ? 4 : 2);
+
+        const int columns = desiredCardColumns();
+        if (!force && current_card_columns_ == columns)
+        {
+            return;
+        }
+
+        for (QFrame *card : section_cards_)
+        {
+            cards_layout_->removeWidget(card);
+        }
+        for (int i = 0; i < 3; ++i)
+        {
+            cards_layout_->setColumnStretch(i, 0);
+            cards_layout_->setRowStretch(i, 0);
+        }
+
+        if (columns >= 3)
+        {
+            for (int i = 0; i < section_cards_.size(); ++i)
+            {
+                cards_layout_->addWidget(section_cards_.at(i), 0, i, Qt::AlignLeft | Qt::AlignTop);
+            }
+        }
+        else if (columns == 2 && section_cards_.size() >= 3)
+        {
+            cards_layout_->addWidget(section_cards_.at(0), 0, 0, Qt::AlignLeft | Qt::AlignTop);
+            cards_layout_->addWidget(section_cards_.at(1), 0, 1, Qt::AlignLeft | Qt::AlignTop);
+            cards_layout_->addWidget(section_cards_.at(2), 1, 0, 1, 2, Qt::AlignLeft | Qt::AlignTop);
+        }
+        else
+        {
+            for (int i = 0; i < section_cards_.size(); ++i)
+            {
+                cards_layout_->addWidget(section_cards_.at(i), i, 0, Qt::AlignLeft | Qt::AlignTop);
+            }
+        }
+
+        current_card_columns_ = columns;
+        cards_layout_->invalidate();
+        cards_layout_->activate();
+        updateGeometry();
+    }
+
+    QGridLayout *addSectionCard(const QString& key,
                                 const QString& zhTitle,
                                 const QString& enTitle,
                                 int titleColumnWidth,
@@ -2124,6 +2238,7 @@ private:
         auto *card = new QFrame(this);
         card->setObjectName(QStringLiteral("epsilonSectionCard"));
         card->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Maximum);
+        section_cards_.push_back(card);
 
         auto *outerLayout = new QHBoxLayout(card);
         outerLayout->setContentsMargins(2, 2, 2, 2);
@@ -2142,7 +2257,6 @@ private:
         cardLayout->setColumnStretch(0, 0);
         cardLayout->setColumnStretch(1, 0);
         outerLayout->addLayout(cardLayout, 0);
-        columnLayout->addWidget(card, 0, Qt::AlignLeft);
         return cardLayout;
     }
 
@@ -2191,24 +2305,12 @@ private:
         rate_label_->setMaximumWidth(QWIDGETSIZE_MAX);
         rate_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
 
-        columns_layout_ = new QHBoxLayout();
-        columns_layout_->setContentsMargins(0, 0, 0, 0);
-        columns_layout_->setSpacing(2);
+        cards_layout_ = new QGridLayout();
+        cards_layout_->setContentsMargins(0, 0, 0, 0);
+        cards_layout_->setHorizontalSpacing(2);
+        cards_layout_->setVerticalSpacing(2);
 
-        auto createColumn = [this]() {
-            auto *columnLayout = new QVBoxLayout();
-            columnLayout->setContentsMargins(0, 0, 0, 0);
-            columnLayout->setSpacing(2);
-            columns_layout_->addLayout(columnLayout, 0);
-            return columnLayout;
-        };
-
-        QVBoxLayout *leftColumn = createColumn();
-        QVBoxLayout *middleColumn = createColumn();
-        QVBoxLayout *rightColumn = createColumn();
-
-        QGridLayout *statusGrid = addSectionCard(leftColumn,
-                                                 QStringLiteral("status"),
+        QGridLayout *statusGrid = addSectionCard(QStringLiteral("status"),
                                                  QStringLiteral("总体状态"),
                                                  QStringLiteral("Overall Status"),
                                                  kEpsilonTitleColumnWidth,
@@ -2221,8 +2323,7 @@ private:
         addField(statusGrid, row++, 0, QStringLiteral("filter_bits"), QStringLiteral("滤波状态:"), QStringLiteral("Filter Status:"), kEpsilonLeftValueColumnWidth);
         addField(statusGrid, row++, 0, QStringLiteral("heading_valid"), QStringLiteral("航向有效:"), QStringLiteral("Heading Valid:"), kEpsilonLeftValueColumnWidth);
 
-        QGridLayout *positionGrid = addSectionCard(middleColumn,
-                                                   QStringLiteral("position"),
+        QGridLayout *positionGrid = addSectionCard(QStringLiteral("position"),
                                                    QStringLiteral("定位状态"),
                                                    QStringLiteral("Position Status"),
                                                    kEpsilonTitleColumnWidth,
@@ -2235,8 +2336,7 @@ private:
         addField(positionGrid, row++, 0, QStringLiteral("height"), QStringLiteral("高度[m]:"), QStringLiteral("Height [m]:"), kEpsilonPositionValueColumnWidth);
         addField(positionGrid, row++, 0, QStringLiteral("acc"), QStringLiteral("hAcc / vAcc:"), QStringLiteral("hAcc / vAcc:"), kEpsilonPositionValueColumnWidth);
 
-        QGridLayout *motionGrid = addSectionCard(rightColumn,
-                                                 QStringLiteral("motion"),
+        QGridLayout *motionGrid = addSectionCard(QStringLiteral("motion"),
                                                  QStringLiteral("姿态与运动"),
                                                  QStringLiteral("Attitude / Motion"),
                                                  kEpsilonMotionTitleColumnWidth,
@@ -2247,17 +2347,15 @@ private:
         addField(motionGrid, row++, 0, QStringLiteral("imu_gyr"), QStringLiteral("IMU角速度[rad/s]:"), QStringLiteral("IMU Gyro [rad/s]:"), kEpsilonMotionValueColumnWidth);
         addField(motionGrid, row++, 0, QStringLiteral("rpy"), QStringLiteral("姿态角[deg]:"), QStringLiteral("Attitude [deg]:"), kEpsilonMotionValueColumnWidth);
 
-        for (QVBoxLayout *columnLayout : {leftColumn, middleColumn, rightColumn})
-        {
-            columnLayout->addStretch(1);
-        }
-        columns_layout_->addStretch(1);
-        layout->addLayout(columns_layout_, 0);
+        updateCardGridLayout(true);
+        layout->addLayout(cards_layout_, 0);
         layout->addStretch(1);
     }
 
     QLabel *rate_label_;
-    QHBoxLayout *columns_layout_;
+    QGridLayout *cards_layout_;
+    QVector<QFrame*> section_cards_;
+    int current_card_columns_;
     QHash<QString, QLabel*> section_labels_;
     QHash<QString, QLabel*> title_labels_;
     QHash<QString, QLabel*> value_labels_;
@@ -4170,6 +4268,17 @@ void MainWindow::updateResponsiveHomeLayout()
     if (tcp_wave_panel_)
     {
         tcp_wave_panel_->setCompactLayout(compact);
+    }
+    if (tcp_wave_group_ && tcp_wave_panel_)
+    {
+        const int tcpWaveMinimumHeight = std::max(
+            compact ? kCompactTcpWaveCardMinHeight : kTcpWaveCardMinHeight,
+            tcp_wave_panel_->preferredPanelHeight());
+        tcp_wave_group_->setMinimumHeight(tcpWaveMinimumHeight);
+        if (layoutChanged || tcp_wave_group_->height() < tcpWaveMinimumHeight)
+        {
+            tcp_wave_group_->setFixedHeight(tcpWaveMinimumHeight);
+        }
     }
     if (main_cards_scroll_area_ && main_cards_scroll_area_->widget() && main_cards_scroll_area_->viewport())
     {

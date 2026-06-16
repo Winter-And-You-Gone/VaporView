@@ -55,6 +55,10 @@ constexpr int kTcpTitleBarRealtimeHostSpacing = 12;
 constexpr int kTcpTitleBarFieldSpacing = 18;
 constexpr int kTcpTitleBarStatusSpacing = 8;
 constexpr int kTcpFrameRateMinimumWidth = 132;
+constexpr int kWavePlotMinimumHeight = 120;
+constexpr int kWavePlotMaximumHeight = 150;
+constexpr int kPeakPlotMinimumHeight = 150;
+constexpr int kPeakPlotMaximumHeight = 190;
 constexpr int kPlotTopMargin = 2;
 constexpr int kPlotRightMargin = 2;
 constexpr int kWavePlotLeftMargin = 88;
@@ -377,8 +381,8 @@ public:
         , line_color_(lineColor)
     {
         setFont(numericFontFrom(font()));
-        setMinimumHeight(120);
-        setMaximumHeight(150);
+        setMinimumHeight(kWavePlotMinimumHeight);
+        setMaximumHeight(kWavePlotMaximumHeight);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     }
 
@@ -495,8 +499,8 @@ public:
         , view_count_(0)
     {
         setFont(numericFontFrom(font()));
-        setMinimumHeight(150);
-        setMaximumHeight(190);
+        setMinimumHeight(kPeakPlotMinimumHeight);
+        setMaximumHeight(kPeakPlotMaximumHeight);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     }
 
@@ -855,6 +859,16 @@ void TcpWavePanel::setCompactLayout(bool compact)
     updateGeometry();
 }
 
+int TcpWavePanel::preferredPanelHeight() const
+{
+    const int topControlsHeight = control_layout_ ? control_layout_->sizeHint().height() : kTcpTitleBarHeight;
+    const int plotRowsHeight = compact_layout_
+        ? (2 * (kTcpTitleBarHeight + kWavePlotMinimumHeight + 6) + 4)
+        : (kTcpTitleBarHeight + kWavePlotMinimumHeight + 6);
+    const int peakHeight = kTcpTitleBarHeight + kPeakPlotMinimumHeight + 8;
+    return topControlsHeight + plotRowsHeight + peakHeight + 20;
+}
+
 void TcpWavePanel::setupUi()
 {
     auto *mainLayout = new QVBoxLayout(this);
@@ -1167,9 +1181,11 @@ void TcpWavePanel::setEnglish(bool english)
     }
     if (peak_title_label_)
     {
-        peak_title_label_->setText(english
+        const QString titleText = english
             ? QString("Normalized Second Harmonic Peak Trend (latest %1 frames)").arg(kPeakTrendFrameWindow)
-            : QString("归一化二次谐波峰值趋势（最近%1帧）").arg(kPeakTrendFrameWindow));
+            : QString("归一化二次谐波峰值趋势（最近%1帧）").arg(kPeakTrendFrameWindow);
+        peak_title_label_->setText(titleText);
+        peak_title_label_->setToolTip(titleText);
     }
     if (wave1_plot_)
     {
@@ -1239,11 +1255,15 @@ void TcpWavePanel::updatePeakFilterButtonText()
     const QString searchEndText = peak_search_end_index_ <= 0
         ? (is_english_ ? QStringLiteral("end") : QStringLiteral("末尾"))
         : QString::number(peak_search_end_index_);
-    peak_filter_button_->setText(QStringLiteral("%1:%2-%3 / %4")
+    const QString text = QStringLiteral("%1:%2-%3 / %4")
         .arg(is_english_ ? QStringLiteral("Search") : QStringLiteral("峰值搜索"))
         .arg(peak_search_start_index_)
         .arg(searchEndText)
-        .arg(peakFilterModeText(peak_filter_settings_.mode)));
+        .arg(peakFilterModeText(peak_filter_settings_.mode));
+    peak_filter_button_->setText(text);
+    peak_filter_button_->setToolTip(text);
+    const QFontMetrics metrics(peak_filter_button_->font());
+    peak_filter_button_->setFixedWidth(std::clamp(metrics.horizontalAdvance(text) + 34, 134, 360));
 }
 
 float TcpWavePanel::currentWaveformPeakValue(const QVector<float>& samples) const
