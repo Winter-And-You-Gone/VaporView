@@ -693,6 +693,7 @@ private:
     bool epsilon_reconfigure_in_progress_;
     bool is_connected_;
     bool compact_home_layout_;
+    bool responsive_home_layout_refresh_pending_;
     bool remote_sky_mode_;
     bool remote_sky_online_;
     bool remote_wave_stream_requested_;

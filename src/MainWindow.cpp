@@ -168,9 +168,13 @@ constexpr int kEnvStatusIconSize = 18;
 constexpr int kEpsilonSideTitleWidth = 24;
 constexpr int kEpsilonTitleColumnWidth = 102;
 constexpr int kEpsilonMotionTitleColumnWidth = 116;
-constexpr int kEpsilonLeftValueColumnWidth = 240;
-constexpr int kEpsilonPositionValueColumnWidth = 230;
+constexpr int kEpsilonLeftValueColumnWidth = 225;
+constexpr int kEpsilonPositionValueColumnWidth = 215;
 constexpr int kEpsilonMotionValueColumnWidth = 300;
+constexpr int kEpsilonFieldBaseSpacing = 6;
+constexpr int kEpsilonFieldExtraSpacingLimit = 28;
+constexpr int kEpsilonFieldExtraSpacingStep = 10;
+constexpr int kEpsilonFieldMinimumHeight = 20;
 constexpr int kTelemetrySummaryRateCardWidth = 250;
 constexpr int kTelemetrySummaryInfoCardWidth = 250;
 constexpr int kTelemetrySummaryGapWidth = 2;
@@ -1859,6 +1863,9 @@ public:
         compact_layout_ = compact;
         setSizePolicy(compact ? QSizePolicy::Expanding : QSizePolicy::Maximum, QSizePolicy::Preferred);
         updateCardGridLayout(changed);
+        QTimer::singleShot(0, this, [this]() {
+            updateCardGridLayout(true);
+        });
         if (layout())
         {
             layout()->invalidate();
@@ -1988,7 +1995,7 @@ protected:
     void resizeEvent(QResizeEvent *event) override
     {
         QWidget::resizeEvent(event);
-        updateCardGridLayout();
+        updateCardGridLayout(true);
     }
 
 private:
@@ -2110,8 +2117,8 @@ private:
         font.setBold(true);
         label->setFont(font);
         label->setAlignment(Qt::AlignCenter);
-        label->setMinimumWidth(kEpsilonSideTitleWidth);
-        label->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Expanding);
+        label->setFixedWidth(kEpsilonSideTitleWidth);
+        label->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
         section_labels_.insert(key, label);
         section_zh_.insert(key, zhTitle);
         section_en_.insert(key, enTitle);
@@ -2120,12 +2127,9 @@ private:
     int availableCardWidth() const
     {
         int availableWidth = contentsRect().width();
-        if (availableWidth <= 0)
+        if (const QWidget *parent = parentWidget())
         {
-            if (const QWidget *parent = parentWidget())
-            {
-                availableWidth = parent->contentsRect().width() - 4;
-            }
+            availableWidth = std::max(availableWidth, parent->contentsRect().width() - 4);
         }
         return availableWidth;
     }
@@ -2135,6 +2139,10 @@ private:
         if (section_cards_.isEmpty())
         {
             return 1;
+        }
+        if (!compact_layout_)
+        {
+            return 3;
         }
 
         const int availableWidth = availableCardWidth();
@@ -2173,10 +2181,10 @@ private:
     QVector<int> standardCardWidths() const
     {
         QVector<int> widths;
-        widths.reserve(section_cards_.size());
-        for (const QFrame *card : section_cards_)
+        widths.reserve(section_card_standard_widths_.size());
+        for (int width : section_card_standard_widths_)
         {
-            widths.push_back(std::max(card->minimumSizeHint().width(), card->sizeHint().width()));
+            widths.push_back(width);
         }
         return widths;
     }
@@ -2186,7 +2194,72 @@ private:
         for (QFrame *card : section_cards_)
         {
             card->setSizePolicy(expandable ? QSizePolicy::Expanding : QSizePolicy::Maximum,
-                                QSizePolicy::Maximum);
+                                QSizePolicy::Preferred);
+        }
+    }
+
+    void syncCardMinimumHeights()
+    {
+        for (QFrame *card : section_cards_)
+        {
+            if (QLayout *cardLayout = card->layout())
+            {
+                card->setMinimumHeight(cardLayout->minimumSize().height());
+            }
+        }
+    }
+
+    void updateFieldSpacingForCard(int cardIndex, int targetCardWidth)
+    {
+        if (cardIndex < 0 ||
+            cardIndex >= section_card_grids_.size() ||
+            cardIndex >= section_cards_.size() ||
+            cardIndex >= section_card_standard_widths_.size())
+        {
+            return;
+        }
+
+        const int standardWidth = section_card_standard_widths_.at(cardIndex);
+        const int extraWidth = std::max(0, targetCardWidth - standardWidth);
+        const int spacing = kEpsilonFieldBaseSpacing +
+                            std::min(kEpsilonFieldExtraSpacingLimit,
+                                     extraWidth / kEpsilonFieldExtraSpacingStep);
+        section_card_grids_.at(cardIndex)->setHorizontalSpacing(spacing);
+    }
+
+    void updateFieldSpacings(int columns, const QVector<int>& widths)
+    {
+        if (widths.isEmpty())
+        {
+            return;
+        }
+
+        const int availableWidth = std::max(0, availableCardWidth());
+        const int gap = std::max(0, cards_layout_ ? cards_layout_->horizontalSpacing() : 0);
+        if (columns >= 3)
+        {
+            for (int i = 0; i < widths.size(); ++i)
+            {
+                updateFieldSpacingForCard(i, widths.at(i));
+            }
+            return;
+        }
+
+        if (columns == 2 && widths.size() >= 3)
+        {
+            const int firstRowAvailableWidth = std::max(0, availableWidth - gap);
+            const int firstRowStandardWidth = std::max(1, widths.at(0) + widths.at(1));
+            const int firstWidth = std::max(widths.at(0), firstRowAvailableWidth * widths.at(0) / firstRowStandardWidth);
+            const int secondWidth = std::max(widths.at(1), firstRowAvailableWidth - firstWidth);
+            updateFieldSpacingForCard(0, firstWidth);
+            updateFieldSpacingForCard(1, secondWidth);
+            updateFieldSpacingForCard(2, availableWidth);
+            return;
+        }
+
+        for (int i = 0; i < widths.size(); ++i)
+        {
+            updateFieldSpacingForCard(i, availableWidth);
         }
     }
 
@@ -2199,9 +2272,11 @@ private:
 
         cards_layout_->setHorizontalSpacing(compact_layout_ ? 4 : 2);
         cards_layout_->setVerticalSpacing(compact_layout_ ? 4 : 2);
+        syncCardMinimumHeights();
         const QVector<int> widths = standardCardWidths();
 
         const int columns = desiredCardColumns();
+        updateFieldSpacings(columns, widths);
         if (!force && current_card_columns_ == columns)
         {
             return;
@@ -2274,13 +2349,18 @@ private:
 
         auto *cardLayout = new QGridLayout();
         cardLayout->setContentsMargins(2, 2, 2, 2);
-        cardLayout->setHorizontalSpacing(6);
+        cardLayout->setHorizontalSpacing(kEpsilonFieldBaseSpacing);
         cardLayout->setVerticalSpacing(2);
         cardLayout->setColumnMinimumWidth(0, titleColumnWidth);
         cardLayout->setColumnMinimumWidth(1, valueColumnWidth);
         cardLayout->setColumnStretch(0, 0);
-        cardLayout->setColumnStretch(1, 0);
-        outerLayout->addLayout(cardLayout, 0);
+        cardLayout->setColumnStretch(1, 1);
+        outerLayout->addLayout(cardLayout, 1);
+        section_card_grids_.push_back(cardLayout);
+        section_card_standard_widths_.push_back(kEpsilonSideTitleWidth + outerLayout->contentsMargins().left() +
+                                                outerLayout->contentsMargins().right() + outerLayout->spacing() +
+                                                cardLayout->contentsMargins().left() + cardLayout->contentsMargins().right() +
+                                                titleColumnWidth + kEpsilonFieldBaseSpacing + valueColumnWidth);
         return cardLayout;
     }
 
@@ -2295,14 +2375,21 @@ private:
         QLabel *title = new QLabel(this);
         title->setObjectName(QStringLiteral("fieldLabel"));
         title->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        title->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        if (const int titleColumnWidth = layout->columnMinimumWidth(column * 2); titleColumnWidth > 0)
+        {
+            title->setFixedWidth(titleColumnWidth);
+        }
+        title->setMinimumHeight(kEpsilonFieldMinimumHeight);
         QLabel *value = new QLabel(QStringLiteral("--"), this);
         value->setObjectName(QStringLiteral("valueLabel"));
         value->setTextInteractionFlags(Qt::TextSelectableByMouse);
         value->setWordWrap(false);
         value->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
         value->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
-        value->setMinimumHeight(20);
+        value->setMinimumHeight(kEpsilonFieldMinimumHeight);
         value->setMinimumWidth(valueColumnWidth);
+        layout->setRowMinimumHeight(row, kEpsilonFieldMinimumHeight);
         layout->addWidget(title, row, column * 2);
         layout->addWidget(value, row, column * 2 + 1);
         title_labels_.insert(key, title);
@@ -2379,6 +2466,8 @@ private:
     QLabel *rate_label_;
     QGridLayout *cards_layout_;
     QVector<QFrame*> section_cards_;
+    QVector<QGridLayout*> section_card_grids_;
+    QVector<int> section_card_standard_widths_;
     int current_card_columns_;
     QHash<QString, QLabel*> section_labels_;
     QHash<QString, QLabel*> title_labels_;
@@ -3441,6 +3530,7 @@ MainWindow::MainWindow(QWidget *parent)
     , epsilon_reconfigure_in_progress_(false)
     , is_connected_(false)
     , compact_home_layout_(false)
+    , responsive_home_layout_refresh_pending_(false)
     , remote_sky_mode_(false)
     , remote_sky_online_(false)
     , remote_wave_stream_requested_(false)
@@ -4416,6 +4506,15 @@ void MainWindow::updateResponsiveHomeLayout()
             const int leftWidth = std::max(1, totalWidth - logWidth - main_content_splitter_->handleWidth());
             main_content_splitter_->setSizes({leftWidth, std::max(1, totalWidth - leftWidth)});
         }
+    }
+
+    if (compact && layoutChanged && !responsive_home_layout_refresh_pending_)
+    {
+        responsive_home_layout_refresh_pending_ = true;
+        QTimer::singleShot(0, this, [this]() {
+            responsive_home_layout_refresh_pending_ = false;
+            updateResponsiveHomeLayout();
+        });
     }
 }
 
