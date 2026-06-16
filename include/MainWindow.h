@@ -43,6 +43,7 @@ class RtkConfigDialog;
 class QFile;
 class QEvent;
 class QResizeEvent;
+class QSplitter;
 class QToolButton;
 class TcpWavePanel;
 class SessionViewerWindow;
@@ -420,6 +421,8 @@ private:
     QString themedStyleSheet() const;
     QString scaledStyleSheet(const QString& styleSheet) const;
     void applyScaledUiMetrics();
+    void updateResponsiveHomeLayout();
+    bool shouldUseCompactHomeLayout() const;
     void updateThemeAction();
     void updateThemedIcons();
     void updateCustomTitleBarTexts();
@@ -569,8 +572,12 @@ private:
     QFrame *title_application_panel_;
     QFrame *title_application_sub_panel_;
 
+    QSplitter *main_content_splitter_;
+    QScrollArea *main_cards_scroll_area_;
     QGroupBox *config_group_;
     QGroupBox *data_group_;
+    QWidget *sensor_row_widget_;
+    QHBoxLayout *sensor_layout_;
     QWidget *log_side_panel_;
     QFrame *log_group_;
     QGroupBox *tcp_wave_group_;
@@ -685,6 +692,7 @@ private:
     bool port_detection_in_progress_;
     bool epsilon_reconfigure_in_progress_;
     bool is_connected_;
+    bool compact_home_layout_;
     bool remote_sky_mode_;
     bool remote_sky_online_;
     bool remote_wave_stream_requested_;

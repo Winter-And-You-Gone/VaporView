@@ -582,6 +582,11 @@ constexpr int kFallbackMainWindowWidth = 1440;
 constexpr int kFallbackMainWindowHeight = 860;
 constexpr qreal kMainWindowDefaultScreenFraction = 0.5;
 constexpr qreal kMainWindowMinimumScreenFraction = 0.25;
+constexpr int kCompactHomeScreenWidth = 1600;
+constexpr int kCompactHomeScreenHeight = 900;
+constexpr int kCompactHomeViewportWidth = 1400;
+constexpr int kCompactLogPanelWidth = 96;
+constexpr int kWideLogPanelWidth = 260;
 constexpr quint64 kImuPpsSyncWindowUs = 2ULL * 1000ULL * 1000ULL;
 constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
 constexpr quint32 kUnifiedRawFormatVersion = 2u;
@@ -1805,7 +1810,9 @@ public:
     explicit EpsilonPanel(QLabel *rateLabel = nullptr, QWidget *parent = nullptr)
         : QWidget(parent)
         , rate_label_(rateLabel)
+        , columns_layout_(nullptr)
         , is_english_(false)
+        , compact_layout_(false)
         , total_rate_hz_(0.0)
         , imu_packet_rate_hz_(0.0)
         , ahrs_packet_rate_hz_(0.0)
@@ -1840,6 +1847,28 @@ public:
             const QString text = english ? section_en_.value(it.key()) : section_zh_.value(it.key());
             it.value()->setText(formatSectionTitle(text, english));
         }
+    }
+
+    void setCompactLayout(bool compact)
+    {
+        if (compact_layout_ == compact)
+        {
+            return;
+        }
+        compact_layout_ = compact;
+        if (columns_layout_)
+        {
+            columns_layout_->setDirection(compact ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
+            columns_layout_->setSpacing(compact ? 4 : 2);
+            columns_layout_->invalidate();
+            columns_layout_->activate();
+        }
+        if (layout())
+        {
+            layout()->invalidate();
+            layout()->activate();
+        }
+        updateGeometry();
     }
 
     void updateData(const VaporView::EpsilonData& epsilon_data)
@@ -2162,15 +2191,15 @@ private:
         rate_label_->setMaximumWidth(QWIDGETSIZE_MAX);
         rate_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
 
-        auto *columnsLayout = new QHBoxLayout();
-        columnsLayout->setContentsMargins(0, 0, 0, 0);
-        columnsLayout->setSpacing(2);
+        columns_layout_ = new QHBoxLayout();
+        columns_layout_->setContentsMargins(0, 0, 0, 0);
+        columns_layout_->setSpacing(2);
 
-        auto createColumn = [columnsLayout]() {
+        auto createColumn = [this]() {
             auto *columnLayout = new QVBoxLayout();
             columnLayout->setContentsMargins(0, 0, 0, 0);
             columnLayout->setSpacing(2);
-            columnsLayout->addLayout(columnLayout, 0);
+            columns_layout_->addLayout(columnLayout, 0);
             return columnLayout;
         };
 
@@ -2222,12 +2251,13 @@ private:
         {
             columnLayout->addStretch(1);
         }
-        columnsLayout->addStretch(1);
-        layout->addLayout(columnsLayout, 0);
+        columns_layout_->addStretch(1);
+        layout->addLayout(columns_layout_, 0);
         layout->addStretch(1);
     }
 
     QLabel *rate_label_;
+    QHBoxLayout *columns_layout_;
     QHash<QString, QLabel*> section_labels_;
     QHash<QString, QLabel*> title_labels_;
     QHash<QString, QLabel*> value_labels_;
@@ -2236,6 +2266,7 @@ private:
     QHash<QString, QString> title_zh_;
     QHash<QString, QString> title_en_;
     bool is_english_;
+    bool compact_layout_;
     double total_rate_hz_;
     double imu_packet_rate_hz_;
     double ahrs_packet_rate_hz_;
@@ -3181,8 +3212,12 @@ MainWindow::MainWindow(QWidget *parent)
     , log_filter_menu_(nullptr)
     , title_application_panel_(nullptr)
     , title_application_sub_panel_(nullptr)
+    , main_content_splitter_(nullptr)
+    , main_cards_scroll_area_(nullptr)
     , config_group_(nullptr)
     , data_group_(nullptr)
+    , sensor_row_widget_(nullptr)
+    , sensor_layout_(nullptr)
     , log_side_panel_(nullptr)
     , log_group_(nullptr)
     , epsilon_group_(nullptr)
@@ -3283,6 +3318,7 @@ MainWindow::MainWindow(QWidget *parent)
     , port_detection_in_progress_(false)
     , epsilon_reconfigure_in_progress_(false)
     , is_connected_(false)
+    , compact_home_layout_(false)
     , remote_sky_mode_(false)
     , remote_sky_online_(false)
     , remote_wave_stream_requested_(false)
@@ -3754,6 +3790,7 @@ void MainWindow::resizeEvent(QResizeEvent *event)
     updateWindowControlButtons();
     updateWindowBorderFrames();
     updateWindowResizeHandles();
+    updateResponsiveHomeLayout();
 }
 
 #ifdef Q_OS_WIN
@@ -4096,6 +4133,159 @@ void MainWindow::applyScaledUiMetrics()
     }
 }
 
+bool MainWindow::shouldUseCompactHomeLayout() const
+{
+    const QRect availableGeometry = currentScreenAvailableGeometry();
+    const QSize availableSize = availableGeometry.isValid() ? availableGeometry.size() : QSize();
+    const int viewportWidth = main_cards_scroll_area_ && main_cards_scroll_area_->viewport()
+        ? main_cards_scroll_area_->viewport()->width()
+        : width();
+    return (availableSize.isValid() &&
+            (availableSize.width() <= kCompactHomeScreenWidth || availableSize.height() <= kCompactHomeScreenHeight)) ||
+           (viewportWidth > 0 && viewportWidth <= kCompactHomeViewportWidth);
+}
+
+void MainWindow::updateResponsiveHomeLayout()
+{
+    if (!sensor_layout_ || !sensor_row_widget_ || !data_group_)
+    {
+        return;
+    }
+
+    const bool compact = shouldUseCompactHomeLayout();
+    const bool layoutChanged = compact_home_layout_ != compact;
+    compact_home_layout_ = compact;
+
+    const QBoxLayout::Direction direction = compact ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight;
+    if (sensor_layout_->direction() != direction)
+    {
+        sensor_layout_->setDirection(direction);
+    }
+    sensor_layout_->setSpacing(compact ? 4 : 2);
+
+    if (epsilon_panel_)
+    {
+        epsilon_panel_->setCompactLayout(compact);
+    }
+    if (tcp_wave_panel_)
+    {
+        tcp_wave_panel_->setCompactLayout(compact);
+    }
+    if (main_cards_scroll_area_ && main_cards_scroll_area_->widget() && main_cards_scroll_area_->viewport())
+    {
+        main_cards_scroll_area_->setHorizontalScrollBarPolicy(compact ? Qt::ScrollBarAlwaysOff : Qt::ScrollBarAsNeeded);
+        main_cards_scroll_area_->widget()->setSizePolicy(compact ? QSizePolicy::Ignored : QSizePolicy::Preferred,
+                                                         QSizePolicy::Preferred);
+        main_cards_scroll_area_->widget()->setMinimumWidth(compact ? 0 : config_group_->minimumWidth());
+        main_cards_scroll_area_->widget()->resize(main_cards_scroll_area_->viewport()->width(),
+                                                  main_cards_scroll_area_->widget()->height());
+    }
+
+    if (epsilon_group_)
+    {
+        epsilon_group_->setSizePolicy(compact ? QSizePolicy::Expanding : QSizePolicy::Maximum, QSizePolicy::Preferred);
+        sensor_layout_->setAlignment(epsilon_group_, compact ? Qt::AlignTop : (Qt::AlignLeft | Qt::AlignTop));
+    }
+    if (env_group_)
+    {
+        env_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        sensor_layout_->setAlignment(env_group_, Qt::AlignTop);
+    }
+
+    auto clearFixedHeight = [](QWidget *widget) {
+        if (!widget)
+        {
+            return;
+        }
+        widget->setMinimumHeight(0);
+        widget->setMaximumHeight(QWIDGETSIZE_MAX);
+        if (QLayout *widgetLayout = widget->layout())
+        {
+            widgetLayout->activate();
+        }
+    };
+    auto contentHeightFor = [](QWidget *widget) {
+        if (!widget)
+        {
+            return 0;
+        }
+        return std::max(widget->minimumSizeHint().height(), widget->sizeHint().height());
+    };
+
+    clearFixedHeight(epsilon_group_);
+    clearFixedHeight(env_group_);
+    clearFixedHeight(sensor_row_widget_);
+    clearFixedHeight(data_group_);
+    if (sensor_layout_)
+    {
+        sensor_layout_->invalidate();
+        sensor_layout_->activate();
+    }
+
+    const int epsilonHeight = contentHeightFor(epsilon_group_);
+    const int envHeight = contentHeightFor(env_group_);
+    int targetHeight = std::max(epsilonHeight, envHeight);
+    if (compact && epsilonHeight > 0 && envHeight > 0)
+    {
+        targetHeight = epsilonHeight + envHeight + sensor_layout_->spacing();
+    }
+
+    if (targetHeight > 0)
+    {
+        if (compact)
+        {
+            if (epsilon_group_)
+            {
+                epsilon_group_->setMinimumHeight(epsilonHeight);
+            }
+            if (env_group_)
+            {
+                env_group_->setMinimumHeight(envHeight);
+            }
+        }
+        else
+        {
+            if (epsilon_group_)
+            {
+                epsilon_group_->setFixedHeight(targetHeight);
+            }
+            if (env_group_)
+            {
+                env_group_->setFixedHeight(targetHeight);
+            }
+        }
+        sensor_row_widget_->setMinimumHeight(targetHeight);
+        data_group_->setProperty(kMainCardMinimumHeightProperty, targetHeight);
+        data_group_->setMinimumHeight(targetHeight);
+        if (layoutChanged || data_group_->height() < targetHeight)
+        {
+            data_group_->setFixedHeight(targetHeight);
+        }
+    }
+
+    if (log_side_panel_)
+    {
+        log_side_panel_->setMinimumWidth(scalePixels(compact ? kCompactLogPanelWidth : 120));
+        log_side_panel_->setMaximumWidth(compact ? scalePixels(kCompactLogPanelWidth * 2) : QWIDGETSIZE_MAX);
+    }
+
+    if (main_content_splitter_)
+    {
+        const QRect availableGeometry = currentScreenAvailableGeometry();
+        const int totalWidth = std::max(1, main_content_splitter_->width() > 1
+            ? main_content_splitter_->width()
+            : (availableGeometry.isValid() ? availableGeometry.width() : base_window_size_.width()));
+        const int logWidth = compact ? std::min(scalePixels(kCompactLogPanelWidth), totalWidth / 10) : scalePixels(kWideLogPanelWidth);
+        const QList<int> sizes = main_content_splitter_->sizes();
+        const bool compactLogTooWide = compact && sizes.size() >= 2 && sizes.at(1) > scalePixels(kCompactLogPanelWidth * 2);
+        if (layoutChanged || compactLogTooWide)
+        {
+            const int leftWidth = std::max(1, totalWidth - logWidth - main_content_splitter_->handleWidth());
+            main_content_splitter_->setSizes({leftWidth, std::max(1, totalWidth - leftWidth)});
+        }
+    }
+}
+
 void MainWindow::applyStyleConfiguration()
 {
     QFont appFont = qApp->font();
@@ -4107,6 +4297,7 @@ void MainWindow::applyStyleConfiguration()
     applyScaledUiMetrics();
     updateThemedIcons();
     updateCustomTitleBarStyle();
+    updateResponsiveHomeLayout();
 
     if (!isFullScreen() && !isMaximized())
     {
@@ -6410,33 +6601,35 @@ void MainWindow::setupCentralWidget()
     setupConfigPanel();
     setupDataPanels();
 
-    auto *left_scroll_area = new QScrollArea(this);
-    left_scroll_area->setObjectName("mainCardsScrollArea");
-    left_scroll_area->setAttribute(Qt::WA_StyledBackground, true);
-    left_scroll_area->setAutoFillBackground(true);
-    left_scroll_area->viewport()->setObjectName("mainCardsViewport");
-    left_scroll_area->viewport()->setAttribute(Qt::WA_StyledBackground, true);
-    left_scroll_area->viewport()->setAutoFillBackground(true);
-    left_scroll_area->setWidgetResizable(true);
-    left_scroll_area->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    left_scroll_area->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    left_scroll_area->setFrameShape(QFrame::NoFrame);
-    left_scroll_area->setWidget(left_widget);
+    main_cards_scroll_area_ = new QScrollArea(this);
+    main_cards_scroll_area_->setObjectName("mainCardsScrollArea");
+    main_cards_scroll_area_->setAttribute(Qt::WA_StyledBackground, true);
+    main_cards_scroll_area_->setAutoFillBackground(true);
+    main_cards_scroll_area_->viewport()->setObjectName("mainCardsViewport");
+    main_cards_scroll_area_->viewport()->setAttribute(Qt::WA_StyledBackground, true);
+    main_cards_scroll_area_->viewport()->setAutoFillBackground(true);
+    main_cards_scroll_area_->setWidgetResizable(true);
+    main_cards_scroll_area_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    main_cards_scroll_area_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    main_cards_scroll_area_->setFrameShape(QFrame::NoFrame);
+    main_cards_scroll_area_->setWidget(left_widget);
 
     setupLogPanel();
 
-    auto *main_splitter = new QSplitter(Qt::Horizontal, central_widget_);
-    main_splitter->setObjectName("mainContentSplitter");
-    main_splitter->setAttribute(Qt::WA_StyledBackground, true);
-    main_splitter->setAutoFillBackground(true);
-    main_splitter->setChildrenCollapsible(false);
-    main_splitter->setHandleWidth(8);
-    main_splitter->addWidget(left_scroll_area);
-    main_splitter->addWidget(log_side_panel_);
-    main_splitter->setStretchFactor(0, 8);
-    main_splitter->setStretchFactor(1, 1);
-    main_splitter->setSizes({1600, 260});
-    main_h_layout->addWidget(main_splitter);
+    main_content_splitter_ = new QSplitter(Qt::Horizontal, central_widget_);
+    main_content_splitter_->setObjectName("mainContentSplitter");
+    main_content_splitter_->setAttribute(Qt::WA_StyledBackground, true);
+    main_content_splitter_->setAutoFillBackground(true);
+    main_content_splitter_->setChildrenCollapsible(true);
+    main_content_splitter_->setCollapsible(0, false);
+    main_content_splitter_->setCollapsible(1, true);
+    main_content_splitter_->setHandleWidth(8);
+    main_content_splitter_->addWidget(main_cards_scroll_area_);
+    main_content_splitter_->addWidget(log_side_panel_);
+    main_content_splitter_->setStretchFactor(0, 8);
+    main_content_splitter_->setStretchFactor(1, 1);
+    main_content_splitter_->setSizes({1600, kWideLogPanelWidth});
+    main_h_layout->addWidget(main_content_splitter_);
 }
 
 QStringList MainWindow::getAvailablePorts()
@@ -6769,10 +6962,10 @@ void MainWindow::setupDataPanels()
     data_layout->setSpacing(0);
     data_layout->setContentsMargins(0, 0, 0, 0);
 
-    auto *sensor_row = new QWidget(data_group_);
-    auto *sensor_layout = new QHBoxLayout(sensor_row);
-    sensor_layout->setContentsMargins(0, 0, 0, 0);
-    sensor_layout->setSpacing(2);
+    sensor_row_widget_ = new QWidget(data_group_);
+    sensor_layout_ = new QHBoxLayout(sensor_row_widget_);
+    sensor_layout_->setContentsMargins(0, 0, 0, 0);
+    sensor_layout_->setSpacing(2);
 
     epsilon_group_ = new QGroupBox(this);
     epsilon_group_->setObjectName("sensorGroupBox");
@@ -6806,7 +6999,7 @@ void MainWindow::setupDataPanels()
     epsilon_layout->addWidget(epsilonTitleBar);
     epsilon_panel_ = new EpsilonPanel(epsilonRateTitleLabel, this);
     epsilon_layout->addWidget(epsilon_panel_);
-    sensor_layout->addWidget(epsilon_group_, 0, Qt::AlignLeft | Qt::AlignTop);
+    sensor_layout_->addWidget(epsilon_group_, 0, Qt::AlignLeft | Qt::AlignTop);
 
     gnss_group_ = nullptr;
     imu_group_ = nullptr;
@@ -6867,11 +7060,11 @@ void MainWindow::setupDataPanels()
     });
     epsilon_group_->setFixedHeight(sensorCardHeight);
     env_group->setFixedHeight(sensorCardHeight);
-    sensor_row->setMinimumHeight(sensorCardHeight);
+    sensor_row_widget_->setMinimumHeight(sensorCardHeight);
 
-    sensor_layout->addWidget(env_group, 1);
+    sensor_layout_->addWidget(env_group, 1);
 
-    data_layout->addWidget(sensor_row, 0);
+    data_layout->addWidget(sensor_row_widget_, 0);
     data_layout->addStretch(1);
     const int dataCardMinHeight = data_group_->minimumSizeHint().height();
     data_group_->setMinimumHeight(dataCardMinHeight);

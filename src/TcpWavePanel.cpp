@@ -786,6 +786,7 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , peak_clear_button_(nullptr)
     , control_layout_(nullptr)
     , top_controls_layout_(nullptr)
+    , plots_layout_(nullptr)
     , socket_(nullptr)
     , live_display_timer_(nullptr)
     , pending_wave1_payload_()
@@ -813,6 +814,7 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , process_buffer_pending_(false)
     , payload_order_auto_correct_logged_(false)
     , is_english_(false)
+    , compact_layout_(false)
     , remote_sky_mode_(false)
     , remote_wave_tcp_connected_(false)
     , last_remote_feature_time_us_(0)
@@ -833,6 +835,24 @@ TcpWavePanel::~TcpWavePanel()
         socket_->deleteLater();
         socket_ = nullptr;
     }
+}
+
+void TcpWavePanel::setCompactLayout(bool compact)
+{
+    if (compact_layout_ == compact)
+    {
+        return;
+    }
+
+    compact_layout_ = compact;
+    if (plots_layout_)
+    {
+        plots_layout_->setDirection(compact ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
+        plots_layout_->setSpacing(compact ? 4 : 1);
+        plots_layout_->invalidate();
+        plots_layout_->activate();
+    }
+    updateGeometry();
 }
 
 void TcpWavePanel::setupUi()
@@ -934,8 +954,8 @@ void TcpWavePanel::setupUi()
 
     mainLayout->addLayout(control_layout_);
 
-    auto *plotsLayout = new QHBoxLayout();
-    plotsLayout->setSpacing(1);
+    plots_layout_ = new QHBoxLayout();
+    plots_layout_->setSpacing(1);
 
     wave1_group_ = new QGroupBox(this);
     wave1_group_->setObjectName("sensorGroupBox");
@@ -961,7 +981,7 @@ void TcpWavePanel::setupUi()
     wave1Layout->addWidget(wave1HeaderBar);
     wave1_plot_ = new WavePlotWidget(appThemeColor(AppThemeColor::PlotSeriesWaveBlue, false), this);
     wave1Layout->addWidget(wave1_plot_, 1);
-    plotsLayout->addWidget(wave1_group_, 1);
+    plots_layout_->addWidget(wave1_group_, 1);
 
     wave4_group_ = new QGroupBox(this);
     wave4_group_->setObjectName("sensorGroupBox");
@@ -987,9 +1007,9 @@ void TcpWavePanel::setupUi()
     wave4Layout->addWidget(wave4HeaderBar);
     wave4_plot_ = new WavePlotWidget(appThemeColor(AppThemeColor::PlotSeriesWaveOrange, false), this);
     wave4Layout->addWidget(wave4_plot_, 1);
-    plotsLayout->addWidget(wave4_group_, 1);
+    plots_layout_->addWidget(wave4_group_, 1);
 
-    mainLayout->addLayout(plotsLayout, 1);
+    mainLayout->addLayout(plots_layout_, 1);
 
     peak_group_ = new QGroupBox(this);
     peak_group_->setObjectName("sensorGroupBox");

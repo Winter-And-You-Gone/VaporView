@@ -33,6 +33,7 @@ public:
     int port() const;
     bool isConnected() const;
     void attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox);
+    void setCompactLayout(bool compact);
     void setRemoteSkyMode(bool enabled);
     void setRemoteWaveTcpState(VaporView::DeviceState state);
     void setRemoteFeatureRateHz(double rateHz);
@@ -153,6 +154,7 @@ private:
     QPushButton *peak_clear_button_;
     QGridLayout *control_layout_;
     QHBoxLayout *top_controls_layout_;
+    QHBoxLayout *plots_layout_;
     QTcpSocket *socket_;
     QTimer *live_display_timer_;
 
@@ -185,6 +187,7 @@ private:
     bool process_buffer_pending_;
     bool payload_order_auto_correct_logged_;
     bool is_english_;
+    bool compact_layout_;
     bool remote_sky_mode_;
     bool remote_wave_tcp_connected_;
     quint64 last_remote_feature_time_us_;
