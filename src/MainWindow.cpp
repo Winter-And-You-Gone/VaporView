@@ -7263,9 +7263,10 @@ void MainWindow::setupDataPanels()
 
     auto createStatusIcon = [envTitleBar]() {
         auto *label = new QLabel(envTitleBar);
-        label->setObjectName(QStringLiteral("fieldLabel"));
+        label->setObjectName(QStringLiteral("envStatusIcon"));
         label->setAlignment(Qt::AlignCenter);
-        label->setFixedSize(kEnvStatusIconSize + 4, kEnvStatusIconSize + 4);
+        label->setFixedSize(kMainPageButtonHeight, kMainPageButtonHeight);
+        label->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         return label;
     };
     env_lidar_status_icon_ = createStatusIcon();
