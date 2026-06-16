@@ -768,7 +768,7 @@ QIcon createClearLogIcon()
 
 QIcon createLogFilterIcon()
 {
-    return createLucideIcon(QStringLiteral("list-filter"), toolbarColor(AppThemeColor::ToolbarBlue));
+    return createLucideIcon(QStringLiteral("funnel"), toolbarColor(AppThemeColor::ToolbarBlue));
 }
 
 QIcon createMenuCheckIcon()

@@ -280,6 +280,7 @@ set(LUCIDE_RESOURCES
     resources/lucide/check.svg
     resources/lucide/circle-x.svg
     resources/lucide/copy.svg
+    resources/lucide/funnel.svg
     resources/lucide/key.svg
     resources/lucide/languages.svg
     resources/lucide/list-filter.svg
