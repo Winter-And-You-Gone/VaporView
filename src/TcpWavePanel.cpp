@@ -6,7 +6,6 @@
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
-#include <QFormLayout>
 #include <QFontDatabase>
 #include <QFontMetrics>
 #include <QGridLayout>
@@ -24,6 +23,8 @@
 #include <QPushButton>
 #include <QSettings>
 #include <QSignalBlocker>
+#include <QSize>
+#include <QSizePolicy>
 #include <QSpinBox>
 #include <QStringList>
 #include <QTcpSocket>
@@ -1735,52 +1736,97 @@ void TcpWavePanel::onConfigurePeakFilterClicked()
 {
     QDialog dialog(this);
     dialog.setWindowTitle(is_english_ ? QStringLiteral("Peak Search Range") : QStringLiteral("峰值搜索区间"));
+    VaporView::installCustomTitleBar(&dialog, false);
 
-    auto *layout = new QVBoxLayout(&dialog);
-    auto *formLayout = new QFormLayout();
+    QWidget *content = dialog.findChild<QWidget *>(QStringLiteral("customTitleBarContent"));
+    if (!content)
+    {
+        content = &dialog;
+    }
+    auto *layout = qobject_cast<QVBoxLayout *>(content->layout());
+    if (!layout)
+    {
+        layout = new QVBoxLayout(content);
+    }
+    layout->setContentsMargins(22, 18, 22, 18);
+    layout->setSpacing(14);
+
+    auto *formWidget = new QWidget(content);
+    auto *formLayout = new QGridLayout(formWidget);
     formLayout->setContentsMargins(0, 0, 0, 0);
+    formLayout->setHorizontalSpacing(14);
+    formLayout->setVerticalSpacing(10);
+    const int labelColumnWidth = is_english_ ? 104 : 86;
+    const int inputColumnWidth = 240;
+    auto addFormRow = [formWidget, formLayout, labelColumnWidth](int row, const QString& labelText, QWidget *editor) {
+        auto *label = new QLabel(labelText, formWidget);
+        label->setMinimumWidth(labelColumnWidth);
+        label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        editor->setMinimumHeight(34);
+        formLayout->addWidget(label, row, 0, Qt::AlignRight | Qt::AlignVCenter);
+        formLayout->addWidget(editor, row, 1);
+    };
 
-    auto *searchStartSpin = new QSpinBox(&dialog);
+    auto *searchStartSpin = new QSpinBox(formWidget);
     searchStartSpin->setRange(0, 10000000);
     searchStartSpin->setSingleStep(1000);
     searchStartSpin->setValue(peak_search_start_index_);
-    formLayout->addRow(is_english_ ? QStringLiteral("Search Start") : QStringLiteral("搜索起点"), searchStartSpin);
+    searchStartSpin->setMinimumWidth(inputColumnWidth);
+    addFormRow(0, is_english_ ? QStringLiteral("Search Start") : QStringLiteral("搜索起点"), searchStartSpin);
 
-    auto *searchEndSpin = new QSpinBox(&dialog);
+    auto *searchEndSpin = new QSpinBox(formWidget);
     searchEndSpin->setRange(0, 10000000);
     searchEndSpin->setSingleStep(1000);
     searchEndSpin->setSpecialValueText(is_english_ ? QStringLiteral("Full Frame") : QStringLiteral("整帧"));
     searchEndSpin->setValue(std::max(0, peak_search_end_index_));
-    formLayout->addRow(is_english_ ? QStringLiteral("Search End") : QStringLiteral("搜索终点"), searchEndSpin);
+    searchEndSpin->setMinimumWidth(inputColumnWidth);
+    addFormRow(1, is_english_ ? QStringLiteral("Search End") : QStringLiteral("搜索终点"), searchEndSpin);
 
-    auto *modeCombo = new QComboBox(&dialog);
+    auto *modeCombo = new QComboBox(formWidget);
     modeCombo->addItem(is_english_ ? QStringLiteral("Off") : QStringLiteral("关闭"), static_cast<int>(PeakFilterMode::None));
     modeCombo->addItem(is_english_ ? QStringLiteral("IQR Outlier Filter") : QStringLiteral("IQR 异常值过滤"), static_cast<int>(PeakFilterMode::IqrOutlier));
     modeCombo->addItem(is_english_ ? QStringLiteral("Keep Range") : QStringLiteral("保留区间"), static_cast<int>(PeakFilterMode::KeepRange));
     modeCombo->addItem(is_english_ ? QStringLiteral("Exclude Range") : QStringLiteral("排除区间"), static_cast<int>(PeakFilterMode::ExcludeRange));
     modeCombo->setCurrentIndex(std::max(0, modeCombo->findData(static_cast<int>(peak_filter_settings_.mode))));
-    formLayout->addRow(is_english_ ? QStringLiteral("Trend Filter") : QStringLiteral("趋势过滤"), modeCombo);
+    modeCombo->setMinimumWidth(inputColumnWidth);
+    addFormRow(2, is_english_ ? QStringLiteral("Trend Filter") : QStringLiteral("趋势过滤"), modeCombo);
 
-    auto *minEdit = new QLineEdit(QString::number(peak_filter_settings_.min_value, 'f', 6), &dialog);
-    auto *maxEdit = new QLineEdit(QString::number(peak_filter_settings_.max_value, 'f', 6), &dialog);
-    formLayout->addRow(is_english_ ? QStringLiteral("Range Min") : QStringLiteral("区间最小值"), minEdit);
-    formLayout->addRow(is_english_ ? QStringLiteral("Range Max") : QStringLiteral("区间最大值"), maxEdit);
-    layout->addLayout(formLayout);
+    auto *minEdit = new QLineEdit(QString::number(peak_filter_settings_.min_value, 'f', 6), formWidget);
+    auto *maxEdit = new QLineEdit(QString::number(peak_filter_settings_.max_value, 'f', 6), formWidget);
+    minEdit->setMinimumWidth(inputColumnWidth);
+    maxEdit->setMinimumWidth(inputColumnWidth);
+    addFormRow(3, is_english_ ? QStringLiteral("Range Min") : QStringLiteral("区间最小值"), minEdit);
+    addFormRow(4, is_english_ ? QStringLiteral("Range Max") : QStringLiteral("区间最大值"), maxEdit);
+    formLayout->setColumnMinimumWidth(0, labelColumnWidth);
+    formLayout->setColumnMinimumWidth(1, inputColumnWidth);
+    formLayout->setColumnStretch(1, 1);
+    layout->addWidget(formWidget);
 
     auto *hintLabel = new QLabel(
         is_english_
             ? QStringLiteral("Peak search uses sample indexes [start, end). Search End = Full Frame uses all remaining samples. IQR removes statistical outliers. Keep Range keeps only values inside [min, max]. Exclude Range removes values inside [min, max]. If you change the search window, the existing live trend is cleared and new frames use the updated range.")
             : QStringLiteral("峰值搜索使用采样点下标 [起点, 终点)。搜索终点为“整帧”时表示一直搜索到本帧末尾。IQR 会过滤统计异常值。保留区间只保留 [最小值, 最大值] 内的峰值。排除区间会过滤 [最小值, 最大值] 内的峰值。修改搜索窗口后，已有实时趋势会清空，后续新帧按新区间计算。"),
-        &dialog);
+        content);
     hintLabel->setWordWrap(true);
+    hintLabel->setMinimumWidth(labelColumnWidth + inputColumnWidth + formLayout->horizontalSpacing());
+    hintLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     layout->addWidget(hintLabel);
 
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, content);
+    if (QPushButton *okButton = buttons->button(QDialogButtonBox::Ok))
+    {
+        okButton->setText(is_english_ ? QStringLiteral("OK") : QStringLiteral("确定"));
+    }
+    if (QPushButton *cancelButton = buttons->button(QDialogButtonBox::Cancel))
+    {
+        cancelButton->setText(is_english_ ? QStringLiteral("Cancel") : QStringLiteral("取消"));
+    }
     layout->addWidget(buttons);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
 
-    VaporView::installCustomTitleBar(&dialog, false);
+    dialog.setMinimumSize(is_english_ ? QSize(580, 460) : QSize(560, 450));
+    dialog.resize(dialog.minimumSize());
     if (dialog.exec() != QDialog::Accepted)
     {
         return;

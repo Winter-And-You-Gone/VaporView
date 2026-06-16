@@ -51,9 +51,64 @@
 
 using VaporView::AppThemeColor;
 using VaporView::appThemeColor;
+using VaporView::appThemeColorName;
+using VaporView::isDarkThemeEnabled;
 
 namespace
 {
+void applyRawDataProgressDialogStyle(QProgressDialog *dialog)
+{
+    if (!dialog)
+    {
+        return;
+    }
+
+    const bool dark = isDarkThemeEnabled();
+    const QColor panelColor = appThemeColor(dark ? AppThemeColor::Window : AppThemeColor::Surface, dark);
+    const QColor fieldColor = appThemeColor(AppThemeColor::FieldBackground, dark);
+    const QColor borderColor = appThemeColor(AppThemeColor::FieldBorder, dark);
+    const QColor textColor = appThemeColor(AppThemeColor::TextStrong, dark);
+    const QColor chunkColor = appThemeColor(AppThemeColor::ProgressChunk, dark);
+
+    QPalette progressPalette = dialog->palette();
+    progressPalette.setColor(QPalette::Window, panelColor);
+    progressPalette.setColor(QPalette::Base, panelColor);
+    progressPalette.setColor(QPalette::Text, textColor);
+    progressPalette.setColor(QPalette::WindowText, textColor);
+    dialog->setPalette(progressPalette);
+    dialog->setAttribute(Qt::WA_StyledBackground, true);
+    dialog->setAutoFillBackground(true);
+
+    if (QWidget *content = dialog->findChild<QWidget *>(QStringLiteral("customTitleBarContent")))
+    {
+        content->setAutoFillBackground(true);
+        content->setPalette(progressPalette);
+        if (auto *layout = qobject_cast<QVBoxLayout *>(content->layout()))
+        {
+            layout->setContentsMargins(22, 18, 22, 18);
+            layout->setSpacing(14);
+        }
+    }
+
+    dialog->setStyleSheet(QStringLiteral(
+        "QProgressDialog, QWidget#customTitleBarContent { background-color: %1; color: %2; }"
+        "QWidget#customTitleBarContent QLabel { background-color: transparent; color: %2; font-size: 14px; }"
+        "QWidget#customTitleBarContent QProgressBar { background-color: %3; border: 1px solid %4; border-radius: 4px; min-height: 10px; text-align: center; color: %2; }"
+        "QWidget#customTitleBarContent QProgressBar::chunk { background-color: %5; border-radius: 3px; }"
+        "QWidget#customTitleBarContent QPushButton { background-color: %6; color: %7; border: none; border-radius: 6px; min-height: 34px; padding: 0px 16px 2px 16px; }"
+        "QWidget#customTitleBarContent QPushButton:hover { background-color: %8; }"
+        "QWidget#customTitleBarContent QPushButton:pressed { background-color: %9; }")
+        .arg(panelColor.name(),
+             textColor.name(),
+             fieldColor.name(),
+             borderColor.name(),
+             chunkColor.name(),
+             appThemeColorName(AppThemeColor::Primary, dark),
+             appThemeColorName(AppThemeColor::White, dark),
+             appThemeColorName(AppThemeColor::PrimaryHover, dark),
+             appThemeColorName(AppThemeColor::PrimaryPressed, dark)));
+}
+
 constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
 constexpr quint32 kUnifiedRawRecordMarker = 0x44525756u;
 constexpr quint16 kRawSourceEpsilon = 1u;
@@ -1162,7 +1217,11 @@ void RawDataParserWindow::Impl::applyFilters()
                                        0,
                                        records.size(),
                                        owner);
+        progress->setWindowTitle(english ? QStringLiteral("Scanning Records") : QStringLiteral("正在扫描记录"));
         progress->setWindowModality(Qt::WindowModal);
+        progress->setMinimumWidth(380);
+        VaporView::installCustomTitleBar(progress, false);
+        applyRawDataProgressDialogStyle(progress);
     }
 
     for (int i = 0; i < records.size(); ++i)
@@ -1509,7 +1568,11 @@ void RawDataParserWindow::Impl::exportDecodedCsv()
                              0,
                              visible_rows.size(),
                              owner);
+    progress.setWindowTitle(english ? QStringLiteral("Export Decoded Fields") : QStringLiteral("导出解析字段"));
     progress.setWindowModality(Qt::WindowModal);
+    progress.setMinimumWidth(380);
+    VaporView::installCustomTitleBar(&progress, false);
+    applyRawDataProgressDialogStyle(&progress);
 
     QTextStream out(&file);
     out.setEncoding(QStringConverter::Utf8);
@@ -1589,7 +1652,11 @@ void RawDataParserWindow::Impl::exportDecodedJson()
                              0,
                              visible_rows.size(),
                              owner);
+    progress.setWindowTitle(english ? QStringLiteral("Export Decoded Records") : QStringLiteral("导出解析记录"));
     progress.setWindowModality(Qt::WindowModal);
+    progress.setMinimumWidth(380);
+    VaporView::installCustomTitleBar(&progress, false);
+    applyRawDataProgressDialogStyle(&progress);
 
     QJsonArray recordArray;
     for (int row = 0; row < visible_rows.size(); ++row)
