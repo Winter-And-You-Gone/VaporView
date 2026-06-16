@@ -1,7 +1,12 @@
+#include <QAbstractItemView>
+#include <QAbstractSpinBox>
 #include <QApplication>
 #include <QCommandLineParser>
+#include <QComboBox>
 #include <QDebug>
+#include <QEvent>
 #include <QMainWindow>
+#include <QObject>
 #include <QLabel>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -17,6 +22,45 @@
 
 namespace
 {
+class WheelValueChangeFilter final : public QObject
+{
+public:
+    using QObject::QObject;
+
+protected:
+    bool eventFilter(QObject *object, QEvent *event) override
+    {
+        if (event->type() != QEvent::Wheel)
+        {
+            return QObject::eventFilter(object, event);
+        }
+
+        QWidget *widget = qobject_cast<QWidget *>(object);
+        while (widget)
+        {
+            if (auto *combo = qobject_cast<QComboBox *>(widget))
+            {
+                if (!combo->view()->isVisible())
+                {
+                    event->ignore();
+                    return true;
+                }
+                break;
+            }
+
+            if (qobject_cast<QAbstractSpinBox *>(widget))
+            {
+                event->ignore();
+                return true;
+            }
+
+            widget = widget->parentWidget();
+        }
+
+        return QObject::eventFilter(object, event);
+    }
+};
+
 bool startupDarkThemeEnabled()
 {
     const QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
@@ -56,6 +100,9 @@ void showMainWindow(MainWindow& window, bool hideFirstFrame)
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+    WheelValueChangeFilter wheelValueChangeFilter;
+    app.installEventFilter(&wheelValueChangeFilter);
+
     app.setApplicationName("VaporView");
     app.setApplicationVersion("1.0.0");
     app.setOrganizationName("VaporView");
