@@ -183,6 +183,7 @@ private:
     qint64 last_backlog_warning_ms_;
     bool live_display_dirty_;
     bool process_buffer_pending_;
+    bool payload_order_auto_correct_logged_;
     bool is_english_;
     bool remote_sky_mode_;
     bool remote_wave_tcp_connected_;

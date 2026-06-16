@@ -810,6 +810,7 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , last_backlog_warning_ms_(0)
     , live_display_dirty_(false)
     , process_buffer_pending_(false)
+    , payload_order_auto_correct_logged_(false)
     , is_english_(false)
     , remote_sky_mode_(false)
     , remote_wave_tcp_connected_(false)
@@ -1700,6 +1701,7 @@ void TcpWavePanel::onToggleConnectionClicked()
     last_live_decode_time_ms_ = 0;
     last_backlog_warning_ms_ = 0;
     process_buffer_pending_ = false;
+    payload_order_auto_correct_logged_ = false;
     frame_arrival_times_ms_.clear();
     resetFrameRateDisplay();
     setStatusText(QString(is_english_ ? "Connecting to %1:%2..." : "正在连接 %1:%2...")
@@ -2100,7 +2102,24 @@ void TcpWavePanel::processBuffer()
                 static_cast<quint64>(QDateTime::currentDateTimeUtc().toMSecsSinceEpoch()) * 1000ULL;
             ++frame_count_;
             updateFrameRateDisplay(arrivalTimeMs);
-            emit rawWaveFrameReady(frameTimestampUs, pending_wave1_payload_, wave4Payload, float_encoding_);
+
+            QByteArray rawSignalPayload = pending_wave1_payload_;
+            QByteArray harmonicPayload = wave4Payload;
+            const VaporView::TcpWavePayloadOrderAnalysis orderAnalysis =
+                VaporView::analyzeTcpWavePayloadOrder(rawSignalPayload, harmonicPayload, float_encoding_);
+            if (orderAnalysis.order == VaporView::TcpWavePayloadOrder::HarmonicThenRaw)
+            {
+                std::swap(rawSignalPayload, harmonicPayload);
+                if (!payload_order_auto_correct_logged_)
+                {
+                    payload_order_auto_correct_logged_ = true;
+                    emit logMessageRequested(QString(is_english_
+                        ? "Auto-corrected reversed TCP waveform payload order (confidence=%1)."
+                        : "已自动校正反向 TCP 波形负载顺序（置信比=%1）。")
+                        .arg(orderAnalysis.confidence, 0, 'f', 1));
+                }
+            }
+            emit rawWaveFrameReady(frameTimestampUs, rawSignalPayload, harmonicPayload, float_encoding_);
 
             const bool updateLiveFrame =
                 last_live_decode_time_ms_ <= 0 ||
@@ -2108,8 +2127,8 @@ void TcpWavePanel::processBuffer()
             if (updateLiveFrame)
             {
                 last_live_decode_time_ms_ = arrivalTimeMs;
-                QVector<float> wave1 = decodeFloatPayload(pending_wave1_payload_);
-                QVector<float> wave4 = decodeFloatPayload(wave4Payload);
+                QVector<float> wave1 = decodeFloatPayload(rawSignalPayload);
+                QVector<float> wave4 = decodeFloatPayload(harmonicPayload);
 
                 double wave1MaxMagnitude = 0.0;
                 double wave4MaxMagnitude = 0.0;
@@ -2233,6 +2252,14 @@ bool TcpWavePanel::trySynchronizeLengthPrefixedStream()
         HeaderByteOrder::LittleEndian,
         HeaderByteOrder::BigEndian,
     };
+    struct BoundaryCandidate
+    {
+        int offset = 0;
+        HeaderByteOrder order = HeaderByteOrder::Unknown;
+        double score = -std::numeric_limits<double>::infinity();
+    };
+    BoundaryCandidate bestCandidate;
+    bool hasBestCandidate = false;
     for (int offset = 0; offset <= buffer_.size() - kHeaderSize; ++offset)
     {
         for (HeaderByteOrder order : orders)
@@ -2246,34 +2273,73 @@ bool TcpWavePanel::trySynchronizeLengthPrefixedStream()
             const bool preferredSize = firstPayloadSize == kPreferredPayloadBytes;
             const int secondHeaderOffset = offset + kHeaderSize + firstPayloadSize;
             const bool canValidateSecondHeader = secondHeaderOffset + kHeaderSize <= buffer_.size();
-            const bool secondHeaderValid = canValidateSecondHeader
-                && isValidPayloadSize(decodeHeaderValue(buffer_.constData() + secondHeaderOffset, order));
+            const qint32 secondPayloadSize = canValidateSecondHeader
+                ? decodeHeaderValue(buffer_.constData() + secondHeaderOffset, order)
+                : 0;
+            const bool secondHeaderValid = isValidPayloadSize(secondPayloadSize);
             if (!preferredSize && !secondHeaderValid)
             {
                 continue;
             }
 
-            if (offset > 0)
+            double score = offset == 0 ? 50.0 : 0.0;
+            if (preferredSize)
             {
-                setStatusText(QString(is_english_
-                    ? "Recovered TCP frame boundary after skipping %1 bytes, header order: %2"
-                    : "已跳过 %1 字节并重新找到TCP帧边界，帧头字节序: %2")
-                    .arg(offset)
-                    .arg(headerOrderLabel(is_english_, order)));
-                buffer_.remove(0, offset);
+                score += 10.0;
             }
-            else if (parse_mode_ == ParseMode::AutoDetect)
+            if (secondHeaderValid)
             {
-                setStatusText(QString(is_english_
-                    ? "Detected length-prefixed TCP payloads, header order: %1"
-                    : "已识别为长度前缀TCP负载格式，帧头字节序: %1")
-                    .arg(headerOrderLabel(is_english_, order)));
+                score += 20.0;
+                const int firstPayloadOffset = offset + kHeaderSize;
+                const int secondPayloadOffset = secondHeaderOffset + kHeaderSize;
+                if (secondPayloadOffset + secondPayloadSize <= buffer_.size())
+                {
+                    const VaporView::TcpWavePayloadOrderAnalysis orderAnalysis =
+                        VaporView::analyzeTcpWavePayloadOrder(
+                            buffer_.mid(firstPayloadOffset, firstPayloadSize),
+                            buffer_.mid(secondPayloadOffset, secondPayloadSize),
+                            float_encoding_);
+                    if (orderAnalysis.order == VaporView::TcpWavePayloadOrder::RawThenHarmonic)
+                    {
+                        score += 100.0 + std::min(orderAnalysis.confidence, 50.0);
+                    }
+                    else if (orderAnalysis.order == VaporView::TcpWavePayloadOrder::HarmonicThenRaw)
+                    {
+                        score += 100.0 + std::min(orderAnalysis.confidence, 50.0);
+                    }
+                }
             }
 
-            header_byte_order_ = order;
-            parse_mode_ = ParseMode::LengthPrefixed;
-            return true;
+            if (!hasBestCandidate || score > bestCandidate.score)
+            {
+                bestCandidate = {offset, order, score};
+                hasBestCandidate = true;
+            }
         }
+    }
+
+    if (hasBestCandidate)
+    {
+        if (bestCandidate.offset > 0)
+        {
+            setStatusText(QString(is_english_
+                ? "Recovered TCP frame boundary after skipping %1 bytes, header order: %2"
+                : "已跳过 %1 字节并重新找到TCP帧边界，帧头字节序: %2")
+                .arg(bestCandidate.offset)
+                .arg(headerOrderLabel(is_english_, bestCandidate.order)));
+            buffer_.remove(0, bestCandidate.offset);
+        }
+        else if (parse_mode_ == ParseMode::AutoDetect)
+        {
+            setStatusText(QString(is_english_
+                ? "Detected length-prefixed TCP payloads, header order: %1"
+                : "已识别为长度前缀TCP负载格式，帧头字节序: %1")
+                .arg(headerOrderLabel(is_english_, bestCandidate.order)));
+        }
+
+        header_byte_order_ = bestCandidate.order;
+        parse_mode_ = ParseMode::LengthPrefixed;
+        return true;
     }
 
     const qint32 little = decodeHeaderValue(buffer_.constData(), HeaderByteOrder::LittleEndian);
