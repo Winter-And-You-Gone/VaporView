@@ -254,6 +254,28 @@ QWidget#sectionTitleBar QLabel {
     border: none;
 }
 
+QWidget#environmentSectionTitleBar {
+    background-color: @vv-surface;
+    border-bottom: 1px solid @vv-border;
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
+    min-height: 36px;
+    max-height: 36px;
+}
+
+QWidget#environmentSectionTitleBar QLabel {
+    background-color: transparent;
+    border: none;
+}
+
+QWidget#environmentSectionTitleBar QLabel#sectionTitleLabel {
+    background-color: transparent;
+    border: none;
+    padding: 0px 10px;
+    min-height: 36px;
+    max-height: 36px;
+}
+
 /* 标签 */
 QLabel {
     color: @vv-text;

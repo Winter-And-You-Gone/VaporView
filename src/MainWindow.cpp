@@ -156,6 +156,7 @@ constexpr const char *kMainCardMinimumHeightProperty = "_vv_main_card_minimum_he
 constexpr int kMainPageInputHeight = 36;
 constexpr int kMainPageButtonHeight = 36;
 constexpr int kMainPageTitleBarHeight = kMainPageButtonHeight + 4;
+constexpr int kEnvironmentTitleBarHeight = kMainPageButtonHeight;
 constexpr int kConfigFormBottomPadding = 4;
 constexpr int kConfigRowsHeight = kMainPageInputHeight * 4 + 4 * 3 + kConfigFormBottomPadding;
 constexpr int kConfigCardBottomPadding = 4;
@@ -1286,6 +1287,16 @@ QWidget#sectionTitleBar,
 QLabel#sectionTitleLabel {
     background-color: @vv-surface;
     border-color: @vv-border;
+    color: @vv-white;
+}
+QWidget#environmentSectionTitleBar {
+    background-color: @vv-surface;
+    border-color: @vv-border;
+}
+QWidget#environmentSectionTitleBar QLabel,
+QWidget#environmentSectionTitleBar QLabel#sectionTitleLabel {
+    background-color: transparent;
+    border: none;
     color: @vv-white;
 }
 QLabel {
@@ -7248,10 +7259,10 @@ void MainWindow::setupDataPanels()
     env_layout->setSpacing(0);
 
     auto *envTitleBar = new QWidget(env_group);
-    envTitleBar->setObjectName("sectionTitleBar");
-    envTitleBar->setFixedHeight(kMainPageTitleBarHeight);
+    envTitleBar->setObjectName("environmentSectionTitleBar");
+    envTitleBar->setFixedHeight(kEnvironmentTitleBarHeight);
     auto *envTitleLayout = new QHBoxLayout(envTitleBar);
-    envTitleLayout->setContentsMargins(8, 2, 8, 2);
+    envTitleLayout->setContentsMargins(8, 0, 8, 0);
     envTitleLayout->setSpacing(8);
 
     env_inline_title_lbl_ = new QLabel(envTitleBar);
