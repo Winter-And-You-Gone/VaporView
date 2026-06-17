@@ -10,18 +10,14 @@
 
 class QLabel;
 class QLineEdit;
-class QAction;
-class QActionGroup;
+class QEvent;
 class QPushButton;
 class QGroupBox;
-class QMenu;
 class QSpinBox;
 class QTcpSocket;
 class QTimer;
-class QToolButton;
 class QGridLayout;
 class QHBoxLayout;
-class QEvent;
 class WavePlotWidget;
 class PeakTrendPlotWidget;
 
@@ -93,7 +89,6 @@ private slots:
     void onTogglePeakPlotModeClicked();
     void onClearPeakPlotClicked();
     void onConfigurePeakFilterClicked();
-    void onWaveDisplayModeTriggered(QAction *action);
 
 private:
     enum class WaveDisplayMode
@@ -125,11 +120,11 @@ private:
     void setConnectedUiState(bool connected);
     void loadRememberedInputState();
     void saveRememberedInputState() const;
-    void updatePeakPlotModeButtonText();
-    void updatePeakFilterButtonText();
     void updateWaveDisplayModeTexts();
     void updateWaveDisplayModeIcon();
     void applyWaveDisplayMode();
+    void updatePeakPlotModeButtonText();
+    void updatePeakFilterButtonText();
     QString peakFilterModeText(PeakFilterMode mode) const;
     void resetFrameRateDisplay();
     void updateFrameRateDisplay(qint64 arrivalTimeMs);
@@ -155,12 +150,6 @@ private:
     QLabel *host_label_;
     QLabel *port_label_;
     QLabel *panel_title_label_;
-    QToolButton *wave_display_button_;
-    QMenu *wave_display_menu_;
-    QActionGroup *wave_display_action_group_;
-    QAction *show_all_waves_action_;
-    QAction *show_raw_wave_action_;
-    QAction *show_harmonic_wave_action_;
     QLabel *frame_rate_label_;
     QLabel *status_label_;
     QLabel *hint_label_;
