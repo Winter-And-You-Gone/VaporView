@@ -422,7 +422,7 @@ public:
         show_raw_row_ = addModeRow(1);
         show_harmonic_row_ = addModeRow(2);
         show_peak_trend_row_ = addModeRow(3);
-        setCurrentMode(0);
+        setCurrentStates(true, false, false, false);
     }
 
     QSize sizeHint() const override
@@ -457,13 +457,16 @@ public:
         show_peak_trend_row_->setText(english ? QStringLiteral("Show Second Harmonic Peak Trend") : QStringLiteral("显示二次谐波峰值趋势"));
     }
 
-    void setCurrentMode(int mode)
+    void setCurrentStates(bool showAll, bool showRaw, bool showHarmonic, bool showPeakTrend)
     {
-        current_mode_ = mode;
-        show_all_row_->setChecked(mode == 0);
-        show_raw_row_->setChecked(mode == 1);
-        show_harmonic_row_->setChecked(mode == 2);
-        show_peak_trend_row_->setChecked(mode == 3);
+        show_all_ = showAll;
+        show_raw_ = showRaw;
+        show_harmonic_ = showHarmonic;
+        show_peak_trend_ = showPeakTrend;
+        show_all_row_->setChecked(show_all_);
+        show_raw_row_->setChecked(show_raw_);
+        show_harmonic_row_->setChecked(show_harmonic_);
+        show_peak_trend_row_->setChecked(show_peak_trend_);
     }
 
     void setCheckIcon(const QIcon& icon)
@@ -476,7 +479,7 @@ public:
         }
     }
 
-    void setModeChangedCallback(std::function<void(int)> callback)
+    void setModeChangedCallback(std::function<void(bool, bool, bool, bool)> callback)
     {
         mode_changed_ = std::move(callback);
     }
@@ -558,8 +561,11 @@ private:
     WaveDisplayMenuRow *show_raw_row_ = nullptr;
     WaveDisplayMenuRow *show_harmonic_row_ = nullptr;
     WaveDisplayMenuRow *show_peak_trend_row_ = nullptr;
-    std::function<void(int)> mode_changed_;
-    int current_mode_ = 0;
+    std::function<void(bool, bool, bool, bool)> mode_changed_;
+    bool show_all_ = false;
+    bool show_raw_ = false;
+    bool show_harmonic_ = false;
+    bool show_peak_trend_ = false;
     bool icon_hovered_ = false;
 
     WaveDisplayMenuRow *addModeRow(int mode)
@@ -569,12 +575,35 @@ private:
         action->setDefaultWidget(row);
         menu_->addAction(action);
         row->setClickedCallback([this, mode]() {
-            setCurrentMode(mode);
+            if (mode == 0)
+            {
+                setCurrentStates(true, false, false, false);
+            }
+            else
+            {
+                show_all_ = false;
+                if (mode == 1)
+                {
+                    show_raw_ = !show_raw_;
+                }
+                else if (mode == 2)
+                {
+                    show_harmonic_ = !show_harmonic_;
+                }
+                else if (mode == 3)
+                {
+                    show_peak_trend_ = !show_peak_trend_;
+                }
+                setCurrentStates(false, show_raw_, show_harmonic_, show_peak_trend_);
+            }
             if (mode_changed_)
             {
-                mode_changed_(mode);
+                mode_changed_(show_all_, show_raw_, show_harmonic_, show_peak_trend_);
             }
-            menu_->hide();
+            if (mode == 0)
+            {
+                menu_->hide();
+            }
         });
         return row;
     }
@@ -1162,7 +1191,10 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , remote_waveform_status_text_()
     , remote_feature_status_text_()
     , peak_filter_settings_()
-    , wave_display_mode_(WaveDisplayMode::All)
+    , wave_display_all_(true)
+    , wave_display_raw_(false)
+    , wave_display_harmonic_(false)
+    , wave_display_peak_trend_(false)
     , peak_search_start_index_(kDefaultPeakSearchStartIndex)
     , peak_search_end_index_(kDefaultPeakSearchEndIndex)
     , peak_plot_scatter_mode_(true)
@@ -1251,23 +1283,11 @@ void TcpWavePanel::setupUi()
     control_layout_->addWidget(topControlsBar, 0, 0, 1, 6);
 
     auto *waveDisplayTitle = new WaveDisplayTitleLabel(this);
-    waveDisplayTitle->setModeChangedCallback([this](int mode) {
-        if (mode == 1)
-        {
-            wave_display_mode_ = WaveDisplayMode::RawOnly;
-        }
-        else if (mode == 2)
-        {
-            wave_display_mode_ = WaveDisplayMode::HarmonicOnly;
-        }
-        else if (mode == 3)
-        {
-            wave_display_mode_ = WaveDisplayMode::PeakTrendOnly;
-        }
-        else
-        {
-            wave_display_mode_ = WaveDisplayMode::All;
-        }
+    waveDisplayTitle->setModeChangedCallback([this](bool showAll, bool showRaw, bool showHarmonic, bool showPeakTrend) {
+        wave_display_all_ = showAll;
+        wave_display_raw_ = showRaw;
+        wave_display_harmonic_ = showHarmonic;
+        wave_display_peak_trend_ = showPeakTrend;
         applyWaveDisplayMode();
     });
     panel_title_label_ = waveDisplayTitle;
@@ -1640,26 +1660,13 @@ void TcpWavePanel::updateWaveDisplayModeIcon()
 
 void TcpWavePanel::applyWaveDisplayMode()
 {
-    const bool showRawWave = wave_display_mode_ == WaveDisplayMode::All || wave_display_mode_ == WaveDisplayMode::RawOnly;
-    const bool showHarmonicWave = wave_display_mode_ == WaveDisplayMode::All || wave_display_mode_ == WaveDisplayMode::HarmonicOnly;
-    const bool showPeakTrend = wave_display_mode_ == WaveDisplayMode::All || wave_display_mode_ == WaveDisplayMode::PeakTrendOnly;
+    const bool showRawWave = wave_display_all_ || wave_display_raw_;
+    const bool showHarmonicWave = wave_display_all_ || wave_display_harmonic_;
+    const bool showPeakTrend = wave_display_all_ || wave_display_peak_trend_;
 
     if (auto *titleLabel = dynamic_cast<WaveDisplayTitleLabel *>(panel_title_label_))
     {
-        int mode = 0;
-        if (wave_display_mode_ == WaveDisplayMode::RawOnly)
-        {
-            mode = 1;
-        }
-        else if (wave_display_mode_ == WaveDisplayMode::HarmonicOnly)
-        {
-            mode = 2;
-        }
-        else if (wave_display_mode_ == WaveDisplayMode::PeakTrendOnly)
-        {
-            mode = 3;
-        }
-        titleLabel->setCurrentMode(mode);
+        titleLabel->setCurrentStates(wave_display_all_, wave_display_raw_, wave_display_harmonic_, wave_display_peak_trend_);
     }
 
     if (wave1_group_)
@@ -1876,15 +1883,15 @@ void TcpWavePanel::updateLiveDisplay()
     }
 
     live_display_dirty_ = false;
-    if ((wave_display_mode_ == WaveDisplayMode::All || wave_display_mode_ == WaveDisplayMode::RawOnly) && wave1_plot_)
+    if ((wave_display_all_ || wave_display_raw_) && wave1_plot_)
     {
         wave1_plot_->setSamples(wave1_history_);
     }
-    if ((wave_display_mode_ == WaveDisplayMode::All || wave_display_mode_ == WaveDisplayMode::HarmonicOnly) && wave4_plot_)
+    if ((wave_display_all_ || wave_display_harmonic_) && wave4_plot_)
     {
         wave4_plot_->setSamples(wave4_history_);
     }
-    if ((wave_display_mode_ == WaveDisplayMode::All || wave_display_mode_ == WaveDisplayMode::PeakTrendOnly) && peak_plot_)
+    if ((wave_display_all_ || wave_display_peak_trend_) && peak_plot_)
     {
         peak_plot_->setPeakValues(peak_history_);
     }

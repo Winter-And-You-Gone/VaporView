@@ -91,14 +91,6 @@ private slots:
     void onConfigurePeakFilterClicked();
 
 private:
-    enum class WaveDisplayMode
-    {
-        All,
-        RawOnly,
-        HarmonicOnly,
-        PeakTrendOnly
-    };
-
     enum class PeakFilterMode
     {
         None,
@@ -186,7 +178,10 @@ private:
     QString remote_waveform_status_text_;
     QString remote_feature_status_text_;
     PeakFilterSettings peak_filter_settings_;
-    WaveDisplayMode wave_display_mode_;
+    bool wave_display_all_;
+    bool wave_display_raw_;
+    bool wave_display_harmonic_;
+    bool wave_display_peak_trend_;
     int peak_search_start_index_;
     int peak_search_end_index_;
     bool peak_plot_scatter_mode_;
