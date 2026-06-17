@@ -1682,15 +1682,16 @@ void TcpWavePanel::applyWaveDisplayMode()
         peak_group_->setVisible(showPeakTrend);
     }
 
+    const bool wavePlotsFillAvailableHeight = !showPeakTrend;
     if (wave1_plot_)
     {
-        wave1_plot_->setMaximumHeight(showRawWave && !showHarmonicWave
+        wave1_plot_->setMaximumHeight(showRawWave && wavePlotsFillAvailableHeight
             ? QWIDGETSIZE_MAX
             : kWavePlotMaximumHeight);
     }
     if (wave4_plot_)
     {
-        wave4_plot_->setMaximumHeight(showHarmonicWave && !showRawWave
+        wave4_plot_->setMaximumHeight(showHarmonicWave && wavePlotsFillAvailableHeight
             ? QWIDGETSIZE_MAX
             : kWavePlotMaximumHeight);
     }
