@@ -10,13 +10,18 @@
 
 class QLabel;
 class QLineEdit;
+class QAction;
+class QActionGroup;
 class QPushButton;
 class QGroupBox;
+class QMenu;
 class QSpinBox;
 class QTcpSocket;
 class QTimer;
+class QToolButton;
 class QGridLayout;
 class QHBoxLayout;
+class QEvent;
 class WavePlotWidget;
 class PeakTrendPlotWidget;
 
@@ -67,6 +72,9 @@ public:
 
     using FloatEncoding = VaporView::TcpFloatEncoding;
 
+protected:
+    void changeEvent(QEvent *event) override;
+
 signals:
     void normalizedSecondHarmonicFrameReady(quint64 timestampUs, QVector<float> samples);
     void rawWaveFrameReady(quint64 timestampUs, QByteArray rawSignalPayload, QByteArray harmonicPayload, VaporView::TcpFloatEncoding floatEncoding);
@@ -85,8 +93,16 @@ private slots:
     void onTogglePeakPlotModeClicked();
     void onClearPeakPlotClicked();
     void onConfigurePeakFilterClicked();
+    void onWaveDisplayModeTriggered(QAction *action);
 
 private:
+    enum class WaveDisplayMode
+    {
+        All,
+        RawOnly,
+        HarmonicOnly
+    };
+
     enum class PeakFilterMode
     {
         None,
@@ -111,6 +127,9 @@ private:
     void saveRememberedInputState() const;
     void updatePeakPlotModeButtonText();
     void updatePeakFilterButtonText();
+    void updateWaveDisplayModeTexts();
+    void updateWaveDisplayModeIcon();
+    void applyWaveDisplayMode();
     QString peakFilterModeText(PeakFilterMode mode) const;
     void resetFrameRateDisplay();
     void updateFrameRateDisplay(qint64 arrivalTimeMs);
@@ -136,6 +155,12 @@ private:
     QLabel *host_label_;
     QLabel *port_label_;
     QLabel *panel_title_label_;
+    QToolButton *wave_display_button_;
+    QMenu *wave_display_menu_;
+    QActionGroup *wave_display_action_group_;
+    QAction *show_all_waves_action_;
+    QAction *show_raw_wave_action_;
+    QAction *show_harmonic_wave_action_;
     QLabel *frame_rate_label_;
     QLabel *status_label_;
     QLabel *hint_label_;
@@ -171,6 +196,7 @@ private:
     QString remote_waveform_status_text_;
     QString remote_feature_status_text_;
     PeakFilterSettings peak_filter_settings_;
+    WaveDisplayMode wave_display_mode_;
     int peak_search_start_index_;
     int peak_search_end_index_;
     bool peak_plot_scatter_mode_;

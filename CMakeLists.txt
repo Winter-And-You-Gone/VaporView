@@ -293,6 +293,7 @@ set(LUCIDE_RESOURCES
     resources/lucide/plug.svg
     resources/lucide/refresh-cw.svg
     resources/lucide/satellite.svg
+    resources/lucide/sliders-vertical.svg
     resources/lucide/square-check-big.svg
     resources/lucide/square.svg
     resources/lucide/sun.svg

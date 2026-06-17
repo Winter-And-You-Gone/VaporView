@@ -2,24 +2,35 @@
 #include "AppTheme.h"
 #include "TcpWavePanel.h"
 #include <QAbstractSocket>
+#include <QAction>
+#include <QActionGroup>
+#include <QApplication>
 #include <QByteArray>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QDir>
+#include <QEvent>
+#include <QFile>
+#include <QFileInfo>
 #include <QFontDatabase>
 #include <QFontMetrics>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPalette>
 #include <QPaintEvent>
 #include <QPen>
+#include <QPixmap>
 #include <QPolygonF>
+#include <QRectF>
 #include <QPushButton>
 #include <QSettings>
 #include <QSignalBlocker>
@@ -27,8 +38,10 @@
 #include <QSizePolicy>
 #include <QSpinBox>
 #include <QStringList>
+#include <QSvgRenderer>
 #include <QTcpSocket>
 #include <QTimer>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <QWheelEvent>
 #include <QDateTime>
@@ -217,6 +230,61 @@ QString remoteFeatureStatusText(bool english, double peak, double rms, quint32 s
 QString remoteInvalidFeatureStatusText(bool english)
 {
     return english ? QStringLiteral("Feature invalid") : QStringLiteral("特征无效");
+}
+
+QString findResourceFile(const QString& relativePath)
+{
+    const QString appDir = QApplication::applicationDirPath();
+    const QStringList candidates = {
+        QDir(appDir).filePath(relativePath),
+        QDir(appDir).filePath(QStringLiteral("../") + relativePath),
+        QDir(appDir).filePath(QStringLiteral("../../") + relativePath)
+    };
+
+    for (const QString& path : candidates)
+    {
+        if (QFileInfo::exists(path))
+        {
+            return path;
+        }
+    }
+    return QString();
+}
+
+QPixmap renderLucidePixmap(const QByteArray& svgData, const QColor& color, qreal devicePixelRatio)
+{
+    QByteArray tinted = svgData;
+    tinted.replace("currentColor", color.name(QColor::HexRgb).toUtf8());
+
+    const qreal dpr = std::max<qreal>(1.0, devicePixelRatio);
+    constexpr int kLogicalSize = 32;
+    const int physicalSize = std::max(1, static_cast<int>(std::ceil(kLogicalSize * dpr)));
+    QPixmap pixmap(physicalSize, physicalSize);
+    pixmap.setDevicePixelRatio(dpr);
+    pixmap.fill(Qt::transparent);
+
+    QSvgRenderer renderer(tinted);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    renderer.render(&painter, QRectF(2, 2, 28, 28));
+    return pixmap;
+}
+
+QIcon createTcpPanelIcon(const QString& iconName, const QColor& color)
+{
+    QFile file(findResourceFile(QStringLiteral("resources/lucide/%1.svg").arg(iconName)));
+    if (!file.open(QIODevice::ReadOnly))
+    {
+        return QIcon();
+    }
+
+    const QByteArray svgData = file.readAll();
+    QIcon icon;
+    for (const qreal dpr : {1.0, 1.25, 1.5, 2.0, 3.0})
+    {
+        icon.addPixmap(renderLucidePixmap(svgData, color, dpr), QIcon::Normal);
+    }
+    return icon;
 }
 
 class CenteredPlainTextLabel : public QLabel
@@ -771,6 +839,12 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , host_label_(nullptr)
     , port_label_(nullptr)
     , panel_title_label_(nullptr)
+    , wave_display_button_(nullptr)
+    , wave_display_menu_(nullptr)
+    , wave_display_action_group_(nullptr)
+    , show_all_waves_action_(nullptr)
+    , show_raw_wave_action_(nullptr)
+    , show_harmonic_wave_action_(nullptr)
     , frame_rate_label_(nullptr)
     , status_label_(nullptr)
     , hint_label_(nullptr)
@@ -801,6 +875,7 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , remote_waveform_status_text_()
     , remote_feature_status_text_()
     , peak_filter_settings_()
+    , wave_display_mode_(WaveDisplayMode::All)
     , peak_search_start_index_(kDefaultPeakSearchStartIndex)
     , peak_search_end_index_(kDefaultPeakSearchEndIndex)
     , peak_plot_scatter_mode_(true)
@@ -891,7 +966,35 @@ void TcpWavePanel::setupUi()
     panel_title_label_ = new QLabel(this);
     panel_title_label_->setObjectName("sectionTitleLabel");
     top_controls_layout_->addWidget(panel_title_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    top_controls_layout_->addSpacing(kTcpTitleBarPrimarySpacing);
+    top_controls_layout_->addSpacing(4);
+
+    wave_display_button_ = new QToolButton(topControlsBar);
+    wave_display_button_->setObjectName(QStringLiteral("titleBarButton"));
+    wave_display_button_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    wave_display_button_->setAutoRaise(false);
+    wave_display_button_->setFocusPolicy(Qt::NoFocus);
+    wave_display_button_->setFixedSize(28, 28);
+    wave_display_button_->setIconSize(QSize(18, 18));
+    wave_display_button_->setStyleSheet(QStringLiteral("QToolButton::menu-indicator { image: none; width: 0px; height: 0px; }"));
+
+    wave_display_menu_ = new QMenu(wave_display_button_);
+    wave_display_action_group_ = new QActionGroup(wave_display_menu_);
+    wave_display_action_group_->setExclusive(true);
+    show_all_waves_action_ = new QAction(wave_display_menu_);
+    show_raw_wave_action_ = new QAction(wave_display_menu_);
+    show_harmonic_wave_action_ = new QAction(wave_display_menu_);
+    for (QAction *action : {show_all_waves_action_, show_raw_wave_action_, show_harmonic_wave_action_})
+    {
+        action->setCheckable(true);
+        wave_display_action_group_->addAction(action);
+        wave_display_menu_->addAction(action);
+    }
+    show_all_waves_action_->setChecked(true);
+    connect(wave_display_action_group_, &QActionGroup::triggered, this, &TcpWavePanel::onWaveDisplayModeTriggered);
+    wave_display_button_->setMenu(wave_display_menu_);
+    wave_display_button_->setPopupMode(QToolButton::InstantPopup);
+    top_controls_layout_->addWidget(wave_display_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    top_controls_layout_->addSpacing(kTcpTitleBarPrimarySpacing - 4);
 
     frame_rate_label_ = new QLabel(this);
     frame_rate_label_->setObjectName("fieldLabel");
@@ -973,6 +1076,7 @@ void TcpWavePanel::setupUi()
 
     wave1_group_ = new QGroupBox(this);
     wave1_group_->setObjectName("sensorGroupBox");
+    wave1_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     auto *wave1Layout = new QVBoxLayout(wave1_group_);
     wave1Layout->setContentsMargins(2, 2, 2, 2);
     auto *wave1HeaderBar = new QWidget(wave1_group_);
@@ -999,6 +1103,7 @@ void TcpWavePanel::setupUi()
 
     wave4_group_ = new QGroupBox(this);
     wave4_group_->setObjectName("sensorGroupBox");
+    wave4_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     auto *wave4Layout = new QVBoxLayout(wave4_group_);
     wave4Layout->setContentsMargins(2, 2, 2, 2);
     auto *wave4HeaderBar = new QWidget(wave4_group_);
@@ -1159,6 +1264,8 @@ void TcpWavePanel::setEnglish(bool english)
     {
         panel_title_label_->setText(english ? "TCP Wave Monitor" : "TCP波形监视");
     }
+    updateWaveDisplayModeTexts();
+    updateWaveDisplayModeIcon();
     resetFrameRateDisplay();
     host_label_->setText(english ? "TCP Host:" : "TCP主机:");
     port_label_->setText(english ? "Port:" : "端口:");
@@ -1210,11 +1317,157 @@ void TcpWavePanel::setEnglish(bool english)
     wave4_info_label_->setText(english ? "waiting for frame" : "等待数据帧");
     updatePeakFilterButtonText();
     updatePeakPlotModeButtonText();
+    applyWaveDisplayMode();
 
     if (!socket_ || socket_->state() != QAbstractSocket::ConnectedState)
     {
         setStatusText(english ? "Idle" : "空闲");
     }
+}
+
+void TcpWavePanel::changeEvent(QEvent *event)
+{
+    QWidget::changeEvent(event);
+    if (!event)
+    {
+        return;
+    }
+
+    if (event->type() == QEvent::ApplicationPaletteChange ||
+        event->type() == QEvent::PaletteChange ||
+        event->type() == QEvent::StyleChange)
+    {
+        updateWaveDisplayModeIcon();
+    }
+}
+
+void TcpWavePanel::updateWaveDisplayModeTexts()
+{
+    if (wave_display_button_)
+    {
+        wave_display_button_->setToolTip(is_english_
+            ? QStringLiteral("Wave display settings")
+            : QStringLiteral("波形显示设置"));
+        wave_display_button_->setAccessibleName(is_english_
+            ? QStringLiteral("Wave display settings")
+            : QStringLiteral("波形显示设置"));
+    }
+    if (wave_display_menu_)
+    {
+        wave_display_menu_->setTitle(is_english_
+            ? QStringLiteral("Wave Display")
+            : QStringLiteral("波形显示"));
+    }
+    if (show_all_waves_action_)
+    {
+        show_all_waves_action_->setText(is_english_
+            ? QStringLiteral("Show All")
+            : QStringLiteral("全部显示"));
+    }
+    if (show_raw_wave_action_)
+    {
+        show_raw_wave_action_->setText(is_english_
+            ? QStringLiteral("Raw Signal Only")
+            : QStringLiteral("仅显示原始信号"));
+    }
+    if (show_harmonic_wave_action_)
+    {
+        show_harmonic_wave_action_->setText(is_english_
+            ? QStringLiteral("Second Harmonic Only")
+            : QStringLiteral("仅显示二次谐波"));
+    }
+}
+
+void TcpWavePanel::updateWaveDisplayModeIcon()
+{
+    if (!wave_display_button_)
+    {
+        return;
+    }
+
+    const bool dark = VaporView::isDarkThemeEnabled();
+    wave_display_button_->setIcon(createTcpPanelIcon(
+        QStringLiteral("sliders-vertical"),
+        appThemeColor(AppThemeColor::TextTitle, dark)));
+}
+
+void TcpWavePanel::applyWaveDisplayMode()
+{
+    const bool showRawWave = wave_display_mode_ != WaveDisplayMode::HarmonicOnly;
+    const bool showHarmonicWave = wave_display_mode_ != WaveDisplayMode::RawOnly;
+    const bool showPeakTrend = wave_display_mode_ == WaveDisplayMode::All;
+
+    if (show_all_waves_action_)
+    {
+        show_all_waves_action_->setChecked(wave_display_mode_ == WaveDisplayMode::All);
+    }
+    if (show_raw_wave_action_)
+    {
+        show_raw_wave_action_->setChecked(wave_display_mode_ == WaveDisplayMode::RawOnly);
+    }
+    if (show_harmonic_wave_action_)
+    {
+        show_harmonic_wave_action_->setChecked(wave_display_mode_ == WaveDisplayMode::HarmonicOnly);
+    }
+
+    if (wave1_group_)
+    {
+        wave1_group_->setVisible(showRawWave);
+    }
+    if (wave4_group_)
+    {
+        wave4_group_->setVisible(showHarmonicWave);
+    }
+    if (peak_group_)
+    {
+        peak_group_->setVisible(showPeakTrend);
+    }
+
+    if (wave1_plot_)
+    {
+        wave1_plot_->setMaximumHeight(showRawWave && !showHarmonicWave
+            ? QWIDGETSIZE_MAX
+            : kWavePlotMaximumHeight);
+    }
+    if (wave4_plot_)
+    {
+        wave4_plot_->setMaximumHeight(showHarmonicWave && !showRawWave
+            ? QWIDGETSIZE_MAX
+            : kWavePlotMaximumHeight);
+    }
+
+    if (showRawWave && wave1_plot_)
+    {
+        wave1_plot_->setSamples(wave1_history_);
+    }
+    if (showHarmonicWave && wave4_plot_)
+    {
+        wave4_plot_->setSamples(wave4_history_);
+    }
+    if (showPeakTrend && peak_plot_)
+    {
+        peak_plot_->setPeakValues(peak_history_);
+    }
+
+    updateGeometry();
+}
+
+void TcpWavePanel::onWaveDisplayModeTriggered(QAction *action)
+{
+    if (action == show_raw_wave_action_)
+    {
+        wave_display_mode_ = WaveDisplayMode::RawOnly;
+    }
+    else if (action == show_harmonic_wave_action_)
+    {
+        wave_display_mode_ = WaveDisplayMode::HarmonicOnly;
+    }
+    else
+    {
+        wave_display_mode_ = WaveDisplayMode::All;
+    }
+
+    applyWaveDisplayMode();
 }
 
 void TcpWavePanel::updatePeakPlotModeButtonText()
@@ -1389,15 +1642,15 @@ void TcpWavePanel::updateLiveDisplay()
     }
 
     live_display_dirty_ = false;
-    if (wave1_plot_)
+    if (wave_display_mode_ != WaveDisplayMode::HarmonicOnly && wave1_plot_)
     {
         wave1_plot_->setSamples(wave1_history_);
     }
-    if (wave4_plot_)
+    if (wave_display_mode_ != WaveDisplayMode::RawOnly && wave4_plot_)
     {
         wave4_plot_->setSamples(wave4_history_);
     }
-    if (peak_plot_)
+    if (wave_display_mode_ == WaveDisplayMode::All && peak_plot_)
     {
         peak_plot_->setPeakValues(peak_history_);
     }
