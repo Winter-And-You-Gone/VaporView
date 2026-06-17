@@ -366,7 +366,7 @@ constexpr const char *kNumericWidthCandidatesProperty = "_vv_numeric_width_candi
 constexpr const char *kNumericWidthPaddingProperty = "_vv_numeric_width_padding";
 constexpr const char *kMainCardMinimumHeightProperty = "_vv_main_card_minimum_height";
 constexpr int kMainPageInputHeight = 36;
-constexpr int kMainPageButtonHeight = 36;
+constexpr int kMainPageButtonHeight = 34;
 constexpr int kMainPageTitleBarHeight = kMainPageButtonHeight + 4;
 constexpr int kEnvironmentTitleBarHeight = kMainPageButtonHeight;
 constexpr int kConfigFormBottomPadding = 4;
@@ -4434,12 +4434,12 @@ void MainWindow::loadModernStyleSheet()
             "QSplitter#mainContentSplitter::handle:horizontal { width: 8px; background-color: @vv-surface-sunken; }"
             "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#mainContentSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
-            "QPushButton { background-color: @vv-primary; color: @vv-white; border: none; border-radius: 6px; padding: 0px 18px 2px 18px; font-size: 15px; font-weight: 500; min-height: 36px; max-height: 36px; }"
+            "QPushButton { background-color: @vv-primary; color: @vv-white; border: none; border-radius: 6px; padding: 4px 18px; font-size: 15px; font-weight: 500; min-height: 26px; max-height: 26px; }"
             "QPushButton:hover { background-color: @vv-primary-hover; }"
             "QPushButton:pressed { background-color: @vv-primary-pressed; }"
             "QPushButton:disabled { background-color: @vv-border-strong; color: @vv-white; }"
-            "QPushButton#compactTcpButton { padding: 0px 14px 2px 14px; min-height: 36px; max-height: 36px; font-size: 14px; }"
-            "QPushButton#compactTcpStartButton { padding: 0px 14px 2px 14px; min-height: 36px; max-height: 36px; font-size: 14px; }"
+            "QPushButton#compactTcpButton { padding: 4px 14px; min-height: 26px; max-height: 26px; font-size: 14px; }"
+            "QPushButton#compactTcpStartButton { padding: 4px 14px; min-height: 26px; max-height: 26px; font-size: 14px; }"
             "QToolTip { background-color: rgb(45, 45, 45); color: #FFFFFF; border: 1px solid #474747; border-radius: 13px; padding: 8px 16px; font-size: 16px; }";
     }
 
