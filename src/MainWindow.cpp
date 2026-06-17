@@ -52,6 +52,7 @@
 #include <QStringList>
 #include <QApplication>
 #include <QGuiApplication>
+#include <QHelpEvent>
 #include <QLayout>
 #include <QIntValidator>
 #include <QSerialPortInfo>
@@ -242,7 +243,7 @@ public:
         layout->addWidget(shortcut_label_);
     }
 
-    void showFor(QWidget *target, const QString& text, const QString& shortcut, bool dark)
+    void showFor(QWidget *target, const QString& text, const QString& shortcut, bool dark, const QRect& anchor = QRect())
     {
         if (!target || text.trimmed().isEmpty())
         {
@@ -250,7 +251,9 @@ public:
             return;
         }
 
-        const QRect targetRect(target->mapToGlobal(QPoint(0, 0)), target->size());
+        const QRect targetRect = anchor.isValid()
+            ? QRect(target->mapToGlobal(anchor.topLeft()), anchor.size())
+            : QRect(target->mapToGlobal(QPoint(0, 0)), target->size());
         QRect bounds = target->window() ? target->window()->frameGeometry() : QRect();
         if (!bounds.isValid())
         {
@@ -338,6 +341,21 @@ bool showAppTooltip(QObject *watched, QEvent *event, bool dark)
         return false;
     }
 
+    QRect anchor;
+    const QVariant anchorValue = widget->property("_vv_tooltip_anchor_rect");
+    if (anchorValue.isValid() && anchorValue.canConvert<QRect>())
+    {
+        anchor = anchorValue.toRect();
+        if (auto *helpEvent = dynamic_cast<QHelpEvent *>(event);
+            anchor.isValid() && helpEvent && !anchor.contains(helpEvent->pos()))
+        {
+            QToolTip::hideText();
+            hideAppTooltipPopup();
+            event->accept();
+            return true;
+        }
+    }
+
     QString shortcut = shortcutTextFromWidget(widget);
     const QString suffixShortcut = shortcutTextFromTooltipSuffix(text);
     if (shortcut.isEmpty())
@@ -346,7 +364,7 @@ bool showAppTooltip(QObject *watched, QEvent *event, bool dark)
     }
 
     QToolTip::hideText();
-    appTooltipPopup()->showFor(widget, text, shortcut, dark);
+    appTooltipPopup()->showFor(widget, text, shortcut, dark, anchor);
     event->accept();
     return true;
 }

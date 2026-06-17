@@ -40,6 +40,7 @@
 #include <QTcpSocket>
 #include <QTimer>
 #include <QVBoxLayout>
+#include <QVariant>
 #include <QWheelEvent>
 #include <QWidgetAction>
 #include <QDateTime>
@@ -92,6 +93,7 @@ constexpr int kRemoteStatusPeakWidth = 12;
 constexpr int kRemoteStatusRmsWidth = 8;
 constexpr int kRemoteStatusRangeWidth = 15;
 constexpr int kRemoteStatusIndexWidth = 6;
+constexpr const char *kTooltipAnchorRectProperty = "_vv_tooltip_anchor_rect";
 
 QString hexPreview(const QByteArray& data, int limit = 12)
 {
@@ -560,6 +562,7 @@ public:
         show_raw_row_->setText(english ? QStringLiteral("Show Raw Signal") : QStringLiteral("显示原始信号"));
         show_harmonic_row_->setText(english ? QStringLiteral("Show Second Harmonic") : QStringLiteral("显示二次谐波"));
         show_peak_trend_row_->setText(english ? QStringLiteral("Show Second Harmonic Peak Trend") : QStringLiteral("显示二次谐波峰值趋势"));
+        refreshTooltipAnchor();
     }
 
     void setCurrentStates(bool showAll, bool showRaw, bool showHarmonic, bool showPeakTrend)
@@ -590,8 +593,32 @@ public:
     }
 
 protected:
+    bool event(QEvent *event) override
+    {
+        const bool handled = QLabel::event(event);
+        if (!event)
+        {
+            return handled;
+        }
+
+        switch (event->type())
+        {
+        case QEvent::Resize:
+        case QEvent::Show:
+        case QEvent::FontChange:
+        case QEvent::ContentsRectChange:
+            refreshTooltipAnchor();
+            break;
+        default:
+            break;
+        }
+
+        return handled;
+    }
+
     void paintEvent(QPaintEvent *event) override
     {
+        refreshTooltipAnchor();
         QLabel::paintEvent(event);
         QPainter painter(this);
         const QRect icon_area = iconRect();
@@ -628,6 +655,7 @@ protected:
 
     void mouseMoveEvent(QMouseEvent *event) override
     {
+        refreshTooltipAnchor();
         setIconHovered(iconRect().contains(event->position().toPoint()));
         QLabel::mouseMoveEvent(event);
     }
@@ -646,6 +674,16 @@ private:
         const int iconX = area.left() + metrics.horizontalAdvance(text()) + kIconGap;
         const int iconY = area.top() + (area.height() - kWaveDisplayIconSize) / 2;
         return QRect(iconX, iconY, kWaveDisplayIconSize, kWaveDisplayIconSize);
+    }
+
+    void refreshTooltipAnchor()
+    {
+        if (width() <= 0 || height() <= 0 || text().isEmpty())
+        {
+            setProperty(kTooltipAnchorRectProperty, QVariant());
+            return;
+        }
+        setProperty(kTooltipAnchorRectProperty, QVariant::fromValue(iconRect()));
     }
 
     void setIconHovered(bool hovered)
