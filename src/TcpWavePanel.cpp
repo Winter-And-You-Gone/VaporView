@@ -297,6 +297,112 @@ QIcon createMenuCheckIcon(const QColor& color)
     return createLucideIcon(QStringLiteral("check"), color);
 }
 
+constexpr const char *kSectionTitleIconNameProperty = "_vv_section_title_icon_name";
+constexpr int kSectionTitleIconBoxSize = 22;
+constexpr int kSectionTitleIconSize = 18;
+
+QPixmap renderSectionTitleLucidePixmap(const QByteArray& svgData, const QColor& color, qreal devicePixelRatio)
+{
+    QByteArray tinted = svgData;
+    tinted.replace("currentColor", color.name(QColor::HexRgb).toUtf8());
+
+    const qreal dpr = std::max<qreal>(1.0, devicePixelRatio);
+    constexpr int kLogicalSize = 32;
+    const int physicalSize = std::max(1, static_cast<int>(std::ceil(kLogicalSize * dpr)));
+    QPixmap pixmap(physicalSize, physicalSize);
+    pixmap.setDevicePixelRatio(dpr);
+    pixmap.fill(Qt::transparent);
+
+    QSvgRenderer renderer(tinted);
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    renderer.render(&painter, QRectF(2, 2, 28, 28));
+    return pixmap;
+}
+
+QIcon createSectionTitleLucideIcon(const QString& iconName, const QColor& color)
+{
+    QFile file(findResourceFile(QStringLiteral("resources/lucide/%1.svg").arg(iconName)));
+    if (!file.open(QIODevice::ReadOnly))
+    {
+        return QIcon();
+    }
+
+    const QByteArray svgData = file.readAll();
+    QIcon icon;
+    for (const qreal dpr : {1.0, 1.25, 1.5, 2.0, 3.0})
+    {
+        icon.addPixmap(renderSectionTitleLucidePixmap(svgData, color, dpr), QIcon::Normal);
+    }
+    return icon;
+}
+
+QColor sectionTitleIconColor(bool dark)
+{
+    return dark ? appThemeColor(AppThemeColor::TextTitle, true) : QColor(0, 0, 0);
+}
+
+void updateSectionTitleIcon(QLabel *iconLabel, bool dark)
+{
+    if (!iconLabel)
+    {
+        return;
+    }
+    const QString iconName = iconLabel->property(kSectionTitleIconNameProperty).toString();
+    if (iconName.isEmpty())
+    {
+        iconLabel->clear();
+        return;
+    }
+    iconLabel->setPixmap(createSectionTitleLucideIcon(iconName, sectionTitleIconColor(dark)).pixmap(
+        QSize(kSectionTitleIconSize, kSectionTitleIconSize)));
+}
+
+QWidget *createSectionTitleCluster(QWidget *parent,
+                                   const QString& iconName,
+                                   QLabel *titleLabel,
+                                   int titleHeight)
+{
+    auto *cluster = new QWidget(parent);
+    cluster->setObjectName(QStringLiteral("sectionTitleCluster"));
+    cluster->setFixedHeight(titleHeight);
+    cluster->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+    auto *layout = new QHBoxLayout(cluster);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(6);
+
+    auto *iconLabel = new QLabel(cluster);
+    iconLabel->setObjectName(QStringLiteral("sectionTitleIcon"));
+    iconLabel->setProperty(kSectionTitleIconNameProperty, iconName);
+    iconLabel->setAlignment(Qt::AlignCenter);
+    iconLabel->setFixedSize(kSectionTitleIconBoxSize, titleHeight);
+    iconLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    iconLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    updateSectionTitleIcon(iconLabel, VaporView::isDarkThemeEnabled());
+    layout->addWidget(iconLabel, 0, Qt::AlignVCenter);
+
+    titleLabel->setParent(cluster);
+    titleLabel->setFixedHeight(titleHeight);
+    titleLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    layout->addWidget(titleLabel, 0, Qt::AlignVCenter);
+
+    return cluster;
+}
+
+void updateSectionTitleIcons(QWidget *root, bool dark)
+{
+    if (!root)
+    {
+        return;
+    }
+    const auto labels = root->findChildren<QLabel *>(QStringLiteral("sectionTitleIcon"));
+    for (QLabel *label : labels)
+    {
+        updateSectionTitleIcon(label, dark);
+    }
+}
+
 class WaveDisplayMenuRow final : public QWidget
 {
 public:
@@ -1305,7 +1411,7 @@ void TcpWavePanel::setupUi()
     top_controls_layout_->setSpacing(0);
     control_layout_->addWidget(topControlsBar, 0, 0, 1, 6);
 
-    auto *waveDisplayTitle = new WaveDisplayTitleLabel(this);
+    auto *waveDisplayTitle = new WaveDisplayTitleLabel(topControlsBar);
     waveDisplayTitle->setModeChangedCallback([this](bool showAll, bool showRaw, bool showHarmonic, bool showPeakTrend) {
         wave_display_all_ = showAll;
         wave_display_raw_ = showRaw;
@@ -1315,7 +1421,12 @@ void TcpWavePanel::setupUi()
     });
     panel_title_label_ = waveDisplayTitle;
     panel_title_label_->setObjectName("sectionTitleLabel");
-    top_controls_layout_->addWidget(panel_title_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    top_controls_layout_->addWidget(createSectionTitleCluster(topControlsBar,
+                                                              QStringLiteral("audio-waveform"),
+                                                              panel_title_label_,
+                                                              kTcpButtonHeight),
+                                    0,
+                                    Qt::AlignVCenter | Qt::AlignLeft);
     top_controls_layout_->addSpacing(kTcpTitleBarPrimarySpacing);
 
     frame_rate_label_ = new QLabel(this);
@@ -1671,9 +1782,10 @@ void TcpWavePanel::updateWaveDisplayModeTexts()
 
 void TcpWavePanel::updateWaveDisplayModeIcon()
 {
+    const bool dark = VaporView::isDarkThemeEnabled();
+    updateSectionTitleIcons(this, dark);
     if (auto *titleLabel = dynamic_cast<WaveDisplayTitleLabel *>(panel_title_label_))
     {
-        const bool dark = VaporView::isDarkThemeEnabled();
         const QIcon waveDisplayIcon = createWaveDisplayIcon(appThemeColor(AppThemeColor::Primary, dark));
         titleLabel->setIcon(waveDisplayIcon);
         titleLabel->setCheckIcon(createMenuCheckIcon(appThemeColor(AppThemeColor::MenuCheckText, dark)));

@@ -333,6 +333,23 @@ QWidget#sectionTitleBar QLabel#sectionTitleLabel {
     max-height: 36px;
 }
 
+QWidget#sectionTitleCluster {
+    background-color: transparent;
+    border: none;
+}
+
+QWidget#sectionTitleCluster QLabel#sectionTitleIcon {
+    background-color: transparent;
+    border: none;
+    padding: 0px;
+    margin: 0px;
+}
+
+QWidget#sectionTitleBar QWidget#sectionTitleCluster QLabel#sectionTitleLabel,
+QWidget#environmentSectionTitleBar QWidget#sectionTitleCluster QLabel#sectionTitleLabel {
+    padding: 0px 10px 0px 0px;
+}
+
 QLabel#valueLabel {
     color: @vv-primary;
     font-family: "Consolas", "Monaco", "Courier New", monospace;

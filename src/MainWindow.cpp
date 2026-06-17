@@ -889,6 +889,81 @@ QIcon createLucideIcon(const QString& iconName, const QColor& color)
     return icon;
 }
 
+constexpr const char *kSectionTitleIconNameProperty = "_vv_section_title_icon_name";
+constexpr int kSectionTitleIconBoxSize = 22;
+constexpr int kSectionTitleIconSize = 18;
+
+QColor sectionTitleIconColor(bool dark)
+{
+    return dark ? appThemeColor(AppThemeColor::TextTitle, true) : QColor(0, 0, 0);
+}
+
+void updateSectionTitleIcon(QLabel *iconLabel, bool dark)
+{
+    if (!iconLabel)
+    {
+        return;
+    }
+    const QString iconName = iconLabel->property(kSectionTitleIconNameProperty).toString();
+    if (iconName.isEmpty())
+    {
+        iconLabel->clear();
+        return;
+    }
+    iconLabel->setPixmap(createLucideIcon(iconName, sectionTitleIconColor(dark)).pixmap(
+        QSize(kSectionTitleIconSize, kSectionTitleIconSize)));
+}
+
+QLabel *createSectionTitleCluster(QWidget *parent,
+                                  const QString& iconName,
+                                  int titleHeight,
+                                  QWidget **clusterOut)
+{
+    auto *cluster = new QWidget(parent);
+    cluster->setObjectName(QStringLiteral("sectionTitleCluster"));
+    cluster->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    cluster->setFixedHeight(titleHeight);
+    cluster->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+
+    auto *layout = new QHBoxLayout(cluster);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(6);
+
+    auto *iconLabel = new QLabel(cluster);
+    iconLabel->setObjectName(QStringLiteral("sectionTitleIcon"));
+    iconLabel->setProperty(kSectionTitleIconNameProperty, iconName);
+    iconLabel->setAlignment(Qt::AlignCenter);
+    iconLabel->setFixedSize(kSectionTitleIconBoxSize, titleHeight);
+    iconLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    updateSectionTitleIcon(iconLabel, VaporView::isDarkThemeEnabled());
+    layout->addWidget(iconLabel, 0, Qt::AlignVCenter);
+
+    auto *titleLabel = new QLabel(cluster);
+    titleLabel->setObjectName(QStringLiteral("sectionTitleLabel"));
+    titleLabel->setFixedHeight(titleHeight);
+    titleLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    layout->addWidget(titleLabel, 0, Qt::AlignVCenter);
+
+    if (clusterOut)
+    {
+        *clusterOut = cluster;
+    }
+    return titleLabel;
+}
+
+void updateSectionTitleIcons(QWidget *root, bool dark)
+{
+    if (!root)
+    {
+        return;
+    }
+    const auto labels = root->findChildren<QLabel *>(QStringLiteral("sectionTitleIcon"));
+    for (QLabel *label : labels)
+    {
+        updateSectionTitleIcon(label, dark);
+    }
+}
+
 QString vaporViewLogoResourcePath(bool dark)
 {
     return findResourceFile(dark
@@ -4390,6 +4465,9 @@ void MainWindow::loadModernStyleSheet()
             "QWidget#environmentSectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
             "QLabel#sectionTitleLabel { background-color: @vv-surface; border: none; border-bottom: 1px solid @vv-border; border-radius: 0px; color: @vv-text; font-size: 16px; font-weight: bold; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
             "QWidget#sectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
+            "QWidget#sectionTitleCluster { background-color: transparent; border: none; }"
+            "QWidget#sectionTitleCluster QLabel#sectionTitleIcon { background-color: transparent; border: none; padding: 0px; margin: 0px; }"
+            "QWidget#sectionTitleBar QWidget#sectionTitleCluster QLabel#sectionTitleLabel, QWidget#environmentSectionTitleBar QWidget#sectionTitleCluster QLabel#sectionTitleLabel { padding: 0px 10px 0px 0px; }"
             "QFrame#epsilonSectionCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 4px; }"
             "QLabel#epsilonSectionLabel { color: @vv-text; background-color: @vv-surface-alt; border: none; border-right: 1px solid @vv-border; font-size: 14px; font-weight: 700; padding: 2px; }"
             "QLabel#valueLabel { font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 14px; font-weight: 600; }"
@@ -7248,11 +7326,12 @@ void MainWindow::setupConfigPanel()
     configTitleLayout->setContentsMargins(8, 2, 8, 2);
     configTitleLayout->setSpacing(8);
 
-    config_inline_title_lbl_ = new QLabel(this);
-    config_inline_title_lbl_->setObjectName("sectionTitleLabel");
-    config_inline_title_lbl_->setFixedHeight(kMainPageButtonHeight);
-    config_inline_title_lbl_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    configTitleLayout->addWidget(config_inline_title_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    QWidget *configTitleCluster = nullptr;
+    config_inline_title_lbl_ = createSectionTitleCluster(configTitleBar,
+                                                         QStringLiteral("plug"),
+                                                         kMainPageButtonHeight,
+                                                         &configTitleCluster);
+    configTitleLayout->addWidget(configTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
     auto_detect_ports_btn_ = new QPushButton(this);
     auto_detect_ports_btn_->setFixedHeight(kMainPageButtonHeight);
@@ -7458,11 +7537,12 @@ void MainWindow::setupDataPanels()
     epsilonTitleLayout->setContentsMargins(8, 2, 8, 2);
     epsilonTitleLayout->setSpacing(8);
 
-    epsilon_inline_title_lbl_ = new QLabel(epsilonTitleBar);
-    epsilon_inline_title_lbl_->setObjectName("sectionTitleLabel");
-    epsilon_inline_title_lbl_->setFixedHeight(kMainPageButtonHeight);
-    epsilon_inline_title_lbl_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    epsilonTitleLayout->addWidget(epsilon_inline_title_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    QWidget *epsilonTitleCluster = nullptr;
+    epsilon_inline_title_lbl_ = createSectionTitleCluster(epsilonTitleBar,
+                                                          QStringLiteral("satellite"),
+                                                          kMainPageButtonHeight,
+                                                          &epsilonTitleCluster);
+    epsilonTitleLayout->addWidget(epsilonTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
     auto *epsilonRateTitleLabel = new QLabel(epsilonTitleBar);
     epsilonRateTitleLabel->setObjectName(QStringLiteral("rateLabel"));
@@ -7499,11 +7579,12 @@ void MainWindow::setupDataPanels()
     envTitleLayout->setContentsMargins(8, 0, 8, 0);
     envTitleLayout->setSpacing(8);
 
-    env_inline_title_lbl_ = new QLabel(envTitleBar);
-    env_inline_title_lbl_->setObjectName("sectionTitleLabel");
-    env_inline_title_lbl_->setFixedHeight(kMainPageButtonHeight);
-    env_inline_title_lbl_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    envTitleLayout->addWidget(env_inline_title_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    QWidget *envTitleCluster = nullptr;
+    env_inline_title_lbl_ = createSectionTitleCluster(envTitleBar,
+                                                      QStringLiteral("activity"),
+                                                      kMainPageButtonHeight,
+                                                      &envTitleCluster);
+    envTitleLayout->addWidget(envTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
     envTitleLayout->addStretch(1);
 
     auto createStatusIcon = [envTitleBar]() {
@@ -7636,11 +7717,12 @@ void MainWindow::setupLogPanel()
     recordingTitleLayout->setContentsMargins(8, 2, 8, 2);
     recordingTitleLayout->setSpacing(8);
 
-    recording_status_title_lbl_ = new QLabel(recordingTitleBar);
-    recording_status_title_lbl_->setObjectName("sectionTitleLabel");
-    recording_status_title_lbl_->setFixedHeight(kMainPageButtonHeight);
-    recording_status_title_lbl_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    recordingTitleLayout->addWidget(recording_status_title_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    QWidget *recordingTitleCluster = nullptr;
+    recording_status_title_lbl_ = createSectionTitleCluster(recordingTitleBar,
+                                                            QStringLiteral("square-check-big"),
+                                                            kMainPageButtonHeight,
+                                                            &recordingTitleCluster);
+    recordingTitleLayout->addWidget(recordingTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
     recordingTitleLayout->addStretch(1);
     recordingCardLayout->addWidget(recordingTitleBar);
 
@@ -7679,11 +7761,12 @@ void MainWindow::setupLogPanel()
     logTitleLayout->setContentsMargins(8, 2, 8, 2);
     logTitleLayout->setSpacing(8);
 
-    log_inline_title_lbl_ = new QLabel(logTitleBar);
-    log_inline_title_lbl_->setObjectName("sectionTitleLabel");
-    log_inline_title_lbl_->setFixedHeight(kMainPageButtonHeight);
-    log_inline_title_lbl_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    logTitleLayout->addWidget(log_inline_title_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    QWidget *logTitleCluster = nullptr;
+    log_inline_title_lbl_ = createSectionTitleCluster(logTitleBar,
+                                                      QStringLiteral("list-filter"),
+                                                      kMainPageButtonHeight,
+                                                      &logTitleCluster);
+    logTitleLayout->addWidget(logTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
     logTitleLayout->addStretch(1);
     log_filter_btn_ = new QToolButton(logTitleBar);
     log_filter_btn_->setObjectName(QStringLiteral("titleBarButton"));
@@ -8156,6 +8239,7 @@ void MainWindow::updateThemedIcons()
     {
         log_filter_btn_->setIcon(createLogFilterIcon());
     }
+    updateSectionTitleIcons(this, dark_theme_enabled_);
     updateLogFilterAction();
 }
 
