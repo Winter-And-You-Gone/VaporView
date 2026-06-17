@@ -12,6 +12,7 @@
 #include "serial_probe_utils.h"
 #include <QMenu>
 #include <QAbstractItemView>
+#include <QAbstractButton>
 #include <QAbstractSpinBox>
 #include <QAction>
 #include <QButtonGroup>
@@ -69,6 +70,7 @@
 #include <QStyle>
 #include <QThread>
 #include <QToolButton>
+#include <QToolTip>
 #include <QVariant>
 #include <QVector>
 #include <QWidgetAction>
@@ -138,6 +140,216 @@ private:
     std::function<void()> hover_callback_;
     std::function<void()> click_callback_;
 };
+
+constexpr const char *kTooltipShortcutProperty = "_vv_tooltip_shortcut";
+
+QString shortcutText(const QKeySequence& sequence)
+{
+    return sequence.isEmpty() ? QString() : sequence.toString(QKeySequence::NativeText);
+}
+
+QString shortcutTextFromAction(const QAction *action)
+{
+    return action ? shortcutText(action->shortcut()) : QString();
+}
+
+QString shortcutTextFromWidget(QWidget *widget)
+{
+    if (!widget)
+    {
+        return {};
+    }
+
+    const QString propertyShortcut = widget->property(kTooltipShortcutProperty).toString().trimmed();
+    if (!propertyShortcut.isEmpty())
+    {
+        return propertyShortcut;
+    }
+
+    if (auto *toolButton = qobject_cast<QToolButton *>(widget))
+    {
+        const QString actionShortcut = shortcutTextFromAction(toolButton->defaultAction());
+        if (!actionShortcut.isEmpty())
+        {
+            return actionShortcut;
+        }
+    }
+
+    if (auto *button = qobject_cast<QAbstractButton *>(widget))
+    {
+        const QString buttonShortcut = shortcutText(button->shortcut());
+        if (!buttonShortcut.isEmpty())
+        {
+            return buttonShortcut;
+        }
+    }
+
+    for (const QAction *action : widget->actions())
+    {
+        const QString actionShortcut = shortcutTextFromAction(action);
+        if (!actionShortcut.isEmpty())
+        {
+            return actionShortcut;
+        }
+    }
+
+    return {};
+}
+
+QString shortcutTextFromTooltipSuffix(QString& text)
+{
+    static const QRegularExpression suffixPattern(
+        QStringLiteral(R"(\s*[(（]([^）)]*(?:Ctrl|Alt|Shift|Meta|Cmd|Esc|Enter|Return|Tab|F\d{1,2})[^）)]*)[)）]\s*$)"),
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch match = suffixPattern.match(text);
+    if (!match.hasMatch())
+    {
+        return {};
+    }
+
+    text = text.left(match.capturedStart()).trimmed();
+    return match.captured(1).trimmed();
+}
+
+class AppTooltipPopup final : public QFrame
+{
+public:
+    AppTooltipPopup()
+        : QFrame(nullptr, Qt::ToolTip | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint)
+        , text_label_(new QLabel(this))
+        , shortcut_label_(new QLabel(this))
+    {
+        setObjectName(QStringLiteral("appTooltipPopup"));
+        setAttribute(Qt::WA_ShowWithoutActivating, true);
+        setAttribute(Qt::WA_StyledBackground, true);
+        setFocusPolicy(Qt::NoFocus);
+
+        auto *layout = new QHBoxLayout(this);
+        layout->setContentsMargins(16, 8, 16, 9);
+        layout->setSpacing(10);
+
+        text_label_->setObjectName(QStringLiteral("appTooltipText"));
+        text_label_->setTextFormat(Qt::PlainText);
+        text_label_->setAlignment(Qt::AlignVCenter);
+        text_label_->setWordWrap(false);
+        text_label_->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        layout->addWidget(text_label_);
+
+        shortcut_label_->setObjectName(QStringLiteral("appTooltipShortcut"));
+        shortcut_label_->setTextFormat(Qt::PlainText);
+        shortcut_label_->setAlignment(Qt::AlignCenter);
+        shortcut_label_->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+        layout->addWidget(shortcut_label_);
+    }
+
+    void showFor(QWidget *target, const QString& text, const QString& shortcut, bool dark)
+    {
+        if (!target || text.trimmed().isEmpty())
+        {
+            hide();
+            return;
+        }
+
+        const QRect targetRect(target->mapToGlobal(QPoint(0, 0)), target->size());
+        QRect bounds = target->window() ? target->window()->frameGeometry() : QRect();
+        if (!bounds.isValid())
+        {
+            if (QScreen *screen = QGuiApplication::screenAt(targetRect.center()))
+            {
+                bounds = screen->availableGeometry();
+            }
+        }
+        if (!bounds.isValid())
+        {
+            if (QScreen *screen = QGuiApplication::primaryScreen())
+            {
+                bounds = screen->availableGeometry();
+            }
+        }
+        if (!bounds.isValid())
+        {
+            bounds = QRect(targetRect.center() - QPoint(260, 100), QSize(520, 200));
+        }
+        bounds.adjust(8, 8, -8, -8);
+
+        const int maxPopupWidth = std::max(160, std::min(520, bounds.width()));
+        text_label_->setMaximumWidth(std::max(90, maxPopupWidth - (shortcut.isEmpty() ? 32 : 128)));
+        text_label_->setWordWrap(QFontMetrics(text_label_->font()).horizontalAdvance(text) > text_label_->maximumWidth());
+        text_label_->setText(text);
+        shortcut_label_->setVisible(!shortcut.isEmpty());
+        shortcut_label_->setText(shortcut);
+
+        const QString popupBackground = dark ? QStringLiteral("rgb(45, 45, 45)") : QStringLiteral("rgb(253, 253, 252)");
+        const QString shortcutBackground = dark ? QStringLiteral("rgb(66, 66, 66)") : QStringLiteral("rgb(232, 232, 232)");
+        const QString foreground = dark ? QStringLiteral("#FFFFFF") : QStringLiteral("#000000");
+        const QString border = dark ? QStringLiteral("#474747") : QStringLiteral("#E8E8E8");
+        setStyleSheet(QStringLiteral(
+            "QFrame#appTooltipPopup { background-color: %1; border: 1px solid %2; border-radius: 13px; }"
+            "QLabel#appTooltipText { background: transparent; color: %3; font-size: 16px; font-weight: 500; }"
+            "QLabel#appTooltipShortcut { background-color: %4; color: %3; border: none; border-radius: 11px; padding: 1px 9px 2px 9px; font-size: 15px; font-weight: 500; }")
+            .arg(popupBackground, border, foreground, shortcutBackground));
+
+        adjustSize();
+        const QSize popupSize = sizeHint().boundedTo(QSize(maxPopupWidth, 1000));
+        resize(popupSize);
+
+        const int gap = 8;
+        int x = targetRect.center().x() - width() / 2;
+        int y = targetRect.bottom() + gap;
+        if (y + height() > bounds.bottom())
+        {
+            y = targetRect.top() - height() - gap;
+        }
+
+        x = std::clamp(x, bounds.left(), std::max(bounds.left(), bounds.right() - width() + 1));
+        y = std::clamp(y, bounds.top(), std::max(bounds.top(), bounds.bottom() - height() + 1));
+        move(x, y);
+        show();
+        raise();
+    }
+
+private:
+    QLabel *text_label_;
+    QLabel *shortcut_label_;
+};
+
+AppTooltipPopup *appTooltipPopup()
+{
+    static AppTooltipPopup *popup = new AppTooltipPopup();
+    return popup;
+}
+
+void hideAppTooltipPopup()
+{
+    appTooltipPopup()->hide();
+}
+
+bool showAppTooltip(QObject *watched, QEvent *event, bool dark)
+{
+    auto *widget = qobject_cast<QWidget *>(watched);
+    if (!widget || !widget->isVisible())
+    {
+        return false;
+    }
+
+    QString text = widget->toolTip().trimmed();
+    if (text.isEmpty())
+    {
+        return false;
+    }
+
+    QString shortcut = shortcutTextFromWidget(widget);
+    const QString suffixShortcut = shortcutTextFromTooltipSuffix(text);
+    if (shortcut.isEmpty())
+    {
+        shortcut = suffixShortcut;
+    }
+
+    QToolTip::hideText();
+    appTooltipPopup()->showFor(widget, text, shortcut, dark);
+    event->accept();
+    return true;
+}
 
 constexpr const char *kBaseMinWidthProperty = "_vv_base_min_width";
 constexpr const char *kBaseMinHeightProperty = "_vv_base_min_height";
@@ -1167,9 +1379,12 @@ QToolBar QToolButton:hover {
     color: @vv-white;
 }
 QToolTip {
-    background-color: @vv-surface;
-    color: @vv-white;
-    border: 1px solid @vv-border;
+    background-color: rgb(253, 253, 252);
+    color: #000000;
+    border: 1px solid rgb(232, 232, 232);
+    border-radius: 13px;
+    padding: 8px 16px;
+    font-size: 16px;
 }
 QMenuBar::item:pressed,
 QToolBar QToolButton:pressed {
@@ -3917,6 +4132,21 @@ bool MainWindow::shouldStartWindowMove(QObject *watched) const
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
+    if (event->type() == QEvent::ToolTip && showAppTooltip(watched, event, dark_theme_enabled_))
+    {
+        return true;
+    }
+
+    if (event->type() == QEvent::Leave ||
+        event->type() == QEvent::MouseButtonPress ||
+        event->type() == QEvent::Wheel ||
+        event->type() == QEvent::KeyPress ||
+        event->type() == QEvent::ApplicationDeactivate ||
+        event->type() == QEvent::WindowDeactivate)
+    {
+        hideAppTooltipPopup();
+    }
+
     const bool titleMenuVisible =
         (title_application_panel_ && title_application_panel_->isVisible()) ||
         (title_application_sub_panel_ && title_application_sub_panel_->isVisible());
@@ -4210,7 +4440,7 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton:disabled { background-color: @vv-border-strong; color: @vv-white; }"
             "QPushButton#compactTcpButton { padding: 0px 14px 2px 14px; min-height: 36px; max-height: 36px; font-size: 14px; }"
             "QPushButton#compactTcpStartButton { padding: 0px 14px 2px 14px; min-height: 36px; max-height: 36px; font-size: 14px; }"
-            "QToolTip { background-color: @vv-tooltip-bg; color: @vv-white; border: none; border-radius: 6px; padding: 6px 10px; font-size: 13px; }";
+            "QToolTip { background-color: rgb(45, 45, 45); color: #FFFFFF; border: 1px solid #474747; border-radius: 13px; padding: 8px 16px; font-size: 16px; }";
     }
 
     applyStyleConfiguration();
@@ -6032,6 +6262,7 @@ QToolButton *MainWindow::createTitleBarActionButton(QAction *action, QWidget *pa
         button->setToolTip(action->toolTip());
         button->setStatusTip(action->statusTip());
         button->setWhatsThis(action->whatsThis());
+        button->setProperty(kTooltipShortcutProperty, shortcutTextFromAction(action));
     };
     syncFromAction();
     connect(action, &QAction::changed, button, syncFromAction);
