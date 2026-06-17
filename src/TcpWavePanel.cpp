@@ -438,10 +438,9 @@ public:
         return sizeHint();
     }
 
-    void setIcons(const QIcon& normalIcon, const QIcon& hoverIcon)
+    void setIcon(const QIcon& icon)
     {
-        normal_icon_ = normalIcon;
-        hover_icon_ = hoverIcon.isNull() ? normalIcon : hoverIcon;
+        normal_icon_ = icon;
         update();
     }
 
@@ -489,15 +488,24 @@ protected:
     {
         QLabel::paintEvent(event);
         QPainter painter(this);
-        const QIcon& icon = icon_hovered_ && !hover_icon_.isNull() ? hover_icon_ : normal_icon_;
+        const QRect icon_area = iconRect();
+        if (icon_hovered_)
+        {
+            painter.setRenderHint(QPainter::Antialiasing, true);
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QColor(30, 30, 30));
+            painter.drawRoundedRect(icon_area, 4, 4);
+        }
+
+        const QIcon& icon = normal_icon_;
         if (icon.isNull())
         {
             const bool dark = VaporView::isDarkThemeEnabled();
-            painter.setPen(appThemeColor(icon_hovered_ ? AppThemeColor::PrimaryHover : AppThemeColor::TextTitle, dark));
-            painter.drawText(iconRect(), Qt::AlignCenter, QStringLiteral("..."));
+            painter.setPen(appThemeColor(AppThemeColor::Primary, dark));
+            painter.drawText(icon_area, Qt::AlignCenter, QStringLiteral("..."));
             return;
         }
-        icon.paint(&painter, iconRect());
+        icon.paint(&painter, icon_area);
     }
 
     void mousePressEvent(QMouseEvent *event) override
@@ -554,7 +562,6 @@ private:
     static constexpr int kIconGap = 8;
 
     QIcon normal_icon_;
-    QIcon hover_icon_;
     QIcon check_icon_;
     QMenu *menu_;
     WaveDisplayMenuRow *show_all_row_ = nullptr;
@@ -1666,9 +1673,8 @@ void TcpWavePanel::updateWaveDisplayModeIcon()
     if (auto *titleLabel = dynamic_cast<WaveDisplayTitleLabel *>(panel_title_label_))
     {
         const bool dark = VaporView::isDarkThemeEnabled();
-        titleLabel->setIcons(
-            createWaveDisplayIcon(appThemeColor(AppThemeColor::TextTitle, dark)),
-            createWaveDisplayIcon(appThemeColor(AppThemeColor::PrimaryHover, dark)));
+        const QIcon waveDisplayIcon = createWaveDisplayIcon(appThemeColor(AppThemeColor::Primary, dark));
+        titleLabel->setIcon(waveDisplayIcon);
         titleLabel->setCheckIcon(createMenuCheckIcon(appThemeColor(AppThemeColor::MenuCheckText, dark)));
     }
 }
