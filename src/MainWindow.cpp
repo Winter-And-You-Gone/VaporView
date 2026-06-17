@@ -366,8 +366,8 @@ constexpr const char *kNumericWidthCandidatesProperty = "_vv_numeric_width_candi
 constexpr const char *kNumericWidthPaddingProperty = "_vv_numeric_width_padding";
 constexpr const char *kMainCardMinimumHeightProperty = "_vv_main_card_minimum_height";
 constexpr int kMainPageInputHeight = 36;
-constexpr int kMainPageButtonHeight = 34;
-constexpr int kMainPageTitleBarHeight = kMainPageButtonHeight + 4;
+constexpr int kMainPageButtonHeight = kMainPageInputHeight;
+constexpr int kMainPageTitleBarHeight = kMainPageInputHeight + 4;
 constexpr int kEnvironmentTitleBarHeight = kMainPageButtonHeight;
 constexpr int kConfigFormBottomPadding = 4;
 constexpr int kConfigRowsHeight = kMainPageInputHeight * 4 + 4 * 3 + kConfigFormBottomPadding;
@@ -4385,6 +4385,9 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#fieldLabel { color: @vv-text; font-size: 14px; font-weight: 600; }"
             "QLabel#separatorLabel { color: @vv-text; font-size: 14px; font-weight: bold; }"
             "QLabel#rtkStatusLabel { color: @vv-text; font-weight: bold; }"
+            "QWidget#environmentSectionTitleBar { background-color: @vv-surface; border-bottom: 1px solid @vv-border; border-top-left-radius: 7px; border-top-right-radius: 7px; min-height: 36px; max-height: 36px; }"
+            "QWidget#environmentSectionTitleBar QLabel { background-color: transparent; border: none; }"
+            "QWidget#environmentSectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
             "QLabel#sectionTitleLabel { background-color: @vv-surface; border: none; border-bottom: 1px solid @vv-border; border-radius: 0px; color: @vv-text; font-size: 16px; font-weight: bold; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
             "QWidget#sectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
             "QFrame#epsilonSectionCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 4px; }"
@@ -4434,12 +4437,12 @@ void MainWindow::loadModernStyleSheet()
             "QSplitter#mainContentSplitter::handle:horizontal { width: 8px; background-color: @vv-surface-sunken; }"
             "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#mainContentSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
-            "QPushButton { background-color: @vv-primary; color: @vv-white; border: none; border-radius: 6px; padding: 4px 18px; font-size: 15px; font-weight: 500; min-height: 26px; max-height: 26px; }"
+            "QPushButton { background-color: @vv-primary; color: @vv-white; border: none; border-radius: 6px; padding: 4px 16px; font-size: 15px; font-weight: 500; min-height: 28px; max-height: 28px; }"
             "QPushButton:hover { background-color: @vv-primary-hover; }"
             "QPushButton:pressed { background-color: @vv-primary-pressed; }"
             "QPushButton:disabled { background-color: @vv-border-strong; color: @vv-white; }"
-            "QPushButton#compactTcpButton { padding: 4px 14px; min-height: 26px; max-height: 26px; font-size: 14px; }"
-            "QPushButton#compactTcpStartButton { padding: 4px 14px; min-height: 26px; max-height: 26px; font-size: 14px; }"
+            "QPushButton#compactTcpButton { padding: 4px 14px; min-height: 28px; max-height: 28px; font-size: 14px; }"
+            "QPushButton#compactTcpStartButton { padding: 4px 14px; min-height: 28px; max-height: 28px; font-size: 14px; }"
             "QToolTip { background-color: rgb(45, 45, 45); color: #FFFFFF; border: 1px solid #474747; border-radius: 13px; padding: 8px 16px; font-size: 16px; }";
     }
 
@@ -5619,7 +5622,7 @@ void MainWindow::refreshRemoteSkyDataUi()
 QPushButton *MainWindow::createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device)
 {
     auto *button = new QPushButton(text, this);
-    button->setFixedHeight(kMainPageInputHeight);
+    button->setFixedHeight(kMainPageButtonHeight);
     button->setMinimumWidth(60);
     const QString action = command == VaporView::CommandId::ConnectDevice
         ? QStringLiteral("连接")
@@ -7389,7 +7392,7 @@ void MainWindow::setupConfigPanel()
         delete epsilon_rate_combo_;
         epsilon_rate_combo_ = nullptr;
         epsilon_packet_rates_btn_ = new QPushButton(this);
-        epsilon_packet_rates_btn_->setFixedHeight(kMainPageInputHeight);
+        epsilon_packet_rates_btn_->setFixedHeight(kMainPageButtonHeight);
         epsilon_packet_rates_btn_->setMinimumWidth(140);
         connect(epsilon_packet_rates_btn_, &QPushButton::clicked, this, &MainWindow::onConfigureEpsilonPacketRatesClicked);
         config_layout->addWidget(epsilon_packet_rates_btn_, 0, 4, Qt::AlignVCenter);
