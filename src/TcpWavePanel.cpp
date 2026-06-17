@@ -491,9 +491,10 @@ protected:
         const QRect icon_area = iconRect();
         if (icon_hovered_)
         {
+            const bool dark = VaporView::isDarkThemeEnabled();
             painter.setRenderHint(QPainter::Antialiasing, true);
             painter.setPen(Qt::NoPen);
-            painter.setBrush(QColor(30, 30, 30));
+            painter.setBrush(dark ? QColor(30, 30, 30) : appThemeColor(AppThemeColor::TitleBarHover, dark));
             painter.drawRoundedRect(icon_area, 4, 4);
         }
 
