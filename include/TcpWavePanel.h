@@ -95,7 +95,8 @@ private:
     {
         All,
         RawOnly,
-        HarmonicOnly
+        HarmonicOnly,
+        PeakTrendOnly
     };
 
     enum class PeakFilterMode

@@ -2,8 +2,6 @@
 #include "AppTheme.h"
 #include "TcpWavePanel.h"
 #include <QAbstractSocket>
-#include <QAction>
-#include <QActionGroup>
 #include <QApplication>
 #include <QByteArray>
 #include <QComboBox>
@@ -43,6 +41,7 @@
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWheelEvent>
+#include <QWidgetAction>
 #include <QDateTime>
 #include <QtEndian>
 #include <algorithm>
@@ -271,9 +270,9 @@ QPixmap renderLucidePixmap(const QByteArray& svgData, const QColor& color, qreal
     return pixmap;
 }
 
-QIcon createWaveDisplayIcon(const QColor& color)
+QIcon createLucideIcon(const QString& iconName, const QColor& color)
 {
-    QFile file(findResourceFile(QStringLiteral("resources/lucide/sliders-vertical.svg")));
+    QFile file(findResourceFile(QStringLiteral("resources/lucide/%1.svg").arg(iconName)));
     if (!file.open(QIODevice::ReadOnly))
     {
         return QIcon();
@@ -288,34 +287,142 @@ QIcon createWaveDisplayIcon(const QColor& color)
     return icon;
 }
 
+QIcon createWaveDisplayIcon(const QColor& color)
+{
+    return createLucideIcon(QStringLiteral("sliders-vertical"), color);
+}
+
+QIcon createMenuCheckIcon(const QColor& color)
+{
+    return createLucideIcon(QStringLiteral("check"), color);
+}
+
+class WaveDisplayMenuRow final : public QWidget
+{
+public:
+    explicit WaveDisplayMenuRow(QWidget *parent = nullptr)
+        : QWidget(parent)
+        , text_label_(new QLabel(this))
+        , check_label_(new QLabel(this))
+    {
+        setAttribute(Qt::WA_Hover, true);
+        setCursor(Qt::PointingHandCursor);
+        setFixedHeight(34);
+        setMinimumWidth(238);
+
+        auto *layout = new QHBoxLayout(this);
+        layout->setContentsMargins(12, 0, 10, 0);
+        layout->setSpacing(16);
+        text_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        text_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        layout->addWidget(text_label_, 1);
+        check_label_->setFixedSize(18, 18);
+        check_label_->setAlignment(Qt::AlignCenter);
+        layout->addWidget(check_label_, 0, Qt::AlignVCenter | Qt::AlignRight);
+        refreshTheme();
+    }
+
+    void setText(const QString& text)
+    {
+        text_label_->setText(text);
+    }
+
+    void setCheckIcon(const QIcon& icon)
+    {
+        check_icon_ = icon;
+        updateCheckIcon();
+    }
+
+    void setChecked(bool checked)
+    {
+        checked_ = checked;
+        updateCheckIcon();
+    }
+
+    void setClickedCallback(std::function<void()> callback)
+    {
+        clicked_ = std::move(callback);
+    }
+
+    void refreshTheme()
+    {
+        const bool dark = VaporView::isDarkThemeEnabled();
+        text_label_->setStyleSheet(QStringLiteral("QLabel { color: %1; background: transparent; }")
+            .arg(appThemeColor(AppThemeColor::MenuText, dark).name(QColor::HexRgb)));
+        updateCheckIcon();
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        Q_UNUSED(event);
+        QPainter painter(this);
+        const bool dark = VaporView::isDarkThemeEnabled();
+        if (underMouse())
+        {
+            painter.fillRect(rect(), appThemeColor(AppThemeColor::MenuHover, dark));
+        }
+    }
+
+    void mouseReleaseEvent(QMouseEvent *event) override
+    {
+        if (event->button() == Qt::LeftButton && rect().contains(event->position().toPoint()))
+        {
+            if (clicked_)
+            {
+                clicked_();
+            }
+            event->accept();
+            return;
+        }
+        QWidget::mouseReleaseEvent(event);
+    }
+
+    void enterEvent(QEnterEvent *event) override
+    {
+        QWidget::enterEvent(event);
+        update();
+    }
+
+    void leaveEvent(QEvent *event) override
+    {
+        QWidget::leaveEvent(event);
+        update();
+    }
+
+private:
+    void updateCheckIcon()
+    {
+        if (!checked_ || check_icon_.isNull())
+        {
+            check_label_->clear();
+            return;
+        }
+        check_label_->setPixmap(check_icon_.pixmap(18, 18));
+    }
+
+    QLabel *text_label_;
+    QLabel *check_label_;
+    QIcon check_icon_;
+    std::function<void()> clicked_;
+    bool checked_ = false;
+};
+
 class WaveDisplayTitleLabel final : public QLabel
 {
 public:
     explicit WaveDisplayTitleLabel(QWidget *parent = nullptr)
         : QLabel(parent)
         , menu_(new QMenu(this))
-        , action_group_(new QActionGroup(menu_))
-        , show_all_action_(new QAction(menu_))
-        , show_raw_action_(new QAction(menu_))
-        , show_harmonic_action_(new QAction(menu_))
     {
         setFocusPolicy(Qt::NoFocus);
         setMouseTracking(true);
-        action_group_->setExclusive(true);
-        for (QAction *action : {show_all_action_, show_raw_action_, show_harmonic_action_})
-        {
-            action->setCheckable(true);
-            action_group_->addAction(action);
-            menu_->addAction(action);
-        }
-        show_all_action_->setChecked(true);
-        connect(action_group_, &QActionGroup::triggered, this, [this](QAction *action) {
-            current_mode_ = action == show_raw_action_ ? 1 : (action == show_harmonic_action_ ? 2 : 0);
-            if (mode_changed_)
-            {
-                mode_changed_(current_mode_);
-            }
-        });
+        show_all_row_ = addModeRow(0);
+        show_raw_row_ = addModeRow(1);
+        show_harmonic_row_ = addModeRow(2);
+        show_peak_trend_row_ = addModeRow(3);
+        setCurrentMode(0);
     }
 
     QSize sizeHint() const override
@@ -344,18 +451,28 @@ public:
         setToolTip(title);
         setAccessibleName(title);
         menu_->setTitle(english ? QStringLiteral("Wave Display") : QStringLiteral("波形显示"));
-        show_all_action_->setText(english ? QStringLiteral("Show All") : QStringLiteral("全部显示"));
-        show_raw_action_->setText(english ? QStringLiteral("Raw Signal Only") : QStringLiteral("仅显示原始信号"));
-        show_harmonic_action_->setText(english ? QStringLiteral("Second Harmonic Only") : QStringLiteral("仅显示二次谐波"));
+        show_all_row_->setText(english ? QStringLiteral("Show All") : QStringLiteral("全部显示"));
+        show_raw_row_->setText(english ? QStringLiteral("Show Raw Signal") : QStringLiteral("显示原始信号"));
+        show_harmonic_row_->setText(english ? QStringLiteral("Show Second Harmonic") : QStringLiteral("显示二次谐波"));
+        show_peak_trend_row_->setText(english ? QStringLiteral("Show Second Harmonic Peak Trend") : QStringLiteral("显示二次谐波峰值趋势"));
     }
 
     void setCurrentMode(int mode)
     {
         current_mode_ = mode;
-        QAction *action = mode == 1 ? show_raw_action_ : (mode == 2 ? show_harmonic_action_ : show_all_action_);
-        if (!action->isChecked())
+        show_all_row_->setChecked(mode == 0);
+        show_raw_row_->setChecked(mode == 1);
+        show_harmonic_row_->setChecked(mode == 2);
+        show_peak_trend_row_->setChecked(mode == 3);
+    }
+
+    void setCheckIcon(const QIcon& icon)
+    {
+        check_icon_ = icon;
+        for (WaveDisplayMenuRow *row : {show_all_row_, show_raw_row_, show_harmonic_row_, show_peak_trend_row_})
         {
-            action->setChecked(true);
+            row->setCheckIcon(check_icon_);
+            row->refreshTheme();
         }
     }
 
@@ -435,14 +552,32 @@ private:
 
     QIcon normal_icon_;
     QIcon hover_icon_;
+    QIcon check_icon_;
     QMenu *menu_;
-    QActionGroup *action_group_;
-    QAction *show_all_action_;
-    QAction *show_raw_action_;
-    QAction *show_harmonic_action_;
+    WaveDisplayMenuRow *show_all_row_ = nullptr;
+    WaveDisplayMenuRow *show_raw_row_ = nullptr;
+    WaveDisplayMenuRow *show_harmonic_row_ = nullptr;
+    WaveDisplayMenuRow *show_peak_trend_row_ = nullptr;
     std::function<void(int)> mode_changed_;
     int current_mode_ = 0;
     bool icon_hovered_ = false;
+
+    WaveDisplayMenuRow *addModeRow(int mode)
+    {
+        auto *row = new WaveDisplayMenuRow(menu_);
+        auto *action = new QWidgetAction(menu_);
+        action->setDefaultWidget(row);
+        menu_->addAction(action);
+        row->setClickedCallback([this, mode]() {
+            setCurrentMode(mode);
+            if (mode_changed_)
+            {
+                mode_changed_(mode);
+            }
+            menu_->hide();
+        });
+        return row;
+    }
 };
 
 class CenteredPlainTextLabel : public QLabel
@@ -1125,6 +1260,10 @@ void TcpWavePanel::setupUi()
         {
             wave_display_mode_ = WaveDisplayMode::HarmonicOnly;
         }
+        else if (mode == 3)
+        {
+            wave_display_mode_ = WaveDisplayMode::PeakTrendOnly;
+        }
         else
         {
             wave_display_mode_ = WaveDisplayMode::All;
@@ -1495,20 +1634,31 @@ void TcpWavePanel::updateWaveDisplayModeIcon()
         titleLabel->setIcons(
             createWaveDisplayIcon(appThemeColor(AppThemeColor::TextTitle, dark)),
             createWaveDisplayIcon(appThemeColor(AppThemeColor::PrimaryHover, dark)));
+        titleLabel->setCheckIcon(createMenuCheckIcon(appThemeColor(AppThemeColor::MenuCheckText, dark)));
     }
 }
 
 void TcpWavePanel::applyWaveDisplayMode()
 {
-    const bool showRawWave = wave_display_mode_ != WaveDisplayMode::HarmonicOnly;
-    const bool showHarmonicWave = wave_display_mode_ != WaveDisplayMode::RawOnly;
-    const bool showPeakTrend = wave_display_mode_ == WaveDisplayMode::All;
+    const bool showRawWave = wave_display_mode_ == WaveDisplayMode::All || wave_display_mode_ == WaveDisplayMode::RawOnly;
+    const bool showHarmonicWave = wave_display_mode_ == WaveDisplayMode::All || wave_display_mode_ == WaveDisplayMode::HarmonicOnly;
+    const bool showPeakTrend = wave_display_mode_ == WaveDisplayMode::All || wave_display_mode_ == WaveDisplayMode::PeakTrendOnly;
 
     if (auto *titleLabel = dynamic_cast<WaveDisplayTitleLabel *>(panel_title_label_))
     {
-        const int mode = wave_display_mode_ == WaveDisplayMode::RawOnly
-            ? 1
-            : (wave_display_mode_ == WaveDisplayMode::HarmonicOnly ? 2 : 0);
+        int mode = 0;
+        if (wave_display_mode_ == WaveDisplayMode::RawOnly)
+        {
+            mode = 1;
+        }
+        else if (wave_display_mode_ == WaveDisplayMode::HarmonicOnly)
+        {
+            mode = 2;
+        }
+        else if (wave_display_mode_ == WaveDisplayMode::PeakTrendOnly)
+        {
+            mode = 3;
+        }
         titleLabel->setCurrentMode(mode);
     }
 
@@ -1726,15 +1876,15 @@ void TcpWavePanel::updateLiveDisplay()
     }
 
     live_display_dirty_ = false;
-    if (wave_display_mode_ != WaveDisplayMode::HarmonicOnly && wave1_plot_)
+    if ((wave_display_mode_ == WaveDisplayMode::All || wave_display_mode_ == WaveDisplayMode::RawOnly) && wave1_plot_)
     {
         wave1_plot_->setSamples(wave1_history_);
     }
-    if (wave_display_mode_ != WaveDisplayMode::RawOnly && wave4_plot_)
+    if ((wave_display_mode_ == WaveDisplayMode::All || wave_display_mode_ == WaveDisplayMode::HarmonicOnly) && wave4_plot_)
     {
         wave4_plot_->setSamples(wave4_history_);
     }
-    if (wave_display_mode_ == WaveDisplayMode::All && peak_plot_)
+    if ((wave_display_mode_ == WaveDisplayMode::All || wave_display_mode_ == WaveDisplayMode::PeakTrendOnly) && peak_plot_)
     {
         peak_plot_->setPeakValues(peak_history_);
     }
