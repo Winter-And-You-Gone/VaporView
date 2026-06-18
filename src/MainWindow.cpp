@@ -4537,7 +4537,7 @@ void MainWindow::loadModernStyleSheet()
             "QScrollArea#mainCardsScrollArea QScrollBar:horizontal { background-color: @vv-surface-sunken; }"
             "QScrollArea#mainCardsScrollArea QScrollBar:vertical { background-color: @vv-surface; }"
             "QSplitter::handle { background-color: transparent; }"
-            "QSplitter#mainContentSplitter::handle:horizontal { width: 8px; background-color: transparent; }"
+            "QSplitter#mainContentSplitter::handle:horizontal { width: 1px; background-color: transparent; }"
             "QWidget#mainCardResizeHandle { min-height: 3px; max-height: 3px; background-color: transparent; }"
             "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QWidget#mainCardResizeHandle:hover { background-color: @vv-resize-hover; }"
@@ -4545,7 +4545,7 @@ void MainWindow::loadModernStyleSheet()
             "QWidget#mainCardResizeHandle[dragging=\"true\"] { background-color: @vv-resize-pressed; }"
             "QSplitter::handle:horizontal { width: 0px; }"
             "QSplitter::handle:vertical { height: 0px; }"
-            "QSplitter#mainContentSplitter::handle:horizontal { width: 8px; background-color: @vv-surface-sunken; }"
+            "QSplitter#mainContentSplitter::handle:horizontal { width: 1px; background-color: @vv-border; }"
             "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#mainContentSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
             "QPushButton { background-color: @vv-primary; color: @vv-white; border: none; border-radius: 6px; padding: 4px 16px; font-size: 15px; font-weight: 500; min-height: 28px; max-height: 28px; }"
@@ -7296,7 +7296,7 @@ void MainWindow::setupCentralWidget()
     main_content_splitter_->setChildrenCollapsible(true);
     main_content_splitter_->setCollapsible(0, false);
     main_content_splitter_->setCollapsible(1, false);
-    main_content_splitter_->setHandleWidth(8);
+    main_content_splitter_->setHandleWidth(1);
     main_content_splitter_->addWidget(main_cards_scroll_area_);
     main_content_splitter_->addWidget(log_side_panel_);
     main_content_splitter_->setStretchFactor(0, 8);
