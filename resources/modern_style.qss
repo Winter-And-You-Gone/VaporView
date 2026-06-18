@@ -473,9 +473,16 @@ QScrollBar::handle:vertical:hover {
     background-color: @vv-scrollbar-handle-hover;
 }
 
+QScrollBar::add-page:vertical,
+QScrollBar::sub-page:vertical {
+    background-color: @vv-surface-alt;
+    border-radius: 6px;
+}
+
 QScrollBar::add-line:vertical,
 QScrollBar::sub-line:vertical {
     height: 0px;
+    background-color: @vv-surface-alt;
 }
 
 QScrollBar:horizontal {
@@ -496,9 +503,16 @@ QScrollBar::handle:horizontal:hover {
     background-color: @vv-scrollbar-handle-hover;
 }
 
+QScrollBar::add-page:horizontal,
+QScrollBar::sub-page:horizontal {
+    background-color: @vv-surface-alt;
+    border-radius: 6px;
+}
+
 QScrollBar::add-line:horizontal,
 QScrollBar::sub-line:horizontal {
     width: 0px;
+    background-color: @vv-surface-alt;
 }
 
 /* 滚动区域 */
@@ -509,6 +523,17 @@ QScrollArea {
 
 QScrollArea#mainCardsScrollArea QScrollBar:horizontal,
 QScrollArea#mainCardsScrollArea QScrollBar:vertical {
+    background-color: @vv-surface-sunken;
+}
+
+QScrollArea#mainCardsScrollArea QScrollBar::add-page:horizontal,
+QScrollArea#mainCardsScrollArea QScrollBar::sub-page:horizontal,
+QScrollArea#mainCardsScrollArea QScrollBar::add-page:vertical,
+QScrollArea#mainCardsScrollArea QScrollBar::sub-page:vertical,
+QScrollArea#mainCardsScrollArea QScrollBar::add-line:horizontal,
+QScrollArea#mainCardsScrollArea QScrollBar::sub-line:horizontal,
+QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical,
+QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical {
     background-color: @vv-surface-sunken;
 }
 
