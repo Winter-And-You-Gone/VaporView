@@ -318,16 +318,6 @@ QString skyDeviceConfigStyleSheet(bool dark)
         "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked { background-color: transparent; border: none; }"
         "QDialog#skyDeviceConfigDialog QPushButton#skyEnableToggle:checked:hover { background-color: @vv-title-hover; border: none; }"
         "QDialog#skyDeviceConfigDialog QPlainTextEdit { background-color: @vv-config-surface; color: @vv-config-title-text; border: 1px solid @vv-config-border; border-radius: 8px; padding: 8px; font-family: Consolas, \"Cascadia Mono\", monospace; selection-background-color: @vv-primary-subtle-pressed; selection-color: @vv-white; }"
-        "QDialog#skyDeviceConfigDialog QScrollBar:vertical,"
-        "QDialog#skyDeviceConfigDialog QScrollBar:horizontal { background-color: @vv-surface-sunken; border-radius: 6px; }"
-        "QDialog#skyDeviceConfigDialog QScrollBar::handle:vertical,"
-        "QDialog#skyDeviceConfigDialog QScrollBar::handle:horizontal { background-color: @vv-config-border; border-radius: 6px; margin: 2px; }"
-        "QDialog#skyDeviceConfigDialog QScrollBar::handle:vertical:hover,"
-        "QDialog#skyDeviceConfigDialog QScrollBar::handle:horizontal:hover { background-color: @vv-config-border; }"
-        "QDialog#skyDeviceConfigDialog QScrollBar::add-line:vertical,"
-        "QDialog#skyDeviceConfigDialog QScrollBar::sub-line:vertical { height: 0px; }"
-        "QDialog#skyDeviceConfigDialog QScrollBar::add-line:horizontal,"
-        "QDialog#skyDeviceConfigDialog QScrollBar::sub-line:horizontal { width: 0px; }"
     ), true);
 }
 }
