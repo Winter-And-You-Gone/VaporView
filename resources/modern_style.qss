@@ -803,12 +803,7 @@ QCheckBox::indicator:hover {
 QCheckBox::indicator:checked {
     background-color: @vv-primary;
     border-color: @vv-primary;
-    image: none;
-}
-
-QCheckBox::indicator:checked:after {
-    content: "✓";
-    color: @vv-white;
+    image: url(lucide/check.svg);
 }
 
 /* 单选按钮 */

@@ -426,6 +426,7 @@ private:
     bool shouldUseCompactHomeLayout() const;
     void updateThemeAction();
     void updateThemedIcons();
+    void updateFontScaleMenuCheckIcons();
     void updateCustomTitleBarTexts();
     void updateCustomTitleBarStyle();
     void updateWindowControlButtons();
@@ -528,12 +529,12 @@ private:
     QLabel *recording_status_label_;
     QPushButton *auto_detect_ports_btn_;
 
-    QComboBox *epsilon_port_combo_;
+    QLineEdit *epsilon_port_edit_;
     QComboBox *gnss_port_combo_;
     QComboBox *imu_port_combo_;
-    QComboBox *ptb_port_combo_;
-    QComboBox *hmp_port_combo_;
-    QComboBox *lidar_port_combo_;
+    QLineEdit *ptb_port_edit_;
+    QLineEdit *hmp_port_edit_;
+    QLineEdit *lidar_port_edit_;
     QComboBox *epsilon_baud_combo_;
     QComboBox *gnss_baud_combo_;
     QComboBox *imu_baud_combo_;
@@ -637,7 +638,7 @@ private:
     QComboBox *lidar_rate_combo_;
     QComboBox *data_source_mode_combo_;
     QComboBox *sky_telemetry_transport_combo_;
-    QComboBox *sky_telemetry_port_combo_;
+    QLineEdit *sky_telemetry_port_edit_;
     QComboBox *sky_telemetry_baud_combo_;
     QLineEdit *sky_telemetry_tcp_host_edit_;
     QSpinBox *sky_telemetry_tcp_port_spin_;
