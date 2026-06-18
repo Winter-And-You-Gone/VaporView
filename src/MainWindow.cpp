@@ -1723,13 +1723,17 @@ QPushButton:disabled {
     background-color: @vv-border;
     color: @vv-text-disabled-strong;
 }
-QScrollBar:vertical,
 QScrollBar:horizontal {
     background-color: @vv-surface-sunken;
 }
-QScrollArea#mainCardsScrollArea QScrollBar:horizontal,
-QScrollArea#mainCardsScrollArea QScrollBar:vertical {
+QScrollBar:vertical {
+    background-color: @vv-surface;
+}
+QScrollArea#mainCardsScrollArea QScrollBar:horizontal {
     background-color: @vv-window;
+}
+QScrollArea#mainCardsScrollArea QScrollBar:vertical {
+    background-color: @vv-surface;
 }
 QScrollBar::handle:vertical,
 QScrollBar::handle:horizontal {
@@ -4524,13 +4528,14 @@ void MainWindow::loadModernStyleSheet()
             "QTextEdit { background-color: @vv-surface; color: @vv-text; border: 1px solid @vv-border; border-radius: 6px; padding: 10px; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; }"
             "QTextEdit#logTextEdit { background-color: transparent; border: none; border-radius: 0px; }"
             "QWidget#logTextViewport { background-color: transparent; border: none; }"
-            "QScrollBar:vertical { background-color: @vv-surface-alt; width: 12px; border-radius: 6px; }"
+            "QScrollBar:vertical { background-color: @vv-surface; width: 12px; border-radius: 6px; }"
             "QScrollBar::handle:vertical { background-color: @vv-border-strong; min-height: 30px; border-radius: 6px; margin: 2px; }"
             "QScrollBar::handle:vertical:hover { background-color: @vv-scrollbar-handle-hover; }"
             "QScrollBar:horizontal { background-color: @vv-surface-alt; height: 12px; border-radius: 6px; }"
             "QScrollBar::handle:horizontal { background-color: @vv-border-strong; min-width: 30px; border-radius: 6px; margin: 2px; }"
             "QScrollBar::handle:horizontal:hover { background-color: @vv-scrollbar-handle-hover; }"
-            "QScrollArea#mainCardsScrollArea QScrollBar:horizontal, QScrollArea#mainCardsScrollArea QScrollBar:vertical { background-color: @vv-surface-sunken; }"
+            "QScrollArea#mainCardsScrollArea QScrollBar:horizontal { background-color: @vv-surface-sunken; }"
+            "QScrollArea#mainCardsScrollArea QScrollBar:vertical { background-color: @vv-surface; }"
             "QSplitter::handle { background-color: transparent; }"
             "QSplitter#mainContentSplitter::handle:horizontal { width: 8px; background-color: transparent; }"
             "QWidget#mainCardResizeHandle { min-height: 3px; max-height: 3px; background-color: transparent; }"
