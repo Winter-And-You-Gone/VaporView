@@ -115,7 +115,6 @@ private:
     void saveRememberedInputState() const;
     void updateWaveDisplayModeTexts();
     void updateWaveDisplayModeIcon();
-    void updateTopControlsPlacement();
     void applyWaveDisplayMode();
     void updatePeakPlotModeButtonText();
     void updatePeakFilterButtonText();
@@ -163,8 +162,6 @@ private:
     QPushButton *peak_clear_button_;
     QGridLayout *control_layout_;
     QHBoxLayout *top_controls_layout_;
-    QHBoxLayout *tcp_connection_controls_layout_;
-    QWidget *tcp_connection_controls_widget_;
     QHBoxLayout *plots_layout_;
     QTcpSocket *socket_;
     QTimer *live_display_timer_;

@@ -62,7 +62,7 @@ constexpr int kPreferredPayloadBytes = 200000;
 constexpr int kTcpControlHeight = 36;
 constexpr int kTcpButtonHeight = kTcpControlHeight;
 constexpr int kTcpTitleBarHeight = kTcpControlHeight + 4;
-constexpr int kTcpTitleBarPrimarySpacing = 24;
+constexpr int kTcpTitleBarPrimarySpacing = 10;
 constexpr int kWaveDisplayIconSize = 28;
 constexpr int kWaveDisplayIconInnerSize = 18;
 constexpr int kTcpTitleBarRealtimeHostSpacing = 12;
@@ -544,6 +544,18 @@ public:
     QSize minimumSizeHint() const override
     {
         return sizeHint();
+    }
+
+    void refreshFixedWidth()
+    {
+        setFixedWidth(sizeHint().width());
+        if (QWidget *cluster = parentWidget())
+        {
+            cluster->setFixedWidth(cluster->sizeHint().width());
+            cluster->updateGeometry();
+        }
+        updateGeometry();
+        refreshTooltipAnchor();
     }
 
     void setIcon(const QIcon& icon)
@@ -1347,8 +1359,6 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , peak_clear_button_(nullptr)
     , control_layout_(nullptr)
     , top_controls_layout_(nullptr)
-    , tcp_connection_controls_layout_(nullptr)
-    , tcp_connection_controls_widget_(nullptr)
     , plots_layout_(nullptr)
     , socket_(nullptr)
     , live_display_timer_(nullptr)
@@ -1412,7 +1422,6 @@ void TcpWavePanel::setCompactLayout(bool compact)
     }
 
     compact_layout_ = compact;
-    updateTopControlsPlacement();
     if (plots_layout_)
     {
         plots_layout_->setDirection(compact ? QBoxLayout::TopToBottom : QBoxLayout::LeftToRight);
@@ -1421,45 +1430,6 @@ void TcpWavePanel::setCompactLayout(bool compact)
         plots_layout_->activate();
     }
     updateGeometry();
-}
-
-void TcpWavePanel::updateTopControlsPlacement()
-{
-    if (!control_layout_ || !top_controls_layout_ || !tcp_connection_controls_widget_)
-    {
-        return;
-    }
-
-    top_controls_layout_->removeWidget(tcp_connection_controls_widget_);
-    control_layout_->removeWidget(tcp_connection_controls_widget_);
-    if (hint_label_)
-    {
-        control_layout_->removeWidget(hint_label_);
-    }
-
-    if (compact_layout_)
-    {
-        control_layout_->addWidget(tcp_connection_controls_widget_, 1, 0, 1, 6, Qt::AlignLeft | Qt::AlignVCenter);
-        if (hint_label_)
-        {
-            control_layout_->addWidget(hint_label_, 2, 0, 1, 6);
-        }
-    }
-    else
-    {
-        const int beforeStretchIndex = std::max(0, top_controls_layout_->count() - 1);
-        top_controls_layout_->insertWidget(beforeStretchIndex,
-                                           tcp_connection_controls_widget_,
-                                           0,
-                                           Qt::AlignVCenter | Qt::AlignLeft);
-        if (hint_label_)
-        {
-            control_layout_->addWidget(hint_label_, 1, 0, 1, 6);
-        }
-    }
-
-    top_controls_layout_->invalidate();
-    control_layout_->invalidate();
 }
 
 int TcpWavePanel::preferredPanelHeight() const
@@ -1509,13 +1479,6 @@ void TcpWavePanel::setupUi()
                                     Qt::AlignVCenter | Qt::AlignLeft);
     top_controls_layout_->addSpacing(kTcpTitleBarPrimarySpacing);
 
-    tcp_connection_controls_widget_ = new QWidget(this);
-    tcp_connection_controls_widget_->setObjectName(QStringLiteral("tcpConnectionControls"));
-    tcp_connection_controls_widget_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    tcp_connection_controls_layout_ = new QHBoxLayout(tcp_connection_controls_widget_);
-    tcp_connection_controls_layout_->setContentsMargins(0, 0, 0, 0);
-    tcp_connection_controls_layout_->setSpacing(0);
-
     frame_rate_label_ = new QLabel(this);
     frame_rate_label_->setObjectName("fieldLabel");
     frame_rate_label_->setFont(numericFontFrom(frame_rate_label_->font()));
@@ -1526,8 +1489,8 @@ void TcpWavePanel::setupUi()
                          QStringLiteral("Realtime: -999.99 Hz")}) + 8);
     frame_rate_label_->setFixedWidth(frameRateWidth);
     frame_rate_label_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    tcp_connection_controls_layout_->addWidget(frame_rate_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    tcp_connection_controls_layout_->addSpacing(kTcpTitleBarRealtimeHostSpacing);
+    top_controls_layout_->addWidget(frame_rate_label_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    top_controls_layout_->addSpacing(kTcpTitleBarRealtimeHostSpacing);
 
     auto *hostRowLayout = new QHBoxLayout();
     hostRowLayout->setContentsMargins(0, 0, 0, 0);
@@ -1542,8 +1505,8 @@ void TcpWavePanel::setupUi()
     host_edit_->setMinimumWidth(90);
     host_edit_->setMaximumWidth(110);
     hostRowLayout->addWidget(host_edit_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    tcp_connection_controls_layout_->addLayout(hostRowLayout, 0);
-    tcp_connection_controls_layout_->addSpacing(kTcpTitleBarFieldSpacing);
+    top_controls_layout_->addLayout(hostRowLayout, 0);
+    top_controls_layout_->addSpacing(kTcpTitleBarFieldSpacing);
 
     auto *portRowLayout = new QHBoxLayout();
     portRowLayout->setContentsMargins(0, 0, 0, 0);
@@ -1558,15 +1521,14 @@ void TcpWavePanel::setupUi()
     port_spin_->setFixedHeight(kTcpControlHeight);
     port_spin_->setFixedWidth(108);
     portRowLayout->addWidget(port_spin_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    tcp_connection_controls_layout_->addLayout(portRowLayout, 0);
-    tcp_connection_controls_layout_->addSpacing(kTcpTitleBarFieldSpacing);
+    top_controls_layout_->addLayout(portRowLayout, 0);
+    top_controls_layout_->addSpacing(kTcpTitleBarFieldSpacing);
 
     connect_button_ = new QPushButton(this);
     connect_button_->setObjectName("compactTcpStartButton");
     connect_button_->setFixedHeight(kTcpButtonHeight);
     connect(connect_button_, &QPushButton::clicked, this, &TcpWavePanel::onToggleConnectionClicked);
-    tcp_connection_controls_layout_->addWidget(connect_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    top_controls_layout_->addWidget(tcp_connection_controls_widget_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    top_controls_layout_->addWidget(connect_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
     status_label_ = new CenteredPlainTextLabel(this);
     status_label_->setObjectName("fieldLabel");
@@ -1581,8 +1543,8 @@ void TcpWavePanel::setupUi()
     status_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     status_label_->setMinimumWidth(0);
     status_label_->setVisible(false);
-    tcp_connection_controls_layout_->addSpacing(kTcpTitleBarStatusSpacing);
-    tcp_connection_controls_layout_->addWidget(status_label_, 1, Qt::AlignVCenter | Qt::AlignLeft);
+    top_controls_layout_->addSpacing(kTcpTitleBarStatusSpacing);
+    top_controls_layout_->addWidget(status_label_, 1, Qt::AlignVCenter | Qt::AlignLeft);
     top_controls_layout_->addStretch(1);
 
     hint_label_ = new QLabel(this);
@@ -1782,6 +1744,10 @@ void TcpWavePanel::setEnglish(bool english)
     if (panel_title_label_)
     {
         panel_title_label_->setText(english ? "TCP Wave Monitor" : "TCP波形监视");
+        if (auto *titleLabel = dynamic_cast<WaveDisplayTitleLabel *>(panel_title_label_))
+        {
+            titleLabel->refreshFixedWidth();
+        }
     }
     updateWaveDisplayModeTexts();
     updateWaveDisplayModeIcon();
@@ -2153,21 +2119,20 @@ void TcpWavePanel::updatePendingRemoteLiveStatus()
 
 void TcpWavePanel::attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox)
 {
-    if (!tcp_connection_controls_layout_ || !tcp_connection_controls_widget_ || !label || !spinBox)
+    if (!top_controls_layout_ || !label || !spinBox)
     {
         return;
     }
 
-    label->setParent(tcp_connection_controls_widget_);
-    spinBox->setParent(tcp_connection_controls_widget_);
+    label->setParent(this);
+    spinBox->setParent(this);
     auto *splitRowLayout = new QHBoxLayout();
     splitRowLayout->setContentsMargins(0, 0, 0, 0);
     splitRowLayout->setSpacing(4);
     splitRowLayout->addWidget(label, 0, Qt::AlignVCenter | Qt::AlignRight);
     splitRowLayout->addWidget(spinBox, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    const int beforeStatusSpacingIndex = std::max(0, tcp_connection_controls_layout_->count() - 2);
-    tcp_connection_controls_layout_->insertLayout(beforeStatusSpacingIndex, splitRowLayout, 0);
-    tcp_connection_controls_layout_->insertSpacing(beforeStatusSpacingIndex, kTcpTitleBarFieldSpacing);
+    top_controls_layout_->insertSpacing(std::max(0, top_controls_layout_->count() - 2), kTcpTitleBarFieldSpacing);
+    top_controls_layout_->insertLayout(std::max(0, top_controls_layout_->count() - 2), splitRowLayout, 0);
 }
 
 QString TcpWavePanel::host() const
