@@ -422,6 +422,7 @@ private:
     QString scaledStyleSheet(const QString& styleSheet) const;
     void applyScaledUiMetrics();
     void updateResponsiveHomeLayout();
+    void queueResponsiveHomeLayoutRefresh();
     bool shouldUseCompactHomeLayout() const;
     void updateThemeAction();
     void updateThemedIcons();
@@ -446,6 +447,7 @@ private:
     bool shouldStartWindowMove(QObject *watched) const;
     int scalePixels(int pixels) const;
     int minimumLogSidePanelWidth() const;
+    void setLogSidePanelToMinimumWidth();
     void toggleLogSidePanel();
     void setLogSidePanelCollapsed(bool collapsed);
     void updateLogSidePanelToggleButton();
@@ -699,6 +701,8 @@ private:
     bool is_connected_;
     bool compact_home_layout_;
     bool responsive_home_layout_refresh_pending_;
+    bool log_side_panel_width_initialized_;
+    bool log_side_panel_width_locked_;
     bool log_side_panel_collapsed_;
     int last_log_side_panel_width_;
     bool remote_sky_mode_;

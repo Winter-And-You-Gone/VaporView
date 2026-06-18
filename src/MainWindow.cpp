@@ -705,6 +705,26 @@ private:
     bool dragging_;
 };
 
+class ShrinkablePanel : public QWidget
+{
+public:
+    using QWidget::QWidget;
+
+    QSize sizeHint() const override
+    {
+        QSize hint = QWidget::sizeHint();
+        hint.setWidth(minimumWidth());
+        return hint;
+    }
+
+    QSize minimumSizeHint() const override
+    {
+        QSize hint = QWidget::minimumSizeHint();
+        hint.setWidth(minimumWidth());
+        return hint;
+    }
+};
+
 class WindowResizeHandle : public QWidget
 {
 public:
@@ -822,8 +842,6 @@ constexpr qreal kMainWindowMinimumScreenFraction = 0.25;
 constexpr int kCompactHomeScreenWidth = 1600;
 constexpr int kCompactHomeScreenHeight = 900;
 constexpr int kCompactHomeViewportWidth = 1400;
-constexpr int kCompactLogPanelWidth = 96;
-constexpr int kWideLogPanelWidth = 260;
 constexpr quint64 kImuPpsSyncWindowUs = 2ULL * 1000ULL * 1000ULL;
 constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
 constexpr quint32 kUnifiedRawFormatVersion = 2u;
@@ -2459,7 +2477,11 @@ private:
         int availableWidth = contentsRect().width();
         if (const QWidget *parent = parentWidget())
         {
-            availableWidth = std::max(availableWidth, parent->contentsRect().width() - 4);
+            const int parentWidth = parent->contentsRect().width() - 4;
+            if (parentWidth > 0)
+            {
+                availableWidth = availableWidth > 0 ? std::min(availableWidth, parentWidth) : parentWidth;
+            }
         }
         return availableWidth;
     }
@@ -3862,8 +3884,10 @@ MainWindow::MainWindow(QWidget *parent)
     , is_connected_(false)
     , compact_home_layout_(false)
     , responsive_home_layout_refresh_pending_(false)
+    , log_side_panel_width_initialized_(false)
+    , log_side_panel_width_locked_(false)
     , log_side_panel_collapsed_(false)
-    , last_log_side_panel_width_(kWideLogPanelWidth)
+    , last_log_side_panel_width_(0)
     , remote_sky_mode_(false)
     , remote_sky_online_(false)
     , remote_wave_stream_requested_(false)
@@ -4162,6 +4186,10 @@ MainWindow::MainWindow(QWidget *parent)
     applyStyleConfiguration();
     VaporView::centerWindowOnScreen(this);
     rememberNormalWindowGeometry();
+    QTimer::singleShot(0, this, [this]() {
+        setLogSidePanelToMinimumWidth();
+        queueResponsiveHomeLayoutRefresh();
+    });
 
     updateRecordingStatusLabel();
     updateConnectionStatus(false);
@@ -4254,6 +4282,29 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         hideAppTooltipPopup();
     }
 
+    if (log_side_panel_width_locked_ && main_content_splitter_)
+    {
+        bool shouldUnlockLogPanelWidth = watched == main_content_splitter_->handle(1) &&
+                                         event->type() == QEvent::MouseButtonPress;
+        if (!shouldUnlockLogPanelWidth &&
+            watched == log_side_panel_ &&
+            (event->type() == QEvent::MouseMove || event->type() == QEvent::MouseButtonPress))
+        {
+            if (auto *mouseEvent = static_cast<QMouseEvent *>(event))
+            {
+                shouldUnlockLogPanelWidth = mouseEvent->position().x() <= scalePixels(6);
+            }
+        }
+        if (shouldUnlockLogPanelWidth)
+        {
+            log_side_panel_width_locked_ = false;
+            if (log_side_panel_)
+            {
+                log_side_panel_->setMaximumWidth(QWIDGETSIZE_MAX);
+            }
+        }
+    }
+
     const bool titleMenuVisible =
         (title_application_panel_ && title_application_panel_->isVisible()) ||
         (title_application_sub_panel_ && title_application_sub_panel_->isVisible());
@@ -4337,6 +4388,7 @@ void MainWindow::changeEvent(QEvent *event)
         updateWindowControlButtons();
         updateWindowBorderFrames();
         updateWindowResizeHandles();
+        queueResponsiveHomeLayoutRefresh();
     }
 }
 
@@ -4351,6 +4403,7 @@ void MainWindow::resizeEvent(QResizeEvent *event)
     updateWindowBorderFrames();
     updateWindowResizeHandles();
     updateResponsiveHomeLayout();
+    queueResponsiveHomeLayoutRefresh();
 }
 
 #ifdef Q_OS_WIN
@@ -4619,6 +4672,31 @@ int MainWindow::minimumLogSidePanelWidth() const
     return titleBarMargins + titleClusterWidth + titleBarSpacing + actionButtonsWidth + cardMargins + safetyPadding;
 }
 
+void MainWindow::setLogSidePanelToMinimumWidth()
+{
+    if (!main_content_splitter_ || log_side_panel_collapsed_)
+    {
+        return;
+    }
+
+    const int minimumLogWidth = minimumLogSidePanelWidth();
+    const int totalWidth = main_content_splitter_->width();
+    if (totalWidth <= minimumLogWidth + main_content_splitter_->handleWidth())
+    {
+        return;
+    }
+
+    const int leftWidth = std::max(1, totalWidth - minimumLogWidth - main_content_splitter_->handleWidth());
+    if (log_side_panel_)
+    {
+        log_side_panel_->setMaximumWidth(minimumLogWidth);
+        log_side_panel_width_locked_ = true;
+    }
+    main_content_splitter_->setSizes({leftWidth, minimumLogWidth});
+    last_log_side_panel_width_ = minimumLogWidth;
+    log_side_panel_width_initialized_ = true;
+}
+
 void MainWindow::toggleLogSidePanel()
 {
     setLogSidePanelCollapsed(!log_side_panel_collapsed_);
@@ -4638,7 +4716,7 @@ void MainWindow::setLogSidePanelCollapsed(bool collapsed)
     const QList<int> sizes = main_content_splitter_->sizes();
     if (collapsed)
     {
-        if (sizes.size() >= 2 && sizes.at(1) >= minimumLogWidth)
+        if (log_side_panel_width_initialized_ && sizes.size() >= 2 && sizes.at(1) >= minimumLogWidth)
         {
             last_log_side_panel_width_ = sizes.at(1);
         }
@@ -4649,16 +4727,21 @@ void MainWindow::setLogSidePanelCollapsed(bool collapsed)
 
     log_side_panel_->setMinimumWidth(minimumLogWidth);
     log_side_panel_->show();
+    log_side_panel_width_locked_ = false;
+    log_side_panel_->setMaximumWidth(QWIDGETSIZE_MAX);
 
     const QRect availableGeometry = currentScreenAvailableGeometry();
     const int totalWidth = std::max(1, main_content_splitter_->width() > 1
         ? main_content_splitter_->width()
         : (availableGeometry.isValid() ? availableGeometry.width() : base_window_size_.width()));
     const int maxLogWidth = std::max(minimumLogWidth, totalWidth - main_content_splitter_->handleWidth() - 1);
-    const int logWidth = std::min(std::max(last_log_side_panel_width_, minimumLogWidth), maxLogWidth);
+    const int rememberedWidth = last_log_side_panel_width_ > 0 ? last_log_side_panel_width_ : minimumLogWidth;
+    const int logWidth = std::min(std::max(rememberedWidth, minimumLogWidth), maxLogWidth);
     const int leftWidth = std::max(1, totalWidth - logWidth - main_content_splitter_->handleWidth());
     main_content_splitter_->setSizes({leftWidth, std::max(minimumLogWidth, totalWidth - leftWidth)});
+    log_side_panel_width_initialized_ = true;
     updateLogSidePanelToggleButton();
+    queueResponsiveHomeLayoutRefresh();
 }
 
 void MainWindow::updateLogSidePanelToggleButton()
@@ -4822,12 +4905,20 @@ void MainWindow::updateResponsiveHomeLayout()
     }
     if (main_cards_scroll_area_ && main_cards_scroll_area_->widget() && main_cards_scroll_area_->viewport())
     {
+        const int viewportWidth = std::max(0, main_cards_scroll_area_->viewport()->width());
+        const int leftMinimumWidth = config_group_ ? config_group_->minimumWidth() : 0;
+        const bool widthConstrained = compact || (leftMinimumWidth > 0 && viewportWidth < leftMinimumWidth);
         main_cards_scroll_area_->setHorizontalScrollBarPolicy(compact ? Qt::ScrollBarAlwaysOff : Qt::ScrollBarAsNeeded);
-        main_cards_scroll_area_->widget()->setSizePolicy(compact ? QSizePolicy::Ignored : QSizePolicy::Preferred,
+        main_cards_scroll_area_->widget()->setSizePolicy(widthConstrained ? QSizePolicy::Ignored : QSizePolicy::Preferred,
                                                          QSizePolicy::Preferred);
-        main_cards_scroll_area_->widget()->setMinimumWidth(compact ? 0 : config_group_->minimumWidth());
-        main_cards_scroll_area_->widget()->resize(main_cards_scroll_area_->viewport()->width(),
+        main_cards_scroll_area_->widget()->setMinimumWidth(widthConstrained ? 0 : leftMinimumWidth);
+        main_cards_scroll_area_->widget()->resize(viewportWidth,
                                                   main_cards_scroll_area_->widget()->height());
+        if (QLayout *leftLayout = main_cards_scroll_area_->widget()->layout())
+        {
+            leftLayout->invalidate();
+            leftLayout->activate();
+        }
     }
 
     if (epsilon_group_)
@@ -4916,7 +5007,10 @@ void MainWindow::updateResponsiveHomeLayout()
     {
         const int minimumLogWidth = minimumLogSidePanelWidth();
         log_side_panel_->setMinimumWidth(minimumLogWidth);
-        log_side_panel_->setMaximumWidth(QWIDGETSIZE_MAX);
+        if (!log_side_panel_width_locked_)
+        {
+            log_side_panel_->setMaximumWidth(QWIDGETSIZE_MAX);
+        }
     }
 
     if (main_content_splitter_ && !log_side_panel_collapsed_)
@@ -4926,30 +5020,49 @@ void MainWindow::updateResponsiveHomeLayout()
             ? main_content_splitter_->width()
             : (availableGeometry.isValid() ? availableGeometry.width() : base_window_size_.width()));
         const int minimumLogWidth = minimumLogSidePanelWidth();
-        const int logWidth = compact
-            ? std::max(minimumLogWidth, std::min(scalePixels(kCompactLogPanelWidth), totalWidth / 10))
-            : std::max(minimumLogWidth, scalePixels(kWideLogPanelWidth));
+        const int logWidth = minimumLogWidth;
         const QList<int> sizes = main_content_splitter_->sizes();
         const bool logPanelTooNarrow = sizes.size() >= 2 && sizes.at(1) < minimumLogWidth;
-        if (sizes.size() >= 2 && sizes.at(1) >= minimumLogWidth)
+        const int initialLeftWidth = std::max(scalePixels(320), minimumLogWidth);
+        const bool splitterHasRealWidth = main_content_splitter_->isVisible() && main_content_splitter_->width() > 1;
+        const bool canInitializeLogWidth =
+            splitterHasRealWidth &&
+            totalWidth >= minimumLogWidth + main_content_splitter_->handleWidth() + initialLeftWidth;
+        if (log_side_panel_width_initialized_ && sizes.size() >= 2 && sizes.at(1) >= minimumLogWidth)
         {
             last_log_side_panel_width_ = sizes.at(1);
         }
-        if (layoutChanged || logPanelTooNarrow)
+        if ((!log_side_panel_width_initialized_ && canInitializeLogWidth) ||
+            (logPanelTooNarrow && totalWidth > minimumLogWidth + main_content_splitter_->handleWidth()))
         {
             const int leftWidth = std::max(1, totalWidth - logWidth - main_content_splitter_->handleWidth());
             main_content_splitter_->setSizes({leftWidth, std::max(1, totalWidth - leftWidth)});
+            if (canInitializeLogWidth)
+            {
+                last_log_side_panel_width_ = minimumLogWidth;
+                log_side_panel_width_initialized_ = true;
+            }
         }
     }
 
-    if (compact && layoutChanged && !responsive_home_layout_refresh_pending_)
+    if (compact && layoutChanged)
     {
-        responsive_home_layout_refresh_pending_ = true;
-        QTimer::singleShot(0, this, [this]() {
-            responsive_home_layout_refresh_pending_ = false;
-            updateResponsiveHomeLayout();
-        });
+        queueResponsiveHomeLayoutRefresh();
     }
+}
+
+void MainWindow::queueResponsiveHomeLayoutRefresh()
+{
+    if (responsive_home_layout_refresh_pending_)
+    {
+        return;
+    }
+
+    responsive_home_layout_refresh_pending_ = true;
+    QTimer::singleShot(0, this, [this]() {
+        responsive_home_layout_refresh_pending_ = false;
+        updateResponsiveHomeLayout();
+    });
 }
 
 void MainWindow::applyStyleConfiguration()
@@ -4964,6 +5077,12 @@ void MainWindow::applyStyleConfiguration()
     updateThemedIcons();
     updateCustomTitleBarStyle();
     updateResponsiveHomeLayout();
+    QTimer::singleShot(0, this, [this]() {
+        if (!log_side_panel_width_initialized_)
+        {
+            setLogSidePanelToMinimumWidth();
+        }
+    });
 
     if (!isFullScreen() && !isMaximized())
     {
@@ -7283,6 +7402,8 @@ void MainWindow::setupCentralWidget()
     main_cards_scroll_area_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     main_cards_scroll_area_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     main_cards_scroll_area_->setFrameShape(QFrame::NoFrame);
+    main_cards_scroll_area_->setMinimumWidth(0);
+    main_cards_scroll_area_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
     main_cards_scroll_area_->setWidget(left_widget);
 
     setupLogPanel();
@@ -7297,9 +7418,33 @@ void MainWindow::setupCentralWidget()
     main_content_splitter_->setHandleWidth(1);
     main_content_splitter_->addWidget(main_cards_scroll_area_);
     main_content_splitter_->addWidget(log_side_panel_);
+    if (QSplitterHandle *handle = main_content_splitter_->handle(1))
+    {
+        handle->installEventFilter(this);
+    }
     main_content_splitter_->setStretchFactor(0, 8);
     main_content_splitter_->setStretchFactor(1, 1);
-    main_content_splitter_->setSizes({1600, kWideLogPanelWidth});
+    main_content_splitter_->setSizes({1600, minimumLogSidePanelWidth()});
+    connect(main_content_splitter_, &QSplitter::splitterMoved, this, [this]() {
+        if (!main_content_splitter_ || log_side_panel_collapsed_)
+        {
+            return;
+        }
+        log_side_panel_width_locked_ = false;
+        if (log_side_panel_)
+        {
+            log_side_panel_->setMaximumWidth(QWIDGETSIZE_MAX);
+        }
+        const QList<int> sizes = main_content_splitter_->sizes();
+        const int minimumLogWidth = minimumLogSidePanelWidth();
+        if (sizes.size() >= 2 && sizes.at(1) >= minimumLogWidth)
+        {
+            last_log_side_panel_width_ = sizes.at(1);
+            log_side_panel_width_initialized_ = true;
+        }
+        updateResponsiveHomeLayout();
+        queueResponsiveHomeLayoutRefresh();
+    });
     main_h_layout->addWidget(main_content_splitter_);
 }
 
@@ -7807,10 +7952,13 @@ void MainWindow::setupDataPanels()
 
 void MainWindow::setupLogPanel()
 {
-    log_side_panel_ = new QWidget(this);
+    log_side_panel_ = new ShrinkablePanel(this);
     log_side_panel_->setObjectName(QStringLiteral("logSidePanel"));
     log_side_panel_->setAttribute(Qt::WA_StyledBackground, true);
     log_side_panel_->setAutoFillBackground(true);
+    log_side_panel_->setMouseTracking(true);
+    log_side_panel_->installEventFilter(this);
+    log_side_panel_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
     auto *logSideLayout = new QVBoxLayout(log_side_panel_);
     logSideLayout->setContentsMargins(0, 0, 0, 0);
     logSideLayout->setSpacing(8);
@@ -7820,7 +7968,8 @@ void MainWindow::setupLogPanel()
     recording_status_card_->setFrameShape(QFrame::NoFrame);
     recording_status_card_->setAttribute(Qt::WA_StyledBackground, true);
     recording_status_card_->setAutoFillBackground(true);
-    recording_status_card_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+    recording_status_card_->setMinimumWidth(0);
+    recording_status_card_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Minimum);
     auto *recordingCardLayout = new QVBoxLayout(recording_status_card_);
     recordingCardLayout->setContentsMargins(1, 1, 1, 1);
     recordingCardLayout->setSpacing(0);
@@ -7854,7 +8003,8 @@ void MainWindow::setupLogPanel()
     recording_status_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     recording_status_label_->setWordWrap(true);
     recording_status_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    recording_status_label_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+    recording_status_label_->setMinimumWidth(0);
+    recording_status_label_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Minimum);
     recordingStatusLayout->addWidget(recording_status_label_);
     recordingCardLayout->addWidget(recordingBody);
     logSideLayout->addWidget(recording_status_card_, 0);
@@ -7864,7 +8014,8 @@ void MainWindow::setupLogPanel()
     log_group_->setFrameShape(QFrame::NoFrame);
     log_group_->setAttribute(Qt::WA_StyledBackground, true);
     log_group_->setAutoFillBackground(true);
-    log_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    log_group_->setMinimumWidth(0);
+    log_group_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
     auto *log_layout = new QVBoxLayout(log_group_);
     log_layout->setContentsMargins(1, 1, 1, 1);
     log_layout->setSpacing(0);
@@ -7942,7 +8093,8 @@ void MainWindow::setupLogPanel()
     log_text_edit_->setAutoFillBackground(false);
     log_text_edit_->viewport()->setAutoFillBackground(false);
     log_text_edit_->setReadOnly(true);
-    log_text_edit_->setMinimumWidth(100);
+    log_text_edit_->setMinimumWidth(0);
+    log_text_edit_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Expanding);
     log_layout->addWidget(log_text_edit_);
     logSideLayout->addWidget(log_group_, 1);
     log_side_panel_->setMinimumWidth(minimumLogSidePanelWidth());
