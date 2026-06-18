@@ -224,7 +224,7 @@ public:
         setAttribute(Qt::WA_ShowWithoutActivating, true);
         setAttribute(Qt::WA_TranslucentBackground, true);
         setAttribute(Qt::WA_NoSystemBackground, true);
-        setAttribute(Qt::WA_StyledBackground, true);
+        setAttribute(Qt::WA_StyledBackground, false);
         setAutoFillBackground(false);
         setFocusPolicy(Qt::NoFocus);
 
@@ -285,15 +285,14 @@ public:
         shortcut_label_->setVisible(!shortcut.isEmpty());
         shortcut_label_->setText(shortcut);
 
-        const QString popupBackground = dark ? QStringLiteral("rgb(45, 45, 45)") : QStringLiteral("rgb(253, 253, 252)");
         const QString shortcutBackground = dark ? QStringLiteral("rgb(66, 66, 66)") : QStringLiteral("rgb(232, 232, 232)");
         const QString foreground = dark ? QStringLiteral("#FFFFFF") : QStringLiteral("#000000");
-        const QString border = dark ? QStringLiteral("#474747") : QStringLiteral("#E8E8E8");
+        popup_background_ = dark ? QColor(45, 45, 45) : QColor(253, 253, 252);
+        popup_border_ = dark ? QColor(QStringLiteral("#474747")) : QColor(QStringLiteral("#E8E8E8"));
         setStyleSheet(QStringLiteral(
-            "QFrame#appTooltipPopup { background-color: %1; border: 1px solid %2; border-radius: 13px; }"
-            "QLabel#appTooltipText { background: transparent; color: %3; font-size: 16px; font-weight: 500; }"
-            "QLabel#appTooltipShortcut { background-color: %4; color: %3; border: none; border-radius: 11px; padding: 1px 9px 2px 9px; font-size: 15px; font-weight: 500; }")
-            .arg(popupBackground, border, foreground, shortcutBackground));
+            "QLabel#appTooltipText { background: transparent; color: %1; font-size: 16px; font-weight: 500; }"
+            "QLabel#appTooltipShortcut { background-color: %2; color: %1; border: none; border-radius: 11px; padding: 1px 9px 2px 9px; font-size: 15px; font-weight: 500; }")
+            .arg(foreground, shortcutBackground));
 
         adjustSize();
         const QSize popupSize = sizeHint().boundedTo(QSize(maxPopupWidth, 1000));
@@ -314,7 +313,24 @@ public:
         raise();
     }
 
+protected:
+    void paintEvent(QPaintEvent *event) override
+    {
+        Q_UNUSED(event);
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setCompositionMode(QPainter::CompositionMode_Clear);
+        painter.fillRect(rect(), Qt::transparent);
+        painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+        const QRectF roundedRect = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        painter.setPen(QPen(popup_border_, 1.0));
+        painter.setBrush(popup_background_);
+        painter.drawRoundedRect(roundedRect, 13.0, 13.0);
+    }
+
 private:
+    QColor popup_background_ = QColor(253, 253, 252);
+    QColor popup_border_ = QColor(QStringLiteral("#E8E8E8"));
     QLabel *text_label_;
     QLabel *shortcut_label_;
 };
