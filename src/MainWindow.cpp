@@ -1742,8 +1742,29 @@ QComboBox QAbstractItemView {
     background-color: @vv-surface;
     border: 1px solid @vv-border;
     color: @vv-text;
-    selection-background-color: @vv-primary-subtle;
-    selection-color: @vv-white;
+    selection-background-color: @vv-popup-highlight;
+    selection-color: @vv-text;
+    outline: none;
+}
+QComboBox QAbstractItemView::item {
+    background-color: transparent;
+    color: @vv-text;
+    padding: 6px 12px;
+}
+QComboBox QAbstractItemView::item:hover,
+QComboBox QAbstractItemView::item:selected,
+QComboBox QAbstractItemView::item:selected:active,
+QComboBox QAbstractItemView::item:selected:!active {
+    background-color: @vv-popup-highlight;
+    color: @vv-text;
+}
+QComboBox QAbstractItemView::item:disabled {
+    background-color: transparent;
+    color: @vv-text-disabled;
+}
+QComboBox QAbstractItemView::item:selected:disabled {
+    background-color: @vv-popup-highlight;
+    color: @vv-text-disabled;
 }
 QPushButton {
     background-color: @vv-primary;
@@ -4645,7 +4666,11 @@ void MainWindow::loadModernStyleSheet()
             "QComboBox:hover { border-color: @vv-border-strong; }"
             "QComboBox:focus { border-color: @vv-primary; border-width: 1px; }"
             "QComboBox:disabled { background-color: @vv-surface-alt; color: @vv-text; }"
-            "QComboBox QAbstractItemView { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 6px; selection-background-color: @vv-primary-subtle; selection-color: @vv-primary; padding: 4px; outline: none; }"
+            "QComboBox QAbstractItemView { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; selection-background-color: @vv-primary-subtle; selection-color: @vv-primary; padding: 4px; outline: none; }"
+            "QComboBox QAbstractItemView::item { background-color: transparent; color: @vv-text; padding: 6px 12px; border: none; }"
+            "QComboBox QAbstractItemView::item:hover, QComboBox QAbstractItemView::item:selected, QComboBox QAbstractItemView::item:selected:active, QComboBox QAbstractItemView::item:selected:!active { background-color: @vv-primary-subtle; color: @vv-primary; }"
+            "QComboBox QAbstractItemView::item:disabled { background-color: transparent; color: @vv-text-disabled; }"
+            "QComboBox QAbstractItemView::item:selected:disabled { background-color: @vv-primary-subtle; color: @vv-text-disabled; }"
             "QLineEdit { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 6px; padding: 4px 10px; min-height: 26px; max-height: 26px; color: @vv-text; font-size: 14px; }"
             "QLineEdit:hover { border-color: @vv-border-strong; }"
             "QLineEdit:focus { border-color: @vv-primary; border-width: 1px; }"
