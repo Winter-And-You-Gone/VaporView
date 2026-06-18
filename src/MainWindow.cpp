@@ -222,7 +222,10 @@ public:
     {
         setObjectName(QStringLiteral("appTooltipPopup"));
         setAttribute(Qt::WA_ShowWithoutActivating, true);
+        setAttribute(Qt::WA_TranslucentBackground, true);
+        setAttribute(Qt::WA_NoSystemBackground, true);
         setAttribute(Qt::WA_StyledBackground, true);
+        setAutoFillBackground(false);
         setFocusPolicy(Qt::NoFocus);
 
         auto *layout = new QHBoxLayout(this);
