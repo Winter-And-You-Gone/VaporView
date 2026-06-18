@@ -4916,7 +4916,7 @@ void MainWindow::updateResponsiveHomeLayout()
     {
         const int minimumLogWidth = minimumLogSidePanelWidth();
         log_side_panel_->setMinimumWidth(minimumLogWidth);
-        log_side_panel_->setMaximumWidth(compact ? std::max(minimumLogWidth, scalePixels(kCompactLogPanelWidth * 2)) : QWIDGETSIZE_MAX);
+        log_side_panel_->setMaximumWidth(QWIDGETSIZE_MAX);
     }
 
     if (main_content_splitter_ && !log_side_panel_collapsed_)
@@ -4930,14 +4930,12 @@ void MainWindow::updateResponsiveHomeLayout()
             ? std::max(minimumLogWidth, std::min(scalePixels(kCompactLogPanelWidth), totalWidth / 10))
             : std::max(minimumLogWidth, scalePixels(kWideLogPanelWidth));
         const QList<int> sizes = main_content_splitter_->sizes();
-        const int compactMaximumLogWidth = std::max(minimumLogWidth, scalePixels(kCompactLogPanelWidth * 2));
-        const bool compactLogTooWide = compact && sizes.size() >= 2 && sizes.at(1) > compactMaximumLogWidth;
         const bool logPanelTooNarrow = sizes.size() >= 2 && sizes.at(1) < minimumLogWidth;
         if (sizes.size() >= 2 && sizes.at(1) >= minimumLogWidth)
         {
             last_log_side_panel_width_ = sizes.at(1);
         }
-        if (layoutChanged || compactLogTooWide || logPanelTooNarrow)
+        if (layoutChanged || logPanelTooNarrow)
         {
             const int leftWidth = std::max(1, totalWidth - logWidth - main_content_splitter_->handleWidth());
             main_content_splitter_->setSizes({leftWidth, std::max(1, totalWidth - leftWidth)});
@@ -7294,7 +7292,7 @@ void MainWindow::setupCentralWidget()
     main_content_splitter_->setAttribute(Qt::WA_StyledBackground, true);
     main_content_splitter_->setAutoFillBackground(true);
     main_content_splitter_->setChildrenCollapsible(true);
-    main_content_splitter_->setCollapsible(0, false);
+    main_content_splitter_->setCollapsible(0, true);
     main_content_splitter_->setCollapsible(1, false);
     main_content_splitter_->setHandleWidth(1);
     main_content_splitter_->addWidget(main_cards_scroll_area_);
