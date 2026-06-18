@@ -1019,6 +1019,30 @@ void updateSectionTitleIcons(QWidget *root, bool dark)
     }
 }
 
+void setSectionTitleIconName(QLabel *titleLabel, const QString& iconName, bool dark)
+{
+    if (!titleLabel)
+    {
+        return;
+    }
+    QWidget *cluster = titleLabel->parentWidget();
+    if (!cluster)
+    {
+        return;
+    }
+    auto *iconLabel = cluster->findChild<QLabel *>(QStringLiteral("sectionTitleIcon"), Qt::FindDirectChildrenOnly);
+    if (!iconLabel)
+    {
+        return;
+    }
+    if (iconLabel->property(kSectionTitleIconNameProperty).toString() == iconName)
+    {
+        return;
+    }
+    iconLabel->setProperty(kSectionTitleIconNameProperty, iconName);
+    updateSectionTitleIcon(iconLabel, dark);
+}
+
 QString vaporViewLogoResourcePath(bool dark)
 {
     return findResourceFile(dark
@@ -7706,7 +7730,7 @@ void MainWindow::setupConfigPanel()
 
     QWidget *configTitleCluster = nullptr;
     config_inline_title_lbl_ = createSectionTitleCluster(configTitleBar,
-                                                         QStringLiteral("plug"),
+                                                         QStringLiteral("usb"),
                                                          kMainPageButtonHeight,
                                                          &configTitleCluster);
     configTitleLayout->addWidget(configTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
@@ -7917,7 +7941,7 @@ void MainWindow::setupDataPanels()
 
     QWidget *epsilonTitleCluster = nullptr;
     epsilon_inline_title_lbl_ = createSectionTitleCluster(epsilonTitleBar,
-                                                          QStringLiteral("satellite"),
+                                                          QStringLiteral("earth"),
                                                           kMainPageButtonHeight,
                                                           &epsilonTitleCluster);
     epsilonTitleLayout->addWidget(epsilonTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
@@ -7959,7 +7983,7 @@ void MainWindow::setupDataPanels()
 
     QWidget *envTitleCluster = nullptr;
     env_inline_title_lbl_ = createSectionTitleCluster(envTitleBar,
-                                                      QStringLiteral("activity"),
+                                                      QStringLiteral("mountain-snow"),
                                                       kMainPageButtonHeight,
                                                       &envTitleCluster);
     envTitleLayout->addWidget(envTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
@@ -8100,7 +8124,7 @@ void MainWindow::setupLogPanel()
 
     QWidget *recordingTitleCluster = nullptr;
     recording_status_title_lbl_ = createSectionTitleCluster(recordingTitleBar,
-                                                            QStringLiteral("square-check-big"),
+                                                            QStringLiteral("pencil"),
                                                             kMainPageButtonHeight,
                                                             &recordingTitleCluster);
     recordingTitleLayout->addWidget(recordingTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
@@ -8146,7 +8170,7 @@ void MainWindow::setupLogPanel()
 
     QWidget *logTitleCluster = nullptr;
     log_inline_title_lbl_ = createSectionTitleCluster(logTitleBar,
-                                                      QStringLiteral("list-filter"),
+                                                      QStringLiteral("scroll-text"),
                                                       kMainPageButtonHeight,
                                                       &logTitleCluster);
     logTitleLayout->addWidget(logTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
@@ -9680,6 +9704,11 @@ void MainWindow::updateRecordingStatusLabel()
         const QString scheduledLine = scheduledRecordingStatusLine();
         return scheduledLine.isEmpty() ? text : QStringLiteral("%1\n%2").arg(text, scheduledLine);
     };
+    auto setRecordingTitleIcon = [this](bool recordingActive) {
+        setSectionTitleIconName(recording_status_title_lbl_,
+                                recordingActive ? QStringLiteral("pencil-sparkles") : QStringLiteral("pencil"),
+                                dark_theme_enabled_);
+    };
 
     if (isRemoteSkyMode())
     {
@@ -9732,6 +9761,7 @@ void MainWindow::updateRecordingStatusLabel()
         }
         if (remote_recording_state_ == 1)
         {
+            setRecordingTitleIcon(true);
             recording_status_label_->setText(
                 QString(is_english_ ? "Sky Recording: On\n%1\nRaw total: %2"
                                     : "天空端记录：进行中\n%1\nRaw 总数：%2")
@@ -9741,6 +9771,7 @@ void MainWindow::updateRecordingStatusLabel()
         }
         else if (remote_recording_state_ == 2)
         {
+            setRecordingTitleIcon(false);
             recording_status_label_->setText(
                 QString(is_english_ ? "Sky Recording: Paused\n%1\nRaw total: %2"
                                     : "天空端记录：已暂停\n%1\nRaw 总数：%2")
@@ -9750,6 +9781,7 @@ void MainWindow::updateRecordingStatusLabel()
         }
         else
         {
+            setRecordingTitleIcon(false);
             recording_status_label_->setText(
                 QString(is_english_ ? "Sky Recording: Off\n%1\nRaw total: %2"
                                     : "天空端记录：未记录\n%1\nRaw 总数：%2")
@@ -9777,6 +9809,7 @@ void MainWindow::updateRecordingStatusLabel()
             static_cast<qulonglong>(raw_tcp_wave_record_count_.load()));
         if (recording_paused_)
         {
+            setRecordingTitleIcon(false);
             recording_status_label_->setText(
                 QString(is_english_ ? "Recording: Paused\n%1" : "记录：已暂停\n%1")
                     .arg(appendScheduledLine(detail)));
@@ -9784,6 +9817,7 @@ void MainWindow::updateRecordingStatusLabel()
         }
         else
         {
+            setRecordingTitleIcon(true);
             recording_status_label_->setText(
                 QString(is_english_ ? "Recording: On\n%1" : "记录：进行中\n%1")
                     .arg(appendScheduledLine(detail)));
@@ -9807,6 +9841,7 @@ void MainWindow::updateRecordingStatusLabel()
         recording_status_label_->setText(
             QString(is_english_ ? "Recording: Off\n%1" : "记录：未记录\n%1")
                 .arg(appendScheduledLine(detail)));
+        setRecordingTitleIcon(false);
         setVisualStatus("disconnected");
     }
 

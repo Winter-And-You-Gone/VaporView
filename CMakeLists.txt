@@ -280,6 +280,7 @@ set(LUCIDE_RESOURCES
     resources/lucide/check.svg
     resources/lucide/circle-x.svg
     resources/lucide/copy.svg
+    resources/lucide/earth.svg
     resources/lucide/funnel.svg
     resources/lucide/key.svg
     resources/lucide/languages.svg
@@ -288,20 +289,26 @@ set(LUCIDE_RESOURCES
     resources/lucide/menu.svg
     resources/lucide/minus.svg
     resources/lucide/moon.svg
+    resources/lucide/mountain-snow.svg
     resources/lucide/panel-right-close.svg
     resources/lucide/panel-right-open.svg
     resources/lucide/pause.svg
+    resources/lucide/pencil-sparkles.svg
+    resources/lucide/pencil.svg
     resources/lucide/play.svg
     resources/lucide/plug.svg
     resources/lucide/refresh-cw.svg
     resources/lucide/satellite.svg
     resources/lucide/sliders-vertical.svg
+    resources/lucide/scroll-text.svg
+    resources/lucide/square-activity.svg
     resources/lucide/square-check-big.svg
     resources/lucide/square.svg
     resources/lucide/sun.svg
     resources/lucide/timer.svg
     resources/lucide/trash-2.svg
     resources/lucide/unplug.svg
+    resources/lucide/usb.svg
     resources/lucide/x.svg
     resources/lucide/zoom-in.svg
     resources/lucide/zoom-out.svg

@@ -1472,7 +1472,7 @@ void TcpWavePanel::setupUi()
     panel_title_label_ = waveDisplayTitle;
     panel_title_label_->setObjectName("sectionTitleLabel");
     top_controls_layout_->addWidget(createSectionTitleCluster(topControlsBar,
-                                                              QStringLiteral("audio-waveform"),
+                                                              QStringLiteral("square-activity"),
                                                               panel_title_label_,
                                                               kTcpButtonHeight),
                                     0,
