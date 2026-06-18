@@ -945,8 +945,8 @@ QIcon createLucideIcon(const QString& iconName, const QColor& color)
 }
 
 constexpr const char *kSectionTitleIconNameProperty = "_vv_section_title_icon_name";
-constexpr int kSectionTitleIconBoxSize = 22;
-constexpr int kSectionTitleIconSize = 18;
+constexpr int kSectionTitleIconBoxSize = 26;
+constexpr int kSectionTitleIconSize = 22;
 
 QColor sectionTitleIconColor(bool dark)
 {
