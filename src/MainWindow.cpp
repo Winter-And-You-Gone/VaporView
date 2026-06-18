@@ -4013,7 +4013,6 @@ MainWindow::MainWindow(QWidget *parent)
     , compact_home_layout_(false)
     , responsive_home_layout_refresh_pending_(false)
     , log_side_panel_width_initialized_(false)
-    , log_side_panel_width_locked_(false)
     , log_side_panel_collapsed_(false)
     , last_log_side_panel_width_(0)
     , remote_sky_mode_(false)
@@ -4408,20 +4407,6 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         event->type() == QEvent::WindowDeactivate)
     {
         hideAppTooltipPopup();
-    }
-
-    if (log_side_panel_width_locked_ && main_content_splitter_)
-    {
-        bool shouldUnlockLogPanelWidth = watched == main_content_splitter_->handle(1) &&
-                                         event->type() == QEvent::MouseButtonPress;
-        if (shouldUnlockLogPanelWidth)
-        {
-            log_side_panel_width_locked_ = false;
-            if (log_side_panel_)
-            {
-                log_side_panel_->setMaximumWidth(QWIDGETSIZE_MAX);
-            }
-        }
     }
 
     const bool titleMenuVisible =
@@ -4819,11 +4804,6 @@ void MainWindow::setLogSidePanelToMinimumWidth()
     }
 
     const int leftWidth = std::max(1, totalWidth - minimumLogWidth - main_content_splitter_->handleWidth());
-    if (log_side_panel_)
-    {
-        log_side_panel_->setMaximumWidth(minimumLogWidth);
-        log_side_panel_width_locked_ = true;
-    }
     main_content_splitter_->setSizes({leftWidth, minimumLogWidth});
     last_log_side_panel_width_ = minimumLogWidth;
     log_side_panel_width_initialized_ = true;
@@ -4859,7 +4839,6 @@ void MainWindow::setLogSidePanelCollapsed(bool collapsed)
 
     log_side_panel_->setMinimumWidth(minimumLogWidth);
     log_side_panel_->show();
-    log_side_panel_width_locked_ = false;
     log_side_panel_->setMaximumWidth(QWIDGETSIZE_MAX);
 
     const QRect availableGeometry = currentScreenAvailableGeometry();
@@ -5139,10 +5118,7 @@ void MainWindow::updateResponsiveHomeLayout()
     {
         const int minimumLogWidth = minimumLogSidePanelWidth();
         log_side_panel_->setMinimumWidth(minimumLogWidth);
-        if (!log_side_panel_width_locked_)
-        {
-            log_side_panel_->setMaximumWidth(QWIDGETSIZE_MAX);
-        }
+        log_side_panel_->setMaximumWidth(QWIDGETSIZE_MAX);
     }
 
     if (main_content_splitter_ && !log_side_panel_collapsed_)
@@ -7561,11 +7537,6 @@ void MainWindow::setupCentralWidget()
         if (!main_content_splitter_ || log_side_panel_collapsed_)
         {
             return;
-        }
-        log_side_panel_width_locked_ = false;
-        if (log_side_panel_)
-        {
-            log_side_panel_->setMaximumWidth(QWIDGETSIZE_MAX);
         }
         const QList<int> sizes = main_content_splitter_->sizes();
         const int minimumLogWidth = minimumLogSidePanelWidth();
