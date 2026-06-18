@@ -445,6 +445,7 @@ private:
     void showTitleApplicationMenu();
     bool shouldStartWindowMove(QObject *watched) const;
     int scalePixels(int pixels) const;
+    int minimumLogSidePanelWidth() const;
     void applyAllSampleRates();
     int parseRate(const QString& text) const;
     bool isRateUnspecified(const QString& text) const;

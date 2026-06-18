@@ -4589,6 +4589,21 @@ int MainWindow::scalePixels(int pixels) const
     return static_cast<int>(std::lround(pixels * font_scale_percent_ / 100.0));
 }
 
+int MainWindow::minimumLogSidePanelWidth() const
+{
+    const QString titleText = is_english_ ? QStringLiteral("Log") : QStringLiteral("日志");
+    QFontMetrics titleMetrics(log_inline_title_lbl_ ? log_inline_title_lbl_->font() : font());
+    const int titleClusterWidth =
+        scalePixels(kSectionTitleIconBoxSize + 6) +
+        titleMetrics.horizontalAdvance(titleText);
+    const int titleBarMargins = scalePixels(16);
+    const int titleBarSpacing = scalePixels(8 * 3);
+    const int actionButtonsWidth = scalePixels(kMainPageButtonHeight * 2);
+    const int cardMargins = scalePixels(2);
+    const int safetyPadding = scalePixels(12);
+    return titleBarMargins + titleClusterWidth + titleBarSpacing + actionButtonsWidth + cardMargins + safetyPadding;
+}
+
 void MainWindow::applyScaledUiMetrics()
 {
     auto applyWidgetMetrics = [this](QWidget *widget) {
@@ -4828,8 +4843,9 @@ void MainWindow::updateResponsiveHomeLayout()
 
     if (log_side_panel_)
     {
-        log_side_panel_->setMinimumWidth(scalePixels(compact ? kCompactLogPanelWidth : 120));
-        log_side_panel_->setMaximumWidth(compact ? scalePixels(kCompactLogPanelWidth * 2) : QWIDGETSIZE_MAX);
+        const int minimumLogWidth = minimumLogSidePanelWidth();
+        log_side_panel_->setMinimumWidth(minimumLogWidth);
+        log_side_panel_->setMaximumWidth(compact ? std::max(minimumLogWidth, scalePixels(kCompactLogPanelWidth * 2)) : QWIDGETSIZE_MAX);
     }
 
     if (main_content_splitter_)
@@ -4838,10 +4854,15 @@ void MainWindow::updateResponsiveHomeLayout()
         const int totalWidth = std::max(1, main_content_splitter_->width() > 1
             ? main_content_splitter_->width()
             : (availableGeometry.isValid() ? availableGeometry.width() : base_window_size_.width()));
-        const int logWidth = compact ? std::min(scalePixels(kCompactLogPanelWidth), totalWidth / 10) : scalePixels(kWideLogPanelWidth);
+        const int minimumLogWidth = minimumLogSidePanelWidth();
+        const int logWidth = compact
+            ? std::max(minimumLogWidth, std::min(scalePixels(kCompactLogPanelWidth), totalWidth / 10))
+            : std::max(minimumLogWidth, scalePixels(kWideLogPanelWidth));
         const QList<int> sizes = main_content_splitter_->sizes();
-        const bool compactLogTooWide = compact && sizes.size() >= 2 && sizes.at(1) > scalePixels(kCompactLogPanelWidth * 2);
-        if (layoutChanged || compactLogTooWide)
+        const int compactMaximumLogWidth = std::max(minimumLogWidth, scalePixels(kCompactLogPanelWidth * 2));
+        const bool compactLogTooWide = compact && sizes.size() >= 2 && sizes.at(1) > compactMaximumLogWidth;
+        const bool logPanelTooNarrow = sizes.size() >= 2 && sizes.at(1) < minimumLogWidth;
+        if (layoutChanged || compactLogTooWide || logPanelTooNarrow)
         {
             const int leftWidth = std::max(1, totalWidth - logWidth - main_content_splitter_->handleWidth());
             main_content_splitter_->setSizes({leftWidth, std::max(1, totalWidth - leftWidth)});
@@ -7195,7 +7216,7 @@ void MainWindow::setupCentralWidget()
     main_content_splitter_->setAutoFillBackground(true);
     main_content_splitter_->setChildrenCollapsible(true);
     main_content_splitter_->setCollapsible(0, false);
-    main_content_splitter_->setCollapsible(1, true);
+    main_content_splitter_->setCollapsible(1, false);
     main_content_splitter_->setHandleWidth(8);
     main_content_splitter_->addWidget(main_cards_scroll_area_);
     main_content_splitter_->addWidget(log_side_panel_);
@@ -7713,7 +7734,6 @@ void MainWindow::setupLogPanel()
     log_side_panel_->setObjectName(QStringLiteral("logSidePanel"));
     log_side_panel_->setAttribute(Qt::WA_StyledBackground, true);
     log_side_panel_->setAutoFillBackground(true);
-    log_side_panel_->setMinimumWidth(120);
     auto *logSideLayout = new QVBoxLayout(log_side_panel_);
     logSideLayout->setContentsMargins(0, 0, 0, 0);
     logSideLayout->setSpacing(8);
@@ -7848,6 +7868,7 @@ void MainWindow::setupLogPanel()
     log_text_edit_->setMinimumWidth(100);
     log_layout->addWidget(log_text_edit_);
     logSideLayout->addWidget(log_group_, 1);
+    log_side_panel_->setMinimumWidth(minimumLogSidePanelWidth());
 }
 
 void MainWindow::setEnglish(bool english)
@@ -7989,6 +8010,10 @@ void MainWindow::setEnglish(bool english)
     if (recording_status_title_lbl_)
     {
         recording_status_title_lbl_->setText(english ? "Recording Status" : "记录状态");
+    }
+    if (log_side_panel_)
+    {
+        log_side_panel_->setMinimumWidth(minimumLogSidePanelWidth());
     }
     if (epsilon_inline_title_lbl_)
     {
