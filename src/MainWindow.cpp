@@ -1077,6 +1077,13 @@ QIcon createLogFilterIcon()
     return createLucideIcon(QStringLiteral("funnel"), toolbarColor(AppThemeColor::ToolbarBlue));
 }
 
+QIcon createLogSidePanelToggleIcon(bool collapsed)
+{
+    return createLucideIcon(collapsed ? QStringLiteral("panel-right-open")
+                                      : QStringLiteral("panel-right-close"),
+                            toolbarColor(AppThemeColor::ToolbarBlue));
+}
+
 QIcon createMenuCheckIcon()
 {
     return createLucideIcon(QStringLiteral("check"), toolbarColor(AppThemeColor::ToolbarBlue));
@@ -3672,6 +3679,7 @@ MainWindow::MainWindow(QWidget *parent)
     , custom_title_label_(nullptr)
     , title_menu_btn_(nullptr)
     , title_language_btn_(nullptr)
+    , log_side_panel_toggle_btn_(nullptr)
     , window_minimize_btn_(nullptr)
     , window_maximize_btn_(nullptr)
     , window_close_btn_(nullptr)
@@ -3850,6 +3858,8 @@ MainWindow::MainWindow(QWidget *parent)
     , is_connected_(false)
     , compact_home_layout_(false)
     , responsive_home_layout_refresh_pending_(false)
+    , log_side_panel_collapsed_(false)
+    , last_log_side_panel_width_(kWideLogPanelWidth)
     , remote_sky_mode_(false)
     , remote_sky_online_(false)
     , remote_wave_stream_requested_(false)
@@ -4604,6 +4614,62 @@ int MainWindow::minimumLogSidePanelWidth() const
     return titleBarMargins + titleClusterWidth + titleBarSpacing + actionButtonsWidth + cardMargins + safetyPadding;
 }
 
+void MainWindow::toggleLogSidePanel()
+{
+    setLogSidePanelCollapsed(!log_side_panel_collapsed_);
+}
+
+void MainWindow::setLogSidePanelCollapsed(bool collapsed)
+{
+    log_side_panel_collapsed_ = collapsed;
+
+    if (!log_side_panel_ || !main_content_splitter_)
+    {
+        updateLogSidePanelToggleButton();
+        return;
+    }
+
+    const int minimumLogWidth = minimumLogSidePanelWidth();
+    const QList<int> sizes = main_content_splitter_->sizes();
+    if (collapsed)
+    {
+        if (sizes.size() >= 2 && sizes.at(1) >= minimumLogWidth)
+        {
+            last_log_side_panel_width_ = sizes.at(1);
+        }
+        log_side_panel_->hide();
+        updateLogSidePanelToggleButton();
+        return;
+    }
+
+    log_side_panel_->setMinimumWidth(minimumLogWidth);
+    log_side_panel_->show();
+
+    const QRect availableGeometry = currentScreenAvailableGeometry();
+    const int totalWidth = std::max(1, main_content_splitter_->width() > 1
+        ? main_content_splitter_->width()
+        : (availableGeometry.isValid() ? availableGeometry.width() : base_window_size_.width()));
+    const int maxLogWidth = std::max(minimumLogWidth, totalWidth - main_content_splitter_->handleWidth() - 1);
+    const int logWidth = std::min(std::max(last_log_side_panel_width_, minimumLogWidth), maxLogWidth);
+    const int leftWidth = std::max(1, totalWidth - logWidth - main_content_splitter_->handleWidth());
+    main_content_splitter_->setSizes({leftWidth, std::max(minimumLogWidth, totalWidth - leftWidth)});
+    updateLogSidePanelToggleButton();
+}
+
+void MainWindow::updateLogSidePanelToggleButton()
+{
+    if (!log_side_panel_toggle_btn_)
+    {
+        return;
+    }
+
+    log_side_panel_toggle_btn_->setIcon(createLogSidePanelToggleIcon(log_side_panel_collapsed_));
+    log_side_panel_toggle_btn_->setToolTip(log_side_panel_collapsed_
+        ? (is_english_ ? QStringLiteral("Show right panel") : QStringLiteral("展开右侧栏"))
+        : (is_english_ ? QStringLiteral("Hide right panel") : QStringLiteral("收起右侧栏")));
+    log_side_panel_toggle_btn_->setStatusTip(log_side_panel_toggle_btn_->toolTip());
+}
+
 void MainWindow::applyScaledUiMetrics()
 {
     auto applyWidgetMetrics = [this](QWidget *widget) {
@@ -4848,7 +4914,7 @@ void MainWindow::updateResponsiveHomeLayout()
         log_side_panel_->setMaximumWidth(compact ? std::max(minimumLogWidth, scalePixels(kCompactLogPanelWidth * 2)) : QWIDGETSIZE_MAX);
     }
 
-    if (main_content_splitter_)
+    if (main_content_splitter_ && !log_side_panel_collapsed_)
     {
         const QRect availableGeometry = currentScreenAvailableGeometry();
         const int totalWidth = std::max(1, main_content_splitter_->width() > 1
@@ -4862,6 +4928,10 @@ void MainWindow::updateResponsiveHomeLayout()
         const int compactMaximumLogWidth = std::max(minimumLogWidth, scalePixels(kCompactLogPanelWidth * 2));
         const bool compactLogTooWide = compact && sizes.size() >= 2 && sizes.at(1) > compactMaximumLogWidth;
         const bool logPanelTooNarrow = sizes.size() >= 2 && sizes.at(1) < minimumLogWidth;
+        if (sizes.size() >= 2 && sizes.at(1) >= minimumLogWidth)
+        {
+            last_log_side_panel_width_ = sizes.at(1);
+        }
         if (layoutChanged || compactLogTooWide || logPanelTooNarrow)
         {
             const int leftWidth = std::max(1, totalWidth - logWidth - main_content_splitter_->handleWidth());
@@ -6340,6 +6410,10 @@ void MainWindow::setupCustomTitleBar()
     titleLayout->addWidget(title_language_btn_, 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(theme_toggle_action_, custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addStretch(1);
+    log_side_panel_toggle_btn_ = createTitleBarIconButton(QStringLiteral("titleBarButton"), custom_title_bar_);
+    log_side_panel_toggle_btn_->setAccessibleName(QStringLiteral("logSidePanelToggleButton"));
+    connect(log_side_panel_toggle_btn_, &QToolButton::clicked, this, &MainWindow::toggleLogSidePanel);
+    titleLayout->addWidget(log_side_panel_toggle_btn_, 0, Qt::AlignVCenter);
     addTitleBarSeparator(titleLayout);
 
     window_minimize_btn_ = createTitleBarIconButton(QStringLiteral("windowMinimizeButton"), custom_title_bar_);
@@ -8282,6 +8356,7 @@ void MainWindow::updateThemedIcons()
     {
         log_filter_btn_->setIcon(createLogFilterIcon());
     }
+    updateLogSidePanelToggleButton();
     updateSectionTitleIcons(this, dark_theme_enabled_);
     updateLogFilterAction();
 }
@@ -8302,6 +8377,7 @@ void MainWindow::updateCustomTitleBarTexts()
         title_language_btn_->setToolTip(is_english_ ? "Switch to Chinese" : "切换到英文");
         title_language_btn_->setStatusTip(is_english_ ? "Switch interface language" : "切换界面语言");
     }
+    updateLogSidePanelToggleButton();
     if (window_minimize_btn_)
     {
         window_minimize_btn_->setToolTip(is_english_ ? "Minimize" : "最小化");
@@ -8377,6 +8453,7 @@ void MainWindow::updateCustomTitleBarStyle()
     {
         title_language_btn_->setIcon(createLanguageIcon());
     }
+    updateLogSidePanelToggleButton();
     if (title_application_panel_)
     {
         title_application_panel_->hide();

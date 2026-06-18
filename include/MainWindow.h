@@ -446,6 +446,9 @@ private:
     bool shouldStartWindowMove(QObject *watched) const;
     int scalePixels(int pixels) const;
     int minimumLogSidePanelWidth() const;
+    void toggleLogSidePanel();
+    void setLogSidePanelCollapsed(bool collapsed);
+    void updateLogSidePanelToggleButton();
     void applyAllSampleRates();
     int parseRate(const QString& text) const;
     bool isRateUnspecified(const QString& text) const;
@@ -499,6 +502,7 @@ private:
     QLabel *custom_title_label_;
     QToolButton *title_menu_btn_;
     QToolButton *title_language_btn_;
+    QToolButton *log_side_panel_toggle_btn_;
     QToolButton *window_minimize_btn_;
     QToolButton *window_maximize_btn_;
     QToolButton *window_close_btn_;
@@ -695,6 +699,8 @@ private:
     bool is_connected_;
     bool compact_home_layout_;
     bool responsive_home_layout_refresh_pending_;
+    bool log_side_panel_collapsed_;
+    int last_log_side_panel_width_;
     bool remote_sky_mode_;
     bool remote_sky_online_;
     bool remote_wave_stream_requested_;

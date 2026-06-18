@@ -288,6 +288,8 @@ set(LUCIDE_RESOURCES
     resources/lucide/menu.svg
     resources/lucide/minus.svg
     resources/lucide/moon.svg
+    resources/lucide/panel-right-close.svg
+    resources/lucide/panel-right-open.svg
     resources/lucide/pause.svg
     resources/lucide/play.svg
     resources/lucide/plug.svg
