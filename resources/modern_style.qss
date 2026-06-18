@@ -467,7 +467,8 @@ QScrollBar::handle:vertical {
     background-color: @vv-scrollbar-handle;
     min-height: 30px;
     border-radius: 6px;
-    margin: 2px;
+    border: 2px solid @vv-surface-sunken;
+    margin: 0px;
 }
 
 QScrollBar::handle:vertical:hover {
@@ -538,7 +539,8 @@ QScrollBar::handle:horizontal {
     background-color: @vv-scrollbar-handle;
     min-width: 30px;
     border-radius: 6px;
-    margin: 2px;
+    border: 2px solid @vv-surface-sunken;
+    margin: 0px;
 }
 
 QScrollBar::handle:horizontal:hover {

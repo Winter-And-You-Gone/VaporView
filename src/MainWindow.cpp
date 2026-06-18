@@ -1752,7 +1752,8 @@ QScrollBar::handle:vertical {
     background-color: @vv-scrollbar-handle;
     min-height: 30px;
     border-radius: 6px;
-    margin: 2px;
+    border: 2px solid @vv-surface-sunken;
+    margin: 0px;
 }
 QScrollBar::handle:vertical:hover {
     background-color: @vv-scrollbar-handle-hover;
@@ -1802,7 +1803,8 @@ QScrollBar::handle:horizontal {
     background-color: @vv-scrollbar-handle;
     min-width: 30px;
     border-radius: 6px;
-    margin: 2px;
+    border: 2px solid @vv-surface-sunken;
+    margin: 0px;
 }
 QScrollBar::handle:horizontal:hover {
     background-color: @vv-scrollbar-handle-hover;
@@ -4644,7 +4646,7 @@ void MainWindow::loadModernStyleSheet()
             "QTextEdit#logTextEdit { background-color: transparent; border: none; border-radius: 0px; }"
             "QWidget#logTextViewport { background-color: transparent; border: none; }"
             "QScrollBar:vertical { background-color: @vv-surface-sunken; width: 12px; border: none; border-radius: 6px; margin: 14px 0px 14px 0px; }"
-            "QScrollBar::handle:vertical { background-color: @vv-scrollbar-handle; min-height: 30px; border-radius: 6px; margin: 2px; }"
+            "QScrollBar::handle:vertical { background-color: @vv-scrollbar-handle; min-height: 30px; border-radius: 6px; border: 2px solid @vv-surface-sunken; margin: 0px; }"
             "QScrollBar::handle:vertical:hover { background-color: @vv-scrollbar-handle-hover; }"
             "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background-color: @vv-surface-sunken; border-radius: 6px; }"
             "QScrollBar::add-page:vertical:hover, QScrollBar::sub-page:vertical:hover, QScrollBar::add-page:vertical:pressed, QScrollBar::sub-page:vertical:pressed { background-color: @vv-surface-sunken; }"
@@ -4655,7 +4657,7 @@ void MainWindow::loadModernStyleSheet()
             "QScrollBar::up-arrow:vertical { image: url(combo_arrow_up.xpm); width: 12px; height: 8px; }"
             "QScrollBar::down-arrow:vertical { image: url(combo_arrow_down.xpm); width: 12px; height: 8px; }"
             "QScrollBar:horizontal { background-color: @vv-surface-sunken; height: 12px; border: none; border-radius: 6px; }"
-            "QScrollBar::handle:horizontal { background-color: @vv-scrollbar-handle; min-width: 30px; border-radius: 6px; margin: 2px; }"
+            "QScrollBar::handle:horizontal { background-color: @vv-scrollbar-handle; min-width: 30px; border-radius: 6px; border: 2px solid @vv-surface-sunken; margin: 0px; }"
             "QScrollBar::handle:horizontal:hover { background-color: @vv-scrollbar-handle-hover; }"
             "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background-color: @vv-surface-sunken; border-radius: 6px; }"
             "QScrollBar::add-page:horizontal:hover, QScrollBar::sub-page:horizontal:hover, QScrollBar::add-page:horizontal:pressed, QScrollBar::sub-page:horizontal:pressed { background-color: @vv-surface-sunken; }"
