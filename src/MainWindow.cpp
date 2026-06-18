@@ -4414,15 +4414,6 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
     {
         bool shouldUnlockLogPanelWidth = watched == main_content_splitter_->handle(1) &&
                                          event->type() == QEvent::MouseButtonPress;
-        if (!shouldUnlockLogPanelWidth &&
-            watched == log_side_panel_ &&
-            (event->type() == QEvent::MouseMove || event->type() == QEvent::MouseButtonPress))
-        {
-            if (auto *mouseEvent = static_cast<QMouseEvent *>(event))
-            {
-                shouldUnlockLogPanelWidth = mouseEvent->position().x() <= scalePixels(6);
-            }
-        }
         if (shouldUnlockLogPanelWidth)
         {
             log_side_panel_width_locked_ = false;
