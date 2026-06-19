@@ -138,7 +138,7 @@ private:
     void rebuildPeakHistory();
 
     QLineEdit *host_edit_;
-    QSpinBox *port_spin_;
+    QLineEdit *port_edit_;
     QPushButton *connect_button_;
     QLabel *host_label_;
     QLabel *port_label_;

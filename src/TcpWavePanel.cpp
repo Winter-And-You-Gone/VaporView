@@ -17,6 +17,7 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QIntValidator>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
@@ -1335,7 +1336,7 @@ private:
 TcpWavePanel::TcpWavePanel(QWidget *parent)
     : QWidget(parent)
     , host_edit_(nullptr)
-    , port_spin_(nullptr)
+    , port_edit_(nullptr)
     , connect_button_(nullptr)
     , host_label_(nullptr)
     , port_label_(nullptr)
@@ -1515,12 +1516,12 @@ void TcpWavePanel::setupUi()
     port_label_->setObjectName("fieldLabel");
     portRowLayout->addWidget(port_label_, 0, Qt::AlignVCenter | Qt::AlignRight);
 
-    port_spin_ = new QSpinBox(this);
-    port_spin_->setRange(1, 65535);
-    port_spin_->setValue(8888);
-    port_spin_->setFixedHeight(kTcpControlHeight);
-    port_spin_->setFixedWidth(108);
-    portRowLayout->addWidget(port_spin_, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    port_edit_ = new QLineEdit(this);
+    port_edit_->setText(QStringLiteral("8888"));
+    port_edit_->setValidator(new QIntValidator(1, 65535, port_edit_));
+    port_edit_->setFixedHeight(kTcpControlHeight);
+    port_edit_->setFixedWidth(108);
+    portRowLayout->addWidget(port_edit_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     top_controls_layout_->addLayout(portRowLayout, 0);
     top_controls_layout_->addSpacing(kTcpTitleBarFieldSpacing);
 
@@ -1662,7 +1663,7 @@ void TcpWavePanel::setupUi()
     connect(host_edit_, &QLineEdit::textChanged, this, [this](const QString&) {
         saveRememberedInputState();
     });
-    connect(port_spin_, &QSpinBox::valueChanged, this, [this](int) {
+    connect(port_edit_, &QLineEdit::textChanged, this, [this](const QString&) {
         saveRememberedInputState();
     });
 
@@ -1677,7 +1678,7 @@ void TcpWavePanel::loadRememberedInputState()
 {
     QSettings settings("VaporView", "TcpWavePanel");
     const QString hostValue = settings.value("connection/host", host_edit_->text()).toString();
-    const int portValue = settings.value("connection/port", port_spin_->value()).toInt();
+    const QString portValue = settings.value("connection/port", port_edit_->text()).toString();
     const QString peakFilterMode = settings.value("peak_filter/mode", QStringLiteral("none")).toString().trimmed().toLower();
     if (peakFilterMode == QStringLiteral("iqr"))
     {
@@ -1705,8 +1706,8 @@ void TcpWavePanel::loadRememberedInputState()
         host_edit_->setText(hostValue);
     }
     {
-        const QSignalBlocker portBlocker(port_spin_);
-        port_spin_->setValue(portValue);
+        const QSignalBlocker portBlocker(port_edit_);
+        port_edit_->setText(portValue);
     }
 
     updatePeakFilterButtonText();
@@ -1716,7 +1717,7 @@ void TcpWavePanel::saveRememberedInputState() const
 {
     QSettings settings("VaporView", "TcpWavePanel");
     settings.setValue("connection/host", host_edit_->text());
-    settings.setValue("connection/port", port_spin_->value());
+    settings.setValue("connection/port", port_edit_->text().trimmed());
 
     QString modeKey = QStringLiteral("none");
     if (peak_filter_settings_.mode == PeakFilterMode::IqrOutlier)
@@ -2142,7 +2143,9 @@ QString TcpWavePanel::host() const
 
 int TcpWavePanel::port() const
 {
-    return port_spin_ ? port_spin_->value() : 8888;
+    bool ok = false;
+    const int value = port_edit_ ? port_edit_->text().trimmed().toInt(&ok) : 8888;
+    return ok && value >= 1 && value <= 65535 ? value : 8888;
 }
 
 bool TcpWavePanel::isConnected() const
@@ -2158,7 +2161,7 @@ void TcpWavePanel::setRemoteSkyMode(bool enabled)
 {
     remote_sky_mode_ = enabled;
     if (host_edit_) host_edit_->setEnabled(!enabled);
-    if (port_spin_) port_spin_->setEnabled(!enabled);
+    if (port_edit_) port_edit_->setEnabled(!enabled);
     if (enabled && socket_ && socket_->state() != QAbstractSocket::UnconnectedState)
     {
         requestGracefulDisconnect();
@@ -2402,9 +2405,25 @@ void TcpWavePanel::onToggleConnectionClicked()
         return;
     }
 
+    bool portOk = false;
+    const int targetPort = port_edit_ ? port_edit_->text().trimmed().toInt(&portOk) : 8888;
+    if (!portOk || targetPort < 1 || targetPort > 65535)
+    {
+        const QString message = is_english_
+            ? QStringLiteral("Enter a TCP port from 1 to 65535.")
+            : QStringLiteral("请输入 1 到 65535 之间的 TCP 端口。");
+        emit logMessageRequested(message);
+        setStatusText(message);
+        if (port_edit_)
+        {
+            port_edit_->setFocus();
+        }
+        return;
+    }
+
     emit logMessageRequested(QString(is_english_ ? "Connecting TCP wave link: %1:%2..."
                                                  : "正在连接 TCP 波形：%1:%2...")
-        .arg(host_edit_->text()).arg(port_spin_->value()));
+        .arg(host_edit_->text()).arg(targetPort));
     recreateSocket();
     buffer_.clear();
     wave1_history_.clear();
@@ -2429,8 +2448,8 @@ void TcpWavePanel::onToggleConnectionClicked()
     frame_arrival_times_ms_.clear();
     resetFrameRateDisplay();
     setStatusText(QString(is_english_ ? "Connecting to %1:%2..." : "正在连接 %1:%2...")
-        .arg(host_edit_->text()).arg(port_spin_->value()));
-    socket_->connectToHost(host_edit_->text(), static_cast<quint16>(port_spin_->value()));
+        .arg(host_edit_->text()).arg(targetPort));
+    socket_->connectToHost(host_edit_->text(), static_cast<quint16>(targetPort));
     onSocketStateChanged();
 }
 
@@ -2636,11 +2655,11 @@ void TcpWavePanel::onSocketConnected()
     emit logMessageRequested(QString(is_english_
         ? "TCP wave link connected: %1:%2"
         : "TCP 波形已连接：%1:%2")
-        .arg(host_edit_->text()).arg(port_spin_->value()));
+        .arg(host_edit_->text()).arg(port()));
     setStatusText(QString(is_english_
         ? "Connected to %1:%2, waiting for the first frame..."
         : "已连接到 %1:%2，正在等待首帧数据...")
-        .arg(host_edit_->text()).arg(port_spin_->value()));
+        .arg(host_edit_->text()).arg(port()));
 }
 
 void TcpWavePanel::onSocketDisconnected()
@@ -2709,11 +2728,11 @@ void TcpWavePanel::onSocketStateChanged()
     case QAbstractSocket::HostLookupState:
     case QAbstractSocket::ConnectingState:
         host_edit_->setEnabled(false);
-        port_spin_->setEnabled(false);
+        port_edit_->setEnabled(false);
         connect_button_->setEnabled(false);
         connect_button_->setText(is_english_ ? "Connecting..." : "连接中...");
         setStatusText(QString(is_english_ ? "Connecting to %1:%2..." : "正在连接 %1:%2...")
-            .arg(host_edit_->text()).arg(port_spin_->value()));
+            .arg(host_edit_->text()).arg(port()));
         break;
     case QAbstractSocket::ConnectedState:
         setConnectedUiState(true);
@@ -2753,7 +2772,7 @@ void TcpWavePanel::setConnectedUiState(bool connected)
 {
     const bool active = connected && socket_ && socket_->state() != QAbstractSocket::UnconnectedState;
     host_edit_->setEnabled(!active);
-    port_spin_->setEnabled(!active);
+    port_edit_->setEnabled(!active);
     if (socket_ && socket_->state() == QAbstractSocket::ClosingState)
     {
         connect_button_->setText(is_english_ ? "Disconnecting..." : "正在断开...");
@@ -2976,7 +2995,7 @@ void TcpWavePanel::processBuffer()
                         ? "Receiving frame %3 from %1:%2, float format: %4"
                         : "正在接收来自 %1:%2 的数据帧，第 %3 帧，浮点格式: %4")
                         .arg(host_edit_->text())
-                        .arg(port_spin_->value())
+                        .arg(port())
                         .arg(fixedStatusInteger(frame_count_, 8))
                         .arg(VaporView::tcpFloatEncodingLabel(is_english_, float_encoding_));
                     live_display_dirty_ = true;

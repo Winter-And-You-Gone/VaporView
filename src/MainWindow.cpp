@@ -2054,21 +2054,6 @@ void applyComboText(QComboBox *combo, const QString& value)
     }
 }
 
-void applyLineEditText(QLineEdit *edit, const QString& value)
-{
-    if (!edit || value.isEmpty())
-    {
-        return;
-    }
-    const QSignalBlocker blocker(edit);
-    edit->setText(value);
-}
-
-QString lineEditText(const QLineEdit *edit)
-{
-    return edit ? edit->text().trimmed() : QString();
-}
-
 QString sourceModeDisplayText(bool english, int index)
 {
     return index == 1
@@ -3874,12 +3859,12 @@ MainWindow::MainWindow(QWidget *parent)
     , recording_status_title_lbl_(nullptr)
     , recording_status_label_(nullptr)
     , auto_detect_ports_btn_(nullptr)
-    , epsilon_port_edit_(nullptr)
+    , epsilon_port_combo_(nullptr)
     , gnss_port_combo_(nullptr)
     , imu_port_combo_(nullptr)
-    , ptb_port_edit_(nullptr)
-    , hmp_port_edit_(nullptr)
-    , lidar_port_edit_(nullptr)
+    , ptb_port_combo_(nullptr)
+    , hmp_port_combo_(nullptr)
+    , lidar_port_combo_(nullptr)
     , epsilon_baud_combo_(nullptr)
     , gnss_baud_combo_(nullptr)
     , imu_baud_combo_(nullptr)
@@ -3979,7 +3964,7 @@ MainWindow::MainWindow(QWidget *parent)
     , lidar_rate_combo_(nullptr)
     , data_source_mode_combo_(nullptr)
     , sky_telemetry_transport_combo_(nullptr)
-    , sky_telemetry_port_edit_(nullptr)
+    , sky_telemetry_port_combo_(nullptr)
     , sky_telemetry_baud_combo_(nullptr)
     , sky_telemetry_tcp_host_edit_(nullptr)
     , sky_telemetry_tcp_port_spin_(nullptr)
@@ -5403,23 +5388,11 @@ void MainWindow::loadRememberedInputState()
         }
         applyComboText(combo, settings.value(key, fallback).toString());
     };
-    auto loadLineEdit = [&settings](QLineEdit *edit, const QString& key, const QString& fallbackKey = QString()) {
-        if (!edit)
-        {
-            return;
-        }
-        QVariant fallback = edit->text();
-        if (!fallbackKey.isEmpty())
-        {
-            fallback = settings.value(fallbackKey, fallback);
-        }
-        applyLineEditText(edit, settings.value(key, fallback).toString());
-    };
 
-    loadLineEdit(epsilon_port_edit_, QStringLiteral("serial/epsilon_port"), QStringLiteral("serial/gnss_port"));
-    loadLineEdit(ptb_port_edit_, QStringLiteral("serial/ptb_port"));
-    loadLineEdit(hmp_port_edit_, QStringLiteral("serial/hmp_port"));
-    loadLineEdit(lidar_port_edit_, QStringLiteral("serial/lidar_port"));
+    loadCombo(epsilon_port_combo_, QStringLiteral("serial/epsilon_port"), QStringLiteral("serial/gnss_port"));
+    loadCombo(ptb_port_combo_, QStringLiteral("serial/ptb_port"));
+    loadCombo(hmp_port_combo_, QStringLiteral("serial/hmp_port"));
+    loadCombo(lidar_port_combo_, QStringLiteral("serial/lidar_port"));
 
     loadCombo(epsilon_baud_combo_, QStringLiteral("serial/epsilon_baud"), QStringLiteral("serial/gnss_baud"));
     loadCombo(ptb_baud_combo_, QStringLiteral("serial/ptb_baud"));
@@ -5443,7 +5416,7 @@ void MainWindow::loadRememberedInputState()
             data_source_mode_combo_->setCurrentIndex(index);
         }
     }
-    loadLineEdit(sky_telemetry_port_edit_, QStringLiteral("telemetry/sky_port"));
+    loadCombo(sky_telemetry_port_combo_, QStringLiteral("telemetry/sky_port"));
     loadCombo(sky_telemetry_baud_combo_, QStringLiteral("telemetry/sky_baud"));
     if (sky_telemetry_transport_combo_)
     {
@@ -5474,9 +5447,9 @@ void MainWindow::loadRememberedInputState()
         data_source_mode_combo_->setCurrentIndex(1);
     }
     const int portIndex = args.indexOf(QStringLiteral("--telemetry-port"));
-    if (portIndex >= 0 && portIndex + 1 < args.size() && sky_telemetry_port_edit_)
+    if (portIndex >= 0 && portIndex + 1 < args.size() && sky_telemetry_port_combo_)
     {
-        sky_telemetry_port_edit_->setText(args.at(portIndex + 1));
+        sky_telemetry_port_combo_->setEditText(args.at(portIndex + 1));
     }
     const int baudIndex = args.indexOf(QStringLiteral("--telemetry-baud"));
     if (baudIndex >= 0 && baudIndex + 1 < args.size() && sky_telemetry_baud_combo_)
@@ -5516,17 +5489,11 @@ void MainWindow::saveRememberedInputState() const
             settings.setValue(key, combo->currentText());
         }
     };
-    auto saveLineEdit = [&settings](const QString& key, QLineEdit *edit) {
-        if (edit)
-        {
-            settings.setValue(key, edit->text().trimmed());
-        }
-    };
 
-    saveLineEdit(QStringLiteral("serial/epsilon_port"), epsilon_port_edit_);
-    saveLineEdit(QStringLiteral("serial/ptb_port"), ptb_port_edit_);
-    saveLineEdit(QStringLiteral("serial/hmp_port"), hmp_port_edit_);
-    saveLineEdit(QStringLiteral("serial/lidar_port"), lidar_port_edit_);
+    saveCombo(QStringLiteral("serial/epsilon_port"), epsilon_port_combo_);
+    saveCombo(QStringLiteral("serial/ptb_port"), ptb_port_combo_);
+    saveCombo(QStringLiteral("serial/hmp_port"), hmp_port_combo_);
+    saveCombo(QStringLiteral("serial/lidar_port"), lidar_port_combo_);
 
     saveCombo(QStringLiteral("serial/epsilon_baud"), epsilon_baud_combo_);
     saveCombo(QStringLiteral("serial/ptb_baud"), ptb_baud_combo_);
@@ -5542,7 +5509,7 @@ void MainWindow::saveRememberedInputState() const
     {
         settings.setValue(QStringLiteral("source/mode"), sourceModeStorageValue(data_source_mode_combo_->currentIndex()));
     }
-    saveLineEdit(QStringLiteral("telemetry/sky_port"), sky_telemetry_port_edit_);
+    saveCombo(QStringLiteral("telemetry/sky_port"), sky_telemetry_port_combo_);
     saveCombo(QStringLiteral("telemetry/sky_baud"), sky_telemetry_baud_combo_);
     if (sky_telemetry_transport_combo_)
     {
@@ -5563,15 +5530,6 @@ void MainWindow::saveRememberedInputState() const
 
 void MainWindow::bindRememberedInputState()
 {
-    auto bindLineEdit = [this](QLineEdit *edit) {
-        if (!edit)
-        {
-            return;
-        }
-        connect(edit, &QLineEdit::textChanged, this, [this](const QString&) {
-            saveRememberedInputState();
-        });
-    };
     auto bindCombo = [this](QComboBox *combo) {
         if (!combo)
         {
@@ -5582,10 +5540,10 @@ void MainWindow::bindRememberedInputState()
         });
     };
 
-    bindLineEdit(epsilon_port_edit_);
-    bindLineEdit(ptb_port_edit_);
-    bindLineEdit(hmp_port_edit_);
-    bindLineEdit(lidar_port_edit_);
+    bindCombo(epsilon_port_combo_);
+    bindCombo(ptb_port_combo_);
+    bindCombo(hmp_port_combo_);
+    bindCombo(lidar_port_combo_);
     bindCombo(epsilon_baud_combo_);
     bindCombo(ptb_baud_combo_);
     bindCombo(hmp_baud_combo_);
@@ -5597,7 +5555,7 @@ void MainWindow::bindRememberedInputState()
     bindCombo(lidar_rate_combo_);
     bindCombo(data_source_mode_combo_);
     bindCombo(sky_telemetry_transport_combo_);
-    bindLineEdit(sky_telemetry_port_edit_);
+    bindCombo(sky_telemetry_port_combo_);
     bindCombo(sky_telemetry_baud_combo_);
     if (sky_telemetry_tcp_host_edit_)
     {
@@ -5645,8 +5603,8 @@ void MainWindow::updateSourceModeUi()
     const bool remote = isRemoteSkyMode();
     const bool localInputsEnabled = !remote && !is_connected_ &&
         !connection_attempt_in_progress_ && !port_detection_in_progress_ && !epsilon_reconfigure_in_progress_;
-    const QList<QWidget*> localWidgets = {epsilon_port_edit_, epsilon_baud_combo_, ptb_port_edit_, ptb_baud_combo_,
-                                          hmp_port_edit_, hmp_baud_combo_, lidar_port_edit_, lidar_baud_combo_,
+    const QList<QWidget*> localWidgets = {epsilon_port_combo_, epsilon_baud_combo_, ptb_port_combo_, ptb_baud_combo_,
+                                          hmp_port_combo_, hmp_baud_combo_, lidar_port_combo_, lidar_baud_combo_,
                                           epsilon_packet_rates_btn_, ptb_rate_combo_, hmp_rate_combo_, lidar_rate_combo_};
     for (QWidget *widget : localWidgets)
     {
@@ -5662,7 +5620,7 @@ void MainWindow::updateSourceModeUi()
     const bool remoteInputsEnabled = remote && !is_connected_ && !connection_attempt_in_progress_;
     const bool tcpTelemetry = isRemoteSkyTcpMode();
     if (sky_telemetry_transport_combo_) sky_telemetry_transport_combo_->setEnabled(remoteInputsEnabled);
-    if (sky_telemetry_port_edit_) sky_telemetry_port_edit_->setEnabled(remoteInputsEnabled && !tcpTelemetry);
+    if (sky_telemetry_port_combo_) sky_telemetry_port_combo_->setEnabled(remoteInputsEnabled && !tcpTelemetry);
     if (sky_telemetry_baud_combo_) sky_telemetry_baud_combo_->setEnabled(remoteInputsEnabled && !tcpTelemetry);
     if (sky_telemetry_tcp_host_edit_) sky_telemetry_tcp_host_edit_->setEnabled(remoteInputsEnabled && tcpTelemetry);
     if (sky_telemetry_tcp_port_spin_) sky_telemetry_tcp_port_spin_->setEnabled(remoteInputsEnabled && tcpTelemetry);
@@ -5670,7 +5628,7 @@ void MainWindow::updateSourceModeUi()
     if (sky_telemetry_transport_lbl_) sky_telemetry_transport_lbl_->setVisible(remote);
     if (sky_telemetry_transport_combo_) sky_telemetry_transport_combo_->setVisible(remote);
     if (sky_telemetry_port_lbl_) sky_telemetry_port_lbl_->setVisible(remote && !tcpTelemetry);
-    if (sky_telemetry_port_edit_) sky_telemetry_port_edit_->setVisible(remote && !tcpTelemetry);
+    if (sky_telemetry_port_combo_) sky_telemetry_port_combo_->setVisible(remote && !tcpTelemetry);
     if (sky_telemetry_baud_lbl_) sky_telemetry_baud_lbl_->setVisible(remote && !tcpTelemetry);
     if (sky_telemetry_baud_combo_) sky_telemetry_baud_combo_->setVisible(remote && !tcpTelemetry);
     if (sky_telemetry_tcp_host_lbl_) sky_telemetry_tcp_host_lbl_->setVisible(remote && tcpTelemetry);
@@ -7662,20 +7620,35 @@ void MainWindow::setupConfigPanel()
         combo->setValidator(nullptr);
     };
 
-    auto createPortRow = [this, config_layout, &baudRates, &createRateCombo](QLabel*& lbl, QLineEdit*& portEdit, QComboBox*& baudCombo, QLabel*& rateLbl, QComboBox*& rateCombo, const QString& defaultPort, const QString& defaultBaud, int row, int maxRate = 500) {
+    auto createPortRow = [this, config_layout, &baudRates, &ports, &createRateCombo](QLabel*& lbl, QComboBox*& portCombo, QComboBox*& baudCombo, QLabel*& rateLbl, QComboBox*& rateCombo, const QString& defaultPort, const QString& defaultBaud, int row, int maxRate = 500) {
         lbl = new QLabel(this);
         lbl->setObjectName("fieldLabel");
         lbl->setFixedHeight(kMainPageInputHeight);
         lbl->setFixedWidth(80);
         config_layout->addWidget(lbl, row, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
-        portEdit = new QLineEdit(this);
-        portEdit->setText(defaultPort);
-        portEdit->setFixedHeight(kMainPageInputHeight);
-        portEdit->setMinimumWidth(160);
-        portEdit->setMaximumWidth(190);
-        portEdit->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        config_layout->addWidget(portEdit, row, 1, Qt::AlignVCenter);
+        portCombo = new QComboBox(this);
+        portCombo->addItem(is_english_ ? "-- Select --" : "-- 选择 --");
+        portCombo->addItems(ports);
+        portCombo->setEditable(true);
+        portCombo->setMinimumContentsLength(10);
+        portCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+        portCombo->setFixedHeight(kMainPageInputHeight);
+        portCombo->setMinimumWidth(160);
+        portCombo->setMaximumWidth(190);
+        portCombo->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        portCombo->setMaxVisibleItems(15);
+
+        int defaultIdx = portCombo->findText(defaultPort);
+        if (defaultIdx >= 0)
+        {
+            portCombo->setCurrentIndex(defaultIdx);
+        }
+        else
+        {
+            portCombo->setEditText(defaultPort);
+        }
+        config_layout->addWidget(portCombo, row, 1, Qt::AlignVCenter);
 
         baudCombo = new QComboBox(this);
         baudCombo->addItems(baudRates);
@@ -7765,13 +7738,15 @@ void MainWindow::setupConfigPanel()
 
     sky_telemetry_port_lbl_ = new QLabel(this);
     sky_telemetry_port_lbl_->setObjectName("fieldLabel");
-    sky_telemetry_port_edit_ = new QLineEdit(this);
-    sky_telemetry_port_edit_->setFixedHeight(kMainPageInputHeight);
-    sky_telemetry_port_edit_->setMinimumWidth(160);
+    sky_telemetry_port_combo_ = new QComboBox(this);
+    sky_telemetry_port_combo_->addItems(ports);
+    sky_telemetry_port_combo_->setEditable(true);
+    sky_telemetry_port_combo_->setFixedHeight(kMainPageInputHeight);
+    sky_telemetry_port_combo_->setMinimumWidth(160);
 #ifdef _WIN32
-    sky_telemetry_port_edit_->setText(QStringLiteral("COM11"));
+    sky_telemetry_port_combo_->setEditText(QStringLiteral("COM11"));
 #else
-    sky_telemetry_port_edit_->setText(QStringLiteral("/tmp/vapor_ground"));
+    sky_telemetry_port_combo_->setEditText(QStringLiteral("/tmp/vapor_ground"));
 #endif
     sky_telemetry_baud_lbl_ = new QLabel(this);
     sky_telemetry_baud_lbl_->setObjectName("fieldLabel");
@@ -7791,7 +7766,7 @@ void MainWindow::setupConfigPanel()
     skyTelemetryLayout->addWidget(sky_telemetry_tcp_port_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     skyTelemetryLayout->addWidget(sky_telemetry_tcp_port_spin_, 0, Qt::AlignVCenter);
     skyTelemetryLayout->addWidget(sky_telemetry_port_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    skyTelemetryLayout->addWidget(sky_telemetry_port_edit_, 0, Qt::AlignVCenter);
+    skyTelemetryLayout->addWidget(sky_telemetry_port_combo_, 0, Qt::AlignVCenter);
     skyTelemetryLayout->addWidget(sky_telemetry_baud_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     skyTelemetryLayout->addWidget(sky_telemetry_baud_combo_, 0, Qt::AlignVCenter);
     skyTelemetryLayout->addStretch(1);
@@ -7801,15 +7776,15 @@ void MainWindow::setupConfigPanel()
     int row = 0;
 
 #ifdef _WIN32
-    createPortRow(epsilon_lbl_, epsilon_port_edit_, epsilon_baud_combo_, epsilon_rate_lbl_, epsilon_rate_combo_, "COM3", "921600", row++, 200);
-    createPortRow(ptb_lbl_, ptb_port_edit_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "COM5", "9600", row++, kPtbMaxSampleRateHz);
-    createPortRow(hmp_lbl_, hmp_port_edit_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "COM6", "19200", row++);
-    createPortRow(lidar_lbl_, lidar_port_edit_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "COM7", "500000", row++, 100);
+    createPortRow(epsilon_lbl_, epsilon_port_combo_, epsilon_baud_combo_, epsilon_rate_lbl_, epsilon_rate_combo_, "COM3", "921600", row++, 200);
+    createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "COM5", "9600", row++, kPtbMaxSampleRateHz);
+    createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "COM6", "19200", row++);
+    createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "COM7", "500000", row++, 100);
 #else
-    createPortRow(epsilon_lbl_, epsilon_port_edit_, epsilon_baud_combo_, epsilon_rate_lbl_, epsilon_rate_combo_, "/dev/ttyEPSILON", "921600", row++, 200);
-    createPortRow(ptb_lbl_, ptb_port_edit_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "/dev/ttyBARO", "9600", row++, kPtbMaxSampleRateHz);
-    createPortRow(hmp_lbl_, hmp_port_edit_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "/dev/ttyHMP", "19200", row++);
-    createPortRow(lidar_lbl_, lidar_port_edit_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "/dev/ttyLidar", "500000", row++, 100);
+    createPortRow(epsilon_lbl_, epsilon_port_combo_, epsilon_baud_combo_, epsilon_rate_lbl_, epsilon_rate_combo_, "/dev/ttyEPSILON", "921600", row++, 200);
+    createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "/dev/ttyBARO", "9600", row++, kPtbMaxSampleRateHz);
+    createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "/dev/ttyHMP", "19200", row++);
+    createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "/dev/ttyLidar", "500000", row++, 100);
 #endif
 
     auto addRemoteButtons = [this, config_layout](int rowIndex,
@@ -10351,17 +10326,17 @@ void MainWindow::writeDeviceConfigSnapshot()
     root["raw_dat"] = raw;
 
     QJsonObject sensors;
-    auto addSerialConfig = [&sensors](const QString& name, QLineEdit* port, QComboBox* baud, QComboBox* rate) {
+    auto addSerialConfig = [&sensors](const QString& name, QComboBox* port, QComboBox* baud, QComboBox* rate) {
         QJsonObject obj;
-        obj["port"] = lineEditText(port);
+        obj["port"] = port ? port->currentText() : QString();
         obj["baud"] = baud ? baud->currentText() : QString();
         obj["rate_hz"] = rate ? rate->currentText() : QString();
         sensors[name] = obj;
     };
-    addSerialConfig("epsilon", epsilon_port_edit_, epsilon_baud_combo_, nullptr);
-    addSerialConfig("ptb", ptb_port_edit_, ptb_baud_combo_, ptb_rate_combo_);
-    addSerialConfig("hmp", hmp_port_edit_, hmp_baud_combo_, hmp_rate_combo_);
-    addSerialConfig("lidar", lidar_port_edit_, lidar_baud_combo_, lidar_rate_combo_);
+    addSerialConfig("epsilon", epsilon_port_combo_, epsilon_baud_combo_, nullptr);
+    addSerialConfig("ptb", ptb_port_combo_, ptb_baud_combo_, ptb_rate_combo_);
+    addSerialConfig("hmp", hmp_port_combo_, hmp_baud_combo_, hmp_rate_combo_);
+    addSerialConfig("lidar", lidar_port_combo_, lidar_baud_combo_, lidar_rate_combo_);
     root["sensors"] = sensors;
 
     QFile file(device_config_filename_);
@@ -11827,10 +11802,10 @@ void MainWindow::updateConnectionStatus(bool connected)
                            : "扫描可用串口，并将识别出的设备自动填入对应端口。"));
     }
 
-    if (epsilon_port_edit_) epsilon_port_edit_->setEnabled(inputsEnabled);
-    if (ptb_port_edit_) ptb_port_edit_->setEnabled(inputsEnabled);
-    if (hmp_port_edit_) hmp_port_edit_->setEnabled(inputsEnabled);
-    if (lidar_port_edit_) lidar_port_edit_->setEnabled(inputsEnabled);
+    if (epsilon_port_combo_) epsilon_port_combo_->setEnabled(inputsEnabled);
+    if (ptb_port_combo_) ptb_port_combo_->setEnabled(inputsEnabled);
+    if (hmp_port_combo_) hmp_port_combo_->setEnabled(inputsEnabled);
+    if (lidar_port_combo_) lidar_port_combo_->setEnabled(inputsEnabled);
     if (epsilon_baud_combo_) epsilon_baud_combo_->setEnabled(inputsEnabled);
     if (ptb_baud_combo_) ptb_baud_combo_->setEnabled(inputsEnabled);
     if (hmp_baud_combo_) hmp_baud_combo_->setEnabled(inputsEnabled);
@@ -11970,6 +11945,31 @@ void MainWindow::onRefreshPortsClicked()
 {
     QStringList ports = getAvailablePorts();
 
+    auto updateCombo = [this, &ports](QComboBox* combo) {
+        if (!combo)
+        {
+            return;
+        }
+        QString current = combo->currentText();
+        combo->clear();
+        combo->addItem(is_english_ ? "-- Select --" : "-- 选择 --");
+        combo->addItems(ports);
+        int idx = combo->findText(current);
+        if (idx >= 0)
+        {
+            combo->setCurrentIndex(idx);
+        }
+        else
+        {
+            combo->setEditText(current);
+        }
+    };
+
+    updateCombo(epsilon_port_combo_);
+    updateCombo(ptb_port_combo_);
+    updateCombo(hmp_port_combo_);
+    updateCombo(lidar_port_combo_);
+
     log(QString(is_english_ ? "Ports refreshed: %1 serial ports"
                             : "端口已刷新: %1 个串口")
             .arg(ports.size()));
@@ -12004,10 +12004,10 @@ void MainWindow::onAutoDetectPortsClicked()
     log(is_english_ ? "Starting automatic serial-port detection..." : "开始自动识别串口...");
     showBusyStatusTaskProgress(is_english_ ? "Detecting Ports..." : "正在识别串口...");
 
-    const QString selectedEpsilonPort = lineEditText(epsilon_port_edit_);
-    const QString selectedPtbPort = lineEditText(ptb_port_edit_);
-    const QString selectedHmpPort = lineEditText(hmp_port_edit_);
-    const QString selectedLidarPort = lineEditText(lidar_port_edit_);
+    const QString selectedEpsilonPort = epsilon_port_combo_ ? epsilon_port_combo_->currentText().trimmed() : QString();
+    const QString selectedPtbPort = ptb_port_combo_ ? ptb_port_combo_->currentText().trimmed() : QString();
+    const QString selectedHmpPort = hmp_port_combo_ ? hmp_port_combo_->currentText().trimmed() : QString();
+    const QString selectedLidarPort = lidar_port_combo_ ? lidar_port_combo_->currentText().trimmed() : QString();
     const QString selectedEpsilonBaud = epsilon_baud_combo_ ? epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
     const QString selectedPtbBaud = ptb_baud_combo_ ? ptb_baud_combo_->currentText().trimmed() : QStringLiteral("9600");
     const QString selectedHmpBaud = hmp_baud_combo_ ? hmp_baud_combo_->currentText().trimmed() : QStringLiteral("19200");
@@ -12051,25 +12051,30 @@ void MainWindow::onAutoDetectPortsClicked()
         auto finishOnUi = [this](QVector<DetectionResult> detections) {
             QMetaObject::invokeMethod(this, [this, detections = std::move(detections)]() {
                 const QString selectText = is_english_ ? "-- Select --" : "-- 选择 --";
-                auto applySelection = [&selectText](QLineEdit* edit, const QString& value) {
-                    if (!edit)
+                auto applySelection = [&selectText](QComboBox* combo, const QString& value) {
+                    if (!combo)
                     {
                         return;
                     }
-                    if (!value.isEmpty() && value != selectText)
+                    const int idx = combo->findText(value);
+                    if (idx >= 0)
                     {
-                        edit->setText(value);
+                        combo->setCurrentIndex(idx);
+                    }
+                    else if (!value.isEmpty() && value != selectText)
+                    {
+                        combo->setEditText(value);
                     }
                 };
                 auto normalizePort = [&selectText](const QString& value) {
                     return (value.isEmpty() || value == selectText) ? selectText : value;
                 };
 
-                QHash<QString, QLineEdit*> portEdits{
-                    {"epsilon", epsilon_port_edit_},
-                    {"ptb", ptb_port_edit_},
-                    {"hmp", hmp_port_edit_},
-                    {"lidar", lidar_port_edit_},
+                QHash<QString, QComboBox*> portCombos{
+                    {"epsilon", epsilon_port_combo_},
+                    {"ptb", ptb_port_combo_},
+                    {"hmp", hmp_port_combo_},
+                    {"lidar", lidar_port_combo_},
                 };
                 QHash<QString, QComboBox*> baudCombos{
                     {"epsilon", epsilon_baud_combo_},
@@ -12088,7 +12093,7 @@ void MainWindow::onAutoDetectPortsClicked()
                     {
                         continue;
                     }
-                    if (!portEdits.contains(detection.key))
+                    if (!portCombos.contains(detection.key))
                     {
                         continue;
                     }
@@ -12098,9 +12103,9 @@ void MainWindow::onAutoDetectPortsClicked()
                     detectedPortNames.insert(portName);
                 }
 
-                for (auto it = portEdits.cbegin(); it != portEdits.cend(); ++it)
+                for (auto it = portCombos.cbegin(); it != portCombos.cend(); ++it)
                 {
-                    if (!detectedKeys.contains(it.key()) && detectedPortNames.contains(normalizePort(it.value() ? it.value()->text() : QString())))
+                    if (!detectedKeys.contains(it.key()) && detectedPortNames.contains(normalizePort(it.value() ? it.value()->currentText() : QString())))
                     {
                         applySelection(it.value(), selectText);
                     }
@@ -12113,7 +12118,7 @@ void MainWindow::onAutoDetectPortsClicked()
                     {
                         continue;
                     }
-                    applySelection(portEdits.value(detection.key), portName);
+                    applySelection(portCombos.value(detection.key), portName);
                     if (QComboBox *baudCombo = baudCombos.value(detection.key, nullptr))
                     {
                         baudCombo->setCurrentText(detectedBauds.value(detection.key));
@@ -12393,7 +12398,7 @@ void MainWindow::onConnectClicked()
         }
         else
         {
-            const QString port = lineEditText(sky_telemetry_port_edit_);
+            const QString port = sky_telemetry_port_combo_ ? sky_telemetry_port_combo_->currentText().trimmed() : QString();
             const int baud = sky_telemetry_baud_combo_ ? sky_telemetry_baud_combo_->currentText().toInt() : 921600;
             if (port.isEmpty())
             {
@@ -12454,10 +12459,10 @@ void MainWindow::onConnectClicked()
 
     const bool english = is_english_;
     const QString selectText = english ? "-- Select --" : "-- 选择 --";
-    const QString epsilonPort = lineEditText(epsilon_port_edit_);
-    const QString ptbPort = lineEditText(ptb_port_edit_);
-    const QString hmpPort = lineEditText(hmp_port_edit_);
-    const QString lidarPort = lineEditText(lidar_port_edit_);
+    const QString epsilonPort = epsilon_port_combo_ ? epsilon_port_combo_->currentText().trimmed() : QString();
+    const QString ptbPort = ptb_port_combo_->currentText();
+    const QString hmpPort = hmp_port_combo_->currentText();
+    const QString lidarPort = lidar_port_combo_->currentText();
     const QString epsilonBaudText = epsilon_baud_combo_ ? epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
     const QString ptbBaudText = ptb_baud_combo_->currentText();
     const QString hmpBaudText = hmp_baud_combo_->currentText();
@@ -13364,7 +13369,7 @@ bool MainWindow::applyEpsilonMainAntennaLeverArm(double xM, double yM, double zM
             : QStringLiteral("请先结束记录，再配置 EPSILON 主天线杆臂。"));
     }
 
-    const QString epsilonPort = lineEditText(epsilon_port_edit_);
+    const QString epsilonPort = epsilon_port_combo_ ? epsilon_port_combo_->currentText().trimmed() : QString();
     if (epsilonPort.isEmpty() || epsilonPort.startsWith(QStringLiteral("--")))
     {
         return fail(is_english_
@@ -13509,7 +13514,7 @@ void MainWindow::onRtkConfigClicked()
         return applyEpsilonMainAntennaLeverArm(x, y, z, errorMessage);
     });
     {
-        const QString epsilonPort = lineEditText(epsilon_port_edit_);
+        const QString epsilonPort = epsilon_port_combo_ ? epsilon_port_combo_->currentText().trimmed() : QString();
         const QString epsilonBaud = epsilon_baud_combo_ ? epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
         rtk_config_dialog_->setEpsilonMainPortAndBaud(epsilonPort, epsilonBaud);
     }
@@ -13545,7 +13550,7 @@ void MainWindow::onConfigureEpsilonRtcmPortClicked()
     }
 
     const QString selectText = is_english_ ? "-- Select --" : "-- 选择 --";
-    const QString epsilonPort = lineEditText(epsilon_port_edit_);
+    const QString epsilonPort = epsilon_port_combo_ ? epsilon_port_combo_->currentText().trimmed() : QString();
     if (epsilonPort.isEmpty() || epsilonPort == selectText)
     {
         log(is_english_ ? "Select the EPSILON main serial port first."
@@ -13930,7 +13935,7 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     }
 
     const QString selectText = is_english_ ? "-- Select --" : "-- 选择 --";
-    const QString epsilonPort = lineEditText(epsilon_port_edit_);
+    const QString epsilonPort = epsilon_port_combo_ ? epsilon_port_combo_->currentText().trimmed() : QString();
     if (!recording_thread_running_.load() &&
         !epsilonPort.isEmpty() &&
         epsilonPort != selectText &&
@@ -13964,7 +13969,7 @@ void MainWindow::onReconfigureEpsilonClicked()
     }
 
     const QString selectText = is_english_ ? "-- Select --" : "-- 选择 --";
-    const QString epsilonPort = lineEditText(epsilon_port_edit_);
+    const QString epsilonPort = epsilon_port_combo_ ? epsilon_port_combo_->currentText().trimmed() : QString();
     if (epsilonPort.isEmpty() || epsilonPort == selectText)
     {
         log(is_english_ ? "Select an EPSILON serial port first." : "请先选择 EPSILON 串口。");
