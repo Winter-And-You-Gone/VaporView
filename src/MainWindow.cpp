@@ -402,7 +402,6 @@ constexpr const char *kTextWidthPaddingProperty = "_vv_text_width_padding";
 constexpr const char *kNumericWidthCandidatesProperty = "_vv_numeric_width_candidates";
 constexpr const char *kNumericWidthPaddingProperty = "_vv_numeric_width_padding";
 constexpr const char *kMainCardMinimumHeightProperty = "_vv_main_card_minimum_height";
-constexpr const char *kMainCardUserHeightProperty = "_vv_main_card_user_height";
 constexpr int kMainPageInputHeight = 36;
 constexpr int kMainPageButtonHeight = kMainPageInputHeight;
 constexpr int kMainPageTitleBarHeight = kMainPageInputHeight + 4;
@@ -693,7 +692,6 @@ protected:
         const int effectiveMinimum = ok ? std::max(minimum_target_height_, propertyMinimum) : minimum_target_height_;
         const int nextHeight = std::max(effectiveMinimum, target_start_height_ + deltaY);
         target_card_->setFixedHeight(nextHeight);
-        target_card_->setProperty(kMainCardUserHeightProperty, nextHeight);
         event->accept();
     }
 
@@ -5115,15 +5113,11 @@ void MainWindow::updateResponsiveHomeLayout()
             }
         }
         sensor_row_widget_->setMinimumHeight(targetHeight);
-        const int previousMinimum = data_group_->property(kMainCardMinimumHeightProperty).toInt();
-        bool hasUserHeight = false;
-        const int userHeight = data_group_->property(kMainCardUserHeightProperty).toInt(&hasUserHeight);
-        const int desiredHeight = hasUserHeight ? std::max(targetHeight, userHeight) : targetHeight;
         data_group_->setProperty(kMainCardMinimumHeightProperty, targetHeight);
         data_group_->setMinimumHeight(targetHeight);
-        if (layoutChanged || previousMinimum != targetHeight || data_group_->height() != desiredHeight)
+        if (layoutChanged || data_group_->height() < targetHeight)
         {
-            data_group_->setFixedHeight(desiredHeight);
+            data_group_->setFixedHeight(targetHeight);
         }
     }
 
