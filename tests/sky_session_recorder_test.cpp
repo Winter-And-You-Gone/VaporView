@@ -121,6 +121,14 @@ int main(int argc, char *argv[])
     epsilon.heading_valid = true;
     epsilon.filter_status_bits = 96;
     epsilon.gnss_fix_code = 6;
+    epsilon.imu_packet_rate_hz = 100.0;
+    epsilon.ahrs_packet_rate_hz = 40.0;
+    epsilon.insgps_packet_rate_hz = 41.0;
+    epsilon.sys_state_packet_rate_hz = 42.0;
+    epsilon.raw_gnss_packet_rate_hz = 50.0;
+    epsilon.satellite_packet_rate_hz = 59.0;
+    epsilon.geodetic_packet_rate_hz = 10.0;
+    epsilon.ecef_packet_rate_hz = 11.0;
 
     VaporView::PtbData ptb;
     ptb.valid = true;
@@ -172,12 +180,13 @@ int main(int argc, char *argv[])
     const QStringList deviceLines = QString::fromUtf8(devicesFile.readAll()).trimmed().split('\n');
     require(deviceLines.size() == 2, "devices csv row count");
     const QStringList deviceHeaders = deviceLines.at(0).split(',');
-    require(deviceHeaders.size() == 64, "devices csv header column count");
+    require(deviceHeaders.size() == 72, "devices csv header column count");
     require(deviceHeaders.contains(QStringLiteral("gnss_satellites")), "devices csv has satellites");
     require(deviceHeaders.contains(QStringLiteral("imu_acc_x_mps2")), "devices csv has imu accel");
+    require(deviceHeaders.contains(QStringLiteral("epsilon_imu_packet_rate_hz")), "devices csv has epsilon packet rates");
     require(deviceHeaders.contains(QStringLiteral("lidar_signal_strength")), "devices csv has lidar strength");
     const QStringList deviceCells = deviceLines.at(1).split(',');
-    require(deviceCells.size() == 64, "devices csv column count");
+    require(deviceCells.size() == 72, "devices csv column count");
     require(deviceCells.at(5) == QStringLiteral("31.230412345"), "latitude csv precision");
     require(deviceCells.at(6) == QStringLiteral("121.473712345"), "longitude csv precision");
     require(deviceCells.at(7) == QStringLiteral("1200.123457"), "height csv precision");
@@ -191,11 +200,19 @@ int main(int argc, char *argv[])
     require(deviceCells.at(43) == QStringLiteral("18"), "satellites csv value");
     require(deviceCells.at(46) == QStringLiteral("0.0123"), "hacc csv value");
     require(deviceCells.at(52) == QStringLiteral("true"), "heading valid csv value");
-    require(deviceCells.at(58) == QStringLiteral("23.500000"), "temperature csv precision");
-    require(deviceCells.at(59) == QStringLiteral("45.250000"), "humidity csv precision");
-    require(deviceCells.at(60) == QStringLiteral("900.750000"), "pressure csv precision");
-    require(deviceCells.at(61) == QStringLiteral("120.125000"), "lidar csv precision");
-    require(deviceCells.at(62) == QStringLiteral("180"), "lidar strength csv value");
+    require(deviceCells.at(56) == QStringLiteral("100.0000"), "epsilon imu packet rate csv value");
+    require(deviceCells.at(57) == QStringLiteral("40.0000"), "epsilon ahrs packet rate csv value");
+    require(deviceCells.at(58) == QStringLiteral("41.0000"), "epsilon insgps packet rate csv value");
+    require(deviceCells.at(59) == QStringLiteral("42.0000"), "epsilon sys state packet rate csv value");
+    require(deviceCells.at(60) == QStringLiteral("50.0000"), "epsilon raw gnss packet rate csv value");
+    require(deviceCells.at(61) == QStringLiteral("59.0000"), "epsilon satellite packet rate csv value");
+    require(deviceCells.at(62) == QStringLiteral("10.0000"), "epsilon geodetic packet rate csv value");
+    require(deviceCells.at(63) == QStringLiteral("11.0000"), "epsilon ecef packet rate csv value");
+    require(deviceCells.at(66) == QStringLiteral("23.500000"), "temperature csv precision");
+    require(deviceCells.at(67) == QStringLiteral("45.250000"), "humidity csv precision");
+    require(deviceCells.at(68) == QStringLiteral("900.750000"), "pressure csv precision");
+    require(deviceCells.at(69) == QStringLiteral("120.125000"), "lidar csv precision");
+    require(deviceCells.at(70) == QStringLiteral("180"), "lidar strength csv value");
 
     QFile featuresFile(sessionDir + QStringLiteral("/waveform_features.csv"));
     require(featuresFile.open(QIODevice::ReadOnly | QIODevice::Text), "open waveform features csv");

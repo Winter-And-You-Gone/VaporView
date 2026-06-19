@@ -2550,20 +2550,8 @@ private:
         const QString totalText = is_english_
             ? QStringLiteral("Total Rate: %1").arg(formatRateValue(total_rate_hz_))
             : QStringLiteral("总频率：%1").arg(formatRateValue(total_rate_hz_));
-        const QStringList parts = {
-            totalText,
-            QStringLiteral("40 %1").arg(formatRateValue(imu_packet_rate_hz_)),
-            QStringLiteral("41 %1").arg(formatRateValue(ahrs_packet_rate_hz_)),
-            QStringLiteral("42 %1").arg(formatRateValue(insgps_packet_rate_hz_)),
-            QStringLiteral("50 %1").arg(formatRateValue(sys_state_packet_rate_hz_)),
-            QStringLiteral("59 %1").arg(formatRateValue(raw_gnss_packet_rate_hz_)),
-            QStringLiteral("5A %1").arg(formatRateValue(satellite_packet_rate_hz_)),
-            QStringLiteral("5C %1").arg(formatRateValue(geodetic_packet_rate_hz_)),
-            QStringLiteral("5D %1").arg(formatRateValue(ecef_packet_rate_hz_)),
-        };
-        const QString text = parts.join(QStringLiteral("   |   "));
-        rate_label_->setText(text);
-        rate_label_->setToolTip(text);
+        rate_label_->setText(totalText);
+        rate_label_->setToolTip(totalText);
     }
 
     static QString formatSectionTitle(const QString& text, bool english)
@@ -10478,13 +10466,21 @@ void MainWindow::startRecordingWorkers()
                     << csvBool(epsilonSample.heading_valid)
                     << QString::number(epsilonSample.system_status_bits)
                     << QString::number(epsilonSample.filter_status_bits)
-                    << QString::number(epsilonSample.update_status_bits);
+                    << QString::number(epsilonSample.update_status_bits)
+                    << QString::number(epsilonSample.imu_packet_rate_hz, 'f', 4)
+                    << QString::number(epsilonSample.ahrs_packet_rate_hz, 'f', 4)
+                    << QString::number(epsilonSample.insgps_packet_rate_hz, 'f', 4)
+                    << QString::number(epsilonSample.sys_state_packet_rate_hz, 'f', 4)
+                    << QString::number(epsilonSample.raw_gnss_packet_rate_hz, 'f', 4)
+                    << QString::number(epsilonSample.satellite_packet_rate_hz, 'f', 4)
+                    << QString::number(epsilonSample.geodetic_packet_rate_hz, 'f', 4)
+                    << QString::number(epsilonSample.ecef_packet_rate_hz, 'f', 4);
                 appendBool(epsilonSample.valid);
                 row << QString::fromStdString(epsilonSample.error_message);
             }
             else
             {
-                appendEmptyColumns(57);
+                appendEmptyColumns(65);
             }
 
             if (isFresh(collectors.hmp.get(), hmpSample))
@@ -11705,6 +11701,10 @@ void MainWindow::writeSensorsHeader()
         << "gnss_fix,gnss_satellites,hdop,vdop,hacc_m,vacc_m,"
         << "lat_std_m,lon_std_m,height_std_m,diff_age_s,"
         << "heading_valid,system_status_bits,filter_status_bits,update_status_bits,"
+        << "epsilon_imu_packet_rate_hz,epsilon_ahrs_packet_rate_hz,"
+        << "epsilon_insgps_packet_rate_hz,epsilon_sys_state_packet_rate_hz,"
+        << "epsilon_raw_gnss_packet_rate_hz,epsilon_satellite_packet_rate_hz,"
+        << "epsilon_geodetic_packet_rate_hz,epsilon_ecef_packet_rate_hz,"
         << "epsilon_valid,epsilon_error_message,"
         << "hmp_temperature_c,hmp_humidity_rh,ptb_pressure_hpa,lidar_distance_m,lidar_signal_strength,lidar_valid\n";
     out.flush();

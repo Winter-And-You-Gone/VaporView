@@ -46,6 +46,10 @@ constexpr const char *kDevicesCsvHeader =
     "gnss_fix,gnss_satellites,hdop,vdop,hacc_m,vacc_m,"
     "lat_std_m,lon_std_m,height_std_m,diff_age_s,"
     "heading_valid,system_status_bits,filter_status_bits,update_status_bits,"
+    "epsilon_imu_packet_rate_hz,epsilon_ahrs_packet_rate_hz,"
+    "epsilon_insgps_packet_rate_hz,epsilon_sys_state_packet_rate_hz,"
+    "epsilon_raw_gnss_packet_rate_hz,epsilon_satellite_packet_rate_hz,"
+    "epsilon_geodetic_packet_rate_hz,epsilon_ecef_packet_rate_hz,"
     "epsilon_valid,epsilon_error_message,"
     "hmp_temperature_c,hmp_humidity_rh,ptb_pressure_hpa,lidar_distance_m,lidar_signal_strength,lidar_valid\n";
 
@@ -477,12 +481,20 @@ void SkySessionRecorder::recordDeviceSnapshot(quint64 hostTimeUs,
             << QString::number(epsilon.system_status_bits)
             << QString::number(epsilon.filter_status_bits)
             << QString::number(epsilon.update_status_bits)
+            << QString::number(epsilon.imu_packet_rate_hz, 'f', 4)
+            << QString::number(epsilon.ahrs_packet_rate_hz, 'f', 4)
+            << QString::number(epsilon.insgps_packet_rate_hz, 'f', 4)
+            << QString::number(epsilon.sys_state_packet_rate_hz, 'f', 4)
+            << QString::number(epsilon.raw_gnss_packet_rate_hz, 'f', 4)
+            << QString::number(epsilon.satellite_packet_rate_hz, 'f', 4)
+            << QString::number(epsilon.geodetic_packet_rate_hz, 'f', 4)
+            << QString::number(epsilon.ecef_packet_rate_hz, 'f', 4)
             << boolText(true)
             << QString::fromStdString(epsilon.error_message);
     }
     else
     {
-        appendEmptyColumns(57);
+        appendEmptyColumns(65);
     }
 
     if (hasHmp && hmp.valid)
