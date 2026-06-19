@@ -5207,6 +5207,28 @@ void MainWindow::applyStyleConfiguration()
             resize(targetSize);
         }
     }
+
+    // 主题切换会触发多次异步重算（同步 1 次 + resizeEvent 1 次 + singleShot 若干），
+    // 早期重算发生时 qApp 的字体度量/样式尚未完全传播，viewport 宽度也未必稳定，
+    // 可能算出偏大的 data_group 目标高度并被 setFixedHeight 锁住，把下方的 TCP
+    // 波形卡片压下去后无法回弹。这里在 resize 完成、度量稳定后，解除卡片固定高度
+    // 并按最新布局重测一次，使其收敛到正确值。
+    auto releaseFixedHeight = [](QWidget *widget) {
+        if (!widget)
+        {
+            return;
+        }
+        widget->setMinimumHeight(0);
+        widget->setMaximumHeight(QWIDGETSIZE_MAX);
+        if (QLayout *layout = widget->layout())
+        {
+            layout->invalidate();
+            layout->activate();
+        }
+    };
+    releaseFixedHeight(data_group_);
+    releaseFixedHeight(tcp_wave_group_);
+    updateResponsiveHomeLayout();
 }
 
 void MainWindow::setFontScale(int percent)
