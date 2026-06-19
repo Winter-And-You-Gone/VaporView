@@ -91,6 +91,11 @@ QString boldLabelColorStyle(AppThemeColor color)
         .arg(appThemeColorName(color, isDarkThemeEnabled()));
 }
 
+QString textForLanguage(bool english, const QString& englishText, const QString& chineseText)
+{
+    return english ? englishText : chineseText;
+}
+
 QString findResourceFile(const QString& relativePath)
 {
     const QString appDir = QApplication::applicationDirPath();
@@ -2476,7 +2481,8 @@ void RtkConfigDialog::onAutoDetectPortsClicked()
     appendLog(textFor("Starting RTK output port auto detect...", "开始自动识别 RTK 输出串口..."));
 
     QPointer<RtkConfigDialog> self(this);
-    port_detection_thread_ = std::thread([self, portNames, baudTexts]() {
+    const bool english = is_english_;
+    port_detection_thread_ = std::thread([self, portNames, baudTexts, english]() {
         if (!self)
         {
             return;
@@ -2504,7 +2510,7 @@ void RtkConfigDialog::onAutoDetectPortsClicked()
                 break;
             }
 
-            queueLog(self->textFor("[Auto Detect] Probing GGA on %1...", "[自动识别] 正在探测 GGA: %1 ...").arg(portName));
+            queueLog(textForLanguage(english, "[Auto Detect] Probing GGA on %1...", "[自动识别] 正在探测 GGA: %1 ...").arg(portName));
             const auto probeResult = VaporView::probeSerialPortForHeader(
                 portName,
                 baudTexts,
@@ -2516,8 +2522,9 @@ void RtkConfigDialog::onAutoDetectPortsClicked()
 
             detectedPort = portName;
             detectedBaud = probeResult.baudText;
-            queueLog(self->textFor("[Auto Detect] Identified GGA output on %1 @ %2",
-                                   "[自动识别] 已识别 GGA 输出串口: %1 @ %2")
+            queueLog(textForLanguage(english,
+                                     "[Auto Detect] Identified GGA output on %1 @ %2",
+                                     "[自动识别] 已识别 GGA 输出串口: %1 @ %2")
                          .arg(detectedPort, detectedBaud));
             break;
         }
@@ -2801,7 +2808,8 @@ void RtkConfigDialog::onTestClicked()
     updateButtonStates();
 
     QPointer<RtkConfigDialog> self(this);
-    test_thread_ = std::thread([self, config]() mutable {
+    const bool english = is_english_;
+    test_thread_ = std::thread([self, config, english]() mutable {
         auto queueLog = [self](const QString &message) {
             if (!self)
             {
@@ -2844,19 +2852,24 @@ void RtkConfigDialog::onTestClicked()
             config.outputMode = RtkStreamConfig::OutputMode::TcpClient;
             config.outputPathOverride = QStringLiteral("127.0.0.1:%1").arg(mockSerialServer.serverPort());
             config.relayBack = useGeneratedGga ? 0 : 1;
-            queueLog(self->textFor("Using loopback mock serial on 127.0.0.1:%1", "正在使用 127.0.0.1:%1 的 loopback 模拟串口")
+            queueLog(textForLanguage(english,
+                                     "Using loopback mock serial on 127.0.0.1:%1",
+                                     "正在使用 127.0.0.1:%1 的 loopback 模拟串口")
                 .arg(mockSerialServer.serverPort()));
             if (useGeneratedGga)
             {
-                queueLog(self->textFor("The test will send EPSILON-position GGA directly to NTRIP; loopback only receives RTCM.",
-                                       "本次测试将把 EPSILON 定位 GGA 直接发给 NTRIP；loopback 只接收 RTCM。"));
+                queueLog(textForLanguage(english,
+                                         "The test will send EPSILON-position GGA directly to NTRIP; loopback only receives RTCM.",
+                                         "本次测试将把 EPSILON 定位 GGA 直接发给 NTRIP；loopback 只接收 RTCM。"));
             }
 
             std::unique_ptr<RtkStreamService> testService = std::make_unique<RtkStreamService>();
             QString errorMessage;
             if (!testService->start(config, &errorMessage))
             {
-                result.startError = errorMessage.isEmpty() ? self->textFor("Unknown error", "未知错误") : errorMessage;
+                result.startError = errorMessage.isEmpty()
+                    ? textForLanguage(english, "Unknown error", "未知错误")
+                    : errorMessage;
             }
             else
             {
@@ -2880,7 +2893,7 @@ void RtkConfigDialog::onTestClicked()
                         mockSerialPeer.reset(mockSerialServer.nextPendingConnection());
                         if (mockSerialPeer)
                         {
-                            queueLog(self->textFor("Mock serial loopback connected.", "模拟串口 loopback 已连接。"));
+                            queueLog(textForLanguage(english, "Mock serial loopback connected.", "模拟串口 loopback 已连接。"));
                         }
                     }
 
@@ -2888,8 +2901,8 @@ void RtkConfigDialog::onTestClicked()
                     {
                         queueRawLog(formatRtkStatusLine(
                             finalStats,
-                            self->textFor("Running no-signal RTK test", "正在执行无信号 RTK 测试"),
-                            self->is_english_));
+                            textForLanguage(english, "Running no-signal RTK test", "正在执行无信号 RTK 测试"),
+                            english));
                         lastStatusLogMs = timer.elapsed();
                     }
 
@@ -2904,7 +2917,10 @@ void RtkConfigDialog::onTestClicked()
                         if (!useGeneratedGga)
                         {
                             const QString mockGga = buildMockGgaSentence();
-                            queueLog(self->textFor("Injecting GGA at 1 Hz: %1", "已按 1Hz 频率注入 GGA 数据: %1").arg(mockGga));
+                            queueLog(textForLanguage(english,
+                                                     "Injecting GGA at 1 Hz: %1",
+                                                     "已按 1Hz 频率注入 GGA 数据: %1")
+                                .arg(mockGga));
                             loggedMockGgaTemplate = true;
                         }
                     }
@@ -2931,7 +2947,10 @@ void RtkConfigDialog::onTestClicked()
                         const QString mockGga = buildMockGgaSentence();
                         if (!loggedMockGgaTemplate)
                         {
-                            queueLog(self->textFor("Injecting GGA at 1 Hz: %1", "已按 1Hz 频率注入 GGA 数据: %1").arg(mockGga));
+                            queueLog(textForLanguage(english,
+                                                     "Injecting GGA at 1 Hz: %1",
+                                                     "已按 1Hz 频率注入 GGA 数据: %1")
+                                .arg(mockGga));
                             loggedMockGgaTemplate = true;
                         }
                         QByteArray payload = mockGga.toLatin1();
@@ -2940,7 +2959,7 @@ void RtkConfigDialog::onTestClicked()
                         if (written != payload.size() || !mockSerialPeer->waitForBytesWritten(500))
                         {
                             result.runtimeError = mockSerialPeer->errorString().isEmpty()
-                                ? self->textFor("Unknown error", "未知错误")
+                                ? textForLanguage(english, "Unknown error", "未知错误")
                                 : mockSerialPeer->errorString();
                             break;
                         }

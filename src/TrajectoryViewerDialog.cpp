@@ -38,6 +38,7 @@
 #include <QtMath>
 #include <array>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -57,6 +58,7 @@ constexpr int kMapMargin = 12;
 constexpr int kTitleBarButtonSize = 34;
 constexpr int kTitleBarIconSize = 24;
 constexpr int kMaxConcurrentTileRequests = 8;
+constexpr auto kTileRequestTimeout = std::chrono::seconds(15);
 
 enum class TileProvider
 {
@@ -562,6 +564,7 @@ protected:
 private:
     void resetTileLoadingState(bool clearCache)
     {
+        ++tile_request_generation_;
         if (clearCache)
         {
             tile_cache_.clear();
@@ -571,7 +574,19 @@ private:
         failed_tiles_.clear();
         last_tile_error_.clear();
         active_tile_request_count_ = 0;
-        ++tile_request_generation_;
+        abortActiveTileReplies();
+    }
+
+    void abortActiveTileReplies()
+    {
+        const QSet<QNetworkReply*> replies = active_tile_replies_;
+        for (QNetworkReply *reply : replies)
+        {
+            if (reply)
+            {
+                reply->abort();
+            }
+        }
     }
 
     void enqueueTileRequest(const QString& key, const QNetworkRequest& request)
@@ -618,7 +633,9 @@ private:
 
             ++active_tile_request_count_;
             QNetworkReply *reply = manager_->get(tileRequest.request);
+            active_tile_replies_.insert(reply);
             QObject::connect(reply, &QNetworkReply::finished, this, [this, reply, key = tileRequest.key, generation = tileRequest.generation]() {
+                active_tile_replies_.remove(reply);
                 reply->deleteLater();
                 if (generation != tile_request_generation_)
                 {
@@ -823,6 +840,7 @@ private:
                     }
 
                     QNetworkRequest request(tileUrl);
+                    request.setTransferTimeout(kTileRequestTimeout);
                     if (isTianDiTuProvider(tile_provider_))
                     {
                         request.setRawHeader(
@@ -1104,6 +1122,7 @@ private:
     QHash<QString, QPixmap> tile_cache_;
     QSet<QString> pending_tiles_;
     QQueue<TileFetchRequest> queued_tile_requests_;
+    QSet<QNetworkReply*> active_tile_replies_;
     QSet<QString> current_visible_tile_keys_;
     QSet<QString> failed_tiles_;
     bool is_english_;

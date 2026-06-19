@@ -12034,8 +12034,10 @@ void MainWindow::onAutoDetectPortsClicked()
     const QString selectedPtbBaud = ptb_baud_combo_ ? ptb_baud_combo_->currentText().trimmed() : QStringLiteral("9600");
     const QString selectedHmpBaud = hmp_baud_combo_ ? hmp_baud_combo_->currentText().trimmed() : QStringLiteral("19200");
     const QString selectedLidarBaud = lidar_baud_combo_ ? lidar_baud_combo_->currentText().trimmed() : QStringLiteral("500000");
+    const bool english = is_english_;
 
     port_detection_thread_ = std::thread([this,
+                                          english,
                                           selectedEpsilonPort,
                                           selectedPtbPort,
                                           selectedHmpPort,
@@ -12065,7 +12067,6 @@ void MainWindow::onAutoDetectPortsClicked()
             QString baud_text;
         };
 
-        const bool english = is_english_;
         const auto cancelRequested = [this]() { return cancel_connection_requested_.load(); };
         auto postLog = [this](const QString& message) {
             QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
