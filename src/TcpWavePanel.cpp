@@ -1519,6 +1519,7 @@ void TcpWavePanel::setupUi()
     port_edit_ = new QLineEdit(this);
     port_edit_->setText(QStringLiteral("8888"));
     port_edit_->setValidator(new QIntValidator(1, 65535, port_edit_));
+    port_edit_->setAlignment(Qt::AlignCenter);
     port_edit_->setFixedHeight(kTcpControlHeight);
     port_edit_->setFixedWidth(port_edit_->fontMetrics().horizontalAdvance(QStringLiteral("65535")) + 40);
     portRowLayout->addWidget(port_edit_, 0, Qt::AlignVCenter | Qt::AlignLeft);
