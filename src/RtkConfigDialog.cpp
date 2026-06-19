@@ -823,6 +823,9 @@ QVBoxLayout *RtkConfigDialog::createCardLayout(QGroupBox *group, QLabel *&titleL
 
     titleLabel = new QLabel(titleBar);
     titleLabel->setObjectName(QStringLiteral("sectionTitleLabel"));
+    titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    titleLabel->setMargin(0);
+    titleLabel->setContentsMargins(0, 0, 0, 0);
     titleLabel->setFixedHeight(36);
     titleLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     titleLayout->addWidget(titleLabel, 0, Qt::AlignVCenter | Qt::AlignLeft);

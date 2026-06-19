@@ -995,6 +995,9 @@ QLabel *createSectionTitleCluster(QWidget *parent,
 
     auto *titleLabel = new QLabel(cluster);
     titleLabel->setObjectName(QStringLiteral("sectionTitleLabel"));
+    titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    titleLabel->setMargin(0);
+    titleLabel->setContentsMargins(0, 0, 0, 0);
     titleLabel->setFixedHeight(titleHeight);
     titleLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     layout->addWidget(titleLabel, 0, Qt::AlignVCenter);
@@ -1594,6 +1597,8 @@ QDialog#rtkConfigDialog QLabel#sectionTitleLabel {
     background-color: transparent;
     border: none;
     color: @vv-text;
+    margin: 0px;
+    padding: 0px;
 }
 QGroupBox#sensorGroupBox {
     background-color: @vv-surface;
@@ -1679,6 +1684,8 @@ QWidget#environmentSectionTitleBar QLabel#sectionTitleLabel {
     background-color: transparent;
     border: none;
     color: @vv-white;
+    margin: 0px;
+    padding: 0px;
 }
 QLabel {
     color: @vv-white;
@@ -1687,6 +1694,8 @@ QLabel#fieldLabel,
 QLabel#rateLabel,
 QLabel#separatorLabel {
     color: @vv-white;
+    margin: 0px;
+    padding: 0px;
 }
 QLabel#rtkStatusLabel {
     color: @vv-white;
@@ -1727,6 +1736,8 @@ LidarPanel QLabel#highlightedValue {
 }
 QLabel#rateLabel {
     font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
+    margin: 0px;
+    padding: 0px;
 }
 QComboBox,
 QLineEdit,
@@ -4636,22 +4647,22 @@ void MainWindow::loadModernStyleSheet()
             "QDialog#rtkConfigDialog QGroupBox#rtkCardGroup { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; margin-top: 0px; padding: 0px; color: @vv-text; }"
             "QDialog#rtkConfigDialog QGroupBox#rtkCardGroup::title { color: transparent; }"
             "QDialog#rtkConfigDialog QWidget#sectionTitleBar { background-color: @vv-surface; border: none; border-bottom: 1px solid @vv-border; border-top-left-radius: 7px; border-top-right-radius: 7px; }"
-            "QDialog#rtkConfigDialog QLabel#sectionTitleLabel { background-color: transparent; border: none; color: @vv-text; }"
+            "QDialog#rtkConfigDialog QLabel#sectionTitleLabel { background-color: transparent; border: none; color: @vv-text; margin: 0px; padding: 0px; }"
             "QWidget#sectionTitleBar { background-color: @vv-surface; border-bottom: 1px solid @vv-border; border-top-left-radius: 7px; border-top-right-radius: 7px; min-height: 40px; max-height: 40px; }"
             "QWidget#sectionTitleBar QLabel { background-color: transparent; border: none; }"
             "QLabel { color: @vv-text; background-color: transparent; border: none; }"
-            "QLabel#rateLabel { color: @vv-text; font-size: 13px; font-weight: bold; font-family: \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace; }"
+            "QLabel#rateLabel { color: @vv-text; font-size: 13px; font-weight: bold; font-family: \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace; margin: 0px; padding: 0px; }"
             "QLabel#fieldLabel { color: @vv-text; font-size: 14px; font-weight: 600; }"
             "QLabel#separatorLabel { color: @vv-text; font-size: 14px; font-weight: bold; }"
             "QLabel#rtkStatusLabel { color: @vv-text; font-weight: bold; }"
             "QWidget#environmentSectionTitleBar { background-color: @vv-surface; border-bottom: 1px solid @vv-border; border-top-left-radius: 7px; border-top-right-radius: 7px; min-height: 36px; max-height: 36px; }"
             "QWidget#environmentSectionTitleBar QLabel { background-color: transparent; border: none; }"
-            "QWidget#environmentSectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
-            "QLabel#sectionTitleLabel { background-color: @vv-surface; border: none; border-bottom: 1px solid @vv-border; border-radius: 0px; color: @vv-text; font-size: 16px; font-weight: bold; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
-            "QWidget#sectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; padding: 0px 10px; min-height: 36px; max-height: 36px; }"
+            "QWidget#environmentSectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; margin: 0px; padding: 0px; }"
+            "QLabel#sectionTitleLabel { background-color: @vv-surface; border: none; border-bottom: 1px solid @vv-border; border-radius: 0px; color: @vv-text; font-size: 16px; font-weight: bold; margin: 0px; padding: 0px; }"
+            "QWidget#sectionTitleBar QLabel#sectionTitleLabel { background-color: transparent; border: none; margin: 0px; padding: 0px; }"
             "QWidget#sectionTitleCluster { background-color: transparent; border: none; }"
             "QWidget#sectionTitleCluster QLabel#sectionTitleIcon { background-color: transparent; border: none; padding: 0px; margin: 0px; }"
-            "QWidget#sectionTitleBar QWidget#sectionTitleCluster QLabel#sectionTitleLabel, QWidget#environmentSectionTitleBar QWidget#sectionTitleCluster QLabel#sectionTitleLabel { padding: 0px 10px 0px 0px; }"
+            "QWidget#sectionTitleBar QWidget#sectionTitleCluster QLabel#sectionTitleLabel, QWidget#environmentSectionTitleBar QWidget#sectionTitleCluster QLabel#sectionTitleLabel { margin: 0px; padding: 0px; }"
             "QFrame#epsilonSectionCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 4px; }"
             "QLabel#epsilonSectionLabel { color: @vv-text; background-color: @vv-surface-alt; border: none; border-right: 1px solid @vv-border; font-size: 14px; font-weight: 700; padding: 2px; }"
             "QLabel#valueLabel { font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 14px; font-weight: 600; }"
@@ -7903,12 +7914,14 @@ void MainWindow::setupDataPanels()
 
     auto *epsilonRateTitleLabel = new QLabel(epsilonTitleBar);
     epsilonRateTitleLabel->setObjectName(QStringLiteral("rateLabel"));
-    epsilonRateTitleLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    epsilonRateTitleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    epsilonRateTitleLabel->setMargin(0);
+    epsilonRateTitleLabel->setContentsMargins(0, 0, 0, 0);
     epsilonRateTitleLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     epsilonRateTitleLabel->setWordWrap(false);
-    epsilonRateTitleLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    epsilonRateTitleLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     epsilonRateTitleLabel->setFixedHeight(kMainPageButtonHeight);
-    epsilonTitleLayout->addWidget(epsilonRateTitleLabel, 1, Qt::AlignVCenter);
+    epsilonTitleLayout->addWidget(epsilonRateTitleLabel, 1, Qt::AlignVCenter | Qt::AlignLeft);
 
     epsilon_layout->addWidget(epsilonTitleBar);
     epsilon_panel_ = new EpsilonPanel(epsilonRateTitleLabel, this);

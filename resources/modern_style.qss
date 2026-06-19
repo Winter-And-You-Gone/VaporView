@@ -238,6 +238,8 @@ QDialog#rtkConfigDialog QLabel#sectionTitleLabel {
     background-color: transparent;
     border: none;
     color: @vv-text;
+    margin: 0px;
+    padding: 0px;
 }
 
 QWidget#sectionTitleBar {
@@ -271,9 +273,8 @@ QWidget#environmentSectionTitleBar QLabel {
 QWidget#environmentSectionTitleBar QLabel#sectionTitleLabel {
     background-color: transparent;
     border: none;
-    padding: 0px 10px;
-    min-height: 36px;
-    max-height: 36px;
+    margin: 0px;
+    padding: 0px;
 }
 
 /* 标签 */
@@ -288,6 +289,8 @@ QLabel#rateLabel {
     font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
     font-size: 13px;
     font-weight: bold;
+    margin: 0px;
+    padding: 0px;
 }
 
 QLabel#fieldLabel {
@@ -320,17 +323,15 @@ QLabel#sectionTitleLabel {
     color: @vv-text;
     font-size: 16px;
     font-weight: bold;
-    padding: 0px 10px;
-    min-height: 36px;
-    max-height: 36px;
+    margin: 0px;
+    padding: 0px;
 }
 
 QWidget#sectionTitleBar QLabel#sectionTitleLabel {
     background-color: transparent;
     border: none;
-    padding: 0px 10px;
-    min-height: 36px;
-    max-height: 36px;
+    margin: 0px;
+    padding: 0px;
 }
 
 QWidget#sectionTitleCluster {
@@ -347,7 +348,8 @@ QWidget#sectionTitleCluster QLabel#sectionTitleIcon {
 
 QWidget#sectionTitleBar QWidget#sectionTitleCluster QLabel#sectionTitleLabel,
 QWidget#environmentSectionTitleBar QWidget#sectionTitleCluster QLabel#sectionTitleLabel {
-    padding: 0px 10px 0px 0px;
+    margin: 0px;
+    padding: 0px;
 }
 
 QLabel#valueLabel {
