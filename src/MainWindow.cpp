@@ -5183,6 +5183,9 @@ void MainWindow::queueResponsiveHomeLayoutRefresh()
     QTimer::singleShot(0, this, [this]() {
         responsive_home_layout_refresh_pending_ = false;
         updateResponsiveHomeLayout();
+        QTimer::singleShot(0, this, [this]() {
+            updateResponsiveHomeLayout();
+        });
     });
 }
 
@@ -5198,6 +5201,7 @@ void MainWindow::applyStyleConfiguration()
     updateThemedIcons();
     updateCustomTitleBarStyle();
     updateResponsiveHomeLayout();
+    queueResponsiveHomeLayoutRefresh();
     QTimer::singleShot(0, this, [this]() {
         if (!log_side_panel_width_initialized_)
         {
