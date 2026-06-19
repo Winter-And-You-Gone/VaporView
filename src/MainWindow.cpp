@@ -2342,10 +2342,9 @@ public:
 
     void setCompactLayout(bool compact)
     {
-        const bool changed = compact_layout_ != compact;
         compact_layout_ = compact;
         setSizePolicy(compact ? QSizePolicy::Expanding : QSizePolicy::Maximum, QSizePolicy::Preferred);
-        updateCardGridLayout(changed);
+        updateCardGridLayout(true);
         QTimer::singleShot(0, this, [this]() {
             updateCardGridLayout(true);
         });
@@ -5071,6 +5070,13 @@ void MainWindow::updateResponsiveHomeLayout()
         }
         return std::max(widget->minimumSizeHint().height(), widget->sizeHint().height());
     };
+    auto layoutHeightFor = [](QLayout *layout) {
+        if (!layout)
+        {
+            return 0;
+        }
+        return std::max(layout->minimumSize().height(), layout->sizeHint().height());
+    };
 
     clearFixedHeight(epsilon_group_);
     clearFixedHeight(env_group_);
@@ -5082,8 +5088,8 @@ void MainWindow::updateResponsiveHomeLayout()
         sensor_layout_->activate();
     }
 
-    const int epsilonHeight = contentHeightFor(epsilon_group_);
-    const int envHeight = contentHeightFor(env_group_);
+    int epsilonHeight = contentHeightFor(epsilon_group_);
+    int envHeight = contentHeightFor(env_group_);
     int targetHeight = std::max(epsilonHeight, envHeight);
     if (compact && epsilonHeight > 0 && envHeight > 0)
     {
@@ -5096,11 +5102,11 @@ void MainWindow::updateResponsiveHomeLayout()
         {
             if (epsilon_group_)
             {
-                epsilon_group_->setMinimumHeight(epsilonHeight);
+                epsilon_group_->setFixedHeight(epsilonHeight);
             }
             if (env_group_)
             {
-                env_group_->setMinimumHeight(envHeight);
+                env_group_->setFixedHeight(envHeight);
             }
         }
         else
@@ -5114,17 +5120,35 @@ void MainWindow::updateResponsiveHomeLayout()
                 env_group_->setFixedHeight(targetHeight);
             }
         }
-        sensor_row_widget_->setMinimumHeight(targetHeight);
-        const int previousMinimum = data_group_->property(kMainCardMinimumHeightProperty).toInt();
+
+        if (sensor_layout_)
+        {
+            sensor_layout_->invalidate();
+            sensor_layout_->activate();
+        }
+
+        if (!compact)
+        {
+            targetHeight = std::max(targetHeight, layoutHeightFor(sensor_layout_));
+        }
+
+        sensor_row_widget_->setFixedHeight(targetHeight);
         bool hasUserHeight = false;
         const int userHeight = data_group_->property(kMainCardUserHeightProperty).toInt(&hasUserHeight);
-        const int desiredHeight = hasUserHeight ? std::max(targetHeight, userHeight) : targetHeight;
-        data_group_->setProperty(kMainCardMinimumHeightProperty, targetHeight);
-        data_group_->setMinimumHeight(targetHeight);
-        if (layoutChanged || previousMinimum != targetHeight || data_group_->height() != desiredHeight)
+        int dataTargetHeight = targetHeight;
+        if (!compact)
         {
-            data_group_->setFixedHeight(desiredHeight);
+            if (QLayout *dataLayout = data_group_->layout())
+            {
+                dataLayout->invalidate();
+                dataLayout->activate();
+                dataTargetHeight = std::max(dataTargetHeight, layoutHeightFor(dataLayout));
+            }
         }
+        const int desiredHeight = hasUserHeight ? std::max(dataTargetHeight, userHeight) : dataTargetHeight;
+        data_group_->setProperty(kMainCardMinimumHeightProperty, dataTargetHeight);
+        data_group_->setMinimumHeight(dataTargetHeight);
+        data_group_->setFixedHeight(desiredHeight);
     }
 
     if (log_side_panel_)
@@ -5191,6 +5215,46 @@ void MainWindow::queueResponsiveHomeLayoutRefresh()
 
 void MainWindow::applyStyleConfiguration()
 {
+    const bool restoreMainCardsScroll = main_cards_scroll_area_ && main_cards_scroll_area_->verticalScrollBar();
+    const int mainCardsScrollValue = restoreMainCardsScroll
+        ? main_cards_scroll_area_->verticalScrollBar()->value()
+        : 0;
+    const bool restoreTcpWaveAnchor = restoreMainCardsScroll && tcp_wave_group_ && main_cards_scroll_area_->viewport();
+    const int tcpWaveAnchorY = restoreTcpWaveAnchor
+        ? tcp_wave_group_->mapTo(main_cards_scroll_area_->viewport(), QPoint(0, 0)).y()
+        : 0;
+    auto restoreMainCardsScrollValue = [this, mainCardsScrollValue, restoreTcpWaveAnchor, tcpWaveAnchorY]() {
+        if (!main_cards_scroll_area_)
+        {
+            return;
+        }
+        QScrollBar *scrollBar = main_cards_scroll_area_->verticalScrollBar();
+        if (!scrollBar)
+        {
+            return;
+        }
+        int targetValue = mainCardsScrollValue;
+        if (restoreTcpWaveAnchor && tcp_wave_group_ && main_cards_scroll_area_->widget())
+        {
+            const int contentAnchorY = tcp_wave_group_->mapTo(main_cards_scroll_area_->widget(), QPoint(0, 0)).y();
+            targetValue = contentAnchorY - tcpWaveAnchorY;
+        }
+        scrollBar->setValue(std::clamp(targetValue, scrollBar->minimum(), scrollBar->maximum()));
+    };
+    const bool suppressIntermediateRepaints = restoreMainCardsScroll && isVisible() && updatesEnabled();
+    if (suppressIntermediateRepaints)
+    {
+        setUpdatesEnabled(false);
+    }
+    auto finishMainCardsStyleRefresh = [this, restoreMainCardsScrollValue, suppressIntermediateRepaints]() {
+        restoreMainCardsScrollValue();
+        if (suppressIntermediateRepaints && !updatesEnabled())
+        {
+            setUpdatesEnabled(true);
+            update();
+        }
+    };
+
     QFont appFont = qApp->font();
     appFont.setPointSizeF(base_font_point_size_ * font_scale_percent_ / 100.0);
     qApp->setPalette(appThemePalette(dark_theme_enabled_));
@@ -5202,6 +5266,27 @@ void MainWindow::applyStyleConfiguration()
     updateCustomTitleBarStyle();
     updateResponsiveHomeLayout();
     queueResponsiveHomeLayoutRefresh();
+    if (restoreMainCardsScroll)
+    {
+        restoreMainCardsScrollValue();
+        QTimer::singleShot(0, this, [this, restoreMainCardsScrollValue]() {
+            updateResponsiveHomeLayout();
+            restoreMainCardsScrollValue();
+            QTimer::singleShot(0, this, [this, restoreMainCardsScrollValue]() {
+                updateResponsiveHomeLayout();
+                restoreMainCardsScrollValue();
+            });
+        });
+        QTimer::singleShot(60, this, [this, restoreMainCardsScrollValue]() {
+            updateResponsiveHomeLayout();
+            restoreMainCardsScrollValue();
+        });
+        QTimer::singleShot(120, this, finishMainCardsStyleRefresh);
+    }
+    else if (suppressIntermediateRepaints)
+    {
+        setUpdatesEnabled(true);
+    }
     QTimer::singleShot(0, this, [this]() {
         if (!log_side_panel_width_initialized_)
         {
@@ -7981,7 +8066,6 @@ void MainWindow::setupDataPanels()
     sensor_layout_->addWidget(env_group, 1);
 
     data_layout->addWidget(sensor_row_widget_, 0);
-    data_layout->addStretch(1);
     const int dataCardMinHeight = data_group_->minimumSizeHint().height();
     data_group_->setMinimumHeight(dataCardMinHeight);
     data_group_->setFixedHeight(dataCardMinHeight);
