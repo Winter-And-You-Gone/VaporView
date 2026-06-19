@@ -1520,7 +1520,7 @@ void TcpWavePanel::setupUi()
     port_edit_->setText(QStringLiteral("8888"));
     port_edit_->setValidator(new QIntValidator(1, 65535, port_edit_));
     port_edit_->setFixedHeight(kTcpControlHeight);
-    port_edit_->setFixedWidth(port_edit_->fontMetrics().horizontalAdvance(QStringLiteral("65535")) + 24);
+    port_edit_->setFixedWidth(port_edit_->fontMetrics().horizontalAdvance(QStringLiteral("65535")) + 40);
     portRowLayout->addWidget(port_edit_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     top_controls_layout_->addLayout(portRowLayout, 0);
     top_controls_layout_->addSpacing(kTcpTitleBarFieldSpacing);
