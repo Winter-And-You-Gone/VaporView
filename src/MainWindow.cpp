@@ -3917,6 +3917,7 @@ MainWindow::MainWindow(QWidget *parent)
     , sensor_layout_(nullptr)
     , log_side_panel_(nullptr)
     , log_group_(nullptr)
+    , tcp_wave_group_(nullptr)
     , epsilon_group_(nullptr)
     , gnss_group_(nullptr)
     , imu_group_(nullptr)
@@ -4734,7 +4735,6 @@ void MainWindow::loadModernStyleSheet()
             "QToolTip { background-color: rgb(45, 45, 45); color: #FFFFFF; border: 1px solid #474747; border-radius: 13px; padding: 8px 16px; font-size: 16px; }";
     }
 
-    applyStyleConfiguration();
 }
 
 QString MainWindow::themedStyleSheet() const
@@ -8530,7 +8530,7 @@ void MainWindow::showAboutDialog()
     const QString text = is_english_
         ? QStringLiteral(
               "VaporView Application\n\n"
-              "Version 1.0.0\n\n"
+              "Version 1.0.1\n\n"
               "Integrated navigation and environment monitoring system.\n\n"
               "Supported devices:\n"
               "- EPSILON Integrated Navigation (FDILink)\n"
@@ -8539,7 +8539,7 @@ void MainWindow::showAboutDialog()
               "- TFA1500-L Laser Rangefinder")
         : QStringLiteral(
               "VaporView 应用程序\n\n"
-              "版本 1.0.0\n\n"
+              "版本 1.0.1\n\n"
               "组合导航与环境监控系统。\n\n"
               "支持的设备:\n"
               "- EPSILON 组合导航一体机 (FDILink)\n"

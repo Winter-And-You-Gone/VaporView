@@ -107,7 +107,7 @@ int main(int argc, char *argv[])
 #endif
 
     app.setApplicationName("VaporViewSkyCore");
-    app.setApplicationVersion("1.0.0");
+    app.setApplicationVersion("1.0.1");
     app.setOrganizationName("VaporView");
     registerTelemetryMetaTypes();
 

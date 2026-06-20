@@ -161,7 +161,7 @@ H300 网桥使用说明：
 
 ## 当前功能
 
-- Qt Widgets 图形界面，应用名和窗口标题为 `VaporView`，应用版本为 `1.0.0`。
+- Qt Widgets 图形界面，应用名和窗口标题为 `VaporView`，应用版本为 `1.0.1`。
 - 中英文界面切换、F11 全屏、70% / 80% / 90% / 100% / 115% / 130% 字号缩放。
 - 串口刷新与自动识别，当前自动识别覆盖 EPSILON、PTB210、HMP3 和 TFA1500-L。
 - EPSILON `FDILink` 组合导航数据解析、包频率配置、RTCM 串口配置、主天线杆臂配置。
@@ -345,7 +345,7 @@ Linux:   build/Release/VaporViewSky
 
 ### 入口与主窗口
 
-- `src/main.cpp` 创建 `QApplication`，设置应用名 `VaporView`、版本 `1.0.0` 和组织名 `VaporView`。
+- `src/main.cpp` 创建 `QApplication`，设置应用名 `VaporView`、版本 `1.0.1` 和组织名 `VaporView`。
 - `src/MainWindow.cpp` 负责菜单栏、工具栏、状态栏、设备配置区、实时数据区、TCP 波形区、日志区、记录会话和全局设置。
 - `resources/modern_style.qss`、`resources/combo_arrow_down.xpm`、`resources/combo_arrow_up.xpm`、`resources/lucide/` 和 `resources/VaproViewLOGO/` 会在构建后复制到构建目录下的 `resources/`。
 
