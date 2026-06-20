@@ -1,6 +1,7 @@
 #include "AppTheme.h"
 #include "RtkConfigDialog.h"
 #include "CustomTitleBar.h"
+#include "VisualTextLabel.h"
 #include "WindowSizing.h"
 #include <QApplication>
 #include <QVBoxLayout>
@@ -821,7 +822,7 @@ QVBoxLayout *RtkConfigDialog::createCardLayout(QGroupBox *group, QLabel *&titleL
     titleLayout->setContentsMargins(10, 2, 10, 2);
     titleLayout->setSpacing(0);
 
-    titleLabel = new QLabel(titleBar);
+    titleLabel = new VaporView::VisualTextLabel(titleBar);
     titleLabel->setObjectName(QStringLiteral("sectionTitleLabel"));
     titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     titleLabel->setMargin(0);
@@ -1026,7 +1027,8 @@ void RtkConfigDialog::setupUi()
     gga_header_layout_->addWidget(gga_toggle_btn_);
     gga_header_layout_->addStretch();
 
-    gga_frequency_label_ = createFieldLabel();
+    gga_frequency_label_ = new VaporView::VisualTextLabel(this);
+    gga_frequency_label_->setObjectName(QStringLiteral("fieldLabel"));
     gga_frequency_label_->setFont(numericFontFrom(gga_frequency_label_->font()));
     const QFontMetrics ggaFrequencyMetrics(gga_frequency_label_->font());
     gga_frequency_label_->setFixedWidth(

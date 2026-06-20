@@ -6,6 +6,7 @@
 #include "SkyDeviceConfigDialog.h"
 #include "TcpWaveEncoding.h"
 #include "TcpWavePanel.h"
+#include "VisualTextLabel.h"
 #include "WindowSizing.h"
 #include "data_collector.h"
 #include "data_types.h"
@@ -993,7 +994,7 @@ QLabel *createSectionTitleCluster(QWidget *parent,
     updateSectionTitleIcon(iconLabel, VaporView::isDarkThemeEnabled());
     layout->addWidget(iconLabel, 0, Qt::AlignVCenter);
 
-    auto *titleLabel = new QLabel(cluster);
+    auto *titleLabel = new VaporView::VisualTextLabel(cluster);
     titleLabel->setObjectName(QStringLiteral("sectionTitleLabel"));
     titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     titleLabel->setMargin(0);
@@ -2890,7 +2891,7 @@ private:
 
         if (!rate_label_)
         {
-            rate_label_ = new QLabel(this);
+            rate_label_ = new VaporView::VisualTextLabel(this);
             rate_label_->setObjectName(QStringLiteral("rateLabel"));
             rate_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
             layout->addWidget(rate_label_);
@@ -3037,7 +3038,7 @@ void GnssPanel::setupUi()
     mainLayout->setSpacing(4);
     mainLayout->setContentsMargins(6, 2, 6, 6);
 
-    rate_label_ = new QLabel(this);
+    rate_label_ = new VaporView::VisualTextLabel(this);
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     setFixedNumericLabelWidth(rate_label_, {QStringLiteral("-999.9 Hz"), QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 4);
@@ -3297,7 +3298,7 @@ void ImuPanel::setupUi()
     mainLayout->setSpacing(4);
     mainLayout->setContentsMargins(6, 2, 6, 6);
 
-    rate_label_ = new QLabel(this);
+    rate_label_ = new VaporView::VisualTextLabel(this);
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     rate_label_->setFixedHeight(24);
@@ -3541,7 +3542,7 @@ void PtbPanel::setupUi()
     layout->setSpacing(2);
     layout->setContentsMargins(6, 1, 6, 4);
 
-    rate_label_ = new QLabel(this);
+    rate_label_ = new VaporView::VisualTextLabel(this);
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     rate_label_->setMinimumHeight(20);
@@ -3626,7 +3627,7 @@ void HmpPanel::setupUi()
     layout->setSpacing(2);
     layout->setContentsMargins(6, 1, 6, 4);
 
-    rate_label_ = new QLabel(this);
+    rate_label_ = new VaporView::VisualTextLabel(this);
     rate_label_->setObjectName("rateLabel");
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     rate_label_->setMinimumHeight(20);
@@ -3735,7 +3736,7 @@ void LidarPanel::setupUi()
     layout->setSpacing(2);
     layout->setContentsMargins(6, 1, 6, 4);
 
-    rate_label_ = new QLabel("0.0 Hz", this);
+    rate_label_ = new VaporView::VisualTextLabel(QStringLiteral("0.0 Hz"), this);
     rate_label_->setObjectName("rateLabel");
     rate_label_->setMinimumHeight(20);
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
@@ -7912,7 +7913,7 @@ void MainWindow::setupDataPanels()
                                                           &epsilonTitleCluster);
     epsilonTitleLayout->addWidget(epsilonTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
-    auto *epsilonRateTitleLabel = new QLabel(epsilonTitleBar);
+    auto *epsilonRateTitleLabel = new VaporView::VisualTextLabel(epsilonTitleBar);
     epsilonRateTitleLabel->setObjectName(QStringLiteral("rateLabel"));
     epsilonRateTitleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     epsilonRateTitleLabel->setMargin(0);

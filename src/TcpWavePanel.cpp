@@ -1,6 +1,7 @@
 #include "CustomTitleBar.h"
 #include "AppTheme.h"
 #include "TcpWavePanel.h"
+#include "VisualTextLabel.h"
 #include <QAbstractSocket>
 #include <QApplication>
 #include <QByteArray>
@@ -521,11 +522,11 @@ private:
     bool checked_ = false;
 };
 
-class WaveDisplayTitleLabel final : public QLabel
+class WaveDisplayTitleLabel final : public VaporView::VisualTextLabel
 {
 public:
     explicit WaveDisplayTitleLabel(QWidget *parent = nullptr)
-        : QLabel(parent)
+        : VaporView::VisualTextLabel(parent)
         , menu_(new QMenu(this))
     {
         setFocusPolicy(Qt::NoFocus);
@@ -635,7 +636,7 @@ protected:
     void paintEvent(QPaintEvent *event) override
     {
         refreshTooltipAnchor();
-        QLabel::paintEvent(event);
+        VaporView::VisualTextLabel::paintEvent(event);
         QPainter painter(this);
         const QRect icon_area = iconRect();
         if (icon_hovered_)
@@ -774,47 +775,6 @@ private:
             }
         });
         return row;
-    }
-};
-
-class CenteredPlainTextLabel : public QLabel
-{
-public:
-    explicit CenteredPlainTextLabel(QWidget *parent = nullptr)
-        : QLabel(parent)
-    {
-    }
-
-protected:
-    void paintEvent(QPaintEvent *event) override
-    {
-        if (textFormat() != Qt::PlainText || wordWrap())
-        {
-            QLabel::paintEvent(event);
-            return;
-        }
-
-        Q_UNUSED(event);
-        const QString value = text();
-        if (value.isEmpty())
-        {
-            return;
-        }
-
-        QPainter painter(this);
-        painter.setFont(font());
-        const QPalette::ColorRole role = foregroundRole() == QPalette::NoRole
-            ? QPalette::WindowText
-            : foregroundRole();
-        const QPalette::ColorGroup group = isEnabled() ? QPalette::Active : QPalette::Disabled;
-        painter.setPen(palette().color(group, role));
-
-        const QRect area = contentsRect();
-        painter.setClipRect(area);
-        const QFontMetrics metrics(font());
-        const QRect textBounds = metrics.tightBoundingRect(value);
-        const int baseline = area.top() + (area.height() - textBounds.height()) / 2 - textBounds.top();
-        painter.drawText(area.left(), baseline, value);
     }
 };
 
@@ -1483,7 +1443,7 @@ void TcpWavePanel::setupUi()
                                     Qt::AlignVCenter | Qt::AlignLeft);
     top_controls_layout_->addSpacing(kTcpTitleBarPrimarySpacing);
 
-    frame_rate_label_ = new QLabel(this);
+    frame_rate_label_ = new VaporView::VisualTextLabel(this);
     frame_rate_label_->setObjectName("fieldLabel");
     frame_rate_label_->setFont(numericFontFrom(frame_rate_label_->font()));
     const int frameRateWidth = std::max(
@@ -1499,7 +1459,7 @@ void TcpWavePanel::setupUi()
     auto *hostRowLayout = new QHBoxLayout();
     hostRowLayout->setContentsMargins(0, 0, 0, 0);
     hostRowLayout->setSpacing(4);
-    host_label_ = new QLabel(this);
+    host_label_ = new VaporView::VisualTextLabel(this);
     host_label_->setObjectName("fieldLabel");
     hostRowLayout->addWidget(host_label_, 0, Qt::AlignVCenter | Qt::AlignRight);
 
@@ -1515,7 +1475,7 @@ void TcpWavePanel::setupUi()
     auto *portRowLayout = new QHBoxLayout();
     portRowLayout->setContentsMargins(0, 0, 0, 0);
     portRowLayout->setSpacing(4);
-    port_label_ = new QLabel(this);
+    port_label_ = new VaporView::VisualTextLabel(this);
     port_label_->setObjectName("fieldLabel");
     portRowLayout->addWidget(port_label_, 0, Qt::AlignVCenter | Qt::AlignRight);
 
@@ -1535,7 +1495,7 @@ void TcpWavePanel::setupUi()
     connect(connect_button_, &QPushButton::clicked, this, &TcpWavePanel::onToggleConnectionClicked);
     top_controls_layout_->addWidget(connect_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
-    status_label_ = new CenteredPlainTextLabel(this);
+    status_label_ = new VaporView::VisualTextLabel(this);
     status_label_->setObjectName("fieldLabel");
     status_label_->setFont(numericFontFrom(status_label_->font()));
     status_label_->setStyleSheet(QStringLiteral(
@@ -1572,7 +1532,7 @@ void TcpWavePanel::setupUi()
     auto *wave1HeaderLayout = new QHBoxLayout(wave1HeaderBar);
     wave1HeaderLayout->setContentsMargins(8, 2, 8, 2);
     wave1HeaderLayout->setSpacing(8);
-    wave1_title_label_ = new QLabel(this);
+    wave1_title_label_ = new VaporView::VisualTextLabel(this);
     wave1_title_label_->setObjectName("sectionTitleLabel");
     wave1_title_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     wave1_title_label_->setMargin(0);
@@ -1602,7 +1562,7 @@ void TcpWavePanel::setupUi()
     auto *wave4HeaderLayout = new QHBoxLayout(wave4HeaderBar);
     wave4HeaderLayout->setContentsMargins(8, 2, 8, 2);
     wave4HeaderLayout->setSpacing(8);
-    wave4_title_label_ = new QLabel(this);
+    wave4_title_label_ = new VaporView::VisualTextLabel(this);
     wave4_title_label_->setObjectName("sectionTitleLabel");
     wave4_title_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     wave4_title_label_->setMargin(0);
@@ -1636,7 +1596,7 @@ void TcpWavePanel::setupUi()
     auto *peakHeaderLayout = new QHBoxLayout(peakHeaderBar);
     peakHeaderLayout->setContentsMargins(8, 2, 8, 2);
     peakHeaderLayout->setSpacing(6);
-    peak_title_label_ = new QLabel(this);
+    peak_title_label_ = new VaporView::VisualTextLabel(this);
     peak_title_label_->setObjectName("sectionTitleLabel");
     peak_title_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     peak_title_label_->setMargin(0);

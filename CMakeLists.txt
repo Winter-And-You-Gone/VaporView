@@ -252,6 +252,7 @@ set(NAV_HEADERS
     include/RtkConfigDialog.h
     include/RtkStreamService.h
     include/CustomTitleBar.h
+    include/VisualTextLabel.h
     include/WindowSizing.h
 )
 
@@ -515,6 +516,15 @@ if(BUILD_TESTING)
     )
     target_link_libraries(sky_local_ipc_client_test PRIVATE vaporview_sky_tui)
     add_test(NAME sky_local_ipc_client_test COMMAND sky_local_ipc_client_test)
+
+    add_executable(visual_text_label_test
+        tests/visual_text_label_test.cpp
+    )
+    target_include_directories(visual_text_label_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+    )
+    target_link_libraries(visual_text_label_test PRIVATE Qt6::Widgets)
+    add_test(NAME visual_text_label_test COMMAND visual_text_label_test)
 endif()
 
 if(WIN32 AND QT_WINDEPLOYQT_EXECUTABLE)
