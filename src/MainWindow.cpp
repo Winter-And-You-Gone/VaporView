@@ -13970,7 +13970,10 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     layout->addWidget(buttonBox);
 
     VaporView::installCustomTitleBar(&dialog, false);
-    layout->invalidate();
+    if (QLayout *dialogLayout = dialog.layout())
+    {
+        dialogLayout->invalidate();
+    }
     const QSize targetMinimumSize(is_english_ ? QSize(700, 360) : QSize(720, 360));
     const QSize preferredSize = dialog.sizeHint().expandedTo(targetMinimumSize);
     const QSize targetSize = VaporView::defaultWindowSizeWithinScreenFraction(
