@@ -13825,6 +13825,7 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     dialog.setWindowTitle(is_english_ ? "EPSILON Packet Rates" : "EPSILON 包频率设置");
 
     auto *layout = new QVBoxLayout(&dialog);
+    layout->setSpacing(12);
 
     auto *hintLabel = new QLabel(
         is_english_
@@ -13832,6 +13833,7 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
             : QStringLiteral("配置范围来自本地 EPSILON 官方地面站配置。推荐默认配置优先保证稳定的时间与三维导航输出。每一行都显示该数据包支持的最大频率。只要任一数据包偏离分组模式，保存时就会自动启用自定义配置。"),
         &dialog);
     hintLabel->setWordWrap(true);
+    hintLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
     layout->addWidget(hintLabel);
 
     auto *enableCustomCheck = new QCheckBox(
@@ -13842,11 +13844,20 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     enableCustomCheck->setChecked(customEnabled);
     layout->addWidget(enableCustomCheck);
 
-    auto *formLayout = new QFormLayout();
+    auto *formScroll = new QScrollArea(&dialog);
+    formScroll->setWidgetResizable(true);
+    formScroll->setFrameShape(QFrame::NoFrame);
+    formScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    formScroll->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    auto *formWidget = new QWidget(formScroll);
+    auto *formLayout = new QFormLayout(formWidget);
     formLayout->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     formLayout->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
     formLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-    layout->addLayout(formLayout);
+    formLayout->setRowWrapPolicy(QFormLayout::DontWrapRows);
+    formLayout->setContentsMargins(0, 0, 0, 0);
+    formScroll->setWidget(formWidget);
+    layout->addWidget(formScroll, 1);
 
     std::map<uint8_t, QComboBox*> packetCombos;
     for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
@@ -13916,6 +13927,14 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     layout->addWidget(buttonBox);
 
     VaporView::installCustomTitleBar(&dialog, false);
+    const QSize targetSize = VaporView::defaultWindowSizeWithinScreenFraction(
+        this,
+        is_english_ ? QSize(760, 560) : QSize(820, 560),
+        0.85,
+        QSize(700, 500));
+    dialog.setMinimumSize(targetSize);
+    dialog.resize(targetSize);
+    VaporView::centerWindowOnScreen(&dialog, this);
     if (dialog.exec() != QDialog::Accepted)
     {
         return;
