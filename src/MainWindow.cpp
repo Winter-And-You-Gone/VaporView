@@ -13850,26 +13850,57 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     formScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     formScroll->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     auto *formWidget = new QWidget(formScroll);
-    auto *formLayout = new QFormLayout(formWidget);
-    formLayout->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    formLayout->setFormAlignment(Qt::AlignLeft | Qt::AlignTop);
-    formLayout->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
-    formLayout->setRowWrapPolicy(QFormLayout::DontWrapRows);
+    auto *formLayout = new QGridLayout(formWidget);
     formLayout->setContentsMargins(0, 0, 0, 0);
+    formLayout->setHorizontalSpacing(24);
+    formLayout->setVerticalSpacing(12);
+    formLayout->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     formScroll->setWidget(formWidget);
     layout->addWidget(formScroll, 1);
 
+    auto packetRateText = [this](int rateHz) {
+        return rateHz == 0
+            ? (is_english_ ? QStringLiteral("No Output (0 Hz)") : QStringLiteral("不输出 (0 Hz)"))
+            : QStringLiteral("%1 Hz").arg(rateHz);
+    };
+    int packetRateComboWidth = 0;
+    {
+        QComboBox comboProbe(&dialog);
+        const QFontMetrics comboMetrics(comboProbe.font());
+        for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
+        {
+            for (int rateHz : option.supported_rates_hz)
+            {
+                packetRateComboWidth = std::max(packetRateComboWidth,
+                                               comboMetrics.horizontalAdvance(packetRateText(rateHz)));
+            }
+        }
+    }
+    packetRateComboWidth = std::max(128, packetRateComboWidth + 64);
+
+    constexpr int kPacketRateDialogColumnCount = 3;
     std::map<uint8_t, QComboBox*> packetCombos;
+    int packetIndex = 0;
     for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
     {
-        auto *combo = new QComboBox(&dialog);
+        auto *cell = new QWidget(formWidget);
+        cell->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        auto *cellLayout = new QVBoxLayout(cell);
+        cellLayout->setContentsMargins(0, 0, 0, 0);
+        cellLayout->setSpacing(6);
+
+        auto *label = new QLabel(epsilonPacketDialogRowLabel(option, is_english_), cell);
+        label->setWordWrap(true);
+        label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
+        cellLayout->addWidget(label);
+
+        auto *combo = new QComboBox(cell);
         combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+        combo->setFixedWidth(packetRateComboWidth);
+        combo->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         for (int rateHz : option.supported_rates_hz)
         {
-            combo->addItem(rateHz == 0
-                               ? (is_english_ ? QStringLiteral("No Output (0 Hz)") : QStringLiteral("不输出 (0 Hz)"))
-                               : QStringLiteral("%1 Hz").arg(rateHz),
-                           rateHz);
+            combo->addItem(packetRateText(rateHz), rateHz);
         }
         const int initialRateHz = initialRates.count(option.packet_id) ? initialRates.at(option.packet_id) : groupedRates.at(option.packet_id);
         const int comboIndex = combo->findData(initialRateHz);
@@ -13878,7 +13909,12 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
             combo->setCurrentIndex(comboIndex);
         }
         packetCombos[option.packet_id] = combo;
-        formLayout->addRow(epsilonPacketDialogRowLabel(option, is_english_), combo);
+        cellLayout->addWidget(combo, 0, Qt::AlignLeft);
+        const int row = packetIndex / kPacketRateDialogColumnCount;
+        const int column = packetIndex % kPacketRateDialogColumnCount;
+        formLayout->addWidget(cell, row, column, Qt::AlignTop);
+        formLayout->setColumnStretch(column, 1);
+        ++packetIndex;
     }
 
     auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
@@ -13929,9 +13965,9 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     VaporView::installCustomTitleBar(&dialog, false);
     const QSize targetSize = VaporView::defaultWindowSizeWithinScreenFraction(
         this,
-        is_english_ ? QSize(760, 560) : QSize(820, 560),
+        is_english_ ? QSize(900, 520) : QSize(820, 520),
         0.85,
-        QSize(700, 500));
+        QSize(760, 500));
     dialog.setMinimumSize(targetSize);
     dialog.resize(targetSize);
     VaporView::centerWindowOnScreen(&dialog, this);
