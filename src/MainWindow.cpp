@@ -13821,11 +13821,19 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
         : groupedRates;
 
     QDialog dialog(this);
+    dialog.setObjectName(QStringLiteral("epsilonPacketRatesDialog"));
     dialog.setModal(true);
     dialog.setWindowTitle(is_english_ ? "EPSILON Packet Rates" : "EPSILON 包频率设置");
+    dialog.setStyleSheet(applyAppThemeTokens(QStringLiteral(
+        "QDialog#epsilonPacketRatesDialog,"
+        "QDialog#epsilonPacketRatesDialog QWidget#epsilonPacketRatesContent,"
+        "QDialog#epsilonPacketRatesDialog QWidget#epsilonPacketRatesCell { background-color: @vv-surface; }"
+        "QDialog#epsilonPacketRatesDialog QLabel,"
+        "QDialog#epsilonPacketRatesDialog QCheckBox { background-color: transparent; }"),
+        dark_theme_enabled_));
 
     auto *layout = new QVBoxLayout(&dialog);
-    layout->setSpacing(12);
+    layout->setSpacing(10);
 
     auto *hintLabel = new QLabel(
         is_english_
@@ -13844,19 +13852,15 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     enableCustomCheck->setChecked(customEnabled);
     layout->addWidget(enableCustomCheck);
 
-    auto *formScroll = new QScrollArea(&dialog);
-    formScroll->setWidgetResizable(true);
-    formScroll->setFrameShape(QFrame::NoFrame);
-    formScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    formScroll->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    auto *formWidget = new QWidget(formScroll);
+    auto *formWidget = new QWidget(&dialog);
+    formWidget->setObjectName(QStringLiteral("epsilonPacketRatesContent"));
+    formWidget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     auto *formLayout = new QGridLayout(formWidget);
     formLayout->setContentsMargins(0, 0, 0, 0);
-    formLayout->setHorizontalSpacing(24);
-    formLayout->setVerticalSpacing(12);
+    formLayout->setHorizontalSpacing(16);
+    formLayout->setVerticalSpacing(10);
     formLayout->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-    formScroll->setWidget(formWidget);
-    layout->addWidget(formScroll, 1);
+    layout->addWidget(formWidget, 0, Qt::AlignLeft);
 
     auto packetRateText = [this](int rateHz) {
         return rateHz == 0
@@ -13877,20 +13881,24 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
         }
     }
     packetRateComboWidth = std::max(128, packetRateComboWidth + 64);
+    const QFontMetrics rowLabelMetrics(hintLabel->font());
 
     constexpr int kPacketRateDialogColumnCount = 3;
     std::map<uint8_t, QComboBox*> packetCombos;
     int packetIndex = 0;
     for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
     {
+        const QString rowLabelText = epsilonPacketDialogRowLabel(option, is_english_);
+        const int cellWidth = std::max(packetRateComboWidth, rowLabelMetrics.horizontalAdvance(rowLabelText) + 8);
         auto *cell = new QWidget(formWidget);
-        cell->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        cell->setObjectName(QStringLiteral("epsilonPacketRatesCell"));
+        cell->setFixedWidth(cellWidth);
         auto *cellLayout = new QVBoxLayout(cell);
         cellLayout->setContentsMargins(0, 0, 0, 0);
-        cellLayout->setSpacing(6);
+        cellLayout->setSpacing(4);
 
-        auto *label = new QLabel(epsilonPacketDialogRowLabel(option, is_english_), cell);
-        label->setWordWrap(true);
+        auto *label = new QLabel(rowLabelText, cell);
+        label->setWordWrap(false);
         label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
         cellLayout->addWidget(label);
 
@@ -13913,7 +13921,6 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
         const int row = packetIndex / kPacketRateDialogColumnCount;
         const int column = packetIndex % kPacketRateDialogColumnCount;
         formLayout->addWidget(cell, row, column, Qt::AlignTop);
-        formLayout->setColumnStretch(column, 1);
         ++packetIndex;
     }
 
@@ -13963,11 +13970,14 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
     layout->addWidget(buttonBox);
 
     VaporView::installCustomTitleBar(&dialog, false);
+    layout->invalidate();
+    const QSize targetMinimumSize(is_english_ ? QSize(700, 360) : QSize(720, 360));
+    const QSize preferredSize = dialog.sizeHint().expandedTo(targetMinimumSize);
     const QSize targetSize = VaporView::defaultWindowSizeWithinScreenFraction(
         this,
-        is_english_ ? QSize(900, 520) : QSize(820, 520),
+        preferredSize,
         0.85,
-        QSize(760, 500));
+        targetMinimumSize);
     dialog.setMinimumSize(targetSize);
     dialog.resize(targetSize);
     VaporView::centerWindowOnScreen(&dialog, this);
