@@ -525,6 +525,12 @@ if(BUILD_TESTING)
     )
     target_link_libraries(visual_text_label_test PRIVATE Qt6::Widgets)
     add_test(NAME visual_text_label_test COMMAND visual_text_label_test)
+
+    add_executable(vaporview_startup_test
+        tests/vaporview_startup_test.cpp
+    )
+    target_link_libraries(vaporview_startup_test PRIVATE Qt6::Core)
+    add_test(NAME vaporview_startup_test COMMAND vaporview_startup_test)
 endif()
 
 if(WIN32 AND QT_WINDEPLOYQT_EXECUTABLE)
