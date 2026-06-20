@@ -1257,7 +1257,7 @@ QLabel#titleApplicationMenuCheck:disabled {
     color: @vv-menu-disabled;
 }
 QWidget#titleApplicationSubPage {
-    background-color: @vv-surface;
+    background-color: transparent;
     border: none;
 }
 QWidget#titleApplicationSubPageContent,
@@ -1265,7 +1265,7 @@ QStackedWidget#titleApplicationSubStack,
 QScrollArea#titleApplicationSubScroll,
 QScrollArea#titleApplicationSubScroll > QWidget,
 QScrollArea#titleApplicationSubScroll > QWidget > QWidget {
-    background-color: @vv-surface;
+    background-color: transparent;
     border: none;
 }
 )").arg(cornerRadius), true);
@@ -1317,7 +1317,7 @@ QLabel#titleApplicationMenuCheck:disabled {
     color: @vv-menu-disabled;
 }
 QWidget#titleApplicationSubPage {
-    background-color: @vv-surface;
+    background-color: transparent;
     border: none;
 }
 QWidget#titleApplicationSubPageContent,
@@ -1325,7 +1325,7 @@ QStackedWidget#titleApplicationSubStack,
 QScrollArea#titleApplicationSubScroll,
 QScrollArea#titleApplicationSubScroll > QWidget,
 QScrollArea#titleApplicationSubScroll > QWidget > QWidget {
-    background-color: @vv-surface;
+    background-color: transparent;
     border: none;
 }
 )").arg(cornerRadius), false);
@@ -7037,7 +7037,7 @@ void MainWindow::createTitleApplicationMenuPanel()
     subLayout->setSpacing(0);
     auto *stack = new QStackedWidget(subMenu);
     stack->setObjectName(QStringLiteral("titleApplicationSubStack"));
-    stack->setAttribute(Qt::WA_StyledBackground, true);
+    stack->setAttribute(Qt::WA_StyledBackground, false);
     subLayout->addWidget(stack);
 
     auto *nestedLayout = new QVBoxLayout(nestedMenu);
@@ -7217,7 +7217,7 @@ void MainWindow::createTitleApplicationMenuPanel()
     {
         QWidget *page = new QWidget(stack);
         page->setObjectName(QStringLiteral("titleApplicationSubPage"));
-        page->setAttribute(Qt::WA_StyledBackground, true);
+        page->setAttribute(Qt::WA_StyledBackground, false);
         page->setFixedSize(subMenuWidths.value(sectionIndex, subMenuMinWidth),
                            commandRowsHeight(sections[sectionIndex].commands));
         auto *pageLayout = new QVBoxLayout(page);
@@ -7225,7 +7225,7 @@ void MainWindow::createTitleApplicationMenuPanel()
         pageLayout->setSpacing(0);
         auto *pageContent = new QWidget(page);
         pageContent->setObjectName(QStringLiteral("titleApplicationSubPageContent"));
-        pageContent->setAttribute(Qt::WA_StyledBackground, true);
+        pageContent->setAttribute(Qt::WA_StyledBackground, false);
         auto *contentLayout = new QVBoxLayout(pageContent);
         contentLayout->setContentsMargins(0, menuVerticalPadding, 0, menuVerticalPadding);
         contentLayout->setSpacing(0);
