@@ -3991,11 +3991,26 @@ protected:
             ? QStringLiteral("Measured Temp CH%1").arg(channel_index_ + 1)
             : QStringLiteral("实际温度曲线 通道%1").arg(channel_index_ + 1);
         painter.setPen(text);
-        painter.drawText(QRectF(8, 2, width() - 16, fm.height() + 4), Qt::AlignLeft | Qt::AlignVCenter, title);
-
-        const int leftMargin = std::max(44, fm.horizontalAdvance(QStringLiteral("-000.0")) + 8);
-        const int topMargin = fm.height() + 12;
+        int leftMargin = std::max(44, fm.horizontalAdvance(QStringLiteral("-000.0")) + 8);
+        int topMargin = fm.height() + 12;
         const int bottomMargin = fm.height() + 8;
+        if (compact_mode_)
+        {
+            const int titleColumnWidth = fm.height() + 8;
+            painter.save();
+            painter.translate(4, height() - bottomMargin);
+            painter.rotate(-90);
+            painter.drawText(QRectF(0, 0, height() - bottomMargin - 6, titleColumnWidth),
+                             Qt::AlignCenter,
+                             title);
+            painter.restore();
+            leftMargin += titleColumnWidth + 4;
+            topMargin = 6;
+        }
+        else
+        {
+            painter.drawText(QRectF(8, 2, width() - 16, fm.height() + 4), Qt::AlignLeft | Qt::AlignVCenter, title);
+        }
         const QRectF plotRect = rect().adjusted(leftMargin, topMargin, -8, -bottomMargin);
         auto drawGrid = [&]() {
             painter.setPen(QPen(grid, 1));
@@ -4085,9 +4100,9 @@ private:
     {
         if (compact_mode_)
         {
-            setMinimumSize(200, 126);
-            setMaximumHeight(150);
-            setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+            setMinimumSize(160, 104);
+            setMaximumHeight(QWIDGETSIZE_MAX);
+            setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
             return;
         }
 
@@ -4111,15 +4126,19 @@ public:
         setObjectName(QStringLiteral("temperatureOverviewPanel"));
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
+        constexpr int kOverviewControlWidth = 78;
+        constexpr int kOverviewValueWidth = 94;
+        constexpr int kOverviewEmergencyWidth = 132;
+
         auto *layout = new QHBoxLayout(this);
         layout->setContentsMargins(8, 6, 8, 8);
-        layout->setSpacing(10);
+        layout->setSpacing(8);
 
         auto *summary = new QWidget(this);
         summary->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
         auto *summaryLayout = new QGridLayout(summary);
         summaryLayout->setContentsMargins(0, 0, 0, 0);
-        summaryLayout->setHorizontalSpacing(12);
+        summaryLayout->setHorizontalSpacing(8);
         summaryLayout->setVerticalSpacing(6);
 
         auto addMetricCell = [summary, summaryLayout](int row, int column, QLabel *&title, QLabel *&value) {
@@ -4134,8 +4153,8 @@ public:
             value->setObjectName(QStringLiteral("highlightedValue"));
             value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
             value->setMinimumHeight(kMainPageButtonHeight);
-            value->setMinimumWidth(130);
-            value->setMaximumWidth(130);
+            value->setMinimumWidth(kOverviewValueWidth);
+            value->setMaximumWidth(kOverviewValueWidth);
             cellLayout->addWidget(title, 0, Qt::AlignLeft);
             cellLayout->addWidget(value, 0, Qt::AlignLeft);
             summaryLayout->addWidget(cell, row, column, Qt::AlignLeft | Qt::AlignTop);
@@ -4156,7 +4175,7 @@ public:
 
         channel_combo_ = new QComboBox(this);
         channel_combo_->setFixedHeight(kMainPageButtonHeight);
-        channel_combo_->setFixedWidth(130);
+        channel_combo_->setFixedWidth(kOverviewControlWidth);
         channel_combo_->addItem(QStringLiteral("通道1"), 0);
         channel_combo_->addItem(QStringLiteral("通道2"), 1);
         connect(channel_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
@@ -4168,7 +4187,7 @@ public:
 
         output_switch_combo_ = new QComboBox(this);
         output_switch_combo_->setFixedHeight(kMainPageButtonHeight);
-        output_switch_combo_->setFixedWidth(130);
+        output_switch_combo_->setFixedWidth(kOverviewControlWidth);
         output_switch_combo_->addItem(QStringLiteral("关闭"), false);
         output_switch_combo_->addItem(QStringLiteral("开启"), true);
         connect(output_switch_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
@@ -4183,7 +4202,7 @@ public:
         output_percent_spin_->setRange(0, 90);
         output_percent_spin_->setSuffix(QStringLiteral(" %"));
         output_percent_spin_->setFixedHeight(kMainPageButtonHeight);
-        output_percent_spin_->setFixedWidth(130);
+        output_percent_spin_->setFixedWidth(kOverviewControlWidth);
         connect(output_percent_spin_, &QSpinBox::editingFinished, this, [this]() {
             if (max_output_callback_)
             {
@@ -4195,7 +4214,7 @@ public:
         emergency_stop_button_ = new QPushButton(this);
         emergency_stop_button_->setObjectName(QStringLiteral("dangerButton"));
         emergency_stop_button_->setFixedHeight(kMainPageButtonHeight);
-        emergency_stop_button_->setFixedWidth(170);
+        emergency_stop_button_->setFixedWidth(kOverviewEmergencyWidth);
         connect(emergency_stop_button_, &QPushButton::clicked, this, [this]() {
             if (emergency_stop_callback_)
             {
