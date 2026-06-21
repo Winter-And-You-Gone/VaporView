@@ -49,6 +49,7 @@ class QToolButton;
 class TcpWavePanel;
 class SessionViewerWindow;
 class EpsilonPanel;
+class TemperatureTrendPlotWidget;
 namespace VaporView { class SkyDeviceConfigDialog; }
 
 class GnssPanel : public QWidget
@@ -269,33 +270,19 @@ private:
     struct ChannelWidgets
     {
         QLabel *target_label_text = nullptr;
-        QLabel *measured_label_text = nullptr;
-        QLabel *output_percent_label_text = nullptr;
-        QLabel *output_current_label_text = nullptr;
-        QLabel *enabled_label_text = nullptr;
+        QLabel *enable_label_text = nullptr;
         QLabel *mode_label_text = nullptr;
         QLabel *max_output_label_text = nullptr;
         QLabel *pid_label_text = nullptr;
-        QLabel *target_label = nullptr;
-        QLabel *measured_label = nullptr;
-        QLabel *output_percent_label = nullptr;
-        QLabel *output_current_label = nullptr;
-        QLabel *enabled_label = nullptr;
-        QLabel *mode_label = nullptr;
-        QLabel *max_output_label = nullptr;
-        QLabel *pid_label = nullptr;
         QDoubleSpinBox *target_spin = nullptr;
-        QSpinBox *mode_spin = nullptr;
+        QComboBox *enable_combo = nullptr;
+        QComboBox *mode_combo = nullptr;
         QSpinBox *max_output_spin = nullptr;
         QSpinBox *kp_spin = nullptr;
         QSpinBox *ki_spin = nullptr;
         QSpinBox *kd_spin = nullptr;
-        QPushButton *target_button = nullptr;
-        QPushButton *enable_button = nullptr;
-        QPushButton *disable_button = nullptr;
-        QPushButton *mode_button = nullptr;
-        QPushButton *max_output_button = nullptr;
-        QPushButton *pid_button = nullptr;
+        QPushButton *auto_pid_button = nullptr;
+        QPushButton *segmented_control_button = nullptr;
     };
 
     void setupUi();
@@ -304,6 +291,7 @@ private:
     void updateChannelData(int index, const VaporView::TemperatureControllerChannelData& channel, bool valid);
 
     QTabWidget *tabs_ = nullptr;
+    TemperatureTrendPlotWidget *temperature_plot_ = nullptr;
     QLabel *rate_label_ = nullptr;
     QLabel *internal_temperature_label_ = nullptr;
     QLabel *error_code_label_ = nullptr;
@@ -312,6 +300,7 @@ private:
     QLabel *internal_temperature_lbl_ = nullptr;
     QLabel *error_code_lbl_ = nullptr;
     std::array<ChannelWidgets, 2> channels_{};
+    std::array<QVector<double>, 2> measured_temperature_history_{};
     bool is_english_ = false;
 };
 
