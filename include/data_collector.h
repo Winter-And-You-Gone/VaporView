@@ -3,12 +3,14 @@
 
 #include "data_types.h"
 #include "serial_port.h"
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <functional>
 #include <map>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 namespace VaporView
 {
@@ -223,6 +225,40 @@ private:
   bool ensureTfa1500LowFrequencyContinuous();
   void stopTfa1500Streaming();
   static bool parseTfa1500Frame(const uint8_t* frame, size_t size, LidarData& sample);
+};
+
+class TemperatureControllerCollector : public DataCollector
+{
+public:
+  using RawFrameCallback = std::function<void(uint64_t host_timestamp_us, const uint8_t* frame, size_t size)>;
+
+  TemperatureControllerData getLatestData();
+  bool checkDeviceResponse() override;
+  void setRawFrameCallback(RawFrameCallback callback);
+  void setSlaveAddress(uint8_t slave_address);
+  uint8_t slaveAddress() const;
+  bool setTargetTemperature(uint8_t channel, double celsius);
+  bool setOutputEnabled(uint8_t channel, bool enabled);
+  bool setOutputMode(uint8_t channel, uint16_t mode);
+  bool setMaxOutputPercent(uint8_t channel, uint16_t percent);
+  bool setPid(uint8_t channel, uint32_t kp, uint32_t ki, uint32_t kd);
+
+protected:
+  void run() override;
+  bool initialize() override;
+
+private:
+  TemperatureControllerData latest_data_;
+  RawFrameCallback raw_frame_callback_;
+  uint8_t slave_address_ = 1;
+
+  bool readSnapshot(TemperatureControllerData& sample);
+  bool readChannel(uint8_t channel, TemperatureControllerChannelData& channel_data);
+  bool readRegisters(uint16_t address, uint16_t count, std::vector<uint16_t>& registers, int wait_ms = 200);
+  bool writeRegisters(uint16_t address, const std::vector<uint16_t>& registers, int wait_ms = 200);
+  bool writeAndConfirm(uint8_t channel, uint16_t address, const std::vector<uint16_t>& registers);
+  bool readResponseFrame(uint8_t function_code, std::vector<uint8_t>& frame, int wait_ms);
+  void publishRawFrame(const std::vector<uint8_t>& frame);
 };
 
 }

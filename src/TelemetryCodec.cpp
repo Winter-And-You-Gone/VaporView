@@ -1,6 +1,7 @@
 #include "TelemetryCodec.h"
 
 #include <QJsonDocument>
+#include <QVector>
 #include <QtEndian>
 #include <algorithm>
 #include <cmath>
@@ -29,6 +30,13 @@ void appendFloatLe(QByteArray& out, float value)
     appendLe<quint32>(out, bits);
 }
 
+void appendDoubleLe(QByteArray& out, double value)
+{
+    quint64 bits = 0;
+    std::memcpy(&bits, &value, sizeof(double));
+    appendLe<quint64>(out, bits);
+}
+
 template <typename T>
 bool readLe(const QByteArray& payload, qsizetype& offset, T& value)
 {
@@ -49,6 +57,17 @@ bool readFloatLe(const QByteArray& payload, qsizetype& offset, float& value)
         return false;
     }
     std::memcpy(&value, &bits, sizeof(float));
+    return true;
+}
+
+bool readDoubleLe(const QByteArray& payload, qsizetype& offset, double& value)
+{
+    quint64 bits = 0;
+    if (!readLe(payload, offset, bits))
+    {
+        return false;
+    }
+    std::memcpy(&value, &bits, sizeof(double));
     return true;
 }
 
@@ -98,6 +117,8 @@ QString skyDeviceIdName(SkyDeviceId id)
         return QStringLiteral("lidar");
     case SkyDeviceId::WaveTcp:
         return QStringLiteral("wave_tcp");
+    case SkyDeviceId::TemperatureController:
+        return QStringLiteral("temperature_controller");
     case SkyDeviceId::All:
         return QStringLiteral("all");
     }
@@ -151,6 +172,11 @@ QString commandIdName(CommandId id)
     case CommandId::SaveSkyConfig: return QStringLiteral("SaveSkyConfig");
     case CommandId::ReloadSkyConfig: return QStringLiteral("ReloadSkyConfig");
     case CommandId::SetPeakSearchRange: return QStringLiteral("SetPeakSearchRange");
+    case CommandId::SetTemperatureTarget: return QStringLiteral("SetTemperatureTarget");
+    case CommandId::SetTemperatureOutputEnabled: return QStringLiteral("SetTemperatureOutputEnabled");
+    case CommandId::SetTemperatureOutputMode: return QStringLiteral("SetTemperatureOutputMode");
+    case CommandId::SetTemperatureMaxOutputPercent: return QStringLiteral("SetTemperatureMaxOutputPercent");
+    case CommandId::SetTemperaturePid: return QStringLiteral("SetTemperaturePid");
     case CommandId::ShutdownCore: return QStringLiteral("ShutdownCore");
     }
     return QStringLiteral("UnknownCommand");
@@ -212,6 +238,9 @@ bool skyDeviceIdFromValue(quint8 value, SkyDeviceId& id)
         return true;
     case 5:
         id = SkyDeviceId::WaveTcp;
+        return true;
+    case 6:
+        id = SkyDeviceId::TemperatureController;
         return true;
     case 255:
         id = SkyDeviceId::All;
@@ -837,6 +866,116 @@ bool TelemetryCodec::parsePeakSearchRange(const QByteArray& payload, PeakSearchR
     qsizetype offset = 0;
     return readLe(payload, offset, range.start_index) &&
            readLe(payload, offset, range.end_index);
+}
+
+QByteArray TelemetryCodec::serializeTemperatureControllerStatus(const TemperatureControllerData& data)
+{
+    QByteArray payload;
+    payload.reserve(128);
+    payload.append(data.valid ? char(1) : char(0));
+    payload.append('\0');
+    appendLe<quint16>(payload, data.error_code);
+    appendDoubleLe(payload, data.internal_temperature_c);
+    for (const TemperatureControllerChannelData& channel : data.channels)
+    {
+        appendDoubleLe(payload, channel.target_temperature_c);
+        appendDoubleLe(payload, channel.measured_temperature_c);
+        appendDoubleLe(payload, channel.output_percent);
+        appendDoubleLe(payload, channel.output_current_a);
+        appendLe<quint16>(payload, static_cast<quint16>(std::clamp(channel.output_mode, 0, 65535)));
+        payload.append(channel.output_enabled ? char(1) : char(0));
+        payload.append('\0');
+        appendLe<quint16>(payload, static_cast<quint16>(std::clamp(channel.max_output_percent, 0, 65535)));
+        appendLe<quint32>(payload, static_cast<quint32>(std::clamp(channel.kp, 0, std::numeric_limits<int>::max())));
+        appendLe<quint32>(payload, static_cast<quint32>(std::clamp(channel.ki, 0, std::numeric_limits<int>::max())));
+        appendLe<quint32>(payload, static_cast<quint32>(std::clamp(channel.kd, 0, std::numeric_limits<int>::max())));
+    }
+    return payload;
+}
+
+bool TelemetryCodec::parseTemperatureControllerStatus(const QByteArray& payload, TemperatureControllerData& data)
+{
+    data = TemperatureControllerData();
+    qsizetype offset = 0;
+    if (payload.size() < 12)
+    {
+        return false;
+    }
+    data.valid = payload.at(offset++) != 0;
+    ++offset;
+    if (!readLe(payload, offset, data.error_code) ||
+        !readDoubleLe(payload, offset, data.internal_temperature_c))
+    {
+        return false;
+    }
+    for (TemperatureControllerChannelData& channel : data.channels)
+    {
+        quint16 outputMode = 0;
+        quint16 maxOutputPercent = 0;
+        quint32 kp = 0;
+        quint32 ki = 0;
+        quint32 kd = 0;
+        if (!readDoubleLe(payload, offset, channel.target_temperature_c) ||
+            !readDoubleLe(payload, offset, channel.measured_temperature_c) ||
+            !readDoubleLe(payload, offset, channel.output_percent) ||
+            !readDoubleLe(payload, offset, channel.output_current_a) ||
+            !readLe(payload, offset, outputMode) ||
+            offset + 2 > payload.size())
+        {
+            return false;
+        }
+        channel.output_enabled = payload.at(offset++) != 0;
+        ++offset;
+        if (!readLe(payload, offset, maxOutputPercent) ||
+            !readLe(payload, offset, kp) ||
+            !readLe(payload, offset, ki) ||
+            !readLe(payload, offset, kd))
+        {
+            return false;
+        }
+        channel.output_mode = outputMode;
+        channel.max_output_percent = maxOutputPercent;
+        channel.kp = static_cast<int>(std::min<quint32>(kp, static_cast<quint32>(std::numeric_limits<int>::max())));
+        channel.ki = static_cast<int>(std::min<quint32>(ki, static_cast<quint32>(std::numeric_limits<int>::max())));
+        channel.kd = static_cast<int>(std::min<quint32>(kd, static_cast<quint32>(std::numeric_limits<int>::max())));
+    }
+    return true;
+}
+
+QByteArray TelemetryCodec::serializeTemperatureControllerCommand(const TemperatureControllerCommand& command)
+{
+    QByteArray payload;
+    payload.reserve(32);
+    payload.append(static_cast<char>(command.channel));
+    payload.append(command.output_enabled ? char(1) : char(0));
+    appendLe<quint16>(payload, command.output_mode);
+    appendDoubleLe(payload, command.target_temperature_c);
+    appendLe<quint16>(payload, command.max_output_percent);
+    appendLe<quint16>(payload, 0);
+    appendLe<quint32>(payload, command.kp);
+    appendLe<quint32>(payload, command.ki);
+    appendLe<quint32>(payload, command.kd);
+    return payload;
+}
+
+bool TelemetryCodec::parseTemperatureControllerCommand(const QByteArray& payload, TemperatureControllerCommand& command)
+{
+    command = TemperatureControllerCommand();
+    qsizetype offset = 0;
+    if (payload.size() < 28)
+    {
+        return false;
+    }
+    command.channel = static_cast<quint8>(payload.at(offset++));
+    command.output_enabled = payload.at(offset++) != 0;
+    quint16 reserved = 0;
+    return readLe(payload, offset, command.output_mode) &&
+           readDoubleLe(payload, offset, command.target_temperature_c) &&
+           readLe(payload, offset, command.max_output_percent) &&
+           readLe(payload, offset, reserved) &&
+           readLe(payload, offset, command.kp) &&
+           readLe(payload, offset, command.ki) &&
+           readLe(payload, offset, command.kd);
 }
 
 }  // namespace VaporView

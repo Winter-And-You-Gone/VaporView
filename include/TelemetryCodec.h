@@ -2,6 +2,7 @@
 #define VaporView_TELEMETRY_CODEC_H_
 
 #include "TelemetryTypes.h"
+#include "data_types.h"
 
 #include <QByteArray>
 #include <QVector>
@@ -49,6 +50,10 @@ public:
     static bool parseRatePayload(const QByteArray& payload, quint16& hz);
     static QByteArray serializePeakSearchRange(const PeakSearchRange& range);
     static bool parsePeakSearchRange(const QByteArray& payload, PeakSearchRange& range);
+    static QByteArray serializeTemperatureControllerStatus(const TemperatureControllerData& data);
+    static bool parseTemperatureControllerStatus(const QByteArray& payload, TemperatureControllerData& data);
+    static QByteArray serializeTemperatureControllerCommand(const TemperatureControllerCommand& command);
+    static bool parseTemperatureControllerCommand(const QByteArray& payload, TemperatureControllerCommand& command);
 
 private:
     quint32 max_payload_size_;

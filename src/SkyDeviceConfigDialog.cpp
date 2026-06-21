@@ -681,7 +681,7 @@ void SkyDeviceConfigDialog::setupUi()
     {
         deviceGrid->setColumnStretch(column, 1);
     }
-    for (int row = 0; row < 2; ++row)
+    for (int row = 0; row < 3; ++row)
     {
         deviceGrid->setRowStretch(row, 0);
     }
@@ -700,6 +700,14 @@ void SkyDeviceConfigDialog::setupUi()
     addSerialGroup(QStringLiteral("PTB210"), ptb_group_, ptb_, 0, 1);
     addSerialGroup(QStringLiteral("HMP3"), hmp_group_, hmp_, 0, 2);
     addSerialGroup(QStringLiteral("TFA1500-L"), lidar_group_, lidar_, 0, 3);
+    addSerialGroup(QStringLiteral("RD105"), temperature_controller_group_, temperature_controller_, 1, 0);
+    temperature_controller_slave_address_ = new QSpinBox(this);
+    temperature_controller_slave_address_->setRange(1, 247);
+    polishConfigField(temperature_controller_slave_address_);
+    if (auto *layout = qobject_cast<QFormLayout *>(temperature_controller_group_->findChild<QWidget *>(QStringLiteral("skyConfigGroupBody"))->layout()))
+    {
+        temperature_controller_slave_address_label_ = addLabeledRow(layout, QStringLiteral("站号地址"), temperature_controller_slave_address_);
+    }
 
     wave_group_ = new QGroupBox(QStringLiteral("Wave TCP"), this);
     wave_enabled_ = new QPushButton(this);
@@ -724,7 +732,7 @@ void SkyDeviceConfigDialog::setupUi()
     wave_host_label_ = addLabeledRow(waveLayout, QStringLiteral("主机"), wave_host_);
     wave_port_label_ = addLabeledRow(waveLayout, QStringLiteral("端口"), wave_port_);
     wave_downsample_label_ = addLabeledRow(waveLayout, QStringLiteral("降采样倍率"), wave_downsample_);
-    deviceGrid->addWidget(wave_group_, 1, 0);
+    deviceGrid->addWidget(wave_group_, 1, 1);
 
     telemetry_group_ = new QGroupBox(QStringLiteral("数传配置"), this);
     auto *telemetryBody = createCardBody(telemetry_group_, QStringLiteral("数传配置"));
@@ -751,7 +759,7 @@ void SkyDeviceConfigDialog::setupUi()
     telemetry_waveform_label_ = addLabeledGridCell(telemetryGrid, 1, 0, QStringLiteral("波形 Hz"), telemetry_waveform_rate_);
     telemetry_heartbeat_label_ = addLabeledGridCell(telemetryGrid, 1, 1, QStringLiteral("心跳 Hz"), telemetry_heartbeat_rate_);
     telemetry_status_label_ = addLabeledGridCell(telemetryGrid, 2, 0, QStringLiteral("状态 Hz"), telemetry_status_rate_);
-    deviceGrid->addWidget(telemetry_group_, 1, 1, 1, 2);
+    deviceGrid->addWidget(telemetry_group_, 1, 2, 1, 2);
 
     scroll->setWidget(content);
     visualLayout->addWidget(scroll);
@@ -835,6 +843,12 @@ void SkyDeviceConfigDialog::setConfig(const SkyConfig& config)
     setSerialRow(ptb_, config.ptb);
     setSerialRow(hmp_, config.hmp);
     setSerialRow(lidar_, config.lidar);
+    temperature_controller_.enabled->setChecked(config.temperature_controller.enabled);
+    updateEnableButton(temperature_controller_.enabled);
+    applyComboText(temperature_controller_.port, config.temperature_controller.port);
+    temperature_controller_.baud->setValue(config.temperature_controller.baud_rate);
+    temperature_controller_.frequency->setValue(config.temperature_controller.frequency_hz);
+    temperature_controller_slave_address_->setValue(config.temperature_controller.slave_address);
     wave_enabled_->setChecked(config.wave_tcp.enabled);
     updateEnableButton(wave_enabled_);
     wave_host_->setText(config.wave_tcp.host);
@@ -855,6 +869,12 @@ SkyConfig SkyDeviceConfigDialog::currentConfigFromUi() const
     config.ptb = serialConfigFromRow(ptb_);
     config.hmp = serialConfigFromRow(hmp_);
     config.lidar = serialConfigFromRow(lidar_);
+    const SerialDeviceConfig temperatureSerial = serialConfigFromRow(temperature_controller_);
+    config.temperature_controller.enabled = temperatureSerial.enabled;
+    config.temperature_controller.port = temperatureSerial.port;
+    config.temperature_controller.baud_rate = temperatureSerial.baud_rate;
+    config.temperature_controller.frequency_hz = temperatureSerial.frequency_hz;
+    config.temperature_controller.slave_address = temperature_controller_slave_address_->value();
     config.wave_tcp.enabled = wave_enabled_->isChecked();
     config.wave_tcp.host = wave_host_->text().trimmed();
     config.wave_tcp.port = wave_port_->value();
@@ -899,12 +919,15 @@ void SkyDeviceConfigDialog::updateTexts()
     setCardTitle(ptb_group_, QStringLiteral("PTB210"));
     setCardTitle(hmp_group_, QStringLiteral("HMP3"));
     setCardTitle(lidar_group_, QStringLiteral("TFA1500-L"));
+    setCardTitle(temperature_controller_group_, QStringLiteral("RD105"));
     setCardTitle(wave_group_, QStringLiteral("Wave TCP"));
     setCardTitle(telemetry_group_, is_english_ ? QStringLiteral("Telemetry") : QStringLiteral("数传配置"));
     updateSerialLabels(epsilon_);
     updateSerialLabels(ptb_);
     updateSerialLabels(hmp_);
     updateSerialLabels(lidar_);
+    updateSerialLabels(temperature_controller_);
+    if (temperature_controller_slave_address_label_) temperature_controller_slave_address_label_->setText(is_english_ ? QStringLiteral("Slave Address") : QStringLiteral("站号地址"));
     if (wave_enabled_label_) wave_enabled_label_->setText(is_english_ ? QStringLiteral("Enabled") : QStringLiteral("启用"));
     if (wave_host_label_) wave_host_label_->setText(is_english_ ? QStringLiteral("Host") : QStringLiteral("主机"));
     if (wave_port_label_) wave_port_label_->setText(is_english_ ? QStringLiteral("Port") : QStringLiteral("端口"));
@@ -918,6 +941,7 @@ void SkyDeviceConfigDialog::updateTexts()
     updateEnableButton(ptb_.enabled);
     updateEnableButton(hmp_.enabled);
     updateEnableButton(lidar_.enabled);
+    updateEnableButton(temperature_controller_.enabled);
     updateEnableButton(wave_enabled_);
     read_button_->setText(is_english_ ? "Read From Sky" : "读取天空端配置");
     apply_button_->setText(is_english_ ? "Apply Config" : "应用配置");
@@ -963,6 +987,7 @@ void SkyDeviceConfigDialog::refreshSerialPortOptions()
     refreshCombo(ptb_.port);
     refreshCombo(hmp_.port);
     refreshCombo(lidar_.port);
+    refreshCombo(temperature_controller_.port);
 }
 
 void SkyDeviceConfigDialog::updateEnableButton(QPushButton *button)
@@ -1115,6 +1140,7 @@ void SkyDeviceConfigDialog::applyDynamicMetrics()
         ptb_.port, ptb_.baud, ptb_.frequency,
         hmp_.port, hmp_.baud, hmp_.frequency,
         lidar_.port, lidar_.baud, lidar_.frequency,
+        temperature_controller_.port, temperature_controller_.baud, temperature_controller_.frequency, temperature_controller_slave_address_,
         wave_host_, wave_port_, wave_downsample_,
         telemetry_basic_rate_, telemetry_feature_rate_, telemetry_waveform_rate_,
         telemetry_heartbeat_rate_, telemetry_status_rate_

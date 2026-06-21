@@ -664,6 +664,13 @@ QPushButton#compactTcpStartButton {
     font-size: 14px;
 }
 
+QPushButton#temperatureControlButton {
+    padding: 4px 10px;
+    min-height: 28px;
+    max-height: 28px;
+    font-size: 14px;
+}
+
 /* 输入框 */
 QLineEdit {
     background-color: @vv-surface;
@@ -834,7 +841,7 @@ QRadioButton::indicator:checked {
 }
 
 /* 自定义面板样式 */
-GnssPanel, ImuPanel, PtbPanel, HmpPanel, LidarPanel {
+GnssPanel, ImuPanel, PtbPanel, HmpPanel, LidarPanel, TemperatureControllerPanel {
     background-color: transparent;
 }
 
@@ -863,13 +870,43 @@ QLabel#highlightedValue {
 
 PtbPanel QLabel#highlightedValue,
 HmpPanel QLabel#highlightedValue,
-LidarPanel QLabel#highlightedValue {
+LidarPanel QLabel#highlightedValue,
+TemperatureControllerPanel QLabel#highlightedValue {
     font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 14px;
     font-weight: 600;
     background-color: transparent;
     padding: 0px;
     border-radius: 0px;
+}
+
+TemperatureControllerPanel QTabWidget::pane {
+    background-color: @vv-surface;
+    border: 1px solid @vv-border;
+    border-radius: 4px;
+    top: -1px;
+}
+
+TemperatureControllerPanel QTabBar::tab {
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
+    border-bottom: none;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    color: @vv-text;
+    padding: 4px 14px;
+    min-height: 22px;
+}
+
+TemperatureControllerPanel QTabBar::tab:selected {
+    background-color: @vv-surface;
+    color: @vv-primary;
+    font-weight: 600;
+}
+
+TemperatureControllerPanel QTabBar::tab:!selected:hover {
+    background-color: @vv-primary-subtle;
+    color: @vv-primary;
 }
 
 /* 状态指示器 */

@@ -44,11 +44,17 @@ public:
     QVector<DeviceStatusItem> allStatuses() const;
     ApplyConfigResult applyConfig(const SkyConfig& newConfig);
     bool setPeakSearchRange(quint32 startIndex, quint32 endIndex, CommandErrorCode *errorCode = nullptr);
+    bool setTemperatureTarget(quint8 channel, double celsius, CommandErrorCode *errorCode = nullptr);
+    bool setTemperatureOutputEnabled(quint8 channel, bool enabled, CommandErrorCode *errorCode = nullptr);
+    bool setTemperatureOutputMode(quint8 channel, quint16 mode, CommandErrorCode *errorCode = nullptr);
+    bool setTemperatureMaxOutputPercent(quint8 channel, quint16 percent, CommandErrorCode *errorCode = nullptr);
+    bool setTemperaturePid(quint8 channel, quint32 kp, quint32 ki, quint32 kd, CommandErrorCode *errorCode = nullptr);
 
     EpsilonData latestEpsilon() const;
     PtbData latestPtb() const;
     HmpData latestHmp() const;
     LidarData latestLidar() const;
+    TemperatureControllerData latestTemperatureController() const;
     QVector<float> latestRawWaveform() const;
     QVector<float> latestWaveform() const;
     WaveformFeature latestWaveformFeature() const;
@@ -60,6 +66,7 @@ signals:
     void ptbDataUpdated(const PtbData& data);
     void hmpDataUpdated(const HmpData& data);
     void lidarDataUpdated(const LidarData& data);
+    void temperatureControllerDataUpdated(const TemperatureControllerData& data);
     void waveformUpdated(quint64 timestampUs, QVector<float> samples);
     void waveformFeatureUpdated(const WaveformFeature& feature);
     void epsilonRawFrameReceived(quint64 timestampUs, quint8 packetId, quint8 serialNumber, QByteArray frame);
@@ -93,6 +100,7 @@ private:
     void handlePtbData(const PtbData& data);
     void handleHmpData(const HmpData& data);
     void handleLidarData(const LidarData& data);
+    void handleTemperatureControllerData(const TemperatureControllerData& data);
     void recordWaveTcpFrameTime(quint64 timestampUs);
     void invalidateDeviceData(SkyDeviceId id);
 
@@ -106,11 +114,13 @@ private:
     DeviceStatusItem hmp_status_;
     DeviceStatusItem lidar_status_;
     DeviceStatusItem wave_tcp_status_;
+    DeviceStatusItem temperature_controller_status_;
 
     std::shared_ptr<EpsilonCollector> epsilon_;
     std::shared_ptr<PtbCollector> ptb_;
     std::shared_ptr<HmpCollector> hmp_;
     std::shared_ptr<LidarCollector> lidar_;
+    std::shared_ptr<TemperatureControllerCollector> temperature_controller_;
 
     QTcpSocket *wave_socket_ = nullptr;
     QByteArray wave_buffer_;
@@ -124,6 +134,7 @@ private:
     PtbData latest_ptb_;
     HmpData latest_hmp_;
     LidarData latest_lidar_;
+    TemperatureControllerData latest_temperature_controller_;
     QVector<float> latest_raw_waveform_;
     QVector<float> latest_waveform_;
     WaveformFeature latest_feature_;

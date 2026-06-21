@@ -40,6 +40,7 @@ public:
     quint64 telemetryRecordCount() const;
     quint64 waveformFeatureRecordCount() const;
     quint64 waveformSnapshotRecordCount() const;
+    quint64 temperatureControllerRecordCount() const;
     quint64 rawEpsilonRecordCount() const;
     quint64 rawPtbRecordCount() const;
     quint64 rawHmpRecordCount() const;
@@ -62,6 +63,7 @@ public:
                                 quint64 epsilonTimeUs,
                                 const QVector<float>& rawSamples,
                                 const QVector<float>& harmonicSamples);
+    void recordTemperatureControllerStatus(quint64 hostTimeUs, const TemperatureControllerData& data);
     void recordRawEpsilonFrame(quint64 hostTimeUs,
                                quint8 packetId,
                                quint8 serialNumber,
@@ -97,6 +99,7 @@ private:
     QString session_metadata_filename_;
     QString sensors_filename_;
     QString feature_filename_;
+    QString temperature_controller_filename_;
     QString raw_epsilon_filename_;
     QString raw_ptb_filename_;
     QString raw_hmp_filename_;
@@ -104,6 +107,7 @@ private:
     QString raw_tcp_wave_filename_;
     QFile basic_record_file_;
     QFile feature_record_file_;
+    QFile temperature_controller_record_file_;
     QFile raw_epsilon_file_;
     QFile raw_ptb_file_;
     QFile raw_hmp_file_;
@@ -119,6 +123,7 @@ private:
     quint64 recording_elapsed_ms_ = 0;
     quint64 telemetry_row_count_ = 0;
     quint64 waveform_feature_count_ = 0;
+    quint64 temperature_controller_count_ = 0;
     quint64 waveform_file_count_ = 0;
     quint64 waveform_points_per_frame_ = 0;
     quint64 raw_epsilon_record_count_ = 0;

@@ -93,6 +93,8 @@ private:
     SerialRow ptb_;
     SerialRow hmp_;
     SerialRow lidar_;
+    SerialRow temperature_controller_;
+    QSpinBox *temperature_controller_slave_address_ = nullptr;
     QPushButton *wave_enabled_ = nullptr;
     QLineEdit *wave_host_ = nullptr;
     QSpinBox *wave_port_ = nullptr;
@@ -106,12 +108,14 @@ private:
     QGroupBox *ptb_group_ = nullptr;
     QGroupBox *hmp_group_ = nullptr;
     QGroupBox *lidar_group_ = nullptr;
+    QGroupBox *temperature_controller_group_ = nullptr;
     QGroupBox *wave_group_ = nullptr;
     QGroupBox *telemetry_group_ = nullptr;
     QLabel *wave_enabled_label_ = nullptr;
     QLabel *wave_host_label_ = nullptr;
     QLabel *wave_port_label_ = nullptr;
     QLabel *wave_downsample_label_ = nullptr;
+    QLabel *temperature_controller_slave_address_label_ = nullptr;
     QLabel *telemetry_basic_label_ = nullptr;
     QLabel *telemetry_feature_label_ = nullptr;
     QLabel *telemetry_waveform_label_ = nullptr;

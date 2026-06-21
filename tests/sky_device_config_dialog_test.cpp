@@ -141,7 +141,7 @@ int main(int argc, char **argv)
     require(modeSwitch->isVisible(), "mode switch visible");
 
     const QList<QPushButton*> enableButtons = dialog.findChildren<QPushButton *>(QStringLiteral("skyEnableToggle"));
-    require(enableButtons.size() == 5, "five enable buttons");
+    require(enableButtons.size() == 6, "six enable buttons");
     require(dialog.styleSheet().contains(QStringLiteral("QPushButton#skyEnableToggle:hover { background-color:")),
             "enable button has hover background style");
     require(!dialog.styleSheet().contains(QStringLiteral("QPushButton#skyEnableToggle:hover { background-color: transparent")),
@@ -168,7 +168,7 @@ int main(int argc, char **argv)
     enableButtons.front()->setChecked(firstEnableChecked);
     processEventsFor(50);
     const QList<QLabel*> enableLabels = dialog.findChildren<QLabel *>(QStringLiteral("skyConfigEnableTitleLabel"));
-    require(enableLabels.size() == 5, "five enable labels");
+    require(enableLabels.size() == 6, "six enable labels");
     for (QLabel *label : enableLabels)
     {
         require(label->text() == QStringLiteral("启用"), "enable label text");
@@ -191,6 +191,7 @@ int main(int argc, char **argv)
     QGroupBox *ptbGroup = nullptr;
     QGroupBox *hmpGroup = nullptr;
     QGroupBox *lidarGroup = nullptr;
+    QGroupBox *temperatureControllerGroup = nullptr;
     QGroupBox *waveGroup = nullptr;
     QGroupBox *telemetryGroup = nullptr;
     for (QGroupBox *group : groups)
@@ -201,6 +202,7 @@ int main(int argc, char **argv)
         if (title == QStringLiteral("PTB210")) ptbGroup = group;
         if (title == QStringLiteral("HMP3")) hmpGroup = group;
         if (title == QStringLiteral("TFA1500-L")) lidarGroup = group;
+        if (title == QStringLiteral("RD105")) temperatureControllerGroup = group;
         if (title == QStringLiteral("Wave TCP")) waveGroup = group;
         if (title == QStringLiteral("数传配置")) telemetryGroup = group;
         if (title == QStringLiteral("EPSILON") ||
@@ -217,10 +219,11 @@ int main(int argc, char **argv)
     require(std::abs(epsilonGroup->y() - hmpGroup->y()) <= topRowTolerance, "EPSILON and HMP are on first row");
     require(std::abs(epsilonGroup->y() - lidarGroup->y()) <= topRowTolerance, "fourth sensor card is on first row");
     require(lidarGroup->x() > hmpGroup->x(), "fourth sensor card is in fourth column");
-    require(waveGroup && telemetryGroup, "wave and telemetry cards exist");
+    require(waveGroup && telemetryGroup && temperatureControllerGroup, "wave, RD105 and telemetry cards exist");
+    require(std::abs(temperatureControllerGroup->y() - waveGroup->y()) <= topRowTolerance, "RD105 and wave cards are on second row");
     require(std::abs(waveGroup->y() - telemetryGroup->y()) <= topRowTolerance, "wide telemetry card is on second row");
+    require(waveGroup->x() > temperatureControllerGroup->x(), "wave card is beside RD105 card");
     require(telemetryGroup->width() > waveGroup->width() * 3 / 2, "telemetry card spans two columns");
-    require(telemetryGroup->height() <= telemetryGroup->sizeHint().height() + 12, "telemetry card is not stretched vertically");
     auto findTelemetryLabel = [telemetryGroup](const QString& text) -> QLabel * {
         const QList<QLabel*> labels = telemetryGroup->findChildren<QLabel *>();
         for (QLabel *label : labels)

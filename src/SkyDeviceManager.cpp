@@ -167,6 +167,16 @@ bool SkyDeviceManager::connectDevice(SkyDeviceId id, CommandErrorCode *errorCode
         return connectWaveTcp(errorCode);
     }
 
+    if (id == SkyDeviceId::TemperatureController)
+    {
+        SerialDeviceConfig temperatureConfig;
+        temperatureConfig.enabled = config_.temperature_controller.enabled;
+        temperatureConfig.port = config_.temperature_controller.port;
+        temperatureConfig.baud_rate = config_.temperature_controller.baud_rate;
+        temperatureConfig.frequency_hz = config_.temperature_controller.frequency_hz;
+        return connectSerialCollector(id, temperatureConfig, errorCode);
+    }
+
     return connectSerialCollector(id, serialConfigFor(id), errorCode);
 }
 
@@ -191,6 +201,9 @@ bool SkyDeviceManager::disconnectDevice(SkyDeviceId id, CommandErrorCode *errorC
         break;
     case SkyDeviceId::Lidar:
         stopCollector(lidar_);
+        break;
+    case SkyDeviceId::TemperatureController:
+        stopCollector(temperature_controller_);
         break;
     case SkyDeviceId::WaveTcp:
         disconnectWaveTcp();
@@ -220,13 +233,14 @@ bool SkyDeviceManager::reconnectDevice(SkyDeviceId id, CommandErrorCode *errorCo
 
 void SkyDeviceManager::connectAll()
 {
-    for (SkyDeviceId id : {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hmp, SkyDeviceId::Lidar, SkyDeviceId::WaveTcp})
+    for (SkyDeviceId id : {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hmp, SkyDeviceId::Lidar, SkyDeviceId::TemperatureController, SkyDeviceId::WaveTcp})
     {
         const bool enabled =
             (id == SkyDeviceId::Epsilon && config_.epsilon.enabled) ||
             (id == SkyDeviceId::Ptb && config_.ptb.enabled) ||
             (id == SkyDeviceId::Hmp && config_.hmp.enabled) ||
             (id == SkyDeviceId::Lidar && config_.lidar.enabled) ||
+            (id == SkyDeviceId::TemperatureController && config_.temperature_controller.enabled) ||
             (id == SkyDeviceId::WaveTcp && config_.wave_tcp.enabled);
         if (enabled)
         {
@@ -242,7 +256,7 @@ void SkyDeviceManager::connectAll()
 
 void SkyDeviceManager::disconnectAll()
 {
-    for (SkyDeviceId id : {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hmp, SkyDeviceId::Lidar, SkyDeviceId::WaveTcp})
+    for (SkyDeviceId id : {SkyDeviceId::Epsilon, SkyDeviceId::Ptb, SkyDeviceId::Hmp, SkyDeviceId::Lidar, SkyDeviceId::TemperatureController, SkyDeviceId::WaveTcp})
     {
         disconnectDevice(id);
     }
@@ -266,6 +280,8 @@ DeviceStatusItem SkyDeviceManager::status(SkyDeviceId id) const
         return hmp_status_;
     case SkyDeviceId::Lidar:
         return lidar_status_;
+    case SkyDeviceId::TemperatureController:
+        return temperature_controller_status_;
     case SkyDeviceId::WaveTcp:
         return wave_tcp_status_;
     case SkyDeviceId::All:
@@ -276,7 +292,7 @@ DeviceStatusItem SkyDeviceManager::status(SkyDeviceId id) const
 
 QVector<DeviceStatusItem> SkyDeviceManager::allStatuses() const
 {
-    return {epsilon_status_, ptb_status_, hmp_status_, lidar_status_, wave_tcp_status_};
+    return {epsilon_status_, ptb_status_, hmp_status_, lidar_status_, temperature_controller_status_, wave_tcp_status_};
 }
 
 ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& newConfig)
@@ -317,6 +333,7 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& newConfig)
     const bool ptbReconfigured = reconfigureDevice(SkyDeviceId::Ptb, diff.ptb_changed, config_.ptb.enabled);
     const bool hmpReconfigured = reconfigureDevice(SkyDeviceId::Hmp, diff.hmp_changed, config_.hmp.enabled);
     const bool lidarReconfigured = reconfigureDevice(SkyDeviceId::Lidar, diff.lidar_changed, config_.lidar.enabled);
+    const bool temperatureControllerReconfigured = reconfigureDevice(SkyDeviceId::TemperatureController, diff.temperature_controller_changed, config_.temperature_controller.enabled);
     const bool waveReconfigured = reconfigureDevice(SkyDeviceId::WaveTcp, diff.wave_tcp_changed, config_.wave_tcp.enabled);
 
     QJsonObject devices;
@@ -324,6 +341,7 @@ ApplyConfigResult SkyDeviceManager::applyConfig(const SkyConfig& newConfig)
     devices["ptb"] = resultItem(diff.ptb_changed, ptbReconfigured, ptb_status_);
     devices["hmp"] = resultItem(diff.hmp_changed, hmpReconfigured, hmp_status_);
     devices["lidar"] = resultItem(diff.lidar_changed, lidarReconfigured, lidar_status_);
+    devices["temperature_controller"] = resultItem(diff.temperature_controller_changed, temperatureControllerReconfigured, temperature_controller_status_);
     devices["wave_tcp"] = resultItem(diff.wave_tcp_changed, waveReconfigured, wave_tcp_status_);
 
     QJsonObject telemetry;
@@ -356,6 +374,66 @@ bool SkyDeviceManager::setPeakSearchRange(quint32 startIndex, quint32 endIndex, 
     return true;
 }
 
+bool SkyDeviceManager::setTemperatureTarget(quint8 channel, double celsius, CommandErrorCode *errorCode)
+{
+    if (!temperature_controller_ || temperature_controller_status_.state != DeviceState::Connected)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        return false;
+    }
+    const bool ok = temperature_controller_->setTargetTemperature(channel, celsius);
+    if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+    return ok;
+}
+
+bool SkyDeviceManager::setTemperatureOutputEnabled(quint8 channel, bool enabled, CommandErrorCode *errorCode)
+{
+    if (!temperature_controller_ || temperature_controller_status_.state != DeviceState::Connected)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        return false;
+    }
+    const bool ok = temperature_controller_->setOutputEnabled(channel, enabled);
+    if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+    return ok;
+}
+
+bool SkyDeviceManager::setTemperatureOutputMode(quint8 channel, quint16 mode, CommandErrorCode *errorCode)
+{
+    if (!temperature_controller_ || temperature_controller_status_.state != DeviceState::Connected)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        return false;
+    }
+    const bool ok = temperature_controller_->setOutputMode(channel, mode);
+    if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+    return ok;
+}
+
+bool SkyDeviceManager::setTemperatureMaxOutputPercent(quint8 channel, quint16 percent, CommandErrorCode *errorCode)
+{
+    if (!temperature_controller_ || temperature_controller_status_.state != DeviceState::Connected)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        return false;
+    }
+    const bool ok = temperature_controller_->setMaxOutputPercent(channel, percent);
+    if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+    return ok;
+}
+
+bool SkyDeviceManager::setTemperaturePid(quint8 channel, quint32 kp, quint32 ki, quint32 kd, CommandErrorCode *errorCode)
+{
+    if (!temperature_controller_ || temperature_controller_status_.state != DeviceState::Connected)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        return false;
+    }
+    const bool ok = temperature_controller_->setPid(channel, kp, ki, kd);
+    if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+    return ok;
+}
+
 EpsilonData SkyDeviceManager::latestEpsilon() const
 {
     return latest_epsilon_;
@@ -374,6 +452,11 @@ HmpData SkyDeviceManager::latestHmp() const
 LidarData SkyDeviceManager::latestLidar() const
 {
     return latest_lidar_;
+}
+
+TemperatureControllerData SkyDeviceManager::latestTemperatureController() const
+{
+    return latest_temperature_controller_;
 }
 
 QVector<float> SkyDeviceManager::latestRawWaveform() const
@@ -589,6 +672,7 @@ void SkyDeviceManager::initializeStatuses()
     hmp_status_.device_id = SkyDeviceId::Hmp;
     lidar_status_.device_id = SkyDeviceId::Lidar;
     wave_tcp_status_.device_id = SkyDeviceId::WaveTcp;
+    temperature_controller_status_.device_id = SkyDeviceId::TemperatureController;
 }
 
 void SkyDeviceManager::setState(SkyDeviceId id, DeviceState state, quint16 errorCode)
@@ -615,6 +699,8 @@ DeviceStatusItem& SkyDeviceManager::mutableStatus(SkyDeviceId id)
         return hmp_status_;
     case SkyDeviceId::Lidar:
         return lidar_status_;
+    case SkyDeviceId::TemperatureController:
+        return temperature_controller_status_;
     case SkyDeviceId::WaveTcp:
         return wave_tcp_status_;
     case SkyDeviceId::All:
@@ -635,6 +721,7 @@ const SerialDeviceConfig& SkyDeviceManager::serialConfigFor(SkyDeviceId id) cons
         return config_.hmp;
     case SkyDeviceId::Lidar:
         return config_.lidar;
+    case SkyDeviceId::TemperatureController:
     case SkyDeviceId::WaveTcp:
     case SkyDeviceId::All:
         break;
@@ -666,6 +753,9 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
             break;
         case SkyDeviceId::Lidar:
             stopCollector(lidar_);
+            break;
+        case SkyDeviceId::TemperatureController:
+            stopCollector(temperature_controller_);
             break;
         case SkyDeviceId::WaveTcp:
         case SkyDeviceId::All:
@@ -888,6 +978,34 @@ bool SkyDeviceManager::connectSerialCollector(SkyDeviceId id, const SerialDevice
         lidar_->setDeviceSampleRate(static_cast<int>(config.frequency_hz));
         if (!lidar_->startStreaming()) return fail(CommandErrorCode::DeviceConnectFailed);
         break;
+    case SkyDeviceId::TemperatureController:
+        temperature_controller_ = std::make_shared<TemperatureControllerCollector>();
+        temperature_controller_->setLogCallback(logCallback);
+        temperature_controller_->setSampleRate(static_cast<int>(config.frequency_hz));
+        temperature_controller_->setSlaveAddress(static_cast<uint8_t>(std::clamp(config_.temperature_controller.slave_address, 1, 247)));
+        temperature_controller_->setDataCallback([self = QPointer<SkyDeviceManager>(this), weakCollector = std::weak_ptr<TemperatureControllerCollector>(temperature_controller_)]() {
+            if (!self)
+            {
+                return;
+            }
+            const std::shared_ptr<TemperatureControllerCollector> collector = weakCollector.lock();
+            if (!collector)
+            {
+                return;
+            }
+            const TemperatureControllerData data = collector->getLatestData();
+            QMetaObject::invokeMethod(self.data(), [self, collector, data]() {
+                if (!self || self->temperature_controller_ != collector)
+                {
+                    return;
+                }
+                self->handleTemperatureControllerData(data);
+            }, Qt::QueuedConnection);
+        });
+        if (!temperature_controller_->start(config.port.toStdString(), SerialConfig::N81(config.baud_rate))) return fail(CommandErrorCode::DeviceConnectFailed);
+        if (!temperature_controller_->checkDeviceResponse()) return fail(CommandErrorCode::DeviceConnectFailed);
+        if (!temperature_controller_->startStreaming()) return fail(CommandErrorCode::DeviceConnectFailed);
+        break;
     case SkyDeviceId::WaveTcp:
     case SkyDeviceId::All:
         return fail(CommandErrorCode::InvalidDeviceId);
@@ -928,6 +1046,14 @@ void SkyDeviceManager::handleLidarData(const LidarData& data)
     lidar_status_.rx_count++;
     lidar_status_.last_data_time_us = nowUs();
     emit lidarDataUpdated(latest_lidar_);
+}
+
+void SkyDeviceManager::handleTemperatureControllerData(const TemperatureControllerData& data)
+{
+    latest_temperature_controller_ = data;
+    temperature_controller_status_.rx_count++;
+    temperature_controller_status_.last_data_time_us = nowUs();
+    emit temperatureControllerDataUpdated(latest_temperature_controller_);
 }
 
 bool SkyDeviceManager::connectWaveTcp(CommandErrorCode *errorCode)
@@ -1217,6 +1343,10 @@ void SkyDeviceManager::invalidateDeviceData(SkyDeviceId id)
         latest_lidar_ = LidarData();
         lidar_status_.last_data_time_us = 0;
         break;
+    case SkyDeviceId::TemperatureController:
+        latest_temperature_controller_ = TemperatureControllerData();
+        temperature_controller_status_.last_data_time_us = 0;
+        break;
     case SkyDeviceId::WaveTcp:
         latest_raw_waveform_.clear();
         latest_waveform_.clear();
@@ -1233,6 +1363,7 @@ void SkyDeviceManager::invalidateDeviceData(SkyDeviceId id)
         invalidateDeviceData(SkyDeviceId::Ptb);
         invalidateDeviceData(SkyDeviceId::Hmp);
         invalidateDeviceData(SkyDeviceId::Lidar);
+        invalidateDeviceData(SkyDeviceId::TemperatureController);
         invalidateDeviceData(SkyDeviceId::WaveTcp);
         break;
     }

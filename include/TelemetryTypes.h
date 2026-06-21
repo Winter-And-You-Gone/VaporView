@@ -30,6 +30,7 @@ enum class MsgType : quint8
     TelemetryStatus = 0x04,
     SkyConfig = 0x05,
     SkyConfigApplyResult = 0x06,
+    TemperatureControllerStatus = 0x07,
     Command = 0x10,
     CommandAck = 0x11,
     Heartbeat = 0x20,
@@ -61,6 +62,11 @@ enum class CommandId : quint16
     SaveSkyConfig = 32,
     ReloadSkyConfig = 33,
     SetPeakSearchRange = 34,
+    SetTemperatureTarget = 40,
+    SetTemperatureOutputEnabled = 41,
+    SetTemperatureOutputMode = 42,
+    SetTemperatureMaxOutputPercent = 43,
+    SetTemperaturePid = 44,
     ShutdownCore = 90,
 };
 
@@ -71,6 +77,7 @@ enum class SkyDeviceId : quint8
     Hmp = 3,
     Lidar = 4,
     WaveTcp = 5,
+    TemperatureController = 6,
     All = 255,
 };
 
@@ -215,6 +222,18 @@ struct PeakSearchRange
 {
     quint32 start_index = 0;
     quint32 end_index = 0;
+};
+
+struct TemperatureControllerCommand
+{
+    quint8 channel = 1;
+    double target_temperature_c = 0.0;
+    bool output_enabled = false;
+    quint16 output_mode = 0;
+    quint16 max_output_percent = 0;
+    quint32 kp = 0;
+    quint32 ki = 0;
+    quint32 kd = 0;
 };
 
 struct DeviceStatusItem

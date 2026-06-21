@@ -32,6 +32,7 @@ void testProtocolEnumValues()
     require(static_cast<quint16>(VaporView::CommandId::RebootDevice) == 11, "CommandId RebootDevice value");
     require(static_cast<quint16>(VaporView::CommandId::ConnectDevice) == 21, "CommandId ConnectDevice value");
     require(static_cast<quint16>(VaporView::CommandId::SetPeakSearchRange) == 34, "CommandId SetPeakSearchRange value");
+    require(static_cast<quint16>(VaporView::CommandId::SetTemperatureTarget) == 40, "CommandId SetTemperatureTarget value");
     require(static_cast<quint16>(VaporView::CommandId::ShutdownCore) == 90, "CommandId ShutdownCore value");
 }
 
@@ -209,6 +210,47 @@ void testWaveform()
     VaporView::PeakSearchRange parsedRange;
     require(VaporView::TelemetryCodec::parsePeakSearchRange(VaporView::TelemetryCodec::serializePeakSearchRange(range), parsedRange), "parse peak search range");
     require(parsedRange.start_index == 123 && parsedRange.end_index == 456, "peak search range values");
+
+    VaporView::TemperatureControllerCommand command;
+    command.channel = 2;
+    command.target_temperature_c = 25.5;
+    command.output_enabled = true;
+    command.output_mode = 3;
+    command.max_output_percent = 80;
+    command.kp = 11;
+    command.ki = 22;
+    command.kd = 33;
+    VaporView::TemperatureControllerCommand parsedCommand;
+    require(VaporView::TelemetryCodec::parseTemperatureControllerCommand(
+                VaporView::TelemetryCodec::serializeTemperatureControllerCommand(command), parsedCommand),
+            "parse temperature controller command");
+    require(parsedCommand.channel == 2, "temperature command channel");
+    require(std::fabs(parsedCommand.target_temperature_c - 25.5) < 0.000001, "temperature command target");
+    require(parsedCommand.output_enabled, "temperature command output enabled");
+    require(parsedCommand.output_mode == 3 && parsedCommand.max_output_percent == 80, "temperature command output values");
+    require(parsedCommand.kp == 11 && parsedCommand.ki == 22 && parsedCommand.kd == 33, "temperature command pid values");
+
+    VaporView::TemperatureControllerData status;
+    status.valid = true;
+    status.internal_temperature_c = 32.25;
+    status.error_code = 7;
+    status.channels[0].target_temperature_c = 25.0;
+    status.channels[0].measured_temperature_c = 24.9;
+    status.channels[0].output_enabled = true;
+    status.channels[0].output_mode = 1;
+    status.channels[0].max_output_percent = 70;
+    status.channels[0].kp = 100;
+    status.channels[1].target_temperature_c = 26.0;
+    status.channels[1].output_percent = 12.5;
+    VaporView::TemperatureControllerData parsedStatus;
+    require(VaporView::TelemetryCodec::parseTemperatureControllerStatus(
+                VaporView::TelemetryCodec::serializeTemperatureControllerStatus(status), parsedStatus),
+            "parse temperature controller status");
+    require(parsedStatus.valid, "temperature status valid");
+    require(parsedStatus.error_code == 7, "temperature status error code");
+    require(std::fabs(parsedStatus.internal_temperature_c - 32.25) < 0.000001, "temperature status internal temp");
+    require(parsedStatus.channels[0].output_enabled && parsedStatus.channels[0].kp == 100, "temperature status channel one");
+    require(std::fabs(parsedStatus.channels[1].output_percent - 12.5) < 0.000001, "temperature status channel two");
 }
 
 void testSkyConfigDiff()

@@ -24,6 +24,7 @@
 #include <QProgressBar>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
+#include <QTabWidget>
 #include <QTimer>
 #include <QAction>
 #include <QActionGroup>
@@ -246,6 +247,74 @@ private:
     bool is_english_;
 };
 
+class TemperatureControllerPanel : public QWidget
+{
+    Q_OBJECT
+
+public:
+    explicit TemperatureControllerPanel(QWidget *parent = nullptr);
+    void updateData(const VaporView::TemperatureControllerData& data);
+    void updateRate(double hz);
+    void setEnglish(bool english);
+    void setCommandStatus(const QString& text, bool error = false);
+
+signals:
+    void targetTemperatureRequested(quint8 channel, double celsius);
+    void outputEnabledRequested(quint8 channel, bool enabled);
+    void outputModeRequested(quint8 channel, quint16 mode);
+    void maxOutputPercentRequested(quint8 channel, quint16 percent);
+    void pidRequested(quint8 channel, quint32 kp, quint32 ki, quint32 kd);
+
+private:
+    struct ChannelWidgets
+    {
+        QLabel *target_label_text = nullptr;
+        QLabel *measured_label_text = nullptr;
+        QLabel *output_percent_label_text = nullptr;
+        QLabel *output_current_label_text = nullptr;
+        QLabel *enabled_label_text = nullptr;
+        QLabel *mode_label_text = nullptr;
+        QLabel *max_output_label_text = nullptr;
+        QLabel *pid_label_text = nullptr;
+        QLabel *target_label = nullptr;
+        QLabel *measured_label = nullptr;
+        QLabel *output_percent_label = nullptr;
+        QLabel *output_current_label = nullptr;
+        QLabel *enabled_label = nullptr;
+        QLabel *mode_label = nullptr;
+        QLabel *max_output_label = nullptr;
+        QLabel *pid_label = nullptr;
+        QDoubleSpinBox *target_spin = nullptr;
+        QSpinBox *mode_spin = nullptr;
+        QSpinBox *max_output_spin = nullptr;
+        QSpinBox *kp_spin = nullptr;
+        QSpinBox *ki_spin = nullptr;
+        QSpinBox *kd_spin = nullptr;
+        QPushButton *target_button = nullptr;
+        QPushButton *enable_button = nullptr;
+        QPushButton *disable_button = nullptr;
+        QPushButton *mode_button = nullptr;
+        QPushButton *max_output_button = nullptr;
+        QPushButton *pid_button = nullptr;
+    };
+
+    void setupUi();
+    QWidget *createChannelPage(int index);
+    void updateChannelTexts();
+    void updateChannelData(int index, const VaporView::TemperatureControllerChannelData& channel, bool valid);
+
+    QTabWidget *tabs_ = nullptr;
+    QLabel *rate_label_ = nullptr;
+    QLabel *internal_temperature_label_ = nullptr;
+    QLabel *error_code_label_ = nullptr;
+    QLabel *error_text_label_ = nullptr;
+    QLabel *status_label_ = nullptr;
+    QLabel *internal_temperature_lbl_ = nullptr;
+    QLabel *error_code_lbl_ = nullptr;
+    std::array<ChannelWidgets, 2> channels_{};
+    bool is_english_ = false;
+};
+
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
@@ -303,6 +372,7 @@ private slots:
     void onRemoteWaveformUpdated(const VaporView::DownsampledWaveform& waveform);
     void onRemoteWaveformFeatureUpdated(const VaporView::WaveformFeature& feature);
     void onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus& status);
+    void onRemoteTemperatureControllerStatusUpdated(const VaporView::TemperatureControllerData& data);
     void onRemoteCommandAckReceived(const VaporView::CommandAck& ack);
     void onRemoteLinkOpenChanged(bool open);
 
@@ -492,6 +562,9 @@ private:
     QPushButton *createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device);
     void setRemoteDeviceButtonsEnabled(bool enabled);
     void updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, VaporView::DeviceState state);
+    void sendRemoteTemperatureCommand(VaporView::CommandId command, const VaporView::TemperatureControllerCommand& payload);
+    bool isTemperatureCommand(VaporView::CommandId command) const;
+    QString temperatureCommandStatusText(VaporView::CommandId command, quint8 channel, bool pending, const QString& detail = QString()) const;
 
     QWidget *central_widget_;
     QVBoxLayout *main_layout_;
@@ -516,6 +589,7 @@ private:
     PtbPanel *ptb_panel_;
     HmpPanel *hmp_panel_;
     LidarPanel *lidar_panel_;
+    TemperatureControllerPanel *temperature_controller_panel_;
 
     QTextEdit *log_text_edit_;
     QToolButton *log_filter_btn_;
@@ -595,6 +669,7 @@ private:
     QGroupBox *ptb_group_;
     QGroupBox *hmp_group_;
     QGroupBox *env_group_;
+    QGroupBox *temperature_controller_group_;
     QGroupBox *lidar_group_;
 
     QLabel *epsilon_lbl_;
@@ -613,6 +688,7 @@ private:
     QLabel *env_lidar_status_icon_;
     QLabel *env_ptb_status_icon_;
     QLabel *env_hmp_status_icon_;
+    QLabel *temperature_controller_inline_title_lbl_;
     QLabel *config_inline_title_lbl_;
     QLabel *global_rate_lbl_;
     QLabel *epsilon_rate_lbl_;
@@ -661,6 +737,10 @@ private:
     QPushButton *lidar_remote_disconnect_btn_;
     QPushButton *lidar_remote_reconnect_btn_;
     QWidget *lidar_remote_buttons_widget_;
+    QPushButton *temperature_remote_connect_btn_;
+    QPushButton *temperature_remote_disconnect_btn_;
+    QPushButton *temperature_remote_reconnect_btn_;
+    QWidget *temperature_remote_buttons_widget_;
     QPushButton *imu_apply_btn_;
     QPushButton *imu_hi91_btn_;
     QPushButton *imu_hi92_btn_;
@@ -688,6 +768,7 @@ private:
     VaporView::PtbData current_ptb_;
     VaporView::HmpData current_hmp_;
     VaporView::LidarData current_lidar_;
+    VaporView::TemperatureControllerData current_temperature_controller_;
 
     bool is_english_;
     bool log_filter_ack_enabled_;
@@ -715,6 +796,7 @@ private:
     QHash<VaporView::SkyDeviceId, qint64> remote_last_data_ms_;
     QHash<int, QVector<qint64>> remote_packet_arrivals_ms_;
     QHash<int, QVector<qint64>> remote_waveform_channel_arrivals_ms_;
+    QHash<quint16, VaporView::TemperatureControllerCommand> remote_temperature_commands_;
     QHash<quint16, VaporView::PeakSearchRange> remote_peak_search_commands_;
     qint64 remote_last_status_ms_;
     VaporView::TelemetryStatus remote_status_;

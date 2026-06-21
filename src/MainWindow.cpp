@@ -32,6 +32,7 @@
 #include <QFontDatabase>
 #include <QFontMetrics>
 #include <QSaveFile>
+#include <QTabWidget>
 #include <QTextStream>
 #include <QStringConverter>
 #include <QDateTime>
@@ -434,6 +435,12 @@ constexpr int kTelemetrySummaryRateValueWidth = 86;
 constexpr int kTelemetrySummaryInfoLabelWidth = 118;
 constexpr int kTelemetrySummaryInfoValueWidth = 86;
 constexpr int kTelemetrySummaryTitleColumnWidth = kEpsilonSideTitleWidth;
+constexpr int kTemperatureControllerCardWidth = 650;
+constexpr int kTemperatureControllerValueWidth = 126;
+constexpr int kTemperatureControllerTargetInputWidth = 150;
+constexpr int kTemperatureControllerInputWidth = 88;
+constexpr int kTemperatureControllerPidInputWidth = 70;
+constexpr int kTemperatureControllerButtonWidth = 92;
 constexpr int kRemotePacketRateWindowMs = 5000;
 constexpr qint64 kTcpRecordingStatusRefreshMs = 500;
 constexpr quint64 kTcpRawRecordQueueWarningBytes = 32ULL * 1024ULL * 1024ULL;
@@ -600,6 +607,31 @@ QStringList environmentFieldLabelWidthCandidates()
         QStringLiteral("气压:"),
         QStringLiteral("温度:"),
         QStringLiteral("湿度:")
+    };
+}
+
+QStringList temperatureControllerFieldLabelWidthCandidates()
+{
+    return {
+        QStringLiteral("Internal:"),
+        QStringLiteral("Error:"),
+        QStringLiteral("Target:"),
+        QStringLiteral("Measured:"),
+        QStringLiteral("Output:"),
+        QStringLiteral("Current:"),
+        QStringLiteral("Enabled:"),
+        QStringLiteral("Mode:"),
+        QStringLiteral("Max Output:"),
+        QStringLiteral("自身温度:"),
+        QStringLiteral("错误码:"),
+        QStringLiteral("目标:"),
+        QStringLiteral("实际:"),
+        QStringLiteral("输出:"),
+        QStringLiteral("电流:"),
+        QStringLiteral("使能:"),
+        QStringLiteral("模式:"),
+        QStringLiteral("最大输出:"),
+        QStringLiteral("PID:")
     };
 }
 
@@ -1727,7 +1759,8 @@ QLabel#highlightedValue {
 }
 PtbPanel QLabel#highlightedValue,
 HmpPanel QLabel#highlightedValue,
-LidarPanel QLabel#highlightedValue {
+LidarPanel QLabel#highlightedValue,
+TemperatureControllerPanel QLabel#highlightedValue {
     font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 14px;
     font-weight: 600;
@@ -1821,6 +1854,37 @@ QPushButton:checked {
 QPushButton:disabled {
     background-color: @vv-border;
     color: @vv-text-disabled-strong;
+}
+QPushButton#temperatureControlButton {
+    padding: 4px 10px;
+    min-height: 28px;
+    max-height: 28px;
+    font-size: 14px;
+}
+TemperatureControllerPanel QTabWidget::pane {
+    background-color: @vv-surface;
+    border: 1px solid @vv-border;
+    border-radius: 4px;
+    top: -1px;
+}
+TemperatureControllerPanel QTabBar::tab {
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
+    border-bottom: none;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    color: @vv-text;
+    padding: 4px 14px;
+    min-height: 22px;
+}
+TemperatureControllerPanel QTabBar::tab:selected {
+    background-color: @vv-surface;
+    color: @vv-primary;
+    font-weight: 600;
+}
+TemperatureControllerPanel QTabBar::tab:!selected:hover {
+    background-color: @vv-primary-subtle;
+    color: @vv-primary;
 }
 QScrollBar:vertical {
     background-color: @vv-surface-sunken;
@@ -3825,6 +3889,317 @@ void LidarPanel::updateData(const VaporView::LidarData& lidar_data)
     }
 }
 
+TemperatureControllerPanel::TemperatureControllerPanel(QWidget *parent)
+    : QWidget(parent)
+{
+    setupUi();
+}
+
+void TemperatureControllerPanel::setupUi()
+{
+    setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    auto *layout = new QVBoxLayout(this);
+    layout->setContentsMargins(8, 4, 8, 6);
+    layout->setSpacing(4);
+
+    auto *statusLayout = new QHBoxLayout();
+    statusLayout->setSpacing(6);
+    internal_temperature_lbl_ = new QLabel(this);
+    internal_temperature_lbl_->setObjectName(QStringLiteral("fieldLabel"));
+    internal_temperature_lbl_->setMinimumHeight(22);
+    setFixedTextLabelWidth(internal_temperature_lbl_, temperatureControllerFieldLabelWidthCandidates(), 4);
+    internal_temperature_label_ = new QLabel(QStringLiteral("--- °C"), this);
+    internal_temperature_label_->setObjectName(QStringLiteral("highlightedValue"));
+    internal_temperature_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    internal_temperature_label_->setMinimumHeight(22);
+    internal_temperature_label_->setMinimumWidth(kTemperatureControllerValueWidth);
+    internal_temperature_label_->setMaximumWidth(kTemperatureControllerValueWidth);
+    error_code_lbl_ = new QLabel(this);
+    error_code_lbl_->setObjectName(QStringLiteral("fieldLabel"));
+    error_code_lbl_->setMinimumHeight(22);
+    setFixedTextLabelWidth(error_code_lbl_, temperatureControllerFieldLabelWidthCandidates(), 4);
+    error_code_label_ = new QLabel(QStringLiteral("0x0000"), this);
+    error_code_label_->setObjectName(QStringLiteral("highlightedValue"));
+    error_code_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    error_code_label_->setMinimumHeight(22);
+    error_code_label_->setMinimumWidth(kTemperatureControllerValueWidth);
+    error_code_label_->setMaximumWidth(kTemperatureControllerValueWidth);
+    rate_label_ = new VaporView::VisualTextLabel(this);
+    rate_label_->setObjectName(QStringLiteral("rateLabel"));
+    rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    rate_label_->setMinimumHeight(22);
+    setFixedNumericLabelWidth(rate_label_, {QStringLiteral("-999.9 Hz"), QStringLiteral("999.9 Hz"), QStringLiteral("-- Hz")}, 4);
+    statusLayout->addWidget(internal_temperature_lbl_);
+    statusLayout->addWidget(internal_temperature_label_);
+    statusLayout->addSpacing(8);
+    statusLayout->addWidget(error_code_lbl_);
+    statusLayout->addWidget(error_code_label_);
+    statusLayout->addStretch();
+    statusLayout->addWidget(rate_label_);
+    layout->addLayout(statusLayout);
+
+    tabs_ = new QTabWidget(this);
+    tabs_->setDocumentMode(true);
+    tabs_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+    tabs_->addTab(createChannelPage(0), QStringLiteral("通道1"));
+    tabs_->addTab(createChannelPage(1), QStringLiteral("通道2"));
+    layout->addWidget(tabs_);
+
+    status_label_ = new QLabel(this);
+    status_label_->setObjectName(QStringLiteral("fieldLabel"));
+    status_label_->setMinimumHeight(20);
+    status_label_->setWordWrap(true);
+    layout->addWidget(status_label_);
+    setEnglish(false);
+    setCommandStatus(QStringLiteral("写入命令会在天空端读回确认后才返回成功。"));
+    updateData(VaporView::TemperatureControllerData());
+}
+
+QWidget *TemperatureControllerPanel::createChannelPage(int index)
+{
+    QWidget *page = new QWidget(tabs_);
+    auto *layout = new QGridLayout(page);
+    layout->setContentsMargins(8, 6, 8, 6);
+    layout->setHorizontalSpacing(6);
+    layout->setVerticalSpacing(4);
+    layout->setColumnStretch(0, 0);
+    layout->setColumnStretch(1, 0);
+    layout->setColumnStretch(2, 0);
+    ChannelWidgets& channel = channels_[index];
+
+    auto addValueRow = [this, layout](int row, const QString& labelText, QLabel *&label, QLabel *&valueLabel) {
+        label = new QLabel(labelText, this);
+        label->setObjectName(QStringLiteral("fieldLabel"));
+        label->setMinimumHeight(22);
+        setFixedTextLabelWidth(label, temperatureControllerFieldLabelWidthCandidates(), 4);
+        valueLabel = new QLabel(QStringLiteral("---"), this);
+        valueLabel->setObjectName(QStringLiteral("highlightedValue"));
+        valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        valueLabel->setMinimumHeight(22);
+        valueLabel->setMinimumWidth(kTemperatureControllerValueWidth);
+        valueLabel->setMaximumWidth(kTemperatureControllerValueWidth);
+        valueLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        layout->addWidget(label, row, 0, Qt::AlignVCenter | Qt::AlignLeft);
+        layout->addWidget(valueLabel, row, 1, Qt::AlignVCenter | Qt::AlignLeft);
+    };
+
+    auto makeCommandLayout = []() {
+        auto *commandLayout = new QHBoxLayout();
+        commandLayout->setContentsMargins(0, 0, 0, 0);
+        commandLayout->setSpacing(4);
+        return commandLayout;
+    };
+
+    auto prepareButton = [](QPushButton *button) {
+        button->setObjectName(QStringLiteral("temperatureControlButton"));
+        button->setFixedWidth(kTemperatureControllerButtonWidth);
+        button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    };
+
+    addValueRow(0, QStringLiteral("目标"), channel.target_label_text, channel.target_label);
+    addValueRow(1, QStringLiteral("实际"), channel.measured_label_text, channel.measured_label);
+    addValueRow(2, QStringLiteral("输出"), channel.output_percent_label_text, channel.output_percent_label);
+    addValueRow(3, QStringLiteral("电流"), channel.output_current_label_text, channel.output_current_label);
+    addValueRow(4, QStringLiteral("使能"), channel.enabled_label_text, channel.enabled_label);
+    addValueRow(5, QStringLiteral("模式"), channel.mode_label_text, channel.mode_label);
+    addValueRow(6, QStringLiteral("最大输出"), channel.max_output_label_text, channel.max_output_label);
+    addValueRow(7, QStringLiteral("PID"), channel.pid_label_text, channel.pid_label);
+
+    channel.target_spin = new QDoubleSpinBox(this);
+    channel.target_spin->setRange(-40.0, 100.0);
+    channel.target_spin->setDecimals(3);
+    channel.target_spin->setSuffix(QStringLiteral(" °C"));
+    channel.target_spin->setFixedWidth(kTemperatureControllerTargetInputWidth);
+    channel.target_spin->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    channel.target_button = new QPushButton(this);
+    prepareButton(channel.target_button);
+    auto *targetLayout = makeCommandLayout();
+    targetLayout->addWidget(channel.target_spin);
+    targetLayout->addWidget(channel.target_button);
+    layout->addLayout(targetLayout, 0, 2, Qt::AlignLeft);
+
+    channel.enable_button = new QPushButton(this);
+    channel.disable_button = new QPushButton(this);
+    prepareButton(channel.enable_button);
+    prepareButton(channel.disable_button);
+    auto *enableLayout = makeCommandLayout();
+    enableLayout->addWidget(channel.enable_button);
+    enableLayout->addWidget(channel.disable_button);
+    layout->addLayout(enableLayout, 4, 2, Qt::AlignLeft);
+
+    channel.mode_spin = new QSpinBox(this);
+    channel.mode_spin->setRange(0, 3);
+    channel.mode_spin->setFixedWidth(kTemperatureControllerInputWidth);
+    channel.mode_spin->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    channel.mode_button = new QPushButton(this);
+    prepareButton(channel.mode_button);
+    auto *modeLayout = makeCommandLayout();
+    modeLayout->addWidget(channel.mode_spin);
+    modeLayout->addWidget(channel.mode_button);
+    layout->addLayout(modeLayout, 5, 2, Qt::AlignLeft);
+
+    channel.max_output_spin = new QSpinBox(this);
+    channel.max_output_spin->setRange(0, 90);
+    channel.max_output_spin->setSuffix(QStringLiteral(" %"));
+    channel.max_output_spin->setFixedWidth(kTemperatureControllerInputWidth);
+    channel.max_output_spin->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    channel.max_output_button = new QPushButton(this);
+    prepareButton(channel.max_output_button);
+    auto *maxLayout = makeCommandLayout();
+    maxLayout->addWidget(channel.max_output_spin);
+    maxLayout->addWidget(channel.max_output_button);
+    layout->addLayout(maxLayout, 6, 2, Qt::AlignLeft);
+
+    channel.kp_spin = new QSpinBox(this);
+    channel.ki_spin = new QSpinBox(this);
+    channel.kd_spin = new QSpinBox(this);
+    for (QSpinBox *spin : {channel.kp_spin, channel.ki_spin, channel.kd_spin})
+    {
+        spin->setRange(0, std::numeric_limits<int>::max());
+        spin->setFixedWidth(kTemperatureControllerPidInputWidth);
+        spin->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    }
+    channel.pid_button = new QPushButton(this);
+    prepareButton(channel.pid_button);
+    auto *pidLayout = makeCommandLayout();
+    pidLayout->addWidget(channel.kp_spin);
+    pidLayout->addWidget(channel.ki_spin);
+    pidLayout->addWidget(channel.kd_spin);
+    pidLayout->addWidget(channel.pid_button);
+    layout->addLayout(pidLayout, 7, 2, Qt::AlignLeft);
+
+    const quint8 channelNumber = static_cast<quint8>(index + 1);
+    connect(channel.target_button, &QPushButton::clicked, this, [this, channelNumber, spin = channel.target_spin]() {
+        emit targetTemperatureRequested(channelNumber, spin->value());
+    });
+    connect(channel.enable_button, &QPushButton::clicked, this, [this, channelNumber]() {
+        emit outputEnabledRequested(channelNumber, true);
+    });
+    connect(channel.disable_button, &QPushButton::clicked, this, [this, channelNumber]() {
+        emit outputEnabledRequested(channelNumber, false);
+    });
+    connect(channel.mode_button, &QPushButton::clicked, this, [this, channelNumber, spin = channel.mode_spin]() {
+        emit outputModeRequested(channelNumber, static_cast<quint16>(spin->value()));
+    });
+    connect(channel.max_output_button, &QPushButton::clicked, this, [this, channelNumber, spin = channel.max_output_spin]() {
+        emit maxOutputPercentRequested(channelNumber, static_cast<quint16>(spin->value()));
+    });
+    connect(channel.pid_button, &QPushButton::clicked, this, [this, channelNumber, &channel]() {
+        emit pidRequested(channelNumber,
+                          static_cast<quint32>(channel.kp_spin->value()),
+                          static_cast<quint32>(channel.ki_spin->value()),
+                          static_cast<quint32>(channel.kd_spin->value()));
+    });
+    return page;
+}
+
+void TemperatureControllerPanel::updateRate(double hz)
+{
+    if (rate_label_)
+    {
+        rate_label_->setText((hz > 0.0 && std::isfinite(hz))
+            ? fixedDecimalWithUnit(hz, 1, 6, QStringLiteral("Hz"))
+            : QStringLiteral("%1 Hz").arg(fixedTextField(QStringLiteral("--"), 6)));
+    }
+}
+
+void TemperatureControllerPanel::setEnglish(bool english)
+{
+    is_english_ = english;
+    updateChannelTexts();
+}
+
+void TemperatureControllerPanel::updateChannelTexts()
+{
+    if (internal_temperature_lbl_) internal_temperature_lbl_->setText(is_english_ ? QStringLiteral("Internal:") : QStringLiteral("自身温度:"));
+    if (error_code_lbl_) error_code_lbl_->setText(is_english_ ? QStringLiteral("Error:") : QStringLiteral("错误码:"));
+    refreshFixedTextLabelWidth(internal_temperature_lbl_);
+    refreshFixedTextLabelWidth(error_code_lbl_);
+    if (tabs_)
+    {
+        tabs_->setTabText(0, is_english_ ? QStringLiteral("Channel 1") : QStringLiteral("通道1"));
+        tabs_->setTabText(1, is_english_ ? QStringLiteral("Channel 2") : QStringLiteral("通道2"));
+    }
+    for (ChannelWidgets& channel : channels_)
+    {
+        if (channel.target_label_text) channel.target_label_text->setText(is_english_ ? QStringLiteral("Target:") : QStringLiteral("目标:"));
+        if (channel.measured_label_text) channel.measured_label_text->setText(is_english_ ? QStringLiteral("Measured:") : QStringLiteral("实际:"));
+        if (channel.output_percent_label_text) channel.output_percent_label_text->setText(is_english_ ? QStringLiteral("Output:") : QStringLiteral("输出:"));
+        if (channel.output_current_label_text) channel.output_current_label_text->setText(is_english_ ? QStringLiteral("Current:") : QStringLiteral("电流:"));
+        if (channel.enabled_label_text) channel.enabled_label_text->setText(is_english_ ? QStringLiteral("Enabled:") : QStringLiteral("使能:"));
+        if (channel.mode_label_text) channel.mode_label_text->setText(is_english_ ? QStringLiteral("Mode:") : QStringLiteral("模式:"));
+        if (channel.max_output_label_text) channel.max_output_label_text->setText(is_english_ ? QStringLiteral("Max Output:") : QStringLiteral("最大输出:"));
+        if (channel.pid_label_text) channel.pid_label_text->setText(is_english_ ? QStringLiteral("PID:") : QStringLiteral("PID:"));
+        refreshFixedTextLabelWidth(channel.target_label_text);
+        refreshFixedTextLabelWidth(channel.measured_label_text);
+        refreshFixedTextLabelWidth(channel.output_percent_label_text);
+        refreshFixedTextLabelWidth(channel.output_current_label_text);
+        refreshFixedTextLabelWidth(channel.enabled_label_text);
+        refreshFixedTextLabelWidth(channel.mode_label_text);
+        refreshFixedTextLabelWidth(channel.max_output_label_text);
+        refreshFixedTextLabelWidth(channel.pid_label_text);
+        if (channel.target_button) channel.target_button->setText(is_english_ ? QStringLiteral("Set") : QStringLiteral("设定"));
+        if (channel.enable_button) channel.enable_button->setText(is_english_ ? QStringLiteral("Enable") : QStringLiteral("开启"));
+        if (channel.disable_button) channel.disable_button->setText(is_english_ ? QStringLiteral("Disable") : QStringLiteral("关闭"));
+        if (channel.mode_button) channel.mode_button->setText(is_english_ ? QStringLiteral("Set Mode") : QStringLiteral("设模式"));
+        if (channel.max_output_button) channel.max_output_button->setText(is_english_ ? QStringLiteral("Set Max") : QStringLiteral("设上限"));
+        if (channel.pid_button) channel.pid_button->setText(is_english_ ? QStringLiteral("Set PID") : QStringLiteral("设PID"));
+    }
+    if (status_label_ && status_label_->text().isEmpty()) setCommandStatus(is_english_ ? QStringLiteral("Writes are confirmed by reading back from RD105.") : QStringLiteral("写入命令会在天空端读回确认后才返回成功。"));
+}
+
+void TemperatureControllerPanel::updateChannelData(int index, const VaporView::TemperatureControllerChannelData& channelData, bool valid)
+{
+    ChannelWidgets& channel = channels_[index];
+    channel.target_label->setText(fixedDecimalWithUnit(valid ? channelData.target_temperature_c : std::numeric_limits<double>::quiet_NaN(), 3, 8, QStringLiteral("°C")));
+    channel.measured_label->setText(fixedDecimalWithUnit(valid ? channelData.measured_temperature_c : std::numeric_limits<double>::quiet_NaN(), 3, 8, QStringLiteral("°C")));
+    channel.output_percent_label->setText(fixedDecimalWithUnit(valid ? channelData.output_percent : std::numeric_limits<double>::quiet_NaN(), 2, 8, QStringLiteral("%")));
+    channel.output_current_label->setText(fixedDecimalWithUnit(valid ? channelData.output_current_a : std::numeric_limits<double>::quiet_NaN(), 3, 8, QStringLiteral("A")));
+    channel.enabled_label->setText(valid ? (channelData.output_enabled ? (is_english_ ? QStringLiteral("Enabled") : QStringLiteral("已开启"))
+                                                               : (is_english_ ? QStringLiteral("Disabled") : QStringLiteral("已关闭")))
+                                    : QStringLiteral("---"));
+    channel.mode_label->setText(valid ? QString::number(channelData.output_mode) : QStringLiteral("---"));
+    channel.max_output_label->setText(valid ? QStringLiteral("%1 %").arg(channelData.max_output_percent) : QStringLiteral("--- %"));
+    channel.pid_label->setText(valid ? QStringLiteral("%1 / %2 / %3").arg(channelData.kp).arg(channelData.ki).arg(channelData.kd) : QStringLiteral("--- / --- / ---"));
+    if (valid)
+    {
+        channel.target_spin->setValue(channelData.target_temperature_c);
+        channel.mode_spin->setValue(channelData.output_mode);
+        channel.max_output_spin->setValue(channelData.max_output_percent);
+        channel.kp_spin->setValue(channelData.kp);
+        channel.ki_spin->setValue(channelData.ki);
+        channel.kd_spin->setValue(channelData.kd);
+    }
+}
+
+void TemperatureControllerPanel::updateData(const VaporView::TemperatureControllerData& data)
+{
+    internal_temperature_label_->setText(fixedDecimalWithUnit(data.valid ? data.internal_temperature_c : std::numeric_limits<double>::quiet_NaN(), 2, 8, QStringLiteral("°C")));
+    error_code_label_->setText(data.valid ? QStringLiteral("0x%1").arg(data.error_code, 4, 16, QLatin1Char('0')).toUpper() : QStringLiteral("---"));
+    if (!error_text_label_)
+    {
+        error_text_label_ = new QLabel(this);
+    }
+    error_code_label_->setToolTip(data.valid && data.error_code != 0
+        ? (is_english_ ? QStringLiteral("RD105 reported an error bitmask. Check the controller/manual before enabling output.")
+                       : QStringLiteral("RD105 返回错误位掩码。开启输出前请检查温控器和手册。"))
+        : (is_english_ ? QStringLiteral("No error reported") : QStringLiteral("未报告错误")));
+    updateChannelData(0, data.channels[0], data.valid);
+    updateChannelData(1, data.channels[1], data.valid);
+}
+
+void TemperatureControllerPanel::setCommandStatus(const QString& text, bool error)
+{
+    if (!status_label_)
+    {
+        return;
+    }
+    status_label_->setText(text);
+    status_label_->setProperty("data-valid", !error);
+    status_label_->style()->unpolish(status_label_);
+    status_label_->style()->polish(status_label_);
+}
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , central_widget_(nullptr)
@@ -3848,6 +4223,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_panel_(nullptr)
     , hmp_panel_(nullptr)
     , lidar_panel_(nullptr)
+    , temperature_controller_panel_(nullptr)
     , log_text_edit_(nullptr)
     , log_filter_btn_(nullptr)
     , log_clear_btn_(nullptr)
@@ -3924,6 +4300,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_group_(nullptr)
     , hmp_group_(nullptr)
     , env_group_(nullptr)
+    , temperature_controller_group_(nullptr)
     , lidar_group_(nullptr)
     , epsilon_lbl_(nullptr)
     , gnss_lbl_(nullptr)
@@ -3941,6 +4318,7 @@ MainWindow::MainWindow(QWidget *parent)
     , env_lidar_status_icon_(nullptr)
     , env_ptb_status_icon_(nullptr)
     , env_hmp_status_icon_(nullptr)
+    , temperature_controller_inline_title_lbl_(nullptr)
     , config_inline_title_lbl_(nullptr)
     , global_rate_lbl_(nullptr)
     , epsilon_rate_lbl_(nullptr)
@@ -3988,6 +4366,10 @@ MainWindow::MainWindow(QWidget *parent)
     , lidar_remote_disconnect_btn_(nullptr)
     , lidar_remote_reconnect_btn_(nullptr)
     , lidar_remote_buttons_widget_(nullptr)
+    , temperature_remote_connect_btn_(nullptr)
+    , temperature_remote_disconnect_btn_(nullptr)
+    , temperature_remote_reconnect_btn_(nullptr)
+    , temperature_remote_buttons_widget_(nullptr)
     , imu_apply_btn_(nullptr)
     , imu_hi91_btn_(nullptr)
     , imu_hi92_btn_(nullptr)
@@ -4243,6 +4625,18 @@ MainWindow::MainWindow(QWidget *parent)
                 });
             },
             Qt::DirectConnection);
+    connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::temperatureControllerStatusUpdated,
+            this, [this, currentOpenRemoteEvent, dispatchRemoteUi](const VaporView::TemperatureControllerData& data) {
+                const quint64 generation = ground_telemetry_service_->linkGeneration();
+                dispatchRemoteUi([this, currentOpenRemoteEvent, generation, data]() {
+                    if (!currentOpenRemoteEvent(generation))
+                    {
+                        return;
+                    }
+                    onRemoteTemperatureControllerStatusUpdated(data);
+                });
+            },
+            Qt::DirectConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::commandAckReceived,
             this, [this, currentOpenRemoteEvent, dispatchRemoteUi](const VaporView::CommandAck& ack) {
                 const quint64 generation = ground_telemetry_service_->linkGeneration();
@@ -4276,6 +4670,19 @@ MainWindow::MainWindow(QWidget *parent)
                         if (tcp_wave_panel_)
                         {
                             tcp_wave_panel_->rejectRemotePeakSearchRange(is_english_ ? QStringLiteral("ACK timed out") : QStringLiteral("ACK 超时"));
+                        }
+                    }
+                    else if (isTemperatureCommand(commandId))
+                    {
+                        const VaporView::TemperatureControllerCommand request = remote_temperature_commands_.take(commandSeq);
+                        if (temperature_controller_panel_)
+                        {
+                            temperature_controller_panel_->setCommandStatus(
+                                temperatureCommandStatusText(commandId,
+                                                             request.channel == 0 ? 1 : request.channel,
+                                                             false,
+                                                             is_english_ ? QStringLiteral("ACK timed out") : QStringLiteral("ACK 超时")),
+                                true);
                         }
                     }
                     else if (commandId == VaporView::CommandId::EnableWaveformStreaming ||
@@ -4669,7 +5076,7 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#epsilonSectionLabel { color: @vv-text; background-color: @vv-surface-alt; border: none; border-right: 1px solid @vv-border; font-size: 14px; font-weight: 700; padding: 2px; }"
             "QLabel#valueLabel { font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 14px; font-weight: 600; }"
             "QLabel#highlightedValue { font-family: \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace; }"
-            "PtbPanel QLabel#highlightedValue, HmpPanel QLabel#highlightedValue, LidarPanel QLabel#highlightedValue { font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 14px; font-weight: 600; background-color: transparent; padding: 0px; border-radius: 0px; }"
+            "PtbPanel QLabel#highlightedValue, HmpPanel QLabel#highlightedValue, LidarPanel QLabel#highlightedValue, TemperatureControllerPanel QLabel#highlightedValue { font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 14px; font-weight: 600; background-color: transparent; padding: 0px; border-radius: 0px; }"
             "QComboBox { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 6px; padding: 4px 10px; min-height: 26px; max-height: 26px; color: @vv-text; font-size: 14px; }"
             "QComboBox:hover { border-color: @vv-border-strong; }"
             "QComboBox:focus { border-color: @vv-primary; border-width: 1px; }"
@@ -4732,6 +5139,11 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton:disabled { background-color: @vv-border-strong; color: @vv-white; }"
             "QPushButton#compactTcpButton { padding: 4px 14px; min-height: 28px; max-height: 28px; font-size: 14px; }"
             "QPushButton#compactTcpStartButton { padding: 4px 14px; min-height: 28px; max-height: 28px; font-size: 14px; }"
+            "QPushButton#temperatureControlButton { padding: 4px 10px; min-height: 28px; max-height: 28px; font-size: 14px; }"
+            "TemperatureControllerPanel QTabWidget::pane { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 4px; top: -1px; }"
+            "TemperatureControllerPanel QTabBar::tab { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-bottom: none; border-top-left-radius: 4px; border-top-right-radius: 4px; color: @vv-text; padding: 4px 14px; min-height: 22px; }"
+            "TemperatureControllerPanel QTabBar::tab:selected { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
+            "TemperatureControllerPanel QTabBar::tab:!selected:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
             "QToolTip { background-color: rgb(45, 45, 45); color: #FFFFFF; border: 1px solid #474747; border-radius: 13px; padding: 8px 16px; font-size: 16px; }";
     }
 
@@ -5711,6 +6123,7 @@ void MainWindow::clearRemoteSkyDataUi()
     remote_last_data_ms_.clear();
     remote_packet_arrivals_ms_.clear();
     remote_waveform_channel_arrivals_ms_.clear();
+    remote_temperature_commands_.clear();
     remote_last_status_ms_ = 0;
     remote_sky_online_ = false;
     remote_wave_stream_requested_ = false;
@@ -5725,6 +6138,7 @@ void MainWindow::clearRemoteSkyDataUi()
     current_ptb_ = VaporView::PtbData();
     current_hmp_ = VaporView::HmpData();
     current_lidar_ = VaporView::LidarData();
+    current_temperature_controller_ = VaporView::TemperatureControllerData();
 
     current_ptb_.error_message = remoteNoDataText(is_english_).toStdString();
     current_hmp_.error_message = remoteNoDataText(is_english_).toStdString();
@@ -5738,12 +6152,14 @@ void MainWindow::clearRemoteSkyDataUi()
     if (ptb_panel_) ptb_panel_->updateRate(0.0);
     if (hmp_panel_) hmp_panel_->updateRate(0.0);
     if (lidar_panel_) lidar_panel_->updateRate(0.0);
+    if (temperature_controller_panel_) temperature_controller_panel_->updateRate(0.0);
     if (epsilon_panel_) epsilon_panel_->updateData(current_epsilon_);
     if (gnss_panel_) gnss_panel_->updateData(current_gnss_, 0);
     if (imu_panel_) imu_panel_->updateData(current_imu_, 0);
     if (ptb_panel_) ptb_panel_->updateData(current_ptb_);
     if (hmp_panel_) hmp_panel_->updateData(current_hmp_);
     if (lidar_panel_) lidar_panel_->updateData(current_lidar_);
+    if (temperature_controller_panel_) temperature_controller_panel_->updateData(current_temperature_controller_);
     updateEnvironmentStatusIcons(false, false, false);
     updateSourceModeUi();
     updateRemoteTelemetrySummaryLabel();
@@ -5758,6 +6174,7 @@ void MainWindow::markRemoteSkyLinkClosed()
     remote_wave_stream_enable_pending_ = false;
     remote_packet_arrivals_ms_.clear();
     remote_waveform_channel_arrivals_ms_.clear();
+    remote_temperature_commands_.clear();
     remote_recording_state_ = 0;
     remote_status_.recording_state = 0;
     if (tcp_wave_panel_)
@@ -6056,10 +6473,12 @@ void MainWindow::refreshRemoteSkyDataUi()
     if (ptb_panel_) ptb_panel_->updateRate(ptbValid ? basicRate : 0.0);
     if (hmp_panel_) hmp_panel_->updateRate(hmpValid ? basicRate : 0.0);
     if (lidar_panel_) lidar_panel_->updateRate(lidarValid ? basicRate : 0.0);
+    if (temperature_controller_panel_) temperature_controller_panel_->updateRate(remoteDeviceDataValid(VaporView::SkyDeviceId::TemperatureController, 3000) ? remote_status_.status_rate_hz : 0.0);
     if (epsilon_panel_) epsilon_panel_->updateData(epsilon);
     if (ptb_panel_) ptb_panel_->updateData(ptb);
     if (hmp_panel_) hmp_panel_->updateData(hmp);
     if (lidar_panel_) lidar_panel_->updateData(lidar);
+    if (temperature_controller_panel_) temperature_controller_panel_->updateData(current_temperature_controller_);
     updateEnvironmentStatusIcons(lidarValid, ptbValid, hmpValid);
     updateRemoteTelemetrySummaryLabel();
 }
@@ -6086,14 +6505,15 @@ void MainWindow::setRemoteDeviceButtonsEnabled(bool enabled)
     for (QPushButton *button : {epsilon_remote_connect_btn_, epsilon_remote_disconnect_btn_, epsilon_remote_reconnect_btn_,
                                ptb_remote_connect_btn_, ptb_remote_disconnect_btn_, ptb_remote_reconnect_btn_,
                                hmp_remote_connect_btn_, hmp_remote_disconnect_btn_, hmp_remote_reconnect_btn_,
-                               lidar_remote_connect_btn_, lidar_remote_disconnect_btn_, lidar_remote_reconnect_btn_})
+                               lidar_remote_connect_btn_, lidar_remote_disconnect_btn_, lidar_remote_reconnect_btn_,
+                               temperature_remote_connect_btn_, temperature_remote_disconnect_btn_, temperature_remote_reconnect_btn_})
     {
         if (button)
         {
             button->setEnabled(enabled);
         }
     }
-    for (QWidget *widget : {epsilon_remote_buttons_widget_, ptb_remote_buttons_widget_, hmp_remote_buttons_widget_, lidar_remote_buttons_widget_})
+    for (QWidget *widget : {epsilon_remote_buttons_widget_, ptb_remote_buttons_widget_, hmp_remote_buttons_widget_, lidar_remote_buttons_widget_, temperature_remote_buttons_widget_})
     {
         if (widget)
         {
@@ -6136,6 +6556,77 @@ void MainWindow::sendRemotePeakSearchRange(quint32 startIndex, quint32 endIndex)
             .arg(seq));
 }
 
+void MainWindow::sendRemoteTemperatureCommand(VaporView::CommandId command, const VaporView::TemperatureControllerCommand& payload)
+{
+    if (!ground_telemetry_service_ || !ground_telemetry_service_->isOpen())
+    {
+        log(is_english_ ? "Remote Sky telemetry link is not connected" : "天空端数传链路未连接");
+        return;
+    }
+    const quint16 seq = ground_telemetry_service_->sendCommand(command, VaporView::TelemetryCodec::serializeTemperatureControllerCommand(payload));
+    remote_temperature_commands_.insert(seq, payload);
+    if (temperature_controller_panel_)
+    {
+        temperature_controller_panel_->setCommandStatus(temperatureCommandStatusText(command, payload.channel, true));
+    }
+    log(QString(is_english_
+            ? "RD105 command sent: %1 channel=%2 seq=%3"
+            : "RD105 命令已下发：%1 通道=%2 序号=%3")
+            .arg(VaporView::commandIdName(command))
+            .arg(payload.channel)
+            .arg(seq));
+}
+
+bool MainWindow::isTemperatureCommand(VaporView::CommandId command) const
+{
+    return command == VaporView::CommandId::SetTemperatureTarget ||
+           command == VaporView::CommandId::SetTemperatureOutputEnabled ||
+           command == VaporView::CommandId::SetTemperatureOutputMode ||
+           command == VaporView::CommandId::SetTemperatureMaxOutputPercent ||
+           command == VaporView::CommandId::SetTemperaturePid;
+}
+
+QString MainWindow::temperatureCommandStatusText(VaporView::CommandId command, quint8 channel, bool pending, const QString& detail) const
+{
+    QString action;
+    switch (command)
+    {
+    case VaporView::CommandId::SetTemperatureTarget:
+        action = is_english_ ? QStringLiteral("target temperature") : QStringLiteral("目标温度");
+        break;
+    case VaporView::CommandId::SetTemperatureOutputEnabled:
+        action = is_english_ ? QStringLiteral("output enable") : QStringLiteral("输出使能");
+        break;
+    case VaporView::CommandId::SetTemperatureOutputMode:
+        action = is_english_ ? QStringLiteral("output mode") : QStringLiteral("输出模式");
+        break;
+    case VaporView::CommandId::SetTemperatureMaxOutputPercent:
+        action = is_english_ ? QStringLiteral("max output") : QStringLiteral("最大输出");
+        break;
+    case VaporView::CommandId::SetTemperaturePid:
+        action = is_english_ ? QStringLiteral("PID") : QStringLiteral("PID");
+        break;
+    default:
+        action = VaporView::commandIdName(command);
+        break;
+    }
+    if (pending)
+    {
+        return is_english_
+            ? QStringLiteral("Channel %1 %2 command sent; waiting for ACK and read-back confirmation...").arg(channel).arg(action)
+            : QStringLiteral("通道%1%2命令已下发，等待 ACK 和读回确认...").arg(channel).arg(action);
+    }
+    if (detail.isEmpty())
+    {
+        return is_english_
+            ? QStringLiteral("Channel %1 %2 command confirmed.").arg(channel).arg(action)
+            : QStringLiteral("通道%1%2命令已确认成功。" ).arg(channel).arg(action);
+    }
+    return is_english_
+        ? QStringLiteral("Channel %1 %2 command failed: %3").arg(channel).arg(action, detail)
+        : QStringLiteral("通道%1%2命令失败：%3").arg(channel).arg(action, detail);
+}
+
 void MainWindow::updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, VaporView::DeviceState state)
 {
     QPushButton *connectButton = nullptr;
@@ -6154,6 +6645,9 @@ void MainWindow::updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, Vap
         break;
     case VaporView::SkyDeviceId::Lidar:
         connectButton = lidar_remote_connect_btn_; disconnectButton = lidar_remote_disconnect_btn_; reconnectButton = lidar_remote_reconnect_btn_;
+        break;
+    case VaporView::SkyDeviceId::TemperatureController:
+        connectButton = temperature_remote_connect_btn_; disconnectButton = temperature_remote_disconnect_btn_; reconnectButton = temperature_remote_reconnect_btn_;
         break;
     case VaporView::SkyDeviceId::WaveTcp:
         if (tcp_wave_panel_)
@@ -8008,6 +8502,90 @@ void MainWindow::setupDataPanels()
     main_layout_->addWidget(new MainCardResizeHandle(config_group_, kConfigCardMinHeight, this), 0);
     main_layout_->addWidget(data_group_, 0);
 
+    temperature_controller_group_ = new QGroupBox(this);
+    temperature_controller_group_->setObjectName("sensorGroupBox");
+    temperature_controller_group_->setFixedWidth(kTemperatureControllerCardWidth);
+    temperature_controller_group_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+    auto *temperatureLayout = new QVBoxLayout(temperature_controller_group_);
+    temperatureLayout->setContentsMargins(1, 0, 1, 1);
+    temperatureLayout->setSpacing(0);
+
+    auto *temperatureTitleBar = new QWidget(temperature_controller_group_);
+    temperatureTitleBar->setObjectName("sectionTitleBar");
+    temperatureTitleBar->setFixedHeight(kMainPageTitleBarHeight);
+    auto *temperatureTitleLayout = new QHBoxLayout(temperatureTitleBar);
+    temperatureTitleLayout->setContentsMargins(8, 2, 8, 2);
+    temperatureTitleLayout->setSpacing(8);
+    QWidget *temperatureTitleCluster = nullptr;
+    temperature_controller_inline_title_lbl_ = createSectionTitleCluster(temperatureTitleBar,
+                                                                         QStringLiteral("thermometer"),
+                                                                         kMainPageButtonHeight,
+                                                                         &temperatureTitleCluster);
+    temperatureTitleLayout->addWidget(temperatureTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    temperatureTitleLayout->addStretch(1);
+    temperature_remote_buttons_widget_ = new QWidget(temperatureTitleBar);
+    auto *temperatureRemoteLayout = new QHBoxLayout(temperature_remote_buttons_widget_);
+    temperatureRemoteLayout->setContentsMargins(0, 0, 0, 0);
+    temperatureRemoteLayout->setSpacing(4);
+    temperature_remote_connect_btn_ = createRemoteDeviceButton(QStringLiteral("连接"), VaporView::CommandId::ConnectDevice, VaporView::SkyDeviceId::TemperatureController);
+    temperature_remote_disconnect_btn_ = createRemoteDeviceButton(QStringLiteral("断开"), VaporView::CommandId::DisconnectDevice, VaporView::SkyDeviceId::TemperatureController);
+    temperature_remote_reconnect_btn_ = createRemoteDeviceButton(QStringLiteral("重连"), VaporView::CommandId::ReconnectDevice, VaporView::SkyDeviceId::TemperatureController);
+    temperatureRemoteLayout->addWidget(temperature_remote_connect_btn_);
+    temperatureRemoteLayout->addWidget(temperature_remote_disconnect_btn_);
+    temperatureRemoteLayout->addWidget(temperature_remote_reconnect_btn_);
+    temperatureTitleLayout->addWidget(temperature_remote_buttons_widget_, 0, Qt::AlignVCenter | Qt::AlignRight);
+    temperatureLayout->addWidget(temperatureTitleBar);
+
+    temperature_controller_panel_ = new TemperatureControllerPanel(this);
+    connect(temperature_controller_panel_, &TemperatureControllerPanel::targetTemperatureRequested, this, [this](quint8 channel, double celsius) {
+        VaporView::TemperatureControllerCommand command;
+        command.channel = channel;
+        command.target_temperature_c = celsius;
+        sendRemoteTemperatureCommand(VaporView::CommandId::SetTemperatureTarget, command);
+    });
+    connect(temperature_controller_panel_, &TemperatureControllerPanel::outputEnabledRequested, this, [this](quint8 channel, bool enabled) {
+        if (enabled)
+        {
+            const QMessageBox::StandardButton answer = QMessageBox::question(
+                this,
+                is_english_ ? QStringLiteral("Enable Temperature Output") : QStringLiteral("开启温控输出"),
+                is_english_
+                    ? QStringLiteral("Enable RD105 output for channel %1? Confirm the target temperature and output limit are safe.").arg(channel)
+                    : QStringLiteral("确定开启 RD105 通道%1输出？请确认目标温度和最大输出上限安全。" ).arg(channel));
+            if (answer != QMessageBox::Yes)
+            {
+                return;
+            }
+        }
+        VaporView::TemperatureControllerCommand command;
+        command.channel = channel;
+        command.output_enabled = enabled;
+        sendRemoteTemperatureCommand(VaporView::CommandId::SetTemperatureOutputEnabled, command);
+    });
+    connect(temperature_controller_panel_, &TemperatureControllerPanel::outputModeRequested, this, [this](quint8 channel, quint16 mode) {
+        VaporView::TemperatureControllerCommand command;
+        command.channel = channel;
+        command.output_mode = mode;
+        sendRemoteTemperatureCommand(VaporView::CommandId::SetTemperatureOutputMode, command);
+    });
+    connect(temperature_controller_panel_, &TemperatureControllerPanel::maxOutputPercentRequested, this, [this](quint8 channel, quint16 percent) {
+        VaporView::TemperatureControllerCommand command;
+        command.channel = channel;
+        command.max_output_percent = percent;
+        sendRemoteTemperatureCommand(VaporView::CommandId::SetTemperatureMaxOutputPercent, command);
+    });
+    connect(temperature_controller_panel_, &TemperatureControllerPanel::pidRequested, this, [this](quint8 channel, quint32 kp, quint32 ki, quint32 kd) {
+        VaporView::TemperatureControllerCommand command;
+        command.channel = channel;
+        command.kp = kp;
+        command.ki = ki;
+        command.kd = kd;
+        sendRemoteTemperatureCommand(VaporView::CommandId::SetTemperaturePid, command);
+    });
+    temperatureLayout->addWidget(temperature_controller_panel_);
+    main_layout_->addWidget(new MainCardResizeHandle(data_group_, dataCardMinHeight, this), 0);
+    main_layout_->addWidget(temperature_controller_group_, 0, Qt::AlignLeft);
+
     tcp_wave_group_ = new QGroupBox(this);
     tcp_wave_group_->setObjectName("sensorGroupBox");
     tcp_wave_group_->setMinimumHeight(kTcpWaveCardMinHeight);
@@ -8055,7 +8633,6 @@ void MainWindow::setupDataPanels()
     connect(tcp_wave_panel_, &TcpWavePanel::remotePeakSearchRangeRequested,
             this, &MainWindow::sendRemotePeakSearchRange);
     tcpWaveLayout->addWidget(tcp_wave_panel_);
-    main_layout_->addWidget(new MainCardResizeHandle(data_group_, dataCardMinHeight, this), 0);
     main_layout_->addWidget(tcp_wave_group_, 0);
     main_layout_->addStretch(1);
 }
@@ -8369,6 +8946,10 @@ void MainWindow::setEnglish(bool english)
     if (env_inline_title_lbl_)
     {
         env_inline_title_lbl_->setText(english ? "Environment / Range" : "环境与测距");
+    }
+    if (temperature_controller_inline_title_lbl_)
+    {
+        temperature_controller_inline_title_lbl_->setText(english ? "RD105 Temperature Controller" : "RD105温控器");
     }
     if (global_rate_lbl_) global_rate_lbl_->setText(english ? "Global Rate:" : "统一频率:");
     if (epsilon_rate_lbl_) epsilon_rate_lbl_->setText(english ? "Packets:" : "包频率:");
@@ -12487,6 +13068,7 @@ void MainWindow::onConnectClicked()
     if (ptb_panel_) ptb_panel_->updateData(current_ptb_);
     if (hmp_panel_) hmp_panel_->updateData(current_hmp_);
     if (lidar_panel_) lidar_panel_->updateData(current_lidar_);
+    if (temperature_controller_panel_) temperature_controller_panel_->updateData(current_temperature_controller_);
     updateEnvironmentStatusIcons(false, false, false);
 
     if (epsilon_panel_) epsilon_panel_->updateRate(0.0);
@@ -13001,6 +13583,10 @@ void MainWindow::onRefreshTimer()
         const double rate = collectors.lidar->getActualRate();
         lidar_panel_->updateRate(rate);
     }
+    if (temperature_controller_panel_)
+    {
+        temperature_controller_panel_->updateData(current_temperature_controller_);
+    }
 }
 
 void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& telemetry)
@@ -13251,6 +13837,10 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
                 current_lidar_ = VaporView::LidarData();
                 current_lidar_.error_message = remoteDisconnectedText(is_english_).toStdString();
             }
+            else if (item.device_id == VaporView::SkyDeviceId::TemperatureController)
+            {
+                current_temperature_controller_ = VaporView::TemperatureControllerData();
+            }
         }
     }
     if (remote_wave_stream_auto_start_ &&
@@ -13269,6 +13859,17 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
     status_label_->style()->polish(status_label_);
     updateRecordingStatusLabel();
     updateSourceModeUi();
+}
+
+void MainWindow::onRemoteTemperatureControllerStatusUpdated(const VaporView::TemperatureControllerData& data)
+{
+    noteRemotePacket(VaporView::MsgType::TemperatureControllerStatus);
+    current_temperature_controller_ = data;
+    remote_last_data_ms_.insert(VaporView::SkyDeviceId::TemperatureController, QDateTime::currentMSecsSinceEpoch());
+    if (temperature_controller_panel_)
+    {
+        temperature_controller_panel_->updateData(current_temperature_controller_);
+    }
 }
 
 void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
@@ -13336,6 +13937,26 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
                     tcp_wave_panel_->rejectRemotePeakSearchRange(errorText);
                 }
             }
+        }
+    }
+    else if (isTemperatureCommand(ack.command_id))
+    {
+        const auto it = remote_temperature_commands_.find(ack.command_seq);
+        const VaporView::TemperatureControllerCommand request = it != remote_temperature_commands_.end()
+            ? it.value()
+            : VaporView::TemperatureControllerCommand();
+        if (it != remote_temperature_commands_.end())
+        {
+            remote_temperature_commands_.erase(it);
+        }
+        if (temperature_controller_panel_)
+        {
+            temperature_controller_panel_->setCommandStatus(
+                temperatureCommandStatusText(ack.command_id,
+                                             request.channel == 0 ? 1 : request.channel,
+                                             false,
+                                             ok && noError ? QString() : errorText),
+                !(ok && noError));
         }
     }
 }

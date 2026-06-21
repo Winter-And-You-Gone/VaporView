@@ -1,4 +1,5 @@
 #include "data_collector.h"
+#include "TemperatureControllerProtocol.h"
 #include "hipnuc_dec.h"
 #include "pvtsln_data.hpp"
 #include <algorithm>
@@ -3313,6 +3314,315 @@ void HmpCollector::run()
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - start_time).count();
     int remaining = interval_ms - static_cast<int>(elapsed);
+    if (remaining > 0)
+    {
+      sleepMs(remaining);
+    }
+  }
+}
+
+TemperatureControllerData TemperatureControllerCollector::getLatestData()
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  return latest_data_;
+}
+
+void TemperatureControllerCollector::setRawFrameCallback(RawFrameCallback callback)
+{
+  std::lock_guard<std::mutex> lock(mutex_);
+  raw_frame_callback_ = std::move(callback);
+}
+
+void TemperatureControllerCollector::setSlaveAddress(uint8_t slave_address)
+{
+  slave_address_ = slave_address == 0 ? 1 : slave_address;
+}
+
+uint8_t TemperatureControllerCollector::slaveAddress() const
+{
+  return slave_address_;
+}
+
+bool TemperatureControllerCollector::initialize()
+{
+  serial_.setNonBlocking(true);
+  return true;
+}
+
+void TemperatureControllerCollector::publishRawFrame(const std::vector<uint8_t>& frame)
+{
+  RawFrameCallback raw_callback;
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    raw_callback = raw_frame_callback_;
+  }
+  if (raw_callback && !frame.empty())
+  {
+    raw_callback(systemTimestampUs(), frame.data(), frame.size());
+  }
+}
+
+bool TemperatureControllerCollector::readResponseFrame(uint8_t function_code, std::vector<uint8_t>& frame, int wait_ms)
+{
+  frame.clear();
+  std::vector<uint8_t> buffer;
+  buffer.reserve(64);
+  const auto start = std::chrono::steady_clock::now();
+  uint8_t chunk[64];
+  while (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count() < wait_ms)
+  {
+    ssize_t read_bytes = serial_.read(chunk, sizeof(chunk));
+    if (read_bytes > 0)
+    {
+      buffer.insert(buffer.end(), chunk, chunk + read_bytes);
+      while (buffer.size() >= 5)
+      {
+        auto it = std::find(buffer.begin(), buffer.end(), slave_address_);
+        if (it == buffer.end())
+        {
+          buffer.clear();
+          break;
+        }
+        if (it != buffer.begin())
+        {
+          buffer.erase(buffer.begin(), it);
+        }
+        if (buffer.size() < 5)
+        {
+          break;
+        }
+        const uint8_t received_function = buffer[1];
+        size_t frame_size = 0;
+        if (received_function == 0x03)
+        {
+          frame_size = static_cast<size_t>(buffer[2]) + 5;
+        }
+        else if (received_function == 0x10)
+        {
+          frame_size = 8;
+        }
+        else if (received_function == static_cast<uint8_t>(function_code | 0x80u))
+        {
+          frame_size = 5;
+        }
+        else
+        {
+          buffer.erase(buffer.begin());
+          continue;
+        }
+        if (buffer.size() < frame_size)
+        {
+          break;
+        }
+        frame.assign(buffer.begin(), buffer.begin() + static_cast<std::ptrdiff_t>(frame_size));
+        publishRawFrame(frame);
+        return true;
+      }
+    }
+    else
+    {
+      sleepMs(10);
+    }
+  }
+  return false;
+}
+
+bool TemperatureControllerCollector::readRegisters(uint16_t address, uint16_t count, std::vector<uint16_t>& registers, int wait_ms)
+{
+  using namespace TemperatureControllerProtocol;
+  const QByteArray request = buildReadRegistersRequest(slave_address_, address, count);
+  serial_.flush();
+  if (serial_.write(request.constData(), static_cast<size_t>(request.size())) != request.size())
+  {
+    return false;
+  }
+  std::vector<uint8_t> frame;
+  if (!readResponseFrame(0x03, frame, wait_ms))
+  {
+    return false;
+  }
+  const QByteArray response(reinterpret_cast<const char*>(frame.data()), static_cast<int>(frame.size()));
+  const ReadResponse parsed = parseReadRegistersResponse(response, slave_address_, count);
+  if (parsed.status != FrameStatus::Ok)
+  {
+    return false;
+  }
+  registers.assign(parsed.registers.cbegin(), parsed.registers.cend());
+  return true;
+}
+
+bool TemperatureControllerCollector::writeRegisters(uint16_t address, const std::vector<uint16_t>& registers, int wait_ms)
+{
+  using namespace TemperatureControllerProtocol;
+  const QVector<uint16_t> values(registers.cbegin(), registers.cend());
+  const QByteArray request = buildWriteRegistersRequest(slave_address_, address, values);
+  serial_.flush();
+  if (serial_.write(request.constData(), static_cast<size_t>(request.size())) != request.size())
+  {
+    return false;
+  }
+  std::vector<uint8_t> frame;
+  if (!readResponseFrame(0x10, frame, wait_ms))
+  {
+    return false;
+  }
+  const QByteArray response(reinterpret_cast<const char*>(frame.data()), static_cast<int>(frame.size()));
+  const WriteResponse parsed = parseWriteRegistersResponse(response, slave_address_, address, static_cast<uint16_t>(registers.size()));
+  return parsed.status == FrameStatus::Ok;
+}
+
+bool TemperatureControllerCollector::writeAndConfirm(uint8_t channel, uint16_t address, const std::vector<uint16_t>& registers)
+{
+  if (!writeRegisters(address, registers))
+  {
+    return false;
+  }
+  std::vector<uint16_t> read_back;
+  if (!readRegisters(address, static_cast<uint16_t>(registers.size()), read_back, 200))
+  {
+    return false;
+  }
+  (void)channel;
+  return read_back == registers;
+}
+
+bool TemperatureControllerCollector::readChannel(uint8_t channel, TemperatureControllerChannelData& channel_data)
+{
+  using namespace TemperatureControllerProtocol;
+  std::vector<uint16_t> registers;
+  if (!readRegisters(channelAddress(channel, Register::TargetTemperature), 2, registers)) return false;
+  channel_data.target_temperature_c = rawToTemperatureCelsius(decodeInt32(QVector<uint16_t>(registers.cbegin(), registers.cend())));
+  if (!readRegisters(channelAddress(channel, Register::MeasuredTemperature), 2, registers)) return false;
+  channel_data.measured_temperature_c = rawToTemperatureCelsius(decodeInt32(QVector<uint16_t>(registers.cbegin(), registers.cend())));
+  if (!readRegisters(channelAddress(channel, Register::OutputEnabled), 1, registers)) return false;
+  channel_data.output_enabled = registers[0] != 0;
+  if (!readRegisters(channelAddress(channel, Register::OutputMode), 1, registers)) return false;
+  channel_data.output_mode = registers[0];
+  if (!readRegisters(channelAddress(channel, Register::MaxOutputPercent), 1, registers)) return false;
+  channel_data.max_output_percent = static_cast<int>(registers[0]);
+  if (!readRegisters(channelAddress(channel, Register::Kp), 2, registers)) return false;
+  channel_data.kp = static_cast<int>(decodeUInt32(QVector<uint16_t>(registers.cbegin(), registers.cend())));
+  if (!readRegisters(channelAddress(channel, Register::Ki), 2, registers)) return false;
+  channel_data.ki = static_cast<int>(decodeUInt32(QVector<uint16_t>(registers.cbegin(), registers.cend())));
+  if (!readRegisters(channelAddress(channel, Register::Kd), 2, registers)) return false;
+  channel_data.kd = static_cast<int>(decodeUInt32(QVector<uint16_t>(registers.cbegin(), registers.cend())));
+  if (!readRegisters(channelAddress(channel, Register::OutputDuty), 4, registers)) return false;
+  channel_data.output_percent = static_cast<double>(decodeInt64(QVector<uint16_t>(registers.cbegin(), registers.cend()))) / 20000.0;
+  if (!readRegisters(channelAddress(channel, Register::OutputCurrent), 1, registers)) return false;
+  channel_data.output_current_a = registers[0] / 1000.0;
+  return true;
+}
+
+bool TemperatureControllerCollector::readSnapshot(TemperatureControllerData& sample)
+{
+  using namespace TemperatureControllerProtocol;
+  sample = TemperatureControllerData{};
+  if (!readChannel(1, sample.channels[0])) return false;
+  if (!readChannel(2, sample.channels[1])) return false;
+  std::vector<uint16_t> registers;
+  if (!readRegisters(static_cast<uint16_t>(Register::InternalTemperature), 1, registers)) return false;
+  sample.internal_temperature_c = decodeInt16(QVector<uint16_t>(registers.cbegin(), registers.cend()));
+  if (!readRegisters(static_cast<uint16_t>(Register::ErrorCode), 1, registers)) return false;
+  sample.error_code = registers[0];
+  sample.valid = true;
+  sample.timestamp = std::chrono::steady_clock::now();
+  sample.error_message.clear();
+  return true;
+}
+
+bool TemperatureControllerCollector::checkDeviceResponse()
+{
+  std::vector<uint16_t> registers;
+  for (int attempt = 0; attempt < 3; ++attempt)
+  {
+    const auto attempt_start = std::chrono::steady_clock::now();
+    log(formatDetectionProgress("等待RD105温控器返回", attempt + 1, 3, computeRemainingSeconds(attempt_start, 300)));
+    if (readRegisters(static_cast<uint16_t>(TemperatureControllerProtocol::Register::InternalTemperature), 1, registers, 300))
+    {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool TemperatureControllerCollector::setTargetTemperature(uint8_t channel, double celsius)
+{
+  using namespace TemperatureControllerProtocol;
+  const QVector<uint16_t> values = encodeInt32(temperatureCelsiusToRaw(celsius));
+  return writeAndConfirm(channel, channelAddress(channel, Register::TargetTemperature), std::vector<uint16_t>(values.cbegin(), values.cend()));
+}
+
+bool TemperatureControllerCollector::setOutputEnabled(uint8_t channel, bool enabled)
+{
+  using namespace TemperatureControllerProtocol;
+  const QVector<uint16_t> values = encodeUInt16(enabled ? 1 : 0);
+  return writeAndConfirm(channel, channelAddress(channel, Register::OutputEnabled), std::vector<uint16_t>(values.cbegin(), values.cend()));
+}
+
+bool TemperatureControllerCollector::setOutputMode(uint8_t channel, uint16_t mode)
+{
+  using namespace TemperatureControllerProtocol;
+  if (mode > 3)
+  {
+    return false;
+  }
+  const QVector<uint16_t> values = encodeUInt16(mode);
+  return writeAndConfirm(channel, channelAddress(channel, Register::OutputMode), std::vector<uint16_t>(values.cbegin(), values.cend()));
+}
+
+bool TemperatureControllerCollector::setMaxOutputPercent(uint8_t channel, uint16_t percent)
+{
+  using namespace TemperatureControllerProtocol;
+  if (percent > 90)
+  {
+    return false;
+  }
+  const QVector<uint16_t> values = encodeUInt16(percent);
+  return writeAndConfirm(channel, channelAddress(channel, Register::MaxOutputPercent), std::vector<uint16_t>(values.cbegin(), values.cend()));
+}
+
+bool TemperatureControllerCollector::setPid(uint8_t channel, uint32_t kp, uint32_t ki, uint32_t kd)
+{
+  using namespace TemperatureControllerProtocol;
+  const QVector<uint16_t> kpValues = encodeUInt32(kp);
+  const QVector<uint16_t> kiValues = encodeUInt32(ki);
+  const QVector<uint16_t> kdValues = encodeUInt32(kd);
+  return writeAndConfirm(channel, channelAddress(channel, Register::Kp), std::vector<uint16_t>(kpValues.cbegin(), kpValues.cend())) &&
+         writeAndConfirm(channel, channelAddress(channel, Register::Ki), std::vector<uint16_t>(kiValues.cbegin(), kiValues.cend())) &&
+         writeAndConfirm(channel, channelAddress(channel, Register::Kd), std::vector<uint16_t>(kdValues.cbegin(), kdValues.cend()));
+}
+
+void TemperatureControllerCollector::run()
+{
+  while (running_.load())
+  {
+    const auto start_time = std::chrono::steady_clock::now();
+    TemperatureControllerData sample;
+    if (readSnapshot(sample))
+    {
+      DataCallback callback;
+      {
+        std::lock_guard<std::mutex> lock(mutex_);
+        latest_data_ = sample;
+        callback = data_callback_;
+      }
+      recordDataReceived();
+      if (callback && shouldEmitData())
+      {
+        updateLastEmitTime();
+        callback();
+      }
+    }
+    else
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      latest_data_.valid = false;
+      latest_data_.error_message = "RD105温控器读取失败";
+    }
+
+    const int interval_ms = std::max(1, 1000 / std::max(1, getSampleRate()));
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start_time).count();
+    const int remaining = interval_ms - static_cast<int>(elapsed);
     if (remaining > 0)
     {
       sleepMs(remaining);

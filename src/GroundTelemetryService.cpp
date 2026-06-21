@@ -304,6 +304,15 @@ void GroundTelemetryService::dispatchFrame(const TelemetryFrame& frame)
         }
         break;
     }
+    case MsgType::TemperatureControllerStatus:
+    {
+        TemperatureControllerData data;
+        if (TelemetryCodec::parseTemperatureControllerStatus(frame.payload, data))
+        {
+            emit temperatureControllerStatusUpdated(data);
+        }
+        break;
+    }
     case MsgType::Heartbeat:
     case MsgType::Error:
     case MsgType::Command:

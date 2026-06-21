@@ -47,6 +47,40 @@ bool serialFromJson(const QJsonObject& object, SerialDeviceConfig& config, const
     return true;
 }
 
+QJsonObject temperatureControllerToJson(const TemperatureControllerConfig& config)
+{
+    QJsonObject object;
+    object["enabled"] = config.enabled;
+    object["port"] = config.port;
+    object["baud"] = config.baud_rate;
+    object["frequency_hz"] = config.frequency_hz;
+    object["slave_address"] = config.slave_address;
+    return object;
+}
+
+bool temperatureControllerFromJson(const QJsonObject& object, TemperatureControllerConfig& config, QString *errorMessage)
+{
+    TemperatureControllerConfig next = config;
+    if (object.contains("enabled")) next.enabled = object.value("enabled").toBool(next.enabled);
+    if (object.contains("port")) next.port = object.value("port").toString(next.port);
+    if (object.contains("baud")) next.baud_rate = object.value("baud").toInt(next.baud_rate);
+    if (object.contains("baud_rate")) next.baud_rate = object.value("baud_rate").toInt(next.baud_rate);
+    if (object.contains("frequency_hz")) next.frequency_hz = object.value("frequency_hz").toDouble(next.frequency_hz);
+    if (object.contains("slave_address")) next.slave_address = object.value("slave_address").toInt(next.slave_address);
+    if (next.enabled && next.port.trimmed().isEmpty())
+    {
+        if (errorMessage) *errorMessage = QStringLiteral("temperature_controller port is empty");
+        return false;
+    }
+    if (next.baud_rate <= 0 || next.frequency_hz <= 0.0 || next.slave_address <= 0 || next.slave_address > 247)
+    {
+        if (errorMessage) *errorMessage = QStringLiteral("temperature_controller baud/frequency/slave_address is invalid");
+        return false;
+    }
+    config = next;
+    return true;
+}
+
 QJsonObject waveToJson(const WaveTcpConfig& config)
 {
     QJsonObject object;
@@ -132,6 +166,20 @@ bool SerialDeviceConfig::operator!=(const SerialDeviceConfig& other) const
     return !(*this == other);
 }
 
+bool TemperatureControllerConfig::operator==(const TemperatureControllerConfig& other) const
+{
+    return enabled == other.enabled &&
+           port == other.port &&
+           baud_rate == other.baud_rate &&
+           fuzzyEqual(frequency_hz, other.frequency_hz) &&
+           slave_address == other.slave_address;
+}
+
+bool TemperatureControllerConfig::operator!=(const TemperatureControllerConfig& other) const
+{
+    return !(*this == other);
+}
+
 bool WaveTcpConfig::operator==(const WaveTcpConfig& other) const
 {
     return enabled == other.enabled &&
@@ -169,11 +217,13 @@ SkyConfig SkyConfig::defaults()
     config.ptb = {true, QStringLiteral("COM5"), 9600, 20.0};
     config.hmp = {true, QStringLiteral("COM6"), 19200, 20.0};
     config.lidar = {true, QStringLiteral("COM7"), 500000, 100.0};
+    config.temperature_controller = {false, QStringLiteral("COM9"), 9600, 5.0, 1};
 #else
     config.epsilon = {true, QStringLiteral("/dev/ttyEPSILON"), 921600, 100.0};
     config.ptb = {true, QStringLiteral("/dev/ttyBARO"), 9600, 20.0};
     config.hmp = {true, QStringLiteral("/dev/ttyHMP"), 19200, 20.0};
     config.lidar = {true, QStringLiteral("/dev/ttyLidar"), 500000, 100.0};
+    config.temperature_controller = {false, QStringLiteral("/dev/ttyRD105"), 9600, 5.0, 1};
 #endif
     config.wave_tcp = {true, QStringLiteral("127.0.0.1"), 8888, 10, 0, 0};
     config.telemetry = {10.0, 10.0, 1.0, 1.0, 1.0};
@@ -222,6 +272,7 @@ bool SkyConfig::fromJson(const QJsonObject& object, SkyConfig& config, QString *
     if (object.contains("ptb") && !serialFromJson(object.value("ptb").toObject(), next.ptb, QStringLiteral("ptb"), errorMessage)) return false;
     if (object.contains("hmp") && !serialFromJson(object.value("hmp").toObject(), next.hmp, QStringLiteral("hmp"), errorMessage)) return false;
     if (object.contains("lidar") && !serialFromJson(object.value("lidar").toObject(), next.lidar, QStringLiteral("lidar"), errorMessage)) return false;
+    if (object.contains("temperature_controller") && !temperatureControllerFromJson(object.value("temperature_controller").toObject(), next.temperature_controller, errorMessage)) return false;
     if (object.contains("wave_tcp") && !waveFromJson(object.value("wave_tcp").toObject(), next.wave_tcp, errorMessage)) return false;
     if (object.contains("telemetry") && !telemetryFromJson(object.value("telemetry").toObject(), next.telemetry, errorMessage)) return false;
     if (!next.validate(errorMessage))
@@ -239,6 +290,7 @@ QJsonObject SkyConfig::toJson() const
     root["ptb"] = serialToJson(ptb);
     root["hmp"] = serialToJson(hmp);
     root["lidar"] = serialToJson(lidar);
+    root["temperature_controller"] = temperatureControllerToJson(temperature_controller);
     root["wave_tcp"] = waveToJson(wave_tcp);
     root["telemetry"] = telemetryToJson(telemetry);
     return root;
@@ -251,6 +303,7 @@ bool SkyConfig::validate(QString *errorMessage) const
            serialFromJson(serialToJson(ptb), copy.ptb, QStringLiteral("ptb"), errorMessage) &&
            serialFromJson(serialToJson(hmp), copy.hmp, QStringLiteral("hmp"), errorMessage) &&
            serialFromJson(serialToJson(lidar), copy.lidar, QStringLiteral("lidar"), errorMessage) &&
+           temperatureControllerFromJson(temperatureControllerToJson(temperature_controller), copy.temperature_controller, errorMessage) &&
            waveFromJson(waveToJson(wave_tcp), copy.wave_tcp, errorMessage) &&
            telemetryFromJson(telemetryToJson(telemetry), copy.telemetry, errorMessage);
 }
@@ -262,6 +315,7 @@ SkyConfigDiff SkyConfig::diff(const SkyConfig& other) const
     result.ptb_changed = ptb != other.ptb;
     result.hmp_changed = hmp != other.hmp;
     result.lidar_changed = lidar != other.lidar;
+    result.temperature_controller_changed = temperature_controller != other.temperature_controller;
     result.wave_tcp_changed = wave_tcp != other.wave_tcp;
     result.telemetry_changed = telemetry != other.telemetry;
     return result;

@@ -147,6 +147,7 @@ set(SKY_CORE_SOURCES
     src/TcpTelemetryLink.cpp
     src/SkyLocalIpcServer.cpp
     src/TcpWaveEncoding.cpp
+    src/TemperatureControllerProtocol.cpp
     src/serial_port.cpp
     src/data_collector.cpp
     ${UM982_DRIVER_DIR}/pvtsln_parser.cpp
@@ -162,6 +163,7 @@ set(SKY_CORE_HEADERS
     include/TcpTelemetryLink.h
     include/SkyLocalIpcServer.h
     include/TcpWaveEncoding.h
+    include/TemperatureControllerProtocol.h
     include/serial_port.h
     include/data_types.h
     include/data_collector.h
@@ -456,6 +458,15 @@ if(BUILD_TESTING)
     )
     target_link_libraries(tcp_wave_encoding_test PRIVATE vaporview_sky_core)
     add_test(NAME tcp_wave_encoding_test COMMAND tcp_wave_encoding_test)
+
+    add_executable(temperature_controller_protocol_test
+        tests/temperature_controller_protocol_test.cpp
+    )
+    target_include_directories(temperature_controller_protocol_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+    )
+    target_link_libraries(temperature_controller_protocol_test PRIVATE vaporview_sky_core)
+    add_test(NAME temperature_controller_protocol_test COMMAND temperature_controller_protocol_test)
 
     add_executable(telemetry_codec_test
         tests/telemetry_codec_test.cpp

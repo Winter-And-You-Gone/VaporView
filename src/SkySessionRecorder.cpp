@@ -196,8 +196,10 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     session_metadata_filename_ = sessionDir.filePath(QStringLiteral("session.json"));
     sensors_filename_ = sessionDir.filePath(QStringLiteral("sensors/devices.csv"));
     feature_filename_ = sessionDir.filePath(QStringLiteral("waveform_features.csv"));
+    temperature_controller_filename_ = sessionDir.filePath(QStringLiteral("sensors/rd105_temperature_controller.csv"));
     basic_record_file_.setFileName(sensors_filename_);
     feature_record_file_.setFileName(feature_filename_);
+    temperature_controller_record_file_.setFileName(temperature_controller_filename_);
     raw_epsilon_filename_ = sessionDir.filePath(QStringLiteral("raw/epsilon.dat"));
     raw_ptb_filename_ = sessionDir.filePath(QStringLiteral("raw/ptb.dat"));
     raw_hmp_filename_ = sessionDir.filePath(QStringLiteral("raw/hmp.dat"));
@@ -206,6 +208,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
 
     if (!basic_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !feature_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
+        !temperature_controller_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !openRawDatFile(raw_epsilon_file_, raw_epsilon_filename_, kRawSourceEpsilon, errorMessage) ||
         !openRawDatFile(raw_ptb_file_, raw_ptb_filename_, kRawSourcePtb, errorMessage) ||
         !openRawDatFile(raw_hmp_file_, raw_hmp_filename_, kRawSourceHmp, errorMessage) ||
@@ -223,6 +226,11 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     QTextStream featureOut(&feature_record_file_);
     featureOut << "host_time_us,epsilon_time_us,original_point_count,search_start_index,search_end_index,channel_id,peak,mean,rms,peak_index,peak_x,min_value,max_value,quality_flags\n";
 
+    QTextStream temperatureOut(&temperature_controller_record_file_);
+    temperatureOut << "host_time_us,valid,internal_temperature_c,error_code,"
+                      "ch1_target_c,ch1_measured_c,ch1_output_percent,ch1_output_current_a,ch1_enabled,ch1_mode,ch1_max_output_percent,ch1_kp,ch1_ki,ch1_kd,"
+                      "ch2_target_c,ch2_measured_c,ch2_output_percent,ch2_output_current_a,ch2_enabled,ch2_mode,ch2_max_output_percent,ch2_kp,ch2_ki,ch2_kd\n";
+
     session_start_time_utc_ = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
     telemetry_port_ = telemetryPort;
     telemetry_baud_ = telemetryBaud;
@@ -232,6 +240,7 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     recording_elapsed_ms_ = 0;
     telemetry_row_count_ = 0;
     waveform_feature_count_ = 0;
+    temperature_controller_count_ = 0;
     waveform_file_count_ = 0;
     waveform_points_per_frame_ = 0;
     raw_epsilon_record_count_ = 0;
@@ -314,6 +323,11 @@ quint64 SkySessionRecorder::telemetryRecordCount() const
 quint64 SkySessionRecorder::waveformFeatureRecordCount() const
 {
     return waveform_feature_count_;
+}
+
+quint64 SkySessionRecorder::temperatureControllerRecordCount() const
+{
+    return temperature_controller_count_;
 }
 
 quint64 SkySessionRecorder::waveformSnapshotRecordCount() const
@@ -564,6 +578,46 @@ void SkySessionRecorder::recordWaveformFeature(const WaveformFeature& feature)
     ++waveform_feature_count_;
 }
 
+void SkySessionRecorder::recordTemperatureControllerStatus(quint64 hostTimeUs, const TemperatureControllerData& data)
+{
+    if (!isRecording() || !temperature_controller_record_file_.isOpen())
+    {
+        return;
+    }
+
+    QStringList row;
+    row.reserve(24);
+    row << QString::number(hostTimeUs)
+        << boolText(data.valid)
+        << (std::isfinite(data.internal_temperature_c) ? QString::number(data.internal_temperature_c, 'f', 6) : QString())
+        << QString::number(data.error_code);
+    for (const TemperatureControllerChannelData& channel : data.channels)
+    {
+        row << (std::isfinite(channel.target_temperature_c) ? QString::number(channel.target_temperature_c, 'f', 6) : QString())
+            << (std::isfinite(channel.measured_temperature_c) ? QString::number(channel.measured_temperature_c, 'f', 6) : QString())
+            << (std::isfinite(channel.output_percent) ? QString::number(channel.output_percent, 'f', 6) : QString())
+            << (std::isfinite(channel.output_current_a) ? QString::number(channel.output_current_a, 'f', 6) : QString())
+            << boolText(channel.output_enabled)
+            << QString::number(channel.output_mode)
+            << QString::number(channel.max_output_percent)
+            << QString::number(channel.kp)
+            << QString::number(channel.ki)
+            << QString::number(channel.kd);
+    }
+
+    QTextStream out(&temperature_controller_record_file_);
+    for (int i = 0; i < row.size(); ++i)
+    {
+        if (i > 0)
+        {
+            out << ',';
+        }
+        out << csvEscape(row.at(i));
+    }
+    out << '\n';
+    ++temperature_controller_count_;
+}
+
 void SkySessionRecorder::recordWaveformSnapshot(quint64 hostTimeUs,
                                                 quint64 epsilonTimeUs,
                                                 const QVector<float>& rawSamples,
@@ -809,6 +863,7 @@ void SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc)
     root.insert(QStringLiteral("waveform_timestamp_type"), QStringLiteral("uint64"));
     root.insert(QStringLiteral("timestamp_unit"), QStringLiteral("microseconds"));
     root.insert(QStringLiteral("sensor_rows"), QString::number(telemetry_row_count_));
+    root.insert(QStringLiteral("temperature_controller_rows"), QString::number(temperature_controller_count_));
     root.insert(QStringLiteral("waveform_features"), QString::number(waveform_feature_count_));
     root.insert(QStringLiteral("waveform_frames"), QString::number(raw_tcp_wave_record_count_));
     root.insert(QStringLiteral("waveform_file_count"), QString::number(waveform_file_count_));
@@ -835,6 +890,7 @@ void SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc)
     QJsonObject paths;
     paths.insert(QStringLiteral("raw_directory"), QStringLiteral("raw"));
     paths.insert(QStringLiteral("devices_csv"), sessionDir.relativeFilePath(sensors_filename_));
+    paths.insert(QStringLiteral("temperature_controller_csv"), sessionDir.relativeFilePath(temperature_controller_filename_));
     paths.insert(QStringLiteral("waveform_features"), sessionDir.relativeFilePath(feature_filename_));
     root.insert(QStringLiteral("paths"), paths);
 
@@ -851,6 +907,7 @@ void SkySessionRecorder::closeFiles()
     std::lock_guard<std::mutex> lock(files_mutex_);
     for (QFile *file : {&basic_record_file_,
                         &feature_record_file_,
+                        &temperature_controller_record_file_,
                         &raw_epsilon_file_,
                         &raw_ptb_file_,
                         &raw_hmp_file_,

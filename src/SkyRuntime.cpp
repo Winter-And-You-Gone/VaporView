@@ -131,6 +131,10 @@ SkyRuntime::SkyRuntime(const SkyRuntimeOptions& options, QObject *parent)
                    TcpFloatEncoding floatEncoding) {
                 session_recorder_.recordRawTcpWaveFrame(timestampUs, rawPayload, harmonicPayload, floatEncoding);
             });
+    connect(&device_manager_, &SkyDeviceManager::temperatureControllerDataUpdated, this,
+            [this](const TemperatureControllerData&) {
+                sendTemperatureControllerStatus();
+            });
     connect(&basic_timer_, &QTimer::timeout, this, &SkyRuntime::sendBasicTelemetry);
     connect(&feature_timer_, &QTimer::timeout, this, &SkyRuntime::sendWaveformFeature);
     connect(&waveform_timer_, &QTimer::timeout, this, &SkyRuntime::sendDownsampledWaveform);
@@ -357,7 +361,7 @@ TelemetryStatus SkyRuntime::currentStatus() const
     status.recording_start_time_us = session_recorder_.recordingStartTimeUs();
     status.recording_elapsed_ms = session_recorder_.recordingElapsedMs();
     status.telemetry_record_count = session_recorder_.telemetryRecordCount();
-    status.waveform_feature_record_count = session_recorder_.waveformFeatureRecordCount();
+    status.waveform_feature_record_count = session_recorder_.waveformFeatureRecordCount() + session_recorder_.temperatureControllerRecordCount();
     status.waveform_snapshot_record_count = session_recorder_.waveformSnapshotRecordCount();
     status.raw_epsilon_record_count = session_recorder_.rawEpsilonRecordCount();
     status.raw_ptb_record_count = session_recorder_.rawPtbRecordCount();
@@ -654,6 +658,19 @@ void SkyRuntime::sendTelemetryStatus()
     sendFrame(MsgType::TelemetryStatus, TelemetryCodec::serializeTelemetryStatus(status));
 }
 
+void SkyRuntime::sendTemperatureControllerStatus()
+{
+    const DeviceStatusItem status = device_manager_.status(SkyDeviceId::TemperatureController);
+    const quint64 nowUs = currentTimestampUs();
+    if (!connectedAndFresh(status, nowUs, 3'000'000ULL))
+    {
+        return;
+    }
+    const TemperatureControllerData data = device_manager_.latestTemperatureController();
+    session_recorder_.recordTemperatureControllerStatus(nowUs, data);
+    sendFrame(MsgType::TemperatureControllerStatus, TelemetryCodec::serializeTemperatureControllerStatus(data));
+}
+
 void SkyRuntime::dispatchFrame(const TelemetryFrame& frame)
 {
     ++rx_total_frames_;
@@ -690,6 +707,25 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
         CommandErrorCode error = CommandErrorCode::Ok;
         const bool ok = method(id, &error);
         result.ack = makeAck(command, ok ? CommandErrorCode::Ok : error);
+        result.send_status = true;
+        return result;
+    };
+
+    auto temperatureCommand = [&](auto method) {
+        TemperatureControllerCommand request;
+        if (!TelemetryCodec::parseTemperatureControllerCommand(command.payload, request) ||
+            request.channel < 1 || request.channel > 2)
+        {
+            result.ack = makeAck(command, CommandErrorCode::InvalidPayload);
+            return result;
+        }
+        if (device_manager_.status(SkyDeviceId::TemperatureController).state != DeviceState::Connected)
+        {
+            result.ack = makeAck(command, CommandErrorCode::DeviceNotConnected);
+            return result;
+        }
+        const bool ok = method(request);
+        result.ack = makeAck(command, ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed);
         result.send_status = true;
         return result;
     };
@@ -768,6 +804,31 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
         result.send_status = true;
         break;
     }
+    case CommandId::SetTemperatureTarget:
+        return temperatureCommand([this](const TemperatureControllerCommand& request) {
+            CommandErrorCode error = CommandErrorCode::Ok;
+            return device_manager_.setTemperatureTarget(request.channel, request.target_temperature_c, &error);
+        });
+    case CommandId::SetTemperatureOutputEnabled:
+        return temperatureCommand([this](const TemperatureControllerCommand& request) {
+            CommandErrorCode error = CommandErrorCode::Ok;
+            return device_manager_.setTemperatureOutputEnabled(request.channel, request.output_enabled, &error);
+        });
+    case CommandId::SetTemperatureOutputMode:
+        return temperatureCommand([this](const TemperatureControllerCommand& request) {
+            CommandErrorCode error = CommandErrorCode::Ok;
+            return device_manager_.setTemperatureOutputMode(request.channel, request.output_mode, &error);
+        });
+    case CommandId::SetTemperatureMaxOutputPercent:
+        return temperatureCommand([this](const TemperatureControllerCommand& request) {
+            CommandErrorCode error = CommandErrorCode::Ok;
+            return device_manager_.setTemperatureMaxOutputPercent(request.channel, request.max_output_percent, &error);
+        });
+    case CommandId::SetTemperaturePid:
+        return temperatureCommand([this](const TemperatureControllerCommand& request) {
+            CommandErrorCode error = CommandErrorCode::Ok;
+            return device_manager_.setTemperaturePid(request.channel, request.kp, request.ki, request.kd, &error);
+        });
     case CommandId::EnableWaveformStreaming:
         setWaveformStreamingEnabled(true);
         break;
