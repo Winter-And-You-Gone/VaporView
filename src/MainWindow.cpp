@@ -3932,8 +3932,19 @@ public:
     {
         setObjectName(QStringLiteral("temperatureTrendPlot"));
         setFont(numericFontFrom(font()));
-        setMinimumSize(kTemperatureControllerPlotWidth, kTemperatureControllerPlotMinHeight);
-        setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+        applyPlotSizing();
+    }
+
+    void setCompactMode(bool compact)
+    {
+        if (compact_mode_ == compact)
+        {
+            return;
+        }
+        compact_mode_ = compact;
+        applyPlotSizing();
+        updateGeometry();
+        update();
     }
 
     void setEnglish(bool english)
@@ -4070,8 +4081,24 @@ protected:
     }
 
 private:
+    void applyPlotSizing()
+    {
+        if (compact_mode_)
+        {
+            setMinimumSize(200, 126);
+            setMaximumHeight(150);
+            setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+            return;
+        }
+
+        setMinimumSize(kTemperatureControllerPlotWidth, kTemperatureControllerPlotMinHeight);
+        setMaximumHeight(QWIDGETSIZE_MAX);
+        setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+    }
+
     QVector<double> samples_;
     int channel_index_ = 0;
+    bool compact_mode_ = false;
     bool is_english_ = false;
 };
 
@@ -4086,41 +4113,62 @@ public:
 
         auto *layout = new QHBoxLayout(this);
         layout->setContentsMargins(8, 6, 8, 8);
-        layout->setSpacing(12);
+        layout->setSpacing(10);
 
         auto *summary = new QWidget(this);
+        summary->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
         auto *summaryLayout = new QGridLayout(summary);
         summaryLayout->setContentsMargins(0, 0, 0, 0);
-        summaryLayout->setHorizontalSpacing(10);
+        summaryLayout->setHorizontalSpacing(12);
         summaryLayout->setVerticalSpacing(6);
+
+        auto addMetricCell = [summary, summaryLayout](int row, int column, QLabel *&title, QLabel *&value) {
+            auto *cell = new QWidget(summary);
+            auto *cellLayout = new QVBoxLayout(cell);
+            cellLayout->setContentsMargins(0, 0, 0, 0);
+            cellLayout->setSpacing(4);
+            title = new QLabel(cell);
+            title->setObjectName(QStringLiteral("fieldLabel"));
+            title->setMinimumHeight(20);
+            value = new QLabel(QStringLiteral("---"), cell);
+            value->setObjectName(QStringLiteral("highlightedValue"));
+            value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            value->setMinimumHeight(kMainPageButtonHeight);
+            value->setMinimumWidth(130);
+            value->setMaximumWidth(130);
+            cellLayout->addWidget(title, 0, Qt::AlignLeft);
+            cellLayout->addWidget(value, 0, Qt::AlignLeft);
+            summaryLayout->addWidget(cell, row, column, Qt::AlignLeft | Qt::AlignTop);
+        };
+
+        auto addEditorCell = [summary, summaryLayout](int row, int column, QLabel *&title, QWidget *editor) {
+            auto *cell = new QWidget(summary);
+            auto *cellLayout = new QVBoxLayout(cell);
+            cellLayout->setContentsMargins(0, 0, 0, 0);
+            cellLayout->setSpacing(4);
+            title = new QLabel(cell);
+            title->setObjectName(QStringLiteral("fieldLabel"));
+            title->setMinimumHeight(20);
+            cellLayout->addWidget(title, 0, Qt::AlignLeft);
+            cellLayout->addWidget(editor, 0, Qt::AlignLeft);
+            summaryLayout->addWidget(cell, row, column, Qt::AlignLeft | Qt::AlignTop);
+        };
 
         channel_combo_ = new QComboBox(this);
         channel_combo_->setFixedHeight(kMainPageButtonHeight);
-        channel_combo_->setFixedWidth(112);
+        channel_combo_->setFixedWidth(130);
         channel_combo_->addItem(QStringLiteral("通道1"), 0);
         channel_combo_->addItem(QStringLiteral("通道2"), 1);
         connect(channel_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
             refreshChannelUi();
         });
-        summaryLayout->addWidget(channel_combo_, 0, 0, 1, 2, Qt::AlignLeft);
+        addEditorCell(0, 0, channel_title_, channel_combo_);
+        addMetricCell(0, 1, current_temp_title_, current_temp_value_);
+        addMetricCell(0, 2, target_temp_title_, target_temp_value_);
 
-        auto addMetric = [this, summaryLayout](int row, QLabel *&title, QLabel *&value) {
-            title = new QLabel(this);
-            title->setObjectName(QStringLiteral("fieldLabel"));
-            value = new QLabel(QStringLiteral("---"), this);
-            value->setObjectName(QStringLiteral("highlightedValue"));
-            value->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-            value->setMinimumWidth(118);
-            summaryLayout->addWidget(title, row, 0, Qt::AlignLeft | Qt::AlignVCenter);
-            summaryLayout->addWidget(value, row, 1, Qt::AlignLeft | Qt::AlignVCenter);
-        };
-        addMetric(1, current_temp_title_, current_temp_value_);
-        addMetric(2, target_temp_title_, target_temp_value_);
-        output_switch_title_ = new QLabel(this);
-        output_switch_title_->setObjectName(QStringLiteral("fieldLabel"));
         output_switch_combo_ = new QComboBox(this);
         output_switch_combo_->setFixedHeight(kMainPageButtonHeight);
-        output_switch_combo_->setFixedWidth(112);
+        output_switch_combo_->setFixedWidth(130);
         output_switch_combo_->addItem(QStringLiteral("关闭"), false);
         output_switch_combo_->addItem(QStringLiteral("开启"), true);
         connect(output_switch_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
@@ -4129,42 +4177,42 @@ public:
                 output_enabled_callback_(currentChannelNumber(), output_switch_combo_->currentData().toBool());
             }
         });
-        summaryLayout->addWidget(output_switch_title_, 3, 0, Qt::AlignLeft | Qt::AlignVCenter);
-        summaryLayout->addWidget(output_switch_combo_, 3, 1, Qt::AlignLeft | Qt::AlignVCenter);
+        addEditorCell(1, 0, output_switch_title_, output_switch_combo_);
 
-        output_percent_spin_title_ = new QLabel(this);
-        output_percent_spin_title_->setObjectName(QStringLiteral("fieldLabel"));
         output_percent_spin_ = new QSpinBox(this);
         output_percent_spin_->setRange(0, 90);
         output_percent_spin_->setSuffix(QStringLiteral(" %"));
         output_percent_spin_->setFixedHeight(kMainPageButtonHeight);
-        output_percent_spin_->setFixedWidth(112);
+        output_percent_spin_->setFixedWidth(130);
         connect(output_percent_spin_, &QSpinBox::editingFinished, this, [this]() {
             if (max_output_callback_)
             {
                 max_output_callback_(currentChannelNumber(), static_cast<quint16>(output_percent_spin_->value()));
             }
         });
-        summaryLayout->addWidget(output_percent_spin_title_, 4, 0, Qt::AlignLeft | Qt::AlignVCenter);
-        summaryLayout->addWidget(output_percent_spin_, 4, 1, Qt::AlignLeft | Qt::AlignVCenter);
+        addEditorCell(1, 1, output_percent_spin_title_, output_percent_spin_);
 
         emergency_stop_button_ = new QPushButton(this);
         emergency_stop_button_->setObjectName(QStringLiteral("dangerButton"));
         emergency_stop_button_->setFixedHeight(kMainPageButtonHeight);
-        emergency_stop_button_->setMinimumWidth(170);
+        emergency_stop_button_->setFixedWidth(170);
         connect(emergency_stop_button_, &QPushButton::clicked, this, [this]() {
             if (emergency_stop_callback_)
             {
                 emergency_stop_callback_();
             }
         });
-        summaryLayout->addWidget(emergency_stop_button_, 5, 0, 1, 2, Qt::AlignLeft | Qt::AlignVCenter);
-        summaryLayout->setRowStretch(6, 1);
+        auto *buttonCell = new QWidget(summary);
+        auto *buttonCellLayout = new QVBoxLayout(buttonCell);
+        buttonCellLayout->setContentsMargins(0, 0, 0, 0);
+        buttonCellLayout->setSpacing(4);
+        buttonCellLayout->addSpacing(20);
+        buttonCellLayout->addWidget(emergency_stop_button_, 0, Qt::AlignLeft);
+        summaryLayout->addWidget(buttonCell, 1, 2, Qt::AlignLeft | Qt::AlignTop);
         layout->addWidget(summary, 0, Qt::AlignTop);
 
         plot_ = new TemperatureTrendPlotWidget(this);
-        plot_->setMinimumWidth(320);
-        plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        plot_->setCompactMode(true);
         layout->addWidget(plot_, 1);
 
         setEnglish(false);
@@ -4190,6 +4238,7 @@ public:
         {
             plot_->setEnglish(english);
         }
+        channel_title_->setText(english ? QStringLiteral("Channel:") : QStringLiteral("通道:"));
         current_temp_title_->setText(english ? QStringLiteral("Current Temp:") : QStringLiteral("当前温度:"));
         target_temp_title_->setText(english ? QStringLiteral("Target Temp:") : QStringLiteral("目标温度:"));
         output_switch_title_->setText(english ? QStringLiteral("Output:") : QStringLiteral("输出开关:"));
@@ -4281,6 +4330,7 @@ private:
     }
 
     QComboBox *channel_combo_ = nullptr;
+    QLabel *channel_title_ = nullptr;
     QLabel *current_temp_title_ = nullptr;
     QLabel *current_temp_value_ = nullptr;
     QLabel *target_temp_title_ = nullptr;
@@ -9554,7 +9604,7 @@ void MainWindow::setEnglish(bool english)
     }
     if (temperature_overview_inline_title_lbl_)
     {
-        temperature_overview_inline_title_lbl_->setText(english ? "Temperature Overview" : "温控概览");
+        temperature_overview_inline_title_lbl_->setText(english ? "Laser Driver Temperature Overview" : "激光驱动温控概览");
     }
     if (temperature_overview_panel_)
     {
