@@ -46,10 +46,13 @@ class QEvent;
 class QResizeEvent;
 class QSplitter;
 class QToolButton;
+class QButtonGroup;
+class QStackedWidget;
 class TcpWavePanel;
 class SessionViewerWindow;
 class EpsilonPanel;
 class TemperatureTrendPlotWidget;
+class TemperatureControllerOverviewPanel;
 namespace VaporView { class SkyDeviceConfigDialog; }
 
 class GnssPanel : public QWidget
@@ -644,6 +647,13 @@ private:
     QFrame *title_application_sub_panel_;
 
     QSplitter *main_content_splitter_;
+    QWidget *app_sidebar_;
+    QButtonGroup *app_nav_button_group_;
+    QPushButton *home_nav_btn_;
+    QPushButton *temperature_nav_btn_;
+    QStackedWidget *main_page_stack_;
+    QWidget *home_page_;
+    QWidget *temperature_page_;
     QScrollArea *main_cards_scroll_area_;
     QGroupBox *config_group_;
     QGroupBox *data_group_;
@@ -658,6 +668,7 @@ private:
     QGroupBox *ptb_group_;
     QGroupBox *hmp_group_;
     QGroupBox *env_group_;
+    QGroupBox *temperature_overview_group_;
     QGroupBox *temperature_controller_group_;
     QGroupBox *lidar_group_;
 
@@ -677,7 +688,10 @@ private:
     QLabel *env_lidar_status_icon_;
     QLabel *env_ptb_status_icon_;
     QLabel *env_hmp_status_icon_;
+    QLabel *temperature_overview_inline_title_lbl_;
     QLabel *temperature_controller_inline_title_lbl_;
+    QLabel *temperature_page_title_lbl_;
+    TemperatureControllerOverviewPanel *temperature_overview_panel_;
     QLabel *config_inline_title_lbl_;
     QLabel *global_rate_lbl_;
     QLabel *epsilon_rate_lbl_;

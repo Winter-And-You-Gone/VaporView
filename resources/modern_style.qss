@@ -15,6 +15,9 @@ QMainWindow {
 
 QWidget#appCentralWidget,
 QWidget#mainCardsPane,
+QFrame#appSidebar,
+QStackedWidget#mainPageStack,
+QWidget#temperaturePage,
 QMainWindow#sessionViewerWindow,
 QWidget#sessionViewerCentralWidget,
 QWidget#sessionViewerViewport,
@@ -137,6 +140,58 @@ QGroupBox#sensorGroupBox {
     border: 1px solid @vv-border;
     border-radius: 8px;
     padding: 0px 0px 0px 0px;
+}
+
+QFrame#appSidebar {
+    border-right: 1px solid @vv-border;
+    background-color: @vv-surface;
+}
+
+QPushButton#appSidebarButton {
+    background-color: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: @vv-text;
+    font-size: 15px;
+    font-weight: 600;
+    padding: 6px 8px;
+    text-align: left;
+}
+
+QPushButton#appSidebarButton:hover {
+    background-color: @vv-primary-subtle;
+    color: @vv-primary;
+}
+
+QPushButton#appSidebarButton:checked {
+    background-color: @vv-primary;
+    border-color: @vv-primary;
+    color: @vv-white;
+}
+
+QLabel#pageTitleLabel {
+    color: @vv-text;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+QPushButton#dangerButton {
+    background-color: @vv-danger;
+    border: 1px solid @vv-danger;
+    border-radius: 6px;
+    color: @vv-white;
+    font-weight: 700;
+    padding: 6px 14px;
+}
+
+QPushButton#dangerButton:hover {
+    background-color: @vv-error-highlight;
+    border-color: @vv-error-highlight;
+}
+
+QPushButton#dangerButton:pressed {
+    background-color: @vv-danger;
+    border-color: @vv-danger;
 }
 
 QGroupBox#sensorRowContainer {
