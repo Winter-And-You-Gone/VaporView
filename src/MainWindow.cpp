@@ -3988,24 +3988,42 @@ protected:
         painter.fillRect(rect(), background);
         const QFontMetrics fm = painter.fontMetrics();
         const QString title = is_english_
-            ? QStringLiteral("Measured Temp CH%1").arg(channel_index_ + 1)
-            : QStringLiteral("实际温度曲线 通道%1").arg(channel_index_ + 1);
+            ? QStringLiteral("Temp\nCH%1").arg(channel_index_ + 1)
+            : QStringLiteral("实际温度曲线\n通道%1").arg(channel_index_ + 1);
         painter.setPen(text);
         int leftMargin = std::max(44, fm.horizontalAdvance(QStringLiteral("-000.0")) + 8);
         int topMargin = fm.height() + 12;
-        const int bottomMargin = fm.height() + 8;
+        int bottomMargin = fm.height() + 8;
         if (compact_mode_)
         {
-            const int titleColumnWidth = fm.height() + 8;
-            painter.save();
-            painter.translate(4, height() - bottomMargin);
-            painter.rotate(-90);
-            painter.drawText(QRectF(0, 0, height() - bottomMargin - 6, titleColumnWidth),
-                             Qt::AlignCenter,
-                             title);
-            painter.restore();
-            leftMargin += titleColumnWidth + 4;
-            topMargin = 6;
+            int titleGlyphWidth = 0;
+            for (const QChar ch : title)
+            {
+                if (ch == QLatin1Char('\n'))
+                {
+                    continue;
+                }
+                titleGlyphWidth = std::max(titleGlyphWidth, fm.horizontalAdvance(QString(1, ch)));
+            }
+            const int titleColumnWidth = std::max(14, titleGlyphWidth + 4);
+            const qreal lineHeight = std::max<qreal>(fm.height() - 1, 1.0);
+            qreal y = 4.0;
+            for (const QChar ch : title)
+            {
+                if (ch == QLatin1Char('\n'))
+                {
+                    y += lineHeight * 0.5;
+                    continue;
+                }
+                const QString glyph(1, ch);
+                painter.drawText(QRectF(4, y, titleColumnWidth, lineHeight),
+                                 Qt::AlignHCenter | Qt::AlignVCenter,
+                                 glyph);
+                y += lineHeight;
+            }
+            leftMargin += titleColumnWidth + 6;
+            topMargin = 4;
+            bottomMargin = 4;
         }
         else
         {
@@ -4089,10 +4107,13 @@ protected:
                              QString::number(value, 'f', 1));
         }
 
-        const QString currentText = QStringLiteral("%1 °C").arg(finiteSamples.constLast(), 0, 'f', 3);
-        painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 2, plotRect.width(), fm.height()),
-                         Qt::AlignRight | Qt::AlignVCenter,
-                         currentText);
+        if (!compact_mode_)
+        {
+            const QString currentText = QStringLiteral("%1 °C").arg(finiteSamples.constLast(), 0, 'f', 3);
+            painter.drawText(QRectF(plotRect.left(), plotRect.bottom() + 2, plotRect.width(), fm.height()),
+                             Qt::AlignRight | Qt::AlignVCenter,
+                             currentText);
+        }
     }
 
 private:
@@ -4100,7 +4121,7 @@ private:
     {
         if (compact_mode_)
         {
-            setMinimumSize(160, 104);
+            setMinimumSize(160, 156);
             setMaximumHeight(QWIDGETSIZE_MAX);
             setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
             return;
@@ -4124,18 +4145,18 @@ public:
         : QWidget(parent)
     {
         setObjectName(QStringLiteral("temperatureOverviewPanel"));
-        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
         constexpr int kOverviewControlWidth = 78;
         constexpr int kOverviewValueWidth = 94;
         constexpr int kOverviewEmergencyWidth = 132;
 
         auto *layout = new QHBoxLayout(this);
-        layout->setContentsMargins(8, 6, 8, 8);
+        layout->setContentsMargins(8, 4, 8, 6);
         layout->setSpacing(8);
 
         auto *summary = new QWidget(this);
-        summary->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+        summary->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         auto *summaryLayout = new QGridLayout(summary);
         summaryLayout->setContentsMargins(0, 0, 0, 0);
         summaryLayout->setHorizontalSpacing(8);
@@ -9110,7 +9131,7 @@ void MainWindow::setupDataPanels()
 
     temperature_overview_group_ = new QGroupBox(this);
     temperature_overview_group_->setObjectName("sensorGroupBox");
-    temperature_overview_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    temperature_overview_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     auto *temperatureOverviewLayout = new QVBoxLayout(temperature_overview_group_);
     temperatureOverviewLayout->setContentsMargins(1, 0, 1, 1);
     temperatureOverviewLayout->setSpacing(0);
