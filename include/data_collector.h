@@ -242,6 +242,8 @@ public:
   bool setOutputMode(uint8_t channel, uint16_t mode);
   bool setMaxOutputPercent(uint8_t channel, uint16_t percent);
   bool setPid(uint8_t channel, uint32_t kp, uint32_t ki, uint32_t kd);
+  bool setAutoPid(uint8_t channel, uint16_t mode);
+  bool setControllerMode(uint16_t mode);
 
 protected:
   void run() override;

@@ -434,6 +434,30 @@ bool SkyDeviceManager::setTemperaturePid(quint8 channel, quint32 kp, quint32 ki,
     return ok;
 }
 
+bool SkyDeviceManager::setTemperatureAutoPid(quint8 channel, quint16 mode, CommandErrorCode *errorCode)
+{
+    if (!temperature_controller_ || temperature_controller_status_.state != DeviceState::Connected)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        return false;
+    }
+    const bool ok = temperature_controller_->setAutoPid(channel, mode);
+    if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+    return ok;
+}
+
+bool SkyDeviceManager::setTemperatureControllerMode(quint16 mode, CommandErrorCode *errorCode)
+{
+    if (!temperature_controller_ || temperature_controller_status_.state != DeviceState::Connected)
+    {
+        if (errorCode) *errorCode = CommandErrorCode::DeviceNotConnected;
+        return false;
+    }
+    const bool ok = temperature_controller_->setControllerMode(mode);
+    if (errorCode) *errorCode = ok ? CommandErrorCode::Ok : CommandErrorCode::ConfigApplyFailed;
+    return ok;
+}
+
 EpsilonData SkyDeviceManager::latestEpsilon() const
 {
     return latest_epsilon_;

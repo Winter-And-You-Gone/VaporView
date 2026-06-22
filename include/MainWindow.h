@@ -268,6 +268,8 @@ signals:
     void outputModeRequested(quint8 channel, quint16 mode);
     void maxOutputPercentRequested(quint8 channel, quint16 percent);
     void pidRequested(quint8 channel, quint32 kp, quint32 ki, quint32 kd);
+    void autoPidRequested(quint8 channel, quint16 mode);
+    void controllerModeRequested(quint16 mode);
 
 private:
     struct ChannelWidgets
@@ -277,6 +279,7 @@ private:
         QLabel *mode_label_text = nullptr;
         QLabel *max_output_label_text = nullptr;
         QLabel *pid_label_text = nullptr;
+        QLabel *auto_pid_label_text = nullptr;
         QDoubleSpinBox *target_spin = nullptr;
         QComboBox *enable_combo = nullptr;
         QComboBox *mode_combo = nullptr;
@@ -284,8 +287,7 @@ private:
         QSpinBox *kp_spin = nullptr;
         QSpinBox *ki_spin = nullptr;
         QSpinBox *kd_spin = nullptr;
-        QPushButton *auto_pid_button = nullptr;
-        QPushButton *segmented_control_button = nullptr;
+        QComboBox *auto_pid_combo = nullptr;
     };
 
     void setupUi();
@@ -302,6 +304,8 @@ private:
     QLabel *status_label_ = nullptr;
     QLabel *internal_temperature_lbl_ = nullptr;
     QLabel *error_code_lbl_ = nullptr;
+    QLabel *controller_mode_lbl_ = nullptr;
+    QComboBox *controller_mode_combo_ = nullptr;
     std::array<ChannelWidgets, 2> channels_{};
     std::array<QVector<double>, 2> measured_temperature_history_{};
     bool is_english_ = false;

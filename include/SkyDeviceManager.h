@@ -49,6 +49,8 @@ public:
     bool setTemperatureOutputMode(quint8 channel, quint16 mode, CommandErrorCode *errorCode = nullptr);
     bool setTemperatureMaxOutputPercent(quint8 channel, quint16 percent, CommandErrorCode *errorCode = nullptr);
     bool setTemperaturePid(quint8 channel, quint32 kp, quint32 ki, quint32 kd, CommandErrorCode *errorCode = nullptr);
+    bool setTemperatureAutoPid(quint8 channel, quint16 mode, CommandErrorCode *errorCode = nullptr);
+    bool setTemperatureControllerMode(quint16 mode, CommandErrorCode *errorCode = nullptr);
 
     EpsilonData latestEpsilon() const;
     PtbData latestPtb() const;

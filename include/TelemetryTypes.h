@@ -67,6 +67,8 @@ enum class CommandId : quint16
     SetTemperatureOutputMode = 42,
     SetTemperatureMaxOutputPercent = 43,
     SetTemperaturePid = 44,
+    SetTemperatureAutoPid = 45,
+    SetTemperatureControllerMode = 46,
     ShutdownCore = 90,
 };
 
@@ -234,6 +236,8 @@ struct TemperatureControllerCommand
     quint32 kp = 0;
     quint32 ki = 0;
     quint32 kd = 0;
+    quint16 auto_pid_mode = 0;
+    quint16 controller_mode = 0;
 };
 
 struct DeviceStatusItem

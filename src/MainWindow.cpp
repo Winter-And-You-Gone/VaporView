@@ -633,6 +633,19 @@ QStringList temperatureControllerFieldLabelWidthCandidates()
     };
 }
 
+QStringList temperatureControllerStatusLabelWidthCandidates()
+{
+    return {
+        QStringLiteral("Internal:"),
+        QStringLiteral("Error:"),
+        QStringLiteral("Mode:"),
+        QStringLiteral("Controller Mode:"),
+        QStringLiteral("自身温度:"),
+        QStringLiteral("错误码:"),
+        QStringLiteral("温控器模式:")
+    };
+}
+
 QString fixedTextField(const QString& text, int width, Qt::Alignment alignment = Qt::AlignRight)
 {
     const int targetWidth = std::max(width, static_cast<int>(text.size()));
@@ -1890,12 +1903,6 @@ QPushButton:checked {
 QPushButton:disabled {
     background-color: @vv-border;
     color: @vv-text-disabled-strong;
-}
-QPushButton#temperatureControlButton {
-    padding: 4px 10px;
-    min-height: 28px;
-    max-height: 28px;
-    font-size: 14px;
 }
 TemperatureControllerPanel QTabWidget::pane {
     background-color: @vv-surface;
@@ -4409,7 +4416,7 @@ void TemperatureControllerPanel::setupUi()
     internal_temperature_lbl_ = new QLabel(this);
     internal_temperature_lbl_->setObjectName(QStringLiteral("fieldLabel"));
     internal_temperature_lbl_->setMinimumHeight(22);
-    setFixedTextLabelWidth(internal_temperature_lbl_, temperatureControllerFieldLabelWidthCandidates(), 4);
+    setFixedTextLabelWidth(internal_temperature_lbl_, temperatureControllerStatusLabelWidthCandidates(), 4);
     internal_temperature_label_ = new QLabel(QStringLiteral("--- °C"), this);
     internal_temperature_label_->setObjectName(QStringLiteral("highlightedValue"));
     internal_temperature_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
@@ -4419,13 +4426,27 @@ void TemperatureControllerPanel::setupUi()
     error_code_lbl_ = new QLabel(this);
     error_code_lbl_->setObjectName(QStringLiteral("fieldLabel"));
     error_code_lbl_->setMinimumHeight(22);
-    setFixedTextLabelWidth(error_code_lbl_, temperatureControllerFieldLabelWidthCandidates(), 4);
+    setFixedTextLabelWidth(error_code_lbl_, temperatureControllerStatusLabelWidthCandidates(), 4);
     error_code_label_ = new QLabel(QStringLiteral("0x0000"), this);
     error_code_label_->setObjectName(QStringLiteral("highlightedValue"));
     error_code_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     error_code_label_->setMinimumHeight(22);
     error_code_label_->setMinimumWidth(kTemperatureControllerValueWidth);
     error_code_label_->setMaximumWidth(kTemperatureControllerValueWidth);
+    controller_mode_lbl_ = new QLabel(this);
+    controller_mode_lbl_->setObjectName(QStringLiteral("fieldLabel"));
+    controller_mode_lbl_->setMinimumHeight(22);
+    setFixedTextLabelWidth(controller_mode_lbl_, temperatureControllerStatusLabelWidthCandidates(), 4);
+    controller_mode_combo_ = new QComboBox(this);
+    controller_mode_combo_->setFixedWidth(220);
+    controller_mode_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    controller_mode_combo_->addItem(QStringLiteral("独立控制"), 0);
+    controller_mode_combo_->addItem(QStringLiteral("通道1温差控制"), 1);
+    controller_mode_combo_->addItem(QStringLiteral("通道2跟随输出"), 2);
+    controller_mode_combo_->addItem(QStringLiteral("温差控制+跟随输出"), 3);
+    connect(controller_mode_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        emit controllerModeRequested(static_cast<quint16>(controller_mode_combo_->currentData().toUInt()));
+    });
     rate_label_ = new VaporView::VisualTextLabel(this);
     rate_label_->setObjectName(QStringLiteral("rateLabel"));
     rate_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
@@ -4436,6 +4457,9 @@ void TemperatureControllerPanel::setupUi()
     statusLayout->addSpacing(18);
     statusLayout->addWidget(error_code_lbl_);
     statusLayout->addWidget(error_code_label_);
+    statusLayout->addSpacing(18);
+    statusLayout->addWidget(controller_mode_lbl_);
+    statusLayout->addWidget(controller_mode_combo_);
     statusLayout->addStretch();
     statusLayout->addWidget(rate_label_);
     layout->addLayout(statusLayout);
@@ -4517,15 +4541,6 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
         return combo;
     };
 
-    auto prepareUnsupportedButton = [this](QPushButton *button) {
-        button->setObjectName(QStringLiteral("temperatureControlButton"));
-        button->setFixedWidth(150);
-        button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        button->setEnabled(false);
-        button->setToolTip(is_english_ ? QStringLiteral("This RD105 command is not wired yet.")
-                                        : QStringLiteral("该 RD105 命令暂未接入。"));
-    };
-
     channel.enable_combo = createCombo();
     channel.enable_combo->addItem(QStringLiteral("关闭"), false);
     channel.enable_combo->addItem(QStringLiteral("开启"), true);
@@ -4567,13 +4582,12 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     channel.target_spin->setFixedWidth(kTemperatureControllerWideInputWidth);
     addField(2, 0, QStringLiteral("目标温度(°C)"), channel.target_spin, channel.target_label_text);
 
-    channel.auto_pid_button = new QPushButton(this);
-    prepareUnsupportedButton(channel.auto_pid_button);
-    layout->addWidget(channel.auto_pid_button, 2, 1, Qt::AlignBottom | Qt::AlignLeft);
-
-    channel.segmented_control_button = new QPushButton(this);
-    prepareUnsupportedButton(channel.segmented_control_button);
-    layout->addWidget(channel.segmented_control_button, 2, 2, Qt::AlignBottom | Qt::AlignLeft);
+    channel.auto_pid_combo = createCombo();
+    channel.auto_pid_combo->setFixedWidth(kTemperatureControllerWideInputWidth);
+    channel.auto_pid_combo->addItem(QStringLiteral("关闭"), 0);
+    channel.auto_pid_combo->addItem(QStringLiteral("PID自整定"), 1);
+    channel.auto_pid_combo->addItem(QStringLiteral("实时优化(预留)"), 2);
+    addField(2, 1, QStringLiteral("自动 PID"), channel.auto_pid_combo, channel.auto_pid_label_text, 2);
     layout->setRowStretch(3, 1);
 
     const quint8 channelNumber = static_cast<quint8>(index + 1);
@@ -4582,6 +4596,9 @@ QWidget *TemperatureControllerPanel::createChannelPage(int index)
     });
     connect(channel.mode_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, channelNumber, combo = channel.mode_combo](int) {
         emit outputModeRequested(channelNumber, static_cast<quint16>(combo->currentData().toUInt()));
+    });
+    connect(channel.auto_pid_combo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, channelNumber, combo = channel.auto_pid_combo](int) {
+        emit autoPidRequested(channelNumber, static_cast<quint16>(combo->currentData().toUInt()));
     });
     connect(channel.max_output_spin, &QSpinBox::editingFinished, this, [this, channelNumber, spin = channel.max_output_spin]() {
         emit maxOutputPercentRequested(channelNumber, static_cast<quint16>(spin->value()));
@@ -4626,8 +4643,21 @@ void TemperatureControllerPanel::updateChannelTexts()
 {
     if (internal_temperature_lbl_) internal_temperature_lbl_->setText(is_english_ ? QStringLiteral("Internal:") : QStringLiteral("自身温度:"));
     if (error_code_lbl_) error_code_lbl_->setText(is_english_ ? QStringLiteral("Error:") : QStringLiteral("错误码:"));
+    if (controller_mode_lbl_) controller_mode_lbl_->setText(is_english_ ? QStringLiteral("Mode:") : QStringLiteral("温控器模式:"));
     refreshFixedTextLabelWidth(internal_temperature_lbl_);
     refreshFixedTextLabelWidth(error_code_lbl_);
+    refreshFixedTextLabelWidth(controller_mode_lbl_);
+    if (controller_mode_combo_)
+    {
+        const QSignalBlocker blocker(controller_mode_combo_);
+        controller_mode_combo_->setItemText(0, is_english_ ? QStringLiteral("Independent") : QStringLiteral("独立控制"));
+        controller_mode_combo_->setItemText(1, is_english_ ? QStringLiteral("CH1 target follows CH2 temp") : QStringLiteral("通道1温差控制"));
+        controller_mode_combo_->setItemText(2, is_english_ ? QStringLiteral("CH2 output follows CH1") : QStringLiteral("通道2跟随输出"));
+        controller_mode_combo_->setItemText(3, is_english_ ? QStringLiteral("Combined") : QStringLiteral("温差控制+跟随输出"));
+        controller_mode_combo_->setToolTip(is_english_
+            ? QStringLiteral("RD105 CONTMODE. Modes 2 and 3 require a resistor temperature sensor on channel 2.")
+            : QStringLiteral("RD105 CONTMODE。使用模式2和3时，通道2传感器接口应接入电阻温度传感器。"));
+    }
     if (tabs_)
     {
         tabs_->setTabText(0, is_english_ ? QStringLiteral("Channel 1") : QStringLiteral("通道1"));
@@ -4640,6 +4670,7 @@ void TemperatureControllerPanel::updateChannelTexts()
         if (channel.mode_label_text) channel.mode_label_text->setText(is_english_ ? QStringLiteral("Output Mode") : QStringLiteral("输出模式"));
         if (channel.max_output_label_text) channel.max_output_label_text->setText(is_english_ ? QStringLiteral("Max Output (%)") : QStringLiteral("最大输出电压百分比(%)"));
         if (channel.pid_label_text) channel.pid_label_text->setText(QStringLiteral("P"));
+        if (channel.auto_pid_label_text) channel.auto_pid_label_text->setText(is_english_ ? QStringLiteral("Auto PID") : QStringLiteral("自动 PID"));
         if (channel.enable_combo)
         {
             const QSignalBlocker blocker(channel.enable_combo);
@@ -4654,17 +4685,15 @@ void TemperatureControllerPanel::updateChannelTexts()
             channel.mode_combo->setItemText(2, is_english_ ? QStringLiteral("Heat") : QStringLiteral("加热"));
             channel.mode_combo->setItemText(3, is_english_ ? QStringLiteral("Off") : QStringLiteral("关闭"));
         }
-        if (channel.auto_pid_button)
+        if (channel.auto_pid_combo)
         {
-            channel.auto_pid_button->setText(is_english_ ? QStringLiteral("Auto PID") : QStringLiteral("自动设定PID"));
-            channel.auto_pid_button->setToolTip(is_english_ ? QStringLiteral("This RD105 command is not wired yet.")
-                                                            : QStringLiteral("该 RD105 命令暂未接入。"));
-        }
-        if (channel.segmented_control_button)
-        {
-            channel.segmented_control_button->setText(is_english_ ? QStringLiteral("Segment Control") : QStringLiteral("分段控温"));
-            channel.segmented_control_button->setToolTip(is_english_ ? QStringLiteral("This RD105 command is not wired yet.")
-                                                                     : QStringLiteral("该 RD105 命令暂未接入。"));
+            const QSignalBlocker blocker(channel.auto_pid_combo);
+            channel.auto_pid_combo->setItemText(0, is_english_ ? QStringLiteral("Off") : QStringLiteral("关闭"));
+            channel.auto_pid_combo->setItemText(1, is_english_ ? QStringLiteral("PID auto-tune") : QStringLiteral("PID自整定"));
+            channel.auto_pid_combo->setItemText(2, is_english_ ? QStringLiteral("Realtime optimize (reserved)") : QStringLiteral("实时优化(预留)"));
+            channel.auto_pid_combo->setToolTip(is_english_
+                ? QStringLiteral("RD105 AUTOPID: off, PID auto-tune, or reserved realtime optimization.")
+                : QStringLiteral("RD105 AUTOPID：关闭、PID自整定，或预留的实时优化。"));
         }
     }
     if (status_label_ && status_label_->text().isEmpty()) setCommandStatus(is_english_ ? QStringLiteral("Writes are confirmed by reading back from RD105.") : QStringLiteral("写入命令会在天空端读回确认后才返回成功。"));
@@ -4678,6 +4707,7 @@ void TemperatureControllerPanel::updateChannelData(int index, const VaporView::T
         const QSignalBlocker targetBlocker(channel.target_spin);
         const QSignalBlocker enableBlocker(channel.enable_combo);
         const QSignalBlocker modeBlocker(channel.mode_combo);
+        const QSignalBlocker autoPidBlocker(channel.auto_pid_combo);
         const QSignalBlocker maxOutputBlocker(channel.max_output_spin);
         const QSignalBlocker kpBlocker(channel.kp_spin);
         const QSignalBlocker kiBlocker(channel.ki_spin);
@@ -4687,6 +4717,8 @@ void TemperatureControllerPanel::updateChannelData(int index, const VaporView::T
         channel.enable_combo->setCurrentIndex(enableIndex >= 0 ? enableIndex : 0);
         const int modeIndex = channel.mode_combo->findData(channelData.output_mode);
         channel.mode_combo->setCurrentIndex(modeIndex >= 0 ? modeIndex : 0);
+        const int autoPidIndex = channel.auto_pid_combo->findData(channelData.auto_pid_mode);
+        channel.auto_pid_combo->setCurrentIndex(autoPidIndex >= 0 ? autoPidIndex : 0);
         channel.max_output_spin->setValue(channelData.max_output_percent);
         channel.kp_spin->setValue(channelData.kp);
         channel.ki_spin->setValue(channelData.ki);
@@ -4698,6 +4730,12 @@ void TemperatureControllerPanel::updateData(const VaporView::TemperatureControll
 {
     internal_temperature_label_->setText(fixedDecimalWithUnit(data.valid ? data.internal_temperature_c : std::numeric_limits<double>::quiet_NaN(), 2, 8, QStringLiteral("°C")));
     error_code_label_->setText(data.valid ? QStringLiteral("0x%1").arg(data.error_code, 4, 16, QLatin1Char('0')).toUpper() : QStringLiteral("---"));
+    if (controller_mode_combo_)
+    {
+        const QSignalBlocker blocker(controller_mode_combo_);
+        const int modeIndex = controller_mode_combo_->findData(data.valid ? data.controller_mode : 0);
+        controller_mode_combo_->setCurrentIndex(modeIndex >= 0 ? modeIndex : 0);
+    }
     if (!error_text_label_)
     {
         error_text_label_ = new QLabel(this);
@@ -5707,7 +5745,6 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton:disabled { background-color: @vv-border-strong; color: @vv-white; }"
             "QPushButton#compactTcpButton { padding: 4px 14px; min-height: 28px; max-height: 28px; font-size: 14px; }"
             "QPushButton#compactTcpStartButton { padding: 4px 14px; min-height: 28px; max-height: 28px; font-size: 14px; }"
-            "QPushButton#temperatureControlButton { padding: 4px 10px; min-height: 28px; max-height: 28px; font-size: 14px; }"
             "TemperatureControllerPanel QTabWidget::pane { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 4px; top: -1px; }"
             "TemperatureControllerPanel QTabBar::tab { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-bottom: none; border-top-left-radius: 4px; border-top-right-radius: 4px; color: @vv-text; padding: 4px 14px; min-height: 22px; }"
             "TemperatureControllerPanel QTabBar::tab:selected { background-color: @vv-surface; color: @vv-primary; font-weight: 600; }"
@@ -7139,12 +7176,24 @@ void MainWindow::sendRemoteTemperatureCommand(VaporView::CommandId command, cons
     {
         temperature_controller_panel_->setCommandStatus(temperatureCommandStatusText(command, payload.channel, true));
     }
-    log(QString(is_english_
-            ? "RD105 command sent: %1 channel=%2 seq=%3"
-            : "RD105 命令已下发：%1 通道=%2 序号=%3")
-            .arg(VaporView::commandIdName(command))
-            .arg(payload.channel)
-            .arg(seq));
+    if (command == VaporView::CommandId::SetTemperatureControllerMode)
+    {
+        log(QString(is_english_
+                ? "RD105 command sent: %1 mode=%2 seq=%3"
+                : "RD105 命令已下发：%1 模式=%2 序号=%3")
+                .arg(VaporView::commandIdName(command))
+                .arg(payload.controller_mode)
+                .arg(seq));
+    }
+    else
+    {
+        log(QString(is_english_
+                ? "RD105 command sent: %1 channel=%2 seq=%3"
+                : "RD105 命令已下发：%1 通道=%2 序号=%3")
+                .arg(VaporView::commandIdName(command))
+                .arg(payload.channel)
+                .arg(seq));
+    }
 }
 
 bool MainWindow::isTemperatureCommand(VaporView::CommandId command) const
@@ -7153,7 +7202,9 @@ bool MainWindow::isTemperatureCommand(VaporView::CommandId command) const
            command == VaporView::CommandId::SetTemperatureOutputEnabled ||
            command == VaporView::CommandId::SetTemperatureOutputMode ||
            command == VaporView::CommandId::SetTemperatureMaxOutputPercent ||
-           command == VaporView::CommandId::SetTemperaturePid;
+           command == VaporView::CommandId::SetTemperaturePid ||
+           command == VaporView::CommandId::SetTemperatureAutoPid ||
+           command == VaporView::CommandId::SetTemperatureControllerMode;
 }
 
 QString MainWindow::temperatureCommandStatusText(VaporView::CommandId command, quint8 channel, bool pending, const QString& detail) const
@@ -7176,9 +7227,33 @@ QString MainWindow::temperatureCommandStatusText(VaporView::CommandId command, q
     case VaporView::CommandId::SetTemperaturePid:
         action = is_english_ ? QStringLiteral("PID") : QStringLiteral("PID");
         break;
+    case VaporView::CommandId::SetTemperatureAutoPid:
+        action = is_english_ ? QStringLiteral("auto PID") : QStringLiteral("自动 PID");
+        break;
+    case VaporView::CommandId::SetTemperatureControllerMode:
+        action = is_english_ ? QStringLiteral("controller mode") : QStringLiteral("温控器模式");
+        break;
     default:
         action = VaporView::commandIdName(command);
         break;
+    }
+    if (command == VaporView::CommandId::SetTemperatureControllerMode)
+    {
+        if (pending)
+        {
+            return is_english_
+                ? QStringLiteral("%1 command sent; waiting for ACK and read-back confirmation...").arg(action)
+                : QStringLiteral("%1命令已下发，等待 ACK 和读回确认...").arg(action);
+        }
+        if (detail.isEmpty())
+        {
+            return is_english_
+                ? QStringLiteral("%1 command confirmed.").arg(action)
+                : QStringLiteral("%1命令已确认成功。").arg(action);
+        }
+        return is_english_
+            ? QStringLiteral("%1 command failed: %2").arg(action, detail)
+            : QStringLiteral("%1命令失败：%2").arg(action, detail);
     }
     if (pending)
     {
@@ -9283,6 +9358,18 @@ void MainWindow::setupDataPanels()
         command.ki = ki;
         command.kd = kd;
         sendRemoteTemperatureCommand(VaporView::CommandId::SetTemperaturePid, command);
+    });
+    connect(temperature_controller_panel_, &TemperatureControllerPanel::autoPidRequested, this, [this](quint8 channel, quint16 mode) {
+        VaporView::TemperatureControllerCommand command;
+        command.channel = channel;
+        command.auto_pid_mode = mode;
+        sendRemoteTemperatureCommand(VaporView::CommandId::SetTemperatureAutoPid, command);
+    });
+    connect(temperature_controller_panel_, &TemperatureControllerPanel::controllerModeRequested, this, [this](quint16 mode) {
+        VaporView::TemperatureControllerCommand command;
+        command.channel = 1;
+        command.controller_mode = mode;
+        sendRemoteTemperatureCommand(VaporView::CommandId::SetTemperatureControllerMode, command);
     });
     temperatureLayout->addWidget(temperature_controller_panel_);
 

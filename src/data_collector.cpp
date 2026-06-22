@@ -3498,6 +3498,8 @@ bool TemperatureControllerCollector::readChannel(uint8_t channel, TemperatureCon
   channel_data.output_enabled = registers[0] != 0;
   if (!readRegisters(channelAddress(channel, Register::OutputMode), 1, registers)) return false;
   channel_data.output_mode = registers[0];
+  if (!readRegisters(channelAddress(channel, Register::AutoPid), 1, registers)) return false;
+  channel_data.auto_pid_mode = static_cast<int>(registers[0]);
   if (!readRegisters(channelAddress(channel, Register::MaxOutputPercent), 1, registers)) return false;
   channel_data.max_output_percent = static_cast<int>(registers[0]);
   if (!readRegisters(channelAddress(channel, Register::Kp), 2, registers)) return false;
@@ -3524,6 +3526,8 @@ bool TemperatureControllerCollector::readSnapshot(TemperatureControllerData& sam
   sample.internal_temperature_c = decodeInt16(QVector<uint16_t>(registers.cbegin(), registers.cend()));
   if (!readRegisters(static_cast<uint16_t>(Register::ErrorCode), 1, registers)) return false;
   sample.error_code = registers[0];
+  if (!readRegisters(static_cast<uint16_t>(Register::ControllerMode), 1, registers)) return false;
+  sample.controller_mode = static_cast<int>(decodeInt16(QVector<uint16_t>(registers.cbegin(), registers.cend())));
   sample.valid = true;
   sample.timestamp = std::chrono::steady_clock::now();
   sample.error_message.clear();
@@ -3590,6 +3594,28 @@ bool TemperatureControllerCollector::setPid(uint8_t channel, uint32_t kp, uint32
   return writeAndConfirm(channel, channelAddress(channel, Register::Kp), std::vector<uint16_t>(kpValues.cbegin(), kpValues.cend())) &&
          writeAndConfirm(channel, channelAddress(channel, Register::Ki), std::vector<uint16_t>(kiValues.cbegin(), kiValues.cend())) &&
          writeAndConfirm(channel, channelAddress(channel, Register::Kd), std::vector<uint16_t>(kdValues.cbegin(), kdValues.cend()));
+}
+
+bool TemperatureControllerCollector::setAutoPid(uint8_t channel, uint16_t mode)
+{
+  using namespace TemperatureControllerProtocol;
+  if (mode > 2)
+  {
+    return false;
+  }
+  const QVector<uint16_t> values = encodeUInt16(mode);
+  return writeAndConfirm(channel, channelAddress(channel, Register::AutoPid), std::vector<uint16_t>(values.cbegin(), values.cend()));
+}
+
+bool TemperatureControllerCollector::setControllerMode(uint16_t mode)
+{
+  using namespace TemperatureControllerProtocol;
+  if (mode > 3)
+  {
+    return false;
+  }
+  const QVector<uint16_t> values = encodeInt16(static_cast<int16_t>(mode));
+  return writeAndConfirm(1, static_cast<uint16_t>(Register::ControllerMode), std::vector<uint16_t>(values.cbegin(), values.cend()));
 }
 
 void TemperatureControllerCollector::run()

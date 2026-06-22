@@ -829,6 +829,16 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
             CommandErrorCode error = CommandErrorCode::Ok;
             return device_manager_.setTemperaturePid(request.channel, request.kp, request.ki, request.kd, &error);
         });
+    case CommandId::SetTemperatureAutoPid:
+        return temperatureCommand([this](const TemperatureControllerCommand& request) {
+            CommandErrorCode error = CommandErrorCode::Ok;
+            return device_manager_.setTemperatureAutoPid(request.channel, request.auto_pid_mode, &error);
+        });
+    case CommandId::SetTemperatureControllerMode:
+        return temperatureCommand([this](const TemperatureControllerCommand& request) {
+            CommandErrorCode error = CommandErrorCode::Ok;
+            return device_manager_.setTemperatureControllerMode(request.controller_mode, &error);
+        });
     case CommandId::EnableWaveformStreaming:
         setWaveformStreamingEnabled(true);
         break;

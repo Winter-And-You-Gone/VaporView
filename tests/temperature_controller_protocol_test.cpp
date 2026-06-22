@@ -85,6 +85,12 @@ bool checkChannelAddressOffset()
                   "channel 2 target address mismatch");
     ok &= require(VaporView::TemperatureControllerProtocol::channelAddress(2, VaporView::TemperatureControllerProtocol::Register::MeasuredTemperature) == 0x2002,
                   "channel 2 measured temperature address mismatch");
+    ok &= require(VaporView::TemperatureControllerProtocol::channelAddress(1, VaporView::TemperatureControllerProtocol::Register::AutoPid) == 0x1107,
+                  "channel 1 auto PID address mismatch");
+    ok &= require(VaporView::TemperatureControllerProtocol::channelAddress(2, VaporView::TemperatureControllerProtocol::Register::AutoPid) == 0x2107,
+                  "channel 2 auto PID address mismatch");
+    ok &= require(static_cast<quint16>(VaporView::TemperatureControllerProtocol::Register::ControllerMode) == 0x0004,
+                  "controller mode address mismatch");
     return ok;
 }
 

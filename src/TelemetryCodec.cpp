@@ -177,6 +177,8 @@ QString commandIdName(CommandId id)
     case CommandId::SetTemperatureOutputMode: return QStringLiteral("SetTemperatureOutputMode");
     case CommandId::SetTemperatureMaxOutputPercent: return QStringLiteral("SetTemperatureMaxOutputPercent");
     case CommandId::SetTemperaturePid: return QStringLiteral("SetTemperaturePid");
+    case CommandId::SetTemperatureAutoPid: return QStringLiteral("SetTemperatureAutoPid");
+    case CommandId::SetTemperatureControllerMode: return QStringLiteral("SetTemperatureControllerMode");
     case CommandId::ShutdownCore: return QStringLiteral("ShutdownCore");
     }
     return QStringLiteral("UnknownCommand");
@@ -890,6 +892,11 @@ QByteArray TelemetryCodec::serializeTemperatureControllerStatus(const Temperatur
         appendLe<quint32>(payload, static_cast<quint32>(std::clamp(channel.ki, 0, std::numeric_limits<int>::max())));
         appendLe<quint32>(payload, static_cast<quint32>(std::clamp(channel.kd, 0, std::numeric_limits<int>::max())));
     }
+    appendLe<quint16>(payload, static_cast<quint16>(std::clamp(data.controller_mode, 0, 65535)));
+    for (const TemperatureControllerChannelData& channel : data.channels)
+    {
+        appendLe<quint16>(payload, static_cast<quint16>(std::clamp(channel.auto_pid_mode, 0, 65535)));
+    }
     return payload;
 }
 
@@ -939,6 +946,20 @@ bool TelemetryCodec::parseTemperatureControllerStatus(const QByteArray& payload,
         channel.ki = static_cast<int>(std::min<quint32>(ki, static_cast<quint32>(std::numeric_limits<int>::max())));
         channel.kd = static_cast<int>(std::min<quint32>(kd, static_cast<quint32>(std::numeric_limits<int>::max())));
     }
+    quint16 controllerMode = 0;
+    if (readLe(payload, offset, controllerMode))
+    {
+        data.controller_mode = controllerMode;
+        for (TemperatureControllerChannelData& channel : data.channels)
+        {
+            quint16 autoPidMode = 0;
+            if (!readLe(payload, offset, autoPidMode))
+            {
+                break;
+            }
+            channel.auto_pid_mode = autoPidMode;
+        }
+    }
     return true;
 }
 
@@ -955,6 +976,8 @@ QByteArray TelemetryCodec::serializeTemperatureControllerCommand(const Temperatu
     appendLe<quint32>(payload, command.kp);
     appendLe<quint32>(payload, command.ki);
     appendLe<quint32>(payload, command.kd);
+    appendLe<quint16>(payload, command.auto_pid_mode);
+    appendLe<quint16>(payload, command.controller_mode);
     return payload;
 }
 
@@ -969,13 +992,27 @@ bool TelemetryCodec::parseTemperatureControllerCommand(const QByteArray& payload
     command.channel = static_cast<quint8>(payload.at(offset++));
     command.output_enabled = payload.at(offset++) != 0;
     quint16 reserved = 0;
-    return readLe(payload, offset, command.output_mode) &&
-           readDoubleLe(payload, offset, command.target_temperature_c) &&
-           readLe(payload, offset, command.max_output_percent) &&
-           readLe(payload, offset, reserved) &&
-           readLe(payload, offset, command.kp) &&
-           readLe(payload, offset, command.ki) &&
-           readLe(payload, offset, command.kd);
+    if (!readLe(payload, offset, command.output_mode) ||
+        !readDoubleLe(payload, offset, command.target_temperature_c) ||
+        !readLe(payload, offset, command.max_output_percent) ||
+        !readLe(payload, offset, reserved) ||
+        !readLe(payload, offset, command.kp) ||
+        !readLe(payload, offset, command.ki) ||
+        !readLe(payload, offset, command.kd))
+    {
+        return false;
+    }
+    quint16 autoPidMode = 0;
+    quint16 controllerMode = 0;
+    if (readLe(payload, offset, autoPidMode))
+    {
+        command.auto_pid_mode = autoPidMode;
+        if (readLe(payload, offset, controllerMode))
+        {
+            command.controller_mode = controllerMode;
+        }
+    }
+    return true;
 }
 
 }  // namespace VaporView

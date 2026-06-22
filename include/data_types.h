@@ -218,6 +218,7 @@ struct TemperatureControllerChannelData
   int output_mode = 0;
   bool output_enabled = false;
   int max_output_percent = 0;
+  int auto_pid_mode = 0;
   int kp = 0;
   int ki = 0;
   int kd = 0;
@@ -228,6 +229,7 @@ struct TemperatureControllerData
   std::array<TemperatureControllerChannelData, 2> channels{};
   double internal_temperature_c = std::numeric_limits<double>::quiet_NaN();
   uint16_t error_code = 0;
+  int controller_mode = 0;
 
   std::chrono::steady_clock::time_point timestamp{};
   bool valid = false;
