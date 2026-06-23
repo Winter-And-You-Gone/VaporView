@@ -77,10 +77,8 @@ constexpr int kSessionViewerPlotBottomMargin = 28;
 constexpr int kSessionViewerWaveBottomMargin = 30;
 constexpr int kDefaultPeakSearchStartIndex = 10000;
 constexpr int kDefaultPeakSearchEndIndex = 50000;
-constexpr int kSessionViewerPreferredWidth = 1320;
-constexpr int kSessionViewerPreferredHeight = 860;
-constexpr int kSessionViewerMinimumWidth = 800;
-constexpr int kSessionViewerMinimumHeight = 520;
+constexpr int kSessionViewerDefaultWidth = 1280;
+constexpr int kSessionViewerDefaultHeight = 800;
 constexpr int kMaxTrendPointsPerPixel = 2;
 constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
 constexpr quint32 kUnifiedRawRecordMarker = 0x44525756u;
@@ -1625,11 +1623,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     setWindowFlag(Qt::Window, true);
     setupUi();
     VaporView::installCustomTitleBar(this);
-    resize(VaporView::defaultWindowSizeWithinScreenFraction(
-        this,
-        QSize(kSessionViewerPreferredWidth, kSessionViewerPreferredHeight),
-        0.5,
-        QSize(kSessionViewerMinimumWidth, kSessionViewerMinimumHeight)));
+    resize(kSessionViewerDefaultWidth, kSessionViewerDefaultHeight);
     setEnglish(false);
     VaporView::centerWindowOnScreen(this, parent);
 

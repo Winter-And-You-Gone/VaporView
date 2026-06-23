@@ -68,7 +68,8 @@ constexpr int kGgaStaleTimeoutMs = 1500;
 constexpr int kGgaMaxVisibleLines = 200;
 constexpr int kRtkLogVisibleLines = 5;
 constexpr int kRtkHttpTimeoutMs = 5000;
-constexpr int kRtkPreferredDialogWidth = 980;
+constexpr int kRtkDefaultDialogWidth = 1024;
+constexpr int kRtkDefaultDialogHeight = 640;
 constexpr int kRtkMinimumDialogWidth = 640;
 constexpr int kRtkMinimumDialogHeight = 420;
 constexpr const char *kEpsilonMainGgaSourceKey = "__epsilon_main__";
@@ -717,7 +718,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , is_english_(false)
     , font_scale_percent_(100)
     , epsilon_main_baudrate_(921600)
-    , base_dialog_size_(kRtkPreferredDialogWidth, 0)
+    , base_dialog_size_(kRtkDefaultDialogWidth, kRtkDefaultDialogHeight)
     , base_minimum_dialog_size_(kRtkMinimumDialogWidth, kRtkMinimumDialogHeight)
     , rtk_status_timer_(nullptr)
     , gga_poll_timer_(nullptr)
@@ -1375,20 +1376,15 @@ void RtkConfigDialog::applyScaledUiMetrics()
         main_layout_->invalidate();
     }
 
-    const QSize layoutHint = main_layout_ ? main_layout_->sizeHint() : QSize();
     const QSize minimumDialogSize(scalePixels(base_minimum_dialog_size_.width()), scalePixels(base_minimum_dialog_size_.height()));
-    const QSize targetMinimumSize = minimumDialogSize.boundedTo(VaporView::screenFractionSize(this));
+    const QSize targetMinimumSize = minimumDialogSize;
     setMinimumSize(targetMinimumSize);
     if (!isMaximized() && !isFullScreen())
     {
         const QSize preferredDialogSize(
             scalePixels(base_dialog_size_.width()),
-            std::max(minimumDialogSize.height(), layoutHint.height()));
-        const QSize targetSize = VaporView::defaultWindowSizeWithinScreenFraction(
-            this,
-            preferredDialogSize,
-            0.5,
-            targetMinimumSize);
+            scalePixels(base_dialog_size_.height()));
+        const QSize targetSize = preferredDialogSize.expandedTo(targetMinimumSize);
         if (targetSize != size())
         {
             resize(targetSize);
@@ -1406,16 +1402,13 @@ void RtkConfigDialog::setFontScale(int percent)
     QSize targetSize = size();
     if (!isMaximized() && !isFullScreen())
     {
-        targetSize = VaporView::defaultWindowSizeWithinScreenFraction(
-            this,
-            QSize(
-                std::max(1, static_cast<int>(std::lround(base_dialog_size_.width() * percent / 100.0))),
-                std::max(1, height())),
-            0.5,
-            QSize(
-                std::max(1, static_cast<int>(std::lround(base_minimum_dialog_size_.width() * percent / 100.0))),
-                std::max(1, static_cast<int>(std::lround(base_minimum_dialog_size_.height() * percent / 100.0))))
-        );
+        const QSize scaledMinimumSize(
+            std::max(1, static_cast<int>(std::lround(base_minimum_dialog_size_.width() * percent / 100.0))),
+            std::max(1, static_cast<int>(std::lround(base_minimum_dialog_size_.height() * percent / 100.0))));
+        targetSize = QSize(
+            std::max(1, static_cast<int>(std::lround(base_dialog_size_.width() * percent / 100.0))),
+            std::max(1, static_cast<int>(std::lround(base_dialog_size_.height() * percent / 100.0)))
+        ).expandedTo(scaledMinimumSize);
     }
 
     if (font_scale_percent_ == percent)
@@ -1423,7 +1416,7 @@ void RtkConfigDialog::setFontScale(int percent)
         applyScaledUiMetrics();
         if (!isMaximized() && !isFullScreen())
         {
-            targetSize = targetSize.expandedTo(minimumSize()).boundedTo(VaporView::screenFractionSize(this));
+            targetSize = targetSize.expandedTo(minimumSize());
             if (targetSize != size())
             {
                 resize(targetSize);
@@ -1436,7 +1429,7 @@ void RtkConfigDialog::setFontScale(int percent)
     applyScaledUiMetrics();
     if (!isMaximized() && !isFullScreen())
     {
-        targetSize = targetSize.expandedTo(minimumSize()).boundedTo(VaporView::screenFractionSize(this));
+        targetSize = targetSize.expandedTo(minimumSize());
         if (targetSize != size())
         {
             resize(targetSize);

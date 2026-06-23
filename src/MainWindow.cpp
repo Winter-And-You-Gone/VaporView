@@ -925,10 +925,10 @@ constexpr int kDefaultEpsilonSampleRateHz = 100;
 constexpr int kDefaultPtbSampleRateHz = 20;
 constexpr int kDefaultHmpSampleRateHz = 20;
 constexpr int kDefaultLidarSampleRateHz = 100;
-constexpr int kFallbackMainWindowWidth = 1440;
-constexpr int kFallbackMainWindowHeight = 860;
-constexpr qreal kMainWindowDefaultScreenFraction = 0.5;
-constexpr qreal kMainWindowMinimumScreenFraction = 0.25;
+constexpr int kDefaultMainWindowWidth = 1280;
+constexpr int kDefaultMainWindowHeight = 800;
+constexpr int kMinimumMainWindowWidth = 1024;
+constexpr int kMinimumMainWindowHeight = 640;
 constexpr int kCompactHomeScreenWidth = 1600;
 constexpr int kCompactHomeScreenHeight = 900;
 constexpr int kCompactHomeViewportWidth = 1400;
@@ -5142,8 +5142,8 @@ MainWindow::MainWindow(QWidget *parent)
     , font_scale_percent_(100)
     , dark_theme_enabled_(false)
     , base_font_point_size_(0.0)
-    , base_window_size_(kFallbackMainWindowWidth, kFallbackMainWindowHeight)
-    , base_minimum_window_size_(800, 600)
+    , base_window_size_(kDefaultMainWindowWidth, kDefaultMainWindowHeight)
+    , base_minimum_window_size_(kMinimumMainWindowWidth, kMinimumMainWindowHeight)
     , normal_window_geometry_()
     , epsilon_sample_rate_(kDefaultEpsilonSampleRateHz)
     , gnss_sample_rate_(1)
@@ -5424,17 +5424,8 @@ MainWindow::MainWindow(QWidget *parent)
     loadRememberedInputState();
     bindRememberedInputState();
 
-    const QSize fallbackMainWindowSize(kFallbackMainWindowWidth, kFallbackMainWindowHeight);
-    base_minimum_window_size_ = VaporView::screenFractionSize(
-        this,
-        kMainWindowMinimumScreenFraction,
-        fallbackMainWindowSize);
-    base_window_size_ = VaporView::defaultWindowSizeWithinScreenFraction(
-        this,
-        fallbackMainWindowSize,
-        kMainWindowDefaultScreenFraction,
-        base_minimum_window_size_,
-        fallbackMainWindowSize);
+    base_minimum_window_size_ = QSize(kMinimumMainWindowWidth, kMinimumMainWindowHeight);
+    base_window_size_ = QSize(kDefaultMainWindowWidth, kDefaultMainWindowHeight);
     resize(base_window_size_);
     setMinimumSize(base_minimum_window_size_);
 

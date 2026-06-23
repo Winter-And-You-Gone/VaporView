@@ -118,6 +118,8 @@ constexpr quint16 kRawSourceLidar = 4u;
 constexpr quint16 kRawSourceTcpWave = 5u;
 constexpr quint32 kRawTcpWaveCombinedPayloadFlag = 0x00000001u;
 constexpr int kMaxHexBytes = 16 * 1024;
+constexpr int kRawDataParserDefaultWidth = 1280;
+constexpr int kRawDataParserDefaultHeight = 800;
 constexpr int kFloatBytes = 4;
 constexpr uint8_t kFdilinkFrameHead = 0xFC;
 constexpr uint8_t kFdilinkFrameTail = 0xFD;
@@ -646,7 +648,7 @@ bool RawDataParserWindow::openSessionPath(const QString& path)
 
 void RawDataParserWindow::Impl::setupUi()
 {
-    owner->resize(1420, 840);
+    owner->resize(kRawDataParserDefaultWidth, kRawDataParserDefaultHeight);
     central = new QWidget(owner);
     owner->setCentralWidget(central);
 
