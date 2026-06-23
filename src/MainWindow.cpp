@@ -410,10 +410,9 @@ constexpr int kMainPageButtonHeight = kMainPageInputHeight;
 constexpr int kMainPageTitleBarHeight = kMainPageInputHeight + 4;
 constexpr int kEnvironmentTitleBarHeight = kMainPageButtonHeight;
 constexpr int kConfigFormBottomPadding = 4;
-constexpr int kConfigRowsHeight = kMainPageInputHeight * 4 + 4 * 3 + kConfigFormBottomPadding;
+constexpr int kConfigHomeBodyBottomPadding = 8;
 constexpr int kConfigCardBottomPadding = 4;
-constexpr int kConfigCardMinHeight = kMainPageTitleBarHeight + 4 + kConfigRowsHeight + kConfigCardBottomPadding;
-constexpr int kConfigRemoteCardMinHeight = kConfigCardMinHeight + (kMainPageInputHeight + 4) + 4;
+constexpr int kConfigCardMinHeight = kMainPageTitleBarHeight + kMainPageButtonHeight + kConfigHomeBodyBottomPadding + kConfigCardBottomPadding;
 constexpr int kTcpWaveCardMinHeight = 430;
 constexpr int kCompactTcpWaveCardMinHeight = 560;
 constexpr int kAppSidebarIconOnlyBaseWidth = 56;
@@ -2069,6 +2068,34 @@ QLabel[data-valid="true"] {
 }
 QLabel[data-valid="false"] {
     color: @vv-white;
+}
+QLabel#homeDeviceStatusCapsule {
+    border-radius: 13px;
+    font-weight: 700;
+    padding: 4px 12px;
+}
+QLabel#homeDeviceStatusCapsule[connected="true"] {
+    background-color: @vv-success-bg;
+    border: 1px solid @vv-success;
+    color: @vv-success;
+}
+QLabel#homeDeviceStatusCapsule[connected="false"] {
+    background-color: @vv-danger-bg;
+    border: 1px solid @vv-danger;
+    color: @vv-danger;
+}
+QToolButton#homeDeviceActionButton {
+    background-color: transparent;
+    border: 1px solid @vv-border;
+    border-radius: 6px;
+    padding: 4px;
+}
+QToolButton#homeDeviceActionButton:hover {
+    background-color: @vv-surface-alt;
+}
+QToolButton#homeDeviceActionButton:disabled {
+    background-color: @vv-surface;
+    border-color: @vv-border;
 }
 QLabel#statusIndicator[status="connected"] {
     background-color: @vv-success-bg;
@@ -4947,6 +4974,10 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_lbl_(nullptr)
     , hmp_lbl_(nullptr)
     , lidar_lbl_(nullptr)
+    , home_epsilon_status_lbl_(nullptr)
+    , home_ptb_status_lbl_(nullptr)
+    , home_hmp_status_lbl_(nullptr)
+    , home_lidar_status_lbl_(nullptr)
     , data_telemetry_summary_card_(nullptr)
     , data_telemetry_summary_lbl_(nullptr)
     , log_inline_title_lbl_(nullptr)
@@ -6854,6 +6885,7 @@ void MainWindow::updateSourceModeUi()
     if (sky_device_config_btn_) sky_device_config_btn_->setEnabled(remote && ground_telemetry_service_ && ground_telemetry_service_->isOpen());
     setRemoteDeviceButtonsEnabled(remote && ground_telemetry_service_ && ground_telemetry_service_->isOpen());
     updateRemoteTelemetrySummaryLabel();
+    updateHomeDeviceStatusCapsules();
     updateConfigCardHeightForSourceMode();
     updateDeviceConfigState();
 }
@@ -6874,10 +6906,8 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         return;
     }
 
-    const bool remote = isRemoteSkyMode();
-    int minimumHeight = scaledConfiguredHeight(config_group_,
-                                              remote ? kConfigRemoteCardMinHeight : kConfigCardMinHeight);
-    if (remote && data_telemetry_summary_card_ && data_telemetry_summary_lbl_)
+    int minimumHeight = scaledConfiguredHeight(config_group_, kConfigCardMinHeight);
+    if (data_telemetry_summary_card_ && data_telemetry_summary_lbl_)
     {
         int summaryHeight = data_telemetry_summary_lbl_->sizeHint().height();
         if (QLayout *summaryLayout = data_telemetry_summary_card_->layout())
@@ -6887,7 +6917,11 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         }
         summaryHeight = std::max(summaryHeight, scaledConfiguredHeight(data_telemetry_summary_lbl_, kMainPageInputHeight));
         data_telemetry_summary_card_->setMinimumHeight(summaryHeight);
-        minimumHeight += std::max(0, summaryHeight - scaledConfiguredHeight(config_group_, kConfigRowsHeight));
+        minimumHeight = std::max(minimumHeight,
+                                 kMainPageTitleBarHeight +
+                                     summaryHeight +
+                                     scalePixels(kConfigHomeBodyBottomPadding) +
+                                     scalePixels(kConfigCardBottomPadding));
     }
 
     const int previousMinimum = config_group_->property(kMainCardMinimumHeightProperty).toInt();
@@ -6947,6 +6981,7 @@ void MainWindow::clearRemoteSkyDataUi()
     updateEnvironmentStatusIcons(false, false, false);
     updateSourceModeUi();
     updateRemoteTelemetrySummaryLabel();
+    updateHomeDeviceStatusCapsules();
     updateRecordingStatusLabel();
 }
 
@@ -6967,6 +7002,7 @@ void MainWindow::markRemoteSkyLinkClosed()
     }
     refreshRemoteSkyDataUi();
     updateSourceModeUi();
+    updateHomeDeviceStatusCapsules();
     updateRecordingStatusLabel();
 }
 
@@ -7043,10 +7079,6 @@ double MainWindow::remoteWaveformPacketRate(quint16 channelId) const
 
 QString MainWindow::remoteTelemetrySummaryText() const
 {
-    if (!isRemoteSkyMode())
-    {
-        return QString();
-    }
     const bool connected = ground_telemetry_service_ && ground_telemetry_service_->isOpen();
 
     auto hasText = [this, connected](VaporView::SkyDeviceId device, qint64 timeoutMs) {
@@ -7183,9 +7215,18 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         return;
     }
     const QString text = remoteTelemetrySummaryText();
-    data_telemetry_summary_card_->setVisible(isRemoteSkyMode());
+    data_telemetry_summary_card_->setVisible(true);
     data_telemetry_summary_lbl_->setText(text);
     data_telemetry_summary_lbl_->setToolTip(text);
+    if (device_config_.data_telemetry_summary_card)
+    {
+        device_config_.data_telemetry_summary_card->setVisible(true);
+    }
+    if (device_config_.data_telemetry_summary_lbl)
+    {
+        device_config_.data_telemetry_summary_lbl->setText(text);
+        device_config_.data_telemetry_summary_lbl->setToolTip(text);
+    }
 }
 
 void MainWindow::updateEnvironmentStatusIcons(bool lidarValid, bool ptbValid, bool hmpValid)
@@ -7266,6 +7307,7 @@ void MainWindow::refreshRemoteSkyDataUi()
     if (temperature_overview_panel_) temperature_overview_panel_->updateData(current_temperature_controller_);
     updateEnvironmentStatusIcons(lidarValid, ptbValid, hmpValid);
     updateRemoteTelemetrySummaryLabel();
+    updateHomeDeviceStatusCapsules();
 }
 
 QPushButton *MainWindow::createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device)
@@ -7487,6 +7529,7 @@ void MainWindow::updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, Vap
     if (connectButton) connectButton->setToolTip(QStringLiteral("请求天空端连接 %1（当前：%2）").arg(skyDeviceDisplayName(device), stateText));
     if (disconnectButton) disconnectButton->setToolTip(QStringLiteral("请求天空端断开 %1（当前：%2）").arg(skyDeviceDisplayName(device), stateText));
     if (reconnectButton) reconnectButton->setToolTip(QStringLiteral("请求天空端重连 %1（当前：%2）").arg(skyDeviceDisplayName(device), stateText));
+    updateHomeDeviceStatusCapsules();
 }
 
 void MainWindow::setImuFormatSelection(const QString& format)
@@ -9811,11 +9854,24 @@ void MainWindow::setupConfigPanel()
                                                          &configTitleCluster);
     configTitleLayout->addWidget(configTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
+    auto createHomeActionButton = [configTitleBar](QAction *action) {
+        auto *button = new QToolButton(configTitleBar);
+        button->setObjectName(QStringLiteral("homeDeviceActionButton"));
+        button->setDefaultAction(action);
+        button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        button->setIconSize(QSize(18, 18));
+        button->setFixedSize(kMainPageButtonHeight, kMainPageButtonHeight);
+        button->setFocusPolicy(Qt::StrongFocus);
+        return button;
+    };
+    configTitleLayout->addWidget(createHomeActionButton(connect_btn_), 0, Qt::AlignVCenter | Qt::AlignLeft);
+    configTitleLayout->addWidget(createHomeActionButton(disconnect_btn_), 0, Qt::AlignVCenter | Qt::AlignLeft);
+    configTitleLayout->addStretch(1);
+
     auto_detect_ports_btn_ = new QPushButton(this);
     auto_detect_ports_btn_->setFixedHeight(kMainPageButtonHeight);
     auto_detect_ports_btn_->setMinimumWidth(120);
     connect(auto_detect_ports_btn_, &QPushButton::clicked, this, &MainWindow::onAutoDetectPortsClicked);
-    configTitleLayout->addWidget(auto_detect_ports_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
     data_source_mode_lbl_ = new QLabel(this);
     data_source_mode_lbl_->setObjectName("fieldLabel");
@@ -9827,15 +9883,11 @@ void MainWindow::setupConfigPanel()
     data_source_mode_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     connect(data_source_mode_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &MainWindow::onDataSourceModeChanged);
-    configTitleLayout->addWidget(data_source_mode_lbl_, 0, Qt::AlignVCenter | Qt::AlignRight);
-    configTitleLayout->addWidget(data_source_mode_combo_, 0, Qt::AlignVCenter);
 
     sky_device_config_btn_ = new QPushButton(this);
     sky_device_config_btn_->setFixedHeight(kMainPageButtonHeight);
     sky_device_config_btn_->setMinimumWidth(150);
     connect(sky_device_config_btn_, &QPushButton::clicked, this, &MainWindow::onSkyDeviceConfigClicked);
-    configTitleLayout->addWidget(sky_device_config_btn_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    configTitleLayout->addStretch(1);
     config_root_layout->addWidget(configTitleBar);
 
     sky_telemetry_transport_lbl_ = new QLabel(this);
@@ -9886,7 +9938,7 @@ void MainWindow::setupConfigPanel()
     sky_telemetry_baud_combo_->setCurrentText(QStringLiteral("921600"));
     sky_telemetry_baud_combo_->setFixedHeight(kMainPageInputHeight);
     sky_telemetry_baud_combo_->setFixedWidth(100);
-    sky_telemetry_row_widget_ = new QWidget(config_group_);
+    sky_telemetry_row_widget_ = new QWidget(config_form_widget);
     auto *skyTelemetryLayout = new QHBoxLayout(sky_telemetry_row_widget_);
     skyTelemetryLayout->setContentsMargins(8, 2, 8, 2);
     skyTelemetryLayout->setSpacing(8);
@@ -9902,7 +9954,6 @@ void MainWindow::setupConfigPanel()
     skyTelemetryLayout->addWidget(sky_telemetry_baud_combo_, 0, Qt::AlignVCenter);
     skyTelemetryLayout->addStretch(1);
     sky_telemetry_row_widget_->setVisible(false);
-    config_root_layout->addWidget(sky_telemetry_row_widget_);
 
     int row = 0;
 
@@ -9964,7 +10015,7 @@ void MainWindow::setupConfigPanel()
     connect(hmp_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onHmpRateChanged);
     connect(lidar_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onLidarRateChanged);
 
-    data_telemetry_summary_card_ = new QFrame(this);
+    data_telemetry_summary_card_ = new QFrame(config_group_);
     data_telemetry_summary_card_->setObjectName(QStringLiteral("epsilonSectionCard"));
     data_telemetry_summary_card_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::MinimumExpanding);
     auto *telemetrySummaryLayout = new QVBoxLayout(data_telemetry_summary_card_);
@@ -9980,10 +10031,45 @@ void MainWindow::setupConfigPanel()
     data_telemetry_summary_lbl_->setMinimumHeight(kMainPageInputHeight);
     data_telemetry_summary_lbl_->setWordWrap(false);
     telemetrySummaryLayout->addWidget(data_telemetry_summary_lbl_);
-    data_telemetry_summary_card_->setVisible(false);
-    config_layout->addWidget(data_telemetry_summary_card_, 0, 6, row, 1, Qt::AlignTop | Qt::AlignLeft);
+    data_telemetry_summary_card_->setVisible(true);
 
-    config_root_layout->addWidget(config_form_widget, 0, Qt::AlignTop);
+    auto *homeBodyWidget = new QWidget(config_group_);
+    auto *homeBodyLayout = new QHBoxLayout(homeBodyWidget);
+    homeBodyLayout->setContentsMargins(8, 0, 8, kConfigHomeBodyBottomPadding);
+    homeBodyLayout->setSpacing(8);
+
+    auto *homeDevicesWidget = new QWidget(homeBodyWidget);
+    homeDevicesWidget->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::MinimumExpanding);
+    auto *homeDevicesLayout = new QGridLayout(homeDevicesWidget);
+    homeDevicesLayout->setContentsMargins(0, 0, 0, 0);
+    homeDevicesLayout->setHorizontalSpacing(6);
+    homeDevicesLayout->setVerticalSpacing(6);
+    auto createHomeDeviceCapsule = [homeDevicesWidget]() {
+        auto *label = new QLabel(homeDevicesWidget);
+        label->setObjectName(QStringLiteral("homeDeviceStatusCapsule"));
+        label->setAlignment(Qt::AlignCenter);
+        label->setMinimumHeight(kMainPageButtonHeight - 4);
+        label->setMinimumWidth(132);
+        label->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        return label;
+    };
+    home_epsilon_status_lbl_ = createHomeDeviceCapsule();
+    home_ptb_status_lbl_ = createHomeDeviceCapsule();
+    home_hmp_status_lbl_ = createHomeDeviceCapsule();
+    home_lidar_status_lbl_ = createHomeDeviceCapsule();
+    homeDevicesLayout->addWidget(home_epsilon_status_lbl_, 0, 0, Qt::AlignLeft | Qt::AlignVCenter);
+    homeDevicesLayout->addWidget(home_ptb_status_lbl_, 1, 0, Qt::AlignLeft | Qt::AlignVCenter);
+    homeDevicesLayout->addWidget(home_hmp_status_lbl_, 2, 0, Qt::AlignLeft | Qt::AlignVCenter);
+    homeDevicesLayout->addWidget(home_lidar_status_lbl_, 3, 0, Qt::AlignLeft | Qt::AlignVCenter);
+
+    homeBodyLayout->addWidget(homeDevicesWidget, 0, Qt::AlignTop | Qt::AlignLeft);
+    homeBodyLayout->addWidget(data_telemetry_summary_card_, 0, Qt::AlignTop | Qt::AlignLeft);
+    homeBodyLayout->addStretch(1);
+    config_root_layout->addWidget(homeBodyWidget, 0, Qt::AlignTop);
+    config_form_widget->setVisible(false);
+    updateHomeDeviceStatusCapsules();
+    updateRemoteTelemetrySummaryLabel();
+
     main_layout_->addWidget(config_group_, 0);
 }
 
@@ -14170,7 +14256,61 @@ void MainWindow::updateConnectionStatus(bool connected)
     status_label_->style()->polish(status_label_);
     updateSourceModeUi();
     updateRecordingActionStates();
+    updateHomeDeviceStatusCapsules();
     updateDeviceConfigState();
+}
+
+bool MainWindow::homeDeviceConnected(VaporView::SkyDeviceId device) const
+{
+    if (isRemoteSkyMode())
+    {
+        return remote_device_states_.value(device, VaporView::DeviceState::Disconnected) == VaporView::DeviceState::Connected;
+    }
+
+    const CollectorSnapshot collectors = snapshotCollectors();
+    switch (device)
+    {
+    case VaporView::SkyDeviceId::Epsilon:
+        return collectors.epsilon && collectors.epsilon->isRunning();
+    case VaporView::SkyDeviceId::Ptb:
+        return collectors.ptb && collectors.ptb->isRunning();
+    case VaporView::SkyDeviceId::Hmp:
+        return collectors.hmp && collectors.hmp->isRunning();
+    case VaporView::SkyDeviceId::Lidar:
+        return collectors.lidar && collectors.lidar->isRunning();
+    case VaporView::SkyDeviceId::WaveTcp:
+    case VaporView::SkyDeviceId::TemperatureController:
+    case VaporView::SkyDeviceId::All:
+        return false;
+    }
+    return false;
+}
+
+void MainWindow::updateHomeDeviceStatusCapsules()
+{
+    auto updateCapsule = [this](QLabel *label, VaporView::SkyDeviceId device) {
+        if (!label)
+        {
+            return;
+        }
+        const bool connected = homeDeviceConnected(device);
+        const QString stateText = connected
+            ? (is_english_ ? QStringLiteral("Connected") : QStringLiteral("已连接"))
+            : (is_english_ ? QStringLiteral("Disconnected") : QStringLiteral("未连接"));
+        const QString deviceName = skyDeviceDisplayName(device);
+        label->setText(QStringLiteral("%1 · %2").arg(deviceName, stateText));
+        label->setProperty("connected", connected);
+        label->setToolTip(is_english_
+            ? QStringLiteral("%1 status: %2").arg(deviceName, stateText)
+            : QStringLiteral("%1状态：%2").arg(deviceName, stateText));
+        label->style()->unpolish(label);
+        label->style()->polish(label);
+    };
+
+    updateCapsule(home_epsilon_status_lbl_, VaporView::SkyDeviceId::Epsilon);
+    updateCapsule(home_ptb_status_lbl_, VaporView::SkyDeviceId::Ptb);
+    updateCapsule(home_hmp_status_lbl_, VaporView::SkyDeviceId::Hmp);
+    updateCapsule(home_lidar_status_lbl_, VaporView::SkyDeviceId::Lidar);
 }
 
 bool MainWindow::anyCollectorRunning() const

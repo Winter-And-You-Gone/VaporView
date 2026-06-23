@@ -486,6 +486,8 @@ private:
     quint64 currentTimestampUs() const;
     quint64 steadyToEpochUs(const std::chrono::steady_clock::time_point& timePoint) const;
     void updateConnectionStatus(bool connected);
+    bool homeDeviceConnected(VaporView::SkyDeviceId device) const;
+    void updateHomeDeviceStatusCapsules();
     bool anyCollectorRunning() const;
     QStringList getAvailablePorts();
     void setEnglish(bool english);
@@ -770,6 +772,10 @@ private:
     QLabel *ptb_lbl_;
     QLabel *hmp_lbl_;
     QLabel *lidar_lbl_;
+    QLabel *home_epsilon_status_lbl_;
+    QLabel *home_ptb_status_lbl_;
+    QLabel *home_hmp_status_lbl_;
+    QLabel *home_lidar_status_lbl_;
     QWidget *data_telemetry_summary_card_;
     QLabel *data_telemetry_summary_lbl_;
     QLabel *log_inline_title_lbl_;
