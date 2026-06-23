@@ -33,6 +33,7 @@ QScrollArea#sessionViewerScrollArea > QWidget > QWidget,
 QSplitter#appLayoutSplitter,
 QSplitter#mainContentSplitter,
 QSplitter#homeOverviewSplitter,
+QSplitter#homeOverviewSplitter > QWidget,
 QSplitter#sessionViewerContentSplitter {
     background-color: @vv-surface;
 }
@@ -685,7 +686,7 @@ QSplitter#mainContentSplitter::handle:horizontal:pressed {
 
 QSplitter#homeOverviewSplitter::handle:horizontal {
     width: 8px;
-    background-color: @vv-border;
+    background-color: @vv-surface;
 }
 
 QSplitter#homeOverviewSplitter::handle:horizontal:hover {

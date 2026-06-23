@@ -411,8 +411,8 @@ constexpr int kHomeDeviceButtonSize = 32;
 constexpr int kHomeDeviceIconSize = 18;
 constexpr int kHomeDeviceCapsuleHeight = 32;
 constexpr int kHomeDeviceRowHeight = kHomeDeviceButtonSize;
-constexpr int kHomeDeviceGridColumns = 2;
-constexpr int kHomeDeviceGridRows = 3;
+constexpr int kHomeDeviceGridColumns = 3;
+constexpr int kHomeDeviceGridRows = 2;
 constexpr int kHomeDeviceGridRowGap = 6;
 constexpr int kHomeDeviceItemGap = 12;
 constexpr int kMainPageTitleBarHeight = kMainPageInputHeight + 4;
@@ -421,7 +421,7 @@ constexpr int kConfigFormBottomPadding = 4;
 constexpr int kConfigHomeBodyBottomPadding = 8;
 constexpr int kConfigCardBottomPadding = 4;
 constexpr int kConfigCardMinHeight = kMainPageTitleBarHeight + kMainPageButtonHeight + kConfigHomeBodyBottomPadding + kConfigCardBottomPadding;
-constexpr int kHomeOverviewDeviceMinWidth = 360;
+constexpr int kHomeOverviewDeviceMinWidth = 540;
 constexpr int kHomeOverviewTemperatureMinWidth = 420;
 constexpr int kHomeOverviewSplitterHandleWidth = 8;
 constexpr const char *kHomeOverviewSplitterInitializedProperty = "_vv_home_overview_splitter_initialized";
@@ -2067,7 +2067,7 @@ QSplitter#appLayoutSplitter::handle:horizontal:pressed {
 }
 QSplitter#homeOverviewSplitter::handle:horizontal {
     width: 8px;
-    background-color: @vv-border;
+    background-color: @vv-window;
 }
 QSplitter#homeOverviewSplitter::handle:horizontal:hover {
     background-color: @vv-border;
@@ -5755,7 +5755,7 @@ void MainWindow::loadModernStyleSheet()
         base_style_sheet_ =
             "* { font-family: \"Segoe UI\", \"Microsoft YaHei\", \"PingFang SC\", sans-serif; }"
             "QMainWindow { background-color: @vv-surface; }"
-            "QWidget#appCentralWidget, QWidget#mainCardsPane, QFrame#appSidebar, QStackedWidget#mainPageStack, QWidget#temperaturePage, QWidget#deviceConfigPage, QWidget#logSidePanel, QMainWindow#sessionViewerWindow, QWidget#sessionViewerCentralWidget, QWidget#sessionViewerViewport, QWidget#sessionViewerContentPane, QScrollArea#mainCardsScrollArea, QScrollArea#sessionViewerScrollArea, QWidget#mainCardsViewport, QScrollArea#mainCardsScrollArea > QWidget, QScrollArea#mainCardsScrollArea > QWidget > QWidget, QScrollArea#sessionViewerScrollArea > QWidget, QScrollArea#sessionViewerScrollArea > QWidget > QWidget, QSplitter#appLayoutSplitter, QSplitter#mainContentSplitter, QSplitter#homeOverviewSplitter, QSplitter#sessionViewerContentSplitter { background-color: @vv-surface; }"
+            "QWidget#appCentralWidget, QWidget#mainCardsPane, QFrame#appSidebar, QStackedWidget#mainPageStack, QWidget#temperaturePage, QWidget#deviceConfigPage, QWidget#logSidePanel, QMainWindow#sessionViewerWindow, QWidget#sessionViewerCentralWidget, QWidget#sessionViewerViewport, QWidget#sessionViewerContentPane, QScrollArea#mainCardsScrollArea, QScrollArea#sessionViewerScrollArea, QWidget#mainCardsViewport, QScrollArea#mainCardsScrollArea > QWidget, QScrollArea#mainCardsScrollArea > QWidget > QWidget, QScrollArea#sessionViewerScrollArea > QWidget, QScrollArea#sessionViewerScrollArea > QWidget > QWidget, QSplitter#appLayoutSplitter, QSplitter#mainContentSplitter, QSplitter#homeOverviewSplitter, QSplitter#homeOverviewSplitter > QWidget, QSplitter#sessionViewerContentSplitter { background-color: @vv-surface; }"
             "QFrame#appSidebar { background-color: @vv-surface; border-right: 1px solid @vv-border; }"
             "QPushButton#appSidebarButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-weight: 600; padding: 6px 8px; text-align: left; }"
             "QPushButton#appSidebarButton[_vv_sidebar_compact=\"true\"] { padding: 6px; text-align: center; }"
@@ -5858,7 +5858,7 @@ void MainWindow::loadModernStyleSheet()
             "QSplitter#appLayoutSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#appLayoutSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
             "QSplitter#mainContentSplitter::handle:horizontal { width: 1px; background-color: transparent; }"
-            "QSplitter#homeOverviewSplitter::handle:horizontal { width: 8px; background-color: @vv-border; }"
+            "QSplitter#homeOverviewSplitter::handle:horizontal { width: 8px; background-color: @vv-surface; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
             "QWidget#mainCardResizeHandle { min-height: 3px; max-height: 3px; background-color: transparent; }"
@@ -5874,7 +5874,7 @@ void MainWindow::loadModernStyleSheet()
             "QSplitter#mainContentSplitter::handle:horizontal { width: 1px; background-color: @vv-border; }"
             "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#mainContentSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
-            "QSplitter#homeOverviewSplitter::handle:horizontal { width: 8px; background-color: @vv-border; }"
+            "QSplitter#homeOverviewSplitter::handle:horizontal { width: 8px; background-color: @vv-surface; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
             "QPushButton { background-color: @vv-primary; color: @vv-white; border: none; border-radius: 6px; padding: 4px 16px; font-size: 15px; font-weight: 500; min-height: 28px; max-height: 28px; }"
@@ -6328,15 +6328,9 @@ void MainWindow::updateResponsiveHomeLayout()
                 (sizes.at(0) < leftMinimum || sizes.at(1) < rightMinimum);
             if ((!initialized || invalidSizes || sizeTooNarrow) && viewportWidth > 0)
             {
-                int leftWidth = availableWidth * 3 / 5;
-                int rightWidth = availableWidth - leftWidth;
-                if (availableWidth >= leftMinimum + rightMinimum)
-                {
-                    leftWidth = std::max(leftMinimum, leftWidth);
-                    rightWidth = availableWidth - leftWidth;
-                    rightWidth = std::max(rightMinimum, rightWidth);
-                    leftWidth = availableWidth - rightWidth;
-                }
+                const int maxLeftWidth = std::max(leftMinimum, availableWidth - rightMinimum);
+                const int leftWidth = std::min(leftMinimum, maxLeftWidth);
+                const int rightWidth = std::max(rightMinimum, availableWidth - leftWidth);
                 home_overview_splitter_->setSizes({leftWidth, rightWidth});
                 home_overview_splitter_->setProperty(kHomeOverviewSplitterInitializedProperty, true);
             }
