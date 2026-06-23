@@ -9088,7 +9088,7 @@ void MainWindow::setupDeviceConfigPage()
         };
         updateFromAction();
         connect(button, &QPushButton::clicked, this, [action]() {
-            if (action)
+            if (action && action->isEnabled())
             {
                 action->trigger();
             }
