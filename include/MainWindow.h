@@ -739,6 +739,7 @@ private:
 
     QSplitter *app_layout_splitter_;
     QSplitter *main_content_splitter_;
+    QSplitter *home_overview_splitter_;
     QWidget *app_sidebar_;
     QButtonGroup *app_nav_button_group_;
     QPushButton *home_nav_btn_;

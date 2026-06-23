@@ -32,6 +32,7 @@ QScrollArea#sessionViewerScrollArea > QWidget,
 QScrollArea#sessionViewerScrollArea > QWidget > QWidget,
 QSplitter#appLayoutSplitter,
 QSplitter#mainContentSplitter,
+QSplitter#homeOverviewSplitter,
 QSplitter#sessionViewerContentSplitter {
     background-color: @vv-surface;
 }
@@ -679,6 +680,19 @@ QSplitter#mainContentSplitter::handle:horizontal:hover {
 }
 
 QSplitter#mainContentSplitter::handle:horizontal:pressed {
+    background-color: @vv-resize-pressed;
+}
+
+QSplitter#homeOverviewSplitter::handle:horizontal {
+    width: 8px;
+    background-color: @vv-border;
+}
+
+QSplitter#homeOverviewSplitter::handle:horizontal:hover {
+    background-color: @vv-resize-hover;
+}
+
+QSplitter#homeOverviewSplitter::handle:horizontal:pressed {
     background-color: @vv-resize-pressed;
 }
 

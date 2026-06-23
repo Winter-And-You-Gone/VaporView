@@ -410,15 +410,21 @@ constexpr int kMainPageButtonHeight = kMainPageInputHeight;
 constexpr int kHomeDeviceButtonSize = 32;
 constexpr int kHomeDeviceIconSize = 18;
 constexpr int kHomeDeviceCapsuleHeight = 32;
-constexpr int kHomeDeviceGridColumns = 3;
-constexpr int kHomeDeviceGridRows = 2;
+constexpr int kHomeDeviceRowHeight = kHomeDeviceButtonSize;
+constexpr int kHomeDeviceGridColumns = 2;
+constexpr int kHomeDeviceGridRows = 3;
 constexpr int kHomeDeviceGridRowGap = 6;
+constexpr int kHomeDeviceItemGap = 12;
 constexpr int kMainPageTitleBarHeight = kMainPageInputHeight + 4;
 constexpr int kEnvironmentTitleBarHeight = kMainPageButtonHeight;
 constexpr int kConfigFormBottomPadding = 4;
 constexpr int kConfigHomeBodyBottomPadding = 8;
 constexpr int kConfigCardBottomPadding = 4;
 constexpr int kConfigCardMinHeight = kMainPageTitleBarHeight + kMainPageButtonHeight + kConfigHomeBodyBottomPadding + kConfigCardBottomPadding;
+constexpr int kHomeOverviewDeviceMinWidth = 360;
+constexpr int kHomeOverviewTemperatureMinWidth = 420;
+constexpr int kHomeOverviewSplitterHandleWidth = 8;
+constexpr const char *kHomeOverviewSplitterInitializedProperty = "_vv_home_overview_splitter_initialized";
 constexpr int kTcpWaveCardMinHeight = 430;
 constexpr int kCompactTcpWaveCardMinHeight = 560;
 constexpr int kAppSidebarIconOnlyBaseWidth = 56;
@@ -435,14 +441,6 @@ constexpr int kEpsilonFieldBaseSpacing = 6;
 constexpr int kEpsilonFieldExtraSpacingLimit = 28;
 constexpr int kEpsilonFieldExtraSpacingStep = 10;
 constexpr int kEpsilonFieldMinimumHeight = 20;
-constexpr int kTelemetrySummaryRateCardWidth = 250;
-constexpr int kTelemetrySummaryInfoCardWidth = 250;
-constexpr int kTelemetrySummaryGapWidth = 2;
-constexpr int kTelemetrySummaryRateLabelWidth = 128;
-constexpr int kTelemetrySummaryRateValueWidth = 86;
-constexpr int kTelemetrySummaryInfoLabelWidth = 118;
-constexpr int kTelemetrySummaryInfoValueWidth = 86;
-constexpr int kTelemetrySummaryTitleColumnWidth = kEpsilonSideTitleWidth;
 constexpr int kTemperatureControllerCardWidth = 960;
 constexpr int kTemperatureControllerPlotWidth = 260;
 constexpr int kTemperatureControllerPlotMinHeight = 190;
@@ -1053,7 +1051,7 @@ QLabel *createSectionTitleCluster(QWidget *parent,
     cluster->setObjectName(QStringLiteral("sectionTitleCluster"));
     cluster->setAttribute(Qt::WA_TransparentForMouseEvents, true);
     cluster->setFixedHeight(titleHeight);
-    cluster->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    cluster->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 
     auto *layout = new QHBoxLayout(cluster);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -1074,7 +1072,7 @@ QLabel *createSectionTitleCluster(QWidget *parent,
     titleLabel->setMargin(0);
     titleLabel->setContentsMargins(0, 0, 0, 0);
     titleLabel->setFixedHeight(titleHeight);
-    titleLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    titleLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     layout->addWidget(titleLabel, 0, Qt::AlignVCenter);
 
     if (clusterOut)
@@ -1602,7 +1600,9 @@ QSplitter {
 QSplitter#appLayoutSplitter,
 QSplitter#appLayoutSplitter > QWidget,
 QSplitter#mainContentSplitter,
-QSplitter#mainContentSplitter > QWidget {
+QSplitter#mainContentSplitter > QWidget,
+QSplitter#homeOverviewSplitter,
+QSplitter#homeOverviewSplitter > QWidget {
     background-color: @vv-window;
 }
 QMenuBar,
@@ -2063,6 +2063,16 @@ QSplitter#appLayoutSplitter::handle:horizontal:hover {
     background-color: @vv-border;
 }
 QSplitter#appLayoutSplitter::handle:horizontal:pressed {
+    background-color: @vv-border;
+}
+QSplitter#homeOverviewSplitter::handle:horizontal {
+    width: 8px;
+    background-color: @vv-border;
+}
+QSplitter#homeOverviewSplitter::handle:horizontal:hover {
+    background-color: @vv-border;
+}
+QSplitter#homeOverviewSplitter::handle:horizontal:pressed {
     background-color: @vv-border;
 }
 QWidget#mainCardResizeHandle {
@@ -4251,23 +4261,25 @@ public:
         : QWidget(parent)
     {
         setObjectName(QStringLiteral("temperatureOverviewPanel"));
-        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        setMinimumHeight(kMainPageTitleBarHeight + 96);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
-        constexpr int kOverviewControlWidth = 78;
-        constexpr int kOverviewValueWidth = 102;
-        constexpr int kOverviewPercentWidth = 104;
-        constexpr int kOverviewEmergencyWidth = 132;
+        constexpr int kOverviewControlWidth = 74;
+        constexpr int kOverviewValueWidth = 88;
+        constexpr int kOverviewPercentWidth = 92;
+        constexpr int kOverviewEmergencyWidth = 112;
 
         auto *layout = new QHBoxLayout(this);
         layout->setContentsMargins(8, 4, 8, 6);
-        layout->setSpacing(8);
+        layout->setSpacing(6);
 
         auto *summary = new QWidget(this);
-        summary->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        summary->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+        summary->setMinimumWidth(kOverviewPercentWidth + kOverviewEmergencyWidth + 6);
         auto *summaryLayout = new QGridLayout(summary);
         summaryLayout->setContentsMargins(0, 0, 0, 0);
-        summaryLayout->setHorizontalSpacing(8);
-        summaryLayout->setVerticalSpacing(6);
+        summaryLayout->setHorizontalSpacing(6);
+        summaryLayout->setVerticalSpacing(4);
 
         auto addMetricCell = [summary, summaryLayout](int row, int column, QLabel *&title, QLabel *&value) {
             auto *cell = new QWidget(summary);
@@ -4311,7 +4323,7 @@ public:
         });
         addEditorCell(0, 0, channel_title_, channel_combo_);
         addMetricCell(0, 1, current_temp_title_, current_temp_value_);
-        addMetricCell(0, 2, target_temp_title_, target_temp_value_);
+        addMetricCell(1, 0, target_temp_title_, target_temp_value_);
 
         output_switch_combo_ = new QComboBox(this);
         output_switch_combo_->setFixedHeight(kMainPageButtonHeight);
@@ -4324,7 +4336,7 @@ public:
                 output_enabled_callback_(currentChannelNumber(), output_switch_combo_->currentData().toBool());
             }
         });
-        addEditorCell(1, 0, output_switch_title_, output_switch_combo_);
+        addEditorCell(1, 1, output_switch_title_, output_switch_combo_);
 
         output_percent_spin_ = new QSpinBox(this);
         output_percent_spin_->setRange(0, 90);
@@ -4337,7 +4349,7 @@ public:
                 max_output_callback_(currentChannelNumber(), static_cast<quint16>(output_percent_spin_->value()));
             }
         });
-        addEditorCell(1, 1, output_percent_spin_title_, output_percent_spin_);
+        addEditorCell(2, 0, output_percent_spin_title_, output_percent_spin_);
 
         emergency_stop_button_ = new QPushButton(this);
         emergency_stop_button_->setObjectName(QStringLiteral("dangerButton"));
@@ -4355,7 +4367,7 @@ public:
         buttonCellLayout->setSpacing(4);
         buttonCellLayout->addSpacing(20);
         buttonCellLayout->addWidget(emergency_stop_button_, 0, Qt::AlignLeft);
-        summaryLayout->addWidget(buttonCell, 1, 2, Qt::AlignLeft | Qt::AlignTop);
+        summaryLayout->addWidget(buttonCell, 2, 1, Qt::AlignLeft | Qt::AlignTop);
         layout->addWidget(summary, 0, Qt::AlignTop);
 
         plot_ = new TemperatureTrendPlotWidget(this);
@@ -4386,11 +4398,11 @@ public:
             plot_->setEnglish(english);
         }
         channel_title_->setText(english ? QStringLiteral("Channel:") : QStringLiteral("通道:"));
-        current_temp_title_->setText(english ? QStringLiteral("Current Temp:") : QStringLiteral("当前温度:"));
-        target_temp_title_->setText(english ? QStringLiteral("Target Temp:") : QStringLiteral("目标温度:"));
-        output_switch_title_->setText(english ? QStringLiteral("Output:") : QStringLiteral("输出开关:"));
-        output_percent_spin_title_->setText(english ? QStringLiteral("Output %:") : QStringLiteral("输出百分比:"));
-        emergency_stop_button_->setText(english ? QStringLiteral("Emergency Stop / Off") : QStringLiteral("紧急停止/关闭"));
+        current_temp_title_->setText(english ? QStringLiteral("Current:") : QStringLiteral("当前:"));
+        target_temp_title_->setText(english ? QStringLiteral("Target:") : QStringLiteral("目标:"));
+        output_switch_title_->setText(english ? QStringLiteral("Output:") : QStringLiteral("输出:"));
+        output_percent_spin_title_->setText(english ? QStringLiteral("Max %:") : QStringLiteral("上限:"));
+        emergency_stop_button_->setText(english ? QStringLiteral("Stop") : QStringLiteral("急停"));
         emergency_stop_button_->setToolTip(english ? QStringLiteral("Turn off RD105 output for both channels.")
                                                   : QStringLiteral("关闭 RD105 两个通道的输出。"));
         refreshChannelUi();
@@ -4974,6 +4986,7 @@ MainWindow::MainWindow(QWidget *parent)
     , title_application_sub_panel_(nullptr)
     , app_layout_splitter_(nullptr)
     , main_content_splitter_(nullptr)
+    , home_overview_splitter_(nullptr)
     , app_sidebar_(nullptr)
     , app_nav_button_group_(nullptr)
     , home_nav_btn_(nullptr)
@@ -5751,7 +5764,7 @@ void MainWindow::loadModernStyleSheet()
         base_style_sheet_ =
             "* { font-family: \"Segoe UI\", \"Microsoft YaHei\", \"PingFang SC\", sans-serif; }"
             "QMainWindow { background-color: @vv-surface; }"
-            "QWidget#appCentralWidget, QWidget#mainCardsPane, QFrame#appSidebar, QStackedWidget#mainPageStack, QWidget#temperaturePage, QWidget#deviceConfigPage, QWidget#logSidePanel, QMainWindow#sessionViewerWindow, QWidget#sessionViewerCentralWidget, QWidget#sessionViewerViewport, QWidget#sessionViewerContentPane, QScrollArea#mainCardsScrollArea, QScrollArea#sessionViewerScrollArea, QWidget#mainCardsViewport, QScrollArea#mainCardsScrollArea > QWidget, QScrollArea#mainCardsScrollArea > QWidget > QWidget, QScrollArea#sessionViewerScrollArea > QWidget, QScrollArea#sessionViewerScrollArea > QWidget > QWidget, QSplitter#appLayoutSplitter, QSplitter#mainContentSplitter, QSplitter#sessionViewerContentSplitter { background-color: @vv-surface; }"
+            "QWidget#appCentralWidget, QWidget#mainCardsPane, QFrame#appSidebar, QStackedWidget#mainPageStack, QWidget#temperaturePage, QWidget#deviceConfigPage, QWidget#logSidePanel, QMainWindow#sessionViewerWindow, QWidget#sessionViewerCentralWidget, QWidget#sessionViewerViewport, QWidget#sessionViewerContentPane, QScrollArea#mainCardsScrollArea, QScrollArea#sessionViewerScrollArea, QWidget#mainCardsViewport, QScrollArea#mainCardsScrollArea > QWidget, QScrollArea#mainCardsScrollArea > QWidget > QWidget, QScrollArea#sessionViewerScrollArea > QWidget, QScrollArea#sessionViewerScrollArea > QWidget > QWidget, QSplitter#appLayoutSplitter, QSplitter#mainContentSplitter, QSplitter#homeOverviewSplitter, QSplitter#sessionViewerContentSplitter { background-color: @vv-surface; }"
             "QFrame#appSidebar { background-color: @vv-surface; border-right: 1px solid @vv-border; }"
             "QPushButton#appSidebarButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-weight: 600; padding: 6px 8px; text-align: left; }"
             "QPushButton#appSidebarButton[_vv_sidebar_compact=\"true\"] { padding: 6px; text-align: center; }"
@@ -5854,6 +5867,9 @@ void MainWindow::loadModernStyleSheet()
             "QSplitter#appLayoutSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#appLayoutSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
             "QSplitter#mainContentSplitter::handle:horizontal { width: 1px; background-color: transparent; }"
+            "QSplitter#homeOverviewSplitter::handle:horizontal { width: 8px; background-color: @vv-border; }"
+            "QSplitter#homeOverviewSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
+            "QSplitter#homeOverviewSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
             "QWidget#mainCardResizeHandle { min-height: 3px; max-height: 3px; background-color: transparent; }"
             "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QWidget#mainCardResizeHandle:hover { background-color: @vv-resize-hover; }"
@@ -5867,6 +5883,9 @@ void MainWindow::loadModernStyleSheet()
             "QSplitter#mainContentSplitter::handle:horizontal { width: 1px; background-color: @vv-border; }"
             "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#mainContentSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
+            "QSplitter#homeOverviewSplitter::handle:horizontal { width: 8px; background-color: @vv-border; }"
+            "QSplitter#homeOverviewSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
+            "QSplitter#homeOverviewSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
             "QPushButton { background-color: @vv-primary; color: @vv-white; border: none; border-radius: 6px; padding: 4px 16px; font-size: 15px; font-weight: 500; min-height: 28px; max-height: 28px; }"
             "QPushButton:hover { background-color: @vv-primary-hover; }"
             "QPushButton:pressed { background-color: @vv-primary-pressed; }"
@@ -6283,18 +6302,53 @@ void MainWindow::updateResponsiveHomeLayout()
     if (main_cards_scroll_area_ && main_cards_scroll_area_->widget() && main_cards_scroll_area_->viewport())
     {
         const int viewportWidth = std::max(0, main_cards_scroll_area_->viewport()->width());
-        const int leftMinimumWidth = config_group_ ? config_group_->minimumWidth() : 0;
-        const bool widthConstrained = compact || (leftMinimumWidth > 0 && viewportWidth < leftMinimumWidth);
-        main_cards_scroll_area_->setHorizontalScrollBarPolicy(compact ? Qt::ScrollBarAlwaysOff : Qt::ScrollBarAsNeeded);
-        main_cards_scroll_area_->widget()->setSizePolicy(widthConstrained ? QSizePolicy::Ignored : QSizePolicy::Preferred,
+        const int overviewMinimumWidth = home_overview_splitter_ && config_group_ && temperature_overview_group_
+            ? config_group_->minimumWidth() + temperature_overview_group_->minimumWidth() + home_overview_splitter_->handleWidth()
+            : (config_group_ ? config_group_->minimumWidth() : 0);
+        const bool widthConstrained = viewportWidth > 0 && viewportWidth < overviewMinimumWidth;
+        const int contentWidth = widthConstrained ? overviewMinimumWidth : viewportWidth;
+        main_cards_scroll_area_->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        main_cards_scroll_area_->widget()->setSizePolicy(widthConstrained ? QSizePolicy::Preferred : QSizePolicy::Ignored,
                                                          QSizePolicy::Preferred);
-        main_cards_scroll_area_->widget()->setMinimumWidth(widthConstrained ? 0 : leftMinimumWidth);
-        main_cards_scroll_area_->widget()->resize(viewportWidth,
-                                                  main_cards_scroll_area_->widget()->height());
+        main_cards_scroll_area_->widget()->setMinimumWidth(widthConstrained ? overviewMinimumWidth : 0);
+        main_cards_scroll_area_->widget()->setMaximumWidth(widthConstrained ? QWIDGETSIZE_MAX : viewportWidth);
+        main_cards_scroll_area_->widget()->resize(contentWidth, main_cards_scroll_area_->widget()->height());
+        if (home_overview_splitter_)
+        {
+            const int overviewWidth = widthConstrained ? overviewMinimumWidth : viewportWidth;
+            home_overview_splitter_->setMinimumWidth(overviewWidth);
+            home_overview_splitter_->setMaximumWidth(overviewWidth);
+        }
         if (QLayout *leftLayout = main_cards_scroll_area_->widget()->layout())
         {
             leftLayout->invalidate();
             leftLayout->activate();
+        }
+        if (home_overview_splitter_ && config_group_ && temperature_overview_group_)
+        {
+            const QList<int> sizes = home_overview_splitter_->sizes();
+            const bool initialized = home_overview_splitter_->property(kHomeOverviewSplitterInitializedProperty).toBool();
+            const int leftMinimum = config_group_->minimumWidth();
+            const int rightMinimum = temperature_overview_group_->minimumWidth();
+            const bool invalidSizes = sizes.size() < 2 || (sizes.at(0) + sizes.at(1)) <= 0;
+            const int totalWidth = contentWidth > 0 ? contentWidth : std::max(overviewMinimumWidth, home_overview_splitter_->width());
+            const int availableWidth = std::max(0, totalWidth - home_overview_splitter_->handleWidth());
+            const bool sizeTooNarrow = sizes.size() >= 2 && availableWidth >= leftMinimum + rightMinimum &&
+                (sizes.at(0) < leftMinimum || sizes.at(1) < rightMinimum);
+            if ((!initialized || invalidSizes || sizeTooNarrow) && viewportWidth > 0)
+            {
+                int leftWidth = availableWidth * 3 / 5;
+                int rightWidth = availableWidth - leftWidth;
+                if (availableWidth >= leftMinimum + rightMinimum)
+                {
+                    leftWidth = std::max(leftMinimum, leftWidth);
+                    rightWidth = availableWidth - leftWidth;
+                    rightWidth = std::max(rightMinimum, rightWidth);
+                    leftWidth = availableWidth - rightWidth;
+                }
+                home_overview_splitter_->setSizes({leftWidth, rightWidth});
+                home_overview_splitter_->setProperty(kHomeOverviewSplitterInitializedProperty, true);
+            }
         }
     }
 
@@ -6956,7 +7010,8 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         }
         summaryHeight = std::max(summaryHeight, scaledConfiguredHeight(data_telemetry_summary_lbl_, kMainPageInputHeight));
         data_telemetry_summary_card_->setMinimumHeight(summaryHeight);
-        const int homeDeviceRowHeight = scalePixels((kHomeDeviceButtonSize * kHomeDeviceGridRows) + kHomeDeviceGridRowGap);
+        const int homeDeviceRowHeight = scalePixels((kHomeDeviceRowHeight * kHomeDeviceGridRows) +
+                                                    (kHomeDeviceGridRowGap * (kHomeDeviceGridRows - 1)));
         const int homeBodySpacing = scalePixels(6);
         minimumHeight = std::max(minimumHeight,
                                  kMainPageTitleBarHeight +
@@ -6967,10 +7022,30 @@ void MainWindow::updateConfigCardHeightForSourceMode()
                                      scalePixels(kConfigCardBottomPadding));
     }
 
-    const int previousMinimum = config_group_->property(kMainCardMinimumHeightProperty).toInt();
-    const bool minimumChanged = previousMinimum != minimumHeight;
+    const int previousConfigMinimum = config_group_->property(kMainCardMinimumHeightProperty).toInt();
     config_group_->setProperty(kMainCardMinimumHeightProperty, minimumHeight);
     config_group_->setMinimumHeight(minimumHeight);
+    if (temperature_overview_group_)
+    {
+        const int temperatureMinimumHeight = std::max(temperature_overview_group_->minimumSizeHint().height(),
+                                                      temperature_overview_group_->sizeHint().height());
+        minimumHeight = std::max(minimumHeight, temperatureMinimumHeight);
+        temperature_overview_group_->setProperty(kMainCardMinimumHeightProperty, minimumHeight);
+        temperature_overview_group_->setMinimumHeight(minimumHeight);
+    }
+    if (home_overview_splitter_)
+    {
+        const int previousMinimum = home_overview_splitter_->property(kMainCardMinimumHeightProperty).toInt();
+        const bool minimumChanged = previousMinimum != minimumHeight;
+        home_overview_splitter_->setProperty(kMainCardMinimumHeightProperty, minimumHeight);
+        home_overview_splitter_->setMinimumHeight(minimumHeight);
+        if (minimumChanged || home_overview_splitter_->height() < minimumHeight)
+        {
+            home_overview_splitter_->setFixedHeight(minimumHeight);
+        }
+        return;
+    }
+    const bool minimumChanged = previousConfigMinimum != minimumHeight;
     if (minimumChanged || config_group_->height() < minimumHeight)
     {
         config_group_->setFixedHeight(minimumHeight);
@@ -7138,117 +7213,66 @@ QString MainWindow::remoteTelemetrySummaryText() const
 
     const QString textColor = appThemeColorName(dark_theme_enabled_ ? AppThemeColor::White : AppThemeColor::Text,
                                                 dark_theme_enabled_);
-    const QString borderColor = appThemeColorName(AppThemeColor::Border, dark_theme_enabled_);
-    const QString cardBg = appThemeColorName(AppThemeColor::Surface, dark_theme_enabled_);
-    const QString titleBg = appThemeColorName(dark_theme_enabled_ ? AppThemeColor::Surface : AppThemeColor::SurfaceAlt,
-                                              dark_theme_enabled_);
+    const QString accentColor = appThemeColorName(AppThemeColor::Primary, dark_theme_enabled_);
 
-    auto rowHtml = [&](const QString& label, const QString& value, int labelWidth, int valueWidth) {
-        return QStringLiteral("<tr>"
-                              "<td width=\"%1\" style=\"width:%1px;padding:1px 6px;white-space:nowrap;color:%5;font-weight:600;\">%2</td>"
-                              "<td width=\"%3\" style=\"width:%3px;min-width:%3px;padding:1px 6px;white-space:nowrap;color:%5;font-weight:600;"
-                              "font-family:'Cascadia Mono','Consolas','Courier New',monospace;\">%4</td>"
-                              "</tr>")
-            .arg(scalePixels(labelWidth))
-            .arg(label.toHtmlEscaped())
-            .arg(scalePixels(valueWidth))
-            .arg(value.toHtmlEscaped())
-            .arg(textColor);
+    auto rowHtml = [&](const QString& label, const QString& value) {
+        return QStringLiteral("<span style=\"white-space:nowrap;color:%3;font-weight:600;\">%1 "
+                              "<span style=\"font-family:'Cascadia Mono','Consolas','Courier New',monospace;\">%2</span></span>")
+            .arg(label.toHtmlEscaped(), value.toHtmlEscaped(), textColor);
     };
 
-    auto verticalTitleHtml = [this](const QString& title) {
-        QStringList parts;
-        if (is_english_)
-        {
-            const QString normalized = QString(title).replace(QStringLiteral(" / "), QStringLiteral(" "));
-            const QStringList words = normalized.split(QChar(' '), Qt::SkipEmptyParts);
-            parts.reserve(words.size());
-            for (const QString& word : words)
-            {
-                parts << word.toHtmlEscaped();
-            }
-        }
-        else
-        {
-            parts.reserve(title.size());
-            for (const QChar ch : title)
-            {
-                if (!ch.isSpace())
-                {
-                    parts << QString(ch).toHtmlEscaped();
-                }
-            }
-        }
-        return parts.join(QStringLiteral("<br/>"));
+    auto sectionHtml = [&](const QString& title, const QStringList& rows) {
+        return QStringLiteral("<p style=\"margin:0 0 5px 0;\">"
+                              "<span style=\"color:%1;font-weight:700;\">%2</span><br/>%3</p>")
+            .arg(accentColor, title.toHtmlEscaped(), rows.join(QStringLiteral("&nbsp;&nbsp; ")));
     };
 
-    auto sectionHtml = [&](const QString& title, const QString& rows, int width) {
-        return QStringLiteral("<table cellspacing=\"0\" cellpadding=\"0\" width=\"%1\" "
-                              "style=\"width:%1px;border:1px solid %2;background:%3;\">"
-                              "<tr>"
-                              "<td width=\"%6\" valign=\"middle\" align=\"center\" "
-                              "style=\"width:%6px;background:%4;border-right:1px solid %2;"
-                              "padding:2px;color:%5;font-weight:700;\">%7</td>"
-                              "<td valign=\"top\"><table cellspacing=\"0\" cellpadding=\"0\">%8</table></td>"
-                              "</tr></table>")
-            .arg(scalePixels(width))
-            .arg(borderColor, cardBg, titleBg, textColor)
-            .arg(scalePixels(kTelemetrySummaryTitleColumnWidth))
-            .arg(verticalTitleHtml(title), rows);
-    };
-
-    QString rateRows;
-    QString linkRows;
-    QString deviceRows;
+    QStringList rateRows;
+    QStringList linkRows;
+    QStringList deviceRows;
     if (is_english_)
     {
-        rateRows += rowHtml(QStringLiteral("Basic:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryBasic), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
-        rateRows += rowHtml(QStringLiteral("Feature:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformFeature), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
-        rateRows += rowHtml(QStringLiteral("Wave total:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformDownsampled), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
-        rateRows += rowHtml(QStringLiteral("Wave raw:"), QStringLiteral("%1 Hz").arg(remoteWaveformPacketRate(1), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
-        rateRows += rowHtml(QStringLiteral("Wave harm.:"), QStringLiteral("%1 Hz").arg(remoteWaveformPacketRate(4), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
-        rateRows += rowHtml(QStringLiteral("Status:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryStatus), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
-        rateRows += rowHtml(QStringLiteral("Wave TCP actual:"), actualWaveRate, kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
-        linkRows += rowHtml(QStringLiteral("Sky->Ground:"), formatBitRate(rxBps), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
-        linkRows += rowHtml(QStringLiteral("Ground->Sky:"), formatBitRate(txBps), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
-        linkRows += rowHtml(QStringLiteral("Total:"), formatBitRate(rxBps + txBps), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
-        deviceRows += rowHtml(QStringLiteral("EPSILON:"), hasText(VaporView::SkyDeviceId::Epsilon, 2000), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
-        deviceRows += rowHtml(QStringLiteral("PTB:"), hasText(VaporView::SkyDeviceId::Ptb, 3000), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
-        deviceRows += rowHtml(QStringLiteral("HMP:"), hasText(VaporView::SkyDeviceId::Hmp, 3000), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
-        deviceRows += rowHtml(QStringLiteral("Lidar:"), hasText(VaporView::SkyDeviceId::Lidar, 2000), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
-        deviceRows += rowHtml(QStringLiteral("Wave:"), hasText(VaporView::SkyDeviceId::WaveTcp, 3000), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
+        rateRows << rowHtml(QStringLiteral("Basic:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryBasic), 0, 'f', 1));
+        rateRows << rowHtml(QStringLiteral("Feature:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformFeature), 0, 'f', 1));
+        rateRows << rowHtml(QStringLiteral("Wave total:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformDownsampled), 0, 'f', 1));
+        rateRows << rowHtml(QStringLiteral("Wave raw:"), QStringLiteral("%1 Hz").arg(remoteWaveformPacketRate(1), 0, 'f', 1));
+        rateRows << rowHtml(QStringLiteral("Wave harm.:"), QStringLiteral("%1 Hz").arg(remoteWaveformPacketRate(4), 0, 'f', 1));
+        rateRows << rowHtml(QStringLiteral("Status:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryStatus), 0, 'f', 1));
+        rateRows << rowHtml(QStringLiteral("Wave TCP actual:"), actualWaveRate);
+        linkRows << rowHtml(QStringLiteral("Sky->Ground:"), formatBitRate(rxBps));
+        linkRows << rowHtml(QStringLiteral("Ground->Sky:"), formatBitRate(txBps));
+        linkRows << rowHtml(QStringLiteral("Total:"), formatBitRate(rxBps + txBps));
+        deviceRows << rowHtml(QStringLiteral("EPSILON:"), hasText(VaporView::SkyDeviceId::Epsilon, 2000));
+        deviceRows << rowHtml(QStringLiteral("PTB:"), hasText(VaporView::SkyDeviceId::Ptb, 3000));
+        deviceRows << rowHtml(QStringLiteral("HMP:"), hasText(VaporView::SkyDeviceId::Hmp, 3000));
+        deviceRows << rowHtml(QStringLiteral("Lidar:"), hasText(VaporView::SkyDeviceId::Lidar, 2000));
+        deviceRows << rowHtml(QStringLiteral("Wave:"), hasText(VaporView::SkyDeviceId::WaveTcp, 3000));
     }
     else
     {
-        rateRows += rowHtml(QStringLiteral("基础:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryBasic), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
-        rateRows += rowHtml(QStringLiteral("特征值:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformFeature), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
-        rateRows += rowHtml(QStringLiteral("波形总包:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformDownsampled), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
-        rateRows += rowHtml(QStringLiteral("原始波形:"), QStringLiteral("%1 Hz").arg(remoteWaveformPacketRate(1), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
-        rateRows += rowHtml(QStringLiteral("谐波波形:"), QStringLiteral("%1 Hz").arg(remoteWaveformPacketRate(4), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
-        rateRows += rowHtml(QStringLiteral("状态:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryStatus), 0, 'f', 1), kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
-        rateRows += rowHtml(QStringLiteral("波形 TCP 实际:"), actualWaveRate, kTelemetrySummaryRateLabelWidth, kTelemetrySummaryRateValueWidth);
-        linkRows += rowHtml(QStringLiteral("天空→地面:"), formatBitRate(rxBps), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
-        linkRows += rowHtml(QStringLiteral("地面→天空:"), formatBitRate(txBps), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
-        linkRows += rowHtml(QStringLiteral("合计:"), formatBitRate(rxBps + txBps), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
-        deviceRows += rowHtml(QStringLiteral("EPSILON:"), hasText(VaporView::SkyDeviceId::Epsilon, 2000), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
-        deviceRows += rowHtml(QStringLiteral("PTB:"), hasText(VaporView::SkyDeviceId::Ptb, 3000), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
-        deviceRows += rowHtml(QStringLiteral("HMP:"), hasText(VaporView::SkyDeviceId::Hmp, 3000), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
-        deviceRows += rowHtml(QStringLiteral("Lidar:"), hasText(VaporView::SkyDeviceId::Lidar, 2000), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
-        deviceRows += rowHtml(QStringLiteral("波形:"), hasText(VaporView::SkyDeviceId::WaveTcp, 3000), kTelemetrySummaryInfoLabelWidth, kTelemetrySummaryInfoValueWidth);
+        rateRows << rowHtml(QStringLiteral("基础:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryBasic), 0, 'f', 1));
+        rateRows << rowHtml(QStringLiteral("特征值:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformFeature), 0, 'f', 1));
+        rateRows << rowHtml(QStringLiteral("波形总包:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::WaveformDownsampled), 0, 'f', 1));
+        rateRows << rowHtml(QStringLiteral("原始波形:"), QStringLiteral("%1 Hz").arg(remoteWaveformPacketRate(1), 0, 'f', 1));
+        rateRows << rowHtml(QStringLiteral("谐波波形:"), QStringLiteral("%1 Hz").arg(remoteWaveformPacketRate(4), 0, 'f', 1));
+        rateRows << rowHtml(QStringLiteral("状态:"), QStringLiteral("%1 Hz").arg(remotePacketRate(VaporView::MsgType::TelemetryStatus), 0, 'f', 1));
+        rateRows << rowHtml(QStringLiteral("波形 TCP 实际:"), actualWaveRate);
+        linkRows << rowHtml(QStringLiteral("天空→地面:"), formatBitRate(rxBps));
+        linkRows << rowHtml(QStringLiteral("地面→天空:"), formatBitRate(txBps));
+        linkRows << rowHtml(QStringLiteral("合计:"), formatBitRate(rxBps + txBps));
+        deviceRows << rowHtml(QStringLiteral("EPSILON:"), hasText(VaporView::SkyDeviceId::Epsilon, 2000));
+        deviceRows << rowHtml(QStringLiteral("PTB:"), hasText(VaporView::SkyDeviceId::Ptb, 3000));
+        deviceRows << rowHtml(QStringLiteral("HMP:"), hasText(VaporView::SkyDeviceId::Hmp, 3000));
+        deviceRows << rowHtml(QStringLiteral("Lidar:"), hasText(VaporView::SkyDeviceId::Lidar, 2000));
+        deviceRows << rowHtml(QStringLiteral("波形:"), hasText(VaporView::SkyDeviceId::WaveTcp, 3000));
     }
 
     const QString rateTitle = is_english_ ? QStringLiteral("Telemetry packet rates") : QStringLiteral("数传数据包频率");
     const QString linkTitle = is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率");
     const QString deviceTitle = is_english_ ? QStringLiteral("Device data") : QStringLiteral("设备数据");
-    const QString rateCard = sectionHtml(rateTitle, rateRows, kTelemetrySummaryRateCardWidth);
-    const QString linkCard = sectionHtml(linkTitle, linkRows, kTelemetrySummaryInfoCardWidth);
-    const QString deviceCard = sectionHtml(deviceTitle, deviceRows, kTelemetrySummaryInfoCardWidth);
-    return QStringLiteral("<table cellspacing=\"%4\" cellpadding=\"0\">"
-                          "<tr><td valign=\"top\" rowspan=\"2\">%1</td><td valign=\"top\">%2</td></tr>"
-                          "<tr><td valign=\"top\">%3</td></tr>"
-                          "</table>")
-        .arg(rateCard, linkCard, deviceCard)
-        .arg(scalePixels(kTelemetrySummaryGapWidth));
+    return sectionHtml(rateTitle, rateRows) +
+           sectionHtml(linkTitle, linkRows) +
+           sectionHtml(deviceTitle, deviceRows);
 }
 
 void MainWindow::updateRemoteTelemetrySummaryLabel()
@@ -9804,10 +9828,9 @@ void MainWindow::setupConfigPanel()
 {
     config_group_ = new QGroupBox(this);
     config_group_->setObjectName("sensorGroupBox");
-    config_group_->setMinimumWidth(860);
+    config_group_->setMinimumWidth(kHomeOverviewDeviceMinWidth);
     config_group_->setMinimumHeight(kConfigCardMinHeight);
-    config_group_->setFixedHeight(kConfigCardMinHeight);
-    config_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    config_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     auto *config_root_layout = new QVBoxLayout(config_group_);
     config_root_layout->setSpacing(4);
@@ -10079,7 +10102,7 @@ void MainWindow::setupConfigPanel()
 
     data_telemetry_summary_card_ = new QFrame(config_group_);
     data_telemetry_summary_card_->setObjectName(QStringLiteral("epsilonSectionCard"));
-    data_telemetry_summary_card_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::MinimumExpanding);
+    data_telemetry_summary_card_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
     auto *telemetrySummaryLayout = new QVBoxLayout(data_telemetry_summary_card_);
     telemetrySummaryLayout->setContentsMargins(2, 2, 2, 2);
     telemetrySummaryLayout->setSpacing(0);
@@ -10088,10 +10111,10 @@ void MainWindow::setupConfigPanel()
     data_telemetry_summary_lbl_->setObjectName("fieldLabel");
     data_telemetry_summary_lbl_->setTextFormat(Qt::RichText);
     data_telemetry_summary_lbl_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    data_telemetry_summary_lbl_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::MinimumExpanding);
+    data_telemetry_summary_lbl_->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::MinimumExpanding);
     data_telemetry_summary_lbl_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     data_telemetry_summary_lbl_->setMinimumHeight(kMainPageInputHeight);
-    data_telemetry_summary_lbl_->setWordWrap(false);
+    data_telemetry_summary_lbl_->setWordWrap(true);
     telemetrySummaryLayout->addWidget(data_telemetry_summary_lbl_);
     data_telemetry_summary_card_->setVisible(true);
 
@@ -10101,10 +10124,10 @@ void MainWindow::setupConfigPanel()
     homeBodyLayout->setSpacing(6);
 
     auto *homeDevicesWidget = new QWidget(homeBodyWidget);
-    homeDevicesWidget->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+    homeDevicesWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto *homeDevicesLayout = new QGridLayout(homeDevicesWidget);
     homeDevicesLayout->setContentsMargins(0, 0, 0, 0);
-    homeDevicesLayout->setHorizontalSpacing(8);
+    homeDevicesLayout->setHorizontalSpacing(kHomeDeviceItemGap);
     homeDevicesLayout->setVerticalSpacing(kHomeDeviceGridRowGap);
     auto createHomeDeviceCapsule = [homeDevicesWidget]() {
         auto *label = new QLabel(homeDevicesWidget);
@@ -10133,7 +10156,7 @@ void MainWindow::setupConfigPanel()
     int homeDeviceIndex = 0;
     auto addHomeDevice = [&](QLabel *&label, QToolButton *&button, VaporView::SkyDeviceId device) {
         auto *item = new QWidget(homeDevicesWidget);
-        item->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
+        item->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         auto *itemLayout = new QHBoxLayout(item);
         itemLayout->setContentsMargins(0, 0, 0, 0);
         itemLayout->setSpacing(4);
@@ -10152,15 +10175,14 @@ void MainWindow::setupConfigPanel()
     addHomeDevice(home_hmp_status_lbl_, home_hmp_action_btn_, VaporView::SkyDeviceId::Hmp);
     addHomeDevice(home_lidar_status_lbl_, home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
     addHomeDevice(home_wave_status_lbl_, home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
+    homeDevicesLayout->setColumnStretch(kHomeDeviceGridColumns, 1);
 
     homeBodyLayout->addWidget(homeDevicesWidget, 0, Qt::AlignTop | Qt::AlignLeft);
-    homeBodyLayout->addWidget(data_telemetry_summary_card_, 0, Qt::AlignTop | Qt::AlignLeft);
+    homeBodyLayout->addWidget(data_telemetry_summary_card_, 1, Qt::AlignTop);
     config_root_layout->addWidget(homeBodyWidget, 0, Qt::AlignTop);
     config_form_widget->setVisible(false);
     updateHomeDeviceStatusCapsules();
     updateRemoteTelemetrySummaryLabel();
-
-    main_layout_->addWidget(config_group_, 0);
 }
 
 void MainWindow::setupDataPanels()
@@ -10290,12 +10312,10 @@ void MainWindow::setupDataPanels()
     ptb_group_ = nullptr;
     hmp_group_ = nullptr;
 
-    main_layout_->addWidget(new MainCardResizeHandle(config_group_, kConfigCardMinHeight, this), 0);
-    main_layout_->addWidget(data_group_, 0);
-
     temperature_overview_group_ = new QGroupBox(this);
     temperature_overview_group_->setObjectName("sensorGroupBox");
-    temperature_overview_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    temperature_overview_group_->setMinimumWidth(kHomeOverviewTemperatureMinWidth);
+    temperature_overview_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     auto *temperatureOverviewLayout = new QVBoxLayout(temperature_overview_group_);
     temperatureOverviewLayout->setContentsMargins(1, 0, 1, 1);
     temperatureOverviewLayout->setSpacing(0);
@@ -10311,11 +10331,14 @@ void MainWindow::setupDataPanels()
                                                                        QStringLiteral("thermometer"),
                                                                        kMainPageButtonHeight,
                                                                        &temperatureOverviewTitleCluster);
+    temperature_overview_inline_title_lbl_->setText(is_english_
+        ? QStringLiteral("Laser Driver Temperature Overview")
+        : QStringLiteral("激光驱动温控概览"));
     temperatureOverviewTitleLayout->addWidget(temperatureOverviewTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
     temperatureOverviewTitleLayout->addStretch(1);
     temperatureOverviewLayout->addWidget(temperatureOverviewTitleBar);
 
-    temperature_overview_panel_ = new TemperatureControllerOverviewPanel(this);
+    temperature_overview_panel_ = new TemperatureControllerOverviewPanel(temperature_overview_group_);
     temperature_overview_panel_->setOutputEnabledCallback([this](quint8 channel, bool enabled) {
         if (enabled)
         {
@@ -10357,8 +10380,29 @@ void MainWindow::setupDataPanels()
         }
     });
     temperatureOverviewLayout->addWidget(temperature_overview_panel_);
+
+    home_overview_splitter_ = new QSplitter(Qt::Horizontal, this);
+    home_overview_splitter_->setObjectName(QStringLiteral("homeOverviewSplitter"));
+    home_overview_splitter_->setAttribute(Qt::WA_StyledBackground, true);
+    home_overview_splitter_->setAutoFillBackground(true);
+    home_overview_splitter_->setChildrenCollapsible(false);
+    home_overview_splitter_->setCollapsible(0, false);
+    home_overview_splitter_->setCollapsible(1, false);
+    home_overview_splitter_->setHandleWidth(kHomeOverviewSplitterHandleWidth);
+    home_overview_splitter_->setOpaqueResize(true);
+    home_overview_splitter_->setMinimumWidth(0);
+    home_overview_splitter_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    home_overview_splitter_->addWidget(config_group_);
+    home_overview_splitter_->addWidget(temperature_overview_group_);
+    home_overview_splitter_->setStretchFactor(0, 3);
+    home_overview_splitter_->setStretchFactor(1, 2);
+    home_overview_splitter_->setSizes({kHomeOverviewDeviceMinWidth, kHomeOverviewTemperatureMinWidth});
+    main_layout_->addWidget(home_overview_splitter_, 0);
+    main_layout_->addWidget(new MainCardResizeHandle(home_overview_splitter_, kConfigCardMinHeight, this), 0);
+    main_layout_->addWidget(data_group_, 0);
+    updateConfigCardHeightForSourceMode();
+
     main_layout_->addWidget(new MainCardResizeHandle(data_group_, dataCardMinHeight, this), 0);
-    main_layout_->addWidget(temperature_overview_group_, 0);
 
     temperature_controller_group_ = new QGroupBox(this);
     temperature_controller_group_->setObjectName("sensorGroupBox");
@@ -10740,7 +10784,7 @@ void MainWindow::setEnglish(bool english)
 
     if (config_inline_title_lbl_)
     {
-        config_inline_title_lbl_->setText(english ? "Serial Port Configuration" : "串口配置");
+        config_inline_title_lbl_->setText(english ? "Device Overview" : "设备概览");
     }
     if (data_source_mode_lbl_) data_source_mode_lbl_->setText(english ? "Source:" : "数据源:");
     if (sky_telemetry_transport_lbl_) sky_telemetry_transport_lbl_->setText(english ? "Link:" : "链路:");
