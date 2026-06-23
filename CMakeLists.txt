@@ -287,6 +287,7 @@ set(LUCIDE_RESOURCES
     resources/lucide/funnel.svg
     resources/lucide/key.svg
     resources/lucide/languages.svg
+    resources/lucide/link.svg
     resources/lucide/list-filter.svg
     resources/lucide/maximize.svg
     resources/lucide/menu.svg

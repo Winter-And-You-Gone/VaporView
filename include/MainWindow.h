@@ -487,6 +487,7 @@ private:
     quint64 steadyToEpochUs(const std::chrono::steady_clock::time_point& timePoint) const;
     void updateConnectionStatus(bool connected);
     bool homeDeviceConnected(VaporView::SkyDeviceId device) const;
+    void triggerHomeDeviceAction(VaporView::SkyDeviceId device);
     void updateHomeDeviceStatusCapsules();
     bool anyCollectorRunning() const;
     QStringList getAvailablePorts();
@@ -575,6 +576,7 @@ private:
     void updateRemoteTelemetrySummaryLabel();
     void updateEnvironmentStatusIcons(bool lidarValid, bool ptbValid, bool hmpValid);
     void sendRemoteDeviceCommand(VaporView::CommandId command, VaporView::SkyDeviceId device);
+    void requestRemoteWaveTcpConnection(bool connectRequested);
     void sendRemotePeakSearchRange(quint32 startIndex, quint32 endIndex);
     QPushButton *createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device);
     void setRemoteDeviceButtonsEnabled(bool enabled);
@@ -776,6 +778,12 @@ private:
     QLabel *home_ptb_status_lbl_;
     QLabel *home_hmp_status_lbl_;
     QLabel *home_lidar_status_lbl_;
+    QLabel *home_wave_status_lbl_;
+    QToolButton *home_epsilon_action_btn_;
+    QToolButton *home_ptb_action_btn_;
+    QToolButton *home_hmp_action_btn_;
+    QToolButton *home_lidar_action_btn_;
+    QToolButton *home_wave_action_btn_;
     QWidget *data_telemetry_summary_card_;
     QLabel *data_telemetry_summary_lbl_;
     QLabel *log_inline_title_lbl_;

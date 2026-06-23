@@ -988,9 +988,13 @@ TemperatureControllerPanel QTabBar::tab:!selected:hover {
 }
 
 QLabel#homeDeviceStatusCapsule {
-    border-radius: 13px;
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
+    border-radius: 12px;
+    color: @vv-text-title;
+    font-size: 12px;
     font-weight: 700;
-    padding: 4px 12px;
+    padding: 2px 8px;
 }
 
 QLabel#homeDeviceStatusCapsule[connected="true"] {
@@ -1006,18 +1010,19 @@ QLabel#homeDeviceStatusCapsule[connected="false"] {
 }
 
 QToolButton#homeDeviceActionButton {
-    background-color: transparent;
+    background-color: @vv-surface-alt;
     border: 1px solid @vv-border;
-    border-radius: 6px;
-    padding: 4px;
+    border-radius: 7px;
+    padding: 2px;
 }
 
 QToolButton#homeDeviceActionButton:hover {
-    background-color: @vv-surface-alt;
+    background-color: @vv-primary-subtle;
+    border-color: @vv-border-strong;
 }
 
 QToolButton#homeDeviceActionButton:disabled {
-    background-color: @vv-surface;
+    background-color: @vv-surface-alt;
     border-color: @vv-border;
 }
 

@@ -2133,6 +2133,11 @@ bool TcpWavePanel::isConnected() const
     return socket_ && socket_->state() == QAbstractSocket::ConnectedState;
 }
 
+void TcpWavePanel::toggleConnection()
+{
+    onToggleConnectionClicked();
+}
+
 void TcpWavePanel::setRemoteSkyMode(bool enabled)
 {
     remote_sky_mode_ = enabled;
