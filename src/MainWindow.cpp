@@ -8724,7 +8724,7 @@ void MainWindow::setupCentralWidget()
     main_content_splitter_->setCollapsible(0, true);
     main_content_splitter_->setCollapsible(1, false);
     main_content_splitter_->setHandleWidth(1);
-    main_content_splitter_->addWidget(main_cards_scroll_area_);
+    main_content_splitter_->addWidget(main_page_stack_);
     main_content_splitter_->addWidget(log_side_panel_);
     if (QSplitterHandle *handle = main_content_splitter_->handle(1))
     {
@@ -8749,7 +8749,7 @@ void MainWindow::setupCentralWidget()
         queueResponsiveHomeLayoutRefresh();
     });
 
-    home_page_ = main_content_splitter_;
+    home_page_ = main_cards_scroll_area_;
     main_page_stack_->addWidget(home_page_);
 
     temperature_page_ = new QWidget(this);
@@ -8785,7 +8785,7 @@ void MainWindow::setupCentralWidget()
         }
         updateSidebarNavIcons();
     });
-    main_h_layout->addWidget(main_page_stack_, 1);
+    main_h_layout->addWidget(main_content_splitter_, 1);
 }
 
 void MainWindow::setupDeviceConfigPage()
