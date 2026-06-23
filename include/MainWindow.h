@@ -397,6 +397,13 @@ private:
         Recording
     };
 
+    enum class AppSidebarMode
+    {
+        Collapsed,
+        IconsOnly,
+        Full
+    };
+
     struct TcpRawRecord
     {
         quint64 timestamp_us = 0;
@@ -498,6 +505,13 @@ private:
     void updateCustomTitleBarStyle();
     void updateWindowControlButtons();
     void updateSidebarNavIcons();
+    void updateAppSidebarButtonTexts();
+    void updateAppSidebarForWidth(int width, bool snapToNearest);
+    void setAppSidebarWidth(int width);
+    int currentAppSidebarWidth() const;
+    void saveAppSidebarWidth() const;
+    int appSidebarIconOnlyWidth() const;
+    int appSidebarDefaultWidth() const;
     void toggleWindowMaximized();
     bool isWindowMaximizedForUi() const;
     void rememberNormalWindowGeometry();
@@ -719,6 +733,7 @@ private:
     QFrame *title_application_panel_;
     QFrame *title_application_sub_panel_;
 
+    QSplitter *app_layout_splitter_;
     QSplitter *main_content_splitter_;
     QWidget *app_sidebar_;
     QButtonGroup *app_nav_button_group_;
@@ -726,6 +741,8 @@ private:
     QPushButton *temperature_nav_btn_;
     QPushButton *device_config_nav_btn_;
     QStackedWidget *main_page_stack_;
+    AppSidebarMode app_sidebar_mode_;
+    bool app_sidebar_adjusting_;
     QWidget *home_page_;
     QWidget *temperature_page_;
     DeviceConfigPageWidgets device_config_;

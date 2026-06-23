@@ -30,6 +30,7 @@ QScrollArea#mainCardsScrollArea > QWidget,
 QScrollArea#mainCardsScrollArea > QWidget > QWidget,
 QScrollArea#sessionViewerScrollArea > QWidget,
 QScrollArea#sessionViewerScrollArea > QWidget > QWidget,
+QSplitter#appLayoutSplitter,
 QSplitter#mainContentSplitter,
 QSplitter#sessionViewerContentSplitter {
     background-color: @vv-surface;
@@ -157,6 +158,11 @@ QPushButton#appSidebarButton {
     font-weight: 600;
     padding: 6px 8px;
     text-align: left;
+}
+
+QPushButton#appSidebarButton[_vv_sidebar_compact="true"] {
+    padding: 6px;
+    text-align: center;
 }
 
 QPushButton#appSidebarButton:hover {
@@ -648,6 +654,19 @@ QSplitter::handle:vertical {
 
 QSplitter::handle:hover {
     background-color: transparent;
+}
+
+QSplitter#appLayoutSplitter::handle:horizontal {
+    width: 8px;
+    background-color: transparent;
+}
+
+QSplitter#appLayoutSplitter::handle:horizontal:hover {
+    background-color: @vv-resize-hover;
+}
+
+QSplitter#appLayoutSplitter::handle:horizontal:pressed {
+    background-color: @vv-resize-pressed;
 }
 
 QSplitter#mainContentSplitter::handle:horizontal {

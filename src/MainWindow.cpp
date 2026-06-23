@@ -416,6 +416,8 @@ constexpr int kConfigCardMinHeight = kMainPageTitleBarHeight + 4 + kConfigRowsHe
 constexpr int kConfigRemoteCardMinHeight = kConfigCardMinHeight + (kMainPageInputHeight + 4) + 4;
 constexpr int kTcpWaveCardMinHeight = 430;
 constexpr int kCompactTcpWaveCardMinHeight = 560;
+constexpr int kAppSidebarIconOnlyBaseWidth = 56;
+constexpr int kAppSidebarFullBaseWidth = 122;
 constexpr int kMainCardResizeHandleHeight = 3;
 constexpr int kEnvStatusIconSize = 18;
 constexpr int kEpsilonSideTitleWidth = 24;
@@ -990,6 +992,7 @@ QIcon createLucideIcon(const QString& iconName, const QColor& color)
 
 constexpr const char *kSectionTitleIconNameProperty = "_vv_section_title_icon_name";
 constexpr const char *kSidebarIconNameProperty = "_vv_sidebar_icon_name";
+constexpr const char *kSidebarCompactProperty = "_vv_sidebar_compact";
 constexpr int kSectionTitleIconBoxSize = 26;
 constexpr int kSectionTitleIconSize = 22;
 
@@ -1569,6 +1572,8 @@ QAbstractScrollArea,
 QSplitter {
     background-color: @vv-window;
 }
+QSplitter#appLayoutSplitter,
+QSplitter#appLayoutSplitter > QWidget,
 QSplitter#mainContentSplitter,
 QSplitter#mainContentSplitter > QWidget {
     background-color: @vv-window;
@@ -1669,6 +1674,10 @@ QPushButton#appSidebarButton {
     font-weight: 600;
     padding: 6px 8px;
     text-align: left;
+}
+QPushButton#appSidebarButton[_vv_sidebar_compact="true"] {
+    padding: 6px;
+    text-align: center;
 }
 QPushButton#appSidebarButton:hover {
     background-color: @vv-primary-subtle;
@@ -2018,6 +2027,16 @@ QScrollBar::sub-line:horizontal {
 QSplitter::handle,
 QSplitter#mainContentSplitter::handle:horizontal {
     background-color: @vv-window;
+}
+QSplitter#appLayoutSplitter::handle:horizontal {
+    width: 8px;
+    background-color: @vv-window;
+}
+QSplitter#appLayoutSplitter::handle:horizontal:hover {
+    background-color: @vv-border;
+}
+QSplitter#appLayoutSplitter::handle:horizontal:pressed {
+    background-color: @vv-border;
 }
 QWidget#mainCardResizeHandle {
     min-height: 3px;
@@ -4893,6 +4912,7 @@ MainWindow::MainWindow(QWidget *parent)
     , log_filter_menu_(nullptr)
     , title_application_panel_(nullptr)
     , title_application_sub_panel_(nullptr)
+    , app_layout_splitter_(nullptr)
     , main_content_splitter_(nullptr)
     , app_sidebar_(nullptr)
     , app_nav_button_group_(nullptr)
@@ -4900,6 +4920,8 @@ MainWindow::MainWindow(QWidget *parent)
     , temperature_nav_btn_(nullptr)
     , device_config_nav_btn_(nullptr)
     , main_page_stack_(nullptr)
+    , app_sidebar_mode_(AppSidebarMode::Full)
+    , app_sidebar_adjusting_(false)
     , home_page_(nullptr)
     , temperature_page_(nullptr)
     , main_cards_scroll_area_(nullptr)
@@ -5360,6 +5382,7 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow()
 {
     qApp->removeEventFilter(this);
+    saveAppSidebarWidth();
 
     if (sky_device_config_dialog_)
     {
@@ -5510,6 +5533,14 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         }
     }
 
+    if (app_layout_splitter_ &&
+        watched == app_layout_splitter_->handle(1) &&
+        event->type() == QEvent::MouseButtonRelease)
+    {
+        updateAppSidebarForWidth(currentAppSidebarWidth(), true);
+        saveAppSidebarWidth();
+    }
+
     return QMainWindow::eventFilter(watched, event);
 }
 
@@ -5650,9 +5681,10 @@ void MainWindow::loadModernStyleSheet()
         base_style_sheet_ =
             "* { font-family: \"Segoe UI\", \"Microsoft YaHei\", \"PingFang SC\", sans-serif; }"
             "QMainWindow { background-color: @vv-surface; }"
-            "QWidget#appCentralWidget, QWidget#mainCardsPane, QFrame#appSidebar, QStackedWidget#mainPageStack, QWidget#temperaturePage, QWidget#deviceConfigPage, QWidget#logSidePanel, QMainWindow#sessionViewerWindow, QWidget#sessionViewerCentralWidget, QWidget#sessionViewerViewport, QWidget#sessionViewerContentPane, QScrollArea#mainCardsScrollArea, QScrollArea#sessionViewerScrollArea, QWidget#mainCardsViewport, QScrollArea#mainCardsScrollArea > QWidget, QScrollArea#mainCardsScrollArea > QWidget > QWidget, QScrollArea#sessionViewerScrollArea > QWidget, QScrollArea#sessionViewerScrollArea > QWidget > QWidget, QSplitter#mainContentSplitter, QSplitter#sessionViewerContentSplitter { background-color: @vv-surface; }"
+            "QWidget#appCentralWidget, QWidget#mainCardsPane, QFrame#appSidebar, QStackedWidget#mainPageStack, QWidget#temperaturePage, QWidget#deviceConfigPage, QWidget#logSidePanel, QMainWindow#sessionViewerWindow, QWidget#sessionViewerCentralWidget, QWidget#sessionViewerViewport, QWidget#sessionViewerContentPane, QScrollArea#mainCardsScrollArea, QScrollArea#sessionViewerScrollArea, QWidget#mainCardsViewport, QScrollArea#mainCardsScrollArea > QWidget, QScrollArea#mainCardsScrollArea > QWidget > QWidget, QScrollArea#sessionViewerScrollArea > QWidget, QScrollArea#sessionViewerScrollArea > QWidget > QWidget, QSplitter#appLayoutSplitter, QSplitter#mainContentSplitter, QSplitter#sessionViewerContentSplitter { background-color: @vv-surface; }"
             "QFrame#appSidebar { background-color: @vv-surface; border-right: 1px solid @vv-border; }"
             "QPushButton#appSidebarButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-weight: 600; padding: 6px 8px; text-align: left; }"
+            "QPushButton#appSidebarButton[_vv_sidebar_compact=\"true\"] { padding: 6px; text-align: center; }"
             "QPushButton#appSidebarButton:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
             "QPushButton#appSidebarButton:checked { background-color: @vv-primary; border-color: @vv-primary; color: @vv-white; }"
             "QLabel#pageTitleLabel { color: @vv-text; font-size: 18px; font-weight: 700; }"
@@ -5748,6 +5780,9 @@ void MainWindow::loadModernStyleSheet()
             "QScrollBar::add-page:horizontal:hover, QScrollBar::sub-page:horizontal:hover, QScrollBar::add-page:horizontal:pressed, QScrollBar::sub-page:horizontal:pressed { background-color: @vv-surface-sunken; }"
             "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0px; background-color: @vv-surface-sunken; }"
             "QSplitter::handle { background-color: transparent; }"
+            "QSplitter#appLayoutSplitter::handle:horizontal { width: 8px; background-color: transparent; }"
+            "QSplitter#appLayoutSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
+            "QSplitter#appLayoutSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
             "QSplitter#mainContentSplitter::handle:horizontal { width: 1px; background-color: transparent; }"
             "QWidget#mainCardResizeHandle { min-height: 3px; max-height: 3px; background-color: transparent; }"
             "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
@@ -5756,6 +5791,9 @@ void MainWindow::loadModernStyleSheet()
             "QWidget#mainCardResizeHandle[dragging=\"true\"] { background-color: @vv-resize-pressed; }"
             "QSplitter::handle:horizontal { width: 0px; }"
             "QSplitter::handle:vertical { height: 0px; }"
+            "QSplitter#appLayoutSplitter::handle:horizontal { width: 8px; background-color: @vv-window; }"
+            "QSplitter#appLayoutSplitter::handle:horizontal:hover { background-color: @vv-border; }"
+            "QSplitter#appLayoutSplitter::handle:horizontal:pressed { background-color: @vv-border; }"
             "QSplitter#mainContentSplitter::handle:horizontal { width: 1px; background-color: @vv-border; }"
             "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#mainContentSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
@@ -5831,6 +5869,120 @@ int MainWindow::minimumLogSidePanelWidth() const
     const int cardMargins = scalePixels(2);
     const int safetyPadding = scalePixels(12);
     return titleBarMargins + titleClusterWidth + titleBarSpacing + actionButtonsWidth + cardMargins + safetyPadding;
+}
+
+int MainWindow::appSidebarIconOnlyWidth() const
+{
+    return std::max(48, scalePixels(kAppSidebarIconOnlyBaseWidth));
+}
+
+int MainWindow::appSidebarDefaultWidth() const
+{
+    return std::max(96, scalePixels(kAppSidebarFullBaseWidth));
+}
+
+int MainWindow::currentAppSidebarWidth() const
+{
+    if (!app_layout_splitter_)
+    {
+        return appSidebarDefaultWidth();
+    }
+
+    const QList<int> sizes = app_layout_splitter_->sizes();
+    return sizes.isEmpty() ? appSidebarDefaultWidth() : std::max(0, sizes.at(0));
+}
+
+void MainWindow::saveAppSidebarWidth() const
+{
+    QSettings settings("VaporView", "MainWindow");
+    settings.setValue(QStringLiteral("app_sidebar_width"), currentAppSidebarWidth());
+}
+
+void MainWindow::setAppSidebarWidth(int width)
+{
+    if (!app_layout_splitter_)
+    {
+        return;
+    }
+
+    const int sidebarWidth = std::max(0, width);
+    const int splitterWidth = app_layout_splitter_->width();
+    const int handleWidth = app_layout_splitter_->handleWidth();
+    const int contentWidth = splitterWidth > sidebarWidth + handleWidth
+        ? std::max(1, splitterWidth - sidebarWidth - handleWidth)
+        : 1600;
+
+    const QSignalBlocker blocker(app_layout_splitter_);
+    app_sidebar_adjusting_ = true;
+    app_layout_splitter_->setSizes({sidebarWidth, contentWidth});
+    app_sidebar_adjusting_ = false;
+}
+
+void MainWindow::updateAppSidebarButtonTexts()
+{
+    const bool compact = app_sidebar_mode_ != AppSidebarMode::Full;
+    auto applyButtonText = [this, compact](QPushButton *button, const QString& label) {
+        if (!button)
+        {
+            return;
+        }
+        button->setText(compact ? QString() : label);
+        button->setToolTip(label);
+        button->setStatusTip(label);
+        button->setAccessibleName(label);
+        button->setProperty(kSidebarCompactProperty, compact);
+        if (button->style())
+        {
+            button->style()->unpolish(button);
+            button->style()->polish(button);
+        }
+        button->update();
+    };
+
+    applyButtonText(home_nav_btn_, is_english_ ? QStringLiteral("Home") : QStringLiteral("首页"));
+    applyButtonText(temperature_nav_btn_, is_english_ ? QStringLiteral("Thermal") : QStringLiteral("温控"));
+    applyButtonText(device_config_nav_btn_, is_english_ ? QStringLiteral("Device") : QStringLiteral("设备配置"));
+}
+
+void MainWindow::updateAppSidebarForWidth(int width, bool snapToNearest)
+{
+    const int normalizedWidth = std::max(0, width);
+    const int iconOnlyWidth = appSidebarIconOnlyWidth();
+    const int fullWidth = appSidebarDefaultWidth();
+    const int collapsedThreshold = std::max(8, iconOnlyWidth / 2);
+    const int fullThreshold = (iconOnlyWidth + fullWidth) / 2;
+
+    AppSidebarMode mode = AppSidebarMode::Full;
+    int snapWidth = -1;
+    if (normalizedWidth <= collapsedThreshold)
+    {
+        mode = AppSidebarMode::Collapsed;
+        snapWidth = 0;
+    }
+    else if (normalizedWidth < fullThreshold)
+    {
+        mode = AppSidebarMode::IconsOnly;
+        snapWidth = iconOnlyWidth;
+    }
+    else
+    {
+        mode = AppSidebarMode::Full;
+        if (normalizedWidth < fullWidth)
+        {
+            snapWidth = fullWidth;
+        }
+    }
+
+    if (app_sidebar_mode_ != mode)
+    {
+        app_sidebar_mode_ = mode;
+        updateAppSidebarButtonTexts();
+    }
+
+    if (snapToNearest && snapWidth >= 0 && snapWidth != normalizedWidth)
+    {
+        setAppSidebarWidth(snapWidth);
+    }
 }
 
 void MainWindow::setLogSidePanelToMinimumWidth()
@@ -6226,6 +6378,11 @@ void MainWindow::applyStyleConfiguration()
     qApp->setStyleSheet(scaledStyleSheet(themedStyleSheet()));
     setWindowsTitleBarDark(this, dark_theme_enabled_);
     applyScaledUiMetrics();
+    if (app_layout_splitter_)
+    {
+        updateAppSidebarForWidth(currentAppSidebarWidth(), true);
+    }
+    updateAppSidebarButtonTexts();
     updateThemedIcons();
     updateCustomTitleBarStyle();
     updateResponsiveHomeLayout();
@@ -8653,37 +8810,6 @@ void MainWindow::setupCentralWidget()
     main_h_layout->setSpacing(0);
     main_h_layout->setContentsMargins(8, 8, 8, 8);
 
-    app_sidebar_ = new QFrame(central_widget_);
-    app_sidebar_->setObjectName(QStringLiteral("appSidebar"));
-    app_sidebar_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
-    app_sidebar_->setFixedWidth(122);
-    auto *sidebarLayout = new QVBoxLayout(app_sidebar_);
-    sidebarLayout->setContentsMargins(6, 6, 6, 6);
-    sidebarLayout->setSpacing(6);
-    app_nav_button_group_ = new QButtonGroup(this);
-    app_nav_button_group_->setExclusive(true);
-    auto createNavButton = [this, sidebarLayout](const QString& text, const QString& iconName) {
-        auto *button = new QPushButton(text, app_sidebar_);
-        button->setObjectName(QStringLiteral("appSidebarButton"));
-        button->setProperty(kSidebarIconNameProperty, iconName);
-        button->setCheckable(true);
-        button->setFixedHeight(44);
-        button->setIconSize(QSize(18, 18));
-        button->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        sidebarLayout->addWidget(button);
-        return button;
-    };
-    home_nav_btn_ = createNavButton(QStringLiteral("首页"), QStringLiteral("square-activity"));
-    temperature_nav_btn_ = createNavButton(QStringLiteral("温控"), QStringLiteral("timer"));
-    device_config_nav_btn_ = createNavButton(QStringLiteral("设备配置"), QStringLiteral("sliders-vertical"));
-    app_nav_button_group_->addButton(home_nav_btn_, 0);
-    app_nav_button_group_->addButton(temperature_nav_btn_, 1);
-    app_nav_button_group_->addButton(device_config_nav_btn_, 2);
-    sidebarLayout->addStretch(1);
-    home_nav_btn_->setChecked(true);
-    updateSidebarNavIcons();
-    main_h_layout->addWidget(app_sidebar_);
-
     main_page_stack_ = new QStackedWidget(central_widget_);
     main_page_stack_->setObjectName(QStringLiteral("mainPageStack"));
     main_page_stack_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -8716,6 +8842,53 @@ void MainWindow::setupCentralWidget()
 
     setupLogPanel();
 
+    app_sidebar_ = new QFrame(central_widget_);
+    app_sidebar_->setObjectName(QStringLiteral("appSidebar"));
+    app_sidebar_->setAttribute(Qt::WA_StyledBackground, true);
+    app_sidebar_->setAutoFillBackground(true);
+    app_sidebar_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
+    app_sidebar_->setMinimumWidth(0);
+    app_sidebar_->setMaximumWidth(QWIDGETSIZE_MAX);
+    auto *sidebarLayout = new QVBoxLayout(app_sidebar_);
+    sidebarLayout->setContentsMargins(6, 6, 6, 6);
+    sidebarLayout->setSpacing(6);
+    app_nav_button_group_ = new QButtonGroup(this);
+    app_nav_button_group_->setExclusive(true);
+    auto createNavButton = [this, sidebarLayout](const QString& text, const QString& iconName) {
+        auto *button = new QPushButton(text, app_sidebar_);
+        button->setObjectName(QStringLiteral("appSidebarButton"));
+        button->setProperty(kSidebarIconNameProperty, iconName);
+        button->setProperty(kSidebarCompactProperty, false);
+        button->setCheckable(true);
+        button->setMinimumWidth(0);
+        button->setMaximumWidth(QWIDGETSIZE_MAX);
+        button->setFixedHeight(44);
+        button->setIconSize(QSize(18, 18));
+        button->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        button->setToolTip(text);
+        button->setStatusTip(text);
+        button->setAccessibleName(text);
+        sidebarLayout->addWidget(button);
+        return button;
+    };
+    home_nav_btn_ = createNavButton(QStringLiteral("首页"), QStringLiteral("square-activity"));
+    temperature_nav_btn_ = createNavButton(QStringLiteral("温控"), QStringLiteral("timer"));
+    device_config_nav_btn_ = createNavButton(QStringLiteral("设备配置"), QStringLiteral("sliders-vertical"));
+    app_nav_button_group_->addButton(home_nav_btn_, 0);
+    app_nav_button_group_->addButton(temperature_nav_btn_, 1);
+    app_nav_button_group_->addButton(device_config_nav_btn_, 2);
+    sidebarLayout->addStretch(1);
+    home_nav_btn_->setChecked(true);
+    updateSidebarNavIcons();
+
+    app_layout_splitter_ = new QSplitter(Qt::Horizontal, central_widget_);
+    app_layout_splitter_->setObjectName(QStringLiteral("appLayoutSplitter"));
+    app_layout_splitter_->setAttribute(Qt::WA_StyledBackground, true);
+    app_layout_splitter_->setAutoFillBackground(true);
+    app_layout_splitter_->setChildrenCollapsible(true);
+    app_layout_splitter_->setHandleWidth(8);
+    app_layout_splitter_->addWidget(app_sidebar_);
+
     main_content_splitter_ = new QSplitter(Qt::Horizontal, central_widget_);
     main_content_splitter_->setObjectName("mainContentSplitter");
     main_content_splitter_->setAttribute(Qt::WA_StyledBackground, true);
@@ -8747,6 +8920,35 @@ void MainWindow::setupCentralWidget()
         }
         updateResponsiveHomeLayout();
         queueResponsiveHomeLayoutRefresh();
+    });
+
+    app_layout_splitter_->addWidget(main_content_splitter_);
+    if (QSplitterHandle *handle = app_layout_splitter_->handle(1))
+    {
+        handle->installEventFilter(this);
+    }
+    app_layout_splitter_->setCollapsible(0, true);
+    app_layout_splitter_->setCollapsible(1, false);
+    app_layout_splitter_->setStretchFactor(0, 0);
+    app_layout_splitter_->setStretchFactor(1, 1);
+    {
+        QSettings settings("VaporView", "MainWindow");
+        const int initialAppSidebarWidth = std::max(0, settings.value(
+            QStringLiteral("app_sidebar_width"),
+            appSidebarDefaultWidth()).toInt());
+        app_layout_splitter_->setSizes({initialAppSidebarWidth, 1600});
+    }
+    connect(app_layout_splitter_, &QSplitter::splitterMoved, this, [this]() {
+        if (app_sidebar_adjusting_ || !app_layout_splitter_)
+        {
+            return;
+        }
+        const QList<int> sizes = app_layout_splitter_->sizes();
+        if (sizes.size() < 2)
+        {
+            return;
+        }
+        updateAppSidebarForWidth(sizes.at(0), false);
     });
 
     home_page_ = main_cards_scroll_area_;
@@ -8785,7 +8987,8 @@ void MainWindow::setupCentralWidget()
         }
         updateSidebarNavIcons();
     });
-    main_h_layout->addWidget(main_content_splitter_, 1);
+    main_h_layout->addWidget(app_layout_splitter_, 1);
+    updateAppSidebarForWidth(currentAppSidebarWidth(), true);
 }
 
 void MainWindow::setupDeviceConfigPage()
@@ -10412,9 +10615,7 @@ void MainWindow::setEnglish(bool english)
     {
         log_inline_title_lbl_->setText(english ? "Log" : "日志");
     }
-    if (home_nav_btn_) home_nav_btn_->setText(english ? "Home" : "首页");
-    if (temperature_nav_btn_) temperature_nav_btn_->setText(english ? "Thermal" : "温控");
-    if (device_config_nav_btn_) device_config_nav_btn_->setText(english ? "Device" : "设备配置");
+    updateAppSidebarButtonTexts();
     if (temperature_page_title_lbl_) temperature_page_title_lbl_->setText(english ? "RD105 Temperature Control" : "RD105温控页");
     if (recording_status_title_lbl_)
     {
@@ -10701,6 +10902,7 @@ void MainWindow::updateThemedIcons()
     {
         session_viewer_action_->setIcon(createWaveformViewerIcon());
     }
+    updateSidebarNavIcons();
     if (log_filter_btn_)
     {
         log_filter_btn_->setIcon(createLogFilterIcon());
