@@ -1089,14 +1089,19 @@ QToolButton#homeDeviceActionButton {
     padding: 2px;
 }
 
+QToolButton#homeDeviceActionButton:disabled {
+    background-color: @vv-surface-alt;
+    border-color: @vv-border;
+}
+
 QToolButton#homeDeviceActionButton[state="disconnected"] {
     background-color: @vv-success-bg;
     border-color: @vv-success;
 }
 
 QToolButton#homeDeviceActionButton[state="connecting"] {
-    background-color: @vv-primary-subtle;
-    border-color: @vv-primary;
+    background-color: @vv-success-bg;
+    border-color: @vv-success;
 }
 
 QToolButton#homeDeviceActionButton[state="connected"] {
@@ -1107,11 +1112,6 @@ QToolButton#homeDeviceActionButton[state="connected"] {
 QToolButton#homeDeviceActionButton:hover {
     background-color: @vv-primary-subtle;
     border-color: @vv-border-strong;
-}
-
-QToolButton#homeDeviceActionButton:disabled {
-    background-color: @vv-surface-alt;
-    border-color: @vv-border;
 }
 
 /* 状态指示器 */

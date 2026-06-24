@@ -1027,14 +1027,19 @@ QIcon createRotatedLucideIcon(const QString& iconName, const QColor& color, int 
     rotated.setDevicePixelRatio(source.devicePixelRatio());
     rotated.fill(Qt::transparent);
 
+    const QSizeF logicalSize = source.deviceIndependentSize();
     QPainter painter(&rotated);
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
-    painter.translate(rotated.width() / 2.0, rotated.height() / 2.0);
+    painter.translate(logicalSize.width() / 2.0, logicalSize.height() / 2.0);
     painter.rotate(degrees);
-    painter.translate(-source.width() / 2.0, -source.height() / 2.0);
-    painter.drawPixmap(0, 0, source);
-    return QIcon(rotated);
+    painter.translate(-logicalSize.width() / 2.0, -logicalSize.height() / 2.0);
+    painter.drawPixmap(QPointF(0.0, 0.0), source);
+
+    QIcon icon;
+    icon.addPixmap(rotated, QIcon::Normal);
+    icon.addPixmap(rotated, QIcon::Disabled);
+    return icon;
 }
 
 constexpr const char *kSectionTitleIconNameProperty = "_vv_section_title_icon_name";
@@ -2199,13 +2204,17 @@ QToolButton#homeDeviceActionButton {
     border-radius: 7px;
     padding: 2px;
 }
+QToolButton#homeDeviceActionButton:disabled {
+    background-color: @vv-surface-alt;
+    border-color: @vv-border;
+}
 QToolButton#homeDeviceActionButton[state="disconnected"] {
     background-color: @vv-success-bg;
     border-color: @vv-success;
 }
 QToolButton#homeDeviceActionButton[state="connecting"] {
-    background-color: @vv-primary-subtle;
-    border-color: @vv-primary;
+    background-color: @vv-success-bg;
+    border-color: @vv-success;
 }
 QToolButton#homeDeviceActionButton[state="connected"] {
     background-color: @vv-danger-bg;
@@ -2214,10 +2223,6 @@ QToolButton#homeDeviceActionButton[state="connected"] {
 QToolButton#homeDeviceActionButton:hover {
     background-color: @vv-primary-subtle;
     border-color: @vv-border-strong;
-}
-QToolButton#homeDeviceActionButton:disabled {
-    background-color: @vv-surface-alt;
-    border-color: @vv-border;
 }
 QLabel#statusIndicator[status="connected"] {
     background-color: @vv-success-bg;
@@ -14796,8 +14801,8 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         button->setEnabled(enabled);
         if (connecting)
         {
-            button->setIcon(createRotatedLucideIcon(QStringLiteral("refresh-cw"),
-                                                    toolbarColor(AppThemeColor::ToolbarBlue),
+            button->setIcon(createRotatedLucideIcon(QStringLiteral("link"),
+                                                    toolbarColor(AppThemeColor::ToolbarGreen),
                                                     (home_device_action_spinner_step_ % 12) * 30));
         }
         else
