@@ -1771,9 +1771,9 @@ QPushButton#appSidebarButton:hover {
     color: @vv-primary;
 }
 QPushButton#appSidebarButton:checked {
-    background-color: @vv-primary;
-    border-color: @vv-primary;
-    color: @vv-white;
+    background-color: transparent;
+    border-color: transparent;
+    color: @vv-text;
 }
 QLabel#pageTitleLabel {
     color: @vv-text;
@@ -6046,7 +6046,7 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton#appSidebarButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-weight: 600; padding: 6px 8px; text-align: left; }"
             "QPushButton#appSidebarButton[_vv_sidebar_compact=\"true\"] { padding: 6px; text-align: center; }"
             "QPushButton#appSidebarButton:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
-            "QPushButton#appSidebarButton:checked { background-color: @vv-primary; border-color: @vv-primary; color: @vv-white; }"
+            "QPushButton#appSidebarButton:checked { background-color: transparent; border-color: transparent; color: @vv-text; }"
             "QLabel#pageTitleLabel { color: @vv-text; font-size: 18px; font-weight: 700; }"
             "QPushButton#dangerButton { background-color: @vv-danger; border: 1px solid @vv-danger; border-radius: 6px; color: @vv-white; font-weight: 700; padding: 6px 14px; }"
             "QPushButton#dangerButton[temperatureOverviewControl=\"true\"] { border-radius: 10px; padding: 1px 12px; }"
