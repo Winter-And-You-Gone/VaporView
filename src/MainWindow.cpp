@@ -6364,7 +6364,7 @@ void MainWindow::updateAppSidebarForWidth(int width, bool snapToNearest)
     }
 
     const int snapWidth = snappedAppSidebarWidth(normalizedWidth);
-    if ((snapToNearest || mode != AppSidebarMode::Full) && snapWidth != normalizedWidth)
+    if (snapToNearest && snapWidth != normalizedWidth)
     {
         setAppSidebarWidth(snapWidth);
     }
