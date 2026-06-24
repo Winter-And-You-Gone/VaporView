@@ -689,6 +689,16 @@ QString fixedDecimalWithUnit(double value, int decimals, int numberWidth, const 
         : QStringLiteral("%1 %2").arg(fixedTextField(number, numberWidth), unit);
 }
 
+QString compactDecimalWithUnit(double value, int decimals, const QString& unit)
+{
+    const QString number = std::isfinite(value)
+        ? QString::number(value, 'f', decimals)
+        : QStringLiteral("---");
+    return unit.isEmpty()
+        ? number
+        : QStringLiteral("%1 %2").arg(number, unit);
+}
+
 std::string epsilonGnssFixTextForCode(int fix_code)
 {
     switch (fix_code)
@@ -4525,8 +4535,8 @@ public:
         setObjectName(QStringLiteral("temperatureOverviewPanel"));
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-        constexpr int kOverviewSummaryWidth = 148;
-        constexpr int kOverviewControlWidth = 148;
+        constexpr int kOverviewControlWidth = 99;
+        constexpr int kOverviewSummaryWidth = kOverviewControlWidth;
         constexpr int kOverviewPillHeight = 34;
         constexpr int kOverviewOutputPillHeight = 66;
 
@@ -4734,18 +4744,16 @@ private:
         setTemperatureOverviewPillText(
             header_current_temp_value_,
             is_english_ ? QStringLiteral("Current") : QStringLiteral("当前"),
-            fixedDecimalWithUnit(measuredValid ? channel.measured_temperature_c : std::numeric_limits<double>::quiet_NaN(),
-                                 3,
-                                 8,
-                                 QStringLiteral("°C")),
+            compactDecimalWithUnit(measuredValid ? channel.measured_temperature_c : std::numeric_limits<double>::quiet_NaN(),
+                                   3,
+                                   QStringLiteral("°C")),
             measuredValid);
         setTemperatureOverviewPillText(
             target_temp_value_,
             is_english_ ? QStringLiteral("Target") : QStringLiteral("目标"),
-            fixedDecimalWithUnit(targetValid ? channel.target_temperature_c : std::numeric_limits<double>::quiet_NaN(),
-                                 3,
-                                 8,
-                                 QStringLiteral("°C")),
+            compactDecimalWithUnit(targetValid ? channel.target_temperature_c : std::numeric_limits<double>::quiet_NaN(),
+                                   3,
+                                   QStringLiteral("°C")),
             targetValid);
         if (output_switch_button_)
         {
@@ -6082,7 +6090,7 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#homeTelemetrySummaryPill { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; color: @vv-text; font-size: 13px; font-weight: 600; padding: 1px 8px; margin: 0px; }"
             "QLabel#homeTelemetrySummaryPill[hasData=\"true\"] { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; color: @vv-text; }"
             "QLabel#homeTelemetrySummaryPill[hasData=\"false\"] { background-color: @vv-surface-alt; border: 1px solid @vv-border; color: @vv-text-muted; }"
-            "QLabel#temperatureOverviewValuePill { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-muted; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; padding: 1px 9px; margin: 0px; }"
+            "QLabel#temperatureOverviewValuePill { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-muted; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 12px; font-weight: 700; padding: 1px 4px; margin: 0px; }"
             "QLabel#temperatureOverviewValuePill[hasData=\"true\"] { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; color: @vv-text; }"
             "QLabel#temperatureOverviewValuePill[hasData=\"false\"] { background-color: @vv-surface-alt; border: 1px solid @vv-border; color: @vv-text-muted; }"
             "QPushButton#temperatureOverviewOutputSwitch { background-color: transparent; border: none; min-height: 66px; max-height: 66px; padding: 0px; margin: 0px; color: @vv-text; font-size: 13px; font-weight: 700; }"
