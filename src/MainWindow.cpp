@@ -4340,7 +4340,7 @@ public:
     {
         setCheckable(true);
         setCursor(Qt::PointingHandCursor);
-        setFocusPolicy(Qt::StrongFocus);
+        setFocusPolicy(Qt::TabFocus);
         setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         thumb_position_ = isChecked() ? 1.0 : 0.0;
         thumb_animation_ = new QVariantAnimation(this);
