@@ -4390,25 +4390,38 @@ protected:
         painter.setRenderHint(QPainter::Antialiasing, true);
 
         const QRectF pillRect = rect().adjusted(0.5, 0.5, -0.5, -0.5);
+        constexpr qreal kControlRadius = 10.0;
         painter.setPen(QPen(border, 1.0));
         painter.setBrush(fill);
-        painter.drawRoundedRect(pillRect, pillRect.height() / 2.0, pillRect.height() / 2.0);
+        painter.drawRoundedRect(pillRect, kControlRadius, kControlRadius);
 
         const qreal gap = 3.0;
         const QRectF trackRect = pillRect.adjusted(gap, gap, -gap, -gap);
-        const qreal segmentWidth = trackRect.width() / 2.0;
-        const qreal selectedLeft = trackRect.left() + segmentWidth * thumb_position_;
-        const QRectF selectedRect(selectedLeft, trackRect.top(), segmentWidth, trackRect.height());
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(selectedFill);
-        painter.drawRoundedRect(selectedRect, selectedRect.height() / 2.0, selectedRect.height() / 2.0);
-
         QFont buttonFont = font();
         buttonFont.setWeight(QFont::DemiBold);
         painter.setFont(buttonFont);
 
-        const QRectF offRect(trackRect.left(), trackRect.top(), segmentWidth, trackRect.height());
-        const QRectF onRect(trackRect.left() + segmentWidth, trackRect.top(), segmentWidth, trackRect.height());
+        const QString labelText = is_english_ ? QStringLiteral("Output") : QStringLiteral("输出");
+        const qreal labelWidth = std::clamp<qreal>(QFontMetrics(buttonFont).horizontalAdvance(labelText) + 14.0,
+                                                   is_english_ ? 52.0 : 40.0,
+                                                   is_english_ ? 58.0 : 44.0);
+        const QRectF labelRect(trackRect.left(), trackRect.top(), labelWidth, trackRect.height());
+        const qreal labelGap = 2.0;
+        const QRectF switchRect(labelRect.right() + labelGap,
+                                trackRect.top(),
+                                std::max<qreal>(0.0, trackRect.right() - labelRect.right() - labelGap),
+                                trackRect.height());
+        const qreal segmentWidth = switchRect.width() / 2.0;
+        const qreal selectedLeft = switchRect.left() + segmentWidth * thumb_position_;
+        const QRectF selectedRect(selectedLeft, switchRect.top(), segmentWidth, switchRect.height());
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(selectedFill);
+        painter.drawRoundedRect(selectedRect, kControlRadius - gap, kControlRadius - gap);
+
+        painter.setPen(text);
+        painter.drawText(labelRect, Qt::AlignCenter, labelText);
+        const QRectF offRect(switchRect.left(), switchRect.top(), segmentWidth, switchRect.height());
+        const QRectF onRect(switchRect.left() + segmentWidth, switchRect.top(), segmentWidth, switchRect.height());
         const bool offSelected = thumb_position_ < 0.5;
         painter.setPen(offSelected ? selectedText : inactiveText);
         painter.drawText(offRect, Qt::AlignCenter, offText());
@@ -4420,8 +4433,8 @@ protected:
             painter.setPen(QPen(appThemeColor(AppThemeColor::Focus, dark), 1.0));
             painter.setBrush(Qt::NoBrush);
             painter.drawRoundedRect(pillRect.adjusted(2.0, 2.0, -2.0, -2.0),
-                                    (pillRect.height() - 4.0) / 2.0,
-                                    (pillRect.height() - 4.0) / 2.0);
+                                    kControlRadius - 2.0,
+                                    kControlRadius - 2.0);
         }
     }
 
