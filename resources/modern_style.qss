@@ -203,6 +203,11 @@ QPushButton#dangerButton:pressed {
     border-color: @vv-danger;
 }
 
+QPushButton#dangerButton[temperatureOverviewControl="true"] {
+    border-radius: 10px;
+    padding: 1px 12px;
+}
+
 QGroupBox#sensorRowContainer {
     margin-top: 0px;
     background-color: transparent;
@@ -422,7 +427,7 @@ QLabel#homeTelemetrySummaryPill[hasData="false"] {
 QLabel#temperatureOverviewValuePill {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;
-    border-radius: 8px;
+    border-radius: 10px;
     color: @vv-text-muted;
     font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 13px;
@@ -446,7 +451,7 @@ QLabel#temperatureOverviewValuePill[hasData="false"] {
 QToolButton#temperatureOverviewChannelButton {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;
-    border-radius: 8px;
+    border-radius: 10px;
     color: @vv-text;
     font-size: 13px;
     font-weight: 700;

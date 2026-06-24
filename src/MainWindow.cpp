@@ -4378,7 +4378,7 @@ protected:
         painter.setBrush(fill);
         painter.drawRoundedRect(pillRect, pillRect.height() / 2.0, pillRect.height() / 2.0);
 
-        const QRectF switchRect(width() - 46.0, (height() - 18.0) / 2.0, 34.0, 18.0);
+        const QRectF switchRect(width() - 48.0, (height() - 18.0) / 2.0, 34.0, 18.0);
         painter.setPen(Qt::NoPen);
         painter.setBrush(track);
         painter.drawRoundedRect(switchRect, 9.0, 9.0);
@@ -4392,7 +4392,7 @@ protected:
         QFont buttonFont = font();
         buttonFont.setWeight(QFont::DemiBold);
         painter.setFont(buttonFont);
-        painter.drawText(rect().adjusted(12, 0, 50, 0),
+        painter.drawText(rect().adjusted(14, 0, 52, 0),
                          Qt::AlignLeft | Qt::AlignVCenter,
                          displayText());
 
@@ -4437,28 +4437,24 @@ public:
         setObjectName(QStringLiteral("temperatureOverviewPanel"));
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-        constexpr int kOverviewSummaryWidth = 228;
-        constexpr int kOverviewChannelWidth = 98;
-        constexpr int kOverviewTargetWidth = 114;
-        constexpr int kOverviewSwitchWidth = 126;
-        constexpr int kOverviewPillHeight = 32;
-        constexpr int kOverviewEmergencyWidth = 82;
+        constexpr int kOverviewSummaryWidth = 148;
+        constexpr int kOverviewControlWidth = 148;
+        constexpr int kOverviewPillHeight = 34;
 
         auto *layout = new QHBoxLayout(this);
-        layout->setContentsMargins(10, 6, 10, 8);
-        layout->setSpacing(8);
+        layout->setContentsMargins(8, 6, 8, 8);
+        layout->setSpacing(7);
 
         auto *summary = new QWidget(this);
-        summary->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+        summary->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
         summary->setFixedWidth(kOverviewSummaryWidth);
-        auto *summaryLayout = new QGridLayout(summary);
+        auto *summaryLayout = new QVBoxLayout(summary);
         summaryLayout->setContentsMargins(0, 0, 0, 0);
-        summaryLayout->setHorizontalSpacing(8);
-        summaryLayout->setVerticalSpacing(4);
+        summaryLayout->setSpacing(4);
 
         channel_button_ = new QToolButton(summary);
         channel_button_->setObjectName(QStringLiteral("temperatureOverviewChannelButton"));
-        channel_button_->setFixedSize(kOverviewChannelWidth, kOverviewPillHeight);
+        channel_button_->setFixedSize(kOverviewControlWidth, kOverviewPillHeight);
         channel_button_->setPopupMode(QToolButton::InstantPopup);
         channel_button_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
         channel_button_->setLayoutDirection(Qt::RightToLeft);
@@ -4474,28 +4470,29 @@ public:
         connect(channel_action_1_, &QAction::triggered, this, [this]() { selectChannel(0); });
         connect(channel_action_2_, &QAction::triggered, this, [this]() { selectChannel(1); });
         channel_button_->setMenu(channel_menu_);
-        summaryLayout->addWidget(channel_button_, 0, 0, Qt::AlignLeft | Qt::AlignTop);
+        summaryLayout->addWidget(channel_button_);
 
         target_temp_value_ = new QLabel(summary);
         target_temp_value_->setObjectName(QStringLiteral("temperatureOverviewValuePill"));
         target_temp_value_->setAlignment(Qt::AlignCenter);
-        target_temp_value_->setFixedSize(kOverviewTargetWidth, kOverviewPillHeight);
+        target_temp_value_->setFixedSize(kOverviewControlWidth, kOverviewPillHeight);
         target_temp_value_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        summaryLayout->addWidget(target_temp_value_, 0, 1, Qt::AlignLeft | Qt::AlignTop);
+        summaryLayout->addWidget(target_temp_value_);
 
         output_switch_button_ = new TemperatureOverviewSwitchButton(summary);
-        output_switch_button_->setFixedSize(kOverviewSwitchWidth, kOverviewPillHeight);
+        output_switch_button_->setFixedSize(kOverviewControlWidth, kOverviewPillHeight);
         connect(output_switch_button_, &QPushButton::clicked, this, [this](bool checked) {
             if (output_enabled_callback_)
             {
                 output_enabled_callback_(currentChannelNumber(), checked);
             }
         });
-        summaryLayout->addWidget(output_switch_button_, 1, 0, Qt::AlignLeft | Qt::AlignTop);
+        summaryLayout->addWidget(output_switch_button_);
 
         emergency_stop_button_ = new QPushButton(summary);
         emergency_stop_button_->setObjectName(QStringLiteral("dangerButton"));
-        emergency_stop_button_->setFixedSize(kOverviewEmergencyWidth, kOverviewPillHeight);
+        emergency_stop_button_->setProperty("temperatureOverviewControl", true);
+        emergency_stop_button_->setFixedSize(kOverviewControlWidth, kOverviewPillHeight);
         emergency_stop_button_->setIconSize(QSize(16, 16));
         connect(emergency_stop_button_, &QPushButton::clicked, this, [this]() {
             if (emergency_stop_callback_)
@@ -4503,7 +4500,8 @@ public:
                 emergency_stop_callback_();
             }
         });
-        summaryLayout->addWidget(emergency_stop_button_, 1, 1, Qt::AlignLeft | Qt::AlignTop);
+        summaryLayout->addWidget(emergency_stop_button_);
+        summaryLayout->addStretch(1);
         layout->addWidget(summary, 0, Qt::AlignTop);
 
         auto *divider = new QFrame(this);
@@ -5972,6 +5970,7 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton#appSidebarButton:checked { background-color: @vv-primary; border-color: @vv-primary; color: @vv-white; }"
             "QLabel#pageTitleLabel { color: @vv-text; font-size: 18px; font-weight: 700; }"
             "QPushButton#dangerButton { background-color: @vv-danger; border: 1px solid @vv-danger; border-radius: 6px; color: @vv-white; font-weight: 700; padding: 6px 14px; }"
+            "QPushButton#dangerButton[temperatureOverviewControl=\"true\"] { border-radius: 10px; padding: 1px 12px; }"
             "QMenuBar { background-color: @vv-surface; border-bottom: 1px solid @vv-border; padding: 4px 8px; }"
             "QMenuBar::item { background-color: transparent; padding: 6px 12px; border-radius: 4px; color: @vv-text; }"
             "QMenuBar::item:selected { background-color: @vv-primary-subtle; color: @vv-primary; }"
@@ -6021,10 +6020,10 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#homeTelemetrySummaryPill { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; color: @vv-text; font-size: 13px; font-weight: 600; padding: 1px 8px; margin: 0px; }"
             "QLabel#homeTelemetrySummaryPill[hasData=\"true\"] { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; color: @vv-text; }"
             "QLabel#homeTelemetrySummaryPill[hasData=\"false\"] { background-color: @vv-surface-alt; border: 1px solid @vv-border; color: @vv-text-muted; }"
-            "QLabel#temperatureOverviewValuePill { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; color: @vv-text-muted; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; padding: 1px 9px; margin: 0px; }"
+            "QLabel#temperatureOverviewValuePill { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-muted; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; padding: 1px 9px; margin: 0px; }"
             "QLabel#temperatureOverviewValuePill[hasData=\"true\"] { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; color: @vv-text; }"
             "QLabel#temperatureOverviewValuePill[hasData=\"false\"] { background-color: @vv-surface-alt; border: 1px solid @vv-border; color: @vv-text-muted; }"
-            "QToolButton#temperatureOverviewChannelButton { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; color: @vv-text; font-size: 13px; font-weight: 700; padding: 1px 8px; }"
+            "QToolButton#temperatureOverviewChannelButton { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text; font-size: 13px; font-weight: 700; padding: 1px 8px; }"
             "QToolButton#temperatureOverviewChannelButton:hover, QToolButton#temperatureOverviewChannelButton:pressed { background-color: @vv-primary-subtle; border-color: @vv-primary-subtle-pressed; }"
             "QToolButton#temperatureOverviewChannelButton::menu-indicator { image: none; width: 0px; height: 0px; }"
             "QFrame#homeOverviewDivider { background-color: @vv-border; border: none; min-width: 1px; max-width: 1px; }"
@@ -6209,6 +6208,11 @@ void MainWindow::setAppSidebarWidth(int width)
     }
 
     const int sidebarWidth = std::max(0, width);
+    if (app_sidebar_)
+    {
+        app_sidebar_->setMinimumWidth(sidebarWidth);
+        app_sidebar_->setMaximumWidth(sidebarWidth);
+    }
     const int splitterWidth = app_layout_splitter_->width();
     const int handleWidth = app_layout_splitter_->handleWidth();
     const int contentWidth = splitterWidth > sidebarWidth + handleWidth
@@ -6219,6 +6223,11 @@ void MainWindow::setAppSidebarWidth(int width)
     app_sidebar_adjusting_ = true;
     app_layout_splitter_->setSizes({sidebarWidth, contentWidth});
     app_sidebar_adjusting_ = false;
+    if (app_sidebar_)
+    {
+        app_sidebar_->setMinimumWidth(0);
+        app_sidebar_->setMaximumWidth(QWIDGETSIZE_MAX);
+    }
 }
 
 void MainWindow::updateAppSidebarButtonTexts()
@@ -6247,7 +6256,7 @@ void MainWindow::updateAppSidebarButtonTexts()
     applyButtonText(device_config_nav_btn_, is_english_ ? QStringLiteral("Device") : QStringLiteral("设备配置"));
 }
 
-void MainWindow::updateAppSidebarForWidth(int width, bool snapToNearest)
+MainWindow::AppSidebarMode MainWindow::appSidebarModeForWidth(int width) const
 {
     const int normalizedWidth = std::max(0, width);
     const int iconOnlyWidth = appSidebarIconOnlyWidth();
@@ -6255,26 +6264,36 @@ void MainWindow::updateAppSidebarForWidth(int width, bool snapToNearest)
     const int collapsedThreshold = std::max(8, iconOnlyWidth / 2);
     const int fullThreshold = (iconOnlyWidth + fullWidth) / 2;
 
-    AppSidebarMode mode = AppSidebarMode::Full;
-    int snapWidth = -1;
     if (normalizedWidth <= collapsedThreshold)
     {
-        mode = AppSidebarMode::Collapsed;
-        snapWidth = 0;
+        return AppSidebarMode::Collapsed;
     }
-    else if (normalizedWidth < fullThreshold)
+    if (normalizedWidth < fullThreshold)
     {
-        mode = AppSidebarMode::IconsOnly;
-        snapWidth = iconOnlyWidth;
+        return AppSidebarMode::IconsOnly;
     }
-    else
+    return AppSidebarMode::Full;
+}
+
+int MainWindow::snappedAppSidebarWidth(int width) const
+{
+    const int normalizedWidth = std::max(0, width);
+    switch (appSidebarModeForWidth(width))
     {
-        mode = AppSidebarMode::Full;
-        if (normalizedWidth < fullWidth)
-        {
-            snapWidth = fullWidth;
-        }
+    case AppSidebarMode::Collapsed:
+        return 0;
+    case AppSidebarMode::IconsOnly:
+        return appSidebarIconOnlyWidth();
+    case AppSidebarMode::Full:
+        return std::max(normalizedWidth, appSidebarDefaultWidth());
     }
+    return appSidebarDefaultWidth();
+}
+
+void MainWindow::updateAppSidebarForWidth(int width, bool snapToNearest)
+{
+    const int normalizedWidth = std::max(0, width);
+    const AppSidebarMode mode = appSidebarModeForWidth(normalizedWidth);
 
     if (app_sidebar_mode_ != mode)
     {
@@ -6282,7 +6301,8 @@ void MainWindow::updateAppSidebarForWidth(int width, bool snapToNearest)
         updateAppSidebarButtonTexts();
     }
 
-    if (snapToNearest && snapWidth >= 0 && snapWidth != normalizedWidth)
+    const int snapWidth = snappedAppSidebarWidth(normalizedWidth);
+    if ((snapToNearest || mode != AppSidebarMode::Full) && snapWidth != normalizedWidth)
     {
         setAppSidebarWidth(snapWidth);
     }

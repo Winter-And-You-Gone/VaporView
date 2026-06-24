@@ -516,6 +516,8 @@ private:
     void updateSidebarNavIcons();
     void updateAppSidebarButtonTexts();
     void updateAppSidebarForWidth(int width, bool snapToNearest);
+    AppSidebarMode appSidebarModeForWidth(int width) const;
+    int snappedAppSidebarWidth(int width) const;
     void setAppSidebarWidth(int width);
     int currentAppSidebarWidth() const;
     void saveAppSidebarWidth() const;
