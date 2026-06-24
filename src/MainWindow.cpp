@@ -4339,6 +4339,7 @@ public:
         : QPushButton(parent)
     {
         setCheckable(true);
+        setObjectName(QStringLiteral("temperatureOverviewOutputSwitch"));
         setCursor(Qt::PointingHandCursor);
         setFocusPolicy(Qt::TabFocus);
         setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
@@ -4394,7 +4395,7 @@ protected:
             : appThemeColor(AppThemeColor::TextMuted, dark);
         const QColor selectedFill = checked && enabled
             ? appThemeColor(AppThemeColor::Primary, dark)
-            : appThemeColor(AppThemeColor::Surface, dark);
+            : appThemeColor(AppThemeColor::SurfaceAlt, dark);
         const QColor selectedText = checked && enabled
             ? appThemeColor(AppThemeColor::White, dark)
             : text;
@@ -4413,20 +4414,18 @@ protected:
 
         const qreal gap = 3.0;
         const QRectF trackRect = pillRect.adjusted(gap, gap, -gap, -gap);
-        QFont buttonFont = font();
-        buttonFont.setWeight(QFont::DemiBold);
-        painter.setFont(buttonFont);
+        QFont titleFont = font();
+        titleFont.setWeight(QFont::DemiBold);
+        QFont segmentFont = font();
+        segmentFont.setWeight(QFont::DemiBold);
 
-        const QString labelText = is_english_ ? QStringLiteral("Output") : QStringLiteral("输出");
-        const qreal labelWidth = std::clamp<qreal>(QFontMetrics(buttonFont).horizontalAdvance(labelText) + 14.0,
-                                                   is_english_ ? 52.0 : 40.0,
-                                                   is_english_ ? 58.0 : 44.0);
-        const QRectF labelRect(trackRect.left(), trackRect.top(), labelWidth, trackRect.height());
-        const qreal labelGap = 2.0;
-        const QRectF switchRect(labelRect.right() + labelGap,
-                                trackRect.top(),
-                                std::max<qreal>(0.0, trackRect.right() - labelRect.right() - labelGap),
-                                trackRect.height());
+        const qreal kTitleHeight = QFontMetricsF(titleFont).height() + 2.0;
+        constexpr qreal kTitleGap = 3.0;
+        const QRectF labelRect(trackRect.left(), trackRect.top(), trackRect.width(), kTitleHeight);
+        const QRectF switchRect(trackRect.left(),
+                                labelRect.bottom() + kTitleGap,
+                                trackRect.width(),
+                                std::max<qreal>(0.0, trackRect.bottom() - labelRect.bottom() - kTitleGap));
         constexpr qreal kInnerGap = 2.0;
         const QRectF switchCapsuleRect = switchRect.adjusted(0.5, 0.5, -0.5, -0.5);
         const QRectF switchContentRect = switchCapsuleRect.adjusted(kInnerGap, kInnerGap, -kInnerGap, -kInnerGap);
@@ -4440,11 +4439,18 @@ protected:
         painter.setBrush(selectedFill);
         painter.drawRoundedRect(selectedRect, kControlRadius - gap - kInnerGap, kControlRadius - gap - kInnerGap);
 
+        const qreal separatorX = switchContentRect.left() + segmentWidth;
+        painter.setPen(QPen(appThemeColor(AppThemeColor::Border, dark), 1.0));
+        painter.drawLine(QPointF(separatorX, switchContentRect.top() + 4.0),
+                         QPointF(separatorX, switchContentRect.bottom() - 4.0));
+
+        painter.setFont(titleFont);
         painter.setPen(text);
-        painter.drawText(labelRect, Qt::AlignCenter, labelText);
+        painter.drawText(labelRect, Qt::AlignCenter, outputLabelText());
         const QRectF offRect(switchContentRect.left(), switchContentRect.top(), segmentWidth, switchContentRect.height());
         const QRectF onRect(switchContentRect.left() + segmentWidth, switchContentRect.top(), segmentWidth, switchContentRect.height());
         const bool offSelected = thumb_position_ < 0.5;
+        painter.setFont(segmentFont);
         painter.setPen(offSelected ? selectedText : inactiveText);
         painter.drawText(offRect, Qt::AlignCenter, offText());
         painter.setPen(offSelected ? inactiveText : selectedText);
@@ -4471,11 +4477,15 @@ private:
         return is_english_ ? QStringLiteral("On") : QStringLiteral("开启");
     }
 
+    QString outputLabelText() const
+    {
+        return is_english_ ? QStringLiteral("Output Enable") : QStringLiteral("输出使能");
+    }
+
     QString displayText() const
     {
         return QStringLiteral("%1: %2")
-            .arg(is_english_ ? QStringLiteral("Output") : QStringLiteral("输出"),
-                 isChecked() ? onText() : offText());
+            .arg(outputLabelText(), isChecked() ? onText() : offText());
     }
 
     void refreshText()
@@ -4518,6 +4528,7 @@ public:
         constexpr int kOverviewSummaryWidth = 148;
         constexpr int kOverviewControlWidth = 148;
         constexpr int kOverviewPillHeight = 34;
+        constexpr int kOverviewOutputPillHeight = 66;
 
         auto *layout = new QHBoxLayout(this);
         layout->setContentsMargins(8, 6, 8, 8);
@@ -4558,7 +4569,7 @@ public:
         summaryLayout->addWidget(target_temp_value_);
 
         output_switch_button_ = new TemperatureOverviewSwitchButton(summary);
-        output_switch_button_->setFixedSize(kOverviewControlWidth, kOverviewPillHeight);
+        output_switch_button_->setFixedSize(kOverviewControlWidth, kOverviewOutputPillHeight);
         connect(output_switch_button_, &QPushButton::clicked, this, [this](bool checked) {
             if (output_enabled_callback_)
             {
@@ -4567,18 +4578,6 @@ public:
         });
         summaryLayout->addWidget(output_switch_button_);
 
-        emergency_stop_button_ = new QPushButton(summary);
-        emergency_stop_button_->setObjectName(QStringLiteral("dangerButton"));
-        emergency_stop_button_->setProperty("temperatureOverviewControl", true);
-        emergency_stop_button_->setFixedSize(kOverviewControlWidth, kOverviewPillHeight);
-        emergency_stop_button_->setIconSize(QSize(16, 16));
-        connect(emergency_stop_button_, &QPushButton::clicked, this, [this]() {
-            if (emergency_stop_callback_)
-            {
-                emergency_stop_callback_();
-            }
-        });
-        summaryLayout->addWidget(emergency_stop_button_);
         summaryLayout->addStretch(1);
         layout->addWidget(summary, 0, Qt::AlignTop);
 
@@ -4615,9 +4614,6 @@ public:
         {
             plot_->setEnglish(english);
         }
-        emergency_stop_button_->setText(english ? QStringLiteral("Stop") : QStringLiteral("急停"));
-        emergency_stop_button_->setToolTip(english ? QStringLiteral("Turn off RD105 output for both channels.")
-                                                  : QStringLiteral("关闭 RD105 两个通道的输出。"));
         updateChannelButtonText();
         updateThemedIcons();
         refreshChannelUi();
@@ -4657,11 +4653,6 @@ public:
         output_enabled_callback_ = std::move(callback);
     }
 
-    void setEmergencyStopCallback(std::function<void()> callback)
-    {
-        emergency_stop_callback_ = std::move(callback);
-    }
-
     void setHeaderCurrentTemperaturePill(QLabel *label)
     {
         header_current_temp_value_ = label;
@@ -4682,11 +4673,6 @@ public:
             channel_button_->setIcon(createLucideIcon(QStringLiteral("chevron-down"),
                                                       toolbarColor(AppThemeColor::ToolbarBlue)));
             channel_button_->setIconSize(QSize(14, 14));
-        }
-        if (emergency_stop_button_)
-        {
-            emergency_stop_button_->setIcon(createLucideIcon(QStringLiteral("triangle-alert"),
-                                                             appThemeColor(AppThemeColor::White, true)));
         }
     }
 
@@ -4779,12 +4765,10 @@ private:
     QLabel *header_current_temp_value_ = nullptr;
     QLabel *target_temp_value_ = nullptr;
     TemperatureOverviewSwitchButton *output_switch_button_ = nullptr;
-    QPushButton *emergency_stop_button_ = nullptr;
     TemperatureTrendPlotWidget *plot_ = nullptr;
     VaporView::TemperatureControllerData latest_data_;
     std::array<QVector<double>, 2> measured_temperature_history_{};
     std::function<void(quint8, bool)> output_enabled_callback_;
-    std::function<void()> emergency_stop_callback_;
     int selected_channel_index_ = 0;
     bool is_english_ = false;
 };
@@ -6049,7 +6033,6 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton#appSidebarButton:checked { background-color: @vv-primary; border-color: @vv-primary; color: @vv-white; }"
             "QLabel#pageTitleLabel { color: @vv-text; font-size: 18px; font-weight: 700; }"
             "QPushButton#dangerButton { background-color: @vv-danger; border: 1px solid @vv-danger; border-radius: 6px; color: @vv-white; font-weight: 700; padding: 6px 14px; }"
-            "QPushButton#dangerButton[temperatureOverviewControl=\"true\"] { border-radius: 10px; padding: 1px 12px; }"
             "QMenuBar { background-color: @vv-surface; border-bottom: 1px solid @vv-border; padding: 4px 8px; }"
             "QMenuBar::item { background-color: transparent; padding: 6px 12px; border-radius: 4px; color: @vv-text; }"
             "QMenuBar::item:selected { background-color: @vv-primary-subtle; color: @vv-primary; }"
@@ -6102,6 +6085,7 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#temperatureOverviewValuePill { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-muted; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; padding: 1px 9px; margin: 0px; }"
             "QLabel#temperatureOverviewValuePill[hasData=\"true\"] { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; color: @vv-text; }"
             "QLabel#temperatureOverviewValuePill[hasData=\"false\"] { background-color: @vv-surface-alt; border: 1px solid @vv-border; color: @vv-text-muted; }"
+            "QPushButton#temperatureOverviewOutputSwitch { background-color: transparent; border: none; min-height: 66px; max-height: 66px; padding: 0px; margin: 0px; color: @vv-text; font-size: 13px; font-weight: 700; }"
             "QToolButton#temperatureOverviewChannelButton { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text; font-size: 13px; font-weight: 700; padding: 1px 8px; }"
             "QToolButton#temperatureOverviewChannelButton:hover, QToolButton#temperatureOverviewChannelButton:pressed { background-color: @vv-primary-subtle; border-color: @vv-primary-subtle-pressed; }"
             "QToolButton#temperatureOverviewChannelButton::menu-indicator { image: none; width: 0px; height: 0px; }"
@@ -10891,21 +10875,6 @@ void MainWindow::setupDataPanels()
         command.channel = channel;
         command.output_enabled = enabled;
         sendRemoteTemperatureCommand(VaporView::CommandId::SetTemperatureOutputEnabled, command);
-    });
-    temperature_overview_panel_->setEmergencyStopCallback([this]() {
-        for (quint8 channel = 1; channel <= 2; ++channel)
-        {
-            VaporView::TemperatureControllerCommand command;
-            command.channel = channel;
-            command.output_enabled = false;
-            sendRemoteTemperatureCommand(VaporView::CommandId::SetTemperatureOutputEnabled, command);
-        }
-        if (temperature_controller_panel_)
-        {
-            temperature_controller_panel_->setCommandStatus(is_english_
-                ? QStringLiteral("Emergency stop requested: output off commands sent for both channels.")
-                : QStringLiteral("已请求紧急停止：已向两个通道下发关闭输出命令。"));
-        }
     });
     temperatureOverviewLayout->addWidget(temperature_overview_panel_, 1);
 

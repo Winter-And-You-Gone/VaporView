@@ -203,11 +203,6 @@ QPushButton#dangerButton:pressed {
     border-color: @vv-danger;
 }
 
-QPushButton#dangerButton[temperatureOverviewControl="true"] {
-    border-radius: 10px;
-    padding: 1px 12px;
-}
-
 QGroupBox#sensorRowContainer {
     margin-top: 0px;
     background-color: transparent;
@@ -446,6 +441,18 @@ QLabel#temperatureOverviewValuePill[hasData="false"] {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;
     color: @vv-text-muted;
+}
+
+QPushButton#temperatureOverviewOutputSwitch {
+    background-color: transparent;
+    border: none;
+    min-height: 66px;
+    max-height: 66px;
+    padding: 0px;
+    margin: 0px;
+    color: @vv-text;
+    font-size: 13px;
+    font-weight: 700;
 }
 
 QToolButton#temperatureOverviewChannelButton {
