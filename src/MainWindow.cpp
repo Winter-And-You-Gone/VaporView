@@ -76,6 +76,7 @@
 #include <QToolButton>
 #include <QToolTip>
 #include <QVariant>
+#include <QVariantAnimation>
 #include <QVector>
 #include <QWidgetAction>
 #include <QWindow>
@@ -4325,8 +4326,17 @@ public:
         setCursor(Qt::PointingHandCursor);
         setFocusPolicy(Qt::StrongFocus);
         setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        thumb_position_ = isChecked() ? 1.0 : 0.0;
+        thumb_animation_ = new QVariantAnimation(this);
+        thumb_animation_->setDuration(140);
+        thumb_animation_->setEasingCurve(QEasingCurve::OutCubic);
+        connect(thumb_animation_, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
+            thumb_position_ = value.toReal();
+            update();
+        });
         connect(this, &QPushButton::toggled, this, [this]() {
             refreshText();
+            animateThumbTo(isChecked() ? 1.0 : 0.0);
             update();
         });
         refreshText();
@@ -4342,6 +4352,11 @@ public:
     {
         const QSignalBlocker blocker(this);
         setChecked(checked);
+        if (thumb_animation_)
+        {
+            thumb_animation_->stop();
+        }
+        thumb_position_ = checked ? 1.0 : 0.0;
         refreshText();
         update();
     }
@@ -4357,18 +4372,19 @@ protected:
         const QColor border = checked
             ? appThemeColor(AppThemeColor::PrimarySubtlePressed, dark)
             : appThemeColor(AppThemeColor::Border, dark);
-        const QColor fill = checked
-            ? appThemeColor(AppThemeColor::PrimarySubtle, dark)
-            : appThemeColor(AppThemeColor::SurfaceAlt, dark);
+        const QColor fill = appThemeColor(AppThemeColor::SurfaceAlt, dark);
         const QColor text = enabled
             ? appThemeColor(AppThemeColor::Text, dark)
             : appThemeColor(AppThemeColor::TextMuted, dark);
-        const QColor track = checked && enabled
+        const QColor selectedFill = checked && enabled
             ? appThemeColor(AppThemeColor::Primary, dark)
-            : appThemeColor(AppThemeColor::BorderStrong, dark);
-        const QColor knob = enabled
-            ? appThemeColor(AppThemeColor::White, dark)
             : appThemeColor(AppThemeColor::Surface, dark);
+        const QColor selectedText = checked && enabled
+            ? appThemeColor(AppThemeColor::White, dark)
+            : text;
+        const QColor inactiveText = enabled
+            ? appThemeColor(AppThemeColor::TextMuted, dark)
+            : appThemeColor(AppThemeColor::TextMuted, dark);
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
@@ -4378,23 +4394,26 @@ protected:
         painter.setBrush(fill);
         painter.drawRoundedRect(pillRect, pillRect.height() / 2.0, pillRect.height() / 2.0);
 
-        const QRectF switchRect(width() - 48.0, (height() - 18.0) / 2.0, 34.0, 18.0);
+        const qreal gap = 3.0;
+        const QRectF trackRect = pillRect.adjusted(gap, gap, -gap, -gap);
+        const qreal segmentWidth = trackRect.width() / 2.0;
+        const qreal selectedLeft = trackRect.left() + segmentWidth * thumb_position_;
+        const QRectF selectedRect(selectedLeft, trackRect.top(), segmentWidth, trackRect.height());
         painter.setPen(Qt::NoPen);
-        painter.setBrush(track);
-        painter.drawRoundedRect(switchRect, 9.0, 9.0);
+        painter.setBrush(selectedFill);
+        painter.drawRoundedRect(selectedRect, selectedRect.height() / 2.0, selectedRect.height() / 2.0);
 
-        const qreal knobX = checked ? switchRect.right() - 15.0 : switchRect.left() + 3.0;
-        const QRectF knobRect(knobX, switchRect.top() + 3.0, 12.0, 12.0);
-        painter.setBrush(knob);
-        painter.drawEllipse(knobRect);
-
-        painter.setPen(text);
         QFont buttonFont = font();
         buttonFont.setWeight(QFont::DemiBold);
         painter.setFont(buttonFont);
-        painter.drawText(rect().adjusted(14, 0, 52, 0),
-                         Qt::AlignLeft | Qt::AlignVCenter,
-                         displayText());
+
+        const QRectF offRect(trackRect.left(), trackRect.top(), segmentWidth, trackRect.height());
+        const QRectF onRect(trackRect.left() + segmentWidth, trackRect.top(), segmentWidth, trackRect.height());
+        const bool offSelected = thumb_position_ < 0.5;
+        painter.setPen(offSelected ? selectedText : inactiveText);
+        painter.drawText(offRect, Qt::AlignCenter, offText());
+        painter.setPen(offSelected ? inactiveText : selectedText);
+        painter.drawText(onRect, Qt::AlignCenter, onText());
 
         if (hasFocus())
         {
@@ -4407,13 +4426,21 @@ protected:
     }
 
 private:
+    QString offText() const
+    {
+        return is_english_ ? QStringLiteral("Off") : QStringLiteral("关闭");
+    }
+
+    QString onText() const
+    {
+        return is_english_ ? QStringLiteral("On") : QStringLiteral("开启");
+    }
+
     QString displayText() const
     {
-        return QStringLiteral("%1 %2")
+        return QStringLiteral("%1: %2")
             .arg(is_english_ ? QStringLiteral("Output") : QStringLiteral("输出"),
-                 isChecked()
-                     ? (is_english_ ? QStringLiteral("On") : QStringLiteral("开启"))
-                     : (is_english_ ? QStringLiteral("Off") : QStringLiteral("关闭")));
+                 isChecked() ? onText() : offText());
     }
 
     void refreshText()
@@ -4425,7 +4452,23 @@ private:
         setAccessibleName(text);
     }
 
+    void animateThumbTo(qreal target)
+    {
+        if (!thumb_animation_)
+        {
+            thumb_position_ = target;
+            return;
+        }
+
+        thumb_animation_->stop();
+        thumb_animation_->setStartValue(thumb_position_);
+        thumb_animation_->setEndValue(target);
+        thumb_animation_->start();
+    }
+
     bool is_english_ = false;
+    qreal thumb_position_ = 0.0;
+    QVariantAnimation *thumb_animation_ = nullptr;
 };
 
 class TemperatureControllerOverviewPanel : public QWidget
