@@ -419,6 +419,52 @@ QLabel#homeTelemetrySummaryPill[hasData="false"] {
     color: @vv-text-muted;
 }
 
+QLabel#temperatureOverviewValuePill {
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
+    border-radius: 8px;
+    color: @vv-text-muted;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 1px 9px;
+    margin: 0px;
+}
+
+QLabel#temperatureOverviewValuePill[hasData="true"] {
+    background-color: @vv-primary-subtle;
+    border: 1px solid @vv-primary-subtle-pressed;
+    color: @vv-text;
+}
+
+QLabel#temperatureOverviewValuePill[hasData="false"] {
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
+    color: @vv-text-muted;
+}
+
+QToolButton#temperatureOverviewChannelButton {
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
+    border-radius: 8px;
+    color: @vv-text;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 1px 8px;
+}
+
+QToolButton#temperatureOverviewChannelButton:hover,
+QToolButton#temperatureOverviewChannelButton:pressed {
+    background-color: @vv-primary-subtle;
+    border-color: @vv-primary-subtle-pressed;
+}
+
+QToolButton#temperatureOverviewChannelButton::menu-indicator {
+    image: none;
+    width: 0px;
+    height: 0px;
+}
+
 QFrame#homeOverviewDivider {
     background-color: @vv-border;
     border: none;

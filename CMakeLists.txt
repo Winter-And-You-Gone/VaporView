@@ -281,6 +281,7 @@ set(LUCIDE_RESOURCES
     resources/lucide/activity.svg
     resources/lucide/audio-waveform.svg
     resources/lucide/check.svg
+    resources/lucide/chevron-down.svg
     resources/lucide/circle-x.svg
     resources/lucide/copy.svg
     resources/lucide/earth.svg
@@ -311,6 +312,7 @@ set(LUCIDE_RESOURCES
     resources/lucide/sun.svg
     resources/lucide/timer.svg
     resources/lucide/trash-2.svg
+    resources/lucide/triangle-alert.svg
     resources/lucide/unlink.svg
     resources/lucide/unplug.svg
     resources/lucide/usb.svg
