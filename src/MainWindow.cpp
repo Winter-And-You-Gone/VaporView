@@ -2140,10 +2140,10 @@ QSplitter#appLayoutSplitter::handle:horizontal {
     background-color: @vv-window;
 }
 QSplitter#appLayoutSplitter::handle:horizontal:hover {
-    background-color: @vv-border;
+    background-color: @vv-window;
 }
 QSplitter#appLayoutSplitter::handle:horizontal:pressed {
-    background-color: @vv-border;
+    background-color: @vv-window;
 }
 QSplitter#homeOverviewSplitter::handle:horizontal {
     width: 8px;
@@ -6156,8 +6156,8 @@ void MainWindow::loadModernStyleSheet()
             "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0px; background-color: @vv-surface-sunken; }"
             "QSplitter::handle { background-color: transparent; }"
             "QSplitter#appLayoutSplitter::handle:horizontal { width: 8px; background-color: transparent; }"
-            "QSplitter#appLayoutSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
-            "QSplitter#appLayoutSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"
+            "QSplitter#appLayoutSplitter::handle:horizontal:hover { background-color: transparent; }"
+            "QSplitter#appLayoutSplitter::handle:horizontal:pressed { background-color: transparent; }"
             "QSplitter#mainContentSplitter::handle:horizontal { width: 1px; background-color: transparent; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal { width: 8px; background-color: @vv-surface; }"
             "QSplitter#homeOverviewSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
@@ -6170,8 +6170,8 @@ void MainWindow::loadModernStyleSheet()
             "QSplitter::handle:horizontal { width: 0px; }"
             "QSplitter::handle:vertical { height: 0px; }"
             "QSplitter#appLayoutSplitter::handle:horizontal { width: 8px; background-color: @vv-window; }"
-            "QSplitter#appLayoutSplitter::handle:horizontal:hover { background-color: @vv-border; }"
-            "QSplitter#appLayoutSplitter::handle:horizontal:pressed { background-color: @vv-border; }"
+            "QSplitter#appLayoutSplitter::handle:horizontal:hover { background-color: @vv-window; }"
+            "QSplitter#appLayoutSplitter::handle:horizontal:pressed { background-color: @vv-window; }"
             "QSplitter#mainContentSplitter::handle:horizontal { width: 1px; background-color: @vv-border; }"
             "QSplitter#mainContentSplitter::handle:horizontal:hover { background-color: @vv-resize-hover; }"
             "QSplitter#mainContentSplitter::handle:horizontal:pressed { background-color: @vv-resize-pressed; }"

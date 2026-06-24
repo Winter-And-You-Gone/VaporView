@@ -772,11 +772,11 @@ QSplitter#appLayoutSplitter::handle:horizontal {
 }
 
 QSplitter#appLayoutSplitter::handle:horizontal:hover {
-    background-color: @vv-resize-hover;
+    background-color: transparent;
 }
 
 QSplitter#appLayoutSplitter::handle:horizontal:pressed {
-    background-color: @vv-resize-pressed;
+    background-color: transparent;
 }
 
 QSplitter#mainContentSplitter::handle:horizontal {
