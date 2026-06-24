@@ -516,6 +516,7 @@ private:
     void updateSidebarNavIcons();
     void updateAppSidebarButtonTexts();
     void updateAppSidebarForWidth(int width, bool snapToNearest);
+    void finishAppSidebarResize();
     AppSidebarMode appSidebarModeForWidth(int width) const;
     int snappedAppSidebarWidth(int width) const;
     void setAppSidebarWidth(int width);
@@ -773,6 +774,8 @@ private:
     QStackedWidget *main_page_stack_;
     AppSidebarMode app_sidebar_mode_;
     bool app_sidebar_adjusting_;
+    int app_sidebar_drag_width_;
+    bool app_sidebar_drag_width_valid_;
     QWidget *home_page_;
     QWidget *temperature_page_;
     DeviceConfigPageWidgets device_config_;

@@ -146,6 +146,22 @@ private:
     std::function<void()> click_callback_;
 };
 
+class AppSidebarFrame final : public QFrame
+{
+public:
+    explicit AppSidebarFrame(QWidget *parent = nullptr)
+        : QFrame(parent)
+    {
+    }
+
+    QSize minimumSizeHint() const override
+    {
+        QSize hint = QFrame::minimumSizeHint();
+        hint.setWidth(0);
+        return hint;
+    }
+};
+
 constexpr const char *kTooltipShortcutProperty = "_vv_tooltip_shortcut";
 
 QString shortcutText(const QKeySequence& sequence)
@@ -5260,6 +5276,8 @@ MainWindow::MainWindow(QWidget *parent)
     , main_page_stack_(nullptr)
     , app_sidebar_mode_(AppSidebarMode::Full)
     , app_sidebar_adjusting_(false)
+    , app_sidebar_drag_width_(0)
+    , app_sidebar_drag_width_valid_(false)
     , home_page_(nullptr)
     , temperature_page_(nullptr)
     , main_cards_scroll_area_(nullptr)
@@ -5880,8 +5898,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         watched == app_layout_splitter_->handle(1) &&
         event->type() == QEvent::MouseButtonRelease)
     {
-        updateAppSidebarForWidth(currentAppSidebarWidth(), true);
-        saveAppSidebarWidth();
+        QTimer::singleShot(0, this, &MainWindow::finishAppSidebarResize);
     }
 
     return QMainWindow::eventFilter(watched, event);
@@ -6356,6 +6373,20 @@ void MainWindow::updateAppSidebarForWidth(int width, bool snapToNearest)
 {
     const int normalizedWidth = std::max(0, width);
     const AppSidebarMode mode = appSidebarModeForWidth(normalizedWidth);
+    if (!snapToNearest)
+    {
+        app_sidebar_drag_width_ = normalizedWidth;
+        app_sidebar_drag_width_valid_ = true;
+        const AppSidebarMode dragMode = mode == AppSidebarMode::Collapsed
+            ? AppSidebarMode::IconsOnly
+            : mode;
+        if (app_sidebar_mode_ != dragMode)
+        {
+            app_sidebar_mode_ = dragMode;
+            updateAppSidebarButtonTexts();
+        }
+        return;
+    }
 
     if (app_sidebar_mode_ != mode)
     {
@@ -6364,10 +6395,21 @@ void MainWindow::updateAppSidebarForWidth(int width, bool snapToNearest)
     }
 
     const int snapWidth = snappedAppSidebarWidth(normalizedWidth);
-    if (snapToNearest && snapWidth != normalizedWidth)
+    if (snapWidth != normalizedWidth)
     {
         setAppSidebarWidth(snapWidth);
     }
+}
+
+void MainWindow::finishAppSidebarResize()
+{
+    const int targetWidth = app_sidebar_drag_width_valid_
+        ? app_sidebar_drag_width_
+        : currentAppSidebarWidth();
+
+    app_sidebar_drag_width_valid_ = false;
+    updateAppSidebarForWidth(targetWidth, true);
+    saveAppSidebarWidth();
 }
 
 void MainWindow::setLogSidePanelToMinimumWidth()
@@ -9443,7 +9485,7 @@ void MainWindow::setupCentralWidget()
 
     setupLogPanel();
 
-    app_sidebar_ = new QFrame(central_widget_);
+    app_sidebar_ = new AppSidebarFrame(central_widget_);
     app_sidebar_->setObjectName(QStringLiteral("appSidebar"));
     app_sidebar_->setAttribute(Qt::WA_StyledBackground, true);
     app_sidebar_->setAutoFillBackground(true);
