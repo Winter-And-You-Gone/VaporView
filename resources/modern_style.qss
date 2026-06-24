@@ -388,12 +388,35 @@ QLabel#homeOverviewSectionTitle {
     margin: 0px;
 }
 
-QLabel#homeTelemetrySummaryLabel {
+QLabel#homeTelemetrySummaryTitleLabel {
+    color: @vv-primary;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 0px;
+    margin: 0px;
+}
+
+QLabel#homeTelemetrySummaryPill {
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
+    border-radius: 8px;
     color: @vv-text;
     font-size: 13px;
     font-weight: 600;
-    padding: 0px;
+    padding: 1px 8px;
     margin: 0px;
+}
+
+QLabel#homeTelemetrySummaryPill[hasData="true"] {
+    background-color: @vv-primary-subtle;
+    border: 1px solid @vv-primary-subtle-pressed;
+    color: @vv-text;
+}
+
+QLabel#homeTelemetrySummaryPill[hasData="false"] {
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
+    color: @vv-text-muted;
 }
 
 QFrame#homeOverviewDivider {

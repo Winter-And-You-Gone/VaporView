@@ -30,6 +30,7 @@
 #include <QActionGroup>
 #include <QScrollArea>
 #include <QLineEdit>
+#include <QList>
 #include <QVector>
 #include <QHash>
 #include <atomic>
@@ -579,9 +580,19 @@ private:
     double remoteWaveformPacketRate(quint16 channelId) const;
     struct RemoteTelemetrySummarySections
     {
+        struct Item
+        {
+            QString label;
+            QString value;
+            bool hasData = false;
+        };
+
         QString rate;
         QString link;
         QString device;
+        QList<Item> rateItems;
+        QList<Item> linkItems;
+        QList<Item> deviceItems;
     };
     RemoteTelemetrySummarySections remoteTelemetrySummarySections() const;
     QString remoteTelemetrySummaryText() const;
@@ -798,9 +809,9 @@ private:
     QToolButton *home_lidar_action_btn_;
     QToolButton *home_wave_action_btn_;
     QWidget *data_telemetry_summary_card_;
-    QLabel *data_telemetry_summary_lbl_;
-    QLabel *data_telemetry_link_summary_lbl_;
-    QLabel *data_telemetry_device_summary_lbl_;
+    QVBoxLayout *data_telemetry_summary_layout_;
+    QVBoxLayout *data_telemetry_link_summary_layout_;
+    QVBoxLayout *data_telemetry_device_summary_layout_;
     QLabel *log_inline_title_lbl_;
     QLabel *epsilon_inline_title_lbl_;
     QLabel *gnss_inline_title_lbl_;
