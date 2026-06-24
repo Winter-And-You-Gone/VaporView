@@ -5071,7 +5071,6 @@ MainWindow::MainWindow(QWidget *parent)
     , home_hmp_status_lbl_(nullptr)
     , home_lidar_status_lbl_(nullptr)
     , home_wave_status_lbl_(nullptr)
-    , home_device_status_title_lbl_(nullptr)
     , home_epsilon_action_btn_(nullptr)
     , home_ptb_action_btn_(nullptr)
     , home_hmp_action_btn_(nullptr)
@@ -7046,7 +7045,6 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         summaryHeight = std::max(summaryHeight, kMainPageInputHeight);
         data_telemetry_summary_card_->setMinimumHeight(summaryHeight);
         data_telemetry_summary_card_->setMaximumHeight(summaryHeight);
-        const int homeDeviceTitleHeight = scalePixels(22);
         const int homeDeviceRowHeight = scalePixels((kHomeDeviceRowHeight * kHomeDeviceGridRows) +
                                                     (kHomeDeviceGridRowGap * (kHomeDeviceGridRows - 1)));
         const int homeBodySpacing = scalePixels(6);
@@ -7055,8 +7053,6 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         minimumHeight = std::max(minimumHeight,
                                  kMainPageTitleBarHeight +
                                      homeBodyTopPadding +
-                                     homeDeviceTitleHeight +
-                                     homeBodySpacing +
                                      homeDeviceRowHeight +
                                      homeBodySpacing +
                                      summaryHeight +
@@ -7264,8 +7260,9 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     };
 
     auto sectionHtml = [&](const QString& title, const QStringList& rows) {
-        return QStringLiteral("<span style=\"color:%1;font-weight:700;\">%2</span><br/>%3")
-            .arg(accentColor, title.toHtmlEscaped(), rows.join(QStringLiteral("&nbsp;&nbsp; ")));
+        const QString separator = is_english_ ? QStringLiteral(": ") : QStringLiteral("：");
+        return QStringLiteral("<span style=\"color:%1;font-weight:700;\">%2%3</span>%4")
+            .arg(accentColor, title.toHtmlEscaped(), separator, rows.join(QStringLiteral("&nbsp;&nbsp; ")));
     };
 
     QStringList rateRows;
@@ -7345,7 +7342,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             sectionMargins = section->layout()->contentsMargins();
         }
 
-        const int lineCount = label == data_telemetry_summary_lbl_ ? 3 : 2;
+        const int lineCount = label == data_telemetry_summary_lbl_ ? 3 : 1;
         const int labelHeight = label->fontMetrics().lineSpacing() * lineCount + scalePixels(2);
         label->setMinimumHeight(labelHeight);
         label->setMaximumHeight(labelHeight);
@@ -10223,14 +10220,8 @@ void MainWindow::setupConfigPanel()
 
     auto *homeBodyWidget = new QWidget(config_group_);
     auto *homeBodyLayout = new QVBoxLayout(homeBodyWidget);
-    homeBodyLayout->setContentsMargins(18, 10, 12, kConfigHomeBodyBottomPadding);
+    homeBodyLayout->setContentsMargins(8, 10, 8, kConfigHomeBodyBottomPadding);
     homeBodyLayout->setSpacing(6);
-
-    home_device_status_title_lbl_ = new QLabel(homeBodyWidget);
-    home_device_status_title_lbl_->setObjectName(QStringLiteral("homeOverviewSectionTitle"));
-    home_device_status_title_lbl_->setText(is_english_ ? QStringLiteral("Device connection status") : QStringLiteral("设备连接状态"));
-    home_device_status_title_lbl_->setMinimumHeight(22);
-    home_device_status_title_lbl_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
     auto *homeDevicesWidget = new QWidget(homeBodyWidget);
     homeDevicesWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
@@ -10293,7 +10284,6 @@ void MainWindow::setupConfigPanel()
                                            homeBodyMargins.right() + 2;
     config_group_->setMinimumWidth(std::max(kHomeOverviewDeviceMinWidth, deviceOverviewDefaultWidth));
 
-    homeBodyLayout->addWidget(home_device_status_title_lbl_, 0, Qt::AlignTop | Qt::AlignLeft);
     homeBodyLayout->addWidget(homeDevicesWidget, 0, Qt::AlignTop | Qt::AlignLeft);
     homeBodyLayout->addWidget(data_telemetry_summary_card_, 0, Qt::AlignTop);
     config_root_layout->addWidget(homeBodyWidget, 0, Qt::AlignTop);
@@ -10902,10 +10892,6 @@ void MainWindow::setEnglish(bool english)
     if (config_inline_title_lbl_)
     {
         config_inline_title_lbl_->setText(english ? "Device Overview" : "设备概览");
-    }
-    if (home_device_status_title_lbl_)
-    {
-        home_device_status_title_lbl_->setText(english ? "Device connection status" : "设备连接状态");
     }
     if (data_source_mode_lbl_) data_source_mode_lbl_->setText(english ? "Source:" : "数据源:");
     if (sky_telemetry_transport_lbl_) sky_telemetry_transport_lbl_->setText(english ? "Link:" : "链路:");

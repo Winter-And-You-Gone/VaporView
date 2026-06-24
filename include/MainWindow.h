@@ -787,7 +787,6 @@ private:
     QLabel *home_hmp_status_lbl_;
     QLabel *home_lidar_status_lbl_;
     QLabel *home_wave_status_lbl_;
-    QLabel *home_device_status_title_lbl_;
     QToolButton *home_epsilon_action_btn_;
     QToolButton *home_ptb_action_btn_;
     QToolButton *home_hmp_action_btn_;
