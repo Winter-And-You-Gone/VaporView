@@ -7532,6 +7532,10 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         {
             rows << rowHtml(item);
         }
+        if (title.isEmpty())
+        {
+            return rows.join(QStringLiteral("&nbsp;&nbsp; "));
+        }
         if (firstLineItemCount < 0 || firstLineItemCount >= rows.size())
         {
             return QStringLiteral("<span style=\"color:%1;font-weight:700;\">%2%3</span>%4")
@@ -7600,7 +7604,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     RemoteTelemetrySummarySections sections;
     sections.rate = sectionHtml(is_english_ ? QStringLiteral("Telemetry packet rates") : QStringLiteral("传感数据包频率"), rateRows, 3);
     sections.link = sectionHtml(is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"), linkRows);
-    sections.device = sectionHtml(is_english_ ? QStringLiteral("Device data") : QStringLiteral("设备数据"), deviceRows);
+    sections.device = sectionHtml(QString(), deviceRows);
     sections.rateItems = rateRows;
     sections.linkItems = linkRows;
     sections.deviceItems = deviceRows;
@@ -7663,13 +7667,16 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         firstLineLayout->setContentsMargins(0, 0, 0, 0);
         firstLineLayout->setSpacing(4);
 
-        auto *titleLabel = new QLabel(firstLine);
-        titleLabel->setObjectName(QStringLiteral("homeTelemetrySummaryTitleLabel"));
-        titleLabel->setText(title + (is_english_ ? QStringLiteral(":") : QStringLiteral("：")));
-        titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-        titleLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        titleLabel->setMinimumWidth(titleLabel->fontMetrics().horizontalAdvance(titleLabel->text()) + scalePixels(4));
-        firstLineLayout->addWidget(titleLabel, 0, Qt::AlignVCenter);
+        if (!title.isEmpty())
+        {
+            auto *titleLabel = new QLabel(firstLine);
+            titleLabel->setObjectName(QStringLiteral("homeTelemetrySummaryTitleLabel"));
+            titleLabel->setText(title + (is_english_ ? QStringLiteral(":") : QStringLiteral("：")));
+            titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+            titleLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+            titleLabel->setMinimumWidth(titleLabel->fontMetrics().horizontalAdvance(titleLabel->text()) + scalePixels(4));
+            firstLineLayout->addWidget(titleLabel, 0, Qt::AlignVCenter);
+        }
 
         auto addItemLabel = [this](QHBoxLayout *lineLayout,
                                    QWidget *lineWidget,
@@ -7726,7 +7733,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                          sections.linkItems,
                          -1);
     renderSummarySection(data_telemetry_device_summary_layout_,
-                         is_english_ ? QStringLiteral("Device data") : QStringLiteral("设备数据"),
+                         QString(),
                          sections.deviceItems,
                          -1);
     if (QLayout *summaryLayout = data_telemetry_summary_card_->layout())
