@@ -487,6 +487,8 @@ private:
     quint64 steadyToEpochUs(const std::chrono::steady_clock::time_point& timePoint) const;
     void updateConnectionStatus(bool connected);
     bool homeDeviceConnected(VaporView::SkyDeviceId device) const;
+    bool homeDevicePortSelected(VaporView::SkyDeviceId device) const;
+    VaporView::DeviceState homeDeviceActionState(VaporView::SkyDeviceId device) const;
     void triggerHomeDeviceAction(VaporView::SkyDeviceId device);
     void updateHomeDeviceStatusCapsules();
     bool anyCollectorRunning() const;
@@ -880,6 +882,7 @@ private:
 
     QTimer *refresh_timer_;
     QTimer *scheduled_recording_timer_;
+    QTimer *home_device_action_spinner_timer_;
 
     VaporView::EpsilonData current_epsilon_;
     VaporView::GnssData current_gnss_;
@@ -945,6 +948,7 @@ private:
     int imu_recording_rate_hz_;
     int waveform_recording_rate_hz_;
     int status_task_spinner_index_;
+    int home_device_action_spinner_step_;
     ScheduledRecordingMode scheduled_recording_mode_;
     ScheduledRecordingPhase scheduled_recording_phase_;
     int scheduled_recording_duration_seconds_;

@@ -33,6 +33,7 @@ public:
     QString host() const;
     int port() const;
     bool isConnected() const;
+    bool isConnecting() const;
     void toggleConnection();
     void attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox);
     void setCompactLayout(bool compact);

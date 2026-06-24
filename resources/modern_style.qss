@@ -1058,11 +1058,50 @@ QLabel#homeDeviceStatusCapsule[connected="false"] {
     color: @vv-danger;
 }
 
+QLabel#homeDeviceStatusCapsule[state="disabled"] {
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
+    color: @vv-text-muted;
+}
+
+QLabel#homeDeviceStatusCapsule[state="disconnected"] {
+    background-color: @vv-danger-bg;
+    border: 1px solid @vv-danger;
+    color: @vv-danger;
+}
+
+QLabel#homeDeviceStatusCapsule[state="connecting"] {
+    background-color: @vv-primary-subtle;
+    border: 1px solid @vv-primary;
+    color: @vv-primary;
+}
+
+QLabel#homeDeviceStatusCapsule[state="connected"] {
+    background-color: @vv-success-bg;
+    border: 1px solid @vv-success;
+    color: @vv-success;
+}
+
 QToolButton#homeDeviceActionButton {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;
     border-radius: 7px;
     padding: 2px;
+}
+
+QToolButton#homeDeviceActionButton[state="disconnected"] {
+    background-color: @vv-success-bg;
+    border-color: @vv-success;
+}
+
+QToolButton#homeDeviceActionButton[state="connecting"] {
+    background-color: @vv-primary-subtle;
+    border-color: @vv-primary;
+}
+
+QToolButton#homeDeviceActionButton[state="connected"] {
+    background-color: @vv-danger-bg;
+    border-color: @vv-danger;
 }
 
 QToolButton#homeDeviceActionButton:hover {

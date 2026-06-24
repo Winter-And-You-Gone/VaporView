@@ -1015,6 +1015,28 @@ QIcon createLucideIcon(const QString& iconName, const QColor& color)
     return icon;
 }
 
+QIcon createRotatedLucideIcon(const QString& iconName, const QColor& color, int degrees)
+{
+    const QPixmap source = createLucideIcon(iconName, color).pixmap(QSize(32, 32));
+    if (source.isNull())
+    {
+        return QIcon();
+    }
+
+    QPixmap rotated(source.size());
+    rotated.setDevicePixelRatio(source.devicePixelRatio());
+    rotated.fill(Qt::transparent);
+
+    QPainter painter(&rotated);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    painter.translate(rotated.width() / 2.0, rotated.height() / 2.0);
+    painter.rotate(degrees);
+    painter.translate(-source.width() / 2.0, -source.height() / 2.0);
+    painter.drawPixmap(0, 0, source);
+    return QIcon(rotated);
+}
+
 constexpr const char *kSectionTitleIconNameProperty = "_vv_section_title_icon_name";
 constexpr const char *kSidebarIconNameProperty = "_vv_sidebar_icon_name";
 constexpr const char *kSidebarCompactProperty = "_vv_sidebar_compact";
@@ -2151,11 +2173,43 @@ QLabel#homeDeviceStatusCapsule[connected="false"] {
     border: 1px solid @vv-danger;
     color: @vv-danger;
 }
+QLabel#homeDeviceStatusCapsule[state="disabled"] {
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
+    color: @vv-text-muted;
+}
+QLabel#homeDeviceStatusCapsule[state="disconnected"] {
+    background-color: @vv-danger-bg;
+    border: 1px solid @vv-danger;
+    color: @vv-danger;
+}
+QLabel#homeDeviceStatusCapsule[state="connecting"] {
+    background-color: @vv-primary-subtle;
+    border: 1px solid @vv-primary;
+    color: @vv-primary;
+}
+QLabel#homeDeviceStatusCapsule[state="connected"] {
+    background-color: @vv-success-bg;
+    border: 1px solid @vv-success;
+    color: @vv-success;
+}
 QToolButton#homeDeviceActionButton {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;
     border-radius: 7px;
     padding: 2px;
+}
+QToolButton#homeDeviceActionButton[state="disconnected"] {
+    background-color: @vv-success-bg;
+    border-color: @vv-success;
+}
+QToolButton#homeDeviceActionButton[state="connecting"] {
+    background-color: @vv-primary-subtle;
+    border-color: @vv-primary;
+}
+QToolButton#homeDeviceActionButton[state="connected"] {
+    background-color: @vv-danger-bg;
+    border-color: @vv-danger;
 }
 QToolButton#homeDeviceActionButton:hover {
     background-color: @vv-primary-subtle;
@@ -5160,6 +5214,7 @@ MainWindow::MainWindow(QWidget *parent)
     , lidar_collector_(nullptr)
     , refresh_timer_(nullptr)
     , scheduled_recording_timer_(nullptr)
+    , home_device_action_spinner_timer_(nullptr)
     , is_english_(false)
     , log_filter_ack_enabled_(false)
     , log_filter_config_enabled_(false)
@@ -5203,6 +5258,7 @@ MainWindow::MainWindow(QWidget *parent)
     , imu_recording_rate_hz_(0)
     , waveform_recording_rate_hz_(0)
     , status_task_spinner_index_(0)
+    , home_device_action_spinner_step_(0)
     , scheduled_recording_mode_(ScheduledRecordingMode::None)
     , scheduled_recording_phase_(ScheduledRecordingPhase::Idle)
     , scheduled_recording_duration_seconds_(10 * 60)
@@ -6915,6 +6971,7 @@ void MainWindow::bindRememberedInputState()
         }
         connect(combo, &QComboBox::currentTextChanged, this, [this](const QString&) {
             saveRememberedInputState();
+            updateHomeDeviceStatusCapsules();
         });
     };
 
@@ -7259,10 +7316,19 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
             .arg(label.toHtmlEscaped(), value.toHtmlEscaped(), textColor);
     };
 
-    auto sectionHtml = [&](const QString& title, const QStringList& rows) {
+    auto sectionHtml = [&](const QString& title, const QStringList& rows, int firstLineItemCount = -1) {
         const QString separator = is_english_ ? QStringLiteral(": ") : QStringLiteral("：");
-        return QStringLiteral("<span style=\"color:%1;font-weight:700;\">%2%3</span>%4")
-            .arg(accentColor, title.toHtmlEscaped(), separator, rows.join(QStringLiteral("&nbsp;&nbsp; ")));
+        if (firstLineItemCount < 0 || firstLineItemCount >= rows.size())
+        {
+            return QStringLiteral("<span style=\"color:%1;font-weight:700;\">%2%3</span>%4")
+                .arg(accentColor, title.toHtmlEscaped(), separator, rows.join(QStringLiteral("&nbsp;&nbsp; ")));
+        }
+        return QStringLiteral("<span style=\"color:%1;font-weight:700;\">%2%3</span>%4<br/>%5")
+            .arg(accentColor,
+                 title.toHtmlEscaped(),
+                 separator,
+                 rows.mid(0, firstLineItemCount).join(QStringLiteral("&nbsp;&nbsp; ")),
+                 rows.mid(firstLineItemCount).join(QStringLiteral("&nbsp;&nbsp; ")));
     };
 
     QStringList rateRows;
@@ -7306,7 +7372,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     }
 
     RemoteTelemetrySummarySections sections;
-    sections.rate = sectionHtml(is_english_ ? QStringLiteral("Telemetry packet rates") : QStringLiteral("传感数据包频率"), rateRows);
+    sections.rate = sectionHtml(is_english_ ? QStringLiteral("Telemetry packet rates") : QStringLiteral("传感数据包频率"), rateRows, 3);
     sections.link = sectionHtml(is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"), linkRows);
     sections.device = sectionHtml(is_english_ ? QStringLiteral("Device data") : QStringLiteral("设备数据"), deviceRows);
     return sections;
@@ -7342,7 +7408,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             sectionMargins = section->layout()->contentsMargins();
         }
 
-        const int lineCount = label == data_telemetry_summary_lbl_ ? 3 : 1;
+        const int lineCount = label == data_telemetry_summary_lbl_ ? 2 : 1;
         const int labelHeight = label->fontMetrics().lineSpacing() * lineCount + scalePixels(2);
         label->setMinimumHeight(labelHeight);
         label->setMaximumHeight(labelHeight);
@@ -10275,6 +10341,12 @@ void MainWindow::setupConfigPanel()
     addHomeDevice(home_hmp_status_lbl_, home_hmp_action_btn_, VaporView::SkyDeviceId::Hmp);
     addHomeDevice(home_lidar_status_lbl_, home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
     addHomeDevice(home_wave_status_lbl_, home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
+    home_device_action_spinner_timer_ = new QTimer(this);
+    home_device_action_spinner_timer_->setInterval(120);
+    connect(home_device_action_spinner_timer_, &QTimer::timeout, this, [this]() {
+        home_device_action_spinner_step_ = (home_device_action_spinner_step_ + 1) % 12;
+        updateHomeDeviceStatusCapsules();
+    });
     homeDevicesLayout->setColumnStretch(kHomeDeviceGridColumns, 1);
     updateHomeDeviceStatusCapsules();
     homeDevicesLayout->activate();
@@ -14506,9 +14578,94 @@ bool MainWindow::homeDeviceConnected(VaporView::SkyDeviceId device) const
     return false;
 }
 
+bool MainWindow::homeDevicePortSelected(VaporView::SkyDeviceId device) const
+{
+    if (device == VaporView::SkyDeviceId::WaveTcp)
+    {
+        return tcp_wave_panel_ != nullptr;
+    }
+
+    auto portSelected = [](const QComboBox *combo) {
+        if (!combo)
+        {
+            return false;
+        }
+        const QString text = combo->currentText().trimmed();
+        return !text.isEmpty() && !text.startsWith(QStringLiteral("--"));
+    };
+
+    switch (device)
+    {
+    case VaporView::SkyDeviceId::Epsilon:
+        return portSelected(epsilon_port_combo_);
+    case VaporView::SkyDeviceId::Ptb:
+        return portSelected(ptb_port_combo_);
+    case VaporView::SkyDeviceId::Hmp:
+        return portSelected(hmp_port_combo_);
+    case VaporView::SkyDeviceId::Lidar:
+        return portSelected(lidar_port_combo_);
+    case VaporView::SkyDeviceId::TemperatureController:
+    case VaporView::SkyDeviceId::All:
+    case VaporView::SkyDeviceId::WaveTcp:
+        return false;
+    }
+    return false;
+}
+
+VaporView::DeviceState MainWindow::homeDeviceActionState(VaporView::SkyDeviceId device) const
+{
+    if (isRemoteSkyMode())
+    {
+        if (!ground_telemetry_service_ || !ground_telemetry_service_->isOpen())
+        {
+            return VaporView::DeviceState::Disabled;
+        }
+        if (device == VaporView::SkyDeviceId::WaveTcp && remote_wave_stream_enable_pending_)
+        {
+            return VaporView::DeviceState::Connecting;
+        }
+        const VaporView::DeviceState state = remote_device_states_.value(device, VaporView::DeviceState::Disconnected);
+        return state == VaporView::DeviceState::Reconnecting ? VaporView::DeviceState::Connecting : state;
+    }
+
+    if (device == VaporView::SkyDeviceId::WaveTcp)
+    {
+        if (!tcp_wave_panel_)
+        {
+            return VaporView::DeviceState::Disabled;
+        }
+        if (tcp_wave_panel_->isConnecting())
+        {
+            return VaporView::DeviceState::Connecting;
+        }
+        return tcp_wave_panel_->isConnected() ? VaporView::DeviceState::Connected : VaporView::DeviceState::Disconnected;
+    }
+
+    if (homeDeviceConnected(device))
+    {
+        return VaporView::DeviceState::Connected;
+    }
+    if (!homeDevicePortSelected(device))
+    {
+        return VaporView::DeviceState::Disabled;
+    }
+    if (connection_attempt_in_progress_)
+    {
+        return VaporView::DeviceState::Connecting;
+    }
+    return VaporView::DeviceState::Disconnected;
+}
+
 void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
 {
-    const bool connected = homeDeviceConnected(device);
+    const VaporView::DeviceState state = homeDeviceActionState(device);
+    if (state == VaporView::DeviceState::Disabled ||
+        state == VaporView::DeviceState::Connecting ||
+        state == VaporView::DeviceState::Reconnecting)
+    {
+        return;
+    }
+    const bool connected = state == VaporView::DeviceState::Connected;
     if (isRemoteSkyMode())
     {
         if (!ground_telemetry_service_ || !ground_telemetry_service_->isOpen())
@@ -14523,6 +14680,10 @@ void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
         }
         sendRemoteDeviceCommand(connectRequested ? VaporView::CommandId::ConnectDevice : VaporView::CommandId::DisconnectDevice,
                                 device);
+        remote_device_states_.insert(device, connectRequested
+            ? VaporView::DeviceState::Connecting
+            : VaporView::DeviceState::Disconnected);
+        updateRemoteDeviceButtonText(device, remote_device_states_.value(device));
         return;
     }
 
@@ -14531,6 +14692,7 @@ void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
         if (tcp_wave_panel_)
         {
             tcp_wave_panel_->toggleConnection();
+            updateHomeDeviceStatusCapsules();
         }
         return;
     }
@@ -14544,18 +14706,37 @@ void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
 
 void MainWindow::updateHomeDeviceStatusCapsules()
 {
-    auto updateCapsule = [this](QLabel *label, QToolButton *button, VaporView::SkyDeviceId device) {
+    bool anyConnecting = false;
+    auto updateCapsule = [this, &anyConnecting](QLabel *label, QToolButton *button, VaporView::SkyDeviceId device) {
         if (!label)
         {
             return;
         }
-        const bool connected = homeDeviceConnected(device);
+        const VaporView::DeviceState state = homeDeviceActionState(device);
+        const bool connected = state == VaporView::DeviceState::Connected;
+        const bool connecting = state == VaporView::DeviceState::Connecting || state == VaporView::DeviceState::Reconnecting;
+        if (connecting)
+        {
+            anyConnecting = true;
+        }
+        const QString stateKey = connected
+            ? QStringLiteral("connected")
+            : connecting
+                ? QStringLiteral("connecting")
+                : state == VaporView::DeviceState::Disabled
+                    ? QStringLiteral("disabled")
+                    : QStringLiteral("disconnected");
         const QString stateText = connected
             ? (is_english_ ? QStringLiteral("Connected") : QStringLiteral("已连接"))
-            : (is_english_ ? QStringLiteral("Disconnected") : QStringLiteral("未连接"));
+            : connecting
+                ? (is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中"))
+                : state == VaporView::DeviceState::Disabled
+                    ? (is_english_ ? QStringLiteral("Not ready") : QStringLiteral("未就绪"))
+                    : (is_english_ ? QStringLiteral("Ready to connect") : QStringLiteral("可以连接"));
         const QString deviceName = homeDeviceDisplayName(device, is_english_);
         label->setText(QStringLiteral("• %1").arg(deviceName));
         label->setProperty("connected", connected);
+        label->setProperty("state", stateKey);
         label->setToolTip(is_english_
             ? QStringLiteral("%1 status: %2").arg(deviceName, stateText)
             : QStringLiteral("%1状态：%2").arg(deviceName, stateText));
@@ -14568,15 +14749,37 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         }
         const bool remoteMode = isRemoteSkyMode();
         const bool linkOpen = ground_telemetry_service_ && ground_telemetry_service_->isOpen();
-        const bool enabled = remoteMode
-            ? linkOpen
-            : (device == VaporView::SkyDeviceId::WaveTcp
-                ? tcp_wave_panel_ != nullptr
-                : ((connected && disconnect_btn_ && disconnect_btn_->isEnabled()) ||
-                   (!connected && connect_btn_ && connect_btn_->isEnabled())));
-        const QString actionText = connected
-            ? (is_english_ ? QStringLiteral("Disconnect") : QStringLiteral("断开"))
-            : (is_english_ ? QStringLiteral("Connect") : QStringLiteral("连接"));
+        const bool enabled = state == VaporView::DeviceState::Disabled || connecting
+            ? false
+            : remoteMode
+                ? linkOpen
+                : (device == VaporView::SkyDeviceId::WaveTcp
+                    ? tcp_wave_panel_ != nullptr
+                    : ((connected && disconnect_btn_ && disconnect_btn_->isEnabled()) ||
+                       (!connected && connect_btn_ && connect_btn_->isEnabled())));
+        const QString actionText = [&]() {
+            if (connected)
+            {
+                return is_english_ ? QStringLiteral("Disconnect") : QStringLiteral("断开");
+            }
+            if (connecting)
+            {
+                return is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中");
+            }
+            if (state == VaporView::DeviceState::Disabled)
+            {
+                if (remoteMode)
+                {
+                    return is_english_ ? QStringLiteral("Connect telemetry first") : QStringLiteral("请先连接数传");
+                }
+                if (device == VaporView::SkyDeviceId::WaveTcp)
+                {
+                    return is_english_ ? QStringLiteral("TCP wave panel unavailable") : QStringLiteral("TCP 波形面板未就绪");
+                }
+                return is_english_ ? QStringLiteral("Select port first") : QStringLiteral("请先选择串口");
+            }
+            return is_english_ ? QStringLiteral("Connect") : QStringLiteral("连接");
+        }();
         QString modeHint;
         if (remoteMode)
         {
@@ -14591,15 +14794,29 @@ void MainWindow::updateHomeDeviceStatusCapsules()
             modeHint = is_english_ ? QStringLiteral("local serial devices") : QStringLiteral("本地串口设备");
         }
         button->setEnabled(enabled);
-        button->setIcon(createLucideIcon(connected ? QStringLiteral("unplug") : QStringLiteral("link"),
-                                         connected ? toolbarColor(AppThemeColor::ToolbarRed)
-                                                   : toolbarColor(AppThemeColor::ToolbarBlue)));
+        if (connecting)
+        {
+            button->setIcon(createRotatedLucideIcon(QStringLiteral("refresh-cw"),
+                                                    toolbarColor(AppThemeColor::ToolbarBlue),
+                                                    (home_device_action_spinner_step_ % 12) * 30));
+        }
+        else
+        {
+            const QString iconName = connected ? QStringLiteral("unplug") : QStringLiteral("link");
+            const QColor iconColor = connected
+                ? toolbarColor(AppThemeColor::ToolbarRed)
+                : state == VaporView::DeviceState::Disabled
+                    ? toolbarColor(AppThemeColor::ToolbarDisabled)
+                    : toolbarColor(AppThemeColor::ToolbarGreen);
+            button->setIcon(createLucideIcon(iconName, iconColor));
+        }
         button->setToolTip(is_english_
             ? QStringLiteral("%1 %2 (%3)").arg(actionText, deviceName, modeHint)
             : QStringLiteral("%1%2（%3）").arg(actionText, deviceName, modeHint));
         button->setStatusTip(button->toolTip());
         button->setAccessibleName(button->toolTip());
         button->setProperty("connected", connected);
+        button->setProperty("state", stateKey);
         button->style()->unpolish(button);
         button->style()->polish(button);
     };
@@ -14609,6 +14826,21 @@ void MainWindow::updateHomeDeviceStatusCapsules()
     updateCapsule(home_hmp_status_lbl_, home_hmp_action_btn_, VaporView::SkyDeviceId::Hmp);
     updateCapsule(home_lidar_status_lbl_, home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
     updateCapsule(home_wave_status_lbl_, home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
+    if (home_device_action_spinner_timer_)
+    {
+        if (anyConnecting)
+        {
+            if (!home_device_action_spinner_timer_->isActive())
+            {
+                home_device_action_spinner_timer_->start();
+            }
+        }
+        else
+        {
+            home_device_action_spinner_timer_->stop();
+            home_device_action_spinner_step_ = 0;
+        }
+    }
 }
 
 bool MainWindow::anyCollectorRunning() const
@@ -15734,6 +15966,7 @@ void MainWindow::onRefreshTimer()
         temperature_controller_panel_->updateData(current_temperature_controller_);
         if (temperature_overview_panel_) temperature_overview_panel_->updateData(current_temperature_controller_);
     }
+    updateHomeDeviceStatusCapsules();
 }
 
 void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& telemetry)
