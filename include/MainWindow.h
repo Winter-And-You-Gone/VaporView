@@ -491,6 +491,7 @@ private:
     VaporView::DeviceState homeDeviceActionState(VaporView::SkyDeviceId device) const;
     void triggerHomeDeviceAction(VaporView::SkyDeviceId device);
     void updateHomeDeviceStatusCapsules();
+    void updateHomeDeviceActionSpinnerIcons();
     bool anyCollectorRunning() const;
     QStringList getAvailablePorts();
     void setEnglish(bool english);

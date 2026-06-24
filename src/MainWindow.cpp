@@ -415,6 +415,8 @@ constexpr int kHomeDeviceGridColumns = 3;
 constexpr int kHomeDeviceGridRows = 2;
 constexpr int kHomeDeviceGridRowGap = 6;
 constexpr int kHomeDeviceItemGap = 12;
+constexpr int kHomeDeviceActionSpinnerFrames = 30;
+constexpr int kHomeDeviceActionSpinnerIntervalMs = 25;
 constexpr int kMainPageTitleBarHeight = kMainPageInputHeight + 4;
 constexpr int kEnvironmentTitleBarHeight = kMainPageButtonHeight;
 constexpr int kConfigFormBottomPadding = 4;
@@ -1017,6 +1019,18 @@ QIcon createLucideIcon(const QString& iconName, const QColor& color)
 
 QIcon createRotatedLucideIcon(const QString& iconName, const QColor& color, int degrees)
 {
+    static QHash<QString, QIcon> cache;
+    const int normalizedDegrees = ((degrees % 360) + 360) % 360;
+    const QString cacheKey = QStringLiteral("%1:%2:%3")
+        .arg(iconName)
+        .arg(color.rgba(), 0, 16)
+        .arg(normalizedDegrees);
+    auto it = cache.constFind(cacheKey);
+    if (it != cache.constEnd())
+    {
+        return it.value();
+    }
+
     const QPixmap source = createLucideIcon(iconName, color).pixmap(QSize(32, 32));
     if (source.isNull())
     {
@@ -1032,13 +1046,14 @@ QIcon createRotatedLucideIcon(const QString& iconName, const QColor& color, int 
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
     painter.translate(logicalSize.width() / 2.0, logicalSize.height() / 2.0);
-    painter.rotate(degrees);
+    painter.rotate(normalizedDegrees);
     painter.translate(-logicalSize.width() / 2.0, -logicalSize.height() / 2.0);
     painter.drawPixmap(QPointF(0.0, 0.0), source);
 
     QIcon icon;
     icon.addPixmap(rotated, QIcon::Normal);
     icon.addPixmap(rotated, QIcon::Disabled);
+    cache.insert(cacheKey, icon);
     return icon;
 }
 
@@ -10347,10 +10362,11 @@ void MainWindow::setupConfigPanel()
     addHomeDevice(home_lidar_status_lbl_, home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
     addHomeDevice(home_wave_status_lbl_, home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
     home_device_action_spinner_timer_ = new QTimer(this);
-    home_device_action_spinner_timer_->setInterval(120);
+    home_device_action_spinner_timer_->setTimerType(Qt::PreciseTimer);
+    home_device_action_spinner_timer_->setInterval(kHomeDeviceActionSpinnerIntervalMs);
     connect(home_device_action_spinner_timer_, &QTimer::timeout, this, [this]() {
-        home_device_action_spinner_step_ = (home_device_action_spinner_step_ + 1) % 12;
-        updateHomeDeviceStatusCapsules();
+        home_device_action_spinner_step_ = (home_device_action_spinner_step_ + 1) % kHomeDeviceActionSpinnerFrames;
+        updateHomeDeviceActionSpinnerIcons();
     });
     homeDevicesLayout->setColumnStretch(kHomeDeviceGridColumns, 1);
     updateHomeDeviceStatusCapsules();
@@ -14803,7 +14819,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         {
             button->setIcon(createRotatedLucideIcon(QStringLiteral("link"),
                                                     toolbarColor(AppThemeColor::ToolbarGreen),
-                                                    (home_device_action_spinner_step_ % 12) * 30));
+                                                    (home_device_action_spinner_step_ * 360) / kHomeDeviceActionSpinnerFrames));
         }
         else
         {
@@ -14846,6 +14862,33 @@ void MainWindow::updateHomeDeviceStatusCapsules()
             home_device_action_spinner_step_ = 0;
         }
     }
+}
+
+void MainWindow::updateHomeDeviceActionSpinnerIcons()
+{
+    auto updateButton = [this](QToolButton *button, VaporView::SkyDeviceId device) {
+        if (!button)
+        {
+            return;
+        }
+
+        const VaporView::DeviceState state = homeDeviceActionState(device);
+        if (state != VaporView::DeviceState::Connecting && state != VaporView::DeviceState::Reconnecting)
+        {
+            return;
+        }
+
+        button->setIcon(createRotatedLucideIcon(QStringLiteral("link"),
+                                                toolbarColor(AppThemeColor::ToolbarGreen),
+                                                (home_device_action_spinner_step_ * 360) / kHomeDeviceActionSpinnerFrames));
+        button->update();
+    };
+
+    updateButton(home_epsilon_action_btn_, VaporView::SkyDeviceId::Epsilon);
+    updateButton(home_ptb_action_btn_, VaporView::SkyDeviceId::Ptb);
+    updateButton(home_hmp_action_btn_, VaporView::SkyDeviceId::Hmp);
+    updateButton(home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
+    updateButton(home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
 }
 
 bool MainWindow::anyCollectorRunning() const
