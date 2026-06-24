@@ -369,6 +369,40 @@ QFrame#epsilonSectionCard {
     border-radius: 4px;
 }
 
+QWidget#homeTelemetrySummaryContainer {
+    background-color: transparent;
+    border: none;
+}
+
+QFrame#homeTelemetrySectionCard {
+    background-color: @vv-surface;
+    border: 1px solid @vv-border;
+    border-radius: 6px;
+}
+
+QLabel#homeOverviewSectionTitle {
+    color: @vv-primary;
+    font-size: 14px;
+    font-weight: 700;
+    padding: 0px;
+    margin: 0px;
+}
+
+QLabel#homeTelemetrySummaryLabel {
+    color: @vv-text;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0px;
+    margin: 0px;
+}
+
+QFrame#homeOverviewDivider {
+    background-color: @vv-border;
+    border: none;
+    min-width: 1px;
+    max-width: 1px;
+}
+
 QLabel#epsilonSectionLabel {
     color: @vv-text;
     background-color: @vv-surface-alt;

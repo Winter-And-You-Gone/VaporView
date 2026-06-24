@@ -572,6 +572,13 @@ private:
     void noteRemoteWaveformPacket(quint16 channelId);
     double remotePacketRate(VaporView::MsgType type) const;
     double remoteWaveformPacketRate(quint16 channelId) const;
+    struct RemoteTelemetrySummarySections
+    {
+        QString rate;
+        QString link;
+        QString device;
+    };
+    RemoteTelemetrySummarySections remoteTelemetrySummarySections() const;
     QString remoteTelemetrySummaryText() const;
     void updateRemoteTelemetrySummaryLabel();
     void updateEnvironmentStatusIcons(bool lidarValid, bool ptbValid, bool hmpValid);
@@ -780,6 +787,7 @@ private:
     QLabel *home_hmp_status_lbl_;
     QLabel *home_lidar_status_lbl_;
     QLabel *home_wave_status_lbl_;
+    QLabel *home_device_status_title_lbl_;
     QToolButton *home_epsilon_action_btn_;
     QToolButton *home_ptb_action_btn_;
     QToolButton *home_hmp_action_btn_;
@@ -787,6 +795,8 @@ private:
     QToolButton *home_wave_action_btn_;
     QWidget *data_telemetry_summary_card_;
     QLabel *data_telemetry_summary_lbl_;
+    QLabel *data_telemetry_link_summary_lbl_;
+    QLabel *data_telemetry_device_summary_lbl_;
     QLabel *log_inline_title_lbl_;
     QLabel *epsilon_inline_title_lbl_;
     QLabel *gnss_inline_title_lbl_;

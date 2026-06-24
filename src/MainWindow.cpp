@@ -1825,6 +1825,31 @@ QFrame#epsilonSectionCard {
     background-color: @vv-surface;
     border: 1px solid @vv-border;
 }
+QWidget#homeTelemetrySummaryContainer {
+    background-color: transparent;
+    border: none;
+}
+QFrame#homeTelemetrySectionCard {
+    background-color: @vv-surface;
+    border: 1px solid @vv-border;
+    border-radius: 6px;
+}
+QLabel#homeOverviewSectionTitle {
+    color: @vv-primary;
+    font-size: 14px;
+    font-weight: 700;
+}
+QLabel#homeTelemetrySummaryLabel {
+    color: @vv-white;
+    font-size: 13px;
+    font-weight: 600;
+}
+QFrame#homeOverviewDivider {
+    background-color: @vv-border;
+    border: none;
+    min-width: 1px;
+    max-width: 1px;
+}
 QLabel#epsilonSectionLabel {
     color: @vv-white;
     background-color: @vv-surface;
@@ -4261,25 +4286,25 @@ public:
         : QWidget(parent)
     {
         setObjectName(QStringLiteral("temperatureOverviewPanel"));
-        setMinimumHeight(kMainPageTitleBarHeight + 96);
-        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
-        constexpr int kOverviewControlWidth = 74;
-        constexpr int kOverviewValueWidth = 88;
-        constexpr int kOverviewPercentWidth = 92;
-        constexpr int kOverviewEmergencyWidth = 112;
+        constexpr int kOverviewSummaryWidth = 178;
+        constexpr int kOverviewControlWidth = 82;
+        constexpr int kOverviewValueWidth = 82;
+        constexpr int kOverviewPercentWidth = 82;
+        constexpr int kOverviewEmergencyWidth = 82;
 
         auto *layout = new QHBoxLayout(this);
-        layout->setContentsMargins(8, 4, 8, 6);
-        layout->setSpacing(6);
+        layout->setContentsMargins(12, 10, 12, 10);
+        layout->setSpacing(10);
 
         auto *summary = new QWidget(this);
-        summary->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
-        summary->setMinimumWidth(kOverviewPercentWidth + kOverviewEmergencyWidth + 6);
+        summary->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+        summary->setFixedWidth(kOverviewSummaryWidth);
         auto *summaryLayout = new QGridLayout(summary);
         summaryLayout->setContentsMargins(0, 0, 0, 0);
-        summaryLayout->setHorizontalSpacing(6);
-        summaryLayout->setVerticalSpacing(4);
+        summaryLayout->setHorizontalSpacing(8);
+        summaryLayout->setVerticalSpacing(8);
 
         auto addMetricCell = [summary, summaryLayout](int row, int column, QLabel *&title, QLabel *&value) {
             auto *cell = new QWidget(summary);
@@ -4370,9 +4395,28 @@ public:
         summaryLayout->addWidget(buttonCell, 2, 1, Qt::AlignLeft | Qt::AlignTop);
         layout->addWidget(summary, 0, Qt::AlignTop);
 
+        auto *divider = new QFrame(this);
+        divider->setObjectName(QStringLiteral("homeOverviewDivider"));
+        divider->setFixedWidth(1);
+        divider->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+        layout->addWidget(divider);
+
+        auto *plotSection = new QWidget(this);
+        plotSection->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        auto *plotSectionLayout = new QVBoxLayout(plotSection);
+        plotSectionLayout->setContentsMargins(0, 0, 0, 0);
+        plotSectionLayout->setSpacing(6);
+        plot_title_ = new QLabel(plotSection);
+        plot_title_->setObjectName(QStringLiteral("homeOverviewSectionTitle"));
+        plot_title_->setMinimumHeight(22);
+        plotSectionLayout->addWidget(plot_title_, 0, Qt::AlignLeft | Qt::AlignTop);
+
         plot_ = new TemperatureTrendPlotWidget(this);
         plot_->setCompactMode(true);
-        layout->addWidget(plot_, 1);
+        plot_->setMinimumHeight(150);
+        plot_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+        plotSectionLayout->addWidget(plot_, 1);
+        layout->addWidget(plotSection, 1);
 
         setEnglish(false);
         updateData(VaporView::TemperatureControllerData());
@@ -4402,6 +4446,7 @@ public:
         target_temp_title_->setText(english ? QStringLiteral("Target:") : QStringLiteral("目标:"));
         output_switch_title_->setText(english ? QStringLiteral("Output:") : QStringLiteral("输出:"));
         output_percent_spin_title_->setText(english ? QStringLiteral("Max %:") : QStringLiteral("上限:"));
+        plot_title_->setText(english ? QStringLiteral("Realtime temperature curve") : QStringLiteral("实时温度曲线"));
         emergency_stop_button_->setText(english ? QStringLiteral("Stop") : QStringLiteral("急停"));
         emergency_stop_button_->setToolTip(english ? QStringLiteral("Turn off RD105 output for both channels.")
                                                   : QStringLiteral("关闭 RD105 两个通道的输出。"));
@@ -4499,6 +4544,7 @@ private:
     QLabel *output_percent_spin_title_ = nullptr;
     QSpinBox *output_percent_spin_ = nullptr;
     QPushButton *emergency_stop_button_ = nullptr;
+    QLabel *plot_title_ = nullptr;
     TemperatureTrendPlotWidget *plot_ = nullptr;
     VaporView::TemperatureControllerData latest_data_;
     std::array<QVector<double>, 2> measured_temperature_history_{};
@@ -5025,6 +5071,7 @@ MainWindow::MainWindow(QWidget *parent)
     , home_hmp_status_lbl_(nullptr)
     , home_lidar_status_lbl_(nullptr)
     , home_wave_status_lbl_(nullptr)
+    , home_device_status_title_lbl_(nullptr)
     , home_epsilon_action_btn_(nullptr)
     , home_ptb_action_btn_(nullptr)
     , home_hmp_action_btn_(nullptr)
@@ -5032,6 +5079,8 @@ MainWindow::MainWindow(QWidget *parent)
     , home_wave_action_btn_(nullptr)
     , data_telemetry_summary_card_(nullptr)
     , data_telemetry_summary_lbl_(nullptr)
+    , data_telemetry_link_summary_lbl_(nullptr)
+    , data_telemetry_device_summary_lbl_(nullptr)
     , log_inline_title_lbl_(nullptr)
     , epsilon_inline_title_lbl_(nullptr)
     , gnss_inline_title_lbl_(nullptr)
@@ -5805,6 +5854,11 @@ void MainWindow::loadModernStyleSheet()
             "QWidget#sectionTitleCluster QLabel#sectionTitleIcon { background-color: transparent; border: none; padding: 0px; margin: 0px; }"
             "QWidget#sectionTitleBar QWidget#sectionTitleCluster QLabel#sectionTitleLabel, QWidget#environmentSectionTitleBar QWidget#sectionTitleCluster QLabel#sectionTitleLabel { margin: 0px; padding: 0px; }"
             "QFrame#epsilonSectionCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 4px; }"
+            "QWidget#homeTelemetrySummaryContainer { background-color: transparent; border: none; }"
+            "QFrame#homeTelemetrySectionCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 6px; }"
+            "QLabel#homeOverviewSectionTitle { color: @vv-primary; font-size: 14px; font-weight: 700; padding: 0px; margin: 0px; }"
+            "QLabel#homeTelemetrySummaryLabel { color: @vv-text; font-size: 13px; font-weight: 600; padding: 0px; margin: 0px; }"
+            "QFrame#homeOverviewDivider { background-color: @vv-border; border: none; min-width: 1px; max-width: 1px; }"
             "QLabel#epsilonSectionLabel { color: @vv-text; background-color: @vv-surface-alt; border: none; border-right: 1px solid @vv-border; font-size: 14px; font-weight: 700; padding: 2px; }"
             "QLabel#valueLabel { font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 14px; font-weight: 600; }"
             "QLabel#highlightedValue { font-family: \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace; }"
@@ -6985,25 +7039,28 @@ void MainWindow::updateConfigCardHeightForSourceMode()
     }
 
     int minimumHeight = scaledConfiguredHeight(config_group_, kConfigCardMinHeight);
-    if (data_telemetry_summary_card_ && data_telemetry_summary_lbl_)
+    if (data_telemetry_summary_card_)
     {
-        int summaryHeight = data_telemetry_summary_lbl_->sizeHint().height();
-        if (QLayout *summaryLayout = data_telemetry_summary_card_->layout())
-        {
-            const QMargins margins = summaryLayout->contentsMargins();
-            summaryHeight += margins.top() + margins.bottom();
-        }
-        summaryHeight = std::max(summaryHeight, scaledConfiguredHeight(data_telemetry_summary_lbl_, kMainPageInputHeight));
+        int summaryHeight = std::max(data_telemetry_summary_card_->sizeHint().height(),
+                                     data_telemetry_summary_card_->minimumSizeHint().height());
+        summaryHeight = std::max(summaryHeight, kMainPageInputHeight);
         data_telemetry_summary_card_->setMinimumHeight(summaryHeight);
+        data_telemetry_summary_card_->setMaximumHeight(summaryHeight);
+        const int homeDeviceTitleHeight = scalePixels(22);
         const int homeDeviceRowHeight = scalePixels((kHomeDeviceRowHeight * kHomeDeviceGridRows) +
                                                     (kHomeDeviceGridRowGap * (kHomeDeviceGridRows - 1)));
         const int homeBodySpacing = scalePixels(6);
+        const int homeBodyTopPadding = scalePixels(10);
+        const int homeBodyBottomPadding = scalePixels(kConfigHomeBodyBottomPadding);
         minimumHeight = std::max(minimumHeight,
                                  kMainPageTitleBarHeight +
+                                     homeBodyTopPadding +
+                                     homeDeviceTitleHeight +
+                                     homeBodySpacing +
                                      homeDeviceRowHeight +
                                      homeBodySpacing +
                                      summaryHeight +
-                                     scalePixels(kConfigHomeBodyBottomPadding) +
+                                     homeBodyBottomPadding +
                                      scalePixels(kConfigCardBottomPadding));
     }
 
@@ -7180,7 +7237,7 @@ double MainWindow::remoteWaveformPacketRate(quint16 channelId) const
     return packetRateFromArrivals(remote_waveform_channel_arrivals_ms_.value(static_cast<int>(channelId)));
 }
 
-QString MainWindow::remoteTelemetrySummaryText() const
+MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySections() const
 {
     const bool connected = ground_telemetry_service_ && ground_telemetry_service_->isOpen();
 
@@ -7207,8 +7264,7 @@ QString MainWindow::remoteTelemetrySummaryText() const
     };
 
     auto sectionHtml = [&](const QString& title, const QStringList& rows) {
-        return QStringLiteral("<p style=\"margin:0 0 5px 0;\">"
-                              "<span style=\"color:%1;font-weight:700;\">%2</span><br/>%3</p>")
+        return QStringLiteral("<span style=\"color:%1;font-weight:700;\">%2</span><br/>%3")
             .arg(accentColor, title.toHtmlEscaped(), rows.join(QStringLiteral("&nbsp;&nbsp; ")));
     };
 
@@ -7252,24 +7308,66 @@ QString MainWindow::remoteTelemetrySummaryText() const
         deviceRows << rowHtml(QStringLiteral("波形:"), hasText(VaporView::SkyDeviceId::WaveTcp, 3000));
     }
 
-    const QString rateTitle = is_english_ ? QStringLiteral("Telemetry packet rates") : QStringLiteral("数传数据包频率");
-    const QString linkTitle = is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率");
-    const QString deviceTitle = is_english_ ? QStringLiteral("Device data") : QStringLiteral("设备数据");
-    return sectionHtml(rateTitle, rateRows) +
-           sectionHtml(linkTitle, linkRows) +
-           sectionHtml(deviceTitle, deviceRows);
+    RemoteTelemetrySummarySections sections;
+    sections.rate = sectionHtml(is_english_ ? QStringLiteral("Telemetry packet rates") : QStringLiteral("传感数据包频率"), rateRows);
+    sections.link = sectionHtml(is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"), linkRows);
+    sections.device = sectionHtml(is_english_ ? QStringLiteral("Device data") : QStringLiteral("设备数据"), deviceRows);
+    return sections;
+}
+
+QString MainWindow::remoteTelemetrySummaryText() const
+{
+    const RemoteTelemetrySummarySections sections = remoteTelemetrySummarySections();
+    return sections.rate + QStringLiteral("<br/><br/>") + sections.link + QStringLiteral("<br/><br/>") + sections.device;
 }
 
 void MainWindow::updateRemoteTelemetrySummaryLabel()
 {
-    if (!data_telemetry_summary_card_ || !data_telemetry_summary_lbl_)
+    if (!data_telemetry_summary_card_)
     {
         return;
     }
-    const QString text = remoteTelemetrySummaryText();
+    const RemoteTelemetrySummarySections sections = remoteTelemetrySummarySections();
+    const QString text = sections.rate + QStringLiteral("<br/><br/>") + sections.link + QStringLiteral("<br/><br/>") + sections.device;
     data_telemetry_summary_card_->setVisible(true);
-    data_telemetry_summary_lbl_->setText(text);
-    data_telemetry_summary_lbl_->setToolTip(text);
+    auto setSummaryLabel = [this](QLabel *label, const QString& summaryText) {
+        if (!label)
+        {
+            return;
+        }
+        label->setText(summaryText);
+        label->setToolTip(QString());
+
+        QWidget *section = label->parentWidget();
+        QMargins sectionMargins;
+        if (section && section->layout())
+        {
+            sectionMargins = section->layout()->contentsMargins();
+        }
+
+        const int lineCount = label == data_telemetry_summary_lbl_ ? 3 : 2;
+        const int labelHeight = label->fontMetrics().lineSpacing() * lineCount + scalePixels(2);
+        label->setMinimumHeight(labelHeight);
+        label->setMaximumHeight(labelHeight);
+
+        if (section)
+        {
+            const int sectionHeight = labelHeight + sectionMargins.top() + sectionMargins.bottom();
+            section->setMinimumHeight(sectionHeight);
+            section->setMaximumHeight(sectionHeight);
+            section->updateGeometry();
+        }
+        label->updateGeometry();
+    };
+    setSummaryLabel(data_telemetry_summary_lbl_, sections.rate);
+    setSummaryLabel(data_telemetry_link_summary_lbl_, sections.link);
+    setSummaryLabel(data_telemetry_device_summary_lbl_, sections.device);
+    if (QLayout *summaryLayout = data_telemetry_summary_card_->layout())
+    {
+        summaryLayout->invalidate();
+        summaryLayout->activate();
+    }
+    data_telemetry_summary_card_->updateGeometry();
     if (device_config_.data_telemetry_summary_card)
     {
         device_config_.data_telemetry_summary_card->setVisible(true);
@@ -7277,7 +7375,11 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     if (device_config_.data_telemetry_summary_lbl)
     {
         device_config_.data_telemetry_summary_lbl->setText(text);
-        device_config_.data_telemetry_summary_lbl->setToolTip(text);
+        device_config_.data_telemetry_summary_lbl->setToolTip(QString());
+    }
+    if (home_overview_splitter_)
+    {
+        updateConfigCardHeightForSourceMode();
     }
 }
 
@@ -9616,9 +9718,10 @@ void MainWindow::syncDeviceConfigPageFromHome()
         const QSignalBlocker blocker(device_config_.sky_telemetry_tcp_port_spin);
         device_config_.sky_telemetry_tcp_port_spin->setValue(sky_telemetry_tcp_port_spin_->value());
     }
-    if (data_telemetry_summary_lbl_ && device_config_.data_telemetry_summary_lbl)
+    if (device_config_.data_telemetry_summary_lbl)
     {
-        device_config_.data_telemetry_summary_lbl->setText(data_telemetry_summary_lbl_->text());
+        device_config_.data_telemetry_summary_lbl->setText(remoteTelemetrySummaryText());
+        device_config_.data_telemetry_summary_lbl->setToolTip(QString());
     }
     if (data_telemetry_summary_card_ && device_config_.data_telemetry_summary_card)
     {
@@ -10085,28 +10188,49 @@ void MainWindow::setupConfigPanel()
     connect(hmp_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onHmpRateChanged);
     connect(lidar_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onLidarRateChanged);
 
-    data_telemetry_summary_card_ = new QFrame(config_group_);
-    data_telemetry_summary_card_->setObjectName(QStringLiteral("epsilonSectionCard"));
-    data_telemetry_summary_card_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::MinimumExpanding);
+    data_telemetry_summary_card_ = new QWidget(config_group_);
+    data_telemetry_summary_card_->setObjectName(QStringLiteral("homeTelemetrySummaryContainer"));
+    data_telemetry_summary_card_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    data_telemetry_summary_card_->setToolTip(QString());
     auto *telemetrySummaryLayout = new QVBoxLayout(data_telemetry_summary_card_);
-    telemetrySummaryLayout->setContentsMargins(2, 2, 2, 2);
-    telemetrySummaryLayout->setSpacing(0);
+    telemetrySummaryLayout->setContentsMargins(0, 0, 0, 0);
+    telemetrySummaryLayout->setSpacing(4);
 
-    data_telemetry_summary_lbl_ = new QLabel(data_telemetry_summary_card_);
-    data_telemetry_summary_lbl_->setObjectName("fieldLabel");
-    data_telemetry_summary_lbl_->setTextFormat(Qt::RichText);
-    data_telemetry_summary_lbl_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    data_telemetry_summary_lbl_->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::MinimumExpanding);
-    data_telemetry_summary_lbl_->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-    data_telemetry_summary_lbl_->setMinimumHeight(kMainPageInputHeight);
-    data_telemetry_summary_lbl_->setWordWrap(true);
-    telemetrySummaryLayout->addWidget(data_telemetry_summary_lbl_);
+    auto createTelemetrySection = [this, telemetrySummaryLayout](QLabel *&label) {
+        auto *section = new QFrame(data_telemetry_summary_card_);
+        section->setObjectName(QStringLiteral("homeTelemetrySectionCard"));
+        section->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        section->setToolTip(QString());
+        auto *sectionLayout = new QVBoxLayout(section);
+        sectionLayout->setContentsMargins(6, 4, 6, 4);
+        sectionLayout->setSpacing(0);
+        label = new QLabel(section);
+        label->setObjectName(QStringLiteral("homeTelemetrySummaryLabel"));
+        label->setTextFormat(Qt::RichText);
+        label->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        label->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        label->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+        label->setMinimumHeight(0);
+        label->setWordWrap(true);
+        label->setToolTip(QString());
+        sectionLayout->addWidget(label);
+        telemetrySummaryLayout->addWidget(section, 0);
+    };
+    createTelemetrySection(data_telemetry_summary_lbl_);
+    createTelemetrySection(data_telemetry_link_summary_lbl_);
+    createTelemetrySection(data_telemetry_device_summary_lbl_);
     data_telemetry_summary_card_->setVisible(true);
 
     auto *homeBodyWidget = new QWidget(config_group_);
     auto *homeBodyLayout = new QVBoxLayout(homeBodyWidget);
-    homeBodyLayout->setContentsMargins(8, 0, 8, kConfigHomeBodyBottomPadding);
+    homeBodyLayout->setContentsMargins(18, 10, 12, kConfigHomeBodyBottomPadding);
     homeBodyLayout->setSpacing(6);
+
+    home_device_status_title_lbl_ = new QLabel(homeBodyWidget);
+    home_device_status_title_lbl_->setObjectName(QStringLiteral("homeOverviewSectionTitle"));
+    home_device_status_title_lbl_->setText(is_english_ ? QStringLiteral("Device connection status") : QStringLiteral("设备连接状态"));
+    home_device_status_title_lbl_->setMinimumHeight(22);
+    home_device_status_title_lbl_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
 
     auto *homeDevicesWidget = new QWidget(homeBodyWidget);
     homeDevicesWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
@@ -10161,9 +10285,17 @@ void MainWindow::setupConfigPanel()
     addHomeDevice(home_lidar_status_lbl_, home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
     addHomeDevice(home_wave_status_lbl_, home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
     homeDevicesLayout->setColumnStretch(kHomeDeviceGridColumns, 1);
+    updateHomeDeviceStatusCapsules();
+    homeDevicesLayout->activate();
+    const QMargins homeBodyMargins = homeBodyLayout->contentsMargins();
+    const int deviceOverviewDefaultWidth = homeDevicesWidget->sizeHint().width() +
+                                           homeBodyMargins.left() +
+                                           homeBodyMargins.right() + 2;
+    config_group_->setMinimumWidth(std::max(kHomeOverviewDeviceMinWidth, deviceOverviewDefaultWidth));
 
+    homeBodyLayout->addWidget(home_device_status_title_lbl_, 0, Qt::AlignTop | Qt::AlignLeft);
     homeBodyLayout->addWidget(homeDevicesWidget, 0, Qt::AlignTop | Qt::AlignLeft);
-    homeBodyLayout->addWidget(data_telemetry_summary_card_, 1, Qt::AlignTop);
+    homeBodyLayout->addWidget(data_telemetry_summary_card_, 0, Qt::AlignTop);
     config_root_layout->addWidget(homeBodyWidget, 0, Qt::AlignTop);
     config_form_widget->setVisible(false);
     updateHomeDeviceStatusCapsules();
@@ -10364,7 +10496,7 @@ void MainWindow::setupDataPanels()
                 : QStringLiteral("已请求紧急停止：已向两个通道下发关闭输出命令。"));
         }
     });
-    temperatureOverviewLayout->addWidget(temperature_overview_panel_);
+    temperatureOverviewLayout->addWidget(temperature_overview_panel_, 1);
 
     home_overview_splitter_ = new QSplitter(Qt::Horizontal, this);
     home_overview_splitter_->setObjectName(QStringLiteral("homeOverviewSplitter"));
@@ -10379,9 +10511,9 @@ void MainWindow::setupDataPanels()
     home_overview_splitter_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
     home_overview_splitter_->addWidget(config_group_);
     home_overview_splitter_->addWidget(temperature_overview_group_);
-    home_overview_splitter_->setStretchFactor(0, 3);
-    home_overview_splitter_->setStretchFactor(1, 2);
-    home_overview_splitter_->setSizes({kHomeOverviewDeviceMinWidth, kHomeOverviewTemperatureMinWidth});
+    home_overview_splitter_->setStretchFactor(0, 0);
+    home_overview_splitter_->setStretchFactor(1, 1);
+    home_overview_splitter_->setSizes({config_group_->minimumWidth(), kHomeOverviewTemperatureMinWidth});
     main_layout_->addWidget(home_overview_splitter_, 0);
     main_layout_->addWidget(new MainCardResizeHandle(home_overview_splitter_, kConfigCardMinHeight, this), 0);
     main_layout_->addWidget(data_group_, 0);
@@ -10770,6 +10902,10 @@ void MainWindow::setEnglish(bool english)
     if (config_inline_title_lbl_)
     {
         config_inline_title_lbl_->setText(english ? "Device Overview" : "设备概览");
+    }
+    if (home_device_status_title_lbl_)
+    {
+        home_device_status_title_lbl_->setText(english ? "Device connection status" : "设备连接状态");
     }
     if (data_source_mode_lbl_) data_source_mode_lbl_->setText(english ? "Source:" : "数据源:");
     if (sky_telemetry_transport_lbl_) sky_telemetry_transport_lbl_->setText(english ? "Link:" : "链路:");
