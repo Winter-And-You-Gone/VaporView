@@ -4411,17 +4411,23 @@ protected:
                                 trackRect.top(),
                                 std::max<qreal>(0.0, trackRect.right() - labelRect.right() - labelGap),
                                 trackRect.height());
-        const qreal segmentWidth = switchRect.width() / 2.0;
-        const qreal selectedLeft = switchRect.left() + segmentWidth * thumb_position_;
-        const QRectF selectedRect(selectedLeft, switchRect.top(), segmentWidth, switchRect.height());
+        constexpr qreal kInnerGap = 2.0;
+        const QRectF switchCapsuleRect = switchRect.adjusted(0.5, 0.5, -0.5, -0.5);
+        const QRectF switchContentRect = switchCapsuleRect.adjusted(kInnerGap, kInnerGap, -kInnerGap, -kInnerGap);
+        const qreal segmentWidth = switchContentRect.width() / 2.0;
+        const qreal selectedLeft = switchContentRect.left() + segmentWidth * thumb_position_;
+        const QRectF selectedRect(selectedLeft, switchContentRect.top(), segmentWidth, switchContentRect.height());
+        painter.setPen(QPen(appThemeColor(AppThemeColor::Border, dark), 1.0));
+        painter.setBrush(appThemeColor(AppThemeColor::Surface, dark));
+        painter.drawRoundedRect(switchCapsuleRect, kControlRadius - gap, kControlRadius - gap);
         painter.setPen(Qt::NoPen);
         painter.setBrush(selectedFill);
-        painter.drawRoundedRect(selectedRect, kControlRadius - gap, kControlRadius - gap);
+        painter.drawRoundedRect(selectedRect, kControlRadius - gap - kInnerGap, kControlRadius - gap - kInnerGap);
 
         painter.setPen(text);
         painter.drawText(labelRect, Qt::AlignCenter, labelText);
-        const QRectF offRect(switchRect.left(), switchRect.top(), segmentWidth, switchRect.height());
-        const QRectF onRect(switchRect.left() + segmentWidth, switchRect.top(), segmentWidth, switchRect.height());
+        const QRectF offRect(switchContentRect.left(), switchContentRect.top(), segmentWidth, switchContentRect.height());
+        const QRectF onRect(switchContentRect.left() + segmentWidth, switchContentRect.top(), segmentWidth, switchContentRect.height());
         const bool offSelected = thumb_position_ < 0.5;
         painter.setPen(offSelected ? selectedText : inactiveText);
         painter.drawText(offRect, Qt::AlignCenter, offText());
