@@ -490,6 +490,8 @@ private:
     bool homeDevicePortSelected(VaporView::SkyDeviceId device) const;
     VaporView::DeviceState homeDeviceActionState(VaporView::SkyDeviceId device) const;
     void triggerHomeDeviceAction(VaporView::SkyDeviceId device);
+    void startHomeDeviceActionSpinner(VaporView::SkyDeviceId device);
+    bool homeDeviceActionSpinnerActive(VaporView::SkyDeviceId device, qint64 nowMs) const;
     void updateHomeDeviceStatusCapsules();
     void updateHomeDeviceActionSpinnerIcons();
     bool anyCollectorRunning() const;
@@ -916,6 +918,7 @@ private:
     bool remote_wave_stream_auto_start_;
     int remote_recording_state_;
     QHash<VaporView::SkyDeviceId, VaporView::DeviceState> remote_device_states_;
+    QHash<VaporView::SkyDeviceId, qint64> home_device_action_spinner_until_ms_;
     QHash<VaporView::SkyDeviceId, qint64> remote_last_data_ms_;
     QHash<int, QVector<qint64>> remote_packet_arrivals_ms_;
     QHash<int, QVector<qint64>> remote_waveform_channel_arrivals_ms_;

@@ -413,14 +413,15 @@ constexpr int kHomeDeviceCapsuleHeight = 32;
 constexpr int kHomeDeviceRowHeight = kHomeDeviceButtonSize;
 constexpr int kHomeDeviceGridColumns = 3;
 constexpr int kHomeDeviceGridRows = 2;
-constexpr int kHomeDeviceGridRowGap = 6;
+constexpr int kHomeDeviceGridRowGap = 2;
 constexpr int kHomeDeviceItemGap = 12;
 constexpr int kHomeDeviceActionSpinnerFrames = 30;
 constexpr int kHomeDeviceActionSpinnerIntervalMs = 25;
+constexpr int kHomeDeviceActionSpinnerMinimumMs = 1000;
 constexpr int kMainPageTitleBarHeight = kMainPageInputHeight + 4;
 constexpr int kEnvironmentTitleBarHeight = kMainPageButtonHeight;
 constexpr int kConfigFormBottomPadding = 4;
-constexpr int kConfigHomeBodyBottomPadding = 8;
+constexpr int kConfigHomeBodyBottomPadding = 2;
 constexpr int kConfigCardBottomPadding = 4;
 constexpr int kConfigCardMinHeight = kMainPageTitleBarHeight + kMainPageButtonHeight + kConfigHomeBodyBottomPadding + kConfigCardBottomPadding;
 constexpr int kHomeOverviewDeviceMinWidth = 540;
@@ -1218,7 +1219,7 @@ QIcon createCancelIcon()
 
 QIcon createDisconnectIcon()
 {
-    return createLucideIcon(QStringLiteral("unplug"), toolbarColor(AppThemeColor::ToolbarRed));
+    return createLucideIcon(QStringLiteral("unlink"), toolbarColor(AppThemeColor::ToolbarRed));
 }
 
 QIcon createPlayIcon()
@@ -10277,7 +10278,7 @@ void MainWindow::setupConfigPanel()
     data_telemetry_summary_card_->setToolTip(QString());
     auto *telemetrySummaryLayout = new QVBoxLayout(data_telemetry_summary_card_);
     telemetrySummaryLayout->setContentsMargins(0, 0, 0, 0);
-    telemetrySummaryLayout->setSpacing(4);
+    telemetrySummaryLayout->setSpacing(2);
 
     auto createTelemetrySection = [this, telemetrySummaryLayout](QLabel *&label) {
         auto *section = new QFrame(data_telemetry_summary_card_);
@@ -10285,7 +10286,7 @@ void MainWindow::setupConfigPanel()
         section->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         section->setToolTip(QString());
         auto *sectionLayout = new QVBoxLayout(section);
-        sectionLayout->setContentsMargins(6, 4, 6, 4);
+        sectionLayout->setContentsMargins(6, 2, 6, 2);
         sectionLayout->setSpacing(0);
         label = new QLabel(section);
         label->setObjectName(QStringLiteral("homeTelemetrySummaryLabel"));
@@ -10306,8 +10307,8 @@ void MainWindow::setupConfigPanel()
 
     auto *homeBodyWidget = new QWidget(config_group_);
     auto *homeBodyLayout = new QVBoxLayout(homeBodyWidget);
-    homeBodyLayout->setContentsMargins(8, 10, 8, kConfigHomeBodyBottomPadding);
-    homeBodyLayout->setSpacing(6);
+    homeBodyLayout->setContentsMargins(8, 2, 8, kConfigHomeBodyBottomPadding);
+    homeBodyLayout->setSpacing(2);
 
     auto *homeDevicesWidget = new QWidget(homeBodyWidget);
     homeDevicesWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
@@ -14687,13 +14688,17 @@ void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
         return;
     }
     const bool connected = state == VaporView::DeviceState::Connected;
+    const bool connectRequested = !connected;
     if (isRemoteSkyMode())
     {
         if (!ground_telemetry_service_ || !ground_telemetry_service_->isOpen())
         {
             return;
         }
-        const bool connectRequested = !connected;
+        if (connectRequested)
+        {
+            startHomeDeviceActionSpinner(device);
+        }
         if (device == VaporView::SkyDeviceId::WaveTcp)
         {
             requestRemoteWaveTcpConnection(connectRequested);
@@ -14705,6 +14710,7 @@ void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
             ? VaporView::DeviceState::Connecting
             : VaporView::DeviceState::Disconnected);
         updateRemoteDeviceButtonText(device, remote_device_states_.value(device));
+        updateHomeDeviceStatusCapsules();
         return;
     }
 
@@ -14712,6 +14718,10 @@ void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
     {
         if (tcp_wave_panel_)
         {
+            if (connectRequested)
+            {
+                startHomeDeviceActionSpinner(device);
+            }
             tcp_wave_panel_->toggleConnection();
             updateHomeDeviceStatusCapsules();
         }
@@ -14721,24 +14731,60 @@ void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
     QAction *action = connected ? disconnect_btn_ : connect_btn_;
     if (action && action->isEnabled())
     {
+        if (connectRequested)
+        {
+            for (VaporView::SkyDeviceId candidate : {VaporView::SkyDeviceId::Epsilon,
+                                                     VaporView::SkyDeviceId::Ptb,
+                                                     VaporView::SkyDeviceId::Hmp,
+                                                     VaporView::SkyDeviceId::Lidar})
+            {
+                if (homeDevicePortSelected(candidate) && !homeDeviceConnected(candidate))
+                {
+                    startHomeDeviceActionSpinner(candidate);
+                }
+            }
+        }
         action->trigger();
     }
 }
 
+void MainWindow::startHomeDeviceActionSpinner(VaporView::SkyDeviceId device)
+{
+    const qint64 untilMs = QDateTime::currentMSecsSinceEpoch() + kHomeDeviceActionSpinnerMinimumMs;
+    const qint64 currentUntilMs = home_device_action_spinner_until_ms_.value(device, 0);
+    home_device_action_spinner_until_ms_.insert(device, std::max(currentUntilMs, untilMs));
+    if (home_device_action_spinner_timer_ && !home_device_action_spinner_timer_->isActive())
+    {
+        home_device_action_spinner_timer_->start();
+    }
+}
+
+bool MainWindow::homeDeviceActionSpinnerActive(VaporView::SkyDeviceId device, qint64 nowMs) const
+{
+    return home_device_action_spinner_until_ms_.value(device, 0) > nowMs;
+}
+
 void MainWindow::updateHomeDeviceStatusCapsules()
 {
-    bool anyConnecting = false;
-    auto updateCapsule = [this, &anyConnecting](QLabel *label, QToolButton *button, VaporView::SkyDeviceId device) {
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    bool anySpinnerActive = false;
+    auto updateCapsule = [this, &anySpinnerActive, nowMs](QLabel *label, QToolButton *button, VaporView::SkyDeviceId device) {
         if (!label)
         {
             return;
         }
+        const qint64 spinnerUntilMs = home_device_action_spinner_until_ms_.value(device, 0);
+        if (spinnerUntilMs > 0 && spinnerUntilMs <= nowMs)
+        {
+            home_device_action_spinner_until_ms_.remove(device);
+        }
         const VaporView::DeviceState state = homeDeviceActionState(device);
         const bool connected = state == VaporView::DeviceState::Connected;
         const bool connecting = state == VaporView::DeviceState::Connecting || state == VaporView::DeviceState::Reconnecting;
-        if (connecting)
+        const bool spinnerActive = connecting || homeDeviceActionSpinnerActive(device, nowMs);
+        if (spinnerActive)
         {
-            anyConnecting = true;
+            anySpinnerActive = true;
         }
         const QString stateKey = connected
             ? QStringLiteral("connected")
@@ -14770,7 +14816,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         }
         const bool remoteMode = isRemoteSkyMode();
         const bool linkOpen = ground_telemetry_service_ && ground_telemetry_service_->isOpen();
-        const bool enabled = state == VaporView::DeviceState::Disabled || connecting
+        const bool enabled = state == VaporView::DeviceState::Disabled || spinnerActive
             ? false
             : remoteMode
                 ? linkOpen
@@ -14779,13 +14825,13 @@ void MainWindow::updateHomeDeviceStatusCapsules()
                     : ((connected && disconnect_btn_ && disconnect_btn_->isEnabled()) ||
                        (!connected && connect_btn_ && connect_btn_->isEnabled())));
         const QString actionText = [&]() {
+            if (spinnerActive)
+            {
+                return is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中");
+            }
             if (connected)
             {
                 return is_english_ ? QStringLiteral("Disconnect") : QStringLiteral("断开");
-            }
-            if (connecting)
-            {
-                return is_english_ ? QStringLiteral("Connecting") : QStringLiteral("连接中");
             }
             if (state == VaporView::DeviceState::Disabled)
             {
@@ -14815,7 +14861,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
             modeHint = is_english_ ? QStringLiteral("local serial devices") : QStringLiteral("本地串口设备");
         }
         button->setEnabled(enabled);
-        if (connecting)
+        if (spinnerActive)
         {
             button->setIcon(createRotatedLucideIcon(QStringLiteral("link"),
                                                     toolbarColor(AppThemeColor::ToolbarGreen),
@@ -14823,7 +14869,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         }
         else
         {
-            const QString iconName = connected ? QStringLiteral("unplug") : QStringLiteral("link");
+            const QString iconName = connected ? QStringLiteral("unlink") : QStringLiteral("link");
             const QColor iconColor = connected
                 ? toolbarColor(AppThemeColor::ToolbarRed)
                 : state == VaporView::DeviceState::Disabled
@@ -14837,7 +14883,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         button->setStatusTip(button->toolTip());
         button->setAccessibleName(button->toolTip());
         button->setProperty("connected", connected);
-        button->setProperty("state", stateKey);
+        button->setProperty("state", spinnerActive ? QStringLiteral("connecting") : stateKey);
         button->style()->unpolish(button);
         button->style()->polish(button);
     };
@@ -14849,7 +14895,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
     updateCapsule(home_wave_status_lbl_, home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
     if (home_device_action_spinner_timer_)
     {
-        if (anyConnecting)
+        if (anySpinnerActive)
         {
             if (!home_device_action_spinner_timer_->isActive())
             {
@@ -14866,18 +14912,32 @@ void MainWindow::updateHomeDeviceStatusCapsules()
 
 void MainWindow::updateHomeDeviceActionSpinnerIcons()
 {
-    auto updateButton = [this](QToolButton *button, VaporView::SkyDeviceId device) {
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    bool anySpinnerActive = false;
+    bool needsFullRefresh = false;
+    auto updateButton = [this, nowMs, &anySpinnerActive, &needsFullRefresh](QToolButton *button, VaporView::SkyDeviceId device) {
         if (!button)
         {
             return;
         }
 
+        const qint64 spinnerUntilMs = home_device_action_spinner_until_ms_.value(device, 0);
+        if (spinnerUntilMs > 0 && spinnerUntilMs <= nowMs)
+        {
+            home_device_action_spinner_until_ms_.remove(device);
+            needsFullRefresh = true;
+        }
         const VaporView::DeviceState state = homeDeviceActionState(device);
-        if (state != VaporView::DeviceState::Connecting && state != VaporView::DeviceState::Reconnecting)
+        const bool spinnerActive =
+            state == VaporView::DeviceState::Connecting ||
+            state == VaporView::DeviceState::Reconnecting ||
+            homeDeviceActionSpinnerActive(device, nowMs);
+        if (!spinnerActive)
         {
             return;
         }
 
+        anySpinnerActive = true;
         button->setIcon(createRotatedLucideIcon(QStringLiteral("link"),
                                                 toolbarColor(AppThemeColor::ToolbarGreen),
                                                 (home_device_action_spinner_step_ * 360) / kHomeDeviceActionSpinnerFrames));
@@ -14889,6 +14949,16 @@ void MainWindow::updateHomeDeviceActionSpinnerIcons()
     updateButton(home_hmp_action_btn_, VaporView::SkyDeviceId::Hmp);
     updateButton(home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
     updateButton(home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
+    if (needsFullRefresh)
+    {
+        updateHomeDeviceStatusCapsules();
+        return;
+    }
+    if (!anySpinnerActive && home_device_action_spinner_timer_)
+    {
+        home_device_action_spinner_timer_->stop();
+        home_device_action_spinner_step_ = 0;
+    }
 }
 
 bool MainWindow::anyCollectorRunning() const

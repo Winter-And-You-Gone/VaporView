@@ -311,6 +311,7 @@ set(LUCIDE_RESOURCES
     resources/lucide/sun.svg
     resources/lucide/timer.svg
     resources/lucide/trash-2.svg
+    resources/lucide/unlink.svg
     resources/lucide/unplug.svg
     resources/lucide/usb.svg
     resources/lucide/x.svg
