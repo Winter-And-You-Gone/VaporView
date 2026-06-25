@@ -15,7 +15,6 @@
 #include <QFileInfo>
 #include <QPalette>
 #include <QSettings>
-#include <QTimer>
 #include "AppTheme.h"
 #include "MainWindow.h"
 #include "SkyRuntime.h"
@@ -78,22 +77,9 @@ void applyStartupTheme(QApplication& app, bool darkThemeEnabled)
     app.setStyleSheet(VaporView::startupAppThemeStyleSheet(true));
 }
 
-void showMainWindow(MainWindow& window, bool hideFirstFrame)
+void showMainWindow(MainWindow& window)
 {
-    if (!hideFirstFrame)
-    {
-        window.show();
-        return;
-    }
-
-    window.setWindowOpacity(0.0);
     window.show();
-    QTimer::singleShot(0, &window, [&window]() {
-        window.repaint();
-        QTimer::singleShot(16, &window, [&window]() {
-            window.setWindowOpacity(1.0);
-        });
-    });
 }
 }
 
@@ -220,7 +206,7 @@ int main(int argc, char *argv[])
     {
         mainWindow.setWindowIcon(app.windowIcon());
     }
-    showMainWindow(mainWindow, startupDarkTheme);
+    showMainWindow(mainWindow);
 
     return app.exec();
 }

@@ -135,6 +135,22 @@ QString windowTitle(HWND hwnd)
     GetWindowTextW(hwnd, title, static_cast<int>(sizeof(title) / sizeof(title[0])));
     return QString::fromWCharArray(title);
 }
+
+bool isWindowOpaque(HWND hwnd)
+{
+    if ((GetWindowLongPtrW(hwnd, GWL_EXSTYLE) & WS_EX_LAYERED) == 0)
+    {
+        return true;
+    }
+
+    BYTE alpha = 255;
+    DWORD flags = 0;
+    if (!GetLayeredWindowAttributes(hwnd, nullptr, &alpha, &flags))
+    {
+        return true;
+    }
+    return (flags & LWA_ALPHA) == 0 || alpha > 0;
+}
 #endif
 
 }  // namespace
@@ -153,7 +169,8 @@ int main(int argc, char **argv)
     process.start();
     if (!process.waitForStarted(5000))
     {
-        fail(QStringLiteral("failed to start main executable"),
+        fail(QStringLiteral("failed to start main executable: %1\nprogram: %2\nworking directory: %3")
+                 .arg(process.errorString(), process.program(), process.workingDirectory()),
              &process,
              readProcessOutput(process));
     }
@@ -202,6 +219,7 @@ int main(int argc, char **argv)
     require(title.contains(QStringLiteral("VaporView")),
             QStringLiteral("main window title did not contain VaporView: %1").arg(title));
     require(IsWindowVisible(hwnd), QStringLiteral("main window is not visible"));
+    require(isWindowOpaque(hwnd), QStringLiteral("main window is visible but fully transparent"));
 
     QThread::msleep(500);
     QCoreApplication::processEvents(QEventLoop::AllEvents, 50);

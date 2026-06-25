@@ -4578,6 +4578,13 @@ public:
         target_temp_value_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         summaryLayout->addWidget(target_temp_value_);
 
+        current_temp_value_ = new QLabel(summary);
+        current_temp_value_->setObjectName(QStringLiteral("temperatureOverviewValuePill"));
+        current_temp_value_->setAlignment(Qt::AlignCenter);
+        current_temp_value_->setFixedSize(kOverviewControlWidth, kOverviewPillHeight);
+        current_temp_value_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        summaryLayout->addWidget(current_temp_value_);
+
         output_switch_button_ = new TemperatureOverviewSwitchButton(summary);
         output_switch_button_->setFixedSize(kOverviewControlWidth, kOverviewOutputPillHeight);
         connect(output_switch_button_, &QPushButton::clicked, this, [this](bool checked) {
@@ -4663,19 +4670,6 @@ public:
         output_enabled_callback_ = std::move(callback);
     }
 
-    void setHeaderCurrentTemperaturePill(QLabel *label)
-    {
-        header_current_temp_value_ = label;
-        if (header_current_temp_value_)
-        {
-            header_current_temp_value_->setObjectName(QStringLiteral("temperatureOverviewValuePill"));
-            header_current_temp_value_->setAlignment(Qt::AlignCenter);
-            header_current_temp_value_->setMinimumHeight(28);
-            header_current_temp_value_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-        }
-        refreshChannelUi();
-    }
-
     void updateThemedIcons()
     {
         if (channel_button_)
@@ -4742,19 +4736,19 @@ private:
         const bool measuredValid = valid && std::isfinite(channel.measured_temperature_c);
         const bool targetValid = valid && std::isfinite(channel.target_temperature_c);
         setTemperatureOverviewPillText(
-            header_current_temp_value_,
-            is_english_ ? QStringLiteral("Current") : QStringLiteral("当前"),
-            compactDecimalWithUnit(measuredValid ? channel.measured_temperature_c : std::numeric_limits<double>::quiet_NaN(),
-                                   3,
-                                   QStringLiteral("°C")),
-            measuredValid);
-        setTemperatureOverviewPillText(
             target_temp_value_,
             is_english_ ? QStringLiteral("Target") : QStringLiteral("目标"),
             compactDecimalWithUnit(targetValid ? channel.target_temperature_c : std::numeric_limits<double>::quiet_NaN(),
                                    3,
                                    QStringLiteral("°C")),
             targetValid);
+        setTemperatureOverviewPillText(
+            current_temp_value_,
+            is_english_ ? QStringLiteral("Current") : QStringLiteral("当前"),
+            compactDecimalWithUnit(measuredValid ? channel.measured_temperature_c : std::numeric_limits<double>::quiet_NaN(),
+                                   3,
+                                   QStringLiteral("°C")),
+            measuredValid);
         if (output_switch_button_)
         {
             output_switch_button_->setSwitchCheckedSilently(valid && channel.output_enabled);
@@ -4770,8 +4764,8 @@ private:
     QMenu *channel_menu_ = nullptr;
     QAction *channel_action_1_ = nullptr;
     QAction *channel_action_2_ = nullptr;
-    QLabel *header_current_temp_value_ = nullptr;
     QLabel *target_temp_value_ = nullptr;
+    QLabel *current_temp_value_ = nullptr;
     TemperatureOverviewSwitchButton *output_switch_button_ = nullptr;
     TemperatureTrendPlotWidget *plot_ = nullptr;
     VaporView::TemperatureControllerData latest_data_;
@@ -10850,17 +10844,10 @@ void MainWindow::setupDataPanels()
         ? QStringLiteral("Laser Driver Temperature Overview")
         : QStringLiteral("激光驱动温控概览"));
     temperatureOverviewTitleLayout->addWidget(temperatureOverviewTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    auto *temperatureOverviewCurrentTempPill = new QLabel(temperatureOverviewTitleBar);
-    temperatureOverviewCurrentTempPill->setObjectName(QStringLiteral("temperatureOverviewValuePill"));
-    temperatureOverviewCurrentTempPill->setAlignment(Qt::AlignCenter);
-    temperatureOverviewCurrentTempPill->setMinimumWidth(118);
-    temperatureOverviewCurrentTempPill->setFixedHeight(28);
     temperatureOverviewTitleLayout->addStretch(1);
-    temperatureOverviewTitleLayout->addWidget(temperatureOverviewCurrentTempPill, 0, Qt::AlignVCenter | Qt::AlignRight);
     temperatureOverviewLayout->addWidget(temperatureOverviewTitleBar);
 
     temperature_overview_panel_ = new TemperatureControllerOverviewPanel(temperature_overview_group_);
-    temperature_overview_panel_->setHeaderCurrentTemperaturePill(temperatureOverviewCurrentTempPill);
     temperature_overview_panel_->setOutputEnabledCallback([this](quint8 channel, bool enabled) {
         if (enabled)
         {
