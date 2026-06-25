@@ -454,9 +454,9 @@ constexpr int kEnvStatusIconSize = 18;
 constexpr int kEpsilonSideTitleWidth = 24;
 constexpr int kEpsilonTitleColumnWidth = 102;
 constexpr int kEpsilonMotionTitleColumnWidth = 116;
-constexpr int kEpsilonLeftValueColumnWidth = 225;
-constexpr int kEpsilonPositionValueColumnWidth = 215;
-constexpr int kEpsilonMotionValueColumnWidth = 300;
+constexpr int kEpsilonLeftValueColumnWidth = 180;
+constexpr int kEpsilonPositionValueColumnWidth = 170;
+constexpr int kEpsilonMotionValueColumnWidth = 210;
 constexpr int kEpsilonFieldBaseSpacing = 6;
 constexpr int kEpsilonFieldExtraSpacingLimit = 28;
 constexpr int kEpsilonFieldExtraSpacingStep = 10;
@@ -2930,10 +2930,14 @@ private:
         int availableWidth = contentsRect().width();
         if (const QWidget *parent = parentWidget())
         {
-            const int parentWidth = parent->contentsRect().width() - 4;
+            int parentWidth = parent->contentsRect().width() - 4;
+            if (const QWidget *grandParent = parent->parentWidget())
+            {
+                parentWidth = std::max(parentWidth, grandParent->contentsRect().width() - 8);
+            }
             if (parentWidth > 0)
             {
-                availableWidth = availableWidth > 0 ? std::min(availableWidth, parentWidth) : parentWidth;
+                availableWidth = std::max(availableWidth, parentWidth);
             }
         }
         return availableWidth;
@@ -3100,10 +3104,12 @@ private:
 
         if (columns >= 3)
         {
-            setCardsExpandable(false);
+            setCardsExpandable(true);
             for (int i = 0; i < section_cards_.size(); ++i)
             {
-                cards_layout_->addWidget(section_cards_.at(i), 0, i, Qt::AlignLeft | Qt::AlignTop);
+                const int stretch = i < widths.size() ? widths.at(i) : 1;
+                cards_layout_->setColumnStretch(i, stretch);
+                cards_layout_->addWidget(section_cards_.at(i), 0, i);
             }
         }
         else if (columns == 2 && section_cards_.size() >= 3)
@@ -6441,8 +6447,13 @@ void MainWindow::setLogSidePanelCollapsed(bool collapsed)
         {
             last_log_side_panel_width_ = sizes.at(1);
         }
+        const int totalWidth = std::max(1, main_content_splitter_->width() > 1
+            ? main_content_splitter_->width()
+            : base_window_size_.width());
         log_side_panel_->hide();
+        main_content_splitter_->setSizes({totalWidth, 0});
         updateLogSidePanelToggleButton();
+        queueResponsiveHomeLayoutRefresh();
         return;
     }
 
@@ -9501,11 +9512,11 @@ void MainWindow::setupCentralWidget()
         return button;
     };
     home_nav_btn_ = createNavButton(QStringLiteral("首页"), QStringLiteral("square-activity"));
-    temperature_nav_btn_ = createNavButton(QStringLiteral("温控"), QStringLiteral("timer"));
     device_config_nav_btn_ = createNavButton(QStringLiteral("设备配置"), QStringLiteral("sliders-vertical"));
+    temperature_nav_btn_ = createNavButton(QStringLiteral("温控"), QStringLiteral("timer"));
     app_nav_button_group_->addButton(home_nav_btn_, 0);
-    app_nav_button_group_->addButton(temperature_nav_btn_, 1);
-    app_nav_button_group_->addButton(device_config_nav_btn_, 2);
+    app_nav_button_group_->addButton(device_config_nav_btn_, 1);
+    app_nav_button_group_->addButton(temperature_nav_btn_, 2);
     sidebarLayout->addStretch(1);
     home_nav_btn_->setChecked(true);
     updateSidebarNavIcons();
@@ -9524,7 +9535,7 @@ void MainWindow::setupCentralWidget()
     main_content_splitter_->setAutoFillBackground(true);
     main_content_splitter_->setChildrenCollapsible(true);
     main_content_splitter_->setCollapsible(0, true);
-    main_content_splitter_->setCollapsible(1, false);
+    main_content_splitter_->setCollapsible(1, true);
     main_content_splitter_->setHandleWidth(1);
     main_content_splitter_->addWidget(main_page_stack_);
     main_content_splitter_->addWidget(log_side_panel_);
@@ -9582,6 +9593,7 @@ void MainWindow::setupCentralWidget()
 
     home_page_ = main_cards_scroll_area_;
     main_page_stack_->addWidget(home_page_);
+    setupDeviceConfigPage();
 
     temperature_page_ = new QWidget(this);
     temperature_page_->setObjectName(QStringLiteral("temperaturePage"));
@@ -9607,7 +9619,6 @@ void MainWindow::setupCentralWidget()
     temperatureScrollArea->setWidget(temperatureContent);
     temperaturePageLayout->addWidget(temperatureScrollArea, 1);
     main_page_stack_->addWidget(temperature_page_);
-    setupDeviceConfigPage();
 
     connect(app_nav_button_group_, &QButtonGroup::idClicked, this, [this](int id) {
         if (main_page_stack_)

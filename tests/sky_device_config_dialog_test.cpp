@@ -3,7 +3,6 @@
 
 #include <QApplication>
 #include <QCoreApplication>
-#include <QCursor>
 #include <QElapsedTimer>
 #include <QGroupBox>
 #include <QLabel>
@@ -92,8 +91,6 @@ void requireTitleBarHoverStillWorks(VaporView::SkyDeviceConfigDialog& dialog)
         ++checkedButtons;
         const QPoint localCenter = button->rect().center();
         const QPoint globalCenter = button->mapToGlobal(localCenter);
-        QCursor::setPos(globalCenter);
-        processEventsFor(20);
         QEvent enter(QEvent::Enter);
         QCoreApplication::sendEvent(button, &enter);
         QMouseEvent move(QEvent::MouseMove,
@@ -105,8 +102,6 @@ void requireTitleBarHoverStillWorks(VaporView::SkyDeviceConfigDialog& dialog)
         QCoreApplication::sendEvent(button, &move);
         require(button->property("titleBarHover").toBool(), "title bar button hover enabled");
 
-        const QPoint outside = dialog.mapToGlobal(QPoint(2, dialog.height() - 2));
-        QCursor::setPos(outside);
         QEvent leave(QEvent::Leave);
         QCoreApplication::sendEvent(button, &leave);
         require(!button->property("titleBarHover").toBool(), "title bar button hover cleared");

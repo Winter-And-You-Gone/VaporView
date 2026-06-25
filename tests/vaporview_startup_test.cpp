@@ -165,7 +165,12 @@ int main(int argc, char **argv)
     QProcess process;
     process.setProgram(exePath);
     process.setWorkingDirectory(QFileInfo(exePath).absolutePath());
+#ifdef Q_OS_WIN
+    process.setProcessChannelMode(QProcess::ForwardedErrorChannel);
+    process.setStandardOutputFile(QProcess::nullDevice());
+#else
     process.setProcessChannelMode(QProcess::SeparateChannels);
+#endif
     process.start();
     if (!process.waitForStarted(5000))
     {
