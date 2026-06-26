@@ -796,10 +796,12 @@ PlotTheme plotThemeFor(const QWidget *widget)
         background = palette.color(QPalette::Window);
     }
     const bool dark = background.lightness() < 128;
+    const QColor neutralGrid = dark ? QColor(QStringLiteral("#2A2A2A")) : QColor(QStringLiteral("#E6E8EC"));
+    const QColor neutralBorder = dark ? QColor(QStringLiteral("#3D3D3D")) : QColor(QStringLiteral("#D7DCE3"));
     return {
         background,
-        appThemeColor(AppThemeColor::PlotGrid, dark),
-        appThemeColor(AppThemeColor::PlotBorder, dark),
+        neutralGrid,
+        neutralBorder,
         appThemeColor(AppThemeColor::PlotText, dark),
         appThemeColor(AppThemeColor::PlotMutedText, dark)
     };
