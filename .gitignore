@@ -29,6 +29,7 @@ scripts/*.local.ps1
 .idea/
 .vscode/
 .trae/
+.codex-remote-attachments/
 *.swp
 *.swo
 *~
