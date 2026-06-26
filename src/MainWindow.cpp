@@ -915,7 +915,30 @@ QString formatBitRate(double bitsPerSecond)
     {
         return QStringLiteral("%1 bps").arg(bitsPerSecond, 0, 'f', 0);
     }
-    return QStringLiteral("%1 kbps").arg(bitsPerSecond / 1000.0, 0, 'f', bitsPerSecond < 10000.0 ? 2 : 1);
+    if (bitsPerSecond < 1'000'000.0)
+    {
+        const double kilobitsPerSecond = bitsPerSecond / 1000.0;
+        const int decimals = kilobitsPerSecond < 10.0 ? 2 : (kilobitsPerSecond < 100.0 ? 1 : 0);
+        return QStringLiteral("%1 kbps").arg(kilobitsPerSecond, 0, 'f', decimals);
+    }
+    if (bitsPerSecond < 1'000'000'000.0)
+    {
+        const double megabitsPerSecond = bitsPerSecond / 1'000'000.0;
+        const int decimals = megabitsPerSecond < 10.0 ? 2 : 1;
+        return QStringLiteral("%1 Mbps").arg(megabitsPerSecond, 0, 'f', decimals);
+    }
+    const double gigabitsPerSecond = bitsPerSecond / 1'000'000'000.0;
+    const int decimals = gigabitsPerSecond < 10.0 ? 2 : 1;
+    return QStringLiteral("%1 Gbps").arg(gigabitsPerSecond, 0, 'f', decimals);
+}
+
+QString formatFrequencyText(double hz)
+{
+    if (!std::isfinite(hz) || hz < 0.0)
+    {
+        hz = 0.0;
+    }
+    return QStringLiteral("%1 Hz").arg(hz, 0, 'f', 1);
 }
 
 QString remoteNoDataText(bool english)
@@ -6087,9 +6110,12 @@ void MainWindow::loadModernStyleSheet()
             "QFrame#homeTelemetrySectionCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 6px; }"
             "QLabel#homeOverviewSectionTitle { color: @vv-primary; font-size: 14px; font-weight: 700; padding: 0px; margin: 0px; }"
             "QLabel#homeTelemetrySummaryTitleLabel { color: @vv-primary; font-size: 13px; font-weight: 700; padding: 0px; margin: 0px; }"
-            "QLabel#homeTelemetrySummaryPill { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; color: @vv-text; font-size: 13px; font-weight: 600; padding: 1px 8px; margin: 0px; }"
-            "QLabel#homeTelemetrySummaryPill[hasData=\"true\"] { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; color: @vv-text; }"
-            "QLabel#homeTelemetrySummaryPill[hasData=\"false\"] { background-color: @vv-surface-alt; border: 1px solid @vv-border; color: @vv-text-muted; }"
+            "QFrame#homeTelemetrySummaryPill { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; padding: 0px; margin: 0px; }"
+            "QFrame#homeTelemetrySummaryPill QLabel { background-color: transparent; border: none; color: @vv-text; font-size: 13px; font-weight: 600; padding: 0px; margin: 0px; }"
+            "QFrame#homeTelemetrySummaryPill QLabel#homeTelemetrySummaryValueLabel { font-family: \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace; }"
+            "QFrame#homeTelemetrySummaryPill[hasData=\"true\"] { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; }"
+            "QFrame#homeTelemetrySummaryPill[hasData=\"false\"] { background-color: @vv-surface-alt; border: 1px solid @vv-border; }"
+            "QFrame#homeTelemetrySummaryPill[hasData=\"false\"] QLabel { color: @vv-text-muted; }"
             "QLabel#temperatureOverviewValuePill { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-muted; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 12px; font-weight: 700; padding: 1px 4px; margin: 0px; }"
             "QLabel#temperatureOverviewValuePill[hasData=\"true\"] { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; color: @vv-text; }"
             "QLabel#temperatureOverviewValuePill[hasData=\"false\"] { background-color: @vv-surface-alt; border: 1px solid @vv-border; color: @vv-text-muted; }"
@@ -7549,16 +7575,26 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
                                                 dark_theme_enabled_);
     const QString accentColor = appThemeColorName(AppThemeColor::Primary, dark_theme_enabled_);
 
+    auto fixedValueHtml = [](const RemoteTelemetrySummarySections::Item& item) {
+        QString value = item.value;
+        if (!item.valueWidthText.isEmpty())
+        {
+            value = value.rightJustified(std::max(item.valueWidthText.size(), value.size()), QLatin1Char(' '));
+        }
+        return value.toHtmlEscaped().replace(QLatin1Char(' '), QStringLiteral("&nbsp;"));
+    };
+
     auto rowHtml = [&](const RemoteTelemetrySummarySections::Item& item) {
         return QStringLiteral("<span style=\"white-space:nowrap;color:%3;font-weight:600;\">%1 "
                               "<span style=\"font-family:'Cascadia Mono','Consolas','Courier New',monospace;\">%2</span></span>")
-            .arg(item.label.toHtmlEscaped(), item.value.toHtmlEscaped(), textColor);
+            .arg(item.label.toHtmlEscaped(), fixedValueHtml(item), textColor);
     };
 
-    auto makeItem = [](const QString& label, const QString& value, bool hasData) {
+    auto makeItem = [](const QString& label, const QString& value, bool hasData, const QString& valueWidthText = QString()) {
         RemoteTelemetrySummarySections::Item item;
         item.label = label;
         item.value = value;
+        item.valueWidthText = valueWidthText;
         item.hasData = hasData;
         return item;
     };
@@ -7591,13 +7627,15 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     QList<RemoteTelemetrySummarySections::Item> rateRows;
     QList<RemoteTelemetrySummarySections::Item> linkRows;
     QList<RemoteTelemetrySummarySections::Item> deviceRows;
+    const QString frequencyWidthText = QStringLiteral("999.9 Hz");
+    const QString bitRateWidthText = QStringLiteral("999.9 Mbps");
     auto appendPacketRate = [&](VaporView::MsgType type, const QString& label) {
         const double rate = remotePacketRate(type);
-        rateRows << makeItem(label, QStringLiteral("%1 Hz").arg(rate, 0, 'f', 1), connected && rate > 0.0);
+        rateRows << makeItem(label, formatFrequencyText(rate), connected && rate > 0.0, frequencyWidthText);
     };
     auto appendWaveformRate = [&](quint16 channelId, const QString& label) {
         const double rate = remoteWaveformPacketRate(channelId);
-        rateRows << makeItem(label, QStringLiteral("%1 Hz").arg(rate, 0, 'f', 1), connected && rate > 0.0);
+        rateRows << makeItem(label, formatFrequencyText(rate), connected && rate > 0.0, frequencyWidthText);
     };
     auto appendDevice = [&](VaporView::SkyDeviceId device, qint64 timeoutMs, const QString& label) {
         const bool hasData = hasDeviceData(device, timeoutMs);
@@ -7611,10 +7649,10 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         appendWaveformRate(1, QStringLiteral("Wave raw:"));
         appendWaveformRate(4, QStringLiteral("Wave harm.:"));
         appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("Status:"));
-        rateRows << makeItem(QStringLiteral("Wave TCP actual:"), actualWaveRate, connected && remote_status_.wave_tcp_actual_rate_hz > 0.0f);
-        linkRows << makeItem(QStringLiteral("Sky->Ground:"), formatBitRate(rxBps), connected && rxBps > 0.0);
-        linkRows << makeItem(QStringLiteral("Ground->Sky:"), formatBitRate(txBps), connected && txBps > 0.0);
-        linkRows << makeItem(QStringLiteral("Total:"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0);
+        rateRows << makeItem(QStringLiteral("Wave TCP actual:"), actualWaveRate, connected && remote_status_.wave_tcp_actual_rate_hz > 0.0f, frequencyWidthText);
+        linkRows << makeItem(QStringLiteral("Sky->Ground:"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("Ground->Sky:"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("Total:"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
         appendDevice(VaporView::SkyDeviceId::Epsilon, 2000, QStringLiteral("EPSILON:"));
         appendDevice(VaporView::SkyDeviceId::Ptb, 3000, QStringLiteral("PTB:"));
         appendDevice(VaporView::SkyDeviceId::Hmp, 3000, QStringLiteral("HMP:"));
@@ -7629,10 +7667,10 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         appendWaveformRate(1, QStringLiteral("原始波形:"));
         appendWaveformRate(4, QStringLiteral("谐波波形:"));
         appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("状态:"));
-        rateRows << makeItem(QStringLiteral("波形 TCP 实际:"), actualWaveRate, connected && remote_status_.wave_tcp_actual_rate_hz > 0.0f);
-        linkRows << makeItem(QStringLiteral("天空→地面:"), formatBitRate(rxBps), connected && rxBps > 0.0);
-        linkRows << makeItem(QStringLiteral("地面→天空:"), formatBitRate(txBps), connected && txBps > 0.0);
-        linkRows << makeItem(QStringLiteral("合计:"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0);
+        rateRows << makeItem(QStringLiteral("波形 TCP 实际:"), actualWaveRate, connected && remote_status_.wave_tcp_actual_rate_hz > 0.0f, frequencyWidthText);
+        linkRows << makeItem(QStringLiteral("天空→地面:"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("地面→天空:"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("合计:"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
         appendDevice(VaporView::SkyDeviceId::Epsilon, 2000, QStringLiteral("EPSILON:"));
         appendDevice(VaporView::SkyDeviceId::Ptb, 3000, QStringLiteral("PTB:"));
         appendDevice(VaporView::SkyDeviceId::Hmp, 3000, QStringLiteral("HMP:"));
@@ -7720,16 +7758,36 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         auto addItemLabel = [this](QHBoxLayout *lineLayout,
                                    QWidget *lineWidget,
                                    const RemoteTelemetrySummarySections::Item& item) {
-            auto *label = new QLabel(lineWidget);
-            label->setObjectName(QStringLiteral("homeTelemetrySummaryPill"));
-            label->setText(item.label + QStringLiteral(" ") + item.value);
-            label->setAlignment(Qt::AlignCenter);
-            label->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-            label->setTextFormat(Qt::PlainText);
-            label->setProperty("hasData", item.hasData);
-            label->setProperty("data-valid", QVariant());
-            label->setMinimumWidth(label->fontMetrics().horizontalAdvance(label->text()) + scalePixels(18));
-            lineLayout->addWidget(label, 0, Qt::AlignVCenter);
+            auto *pill = new QFrame(lineWidget);
+            pill->setObjectName(QStringLiteral("homeTelemetrySummaryPill"));
+            pill->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+            pill->setProperty("hasData", item.hasData);
+            pill->setProperty("data-valid", QVariant());
+            auto *pillLayout = new QHBoxLayout(pill);
+            pillLayout->setContentsMargins(scalePixels(8), scalePixels(1), scalePixels(8), scalePixels(1));
+            pillLayout->setSpacing(scalePixels(3));
+
+            auto *nameLabel = new QLabel(item.label, pill);
+            nameLabel->setObjectName(QStringLiteral("homeTelemetrySummaryNameLabel"));
+            nameLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+            nameLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+            nameLabel->setTextFormat(Qt::PlainText);
+            pillLayout->addWidget(nameLabel, 0, Qt::AlignVCenter);
+
+            auto *valueLabel = new QLabel(item.value, pill);
+            valueLabel->setObjectName(QStringLiteral("homeTelemetrySummaryValueLabel"));
+            valueLabel->setFont(numericFontFrom(valueLabel->font()));
+            valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            valueLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+            valueLabel->setTextFormat(Qt::PlainText);
+            const QString widthValue = item.valueWidthText.isEmpty() ? item.value : item.valueWidthText;
+            const int valueWidth = std::max(valueLabel->fontMetrics().horizontalAdvance(widthValue),
+                                            valueLabel->fontMetrics().horizontalAdvance(item.value));
+            valueLabel->setMinimumWidth(valueWidth);
+            valueLabel->setMaximumWidth(valueWidth);
+            pillLayout->addWidget(valueLabel, 0, Qt::AlignVCenter);
+
+            lineLayout->addWidget(pill, 0, Qt::AlignVCenter);
         };
 
         const int firstLineCount = (firstLineItemCount < 0 || firstLineItemCount >= items.size())

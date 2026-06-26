@@ -587,6 +587,7 @@ private:
         {
             QString label;
             QString value;
+            QString valueWidthText;
             bool hasData = false;
         };
 
