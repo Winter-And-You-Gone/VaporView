@@ -234,6 +234,7 @@ set(NAV_WINDOW_SOURCES
     src/TcpWavePanel.cpp
     src/RawDataParserWindow.cpp
     src/SessionViewerWindow.cpp
+    src/SessionTimeFormat.cpp
     src/TrajectoryViewerDialog.cpp
     src/RtkConfigDialog.cpp
     src/RtkStreamService.cpp
@@ -254,6 +255,7 @@ set(NAV_HEADERS
     include/TcpWavePanel.h
     include/RawDataParserWindow.h
     include/SessionViewerWindow.h
+    include/SessionTimeFormat.h
     include/TrajectoryViewerDialog.h
     include/RtkConfigDialog.h
     include/RtkStreamService.h
@@ -569,6 +571,16 @@ if(BUILD_TESTING)
     )
     target_link_libraries(visual_text_label_test PRIVATE Qt6::Widgets)
     add_test(NAME visual_text_label_test COMMAND visual_text_label_test)
+
+    add_executable(session_time_format_test
+        tests/session_time_format_test.cpp
+        src/SessionTimeFormat.cpp
+    )
+    target_include_directories(session_time_format_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+    )
+    target_link_libraries(session_time_format_test PRIVATE Qt6::Core)
+    add_test(NAME session_time_format_test COMMAND session_time_format_test)
 
     add_executable(main_window_layout_test
         tests/main_window_layout_test.cpp

@@ -3,6 +3,7 @@
 #include "CustomTitleBar.h"
 #include "RangeSelectionAxisWidget.h"
 #include "RawDataParserWindow.h"
+#include "SessionTimeFormat.h"
 #include "TrajectoryViewerDialog.h"
 #include "WindowSizing.h"
 
@@ -325,34 +326,6 @@ QString formatSignedDeltaMs(qint64 deltaUs)
     return QString("%1%2 ms")
         .arg(deltaMs >= 0.0 ? "+" : "")
         .arg(QString::number(deltaMs, 'f', 3));
-}
-
-QString formatDurationText(const QString& startUtc, const QString& endUtc, bool english)
-{
-    const QDateTime start = QDateTime::fromString(startUtc, Qt::ISODate);
-    const QDateTime end = QDateTime::fromString(endUtc, Qt::ISODate);
-    if (!start.isValid() || !end.isValid() || end < start)
-    {
-        return QStringLiteral("---");
-    }
-
-    qint64 seconds = start.secsTo(end);
-    const qint64 hours = seconds / 3600;
-    seconds %= 3600;
-    const qint64 minutes = seconds / 60;
-    seconds %= 60;
-
-    QStringList parts;
-    if (hours > 0)
-    {
-        parts << (english ? QString("%1h").arg(hours) : QString("%1小时").arg(hours));
-    }
-    if (minutes > 0 || hours > 0)
-    {
-        parts << (english ? QString("%1m").arg(minutes) : QString("%1分").arg(minutes));
-    }
-    parts << (english ? QString("%1s").arg(seconds) : QString("%1秒").arg(seconds));
-    return parts.join(' ');
 }
 
 double calculateMeasuredRateHz(const QVector<quint64>& timestampsUs)
@@ -3508,9 +3481,9 @@ void SessionViewerWindow::updateSummaryLabels()
 {
     const bool hasSession = !session_name_.isEmpty() || !metadata_filename_.isEmpty();
     session_name_value_->setText(session_name_.isEmpty() ? QStringLiteral("---") : session_name_);
-    start_time_value_->setText(start_time_utc_.isEmpty() ? QStringLiteral("---") : start_time_utc_);
-    end_time_value_->setText(end_time_utc_.isEmpty() ? QStringLiteral("---") : end_time_utc_);
-    duration_value_->setText(hasSession ? formatDurationText(start_time_utc_, end_time_utc_, is_english_) : QStringLiteral("---"));
+    start_time_value_->setText(VaporView::formatSessionMetadataTimeBeijing(start_time_utc_));
+    end_time_value_->setText(VaporView::formatSessionMetadataTimeBeijing(end_time_utc_));
+    duration_value_->setText(hasSession ? VaporView::formatSessionDurationText(start_time_utc_, end_time_utc_, is_english_) : QStringLiteral("---"));
     sensor_export_rate_value_->setText(hasSession
         ? formatMeasuredRateText(csv_timestamps_us_, sensor_export_rate_hz_, QStringLiteral("fixed_rate"))
         : QStringLiteral("---"));
