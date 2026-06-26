@@ -4425,21 +4425,26 @@ protected:
         const bool dark = VaporView::isDarkThemeEnabled();
         const bool checked = isChecked();
         const bool enabled = isEnabled();
-        const QColor border = checked
-            ? appThemeColor(AppThemeColor::PrimarySubtlePressed, dark)
+        const QColor stateFill = checked
+            ? appThemeColor(AppThemeColor::HomeDeviceSuccess, dark)
+            : appThemeColor(AppThemeColor::HomeDeviceDanger, dark);
+        const QColor border = enabled
+            ? stateFill
             : appThemeColor(AppThemeColor::Border, dark);
-        const QColor fill = appThemeColor(AppThemeColor::SurfaceAlt, dark);
-        const QColor text = enabled
-            ? appThemeColor(AppThemeColor::Text, dark)
-            : appThemeColor(AppThemeColor::TextMuted, dark);
-        const QColor selectedFill = checked && enabled
-            ? appThemeColor(AppThemeColor::Primary, dark)
+        const QColor fill = enabled
+            ? stateFill
             : appThemeColor(AppThemeColor::SurfaceAlt, dark);
-        const QColor selectedText = checked && enabled
+        const QColor text = enabled
             ? appThemeColor(AppThemeColor::White, dark)
+            : appThemeColor(AppThemeColor::TextMuted, dark);
+        const QColor selectedFill = enabled
+            ? appThemeColor(AppThemeColor::Surface, dark)
+            : appThemeColor(AppThemeColor::SurfaceAlt, dark);
+        const QColor selectedText = enabled
+            ? stateFill
             : text;
         const QColor inactiveText = enabled
-            ? appThemeColor(AppThemeColor::TextMuted, dark)
+            ? appThemeColor(AppThemeColor::White, dark)
             : appThemeColor(AppThemeColor::TextMuted, dark);
 
         QPainter painter(this);
@@ -4459,7 +4464,7 @@ protected:
         segmentFont.setWeight(QFont::DemiBold);
 
         const qreal kTitleHeight = QFontMetricsF(titleFont).height() + 2.0;
-        constexpr qreal kTitleGap = 3.0;
+        constexpr qreal kTitleGap = 2.0;
         const QRectF labelRect(trackRect.left(), trackRect.top(), trackRect.width(), kTitleHeight);
         const QRectF switchRect(trackRect.left(),
                                 labelRect.bottom() + kTitleGap,
@@ -4471,15 +4476,15 @@ protected:
         const qreal segmentWidth = switchContentRect.width() / 2.0;
         const qreal selectedLeft = switchContentRect.left() + segmentWidth * thumb_position_;
         const QRectF selectedRect(selectedLeft, switchContentRect.top(), segmentWidth, switchContentRect.height());
-        painter.setPen(QPen(appThemeColor(AppThemeColor::Border, dark), 1.0));
-        painter.setBrush(appThemeColor(AppThemeColor::Surface, dark));
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(fill);
         painter.drawRoundedRect(switchCapsuleRect, kControlRadius - gap, kControlRadius - gap);
         painter.setPen(Qt::NoPen);
         painter.setBrush(selectedFill);
         painter.drawRoundedRect(selectedRect, kControlRadius - gap - kInnerGap, kControlRadius - gap - kInnerGap);
 
         const qreal separatorX = switchContentRect.left() + segmentWidth;
-        painter.setPen(QPen(appThemeColor(AppThemeColor::Border, dark), 1.0));
+        painter.setPen(QPen(enabled ? selectedFill : appThemeColor(AppThemeColor::Border, dark), 1.0));
         painter.drawLine(QPointF(separatorX, switchContentRect.top() + 4.0),
                          QPointF(separatorX, switchContentRect.bottom() - 4.0));
 
@@ -4567,7 +4572,7 @@ public:
         constexpr int kOverviewControlWidth = 99;
         constexpr int kOverviewSummaryWidth = kOverviewControlWidth;
         constexpr int kOverviewPillHeight = 34;
-        constexpr int kOverviewOutputPillHeight = 66;
+        constexpr int kOverviewOutputPillHeight = 56;
 
         auto *layout = new QHBoxLayout(this);
         layout->setContentsMargins(8, 6, 8, 8);
@@ -6119,7 +6124,7 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#temperatureOverviewValuePill { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-muted; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 12px; font-weight: 700; padding: 1px 4px; margin: 0px; }"
             "QLabel#temperatureOverviewValuePill[hasData=\"true\"] { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; color: @vv-text; }"
             "QLabel#temperatureOverviewValuePill[hasData=\"false\"] { background-color: @vv-surface-alt; border: 1px solid @vv-border; color: @vv-text-muted; }"
-            "QPushButton#temperatureOverviewOutputSwitch { background-color: transparent; border: none; min-height: 66px; max-height: 66px; padding: 0px; margin: 0px; color: @vv-text; font-size: 13px; font-weight: 700; }"
+            "QPushButton#temperatureOverviewOutputSwitch { background-color: transparent; border: none; min-height: 56px; max-height: 56px; padding: 0px; margin: 0px; color: @vv-text; font-size: 13px; font-weight: 700; }"
             "QToolButton#temperatureOverviewChannelButton { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text; font-size: 13px; font-weight: 700; padding: 1px 8px; }"
             "QToolButton#temperatureOverviewChannelButton:hover, QToolButton#temperatureOverviewChannelButton:pressed { background-color: @vv-primary-subtle; border-color: @vv-primary-subtle-pressed; }"
             "QToolButton#temperatureOverviewChannelButton::menu-indicator { image: none; width: 0px; height: 0px; }"

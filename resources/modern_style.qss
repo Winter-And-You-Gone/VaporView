@@ -446,8 +446,8 @@ QLabel#temperatureOverviewValuePill[hasData="false"] {
 QPushButton#temperatureOverviewOutputSwitch {
     background-color: transparent;
     border: none;
-    min-height: 66px;
-    max-height: 66px;
+    min-height: 56px;
+    max-height: 56px;
     padding: 0px;
     margin: 0px;
     color: @vv-text;

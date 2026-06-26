@@ -316,6 +316,7 @@ set(LUCIDE_RESOURCES
     resources/lucide/square-check-big.svg
     resources/lucide/square.svg
     resources/lucide/sun.svg
+    resources/lucide/thermometer.svg
     resources/lucide/timer.svg
     resources/lucide/trash-2.svg
     resources/lucide/triangle-alert.svg
