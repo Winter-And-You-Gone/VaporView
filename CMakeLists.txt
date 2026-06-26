@@ -227,8 +227,7 @@ target_link_libraries(vaporview_sky_tui PUBLIC
     Qt6::Widgets
 )
 
-set(NAV_SOURCES
-    src/main.cpp
+set(NAV_WINDOW_SOURCES
     src/MainWindow.cpp
     src/GroundTelemetryService.cpp
     src/SkyDeviceConfigDialog.cpp
@@ -240,6 +239,11 @@ set(NAV_SOURCES
     src/RtkStreamService.cpp
     src/CustomTitleBar.cpp
     src/WindowSizing.cpp
+)
+
+set(NAV_SOURCES
+    src/main.cpp
+    ${NAV_WINDOW_SOURCES}
 )
 
 set(NAV_HEADERS
@@ -346,11 +350,28 @@ else()
     )
 endif()
 
+add_library(vaporview_main_window STATIC
+    ${NAV_WINDOW_SOURCES}
+    ${NAV_HEADERS}
+    ${NAV_UI_FILES}
+    ${NAV_RESOURCES}
+    ${LUCIDE_RESOURCES}
+)
+
 if(MSVC)
     target_compile_options(VaporView PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /Zc:__cplusplus /permissive-)
+    target_compile_options(vaporview_main_window PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /Zc:__cplusplus /permissive-)
 endif()
 
 target_include_directories(VaporView PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+    ${RTKLIB_DIR}/src
+    ${UM982_DRIVER_DIR}
+    ${HIPNUC_DRIVER_DIR}
+)
+
+target_include_directories(vaporview_main_window PUBLIC
     ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/src
     ${RTKLIB_DIR}/src
@@ -365,8 +386,16 @@ target_link_libraries(VaporView PRIVATE
     rtklib_strsvr
 )
 
+target_link_libraries(vaporview_main_window PUBLIC
+    ${QT_LIBRARIES}
+    vaporview_app_theme
+    vaporview_sky_core
+    rtklib_strsvr
+)
+
 if(WIN32)
     target_link_libraries(VaporView PRIVATE dwmapi)
+    target_link_libraries(vaporview_main_window PUBLIC dwmapi)
 endif()
 
 add_executable(VaporViewSky
@@ -541,6 +570,16 @@ if(BUILD_TESTING)
     target_link_libraries(visual_text_label_test PRIVATE Qt6::Widgets)
     add_test(NAME visual_text_label_test COMMAND visual_text_label_test)
 
+    add_executable(main_window_layout_test
+        tests/main_window_layout_test.cpp
+    )
+    target_include_directories(main_window_layout_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_link_libraries(main_window_layout_test PRIVATE vaporview_main_window)
+    add_test(NAME main_window_layout_test COMMAND main_window_layout_test)
+
     add_executable(vaporview_startup_test
         tests/vaporview_startup_test.cpp
     )
@@ -636,6 +675,7 @@ if(MSVC)
     target_compile_options(vaporview_sky_core PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /W4 /utf-8 /Zc:__cplusplus /permissive-)
     target_compile_options(vaporview_sky_tui PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /W4 /utf-8 /Zc:__cplusplus /permissive-)
     target_compile_options(VaporView PRIVATE /W4 /utf-8 /Zc:__cplusplus /permissive-)
+    target_compile_options(vaporview_main_window PRIVATE /W4 /utf-8 /Zc:__cplusplus /permissive-)
     target_compile_options(VaporViewSky PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /W4 /utf-8 /Zc:__cplusplus /permissive-)
     target_compile_options(VaporViewSkyCore PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /W4 /utf-8 /Zc:__cplusplus /permissive-)
     target_compile_options(VaporViewSkyTui PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /W4 /utf-8 /Zc:__cplusplus /permissive-)
