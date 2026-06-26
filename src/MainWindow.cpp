@@ -7679,7 +7679,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     }
 
     RemoteTelemetrySummarySections sections;
-    sections.rate = sectionHtml(is_english_ ? QStringLiteral("Telemetry packet rates") : QStringLiteral("传感数据包频率"), rateRows, 3);
+    sections.rate = sectionHtml(is_english_ ? QStringLiteral("Sky-ground data stream rates") : QStringLiteral("天地数据流频率"), rateRows, 3);
     sections.link = sectionHtml(is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"), linkRows);
     sections.device = sectionHtml(QString(), deviceRows);
     sections.rateItems = rateRows;
@@ -7822,7 +7822,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         sectionLayout->invalidate();
     };
     renderSummarySection(data_telemetry_summary_layout_,
-                         is_english_ ? QStringLiteral("Telemetry packet rates") : QStringLiteral("传感数据包频率"),
+                         is_english_ ? QStringLiteral("Sky-ground data stream rates") : QStringLiteral("天地数据流频率"),
                          sections.rateItems,
                          3);
     renderSummarySection(data_telemetry_link_summary_layout_,
