@@ -1236,7 +1236,7 @@ QIcon createRefreshIcon()
 
 QIcon createConnectIcon()
 {
-    return createLucideIcon(QStringLiteral("plug"), toolbarColor(AppThemeColor::ToolbarGreen));
+    return createLucideIcon(QStringLiteral("link"), toolbarColor(AppThemeColor::ToolbarGreen));
 }
 
 QIcon createCancelIcon()
