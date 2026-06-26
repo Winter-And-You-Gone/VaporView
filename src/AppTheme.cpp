@@ -134,6 +134,10 @@ const ThemeReplacement kColorTokens[] = {
     {"@vv-success", AppThemeColor::Success},
     {"@vv-danger-bg", AppThemeColor::DangerBackground},
     {"@vv-danger", AppThemeColor::Danger},
+    {"@vv-hd-ok-bg", AppThemeColor::HomeDeviceSuccessBackground},
+    {"@vv-hd-ok", AppThemeColor::HomeDeviceSuccess},
+    {"@vv-hd-bad-bg", AppThemeColor::HomeDeviceDangerBackground},
+    {"@vv-hd-bad", AppThemeColor::HomeDeviceDanger},
     {"@vv-warning-bg", AppThemeColor::WarningBackground},
     {"@vv-warning", AppThemeColor::Warning},
     {"@vv-orange-bg", AppThemeColor::OrangeBackground},
@@ -330,6 +334,14 @@ QColor appThemeColor(AppThemeColor color, bool dark)
         return hexColor(dark ? "#F09A7D" : "#C8543D");
     case AppThemeColor::DangerBackground:
         return hexColor(dark ? "#341C17" : "#F5DED6");
+    case AppThemeColor::HomeDeviceSuccess:
+        return hexColor(dark ? "#4ADE80" : "#22C55E");
+    case AppThemeColor::HomeDeviceSuccessBackground:
+        return hexColor(dark ? "#12331F" : "#E4F8EB");
+    case AppThemeColor::HomeDeviceDanger:
+        return hexColor(dark ? "#FB7185" : "#EF4444");
+    case AppThemeColor::HomeDeviceDangerBackground:
+        return hexColor(dark ? "#3F1518" : "#FDECEC");
     case AppThemeColor::Warning:
         return hexColor(dark ? "#E9A07D" : kBrandOrange);
     case AppThemeColor::WarningBackground:

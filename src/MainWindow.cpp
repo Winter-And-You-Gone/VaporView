@@ -2207,14 +2207,14 @@ QLabel#homeDeviceStatusCapsule {
     padding: 2px 8px;
 }
 QLabel#homeDeviceStatusCapsule[connected="true"] {
-    background-color: @vv-success-bg;
-    border: 1px solid @vv-success;
-    color: @vv-success;
+    background-color: @vv-hd-ok-bg;
+    border: 1px solid @vv-hd-ok;
+    color: @vv-hd-ok;
 }
 QLabel#homeDeviceStatusCapsule[connected="false"] {
-    background-color: @vv-danger-bg;
-    border: 1px solid @vv-danger;
-    color: @vv-danger;
+    background-color: @vv-hd-bad-bg;
+    border: 1px solid @vv-hd-bad;
+    color: @vv-hd-bad;
 }
 QLabel#homeDeviceStatusCapsule[state="disabled"] {
     background-color: @vv-surface-alt;
@@ -2222,9 +2222,9 @@ QLabel#homeDeviceStatusCapsule[state="disabled"] {
     color: @vv-text-muted;
 }
 QLabel#homeDeviceStatusCapsule[state="disconnected"] {
-    background-color: @vv-danger-bg;
-    border: 1px solid @vv-danger;
-    color: @vv-danger;
+    background-color: @vv-hd-bad-bg;
+    border: 1px solid @vv-hd-bad;
+    color: @vv-hd-bad;
 }
 QLabel#homeDeviceStatusCapsule[state="connecting"] {
     background-color: @vv-primary-subtle;
@@ -2232,9 +2232,9 @@ QLabel#homeDeviceStatusCapsule[state="connecting"] {
     color: @vv-primary;
 }
 QLabel#homeDeviceStatusCapsule[state="connected"] {
-    background-color: @vv-success-bg;
-    border: 1px solid @vv-success;
-    color: @vv-success;
+    background-color: @vv-hd-ok-bg;
+    border: 1px solid @vv-hd-ok;
+    color: @vv-hd-ok;
 }
 QToolButton#homeDeviceActionButton {
     background-color: @vv-surface-alt;
@@ -2247,16 +2247,16 @@ QToolButton#homeDeviceActionButton:disabled {
     border-color: @vv-border;
 }
 QToolButton#homeDeviceActionButton[state="disconnected"] {
-    background-color: @vv-success-bg;
-    border-color: @vv-success;
+    background-color: @vv-hd-ok-bg;
+    border-color: @vv-hd-ok;
 }
 QToolButton#homeDeviceActionButton[state="connecting"] {
-    background-color: @vv-success-bg;
-    border-color: @vv-success;
+    background-color: @vv-hd-ok-bg;
+    border-color: @vv-hd-ok;
 }
 QToolButton#homeDeviceActionButton[state="connected"] {
-    background-color: @vv-danger-bg;
-    border-color: @vv-danger;
+    background-color: @vv-hd-bad-bg;
+    border-color: @vv-hd-bad;
 }
 QToolButton#homeDeviceActionButton:hover {
     background-color: @vv-primary-subtle;
@@ -15170,17 +15170,17 @@ void MainWindow::updateHomeDeviceStatusCapsules()
         if (spinnerActive)
         {
             button->setIcon(createRotatedLucideIcon(QStringLiteral("link"),
-                                                    toolbarColor(AppThemeColor::ToolbarGreen),
+                                                    toolbarColor(AppThemeColor::HomeDeviceSuccess),
                                                     (home_device_action_spinner_step_ * 360) / kHomeDeviceActionSpinnerFrames));
         }
         else
         {
             const QString iconName = connected ? QStringLiteral("unlink") : QStringLiteral("link");
             const QColor iconColor = connected
-                ? toolbarColor(AppThemeColor::ToolbarRed)
+                ? toolbarColor(AppThemeColor::HomeDeviceDanger)
                 : state == VaporView::DeviceState::Disabled
                     ? toolbarColor(AppThemeColor::ToolbarDisabled)
-                    : toolbarColor(AppThemeColor::ToolbarGreen);
+                    : toolbarColor(AppThemeColor::HomeDeviceSuccess);
             button->setIcon(createLucideIcon(iconName, iconColor));
         }
         button->setToolTip(is_english_
@@ -15245,7 +15245,7 @@ void MainWindow::updateHomeDeviceActionSpinnerIcons()
 
         anySpinnerActive = true;
         button->setIcon(createRotatedLucideIcon(QStringLiteral("link"),
-                                                toolbarColor(AppThemeColor::ToolbarGreen),
+                                                toolbarColor(AppThemeColor::HomeDeviceSuccess),
                                                 (home_device_action_spinner_step_ * 360) / kHomeDeviceActionSpinnerFrames));
         button->update();
     };

@@ -1128,15 +1128,15 @@ QLabel#homeDeviceStatusCapsule {
 }
 
 QLabel#homeDeviceStatusCapsule[connected="true"] {
-    background-color: @vv-success-bg;
-    border: 1px solid @vv-success;
-    color: @vv-success;
+    background-color: @vv-hd-ok-bg;
+    border: 1px solid @vv-hd-ok;
+    color: @vv-hd-ok;
 }
 
 QLabel#homeDeviceStatusCapsule[connected="false"] {
-    background-color: @vv-danger-bg;
-    border: 1px solid @vv-danger;
-    color: @vv-danger;
+    background-color: @vv-hd-bad-bg;
+    border: 1px solid @vv-hd-bad;
+    color: @vv-hd-bad;
 }
 
 QLabel#homeDeviceStatusCapsule[state="disabled"] {
@@ -1146,9 +1146,9 @@ QLabel#homeDeviceStatusCapsule[state="disabled"] {
 }
 
 QLabel#homeDeviceStatusCapsule[state="disconnected"] {
-    background-color: @vv-danger-bg;
-    border: 1px solid @vv-danger;
-    color: @vv-danger;
+    background-color: @vv-hd-bad-bg;
+    border: 1px solid @vv-hd-bad;
+    color: @vv-hd-bad;
 }
 
 QLabel#homeDeviceStatusCapsule[state="connecting"] {
@@ -1158,9 +1158,9 @@ QLabel#homeDeviceStatusCapsule[state="connecting"] {
 }
 
 QLabel#homeDeviceStatusCapsule[state="connected"] {
-    background-color: @vv-success-bg;
-    border: 1px solid @vv-success;
-    color: @vv-success;
+    background-color: @vv-hd-ok-bg;
+    border: 1px solid @vv-hd-ok;
+    color: @vv-hd-ok;
 }
 
 QToolButton#homeDeviceActionButton {
@@ -1176,18 +1176,18 @@ QToolButton#homeDeviceActionButton:disabled {
 }
 
 QToolButton#homeDeviceActionButton[state="disconnected"] {
-    background-color: @vv-success-bg;
-    border-color: @vv-success;
+    background-color: @vv-hd-ok-bg;
+    border-color: @vv-hd-ok;
 }
 
 QToolButton#homeDeviceActionButton[state="connecting"] {
-    background-color: @vv-success-bg;
-    border-color: @vv-success;
+    background-color: @vv-hd-ok-bg;
+    border-color: @vv-hd-ok;
 }
 
 QToolButton#homeDeviceActionButton[state="connected"] {
-    background-color: @vv-danger-bg;
-    border-color: @vv-danger;
+    background-color: @vv-hd-bad-bg;
+    border-color: @vv-hd-bad;
 }
 
 QToolButton#homeDeviceActionButton:hover {
