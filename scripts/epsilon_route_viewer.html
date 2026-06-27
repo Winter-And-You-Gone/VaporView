@@ -74,9 +74,9 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
         <button class="file-btn" onclick="document.getElementById('sessionInput').click()">📁 选记录文件夹</button>
         <button class="file-btn" onclick="document.getElementById('datInput').click()">📄 选DAT文件</button>
         <span class="file-name" id="fileName"></span>
+        <input type="file" id="sessionInput" webkitdirectory style="display:none">
+        <input type="file" id="datInput" accept=".dat" style="display:none">
       </div>
-      <input type="file" id="sessionInput" webkitdirectory>
-      <input type="file" id="datInput" accept=".dat">
       <div id="progressContainer">
         <div id="progressBar"><div id="progressFill"></div></div>
         <div id="progressStep">准备...</div>
@@ -450,7 +450,7 @@ const TD_LAYERS = {
 };
 
 function makeTdTile(cfg) {
-  const layer = L.tileLayer('', { maxZoom: 18 });
+  const layer = L.tileLayer('', { maxZoom: 20 });
   layer.getTileUrl = function(coords) {
     const z=coords.z,x=((coords.x%Math.pow(2,z))+Math.pow(2,z))%Math.pow(2,z),y=coords.y;
     const shard=Math.abs(x*31+y*17+cfg.layer.length*13)%8;
@@ -474,11 +474,12 @@ function switchProvider(){
     const base=makeTdTile({endpoint:TD_LAYERS[cfg.base].endpoint,layer:TD_LAYERS[cfg.base].layer,key});base.addTo(gMap);gLayers.push(base);
     const anno=makeTdTile({endpoint:TD_LAYERS[cfg.anno].endpoint,layer:TD_LAYERS[cfg.anno].layer,key});anno.addTo(gMap);gLayers.push(anno);
   }
+  gMap.setMaxZoom(pid==='osm'?19:20);
   if(gPoints.length)renderMap();
 }
 
 function initMap(){
-  gMap=L.map('map',{center:[39.9,116.3],zoom:12,zoomControl:true,attributionControl:true});
+  gMap=L.map('map',{center:[39.9,116.3],zoom:12,zoomControl:true,attributionControl:true,maxZoom:20});
   switchProvider();
 }
 
