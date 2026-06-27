@@ -13,7 +13,25 @@
 - `sensors/epsilon_raw.dat`：旧版 EPSILON raw DAT，文件头 `VVEPSRAW`
 - 裸 FDILink 字节流：连续的 `0xFC ... 0xFD` 帧
 
-## 快速使用
+## 快速使用：浏览器里选择文件
+
+直接运行脚本即可打开浏览器版解析器：
+
+```powershell
+python scripts/epsilon_raw_route.py
+```
+
+打开页面后可以：
+
+- 选择整个 session 文件夹，页面会自动优先读取 `raw/epsilon.dat`，没有则尝试 `sensors/epsilon_raw.dat`
+- 或直接选择单个 `.dat` 文件
+- 在页面里选择起点、终点、过滤点并重算路线距离
+- 在页面里切换天地图矢量、天地图卫星、OpenStreetMap
+- 导出当前过滤后的 CSV
+
+这个模式不需要本地服务；浏览器用 File API 读取你选择的文件。地图底图仍需要联网加载瓦片。
+
+## 命令行批处理用法
 
 导出 CSV 和地图，并计算第 1 点到第 300 点之间的路线距离：
 

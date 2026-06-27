@@ -21,6 +21,7 @@ import math
 import struct
 import sys
 import tempfile
+import webbrowser
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1469,6 +1470,968 @@ def write_map_html(
     )
 
 
+def browser_app_html() -> str:
+    app = r"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>EPSILON 原始轨迹浏览器解析器</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; background: #0f172a; color: #e2e8f0; }
+    header { padding: 16px 20px; background: #111827; border-bottom: 1px solid #334155; }
+    h1 { margin: 0 0 8px; font-size: 20px; }
+    h3 { margin: 14px 0 8px; font-size: 15px; }
+    .summary { display: flex; flex-wrap: wrap; gap: 12px 18px; font-size: 14px; color: #cbd5e1; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 410px; gap: 14px; padding: 14px; }
+    .panel { background: #111827; border: 1px solid #334155; border-radius: 12px; padding: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    .controls .wide { grid-column: 1 / -1; }
+    label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #94a3b8; }
+    input, select, button { border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #e2e8f0; padding: 8px 9px; font: inherit; }
+    input[type=file] { padding: 7px; }
+    button { cursor: pointer; background: #1e293b; }
+    button:hover { background: #334155; }
+    button.primary { background: #2563eb; border-color: #3b82f6; color: white; }
+    button.primary:hover { background: #1d4ed8; }
+    .button-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .hint { color: #94a3b8; font-size: 12px; line-height: 1.5; }
+    .metric { margin: 10px 0; padding: 10px; border-radius: 10px; background: #0f172a; border: 1px solid #334155; line-height: 1.7; }
+    .metric strong { color: #fbbf24; }
+    .error { color: #fecaca; }
+    .ok { color: #bbf7d0; }
+    #map { position: relative; width: 100%; height: 680px; overflow: hidden; background: #dbeafe; border: 1px solid #334155; border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+    .tile { position: absolute; width: 256px; height: 256px; user-select: none; pointer-events: none; }
+    svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; cursor: crosshair; }
+    .route-all { fill: none; stroke: rgba(15, 23, 42, .62); stroke-width: 4; stroke-linejoin: round; stroke-linecap: round; }
+    .route-selected { fill: none; stroke: #f97316; stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; }
+    .point { fill: #2563eb; stroke: white; stroke-width: 1; opacity: .78; }
+    .start { fill: #22c55e; stroke: white; stroke-width: 2; }
+    .end { fill: #ef4444; stroke: white; stroke-width: 2; }
+    .nearest { fill: #facc15; stroke: #0f172a; stroke-width: 2; }
+    .attrib { position: absolute; left: 8px; bottom: 6px; font-size: 12px; background: rgba(255,255,255,.88); color: #0f172a; padding: 2px 6px; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 6px 4px; border-bottom: 1px solid #334155; text-align: left; white-space: nowrap; }
+    th { color: #93c5fd; font-weight: 600; position: sticky; top: 0; background: #111827; }
+    tbody tr:hover { background: #1e293b; }
+    .table-wrap { max-height: 350px; overflow: auto; border: 1px solid #334155; border-radius: 10px; }
+    .small-button { padding: 4px 6px; font-size: 11px; border-radius: 6px; }
+    @media (max-width: 1180px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>EPSILON 原始轨迹浏览器解析器</h1>
+    <div class="summary">
+      <span>无参数运行脚本会打开本页</span>
+      <span>可直接选择 session 文件夹或 epsilon.dat</span>
+      <span>默认底图: 天地图矢量</span>
+    </div>
+  </header>
+  <main class="layout">
+    <section class="panel">
+      <div id="map">
+        <div id="tiles"></div>
+        <svg id="mapSvg" viewBox="0 0 1100 680" aria-label="EPSILON route">
+          <polyline id="routeAll" class="route-all" points="" />
+          <polyline id="routeSelected" class="route-selected" points="" />
+          <g id="markers"></g>
+        </svg>
+        <div id="attrib" class="attrib">天地图</div>
+      </div>
+      <p class="hint">先在右侧选择 session 文件夹或 EPSILON DAT 文件。地图点选会选择距离鼠标最近的当前可见轨迹点。</p>
+    </section>
+    <aside class="panel">
+      <div class="controls">
+        <label class="wide">选择 session 文件夹（推荐）
+          <input id="sessionInput" type="file" webkitdirectory multiple />
+        </label>
+        <label class="wide">或直接选择 DAT 文件
+          <input id="datInput" type="file" accept=".dat,application/octet-stream" />
+        </label>
+        <label>轨迹点来源
+          <select id="positionSource">
+            <option value="auto">auto：优先 GEODETIC_POS</option>
+            <option value="geodetic">只用 0x5C GEODETIC_POS</option>
+            <option value="system">只用 0x50 SYS_STATE</option>
+            <option value="both">两类坐标都用</option>
+          </select>
+        </label>
+        <label>底图
+          <select id="provider">
+            <option value="tianditu_vec">天地图矢量</option>
+            <option value="tianditu_img">天地图卫星</option>
+            <option value="osm">OpenStreetMap</option>
+          </select>
+        </label>
+        <label>点选动作
+          <select id="clickMode">
+            <option value="start">点地图设为起点</option>
+            <option value="end">点地图设为终点</option>
+            <option value="filter">点地图加入过滤</option>
+          </select>
+        </label>
+        <label>起点 point_index
+          <input id="startIndex" type="number" min="1" step="1" />
+        </label>
+        <label>终点 point_index
+          <input id="endIndex" type="number" min="1" step="1" />
+        </label>
+        <label class="wide">过滤点 point_index，支持逗号和范围，如 12,20-25
+          <input id="filterIndices" placeholder="例如：12,20-25" />
+        </label>
+        <label class="wide">天地图 Key
+          <input id="tiandituKey" value="__TIANDITU_KEY__" />
+        </label>
+      </div>
+      <div class="button-row">
+        <button id="applyButton" class="primary">应用过滤并重算</button>
+        <button id="fitButton">适应当前轨迹</button>
+        <button id="resetButton">重置过滤</button>
+        <button id="exportCsvButton">导出当前 CSV</button>
+      </div>
+      <div id="status" class="metric">等待选择数据。</div>
+      <div id="metrics" class="metric"></div>
+      <div class="hint">路线距离按过滤后的轨迹顺序逐段累加，不是起终点直线距离，也不是道路导航距离。</div>
+      <h3>当前轨迹点</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>经纬度</th><th>fix</th><th>操作</th></tr></thead>
+          <tbody id="pointTable"></tbody>
+        </table>
+      </div>
+      <p id="tableNote" class="hint"></p>
+    </aside>
+  </main>
+  <script>
+    const DEFAULT_KEY = "__TIANDITU_KEY__";
+    const TILE_SIZE = 256;
+    const MAX_TABLE_ROWS = 500;
+    const EARTH_RADIUS_METERS = 6371000.0;
+    const FRAME_HEAD = 0xFC;
+    const FRAME_TAIL = 0xFD;
+    const RAW_SOURCE_EPSILON = 1;
+    const UNIFIED_RAW_RECORD_MARKER = 0x44525756;
+    const LEGACY_EPSILON_RECORD_MARKER = 0x524D5549;
+    const FIX_NAMES = {
+      0: "NO_GPS", 1: "NO_FIX", 2: "2D", 3: "3D", 4: "DGPS",
+      5: "RTK_FLOAT", 6: "RTK_FIXED", 7: "STATIC", 8: "PPP", 9: "RTK_DUAL"
+    };
+    const PACKET_NAMES = {
+      0x40: "IMU", 0x41: "AHRS", 0x42: "INS_GPS", 0x50: "SYS_STATE",
+      0x51: "UNIX_TIME", 0x52: "FORMATTED_TIME", 0x59: "RAW_GNSS",
+      0x5A: "SATELLITES", 0x5C: "GEODETIC_POS", 0x5D: "ECEF_POS"
+    };
+    const CSV_FIELDS = [
+      "point_index","source_point_index","source_file","raw_format","record_sequence",
+      "host_timestamp_us","host_time_utc","packet_id_hex","packet_name","position_source",
+      "serial_number","utc_unix_s","utc_microseconds","epsilon_time_utc","latitude_deg",
+      "longitude_deg","height_m","segment_distance_m","cumulative_distance_m","gnss_fix_code",
+      "gnss_fix","gnss_satellites","hdop","vdop","hacc_m","vacc_m","lat_std_m","lon_std_m",
+      "height_std_m","diff_age_s","vel_n_mps","vel_e_mps","vel_d_mps","ned_n_m","ned_e_m",
+      "ned_d_m","roll_deg","pitch_deg","yaw_deg","system_status_bits","filter_status_bits",
+      "update_status_bits","record_offset","payload_offset"
+    ];
+
+    const tilesEl = document.getElementById("tiles");
+    const svgEl = document.getElementById("mapSvg");
+    const routeAllEl = document.getElementById("routeAll");
+    const routeSelectedEl = document.getElementById("routeSelected");
+    const markersEl = document.getElementById("markers");
+    const providerEl = document.getElementById("provider");
+    const clickModeEl = document.getElementById("clickMode");
+    const startEl = document.getElementById("startIndex");
+    const endEl = document.getElementById("endIndex");
+    const filterEl = document.getElementById("filterIndices");
+    const keyEl = document.getElementById("tiandituKey");
+    const metricsEl = document.getElementById("metrics");
+    const statusEl = document.getElementById("status");
+    const tableEl = document.getElementById("pointTable");
+    const tableNoteEl = document.getElementById("tableNote");
+    const attribEl = document.getElementById("attrib");
+    const positionSourceEl = document.getElementById("positionSource");
+    let points = [];
+    let stats = {};
+    let state = {
+      zoom: 16,
+      minZoom: 1,
+      maxZoom: 18,
+      centerWorld: null,
+      excluded: new Set(),
+      active: [],
+      nearestIndex: null
+    };
+
+    function setStatus(message, ok = true) {
+      statusEl.innerHTML = "<span class='" + (ok ? "ok" : "error") + "'>" + escapeHtml(message) + "</span>";
+    }
+
+    function escapeHtml(text) {
+      return String(text).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+    }
+
+    function readU16LE(data, offset) {
+      return data.getUint16(offset, true);
+    }
+
+    function readU32LE(data, offset) {
+      return data.getUint32(offset, true);
+    }
+
+    function readI64LE(data, offset) {
+      return Number(data.getBigInt64(offset, true));
+    }
+
+    function readFloatLE(data, offset) {
+      return data.getFloat32(offset, true);
+    }
+
+    function readDoubleLE(data, offset) {
+      return data.getFloat64(offset, true);
+    }
+
+    function radToDeg(value) {
+      return value * 180.0 / Math.PI;
+    }
+
+    function crc8(bytes, start, length) {
+      let crc = 0;
+      for (let i = 0; i < length; ++i) {
+        crc ^= bytes[start + i];
+        for (let bit = 0; bit < 8; ++bit) {
+          crc = (crc & 0x01) ? ((crc >> 1) ^ 0x8C) : (crc >> 1);
+          crc &= 0xFF;
+        }
+      }
+      return crc;
+    }
+
+    function crc16(bytes, start, length) {
+      let crc = 0;
+      for (let i = 0; i < length; ++i) {
+        crc ^= bytes[start + i] << 8;
+        for (let bit = 0; bit < 8; ++bit) {
+          crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) : (crc << 1);
+          crc &= 0xFFFF;
+        }
+      }
+      return crc;
+    }
+
+    function parseFrame(payload) {
+      if (payload.byteLength < 8) return null;
+      const bytes = new Uint8Array(payload);
+      const packetId = bytes[1];
+      const payloadSize = bytes[2];
+      const expectedSize = payloadSize + 8;
+      if (bytes[0] !== FRAME_HEAD || payload.byteLength !== expectedSize || bytes[payload.byteLength - 1] !== FRAME_TAIL) {
+        return null;
+      }
+      if (crc8(bytes, 0, 4) !== bytes[4]) return null;
+      const receivedCrc16 = (bytes[5] << 8) | bytes[6];
+      if (crc16(bytes, 7, payloadSize) !== receivedCrc16) return null;
+      return {
+        packetId,
+        serialNumber: bytes[3],
+        payloadSize,
+        payloadView: new DataView(payload.buffer, payload.byteOffset + 7, payloadSize)
+      };
+    }
+
+    function packetName(packetId) {
+      return "0x" + packetId.toString(16).toUpperCase().padStart(2, "0") + " " + (PACKET_NAMES[packetId] || "UNKNOWN");
+    }
+
+    function timestampUsToIso(timestampUs) {
+      if (!timestampUs) return "";
+      const ms = Math.floor(timestampUs / 1000);
+      const extraMicros = timestampUs % 1000;
+      return new Date(ms).toISOString().replace("Z", String(extraMicros).padStart(3, "0") + "Z");
+    }
+
+    function epsilonTimeToIso(utcUnixS, utcMicros) {
+      if (utcUnixS === null || utcUnixS === undefined) return "";
+      return timestampUsToIso(utcUnixS * 1000000 + (utcMicros || 0));
+    }
+
+    function validLatLon(lat, lon) {
+      return Number.isFinite(lat) && Number.isFinite(lon) &&
+        lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180 &&
+        !(Math.abs(lat) < 1e-8 && Math.abs(lon) < 1e-8);
+    }
+
+    function iterUnifiedRaw(fileName, bytes) {
+      const data = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      if (bytes.byteLength < 20) throw new Error(fileName + " 文件头过短");
+      const version = readU32LE(data, 8);
+      const headerSize = readU32LE(data, 12);
+      const sourceId = readU16LE(data, 16);
+      if (sourceId !== RAW_SOURCE_EPSILON) throw new Error(fileName + " source_id 不是 EPSILON");
+      let offset = headerSize;
+      const records = [];
+      while (offset + 36 <= bytes.byteLength) {
+        const marker = readU32LE(data, offset);
+        const headerSizeRecord = readU32LE(data, offset + 4);
+        if (marker !== UNIFIED_RAW_RECORD_MARKER) throw new Error(fileName + " raw record marker 错误，offset=" + offset);
+        const hostTimestampUs = Number(data.getBigUint64(offset + 8, true));
+        const payloadSize = readU32LE(data, offset + 16);
+        const recordSourceId = readU16LE(data, offset + 20);
+        const recordType = readU16LE(data, offset + 22);
+        const flags = readU32LE(data, offset + 24);
+        const sequence = Number(data.getBigUint64(offset + 28, true));
+        const payloadOffset = offset + headerSizeRecord;
+        if (payloadOffset + payloadSize > bytes.byteLength) throw new Error(fileName + " payload 不完整");
+        if (recordSourceId === RAW_SOURCE_EPSILON) {
+          records.push({
+            sourceFile: fileName,
+            rawFormat: "unified_v" + version,
+            sequence,
+            hostTimestampUs,
+            recordType,
+            flags,
+            payload: bytes.slice(payloadOffset, payloadOffset + payloadSize),
+            recordOffset: offset,
+            payloadOffset
+          });
+        }
+        offset = payloadOffset + payloadSize;
+      }
+      return records;
+    }
+
+    function iterLegacyRaw(fileName, bytes) {
+      const data = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const version = readU32LE(data, 8);
+      const headerSize = readU32LE(data, 12);
+      let offset = headerSize;
+      let sequence = 0;
+      const records = [];
+      while (offset + 20 <= bytes.byteLength) {
+        const marker = readU32LE(data, offset);
+        if (marker !== LEGACY_EPSILON_RECORD_MARKER) throw new Error(fileName + " legacy marker 错误，offset=" + offset);
+        const payloadSize = readU32LE(data, offset + 4);
+        const hostTimestampUs = Number(data.getBigUint64(offset + 8, true));
+        const frameTag = bytes[offset + 16];
+        const serial = bytes[offset + 17];
+        const payloadOffset = offset + 20;
+        if (payloadOffset + payloadSize > bytes.byteLength) throw new Error(fileName + " payload 不完整");
+        records.push({
+          sourceFile: fileName,
+          rawFormat: "legacy_epsilon_v" + version,
+          sequence,
+          hostTimestampUs,
+          recordType: frameTag,
+          flags: serial,
+          payload: bytes.slice(payloadOffset, payloadOffset + payloadSize),
+          recordOffset: offset,
+          payloadOffset
+        });
+        offset = payloadOffset + payloadSize;
+        sequence += 1;
+      }
+      return records;
+    }
+
+    function iterFdilinkStream(fileName, bytes) {
+      const records = [];
+      let offset = 0;
+      let sequence = 0;
+      while (offset + 8 <= bytes.byteLength) {
+        while (offset < bytes.byteLength && bytes[offset] !== FRAME_HEAD) offset++;
+        if (offset + 8 > bytes.byteLength) break;
+        const payloadSize = bytes[offset + 2];
+        const frameSize = payloadSize + 8;
+        if (offset + frameSize > bytes.byteLength) break;
+        const payload = bytes.slice(offset, offset + frameSize);
+        if (payload[payload.byteLength - 1] === FRAME_TAIL) {
+          records.push({
+            sourceFile: fileName,
+            rawFormat: "fdilink_stream",
+            sequence,
+            hostTimestampUs: 0,
+            recordType: bytes[offset + 1],
+            flags: bytes[offset + 3],
+            payload,
+            recordOffset: offset,
+            payloadOffset: offset
+          });
+          sequence += 1;
+          offset += frameSize;
+        } else {
+          offset += 1;
+        }
+      }
+      return records;
+    }
+
+    function parseRecordsFromBytes(fileName, bytes) {
+      const magic = new TextDecoder("ascii").decode(bytes.slice(0, 8));
+      if (magic === "VVRAWDAT") return iterUnifiedRaw(fileName, bytes);
+      if (magic === "VVEPSRAW") return iterLegacyRaw(fileName, bytes);
+      return iterFdilinkStream(fileName, bytes);
+    }
+
+    function newPoint(record, frame, stateSnapshot, source) {
+      return {
+        point_index: 0,
+        source_point_index: 0,
+        source_file: record.sourceFile,
+        raw_format: record.rawFormat,
+        record_sequence: record.sequence,
+        host_timestamp_us: record.hostTimestampUs || "",
+        host_time_utc: timestampUsToIso(record.hostTimestampUs),
+        packet_id_hex: "0x" + frame.packetId.toString(16).toUpperCase().padStart(2, "0"),
+        packet_name: packetName(frame.packetId),
+        position_source: source,
+        serial_number: frame.serialNumber,
+        utc_unix_s: stateSnapshot.utc_unix_s ?? "",
+        utc_microseconds: stateSnapshot.utc_microseconds ?? "",
+        epsilon_time_utc: epsilonTimeToIso(stateSnapshot.utc_unix_s, stateSnapshot.utc_microseconds),
+        latitude_deg: null,
+        longitude_deg: null,
+        height_m: null,
+        segment_distance_m: 0,
+        cumulative_distance_m: 0,
+        gnss_fix_code: stateSnapshot.gnss_fix_code ?? "",
+        gnss_fix: stateSnapshot.gnss_fix_code === null || stateSnapshot.gnss_fix_code === undefined ? "" : (FIX_NAMES[stateSnapshot.gnss_fix_code] || "UNKNOWN"),
+        gnss_satellites: stateSnapshot.gnss_satellites ?? "",
+        hdop: stateSnapshot.hdop ?? "",
+        vdop: stateSnapshot.vdop ?? "",
+        hacc_m: stateSnapshot.hacc_m ?? "",
+        vacc_m: stateSnapshot.vacc_m ?? "",
+        lat_std_m: stateSnapshot.lat_std_m ?? "",
+        lon_std_m: stateSnapshot.lon_std_m ?? "",
+        height_std_m: stateSnapshot.height_std_m ?? "",
+        diff_age_s: stateSnapshot.diff_age_s ?? "",
+        vel_n_mps: stateSnapshot.vel_n_mps ?? "",
+        vel_e_mps: stateSnapshot.vel_e_mps ?? "",
+        vel_d_mps: stateSnapshot.vel_d_mps ?? "",
+        ned_n_m: stateSnapshot.ned_n_m ?? "",
+        ned_e_m: stateSnapshot.ned_e_m ?? "",
+        ned_d_m: stateSnapshot.ned_d_m ?? "",
+        roll_deg: stateSnapshot.roll_deg ?? "",
+        pitch_deg: stateSnapshot.pitch_deg ?? "",
+        yaw_deg: stateSnapshot.yaw_deg ?? "",
+        system_status_bits: stateSnapshot.system_status_bits ?? "",
+        filter_status_bits: stateSnapshot.filter_status_bits ?? "",
+        update_status_bits: stateSnapshot.update_status_bits ?? "",
+        record_offset: record.recordOffset,
+        payload_offset: record.payloadOffset
+      };
+    }
+
+    function decodePoints(records, requestedSource) {
+      const stateSnapshot = {};
+      const candidates = [];
+      let validFrames = 0;
+      let badFrames = 0;
+      for (const record of records) {
+        const frame = parseFrame(record.payload);
+        if (!frame) {
+          badFrames += 1;
+          continue;
+        }
+        validFrames += 1;
+        const p = frame.payloadView;
+        const packetId = frame.packetId;
+        const size = frame.payloadSize;
+        if (packetId === 0x42 && size >= 72) {
+          stateSnapshot.ned_n_m = readFloatLE(p, 24);
+          stateSnapshot.ned_e_m = readFloatLE(p, 28);
+          stateSnapshot.ned_d_m = readFloatLE(p, 32);
+          stateSnapshot.vel_n_mps = readFloatLE(p, 36);
+          stateSnapshot.vel_e_mps = readFloatLE(p, 40);
+          stateSnapshot.vel_d_mps = readFloatLE(p, 44);
+        } else if (packetId === 0x50 && size >= 14) {
+          stateSnapshot.system_status_bits = readU16LE(p, 0);
+          stateSnapshot.filter_status_bits = readU16LE(p, 2);
+          stateSnapshot.update_status_bits = readU16LE(p, 4);
+          stateSnapshot.utc_unix_s = readU32LE(p, 6);
+          stateSnapshot.utc_microseconds = readU32LE(p, 10);
+          stateSnapshot.gnss_fix_code = (stateSnapshot.filter_status_bits >> 4) & 0x0F;
+          if (size >= 50) {
+            stateSnapshot.vel_n_mps = readFloatLE(p, 38);
+            stateSnapshot.vel_e_mps = readFloatLE(p, 42);
+            stateSnapshot.vel_d_mps = readFloatLE(p, 46);
+          }
+          if (size >= 78) {
+            stateSnapshot.roll_deg = radToDeg(readFloatLE(p, 66));
+            stateSnapshot.pitch_deg = radToDeg(readFloatLE(p, 70));
+            stateSnapshot.yaw_deg = radToDeg(readFloatLE(p, 74));
+          }
+          if (size >= 102) {
+            stateSnapshot.lat_std_m = readFloatLE(p, 90);
+            stateSnapshot.lon_std_m = readFloatLE(p, 94);
+            stateSnapshot.height_std_m = readFloatLE(p, 98);
+          }
+          if (size >= 38) {
+            const point = newPoint(record, frame, stateSnapshot, "system_state");
+            point.latitude_deg = radToDeg(readDoubleLE(p, 14));
+            point.longitude_deg = radToDeg(readDoubleLE(p, 22));
+            point.height_m = readDoubleLE(p, 30);
+            candidates.push(point);
+          }
+        } else if (packetId === 0x51 && size >= 8) {
+          stateSnapshot.utc_unix_s = readU32LE(p, 0);
+          stateSnapshot.utc_microseconds = readU32LE(p, 4);
+        } else if (packetId === 0x59 && size >= 74) {
+          stateSnapshot.utc_unix_s = readU32LE(p, 0);
+          stateSnapshot.utc_microseconds = readU32LE(p, 4);
+          stateSnapshot.lat_std_m = readFloatLE(p, 44);
+          stateSnapshot.lon_std_m = readFloatLE(p, 48);
+          stateSnapshot.height_std_m = readFloatLE(p, 52);
+          stateSnapshot.diff_age_s = readFloatLE(p, 64);
+          const rawGnssStatus = readU16LE(p, 72);
+          stateSnapshot.gnss_fix_code = rawGnssStatus & 0x0F;
+        } else if (packetId === 0x5A && size >= 9) {
+          stateSnapshot.hdop = readFloatLE(p, 0);
+          stateSnapshot.vdop = readFloatLE(p, 4);
+          stateSnapshot.gnss_satellites = new Uint8Array(p.buffer, p.byteOffset, p.byteLength)[8];
+        } else if (packetId === 0x5C && size >= 32) {
+          const point = newPoint(record, frame, stateSnapshot, "geodetic_pos");
+          point.latitude_deg = radToDeg(readDoubleLE(p, 0));
+          point.longitude_deg = radToDeg(readDoubleLE(p, 8));
+          point.height_m = readDoubleLE(p, 16);
+          point.hacc_m = readFloatLE(p, 24);
+          point.vacc_m = readFloatLE(p, 28);
+          stateSnapshot.hacc_m = point.hacc_m;
+          stateSnapshot.vacc_m = point.vacc_m;
+          candidates.push(point);
+        }
+      }
+      let source = requestedSource;
+      if (source === "auto") {
+        source = candidates.some(point => point.position_source === "geodetic_pos") ? "geodetic" : "system";
+      }
+      let selected = candidates;
+      if (source === "geodetic") selected = candidates.filter(point => point.position_source === "geodetic_pos");
+      if (source === "system") selected = candidates.filter(point => point.position_source === "system_state");
+      selected = selected.filter(point => validLatLon(point.latitude_deg, point.longitude_deg));
+      selected.forEach((point, index) => {
+        point.source_point_index = index + 1;
+        point.point_index = index + 1;
+      });
+      assignDistances(selected);
+      stats = { rawRecords: records.length, validFrames, badFrames, candidates: candidates.length, source };
+      return selected;
+    }
+
+    function assignDistances(list) {
+      let cumulative = 0;
+      for (let i = 0; i < list.length; ++i) {
+        const point = list[i];
+        point.point_index = i + 1;
+        point.segment_distance_m = i === 0 ? 0 : haversine(list[i - 1], point);
+        cumulative += point.segment_distance_m;
+        point.cumulative_distance_m = cumulative;
+      }
+    }
+
+    async function readDatFile(file) {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      return parseRecordsFromBytes(file.name, bytes);
+    }
+
+    function chooseSessionEpsilonFile(files) {
+      const list = Array.from(files);
+      const preferred = [
+        file => file.webkitRelativePath.replaceAll("\\", "/").endsWith("/raw/epsilon.dat"),
+        file => file.webkitRelativePath.replaceAll("\\", "/").endsWith("/sensors/epsilon_raw.dat"),
+        file => file.name === "epsilon.dat",
+        file => file.name === "epsilon_raw.dat",
+      ];
+      for (const predicate of preferred) {
+        const found = list.find(predicate);
+        if (found) return found;
+      }
+      return null;
+    }
+
+    async function loadFromFile(file) {
+      if (!file) return;
+      setStatus("正在读取 " + file.name + " ...");
+      try {
+        const records = await readDatFile(file);
+        points = decodePoints(records, positionSourceEl.value);
+        if (!points.length) throw new Error("没有解析到有效经纬度轨迹点");
+        startEl.value = 1;
+        endEl.value = points.length;
+        filterEl.value = "";
+        state.excluded = new Set();
+        state.nearestIndex = null;
+        fitTo(points);
+        render();
+        setStatus("已解析 " + file.name + "：点数 " + points.length + "，raw records " + stats.rawRecords + "，valid frames " + stats.validFrames);
+      } catch (error) {
+        points = [];
+        state.active = [];
+        render();
+        setStatus(error.message || String(error), false);
+      }
+    }
+
+    document.getElementById("sessionInput").addEventListener("change", event => {
+      const file = chooseSessionEpsilonFile(event.target.files);
+      if (!file) {
+        setStatus("所选文件夹中没有找到 raw/epsilon.dat 或 sensors/epsilon_raw.dat", false);
+        return;
+      }
+      loadFromFile(file);
+    });
+    document.getElementById("datInput").addEventListener("change", event => {
+      loadFromFile(event.target.files[0]);
+    });
+    positionSourceEl.addEventListener("change", async () => {
+      const dat = document.getElementById("datInput").files[0];
+      const sessionFile = chooseSessionEpsilonFile(document.getElementById("sessionInput").files);
+      await loadFromFile(dat || sessionFile);
+    });
+
+    function finiteNumber(value) {
+      return typeof value === "number" && Number.isFinite(value);
+    }
+
+    function fmt(value, digits) {
+      return finiteNumber(value) ? value.toFixed(digits) : "";
+    }
+
+    function clampLatitude(latitude) {
+      return Math.max(-85.05112878, Math.min(85.05112878, latitude));
+    }
+
+    function worldSize(zoom) {
+      return TILE_SIZE * Math.pow(2, zoom);
+    }
+
+    function latLonToWorld(latitude, longitude, zoom) {
+      const lat = clampLatitude(latitude) * Math.PI / 180.0;
+      const size = worldSize(zoom);
+      const x = (longitude + 180.0) / 360.0 * size;
+      const y = (0.5 - Math.log((1.0 + Math.sin(lat)) / (1.0 - Math.sin(lat))) / (4.0 * Math.PI)) * size;
+      return { x, y };
+    }
+
+    function mapSize() {
+      const rect = svgEl.getBoundingClientRect();
+      return { width: Math.max(1, rect.width), height: Math.max(1, rect.height) };
+    }
+
+    function updateViewBox() {
+      const size = mapSize();
+      svgEl.setAttribute("viewBox", "0 0 " + size.width + " " + size.height);
+      return size;
+    }
+
+    function pointToScreen(point) {
+      const size = mapSize();
+      const world = latLonToWorld(point.latitude_deg, point.longitude_deg, state.zoom);
+      return {
+        x: world.x - state.centerWorld.x + size.width / 2,
+        y: world.y - state.centerWorld.y + size.height / 2
+      };
+    }
+
+    function haversine(a, b) {
+      const lat1 = a.latitude_deg * Math.PI / 180.0;
+      const lat2 = b.latitude_deg * Math.PI / 180.0;
+      const dLat = lat2 - lat1;
+      const dLon = (b.longitude_deg - a.longitude_deg) * Math.PI / 180.0;
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+      return EARTH_RADIUS_METERS * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(Math.max(0, 1 - h)));
+    }
+
+    function parseIndexSet(text) {
+      const result = new Set();
+      for (const rawPart of text.split(",")) {
+        const part = rawPart.trim();
+        if (!part) continue;
+        if (part.includes("-")) {
+          const pieces = part.split("-", 2);
+          let start = Number.parseInt(pieces[0].trim(), 10);
+          let end = Number.parseInt(pieces[1].trim(), 10);
+          if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+          if (end < start) [start, end] = [end, start];
+          for (let i = start; i <= end; ++i) result.add(i);
+        } else {
+          const value = Number.parseInt(part, 10);
+          if (Number.isFinite(value)) result.add(value);
+        }
+      }
+      return result;
+    }
+
+    function setToText(setValue) {
+      return Array.from(setValue).sort((a, b) => a - b).join(",");
+    }
+
+    function currentActivePoints() {
+      return points.filter(point => !state.excluded.has(point.point_index));
+    }
+
+    function chooseZoomFor(list) {
+      const size = mapSize();
+      if (list.length <= 1) return Math.min(state.maxZoom, 17);
+      for (let zoom = state.maxZoom; zoom >= state.minZoom; --zoom) {
+        const pixels = list.map(point => latLonToWorld(point.latitude_deg, point.longitude_deg, zoom));
+        const xs = pixels.map(pixel => pixel.x);
+        const ys = pixels.map(pixel => pixel.y);
+        if (Math.max(...xs) - Math.min(...xs) <= Math.max(64, size.width - 120) &&
+            Math.max(...ys) - Math.min(...ys) <= Math.max(64, size.height - 120)) {
+          return zoom;
+        }
+      }
+      return state.minZoom;
+    }
+
+    function fitTo(list) {
+      if (!list.length) {
+        state.centerWorld = latLonToWorld(31.2304, 121.4737, state.zoom);
+        return;
+      }
+      state.zoom = chooseZoomFor(list);
+      const minLat = Math.min(...list.map(point => point.latitude_deg));
+      const maxLat = Math.max(...list.map(point => point.latitude_deg));
+      const minLon = Math.min(...list.map(point => point.longitude_deg));
+      const maxLon = Math.max(...list.map(point => point.longitude_deg));
+      state.centerWorld = latLonToWorld((minLat + maxLat) / 2, (minLon + maxLon) / 2, state.zoom);
+    }
+
+    function providerLayers(provider) {
+      if (provider === "tianditu_img") return [{ endpoint: "img_w", layer: "img", suffix: "img" }, { endpoint: "cia_w", layer: "cia", suffix: "cia" }];
+      if (provider === "tianditu_vec") return [{ endpoint: "vec_w", layer: "vec", suffix: "vec" }, { endpoint: "cva_w", layer: "cva", suffix: "cva" }];
+      return [{ endpoint: "", layer: "", suffix: "osm" }];
+    }
+
+    function tileUrl(provider, zoom, tileX, tileY, layer) {
+      const worldTiles = Math.pow(2, zoom);
+      const wrappedX = ((tileX % worldTiles) + worldTiles) % worldTiles;
+      if (provider === "osm") return "https://tile.openstreetmap.org/" + zoom + "/" + wrappedX + "/" + tileY + ".png";
+      const key = encodeURIComponent(keyEl.value.trim());
+      const shardSeed = Math.abs(tileX * 31 + tileY * 17 + layer.suffix.length * 13) % 8;
+      return "https://t" + shardSeed + ".tianditu.gov.cn/" + layer.endpoint + "/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=" + layer.layer +
+        "&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILECOL=" + wrappedX + "&TILEROW=" + tileY + "&TILEMATRIX=" + zoom + "&tk=" + key;
+    }
+
+    function renderTiles() {
+      tilesEl.replaceChildren();
+      if (!state.centerWorld) fitTo(points);
+      const size = mapSize();
+      const provider = providerEl.value;
+      const layers = providerLayers(provider);
+      const center = state.centerWorld;
+      const topLeftX = center.x - size.width / 2;
+      const topLeftY = center.y - size.height / 2;
+      const worldTiles = Math.pow(2, state.zoom);
+      const minTileX = Math.floor(topLeftX / TILE_SIZE);
+      const maxTileX = Math.floor((topLeftX + size.width) / TILE_SIZE);
+      const minTileY = Math.max(0, Math.floor(topLeftY / TILE_SIZE));
+      const maxTileY = Math.min(worldTiles - 1, Math.floor((topLeftY + size.height) / TILE_SIZE));
+      for (let tileX = minTileX; tileX <= maxTileX; ++tileX) {
+        for (let tileY = minTileY; tileY <= maxTileY; ++tileY) {
+          for (const layer of layers) {
+            const img = document.createElement("img");
+            img.className = "tile";
+            img.src = tileUrl(provider, state.zoom, tileX, tileY, layer);
+            img.alt = "";
+            img.style.left = (tileX * TILE_SIZE - topLeftX).toFixed(2) + "px";
+            img.style.top = (tileY * TILE_SIZE - topLeftY).toFixed(2) + "px";
+            tilesEl.appendChild(img);
+          }
+        }
+      }
+      attribEl.textContent = provider === "osm" ? "© OpenStreetMap contributors" : "底图数据 © 天地图";
+    }
+
+    function polyline(list) {
+      return list.map(point => {
+        const screen = pointToScreen(point);
+        return screen.x.toFixed(2) + "," + screen.y.toFixed(2);
+      }).join(" ");
+    }
+
+    function routeInfo(active, startIndex, endIndex) {
+      const startPos = active.findIndex(point => point.point_index === startIndex);
+      const endPos = active.findIndex(point => point.point_index === endIndex);
+      if (startPos < 0 || endPos < 0) return { ok: false, message: "起点或终点已被过滤，或点号不存在。" };
+      const lo = Math.min(startPos, endPos);
+      const hi = Math.max(startPos, endPos);
+      let distance = 0;
+      for (let i = lo + 1; i <= hi; ++i) distance += haversine(active[i - 1], active[i]);
+      let total = 0;
+      for (let i = 1; i < active.length; ++i) total += haversine(active[i - 1], active[i]);
+      return { ok: true, distance, total, segment: active.slice(lo, hi + 1), start: active[startPos], end: active[endPos] };
+    }
+
+    function addCircle(point, className, radius, titleText) {
+      const screen = pointToScreen(point);
+      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      circle.setAttribute("class", className);
+      circle.setAttribute("cx", screen.x.toFixed(2));
+      circle.setAttribute("cy", screen.y.toFixed(2));
+      circle.setAttribute("r", radius);
+      const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+      title.textContent = titleText;
+      circle.appendChild(title);
+      markersEl.appendChild(circle);
+    }
+
+    function renderMarkers(active, info) {
+      markersEl.replaceChildren();
+      const step = Math.max(1, Math.floor(active.length / 400));
+      for (let i = 0; i < active.length; i += step) {
+        const point = active[i];
+        addCircle(point, "point", "2", "#" + point.point_index + " " + fmt(point.latitude_deg, 8) + ", " + fmt(point.longitude_deg, 8));
+      }
+      if (info.ok) {
+        addCircle(info.start, "start", "6", "起点 #" + info.start.point_index);
+        addCircle(info.end, "end", "6", "终点 #" + info.end.point_index);
+      }
+      if (state.nearestIndex !== null) {
+        const nearest = active.find(point => point.point_index === state.nearestIndex);
+        if (nearest) addCircle(nearest, "nearest", "5", "最近选中 #" + nearest.point_index);
+      }
+    }
+
+    function renderTable(active) {
+      tableEl.replaceChildren();
+      const shown = active.slice(0, MAX_TABLE_ROWS);
+      for (const point of shown) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = "<td>" + point.point_index + "</td>" +
+          "<td>" + fmt(point.latitude_deg, 6) + "<br>" + fmt(point.longitude_deg, 6) + "</td>" +
+          "<td>" + (point.gnss_fix || "") + "</td>" +
+          "<td><button class='small-button' data-action='start' data-index='" + point.point_index + "'>起</button> " +
+          "<button class='small-button' data-action='end' data-index='" + point.point_index + "'>终</button> " +
+          "<button class='small-button' data-action='filter' data-index='" + point.point_index + "'>滤</button></td>";
+        tableEl.appendChild(tr);
+      }
+      tableNoteEl.textContent = active.length > MAX_TABLE_ROWS ? "仅显示前 " + MAX_TABLE_ROWS + " 个当前可见点；更远点可直接输入 point_index。" : "当前可见点已全部显示。";
+    }
+
+    function render() {
+      updateViewBox();
+      state.excluded = parseIndexSet(filterEl.value);
+      state.active = currentActivePoints();
+      if (!state.centerWorld) fitTo(state.active.length ? state.active : points);
+      const startIndex = Number.parseInt(startEl.value, 10);
+      const endIndex = Number.parseInt(endEl.value, 10);
+      const info = routeInfo(state.active, startIndex, endIndex);
+      routeAllEl.setAttribute("points", polyline(state.active));
+      routeSelectedEl.setAttribute("points", info.ok ? polyline(info.segment) : "");
+      renderTiles();
+      renderMarkers(state.active, info);
+      renderTable(state.active);
+      if (!points.length) {
+        metricsEl.innerHTML = "尚未载入轨迹。";
+        return;
+      }
+      if (!info.ok) {
+        metricsEl.innerHTML = "<div class='error'>" + info.message + "</div><div>当前可见点数: <strong>" + state.active.length + "</strong></div><div>已过滤点数: <strong>" + state.excluded.size + "</strong></div>";
+        return;
+      }
+      metricsEl.innerHTML =
+        "<div>当前可见点数: <strong>" + state.active.length + "</strong></div>" +
+        "<div>已过滤点数: <strong>" + state.excluded.size + "</strong></div>" +
+        "<div>当前总路线距离: <strong>" + info.total.toFixed(3) + " m</strong></div>" +
+        "<div>#" + startIndex + " 到 #" + endIndex + " 路线距离: <strong>" + info.distance.toFixed(3) + " m</strong></div>" +
+        "<div>解析来源: <strong>" + (stats.source || "--") + "</strong></div>" +
+        "<div>有效帧/异常帧: <strong>" + (stats.validFrames || 0) + "/" + (stats.badFrames || 0) + "</strong></div>";
+    }
+
+    function csvValue(value) {
+      if (value === null || value === undefined) return "";
+      return String(value);
+    }
+
+    function exportCsv() {
+      const active = currentActivePoints();
+      if (!active.length) return;
+      const lines = [CSV_FIELDS.join(",")];
+      for (const point of active) {
+        lines.push(CSV_FIELDS.map(field => {
+          const text = csvValue(point[field]).replaceAll('"', '""');
+          return '"' + text + '"';
+        }).join(","));
+      }
+      const blob = new Blob(["\ufeff" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "epsilon_route_current.csv";
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    document.getElementById("applyButton").addEventListener("click", () => { state.nearestIndex = null; render(); });
+    document.getElementById("fitButton").addEventListener("click", () => { state.excluded = parseIndexSet(filterEl.value); fitTo(currentActivePoints().length ? currentActivePoints() : points); render(); });
+    document.getElementById("resetButton").addEventListener("click", () => { filterEl.value = ""; startEl.value = points.length ? 1 : ""; endEl.value = points.length || ""; state.nearestIndex = null; fitTo(points); render(); });
+    document.getElementById("exportCsvButton").addEventListener("click", exportCsv);
+    providerEl.addEventListener("change", renderTiles);
+    keyEl.addEventListener("change", renderTiles);
+    window.addEventListener("resize", () => { state.centerWorld = null; fitTo(state.active.length ? state.active : points); render(); });
+    tableEl.addEventListener("click", event => {
+      const button = event.target.closest("button[data-action]");
+      if (!button) return;
+      const index = Number.parseInt(button.dataset.index, 10);
+      if (button.dataset.action === "start") startEl.value = index;
+      if (button.dataset.action === "end") endEl.value = index;
+      if (button.dataset.action === "filter") {
+        const setValue = parseIndexSet(filterEl.value);
+        setValue.add(index);
+        filterEl.value = setToText(setValue);
+      }
+      state.nearestIndex = index;
+      render();
+    });
+    svgEl.addEventListener("click", event => {
+      const rect = svgEl.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      let best = null;
+      let bestDistance = Infinity;
+      for (const point of state.active) {
+        const screen = pointToScreen(point);
+        const distance = Math.hypot(screen.x - x, screen.y - y);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = point;
+        }
+      }
+      if (!best) return;
+      state.nearestIndex = best.point_index;
+      if (clickModeEl.value === "start") startEl.value = best.point_index;
+      if (clickModeEl.value === "end") endEl.value = best.point_index;
+      if (clickModeEl.value === "filter") {
+        const setValue = parseIndexSet(filterEl.value);
+        setValue.add(best.point_index);
+        filterEl.value = setToText(setValue);
+      }
+      render();
+    });
+
+    fitTo(points);
+    render();
+  </script>
+</body>
+</html>
+"""
+    return app.replace("__TIANDITU_KEY__", DEFAULT_TIANDITU_KEY)
+
+
+def write_browser_app(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(browser_app_html(), encoding="utf-8")
+
+
+def open_browser_app() -> Path:
+    app_path = Path(tempfile.gettempdir()) / "epsilon_raw_route_browser.html"
+    write_browser_app(app_path)
+    webbrowser.open(app_path.resolve().as_uri())
+    return app_path
+
+
 def load_points(input_path: Path, args: argparse.Namespace) -> tuple[list[EpsilonPoint], ParseStats]:
     stats = ParseStats()
     files = resolve_input_files(input_path)
@@ -1642,8 +2605,15 @@ def run_self_test() -> int:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    raw_args = list(sys.argv[1:] if argv is None else argv)
+    if not raw_args:
+        app_path = open_browser_app()
+        print(f"browser_app={app_path}")
+        print("请在打开的浏览器页面中选择 session 文件夹或 EPSILON DAT 文件。")
+        return 0
+
     parser = build_arg_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(raw_args)
 
     try:
         if args.self_test:
