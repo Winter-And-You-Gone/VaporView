@@ -1074,9 +1074,10 @@ def write_map_html(
     .zoom-ctrl button { width:34px; height:34px; border-radius:10px; border:1px solid var(--line); background:var(--surface); color:var(--muted); font-size:18px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 8px rgba(20,20,19,.08); padding:0; }
     .zoom-ctrl button:hover { background:var(--surface-2); border-color:var(--accent); color:var(--accent); }
     .zoom-ctrl .zoom-level { font-size:11px; color:var(--muted); font-weight:700; line-height:1.8; }
-    #map { position:relative; width:${width}px; height:${height}px; max-width:100%; overflow:hidden; background:var(--surface-2); border:1px solid var(--line); border-radius:14px; box-shadow:0 14px 38px rgba(20,20,19,.07); }
+    #map { position:relative; width:${width}px; height:${height}px; max-width:100%; overflow:hidden; background:var(--surface-2); border:1px solid var(--line); border-radius:14px; box-shadow:0 14px 38px rgba(20,20,19,.07); cursor:grab; }
+    #map.is-dragging { cursor:grabbing; }
     .tile { position:absolute; width:256px; height:256px; user-select:none; pointer-events:none; }
-    svg { position:absolute; inset:0; width:100%; height:100%; overflow:hidden; cursor:crosshair; }
+    svg { position:absolute; inset:0; width:100%; height:100%; overflow:hidden; cursor:inherit; }
     .route-all { fill:none; stroke:rgba(104,98,93,.42); stroke-width:4; stroke-linejoin:round; stroke-linecap:round; }
     .route-selected { fill:none; stroke:var(--accent); stroke-width:5; stroke-linejoin:round; stroke-linecap:round; filter:drop-shadow(0 2px 4px rgba(217,119,87,.2)); }
     .point { fill:var(--blue); stroke:#fff; stroke-width:1.5; opacity:.80; }
@@ -1123,10 +1124,6 @@ def write_map_html(
       body::before, body::after, .ambient-bg::before, .ambient-bg::after, .ambient-bg span { animation:none!important; }
     }
   </style>
-	      .layout { grid-template-columns: 1fr; }
-	      #map { width: 100%; }
-	    }
-	  </style>
 </head>
 <body>
 <div class="ambient-bg" aria-hidden="true"><span></span><span></span><span></span></div>
@@ -1210,6 +1207,7 @@ def write_map_html(
     const TILE_SIZE = 256;
     const MAX_TABLE_ROWS = 500;
     const tilesEl = document.getElementById("tiles");
+    const svgEl = document.querySelector("#map svg");
     const routeAllEl = document.getElementById("routeAll");
     const routeSelectedEl = document.getElementById("routeSelected");
     const markersEl = document.getElementById("markers");
@@ -1233,7 +1231,7 @@ def write_map_html(
       nearestIndex: null
     };
     let dragState = null;
-    let dragOffset = { x: 0, y: 0 };
+    let suppressNextMapClick = false;
 
     providerEl.value = INITIAL.provider;
     startEl.value = INITIAL.startIndex;
@@ -1542,11 +1540,12 @@ def write_map_html(
     });
     // drag-to-pan
     const DRAG_THRESHOLD = 4;
-    const wMap = document.getElementById("map");
-    wMap.addEventListener("mousedown", event => {
+    mapContainer.addEventListener("mousedown", event => {
       if (event.button !== 0) return;
+      if (event.target.closest(".zoom-ctrl")) return;
+      event.preventDefault();
       dragState = { startX: event.clientX, startY: event.clientY, origX: state.centerWorld ? state.centerWorld.x : null, origY: state.centerWorld ? state.centerWorld.y : null, moved: false };
-      dragOffset = { x: 0, y: 0 };
+      mapContainer.classList.add("is-dragging");
     });
     window.addEventListener("mousemove", event => {
       if (!dragState || dragState.origX === null) return;
@@ -1554,33 +1553,34 @@ def write_map_html(
       const dy = event.clientY - dragState.startY;
       if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) dragState.moved = true;
       if (!dragState.moved) return;
-      const tx = dx - dragOffset.x;
-      const ty = dy - dragOffset.y;
-      dragOffset.x = dx; dragOffset.y = dy;
-      const tiles = document.getElementById("tiles");
-      tiles.style.transform = "translate(" + tx + "px," + ty + "px)";
-      tiles.style.transition = "none";
-      const svg = document.querySelector("svg");
-      svg.style.transform = "translate(" + tx + "px," + ty + "px)";
-      svg.style.transition = "none";
+      tilesEl.style.transform = "translate(" + dx + "px," + dy + "px)";
+      tilesEl.style.transition = "none";
+      svgEl.style.transform = "translate(" + dx + "px," + dy + "px)";
+      svgEl.style.transition = "none";
     });
     window.addEventListener("mouseup", event => {
       if (!dragState) return;
       if (dragState.moved) {
         const dx = event.clientX - dragState.startX;
         const dy = event.clientY - dragState.startY;
+        suppressNextMapClick = true;
         state.centerWorld = { x: dragState.origX - dx, y: dragState.origY - dy };
         const ll = worldToLatLon(state.centerWorld.x, state.centerWorld.y, state.zoom);
         state.centerLat = ll.latitude;
         state.centerLon = ll.longitude;
-        document.getElementById("tiles").style.transform = "";
-        document.querySelector("svg").style.transform = "";
+        tilesEl.style.transform = "";
+        svgEl.style.transform = "";
         render();
+        window.setTimeout(() => { suppressNextMapClick = false; }, 250);
       }
+      mapContainer.classList.remove("is-dragging");
       dragState = null;
     });
-    document.querySelector("svg").addEventListener("click", event => {
-      if (dragState && dragState.moved) return;
+    svgEl.addEventListener("click", event => {
+      if (suppressNextMapClick) {
+        suppressNextMapClick = false;
+        return;
+      }
       const rect = event.currentTarget.getBoundingClientRect();
       const x = (event.clientX - rect.left) * INITIAL.width / rect.width;
       const y = (event.clientY - rect.top) * INITIAL.height / rect.height;
@@ -1658,7 +1658,7 @@ def browser_app_html() -> str:
     [hidden] { display:none!important; }
     body {
       position:relative; isolation:isolate;
-      margin:0; min-height:100dvh; overflow-x:hidden;
+      margin:0; height:100dvh; min-height:100dvh; overflow:hidden;
       color:var(--ink); background:var(--bg);
       font-family:"Satoshi","Plus Jakarta Sans","Aptos","Microsoft YaHei",ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
       -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
@@ -1676,38 +1676,42 @@ def browser_app_html() -> str:
       animation:gridDrift 28s linear infinite;
     }
     .page {
-      position:relative; z-index:5; width:min(100%,1480px); margin:0 auto; padding:0;
+      position:relative; z-index:5; width:min(100%,1480px); height:100dvh; margin:0 auto; padding:0;
+      display:grid; grid-template-rows:auto minmax(0,1fr);
     }
     ::selection { background:rgba(217,119,87,.16); color:var(--ink); }
     :focus-visible { outline:3px solid rgba(217,119,87,.32); outline-offset:3px; }
     header {
-      padding:20px clamp(18px,2.6vw,44px); background:var(--surface); border-bottom:1px solid var(--line);
+      padding:10px clamp(16px,2.2vw,36px); background:var(--surface); border-bottom:1px solid var(--line);
     }
-    h1 { margin:0 0 6px; font-size:21px; color:var(--ink); font-weight:780; letter-spacing:-.03em; }
-    h3 { margin:14px 0 8px; font-size:15px; color:var(--ink); font-weight:740; }
-    .summary { display:flex; flex-wrap:wrap; gap:10px 20px; font-size:14px; color:var(--muted); line-height:1.6; }
-    .layout { display:grid; grid-template-columns:minmax(0,1fr) 420px; gap:16px; padding:16px clamp(12px,2.2vw,36px) 24px; }
-    .panel { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:14px; box-shadow:var(--soft-shadow,0 14px 38px rgba(20,20,19,.07)); }
-    .controls { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
+    h1 { margin:0 0 3px; font-size:18px; color:var(--ink); font-weight:780; letter-spacing:-.03em; }
+    h3 { margin:8px 0 6px; font-size:13px; color:var(--ink); font-weight:740; }
+    .summary { display:flex; flex-wrap:wrap; gap:5px 14px; font-size:12px; color:var(--muted); line-height:1.35; }
+    .layout { min-height:0; height:100%; display:grid; grid-template-columns:minmax(0,1fr) minmax(340px,380px); gap:10px; padding:10px clamp(10px,1.8vw,28px); overflow:hidden; }
+    .panel { min-height:0; background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:10px; box-shadow:var(--soft-shadow,0 12px 30px rgba(20,20,19,.07)); }
+    section.panel, aside.panel { display:flex; flex-direction:column; }
+    aside.panel { overflow:hidden; }
+    .controls { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin-bottom:7px; }
     .controls .wide { grid-column:1/-1; }
-    label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted); font-weight:620; }
-    input, select, button { border-radius:10px; border:1px solid var(--line); background:var(--surface); color:var(--ink); padding:8px 10px; font:inherit; }
+    label { display:flex; flex-direction:column; gap:3px; font-size:11px; color:var(--muted); font-weight:620; }
+    input, select, button { border-radius:9px; border:1px solid var(--line); background:var(--surface); color:var(--ink); padding:6px 8px; font:inherit; font-size:12px; }
     input:focus, select:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(217,119,87,.18); }
-    input[type=file] { padding:7px 9px; }
+    input[type=file] { padding:5px 7px; }
     button { cursor:pointer; background:var(--surface-2); border-color:var(--line); transition:transform .32s var(--ease),box-shadow .32s var(--ease),border-color .32s var(--ease),background .32s var(--ease); }
     button:hover { background:var(--line); border-color:var(--muted); }
     button:active { transform:translateY(1px); }
     button.primary { background:linear-gradient(180deg,#e28767,#a84d35); border-color:rgba(168,77,53,.68); color:#fff; font-weight:720; box-shadow:0 8px 22px rgba(217,119,87,.18); }
     button.primary:hover { box-shadow:0 12px 28px rgba(217,119,87,.24); }
-    .button-row { display:flex; flex-wrap:wrap; gap:8px; }
-    .hint { color:var(--muted); font-size:12px; line-height:1.55; }
-    .metric { margin:10px 0; padding:12px; border-radius:12px; background:var(--surface-2); border:1px solid var(--line); line-height:1.8; font-size:13px; }
+    .button-row { display:flex; flex-wrap:wrap; gap:6px; }
+    .hint { margin:6px 0 0; color:var(--muted); font-size:11px; line-height:1.4; }
+    .metric { margin:7px 0; padding:8px; border-radius:10px; background:var(--surface-2); border:1px solid var(--line); line-height:1.45; font-size:12px; }
     .metric strong { color:var(--accent); font-weight:780; }
     .error { color:var(--accent-deep); font-weight:600; }
     .ok { color:#16a34a; font-weight:600; }
-    #map { position:relative; width:100%; height:680px; overflow:hidden; background:var(--surface-2); border:1px solid var(--line); border-radius:14px; box-shadow:var(--soft-shadow,0 14px 38px rgba(20,20,19,.07)); }
+    #map { position:relative; flex:1; width:100%; min-height:320px; overflow:hidden; background:var(--surface-2); border:1px solid var(--line); border-radius:14px; box-shadow:var(--soft-shadow,0 12px 30px rgba(20,20,19,.07)); cursor:grab; }
+    #map.is-dragging { cursor:grabbing; }
     .tile { position:absolute; width:256px; height:256px; user-select:none; pointer-events:none; }
-    svg { position:absolute; inset:0; width:100%; height:100%; overflow:hidden; cursor:crosshair; }
+    svg { position:absolute; inset:0; width:100%; height:100%; overflow:hidden; cursor:inherit; }
     .route-all { fill:none; stroke:rgba(104,98,93,.42); stroke-width:4; stroke-linejoin:round; stroke-linecap:round; }
     .route-selected { fill:none; stroke:var(--accent); stroke-width:5; stroke-linejoin:round; stroke-linecap:round; filter:drop-shadow(0 2px 4px rgba(217,119,87,.2)); }
     .point { fill:var(--blue); stroke:#fff; stroke-width:1.5; opacity:.80; }
@@ -1719,12 +1723,12 @@ def browser_app_html() -> str:
     .zoom-ctrl button:hover { background:var(--surface-2); border-color:var(--accent); color:var(--accent); }
     .zoom-ctrl .zoom-level { font-size:11px; color:var(--muted); font-weight:700; line-height:1.8; }
     .attrib { position:absolute; left:8px; bottom:6px; font-size:12px; background:rgba(255,253,248,.92); color:var(--muted); padding:3px 8px; border-radius:8px; border:1px solid var(--line); }
-    table { width:100%; border-collapse:collapse; font-size:12px; }
-    th, td { padding:6px 5px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
+    table { width:100%; border-collapse:collapse; font-size:11px; }
+    th, td { padding:4px 5px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
     th { color:var(--muted); font-weight:660; position:sticky; top:0; background:var(--surface-2); }
     tbody tr:hover { background:var(--accent-soft); }
-	    .table-wrap { max-height:350px; overflow:auto; border:1px solid var(--line); border-radius:10px; }
-	    .small-button { padding:4px 6px; font-size:11px; border-radius:8px; background:var(--surface-2); border-color:var(--line); }
+	    .table-wrap { flex:1; min-height:96px; max-height:none; overflow:auto; border:1px solid var(--line); border-radius:10px; }
+	    .small-button { padding:3px 5px; font-size:11px; border-radius:8px; background:var(--surface-2); border-color:var(--line); }
 	    .small-button:hover { background:var(--line); }
 	.loading-overlay {
 	  position:absolute; inset:0; z-index:20; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
@@ -1749,7 +1753,14 @@ def browser_app_html() -> str:
       from{background-position:0 0,0 0,0 0}
       to{background-position:18px 18px,64px 64px,64px 64px}
     }
-    @media (max-width:1180px) { .layout { grid-template-columns:1fr; } }
+    @media (max-width:1180px) {
+      body { height:auto; min-height:100dvh; overflow:auto; }
+      .page { height:auto; min-height:100dvh; display:block; }
+      .layout { grid-template-columns:1fr; overflow:visible; }
+      #map { height:min(64vh,620px); min-height:360px; flex:none; }
+      aside.panel { overflow:visible; }
+      .table-wrap { max-height:320px; flex:none; }
+    }
     @media (prefers-reduced-motion:reduce) {
       body::before, body::after { animation:none!important; }
     }
@@ -1908,6 +1919,7 @@ def browser_app_html() -> str:
       nearestIndex: null
     };
     let dragState = null;
+    let suppressNextMapClick = false;
 
     function setStatus(message, ok = true) {
       statusEl.innerHTML = "<span class='" + (ok ? "ok" : "error") + "'>" + escapeHtml(message) + "</span>";
@@ -2649,12 +2661,13 @@ window.addEventListener("resize", () => { state.centerWorld = null; fitTo(state.
     });
     // drag-to-pan
     const DRAG_THRESHOLD = 4;
-    let dragOffset = { x: 0, y: 0 };
     const mapContainer = svgEl.parentElement;
     mapContainer.addEventListener("mousedown", event => {
       if (event.button !== 0) return;
+      if (event.target.closest(".zoom-ctrl")) return;
+      event.preventDefault();
       dragState = { startX: event.clientX, startY: event.clientY, origX: state.centerWorld ? state.centerWorld.x : null, origY: state.centerWorld ? state.centerWorld.y : null, moved: false };
-      dragOffset = { x: 0, y: 0 };
+      mapContainer.classList.add("is-dragging");
     });
     window.addEventListener("mousemove", event => {
       if (!dragState || dragState.origX === null) return;
@@ -2662,15 +2675,9 @@ window.addEventListener("resize", () => { state.centerWorld = null; fitTo(state.
       const dy = event.clientY - dragState.startY;
       if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) dragState.moved = true;
       if (!dragState.moved) return;
-      // translate tiles and SVG content visually during drag
-      const tx = dx - dragOffset.x;
-      const ty = dy - dragOffset.y;
-      dragOffset.x = dx;
-      dragOffset.y = dy;
-      const tiles = document.getElementById("tiles");
-      tiles.style.transform = "translate(" + tx + "px," + ty + "px)";
-      tiles.style.transition = "none";
-      svgEl.style.transform = "translate(" + tx + "px," + ty + "px)";
+      tilesEl.style.transform = "translate(" + dx + "px," + dy + "px)";
+      tilesEl.style.transition = "none";
+      svgEl.style.transform = "translate(" + dx + "px," + dy + "px)";
       svgEl.style.transition = "none";
     });
     window.addEventListener("mouseup", event => {
@@ -2678,18 +2685,24 @@ window.addEventListener("resize", () => { state.centerWorld = null; fitTo(state.
       if (dragState.moved) {
         const dx = event.clientX - dragState.startX;
         const dy = event.clientY - dragState.startY;
+        suppressNextMapClick = true;
         state.centerWorld = { x: dragState.origX - dx, y: dragState.origY - dy };
         const ll = worldToLatLon(state.centerWorld.x, state.centerWorld.y, state.zoom);
         state.centerLat = ll.latitude;
         state.centerLon = ll.longitude;
-        document.getElementById("tiles").style.transform = "";
+        tilesEl.style.transform = "";
         svgEl.style.transform = "";
         render();
+        window.setTimeout(() => { suppressNextMapClick = false; }, 250);
       }
+      mapContainer.classList.remove("is-dragging");
       dragState = null;
     });
     svgEl.addEventListener("click", event => {
-      if (dragState && dragState.moved) return;
+      if (suppressNextMapClick) {
+        suppressNextMapClick = false;
+        return;
+      }
       const rect = svgEl.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
