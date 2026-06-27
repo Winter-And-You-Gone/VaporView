@@ -1143,6 +1143,7 @@ def write_map_html(
   <main class="layout">
     <section class="panel">
 <div id="map">
+<div class="loading-overlay" id="loadingOverlay"><div class="loading-spinner"></div><p>正在解析轨迹数据&#x2026;</p></div>
 	        <div id="tiles"></div>
 	        <div class="zoom-ctrl">
 	          <button id="zoomInBtn" title="放大">+</button>
@@ -1512,10 +1513,11 @@ def write_map_html(
     });
     providerEl.addEventListener("change", renderTiles);
     keyEl.addEventListener("change", renderTiles);
-    document.getElementById("zoomInBtn").addEventListener("click", () => { state.zoom = Math.min(INITIAL.maxZoom, state.zoom + 1); render(); });
-    document.getElementById("zoomOutBtn").addEventListener("click", () => { state.zoom = Math.max(INITIAL.minZoom, state.zoom - 1); render(); });
+    function zoomTo(zoom) { state.zoom = Math.max(INITIAL.minZoom, Math.min(INITIAL.maxZoom, zoom)); if (state.centerLat != null) state.centerWorld = latLonToWorld(state.centerLat, state.centerLon, state.zoom); render(); }
+    document.getElementById("zoomInBtn").addEventListener("click", () => zoomTo(state.zoom + 1));
+    document.getElementById("zoomOutBtn").addEventListener("click", () => zoomTo(state.zoom - 1));
     const mapContainer = document.getElementById("map");
-    mapContainer.addEventListener("wheel", event => { event.preventDefault(); const dz = event.deltaY < 0 ? 1 : -1; state.zoom = Math.max(INITIAL.minZoom, Math.min(INITIAL.maxZoom, state.zoom + dz)); render(); }, { passive: false });
+    mapContainer.addEventListener("wheel", event => { event.preventDefault(); const dz = event.deltaY < 0 ? 1 : -1; zoomTo(state.zoom + dz); }, { passive: false });
     tableEl.addEventListener("click", event => {
       const button = event.target.closest("button[data-action]");
       if (!button) return;
@@ -1676,19 +1678,20 @@ def browser_app_html() -> str:
 1676	    .table-wrap { max-height:350px; overflow:auto; border:1px solid var(--line); border-radius:10px; }
 1677	    .small-button { padding:4px 6px; font-size:11px; border-radius:8px; background:var(--surface-2); border-color:var(--line); }
 1678	    .small-button:hover { background:var(--line); }
-1679	    .loading-overlay {
-1680	      position:fixed; inset:0; z-index:100; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px;
-1681	      background:rgba(250,249,245,.82); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
-1682	      opacity:0; pointer-events:none; transition:opacity .38s var(--ease);
-1683	    }
-1684	    .loading-overlay.is-active { opacity:1; pointer-events:auto; }
-1685	    .loading-spinner {
-1686	      width:44px; height:44px; border-radius:50%;
-1687	      border:3px solid var(--line); border-top-color:var(--accent);
-1688	      animation:spin .72s linear infinite;
-1689	    }
-1690	    .loading-overlay p { margin:0; color:var(--muted); font-size:15px; font-weight:620; }
-1691	    @keyframes spin { to { transform:rotate(360deg); } }
+	.loading-overlay {
+	  position:absolute; inset:0; z-index:20; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
+	  background:rgba(250,249,245,.78); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px);
+	  border-radius:14px;
+	  opacity:0; pointer-events:none; transition:opacity .3s var(--ease);
+	}
+	.loading-overlay.is-active { opacity:1; pointer-events:auto; }
+	.loading-spinner {
+	  width:36px; height:36px; border-radius:50%;
+	  border:3px solid var(--line); border-top-color:var(--accent);
+	  animation:spin .7s linear infinite;
+	}
+	.loading-overlay p { margin:0; color:var(--muted); font-size:14px; font-weight:620; }
+	@keyframes spin { to { transform:rotate(360deg); } }
     @keyframes bgAurora {
       0%{transform:translate3d(-1.4%,0,0) scale(1);background-position:0% 0%}
       50%{transform:translate3d(1.2%,-1%,0) scale(1.025);background-position:50% 32%}
@@ -1707,7 +1710,6 @@ def browser_app_html() -> str:
 <body>
 <div class="ambient-bg" aria-hidden="true"><span></span><span></span><span></span></div>
 <div class="page">
-<div class="loading-overlay" id="loadingOverlay"><div class="loading-spinner"></div><p>正在解析轨迹数据&#x2026;</p></div>
   <header>
     <h1>EPSILON 原始轨迹浏览器解析器</h1>
     <div class="summary">
@@ -2565,9 +2567,10 @@ function render() {
     providerEl.addEventListener("change", renderTiles);
     keyEl.addEventListener("change", renderTiles);
 window.addEventListener("resize", () => { state.centerWorld = null; fitTo(state.active.length ? state.active : points); render(); });
-	    document.getElementById("zoomInBtn").addEventListener("click", () => { state.zoom = Math.min(state.maxZoom, state.zoom + 1); render(); });
-	    document.getElementById("zoomOutBtn").addEventListener("click", () => { state.zoom = Math.max(state.minZoom, state.zoom - 1); render(); });
-	    svgEl.parentElement.addEventListener("wheel", event => { event.preventDefault(); const dz = event.deltaY < 0 ? 1 : -1; state.zoom = Math.max(state.minZoom, Math.min(state.maxZoom, state.zoom + dz)); render(); }, { passive: false });
+	function zoomTo(zoom) { state.zoom = Math.max(state.minZoom, Math.min(state.maxZoom, zoom)); if (state.centerLat != null) state.centerWorld = latLonToWorld(state.centerLat, state.centerLon, state.zoom); render(); }
+	    document.getElementById("zoomInBtn").addEventListener("click", () => zoomTo(state.zoom + 1));
+	    document.getElementById("zoomOutBtn").addEventListener("click", () => zoomTo(state.zoom - 1));
+	    svgEl.parentElement.addEventListener("wheel", event => { event.preventDefault(); const dz = event.deltaY < 0 ? 1 : -1; zoomTo(state.zoom + dz); }, { passive: false });
 	    tableEl.addEventListener("click", event => {
       const button = event.target.closest("button[data-action]");
       if (!button) return;
