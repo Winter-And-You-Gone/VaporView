@@ -985,50 +985,55 @@ def write_map_html(
 <head>
   <meta charset="utf-8" />
   <title>${title}</title>
-  <style>
-    :root { color-scheme: dark; }
-    * { box-sizing: border-box; }
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; background: #0f172a; color: #e2e8f0; }
-    header { padding: 16px 20px; background: #111827; border-bottom: 1px solid #334155; }
-    h1 { margin: 0 0 8px; font-size: 20px; }
-    h3 { margin: 14px 0 8px; font-size: 15px; }
-    .summary { display: flex; flex-wrap: wrap; gap: 12px 18px; font-size: 14px; color: #cbd5e1; }
-    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 14px; padding: 14px; }
-    .panel { background: #111827; border: 1px solid #334155; border-radius: 12px; padding: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
-    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
-    .controls .wide { grid-column: 1 / -1; }
-    label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #94a3b8; }
-    input, select, button { border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #e2e8f0; padding: 8px 9px; font: inherit; }
-    button { cursor: pointer; background: #1e293b; }
-    button:hover { background: #334155; }
-    button.primary { background: #2563eb; border-color: #3b82f6; color: white; }
-    button.primary:hover { background: #1d4ed8; }
-    .button-row { display: flex; flex-wrap: wrap; gap: 8px; }
-    .hint { color: #94a3b8; font-size: 12px; line-height: 1.5; }
-    .metric { margin: 10px 0; padding: 10px; border-radius: 10px; background: #0f172a; border: 1px solid #334155; line-height: 1.7; }
-    .metric strong { color: #fbbf24; }
-    .error { color: #fecaca; }
-    #map { position: relative; width: ${width}px; height: ${height}px; max-width: 100%; overflow: hidden; background: #dbeafe; border: 1px solid #334155; border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.35); }
-    .tile { position: absolute; width: 256px; height: 256px; user-select: none; pointer-events: none; }
-    svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; cursor: crosshair; }
-    .route-all { fill: none; stroke: rgba(15, 23, 42, .62); stroke-width: 4; stroke-linejoin: round; stroke-linecap: round; }
-    .route-selected { fill: none; stroke: #f97316; stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; }
-    .point { fill: #2563eb; stroke: white; stroke-width: 1; opacity: .78; }
-    .start { fill: #22c55e; stroke: white; stroke-width: 2; }
-    .end { fill: #ef4444; stroke: white; stroke-width: 2; }
-    .nearest { fill: #facc15; stroke: #0f172a; stroke-width: 2; }
-    .attrib { position: absolute; left: 8px; bottom: 6px; font-size: 12px; background: rgba(255,255,255,.88); color: #0f172a; padding: 2px 6px; border-radius: 4px; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th, td { padding: 6px 4px; border-bottom: 1px solid #334155; text-align: left; white-space: nowrap; }
-    th { color: #93c5fd; font-weight: 600; position: sticky; top: 0; background: #111827; }
-    tbody tr:hover { background: #1e293b; }
-    .table-wrap { max-height: 420px; overflow: auto; border: 1px solid #334155; border-radius: 10px; }
-    .small-button { padding: 4px 6px; font-size: 11px; border-radius: 6px; }
-    @media (max-width: 1180px) {
-      .layout { grid-template-columns: 1fr; }
-      #map { width: 100%; }
-    }
-  </style>
+<style>
+	    * { box-sizing: border-box; }
+	    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; background: #f8fafc; color: #1e293b; }
+	    header { padding: 16px 20px; background: #ffffff; border-bottom: 1px solid #e2e8f0; }
+	    h1 { margin: 0 0 8px; font-size: 20px; color: #0f172a; }
+	    h3 { margin: 14px 0 8px; font-size: 15px; color: #334155; }
+	    .summary { display: flex; flex-wrap: wrap; gap: 12px 18px; font-size: 14px; color: #64748b; }
+	    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 14px; padding: 14px; }
+	    .panel { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+	    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+	    .controls .wide { grid-column: 1 / -1; }
+	    label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #64748b; font-weight: 500; }
+	    input, select, button { border-radius: 8px; border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b; padding: 8px 9px; font: inherit; }
+	    input:focus, select:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
+	    button { cursor: pointer; background: #f1f5f9; }
+	    button:hover { background: #e2e8f0; }
+	    button.primary { background: #2563eb; border-color: #2563eb; color: white; font-weight: 500; }
+	    button.primary:hover { background: #1d4ed8; }
+	    .button-row { display: flex; flex-wrap: wrap; gap: 8px; }
+	    .hint { color: #94a3b8; font-size: 12px; line-height: 1.5; }
+	    .metric { margin: 10px 0; padding: 12px; border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; line-height: 1.8; font-size: 13px; }
+	    .metric strong { color: #2563eb; }
+	    .error { color: #dc2626; font-weight: 500; }
+	    #map { position: relative; width: ${width}px; height: ${height}px; max-width: 100%; overflow: hidden; background: #e2e8f0; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+	    .tile { position: absolute; width: 256px; height: 256px; user-select: none; pointer-events: none; }
+	    svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; cursor: crosshair; }
+	    .route-all { fill: none; stroke: rgba(100, 116, 139, .50); stroke-width: 4; stroke-linejoin: round; stroke-linecap: round; }
+	    .route-selected { fill: none; stroke: #ea580c; stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; }
+	    .point { fill: #2563eb; stroke: #ffffff; stroke-width: 1.5; opacity: .80; }
+	    .start { fill: #16a34a; stroke: #ffffff; stroke-width: 2; }
+	    .end { fill: #dc2626; stroke: #ffffff; stroke-width: 2; }
+	    .nearest { fill: #f59e0b; stroke: #ffffff; stroke-width: 2; }
+	    .zoom-ctrl { position: absolute; right: 12px; top: 12px; display: flex; flex-direction: column; align-items: center; gap: 2px; z-index: 10; }
+	    .zoom-ctrl button { width: 34px; height: 34px; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; color: #334155; font-size: 18px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,.08); padding: 0; }
+	    .zoom-ctrl button:hover { background: #f1f5f9; border-color: #94a3b8; }
+	    .zoom-ctrl .zoom-level { font-size: 11px; color: #64748b; font-weight: 600; line-height: 1.8; }
+	    .attrib { position: absolute; left: 8px; bottom: 6px; font-size: 12px; background: rgba(255,255,255,.92); color: #475569; padding: 3px 8px; border-radius: 6px; border: 1px solid #e2e8f0; }
+	    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+	    th, td { padding: 6px 4px; border-bottom: 1px solid #e2e8f0; text-align: left; white-space: nowrap; }
+	    th { color: #475569; font-weight: 600; position: sticky; top: 0; background: #f1f5f9; }
+	    tbody tr:hover { background: #f1f5f9; }
+	    .table-wrap { max-height: 420px; overflow: auto; border: 1px solid #e2e8f0; border-radius: 10px; }
+	    .small-button { padding: 4px 6px; font-size: 11px; border-radius: 6px; background: #f1f5f9; border-color: #cbd5e1; }
+	    .small-button:hover { background: #e2e8f0; }
+	    @media (max-width: 1180px) {
+	      .layout { grid-template-columns: 1fr; }
+	      #map { width: 100%; }
+	    }
+	  </style>
 </head>
 <body>
   <header>
@@ -1042,9 +1047,14 @@ def write_map_html(
   </header>
   <main class="layout">
     <section class="panel">
-      <div id="map">
-        <div id="tiles"></div>
-        <svg viewBox="0 0 ${width} ${height}" aria-label="EPSILON route">
+<div id="map">
+	        <div id="tiles"></div>
+	        <div class="zoom-ctrl">
+	          <button id="zoomInBtn" title="放大">+</button>
+	          <span class="zoom-level" id="zoomLabel">${zoom_value}</span>
+	          <button id="zoomOutBtn" title="缩小">&minus;</button>
+	        </div>
+	        <svg viewBox="0 0 ${width} ${height}" aria-label="EPSILON route">
           <polyline id="routeAll" class="route-all" points="" />
           <polyline id="routeSelected" class="route-selected" points="" />
           <g id="markers"></g>
@@ -1361,6 +1371,7 @@ def write_map_html(
     }
 
     function render() {
+      document.getElementById("zoomLabel").textContent = state.zoom;
       state.excluded = parseIndexSet(filterEl.value);
       state.active = currentActivePoints();
       if (!state.centerWorld) fitTo(state.active.length ? state.active : POINTS);
@@ -1406,6 +1417,10 @@ def write_map_html(
     });
     providerEl.addEventListener("change", renderTiles);
     keyEl.addEventListener("change", renderTiles);
+    document.getElementById("zoomInBtn").addEventListener("click", () => { state.zoom = Math.min(INITIAL.maxZoom, state.zoom + 1); render(); });
+    document.getElementById("zoomOutBtn").addEventListener("click", () => { state.zoom = Math.max(INITIAL.minZoom, state.zoom - 1); render(); });
+    const mapContainer = document.getElementById("map");
+    mapContainer.addEventListener("wheel", event => { event.preventDefault(); const dz = event.deltaY < 0 ? 1 : -1; state.zoom = Math.max(INITIAL.minZoom, Math.min(INITIAL.maxZoom, state.zoom + dz)); render(); }, { passive: false });
     tableEl.addEventListener("click", event => {
       const button = event.target.closest("button[data-action]");
       if (!button) return;
@@ -1458,6 +1473,7 @@ def write_map_html(
             title=html_escape(title),
             width=width,
             height=height,
+            zoom_value=zoom_value,
             point_count=len(points),
             total_distance=f"{total_distance:.3f}",
             route_distance=f"{route_distance:.3f}",
@@ -1476,51 +1492,56 @@ def browser_app_html() -> str:
 <head>
   <meta charset="utf-8" />
   <title>EPSILON 原始轨迹浏览器解析器</title>
-  <style>
-    :root { color-scheme: dark; }
-    * { box-sizing: border-box; }
-    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; background: #0f172a; color: #e2e8f0; }
-    header { padding: 16px 20px; background: #111827; border-bottom: 1px solid #334155; }
-    h1 { margin: 0 0 8px; font-size: 20px; }
-    h3 { margin: 14px 0 8px; font-size: 15px; }
-    .summary { display: flex; flex-wrap: wrap; gap: 12px 18px; font-size: 14px; color: #cbd5e1; }
-    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 410px; gap: 14px; padding: 14px; }
-    .panel { background: #111827; border: 1px solid #334155; border-radius: 12px; padding: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
-    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
-    .controls .wide { grid-column: 1 / -1; }
-    label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #94a3b8; }
-    input, select, button { border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #e2e8f0; padding: 8px 9px; font: inherit; }
-    input[type=file] { padding: 7px; }
-    button { cursor: pointer; background: #1e293b; }
-    button:hover { background: #334155; }
-    button.primary { background: #2563eb; border-color: #3b82f6; color: white; }
-    button.primary:hover { background: #1d4ed8; }
-    .button-row { display: flex; flex-wrap: wrap; gap: 8px; }
-    .hint { color: #94a3b8; font-size: 12px; line-height: 1.5; }
-    .metric { margin: 10px 0; padding: 10px; border-radius: 10px; background: #0f172a; border: 1px solid #334155; line-height: 1.7; }
-    .metric strong { color: #fbbf24; }
-    .error { color: #fecaca; }
-    .ok { color: #bbf7d0; }
-    #map { position: relative; width: 100%; height: 680px; overflow: hidden; background: #dbeafe; border: 1px solid #334155; border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.35); }
-    .tile { position: absolute; width: 256px; height: 256px; user-select: none; pointer-events: none; }
-    svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; cursor: crosshair; }
-    .route-all { fill: none; stroke: rgba(15, 23, 42, .62); stroke-width: 4; stroke-linejoin: round; stroke-linecap: round; }
-    .route-selected { fill: none; stroke: #f97316; stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; }
-    .point { fill: #2563eb; stroke: white; stroke-width: 1; opacity: .78; }
-    .start { fill: #22c55e; stroke: white; stroke-width: 2; }
-    .end { fill: #ef4444; stroke: white; stroke-width: 2; }
-    .nearest { fill: #facc15; stroke: #0f172a; stroke-width: 2; }
-    .attrib { position: absolute; left: 8px; bottom: 6px; font-size: 12px; background: rgba(255,255,255,.88); color: #0f172a; padding: 2px 6px; border-radius: 4px; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th, td { padding: 6px 4px; border-bottom: 1px solid #334155; text-align: left; white-space: nowrap; }
-    th { color: #93c5fd; font-weight: 600; position: sticky; top: 0; background: #111827; }
-    tbody tr:hover { background: #1e293b; }
-    .table-wrap { max-height: 350px; overflow: auto; border: 1px solid #334155; border-radius: 10px; }
-    .small-button { padding: 4px 6px; font-size: 11px; border-radius: 6px; }
-    @media (max-width: 1180px) {
-      .layout { grid-template-columns: 1fr; }
-    }
-  </style>
+<style>
+	    * { box-sizing: border-box; }
+	    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; background: #f8fafc; color: #1e293b; }
+	    header { padding: 16px 20px; background: #ffffff; border-bottom: 1px solid #e2e8f0; }
+	    h1 { margin: 0 0 8px; font-size: 20px; color: #0f172a; }
+	    h3 { margin: 14px 0 8px; font-size: 15px; color: #334155; }
+	    .summary { display: flex; flex-wrap: wrap; gap: 12px 18px; font-size: 14px; color: #64748b; }
+	    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 420px; gap: 16px; padding: 16px; max-width: 100%; }
+	    .panel { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+	    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+	    .controls .wide { grid-column: 1 / -1; }
+	    label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #64748b; font-weight: 500; }
+	    input, select, button { border-radius: 8px; border: 1px solid #cbd5e1; background: #ffffff; color: #1e293b; padding: 8px 9px; font: inherit; }
+	    input:focus, select:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.15); }
+	    input[type=file] { padding: 7px; }
+	    button { cursor: pointer; background: #f1f5f9; border-color: #cbd5e1; }
+	    button:hover { background: #e2e8f0; }
+	    button.primary { background: #2563eb; border-color: #2563eb; color: white; font-weight: 500; }
+	    button.primary:hover { background: #1d4ed8; border-color: #1d4ed8; }
+	    .button-row { display: flex; flex-wrap: wrap; gap: 8px; }
+	    .hint { color: #94a3b8; font-size: 12px; line-height: 1.5; }
+	    .metric { margin: 10px 0; padding: 12px; border-radius: 10px; background: #f8fafc; border: 1px solid #e2e8f0; line-height: 1.8; font-size: 13px; }
+	    .metric strong { color: #2563eb; }
+	    .error { color: #dc2626; font-weight: 500; }
+	    .ok { color: #16a34a; font-weight: 500; }
+	    #map { position: relative; width: 100%; height: 680px; overflow: hidden; background: #e2e8f0; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+	    .tile { position: absolute; width: 256px; height: 256px; user-select: none; pointer-events: none; }
+	    svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; cursor: crosshair; }
+	    .route-all { fill: none; stroke: rgba(100, 116, 139, .50); stroke-width: 4; stroke-linejoin: round; stroke-linecap: round; }
+	    .route-selected { fill: none; stroke: #ea580c; stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; }
+	    .point { fill: #2563eb; stroke: #ffffff; stroke-width: 1.5; opacity: .80; }
+	    .start { fill: #16a34a; stroke: #ffffff; stroke-width: 2; }
+	    .end { fill: #dc2626; stroke: #ffffff; stroke-width: 2; }
+	    .nearest { fill: #f59e0b; stroke: #ffffff; stroke-width: 2; }
+	    .attrib { position: absolute; left: 8px; bottom: 6px; font-size: 12px; background: rgba(255,255,255,.92); color: #475569; padding: 3px 8px; border-radius: 6px; border: 1px solid #e2e8f0; }
+	    .zoom-ctrl { position: absolute; right: 12px; top: 12px; display: flex; flex-direction: column; align-items: center; gap: 2px; z-index: 10; }
+	    .zoom-ctrl button { width: 34px; height: 34px; border-radius: 8px; border: 1px solid #e2e8f0; background: #ffffff; color: #334155; font-size: 18px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,.08); padding: 0; }
+	    .zoom-ctrl button:hover { background: #f1f5f9; border-color: #94a3b8; }
+	    .zoom-ctrl .zoom-level { font-size: 11px; color: #64748b; font-weight: 600; line-height: 1.8; }
+	    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+	    th, td { padding: 6px 5px; border-bottom: 1px solid #e2e8f0; text-align: left; white-space: nowrap; }
+	    th { color: #475569; font-weight: 600; position: sticky; top: 0; background: #f1f5f9; }
+	    tbody tr:hover { background: #f1f5f9; }
+	    .table-wrap { max-height: 350px; overflow: auto; border: 1px solid #e2e8f0; border-radius: 10px; }
+	    .small-button { padding: 4px 6px; font-size: 11px; border-radius: 6px; background: #f1f5f9; border-color: #cbd5e1; }
+	    .small-button:hover { background: #e2e8f0; }
+	    @media (max-width: 1180px) {
+	      .layout { grid-template-columns: 1fr; }
+	    }
+	  </style>
 </head>
 <body>
   <header>
@@ -1533,9 +1554,14 @@ def browser_app_html() -> str:
   </header>
   <main class="layout">
     <section class="panel">
-      <div id="map">
-        <div id="tiles"></div>
-        <svg id="mapSvg" viewBox="0 0 1100 680" aria-label="EPSILON route">
+<div id="map">
+	        <div id="tiles"></div>
+	        <div class="zoom-ctrl">
+	          <button id="zoomInBtn" title="放大">+</button>
+	          <span class="zoom-level" id="zoomLabel">16</span>
+	          <button id="zoomOutBtn" title="缩小">&minus;</button>
+	        </div>
+	        <svg id="mapSvg" viewBox="0 0 1100 680" aria-label="EPSILON route">
           <polyline id="routeAll" class="route-all" points="" />
           <polyline id="routeSelected" class="route-selected" points="" />
           <g id="markers"></g>
@@ -2311,9 +2337,10 @@ def browser_app_html() -> str:
       tableNoteEl.textContent = active.length > MAX_TABLE_ROWS ? "仅显示前 " + MAX_TABLE_ROWS + " 个当前可见点；更远点可直接输入 point_index。" : "当前可见点已全部显示。";
     }
 
-    function render() {
-      updateViewBox();
-      state.excluded = parseIndexSet(filterEl.value);
+function render() {
+	      updateViewBox();
+	      document.getElementById("zoomLabel").textContent = state.zoom;
+	      state.excluded = parseIndexSet(filterEl.value);
       state.active = currentActivePoints();
       if (!state.centerWorld) fitTo(state.active.length ? state.active : points);
       const startIndex = Number.parseInt(startEl.value, 10);
@@ -2370,8 +2397,11 @@ def browser_app_html() -> str:
     document.getElementById("exportCsvButton").addEventListener("click", exportCsv);
     providerEl.addEventListener("change", renderTiles);
     keyEl.addEventListener("change", renderTiles);
-    window.addEventListener("resize", () => { state.centerWorld = null; fitTo(state.active.length ? state.active : points); render(); });
-    tableEl.addEventListener("click", event => {
+window.addEventListener("resize", () => { state.centerWorld = null; fitTo(state.active.length ? state.active : points); render(); });
+	    document.getElementById("zoomInBtn").addEventListener("click", () => { state.zoom = Math.min(state.maxZoom, state.zoom + 1); render(); });
+	    document.getElementById("zoomOutBtn").addEventListener("click", () => { state.zoom = Math.max(state.minZoom, state.zoom - 1); render(); });
+	    svgEl.parentElement.addEventListener("wheel", event => { event.preventDefault(); const dz = event.deltaY < 0 ? 1 : -1; state.zoom = Math.max(state.minZoom, Math.min(state.maxZoom, state.zoom + dz)); render(); }, { passive: false });
+	    tableEl.addEventListener("click", event => {
       const button = event.target.closest("button[data-action]");
       if (!button) return;
       const index = Number.parseInt(button.dataset.index, 10);
