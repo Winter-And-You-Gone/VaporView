@@ -184,6 +184,7 @@ VaporView/
 │   ├── vaporview_icon_concept.svg
 │   └── vaporview_icon_minimal.svg
 ├── docs/
+│   ├── epsilon_raw_route_readme.md
 │   ├── epsilon_raw_dat_format.md
 │   ├── imu_raw_dat_format.md
 │   └── raw_dat_format.md
@@ -231,6 +232,7 @@ VaporView/
 │   ├── rtklib/
 │   └── um982_driver/
 └── tools/
+    ├── epsilon_raw_route.py
     ├── epsilon_serial_probe.py
     └── epsilon_serial_probe.ps1
 ```
@@ -660,6 +662,14 @@ data/
 - 天地图 Key 保存于本机 `QSettings`，界面提供删除保存 Key 的按钮。
 
 ## 工具脚本
+
+### EPSILON 原始轨迹解析
+
+```powershell
+python tools/epsilon_raw_route.py "data\session_yyyy-MM-dd_HH-mm-ss" --output-csv exports\epsilon_route.csv --map-html exports\epsilon_route.html --start-index 1 --end-index 300
+```
+
+该脚本可读取会话目录、`raw/epsilon.dat`、旧版 `sensors/epsilon_raw.dat` 或裸 `FDILink` 字节流，按记录顺序计算任意两点之间的路线距离，支持指定点过滤，并导出 CSV / OpenStreetMap HTML 地图。字段说明见 [docs/epsilon_raw_route_readme.md](docs/epsilon_raw_route_readme.md)。
 
 ### EPSILON 串口探测
 
