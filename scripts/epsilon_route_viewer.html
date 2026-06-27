@@ -409,7 +409,9 @@ function assignDist(list){
 }
 
 function routeDist(list,si,ei){
-  if(!list.length)return 0;const lo=Math.min(si,ei),hi=Math.max(si,ei);return lo===hi?0:list[hi-1].cumulative_distance_m-list[lo-1].cumulative_distance_m;
+  if(!list||!list.length)return 0;const lo=Math.min(si,ei),hi=Math.max(si,ei);
+  if(lo===hi||hi>list.length)return 0;
+  return list[hi-1].cumulative_distance_m-list[lo-1].cumulative_distance_m;
 }
 
 // ===================================================================
@@ -570,30 +572,36 @@ function recalc(){
   const selected=selectSource(gCandidates,src);
   const filtered=applyFilters(selected,{includeIndices:inc&&inc.size>0?inc:null,excludeIndices:exc&&exc.size>0?exc:null,minFixCode:isFinN(mfc)?mfc:null,maxHacc:isFinN(mha)?mha:null,maxVacc:isFinN(mva)?mva:null,maxSegmentM:isFinN(mse)?mse:null});
   assignDist(filtered);gPoints=filtered;
-  renderMap();renderTable();renderDistance();renderStats();
+  // Clamp start/end indices BEFORE rendering (fix: out-of-bounds in routeDist)
   const se=document.getElementById('startIndex'),ee=document.getElementById('endIndex');
-  if(gPoints.length){if(parseInt(se.value,10)>gPoints.length)se.value=1;if(parseInt(ee.value,10)>gPoints.length)ee.value=gPoints.length}
+  if(gPoints.length){
+    if(parseInt(se.value,10)>gPoints.length||parseInt(se.value,10)<1)se.value=1;
+    if(parseInt(ee.value,10)>gPoints.length||parseInt(ee.value,10)<1)ee.value=gPoints.length;
+  }else{se.value=1;ee.value=1}
+  renderMap();renderTable();renderDistance();renderStats();
 }
 
 function renderDistance(){
-  const si=parseInt(document.getElementById('startIndex').value,10)||1,ei=parseInt(document.getElementById('endIndex').value,10)||gPoints.length;
+  const n=gPoints.length;
+  const si=Math.max(1,Math.min(parseInt(document.getElementById('startIndex').value,10)||1,n||1));
+  const ei=Math.max(1,Math.min(parseInt(document.getElementById('endIndex').value,10)||n,n));
+  // Sync clamped values back to inputs
+  document.getElementById('startIndex').value=si;document.getElementById('endIndex').value=ei;
   const segEl=document.getElementById('segmentDist'),totEl=document.getElementById('totalDist');
-  if(!gPoints.length){segEl.textContent='—';totEl.textContent='—';return}
+  if(!n){segEl.textContent='—';totEl.textContent='—';return}
   // Redraw segment overlays
   if(gTrackSelected){gMap.removeLayer(gTrackSelected);gTrackSelected=null}
   if(gStartMarker){gMap.removeLayer(gStartMarker);gStartMarker=null}
   if(gEndMarker){gMap.removeLayer(gEndMarker);gEndMarker=null}
-  if(gPoints.length){
-    const ll=gPoints.map(p=>[p.latitude_deg,p.longitude_deg]),lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(gPoints.length,Math.max(si,ei));
-    if(lo<hi){
-      gTrackSelected=L.polyline(ll.slice(lo,hi),{color:'#e67300',weight:3,opacity:0.9}).addTo(gMap);
-      const sp=gPoints[lo];gStartMarker=L.circleMarker([sp.latitude_deg,sp.longitude_deg],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gMap);
-      gStartMarker.bindTooltip('起点 #'+(lo+1),{direction:'top'});
-      const ep=gPoints[hi-1];gEndMarker=L.circleMarker([ep.latitude_deg,ep.longitude_deg],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gMap);
-      gEndMarker.bindTooltip('终点 #'+hi,{direction:'top'});
-    }
+  const ll=gPoints.map(p=>[p.latitude_deg,p.longitude_deg]),lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(n,Math.max(si,ei));
+  if(lo<hi){
+    gTrackSelected=L.polyline(ll.slice(lo,hi),{color:'#e67300',weight:3,opacity:0.9}).addTo(gMap);
+    const sp=gPoints[lo];gStartMarker=L.circleMarker([sp.latitude_deg,sp.longitude_deg],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gMap);
+    gStartMarker.bindTooltip('起点 #'+(lo+1),{direction:'top'});
+    const ep=gPoints[hi-1];gEndMarker=L.circleMarker([ep.latitude_deg,ep.longitude_deg],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gMap);
+    gEndMarker.bindTooltip('终点 #'+hi,{direction:'top'});
   }
-  const total=gPoints[gPoints.length-1].cumulative_distance_m||0,segment=routeDist(gPoints,si,ei);
+  const total=n?gPoints[n-1].cumulative_distance_m:0,segment=routeDist(gPoints,si,ei);
   segEl.textContent=isFinite(segment)?segment.toFixed(3)+' m':'—';totEl.textContent=isFinite(total)?total.toFixed(3)+' m':'—';
   document.querySelectorAll('#pointTable tbody tr.start-row,#pointTable tbody tr.end-row').forEach(el=>el.classList.remove('start-row','end-row'));
   document.querySelectorAll('#pointTable tbody tr').forEach(tr=>{const idx=parseInt(tr.dataset.index,10)+1;if(idx===si)tr.classList.add('start-row');if(idx===ei)tr.classList.add('end-row')});
