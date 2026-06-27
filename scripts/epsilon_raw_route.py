@@ -1673,9 +1673,22 @@ def browser_app_html() -> str:
     th, td { padding:6px 5px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
     th { color:var(--muted); font-weight:660; position:sticky; top:0; background:var(--surface-2); }
     tbody tr:hover { background:var(--accent-soft); }
-    .table-wrap { max-height:350px; overflow:auto; border:1px solid var(--line); border-radius:10px; }
-    .small-button { padding:4px 6px; font-size:11px; border-radius:8px; background:var(--surface-2); border-color:var(--line); }
-    .small-button:hover { background:var(--line); }
+1676	    .table-wrap { max-height:350px; overflow:auto; border:1px solid var(--line); border-radius:10px; }
+1677	    .small-button { padding:4px 6px; font-size:11px; border-radius:8px; background:var(--surface-2); border-color:var(--line); }
+1678	    .small-button:hover { background:var(--line); }
+1679	    .loading-overlay {
+1680	      position:fixed; inset:0; z-index:100; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:20px;
+1681	      background:rgba(250,249,245,.82); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+1682	      opacity:0; pointer-events:none; transition:opacity .38s var(--ease);
+1683	    }
+1684	    .loading-overlay.is-active { opacity:1; pointer-events:auto; }
+1685	    .loading-spinner {
+1686	      width:44px; height:44px; border-radius:50%;
+1687	      border:3px solid var(--line); border-top-color:var(--accent);
+1688	      animation:spin .72s linear infinite;
+1689	    }
+1690	    .loading-overlay p { margin:0; color:var(--muted); font-size:15px; font-weight:620; }
+1691	    @keyframes spin { to { transform:rotate(360deg); } }
     @keyframes bgAurora {
       0%{transform:translate3d(-1.4%,0,0) scale(1);background-position:0% 0%}
       50%{transform:translate3d(1.2%,-1%,0) scale(1.025);background-position:50% 32%}
@@ -1694,6 +1707,7 @@ def browser_app_html() -> str:
 <body>
 <div class="ambient-bg" aria-hidden="true"><span></span><span></span><span></span></div>
 <div class="page">
+<div class="loading-overlay" id="loadingOverlay"><div class="loading-spinner"></div><p>正在解析轨迹数据&#x2026;</p></div>
   <header>
     <h1>EPSILON 原始轨迹浏览器解析器</h1>
     <div class="summary">
@@ -2228,6 +2242,7 @@ def browser_app_html() -> str:
 
     async function loadFromFile(file) {
       if (!file) return;
+      document.getElementById("loadingOverlay").classList.add("is-active");
       setStatus("正在读取 " + file.name + " ...");
       try {
         const records = await readDatFile(file);
@@ -2246,6 +2261,8 @@ def browser_app_html() -> str:
         state.active = [];
         render();
         setStatus(error.message || String(error), false);
+      } finally {
+        document.getElementById("loadingOverlay").classList.remove("is-active");
       }
     }
 
