@@ -1,6 +1,6 @@
 # EPSILON 原始轨迹解析脚本说明
 
-`scripts/epsilon_raw_route.py` 用于从 VaporView 记录的 EPSILON 原始数据中解析轨迹点，计算沿记录轨迹的路线距离，导出 CSV，并生成可在浏览器打开的 OpenStreetMap HTML 地图。
+`scripts/epsilon_raw_route.py` 用于从 VaporView 记录的 EPSILON 原始数据中解析轨迹点，计算沿记录轨迹的路线距离，导出 CSV，并生成可在浏览器打开的交互式 HTML 地图。
 
 脚本只依赖 Python 标准库。
 
@@ -70,14 +70,24 @@ python scripts/epsilon_raw_route.py raw\epsilon.dat `
 
 ## 地图输出说明
 
-`--map-html` 会生成一个静态 HTML：
+`--map-html` 会生成一个自带轨迹点数据和计算逻辑的交互式 HTML：
 
 - 灰线：过滤后的完整轨迹
 - 橙线：`--start-index` 到 `--end-index` 之间参与距离计算的路线段
 - 绿色点：起点
 - 红色点：终点
+- 右侧面板可选择起点、终点、过滤点，并实时重算路线距离
+- 可在天地图矢量、天地图卫星和 OpenStreetMap 之间切换底图
 
-HTML 会从 OpenStreetMap 在线加载瓦片；打开地图时需要浏览器能访问 `https://tile.openstreetmap.org/`。
+默认底图是天地图矢量，默认 Key 为 `5a0d3293c900281a37417b2e4d4d3676`。如需替换 Key：
+
+```powershell
+python scripts/epsilon_raw_route.py raw\epsilon.dat `
+  --map-html exports\epsilon_route.html `
+  --tianditu-key your_tianditu_key
+```
+
+HTML 打开后不需要 Python 或后端服务；CSV 和距离计算数据都已经写入 HTML。地图底图瓦片需要联网加载，天地图需要访问 `tianditu.gov.cn`，OpenStreetMap 需要访问 `tile.openstreetmap.org`。
 
 ## CSV 字段说明
 

@@ -669,7 +669,7 @@ data/
 python scripts/epsilon_raw_route.py "data\session_yyyy-MM-dd_HH-mm-ss" --output-csv exports\epsilon_route.csv --map-html exports\epsilon_route.html --start-index 1 --end-index 300
 ```
 
-该脚本可读取会话目录、`raw/epsilon.dat`、旧版 `sensors/epsilon_raw.dat` 或裸 `FDILink` 字节流，按记录顺序计算任意两点之间的路线距离，支持指定点过滤，并导出 CSV / OpenStreetMap HTML 地图。字段说明见 [scripts/epsilon_raw_route_readme.md](scripts/epsilon_raw_route_readme.md)。
+该脚本可读取会话目录、`raw/epsilon.dat`、旧版 `sensors/epsilon_raw.dat` 或裸 `FDILink` 字节流，按记录顺序计算任意两点之间的路线距离，支持指定点过滤，并导出 CSV / 可交互 HTML 地图。HTML 地图可直接选择起终点、过滤点并重算距离，默认底图为天地图矢量，也可切换天地图卫星和 OpenStreetMap。字段说明见 [scripts/epsilon_raw_route_readme.md](scripts/epsilon_raw_route_readme.md)。
 
 ### EPSILON 串口探测
 

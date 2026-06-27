@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import math
 import struct
 import sys
@@ -23,6 +24,7 @@ import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from string import Template
 from typing import Iterable, Iterator, Optional, Sequence
 
 
@@ -47,6 +49,7 @@ LEGACY_EPSILON_RECORD_HEADER_SIZE = 20
 
 EARTH_RADIUS_METERS = 6_371_000.0
 TILE_SIZE = 256
+DEFAULT_TIANDITU_KEY = "5a0d3293c900281a37417b2e4d4d3676"
 
 PACKET_NAMES = {
     0x40: "IMU",
@@ -913,6 +916,29 @@ def html_escape(value: object) -> str:
     )
 
 
+def json_for_html(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+
+
+def map_point_to_json(point: EpsilonPoint) -> dict[str, object]:
+    return {
+        "point_index": point.point_index,
+        "source_point_index": point.source_point_index,
+        "latitude_deg": point.latitude_deg,
+        "longitude_deg": point.longitude_deg,
+        "height_m": point.height_m,
+        "host_time_utc": point.host_time_utc,
+        "epsilon_time_utc": point.epsilon_time_utc,
+        "packet_name": point.packet_name,
+        "position_source": point.position_source,
+        "gnss_fix": point.gnss_fix,
+        "gnss_fix_code": point.gnss_fix_code,
+        "gnss_satellites": point.gnss_satellites,
+        "hacc_m": point.hacc_m,
+        "vacc_m": point.vacc_m,
+    }
+
+
 def write_map_html(
     points: Sequence[EpsilonPoint],
     path: Path,
@@ -924,6 +950,8 @@ def write_map_html(
     zoom: Optional[int],
     min_zoom: int,
     max_zoom: int,
+    map_provider: str,
+    tianditu_key: str,
 ) -> None:
     if not points:
         raise EpsilonRouteError("cannot draw map because no route points remain after filtering")
@@ -933,101 +961,510 @@ def write_map_html(
     longitudes = [float(point.longitude_deg) for point in points]
     center_lat = (min(latitudes) + max(latitudes)) / 2.0
     center_lon = (min(longitudes) + max(longitudes)) / 2.0
-    center_x, center_y = lat_lon_to_world(center_lat, center_lon, zoom_value)
-    top_left_x = center_x - width / 2.0
-    top_left_y = center_y - height / 2.0
-    world_tiles = 2**zoom_value
-
-    def screen_xy(point: EpsilonPoint) -> tuple[float, float]:
-        world_x, world_y = lat_lon_to_world(float(point.latitude_deg), float(point.longitude_deg), zoom_value)
-        return world_x - top_left_x, world_y - top_left_y
-
-    all_polyline = " ".join(f"{x:.2f},{y:.2f}" for x, y in (screen_xy(point) for point in points))
-    lo = min(start_index, end_index)
-    hi = max(start_index, end_index)
-    selected_points = points[lo - 1 : hi]
-    selected_polyline = " ".join(f"{x:.2f},{y:.2f}" for x, y in (screen_xy(point) for point in selected_points))
     route_distance = route_distance_between(points, start_index, end_index)
     total_distance = points[-1].cumulative_distance_m if points else 0.0
-
-    min_tile_x = math.floor(top_left_x / TILE_SIZE)
-    max_tile_x = math.floor((top_left_x + width) / TILE_SIZE)
-    min_tile_y = max(0, math.floor(top_left_y / TILE_SIZE))
-    max_tile_y = min(world_tiles - 1, math.floor((top_left_y + height) / TILE_SIZE))
-    tile_html: list[str] = []
-    for tile_x in range(min_tile_x, max_tile_x + 1):
-        for tile_y in range(min_tile_y, max_tile_y + 1):
-            wrapped_x = tile_x % world_tiles
-            left = tile_x * TILE_SIZE - top_left_x
-            top = tile_y * TILE_SIZE - top_left_y
-            tile_url = f"https://tile.openstreetmap.org/{zoom_value}/{wrapped_x}/{tile_y}.png"
-            tile_html.append(
-                f'<img class="tile" src="{tile_url}" '
-                f'style="left:{left:.2f}px;top:{top:.2f}px" alt="" />'
-            )
-
-    marker_html: list[str] = []
-    marker_step = max(1, len(points) // 300)
-    for point in points[::marker_step]:
-        x, y = screen_xy(point)
-        marker_html.append(
-            f'<circle class="point" cx="{x:.2f}" cy="{y:.2f}" r="2">'
-            f"<title>#{point.point_index} {point.latitude_deg:.8f}, {point.longitude_deg:.8f}</title></circle>"
-        )
-    sx, sy = screen_xy(points[start_index - 1])
-    ex, ey = screen_xy(points[end_index - 1])
-    marker_html.append(f'<circle class="start" cx="{sx:.2f}" cy="{sy:.2f}" r="6"><title>Start #{start_index}</title></circle>')
-    marker_html.append(f'<circle class="end" cx="{ex:.2f}" cy="{ey:.2f}" r="6"><title>End #{end_index}</title></circle>')
+    points_json = json_for_html([map_point_to_json(point) for point in points])
+    initial_json = json_for_html({
+        "width": width,
+        "height": height,
+        "zoom": zoom_value,
+        "minZoom": min_zoom,
+        "maxZoom": max_zoom,
+        "centerLat": center_lat,
+        "centerLon": center_lon,
+        "startIndex": start_index,
+        "endIndex": end_index,
+        "provider": map_provider,
+        "tiandituKey": tianditu_key,
+    })
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        f"""<!doctype html>
+    html_template = Template("""<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
-  <title>{html_escape(title)}</title>
+  <title>${title}</title>
   <style>
-    body {{ margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f172a; color: #e2e8f0; }}
-    header {{ padding: 16px 20px; background: #111827; border-bottom: 1px solid #334155; }}
-    h1 {{ margin: 0 0 8px; font-size: 20px; }}
-    .summary {{ display: flex; flex-wrap: wrap; gap: 16px; font-size: 14px; color: #cbd5e1; }}
-    #map {{ position: relative; width: {width}px; height: {height}px; margin: 18px auto; overflow: hidden; background: #dbeafe; border: 1px solid #334155; box-shadow: 0 12px 40px rgba(0,0,0,.35); }}
-    .tile {{ position: absolute; width: 256px; height: 256px; user-select: none; }}
-    svg {{ position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }}
-    .route-all {{ fill: none; stroke: rgba(15, 23, 42, .50); stroke-width: 4; stroke-linejoin: round; stroke-linecap: round; }}
-    .route-selected {{ fill: none; stroke: #f97316; stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; }}
-    .point {{ fill: #2563eb; stroke: white; stroke-width: 1; opacity: .75; }}
-    .start {{ fill: #22c55e; stroke: white; stroke-width: 2; }}
-    .end {{ fill: #ef4444; stroke: white; stroke-width: 2; }}
-    .attrib {{ position: absolute; left: 8px; bottom: 6px; font-size: 12px; background: rgba(255,255,255,.85); color: #0f172a; padding: 2px 6px; border-radius: 4px; }}
-    .legend {{ max-width: {width}px; margin: -8px auto 18px; font-size: 13px; color: #cbd5e1; }}
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; background: #0f172a; color: #e2e8f0; }
+    header { padding: 16px 20px; background: #111827; border-bottom: 1px solid #334155; }
+    h1 { margin: 0 0 8px; font-size: 20px; }
+    h3 { margin: 14px 0 8px; font-size: 15px; }
+    .summary { display: flex; flex-wrap: wrap; gap: 12px 18px; font-size: 14px; color: #cbd5e1; }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 14px; padding: 14px; }
+    .panel { background: #111827; border: 1px solid #334155; border-radius: 12px; padding: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+    .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+    .controls .wide { grid-column: 1 / -1; }
+    label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #94a3b8; }
+    input, select, button { border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #e2e8f0; padding: 8px 9px; font: inherit; }
+    button { cursor: pointer; background: #1e293b; }
+    button:hover { background: #334155; }
+    button.primary { background: #2563eb; border-color: #3b82f6; color: white; }
+    button.primary:hover { background: #1d4ed8; }
+    .button-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .hint { color: #94a3b8; font-size: 12px; line-height: 1.5; }
+    .metric { margin: 10px 0; padding: 10px; border-radius: 10px; background: #0f172a; border: 1px solid #334155; line-height: 1.7; }
+    .metric strong { color: #fbbf24; }
+    .error { color: #fecaca; }
+    #map { position: relative; width: ${width}px; height: ${height}px; max-width: 100%; overflow: hidden; background: #dbeafe; border: 1px solid #334155; border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+    .tile { position: absolute; width: 256px; height: 256px; user-select: none; pointer-events: none; }
+    svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; cursor: crosshair; }
+    .route-all { fill: none; stroke: rgba(15, 23, 42, .62); stroke-width: 4; stroke-linejoin: round; stroke-linecap: round; }
+    .route-selected { fill: none; stroke: #f97316; stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; }
+    .point { fill: #2563eb; stroke: white; stroke-width: 1; opacity: .78; }
+    .start { fill: #22c55e; stroke: white; stroke-width: 2; }
+    .end { fill: #ef4444; stroke: white; stroke-width: 2; }
+    .nearest { fill: #facc15; stroke: #0f172a; stroke-width: 2; }
+    .attrib { position: absolute; left: 8px; bottom: 6px; font-size: 12px; background: rgba(255,255,255,.88); color: #0f172a; padding: 2px 6px; border-radius: 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 6px 4px; border-bottom: 1px solid #334155; text-align: left; white-space: nowrap; }
+    th { color: #93c5fd; font-weight: 600; position: sticky; top: 0; background: #111827; }
+    tbody tr:hover { background: #1e293b; }
+    .table-wrap { max-height: 420px; overflow: auto; border: 1px solid #334155; border-radius: 10px; }
+    .small-button { padding: 4px 6px; font-size: 11px; border-radius: 6px; }
+    @media (max-width: 1180px) {
+      .layout { grid-template-columns: 1fr; }
+      #map { width: 100%; }
+    }
   </style>
 </head>
 <body>
   <header>
-    <h1>{html_escape(title)}</h1>
+    <h1>${title}</h1>
     <div class="summary">
-      <span>点数: {len(points)}</span>
-      <span>总轨迹距离: {total_distance:.3f} m</span>
-      <span>#{start_index} 到 #{end_index} 路线距离: {route_distance:.3f} m</span>
-      <span>Zoom: {zoom_value}</span>
+      <span>原始点数: ${point_count}</span>
+      <span>初始总轨迹距离: ${total_distance} m</span>
+      <span>初始 #${start_index} 到 #${end_index}: ${route_distance} m</span>
+      <span>默认底图: 天地图矢量</span>
     </div>
   </header>
-  <main>
-    <div id="map">
-      {''.join(tile_html)}
-      <svg viewBox="0 0 {width} {height}" aria-label="EPSILON route">
-        <polyline class="route-all" points="{all_polyline}" />
-        <polyline class="route-selected" points="{selected_polyline}" />
-        {''.join(marker_html)}
-      </svg>
-      <div class="attrib">© OpenStreetMap contributors</div>
-    </div>
-    <div class="legend">橙色为本次 start/end 之间按记录顺序累加的路线段；灰色为过滤后的完整轨迹。绿色为起点，红色为终点。</div>
+  <main class="layout">
+    <section class="panel">
+      <div id="map">
+        <div id="tiles"></div>
+        <svg viewBox="0 0 ${width} ${height}" aria-label="EPSILON route">
+          <polyline id="routeAll" class="route-all" points="" />
+          <polyline id="routeSelected" class="route-selected" points="" />
+          <g id="markers"></g>
+        </svg>
+        <div id="attrib" class="attrib">天地图</div>
+      </div>
+      <p class="hint">提示：地图点选会选择距离鼠标最近的当前可见轨迹点。点很多时只绘制抽样小点，但最近点选择会在全部可见点中查找。</p>
+    </section>
+    <aside class="panel">
+      <div class="controls">
+        <label>底图
+          <select id="provider">
+            <option value="tianditu_vec">天地图矢量</option>
+            <option value="tianditu_img">天地图卫星</option>
+            <option value="osm">OpenStreetMap</option>
+          </select>
+        </label>
+        <label>点选动作
+          <select id="clickMode">
+            <option value="start">点地图设为起点</option>
+            <option value="end">点地图设为终点</option>
+            <option value="filter">点地图加入过滤</option>
+          </select>
+        </label>
+        <label>起点 point_index
+          <input id="startIndex" type="number" min="1" step="1" />
+        </label>
+        <label>终点 point_index
+          <input id="endIndex" type="number" min="1" step="1" />
+        </label>
+        <label class="wide">过滤点 point_index，支持逗号和范围，如 12,20-25
+          <input id="filterIndices" placeholder="例如：12,20-25" />
+        </label>
+        <label class="wide">天地图 Key
+          <input id="tiandituKey" />
+        </label>
+      </div>
+      <div class="button-row">
+        <button id="applyButton" class="primary">应用过滤并重算</button>
+        <button id="fitButton">适应当前轨迹</button>
+        <button id="resetButton">重置过滤</button>
+      </div>
+      <div id="metrics" class="metric"></div>
+      <div class="hint">路线距离按过滤后的轨迹顺序逐段累加，不是起终点直线距离，也不是道路导航距离。</div>
+      <h3>当前轨迹点</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>#</th><th>经纬度</th><th>fix</th><th>操作</th></tr></thead>
+          <tbody id="pointTable"></tbody>
+        </table>
+      </div>
+      <p id="tableNote" class="hint"></p>
+    </aside>
   </main>
+  <script>
+    const POINTS = ${points_json};
+    const INITIAL = ${initial_json};
+    const TILE_SIZE = 256;
+    const MAX_TABLE_ROWS = 500;
+    const tilesEl = document.getElementById("tiles");
+    const routeAllEl = document.getElementById("routeAll");
+    const routeSelectedEl = document.getElementById("routeSelected");
+    const markersEl = document.getElementById("markers");
+    const providerEl = document.getElementById("provider");
+    const clickModeEl = document.getElementById("clickMode");
+    const startEl = document.getElementById("startIndex");
+    const endEl = document.getElementById("endIndex");
+    const filterEl = document.getElementById("filterIndices");
+    const keyEl = document.getElementById("tiandituKey");
+    const metricsEl = document.getElementById("metrics");
+    const tableEl = document.getElementById("pointTable");
+    const tableNoteEl = document.getElementById("tableNote");
+    const attribEl = document.getElementById("attrib");
+    let state = {
+      zoom: INITIAL.zoom,
+      centerLat: INITIAL.centerLat,
+      centerLon: INITIAL.centerLon,
+      centerWorld: null,
+      excluded: new Set(),
+      active: [],
+      nearestIndex: null
+    };
+
+    providerEl.value = INITIAL.provider;
+    startEl.value = INITIAL.startIndex;
+    endEl.value = INITIAL.endIndex;
+    keyEl.value = INITIAL.tiandituKey;
+
+    function finiteNumber(value) {
+      return typeof value === "number" && Number.isFinite(value);
+    }
+
+    function fmt(value, digits) {
+      return finiteNumber(value) ? value.toFixed(digits) : "";
+    }
+
+    function clampLatitude(latitude) {
+      return Math.max(-85.05112878, Math.min(85.05112878, latitude));
+    }
+
+    function worldSize(zoom) {
+      return TILE_SIZE * Math.pow(2, zoom);
+    }
+
+    function latLonToWorld(latitude, longitude, zoom) {
+      const lat = clampLatitude(latitude) * Math.PI / 180.0;
+      const size = worldSize(zoom);
+      const x = (longitude + 180.0) / 360.0 * size;
+      const y = (0.5 - Math.log((1.0 + Math.sin(lat)) / (1.0 - Math.sin(lat))) / (4.0 * Math.PI)) * size;
+      return { x, y };
+    }
+
+    function pointToScreen(point) {
+      const world = latLonToWorld(point.latitude_deg, point.longitude_deg, state.zoom);
+      return {
+        x: world.x - state.centerWorld.x + INITIAL.width / 2,
+        y: world.y - state.centerWorld.y + INITIAL.height / 2
+      };
+    }
+
+    function haversine(a, b) {
+      const r = 6371000.0;
+      const lat1 = a.latitude_deg * Math.PI / 180.0;
+      const lat2 = b.latitude_deg * Math.PI / 180.0;
+      const dLat = lat2 - lat1;
+      const dLon = (b.longitude_deg - a.longitude_deg) * Math.PI / 180.0;
+      const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+      return r * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(Math.max(0, 1 - h)));
+    }
+
+    function parseIndexSet(text) {
+      const result = new Set();
+      for (const rawPart of text.split(",")) {
+        const part = rawPart.trim();
+        if (!part) continue;
+        if (part.includes("-")) {
+          const pieces = part.split("-", 2);
+          let start = Number.parseInt(pieces[0].trim(), 10);
+          let end = Number.parseInt(pieces[1].trim(), 10);
+          if (!Number.isFinite(start) || !Number.isFinite(end)) continue;
+          if (end < start) [start, end] = [end, start];
+          for (let i = start; i <= end; ++i) result.add(i);
+        } else {
+          const value = Number.parseInt(part, 10);
+          if (Number.isFinite(value)) result.add(value);
+        }
+      }
+      return result;
+    }
+
+    function setToText(setValue) {
+      return Array.from(setValue).sort((a, b) => a - b).join(",");
+    }
+
+    function currentActivePoints() {
+      return POINTS.filter(point => !state.excluded.has(point.point_index));
+    }
+
+    function chooseZoomFor(points) {
+      if (points.length <= 1) return Math.min(INITIAL.maxZoom, 17);
+      for (let zoom = INITIAL.maxZoom; zoom >= INITIAL.minZoom; --zoom) {
+        const pixels = points.map(point => latLonToWorld(point.latitude_deg, point.longitude_deg, zoom));
+        const xs = pixels.map(pixel => pixel.x);
+        const ys = pixels.map(pixel => pixel.y);
+        if (Math.max(...xs) - Math.min(...xs) <= Math.max(64, INITIAL.width - 120) &&
+            Math.max(...ys) - Math.min(...ys) <= Math.max(64, INITIAL.height - 120)) {
+          return zoom;
+        }
+      }
+      return INITIAL.minZoom;
+    }
+
+    function fitTo(points) {
+      if (!points.length) return;
+      state.zoom = chooseZoomFor(points);
+      const minLat = Math.min(...points.map(point => point.latitude_deg));
+      const maxLat = Math.max(...points.map(point => point.latitude_deg));
+      const minLon = Math.min(...points.map(point => point.longitude_deg));
+      const maxLon = Math.max(...points.map(point => point.longitude_deg));
+      state.centerLat = (minLat + maxLat) / 2;
+      state.centerLon = (minLon + maxLon) / 2;
+      state.centerWorld = latLonToWorld(state.centerLat, state.centerLon, state.zoom);
+    }
+
+    function providerLayers(provider) {
+      if (provider === "tianditu_img") {
+        return [
+          { endpoint: "img_w", layer: "img", suffix: "img" },
+          { endpoint: "cia_w", layer: "cia", suffix: "cia" }
+        ];
+      }
+      if (provider === "tianditu_vec") {
+        return [
+          { endpoint: "vec_w", layer: "vec", suffix: "vec" },
+          { endpoint: "cva_w", layer: "cva", suffix: "cva" }
+        ];
+      }
+      return [{ endpoint: "", layer: "", suffix: "osm" }];
+    }
+
+    function tileUrl(provider, zoom, tileX, tileY, layer) {
+      const worldTiles = Math.pow(2, zoom);
+      const wrappedX = ((tileX % worldTiles) + worldTiles) % worldTiles;
+      if (provider === "osm") {
+        return "https://tile.openstreetmap.org/" + zoom + "/" + wrappedX + "/" + tileY + ".png";
+      }
+      const key = encodeURIComponent(keyEl.value.trim());
+      const shardSeed = Math.abs(tileX * 31 + tileY * 17 + layer.suffix.length * 13) % 8;
+      const host = "https://t" + shardSeed + ".tianditu.gov.cn/" + layer.endpoint + "/wmts";
+      return host + "?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=" + layer.layer +
+        "&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILECOL=" + wrappedX +
+        "&TILEROW=" + tileY + "&TILEMATRIX=" + zoom + "&tk=" + key;
+    }
+
+    function renderTiles() {
+      tilesEl.replaceChildren();
+      const provider = providerEl.value;
+      const layers = providerLayers(provider);
+      const center = state.centerWorld;
+      const topLeftX = center.x - INITIAL.width / 2;
+      const topLeftY = center.y - INITIAL.height / 2;
+      const worldTiles = Math.pow(2, state.zoom);
+      const minTileX = Math.floor(topLeftX / TILE_SIZE);
+      const maxTileX = Math.floor((topLeftX + INITIAL.width) / TILE_SIZE);
+      const minTileY = Math.max(0, Math.floor(topLeftY / TILE_SIZE));
+      const maxTileY = Math.min(worldTiles - 1, Math.floor((topLeftY + INITIAL.height) / TILE_SIZE));
+      for (let tileX = minTileX; tileX <= maxTileX; ++tileX) {
+        for (let tileY = minTileY; tileY <= maxTileY; ++tileY) {
+          for (const layer of layers) {
+            const img = document.createElement("img");
+            img.className = "tile";
+            img.src = tileUrl(provider, state.zoom, tileX, tileY, layer);
+            img.alt = "";
+            img.style.left = (tileX * TILE_SIZE - topLeftX).toFixed(2) + "px";
+            img.style.top = (tileY * TILE_SIZE - topLeftY).toFixed(2) + "px";
+            tilesEl.appendChild(img);
+          }
+        }
+      }
+      attribEl.textContent = provider === "osm" ? "© OpenStreetMap contributors" : "底图数据 © 天地图";
+    }
+
+    function polyline(points) {
+      return points.map(point => {
+        const screen = pointToScreen(point);
+        return screen.x.toFixed(2) + "," + screen.y.toFixed(2);
+      }).join(" ");
+    }
+
+    function routeInfo(active, startIndex, endIndex) {
+      const startPos = active.findIndex(point => point.point_index === startIndex);
+      const endPos = active.findIndex(point => point.point_index === endIndex);
+      if (startPos < 0 || endPos < 0) {
+        return { ok: false, message: "起点或终点已被过滤，或点号不存在。" };
+      }
+      const lo = Math.min(startPos, endPos);
+      const hi = Math.max(startPos, endPos);
+      let distance = 0;
+      for (let i = lo + 1; i <= hi; ++i) distance += haversine(active[i - 1], active[i]);
+      let total = 0;
+      for (let i = 1; i < active.length; ++i) total += haversine(active[i - 1], active[i]);
+      return { ok: true, distance, total, segment: active.slice(lo, hi + 1), start: active[startPos], end: active[endPos] };
+    }
+
+    function addCircle(point, className, radius, titleText) {
+      const screen = pointToScreen(point);
+      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      circle.setAttribute("class", className);
+      circle.setAttribute("cx", screen.x.toFixed(2));
+      circle.setAttribute("cy", screen.y.toFixed(2));
+      circle.setAttribute("r", radius);
+      const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+      title.textContent = titleText;
+      circle.appendChild(title);
+      markersEl.appendChild(circle);
+    }
+
+    function renderMarkers(active, info) {
+      markersEl.replaceChildren();
+      const step = Math.max(1, Math.floor(active.length / 400));
+      for (let i = 0; i < active.length; i += step) {
+        const point = active[i];
+        addCircle(point, "point", "2", "#" + point.point_index + " " + fmt(point.latitude_deg, 8) + ", " + fmt(point.longitude_deg, 8));
+      }
+      if (info.ok) {
+        addCircle(info.start, "start", "6", "起点 #" + info.start.point_index);
+        addCircle(info.end, "end", "6", "终点 #" + info.end.point_index);
+      }
+      if (state.nearestIndex !== null) {
+        const nearest = active.find(point => point.point_index === state.nearestIndex);
+        if (nearest) addCircle(nearest, "nearest", "5", "最近选中 #" + nearest.point_index);
+      }
+    }
+
+    function renderTable(active) {
+      tableEl.replaceChildren();
+      const shown = active.slice(0, MAX_TABLE_ROWS);
+      for (const point of shown) {
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          "<td>" + point.point_index + "</td>" +
+          "<td>" + fmt(point.latitude_deg, 6) + "<br>" + fmt(point.longitude_deg, 6) + "</td>" +
+          "<td>" + (point.gnss_fix || "") + "</td>" +
+          "<td>" +
+          "<button class='small-button' data-action='start' data-index='" + point.point_index + "'>起</button> " +
+          "<button class='small-button' data-action='end' data-index='" + point.point_index + "'>终</button> " +
+          "<button class='small-button' data-action='filter' data-index='" + point.point_index + "'>滤</button>" +
+          "</td>";
+        tableEl.appendChild(tr);
+      }
+      tableNoteEl.textContent = active.length > MAX_TABLE_ROWS
+        ? "仅显示前 " + MAX_TABLE_ROWS + " 个当前可见点；更远点可直接输入 point_index。"
+        : "当前可见点已全部显示。";
+    }
+
+    function render() {
+      state.excluded = parseIndexSet(filterEl.value);
+      state.active = currentActivePoints();
+      if (!state.centerWorld) fitTo(state.active.length ? state.active : POINTS);
+      const startIndex = Number.parseInt(startEl.value, 10);
+      const endIndex = Number.parseInt(endEl.value, 10);
+      const info = routeInfo(state.active, startIndex, endIndex);
+      routeAllEl.setAttribute("points", polyline(state.active));
+      routeSelectedEl.setAttribute("points", info.ok ? polyline(info.segment) : "");
+      renderTiles();
+      renderMarkers(state.active, info);
+      renderTable(state.active);
+      if (!info.ok) {
+        metricsEl.innerHTML = "<div class='error'>" + info.message + "</div>" +
+          "<div>当前可见点数: <strong>" + state.active.length + "</strong></div>" +
+          "<div>已过滤点数: <strong>" + state.excluded.size + "</strong></div>";
+        return;
+      }
+      metricsEl.innerHTML =
+        "<div>当前可见点数: <strong>" + state.active.length + "</strong></div>" +
+        "<div>已过滤点数: <strong>" + state.excluded.size + "</strong></div>" +
+        "<div>当前总路线距离: <strong>" + info.total.toFixed(3) + " m</strong></div>" +
+        "<div>#" + startIndex + " 到 #" + endIndex + " 路线距离: <strong>" + info.distance.toFixed(3) + " m</strong></div>" +
+        "<div>Zoom: <strong>" + state.zoom + "</strong></div>";
+    }
+
+    document.getElementById("applyButton").addEventListener("click", () => {
+      state.nearestIndex = null;
+      render();
+    });
+    document.getElementById("fitButton").addEventListener("click", () => {
+      state.excluded = parseIndexSet(filterEl.value);
+      const active = currentActivePoints();
+      fitTo(active.length ? active : POINTS);
+      render();
+    });
+    document.getElementById("resetButton").addEventListener("click", () => {
+      filterEl.value = "";
+      startEl.value = INITIAL.startIndex;
+      endEl.value = INITIAL.endIndex;
+      state.nearestIndex = null;
+      fitTo(POINTS);
+      render();
+    });
+    providerEl.addEventListener("change", renderTiles);
+    keyEl.addEventListener("change", renderTiles);
+    tableEl.addEventListener("click", event => {
+      const button = event.target.closest("button[data-action]");
+      if (!button) return;
+      const index = Number.parseInt(button.dataset.index, 10);
+      if (button.dataset.action === "start") startEl.value = index;
+      if (button.dataset.action === "end") endEl.value = index;
+      if (button.dataset.action === "filter") {
+        const setValue = parseIndexSet(filterEl.value);
+        setValue.add(index);
+        filterEl.value = setToText(setValue);
+      }
+      state.nearestIndex = index;
+      render();
+    });
+    document.querySelector("svg").addEventListener("click", event => {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const x = (event.clientX - rect.left) * INITIAL.width / rect.width;
+      const y = (event.clientY - rect.top) * INITIAL.height / rect.height;
+      let best = null;
+      let bestDistance = Infinity;
+      for (const point of state.active) {
+        const screen = pointToScreen(point);
+        const distance = Math.hypot(screen.x - x, screen.y - y);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = point;
+        }
+      }
+      if (!best) return;
+      state.nearestIndex = best.point_index;
+      if (clickModeEl.value === "start") startEl.value = best.point_index;
+      if (clickModeEl.value === "end") endEl.value = best.point_index;
+      if (clickModeEl.value === "filter") {
+        const setValue = parseIndexSet(filterEl.value);
+        setValue.add(best.point_index);
+        filterEl.value = setToText(setValue);
+      }
+      render();
+    });
+
+    providerEl.value = INITIAL.provider || "tianditu_vec";
+    fitTo(POINTS);
+    render();
+  </script>
 </body>
 </html>
-""",
+""")
+    path.write_text(
+        html_template.substitute(
+            title=html_escape(title),
+            width=width,
+            height=height,
+            point_count=len(points),
+            total_distance=f"{total_distance:.3f}",
+            route_distance=f"{route_distance:.3f}",
+            start_index=start_index,
+            end_index=end_index,
+            points_json=points_json,
+            initial_json=initial_json,
+        ),
         encoding="utf-8",
     )
 
@@ -1061,7 +1498,7 @@ def load_points(input_path: Path, args: argparse.Namespace) -> tuple[list[Epsilo
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="解析 VaporView EPSILON 原始数据，导出轨迹 CSV，并生成 OSM HTML 地图。",
+        description="解析 VaporView EPSILON 原始数据，导出轨迹 CSV，并生成可交互 HTML 地图。",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument("input", nargs="?", help="会话目录、raw/epsilon.dat、legacy sensors/epsilon_raw.dat，或裸 FDILink 文件")
@@ -1096,9 +1533,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--allow-bad-crc", action="store_true", help="即使 FDILink CRC 异常也尝试解码")
     parser.add_argument("--map-width", type=int, default=1100, help="HTML 地图宽度，单位 px")
     parser.add_argument("--map-height", type=int, default=720, help="HTML 地图高度，单位 px")
-    parser.add_argument("--map-zoom", type=int, help="强制使用的 OSM zoom；不传则自动适配轨迹范围")
+    parser.add_argument("--map-zoom", type=int, help="强制使用的地图 zoom；不传则自动适配轨迹范围")
     parser.add_argument("--min-map-zoom", type=int, default=1, help="自动缩放最小 zoom")
     parser.add_argument("--max-map-zoom", type=int, default=18, help="自动缩放最大 zoom")
+    parser.add_argument(
+        "--map-provider",
+        choices=["tianditu_vec", "tianditu_img", "osm"],
+        default="tianditu_vec",
+        help="HTML 地图默认底图",
+    )
+    parser.add_argument("--tianditu-key", default=DEFAULT_TIANDITU_KEY, help="HTML 地图使用的天地图 Key")
     parser.add_argument("--title", default="EPSILON Route", help="HTML 地图标题")
     parser.add_argument("--self-test", action="store_true", help="生成一份临时 EPSILON raw DAT 并验证解析、CSV、地图输出")
     return parser
@@ -1169,9 +1613,26 @@ def run_self_test() -> int:
         if route_distance_between(points, 1, 3) <= 0.0:
             raise EpsilonRouteError("self-test route distance should be positive")
         export_csv(points, csv_path)
-        write_map_html(points, map_path, args.title, 1, 3, args.map_width, args.map_height, None, 1, 18)
+        write_map_html(
+            points,
+            map_path,
+            args.title,
+            1,
+            3,
+            args.map_width,
+            args.map_height,
+            None,
+            1,
+            18,
+            args.map_provider,
+            args.tianditu_key,
+        )
         if not csv_path.is_file() or not map_path.is_file():
             raise EpsilonRouteError("self-test did not create CSV and map outputs")
+        html = map_path.read_text(encoding="utf-8")
+        for expected_text in ("应用过滤并重算", "tianditu_vec", DEFAULT_TIANDITU_KEY, "当前总路线距离"):
+            if expected_text not in html:
+                raise EpsilonRouteError(f"self-test map HTML is missing {expected_text!r}")
         print(
             "self-test OK: "
             f"frames={stats.valid_frames}, points={len(points)}, "
@@ -1212,6 +1673,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 args.map_zoom,
                 args.min_map_zoom,
                 args.max_map_zoom,
+                args.map_provider,
+                args.tianditu_key,
             )
 
         total_distance = points[-1].cumulative_distance_m
