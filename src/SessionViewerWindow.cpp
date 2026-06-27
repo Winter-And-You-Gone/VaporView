@@ -176,17 +176,12 @@ struct SessionTableTheme
 
 SessionPlotTheme sessionPlotThemeFor(const QWidget *widget)
 {
-    const QPalette palette = widget->palette();
-    QColor background = palette.color(QPalette::Base);
-    if (!background.isValid() || background.alpha() == 0)
-    {
-        background = palette.color(QPalette::Window);
-    }
-    const bool dark = background.lightness() < 128;
+    Q_UNUSED(widget);
+    const bool dark = VaporView::isDarkThemeEnabled();
     return {
-        background,
-        appThemeColor(AppThemeColor::PlotGrid, dark),
-        appThemeColor(AppThemeColor::PlotBorder, dark),
+        appThemeColor(AppThemeColor::Surface, dark),
+        QColor(dark ? QStringLiteral("#303030") : QStringLiteral("#E4E7EB")),
+        QColor(dark ? QStringLiteral("#4A4A4A") : QStringLiteral("#CBD2D9")),
         appThemeColor(AppThemeColor::PlotText, dark),
         appThemeColor(AppThemeColor::PlotMutedText, dark)
     };
@@ -194,38 +189,33 @@ SessionPlotTheme sessionPlotThemeFor(const QWidget *widget)
 
 SessionTableTheme sessionTableThemeFor(const QWidget *widget)
 {
-    const QPalette palette = widget->palette();
-    QColor background = palette.color(QPalette::Base);
-    if (!background.isValid() || background.alpha() == 0)
-    {
-        background = palette.color(QPalette::Window);
-    }
-    const bool dark = background.lightness() < 128;
+    Q_UNUSED(widget);
+    const bool dark = VaporView::isDarkThemeEnabled();
     if (dark)
     {
         return {
             appThemeColor(AppThemeColor::Surface, true),
             appThemeColor(AppThemeColor::Text, true),
-            appThemeColor(AppThemeColor::PlotBorder, true),
+            QColor(QStringLiteral("#3A3A3A")),
             appThemeColor(AppThemeColor::SurfaceRaised, true),
             appThemeColor(AppThemeColor::TextTitle, true),
-            appThemeColor(AppThemeColor::TableHighlightedRow, true),
-            appThemeColor(AppThemeColor::White, true),
-            appThemeColor(AppThemeColor::TableHighlightedRow, true),
-            appThemeColor(AppThemeColor::TableSecondaryHighlightedRow, true)
+            QColor(QStringLiteral("#284668")),
+            appThemeColor(AppThemeColor::Text, true),
+            QColor(QStringLiteral("#4A3B22")),
+            QColor(QStringLiteral("#302F2A"))
         };
     }
 
     return {
-        appThemeColor(AppThemeColor::TableDefaultRow, false),
+        QColor(QStringLiteral("#FFFFFF")),
         appThemeColor(AppThemeColor::TableText, false),
-        appThemeColor(AppThemeColor::TableGrid, false),
-        appThemeColor(AppThemeColor::White, false),
+        QColor(QStringLiteral("#E5E7EB")),
+        QColor(QStringLiteral("#F8FAFC")),
         appThemeColor(AppThemeColor::TableText, false),
-        appThemeColor(AppThemeColor::TableHighlightedRow, false),
+        QColor(QStringLiteral("#EAF3FF")),
         appThemeColor(AppThemeColor::TableText, false),
-        appThemeColor(AppThemeColor::TableHighlightedRow, false),
-        appThemeColor(AppThemeColor::TableSecondaryHighlightedRow, false)
+        QColor(QStringLiteral("#FFF4D6")),
+        QColor(QStringLiteral("#F6F8FB"))
     };
 }
 
@@ -1803,6 +1793,7 @@ void SessionViewerWindow::setupUi()
     waveformLayout->addWidget(waveform_plot_title_);
 
     waveform_plot_ = new SessionWavePlotWidget(this);
+    waveform_plot_->setObjectName(QStringLiteral("sessionViewerWaveformPlot"));
     waveformLayout->addWidget(waveform_plot_, 1);
 
     auto *peakHeaderLayout = new QHBoxLayout();
@@ -1824,6 +1815,7 @@ void SessionViewerWindow::setupUi()
     waveformLayout->addLayout(peakHeaderLayout);
 
     waveform_peak_plot_ = new SessionPeakPlotWidget(this);
+    waveform_peak_plot_->setObjectName(QStringLiteral("sessionViewerPeakPlot"));
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPlotMode(
         waveform_peak_scatter_mode_ ? SessionPeakPlotWidget::PlotMode::Scatter : SessionPeakPlotWidget::PlotMode::Polyline);
     connect(waveform_frame_filter_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onToggleWaveformFrameFilterClicked);
@@ -1838,6 +1830,7 @@ void SessionViewerWindow::setupUi()
         is_english_ ? "No temperature series" : "没有温度趋势数据",
         QStringLiteral("°C"),
         this);
+    temperature_plot_->setObjectName(QStringLiteral("sessionViewerTemperaturePlot"));
     static_cast<SingleSeriesTrendPlotWidget*>(temperature_plot_)->setPlotMode(
         waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
     waveformLayout->addWidget(temperature_plot_);
@@ -1849,6 +1842,7 @@ void SessionViewerWindow::setupUi()
         is_english_ ? "No humidity series" : "没有湿度趋势数据",
         QStringLiteral("%RH"),
         this);
+    humidity_plot_->setObjectName(QStringLiteral("sessionViewerHumidityPlot"));
     static_cast<SingleSeriesTrendPlotWidget*>(humidity_plot_)->setPlotMode(
         waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
     waveformLayout->addWidget(humidity_plot_);
@@ -1860,6 +1854,7 @@ void SessionViewerWindow::setupUi()
         is_english_ ? "No pressure series" : "没有气压趋势数据",
         QStringLiteral("hPa"),
         this);
+    pressure_plot_->setObjectName(QStringLiteral("sessionViewerPressurePlot"));
     static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setPlotMode(
         waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
     waveformLayout->addWidget(pressure_plot_);
@@ -1896,6 +1891,8 @@ void SessionViewerWindow::setupUi()
     csvLayout->addWidget(csv_info_label_);
 
     csv_table_ = new QTableWidget(this);
+    csv_table_->setObjectName(QStringLiteral("sessionViewerCsvTable"));
+    csv_table_->viewport()->setObjectName(QStringLiteral("sessionViewerCsvViewport"));
     csv_table_->setAlternatingRowColors(false);
     csv_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
     csv_table_->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -1928,21 +1925,26 @@ void SessionViewerWindow::applyCsvTableTheme()
     tablePalette.setColor(QPalette::AlternateBase, theme.background);
     tablePalette.setColor(QPalette::Text, theme.text);
     tablePalette.setColor(QPalette::WindowText, theme.text);
+    tablePalette.setColor(QPalette::Window, theme.background);
     tablePalette.setColor(QPalette::Highlight, theme.selectedBackground);
     tablePalette.setColor(QPalette::HighlightedText, theme.selectedText);
     csv_table_->setPalette(tablePalette);
     csv_table_->viewport()->setPalette(tablePalette);
+    csv_table_->viewport()->setBackgroundRole(QPalette::Base);
+    csv_table_->viewport()->setAutoFillBackground(true);
     csv_table_->horizontalHeader()->setPalette(tablePalette);
 
     csv_table_->setStyleSheet(QStringLiteral(
         "QTableWidget {"
         " background-color: %1;"
         " alternate-background-color: %1;"
+        " border: 1px solid %3;"
         " color: %2;"
         " gridline-color: %3;"
         " selection-background-color: %6;"
         " selection-color: %7;"
         "}"
+        "QWidget#sessionViewerCsvViewport { background-color: %1; }"
         "QTableWidget::item { color: %2; }"
         "QTableWidget::item:selected { background-color: %6; color: %7; }"
         "QTableWidget::item:selected:active { background-color: %6; color: %7; }"

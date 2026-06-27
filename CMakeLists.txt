@@ -593,6 +593,16 @@ if(BUILD_TESTING)
     target_link_libraries(main_window_layout_test PRIVATE vaporview_main_window)
     add_test(NAME main_window_layout_test COMMAND main_window_layout_test)
 
+    add_executable(session_viewer_theme_test
+        tests/session_viewer_theme_test.cpp
+    )
+    target_include_directories(session_viewer_theme_test PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+    )
+    target_link_libraries(session_viewer_theme_test PRIVATE vaporview_main_window)
+    add_test(NAME session_viewer_theme_test COMMAND session_viewer_theme_test)
+
     add_executable(vaporview_startup_test
         tests/vaporview_startup_test.cpp
     )
