@@ -437,9 +437,11 @@ constexpr int kHomeDeviceActionSpinnerIntervalMs = 25;
 constexpr int kHomeDeviceActionSpinnerMinimumMs = 1000;
 constexpr int kMainPageTitleBarHeight = kMainPageInputHeight + 4;
 constexpr int kEnvironmentTitleBarHeight = kMainPageButtonHeight;
+constexpr int kHomeOverviewCardOuterPadding = 1;
+constexpr int kHomeOverviewBodyPadding = 2;
 constexpr int kConfigFormBottomPadding = 4;
-constexpr int kConfigHomeBodyBottomPadding = 2;
-constexpr int kConfigCardBottomPadding = 4;
+constexpr int kConfigHomeBodyBottomPadding = kHomeOverviewBodyPadding;
+constexpr int kConfigCardBottomPadding = kHomeOverviewCardOuterPadding;
 constexpr int kConfigCardMinHeight = kMainPageTitleBarHeight + kMainPageButtonHeight + kConfigHomeBodyBottomPadding + kConfigCardBottomPadding;
 constexpr int kHomeOverviewDeviceMinWidth = 540;
 constexpr int kHomeOverviewTemperatureMinWidth = 420;
@@ -2666,6 +2668,7 @@ public:
         , geodetic_packet_rate_hz_(0.0)
         , ecef_packet_rate_hz_(0.0)
     {
+        setObjectName(QStringLiteral("epsilonPanel"));
         setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
         setupUi();
         setEnglish(false);
@@ -4631,7 +4634,10 @@ public:
         constexpr int kOverviewOutputPillHeight = 56;
 
         auto *layout = new QHBoxLayout(this);
-        layout->setContentsMargins(8, 6, 8, 8);
+        layout->setContentsMargins(kHomeOverviewBodyPadding,
+                                   kHomeOverviewBodyPadding,
+                                   kHomeOverviewBodyPadding,
+                                   kHomeOverviewBodyPadding);
         layout->setSpacing(7);
 
         auto *summary = new QWidget(this);
@@ -7446,8 +7452,8 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         data_telemetry_summary_card_->setMaximumHeight(summaryHeight);
         const int homeDeviceRowHeight = scalePixels((kHomeDeviceRowHeight * kHomeDeviceGridRows) +
                                                     (kHomeDeviceGridRowGap * (kHomeDeviceGridRows - 1)));
-        const int homeBodySpacing = scalePixels(6);
-        const int homeBodyTopPadding = scalePixels(10);
+        const int homeBodySpacing = scalePixels(2);
+        const int homeBodyTopPadding = scalePixels(kHomeOverviewBodyPadding);
         const int homeBodyBottomPadding = scalePixels(kConfigHomeBodyBottomPadding);
         minimumHeight = std::max(minimumHeight,
                                  kMainPageTitleBarHeight +
@@ -10536,8 +10542,11 @@ void MainWindow::setupConfigPanel()
     config_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
     auto *config_root_layout = new QVBoxLayout(config_group_);
-    config_root_layout->setSpacing(4);
-    config_root_layout->setContentsMargins(0, 0, 0, kConfigCardBottomPadding);
+    config_root_layout->setSpacing(0);
+    config_root_layout->setContentsMargins(kHomeOverviewCardOuterPadding,
+                                           0,
+                                           kHomeOverviewCardOuterPadding,
+                                           kConfigCardBottomPadding);
 
     auto *config_form_widget = new QWidget(config_group_);
     config_form_widget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
@@ -10827,11 +10836,16 @@ void MainWindow::setupConfigPanel()
     data_telemetry_summary_card_->setVisible(true);
 
     auto *homeBodyWidget = new QWidget(config_group_);
+    homeBodyWidget->setObjectName(QStringLiteral("homeOverviewDeviceBody"));
     auto *homeBodyLayout = new QVBoxLayout(homeBodyWidget);
-    homeBodyLayout->setContentsMargins(8, 2, 8, kConfigHomeBodyBottomPadding);
+    homeBodyLayout->setContentsMargins(kHomeOverviewBodyPadding,
+                                       kHomeOverviewBodyPadding,
+                                       kHomeOverviewBodyPadding,
+                                       kConfigHomeBodyBottomPadding);
     homeBodyLayout->setSpacing(2);
 
     auto *homeDevicesWidget = new QWidget(homeBodyWidget);
+    homeDevicesWidget->setObjectName(QStringLiteral("homeOverviewDeviceGrid"));
     homeDevicesWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto *homeDevicesLayout = new QGridLayout(homeDevicesWidget);
     homeDevicesLayout->setContentsMargins(0, 0, 0, 0);
@@ -11039,7 +11053,10 @@ void MainWindow::setupDataPanels()
     temperature_overview_group_->setMinimumWidth(kHomeOverviewTemperatureMinWidth);
     temperature_overview_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     auto *temperatureOverviewLayout = new QVBoxLayout(temperature_overview_group_);
-    temperatureOverviewLayout->setContentsMargins(1, 0, 1, 1);
+    temperatureOverviewLayout->setContentsMargins(kHomeOverviewCardOuterPadding,
+                                                 0,
+                                                 kHomeOverviewCardOuterPadding,
+                                                 kHomeOverviewCardOuterPadding);
     temperatureOverviewLayout->setSpacing(0);
 
     auto *temperatureOverviewTitleBar = new QWidget(temperature_overview_group_);

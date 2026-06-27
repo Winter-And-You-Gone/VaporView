@@ -6,6 +6,8 @@
 #include <QFrame>
 #include <QGroupBox>
 #include <QLabel>
+#include <QLayout>
+#include <QSplitter>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTimer>
@@ -63,6 +65,15 @@ QRect wrappedTextBounds(const QLabel *label)
                                              label->text());
 }
 
+void requireMargins(const QMargins& actual, const QMargins& expected, const char *message)
+{
+    require(actual.left() == expected.left() &&
+                actual.top() == expected.top() &&
+                actual.right() == expected.right() &&
+                actual.bottom() == expected.bottom(),
+            message);
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -82,8 +93,48 @@ int main(int argc, char **argv)
     window.show();
     processEventsFor(500);
 
+    auto *homeOverviewSplitter = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
+    require(homeOverviewSplitter != nullptr, "home overview splitter exists");
+    require(homeOverviewSplitter->count() == 2, "home overview splitter has device and temperature cards");
+
+    auto *deviceOverviewCard = qobject_cast<QGroupBox *>(homeOverviewSplitter->widget(0));
+    auto *temperatureOverviewCard = qobject_cast<QGroupBox *>(homeOverviewSplitter->widget(1));
+    require(deviceOverviewCard != nullptr, "device overview card exists");
+    require(temperatureOverviewCard != nullptr, "temperature overview card exists");
+    require(deviceOverviewCard->layout() != nullptr, "device overview card layout exists");
+    require(temperatureOverviewCard->layout() != nullptr, "temperature overview card layout exists");
+
+    auto *deviceOverviewBody = deviceOverviewCard->findChild<QWidget *>(QStringLiteral("homeOverviewDeviceBody"));
+    auto *temperatureOverviewBody = temperatureOverviewCard->findChild<QWidget *>(QStringLiteral("temperatureOverviewPanel"));
+    require(deviceOverviewBody != nullptr, "device overview body exists");
+    require(temperatureOverviewBody != nullptr, "temperature overview body exists");
+    require(deviceOverviewBody->layout() != nullptr, "device overview body layout exists");
+    require(temperatureOverviewBody->layout() != nullptr, "temperature overview body layout exists");
+
+    requireMargins(deviceOverviewCard->layout()->contentsMargins(),
+                   QMargins(1, 0, 1, 1),
+                   "device overview card outer padding matches sensor cards");
+    requireMargins(temperatureOverviewCard->layout()->contentsMargins(),
+                   QMargins(1, 0, 1, 1),
+                   "temperature overview card outer padding matches sensor cards");
+    requireMargins(deviceOverviewBody->layout()->contentsMargins(),
+                   QMargins(2, 2, 2, 2),
+                   "device overview body padding matches sensor-card content rhythm");
+    requireMargins(temperatureOverviewBody->layout()->contentsMargins(),
+                   QMargins(2, 2, 2, 2),
+                   "temperature overview body padding matches sensor-card content rhythm");
+
     auto *dataGroup = window.findChild<QGroupBox *>(QStringLiteral("sensorRowContainer"));
     require(dataGroup != nullptr, "sensor row container exists");
+
+    auto *epsilonGroup = dataGroup->findChild<QGroupBox *>(QStringLiteral("sensorGroupBox"));
+    require(epsilonGroup != nullptr, "EPSILON card exists");
+    auto *epsilonPanel = dataGroup->findChild<QWidget *>(QStringLiteral("epsilonPanel"));
+    require(epsilonPanel != nullptr, "EPSILON panel exists");
+    require(epsilonPanel->layout() != nullptr, "EPSILON panel layout exists");
+    requireMargins(epsilonPanel->layout()->contentsMargins(),
+                   QMargins(2, 2, 2, 2),
+                   "EPSILON panel content rhythm remains the reference");
 
     QList<QFrame*> cards = dataGroup->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
     require(cards.size() == 3, "three EPSILON section cards");
