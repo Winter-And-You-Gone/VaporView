@@ -5258,6 +5258,22 @@ void TemperatureControllerPanel::setCommandStatus(const QString& text, bool erro
     status_label_->style()->polish(status_label_);
 }
 
+void TemperatureControllerPanel::setOutputEnabledControl(quint8 channel, bool enabled)
+{
+    if (channel == 0 || channel > channels_.size())
+    {
+        return;
+    }
+    QComboBox *combo = channels_[channel - 1].enable_combo;
+    if (!combo)
+    {
+        return;
+    }
+    const QSignalBlocker blocker(combo);
+    const int index = combo->findData(enabled);
+    combo->setCurrentIndex(index >= 0 ? index : 0);
+}
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , central_widget_(nullptr)
@@ -5765,15 +5781,17 @@ MainWindow::MainWindow(QWidget *parent)
                     else if (isTemperatureCommand(commandId))
                     {
                         const VaporView::TemperatureControllerCommand request = remote_temperature_commands_.take(commandSeq);
+                        const quint8 channel = request.channel == 0 ? 1 : request.channel;
                         if (temperature_controller_panel_)
                         {
                             temperature_controller_panel_->setCommandStatus(
                                 temperatureCommandStatusText(commandId,
-                                                             request.channel == 0 ? 1 : request.channel,
+                                                             channel,
                                                              false,
                                                              is_english_ ? QStringLiteral("ACK timed out") : QStringLiteral("ACK 超时")),
                                 true);
                         }
+                        restoreTemperatureCommandUi(commandId, channel);
                     }
                     else if (commandId == VaporView::CommandId::EnableWaveformStreaming ||
                              commandId == VaporView::CommandId::DisableWaveformStreaming)
@@ -8100,11 +8118,47 @@ void MainWindow::sendRemotePeakSearchRange(quint32 startIndex, quint32 endIndex)
             .arg(seq));
 }
 
+void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const VaporView::TemperatureControllerCommand& payload)
+{
+    if (isRemoteSkyMode())
+    {
+        sendRemoteTemperatureCommand(command, payload);
+        return;
+    }
+
+    const quint8 channel = payload.channel == 0 ? 1 : payload.channel;
+    const QString detail = is_english_
+        ? QStringLiteral("local RD105 controller is not connected")
+        : QStringLiteral("本地 RD105 温控器未连接");
+    log(is_english_
+        ? QStringLiteral("Local RD105 temperature controller is not connected")
+        : QStringLiteral("本地 RD105 温控器未连接，无法下发温控命令"));
+    if (temperature_controller_panel_)
+    {
+        temperature_controller_panel_->setCommandStatus(
+            temperatureCommandStatusText(command, channel, false, detail),
+            true);
+    }
+    restoreTemperatureCommandUi(command, channel);
+}
+
 void MainWindow::sendRemoteTemperatureCommand(VaporView::CommandId command, const VaporView::TemperatureControllerCommand& payload)
 {
     if (!ground_telemetry_service_ || !ground_telemetry_service_->isOpen())
     {
         log(is_english_ ? "Remote Sky telemetry link is not connected" : "天空端数传链路未连接");
+        const quint8 channel = payload.channel == 0 ? 1 : payload.channel;
+        if (temperature_controller_panel_)
+        {
+            temperature_controller_panel_->setCommandStatus(
+                temperatureCommandStatusText(command,
+                                             channel,
+                                             false,
+                                             is_english_ ? QStringLiteral("Remote Sky telemetry link is not connected")
+                                                         : QStringLiteral("天空端数传链路未连接")),
+                true);
+        }
+        restoreTemperatureCommandUi(command, channel);
         return;
     }
     const quint16 seq = ground_telemetry_service_->sendCommand(command, VaporView::TelemetryCodec::serializeTemperatureControllerCommand(payload));
@@ -8113,6 +8167,7 @@ void MainWindow::sendRemoteTemperatureCommand(VaporView::CommandId command, cons
     {
         temperature_controller_panel_->setCommandStatus(temperatureCommandStatusText(command, payload.channel, true));
     }
+    restoreTemperatureCommandUi(command, payload.channel == 0 ? 1 : payload.channel);
     if (command == VaporView::CommandId::SetTemperatureControllerMode)
     {
         log(QString(is_english_
@@ -8130,6 +8185,32 @@ void MainWindow::sendRemoteTemperatureCommand(VaporView::CommandId command, cons
                 .arg(VaporView::commandIdName(command))
                 .arg(payload.channel)
                 .arg(seq));
+    }
+}
+
+void MainWindow::restoreTemperatureCommandUi(VaporView::CommandId command, quint8 channel)
+{
+    if (command != VaporView::CommandId::SetTemperatureOutputEnabled)
+    {
+        return;
+    }
+
+    const int channelIndex = static_cast<int>(channel == 0 ? 0 : channel - 1);
+    if (channelIndex < 0 || channelIndex >= static_cast<int>(current_temperature_controller_.channels.size()))
+    {
+        return;
+    }
+
+    const bool outputEnabled =
+        current_temperature_controller_.valid &&
+        current_temperature_controller_.channels[channelIndex].output_enabled;
+    if (temperature_controller_panel_)
+    {
+        temperature_controller_panel_->setOutputEnabledControl(static_cast<quint8>(channelIndex + 1), outputEnabled);
+    }
+    if (temperature_overview_panel_)
+    {
+        temperature_overview_panel_->updateData(current_temperature_controller_);
     }
 }
 
@@ -11001,7 +11082,7 @@ void MainWindow::setupDataPanels()
         VaporView::TemperatureControllerCommand command;
         command.channel = channel;
         command.output_enabled = enabled;
-        sendRemoteTemperatureCommand(VaporView::CommandId::SetTemperatureOutputEnabled, command);
+        sendTemperatureCommand(VaporView::CommandId::SetTemperatureOutputEnabled, command);
     });
     temperatureOverviewLayout->addWidget(temperature_overview_panel_, 1);
 
@@ -11067,7 +11148,7 @@ void MainWindow::setupDataPanels()
         VaporView::TemperatureControllerCommand command;
         command.channel = channel;
         command.target_temperature_c = celsius;
-        sendRemoteTemperatureCommand(VaporView::CommandId::SetTemperatureTarget, command);
+        sendTemperatureCommand(VaporView::CommandId::SetTemperatureTarget, command);
     });
     connect(temperature_controller_panel_, &TemperatureControllerPanel::outputEnabledRequested, this, [this](quint8 channel, bool enabled) {
         if (enabled)
@@ -11086,19 +11167,19 @@ void MainWindow::setupDataPanels()
         VaporView::TemperatureControllerCommand command;
         command.channel = channel;
         command.output_enabled = enabled;
-        sendRemoteTemperatureCommand(VaporView::CommandId::SetTemperatureOutputEnabled, command);
+        sendTemperatureCommand(VaporView::CommandId::SetTemperatureOutputEnabled, command);
     });
     connect(temperature_controller_panel_, &TemperatureControllerPanel::outputModeRequested, this, [this](quint8 channel, quint16 mode) {
         VaporView::TemperatureControllerCommand command;
         command.channel = channel;
         command.output_mode = mode;
-        sendRemoteTemperatureCommand(VaporView::CommandId::SetTemperatureOutputMode, command);
+        sendTemperatureCommand(VaporView::CommandId::SetTemperatureOutputMode, command);
     });
     connect(temperature_controller_panel_, &TemperatureControllerPanel::maxOutputPercentRequested, this, [this](quint8 channel, quint16 percent) {
         VaporView::TemperatureControllerCommand command;
         command.channel = channel;
         command.max_output_percent = percent;
-        sendRemoteTemperatureCommand(VaporView::CommandId::SetTemperatureMaxOutputPercent, command);
+        sendTemperatureCommand(VaporView::CommandId::SetTemperatureMaxOutputPercent, command);
     });
     connect(temperature_controller_panel_, &TemperatureControllerPanel::pidRequested, this, [this](quint8 channel, quint32 kp, quint32 ki, quint32 kd) {
         VaporView::TemperatureControllerCommand command;
@@ -11106,19 +11187,19 @@ void MainWindow::setupDataPanels()
         command.kp = kp;
         command.ki = ki;
         command.kd = kd;
-        sendRemoteTemperatureCommand(VaporView::CommandId::SetTemperaturePid, command);
+        sendTemperatureCommand(VaporView::CommandId::SetTemperaturePid, command);
     });
     connect(temperature_controller_panel_, &TemperatureControllerPanel::autoPidRequested, this, [this](quint8 channel, quint16 mode) {
         VaporView::TemperatureControllerCommand command;
         command.channel = channel;
         command.auto_pid_mode = mode;
-        sendRemoteTemperatureCommand(VaporView::CommandId::SetTemperatureAutoPid, command);
+        sendTemperatureCommand(VaporView::CommandId::SetTemperatureAutoPid, command);
     });
     connect(temperature_controller_panel_, &TemperatureControllerPanel::controllerModeRequested, this, [this](quint16 mode) {
         VaporView::TemperatureControllerCommand command;
         command.channel = 1;
         command.controller_mode = mode;
-        sendRemoteTemperatureCommand(VaporView::CommandId::SetTemperatureControllerMode, command);
+        sendTemperatureCommand(VaporView::CommandId::SetTemperatureControllerMode, command);
     });
     temperatureLayout->addWidget(temperature_controller_panel_);
 
@@ -16880,10 +16961,11 @@ void MainWindow::onRemoteCommandAckReceived(const VaporView::CommandAck& ack)
             temperature_controller_panel_->setCommandStatus(
                 temperatureCommandStatusText(ack.command_id,
                                              request.channel == 0 ? 1 : request.channel,
-                                             false,
+                                             ok && noError,
                                              ok && noError ? QString() : errorText),
                 !(ok && noError));
         }
+        restoreTemperatureCommandUi(ack.command_id, request.channel == 0 ? 1 : request.channel);
     }
 }
 

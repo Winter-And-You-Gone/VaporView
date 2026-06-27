@@ -262,6 +262,7 @@ public:
     void updateRate(double hz);
     void setEnglish(bool english);
     void setCommandStatus(const QString& text, bool error = false);
+    void setOutputEnabledControl(quint8 channel, bool enabled);
 
 signals:
     void targetTemperatureRequested(quint8 channel, double celsius);
@@ -608,7 +609,9 @@ private:
     QPushButton *createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device);
     void setRemoteDeviceButtonsEnabled(bool enabled);
     void updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, VaporView::DeviceState state);
+    void sendTemperatureCommand(VaporView::CommandId command, const VaporView::TemperatureControllerCommand& payload);
     void sendRemoteTemperatureCommand(VaporView::CommandId command, const VaporView::TemperatureControllerCommand& payload);
+    void restoreTemperatureCommandUi(VaporView::CommandId command, quint8 channel);
     bool isTemperatureCommand(VaporView::CommandId command) const;
     QString temperatureCommandStatusText(VaporView::CommandId command, quint8 channel, bool pending, const QString& detail = QString()) const;
 
