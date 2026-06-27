@@ -6,7 +6,6 @@
 <title>EPSILON 原始轨迹查看器</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
-<script src="https://webapi.amap.com/maps?v=2.0&key=5071cacf988948b2f3d02aedffc119cb"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:13px;color:#222;background:#f5f5f5}
@@ -142,9 +141,8 @@ const PACKET_NAMES = {0x40:'IMU',0x41:'AHRS',0x42:'INS_GPS',0x50:'SYS_STATE',0x5
 // GLOBALS
 // ===================================================================
 let gRecords = [], gCandidates = [], gPoints = [], gStats = {};
-let gEngine = 'leaflet'; // 'leaflet' | 'amap'
-let gLMap = null, gAMap = null; // current instance
-let gLayers = [], gMarkers = []; // leaflet only
+let gLMap = null;
+let gLayers = [], gMarkers = [];
 let gTrackLine = null, gTrackSelected = null, gStartMarker = null, gEndMarker = null, gHoverCircle = null;
 let gIsLoading = false;
 
@@ -306,163 +304,79 @@ function updateProgress(pct,step){document.getElementById('progressContainer').s
 function hideProgress(){document.getElementById('progressContainer').style.display='none'}
 
 // ===================================================================
-// TIANDITU TILE HELPERS (Leaflet only)
+// TIANDITU / AMAP TILE HELPERS (Leaflet)
 // ===================================================================
 const L_TD = {vec_w:{e:'vec_w',l:'vec'},cva_w:{e:'cva_w',l:'cva'},img_w:{e:'img_w',l:'img'},cia_w:{e:'cia_w',l:'cia'}};
 function L_tdTile(cfg){const l=L.tileLayer('',{maxNativeZoom:18,maxZoom:24});l.getTileUrl=function(c){const z=c.z,x=((c.x%Math.pow(2,z))+Math.pow(2,z))%Math.pow(2,z),y=c.y,reqZ=Math.min(z,18),scl=Math.pow(2,z-reqZ),rx=Math.floor(x/scl),ry=Math.floor(y/scl),sh=Math.abs(x*31+y*17+cfg.l.length*13)%8;return 'https://t'+sh+'.tianditu.gov.cn/'+cfg.e+'/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER='+cfg.l+'&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILECOL='+rx+'&TILEROW='+ry+'&TILEMATRIX='+reqZ+'&tk='+cfg.key};return l}
 
 // ===================================================================
-// MAP ENGINE: CREATE / DESTROY
+// MAP ENGINE: Leaflet (single engine)
 // ===================================================================
-function isAmapProvider(){const p=document.getElementById('providerSelect').value;return p==='amap_vec'||p==='amap_img'}
+function isGcjProvider(){const p=document.getElementById('providerSelect').value;return p==='amap_vec'||p==='amap_img'}
 
-function destroyMap(){
-  if(gEngine==='leaflet'){
-    if(gTrackLine){gLMap.removeLayer(gTrackLine);gTrackLine=null}
-    if(gTrackSelected){gLMap.removeLayer(gTrackSelected);gTrackSelected=null}
-    if(gStartMarker){gLMap.removeLayer(gStartMarker);gStartMarker=null}
-    if(gEndMarker){gLMap.removeLayer(gEndMarker);gEndMarker=null}
-    if(gHoverCircle){gLMap.removeLayer(gHoverCircle);gHoverCircle=null}
-    for(const m of gMarkers)gLMap.removeLayer(m);gMarkers=[];
-    for(const l of gLayers)gLMap.removeLayer(l);gLayers=[];
-    if(gLMap){gLMap.remove();gLMap=null}
+function switchProvider(){
+  const pid=document.getElementById('providerSelect').value,key=document.getElementById('tiandituKey').value.trim()||'5a0d3293c900281a37417b2e4d4d3676';
+  if(!gLMap){initMap();return}
+  for(const l of gLayers)gLMap.removeLayer(l);gLayers=[];
+  if(pid==='osm'){
+    gLayers.push(L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxNativeZoom:19,maxZoom:24,attribution:'&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(gLMap));
+  }else if(pid==='amap_vec'){
+    // 高德矢量瓦片（Web Mercator，GCJ-02 瓦片数据需配合轨迹点 GCJ-02 转换）
+    gLayers.push(L.tileLayer('https://webrd{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',{subdomains:['01','02','03','04'],maxNativeZoom:18,maxZoom:24,attribution:'&copy; 高德'}).addTo(gLMap));
+  }else if(pid==='amap_img'){
+    gLayers.push(L.tileLayer('https://webst{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',{subdomains:['01','02','03','04'],maxNativeZoom:18,maxZoom:24,attribution:'&copy; 高德'}).addTo(gLMap));
   }else{
-    if(gAMap){gAMap.destroy();gAMap=null}
+    const cfg=pid==='tianditu_vec'?{e:'vec_w',l:'vec'}:{e:'img_w',l:'img'};const acfg=pid==='tianditu_vec'?{e:'cva_w',l:'cva'}:{e:'cia_w',l:'cia'};
+    gLayers.push(L_tdTile({e:cfg.e,l:cfg.l,key}).addTo(gLMap));gLayers.push(L_tdTile({e:acfg.e,l:acfg.l,key}).addTo(gLMap))
   }
-  document.getElementById('map').innerHTML='';
+  if(gPoints.length)renderMap();
 }
 
-function createMap(){
-  const el=document.getElementById('map');
-  const isAmap=isAmapProvider();
-  gEngine=isAmap?'amap':'leaflet';
-  
-  if(isAmap){
-    const pid=document.getElementById('providerSelect').value;
-    const layers=[pid==='amap_img'?new AMap.TileLayer.Satellite():new AMap.TileLayer()];
-    gAMap=new AMap.Map(el,{zoom:12,center:[39.9,116.3],layers:layers,zooms:[3,22]});
-    if(gPoints.length)renderMap();
-  }else{
-    gLMap=L.map(el,{center:[39.9,116.3],zoom:12,zoomControl:true,attributionControl:true,maxZoom:24});
-    const pid=document.getElementById('providerSelect').value,key=document.getElementById('tiandituKey').value.trim()||'5a0d3293c900281a37417b2e4d4d3676';
-    if(pid==='osm'){gLayers.push(L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxNativeZoom:19,maxZoom:24,attribution:'&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(gLMap))}else{
-      const cfg=pid==='tianditu_vec'?{e:'vec_w',l:'vec'}:{e:'img_w',l:'img'};const acfg=pid==='tianditu_vec'?{e:'cva_w',l:'cva'}:{e:'cia_w',l:'cia'};
-      gLayers.push(L_tdTile({e:cfg.e,l:cfg.l,key}).addTo(gLMap));gLayers.push(L_tdTile({e:acfg.e,l:acfg.l,key}).addTo(gLMap))
-    }
-    if(gPoints.length)renderMap();
-  }
+function initMap(){
+  gLMap=L.map('map',{center:[39.9,116.3],zoom:12,zoomControl:true,attributionControl:true,maxZoom:24});
+  switchProvider();
 }
 
 // ===================================================================
-// MAP RENDERING (dual engine)
+// GCJ-02 COORDINATE OFFSET
 // ===================================================================
-function renderMap(){
-  if(!gPoints.length)return;
-  if(gEngine==='leaflet'){renderLeafletMap()}else{renderAmapMap()}
-}
+const GCJ_A=6378245.0,GCJ_EE=0.00669342162296594323;
+function tLat(x,y){let r=-100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));r+=(20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;r+=(20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;r+=(160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;return r}
+function tLon(x,y){let r=300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));r+=(20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;r+=(20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;r+=(150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;return r}
+function gcjOff(lat,lon){let dl=tLat(lon-105,lat-35),dn=tLon(lon-105,lat-35);const ra=lat/180*Math.PI;let m=Math.sin(ra);m=1-GCJ_EE*m*m;const s=Math.sqrt(m);dl=(dl*180)/((GCJ_A*(1-GCJ_EE))/(m*s)*Math.PI);dn=(dn*180)/(GCJ_A/s*Math.cos(ra)*Math.PI);return{lat:lat+dl,lon:lon+dn}}
+function mapPts(pts){return isGcjProvider()?pts.map(p=>{const g=gcjOff(p.latitude_deg,p.longitude_deg);return{...p,latitude_deg:g.lat,longitude_deg:g.lon}}):pts}
 
+// ===================================================================
+// MAP RENDERING
+// ===================================================================
+function renderMap(){renderLeafletMap()}
 function renderLeafletMap(){
-  if(gTrackLine){gLMap.removeLayer(gTrackLine);gTrackLine=null}
-  if(gTrackSelected){gLMap.removeLayer(gTrackSelected);gTrackSelected=null}
-  if(gStartMarker){gLMap.removeLayer(gStartMarker);gStartMarker=null}
-  if(gEndMarker){gLMap.removeLayer(gEndMarker);gEndMarker=null}
-  if(gHoverCircle){gLMap.removeLayer(gHoverCircle);gHoverCircle=null}
-  for(const m of gMarkers)gLMap.removeLayer(m);gMarkers=[];
-
-  const ll=gPoints.map(p=>[p.latitude_deg,p.longitude_deg]);
+  if(!gPoints.length)return;
+  const dps=mapPts(gPoints);
+  if(gTrackLine){gLMap.removeLayer(gTrackLine)}if(gTrackSelected){gLMap.removeLayer(gTrackSelected)}if(gStartMarker){gLMap.removeLayer(gStartMarker)}if(gEndMarker){gLMap.removeLayer(gEndMarker)}if(gHoverCircle){gLMap.removeLayer(gHoverCircle)}for(const m of gMarkers)gLMap.removeLayer(m);gMarkers=[];
+  const ll=dps.map(p=>[p.latitude_deg,p.longitude_deg]);
   gTrackLine=L.polyline(ll,{color:'#999',weight:2,opacity:0.6}).addTo(gLMap);
   const si=parseInt(document.getElementById('startIndex').value,10)||1,ei=parseInt(document.getElementById('endIndex').value,10)||ll.length;
   const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(ll.length,Math.max(si,ei));
-  if(lo<hi){const seg=ll.slice(lo,hi);gTrackSelected=L.polyline(seg,{color:'#e67300',weight:3,opacity:0.9}).addTo(gLMap);const sp=gPoints[lo];gStartMarker=L.circleMarker([sp.latitude_deg,sp.longitude_deg],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gLMap);gStartMarker.bindTooltip('起点 #'+(lo+1),{direction:'top'});const ep=gPoints[hi-1];gEndMarker=L.circleMarker([ep.latitude_deg,ep.longitude_deg],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gLMap);gEndMarker.bindTooltip('终点 #'+hi,{direction:'top'})}
-  for(let i=0;i<gPoints.length;i++){const p=gPoints[i],m=L.circleMarker([p.latitude_deg,p.longitude_deg],{radius:5,color:'#4a90d9',fillColor:'#4a90d9',fillOpacity:0.3,weight:1,opacity:0.4});m.pointIndex=i;m.on('mouseover',()=>hoverPoint(i));m.on('mouseout',()=>unhoverPoint());m.on('click',()=>clickTableRow(i));m.addTo(gLMap);gMarkers.push(m)}
+  if(lo<hi){const seg=ll.slice(lo,hi);gTrackSelected=L.polyline(seg,{color:'#e67300',weight:3,opacity:0.9}).addTo(gLMap);const sp=dps[lo];gStartMarker=L.circleMarker([sp.latitude_deg,sp.longitude_deg],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gLMap);gStartMarker.bindTooltip('起点 #'+(lo+1),{direction:'top'});const ep=dps[hi-1];gEndMarker=L.circleMarker([ep.latitude_deg,ep.longitude_deg],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gLMap);gEndMarker.bindTooltip('终点 #'+hi,{direction:'top'})}
+  for(let i=0;i<dps.length;i++){const p=dps[i],m=L.circleMarker([p.latitude_deg,p.longitude_deg],{radius:5,color:'#4a90d9',fillColor:'#4a90d9',fillOpacity:0.3,weight:1,opacity:0.4});m.pointIndex=i;m.on('mouseover',()=>hoverPoint(i));m.on('mouseout',()=>unhoverPoint());m.on('click',()=>clickTableRow(i));m.addTo(gLMap);gMarkers.push(m)}
 }
-
-let gAmapOverlays = [];
-
-function renderAmapMap(){
-  gAMap.clearMap();
-  gAmapOverlays=[];
-
-  // Full track polyline
-  const path=gPoints.map(p=>[p.longitude_deg,p.latitude_deg]);
-  const fullLine=new AMap.Polyline({path,borderWeight:2,strokeColor:'#999',strokeOpacity:0.6,strokeStyle:'solid'});
-  fullLine.setMap(gAMap);gAmapOverlays.push(fullLine);
-
-  // Selected segment
-  const si=parseInt(document.getElementById('startIndex').value,10)||1,ei=parseInt(document.getElementById('endIndex').value,10)||gPoints.length;
-  const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(gPoints.length,Math.max(si,ei));
-  if(lo<hi){
-    const segPath=gPoints.slice(lo,hi).map(p=>[p.longitude_deg,p.latitude_deg]);
-    const segLine=new AMap.Polyline({path:segPath,borderWeight:3,strokeColor:'#e67300',strokeOpacity:0.9});
-    segLine.setMap(gAMap);gAmapOverlays.push(segLine);
-
-    const sp=gPoints[lo];const sm=new AMap.Marker({position:[sp.longitude_deg,sp.latitude_deg],content:'<div style="background:#4caf50;width:16px;height:16px;border-radius:50%;border:3px solid #2a7d2a"></div>',offset:new AMap.Pixel(-8,-8)});
-    sm.setMap(gAMap);gAmapOverlays.push(sm);
-
-    const ep=gPoints[hi-1];const em=new AMap.Marker({position:[ep.longitude_deg,ep.latitude_deg],content:'<div style="background:#e74c3c;width:16px;height:16px;border-radius:50%;border:3px solid #c33"></div>',offset:new AMap.Pixel(-8,-8)});
-    em.setMap(gAMap);gAmapOverlays.push(em);
-  }
-
-  // Point markers
-  for(let i=0;i<gPoints.length;i++){
-    const p=gPoints[i],m=new AMap.CircleMarker({center:[p.longitude_deg,p.latitude_deg],radius:5,fillColor:'#4a90d9',strokeColor:'#4a90d9',strokeWeight:1,fillOpacity:0.3});
-    m.setMap(gAMap);gAmapOverlays.push(m);
-    m.pointIndex=i;
-    m.on('mouseover',()=>hoverPoint(i));
-    m.on('mouseout',()=>unhoverPoint());
-    m.on('click',()=>clickTableRow(i));
-  }
-}
-
-// ===================================================================
-// HOVER / ZOOM (dual engine)
-// ===================================================================
-let gAmapHover = null;
 
 function hoverPoint(idx){
-  const p=gPoints[idx];
-  if(gEngine==='leaflet'){
-    if(gHoverCircle){gLMap.removeLayer(gHoverCircle)}
-    gHoverCircle=L.circleMarker([p.latitude_deg,p.longitude_deg],{radius:10,color:'#f39c12',fillColor:'#f1c40f',fillOpacity:0.7,weight:2}).addTo(gLMap);
-    const h=isFinN(p.height_m)?p.height_m.toFixed(2)+' m':'—',cd=isFinN(p.cumulative_distance_m)?p.cumulative_distance_m.toFixed(3)+' m':'—';
-    const tip=L.tooltip({direction:'top',offset:L.point(0,-10)}).setContent('#'+(idx+1)+' | 纬度:'+p.latitude_deg.toFixed(7)+' 经度:'+p.longitude_deg.toFixed(7)+' | 高程:'+h+' | Fix:'+(p.gnss_fix||'—')+' | 累积:'+cd);
-    gHoverCircle.bindTooltip(tip).openTooltip();
-  }else{
-    if(gAmapHover){gAMap.remove(gAmapHover)}
-    gAmapHover=new AMap.CircleMarker({center:[p.longitude_deg,p.latitude_deg],radius:10,fillColor:'#f1c40f',strokeColor:'#f39c12',strokeWeight:2,fillOpacity:0.7});
-    gAmapHover.setMap(gAMap);
-  }
-  highlightTableRow(idx);
+  if(gHoverCircle){gLMap.removeLayer(gHoverCircle)}
+  const dps=mapPts(gPoints);const p=dps[idx];
+  gHoverCircle=L.circleMarker([p.latitude_deg,p.longitude_deg],{radius:10,color:'#f39c12',fillColor:'#f1c40f',fillOpacity:0.7,weight:2}).addTo(gLMap);
+  const o=gPoints[idx];const h=isFinN(o.height_m)?o.height_m.toFixed(2)+' m':'—',cd=isFinN(o.cumulative_distance_m)?o.cumulative_distance_m.toFixed(3)+' m':'—';
+  const tip=L.tooltip({direction:'top',offset:L.point(0,-10)}).setContent('#'+(idx+1)+' | 纬度:'+o.latitude_deg.toFixed(7)+' 经度:'+o.longitude_deg.toFixed(7)+' | 高程:'+h+' | Fix:'+(o.gnss_fix||'—')+' | 累积:'+cd);
+  gHoverCircle.bindTooltip(tip).openTooltip();highlightTableRow(idx);
 }
-
-function unhoverPoint(){
-  if(gEngine==='leaflet'){
-    if(gHoverCircle){gLMap.removeLayer(gHoverCircle);gHoverCircle=null}
-  }else{
-    if(gAmapHover){gAMap.remove(gAmapHover);gAmapHover=null}
-  }
-  clearTableHighlight();
-}
-
+function unhoverPoint(){if(gHoverCircle){gLMap.removeLayer(gHoverCircle);gHoverCircle=null}clearTableHighlight()}
 function zoomToFitSelected(){
   if(!gPoints.length)return;
-  if(gEngine==='leaflet'){
-    if(gTrackSelected)gLMap.fitBounds(gTrackSelected.getBounds(),{padding:[30,30]});
-    else gLMap.fitBounds(gPoints.map(p=>[p.latitude_deg,p.longitude_deg]),{padding:[30,30]});
-  }else{
-    const pts=gPoints;const si=parseInt(document.getElementById('startIndex').value,10)||1,ei=parseInt(document.getElementById('endIndex').value,10)||pts.length;
-    const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(pts.length,Math.max(si,ei));
-    if(lo<hi){const sub=pts.slice(lo,hi);gAMap.setFitView(null,false,sub.map(p=>[p.longitude_deg,p.latitude_deg]))}
-    else gAMap.setFitView(null,false,pts.map(p=>[p.longitude_deg,p.latitude_deg]));
-  }
+  if(gTrackSelected)gLMap.fitBounds(gTrackSelected.getBounds(),{padding:[30,30]});
+  else gLMap.fitBounds(mapPts(gPoints).map(p=>[p.latitude_deg,p.longitude_deg]),{padding:[30,30]});
 }
-
-function zoomToPoint(idx){
-  if(idx<0||idx>=gPoints.length)return;
-  const p=gPoints[idx];
-  if(gEngine==='leaflet')gLMap.setView([p.latitude_deg,p.longitude_deg],17);
-  else gAMap.setZoomAndCenter(17,[p.longitude_deg,p.latitude_deg]);
-}
+function zoomToPoint(idx){if(idx<0||idx>=gPoints.length)return;const p=mapPts(gPoints)[idx];gLMap.setView([p.latitude_deg,p.longitude_deg],17)}
 
 // ===================================================================
 // RENDER DISTANCE
@@ -474,28 +388,12 @@ function renderDistance(){
   document.getElementById('startIndex').value=si;document.getElementById('endIndex').value=ei;
   const segEl=document.getElementById('segmentDist'),totEl=document.getElementById('totalDist');
   if(!n){segEl.textContent='—';totEl.textContent='—';return}
-  // Redraw segment overlays
-  if(gEngine==='leaflet'){
-    if(gTrackSelected){gLMap.removeLayer(gTrackSelected);gTrackSelected=null}
-    if(gStartMarker){gLMap.removeLayer(gStartMarker);gStartMarker=null}
-    if(gEndMarker){gLMap.removeLayer(gEndMarker);gEndMarker=null}
-    const ll=gPoints.map(p=>[p.latitude_deg,p.longitude_deg]),lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(n,Math.max(si,ei));
-    if(lo<hi){gTrackSelected=L.polyline(ll.slice(lo,hi),{color:'#e67300',weight:3,opacity:0.9}).addTo(gLMap);const sp=gPoints[lo];gStartMarker=L.circleMarker([sp.latitude_deg,sp.longitude_deg],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gLMap);gStartMarker.bindTooltip('起点 #'+(lo+1),{direction:'top'});const ep=gPoints[hi-1];gEndMarker=L.circleMarker([ep.latitude_deg,ep.longitude_deg],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gLMap);gEndMarker.bindTooltip('终点 #'+hi,{direction:'top'})}
-  }else{
-    gAMap.remove(gAmapOverlays.filter(o=>o!==gAmapHover));
-    gAmapOverlays=[];
-    const path=gPoints.map(p=>[p.longitude_deg,p.latitude_deg]);
-    const fl=new AMap.Polyline({path,borderWeight:2,strokeColor:'#999',strokeOpacity:0.6});fl.setMap(gAMap);gAmapOverlays.push(fl);
-    const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(n,Math.max(si,ei));
-    if(lo<hi){
-      const sp=gPoints[lo],ep=gPoints[hi-1];
-      const segPath=gPoints.slice(lo,hi).map(p=>[p.longitude_deg,p.latitude_deg]);
-      const sl=new AMap.Polyline({path:segPath,borderWeight:3,strokeColor:'#e67300',strokeOpacity:0.9});sl.setMap(gAMap);gAmapOverlays.push(sl);
-      const sm=new AMap.Marker({position:[sp.longitude_deg,sp.latitude_deg],content:'<div style="background:#4caf50;width:16px;height:16px;border-radius:50%;border:3px solid #2a7d2a"></div>',offset:new AMap.Pixel(-8,-8)});sm.setMap(gAMap);gAmapOverlays.push(sm);
-      const em=new AMap.Marker({position:[ep.longitude_deg,ep.latitude_deg],content:'<div style="background:#e74c3c;width:16px;height:16px;border-radius:50%;border:3px solid #c33"></div>',offset:new AMap.Pixel(-8,-8)});em.setMap(gAMap);gAmapOverlays.push(em);
-    }
-    for(let i=0;i<gPoints.length;i++){const p=gPoints[i];const m=new AMap.CircleMarker({center:[p.longitude_deg,p.latitude_deg],radius:5,fillColor:'#4a90d9',strokeColor:'#4a90d9',strokeWeight:1,fillOpacity:0.3});m.setMap(gAMap);gAmapOverlays.push(m);m.pointIndex=i;m.on('mouseover',()=>hoverPoint(i));m.on('mouseout',()=>unhoverPoint());m.on('click',()=>clickTableRow(i))}
-  }
+  const dps=mapPts(gPoints);
+  if(gTrackSelected){gLMap.removeLayer(gTrackSelected);gTrackSelected=null}
+  if(gStartMarker){gLMap.removeLayer(gStartMarker);gStartMarker=null}
+  if(gEndMarker){gLMap.removeLayer(gEndMarker);gEndMarker=null}
+  const ll=dps.map(p=>[p.latitude_deg,p.longitude_deg]),lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(n,Math.max(si,ei));
+  if(lo<hi){gTrackSelected=L.polyline(ll.slice(lo,hi),{color:'#e67300',weight:3,opacity:0.9}).addTo(gLMap);const sp=dps[lo];gStartMarker=L.circleMarker([sp.latitude_deg,sp.longitude_deg],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gLMap);gStartMarker.bindTooltip('起点 #'+(lo+1),{direction:'top'});const ep=dps[hi-1];gEndMarker=L.circleMarker([ep.latitude_deg,ep.longitude_deg],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gLMap);gEndMarker.bindTooltip('终点 #'+hi,{direction:'top'})}
   const total=n?gPoints[n-1].cumulative_distance_m:0,segment=routeDist(gPoints,si,ei);
   segEl.textContent=isFinite(segment)?segment.toFixed(3)+' m':'—';totEl.textContent=isFinite(total)?total.toFixed(3)+' m':'—';
   document.querySelectorAll('#pointTable tbody tr.start-row,#pointTable tbody tr.end-row').forEach(el=>el.classList.remove('start-row','end-row'));
@@ -564,11 +462,10 @@ function recalc(){
 // PROVIDER SWITCHING
 // ===================================================================
 function switchProvider(){
-  const wasAmap=isAmapProvider()||gEngine==='amap';
-  // We need to destroy and recreate map since engine might change
-  destroyMap();
-  createMap();
-  // If points exist and no overlays rendered yet (e.g. on first load after data), just init map
+  // Re-init the map with new provider
+  if(gLMap){for(const l of gLayers)gLMap.removeLayer(l);gLayers=[];gLMap.remove();gLMap=null}
+  document.getElementById('map').innerHTML='';
+  initMap();
 }
 
 // ===================================================================
@@ -619,14 +516,12 @@ document.getElementById('sessionInput').addEventListener('change',function(e){
   loadFromFile(file);
 });
 document.getElementById('datInput').addEventListener('change',function(e){if(!e.target.files.length)return;loadFromFile(e.target.files[0])});
-window.addEventListener('resize',()=>{
-  if(gEngine==='leaflet'&&gLMap)gLMap.invalidateSize()
-});
+window.addEventListener('resize',()=>{if(gLMap)gLMap.invalidateSize()});
 
 // ===================================================================
 // INIT
 // ===================================================================
-createMap();
+initMap();
 </script>
 </body>
 </html>
