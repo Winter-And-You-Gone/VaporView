@@ -4384,15 +4384,18 @@ public:
         setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         thumb_position_ = isChecked() ? 1.0 : 0.0;
         thumb_animation_ = new QVariantAnimation(this);
-        thumb_animation_->setDuration(140);
+        thumb_animation_->setDuration(180);
         thumb_animation_->setEasingCurve(QEasingCurve::OutCubic);
         connect(thumb_animation_, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
-            thumb_position_ = value.toReal();
+            const qreal progress = std::clamp(value.toReal(), 0.0, 1.0);
+            constexpr qreal kPi = 3.14159265358979323846;
+            thumb_position_ = thumb_start_position_ + (thumb_target_position_ - thumb_start_position_) * progress;
+            thumb_jelly_ = std::sin(progress * kPi);
             update();
         });
-        connect(this, &QPushButton::toggled, this, [this]() {
-            refreshText();
-            animateThumbTo(isChecked() ? 1.0 : 0.0);
+        connect(thumb_animation_, &QVariantAnimation::finished, this, [this]() {
+            thumb_position_ = thumb_target_position_;
+            thumb_jelly_ = 0.0;
             update();
         });
         refreshText();
@@ -4404,20 +4407,43 @@ public:
         refreshText();
     }
 
-    void setSwitchCheckedSilently(bool checked)
+    bool switchChecked() const
+    {
+        return isChecked();
+    }
+
+    void setSwitchChecked(bool checked, bool animated)
     {
         const QSignalBlocker blocker(this);
         setChecked(checked);
-        if (thumb_animation_)
-        {
-            thumb_animation_->stop();
-        }
-        thumb_position_ = checked ? 1.0 : 0.0;
         refreshText();
-        update();
+
+        const qreal target = checked ? 1.0 : 0.0;
+        if (animated)
+        {
+            animateThumbTo(target);
+        }
+        else
+        {
+            if (thumb_animation_)
+            {
+                thumb_animation_->stop();
+            }
+            thumb_position_ = target;
+            thumb_target_position_ = target;
+            thumb_start_position_ = target;
+            thumb_jelly_ = 0.0;
+            update();
+        }
     }
 
 protected:
+    void nextCheckState() override
+    {
+        // The overview switch is controlled by the command confirmation flow.
+        // Do not let QAbstractButton pre-toggle before the confirmation dialog.
+    }
+
     void paintEvent(QPaintEvent *event) override
     {
         Q_UNUSED(event);
@@ -4474,18 +4500,27 @@ protected:
         const QRectF switchContentRect = switchCapsuleRect.adjusted(kInnerGap, kInnerGap, -kInnerGap, -kInnerGap);
         const qreal segmentWidth = switchContentRect.width() / 2.0;
         const qreal selectedLeft = switchContentRect.left() + segmentWidth * thumb_position_;
-        const QRectF selectedRect(selectedLeft, switchContentRect.top(), segmentWidth, switchContentRect.height());
+        QRectF selectedRect(selectedLeft, switchContentRect.top(), segmentWidth, switchContentRect.height());
+        if (enabled && thumb_jelly_ > 0.001)
+        {
+            const qreal stretch = std::min<qreal>(segmentWidth * 0.22, 10.0) * thumb_jelly_;
+            if (thumb_direction_ >= 0)
+            {
+                selectedRect.adjust(-stretch * 0.35, 0.0, stretch * 0.65, 0.0);
+            }
+            else
+            {
+                selectedRect.adjust(-stretch * 0.65, 0.0, stretch * 0.35, 0.0);
+            }
+            selectedRect.setLeft(std::max(selectedRect.left(), switchContentRect.left()));
+            selectedRect.setRight(std::min(selectedRect.right(), switchContentRect.right()));
+        }
         painter.setPen(Qt::NoPen);
         painter.setBrush(switchFill);
         painter.drawRoundedRect(switchCapsuleRect, kControlRadius - gap, kControlRadius - gap);
         painter.setPen(Qt::NoPen);
         painter.setBrush(selectedFill);
         painter.drawRoundedRect(selectedRect, kControlRadius - gap - kInnerGap, kControlRadius - gap - kInnerGap);
-
-        const qreal separatorX = switchContentRect.left() + segmentWidth;
-        painter.setPen(QPen(enabled ? selectedFill : appThemeColor(AppThemeColor::Border, dark), 1.0));
-        painter.drawLine(QPointF(separatorX, switchContentRect.top() + 4.0),
-                         QPointF(separatorX, switchContentRect.bottom() - 4.0));
 
         painter.setFont(titleFont);
         painter.setPen(text);
@@ -4545,17 +4580,39 @@ private:
         if (!thumb_animation_)
         {
             thumb_position_ = target;
+            thumb_target_position_ = target;
+            thumb_start_position_ = target;
+            thumb_jelly_ = 0.0;
+            update();
+            return;
+        }
+
+        if (qFuzzyCompare(thumb_position_, target))
+        {
+            thumb_position_ = target;
+            thumb_target_position_ = target;
+            thumb_start_position_ = target;
+            thumb_jelly_ = 0.0;
+            update();
             return;
         }
 
         thumb_animation_->stop();
-        thumb_animation_->setStartValue(thumb_position_);
-        thumb_animation_->setEndValue(target);
+        thumb_start_position_ = thumb_position_;
+        thumb_target_position_ = target;
+        thumb_direction_ = thumb_target_position_ >= thumb_start_position_ ? 1 : -1;
+        thumb_jelly_ = 0.0;
+        thumb_animation_->setStartValue(0.0);
+        thumb_animation_->setEndValue(1.0);
         thumb_animation_->start();
     }
 
     bool is_english_ = false;
     qreal thumb_position_ = 0.0;
+    qreal thumb_start_position_ = 0.0;
+    qreal thumb_target_position_ = 0.0;
+    qreal thumb_jelly_ = 0.0;
+    int thumb_direction_ = 1;
     QVariantAnimation *thumb_animation_ = nullptr;
 };
 
@@ -4620,11 +4677,17 @@ public:
 
         output_switch_button_ = new TemperatureOverviewSwitchButton(summary);
         output_switch_button_->setFixedSize(kOverviewControlWidth, kOverviewOutputPillHeight);
-        connect(output_switch_button_, &QPushButton::clicked, this, [this](bool checked) {
+        connect(output_switch_button_, &QPushButton::clicked, this, [this]() {
+            const bool requested = !output_switch_button_->switchChecked();
             if (output_enabled_callback_)
             {
-                output_enabled_callback_(currentChannelNumber(), checked);
+                const bool accepted = output_enabled_callback_(currentChannelNumber(), requested);
+                if (!accepted)
+                {
+                    return;
+                }
             }
+            output_switch_button_->setSwitchChecked(requested, true);
         });
         summaryLayout->addWidget(output_switch_button_);
 
@@ -4698,7 +4761,7 @@ public:
         refreshChannelUi();
     }
 
-    void setOutputEnabledCallback(std::function<void(quint8, bool)> callback)
+    void setOutputEnabledCallback(std::function<bool(quint8, bool)> callback)
     {
         output_enabled_callback_ = std::move(callback);
     }
@@ -4784,7 +4847,7 @@ private:
             measuredValid);
         if (output_switch_button_)
         {
-            output_switch_button_->setSwitchCheckedSilently(valid && channel.output_enabled);
+            output_switch_button_->setSwitchChecked(valid && channel.output_enabled, false);
         }
         if (plot_)
         {
@@ -4803,7 +4866,7 @@ private:
     TemperatureTrendPlotWidget *plot_ = nullptr;
     VaporView::TemperatureControllerData latest_data_;
     std::array<QVector<double>, 2> measured_temperature_history_{};
-    std::function<void(quint8, bool)> output_enabled_callback_;
+    std::function<bool(quint8, bool)> output_enabled_callback_;
     int selected_channel_index_ = 0;
     bool is_english_ = false;
 };
@@ -10936,13 +10999,14 @@ void MainWindow::setupDataPanels()
                 {
                     temperature_overview_panel_->updateData(current_temperature_controller_);
                 }
-                return;
+                return false;
             }
         }
         VaporView::TemperatureControllerCommand command;
         command.channel = channel;
         command.output_enabled = enabled;
         sendRemoteTemperatureCommand(VaporView::CommandId::SetTemperatureOutputEnabled, command);
+        return true;
     });
     temperatureOverviewLayout->addWidget(temperature_overview_panel_, 1);
 
