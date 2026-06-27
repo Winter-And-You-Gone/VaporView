@@ -1143,7 +1143,6 @@ def write_map_html(
   <main class="layout">
     <section class="panel">
 <div id="map">
-<div class="loading-overlay" id="loadingOverlay"><div class="loading-spinner"></div><p>正在解析轨迹数据&#x2026;</p></div>
 	        <div id="tiles"></div>
 	        <div class="zoom-ctrl">
 	          <button id="zoomInBtn" title="放大">+</button>
@@ -1675,9 +1674,9 @@ def browser_app_html() -> str:
     th, td { padding:6px 5px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
     th { color:var(--muted); font-weight:660; position:sticky; top:0; background:var(--surface-2); }
     tbody tr:hover { background:var(--accent-soft); }
-1676	    .table-wrap { max-height:350px; overflow:auto; border:1px solid var(--line); border-radius:10px; }
-1677	    .small-button { padding:4px 6px; font-size:11px; border-radius:8px; background:var(--surface-2); border-color:var(--line); }
-1678	    .small-button:hover { background:var(--line); }
+	    .table-wrap { max-height:350px; overflow:auto; border:1px solid var(--line); border-radius:10px; }
+	    .small-button { padding:4px 6px; font-size:11px; border-radius:8px; background:var(--surface-2); border-color:var(--line); }
+	    .small-button:hover { background:var(--line); }
 	.loading-overlay {
 	  position:absolute; inset:0; z-index:20; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:16px;
 	  background:rgba(250,249,245,.78); backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px);
@@ -1721,6 +1720,7 @@ def browser_app_html() -> str:
   <main class="layout">
     <section class="panel">
 <div id="map">
+<div class="loading-overlay" id="loadingOverlay"><div class="loading-spinner"></div><p>正在解析轨迹数据&#x2026;</p></div>
 	        <div id="tiles"></div>
 	        <div class="zoom-ctrl">
 	          <button id="zoomInBtn" title="放大">+</button>
