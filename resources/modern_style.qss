@@ -158,12 +158,16 @@ QPushButton#appSidebarButton {
     color: @vv-text;
     font-size: 15px;
     font-weight: 600;
+    min-height: 34px;
+    max-height: 34px;
     padding: 6px 8px;
     text-align: left;
 }
 
 QPushButton#appSidebarButton[_vv_sidebar_compact="true"] {
-    padding: 6px;
+    min-height: 46px;
+    max-height: 46px;
+    padding: 0px;
     text-align: center;
 }
 
