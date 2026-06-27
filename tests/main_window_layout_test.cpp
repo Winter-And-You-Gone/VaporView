@@ -119,8 +119,8 @@ int main(int argc, char **argv)
     require(checkedSidebarButton != nullptr, "checked compact sidebar button exists");
     require(checkedSidebarButton->text().isEmpty(),
             "compact sidebar hides navigation text");
-    require(checkedSidebarButton->height() >= 48,
-            "compact sidebar button keeps a 48px hit target");
+    require(checkedSidebarButton->height() == 44,
+            "compact sidebar option is 4px smaller");
     require(checkedSidebarButton->width() == checkedSidebarButton->height(),
             "compact sidebar option is a strict rounded square");
     require(checkedSidebarButton->iconSize().width() >= 28 &&
