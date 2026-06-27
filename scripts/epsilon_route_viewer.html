@@ -6,11 +6,12 @@
 <title>EPSILON 原始轨迹查看器</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
+<script src="https://webapi.amap.com/maps?v=2.0&key=5071cacf988948b2f3d02aedffc119cb"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:13px;color:#222;background:#f5f5f5}
 #app{display:flex;height:100vh;overflow:hidden}
-#map{flex:1;min-width:0}
+#map{flex:1;min-width:0;position:relative}
 #panel{width:380px;display:flex;flex-direction:column;background:#fff;border-left:1px solid #ddd;overflow:hidden}
 .panel-section{padding:8px 12px;border-bottom:1px solid #eee;flex-shrink:0}
 .panel-section label{display:inline-block;font-size:12px;color:#555;margin-right:4px}
@@ -27,7 +28,7 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
 .btn-danger.btn-outline{background:transparent;color:#d9534f}
 .btn-danger.btn-outline:hover{background:#fce4e4}
 .file-row{display:flex;gap:6px;align-items:center;margin-bottom:4px;flex-wrap:wrap}
-.file-row input[type=file]{display:none}
+.file-row input[type=file]{position:absolute;left:-9999px;top:0;width:0;height:0;opacity:0}
 .file-btn{font-size:12px;padding:4px 10px;border:1px solid #bbb;border-radius:3px;background:#f0f0f0;cursor:pointer;color:#555}
 .file-btn:hover{background:#e0e0e0;color:#222}
 .file-name{font-size:11px;color:#888;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -67,23 +68,19 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
   <div id="map"></div>
   <div id="panel">
     <div id="status" class="ok">选择文件或文件夹开始</div>
-
-    <!-- File loading -->
     <div class="panel-section">
       <div class="file-row">
         <button class="file-btn" onclick="document.getElementById('sessionInput').click()">📁 选记录文件夹</button>
         <button class="file-btn" onclick="document.getElementById('datInput').click()">📄 选DAT文件</button>
         <span class="file-name" id="fileName"></span>
-        <input type="file" id="sessionInput" webkitdirectory multiple style="position:absolute;left:-9999px;top:0;width:0;height:0;opacity:0">
-        <input type="file" id="datInput" accept=".dat" style="position:absolute;left:-9999px;top:0;width:0;height:0;opacity:0">
+        <input type="file" id="sessionInput" webkitdirectory multiple>
+        <input type="file" id="datInput" accept=".dat">
       </div>
       <div id="progressContainer">
         <div id="progressBar"><div id="progressFill"></div></div>
         <div id="progressStep">准备...</div>
       </div>
     </div>
-
-    <!-- Map & Filter -->
     <div class="panel-section">
       <div class="filter-row">
         <div class="filter-item">
@@ -102,73 +99,29 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
         </div>
       </div>
       <div class="filter-row" style="margin-top:2px">
-        <div class="filter-item">
-          <label>来源</label>
-          <select id="positionSource" onchange="recalc()">
-            <option value="auto">auto</option>
-            <option value="geodetic">geodetic</option>
-            <option value="system">system</option>
-            <option value="both">both</option>
-          </select>
-        </div>
-        <div class="filter-item">
-          <label>min-fix</label>
-          <select id="minFix" onchange="recalc()">
-            <option value="">—</option>
-            <option value="3">3D</option><option value="4">DGPS</option>
-            <option value="5">RTK_FLOAT</option><option value="6">RTK_FIXED</option>
-            <option value="7">STATIC</option><option value="8">PPP</option>
-          </select>
-        </div>
-        <div class="filter-item">
-          <label>hacc</label>
-          <input type="number" id="maxHacc" step="0.01" min="0" placeholder="不限" size="4" onchange="recalc()">
-        </div>
-        <div class="filter-item">
-          <label>vacc</label>
-          <input type="number" id="maxVacc" step="0.01" min="0" placeholder="不限" size="4" onchange="recalc()">
-        </div>
+        <div class="filter-item"><label>来源</label><select id="positionSource" onchange="recalc()"><option value="auto">auto</option><option value="geodetic">geodetic</option><option value="system">system</option><option value="both">both</option></select></div>
+        <div class="filter-item"><label>min-fix</label><select id="minFix" onchange="recalc()"><option value="">—</option><option value="3">3D</option><option value="4">DGPS</option><option value="5">RTK_FLOAT</option><option value="6">RTK_FIXED</option><option value="7">STATIC</option><option value="8">PPP</option></select></div>
+        <div class="filter-item"><label>hacc</label><input type="number" id="maxHacc" step="0.01" min="0" placeholder="不限" size="4" onchange="recalc()"></div>
+        <div class="filter-item"><label>vacc</label><input type="number" id="maxVacc" step="0.01" min="0" placeholder="不限" size="4" onchange="recalc()"></div>
       </div>
       <div class="filter-row">
-        <div class="filter-item">
-          <label>跳点(m)</label>
-          <input type="number" id="maxSegmentM" step="1" min="0" placeholder="不限" size="4" onchange="recalc()">
-        </div>
-        <div class="filter-item">
-          <label>排除</label>
-          <input type="text" id="excludeIndices" placeholder="如5,8-10" size="8" onchange="recalc()">
-        </div>
-        <div class="filter-item">
-          <label>包含</label>
-          <input type="text" id="includeIndices" placeholder="如1,3-5" size="8" onchange="recalc()">
-        </div>
+        <div class="filter-item"><label>跳点(m)</label><input type="number" id="maxSegmentM" step="1" min="0" placeholder="不限" size="4" onchange="recalc()"></div>
+        <div class="filter-item"><label>排除</label><input type="text" id="excludeIndices" placeholder="如5,8-10" size="8" onchange="recalc()"></div>
+        <div class="filter-item"><label>包含</label><input type="text" id="includeIndices" placeholder="如1,3-5" size="8" onchange="recalc()"></div>
         <button class="btn btn-sm" onclick="recalc()">🔄 重算</button>
       </div>
     </div>
-
-    <!-- Distance & Stats -->
     <div class="panel-section">
       <div class="dist-row">
-        <span class="dist-label">起点</span>
-        <input type="number" id="startIndex" value="1" min="1" onchange="renderDistance()">
-        <span class="dist-label">终点</span>
-        <input type="number" id="endIndex" value="1" min="1" onchange="renderDistance()">
+        <span class="dist-label">起点</span><input type="number" id="startIndex" value="1" min="1" onchange="renderDistance()">
+        <span class="dist-label">终点</span><input type="number" id="endIndex" value="1" min="1" onchange="renderDistance()">
         <button class="btn btn-sm" onclick="zoomToFitSelected()">📍 适配</button>
         <button class="btn btn-sm btn-outline" onclick="exportCsv()">📥 CSV</button>
       </div>
-      <div class="dist-row">
-        <span class="dist-label">区段:</span>
-        <span class="dist-value" id="segmentDist">—</span>
-        <span class="dist-label" style="margin-left:12px">全程:</span>
-        <span class="dist-value" id="totalDist">—</span>
-      </div>
+      <div class="dist-row"><span class="dist-label">区段:</span><span class="dist-value" id="segmentDist">—</span><span class="dist-label" style="margin-left:12px">全程:</span><span class="dist-value" id="totalDist">—</span></div>
       <div class="stats-grid" id="statsGrid"></div>
     </div>
-
-    <!-- Table -->
-    <div id="tableWrap"><table id="pointTable"><thead><tr>
-      <th>#</th><th>操作</th><th>纬度</th><th>经度</th><th>Fix</th><th>累积(m)</th><th>hacc</th><th>vacc</th><th>UTC</th>
-    </tr></thead><tbody></tbody></table></div>
+    <div id="tableWrap"><table id="pointTable"><thead><tr><th>#</th><th>操作</th><th>纬度</th><th>经度</th><th>Fix</th><th>累积(m)</th><th>hacc</th><th>vacc</th><th>UTC</th></tr></thead><tbody></tbody></table></div>
   </div>
 </div>
 
@@ -189,7 +142,9 @@ const PACKET_NAMES = {0x40:'IMU',0x41:'AHRS',0x42:'INS_GPS',0x50:'SYS_STATE',0x5
 // GLOBALS
 // ===================================================================
 let gRecords = [], gCandidates = [], gPoints = [], gStats = {};
-let gMap = null; let gLayers = [], gMarkers = [];
+let gEngine = 'leaflet'; // 'leaflet' | 'amap'
+let gLMap = null, gAMap = null; // current instance
+let gLayers = [], gMarkers = []; // leaflet only
 let gTrackLine = null, gTrackSelected = null, gStartMarker = null, gEndMarker = null, gHoverCircle = null;
 let gIsLoading = false;
 
@@ -221,7 +176,6 @@ function parseFrame(payload){
   if(crc16(b,7,ps)!==((b[5]<<8)|b[6]))return null;
   return{packetId:b[1],serialNumber:b[3],payloadSize:ps,payloadView:new DataView(payload.buffer,payload.byteOffset+7,ps)};
 }
-
 function pktName(id){return '0x'+id.toString(16).toUpperCase().padStart(2,'0')+' '+(PACKET_NAMES[id]||'UNKNOWN')}
 function tsUsIso(u){if(!u)return '';const ms=Math.floor(u/1000);const ex=u%1000;return new Date(ms).toISOString().replace('Z',String(ex).padStart(3,'0')+'Z')}
 function epIso(s,us){return s!=null?tsUsIso(s*1000000+(us||0)):''}
@@ -229,11 +183,7 @@ function vll(lat,lon){return Number.isFinite(lat)&&Number.isFinite(lon)&&lat>=-9
 function fmtTimeUs(payload){
   if(payload.byteLength<14)return null;
   const p=new DataView(payload.buffer,payload.byteOffset,payload.byteLength);
-  try{
-    const us=rU32(p,0),y=rU16(p,4),b8=new Uint8Array(payload.buffer,payload.byteOffset,payload.byteLength);
-    const ms=Date.UTC(y,b8[8]-1,b8[9],b8[11],b8[12],b8[13],Math.floor(us/1000));
-    return ms*1000+(us%1000);
-  }catch(e){return null}
+  try{const us=rU32(p,0),y=rU16(p,4),b8=new Uint8Array(payload.buffer,payload.byteOffset,payload.byteLength);const ms=Date.UTC(y,b8[8]-1,b8[9],b8[11],b8[12],b8[13],Math.floor(us/1000));return ms*1000+(us%1000)}catch(e){return null}
 }
 
 // ===================================================================
@@ -266,27 +216,8 @@ function iterLegacyRaw(fn,bytes){
   }
   return recs;
 }
-function iterFdilinkStream(fn,bytes){
-  let off=0,seq=0;const recs=[];
-  while(off+8<=bytes.byteLength){
-    while(off<bytes.byteLength&&bytes[off]!==FRAME_HEAD)off++;
-    if(off+8>bytes.byteLength)break;
-    const ps=bytes[off+2],fs=ps+8;
-    if(off+fs>bytes.byteLength)break;
-    const pay=bytes.slice(off,off+fs);
-    if(pay[pay.byteLength-1]===FRAME_TAIL){
-      recs.push({sourceFile:fn,rawFormat:'fdilink_stream',sequence:seq,hostTimestampUs:0,recordType:bytes[off+1],flags:bytes[off+3],payload:pay,recordOffset:off,payloadOffset:off});
-      seq++;off+=fs;
-    }else{off++}
-  }
-  return recs;
-}
-function parseRecords(fn,bytes){
-  const m=new TextDecoder('ascii').decode(bytes.slice(0,8));
-  if(m===UNIFIED_RAW_MAGIC)return iterUnifiedRaw(fn,bytes);
-  if(m===LEGACY_EPSILON_MAGIC)return iterLegacyRaw(fn,bytes);
-  return iterFdilinkStream(fn,bytes);
-}
+function iterFdilinkStream(fn,bytes){let off=0,seq=0;const recs=[];while(off+8<=bytes.byteLength){while(off<bytes.byteLength&&bytes[off]!==FRAME_HEAD)off++;if(off+8>bytes.byteLength)break;const ps=bytes[off+2],fs=ps+8;if(off+fs>bytes.byteLength)break;const pay=bytes.slice(off,off+fs);if(pay[pay.byteLength-1]===FRAME_TAIL){recs.push({sourceFile:fn,rawFormat:'fdilink_stream',sequence:seq,hostTimestampUs:0,recordType:bytes[off+1],flags:bytes[off+3],payload:pay,recordOffset:off,payloadOffset:off});seq++;off+=fs}else{off++}}return recs}
+function parseRecords(fn,bytes){const m=new TextDecoder('ascii').decode(bytes.slice(0,8));if(m===UNIFIED_RAW_MAGIC)return iterUnifiedRaw(fn,bytes);if(m===LEGACY_EPSILON_MAGIC)return iterLegacyRaw(fn,bytes);return iterFdilinkStream(fn,bytes)}
 
 // ===================================================================
 // DECODE POINTS
@@ -298,8 +229,7 @@ function newPoint(rec,frame,state,src){
     host_timestamp_us:rec.hostTimestampUs,host_time_utc:tsUsIso(rec.hostTimestampUs),
     packet_id_hex:pktName(frame.packetId),packet_name:PACKET_NAMES[frame.packetId]||'UNKNOWN',
     position_source:src,serial_number:frame.serialNumber,
-    utc_unix_s:state.utc_unix_s!=null?state.utc_unix_s:null,
-    utc_microseconds:state.utc_microseconds!=null?state.utc_microseconds:null,
+    utc_unix_s:state.utc_unix_s!=null?state.utc_unix_s:null,utc_microseconds:state.utc_microseconds!=null?state.utc_microseconds:null,
     epsilon_time_utc:epIso(state.utc_unix_s,state.utc_microseconds),
     latitude_deg:null,longitude_deg:null,height_m:null,
     segment_distance_m:0,cumulative_distance_m:0,
@@ -309,20 +239,14 @@ function newPoint(rec,frame,state,src){
     hacc_m:state.hacc_m!=null?state.hacc_m:null,vacc_m:state.vacc_m!=null?state.vacc_m:null,
     lat_std_m:state.lat_std_m!=null?state.lat_std_m:null,lon_std_m:state.lon_std_m!=null?state.lon_std_m:null,
     height_std_m:state.height_std_m!=null?state.height_std_m:null,diff_age_s:state.diff_age_s!=null?state.diff_age_s:null,
-    vel_n_mps:state.vel_n_mps!=null?state.vel_n_mps:null,vel_e_mps:state.vel_e_mps!=null?state.vel_e_mps:null,
-    vel_d_mps:state.vel_d_mps!=null?state.vel_d_mps:null,
-    ned_n_m:state.ned_n_m!=null?state.ned_n_m:null,ned_e_m:state.ned_e_m!=null?state.ned_e_m:null,
-    ned_d_m:state.ned_d_m!=null?state.ned_d_m:null,
-    roll_deg:state.roll_deg!=null?state.roll_deg:null,pitch_deg:state.pitch_deg!=null?state.pitch_deg:null,
-    yaw_deg:state.yaw_deg!=null?state.yaw_deg:null,
+    vel_n_mps:state.vel_n_mps!=null?state.vel_n_mps:null,vel_e_mps:state.vel_e_mps!=null?state.vel_e_mps:null,vel_d_mps:state.vel_d_mps!=null?state.vel_d_mps:null,
+    ned_n_m:state.ned_n_m!=null?state.ned_n_m:null,ned_e_m:state.ned_e_m!=null?state.ned_e_m:null,ned_d_m:state.ned_d_m!=null?state.ned_d_m:null,
+    roll_deg:state.roll_deg!=null?state.roll_deg:null,pitch_deg:state.pitch_deg!=null?state.pitch_deg:null,yaw_deg:state.yaw_deg!=null?state.yaw_deg:null,
     system_status_bits:state.system_status_bits!=null?state.system_status_bits:null,
-    filter_status_bits:state.filter_status_bits!=null?state.filter_status_bits:null,
-    update_status_bits:state.update_status_bits!=null?state.update_status_bits:null,
-    record_offset:rec.recordOffset,payload_offset:rec.payloadOffset,
-    point_index:0,source_point_index:0
+    filter_status_bits:state.filter_status_bits!=null?state.filter_status_bits:null,update_status_bits:state.update_status_bits!=null?state.update_status_bits:null,
+    record_offset:rec.recordOffset,payload_offset:rec.payloadOffset,point_index:0,source_point_index:0
   };
 }
-
 function decodePoints(records,onProgress){
   const state={};const cands=[];let vf=0,bf=0;
   for(let i=0;i<records.length;i++){
@@ -335,29 +259,18 @@ function decodePoints(records,onProgress){
       state.vel_n_mps=rF32(p,36);state.vel_e_mps=rF32(p,40);state.vel_d_mps=rF32(p,44);
     }else if(pid===0x50&&sz>=14){
       state.system_status_bits=rU16(p,0);state.filter_status_bits=rU16(p,2);state.update_status_bits=rU16(p,4);
-      state.utc_unix_s=rU32(p,6);state.utc_microseconds=rU32(p,10);
-      state.gnss_fix_code=(state.filter_status_bits>>4)&0x0F;
+      state.utc_unix_s=rU32(p,6);state.utc_microseconds=rU32(p,10);state.gnss_fix_code=(state.filter_status_bits>>4)&0x0F;
       if(sz>=50){state.vel_n_mps=rF32(p,38);state.vel_e_mps=rF32(p,42);state.vel_d_mps=rF32(p,46)}
       if(sz>=78){state.roll_deg=rad2deg(rF32(p,66));state.pitch_deg=rad2deg(rF32(p,70));state.yaw_deg=rad2deg(rF32(p,74))}
       if(sz>=102){state.lat_std_m=rF32(p,90);state.lon_std_m=rF32(p,94);state.height_std_m=rF32(p,98)}
-      if(sz>=38){
-        const pt=newPoint(rec,frame,state,'system_state');
-        pt.latitude_deg=rad2deg(rF64(p,14));pt.longitude_deg=rad2deg(rF64(p,22));pt.height_m=rF64(p,30);
-        cands.push(pt);
-      }
+      if(sz>=38){const pt=newPoint(rec,frame,state,'system_state');pt.latitude_deg=rad2deg(rF64(p,14));pt.longitude_deg=rad2deg(rF64(p,22));pt.height_m=rF64(p,30);cands.push(pt)}
     }else if(pid===0x51&&sz>=8){state.utc_unix_s=rU32(p,0);state.utc_microseconds=rU32(p,4)}
     else if(pid===0x52&&sz>=14){const utc=fmtTimeUs(new Uint8Array(p.buffer,p.byteOffset,p.byteLength));if(utc!=null){state.utc_unix_s=Math.floor(utc/1000000);state.utc_microseconds=utc%1000000}}
-    else if(pid===0x59&&sz>=74){
-      state.utc_unix_s=rU32(p,0);state.utc_microseconds=rU32(p,4);
-      state.lat_std_m=rF32(p,44);state.lon_std_m=rF32(p,48);state.height_std_m=rF32(p,52);state.diff_age_s=rF32(p,64);
-      state.gnss_fix_code=(rU16(p,72)&0x0F);
-    }else if(pid===0x5A&&sz>=9){state.hdop=rF32(p,0);state.vdop=rF32(p,4);state.gnss_satellites=new Uint8Array(p.buffer,p.byteOffset,p.byteLength)[8]}
+    else if(pid===0x59&&sz>=74){state.utc_unix_s=rU32(p,0);state.utc_microseconds=rU32(p,4);state.lat_std_m=rF32(p,44);state.lon_std_m=rF32(p,48);state.height_std_m=rF32(p,52);state.diff_age_s=rF32(p,64);state.gnss_fix_code=(rU16(p,72)&0x0F)}
+    else if(pid===0x5A&&sz>=9){state.hdop=rF32(p,0);state.vdop=rF32(p,4);state.gnss_satellites=new Uint8Array(p.buffer,p.byteOffset,p.byteLength)[8]}
     else if(pid===0x5C&&sz>=32){
-      const pt=newPoint(rec,frame,state,'geodetic_pos');
-      pt.latitude_deg=rad2deg(rF64(p,0));pt.longitude_deg=rad2deg(rF64(p,8));pt.height_m=rF64(p,16);
-      pt.hacc_m=rF32(p,24);pt.vacc_m=rF32(p,28);
-      state.hacc_m=pt.hacc_m;state.vacc_m=pt.vacc_m;
-      cands.push(pt);
+      const pt=newPoint(rec,frame,state,'geodetic_pos');pt.latitude_deg=rad2deg(rF64(p,0));pt.longitude_deg=rad2deg(rF64(p,8));pt.height_m=rF64(p,16);
+      pt.hacc_m=rF32(p,24);pt.vacc_m=rF32(p,28);state.hacc_m=pt.hacc_m;state.vacc_m=pt.vacc_m;cands.push(pt);
     }
   }
   gStats.rawRecords=records.length;gStats.validFrames=vf;gStats.badFrames=bf;gStats.coordinateCandidates=cands.length;
@@ -365,128 +278,25 @@ function decodePoints(records,onProgress){
 }
 
 // ===================================================================
-// COORDINATE TRANSFORM: WGS-84 → GCJ-02
-// ===================================================================
-// 高德和天地图使用 GCJ-02（火星坐标系），EPSILON 输出的是 WGS-84。
-// 在渲染地图时，当底图为 GCJ-02 类（高德/天地图）时需要对轨迹点做偏移转换。
-// 算法来源：https://on4wp7.codeplex.com/SourceControl/changeset/view/21455#EvilTransform.cs
-const GCJ_A = 6378245.0;
-const GCJ_EE = 0.00669342162296594323;
-
-function gcj02Offset(wgsLat, wgsLon) {
-  let dLat = transformLat(wgsLon - 105.0, wgsLat - 35.0);
-  let dLon = transformLon(wgsLon - 105.0, wgsLat - 35.0);
-  const radLat = wgsLat / 180.0 * Math.PI;
-  let magic = Math.sin(radLat);
-  magic = 1 - GCJ_EE * magic * magic;
-  const sqrtMagic = Math.sqrt(magic);
-  dLat = (dLat * 180.0) / ((GCJ_A * (1 - GCJ_EE)) / (magic * sqrtMagic) * Math.PI);
-  dLon = (dLon * 180.0) / (GCJ_A / sqrtMagic * Math.cos(radLat) * Math.PI);
-  return { lat: wgsLat + dLat, lon: wgsLon + dLon };
-}
-
-function transformLat(x, y) {
-  let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
-  ret += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0;
-  ret += (20.0 * Math.sin(y * Math.PI) + 40.0 * Math.sin(y / 3.0 * Math.PI)) * 2.0 / 3.0;
-  ret += (160.0 * Math.sin(y / 12.0 * Math.PI) + 320.0 * Math.sin(y * Math.PI / 30.0)) * 2.0 / 3.0;
-  return ret;
-}
-
-function transformLon(x, y) {
-  let ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
-  ret += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0;
-  ret += (20.0 * Math.sin(x * Math.PI) + 40.0 * Math.sin(x / 3.0 * Math.PI)) * 2.0 / 3.0;
-  ret += (150.0 * Math.sin(x / 12.0 * Math.PI) + 300.0 * Math.sin(x / 30.0 * Math.PI)) * 2.0 / 3.0;
-  return ret;
-}
-
-// 返回坐标点数组的 GCJ-02 版本（创建副本不修改原始数据）
-function toGcj02(points) {
-  return points.map(p => {
-    const g = gcj02Offset(p.latitude_deg, p.longitude_deg);
-    return { ...p, latitude_deg: g.lat, longitude_deg: g.lon };
-  });
-}
-
-// 当前底图是否使用 GCJ-02 坐标系
-function isGcjProvider() {
-  const pid = document.getElementById('providerSelect').value;
-  return pid === 'amap_vec' || pid === 'amap_img';
-}
-
-// 获取用于地图显示的坐标点（按当前底图自动做 WGS-84 → GCJ-02 转换）
-function displayPoints() {
-  return isGcjProvider() ? toGcj02(gPoints) : gPoints;
-}
-
-// ===================================================================
 // SELECT SOURCE / FILTERS / DISTANCE
 // ===================================================================
 function selectSource(cands,req){
   if(req==='auto')req=cands.some(p=>p.position_source==='geodetic_pos')?'geodetic':'system';
-  let sel;if(req==='geodetic')sel=cands.filter(p=>p.position_source==='geodetic_pos');
-  else if(req==='system')sel=cands.filter(p=>p.position_source==='system_state');
-  else sel=Array.from(cands);
-  sel.forEach((p,i)=>{p.source_point_index=i+1});
-  gStats.selectedCandidates=sel.length;gStats.autoSource=req;
-  return sel;
+  let sel;if(req==='geodetic')sel=cands.filter(p=>p.position_source==='geodetic_pos');else if(req==='system')sel=cands.filter(p=>p.position_source==='system_state');else sel=Array.from(cands);
+  sel.forEach((p,i)=>{p.source_point_index=i+1});gStats.selectedCandidates=sel.length;gStats.autoSource=req;return sel;
 }
-
-function parseRanges(text){
-  if(!text||!text.trim())return null;
-  const s=new Set();text.split(',').forEach(p=>{const t=p.trim();if(!t)return;if(t.indexOf('-')>=0){const[s,e]=t.split('-',2);const lo=Math.min(+s,+e),hi=Math.max(+s,+e);for(let i=lo;i<=hi;i++)s.add(i)}else{const v=parseInt(t,10);if(!isNaN(v))s.add(v)}});
-  return s;
-}
-
-function applyFilters(pts,f){
-  let fl=[];const inc=f.includeIndices,exc=f.excludeIndices,mfx=f.minFixCode,mha=f.maxHacc,mva=f.maxVacc,mse=f.maxSegmentM;
-  for(const p of pts){
-    if(inc&&inc.size>0&&!inc.has(p.source_point_index))continue;
-    if(exc&&exc.has(p.source_point_index))continue;
-    if(!vll(p.latitude_deg,p.longitude_deg))continue;
-    if(mfx!=null&&(p.gnss_fix_code==null||p.gnss_fix_code<mfx))continue;
-    if(isFinN(mha)&&isFinN(p.hacc_m)&&p.hacc_m>mha)continue;
-    if(isFinN(mva)&&isFinN(p.vacc_m)&&p.vacc_m>mva)continue;
-    fl.push(p);
-  }
-  if(isFinN(mse)&&fl.length>0){const jmp=[fl[0]];for(let i=1;i<fl.length;i++){if(haversine(jmp[jmp.length-1],fl[i])<=mse)jmp.push(fl[i])}fl=jmp}
-  gStats.filteredCount=fl.length;gStats.removedCount=pts.length-fl.length;
-  return fl;
-}
-
-function haversine(a,b){
-  const l1=a.latitude_deg*Math.PI/180,l2=b.latitude_deg*Math.PI/180,dl=l2-l1,dn=(b.longitude_deg-a.longitude_deg)*Math.PI/180;
-  const h=Math.sin(dl/2)**2+Math.cos(l1)*Math.cos(l2)*Math.sin(dn/2)**2;
-  return EARTH_RADIUS*2*Math.atan2(Math.sqrt(h),Math.sqrt(Math.max(0,1-h)));
-}
-
-function assignDist(list){
-  let cum=0;
-  for(let i=0;i<list.length;i++){const p=list[i];p.point_index=i+1;p.segment_distance_m=i===0?0:haversine(list[i-1],p);cum+=p.segment_distance_m;p.cumulative_distance_m=cum}
-}
-
-function routeDist(list,si,ei){
-  if(!list||!list.length)return 0;const lo=Math.min(si,ei),hi=Math.max(si,ei);
-  if(lo===hi||hi>list.length)return 0;
-  return list[hi-1].cumulative_distance_m-list[lo-1].cumulative_distance_m;
-}
+function parseRanges(text){if(!text||!text.trim())return null;const s=new Set();text.split(',').forEach(p=>{const t=p.trim();if(!t)return;if(t.indexOf('-')>=0){const[s,e]=t.split('-',2);const lo=Math.min(+s,+e),hi=Math.max(+s,+e);for(let i=lo;i<=hi;i++)s.add(i)}else{const v=parseInt(t,10);if(!isNaN(v))s.add(v)}});return s}
+function applyFilters(pts,f){let fl=[];const inc=f.includeIndices,exc=f.excludeIndices,mfx=f.minFixCode,mha=f.maxHacc,mva=f.maxVacc,mse=f.maxSegmentM;for(const p of pts){if(inc&&inc.size>0&&!inc.has(p.source_point_index))continue;if(exc&&exc.has(p.source_point_index))continue;if(!vll(p.latitude_deg,p.longitude_deg))continue;if(mfx!=null&&(p.gnss_fix_code==null||p.gnss_fix_code<mfx))continue;if(isFinN(mha)&&isFinN(p.hacc_m)&&p.hacc_m>mha)continue;if(isFinN(mva)&&isFinN(p.vacc_m)&&p.vacc_m>mva)continue;fl.push(p)}if(isFinN(mse)&&fl.length>0){const jmp=[fl[0]];for(let i=1;i<fl.length;i++){if(haversine(jmp[jmp.length-1],fl[i])<=mse)jmp.push(fl[i])}fl=jmp}gStats.filteredCount=fl.length;gStats.removedCount=pts.length-fl.length;return fl}
+function haversine(a,b){const l1=a.latitude_deg*Math.PI/180,l2=b.latitude_deg*Math.PI/180,dl=l2-l1,dn=(b.longitude_deg-a.longitude_deg)*Math.PI/180;const h=Math.sin(dl/2)**2+Math.cos(l1)*Math.cos(l2)*Math.sin(dn/2)**2;return EARTH_RADIUS*2*Math.atan2(Math.sqrt(h),Math.sqrt(Math.max(0,1-h)))}
+function assignDist(list){let cum=0;for(let i=0;i<list.length;i++){const p=list[i];p.point_index=i+1;p.segment_distance_m=i===0?0:haversine(list[i-1],p);cum+=p.segment_distance_m;p.cumulative_distance_m=cum}}
+function routeDist(list,si,ei){if(!list||!list.length)return 0;const lo=Math.min(si,ei),hi=Math.max(si,ei);if(lo===hi||hi>list.length)return 0;return list[hi-1].cumulative_distance_m-list[lo-1].cumulative_distance_m}
 
 // ===================================================================
 // CSV
 // ===================================================================
 const csvF=['point_index','source_point_index','source_file','raw_format','record_sequence','host_timestamp_us','host_time_utc','packet_id_hex','packet_name','position_source','serial_number','utc_unix_s','utc_microseconds','epsilon_time_utc','latitude_deg','longitude_deg','height_m','segment_distance_m','cumulative_distance_m','gnss_fix_code','gnss_fix','gnss_satellites','hdop','vdop','hacc_m','vacc_m','lat_std_m','lon_std_m','height_std_m','diff_age_s','vel_n_mps','vel_e_mps','vel_d_mps','ned_n_m','ned_e_m','ned_d_m','roll_deg','pitch_deg','yaw_deg','system_status_bits','filter_status_bits','update_status_bits','record_offset','payload_offset'];
-function csvV(v){
-  if(v==null)return '';if(typeof v==='number'){if(!Number.isFinite(v))return '';return v.toPrecision(10).replace(/\.?0+$/,'')}return String(v);
-}
-function exportCsv(){
-  if(!gPoints.length){setStatus('没有可导出的数据',false);return}
-  let csv='\uFEFF'+csvF.join(',')+'\n';
-  for(const p of gPoints)csv+=csvF.map(f=>csvV(p[f])).join(',')+'\n';
-  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download='epsilon_route.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
-  setStatus('CSV 已导出 ('+gPoints.length+' 行)');
-}
+function csvV(v){if(v==null)return '';if(typeof v==='number'){if(!Number.isFinite(v))return '';return v.toPrecision(10).replace(/\.?0+$/,'')}return String(v)}
+function exportCsv(){if(!gPoints.length){setStatus('没有可导出的数据',false);return}let csv='\uFEFF'+csvF.join(',')+'\n';for(const p of gPoints)csv+=csvF.map(f=>csvV(p[f])).join(',')+'\n';const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='epsilon_route.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);setStatus('CSV 已导出 ('+gPoints.length+' 行)')}
 
 // ===================================================================
 // UI HELPERS
@@ -496,123 +306,206 @@ function updateProgress(pct,step){document.getElementById('progressContainer').s
 function hideProgress(){document.getElementById('progressContainer').style.display='none'}
 
 // ===================================================================
-// LEAFLET: Tianditu tile helpers
+// TIANDITU TILE HELPERS (Leaflet only)
 // ===================================================================
-// 天地图 WMTS：路径用 endpoint（vec_w/img_w），但 LAYER 查询参数用去掉 _w 的短名（vec/img）。
-// 注记层 cva_w/cia_w 同理：LAYER=cva/cia。
-const TD_LAYERS = {
-  vec_w: { endpoint: 'vec_w', layer: 'vec' },
-  cva_w: { endpoint: 'cva_w', layer: 'cva' },
-  img_w: { endpoint: 'img_w', layer: 'img' },
-  cia_w: { endpoint: 'cia_w', layer: 'cia' }
-};
+const L_TD = {vec_w:{e:'vec_w',l:'vec'},cva_w:{e:'cva_w',l:'cva'},img_w:{e:'img_w',l:'img'},cia_w:{e:'cia_w',l:'cia'}};
+function L_tdTile(cfg){const l=L.tileLayer('',{maxNativeZoom:18,maxZoom:24});l.getTileUrl=function(c){const z=c.z,x=((c.x%Math.pow(2,z))+Math.pow(2,z))%Math.pow(2,z),y=c.y,reqZ=Math.min(z,18),scl=Math.pow(2,z-reqZ),rx=Math.floor(x/scl),ry=Math.floor(y/scl),sh=Math.abs(x*31+y*17+cfg.l.length*13)%8;return 'https://t'+sh+'.tianditu.gov.cn/'+cfg.e+'/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER='+cfg.l+'&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILECOL='+rx+'&TILEROW='+ry+'&TILEMATRIX='+reqZ+'&tk='+cfg.key};return l}
 
-function makeTdTile(cfg) {
-  // 天地图官方最高原生级别 z=18；超过后由 Leaflet 本地拉伸 z=18 的瓦片，不再请求新瓦片。
-  // 这样即使 Key 在 z=18 被拒签权，下面的 z<18 仍正常、上面的 z=19~24 在最大原生底图上做数字放大。
-  const layer = L.tileLayer('', { maxNativeZoom: 18, maxZoom: 24, zoomOffset: 0 });
-  layer.getTileUrl = function(coords) {
-    const z=coords.z,x=((coords.x%Math.pow(2,z))+Math.pow(2,z))%Math.pow(2,z),y=coords.y;
-    // 限制请求的最大 z 为 18，超过即返回 z=18 的瓦片供 Leaflet 拉伸
-    const reqZ = Math.min(z, 18);
-    const scale = Math.pow(2, z - reqZ);
-    const reqX = Math.floor(x / scale);
-    const reqY = Math.floor(y / scale);
-    const shard=Math.abs(x*31+y*17+cfg.layer.length*13)%8;
-    return 'https://t'+shard+'.tianditu.gov.cn/'+cfg.endpoint+'/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER='+cfg.layer+'&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILECOL='+reqX+'&TILEROW='+reqY+'&TILEMATRIX='+reqZ+'&tk='+cfg.key;
-  };
-  return layer;
-}
+// ===================================================================
+// MAP ENGINE: CREATE / DESTROY
+// ===================================================================
+function isAmapProvider(){const p=document.getElementById('providerSelect').value;return p==='amap_vec'||p==='amap_img'}
 
-const TD_PROVIDERS={
-  tianditu_vec:{base:'vec_w',anno:'cva_w'},
-  tianditu_img:{base:'img_w',anno:'cia_w'},
-  amap_vec:{},
-  amap_img:{},
-  osm:{}
-};
-
-function switchProvider(){
-  const pid=document.getElementById('providerSelect').value,key=document.getElementById('tiandituKey').value.trim()||'5a0d3293c900281a37417b2e4d4d3676',cfg=TD_PROVIDERS[pid];
-  for(const l of gLayers)gMap.removeLayer(l);gLayers=[];
-  if(pid==='osm'){
-    gLayers.push(L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxNativeZoom:19,maxZoom:24,attribution:'&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(gMap));
-  }else if(pid==='amap_vec'){
-    // 高德矢量瓦片，subdomains 01~04
-    gLayers.push(L.tileLayer('https://webrd{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',{subdomains:['01','02','03','04'],maxNativeZoom:18,maxZoom:24,attribution:'&copy; 高德'}).addTo(gMap));
-  }else if(pid==='amap_img'){
-    // 高德卫星影像
-    gLayers.push(L.tileLayer('https://webst{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',{subdomains:['01','02','03','04'],maxNativeZoom:18,maxZoom:24,attribution:'&copy; 高德'}).addTo(gMap));
+function destroyMap(){
+  if(gEngine==='leaflet'){
+    if(gTrackLine){gLMap.removeLayer(gTrackLine);gTrackLine=null}
+    if(gTrackSelected){gLMap.removeLayer(gTrackSelected);gTrackSelected=null}
+    if(gStartMarker){gLMap.removeLayer(gStartMarker);gStartMarker=null}
+    if(gEndMarker){gLMap.removeLayer(gEndMarker);gEndMarker=null}
+    if(gHoverCircle){gLMap.removeLayer(gHoverCircle);gHoverCircle=null}
+    for(const m of gMarkers)gLMap.removeLayer(m);gMarkers=[];
+    for(const l of gLayers)gLMap.removeLayer(l);gLayers=[];
+    if(gLMap){gLMap.remove();gLMap=null}
   }else{
-    const base=makeTdTile({endpoint:TD_LAYERS[cfg.base].endpoint,layer:TD_LAYERS[cfg.base].layer,key});base.addTo(gMap);gLayers.push(base);
-    const anno=makeTdTile({endpoint:TD_LAYERS[cfg.anno].endpoint,layer:TD_LAYERS[cfg.anno].layer,key});anno.addTo(gMap);gLayers.push(anno);
+    if(gAMap){gAMap.destroy();gAMap=null}
   }
-  gMap.setMaxZoom(24);
-  if(gPoints.length)renderMap();
+  document.getElementById('map').innerHTML='';
 }
 
-function initMap(){
-  gMap=L.map('map',{center:[39.9,116.3],zoom:12,zoomControl:true,attributionControl:true,maxZoom:24});
-  switchProvider();
+function createMap(){
+  const el=document.getElementById('map');
+  const isAmap=isAmapProvider();
+  gEngine=isAmap?'amap':'leaflet';
+  
+  if(isAmap){
+    const pid=document.getElementById('providerSelect').value;
+    const layers=[pid==='amap_img'?new AMap.TileLayer.Satellite():new AMap.TileLayer()];
+    gAMap=new AMap.Map(el,{zoom:12,center:[39.9,116.3],layers:layers,zooms:[3,22]});
+    if(gPoints.length)renderMap();
+  }else{
+    gLMap=L.map(el,{center:[39.9,116.3],zoom:12,zoomControl:true,attributionControl:true,maxZoom:24});
+    const pid=document.getElementById('providerSelect').value,key=document.getElementById('tiandituKey').value.trim()||'5a0d3293c900281a37417b2e4d4d3676';
+    if(pid==='osm'){gLayers.push(L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxNativeZoom:19,maxZoom:24,attribution:'&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(gLMap))}else{
+      const cfg=pid==='tianditu_vec'?{e:'vec_w',l:'vec'}:{e:'img_w',l:'img'};const acfg=pid==='tianditu_vec'?{e:'cva_w',l:'cva'}:{e:'cia_w',l:'cia'};
+      gLayers.push(L_tdTile({e:cfg.e,l:cfg.l,key}).addTo(gLMap));gLayers.push(L_tdTile({e:acfg.e,l:acfg.l,key}).addTo(gLMap))
+    }
+    if(gPoints.length)renderMap();
+  }
 }
 
 // ===================================================================
-// MAP RENDERING
+// MAP RENDERING (dual engine)
 // ===================================================================
 function renderMap(){
-  if(gTrackLine){gMap.removeLayer(gTrackLine);gTrackLine=null}
-  if(gTrackSelected){gMap.removeLayer(gTrackSelected);gTrackSelected=null}
-  if(gStartMarker){gMap.removeLayer(gStartMarker);gStartMarker=null}
-  if(gEndMarker){gMap.removeLayer(gEndMarker);gEndMarker=null}
-  if(gHoverCircle){gMap.removeLayer(gHoverCircle);gHoverCircle=null}
-  for(const m of gMarkers)gMap.removeLayer(m);gMarkers=[];
   if(!gPoints.length)return;
-  const dps=displayPoints();
+  if(gEngine==='leaflet'){renderLeafletMap()}else{renderAmapMap()}
+}
 
-  const ll=dps.map(p=>[p.latitude_deg,p.longitude_deg]);
-  gTrackLine=L.polyline(ll,{color:'#999',weight:2,opacity:0.6}).addTo(gMap);
+function renderLeafletMap(){
+  if(gTrackLine){gLMap.removeLayer(gTrackLine);gTrackLine=null}
+  if(gTrackSelected){gLMap.removeLayer(gTrackSelected);gTrackSelected=null}
+  if(gStartMarker){gLMap.removeLayer(gStartMarker);gStartMarker=null}
+  if(gEndMarker){gLMap.removeLayer(gEndMarker);gEndMarker=null}
+  if(gHoverCircle){gLMap.removeLayer(gHoverCircle);gHoverCircle=null}
+  for(const m of gMarkers)gLMap.removeLayer(m);gMarkers=[];
 
-  const si=parseInt(document.getElementById('startIndex').value,10)||1,ei=parseInt(document.getElementById('endIndex').value,10)||dps.length;
-  const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(dps.length,Math.max(si,ei));
+  const ll=gPoints.map(p=>[p.latitude_deg,p.longitude_deg]);
+  gTrackLine=L.polyline(ll,{color:'#999',weight:2,opacity:0.6}).addTo(gLMap);
+  const si=parseInt(document.getElementById('startIndex').value,10)||1,ei=parseInt(document.getElementById('endIndex').value,10)||ll.length;
+  const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(ll.length,Math.max(si,ei));
+  if(lo<hi){const seg=ll.slice(lo,hi);gTrackSelected=L.polyline(seg,{color:'#e67300',weight:3,opacity:0.9}).addTo(gLMap);const sp=gPoints[lo];gStartMarker=L.circleMarker([sp.latitude_deg,sp.longitude_deg],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gLMap);gStartMarker.bindTooltip('起点 #'+(lo+1),{direction:'top'});const ep=gPoints[hi-1];gEndMarker=L.circleMarker([ep.latitude_deg,ep.longitude_deg],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gLMap);gEndMarker.bindTooltip('终点 #'+hi,{direction:'top'})}
+  for(let i=0;i<gPoints.length;i++){const p=gPoints[i],m=L.circleMarker([p.latitude_deg,p.longitude_deg],{radius:5,color:'#4a90d9',fillColor:'#4a90d9',fillOpacity:0.3,weight:1,opacity:0.4});m.pointIndex=i;m.on('mouseover',()=>hoverPoint(i));m.on('mouseout',()=>unhoverPoint());m.on('click',()=>clickTableRow(i));m.addTo(gLMap);gMarkers.push(m)}
+}
+
+let gAmapOverlays = [];
+
+function renderAmapMap(){
+  gAMap.clearMap();
+  gAmapOverlays=[];
+
+  // Full track polyline
+  const path=gPoints.map(p=>[p.longitude_deg,p.latitude_deg]);
+  const fullLine=new AMap.Polyline({path,borderWeight:2,strokeColor:'#999',strokeOpacity:0.6,strokeStyle:'solid'});
+  fullLine.setMap(gAMap);gAmapOverlays.push(fullLine);
+
+  // Selected segment
+  const si=parseInt(document.getElementById('startIndex').value,10)||1,ei=parseInt(document.getElementById('endIndex').value,10)||gPoints.length;
+  const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(gPoints.length,Math.max(si,ei));
   if(lo<hi){
-    const seg=ll.slice(lo,hi);
-    gTrackSelected=L.polyline(seg,{color:'#e67300',weight:3,opacity:0.9}).addTo(gMap);
-    const sp=dps[lo];gStartMarker=L.circleMarker([sp.latitude_deg,sp.longitude_deg],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gMap);
-    gStartMarker.bindTooltip('起点 #'+(lo+1),{direction:'top'});
-    const ep=dps[hi-1];gEndMarker=L.circleMarker([ep.latitude_deg,ep.longitude_deg],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gMap);
-    gEndMarker.bindTooltip('终点 #'+hi,{direction:'top'});
+    const segPath=gPoints.slice(lo,hi).map(p=>[p.longitude_deg,p.latitude_deg]);
+    const segLine=new AMap.Polyline({path:segPath,borderWeight:3,strokeColor:'#e67300',strokeOpacity:0.9});
+    segLine.setMap(gAMap);gAmapOverlays.push(segLine);
+
+    const sp=gPoints[lo];const sm=new AMap.Marker({position:[sp.longitude_deg,sp.latitude_deg],content:'<div style="background:#4caf50;width:16px;height:16px;border-radius:50%;border:3px solid #2a7d2a"></div>',offset:new AMap.Pixel(-8,-8)});
+    sm.setMap(gAMap);gAmapOverlays.push(sm);
+
+    const ep=gPoints[hi-1];const em=new AMap.Marker({position:[ep.longitude_deg,ep.latitude_deg],content:'<div style="background:#e74c3c;width:16px;height:16px;border-radius:50%;border:3px solid #c33"></div>',offset:new AMap.Pixel(-8,-8)});
+    em.setMap(gAMap);gAmapOverlays.push(em);
   }
 
-  for(let i=0;i<dps.length;i++){
-    const p=dps[i],m=L.circleMarker([p.latitude_deg,p.longitude_deg],{radius:5,color:'#4a90d9',fillColor:'#4a90d9',fillOpacity:0.3,weight:1,opacity:0.4});
-    m.pointIndex=i;m.on('mouseover',()=>hoverPoint(i));m.on('mouseout',()=>unhoverPoint());m.on('click',()=>clickTableRow(i));
-    m.addTo(gMap);gMarkers.push(m);
+  // Point markers
+  for(let i=0;i<gPoints.length;i++){
+    const p=gPoints[i],m=new AMap.CircleMarker({center:[p.longitude_deg,p.latitude_deg],radius:5,fillColor:'#4a90d9',strokeColor:'#4a90d9',strokeWeight:1,fillOpacity:0.3});
+    m.setMap(gAMap);gAmapOverlays.push(m);
+    m.pointIndex=i;
+    m.on('mouseover',()=>hoverPoint(i));
+    m.on('mouseout',()=>unhoverPoint());
+    m.on('click',()=>clickTableRow(i));
   }
 }
+
+// ===================================================================
+// HOVER / ZOOM (dual engine)
+// ===================================================================
+let gAmapHover = null;
 
 function hoverPoint(idx){
-  if(gHoverCircle){gMap.removeLayer(gHoverCircle);gHoverCircle=null}
-  const p=isGcjProvider()?gcj02Offset(gPoints[idx].latitude_deg,gPoints[idx].longitude_deg):gPoints[idx];
-  const lat=isGcjProvider()?p.lat:p.latitude_deg;
-  const lon=isGcjProvider()?p.lon:p.longitude_deg;
-  gHoverCircle=L.circleMarker([lat,lon],{radius:10,color:'#f39c12',fillColor:'#f1c40f',fillOpacity:0.7,weight:2}).addTo(gMap);
-  const fix=gPoints[idx].gnss_fix||'—',h=isFinN(gPoints[idx].height_m)?gPoints[idx].height_m.toFixed(2)+' m':'—',cd=isFinN(gPoints[idx].cumulative_distance_m)?gPoints[idx].cumulative_distance_m.toFixed(3)+' m':'—';
-  const tip=L.tooltip({direction:'top',offset:L.point(0,-10)}).setContent('#'+(idx+1)+' | 纬度:'+gPoints[idx].latitude_deg.toFixed(7)+' 经度:'+gPoints[idx].longitude_deg.toFixed(7)+' | 高程:'+h+' | Fix:'+fix+' | 累积:'+cd);
-  gHoverCircle.bindTooltip(tip).openTooltip();
+  const p=gPoints[idx];
+  if(gEngine==='leaflet'){
+    if(gHoverCircle){gLMap.removeLayer(gHoverCircle)}
+    gHoverCircle=L.circleMarker([p.latitude_deg,p.longitude_deg],{radius:10,color:'#f39c12',fillColor:'#f1c40f',fillOpacity:0.7,weight:2}).addTo(gLMap);
+    const h=isFinN(p.height_m)?p.height_m.toFixed(2)+' m':'—',cd=isFinN(p.cumulative_distance_m)?p.cumulative_distance_m.toFixed(3)+' m':'—';
+    const tip=L.tooltip({direction:'top',offset:L.point(0,-10)}).setContent('#'+(idx+1)+' | 纬度:'+p.latitude_deg.toFixed(7)+' 经度:'+p.longitude_deg.toFixed(7)+' | 高程:'+h+' | Fix:'+(p.gnss_fix||'—')+' | 累积:'+cd);
+    gHoverCircle.bindTooltip(tip).openTooltip();
+  }else{
+    if(gAmapHover){gAMap.remove(gAmapHover)}
+    gAmapHover=new AMap.CircleMarker({center:[p.longitude_deg,p.latitude_deg],radius:10,fillColor:'#f1c40f',strokeColor:'#f39c12',strokeWeight:2,fillOpacity:0.7});
+    gAmapHover.setMap(gAMap);
+  }
   highlightTableRow(idx);
 }
-function unhoverPoint(){if(gHoverCircle){gMap.removeLayer(gHoverCircle);gHoverCircle=null}clearTableHighlight()}
+
+function unhoverPoint(){
+  if(gEngine==='leaflet'){
+    if(gHoverCircle){gLMap.removeLayer(gHoverCircle);gHoverCircle=null}
+  }else{
+    if(gAmapHover){gAMap.remove(gAmapHover);gAmapHover=null}
+  }
+  clearTableHighlight();
+}
 
 function zoomToFitSelected(){
   if(!gPoints.length)return;
-  if(gTrackSelected)gMap.fitBounds(gTrackSelected.getBounds(),{padding:[30,30]});
-  else{
-    const dps=displayPoints();
-    gMap.fitBounds(dps.map(p=>[p.latitude_deg,p.longitude_deg]),{padding:[30,30]});
+  if(gEngine==='leaflet'){
+    if(gTrackSelected)gLMap.fitBounds(gTrackSelected.getBounds(),{padding:[30,30]});
+    else gLMap.fitBounds(gPoints.map(p=>[p.latitude_deg,p.longitude_deg]),{padding:[30,30]});
+  }else{
+    const pts=gPoints;const si=parseInt(document.getElementById('startIndex').value,10)||1,ei=parseInt(document.getElementById('endIndex').value,10)||pts.length;
+    const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(pts.length,Math.max(si,ei));
+    if(lo<hi){const sub=pts.slice(lo,hi);gAMap.setFitView(null,false,sub.map(p=>[p.longitude_deg,p.latitude_deg]))}
+    else gAMap.setFitView(null,false,pts.map(p=>[p.longitude_deg,p.latitude_deg]));
   }
 }
+
 function zoomToPoint(idx){
-  if(idx<0||idx>=gPoints.length)return;const dps=displayPoints(),p=dps[idx];gMap.setView([p.latitude_deg,p.longitude_deg],17);
+  if(idx<0||idx>=gPoints.length)return;
+  const p=gPoints[idx];
+  if(gEngine==='leaflet')gLMap.setView([p.latitude_deg,p.longitude_deg],17);
+  else gAMap.setZoomAndCenter(17,[p.longitude_deg,p.latitude_deg]);
+}
+
+// ===================================================================
+// RENDER DISTANCE
+// ===================================================================
+function renderDistance(){
+  const n=gPoints.length;
+  const si=Math.max(1,Math.min(parseInt(document.getElementById('startIndex').value,10)||1,n||1));
+  const ei=Math.max(1,Math.min(parseInt(document.getElementById('endIndex').value,10)||n,n));
+  document.getElementById('startIndex').value=si;document.getElementById('endIndex').value=ei;
+  const segEl=document.getElementById('segmentDist'),totEl=document.getElementById('totalDist');
+  if(!n){segEl.textContent='—';totEl.textContent='—';return}
+  // Redraw segment overlays
+  if(gEngine==='leaflet'){
+    if(gTrackSelected){gLMap.removeLayer(gTrackSelected);gTrackSelected=null}
+    if(gStartMarker){gLMap.removeLayer(gStartMarker);gStartMarker=null}
+    if(gEndMarker){gLMap.removeLayer(gEndMarker);gEndMarker=null}
+    const ll=gPoints.map(p=>[p.latitude_deg,p.longitude_deg]),lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(n,Math.max(si,ei));
+    if(lo<hi){gTrackSelected=L.polyline(ll.slice(lo,hi),{color:'#e67300',weight:3,opacity:0.9}).addTo(gLMap);const sp=gPoints[lo];gStartMarker=L.circleMarker([sp.latitude_deg,sp.longitude_deg],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gLMap);gStartMarker.bindTooltip('起点 #'+(lo+1),{direction:'top'});const ep=gPoints[hi-1];gEndMarker=L.circleMarker([ep.latitude_deg,ep.longitude_deg],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gLMap);gEndMarker.bindTooltip('终点 #'+hi,{direction:'top'})}
+  }else{
+    gAMap.remove(gAmapOverlays.filter(o=>o!==gAmapHover));
+    gAmapOverlays=[];
+    const path=gPoints.map(p=>[p.longitude_deg,p.latitude_deg]);
+    const fl=new AMap.Polyline({path,borderWeight:2,strokeColor:'#999',strokeOpacity:0.6});fl.setMap(gAMap);gAmapOverlays.push(fl);
+    const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(n,Math.max(si,ei));
+    if(lo<hi){
+      const sp=gPoints[lo],ep=gPoints[hi-1];
+      const segPath=gPoints.slice(lo,hi).map(p=>[p.longitude_deg,p.latitude_deg]);
+      const sl=new AMap.Polyline({path:segPath,borderWeight:3,strokeColor:'#e67300',strokeOpacity:0.9});sl.setMap(gAMap);gAmapOverlays.push(sl);
+      const sm=new AMap.Marker({position:[sp.longitude_deg,sp.latitude_deg],content:'<div style="background:#4caf50;width:16px;height:16px;border-radius:50%;border:3px solid #2a7d2a"></div>',offset:new AMap.Pixel(-8,-8)});sm.setMap(gAMap);gAmapOverlays.push(sm);
+      const em=new AMap.Marker({position:[ep.longitude_deg,ep.latitude_deg],content:'<div style="background:#e74c3c;width:16px;height:16px;border-radius:50%;border:3px solid #c33"></div>',offset:new AMap.Pixel(-8,-8)});em.setMap(gAMap);gAmapOverlays.push(em);
+    }
+    for(let i=0;i<gPoints.length;i++){const p=gPoints[i];const m=new AMap.CircleMarker({center:[p.longitude_deg,p.latitude_deg],radius:5,fillColor:'#4a90d9',strokeColor:'#4a90d9',strokeWeight:1,fillOpacity:0.3});m.setMap(gAMap);gAmapOverlays.push(m);m.pointIndex=i;m.on('mouseover',()=>hoverPoint(i));m.on('mouseout',()=>unhoverPoint());m.on('click',()=>clickTableRow(i))}
+  }
+  const total=n?gPoints[n-1].cumulative_distance_m:0,segment=routeDist(gPoints,si,ei);
+  segEl.textContent=isFinite(segment)?segment.toFixed(3)+' m':'—';totEl.textContent=isFinite(total)?total.toFixed(3)+' m':'—';
+  document.querySelectorAll('#pointTable tbody tr.start-row,#pointTable tbody tr.end-row').forEach(el=>el.classList.remove('start-row','end-row'));
+  document.querySelectorAll('#pointTable tbody tr').forEach(tr=>{const idx=parseInt(tr.dataset.index,10)+1;if(idx===si)tr.classList.add('start-row');if(idx===ei)tr.classList.add('end-row')});
+}
+
+function renderStats(){
+  const el=document.getElementById('statsGrid');
+  if(!gPoints.length){el.innerHTML='';return}
+  el.innerHTML=[['解析总记录',gStats.rawRecords||0],['有效帧',gStats.validFrames||0],['错误帧',gStats.badFrames||0],['坐标候选',gStats.coordinateCandidates||0],['来源选择',gStats.selectedCandidates||0],['来源',gStats.autoSource||'—'],['过滤后点数',gPoints.length],['丢弃点数',gStats.removedCount||0]].map(([l,v])=>'<div class="stat-item"><span class="stat-label">'+l+'</span><span class="stat-value">'+v+'</span></div>').join('')
 }
 
 // ===================================================================
@@ -659,54 +552,23 @@ function recalc(){
   const mfc=mft?(FIX_NAMES[mft]!=null?+mft:parseInt(mft,10)):null;
   const mha=mhat?parseFloat(mhat):null,mva=mvat?parseFloat(mvat):null,mse=msgt?parseFloat(msgt):null;
   const exc=parseRanges(ext),inc=parseRanges(int);
-
   const selected=selectSource(gCandidates,src);
   const filtered=applyFilters(selected,{includeIndices:inc&&inc.size>0?inc:null,excludeIndices:exc&&exc.size>0?exc:null,minFixCode:isFinN(mfc)?mfc:null,maxHacc:isFinN(mha)?mha:null,maxVacc:isFinN(mva)?mva:null,maxSegmentM:isFinN(mse)?mse:null});
   assignDist(filtered);gPoints=filtered;
-  // Clamp start/end indices BEFORE rendering (fix: out-of-bounds in routeDist)
   const se=document.getElementById('startIndex'),ee=document.getElementById('endIndex');
-  if(gPoints.length){
-    if(parseInt(se.value,10)>gPoints.length||parseInt(se.value,10)<1)se.value=1;
-    if(parseInt(ee.value,10)>gPoints.length||parseInt(ee.value,10)<1)ee.value=gPoints.length;
-  }else{se.value=1;ee.value=1}
+  if(gPoints.length){if(parseInt(se.value,10)>gPoints.length||parseInt(se.value,10)<1)se.value=1;if(parseInt(ee.value,10)>gPoints.length||parseInt(ee.value,10)<1)ee.value=gPoints.length}else{se.value=1;ee.value=1}
   renderMap();renderTable();renderDistance();renderStats();
 }
 
-function renderDistance(){
-  const n=gPoints.length;
-  const si=Math.max(1,Math.min(parseInt(document.getElementById('startIndex').value,10)||1,n||1));
-  const ei=Math.max(1,Math.min(parseInt(document.getElementById('endIndex').value,10)||n,n));
-  // Sync clamped values back to inputs
-  document.getElementById('startIndex').value=si;document.getElementById('endIndex').value=ei;
-  const segEl=document.getElementById('segmentDist'),totEl=document.getElementById('totalDist');
-  if(!n){segEl.textContent='—';totEl.textContent='—';return}
-  const dps=displayPoints();
-  // Redraw segment overlays
-  if(gTrackSelected){gMap.removeLayer(gTrackSelected);gTrackSelected=null}
-  if(gStartMarker){gMap.removeLayer(gStartMarker);gStartMarker=null}
-  if(gEndMarker){gMap.removeLayer(gEndMarker);gEndMarker=null}
-  const ll=dps.map(p=>[p.latitude_deg,p.longitude_deg]),lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(n,Math.max(si,ei));
-  if(lo<hi){
-    gTrackSelected=L.polyline(ll.slice(lo,hi),{color:'#e67300',weight:3,opacity:0.9}).addTo(gMap);
-    const sp=dps[lo];gStartMarker=L.circleMarker([sp.latitude_deg,sp.longitude_deg],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gMap);
-    gStartMarker.bindTooltip('起点 #'+(lo+1),{direction:'top'});
-    const ep=dps[hi-1];gEndMarker=L.circleMarker([ep.latitude_deg,ep.longitude_deg],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gMap);
-    gEndMarker.bindTooltip('终点 #'+hi,{direction:'top'});
-  }
-  const total=n?gPoints[n-1].cumulative_distance_m:0,segment=routeDist(gPoints,si,ei);
-  segEl.textContent=isFinite(segment)?segment.toFixed(3)+' m':'—';totEl.textContent=isFinite(total)?total.toFixed(3)+' m':'—';
-  document.querySelectorAll('#pointTable tbody tr.start-row,#pointTable tbody tr.end-row').forEach(el=>el.classList.remove('start-row','end-row'));
-  document.querySelectorAll('#pointTable tbody tr').forEach(tr=>{const idx=parseInt(tr.dataset.index,10)+1;if(idx===si)tr.classList.add('start-row');if(idx===ei)tr.classList.add('end-row')});
-}
-
-function renderStats(){
-  const el=document.getElementById('statsGrid');
-  if(!gPoints.length){el.innerHTML='';return}
-  el.innerHTML=[
-    ['解析总记录',gStats.rawRecords||0],['有效帧',gStats.validFrames||0],['错误帧',gStats.badFrames||0],
-    ['坐标候选',gStats.coordinateCandidates||0],['来源选择',gStats.selectedCandidates||0],
-    ['来源',gStats.autoSource||'—'],['过滤后点数',gPoints.length],['丢弃点数',gStats.removedCount||0]
-  ].map(([l,v]) => '<div class="stat-item"><span class="stat-label">'+l+'</span><span class="stat-value">'+v+'</span></div>').join('');
+// ===================================================================
+// PROVIDER SWITCHING
+// ===================================================================
+function switchProvider(){
+  const wasAmap=isAmapProvider()||gEngine==='amap';
+  // We need to destroy and recreate map since engine might change
+  destroyMap();
+  createMap();
+  // If points exist and no overlays rendered yet (e.g. on first load after data), just init map
 }
 
 // ===================================================================
@@ -719,7 +581,6 @@ function readFileProg(file){
     r.onload=function(){res(new Uint8Array(r.result))};r.onerror=rej;r.readAsArrayBuffer(file);
   });
 }
-
 async function loadFromFile(file){
   if(!file||gIsLoading)return;gIsLoading=true;
   setStatus('加载 '+file.name+'…');document.getElementById('fileName').textContent=file.name;updateProgress(0,'准备…');
@@ -729,36 +590,24 @@ async function loadFromFile(file){
     gRecords=parseRecords(file.name,bytes);
     if(!gRecords.length)throw new Error('没有解析到任何记录');
     updateProgress(55,'找到 '+gRecords.length+' 条记录');await sleep(0);
-    gCandidates=decodePoints(gRecords,function(pct,msg){updateProgress(55+pct*0.35,msg);});
+    gCandidates=decodePoints(gRecords,function(pct,msg){updateProgress(55+pct*0.35,msg)});
     if(!gCandidates.length)throw new Error('没有解析到有效坐标点');
     updateProgress(91,'应用过滤…');await sleep(0);
     document.getElementById('startIndex').value=1;document.getElementById('endIndex').value=gCandidates.length;
     recalc();
     updateProgress(100,'完成');await sleep(300);hideProgress();
     if(gPoints.length){
-      gMap.fitBounds(displayPoints().map(p=>[p.latitude_deg,p.longitude_deg]),{padding:[40,40]});
+      zoomToFitSelected();
       setStatus('✓ '+file.name+'：'+gPoints.length+' 轨迹点，'+gStats.rawRecords+' 条记录，'+gStats.validFrames+' 有效帧');
-    }else{
-      setStatus('✓ 解析完成，但所有点被过滤掉了',false);
-    }
-  }catch(err){
-    hideProgress();setStatus('✗ '+(err.message||String(err)),false);
-    gRecords=[];gCandidates=[];gPoints=[];gStats={};
-    renderMap();renderTable();renderStats();
+    }else setStatus('✓ 解析完成，但所有点被过滤掉了',false);
+  }catch(err){hideProgress();setStatus('✗ '+(err.message||String(err)),false);gRecords=[];gCandidates=[];gPoints=[];gStats={};renderMap();renderTable();renderStats()
   }finally{gIsLoading=false}
 }
-
 function chooseEpsilonFile(files){
   const list=Array.from(files);
-  const prefs=[
-    f=>f.webkitRelativePath.replaceAll('\\','/').endsWith('/raw/epsilon.dat'),
-    f=>f.webkitRelativePath.replaceAll('\\','/').endsWith('/sensors/epsilon_raw.dat'),
-    f=>f.name==='epsilon.dat',f=>f.name==='epsilon_raw.dat',
-  ];
+  const prefs=[f=>f.webkitRelativePath.replaceAll('\\','/').endsWith('/raw/epsilon.dat'),f=>f.webkitRelativePath.replaceAll('\\','/').endsWith('/sensors/epsilon_raw.dat'),f=>f.name==='epsilon.dat',f=>f.name==='epsilon_raw.dat'];
   for(const pred of prefs){const f=list.find(pred);if(f)return f}
-  // 未找到优先文件时，从文件夹中取第一个 .dat 文件作为备选
-  const datFiles=list.filter(f=>f.name.endsWith('.dat'));
-  return datFiles.length>0?datFiles[0]:null;
+  const datFiles=list.filter(f=>f.name.endsWith('.dat'));return datFiles.length>0?datFiles[0]:null;
 }
 
 // ===================================================================
@@ -769,15 +618,15 @@ document.getElementById('sessionInput').addEventListener('change',function(e){
   if(!file){setStatus('所选文件夹中没有找到 raw/epsilon.dat 或 sensors/epsilon_raw.dat',false);return}
   loadFromFile(file);
 });
-document.getElementById('datInput').addEventListener('change',function(e){
-  if(!e.target.files.length)return;loadFromFile(e.target.files[0]);
+document.getElementById('datInput').addEventListener('change',function(e){if(!e.target.files.length)return;loadFromFile(e.target.files[0])});
+window.addEventListener('resize',()=>{
+  if(gEngine==='leaflet'&&gLMap)gLMap.invalidateSize()
 });
-window.addEventListener('resize',()=>{if(gMap)gMap.invalidateSize()});
 
 // ===================================================================
 // INIT
 // ===================================================================
-initMap();
+createMap();
 </script>
 </body>
 </html>
