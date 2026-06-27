@@ -4428,14 +4428,13 @@ protected:
         const QColor stateFill = checked
             ? appThemeColor(AppThemeColor::HomeDeviceSuccess, dark)
             : appThemeColor(AppThemeColor::HomeDeviceDanger, dark);
-        const QColor border = enabled
+        const QColor border = appThemeColor(AppThemeColor::Border, dark);
+        const QColor fill = appThemeColor(AppThemeColor::SurfaceAlt, dark);
+        const QColor switchFill = enabled
             ? stateFill
-            : appThemeColor(AppThemeColor::Border, dark);
-        const QColor fill = enabled
-            ? stateFill
-            : appThemeColor(AppThemeColor::SurfaceAlt, dark);
+            : appThemeColor(AppThemeColor::Surface, dark);
         const QColor text = enabled
-            ? appThemeColor(AppThemeColor::White, dark)
+            ? appThemeColor(AppThemeColor::Text, dark)
             : appThemeColor(AppThemeColor::TextMuted, dark);
         const QColor selectedFill = enabled
             ? appThemeColor(AppThemeColor::Surface, dark)
@@ -4477,7 +4476,7 @@ protected:
         const qreal selectedLeft = switchContentRect.left() + segmentWidth * thumb_position_;
         const QRectF selectedRect(selectedLeft, switchContentRect.top(), segmentWidth, switchContentRect.height());
         painter.setPen(Qt::NoPen);
-        painter.setBrush(fill);
+        painter.setBrush(switchFill);
         painter.drawRoundedRect(switchCapsuleRect, kControlRadius - gap, kControlRadius - gap);
         painter.setPen(Qt::NoPen);
         painter.setBrush(selectedFill);
