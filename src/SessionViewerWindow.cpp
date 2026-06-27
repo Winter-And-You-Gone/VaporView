@@ -171,7 +171,9 @@ struct SessionTableTheme
     QColor selectedBackground;
     QColor selectedText;
     QColor highlightedBackground;
+    QColor highlightedText;
     QColor secondaryHighlightedBackground;
+    QColor secondaryHighlightedText;
 };
 
 SessionPlotTheme sessionPlotThemeFor(const QWidget *widget)
@@ -193,16 +195,19 @@ SessionTableTheme sessionTableThemeFor(const QWidget *widget)
     const bool dark = VaporView::isDarkThemeEnabled();
     if (dark)
     {
+        const QColor primaryText = appThemeColor(AppThemeColor::TableText, false);
         return {
             appThemeColor(AppThemeColor::Surface, true),
             appThemeColor(AppThemeColor::Text, true),
             QColor(QStringLiteral("#3A3A3A")),
             appThemeColor(AppThemeColor::SurfaceRaised, true),
             appThemeColor(AppThemeColor::TextTitle, true),
-            QColor(QStringLiteral("#284668")),
-            appThemeColor(AppThemeColor::Text, true),
-            QColor(QStringLiteral("#4A3B22")),
-            QColor(QStringLiteral("#302F2A"))
+            appThemeColor(AppThemeColor::Primary, true),
+            primaryText,
+            appThemeColor(AppThemeColor::Primary, true),
+            primaryText,
+            appThemeColor(AppThemeColor::TableSecondaryHighlightedRow, true),
+            appThemeColor(AppThemeColor::Text, true)
         };
     }
 
@@ -212,10 +217,12 @@ SessionTableTheme sessionTableThemeFor(const QWidget *widget)
         QColor(QStringLiteral("#E5E7EB")),
         QColor(QStringLiteral("#F8FAFC")),
         appThemeColor(AppThemeColor::TableText, false),
-        QColor(QStringLiteral("#EAF3FF")),
-        appThemeColor(AppThemeColor::TableText, false),
-        QColor(QStringLiteral("#FFF4D6")),
-        QColor(QStringLiteral("#F6F8FB"))
+        appThemeColor(AppThemeColor::Primary, false),
+        appThemeColor(AppThemeColor::TextInverse, false),
+        appThemeColor(AppThemeColor::Primary, false),
+        appThemeColor(AppThemeColor::TextInverse, false),
+        appThemeColor(AppThemeColor::PrimarySubtle, false),
+        appThemeColor(AppThemeColor::TableText, false)
     };
 }
 
@@ -1574,6 +1581,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , waveform_show_filtered_frame_(false)
     , session_loading_(false)
     , highlighted_csv_rows_()
+    , primary_highlighted_csv_row_(-1)
     , trajectory_viewer_dialog_(nullptr)
     , raw_data_parser_window_(nullptr)
     , points_per_frame_(50000)
@@ -1984,9 +1992,13 @@ void SessionViewerWindow::refreshCsvItemTheme()
     for (int row = 0; row < csv_table_->rowCount(); ++row)
     {
         QColor background = theme.background;
+        QColor foreground = theme.text;
         if (highlighted_csv_rows_.contains(row))
         {
-            background = (row == currentRow) ? theme.highlightedBackground : theme.secondaryHighlightedBackground;
+            const bool primaryRow = row == primary_highlighted_csv_row_ ||
+                (primary_highlighted_csv_row_ < 0 && row == currentRow);
+            background = primaryRow ? theme.highlightedBackground : theme.secondaryHighlightedBackground;
+            foreground = primaryRow ? theme.highlightedText : theme.secondaryHighlightedText;
         }
 
         for (int col = 0; col < csv_table_->columnCount(); ++col)
@@ -1994,7 +2006,7 @@ void SessionViewerWindow::refreshCsvItemTheme()
             if (QTableWidgetItem *item = csv_table_->item(row, col))
             {
                 item->setBackground(background);
-                item->setForeground(theme.text);
+                item->setForeground(foreground);
             }
         }
     }
@@ -2453,6 +2465,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     csv_table_->setRowCount(0);
     csv_table_->setColumnCount(0);
     highlighted_csv_rows_.clear();
+    primary_highlighted_csv_row_ = -1;
     static_cast<SessionWavePlotWidget*>(waveform_plot_)->setSamples({});
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPeakValues({});
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setCurrentFrame(-1);
@@ -2815,6 +2828,7 @@ bool SessionViewerWindow::loadSensorsCsv()
     csv_table_->setRowCount(0);
     csv_table_->setColumnCount(0);
     highlighted_csv_rows_.clear();
+    primary_highlighted_csv_row_ = -1;
     csv_headers_.clear();
     csv_timestamps_us_.clear();
 
@@ -4115,6 +4129,7 @@ QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs, bool
 {
     if (csv_timestamps_us_.isEmpty() || csv_table_->rowCount() == 0)
     {
+        primary_highlighted_csv_row_ = -1;
         return QString();
     }
 
@@ -4184,17 +4199,20 @@ QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs, bool
             primaryRow = row;
         }
     }
+    primary_highlighted_csv_row_ = primaryRow;
 
     QStringList matchParts;
     for (int row : rowsToHighlight)
     {
-        const QColor rowColor = (row == primaryRow) ? tableTheme.highlightedBackground : tableTheme.secondaryHighlightedBackground;
+        const bool primary = row == primaryRow;
+        const QColor rowColor = primary ? tableTheme.highlightedBackground : tableTheme.secondaryHighlightedBackground;
+        const QColor textColor = primary ? tableTheme.highlightedText : tableTheme.secondaryHighlightedText;
         for (int col = 0; col < csv_table_->columnCount(); ++col)
         {
             if (QTableWidgetItem *item = csv_table_->item(row, col))
             {
                 item->setBackground(rowColor);
-                item->setForeground(tableTheme.text);
+                item->setForeground(textColor);
             }
         }
 

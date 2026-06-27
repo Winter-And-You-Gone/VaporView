@@ -233,6 +233,7 @@ private:
     bool waveform_show_filtered_frame_;
     bool session_loading_;
     QVector<int> highlighted_csv_rows_;
+    int primary_highlighted_csv_row_;
     TrajectoryViewerDialog *trajectory_viewer_dialog_;
     RawDataParserWindow *raw_data_parser_window_;
     int points_per_frame_;

@@ -1,16 +1,20 @@
 #include "MainWindow.h"
 
 #include <QApplication>
+#include <QAction>
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QFrame>
 #include <QGroupBox>
 #include <QLabel>
 #include <QLayout>
+#include <QMenu>
+#include <QPushButton>
 #include <QSplitter>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QToolButton>
 #include <QWidget>
 #include <algorithm>
 #include <cstdlib>
@@ -123,6 +127,60 @@ int main(int argc, char **argv)
     requireMargins(temperatureOverviewBody->layout()->contentsMargins(),
                    QMargins(2, 2, 2, 2),
                    "temperature overview body padding matches sensor-card content rhythm");
+
+    auto *temperatureChannelButton =
+        window.findChild<QToolButton *>(QStringLiteral("temperatureOverviewChannelButton"));
+    require(temperatureChannelButton != nullptr, "temperature overview channel selector exists");
+    require(temperatureChannelButton->toolButtonStyle() == Qt::ToolButtonTextOnly,
+            "temperature overview channel selector text remains centered");
+    require(temperatureChannelButton->menu() != nullptr,
+            "temperature overview channel selector menu exists");
+    require(temperatureChannelButton->menu()->minimumWidth() == temperatureChannelButton->width() &&
+                temperatureChannelButton->menu()->maximumWidth() == temperatureChannelButton->width(),
+            "temperature overview channel menu width matches capsule width");
+    require(temperatureChannelButton->menu()->actions().size() == 2,
+            "temperature overview channel menu has two channel options");
+    temperatureChannelButton->menu()->popup(temperatureChannelButton->mapToGlobal(QPoint(0, temperatureChannelButton->height())));
+    processEventsFor(50);
+    for (QAction *action : temperatureChannelButton->menu()->actions())
+    {
+        const QRect actionRect = temperatureChannelButton->menu()->actionGeometry(action);
+        require(std::abs(actionRect.width() - temperatureChannelButton->width()) <= 4,
+                "temperature overview channel menu option width matches capsule width");
+        require(std::abs(actionRect.height() - temperatureChannelButton->height()) <= 4,
+                "temperature overview channel menu option height matches capsule height");
+    }
+    temperatureChannelButton->menu()->hide();
+    processEventsFor(50);
+
+    QLabel *peakTrendTitle = nullptr;
+    const QList<QLabel*> sectionTitleLabels =
+        window.findChildren<QLabel *>(QStringLiteral("sectionTitleLabel"));
+    for (QLabel *label : sectionTitleLabels)
+    {
+        if (label->text() == QStringLiteral("归一化二次谐波峰值趋势"))
+        {
+            peakTrendTitle = label;
+            break;
+        }
+    }
+    require(peakTrendTitle != nullptr,
+            "normalized second harmonic peak trend title omits frame-count suffix");
+
+    QPushButton *peakFilterButton = nullptr;
+    const QList<QPushButton*> compactTcpButtons =
+        window.findChildren<QPushButton *>(QStringLiteral("compactTcpButton"));
+    for (QPushButton *button : compactTcpButtons)
+    {
+        if (button->text().startsWith(QStringLiteral("峰值搜索:")))
+        {
+            peakFilterButton = button;
+            break;
+        }
+    }
+    require(peakFilterButton != nullptr, "peak search filter button exists");
+    require(peakFilterButton->width() >= peakFilterButton->fontMetrics().horizontalAdvance(peakFilterButton->text()) + 48,
+            "peak search filter button has enough horizontal room for its label");
 
     auto *dataGroup = window.findChild<QGroupBox *>(QStringLiteral("sensorRowContainer"));
     require(dataGroup != nullptr, "sensor row container exists");

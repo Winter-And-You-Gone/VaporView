@@ -4651,19 +4651,48 @@ public:
         channel_button_->setObjectName(QStringLiteral("temperatureOverviewChannelButton"));
         channel_button_->setFixedSize(kOverviewControlWidth, kOverviewPillHeight);
         channel_button_->setPopupMode(QToolButton::InstantPopup);
-        channel_button_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-        channel_button_->setLayoutDirection(Qt::RightToLeft);
+        channel_button_->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        channel_button_->setLayoutDirection(Qt::LeftToRight);
         channel_button_->setFocusPolicy(Qt::StrongFocus);
         channel_button_->setCursor(Qt::PointingHandCursor);
         channel_menu_ = new QMenu(channel_button_);
-        channel_action_1_ = channel_menu_->addAction(QStringLiteral("通道1"));
-        channel_action_2_ = channel_menu_->addAction(QStringLiteral("通道2"));
+        channel_menu_->setObjectName(QStringLiteral("temperatureOverviewChannelMenu"));
+        channel_menu_->setFixedWidth(kOverviewControlWidth);
+        auto configureChannelMenuAction = [this, kOverviewControlWidth, kOverviewPillHeight](QWidgetAction *action,
+                                                                                              QPushButton *button,
+                                                                                              const QString& text) {
+            action->setText(text);
+            action->setDefaultWidget(button);
+            button->setObjectName(QStringLiteral("temperatureOverviewChannelMenuItem"));
+            button->setFixedSize(kOverviewControlWidth, kOverviewPillHeight);
+            button->setCursor(Qt::PointingHandCursor);
+            button->setFocusPolicy(Qt::NoFocus);
+            button->setText(text);
+            button->setFlat(true);
+            channel_menu_->addAction(action);
+        };
+        auto *channelWidgetAction1 = new QWidgetAction(channel_menu_);
+        auto *channelWidgetAction2 = new QWidgetAction(channel_menu_);
+        channel_menu_button_1_ = new QPushButton(channel_menu_);
+        channel_menu_button_2_ = new QPushButton(channel_menu_);
+        configureChannelMenuAction(channelWidgetAction1, channel_menu_button_1_, QStringLiteral("通道1"));
+        configureChannelMenuAction(channelWidgetAction2, channel_menu_button_2_, QStringLiteral("通道2"));
+        channel_action_1_ = channelWidgetAction1;
+        channel_action_2_ = channelWidgetAction2;
         for (QAction *action : {channel_action_1_, channel_action_2_})
         {
             action->setCheckable(true);
         }
-        connect(channel_action_1_, &QAction::triggered, this, [this]() { selectChannel(0); });
-        connect(channel_action_2_, &QAction::triggered, this, [this]() { selectChannel(1); });
+        connect(channel_menu_button_1_, &QPushButton::clicked, channel_action_1_, &QAction::trigger);
+        connect(channel_menu_button_2_, &QPushButton::clicked, channel_action_2_, &QAction::trigger);
+        connect(channel_action_1_, &QAction::triggered, this, [this]() {
+            selectChannel(0);
+            if (channel_menu_) channel_menu_->hide();
+        });
+        connect(channel_action_2_, &QAction::triggered, this, [this]() {
+            selectChannel(1);
+            if (channel_menu_) channel_menu_->hide();
+        });
         channel_button_->setMenu(channel_menu_);
         summaryLayout->addWidget(channel_button_);
 
@@ -4823,6 +4852,21 @@ private:
         }
         if (channel_action_1_) channel_action_1_->setChecked(currentChannelIndex() == 0);
         if (channel_action_2_) channel_action_2_->setChecked(currentChannelIndex() == 1);
+        syncChannelMenuButton(channel_menu_button_1_, channel_action_1_);
+        syncChannelMenuButton(channel_menu_button_2_, channel_action_2_);
+    }
+
+    void syncChannelMenuButton(QPushButton *button, QAction *action)
+    {
+        if (!button || !action)
+        {
+            return;
+        }
+        button->setText(action->text());
+        button->setProperty("selected", action->isChecked());
+        button->style()->unpolish(button);
+        button->style()->polish(button);
+        button->update();
     }
 
     void refreshChannelUi()
@@ -4862,6 +4906,8 @@ private:
     QMenu *channel_menu_ = nullptr;
     QAction *channel_action_1_ = nullptr;
     QAction *channel_action_2_ = nullptr;
+    QPushButton *channel_menu_button_1_ = nullptr;
+    QPushButton *channel_menu_button_2_ = nullptr;
     QLabel *target_temp_value_ = nullptr;
     QLabel *current_temp_value_ = nullptr;
     TemperatureOverviewSwitchButton *output_switch_button_ = nullptr;
@@ -6207,9 +6253,13 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#temperatureOverviewValuePill[hasData=\"true\"] { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; color: @vv-text; }"
             "QLabel#temperatureOverviewValuePill[hasData=\"false\"] { background-color: @vv-surface-alt; border: 1px solid @vv-border; color: @vv-text-muted; }"
             "QPushButton#temperatureOverviewOutputSwitch { background-color: transparent; border: none; min-height: 56px; max-height: 56px; padding: 0px; margin: 0px; color: @vv-text; font-size: 13px; font-weight: 700; }"
-            "QToolButton#temperatureOverviewChannelButton { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text; font-size: 13px; font-weight: 700; padding: 1px 8px; }"
+            "QToolButton#temperatureOverviewChannelButton { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text; font-size: 13px; font-weight: 700; padding: 1px 0px; text-align: center; }"
             "QToolButton#temperatureOverviewChannelButton:hover, QToolButton#temperatureOverviewChannelButton:pressed { background-color: @vv-primary-subtle; border-color: @vv-primary-subtle-pressed; }"
             "QToolButton#temperatureOverviewChannelButton::menu-indicator { image: none; width: 0px; height: 0px; }"
+            "QMenu#temperatureOverviewChannelMenu { padding: 0px; }"
+            "QMenu#temperatureOverviewChannelMenu::item { min-width: 99px; max-width: 99px; min-height: 34px; max-height: 34px; padding: 9px 0px; margin: 0px; }"
+            "QPushButton#temperatureOverviewChannelMenuItem { background-color: transparent; border: none; border-radius: 8px; color: @vv-text; font-size: 13px; font-weight: 700; min-width: 99px; max-width: 99px; min-height: 34px; max-height: 34px; padding: 0px; margin: 0px; }"
+            "QPushButton#temperatureOverviewChannelMenuItem:hover, QPushButton#temperatureOverviewChannelMenuItem:pressed, QPushButton#temperatureOverviewChannelMenuItem[selected=\"true\"] { background-color: @vv-primary-subtle; color: @vv-primary; }"
             "QFrame#homeOverviewDivider { background-color: @vv-border; border: none; min-width: 1px; max-width: 1px; }"
             "QLabel#epsilonSectionLabel { color: @vv-text; background-color: @vv-surface-alt; border: none; border-right: 1px solid @vv-border; font-size: 14px; font-weight: 700; padding: 2px; }"
             "QLabel#valueLabel { font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 14px; font-weight: 600; }"

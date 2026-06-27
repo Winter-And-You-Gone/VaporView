@@ -63,6 +63,7 @@ constexpr int kMaxPayloadBytes = 16 * 1024 * 1024;
 constexpr int kPreferredPayloadBytes = 200000;
 constexpr int kTcpControlHeight = 36;
 constexpr int kTcpButtonHeight = kTcpControlHeight;
+constexpr int kTcpCompactButtonTextPadding = 56;
 constexpr int kTcpTitleBarHeight = kTcpControlHeight + 4;
 constexpr int kTcpTitleBarPrimarySpacing = 10;
 constexpr int kWaveDisplayIconSize = 28;
@@ -1612,8 +1613,8 @@ void TcpWavePanel::setupUi()
         const QFontMetrics metrics(peak_filter_button_->font());
         const int width = std::max({
             134,
-            metrics.horizontalAdvance(QStringLiteral("Search:999999-999999 / Exclude Range")) + 34,
-            metrics.horizontalAdvance(QStringLiteral("峰值搜索:999999-999999 / 排除区间")) + 34
+            metrics.horizontalAdvance(QStringLiteral("Search:999999-999999 / Exclude Range")) + kTcpCompactButtonTextPadding,
+            metrics.horizontalAdvance(QStringLiteral("峰值搜索:999999-999999 / 排除区间")) + kTcpCompactButtonTextPadding
         });
         peak_filter_button_->setFixedWidth(width);
     }
@@ -1753,8 +1754,8 @@ void TcpWavePanel::setEnglish(bool english)
     if (peak_title_label_)
     {
         const QString titleText = english
-            ? QString("Normalized Second Harmonic Peak Trend (latest %1 frames)").arg(kPeakTrendFrameWindow)
-            : QString("归一化二次谐波峰值趋势（最近%1帧）").arg(kPeakTrendFrameWindow);
+            ? QStringLiteral("Normalized Second Harmonic Peak Trend")
+            : QStringLiteral("归一化二次谐波峰值趋势");
         peak_title_label_->setText(titleText);
         peak_title_label_->setToolTip(titleText);
     }
@@ -1802,6 +1803,7 @@ void TcpWavePanel::changeEvent(QEvent *event)
         event->type() == QEvent::StyleChange)
     {
         updateWaveDisplayModeIcon();
+        updatePeakFilterButtonText();
     }
 }
 
@@ -1925,7 +1927,7 @@ void TcpWavePanel::updatePeakFilterButtonText()
     peak_filter_button_->setText(text);
     peak_filter_button_->setToolTip(text);
     const QFontMetrics metrics(peak_filter_button_->font());
-    peak_filter_button_->setFixedWidth(std::clamp(metrics.horizontalAdvance(text) + 34, 134, 360));
+    peak_filter_button_->setFixedWidth(std::clamp(metrics.horizontalAdvance(text) + kTcpCompactButtonTextPadding, 168, 420));
 }
 
 float TcpWavePanel::currentWaveformPeakValue(const QVector<float>& samples) const

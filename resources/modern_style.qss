@@ -462,7 +462,8 @@ QToolButton#temperatureOverviewChannelButton {
     color: @vv-text;
     font-size: 13px;
     font-weight: 700;
-    padding: 1px 8px;
+    padding: 1px 0px;
+    text-align: center;
 }
 
 QToolButton#temperatureOverviewChannelButton:hover,
@@ -475,6 +476,41 @@ QToolButton#temperatureOverviewChannelButton::menu-indicator {
     image: none;
     width: 0px;
     height: 0px;
+}
+
+QMenu#temperatureOverviewChannelMenu {
+    padding: 0px;
+}
+
+QMenu#temperatureOverviewChannelMenu::item {
+    min-width: 99px;
+    max-width: 99px;
+    min-height: 34px;
+    max-height: 34px;
+    padding: 9px 0px;
+    margin: 0px;
+}
+
+QPushButton#temperatureOverviewChannelMenuItem {
+    background-color: transparent;
+    border: none;
+    border-radius: 8px;
+    color: @vv-text;
+    font-size: 13px;
+    font-weight: 700;
+    min-width: 99px;
+    max-width: 99px;
+    min-height: 34px;
+    max-height: 34px;
+    padding: 0px;
+    margin: 0px;
+}
+
+QPushButton#temperatureOverviewChannelMenuItem:hover,
+QPushButton#temperatureOverviewChannelMenuItem:pressed,
+QPushButton#temperatureOverviewChannelMenuItem[selected="true"] {
+    background-color: @vv-primary-subtle;
+    color: @vv-primary;
 }
 
 QFrame#homeOverviewDivider {

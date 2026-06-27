@@ -64,6 +64,35 @@ void testCsvViewportUsesNeutralBackground(SessionViewerWindow& viewer)
     require(base.saturation() < 24 || VaporView::isDarkThemeEnabled(), "CSV empty viewport is not tinted blue");
 }
 
+void testCsvSelectionUsesThemeAccent(SessionViewerWindow& viewer, bool dark)
+{
+    auto *table = viewer.findChild<QTableWidget *>(QStringLiteral("sessionViewerCsvTable"));
+    require(table != nullptr, "session viewer CSV table exists for selection theme");
+
+    const QColor actualHighlight = table->palette().color(QPalette::Highlight);
+    const QColor expectedHighlight = VaporView::appThemeColor(VaporView::AppThemeColor::Primary, dark);
+    require(actualHighlight.name() == expectedHighlight.name(),
+            dark ? "CSV dark selection uses orange theme accent"
+                 : "CSV light selection uses blue theme accent");
+
+    const QColor actualText = table->palette().color(QPalette::HighlightedText);
+    const QColor expectedText = dark
+        ? VaporView::appThemeColor(VaporView::AppThemeColor::TableText, false)
+        : VaporView::appThemeColor(VaporView::AppThemeColor::TextInverse, false);
+    require(actualText.name() == expectedText.name(), "CSV selection text keeps contrast against accent background");
+
+    if (dark)
+    {
+        require(actualHighlight.red() > actualHighlight.blue() + 24,
+                "CSV dark selection accent is orange-tinted");
+    }
+    else
+    {
+        require(actualHighlight.blue() > actualHighlight.red() + 48,
+                "CSV light selection accent is blue-tinted");
+    }
+}
+
 void testWaveformEmptyPlotIsNotRed(SessionViewerWindow& viewer)
 {
     auto *plot = viewer.findChild<QWidget *>(QStringLiteral("sessionViewerWaveformPlot"));
@@ -92,16 +121,34 @@ int main(int argc, char **argv)
     app.setProperty(VaporView::kAppDarkThemeProperty, false);
     app.setPalette(VaporView::appThemePalette(false));
 
-    SessionViewerWindow viewer;
-    viewer.resize(1280, 800);
-    viewer.show();
-    processEventsFor(300);
+    {
+        SessionViewerWindow viewer;
+        viewer.resize(1280, 800);
+        viewer.show();
+        processEventsFor(300);
 
-    testCsvViewportUsesNeutralBackground(viewer);
-    testWaveformEmptyPlotIsNotRed(viewer);
+        testCsvViewportUsesNeutralBackground(viewer);
+        testCsvSelectionUsesThemeAccent(viewer, false);
+        testWaveformEmptyPlotIsNotRed(viewer);
 
-    viewer.close();
-    processEventsFor(100);
+        viewer.close();
+        processEventsFor(100);
+    }
+
+    app.setProperty(VaporView::kAppDarkThemeProperty, true);
+    app.setPalette(VaporView::appThemePalette(true));
+    {
+        SessionViewerWindow viewer;
+        viewer.resize(1280, 800);
+        viewer.show();
+        processEventsFor(300);
+
+        testCsvSelectionUsesThemeAccent(viewer, true);
+
+        viewer.close();
+        processEventsFor(100);
+    }
+
     std::cout << "session_viewer_theme_test passed\n";
     return 0;
 }
