@@ -449,8 +449,13 @@ constexpr int kHomeOverviewSplitterHandleWidth = 8;
 constexpr const char *kHomeOverviewSplitterInitializedProperty = "_vv_home_overview_splitter_initialized";
 constexpr int kTcpWaveCardMinHeight = 430;
 constexpr int kCompactTcpWaveCardMinHeight = 560;
-constexpr int kAppSidebarIconOnlyBaseWidth = 56;
+constexpr int kAppSidebarIconOnlyBaseWidth = 64;
 constexpr int kAppSidebarFullBaseWidth = 122;
+constexpr int kAppSidebarVisualPadding = 8;
+constexpr int kAppSidebarTopBottomPadding = 6;
+constexpr int kAppSidebarButtonHeight = 48;
+constexpr int kAppSidebarFullIconSize = 20;
+constexpr int kAppSidebarCompactIconSize = 22;
 constexpr int kMainCardResizeHandleHeight = 3;
 constexpr int kEnvStatusIconSize = 18;
 constexpr int kEpsilonSideTitleWidth = 24;
@@ -6191,8 +6196,8 @@ void MainWindow::loadModernStyleSheet()
             "QMainWindow { background-color: @vv-surface; }"
             "QWidget#appCentralWidget, QWidget#mainCardsPane, QFrame#appSidebar, QStackedWidget#mainPageStack, QWidget#temperaturePage, QWidget#deviceConfigPage, QWidget#logSidePanel, QMainWindow#sessionViewerWindow, QWidget#sessionViewerCentralWidget, QWidget#sessionViewerViewport, QWidget#sessionViewerContentPane, QScrollArea#mainCardsScrollArea, QScrollArea#sessionViewerScrollArea, QWidget#mainCardsViewport, QScrollArea#mainCardsScrollArea > QWidget, QScrollArea#mainCardsScrollArea > QWidget > QWidget, QScrollArea#sessionViewerScrollArea > QWidget, QScrollArea#sessionViewerScrollArea > QWidget > QWidget, QSplitter#appLayoutSplitter, QSplitter#mainContentSplitter, QSplitter#homeOverviewSplitter, QSplitter#homeOverviewSplitter > QWidget, QSplitter#sessionViewerContentSplitter { background-color: @vv-surface; }"
             "QFrame#appSidebar { background-color: @vv-surface; border-right: 1px solid @vv-border; }"
-            "QPushButton#appSidebarButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-weight: 600; padding: 6px 8px; text-align: left; }"
-            "QPushButton#appSidebarButton[_vv_sidebar_compact=\"true\"] { padding: 6px; text-align: center; }"
+            "QPushButton#appSidebarButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-weight: 600; min-height: 34px; max-height: 34px; padding: 6px 8px; text-align: left; }"
+            "QPushButton#appSidebarButton[_vv_sidebar_compact=\"true\"] { min-height: 46px; max-height: 46px; padding: 0px; text-align: center; }"
             "QPushButton#appSidebarButton:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
             "QPushButton#appSidebarButton:checked { background-color: @vv-primary; border-color: @vv-primary; color: @vv-white; }"
             "QLabel#pageTitleLabel { color: @vv-text; font-size: 18px; font-weight: 700; }"
@@ -6409,7 +6414,7 @@ int MainWindow::minimumLogSidePanelWidth() const
 
 int MainWindow::appSidebarIconOnlyWidth() const
 {
-    return std::max(48, scalePixels(kAppSidebarIconOnlyBaseWidth));
+    return std::max(56, scalePixels(kAppSidebarIconOnlyBaseWidth));
 }
 
 int MainWindow::appSidebarDefaultWidth() const
@@ -6477,6 +6482,8 @@ void MainWindow::updateAppSidebarButtonTexts()
         button->setStatusTip(label);
         button->setAccessibleName(label);
         button->setProperty(kSidebarCompactProperty, compact);
+        const int iconSize = scalePixels(compact ? kAppSidebarCompactIconSize : kAppSidebarFullIconSize);
+        button->setIconSize(QSize(iconSize, iconSize));
         if (button->style())
         {
             button->style()->unpolish(button);
@@ -9706,7 +9713,10 @@ void MainWindow::setupCentralWidget()
 
     auto *main_h_layout = new QHBoxLayout(central_widget_);
     main_h_layout->setSpacing(0);
-    main_h_layout->setContentsMargins(8, 8, 8, 8);
+    main_h_layout->setContentsMargins(kAppSidebarVisualPadding,
+                                      kAppSidebarVisualPadding,
+                                      kAppSidebarVisualPadding,
+                                      kAppSidebarVisualPadding);
 
     main_page_stack_ = new QStackedWidget(central_widget_);
     main_page_stack_->setObjectName(QStringLiteral("mainPageStack"));
@@ -9748,7 +9758,10 @@ void MainWindow::setupCentralWidget()
     app_sidebar_->setMinimumWidth(0);
     app_sidebar_->setMaximumWidth(QWIDGETSIZE_MAX);
     auto *sidebarLayout = new QVBoxLayout(app_sidebar_);
-    sidebarLayout->setContentsMargins(6, 6, 6, 6);
+    sidebarLayout->setContentsMargins(0,
+                                      kAppSidebarTopBottomPadding,
+                                      kAppSidebarVisualPadding,
+                                      kAppSidebarTopBottomPadding);
     sidebarLayout->setSpacing(6);
     app_nav_button_group_ = new QButtonGroup(this);
     app_nav_button_group_->setExclusive(true);
@@ -9760,8 +9773,8 @@ void MainWindow::setupCentralWidget()
         button->setCheckable(true);
         button->setMinimumWidth(0);
         button->setMaximumWidth(QWIDGETSIZE_MAX);
-        button->setFixedHeight(44);
-        button->setIconSize(QSize(18, 18));
+        button->setFixedHeight(kAppSidebarButtonHeight);
+        button->setIconSize(QSize(kAppSidebarFullIconSize, kAppSidebarFullIconSize));
         button->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         button->setToolTip(text);
         button->setStatusTip(text);
@@ -9831,9 +9844,12 @@ void MainWindow::setupCentralWidget()
     app_layout_splitter_->setStretchFactor(1, 1);
     {
         QSettings settings("VaporView", "MainWindow");
-        const int initialAppSidebarWidth = std::max(0, settings.value(
+        const int restoredAppSidebarWidth = std::max(0, settings.value(
             QStringLiteral("app_sidebar_width"),
             appSidebarDefaultWidth()).toInt());
+        const int initialAppSidebarWidth = snappedAppSidebarWidth(restoredAppSidebarWidth);
+        app_sidebar_mode_ = appSidebarModeForWidth(initialAppSidebarWidth);
+        updateAppSidebarButtonTexts();
         app_layout_splitter_->setSizes({initialAppSidebarWidth, 1600});
     }
     connect(app_layout_splitter_, &QSplitter::splitterMoved, this, [this]() {

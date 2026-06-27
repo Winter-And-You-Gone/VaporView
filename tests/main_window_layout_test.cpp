@@ -91,11 +91,47 @@ int main(int argc, char **argv)
     app.setOrganizationName(QStringLiteral("VaporViewLayoutTest"));
     app.setApplicationName(QStringLiteral("main_window_layout_test"));
 
+    {
+        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+        settings.setValue(QStringLiteral("app_sidebar_width"), 56);
+        settings.sync();
+    }
+
     MainWindow window;
     window.setWindowTitle(QStringLiteral("VaporView"));
     window.resize(1280, 800);
     window.show();
     processEventsFor(500);
+
+    auto *appSidebar = window.findChild<QWidget *>(QStringLiteral("appSidebar"));
+    require(appSidebar != nullptr, "app sidebar exists");
+    QPushButton *checkedSidebarButton = nullptr;
+    const QList<QPushButton*> sidebarButtons =
+        window.findChildren<QPushButton *>(QStringLiteral("appSidebarButton"));
+    for (QPushButton *button : sidebarButtons)
+    {
+        if (button->isChecked())
+        {
+            checkedSidebarButton = button;
+            break;
+        }
+    }
+    require(checkedSidebarButton != nullptr, "checked compact sidebar button exists");
+    require(checkedSidebarButton->text().isEmpty(),
+            "compact sidebar hides navigation text");
+    require(checkedSidebarButton->height() >= 48,
+            "compact sidebar button keeps a 48px hit target");
+    require(checkedSidebarButton->width() >= 56,
+            "compact sidebar button has wider icon-stage");
+    require(checkedSidebarButton->iconSize().width() >= 22 &&
+                checkedSidebarButton->iconSize().height() >= 22,
+            "compact sidebar icon is larger");
+    const int visualLeftPadding =
+        appSidebar->mapTo(&window, QPoint(0, 0)).x() + checkedSidebarButton->x();
+    const int visualRightPadding =
+        appSidebar->width() - checkedSidebarButton->x() - checkedSidebarButton->width();
+    require(std::abs(visualLeftPadding - visualRightPadding) <= 1,
+            "compact sidebar button has balanced visible left and right padding");
 
     auto *homeOverviewSplitter = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
     require(homeOverviewSplitter != nullptr, "home overview splitter exists");
