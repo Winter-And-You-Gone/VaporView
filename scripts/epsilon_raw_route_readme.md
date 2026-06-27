@@ -1,6 +1,6 @@
 # EPSILON 原始轨迹解析脚本说明
 
-`tools/epsilon_raw_route.py` 用于从 VaporView 记录的 EPSILON 原始数据中解析轨迹点，计算沿记录轨迹的路线距离，导出 CSV，并生成可在浏览器打开的 OpenStreetMap HTML 地图。
+`scripts/epsilon_raw_route.py` 用于从 VaporView 记录的 EPSILON 原始数据中解析轨迹点，计算沿记录轨迹的路线距离，导出 CSV，并生成可在浏览器打开的 OpenStreetMap HTML 地图。
 
 脚本只依赖 Python 标准库。
 
@@ -18,7 +18,7 @@
 导出 CSV 和地图，并计算第 1 点到第 300 点之间的路线距离：
 
 ```powershell
-python tools/epsilon_raw_route.py "X:\path\to\session_2026-xx-xx_xx-xx-xx" `
+python scripts/epsilon_raw_route.py "X:\path\to\session_2026-xx-xx_xx-xx-xx" `
   --output-csv exports\epsilon_route.csv `
   --map-html exports\epsilon_route.html `
   --start-index 1 `
@@ -28,7 +28,7 @@ python tools/epsilon_raw_route.py "X:\path\to\session_2026-xx-xx_xx-xx-xx" `
 过滤指定点，例如过滤第 12 点以及第 20 到 25 点：
 
 ```powershell
-python tools/epsilon_raw_route.py raw\epsilon.dat `
+python scripts/epsilon_raw_route.py raw\epsilon.dat `
   --output-csv exports\epsilon_route_filtered.csv `
   --map-html exports\epsilon_route_filtered.html `
   --exclude-point 12,20-25
@@ -37,7 +37,7 @@ python tools/epsilon_raw_route.py raw\epsilon.dat `
 按质量过滤，例如只保留 RTK_FLOAT 及以上 fix，且水平精度不超过 0.2 m：
 
 ```powershell
-python tools/epsilon_raw_route.py raw\epsilon.dat `
+python scripts/epsilon_raw_route.py raw\epsilon.dat `
   --min-fix RTK_FLOAT `
   --max-hacc 0.2 `
   --output-csv exports\epsilon_route_rtk.csv
@@ -133,7 +133,7 @@ HTML 会从 OpenStreetMap 在线加载瓦片；打开地图时需要浏览器能
 可以运行：
 
 ```powershell
-python tools/epsilon_raw_route.py --self-test
+python scripts/epsilon_raw_route.py --self-test
 ```
 
 自检会生成临时统一 raw DAT、解析 3 个模拟 `0x5C` 点、导出 CSV 和 HTML，并确认路线距离为正。

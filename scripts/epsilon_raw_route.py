@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Parse EPSILON FDILink raw data, export route CSV, and draw an HTML map.
+"""Parse VaporView EPSILON FDILink raw data, export route CSV, and draw an HTML map.
 
 The parser follows VaporView's existing raw DAT and EPSILON FDILink decoding
 rules from RawDataParserWindow.cpp / data_collector.cpp:
