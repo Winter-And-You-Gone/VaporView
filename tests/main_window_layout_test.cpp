@@ -121,11 +121,11 @@ int main(int argc, char **argv)
             "compact sidebar hides navigation text");
     require(checkedSidebarButton->height() >= 48,
             "compact sidebar button keeps a 48px hit target");
-    require(checkedSidebarButton->width() >= 56,
-            "compact sidebar button has wider icon-stage");
-    require(checkedSidebarButton->iconSize().width() >= 22 &&
-                checkedSidebarButton->iconSize().height() >= 22,
-            "compact sidebar icon is larger");
+    require(checkedSidebarButton->width() == checkedSidebarButton->height(),
+            "compact sidebar option is a strict rounded square");
+    require(checkedSidebarButton->iconSize().width() >= 28 &&
+                checkedSidebarButton->iconSize().height() >= 28,
+            "compact sidebar lucide icon is visually larger");
     const int visualLeftPadding =
         appSidebar->mapTo(&window, QPoint(0, 0)).x() + checkedSidebarButton->x();
     const int visualRightPadding =
