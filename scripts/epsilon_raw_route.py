@@ -1232,6 +1232,8 @@ def write_map_html(
       active: [],
       nearestIndex: null
     };
+    let dragState = null;
+    let dragOffset = { x: 0, y: 0 };
 
     providerEl.value = INITIAL.provider;
     startEl.value = INITIAL.startIndex;
@@ -1260,6 +1262,13 @@ def write_map_html(
       const x = (longitude + 180.0) / 360.0 * size;
       const y = (0.5 - Math.log((1.0 + Math.sin(lat)) / (1.0 - Math.sin(lat))) / (4.0 * Math.PI)) * size;
       return { x, y };
+    }
+    function worldToLatLon(worldX, worldY, zoom) {
+      const size = worldSize(zoom);
+      const lon = worldX / size * 360.0 - 180.0;
+      const y = 0.5 - worldY / size;
+      const lat = Math.atan(Math.sinh(Math.PI * 2 * y)) * 180.0 / Math.PI;
+      return { latitude: lat, longitude: lon };
     }
 
     function pointToScreen(point) {
@@ -1531,7 +1540,47 @@ def write_map_html(
       state.nearestIndex = index;
       render();
     });
+    // drag-to-pan
+    const DRAG_THRESHOLD = 4;
+    const wMap = document.getElementById("map");
+    wMap.addEventListener("mousedown", event => {
+      if (event.button !== 0) return;
+      dragState = { startX: event.clientX, startY: event.clientY, origX: state.centerWorld ? state.centerWorld.x : null, origY: state.centerWorld ? state.centerWorld.y : null, moved: false };
+      dragOffset = { x: 0, y: 0 };
+    });
+    window.addEventListener("mousemove", event => {
+      if (!dragState || dragState.origX === null) return;
+      const dx = event.clientX - dragState.startX;
+      const dy = event.clientY - dragState.startY;
+      if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) dragState.moved = true;
+      if (!dragState.moved) return;
+      const tx = dx - dragOffset.x;
+      const ty = dy - dragOffset.y;
+      dragOffset.x = dx; dragOffset.y = dy;
+      const tiles = document.getElementById("tiles");
+      tiles.style.transform = "translate(" + tx + "px," + ty + "px)";
+      tiles.style.transition = "none";
+      const svg = document.querySelector("svg");
+      svg.style.transform = "translate(" + tx + "px," + ty + "px)";
+      svg.style.transition = "none";
+    });
+    window.addEventListener("mouseup", event => {
+      if (!dragState) return;
+      if (dragState.moved) {
+        const dx = event.clientX - dragState.startX;
+        const dy = event.clientY - dragState.startY;
+        state.centerWorld = { x: dragState.origX - dx, y: dragState.origY - dy };
+        const ll = worldToLatLon(state.centerWorld.x, state.centerWorld.y, state.zoom);
+        state.centerLat = ll.latitude;
+        state.centerLon = ll.longitude;
+        document.getElementById("tiles").style.transform = "";
+        document.querySelector("svg").style.transform = "";
+        render();
+      }
+      dragState = null;
+    });
     document.querySelector("svg").addEventListener("click", event => {
+      if (dragState && dragState.moved) return;
       const rect = event.currentTarget.getBoundingClientRect();
       const x = (event.clientX - rect.left) * INITIAL.width / rect.width;
       const y = (event.clientY - rect.top) * INITIAL.height / rect.height;
@@ -1858,6 +1907,7 @@ def browser_app_html() -> str:
       active: [],
       nearestIndex: null
     };
+    let dragState = null;
 
     function setStatus(message, ok = true) {
       statusEl.innerHTML = "<span class='" + (ok ? "ok" : "error") + "'>" + escapeHtml(message) + "</span>";
@@ -2303,15 +2353,22 @@ def browser_app_html() -> str:
       return TILE_SIZE * Math.pow(2, zoom);
     }
 
-    function latLonToWorld(latitude, longitude, zoom) {
-      const lat = clampLatitude(latitude) * Math.PI / 180.0;
-      const size = worldSize(zoom);
-      const x = (longitude + 180.0) / 360.0 * size;
-      const y = (0.5 - Math.log((1.0 + Math.sin(lat)) / (1.0 - Math.sin(lat))) / (4.0 * Math.PI)) * size;
-      return { x, y };
-    }
+function latLonToWorld(latitude, longitude, zoom) {
+	      const lat = clampLatitude(latitude) * Math.PI / 180.0;
+	      const size = worldSize(zoom);
+	      const x = (longitude + 180.0) / 360.0 * size;
+	      const y = (0.5 - Math.log((1.0 + Math.sin(lat)) / (1.0 - Math.sin(lat))) / (4.0 * Math.PI)) * size;
+	      return { x, y };
+	    }
+	    function worldToLatLon(worldX, worldY, zoom) {
+	      const size = worldSize(zoom);
+	      const lon = worldX / size * 360.0 - 180.0;
+	      const y = 0.5 - worldY / size;
+	      const lat = Math.atan(Math.sinh(Math.PI * 2 * y)) * 180.0 / Math.PI;
+	      return { latitude: lat, longitude: lon };
+	    }
 
-    function mapSize() {
+	    function mapSize() {
       const rect = svgEl.getBoundingClientRect();
       return { width: Math.max(1, rect.width), height: Math.max(1, rect.height) };
     }
@@ -2590,7 +2647,49 @@ window.addEventListener("resize", () => { state.centerWorld = null; fitTo(state.
       state.nearestIndex = index;
       render();
     });
+    // drag-to-pan
+    const DRAG_THRESHOLD = 4;
+    let dragOffset = { x: 0, y: 0 };
+    const mapContainer = svgEl.parentElement;
+    mapContainer.addEventListener("mousedown", event => {
+      if (event.button !== 0) return;
+      dragState = { startX: event.clientX, startY: event.clientY, origX: state.centerWorld ? state.centerWorld.x : null, origY: state.centerWorld ? state.centerWorld.y : null, moved: false };
+      dragOffset = { x: 0, y: 0 };
+    });
+    window.addEventListener("mousemove", event => {
+      if (!dragState || dragState.origX === null) return;
+      const dx = event.clientX - dragState.startX;
+      const dy = event.clientY - dragState.startY;
+      if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) dragState.moved = true;
+      if (!dragState.moved) return;
+      // translate tiles and SVG content visually during drag
+      const tx = dx - dragOffset.x;
+      const ty = dy - dragOffset.y;
+      dragOffset.x = dx;
+      dragOffset.y = dy;
+      const tiles = document.getElementById("tiles");
+      tiles.style.transform = "translate(" + tx + "px," + ty + "px)";
+      tiles.style.transition = "none";
+      svgEl.style.transform = "translate(" + tx + "px," + ty + "px)";
+      svgEl.style.transition = "none";
+    });
+    window.addEventListener("mouseup", event => {
+      if (!dragState) return;
+      if (dragState.moved) {
+        const dx = event.clientX - dragState.startX;
+        const dy = event.clientY - dragState.startY;
+        state.centerWorld = { x: dragState.origX - dx, y: dragState.origY - dy };
+        const ll = worldToLatLon(state.centerWorld.x, state.centerWorld.y, state.zoom);
+        state.centerLat = ll.latitude;
+        state.centerLon = ll.longitude;
+        document.getElementById("tiles").style.transform = "";
+        svgEl.style.transform = "";
+        render();
+      }
+      dragState = null;
+    });
     svgEl.addEventListener("click", event => {
+      if (dragState && dragState.moved) return;
       const rect = svgEl.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
