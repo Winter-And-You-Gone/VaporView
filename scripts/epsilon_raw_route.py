@@ -1851,6 +1851,8 @@ def browser_app_html() -> str:
       zoom: 16,
       minZoom: 1,
       maxZoom: 18,
+      centerLat: null,
+      centerLon: null,
       centerWorld: null,
       excluded: new Set(),
       active: [],
@@ -2383,7 +2385,8 @@ def browser_app_html() -> str:
 
     function fitTo(list) {
       if (!list.length) {
-        state.centerWorld = latLonToWorld(31.2304, 121.4737, state.zoom);
+        state.centerLat = 31.2304; state.centerLon = 121.4737;
+        state.centerWorld = latLonToWorld(state.centerLat, state.centerLon, state.zoom);
         return;
       }
       state.zoom = chooseZoomFor(list);
@@ -2391,7 +2394,9 @@ def browser_app_html() -> str:
       const maxLat = Math.max(...list.map(point => point.latitude_deg));
       const minLon = Math.min(...list.map(point => point.longitude_deg));
       const maxLon = Math.max(...list.map(point => point.longitude_deg));
-      state.centerWorld = latLonToWorld((minLat + maxLat) / 2, (minLon + maxLon) / 2, state.zoom);
+      state.centerLat = (minLat + maxLat) / 2;
+      state.centerLon = (minLon + maxLon) / 2;
+      state.centerWorld = latLonToWorld(state.centerLat, state.centerLon, state.zoom);
     }
 
     function providerLayers(provider) {
