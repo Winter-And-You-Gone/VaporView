@@ -4681,13 +4681,8 @@ public:
             const bool requested = !output_switch_button_->switchChecked();
             if (output_enabled_callback_)
             {
-                const bool accepted = output_enabled_callback_(currentChannelNumber(), requested);
-                if (!accepted)
-                {
-                    return;
-                }
+                output_enabled_callback_(currentChannelNumber(), requested);
             }
-            output_switch_button_->setSwitchChecked(requested, true);
         });
         summaryLayout->addWidget(output_switch_button_);
 
@@ -4761,7 +4756,7 @@ public:
         refreshChannelUi();
     }
 
-    void setOutputEnabledCallback(std::function<bool(quint8, bool)> callback)
+    void setOutputEnabledCallback(std::function<void(quint8, bool)> callback)
     {
         output_enabled_callback_ = std::move(callback);
     }
@@ -4847,7 +4842,8 @@ private:
             measuredValid);
         if (output_switch_button_)
         {
-            output_switch_button_->setSwitchChecked(valid && channel.output_enabled, false);
+            const bool outputEnabled = valid && channel.output_enabled;
+            output_switch_button_->setSwitchChecked(outputEnabled, output_switch_button_->switchChecked() != outputEnabled);
         }
         if (plot_)
         {
@@ -4866,7 +4862,7 @@ private:
     TemperatureTrendPlotWidget *plot_ = nullptr;
     VaporView::TemperatureControllerData latest_data_;
     std::array<QVector<double>, 2> measured_temperature_history_{};
-    std::function<bool(quint8, bool)> output_enabled_callback_;
+    std::function<void(quint8, bool)> output_enabled_callback_;
     int selected_channel_index_ = 0;
     bool is_english_ = false;
 };
@@ -10999,14 +10995,13 @@ void MainWindow::setupDataPanels()
                 {
                     temperature_overview_panel_->updateData(current_temperature_controller_);
                 }
-                return false;
+                return;
             }
         }
         VaporView::TemperatureControllerCommand command;
         command.channel = channel;
         command.output_enabled = enabled;
         sendRemoteTemperatureCommand(VaporView::CommandId::SetTemperatureOutputEnabled, command);
-        return true;
     });
     temperatureOverviewLayout->addWidget(temperature_overview_panel_, 1);
 
