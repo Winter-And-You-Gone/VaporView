@@ -365,6 +365,62 @@ function decodePoints(records,onProgress){
 }
 
 // ===================================================================
+// COORDINATE TRANSFORM: WGS-84 → GCJ-02
+// ===================================================================
+// 高德和天地图使用 GCJ-02（火星坐标系），EPSILON 输出的是 WGS-84。
+// 在渲染地图时，当底图为 GCJ-02 类（高德/天地图）时需要对轨迹点做偏移转换。
+// 算法来源：https://on4wp7.codeplex.com/SourceControl/changeset/view/21455#EvilTransform.cs
+const GCJ_A = 6378245.0;
+const GCJ_EE = 0.00669342162296594323;
+
+function gcj02Offset(wgsLat, wgsLon) {
+  let dLat = transformLat(wgsLon - 105.0, wgsLat - 35.0);
+  let dLon = transformLon(wgsLon - 105.0, wgsLat - 35.0);
+  const radLat = wgsLat / 180.0 * Math.PI;
+  let magic = Math.sin(radLat);
+  magic = 1 - GCJ_EE * magic * magic;
+  const sqrtMagic = Math.sqrt(magic);
+  dLat = (dLat * 180.0) / ((GCJ_A * (1 - GCJ_EE)) / (magic * sqrtMagic) * Math.PI);
+  dLon = (dLon * 180.0) / (GCJ_A / sqrtMagic * Math.cos(radLat) * Math.PI);
+  return { lat: wgsLat + dLat, lon: wgsLon + dLon };
+}
+
+function transformLat(x, y) {
+  let ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x));
+  ret += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0;
+  ret += (20.0 * Math.sin(y * Math.PI) + 40.0 * Math.sin(y / 3.0 * Math.PI)) * 2.0 / 3.0;
+  ret += (160.0 * Math.sin(y / 12.0 * Math.PI) + 320.0 * Math.sin(y * Math.PI / 30.0)) * 2.0 / 3.0;
+  return ret;
+}
+
+function transformLon(x, y) {
+  let ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x));
+  ret += (20.0 * Math.sin(6.0 * x * Math.PI) + 20.0 * Math.sin(2.0 * x * Math.PI)) * 2.0 / 3.0;
+  ret += (20.0 * Math.sin(x * Math.PI) + 40.0 * Math.sin(x / 3.0 * Math.PI)) * 2.0 / 3.0;
+  ret += (150.0 * Math.sin(x / 12.0 * Math.PI) + 300.0 * Math.sin(x / 30.0 * Math.PI)) * 2.0 / 3.0;
+  return ret;
+}
+
+// 返回坐标点数组的 GCJ-02 版本（创建副本不修改原始数据）
+function toGcj02(points) {
+  return points.map(p => {
+    const g = gcj02Offset(p.latitude_deg, p.longitude_deg);
+    return { ...p, latitude_deg: g.lat, longitude_deg: g.lon };
+  });
+}
+
+// 当前底图是否使用 GCJ-02 坐标系
+function isGcjProvider() {
+  const pid = document.getElementById('providerSelect').value;
+  return pid === 'tianditu_vec' || pid === 'tianditu_img' || pid === 'amap_vec' || pid === 'amap_img';
+}
+
+// 获取用于地图显示的坐标点（按当前底图自动做 WGS-84 → GCJ-02 转换）
+function displayPoints() {
+  return isGcjProvider() ? toGcj02(gPoints) : gPoints;
+}
+
+// ===================================================================
 // SELECT SOURCE / FILTERS / DISTANCE
 // ===================================================================
 function selectSource(cands,req){
@@ -511,23 +567,24 @@ function renderMap(){
   if(gHoverCircle){gMap.removeLayer(gHoverCircle);gHoverCircle=null}
   for(const m of gMarkers)gMap.removeLayer(m);gMarkers=[];
   if(!gPoints.length)return;
+  const dps=displayPoints();
 
-  const ll=gPoints.map(p=>[p.latitude_deg,p.longitude_deg]);
+  const ll=dps.map(p=>[p.latitude_deg,p.longitude_deg]);
   gTrackLine=L.polyline(ll,{color:'#999',weight:2,opacity:0.6}).addTo(gMap);
 
-  const si=parseInt(document.getElementById('startIndex').value,10)||1,ei=parseInt(document.getElementById('endIndex').value,10)||gPoints.length;
-  const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(gPoints.length,Math.max(si,ei));
+  const si=parseInt(document.getElementById('startIndex').value,10)||1,ei=parseInt(document.getElementById('endIndex').value,10)||dps.length;
+  const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(dps.length,Math.max(si,ei));
   if(lo<hi){
     const seg=ll.slice(lo,hi);
     gTrackSelected=L.polyline(seg,{color:'#e67300',weight:3,opacity:0.9}).addTo(gMap);
-    const sp=gPoints[lo];gStartMarker=L.circleMarker([sp.latitude_deg,sp.longitude_deg],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gMap);
+    const sp=dps[lo];gStartMarker=L.circleMarker([sp.latitude_deg,sp.longitude_deg],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gMap);
     gStartMarker.bindTooltip('起点 #'+(lo+1),{direction:'top'});
-    const ep=gPoints[hi-1];gEndMarker=L.circleMarker([ep.latitude_deg,ep.longitude_deg],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gMap);
+    const ep=dps[hi-1];gEndMarker=L.circleMarker([ep.latitude_deg,ep.longitude_deg],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gMap);
     gEndMarker.bindTooltip('终点 #'+hi,{direction:'top'});
   }
 
-  for(let i=0;i<gPoints.length;i++){
-    const p=gPoints[i],m=L.circleMarker([p.latitude_deg,p.longitude_deg],{radius:5,color:'#4a90d9',fillColor:'#4a90d9',fillOpacity:0.3,weight:1,opacity:0.4});
+  for(let i=0;i<dps.length;i++){
+    const p=dps[i],m=L.circleMarker([p.latitude_deg,p.longitude_deg],{radius:5,color:'#4a90d9',fillColor:'#4a90d9',fillOpacity:0.3,weight:1,opacity:0.4});
     m.pointIndex=i;m.on('mouseover',()=>hoverPoint(i));m.on('mouseout',()=>unhoverPoint());m.on('click',()=>clickTableRow(i));
     m.addTo(gMap);gMarkers.push(m);
   }
@@ -535,10 +592,12 @@ function renderMap(){
 
 function hoverPoint(idx){
   if(gHoverCircle){gMap.removeLayer(gHoverCircle);gHoverCircle=null}
-  const p=gPoints[idx];
-  gHoverCircle=L.circleMarker([p.latitude_deg,p.longitude_deg],{radius:10,color:'#f39c12',fillColor:'#f1c40f',fillOpacity:0.7,weight:2}).addTo(gMap);
-  const fix=p.gnss_fix||'—',h=isFinN(p.height_m)?p.height_m.toFixed(2)+' m':'—',cd=isFinN(p.cumulative_distance_m)?p.cumulative_distance_m.toFixed(3)+' m':'—';
-  const tip=L.tooltip({direction:'top',offset:L.point(0,-10)}).setContent('#'+(idx+1)+' | 纬度:'+p.latitude_deg.toFixed(7)+' 经度:'+p.longitude_deg.toFixed(7)+' | 高程:'+h+' | Fix:'+fix+' | 累积:'+cd);
+  const p=isGcjProvider()?gcj02Offset(gPoints[idx].latitude_deg,gPoints[idx].longitude_deg):gPoints[idx];
+  const lat=isGcjProvider()?p.lat:p.latitude_deg;
+  const lon=isGcjProvider()?p.lon:p.longitude_deg;
+  gHoverCircle=L.circleMarker([lat,lon],{radius:10,color:'#f39c12',fillColor:'#f1c40f',fillOpacity:0.7,weight:2}).addTo(gMap);
+  const fix=gPoints[idx].gnss_fix||'—',h=isFinN(gPoints[idx].height_m)?gPoints[idx].height_m.toFixed(2)+' m':'—',cd=isFinN(gPoints[idx].cumulative_distance_m)?gPoints[idx].cumulative_distance_m.toFixed(3)+' m':'—';
+  const tip=L.tooltip({direction:'top',offset:L.point(0,-10)}).setContent('#'+(idx+1)+' | 纬度:'+gPoints[idx].latitude_deg.toFixed(7)+' 经度:'+gPoints[idx].longitude_deg.toFixed(7)+' | 高程:'+h+' | Fix:'+fix+' | 累积:'+cd);
   gHoverCircle.bindTooltip(tip).openTooltip();
   highlightTableRow(idx);
 }
@@ -547,10 +606,13 @@ function unhoverPoint(){if(gHoverCircle){gMap.removeLayer(gHoverCircle);gHoverCi
 function zoomToFitSelected(){
   if(!gPoints.length)return;
   if(gTrackSelected)gMap.fitBounds(gTrackSelected.getBounds(),{padding:[30,30]});
-  else gMap.fitBounds(gPoints.map(p=>[p.latitude_deg,p.longitude_deg]),{padding:[30,30]});
+  else{
+    const dps=displayPoints();
+    gMap.fitBounds(dps.map(p=>[p.latitude_deg,p.longitude_deg]),{padding:[30,30]});
+  }
 }
 function zoomToPoint(idx){
-  if(idx<0||idx>=gPoints.length)return;const p=gPoints[idx];gMap.setView([p.latitude_deg,p.longitude_deg],17);
+  if(idx<0||idx>=gPoints.length)return;const dps=displayPoints(),p=dps[idx];gMap.setView([p.latitude_deg,p.longitude_deg],17);
 }
 
 // ===================================================================
@@ -618,16 +680,17 @@ function renderDistance(){
   document.getElementById('startIndex').value=si;document.getElementById('endIndex').value=ei;
   const segEl=document.getElementById('segmentDist'),totEl=document.getElementById('totalDist');
   if(!n){segEl.textContent='—';totEl.textContent='—';return}
+  const dps=displayPoints();
   // Redraw segment overlays
   if(gTrackSelected){gMap.removeLayer(gTrackSelected);gTrackSelected=null}
   if(gStartMarker){gMap.removeLayer(gStartMarker);gStartMarker=null}
   if(gEndMarker){gMap.removeLayer(gEndMarker);gEndMarker=null}
-  const ll=gPoints.map(p=>[p.latitude_deg,p.longitude_deg]),lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(n,Math.max(si,ei));
+  const ll=dps.map(p=>[p.latitude_deg,p.longitude_deg]),lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(n,Math.max(si,ei));
   if(lo<hi){
     gTrackSelected=L.polyline(ll.slice(lo,hi),{color:'#e67300',weight:3,opacity:0.9}).addTo(gMap);
-    const sp=gPoints[lo];gStartMarker=L.circleMarker([sp.latitude_deg,sp.longitude_deg],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gMap);
+    const sp=dps[lo];gStartMarker=L.circleMarker([sp.latitude_deg,sp.longitude_deg],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gMap);
     gStartMarker.bindTooltip('起点 #'+(lo+1),{direction:'top'});
-    const ep=gPoints[hi-1];gEndMarker=L.circleMarker([ep.latitude_deg,ep.longitude_deg],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gMap);
+    const ep=dps[hi-1];gEndMarker=L.circleMarker([ep.latitude_deg,ep.longitude_deg],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gMap);
     gEndMarker.bindTooltip('终点 #'+hi,{direction:'top'});
   }
   const total=n?gPoints[n-1].cumulative_distance_m:0,segment=routeDist(gPoints,si,ei);
@@ -673,7 +736,7 @@ async function loadFromFile(file){
     recalc();
     updateProgress(100,'完成');await sleep(300);hideProgress();
     if(gPoints.length){
-      gMap.fitBounds(gPoints.map(p=>[p.latitude_deg,p.longitude_deg]),{padding:[40,40]});
+      gMap.fitBounds(displayPoints().map(p=>[p.latitude_deg,p.longitude_deg]),{padding:[40,40]});
       setStatus('✓ '+file.name+'：'+gPoints.length+' 轨迹点，'+gStats.rawRecords+' 条记录，'+gStats.validFrames+' 有效帧');
     }else{
       setStatus('✓ 解析完成，但所有点被过滤掉了',false);
