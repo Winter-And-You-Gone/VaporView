@@ -450,7 +450,8 @@ const TD_LAYERS = {
 };
 
 function makeTdTile(cfg) {
-  const layer = L.tileLayer('', { maxZoom: 20 });
+  // maxNativeZoom=20: 天地图 WMTS 最高原生级别；之后放大由 Leaflet 本地拉伸瓦片，不请求新瓦片。
+  const layer = L.tileLayer('', { maxNativeZoom: 20, maxZoom: 22 });
   layer.getTileUrl = function(coords) {
     const z=coords.z,x=((coords.x%Math.pow(2,z))+Math.pow(2,z))%Math.pow(2,z),y=coords.y;
     const shard=Math.abs(x*31+y*17+cfg.layer.length*13)%8;
@@ -469,17 +470,18 @@ function switchProvider(){
   const pid=document.getElementById('providerSelect').value,key=document.getElementById('tiandituKey').value.trim()||'5a0d3293c900281a37417b2e4d4d3676',cfg=TD_PROVIDERS[pid];
   for(const l of gLayers)gMap.removeLayer(l);gLayers=[];
   if(pid==='osm'){
-    gLayers.push(L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(gMap));
+    // OSM 原生最高 z=19，超过则拉伸；地图最大放大到 z=22，与天地图一致
+    gLayers.push(L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxNativeZoom:19,maxZoom:22,attribution:'&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(gMap));
   }else{
     const base=makeTdTile({endpoint:TD_LAYERS[cfg.base].endpoint,layer:TD_LAYERS[cfg.base].layer,key});base.addTo(gMap);gLayers.push(base);
     const anno=makeTdTile({endpoint:TD_LAYERS[cfg.anno].endpoint,layer:TD_LAYERS[cfg.anno].layer,key});anno.addTo(gMap);gLayers.push(anno);
   }
-  gMap.setMaxZoom(pid==='osm'?19:20);
+  gMap.setMaxZoom(22);
   if(gPoints.length)renderMap();
 }
 
 function initMap(){
-  gMap=L.map('map',{center:[39.9,116.3],zoom:12,zoomControl:true,attributionControl:true,maxZoom:20});
+  gMap=L.map('map',{center:[39.9,116.3],zoom:12,zoomControl:true,attributionControl:true,maxZoom:22});
   switchProvider();
 }
 
