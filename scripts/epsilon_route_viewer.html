@@ -91,6 +91,8 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
           <select id="providerSelect" onchange="switchProvider()">
             <option value="tianditu_vec">天地图矢量</option>
             <option value="tianditu_img">天地图卫星</option>
+            <option value="amap_vec">高德矢量</option>
+            <option value="amap_img">高德卫星</option>
             <option value="osm">OpenStreetMap</option>
           </select>
         </div>
@@ -469,6 +471,8 @@ function makeTdTile(cfg) {
 const TD_PROVIDERS={
   tianditu_vec:{base:'vec_w',anno:'cva_w'},
   tianditu_img:{base:'img_w',anno:'cia_w'},
+  amap_vec:{},
+  amap_img:{},
   osm:{}
 };
 
@@ -476,8 +480,13 @@ function switchProvider(){
   const pid=document.getElementById('providerSelect').value,key=document.getElementById('tiandituKey').value.trim()||'5a0d3293c900281a37417b2e4d4d3676',cfg=TD_PROVIDERS[pid];
   for(const l of gLayers)gMap.removeLayer(l);gLayers=[];
   if(pid==='osm'){
-    // OSM 原生最高 z=19；超过则拉伸到 z=24
     gLayers.push(L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxNativeZoom:19,maxZoom:24,attribution:'&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(gMap));
+  }else if(pid==='amap_vec'){
+    // 高德矢量瓦片，subdomains 01~04
+    gLayers.push(L.tileLayer('https://webrd{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',{subdomains:['01','02','03','04'],maxNativeZoom:18,maxZoom:24,attribution:'&copy; 高德'}).addTo(gMap));
+  }else if(pid==='amap_img'){
+    // 高德卫星影像
+    gLayers.push(L.tileLayer('https://webst{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',{subdomains:['01','02','03','04'],maxNativeZoom:18,maxZoom:24,attribution:'&copy; 高德'}).addTo(gMap));
   }else{
     const base=makeTdTile({endpoint:TD_LAYERS[cfg.base].endpoint,layer:TD_LAYERS[cfg.base].layer,key});base.addTo(gMap);gLayers.push(base);
     const anno=makeTdTile({endpoint:TD_LAYERS[cfg.anno].endpoint,layer:TD_LAYERS[cfg.anno].layer,key});anno.addTo(gMap);gLayers.push(anno);
