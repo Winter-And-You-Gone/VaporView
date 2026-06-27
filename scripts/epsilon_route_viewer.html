@@ -410,9 +410,9 @@ function toGcj02(points) {
 }
 
 // 当前底图是否使用 GCJ-02 坐标系
-// 高德矢量瓦片（style=8）使用 WGS-84；卫星瓦片（style=6）使用 GCJ-02
 function isGcjProvider() {
-  return document.getElementById('providerSelect').value === 'amap_img';
+  const pid = document.getElementById('providerSelect').value;
+  return pid === 'amap_vec' || pid === 'amap_img';
 }
 
 // 获取用于地图显示的坐标点（按当前底图自动做 WGS-84 → GCJ-02 转换）
