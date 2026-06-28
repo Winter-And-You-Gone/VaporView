@@ -177,6 +177,19 @@ int main(int argc, char **argv)
     require(checkedSidebarButton->iconSize().width() >= 28 &&
                 checkedSidebarButton->iconSize().height() >= 28,
             "compact sidebar lucide icon is visually larger");
+    QPushButton *temperatureNavButton = nullptr;
+    for (QPushButton *button : sidebarButtons)
+    {
+        if (button->accessibleName() == QStringLiteral("温控") ||
+            button->accessibleName() == QStringLiteral("Thermal"))
+        {
+            temperatureNavButton = button;
+            break;
+        }
+    }
+    require(temperatureNavButton != nullptr, "temperature sidebar button exists");
+    require(temperatureNavButton->property("_vv_sidebar_icon_name").toString() == QStringLiteral("thermometer"),
+            "temperature sidebar button uses the home overview thermometer icon");
     const int visualLeftPadding =
         appSidebar->mapTo(&window, QPoint(0, 0)).x() + checkedSidebarButton->x();
     const int visualRightPadding =

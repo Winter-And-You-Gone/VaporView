@@ -10018,7 +10018,7 @@ void MainWindow::setupCentralWidget()
     };
     home_nav_btn_ = createNavButton(QStringLiteral("首页"), QStringLiteral("square-activity"));
     device_config_nav_btn_ = createNavButton(QStringLiteral("设备配置"), QStringLiteral("sliders-vertical"));
-    temperature_nav_btn_ = createNavButton(QStringLiteral("温控"), QStringLiteral("timer"));
+    temperature_nav_btn_ = createNavButton(QStringLiteral("温控"), QStringLiteral("thermometer"));
     app_nav_button_group_->addButton(home_nav_btn_, 0);
     app_nav_button_group_->addButton(device_config_nav_btn_, 1);
     app_nav_button_group_->addButton(temperature_nav_btn_, 2);
