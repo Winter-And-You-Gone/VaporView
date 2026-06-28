@@ -795,6 +795,24 @@ QScrollBar::sub-line:horizontal {
     background-color: @vv-surface-sunken;
 }
 
+QScrollArea#mainCardsScrollArea QScrollBar:vertical,
+QScrollArea#mainCardsScrollArea QScrollBar:horizontal,
+QScrollArea#mainCardsScrollArea QScrollBar::add-page:vertical,
+QScrollArea#mainCardsScrollArea QScrollBar::sub-page:vertical,
+QScrollArea#mainCardsScrollArea QScrollBar::add-page:horizontal,
+QScrollArea#mainCardsScrollArea QScrollBar::sub-page:horizontal,
+QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical,
+QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical,
+QScrollArea#mainCardsScrollArea QScrollBar::add-line:horizontal,
+QScrollArea#mainCardsScrollArea QScrollBar::sub-line:horizontal {
+    background-color: @vv-surface;
+}
+
+QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical,
+QScrollArea#mainCardsScrollArea QScrollBar::handle:horizontal {
+    border: 2px solid @vv-surface;
+}
+
 /* 滚动区域 */
 QScrollArea {
     background-color: transparent;

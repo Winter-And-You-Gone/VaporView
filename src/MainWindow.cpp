@@ -2342,6 +2342,27 @@ QLabel#statusIndicator[status="warning"] {
 )");
 }
 
+QString mainCardsScrollBarBackgroundStyleSheet(bool dark)
+{
+    const QString background = dark ? QStringLiteral("@vv-window") : QStringLiteral("@vv-surface");
+    return QStringLiteral(
+        "QScrollArea#mainCardsScrollArea QScrollBar:vertical, "
+        "QScrollArea#mainCardsScrollArea QScrollBar:horizontal, "
+        "QScrollArea#mainCardsScrollArea QScrollBar::add-page:vertical, "
+        "QScrollArea#mainCardsScrollArea QScrollBar::sub-page:vertical, "
+        "QScrollArea#mainCardsScrollArea QScrollBar::add-page:horizontal, "
+        "QScrollArea#mainCardsScrollArea QScrollBar::sub-page:horizontal, "
+        "QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical, "
+        "QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical, "
+        "QScrollArea#mainCardsScrollArea QScrollBar::add-line:horizontal, "
+        "QScrollArea#mainCardsScrollArea QScrollBar::sub-line:horizontal { "
+        "background-color: %1; }"
+        "QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, "
+        "QScrollArea#mainCardsScrollArea QScrollBar::handle:horizontal { "
+        "border: 2px solid %1; }")
+        .arg(background);
+}
+
 #pragma pack(push, 1)
 struct UnifiedRawFileHeader
 {
@@ -6389,6 +6410,8 @@ void MainWindow::loadModernStyleSheet()
             "QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background-color: @vv-surface-sunken; border-radius: 6px; }"
             "QScrollBar::add-page:horizontal:hover, QScrollBar::sub-page:horizontal:hover, QScrollBar::add-page:horizontal:pressed, QScrollBar::sub-page:horizontal:pressed { background-color: @vv-surface-sunken; }"
             "QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0px; background-color: @vv-surface-sunken; }"
+            "QScrollArea#mainCardsScrollArea QScrollBar:vertical, QScrollArea#mainCardsScrollArea QScrollBar:horizontal, QScrollArea#mainCardsScrollArea QScrollBar::add-page:vertical, QScrollArea#mainCardsScrollArea QScrollBar::sub-page:vertical, QScrollArea#mainCardsScrollArea QScrollBar::add-page:horizontal, QScrollArea#mainCardsScrollArea QScrollBar::sub-page:horizontal, QScrollArea#mainCardsScrollArea QScrollBar::add-line:vertical, QScrollArea#mainCardsScrollArea QScrollBar::sub-line:vertical, QScrollArea#mainCardsScrollArea QScrollBar::add-line:horizontal, QScrollArea#mainCardsScrollArea QScrollBar::sub-line:horizontal { background-color: @vv-surface; }"
+            "QScrollArea#mainCardsScrollArea QScrollBar::handle:vertical, QScrollArea#mainCardsScrollArea QScrollBar::handle:horizontal { border: 2px solid @vv-surface; }"
             "QSplitter::handle { background-color: transparent; }"
             "QSplitter#appLayoutSplitter::handle:horizontal { width: 8px; background-color: transparent; }"
             "QSplitter#appLayoutSplitter::handle:horizontal:hover { background-color: transparent; }"
@@ -6431,11 +6454,17 @@ void MainWindow::loadModernStyleSheet()
 QString MainWindow::themedStyleSheet() const
 {
     const QString baseStyle = applyAppThemeTokens(base_style_sheet_, false);
+    const QString mainCardsScrollBarStyle =
+        applyAppThemeTokens(mainCardsScrollBarBackgroundStyleSheet(dark_theme_enabled_),
+                            dark_theme_enabled_);
     return dark_theme_enabled_
         ? baseStyle +
               applyAppThemeTokens(darkThemeStyleSheet(), true) +
+              mainCardsScrollBarStyle +
               applyAppThemeTokens(customTitleBarStyleSheet(true), true)
-        : baseStyle + applyAppThemeTokens(customTitleBarStyleSheet(false), false);
+        : baseStyle +
+              mainCardsScrollBarStyle +
+              applyAppThemeTokens(customTitleBarStyleSheet(false), false);
 }
 
 QString MainWindow::scaledStyleSheet(const QString& styleSheet) const
