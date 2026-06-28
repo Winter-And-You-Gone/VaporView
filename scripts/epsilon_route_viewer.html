@@ -327,7 +327,8 @@ function rAM(){
   const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(dps.length,Math.max(si,ei));
   var sw=Math.max(lw+1,3);
   if(lo<hi){const sp=dps[lo],ep=dps[hi-1];const segPath=dps.slice(lo,hi).map(p=>[p.lon,p.lat]);const sl=new AMap.Polyline({path:segPath,strokeWeight:sw,strokeColor:'#e67300',strokeOpacity:0.9});sl.setMap(gAMap);gAOl.push(sl);const sm=new AMap.Marker({position:[sp.lon,sp.lat],content:'<div style="background:#4caf50;width:16px;height:16px;border-radius:50%;border:3px solid #2a7d2a"></div>',offset:new AMap.Pixel(-8,-8)});sm.setMap(gAMap);gAOl.push(sm);const em=new AMap.Marker({position:[ep.lon,ep.lat],content:'<div style="background:#e74c3c;width:16px;height:16px;border-radius:50%;border:3px solid #c33"></div>',offset:new AMap.Pixel(-8,-8)});em.setMap(gAMap);gAOl.push(em)}
-  if(pr>0){for(let i=0;i<dps.length;i++){const p=dps[i],m=new AMap.CircleMarker({center:[p.lon,p.lat],radius:pr,fillColor:'#4a90d9',strokeColor:'#4a90d9',strokeWeight:1,fillOpacity:0.3});m.setMap(gAMap);gAOl.push(m);m.i=i;m.on('mouseover',()=>hP(i));m.on('mouseout',()=>uhP());m.on('click',()=>cTR(i))}}
+  // 高德引擎不画独立 CircularMarker（34k 对象卡死），轨迹线已足够看清路径
+  if(!gAMap._eD){gAMap._eD=true;gAMap.on('mousemove',function(e){var i=fNrst(e.lnglat.lat,e.lnglat.lng);if(i>=0)hP(i);else uhP()});gAMap.on('click',function(e){var i=fNrst(e.lnglat.lat,e.lnglat.lng);if(i>=0)cTR(i)})}
 }
 
 function hP(idx){
@@ -377,8 +378,7 @@ function rD(){
     const dps=apPts(gPts);
     const path=dps.map(p=>[p.lon,p.lat]);const fl=new AMap.Polyline({path,strokeWeight:2,strokeColor:'#999',strokeOpacity:0.6});fl.setMap(gAMap);gAOl.push(fl);
     const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(n,Math.max(si,ei));
-    if(lo<hi){const segPath=dps.slice(lo,hi).map(p=>[p.lon,p.lat]);const sp=dps[lo],ep=dps[hi-1];const sl=new AMap.Polyline({path:segPath,strokeWeight:3,strokeColor:'#e67300',strokeOpacity:0.9});sl.setMap(gAMap);gAOl.push(sl);const sm=new AMap.Marker({position:[sp.lon,sp.lat],content:'<div style="background:#4caf50;width:16px;height:16px;border-radius:50%;border:3px solid #2a7d2a"></div>',offset:new AMap.Pixel(-8,-8)});sm.setMap(gAMap);gAOl.push(sm);const em=new AMap.Marker({position:[ep.lon,ep.lat],content:'<div style="background:#e74c3c;width:16px;height:16px;border-radius:50%;border:3px solid #c33"></div>',offset:new AMap.Pixel(-8,-8)});em.setMap(gAMap);gAOl.push(em)}
-    for(let i=0;i<dps.length;i++){const p=dps[i],m=new AMap.CircleMarker({center:[p.lon,p.lat],radius:5,fillColor:'#4a90d9',strokeColor:'#4a90d9',strokeWeight:1,fillOpacity:0.3});m.setMap(gAMap);gAOl.push(m);m.i=i;m.on('mouseover',()=>hP(i));m.on('mouseout',()=>uhP());m.on('click',()=>cTR(i))}
+if(lo<hi){const segPath=dps.slice(lo,hi).map(p=>[p.lon,p.lat]);const sp=dps[lo],ep=dps[hi-1];const sl=new AMap.Polyline({path:segPath,strokeWeight:3,strokeColor:'#e67300',strokeOpacity:0.9});sl.setMap(gAMap);gAOl.push(sl);const sm=new AMap.Marker({position:[sp.lon,sp.lat],content:'<div style="background:#4caf50;width:16px;height:16px;border-radius:50%;border:3px solid #2a7d2a"></div>',offset:new AMap.Pixel(-8,-8)});sm.setMap(gAMap);gAOl.push(sm);const em=new AMap.Marker({position:[ep.lon,ep.lat],content:'<div style="background:#e74c3c;width:16px;height:16px;border-radius:50%;border:3px solid #c33"></div>',offset:new AMap.Pixel(-8,-8)});em.setMap(gAMap);gAOl.push(em)}
   }
   const total=n?gPts[n-1].cd:0,segment=rd(gPts,si,ei);
   se.textContent=isFinite(segment)?segment.toFixed(3)+' m':'—';te.textContent=isFinite(total)?total.toFixed(3)+' m':'—';
