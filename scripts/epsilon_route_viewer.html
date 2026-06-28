@@ -107,6 +107,7 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
       </div>
       <div class="dist-row">
         <span class="dist-label">线宽</span><input type="range" id="lineWeight" min="1" max="6" step="0.5" value="2" oninput="renM()" style="width:60px"> <span id="lwLabel" style="font-size:11px;color:#666">2</span>
+        <span class="dist-label">点径</span><input type="range" id="pointRadius" min="0" max="6" step="0.5" value="3" oninput="renM()" style="width:60px"> <span id="prLabel" style="font-size:11px;color:#666">3</span>
         <span id="zoomDisplay" style="font-size:11px;color:#888;margin-left:8px"></span>
         <div class="filter-item"><label>跳点(m)</label><input type="number" id="maxSegmentM" step="1" min="0" placeholder="不限" size="4" onchange="recalc()"></div>
         <div class="filter-item"><label>排除</label><input type="text" id="excludeIndices" placeholder="如5,8-10" size="8" onchange="recalc()"></div>
@@ -289,12 +290,13 @@ function rLM(){
   for(const m of gMk)gLMap.removeLayer(m);gMk=[];
   const ll=gPts.map(p=>[p.lat,p.lon]);
   var lw=parseFloat(document.getElementById('lineWeight').value)||2;gLW=lw;document.getElementById('lwLabel').textContent=lw;
+  var pr=parseFloat(document.getElementById('pointRadius').value)||0;document.getElementById('prLabel').textContent=pr;
   gTL=L.polyline(ll,{color:'#999',weight:lw,opacity:0.6}).addTo(gLMap);
   const si=parseInt(document.getElementById('startIndex').value,10)||1,ei=parseInt(document.getElementById('endIndex').value,10)||ll.length;
   const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(ll.length,Math.max(si,ei));
   var sw=Math.max(lw+1,3);
-  if(lo<hi){const s=ll.slice(lo,hi);gTS=L.polyline(s,{color:'#e67300',weight:sw,opacity:0.9}).addTo(gLMap);const sp=gPts[lo];gSM=L.circleMarker([sp.lat,sp.lon],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gLMap);gSM.bindTooltip('起点 #'+(lo+1),{direction:'top'});const ep=gPts[hi-1];gEM=L.circleMarker([ep.lat,ep.lon],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gLMap);gEM.bindTooltip('终点 #'+hi,{direction:'top'})}
-  for(let i=0;i<gPts.length;i++){const p=gPts[i],m=L.circleMarker([p.lat,p.lon],{radius:5,color:'#4a90d9',fillColor:'#4a90d9',fillOpacity:0.3,weight:1,opacity:0.4});m.i=i;m.on('mouseover',()=>hP(i));m.on('mouseout',()=>uhP());m.on('click',()=>cTR(i));m.addTo(gLMap);gMk.push(m)}
+  if(lo<hi){const s=ll.slice(lo,hi);gTS=L.polyline(s,{color:'#e67300',weight:sw,opacity:0.9}).addTo(gLMap);const sp=gPts[lo];gSM=L.circleMarker([sp.lat,sp.lon],{radius:Math.max(pr,5),color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gLMap);gSM.bindTooltip('起点 #'+(lo+1),{direction:'top'});const ep=gPts[hi-1];gEM=L.circleMarker([ep.lat,ep.lon],{radius:Math.max(pr,5),color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gLMap);gEM.bindTooltip('终点 #'+hi,{direction:'top'})}
+  if(pr>0){for(let i=0;i<gPts.length;i++){const p=gPts[i],m=L.circleMarker([p.lat,p.lon],{radius:pr,color:'#4a90d9',fillColor:'#4a90d9',fillOpacity:0.3,weight:1,opacity:0.4});m.i=i;m.on('mouseover',()=>hP(i));m.on('mouseout',()=>uhP());m.on('click',()=>cTR(i));m.addTo(gLMap);gMk.push(m)}}
 }
 
 function rAM(){
@@ -302,11 +304,14 @@ function rAM(){
   gAMap.clearMap();gAOl=[];gAH=null;
   const dps=apPts(gPts);
   const path=dps.map(p=>[p.lon,p.lat]);
-  const fl=new AMap.Polyline({path,strokeWeight:2,strokeColor:'#999',strokeOpacity:0.6});fl.setMap(gAMap);gAOl.push(fl);
+  var lw=parseFloat(document.getElementById('lineWeight').value)||2;document.getElementById('lwLabel').textContent=lw;
+  var pr=parseFloat(document.getElementById('pointRadius').value)||0;document.getElementById('prLabel').textContent=pr;
+  const fl=new AMap.Polyline({path,strokeWeight:lw,strokeColor:'#999',strokeOpacity:0.6});fl.setMap(gAMap);gAOl.push(fl);
   const si=parseInt(document.getElementById('startIndex').value,10)||1,ei=parseInt(document.getElementById('endIndex').value,10)||dps.length;
   const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(dps.length,Math.max(si,ei));
-  if(lo<hi){const sp=dps[lo],ep=dps[hi-1];const segPath=dps.slice(lo,hi).map(p=>[p.lon,p.lat]);const sl=new AMap.Polyline({path:segPath,strokeWeight:3,strokeColor:'#e67300',strokeOpacity:0.9});sl.setMap(gAMap);gAOl.push(sl);const sm=new AMap.Marker({position:[sp.lon,sp.lat],content:'<div style="background:#4caf50;width:16px;height:16px;border-radius:50%;border:3px solid #2a7d2a"></div>',offset:new AMap.Pixel(-8,-8)});sm.setMap(gAMap);gAOl.push(sm);const em=new AMap.Marker({position:[ep.lon,ep.lat],content:'<div style="background:#e74c3c;width:16px;height:16px;border-radius:50%;border:3px solid #c33"></div>',offset:new AMap.Pixel(-8,-8)});em.setMap(gAMap);gAOl.push(em)}
-  for(let i=0;i<dps.length;i++){const p=dps[i],m=new AMap.CircleMarker({center:[p.lon,p.lat],radius:5,fillColor:'#4a90d9',strokeColor:'#4a90d9',strokeWeight:1,fillOpacity:0.3});m.setMap(gAMap);gAOl.push(m);m.i=i;m.on('mouseover',()=>hP(i));m.on('mouseout',()=>uhP());m.on('click',()=>cTR(i))}
+  var sw=Math.max(lw+1,3);
+  if(lo<hi){const sp=dps[lo],ep=dps[hi-1];const segPath=dps.slice(lo,hi).map(p=>[p.lon,p.lat]);const sl=new AMap.Polyline({path:segPath,strokeWeight:sw,strokeColor:'#e67300',strokeOpacity:0.9});sl.setMap(gAMap);gAOl.push(sl);const sm=new AMap.Marker({position:[sp.lon,sp.lat],content:'<div style="background:#4caf50;width:16px;height:16px;border-radius:50%;border:3px solid #2a7d2a"></div>',offset:new AMap.Pixel(-8,-8)});sm.setMap(gAMap);gAOl.push(sm);const em=new AMap.Marker({position:[ep.lon,ep.lat],content:'<div style="background:#e74c3c;width:16px;height:16px;border-radius:50%;border:3px solid #c33"></div>',offset:new AMap.Pixel(-8,-8)});em.setMap(gAMap);gAOl.push(em)}
+  if(pr>0){for(let i=0;i<dps.length;i++){const p=dps[i],m=new AMap.CircleMarker({center:[p.lon,p.lat],radius:pr,fillColor:'#4a90d9',strokeColor:'#4a90d9',strokeWeight:1,fillOpacity:0.3});m.setMap(gAMap);gAOl.push(m);m.i=i;m.on('mouseover',()=>hP(i));m.on('mouseout',()=>uhP());m.on('click',()=>cTR(i))}}
 }
 
 function hP(idx){
