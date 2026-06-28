@@ -228,10 +228,10 @@ function mkTD(cfg){const l=L.tileLayer('',{maxNativeZoom:18,maxZoom:24});l.getTi
 function isAP(){return document.getElementById('providerSelect').value==='amap_vec'||document.getElementById('providerSelect').value==='amap_img'}
 // 缩放等级显示
 function updZoom(){
-  var z='';
-  if(gEngine==='leaflet'&&gLMap)z=gLMap.getZoom();
-  else if(gEngine==='amap'&&gAMap&&gARdy){try{z=gAMap.getZoom()}catch(e){}}
-  document.getElementById('zoomDisplay').textContent=z?'缩放 '+z:'';
+  var z='',tz='';
+  if(gEngine==='leaflet'&&gLMap){z=gLMap.getZoom();tz=Math.min(z,18)}
+  else if(gEngine==='amap'&&gAMap&&gARdy){try{z=gAMap.getZoom();tz=z}catch(e){}}
+  document.getElementById('zoomDisplay').textContent=z?'缩放 '+z+(gEngine==='leaflet'?' 瓦片z='+tz:''):'';
 }
 function dm(){
   if(gAMap){gAMap.destroy();gAMap=null;gARdy=false}
@@ -251,11 +251,9 @@ function initMap(){
     var opts={zoom:13,center:[116.3,39.9],zooms:[3,22]};
     if(pid==='amap_img')opts.layers=[new AMap.TileLayer.Satellite()];
     gAMap=new AMap.Map(el,opts);
-    gAMap.on('complete',function(){
-      gARdy=true;
-      gAMap.on('mapmoveend',updZoom);gAMap.on('zoomend',updZoom);
-      if(gPts.length){renM();var p0=apPts(gPts.slice(0,1))[0];if(p0&&p0.lon)gAMap.setZoomAndCenter(15,[p0.lon,p0.lat])}
-    });
+    gAMap.on('complete',function(){gARdy=true;updZoom();fitAMap()});
+    // 轮询备用：地图加载可能已错过 complete 事件
+    setTimeout(function(){if(!gARdy&&gPts.length){gARdy=true;updZoom();fitAMap()}},500);
   }else{
     gLMap=L.map(el,{center:[39.9,116.3],zoom:12,zoomControl:true,attributionControl:true,maxZoom:24,preferCanvas:true});
     gLMap.on('zoomend',updZoom);
@@ -270,6 +268,10 @@ function initMap(){
 }
 
 function switchProvider(){dm();initMap()}
+function fitAMap(){
+  if(!gPts.length||!gAMap)return;
+  renM();var p0=apPts(gPts.slice(0,1))[0];if(p0&&p0.lon)setTimeout(function(){try{gAMap.setZoomAndCenter(15,[p0.lon,p0.lat])}catch(e){}},200);
+}
 
 // == RENDER ======================================================================
 function renM(){if(!gPts.length)return;if(gEngine==='leaflet')rLM();else rAM()}
