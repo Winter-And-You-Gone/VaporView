@@ -37,6 +37,7 @@
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -49,6 +50,7 @@ class QSplitter;
 class QToolButton;
 class QButtonGroup;
 class QStackedWidget;
+class QCheckBox;
 class TcpWavePanel;
 class SessionViewerWindow;
 class EpsilonPanel;
@@ -611,6 +613,10 @@ private:
     QString remoteTelemetrySummaryText() const;
     void updateRemoteTelemetrySummaryLabel();
     void updateEnvironmentStatusIcons(bool lidarValid, bool ptbValid, bool hmpValid);
+    void syncDeviceConfigEpsilonPanelFromSettings();
+    void setDeviceConfigEpsilonPacketRates(const std::map<uint8_t, int>& packetRates);
+    std::map<uint8_t, int> deviceConfigEpsilonPacketRates() const;
+    void saveDeviceConfigEpsilonPacketRates(bool applyAfterSave);
     void sendRemoteDeviceCommand(VaporView::CommandId command, VaporView::SkyDeviceId device);
     void requestRemoteWaveTcpConnection(bool connectRequested);
     void sendRemotePeakSearchRange(quint32 startIndex, quint32 endIndex);
@@ -628,7 +634,6 @@ private:
         QWidget *page = nullptr;
         QLabel *page_title_lbl = nullptr;
         QLabel *serial_title_lbl = nullptr;
-        QLabel *actions_title_lbl = nullptr;
         QLabel *data_source_mode_lbl = nullptr;
         QLabel *sky_telemetry_transport_lbl = nullptr;
         QLabel *sky_telemetry_port_lbl = nullptr;
@@ -648,9 +653,17 @@ private:
         QWidget *sky_telemetry_row_widget = nullptr;
         QFrame *data_telemetry_summary_card = nullptr;
         QLabel *data_telemetry_summary_lbl = nullptr;
+        QFrame *epsilon_config_card = nullptr;
+        QLabel *epsilon_config_title_lbl = nullptr;
+        QLabel *epsilon_config_hint_lbl = nullptr;
+        QCheckBox *epsilon_packet_custom_check = nullptr;
+        QVector<QLabel *> epsilon_packet_rate_labels;
+        QVector<QComboBox *> epsilon_packet_rate_combos;
+        QPushButton *epsilon_packet_defaults_btn = nullptr;
+        QPushButton *epsilon_packet_grouped_btn = nullptr;
+        QPushButton *epsilon_packet_save_btn = nullptr;
         QPushButton *auto_detect_ports_btn = nullptr;
         QPushButton *sky_device_config_btn = nullptr;
-        QPushButton *epsilon_packet_rates_btn = nullptr;
         QPushButton *epsilon_rtcm_port_btn = nullptr;
         QPushButton *epsilon_reconfigure_btn = nullptr;
         QPushButton *rtk_config_btn = nullptr;

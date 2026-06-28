@@ -473,6 +473,60 @@ int main(int argc, char **argv)
     require(deviceRateCombo != nullptr && deviceRateCombo->width() <= 92,
             "device configuration rate combo is sized for 9999");
 
+    QFrame *epsilonConfigCard = nullptr;
+    for (QFrame *card : deviceConfigPage->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard")))
+    {
+        const QList<QComboBox*> packetCombos = card->findChildren<QComboBox *>();
+        int packetRateComboCount = 0;
+        for (QComboBox *combo : packetCombos)
+        {
+            if (combo->property("epsilonPacketId").isValid())
+            {
+                ++packetRateComboCount;
+            }
+        }
+        if (packetRateComboCount == 8)
+        {
+            epsilonConfigCard = card;
+            break;
+        }
+    }
+    require(epsilonConfigCard != nullptr, "device configuration page embeds all EPSILON packet-rate controls");
+    require(epsilonConfigCard->isVisible(), "device EPSILON configuration card is visible in local mode");
+    const QRect epsilonConfigBounds = epsilonConfigCard->rect().adjusted(-1, -1, 1, 1);
+    for (QComboBox *combo : epsilonConfigCard->findChildren<QComboBox *>())
+    {
+        if (!combo->isVisible() || !combo->property("epsilonPacketId").isValid())
+        {
+            continue;
+        }
+        const QRect comboRect(combo->mapTo(epsilonConfigCard, QPoint(0, 0)), combo->size());
+        require(epsilonConfigBounds.contains(comboRect),
+                "device EPSILON packet-rate combos stay inside the embedded card");
+        require(combo->width() >= combo->fontMetrics().horizontalAdvance(combo->currentText()) + 44,
+                "device EPSILON packet-rate combo text is not clipped");
+    }
+    for (const QString& buttonText : {QStringLiteral("保存并应用"),
+                                      QStringLiteral("配置RTCM串口"),
+                                      QStringLiteral("重新配置输出")})
+    {
+        bool foundButton = false;
+        for (QPushButton *button : epsilonConfigCard->findChildren<QPushButton *>())
+        {
+            if (button->isVisible() && button->text() == buttonText)
+            {
+                const QRect buttonRect(button->mapTo(epsilonConfigCard, QPoint(0, 0)), button->size());
+                require(epsilonConfigBounds.contains(buttonRect),
+                        "device EPSILON command buttons stay inside the embedded card");
+                require(button->width() >= button->fontMetrics().horizontalAdvance(button->text()) + 32,
+                        "device EPSILON command button text is not clipped");
+                foundButton = true;
+                break;
+            }
+        }
+        require(foundButton, "device EPSILON configuration card exposes expected command buttons");
+    }
+
     const QList<QFrame*> deviceSummaryCards =
         deviceConfigPage->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
     require(!deviceSummaryCards.isEmpty(), "device configuration telemetry summary card exists");
