@@ -270,7 +270,9 @@ function initMap(){
 function switchProvider(){dm();initMap()}
 function fitAMap(){
   if(!gPts.length||!gAMap)return;
-  renM();var p0=apPts(gPts.slice(0,1))[0];if(p0&&p0.lon)setTimeout(function(){try{gAMap.setZoomAndCenter(15,[p0.lon,p0.lat])}catch(e){}},200);
+  renM();
+  var p0=apPts(gPts.slice(0,1))[0];
+  if(p0&&p0.lon)setTimeout(function(){try{gAMap.setZoomAndCenter(15,[p0.lon,p0.lat])}catch(e){}},500);
 }
 
 // == RENDER ======================================================================
@@ -299,11 +301,14 @@ function rLM(){
 function fNrst(lat,lng){
   if(!gPts.length)return-1;
   var b=-1,bD=Infinity;
+  // 根据缩放级别调整吸附半径：zoom>=15时2m，否则10m
+  var z=15;try{if(gEngine==='leaflet')z=gLMap.getZoom();else if(gARdy)z=gAMap.getZoom()}catch(e){}
+  var thr=z>=15?2e-5:5e-5;
   for(var i=0;i<gPts.length;i++){
     var p=gPts[i],dl=lat-p.lat,dn=lng-p.lon,d=dl*dl+dn*dn;
     if(d<bD){bD=d;b=i}
   }
-  return bD<0.0001?b:-1;
+  return bD<thr?b:-1;
 }
 
 function rAM(){
@@ -423,6 +428,8 @@ function rc(){
   const se=document.getElementById('startIndex'),ee=document.getElementById('endIndex');
   if(gPts.length){if(parseInt(se.value,10)>gPts.length||parseInt(se.value,10)<1)se.value=1;if(parseInt(ee.value,10)>gPts.length||parseInt(ee.value,10)<1)ee.value=gPts.length}else{se.value=1;ee.value=1}
   renM();rT();rD();rS();
+  // 如果有数据且地图已就绪但尚未适配视野（如先切高德后加载数据），触发一次适配
+  if(gPts.length&&gARdy&&gEngine==='amap')fitAMap();
 }
 
 // == FILE LOADING ================================================================
