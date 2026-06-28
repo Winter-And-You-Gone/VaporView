@@ -13,6 +13,8 @@
 #include <QMetaObject>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QScrollArea>
+#include <QScrollBar>
 #include <QSplitter>
 #include <QSettings>
 #include <QTemporaryDir>
@@ -403,6 +405,91 @@ int main(int argc, char **argv)
     require(peakFilterButton != nullptr, "peak search filter button exists");
     require(peakFilterButton->width() >= peakFilterButton->fontMetrics().horizontalAdvance(peakFilterButton->text()) + 48,
             "peak search filter button has enough horizontal room for its label");
+
+    QPushButton *deviceConfigNavButton = nullptr;
+    for (QPushButton *button : sidebarButtons)
+    {
+        if (button->accessibleName() == QStringLiteral("设备配置") ||
+            button->accessibleName() == QStringLiteral("Device"))
+        {
+            deviceConfigNavButton = button;
+            break;
+        }
+    }
+    require(deviceConfigNavButton != nullptr, "device configuration sidebar button exists");
+    clickWidget(deviceConfigNavButton, 150);
+    activateLayouts(&window);
+    auto *deviceConfigPage = window.findChild<QWidget *>(QStringLiteral("deviceConfigPage"));
+    require(deviceConfigPage != nullptr && deviceConfigPage->isVisible(),
+            "device configuration page can be opened");
+    auto *deviceConfigScrollArea =
+        deviceConfigPage->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
+    require(deviceConfigScrollArea != nullptr, "device configuration scroll area exists");
+    require(deviceConfigScrollArea->horizontalScrollBar() != nullptr &&
+                deviceConfigScrollArea->horizontalScrollBar()->maximum() == 0,
+            "device configuration page fits horizontally at default window size");
+
+    const QStringList removedDevicePageActions = {
+        QStringLiteral("刷新"),
+        QStringLiteral("连接"),
+        QStringLiteral("取消"),
+        QStringLiteral("断开"),
+        QStringLiteral("Refresh"),
+        QStringLiteral("Connect"),
+        QStringLiteral("Cancel"),
+        QStringLiteral("Disconnect"),
+    };
+    for (QPushButton *button : deviceConfigPage->findChildren<QPushButton *>())
+    {
+        if (!button->isVisible())
+        {
+            continue;
+        }
+        require(!removedDevicePageActions.contains(button->text()),
+                "device configuration page omits title-bar serial actions");
+        require(button->focusPolicy() == Qt::TabFocus,
+                "device configuration buttons do not take focus on mouse click");
+    }
+
+    QComboBox *devicePortCombo = nullptr;
+    QComboBox *deviceRateCombo = nullptr;
+    for (QComboBox *combo : deviceConfigPage->findChildren<QComboBox *>())
+    {
+        if (!combo->isVisible() || !combo->isEditable())
+        {
+            continue;
+        }
+        if (combo->currentText() == QStringLiteral("COM9"))
+        {
+            devicePortCombo = combo;
+        }
+        else if (combo->currentText() == QStringLiteral("5"))
+        {
+            deviceRateCombo = combo;
+        }
+    }
+    require(devicePortCombo != nullptr && devicePortCombo->width() <= 112,
+            "device configuration serial combo is sized for COM999");
+    require(deviceRateCombo != nullptr && deviceRateCombo->width() <= 92,
+            "device configuration rate combo is sized for 9999");
+
+    const QList<QFrame*> deviceSummaryCards =
+        deviceConfigPage->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
+    require(!deviceSummaryCards.isEmpty(), "device configuration telemetry summary card exists");
+    for (const QFrame *summaryCard : deviceSummaryCards)
+    {
+        if (!summaryCard->isVisible())
+        {
+            continue;
+        }
+        const int summaryRight =
+            summaryCard->mapTo(deviceConfigScrollArea->viewport(), QPoint(summaryCard->width(), 0)).x();
+        require(summaryRight <= deviceConfigScrollArea->viewport()->width() + 2,
+                "device configuration telemetry summary fits inside the viewport");
+    }
+
+    clickWidget(checkedSidebarButton, 150);
+    activateLayouts(&window);
 
     auto *dataGroup = window.findChild<QGroupBox *>(QStringLiteral("sensorRowContainer"));
     require(dataGroup != nullptr, "sensor row container exists");
