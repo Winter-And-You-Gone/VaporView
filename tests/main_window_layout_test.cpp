@@ -9,6 +9,7 @@
 #include <QLabel>
 #include <QLayout>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QPushButton>
 #include <QSplitter>
 #include <QSettings>
@@ -58,6 +59,50 @@ void activateLayouts(QWidget *widget)
     for (QWidget *child : children)
     {
         activateLayouts(child);
+    }
+}
+
+void clickWidget(QWidget *widget, int waitMs = 50)
+{
+    require(widget != nullptr, "click widget exists");
+    const QPoint localCenter = widget->rect().center();
+    const QPoint globalCenter = widget->mapToGlobal(localCenter);
+    QMouseEvent press(QEvent::MouseButtonPress,
+                      localCenter,
+                      globalCenter,
+                      Qt::LeftButton,
+                      Qt::LeftButton,
+                      Qt::NoModifier);
+    QCoreApplication::sendEvent(widget, &press);
+    QMouseEvent release(QEvent::MouseButtonRelease,
+                        localCenter,
+                        globalCenter,
+                        Qt::LeftButton,
+                        Qt::NoButton,
+                        Qt::NoModifier);
+    QCoreApplication::sendEvent(widget, &release);
+    if (waitMs > 0)
+    {
+        processEventsFor(waitMs);
+    }
+}
+
+void hoverWidget(QWidget *widget, bool hovered, int waitMs = 50)
+{
+    require(widget != nullptr, "hover widget exists");
+    if (hovered)
+    {
+        QEvent enter(QEvent::Enter);
+        QCoreApplication::sendEvent(widget, &enter);
+    }
+    else
+    {
+        QEvent leave(QEvent::Leave);
+        QCoreApplication::sendEvent(widget, &leave);
+    }
+    if (waitMs > 0)
+    {
+        processEventsFor(waitMs);
     }
 }
 
@@ -119,19 +164,41 @@ int main(int argc, char **argv)
     require(checkedSidebarButton != nullptr, "checked compact sidebar button exists");
     require(checkedSidebarButton->text().isEmpty(),
             "compact sidebar hides navigation text");
-    require(checkedSidebarButton->height() >= 48,
-            "compact sidebar button keeps a 48px hit target");
-    require(checkedSidebarButton->width() >= 56,
-            "compact sidebar button has wider icon-stage");
-    require(checkedSidebarButton->iconSize().width() >= 22 &&
-                checkedSidebarButton->iconSize().height() >= 22,
-            "compact sidebar icon is larger");
+    require(checkedSidebarButton->height() == 44,
+            "compact sidebar option is 4px smaller");
+    require(checkedSidebarButton->width() == checkedSidebarButton->height(),
+            "compact sidebar option is a strict rounded square");
+    require(checkedSidebarButton->iconSize().width() >= 28 &&
+                checkedSidebarButton->iconSize().height() >= 28,
+            "compact sidebar lucide icon is visually larger");
     const int visualLeftPadding =
         appSidebar->mapTo(&window, QPoint(0, 0)).x() + checkedSidebarButton->x();
     const int visualRightPadding =
         appSidebar->width() - checkedSidebarButton->x() - checkedSidebarButton->width();
     require(std::abs(visualLeftPadding - visualRightPadding) <= 1,
             "compact sidebar button has balanced visible left and right padding");
+    auto *customLogo = window.findChild<QLabel *>(QStringLiteral("customTitleLogo"));
+    require(customLogo != nullptr, "custom title logo exists");
+    require(customLogo->property("_vv_logo_state").toString() == QStringLiteral("logo"),
+            "custom title logo starts as app logo");
+    hoverWidget(customLogo, true);
+    require(customLogo->property("_vv_logo_state").toString() == QStringLiteral("close-sidebar"),
+            "custom title logo hover shows collapse sidebar icon");
+    require(customLogo->property("titleBarHover").toBool(),
+            "custom title logo hover background is active");
+    clickWidget(customLogo);
+    require(appSidebar->width() <= 1,
+            "custom title logo click collapses left sidebar");
+    require(customLogo->property("_vv_logo_state").toString() == QStringLiteral("open-sidebar"),
+            "custom title logo remains hovered and changes to expand sidebar icon");
+    clickWidget(customLogo);
+    require(appSidebar->width() >= 44,
+            "custom title logo click restores left sidebar");
+    require(customLogo->property("_vv_logo_state").toString() == QStringLiteral("close-sidebar"),
+            "custom title logo hover returns to collapse sidebar icon after restore");
+    hoverWidget(customLogo, false);
+    require(customLogo->property("_vv_logo_state").toString() == QStringLiteral("logo"),
+            "custom title logo leave restores app logo");
 
     auto *homeOverviewSplitter = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
     require(homeOverviewSplitter != nullptr, "home overview splitter exists");
@@ -169,6 +236,9 @@ int main(int argc, char **argv)
     require(temperatureChannelButton != nullptr, "temperature overview channel selector exists");
     require(temperatureChannelButton->toolButtonStyle() == Qt::ToolButtonTextOnly,
             "temperature overview channel selector text remains centered");
+    require(qApp->styleSheet().contains(QStringLiteral("QToolButton#temperatureOverviewChannelButton::menu-indicator")) &&
+                qApp->styleSheet().contains(QStringLiteral("combo_arrow_down.xpm")),
+            "temperature overview channel selector has right-side dropdown arrow");
     require(temperatureChannelButton->menu() != nullptr,
             "temperature overview channel selector menu exists");
     require(temperatureChannelButton->menu()->minimumWidth() == temperatureChannelButton->width() &&

@@ -547,6 +547,11 @@ private:
     void toggleLogSidePanel();
     void setLogSidePanelCollapsed(bool collapsed);
     void updateLogSidePanelToggleButton();
+    bool isAppSidebarCollapsed() const;
+    void toggleAppSidebarFromLogo();
+    void setCustomLogoHovered(bool hovered);
+    void updateCustomLogoPixmap();
+    void updateCustomLogoTooltip();
     void applyAllSampleRates();
     int parseRate(const QString& text) const;
     bool isRateUnspecified(const QString& text) const;
@@ -780,6 +785,8 @@ private:
     bool app_sidebar_adjusting_;
     int app_sidebar_drag_width_;
     bool app_sidebar_drag_width_valid_;
+    int last_app_sidebar_visible_width_;
+    bool custom_logo_hovered_;
     QWidget *home_page_;
     QWidget *temperature_page_;
     DeviceConfigPageWidgets device_config_;

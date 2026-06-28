@@ -165,8 +165,10 @@ QPushButton#appSidebarButton {
 }
 
 QPushButton#appSidebarButton[_vv_sidebar_compact="true"] {
-    min-height: 46px;
-    max-height: 46px;
+    min-width: 42px;
+    max-width: 42px;
+    min-height: 42px;
+    max-height: 42px;
     padding: 0px;
     text-align: center;
 }
@@ -477,9 +479,12 @@ QToolButton#temperatureOverviewChannelButton:pressed {
 }
 
 QToolButton#temperatureOverviewChannelButton::menu-indicator {
-    image: none;
-    width: 0px;
-    height: 0px;
+    image: url(combo_arrow_down.xpm);
+    width: 12px;
+    height: 8px;
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    right: 8px;
 }
 
 QMenu#temperatureOverviewChannelMenu {

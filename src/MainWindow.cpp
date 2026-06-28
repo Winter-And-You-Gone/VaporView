@@ -39,6 +39,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QKeyEvent>
 #include <QTimeZone>
 #include <QGridLayout>
 #include <QFrame>
@@ -75,6 +76,7 @@
 #include <QThread>
 #include <QToolButton>
 #include <QToolTip>
+#include <QTransform>
 #include <QVariant>
 #include <QVariantAnimation>
 #include <QVector>
@@ -449,13 +451,14 @@ constexpr int kHomeOverviewSplitterHandleWidth = 8;
 constexpr const char *kHomeOverviewSplitterInitializedProperty = "_vv_home_overview_splitter_initialized";
 constexpr int kTcpWaveCardMinHeight = 430;
 constexpr int kCompactTcpWaveCardMinHeight = 560;
-constexpr int kAppSidebarIconOnlyBaseWidth = 64;
+constexpr int kAppSidebarIconOnlyBaseWidth = 52;
 constexpr int kAppSidebarFullBaseWidth = 122;
 constexpr int kAppSidebarVisualPadding = 8;
 constexpr int kAppSidebarTopBottomPadding = 6;
 constexpr int kAppSidebarButtonHeight = 48;
+constexpr int kAppSidebarCompactButtonSize = 44;
 constexpr int kAppSidebarFullIconSize = 20;
-constexpr int kAppSidebarCompactIconSize = 22;
+constexpr int kAppSidebarCompactIconSize = 32;
 constexpr int kMainCardResizeHandleHeight = 3;
 constexpr int kEnvStatusIconSize = 18;
 constexpr int kEpsilonSideTitleWidth = 24;
@@ -1118,6 +1121,7 @@ QIcon createRotatedLucideIcon(const QString& iconName, const QColor& color, int 
 constexpr const char *kSectionTitleIconNameProperty = "_vv_section_title_icon_name";
 constexpr const char *kSidebarIconNameProperty = "_vv_sidebar_icon_name";
 constexpr const char *kSidebarCompactProperty = "_vv_sidebar_compact";
+constexpr const char *kCustomLogoStateProperty = "_vv_logo_state";
 constexpr int kSectionTitleIconBoxSize = 26;
 constexpr int kSectionTitleIconSize = 22;
 
@@ -1321,6 +1325,21 @@ QIcon createLogSidePanelToggleIcon(bool collapsed)
                             toolbarColor(AppThemeColor::ToolbarBlue));
 }
 
+QIcon createAppSidebarToggleIcon(bool collapsed)
+{
+    QIcon icon;
+    const QIcon source = createLogSidePanelToggleIcon(collapsed);
+    for (const QSize size : {QSize(32, 32), QSize(48, 48), QSize(64, 64), QSize(96, 96)})
+    {
+        QPixmap pixmap = source.pixmap(size);
+        if (!pixmap.isNull())
+        {
+            icon.addPixmap(pixmap.transformed(QTransform().scale(-1, 1)));
+        }
+    }
+    return icon;
+}
+
 QIcon createMenuCheckIcon()
 {
     return createLucideIcon(QStringLiteral("check"), appThemeColor(AppThemeColor::MenuCheckText, true));
@@ -1520,6 +1539,11 @@ QLabel#customTitleLabel {
 }
 QLabel#customTitleLogo {
     background-color: transparent;
+    border: none;
+    border-radius: 6px;
+}
+QLabel#customTitleLogo[titleBarHover="true"] {
+    background-color: @vv-title-hover;
 }
 QToolButton#titleBarButton,
 QToolButton#titleBarMenuButton,
@@ -1571,6 +1595,11 @@ QLabel#customTitleLabel {
 }
 QLabel#customTitleLogo {
     background-color: transparent;
+    border: none;
+    border-radius: 6px;
+}
+QLabel#customTitleLogo[titleBarHover="true"] {
+    background-color: @vv-title-hover;
 }
 QToolButton#titleBarButton,
 QToolButton#titleBarMenuButton,
@@ -1799,11 +1828,17 @@ QPushButton#appSidebarButton {
     border-radius: 6px;
     color: @vv-text;
     font-weight: 600;
+    min-height: 34px;
+    max-height: 34px;
     padding: 6px 8px;
     text-align: left;
 }
 QPushButton#appSidebarButton[_vv_sidebar_compact="true"] {
-    padding: 6px;
+    min-width: 42px;
+    max-width: 42px;
+    min-height: 42px;
+    max-height: 42px;
+    padding: 0px;
     text-align: center;
 }
 QPushButton#appSidebarButton:hover {
@@ -5429,6 +5464,8 @@ MainWindow::MainWindow(QWidget *parent)
     , app_sidebar_adjusting_(false)
     , app_sidebar_drag_width_(0)
     , app_sidebar_drag_width_valid_(false)
+    , last_app_sidebar_visible_width_(0)
+    , custom_logo_hovered_(false)
     , home_page_(nullptr)
     , temperature_page_(nullptr)
     , main_cards_scroll_area_(nullptr)
@@ -5957,9 +5994,7 @@ MainWindow::~MainWindow()
 bool MainWindow::shouldStartWindowMove(QObject *watched) const
 {
     return watched == custom_title_bar_ ||
-           watched == custom_logo_label_ ||
-           watched == custom_title_label_ ||
-           (watched && watched->objectName() == QStringLiteral("customTitleLogo"));
+           watched == custom_title_label_;
 }
 
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
@@ -6021,6 +6056,46 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 {
                     title_application_sub_panel_->hide();
                 }
+            }
+        }
+    }
+
+    if (watched == custom_logo_label_)
+    {
+        if (event->type() == QEvent::Enter || event->type() == QEvent::HoverEnter)
+        {
+            setCustomLogoHovered(true);
+        }
+        else if (event->type() == QEvent::Leave || event->type() == QEvent::HoverLeave)
+        {
+            setCustomLogoHovered(false);
+        }
+        else if (event->type() == QEvent::MouseButtonPress)
+        {
+            auto *mouseEvent = static_cast<QMouseEvent *>(event);
+            if (mouseEvent->button() == Qt::LeftButton)
+            {
+                toggleAppSidebarFromLogo();
+                return true;
+            }
+        }
+        else if (event->type() == QEvent::MouseButtonDblClick)
+        {
+            auto *mouseEvent = static_cast<QMouseEvent *>(event);
+            if (mouseEvent->button() == Qt::LeftButton)
+            {
+                return true;
+            }
+        }
+        else if (event->type() == QEvent::KeyPress)
+        {
+            auto *keyEvent = static_cast<QKeyEvent *>(event);
+            if (keyEvent->key() == Qt::Key_Return ||
+                keyEvent->key() == Qt::Key_Enter ||
+                keyEvent->key() == Qt::Key_Space)
+            {
+                toggleAppSidebarFromLogo();
+                return true;
             }
         }
     }
@@ -6197,7 +6272,7 @@ void MainWindow::loadModernStyleSheet()
             "QWidget#appCentralWidget, QWidget#mainCardsPane, QFrame#appSidebar, QStackedWidget#mainPageStack, QWidget#temperaturePage, QWidget#deviceConfigPage, QWidget#logSidePanel, QMainWindow#sessionViewerWindow, QWidget#sessionViewerCentralWidget, QWidget#sessionViewerViewport, QWidget#sessionViewerContentPane, QScrollArea#mainCardsScrollArea, QScrollArea#sessionViewerScrollArea, QWidget#mainCardsViewport, QScrollArea#mainCardsScrollArea > QWidget, QScrollArea#mainCardsScrollArea > QWidget > QWidget, QScrollArea#sessionViewerScrollArea > QWidget, QScrollArea#sessionViewerScrollArea > QWidget > QWidget, QSplitter#appLayoutSplitter, QSplitter#mainContentSplitter, QSplitter#homeOverviewSplitter, QSplitter#homeOverviewSplitter > QWidget, QSplitter#sessionViewerContentSplitter { background-color: @vv-surface; }"
             "QFrame#appSidebar { background-color: @vv-surface; border-right: 1px solid @vv-border; }"
             "QPushButton#appSidebarButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-weight: 600; min-height: 34px; max-height: 34px; padding: 6px 8px; text-align: left; }"
-            "QPushButton#appSidebarButton[_vv_sidebar_compact=\"true\"] { min-height: 46px; max-height: 46px; padding: 0px; text-align: center; }"
+            "QPushButton#appSidebarButton[_vv_sidebar_compact=\"true\"] { min-width: 42px; max-width: 42px; min-height: 42px; max-height: 42px; padding: 0px; text-align: center; }"
             "QPushButton#appSidebarButton:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
             "QPushButton#appSidebarButton:checked { background-color: @vv-primary; border-color: @vv-primary; color: @vv-white; }"
             "QLabel#pageTitleLabel { color: @vv-text; font-size: 18px; font-weight: 700; }"
@@ -6260,7 +6335,7 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton#temperatureOverviewOutputSwitch { background-color: transparent; border: none; min-height: 56px; max-height: 56px; padding: 0px; margin: 0px; color: @vv-text; font-size: 13px; font-weight: 700; }"
             "QToolButton#temperatureOverviewChannelButton { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text; font-size: 13px; font-weight: 700; padding: 1px 0px; text-align: center; }"
             "QToolButton#temperatureOverviewChannelButton:hover, QToolButton#temperatureOverviewChannelButton:pressed { background-color: @vv-primary-subtle; border-color: @vv-primary-subtle-pressed; }"
-            "QToolButton#temperatureOverviewChannelButton::menu-indicator { image: none; width: 0px; height: 0px; }"
+            "QToolButton#temperatureOverviewChannelButton::menu-indicator { image: url(combo_arrow_down.xpm); width: 12px; height: 8px; subcontrol-origin: padding; subcontrol-position: center right; right: 8px; }"
             "QMenu#temperatureOverviewChannelMenu { padding: 0px; }"
             "QMenu#temperatureOverviewChannelMenu::item { min-width: 99px; max-width: 99px; min-height: 34px; max-height: 34px; padding: 9px 0px; margin: 0px; }"
             "QPushButton#temperatureOverviewChannelMenuItem { background-color: transparent; border: none; border-radius: 8px; color: @vv-text; font-size: 13px; font-weight: 700; min-width: 99px; max-width: 99px; min-height: 34px; max-height: 34px; padding: 0px; margin: 0px; }"
@@ -6414,7 +6489,7 @@ int MainWindow::minimumLogSidePanelWidth() const
 
 int MainWindow::appSidebarIconOnlyWidth() const
 {
-    return std::max(56, scalePixels(kAppSidebarIconOnlyBaseWidth));
+    return std::max(kAppSidebarIconOnlyBaseWidth, scalePixels(kAppSidebarIconOnlyBaseWidth));
 }
 
 int MainWindow::appSidebarDefaultWidth() const
@@ -6431,6 +6506,12 @@ int MainWindow::currentAppSidebarWidth() const
 
     const QList<int> sizes = app_layout_splitter_->sizes();
     return sizes.isEmpty() ? appSidebarDefaultWidth() : std::max(0, sizes.at(0));
+}
+
+bool MainWindow::isAppSidebarCollapsed() const
+{
+    return currentAppSidebarWidth() == 0 ||
+           appSidebarModeForWidth(currentAppSidebarWidth()) == AppSidebarMode::Collapsed;
 }
 
 void MainWindow::saveAppSidebarWidth() const
@@ -6482,6 +6563,19 @@ void MainWindow::updateAppSidebarButtonTexts()
         button->setStatusTip(label);
         button->setAccessibleName(label);
         button->setProperty(kSidebarCompactProperty, compact);
+        if (compact)
+        {
+            const int buttonSize = scalePixels(kAppSidebarCompactButtonSize);
+            button->setFixedSize(buttonSize, buttonSize);
+            button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        }
+        else
+        {
+            button->setMinimumWidth(0);
+            button->setMaximumWidth(QWIDGETSIZE_MAX);
+            button->setFixedHeight(scalePixels(kAppSidebarButtonHeight));
+            button->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        }
         const int iconSize = scalePixels(compact ? kAppSidebarCompactIconSize : kAppSidebarFullIconSize);
         button->setIconSize(QSize(iconSize, iconSize));
         if (button->style())
@@ -6539,6 +6633,10 @@ void MainWindow::updateAppSidebarForWidth(int width, bool snapToNearest)
     {
         app_sidebar_drag_width_ = normalizedWidth;
         app_sidebar_drag_width_valid_ = true;
+        if (normalizedWidth > 0)
+        {
+            last_app_sidebar_visible_width_ = normalizedWidth;
+        }
         const AppSidebarMode dragMode = mode == AppSidebarMode::Collapsed
             ? AppSidebarMode::IconsOnly
             : mode;
@@ -6557,10 +6655,16 @@ void MainWindow::updateAppSidebarForWidth(int width, bool snapToNearest)
     }
 
     const int snapWidth = snappedAppSidebarWidth(normalizedWidth);
+    if (snapWidth > 0)
+    {
+        last_app_sidebar_visible_width_ = snapWidth;
+    }
     if (snapWidth != normalizedWidth)
     {
         setAppSidebarWidth(snapWidth);
     }
+    updateCustomLogoPixmap();
+    updateCustomLogoTooltip();
 }
 
 void MainWindow::finishAppSidebarResize()
@@ -6572,6 +6676,102 @@ void MainWindow::finishAppSidebarResize()
     app_sidebar_drag_width_valid_ = false;
     updateAppSidebarForWidth(targetWidth, true);
     saveAppSidebarWidth();
+}
+
+void MainWindow::toggleAppSidebarFromLogo()
+{
+    if (!app_layout_splitter_)
+    {
+        return;
+    }
+
+    if (isAppSidebarCollapsed())
+    {
+        int restoreWidth = last_app_sidebar_visible_width_ > 0
+            ? last_app_sidebar_visible_width_
+            : appSidebarDefaultWidth();
+        restoreWidth = snappedAppSidebarWidth(restoreWidth);
+        if (restoreWidth <= 0)
+        {
+            restoreWidth = appSidebarIconOnlyWidth();
+        }
+        app_sidebar_mode_ = appSidebarModeForWidth(restoreWidth);
+        updateAppSidebarButtonTexts();
+        setAppSidebarWidth(restoreWidth);
+        last_app_sidebar_visible_width_ = restoreWidth;
+    }
+    else
+    {
+        const int currentWidth = currentAppSidebarWidth();
+        const int rememberedWidth = snappedAppSidebarWidth(currentWidth);
+        if (rememberedWidth > 0)
+        {
+            last_app_sidebar_visible_width_ = rememberedWidth;
+        }
+        app_sidebar_mode_ = AppSidebarMode::Collapsed;
+        updateAppSidebarButtonTexts();
+        setAppSidebarWidth(0);
+    }
+
+    saveAppSidebarWidth();
+    updateCustomLogoPixmap();
+    updateCustomLogoTooltip();
+    queueResponsiveHomeLayoutRefresh();
+}
+
+void MainWindow::setCustomLogoHovered(bool hovered)
+{
+    if (custom_logo_hovered_ == hovered)
+    {
+        return;
+    }
+
+    custom_logo_hovered_ = hovered;
+    updateCustomLogoPixmap();
+    updateCustomLogoTooltip();
+}
+
+void MainWindow::updateCustomLogoPixmap()
+{
+    if (!custom_logo_label_)
+    {
+        return;
+    }
+
+    const int logoSize = scalePixels(44);
+    custom_logo_label_->setFixedSize(logoSize, logoSize);
+    const bool collapsed = isAppSidebarCollapsed();
+    const QString logoState = custom_logo_hovered_
+        ? (collapsed ? QStringLiteral("open-sidebar") : QStringLiteral("close-sidebar"))
+        : QStringLiteral("logo");
+    const QSize sidebarIconSize(scalePixels(24), scalePixels(24));
+    const QPixmap pixmap = custom_logo_hovered_
+        ? createAppSidebarToggleIcon(collapsed).pixmap(sidebarIconSize)
+        : renderVaporViewLogo(dark_theme_enabled_, logoSize, custom_logo_label_->devicePixelRatioF());
+    custom_logo_label_->setPixmap(pixmap);
+    custom_logo_label_->setProperty(kCustomLogoStateProperty, logoState);
+    custom_logo_label_->setProperty("titleBarHover", custom_logo_hovered_);
+    if (custom_logo_label_->style())
+    {
+        custom_logo_label_->style()->unpolish(custom_logo_label_);
+        custom_logo_label_->style()->polish(custom_logo_label_);
+    }
+    custom_logo_label_->update();
+}
+
+void MainWindow::updateCustomLogoTooltip()
+{
+    if (!custom_logo_label_)
+    {
+        return;
+    }
+
+    const QString tooltip = isAppSidebarCollapsed()
+        ? (is_english_ ? QStringLiteral("Show left sidebar") : QStringLiteral("展开左侧栏"))
+        : (is_english_ ? QStringLiteral("Hide left sidebar") : QStringLiteral("收起左侧栏"));
+    custom_logo_label_->setToolTip(tooltip);
+    custom_logo_label_->setStatusTip(tooltip);
+    custom_logo_label_->setAccessibleName(tooltip);
 }
 
 void MainWindow::setLogSidePanelToMinimumWidth()
@@ -8826,6 +9026,11 @@ void MainWindow::setupCustomTitleBar()
     custom_logo_label_->setObjectName(QStringLiteral("customTitleLogo"));
     custom_logo_label_->setFixedSize(24, 24);
     custom_logo_label_->setAlignment(Qt::AlignCenter);
+    custom_logo_label_->setCursor(Qt::PointingHandCursor);
+    custom_logo_label_->setFocusPolicy(Qt::StrongFocus);
+    custom_logo_label_->setAttribute(Qt::WA_Hover, true);
+    custom_logo_label_->setProperty(kCustomLogoStateProperty, QStringLiteral("logo"));
+    custom_logo_label_->setProperty("titleBarHover", false);
     custom_logo_label_->installEventFilter(this);
     titleLayout->addWidget(custom_logo_label_, 0, Qt::AlignVCenter);
 
@@ -9848,6 +10053,10 @@ void MainWindow::setupCentralWidget()
             QStringLiteral("app_sidebar_width"),
             appSidebarDefaultWidth()).toInt());
         const int initialAppSidebarWidth = snappedAppSidebarWidth(restoredAppSidebarWidth);
+        if (initialAppSidebarWidth > 0)
+        {
+            last_app_sidebar_visible_width_ = initialAppSidebarWidth;
+        }
         app_sidebar_mode_ = appSidebarModeForWidth(initialAppSidebarWidth);
         updateAppSidebarButtonTexts();
         app_layout_splitter_->setSizes({initialAppSidebarWidth, 1600});
@@ -11893,6 +12102,7 @@ void MainWindow::updateThemedIcons()
         temperature_overview_panel_->updateThemedIcons();
     }
     updateSidebarNavIcons();
+    updateCustomLogoPixmap();
     if (log_filter_btn_)
     {
         log_filter_btn_->setIcon(createLogFilterIcon());
@@ -11933,6 +12143,7 @@ void MainWindow::updateCustomTitleBarTexts()
         title_menu_btn_->setToolTip(is_english_ ? "Menu" : "菜单");
         title_menu_btn_->setStatusTip(title_menu_btn_->toolTip());
     }
+    updateCustomLogoTooltip();
     if (title_language_btn_)
     {
         title_language_btn_->setToolTip(is_english_ ? "Switch to Chinese" : "切换到英文");
@@ -11993,12 +12204,8 @@ void MainWindow::updateCustomTitleBarStyle()
         log_filter_btn_->setFixedSize(actionButtonSize);
         log_filter_btn_->setIconSize(iconSize);
     }
-    if (custom_logo_label_)
-    {
-        const int logoSize = scalePixels(44);
-        custom_logo_label_->setFixedSize(logoSize, logoSize);
-        custom_logo_label_->setPixmap(renderVaporViewLogo(dark_theme_enabled_, logoSize, custom_logo_label_->devicePixelRatioF()));
-    }
+    updateCustomLogoPixmap();
+    updateCustomLogoTooltip();
     const QIcon logoIcon = createVaporViewLogoIcon(dark_theme_enabled_);
     if (!logoIcon.isNull())
     {
