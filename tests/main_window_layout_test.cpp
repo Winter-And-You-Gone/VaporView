@@ -141,6 +141,13 @@ int main(int argc, char **argv)
     {
         QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
         settings.setValue(QStringLiteral("app_sidebar_width"), 56);
+#ifdef Q_OS_WIN
+        settings.setValue(QStringLiteral("serial/temperature_port"), QStringLiteral("COM9"));
+#else
+        settings.setValue(QStringLiteral("serial/temperature_port"), QStringLiteral("/dev/ttyRD105"));
+#endif
+        settings.setValue(QStringLiteral("serial/temperature_baud"), QStringLiteral("38400"));
+        settings.setValue(QStringLiteral("rate/temperature"), QStringLiteral("5"));
         settings.sync();
     }
 
@@ -149,6 +156,7 @@ int main(int argc, char **argv)
     window.resize(1280, 800);
     window.show();
     processEventsFor(500);
+    const QSize originalWindowSize = window.size();
 
     auto *appLayoutSplitter = window.findChild<QSplitter *>(QStringLiteral("appLayoutSplitter"));
     require(appLayoutSplitter != nullptr, "app layout splitter exists");
@@ -401,6 +409,36 @@ int main(int argc, char **argv)
 
     auto *epsilonGroup = dataGroup->findChild<QGroupBox *>(QStringLiteral("sensorGroupBox"));
     require(epsilonGroup != nullptr, "EPSILON card exists");
+    QGroupBox *environmentGroup = nullptr;
+    const QList<QGroupBox*> sensorGroups =
+        dataGroup->findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox"));
+    for (QGroupBox *group : sensorGroups)
+    {
+        if (group != epsilonGroup &&
+            group->findChildren<QLabel *>(QStringLiteral("envStatusIcon")).size() == 3)
+        {
+            environmentGroup = group;
+            break;
+        }
+    }
+    require(environmentGroup != nullptr, "environment and lidar card exists");
+
+    window.resize(1920, 1000);
+    processEventsFor(300);
+    activateLayouts(&window);
+    const int sensorRowWidth = epsilonGroup->width() + environmentGroup->width();
+    require(sensorRowWidth > 0, "sensor row has measurable width");
+    const double environmentRatio =
+        static_cast<double>(environmentGroup->width()) / static_cast<double>(sensorRowWidth);
+    require(environmentRatio >= 0.17 && environmentRatio <= 0.23,
+            "environment and lidar card stays close to one fifth of the sensor row at wide widths");
+    require(epsilonGroup->width() >= environmentGroup->width() * 3.6,
+            "EPSILON card keeps an approximately 4:1 width relationship against environment card");
+
+    window.resize(originalWindowSize);
+    processEventsFor(300);
+    activateLayouts(&window);
+
     auto *epsilonPanel = dataGroup->findChild<QWidget *>(QStringLiteral("epsilonPanel"));
     require(epsilonPanel != nullptr, "EPSILON panel exists");
     require(epsilonPanel->layout() != nullptr, "EPSILON panel layout exists");

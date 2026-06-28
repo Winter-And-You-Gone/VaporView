@@ -449,6 +449,8 @@ constexpr int kHomeOverviewDeviceMinWidth = 540;
 constexpr int kHomeOverviewTemperatureMinWidth = 420;
 constexpr int kHomeOverviewSplitterHandleWidth = 8;
 constexpr const char *kHomeOverviewSplitterInitializedProperty = "_vv_home_overview_splitter_initialized";
+constexpr int kSensorNavigationStretch = 4;
+constexpr int kSensorEnvironmentStretch = 1;
 constexpr int kTcpWaveCardMinHeight = 430;
 constexpr int kCompactTcpWaveCardMinHeight = 560;
 constexpr int kAppSidebarIconOnlyBaseWidth = 52;
@@ -7102,13 +7104,36 @@ void MainWindow::updateResponsiveHomeLayout()
 
     if (epsilon_group_)
     {
-        epsilon_group_->setSizePolicy(compact ? QSizePolicy::Expanding : QSizePolicy::Maximum, QSizePolicy::Preferred);
-        sensor_layout_->setAlignment(epsilon_group_, compact ? Qt::AlignTop : (Qt::AlignLeft | Qt::AlignTop));
+        epsilon_group_->setMaximumWidth(QWIDGETSIZE_MAX);
+        epsilon_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+        sensor_layout_->setAlignment(epsilon_group_, Qt::Alignment());
     }
     if (env_group_)
     {
+        if (compact)
+        {
+            env_group_->setMaximumWidth(QWIDGETSIZE_MAX);
+        }
+        else
+        {
+            const int rowWidth = sensor_row_widget_->contentsRect().width();
+            const int gap = std::max(0, sensor_layout_->spacing());
+            const int availableWidth = std::max(0, rowWidth - gap);
+            const int totalStretch = kSensorNavigationStretch + kSensorEnvironmentStretch;
+            const int targetEnvironmentWidth = totalStretch > 0
+                ? availableWidth * kSensorEnvironmentStretch / totalStretch
+                : 0;
+            const int environmentMinimumWidth = std::max(env_group_->minimumWidth(),
+                                                         env_group_->minimumSizeHint().width());
+            env_group_->setMaximumWidth(std::max(environmentMinimumWidth, targetEnvironmentWidth));
+        }
         env_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-        sensor_layout_->setAlignment(env_group_, Qt::AlignTop);
+        sensor_layout_->setAlignment(env_group_, Qt::Alignment());
+    }
+    if (sensor_layout_->count() >= 2)
+    {
+        sensor_layout_->setStretch(0, compact ? 0 : kSensorNavigationStretch);
+        sensor_layout_->setStretch(1, compact ? 0 : kSensorEnvironmentStretch);
     }
 
     auto clearFixedHeight = [](QWidget *widget) {
@@ -11428,7 +11453,7 @@ void MainWindow::setupDataPanels()
 
     epsilon_group_ = new QGroupBox(this);
     epsilon_group_->setObjectName("sensorGroupBox");
-    epsilon_group_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+    epsilon_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     auto *epsilon_layout = new QVBoxLayout(epsilon_group_);
     epsilon_layout->setContentsMargins(1, 0, 1, 1);
     epsilon_layout->setSpacing(0);
@@ -11461,7 +11486,7 @@ void MainWindow::setupDataPanels()
     epsilon_layout->addWidget(epsilonTitleBar);
     epsilon_panel_ = new EpsilonPanel(epsilonRateTitleLabel, this);
     epsilon_layout->addWidget(epsilon_panel_);
-    sensor_layout_->addWidget(epsilon_group_, 0, Qt::AlignLeft | Qt::AlignTop);
+    sensor_layout_->addWidget(epsilon_group_, kSensorNavigationStretch);
 
     gnss_group_ = nullptr;
     imu_group_ = nullptr;
@@ -11526,7 +11551,7 @@ void MainWindow::setupDataPanels()
     env_group->setFixedHeight(sensorCardHeight);
     sensor_row_widget_->setMinimumHeight(sensorCardHeight);
 
-    sensor_layout_->addWidget(env_group, 1);
+    sensor_layout_->addWidget(env_group, kSensorEnvironmentStretch);
 
     data_layout->addWidget(sensor_row_widget_, 0);
     data_layout->addStretch(1);
