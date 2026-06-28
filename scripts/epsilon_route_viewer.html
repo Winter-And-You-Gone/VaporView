@@ -268,7 +268,7 @@ function initMap(){
       if(checkReady>30){gARdy=true;clearInterval(iv)}
     },100);
   }else{
-    gLMap=L.map(el,{center:[39.9,116.3],zoom:12,zoomControl:true,attributionControl:true,maxZoom:24});
+    gLMap=L.map(el,{center:[39.9,116.3],zoom:12,zoomControl:true,attributionControl:true,maxZoom:24,preferCanvas:true});
     gLMap.on('zoomend',updZoom);
     const pid=document.getElementById('providerSelect').value,key=document.getElementById('tiandituKey').value.trim()||'5a0d3293c900281a37417b2e4d4d3676';
     if(pid==='osm'){gLyr.push(L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxNativeZoom:19,maxZoom:24,attribution:'&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(gLMap))}else{
@@ -292,11 +292,27 @@ function rLM(){
   var lw=parseFloat(document.getElementById('lineWeight').value)||2;gLW=lw;document.getElementById('lwLabel').textContent=lw;
   var pr=parseFloat(document.getElementById('pointRadius').value)||0;document.getElementById('prLabel').textContent=pr;
   gTL=L.polyline(ll,{color:'#999',weight:lw,opacity:0.6}).addTo(gLMap);
-  const si=parseInt(document.getElementById('startIndex').value,10)||1,ei=parseInt(document.getElementById('endIndex').value,10)||ll.length;
-  const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(ll.length,Math.max(si,ei));
+  var si=parseInt(document.getElementById('startIndex').value,10)||1,ei=parseInt(document.getElementById('endIndex').value,10)||ll.length;
+  var lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(ll.length,Math.max(si,ei));
   var sw=Math.max(lw+1,3);
-  if(lo<hi){const s=ll.slice(lo,hi);gTS=L.polyline(s,{color:'#e67300',weight:sw,opacity:0.9}).addTo(gLMap);const sp=gPts[lo];gSM=L.circleMarker([sp.lat,sp.lon],{radius:Math.max(pr,5),color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gLMap);gSM.bindTooltip('起点 #'+(lo+1),{direction:'top'});const ep=gPts[hi-1];gEM=L.circleMarker([ep.lat,ep.lon],{radius:Math.max(pr,5),color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gLMap);gEM.bindTooltip('终点 #'+hi,{direction:'top'})}
-  if(pr>0){for(let i=0;i<gPts.length;i++){const p=gPts[i],m=L.circleMarker([p.lat,p.lon],{radius:pr,color:'#4a90d9',fillColor:'#4a90d9',fillOpacity:0.3,weight:1,opacity:0.4});m.i=i;m.on('mouseover',()=>hP(i));m.on('mouseout',()=>uhP());m.on('click',()=>cTR(i));m.addTo(gLMap);gMk.push(m)}}
+  if(lo<hi){var s=ll.slice(lo,hi);gTS=L.polyline(s,{color:'#e67300',weight:sw,opacity:0.9}).addTo(gLMap);var sp=gPts[lo];gSM=L.circleMarker([sp.lat,sp.lon],{radius:Math.max(pr,5),color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gLMap);gSM.bindTooltip('起点 #'+(lo+1),{direction:'top'});var ep=gPts[hi-1];gEM=L.circleMarker([ep.lat,ep.lon],{radius:Math.max(pr,5),color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gLMap);gEM.bindTooltip('终点 #'+hi,{direction:'top'})}
+  // 降采样：当点数超过阈值时只画每第 N 个点，极大减少 DOM 对象
+  var maxDisplay=5000;
+  if(pr>0){
+    var step=Math.max(1,Math.ceil(gPts.length/maxDisplay));
+    for(var i=0;i<gPts.length;i+=step){var p=gPts[i],m=L.circleMarker([p.lat,p.lon],{radius:pr,color:'#4a90d9',fillColor:'#4a90d9',fillOpacity:0.3,weight:1,opacity:0.4});m.addTo(gLMap);gMk.push(m)}
+  }
+  // 地图级鼠标事件委托 — 替代每个点绑定的事件
+  if(!gLMap._eD){gLMap._eD=true;var _tid=null;gLMap.on('mousemove',function(e){if(_tid)clearTimeout(_tid);_tid=setTimeout(function(){var i=fNrst(e.latlng.lat,e.latlng.lng);if(i>=0)hP(i);else uhP()},30)});gLMap.on('click',function(e){var i=fNrst(e.latlng.lat,e.latlng.lng);if(i>=0)cTR(i)})}
+}
+function fNrst(lat,lng){
+  if(!gPts.length)return-1;
+  var b=-1,bD=Infinity;
+  for(var i=0;i<gPts.length;i++){
+    var p=gPts[i],dl=lat-p.lat,dn=lng-p.lon,d=dl*dl+dn*dn;
+    if(d<bD){bD=d;b=i}
+  }
+  return bD<0.0001?b:-1;
 }
 
 function rAM(){
