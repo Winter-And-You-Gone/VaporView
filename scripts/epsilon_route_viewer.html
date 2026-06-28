@@ -386,11 +386,19 @@ async function lFF(file){
     if(gPts.length){
       ztFS();ss('✓ '+file.name+'：'+gPts.length+' 点，'+gStat.rr+' 记录，'+gStat.vf+' 有效帧');
     }else{
-      // 诊断：检查第一个候选点
+      // 诊断：检查第一个候选点的 payload 字节
       let diag='';
       if(gCands.length){
-        const p=gCands[0];
-        diag='lat='+p.lat+' lon='+p.lon+' ha='+p.ha+' va='+p.va+' ps='+p.ps+' gfc='+p.gfc;
+        const p0=gCands[0];
+        const rec=gRecs.find(r=>r.ro===p0.ro);
+        if(rec){
+          const frame=pf(rec.pay);
+          if(frame){
+            const raw=new Uint8Array(frame.view.buffer,frame.view.byteOffset,frame.ps);
+            const b14=Array.from(raw.slice(14,30)).map(b=>b.toString(16).padStart(2,'0')).join(' ');
+            diag='lat='+p0.lat+' lon='+p0.lon+' sz='+frame.ps+' raw14-29='+b14;
+          }else diag='pf fail';
+        }else diag='rec not found ro='+p0.ro+' recs='+gRecs.length;
       }
       // 如果过滤后为空，尝试 both 来源再试一次
       document.getElementById('positionSource').value='both';rc();
