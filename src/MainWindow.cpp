@@ -9950,7 +9950,7 @@ void MainWindow::setupCentralWidget()
     main_h_layout->setContentsMargins(kAppSidebarVisualPadding,
                                       kAppSidebarVisualPadding,
                                       kAppSidebarVisualPadding,
-                                      kAppSidebarVisualPadding);
+                                      0);
 
     main_page_stack_ = new QStackedWidget(central_widget_);
     main_page_stack_->setObjectName(QStringLiteral("mainPageStack"));

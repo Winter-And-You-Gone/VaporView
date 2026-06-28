@@ -148,6 +148,12 @@ int main(int argc, char **argv)
     window.show();
     processEventsFor(500);
 
+    auto *appLayoutSplitter = window.findChild<QSplitter *>(QStringLiteral("appLayoutSplitter"));
+    require(appLayoutSplitter != nullptr, "app layout splitter exists");
+    require(window.centralWidget() != nullptr, "central widget exists");
+    require(appLayoutSplitter->geometry().bottom() >= window.centralWidget()->contentsRect().bottom() - 1,
+            "main content reaches the status bar without a bottom gap");
+
     auto *appSidebar = window.findChild<QWidget *>(QStringLiteral("appSidebar"));
     require(appSidebar != nullptr, "app sidebar exists");
     QPushButton *checkedSidebarButton = nullptr;
