@@ -185,6 +185,11 @@ int main(int argc, char **argv)
             "compact sidebar button has balanced visible left and right padding");
     auto *customLogo = window.findChild<QLabel *>(QStringLiteral("customTitleLogo"));
     require(customLogo != nullptr, "custom title logo exists");
+    const int logoCenterX = customLogo->mapTo(&window, customLogo->rect().center()).x();
+    const int checkedSidebarButtonCenterX =
+        checkedSidebarButton->mapTo(&window, checkedSidebarButton->rect().center()).x();
+    require(std::abs(logoCenterX - checkedSidebarButtonCenterX) <= 1,
+            "custom title logo aligns with compact sidebar button center");
     require(customLogo->property("_vv_logo_state").toString() == QStringLiteral("logo"),
             "custom title logo starts as app logo");
     hoverWidget(customLogo, true);

@@ -9048,7 +9048,7 @@ void MainWindow::setupCustomTitleBar()
     custom_title_bar_->installEventFilter(this);
 
     auto *titleLayout = new QHBoxLayout(custom_title_bar_);
-    titleLayout->setContentsMargins(10, 0, 8, 0);
+    titleLayout->setContentsMargins(kAppSidebarVisualPadding, 0, 8, 0);
     titleLayout->setSpacing(6);
 
     custom_logo_label_ = new QLabel(custom_title_bar_);
