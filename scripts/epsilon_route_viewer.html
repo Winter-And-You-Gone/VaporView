@@ -247,26 +247,15 @@ function initMap(){
   gEngine=ia?'amap':'leaflet';dm();
   if(ia){
     gARdy=false;
-    gAMap=new AMap.Map(el,{zoom:13,center:[116.3,39.9],zooms:[3,22]});
-    const pid=document.getElementById('providerSelect').value;
-    if(pid==='amap_img'){setTimeout(function(){try{gAMap.setLayers([new AMap.TileLayer.Satellite()])}catch(e){}},100)}
-    // 轮询等待地图就绪，最多 3 秒
-    var checkReady=0;
-    var iv=setInterval(function(){
-      checkReady++;
-      try{
-        var c=gAMap.getCenter();
-        if(c&&gPts.length&&gPts[0].lat){
-          gARdy=true;
-          gAMap.on('mapmoveend',updZoom);gAMap.on('zoomend',updZoom);
-          renM();
-          var p0=apPts(gPts.slice(0,1))[0];
-          gAMap.setZoomAndCenter(15,[p0.lon,p0.lat]);
-          gARdy=true;clearInterval(iv)
-        }
-      }catch(e){}
-      if(checkReady>30){gARdy=true;clearInterval(iv)}
-    },100);
+    var pid=document.getElementById('providerSelect').value;
+    var opts={zoom:13,center:[116.3,39.9],zooms:[3,22]};
+    if(pid==='amap_img')opts.layers=[new AMap.TileLayer.Satellite()];
+    gAMap=new AMap.Map(el,opts);
+    gAMap.on('complete',function(){
+      gARdy=true;
+      gAMap.on('mapmoveend',updZoom);gAMap.on('zoomend',updZoom);
+      if(gPts.length){renM();var p0=apPts(gPts.slice(0,1))[0];if(p0&&p0.lon)gAMap.setZoomAndCenter(15,[p0.lon,p0.lat])}
+    });
   }else{
     gLMap=L.map(el,{center:[39.9,116.3],zoom:12,zoomControl:true,attributionControl:true,maxZoom:24,preferCanvas:true});
     gLMap.on('zoomend',updZoom);
