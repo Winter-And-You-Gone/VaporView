@@ -140,7 +140,7 @@ let gEngine='leaflet',gAMap=null,gARdy=false,gAH=null,gAOl=[];
 function r16(dv,o){return dv.getUint16(o,true)}
 function r32(dv,o){return dv.getUint32(o,true)}
 function rF(dv,o){return dv.getFloat32(o,true)}
-function rD(dv,o){return dv.getFloat64(o,true)}
+function rDbl(dv,o){return dv.getFloat64(o,true)}
 function r2d(r){return r*180/Math.PI}
 function slp(m){return new Promise(r=>setTimeout(r,m))}
 function fN(v){return v!=null&&Number.isFinite(v)}
@@ -190,7 +190,7 @@ function np(rec,frm,st,src){
   const fc=st.gnss_fix_code!=null?st.gnss_fix_code:null;
   return{sf:rec.sf,rf:rec.rf,rs:rec.seq,hts:rec.hts,htu:tu(rec.hts),ph:pn(frm.pid),pn:PN[frm.pid]||'UNK',ps:src,sn:frm.sn,us:st.utc_unix_s!=null?st.utc_unix_s:null,um:st.utc_microseconds!=null?st.utc_microseconds:null,etu:ei(st.utc_unix_s,st.utc_microseconds),lat:null,lon:null,hgt:null,sd:0,cd:0,gfc:fc,gf:fc!=null?(FN[fc]||''):'',gs:st.gnss_satellites!=null?st.gnss_satellites:null,hd:st.hdop!=null?st.hdop:null,vd:st.vdop!=null?st.vdop:null,ha:st.hacc_m!=null?st.hacc_m:null,va:st.vacc_m!=null?st.vacc_m:null,ls:st.lat_std_m!=null?st.lat_std_m:null,lns:st.lon_std_m!=null?st.lon_std_m:null,hs:st.height_std_m!=null?st.height_std_m:null,da:st.diff_age_s!=null?st.diff_age_s:null,vn:st.vel_n_mps!=null?st.vel_n_mps:null,ve:st.vel_e_mps!=null?st.vel_e_mps:null,vdm:st.vel_d_mps!=null?st.vel_d_mps:null,nn:st.ned_n_m!=null?st.ned_n_m:null,ne:st.ned_e_m!=null?st.ned_e_m:null,nd:st.ned_d_m!=null?st.ned_d_m:null,rd:st.roll_deg!=null?st.roll_deg:null,pd:st.pitch_deg!=null?st.pitch_deg:null,yd:st.yaw_deg!=null?st.yaw_deg:null,ssb:st.system_status_bits!=null?st.system_status_bits:null,fsb:st.filter_status_bits!=null?st.filter_status_bits:null,usb:st.update_status_bits!=null?st.update_status_bits:null,ro:rec.ro,po:rec.po,pi:0,spi:0}
 }
-function dcp(recs,prog){const st={},cs=[];let vf=0,bf=0;for(let i=0;i<recs.length;i++){if(prog&&i>0&&i%500===0)prog(62+(i/recs.length)*23,'解码…'+i+'/'+recs.length);const r=recs[i],f=pf(r.pay);if(!f){bf++;continue}vf++;const p=f.view,pid=f.pid,sz=f.ps;if(pid===0x42&&sz>=72){st.nn=rF(p,24);st.ne=rF(p,28);st.nd=rF(p,32);st.vn=rF(p,36);st.ve=rF(p,40);st.vdm=rF(p,44)}else if(pid===0x50&&sz>=14){st.ssb=r16(p,0);st.fsb=r16(p,2);st.usb=r16(p,4);st.utc_unix_s=r32(p,6);st.utc_microseconds=r32(p,10);st.gnss_fix_code=(st.fsb>>4)&0x0F;if(sz>=50){st.vn=rF(p,38);st.ve=rF(p,42);st.vdm=rF(p,46)}if(sz>=78){st.rd=r2d(rF(p,66));st.pd=r2d(rF(p,70));st.yd=r2d(rF(p,74))}if(sz>=102){st.ls=rF(p,90);st.lns=rF(p,94);st.hs=rF(p,98)}if(sz>=38){const pt=np(r,f,st,'system_state');pt.lat=r2d(rD(p,14));pt.lon=r2d(rD(p,22));pt.hgt=rD(p,30);cs.push(pt)}}else if(pid===0x51&&sz>=8){st.utc_unix_s=r32(p,0);st.utc_microseconds=r32(p,4)}else if(pid===0x52&&sz>=14){const ut=ftu(new Uint8Array(p.buffer,p.byteOffset,p.byteLength));if(ut!=null){st.utc_unix_s=Math.floor(ut/1000000);st.utc_microseconds=ut%1000000}}else if(pid===0x59&&sz>=74){st.utc_unix_s=r32(p,0);st.utc_microseconds=r32(p,4);st.ls=rF(p,44);st.lns=rF(p,48);st.hs=rF(p,52);st.da=rF(p,64);st.gnss_fix_code=r16(p,72)&0x0F}else if(pid===0x5A&&sz>=9){st.hd=rF(p,0);st.vd=rF(p,4);st.gnss_satellites=new Uint8Array(p.buffer,p.byteOffset,p.byteLength)[8]}else if(pid===0x5C&&sz>=32){const pt=np(r,f,st,'geodetic_pos');pt.lat=r2d(rD(p,0));pt.lon=r2d(rD(p,8));pt.hgt=rD(p,16);pt.ha=rF(p,24);pt.va=rF(p,28);st.hacc_m=pt.ha;st.vacc_m=pt.va;cs.push(pt)}}gStat.rr=recs.length;gStat.vf=vf;gStat.bf=bf;gStat.cc=cs.length;return cs}
+function dcp(recs,prog){const st={},cs=[];let vf=0,bf=0;for(let i=0;i<recs.length;i++){if(prog&&i>0&&i%500===0)prog(62+(i/recs.length)*23,'解码…'+i+'/'+recs.length);const r=recs[i],f=pf(r.pay);if(!f){bf++;continue}vf++;const p=f.view,pid=f.pid,sz=f.ps;if(pid===0x42&&sz>=72){st.nn=rF(p,24);st.ne=rF(p,28);st.nd=rF(p,32);st.vn=rF(p,36);st.ve=rF(p,40);st.vdm=rF(p,44)}else if(pid===0x50&&sz>=14){st.ssb=r16(p,0);st.fsb=r16(p,2);st.usb=r16(p,4);st.utc_unix_s=r32(p,6);st.utc_microseconds=r32(p,10);st.gnss_fix_code=(st.fsb>>4)&0x0F;if(sz>=50){st.vn=rF(p,38);st.ve=rF(p,42);st.vdm=rF(p,46)}if(sz>=78){st.rd=r2d(rF(p,66));st.pd=r2d(rF(p,70));st.yd=r2d(rF(p,74))}if(sz>=102){st.ls=rF(p,90);st.lns=rF(p,94);st.hs=rF(p,98)}if(sz>=38){const pt=np(r,f,st,'system_state');pt.lat=r2d(rDbl(p,14));pt.lon=r2d(rDbl(p,22));pt.hgt=rDbl(p,30);cs.push(pt)}}else if(pid===0x51&&sz>=8){st.utc_unix_s=r32(p,0);st.utc_microseconds=r32(p,4)}else if(pid===0x52&&sz>=14){const ut=ftu(new Uint8Array(p.buffer,p.byteOffset,p.byteLength));if(ut!=null){st.utc_unix_s=Math.floor(ut/1000000);st.utc_microseconds=ut%1000000}}else if(pid===0x59&&sz>=74){st.utc_unix_s=r32(p,0);st.utc_microseconds=r32(p,4);st.ls=rF(p,44);st.lns=rF(p,48);st.hs=rF(p,52);st.da=rF(p,64);st.gnss_fix_code=r16(p,72)&0x0F}else if(pid===0x5A&&sz>=9){st.hd=rF(p,0);st.vd=rF(p,4);st.gnss_satellites=new Uint8Array(p.buffer,p.byteOffset,p.byteLength)[8]}else if(pid===0x5C&&sz>=32){const pt=np(r,f,st,'geodetic_pos');pt.lat=r2d(rDbl(p,0));pt.lon=r2d(rDbl(p,8));pt.hgt=rDbl(p,16);pt.ha=rF(p,24);pt.va=rF(p,28);st.hacc_m=pt.ha;st.vacc_m=pt.va;cs.push(pt)}}gStat.rr=recs.length;gStat.vf=vf;gStat.bf=bf;gStat.cc=cs.length;return cs}
 
 // == SOURCE / FILTER / DIST ======================================================
 function sels(cs,req){if(req==='auto')req=cs.some(p=>p.ps==='geodetic_pos')?'geodetic':'system';let sl;if(req==='geodetic')sl=cs.filter(p=>p.ps==='geodetic_pos');else if(req==='system')sl=cs.filter(p=>p.ps==='system_state');else sl=Array.from(cs);sl.forEach((p,i)=>{p.spi=i+1});gStat.sc=sl.length;gStat.as=req;return sl}
@@ -386,26 +386,12 @@ async function lFF(file){
     if(gPts.length){
       ztFS();ss('✓ '+file.name+'：'+gPts.length+' 点，'+gStat.rr+' 记录，'+gStat.vf+' 有效帧');
     }else{
-      // 诊断：检查第一个候选点的 payload 字节
-      let diag='';
-      if(gCands.length){
-        const p0=gCands[0];
-        const rec=gRecs.find(r=>r.ro===p0.ro);
-        if(rec){
-          const frame=pf(rec.pay);
-          if(frame){
-            const raw=new Uint8Array(frame.view.buffer,frame.view.byteOffset,frame.ps);
-            const b14=Array.from(raw.slice(14,30)).map(b=>b.toString(16).padStart(2,'0')).join(' ');
-            diag='lat='+p0.lat+' lon='+p0.lon+' sz='+frame.ps+' raw14-29='+b14;
-          }else diag='pf fail';
-        }else diag='rec not found ro='+p0.ro+' recs='+gRecs.length;
-      }
-      // 如果过滤后为空，尝试 both 来源再试一次
+      // 降级：auto 来源无匹配时尝试 both
       document.getElementById('positionSource').value='both';rc();
       if(gPts.length){
         ss('✓ 已切换为 both 来源，'+gPts.length+' 点，'+gStat.rr+' 记录',false);
       }else{
-        ss('✗ '+diag+' 丢弃'+gStat.rc+' — 检查 min-fix/hacc/vacc/排除设置',false);
+        ss('✗ 候选'+gStat.cc+' 丢弃'+gStat.rc+' — 检查 min-fix/hacc/vacc/排除设置',false);
       }
     }
   }catch(e){hp();ss('✗ '+(e.message||String(e)),false);gRecs=[];gCands=[];gPts=[];gStat={};renM();rT();rS()}finally{gLoading=false}
