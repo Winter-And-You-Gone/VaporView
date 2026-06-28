@@ -105,7 +105,9 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
         <div class="filter-item"><label>hacc</label><input type="number" id="maxHacc" step="0.01" min="0" placeholder="不限" size="4" onchange="recalc()"></div>
         <div class="filter-item"><label>vacc</label><input type="number" id="maxVacc" step="0.01" min="0" placeholder="不限" size="4" onchange="recalc()"></div>
       </div>
-      <div class="filter-row">
+      <div class="dist-row">
+        <span class="dist-label">线宽</span><input type="range" id="lineWeight" min="1" max="6" step="0.5" value="2" oninput="renM()" style="width:60px"> <span id="lwLabel" style="font-size:11px;color:#666">2</span>
+        <span id="zoomDisplay" style="font-size:11px;color:#888;margin-left:8px"></span>
         <div class="filter-item"><label>跳点(m)</label><input type="number" id="maxSegmentM" step="1" min="0" placeholder="不限" size="4" onchange="recalc()"></div>
         <div class="filter-item"><label>排除</label><input type="text" id="excludeIndices" placeholder="如5,8-10" size="8" onchange="recalc()"></div>
         <div class="filter-item"><label>包含</label><input type="text" id="includeIndices" placeholder="如1,3-5" size="8" onchange="recalc()"></div>
@@ -135,6 +137,7 @@ const PN={0x40:'IMU',0x41:'AHRS',0x42:'INS_GPS',0x50:'SYS_STATE',0x51:'UNIX_TIME
 let gRecs=[],gCands=[],gPts=[],gStat={},gLoading=false;
 let gLMap=null,gLyr=[],gMk=[],gTL=null,gTS=null,gSM=null,gEM=null,gHC=null;
 let gEngine='leaflet',gAMap=null,gARdy=false,gAH=null,gAOl=[];
+let gLW=2;
 
 // == HELPERS ====================================================================
 function r16(dv,o){return dv.getUint16(o,true)}
@@ -222,6 +225,13 @@ function mkTD(cfg){const l=L.tileLayer('',{maxNativeZoom:18,maxZoom:24});l.getTi
 
 // == MAP ENGINE ==================================================================
 function isAP(){return document.getElementById('providerSelect').value==='amap_vec'||document.getElementById('providerSelect').value==='amap_img'}
+// 缩放等级显示
+function updZoom(){
+  var z='';
+  if(gEngine==='leaflet'&&gLMap)z=gLMap.getZoom();
+  else if(gEngine==='amap'&&gAMap&&gARdy){try{z=gAMap.getZoom()}catch(e){}}
+  document.getElementById('zoomDisplay').textContent=z?'缩放 '+z:'';
+}
 function dm(){
   if(gAMap){gAMap.destroy();gAMap=null;gARdy=false}
   if(gLMap){
@@ -247,6 +257,7 @@ function initMap(){
         var c=gAMap.getCenter();
         if(c&&gPts.length&&gPts[0].lat){
           gARdy=true;
+          gAMap.on('mapmoveend',updZoom);gAMap.on('zoomend',updZoom);
           renM();
           var p0=apPts(gPts.slice(0,1))[0];
           gAMap.setZoomAndCenter(15,[p0.lon,p0.lat]);
@@ -257,12 +268,14 @@ function initMap(){
     },100);
   }else{
     gLMap=L.map(el,{center:[39.9,116.3],zoom:12,zoomControl:true,attributionControl:true,maxZoom:24});
+    gLMap.on('zoomend',updZoom);
     const pid=document.getElementById('providerSelect').value,key=document.getElementById('tiandituKey').value.trim()||'5a0d3293c900281a37417b2e4d4d3676';
     if(pid==='osm'){gLyr.push(L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxNativeZoom:19,maxZoom:24,attribution:'&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(gLMap))}else{
       const c=pid==='tianditu_vec'?{e:'vec_w',l:'vec'}:{e:'img_w',l:'img'},a=pid==='tianditu_vec'?{e:'cva_w',l:'cva'}:{e:'cia_w',l:'cia'};
       gLyr.push(mkTD({e:c.e,l:c.l,key}).addTo(gLMap));gLyr.push(mkTD({e:a.e,l:a.l,key}).addTo(gLMap))
     }
     if(gPts.length){renM();ztFS()}
+    setTimeout(updZoom,100);
   }
 }
 
@@ -275,10 +288,12 @@ function rLM(){
   if(gTL)gLMap.removeLayer(gTL);if(gTS)gLMap.removeLayer(gTS);if(gSM)gLMap.removeLayer(gSM);if(gEM)gLMap.removeLayer(gEM);if(gHC)gLMap.removeLayer(gHC);
   for(const m of gMk)gLMap.removeLayer(m);gMk=[];
   const ll=gPts.map(p=>[p.lat,p.lon]);
-  gTL=L.polyline(ll,{color:'#999',weight:2,opacity:0.6}).addTo(gLMap);
+  var lw=parseFloat(document.getElementById('lineWeight').value)||2;gLW=lw;document.getElementById('lwLabel').textContent=lw;
+  gTL=L.polyline(ll,{color:'#999',weight:lw,opacity:0.6}).addTo(gLMap);
   const si=parseInt(document.getElementById('startIndex').value,10)||1,ei=parseInt(document.getElementById('endIndex').value,10)||ll.length;
   const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(ll.length,Math.max(si,ei));
-  if(lo<hi){const s=ll.slice(lo,hi);gTS=L.polyline(s,{color:'#e67300',weight:3,opacity:0.9}).addTo(gLMap);const sp=gPts[lo];gSM=L.circleMarker([sp.lat,sp.lon],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gLMap);gSM.bindTooltip('起点 #'+(lo+1),{direction:'top'});const ep=gPts[hi-1];gEM=L.circleMarker([ep.lat,ep.lon],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gLMap);gEM.bindTooltip('终点 #'+hi,{direction:'top'})}
+  var sw=Math.max(lw+1,3);
+  if(lo<hi){const s=ll.slice(lo,hi);gTS=L.polyline(s,{color:'#e67300',weight:sw,opacity:0.9}).addTo(gLMap);const sp=gPts[lo];gSM=L.circleMarker([sp.lat,sp.lon],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gLMap);gSM.bindTooltip('起点 #'+(lo+1),{direction:'top'});const ep=gPts[hi-1];gEM=L.circleMarker([ep.lat,ep.lon],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gLMap);gEM.bindTooltip('终点 #'+hi,{direction:'top'})}
   for(let i=0;i<gPts.length;i++){const p=gPts[i],m=L.circleMarker([p.lat,p.lon],{radius:5,color:'#4a90d9',fillColor:'#4a90d9',fillOpacity:0.3,weight:1,opacity:0.4});m.i=i;m.on('mouseover',()=>hP(i));m.on('mouseout',()=>uhP());m.on('click',()=>cTR(i));m.addTo(gLMap);gMk.push(m)}
 }
 
