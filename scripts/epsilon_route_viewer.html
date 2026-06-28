@@ -383,7 +383,17 @@ async function lFF(file){
     up(91,'过滤…');await slp(0);
     document.getElementById('startIndex').value=1;document.getElementById('endIndex').value=gCands.length;
     rc();up(100,'完成');await slp(300);hp();
-    if(gPts.length){ztFS();ss('✓ '+file.name+'：'+gPts.length+' 点，'+gStat.rr+' 记录，'+gStat.vf+' 有效帧')}else ss('✓ 解析完成，但所有点被过滤掉了',false);
+    if(gPts.length){
+      ztFS();ss('✓ '+file.name+'：'+gPts.length+' 点，'+gStat.rr+' 记录，'+gStat.vf+' 有效帧');
+    }else{
+      // 如果过滤后为空，尝试 both 来源再试一次
+      document.getElementById('positionSource').value='both';rc();
+      if(gPts.length){
+        ss('✓ 已切换为 both 来源，'+gPts.length+' 点，'+gStat.rr+' 记录',false);
+      }else{
+        ss('✗ 候选'+gStat.cc+' 来源选择'+gStat.sc+' 丢弃'+gStat.rc+' — 检查 min-fix/hacc/vacc/排除设置',false);
+      }
+    }
   }catch(e){hp();ss('✗ '+(e.message||String(e)),false);gRecs=[];gCands=[];gPts=[];gStat={};renM();rT();rS()}finally{gLoading=false}
 }
 function cEF(fls){
