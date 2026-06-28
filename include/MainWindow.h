@@ -260,7 +260,7 @@ class TemperatureControllerPanel : public QWidget
 
 public:
     explicit TemperatureControllerPanel(QWidget *parent = nullptr);
-    void updateData(const VaporView::TemperatureControllerData& data);
+    void updateData(const VaporView::TemperatureControllerData& controllerData);
     void updateRate(double hz);
     void setEnglish(bool english);
     void setCommandStatus(const QString& text, bool error = false);
@@ -374,7 +374,7 @@ private slots:
     void onRemoteWaveformUpdated(const VaporView::DownsampledWaveform& waveform);
     void onRemoteWaveformFeatureUpdated(const VaporView::WaveformFeature& feature);
     void onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus& status);
-    void onRemoteTemperatureControllerStatusUpdated(const VaporView::TemperatureControllerData& data);
+    void onRemoteTemperatureControllerStatusUpdated(const VaporView::TemperatureControllerData& controllerData);
     void onRemoteCommandAckReceived(const VaporView::CommandAck& ack);
     void onRemoteLinkOpenChanged(bool open);
 

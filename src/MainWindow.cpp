@@ -5340,29 +5340,29 @@ void TemperatureControllerPanel::updateChannelData(int index, const VaporView::T
     }
 }
 
-void TemperatureControllerPanel::updateData(const VaporView::TemperatureControllerData& data)
+void TemperatureControllerPanel::updateData(const VaporView::TemperatureControllerData& controllerData)
 {
-    internal_temperature_label_->setText(fixedDecimalWithUnit(data.valid ? data.internal_temperature_c : std::numeric_limits<double>::quiet_NaN(), 2, 8, QStringLiteral("°C")));
-    error_code_label_->setText(data.valid ? QStringLiteral("0x%1").arg(data.error_code, 4, 16, QLatin1Char('0')).toUpper() : QStringLiteral("---"));
+    internal_temperature_label_->setText(fixedDecimalWithUnit(controllerData.valid ? controllerData.internal_temperature_c : std::numeric_limits<double>::quiet_NaN(), 2, 8, QStringLiteral("°C")));
+    error_code_label_->setText(controllerData.valid ? QStringLiteral("0x%1").arg(controllerData.error_code, 4, 16, QLatin1Char('0')).toUpper() : QStringLiteral("---"));
     if (controller_mode_combo_)
     {
         const QSignalBlocker blocker(controller_mode_combo_);
-        const int modeIndex = controller_mode_combo_->findData(data.valid ? data.controller_mode : 0);
+        const int modeIndex = controller_mode_combo_->findData(controllerData.valid ? controllerData.controller_mode : 0);
         controller_mode_combo_->setCurrentIndex(modeIndex >= 0 ? modeIndex : 0);
     }
     if (!error_text_label_)
     {
         error_text_label_ = new QLabel(this);
     }
-    error_code_label_->setToolTip(data.valid && data.error_code != 0
+    error_code_label_->setToolTip(controllerData.valid && controllerData.error_code != 0
         ? (is_english_ ? QStringLiteral("RD105 reported an error bitmask. Check the controller/manual before enabling output.")
                        : QStringLiteral("RD105 返回错误位掩码。开启输出前请检查温控器和手册。"))
         : (is_english_ ? QStringLiteral("No error reported") : QStringLiteral("未报告错误")));
-    if (data.valid)
+    if (controllerData.valid)
     {
         for (int i = 0; i < static_cast<int>(measured_temperature_history_.size()); ++i)
         {
-            const double measured = data.channels[i].measured_temperature_c;
+            const double measured = controllerData.channels[i].measured_temperature_c;
             if (std::isfinite(measured))
             {
                 auto& history = measured_temperature_history_[i];
@@ -5381,8 +5381,8 @@ void TemperatureControllerPanel::updateData(const VaporView::TemperatureControll
             history.clear();
         }
     }
-    updateChannelData(0, data.channels[0], data.valid);
-    updateChannelData(1, data.channels[1], data.valid);
+    updateChannelData(0, controllerData.channels[0], controllerData.valid);
+    updateChannelData(1, controllerData.channels[1], controllerData.valid);
     if (temperature_plot_ && tabs_)
     {
         const int channelIndex = std::clamp(tabs_->currentIndex(), 0, 1);
@@ -5888,14 +5888,14 @@ MainWindow::MainWindow(QWidget *parent)
             },
             Qt::DirectConnection);
     connect(ground_telemetry_service_, &VaporView::GroundTelemetryService::temperatureControllerStatusUpdated,
-            this, [this, currentOpenRemoteEvent, dispatchRemoteUi](const VaporView::TemperatureControllerData& data) {
+            this, [this, currentOpenRemoteEvent, dispatchRemoteUi](const VaporView::TemperatureControllerData& controllerData) {
                 const quint64 generation = ground_telemetry_service_->linkGeneration();
-                dispatchRemoteUi([this, currentOpenRemoteEvent, generation, data]() {
+                dispatchRemoteUi([this, currentOpenRemoteEvent, generation, controllerData]() {
                     if (!currentOpenRemoteEvent(generation))
                     {
                         return;
                     }
-                    onRemoteTemperatureControllerStatusUpdated(data);
+                    onRemoteTemperatureControllerStatusUpdated(controllerData);
                 });
             },
             Qt::DirectConnection);
@@ -17925,10 +17925,10 @@ void MainWindow::onRemoteTelemetryStatusUpdated(const VaporView::TelemetryStatus
     updateSourceModeUi();
 }
 
-void MainWindow::onRemoteTemperatureControllerStatusUpdated(const VaporView::TemperatureControllerData& data)
+void MainWindow::onRemoteTemperatureControllerStatusUpdated(const VaporView::TemperatureControllerData& controllerData)
 {
     noteRemotePacket(VaporView::MsgType::TemperatureControllerStatus);
-    current_temperature_controller_ = data;
+    current_temperature_controller_ = controllerData;
     remote_last_data_ms_.insert(VaporView::SkyDeviceId::TemperatureController, QDateTime::currentMSecsSinceEpoch());
     if (temperature_controller_panel_)
     {
