@@ -2735,7 +2735,7 @@ public:
         , ecef_packet_rate_hz_(0.0)
     {
         setObjectName(QStringLiteral("epsilonPanel"));
-        setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
         setupUi();
         setEnglish(false);
     }
@@ -2766,7 +2766,7 @@ public:
     {
         const bool changed = compact_layout_ != compact;
         compact_layout_ = compact;
-        setSizePolicy(compact ? QSizePolicy::Expanding : QSizePolicy::Maximum, QSizePolicy::Preferred);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
         updateCardGridLayout(changed);
         QTimer::singleShot(0, this, [this]() {
             updateCardGridLayout(true);

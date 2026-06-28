@@ -434,6 +434,16 @@ int main(int argc, char **argv)
             "environment and lidar card stays close to one fifth of the sensor row at wide widths");
     require(epsilonGroup->width() >= environmentGroup->width() * 3.6,
             "EPSILON card keeps an approximately 4:1 width relationship against environment card");
+    QList<QFrame*> wideCards = dataGroup->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
+    require(wideCards.size() == 3, "three EPSILON section cards at wide window size");
+    int wideCardsRight = 0;
+    for (const QFrame *card : wideCards)
+    {
+        wideCardsRight = std::max(wideCardsRight,
+                                  card->mapTo(epsilonGroup, QPoint(card->width(), 0)).x());
+    }
+    require(wideCardsRight >= epsilonGroup->contentsRect().right() - 8,
+            "EPSILON section cards expand to fill the navigation card at wide window size");
 
     window.resize(originalWindowSize);
     processEventsFor(300);
