@@ -9,6 +9,7 @@
 #include <QLabel>
 #include <QLayout>
 #include <QMenu>
+#include <QMetaObject>
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QSplitter>
@@ -260,6 +261,13 @@ int main(int argc, char **argv)
     require(temperatureChannelButton != nullptr, "temperature overview channel selector exists");
     require(temperatureChannelButton->toolButtonStyle() == Qt::ToolButtonTextOnly,
             "temperature overview channel selector text remains centered");
+    require(temperatureChannelButton->property("available").isValid() &&
+                !temperatureChannelButton->property("available").toBool(),
+            "temperature overview channel selector starts unavailable without controller data");
+    require(!temperatureChannelButton->isEnabled(),
+            "temperature overview channel selector is disabled without controller data");
+    require(qApp->styleSheet().contains(QStringLiteral("QToolButton#temperatureOverviewChannelButton[available=\"false\"]")),
+            "temperature overview channel selector has a gray unavailable state");
     require(qApp->styleSheet().contains(QStringLiteral("QToolButton#temperatureOverviewChannelButton::menu-indicator")) &&
                 qApp->styleSheet().contains(QStringLiteral("combo_arrow_down.xpm")),
             "temperature overview channel selector has right-side dropdown arrow");
@@ -282,6 +290,48 @@ int main(int argc, char **argv)
     }
     temperatureChannelButton->menu()->hide();
     processEventsFor(50);
+
+    const QList<QLabel*> temperatureValuePills =
+        window.findChildren<QLabel *>(QStringLiteral("temperatureOverviewValuePill"));
+    require(temperatureValuePills.size() == 2,
+            "temperature overview target and current value pills exist");
+    require(!qApp->styleSheet().contains(QStringLiteral("QLabel#temperatureOverviewValuePill[hasData")),
+            "temperature overview value pills use the default background without data-state colors");
+    for (QLabel *pill : temperatureValuePills)
+    {
+        require(!pill->property("hasData").isValid(),
+                "temperature overview value pill does not carry availability styling state");
+    }
+    auto *temperatureOutputSwitch =
+        window.findChild<QPushButton *>(QStringLiteral("temperatureOverviewOutputSwitch"));
+    require(temperatureOutputSwitch != nullptr,
+            "temperature overview output enable capsule exists");
+    require(!temperatureOutputSwitch->isEnabled(),
+            "temperature overview output enable capsule is disabled without controller data");
+
+    qRegisterMetaType<VaporView::TemperatureControllerData>("VaporView::TemperatureControllerData");
+    VaporView::TemperatureControllerData validTemperatureData;
+    validTemperatureData.valid = true;
+    validTemperatureData.channels[0].target_temperature_c = 25.0;
+    validTemperatureData.channels[0].measured_temperature_c = 24.75;
+    validTemperatureData.channels[0].output_enabled = true;
+    const bool temperatureUpdateInvoked = QMetaObject::invokeMethod(
+        &window,
+        "onRemoteTemperatureControllerStatusUpdated",
+        Qt::DirectConnection,
+        Q_ARG(VaporView::TemperatureControllerData, validTemperatureData));
+    require(temperatureUpdateInvoked,
+            "temperature overview can receive a valid controller data frame");
+    processEventsFor(50);
+    require(temperatureChannelButton->isEnabled(),
+            "temperature overview channel selector is enabled with controller data");
+    require(temperatureChannelButton->property("available").isValid() &&
+                temperatureChannelButton->property("available").toBool(),
+            "temperature overview channel selector marks valid controller data as available");
+    require(temperatureOutputSwitch->isEnabled(),
+            "temperature overview output enable capsule is enabled with controller data");
+    require(temperatureOutputSwitch->isChecked(),
+            "temperature overview output enable capsule reflects the confirmed controller output state");
 
     QLabel *peakTrendTitle = nullptr;
     const QList<QLabel*> sectionTitleLabels =

@@ -4406,7 +4406,7 @@ private:
     bool is_english_ = false;
 };
 
-void setTemperatureOverviewPillText(QLabel *label, const QString& title, const QString& value, bool hasData)
+void setTemperatureOverviewPillText(QLabel *label, const QString& title, const QString& value)
 {
     if (!label)
     {
@@ -4430,7 +4430,6 @@ void setTemperatureOverviewPillText(QLabel *label, const QString& title, const Q
                                             value);
     }
     label->setText(text);
-    label->setProperty("hasData", hasData);
     label->style()->unpolish(label);
     label->style()->polish(label);
 }
@@ -4519,12 +4518,14 @@ protected:
             ? appThemeColor(AppThemeColor::HomeDeviceSuccess, dark)
             : appThemeColor(AppThemeColor::HomeDeviceDanger, dark);
         const QColor border = appThemeColor(AppThemeColor::Border, dark);
-        const QColor fill = appThemeColor(AppThemeColor::SurfaceAlt, dark);
+        const QColor fill = enabled
+            ? appThemeColor(AppThemeColor::PrimarySubtle, dark)
+            : appThemeColor(AppThemeColor::SurfaceAlt, dark);
         const QColor switchFill = enabled
             ? stateFill
             : appThemeColor(AppThemeColor::Surface, dark);
         const QColor text = enabled
-            ? appThemeColor(AppThemeColor::Text, dark)
+            ? appThemeColor(AppThemeColor::Primary, dark)
             : appThemeColor(AppThemeColor::TextMuted, dark);
         const QColor selectedFill = enabled
             ? appThemeColor(AppThemeColor::Surface, dark)
@@ -4942,18 +4943,25 @@ private:
             is_english_ ? QStringLiteral("Target") : QStringLiteral("目标"),
             compactDecimalWithUnit(targetValid ? channel.target_temperature_c : std::numeric_limits<double>::quiet_NaN(),
                                    3,
-                                   QStringLiteral("°C")),
-            targetValid);
+                                   QStringLiteral("°C")));
         setTemperatureOverviewPillText(
             current_temp_value_,
             is_english_ ? QStringLiteral("Current") : QStringLiteral("当前"),
             compactDecimalWithUnit(measuredValid ? channel.measured_temperature_c : std::numeric_limits<double>::quiet_NaN(),
                                    3,
-                                   QStringLiteral("°C")),
-            measuredValid);
+                                   QStringLiteral("°C")));
+        if (channel_button_)
+        {
+            channel_button_->setProperty("available", valid);
+            channel_button_->setEnabled(valid);
+            channel_button_->style()->unpolish(channel_button_);
+            channel_button_->style()->polish(channel_button_);
+            channel_button_->update();
+        }
         if (output_switch_button_)
         {
             const bool outputEnabled = valid && channel.output_enabled;
+            output_switch_button_->setEnabled(valid);
             output_switch_button_->setSwitchChecked(outputEnabled, output_switch_button_->switchChecked() != outputEnabled);
         }
         if (plot_)
@@ -6350,12 +6358,12 @@ void MainWindow::loadModernStyleSheet()
             "QFrame#homeTelemetrySummaryPill[hasData=\"true\"] { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; }"
             "QFrame#homeTelemetrySummaryPill[hasData=\"false\"] { background-color: @vv-surface-alt; border: 1px solid @vv-border; }"
             "QFrame#homeTelemetrySummaryPill[hasData=\"false\"] QLabel { color: @vv-text-muted; }"
-            "QLabel#temperatureOverviewValuePill { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-muted; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 12px; font-weight: 700; padding: 1px 4px; margin: 0px; }"
-            "QLabel#temperatureOverviewValuePill[hasData=\"true\"] { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; color: @vv-text; }"
-            "QLabel#temperatureOverviewValuePill[hasData=\"false\"] { background-color: @vv-surface-alt; border: 1px solid @vv-border; color: @vv-text-muted; }"
+            "QLabel#temperatureOverviewValuePill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 12px; font-weight: 700; padding: 1px 4px; margin: 0px; }"
             "QPushButton#temperatureOverviewOutputSwitch { background-color: transparent; border: none; min-height: 56px; max-height: 56px; padding: 0px; margin: 0px; color: @vv-text; font-size: 13px; font-weight: 700; }"
-            "QToolButton#temperatureOverviewChannelButton { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text; font-size: 13px; font-weight: 700; padding: 1px 0px; text-align: center; }"
+            "QToolButton#temperatureOverviewChannelButton { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; border-radius: 10px; color: @vv-primary; font-size: 13px; font-weight: 700; padding: 1px 0px; text-align: center; }"
+            "QToolButton#temperatureOverviewChannelButton[available=\"false\"] { background-color: @vv-surface-alt; border-color: @vv-border; color: @vv-text-muted; }"
             "QToolButton#temperatureOverviewChannelButton:hover, QToolButton#temperatureOverviewChannelButton:pressed { background-color: @vv-primary-subtle; border-color: @vv-primary-subtle-pressed; }"
+            "QToolButton#temperatureOverviewChannelButton[available=\"false\"]:hover, QToolButton#temperatureOverviewChannelButton[available=\"false\"]:pressed { background-color: @vv-surface-alt; border-color: @vv-border; }"
             "QToolButton#temperatureOverviewChannelButton::menu-indicator { image: url(combo_arrow_down.xpm); width: 12px; height: 8px; subcontrol-origin: padding; subcontrol-position: center right; right: 8px; }"
             "QMenu#temperatureOverviewChannelMenu { padding: 0px; }"
             "QMenu#temperatureOverviewChannelMenu::item { min-width: 99px; max-width: 99px; min-height: 34px; max-height: 34px; padding: 9px 0px; margin: 0px; }"

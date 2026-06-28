@@ -426,27 +426,15 @@ QLabel#homeTelemetrySummaryPill[hasData="false"] {
 }
 
 QLabel#temperatureOverviewValuePill {
-    background-color: @vv-surface-alt;
+    background-color: @vv-surface;
     border: 1px solid @vv-border;
     border-radius: 10px;
-    color: @vv-text-muted;
+    color: @vv-text-strong;
     font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 12px;
     font-weight: 700;
     padding: 1px 4px;
     margin: 0px;
-}
-
-QLabel#temperatureOverviewValuePill[hasData="true"] {
-    background-color: @vv-primary-subtle;
-    border: 1px solid @vv-primary-subtle-pressed;
-    color: @vv-text;
-}
-
-QLabel#temperatureOverviewValuePill[hasData="false"] {
-    background-color: @vv-surface-alt;
-    border: 1px solid @vv-border;
-    color: @vv-text-muted;
 }
 
 QPushButton#temperatureOverviewOutputSwitch {
@@ -462,20 +450,32 @@ QPushButton#temperatureOverviewOutputSwitch {
 }
 
 QToolButton#temperatureOverviewChannelButton {
-    background-color: @vv-surface-alt;
-    border: 1px solid @vv-border;
+    background-color: @vv-primary-subtle;
+    border: 1px solid @vv-primary-subtle-pressed;
     border-radius: 10px;
-    color: @vv-text;
+    color: @vv-primary;
     font-size: 13px;
     font-weight: 700;
     padding: 1px 0px;
     text-align: center;
 }
 
+QToolButton#temperatureOverviewChannelButton[available="false"] {
+    background-color: @vv-surface-alt;
+    border-color: @vv-border;
+    color: @vv-text-muted;
+}
+
 QToolButton#temperatureOverviewChannelButton:hover,
 QToolButton#temperatureOverviewChannelButton:pressed {
     background-color: @vv-primary-subtle;
     border-color: @vv-primary-subtle-pressed;
+}
+
+QToolButton#temperatureOverviewChannelButton[available="false"]:hover,
+QToolButton#temperatureOverviewChannelButton[available="false"]:pressed {
+    background-color: @vv-surface-alt;
+    border-color: @vv-border;
 }
 
 QToolButton#temperatureOverviewChannelButton::menu-indicator {
