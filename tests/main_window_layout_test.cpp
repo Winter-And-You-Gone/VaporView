@@ -257,6 +257,22 @@ int main(int argc, char **argv)
                    QMargins(2, 2, 2, 2),
                    "temperature overview body padding matches sensor-card content rhythm");
 
+    const QList<QLabel*> homeDeviceCapsules =
+        window.findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule"));
+    require(homeDeviceCapsules.size() == 6,
+            "home device overview includes six status capsules");
+    bool hasTemperatureHomeCapsule = false;
+    for (QLabel *capsule : homeDeviceCapsules)
+    {
+        if (capsule->text().contains(QStringLiteral("RD105")))
+        {
+            hasTemperatureHomeCapsule = true;
+            break;
+        }
+    }
+    require(hasTemperatureHomeCapsule,
+            "home device overview includes the RD105 laser temperature controller");
+
     auto *temperaturePortCombo = window.findChild<QComboBox *>(QStringLiteral("temperaturePortCombo"));
     auto *temperatureBaudCombo = window.findChild<QComboBox *>(QStringLiteral("temperatureBaudCombo"));
     auto *temperatureRateCombo = window.findChild<QComboBox *>(QStringLiteral("temperatureRateCombo"));

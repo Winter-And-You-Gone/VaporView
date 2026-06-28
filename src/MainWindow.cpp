@@ -887,6 +887,7 @@ QString skyDeviceDisplayName(VaporView::SkyDeviceId device)
     case VaporView::SkyDeviceId::Ptb: return QStringLiteral("PTB210");
     case VaporView::SkyDeviceId::Hmp: return QStringLiteral("HMP3");
     case VaporView::SkyDeviceId::Lidar: return QStringLiteral("TFA1500-L");
+    case VaporView::SkyDeviceId::TemperatureController: return QStringLiteral("RD105");
     case VaporView::SkyDeviceId::WaveTcp: return QStringLiteral("Wave TCP");
     case VaporView::SkyDeviceId::All: return QStringLiteral("全部设备");
     }
@@ -905,12 +906,12 @@ QString homeDeviceDisplayName(VaporView::SkyDeviceId device, bool english)
         return english ? QStringLiteral("HMP Temp/Humidity") : QStringLiteral("HMP 温湿度");
     case VaporView::SkyDeviceId::Lidar:
         return english ? QStringLiteral("TFA1500-L LiDAR") : QStringLiteral("TFA1500-L 激光测距");
+    case VaporView::SkyDeviceId::TemperatureController:
+        return english ? QStringLiteral("RD105 Thermal") : QStringLiteral("RD105 激光温控");
     case VaporView::SkyDeviceId::WaveTcp:
         return english ? QStringLiteral("Wave Source") : QStringLiteral("波形源");
     case VaporView::SkyDeviceId::All:
         return english ? QStringLiteral("All devices") : QStringLiteral("全部设备");
-    case VaporView::SkyDeviceId::TemperatureController:
-        return english ? QStringLiteral("Temperature Controller") : QStringLiteral("温控器");
     }
     return english ? QStringLiteral("Device") : QStringLiteral("设备");
 }
@@ -5529,11 +5530,13 @@ MainWindow::MainWindow(QWidget *parent)
     , home_ptb_status_lbl_(nullptr)
     , home_hmp_status_lbl_(nullptr)
     , home_lidar_status_lbl_(nullptr)
+    , home_temperature_status_lbl_(nullptr)
     , home_wave_status_lbl_(nullptr)
     , home_epsilon_action_btn_(nullptr)
     , home_ptb_action_btn_(nullptr)
     , home_hmp_action_btn_(nullptr)
     , home_lidar_action_btn_(nullptr)
+    , home_temperature_action_btn_(nullptr)
     , home_wave_action_btn_(nullptr)
     , data_telemetry_summary_card_(nullptr)
     , data_telemetry_summary_layout_(nullptr)
@@ -11383,6 +11386,7 @@ void MainWindow::setupConfigPanel()
     addHomeDevice(home_ptb_status_lbl_, home_ptb_action_btn_, VaporView::SkyDeviceId::Ptb);
     addHomeDevice(home_hmp_status_lbl_, home_hmp_action_btn_, VaporView::SkyDeviceId::Hmp);
     addHomeDevice(home_lidar_status_lbl_, home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
+    addHomeDevice(home_temperature_status_lbl_, home_temperature_action_btn_, VaporView::SkyDeviceId::TemperatureController);
     addHomeDevice(home_wave_status_lbl_, home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
     home_device_action_spinner_timer_ = new QTimer(this);
     home_device_action_spinner_timer_->setTimerType(Qt::PreciseTimer);
@@ -15806,7 +15810,8 @@ void MainWindow::triggerHomeDeviceAction(VaporView::SkyDeviceId device)
             for (VaporView::SkyDeviceId candidate : {VaporView::SkyDeviceId::Epsilon,
                                                      VaporView::SkyDeviceId::Ptb,
                                                      VaporView::SkyDeviceId::Hmp,
-                                                     VaporView::SkyDeviceId::Lidar})
+                                                     VaporView::SkyDeviceId::Lidar,
+                                                     VaporView::SkyDeviceId::TemperatureController})
             {
                 if (homeDevicePortSelected(candidate) && !homeDeviceConnected(candidate))
                 {
@@ -15962,6 +15967,7 @@ void MainWindow::updateHomeDeviceStatusCapsules()
     updateCapsule(home_ptb_status_lbl_, home_ptb_action_btn_, VaporView::SkyDeviceId::Ptb);
     updateCapsule(home_hmp_status_lbl_, home_hmp_action_btn_, VaporView::SkyDeviceId::Hmp);
     updateCapsule(home_lidar_status_lbl_, home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
+    updateCapsule(home_temperature_status_lbl_, home_temperature_action_btn_, VaporView::SkyDeviceId::TemperatureController);
     updateCapsule(home_wave_status_lbl_, home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
     if (home_device_action_spinner_timer_)
     {
@@ -16018,6 +16024,7 @@ void MainWindow::updateHomeDeviceActionSpinnerIcons()
     updateButton(home_ptb_action_btn_, VaporView::SkyDeviceId::Ptb);
     updateButton(home_hmp_action_btn_, VaporView::SkyDeviceId::Hmp);
     updateButton(home_lidar_action_btn_, VaporView::SkyDeviceId::Lidar);
+    updateButton(home_temperature_action_btn_, VaporView::SkyDeviceId::TemperatureController);
     updateButton(home_wave_action_btn_, VaporView::SkyDeviceId::WaveTcp);
     if (needsFullRefresh)
     {
