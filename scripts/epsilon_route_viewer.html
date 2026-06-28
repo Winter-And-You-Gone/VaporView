@@ -231,10 +231,22 @@ function initMap(){
     gARdy=false;
     gAMap=new AMap.Map(el,{zoom:13,center:[116.3,39.9],zooms:[3,22]});
     const pid=document.getElementById('providerSelect').value;
-    gAMap.on('complete',function(){
-      if(pid==='amap_img')gAMap.setLayers([new AMap.TileLayer.Satellite()]);
-      gARdy=true;if(gPts.length){renM();setTimeout(ztFS,200)}
-    });
+    if(pid==='amap_img'){setTimeout(function(){try{gAMap.setLayers([new AMap.TileLayer.Satellite()])}catch(e){}},100)}
+    // 轮询等待地图就绪，最多 3 秒
+    var checkReady=0;
+    var iv=setInterval(function(){
+      checkReady++;
+      try{
+        var c=gAMap.getCenter();
+        if(c&&gPts.length&&gPts[0].lat){
+          renM();
+          var p0=gPts[0];
+          gAMap.setZoomAndCenter(15,[p0.lon,p0.lat]);
+          gARdy=true;clearInterval(iv)
+        }
+      }catch(e){}
+      if(checkReady>30){gARdy=true;clearInterval(iv)}
+    },100);
   }else{
     gLMap=L.map(el,{center:[39.9,116.3],zoom:12,zoomControl:true,attributionControl:true,maxZoom:24});
     const pid=document.getElementById('providerSelect').value,key=document.getElementById('tiandituKey').value.trim()||'5a0d3293c900281a37417b2e4d4d3676';
