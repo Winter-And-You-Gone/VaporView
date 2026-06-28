@@ -338,6 +338,7 @@ private slots:
     void onPtbDataReady();
     void onHmpDataReady();
     void onLidarDataReady();
+    void onTemperatureControllerDataReady();
     void onRefreshTimer();
     void onClearLogClicked();
     void onRefreshPortsClicked();
@@ -353,6 +354,7 @@ private slots:
     void onPtbRateChanged(const QString& text);
     void onHmpRateChanged(const QString& text);
     void onLidarRateChanged(const QString& text);
+    void onTemperatureRateChanged(const QString& text);
     void onRtkConfigClicked();
     void onOpenSessionViewerClicked();
     void onFontScaleTriggered(QAction *action);
@@ -383,6 +385,7 @@ private:
         std::shared_ptr<VaporView::PtbCollector> ptb;
         std::shared_ptr<VaporView::HmpCollector> hmp;
         std::shared_ptr<VaporView::LidarCollector> lidar;
+        std::shared_ptr<VaporView::TemperatureControllerCollector> temperature_controller;
     };
 
     enum class ScheduledRecordingMode
@@ -636,10 +639,12 @@ private:
         QLabel *ptb_lbl = nullptr;
         QLabel *hmp_lbl = nullptr;
         QLabel *lidar_lbl = nullptr;
+        QLabel *temperature_lbl = nullptr;
         QLabel *epsilon_rate_lbl = nullptr;
         QLabel *ptb_rate_lbl = nullptr;
         QLabel *hmp_rate_lbl = nullptr;
         QLabel *lidar_rate_lbl = nullptr;
+        QLabel *temperature_rate_lbl = nullptr;
         QWidget *sky_telemetry_row_widget = nullptr;
         QFrame *data_telemetry_summary_card = nullptr;
         QLabel *data_telemetry_summary_lbl = nullptr;
@@ -663,9 +668,12 @@ private:
         QComboBox *hmp_baud_combo = nullptr;
         QComboBox *lidar_port_combo = nullptr;
         QComboBox *lidar_baud_combo = nullptr;
+        QComboBox *temperature_port_combo = nullptr;
+        QComboBox *temperature_baud_combo = nullptr;
         QComboBox *ptb_rate_combo = nullptr;
         QComboBox *hmp_rate_combo = nullptr;
         QComboBox *lidar_rate_combo = nullptr;
+        QComboBox *temperature_rate_combo = nullptr;
         QPushButton *epsilon_remote_connect_btn = nullptr;
         QPushButton *epsilon_remote_disconnect_btn = nullptr;
         QPushButton *epsilon_remote_reconnect_btn = nullptr;
@@ -682,6 +690,10 @@ private:
         QPushButton *lidar_remote_disconnect_btn = nullptr;
         QPushButton *lidar_remote_reconnect_btn = nullptr;
         QWidget *lidar_remote_buttons_widget = nullptr;
+        QPushButton *temperature_remote_connect_btn = nullptr;
+        QPushButton *temperature_remote_disconnect_btn = nullptr;
+        QPushButton *temperature_remote_reconnect_btn = nullptr;
+        QWidget *temperature_remote_buttons_widget = nullptr;
     };
 
     QWidget *central_widget_;
@@ -727,12 +739,14 @@ private:
     QComboBox *ptb_port_combo_;
     QComboBox *hmp_port_combo_;
     QComboBox *lidar_port_combo_;
+    QComboBox *temperature_port_combo_;
     QComboBox *epsilon_baud_combo_;
     QComboBox *gnss_baud_combo_;
     QComboBox *imu_baud_combo_;
     QComboBox *ptb_baud_combo_;
     QComboBox *hmp_baud_combo_;
     QComboBox *lidar_baud_combo_;
+    QComboBox *temperature_baud_combo_;
     QAction *connect_btn_;
     QAction *cancel_connect_btn_;
     QAction *disconnect_btn_;
@@ -814,6 +828,7 @@ private:
     QLabel *ptb_lbl_;
     QLabel *hmp_lbl_;
     QLabel *lidar_lbl_;
+    QLabel *temperature_lbl_;
     QLabel *home_epsilon_status_lbl_;
     QLabel *home_ptb_status_lbl_;
     QLabel *home_hmp_status_lbl_;
@@ -848,6 +863,7 @@ private:
     QLabel *ptb_rate_lbl_;
     QLabel *hmp_rate_lbl_;
     QLabel *lidar_rate_lbl_;
+    QLabel *temperature_rate_lbl_;
     QLabel *data_source_mode_lbl_;
     QLabel *sky_telemetry_transport_lbl_;
     QLabel *sky_telemetry_port_lbl_;
@@ -863,6 +879,7 @@ private:
     QComboBox *ptb_rate_combo_;
     QComboBox *hmp_rate_combo_;
     QComboBox *lidar_rate_combo_;
+    QComboBox *temperature_rate_combo_;
     QComboBox *data_source_mode_combo_;
     QComboBox *sky_telemetry_transport_combo_;
     QComboBox *sky_telemetry_port_combo_;
@@ -909,6 +926,7 @@ private:
     std::shared_ptr<VaporView::PtbCollector> ptb_collector_;
     std::shared_ptr<VaporView::HmpCollector> hmp_collector_;
     std::shared_ptr<VaporView::LidarCollector> lidar_collector_;
+    std::shared_ptr<VaporView::TemperatureControllerCollector> temperature_controller_collector_;
 
     QTimer *refresh_timer_;
     QTimer *scheduled_recording_timer_;
@@ -975,6 +993,7 @@ private:
     int ptb_sample_rate_;
     int hmp_sample_rate_;
     int lidar_sample_rate_;
+    int temperature_sample_rate_;
     int recording_export_rate_hz_;
     int imu_recording_rate_hz_;
     int waveform_recording_rate_hz_;

@@ -217,13 +217,13 @@ SkyConfig SkyConfig::defaults()
     config.ptb = {true, QStringLiteral("COM5"), 9600, 20.0};
     config.hmp = {true, QStringLiteral("COM6"), 19200, 20.0};
     config.lidar = {true, QStringLiteral("COM7"), 500000, 100.0};
-    config.temperature_controller = {false, QStringLiteral("COM9"), 9600, 5.0, 1};
+    config.temperature_controller = {false, QStringLiteral("COM9"), 38400, 5.0, 1};
 #else
     config.epsilon = {true, QStringLiteral("/dev/ttyEPSILON"), 921600, 100.0};
     config.ptb = {true, QStringLiteral("/dev/ttyBARO"), 9600, 20.0};
     config.hmp = {true, QStringLiteral("/dev/ttyHMP"), 19200, 20.0};
     config.lidar = {true, QStringLiteral("/dev/ttyLidar"), 500000, 100.0};
-    config.temperature_controller = {false, QStringLiteral("/dev/ttyRD105"), 9600, 5.0, 1};
+    config.temperature_controller = {false, QStringLiteral("/dev/ttyRD105"), 38400, 5.0, 1};
 #endif
     config.wave_tcp = {true, QStringLiteral("127.0.0.1"), 8888, 10, 0, 0};
     config.telemetry = {10.0, 10.0, 1.0, 1.0, 1.0};

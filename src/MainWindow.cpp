@@ -988,6 +988,8 @@ constexpr int kDefaultEpsilonSampleRateHz = 100;
 constexpr int kDefaultPtbSampleRateHz = 20;
 constexpr int kDefaultHmpSampleRateHz = 20;
 constexpr int kDefaultLidarSampleRateHz = 100;
+constexpr int kDefaultTemperatureSampleRateHz = 5;
+constexpr int kMaxTemperatureSampleRateHz = 20;
 constexpr int kDefaultMainWindowWidth = 1280;
 constexpr int kDefaultMainWindowHeight = 800;
 constexpr int kMinimumMainWindowWidth = 1024;
@@ -5436,12 +5438,14 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_port_combo_(nullptr)
     , hmp_port_combo_(nullptr)
     , lidar_port_combo_(nullptr)
+    , temperature_port_combo_(nullptr)
     , epsilon_baud_combo_(nullptr)
     , gnss_baud_combo_(nullptr)
     , imu_baud_combo_(nullptr)
     , ptb_baud_combo_(nullptr)
     , hmp_baud_combo_(nullptr)
     , lidar_baud_combo_(nullptr)
+    , temperature_baud_combo_(nullptr)
     , connect_btn_(nullptr)
     , cancel_connect_btn_(nullptr)
     , disconnect_btn_(nullptr)
@@ -5520,6 +5524,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_lbl_(nullptr)
     , hmp_lbl_(nullptr)
     , lidar_lbl_(nullptr)
+    , temperature_lbl_(nullptr)
     , home_epsilon_status_lbl_(nullptr)
     , home_ptb_status_lbl_(nullptr)
     , home_hmp_status_lbl_(nullptr)
@@ -5554,6 +5559,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_rate_lbl_(nullptr)
     , hmp_rate_lbl_(nullptr)
     , lidar_rate_lbl_(nullptr)
+    , temperature_rate_lbl_(nullptr)
     , data_source_mode_lbl_(nullptr)
     , sky_telemetry_transport_lbl_(nullptr)
     , sky_telemetry_port_lbl_(nullptr)
@@ -5568,6 +5574,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_rate_combo_(nullptr)
     , hmp_rate_combo_(nullptr)
     , lidar_rate_combo_(nullptr)
+    , temperature_rate_combo_(nullptr)
     , data_source_mode_combo_(nullptr)
     , sky_telemetry_transport_combo_(nullptr)
     , sky_telemetry_port_combo_(nullptr)
@@ -5612,6 +5619,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_collector_(nullptr)
     , hmp_collector_(nullptr)
     , lidar_collector_(nullptr)
+    , temperature_controller_collector_(nullptr)
     , refresh_timer_(nullptr)
     , scheduled_recording_timer_(nullptr)
     , home_device_action_spinner_timer_(nullptr)
@@ -5654,6 +5662,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ptb_sample_rate_(kDefaultPtbSampleRateHz)
     , hmp_sample_rate_(kDefaultHmpSampleRateHz)
     , lidar_sample_rate_(kDefaultLidarSampleRateHz)
+    , temperature_sample_rate_(kDefaultTemperatureSampleRateHz)
     , recording_export_rate_hz_(20)
     , imu_recording_rate_hz_(0)
     , waveform_recording_rate_hz_(0)
@@ -7469,17 +7478,20 @@ void MainWindow::loadRememberedInputState()
     loadCombo(ptb_port_combo_, QStringLiteral("serial/ptb_port"));
     loadCombo(hmp_port_combo_, QStringLiteral("serial/hmp_port"));
     loadCombo(lidar_port_combo_, QStringLiteral("serial/lidar_port"));
+    loadCombo(temperature_port_combo_, QStringLiteral("serial/temperature_port"));
 
     loadCombo(epsilon_baud_combo_, QStringLiteral("serial/epsilon_baud"), QStringLiteral("serial/gnss_baud"));
     loadCombo(ptb_baud_combo_, QStringLiteral("serial/ptb_baud"));
     loadCombo(hmp_baud_combo_, QStringLiteral("serial/hmp_baud"));
     loadCombo(lidar_baud_combo_, QStringLiteral("serial/lidar_baud"));
+    loadCombo(temperature_baud_combo_, QStringLiteral("serial/temperature_baud"));
 
     loadCombo(global_rate_combo_, QStringLiteral("rate/global"));
     loadCombo(epsilon_rate_combo_, QStringLiteral("rate/epsilon"), QStringLiteral("rate/gnss"));
     loadCombo(ptb_rate_combo_, QStringLiteral("rate/ptb"));
     loadCombo(hmp_rate_combo_, QStringLiteral("rate/hmp"));
     loadCombo(lidar_rate_combo_, QStringLiteral("rate/lidar"));
+    loadCombo(temperature_rate_combo_, QStringLiteral("rate/temperature"));
     if (data_source_mode_combo_)
     {
         const QString value = settings.value(
@@ -7570,17 +7582,20 @@ void MainWindow::saveRememberedInputState() const
     saveCombo(QStringLiteral("serial/ptb_port"), ptb_port_combo_);
     saveCombo(QStringLiteral("serial/hmp_port"), hmp_port_combo_);
     saveCombo(QStringLiteral("serial/lidar_port"), lidar_port_combo_);
+    saveCombo(QStringLiteral("serial/temperature_port"), temperature_port_combo_);
 
     saveCombo(QStringLiteral("serial/epsilon_baud"), epsilon_baud_combo_);
     saveCombo(QStringLiteral("serial/ptb_baud"), ptb_baud_combo_);
     saveCombo(QStringLiteral("serial/hmp_baud"), hmp_baud_combo_);
     saveCombo(QStringLiteral("serial/lidar_baud"), lidar_baud_combo_);
+    saveCombo(QStringLiteral("serial/temperature_baud"), temperature_baud_combo_);
 
     saveCombo(QStringLiteral("rate/global"), global_rate_combo_);
     saveCombo(QStringLiteral("rate/epsilon"), epsilon_rate_combo_);
     saveCombo(QStringLiteral("rate/ptb"), ptb_rate_combo_);
     saveCombo(QStringLiteral("rate/hmp"), hmp_rate_combo_);
     saveCombo(QStringLiteral("rate/lidar"), lidar_rate_combo_);
+    saveCombo(QStringLiteral("rate/temperature"), temperature_rate_combo_);
     if (data_source_mode_combo_)
     {
         settings.setValue(QStringLiteral("source/mode"), sourceModeStorageValue(data_source_mode_combo_->currentIndex()));
@@ -7621,15 +7636,18 @@ void MainWindow::bindRememberedInputState()
     bindCombo(ptb_port_combo_);
     bindCombo(hmp_port_combo_);
     bindCombo(lidar_port_combo_);
+    bindCombo(temperature_port_combo_);
     bindCombo(epsilon_baud_combo_);
     bindCombo(ptb_baud_combo_);
     bindCombo(hmp_baud_combo_);
     bindCombo(lidar_baud_combo_);
+    bindCombo(temperature_baud_combo_);
     bindCombo(global_rate_combo_);
     bindCombo(epsilon_rate_combo_);
     bindCombo(ptb_rate_combo_);
     bindCombo(hmp_rate_combo_);
     bindCombo(lidar_rate_combo_);
+    bindCombo(temperature_rate_combo_);
     bindCombo(data_source_mode_combo_);
     bindCombo(sky_telemetry_transport_combo_);
     bindCombo(sky_telemetry_port_combo_);
@@ -7682,7 +7700,9 @@ void MainWindow::updateSourceModeUi()
         !connection_attempt_in_progress_ && !port_detection_in_progress_ && !epsilon_reconfigure_in_progress_;
     const QList<QWidget*> localWidgets = {epsilon_port_combo_, epsilon_baud_combo_, ptb_port_combo_, ptb_baud_combo_,
                                           hmp_port_combo_, hmp_baud_combo_, lidar_port_combo_, lidar_baud_combo_,
-                                          epsilon_packet_rates_btn_, ptb_rate_combo_, hmp_rate_combo_, lidar_rate_combo_};
+                                          temperature_port_combo_, temperature_baud_combo_,
+                                          epsilon_packet_rates_btn_, ptb_rate_combo_, hmp_rate_combo_, lidar_rate_combo_,
+                                          temperature_rate_combo_};
     for (QWidget *widget : localWidgets)
     {
         if (widget)
@@ -8427,6 +8447,125 @@ void MainWindow::sendTemperatureCommand(VaporView::CommandId command, const Vapo
     }
 
     const quint8 channel = payload.channel == 0 ? 1 : payload.channel;
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.temperature_controller && collectors.temperature_controller->isRunning())
+    {
+        auto applyConfirmedLocalCommand = [this, command, channel, &payload]() {
+            current_temperature_controller_.valid = true;
+            current_temperature_controller_.timestamp = std::chrono::steady_clock::now();
+            const int channelIndex = static_cast<int>(channel == 0 ? 0 : channel - 1);
+            if (channelIndex >= 0 && channelIndex < static_cast<int>(current_temperature_controller_.channels.size()))
+            {
+                auto& channelData = current_temperature_controller_.channels[channelIndex];
+                switch (command)
+                {
+                case VaporView::CommandId::SetTemperatureTarget:
+                    channelData.target_temperature_c = payload.target_temperature_c;
+                    break;
+                case VaporView::CommandId::SetTemperatureOutputEnabled:
+                    channelData.output_enabled = payload.output_enabled;
+                    break;
+                case VaporView::CommandId::SetTemperatureOutputMode:
+                    channelData.output_mode = static_cast<int>(payload.output_mode);
+                    break;
+                case VaporView::CommandId::SetTemperatureMaxOutputPercent:
+                    channelData.max_output_percent = static_cast<int>(payload.max_output_percent);
+                    break;
+                case VaporView::CommandId::SetTemperaturePid:
+                    channelData.kp = static_cast<int>(payload.kp);
+                    channelData.ki = static_cast<int>(payload.ki);
+                    channelData.kd = static_cast<int>(payload.kd);
+                    break;
+                case VaporView::CommandId::SetTemperatureAutoPid:
+                    channelData.auto_pid_mode = static_cast<int>(payload.auto_pid_mode);
+                    break;
+                default:
+                    break;
+                }
+            }
+            if (command == VaporView::CommandId::SetTemperatureControllerMode)
+            {
+                current_temperature_controller_.controller_mode = static_cast<int>(payload.controller_mode);
+            }
+        };
+
+        bool ok = false;
+        switch (command)
+        {
+        case VaporView::CommandId::SetTemperatureTarget:
+            ok = collectors.temperature_controller->setTargetTemperature(channel, payload.target_temperature_c);
+            break;
+        case VaporView::CommandId::SetTemperatureOutputEnabled:
+            ok = collectors.temperature_controller->setOutputEnabled(channel, payload.output_enabled);
+            break;
+        case VaporView::CommandId::SetTemperatureOutputMode:
+            ok = collectors.temperature_controller->setOutputMode(channel, payload.output_mode);
+            break;
+        case VaporView::CommandId::SetTemperatureMaxOutputPercent:
+            ok = collectors.temperature_controller->setMaxOutputPercent(channel, payload.max_output_percent);
+            break;
+        case VaporView::CommandId::SetTemperaturePid:
+            ok = collectors.temperature_controller->setPid(channel, payload.kp, payload.ki, payload.kd);
+            break;
+        case VaporView::CommandId::SetTemperatureAutoPid:
+            ok = collectors.temperature_controller->setAutoPid(channel, payload.auto_pid_mode);
+            break;
+        case VaporView::CommandId::SetTemperatureControllerMode:
+            ok = collectors.temperature_controller->setControllerMode(payload.controller_mode);
+            break;
+        default:
+            break;
+        }
+
+        if (ok)
+        {
+            const VaporView::TemperatureControllerData latest = collectors.temperature_controller->getLatestData();
+            if (latest.valid)
+            {
+                current_temperature_controller_ = latest;
+            }
+            applyConfirmedLocalCommand();
+            if (temperature_controller_panel_)
+            {
+                temperature_controller_panel_->setCommandStatus(temperatureCommandStatusText(command, channel, false));
+                temperature_controller_panel_->updateData(current_temperature_controller_);
+            }
+            if (temperature_overview_panel_)
+            {
+                temperature_overview_panel_->updateData(current_temperature_controller_);
+            }
+            log(command == VaporView::CommandId::SetTemperatureControllerMode
+                    ? QString(is_english_
+                          ? "RD105 local command confirmed: %1 mode=%2"
+                          : "RD105 本地命令已确认：%1 模式=%2")
+                          .arg(VaporView::commandIdName(command))
+                          .arg(payload.controller_mode)
+                    : QString(is_english_
+                          ? "RD105 local command confirmed: %1 channel=%2"
+                          : "RD105 本地命令已确认：%1 通道=%2")
+                          .arg(VaporView::commandIdName(command))
+                          .arg(channel));
+            restoreTemperatureCommandUi(command, channel);
+            return;
+        }
+
+        const QString failedDetail = is_english_
+            ? QStringLiteral("write/read-back confirmation failed")
+            : QStringLiteral("写入或读回确认失败");
+        log(is_english_
+            ? QStringLiteral("RD105 local command failed: write/read-back confirmation failed")
+            : QStringLiteral("RD105 本地命令失败：写入或读回确认失败"));
+        if (temperature_controller_panel_)
+        {
+            temperature_controller_panel_->setCommandStatus(
+                temperatureCommandStatusText(command, channel, false, failedDetail),
+                true);
+        }
+        current_temperature_controller_ = collectors.temperature_controller->getLatestData();
+        restoreTemperatureCommandUi(command, channel);
+        return;
+    }
+
     const QString detail = is_english_
         ? QStringLiteral("local RD105 controller is not connected")
         : QStringLiteral("本地 RD105 温控器未连接");
@@ -10341,6 +10480,8 @@ void MainWindow::setupDeviceConfigPage()
                device_config_.hmp_rate_lbl, device_config_.hmp_rate_combo, 2);
     addPortRow(device_config_.lidar_lbl, device_config_.lidar_port_combo, device_config_.lidar_baud_combo,
                device_config_.lidar_rate_lbl, device_config_.lidar_rate_combo, 3);
+    addPortRow(device_config_.temperature_lbl, device_config_.temperature_port_combo, device_config_.temperature_baud_combo,
+               device_config_.temperature_rate_lbl, device_config_.temperature_rate_combo, 4);
 
     auto addDeviceRemoteButtons = [this, formLayout, formWidget](
             int row,
@@ -10391,6 +10532,11 @@ void MainWindow::setupDeviceConfigPage()
                            device_config_.lidar_remote_disconnect_btn,
                            device_config_.lidar_remote_reconnect_btn,
                            VaporView::SkyDeviceId::Lidar);
+    addDeviceRemoteButtons(4, device_config_.temperature_remote_buttons_widget,
+                           device_config_.temperature_remote_connect_btn,
+                           device_config_.temperature_remote_disconnect_btn,
+                           device_config_.temperature_remote_reconnect_btn,
+                           VaporView::SkyDeviceId::TemperatureController);
 
     device_config_.data_telemetry_summary_card = new QFrame(formWidget);
     device_config_.data_telemetry_summary_card->setObjectName(QStringLiteral("epsilonSectionCard"));
@@ -10406,7 +10552,7 @@ void MainWindow::setupDeviceConfigPage()
     device_config_.data_telemetry_summary_lbl->setMinimumHeight(kMainPageInputHeight);
     device_config_.data_telemetry_summary_lbl->setWordWrap(false);
     summaryLayout->addWidget(device_config_.data_telemetry_summary_lbl);
-    formLayout->addWidget(device_config_.data_telemetry_summary_card, 0, 6, 4, 1, Qt::AlignTop | Qt::AlignLeft);
+    formLayout->addWidget(device_config_.data_telemetry_summary_card, 0, 6, 5, 1, Qt::AlignTop | Qt::AlignLeft);
 
     serialLayout->addWidget(formWidget, 0, Qt::AlignTop);
     contentLayout->addWidget(serialCard, 0, Qt::AlignTop);
@@ -10539,9 +10685,12 @@ void MainWindow::setupDeviceConfigPage()
     mirrorComboToHome(device_config_.hmp_baud_combo, hmp_baud_combo_);
     mirrorComboToHome(device_config_.lidar_port_combo, lidar_port_combo_);
     mirrorComboToHome(device_config_.lidar_baud_combo, lidar_baud_combo_);
+    mirrorComboToHome(device_config_.temperature_port_combo, temperature_port_combo_);
+    mirrorComboToHome(device_config_.temperature_baud_combo, temperature_baud_combo_);
     mirrorComboToHome(device_config_.ptb_rate_combo, ptb_rate_combo_);
     mirrorComboToHome(device_config_.hmp_rate_combo, hmp_rate_combo_);
     mirrorComboToHome(device_config_.lidar_rate_combo, lidar_rate_combo_);
+    mirrorComboToHome(device_config_.temperature_rate_combo, temperature_rate_combo_);
 
     connect(device_config_.sky_telemetry_tcp_host_edit, &QLineEdit::textChanged, this, [this](const QString& text) {
         if (sky_telemetry_tcp_host_edit_ && sky_telemetry_tcp_host_edit_->text() != text)
@@ -10637,9 +10786,12 @@ void MainWindow::syncDeviceConfigPageFromHome()
     copyCombo(hmp_baud_combo_, device_config_.hmp_baud_combo);
     copyCombo(lidar_port_combo_, device_config_.lidar_port_combo);
     copyCombo(lidar_baud_combo_, device_config_.lidar_baud_combo);
+    copyCombo(temperature_port_combo_, device_config_.temperature_port_combo);
+    copyCombo(temperature_baud_combo_, device_config_.temperature_baud_combo);
     copyCombo(ptb_rate_combo_, device_config_.ptb_rate_combo);
     copyCombo(hmp_rate_combo_, device_config_.hmp_rate_combo);
     copyCombo(lidar_rate_combo_, device_config_.lidar_rate_combo);
+    copyCombo(temperature_rate_combo_, device_config_.temperature_rate_combo);
 
     if (sky_telemetry_tcp_host_edit_ && device_config_.sky_telemetry_tcp_host_edit)
     {
@@ -10685,10 +10837,12 @@ void MainWindow::updateDeviceConfigTexts()
     if (device_config_.ptb_lbl) device_config_.ptb_lbl->setText(QStringLiteral("PTB210:"));
     if (device_config_.hmp_lbl) device_config_.hmp_lbl->setText(QStringLiteral("HMP3:"));
     if (device_config_.lidar_lbl) device_config_.lidar_lbl->setText(QStringLiteral("TFA1500-L:"));
+    if (device_config_.temperature_lbl) device_config_.temperature_lbl->setText(QStringLiteral("RD105:"));
     if (device_config_.epsilon_rate_lbl) device_config_.epsilon_rate_lbl->setText(is_english_ ? "Packets:" : "包频率:");
     if (device_config_.ptb_rate_lbl) device_config_.ptb_rate_lbl->setText(is_english_ ? "Rate:" : "频率:");
     if (device_config_.hmp_rate_lbl) device_config_.hmp_rate_lbl->setText(is_english_ ? "Rate:" : "频率:");
     if (device_config_.lidar_rate_lbl) device_config_.lidar_rate_lbl->setText(is_english_ ? "Rate:" : "频率:");
+    if (device_config_.temperature_rate_lbl) device_config_.temperature_rate_lbl->setText(is_english_ ? "Poll:" : "轮询:");
     if (device_config_.epsilon_packet_rates_btn)
     {
         device_config_.epsilon_packet_rates_btn->setText(is_english_ ? "Packet Rates..." : "配置EPSILON包频率...");
@@ -10703,21 +10857,24 @@ void MainWindow::updateDeviceConfigTexts()
     for (QPushButton *button : {device_config_.epsilon_remote_connect_btn,
                                 device_config_.ptb_remote_connect_btn,
                                 device_config_.hmp_remote_connect_btn,
-                                device_config_.lidar_remote_connect_btn})
+                                device_config_.lidar_remote_connect_btn,
+                                device_config_.temperature_remote_connect_btn})
     {
         if (button) button->setText(connectText);
     }
     for (QPushButton *button : {device_config_.epsilon_remote_disconnect_btn,
                                 device_config_.ptb_remote_disconnect_btn,
                                 device_config_.hmp_remote_disconnect_btn,
-                                device_config_.lidar_remote_disconnect_btn})
+                                device_config_.lidar_remote_disconnect_btn,
+                                device_config_.temperature_remote_disconnect_btn})
     {
         if (button) button->setText(disconnectText);
     }
     for (QPushButton *button : {device_config_.epsilon_remote_reconnect_btn,
                                 device_config_.ptb_remote_reconnect_btn,
                                 device_config_.hmp_remote_reconnect_btn,
-                                device_config_.lidar_remote_reconnect_btn})
+                                device_config_.lidar_remote_reconnect_btn,
+                                device_config_.temperature_remote_reconnect_btn})
     {
         if (button) button->setText(reconnectText);
     }
@@ -10764,10 +10921,13 @@ void MainWindow::updateDeviceConfigState()
         device_config_.hmp_baud_combo,
         device_config_.lidar_port_combo,
         device_config_.lidar_baud_combo,
+        device_config_.temperature_port_combo,
+        device_config_.temperature_baud_combo,
         device_config_.epsilon_packet_rates_btn,
         device_config_.ptb_rate_combo,
         device_config_.hmp_rate_combo,
-        device_config_.lidar_rate_combo
+        device_config_.lidar_rate_combo,
+        device_config_.temperature_rate_combo
     };
     for (QWidget *widget : localWidgets)
     {
@@ -10799,7 +10959,8 @@ void MainWindow::updateDeviceConfigState()
     for (QWidget *widget : {device_config_.epsilon_remote_buttons_widget,
                             device_config_.ptb_remote_buttons_widget,
                             device_config_.hmp_remote_buttons_widget,
-                            device_config_.lidar_remote_buttons_widget})
+                            device_config_.lidar_remote_buttons_widget,
+                            device_config_.temperature_remote_buttons_widget})
     {
         if (widget)
         {
@@ -10817,7 +10978,10 @@ void MainWindow::updateDeviceConfigState()
                                 device_config_.hmp_remote_reconnect_btn,
                                 device_config_.lidar_remote_connect_btn,
                                 device_config_.lidar_remote_disconnect_btn,
-                                device_config_.lidar_remote_reconnect_btn})
+                                device_config_.lidar_remote_reconnect_btn,
+                                device_config_.temperature_remote_connect_btn,
+                                device_config_.temperature_remote_disconnect_btn,
+                                device_config_.temperature_remote_reconnect_btn})
     {
         if (button)
         {
@@ -11071,12 +11235,21 @@ void MainWindow::setupConfigPanel()
     createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "COM5", "9600", row++, kPtbMaxSampleRateHz);
     createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "COM6", "19200", row++);
     createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "COM7", "500000", row++, 100);
+    createPortRow(temperature_lbl_, temperature_port_combo_, temperature_baud_combo_, temperature_rate_lbl_, temperature_rate_combo_, "COM9", "38400", row++, kMaxTemperatureSampleRateHz);
 #else
     createPortRow(epsilon_lbl_, epsilon_port_combo_, epsilon_baud_combo_, epsilon_rate_lbl_, epsilon_rate_combo_, "/dev/ttyEPSILON", "921600", row++, 200);
     createPortRow(ptb_lbl_, ptb_port_combo_, ptb_baud_combo_, ptb_rate_lbl_, ptb_rate_combo_, "/dev/ttyBARO", "9600", row++, kPtbMaxSampleRateHz);
     createPortRow(hmp_lbl_, hmp_port_combo_, hmp_baud_combo_, hmp_rate_lbl_, hmp_rate_combo_, "/dev/ttyHMP", "19200", row++);
     createPortRow(lidar_lbl_, lidar_port_combo_, lidar_baud_combo_, lidar_rate_lbl_, lidar_rate_combo_, "/dev/ttyLidar", "500000", row++, 100);
+    createPortRow(temperature_lbl_, temperature_port_combo_, temperature_baud_combo_, temperature_rate_lbl_, temperature_rate_combo_, "/dev/ttyRD105", "38400", row++, kMaxTemperatureSampleRateHz);
 #endif
+    if (temperature_port_combo_) temperature_port_combo_->setObjectName(QStringLiteral("temperaturePortCombo"));
+    if (temperature_baud_combo_) temperature_baud_combo_->setObjectName(QStringLiteral("temperatureBaudCombo"));
+    if (temperature_rate_combo_) temperature_rate_combo_->setObjectName(QStringLiteral("temperatureRateCombo"));
+    if (temperature_rate_combo_)
+    {
+        temperature_rate_combo_->setCurrentText(QString::number(kDefaultTemperatureSampleRateHz));
+    }
 
     auto addRemoteButtons = [this, config_form_widget, config_layout](int rowIndex,
                                                   QWidget*& buttonsWidget,
@@ -11102,6 +11275,7 @@ void MainWindow::setupConfigPanel()
     addRemoteButtons(1, ptb_remote_buttons_widget_, ptb_remote_connect_btn_, ptb_remote_disconnect_btn_, ptb_remote_reconnect_btn_, VaporView::SkyDeviceId::Ptb);
     addRemoteButtons(2, hmp_remote_buttons_widget_, hmp_remote_connect_btn_, hmp_remote_disconnect_btn_, hmp_remote_reconnect_btn_, VaporView::SkyDeviceId::Hmp);
     addRemoteButtons(3, lidar_remote_buttons_widget_, lidar_remote_connect_btn_, lidar_remote_disconnect_btn_, lidar_remote_reconnect_btn_, VaporView::SkyDeviceId::Lidar);
+    addRemoteButtons(4, temperature_remote_buttons_widget_, temperature_remote_connect_btn_, temperature_remote_disconnect_btn_, temperature_remote_reconnect_btn_, VaporView::SkyDeviceId::TemperatureController);
 
     if (epsilon_rate_combo_)
     {
@@ -11115,7 +11289,7 @@ void MainWindow::setupConfigPanel()
         config_layout->addWidget(epsilon_packet_rates_btn_, 0, 4, Qt::AlignVCenter);
     }
 
-    for (QComboBox *combo : {ptb_rate_combo_, hmp_rate_combo_, lidar_rate_combo_})
+    for (QComboBox *combo : {ptb_rate_combo_, hmp_rate_combo_, lidar_rate_combo_, temperature_rate_combo_})
     {
         addNoSetRateOption(combo);
     }
@@ -11123,6 +11297,7 @@ void MainWindow::setupConfigPanel()
     connect(ptb_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onPtbRateChanged);
     connect(hmp_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onHmpRateChanged);
     connect(lidar_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onLidarRateChanged);
+    connect(temperature_rate_combo_, &QComboBox::currentTextChanged, this, &MainWindow::onTemperatureRateChanged);
 
     data_telemetry_summary_card_ = new QWidget(config_group_);
     data_telemetry_summary_card_->setObjectName(QStringLiteral("homeTelemetrySummaryContainer"));
@@ -11815,6 +11990,7 @@ void MainWindow::setEnglish(bool english)
     if (ptb_lbl_) ptb_lbl_->setText(english ? "PTB210:" : "PTB210:");
     if (hmp_lbl_) hmp_lbl_->setText(english ? "HMP3:" : "HMP3:");
     if (lidar_lbl_) lidar_lbl_->setText(english ? "TFA1500-L:" : "TFA1500-L:");
+    if (temperature_lbl_) temperature_lbl_->setText(QStringLiteral("RD105:"));
 
     if (config_inline_title_lbl_)
     {
@@ -11936,7 +12112,8 @@ void MainWindow::setEnglish(bool english)
     ptb_rate_lbl_->setText(english ? "Rate:" : "频率:");
     hmp_rate_lbl_->setText(english ? "Rate:" : "频率:");
     lidar_rate_lbl_->setText(english ? "Rate:" : "频率:");
-    for (QComboBox *combo : {ptb_rate_combo_, hmp_rate_combo_, lidar_rate_combo_})
+    if (temperature_rate_lbl_) temperature_rate_lbl_->setText(english ? "Poll:" : "轮询:");
+    for (QComboBox *combo : {ptb_rate_combo_, hmp_rate_combo_, lidar_rate_combo_, temperature_rate_combo_})
     {
         if (!combo)
         {
@@ -11976,6 +12153,7 @@ void MainWindow::setEnglish(bool english)
     if (collectors.ptb) collectors.ptb->setEnglish(english);
     if (collectors.hmp) collectors.hmp->setEnglish(english);
     if (collectors.lidar) collectors.lidar->setEnglish(english);
+    if (collectors.temperature_controller) collectors.temperature_controller->setEnglish(english);
 
     if (rtk_config_dialog_)
     {
@@ -12617,26 +12795,31 @@ void MainWindow::onGlobalRateChanged(const QString& text)
     const bool skipPtbDeviceRate = ptb_rate_combo_ && isRateUnspecified(ptb_rate_combo_->currentText());
     const bool skipHmpDeviceRate = hmp_rate_combo_ && isRateUnspecified(hmp_rate_combo_->currentText());
     const bool skipLidarDeviceRate = lidar_rate_combo_ && isRateUnspecified(lidar_rate_combo_->currentText());
+    const bool skipTemperatureDeviceRate = temperature_rate_combo_ && isRateUnspecified(temperature_rate_combo_->currentText());
 
     epsilon_sample_rate_ = skipEpsilonDeviceRate ? kDefaultEpsilonSampleRateHz : std::clamp(rate, 20, 200);
     ptb_sample_rate_ = skipPtbDeviceRate ? kDefaultPtbSampleRateHz : clampPtbSampleRate(rate);
     hmp_sample_rate_ = skipHmpDeviceRate ? kDefaultHmpSampleRateHz : rate;
     lidar_sample_rate_ = skipLidarDeviceRate ? kDefaultLidarSampleRateHz : std::min(rate, 100);
+    temperature_sample_rate_ = skipTemperatureDeviceRate ? kDefaultTemperatureSampleRateHz : std::min(rate, kMaxTemperatureSampleRateHz);
 
     if (epsilon_rate_combo_) epsilon_rate_combo_->blockSignals(true);
     if (ptb_rate_combo_) ptb_rate_combo_->blockSignals(true);
     if (hmp_rate_combo_) hmp_rate_combo_->blockSignals(true);
     if (lidar_rate_combo_) lidar_rate_combo_->blockSignals(true);
+    if (temperature_rate_combo_) temperature_rate_combo_->blockSignals(true);
 
     if (epsilon_rate_combo_ && !skipEpsilonDeviceRate) epsilon_rate_combo_->setCurrentText(QString::number(epsilon_sample_rate_));
     if (ptb_rate_combo_ && !skipPtbDeviceRate) ptb_rate_combo_->setCurrentText(QString::number(ptb_sample_rate_));
     if (hmp_rate_combo_ && !skipHmpDeviceRate) hmp_rate_combo_->setCurrentText(text);
     if (lidar_rate_combo_ && !skipLidarDeviceRate) lidar_rate_combo_->setCurrentText(QString::number(lidar_sample_rate_));
+    if (temperature_rate_combo_ && !skipTemperatureDeviceRate) temperature_rate_combo_->setCurrentText(QString::number(temperature_sample_rate_));
 
     if (epsilon_rate_combo_) epsilon_rate_combo_->blockSignals(false);
     if (ptb_rate_combo_) ptb_rate_combo_->blockSignals(false);
     if (hmp_rate_combo_) hmp_rate_combo_->blockSignals(false);
     if (lidar_rate_combo_) lidar_rate_combo_->blockSignals(false);
+    if (temperature_rate_combo_) temperature_rate_combo_->blockSignals(false);
 
     QSettings settings("VaporView", "MainWindow");
     bool epsilonUsesCustomPacketRates = false;
@@ -12675,6 +12858,10 @@ void MainWindow::onGlobalRateChanged(const QString& text)
             collectors.lidar->setDeviceSampleRate(lidar_sample_rate_);
         }
     }
+    if (collectors.temperature_controller && collectors.temperature_controller->isRunning())
+    {
+        collectors.temperature_controller->setSampleRate(temperature_sample_rate_);
+    }
     
     if (epsilonUsesCustomPacketRates)
     {
@@ -12687,7 +12874,7 @@ void MainWindow::onGlobalRateChanged(const QString& text)
     {
         log(QString(is_english_ ? "All rates set to %1 Hz" : "所有频率已设置为 %1 Hz").arg(rate));
     }
-    if (skipEpsilonDeviceRate || skipPtbDeviceRate || skipHmpDeviceRate || skipLidarDeviceRate)
+    if (skipEpsilonDeviceRate || skipPtbDeviceRate || skipHmpDeviceRate || skipLidarDeviceRate || skipTemperatureDeviceRate)
     {
         log(is_english_
             ? "Devices set to No Set keep their output-rate commands disabled."
@@ -12698,6 +12885,12 @@ void MainWindow::onGlobalRateChanged(const QString& text)
         log(QString(is_english_
             ? "PTB sample rate capped at %1 Hz"
             : "PTB采样频率已限制为 %1 Hz").arg(ptb_sample_rate_));
+    }
+    if (!skipTemperatureDeviceRate && temperature_sample_rate_ != rate)
+    {
+        log(QString(is_english_
+            ? "RD105 polling rate capped at %1 Hz"
+            : "RD105 轮询频率已限制为 %1 Hz").arg(temperature_sample_rate_));
     }
 }
 
@@ -12837,6 +13030,27 @@ void MainWindow::onLidarRateChanged(const QString& text)
     }
 }
 
+void MainWindow::onTemperatureRateChanged(const QString& text)
+{
+    const bool skipDeviceRate = isRateUnspecified(text);
+    temperature_sample_rate_ = effectiveRateOrDefault(text, kDefaultTemperatureSampleRateHz, kMaxTemperatureSampleRateHz);
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.temperature_controller)
+    {
+        collectors.temperature_controller->setSampleRate(temperature_sample_rate_);
+    }
+    if (skipDeviceRate)
+    {
+        log(is_english_
+            ? "RD105 polling-rate selection left unset; using the default host polling rate."
+            : "RD105 轮询频率保持不设定，使用默认主机轮询频率。");
+    }
+    else
+    {
+        log(QString(is_english_ ? "RD105 polling rate set to %1 Hz" : "RD105 轮询频率已设置为 %1 Hz").arg(temperature_sample_rate_));
+    }
+}
+
 void MainWindow::applyAllSampleRates()
 {
     int rate = parseRate(global_rate_combo_ ? global_rate_combo_->currentText() : QString::number(kDefaultHmpSampleRateHz));
@@ -12844,6 +13058,7 @@ void MainWindow::applyAllSampleRates()
     const bool skipPtbDeviceRate = ptb_rate_combo_ && isRateUnspecified(ptb_rate_combo_->currentText());
     const bool skipHmpDeviceRate = hmp_rate_combo_ && isRateUnspecified(hmp_rate_combo_->currentText());
     const bool skipLidarDeviceRate = lidar_rate_combo_ && isRateUnspecified(lidar_rate_combo_->currentText());
+    const bool skipTemperatureDeviceRate = temperature_rate_combo_ && isRateUnspecified(temperature_rate_combo_->currentText());
     const CollectorSnapshot collectors = snapshotCollectors();
     QSettings settings("VaporView", "MainWindow");
     bool epsilonUsesCustomPacketRates = false;
@@ -12851,6 +13066,7 @@ void MainWindow::applyAllSampleRates()
     const int ptbRate = skipPtbDeviceRate ? kDefaultPtbSampleRateHz : clampPtbSampleRate(rate);
     const int hmpRate = skipHmpDeviceRate ? kDefaultHmpSampleRateHz : rate;
     const int lidarRate = skipLidarDeviceRate ? kDefaultLidarSampleRateHz : std::min(rate, 100);
+    const int temperatureRate = skipTemperatureDeviceRate ? kDefaultTemperatureSampleRateHz : std::min(rate, kMaxTemperatureSampleRateHz);
     const std::map<uint8_t, int> epsilonDesiredPacketRates =
         effectiveEpsilonPacketRates(settings, epsilonRate, &epsilonUsesCustomPacketRates);
     const int epsilonCallbackRate = epsilonPacketCallbackRate(epsilonDesiredPacketRates, epsilonRate);
@@ -12885,30 +13101,38 @@ void MainWindow::applyAllSampleRates()
             collectors.lidar->setDeviceSampleRate(lidarRate);
         }
     }
+    if (collectors.temperature_controller && collectors.temperature_controller->isRunning())
+    {
+        collectors.temperature_controller->setSampleRate(temperatureRate);
+    }
 
     if (epsilon_rate_combo_) epsilon_rate_combo_->blockSignals(true);
-    ptb_rate_combo_->blockSignals(true);
-    hmp_rate_combo_->blockSignals(true);
-    lidar_rate_combo_->blockSignals(true);
+    if (ptb_rate_combo_) ptb_rate_combo_->blockSignals(true);
+    if (hmp_rate_combo_) hmp_rate_combo_->blockSignals(true);
+    if (lidar_rate_combo_) lidar_rate_combo_->blockSignals(true);
+    if (temperature_rate_combo_) temperature_rate_combo_->blockSignals(true);
 
     if (epsilon_rate_combo_ && !skipEpsilonDeviceRate) epsilon_rate_combo_->setCurrentText(QString::number(epsilonRate));
     if (ptb_rate_combo_ && !skipPtbDeviceRate) ptb_rate_combo_->setCurrentText(QString::number(ptbRate));
     if (hmp_rate_combo_ && !skipHmpDeviceRate) hmp_rate_combo_->setCurrentText(QString::number(rate));
     if (lidar_rate_combo_ && !skipLidarDeviceRate) lidar_rate_combo_->setCurrentText(QString::number(lidarRate));
+    if (temperature_rate_combo_ && !skipTemperatureDeviceRate) temperature_rate_combo_->setCurrentText(QString::number(temperatureRate));
 
     if (epsilon_rate_combo_) epsilon_rate_combo_->blockSignals(false);
-    ptb_rate_combo_->blockSignals(false);
-    hmp_rate_combo_->blockSignals(false);
-    lidar_rate_combo_->blockSignals(false);
+    if (ptb_rate_combo_) ptb_rate_combo_->blockSignals(false);
+    if (hmp_rate_combo_) hmp_rate_combo_->blockSignals(false);
+    if (lidar_rate_combo_) lidar_rate_combo_->blockSignals(false);
+    if (temperature_rate_combo_) temperature_rate_combo_->blockSignals(false);
 
     gnss_sample_rate_ = rate;
     imu_sample_rate_ = rate;
     ptb_sample_rate_ = ptbRate;
     hmp_sample_rate_ = hmpRate;
     lidar_sample_rate_ = lidarRate;
+    temperature_sample_rate_ = temperatureRate;
 
     log(QString(is_english_ ? "All rates set to %1 Hz" : "所有频率已设置为 %1 Hz").arg(rate));
-    if (skipEpsilonDeviceRate || skipPtbDeviceRate || skipHmpDeviceRate || skipLidarDeviceRate)
+    if (skipEpsilonDeviceRate || skipPtbDeviceRate || skipHmpDeviceRate || skipLidarDeviceRate || skipTemperatureDeviceRate)
     {
         log(is_english_
             ? "Devices set to No Set keep their output-rate commands disabled."
@@ -12919,6 +13143,12 @@ void MainWindow::applyAllSampleRates()
         log(QString(is_english_
             ? "PTB sample rate capped at %1 Hz"
             : "PTB采样频率已限制为 %1 Hz").arg(ptbRate));
+    }
+    if (!skipTemperatureDeviceRate && temperatureRate != rate)
+    {
+        log(QString(is_english_
+            ? "RD105 polling rate capped at %1 Hz"
+            : "RD105 轮询频率已限制为 %1 Hz").arg(temperatureRate));
     }
 }
 
@@ -13881,6 +14111,7 @@ void MainWindow::writeDeviceConfigSnapshot()
     addSerialConfig("ptb", ptb_port_combo_, ptb_baud_combo_, ptb_rate_combo_);
     addSerialConfig("hmp", hmp_port_combo_, hmp_baud_combo_, hmp_rate_combo_);
     addSerialConfig("lidar", lidar_port_combo_, lidar_baud_combo_, lidar_rate_combo_);
+    addSerialConfig("rd105", temperature_port_combo_, temperature_baud_combo_, temperature_rate_combo_);
     root["sensors"] = sensors;
 
     QFile file(device_config_filename_);
@@ -15362,10 +15593,12 @@ void MainWindow::updateConnectionStatus(bool connected)
     if (ptb_port_combo_) ptb_port_combo_->setEnabled(inputsEnabled);
     if (hmp_port_combo_) hmp_port_combo_->setEnabled(inputsEnabled);
     if (lidar_port_combo_) lidar_port_combo_->setEnabled(inputsEnabled);
+    if (temperature_port_combo_) temperature_port_combo_->setEnabled(inputsEnabled);
     if (epsilon_baud_combo_) epsilon_baud_combo_->setEnabled(inputsEnabled);
     if (ptb_baud_combo_) ptb_baud_combo_->setEnabled(inputsEnabled);
     if (hmp_baud_combo_) hmp_baud_combo_->setEnabled(inputsEnabled);
     if (lidar_baud_combo_) lidar_baud_combo_->setEnabled(inputsEnabled);
+    if (temperature_baud_combo_) temperature_baud_combo_->setEnabled(inputsEnabled);
     for (QPushButton* button : {imu_apply_btn_, imu_hi91_btn_, imu_hi92_btn_, imu_baud_115200_btn_, imu_baud_921600_btn_,
                                 imu_rate_100_btn_, imu_rate_200_btn_, imu_rate_500_btn_, imu_rate_1000_btn_})
     {
@@ -15426,9 +15659,10 @@ bool MainWindow::homeDeviceConnected(VaporView::SkyDeviceId device) const
         return collectors.hmp && collectors.hmp->isRunning();
     case VaporView::SkyDeviceId::Lidar:
         return collectors.lidar && collectors.lidar->isRunning();
+    case VaporView::SkyDeviceId::TemperatureController:
+        return collectors.temperature_controller && collectors.temperature_controller->isRunning();
     case VaporView::SkyDeviceId::WaveTcp:
         return tcp_wave_panel_ && tcp_wave_panel_->isConnected();
-    case VaporView::SkyDeviceId::TemperatureController:
     case VaporView::SkyDeviceId::All:
         return false;
     }
@@ -15462,6 +15696,7 @@ bool MainWindow::homeDevicePortSelected(VaporView::SkyDeviceId device) const
     case VaporView::SkyDeviceId::Lidar:
         return portSelected(lidar_port_combo_);
     case VaporView::SkyDeviceId::TemperatureController:
+        return portSelected(temperature_port_combo_);
     case VaporView::SkyDeviceId::All:
     case VaporView::SkyDeviceId::WaveTcp:
         return false;
@@ -15804,13 +16039,15 @@ bool MainWindow::anyCollectorRunning() const
         (collectors.imu && collectors.imu->isRunning()) ||
         (collectors.ptb && collectors.ptb->isRunning()) ||
         (collectors.hmp && collectors.hmp->isRunning()) ||
-        (collectors.lidar && collectors.lidar->isRunning());
+        (collectors.lidar && collectors.lidar->isRunning()) ||
+        (collectors.temperature_controller && collectors.temperature_controller->isRunning());
 }
 
 MainWindow::CollectorSnapshot MainWindow::snapshotCollectors() const
 {
     std::lock_guard<std::mutex> lock(collector_mutex_);
-    return {epsilon_collector_, gnss_collector_, imu_collector_, ptb_collector_, hmp_collector_, lidar_collector_};
+    return {epsilon_collector_, gnss_collector_, imu_collector_, ptb_collector_, hmp_collector_, lidar_collector_,
+            temperature_controller_collector_};
 }
 
 void MainWindow::setCollectors(CollectorSnapshot collectors)
@@ -15822,6 +16059,7 @@ void MainWindow::setCollectors(CollectorSnapshot collectors)
     ptb_collector_ = std::move(collectors.ptb);
     hmp_collector_ = std::move(collectors.hmp);
     lidar_collector_ = std::move(collectors.lidar);
+    temperature_controller_collector_ = std::move(collectors.temperature_controller);
 
     if (epsilon_collector_) epsilon_collector_->setEnglish(is_english_);
     if (gnss_collector_) gnss_collector_->setEnglish(is_english_);
@@ -15829,6 +16067,7 @@ void MainWindow::setCollectors(CollectorSnapshot collectors)
     if (ptb_collector_) ptb_collector_->setEnglish(is_english_);
     if (hmp_collector_) hmp_collector_->setEnglish(is_english_);
     if (lidar_collector_) lidar_collector_->setEnglish(is_english_);
+    if (temperature_controller_collector_) temperature_controller_collector_->setEnglish(is_english_);
 }
 
 void MainWindow::stopAllCollectors()
@@ -15842,6 +16081,7 @@ void MainWindow::stopAllCollectors()
         collectors.ptb = std::move(ptb_collector_);
         collectors.hmp = std::move(hmp_collector_);
         collectors.lidar = std::move(lidar_collector_);
+        collectors.temperature_controller = std::move(temperature_controller_collector_);
     }
 
     if (collectors.epsilon)
@@ -15867,6 +16107,10 @@ void MainWindow::stopAllCollectors()
     if (collectors.lidar)
     {
         collectors.lidar->stop();
+    }
+    if (collectors.temperature_controller)
+    {
+        collectors.temperature_controller->stop();
     }
 }
 
@@ -15915,6 +16159,7 @@ void MainWindow::onRefreshPortsClicked()
     updateCombo(ptb_port_combo_);
     updateCombo(hmp_port_combo_);
     updateCombo(lidar_port_combo_);
+    updateCombo(temperature_port_combo_);
     syncDeviceConfigPageFromHome();
 
     log(QString(is_english_ ? "Ports refreshed: %1 serial ports"
@@ -15955,10 +16200,12 @@ void MainWindow::onAutoDetectPortsClicked()
     const QString selectedPtbPort = ptb_port_combo_ ? ptb_port_combo_->currentText().trimmed() : QString();
     const QString selectedHmpPort = hmp_port_combo_ ? hmp_port_combo_->currentText().trimmed() : QString();
     const QString selectedLidarPort = lidar_port_combo_ ? lidar_port_combo_->currentText().trimmed() : QString();
+    const QString selectedTemperaturePort = temperature_port_combo_ ? temperature_port_combo_->currentText().trimmed() : QString();
     const QString selectedEpsilonBaud = epsilon_baud_combo_ ? epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
     const QString selectedPtbBaud = ptb_baud_combo_ ? ptb_baud_combo_->currentText().trimmed() : QStringLiteral("9600");
     const QString selectedHmpBaud = hmp_baud_combo_ ? hmp_baud_combo_->currentText().trimmed() : QStringLiteral("19200");
     const QString selectedLidarBaud = lidar_baud_combo_ ? lidar_baud_combo_->currentText().trimmed() : QStringLiteral("500000");
+    const QString selectedTemperatureBaud = temperature_baud_combo_ ? temperature_baud_combo_->currentText().trimmed() : QStringLiteral("38400");
     const bool english = is_english_;
 
     port_detection_thread_ = std::thread([this,
@@ -15967,10 +16214,12 @@ void MainWindow::onAutoDetectPortsClicked()
                                           selectedPtbPort,
                                           selectedHmpPort,
                                           selectedLidarPort,
+                                          selectedTemperaturePort,
                                           selectedEpsilonBaud,
                                           selectedPtbBaud,
                                           selectedHmpBaud,
-                                          selectedLidarBaud]() {
+                                          selectedLidarBaud,
+                                          selectedTemperatureBaud]() {
         struct ProbeSpec
         {
             QString key;
@@ -16023,12 +16272,14 @@ void MainWindow::onAutoDetectPortsClicked()
                     {"ptb", ptb_port_combo_},
                     {"hmp", hmp_port_combo_},
                     {"lidar", lidar_port_combo_},
+                    {"temperature", temperature_port_combo_},
                 };
                 QHash<QString, QComboBox*> baudCombos{
                     {"epsilon", epsilon_baud_combo_},
                     {"ptb", ptb_baud_combo_},
                     {"hmp", hmp_baud_combo_},
                     {"lidar", lidar_baud_combo_},
+                    {"temperature", temperature_baud_combo_},
                 };
                 QHash<QString, QString> detectedPorts;
                 QHash<QString, QString> detectedBauds;
@@ -16096,6 +16347,7 @@ void MainWindow::onAutoDetectPortsClicked()
         const QString ptbDefaultBaud = QStringLiteral("9600");
         const QString hmpDefaultBaud = QStringLiteral("19200");
         const QString lidarDefaultBaud = QStringLiteral("500000");
+        const QString temperatureDefaultBaud = QStringLiteral("38400");
         auto normalizeBaud = [](const QString& baud, const QString& fallback) {
             const QString trimmed = baud.trimmed();
             bool ok = false;
@@ -16107,6 +16359,7 @@ void MainWindow::onAutoDetectPortsClicked()
             {"ptb", "PTB210"},
             {"hmp", "HMP3"},
             {"lidar", "TFA1500-L"},
+            {"temperature", "RD105"},
         };
 
         auto makeEpsilonProbe = [probeCollector](const QString& baudText) {
@@ -16134,6 +16387,14 @@ void MainWindow::onAutoDetectPortsClicked()
             const int baud = baudText.toInt();
             return ProbeSpec{"lidar", "TFA1500-L", baudText, [probeCollector, baud](const QString& port_name) {
                 auto collector = std::make_unique<VaporView::LidarCollector>();
+                return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(baud));
+            }};
+        };
+        auto makeTemperatureProbe = [probeCollector](const QString& baudText) {
+            const int baud = baudText.toInt();
+            return ProbeSpec{"temperature", "RD105", baudText, [probeCollector, baud](const QString& port_name) {
+                auto collector = std::make_unique<VaporView::TemperatureControllerCollector>();
+                collector->setSlaveAddress(1);
                 return probeCollector(port_name, std::move(collector), VaporView::SerialConfig::N81(baud));
             }};
         };
@@ -16168,6 +16429,7 @@ void MainWindow::onAutoDetectPortsClicked()
         addSelectedProbe(selected_probe_specs, seenSelectedProbeIds, makePtbProbe(normalizeBaud(selectedPtbBaud, ptbDefaultBaud)), selectedPtbPort);
         addSelectedProbe(selected_probe_specs, seenSelectedProbeIds, makeHmpProbe(normalizeBaud(selectedHmpBaud, hmpDefaultBaud)), selectedHmpPort);
         addSelectedProbe(selected_probe_specs, seenSelectedProbeIds, makeLidarProbe(normalizeBaud(selectedLidarBaud, lidarDefaultBaud)), selectedLidarPort);
+        addSelectedProbe(selected_probe_specs, seenSelectedProbeIds, makeTemperatureProbe(normalizeBaud(selectedTemperatureBaud, temperatureDefaultBaud)), selectedTemperaturePort);
 
         QVector<ProbeSpec> default_probe_specs;
         QSet<QString> seenDefaultProbeIds;
@@ -16175,6 +16437,7 @@ void MainWindow::onAutoDetectPortsClicked()
         addUniqueProbe(default_probe_specs, seenDefaultProbeIds, makePtbProbe(ptbDefaultBaud));
         addUniqueProbe(default_probe_specs, seenDefaultProbeIds, makeHmpProbe(hmpDefaultBaud));
         addUniqueProbe(default_probe_specs, seenDefaultProbeIds, makeLidarProbe(lidarDefaultBaud));
+        addUniqueProbe(default_probe_specs, seenDefaultProbeIds, makeTemperatureProbe(temperatureDefaultBaud));
 
         QStringList port_names = getAvailablePorts();
         if (port_names.isEmpty() && selected_probe_specs.isEmpty())
@@ -16413,22 +16676,27 @@ void MainWindow::onConnectClicked()
     const QString ptbPort = ptb_port_combo_->currentText();
     const QString hmpPort = hmp_port_combo_->currentText();
     const QString lidarPort = lidar_port_combo_->currentText();
+    const QString temperaturePort = temperature_port_combo_ ? temperature_port_combo_->currentText() : QString();
     const QString epsilonBaudText = epsilon_baud_combo_ ? epsilon_baud_combo_->currentText().trimmed() : QStringLiteral("921600");
     const QString ptbBaudText = ptb_baud_combo_->currentText();
     const QString hmpBaudText = hmp_baud_combo_->currentText();
     const QString lidarBaudText = lidar_baud_combo_->currentText();
+    const QString temperatureBaudText = temperature_baud_combo_ ? temperature_baud_combo_->currentText().trimmed() : QStringLiteral("38400");
     const QString epsilonRateText = epsilon_rate_combo_ ? epsilon_rate_combo_->currentText() : QStringLiteral("100");
     const QString ptbRateText = ptb_rate_combo_ ? ptb_rate_combo_->currentText() : QStringLiteral("20");
     const QString hmpRateText = hmp_rate_combo_ ? hmp_rate_combo_->currentText() : QStringLiteral("20");
     const QString lidarRateText = lidar_rate_combo_ ? lidar_rate_combo_->currentText() : QStringLiteral("100");
+    const QString temperatureRateText = temperature_rate_combo_ ? temperature_rate_combo_->currentText() : QString::number(kDefaultTemperatureSampleRateHz);
     const bool skipEpsilonDeviceRate = isRateUnspecified(epsilonRateText);
     const bool skipPtbDeviceRate = isRateUnspecified(ptbRateText);
     const bool skipHmpDeviceRate = isRateUnspecified(hmpRateText);
     const bool skipLidarDeviceRate = isRateUnspecified(lidarRateText);
+    const bool skipTemperatureDeviceRate = isRateUnspecified(temperatureRateText);
     const int epsilonRate = effectiveRateOrDefault(epsilonRateText, kDefaultEpsilonSampleRateHz, 200);
     const int ptbRate = clampPtbSampleRate(effectiveRateOrDefault(ptbRateText, kDefaultPtbSampleRateHz, kPtbMaxSampleRateHz));
     const int hmpRate = effectiveRateOrDefault(hmpRateText, kDefaultHmpSampleRateHz);
     const int lidarRate = effectiveRateOrDefault(lidarRateText, kDefaultLidarSampleRateHz, 100);
+    const int temperatureRate = effectiveRateOrDefault(temperatureRateText, kDefaultTemperatureSampleRateHz, kMaxTemperatureSampleRateHz);
     QSettings settings("VaporView", "MainWindow");
     bool epsilonUsesCustomPacketRates = false;
     const std::map<uint8_t, int> epsilonDesiredPacketRates =
@@ -16447,11 +16715,13 @@ void MainWindow::onConnectClicked()
         ((epsilonPort != selectText && !epsilonPort.isEmpty()) ? 1 : 0) +
         ((ptbPort != selectText && !ptbPort.isEmpty()) ? 1 : 0) +
         ((hmpPort != selectText && !hmpPort.isEmpty()) ? 1 : 0) +
-        ((lidarPort != selectText && !lidarPort.isEmpty()) ? 1 : 0);
+        ((lidarPort != selectText && !lidarPort.isEmpty()) ? 1 : 0) +
+        ((temperaturePort != selectText && !temperaturePort.isEmpty()) ? 1 : 0);
     epsilon_sample_rate_ = epsilonRate;
     ptb_sample_rate_ = ptbRate;
     hmp_sample_rate_ = hmpRate;
     lidar_sample_rate_ = lidarRate;
+    temperature_sample_rate_ = temperatureRate;
 
     stopAllCollectors();
 
@@ -16465,10 +16735,12 @@ void MainWindow::onConnectClicked()
                                       ptbPort,
                                       hmpPort,
                                       lidarPort,
+                                      temperaturePort,
                                       epsilonBaudText,
                                       ptbBaudText,
                                       hmpBaudText,
                                       lidarBaudText,
+                                      temperatureBaudText,
                                       epsilonConfigLikelyMatches,
                                       epsilonUsesCustomPacketRates,
                                       epsilonDesiredPacketRates,
@@ -16479,10 +16751,12 @@ void MainWindow::onConnectClicked()
                                       ptbRate,
                                       hmpRate,
                                       lidarRate,
+                                      temperatureRate,
                                       skipEpsilonDeviceRate,
                                       skipPtbDeviceRate,
                                       skipHmpDeviceRate,
                                       skipLidarDeviceRate,
+                                      skipTemperatureDeviceRate,
                                       connectionProgressSteps]() {
         auto postLog = [this](const QString& message) {
             QMetaObject::invokeMethod(this, [this, message]() { log(message); }, Qt::QueuedConnection);
@@ -16509,6 +16783,7 @@ void MainWindow::onConnectClicked()
         collectors.ptb = std::make_shared<VaporView::PtbCollector>();
         collectors.hmp = std::make_shared<VaporView::HmpCollector>();
         collectors.lidar = std::make_shared<VaporView::LidarCollector>();
+        collectors.temperature_controller = std::make_shared<VaporView::TemperatureControllerCollector>();
         setCollectors(collectors);
 
         auto logCallback = [this](const std::string& msg) {
@@ -16521,15 +16796,19 @@ void MainWindow::onConnectClicked()
         collectors.ptb->setSampleRate(ptbRate);
         collectors.hmp->setSampleRate(hmpRate);
         collectors.lidar->setSampleRate(lidarRate);
+        collectors.temperature_controller->setSampleRate(temperatureRate);
+        collectors.temperature_controller->setSlaveAddress(1);
 
         collectors.epsilon->setLogCallback(logCallback);
         collectors.ptb->setLogCallback(logCallback);
         collectors.hmp->setLogCallback(logCallback);
         collectors.lidar->setLogCallback(logCallback);
+        collectors.temperature_controller->setLogCallback(logCallback);
         collectors.epsilon->setCancelCallback(cancelCallback);
         collectors.ptb->setCancelCallback(cancelCallback);
         collectors.hmp->setCancelCallback(cancelCallback);
         collectors.lidar->setCancelCallback(cancelCallback);
+        collectors.temperature_controller->setCancelCallback(cancelCallback);
         collectors.epsilon->setRawFrameCallback([this](uint64_t hostTimestampUs, uint8_t packetId, uint8_t serialNumber, const uint8_t* packet_data, size_t size) {
             if (!recording_thread_running_.load())
             {
@@ -16772,6 +17051,24 @@ void MainWindow::onConnectClicked()
                                  return false;
                              }) < 0) return;
 
+        if (connectCollector("RD105", temperaturePort, temperatureBaudText, collectors.temperature_controller.get(),
+                             VaporView::SerialConfig::N81(temperatureBaudText.toInt()),
+                             [&]() {
+                                 collectors.temperature_controller->setDataCallback([this]() { QMetaObject::invokeMethod(this, "onTemperatureControllerDataReady", Qt::QueuedConnection); });
+                                 collectors.temperature_controller->setSampleRate(temperatureRate);
+                                 if (skipTemperatureDeviceRate)
+                                 {
+                                     postLog(english ? "[RD105] Polling-rate selection left unset; using the default host polling rate." : "[RD105] 轮询频率保持不设定，使用默认主机轮询频率。");
+                                 }
+                                 else
+                                 {
+                                     postLog(QString(english ? "[RD105] Polling rate set to %1 Hz" : "[RD105] 轮询频率设置为 %1 Hz").arg(temperatureRate));
+                                 }
+                                 if (collectors.temperature_controller->startStreaming()) return true;
+                                 postLog(english ? "[RD105] Failed to start temperature controller polling." : "[RD105] 启动温控器轮询失败。");
+                                 return false;
+                             }) < 0) return;
+
         postProgress(english ? "Finalizing connection..." : "正在完成连接...", connectionProgressSteps);
         postLog(QString(english ? "========== Connection Summary: %1/%2 devices connected ==========" : "========== 连接摘要: %1/%2 设备已连接 ==========").arg(connected_devices).arg(total_devices));
         if (connected_devices == 0)
@@ -16879,6 +17176,15 @@ void MainWindow::onLidarDataReady()
     }
 }
 
+void MainWindow::onTemperatureControllerDataReady()
+{
+    const CollectorSnapshot collectors = snapshotCollectors();
+    if (collectors.temperature_controller)
+    {
+        current_temperature_controller_ = collectors.temperature_controller->getLatestData();
+    }
+}
+
 void MainWindow::onRefreshTimer()
 {
     if (isRemoteSkyMode())
@@ -16913,6 +17219,10 @@ void MainWindow::onRefreshTimer()
     {
         const double rate = collectors.lidar->getActualRate();
         lidar_panel_->updateRate(rate);
+    }
+    if (collectors.temperature_controller && temperature_controller_panel_)
+    {
+        temperature_controller_panel_->updateRate(collectors.temperature_controller->getActualRate());
     }
     if (temperature_controller_panel_)
     {

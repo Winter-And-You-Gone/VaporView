@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QAction>
+#include <QComboBox>
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QFrame>
@@ -255,6 +256,23 @@ int main(int argc, char **argv)
     requireMargins(temperatureOverviewBody->layout()->contentsMargins(),
                    QMargins(2, 2, 2, 2),
                    "temperature overview body padding matches sensor-card content rhythm");
+
+    auto *temperaturePortCombo = window.findChild<QComboBox *>(QStringLiteral("temperaturePortCombo"));
+    auto *temperatureBaudCombo = window.findChild<QComboBox *>(QStringLiteral("temperatureBaudCombo"));
+    auto *temperatureRateCombo = window.findChild<QComboBox *>(QStringLiteral("temperatureRateCombo"));
+    require(temperaturePortCombo != nullptr && temperatureBaudCombo != nullptr && temperatureRateCombo != nullptr,
+            "RD105 serial controls exist in device configuration");
+#ifdef Q_OS_WIN
+    require(temperaturePortCombo->currentText() == QStringLiteral("COM9"),
+            "RD105 local serial port defaults to COM9");
+#else
+    require(temperaturePortCombo->currentText() == QStringLiteral("/dev/ttyRD105"),
+            "RD105 local serial port defaults to /dev/ttyRD105");
+#endif
+    require(temperatureBaudCombo->currentText() == QStringLiteral("38400"),
+            "RD105 local serial baud defaults to protocol-supported 38400");
+    require(temperatureRateCombo->currentText() == QStringLiteral("5"),
+            "RD105 local polling rate defaults to 5 Hz");
 
     auto *temperatureChannelButton =
         window.findChild<QToolButton *>(QStringLiteral("temperatureOverviewChannelButton"));

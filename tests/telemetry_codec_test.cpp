@@ -265,6 +265,7 @@ void testWaveform()
 void testSkyConfigDiff()
 {
     VaporView::SkyConfig a = VaporView::SkyConfig::defaults();
+    require(a.temperature_controller.baud_rate == 38400, "sky config RD105 default baud");
     VaporView::SkyConfig b = a;
     require(!a.diff(b).epsilon_changed, "unchanged epsilon");
     b.epsilon.baud_rate = 115200;
