@@ -11141,9 +11141,9 @@ void MainWindow::syncDeviceConfigPageFromHome()
         device_config_.data_telemetry_summary_lbl->setText(remoteTelemetrySummaryText());
         device_config_.data_telemetry_summary_lbl->setToolTip(QString());
     }
-    if (data_telemetry_summary_card_ && device_config_.data_telemetry_summary_card)
+    if (device_config_.data_telemetry_summary_card)
     {
-        device_config_.data_telemetry_summary_card->setVisible(data_telemetry_summary_card_->isVisible());
+        device_config_.data_telemetry_summary_card->setVisible(true);
     }
     syncDeviceConfigEpsilonPanelFromSettings();
 

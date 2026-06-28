@@ -530,6 +530,28 @@ int main(int argc, char **argv)
     const QList<QFrame*> deviceSummaryCards =
         deviceConfigPage->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
     require(!deviceSummaryCards.isEmpty(), "device configuration telemetry summary card exists");
+    QFrame *deviceTelemetrySummaryCard = nullptr;
+    for (QFrame *summaryCard : deviceSummaryCards)
+    {
+        const QList<QLabel*> labels = summaryCard->findChildren<QLabel *>();
+        for (QLabel *label : labels)
+        {
+            if (label->text().contains(QStringLiteral("天地数据流频率")) ||
+                label->text().contains(QStringLiteral("Sky-ground data stream rates")))
+            {
+                deviceTelemetrySummaryCard = summaryCard;
+                break;
+            }
+        }
+        if (deviceTelemetrySummaryCard)
+        {
+            break;
+        }
+    }
+    require(deviceTelemetrySummaryCard != nullptr,
+            "device configuration telemetry summary card can be identified by title text");
+    require(deviceTelemetrySummaryCard->isVisible(),
+            "device configuration telemetry summary card is visible before source mode changes");
     for (const QFrame *summaryCard : deviceSummaryCards)
     {
         if (!summaryCard->isVisible())
@@ -541,6 +563,35 @@ int main(int argc, char **argv)
         require(summaryRight <= deviceConfigScrollArea->viewport()->width() + 2,
                 "device configuration telemetry summary fits inside the viewport");
     }
+
+    QComboBox *deviceSourceModeCombo = nullptr;
+    for (QComboBox *combo : deviceConfigPage->findChildren<QComboBox *>())
+    {
+        if (!combo->isVisible() || combo->count() < 2)
+        {
+            continue;
+        }
+        const QString localText = combo->itemText(0);
+        const QString remoteText = combo->itemText(1);
+        if ((localText.contains(QStringLiteral("本地")) || localText.contains(QStringLiteral("Local"))) &&
+            (remoteText.contains(QStringLiteral("天空")) || remoteText.contains(QStringLiteral("Sky"))))
+        {
+            deviceSourceModeCombo = combo;
+            break;
+        }
+    }
+    require(deviceSourceModeCombo != nullptr,
+            "device configuration source mode combo exists");
+    deviceSourceModeCombo->setCurrentIndex(1);
+    processEventsFor(150);
+    activateLayouts(&window);
+    require(deviceTelemetrySummaryCard->isVisible(),
+            "device telemetry summary remains visible after switching to sky-ground receive mode");
+    deviceSourceModeCombo->setCurrentIndex(0);
+    processEventsFor(150);
+    activateLayouts(&window);
+    require(deviceTelemetrySummaryCard->isVisible(),
+            "device telemetry summary remains visible after switching back to local mode");
 
     clickWidget(checkedSidebarButton, 150);
     activateLayouts(&window);
