@@ -233,7 +233,7 @@ function initMap(){
     const pid=document.getElementById('providerSelect').value;
     gAMap.on('complete',function(){
       if(pid==='amap_img')gAMap.setLayers([new AMap.TileLayer.Satellite()]);
-      gARdy=true;if(gPts.length)renM();
+      gARdy=true;if(gPts.length){renM();setTimeout(ztFS,200)}
     });
   }else{
     gLMap=L.map(el,{center:[39.9,116.3],zoom:12,zoomControl:true,attributionControl:true,maxZoom:24});
@@ -242,6 +242,7 @@ function initMap(){
       const c=pid==='tianditu_vec'?{e:'vec_w',l:'vec'}:{e:'img_w',l:'img'},a=pid==='tianditu_vec'?{e:'cva_w',l:'cva'}:{e:'cia_w',l:'cia'};
       gLyr.push(mkTD({e:c.e,l:c.l,key}).addTo(gLMap));gLyr.push(mkTD({e:a.e,l:a.l,key}).addTo(gLMap))
     }
+    if(gPts.length){renM();ztFS()}
   }
 }
 
