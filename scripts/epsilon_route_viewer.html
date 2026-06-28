@@ -6,6 +6,8 @@
 <title>EPSILON 原始轨迹查看器</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin></script>
+<script>window._AMapSecurityConfig={securityJsCode:'284287167d1fef16c80c8cdd3ba2cb00'}</script>
+<script src="https://webapi.amap.com/maps?v=2.0&key=5071cacf988948b2f3d02aedffc119cb"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:13px;color:#222;background:#f5f5f5}
@@ -125,402 +127,277 @@ html,body{height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFo
 </div>
 
 <script>
-// ===================================================================
-// CONSTANTS
-// ===================================================================
-const FRAME_HEAD = 0xFC, FRAME_TAIL = 0xFD;
-const RAW_SOURCE_EPSILON = 1;
-const UNIFIED_RAW_MAGIC = 'VVRAWDAT', LEGACY_EPSILON_MAGIC = 'VVEPSRAW';
-const UNIFIED_RAW_RECORD_MARKER = 0x44525756;
-const LEGACY_EPSILON_RECORD_MARKER = 0x524D5549;
-const EARTH_RADIUS = 6371000;
-const FIX_NAMES = {0:'NO_GPS',1:'NO_FIX',2:'2D',3:'3D',4:'DGPS',5:'RTK_FLOAT',6:'RTK_FIXED',7:'STATIC',8:'PPP',9:'RTK_DUAL'};
-const PACKET_NAMES = {0x40:'IMU',0x41:'AHRS',0x42:'INS_GPS',0x50:'SYS_STATE',0x51:'UNIX_TIME',0x52:'FORMATTED_TIME',0x59:'RAW_GNSS',0x5A:'SATELLITES',0x5C:'GEODETIC_POS',0x5D:'ECEF_POS',0xF0:'MAVLINK_TUNNEL'};
+// == CONSTANTS =================================================================
+const FC=0xFC,FT=0xFD,SRCE=1,UM='VVRAWDAT',LM='VVEPSRAW',URM=0x44525756,LRM=0x524D5549;
+const ER=6371000;
+const FN={0:'NO_GPS',1:'NO_FIX',2:'2D',3:'3D',4:'DGPS',5:'RTK_FLOAT',6:'RTK_FIXED',7:'STATIC',8:'PPP',9:'RTK_DUAL'};
+const PN={0x40:'IMU',0x41:'AHRS',0x42:'INS_GPS',0x50:'SYS_STATE',0x51:'UNIX_TIME',0x52:'FORMATTED_TIME',0x59:'RAW_GNSS',0x5A:'SATELLITES',0x5C:'GEODETIC_POS',0x5D:'ECEF_POS',0xF0:'MAVLINK_TUNNEL'};
+let gRecs=[],gCands=[],gPts=[],gStat={},gLoading=false;
+let gLMap=null,gLyr=[],gMk=[],gTL=null,gTS=null,gSM=null,gEM=null,gHC=null;
+let gEngine='leaflet',gAMap=null,gARdy=false,gAH=null,gAOl=[];
 
-// ===================================================================
-// GLOBALS
-// ===================================================================
-let gRecords = [], gCandidates = [], gPoints = [], gStats = {};
-let gLMap = null;
-let gLayers = [], gMarkers = [];
-let gTrackLine = null, gTrackSelected = null, gStartMarker = null, gEndMarker = null, gHoverCircle = null;
-let gIsLoading = false;
-
-// ===================================================================
-// BINARY HELPERS
-// ===================================================================
-function rU16(dv,o){return dv.getUint16(o,true)}
-function rU32(dv,o){return dv.getUint32(o,true)}
-function rF32(dv,o){return dv.getFloat32(o,true)}
-function rF64(dv,o){return dv.getFloat64(o,true)}
-function rad2deg(r){return r*180/Math.PI}
-function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
-function isFinN(v){return v!=null && Number.isFinite(v)}
-
-// ===================================================================
+// == HELPERS ====================================================================
+function r16(dv,o){return dv.getUint16(o,true)}
+function r32(dv,o){return dv.getUint32(o,true)}
+function rF(dv,o){return dv.getFloat32(o,true)}
+function rD(dv,o){return dv.getFloat64(o,true)}
+function r2d(r){return r*180/Math.PI}
+function slp(m){return new Promise(r=>setTimeout(r,m))}
+function fN(v){return v!=null&&Number.isFinite(v)}
 // CRC
-// ===================================================================
 function crc8(b,s,l){let c=0;for(let i=s;i<s+l;i++){c^=b[i];for(let j=0;j<8;j++){c=(c&1)?((c>>1)^0x8C):(c>>1);c&=0xFF}}return c}
 function crc16(b,s,l){let c=0;for(let i=s;i<s+l;i++){c^=b[i]<<8;for(let j=0;j<8;j++){c=(c&0x8000)?((c<<1)^0x1021):(c<<1);c&=0xFFFF}}return c}
-
-// ===================================================================
-// FDILink FRAME PARSER
-// ===================================================================
-function parseFrame(payload){
-  if(payload.byteLength<8)return null;
-  const b=new Uint8Array(payload),ps=b[2],es=ps+8;
-  if(b[0]!==FRAME_HEAD||payload.byteLength!==es||b[es-1]!==FRAME_TAIL)return null;
-  if(crc8(b,0,4)!==b[4])return null;
-  if(crc16(b,7,ps)!==((b[5]<<8)|b[6]))return null;
-  return{packetId:b[1],serialNumber:b[3],payloadSize:ps,payloadView:new DataView(payload.buffer,payload.byteOffset+7,ps)};
-}
-function pktName(id){return '0x'+id.toString(16).toUpperCase().padStart(2,'0')+' '+(PACKET_NAMES[id]||'UNKNOWN')}
-function tsUsIso(u){if(!u)return '';const ms=Math.floor(u/1000);const ex=u%1000;return new Date(ms).toISOString().replace('Z',String(ex).padStart(3,'0')+'Z')}
-function epIso(s,us){return s!=null?tsUsIso(s*1000000+(us||0)):''}
+// FDILink
+function pf(pay){if(pay.byteLength<8)return null;const b=new Uint8Array(pay),ps=b[2],es=ps+8;if(b[0]!==FC||pay.byteLength!==es||b[es-1]!==FT)return null;if(crc8(b,0,4)!==b[4])return null;if(crc16(b,7,ps)!==((b[5]<<8)|b[6]))return null;return{pid:b[1],sn:b[3],ps,view:new DataView(pay.buffer,pay.byteOffset+7,ps)}}
+function pn(id){return'0x'+id.toString(16).toUpperCase().padStart(2,'0')+' '+(PN[id]||'UNK')}
+function tu(u){if(!u)return'';const m=Math.floor(u/1000),e=u%1000;return new Date(m).toISOString().replace('Z',String(e).padStart(3,'0')+'Z')}
+function ei(s,u){return s!=null?tu(s*1000000+(u||0)):''}
 function vll(lat,lon){return Number.isFinite(lat)&&Number.isFinite(lon)&&lat>=-90&&lat<=90&&lon>=-180&&lon<=180&&!(Math.abs(lat)<1e-8&&Math.abs(lon)<1e-8)}
-function fmtTimeUs(payload){
-  if(payload.byteLength<14)return null;
-  const p=new DataView(payload.buffer,payload.byteOffset,payload.byteLength);
-  try{const us=rU32(p,0),y=rU16(p,4),b8=new Uint8Array(payload.buffer,payload.byteOffset,payload.byteLength);const ms=Date.UTC(y,b8[8]-1,b8[9],b8[11],b8[12],b8[13],Math.floor(us/1000));return ms*1000+(us%1000)}catch(e){return null}
-}
+function ftu(pay){if(pay.byteLength<14)return null;const p=new DataView(pay.buffer,pay.byteOffset,pay.byteLength);try{const u=r32(p,0),y=r16(p,4),b8=new Uint8Array(pay.buffer,pay.byteOffset,pay.byteLength);const ms=Date.UTC(y,b8[8]-1,b8[9],b8[11],b8[12],b8[13],Math.floor(u/1000));return ms*1000+(u%1000)}catch(e){return null}}
 
-// ===================================================================
-// RECORD ITERATORS
-// ===================================================================
-function iterUnifiedRaw(fn,bytes){
-  const dv=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
-  if(bytes.byteLength<20)throw new Error(fn+': 文件头过短');
-  const ver=rU32(dv,8),hs=rU32(dv,12),sid=rU16(dv,16);
-  if(sid!==RAW_SOURCE_EPSILON)throw new Error(fn+': source_id='+sid+' 不是 EPSILON');
-  let off=hs;const recs=[];
-  while(off+36<=bytes.byteLength){
-    const mk=rU32(dv,off);if(mk!==UNIFIED_RAW_RECORD_MARKER)throw new Error(fn+': marker 错 off='+off);
-    const rhs=rU32(dv,off+4),hts=Number(dv.getBigUint64(off+8,true)),ps=rU32(dv,off+16),rsi=rU16(dv,off+20),rt=rU16(dv,off+22),fl=rU32(dv,off+24),seq=Number(dv.getBigUint64(off+28,true));
-    const po=off+rhs;if(po+ps>bytes.byteLength)throw new Error(fn+': payload 不完整');
-    if(rsi===RAW_SOURCE_EPSILON)recs.push({sourceFile:fn,rawFormat:'unified_v'+ver,sequence:seq,hostTimestampUs:hts,recordType:rt,flags:fl,payload:bytes.slice(po,po+ps),recordOffset:off,payloadOffset:po});
-    off=po+ps;
+// == RECORD ITERATORS ============================================================
+function iur(fn,b){
+  const dv=new DataView(b.buffer,b.byteOffset,b.byteLength);
+  if(b.byteLength<20)throw new Error(fn+': 文件头过短');
+  const v=r32(dv,8),h=r32(dv,12),si=r16(dv,16);
+  if(si!==SRCE)throw new Error(fn+': source_id='+si);
+  let o=h;const r=[];
+  while(o+36<=b.byteLength){
+    const mk=r32(dv,o);if(mk!==URM)throw new Error(fn+': marker 错');
+    const rh=r32(dv,o+4),ht=Number(dv.getBigUint64(o+8,1)),ps=r32(dv,o+16),rs=r16(dv,o+20),rt=r16(dv,o+22),fl=r32(dv,o+24),sq=Number(dv.getBigUint64(o+28,1));
+    const po=o+rh;if(po+ps>b.byteLength)throw new Error(fn+': payload 不完整');
+    if(rs===SRCE)r.push({sf:fn,rf:'unified_v'+v,seq:sq,hts:ht,rt,fl,pay:b.slice(po,po+ps),ro:o,po});
+    o=po+ps;
   }
-  return recs;
+  return r;
 }
-function iterLegacyRaw(fn,bytes){
-  const dv=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
-  const ver=rU32(dv,8),hs=rU32(dv,12);let off=hs,seq=0;const recs=[];
-  while(off+20<=bytes.byteLength){
-    const mk=rU32(dv,off);if(mk!==LEGACY_EPSILON_RECORD_MARKER)throw new Error(fn+': legacy marker 错 off='+off);
-    const ps=rU32(dv,off+4),hts=Number(dv.getBigUint64(off+8,true)),ft=bytes[off+16],sr=bytes[off+17],po=off+20;
-    if(po+ps>bytes.byteLength)throw new Error(fn+': payload 不完整');
-    recs.push({sourceFile:fn,rawFormat:'legacy_epsilon_v'+ver,sequence:seq,hostTimestampUs:hts,recordType:ft,flags:sr,payload:bytes.slice(po,po+ps),recordOffset:off,payloadOffset:po});
-    off=po+ps;seq++;
+function ilr(fn,b){
+  const dv=new DataView(b.buffer,b.byteOffset,b.byteLength);
+  const v=r32(dv,8),h=r32(dv,12);let o=h,sq=0;const r=[];
+  while(o+20<=b.byteLength){
+    const mk=r32(dv,o);if(mk!==LRM)throw new Error(fn+': legacy marker 错');
+    const ps=r32(dv,o+4),ht=Number(dv.getBigUint64(o+8,1)),ft=b[o+16],sr=b[o+17],po=o+20;
+    if(po+ps>b.byteLength)throw new Error(fn+': payload 不完整');
+    r.push({sf:fn,rf:'legacy_epsilon_v'+v,seq:sq,hts:ht,rt:ft,fl:sr,pay:b.slice(po,po+ps),ro:o,po});o=po+ps;sq++;
   }
-  return recs;
+  return r;
 }
-function iterFdilinkStream(fn,bytes){let off=0,seq=0;const recs=[];while(off+8<=bytes.byteLength){while(off<bytes.byteLength&&bytes[off]!==FRAME_HEAD)off++;if(off+8>bytes.byteLength)break;const ps=bytes[off+2],fs=ps+8;if(off+fs>bytes.byteLength)break;const pay=bytes.slice(off,off+fs);if(pay[pay.byteLength-1]===FRAME_TAIL){recs.push({sourceFile:fn,rawFormat:'fdilink_stream',sequence:seq,hostTimestampUs:0,recordType:bytes[off+1],flags:bytes[off+3],payload:pay,recordOffset:off,payloadOffset:off});seq++;off+=fs}else{off++}}return recs}
-function parseRecords(fn,bytes){const m=new TextDecoder('ascii').decode(bytes.slice(0,8));if(m===UNIFIED_RAW_MAGIC)return iterUnifiedRaw(fn,bytes);if(m===LEGACY_EPSILON_MAGIC)return iterLegacyRaw(fn,bytes);return iterFdilinkStream(fn,bytes)}
+function ifs(fn,b){let o=0,sq=0;const r=[];while(o+8<=b.byteLength){while(o<b.byteLength&&b[o]!==FC)o++;if(o+8>b.byteLength)break;const ps=b[o+2],fs=ps+8;if(o+fs>b.byteLength)break;const p=b.slice(o,o+fs);if(p[p.byteLength-1]===FT){r.push({sf:fn,rf:'fdilink_stream',seq:sq,hts:0,rt:b[o+1],fl:b[o+3],pay:p,ro:o,po:o});sq++;o+=fs}else o++}return r}
+function prec(fn,b){const m=new TextDecoder('ascii').decode(b.slice(0,8));if(m===UM)return iur(fn,b);if(m===LM)return ilr(fn,b);return ifs(fn,b)}
 
-// ===================================================================
-// DECODE POINTS
-// ===================================================================
-function newPoint(rec,frame,state,src){
-  const fc=state.gnss_fix_code!=null?state.gnss_fix_code:null;
-  return{
-    source_file:rec.sourceFile,raw_format:rec.rawFormat,record_sequence:rec.sequence,
-    host_timestamp_us:rec.hostTimestampUs,host_time_utc:tsUsIso(rec.hostTimestampUs),
-    packet_id_hex:pktName(frame.packetId),packet_name:PACKET_NAMES[frame.packetId]||'UNKNOWN',
-    position_source:src,serial_number:frame.serialNumber,
-    utc_unix_s:state.utc_unix_s!=null?state.utc_unix_s:null,utc_microseconds:state.utc_microseconds!=null?state.utc_microseconds:null,
-    epsilon_time_utc:epIso(state.utc_unix_s,state.utc_microseconds),
-    latitude_deg:null,longitude_deg:null,height_m:null,
-    segment_distance_m:0,cumulative_distance_m:0,
-    gnss_fix_code:fc,gnss_fix:fc!=null?(FIX_NAMES[fc]||''):'',
-    gnss_satellites:state.gnss_satellites!=null?state.gnss_satellites:null,
-    hdop:state.hdop!=null?state.hdop:null,vdop:state.vdop!=null?state.vdop:null,
-    hacc_m:state.hacc_m!=null?state.hacc_m:null,vacc_m:state.vacc_m!=null?state.vacc_m:null,
-    lat_std_m:state.lat_std_m!=null?state.lat_std_m:null,lon_std_m:state.lon_std_m!=null?state.lon_std_m:null,
-    height_std_m:state.height_std_m!=null?state.height_std_m:null,diff_age_s:state.diff_age_s!=null?state.diff_age_s:null,
-    vel_n_mps:state.vel_n_mps!=null?state.vel_n_mps:null,vel_e_mps:state.vel_e_mps!=null?state.vel_e_mps:null,vel_d_mps:state.vel_d_mps!=null?state.vel_d_mps:null,
-    ned_n_m:state.ned_n_m!=null?state.ned_n_m:null,ned_e_m:state.ned_e_m!=null?state.ned_e_m:null,ned_d_m:state.ned_d_m!=null?state.ned_d_m:null,
-    roll_deg:state.roll_deg!=null?state.roll_deg:null,pitch_deg:state.pitch_deg!=null?state.pitch_deg:null,yaw_deg:state.yaw_deg!=null?state.yaw_deg:null,
-    system_status_bits:state.system_status_bits!=null?state.system_status_bits:null,
-    filter_status_bits:state.filter_status_bits!=null?state.filter_status_bits:null,update_status_bits:state.update_status_bits!=null?state.update_status_bits:null,
-    record_offset:rec.recordOffset,payload_offset:rec.payloadOffset,point_index:0,source_point_index:0
-  };
+// == DECODE ======================================================================
+function np(rec,frm,st,src){
+  const fc=st.gnss_fix_code!=null?st.gnss_fix_code:null;
+  return{sf:rec.sf,rf:rec.rf,rs:rec.seq,hts:rec.hts,htu:tu(rec.hts),ph:pn(frm.pid),pn:PN[frm.pid]||'UNK',ps:src,sn:frm.sn,us:st.utc_unix_s!=null?st.utc_unix_s:null,um:st.utc_microseconds!=null?st.utc_microseconds:null,etu:ei(st.utc_unix_s,st.utc_microseconds),lat:null,lon:null,hgt:null,sd:0,cd:0,gfc:fc,gf:fc!=null?(FN[fc]||''):'',gs:st.gnss_satellites!=null?st.gnss_satellites:null,hd:st.hdop!=null?st.hdop:null,vd:st.vdop!=null?st.vdop:null,ha:st.hacc_m!=null?st.hacc_m:null,va:st.vacc_m!=null?st.vacc_m:null,ls:st.lat_std_m!=null?st.lat_std_m:null,lns:st.lon_std_m!=null?st.lon_std_m:null,hs:st.height_std_m!=null?st.height_std_m:null,da:st.diff_age_s!=null?st.diff_age_s:null,vn:st.vel_n_mps!=null?st.vel_n_mps:null,ve:st.vel_e_mps!=null?st.vel_e_mps:null,vdm:st.vel_d_mps!=null?st.vel_d_mps:null,nn:st.ned_n_m!=null?st.ned_n_m:null,ne:st.ned_e_m!=null?st.ned_e_m:null,nd:st.ned_d_m!=null?st.ned_d_m:null,rd:st.roll_deg!=null?st.roll_deg:null,pd:st.pitch_deg!=null?st.pitch_deg:null,yd:st.yaw_deg!=null?st.yaw_deg:null,ssb:st.system_status_bits!=null?st.system_status_bits:null,fsb:st.filter_status_bits!=null?st.filter_status_bits:null,usb:st.update_status_bits!=null?st.update_status_bits:null,ro:rec.ro,po:rec.po,pi:0,spi:0}
 }
-function decodePoints(records,onProgress){
-  const state={};const cands=[];let vf=0,bf=0;
-  for(let i=0;i<records.length;i++){
-    if(onProgress&&i>0&&i%500===0)onProgress(62+(i/records.length)*23,'解码坐标点… '+i+'/'+records.length);
-    const rec=records[i],frame=parseFrame(rec.payload);
-    if(!frame){bf++;continue;}vf++;
-    const p=frame.payloadView,pid=frame.packetId,sz=frame.payloadSize;
-    if(pid===0x42&&sz>=72){
-      state.ned_n_m=rF32(p,24);state.ned_e_m=rF32(p,28);state.ned_d_m=rF32(p,32);
-      state.vel_n_mps=rF32(p,36);state.vel_e_mps=rF32(p,40);state.vel_d_mps=rF32(p,44);
-    }else if(pid===0x50&&sz>=14){
-      state.system_status_bits=rU16(p,0);state.filter_status_bits=rU16(p,2);state.update_status_bits=rU16(p,4);
-      state.utc_unix_s=rU32(p,6);state.utc_microseconds=rU32(p,10);state.gnss_fix_code=(state.filter_status_bits>>4)&0x0F;
-      if(sz>=50){state.vel_n_mps=rF32(p,38);state.vel_e_mps=rF32(p,42);state.vel_d_mps=rF32(p,46)}
-      if(sz>=78){state.roll_deg=rad2deg(rF32(p,66));state.pitch_deg=rad2deg(rF32(p,70));state.yaw_deg=rad2deg(rF32(p,74))}
-      if(sz>=102){state.lat_std_m=rF32(p,90);state.lon_std_m=rF32(p,94);state.height_std_m=rF32(p,98)}
-      if(sz>=38){const pt=newPoint(rec,frame,state,'system_state');pt.latitude_deg=rad2deg(rF64(p,14));pt.longitude_deg=rad2deg(rF64(p,22));pt.height_m=rF64(p,30);cands.push(pt)}
-    }else if(pid===0x51&&sz>=8){state.utc_unix_s=rU32(p,0);state.utc_microseconds=rU32(p,4)}
-    else if(pid===0x52&&sz>=14){const utc=fmtTimeUs(new Uint8Array(p.buffer,p.byteOffset,p.byteLength));if(utc!=null){state.utc_unix_s=Math.floor(utc/1000000);state.utc_microseconds=utc%1000000}}
-    else if(pid===0x59&&sz>=74){state.utc_unix_s=rU32(p,0);state.utc_microseconds=rU32(p,4);state.lat_std_m=rF32(p,44);state.lon_std_m=rF32(p,48);state.height_std_m=rF32(p,52);state.diff_age_s=rF32(p,64);state.gnss_fix_code=(rU16(p,72)&0x0F)}
-    else if(pid===0x5A&&sz>=9){state.hdop=rF32(p,0);state.vdop=rF32(p,4);state.gnss_satellites=new Uint8Array(p.buffer,p.byteOffset,p.byteLength)[8]}
-    else if(pid===0x5C&&sz>=32){
-      const pt=newPoint(rec,frame,state,'geodetic_pos');pt.latitude_deg=rad2deg(rF64(p,0));pt.longitude_deg=rad2deg(rF64(p,8));pt.height_m=rF64(p,16);
-      pt.hacc_m=rF32(p,24);pt.vacc_m=rF32(p,28);state.hacc_m=pt.hacc_m;state.vacc_m=pt.vacc_m;cands.push(pt);
+function dcp(recs,prog){const st={},cs=[];let vf=0,bf=0;for(let i=0;i<recs.length;i++){if(prog&&i>0&&i%500===0)prog(62+(i/recs.length)*23,'解码…'+i+'/'+recs.length);const r=recs[i],f=pf(r.pay);if(!f){bf++;continue}vf++;const p=f.view,pid=f.pid,sz=f.ps;if(pid===0x42&&sz>=72){st.nn=rF(p,24);st.ne=rF(p,28);st.nd=rF(p,32);st.vn=rF(p,36);st.ve=rF(p,40);st.vdm=rF(p,44)}else if(pid===0x50&&sz>=14){st.ssb=r16(p,0);st.fsb=r16(p,2);st.usb=r16(p,4);st.utc_unix_s=r32(p,6);st.utc_microseconds=r32(p,10);st.gnss_fix_code=(st.fsb>>4)&0x0F;if(sz>=50){st.vn=rF(p,38);st.ve=rF(p,42);st.vdm=rF(p,46)}if(sz>=78){st.rd=r2d(rF(p,66));st.pd=r2d(rF(p,70));st.yd=r2d(rF(p,74))}if(sz>=102){st.ls=rF(p,90);st.lns=rF(p,94);st.hs=rF(p,98)}if(sz>=38){const pt=np(r,f,st,'system_state');pt.lat=r2d(rD(p,14));pt.lon=r2d(rD(p,22));pt.hgt=rD(p,30);cs.push(pt)}}else if(pid===0x51&&sz>=8){st.utc_unix_s=r32(p,0);st.utc_microseconds=r32(p,4)}else if(pid===0x52&&sz>=14){const ut=ftu(new Uint8Array(p.buffer,p.byteOffset,p.byteLength));if(ut!=null){st.utc_unix_s=Math.floor(ut/1000000);st.utc_microseconds=ut%1000000}}else if(pid===0x59&&sz>=74){st.utc_unix_s=r32(p,0);st.utc_microseconds=r32(p,4);st.ls=rF(p,44);st.lns=rF(p,48);st.hs=rF(p,52);st.da=rF(p,64);st.gnss_fix_code=r16(p,72)&0x0F}else if(pid===0x5A&&sz>=9){st.hd=rF(p,0);st.vd=rF(p,4);st.gnss_satellites=new Uint8Array(p.buffer,p.byteOffset,p.byteLength)[8]}else if(pid===0x5C&&sz>=32){const pt=np(r,f,st,'geodetic_pos');pt.lat=r2d(rD(p,0));pt.lon=r2d(rD(p,8));pt.hgt=rD(p,16);pt.ha=rF(p,24);pt.va=rF(p,28);st.hacc_m=pt.ha;st.vacc_m=pt.va;cs.push(pt)}}gStat.rr=recs.length;gStat.vf=vf;gStat.bf=bf;gStat.cc=cs.length;return cs}
+
+// == SOURCE / FILTER / DIST ======================================================
+function sels(cs,req){if(req==='auto')req=cs.some(p=>p.ps==='geodetic_pos')?'geodetic':'system';let sl;if(req==='geodetic')sl=cs.filter(p=>p.ps==='geodetic_pos');else if(req==='system')sl=cs.filter(p=>p.ps==='system_state');else sl=Array.from(cs);sl.forEach((p,i)=>{p.spi=i+1});gStat.sc=sl.length;gStat.as=req;return sl}
+function prs(t){if(!t||!t.trim())return null;const s=new Set();t.split(',').forEach(p=>{const n=p.trim();if(!n)return;if(n.indexOf('-')>=0){const[a,b]=n.split('-',2);const lo=Math.min(+a,+b),hi=Math.max(+a,+b);for(let i=lo;i<=hi;i++)s.add(i)}else{const v=parseInt(n,10);if(!isNaN(v))s.add(v)}});return s}
+function af(ps,f){let fl=[];const inc=f.include,exc=f.exclude,mfx=f.mfx,mha=f.mha,mva=f.mva,mse=f.mse;for(const p of ps){if(inc&&inc.size>0&&!inc.has(p.spi))continue;if(exc&&exc.has(p.spi))continue;if(!vll(p.lat,p.lon))continue;if(mfx!=null&&(p.gfc==null||p.gfc<mfx))continue;if(fN(mha)&&fN(p.ha)&&p.ha>mha)continue;if(fN(mva)&&fN(p.va)&&p.va>mva)continue;fl.push(p)}if(fN(mse)&&fl.length>0){const j=[fl[0]];for(let i=1;i<fl.length;i++){if(hav(j[j.length-1],fl[i])<=mse)j.push(fl[i])}fl=j}gStat.fc=fl.length;gStat.rc=ps.length-fl.length;return fl}
+function hav(a,b){const l1=a.lat*Math.PI/180,l2=b.lat*Math.PI/180,dl=l2-l1,dn=(b.lon-a.lon)*Math.PI/180,h=Math.sin(dl/2)**2+Math.cos(l1)*Math.cos(l2)*Math.sin(dn/2)**2;return ER*2*Math.atan2(Math.sqrt(h),Math.sqrt(Math.max(0,1-h)))}
+function ad(l){let c=0;for(let i=0;i<l.length;i++){const p=l[i];p.pi=i+1;p.sd=i===0?0:hav(l[i-1],p);c+=p.sd;p.cd=c}}
+function rd(l,si,ei){if(!l||!l.length)return 0;const lo=Math.min(si,ei),hi=Math.max(si,ei);if(lo===hi||hi>l.length)return 0;return l[hi-1].cd-l[lo-1].cd}
+
+// == CSV ========================================================================
+const CF=['pi','spi','sf','rf','rs','hts','htu','ph','pn','ps','sn','us','um','etu','lat','lon','hgt','sd','cd','gfc','gf','gs','hd','vd','ha','va','ls','lns','hs','da','vn','ve','vdm','nn','ne','nd','rd','pd','yd','ssb','fsb','usb','ro','po'];
+function csvV(v){if(v==null)return'';if(typeof v==='number'){if(!Number.isFinite(v))return'';return v.toPrecision(10).replace(/\.?0+$/,'')}return String(v)}
+function ecsv(){if(!gPts.length){ss('没有可导出的数据',false);return}let c='\uFEFF'+CF.join(',')+'\n';for(const p of gPts)c+=CF.map(f=>csvV(p[f])).join(',')+'\n';const b=new Blob([c],{type:'text/csv;charset=utf-8'}),u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download='epsilon_route.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(u);ss('CSV 已导出 ('+gPts.length+' 行)')}
+
+// == UI HELPERS ==================================================================
+function ss(msg,ok){const e=document.getElementById('status');e.textContent=msg;e.className=ok===false?'error':'ok'}
+function up(p,step){document.getElementById('progressContainer').style.display='block';document.getElementById('progressFill').style.width=Math.min(100,Math.max(0,p))+'%';document.getElementById('progressStep').textContent=step}
+function hp(){document.getElementById('progressContainer').style.display='none'}
+
+// == TIANDITU TILE ==============================================================
+function mkTD(cfg){const l=L.tileLayer('',{maxNativeZoom:18,maxZoom:24});l.getTileUrl=function(c){const z=c.z,x=((c.x%Math.pow(2,z))+Math.pow(2,z))%Math.pow(2,z),y=c.y,reqZ=Math.min(z,18),scl=Math.pow(2,z-reqZ),rx=Math.floor(x/scl),ry=Math.floor(y/scl),sh=Math.abs(x*31+y*17+cfg.l.length*13)%8;return'https://t'+sh+'.tianditu.gov.cn/'+cfg.e+'/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER='+cfg.l+'&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILECOL='+rx+'&TILEROW='+ry+'&TILEMATRIX='+reqZ+'&tk='+cfg.key};return l}
+
+// == MAP ENGINE ==================================================================
+function isAP(){return document.getElementById('providerSelect').value==='amap_vec'||document.getElementById('providerSelect').value==='amap_img'}
+function dm(){
+  if(gAMap){gAMap.destroy();gAMap=null;gARdy=false}
+  if(gLMap){
+    if(gTL)gLMap.removeLayer(gTL);if(gTS)gLMap.removeLayer(gTS);if(gSM)gLMap.removeLayer(gSM);if(gEM)gLMap.removeLayer(gEM);if(gHC)gLMap.removeLayer(gHC);
+    for(const m of gMk)gLMap.removeLayer(m);gMk=[];for(const l of gLyr)gLMap.removeLayer(l);gLyr=[];gLMap.remove();gLMap=null
+  }
+  gTL=null;gTS=null;gSM=null;gEM=null;gHC=null;gAOl=[];gAH=null;
+  document.getElementById('map').innerHTML='';
+}
+function initMap(){
+  const el=document.getElementById('map'),ia=isAP();
+  gEngine=ia?'amap':'leaflet';dm();
+  if(ia){
+    gARdy=false;
+    gAMap=new AMap.Map(el,{zoom:13,center:[116.3,39.9],zooms:[3,22]});
+    const pid=document.getElementById('providerSelect').value;
+    gAMap.on('complete',function(){
+      if(pid==='amap_img')gAMap.setLayers([new AMap.TileLayer.Satellite()]);
+      gARdy=true;if(gPts.length)renM();
+    });
+  }else{
+    gLMap=L.map(el,{center:[39.9,116.3],zoom:12,zoomControl:true,attributionControl:true,maxZoom:24});
+    const pid=document.getElementById('providerSelect').value,key=document.getElementById('tiandituKey').value.trim()||'5a0d3293c900281a37417b2e4d4d3676';
+    if(pid==='osm'){gLyr.push(L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxNativeZoom:19,maxZoom:24,attribution:'&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(gLMap))}else{
+      const c=pid==='tianditu_vec'?{e:'vec_w',l:'vec'}:{e:'img_w',l:'img'},a=pid==='tianditu_vec'?{e:'cva_w',l:'cva'}:{e:'cia_w',l:'cia'};
+      gLyr.push(mkTD({e:c.e,l:c.l,key}).addTo(gLMap));gLyr.push(mkTD({e:a.e,l:a.l,key}).addTo(gLMap))
     }
   }
-  gStats.rawRecords=records.length;gStats.validFrames=vf;gStats.badFrames=bf;gStats.coordinateCandidates=cands.length;
-  return cands;
 }
 
-// ===================================================================
-// SELECT SOURCE / FILTERS / DISTANCE
-// ===================================================================
-function selectSource(cands,req){
-  if(req==='auto')req=cands.some(p=>p.position_source==='geodetic_pos')?'geodetic':'system';
-  let sel;if(req==='geodetic')sel=cands.filter(p=>p.position_source==='geodetic_pos');else if(req==='system')sel=cands.filter(p=>p.position_source==='system_state');else sel=Array.from(cands);
-  sel.forEach((p,i)=>{p.source_point_index=i+1});gStats.selectedCandidates=sel.length;gStats.autoSource=req;return sel;
-}
-function parseRanges(text){if(!text||!text.trim())return null;const s=new Set();text.split(',').forEach(p=>{const t=p.trim();if(!t)return;if(t.indexOf('-')>=0){const[s,e]=t.split('-',2);const lo=Math.min(+s,+e),hi=Math.max(+s,+e);for(let i=lo;i<=hi;i++)s.add(i)}else{const v=parseInt(t,10);if(!isNaN(v))s.add(v)}});return s}
-function applyFilters(pts,f){let fl=[];const inc=f.includeIndices,exc=f.excludeIndices,mfx=f.minFixCode,mha=f.maxHacc,mva=f.maxVacc,mse=f.maxSegmentM;for(const p of pts){if(inc&&inc.size>0&&!inc.has(p.source_point_index))continue;if(exc&&exc.has(p.source_point_index))continue;if(!vll(p.latitude_deg,p.longitude_deg))continue;if(mfx!=null&&(p.gnss_fix_code==null||p.gnss_fix_code<mfx))continue;if(isFinN(mha)&&isFinN(p.hacc_m)&&p.hacc_m>mha)continue;if(isFinN(mva)&&isFinN(p.vacc_m)&&p.vacc_m>mva)continue;fl.push(p)}if(isFinN(mse)&&fl.length>0){const jmp=[fl[0]];for(let i=1;i<fl.length;i++){if(haversine(jmp[jmp.length-1],fl[i])<=mse)jmp.push(fl[i])}fl=jmp}gStats.filteredCount=fl.length;gStats.removedCount=pts.length-fl.length;return fl}
-function haversine(a,b){const l1=a.latitude_deg*Math.PI/180,l2=b.latitude_deg*Math.PI/180,dl=l2-l1,dn=(b.longitude_deg-a.longitude_deg)*Math.PI/180;const h=Math.sin(dl/2)**2+Math.cos(l1)*Math.cos(l2)*Math.sin(dn/2)**2;return EARTH_RADIUS*2*Math.atan2(Math.sqrt(h),Math.sqrt(Math.max(0,1-h)))}
-function assignDist(list){let cum=0;for(let i=0;i<list.length;i++){const p=list[i];p.point_index=i+1;p.segment_distance_m=i===0?0:haversine(list[i-1],p);cum+=p.segment_distance_m;p.cumulative_distance_m=cum}}
-function routeDist(list,si,ei){if(!list||!list.length)return 0;const lo=Math.min(si,ei),hi=Math.max(si,ei);if(lo===hi||hi>list.length)return 0;return list[hi-1].cumulative_distance_m-list[lo-1].cumulative_distance_m}
+function switchProvider(){dm();initMap()}
 
-// ===================================================================
-// CSV
-// ===================================================================
-const csvF=['point_index','source_point_index','source_file','raw_format','record_sequence','host_timestamp_us','host_time_utc','packet_id_hex','packet_name','position_source','serial_number','utc_unix_s','utc_microseconds','epsilon_time_utc','latitude_deg','longitude_deg','height_m','segment_distance_m','cumulative_distance_m','gnss_fix_code','gnss_fix','gnss_satellites','hdop','vdop','hacc_m','vacc_m','lat_std_m','lon_std_m','height_std_m','diff_age_s','vel_n_mps','vel_e_mps','vel_d_mps','ned_n_m','ned_e_m','ned_d_m','roll_deg','pitch_deg','yaw_deg','system_status_bits','filter_status_bits','update_status_bits','record_offset','payload_offset'];
-function csvV(v){if(v==null)return '';if(typeof v==='number'){if(!Number.isFinite(v))return '';return v.toPrecision(10).replace(/\.?0+$/,'')}return String(v)}
-function exportCsv(){if(!gPoints.length){setStatus('没有可导出的数据',false);return}let csv='\uFEFF'+csvF.join(',')+'\n';for(const p of gPoints)csv+=csvF.map(f=>csvV(p[f])).join(',')+'\n';const blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='epsilon_route.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);setStatus('CSV 已导出 ('+gPoints.length+' 行)')}
+// == RENDER ======================================================================
+function renM(){if(!gPts.length)return;if(gEngine==='leaflet')rLM();else rAM()}
 
-// ===================================================================
-// UI HELPERS
-// ===================================================================
-function setStatus(msg,ok){const e=document.getElementById('status');e.textContent=msg;e.className=ok===false?'error':'ok'}
-function updateProgress(pct,step){document.getElementById('progressContainer').style.display='block';document.getElementById('progressFill').style.width=Math.min(100,Math.max(0,pct))+'%';document.getElementById('progressStep').textContent=step}
-function hideProgress(){document.getElementById('progressContainer').style.display='none'}
-
-// ===================================================================
-// TIANDITU / AMAP TILE HELPERS (Leaflet)
-// ===================================================================
-const L_TD = {vec_w:{e:'vec_w',l:'vec'},cva_w:{e:'cva_w',l:'cva'},img_w:{e:'img_w',l:'img'},cia_w:{e:'cia_w',l:'cia'}};
-function L_tdTile(cfg){const l=L.tileLayer('',{maxNativeZoom:18,maxZoom:24});l.getTileUrl=function(c){const z=c.z,x=((c.x%Math.pow(2,z))+Math.pow(2,z))%Math.pow(2,z),y=c.y,reqZ=Math.min(z,18),scl=Math.pow(2,z-reqZ),rx=Math.floor(x/scl),ry=Math.floor(y/scl),sh=Math.abs(x*31+y*17+cfg.l.length*13)%8;return 'https://t'+sh+'.tianditu.gov.cn/'+cfg.e+'/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER='+cfg.l+'&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILECOL='+rx+'&TILEROW='+ry+'&TILEMATRIX='+reqZ+'&tk='+cfg.key};return l}
-
-// ===================================================================
-// MAP ENGINE: Leaflet (single engine)
-// ===================================================================
-function isGcjProvider(){const p=document.getElementById('providerSelect').value;return p==='amap_vec'||p==='amap_img'}
-
-function switchProvider(){
-  const pid=document.getElementById('providerSelect').value,key=document.getElementById('tiandituKey').value.trim()||'5a0d3293c900281a37417b2e4d4d3676';
-  if(!gLMap){initMap();return}
-  for(const l of gLayers)gLMap.removeLayer(l);gLayers=[];
-  if(pid==='osm'){
-    gLayers.push(L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxNativeZoom:19,maxZoom:24,attribution:'&copy; <a href="https://openstreetmap.org/copyright">OpenStreetMap</a>'}).addTo(gLMap));
-  }else if(pid==='amap_vec'){
-    // 高德矢量瓦片（Web Mercator，GCJ-02 瓦片数据需配合轨迹点 GCJ-02 转换）
-    gLayers.push(L.tileLayer('https://webrd{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',{subdomains:['01','02','03','04'],maxNativeZoom:18,maxZoom:24,attribution:'&copy; 高德'}).addTo(gLMap));
-  }else if(pid==='amap_img'){
-    gLayers.push(L.tileLayer('https://webst{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',{subdomains:['01','02','03','04'],maxNativeZoom:18,maxZoom:24,attribution:'&copy; 高德'}).addTo(gLMap));
-  }else{
-    const cfg=pid==='tianditu_vec'?{e:'vec_w',l:'vec'}:{e:'img_w',l:'img'};const acfg=pid==='tianditu_vec'?{e:'cva_w',l:'cva'}:{e:'cia_w',l:'cia'};
-    gLayers.push(L_tdTile({e:cfg.e,l:cfg.l,key}).addTo(gLMap));gLayers.push(L_tdTile({e:acfg.e,l:acfg.l,key}).addTo(gLMap))
-  }
-  if(gPoints.length)renderMap();
-}
-
-function initMap(){
-  gLMap=L.map('map',{center:[39.9,116.3],zoom:12,zoomControl:true,attributionControl:true,maxZoom:24});
-  switchProvider();
-}
-
-// ===================================================================
-// GCJ-02 COORDINATE OFFSET
-// ===================================================================
-const GCJ_A=6378245.0,GCJ_EE=0.00669342162296594323;
-function tLat(x,y){let r=-100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));r+=(20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;r+=(20*Math.sin(y*Math.PI)+40*Math.sin(y/3*Math.PI))*2/3;r+=(160*Math.sin(y/12*Math.PI)+320*Math.sin(y*Math.PI/30))*2/3;return r}
-function tLon(x,y){let r=300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));r+=(20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;r+=(20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;r+=(150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;return r}
-function gcjOff(lat,lon){let dl=tLat(lon-105,lat-35),dn=tLon(lon-105,lat-35);const ra=lat/180*Math.PI;let m=Math.sin(ra);m=1-GCJ_EE*m*m;const s=Math.sqrt(m);dl=(dl*180)/((GCJ_A*(1-GCJ_EE))/(m*s)*Math.PI);dn=(dn*180)/(GCJ_A/s*Math.cos(ra)*Math.PI);return{lat:lat+dl,lon:lon+dn}}
-function mapPts(pts){return isGcjProvider()?pts.map(p=>{const g=gcjOff(p.latitude_deg,p.longitude_deg);return{...p,latitude_deg:g.lat,longitude_deg:g.lon}}):pts}
-
-// ===================================================================
-// MAP RENDERING
-// ===================================================================
-function renderMap(){renderLeafletMap()}
-function renderLeafletMap(){
-  if(!gPoints.length)return;
-  const dps=mapPts(gPoints);
-  if(gTrackLine){gLMap.removeLayer(gTrackLine)}if(gTrackSelected){gLMap.removeLayer(gTrackSelected)}if(gStartMarker){gLMap.removeLayer(gStartMarker)}if(gEndMarker){gLMap.removeLayer(gEndMarker)}if(gHoverCircle){gLMap.removeLayer(gHoverCircle)}for(const m of gMarkers)gLMap.removeLayer(m);gMarkers=[];
-  const ll=dps.map(p=>[p.latitude_deg,p.longitude_deg]);
-  gTrackLine=L.polyline(ll,{color:'#999',weight:2,opacity:0.6}).addTo(gLMap);
+function rLM(){
+  if(gTL)gLMap.removeLayer(gTL);if(gTS)gLMap.removeLayer(gTS);if(gSM)gLMap.removeLayer(gSM);if(gEM)gLMap.removeLayer(gEM);if(gHC)gLMap.removeLayer(gHC);
+  for(const m of gMk)gLMap.removeLayer(m);gMk=[];
+  const ll=gPts.map(p=>[p.lat,p.lon]);
+  gTL=L.polyline(ll,{color:'#999',weight:2,opacity:0.6}).addTo(gLMap);
   const si=parseInt(document.getElementById('startIndex').value,10)||1,ei=parseInt(document.getElementById('endIndex').value,10)||ll.length;
   const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(ll.length,Math.max(si,ei));
-  if(lo<hi){const seg=ll.slice(lo,hi);gTrackSelected=L.polyline(seg,{color:'#e67300',weight:3,opacity:0.9}).addTo(gLMap);const sp=dps[lo];gStartMarker=L.circleMarker([sp.latitude_deg,sp.longitude_deg],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gLMap);gStartMarker.bindTooltip('起点 #'+(lo+1),{direction:'top'});const ep=dps[hi-1];gEndMarker=L.circleMarker([ep.latitude_deg,ep.longitude_deg],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gLMap);gEndMarker.bindTooltip('终点 #'+hi,{direction:'top'})}
-  for(let i=0;i<dps.length;i++){const p=dps[i],m=L.circleMarker([p.latitude_deg,p.longitude_deg],{radius:5,color:'#4a90d9',fillColor:'#4a90d9',fillOpacity:0.3,weight:1,opacity:0.4});m.pointIndex=i;m.on('mouseover',()=>hoverPoint(i));m.on('mouseout',()=>unhoverPoint());m.on('click',()=>clickTableRow(i));m.addTo(gLMap);gMarkers.push(m)}
+  if(lo<hi){const s=ll.slice(lo,hi);gTS=L.polyline(s,{color:'#e67300',weight:3,opacity:0.9}).addTo(gLMap);const sp=gPts[lo];gSM=L.circleMarker([sp.lat,sp.lon],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gLMap);gSM.bindTooltip('起点 #'+(lo+1),{direction:'top'});const ep=gPts[hi-1];gEM=L.circleMarker([ep.lat,ep.lon],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gLMap);gEM.bindTooltip('终点 #'+hi,{direction:'top'})}
+  for(let i=0;i<gPts.length;i++){const p=gPts[i],m=L.circleMarker([p.lat,p.lon],{radius:5,color:'#4a90d9',fillColor:'#4a90d9',fillOpacity:0.3,weight:1,opacity:0.4});m.i=i;m.on('mouseover',()=>hP(i));m.on('mouseout',()=>uhP());m.on('click',()=>cTR(i));m.addTo(gLMap);gMk.push(m)}
 }
 
-function hoverPoint(idx){
-  if(gHoverCircle){gLMap.removeLayer(gHoverCircle)}
-  const dps=mapPts(gPoints);const p=dps[idx];
-  gHoverCircle=L.circleMarker([p.latitude_deg,p.longitude_deg],{radius:10,color:'#f39c12',fillColor:'#f1c40f',fillOpacity:0.7,weight:2}).addTo(gLMap);
-  const o=gPoints[idx];const h=isFinN(o.height_m)?o.height_m.toFixed(2)+' m':'—',cd=isFinN(o.cumulative_distance_m)?o.cumulative_distance_m.toFixed(3)+' m':'—';
-  const tip=L.tooltip({direction:'top',offset:L.point(0,-10)}).setContent('#'+(idx+1)+' | 纬度:'+o.latitude_deg.toFixed(7)+' 经度:'+o.longitude_deg.toFixed(7)+' | 高程:'+h+' | Fix:'+(o.gnss_fix||'—')+' | 累积:'+cd);
-  gHoverCircle.bindTooltip(tip).openTooltip();highlightTableRow(idx);
+function rAM(){
+  if(!gARdy)return;
+  gAMap.clearMap();gAOl=[];gAH=null;
+  const path=gPts.map(p=>[p.lon,p.lat]);
+  const fl=new AMap.Polyline({path,strokeWeight:2,strokeColor:'#999',strokeOpacity:0.6});fl.setMap(gAMap);gAOl.push(fl);
+  const si=parseInt(document.getElementById('startIndex').value,10)||1,ei=parseInt(document.getElementById('endIndex').value,10)||gPts.length;
+  const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(gPts.length,Math.max(si,ei));
+  if(lo<hi){const sp=gPts[lo],ep=gPts[hi-1];const segPath=gPts.slice(lo,hi).map(p=>[p.lon,p.lat]);const sl=new AMap.Polyline({path:segPath,strokeWeight:3,strokeColor:'#e67300',strokeOpacity:0.9});sl.setMap(gAMap);gAOl.push(sl);const sm=new AMap.Marker({position:[sp.lon,sp.lat],content:'<div style="background:#4caf50;width:16px;height:16px;border-radius:50%;border:3px solid #2a7d2a"></div>',offset:new AMap.Pixel(-8,-8)});sm.setMap(gAMap);gAOl.push(sm);const em=new AMap.Marker({position:[ep.lon,ep.lat],content:'<div style="background:#e74c3c;width:16px;height:16px;border-radius:50%;border:3px solid #c33"></div>',offset:new AMap.Pixel(-8,-8)});em.setMap(gAMap);gAOl.push(em)}
+  for(let i=0;i<gPts.length;i++){const p=gPts[i],m=new AMap.CircleMarker({center:[p.lon,p.lat],radius:5,fillColor:'#4a90d9',strokeColor:'#4a90d9',strokeWeight:1,fillOpacity:0.3});m.setMap(gAMap);gAOl.push(m);m.i=i;m.on('mouseover',()=>hP(i));m.on('mouseout',()=>uhP());m.on('click',()=>cTR(i))}
 }
-function unhoverPoint(){if(gHoverCircle){gLMap.removeLayer(gHoverCircle);gHoverCircle=null}clearTableHighlight()}
-function zoomToFitSelected(){
-  if(!gPoints.length)return;
-  if(gTrackSelected)gLMap.fitBounds(gTrackSelected.getBounds(),{padding:[30,30]});
-  else gLMap.fitBounds(mapPts(gPoints).map(p=>[p.latitude_deg,p.longitude_deg]),{padding:[30,30]});
-}
-function zoomToPoint(idx){if(idx<0||idx>=gPoints.length)return;const p=mapPts(gPoints)[idx];gLMap.setView([p.latitude_deg,p.longitude_deg],17)}
 
-// ===================================================================
-// RENDER DISTANCE
-// ===================================================================
-function renderDistance(){
-  const n=gPoints.length;
-  const si=Math.max(1,Math.min(parseInt(document.getElementById('startIndex').value,10)||1,n||1));
-  const ei=Math.max(1,Math.min(parseInt(document.getElementById('endIndex').value,10)||n,n));
+function hP(idx){
+  const p=gPts[idx];
+  if(gEngine==='leaflet'){
+    if(gHC)gLMap.removeLayer(gHC);
+    gHC=L.circleMarker([p.lat,p.lon],{radius:10,color:'#f39c12',fillColor:'#f1c40f',fillOpacity:0.7,weight:2}).addTo(gLMap);
+    const h=fN(p.hgt)?p.hgt.toFixed(2)+' m':'—',cd=fN(p.cd)?p.cd.toFixed(3)+' m':'—';
+    const tip=L.tooltip({direction:'top',offset:L.point(0,-10)}).setContent('#'+(idx+1)+' | 纬度:'+p.lat.toFixed(7)+' 经度:'+p.lon.toFixed(7)+' | 高程:'+h+' | Fix:'+(p.gf||'—')+' | 累积:'+cd);
+    gHC.bindTooltip(tip).openTooltip();
+  }else{
+    if(gAH)gAMap.remove(gAH);
+    gAH=new AMap.CircleMarker({center:[p.lon,p.lat],radius:10,fillColor:'#f1c40f',strokeColor:'#f39c12',strokeWeight:2,fillOpacity:0.7});gAH.setMap(gAMap);
+  }
+  hTR(idx);
+}
+function uhP(){if(gEngine==='leaflet'){if(gHC){gLMap.removeLayer(gHC);gHC=null}}else{if(gAH){gAMap.remove(gAH);gAH=null}}cTH()}
+function ztFS(){
+  if(!gPts.length)return;
+  if(gEngine==='leaflet'){
+    if(gTS)gLMap.fitBounds(gTS.getBounds(),{padding:[30,30]});else gLMap.fitBounds(gPts.map(p=>[p.lat,p.lon]),{padding:[30,30]});
+  }else{
+    if(!gARdy)return;const si=parseInt(document.getElementById('startIndex').value,10)||1,ei=parseInt(document.getElementById('endIndex').value,10)||gPts.length;const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(gPts.length,Math.max(si,ei));const sub=lo<hi?gPts.slice(lo,hi):gPts;gAMap.setFitView([],false,sub.map(p=>new AMap.LngLat(p.lon,p.lat)));
+  }
+}
+function zTP(idx){if(idx<0||idx>=gPts.length)return;const p=gPts[idx];if(gEngine==='leaflet')gLMap.setView([p.lat,p.lon],17);else gAMap.setZoomAndCenter(17,[p.lon,p.lat])}
+
+// == RENDER DISTANCE =============================================================
+function rD(){
+  const n=gPts.length;
+  const si=Math.max(1,Math.min(parseInt(document.getElementById('startIndex').value,10)||1,n||1)),ei=Math.max(1,Math.min(parseInt(document.getElementById('endIndex').value,10)||n,n));
   document.getElementById('startIndex').value=si;document.getElementById('endIndex').value=ei;
-  const segEl=document.getElementById('segmentDist'),totEl=document.getElementById('totalDist');
-  if(!n){segEl.textContent='—';totEl.textContent='—';return}
-  const dps=mapPts(gPoints);
-  if(gTrackSelected){gLMap.removeLayer(gTrackSelected);gTrackSelected=null}
-  if(gStartMarker){gLMap.removeLayer(gStartMarker);gStartMarker=null}
-  if(gEndMarker){gLMap.removeLayer(gEndMarker);gEndMarker=null}
-  const ll=dps.map(p=>[p.latitude_deg,p.longitude_deg]),lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(n,Math.max(si,ei));
-  if(lo<hi){gTrackSelected=L.polyline(ll.slice(lo,hi),{color:'#e67300',weight:3,opacity:0.9}).addTo(gLMap);const sp=dps[lo];gStartMarker=L.circleMarker([sp.latitude_deg,sp.longitude_deg],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gLMap);gStartMarker.bindTooltip('起点 #'+(lo+1),{direction:'top'});const ep=dps[hi-1];gEndMarker=L.circleMarker([ep.latitude_deg,ep.longitude_deg],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gLMap);gEndMarker.bindTooltip('终点 #'+hi,{direction:'top'})}
-  const total=n?gPoints[n-1].cumulative_distance_m:0,segment=routeDist(gPoints,si,ei);
-  segEl.textContent=isFinite(segment)?segment.toFixed(3)+' m':'—';totEl.textContent=isFinite(total)?total.toFixed(3)+' m':'—';
+  const se=document.getElementById('segmentDist'),te=document.getElementById('totalDist');
+  if(!n){se.textContent='—';te.textContent='—';return}
+
+  if(gEngine==='leaflet'){
+    if(gTS)gLMap.removeLayer(gTS);if(gSM)gLMap.removeLayer(gSM);if(gEM)gLMap.removeLayer(gEM);gTS=null;gSM=null;gEM=null;
+    const ll=gPts.map(p=>[p.lat,p.lon]),lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(n,Math.max(si,ei));
+    if(lo<hi){gTS=L.polyline(ll.slice(lo,hi),{color:'#e67300',weight:3,opacity:0.9}).addTo(gLMap);const sp=gPts[lo];gSM=L.circleMarker([sp.lat,sp.lon],{radius:8,color:'#2a7d2a',fillColor:'#4caf50',fillOpacity:0.8,weight:2}).addTo(gLMap);gSM.bindTooltip('起点 #'+(lo+1),{direction:'top'});const ep=gPts[hi-1];gEM=L.circleMarker([ep.lat,ep.lon],{radius:8,color:'#c33',fillColor:'#e74c3c',fillOpacity:0.8,weight:2}).addTo(gLMap);gEM.bindTooltip('终点 #'+hi,{direction:'top'})}
+  }else{
+    if(!gARdy)return;gAMap.clearMap();gAOl=[];gAH=null;
+    const path=gPts.map(p=>[p.lon,p.lat]);const fl=new AMap.Polyline({path,strokeWeight:2,strokeColor:'#999',strokeOpacity:0.6});fl.setMap(gAMap);gAOl.push(fl);
+    const lo=Math.max(0,Math.min(si,ei)-1),hi=Math.min(n,Math.max(si,ei));
+    if(lo<hi){const segPath=gPts.slice(lo,hi).map(p=>[p.lon,p.lat]);const sp=gPts[lo],ep=gPts[hi-1];const sl=new AMap.Polyline({path:segPath,strokeWeight:3,strokeColor:'#e67300',strokeOpacity:0.9});sl.setMap(gAMap);gAOl.push(sl);const sm=new AMap.Marker({position:[sp.lon,sp.lat],content:'<div style="background:#4caf50;width:16px;height:16px;border-radius:50%;border:3px solid #2a7d2a"></div>',offset:new AMap.Pixel(-8,-8)});sm.setMap(gAMap);gAOl.push(sm);const em=new AMap.Marker({position:[ep.lon,ep.lat],content:'<div style="background:#e74c3c;width:16px;height:16px;border-radius:50%;border:3px solid #c33"></div>',offset:new AMap.Pixel(-8,-8)});em.setMap(gAMap);gAOl.push(em)}
+    for(let i=0;i<gPts.length;i++){const p=gPts[i],m=new AMap.CircleMarker({center:[p.lon,p.lat],radius:5,fillColor:'#4a90d9',strokeColor:'#4a90d9',strokeWeight:1,fillOpacity:0.3});m.setMap(gAMap);gAOl.push(m);m.i=i;m.on('mouseover',()=>hP(i));m.on('mouseout',()=>uhP());m.on('click',()=>cTR(i))}
+  }
+  const total=n?gPts[n-1].cd:0,segment=rd(gPts,si,ei);
+  se.textContent=isFinite(segment)?segment.toFixed(3)+' m':'—';te.textContent=isFinite(total)?total.toFixed(3)+' m':'—';
   document.querySelectorAll('#pointTable tbody tr.start-row,#pointTable tbody tr.end-row').forEach(el=>el.classList.remove('start-row','end-row'));
   document.querySelectorAll('#pointTable tbody tr').forEach(tr=>{const idx=parseInt(tr.dataset.index,10)+1;if(idx===si)tr.classList.add('start-row');if(idx===ei)tr.classList.add('end-row')});
 }
 
-function renderStats(){
+function rS(){
   const el=document.getElementById('statsGrid');
-  if(!gPoints.length){el.innerHTML='';return}
-  el.innerHTML=[['解析总记录',gStats.rawRecords||0],['有效帧',gStats.validFrames||0],['错误帧',gStats.badFrames||0],['坐标候选',gStats.coordinateCandidates||0],['来源选择',gStats.selectedCandidates||0],['来源',gStats.autoSource||'—'],['过滤后点数',gPoints.length],['丢弃点数',gStats.removedCount||0]].map(([l,v])=>'<div class="stat-item"><span class="stat-label">'+l+'</span><span class="stat-value">'+v+'</span></div>').join('')
+  if(!gPts.length){el.innerHTML='';return}
+  el.innerHTML=[['解析记录',gStat.rr||0],['有效帧',gStat.vf||0],['错误帧',gStat.bf||0],['候选点',gStat.cc||0],['来源选择',gStat.sc||0],['来源',gStat.as||'—'],['过滤后',gPts.length],['丢弃',gStat.rc||0]].map(([l,v])=>'<div class="stat-item"><span class="stat-label">'+l+'</span><span class="stat-value">'+v+'</span></div>').join('')
 }
 
-// ===================================================================
-// TABLE
-// ===================================================================
-function renderTable(){
+// == TABLE =======================================================================
+function rT(){
   const tb=document.querySelector('#pointTable tbody');tb.innerHTML='';
-  if(!gPoints.length)return;
-  const si=parseInt(document.getElementById('startIndex').value,10)||1,ei=parseInt(document.getElementById('endIndex').value,10)||gPoints.length;
-  for(let i=0;i<gPoints.length;i++){
-    const p=gPoints[i],idx=i+1,tr=document.createElement('tr');
+  if(!gPts.length)return;
+  const si=parseInt(document.getElementById('startIndex').value,10)||1,ei=parseInt(document.getElementById('endIndex').value,10)||gPts.length;
+  for(let i=0;i<gPts.length;i++){
+    const p=gPts[i],idx=i+1,tr=document.createElement('tr');
     tr.dataset.index=i;
-    if(idx===si)tr.classList.add('start-row');
-    if(idx===ei)tr.classList.add('end-row');
-    const fix=p.gnss_fix||'—',cd=isFinN(p.cumulative_distance_m)?p.cumulative_distance_m.toFixed(1):'—';
-    const ha=isFinN(p.hacc_m)?p.hacc_m.toFixed(3):'—',va=isFinN(p.vacc_m)?p.vacc_m.toFixed(3):'—';
-    const ts=p.epsilon_time_utc?p.epsilon_time_utc.slice(11,23):'—';
-    tr.innerHTML='<td>'+idx+'</td><td><button class="btn-sm btn-outline" onclick="event.stopPropagation();setStart('+idx+')">起点</button> <button class="btn-sm btn-outline btn-danger" onclick="event.stopPropagation();setEnd('+idx+')">终点</button> <button class="btn-sm btn-outline" onclick="event.stopPropagation();toggleExclude('+idx+')">排除</button></td><td>'+p.latitude_deg.toFixed(6)+'</td><td>'+p.longitude_deg.toFixed(6)+'</td><td>'+fix+'</td><td>'+cd+'</td><td>'+ha+'</td><td>'+va+'</td><td>'+ts+'</td>';
-    tr.addEventListener('click',()=>clickTableRow(i));
-    tb.appendChild(tr);
+    if(idx===si)tr.classList.add('start-row');if(idx===ei)tr.classList.add('end-row');
+    const fix=p.gf||'—',cd=fN(p.cd)?p.cd.toFixed(1):'—',ha=fN(p.ha)?p.ha.toFixed(3):'—',va=fN(p.va)?p.va.toFixed(3):'—',ts=p.etu?p.etu.slice(11,23):'—';
+    tr.innerHTML='<td>'+idx+'</td><td><button class="btn-sm btn-outline" onclick="event.stopPropagation();sS('+idx+')">起点</button> <button class="btn-sm btn-outline btn-danger" onclick="event.stopPropagation();sE('+idx+')">终点</button> <button class="btn-sm btn-outline" onclick="event.stopPropagation();tE('+idx+')">排除</button></td><td>'+p.lat.toFixed(6)+'</td><td>'+p.lon.toFixed(6)+'</td><td>'+fix+'</td><td>'+cd+'</td><td>'+ha+'</td><td>'+va+'</td><td>'+ts+'</td>';
+    tr.addEventListener('click',()=>cTR(i));tb.appendChild(tr);
   }
 }
-function highlightTableRow(idx){clearTableHighlight();const rows=document.querySelectorAll('#pointTable tbody tr');if(rows[idx])rows[idx].classList.add('active')}
-function clearTableHighlight(){document.querySelectorAll('#pointTable tbody tr.active').forEach(el=>el.classList.remove('active'))}
-function clickTableRow(idx){zoomToPoint(idx);highlightTableRow(idx)}
+function hTR(i){cTH();const r=document.querySelectorAll('#pointTable tbody tr');if(r[i])r[i].classList.add('active')}
+function cTH(){document.querySelectorAll('#pointTable tbody tr.active').forEach(el=>el.classList.remove('active'))}
+function cTR(i){zTP(i);hTR(i)}
 
-// ===================================================================
-// UI ACTIONS
-// ===================================================================
-function setStart(idx){document.getElementById('startIndex').value=idx;renderDistance()}
-function setEnd(idx){document.getElementById('endIndex').value=idx;renderDistance()}
-function toggleExclude(idx){
+// == UI ACTIONS ==================================================================
+function sS(i){document.getElementById('startIndex').value=i;rD()}
+function sE(i){document.getElementById('endIndex').value=i;rD()}
+function tE(i){
   const el=document.getElementById('excludeIndices');
   const s=el.value?new Set(el.value.split(',').map(s=>parseInt(s.trim(),10)).filter(n=>!isNaN(n))):new Set();
-  s.has(idx)?s.delete(idx):s.add(idx);
-  el.value=Array.from(s).sort((a,b)=>a-b).join(',');recalc();
+  s.has(i)?s.delete(i):s.add(i);el.value=Array.from(s).sort((a,b)=>a-b).join(',');rc();
 }
-
-function recalc(){
-  if(!gCandidates.length)return;
+function rc(){
+  if(!gCands.length)return;
   const src=document.getElementById('positionSource').value,mft=document.getElementById('minFix').value;
-  const mhat=document.getElementById('maxHacc').value,mvat=document.getElementById('maxVacc').value;
-  const msgt=document.getElementById('maxSegmentM').value,ext=document.getElementById('excludeIndices').value,int=document.getElementById('includeIndices').value;
-  const mfc=mft?(FIX_NAMES[mft]!=null?+mft:parseInt(mft,10)):null;
-  const mha=mhat?parseFloat(mhat):null,mva=mvat?parseFloat(mvat):null,mse=msgt?parseFloat(msgt):null;
-  const exc=parseRanges(ext),inc=parseRanges(int);
-  const selected=selectSource(gCandidates,src);
-  const filtered=applyFilters(selected,{includeIndices:inc&&inc.size>0?inc:null,excludeIndices:exc&&exc.size>0?exc:null,minFixCode:isFinN(mfc)?mfc:null,maxHacc:isFinN(mha)?mha:null,maxVacc:isFinN(mva)?mva:null,maxSegmentM:isFinN(mse)?mse:null});
-  assignDist(filtered);gPoints=filtered;
+  const mht=document.getElementById('maxHacc').value,mvt=document.getElementById('maxVacc').value;
+  const mst=document.getElementById('maxSegmentM').value,ext=document.getElementById('excludeIndices').value,int=document.getElementById('includeIndices').value;
+  const mfc=mft?(FN[mft]!=null?+mft:parseInt(mft,10)):null;
+  const mha=mht?parseFloat(mht):null,mva=mvt?parseFloat(mvt):null,mse=mst?parseFloat(mst):null;
+  const exc=prs(ext),inc=prs(int);
+  const sl=sels(gCands,src);
+  const fl=af(sl,{include:inc&&inc.size>0?inc:null,exclude:exc&&exc.size>0?exc:null,mfx:fN(mfc)?mfc:null,mha:fN(mha)?mha:null,mva:fN(mva)?mva:null,mse:fN(mse)?mse:null});
+  ad(fl);gPts=fl;
   const se=document.getElementById('startIndex'),ee=document.getElementById('endIndex');
-  if(gPoints.length){if(parseInt(se.value,10)>gPoints.length||parseInt(se.value,10)<1)se.value=1;if(parseInt(ee.value,10)>gPoints.length||parseInt(ee.value,10)<1)ee.value=gPoints.length}else{se.value=1;ee.value=1}
-  renderMap();renderTable();renderDistance();renderStats();
+  if(gPts.length){if(parseInt(se.value,10)>gPts.length||parseInt(se.value,10)<1)se.value=1;if(parseInt(ee.value,10)>gPts.length||parseInt(ee.value,10)<1)ee.value=gPts.length}else{se.value=1;ee.value=1}
+  renM();rT();rD();rS();
 }
 
-// ===================================================================
-// PROVIDER SWITCHING
-// ===================================================================
-function switchProvider(){
-  // Re-init the map with new provider
-  if(gLMap){for(const l of gLayers)gLMap.removeLayer(l);gLayers=[];gLMap.remove();gLMap=null}
-  document.getElementById('map').innerHTML='';
-  initMap();
-}
-
-// ===================================================================
-// FILE LOADING
-// ===================================================================
-function readFileProg(file){
-  return new Promise((res,rej)=>{
-    const r=new FileReader();
-    r.onprogress=function(e){if(e.lengthComputable)updateProgress((e.loaded/e.total)*25,'读取文件… '+(e.loaded/e.total*100).toFixed(0)+'%')};
-    r.onload=function(){res(new Uint8Array(r.result))};r.onerror=rej;r.readAsArrayBuffer(file);
-  });
-}
-async function loadFromFile(file){
-  if(!file||gIsLoading)return;gIsLoading=true;
-  setStatus('加载 '+file.name+'…');document.getElementById('fileName').textContent=file.name;updateProgress(0,'准备…');
+// == FILE LOADING ================================================================
+function rFP(file){return new Promise((res,rej)=>{const r=new FileReader();r.onprogress=function(e){if(e.lengthComputable)up((e.loaded/e.total)*25,'读取…'+(e.loaded/e.total*100).toFixed(0)+'%')};r.onload=function(){res(new Uint8Array(r.result))};r.onerror=rej;r.readAsArrayBuffer(file)})}
+async function lFF(file){
+  if(!file||gLoading)return;gLoading=true;
+  ss('加载 '+file.name+'…');document.getElementById('fileName').textContent=file.name;up(0,'准备…');
   try{
-    const bytes=await readFileProg(file);
-    updateProgress(27,'解析记录格式…');await sleep(0);
-    gRecords=parseRecords(file.name,bytes);
-    if(!gRecords.length)throw new Error('没有解析到任何记录');
-    updateProgress(55,'找到 '+gRecords.length+' 条记录');await sleep(0);
-    gCandidates=decodePoints(gRecords,function(pct,msg){updateProgress(55+pct*0.35,msg)});
-    if(!gCandidates.length)throw new Error('没有解析到有效坐标点');
-    updateProgress(91,'应用过滤…');await sleep(0);
-    document.getElementById('startIndex').value=1;document.getElementById('endIndex').value=gCandidates.length;
-    recalc();
-    updateProgress(100,'完成');await sleep(300);hideProgress();
-    if(gPoints.length){
-      zoomToFitSelected();
-      setStatus('✓ '+file.name+'：'+gPoints.length+' 轨迹点，'+gStats.rawRecords+' 条记录，'+gStats.validFrames+' 有效帧');
-    }else setStatus('✓ 解析完成，但所有点被过滤掉了',false);
-  }catch(err){hideProgress();setStatus('✗ '+(err.message||String(err)),false);gRecords=[];gCandidates=[];gPoints=[];gStats={};renderMap();renderTable();renderStats()
-  }finally{gIsLoading=false}
+    const b=await rFP(file);up(27,'解析记录格式…');await slp(0);
+    gRecs=prec(file.name,b);if(!gRecs.length)throw new Error('没有记录');
+    up(55,'找到 '+gRecs.length+' 条记录');await slp(0);
+    gCands=dcp(gRecs,function(p,m){up(55+p*0.35,m)});if(!gCands.length)throw new Error('没有坐标点');
+    up(91,'过滤…');await slp(0);
+    document.getElementById('startIndex').value=1;document.getElementById('endIndex').value=gCands.length;
+    rc();up(100,'完成');await slp(300);hp();
+    if(gPts.length){ztFS();ss('✓ '+file.name+'：'+gPts.length+' 点，'+gStat.rr+' 记录，'+gStat.vf+' 有效帧')}else ss('✓ 解析完成，但所有点被过滤掉了',false);
+  }catch(e){hp();ss('✗ '+(e.message||String(e)),false);gRecs=[];gCands=[];gPts=[];gStat={};renM();rT();rS()}finally{gLoading=false}
 }
-function chooseEpsilonFile(files){
-  const list=Array.from(files);
-  const prefs=[f=>f.webkitRelativePath.replaceAll('\\','/').endsWith('/raw/epsilon.dat'),f=>f.webkitRelativePath.replaceAll('\\','/').endsWith('/sensors/epsilon_raw.dat'),f=>f.name==='epsilon.dat',f=>f.name==='epsilon_raw.dat'];
-  for(const pred of prefs){const f=list.find(pred);if(f)return f}
-  const datFiles=list.filter(f=>f.name.endsWith('.dat'));return datFiles.length>0?datFiles[0]:null;
+function cEF(fls){
+  const list=Array.from(fls);
+  for(const pred of [f=>f.webkitRelativePath.replaceAll('\\','/').endsWith('/raw/epsilon.dat'),f=>f.webkitRelativePath.replaceAll('\\','/').endsWith('/sensors/epsilon_raw.dat'),f=>f.name==='epsilon.dat',f=>f.name==='epsilon_raw.dat']){const f=list.find(pred);if(f)return f}
+  const dat=list.filter(f=>f.name.endsWith('.dat'));return dat.length?dat[0]:null;
 }
 
-// ===================================================================
-// EVENT BINDINGS
-// ===================================================================
-document.getElementById('sessionInput').addEventListener('change',function(e){
-  const file=chooseEpsilonFile(e.target.files);
-  if(!file){setStatus('所选文件夹中没有找到 raw/epsilon.dat 或 sensors/epsilon_raw.dat',false);return}
-  loadFromFile(file);
-});
-document.getElementById('datInput').addEventListener('change',function(e){if(!e.target.files.length)return;loadFromFile(e.target.files[0])});
-window.addEventListener('resize',()=>{if(gLMap)gLMap.invalidateSize()});
+// == EVENTS ======================================================================
+document.getElementById('sessionInput').addEventListener('change',function(e){const f=cEF(e.target.files);if(!f){ss('所选文件夹中没有找到 raw/epsilon.dat',false);return}lFF(f)});
+document.getElementById('datInput').addEventListener('change',function(e){if(!e.target.files.length)return;lFF(e.target.files[0])});
+window.addEventListener('resize',()=>{if(gEngine==='leaflet'&&gLMap)gLMap.invalidateSize()});
 
-// ===================================================================
-// INIT
-// ===================================================================
+// == INIT =======================================================================
 initMap();
 </script>
 </body>
