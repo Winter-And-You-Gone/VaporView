@@ -127,6 +127,15 @@ void requireMargins(const QMargins& actual, const QMargins& expected, const char
             message);
 }
 
+void requireSameRect(const QRect& actual, const QRect& expected, int tolerance, const char *message)
+{
+    require(std::abs(actual.x() - expected.x()) <= tolerance &&
+                std::abs(actual.y() - expected.y()) <= tolerance &&
+                std::abs(actual.width() - expected.width()) <= tolerance &&
+                std::abs(actual.height() - expected.height()) <= tolerance,
+            message);
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -266,6 +275,38 @@ int main(int argc, char **argv)
     requireMargins(temperatureOverviewBody->layout()->contentsMargins(),
                    QMargins(2, 2, 2, 2),
                    "temperature overview body padding matches sensor-card content rhythm");
+
+    auto *homeConfigCard = deviceOverviewCard;
+    require(homeConfigCard != nullptr, "home configuration card exists");
+    const QRect homeConfigLocalRect = homeConfigCard->geometry();
+    QComboBox *homeSourceModeCombo = nullptr;
+    const QList<QComboBox*> homeConfigCombos = homeConfigCard->findChildren<QComboBox *>();
+    for (QComboBox *combo : homeConfigCombos)
+    {
+        if (combo->count() < 2)
+        {
+            continue;
+        }
+        const QString localText = combo->itemText(0);
+        const QString remoteText = combo->itemText(1);
+        if ((localText.contains(QStringLiteral("本地")) || localText.contains(QStringLiteral("Local"))) &&
+            (remoteText.contains(QStringLiteral("天空")) || remoteText.contains(QStringLiteral("Sky"))))
+        {
+            homeSourceModeCombo = combo;
+            break;
+        }
+    }
+    require(homeSourceModeCombo != nullptr, "home source mode combo exists");
+    homeSourceModeCombo->setCurrentIndex(1);
+    processEventsFor(150);
+    activateLayouts(&window);
+    requireSameRect(homeConfigCard->geometry(), homeConfigLocalRect, 2,
+                    "home configuration card geometry is stable in sky-ground receive mode");
+    homeSourceModeCombo->setCurrentIndex(0);
+    processEventsFor(150);
+    activateLayouts(&window);
+    requireSameRect(homeConfigCard->geometry(), homeConfigLocalRect, 2,
+                    "home configuration card geometry is stable after switching back to local mode");
 
     const QList<QLabel*> homeDeviceCapsules =
         window.findChildren<QLabel *>(QStringLiteral("homeDeviceStatusCapsule"));
@@ -431,14 +472,11 @@ int main(int argc, char **argv)
 
     const QStringList removedDevicePageActions = {
         QStringLiteral("刷新"),
-        QStringLiteral("连接"),
         QStringLiteral("取消"),
-        QStringLiteral("断开"),
         QStringLiteral("Refresh"),
-        QStringLiteral("Connect"),
         QStringLiteral("Cancel"),
-        QStringLiteral("Disconnect"),
     };
+    int disabledLocalRemoteActionCount = 0;
     for (QPushButton *button : deviceConfigPage->findChildren<QPushButton *>())
     {
         if (!button->isVisible())
@@ -449,7 +487,20 @@ int main(int argc, char **argv)
                 "device configuration page omits title-bar serial actions");
         require(button->focusPolicy() == Qt::TabFocus,
                 "device configuration buttons do not take focus on mouse click");
+        if (button->text() == QStringLiteral("连接") ||
+            button->text() == QStringLiteral("断开") ||
+            button->text() == QStringLiteral("重连") ||
+            button->text() == QStringLiteral("Connect") ||
+            button->text() == QStringLiteral("Disconnect") ||
+            button->text() == QStringLiteral("Reconnect"))
+        {
+            require(!button->isEnabled(),
+                    "device configuration remote actions are visible but disabled in local mode");
+            ++disabledLocalRemoteActionCount;
+        }
     }
+    require(disabledLocalRemoteActionCount >= 15,
+            "device configuration keeps all remote device actions present in local mode");
 
     QComboBox *devicePortCombo = nullptr;
     QComboBox *deviceRateCombo = nullptr;
@@ -552,6 +603,8 @@ int main(int argc, char **argv)
             "device configuration telemetry summary card can be identified by title text");
     require(deviceTelemetrySummaryCard->isVisible(),
             "device configuration telemetry summary card is visible before source mode changes");
+    const QRect localEpsilonConfigRect = epsilonConfigCard->geometry();
+    const QRect localTelemetrySummaryRect = deviceTelemetrySummaryCard->geometry();
     for (const QFrame *summaryCard : deviceSummaryCards)
     {
         if (!summaryCard->isVisible())
@@ -585,13 +638,25 @@ int main(int argc, char **argv)
     deviceSourceModeCombo->setCurrentIndex(1);
     processEventsFor(150);
     activateLayouts(&window);
+    require(epsilonConfigCard->isVisible(),
+            "device EPSILON configuration card stays visible in sky-ground receive mode");
     require(deviceTelemetrySummaryCard->isVisible(),
             "device telemetry summary remains visible after switching to sky-ground receive mode");
+    requireSameRect(epsilonConfigCard->geometry(), localEpsilonConfigRect, 2,
+                    "device EPSILON configuration card geometry is stable in sky-ground receive mode");
+    requireSameRect(deviceTelemetrySummaryCard->geometry(), localTelemetrySummaryRect, 2,
+                    "device telemetry summary geometry is stable in sky-ground receive mode");
     deviceSourceModeCombo->setCurrentIndex(0);
     processEventsFor(150);
     activateLayouts(&window);
+    require(epsilonConfigCard->isVisible(),
+            "device EPSILON configuration card stays visible after switching back to local mode");
     require(deviceTelemetrySummaryCard->isVisible(),
             "device telemetry summary remains visible after switching back to local mode");
+    requireSameRect(epsilonConfigCard->geometry(), localEpsilonConfigRect, 2,
+                    "device EPSILON configuration card geometry is stable after switching back to local mode");
+    requireSameRect(deviceTelemetrySummaryCard->geometry(), localTelemetrySummaryRect, 2,
+                    "device telemetry summary geometry is stable after switching back to local mode");
 
     clickWidget(checkedSidebarButton, 150);
     activateLayouts(&window);

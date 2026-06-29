@@ -7768,17 +7768,17 @@ void MainWindow::updateSourceModeUi()
     if (sky_telemetry_baud_combo_) sky_telemetry_baud_combo_->setEnabled(remoteInputsEnabled && !tcpTelemetry);
     if (sky_telemetry_tcp_host_edit_) sky_telemetry_tcp_host_edit_->setEnabled(remoteInputsEnabled && tcpTelemetry);
     if (sky_telemetry_tcp_port_spin_) sky_telemetry_tcp_port_spin_->setEnabled(remoteInputsEnabled && tcpTelemetry);
-    if (sky_telemetry_row_widget_) sky_telemetry_row_widget_->setVisible(remote);
-    if (sky_telemetry_transport_lbl_) sky_telemetry_transport_lbl_->setVisible(remote);
-    if (sky_telemetry_transport_combo_) sky_telemetry_transport_combo_->setVisible(remote);
-    if (sky_telemetry_port_lbl_) sky_telemetry_port_lbl_->setVisible(remote && !tcpTelemetry);
-    if (sky_telemetry_port_combo_) sky_telemetry_port_combo_->setVisible(remote && !tcpTelemetry);
-    if (sky_telemetry_baud_lbl_) sky_telemetry_baud_lbl_->setVisible(remote && !tcpTelemetry);
-    if (sky_telemetry_baud_combo_) sky_telemetry_baud_combo_->setVisible(remote && !tcpTelemetry);
-    if (sky_telemetry_tcp_host_lbl_) sky_telemetry_tcp_host_lbl_->setVisible(remote && tcpTelemetry);
-    if (sky_telemetry_tcp_host_edit_) sky_telemetry_tcp_host_edit_->setVisible(remote && tcpTelemetry);
-    if (sky_telemetry_tcp_port_lbl_) sky_telemetry_tcp_port_lbl_->setVisible(remote && tcpTelemetry);
-    if (sky_telemetry_tcp_port_spin_) sky_telemetry_tcp_port_spin_->setVisible(remote && tcpTelemetry);
+    if (sky_telemetry_row_widget_) sky_telemetry_row_widget_->setVisible(true);
+    if (sky_telemetry_transport_lbl_) sky_telemetry_transport_lbl_->setVisible(true);
+    if (sky_telemetry_transport_combo_) sky_telemetry_transport_combo_->setVisible(true);
+    if (sky_telemetry_port_lbl_) sky_telemetry_port_lbl_->setVisible(true);
+    if (sky_telemetry_port_combo_) sky_telemetry_port_combo_->setVisible(true);
+    if (sky_telemetry_baud_lbl_) sky_telemetry_baud_lbl_->setVisible(true);
+    if (sky_telemetry_baud_combo_) sky_telemetry_baud_combo_->setVisible(true);
+    if (sky_telemetry_tcp_host_lbl_) sky_telemetry_tcp_host_lbl_->setVisible(true);
+    if (sky_telemetry_tcp_host_edit_) sky_telemetry_tcp_host_edit_->setVisible(true);
+    if (sky_telemetry_tcp_port_lbl_) sky_telemetry_tcp_port_lbl_->setVisible(true);
+    if (sky_telemetry_tcp_port_spin_) sky_telemetry_tcp_port_spin_->setVisible(true);
     if (sky_device_config_btn_) sky_device_config_btn_->setEnabled(remote && ground_telemetry_service_ && ground_telemetry_service_->isOpen());
     setRemoteDeviceButtonsEnabled(remote && ground_telemetry_service_ && ground_telemetry_service_->isOpen());
     updateRemoteTelemetrySummaryLabel();
@@ -8654,7 +8654,7 @@ void MainWindow::setRemoteDeviceButtonsEnabled(bool enabled)
     {
         if (widget)
         {
-            widget->setVisible(isRemoteSkyMode());
+            widget->setVisible(true);
         }
     }
 }
@@ -10624,7 +10624,7 @@ void MainWindow::setupDeviceConfigPage()
     device_config_.sky_telemetry_row_widget = skyTelemetryRow;
     auto *skyTelemetryLayout = new QHBoxLayout(skyTelemetryRow);
     skyTelemetryLayout->setContentsMargins(8, 2, 8, 2);
-    skyTelemetryLayout->setSpacing(8);
+    skyTelemetryLayout->setSpacing(6);
 
     device_config_.sky_telemetry_transport_lbl = new QLabel(skyTelemetryRow);
     device_config_.sky_telemetry_transport_lbl->setObjectName(QStringLiteral("fieldLabel"));
@@ -10636,8 +10636,8 @@ void MainWindow::setupDeviceConfigPage()
     device_config_.sky_telemetry_tcp_host_lbl->setObjectName(QStringLiteral("fieldLabel"));
     device_config_.sky_telemetry_tcp_host_edit = new QLineEdit(skyTelemetryRow);
     device_config_.sky_telemetry_tcp_host_edit->setFixedHeight(kMainPageInputHeight);
-    device_config_.sky_telemetry_tcp_host_edit->setMinimumWidth(150);
-    device_config_.sky_telemetry_tcp_host_edit->setMaximumWidth(180);
+    device_config_.sky_telemetry_tcp_host_edit->setMinimumWidth(132);
+    device_config_.sky_telemetry_tcp_host_edit->setMaximumWidth(160);
 
     device_config_.sky_telemetry_tcp_port_lbl = new QLabel(skyTelemetryRow);
     device_config_.sky_telemetry_tcp_port_lbl->setObjectName(QStringLiteral("fieldLabel"));
@@ -10675,13 +10675,13 @@ void MainWindow::setupDeviceConfigPage()
     auto *formRowWidget = new QWidget(serialCard);
     auto *formRowLayout = new QHBoxLayout(formRowWidget);
     formRowLayout->setContentsMargins(0, 0, 0, 0);
-    formRowLayout->setSpacing(8);
+    formRowLayout->setSpacing(6);
 
     auto *formWidget = new QWidget(formRowWidget);
     formWidget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Minimum);
     auto *formLayout = new QGridLayout(formWidget);
-    formLayout->setContentsMargins(8, 4, 8, 8);
-    formLayout->setHorizontalSpacing(8);
+    formLayout->setContentsMargins(6, 4, 6, 8);
+    formLayout->setHorizontalSpacing(6);
     formLayout->setVerticalSpacing(5);
     constexpr int kDeviceConfigPortComboWidth = 108;
     constexpr int kDeviceConfigBaudComboWidth = 100;
@@ -10703,24 +10703,25 @@ void MainWindow::setupDeviceConfigPage()
             QLabel *&rateLabel,
             QComboBox *&rateCombo,
             int row) {
+        const int layoutRow = row * 2;
         label = new QLabel(formWidget);
         label->setObjectName(QStringLiteral("fieldLabel"));
         label->setFixedHeight(kMainPageInputHeight);
-        label->setFixedWidth(80);
-        formLayout->addWidget(label, row, 0, Qt::AlignVCenter | Qt::AlignLeft);
+        label->setFixedWidth(76);
+        formLayout->addWidget(label, layoutRow, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
         portCombo = createCombo(kDeviceConfigPortComboWidth, true);
         portCombo->setMinimumContentsLength(6);
         portCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-        formLayout->addWidget(portCombo, row, 1, Qt::AlignVCenter);
+        formLayout->addWidget(portCombo, layoutRow, 1, Qt::AlignVCenter);
 
         baudCombo = createCombo(kDeviceConfigBaudComboWidth);
-        formLayout->addWidget(baudCombo, row, 2, Qt::AlignVCenter);
+        formLayout->addWidget(baudCombo, layoutRow, 2, Qt::AlignVCenter);
 
         rateLabel = new QLabel(formWidget);
         rateLabel->setObjectName(QStringLiteral("fieldLabel"));
         rateLabel->setFixedHeight(kMainPageInputHeight);
-        formLayout->addWidget(rateLabel, row, 3, Qt::AlignVCenter | Qt::AlignRight);
+        formLayout->addWidget(rateLabel, layoutRow, 3, Qt::AlignVCenter | Qt::AlignRight);
 
         if (row == 0)
         {
@@ -10731,7 +10732,7 @@ void MainWindow::setupDeviceConfigPage()
             rateCombo = createCombo(kDeviceConfigRateComboWidth, true);
             rateCombo->setMinimumContentsLength(4);
             rateCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-            formLayout->addWidget(rateCombo, row, 4, Qt::AlignVCenter);
+            formLayout->addWidget(rateCombo, layoutRow, 4, Qt::AlignVCenter);
         }
     };
 
@@ -10755,14 +10756,16 @@ void MainWindow::setupDeviceConfigPage()
             QPushButton *&reconnectButton,
             VaporView::SkyDeviceId device) {
         buttonsWidget = new QWidget(formWidget);
+        buttonsWidget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         auto *layout = new QHBoxLayout(buttonsWidget);
         layout->setContentsMargins(0, 0, 0, 0);
-        layout->setSpacing(4);
+        layout->setSpacing(2);
         auto createButton = [this, buttonsWidget, device](const QString& text, VaporView::CommandId command) {
             auto *button = new QPushButton(text, buttonsWidget);
             button->setFixedHeight(kMainPageButtonHeight);
             button->setFocusPolicy(Qt::TabFocus);
-            button->setMinimumWidth(64);
+            button->setMinimumWidth(0);
+            button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
             connect(button, &QPushButton::clicked, this, [this, command, device]() {
                 sendRemoteDeviceCommand(command, device);
             });
@@ -10774,8 +10777,7 @@ void MainWindow::setupDeviceConfigPage()
         layout->addWidget(connectButton);
         layout->addWidget(disconnectButton);
         layout->addWidget(reconnectButton);
-        layout->addStretch();
-        formLayout->addWidget(buttonsWidget, row, 5, Qt::AlignVCenter | Qt::AlignLeft);
+        formLayout->addWidget(buttonsWidget, row * 2 + 1, 1, 1, 4, Qt::AlignVCenter | Qt::AlignLeft);
     };
     addDeviceRemoteButtons(0, device_config_.epsilon_remote_buttons_widget,
                            device_config_.epsilon_remote_connect_btn,
@@ -10805,10 +10807,11 @@ void MainWindow::setupDeviceConfigPage()
 
     device_config_.epsilon_config_card = new QFrame(formRowWidget);
     device_config_.epsilon_config_card->setObjectName(QStringLiteral("epsilonSectionCard"));
+    device_config_.epsilon_config_card->setMinimumWidth(520);
     device_config_.epsilon_config_card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     auto *epsilonConfigLayout = new QVBoxLayout(device_config_.epsilon_config_card);
-    epsilonConfigLayout->setContentsMargins(10, 8, 10, 8);
-    epsilonConfigLayout->setSpacing(8);
+    epsilonConfigLayout->setContentsMargins(8, 8, 8, 8);
+    epsilonConfigLayout->setSpacing(7);
 
     device_config_.epsilon_config_title_lbl = new QLabel(device_config_.epsilon_config_card);
     device_config_.epsilon_config_title_lbl->setObjectName(QStringLiteral("homeOverviewSectionTitle"));
@@ -10828,7 +10831,7 @@ void MainWindow::setupDeviceConfigPage()
     auto *packetGridWidget = new QWidget(device_config_.epsilon_config_card);
     auto *packetGrid = new QGridLayout(packetGridWidget);
     packetGrid->setContentsMargins(0, 0, 0, 0);
-    packetGrid->setHorizontalSpacing(10);
+    packetGrid->setHorizontalSpacing(8);
     packetGrid->setVerticalSpacing(6);
     constexpr int kDeviceConfigPacketColumnCount = 2;
     int packetComboWidth = 0;
@@ -10844,7 +10847,7 @@ void MainWindow::setupDeviceConfigPage()
             }
         }
     }
-    packetComboWidth = std::clamp(packetComboWidth + 56, 132, 172);
+    packetComboWidth = std::clamp(packetComboWidth + 50, 126, 160);
     device_config_.epsilon_packet_rate_labels.clear();
     device_config_.epsilon_packet_rate_combos.clear();
     int packetIndex = 0;
@@ -10895,7 +10898,7 @@ void MainWindow::setupDeviceConfigPage()
     auto *packetButtonRow = new QWidget(device_config_.epsilon_config_card);
     auto *packetButtonLayout = new QHBoxLayout(packetButtonRow);
     packetButtonLayout->setContentsMargins(0, 0, 0, 0);
-    packetButtonLayout->setSpacing(8);
+    packetButtonLayout->setSpacing(6);
     device_config_.epsilon_packet_defaults_btn = createInlineButton(packetButtonRow);
     device_config_.epsilon_packet_grouped_btn = createInlineButton(packetButtonRow);
     device_config_.epsilon_packet_save_btn = createInlineButton(packetButtonRow);
@@ -10928,7 +10931,7 @@ void MainWindow::setupDeviceConfigPage()
     auto *commandButtonRow = new QWidget(device_config_.epsilon_config_card);
     auto *commandButtonLayout = new QHBoxLayout(commandButtonRow);
     commandButtonLayout->setContentsMargins(0, 0, 0, 0);
-    commandButtonLayout->setSpacing(8);
+    commandButtonLayout->setSpacing(6);
     device_config_.epsilon_rtcm_port_btn = createInlineButton(commandButtonRow);
     device_config_.epsilon_reconfigure_btn = createInlineButton(commandButtonRow);
     device_config_.rtk_config_btn = createInlineButton(commandButtonRow);
@@ -10978,8 +10981,8 @@ void MainWindow::setupDeviceConfigPage()
             {
                 return;
             }
-            const QVariant data = deviceCombo->itemData(index);
-            const int dataIndex = data.isValid() ? homeCombo->findData(data) : -1;
+            const QVariant itemData = deviceCombo->itemData(index);
+            const int dataIndex = itemData.isValid() ? homeCombo->findData(itemData) : -1;
             const int textIndex = homeCombo->findText(deviceCombo->itemText(index));
             const int targetIndex = dataIndex >= 0 ? dataIndex : textIndex;
             if (targetIndex >= 0 && targetIndex != homeCombo->currentIndex())
@@ -11326,7 +11329,7 @@ void MainWindow::updateDeviceConfigState()
     }
     if (device_config_.epsilon_config_card)
     {
-        device_config_.epsilon_config_card->setVisible(!remote);
+        device_config_.epsilon_config_card->setVisible(true);
         device_config_.epsilon_config_card->setEnabled(epsilonConfigEnabled);
     }
 
@@ -11361,17 +11364,17 @@ void MainWindow::updateDeviceConfigState()
     if (device_config_.sky_telemetry_tcp_host_edit) device_config_.sky_telemetry_tcp_host_edit->setEnabled(remoteInputsEnabled && tcpTelemetry);
     if (device_config_.sky_telemetry_tcp_port_spin) device_config_.sky_telemetry_tcp_port_spin->setEnabled(remoteInputsEnabled && tcpTelemetry);
 
-    if (device_config_.sky_telemetry_row_widget) device_config_.sky_telemetry_row_widget->setVisible(remote);
-    if (device_config_.sky_telemetry_transport_lbl) device_config_.sky_telemetry_transport_lbl->setVisible(remote);
-    if (device_config_.sky_telemetry_transport_combo) device_config_.sky_telemetry_transport_combo->setVisible(remote);
-    if (device_config_.sky_telemetry_port_lbl) device_config_.sky_telemetry_port_lbl->setVisible(remote && !tcpTelemetry);
-    if (device_config_.sky_telemetry_port_combo) device_config_.sky_telemetry_port_combo->setVisible(remote && !tcpTelemetry);
-    if (device_config_.sky_telemetry_baud_lbl) device_config_.sky_telemetry_baud_lbl->setVisible(remote && !tcpTelemetry);
-    if (device_config_.sky_telemetry_baud_combo) device_config_.sky_telemetry_baud_combo->setVisible(remote && !tcpTelemetry);
-    if (device_config_.sky_telemetry_tcp_host_lbl) device_config_.sky_telemetry_tcp_host_lbl->setVisible(remote && tcpTelemetry);
-    if (device_config_.sky_telemetry_tcp_host_edit) device_config_.sky_telemetry_tcp_host_edit->setVisible(remote && tcpTelemetry);
-    if (device_config_.sky_telemetry_tcp_port_lbl) device_config_.sky_telemetry_tcp_port_lbl->setVisible(remote && tcpTelemetry);
-    if (device_config_.sky_telemetry_tcp_port_spin) device_config_.sky_telemetry_tcp_port_spin->setVisible(remote && tcpTelemetry);
+    if (device_config_.sky_telemetry_row_widget) device_config_.sky_telemetry_row_widget->setVisible(true);
+    if (device_config_.sky_telemetry_transport_lbl) device_config_.sky_telemetry_transport_lbl->setVisible(true);
+    if (device_config_.sky_telemetry_transport_combo) device_config_.sky_telemetry_transport_combo->setVisible(true);
+    if (device_config_.sky_telemetry_port_lbl) device_config_.sky_telemetry_port_lbl->setVisible(true);
+    if (device_config_.sky_telemetry_port_combo) device_config_.sky_telemetry_port_combo->setVisible(true);
+    if (device_config_.sky_telemetry_baud_lbl) device_config_.sky_telemetry_baud_lbl->setVisible(true);
+    if (device_config_.sky_telemetry_baud_combo) device_config_.sky_telemetry_baud_combo->setVisible(true);
+    if (device_config_.sky_telemetry_tcp_host_lbl) device_config_.sky_telemetry_tcp_host_lbl->setVisible(true);
+    if (device_config_.sky_telemetry_tcp_host_edit) device_config_.sky_telemetry_tcp_host_edit->setVisible(true);
+    if (device_config_.sky_telemetry_tcp_port_lbl) device_config_.sky_telemetry_tcp_port_lbl->setVisible(true);
+    if (device_config_.sky_telemetry_tcp_port_spin) device_config_.sky_telemetry_tcp_port_spin->setVisible(true);
 
     for (QWidget *widget : {device_config_.epsilon_remote_buttons_widget,
                             device_config_.ptb_remote_buttons_widget,
@@ -11381,7 +11384,7 @@ void MainWindow::updateDeviceConfigState()
     {
         if (widget)
         {
-            widget->setVisible(remote);
+            widget->setVisible(true);
         }
     }
     for (QPushButton *button : {device_config_.epsilon_remote_connect_btn,
@@ -11643,7 +11646,7 @@ void MainWindow::setupConfigPanel()
     skyTelemetryLayout->addWidget(sky_telemetry_baud_lbl_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     skyTelemetryLayout->addWidget(sky_telemetry_baud_combo_, 0, Qt::AlignVCenter);
     skyTelemetryLayout->addStretch(1);
-    sky_telemetry_row_widget_->setVisible(false);
+    sky_telemetry_row_widget_->setVisible(true);
 
     int row = 0;
 
