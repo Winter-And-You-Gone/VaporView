@@ -10673,7 +10673,7 @@ void MainWindow::setupDeviceConfigPage()
     serialLayout->addWidget(skyTelemetryRow);
 
     auto *formRowWidget = new QWidget(serialCard);
-    auto *formRowLayout = new QHBoxLayout(formRowWidget);
+    auto *formRowLayout = new QVBoxLayout(formRowWidget);
     formRowLayout->setContentsMargins(0, 0, 0, 0);
     formRowLayout->setSpacing(6);
 
@@ -10703,25 +10703,24 @@ void MainWindow::setupDeviceConfigPage()
             QLabel *&rateLabel,
             QComboBox *&rateCombo,
             int row) {
-        const int layoutRow = row * 2;
         label = new QLabel(formWidget);
         label->setObjectName(QStringLiteral("fieldLabel"));
         label->setFixedHeight(kMainPageInputHeight);
         label->setFixedWidth(76);
-        formLayout->addWidget(label, layoutRow, 0, Qt::AlignVCenter | Qt::AlignLeft);
+        formLayout->addWidget(label, row, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
         portCombo = createCombo(kDeviceConfigPortComboWidth, true);
         portCombo->setMinimumContentsLength(6);
         portCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-        formLayout->addWidget(portCombo, layoutRow, 1, Qt::AlignVCenter);
+        formLayout->addWidget(portCombo, row, 1, Qt::AlignVCenter);
 
         baudCombo = createCombo(kDeviceConfigBaudComboWidth);
-        formLayout->addWidget(baudCombo, layoutRow, 2, Qt::AlignVCenter);
+        formLayout->addWidget(baudCombo, row, 2, Qt::AlignVCenter);
 
         rateLabel = new QLabel(formWidget);
         rateLabel->setObjectName(QStringLiteral("fieldLabel"));
         rateLabel->setFixedHeight(kMainPageInputHeight);
-        formLayout->addWidget(rateLabel, layoutRow, 3, Qt::AlignVCenter | Qt::AlignRight);
+        formLayout->addWidget(rateLabel, row, 3, Qt::AlignVCenter | Qt::AlignRight);
 
         if (row == 0)
         {
@@ -10732,7 +10731,7 @@ void MainWindow::setupDeviceConfigPage()
             rateCombo = createCombo(kDeviceConfigRateComboWidth, true);
             rateCombo->setMinimumContentsLength(4);
             rateCombo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-            formLayout->addWidget(rateCombo, layoutRow, 4, Qt::AlignVCenter);
+            formLayout->addWidget(rateCombo, row, 4, Qt::AlignVCenter);
         }
     };
 
@@ -10777,7 +10776,7 @@ void MainWindow::setupDeviceConfigPage()
         layout->addWidget(connectButton);
         layout->addWidget(disconnectButton);
         layout->addWidget(reconnectButton);
-        formLayout->addWidget(buttonsWidget, row * 2 + 1, 1, 1, 4, Qt::AlignVCenter | Qt::AlignLeft);
+        formLayout->addWidget(buttonsWidget, row, 5, Qt::AlignVCenter | Qt::AlignLeft);
     };
     addDeviceRemoteButtons(0, device_config_.epsilon_remote_buttons_widget,
                            device_config_.epsilon_remote_connect_btn,
@@ -10944,7 +10943,7 @@ void MainWindow::setupDeviceConfigPage()
     commandButtonLayout->addStretch(1);
     epsilonConfigLayout->addWidget(commandButtonRow);
     formRowLayout->addWidget(formWidget, 0, Qt::AlignTop | Qt::AlignLeft);
-    formRowLayout->addWidget(device_config_.epsilon_config_card, 1, Qt::AlignTop);
+    formRowLayout->addWidget(device_config_.epsilon_config_card);
     serialLayout->addWidget(formRowWidget, 0, Qt::AlignTop);
 
     device_config_.data_telemetry_summary_card = new QFrame(serialCard);

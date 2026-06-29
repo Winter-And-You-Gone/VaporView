@@ -524,6 +524,35 @@ int main(int argc, char **argv)
     require(deviceRateCombo != nullptr && deviceRateCombo->width() <= 92,
             "device configuration rate combo is sized for 9999");
 
+    const QRect deviceRateRect(deviceRateCombo->mapTo(deviceConfigPage, QPoint(0, 0)),
+                               deviceRateCombo->size());
+    bool foundRemoteButtonsToRightOfRate = false;
+    for (QPushButton *button : deviceConfigPage->findChildren<QPushButton *>())
+    {
+        if (!button->isVisible())
+        {
+            continue;
+        }
+        if (button->text() != QStringLiteral("连接") &&
+            button->text() != QStringLiteral("断开") &&
+            button->text() != QStringLiteral("重连") &&
+            button->text() != QStringLiteral("Connect") &&
+            button->text() != QStringLiteral("Disconnect") &&
+            button->text() != QStringLiteral("Reconnect"))
+        {
+            continue;
+        }
+        const QRect buttonRect(button->mapTo(deviceConfigPage, QPoint(0, 0)), button->size());
+        if (buttonRect.left() > deviceRateRect.right() &&
+            std::abs(buttonRect.center().y() - deviceRateRect.center().y()) <= 2)
+        {
+            foundRemoteButtonsToRightOfRate = true;
+            break;
+        }
+    }
+    require(foundRemoteButtonsToRightOfRate,
+            "device configuration remote actions sit to the right of the rate selector");
+
     QFrame *epsilonConfigCard = nullptr;
     for (QFrame *card : deviceConfigPage->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard")))
     {
@@ -544,6 +573,22 @@ int main(int argc, char **argv)
     }
     require(epsilonConfigCard != nullptr, "device configuration page embeds all EPSILON packet-rate controls");
     require(epsilonConfigCard->isVisible(), "device EPSILON configuration card is visible in local mode");
+    int serialControlBottom = 0;
+    for (QComboBox *combo : deviceConfigPage->findChildren<QComboBox *>())
+    {
+        if (!combo->isVisible() ||
+            epsilonConfigCard->isAncestorOf(combo) ||
+            combo->property("epsilonPacketId").isValid())
+        {
+            continue;
+        }
+        const QRect comboRect(combo->mapTo(deviceConfigPage, QPoint(0, 0)), combo->size());
+        serialControlBottom = std::max(serialControlBottom, comboRect.bottom());
+    }
+    const QRect epsilonConfigPageRect(epsilonConfigCard->mapTo(deviceConfigPage, QPoint(0, 0)),
+                                      epsilonConfigCard->size());
+    require(epsilonConfigPageRect.top() > serialControlBottom,
+            "device EPSILON configuration card sits below the serial and rate selectors");
     const QRect epsilonConfigBounds = epsilonConfigCard->rect().adjusted(-1, -1, 1, 1);
     for (QComboBox *combo : epsilonConfigCard->findChildren<QComboBox *>())
     {
