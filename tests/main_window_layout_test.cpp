@@ -1005,6 +1005,51 @@ int main(int argc, char **argv)
                         QStringList{QStringLiteral("天空地面链路状态"), QStringLiteral("Sky-ground Link Status")},
                         QStringLiteral("satellite"),
                         "device telemetry summary card uses the standard icon title bar");
+    QList<QFrame*> telemetrySubCards =
+        deviceTelemetrySummaryCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
+    require(telemetrySubCards.size() == 3,
+            "device telemetry summary card splits content into three home-style subcards");
+    std::sort(telemetrySubCards.begin(), telemetrySubCards.end(), [](QFrame *a, QFrame *b) {
+        return a->mapTo(a->parentWidget(), QPoint(0, 0)).y() <
+               b->mapTo(b->parentWidget(), QPoint(0, 0)).y();
+    });
+    const QVector<QStringList> expectedTelemetrySubCardTitles = {
+        {QStringLiteral("天地数据流频率"), QStringLiteral("Sky-ground data stream rates")},
+        {QStringLiteral("链路速率"), QStringLiteral("Link rate")},
+        {QStringLiteral("设备数据状态"), QStringLiteral("Device data status")},
+    };
+    int previousSubCardBottom = -1;
+    int previousSubCardLeft = -1;
+    for (int i = 0; i < telemetrySubCards.size(); ++i)
+    {
+        QFrame *subCard = telemetrySubCards.at(i);
+        const QRect subCardRect(subCard->mapTo(deviceTelemetrySummaryCard, QPoint(0, 0)), subCard->size());
+        require(previousSubCardBottom < 0 || subCardRect.top() > previousSubCardBottom,
+                "device telemetry summary subcards are stacked vertically");
+        require(previousSubCardLeft < 0 || std::abs(subCardRect.left() - previousSubCardLeft) <= 2,
+                "device telemetry summary subcards align on the left edge");
+        previousSubCardBottom = subCardRect.bottom();
+        previousSubCardLeft = subCardRect.left();
+
+        bool foundExpectedTitle = false;
+        for (QLabel *label : subCard->findChildren<QLabel *>())
+        {
+            for (const QString& expectedTitle : expectedTelemetrySubCardTitles.at(i))
+            {
+                if (label->text().contains(expectedTitle))
+                {
+                    foundExpectedTitle = true;
+                    break;
+                }
+            }
+            if (foundExpectedTitle)
+            {
+                break;
+            }
+        }
+        require(foundExpectedTitle,
+                "device telemetry summary subcard keeps the expected section title");
+    }
     const QRect telemetrySummaryPageRect(deviceTelemetrySummaryCard->mapTo(deviceConfigPage, QPoint(0, 0)),
                                          deviceTelemetrySummaryCard->size());
     require(std::abs(telemetrySummaryPageRect.top() - serialConfigPageRect.top()) <= 2,

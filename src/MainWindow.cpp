@@ -8032,25 +8032,6 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     const double rxBps = connected ? ground_telemetry_service_->receiveBitsPerSecond() : 0.0;
     const double txBps = connected ? ground_telemetry_service_->transmitBitsPerSecond() : 0.0;
 
-    const QString textColor = appThemeColorName(dark_theme_enabled_ ? AppThemeColor::White : AppThemeColor::Text,
-                                                dark_theme_enabled_);
-    const QString accentColor = appThemeColorName(AppThemeColor::Primary, dark_theme_enabled_);
-
-    auto fixedValueHtml = [](const RemoteTelemetrySummarySections::Item& item) {
-        QString value = item.value;
-        if (!item.valueWidthText.isEmpty())
-        {
-            value = value.rightJustified(std::max(item.valueWidthText.size(), value.size()), QLatin1Char(' '));
-        }
-        return value.toHtmlEscaped().replace(QLatin1Char(' '), QStringLiteral("&nbsp;"));
-    };
-
-    auto rowHtml = [&](const RemoteTelemetrySummarySections::Item& item) {
-        return QStringLiteral("<span style=\"white-space:nowrap;color:%3;font-weight:600;\">%1 "
-                              "<span style=\"font-family:'Cascadia Mono','Consolas','Courier New',monospace;\">%2</span></span>")
-            .arg(item.label.toHtmlEscaped(), fixedValueHtml(item), textColor);
-    };
-
     auto makeItem = [](const QString& label, const QString& value, bool hasData, const QString& valueWidthText = QString()) {
         RemoteTelemetrySummarySections::Item item;
         item.label = label;
@@ -8058,31 +8039,6 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
         item.valueWidthText = valueWidthText;
         item.hasData = hasData;
         return item;
-    };
-
-    auto sectionHtml = [&](const QString& title, const QList<RemoteTelemetrySummarySections::Item>& items, int firstLineItemCount = -1) {
-        const QString separator = is_english_ ? QStringLiteral(": ") : QStringLiteral("：");
-        QStringList rows;
-        rows.reserve(items.size());
-        for (const auto& item : items)
-        {
-            rows << rowHtml(item);
-        }
-        if (title.isEmpty())
-        {
-            return rows.join(QStringLiteral("&nbsp;&nbsp; "));
-        }
-        if (firstLineItemCount < 0 || firstLineItemCount >= rows.size())
-        {
-            return QStringLiteral("<span style=\"color:%1;font-weight:700;\">%2%3</span>%4")
-                .arg(accentColor, title.toHtmlEscaped(), separator, rows.join(QStringLiteral("&nbsp;&nbsp; ")));
-        }
-        return QStringLiteral("<span style=\"color:%1;font-weight:700;\">%2%3</span>%4<br/>%5")
-            .arg(accentColor,
-                 title.toHtmlEscaped(),
-                 separator,
-                 rows.mid(0, firstLineItemCount).join(QStringLiteral("&nbsp;&nbsp; ")),
-                 rows.mid(firstLineItemCount).join(QStringLiteral("&nbsp;&nbsp; ")));
     };
 
     QList<RemoteTelemetrySummarySections::Item> rateRows;
@@ -8140,78 +8096,19 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     }
 
     RemoteTelemetrySummarySections sections;
-    sections.rate = sectionHtml(is_english_ ? QStringLiteral("Sky-ground data stream rates") : QStringLiteral("天地数据流频率"), rateRows, 3);
-    sections.link = sectionHtml(is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"), linkRows);
-    sections.device = sectionHtml(QString(), deviceRows);
     sections.rateItems = rateRows;
     sections.linkItems = linkRows;
     sections.deviceItems = deviceRows;
     return sections;
 }
 
-QString MainWindow::remoteTelemetrySummaryText() const
-{
-    const RemoteTelemetrySummarySections sections = remoteTelemetrySummarySections();
-    const QString textColor = appThemeColorName(dark_theme_enabled_ ? AppThemeColor::White : AppThemeColor::Text,
-                                                dark_theme_enabled_);
-    const QString accentColor = appThemeColorName(AppThemeColor::Primary, dark_theme_enabled_);
-
-    auto fixedValueHtml = [](const RemoteTelemetrySummarySections::Item& item) {
-        QString value = item.value;
-        if (!item.valueWidthText.isEmpty())
-        {
-            value = value.rightJustified(std::max(item.valueWidthText.size(), value.size()), QLatin1Char(' '));
-        }
-        return value.toHtmlEscaped().replace(QLatin1Char(' '), QStringLiteral("&nbsp;"));
-    };
-    auto itemHtml = [&](const RemoteTelemetrySummarySections::Item& item) {
-        return QStringLiteral("<span style=\"white-space:nowrap;color:%3;font-weight:600;\">%1 "
-                              "<span style=\"font-family:'Cascadia Mono','Consolas','Courier New',monospace;\">%2</span></span>")
-            .arg(item.label.toHtmlEscaped(), fixedValueHtml(item), textColor);
-    };
-    auto sectionHtml = [&](const QString& title,
-                           const QList<RemoteTelemetrySummarySections::Item>& items,
-                           int itemsPerLine) {
-        QStringList lines;
-        const int itemCount = static_cast<int>(items.size());
-        for (int i = 0; i < itemCount; i += itemsPerLine)
-        {
-            QStringList lineItems;
-            const int end = std::min(i + itemsPerLine, itemCount);
-            for (int j = i; j < end; ++j)
-            {
-                lineItems << itemHtml(items.at(j));
-            }
-            lines << lineItems.join(QStringLiteral("&nbsp;&nbsp; "));
-        }
-        if (!title.isEmpty() && !lines.isEmpty())
-        {
-            const QString separator = is_english_ ? QStringLiteral(": ") : QStringLiteral("：");
-            lines[0].prepend(QStringLiteral("<span style=\"color:%1;font-weight:700;\">%2%3</span>")
-                                 .arg(accentColor, title.toHtmlEscaped(), separator));
-        }
-        return lines.join(QStringLiteral("<br/>"));
-    };
-
-    return sectionHtml(is_english_ ? QStringLiteral("Sky-ground data stream rates") : QStringLiteral("天地数据流频率"),
-                       sections.rateItems,
-                       2) +
-           QStringLiteral("<br/>") +
-           sectionHtml(is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"),
-                       sections.linkItems,
-                       2) +
-           QStringLiteral("<br/>") +
-           sectionHtml(QString(), sections.deviceItems, 5);
-}
-
 void MainWindow::updateRemoteTelemetrySummaryLabel()
 {
-    if (!data_telemetry_summary_card_)
+    if (!data_telemetry_summary_card_ && !device_config_.data_telemetry_summary_card)
     {
         return;
     }
     const RemoteTelemetrySummarySections sections = remoteTelemetrySummarySections();
-    data_telemetry_summary_card_->setVisible(true);
     auto clearLayout = [](QLayout *layout) {
         if (!layout)
         {
@@ -8238,31 +8135,17 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             delete item;
         }
     };
-    auto renderSummarySection = [this, &clearLayout](QVBoxLayout *sectionLayout,
+    auto renderSummarySection = [this, &clearLayout](QWidget *summaryParent,
+                                                     QVBoxLayout *sectionLayout,
                                                      const QString& title,
                                                      const QList<RemoteTelemetrySummarySections::Item>& items,
-                                                     int firstLineItemCount) {
-        if (!sectionLayout)
+                                                     int firstLineItemCount,
+                                                     int followingLineItemCount = -1) {
+        if (!summaryParent || !sectionLayout)
         {
             return;
         }
         clearLayout(sectionLayout);
-
-        auto *firstLine = new QWidget(data_telemetry_summary_card_);
-        auto *firstLineLayout = new QHBoxLayout(firstLine);
-        firstLineLayout->setContentsMargins(0, 0, 0, 0);
-        firstLineLayout->setSpacing(4);
-
-        if (!title.isEmpty())
-        {
-            auto *titleLabel = new QLabel(firstLine);
-            titleLabel->setObjectName(QStringLiteral("homeTelemetrySummaryTitleLabel"));
-            titleLabel->setText(title + (is_english_ ? QStringLiteral(":") : QStringLiteral("：")));
-            titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-            titleLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-            titleLabel->setMinimumWidth(titleLabel->fontMetrics().horizontalAdvance(titleLabel->text()) + scalePixels(4));
-            firstLineLayout->addWidget(titleLabel, 0, Qt::AlignVCenter);
-        }
 
         auto addItemLabel = [this](QHBoxLayout *lineLayout,
                                    QWidget *lineWidget,
@@ -8299,28 +8182,46 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             lineLayout->addWidget(pill, 0, Qt::AlignVCenter);
         };
 
-        const int firstLineCount = (firstLineItemCount < 0 || firstLineItemCount >= items.size())
-            ? items.size()
-            : firstLineItemCount;
-        for (int i = 0; i < firstLineCount; ++i)
-        {
-            addItemLabel(firstLineLayout, firstLine, items.at(i));
-        }
-        firstLineLayout->addStretch(1);
-        sectionLayout->addWidget(firstLine, 0, Qt::AlignLeft | Qt::AlignTop);
+        auto addLine = [&](int begin, int end, bool includeTitle) {
+            auto *line = new QWidget(summaryParent);
+            auto *lineLayout = new QHBoxLayout(line);
+            lineLayout->setContentsMargins(0, 0, 0, 0);
+            lineLayout->setSpacing(4);
 
-        if (firstLineCount < items.size())
-        {
-            auto *secondLine = new QWidget(data_telemetry_summary_card_);
-            auto *secondLineLayout = new QHBoxLayout(secondLine);
-            secondLineLayout->setContentsMargins(0, 0, 0, 0);
-            secondLineLayout->setSpacing(4);
-            for (int i = firstLineCount; i < items.size(); ++i)
+            if (includeTitle && !title.isEmpty())
             {
-                addItemLabel(secondLineLayout, secondLine, items.at(i));
+                auto *titleLabel = new QLabel(line);
+                titleLabel->setObjectName(QStringLiteral("homeTelemetrySummaryTitleLabel"));
+                titleLabel->setText(title + (is_english_ ? QStringLiteral(":") : QStringLiteral("：")));
+                titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+                titleLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+                titleLabel->setMinimumWidth(titleLabel->fontMetrics().horizontalAdvance(titleLabel->text()) + scalePixels(4));
+                lineLayout->addWidget(titleLabel, 0, Qt::AlignVCenter);
             }
-            secondLineLayout->addStretch(1);
-            sectionLayout->addWidget(secondLine, 0, Qt::AlignLeft | Qt::AlignTop);
+
+            for (int i = begin; i < end; ++i)
+            {
+                addItemLabel(lineLayout, line, items.at(i));
+            }
+            lineLayout->addStretch(1);
+            sectionLayout->addWidget(line, 0, Qt::AlignLeft | Qt::AlignTop);
+        };
+
+        const int itemCount = static_cast<int>(items.size());
+        const int firstLineCount = (firstLineItemCount < 0 || firstLineItemCount >= itemCount)
+            ? itemCount
+            : firstLineItemCount;
+        addLine(0, firstLineCount, true);
+
+        if (firstLineCount < itemCount)
+        {
+            const int remainingLineCount = followingLineItemCount > 0
+                ? followingLineItemCount
+                : itemCount - firstLineCount;
+            for (int begin = firstLineCount; begin < itemCount; begin += remainingLineCount)
+            {
+                addLine(begin, std::min(begin + remainingLineCount, itemCount), false);
+            }
         }
 
         if (QWidget *section = qobject_cast<QWidget *>(sectionLayout->parent()))
@@ -8330,32 +8231,58 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         }
         sectionLayout->invalidate();
     };
-    renderSummarySection(data_telemetry_summary_layout_,
-                         is_english_ ? QStringLiteral("Sky-ground data stream rates") : QStringLiteral("天地数据流频率"),
-                         sections.rateItems,
-                         3);
-    renderSummarySection(data_telemetry_link_summary_layout_,
-                         is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"),
-                         sections.linkItems,
-                         -1);
-    renderSummarySection(data_telemetry_device_summary_layout_,
-                         QString(),
-                         sections.deviceItems,
-                         -1);
-    if (QLayout *summaryLayout = data_telemetry_summary_card_->layout())
+    if (data_telemetry_summary_card_)
     {
-        summaryLayout->invalidate();
-        summaryLayout->activate();
+        data_telemetry_summary_card_->setVisible(true);
+        renderSummarySection(data_telemetry_summary_card_,
+                             data_telemetry_summary_layout_,
+                             is_english_ ? QStringLiteral("Sky-ground data stream rates") : QStringLiteral("天地数据流频率"),
+                             sections.rateItems,
+                             3);
+        renderSummarySection(data_telemetry_summary_card_,
+                             data_telemetry_link_summary_layout_,
+                             is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"),
+                             sections.linkItems,
+                             -1);
+        renderSummarySection(data_telemetry_summary_card_,
+                             data_telemetry_device_summary_layout_,
+                             QString(),
+                             sections.deviceItems,
+                             -1);
+        if (QLayout *summaryLayout = data_telemetry_summary_card_->layout())
+        {
+            summaryLayout->invalidate();
+            summaryLayout->activate();
+        }
+        data_telemetry_summary_card_->updateGeometry();
     }
-    data_telemetry_summary_card_->updateGeometry();
     if (device_config_.data_telemetry_summary_card)
     {
         device_config_.data_telemetry_summary_card->setVisible(true);
-    }
-    if (device_config_.data_telemetry_summary_lbl)
-    {
-        device_config_.data_telemetry_summary_lbl->setText(remoteTelemetrySummaryText());
-        device_config_.data_telemetry_summary_lbl->setToolTip(QString());
+        renderSummarySection(device_config_.data_telemetry_summary_card,
+                             device_config_.data_telemetry_rate_summary_layout,
+                             is_english_ ? QStringLiteral("Sky-ground data stream rates") : QStringLiteral("天地数据流频率"),
+                             sections.rateItems,
+                             2,
+                             2);
+        renderSummarySection(device_config_.data_telemetry_summary_card,
+                             device_config_.data_telemetry_link_summary_layout,
+                             is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"),
+                             sections.linkItems,
+                             1,
+                             1);
+        renderSummarySection(device_config_.data_telemetry_summary_card,
+                             device_config_.data_telemetry_device_summary_layout,
+                             is_english_ ? QStringLiteral("Device data status") : QStringLiteral("设备数据状态"),
+                             sections.deviceItems,
+                             3,
+                             3);
+        if (QLayout *summaryLayout = device_config_.data_telemetry_summary_card->layout())
+        {
+            summaryLayout->invalidate();
+            summaryLayout->activate();
+        }
+        device_config_.data_telemetry_summary_card->updateGeometry();
     }
     if (home_overview_splitter_)
     {
@@ -10985,7 +10912,8 @@ void MainWindow::setupDeviceConfigPage()
 
     device_config_.data_telemetry_summary_card = new QFrame(content);
     device_config_.data_telemetry_summary_card->setObjectName(QStringLiteral("epsilonSectionCard"));
-    device_config_.data_telemetry_summary_card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
+    device_config_.data_telemetry_summary_card->setMinimumWidth(0);
+    device_config_.data_telemetry_summary_card->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Minimum);
     auto *summaryLayout = new QVBoxLayout(device_config_.data_telemetry_summary_card);
     summaryLayout->setContentsMargins(1, 0, 1, 1);
     summaryLayout->setSpacing(0);
@@ -11005,19 +10933,23 @@ void MainWindow::setupDeviceConfigPage()
     summaryLayout->addWidget(summaryTitleBar);
 
     auto *summaryBodyWidget = new QWidget(device_config_.data_telemetry_summary_card);
+    summaryBodyWidget->setObjectName(QStringLiteral("homeTelemetrySummaryContainer"));
     auto *summaryBodyLayout = new QVBoxLayout(summaryBodyWidget);
     summaryBodyLayout->setContentsMargins(8, 6, 8, 6);
     summaryBodyLayout->setSpacing(2);
-    device_config_.data_telemetry_summary_lbl = new QLabel(summaryBodyWidget);
-    device_config_.data_telemetry_summary_lbl->setObjectName(QStringLiteral("fieldLabel"));
-    device_config_.data_telemetry_summary_lbl->setTextFormat(Qt::RichText);
-    device_config_.data_telemetry_summary_lbl->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    device_config_.data_telemetry_summary_lbl->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-    device_config_.data_telemetry_summary_lbl->setMinimumHeight(kMainPageInputHeight);
-    device_config_.data_telemetry_summary_lbl->setMinimumWidth(0);
-    device_config_.data_telemetry_summary_lbl->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
-    device_config_.data_telemetry_summary_lbl->setWordWrap(true);
-    summaryBodyLayout->addWidget(device_config_.data_telemetry_summary_lbl);
+    auto createDeviceTelemetrySection = [summaryBodyWidget, summaryBodyLayout](QVBoxLayout *&sectionContentLayout) {
+        auto *section = new QFrame(summaryBodyWidget);
+        section->setObjectName(QStringLiteral("homeTelemetrySectionCard"));
+        section->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        section->setToolTip(QString());
+        sectionContentLayout = new QVBoxLayout(section);
+        sectionContentLayout->setContentsMargins(6, 2, 6, 2);
+        sectionContentLayout->setSpacing(2);
+        summaryBodyLayout->addWidget(section, 0);
+    };
+    createDeviceTelemetrySection(device_config_.data_telemetry_rate_summary_layout);
+    createDeviceTelemetrySection(device_config_.data_telemetry_link_summary_layout);
+    createDeviceTelemetrySection(device_config_.data_telemetry_device_summary_layout);
     summaryLayout->addWidget(summaryBodyWidget);
     topRowLayout->addWidget(serialCard, 0, Qt::AlignTop | Qt::AlignLeft);
     topRowLayout->addWidget(device_config_.data_telemetry_summary_card, 1, Qt::AlignTop);
@@ -11197,15 +11129,11 @@ void MainWindow::syncDeviceConfigPageFromHome()
         const QSignalBlocker blocker(device_config_.sky_telemetry_tcp_port_spin);
         device_config_.sky_telemetry_tcp_port_spin->setValue(sky_telemetry_tcp_port_spin_->value());
     }
-    if (device_config_.data_telemetry_summary_lbl)
-    {
-        device_config_.data_telemetry_summary_lbl->setText(remoteTelemetrySummaryText());
-        device_config_.data_telemetry_summary_lbl->setToolTip(QString());
-    }
     if (device_config_.data_telemetry_summary_card)
     {
         device_config_.data_telemetry_summary_card->setVisible(true);
     }
+    updateRemoteTelemetrySummaryLabel();
     syncDeviceConfigEpsilonPanelFromSettings();
 
     updateDeviceConfigState();

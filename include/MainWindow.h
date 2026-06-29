@@ -603,15 +603,11 @@ private:
             bool hasData = false;
         };
 
-        QString rate;
-        QString link;
-        QString device;
         QList<Item> rateItems;
         QList<Item> linkItems;
         QList<Item> deviceItems;
     };
     RemoteTelemetrySummarySections remoteTelemetrySummarySections() const;
-    QString remoteTelemetrySummaryText() const;
     void updateRemoteTelemetrySummaryLabel();
     void updateEnvironmentStatusIcons(bool lidarValid, bool ptbValid, bool hmpValid);
     void syncDeviceConfigEpsilonPanelFromSettings();
@@ -653,7 +649,9 @@ private:
         QWidget *sky_telemetry_row_widget = nullptr;
         QFrame *data_telemetry_summary_card = nullptr;
         QLabel *data_telemetry_summary_title_lbl = nullptr;
-        QLabel *data_telemetry_summary_lbl = nullptr;
+        QVBoxLayout *data_telemetry_rate_summary_layout = nullptr;
+        QVBoxLayout *data_telemetry_link_summary_layout = nullptr;
+        QVBoxLayout *data_telemetry_device_summary_layout = nullptr;
         QFrame *epsilon_config_card = nullptr;
         QLabel *epsilon_config_title_lbl = nullptr;
         QLabel *epsilon_config_hint_lbl = nullptr;
