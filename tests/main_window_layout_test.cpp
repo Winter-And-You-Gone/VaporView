@@ -1016,10 +1016,11 @@ int main(int argc, char **argv)
     const QVector<QStringList> expectedTelemetrySubCardTitles = {
         {QStringLiteral("天地数据流频率"), QStringLiteral("Sky-ground data stream rates")},
         {QStringLiteral("链路速率"), QStringLiteral("Link rate")},
-        {QStringLiteral("设备数据状态"), QStringLiteral("Device data status")},
+        {QStringLiteral("有无数据"), QStringLiteral("Data availability")},
     };
     int previousSubCardBottom = -1;
     int previousSubCardLeft = -1;
+    int previousTitleLeft = -1;
     for (int i = 0; i < telemetrySubCards.size(); ++i)
     {
         QFrame *subCard = telemetrySubCards.at(i);
@@ -1031,24 +1032,42 @@ int main(int argc, char **argv)
         previousSubCardBottom = subCardRect.bottom();
         previousSubCardLeft = subCardRect.left();
 
-        bool foundExpectedTitle = false;
-        for (QLabel *label : subCard->findChildren<QLabel *>())
+        QLabel *expectedTitleLabel = nullptr;
+        for (QLabel *label : subCard->findChildren<QLabel *>(QStringLiteral("homeTelemetrySummaryTitleLabel")))
         {
             for (const QString& expectedTitle : expectedTelemetrySubCardTitles.at(i))
             {
                 if (label->text().contains(expectedTitle))
                 {
-                    foundExpectedTitle = true;
+                    expectedTitleLabel = label;
                     break;
                 }
             }
-            if (foundExpectedTitle)
+            if (expectedTitleLabel)
             {
                 break;
             }
         }
-        require(foundExpectedTitle,
+        require(expectedTitleLabel != nullptr,
                 "device telemetry summary subcard keeps the expected section title");
+        const QRect titleRect(expectedTitleLabel->mapTo(subCard, QPoint(0, 0)),
+                              expectedTitleLabel->size());
+        require(previousTitleLeft < 0 || std::abs(titleRect.left() - previousTitleLeft) <= 2,
+                "device telemetry summary subcard titles align in a left-side column");
+        previousTitleLeft = titleRect.left();
+
+        const QList<QFrame*> valuePills =
+            subCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+        require(!valuePills.isEmpty(),
+                "device telemetry summary subcard has value pills beside the title column");
+        int leftmostPillLeft = subCard->width();
+        for (QFrame *pill : valuePills)
+        {
+            const QRect pillRect(pill->mapTo(subCard, QPoint(0, 0)), pill->size());
+            leftmostPillLeft = std::min(leftmostPillLeft, pillRect.left());
+        }
+        require(leftmostPillLeft > titleRect.right(),
+                "device telemetry summary subcard title sits in a separate left area");
     }
     const QRect telemetrySummaryPageRect(deviceTelemetrySummaryCard->mapTo(deviceConfigPage, QPoint(0, 0)),
                                          deviceTelemetrySummaryCard->size());
