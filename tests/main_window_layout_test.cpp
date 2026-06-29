@@ -978,11 +978,16 @@ int main(int argc, char **argv)
     QFrame *deviceTelemetrySummaryCard = nullptr;
     for (QFrame *summaryCard : deviceSummaryCards)
     {
+        if (summaryCard->findChild<QFrame *>(QStringLiteral("deviceTelemetrySectionTitlePane")))
+        {
+            deviceTelemetrySummaryCard = summaryCard;
+            break;
+        }
         const QList<QLabel*> labels = summaryCard->findChildren<QLabel *>();
         for (QLabel *label : labels)
         {
-            if (label->text().contains(QStringLiteral("天地数据流频率")) ||
-                label->text().contains(QStringLiteral("Sky-ground data stream rates")))
+            if (label->text().contains(QStringLiteral("天地通信链路状态")) ||
+                label->text().contains(QStringLiteral("Sky-ground Communication Link Status")))
             {
                 deviceTelemetrySummaryCard = summaryCard;
                 break;
@@ -1002,9 +1007,14 @@ int main(int argc, char **argv)
     require(!serialConfigCard->isAncestorOf(deviceTelemetrySummaryCard),
             "device telemetry summary card is not nested inside the serial configuration card");
     requireCardTitleBar(deviceTelemetrySummaryCard,
-                        QStringList{QStringLiteral("天空地面链路状态"), QStringLiteral("Sky-ground Link Status")},
+                        QStringList{QStringLiteral("天地通信链路状态"), QStringLiteral("Sky-ground Communication Link Status")},
                         QStringLiteral("satellite"),
                         "device telemetry summary card uses the standard icon title bar");
+    const int titlePaneStyleIndex = appStyleSheet.indexOf(QStringLiteral("QFrame#deviceTelemetrySectionTitlePane"));
+    require(titlePaneStyleIndex >= 0 &&
+                appStyleSheet.mid(titlePaneStyleIndex, 220).contains(QStringLiteral("background-color")) &&
+                appStyleSheet.mid(titlePaneStyleIndex, 220).contains(QStringLiteral("border-right")),
+            "device telemetry subcard title pane has a separated light background style");
     QList<QFrame*> telemetrySubCards =
         deviceTelemetrySummaryCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
     require(telemetrySubCards.size() == 3,
@@ -1032,29 +1042,37 @@ int main(int argc, char **argv)
         previousSubCardBottom = subCardRect.bottom();
         previousSubCardLeft = subCardRect.left();
 
-        QLabel *expectedTitleLabel = nullptr;
-        for (QLabel *label : subCard->findChildren<QLabel *>(QStringLiteral("homeTelemetrySummaryTitleLabel")))
+        QFrame *titlePane = subCard->findChild<QFrame *>(QStringLiteral("deviceTelemetrySectionTitlePane"));
+        require(titlePane != nullptr,
+                "device telemetry summary subcard has a dedicated left title pane");
+        QLabel *expectedTitleLabel = titlePane->findChild<QLabel *>(QStringLiteral("deviceTelemetrySectionTitleLabel"));
+        require(expectedTitleLabel != nullptr,
+                "device telemetry summary subcard title pane owns its title label");
+        bool titleMatches = false;
+        const QString plainTitle = expectedTitleLabel->property("plainTitle").toString();
+        for (const QString& expectedTitle : expectedTelemetrySubCardTitles.at(i))
         {
-            for (const QString& expectedTitle : expectedTelemetrySubCardTitles.at(i))
+            if (plainTitle == expectedTitle)
             {
-                if (label->text().contains(expectedTitle))
-                {
-                    expectedTitleLabel = label;
-                    break;
-                }
-            }
-            if (expectedTitleLabel)
-            {
+                titleMatches = true;
                 break;
             }
         }
-        require(expectedTitleLabel != nullptr,
+        require(titleMatches,
                 "device telemetry summary subcard keeps the expected section title");
+        require(expectedTitleLabel->text().contains(QLatin1Char('\n')),
+                "device telemetry summary subcard title text is arranged vertically");
+
+        const QRect titlePaneRect(titlePane->mapTo(subCard, QPoint(0, 0)),
+                                  titlePane->size());
         const QRect titleRect(expectedTitleLabel->mapTo(subCard, QPoint(0, 0)),
                               expectedTitleLabel->size());
         require(previousTitleLeft < 0 || std::abs(titleRect.left() - previousTitleLeft) <= 2,
                 "device telemetry summary subcard titles align in a left-side column");
         previousTitleLeft = titleRect.left();
+        require(titlePaneRect.left() <= 2 &&
+                    titlePaneRect.height() >= subCardRect.height() - 4,
+                "device telemetry summary subcard title pane spans the left side");
 
         const QList<QFrame*> valuePills =
             subCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
@@ -1066,7 +1084,7 @@ int main(int argc, char **argv)
             const QRect pillRect(pill->mapTo(subCard, QPoint(0, 0)), pill->size());
             leftmostPillLeft = std::min(leftmostPillLeft, pillRect.left());
         }
-        require(leftmostPillLeft > titleRect.right(),
+        require(leftmostPillLeft > titlePaneRect.right(),
                 "device telemetry summary subcard title sits in a separate left area");
     }
     const QRect telemetrySummaryPageRect(deviceTelemetrySummaryCard->mapTo(deviceConfigPage, QPoint(0, 0)),

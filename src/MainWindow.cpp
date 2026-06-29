@@ -6395,6 +6395,8 @@ void MainWindow::loadModernStyleSheet()
             "QFrame#epsilonSectionCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
             "QWidget#homeTelemetrySummaryContainer { background-color: transparent; border: none; }"
             "QFrame#homeTelemetrySectionCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 6px; }"
+            "QFrame#deviceTelemetrySectionTitlePane { background-color: @vv-surface-alt; border: none; border-right: 1px solid @vv-border; border-top-left-radius: 6px; border-bottom-left-radius: 6px; }"
+            "QLabel#deviceTelemetrySectionTitleLabel { background-color: transparent; border: none; color: @vv-text-strong; font-size: 13px; font-weight: 700; padding: 0px; margin: 0px; }"
             "QLabel#homeOverviewSectionTitle { color: @vv-primary; font-size: 14px; font-weight: 700; padding: 0px; margin: 0px; }"
             "QLabel#homeTelemetrySummaryTitleLabel { color: @vv-primary; font-size: 13px; font-weight: 700; padding: 0px; margin: 0px; }"
             "QFrame#homeTelemetrySummaryPill { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; padding: 0px; margin: 0px; }"
@@ -8187,25 +8189,50 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         QVBoxLayout *linesLayout = sectionLayout;
         if (useSideTitle)
         {
+            auto verticalTitleText = [](const QString& source) {
+                if (source.contains(QLatin1Char(' ')))
+                {
+                    return source.split(QLatin1Char(' '), Qt::SkipEmptyParts).join(QLatin1Char('\n'));
+                }
+
+                QStringList characters;
+                characters.reserve(source.size());
+                for (const QChar ch : source)
+                {
+                    if (!ch.isSpace())
+                    {
+                        characters << QString(ch);
+                    }
+                }
+                return characters.join(QLatin1Char('\n'));
+            };
+
             auto *sectionBody = new QWidget(summaryParent);
             auto *sectionBodyLayout = new QHBoxLayout(sectionBody);
             sectionBodyLayout->setContentsMargins(0, 0, 0, 0);
-            sectionBodyLayout->setSpacing(6);
+            sectionBodyLayout->setSpacing(8);
 
-            auto *titleLabel = new QLabel(sectionBody);
-            titleLabel->setObjectName(QStringLiteral("homeTelemetrySummaryTitleLabel"));
-            titleLabel->setText(title + (is_english_ ? QStringLiteral(":") : QStringLiteral("：")));
-            titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-            titleLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
-            const int titleWidth = std::max(scalePixels(96),
-                                            titleLabel->fontMetrics().horizontalAdvance(titleLabel->text()) + scalePixels(4));
-            titleLabel->setMinimumWidth(titleWidth);
-            titleLabel->setMaximumWidth(titleWidth);
-            sectionBodyLayout->addWidget(titleLabel, 0);
+            auto *titlePane = new QFrame(sectionBody);
+            titlePane->setObjectName(QStringLiteral("deviceTelemetrySectionTitlePane"));
+            titlePane->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+            titlePane->setMinimumWidth(scalePixels(48));
+            titlePane->setMaximumWidth(scalePixels(48));
+            auto *titlePaneLayout = new QVBoxLayout(titlePane);
+            titlePaneLayout->setContentsMargins(4, 4, 4, 4);
+            titlePaneLayout->setSpacing(0);
+
+            auto *titleLabel = new QLabel(titlePane);
+            titleLabel->setObjectName(QStringLiteral("deviceTelemetrySectionTitleLabel"));
+            titleLabel->setProperty("plainTitle", title);
+            titleLabel->setText(verticalTitleText(title));
+            titleLabel->setAlignment(Qt::AlignCenter);
+            titleLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+            titlePaneLayout->addWidget(titleLabel, 1, Qt::AlignCenter);
+            sectionBodyLayout->addWidget(titlePane, 0);
 
             lineParent = new QWidget(sectionBody);
             auto *contentLayout = new QVBoxLayout(lineParent);
-            contentLayout->setContentsMargins(0, 0, 0, 0);
+            contentLayout->setContentsMargins(0, 2, 6, 2);
             contentLayout->setSpacing(2);
             linesLayout = contentLayout;
             sectionBodyLayout->addWidget(lineParent, 1);
@@ -10976,8 +11003,8 @@ void MainWindow::setupDeviceConfigPage()
         section->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         section->setToolTip(QString());
         sectionContentLayout = new QVBoxLayout(section);
-        sectionContentLayout->setContentsMargins(6, 2, 6, 2);
-        sectionContentLayout->setSpacing(2);
+        sectionContentLayout->setContentsMargins(0, 0, 0, 0);
+        sectionContentLayout->setSpacing(0);
         summaryBodyLayout->addWidget(section, 0);
     };
     createDeviceTelemetrySection(device_config_.data_telemetry_rate_summary_layout);
@@ -11206,8 +11233,8 @@ void MainWindow::updateDeviceConfigTexts()
     if (device_config_.data_telemetry_summary_title_lbl)
     {
         device_config_.data_telemetry_summary_title_lbl->setText(is_english_
-            ? "Sky-ground Link Status"
-            : "天空地面链路状态");
+            ? "Sky-ground Communication Link Status"
+            : "天地通信链路状态");
     }
     if (device_config_.epsilon_config_hint_lbl)
     {

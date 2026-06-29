@@ -386,6 +386,24 @@ QFrame#homeTelemetrySectionCard {
     border-radius: 6px;
 }
 
+QFrame#deviceTelemetrySectionTitlePane {
+    background-color: @vv-surface-alt;
+    border: none;
+    border-right: 1px solid @vv-border;
+    border-top-left-radius: 6px;
+    border-bottom-left-radius: 6px;
+}
+
+QLabel#deviceTelemetrySectionTitleLabel {
+    background-color: transparent;
+    border: none;
+    color: @vv-text-strong;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 0px;
+    margin: 0px;
+}
+
 QLabel#homeOverviewSectionTitle {
     color: @vv-primary;
     font-size: 14px;
