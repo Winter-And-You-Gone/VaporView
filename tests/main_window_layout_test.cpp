@@ -802,6 +802,7 @@ int main(int argc, char **argv)
     const QRect epsilonConfigBounds = epsilonConfigCard->rect().adjusted(-1, -1, 1, 1);
     int leftPacketComboColumn = -1;
     int rightPacketComboColumn = -1;
+    int rightPacketComboRight = -1;
     for (QComboBox *combo : epsilonConfigCard->findChildren<QComboBox *>())
     {
         if (!combo->isVisible() || !combo->property("epsilonPacketId").isValid())
@@ -837,6 +838,10 @@ int main(int argc, char **argv)
         require(visualColumn == 0 || visualColumn == 1,
                 "device EPSILON packet-rate combo column is valid");
         int& expectedColumnLeft = visualColumn == 0 ? leftPacketComboColumn : rightPacketComboColumn;
+        if (visualColumn == 1)
+        {
+            rightPacketComboRight = std::max(rightPacketComboRight, comboRect.right());
+        }
         if (expectedColumnLeft < 0)
         {
             expectedColumnLeft = comboRect.left();
@@ -849,9 +854,14 @@ int main(int argc, char **argv)
     }
     require(leftPacketComboColumn >= 0 && rightPacketComboColumn > leftPacketComboColumn,
             "device EPSILON packet-rate layout exposes two aligned combo columns");
-    for (const QString& buttonText : {QStringLiteral("保存并应用"),
+    require(rightPacketComboRight > 0,
+            "device EPSILON packet-rate grid has measurable right-side blank space");
+    for (const QString& buttonText : {QStringLiteral("恢复推荐"),
+                                      QStringLiteral("分组模式"),
+                                      QStringLiteral("保存并应用"),
                                       QStringLiteral("配置RTCM串口"),
-                                      QStringLiteral("重新配置输出")})
+                                      QStringLiteral("重新配置输出"),
+                                      QStringLiteral("RTK配置")})
     {
         bool foundButton = false;
         for (QPushButton *button : epsilonConfigCard->findChildren<QPushButton *>())
@@ -863,6 +873,8 @@ int main(int argc, char **argv)
                         "device EPSILON command buttons stay inside the embedded card");
                 require(button->width() >= button->fontMetrics().horizontalAdvance(button->text()) + 32,
                         "device EPSILON command button text is not clipped");
+                require(buttonRect.left() > rightPacketComboRight,
+                        "device EPSILON command buttons sit to the right of the second packet-rate combo column");
                 foundButton = true;
                 break;
             }

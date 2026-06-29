@@ -10907,7 +10907,6 @@ void MainWindow::setupDeviceConfigPage()
     packetGrid->setColumnStretch(kDeviceConfigPacketRightLabelColumn, 0);
     packetGrid->setColumnStretch(kDeviceConfigPacketRightLabelColumn + 1, 0);
     packetGrid->setColumnStretch(kDeviceConfigPacketTrailingColumn, 1);
-    epsilonConfigLayout->addWidget(packetGridWidget);
 
     auto createInlineButton = [this](QWidget *parent) {
         auto *button = new QPushButton(parent);
@@ -10916,18 +10915,31 @@ void MainWindow::setupDeviceConfigPage()
         button->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         return button;
     };
-    auto *packetButtonRow = new QWidget(device_config_.epsilon_config_card);
-    auto *packetButtonLayout = new QHBoxLayout(packetButtonRow);
+    auto *packetButtonPanel = new QWidget(packetGridWidget);
+    packetButtonPanel->setObjectName(QStringLiteral("epsilonPacketActionPanel"));
+    packetButtonPanel->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Minimum);
+    auto *packetButtonLayout = new QGridLayout(packetButtonPanel);
     packetButtonLayout->setContentsMargins(0, 0, 0, 0);
-    packetButtonLayout->setSpacing(6);
-    device_config_.epsilon_packet_defaults_btn = createInlineButton(packetButtonRow);
-    device_config_.epsilon_packet_grouped_btn = createInlineButton(packetButtonRow);
-    device_config_.epsilon_packet_save_btn = createInlineButton(packetButtonRow);
-    packetButtonLayout->addWidget(device_config_.epsilon_packet_defaults_btn);
-    packetButtonLayout->addWidget(device_config_.epsilon_packet_grouped_btn);
-    packetButtonLayout->addWidget(device_config_.epsilon_packet_save_btn);
-    packetButtonLayout->addStretch(1);
-    epsilonConfigLayout->addWidget(packetButtonRow);
+    packetButtonLayout->setHorizontalSpacing(0);
+    packetButtonLayout->setVerticalSpacing(4);
+    device_config_.epsilon_packet_defaults_btn = createInlineButton(packetButtonPanel);
+    device_config_.epsilon_packet_grouped_btn = createInlineButton(packetButtonPanel);
+    device_config_.epsilon_packet_save_btn = createInlineButton(packetButtonPanel);
+    device_config_.epsilon_rtcm_port_btn = createInlineButton(packetButtonPanel);
+    device_config_.epsilon_reconfigure_btn = createInlineButton(packetButtonPanel);
+    device_config_.rtk_config_btn = createInlineButton(packetButtonPanel);
+    packetButtonLayout->addWidget(device_config_.epsilon_packet_defaults_btn, 0, 0);
+    packetButtonLayout->addWidget(device_config_.epsilon_packet_grouped_btn, 1, 0);
+    packetButtonLayout->addWidget(device_config_.epsilon_packet_save_btn, 2, 0);
+    packetButtonLayout->addWidget(device_config_.epsilon_rtcm_port_btn, 3, 0);
+    packetButtonLayout->addWidget(device_config_.epsilon_reconfigure_btn, 4, 0);
+    packetButtonLayout->addWidget(device_config_.rtk_config_btn, 5, 0);
+    packetGrid->addWidget(packetButtonPanel,
+                          0,
+                          kDeviceConfigPacketTrailingColumn,
+                          4,
+                          1,
+                          Qt::AlignLeft | Qt::AlignTop);
 
     connect(device_config_.epsilon_packet_defaults_btn, &QPushButton::clicked, this, [this]() {
         if (device_config_.epsilon_packet_custom_check)
@@ -10948,22 +10960,10 @@ void MainWindow::setupDeviceConfigPage()
     connect(device_config_.epsilon_packet_save_btn, &QPushButton::clicked, this, [this]() {
         saveDeviceConfigEpsilonPacketRates(true);
     });
-
-    auto *commandButtonRow = new QWidget(device_config_.epsilon_config_card);
-    auto *commandButtonLayout = new QHBoxLayout(commandButtonRow);
-    commandButtonLayout->setContentsMargins(0, 0, 0, 0);
-    commandButtonLayout->setSpacing(6);
-    device_config_.epsilon_rtcm_port_btn = createInlineButton(commandButtonRow);
-    device_config_.epsilon_reconfigure_btn = createInlineButton(commandButtonRow);
-    device_config_.rtk_config_btn = createInlineButton(commandButtonRow);
     connect(device_config_.epsilon_rtcm_port_btn, &QPushButton::clicked, this, &MainWindow::onConfigureEpsilonRtcmPortClicked);
     connect(device_config_.epsilon_reconfigure_btn, &QPushButton::clicked, this, &MainWindow::onReconfigureEpsilonClicked);
     connect(device_config_.rtk_config_btn, &QPushButton::clicked, this, &MainWindow::onRtkConfigClicked);
-    commandButtonLayout->addWidget(device_config_.epsilon_rtcm_port_btn);
-    commandButtonLayout->addWidget(device_config_.epsilon_reconfigure_btn);
-    commandButtonLayout->addWidget(device_config_.rtk_config_btn);
-    commandButtonLayout->addStretch(1);
-    epsilonConfigLayout->addWidget(commandButtonRow);
+    epsilonConfigLayout->addWidget(packetGridWidget);
     formRowLayout->addWidget(formWidget, 0, Qt::AlignTop | Qt::AlignLeft);
     serialLayout->addWidget(formRowWidget, 0, Qt::AlignTop);
 
