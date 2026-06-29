@@ -210,6 +210,19 @@ void setSkyTelemetryTransport(QComboBox *transportCombo, const QString& transpor
     transportCombo->setCurrentIndex(index);
 }
 
+void requireSkyTelemetryTransportLabels(const SkyTelemetryRowWidgets& widgets, bool english)
+{
+    require(widgets.transportCombo != nullptr, "sky telemetry transport combo exists");
+    const int tcpIndex = widgets.transportCombo->findData(QStringLiteral("tcp"));
+    const int serialIndex = widgets.transportCombo->findData(QStringLiteral("serial"));
+    require(tcpIndex >= 0 && serialIndex >= 0, "sky telemetry transport options exist");
+    require(widgets.transportCombo->itemText(tcpIndex) == QStringLiteral("TCP"),
+            "sky telemetry TCP option is labelled TCP");
+    require(widgets.transportCombo->itemText(serialIndex) ==
+                (english ? QStringLiteral("Serial") : QStringLiteral("串口")),
+            "sky telemetry serial option follows the UI language");
+}
+
 bool telemetryFieldVisible(const QWidget *widget, bool effectiveVisibility)
 {
     return widget && (effectiveVisibility ? widget->isVisible() : !widget->isHidden());
@@ -439,6 +452,7 @@ int main(int argc, char **argv)
     const SkyTelemetryRowWidgets homeSkyTelemetry = findSkyTelemetryRowWidgets(homeConfigCard);
     require(homeSkyTelemetry.transportCombo != nullptr,
             "home sky telemetry transport combo exists");
+    requireSkyTelemetryTransportLabels(homeSkyTelemetry, false);
     homeSourceModeCombo->setCurrentIndex(1);
     processEventsFor(150);
     activateLayouts(&window);
@@ -883,6 +897,7 @@ int main(int argc, char **argv)
     const SkyTelemetryRowWidgets deviceSkyTelemetry = findSkyTelemetryRowWidgets(deviceConfigPage);
     require(deviceSkyTelemetry.transportCombo != nullptr,
             "device configuration sky telemetry transport combo exists");
+    requireSkyTelemetryTransportLabels(deviceSkyTelemetry, false);
     deviceSourceModeCombo->setCurrentIndex(1);
     processEventsFor(150);
     activateLayouts(&window);

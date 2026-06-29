@@ -2497,6 +2497,27 @@ QString sourceModeStorageValue(int index)
     return index == 1 ? QStringLiteral("remote") : QStringLiteral("local");
 }
 
+QString skyTelemetryTransportDisplayText(bool english, const QString& transport)
+{
+    return transport == QStringLiteral("serial")
+        ? (english ? QStringLiteral("Serial") : QStringLiteral("串口"))
+        : QStringLiteral("TCP");
+}
+
+void updateSkyTelemetryTransportComboTexts(QComboBox *combo, bool english)
+{
+    if (!combo)
+    {
+        return;
+    }
+
+    const QSignalBlocker blocker(combo);
+    for (int i = 0; i < combo->count(); ++i)
+    {
+        combo->setItemText(i, skyTelemetryTransportDisplayText(english, combo->itemData(i).toString()));
+    }
+}
+
 int sourceModeIndexFromStoredValue(const QString& value)
 {
     const QString normalized = value.trimmed().toLower();
@@ -11153,6 +11174,7 @@ void MainWindow::updateDeviceConfigTexts()
     if (device_config_.serial_title_lbl) device_config_.serial_title_lbl->setText(is_english_ ? "Serial Port Configuration" : "串口配置");
     if (device_config_.data_source_mode_lbl) device_config_.data_source_mode_lbl->setText(is_english_ ? "Source:" : "数据源:");
     if (device_config_.sky_telemetry_transport_lbl) device_config_.sky_telemetry_transport_lbl->setText(is_english_ ? "Link:" : "链路:");
+    updateSkyTelemetryTransportComboTexts(device_config_.sky_telemetry_transport_combo, is_english_);
     if (device_config_.sky_telemetry_tcp_host_lbl) device_config_.sky_telemetry_tcp_host_lbl->setText(is_english_ ? "Sky IP:" : "天空端IP:");
     if (device_config_.sky_telemetry_tcp_port_lbl) device_config_.sky_telemetry_tcp_port_lbl->setText(is_english_ ? "Port:" : "端口:");
     if (device_config_.sky_telemetry_port_lbl) device_config_.sky_telemetry_port_lbl->setText(is_english_ ? "Serial:" : "串口:");
@@ -11576,8 +11598,8 @@ void MainWindow::setupConfigPanel()
     sky_telemetry_transport_lbl_ = new QLabel(sky_telemetry_row_widget_);
     sky_telemetry_transport_lbl_->setObjectName("fieldLabel");
     sky_telemetry_transport_combo_ = new QComboBox(sky_telemetry_row_widget_);
-    sky_telemetry_transport_combo_->addItem(QStringLiteral("TCP"), QStringLiteral("tcp"));
-    sky_telemetry_transport_combo_->addItem(QStringLiteral("Serial"), QStringLiteral("serial"));
+    sky_telemetry_transport_combo_->addItem(skyTelemetryTransportDisplayText(false, QStringLiteral("tcp")), QStringLiteral("tcp"));
+    sky_telemetry_transport_combo_->addItem(skyTelemetryTransportDisplayText(false, QStringLiteral("serial")), QStringLiteral("serial"));
     sky_telemetry_transport_combo_->setFixedHeight(kMainPageInputHeight);
     sky_telemetry_transport_combo_->setFixedWidth(110);
     connect(sky_telemetry_transport_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -12408,6 +12430,7 @@ void MainWindow::setEnglish(bool english)
     }
     if (data_source_mode_lbl_) data_source_mode_lbl_->setText(english ? "Source:" : "数据源:");
     if (sky_telemetry_transport_lbl_) sky_telemetry_transport_lbl_->setText(english ? "Link:" : "链路:");
+    updateSkyTelemetryTransportComboTexts(sky_telemetry_transport_combo_, english);
     if (sky_telemetry_tcp_host_lbl_) sky_telemetry_tcp_host_lbl_->setText(english ? "Sky IP:" : "天空端IP:");
     if (sky_telemetry_tcp_port_lbl_) sky_telemetry_tcp_port_lbl_->setText(english ? "Port:" : "端口:");
     if (sky_telemetry_port_lbl_) sky_telemetry_port_lbl_->setText(english ? "Serial:" : "串口:");
