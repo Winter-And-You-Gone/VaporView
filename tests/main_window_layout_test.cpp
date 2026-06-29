@@ -1002,7 +1002,7 @@ int main(int argc, char **argv)
     require(!serialConfigCard->isAncestorOf(deviceTelemetrySummaryCard),
             "device telemetry summary card is not nested inside the serial configuration card");
     requireCardTitleBar(deviceTelemetrySummaryCard,
-                        QStringList{QStringLiteral("天地数据流频率"), QStringLiteral("Sky-ground data stream rates")},
+                        QStringList{QStringLiteral("天空地面链路状态"), QStringLiteral("Sky-ground Link Status")},
                         QStringLiteral("satellite"),
                         "device telemetry summary card uses the standard icon title bar");
     const QRect telemetrySummaryPageRect(deviceTelemetrySummaryCard->mapTo(deviceConfigPage, QPoint(0, 0)),

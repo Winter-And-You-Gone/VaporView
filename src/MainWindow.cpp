@@ -8149,7 +8149,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     return sections;
 }
 
-QString MainWindow::remoteTelemetrySummaryText(bool includeRateTitle) const
+QString MainWindow::remoteTelemetrySummaryText() const
 {
     const RemoteTelemetrySummarySections sections = remoteTelemetrySummarySections();
     const QString textColor = appThemeColorName(dark_theme_enabled_ ? AppThemeColor::White : AppThemeColor::Text,
@@ -8193,9 +8193,7 @@ QString MainWindow::remoteTelemetrySummaryText(bool includeRateTitle) const
         return lines.join(QStringLiteral("<br/>"));
     };
 
-    return sectionHtml(includeRateTitle
-                           ? (is_english_ ? QStringLiteral("Sky-ground data stream rates") : QStringLiteral("天地数据流频率"))
-                           : QString(),
+    return sectionHtml(is_english_ ? QStringLiteral("Sky-ground data stream rates") : QStringLiteral("天地数据流频率"),
                        sections.rateItems,
                        2) +
            QStringLiteral("<br/>") +
@@ -8356,7 +8354,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     }
     if (device_config_.data_telemetry_summary_lbl)
     {
-        device_config_.data_telemetry_summary_lbl->setText(remoteTelemetrySummaryText(false));
+        device_config_.data_telemetry_summary_lbl->setText(remoteTelemetrySummaryText());
         device_config_.data_telemetry_summary_lbl->setToolTip(QString());
     }
     if (home_overview_splitter_)
@@ -11201,7 +11199,7 @@ void MainWindow::syncDeviceConfigPageFromHome()
     }
     if (device_config_.data_telemetry_summary_lbl)
     {
-        device_config_.data_telemetry_summary_lbl->setText(remoteTelemetrySummaryText(false));
+        device_config_.data_telemetry_summary_lbl->setText(remoteTelemetrySummaryText());
         device_config_.data_telemetry_summary_lbl->setToolTip(QString());
     }
     if (device_config_.data_telemetry_summary_card)
@@ -11247,8 +11245,8 @@ void MainWindow::updateDeviceConfigTexts()
     if (device_config_.data_telemetry_summary_title_lbl)
     {
         device_config_.data_telemetry_summary_title_lbl->setText(is_english_
-            ? "Sky-ground data stream rates"
-            : "天地数据流频率");
+            ? "Sky-ground Link Status"
+            : "天空地面链路状态");
     }
     if (device_config_.epsilon_config_hint_lbl)
     {

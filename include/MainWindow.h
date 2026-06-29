@@ -611,7 +611,7 @@ private:
         QList<Item> deviceItems;
     };
     RemoteTelemetrySummarySections remoteTelemetrySummarySections() const;
-    QString remoteTelemetrySummaryText(bool includeRateTitle = true) const;
+    QString remoteTelemetrySummaryText() const;
     void updateRemoteTelemetrySummaryLabel();
     void updateEnvironmentStatusIcons(bool lidarValid, bool ptbValid, bool hmpValid);
     void syncDeviceConfigEpsilonPanelFromSettings();
