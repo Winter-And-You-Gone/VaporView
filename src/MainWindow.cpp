@@ -10842,9 +10842,12 @@ void MainWindow::setupDeviceConfigPage()
     auto *packetGridWidget = new QWidget(device_config_.epsilon_config_card);
     auto *packetGrid = new QGridLayout(packetGridWidget);
     packetGrid->setContentsMargins(0, 0, 0, 0);
-    packetGrid->setHorizontalSpacing(20);
+    packetGrid->setHorizontalSpacing(8);
     packetGrid->setVerticalSpacing(4);
     constexpr int kDeviceConfigPacketColumnCount = 2;
+    constexpr int kDeviceConfigPacketGroupGapColumn = 2;
+    constexpr int kDeviceConfigPacketRightLabelColumn = 3;
+    constexpr int kDeviceConfigPacketTrailingColumn = 5;
     int packetComboWidth = 0;
     {
         QComboBox comboProbe(device_config_.epsilon_config_card);
@@ -10864,21 +10867,22 @@ void MainWindow::setupDeviceConfigPage()
     int packetIndex = 0;
     for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
     {
-        auto *cell = new QWidget(packetGridWidget);
-        cell->setMinimumHeight(kMainPageInputHeight);
-        cell->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
-        auto *cellLayout = new QHBoxLayout(cell);
-        cellLayout->setContentsMargins(0, 0, 0, 0);
-        cellLayout->setSpacing(8);
+        const int row = packetIndex / kDeviceConfigPacketColumnCount;
+        const int side = packetIndex % kDeviceConfigPacketColumnCount;
+        const int labelColumn = side == 0 ? 0 : kDeviceConfigPacketRightLabelColumn;
+        const int comboColumn = labelColumn + 1;
 
-        auto *label = new QLabel(cell);
+        auto *label = new QLabel(packetGridWidget);
         label->setObjectName(QStringLiteral("fieldLabel"));
+        label->setProperty("epsilonPacketId", static_cast<uint>(option.packet_id));
+        label->setProperty("epsilonPacketGridColumn", side);
         label->setWordWrap(false);
         label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-        cellLayout->addWidget(label, 0, Qt::AlignVCenter);
+        packetGrid->addWidget(label, row, labelColumn, Qt::AlignLeft | Qt::AlignVCenter);
 
-        auto *combo = new QComboBox(cell);
+        auto *combo = new QComboBox(packetGridWidget);
         combo->setProperty("epsilonPacketId", static_cast<uint>(option.packet_id));
+        combo->setProperty("epsilonPacketGridColumn", side);
         combo->setFixedHeight(kMainPageInputHeight);
         combo->setFixedWidth(packetComboWidth);
         combo->setMaxVisibleItems(15);
@@ -10886,22 +10890,23 @@ void MainWindow::setupDeviceConfigPage()
         {
             combo->addItem(epsilonPacketRateDisplayText(rateHz, is_english_), rateHz);
         }
-        cellLayout->addWidget(combo, 0, Qt::AlignVCenter);
+        packetGrid->addWidget(combo, row, comboColumn, Qt::AlignLeft | Qt::AlignVCenter);
 
         device_config_.epsilon_packet_rate_labels.append(label);
         device_config_.epsilon_packet_rate_combos.append(combo);
 
-        const int row = packetIndex / kDeviceConfigPacketColumnCount;
-        const int column = packetIndex % kDeviceConfigPacketColumnCount;
-        packetGrid->addWidget(cell, row, column, Qt::AlignLeft | Qt::AlignTop);
         ++packetIndex;
     }
+    packetGrid->setColumnMinimumWidth(kDeviceConfigPacketGroupGapColumn, 20);
     packetGrid->addItem(new QSpacerItem(0, 0, QSizePolicy::Expanding, QSizePolicy::Minimum),
                         0,
-                        kDeviceConfigPacketColumnCount);
+                        kDeviceConfigPacketTrailingColumn);
     packetGrid->setColumnStretch(0, 0);
     packetGrid->setColumnStretch(1, 0);
-    packetGrid->setColumnStretch(kDeviceConfigPacketColumnCount, 1);
+    packetGrid->setColumnStretch(kDeviceConfigPacketGroupGapColumn, 0);
+    packetGrid->setColumnStretch(kDeviceConfigPacketRightLabelColumn, 0);
+    packetGrid->setColumnStretch(kDeviceConfigPacketRightLabelColumn + 1, 0);
+    packetGrid->setColumnStretch(kDeviceConfigPacketTrailingColumn, 1);
     epsilonConfigLayout->addWidget(packetGridWidget);
 
     auto createInlineButton = [this](QWidget *parent) {

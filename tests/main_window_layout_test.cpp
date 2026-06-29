@@ -800,6 +800,8 @@ int main(int argc, char **argv)
     require(epsilonConfigPageRect.top() > serialControlBottom,
             "device EPSILON configuration card sits below the serial and rate selectors");
     const QRect epsilonConfigBounds = epsilonConfigCard->rect().adjusted(-1, -1, 1, 1);
+    int leftPacketComboColumn = -1;
+    int rightPacketComboColumn = -1;
     for (QComboBox *combo : epsilonConfigCard->findChildren<QComboBox *>())
     {
         if (!combo->isVisible() || !combo->property("epsilonPacketId").isValid())
@@ -811,23 +813,42 @@ int main(int argc, char **argv)
                 "device EPSILON packet-rate combos stay inside the embedded card");
         require(combo->width() >= combo->fontMetrics().horizontalAdvance(combo->currentText()) + 44,
                 "device EPSILON packet-rate combo text is not clipped");
-        QWidget *packetCell = combo->parentWidget();
-        require(packetCell != nullptr, "device EPSILON packet-rate combo has a layout cell");
-        const QList<QLabel*> packetLabels =
-            packetCell->findChildren<QLabel *>(QString(), Qt::FindDirectChildrenOnly);
-        require(!packetLabels.isEmpty(), "device EPSILON packet-rate row has a direct label");
-        const QRect labelCellRect(packetLabels.first()->mapTo(packetCell, QPoint(0, 0)),
-                                  packetLabels.first()->size());
-        const QRect comboCellRect(combo->mapTo(packetCell, QPoint(0, 0)), combo->size());
-        require(comboCellRect.left() > labelCellRect.right(),
+        QLabel *packetLabel = nullptr;
+        for (QLabel *label : epsilonConfigCard->findChildren<QLabel *>())
+        {
+            if (label->property("epsilonPacketId").isValid() &&
+                label->property("epsilonPacketId").toUInt() == combo->property("epsilonPacketId").toUInt())
+            {
+                packetLabel = label;
+                break;
+            }
+        }
+        require(packetLabel != nullptr && packetLabel->isVisible(),
+                "device EPSILON packet-rate row has a matching label");
+        const QRect labelRect(packetLabel->mapTo(epsilonConfigCard, QPoint(0, 0)),
+                              packetLabel->size());
+        require(comboRect.left() > labelRect.right(),
                 "device EPSILON packet-rate combo sits to the right of its label");
-        require(comboCellRect.left() - labelCellRect.right() <= 12,
-                "device EPSILON packet-rate combo stays close to its label");
-        require(std::abs(comboCellRect.center().y() - labelCellRect.center().y()) <= 3,
+        require(std::abs(comboRect.center().y() - labelRect.center().y()) <= 3,
                 "device EPSILON packet-rate label and combo are vertically aligned");
-        require(packetCell->height() <= combo->height() + 8,
-                "device EPSILON packet-rate row stays compact");
+        require(combo->property("epsilonPacketGridColumn").isValid(),
+                "device EPSILON packet-rate combo reports its visual column");
+        const int visualColumn = combo->property("epsilonPacketGridColumn").toInt();
+        require(visualColumn == 0 || visualColumn == 1,
+                "device EPSILON packet-rate combo column is valid");
+        int& expectedColumnLeft = visualColumn == 0 ? leftPacketComboColumn : rightPacketComboColumn;
+        if (expectedColumnLeft < 0)
+        {
+            expectedColumnLeft = comboRect.left();
+        }
+        else
+        {
+            require(std::abs(comboRect.left() - expectedColumnLeft) <= 2,
+                    "device EPSILON packet-rate combos align vertically within each column");
+        }
     }
+    require(leftPacketComboColumn >= 0 && rightPacketComboColumn > leftPacketComboColumn,
+            "device EPSILON packet-rate layout exposes two aligned combo columns");
     for (const QString& buttonText : {QStringLiteral("保存并应用"),
                                       QStringLiteral("配置RTCM串口"),
                                       QStringLiteral("重新配置输出")})
