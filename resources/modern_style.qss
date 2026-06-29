@@ -443,6 +443,18 @@ QLabel#homeTelemetrySummaryPill[hasData="false"] {
     color: @vv-text-muted;
 }
 
+QLabel#homeTelemetrySummaryNameLabel[deviceConfigLink="true"] {
+    color: @vv-text-strong;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink="true"] {
+    color: @vv-text-strong;
+    font-size: 15px;
+    font-weight: 600;
+}
+
 QLabel#temperatureOverviewValuePill {
     background-color: @vv-surface;
     border: 1px solid @vv-border;

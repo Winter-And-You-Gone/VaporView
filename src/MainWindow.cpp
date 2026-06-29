@@ -6405,6 +6405,8 @@ void MainWindow::loadModernStyleSheet()
             "QFrame#homeTelemetrySummaryPill[hasData=\"true\"] { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; }"
             "QFrame#homeTelemetrySummaryPill[hasData=\"false\"] { background-color: @vv-surface-alt; border: 1px solid @vv-border; }"
             "QFrame#homeTelemetrySummaryPill[hasData=\"false\"] QLabel { color: @vv-text-muted; }"
+            "QLabel#homeTelemetrySummaryNameLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 15px; font-weight: 700; }"
+            "QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 15px; font-weight: 600; }"
             "QLabel#temperatureOverviewValuePill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 12px; font-weight: 700; padding: 1px 4px; margin: 0px; }"
             "QPushButton#temperatureOverviewOutputSwitch { background-color: transparent; border: none; min-height: 56px; max-height: 56px; padding: 0px; margin: 0px; color: @vv-text; font-size: 13px; font-weight: 700; }"
             "QToolButton#temperatureOverviewChannelButton { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; border-radius: 10px; color: @vv-primary; font-size: 13px; font-weight: 700; padding: 1px 0px; text-align: center; }"
@@ -8150,11 +8152,12 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         }
         clearLayout(sectionLayout);
 
-        auto addItemLabel = [this](QHBoxLayout *lineLayout,
-                                   QWidget *lineWidget,
-                                   const RemoteTelemetrySummarySections::Item& item) {
+        auto addItemLabel = [this, useSideTitle](QHBoxLayout *lineLayout,
+                                                 QWidget *lineWidget,
+                                                 const RemoteTelemetrySummarySections::Item& item) {
             auto *pill = new QFrame(lineWidget);
             pill->setObjectName(QStringLiteral("homeTelemetrySummaryPill"));
+            pill->setProperty("deviceConfigLink", useSideTitle);
             pill->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
             pill->setProperty("hasData", item.hasData);
             pill->setProperty("data-valid", QVariant());
@@ -8164,6 +8167,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
 
             auto *nameLabel = new QLabel(item.label, pill);
             nameLabel->setObjectName(QStringLiteral("homeTelemetrySummaryNameLabel"));
+            nameLabel->setProperty("deviceConfigLink", useSideTitle);
             nameLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
             nameLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
             nameLabel->setTextFormat(Qt::PlainText);
@@ -8171,6 +8175,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
 
             auto *valueLabel = new QLabel(item.value, pill);
             valueLabel->setObjectName(QStringLiteral("homeTelemetrySummaryValueLabel"));
+            valueLabel->setProperty("deviceConfigLink", useSideTitle);
             valueLabel->setFont(numericFontFrom(valueLabel->font()));
             valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
             valueLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
@@ -8215,8 +8220,8 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             auto *titlePane = new QFrame(sectionBody);
             titlePane->setObjectName(QStringLiteral("deviceTelemetrySectionTitlePane"));
             titlePane->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
-            titlePane->setMinimumWidth(scalePixels(48));
-            titlePane->setMaximumWidth(scalePixels(48));
+            titlePane->setMinimumWidth(kEpsilonSideTitleWidth);
+            titlePane->setMaximumWidth(kEpsilonSideTitleWidth);
             auto *titlePaneLayout = new QVBoxLayout(titlePane);
             titlePaneLayout->setContentsMargins(4, 4, 4, 4);
             titlePaneLayout->setSpacing(0);
@@ -8318,7 +8323,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         device_config_.data_telemetry_summary_card->setVisible(true);
         renderSummarySection(device_config_.data_telemetry_summary_card,
                              device_config_.data_telemetry_rate_summary_layout,
-                             is_english_ ? QStringLiteral("Sky-ground data stream rates") : QStringLiteral("天地数据流频率"),
+                             is_english_ ? QStringLiteral("Data stream rates") : QStringLiteral("数据流频率"),
                              sections.rateItems,
                              2,
                              2,

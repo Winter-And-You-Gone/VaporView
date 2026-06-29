@@ -1015,6 +1015,17 @@ int main(int argc, char **argv)
                 appStyleSheet.mid(titlePaneStyleIndex, 220).contains(QStringLiteral("background-color")) &&
                 appStyleSheet.mid(titlePaneStyleIndex, 220).contains(QStringLiteral("border-right")),
             "device telemetry subcard title pane has a separated light background style");
+    const int deviceLinkNameStyleIndex =
+        appStyleSheet.indexOf(QStringLiteral("QLabel#homeTelemetrySummaryNameLabel[deviceConfigLink=\"true\"]"));
+    require(deviceLinkNameStyleIndex >= 0 &&
+                appStyleSheet.mid(deviceLinkNameStyleIndex, 180).contains(QStringLiteral("font-size: 15px")) &&
+                appStyleSheet.mid(deviceLinkNameStyleIndex, 180).contains(QStringLiteral("font-weight: 700")),
+            "device telemetry value field names use larger bold text");
+    const int deviceLinkValueStyleIndex =
+        appStyleSheet.indexOf(QStringLiteral("QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink=\"true\"]"));
+    require(deviceLinkValueStyleIndex >= 0 &&
+                appStyleSheet.mid(deviceLinkValueStyleIndex, 180).contains(QStringLiteral("font-size: 15px")),
+            "device telemetry values use larger text");
     QList<QFrame*> telemetrySubCards =
         deviceTelemetrySummaryCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
     require(telemetrySubCards.size() == 3,
@@ -1024,7 +1035,7 @@ int main(int argc, char **argv)
                b->mapTo(b->parentWidget(), QPoint(0, 0)).y();
     });
     const QVector<QStringList> expectedTelemetrySubCardTitles = {
-        {QStringLiteral("天地数据流频率"), QStringLiteral("Sky-ground data stream rates")},
+        {QStringLiteral("数据流频率"), QStringLiteral("Data stream rates")},
         {QStringLiteral("链路速率"), QStringLiteral("Link rate")},
         {QStringLiteral("有无数据"), QStringLiteral("Data availability")},
     };
@@ -1065,6 +1076,8 @@ int main(int argc, char **argv)
 
         const QRect titlePaneRect(titlePane->mapTo(subCard, QPoint(0, 0)),
                                   titlePane->size());
+        require(titlePaneRect.width() <= 30,
+                "device telemetry summary subcard title pane matches the compact EPSILON title width");
         const QRect titleRect(expectedTitleLabel->mapTo(subCard, QPoint(0, 0)),
                               expectedTitleLabel->size());
         require(previousTitleLeft < 0 || std::abs(titleRect.left() - previousTitleLeft) <= 2,
@@ -1081,9 +1094,15 @@ int main(int argc, char **argv)
         int leftmostPillLeft = subCard->width();
         for (QFrame *pill : valuePills)
         {
+            require(pill->property("deviceConfigLink").toBool(),
+                    "device telemetry summary subcard value pill uses device-config styling");
             const QRect pillRect(pill->mapTo(subCard, QPoint(0, 0)), pill->size());
             leftmostPillLeft = std::min(leftmostPillLeft, pillRect.left());
         }
+        QLabel *firstNameLabel = subCard->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+        require(firstNameLabel != nullptr &&
+                    firstNameLabel->property("deviceConfigLink").toBool(),
+                "device telemetry summary field name uses device-config text styling");
         require(leftmostPillLeft > titlePaneRect.right(),
                 "device telemetry summary subcard title sits in a separate left area");
     }
