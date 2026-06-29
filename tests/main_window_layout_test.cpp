@@ -821,6 +821,8 @@ int main(int argc, char **argv)
         const QRect comboCellRect(combo->mapTo(packetCell, QPoint(0, 0)), combo->size());
         require(comboCellRect.left() > labelCellRect.right(),
                 "device EPSILON packet-rate combo sits to the right of its label");
+        require(comboCellRect.left() - labelCellRect.right() <= 12,
+                "device EPSILON packet-rate combo stays close to its label");
         require(std::abs(comboCellRect.center().y() - labelCellRect.center().y()) <= 3,
                 "device EPSILON packet-rate label and combo are vertically aligned");
         require(packetCell->height() <= combo->height() + 8,
