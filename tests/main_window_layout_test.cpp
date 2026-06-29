@@ -811,6 +811,20 @@ int main(int argc, char **argv)
                 "device EPSILON packet-rate combos stay inside the embedded card");
         require(combo->width() >= combo->fontMetrics().horizontalAdvance(combo->currentText()) + 44,
                 "device EPSILON packet-rate combo text is not clipped");
+        QWidget *packetCell = combo->parentWidget();
+        require(packetCell != nullptr, "device EPSILON packet-rate combo has a layout cell");
+        const QList<QLabel*> packetLabels =
+            packetCell->findChildren<QLabel *>(QString(), Qt::FindDirectChildrenOnly);
+        require(!packetLabels.isEmpty(), "device EPSILON packet-rate row has a direct label");
+        const QRect labelCellRect(packetLabels.first()->mapTo(packetCell, QPoint(0, 0)),
+                                  packetLabels.first()->size());
+        const QRect comboCellRect(combo->mapTo(packetCell, QPoint(0, 0)), combo->size());
+        require(comboCellRect.left() > labelCellRect.right(),
+                "device EPSILON packet-rate combo sits to the right of its label");
+        require(std::abs(comboCellRect.center().y() - labelCellRect.center().y()) <= 3,
+                "device EPSILON packet-rate label and combo are vertically aligned");
+        require(packetCell->height() <= combo->height() + 8,
+                "device EPSILON packet-rate row stays compact");
     }
     for (const QString& buttonText : {QStringLiteral("保存并应用"),
                                       QStringLiteral("配置RTCM串口"),

@@ -10843,7 +10843,7 @@ void MainWindow::setupDeviceConfigPage()
     auto *packetGrid = new QGridLayout(packetGridWidget);
     packetGrid->setContentsMargins(0, 0, 0, 0);
     packetGrid->setHorizontalSpacing(8);
-    packetGrid->setVerticalSpacing(6);
+    packetGrid->setVerticalSpacing(4);
     constexpr int kDeviceConfigPacketColumnCount = 2;
     int packetComboWidth = 0;
     {
@@ -10865,16 +10865,17 @@ void MainWindow::setupDeviceConfigPage()
     for (const EpsilonPacketConfigOption& option : epsilonPacketConfigOptions())
     {
         auto *cell = new QWidget(packetGridWidget);
-        cell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
-        auto *cellLayout = new QVBoxLayout(cell);
+        cell->setMinimumHeight(kMainPageInputHeight);
+        cell->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        auto *cellLayout = new QHBoxLayout(cell);
         cellLayout->setContentsMargins(0, 0, 0, 0);
-        cellLayout->setSpacing(3);
+        cellLayout->setSpacing(8);
 
         auto *label = new QLabel(cell);
         label->setObjectName(QStringLiteral("fieldLabel"));
-        label->setWordWrap(true);
-        label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
-        cellLayout->addWidget(label);
+        label->setWordWrap(false);
+        label->setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
+        cellLayout->addWidget(label, 1, Qt::AlignVCenter);
 
         auto *combo = new QComboBox(cell);
         combo->setProperty("epsilonPacketId", static_cast<uint>(option.packet_id));
@@ -10885,7 +10886,7 @@ void MainWindow::setupDeviceConfigPage()
         {
             combo->addItem(epsilonPacketRateDisplayText(rateHz, is_english_), rateHz);
         }
-        cellLayout->addWidget(combo, 0, Qt::AlignLeft);
+        cellLayout->addWidget(combo, 0, Qt::AlignVCenter | Qt::AlignRight);
 
         device_config_.epsilon_packet_rate_labels.append(label);
         device_config_.epsilon_packet_rate_combos.append(combo);
