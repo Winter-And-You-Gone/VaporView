@@ -8149,7 +8149,7 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     return sections;
 }
 
-QString MainWindow::remoteTelemetrySummaryText() const
+QString MainWindow::remoteTelemetrySummaryText(bool includeRateTitle) const
 {
     const RemoteTelemetrySummarySections sections = remoteTelemetrySummarySections();
     const QString textColor = appThemeColorName(dark_theme_enabled_ ? AppThemeColor::White : AppThemeColor::Text,
@@ -8193,7 +8193,9 @@ QString MainWindow::remoteTelemetrySummaryText() const
         return lines.join(QStringLiteral("<br/>"));
     };
 
-    return sectionHtml(is_english_ ? QStringLiteral("Sky-ground data stream rates") : QStringLiteral("天地数据流频率"),
+    return sectionHtml(includeRateTitle
+                           ? (is_english_ ? QStringLiteral("Sky-ground data stream rates") : QStringLiteral("天地数据流频率"))
+                           : QString(),
                        sections.rateItems,
                        2) +
            QStringLiteral("<br/>") +
@@ -8211,7 +8213,6 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
         return;
     }
     const RemoteTelemetrySummarySections sections = remoteTelemetrySummarySections();
-    const QString text = remoteTelemetrySummaryText();
     data_telemetry_summary_card_->setVisible(true);
     auto clearLayout = [](QLayout *layout) {
         if (!layout)
@@ -8355,7 +8356,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
     }
     if (device_config_.data_telemetry_summary_lbl)
     {
-        device_config_.data_telemetry_summary_lbl->setText(text);
+        device_config_.data_telemetry_summary_lbl->setText(remoteTelemetrySummaryText(false));
         device_config_.data_telemetry_summary_lbl->setToolTip(QString());
     }
     if (home_overview_splitter_)
@@ -10823,25 +10824,39 @@ void MainWindow::setupDeviceConfigPage()
     device_config_.epsilon_config_card->setMinimumWidth(520);
     device_config_.epsilon_config_card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     auto *epsilonConfigLayout = new QVBoxLayout(device_config_.epsilon_config_card);
-    epsilonConfigLayout->setContentsMargins(8, 8, 8, 8);
-    epsilonConfigLayout->setSpacing(7);
+    epsilonConfigLayout->setContentsMargins(1, 0, 1, 1);
+    epsilonConfigLayout->setSpacing(0);
+    auto *epsilonTitleBar = new QWidget(device_config_.epsilon_config_card);
+    epsilonTitleBar->setObjectName(QStringLiteral("sectionTitleBar"));
+    epsilonTitleBar->setFixedHeight(kMainPageTitleBarHeight);
+    auto *epsilonTitleLayout = new QHBoxLayout(epsilonTitleBar);
+    epsilonTitleLayout->setContentsMargins(8, 2, 8, 2);
+    epsilonTitleLayout->setSpacing(8);
+    QWidget *epsilonTitleCluster = nullptr;
+    device_config_.epsilon_config_title_lbl = createSectionTitleCluster(epsilonTitleBar,
+                                                                        QStringLiteral("sliders-vertical"),
+                                                                        kMainPageButtonHeight,
+                                                                        &epsilonTitleCluster);
+    epsilonTitleLayout->addWidget(epsilonTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    epsilonTitleLayout->addStretch(1);
+    epsilonConfigLayout->addWidget(epsilonTitleBar);
 
-    device_config_.epsilon_config_title_lbl = new QLabel(device_config_.epsilon_config_card);
-    device_config_.epsilon_config_title_lbl->setObjectName(QStringLiteral("homeOverviewSectionTitle"));
-    device_config_.epsilon_config_title_lbl->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    epsilonConfigLayout->addWidget(device_config_.epsilon_config_title_lbl);
+    auto *epsilonBodyWidget = new QWidget(device_config_.epsilon_config_card);
+    auto *epsilonBodyLayout = new QVBoxLayout(epsilonBodyWidget);
+    epsilonBodyLayout->setContentsMargins(8, 8, 8, 8);
+    epsilonBodyLayout->setSpacing(7);
 
-    device_config_.epsilon_config_hint_lbl = new QLabel(device_config_.epsilon_config_card);
+    device_config_.epsilon_config_hint_lbl = new QLabel(epsilonBodyWidget);
     device_config_.epsilon_config_hint_lbl->setObjectName(QStringLiteral("fieldLabel"));
     device_config_.epsilon_config_hint_lbl->setWordWrap(true);
     device_config_.epsilon_config_hint_lbl->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);
-    epsilonConfigLayout->addWidget(device_config_.epsilon_config_hint_lbl);
+    epsilonBodyLayout->addWidget(device_config_.epsilon_config_hint_lbl);
 
-    device_config_.epsilon_packet_custom_check = new QCheckBox(device_config_.epsilon_config_card);
+    device_config_.epsilon_packet_custom_check = new QCheckBox(epsilonBodyWidget);
     device_config_.epsilon_packet_custom_check->setFocusPolicy(Qt::TabFocus);
-    epsilonConfigLayout->addWidget(device_config_.epsilon_packet_custom_check);
+    epsilonBodyLayout->addWidget(device_config_.epsilon_packet_custom_check);
 
-    auto *packetGridWidget = new QWidget(device_config_.epsilon_config_card);
+    auto *packetGridWidget = new QWidget(epsilonBodyWidget);
     auto *packetGrid = new QGridLayout(packetGridWidget);
     packetGrid->setContentsMargins(0, 0, 0, 0);
     packetGrid->setHorizontalSpacing(8);
@@ -10965,7 +10980,8 @@ void MainWindow::setupDeviceConfigPage()
     connect(device_config_.epsilon_rtcm_port_btn, &QPushButton::clicked, this, &MainWindow::onConfigureEpsilonRtcmPortClicked);
     connect(device_config_.epsilon_reconfigure_btn, &QPushButton::clicked, this, &MainWindow::onReconfigureEpsilonClicked);
     connect(device_config_.rtk_config_btn, &QPushButton::clicked, this, &MainWindow::onRtkConfigClicked);
-    epsilonConfigLayout->addWidget(packetGridWidget);
+    epsilonBodyLayout->addWidget(packetGridWidget);
+    epsilonConfigLayout->addWidget(epsilonBodyWidget);
     formRowLayout->addWidget(formWidget, 0, Qt::AlignTop | Qt::AlignLeft);
     serialLayout->addWidget(formRowWidget, 0, Qt::AlignTop);
 
@@ -10973,9 +10989,28 @@ void MainWindow::setupDeviceConfigPage()
     device_config_.data_telemetry_summary_card->setObjectName(QStringLiteral("epsilonSectionCard"));
     device_config_.data_telemetry_summary_card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     auto *summaryLayout = new QVBoxLayout(device_config_.data_telemetry_summary_card);
-    summaryLayout->setContentsMargins(8, 6, 8, 6);
-    summaryLayout->setSpacing(2);
-    device_config_.data_telemetry_summary_lbl = new QLabel(device_config_.data_telemetry_summary_card);
+    summaryLayout->setContentsMargins(1, 0, 1, 1);
+    summaryLayout->setSpacing(0);
+    auto *summaryTitleBar = new QWidget(device_config_.data_telemetry_summary_card);
+    summaryTitleBar->setObjectName(QStringLiteral("sectionTitleBar"));
+    summaryTitleBar->setFixedHeight(kMainPageTitleBarHeight);
+    auto *summaryTitleLayout = new QHBoxLayout(summaryTitleBar);
+    summaryTitleLayout->setContentsMargins(8, 2, 8, 2);
+    summaryTitleLayout->setSpacing(8);
+    QWidget *summaryTitleCluster = nullptr;
+    device_config_.data_telemetry_summary_title_lbl = createSectionTitleCluster(summaryTitleBar,
+                                                                               QStringLiteral("satellite"),
+                                                                               kMainPageButtonHeight,
+                                                                               &summaryTitleCluster);
+    summaryTitleLayout->addWidget(summaryTitleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    summaryTitleLayout->addStretch(1);
+    summaryLayout->addWidget(summaryTitleBar);
+
+    auto *summaryBodyWidget = new QWidget(device_config_.data_telemetry_summary_card);
+    auto *summaryBodyLayout = new QVBoxLayout(summaryBodyWidget);
+    summaryBodyLayout->setContentsMargins(8, 6, 8, 6);
+    summaryBodyLayout->setSpacing(2);
+    device_config_.data_telemetry_summary_lbl = new QLabel(summaryBodyWidget);
     device_config_.data_telemetry_summary_lbl->setObjectName(QStringLiteral("fieldLabel"));
     device_config_.data_telemetry_summary_lbl->setTextFormat(Qt::RichText);
     device_config_.data_telemetry_summary_lbl->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -10984,7 +11019,8 @@ void MainWindow::setupDeviceConfigPage()
     device_config_.data_telemetry_summary_lbl->setMinimumWidth(0);
     device_config_.data_telemetry_summary_lbl->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     device_config_.data_telemetry_summary_lbl->setWordWrap(true);
-    summaryLayout->addWidget(device_config_.data_telemetry_summary_lbl);
+    summaryBodyLayout->addWidget(device_config_.data_telemetry_summary_lbl);
+    summaryLayout->addWidget(summaryBodyWidget);
     topRowLayout->addWidget(serialCard, 0, Qt::AlignTop | Qt::AlignLeft);
     topRowLayout->addWidget(device_config_.data_telemetry_summary_card, 1, Qt::AlignTop);
     contentLayout->addLayout(topRowLayout);
@@ -11165,7 +11201,7 @@ void MainWindow::syncDeviceConfigPageFromHome()
     }
     if (device_config_.data_telemetry_summary_lbl)
     {
-        device_config_.data_telemetry_summary_lbl->setText(remoteTelemetrySummaryText());
+        device_config_.data_telemetry_summary_lbl->setText(remoteTelemetrySummaryText(false));
         device_config_.data_telemetry_summary_lbl->setToolTip(QString());
     }
     if (device_config_.data_telemetry_summary_card)
@@ -11207,6 +11243,12 @@ void MainWindow::updateDeviceConfigTexts()
     if (device_config_.epsilon_config_title_lbl)
     {
         device_config_.epsilon_config_title_lbl->setText(is_english_ ? "EPSILON Configuration" : "EPSILON 配置");
+    }
+    if (device_config_.data_telemetry_summary_title_lbl)
+    {
+        device_config_.data_telemetry_summary_title_lbl->setText(is_english_
+            ? "Sky-ground data stream rates"
+            : "天地数据流频率");
     }
     if (device_config_.epsilon_config_hint_lbl)
     {

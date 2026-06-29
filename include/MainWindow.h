@@ -611,7 +611,7 @@ private:
         QList<Item> deviceItems;
     };
     RemoteTelemetrySummarySections remoteTelemetrySummarySections() const;
-    QString remoteTelemetrySummaryText() const;
+    QString remoteTelemetrySummaryText(bool includeRateTitle = true) const;
     void updateRemoteTelemetrySummaryLabel();
     void updateEnvironmentStatusIcons(bool lidarValid, bool ptbValid, bool hmpValid);
     void syncDeviceConfigEpsilonPanelFromSettings();
@@ -652,6 +652,7 @@ private:
         QLabel *temperature_rate_lbl = nullptr;
         QWidget *sky_telemetry_row_widget = nullptr;
         QFrame *data_telemetry_summary_card = nullptr;
+        QLabel *data_telemetry_summary_title_lbl = nullptr;
         QLabel *data_telemetry_summary_lbl = nullptr;
         QFrame *epsilon_config_card = nullptr;
         QLabel *epsilon_config_title_lbl = nullptr;

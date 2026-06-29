@@ -50,6 +50,53 @@ void require(bool condition, const char *message)
     }
 }
 
+void requireCardTitleBar(QWidget *card,
+                         const QStringList& expectedTitles,
+                         const QString& expectedIconName,
+                         const char *message)
+{
+    require(card != nullptr, message);
+    QWidget *matchedTitleBar = nullptr;
+    const QList<QWidget*> titleBars = card->findChildren<QWidget *>(QStringLiteral("sectionTitleBar"));
+    for (QWidget *titleBar : titleBars)
+    {
+        bool titleMatched = false;
+        const QList<QLabel*> titleLabels = titleBar->findChildren<QLabel *>(QStringLiteral("sectionTitleLabel"));
+        for (QLabel *titleLabel : titleLabels)
+        {
+            if (expectedTitles.contains(titleLabel->text()))
+            {
+                titleMatched = true;
+                break;
+            }
+        }
+        if (!titleMatched)
+        {
+            continue;
+        }
+
+        bool iconMatched = false;
+        const QList<QLabel*> iconLabels = titleBar->findChildren<QLabel *>(QStringLiteral("sectionTitleIcon"));
+        for (QLabel *iconLabel : iconLabels)
+        {
+            if (iconLabel->property("_vv_section_title_icon_name").toString() == expectedIconName)
+            {
+                iconMatched = true;
+                break;
+            }
+        }
+        if (iconMatched)
+        {
+            matchedTitleBar = titleBar;
+            break;
+        }
+    }
+
+    require(matchedTitleBar != nullptr, message);
+    require(matchedTitleBar->height() >= 36 && matchedTitleBar->height() <= 44,
+            "device configuration card title bar uses the standard compact height");
+}
+
 void processEventsFor(int timeoutMs)
 {
     QElapsedTimer timer;
@@ -726,6 +773,10 @@ int main(int argc, char **argv)
                                      serialConfigCard->size());
     require(serialConfigCard->width() <= serialConfigCard->sizeHint().width() + 4,
             "device configuration serial card does not expand to fill the whole row");
+    requireCardTitleBar(serialConfigCard,
+                        QStringList{QStringLiteral("串口配置"), QStringLiteral("Serial Port Configuration")},
+                        QStringLiteral("usb"),
+                        "device serial configuration card uses the standard icon title bar");
     const QString appStyleSheet = qApp->styleSheet();
     const int serialCardStyleIndex = appStyleSheet.indexOf(QStringLiteral("QGroupBox#sensorGroupBox"));
     require(serialCardStyleIndex >= 0 &&
@@ -785,6 +836,10 @@ int main(int argc, char **argv)
             "device EPSILON configuration card is a sibling of the serial configuration card");
     require(!serialConfigCard->isAncestorOf(epsilonConfigCard),
             "device EPSILON configuration card is not nested inside the serial configuration card");
+    requireCardTitleBar(epsilonConfigCard,
+                        QStringList{QStringLiteral("EPSILON 配置"), QStringLiteral("EPSILON Configuration")},
+                        QStringLiteral("sliders-vertical"),
+                        "device EPSILON configuration card uses the standard icon title bar");
     const int epsilonCardStyleIndex = appStyleSheet.indexOf(QStringLiteral("QFrame#epsilonSectionCard"));
     require(epsilonCardStyleIndex >= 0 &&
                 appStyleSheet.mid(epsilonCardStyleIndex, 200).contains(QStringLiteral("border-radius: 8px")),
@@ -946,6 +1001,10 @@ int main(int argc, char **argv)
             "device telemetry summary card is a sibling of the serial configuration card");
     require(!serialConfigCard->isAncestorOf(deviceTelemetrySummaryCard),
             "device telemetry summary card is not nested inside the serial configuration card");
+    requireCardTitleBar(deviceTelemetrySummaryCard,
+                        QStringList{QStringLiteral("天地数据流频率"), QStringLiteral("Sky-ground data stream rates")},
+                        QStringLiteral("satellite"),
+                        "device telemetry summary card uses the standard icon title bar");
     const QRect telemetrySummaryPageRect(deviceTelemetrySummaryCard->mapTo(deviceConfigPage, QPoint(0, 0)),
                                          deviceTelemetrySummaryCard->size());
     require(std::abs(telemetrySummaryPageRect.top() - serialConfigPageRect.top()) <= 2,
