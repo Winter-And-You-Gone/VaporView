@@ -10920,7 +10920,7 @@ void MainWindow::setupDeviceConfigPage()
     packetButtonPanel->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Minimum);
     auto *packetButtonLayout = new QGridLayout(packetButtonPanel);
     packetButtonLayout->setContentsMargins(0, 0, 0, 0);
-    packetButtonLayout->setHorizontalSpacing(0);
+    packetButtonLayout->setHorizontalSpacing(4);
     packetButtonLayout->setVerticalSpacing(4);
     device_config_.epsilon_packet_defaults_btn = createInlineButton(packetButtonPanel);
     device_config_.epsilon_packet_grouped_btn = createInlineButton(packetButtonPanel);
@@ -10929,11 +10929,11 @@ void MainWindow::setupDeviceConfigPage()
     device_config_.epsilon_reconfigure_btn = createInlineButton(packetButtonPanel);
     device_config_.rtk_config_btn = createInlineButton(packetButtonPanel);
     packetButtonLayout->addWidget(device_config_.epsilon_packet_defaults_btn, 0, 0);
-    packetButtonLayout->addWidget(device_config_.epsilon_packet_grouped_btn, 1, 0);
-    packetButtonLayout->addWidget(device_config_.epsilon_packet_save_btn, 2, 0);
-    packetButtonLayout->addWidget(device_config_.epsilon_rtcm_port_btn, 3, 0);
-    packetButtonLayout->addWidget(device_config_.epsilon_reconfigure_btn, 4, 0);
-    packetButtonLayout->addWidget(device_config_.rtk_config_btn, 5, 0);
+    packetButtonLayout->addWidget(device_config_.epsilon_packet_grouped_btn, 0, 1);
+    packetButtonLayout->addWidget(device_config_.epsilon_packet_save_btn, 1, 0);
+    packetButtonLayout->addWidget(device_config_.epsilon_rtcm_port_btn, 1, 1);
+    packetButtonLayout->addWidget(device_config_.epsilon_reconfigure_btn, 2, 0);
+    packetButtonLayout->addWidget(device_config_.rtk_config_btn, 2, 1);
     packetGrid->addWidget(packetButtonPanel,
                           0,
                           kDeviceConfigPacketTrailingColumn,
@@ -11242,39 +11242,39 @@ void MainWindow::updateDeviceConfigTexts()
     }
     if (device_config_.epsilon_packet_defaults_btn)
     {
-        device_config_.epsilon_packet_defaults_btn->setText(is_english_ ? "Recommended" : "恢复推荐");
+        device_config_.epsilon_packet_defaults_btn->setText(is_english_ ? "Rec." : "推荐");
         device_config_.epsilon_packet_defaults_btn->setToolTip(is_english_ ? "Use the recommended default packet rates" : "恢复推荐默认包频率");
-        fitButtonMinimumWidth(device_config_.epsilon_packet_defaults_btn, 100);
+        fitButtonMinimumWidth(device_config_.epsilon_packet_defaults_btn, 72);
     }
     if (device_config_.epsilon_packet_grouped_btn)
     {
-        device_config_.epsilon_packet_grouped_btn->setText(is_english_ ? "Grouped" : "分组模式");
+        device_config_.epsilon_packet_grouped_btn->setText(is_english_ ? "Group" : "分组");
         device_config_.epsilon_packet_grouped_btn->setToolTip(is_english_ ? "Use the grouped output-rate profile" : "切换到分组输出频率模式");
-        fitButtonMinimumWidth(device_config_.epsilon_packet_grouped_btn, 100);
+        fitButtonMinimumWidth(device_config_.epsilon_packet_grouped_btn, 72);
     }
     if (device_config_.epsilon_packet_save_btn)
     {
-        device_config_.epsilon_packet_save_btn->setText(is_english_ ? "Save + Apply" : "保存并应用");
+        device_config_.epsilon_packet_save_btn->setText(is_english_ ? "Save" : "保存");
         device_config_.epsilon_packet_save_btn->setToolTip(is_english_ ? "Save the packet-rate profile and apply it now when possible" : "保存包频率配置，并在可用时立即应用");
-        fitButtonMinimumWidth(device_config_.epsilon_packet_save_btn, 118);
+        fitButtonMinimumWidth(device_config_.epsilon_packet_save_btn, 72);
     }
     if (device_config_.epsilon_rtcm_port_btn)
     {
-        device_config_.epsilon_rtcm_port_btn->setText(is_english_ ? "RTCM Port" : "配置RTCM串口");
+        device_config_.epsilon_rtcm_port_btn->setText(is_english_ ? "RTCM" : "RTCM");
         device_config_.epsilon_rtcm_port_btn->setToolTip(is_english_ ? "Configure EPSILON communication port 2 as RTCM input" : "配置 EPSILON 第二通信串口为 RTCM 输入口");
-        fitButtonMinimumWidth(device_config_.epsilon_rtcm_port_btn, 128);
+        fitButtonMinimumWidth(device_config_.epsilon_rtcm_port_btn, 72);
     }
     if (device_config_.epsilon_reconfigure_btn)
     {
-        device_config_.epsilon_reconfigure_btn->setText(is_english_ ? "Reconfigure Output" : "重新配置输出");
+        device_config_.epsilon_reconfigure_btn->setText(is_english_ ? "Output" : "重配");
         device_config_.epsilon_reconfigure_btn->setToolTip(is_english_ ? "Apply the current EPSILON output profile" : "应用当前 EPSILON 输出配置");
-        fitButtonMinimumWidth(device_config_.epsilon_reconfigure_btn, 128);
+        fitButtonMinimumWidth(device_config_.epsilon_reconfigure_btn, 72);
     }
     if (device_config_.rtk_config_btn)
     {
-        device_config_.rtk_config_btn->setText(is_english_ ? "RTK Config" : "RTK配置");
+        device_config_.rtk_config_btn->setText(is_english_ ? "RTK" : "RTK");
         device_config_.rtk_config_btn->setToolTip(is_english_ ? "Open RTK config" : "打开 RTK 配置");
-        fitButtonMinimumWidth(device_config_.rtk_config_btn, 100);
+        fitButtonMinimumWidth(device_config_.rtk_config_btn, 72);
     }
 
     const QString connectText = is_english_ ? "Connect" : "连接";

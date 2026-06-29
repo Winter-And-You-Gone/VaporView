@@ -803,6 +803,8 @@ int main(int argc, char **argv)
     int leftPacketComboColumn = -1;
     int rightPacketComboColumn = -1;
     int rightPacketComboRight = -1;
+    int packetComboTop = epsilonConfigCard->height();
+    int packetComboBottom = -1;
     for (QComboBox *combo : epsilonConfigCard->findChildren<QComboBox *>())
     {
         if (!combo->isVisible() || !combo->property("epsilonPacketId").isValid())
@@ -810,6 +812,8 @@ int main(int argc, char **argv)
             continue;
         }
         const QRect comboRect(combo->mapTo(epsilonConfigCard, QPoint(0, 0)), combo->size());
+        packetComboTop = std::min(packetComboTop, comboRect.top());
+        packetComboBottom = std::max(packetComboBottom, comboRect.bottom());
         require(epsilonConfigBounds.contains(comboRect),
                 "device EPSILON packet-rate combos stay inside the embedded card");
         require(combo->width() >= combo->fontMetrics().horizontalAdvance(combo->currentText()) + 44,
@@ -856,12 +860,16 @@ int main(int argc, char **argv)
             "device EPSILON packet-rate layout exposes two aligned combo columns");
     require(rightPacketComboRight > 0,
             "device EPSILON packet-rate grid has measurable right-side blank space");
-    for (const QString& buttonText : {QStringLiteral("恢复推荐"),
-                                      QStringLiteral("分组模式"),
-                                      QStringLiteral("保存并应用"),
-                                      QStringLiteral("配置RTCM串口"),
-                                      QStringLiteral("重新配置输出"),
-                                      QStringLiteral("RTK配置")})
+    int actionButtonColumnA = -1;
+    int actionButtonColumnB = -1;
+    int actionButtonTop = epsilonConfigCard->height();
+    int actionButtonBottom = -1;
+    for (const QString& buttonText : {QStringLiteral("推荐"),
+                                      QStringLiteral("分组"),
+                                      QStringLiteral("保存"),
+                                      QStringLiteral("RTCM"),
+                                      QStringLiteral("重配"),
+                                      QStringLiteral("RTK")})
     {
         bool foundButton = false;
         for (QPushButton *button : epsilonConfigCard->findChildren<QPushButton *>())
@@ -875,12 +883,30 @@ int main(int argc, char **argv)
                         "device EPSILON command button text is not clipped");
                 require(buttonRect.left() > rightPacketComboRight,
                         "device EPSILON command buttons sit to the right of the second packet-rate combo column");
+                actionButtonTop = std::min(actionButtonTop, buttonRect.top());
+                actionButtonBottom = std::max(actionButtonBottom, buttonRect.bottom());
+                if (actionButtonColumnA < 0 || std::abs(buttonRect.left() - actionButtonColumnA) <= 2)
+                {
+                    actionButtonColumnA = actionButtonColumnA < 0 ? buttonRect.left() : actionButtonColumnA;
+                }
+                else if (actionButtonColumnB < 0 || std::abs(buttonRect.left() - actionButtonColumnB) <= 2)
+                {
+                    actionButtonColumnB = actionButtonColumnB < 0 ? buttonRect.left() : actionButtonColumnB;
+                }
+                else
+                {
+                    require(false, "device EPSILON command buttons use exactly two visual columns");
+                }
                 foundButton = true;
                 break;
             }
         }
         require(foundButton, "device EPSILON configuration card exposes expected command buttons");
     }
+    require(actionButtonColumnA >= 0 && actionButtonColumnB > actionButtonColumnA,
+            "device EPSILON command buttons are split into two columns");
+    require(actionButtonTop >= packetComboTop - 2 && actionButtonBottom <= packetComboBottom + 4,
+            "device EPSILON command buttons do not increase the packet-rate grid height");
 
     const QList<QFrame*> deviceSummaryCards =
         deviceConfigPage->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
