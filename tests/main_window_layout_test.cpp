@@ -17,6 +17,7 @@
 #include <QScrollBar>
 #include <QSplitter>
 #include <QSettings>
+#include <QStringList>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QToolButton>
@@ -107,6 +108,23 @@ void hoverWidget(QWidget *widget, bool hovered, int waitMs = 50)
     if (waitMs > 0)
     {
         processEventsFor(waitMs);
+    }
+}
+
+void requireLabelTextOneOf(const QLabel *label, const QStringList& expected, const char *message)
+{
+    require(label != nullptr, "label exists");
+    require(expected.contains(label->text()), message);
+}
+
+void requireNoVisiblePageTitle(QWidget *page, const char *message)
+{
+    require(page != nullptr, "page exists");
+    const QList<QLabel*> pageTitleLabels =
+        page->findChildren<QLabel *>(QStringLiteral("pageTitleLabel"));
+    for (const QLabel *label : pageTitleLabels)
+    {
+        require(!label->isVisible(), message);
     }
 }
 
@@ -219,6 +237,10 @@ int main(int argc, char **argv)
             "compact sidebar button has balanced visible left and right padding");
     auto *customLogo = window.findChild<QLabel *>(QStringLiteral("customTitleLogo"));
     require(customLogo != nullptr, "custom title logo exists");
+    auto *customTitleLabel = window.findChild<QLabel *>(QStringLiteral("customTitleLabel"));
+    requireLabelTextOneOf(customTitleLabel,
+                          {QStringLiteral("首页"), QStringLiteral("Home")},
+                          "custom title bar starts with the selected home page title");
     const int logoCenterX = customLogo->mapTo(&window, customLogo->rect().center()).x();
     const int checkedSidebarButtonCenterX =
         checkedSidebarButton->mapTo(&window, checkedSidebarButton->rect().center()).x();
@@ -458,11 +480,26 @@ int main(int argc, char **argv)
         }
     }
     require(deviceConfigNavButton != nullptr, "device configuration sidebar button exists");
+    clickWidget(temperatureNavButton, 150);
+    activateLayouts(&window);
+    auto *temperaturePage = window.findChild<QWidget *>(QStringLiteral("temperaturePage"));
+    require(temperaturePage != nullptr && temperaturePage->isVisible(),
+            "temperature page can be opened");
+    requireLabelTextOneOf(customTitleLabel,
+                          {QStringLiteral("温控"), QStringLiteral("Thermal")},
+                          "custom title bar follows the selected temperature page");
+    requireNoVisiblePageTitle(temperaturePage,
+                              "temperature page does not show an internal page title");
     clickWidget(deviceConfigNavButton, 150);
     activateLayouts(&window);
     auto *deviceConfigPage = window.findChild<QWidget *>(QStringLiteral("deviceConfigPage"));
     require(deviceConfigPage != nullptr && deviceConfigPage->isVisible(),
             "device configuration page can be opened");
+    requireLabelTextOneOf(customTitleLabel,
+                          {QStringLiteral("设备配置"), QStringLiteral("Device")},
+                          "custom title bar follows the selected device configuration page");
+    requireNoVisiblePageTitle(deviceConfigPage,
+                              "device configuration page does not show an internal page title");
     auto *deviceConfigScrollArea =
         deviceConfigPage->findChild<QScrollArea *>(QStringLiteral("mainCardsScrollArea"));
     require(deviceConfigScrollArea != nullptr, "device configuration scroll area exists");

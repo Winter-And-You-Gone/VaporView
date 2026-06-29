@@ -1867,11 +1867,6 @@ QPushButton#appSidebarButton:checked {
     border-color: @vv-primary;
     color: @vv-white;
 }
-QLabel#pageTitleLabel {
-    color: @vv-text;
-    font-size: 18px;
-    font-weight: 700;
-}
 QPushButton#dangerButton {
     background-color: @vv-danger;
     border: 1px solid @vv-danger;
@@ -5573,7 +5568,6 @@ MainWindow::MainWindow(QWidget *parent)
     , env_hmp_status_icon_(nullptr)
     , temperature_overview_inline_title_lbl_(nullptr)
     , temperature_controller_inline_title_lbl_(nullptr)
-    , temperature_page_title_lbl_(nullptr)
     , temperature_overview_panel_(nullptr)
     , config_inline_title_lbl_(nullptr)
     , global_rate_lbl_(nullptr)
@@ -6337,7 +6331,6 @@ void MainWindow::loadModernStyleSheet()
             "QPushButton#appSidebarButton[_vv_sidebar_compact=\"true\"] { min-width: 42px; max-width: 42px; min-height: 42px; max-height: 42px; padding: 0px; text-align: center; }"
             "QPushButton#appSidebarButton:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
             "QPushButton#appSidebarButton:checked { background-color: @vv-primary; border-color: @vv-primary; color: @vv-white; }"
-            "QLabel#pageTitleLabel { color: @vv-text; font-size: 18px; font-weight: 700; }"
             "QPushButton#dangerButton { background-color: @vv-danger; border: 1px solid @vv-danger; border-radius: 6px; color: @vv-white; font-weight: 700; padding: 6px 14px; }"
             "QMenuBar { background-color: @vv-surface; border-bottom: 1px solid @vv-border; padding: 4px 8px; }"
             "QMenuBar::item { background-color: transparent; padding: 6px 12px; border-radius: 4px; color: @vv-text; }"
@@ -6659,6 +6652,7 @@ void MainWindow::updateAppSidebarButtonTexts()
     applyButtonText(home_nav_btn_, is_english_ ? QStringLiteral("Home") : QStringLiteral("首页"));
     applyButtonText(temperature_nav_btn_, is_english_ ? QStringLiteral("Thermal") : QStringLiteral("温控"));
     applyButtonText(device_config_nav_btn_, is_english_ ? QStringLiteral("Device") : QStringLiteral("设备配置"));
+    updateCustomTitleBarTexts();
 }
 
 MainWindow::AppSidebarMode MainWindow::appSidebarModeForWidth(int width) const
@@ -10357,6 +10351,9 @@ void MainWindow::setupCentralWidget()
     main_page_stack_ = new QStackedWidget(central_widget_);
     main_page_stack_->setObjectName(QStringLiteral("mainPageStack"));
     main_page_stack_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    connect(main_page_stack_, &QStackedWidget::currentChanged, this, [this]() {
+        updateCustomTitleBarTexts();
+    });
 
     auto *left_widget = new QWidget(this);
     left_widget->setObjectName("mainCardsPane");
@@ -10514,10 +10511,6 @@ void MainWindow::setupCentralWidget()
     auto *temperaturePageLayout = new QVBoxLayout(temperature_page_);
     temperaturePageLayout->setContentsMargins(8, 0, 8, 8);
     temperaturePageLayout->setSpacing(8);
-    temperature_page_title_lbl_ = new QLabel(temperature_page_);
-    temperature_page_title_lbl_->setObjectName(QStringLiteral("pageTitleLabel"));
-    temperature_page_title_lbl_->setMinimumHeight(kMainPageTitleBarHeight);
-    temperaturePageLayout->addWidget(temperature_page_title_lbl_, 0, Qt::AlignLeft | Qt::AlignVCenter);
     auto *temperatureScrollArea = new QScrollArea(temperature_page_);
     temperatureScrollArea->setObjectName(QStringLiteral("mainCardsScrollArea"));
     temperatureScrollArea->setWidgetResizable(true);
@@ -10540,9 +10533,11 @@ void MainWindow::setupCentralWidget()
             main_page_stack_->setCurrentIndex(std::clamp(id, 0, main_page_stack_->count() - 1));
         }
         updateSidebarNavIcons();
+        updateCustomTitleBarTexts();
     });
     main_h_layout->addWidget(app_layout_splitter_, 1);
     updateAppSidebarForWidth(currentAppSidebarWidth(), true);
+    updateCustomTitleBarTexts();
 }
 
 void MainWindow::setupDeviceConfigPage()
@@ -10552,11 +10547,6 @@ void MainWindow::setupDeviceConfigPage()
     auto *pageLayout = new QVBoxLayout(device_config_.page);
     pageLayout->setContentsMargins(8, 0, 8, 8);
     pageLayout->setSpacing(8);
-
-    device_config_.page_title_lbl = new QLabel(device_config_.page);
-    device_config_.page_title_lbl->setObjectName(QStringLiteral("pageTitleLabel"));
-    device_config_.page_title_lbl->setMinimumHeight(kMainPageTitleBarHeight);
-    pageLayout->addWidget(device_config_.page_title_lbl, 0, Qt::AlignLeft | Qt::AlignVCenter);
 
     auto *scrollArea = new QScrollArea(device_config_.page);
     scrollArea->setObjectName(QStringLiteral("mainCardsScrollArea"));
@@ -11159,7 +11149,6 @@ void MainWindow::updateDeviceConfigTexts()
         return;
     }
 
-    if (device_config_.page_title_lbl) device_config_.page_title_lbl->setText(is_english_ ? "Device Configuration" : "设备配置");
     if (device_config_.serial_title_lbl) device_config_.serial_title_lbl->setText(is_english_ ? "Serial Port Configuration" : "串口配置");
     if (device_config_.data_source_mode_lbl) device_config_.data_source_mode_lbl->setText(is_english_ ? "Source:" : "数据源:");
     if (device_config_.sky_telemetry_transport_lbl) device_config_.sky_telemetry_transport_lbl->setText(is_english_ ? "Link:" : "链路:");
@@ -12444,7 +12433,6 @@ void MainWindow::setEnglish(bool english)
         log_inline_title_lbl_->setText(english ? "Log" : "日志");
     }
     updateAppSidebarButtonTexts();
-    if (temperature_page_title_lbl_) temperature_page_title_lbl_->setText(english ? "RD105 Temperature Control" : "RD105温控页");
     if (recording_status_title_lbl_)
     {
         recording_status_title_lbl_->setText(english ? "Recording Status" : "记录状态");
@@ -12767,11 +12755,48 @@ void MainWindow::updateFontScaleMenuCheckIcons()
     applyIcon(font_extra_large_action_, 123, 150);
 }
 
+QString MainWindow::currentMainPageTitleText() const
+{
+    const int pageIndex = main_page_stack_ ? main_page_stack_->currentIndex() : 0;
+    if (app_nav_button_group_)
+    {
+        if (QAbstractButton *button = app_nav_button_group_->button(pageIndex))
+        {
+            const QString accessibleName = button->accessibleName().trimmed();
+            if (!accessibleName.isEmpty())
+            {
+                return accessibleName;
+            }
+            const QString text = button->text().trimmed();
+            if (!text.isEmpty())
+            {
+                return text;
+            }
+            const QString toolTip = button->toolTip().trimmed();
+            if (!toolTip.isEmpty())
+            {
+                return toolTip;
+            }
+        }
+    }
+
+    switch (pageIndex)
+    {
+    case 1:
+        return is_english_ ? QStringLiteral("Device") : QStringLiteral("设备配置");
+    case 2:
+        return is_english_ ? QStringLiteral("Thermal") : QStringLiteral("温控");
+    case 0:
+    default:
+        return is_english_ ? QStringLiteral("Home") : QStringLiteral("首页");
+    }
+}
+
 void MainWindow::updateCustomTitleBarTexts()
 {
     if (custom_title_label_)
     {
-        custom_title_label_->setText(QStringLiteral("VaporView"));
+        custom_title_label_->setText(currentMainPageTitleText());
     }
     if (title_menu_btn_)
     {

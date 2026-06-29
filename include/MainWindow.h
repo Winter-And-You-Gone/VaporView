@@ -516,6 +516,7 @@ private:
     void updateThemeAction();
     void updateThemedIcons();
     void updateFontScaleMenuCheckIcons();
+    QString currentMainPageTitleText() const;
     void updateCustomTitleBarTexts();
     void updateCustomTitleBarStyle();
     void updateWindowControlButtons();
@@ -632,7 +633,6 @@ private:
     struct DeviceConfigPageWidgets
     {
         QWidget *page = nullptr;
-        QLabel *page_title_lbl = nullptr;
         QLabel *serial_title_lbl = nullptr;
         QLabel *data_source_mode_lbl = nullptr;
         QLabel *sky_telemetry_transport_lbl = nullptr;
@@ -868,7 +868,6 @@ private:
     QLabel *env_hmp_status_icon_;
     QLabel *temperature_overview_inline_title_lbl_;
     QLabel *temperature_controller_inline_title_lbl_;
-    QLabel *temperature_page_title_lbl_;
     TemperatureControllerOverviewPanel *temperature_overview_panel_;
     QLabel *config_inline_title_lbl_;
     QLabel *global_rate_lbl_;
