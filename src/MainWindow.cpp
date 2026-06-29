@@ -2728,18 +2728,15 @@ int epsilonPacketCallbackRate(const std::map<uint8_t, int>& packetRates, int fal
 
 QString epsilonPacketDialogRowLabel(const EpsilonPacketConfigOption& option, bool english)
 {
-    const int maxRateHz = option.supported_rates_hz.empty() ? 0 : option.supported_rates_hz.back();
     if (english)
     {
-        return QStringLiteral("%1 [%2]  (Max %3 Hz)")
+        return QStringLiteral("%1 [%2]")
             .arg(QString::fromLatin1(option.message_name))
-            .arg(option.packet_id, 2, 16, QLatin1Char('0'))
-            .arg(maxRateHz);
+            .arg(option.packet_id, 2, 16, QLatin1Char('0'));
     }
-    return QStringLiteral("%1 [%2]（最大 %3 Hz）")
+    return QStringLiteral("%1 [%2]")
         .arg(QString::fromUtf8(option.title_zh))
-        .arg(option.packet_id, 2, 16, QLatin1Char('0'))
-        .arg(maxRateHz);
+        .arg(option.packet_id, 2, 16, QLatin1Char('0'));
 }
 
 QString epsilonPacketRateDisplayText(int rateHz, bool english)
@@ -11242,39 +11239,39 @@ void MainWindow::updateDeviceConfigTexts()
     }
     if (device_config_.epsilon_packet_defaults_btn)
     {
-        device_config_.epsilon_packet_defaults_btn->setText(is_english_ ? "Rec." : "推荐");
+        device_config_.epsilon_packet_defaults_btn->setText(is_english_ ? "Recommended" : "恢复推荐");
         device_config_.epsilon_packet_defaults_btn->setToolTip(is_english_ ? "Use the recommended default packet rates" : "恢复推荐默认包频率");
-        fitButtonMinimumWidth(device_config_.epsilon_packet_defaults_btn, 72);
+        fitButtonMinimumWidth(device_config_.epsilon_packet_defaults_btn, 100);
     }
     if (device_config_.epsilon_packet_grouped_btn)
     {
-        device_config_.epsilon_packet_grouped_btn->setText(is_english_ ? "Group" : "分组");
+        device_config_.epsilon_packet_grouped_btn->setText(is_english_ ? "Grouped" : "分组模式");
         device_config_.epsilon_packet_grouped_btn->setToolTip(is_english_ ? "Use the grouped output-rate profile" : "切换到分组输出频率模式");
-        fitButtonMinimumWidth(device_config_.epsilon_packet_grouped_btn, 72);
+        fitButtonMinimumWidth(device_config_.epsilon_packet_grouped_btn, 100);
     }
     if (device_config_.epsilon_packet_save_btn)
     {
-        device_config_.epsilon_packet_save_btn->setText(is_english_ ? "Save" : "保存");
+        device_config_.epsilon_packet_save_btn->setText(is_english_ ? "Save + Apply" : "保存并应用");
         device_config_.epsilon_packet_save_btn->setToolTip(is_english_ ? "Save the packet-rate profile and apply it now when possible" : "保存包频率配置，并在可用时立即应用");
-        fitButtonMinimumWidth(device_config_.epsilon_packet_save_btn, 72);
+        fitButtonMinimumWidth(device_config_.epsilon_packet_save_btn, 118);
     }
     if (device_config_.epsilon_rtcm_port_btn)
     {
-        device_config_.epsilon_rtcm_port_btn->setText(is_english_ ? "RTCM" : "RTCM");
+        device_config_.epsilon_rtcm_port_btn->setText(is_english_ ? "RTCM Port" : "配置RTCM串口");
         device_config_.epsilon_rtcm_port_btn->setToolTip(is_english_ ? "Configure EPSILON communication port 2 as RTCM input" : "配置 EPSILON 第二通信串口为 RTCM 输入口");
-        fitButtonMinimumWidth(device_config_.epsilon_rtcm_port_btn, 72);
+        fitButtonMinimumWidth(device_config_.epsilon_rtcm_port_btn, 128);
     }
     if (device_config_.epsilon_reconfigure_btn)
     {
-        device_config_.epsilon_reconfigure_btn->setText(is_english_ ? "Output" : "重配");
+        device_config_.epsilon_reconfigure_btn->setText(is_english_ ? "Reconfigure Output" : "重新配置输出");
         device_config_.epsilon_reconfigure_btn->setToolTip(is_english_ ? "Apply the current EPSILON output profile" : "应用当前 EPSILON 输出配置");
-        fitButtonMinimumWidth(device_config_.epsilon_reconfigure_btn, 72);
+        fitButtonMinimumWidth(device_config_.epsilon_reconfigure_btn, 128);
     }
     if (device_config_.rtk_config_btn)
     {
-        device_config_.rtk_config_btn->setText(is_english_ ? "RTK" : "RTK");
+        device_config_.rtk_config_btn->setText(is_english_ ? "RTK Config" : "RTK配置");
         device_config_.rtk_config_btn->setToolTip(is_english_ ? "Open RTK config" : "打开 RTK 配置");
-        fitButtonMinimumWidth(device_config_.rtk_config_btn, 72);
+        fitButtonMinimumWidth(device_config_.rtk_config_btn, 100);
     }
 
     const QString connectText = is_english_ ? "Connect" : "连接";
@@ -18585,8 +18582,8 @@ void MainWindow::onConfigureEpsilonPacketRatesClicked()
 
     auto *hintLabel = new QLabel(
         is_english_
-            ? QStringLiteral("Configured from the local EPSILON ground-station profile. The recommended default profile prioritizes stable time and 3D navigation output. Each row shows the packet's maximum supported rate. If any packet differs from the grouped profile, the custom profile will be enabled automatically when you save.")
-            : QStringLiteral("配置范围来自本地 EPSILON 官方地面站配置。推荐默认配置优先保证稳定的时间与三维导航输出。每一行都显示该数据包支持的最大频率。只要任一数据包偏离分组模式，保存时就会自动启用自定义配置。"),
+            ? QStringLiteral("Configured from the local EPSILON ground-station profile. The recommended default profile prioritizes stable time and 3D navigation output. Rate limits are reflected by each selector's available options. If any packet differs from the grouped profile, the custom profile will be enabled automatically when you save.")
+            : QStringLiteral("配置范围来自本地 EPSILON 官方地面站配置。推荐默认配置优先保证稳定的时间与三维导航输出。频率上限由各选择框的可选项体现。只要任一数据包偏离分组模式，保存时就会自动启用自定义配置。"),
         &dialog);
     hintLabel->setWordWrap(true);
     hintLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Minimum);

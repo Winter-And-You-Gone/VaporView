@@ -830,6 +830,9 @@ int main(int argc, char **argv)
         }
         require(packetLabel != nullptr && packetLabel->isVisible(),
                 "device EPSILON packet-rate row has a matching label");
+        require(!packetLabel->text().contains(QStringLiteral("最大")) &&
+                    !packetLabel->text().contains(QStringLiteral("Max")),
+                "device EPSILON packet-rate labels omit max-rate text");
         const QRect labelRect(packetLabel->mapTo(epsilonConfigCard, QPoint(0, 0)),
                               packetLabel->size());
         require(comboRect.left() > labelRect.right(),
@@ -864,12 +867,12 @@ int main(int argc, char **argv)
     int actionButtonColumnB = -1;
     int actionButtonTop = epsilonConfigCard->height();
     int actionButtonBottom = -1;
-    for (const QString& buttonText : {QStringLiteral("推荐"),
-                                      QStringLiteral("分组"),
-                                      QStringLiteral("保存"),
-                                      QStringLiteral("RTCM"),
-                                      QStringLiteral("重配"),
-                                      QStringLiteral("RTK")})
+    for (const QString& buttonText : {QStringLiteral("恢复推荐"),
+                                      QStringLiteral("分组模式"),
+                                      QStringLiteral("保存并应用"),
+                                      QStringLiteral("配置RTCM串口"),
+                                      QStringLiteral("重新配置输出"),
+                                      QStringLiteral("RTK配置")})
     {
         bool foundButton = false;
         for (QPushButton *button : epsilonConfigCard->findChildren<QPushButton *>())
