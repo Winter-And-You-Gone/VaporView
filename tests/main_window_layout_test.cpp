@@ -720,6 +720,12 @@ int main(int argc, char **argv)
     }
     require(serialConfigCard != nullptr,
             "device configuration serial card can be identified from the serial controls");
+    require(serialConfigCard->sizePolicy().horizontalPolicy() == QSizePolicy::Maximum,
+            "device configuration serial card width follows its contents");
+    const QRect serialConfigPageRect(serialConfigCard->mapTo(deviceConfigPage, QPoint(0, 0)),
+                                     serialConfigCard->size());
+    require(serialConfigCard->width() <= serialConfigCard->sizeHint().width() + 4,
+            "device configuration serial card does not expand to fill the whole row");
     const QString appStyleSheet = qApp->styleSheet();
     const int serialCardStyleIndex = appStyleSheet.indexOf(QStringLiteral("QGroupBox#sensorGroupBox"));
     require(serialCardStyleIndex >= 0 &&
@@ -940,6 +946,12 @@ int main(int argc, char **argv)
             "device telemetry summary card is a sibling of the serial configuration card");
     require(!serialConfigCard->isAncestorOf(deviceTelemetrySummaryCard),
             "device telemetry summary card is not nested inside the serial configuration card");
+    const QRect telemetrySummaryPageRect(deviceTelemetrySummaryCard->mapTo(deviceConfigPage, QPoint(0, 0)),
+                                         deviceTelemetrySummaryCard->size());
+    require(std::abs(telemetrySummaryPageRect.top() - serialConfigPageRect.top()) <= 2,
+            "device telemetry summary card is aligned with the serial configuration card row");
+    require(telemetrySummaryPageRect.left() > serialConfigPageRect.right(),
+            "device telemetry summary card sits to the right of the serial configuration card");
     const QRect localEpsilonConfigRect = epsilonConfigCard->geometry();
     const QRect localTelemetrySummaryRect = deviceTelemetrySummaryCard->geometry();
     for (const QFrame *summaryCard : deviceSummaryCards)

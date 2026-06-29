@@ -10578,6 +10578,10 @@ void MainWindow::setupDeviceConfigPage()
     auto *contentLayout = new QVBoxLayout(content);
     contentLayout->setContentsMargins(0, 0, 0, 0);
     contentLayout->setSpacing(8);
+    auto *topRowLayout = new QHBoxLayout;
+    topRowLayout->setContentsMargins(0, 0, 0, 0);
+    topRowLayout->setSpacing(8);
+    topRowLayout->setAlignment(Qt::AlignTop);
 
     auto createCard = [](QWidget *parent) {
         auto *card = new QGroupBox(parent);
@@ -10590,6 +10594,7 @@ void MainWindow::setupDeviceConfigPage()
     };
 
     auto *serialCard = createCard(content);
+    serialCard->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
     auto *serialLayout = qobject_cast<QVBoxLayout *>(serialCard->layout());
     auto *serialTitleBar = new QWidget(serialCard);
     serialTitleBar->setObjectName(QStringLiteral("sectionTitleBar"));
@@ -10980,9 +10985,10 @@ void MainWindow::setupDeviceConfigPage()
     device_config_.data_telemetry_summary_lbl->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     device_config_.data_telemetry_summary_lbl->setWordWrap(true);
     summaryLayout->addWidget(device_config_.data_telemetry_summary_lbl);
-    contentLayout->addWidget(serialCard, 0, Qt::AlignTop);
+    topRowLayout->addWidget(serialCard, 0, Qt::AlignTop | Qt::AlignLeft);
+    topRowLayout->addWidget(device_config_.data_telemetry_summary_card, 1, Qt::AlignTop);
+    contentLayout->addLayout(topRowLayout);
     contentLayout->addWidget(device_config_.epsilon_config_card, 0, Qt::AlignTop);
-    contentLayout->addWidget(device_config_.data_telemetry_summary_card, 0, Qt::AlignTop);
     contentLayout->addStretch(1);
 
     scrollArea->setWidget(content);
