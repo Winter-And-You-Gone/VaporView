@@ -9,6 +9,7 @@
 #include <QGroupBox>
 #include <QLabel>
 #include <QLayout>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMetaObject>
 #include <QMouseEvent>
@@ -16,6 +17,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSplitter>
+#include <QSpinBox>
 #include <QSettings>
 #include <QStringList>
 #include <QTemporaryDir>
@@ -28,6 +30,16 @@
 
 namespace
 {
+
+struct SkyTelemetryRowWidgets
+{
+    QWidget *row = nullptr;
+    QComboBox *transportCombo = nullptr;
+    QLineEdit *tcpHostEdit = nullptr;
+    QSpinBox *tcpPortSpin = nullptr;
+    QComboBox *serialPortCombo = nullptr;
+    QComboBox *serialBaudCombo = nullptr;
+};
 
 void require(bool condition, const char *message)
 {
@@ -126,6 +138,111 @@ void requireNoVisiblePageTitle(QWidget *page, const char *message)
     {
         require(!label->isVisible(), message);
     }
+}
+
+SkyTelemetryRowWidgets findSkyTelemetryRowWidgets(QWidget *scope)
+{
+    SkyTelemetryRowWidgets widgets;
+    if (!scope)
+    {
+        return widgets;
+    }
+
+    const QList<QComboBox*> combos = scope->findChildren<QComboBox *>();
+    for (QComboBox *combo : combos)
+    {
+        if (combo->findData(QStringLiteral("tcp")) >= 0 &&
+            combo->findData(QStringLiteral("serial")) >= 0)
+        {
+            widgets.transportCombo = combo;
+            break;
+        }
+    }
+    if (!widgets.transportCombo)
+    {
+        return widgets;
+    }
+
+    widgets.row = widgets.transportCombo->parentWidget();
+    if (!widgets.row)
+    {
+        return widgets;
+    }
+
+    const QList<QLineEdit*> edits =
+        widgets.row->findChildren<QLineEdit *>(QString(), Qt::FindDirectChildrenOnly);
+    if (!edits.isEmpty())
+    {
+        widgets.tcpHostEdit = edits.first();
+    }
+    const QList<QSpinBox*> spinBoxes =
+        widgets.row->findChildren<QSpinBox *>(QString(), Qt::FindDirectChildrenOnly);
+    if (!spinBoxes.isEmpty())
+    {
+        widgets.tcpPortSpin = spinBoxes.first();
+    }
+    const QList<QComboBox*> rowCombos =
+        widgets.row->findChildren<QComboBox *>(QString(), Qt::FindDirectChildrenOnly);
+    for (QComboBox *combo : rowCombos)
+    {
+        if (combo == widgets.transportCombo)
+        {
+            continue;
+        }
+        if (combo->isEditable())
+        {
+            widgets.serialPortCombo = combo;
+        }
+        else
+        {
+            widgets.serialBaudCombo = combo;
+        }
+    }
+
+    return widgets;
+}
+
+void setSkyTelemetryTransport(QComboBox *transportCombo, const QString& transport)
+{
+    require(transportCombo != nullptr, "sky telemetry transport combo exists");
+    const int index = transportCombo->findData(transport);
+    require(index >= 0, "sky telemetry transport option exists");
+    transportCombo->setCurrentIndex(index);
+}
+
+bool telemetryFieldVisible(const QWidget *widget, bool effectiveVisibility)
+{
+    return widget && (effectiveVisibility ? widget->isVisible() : !widget->isHidden());
+}
+
+void requireSkyTelemetryTcpMode(const SkyTelemetryRowWidgets& widgets, bool effectiveVisibility = true)
+{
+    require(widgets.tcpHostEdit != nullptr &&
+                widgets.tcpPortSpin != nullptr &&
+                widgets.serialPortCombo != nullptr &&
+                widgets.serialBaudCombo != nullptr,
+            "sky telemetry TCP and serial controls exist");
+    require(telemetryFieldVisible(widgets.tcpHostEdit, effectiveVisibility) &&
+                telemetryFieldVisible(widgets.tcpPortSpin, effectiveVisibility),
+            "sky telemetry TCP IP and port fields are visible in TCP mode");
+    require(!telemetryFieldVisible(widgets.serialPortCombo, effectiveVisibility) &&
+                !telemetryFieldVisible(widgets.serialBaudCombo, effectiveVisibility),
+            "sky telemetry serial and baud fields are hidden in TCP mode");
+}
+
+void requireSkyTelemetrySerialMode(const SkyTelemetryRowWidgets& widgets, bool effectiveVisibility = true)
+{
+    require(widgets.tcpHostEdit != nullptr &&
+                widgets.tcpPortSpin != nullptr &&
+                widgets.serialPortCombo != nullptr &&
+                widgets.serialBaudCombo != nullptr,
+            "sky telemetry TCP and serial controls exist");
+    require(!telemetryFieldVisible(widgets.tcpHostEdit, effectiveVisibility) &&
+                !telemetryFieldVisible(widgets.tcpPortSpin, effectiveVisibility),
+            "sky telemetry TCP IP and port fields are hidden in serial mode");
+    require(telemetryFieldVisible(widgets.serialPortCombo, effectiveVisibility) &&
+                telemetryFieldVisible(widgets.serialBaudCombo, effectiveVisibility),
+            "sky telemetry serial and baud fields are visible in serial mode");
 }
 
 QRect wrappedTextBounds(const QLabel *label)
@@ -319,8 +436,22 @@ int main(int argc, char **argv)
         }
     }
     require(homeSourceModeCombo != nullptr, "home source mode combo exists");
+    const SkyTelemetryRowWidgets homeSkyTelemetry = findSkyTelemetryRowWidgets(homeConfigCard);
+    require(homeSkyTelemetry.transportCombo != nullptr,
+            "home sky telemetry transport combo exists");
     homeSourceModeCombo->setCurrentIndex(1);
     processEventsFor(150);
+    activateLayouts(&window);
+    setSkyTelemetryTransport(homeSkyTelemetry.transportCombo, QStringLiteral("tcp"));
+    processEventsFor(100);
+    activateLayouts(&window);
+    requireSkyTelemetryTcpMode(homeSkyTelemetry, false);
+    setSkyTelemetryTransport(homeSkyTelemetry.transportCombo, QStringLiteral("serial"));
+    processEventsFor(100);
+    activateLayouts(&window);
+    requireSkyTelemetrySerialMode(homeSkyTelemetry, false);
+    setSkyTelemetryTransport(homeSkyTelemetry.transportCombo, QStringLiteral("tcp"));
+    processEventsFor(100);
     activateLayouts(&window);
     requireSameRect(homeConfigCard->geometry(), homeConfigLocalRect, 2,
                     "home configuration card geometry is stable in sky-ground receive mode");
@@ -749,8 +880,22 @@ int main(int argc, char **argv)
     }
     require(deviceSourceModeCombo != nullptr,
             "device configuration source mode combo exists");
+    const SkyTelemetryRowWidgets deviceSkyTelemetry = findSkyTelemetryRowWidgets(deviceConfigPage);
+    require(deviceSkyTelemetry.transportCombo != nullptr,
+            "device configuration sky telemetry transport combo exists");
     deviceSourceModeCombo->setCurrentIndex(1);
     processEventsFor(150);
+    activateLayouts(&window);
+    setSkyTelemetryTransport(deviceSkyTelemetry.transportCombo, QStringLiteral("tcp"));
+    processEventsFor(100);
+    activateLayouts(&window);
+    requireSkyTelemetryTcpMode(deviceSkyTelemetry);
+    setSkyTelemetryTransport(deviceSkyTelemetry.transportCombo, QStringLiteral("serial"));
+    processEventsFor(100);
+    activateLayouts(&window);
+    requireSkyTelemetrySerialMode(deviceSkyTelemetry);
+    setSkyTelemetryTransport(deviceSkyTelemetry.transportCombo, QStringLiteral("tcp"));
+    processEventsFor(100);
     activateLayouts(&window);
     require(epsilonConfigCard->isVisible(),
             "device EPSILON configuration card stays visible in sky-ground receive mode");

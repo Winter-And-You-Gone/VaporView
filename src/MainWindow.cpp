@@ -7766,14 +7766,14 @@ void MainWindow::updateSourceModeUi()
     if (sky_telemetry_row_widget_) sky_telemetry_row_widget_->setVisible(true);
     if (sky_telemetry_transport_lbl_) sky_telemetry_transport_lbl_->setVisible(true);
     if (sky_telemetry_transport_combo_) sky_telemetry_transport_combo_->setVisible(true);
-    if (sky_telemetry_port_lbl_) sky_telemetry_port_lbl_->setVisible(true);
-    if (sky_telemetry_port_combo_) sky_telemetry_port_combo_->setVisible(true);
-    if (sky_telemetry_baud_lbl_) sky_telemetry_baud_lbl_->setVisible(true);
-    if (sky_telemetry_baud_combo_) sky_telemetry_baud_combo_->setVisible(true);
-    if (sky_telemetry_tcp_host_lbl_) sky_telemetry_tcp_host_lbl_->setVisible(true);
-    if (sky_telemetry_tcp_host_edit_) sky_telemetry_tcp_host_edit_->setVisible(true);
-    if (sky_telemetry_tcp_port_lbl_) sky_telemetry_tcp_port_lbl_->setVisible(true);
-    if (sky_telemetry_tcp_port_spin_) sky_telemetry_tcp_port_spin_->setVisible(true);
+    if (sky_telemetry_port_lbl_) sky_telemetry_port_lbl_->setVisible(!tcpTelemetry);
+    if (sky_telemetry_port_combo_) sky_telemetry_port_combo_->setVisible(!tcpTelemetry);
+    if (sky_telemetry_baud_lbl_) sky_telemetry_baud_lbl_->setVisible(!tcpTelemetry);
+    if (sky_telemetry_baud_combo_) sky_telemetry_baud_combo_->setVisible(!tcpTelemetry);
+    if (sky_telemetry_tcp_host_lbl_) sky_telemetry_tcp_host_lbl_->setVisible(tcpTelemetry);
+    if (sky_telemetry_tcp_host_edit_) sky_telemetry_tcp_host_edit_->setVisible(tcpTelemetry);
+    if (sky_telemetry_tcp_port_lbl_) sky_telemetry_tcp_port_lbl_->setVisible(tcpTelemetry);
+    if (sky_telemetry_tcp_port_spin_) sky_telemetry_tcp_port_spin_->setVisible(tcpTelemetry);
     if (sky_device_config_btn_) sky_device_config_btn_->setEnabled(remote && ground_telemetry_service_ && ground_telemetry_service_->isOpen());
     setRemoteDeviceButtonsEnabled(remote && ground_telemetry_service_ && ground_telemetry_service_->isOpen());
     updateRemoteTelemetrySummaryLabel();
@@ -11356,14 +11356,14 @@ void MainWindow::updateDeviceConfigState()
     if (device_config_.sky_telemetry_row_widget) device_config_.sky_telemetry_row_widget->setVisible(true);
     if (device_config_.sky_telemetry_transport_lbl) device_config_.sky_telemetry_transport_lbl->setVisible(true);
     if (device_config_.sky_telemetry_transport_combo) device_config_.sky_telemetry_transport_combo->setVisible(true);
-    if (device_config_.sky_telemetry_port_lbl) device_config_.sky_telemetry_port_lbl->setVisible(true);
-    if (device_config_.sky_telemetry_port_combo) device_config_.sky_telemetry_port_combo->setVisible(true);
-    if (device_config_.sky_telemetry_baud_lbl) device_config_.sky_telemetry_baud_lbl->setVisible(true);
-    if (device_config_.sky_telemetry_baud_combo) device_config_.sky_telemetry_baud_combo->setVisible(true);
-    if (device_config_.sky_telemetry_tcp_host_lbl) device_config_.sky_telemetry_tcp_host_lbl->setVisible(true);
-    if (device_config_.sky_telemetry_tcp_host_edit) device_config_.sky_telemetry_tcp_host_edit->setVisible(true);
-    if (device_config_.sky_telemetry_tcp_port_lbl) device_config_.sky_telemetry_tcp_port_lbl->setVisible(true);
-    if (device_config_.sky_telemetry_tcp_port_spin) device_config_.sky_telemetry_tcp_port_spin->setVisible(true);
+    if (device_config_.sky_telemetry_port_lbl) device_config_.sky_telemetry_port_lbl->setVisible(!tcpTelemetry);
+    if (device_config_.sky_telemetry_port_combo) device_config_.sky_telemetry_port_combo->setVisible(!tcpTelemetry);
+    if (device_config_.sky_telemetry_baud_lbl) device_config_.sky_telemetry_baud_lbl->setVisible(!tcpTelemetry);
+    if (device_config_.sky_telemetry_baud_combo) device_config_.sky_telemetry_baud_combo->setVisible(!tcpTelemetry);
+    if (device_config_.sky_telemetry_tcp_host_lbl) device_config_.sky_telemetry_tcp_host_lbl->setVisible(tcpTelemetry);
+    if (device_config_.sky_telemetry_tcp_host_edit) device_config_.sky_telemetry_tcp_host_edit->setVisible(tcpTelemetry);
+    if (device_config_.sky_telemetry_tcp_port_lbl) device_config_.sky_telemetry_tcp_port_lbl->setVisible(tcpTelemetry);
+    if (device_config_.sky_telemetry_tcp_port_spin) device_config_.sky_telemetry_tcp_port_spin->setVisible(tcpTelemetry);
 
     for (QWidget *widget : {device_config_.epsilon_remote_buttons_widget,
                             device_config_.ptb_remote_buttons_widget,
