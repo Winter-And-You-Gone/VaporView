@@ -1971,6 +1971,7 @@ QLabel#rtkStatusLabel {
 QFrame#epsilonSectionCard {
     background-color: @vv-surface;
     border: 1px solid @vv-border;
+    border-radius: 8px;
 }
 QWidget#homeTelemetrySummaryContainer {
     background-color: transparent;
@@ -6373,7 +6374,7 @@ void MainWindow::loadModernStyleSheet()
             "QWidget#sectionTitleCluster { background-color: transparent; border: none; }"
             "QWidget#sectionTitleCluster QLabel#sectionTitleIcon { background-color: transparent; border: none; padding: 0px; margin: 0px; }"
             "QWidget#sectionTitleBar QWidget#sectionTitleCluster QLabel#sectionTitleLabel, QWidget#environmentSectionTitleBar QWidget#sectionTitleCluster QLabel#sectionTitleLabel { margin: 0px; padding: 0px; }"
-            "QFrame#epsilonSectionCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 4px; }"
+            "QFrame#epsilonSectionCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
             "QWidget#homeTelemetrySummaryContainer { background-color: transparent; border: none; }"
             "QFrame#homeTelemetrySectionCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 6px; }"
             "QLabel#homeOverviewSectionTitle { color: @vv-primary; font-size: 14px; font-weight: 700; padding: 0px; margin: 0px; }"

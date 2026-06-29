@@ -372,7 +372,7 @@ QLabel#fieldLabel {
 QFrame#epsilonSectionCard {
     background-color: @vv-surface;
     border: 1px solid @vv-border;
-    border-radius: 4px;
+    border-radius: 8px;
 }
 
 QWidget#homeTelemetrySummaryContainer {

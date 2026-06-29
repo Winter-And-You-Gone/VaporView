@@ -575,6 +575,11 @@ int main(int argc, char **argv)
     }
     require(serialConfigCard != nullptr,
             "device configuration serial card can be identified from the serial controls");
+    const QString appStyleSheet = qApp->styleSheet();
+    const int serialCardStyleIndex = appStyleSheet.indexOf(QStringLiteral("QGroupBox#sensorGroupBox"));
+    require(serialCardStyleIndex >= 0 &&
+                appStyleSheet.mid(serialCardStyleIndex, 240).contains(QStringLiteral("border-radius: 8px")),
+            "serial configuration card uses the standard 8px card radius");
 
     const QRect deviceRateRect(deviceRateCombo->mapTo(deviceConfigPage, QPoint(0, 0)),
                                deviceRateCombo->size());
@@ -629,6 +634,10 @@ int main(int argc, char **argv)
             "device EPSILON configuration card is a sibling of the serial configuration card");
     require(!serialConfigCard->isAncestorOf(epsilonConfigCard),
             "device EPSILON configuration card is not nested inside the serial configuration card");
+    const int epsilonCardStyleIndex = appStyleSheet.indexOf(QStringLiteral("QFrame#epsilonSectionCard"));
+    require(epsilonCardStyleIndex >= 0 &&
+                appStyleSheet.mid(epsilonCardStyleIndex, 200).contains(QStringLiteral("border-radius: 8px")),
+            "device EPSILON and telemetry cards use the standard 8px card radius");
     int serialControlBottom = 0;
     for (QComboBox *combo : deviceConfigPage->findChildren<QComboBox *>())
     {

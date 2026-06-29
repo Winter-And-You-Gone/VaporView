@@ -591,6 +591,25 @@ if(BUILD_TESTING)
         ${CMAKE_SOURCE_DIR}/src
     )
     target_link_libraries(main_window_layout_test PRIVATE vaporview_main_window)
+    add_custom_command(TARGET main_window_layout_test POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:main_window_layout_test>/resources
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_SOURCE_DIR}/resources/modern_style.qss
+            $<TARGET_FILE_DIR:main_window_layout_test>/resources/modern_style.qss
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_SOURCE_DIR}/resources/combo_arrow_down.xpm
+            $<TARGET_FILE_DIR:main_window_layout_test>/resources/combo_arrow_down.xpm
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${CMAKE_SOURCE_DIR}/resources/combo_arrow_up.xpm
+            $<TARGET_FILE_DIR:main_window_layout_test>/resources/combo_arrow_up.xpm
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/resources/lucide
+            $<TARGET_FILE_DIR:main_window_layout_test>/resources/lucide
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${CMAKE_SOURCE_DIR}/resources/VaproViewLOGO
+            $<TARGET_FILE_DIR:main_window_layout_test>/resources/VaproViewLOGO
+        COMMENT "Copying resources for main_window_layout_test"
+    )
     add_test(NAME main_window_layout_test COMMAND main_window_layout_test)
 
     add_executable(session_viewer_theme_test
