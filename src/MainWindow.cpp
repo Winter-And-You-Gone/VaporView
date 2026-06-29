@@ -10794,7 +10794,7 @@ void MainWindow::setupDeviceConfigPage()
                            device_config_.temperature_remote_reconnect_btn,
                            VaporView::SkyDeviceId::TemperatureController);
 
-    device_config_.epsilon_config_card = new QFrame(formRowWidget);
+    device_config_.epsilon_config_card = new QFrame(content);
     device_config_.epsilon_config_card->setObjectName(QStringLiteral("epsilonSectionCard"));
     device_config_.epsilon_config_card->setMinimumWidth(520);
     device_config_.epsilon_config_card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
@@ -10933,10 +10933,9 @@ void MainWindow::setupDeviceConfigPage()
     commandButtonLayout->addStretch(1);
     epsilonConfigLayout->addWidget(commandButtonRow);
     formRowLayout->addWidget(formWidget, 0, Qt::AlignTop | Qt::AlignLeft);
-    formRowLayout->addWidget(device_config_.epsilon_config_card);
     serialLayout->addWidget(formRowWidget, 0, Qt::AlignTop);
 
-    device_config_.data_telemetry_summary_card = new QFrame(serialCard);
+    device_config_.data_telemetry_summary_card = new QFrame(content);
     device_config_.data_telemetry_summary_card->setObjectName(QStringLiteral("epsilonSectionCard"));
     device_config_.data_telemetry_summary_card->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     auto *summaryLayout = new QVBoxLayout(device_config_.data_telemetry_summary_card);
@@ -10952,8 +10951,9 @@ void MainWindow::setupDeviceConfigPage()
     device_config_.data_telemetry_summary_lbl->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Minimum);
     device_config_.data_telemetry_summary_lbl->setWordWrap(true);
     summaryLayout->addWidget(device_config_.data_telemetry_summary_lbl);
-    serialLayout->addWidget(device_config_.data_telemetry_summary_card, 0, Qt::AlignTop);
     contentLayout->addWidget(serialCard, 0, Qt::AlignTop);
+    contentLayout->addWidget(device_config_.epsilon_config_card, 0, Qt::AlignTop);
+    contentLayout->addWidget(device_config_.data_telemetry_summary_card, 0, Qt::AlignTop);
     contentLayout->addStretch(1);
 
     scrollArea->setWidget(content);

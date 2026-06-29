@@ -561,6 +561,21 @@ int main(int argc, char **argv)
     require(deviceRateCombo != nullptr && deviceRateCombo->width() <= 92,
             "device configuration rate combo is sized for 9999");
 
+    QGroupBox *serialConfigCard = nullptr;
+    for (QWidget *ancestor = devicePortCombo ? devicePortCombo->parentWidget() : nullptr;
+         ancestor != nullptr;
+         ancestor = ancestor->parentWidget())
+    {
+        if (auto *group = qobject_cast<QGroupBox *>(ancestor);
+            group && group->objectName() == QStringLiteral("sensorGroupBox"))
+        {
+            serialConfigCard = group;
+            break;
+        }
+    }
+    require(serialConfigCard != nullptr,
+            "device configuration serial card can be identified from the serial controls");
+
     const QRect deviceRateRect(deviceRateCombo->mapTo(deviceConfigPage, QPoint(0, 0)),
                                deviceRateCombo->size());
     bool foundRemoteButtonsToRightOfRate = false;
@@ -610,6 +625,10 @@ int main(int argc, char **argv)
     }
     require(epsilonConfigCard != nullptr, "device configuration page embeds all EPSILON packet-rate controls");
     require(epsilonConfigCard->isVisible(), "device EPSILON configuration card is visible in local mode");
+    require(epsilonConfigCard->parentWidget() == serialConfigCard->parentWidget(),
+            "device EPSILON configuration card is a sibling of the serial configuration card");
+    require(!serialConfigCard->isAncestorOf(epsilonConfigCard),
+            "device EPSILON configuration card is not nested inside the serial configuration card");
     int serialControlBottom = 0;
     for (QComboBox *combo : deviceConfigPage->findChildren<QComboBox *>())
     {
@@ -685,6 +704,10 @@ int main(int argc, char **argv)
             "device configuration telemetry summary card can be identified by title text");
     require(deviceTelemetrySummaryCard->isVisible(),
             "device configuration telemetry summary card is visible before source mode changes");
+    require(deviceTelemetrySummaryCard->parentWidget() == serialConfigCard->parentWidget(),
+            "device telemetry summary card is a sibling of the serial configuration card");
+    require(!serialConfigCard->isAncestorOf(deviceTelemetrySummaryCard),
+            "device telemetry summary card is not nested inside the serial configuration card");
     const QRect localEpsilonConfigRect = epsilonConfigCard->geometry();
     const QRect localTelemetrySummaryRect = deviceTelemetrySummaryCard->geometry();
     for (const QFrame *summaryCard : deviceSummaryCards)
