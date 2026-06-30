@@ -2397,6 +2397,26 @@ QString mainCardsScrollBarBackgroundStyleSheet(bool dark)
         .arg(background);
 }
 
+QString rtkConfigCardStyleSheet()
+{
+    return QStringLiteral(
+        "QDialog#rtkConfigDialog QGroupBox#sensorGroupBox { "
+        "background-color: @vv-surface; "
+        "border: 1px solid @vv-border; "
+        "border-top: 1px solid @vv-border; "
+        "border-radius: 8px; "
+        "margin-top: 0px; "
+        "padding: 0px; "
+        "color: @vv-text; "
+        "}"
+        "QDialog#rtkConfigDialog QGroupBox#sensorGroupBox::title { "
+        "color: transparent; "
+        "height: 0px; "
+        "margin: 0px; "
+        "padding: 0px; "
+        "}");
+}
+
 #pragma pack(push, 1)
 struct UnifiedRawFileHeader
 {
@@ -6398,6 +6418,8 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#recordingStatusLabel { background-color: transparent; border: none; color: @vv-text; font-size: 14px; font-weight: 600; }"
             "QGroupBox::title { subcontrol-origin: border; subcontrol-position: top left; left: 12px; top: -30px; padding: 0px 2px; background-color: transparent; border: none; border-radius: 0px; color: @vv-text; }"
             "QDialog#rtkConfigDialog, QWidget#rtkConfigViewport, QWidget#rtkConfigContent, QScrollArea#rtkConfigScrollArea { background-color: @vv-surface; }"
+            "QDialog#rtkConfigDialog QGroupBox#sensorGroupBox { background-color: @vv-surface; border: 1px solid @vv-border; border-top: 1px solid @vv-border; border-radius: 8px; margin-top: 0px; padding: 0px; color: @vv-text; }"
+            "QDialog#rtkConfigDialog QGroupBox#sensorGroupBox::title { color: transparent; height: 0px; margin: 0px; padding: 0px; }"
             "QDialog#rtkConfigDialog QGroupBox#rtkCardGroup { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; margin-top: 0px; padding: 0px; color: @vv-text; }"
             "QDialog#rtkConfigDialog QGroupBox#rtkCardGroup::title { color: transparent; }"
             "QDialog#rtkConfigDialog QWidget#sectionTitleBar { background-color: @vv-surface; border: none; border-bottom: 1px solid @vv-border; border-top-left-radius: 7px; border-top-right-radius: 7px; }"
@@ -6539,13 +6561,17 @@ QString MainWindow::themedStyleSheet() const
     const QString mainCardsScrollBarStyle =
         applyAppThemeTokens(mainCardsScrollBarBackgroundStyleSheet(dark_theme_enabled_),
                             dark_theme_enabled_);
+    const QString rtkConfigCardStyle =
+        applyAppThemeTokens(rtkConfigCardStyleSheet(), dark_theme_enabled_);
     return dark_theme_enabled_
         ? baseStyle +
               applyAppThemeTokens(darkThemeStyleSheet(), true) +
               mainCardsScrollBarStyle +
+              rtkConfigCardStyle +
               applyAppThemeTokens(customTitleBarStyleSheet(true), true)
         : baseStyle +
               mainCardsScrollBarStyle +
+              rtkConfigCardStyle +
               applyAppThemeTokens(customTitleBarStyleSheet(false), false);
 }
 

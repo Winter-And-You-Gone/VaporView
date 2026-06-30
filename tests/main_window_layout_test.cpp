@@ -102,6 +102,8 @@ void requireCardTitleBar(QWidget *card,
     require(matchedTitleBar != nullptr, message);
     require(matchedTitleBar->height() >= 36 && matchedTitleBar->height() <= 44,
             "device configuration card title bar uses the standard compact height");
+    require(matchedTitleBar->y() <= 2,
+            "card title bar sits flush with the top of the card");
 }
 
 QGroupBox *findCardByTitle(QWidget *root, const QStringList& expectedTitles)
@@ -320,6 +322,19 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                 "RTK card reuses the home page sensor card style");
         requireCardTitleBar(card, titles, iconName, message);
     }
+    auto *ntripCard = findCardByTitle(dialog,
+                                      {QStringLiteral("NTRIP 服务器配置"),
+                                       QStringLiteral("NTRIP Server Configuration")});
+    auto *rtcmCard = findCardByTitle(dialog,
+                                     {QStringLiteral("RTCM 输出配置"),
+                                      QStringLiteral("RTCM Output Configuration")});
+    require(ntripCard != nullptr && rtcmCard != nullptr,
+            "RTK NTRIP and RTCM cards exist for compact width checks");
+    require(ntripCard->width() <= ntripCard->sizeHint().width() + 4 &&
+                ntripCard->width() <= 760,
+            "RTK NTRIP card width hugs its compact form contents");
+    require(rtcmCard->width() <= rtcmCard->sizeHint().width() + 4,
+            "RTK RTCM output card width hugs its compact form contents");
     auto *serverEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
     auto *usernameEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkUsernameEdit"));
     auto *portEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkPortEdit"));

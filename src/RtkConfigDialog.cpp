@@ -901,9 +901,10 @@ QVBoxLayout *RtkConfigDialog::createCardLayout(QGroupBox *group, QLabel *&titleL
 {
     group->setTitle(QString());
     group->setObjectName(QStringLiteral("sensorGroupBox"));
+    group->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
 
     auto *cardLayout = new QVBoxLayout(group);
-    cardLayout->setContentsMargins(0, 0, 0, 0);
+    cardLayout->setContentsMargins(1, 0, 1, 1);
     cardLayout->setSpacing(0);
 
     auto *titleBar = new QWidget(group);
@@ -958,10 +959,11 @@ void RtkConfigDialog::setupUi()
 
     config_group_ = new QGroupBox(this);
     auto *configCardLayout = createCardLayout(config_group_, config_title_label_, QStringLiteral("satellite"));
+    config_group_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
     config_layout_ = new QGridLayout();
     config_layout_->setSpacing(6);
     config_layout_->setContentsMargins(10, 10, 10, 10);
-    config_layout_->setColumnStretch(7, 1);
+    config_layout_->setSizeConstraint(QLayout::SetFixedSize);
     configCardLayout->addLayout(config_layout_);
 
     int row = 0;
@@ -1003,14 +1005,15 @@ void RtkConfigDialog::setupUi()
     config_layout_->addWidget(password_edit_, row, 3);
     row++;
 
-    main_layout_->addWidget(config_group_);
+    main_layout_->addWidget(config_group_, 0, Qt::AlignLeft);
 
     output_group_ = new QGroupBox(this);
     auto *outputCardLayout = createCardLayout(output_group_, output_title_label_, QStringLiteral("usb"));
+    output_group_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
     output_layout_ = new QGridLayout();
     output_layout_->setSpacing(6);
     output_layout_->setContentsMargins(10, 10, 10, 10);
-    output_layout_->setColumnStretch(10, 1);
+    output_layout_->setSizeConstraint(QLayout::SetFixedSize);
     outputCardLayout->addLayout(output_layout_);
 
     row = 0;
@@ -1099,7 +1102,7 @@ void RtkConfigDialog::setupUi()
     output_layout_->addWidget(auto_detect_ports_btn_, row, 8);
     row++;
 
-    main_layout_->addWidget(output_group_);
+    main_layout_->addWidget(output_group_, 0, Qt::AlignLeft);
 
     gga_group_ = new QGroupBox(this);
     auto *ggaCardLayout = createCardLayout(gga_group_, gga_title_label_, QStringLiteral("activity"));
@@ -1316,6 +1319,17 @@ void RtkConfigDialog::applyScaledUiMetrics()
         label->setMinimumHeight(scalePixels(30));
         label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     };
+    auto applyFieldLabelContentWidth = [this](QLabel *label) {
+        if (!label)
+        {
+            return;
+        }
+
+        const QFontMetrics metrics(label->font());
+        label->setFixedWidth(metrics.horizontalAdvance(label->text()) + scalePixels(2));
+        label->setMinimumHeight(scalePixels(30));
+        label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    };
 
     if (main_layout_)
     {
@@ -1325,12 +1339,12 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
     if (config_layout_)
     {
-        config_layout_->setHorizontalSpacing(scalePixels(6));
-        config_layout_->setVerticalSpacing(scalePixels(6));
-        config_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(8));
+        config_layout_->setHorizontalSpacing(scalePixels(5));
+        config_layout_->setVerticalSpacing(scalePixels(4));
+        config_layout_->setContentsMargins(scalePixels(8), scalePixels(4), scalePixels(8), scalePixels(8));
         for (int row = 0; row < 2; ++row)
         {
-            config_layout_->setRowMinimumHeight(row, scalePixels(36));
+            config_layout_->setRowMinimumHeight(row, scalePixels(34));
         }
     }
 
@@ -1390,20 +1404,20 @@ void RtkConfigDialog::applyScaledUiMetrics()
         updateSectionTitleIcon(iconLabel, darkTheme);
     }
 
-    applyFieldLabelWidth(server_label_, 88);
-    applyFieldLabelWidth(username_label_, 88);
-    applyFieldLabelWidth(port_label_, 38);
-    applyFieldLabelWidth(password_label_, 50);
-    applyFieldLabelWidth(mountpoint_label_, 58);
-    server_edit_->setFixedWidth(scalePixels(180));
+    applyFieldLabelContentWidth(server_label_);
+    applyFieldLabelContentWidth(username_label_);
+    applyFieldLabelContentWidth(port_label_);
+    applyFieldLabelContentWidth(password_label_);
+    applyFieldLabelContentWidth(mountpoint_label_);
+    server_edit_->setFixedWidth(scalePixels(150));
     server_edit_->setMinimumHeight(scalePixels(32));
     port_edit_->setFixedWidth(scalePixels(76));
     port_edit_->setMinimumHeight(scalePixels(32));
-    username_edit_->setFixedWidth(scalePixels(150));
+    username_edit_->setFixedWidth(scalePixels(140));
     username_edit_->setMinimumHeight(scalePixels(32));
-    password_edit_->setFixedWidth(scalePixels(150));
+    password_edit_->setFixedWidth(scalePixels(140));
     password_edit_->setMinimumHeight(scalePixels(32));
-    applyComboWidth(mountpoint_combo_, 150);
+    applyComboWidth(mountpoint_combo_, 140);
 
     applyFieldLabelWidth(output_port_label_, 72);
     applyFieldLabelWidth(baudrate_label_, 54);
