@@ -340,18 +340,26 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     auto *portEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkPortEdit"));
     auto *passwordEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkPasswordEdit"));
     auto *mountpointCombo = dialog->findChild<QComboBox *>(QStringLiteral("rtkMountpointCombo"));
+    auto *fetchMountpointsButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkFetchMountpointsButton"));
     require(serverEdit != nullptr && usernameEdit != nullptr && portEdit != nullptr &&
-                passwordEdit != nullptr && mountpointCombo != nullptr,
+                passwordEdit != nullptr && mountpointCombo != nullptr && fetchMountpointsButton != nullptr,
             "RTK NTRIP compact fields exist for alignment checks");
     auto widgetX = [dialog](QWidget *widget) {
         return widget->mapTo(dialog, QPoint(0, 0)).x();
+    };
+    auto widgetY = [dialog](QWidget *widget) {
+        return widget->mapTo(dialog, QPoint(0, 0)).y();
     };
     require(std::abs(widgetX(serverEdit) - widgetX(usernameEdit)) <= 2,
             "RTK NTRIP server and username fields align vertically");
     require(std::abs(widgetX(portEdit) - widgetX(passwordEdit)) <= 2,
             "RTK NTRIP port and password fields align vertically");
-    require(widgetX(mountpointCombo) > widgetX(portEdit),
-            "RTK NTRIP mountpoint field remains to the right of the compact account columns");
+    require(widgetX(mountpointCombo) > widgetX(portEdit) &&
+                widgetX(mountpointCombo) - (widgetX(portEdit) + portEdit->width()) <= 90,
+            "RTK NTRIP mountpoint field follows closely after the port field");
+    require(std::abs(widgetX(fetchMountpointsButton) - widgetX(mountpointCombo)) <= 2 &&
+                widgetY(fetchMountpointsButton) > widgetY(mountpointCombo),
+            "RTK NTRIP mountpoint detection button sits below and aligns with the mountpoint combo");
     for (QWidget *topLevel : QApplication::topLevelWidgets())
     {
         require(qobject_cast<RtkConfigDialog *>(topLevel) == nullptr,

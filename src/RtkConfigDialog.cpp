@@ -988,8 +988,8 @@ void RtkConfigDialog::setupUi()
     mountpoint_combo_->setInsertPolicy(QComboBox::NoInsert);
     config_layout_->addWidget(mountpoint_combo_, row, 5);
     fetch_mountpoints_btn_ = new QPushButton(this);
+    fetch_mountpoints_btn_->setObjectName(QStringLiteral("rtkFetchMountpointsButton"));
     connect(fetch_mountpoints_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onFetchMountpointsClicked);
-    config_layout_->addWidget(fetch_mountpoints_btn_, row, 6);
     row++;
 
     username_label_ = createFieldLabel();
@@ -1003,6 +1003,7 @@ void RtkConfigDialog::setupUi()
     password_edit_ = new QLineEdit(this);
     password_edit_->setObjectName(QStringLiteral("rtkPasswordEdit"));
     config_layout_->addWidget(password_edit_, row, 3);
+    config_layout_->addWidget(fetch_mountpoints_btn_, row, 5, Qt::AlignLeft | Qt::AlignVCenter);
     row++;
 
     main_layout_->addWidget(config_group_, 0, Qt::AlignLeft);
@@ -1415,7 +1416,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     port_edit_->setMinimumHeight(scalePixels(32));
     username_edit_->setFixedWidth(scalePixels(140));
     username_edit_->setMinimumHeight(scalePixels(32));
-    password_edit_->setFixedWidth(scalePixels(140));
+    password_edit_->setFixedWidth(scalePixels(76));
     password_edit_->setMinimumHeight(scalePixels(32));
     applyComboWidth(mountpoint_combo_, 140);
 
