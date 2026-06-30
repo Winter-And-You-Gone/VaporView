@@ -47,6 +47,9 @@ public:
     void setEpsilonDataProvider(std::function<VaporView::EpsilonData()> provider);
     void setEpsilonMainAntennaLeverArmApplier(std::function<bool(double, double, double, QString*)> applier);
 
+signals:
+    void rtkRunningChanged(bool running);
+
 protected:
     void closeEvent(QCloseEvent *event) override;
 

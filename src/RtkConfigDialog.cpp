@@ -767,6 +767,11 @@ RtkConfigDialog::~RtkConfigDialog()
     }
     if (rtk_service_)
     {
+        if (is_running_ || rtk_service_->isRunning())
+        {
+            emit rtkRunningChanged(false);
+        }
+        is_running_ = false;
         rtk_service_->stop();
     }
     stopGgaMonitor();
@@ -1660,6 +1665,7 @@ void RtkConfigDialog::pollRtkServiceStatus(bool forceLog)
         {
             rtk_status_timer_->stop();
         }
+        emit rtkRunningChanged(false);
         updateButtonStates();
         appendLog(textFor("RTK service stopped unexpectedly", "RTK 服务已意外停止"));
         return;
@@ -2739,6 +2745,7 @@ void RtkConfigDialog::onStartClicked()
     if (rtk_service_ && rtk_service_->start(config, &errorMessage))
     {
         is_running_ = true;
+        emit rtkRunningChanged(true);
         last_rtk_status_message_.clear();
         updateButtonStates();
         if (rtk_status_timer_ && !rtk_status_timer_->isActive())
@@ -2766,6 +2773,7 @@ void RtkConfigDialog::onStopClicked()
             rtk_status_timer_->stop();
         }
         is_running_ = false;
+        emit rtkRunningChanged(false);
         last_rtk_status_message_.clear();
         updateButtonStates();
         appendLog(textFor("RTK service stopped", "RTK 服务已停止"));

@@ -1338,9 +1338,12 @@ QIcon createTimerIcon()
     return createLucideIcon(QStringLiteral("timer"), toolbarColor(AppThemeColor::ToolbarBlue));
 }
 
-QIcon createRtkSatelliteIcon()
+QIcon createRtkSatelliteIcon(bool running)
 {
-    return createLucideIcon(QStringLiteral("satellite"), toolbarColor(AppThemeColor::ToolbarBlue));
+    return createLucideIcon(
+        QStringLiteral("satellite"),
+        running ? toolbarColor(AppThemeColor::ToolbarGreen)
+                : appThemeColor(AppThemeColor::Primary, isDarkToolbarTheme()));
 }
 
 QIcon createClearLogIcon()
@@ -5783,6 +5786,7 @@ MainWindow::MainWindow(QWidget *parent)
     , last_tcp_raw_queue_warning_ms_(0)
     , rtk_config_action_(nullptr)
     , rtk_config_dialog_(nullptr)
+    , rtk_service_running_(false)
     , tcp_wave_panel_(nullptr)
     , session_viewer_window_(nullptr)
     , ground_telemetry_service_(nullptr)
@@ -9410,7 +9414,7 @@ void MainWindow::setupToolBar()
     connect(stop_recording_btn_, &QAction::triggered, this, &MainWindow::onStopRecordingClicked);
 
     rtk_config_action_ = new QAction(this);
-    rtk_config_action_->setIcon(createRtkSatelliteIcon());
+    updateRtkConfigIcon();
     connect(rtk_config_action_, &QAction::triggered, this, &MainWindow::onRtkConfigClicked);
     if (devices_menu_)
     {
@@ -12519,8 +12523,7 @@ void MainWindow::setEnglish(bool english)
     clear_log_action_->setStatusTip(english ? "Clear Log" : "清空日志");
     updateLogFilterAction();
     rtk_config_action_->setText(english ? "RTK Config" : "RTK配置");
-    rtk_config_action_->setToolTip(english ? "RTK config" : "RTK配置");
-    rtk_config_action_->setStatusTip(rtk_config_action_->toolTip());
+    updateRtkConfigIcon();
     session_viewer_action_->setToolTip(english ? "Data viewer" : "数据查看器");
     session_viewer_action_->setStatusTip(session_viewer_action_->toolTip());
 
@@ -12851,10 +12854,7 @@ void MainWindow::updateThemedIcons()
     {
         stop_recording_btn_->setIcon(createStopIcon());
     }
-    if (rtk_config_action_)
-    {
-        rtk_config_action_->setIcon(createRtkSatelliteIcon());
-    }
+    updateRtkConfigIcon();
     if (clear_log_action_)
     {
         clear_log_action_->setIcon(createClearLogIcon());
@@ -12877,6 +12877,22 @@ void MainWindow::updateThemedIcons()
     updateLogSidePanelToggleButton();
     updateSectionTitleIcons(this, dark_theme_enabled_);
     updateLogFilterAction();
+}
+
+void MainWindow::updateRtkConfigIcon()
+{
+    if (!rtk_config_action_)
+    {
+        return;
+    }
+
+    rtk_config_action_->setIcon(createRtkSatelliteIcon(rtk_service_running_));
+    const QString baseText = is_english_ ? QStringLiteral("RTK config") : QStringLiteral("RTK配置");
+    const QString stateText = rtk_service_running_
+        ? (is_english_ ? QStringLiteral("running") : QStringLiteral("运行中"))
+        : (is_english_ ? QStringLiteral("stopped") : QStringLiteral("未启动"));
+    rtk_config_action_->setToolTip(QStringLiteral("%1 (%2)").arg(baseText, stateText));
+    rtk_config_action_->setStatusTip(rtk_config_action_->toolTip());
 }
 
 void MainWindow::updateFontScaleMenuCheckIcons()
@@ -18399,6 +18415,10 @@ void MainWindow::onRtkConfigClicked()
     {
         rtk_config_dialog_ = new RtkConfigDialog();
         rtk_config_dialog_->setAttribute(Qt::WA_QuitOnClose, false);
+        connect(rtk_config_dialog_, &RtkConfigDialog::rtkRunningChanged, this, [this](bool running) {
+            rtk_service_running_ = running;
+            updateRtkConfigIcon();
+        });
     }
     rtk_config_dialog_->setEpsilonDataProvider([this]() {
         const CollectorSnapshot collectors = snapshotCollectors();

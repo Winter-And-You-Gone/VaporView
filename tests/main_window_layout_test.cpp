@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "RtkConfigDialog.h"
 
 #include <QApplication>
 #include <QAction>
@@ -168,6 +169,55 @@ void hoverWidget(QWidget *widget, bool hovered, int waitMs = 50)
     {
         processEventsFor(waitMs);
     }
+}
+
+void requireRtkTitleBarStatusIndicator(MainWindow& window)
+{
+    QToolButton *rtkButton = nullptr;
+    const QList<QToolButton*> titleButtons = window.findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
+    for (QToolButton *button : titleButtons)
+    {
+        if (button->toolTip().contains(QStringLiteral("RTK")))
+        {
+            rtkButton = button;
+            break;
+        }
+    }
+    require(rtkButton != nullptr, "RTK title bar action button exists");
+    require(rtkButton->toolTip().contains(QStringLiteral("未启动")) ||
+                rtkButton->toolTip().contains(QStringLiteral("stopped")),
+            "RTK title bar action starts with stopped status text");
+    const QSize iconSize(32, 32);
+    const qint64 stoppedIconKey = rtkButton->icon().pixmap(iconSize).cacheKey();
+
+    rtkButton->click();
+    processEventsFor(150);
+    RtkConfigDialog *dialog = nullptr;
+    for (QWidget *topLevel : QApplication::topLevelWidgets())
+    {
+        dialog = qobject_cast<RtkConfigDialog *>(topLevel);
+        if (dialog)
+        {
+            break;
+        }
+    }
+    require(dialog != nullptr, "RTK config dialog is created from title bar action");
+    QMetaObject::invokeMethod(dialog, "rtkRunningChanged", Qt::DirectConnection, Q_ARG(bool, true));
+    processEventsFor(50);
+    require(rtkButton->toolTip().contains(QStringLiteral("运行中")) ||
+                rtkButton->toolTip().contains(QStringLiteral("running")),
+            "RTK title bar action shows running status text");
+    const qint64 runningIconKey = rtkButton->icon().pixmap(iconSize).cacheKey();
+    require(runningIconKey != stoppedIconKey, "RTK title bar icon changes when service starts");
+
+    QMetaObject::invokeMethod(dialog, "rtkRunningChanged", Qt::DirectConnection, Q_ARG(bool, false));
+    processEventsFor(50);
+    require(rtkButton->toolTip().contains(QStringLiteral("未启动")) ||
+                rtkButton->toolTip().contains(QStringLiteral("stopped")),
+            "RTK title bar action returns to stopped status text");
+    require(rtkButton->icon().pixmap(iconSize).cacheKey() != runningIconKey,
+            "RTK title bar icon changes away from running color when service stops");
+    dialog->hide();
 }
 
 void requireLabelTextOneOf(const QLabel *label, const QStringList& expected, const char *message)
@@ -447,6 +497,7 @@ int main(int argc, char **argv)
     hoverWidget(customLogo, false);
     require(customLogo->property("_vv_logo_state").toString() == QStringLiteral("logo"),
             "custom title logo leave restores app logo");
+    requireRtkTitleBarStatusIndicator(window);
 
     auto *homeOverviewSplitter = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
     require(homeOverviewSplitter != nullptr, "home overview splitter exists");

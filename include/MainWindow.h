@@ -515,6 +515,7 @@ private:
     bool shouldUseCompactHomeLayout() const;
     void updateThemeAction();
     void updateThemedIcons();
+    void updateRtkConfigIcon();
     void updateFontScaleMenuCheckIcons();
     QString currentMainPageTitleText() const;
     void updateCustomTitleBarTexts();
@@ -1079,6 +1080,7 @@ private:
 
     QAction *rtk_config_action_;
     RtkConfigDialog *rtk_config_dialog_;
+    bool rtk_service_running_;
     TcpWavePanel *tcp_wave_panel_;
     SessionViewerWindow *session_viewer_window_;
     VaporView::GroundTelemetryService *ground_telemetry_service_;
