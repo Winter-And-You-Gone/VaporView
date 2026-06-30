@@ -486,8 +486,8 @@ private:
     bool enqueueTcpRawRecord(TcpRawRecord record);
     void closeUnifiedRawDatFiles();
     void resetUnifiedRawDatFiles();
-    void writeSessionMetadata(const QString& endTimeUtc = QString());
-    void writeDeviceConfigSnapshot();
+    bool writeSessionMetadata(const QString& endTimeUtc = QString());
+    bool writeDeviceConfigSnapshot();
     void appendEventLogLine(const QString& level, const QString& message);
     void appendErrorLogLine(const QString& message);
     quint64 currentTimestampUs() const;

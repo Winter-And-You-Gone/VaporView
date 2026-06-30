@@ -176,6 +176,31 @@ QString shortcutTextFromAction(const QAction *action)
     return action ? shortcutText(action->shortcut()) : QString();
 }
 
+bool writeJsonFileAtomically(const QString& filename, const QJsonObject& object, QString *errorMessage)
+{
+    QSaveFile file(filename);
+    if (!file.open(QIODevice::WriteOnly))
+    {
+        if (errorMessage) *errorMessage = file.errorString();
+        return false;
+    }
+
+    const QByteArray payload = QJsonDocument(object).toJson(QJsonDocument::Indented);
+    if (file.write(payload) != payload.size())
+    {
+        if (errorMessage) *errorMessage = file.errorString();
+        return false;
+    }
+
+    if (!file.commit())
+    {
+        if (errorMessage) *errorMessage = file.errorString();
+        return false;
+    }
+
+    return true;
+}
+
 QString shortcutTextFromWidget(QWidget *widget)
 {
     if (!widget)
@@ -14653,11 +14678,14 @@ quint64 MainWindow::steadyToEpochUs(const std::chrono::steady_clock::time_point&
     return static_cast<quint64>(std::chrono::duration_cast<std::chrono::microseconds>(systemPoint.time_since_epoch()).count());
 }
 
-void MainWindow::writeSessionMetadata(const QString& endTimeUtc)
+bool MainWindow::writeSessionMetadata(const QString& endTimeUtc)
 {
     if (session_metadata_filename_.isEmpty() || session_directory_.isEmpty())
     {
-        return;
+        log(is_english_
+            ? "Warning: session metadata path is empty"
+            : "警告：会话元数据路径为空");
+        return false;
     }
 
     QDir sessionDir(session_directory_);
@@ -14712,20 +14740,26 @@ void MainWindow::writeSessionMetadata(const QString& endTimeUtc)
     paths["device_config"] = sessionDir.relativeFilePath(device_config_filename_);
     root["paths"] = paths;
 
-    QFile file(session_metadata_filename_);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    QString error;
+    if (!writeJsonFileAtomically(session_metadata_filename_, root, &error))
     {
-        return;
+        log(QString(is_english_
+            ? "Warning: failed to save session metadata %1: %2"
+            : "警告：保存会话元数据失败 %1：%2")
+            .arg(session_metadata_filename_, error));
+        return false;
     }
-    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
-    file.close();
+    return true;
 }
 
-void MainWindow::writeDeviceConfigSnapshot()
+bool MainWindow::writeDeviceConfigSnapshot()
 {
     if (device_config_filename_.isEmpty())
     {
-        return;
+        log(is_english_
+            ? "Warning: device configuration snapshot path is empty"
+            : "警告：设备配置快照路径为空");
+        return false;
     }
 
     QJsonObject root;
@@ -14770,13 +14804,16 @@ void MainWindow::writeDeviceConfigSnapshot()
     addSerialConfig("rd105", temperature_port_combo_, temperature_baud_combo_, temperature_rate_combo_);
     root["sensors"] = sensors;
 
-    QFile file(device_config_filename_);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+    QString error;
+    if (!writeJsonFileAtomically(device_config_filename_, root, &error))
     {
-        return;
+        log(QString(is_english_
+            ? "Warning: failed to save device configuration snapshot %1: %2"
+            : "警告：保存设备配置快照失败 %1：%2")
+            .arg(device_config_filename_, error));
+        return false;
     }
-    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
-    file.close();
+    return true;
 }
 
 void MainWindow::startRecordingWorkers()
@@ -15053,7 +15090,22 @@ bool MainWindow::startRecordingSession()
             ? "Warning: failed to copy unified raw DAT format document into session folder"
             : "警告：未能将统一 raw DAT 格式说明复制到当前会话目录"));
     }
-    writeSessionMetadata();
+    if (!writeSessionMetadata())
+    {
+        closeUnifiedRawDatFiles();
+        if (sensors_file_ && sensors_file_->isOpen()) sensors_file_->close();
+        if (event_log_file_ && event_log_file_->isOpen()) event_log_file_->close();
+        if (error_log_file_ && error_log_file_->isOpen()) error_log_file_->close();
+        sensors_file_.reset();
+        resetUnifiedRawDatFiles();
+        event_log_file_.reset();
+        error_log_file_.reset();
+        QMessageBox::warning(
+            this,
+            is_english_ ? "Error" : "错误",
+            is_english_ ? "Failed to save session metadata" : "无法保存会话元数据");
+        return false;
+    }
     writeDeviceConfigSnapshot();
     startRecordingWorkers();
     updateRecordingStatusLabel();

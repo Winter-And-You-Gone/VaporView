@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSaveFile>
 #include <QStringList>
 #include <QTextStream>
 #include <QtEndian>
@@ -84,6 +85,31 @@ quint64 nowUs()
 QString timestampForSessionName()
 {
     return QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
+}
+
+bool writeJsonFileAtomically(const QString& filename, const QJsonObject& object, QString *errorMessage)
+{
+    QSaveFile file(filename);
+    if (!file.open(QIODevice::WriteOnly))
+    {
+        if (errorMessage) *errorMessage = file.errorString();
+        return false;
+    }
+
+    const QByteArray payload = QJsonDocument(object).toJson(QJsonDocument::Indented);
+    if (file.write(payload) != payload.size())
+    {
+        if (errorMessage) *errorMessage = file.errorString();
+        return false;
+    }
+
+    if (!file.commit())
+    {
+        if (errorMessage) *errorMessage = file.errorString();
+        return false;
+    }
+
+    return true;
 }
 
 QString boolText(bool value)
@@ -250,7 +276,12 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     raw_tcp_wave_record_count_ = 0;
     native_raw_tcp_wave_record_count_ = 0;
     recording_state_ = 1;
-    writeSessionMetadata();
+    if (!writeSessionMetadata(QString(), errorMessage))
+    {
+        recording_state_ = 0;
+        closeFiles();
+        return false;
+    }
     return true;
 }
 
@@ -267,12 +298,14 @@ void SkySessionRecorder::pause()
     }
 }
 
-void SkySessionRecorder::stop()
+bool SkySessionRecorder::stop(QString *errorMessage)
 {
     recording_elapsed_ms_ = recordingElapsedMs();
-    writeSessionMetadata(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
+    const bool metadataWritten = writeSessionMetadata(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs),
+                                                      errorMessage);
     closeFiles();
     recording_state_ = 0;
+    return metadataWritten;
 }
 
 bool SkySessionRecorder::isRecording() const
@@ -827,11 +860,12 @@ bool SkySessionRecorder::writeRawTcpWavePayload(quint64 hostTimeUs,
     return true;
 }
 
-void SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc)
+bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString *errorMessage)
 {
     if (session_metadata_filename_.isEmpty() || session_directory_.isEmpty())
     {
-        return;
+        if (errorMessage) *errorMessage = QStringLiteral("session metadata path is empty");
+        return false;
     }
 
     QDir sessionDir(session_directory_);
@@ -894,12 +928,7 @@ void SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc)
     paths.insert(QStringLiteral("waveform_features"), sessionDir.relativeFilePath(feature_filename_));
     root.insert(QStringLiteral("paths"), paths);
 
-    QFile file(session_metadata_filename_);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
-    {
-        return;
-    }
-    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    return writeJsonFileAtomically(session_metadata_filename_, root, errorMessage);
 }
 
 void SkySessionRecorder::closeFiles()

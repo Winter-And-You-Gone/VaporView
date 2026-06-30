@@ -3,6 +3,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSaveFile>
 #include <QtGlobal>
 #include <cmath>
 
@@ -13,6 +14,31 @@ namespace
 bool fuzzyEqual(double a, double b)
 {
     return std::fabs(a - b) < 0.000001;
+}
+
+bool writeJsonFileAtomically(const QString& filename, const QJsonObject& object, QString *errorMessage)
+{
+    QSaveFile file(filename);
+    if (!file.open(QIODevice::WriteOnly))
+    {
+        if (errorMessage) *errorMessage = file.errorString();
+        return false;
+    }
+
+    const QByteArray payload = QJsonDocument(object).toJson(QJsonDocument::Indented);
+    if (file.write(payload) != payload.size())
+    {
+        if (errorMessage) *errorMessage = file.errorString();
+        return false;
+    }
+
+    if (!file.commit())
+    {
+        if (errorMessage) *errorMessage = file.errorString();
+        return false;
+    }
+
+    return true;
 }
 
 QJsonObject serialToJson(const SerialDeviceConfig& config)
@@ -254,15 +280,7 @@ bool SkyConfig::loadFromFile(const QString& filename, SkyConfig& config, QString
 
 bool SkyConfig::saveToFile(const QString& filename, QString *errorMessage) const
 {
-    QFile file(filename);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
-    {
-        if (errorMessage) *errorMessage = file.errorString();
-        return false;
-    }
-    file.write(QJsonDocument(toJson()).toJson(QJsonDocument::Indented));
-    file.close();
-    return true;
+    return writeJsonFileAtomically(filename, toJson(), errorMessage);
 }
 
 bool SkyConfig::fromJson(const QJsonObject& object, SkyConfig& config, QString *errorMessage)

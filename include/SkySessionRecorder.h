@@ -28,7 +28,7 @@ public:
                const QString& telemetryTransport,
                const QString& telemetryEndpoint = QString());
     void pause();
-    void stop();
+    bool stop(QString *errorMessage = nullptr);
 
     bool isRecording() const;
     bool isPaused() const;
@@ -90,7 +90,7 @@ private:
                                 const QByteArray& rawPayload,
                                 const QByteArray& harmonicPayload,
                                 TcpFloatEncoding floatEncoding);
-    void writeSessionMetadata(const QString& endTimeUtc = QString());
+    bool writeSessionMetadata(const QString& endTimeUtc = QString(), QString *errorMessage = nullptr);
     void closeFiles();
 
     quint8 recording_state_ = 0;

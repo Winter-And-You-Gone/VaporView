@@ -243,7 +243,11 @@ void SkyRuntime::stop()
 
     if (session_recorder_.isRecording() || session_recorder_.isPaused())
     {
-        session_recorder_.stop();
+        QString error;
+        if (!session_recorder_.stop(&error))
+        {
+            emit logMessage(QStringLiteral("Failed to save sky recording metadata while stopping: %1").arg(error));
+        }
     }
 
     device_manager_.setSimulateData(false);
@@ -336,7 +340,12 @@ bool SkyRuntime::stopRecording(QString *error)
         if (error) *error = QStringLiteral("recording not started");
         return false;
     }
-    session_recorder_.stop();
+    if (!session_recorder_.stop(error))
+    {
+        emit logMessage(QStringLiteral("Failed to save sky recording metadata: %1")
+                            .arg(error ? *error : QString()));
+        return false;
+    }
     emit logMessage(QStringLiteral("Sky recording stopped"));
     return true;
 }
@@ -759,14 +768,23 @@ SkyCommandResult SkyRuntime::executeCommand(const CommandMessage& command)
         result.send_status = true;
         break;
     case CommandId::StopRecording:
+    {
         if (!session_recorder_.isRecording() && !session_recorder_.isPaused())
         {
             result.ack = makeAck(command, CommandErrorCode::RecordingNotStarted);
             break;
         }
-        stopRecording();
+        QString stopError;
+        if (!stopRecording(&stopError))
+        {
+            emit logMessage(QStringLiteral("Failed to stop sky recording: %1").arg(stopError));
+            result.ack = makeAck(command, CommandErrorCode::InternalError);
+            result.send_status = true;
+            break;
+        }
         result.send_status = true;
         break;
+    }
     case CommandId::SetTelemetryRate:
     case CommandId::SetWaveformRate:
     case CommandId::SetFeatureRate:
