@@ -1,3 +1,4 @@
+#include "AppTheme.h"
 #include "MainWindow.h"
 #include "RtkConfigDialog.h"
 
@@ -29,6 +30,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <limits>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -445,6 +447,10 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(ggaSourceCombo->itemText(0) == QStringLiteral("Epsilon生成") ||
                 ggaSourceCombo->itemText(0) == QStringLiteral("Epsilon generated"),
             "RTK GGA source first option uses the compact Epsilon generated label");
+    const int compactGgaSourceWidth =
+        ggaSourceCombo->fontMetrics().horizontalAdvance(ggaSourceCombo->currentText()) + 54;
+    require(ggaSourceCombo->width() <= compactGgaSourceWidth,
+            "RTK GGA source combo width hugs the Epsilon generated label");
     require(ggaToggleButton->text() == QStringLiteral("读取") ||
                 ggaToggleButton->text() == QStringLiteral("Read"),
             "RTK GGA idle action uses a compact read label");
@@ -671,6 +677,25 @@ void requireSameRect(const QRect& actual, const QRect& expected, int tolerance, 
                 std::abs(actual.width() - expected.width()) <= tolerance &&
                 std::abs(actual.height() - expected.height()) <= tolerance,
             message);
+}
+
+void requireLastStyleRuleContains(const QString& styleSheet,
+                                  const QString& selector,
+                                  const QString& expected,
+                                  const char *message)
+{
+    const int index = styleSheet.lastIndexOf(selector);
+    require(index >= 0, message);
+    const int ruleStart = styleSheet.indexOf(QLatin1Char('{'), index);
+    const int ruleEnd = ruleStart >= 0 ? styleSheet.indexOf(QLatin1Char('}'), ruleStart) : -1;
+    require(ruleStart >= 0 && ruleEnd > ruleStart, message);
+    const QString rule = styleSheet.mid(index, ruleEnd - index + 1);
+    if (!rule.contains(expected))
+    {
+        std::cerr << "Expected style fragment: " << expected.toStdString() << '\n'
+                  << "Actual style rule: " << rule.toStdString() << '\n';
+    }
+    require(rule.contains(expected), message);
 }
 
 }  // namespace
@@ -954,6 +979,48 @@ int main(int argc, char **argv)
             "temperature overview output enable capsule exists");
     require(!temperatureOutputSwitch->isEnabled(),
             "temperature overview output enable capsule is disabled without controller data");
+
+    const QList<QFrame*> homeTelemetryPills =
+        deviceOverviewCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+    require(!homeTelemetryPills.isEmpty(),
+            "home device overview telemetry pills exist before dark theme switch");
+    int minHomeTelemetryPillHeight = std::numeric_limits<int>::max();
+    for (QFrame *pill : homeTelemetryPills)
+    {
+        minHomeTelemetryPillHeight = std::min(minHomeTelemetryPillHeight, pill->height());
+    }
+    require(minHomeTelemetryPillHeight > 0,
+            "home device overview telemetry pills have a measurable height");
+    require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
+            "main window can switch to dark theme for overview style checks");
+    processEventsFor(150);
+    activateLayouts(&window);
+    const QString darkOverviewStyleSheet = qApp->styleSheet();
+    requireLastStyleRuleContains(darkOverviewStyleSheet,
+                                 QStringLiteral("QFrame#homeTelemetrySummaryPill {"),
+                                 VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
+                                 "dark theme overrides home telemetry summary pill background");
+    requireLastStyleRuleContains(darkOverviewStyleSheet,
+                                 QStringLiteral("QFrame#deviceTelemetrySectionTitlePane {"),
+                                 VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
+                                 "dark theme overrides device telemetry section title pane background");
+    requireLastStyleRuleContains(darkOverviewStyleSheet,
+                                 QStringLiteral("QLabel#temperatureOverviewValuePill {"),
+                                 VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
+                                 "dark theme overrides temperature overview value pill background");
+    requireLastStyleRuleContains(darkOverviewStyleSheet,
+                                 QStringLiteral("QToolButton#temperatureOverviewChannelButton[available=\"false\"] {"),
+                                 VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
+                                 "dark theme overrides unavailable temperature channel selector background");
+    for (QFrame *pill : deviceOverviewCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill")))
+    {
+        require(pill->height() >= minHomeTelemetryPillHeight,
+                "home device overview telemetry pills do not shrink after switching to dark theme");
+    }
+    require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
+            "main window can switch back to light theme after overview style checks");
+    processEventsFor(150);
+    activateLayouts(&window);
 
     qRegisterMetaType<VaporView::TemperatureControllerData>("VaporView::TemperatureControllerData");
     VaporView::TemperatureControllerData validTemperatureData;

@@ -1516,7 +1516,14 @@ void RtkConfigDialog::applyScaledUiMetrics()
     {
         gga_port_info_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     }
-    applyComboWidth(gga_port_combo_, 140);
+    if (gga_port_combo_)
+    {
+        const QFontMetrics metrics(gga_port_combo_->font());
+        const int targetWidth = metrics.horizontalAdvance(mainGgaSourceLabel()) + scalePixels(42);
+        gga_port_combo_->setFixedWidth(targetWidth);
+        gga_port_combo_->setFixedHeight(scalePixels(kRtkInputHeight));
+        gga_port_combo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    }
     applyButtonWidth(gga_toggle_btn_, 72);
 
     const bool ggaStatusVisible = gga_status_label_ && !gga_status_label_->text().trimmed().isEmpty();

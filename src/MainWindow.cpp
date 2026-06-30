@@ -2401,6 +2401,88 @@ QLabel#statusIndicator[status="warning"] {
 )");
 }
 
+QString darkOverviewStyleSheet()
+{
+    return QStringLiteral(R"(
+QFrame#deviceTelemetrySectionTitlePane {
+    background-color: @vv-surface-alt;
+    border: none;
+    border-right: 1px solid @vv-border;
+    border-top-left-radius: 6px;
+    border-bottom-left-radius: 6px;
+}
+QLabel#deviceTelemetrySectionTitleLabel {
+    background-color: transparent;
+    border: none;
+    color: @vv-text-strong;
+    font-size: 13px;
+    font-weight: 700;
+    padding: 0px;
+    margin: 0px;
+}
+QFrame#homeTelemetrySummaryPill {
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
+    border-radius: 8px;
+    padding: 0px;
+    margin: 0px;
+}
+QFrame#homeTelemetrySummaryPill QLabel {
+    background-color: transparent;
+    border: none;
+    color: @vv-text;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0px;
+    margin: 0px;
+}
+QFrame#homeTelemetrySummaryPill QLabel#homeTelemetrySummaryValueLabel {
+    font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
+}
+QFrame#homeTelemetrySummaryPill[hasData="true"] {
+    background-color: @vv-primary-subtle;
+    border: 1px solid @vv-primary-subtle-pressed;
+}
+QFrame#homeTelemetrySummaryPill[hasData="false"] {
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
+}
+QFrame#homeTelemetrySummaryPill[hasData="false"] QLabel {
+    color: @vv-text-muted;
+}
+QLabel#homeTelemetrySummaryNameLabel[deviceConfigLink="true"] {
+    color: @vv-text-strong;
+    font-size: 14px;
+    font-weight: 700;
+}
+QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink="true"] {
+    color: @vv-text-strong;
+    font-size: 14px;
+    font-weight: 600;
+}
+QLabel#temperatureOverviewValuePill {
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
+    border-radius: 10px;
+    color: @vv-text-strong;
+}
+QToolButton#temperatureOverviewChannelButton {
+    background-color: @vv-primary-subtle;
+    border: 1px solid @vv-primary-subtle-pressed;
+    color: @vv-primary;
+}
+QToolButton#temperatureOverviewChannelButton[available="false"] {
+    background-color: @vv-surface-alt;
+    border-color: @vv-border;
+    color: @vv-text-muted;
+}
+QPushButton#temperatureOverviewOutputSwitch {
+    background-color: transparent;
+    color: @vv-text;
+}
+)");
+}
+
 QString mainCardsScrollBarBackgroundStyleSheet(bool dark)
 {
     const QString background = dark ? QStringLiteral("@vv-window") : QStringLiteral("@vv-surface");
@@ -6591,6 +6673,7 @@ QString MainWindow::themedStyleSheet() const
     return dark_theme_enabled_
         ? baseStyle +
               applyAppThemeTokens(darkThemeStyleSheet(), true) +
+              applyAppThemeTokens(darkOverviewStyleSheet(), true) +
               mainCardsScrollBarStyle +
               rtkConfigCardStyle +
               applyAppThemeTokens(customTitleBarStyleSheet(true), true)
@@ -8241,6 +8324,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             pill->setObjectName(QStringLiteral("homeTelemetrySummaryPill"));
             pill->setProperty("deviceConfigLink", useSideTitle);
             pill->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+            pill->setMinimumHeight(scalePixels(useSideTitle ? 24 : 26));
             pill->setProperty("hasData", item.hasData);
             pill->setProperty("data-valid", QVariant());
             auto *pillLayout = new QHBoxLayout(pill);
