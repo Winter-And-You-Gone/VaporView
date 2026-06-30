@@ -14,6 +14,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFontDatabase>
+#include <QFutureWatcher>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHeaderView>
@@ -43,6 +44,7 @@
 #include <QWidget>
 #include <QStringConverter>
 #include <QtEndian>
+#include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
 #include <cmath>
@@ -173,6 +175,13 @@ struct RawFileSummary
     QString status;
 };
 
+struct RawScanResult
+{
+    QString session_directory;
+    QVector<RawRecordIndex> records;
+    QVector<RawFileSummary> file_summaries;
+};
+
 struct RawDecodedField
 {
     QString group;
@@ -286,6 +295,139 @@ QString recordTypeName(quint16 sourceId, quint16 recordType, bool english)
     default:
         return QStringLiteral("record_type %1").arg(recordType);
     }
+}
+
+void scanRawFileIndex(const QString& filename, quint16 expectedSourceId, bool english, RawScanResult& result)
+{
+    RawFileSummary summary;
+    summary.device_name = sourceName(expectedSourceId, english);
+    summary.filename = filename;
+
+    QFileInfo info(filename);
+    if (!info.exists())
+    {
+        summary.status = english ? QStringLiteral("Missing") : QStringLiteral("缺失");
+        result.file_summaries.push_back(summary);
+        return;
+    }
+    summary.file_size = info.size();
+
+    QFile file(filename);
+    if (!file.open(QIODevice::ReadOnly))
+    {
+        summary.status = english ? QStringLiteral("Open failed") : QStringLiteral("打开失败");
+        result.file_summaries.push_back(summary);
+        return;
+    }
+
+    UnifiedRawFileHeader fileHeader{};
+    if (file.read(reinterpret_cast<char*>(&fileHeader), sizeof(fileHeader)) != static_cast<qint64>(sizeof(fileHeader)) ||
+        std::memcmp(fileHeader.magic, kUnifiedRawMagic, sizeof(fileHeader.magic)) != 0)
+    {
+        summary.status = english ? QStringLiteral("Invalid header") : QStringLiteral("文件头无效");
+        result.file_summaries.push_back(summary);
+        return;
+    }
+
+    const quint32 fileHeaderSize = qFromLittleEndian(fileHeader.header_size);
+    const quint16 sourceId = qFromLittleEndian(fileHeader.source_id);
+    if (fileHeaderSize < sizeof(UnifiedRawFileHeader) || !file.seek(fileHeaderSize))
+    {
+        summary.status = english ? QStringLiteral("Invalid header size") : QStringLiteral("文件头长度无效");
+        result.file_summaries.push_back(summary);
+        return;
+    }
+    if (sourceId != expectedSourceId)
+    {
+        summary.status = (english
+            ? QStringLiteral("Unexpected source %1")
+            : QStringLiteral("数据源不匹配 %1")).arg(sourceId);
+    }
+    else
+    {
+        summary.status = english ? QStringLiteral("OK") : QStringLiteral("正常");
+    }
+
+    while (!file.atEnd())
+    {
+        const qint64 recordOffset = file.pos();
+        UnifiedRawRecordHeader header{};
+        const qint64 headerBytes = file.read(reinterpret_cast<char*>(&header), sizeof(header));
+        if (headerBytes == 0)
+        {
+            break;
+        }
+        if (headerBytes != static_cast<qint64>(sizeof(header)))
+        {
+            summary.status = english ? QStringLiteral("Incomplete record header") : QStringLiteral("记录头不完整");
+            break;
+        }
+
+        const quint32 marker = qFromLittleEndian(header.marker);
+        const quint32 recordHeaderSize = qFromLittleEndian(header.header_size);
+        const quint32 payloadSize = qFromLittleEndian(header.payload_size);
+        if (marker != kUnifiedRawRecordMarker || recordHeaderSize < sizeof(UnifiedRawRecordHeader))
+        {
+            summary.status = english ? QStringLiteral("Invalid record marker") : QStringLiteral("记录标记无效");
+            break;
+        }
+
+        const qint64 payloadOffset = recordOffset + static_cast<qint64>(recordHeaderSize);
+        const qint64 nextRecord = payloadOffset + static_cast<qint64>(payloadSize);
+        if (nextRecord > file.size())
+        {
+            summary.status = english ? QStringLiteral("Incomplete payload") : QStringLiteral("payload 不完整");
+            break;
+        }
+
+        RawRecordIndex record;
+        record.filename = filename;
+        record.source_id = qFromLittleEndian(header.source_id);
+        record.record_type = qFromLittleEndian(header.record_type);
+        record.flags = qFromLittleEndian(header.flags);
+        record.sequence = qFromLittleEndian(header.sequence);
+        record.host_timestamp_us = qFromLittleEndian(header.host_timestamp_us);
+        record.payload_size = payloadSize;
+        record.record_offset = static_cast<quint64>(recordOffset);
+        record.payload_offset = static_cast<quint64>(payloadOffset);
+        record.device_name = sourceName(record.source_id, english);
+        result.records.push_back(record);
+
+        ++summary.record_count;
+        if (summary.first_timestamp_us == 0)
+        {
+            summary.first_timestamp_us = record.host_timestamp_us;
+        }
+        summary.last_timestamp_us = record.host_timestamp_us;
+
+        if (!file.seek(nextRecord))
+        {
+            break;
+        }
+    }
+
+    result.file_summaries.push_back(summary);
+}
+
+RawScanResult scanRawSession(const QString& sessionDirectory, bool english)
+{
+    RawScanResult result;
+    result.session_directory = sessionDirectory;
+
+    const QDir rawDir(QDir(sessionDirectory).filePath(QStringLiteral("raw")));
+    const QVector<QPair<QString, quint16>> files = {
+        {QStringLiteral("epsilon.dat"), kRawSourceEpsilon},
+        {QStringLiteral("ptb.dat"), kRawSourcePtb},
+        {QStringLiteral("hmp.dat"), kRawSourceHmp},
+        {QStringLiteral("lidar.dat"), kRawSourceLidar},
+        {QStringLiteral("tcp_wave.dat"), kRawSourceTcpWave},
+    };
+    for (const auto& file : files)
+    {
+        scanRawFileIndex(rawDir.filePath(file.first), file.second, english, result);
+    }
+
+    return result;
 }
 
 uint16_t readU16LE(const uint8_t* data)
@@ -570,6 +712,7 @@ struct RawDataParserWindow::Impl
     QHash<QString, RawDecodedRecord> decode_cache;
     QByteArray current_payload;
     QVector<QPair<int, int>> current_hex_positions;
+    QFutureWatcher<RawScanResult> *scan_watcher = nullptr;
 
     QWidget *central = nullptr;
     QLabel *status_label = nullptr;
@@ -596,11 +739,14 @@ struct RawDataParserWindow::Impl
     QPlainTextEdit *hex_view = nullptr;
 
     void setupUi();
+    void shutdown();
     void setEnglish(bool value);
     bool openSessionPath(const QString& path);
     QString resolveSessionDirectory(const QString& path) const;
     void scanSession();
     void scanRawFile(const QString& filename, quint16 expectedSourceId);
+    void finishScanSession();
+    void setScanControlsEnabled(bool enabled);
     void refreshFileList();
     void refreshDeviceFilter();
     void applyFilters();
@@ -634,7 +780,10 @@ RawDataParserWindow::RawDataParserWindow(QWidget *parent)
     impl_->setEnglish(false);
 }
 
-RawDataParserWindow::~RawDataParserWindow() = default;
+RawDataParserWindow::~RawDataParserWindow()
+{
+    impl_->shutdown();
+}
 
 void RawDataParserWindow::setEnglish(bool english)
 {
@@ -787,8 +936,14 @@ void RawDataParserWindow::Impl::setupUi()
     mainLayout->addWidget(splitter, 1);
 
     status_label = new QLabel(owner);
+    status_label->setObjectName(QStringLiteral("rawDataParserStatusLabel"));
     status_label->setWordWrap(true);
     mainLayout->addWidget(status_label);
+
+    scan_watcher = new QFutureWatcher<RawScanResult>(owner);
+    QObject::connect(scan_watcher, &QFutureWatcher<RawScanResult>::finished, owner, [this]() {
+        finishScanSession();
+    });
 
     QObject::connect(reload_btn, &QPushButton::clicked, owner, [this]() {
         scanSession();
@@ -821,6 +976,17 @@ void RawDataParserWindow::Impl::setupUi()
     QObject::connect(export_bin_btn, &QPushButton::clicked, owner, [this]() { exportSelectedPayload(); });
     QObject::connect(export_decoded_csv_btn, &QPushButton::clicked, owner, [this]() { exportDecodedCsv(); });
     QObject::connect(export_decoded_json_btn, &QPushButton::clicked, owner, [this]() { exportDecodedJson(); });
+}
+
+void RawDataParserWindow::Impl::shutdown()
+{
+    if (!scan_watcher)
+    {
+        return;
+    }
+    QObject::disconnect(scan_watcher, nullptr, owner, nullptr);
+    delete scan_watcher;
+    scan_watcher = nullptr;
 }
 
 void RawDataParserWindow::Impl::setEnglish(bool value)
@@ -883,32 +1049,73 @@ bool RawDataParserWindow::Impl::openSessionPath(const QString& path)
 
 void RawDataParserWindow::Impl::scanSession()
 {
+    if (scan_watcher && scan_watcher->isRunning())
+    {
+        status_label->setText(english
+            ? QStringLiteral("Raw DAT indexing is already running...")
+            : QStringLiteral("正在建立 raw DAT 原始记录索引..."));
+        return;
+    }
+
     records.clear();
     visible_rows.clear();
     file_summaries.clear();
     decode_cache.clear();
+    current_payload.clear();
+    current_hex_positions.clear();
     detail_tree->clear();
     hex_view->clear();
+    file_list->clear();
+    refreshDeviceFilter();
+    record_model->setSource(&records, &visible_rows);
 
     if (session_directory.isEmpty())
     {
         status_label->setText(english ? QStringLiteral("No session path is available.") : QStringLiteral("当前没有可用会话路径。"));
-        record_model->setSource(&records, &visible_rows);
         return;
     }
 
-    const QDir rawDir(QDir(session_directory).filePath(QStringLiteral("raw")));
-    const QVector<QPair<QString, quint16>> files = {
-        {QStringLiteral("epsilon.dat"), kRawSourceEpsilon},
-        {QStringLiteral("ptb.dat"), kRawSourcePtb},
-        {QStringLiteral("hmp.dat"), kRawSourceHmp},
-        {QStringLiteral("lidar.dat"), kRawSourceLidar},
-        {QStringLiteral("tcp_wave.dat"), kRawSourceTcpWave},
-    };
-    for (const auto& file : files)
+    setScanControlsEnabled(false);
+    status_label->setText(english
+        ? QStringLiteral("Indexing raw DAT records...")
+        : QStringLiteral("正在建立 raw DAT 原始记录索引..."));
+
+    const QString scanDirectory = session_directory;
+    const bool scanEnglish = english;
+    scan_watcher->setFuture(QtConcurrent::run([scanDirectory, scanEnglish]() {
+        return scanRawSession(scanDirectory, scanEnglish);
+    }));
+}
+
+void RawDataParserWindow::Impl::scanRawFile(const QString& filename, quint16 expectedSourceId)
+{
+    RawScanResult partial;
+    scanRawFileIndex(filename, expectedSourceId, english, partial);
+    records += partial.records;
+    file_summaries += partial.file_summaries;
+}
+
+void RawDataParserWindow::Impl::finishScanSession()
+{
+    setScanControlsEnabled(true);
+    if (!scan_watcher)
     {
-        scanRawFile(rawDir.filePath(file.first), file.second);
+        return;
     }
+
+    RawScanResult result = scan_watcher->result();
+    if (result.session_directory != session_directory)
+    {
+        scanSession();
+        return;
+    }
+
+    records = std::move(result.records);
+    file_summaries = std::move(result.file_summaries);
+    visible_rows.clear();
+    decode_cache.clear();
+    current_payload.clear();
+    current_hex_positions.clear();
 
     refreshFileList();
     refreshDeviceFilter();
@@ -921,116 +1128,36 @@ void RawDataParserWindow::Impl::scanSession()
         .arg(QDir::toNativeSeparators(session_directory)));
 }
 
-void RawDataParserWindow::Impl::scanRawFile(const QString& filename, quint16 expectedSourceId)
+void RawDataParserWindow::Impl::setScanControlsEnabled(bool enabled)
 {
-    RawFileSummary summary;
-    summary.device_name = sourceName(expectedSourceId, english);
-    summary.filename = filename;
-
-    QFileInfo info(filename);
-    if (!info.exists())
+    for (QWidget *widget : {
+             static_cast<QWidget *>(device_combo),
+             static_cast<QWidget *>(type_filter),
+             static_cast<QWidget *>(time_from),
+             static_cast<QWidget *>(time_to),
+             static_cast<QWidget *>(seq_from),
+             static_cast<QWidget *>(seq_to),
+             static_cast<QWidget *>(payload_min),
+             static_cast<QWidget *>(payload_max),
+             static_cast<QWidget *>(search_edit),
+             static_cast<QWidget *>(abnormal_only),
+             static_cast<QWidget *>(reload_btn),
+             static_cast<QWidget *>(export_csv_btn),
+             static_cast<QWidget *>(export_json_btn),
+             static_cast<QWidget *>(export_bin_btn),
+             static_cast<QWidget *>(export_decoded_csv_btn),
+             static_cast<QWidget *>(export_decoded_json_btn),
+             static_cast<QWidget *>(file_list),
+             static_cast<QWidget *>(record_table),
+             static_cast<QWidget *>(detail_tree),
+             static_cast<QWidget *>(hex_view),
+         })
     {
-        summary.status = english ? QStringLiteral("Missing") : QStringLiteral("缺失");
-        file_summaries.push_back(summary);
-        return;
-    }
-    summary.file_size = info.size();
-
-    QFile file(filename);
-    if (!file.open(QIODevice::ReadOnly))
-    {
-        summary.status = english ? QStringLiteral("Open failed") : QStringLiteral("打开失败");
-        file_summaries.push_back(summary);
-        return;
-    }
-
-    UnifiedRawFileHeader fileHeader{};
-    if (file.read(reinterpret_cast<char*>(&fileHeader), sizeof(fileHeader)) != static_cast<qint64>(sizeof(fileHeader)) ||
-        std::memcmp(fileHeader.magic, kUnifiedRawMagic, sizeof(fileHeader.magic)) != 0)
-    {
-        summary.status = english ? QStringLiteral("Invalid header") : QStringLiteral("文件头无效");
-        file_summaries.push_back(summary);
-        return;
-    }
-
-    const quint32 fileHeaderSize = qFromLittleEndian(fileHeader.header_size);
-    const quint16 sourceId = qFromLittleEndian(fileHeader.source_id);
-    if (fileHeaderSize < sizeof(UnifiedRawFileHeader) || !file.seek(fileHeaderSize))
-    {
-        summary.status = english ? QStringLiteral("Invalid header size") : QStringLiteral("文件头长度无效");
-        file_summaries.push_back(summary);
-        return;
-    }
-    if (sourceId != expectedSourceId)
-    {
-        summary.status = (english
-            ? QStringLiteral("Unexpected source %1")
-            : QStringLiteral("数据源不匹配 %1")).arg(sourceId);
-    }
-    else
-    {
-        summary.status = english ? QStringLiteral("OK") : QStringLiteral("正常");
-    }
-
-    while (!file.atEnd())
-    {
-        const qint64 recordOffset = file.pos();
-        UnifiedRawRecordHeader header{};
-        const qint64 headerBytes = file.read(reinterpret_cast<char*>(&header), sizeof(header));
-        if (headerBytes == 0)
+        if (widget)
         {
-            break;
-        }
-        if (headerBytes != static_cast<qint64>(sizeof(header)))
-        {
-            summary.status = english ? QStringLiteral("Incomplete record header") : QStringLiteral("记录头不完整");
-            break;
-        }
-
-        const quint32 marker = qFromLittleEndian(header.marker);
-        const quint32 recordHeaderSize = qFromLittleEndian(header.header_size);
-        const quint32 payloadSize = qFromLittleEndian(header.payload_size);
-        if (marker != kUnifiedRawRecordMarker || recordHeaderSize < sizeof(UnifiedRawRecordHeader))
-        {
-            summary.status = english ? QStringLiteral("Invalid record marker") : QStringLiteral("记录标记无效");
-            break;
-        }
-
-        const qint64 payloadOffset = recordOffset + static_cast<qint64>(recordHeaderSize);
-        const qint64 nextRecord = payloadOffset + static_cast<qint64>(payloadSize);
-        if (nextRecord > file.size())
-        {
-            summary.status = english ? QStringLiteral("Incomplete payload") : QStringLiteral("payload 不完整");
-            break;
-        }
-
-        RawRecordIndex record;
-        record.filename = filename;
-        record.source_id = qFromLittleEndian(header.source_id);
-        record.record_type = qFromLittleEndian(header.record_type);
-        record.flags = qFromLittleEndian(header.flags);
-        record.sequence = qFromLittleEndian(header.sequence);
-        record.host_timestamp_us = qFromLittleEndian(header.host_timestamp_us);
-        record.payload_size = payloadSize;
-        record.record_offset = static_cast<quint64>(recordOffset);
-        record.payload_offset = static_cast<quint64>(payloadOffset);
-        record.device_name = sourceName(record.source_id, english);
-        records.push_back(record);
-
-        ++summary.record_count;
-        if (summary.first_timestamp_us == 0)
-        {
-            summary.first_timestamp_us = record.host_timestamp_us;
-        }
-        summary.last_timestamp_us = record.host_timestamp_us;
-
-        if (!file.seek(nextRecord))
-        {
-            break;
+            widget->setEnabled(enabled);
         }
     }
-
-    file_summaries.push_back(summary);
 }
 
 void RawDataParserWindow::Impl::refreshFileList()
@@ -1211,10 +1338,14 @@ void RawDataParserWindow::Impl::applyFilters()
     const QString searchLower = search_edit->text().trimmed().toLower();
     const bool requireDecoded = abnormal_only->isChecked();
     const bool expensive = requireDecoded || !searchLower.isEmpty();
+    const bool largeIndex = records.size() > 50000;
     QProgressDialog *progress = nullptr;
-    if (expensive && records.size() > 1000)
+    if ((expensive && records.size() > 1000) || largeIndex)
     {
-        progress = new QProgressDialog(english ? QStringLiteral("Scanning decoded records...") : QStringLiteral("正在扫描解析字段..."),
+        const QString progressText = expensive
+            ? (english ? QStringLiteral("Scanning decoded records...") : QStringLiteral("正在扫描解析字段..."))
+            : (english ? QStringLiteral("Preparing raw record list...") : QStringLiteral("正在准备原始记录列表..."));
+        progress = new QProgressDialog(progressText,
                                        english ? QStringLiteral("Cancel") : QStringLiteral("取消"),
                                        0,
                                        records.size(),

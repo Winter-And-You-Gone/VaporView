@@ -13,8 +13,8 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 option(BUILD_PYTHON_BINDINGS "Build Python bindings with pybind11" OFF)
 
-find_package(Qt6 COMPONENTS Core Widgets SerialPort Network Svg REQUIRED)
-set(QT_LIBRARIES Qt6::Core Qt6::Widgets Qt6::SerialPort Qt6::Network Qt6::Svg)
+find_package(Qt6 COMPONENTS Core Widgets SerialPort Network Svg Concurrent REQUIRED)
+set(QT_LIBRARIES Qt6::Core Qt6::Widgets Qt6::SerialPort Qt6::Network Qt6::Svg Qt6::Concurrent)
 
 if(WIN32)
     find_program(QT_WINDEPLOYQT_EXECUTABLE

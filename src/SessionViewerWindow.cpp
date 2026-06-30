@@ -2705,11 +2705,11 @@ void SessionViewerWindow::onRawDataParserClicked()
     }
 
     raw_data_parser_window_->setEnglish(is_english_);
-    raw_data_parser_window_->openSessionPath(session_directory_);
     VaporView::centerWindowOnScreen(raw_data_parser_window_, this);
     raw_data_parser_window_->show();
     raw_data_parser_window_->raise();
     raw_data_parser_window_->activateWindow();
+    raw_data_parser_window_->openSessionPath(session_directory_);
 }
 
 bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)

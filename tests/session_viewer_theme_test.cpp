@@ -1,21 +1,33 @@
 #include "AppTheme.h"
+#include "RawDataParserWindow.h"
 #include "SessionViewerWindow.h"
 
 #include <QApplication>
 #include <QCoreApplication>
+#include <QDataStream>
+#include <QDir>
 #include <QElapsedTimer>
 #include <QEventLoop>
+#include <QFile>
 #include <QImage>
+#include <QLabel>
 #include <QPalette>
 #include <QSettings>
 #include <QTableWidget>
 #include <QTemporaryDir>
 #include <QWidget>
 #include <cstdlib>
+#include <functional>
 #include <iostream>
 
 namespace
 {
+
+constexpr char kTestRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
+constexpr quint32 kTestRawRecordMarker = 0x44525756u;
+constexpr quint16 kTestRawSourceEpsilon = 1u;
+constexpr quint16 kTestRawHeaderSize = 20u;
+constexpr quint16 kTestRawRecordHeaderSize = 36u;
 
 void require(bool condition, const char *message)
 {
@@ -24,6 +36,21 @@ void require(bool condition, const char *message)
         std::cerr << "FAIL: " << message << '\n';
         std::exit(1);
     }
+}
+
+bool processEventsUntil(int timeoutMs, const std::function<bool()>& condition)
+{
+    QElapsedTimer timer;
+    timer.start();
+    while (timer.elapsed() < timeoutMs)
+    {
+        if (condition())
+        {
+            return true;
+        }
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
+    return condition();
 }
 
 void processEventsFor(int timeoutMs)
@@ -51,6 +78,62 @@ int countRedDominantPixels(const QImage& image)
         }
     }
     return count;
+}
+
+void writeUnifiedRawFile(const QString& path, int recordCount)
+{
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly), "temporary raw file can be written");
+
+    QDataStream stream(&file);
+    stream.setByteOrder(QDataStream::LittleEndian);
+    stream.writeRawData(kTestRawMagic, sizeof(kTestRawMagic));
+    stream << quint32(2) << quint32(kTestRawHeaderSize) << quint16(kTestRawSourceEpsilon) << quint16(0);
+
+    const QByteArray payload("TEST");
+    for (int i = 0; i < recordCount; ++i)
+    {
+        stream << quint32(kTestRawRecordMarker)
+               << quint32(kTestRawRecordHeaderSize)
+               << quint64(1'700'000'000'000'000ULL + static_cast<quint64>(i))
+               << quint32(payload.size())
+               << quint16(kTestRawSourceEpsilon)
+               << quint16(0x40)
+               << quint32(0)
+               << quint64(i);
+        stream.writeRawData(payload.constData(), payload.size());
+    }
+}
+
+void testRawDataParserOpenIsNonBlocking()
+{
+    QTemporaryDir sessionDir;
+    require(sessionDir.isValid(), "temporary raw parser session directory");
+    QDir dir(sessionDir.path());
+    require(dir.mkpath(QStringLiteral("raw")), "temporary raw directory can be created");
+    writeUnifiedRawFile(dir.filePath(QStringLiteral("raw/epsilon.dat")), 300000);
+
+    RawDataParserWindow parser;
+    parser.setEnglish(false);
+    parser.show();
+    processEventsFor(50);
+
+    QElapsedTimer elapsed;
+    elapsed.start();
+    require(parser.openSessionPath(sessionDir.path()), "raw parser accepts temporary session directory");
+    require(elapsed.elapsed() < 250, "raw parser starts indexing without blocking the UI thread");
+
+    auto *statusLabel = parser.findChild<QLabel *>(QStringLiteral("rawDataParserStatusLabel"));
+    require(statusLabel != nullptr, "raw parser exposes a status label");
+    require(processEventsUntil(10000, [statusLabel]() {
+                const QString text = statusLabel->text();
+                return text.contains(QStringLiteral("建立 300000 条")) ||
+                       text.contains(QStringLiteral("Indexed 300000"));
+            }),
+            "raw parser background indexing completes");
+
+    parser.close();
+    processEventsFor(100);
 }
 
 void testCsvViewportUsesNeutralBackground(SessionViewerWindow& viewer)
@@ -120,6 +203,8 @@ int main(int argc, char **argv)
     app.setApplicationName(QStringLiteral("session_viewer_theme_test"));
     app.setProperty(VaporView::kAppDarkThemeProperty, false);
     app.setPalette(VaporView::appThemePalette(false));
+
+    testRawDataParserOpenIsNonBlocking();
 
     {
         SessionViewerWindow viewer;
