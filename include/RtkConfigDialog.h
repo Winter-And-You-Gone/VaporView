@@ -34,7 +34,7 @@ class RtkConfigDialog : public QDialog
     Q_OBJECT
 
 public:
-    explicit RtkConfigDialog(QWidget *parent = nullptr);
+    explicit RtkConfigDialog(QWidget *parent = nullptr, bool embedded = false);
     ~RtkConfigDialog() override;
 
     void appendLog(const QString& message);
@@ -170,6 +170,7 @@ private:
     QPushButton *clear_log_btn_;
     QLabel *status_label_;
 
+    bool embedded_;
     std::unique_ptr<RtkStreamService> rtk_service_;
     bool is_running_;
     bool is_english_;

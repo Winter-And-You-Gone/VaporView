@@ -5548,6 +5548,7 @@ MainWindow::MainWindow(QWidget *parent)
     , app_nav_button_group_(nullptr)
     , home_nav_btn_(nullptr)
     , temperature_nav_btn_(nullptr)
+    , rtk_config_nav_btn_(nullptr)
     , device_config_nav_btn_(nullptr)
     , main_page_stack_(nullptr)
     , app_sidebar_mode_(AppSidebarMode::Full)
@@ -6698,7 +6699,9 @@ void MainWindow::updateAppSidebarButtonTexts()
 
     applyButtonText(home_nav_btn_, is_english_ ? QStringLiteral("Home") : QStringLiteral("首页"));
     applyButtonText(temperature_nav_btn_, is_english_ ? QStringLiteral("Thermal") : QStringLiteral("温控"));
+    applyButtonText(rtk_config_nav_btn_, is_english_ ? QStringLiteral("RTK Config") : QStringLiteral("RTK配置"));
     applyButtonText(device_config_nav_btn_, is_english_ ? QStringLiteral("Device") : QStringLiteral("设备配置"));
+    updateRtkConfigIcon();
     updateCustomTitleBarTexts();
 }
 
@@ -9530,8 +9533,6 @@ void MainWindow::setupCustomTitleBar()
     titleLayout->addWidget(createTitleBarActionButton(pause_recording_btn_, custom_title_bar_), 0, Qt::AlignVCenter);
     titleLayout->addWidget(createTitleBarActionButton(stop_recording_btn_, custom_title_bar_), 0, Qt::AlignVCenter);
     addTitleBarSeparator(titleLayout);
-    titleLayout->addWidget(createTitleBarActionButton(rtk_config_action_, custom_title_bar_), 0, Qt::AlignVCenter);
-    addTitleBarSeparator(titleLayout);
     titleLayout->addWidget(createTitleBarActionButton(session_viewer_action_, custom_title_bar_), 0, Qt::AlignVCenter);
     addTitleBarSeparator(titleLayout);
     title_language_btn_ = createTitleBarIconButton(QStringLiteral("titleBarButton"), custom_title_bar_);
@@ -10465,11 +10466,13 @@ void MainWindow::setupCentralWidget()
         return button;
     };
     home_nav_btn_ = createNavButton(QStringLiteral("首页"), QStringLiteral("square-activity"));
-    device_config_nav_btn_ = createNavButton(QStringLiteral("设备配置"), QStringLiteral("sliders-vertical"));
     temperature_nav_btn_ = createNavButton(QStringLiteral("温控"), QStringLiteral("thermometer"));
+    rtk_config_nav_btn_ = createNavButton(QStringLiteral("RTK配置"), QStringLiteral("satellite"));
+    device_config_nav_btn_ = createNavButton(QStringLiteral("设备配置"), QStringLiteral("sliders-vertical"));
     app_nav_button_group_->addButton(home_nav_btn_, 0);
-    app_nav_button_group_->addButton(device_config_nav_btn_, 1);
-    app_nav_button_group_->addButton(temperature_nav_btn_, 2);
+    app_nav_button_group_->addButton(temperature_nav_btn_, 1);
+    app_nav_button_group_->addButton(rtk_config_nav_btn_, 2);
+    app_nav_button_group_->addButton(device_config_nav_btn_, 3);
     sidebarLayout->addStretch(1);
     home_nav_btn_->setChecked(true);
     updateSidebarNavIcons();
@@ -10553,7 +10556,6 @@ void MainWindow::setupCentralWidget()
 
     home_page_ = main_cards_scroll_area_;
     main_page_stack_->addWidget(home_page_);
-    setupDeviceConfigPage();
 
     temperature_page_ = new QWidget(this);
     temperature_page_->setObjectName(QStringLiteral("temperaturePage"));
@@ -10576,7 +10578,23 @@ void MainWindow::setupCentralWidget()
     temperaturePageLayout->addWidget(temperatureScrollArea, 1);
     main_page_stack_->addWidget(temperature_page_);
 
+    rtk_config_dialog_ = new RtkConfigDialog(main_page_stack_, true);
+    rtk_config_dialog_->setAttribute(Qt::WA_QuitOnClose, false);
+    connect(rtk_config_dialog_, &RtkConfigDialog::rtkRunningChanged, this, [this](bool running) {
+        rtk_service_running_ = running;
+        updateRtkConfigIcon();
+        updateSidebarNavIcons();
+    });
+    syncRtkConfigPageState();
+    main_page_stack_->addWidget(rtk_config_dialog_);
+
+    setupDeviceConfigPage();
+
     connect(app_nav_button_group_, &QButtonGroup::idClicked, this, [this](int id) {
+        if (id == 2)
+        {
+            syncRtkConfigPageState();
+        }
         if (main_page_stack_)
         {
             main_page_stack_->setCurrentIndex(std::clamp(id, 0, main_page_stack_->count() - 1));
@@ -11181,7 +11199,7 @@ void MainWindow::updateSidebarNavIcons()
     const bool dark = dark_theme_enabled_;
     const QColor normalColor = appThemeColor(AppThemeColor::Text, dark);
     const QColor activeColor = QColor(255, 255, 255);
-    for (QPushButton *button : {home_nav_btn_, temperature_nav_btn_, device_config_nav_btn_})
+    for (QPushButton *button : {home_nav_btn_, temperature_nav_btn_, rtk_config_nav_btn_, device_config_nav_btn_})
     {
         if (!button)
         {
@@ -11193,7 +11211,12 @@ void MainWindow::updateSidebarNavIcons()
             button->setIcon(QIcon());
             continue;
         }
-        button->setIcon(createLucideIcon(iconName, button->isChecked() ? activeColor : normalColor));
+        QColor iconColor = button->isChecked() ? activeColor : normalColor;
+        if (button == rtk_config_nav_btn_ && rtk_service_running_)
+        {
+            iconColor = toolbarColor(AppThemeColor::ToolbarGreen);
+        }
+        button->setIcon(createLucideIcon(iconName, iconColor));
     }
 }
 
@@ -12881,18 +12904,22 @@ void MainWindow::updateThemedIcons()
 
 void MainWindow::updateRtkConfigIcon()
 {
-    if (!rtk_config_action_)
-    {
-        return;
-    }
-
-    rtk_config_action_->setIcon(createRtkSatelliteIcon(rtk_service_running_));
     const QString baseText = is_english_ ? QStringLiteral("RTK config") : QStringLiteral("RTK配置");
     const QString stateText = rtk_service_running_
         ? (is_english_ ? QStringLiteral("running") : QStringLiteral("运行中"))
         : (is_english_ ? QStringLiteral("stopped") : QStringLiteral("未启动"));
-    rtk_config_action_->setToolTip(QStringLiteral("%1 (%2)").arg(baseText, stateText));
-    rtk_config_action_->setStatusTip(rtk_config_action_->toolTip());
+    const QString statusTip = QStringLiteral("%1 (%2)").arg(baseText, stateText);
+    if (rtk_config_action_)
+    {
+        rtk_config_action_->setIcon(createRtkSatelliteIcon(rtk_service_running_));
+        rtk_config_action_->setToolTip(statusTip);
+        rtk_config_action_->setStatusTip(statusTip);
+    }
+    if (rtk_config_nav_btn_)
+    {
+        rtk_config_nav_btn_->setToolTip(statusTip);
+        rtk_config_nav_btn_->setStatusTip(statusTip);
+    }
 }
 
 void MainWindow::updateFontScaleMenuCheckIcons()
@@ -18409,17 +18436,13 @@ bool MainWindow::applyEpsilonMainAntennaLeverArm(double xM, double yM, double zM
     return true;
 }
 
-void MainWindow::onRtkConfigClicked()
+void MainWindow::syncRtkConfigPageState()
 {
     if (!rtk_config_dialog_)
     {
-        rtk_config_dialog_ = new RtkConfigDialog();
-        rtk_config_dialog_->setAttribute(Qt::WA_QuitOnClose, false);
-        connect(rtk_config_dialog_, &RtkConfigDialog::rtkRunningChanged, this, [this](bool running) {
-            rtk_service_running_ = running;
-            updateRtkConfigIcon();
-        });
+        return;
     }
+
     rtk_config_dialog_->setEpsilonDataProvider([this]() {
         const CollectorSnapshot collectors = snapshotCollectors();
         return collectors.epsilon ? collectors.epsilon->getLatestData() : current_epsilon_;
@@ -18443,10 +18466,21 @@ void MainWindow::onRtkConfigClicked()
     }
     rtk_config_dialog_->setFontScale(font_scale_percent_);
     rtk_config_dialog_->setEnglish(is_english_);
-    VaporView::centerWindowOnScreen(rtk_config_dialog_, this);
-    rtk_config_dialog_->show();
-    rtk_config_dialog_->raise();
-    rtk_config_dialog_->activateWindow();
+}
+
+void MainWindow::onRtkConfigClicked()
+{
+    syncRtkConfigPageState();
+    if (main_page_stack_ && rtk_config_dialog_ && main_page_stack_->indexOf(rtk_config_dialog_) >= 0)
+    {
+        main_page_stack_->setCurrentWidget(rtk_config_dialog_);
+    }
+    if (rtk_config_nav_btn_)
+    {
+        rtk_config_nav_btn_->setChecked(true);
+    }
+    updateSidebarNavIcons();
+    updateCustomTitleBarTexts();
 }
 
 void MainWindow::onConfigureEpsilonRtcmPortClicked()

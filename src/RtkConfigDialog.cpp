@@ -649,7 +649,7 @@ QStringList parseMountpoints(const QString &responseBody)
 }
 }
 
-RtkConfigDialog::RtkConfigDialog(QWidget *parent)
+RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     : QDialog(parent)
     , main_layout_(nullptr)
     , config_layout_(nullptr)
@@ -713,6 +713,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , load_config_btn_(nullptr)
     , clear_log_btn_(nullptr)
     , status_label_(nullptr)
+    , embedded_(embedded)
     , rtk_service_(std::make_unique<RtkStreamService>())
     , is_running_(false)
     , is_english_(false)
@@ -731,16 +732,30 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent)
     , gga_has_sentence_time_(false)
     , gga_monitor_enabled_(false)
 {
-    setWindowFlag(Qt::Window, true);
+    if (embedded_)
+    {
+        setWindowFlags(Qt::Widget);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    }
+    else
+    {
+        setWindowFlag(Qt::Window, true);
+    }
     setObjectName(QStringLiteral("rtkConfigDialog"));
     setSizeGripEnabled(false);
 
     setupUi();
-    VaporView::installCustomTitleBar(this);
+    if (!embedded_)
+    {
+        VaporView::installCustomTitleBar(this);
+    }
     loadSettings();
     setFontScale(100);
     setEnglish(false);
-    VaporView::centerWindowOnScreen(this, parent);
+    if (!embedded_)
+    {
+        VaporView::centerWindowOnScreen(this, parent);
+    }
 
     config_file_path_ = QDir::homePath() + "/.config/VaporView/rtk_config.ini";
 
@@ -782,6 +797,11 @@ RtkConfigDialog::~RtkConfigDialog()
 void RtkConfigDialog::closeEvent(QCloseEvent *event)
 {
     saveSettings();
+    if (embedded_)
+    {
+        event->ignore();
+        return;
+    }
     event->ignore();
     hide();
     if (is_running_ || gga_monitor_enabled_)
@@ -1384,7 +1404,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     const QSize minimumDialogSize(scalePixels(base_minimum_dialog_size_.width()), scalePixels(base_minimum_dialog_size_.height()));
     const QSize targetMinimumSize = minimumDialogSize;
     setMinimumSize(targetMinimumSize);
-    if (!isMaximized() && !isFullScreen())
+    if (!embedded_ && !isMaximized() && !isFullScreen())
     {
         const QSize preferredDialogSize(
             scalePixels(base_dialog_size_.width()),
@@ -1405,7 +1425,7 @@ void RtkConfigDialog::setFontScale(int percent)
     }
 
     QSize targetSize = size();
-    if (!isMaximized() && !isFullScreen())
+    if (!embedded_ && !isMaximized() && !isFullScreen())
     {
         const QSize scaledMinimumSize(
             std::max(1, static_cast<int>(std::lround(base_minimum_dialog_size_.width() * percent / 100.0))),
@@ -1419,7 +1439,7 @@ void RtkConfigDialog::setFontScale(int percent)
     if (font_scale_percent_ == percent)
     {
         applyScaledUiMetrics();
-        if (!isMaximized() && !isFullScreen())
+        if (!embedded_ && !isMaximized() && !isFullScreen())
         {
             targetSize = targetSize.expandedTo(minimumSize());
             if (targetSize != size())
@@ -1432,7 +1452,7 @@ void RtkConfigDialog::setFontScale(int percent)
 
     font_scale_percent_ = percent;
     applyScaledUiMetrics();
-    if (!isMaximized() && !isFullScreen())
+    if (!embedded_ && !isMaximized() && !isFullScreen())
     {
         targetSize = targetSize.expandedTo(minimumSize());
         if (targetSize != size())
@@ -1698,8 +1718,8 @@ bool RtkConfigDialog::isMainGgaSourceSelected() const
         return true;
     }
 
-    const QVariant data = gga_port_combo_->currentData();
-    if (data.toString() == QString::fromLatin1(kEpsilonMainGgaSourceKey))
+    const QVariant currentData = gga_port_combo_->currentData();
+    if (currentData.toString() == QString::fromLatin1(kEpsilonMainGgaSourceKey))
     {
         return true;
     }
@@ -1957,8 +1977,8 @@ void RtkConfigDialog::pollMainGgaSource()
         return;
     }
 
-    const VaporView::EpsilonData data = epsilon_data_provider_();
-    if (!isUsableEpsilonNmeaPosition(data))
+    const VaporView::EpsilonData epsilonData = epsilon_data_provider_();
+    if (!isUsableEpsilonNmeaPosition(epsilonData))
     {
         updateGgaStatusLabel(
             textFor("Status: Waiting for valid EPSILON main-port position", "状态: 正在等待有效的 EPSILON 主串口定位"),
@@ -1967,14 +1987,14 @@ void RtkConfigDialog::pollMainGgaSource()
     }
 
     const bool sameSample =
-        data.timestamp == gga_last_epsilon_sample_time_ &&
-        data.device_timestamp_us == gga_last_epsilon_device_timestamp_us_;
+        epsilonData.timestamp == gga_last_epsilon_sample_time_ &&
+        epsilonData.device_timestamp_us == gga_last_epsilon_device_timestamp_us_;
     if (sameSample && gga_has_sentence_time_)
     {
         return;
     }
 
-    const QString sentence = buildEpsilonGgaSentence(data);
+    const QString sentence = buildEpsilonGgaSentence(epsilonData);
     if (sentence.isEmpty())
     {
         updateGgaStatusLabel(
@@ -1983,8 +2003,8 @@ void RtkConfigDialog::pollMainGgaSource()
         return;
     }
 
-    gga_last_epsilon_sample_time_ = data.timestamp;
-    gga_last_epsilon_device_timestamp_us_ = data.device_timestamp_us;
+    gga_last_epsilon_sample_time_ = epsilonData.timestamp;
+    gga_last_epsilon_device_timestamp_us_ = epsilonData.device_timestamp_us;
     handleGgaSentence(sentence);
     updateGgaStatusLabel(
         textFor("Status: Reading generated GGA from EPSILON main port", "状态: 正在读取 EPSILON 主串口生成的 GGA"),

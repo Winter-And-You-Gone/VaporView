@@ -523,6 +523,7 @@ private:
     void updateWindowControlButtons();
     void updateSidebarNavIcons();
     void updateAppSidebarButtonTexts();
+    void syncRtkConfigPageState();
     void updateAppSidebarForWidth(int width, bool snapToNearest);
     void finishAppSidebarResize();
     AppSidebarMode appSidebarModeForWidth(int width) const;
@@ -806,6 +807,7 @@ private:
     QButtonGroup *app_nav_button_group_;
     QPushButton *home_nav_btn_;
     QPushButton *temperature_nav_btn_;
+    QPushButton *rtk_config_nav_btn_;
     QPushButton *device_config_nav_btn_;
     QStackedWidget *main_page_stack_;
     AppSidebarMode app_sidebar_mode_;

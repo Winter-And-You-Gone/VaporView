@@ -19,6 +19,7 @@
 #include <QScrollBar>
 #include <QSplitter>
 #include <QSpinBox>
+#include <QStackedWidget>
 #include <QSettings>
 #include <QStringList>
 #include <QTemporaryDir>
@@ -50,6 +51,8 @@ void require(bool condition, const char *message)
         std::exit(1);
     }
 }
+
+void requireLabelTextOneOf(const QLabel *label, const QStringList& expected, const char *message);
 
 void requireCardTitleBar(QWidget *card,
                          const QStringList& expectedTitles,
@@ -171,53 +174,93 @@ void hoverWidget(QWidget *widget, bool hovered, int waitMs = 50)
     }
 }
 
-void requireRtkTitleBarStatusIndicator(MainWindow& window)
+void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
 {
-    QToolButton *rtkButton = nullptr;
+    QPushButton *homeButton = nullptr;
+    QPushButton *temperatureButton = nullptr;
+    QPushButton *rtkButton = nullptr;
+    QPushButton *deviceButton = nullptr;
+    const QList<QPushButton*> sidebarButtons =
+        window.findChildren<QPushButton *>(QStringLiteral("appSidebarButton"));
+    for (QPushButton *button : sidebarButtons)
+    {
+        const QString accessibleName = button->accessibleName();
+        if (accessibleName == QStringLiteral("首页") || accessibleName == QStringLiteral("Home"))
+        {
+            homeButton = button;
+        }
+        else if (accessibleName == QStringLiteral("温控") || accessibleName == QStringLiteral("Thermal"))
+        {
+            temperatureButton = button;
+        }
+        else if (accessibleName == QStringLiteral("RTK配置") || accessibleName == QStringLiteral("RTK Config"))
+        {
+            rtkButton = button;
+        }
+        else if (accessibleName == QStringLiteral("设备配置") || accessibleName == QStringLiteral("Device"))
+        {
+            deviceButton = button;
+        }
+    }
+    require(temperatureButton != nullptr, "temperature sidebar button exists for RTK order check");
+    require(rtkButton != nullptr, "RTK sidebar button exists");
+    require(deviceButton != nullptr, "device configuration sidebar button exists for RTK order check");
+    require(homeButton != nullptr, "home sidebar button exists after RTK check");
+    require(rtkButton->property("_vv_sidebar_icon_name").toString() == QStringLiteral("satellite"),
+            "RTK sidebar button uses satellite icon");
+    require(temperatureButton->y() < rtkButton->y() && rtkButton->y() < deviceButton->y(),
+            "RTK sidebar button sits below thermal and above device configuration");
+    require(rtkButton->toolTip().contains(QStringLiteral("未启动")) ||
+                rtkButton->toolTip().contains(QStringLiteral("stopped")),
+            "RTK sidebar button starts with stopped status text");
+
     const QList<QToolButton*> titleButtons = window.findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
     for (QToolButton *button : titleButtons)
     {
-        if (button->toolTip().contains(QStringLiteral("RTK")))
-        {
-            rtkButton = button;
-            break;
-        }
+        require(!button->toolTip().contains(QStringLiteral("RTK")),
+                "RTK config is not duplicated in the title bar");
     }
-    require(rtkButton != nullptr, "RTK title bar action button exists");
-    require(rtkButton->toolTip().contains(QStringLiteral("未启动")) ||
-                rtkButton->toolTip().contains(QStringLiteral("stopped")),
-            "RTK title bar action starts with stopped status text");
+
     const QSize iconSize(32, 32);
     const qint64 stoppedIconKey = rtkButton->icon().pixmap(iconSize).cacheKey();
 
-    rtkButton->click();
+    clickWidget(rtkButton);
     processEventsFor(150);
-    RtkConfigDialog *dialog = nullptr;
+    auto *pageStack = window.findChild<QStackedWidget *>(QStringLiteral("mainPageStack"));
+    require(pageStack != nullptr, "main page stack exists");
+    auto *dialog = qobject_cast<RtkConfigDialog *>(pageStack->currentWidget());
+    require(dialog != nullptr, "RTK config opens as an embedded sidebar page");
+    require(dialog->isVisible(), "embedded RTK config page is visible after sidebar click");
+    requireLabelTextOneOf(customTitleLabel,
+                          {QStringLiteral("RTK配置"), QStringLiteral("RTK Config")},
+                          "custom title bar follows the selected RTK page");
     for (QWidget *topLevel : QApplication::topLevelWidgets())
     {
-        dialog = qobject_cast<RtkConfigDialog *>(topLevel);
-        if (dialog)
-        {
-            break;
-        }
+        require(qobject_cast<RtkConfigDialog *>(topLevel) == nullptr,
+                "RTK config is not opened as a top-level dialog");
     }
-    require(dialog != nullptr, "RTK config dialog is created from title bar action");
+
     QMetaObject::invokeMethod(dialog, "rtkRunningChanged", Qt::DirectConnection, Q_ARG(bool, true));
     processEventsFor(50);
     require(rtkButton->toolTip().contains(QStringLiteral("运行中")) ||
                 rtkButton->toolTip().contains(QStringLiteral("running")),
-            "RTK title bar action shows running status text");
+            "RTK sidebar button shows running status text");
     const qint64 runningIconKey = rtkButton->icon().pixmap(iconSize).cacheKey();
-    require(runningIconKey != stoppedIconKey, "RTK title bar icon changes when service starts");
+    require(runningIconKey != stoppedIconKey, "RTK sidebar icon changes when service starts");
 
     QMetaObject::invokeMethod(dialog, "rtkRunningChanged", Qt::DirectConnection, Q_ARG(bool, false));
     processEventsFor(50);
     require(rtkButton->toolTip().contains(QStringLiteral("未启动")) ||
                 rtkButton->toolTip().contains(QStringLiteral("stopped")),
-            "RTK title bar action returns to stopped status text");
+            "RTK sidebar button returns to stopped status text");
     require(rtkButton->icon().pixmap(iconSize).cacheKey() != runningIconKey,
-            "RTK title bar icon changes away from running color when service stops");
-    dialog->hide();
+            "RTK sidebar icon changes away from running color when service stops");
+
+    clickWidget(homeButton);
+    processEventsFor(150);
+    requireLabelTextOneOf(customTitleLabel,
+                          {QStringLiteral("首页"), QStringLiteral("Home")},
+                          "custom title bar returns to home page after RTK sidebar check");
 }
 
 void requireLabelTextOneOf(const QLabel *label, const QStringList& expected, const char *message)
@@ -497,7 +540,7 @@ int main(int argc, char **argv)
     hoverWidget(customLogo, false);
     require(customLogo->property("_vv_logo_state").toString() == QStringLiteral("logo"),
             "custom title logo leave restores app logo");
-    requireRtkTitleBarStatusIndicator(window);
+    requireRtkSidebarPage(window, customTitleLabel);
 
     auto *homeOverviewSplitter = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
     require(homeOverviewSplitter != nullptr, "home overview splitter exists");
