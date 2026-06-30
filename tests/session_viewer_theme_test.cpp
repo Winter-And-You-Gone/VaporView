@@ -12,6 +12,7 @@
 #include <QImage>
 #include <QLabel>
 #include <QPalette>
+#include <QProgressBar>
 #include <QSettings>
 #include <QTableWidget>
 #include <QTemporaryDir>
@@ -122,6 +123,10 @@ void testRawDataParserOpenIsNonBlocking()
     elapsed.start();
     require(parser.openSessionPath(sessionDir.path()), "raw parser accepts temporary session directory");
     require(elapsed.elapsed() < 250, "raw parser starts indexing without blocking the UI thread");
+
+    auto *progressBar = parser.findChild<QProgressBar *>(QStringLiteral("rawDataParserProgressBar"));
+    require(progressBar != nullptr, "raw parser exposes an indexing progress bar");
+    require(progressBar->isVisible(), "raw parser shows indexing progress while loading");
 
     auto *statusLabel = parser.findChild<QLabel *>(QStringLiteral("rawDataParserStatusLabel"));
     require(statusLabel != nullptr, "raw parser exposes a status label");

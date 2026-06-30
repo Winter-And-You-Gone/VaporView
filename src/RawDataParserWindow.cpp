@@ -27,6 +27,7 @@
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QProgressBar>
 #include <QProgressDialog>
 #include <QPushButton>
 #include <QSaveFile>
@@ -37,6 +38,7 @@
 #include <QTextCursor>
 #include <QTextEdit>
 #include <QTextStream>
+#include <QTimer>
 #include <QTimeZone>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
@@ -47,9 +49,11 @@
 #include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <memory>
 
 using VaporView::AppThemeColor;
 using VaporView::appThemeColor;
@@ -109,6 +113,32 @@ void applyRawDataProgressDialogStyle(QProgressDialog *dialog)
              appThemeColorName(AppThemeColor::White, dark),
              appThemeColorName(AppThemeColor::PrimaryHover, dark),
              appThemeColorName(AppThemeColor::PrimaryPressed, dark)));
+}
+
+void applyRawDataInlineProgressStyle(QWidget *panel, QLabel *label, QProgressBar *bar)
+{
+    if (!panel || !label || !bar)
+    {
+        return;
+    }
+
+    const bool dark = isDarkThemeEnabled();
+    const QColor panelColor = appThemeColor(dark ? AppThemeColor::Window : AppThemeColor::Surface, dark);
+    const QColor fieldColor = appThemeColor(AppThemeColor::FieldBackground, dark);
+    const QColor borderColor = appThemeColor(AppThemeColor::FieldBorder, dark);
+    const QColor textColor = appThemeColor(AppThemeColor::TextStrong, dark);
+    const QColor chunkColor = appThemeColor(AppThemeColor::ProgressChunk, dark);
+
+    panel->setStyleSheet(QStringLiteral(
+        "QWidget#rawDataParserProgressPanel { background-color: %1; border: 1px solid %2; border-radius: 6px; }"
+        "QLabel#rawDataParserProgressLabel { background-color: transparent; color: %3; font-size: 13px; }"
+        "QProgressBar#rawDataParserProgressBar { background-color: %4; border: 1px solid %2; border-radius: 4px; min-height: 12px; text-align: center; color: %3; }"
+        "QProgressBar#rawDataParserProgressBar::chunk { background-color: %5; border-radius: 3px; }")
+        .arg(panelColor.name(),
+             borderColor.name(),
+             textColor.name(),
+             fieldColor.name(),
+             chunkColor.name()));
 }
 
 constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
@@ -182,6 +212,15 @@ struct RawScanResult
     QVector<RawFileSummary> file_summaries;
 };
 
+struct RawScanProgress
+{
+    std::atomic<qint64> total_bytes{0};
+    std::atomic<qint64> scanned_bytes{0};
+    std::atomic<qint64> indexed_records{0};
+    std::atomic<int> total_files{0};
+    std::atomic<int> completed_files{0};
+};
+
 struct RawDecodedField
 {
     QString group;
@@ -226,6 +265,23 @@ QString formatTimestamp(quint64 timestampUs)
     return QStringLiteral("%1.%2Z")
         .arg(dt.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz")))
         .arg(static_cast<int>(timestampUs % 1000ULL), 3, 10, QLatin1Char('0'));
+}
+
+QString formatByteCount(qint64 bytes)
+{
+    const double mib = static_cast<double>(bytes) / (1024.0 * 1024.0);
+    if (mib >= 1.0)
+    {
+        return QStringLiteral("%1 MB").arg(mib, 0, 'f', mib >= 100.0 ? 0 : 1);
+    }
+
+    const double kib = static_cast<double>(bytes) / 1024.0;
+    if (kib >= 1.0)
+    {
+        return QStringLiteral("%1 KB").arg(kib, 0, 'f', kib >= 100.0 ? 0 : 1);
+    }
+
+    return QStringLiteral("%1 B").arg(bytes);
 }
 
 QString sourceName(quint16 sourceId, bool english)
@@ -297,11 +353,24 @@ QString recordTypeName(quint16 sourceId, quint16 recordType, bool english)
     }
 }
 
-void scanRawFileIndex(const QString& filename, quint16 expectedSourceId, bool english, RawScanResult& result)
+void scanRawFileIndex(const QString& filename,
+                      quint16 expectedSourceId,
+                      bool english,
+                      RawScanResult& result,
+                      const std::shared_ptr<RawScanProgress>& progress)
 {
     RawFileSummary summary;
     summary.device_name = sourceName(expectedSourceId, english);
     summary.filename = filename;
+
+    const qint64 progressBase = progress ? progress->scanned_bytes.load(std::memory_order_relaxed) : 0;
+    auto finishFileProgress = [&]() {
+        if (progress && summary.file_size > 0)
+        {
+            progress->scanned_bytes.store(progressBase + summary.file_size, std::memory_order_relaxed);
+            progress->indexed_records.store(result.records.size(), std::memory_order_relaxed);
+        }
+    };
 
     QFileInfo info(filename);
     if (!info.exists())
@@ -317,6 +386,7 @@ void scanRawFileIndex(const QString& filename, quint16 expectedSourceId, bool en
     {
         summary.status = english ? QStringLiteral("Open failed") : QStringLiteral("打开失败");
         result.file_summaries.push_back(summary);
+        finishFileProgress();
         return;
     }
 
@@ -326,6 +396,7 @@ void scanRawFileIndex(const QString& filename, quint16 expectedSourceId, bool en
     {
         summary.status = english ? QStringLiteral("Invalid header") : QStringLiteral("文件头无效");
         result.file_summaries.push_back(summary);
+        finishFileProgress();
         return;
     }
 
@@ -335,6 +406,7 @@ void scanRawFileIndex(const QString& filename, quint16 expectedSourceId, bool en
     {
         summary.status = english ? QStringLiteral("Invalid header size") : QStringLiteral("文件头长度无效");
         result.file_summaries.push_back(summary);
+        finishFileProgress();
         return;
     }
     if (sourceId != expectedSourceId)
@@ -394,6 +466,12 @@ void scanRawFileIndex(const QString& filename, quint16 expectedSourceId, bool en
         result.records.push_back(record);
 
         ++summary.record_count;
+        if (progress && (summary.record_count % 512ULL == 0ULL))
+        {
+            const qint64 scannedInFile = std::min(file.pos(), summary.file_size);
+            progress->scanned_bytes.store(progressBase + scannedInFile, std::memory_order_relaxed);
+            progress->indexed_records.store(result.records.size(), std::memory_order_relaxed);
+        }
         if (summary.first_timestamp_us == 0)
         {
             summary.first_timestamp_us = record.host_timestamp_us;
@@ -407,9 +485,12 @@ void scanRawFileIndex(const QString& filename, quint16 expectedSourceId, bool en
     }
 
     result.file_summaries.push_back(summary);
+    finishFileProgress();
 }
 
-RawScanResult scanRawSession(const QString& sessionDirectory, bool english)
+RawScanResult scanRawSession(const QString& sessionDirectory,
+                             bool english,
+                             const std::shared_ptr<RawScanProgress>& progress)
 {
     RawScanResult result;
     result.session_directory = sessionDirectory;
@@ -422,9 +503,32 @@ RawScanResult scanRawSession(const QString& sessionDirectory, bool english)
         {QStringLiteral("lidar.dat"), kRawSourceLidar},
         {QStringLiteral("tcp_wave.dat"), kRawSourceTcpWave},
     };
-    for (const auto& file : files)
+
+    if (progress)
     {
-        scanRawFileIndex(rawDir.filePath(file.first), file.second, english, result);
+        qint64 totalBytes = 0;
+        for (const auto& file : files)
+        {
+            const QFileInfo info(rawDir.filePath(file.first));
+            if (info.exists())
+            {
+                totalBytes += info.size();
+            }
+        }
+        progress->total_files.store(files.size(), std::memory_order_relaxed);
+        progress->total_bytes.store(totalBytes, std::memory_order_relaxed);
+        progress->scanned_bytes.store(0, std::memory_order_relaxed);
+        progress->indexed_records.store(0, std::memory_order_relaxed);
+        progress->completed_files.store(0, std::memory_order_relaxed);
+    }
+
+    for (int i = 0; i < files.size(); ++i)
+    {
+        scanRawFileIndex(rawDir.filePath(files.at(i).first), files.at(i).second, english, result, progress);
+        if (progress)
+        {
+            progress->completed_files.store(i + 1, std::memory_order_relaxed);
+        }
     }
 
     return result;
@@ -713,8 +817,13 @@ struct RawDataParserWindow::Impl
     QByteArray current_payload;
     QVector<QPair<int, int>> current_hex_positions;
     QFutureWatcher<RawScanResult> *scan_watcher = nullptr;
+    std::shared_ptr<RawScanProgress> scan_progress;
 
     QWidget *central = nullptr;
+    QWidget *scan_progress_panel = nullptr;
+    QLabel *scan_progress_label = nullptr;
+    QProgressBar *scan_progress_bar = nullptr;
+    QTimer *scan_progress_timer = nullptr;
     QLabel *status_label = nullptr;
     QListWidget *file_list = nullptr;
     QComboBox *device_combo = nullptr;
@@ -747,6 +856,7 @@ struct RawDataParserWindow::Impl
     void scanRawFile(const QString& filename, quint16 expectedSourceId);
     void finishScanSession();
     void setScanControlsEnabled(bool enabled);
+    void updateScanProgress();
     void refreshFileList();
     void refreshDeviceFilter();
     void applyFilters();
@@ -893,6 +1003,25 @@ void RawDataParserWindow::Impl::setupUi()
     filterLayout->addLayout(filterRow3);
     mainLayout->addWidget(filterGroup);
 
+    scan_progress_panel = new QWidget(owner);
+    scan_progress_panel->setObjectName(QStringLiteral("rawDataParserProgressPanel"));
+    auto *scanProgressLayout = new QVBoxLayout(scan_progress_panel);
+    scanProgressLayout->setContentsMargins(10, 8, 10, 8);
+    scanProgressLayout->setSpacing(6);
+    scan_progress_label = new QLabel(scan_progress_panel);
+    scan_progress_label->setObjectName(QStringLiteral("rawDataParserProgressLabel"));
+    scan_progress_label->setWordWrap(true);
+    scan_progress_bar = new QProgressBar(scan_progress_panel);
+    scan_progress_bar->setObjectName(QStringLiteral("rawDataParserProgressBar"));
+    scan_progress_bar->setRange(0, 1000);
+    scan_progress_bar->setValue(0);
+    scan_progress_bar->setTextVisible(true);
+    scanProgressLayout->addWidget(scan_progress_label);
+    scanProgressLayout->addWidget(scan_progress_bar);
+    applyRawDataInlineProgressStyle(scan_progress_panel, scan_progress_label, scan_progress_bar);
+    scan_progress_panel->setVisible(false);
+    mainLayout->addWidget(scan_progress_panel);
+
     auto *splitter = new QSplitter(Qt::Horizontal, owner);
     file_list = new QListWidget(owner);
     file_list->setMinimumWidth(280);
@@ -944,6 +1073,11 @@ void RawDataParserWindow::Impl::setupUi()
     QObject::connect(scan_watcher, &QFutureWatcher<RawScanResult>::finished, owner, [this]() {
         finishScanSession();
     });
+    scan_progress_timer = new QTimer(owner);
+    scan_progress_timer->setInterval(120);
+    QObject::connect(scan_progress_timer, &QTimer::timeout, owner, [this]() {
+        updateScanProgress();
+    });
 
     QObject::connect(reload_btn, &QPushButton::clicked, owner, [this]() {
         scanSession();
@@ -980,6 +1114,10 @@ void RawDataParserWindow::Impl::setupUi()
 
 void RawDataParserWindow::Impl::shutdown()
 {
+    if (scan_progress_timer)
+    {
+        scan_progress_timer->stop();
+    }
     if (!scan_watcher)
     {
         return;
@@ -1008,7 +1146,11 @@ void RawDataParserWindow::Impl::setEnglish(bool value)
     payload_min->setPlaceholderText(english ? QStringLiteral("min bytes") : QStringLiteral("最小字节"));
     payload_max->setPlaceholderText(english ? QStringLiteral("max bytes") : QStringLiteral("最大字节"));
     search_edit->setPlaceholderText(english ? QStringLiteral("search metadata or decoded fields") : QStringLiteral("搜索元数据或解析字段"));
-    if (records.isEmpty())
+    if (scan_watcher && scan_watcher->isRunning())
+    {
+        updateScanProgress();
+    }
+    else if (records.isEmpty())
     {
         status_label->setText(english ? QStringLiteral("Open a session to inspect raw DAT records.") : QStringLiteral("打开会话后可查看 raw DAT 原始记录。"));
     }
@@ -1051,9 +1193,7 @@ void RawDataParserWindow::Impl::scanSession()
 {
     if (scan_watcher && scan_watcher->isRunning())
     {
-        status_label->setText(english
-            ? QStringLiteral("Raw DAT indexing is already running...")
-            : QStringLiteral("正在建立 raw DAT 原始记录索引..."));
+        updateScanProgress();
         return;
     }
 
@@ -1068,6 +1208,10 @@ void RawDataParserWindow::Impl::scanSession()
     file_list->clear();
     refreshDeviceFilter();
     record_model->setSource(&records, &visible_rows);
+    if (scan_progress_panel)
+    {
+        scan_progress_panel->setVisible(false);
+    }
 
     if (session_directory.isEmpty())
     {
@@ -1076,27 +1220,48 @@ void RawDataParserWindow::Impl::scanSession()
     }
 
     setScanControlsEnabled(false);
+    scan_progress = std::make_shared<RawScanProgress>();
+    if (scan_progress_panel)
+    {
+        scan_progress_panel->setVisible(true);
+    }
+    if (scan_progress_bar)
+    {
+        scan_progress_bar->setRange(0, 0);
+        scan_progress_bar->setFormat(QString());
+    }
     status_label->setText(english
         ? QStringLiteral("Indexing raw DAT records...")
         : QStringLiteral("正在建立 raw DAT 原始记录索引..."));
+    updateScanProgress();
+    if (scan_progress_timer)
+    {
+        scan_progress_timer->start();
+    }
 
     const QString scanDirectory = session_directory;
     const bool scanEnglish = english;
-    scan_watcher->setFuture(QtConcurrent::run([scanDirectory, scanEnglish]() {
-        return scanRawSession(scanDirectory, scanEnglish);
+    const std::shared_ptr<RawScanProgress> progress = scan_progress;
+    scan_watcher->setFuture(QtConcurrent::run([scanDirectory, scanEnglish, progress]() {
+        return scanRawSession(scanDirectory, scanEnglish, progress);
     }));
 }
 
 void RawDataParserWindow::Impl::scanRawFile(const QString& filename, quint16 expectedSourceId)
 {
     RawScanResult partial;
-    scanRawFileIndex(filename, expectedSourceId, english, partial);
+    scanRawFileIndex(filename, expectedSourceId, english, partial, nullptr);
     records += partial.records;
     file_summaries += partial.file_summaries;
 }
 
 void RawDataParserWindow::Impl::finishScanSession()
 {
+    if (scan_progress_timer)
+    {
+        scan_progress_timer->stop();
+    }
+    updateScanProgress();
     setScanControlsEnabled(true);
     if (!scan_watcher)
     {
@@ -1120,6 +1285,11 @@ void RawDataParserWindow::Impl::finishScanSession()
     refreshFileList();
     refreshDeviceFilter();
     applyFilters();
+    if (scan_progress_panel)
+    {
+        scan_progress_panel->setVisible(false);
+    }
+    scan_progress.reset();
     const QString indexedTemplate = english
         ? QStringLiteral("Indexed %1 raw records from %2.")
         : QStringLiteral("已从 %2 建立 %1 条原始记录索引。");
@@ -1147,10 +1317,6 @@ void RawDataParserWindow::Impl::setScanControlsEnabled(bool enabled)
              static_cast<QWidget *>(export_bin_btn),
              static_cast<QWidget *>(export_decoded_csv_btn),
              static_cast<QWidget *>(export_decoded_json_btn),
-             static_cast<QWidget *>(file_list),
-             static_cast<QWidget *>(record_table),
-             static_cast<QWidget *>(detail_tree),
-             static_cast<QWidget *>(hex_view),
          })
     {
         if (widget)
@@ -1158,6 +1324,49 @@ void RawDataParserWindow::Impl::setScanControlsEnabled(bool enabled)
             widget->setEnabled(enabled);
         }
     }
+}
+
+void RawDataParserWindow::Impl::updateScanProgress()
+{
+    if (!scan_progress || !scan_progress_label || !scan_progress_bar)
+    {
+        return;
+    }
+
+    const qint64 totalBytes = scan_progress->total_bytes.load(std::memory_order_relaxed);
+    const qint64 scannedBytes = scan_progress->scanned_bytes.load(std::memory_order_relaxed);
+    const qint64 recordsIndexed = scan_progress->indexed_records.load(std::memory_order_relaxed);
+    const int filesDone = scan_progress->completed_files.load(std::memory_order_relaxed);
+    const int filesTotal = scan_progress->total_files.load(std::memory_order_relaxed);
+
+    if (totalBytes > 0)
+    {
+        const qint64 clampedBytes = std::min(scannedBytes, totalBytes);
+        const int progressValue = static_cast<int>((clampedBytes * 1000) / totalBytes);
+        scan_progress_bar->setRange(0, 1000);
+        scan_progress_bar->setValue(std::min(progressValue, 1000));
+        scan_progress_bar->setFormat(QStringLiteral("%p%"));
+        scan_progress_label->setText((english
+            ? QStringLiteral("Indexing raw DAT records: %1 / %2, %3 records, %4 / %5 files")
+            : QStringLiteral("正在建立 raw DAT 原始记录索引：%1 / %2，%3 条记录，%4 / %5 个文件"))
+            .arg(formatByteCount(clampedBytes),
+                 formatByteCount(totalBytes),
+                 QString::number(recordsIndexed),
+                 QString::number(filesDone),
+                 QString::number(filesTotal)));
+    }
+    else
+    {
+        scan_progress_bar->setRange(0, 0);
+        scan_progress_bar->setFormat(QString());
+        scan_progress_label->setText(english
+            ? QStringLiteral("Looking for raw DAT files...")
+            : QStringLiteral("正在查找 raw DAT 原始数据文件..."));
+    }
+
+    status_label->setText(english
+        ? QStringLiteral("Raw data parser is loading. You can keep using the main window.")
+        : QStringLiteral("原始数据解析器正在加载，可继续使用主窗口。"));
 }
 
 void RawDataParserWindow::Impl::refreshFileList()
