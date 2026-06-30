@@ -1002,7 +1002,7 @@ void RtkConfigDialog::setupUi()
     config_layout_->addWidget(password_label_, row, 2);
     password_edit_ = new QLineEdit(this);
     password_edit_->setObjectName(QStringLiteral("rtkPasswordEdit"));
-    config_layout_->addWidget(password_edit_, row, 3);
+    config_layout_->addWidget(password_edit_, row, 3, 1, 2);
     config_layout_->addWidget(fetch_mountpoints_btn_, row, 5, Qt::AlignLeft | Qt::AlignVCenter);
     row++;
 
@@ -1416,7 +1416,10 @@ void RtkConfigDialog::applyScaledUiMetrics()
     port_edit_->setMinimumHeight(scalePixels(32));
     username_edit_->setFixedWidth(scalePixels(140));
     username_edit_->setMinimumHeight(scalePixels(32));
-    password_edit_->setFixedWidth(scalePixels(76));
+    const int passwordWidth =
+        scalePixels(76) + (config_layout_ ? config_layout_->horizontalSpacing() : scalePixels(5)) +
+        (mountpoint_label_ ? mountpoint_label_->width() : 0);
+    password_edit_->setFixedWidth(std::max(scalePixels(140), passwordWidth));
     password_edit_->setMinimumHeight(scalePixels(32));
     applyComboWidth(mountpoint_combo_, 140);
 

@@ -354,6 +354,10 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
             "RTK NTRIP server and username fields align vertically");
     require(std::abs(widgetX(portEdit) - widgetX(passwordEdit)) <= 2,
             "RTK NTRIP port and password fields align vertically");
+    require(passwordEdit->width() > portEdit->width() + 40,
+            "RTK NTRIP staggered password field keeps a usable width");
+    require(std::abs((widgetX(passwordEdit) + passwordEdit->width()) - widgetX(mountpointCombo)) <= 10,
+            "RTK NTRIP staggered password field spans under the port field and mountpoint label");
     require(widgetX(mountpointCombo) > widgetX(portEdit) &&
                 widgetX(mountpointCombo) - (widgetX(portEdit) + portEdit->width()) <= 90,
             "RTK NTRIP mountpoint field follows closely after the port field");
