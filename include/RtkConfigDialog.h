@@ -145,7 +145,7 @@ private:
     QLineEdit *port_edit_;
     QLineEdit *username_edit_;
     QLineEdit *password_edit_;
-    QLineEdit *mountpoint_edit_;
+    QComboBox *mountpoint_combo_;
     QLineEdit *main_antenna_lever_x_edit_;
     QLineEdit *main_antenna_lever_y_edit_;
     QLineEdit *main_antenna_lever_z_edit_;

@@ -18,7 +18,6 @@
 #include <QDirIterator>
 #include <QDateTime>
 #include <QDialog>
-#include <QDialogButtonBox>
 #include <QCloseEvent>
 #include <QColor>
 #include <QDoubleValidator>
@@ -689,7 +688,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     , port_edit_(nullptr)
     , username_edit_(nullptr)
     , password_edit_(nullptr)
-    , mountpoint_edit_(nullptr)
+    , mountpoint_combo_(nullptr)
     , main_antenna_lever_x_edit_(nullptr)
     , main_antenna_lever_y_edit_(nullptr)
     , main_antenna_lever_z_edit_(nullptr)
@@ -907,6 +906,7 @@ void RtkConfigDialog::setupUi()
     server_label_ = createFieldLabel();
     config_layout_->addWidget(server_label_, row, 0);
     server_edit_ = new QLineEdit(this);
+    server_edit_->setObjectName(QStringLiteral("rtkServerEdit"));
     config_layout_->addWidget(server_edit_, row, 1);
 
     port_label_ = createFieldLabel();
@@ -917,8 +917,11 @@ void RtkConfigDialog::setupUi()
 
     mountpoint_label_ = createFieldLabel();
     config_layout_->addWidget(mountpoint_label_, row, 4);
-    mountpoint_edit_ = new QLineEdit(this);
-    config_layout_->addWidget(mountpoint_edit_, row, 5);
+    mountpoint_combo_ = new QComboBox(this);
+    mountpoint_combo_->setObjectName(QStringLiteral("rtkMountpointCombo"));
+    mountpoint_combo_->setEditable(true);
+    mountpoint_combo_->setInsertPolicy(QComboBox::NoInsert);
+    config_layout_->addWidget(mountpoint_combo_, row, 5);
     fetch_mountpoints_btn_ = new QPushButton(this);
     connect(fetch_mountpoints_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onFetchMountpointsClicked);
     config_layout_->addWidget(fetch_mountpoints_btn_, row, 6);
@@ -927,11 +930,13 @@ void RtkConfigDialog::setupUi()
     username_label_ = createFieldLabel();
     config_layout_->addWidget(username_label_, row, 0);
     username_edit_ = new QLineEdit(this);
+    username_edit_->setObjectName(QStringLiteral("rtkUsernameEdit"));
     config_layout_->addWidget(username_edit_, row, 1, 1, 2);
 
     password_label_ = createFieldLabel();
     config_layout_->addWidget(password_label_, row, 3);
     password_edit_ = new QLineEdit(this);
+    password_edit_->setObjectName(QStringLiteral("rtkPasswordEdit"));
     config_layout_->addWidget(password_edit_, row, 4, 1, 3);
     row++;
 
@@ -1176,7 +1181,10 @@ void RtkConfigDialog::setEnglish(bool english)
     reconnect_label_->setText(textFor("Reconnect (ms):", "重连间隔 (ms):"));
 
     server_edit_->setPlaceholderText(textFor("e.g. rtk.ntrip.org", "例如: rtk.ntrip.org"));
-    mountpoint_edit_->setPlaceholderText(textFor("e.g. RTCM33", "例如: RTCM33"));
+    if (mountpoint_combo_->lineEdit())
+    {
+        mountpoint_combo_->lineEdit()->setPlaceholderText(textFor("e.g. RTCM33", "例如: RTCM33"));
+    }
     main_antenna_lever_x_edit_->setPlaceholderText(textFor("forward", "前向"));
     main_antenna_lever_y_edit_->setPlaceholderText(textFor("right", "右向"));
     main_antenna_lever_z_edit_->setPlaceholderText(textFor("down", "下向"));
@@ -1302,16 +1310,15 @@ void RtkConfigDialog::applyScaledUiMetrics()
         log_text_container_layout_->setSpacing(0);
     }
 
-    server_edit_->setMinimumWidth(scalePixels(180));
+    server_edit_->setFixedWidth(scalePixels(180));
     server_edit_->setMinimumHeight(scalePixels(32));
     port_edit_->setFixedWidth(scalePixels(76));
     port_edit_->setMinimumHeight(scalePixels(32));
-    username_edit_->setMinimumWidth(scalePixels(150));
+    username_edit_->setFixedWidth(scalePixels(150));
     username_edit_->setMinimumHeight(scalePixels(32));
-    password_edit_->setMinimumWidth(scalePixels(150));
+    password_edit_->setFixedWidth(scalePixels(150));
     password_edit_->setMinimumHeight(scalePixels(32));
-    mountpoint_edit_->setMinimumHeight(scalePixels(32));
-    mountpoint_edit_->setMinimumWidth(scalePixels(130));
+    applyComboWidth(mountpoint_combo_, 150);
 
     applyComboWidth(output_port_combo_, 128);
     applyComboWidth(baudrate_combo_, 112);
@@ -1480,7 +1487,7 @@ void RtkConfigDialog::loadSettings()
     port_edit_->setText(settings.value("port", "2101").toString());
     username_edit_->setText(settings.value("username", "").toString());
     password_edit_->setText(settings.value("password", "").toString());
-    mountpoint_edit_->setText(settings.value("mountpoint", "").toString());
+    mountpoint_combo_->setCurrentText(settings.value("mountpoint", "").toString());
     main_antenna_lever_x_edit_->setText(settings.value("main_antenna_lever_x_m", "").toString());
     main_antenna_lever_y_edit_->setText(settings.value("main_antenna_lever_y_m", "").toString());
     main_antenna_lever_z_edit_->setText(settings.value("main_antenna_lever_z_m", "").toString());
@@ -1505,7 +1512,7 @@ void RtkConfigDialog::saveSettings()
     settings.setValue("port", port_edit_->text());
     settings.setValue("username", username_edit_->text());
     settings.setValue("password", password_edit_->text());
-    settings.setValue("mountpoint", mountpoint_edit_->text());
+    settings.setValue("mountpoint", mountpoint_combo_->currentText());
     settings.setValue("main_antenna_lever_x_m", main_antenna_lever_x_edit_->text());
     settings.setValue("main_antenna_lever_y_m", main_antenna_lever_y_edit_->text());
     settings.setValue("main_antenna_lever_z_m", main_antenna_lever_z_edit_->text());
@@ -1554,7 +1561,7 @@ bool RtkConfigDialog::buildRtkStreamConfig(RtkStreamConfig *config, QString *des
     const QString port = port_edit_->text().trimmed();
     const QString username = username_edit_->text().trimmed();
     const QString password = password_edit_->text();
-    const QString mountpoint = mountpoint_edit_->text().trimmed();
+    const QString mountpoint = mountpoint_combo_->currentText().trimmed();
     const QString outputPort = output_port_combo_->currentText().trimmed();
     bool baudrateOk = false;
     const int baudrate = baudrate_combo_->currentText().toInt(&baudrateOk);
@@ -2682,68 +2689,34 @@ void RtkConfigDialog::onFetchMountpointsClicked()
                     ? self->textFor("Request timed out", "请求超时")
                     : response.error;
                 self->appendLog(self->textFor("Failed to fetch mountpoint list: %1", "获取挂载点列表失败: %1").arg(errorText));
-                QMessageBox::warning(
-                    self,
-                    self->textFor("Failed", "失败"),
-                    self->textFor("Failed to fetch mountpoint list: %1", "获取挂载点列表失败: %1").arg(errorText));
+                self->status_label_->setText(
+                    self->textFor("Status: Failed to fetch mountpoints", "状态: 获取挂载点失败"));
+                self->status_label_->setStyleSheet(boldLabelColorStyle(AppThemeColor::Warning));
                 return;
             }
 
             if (result.mountpoints.isEmpty())
             {
                 self->appendLog(self->textFor("No mountpoints found in sourcetable response.", "返回的源表中未找到挂载点。"));
-                QMessageBox::information(
-                    self,
-                    self->textFor("No Data", "无数据"),
-                    self->textFor("No mountpoints were found for this server.", "该服务器未返回可用挂载点。"));
+                self->status_label_->setText(
+                    self->textFor("Status: No mountpoints found", "状态: 未找到挂载点"));
+                self->status_label_->setStyleSheet(boldLabelColorStyle(AppThemeColor::Warning));
                 return;
             }
 
-            const QString currentMountpoint = self->mountpoint_edit_->text().trimmed();
-            const qsizetype currentIndex = std::max<qsizetype>(0, result.mountpoints.indexOf(currentMountpoint));
-            QDialog mountpointDialog(self);
-            mountpointDialog.setWindowTitle(self->textFor("Select Mountpoint", "选择挂载点"));
-            mountpointDialog.setModal(true);
-            mountpointDialog.setMinimumWidth(self->scalePixels(520));
-
-            auto *dialogLayout = new QVBoxLayout(&mountpointDialog);
-            dialogLayout->setContentsMargins(self->scalePixels(16), self->scalePixels(14), self->scalePixels(16), self->scalePixels(14));
-            dialogLayout->setSpacing(self->scalePixels(10));
-
-            auto *dialogLabel = new QLabel(self->textFor("Available mountpoints:", "可用挂载点:"), &mountpointDialog);
-            dialogLayout->addWidget(dialogLabel);
-
-            auto *mountpointCombo = new QComboBox(&mountpointDialog);
-            mountpointCombo->addItems(result.mountpoints);
-            mountpointCombo->setEditable(false);
-            mountpointCombo->setMinimumWidth(self->scalePixels(480));
-            if (currentIndex >= 0 && currentIndex < result.mountpoints.size())
-            {
-                mountpointCombo->setCurrentIndex(static_cast<int>(currentIndex));
-            }
-            dialogLayout->addWidget(mountpointCombo);
-
-            auto *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &mountpointDialog);
-            dialogLayout->addWidget(buttonBox);
-            QObject::connect(buttonBox, &QDialogButtonBox::accepted, &mountpointDialog, [&mountpointDialog]() {
-                mountpointDialog.accept();
-            });
-            QObject::connect(buttonBox, &QDialogButtonBox::rejected, &mountpointDialog, [&mountpointDialog]() {
-                mountpointDialog.reject();
-            });
-
-            VaporView::installCustomTitleBar(&mountpointDialog, false);
-            const QString selected = mountpointDialog.exec() == QDialog::Accepted
-                ? mountpointCombo->currentText().trimmed()
-                : QString();
-
+            const QString currentMountpoint = self->mountpoint_combo_->currentText().trimmed();
+            const int currentIndex = result.mountpoints.indexOf(currentMountpoint);
+            const QString selected = currentIndex >= 0
+                ? currentMountpoint
+                : result.mountpoints.constFirst();
+            const QSignalBlocker blocker(self->mountpoint_combo_);
+            self->mountpoint_combo_->clear();
+            self->mountpoint_combo_->addItems(result.mountpoints);
+            self->mountpoint_combo_->setCurrentText(selected);
             self->appendLog(self->textFor("Fetched %1 mountpoints.", "已获取 %1 个挂载点。").arg(result.mountpoints.size()));
-
-            if (!selected.isEmpty())
-            {
-                self->mountpoint_edit_->setText(selected);
-                self->appendLog(self->textFor("Selected mountpoint: %1", "已选择挂载点: %1").arg(selected));
-            }
+            self->appendLog(self->textFor("Mountpoint dropdown updated; current: %1", "挂载点下拉框已更新，当前: %1").arg(selected));
+            self->status_label_->setText(self->textFor("Status: Mountpoints loaded", "状态: 挂载点已载入"));
+            self->status_label_->setStyleSheet(boldLabelColorStyle(AppThemeColor::Success));
         }, Qt::QueuedConnection);
     });
 }
@@ -3093,7 +3066,7 @@ void RtkConfigDialog::onSaveConfigClicked()
     settings.setValue("port", port_edit_->text());
     settings.setValue("username", username_edit_->text());
     settings.setValue("password", password_edit_->text());
-    settings.setValue("mountpoint", mountpoint_edit_->text());
+    settings.setValue("mountpoint", mountpoint_combo_->currentText());
     settings.setValue("main_antenna_lever_x_m", main_antenna_lever_x_edit_->text());
     settings.setValue("main_antenna_lever_y_m", main_antenna_lever_y_edit_->text());
     settings.setValue("main_antenna_lever_z_m", main_antenna_lever_z_edit_->text());
@@ -3123,7 +3096,7 @@ void RtkConfigDialog::onLoadConfigClicked()
     port_edit_->setText(settings.value("port", "2101").toString());
     username_edit_->setText(settings.value("username", "").toString());
     password_edit_->setText(settings.value("password", "").toString());
-    mountpoint_edit_->setText(settings.value("mountpoint", "").toString());
+    mountpoint_combo_->setCurrentText(settings.value("mountpoint", "").toString());
     main_antenna_lever_x_edit_->setText(settings.value("main_antenna_lever_x_m", "").toString());
     main_antenna_lever_y_edit_->setText(settings.value("main_antenna_lever_y_m", "").toString());
     main_antenna_lever_z_edit_->setText(settings.value("main_antenna_lever_z_m", "").toString());

@@ -249,6 +249,7 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                 rtkScrollArea->verticalScrollBar()->maximum() == 0,
             "RTK config page avoids a vertical scrollbar at the default window size");
     const std::vector<std::pair<QString, int>> compactCombos = {
+        {QStringLiteral("rtkMountpointCombo"), 170},
         {QStringLiteral("rtkOutputPortCombo"), 150},
         {QStringLiteral("rtkBaudrateCombo"), 130},
         {QStringLiteral("rtkTimeoutCombo"), 115},
@@ -261,6 +262,18 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
         require(combo != nullptr, "compact RTK combo exists");
         require(combo->width() <= maxWidth,
                 "RTK combo width stays compact");
+    }
+    const std::vector<std::pair<QString, int>> compactLineEdits = {
+        {QStringLiteral("rtkServerEdit"), 200},
+        {QStringLiteral("rtkUsernameEdit"), 170},
+        {QStringLiteral("rtkPasswordEdit"), 170},
+    };
+    for (const auto& [objectName, maxWidth] : compactLineEdits)
+    {
+        auto *lineEdit = dialog->findChild<QLineEdit *>(objectName);
+        require(lineEdit != nullptr, "compact RTK line edit exists");
+        require(lineEdit->width() <= maxWidth,
+                "RTK server/account line edit width stays compact");
     }
     for (QWidget *topLevel : QApplication::topLevelWidgets())
     {
