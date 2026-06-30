@@ -1010,8 +1010,6 @@ void RtkConfigDialog::setupUi()
     config_layout_->addWidget(fetch_mountpoints_btn_, row, 5, Qt::AlignLeft | Qt::AlignVCenter);
     row++;
 
-    main_layout_->addWidget(config_group_, 0, Qt::AlignLeft);
-
     output_group_ = new QGroupBox(this);
     auto *outputCardLayout = createCardLayout(output_group_, output_title_label_, QStringLiteral("usb"));
     output_group_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
@@ -1118,8 +1116,6 @@ void RtkConfigDialog::setupUi()
     output_layout_->addWidget(lever_row_widget, row, 0, 1, 9, Qt::AlignLeft | Qt::AlignVCenter);
     row++;
 
-    main_layout_->addWidget(output_group_, 0, Qt::AlignLeft);
-
     gga_group_ = new QGroupBox(this);
     auto *ggaCardLayout = createCardLayout(gga_group_, gga_title_label_, QStringLiteral("activity"));
     gga_layout_ = new QVBoxLayout();
@@ -1128,21 +1124,21 @@ void RtkConfigDialog::setupUi()
     gga_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     ggaCardLayout->addLayout(gga_layout_);
 
-    gga_header_layout_ = new QHBoxLayout();
-    gga_header_layout_->setSpacing(8);
+    gga_header_layout_ = new QGridLayout();
+    gga_header_layout_->setHorizontalSpacing(8);
+    gga_header_layout_->setVerticalSpacing(4);
 
     gga_port_info_label_ = createFieldLabel();
-    gga_header_layout_->addWidget(gga_port_info_label_);
+    gga_header_layout_->addWidget(gga_port_info_label_, 0, 0);
 
     gga_port_combo_ = new QComboBox(this);
     gga_port_combo_->setObjectName(QStringLiteral("rtkGgaPortCombo"));
     gga_port_combo_->setEditable(true);
-    gga_header_layout_->addWidget(gga_port_combo_);
+    gga_header_layout_->addWidget(gga_port_combo_, 0, 1);
 
     gga_toggle_btn_ = new QPushButton(this);
     connect(gga_toggle_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onGgaToggleClicked);
-    gga_header_layout_->addWidget(gga_toggle_btn_);
-    gga_header_layout_->addStretch();
+    gga_header_layout_->addWidget(gga_toggle_btn_, 0, 2);
 
     gga_frequency_label_ = new VaporView::VisualTextLabel(this);
     gga_frequency_label_->setObjectName(QStringLiteral("fieldLabel"));
@@ -1153,7 +1149,7 @@ void RtkConfigDialog::setupUi()
             ggaFrequencyMetrics.horizontalAdvance(QStringLiteral("Rate: -999.99 Hz")),
             ggaFrequencyMetrics.horizontalAdvance(QStringLiteral("频率: -999.99 Hz"))) + scalePixels(8));
     gga_frequency_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    gga_header_layout_->addWidget(gga_frequency_label_);
+    gga_header_layout_->addWidget(gga_frequency_label_, 1, 0, 1, 3, Qt::AlignRight | Qt::AlignVCenter);
     gga_layout_->addLayout(gga_header_layout_);
 
     gga_status_label_ = new QLabel(this);
@@ -1171,6 +1167,17 @@ void RtkConfigDialog::setupUi()
     gga_text_container_layout_->addWidget(gga_text_edit_);
     gga_layout_->addWidget(gga_text_container_);
 
+    auto *topRowWidget = new QWidget(this);
+    topRowWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    auto *topRowLayout = new QHBoxLayout(topRowWidget);
+    topRowLayout->setContentsMargins(0, 0, 0, 0);
+    topRowLayout->setSpacing(8);
+    topRowLayout->setAlignment(Qt::AlignTop);
+    topRowLayout->addWidget(config_group_, 0, Qt::AlignTop | Qt::AlignLeft);
+    topRowLayout->addWidget(gga_group_, 1);
+    main_layout_->addWidget(topRowWidget);
+    main_layout_->addWidget(output_group_, 0, Qt::AlignLeft);
+
     log_group_ = new QGroupBox(this);
     auto *logCardLayout = createCardLayout(log_group_, log_title_label_, QStringLiteral("scroll-text"));
     log_layout_ = new QVBoxLayout();
@@ -1187,16 +1194,7 @@ void RtkConfigDialog::setupUi()
     log_text_edit_->setReadOnly(true);
     log_text_container_layout_->addWidget(log_text_edit_);
     log_layout_->addWidget(log_text_container_);
-
-    auto *monitorRowWidget = new QWidget(this);
-    monitorRowWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    auto *monitorRowLayout = new QHBoxLayout(monitorRowWidget);
-    monitorRowLayout->setContentsMargins(0, 0, 0, 0);
-    monitorRowLayout->setSpacing(8);
-    monitorRowLayout->setAlignment(Qt::AlignTop);
-    monitorRowLayout->addWidget(gga_group_, 2);
-    monitorRowLayout->addWidget(log_group_, 1);
-    main_layout_->addWidget(monitorRowWidget);
+    main_layout_->addWidget(log_group_);
 
     action_group_ = new QGroupBox(this);
     auto *actionCardLayout = createCardLayout(action_group_, action_title_label_, QStringLiteral("play"));
@@ -1407,7 +1405,8 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
     if (gga_header_layout_)
     {
-        gga_header_layout_->setSpacing(scalePixels(6));
+        gga_header_layout_->setHorizontalSpacing(scalePixels(6));
+        gga_header_layout_->setVerticalSpacing(scalePixels(4));
     }
 
     if (log_layout_)
@@ -1490,7 +1489,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     applyComboWidth(timeout_combo_, 96);
     applyComboWidth(reconnect_combo_, 104);
     applyFieldLabelWidth(gga_port_info_label_, 72);
-    applyComboWidth(gga_port_combo_, 220);
+    applyComboWidth(gga_port_combo_, 170);
 
     gga_status_label_->setMinimumHeight(scalePixels(24));
     const int ggaTextHeight = scalePixels(56);
@@ -1504,9 +1503,11 @@ void RtkConfigDialog::applyScaledUiMetrics()
     }
     gga_text_edit_->document()->setDocumentMargin(scalePixels(8));
     const QMargins ggaMargins = gga_layout_ ? gga_layout_->contentsMargins() : QMargins();
-    const int headerHeight = std::max({gga_port_info_label_->sizeHint().height(),
-                                       gga_port_combo_->sizeHint().height(),
-                                       gga_frequency_label_->sizeHint().height()});
+    const int headerHeight = gga_header_layout_
+        ? gga_header_layout_->sizeHint().height()
+        : std::max({gga_port_info_label_->sizeHint().height(),
+                    gga_port_combo_->sizeHint().height(),
+                    gga_frequency_label_->sizeHint().height()});
     const int statusHeight = std::max(gga_status_label_->minimumHeight(), gga_status_label_->sizeHint().height());
     const int verticalSpacing = gga_layout_ ? gga_layout_->spacing() : 0;
     const int cardTitleBarHeight = 40;

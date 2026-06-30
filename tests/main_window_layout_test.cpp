@@ -360,18 +360,26 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     auto *ggaCard = findCardByTitle(dialog,
                                     {QStringLiteral("GGA 监视"),
                                      QStringLiteral("GGA Monitor")});
+    auto *logCard = findCardByTitle(dialog,
+                                    {QStringLiteral("RTK 服务日志"),
+                                     QStringLiteral("RTK Service Log")});
     auto *actionCard = findCardByTitle(dialog,
                                        {QStringLiteral("服务操作"),
                                         QStringLiteral("Service Actions")});
-    require(ggaCard != nullptr && actionCard != nullptr,
-            "RTK GGA and service action cards exist for compact stacking checks");
+    require(ggaCard != nullptr && logCard != nullptr && actionCard != nullptr,
+            "RTK GGA, log, and service action cards exist for compact stacking checks");
     require(ntripCard->width() <= ntripCard->sizeHint().width() + 4 &&
                 ntripCard->width() <= 760,
             "RTK NTRIP card width hugs its compact form contents");
     require(rtcmCard->width() <= rtcmCard->sizeHint().width() + 4,
             "RTK RTCM output card width hugs its compact form contents");
-    require(widgetY(ggaCard) - (widgetY(rtcmCard) + rtcmCard->height()) <= 12,
-            "RTK monitor cards sit directly below the RTCM card");
+    require(std::abs(widgetY(ggaCard) - widgetY(ntripCard)) <= 2 &&
+                widgetX(ggaCard) >= widgetX(ntripCard) + ntripCard->width(),
+            "RTK GGA monitor card sits in the first row to the right of NTRIP");
+    require(widgetY(rtcmCard) >= widgetY(ntripCard) + ntripCard->height() - 2,
+            "RTK RTCM output card sits below the first row");
+    require(widgetY(logCard) - (widgetY(rtcmCard) + rtcmCard->height()) <= 12,
+            "RTK service log card sits directly below the RTCM card");
     require(actionCard->width() >= dialog->width() - 40,
             "RTK bottom actions are collected in a full-width service card");
     auto *serverEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
