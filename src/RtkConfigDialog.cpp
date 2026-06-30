@@ -942,31 +942,37 @@ void RtkConfigDialog::setupUi()
     output_layout_ = new QGridLayout();
     output_layout_->setSpacing(6);
     output_layout_->setContentsMargins(10, 10, 10, 10);
-    output_layout_->setColumnStretch(1, 1);
-    output_layout_->setColumnStretch(5, 1);
+    output_layout_->setColumnStretch(10, 1);
     outputCardLayout->addLayout(output_layout_);
 
     row = 0;
     output_port_label_ = createFieldLabel();
     output_layout_->addWidget(output_port_label_, row, 0);
     output_port_combo_ = new QComboBox(this);
+    output_port_combo_->setObjectName(QStringLiteral("rtkOutputPortCombo"));
     output_port_combo_->setEditable(true);
     output_layout_->addWidget(output_port_combo_, row, 1);
 
-    refresh_ports_btn_ = new QPushButton(this);
-    connect(refresh_ports_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onRefreshPortsClicked);
-    output_layout_->addWidget(refresh_ports_btn_, row, 2);
-
-    auto_detect_ports_btn_ = new QPushButton(this);
-    connect(auto_detect_ports_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onAutoDetectPortsClicked);
-    output_layout_->addWidget(auto_detect_ports_btn_, row, 3);
-
     baudrate_label_ = createFieldLabel();
-    output_layout_->addWidget(baudrate_label_, row, 4);
+    output_layout_->addWidget(baudrate_label_, row, 2);
     baudrate_combo_ = new QComboBox(this);
+    baudrate_combo_->setObjectName(QStringLiteral("rtkBaudrateCombo"));
     baudrate_combo_->addItems({"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"});
     baudrate_combo_->setCurrentText("115200");
-    output_layout_->addWidget(baudrate_combo_, row, 5);
+    output_layout_->addWidget(baudrate_combo_, row, 3);
+
+    timeout_label_ = createFieldLabel();
+    output_layout_->addWidget(timeout_label_, row, 4);
+    timeout_combo_ = createTimingComboBox(this, "5000");
+    timeout_combo_->setObjectName(QStringLiteral("rtkTimeoutCombo"));
+    output_layout_->addWidget(timeout_combo_, row, 5);
+
+    reconnect_label_ = createFieldLabel();
+    output_layout_->addWidget(reconnect_label_, row, 6);
+    reconnect_combo_ = createTimingComboBox(this, "1000");
+    reconnect_combo_->setObjectName(QStringLiteral("rtkReconnectCombo"));
+    output_layout_->addWidget(reconnect_combo_, row, 7);
+
     row++;
 
     auto *lever_label_widget = new QWidget(this);
@@ -1010,22 +1016,19 @@ void RtkConfigDialog::setupUi()
     lever_edit_layout->addWidget(createFieldLabel(QStringLiteral("Z")));
     main_antenna_lever_z_edit_ = createLeverEdit();
     lever_edit_layout->addWidget(main_antenna_lever_z_edit_);
-    output_layout_->addWidget(lever_edit_widget, row, 1, 1, 4);
+    output_layout_->addWidget(lever_edit_widget, row, 1, 1, 5);
 
     apply_main_antenna_lever_btn_ = new QPushButton(this);
     connect(apply_main_antenna_lever_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onApplyMainAntennaLeverArmClicked);
-    output_layout_->addWidget(apply_main_antenna_lever_btn_, row, 5);
-    row++;
+    output_layout_->addWidget(apply_main_antenna_lever_btn_, row, 6);
 
-    timeout_label_ = createFieldLabel();
-    output_layout_->addWidget(timeout_label_, row, 0);
-    timeout_combo_ = createTimingComboBox(this, "5000");
-    output_layout_->addWidget(timeout_combo_, row, 1);
+    refresh_ports_btn_ = new QPushButton(this);
+    connect(refresh_ports_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onRefreshPortsClicked);
+    output_layout_->addWidget(refresh_ports_btn_, row, 7);
 
-    reconnect_label_ = createFieldLabel();
-    output_layout_->addWidget(reconnect_label_, row, 2);
-    reconnect_combo_ = createTimingComboBox(this, "1000");
-    output_layout_->addWidget(reconnect_combo_, row, 3, 1, 3);
+    auto_detect_ports_btn_ = new QPushButton(this);
+    connect(auto_detect_ports_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onAutoDetectPortsClicked);
+    output_layout_->addWidget(auto_detect_ports_btn_, row, 8);
     row++;
 
     main_layout_->addWidget(output_group_);
@@ -1045,6 +1048,7 @@ void RtkConfigDialog::setupUi()
     gga_header_layout_->addWidget(gga_port_info_label_);
 
     gga_port_combo_ = new QComboBox(this);
+    gga_port_combo_->setObjectName(QStringLiteral("rtkGgaPortCombo"));
     gga_port_combo_->setEditable(true);
     gga_header_layout_->addWidget(gga_port_combo_);
 
@@ -1059,13 +1063,14 @@ void RtkConfigDialog::setupUi()
     const QFontMetrics ggaFrequencyMetrics(gga_frequency_label_->font());
     gga_frequency_label_->setFixedWidth(
         std::max(
-            ggaFrequencyMetrics.horizontalAdvance(QStringLiteral("Actual Rate: -999.99 Hz")),
-            ggaFrequencyMetrics.horizontalAdvance(QStringLiteral("真实频率: -999.99 Hz"))) + scalePixels(8));
+            ggaFrequencyMetrics.horizontalAdvance(QStringLiteral("Rate: -999.99 Hz")),
+            ggaFrequencyMetrics.horizontalAdvance(QStringLiteral("频率: -999.99 Hz"))) + scalePixels(8));
     gga_frequency_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     gga_header_layout_->addWidget(gga_frequency_label_);
     gga_layout_->addLayout(gga_header_layout_);
 
     gga_status_label_ = new QLabel(this);
+    gga_status_label_->setWordWrap(true);
     gga_layout_->addWidget(gga_status_label_);
 
     gga_text_container_ = new QWidget(gga_group_);
@@ -1079,9 +1084,30 @@ void RtkConfigDialog::setupUi()
     gga_text_container_layout_->addWidget(gga_text_edit_);
     gga_layout_->addWidget(gga_text_container_);
 
-    main_layout_->addWidget(gga_group_);
-    gga_button_spacer_ = new QSpacerItem(0, 8, QSizePolicy::Minimum, QSizePolicy::Fixed);
-    main_layout_->addSpacerItem(gga_button_spacer_);
+    log_group_ = new QGroupBox(this);
+    auto *logCardLayout = createCardLayout(log_group_, log_title_label_);
+    log_layout_ = new QVBoxLayout();
+    log_layout_->setSpacing(4);
+    log_layout_->setContentsMargins(10, 10, 10, 4);
+    logCardLayout->addLayout(log_layout_);
+
+    log_text_container_ = new QWidget(log_group_);
+    log_text_container_layout_ = new QVBoxLayout(log_text_container_);
+    log_text_container_layout_->setContentsMargins(0, 0, 0, 2);
+    log_text_container_layout_->setSpacing(0);
+
+    log_text_edit_ = new QTextEdit(log_text_container_);
+    log_text_edit_->setReadOnly(true);
+    log_text_container_layout_->addWidget(log_text_edit_);
+    log_layout_->addWidget(log_text_container_);
+
+    auto *monitorRowWidget = new QWidget(this);
+    auto *monitorRowLayout = new QHBoxLayout(monitorRowWidget);
+    monitorRowLayout->setContentsMargins(0, 0, 0, 0);
+    monitorRowLayout->setSpacing(8);
+    monitorRowLayout->addWidget(gga_group_, 2);
+    monitorRowLayout->addWidget(log_group_, 1);
+    main_layout_->addWidget(monitorRowWidget);
 
     button_layout_ = new QHBoxLayout();
     button_layout_->setSpacing(6);
@@ -1114,25 +1140,6 @@ void RtkConfigDialog::setupUi()
     button_layout_->addWidget(load_config_btn_);
 
     main_layout_->addLayout(button_layout_);
-
-    log_group_ = new QGroupBox(this);
-    auto *logCardLayout = createCardLayout(log_group_, log_title_label_);
-    log_layout_ = new QVBoxLayout();
-    log_layout_->setSpacing(4);
-    log_layout_->setContentsMargins(10, 10, 10, 4);
-    logCardLayout->addLayout(log_layout_);
-
-    log_text_container_ = new QWidget(log_group_);
-    log_text_container_layout_ = new QVBoxLayout(log_text_container_);
-    log_text_container_layout_->setContentsMargins(0, 0, 0, 2);
-    log_text_container_layout_->setSpacing(0);
-
-    log_text_edit_ = new QTextEdit(log_text_container_);
-    log_text_edit_->setReadOnly(true);
-    log_text_container_layout_->addWidget(log_text_edit_);
-    log_layout_->addWidget(log_text_container_);
-
-    main_layout_->addWidget(log_group_);
 
     status_label_ = new QLabel(this);
     status_label_->setObjectName(QStringLiteral("rtkStatusLabel"));
@@ -1217,35 +1224,43 @@ void RtkConfigDialog::applyScaledUiMetrics()
             .arg(scalePixels(10))
             .arg(std::max(1, targetHeight - scalePixels(4))));
     };
+    auto applyComboWidth = [this](QComboBox *combo, int baseWidth) {
+        if (!combo)
+        {
+            return;
+        }
+
+        const int targetWidth = scalePixels(baseWidth);
+        combo->setFixedWidth(targetWidth);
+        combo->setMinimumHeight(scalePixels(30));
+        combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    };
 
     if (main_layout_)
     {
-        main_layout_->setSpacing(scalePixels(8));
-        main_layout_->setContentsMargins(scalePixels(12), scalePixels(12), scalePixels(12), scalePixels(12));
+        main_layout_->setSpacing(scalePixels(6));
+        main_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(8));
     }
 
     if (config_layout_)
     {
         config_layout_->setHorizontalSpacing(scalePixels(6));
-        config_layout_->setVerticalSpacing(scalePixels(10));
-        config_layout_->setContentsMargins(scalePixels(10), scalePixels(10), scalePixels(10), scalePixels(10));
+        config_layout_->setVerticalSpacing(scalePixels(6));
+        config_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(8));
         for (int row = 0; row < 2; ++row)
         {
-            config_layout_->setRowMinimumHeight(row, scalePixels(42));
+            config_layout_->setRowMinimumHeight(row, scalePixels(36));
         }
     }
 
     if (output_layout_)
     {
         output_layout_->setHorizontalSpacing(scalePixels(6));
-        output_layout_->setVerticalSpacing(scalePixels(10));
-        output_layout_->setContentsMargins(scalePixels(10), scalePixels(10), scalePixels(10), scalePixels(10));
-        output_layout_->setColumnMinimumWidth(2, scalePixels(88));
-        output_layout_->setColumnMinimumWidth(3, scalePixels(108));
-        output_layout_->setColumnMinimumWidth(4, scalePixels(74));
-        for (int row = 0; row < 3; ++row)
+        output_layout_->setVerticalSpacing(scalePixels(6));
+        output_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(8));
+        for (int row = 0; row < 2; ++row)
         {
-            output_layout_->setRowMinimumHeight(row, scalePixels(40));
+            output_layout_->setRowMinimumHeight(row, scalePixels(36));
         }
     }
 
@@ -1256,8 +1271,8 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
     if (gga_layout_)
     {
-        gga_layout_->setSpacing(scalePixels(6));
-        gga_layout_->setContentsMargins(scalePixels(10), scalePixels(10), scalePixels(10), scalePixels(12));
+        gga_layout_->setSpacing(scalePixels(5));
+        gga_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(8));
     }
 
     if (gga_text_container_layout_)
@@ -1267,18 +1282,18 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
     if (gga_button_spacer_)
     {
-        gga_button_spacer_->changeSize(0, scalePixels(8), QSizePolicy::Minimum, QSizePolicy::Fixed);
+        gga_button_spacer_->changeSize(0, 0, QSizePolicy::Minimum, QSizePolicy::Fixed);
     }
 
     if (gga_header_layout_)
     {
-        gga_header_layout_->setSpacing(scalePixels(8));
+        gga_header_layout_->setSpacing(scalePixels(6));
     }
 
     if (log_layout_)
     {
         log_layout_->setSpacing(scalePixels(4));
-        log_layout_->setContentsMargins(scalePixels(10), scalePixels(10), scalePixels(10), scalePixels(4));
+        log_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(4));
     }
 
     if (log_text_container_layout_)
@@ -1287,21 +1302,19 @@ void RtkConfigDialog::applyScaledUiMetrics()
         log_text_container_layout_->setSpacing(0);
     }
 
-    server_edit_->setMinimumWidth(scalePixels(220));
-    server_edit_->setMinimumHeight(scalePixels(34));
-    port_edit_->setMaximumWidth(scalePixels(80));
-    port_edit_->setMinimumHeight(scalePixels(34));
-    username_edit_->setMinimumWidth(scalePixels(180));
-    username_edit_->setMinimumHeight(scalePixels(34));
-    password_edit_->setMinimumWidth(scalePixels(180));
-    password_edit_->setMinimumHeight(scalePixels(34));
-    mountpoint_edit_->setMinimumHeight(scalePixels(34));
-    mountpoint_edit_->setMinimumWidth(scalePixels(150));
+    server_edit_->setMinimumWidth(scalePixels(180));
+    server_edit_->setMinimumHeight(scalePixels(32));
+    port_edit_->setFixedWidth(scalePixels(76));
+    port_edit_->setMinimumHeight(scalePixels(32));
+    username_edit_->setMinimumWidth(scalePixels(150));
+    username_edit_->setMinimumHeight(scalePixels(32));
+    password_edit_->setMinimumWidth(scalePixels(150));
+    password_edit_->setMinimumHeight(scalePixels(32));
+    mountpoint_edit_->setMinimumHeight(scalePixels(32));
+    mountpoint_edit_->setMinimumWidth(scalePixels(130));
 
-    output_port_combo_->setMinimumWidth(scalePixels(200));
-    output_port_combo_->setMinimumHeight(scalePixels(30));
-    baudrate_combo_->setMinimumWidth(scalePixels(140));
-    baudrate_combo_->setMinimumHeight(scalePixels(30));
+    applyComboWidth(output_port_combo_, 128);
+    applyComboWidth(baudrate_combo_, 112);
     if (main_antenna_lever_help_btn_)
     {
         const int helpSize = scalePixels(26);
@@ -1322,20 +1335,17 @@ void RtkConfigDialog::applyScaledUiMetrics()
     {
         if (edit)
         {
-            edit->setMinimumWidth(scalePixels(70));
-            edit->setMinimumHeight(scalePixels(34));
+            edit->setFixedWidth(scalePixels(64));
+            edit->setMinimumHeight(scalePixels(32));
         }
     }
-    timeout_combo_->setMinimumWidth(scalePixels(140));
-    timeout_combo_->setMinimumHeight(scalePixels(30));
-    reconnect_combo_->setMinimumWidth(scalePixels(140));
-    reconnect_combo_->setMinimumHeight(scalePixels(30));
-    gga_port_combo_->setMinimumWidth(scalePixels(240));
-    gga_port_combo_->setMinimumHeight(scalePixels(30));
+    applyComboWidth(timeout_combo_, 96);
+    applyComboWidth(reconnect_combo_, 104);
+    applyComboWidth(gga_port_combo_, 220);
 
     gga_status_label_->setMinimumHeight(scalePixels(24));
-    const int ggaTextHeight = scalePixels(72);
-    const int ggaTextBottomGap = scalePixels(8);
+    const int ggaTextHeight = scalePixels(56);
+    const int ggaTextBottomGap = scalePixels(4);
     gga_text_edit_->setFixedHeight(ggaTextHeight);
     gga_text_edit_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     if (gga_text_container_)
@@ -1343,7 +1353,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
         gga_text_container_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
         gga_text_container_->setFixedHeight(ggaTextHeight + ggaTextBottomGap);
     }
-    gga_text_edit_->document()->setDocumentMargin(scalePixels(12));
+    gga_text_edit_->document()->setDocumentMargin(scalePixels(8));
     const QMargins ggaMargins = gga_layout_ ? gga_layout_->contentsMargins() : QMargins();
     const int headerHeight = std::max({gga_port_info_label_->sizeHint().height(),
                                        gga_port_combo_->sizeHint().height(),
@@ -1362,10 +1372,10 @@ void RtkConfigDialog::applyScaledUiMetrics()
         + ggaMargins.bottom();
     gga_group_->setFixedHeight(ggaGroupHeight);
 
-    applyButtonWidth(refresh_ports_btn_, 80);
-    applyButtonWidth(auto_detect_ports_btn_, 96);
-    applyButtonWidth(apply_main_antenna_lever_btn_, 132);
-    applyButtonWidth(fetch_mountpoints_btn_, 128);
+    applyButtonWidth(refresh_ports_btn_, 72);
+    applyButtonWidth(auto_detect_ports_btn_, 88);
+    applyButtonWidth(apply_main_antenna_lever_btn_, 112);
+    applyButtonWidth(fetch_mountpoints_btn_, 118);
     applyButtonWidth(start_btn_, 80);
     applyButtonWidth(stop_btn_, 80);
     applyButtonWidth(test_btn_, 120);
@@ -1376,7 +1386,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
     log_text_edit_->setMinimumWidth(scalePixels(200));
     const QFontMetrics logMetrics(log_text_edit_->font());
-    const int logDocumentMargin = scalePixels(10);
+    const int logDocumentMargin = scalePixels(8);
     const int logTextHeight = logMetrics.lineSpacing() * kRtkLogVisibleLines + logDocumentMargin * 2;
     log_text_edit_->setFixedHeight(logTextHeight);
     log_text_edit_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
@@ -1799,7 +1809,7 @@ void RtkConfigDialog::updateGgaFrequency(double hz)
 
     const QString rateText = QString::number(std::max(0.0, hz), 'f', 2)
         .rightJustified(7, QLatin1Char(' '));
-    gga_frequency_label_->setText(textFor("Actual Rate: %1 Hz", "真实频率: %1 Hz").arg(rateText));
+    gga_frequency_label_->setText(textFor("Rate: %1 Hz", "频率: %1 Hz").arg(rateText));
 }
 
 void RtkConfigDialog::updateGgaStatusLabel(const QString& message, bool healthy)

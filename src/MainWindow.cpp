@@ -10466,13 +10466,13 @@ void MainWindow::setupCentralWidget()
         return button;
     };
     home_nav_btn_ = createNavButton(QStringLiteral("首页"), QStringLiteral("square-activity"));
+    device_config_nav_btn_ = createNavButton(QStringLiteral("设备配置"), QStringLiteral("sliders-vertical"));
     temperature_nav_btn_ = createNavButton(QStringLiteral("温控"), QStringLiteral("thermometer"));
     rtk_config_nav_btn_ = createNavButton(QStringLiteral("RTK配置"), QStringLiteral("satellite"));
-    device_config_nav_btn_ = createNavButton(QStringLiteral("设备配置"), QStringLiteral("sliders-vertical"));
     app_nav_button_group_->addButton(home_nav_btn_, 0);
-    app_nav_button_group_->addButton(temperature_nav_btn_, 1);
-    app_nav_button_group_->addButton(rtk_config_nav_btn_, 2);
-    app_nav_button_group_->addButton(device_config_nav_btn_, 3);
+    app_nav_button_group_->addButton(device_config_nav_btn_, 1);
+    app_nav_button_group_->addButton(temperature_nav_btn_, 2);
+    app_nav_button_group_->addButton(rtk_config_nav_btn_, 3);
     sidebarLayout->addStretch(1);
     home_nav_btn_->setChecked(true);
     updateSidebarNavIcons();
@@ -10556,6 +10556,7 @@ void MainWindow::setupCentralWidget()
 
     home_page_ = main_cards_scroll_area_;
     main_page_stack_->addWidget(home_page_);
+    setupDeviceConfigPage();
 
     temperature_page_ = new QWidget(this);
     temperature_page_->setObjectName(QStringLiteral("temperaturePage"));
@@ -10588,10 +10589,8 @@ void MainWindow::setupCentralWidget()
     syncRtkConfigPageState();
     main_page_stack_->addWidget(rtk_config_dialog_);
 
-    setupDeviceConfigPage();
-
     connect(app_nav_button_group_, &QButtonGroup::idClicked, this, [this](int id) {
-        if (id == 2)
+        if (id == 3)
         {
             syncRtkConfigPageState();
         }

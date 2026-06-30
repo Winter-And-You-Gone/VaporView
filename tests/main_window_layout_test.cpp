@@ -29,6 +29,8 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <utility>
+#include <vector>
 
 namespace
 {
@@ -208,8 +210,10 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(homeButton != nullptr, "home sidebar button exists after RTK check");
     require(rtkButton->property("_vv_sidebar_icon_name").toString() == QStringLiteral("satellite"),
             "RTK sidebar button uses satellite icon");
-    require(temperatureButton->y() < rtkButton->y() && rtkButton->y() < deviceButton->y(),
-            "RTK sidebar button sits below thermal and above device configuration");
+    require(homeButton->y() < deviceButton->y() &&
+                deviceButton->y() < temperatureButton->y() &&
+                temperatureButton->y() < rtkButton->y(),
+            "sidebar order is home, device configuration, thermal, RTK configuration");
     require(rtkButton->toolTip().contains(QStringLiteral("未启动")) ||
                 rtkButton->toolTip().contains(QStringLiteral("stopped")),
             "RTK sidebar button starts with stopped status text");
@@ -231,9 +235,33 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     auto *dialog = qobject_cast<RtkConfigDialog *>(pageStack->currentWidget());
     require(dialog != nullptr, "RTK config opens as an embedded sidebar page");
     require(dialog->isVisible(), "embedded RTK config page is visible after sidebar click");
+    activateLayouts(dialog);
+    processEventsFor(100);
     requireLabelTextOneOf(customTitleLabel,
                           {QStringLiteral("RTK配置"), QStringLiteral("RTK Config")},
                           "custom title bar follows the selected RTK page");
+    auto *rtkScrollArea = dialog->findChild<QScrollArea *>(QStringLiteral("rtkConfigScrollArea"));
+    require(rtkScrollArea != nullptr, "RTK config page uses a scroll area");
+    require(rtkScrollArea->horizontalScrollBar() != nullptr &&
+                rtkScrollArea->horizontalScrollBar()->maximum() == 0,
+            "RTK config page avoids a horizontal scrollbar at the default window size");
+    require(rtkScrollArea->verticalScrollBar() != nullptr &&
+                rtkScrollArea->verticalScrollBar()->maximum() == 0,
+            "RTK config page avoids a vertical scrollbar at the default window size");
+    const std::vector<std::pair<QString, int>> compactCombos = {
+        {QStringLiteral("rtkOutputPortCombo"), 150},
+        {QStringLiteral("rtkBaudrateCombo"), 130},
+        {QStringLiteral("rtkTimeoutCombo"), 115},
+        {QStringLiteral("rtkReconnectCombo"), 125},
+        {QStringLiteral("rtkGgaPortCombo"), 250},
+    };
+    for (const auto& [objectName, maxWidth] : compactCombos)
+    {
+        auto *combo = dialog->findChild<QComboBox *>(objectName);
+        require(combo != nullptr, "compact RTK combo exists");
+        require(combo->width() <= maxWidth,
+                "RTK combo width stays compact");
+    }
     for (QWidget *topLevel : QApplication::topLevelWidgets())
     {
         require(qobject_cast<RtkConfigDialog *>(topLevel) == nullptr,
