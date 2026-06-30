@@ -499,6 +499,7 @@ constexpr int kHomeOverviewBodyPadding = 2;
 constexpr int kConfigFormBottomPadding = 4;
 constexpr int kConfigHomeBodyBottomPadding = kHomeOverviewBodyPadding;
 constexpr int kConfigCardBottomPadding = kHomeOverviewCardOuterPadding;
+constexpr int kHomeTelemetrySummaryHeightPadding = 4;
 constexpr int kConfigCardMinHeight = kMainPageTitleBarHeight + kMainPageButtonHeight + kConfigHomeBodyBottomPadding + kConfigCardBottomPadding;
 constexpr int kHomeOverviewDeviceMinWidth = 540;
 constexpr int kHomeOverviewTemperatureMinWidth = 420;
@@ -7516,6 +7517,7 @@ void MainWindow::applyStyleConfiguration()
     };
     releaseFixedHeight(data_group_);
     releaseFixedHeight(tcp_wave_group_);
+    updateRemoteTelemetrySummaryLabel();
     updateResponsiveHomeLayout();
 }
 
@@ -7991,7 +7993,8 @@ void MainWindow::updateConfigCardHeightForSourceMode()
         }
         int summaryHeight = std::max(data_telemetry_summary_card_->sizeHint().height(),
                                      data_telemetry_summary_card_->minimumSizeHint().height());
-        summaryHeight = std::max(summaryHeight, kMainPageInputHeight);
+        summaryHeight = std::max(summaryHeight + scalePixels(kHomeTelemetrySummaryHeightPadding),
+                                 scalePixels(kMainPageInputHeight));
         data_telemetry_summary_card_->setMinimumHeight(summaryHeight);
         data_telemetry_summary_card_->setMaximumHeight(summaryHeight);
         const int homeDeviceRowHeight = scalePixels((kHomeDeviceRowHeight * kHomeDeviceGridRows) +
@@ -8324,7 +8327,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             pill->setObjectName(QStringLiteral("homeTelemetrySummaryPill"));
             pill->setProperty("deviceConfigLink", useSideTitle);
             pill->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-            pill->setMinimumHeight(scalePixels(useSideTitle ? 24 : 26));
+            pill->setMinimumHeight(scalePixels(useSideTitle ? 26 : 28));
             pill->setProperty("hasData", item.hasData);
             pill->setProperty("data-valid", QVariant());
             auto *pillLayout = new QHBoxLayout(pill);
@@ -8420,8 +8423,11 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             sectionLayout->addWidget(sectionBody, 0, Qt::AlignTop);
         }
 
+        int renderedLineCount = 0;
         auto addLine = [&](int begin, int end, bool includeTitle) {
+            ++renderedLineCount;
             auto *line = new QWidget(lineParent);
+            line->setFixedHeight(scalePixels(useSideTitle ? 26 : 28));
             auto *lineLayout = new QHBoxLayout(line);
             lineLayout->setContentsMargins(0, 0, 0, 0);
             lineLayout->setSpacing(4);
@@ -8462,12 +8468,24 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             }
         }
 
+        sectionLayout->invalidate();
+        sectionLayout->activate();
         if (QWidget *section = qobject_cast<QWidget *>(sectionLayout->parent()))
         {
+            const int rowHeight = scalePixels(useSideTitle ? 26 : 28);
+            const int rowSpacing = scalePixels(2);
+            const int rowMargins = useSideTitle
+                ? scalePixels(4)
+                : sectionLayout->contentsMargins().top() + sectionLayout->contentsMargins().bottom();
+            const int borderAllowance = scalePixels(2);
+            const int sectionHeight = rowMargins +
+                                      (renderedLineCount * rowHeight) +
+                                      (std::max(0, renderedLineCount - 1) * rowSpacing) +
+                                      borderAllowance;
+            section->setFixedHeight(sectionHeight);
             section->adjustSize();
             section->updateGeometry();
         }
-        sectionLayout->invalidate();
     };
     if (data_telemetry_summary_card_)
     {

@@ -679,6 +679,29 @@ void requireSameRect(const QRect& actual, const QRect& expected, int tolerance, 
             message);
 }
 
+void requireChildInsideParent(QWidget *child, QWidget *parent, int tolerance, const char *message)
+{
+    require(child != nullptr && parent != nullptr, message);
+    const QRect childRect(child->mapTo(parent, QPoint(0, 0)), child->size());
+    const bool contained =
+        childRect.left() >= -tolerance &&
+        childRect.top() >= -tolerance &&
+        childRect.right() <= parent->rect().right() + tolerance &&
+        childRect.bottom() <= parent->rect().bottom() + tolerance;
+    if (!contained)
+    {
+        std::cerr << "Child rect: "
+                  << childRect.x() << ',' << childRect.y() << ' '
+                  << childRect.width() << 'x' << childRect.height()
+                  << " parent rect: "
+                  << parent->rect().x() << ',' << parent->rect().y() << ' '
+                  << parent->rect().width() << 'x' << parent->rect().height()
+                  << " child=" << child->objectName().toStdString()
+                  << " parent=" << parent->objectName().toStdString() << '\n';
+    }
+    require(contained, message);
+}
+
 void requireLastStyleRuleContains(const QString& styleSheet,
                                   const QString& selector,
                                   const QString& expected,
@@ -719,6 +742,7 @@ int main(int argc, char **argv)
 #else
         settings.setValue(QStringLiteral("serial/temperature_port"), QStringLiteral("/dev/ttyRD105"));
 #endif
+        settings.setValue(QStringLiteral("dark_theme_enabled"), false);
         settings.setValue(QStringLiteral("serial/temperature_baud"), QStringLiteral("38400"));
         settings.setValue(QStringLiteral("rate/temperature"), QStringLiteral("5"));
         settings.sync();
@@ -984,6 +1008,11 @@ int main(int argc, char **argv)
         deviceOverviewCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     require(!homeTelemetryPills.isEmpty(),
             "home device overview telemetry pills exist before dark theme switch");
+    QWidget *homeTelemetrySummaryContainer =
+        deviceOverviewCard->findChild<QWidget *>(QStringLiteral("homeTelemetrySummaryContainer"));
+    require(homeTelemetrySummaryContainer != nullptr,
+            "home device overview telemetry summary container exists before dark theme switch");
+    const int lightHomeTelemetrySummaryHeight = homeTelemetrySummaryContainer->height();
     int minHomeTelemetryPillHeight = std::numeric_limits<int>::max();
     for (QFrame *pill : homeTelemetryPills)
     {
@@ -991,10 +1020,17 @@ int main(int argc, char **argv)
     }
     require(minHomeTelemetryPillHeight > 0,
             "home device overview telemetry pills have a measurable height");
-    require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
-            "main window can switch to dark theme for overview style checks");
-    processEventsFor(150);
-    activateLayouts(&window);
+    const bool startedDark =
+        qApp->property(VaporView::kAppDarkThemeProperty).toBool();
+    if (!startedDark)
+    {
+        require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
+                "main window can switch to dark theme for overview style checks");
+        processEventsFor(150);
+        activateLayouts(&window);
+    }
+    require(qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
+            "main window is in dark theme for overview style checks");
     const QString darkOverviewStyleSheet = qApp->styleSheet();
     requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QFrame#homeTelemetrySummaryPill {"),
@@ -1017,10 +1053,46 @@ int main(int argc, char **argv)
         require(pill->height() >= minHomeTelemetryPillHeight,
                 "home device overview telemetry pills do not shrink after switching to dark theme");
     }
-    require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
-            "main window can switch back to light theme after overview style checks");
-    processEventsFor(150);
-    activateLayouts(&window);
+    homeTelemetrySummaryContainer =
+        deviceOverviewCard->findChild<QWidget *>(QStringLiteral("homeTelemetrySummaryContainer"));
+    require(homeTelemetrySummaryContainer != nullptr,
+            "home device overview telemetry summary container exists after dark theme switch");
+    require(homeTelemetrySummaryContainer->height() >= lightHomeTelemetrySummaryHeight,
+            "home device overview telemetry summary container does not shrink in dark theme");
+    const QList<QFrame*> darkHomeTelemetrySections =
+        homeTelemetrySummaryContainer->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
+    require(!darkHomeTelemetrySections.isEmpty(),
+            "home device overview telemetry sections exist after dark theme switch");
+    for (QFrame *section : darkHomeTelemetrySections)
+    {
+        requireChildInsideParent(section, homeTelemetrySummaryContainer, 0,
+                                 "dark home telemetry section is not clipped by the summary container");
+        const QList<QFrame*> sectionPills =
+            section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+        for (QFrame *pill : sectionPills)
+        {
+            requireChildInsideParent(pill, section, 0,
+                                     "dark home telemetry pill is not clipped by its section");
+            const QList<QLabel*> pillLabels = pill->findChildren<QLabel *>();
+            for (QLabel *pillLabel : pillLabels)
+            {
+                if (pillLabel->objectName() != QStringLiteral("homeTelemetrySummaryNameLabel") &&
+                    pillLabel->objectName() != QStringLiteral("homeTelemetrySummaryValueLabel"))
+                {
+                    continue;
+                }
+                requireChildInsideParent(pillLabel, pill, 1,
+                                         "dark home telemetry label is not clipped by its pill");
+            }
+        }
+    }
+    if (!startedDark)
+    {
+        require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
+                "main window can switch back to light theme after overview style checks");
+        processEventsFor(150);
+        activateLayouts(&window);
+    }
 
     qRegisterMetaType<VaporView::TemperatureControllerData>("VaporView::TemperatureControllerData");
     VaporView::TemperatureControllerData validTemperatureData;
