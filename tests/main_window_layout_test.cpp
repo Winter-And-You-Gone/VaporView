@@ -383,6 +383,19 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(serverEdit != nullptr && usernameEdit != nullptr && portEdit != nullptr &&
                 passwordEdit != nullptr && mountpointCombo != nullptr && fetchMountpointsButton != nullptr,
             "RTK NTRIP compact fields exist for alignment checks");
+    const int rtkInputHeight = serverEdit->height();
+    const QList<QPushButton*> rtkPushButtons = dialog->findChildren<QPushButton *>();
+    for (QPushButton *button : rtkPushButtons)
+    {
+        require(std::abs(button->height() - rtkInputHeight) <= 1,
+                "RTK push buttons match the input field height");
+    }
+    const QList<QToolButton*> rtkToolButtons = dialog->findChildren<QToolButton *>();
+    for (QToolButton *button : rtkToolButtons)
+    {
+        require(std::abs(button->height() - rtkInputHeight) <= 1,
+                "RTK tool buttons match the input field height");
+    }
     require(std::abs(widgetX(serverEdit) - widgetX(usernameEdit)) <= 2,
             "RTK NTRIP server and username fields align vertically");
     require(std::abs(widgetX(portEdit) - widgetX(passwordEdit)) <= 2,

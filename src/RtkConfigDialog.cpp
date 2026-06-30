@@ -71,6 +71,7 @@ constexpr int kRtkDefaultDialogWidth = 1024;
 constexpr int kRtkDefaultDialogHeight = 640;
 constexpr int kRtkMinimumDialogWidth = 640;
 constexpr int kRtkMinimumDialogHeight = 420;
+constexpr int kRtkInputHeight = 32;
 constexpr const char *kEpsilonMainGgaSourceKey = "__epsilon_main__";
 constexpr const char *kSectionTitleIconNameProperty = "_vv_section_title_icon_name";
 constexpr int kSectionTitleIconBoxSize = 26;
@@ -1312,14 +1313,13 @@ void RtkConfigDialog::applyScaledUiMetrics()
         const QFontMetrics metrics(button->font());
         const int textWidth = metrics.horizontalAdvance(button->text());
         const int targetWidth = std::max(scalePixels(baseWidth), textWidth + scalePixels(28));
-        const int targetHeight = std::max(scalePixels(38), metrics.height() + scalePixels(8));
+        const int targetHeight = scalePixels(kRtkInputHeight);
         button->setFixedWidth(targetWidth);
         button->setFixedHeight(targetHeight);
         button->setStyleSheet(QString(
-            "QPushButton { padding: %1px %2px; min-height: %3px; }")
-            .arg(scalePixels(2))
+            "QPushButton { padding: 0px %1px; min-height: %2px; max-height: %2px; }")
             .arg(scalePixels(10))
-            .arg(std::max(1, targetHeight - scalePixels(4))));
+            .arg(targetHeight));
     };
     auto applyComboWidth = [this](QComboBox *combo, int baseWidth) {
         if (!combo)
@@ -1329,7 +1329,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
         const int targetWidth = scalePixels(baseWidth);
         combo->setFixedWidth(targetWidth);
-        combo->setMinimumHeight(scalePixels(30));
+        combo->setFixedHeight(scalePixels(kRtkInputHeight));
         combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     };
     auto applyFieldLabelWidth = [this](QLabel *label, int baseWidth) {
@@ -1350,7 +1350,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
         const QFontMetrics metrics(label->font());
         label->setFixedWidth(metrics.horizontalAdvance(label->text()) + scalePixels(2));
-        label->setMinimumHeight(scalePixels(30));
+        label->setMinimumHeight(scalePixels(kRtkInputHeight));
         label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     };
 
@@ -1435,21 +1435,21 @@ void RtkConfigDialog::applyScaledUiMetrics()
     applyFieldLabelContentWidth(password_label_);
     applyFieldLabelContentWidth(mountpoint_label_);
     server_edit_->setFixedWidth(scalePixels(150));
-    server_edit_->setMinimumHeight(scalePixels(32));
+    server_edit_->setFixedHeight(scalePixels(kRtkInputHeight));
     port_edit_->setFixedWidth(scalePixels(76));
-    port_edit_->setMinimumHeight(scalePixels(32));
+    port_edit_->setFixedHeight(scalePixels(kRtkInputHeight));
     username_edit_->setFixedWidth(scalePixels(140));
-    username_edit_->setMinimumHeight(scalePixels(32));
+    username_edit_->setFixedHeight(scalePixels(kRtkInputHeight));
     const int passwordWidth =
         scalePixels(76) + (config_layout_ ? config_layout_->horizontalSpacing() : scalePixels(5)) +
         (mountpoint_label_ ? mountpoint_label_->width() : 0);
     password_edit_->setFixedWidth(std::max(scalePixels(140), passwordWidth));
-    password_edit_->setMinimumHeight(scalePixels(32));
+    password_edit_->setFixedHeight(scalePixels(kRtkInputHeight));
     applyButtonWidth(fetch_mountpoints_btn_, 112);
     if (fetch_mountpoints_btn_)
     {
         mountpoint_combo_->setFixedWidth(fetch_mountpoints_btn_->width());
-        mountpoint_combo_->setMinimumHeight(scalePixels(30));
+        mountpoint_combo_->setFixedHeight(scalePixels(kRtkInputHeight));
         mountpoint_combo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     }
     else
@@ -1466,7 +1466,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     applyComboWidth(baudrate_combo_, 112);
     if (main_antenna_lever_help_btn_)
     {
-        const int helpSize = scalePixels(26);
+        const int helpSize = scalePixels(kRtkInputHeight);
         main_antenna_lever_help_btn_->setFixedSize(helpSize, helpSize);
         const int iconSize = std::max(16, helpSize - scalePixels(6));
         main_antenna_lever_help_btn_->setIconSize(QSize(iconSize, iconSize));
@@ -1484,7 +1484,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
         if (edit)
         {
             edit->setFixedWidth(scalePixels(64));
-            edit->setMinimumHeight(scalePixels(32));
+            edit->setFixedHeight(scalePixels(kRtkInputHeight));
         }
     }
     applyComboWidth(timeout_combo_, 96);
