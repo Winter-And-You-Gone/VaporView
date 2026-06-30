@@ -1127,8 +1127,13 @@ void RtkConfigDialog::setupUi()
     gga_header_layout_ = new QGridLayout();
     gga_header_layout_->setHorizontalSpacing(8);
     gga_header_layout_->setVerticalSpacing(4);
+    gga_header_layout_->setColumnStretch(0, 0);
+    gga_header_layout_->setColumnStretch(1, 0);
+    gga_header_layout_->setColumnStretch(2, 0);
+    gga_header_layout_->setColumnStretch(3, 1);
 
     gga_port_info_label_ = createFieldLabel();
+    gga_port_info_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     gga_header_layout_->addWidget(gga_port_info_label_, 0, 0);
 
     gga_port_combo_ = new QComboBox(this);
@@ -1137,8 +1142,10 @@ void RtkConfigDialog::setupUi()
     gga_header_layout_->addWidget(gga_port_combo_, 0, 1);
 
     gga_toggle_btn_ = new QPushButton(this);
+    gga_toggle_btn_->setObjectName(QStringLiteral("rtkGgaToggleButton"));
     connect(gga_toggle_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onGgaToggleClicked);
     gga_header_layout_->addWidget(gga_toggle_btn_, 0, 2);
+    gga_header_layout_->addItem(new QSpacerItem(0, 0, QSizePolicy::Expanding, QSizePolicy::Minimum), 0, 3);
 
     gga_frequency_label_ = new VaporView::VisualTextLabel(this);
     gga_frequency_label_->setObjectName(QStringLiteral("fieldLabel"));
@@ -1149,10 +1156,11 @@ void RtkConfigDialog::setupUi()
             ggaFrequencyMetrics.horizontalAdvance(QStringLiteral("Rate: -999.99 Hz")),
             ggaFrequencyMetrics.horizontalAdvance(QStringLiteral("频率: -999.99 Hz"))) + scalePixels(8));
     gga_frequency_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    gga_header_layout_->addWidget(gga_frequency_label_, 1, 0, 1, 3, Qt::AlignRight | Qt::AlignVCenter);
+    gga_header_layout_->addWidget(gga_frequency_label_, 1, 0, 1, 4, Qt::AlignRight | Qt::AlignVCenter);
     gga_layout_->addLayout(gga_header_layout_);
 
     gga_status_label_ = new QLabel(this);
+    gga_status_label_->setObjectName(QStringLiteral("rtkGgaStatusLabel"));
     gga_status_label_->setWordWrap(true);
     gga_layout_->addWidget(gga_status_label_);
 
@@ -1488,10 +1496,16 @@ void RtkConfigDialog::applyScaledUiMetrics()
     }
     applyComboWidth(timeout_combo_, 96);
     applyComboWidth(reconnect_combo_, 104);
-    applyFieldLabelWidth(gga_port_info_label_, 72);
-    applyComboWidth(gga_port_combo_, 170);
+    applyFieldLabelContentWidth(gga_port_info_label_);
+    if (gga_port_info_label_)
+    {
+        gga_port_info_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    }
+    applyComboWidth(gga_port_combo_, 150);
 
-    gga_status_label_->setMinimumHeight(scalePixels(24));
+    const bool ggaStatusVisible = gga_status_label_ && !gga_status_label_->text().trimmed().isEmpty();
+    gga_status_label_->setVisible(ggaStatusVisible);
+    gga_status_label_->setMinimumHeight(ggaStatusVisible ? scalePixels(24) : 0);
     const int ggaTextHeight = scalePixels(56);
     const int ggaTextBottomGap = scalePixels(4);
     gga_text_edit_->setFixedHeight(ggaTextHeight);
@@ -1508,7 +1522,9 @@ void RtkConfigDialog::applyScaledUiMetrics()
         : std::max({gga_port_info_label_->sizeHint().height(),
                     gga_port_combo_->sizeHint().height(),
                     gga_frequency_label_->sizeHint().height()});
-    const int statusHeight = std::max(gga_status_label_->minimumHeight(), gga_status_label_->sizeHint().height());
+    const int statusHeight = ggaStatusVisible
+        ? std::max(gga_status_label_->minimumHeight(), gga_status_label_->sizeHint().height())
+        : 0;
     const int verticalSpacing = gga_layout_ ? gga_layout_->spacing() : 0;
     const int cardTitleBarHeight = 40;
     const int ggaGroupHeight = cardTitleBarHeight
@@ -1516,7 +1532,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
         + headerHeight
         + verticalSpacing
         + statusHeight
-        + verticalSpacing
+        + (ggaStatusVisible ? verticalSpacing : 0)
         + ggaTextHeight
         + ggaTextBottomGap
         + ggaMargins.bottom();
@@ -1528,7 +1544,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     applyButtonWidth(start_btn_, 80);
     applyButtonWidth(stop_btn_, 80);
     applyButtonWidth(test_btn_, 120);
-    applyButtonWidth(gga_toggle_btn_, 110);
+    applyButtonWidth(gga_toggle_btn_, 72);
     applyButtonWidth(save_config_btn_, 100);
     applyButtonWidth(load_config_btn_, 100);
     applyButtonWidth(clear_log_btn_, 96);
@@ -1867,7 +1883,7 @@ void RtkConfigDialog::onRtkStatusTimer()
 
 QString RtkConfigDialog::mainGgaSourceLabel() const
 {
-    return textFor("EPSILON main port (generated GGA)", "EPSILON 主串口（生成GGA）");
+    return textFor("Epsilon generated", "Epsilon生成");
 }
 
 bool RtkConfigDialog::isMainGgaSourceSelected() const
@@ -1968,10 +1984,18 @@ void RtkConfigDialog::updateGgaStatusLabel(const QString& message, bool healthy)
         return;
     }
 
+    const bool wasVisible = gga_status_label_->isVisible();
+    const bool visible = !message.trimmed().isEmpty();
     gga_status_message_ = message;
     gga_status_healthy_ = healthy;
     gga_status_label_->setText(message);
+    gga_status_label_->setVisible(visible);
+    gga_status_label_->setMinimumHeight(visible ? scalePixels(24) : 0);
     gga_status_label_->setStyleSheet(boldLabelColorStyle(healthy ? AppThemeColor::RtkHealthy : AppThemeColor::RtkWarning));
+    if (wasVisible != visible)
+    {
+        applyScaledUiMetrics();
+    }
 }
 
 void RtkConfigDialog::updateGgaMonitorButton()
@@ -1983,7 +2007,7 @@ void RtkConfigDialog::updateGgaMonitorButton()
 
     gga_toggle_btn_->setText(gga_monitor_enabled_
         ? textFor("Stop Reading", "停止读取")
-        : textFor("Read GGA", "读取GGA"));
+        : textFor("Read", "读取"));
     gga_toggle_btn_->setEnabled(true);
 }
 
@@ -2004,7 +2028,7 @@ void RtkConfigDialog::updateGgaMonitorText()
                 ? (mainSource
                     ? textFor("Status: Waiting for EPSILON main-port position", "状态: 正在等待 EPSILON 主串口定位")
                     : textFor("Status: Waiting for serial data", "状态: 正在等待串口数据"))
-                : textFor("Status: Click button to read GGA", "状态: 点击按钮开始读取GGA"),
+                : QString(),
             false);
     }
     else if (gga_status_message_.startsWith("Status:") || gga_status_message_.startsWith("状态:"))

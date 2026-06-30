@@ -420,6 +420,28 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
             "RTK NTRIP mountpoint detection button sits below and aligns with the mountpoint combo");
     require(std::abs(fetchMountpointsButton->width() - mountpointCombo->width()) <= 2,
             "RTK NTRIP mountpoint combo matches the detect button width");
+    auto *ggaSourceCombo = dialog->findChild<QComboBox *>(QStringLiteral("rtkGgaPortCombo"));
+    auto *ggaToggleButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkGgaToggleButton"));
+    QLabel *ggaSourceLabel = findLabelByText(dialog,
+                                             {QStringLiteral("GGA来源:"),
+                                              QStringLiteral("GGA Source:")});
+    require(ggaSourceCombo != nullptr && ggaToggleButton != nullptr && ggaSourceLabel != nullptr,
+            "RTK GGA source controls exist");
+    require(ggaSourceCombo->currentText() == QStringLiteral("Epsilon生成") ||
+                ggaSourceCombo->currentText() == QStringLiteral("Epsilon generated"),
+            "RTK GGA source defaults to the compact Epsilon generated label");
+    require(ggaSourceCombo->itemText(0) == QStringLiteral("Epsilon生成") ||
+                ggaSourceCombo->itemText(0) == QStringLiteral("Epsilon generated"),
+            "RTK GGA source first option uses the compact Epsilon generated label");
+    require(ggaToggleButton->text() == QStringLiteral("读取") ||
+                ggaToggleButton->text() == QStringLiteral("Read"),
+            "RTK GGA idle action uses a compact read label");
+    require(widgetX(ggaSourceLabel) - widgetX(ggaCard) <= 40,
+            "RTK GGA source label is aligned near the left edge of its card");
+    require(findLabelByText(dialog,
+                            {QStringLiteral("状态: 点击按钮开始读取GGA"),
+                             QStringLiteral("Status: Click button to read GGA")}) == nullptr,
+            "RTK GGA monitor does not show the idle status prompt");
     auto *outputPortCombo = dialog->findChild<QComboBox *>(QStringLiteral("rtkOutputPortCombo"));
     QLabel *outputPortLabel = findLabelByText(dialog,
                                               {QStringLiteral("输出串口:"),
