@@ -299,7 +299,7 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
         {QStringLiteral("rtkBaudrateCombo"), 130},
         {QStringLiteral("rtkTimeoutCombo"), 115},
         {QStringLiteral("rtkReconnectCombo"), 125},
-        {QStringLiteral("rtkGgaPortCombo"), 250},
+        {QStringLiteral("rtkGgaPortCombo"), 260},
     };
     for (const auto& [objectName, maxWidth] : compactCombos)
     {
@@ -448,9 +448,15 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                 ggaSourceCombo->itemText(0) == QStringLiteral("Epsilon generated"),
             "RTK GGA source first option uses the compact Epsilon generated label");
     const int compactGgaSourceWidth =
-        ggaSourceCombo->fontMetrics().horizontalAdvance(ggaSourceCombo->currentText()) + 54;
+        ggaSourceCombo->fontMetrics().horizontalAdvance(ggaSourceCombo->currentText()) + 84;
     require(ggaSourceCombo->width() <= compactGgaSourceWidth,
             "RTK GGA source combo width hugs the Epsilon generated label");
+    require(ggaSourceCombo->lineEdit() != nullptr,
+            "RTK GGA source combo exposes its editable text field");
+    const int ggaSourceTextWidth =
+        ggaSourceCombo->lineEdit()->fontMetrics().horizontalAdvance(ggaSourceCombo->currentText());
+    require(ggaSourceCombo->lineEdit()->contentsRect().width() >= ggaSourceTextWidth + 4,
+            "RTK GGA source combo text field fully shows the Epsilon generated label");
     require(ggaToggleButton->text() == QStringLiteral("读取") ||
                 ggaToggleButton->text() == QStringLiteral("Read"),
             "RTK GGA idle action uses a compact read label");
@@ -870,6 +876,8 @@ int main(int argc, char **argv)
     requireMargins(temperatureOverviewBody->layout()->contentsMargins(),
                    QMargins(2, 2, 2, 2),
                    "temperature overview body padding matches sensor-card content rhythm");
+    require(deviceOverviewCard->minimumWidth() >= 620,
+            "device overview card minimum width leaves room for telemetry rows");
 
     auto *homeConfigCard = deviceOverviewCard;
     require(homeConfigCard != nullptr, "home configuration card exists");
@@ -1012,6 +1020,35 @@ int main(int argc, char **argv)
         deviceOverviewCard->findChild<QWidget *>(QStringLiteral("homeTelemetrySummaryContainer"));
     require(homeTelemetrySummaryContainer != nullptr,
             "home device overview telemetry summary container exists before dark theme switch");
+    QList<QFrame*> lightHomeTelemetrySections =
+        homeTelemetrySummaryContainer->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
+    require(!lightHomeTelemetrySections.isEmpty(),
+            "home device overview telemetry sections exist before dark theme switch");
+    std::sort(lightHomeTelemetrySections.begin(), lightHomeTelemetrySections.end(), [](QFrame *a, QFrame *b) {
+        return a->mapTo(a->parentWidget(), QPoint(0, 0)).y() <
+               b->mapTo(b->parentWidget(), QPoint(0, 0)).y();
+    });
+    QFrame *homeRateSection = lightHomeTelemetrySections.first();
+    int rightmostRatePill = 0;
+    const QList<QFrame*> ratePills =
+        homeRateSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+    require(!ratePills.isEmpty(),
+            "home data-stream telemetry section has value pills");
+    for (QFrame *pill : ratePills)
+    {
+        const QRect pillRect(pill->mapTo(homeRateSection, QPoint(0, 0)), pill->size());
+        rightmostRatePill = std::max(rightmostRatePill, pillRect.right());
+    }
+    const int homeRateRightPadding = homeRateSection->rect().right() - rightmostRatePill;
+    if (homeRateRightPadding < 12)
+    {
+        std::cerr << "Home rate right padding: " << homeRateRightPadding
+                  << " section width: " << homeRateSection->width()
+                  << " device card width: " << deviceOverviewCard->width()
+                  << " device card min width: " << deviceOverviewCard->minimumWidth() << '\n';
+    }
+    require(homeRateRightPadding >= 12,
+            "home data-stream telemetry row keeps right-side breathing room");
     const int lightHomeTelemetrySummaryHeight = homeTelemetrySummaryContainer->height();
     int minHomeTelemetryPillHeight = std::numeric_limits<int>::max();
     for (QFrame *pill : homeTelemetryPills)

@@ -1519,10 +1519,15 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (gga_port_combo_)
     {
         const QFontMetrics metrics(gga_port_combo_->font());
-        const int targetWidth = metrics.horizontalAdvance(mainGgaSourceLabel()) + scalePixels(42);
+        const int targetWidth = metrics.horizontalAdvance(mainGgaSourceLabel()) + scalePixels(72);
         gga_port_combo_->setFixedWidth(targetWidth);
         gga_port_combo_->setFixedHeight(scalePixels(kRtkInputHeight));
         gga_port_combo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+        if (QLineEdit *edit = gga_port_combo_->lineEdit())
+        {
+            edit->setCursorPosition(0);
+            edit->setSelection(0, 0);
+        }
     }
     applyButtonWidth(gga_toggle_btn_, 72);
 
@@ -1956,10 +1961,20 @@ void RtkConfigDialog::applySavedGgaSource(const QString& source)
     {
         const int mainIndex = gga_port_combo_->findData(QString::fromLatin1(kEpsilonMainGgaSourceKey));
         gga_port_combo_->setCurrentIndex(mainIndex >= 0 ? mainIndex : 0);
+        if (QLineEdit *edit = gga_port_combo_->lineEdit())
+        {
+            edit->setCursorPosition(0);
+            edit->setSelection(0, 0);
+        }
         return;
     }
 
     gga_port_combo_->setCurrentText(trimmed);
+    if (QLineEdit *edit = gga_port_combo_->lineEdit())
+    {
+        edit->setCursorPosition(0);
+        edit->setSelection(0, 0);
+    }
 }
 
 QString RtkConfigDialog::ggaPortName() const
