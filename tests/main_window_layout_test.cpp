@@ -29,6 +29,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <iostream>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -101,6 +102,28 @@ void requireCardTitleBar(QWidget *card,
     require(matchedTitleBar != nullptr, message);
     require(matchedTitleBar->height() >= 36 && matchedTitleBar->height() <= 44,
             "device configuration card title bar uses the standard compact height");
+}
+
+QGroupBox *findCardByTitle(QWidget *root, const QStringList& expectedTitles)
+{
+    if (!root)
+    {
+        return nullptr;
+    }
+
+    const QList<QGroupBox*> cards = root->findChildren<QGroupBox *>();
+    for (QGroupBox *card : cards)
+    {
+        const QList<QLabel*> titleLabels = card->findChildren<QLabel *>(QStringLiteral("sectionTitleLabel"));
+        for (QLabel *titleLabel : titleLabels)
+        {
+            if (expectedTitles.contains(titleLabel->text()))
+            {
+                return card;
+            }
+        }
+    }
+    return nullptr;
 }
 
 void processEventsFor(int timeoutMs)
@@ -275,6 +298,45 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
         require(lineEdit->width() <= maxWidth,
                 "RTK server/account line edit width stays compact");
     }
+    const std::vector<std::tuple<QStringList, QString, const char*>> rtkCards = {
+        {{QStringLiteral("NTRIP 服务器配置"), QStringLiteral("NTRIP Server Configuration")},
+         QStringLiteral("satellite"),
+         "RTK NTRIP card uses the standard icon title bar"},
+        {{QStringLiteral("RTCM 输出配置"), QStringLiteral("RTCM Output Configuration")},
+         QStringLiteral("usb"),
+         "RTK RTCM output card uses the standard icon title bar"},
+        {{QStringLiteral("GGA 监视"), QStringLiteral("GGA Monitor")},
+         QStringLiteral("activity"),
+         "RTK GGA monitor card uses the standard icon title bar"},
+        {{QStringLiteral("RTK 服务日志"), QStringLiteral("RTK Service Log")},
+         QStringLiteral("scroll-text"),
+         "RTK service log card uses the standard icon title bar"},
+    };
+    for (const auto& [titles, iconName, message] : rtkCards)
+    {
+        QGroupBox *card = findCardByTitle(dialog, titles);
+        require(card != nullptr, message);
+        require(card->objectName() == QStringLiteral("sensorGroupBox"),
+                "RTK card reuses the home page sensor card style");
+        requireCardTitleBar(card, titles, iconName, message);
+    }
+    auto *serverEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
+    auto *usernameEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkUsernameEdit"));
+    auto *portEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkPortEdit"));
+    auto *passwordEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkPasswordEdit"));
+    auto *mountpointCombo = dialog->findChild<QComboBox *>(QStringLiteral("rtkMountpointCombo"));
+    require(serverEdit != nullptr && usernameEdit != nullptr && portEdit != nullptr &&
+                passwordEdit != nullptr && mountpointCombo != nullptr,
+            "RTK NTRIP compact fields exist for alignment checks");
+    auto widgetX = [dialog](QWidget *widget) {
+        return widget->mapTo(dialog, QPoint(0, 0)).x();
+    };
+    require(std::abs(widgetX(serverEdit) - widgetX(usernameEdit)) <= 2,
+            "RTK NTRIP server and username fields align vertically");
+    require(std::abs(widgetX(portEdit) - widgetX(passwordEdit)) <= 2,
+            "RTK NTRIP port and password fields align vertically");
+    require(widgetX(mountpointCombo) > widgetX(portEdit),
+            "RTK NTRIP mountpoint field remains to the right of the compact account columns");
     for (QWidget *topLevel : QApplication::topLevelWidgets())
     {
         require(qobject_cast<RtkConfigDialog *>(topLevel) == nullptr,

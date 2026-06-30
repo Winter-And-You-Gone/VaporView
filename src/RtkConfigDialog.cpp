@@ -72,6 +72,9 @@ constexpr int kRtkDefaultDialogHeight = 640;
 constexpr int kRtkMinimumDialogWidth = 640;
 constexpr int kRtkMinimumDialogHeight = 420;
 constexpr const char *kEpsilonMainGgaSourceKey = "__epsilon_main__";
+constexpr const char *kSectionTitleIconNameProperty = "_vv_section_title_icon_name";
+constexpr int kSectionTitleIconBoxSize = 26;
+constexpr int kSectionTitleIconSize = 22;
 const QRegularExpression kGgaSentencePattern("^\\$..GGA,");
 
 QFont numericFontFrom(const QFont& base)
@@ -142,6 +145,69 @@ QIcon createLucideIcon(const QString& iconName, const QColor& color)
     QIcon icon;
     icon.addPixmap(renderLucidePixmap(file.readAll(), color), QIcon::Normal);
     return icon;
+}
+
+QColor sectionTitleIconColor(bool dark)
+{
+    return dark ? appThemeColor(AppThemeColor::TextTitle, true) : QColor(0, 0, 0);
+}
+
+void updateSectionTitleIcon(QLabel *iconLabel, bool dark)
+{
+    if (!iconLabel)
+    {
+        return;
+    }
+
+    const QString iconName = iconLabel->property(kSectionTitleIconNameProperty).toString();
+    if (iconName.isEmpty())
+    {
+        iconLabel->clear();
+        return;
+    }
+
+    iconLabel->setPixmap(createLucideIcon(iconName, sectionTitleIconColor(dark)).pixmap(
+        QSize(kSectionTitleIconSize, kSectionTitleIconSize)));
+}
+
+QLabel *createSectionTitleCluster(QWidget *parent,
+                                  const QString& iconName,
+                                  int titleHeight,
+                                  QWidget **clusterOut)
+{
+    auto *cluster = new QWidget(parent);
+    cluster->setObjectName(QStringLiteral("sectionTitleCluster"));
+    cluster->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    cluster->setFixedHeight(titleHeight);
+    cluster->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+
+    auto *layout = new QHBoxLayout(cluster);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(6);
+
+    auto *iconLabel = new QLabel(cluster);
+    iconLabel->setObjectName(QStringLiteral("sectionTitleIcon"));
+    iconLabel->setProperty(kSectionTitleIconNameProperty, iconName);
+    iconLabel->setAlignment(Qt::AlignCenter);
+    iconLabel->setFixedSize(kSectionTitleIconBoxSize, titleHeight);
+    iconLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    updateSectionTitleIcon(iconLabel, isDarkThemeEnabled());
+    layout->addWidget(iconLabel, 0, Qt::AlignVCenter);
+
+    auto *titleLabel = new VaporView::VisualTextLabel(cluster);
+    titleLabel->setObjectName(QStringLiteral("sectionTitleLabel"));
+    titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    titleLabel->setMargin(0);
+    titleLabel->setContentsMargins(0, 0, 0, 0);
+    titleLabel->setFixedHeight(titleHeight);
+    titleLabel->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    layout->addWidget(titleLabel, 0, Qt::AlignVCenter);
+
+    if (clusterOut)
+    {
+        *clusterOut = cluster;
+    }
+    return titleLabel;
 }
 
 QStringList buildProbeBaudList(const QComboBox *baudrateCombo)
@@ -831,10 +897,10 @@ bool RtkConfigDialog::isBackgroundTaskRunning() const
     return fetch_mountpoints_in_progress_.load() || port_detection_in_progress_.load() || test_in_progress_.load();
 }
 
-QVBoxLayout *RtkConfigDialog::createCardLayout(QGroupBox *group, QLabel *&titleLabel)
+QVBoxLayout *RtkConfigDialog::createCardLayout(QGroupBox *group, QLabel *&titleLabel, const QString& iconName)
 {
     group->setTitle(QString());
-    group->setObjectName(QStringLiteral("rtkCardGroup"));
+    group->setObjectName(QStringLiteral("sensorGroupBox"));
 
     auto *cardLayout = new QVBoxLayout(group);
     cardLayout->setContentsMargins(0, 0, 0, 0);
@@ -844,17 +910,12 @@ QVBoxLayout *RtkConfigDialog::createCardLayout(QGroupBox *group, QLabel *&titleL
     titleBar->setObjectName(QStringLiteral("sectionTitleBar"));
     titleBar->setFixedHeight(40);
     auto *titleLayout = new QHBoxLayout(titleBar);
-    titleLayout->setContentsMargins(10, 2, 10, 2);
-    titleLayout->setSpacing(0);
+    titleLayout->setContentsMargins(8, 2, 8, 2);
+    titleLayout->setSpacing(6);
 
-    titleLabel = new VaporView::VisualTextLabel(titleBar);
-    titleLabel->setObjectName(QStringLiteral("sectionTitleLabel"));
-    titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    titleLabel->setMargin(0);
-    titleLabel->setContentsMargins(0, 0, 0, 0);
-    titleLabel->setFixedHeight(36);
-    titleLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    titleLayout->addWidget(titleLabel, 0, Qt::AlignVCenter | Qt::AlignLeft);
+    QWidget *titleCluster = nullptr;
+    titleLabel = createSectionTitleCluster(titleBar, iconName, 36, &titleCluster);
+    titleLayout->addWidget(titleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
     titleLayout->addStretch(1);
 
     cardLayout->addWidget(titleBar);
@@ -886,6 +947,8 @@ void RtkConfigDialog::setupUi()
 
     auto configureFieldLabel = [](QLabel *label) {
         label->setObjectName(QStringLiteral("fieldLabel"));
+        label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        label->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     };
     auto createFieldLabel = [this, configureFieldLabel](const QString& text = QString()) {
         auto *label = new QLabel(text, this);
@@ -894,12 +957,11 @@ void RtkConfigDialog::setupUi()
     };
 
     config_group_ = new QGroupBox(this);
-    auto *configCardLayout = createCardLayout(config_group_, config_title_label_);
+    auto *configCardLayout = createCardLayout(config_group_, config_title_label_, QStringLiteral("satellite"));
     config_layout_ = new QGridLayout();
     config_layout_->setSpacing(6);
     config_layout_->setContentsMargins(10, 10, 10, 10);
-    config_layout_->setColumnStretch(1, 2);
-    config_layout_->setColumnStretch(5, 1);
+    config_layout_->setColumnStretch(7, 1);
     configCardLayout->addLayout(config_layout_);
 
     int row = 0;
@@ -912,6 +974,7 @@ void RtkConfigDialog::setupUi()
     port_label_ = createFieldLabel();
     config_layout_->addWidget(port_label_, row, 2);
     port_edit_ = new QLineEdit(this);
+    port_edit_->setObjectName(QStringLiteral("rtkPortEdit"));
     port_edit_->setText("2101");
     config_layout_->addWidget(port_edit_, row, 3);
 
@@ -931,19 +994,19 @@ void RtkConfigDialog::setupUi()
     config_layout_->addWidget(username_label_, row, 0);
     username_edit_ = new QLineEdit(this);
     username_edit_->setObjectName(QStringLiteral("rtkUsernameEdit"));
-    config_layout_->addWidget(username_edit_, row, 1, 1, 2);
+    config_layout_->addWidget(username_edit_, row, 1);
 
     password_label_ = createFieldLabel();
-    config_layout_->addWidget(password_label_, row, 3);
+    config_layout_->addWidget(password_label_, row, 2);
     password_edit_ = new QLineEdit(this);
     password_edit_->setObjectName(QStringLiteral("rtkPasswordEdit"));
-    config_layout_->addWidget(password_edit_, row, 4, 1, 3);
+    config_layout_->addWidget(password_edit_, row, 3);
     row++;
 
     main_layout_->addWidget(config_group_);
 
     output_group_ = new QGroupBox(this);
-    auto *outputCardLayout = createCardLayout(output_group_, output_title_label_);
+    auto *outputCardLayout = createCardLayout(output_group_, output_title_label_, QStringLiteral("usb"));
     output_layout_ = new QGridLayout();
     output_layout_->setSpacing(6);
     output_layout_->setContentsMargins(10, 10, 10, 10);
@@ -1039,7 +1102,7 @@ void RtkConfigDialog::setupUi()
     main_layout_->addWidget(output_group_);
 
     gga_group_ = new QGroupBox(this);
-    auto *ggaCardLayout = createCardLayout(gga_group_, gga_title_label_);
+    auto *ggaCardLayout = createCardLayout(gga_group_, gga_title_label_, QStringLiteral("activity"));
     gga_layout_ = new QVBoxLayout();
     gga_layout_->setSpacing(6);
     gga_layout_->setContentsMargins(10, 10, 10, 12);
@@ -1090,7 +1153,7 @@ void RtkConfigDialog::setupUi()
     gga_layout_->addWidget(gga_text_container_);
 
     log_group_ = new QGroupBox(this);
-    auto *logCardLayout = createCardLayout(log_group_, log_title_label_);
+    auto *logCardLayout = createCardLayout(log_group_, log_title_label_, QStringLiteral("scroll-text"));
     log_layout_ = new QVBoxLayout();
     log_layout_->setSpacing(4);
     log_layout_->setContentsMargins(10, 10, 10, 4);
@@ -1243,6 +1306,16 @@ void RtkConfigDialog::applyScaledUiMetrics()
         combo->setMinimumHeight(scalePixels(30));
         combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     };
+    auto applyFieldLabelWidth = [this](QLabel *label, int baseWidth) {
+        if (!label)
+        {
+            return;
+        }
+
+        label->setFixedWidth(scalePixels(baseWidth));
+        label->setMinimumHeight(scalePixels(30));
+        label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    };
 
     if (main_layout_)
     {
@@ -1310,6 +1383,18 @@ void RtkConfigDialog::applyScaledUiMetrics()
         log_text_container_layout_->setSpacing(0);
     }
 
+    const bool darkTheme = qApp ? isDarkThemePalette(qApp->palette()) : isDarkThemeEnabled();
+    const QList<QLabel*> sectionIconLabels = findChildren<QLabel *>(QStringLiteral("sectionTitleIcon"));
+    for (QLabel *iconLabel : sectionIconLabels)
+    {
+        updateSectionTitleIcon(iconLabel, darkTheme);
+    }
+
+    applyFieldLabelWidth(server_label_, 88);
+    applyFieldLabelWidth(username_label_, 88);
+    applyFieldLabelWidth(port_label_, 38);
+    applyFieldLabelWidth(password_label_, 50);
+    applyFieldLabelWidth(mountpoint_label_, 58);
     server_edit_->setFixedWidth(scalePixels(180));
     server_edit_->setMinimumHeight(scalePixels(32));
     port_edit_->setFixedWidth(scalePixels(76));
@@ -1320,6 +1405,11 @@ void RtkConfigDialog::applyScaledUiMetrics()
     password_edit_->setMinimumHeight(scalePixels(32));
     applyComboWidth(mountpoint_combo_, 150);
 
+    applyFieldLabelWidth(output_port_label_, 72);
+    applyFieldLabelWidth(baudrate_label_, 54);
+    applyFieldLabelWidth(timeout_label_, 72);
+    applyFieldLabelWidth(reconnect_label_, 96);
+    applyFieldLabelWidth(main_antenna_lever_label_, 114);
     applyComboWidth(output_port_combo_, 128);
     applyComboWidth(baudrate_combo_, 112);
     if (main_antenna_lever_help_btn_)
@@ -1328,15 +1418,14 @@ void RtkConfigDialog::applyScaledUiMetrics()
         main_antenna_lever_help_btn_->setFixedSize(helpSize, helpSize);
         const int iconSize = std::max(16, helpSize - scalePixels(6));
         main_antenna_lever_help_btn_->setIconSize(QSize(iconSize, iconSize));
-        const bool dark = qApp && isDarkThemePalette(qApp->palette());
         main_antenna_lever_help_btn_->setIcon(createLucideIcon(
             QStringLiteral("help-circle"),
-            appThemeColor(AppThemeColor::HelpIcon, dark)));
+            appThemeColor(AppThemeColor::HelpIcon, darkTheme)));
         main_antenna_lever_help_btn_->setStyleSheet(
             QString("QToolButton { background: transparent; border: none; border-radius: %1px; padding: 0px; }"
                     "QToolButton:hover { background: %2; }")
                 .arg(helpSize / 2)
-                .arg(appThemeRgba(AppThemeColor::HelpIcon, dark, dark ? 0.14 : 0.10)));
+                .arg(appThemeRgba(AppThemeColor::HelpIcon, darkTheme, darkTheme ? 0.14 : 0.10)));
     }
     for (QLineEdit *edit : {main_antenna_lever_x_edit_, main_antenna_lever_y_edit_, main_antenna_lever_z_edit_})
     {
@@ -1348,6 +1437,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     }
     applyComboWidth(timeout_combo_, 96);
     applyComboWidth(reconnect_combo_, 104);
+    applyFieldLabelWidth(gga_port_info_label_, 72);
     applyComboWidth(gga_port_combo_, 220);
 
     gga_status_label_->setMinimumHeight(scalePixels(24));
