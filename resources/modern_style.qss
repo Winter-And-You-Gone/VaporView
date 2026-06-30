@@ -1112,21 +1112,21 @@ QCheckBox {
 }
 
 QCheckBox::indicator {
-    width: 18px;
-    height: 18px;
-    border: 2px solid @vv-border-strong;
-    border-radius: 4px;
-    background-color: @vv-surface;
+    width: 24px;
+    height: 24px;
+    border: none;
+    border-radius: 0px;
+    background-color: transparent;
+    image: url(lucide/square.svg);
 }
 
 QCheckBox::indicator:hover {
-    border-color: @vv-primary;
+    background-color: transparent;
 }
 
 QCheckBox::indicator:checked {
-    background-color: @vv-primary;
-    border-color: @vv-primary;
-    image: url(lucide/check.svg);
+    background-color: transparent;
+    image: url(lucide/square-check-big.svg);
 }
 
 /* 单选按钮 */

@@ -6352,10 +6352,12 @@ void MainWindow::loadModernStyleSheet()
         const QString resourceDir = styleInfo.absolutePath();
         const QString comboArrowPath = QDir(resourceDir).absoluteFilePath("combo_arrow_down.xpm").replace('\\', '/');
         const QString comboArrowUpPath = QDir(resourceDir).absoluteFilePath("combo_arrow_up.xpm").replace('\\', '/');
-        const QString checkIconPath = QDir(resourceDir).absoluteFilePath("lucide/check.svg").replace('\\', '/');
+        const QString squareIconPath = QDir(resourceDir).absoluteFilePath("lucide/square.svg").replace('\\', '/');
+        const QString squareCheckIconPath = QDir(resourceDir).absoluteFilePath("lucide/square-check-big.svg").replace('\\', '/');
         base_style_sheet_.replace("url(combo_arrow_down.xpm)", QString("url(%1)").arg(comboArrowPath));
         base_style_sheet_.replace("url(combo_arrow_up.xpm)", QString("url(%1)").arg(comboArrowUpPath));
-        base_style_sheet_.replace("url(lucide/check.svg)", QString("url(%1)").arg(checkIconPath));
+        base_style_sheet_.replace("url(lucide/square.svg)", QString("url(%1)").arg(squareIconPath));
+        base_style_sheet_.replace("url(lucide/square-check-big.svg)", QString("url(%1)").arg(squareCheckIconPath));
     }
     else
     {
@@ -11059,7 +11061,23 @@ void MainWindow::setupDeviceConfigPage()
     pageLayout->addWidget(scrollArea, 1);
     main_page_stack_->addWidget(device_config_.page);
 
-    auto mirrorComboToHome = [this](QComboBox *deviceCombo, QComboBox *homeCombo) {
+    auto comboItemsMatch = [](const QComboBox *left, const QComboBox *right) {
+        if (!left || !right || left->count() != right->count())
+        {
+            return false;
+        }
+        for (int i = 0; i < left->count(); ++i)
+        {
+            if (left->itemText(i) != right->itemText(i) ||
+                left->itemData(i) != right->itemData(i))
+            {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    auto mirrorComboToHome = [this, comboItemsMatch](QComboBox *deviceCombo, QComboBox *homeCombo) {
         if (!deviceCombo || !homeCombo)
         {
             return;
@@ -11093,7 +11111,15 @@ void MainWindow::setupDeviceConfigPage()
                 homeCombo->setEditText(text);
             }
         });
-        connect(homeCombo, &QComboBox::currentTextChanged, this, [this]() {
+        connect(homeCombo, &QComboBox::currentTextChanged, this, [this, deviceCombo, homeCombo, comboItemsMatch]() {
+            if (deviceCombo &&
+                homeCombo &&
+                deviceCombo->isEditable() == homeCombo->isEditable() &&
+                deviceCombo->currentText() == homeCombo->currentText() &&
+                comboItemsMatch(homeCombo, deviceCombo))
+            {
+                return;
+            }
             syncDeviceConfigPageFromHome();
         });
     };
@@ -11188,7 +11214,17 @@ void MainWindow::syncDeviceConfigPageFromHome()
         {
             target->addItem(source->itemIcon(i), source->itemText(i), source->itemData(i));
         }
-        if (target->isEditable())
+        const QVariant currentData = currentIndex >= 0 ? source->itemData(currentIndex) : QVariant();
+        int targetIndex = currentData.isValid() ? target->findData(currentData) : -1;
+        if (targetIndex < 0)
+        {
+            targetIndex = target->findText(currentText);
+        }
+        if (targetIndex >= 0)
+        {
+            target->setCurrentIndex(targetIndex);
+        }
+        else if (target->isEditable())
         {
             target->setCurrentText(currentText);
         }

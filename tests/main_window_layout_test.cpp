@@ -362,6 +362,10 @@ int main(int argc, char **argv)
     window.resize(1280, 800);
     window.show();
     processEventsFor(500);
+    require(qApp->styleSheet().contains(QStringLiteral("square.svg")) &&
+                qApp->styleSheet().contains(QStringLiteral("square-check-big.svg")) &&
+                !qApp->styleSheet().contains(QStringLiteral("lucide/check.svg")),
+            "checkbox indicators use lucide square and square-check-big icons");
     const QSize originalWindowSize = window.size();
 
     auto *appLayoutSplitter = window.findChild<QSplitter *>(QStringLiteral("appLayoutSplitter"));
@@ -768,6 +772,44 @@ int main(int argc, char **argv)
             "device configuration serial combo is sized for COM999");
     require(deviceRateCombo != nullptr && deviceRateCombo->width() <= 92,
             "device configuration rate combo is sized for 9999");
+    require(devicePortCombo->isEnabled(),
+            "device configuration serial combo is enabled in local mode");
+    QComboBox *homePortCombo = nullptr;
+    for (QComboBox *combo : window.findChildren<QComboBox *>())
+    {
+        if (!combo->isEditable() ||
+            combo == devicePortCombo ||
+            deviceConfigPage->isAncestorOf(combo))
+        {
+            continue;
+        }
+        if (combo->currentText() == QStringLiteral("COM9"))
+        {
+            homePortCombo = combo;
+            break;
+        }
+    }
+    require(homePortCombo != nullptr,
+            "home serial combo matching the device configuration combo exists");
+    const QString syntheticPort = QStringLiteral("COM123");
+    if (homePortCombo->findText(syntheticPort) < 0)
+    {
+        homePortCombo->addItem(syntheticPort);
+    }
+    homePortCombo->setCurrentIndex(homePortCombo->findText(syntheticPort));
+    processEventsFor(50);
+    activateLayouts(&window);
+    const int deviceSyntheticPortIndex = devicePortCombo->findText(syntheticPort);
+    require(deviceSyntheticPortIndex >= 0,
+            "device configuration serial combo mirrors refreshed home serial items");
+    devicePortCombo->setCurrentIndex(deviceSyntheticPortIndex);
+    processEventsFor(50);
+    activateLayouts(&window);
+    require(devicePortCombo->currentIndex() == deviceSyntheticPortIndex &&
+                devicePortCombo->currentText() == syntheticPort,
+            "device configuration serial combo can select an existing serial item");
+    require(homePortCombo->currentText() == syntheticPort,
+            "device configuration serial selection mirrors back to the home combo");
 
     QGroupBox *serialConfigCard = nullptr;
     for (QWidget *ancestor = devicePortCombo ? devicePortCombo->parentWidget() : nullptr;
