@@ -6405,8 +6405,8 @@ void MainWindow::loadModernStyleSheet()
             "QFrame#homeTelemetrySummaryPill[hasData=\"true\"] { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; }"
             "QFrame#homeTelemetrySummaryPill[hasData=\"false\"] { background-color: @vv-surface-alt; border: 1px solid @vv-border; }"
             "QFrame#homeTelemetrySummaryPill[hasData=\"false\"] QLabel { color: @vv-text-muted; }"
-            "QLabel#homeTelemetrySummaryNameLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 15px; font-weight: 700; }"
-            "QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 15px; font-weight: 600; }"
+            "QLabel#homeTelemetrySummaryNameLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 14px; font-weight: 700; }"
+            "QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 14px; font-weight: 600; }"
             "QLabel#temperatureOverviewValuePill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 12px; font-weight: 700; padding: 1px 4px; margin: 0px; }"
             "QPushButton#temperatureOverviewOutputSwitch { background-color: transparent; border: none; min-height: 56px; max-height: 56px; padding: 0px; margin: 0px; color: @vv-text; font-size: 13px; font-weight: 700; }"
             "QToolButton#temperatureOverviewChannelButton { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; border-radius: 10px; color: @vv-primary; font-size: 13px; font-weight: 700; padding: 1px 0px; text-align: center; }"
@@ -7823,6 +7823,11 @@ void MainWindow::updateConfigCardHeightForSourceMode()
     int minimumHeight = scaledConfiguredHeight(config_group_, kConfigCardMinHeight);
     if (data_telemetry_summary_card_)
     {
+        if (QLayout *summaryLayout = data_telemetry_summary_card_->layout())
+        {
+            summaryLayout->invalidate();
+            summaryLayout->activate();
+        }
         int summaryHeight = std::max(data_telemetry_summary_card_->sizeHint().height(),
                                      data_telemetry_summary_card_->minimumSizeHint().height());
         summaryHeight = std::max(summaryHeight, kMainPageInputHeight);
@@ -7843,9 +7848,9 @@ void MainWindow::updateConfigCardHeightForSourceMode()
                                      scalePixels(kConfigCardBottomPadding));
     }
 
-    const int previousConfigMinimum = config_group_->property(kMainCardMinimumHeightProperty).toInt();
     config_group_->setProperty(kMainCardMinimumHeightProperty, minimumHeight);
-    config_group_->setMinimumHeight(minimumHeight);
+    const int stableConfigMinimumHeight = std::max(config_group_->height(), minimumHeight);
+    config_group_->setMinimumHeight(stableConfigMinimumHeight);
     if (temperature_overview_group_)
     {
         const int temperatureMinimumHeight = std::max(temperature_overview_group_->minimumSizeHint().height(),
@@ -7856,20 +7861,18 @@ void MainWindow::updateConfigCardHeightForSourceMode()
     }
     if (home_overview_splitter_)
     {
-        const int previousMinimum = home_overview_splitter_->property(kMainCardMinimumHeightProperty).toInt();
-        const bool minimumChanged = previousMinimum != minimumHeight;
         home_overview_splitter_->setProperty(kMainCardMinimumHeightProperty, minimumHeight);
-        home_overview_splitter_->setMinimumHeight(minimumHeight);
-        if (minimumChanged || home_overview_splitter_->height() < minimumHeight)
+        const int stableSplitterMinimumHeight = std::max(home_overview_splitter_->height(), minimumHeight);
+        home_overview_splitter_->setMinimumHeight(stableSplitterMinimumHeight);
+        if (home_overview_splitter_->height() < stableSplitterMinimumHeight)
         {
-            home_overview_splitter_->setFixedHeight(minimumHeight);
+            home_overview_splitter_->setFixedHeight(stableSplitterMinimumHeight);
         }
         return;
     }
-    const bool minimumChanged = previousConfigMinimum != minimumHeight;
-    if (minimumChanged || config_group_->height() < minimumHeight)
+    if (config_group_->height() < stableConfigMinimumHeight)
     {
-        config_group_->setFixedHeight(minimumHeight);
+        config_group_->setFixedHeight(stableConfigMinimumHeight);
     }
 }
 
@@ -8145,16 +8148,17 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                                                      const QList<RemoteTelemetrySummarySections::Item>& items,
                                                      int firstLineItemCount,
                                                      int followingLineItemCount = -1,
-                                                     bool useSideTitle = false) {
+                                                     bool useSideTitle = false,
+                                                     bool compactAvailabilityValues = false) {
         if (!summaryParent || !sectionLayout)
         {
             return;
         }
         clearLayout(sectionLayout);
 
-        auto addItemLabel = [this, useSideTitle](QHBoxLayout *lineLayout,
-                                                 QWidget *lineWidget,
-                                                 const RemoteTelemetrySummarySections::Item& item) {
+        auto addItemLabel = [this, useSideTitle, compactAvailabilityValues](QHBoxLayout *lineLayout,
+                                                                            QWidget *lineWidget,
+                                                                            const RemoteTelemetrySummarySections::Item& item) {
             auto *pill = new QFrame(lineWidget);
             pill->setObjectName(QStringLiteral("homeTelemetrySummaryPill"));
             pill->setProperty("deviceConfigLink", useSideTitle);
@@ -8162,8 +8166,9 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             pill->setProperty("hasData", item.hasData);
             pill->setProperty("data-valid", QVariant());
             auto *pillLayout = new QHBoxLayout(pill);
-            pillLayout->setContentsMargins(scalePixels(8), scalePixels(1), scalePixels(8), scalePixels(1));
-            pillLayout->setSpacing(scalePixels(3));
+            const int horizontalPadding = scalePixels(useSideTitle ? 4 : 8);
+            pillLayout->setContentsMargins(horizontalPadding, scalePixels(1), horizontalPadding, scalePixels(1));
+            pillLayout->setSpacing(scalePixels(useSideTitle ? 2 : 3));
 
             auto *nameLabel = new QLabel(item.label, pill);
             nameLabel->setObjectName(QStringLiteral("homeTelemetrySummaryNameLabel"));
@@ -8171,18 +8176,27 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             nameLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
             nameLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
             nameLabel->setTextFormat(Qt::PlainText);
+            nameLabel->ensurePolished();
+            nameLabel->setMinimumWidth(nameLabel->fontMetrics().horizontalAdvance(item.label) + scalePixels(1));
             pillLayout->addWidget(nameLabel, 0, Qt::AlignVCenter);
 
-            auto *valueLabel = new QLabel(item.value, pill);
+            const QString compactValue = item.hasData
+                ? (is_english_ ? QStringLiteral("Yes") : QStringLiteral("有"))
+                : (is_english_ ? QStringLiteral("No") : QStringLiteral("无"));
+            const QString valueText = compactAvailabilityValues ? compactValue : item.value;
+            auto *valueLabel = new QLabel(valueText, pill);
             valueLabel->setObjectName(QStringLiteral("homeTelemetrySummaryValueLabel"));
             valueLabel->setProperty("deviceConfigLink", useSideTitle);
             valueLabel->setFont(numericFontFrom(valueLabel->font()));
             valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
             valueLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
             valueLabel->setTextFormat(Qt::PlainText);
-            const QString widthValue = item.valueWidthText.isEmpty() ? item.value : item.valueWidthText;
+            valueLabel->ensurePolished();
+            const QString widthValue = compactAvailabilityValues
+                ? (is_english_ ? QStringLiteral("Yes") : QStringLiteral("有"))
+                : (item.valueWidthText.isEmpty() ? valueText : item.valueWidthText);
             const int valueWidth = std::max(valueLabel->fontMetrics().horizontalAdvance(widthValue),
-                                            valueLabel->fontMetrics().horizontalAdvance(item.value));
+                                            valueLabel->fontMetrics().horizontalAdvance(valueText)) + scalePixels(2);
             valueLabel->setMinimumWidth(valueWidth);
             valueLabel->setMaximumWidth(valueWidth);
             pillLayout->addWidget(valueLabel, 0, Qt::AlignVCenter);
@@ -8341,6 +8355,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                              sections.deviceItems,
                              3,
                              3,
+                             true,
                              true);
         if (QLayout *summaryLayout = device_config_.data_telemetry_summary_card->layout())
         {

@@ -1018,14 +1018,14 @@ int main(int argc, char **argv)
     const int deviceLinkNameStyleIndex =
         appStyleSheet.indexOf(QStringLiteral("QLabel#homeTelemetrySummaryNameLabel[deviceConfigLink=\"true\"]"));
     require(deviceLinkNameStyleIndex >= 0 &&
-                appStyleSheet.mid(deviceLinkNameStyleIndex, 180).contains(QStringLiteral("font-size: 15px")) &&
+                appStyleSheet.mid(deviceLinkNameStyleIndex, 180).contains(QStringLiteral("font-size: 14px")) &&
                 appStyleSheet.mid(deviceLinkNameStyleIndex, 180).contains(QStringLiteral("font-weight: 700")),
-            "device telemetry value field names use larger bold text");
+            "device telemetry value field names use compact bold text");
     const int deviceLinkValueStyleIndex =
         appStyleSheet.indexOf(QStringLiteral("QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink=\"true\"]"));
     require(deviceLinkValueStyleIndex >= 0 &&
-                appStyleSheet.mid(deviceLinkValueStyleIndex, 180).contains(QStringLiteral("font-size: 15px")),
-            "device telemetry values use larger text");
+                appStyleSheet.mid(deviceLinkValueStyleIndex, 180).contains(QStringLiteral("font-size: 14px")),
+            "device telemetry values use compact text");
     QList<QFrame*> telemetrySubCards =
         deviceTelemetrySummaryCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
     require(telemetrySubCards.size() == 3,
@@ -1103,6 +1103,22 @@ int main(int argc, char **argv)
         require(firstNameLabel != nullptr &&
                     firstNameLabel->property("deviceConfigLink").toBool(),
                 "device telemetry summary field name uses device-config text styling");
+        if (i == 2)
+        {
+            const QList<QLabel*> availabilityValues =
+                subCard->findChildren<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+            require(!availabilityValues.isEmpty(),
+                    "device telemetry availability subcard has value labels");
+            for (QLabel *valueLabel : availabilityValues)
+            {
+                const QString text = valueLabel->text();
+                require(text == QStringLiteral("有") ||
+                            text == QStringLiteral("无") ||
+                            text == QStringLiteral("Yes") ||
+                            text == QStringLiteral("No"),
+                        "device telemetry availability values use compact yes/no text");
+            }
+        }
         require(leftmostPillLeft > titlePaneRect.right(),
                 "device telemetry summary subcard title sits in a separate left area");
     }

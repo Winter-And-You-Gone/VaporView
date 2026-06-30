@@ -420,38 +420,51 @@ QLabel#homeTelemetrySummaryTitleLabel {
     margin: 0px;
 }
 
-QLabel#homeTelemetrySummaryPill {
+QFrame#homeTelemetrySummaryPill {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;
     border-radius: 8px;
-    color: @vv-text;
-    font-size: 13px;
-    font-weight: 600;
-    padding: 1px 8px;
+    padding: 0px;
     margin: 0px;
 }
 
-QLabel#homeTelemetrySummaryPill[hasData="true"] {
-    background-color: @vv-primary-subtle;
-    border: 1px solid @vv-primary-subtle-pressed;
+QFrame#homeTelemetrySummaryPill QLabel {
+    background-color: transparent;
+    border: none;
     color: @vv-text;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0px;
+    margin: 0px;
 }
 
-QLabel#homeTelemetrySummaryPill[hasData="false"] {
+QFrame#homeTelemetrySummaryPill QLabel#homeTelemetrySummaryValueLabel {
+    font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
+}
+
+QFrame#homeTelemetrySummaryPill[hasData="true"] {
+    background-color: @vv-primary-subtle;
+    border: 1px solid @vv-primary-subtle-pressed;
+}
+
+QFrame#homeTelemetrySummaryPill[hasData="false"] {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;
+}
+
+QFrame#homeTelemetrySummaryPill[hasData="false"] QLabel {
     color: @vv-text-muted;
 }
 
 QLabel#homeTelemetrySummaryNameLabel[deviceConfigLink="true"] {
     color: @vv-text-strong;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 700;
 }
 
 QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink="true"] {
     color: @vv-text-strong;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
 }
 
