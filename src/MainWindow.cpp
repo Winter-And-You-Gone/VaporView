@@ -231,6 +231,20 @@ void fitButtonMinimumWidth(QAbstractButton *button, int floorWidth = 0)
     button->setMinimumWidth(std::max(floorWidth, textWidth + iconWidth + 42));
 }
 
+void fitButtonFixedWidth(QAbstractButton *button, int floorWidth = 0, int padding = 24)
+{
+    if (!button)
+    {
+        return;
+    }
+
+    const int iconWidth = button->icon().isNull() ? 0 : button->iconSize().width() + 8;
+    const int textWidth = button->fontMetrics().horizontalAdvance(button->text());
+    const int width = std::max(floorWidth, textWidth + iconWidth + padding);
+    button->setMinimumWidth(width);
+    button->setMaximumWidth(width);
+}
+
 QString shortcutTextFromTooltipSuffix(QString& text)
 {
     static const QRegularExpression suffixPattern(
@@ -438,6 +452,10 @@ constexpr const char *kNumericWidthPaddingProperty = "_vv_numeric_width_padding"
 constexpr const char *kMainCardMinimumHeightProperty = "_vv_main_card_minimum_height";
 constexpr int kMainPageInputHeight = 36;
 constexpr int kMainPageButtonHeight = kMainPageInputHeight;
+constexpr int kDeviceConfigAutoDetectButtonMinWidth = 124;
+constexpr int kDeviceConfigSourceModeComboWidth = 156;
+constexpr int kDeviceConfigSkyDeviceButtonMinWidth = 132;
+constexpr int kDeviceConfigTopButtonPadding = 24;
 constexpr int kHomeDeviceButtonSize = 32;
 constexpr int kHomeDeviceIconSize = 18;
 constexpr int kHomeDeviceCapsuleHeight = 32;
@@ -10607,7 +10625,7 @@ void MainWindow::setupDeviceConfigPage()
     serialTitleBar->setFixedHeight(kMainPageTitleBarHeight);
     auto *serialTitleLayout = new QHBoxLayout(serialTitleBar);
     serialTitleLayout->setContentsMargins(8, 2, 8, 2);
-    serialTitleLayout->setSpacing(8);
+    serialTitleLayout->setSpacing(5);
     QWidget *serialTitleCluster = nullptr;
     device_config_.serial_title_lbl = createSectionTitleCluster(serialTitleBar,
                                                                 QStringLiteral("usb"),
@@ -10618,7 +10636,7 @@ void MainWindow::setupDeviceConfigPage()
     device_config_.auto_detect_ports_btn = new QPushButton(serialTitleBar);
     device_config_.auto_detect_ports_btn->setFixedHeight(kMainPageButtonHeight);
     device_config_.auto_detect_ports_btn->setFocusPolicy(Qt::TabFocus);
-    device_config_.auto_detect_ports_btn->setMinimumWidth(150);
+    device_config_.auto_detect_ports_btn->setMinimumWidth(kDeviceConfigAutoDetectButtonMinWidth);
     connect(device_config_.auto_detect_ports_btn, &QPushButton::clicked, this, &MainWindow::onAutoDetectPortsClicked);
     serialTitleLayout->addWidget(device_config_.auto_detect_ports_btn, 0, Qt::AlignVCenter | Qt::AlignLeft);
 
@@ -10626,15 +10644,15 @@ void MainWindow::setupDeviceConfigPage()
     device_config_.data_source_mode_lbl->setObjectName(QStringLiteral("fieldLabel"));
     device_config_.data_source_mode_combo = new QComboBox(serialTitleBar);
     device_config_.data_source_mode_combo->setFixedHeight(kMainPageInputHeight);
-    device_config_.data_source_mode_combo->setMinimumWidth(180);
-    device_config_.data_source_mode_combo->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    device_config_.data_source_mode_combo->setFixedWidth(kDeviceConfigSourceModeComboWidth);
+    device_config_.data_source_mode_combo->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
     serialTitleLayout->addWidget(device_config_.data_source_mode_lbl, 0, Qt::AlignVCenter | Qt::AlignRight);
     serialTitleLayout->addWidget(device_config_.data_source_mode_combo, 0, Qt::AlignVCenter);
 
     device_config_.sky_device_config_btn = new QPushButton(serialTitleBar);
     device_config_.sky_device_config_btn->setFixedHeight(kMainPageButtonHeight);
     device_config_.sky_device_config_btn->setFocusPolicy(Qt::TabFocus);
-    device_config_.sky_device_config_btn->setMinimumWidth(170);
+    device_config_.sky_device_config_btn->setMinimumWidth(kDeviceConfigSkyDeviceButtonMinWidth);
     connect(device_config_.sky_device_config_btn, &QPushButton::clicked, this, &MainWindow::onSkyDeviceConfigClicked);
     serialTitleLayout->addWidget(device_config_.sky_device_config_btn, 0, Qt::AlignVCenter | Qt::AlignLeft);
     serialTitleLayout->addStretch(1);
@@ -11235,7 +11253,9 @@ void MainWindow::updateDeviceConfigTexts()
     if (device_config_.sky_telemetry_port_lbl) device_config_.sky_telemetry_port_lbl->setText(is_english_ ? "Serial:" : "串口:");
     if (device_config_.sky_telemetry_baud_lbl) device_config_.sky_telemetry_baud_lbl->setText(is_english_ ? "Baud:" : "波特率:");
     if (device_config_.sky_device_config_btn) device_config_.sky_device_config_btn->setText(is_english_ ? "Sky Device Config" : "天空端设备配置");
-    fitButtonMinimumWidth(device_config_.sky_device_config_btn, 170);
+    fitButtonFixedWidth(device_config_.sky_device_config_btn,
+                        kDeviceConfigSkyDeviceButtonMinWidth,
+                        kDeviceConfigTopButtonPadding);
     if (device_config_.epsilon_lbl) device_config_.epsilon_lbl->setText(QStringLiteral("EPSILON:"));
     if (device_config_.ptb_lbl) device_config_.ptb_lbl->setText(QStringLiteral("PTB210:"));
     if (device_config_.hmp_lbl) device_config_.hmp_lbl->setText(QStringLiteral("HMP3:"));
@@ -11392,7 +11412,9 @@ void MainWindow::updateDeviceConfigState()
         device_config_.auto_detect_ports_btn->setEnabled(auto_detect_ports_btn_ && auto_detect_ports_btn_->isEnabled());
         device_config_.auto_detect_ports_btn->setText(auto_detect_ports_btn_ ? auto_detect_ports_btn_->text() : QString());
         device_config_.auto_detect_ports_btn->setToolTip(auto_detect_ports_btn_ ? auto_detect_ports_btn_->toolTip() : QString());
-        fitButtonMinimumWidth(device_config_.auto_detect_ports_btn, 150);
+        fitButtonFixedWidth(device_config_.auto_detect_ports_btn,
+                            kDeviceConfigAutoDetectButtonMinWidth,
+                            kDeviceConfigTopButtonPadding);
     }
     if (device_config_.sky_device_config_btn)
     {

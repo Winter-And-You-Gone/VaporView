@@ -706,6 +706,8 @@ int main(int argc, char **argv)
         QStringLiteral("Cancel"),
     };
     int disabledLocalRemoteActionCount = 0;
+    QPushButton *deviceAutoDetectButton = nullptr;
+    QPushButton *deviceSkyConfigButton = nullptr;
     for (QPushButton *button : deviceConfigPage->findChildren<QPushButton *>())
     {
         if (!button->isVisible())
@@ -716,6 +718,16 @@ int main(int argc, char **argv)
                 "device configuration page omits title-bar serial actions");
         require(button->focusPolicy() == Qt::TabFocus,
                 "device configuration buttons do not take focus on mouse click");
+        if (button->text().contains(QStringLiteral("自动识别")) ||
+            button->text().contains(QStringLiteral("Auto Detect")))
+        {
+            deviceAutoDetectButton = button;
+        }
+        if (button->text().contains(QStringLiteral("天空端设备配置")) ||
+            button->text().contains(QStringLiteral("Sky Device Config")))
+        {
+            deviceSkyConfigButton = button;
+        }
         if (button->text() == QStringLiteral("连接") ||
             button->text() == QStringLiteral("断开") ||
             button->text() == QStringLiteral("重连") ||
@@ -730,6 +742,10 @@ int main(int argc, char **argv)
     }
     require(disabledLocalRemoteActionCount >= 15,
             "device configuration keeps all remote device actions present in local mode");
+    require(deviceAutoDetectButton != nullptr && deviceAutoDetectButton->width() <= 145,
+            "device configuration auto-detect button uses compact title-bar width");
+    require(deviceSkyConfigButton != nullptr && deviceSkyConfigButton->width() <= 145,
+            "device configuration sky-device button uses compact title-bar width");
 
     QComboBox *devicePortCombo = nullptr;
     QComboBox *deviceRateCombo = nullptr;
@@ -786,6 +802,7 @@ int main(int argc, char **argv)
     const QRect deviceRateRect(deviceRateCombo->mapTo(deviceConfigPage, QPoint(0, 0)),
                                deviceRateCombo->size());
     bool foundRemoteButtonsToRightOfRate = false;
+    int rightmostReconnectButtonRight = -1;
     for (QPushButton *button : deviceConfigPage->findChildren<QPushButton *>())
     {
         if (!button->isVisible())
@@ -802,15 +819,22 @@ int main(int argc, char **argv)
             continue;
         }
         const QRect buttonRect(button->mapTo(deviceConfigPage, QPoint(0, 0)), button->size());
+        if (button->text() == QStringLiteral("重连") ||
+            button->text() == QStringLiteral("Reconnect"))
+        {
+            rightmostReconnectButtonRight = std::max(rightmostReconnectButtonRight, buttonRect.right());
+        }
         if (buttonRect.left() > deviceRateRect.right() &&
             std::abs(buttonRect.center().y() - deviceRateRect.center().y()) <= 2)
         {
             foundRemoteButtonsToRightOfRate = true;
-            break;
         }
     }
     require(foundRemoteButtonsToRightOfRate,
             "device configuration remote actions sit to the right of the rate selector");
+    require(rightmostReconnectButtonRight > 0 &&
+                serialConfigPageRect.right() - rightmostReconnectButtonRight <= 32,
+            "device configuration serial card right edge stays close to the reconnect buttons");
 
     QFrame *epsilonConfigCard = nullptr;
     for (QFrame *card : deviceConfigPage->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard")))
@@ -1098,6 +1122,19 @@ int main(int argc, char **argv)
                     "device telemetry summary subcard value pill uses device-config styling");
             const QRect pillRect(pill->mapTo(subCard, QPoint(0, 0)), pill->size());
             leftmostPillLeft = std::min(leftmostPillLeft, pillRect.left());
+            require(pillRect.right() <= subCard->width() - 2,
+                    "device telemetry summary pill stays inside its subcard");
+            const QList<QLabel*> pillLabels = pill->findChildren<QLabel *>();
+            for (QLabel *pillLabel : pillLabels)
+            {
+                if (pillLabel->objectName() != QStringLiteral("homeTelemetrySummaryNameLabel") &&
+                    pillLabel->objectName() != QStringLiteral("homeTelemetrySummaryValueLabel"))
+                {
+                    continue;
+                }
+                require(pillLabel->fontMetrics().horizontalAdvance(pillLabel->text()) <= pillLabel->width() + 1,
+                        "device telemetry summary label text fits inside its label");
+            }
         }
         QLabel *firstNameLabel = subCard->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
         require(firstNameLabel != nullptr &&
@@ -1160,6 +1197,8 @@ int main(int argc, char **argv)
     }
     require(deviceSourceModeCombo != nullptr,
             "device configuration source mode combo exists");
+    require(deviceSourceModeCombo->width() <= 160,
+            "device configuration source mode combo uses compact width");
     const SkyTelemetryRowWidgets deviceSkyTelemetry = findSkyTelemetryRowWidgets(deviceConfigPage);
     require(deviceSkyTelemetry.transportCombo != nullptr,
             "device configuration sky telemetry transport combo exists");
