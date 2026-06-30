@@ -422,10 +422,22 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
             "RTK NTRIP mountpoint combo matches the detect button width");
     auto *ggaSourceCombo = dialog->findChild<QComboBox *>(QStringLiteral("rtkGgaPortCombo"));
     auto *ggaToggleButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkGgaToggleButton"));
+    auto *ggaOutputText = dialog->findChild<QTextEdit *>(QStringLiteral("rtkGgaTextEdit"));
     QLabel *ggaSourceLabel = findLabelByText(dialog,
                                              {QStringLiteral("GGA来源:"),
                                               QStringLiteral("GGA Source:")});
-    require(ggaSourceCombo != nullptr && ggaToggleButton != nullptr && ggaSourceLabel != nullptr,
+    QLabel *ggaFrequencyLabel = nullptr;
+    for (QLabel *label : dialog->findChildren<QLabel *>())
+    {
+        if (label->text().startsWith(QStringLiteral("频率:")) ||
+            label->text().startsWith(QStringLiteral("Rate:")))
+        {
+            ggaFrequencyLabel = label;
+            break;
+        }
+    }
+    require(ggaSourceCombo != nullptr && ggaToggleButton != nullptr && ggaOutputText != nullptr &&
+                ggaSourceLabel != nullptr && ggaFrequencyLabel != nullptr,
             "RTK GGA source controls exist");
     require(ggaSourceCombo->currentText() == QStringLiteral("Epsilon生成") ||
                 ggaSourceCombo->currentText() == QStringLiteral("Epsilon generated"),
@@ -438,6 +450,16 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
             "RTK GGA idle action uses a compact read label");
     require(widgetX(ggaSourceLabel) - widgetX(ggaCard) <= 40,
             "RTK GGA source label is aligned near the left edge of its card");
+    require(widgetY(ggaToggleButton) > widgetY(ggaSourceLabel) &&
+                std::abs(widgetX(ggaToggleButton) - widgetX(ggaSourceLabel)) <= 8,
+            "RTK GGA read button sits below the source label");
+    require(widgetY(ggaFrequencyLabel) > widgetY(ggaSourceCombo) &&
+                std::abs(widgetX(ggaFrequencyLabel) - widgetX(ggaSourceCombo)) <= 8,
+            "RTK GGA frequency readout sits below the source combo");
+    require(widgetX(ggaOutputText) >= widgetX(ggaSourceCombo) + ggaSourceCombo->width(),
+            "RTK GGA output text area sits to the right of the source controls");
+    require(std::abs(ggaCard->height() - ntripCard->height()) <= 24,
+            "RTK GGA monitor card height matches the NTRIP card height closely");
     require(findLabelByText(dialog,
                             {QStringLiteral("状态: 点击按钮开始读取GGA"),
                              QStringLiteral("Status: Click button to read GGA")}) == nullptr,

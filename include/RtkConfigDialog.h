@@ -113,7 +113,8 @@ private:
     QHBoxLayout *button_layout_;
     QVBoxLayout *log_layout_;
     QHBoxLayout *log_button_layout_;
-    QVBoxLayout *gga_layout_;
+    QHBoxLayout *gga_layout_;
+    QVBoxLayout *gga_controls_layout_;
     QGridLayout *gga_header_layout_;
     QVBoxLayout *gga_text_container_layout_;
     QVBoxLayout *log_text_container_layout_;
@@ -129,6 +130,7 @@ private:
     QLabel *log_title_label_;
     QLabel *action_title_label_;
     QWidget *gga_text_container_;
+    QWidget *gga_controls_container_;
     QWidget *log_text_container_;
     QLabel *server_label_;
     QLabel *port_label_;

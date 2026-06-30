@@ -724,6 +724,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     , log_layout_(nullptr)
     , log_button_layout_(nullptr)
     , gga_layout_(nullptr)
+    , gga_controls_layout_(nullptr)
     , gga_header_layout_(nullptr)
     , gga_text_container_layout_(nullptr)
     , log_text_container_layout_(nullptr)
@@ -739,6 +740,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     , log_title_label_(nullptr)
     , action_title_label_(nullptr)
     , gga_text_container_(nullptr)
+    , gga_controls_container_(nullptr)
     , log_text_container_(nullptr)
     , server_label_(nullptr)
     , port_label_(nullptr)
@@ -1118,19 +1120,23 @@ void RtkConfigDialog::setupUi()
 
     gga_group_ = new QGroupBox(this);
     auto *ggaCardLayout = createCardLayout(gga_group_, gga_title_label_, QStringLiteral("activity"));
-    gga_layout_ = new QVBoxLayout();
+    gga_layout_ = new QHBoxLayout();
     gga_layout_->setSpacing(6);
     gga_layout_->setContentsMargins(10, 10, 10, 12);
     gga_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     ggaCardLayout->addLayout(gga_layout_);
+
+    gga_controls_container_ = new QWidget(gga_group_);
+    gga_controls_container_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    gga_controls_layout_ = new QVBoxLayout(gga_controls_container_);
+    gga_controls_layout_->setContentsMargins(0, 0, 0, 0);
+    gga_controls_layout_->setSpacing(4);
 
     gga_header_layout_ = new QGridLayout();
     gga_header_layout_->setHorizontalSpacing(8);
     gga_header_layout_->setVerticalSpacing(4);
     gga_header_layout_->setColumnStretch(0, 0);
     gga_header_layout_->setColumnStretch(1, 0);
-    gga_header_layout_->setColumnStretch(2, 0);
-    gga_header_layout_->setColumnStretch(3, 1);
 
     gga_port_info_label_ = createFieldLabel();
     gga_port_info_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
@@ -1144,8 +1150,7 @@ void RtkConfigDialog::setupUi()
     gga_toggle_btn_ = new QPushButton(this);
     gga_toggle_btn_->setObjectName(QStringLiteral("rtkGgaToggleButton"));
     connect(gga_toggle_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onGgaToggleClicked);
-    gga_header_layout_->addWidget(gga_toggle_btn_, 0, 2);
-    gga_header_layout_->addItem(new QSpacerItem(0, 0, QSizePolicy::Expanding, QSizePolicy::Minimum), 0, 3);
+    gga_header_layout_->addWidget(gga_toggle_btn_, 1, 0, Qt::AlignLeft | Qt::AlignVCenter);
 
     gga_frequency_label_ = new VaporView::VisualTextLabel(this);
     gga_frequency_label_->setObjectName(QStringLiteral("fieldLabel"));
@@ -1155,25 +1160,29 @@ void RtkConfigDialog::setupUi()
         std::max(
             ggaFrequencyMetrics.horizontalAdvance(QStringLiteral("Rate: -999.99 Hz")),
             ggaFrequencyMetrics.horizontalAdvance(QStringLiteral("频率: -999.99 Hz"))) + scalePixels(8));
-    gga_frequency_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    gga_header_layout_->addWidget(gga_frequency_label_, 1, 0, 1, 4, Qt::AlignRight | Qt::AlignVCenter);
-    gga_layout_->addLayout(gga_header_layout_);
+    gga_frequency_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    gga_header_layout_->addWidget(gga_frequency_label_, 1, 1, Qt::AlignLeft | Qt::AlignVCenter);
+    gga_controls_layout_->addLayout(gga_header_layout_);
 
     gga_status_label_ = new QLabel(this);
     gga_status_label_->setObjectName(QStringLiteral("rtkGgaStatusLabel"));
     gga_status_label_->setWordWrap(true);
-    gga_layout_->addWidget(gga_status_label_);
+    gga_controls_layout_->addWidget(gga_status_label_);
+    gga_controls_layout_->addStretch(1);
+    gga_layout_->addWidget(gga_controls_container_, 0, Qt::AlignTop | Qt::AlignLeft);
 
     gga_text_container_ = new QWidget(gga_group_);
+    gga_text_container_->setObjectName(QStringLiteral("rtkGgaOutputContainer"));
     gga_text_container_layout_ = new QVBoxLayout(gga_text_container_);
-    gga_text_container_layout_->setContentsMargins(0, 0, 0, 8);
+    gga_text_container_layout_->setContentsMargins(0, 0, 0, 0);
     gga_text_container_layout_->setSpacing(0);
 
     gga_text_edit_ = new QTextEdit(gga_text_container_);
+    gga_text_edit_->setObjectName(QStringLiteral("rtkGgaTextEdit"));
     gga_text_edit_->setReadOnly(true);
     gga_text_edit_->document()->setMaximumBlockCount(kGgaMaxVisibleLines);
     gga_text_container_layout_->addWidget(gga_text_edit_);
-    gga_layout_->addWidget(gga_text_container_);
+    gga_layout_->addWidget(gga_text_container_, 1);
 
     auto *topRowWidget = new QWidget(this);
     topRowWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
@@ -1401,9 +1410,15 @@ void RtkConfigDialog::applyScaledUiMetrics()
         gga_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(8));
     }
 
+    if (gga_controls_layout_)
+    {
+        gga_controls_layout_->setSpacing(scalePixels(4));
+        gga_controls_layout_->setContentsMargins(0, 0, 0, 0);
+    }
+
     if (gga_text_container_layout_)
     {
-        gga_text_container_layout_->setContentsMargins(0, 0, 0, scalePixels(8));
+        gga_text_container_layout_->setContentsMargins(0, 0, 0, 0);
     }
 
     if (gga_button_spacer_)
@@ -1501,21 +1516,12 @@ void RtkConfigDialog::applyScaledUiMetrics()
     {
         gga_port_info_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     }
-    applyComboWidth(gga_port_combo_, 150);
+    applyComboWidth(gga_port_combo_, 140);
+    applyButtonWidth(gga_toggle_btn_, 72);
 
     const bool ggaStatusVisible = gga_status_label_ && !gga_status_label_->text().trimmed().isEmpty();
     gga_status_label_->setVisible(ggaStatusVisible);
     gga_status_label_->setMinimumHeight(ggaStatusVisible ? scalePixels(24) : 0);
-    const int ggaTextHeight = scalePixels(56);
-    const int ggaTextBottomGap = scalePixels(4);
-    gga_text_edit_->setFixedHeight(ggaTextHeight);
-    gga_text_edit_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    if (gga_text_container_)
-    {
-        gga_text_container_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-        gga_text_container_->setFixedHeight(ggaTextHeight + ggaTextBottomGap);
-    }
-    gga_text_edit_->document()->setDocumentMargin(scalePixels(8));
     const QMargins ggaMargins = gga_layout_ ? gga_layout_->contentsMargins() : QMargins();
     const int headerHeight = gga_header_layout_
         ? gga_header_layout_->sizeHint().height()
@@ -1525,16 +1531,29 @@ void RtkConfigDialog::applyScaledUiMetrics()
     const int statusHeight = ggaStatusVisible
         ? std::max(gga_status_label_->minimumHeight(), gga_status_label_->sizeHint().height())
         : 0;
-    const int verticalSpacing = gga_layout_ ? gga_layout_->spacing() : 0;
+    const int controlsSpacing = gga_controls_layout_ ? gga_controls_layout_->spacing() : 0;
+    const int controlsHeight = headerHeight + (ggaStatusVisible ? controlsSpacing + statusHeight : 0);
+    if (gga_controls_container_)
+    {
+        gga_controls_container_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        gga_controls_container_->setFixedSize(gga_header_layout_ ? gga_header_layout_->sizeHint().width() : scalePixels(220),
+                                              controlsHeight);
+    }
+    const int ggaTextHeight = std::max(scalePixels(72), controlsHeight);
+    gga_text_edit_->setFixedHeight(ggaTextHeight);
+    gga_text_edit_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    if (gga_text_container_)
+    {
+        gga_text_container_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        gga_text_container_->setMinimumWidth(scalePixels(120));
+        gga_text_container_->setFixedHeight(ggaTextHeight);
+    }
+    gga_text_edit_->document()->setDocumentMargin(scalePixels(8));
+    const int bodyHeight = std::max(controlsHeight, ggaTextHeight);
     const int cardTitleBarHeight = 40;
     const int ggaGroupHeight = cardTitleBarHeight
         + ggaMargins.top()
-        + headerHeight
-        + verticalSpacing
-        + statusHeight
-        + (ggaStatusVisible ? verticalSpacing : 0)
-        + ggaTextHeight
-        + ggaTextBottomGap
+        + bodyHeight
         + ggaMargins.bottom();
     gga_group_->setFixedHeight(ggaGroupHeight);
 
@@ -1544,7 +1563,6 @@ void RtkConfigDialog::applyScaledUiMetrics()
     applyButtonWidth(start_btn_, 80);
     applyButtonWidth(stop_btn_, 80);
     applyButtonWidth(test_btn_, 120);
-    applyButtonWidth(gga_toggle_btn_, 72);
     applyButtonWidth(save_config_btn_, 100);
     applyButtonWidth(load_config_btn_, 100);
     applyButtonWidth(clear_log_btn_, 96);
@@ -1569,7 +1587,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
         log_group_->setFixedHeight(logGroupHeight);
         log_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     }
-    gga_text_edit_->setMinimumWidth(scalePixels(200));
+    gga_text_edit_->setMinimumWidth(scalePixels(120));
 
     if (main_layout_)
     {
