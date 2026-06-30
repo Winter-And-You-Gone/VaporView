@@ -8369,7 +8369,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                              true);
         renderSummarySection(device_config_.data_telemetry_summary_card,
                              device_config_.data_telemetry_device_summary_layout,
-                             is_english_ ? QStringLiteral("Data availability") : QStringLiteral("有无数据"),
+                             is_english_ ? QStringLiteral("Data") : QStringLiteral("数据"),
                              sections.deviceItems,
                              3,
                              3,

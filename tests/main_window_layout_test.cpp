@@ -1061,7 +1061,7 @@ int main(int argc, char **argv)
     const QVector<QStringList> expectedTelemetrySubCardTitles = {
         {QStringLiteral("数据流频率"), QStringLiteral("Data stream rates")},
         {QStringLiteral("链路速率"), QStringLiteral("Link rate")},
-        {QStringLiteral("有无数据"), QStringLiteral("Data availability")},
+        {QStringLiteral("数据"), QStringLiteral("Data")},
     };
     int previousSubCardBottom = -1;
     int previousSubCardLeft = -1;
