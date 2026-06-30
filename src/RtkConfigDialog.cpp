@@ -731,10 +731,12 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     , output_group_(nullptr)
     , gga_group_(nullptr)
     , log_group_(nullptr)
+    , action_group_(nullptr)
     , config_title_label_(nullptr)
     , output_title_label_(nullptr)
     , gga_title_label_(nullptr)
     , log_title_label_(nullptr)
+    , action_title_label_(nullptr)
     , gga_text_container_(nullptr)
     , log_text_container_(nullptr)
     , server_label_(nullptr)
@@ -945,6 +947,7 @@ void RtkConfigDialog::setupUi()
     main_layout_ = new QVBoxLayout(contentWidget);
     main_layout_->setSpacing(8);
     main_layout_->setContentsMargins(12, 12, 12, 12);
+    main_layout_->setAlignment(Qt::AlignTop);
 
     auto configureFieldLabel = [](QLabel *label) {
         label->setObjectName(QStringLiteral("fieldLabel"));
@@ -1048,9 +1051,10 @@ void RtkConfigDialog::setupUi()
     row++;
 
     auto *lever_label_widget = new QWidget(this);
+    lever_label_widget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     auto *lever_label_layout = new QHBoxLayout(lever_label_widget);
     lever_label_layout->setContentsMargins(0, 0, 0, 0);
-    lever_label_layout->setSpacing(4);
+    lever_label_layout->setSpacing(3);
     main_antenna_lever_label_ = createFieldLabel();
     lever_label_layout->addWidget(main_antenna_lever_label_);
     main_antenna_lever_help_btn_ = new QToolButton(this);
@@ -1063,44 +1067,54 @@ void RtkConfigDialog::setupUi()
     main_antenna_lever_help_btn_->setCursor(Qt::PointingHandCursor);
     connect(main_antenna_lever_help_btn_, &QToolButton::clicked, this, &RtkConfigDialog::onMainAntennaLeverHelpClicked);
     lever_label_layout->addWidget(main_antenna_lever_help_btn_);
-    lever_label_layout->addStretch();
-    output_layout_->addWidget(lever_label_widget, row, 0);
 
     auto *lever_edit_widget = new QWidget(this);
+    lever_edit_widget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     auto *lever_edit_layout = new QHBoxLayout(lever_edit_widget);
     lever_edit_layout->setContentsMargins(0, 0, 0, 0);
-    lever_edit_layout->setSpacing(4);
+    lever_edit_layout->setSpacing(3);
     auto createLeverEdit = [this]() {
         auto *edit = new QLineEdit(this);
         auto *validator = new QDoubleValidator(-10000.0, 10000.0, 4, edit);
         validator->setNotation(QDoubleValidator::StandardNotation);
         edit->setValidator(validator);
         edit->setAlignment(Qt::AlignRight);
-        edit->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        edit->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         return edit;
     };
     lever_edit_layout->addWidget(createFieldLabel(QStringLiteral("X")));
     main_antenna_lever_x_edit_ = createLeverEdit();
+    main_antenna_lever_x_edit_->setObjectName(QStringLiteral("rtkLeverXEdit"));
     lever_edit_layout->addWidget(main_antenna_lever_x_edit_);
     lever_edit_layout->addWidget(createFieldLabel(QStringLiteral("Y")));
     main_antenna_lever_y_edit_ = createLeverEdit();
+    main_antenna_lever_y_edit_->setObjectName(QStringLiteral("rtkLeverYEdit"));
     lever_edit_layout->addWidget(main_antenna_lever_y_edit_);
     lever_edit_layout->addWidget(createFieldLabel(QStringLiteral("Z")));
     main_antenna_lever_z_edit_ = createLeverEdit();
+    main_antenna_lever_z_edit_->setObjectName(QStringLiteral("rtkLeverZEdit"));
     lever_edit_layout->addWidget(main_antenna_lever_z_edit_);
-    output_layout_->addWidget(lever_edit_widget, row, 1, 1, 5);
 
     apply_main_antenna_lever_btn_ = new QPushButton(this);
     connect(apply_main_antenna_lever_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onApplyMainAntennaLeverArmClicked);
-    output_layout_->addWidget(apply_main_antenna_lever_btn_, row, 6);
 
     refresh_ports_btn_ = new QPushButton(this);
     connect(refresh_ports_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onRefreshPortsClicked);
-    output_layout_->addWidget(refresh_ports_btn_, row, 7);
 
     auto_detect_ports_btn_ = new QPushButton(this);
     connect(auto_detect_ports_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onAutoDetectPortsClicked);
-    output_layout_->addWidget(auto_detect_ports_btn_, row, 8);
+
+    auto *lever_row_widget = new QWidget(this);
+    lever_row_widget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    auto *lever_row_layout = new QHBoxLayout(lever_row_widget);
+    lever_row_layout->setContentsMargins(0, 0, 0, 0);
+    lever_row_layout->setSpacing(6);
+    lever_row_layout->addWidget(lever_label_widget);
+    lever_row_layout->addWidget(lever_edit_widget);
+    lever_row_layout->addWidget(apply_main_antenna_lever_btn_);
+    lever_row_layout->addWidget(refresh_ports_btn_);
+    lever_row_layout->addWidget(auto_detect_ports_btn_);
+    output_layout_->addWidget(lever_row_widget, row, 0, 1, 9, Qt::AlignLeft | Qt::AlignVCenter);
     row++;
 
     main_layout_->addWidget(output_group_, 0, Qt::AlignLeft);
@@ -1174,15 +1188,21 @@ void RtkConfigDialog::setupUi()
     log_layout_->addWidget(log_text_container_);
 
     auto *monitorRowWidget = new QWidget(this);
+    monitorRowWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     auto *monitorRowLayout = new QHBoxLayout(monitorRowWidget);
     monitorRowLayout->setContentsMargins(0, 0, 0, 0);
     monitorRowLayout->setSpacing(8);
+    monitorRowLayout->setAlignment(Qt::AlignTop);
     monitorRowLayout->addWidget(gga_group_, 2);
     monitorRowLayout->addWidget(log_group_, 1);
     main_layout_->addWidget(monitorRowWidget);
 
+    action_group_ = new QGroupBox(this);
+    auto *actionCardLayout = createCardLayout(action_group_, action_title_label_, QStringLiteral("play"));
+    action_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     button_layout_ = new QHBoxLayout();
     button_layout_->setSpacing(6);
+    button_layout_->setContentsMargins(8, 8, 8, 8);
 
     start_btn_ = new QPushButton(this);
     connect(start_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onStartClicked);
@@ -1211,7 +1231,8 @@ void RtkConfigDialog::setupUi()
     button_layout_->addWidget(save_config_btn_);
     button_layout_->addWidget(load_config_btn_);
 
-    main_layout_->addLayout(button_layout_);
+    actionCardLayout->addLayout(button_layout_);
+    main_layout_->addWidget(action_group_);
 
     status_label_ = new QLabel(this);
     status_label_->setObjectName(QStringLiteral("rtkStatusLabel"));
@@ -1235,6 +1256,7 @@ void RtkConfigDialog::setEnglish(bool english)
     if (output_title_label_) output_title_label_->setText(textFor("RTCM Output Configuration", "RTCM 输出配置"));
     if (gga_title_label_) gga_title_label_->setText(textFor("GGA Monitor", "GGA 监视"));
     if (log_title_label_) log_title_label_->setText(textFor("RTK Service Log", "RTK 服务日志"));
+    if (action_title_label_) action_title_label_->setText(textFor("Service Actions", "服务操作"));
 
     server_label_->setText(textFor("Server Address:", "服务器地址:"));
     port_label_->setText(textFor("Port:", "端口:"));
@@ -1336,6 +1358,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     {
         main_layout_->setSpacing(scalePixels(6));
         main_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(8));
+        main_layout_->setAlignment(Qt::AlignTop);
     }
 
     if (config_layout_)
@@ -1363,6 +1386,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     if (button_layout_)
     {
         button_layout_->setSpacing(scalePixels(6));
+        button_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(8));
     }
 
     if (gga_layout_)
@@ -1421,14 +1445,24 @@ void RtkConfigDialog::applyScaledUiMetrics()
         (mountpoint_label_ ? mountpoint_label_->width() : 0);
     password_edit_->setFixedWidth(std::max(scalePixels(140), passwordWidth));
     password_edit_->setMinimumHeight(scalePixels(32));
-    applyComboWidth(mountpoint_combo_, 140);
+    applyButtonWidth(fetch_mountpoints_btn_, 112);
+    if (fetch_mountpoints_btn_)
+    {
+        mountpoint_combo_->setFixedWidth(fetch_mountpoints_btn_->width());
+        mountpoint_combo_->setMinimumHeight(scalePixels(30));
+        mountpoint_combo_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    }
+    else
+    {
+        applyComboWidth(mountpoint_combo_, 112);
+    }
 
-    applyFieldLabelWidth(output_port_label_, 72);
-    applyFieldLabelWidth(baudrate_label_, 54);
-    applyFieldLabelWidth(timeout_label_, 72);
-    applyFieldLabelWidth(reconnect_label_, 96);
-    applyFieldLabelWidth(main_antenna_lever_label_, 114);
-    applyComboWidth(output_port_combo_, 128);
+    applyFieldLabelContentWidth(output_port_label_);
+    applyFieldLabelContentWidth(baudrate_label_);
+    applyFieldLabelContentWidth(timeout_label_);
+    applyFieldLabelContentWidth(reconnect_label_);
+    applyFieldLabelContentWidth(main_antenna_lever_label_);
+    applyComboWidth(output_port_combo_, 96);
     applyComboWidth(baudrate_combo_, 112);
     if (main_antenna_lever_help_btn_)
     {
@@ -1490,7 +1524,6 @@ void RtkConfigDialog::applyScaledUiMetrics()
     applyButtonWidth(refresh_ports_btn_, 72);
     applyButtonWidth(auto_detect_ports_btn_, 88);
     applyButtonWidth(apply_main_antenna_lever_btn_, 112);
-    applyButtonWidth(fetch_mountpoints_btn_, 118);
     applyButtonWidth(start_btn_, 80);
     applyButtonWidth(stop_btn_, 80);
     applyButtonWidth(test_btn_, 120);

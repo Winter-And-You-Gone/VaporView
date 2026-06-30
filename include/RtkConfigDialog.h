@@ -122,10 +122,12 @@ private:
     QGroupBox *output_group_;
     QGroupBox *gga_group_;
     QGroupBox *log_group_;
+    QGroupBox *action_group_;
     QLabel *config_title_label_;
     QLabel *output_title_label_;
     QLabel *gga_title_label_;
     QLabel *log_title_label_;
+    QLabel *action_title_label_;
     QWidget *gga_text_container_;
     QWidget *log_text_container_;
     QLabel *server_label_;

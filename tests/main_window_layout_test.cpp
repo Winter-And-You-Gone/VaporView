@@ -128,6 +128,24 @@ QGroupBox *findCardByTitle(QWidget *root, const QStringList& expectedTitles)
     return nullptr;
 }
 
+QLabel *findLabelByText(QWidget *root, const QStringList& expectedTexts)
+{
+    if (!root)
+    {
+        return nullptr;
+    }
+
+    const QList<QLabel*> labels = root->findChildren<QLabel *>();
+    for (QLabel *label : labels)
+    {
+        if (expectedTexts.contains(label->text()))
+        {
+            return label;
+        }
+    }
+    return nullptr;
+}
+
 void processEventsFor(int timeoutMs)
 {
     QElapsedTimer timer;
@@ -274,8 +292,8 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                 rtkScrollArea->verticalScrollBar()->maximum() == 0,
             "RTK config page avoids a vertical scrollbar at the default window size");
     const std::vector<std::pair<QString, int>> compactCombos = {
-        {QStringLiteral("rtkMountpointCombo"), 170},
-        {QStringLiteral("rtkOutputPortCombo"), 150},
+        {QStringLiteral("rtkMountpointCombo"), 135},
+        {QStringLiteral("rtkOutputPortCombo"), 100},
         {QStringLiteral("rtkBaudrateCombo"), 130},
         {QStringLiteral("rtkTimeoutCombo"), 115},
         {QStringLiteral("rtkReconnectCombo"), 125},
@@ -300,6 +318,12 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
         require(lineEdit->width() <= maxWidth,
                 "RTK server/account line edit width stays compact");
     }
+    auto widgetX = [dialog](QWidget *widget) {
+        return widget->mapTo(dialog, QPoint(0, 0)).x();
+    };
+    auto widgetY = [dialog](QWidget *widget) {
+        return widget->mapTo(dialog, QPoint(0, 0)).y();
+    };
     const std::vector<std::tuple<QStringList, QString, const char*>> rtkCards = {
         {{QStringLiteral("NTRIP 服务器配置"), QStringLiteral("NTRIP Server Configuration")},
          QStringLiteral("satellite"),
@@ -313,6 +337,9 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
         {{QStringLiteral("RTK 服务日志"), QStringLiteral("RTK Service Log")},
          QStringLiteral("scroll-text"),
          "RTK service log card uses the standard icon title bar"},
+        {{QStringLiteral("服务操作"), QStringLiteral("Service Actions")},
+         QStringLiteral("play"),
+         "RTK service action card uses the standard icon title bar"},
     };
     for (const auto& [titles, iconName, message] : rtkCards)
     {
@@ -330,11 +357,23 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                                       QStringLiteral("RTCM Output Configuration")});
     require(ntripCard != nullptr && rtcmCard != nullptr,
             "RTK NTRIP and RTCM cards exist for compact width checks");
+    auto *ggaCard = findCardByTitle(dialog,
+                                    {QStringLiteral("GGA 监视"),
+                                     QStringLiteral("GGA Monitor")});
+    auto *actionCard = findCardByTitle(dialog,
+                                       {QStringLiteral("服务操作"),
+                                        QStringLiteral("Service Actions")});
+    require(ggaCard != nullptr && actionCard != nullptr,
+            "RTK GGA and service action cards exist for compact stacking checks");
     require(ntripCard->width() <= ntripCard->sizeHint().width() + 4 &&
                 ntripCard->width() <= 760,
             "RTK NTRIP card width hugs its compact form contents");
     require(rtcmCard->width() <= rtcmCard->sizeHint().width() + 4,
             "RTK RTCM output card width hugs its compact form contents");
+    require(widgetY(ggaCard) - (widgetY(rtcmCard) + rtcmCard->height()) <= 12,
+            "RTK monitor cards sit directly below the RTCM card");
+    require(actionCard->width() >= dialog->width() - 40,
+            "RTK bottom actions are collected in a full-width service card");
     auto *serverEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
     auto *usernameEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkUsernameEdit"));
     auto *portEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkPortEdit"));
@@ -344,12 +383,6 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(serverEdit != nullptr && usernameEdit != nullptr && portEdit != nullptr &&
                 passwordEdit != nullptr && mountpointCombo != nullptr && fetchMountpointsButton != nullptr,
             "RTK NTRIP compact fields exist for alignment checks");
-    auto widgetX = [dialog](QWidget *widget) {
-        return widget->mapTo(dialog, QPoint(0, 0)).x();
-    };
-    auto widgetY = [dialog](QWidget *widget) {
-        return widget->mapTo(dialog, QPoint(0, 0)).y();
-    };
     require(std::abs(widgetX(serverEdit) - widgetX(usernameEdit)) <= 2,
             "RTK NTRIP server and username fields align vertically");
     require(std::abs(widgetX(portEdit) - widgetX(passwordEdit)) <= 2,
@@ -364,6 +397,27 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(std::abs(widgetX(fetchMountpointsButton) - widgetX(mountpointCombo)) <= 2 &&
                 widgetY(fetchMountpointsButton) > widgetY(mountpointCombo),
             "RTK NTRIP mountpoint detection button sits below and aligns with the mountpoint combo");
+    require(std::abs(fetchMountpointsButton->width() - mountpointCombo->width()) <= 2,
+            "RTK NTRIP mountpoint combo matches the detect button width");
+    auto *outputPortCombo = dialog->findChild<QComboBox *>(QStringLiteral("rtkOutputPortCombo"));
+    QLabel *outputPortLabel = findLabelByText(dialog,
+                                              {QStringLiteral("输出串口:"),
+                                               QStringLiteral("Output Port:")});
+    require(outputPortCombo != nullptr && outputPortLabel != nullptr,
+            "RTK RTCM output port label and combo exist");
+    require(widgetX(outputPortCombo) - (widgetX(outputPortLabel) + outputPortLabel->width()) <= 12,
+            "RTK RTCM output port combo sits close to its label");
+    require(outputPortCombo->width() <= 100 &&
+                outputPortCombo->width() >= outputPortCombo->fontMetrics().horizontalAdvance(QStringLiteral("COM999")) + 34,
+            "RTK RTCM output port combo is fixed around COM999 width");
+    auto *leverXEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkLeverXEdit"));
+    auto *leverYEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkLeverYEdit"));
+    auto *leverZEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkLeverZEdit"));
+    require(leverXEdit != nullptr && leverYEdit != nullptr && leverZEdit != nullptr,
+            "RTK RTCM lever-arm XYZ edits exist");
+    require(widgetX(leverYEdit) - (widgetX(leverXEdit) + leverXEdit->width()) <= 42 &&
+                widgetX(leverZEdit) - (widgetX(leverYEdit) + leverYEdit->width()) <= 42,
+            "RTK RTCM lever-arm XYZ controls stay tightly grouped");
     for (QWidget *topLevel : QApplication::topLevelWidgets())
     {
         require(qobject_cast<RtkConfigDialog *>(topLevel) == nullptr,
