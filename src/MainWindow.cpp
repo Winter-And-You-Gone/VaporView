@@ -502,7 +502,7 @@ constexpr int kConfigHomeBodyBottomPadding = kHomeOverviewBodyPadding;
 constexpr int kConfigCardBottomPadding = kHomeOverviewCardOuterPadding;
 constexpr int kHomeTelemetrySummaryHeightPadding = 4;
 constexpr int kConfigCardMinHeight = kMainPageTitleBarHeight + kMainPageButtonHeight + kConfigHomeBodyBottomPadding + kConfigCardBottomPadding;
-constexpr int kHomeOverviewDeviceMinWidth = 540;
+constexpr int kHomeOverviewDeviceMinWidth = 568;
 constexpr int kHomeOverviewTemperatureMinWidth = 380;
 constexpr int kHomeOverviewSplitterHandleWidth = 8;
 constexpr const char *kHomeOverviewSplitterInitializedProperty = "_vv_home_overview_splitter_initialized";
@@ -8151,13 +8151,63 @@ int MainWindow::homeDeviceOverviewContentMinimumWidth() const
         return kHomeOverviewDeviceMinWidth;
     }
 
-    auto widgetWidthHint = [](const QWidget *widget) {
+    auto childNaturalWidth = [](const QWidget *widget) {
         if (!widget)
         {
             return 0;
         }
         int width = widget->minimumWidth();
         width = std::max(width, widget->minimumSizeHint().width());
+        if (width <= 0)
+        {
+            width = widget->sizeHint().width();
+        }
+        return width;
+    };
+
+    auto telemetryPillWidthHint = [&childNaturalWidth](const QWidget *widget) {
+        if (!widget || !widget->layout())
+        {
+            return 0;
+        }
+
+        int width = 0;
+        int visibleItemCount = 0;
+        const QMargins margins = widget->layout()->contentsMargins();
+        for (int i = 0; i < widget->layout()->count(); ++i)
+        {
+            QLayoutItem *item = widget->layout()->itemAt(i);
+            QWidget *child = item ? item->widget() : nullptr;
+            if (!child || child->isHidden())
+            {
+                continue;
+            }
+            if (visibleItemCount > 0)
+            {
+                width += std::max(0, widget->layout()->spacing());
+            }
+            width += childNaturalWidth(child);
+            ++visibleItemCount;
+        }
+
+        return margins.left() + width + margins.right();
+    };
+
+    auto widgetWidthHint = [&childNaturalWidth, &telemetryPillWidthHint](const QWidget *widget) {
+        if (!widget)
+        {
+            return 0;
+        }
+        if (widget->objectName() == QStringLiteral("homeTelemetrySummaryPill"))
+        {
+            return telemetryPillWidthHint(widget);
+        }
+        if (widget->objectName() == QStringLiteral("homeTelemetrySummaryTitleLabel"))
+        {
+            return childNaturalWidth(widget);
+        }
+
+        int width = childNaturalWidth(widget);
         width = std::max(width, widget->sizeHint().width());
         return width;
     };
@@ -8241,44 +8291,6 @@ int MainWindow::homeDeviceOverviewContentMinimumWidth() const
                scalePixels(12);
     };
 
-    auto measuredSectionContentWidth = [this](const QWidget *section) {
-        if (!section)
-        {
-            return 0;
-        }
-
-        int contentRight = 0;
-        const QList<QFrame*> pills =
-            section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
-        for (QFrame *pill : pills)
-        {
-            if (!pill || pill->isHidden())
-            {
-                continue;
-            }
-            const QRect pillRect(pill->mapTo(section, QPoint(0, 0)), pill->size());
-            contentRight = std::max(contentRight, pillRect.right());
-        }
-
-        const QList<QLabel*> titles =
-            section->findChildren<QLabel *>(QStringLiteral("homeTelemetrySummaryTitleLabel"));
-        for (QLabel *title : titles)
-        {
-            if (!title || title->isHidden())
-            {
-                continue;
-            }
-            const QRect titleRect(title->mapTo(section, QPoint(0, 0)), title->size());
-            contentRight = std::max(contentRight, titleRect.right());
-        }
-
-        if (contentRight <= 0)
-        {
-            return 0;
-        }
-        return contentRight + 1 + scalePixels(12);
-    };
-
     const QMargins cardMargins = config_group_->layout()
         ? config_group_->layout()->contentsMargins()
         : QMargins();
@@ -8316,7 +8328,6 @@ int MainWindow::homeDeviceOverviewContentMinimumWidth() const
                 continue;
             }
             summaryContentWidth = std::max(summaryContentWidth, sectionContentWidth(section));
-            summaryContentWidth = std::max(summaryContentWidth, measuredSectionContentWidth(section));
         }
         if (summaryContentWidth <= 0)
         {
@@ -8621,11 +8632,10 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     {
         appendPacketRate(VaporView::MsgType::TelemetryBasic, QStringLiteral("Basic:"));
         appendPacketRate(VaporView::MsgType::WaveformFeature, QStringLiteral("Feature:"));
-        appendPacketRate(VaporView::MsgType::WaveformDownsampled, QStringLiteral("Wave total:"));
         appendWaveformRate(1, QStringLiteral("Wave raw:"));
         appendWaveformRate(4, QStringLiteral("Wave harm.:"));
         appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("Status:"));
-        rateRows << makeItem(QStringLiteral("Wave TCP actual:"), actualWaveRate, connected && remote_status_.wave_tcp_actual_rate_hz > 0.0f, frequencyWidthText);
+        rateRows << makeItem(QStringLiteral("Wave capture:"), actualWaveRate, connected && remote_status_.wave_tcp_actual_rate_hz > 0.0f, frequencyWidthText);
         linkRows << makeItem(QStringLiteral("Sky->Ground:"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("Ground->Sky:"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("Total:"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
@@ -8639,11 +8649,10 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     {
         appendPacketRate(VaporView::MsgType::TelemetryBasic, QStringLiteral("基础:"));
         appendPacketRate(VaporView::MsgType::WaveformFeature, QStringLiteral("特征值:"));
-        appendPacketRate(VaporView::MsgType::WaveformDownsampled, QStringLiteral("波形总包:"));
         appendWaveformRate(1, QStringLiteral("原始波形:"));
         appendWaveformRate(4, QStringLiteral("谐波波形:"));
         appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("状态:"));
-        rateRows << makeItem(QStringLiteral("波形 TCP 实际:"), actualWaveRate, connected && remote_status_.wave_tcp_actual_rate_hz > 0.0f, frequencyWidthText);
+        rateRows << makeItem(QStringLiteral("波形采集:"), actualWaveRate, connected && remote_status_.wave_tcp_actual_rate_hz > 0.0f, frequencyWidthText);
         linkRows << makeItem(QStringLiteral("天空→地面:"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("地面→天空:"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
         linkRows << makeItem(QStringLiteral("合计:"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
@@ -8818,7 +8827,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             line->setFixedHeight(scalePixels(useSideTitle ? 26 : 28));
             auto *lineLayout = new QHBoxLayout(line);
             lineLayout->setContentsMargins(0, 0, 0, 0);
-            lineLayout->setSpacing(4);
+            lineLayout->setSpacing(scalePixels(useSideTitle ? 4 : 2));
 
             if (!useSideTitle && includeTitle && !title.isEmpty())
             {
@@ -8882,7 +8891,8 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                              data_telemetry_summary_layout_,
                              is_english_ ? QStringLiteral("Sky-ground data stream rates") : QStringLiteral("天地数据流频率"),
                              sections.rateItems,
-                             3);
+                             2,
+                             4);
         renderSummarySection(data_telemetry_summary_card_,
                              data_telemetry_link_summary_layout_,
                              is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"),

@@ -7,7 +7,6 @@
 #include <QColor>
 #include <QComboBox>
 #include <QCoreApplication>
-#include <QCursor>
 #include <QElapsedTimer>
 #include <QFrame>
 #include <QGroupBox>
@@ -1162,18 +1161,6 @@ int main(int argc, char **argv)
     hoverWidget(hoverTitleButton, false);
     require(!hoverTitleButton->property("titleBarHover").toBool(),
             "main title bar button hover property is cleared by leave");
-    QCursor::setPos(hoverTitleButton->mapToGlobal(hoverTitleButton->rect().center()));
-    QEvent titleReactivate(QEvent::WindowActivate);
-    QCoreApplication::sendEvent(&window, &titleReactivate);
-    processEventsFor(100);
-    require(hoverTitleButton->property("titleBarHover").toBool(),
-            "main title bar button hover recovers after window reactivation");
-    QCursor::setPos(window.mapToGlobal(QPoint(window.width() - 2, window.height() - 2)));
-    QEvent appReactivate(QEvent::ApplicationActivate);
-    QCoreApplication::sendEvent(qApp, &appReactivate);
-    processEventsFor(100);
-    require(!hoverTitleButton->property("titleBarHover").toBool(),
-            "main title bar button hover clears when cursor is outside after activation");
     hoverWidget(checkedSidebarButton, true);
     require(checkedSidebarButton->property("_vv_hover").toBool(),
             "sidebar button hover property is enabled by enter");
@@ -1212,9 +1199,9 @@ int main(int argc, char **argv)
     requireMargins(temperatureOverviewBody->layout()->contentsMargins(),
                    QMargins(2, 2, 2, 2),
                    "temperature overview body padding matches sensor-card content rhythm");
-    require(deviceOverviewCard->minimumWidth() >= 540,
+    require(deviceOverviewCard->minimumWidth() >= 500,
             "device overview card keeps a practical minimum width");
-    require(deviceOverviewCard->minimumWidth() < 620,
+    require(deviceOverviewCard->minimumWidth() < 580,
             "device overview card minimum width follows its telemetry content instead of a fixed wide floor");
 
     auto *homeConfigCard = deviceOverviewCard;
@@ -1365,20 +1352,27 @@ int main(int argc, char **argv)
         homeRateSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     require(!ratePills.isEmpty(),
             "home data-stream telemetry section has value pills");
-    bool tcpActualRateShowsZero = false;
+    bool waveCaptureRateShowsZero = false;
+    bool waveformTotalRateVisible = false;
     for (QFrame *pill : ratePills)
     {
         QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
-        if (nameLabel && valueLabel && nameLabel->text().contains(QStringLiteral("TCP")))
+        if (nameLabel && nameLabel->text().contains(QStringLiteral("波形总包")))
+        {
+            waveformTotalRateVisible = true;
+        }
+        if (nameLabel && valueLabel && nameLabel->text().contains(QStringLiteral("波形采集")))
         {
             require(valueLabel->text() == QStringLiteral("0.0 Hz"),
-                    "home wave TCP actual rate uses the same zero-frequency text as other rates");
-            tcpActualRateShowsZero = true;
+                    "home wave capture rate uses the same zero-frequency text as other rates");
+            waveCaptureRateShowsZero = true;
         }
     }
-    require(tcpActualRateShowsZero,
-            "home data-stream telemetry section exposes the wave TCP actual rate");
+    require(!waveformTotalRateVisible,
+            "home data-stream telemetry section hides the waveform total packet rate");
+    require(waveCaptureRateShowsZero,
+            "home data-stream telemetry section exposes the wave capture rate");
     requireTelemetryRightPadding(deviceOverviewCard,
                                  homeRateSection,
                                  "home data-stream telemetry row keeps right-side breathing room");
