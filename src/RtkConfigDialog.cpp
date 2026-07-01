@@ -41,6 +41,7 @@
 #include <QTcpSocket>
 #include <QTextBlock>
 #include <QTextCursor>
+#include <QTextOption>
 #include <QTimer>
 #include <QTimeZone>
 #include <QToolButton>
@@ -546,14 +547,114 @@ QString formatRtcmDiagnostic(const RtkStreamStats &stats, bool english)
 QString formatRtkStatusLine(const RtkStreamStats &stats, const QString &fallbackMessage, bool english)
 {
     const QString message = stats.message.isEmpty() ? fallbackMessage : stats.message;
-    const QString base = QString("%1 [%2] %3 B %4 bps %5")
-        .arg(QDateTime::currentDateTime().toString("yyyy/MM/dd hh:mm:ss"))
-        .arg(stats.streamStateMask.isEmpty() ? QStringLiteral("-----") : stats.streamStateMask)
-        .arg(QString::number(stats.inputBytes).rightJustified(10, QLatin1Char(' ')))
-        .arg(QString::number(stats.inputBps).rightJustified(7, QLatin1Char(' ')))
-        .arg(message);
+    QStringList lines;
+    lines << QStringLiteral("%1 [%2]")
+                 .arg(QDateTime::currentDateTime().toString("yyyy/MM/dd hh:mm:ss"),
+                      stats.streamStateMask.isEmpty() ? QStringLiteral("-----") : stats.streamStateMask);
+    lines << (english
+        ? QStringLiteral("  Input: %1 B    Rate: %2 bps")
+              .arg(stats.inputBytes)
+              .arg(stats.inputBps)
+        : QStringLiteral("  输入: %1 B    速率: %2 bps")
+              .arg(stats.inputBytes)
+              .arg(stats.inputBps));
+    lines << (english
+        ? QStringLiteral("  Status: %1").arg(message)
+        : QStringLiteral("  状态: %1").arg(message));
+
     const QString diagnostic = formatRtcmDiagnostic(stats, english);
-    return diagnostic.isEmpty() ? base : QStringLiteral("%1 | %2").arg(base, diagnostic);
+    if (!diagnostic.isEmpty())
+    {
+        lines << (english ? QStringLiteral("  RTCM diagnostic:") : QStringLiteral("  RTCM诊断:"));
+        const QString diagnosticPrefix = english ? QStringLiteral("RTCM diagnostic: ") : QStringLiteral("RTCM诊断: ");
+        QString normalizedDiagnostic = diagnostic;
+        if (normalizedDiagnostic.startsWith(diagnosticPrefix))
+        {
+            normalizedDiagnostic.remove(0, diagnosticPrefix.size());
+        }
+        const QStringList parts = normalizedDiagnostic.split(QStringLiteral("; "), Qt::SkipEmptyParts);
+        for (const QString& part : parts)
+        {
+            lines << QStringLiteral("    - %1").arg(part.trimmed());
+        }
+    }
+    return lines.join(QLatin1Char('\n'));
+}
+
+QStringList splitLogFragments(const QString& text)
+{
+    const QStringList semicolonParts = text.split(QRegularExpression(QStringLiteral("[;；]")), Qt::SkipEmptyParts);
+    if (semicolonParts.size() > 1)
+    {
+        QStringList result;
+        for (const QString& part : semicolonParts)
+        {
+            const QString trimmed = part.trimmed();
+            if (!trimmed.isEmpty())
+            {
+                result << trimmed;
+            }
+        }
+        return result;
+    }
+
+    const QStringList commaParts = text.split(QRegularExpression(QStringLiteral("[,，]")), Qt::SkipEmptyParts);
+    if (commaParts.size() >= 3)
+    {
+        QStringList result;
+        for (const QString& part : commaParts)
+        {
+            const QString trimmed = part.trimmed();
+            if (!trimmed.isEmpty())
+            {
+                result << trimmed;
+            }
+        }
+        return result;
+    }
+
+    return {text.trimmed()};
+}
+
+QString formatLogMessageBlock(const QString& message)
+{
+    const QString normalized = message.trimmed();
+    if (normalized.isEmpty())
+    {
+        return {};
+    }
+
+    QStringList formattedLines;
+    const QStringList lines = normalized.split(QLatin1Char('\n'));
+    for (const QString& rawLine : lines)
+    {
+        const QString line = rawLine.trimmed();
+        if (line.isEmpty())
+        {
+            continue;
+        }
+
+        const int colonIndex = line.indexOf(QRegularExpression(QStringLiteral("[:：]")));
+        if (colonIndex > 0 && colonIndex < 24)
+        {
+            const QString title = line.left(colonIndex + 1).trimmed();
+            const QString details = line.mid(colonIndex + 1).trimmed();
+            formattedLines << title;
+            const QStringList fragments = splitLogFragments(details);
+            for (const QString& fragment : fragments)
+            {
+                if (!fragment.isEmpty())
+                {
+                    formattedLines << QStringLiteral("  - %1").arg(fragment);
+                }
+            }
+            continue;
+        }
+
+        formattedLines << line;
+    }
+
+    return formattedLines.join(QLatin1Char('\n'));
 }
 
 QUrl buildRtkUrl(const QString &server, const QString &port, const QString &path = QString())
@@ -1255,7 +1356,10 @@ void RtkConfigDialog::setupUi()
     log_text_container_layout_->setSpacing(0);
 
     log_text_edit_ = new QTextEdit(log_text_container_);
+    log_text_edit_->setObjectName(QStringLiteral("rtkServiceLogTextEdit"));
     log_text_edit_->setReadOnly(true);
+    log_text_edit_->setLineWrapMode(QTextEdit::WidgetWidth);
+    log_text_edit_->setWordWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
     log_text_container_layout_->addWidget(log_text_edit_);
     log_layout_->addWidget(log_text_container_);
 
@@ -3387,7 +3491,12 @@ void RtkConfigDialog::appendLog(const QString& message)
     if (!log_text_edit_) return;
 
     QString timestamp = QDateTime::currentDateTime().toString("hh:mm:ss");
-    log_text_edit_->append(QString("[%1] %2").arg(timestamp, message));
+    const QString formattedMessage = formatLogMessageBlock(message);
+    if (formattedMessage.isEmpty())
+    {
+        return;
+    }
+    log_text_edit_->append(QString("[%1]\n%2").arg(timestamp, formattedMessage));
 
     QTextCursor cursor = log_text_edit_->textCursor();
     cursor.movePosition(QTextCursor::End);
@@ -3398,7 +3507,7 @@ void RtkConfigDialog::appendRawLogLine(const QString& line)
 {
     if (!log_text_edit_ || line.isEmpty()) return;
 
-    log_text_edit_->append(line);
+    log_text_edit_->append(line.trimmed());
 
     QTextCursor cursor = log_text_edit_->textCursor();
     cursor.movePosition(QTextCursor::End);

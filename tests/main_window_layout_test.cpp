@@ -28,6 +28,7 @@
 #include <QSettings>
 #include <QStringList>
 #include <QTemporaryDir>
+#include <QTextOption>
 #include <QTimer>
 #include <QToolButton>
 #include <QWidget>
@@ -445,6 +446,36 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
             "RTK service log card sits to the right of the RTCM card");
     require(std::abs(logCard->height() - rtcmCard->height()) <= 2,
             "RTK service log card matches the RTCM output card height");
+    auto *rtkServiceLogText = dialog->findChild<QTextEdit *>(QStringLiteral("rtkServiceLogTextEdit"));
+    require(rtkServiceLogText != nullptr, "RTK service log text area exists");
+    require(rtkServiceLogText->lineWrapMode() == QTextEdit::WidgetWidth,
+            "RTK service log wraps long lines to the widget width");
+    require(rtkServiceLogText->wordWrapMode() == QTextOption::WrapAtWordBoundaryOrAnywhere,
+            "RTK service log can wrap long diagnostic tokens");
+    dialog->appendLog(QStringLiteral("无信号 RTK 测试成功: 输入 6406 B, 输出 6406 B, loopback 6406 B"));
+    dialog->appendRawLogLine(QStringLiteral(
+        "2026/07/01 17:51:37 [CC---]\n"
+        "  输入: 5500 B    速率: 7248 bps\n"
+        "  状态: 127.0.0.1\n"
+        "  RTCM诊断:\n"
+        "    - 已检查 5500 B\n"
+        "    - RTCM3/D3帧 38\n"
+        "    - 首字节 0D 0A D3 00 13"));
+    const QString logPlainText = rtkServiceLogText->toPlainText();
+    require(logPlainText.contains(QStringLiteral("[17")) ||
+                logPlainText.contains(QStringLiteral("[0")) ||
+                logPlainText.contains(QStringLiteral("[1")) ||
+                logPlainText.contains(QStringLiteral("[2")),
+            "RTK service log prepends a timestamp line");
+    require(logPlainText.contains(QStringLiteral("无信号 RTK 测试成功:")) &&
+                logPlainText.contains(QStringLiteral("  - 输入 6406 B")) &&
+                logPlainText.contains(QStringLiteral("  - 输出 6406 B")) &&
+                logPlainText.contains(QStringLiteral("  - loopback 6406 B")),
+            "RTK service log formats comma-separated success details as bullet lines");
+    require(logPlainText.contains(QStringLiteral("RTCM诊断:")) &&
+                logPlainText.contains(QStringLiteral("    - 已检查 5500 B")) &&
+                logPlainText.contains(QStringLiteral("    - 首字节 0D 0A D3 00 13")),
+            "RTK service log keeps RTCM diagnostic details on separate indented lines");
     require(actionCard->width() >= dialog->width() - 40,
             "RTK bottom actions are collected in a full-width service card");
     auto *serverEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
