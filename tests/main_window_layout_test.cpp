@@ -489,8 +489,16 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
             "RTK NTRIP compact fields exist for alignment checks");
     const int rtkInputHeight = serverEdit->height();
     const QList<QPushButton*> rtkPushButtons = dialog->findChildren<QPushButton *>();
+    const QStringList manualConfigButtonTexts = {
+        QStringLiteral("保存配置"),
+        QStringLiteral("加载配置"),
+        QStringLiteral("Save Config"),
+        QStringLiteral("Load Config"),
+    };
     for (QPushButton *button : rtkPushButtons)
     {
+        require(!manualConfigButtonTexts.contains(button->text()),
+                "RTK page does not expose manual config import/export buttons");
         require(std::abs(button->height() - rtkInputHeight) <= 1,
                 "RTK push buttons match the input field height");
     }

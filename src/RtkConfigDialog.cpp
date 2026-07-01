@@ -9,7 +9,6 @@
 #include <QGridLayout>
 #include <QFormLayout>
 #include <QFile>
-#include <QFileDialog>
 #include <QFileInfo>
 #include <QMessageBox>
 #include <QPointer>
@@ -880,8 +879,6 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     , fetch_mountpoints_btn_(nullptr)
     , main_antenna_lever_help_btn_(nullptr)
     , apply_main_antenna_lever_btn_(nullptr)
-    , save_config_btn_(nullptr)
-    , load_config_btn_(nullptr)
     , clear_log_btn_(nullptr)
     , status_label_(nullptr)
     , embedded_(embedded)
@@ -1393,19 +1390,11 @@ void RtkConfigDialog::setupUi()
     clear_log_btn_ = new QPushButton(this);
     connect(clear_log_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onClearLogClicked);
 
-    save_config_btn_ = new QPushButton(this);
-    connect(save_config_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onSaveConfigClicked);
-
-    load_config_btn_ = new QPushButton(this);
-    connect(load_config_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onLoadConfigClicked);
-
     button_layout_->addWidget(start_btn_);
     button_layout_->addWidget(stop_btn_);
     button_layout_->addWidget(test_btn_);
     button_layout_->addWidget(clear_log_btn_);
     button_layout_->addStretch();
-    button_layout_->addWidget(save_config_btn_);
-    button_layout_->addWidget(load_config_btn_);
 
     actionCardLayout->addLayout(button_layout_);
     main_layout_->addWidget(action_group_);
@@ -1462,8 +1451,6 @@ void RtkConfigDialog::setEnglish(bool english)
     start_btn_->setText(textFor("Start", "启动"));
     stop_btn_->setText(textFor("Stop", "停止"));
     test_btn_->setText(textFor("Test Connection", "测试连接"));
-    save_config_btn_->setText(textFor("Save Config", "保存配置"));
-    load_config_btn_->setText(textFor("Load Config", "加载配置"));
     clear_log_btn_->setText(textFor("Clear Log", "清空日志"));
 
     updateGgaMonitorText();
@@ -1731,8 +1718,6 @@ void RtkConfigDialog::applyScaledUiMetrics()
     applyButtonWidth(start_btn_, 80);
     applyButtonWidth(stop_btn_, 80);
     applyButtonWidth(test_btn_, 120);
-    applyButtonWidth(save_config_btn_, 100);
-    applyButtonWidth(load_config_btn_, 100);
     applyButtonWidth(clear_log_btn_, 96);
 
     const int logTextBottomGap = scalePixels(2);
@@ -2001,8 +1986,6 @@ void RtkConfigDialog::updateButtonStates()
     fetch_mountpoints_btn_->setEnabled(!busy);
     refresh_ports_btn_->setEnabled(!busy);
     auto_detect_ports_btn_->setEnabled(!busy);
-    save_config_btn_->setEnabled(!busy);
-    load_config_btn_->setEnabled(!busy);
     gga_toggle_btn_->setEnabled(!busy);
 
     if (busy)
@@ -3422,63 +3405,6 @@ void RtkConfigDialog::onTestClicked()
                 self->textFor("Mock GGA test did not receive RTCM data.\n%1", "模拟 GGA 测试未收到 RTCM 返回数据。\n%1").arg(detail));
         }, Qt::QueuedConnection);
     });
-}
-
-void RtkConfigDialog::onSaveConfigClicked()
-{
-    QString filename = QFileDialog::getSaveFileName(
-        this, textFor("Save RTK Configuration", "保存 RTK 配置"),
-        QDir::homePath() + "/rtk_config.ini",
-        textFor("INI Files (*.ini);;All Files (*)", "INI 文件 (*.ini);;所有文件 (*)")
-    );
-
-    if (filename.isEmpty()) return;
-
-    QSettings settings(filename, QSettings::IniFormat);
-    settings.setValue("server", server_edit_->text());
-    settings.setValue("port", port_edit_->text());
-    settings.setValue("username", username_edit_->text());
-    settings.setValue("password", password_edit_->text());
-    settings.setValue("mountpoint", mountpoint_combo_->currentText());
-    settings.setValue("main_antenna_lever_x_m", main_antenna_lever_x_edit_->text());
-    settings.setValue("main_antenna_lever_y_m", main_antenna_lever_y_edit_->text());
-    settings.setValue("main_antenna_lever_z_m", main_antenna_lever_z_edit_->text());
-    settings.setValue("output_port", output_port_combo_->currentText());
-    settings.setValue("gga_source", savedGgaSourceValue());
-    settings.setValue("gga_port", isMainGgaSourceSelected() ? QString() : ggaPortName());
-    settings.setValue("baudrate", baudrate_combo_->currentText());
-    settings.setValue("timeout", timeout_combo_->currentText());
-    settings.setValue("reconnect", reconnect_combo_->currentText());
-    appendLog(textFor("Configuration saved to: %1", "配置已保存到: %1").arg(filename));
-    QMessageBox::information(this, textFor("Saved", "已保存"), textFor("Configuration saved successfully!", "配置保存成功！"));
-}
-
-void RtkConfigDialog::onLoadConfigClicked()
-{
-    QString filename = QFileDialog::getOpenFileName(
-        this, textFor("Load RTK Configuration", "加载 RTK 配置"),
-        QDir::homePath(),
-        textFor("INI Files (*.ini);;All Files (*)", "INI 文件 (*.ini);;所有文件 (*)")
-    );
-
-    if (filename.isEmpty()) return;
-
-    QSettings settings(filename, QSettings::IniFormat);
-
-    server_edit_->setText(settings.value("server", "").toString());
-    port_edit_->setText(settings.value("port", "2101").toString());
-    username_edit_->setText(settings.value("username", "").toString());
-    password_edit_->setText(settings.value("password", "").toString());
-    mountpoint_combo_->setCurrentText(settings.value("mountpoint", "").toString());
-    main_antenna_lever_x_edit_->setText(settings.value("main_antenna_lever_x_m", "").toString());
-    main_antenna_lever_y_edit_->setText(settings.value("main_antenna_lever_y_m", "").toString());
-    main_antenna_lever_z_edit_->setText(settings.value("main_antenna_lever_z_m", "").toString());
-    output_port_combo_->setCurrentText(settings.value("output_port", "").toString());
-    applySavedGgaSource(settings.value("gga_source", settings.value("gga_port", QString::fromLatin1(kEpsilonMainGgaSourceKey))).toString());
-    baudrate_combo_->setCurrentText(settings.value("baudrate", "115200").toString());
-    timeout_combo_->setCurrentText(settings.value("timeout", "5000").toString());
-    reconnect_combo_->setCurrentText(settings.value("reconnect", "1000").toString());
-    appendLog(textFor("Configuration loaded from: %1", "配置已从以下位置加载: %1").arg(filename));
 }
 
 void RtkConfigDialog::onClearLogClicked()

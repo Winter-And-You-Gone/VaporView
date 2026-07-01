@@ -66,8 +66,6 @@ private slots:
     void onAutoDetectPortsClicked();
     void onApplyMainAntennaLeverArmClicked();
     void onMainAntennaLeverHelpClicked();
-    void onSaveConfigClicked();
-    void onLoadConfigClicked();
     void onClearLogClicked();
     void onGgaPollTimer();
 
@@ -171,8 +169,6 @@ private:
     QPushButton *fetch_mountpoints_btn_;
     QToolButton *main_antenna_lever_help_btn_;
     QPushButton *apply_main_antenna_lever_btn_;
-    QPushButton *save_config_btn_;
-    QPushButton *load_config_btn_;
     QPushButton *clear_log_btn_;
     QLabel *status_label_;
 
