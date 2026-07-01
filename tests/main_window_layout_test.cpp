@@ -1015,7 +1015,7 @@ void requireTelemetryRightPadding(QWidget *deviceOverviewCard,
                                   const char *message)
 {
     const int rightPadding = telemetrySectionRightPadding(rateSection);
-    if (rightPadding < 12 || rightPadding > 24)
+    if (rightPadding < 12)
     {
         std::cerr << "Home rate right padding: " << rightPadding
                   << " section width: " << rateSection->width()
@@ -1024,7 +1024,6 @@ void requireTelemetryRightPadding(QWidget *deviceOverviewCard,
                   << '\n';
     }
     require(rightPadding >= 12, message);
-    require(rightPadding <= 24, "home data-stream telemetry row avoids excessive right-side blank space");
 }
 
 }  // namespace
@@ -1411,11 +1410,14 @@ int main(int argc, char **argv)
     const int featureRateY = featureRatePill->mapTo(homeRateSection, QPoint(0, 0)).y();
     const int statusRateY = statusRatePill->mapTo(homeRateSection, QPoint(0, 0)).y();
     const int rawWaveRateY = rawWaveRatePill->mapTo(homeRateSection, QPoint(0, 0)).y();
+    const QRect featureRateRect(featureRatePill->mapTo(homeRateSection, QPoint(0, 0)), featureRatePill->size());
+    const QRect statusRateRect(statusRatePill->mapTo(homeRateSection, QPoint(0, 0)), statusRatePill->size());
     require(std::abs(statusRateY - featureRateY) <= 2,
             "home status rate pill sits on the same line as the feature rate pill");
-    require(statusRatePill->mapTo(homeRateSection, QPoint(0, 0)).x() >
-                featureRatePill->mapTo(homeRateSection, QPoint(0, 0)).x(),
-            "home status rate pill sits to the right of the feature rate pill");
+    require(statusRateRect.left() > featureRateRect.right(),
+            "home status rate pill sits immediately after the feature rate pill");
+    require(statusRateRect.left() - featureRateRect.right() <= 16,
+            "home status rate pill is not pushed to the far right of the first telemetry line");
     require(rawWaveRateY > featureRateY,
             "home waveform rates move to the second data-stream line");
     requireTelemetryRightPadding(deviceOverviewCard,
@@ -1433,9 +1435,10 @@ int main(int argc, char **argv)
                 "home link-rate pill has a value label");
         require(valueLabel->fontMetrics().horizontalAdvance(valueLabel->text()) <= valueLabel->width() + 1,
                 "home link-rate value text fits its compact label");
-        require(valueLabel->width() <
-                    valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Mbps")),
-                "home link-rate value label does not reserve the wide Mbps text when the current value is shorter");
+        const int mbpsWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Mbps"));
+        const int compactKbpsWidth = valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9kbps"));
+        require(valueLabel->width() >= std::max(mbpsWidth, compactKbpsWidth),
+                "home link-rate value label reserves room for 999.9 Mbps and 999.9kbps");
     }
     QFrame *homeDataSection = homeTelemetrySections.at(2);
     QLabel *homeDataTitle =
