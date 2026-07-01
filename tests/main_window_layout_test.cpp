@@ -727,6 +727,54 @@ void requireLastStyleRuleContains(const QString& styleSheet,
     require(rule.contains(expected), message);
 }
 
+QFrame *firstTelemetrySection(QWidget *summaryContainer)
+{
+    if (!summaryContainer)
+    {
+        return nullptr;
+    }
+
+    QList<QFrame*> sections =
+        summaryContainer->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
+    std::sort(sections.begin(), sections.end(), [](QFrame *a, QFrame *b) {
+        return a->mapTo(a->parentWidget(), QPoint(0, 0)).y() <
+               b->mapTo(b->parentWidget(), QPoint(0, 0)).y();
+    });
+    return sections.isEmpty() ? nullptr : sections.first();
+}
+
+int telemetrySectionRightPadding(QFrame *section)
+{
+    require(section != nullptr, "home telemetry rate section exists");
+    int rightmostPill = 0;
+    const QList<QFrame*> pills =
+        section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+    require(!pills.isEmpty(), "home telemetry rate section has value pills");
+    for (QFrame *pill : pills)
+    {
+        const QRect pillRect(pill->mapTo(section, QPoint(0, 0)), pill->size());
+        rightmostPill = std::max(rightmostPill, pillRect.right());
+    }
+    return section->rect().right() - rightmostPill;
+}
+
+void requireTelemetryRightPadding(QWidget *deviceOverviewCard,
+                                  QFrame *rateSection,
+                                  const char *message)
+{
+    const int rightPadding = telemetrySectionRightPadding(rateSection);
+    if (rightPadding < 12 || rightPadding > 24)
+    {
+        std::cerr << "Home rate right padding: " << rightPadding
+                  << " section width: " << rateSection->width()
+                  << " device card width: " << (deviceOverviewCard ? deviceOverviewCard->width() : 0)
+                  << " device card min width: " << (deviceOverviewCard ? deviceOverviewCard->minimumWidth() : 0)
+                  << '\n';
+    }
+    require(rightPadding >= 12, message);
+    require(rightPadding <= 24, "home data-stream telemetry row avoids excessive right-side blank space");
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -1022,16 +1070,9 @@ int main(int argc, char **argv)
         deviceOverviewCard->findChild<QWidget *>(QStringLiteral("homeTelemetrySummaryContainer"));
     require(homeTelemetrySummaryContainer != nullptr,
             "home device overview telemetry summary container exists before dark theme switch");
-    QList<QFrame*> lightHomeTelemetrySections =
-        homeTelemetrySummaryContainer->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
-    require(!lightHomeTelemetrySections.isEmpty(),
+    QFrame *homeRateSection = firstTelemetrySection(homeTelemetrySummaryContainer);
+    require(homeRateSection != nullptr,
             "home device overview telemetry sections exist before dark theme switch");
-    std::sort(lightHomeTelemetrySections.begin(), lightHomeTelemetrySections.end(), [](QFrame *a, QFrame *b) {
-        return a->mapTo(a->parentWidget(), QPoint(0, 0)).y() <
-               b->mapTo(b->parentWidget(), QPoint(0, 0)).y();
-    });
-    QFrame *homeRateSection = lightHomeTelemetrySections.first();
-    int rightmostRatePill = 0;
     const QList<QFrame*> ratePills =
         homeRateSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     require(!ratePills.isEmpty(),
@@ -1039,8 +1080,6 @@ int main(int argc, char **argv)
     bool tcpActualRateShowsZero = false;
     for (QFrame *pill : ratePills)
     {
-        const QRect pillRect(pill->mapTo(homeRateSection, QPoint(0, 0)), pill->size());
-        rightmostRatePill = std::max(rightmostRatePill, pillRect.right());
         QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
         QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
         if (nameLabel && valueLabel && nameLabel->text().contains(QStringLiteral("TCP")))
@@ -1052,18 +1091,9 @@ int main(int argc, char **argv)
     }
     require(tcpActualRateShowsZero,
             "home data-stream telemetry section exposes the wave TCP actual rate");
-    const int homeRateRightPadding = homeRateSection->rect().right() - rightmostRatePill;
-    if (homeRateRightPadding < 12)
-    {
-        std::cerr << "Home rate right padding: " << homeRateRightPadding
-                  << " section width: " << homeRateSection->width()
-                  << " device card width: " << deviceOverviewCard->width()
-                  << " device card min width: " << deviceOverviewCard->minimumWidth() << '\n';
-    }
-    require(homeRateRightPadding >= 12,
-            "home data-stream telemetry row keeps right-side breathing room");
-    require(homeRateRightPadding <= 24,
-            "home data-stream telemetry row avoids excessive right-side blank space");
+    requireTelemetryRightPadding(deviceOverviewCard,
+                                 homeRateSection,
+                                 "home data-stream telemetry row keeps right-side breathing room");
     const int lightHomeTelemetrySummaryHeight = homeTelemetrySummaryContainer->height();
     int minHomeTelemetryPillHeight = std::numeric_limits<int>::max();
     for (QFrame *pill : homeTelemetryPills)
@@ -1115,6 +1145,9 @@ int main(int argc, char **argv)
         homeTelemetrySummaryContainer->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
     require(!darkHomeTelemetrySections.isEmpty(),
             "home device overview telemetry sections exist after dark theme switch");
+    requireTelemetryRightPadding(deviceOverviewCard,
+                                 firstTelemetrySection(homeTelemetrySummaryContainer),
+                                 "dark home data-stream telemetry row keeps right-side breathing room");
     for (QFrame *section : darkHomeTelemetrySections)
     {
         requireChildInsideParent(section, homeTelemetrySummaryContainer, 0,
@@ -1144,6 +1177,11 @@ int main(int argc, char **argv)
                 "main window can switch back to light theme after overview style checks");
         processEventsFor(150);
         activateLayouts(&window);
+        homeTelemetrySummaryContainer =
+            deviceOverviewCard->findChild<QWidget *>(QStringLiteral("homeTelemetrySummaryContainer"));
+        requireTelemetryRightPadding(deviceOverviewCard,
+                                     firstTelemetrySection(homeTelemetrySummaryContainer),
+                                     "home data-stream telemetry row keeps right-side breathing room after returning to light theme");
     }
 
     qRegisterMetaType<VaporView::TemperatureControllerData>("VaporView::TemperatureControllerData");

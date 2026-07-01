@@ -7117,7 +7117,8 @@ void MainWindow::applyScaledUiMetrics()
         }
 
         const int minimumWidth = widget->minimumWidth();
-        if (minimumWidth > 0)
+        const bool usesDynamicHomeOverviewWidth = widget == config_group_ && data_telemetry_summary_card_;
+        if (minimumWidth > 0 && !usesDynamicHomeOverviewWidth)
         {
             rememberBaseMetric(widget, kBaseMinWidthProperty, minimumWidth);
             widget->setMinimumWidth(std::max(1, scalePixels(widget->property(kBaseMinWidthProperty).toInt())));
@@ -7255,6 +7256,7 @@ void MainWindow::updateResponsiveHomeLayout()
     }
     if (main_cards_scroll_area_ && main_cards_scroll_area_->widget() && main_cards_scroll_area_->viewport())
     {
+        updateHomeDeviceOverviewMinimumWidth();
         const int viewportWidth = std::max(0, main_cards_scroll_area_->viewport()->width());
         const int overviewMinimumWidth = home_overview_splitter_ && config_group_ && temperature_overview_group_
             ? config_group_->minimumWidth() + temperature_overview_group_->minimumWidth() + home_overview_splitter_->handleWidth()
@@ -7278,6 +7280,7 @@ void MainWindow::updateResponsiveHomeLayout()
             leftLayout->invalidate();
             leftLayout->activate();
         }
+        updateHomeDeviceOverviewMinimumWidth();
         if (home_overview_splitter_ && config_group_ && temperature_overview_group_)
         {
             const QList<int> sizes = home_overview_splitter_->sizes();
@@ -7519,6 +7522,14 @@ void MainWindow::applyStyleConfiguration()
     releaseFixedHeight(tcp_wave_group_);
     updateRemoteTelemetrySummaryLabel();
     updateResponsiveHomeLayout();
+    QTimer::singleShot(0, this, [this]() {
+        updateRemoteTelemetrySummaryLabel();
+        updateResponsiveHomeLayout();
+        QTimer::singleShot(0, this, [this]() {
+            updateHomeDeviceOverviewMinimumWidth();
+            updateResponsiveHomeLayout();
+        });
+    });
 }
 
 void MainWindow::setFontScale(int percent)
@@ -8073,6 +8084,44 @@ int MainWindow::homeDeviceOverviewContentMinimumWidth() const
                scalePixels(12);
     };
 
+    auto measuredSectionContentWidth = [this](const QWidget *section) {
+        if (!section)
+        {
+            return 0;
+        }
+
+        int contentRight = 0;
+        const QList<QFrame*> pills =
+            section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+        for (QFrame *pill : pills)
+        {
+            if (!pill || pill->isHidden())
+            {
+                continue;
+            }
+            const QRect pillRect(pill->mapTo(section, QPoint(0, 0)), pill->size());
+            contentRight = std::max(contentRight, pillRect.right());
+        }
+
+        const QList<QLabel*> titles =
+            section->findChildren<QLabel *>(QStringLiteral("homeTelemetrySummaryTitleLabel"));
+        for (QLabel *title : titles)
+        {
+            if (!title || title->isHidden())
+            {
+                continue;
+            }
+            const QRect titleRect(title->mapTo(section, QPoint(0, 0)), title->size());
+            contentRight = std::max(contentRight, titleRect.right());
+        }
+
+        if (contentRight <= 0)
+        {
+            return 0;
+        }
+        return contentRight + 1 + scalePixels(12);
+    };
+
     const QMargins cardMargins = config_group_->layout()
         ? config_group_->layout()->contentsMargins()
         : QMargins();
@@ -8102,8 +8151,7 @@ int MainWindow::homeDeviceOverviewContentMinimumWidth() const
     {
         int summaryContentWidth = 0;
         const QList<QFrame*> sections =
-            data_telemetry_summary_card_->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"),
-                                                                 Qt::FindDirectChildrenOnly);
+            data_telemetry_summary_card_->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"));
         for (QFrame *section : sections)
         {
             if (section->isHidden())
@@ -8111,6 +8159,7 @@ int MainWindow::homeDeviceOverviewContentMinimumWidth() const
                 continue;
             }
             summaryContentWidth = std::max(summaryContentWidth, sectionContentWidth(section));
+            summaryContentWidth = std::max(summaryContentWidth, measuredSectionContentWidth(section));
         }
         if (summaryContentWidth <= 0)
         {
@@ -8128,7 +8177,35 @@ void MainWindow::updateHomeDeviceOverviewMinimumWidth()
     {
         return;
     }
-    config_group_->setMinimumWidth(homeDeviceOverviewContentMinimumWidth());
+
+    const int contentMinimumWidth = homeDeviceOverviewContentMinimumWidth();
+    config_group_->setMinimumWidth(contentMinimumWidth);
+
+    if (!home_overview_splitter_ || !temperature_overview_group_)
+    {
+        return;
+    }
+
+    const QList<int> sizes = home_overview_splitter_->sizes();
+    if (sizes.size() < 2 || sizes.at(0) >= contentMinimumWidth)
+    {
+        return;
+    }
+
+    const int availableWidth = std::max(0,
+                                        std::max(home_overview_splitter_->width(),
+                                                 sizes.at(0) + sizes.at(1) + home_overview_splitter_->handleWidth()) -
+                                            home_overview_splitter_->handleWidth());
+    const int rightMinimumWidth = temperature_overview_group_->minimumWidth();
+    if (availableWidth < contentMinimumWidth + rightMinimumWidth)
+    {
+        return;
+    }
+
+    home_overview_splitter_->setSizes({
+        contentMinimumWidth,
+        std::max(rightMinimumWidth, availableWidth - contentMinimumWidth)
+    });
 }
 
 void MainWindow::updateConfigCardHeightForSourceMode()
