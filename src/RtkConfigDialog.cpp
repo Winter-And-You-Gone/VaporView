@@ -1104,9 +1104,10 @@ void RtkConfigDialog::setupUi()
     main_antenna_lever_label_ = createFieldLabel();
     lever_label_layout->addWidget(main_antenna_lever_label_);
     main_antenna_lever_help_btn_ = new QToolButton(this);
+    main_antenna_lever_help_btn_->setObjectName(QStringLiteral("rtkLeverHelpButton"));
     main_antenna_lever_help_btn_->setIcon(createLucideIcon(
         QStringLiteral("help-circle"),
-        appThemeColor(AppThemeColor::HelpIcon, isDarkThemeEnabled())));
+        appThemeColor(AppThemeColor::Primary, isDarkThemeEnabled())));
     main_antenna_lever_help_btn_->setToolButtonStyle(Qt::ToolButtonIconOnly);
     main_antenna_lever_help_btn_->setAutoRaise(true);
     main_antenna_lever_help_btn_->setFocusPolicy(Qt::NoFocus);
@@ -1545,12 +1546,12 @@ void RtkConfigDialog::applyScaledUiMetrics()
         main_antenna_lever_help_btn_->setIconSize(QSize(iconSize, iconSize));
         main_antenna_lever_help_btn_->setIcon(createLucideIcon(
             QStringLiteral("help-circle"),
-            appThemeColor(AppThemeColor::HelpIcon, darkTheme)));
+            appThemeColor(AppThemeColor::Primary, darkTheme)));
         main_antenna_lever_help_btn_->setStyleSheet(
             QString("QToolButton { background: transparent; border: none; border-radius: %1px; padding: 0px; }"
                     "QToolButton:hover { background: %2; }")
                 .arg(helpSize / 2)
-                .arg(appThemeRgba(AppThemeColor::HelpIcon, darkTheme, darkTheme ? 0.14 : 0.10)));
+                .arg(appThemeRgba(AppThemeColor::Primary, darkTheme, darkTheme ? 0.16 : 0.10)));
     }
     for (QLineEdit *edit : {main_antenna_lever_x_edit_, main_antenna_lever_y_edit_, main_antenna_lever_z_edit_})
     {

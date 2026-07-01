@@ -4,11 +4,14 @@
 
 #include <QApplication>
 #include <QAction>
+#include <QColor>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QFrame>
 #include <QGroupBox>
+#include <QIcon>
+#include <QImage>
 #include <QLabel>
 #include <QLayout>
 #include <QLineEdit>
@@ -18,6 +21,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QPixmap>
 #include <QSplitter>
 #include <QSpinBox>
 #include <QStackedWidget>
@@ -58,6 +62,41 @@ void require(bool condition, const char *message)
 }
 
 void requireLabelTextOneOf(const QLabel *label, const QStringList& expected, const char *message);
+
+QColor averageVisibleIconColor(const QIcon& icon)
+{
+    const QImage image = icon.pixmap(QSize(32, 32)).toImage().convertToFormat(QImage::Format_ARGB32);
+    int count = 0;
+    int red = 0;
+    int green = 0;
+    int blue = 0;
+    for (int y = 0; y < image.height(); ++y)
+    {
+        for (int x = 0; x < image.width(); ++x)
+        {
+            const QColor pixel = image.pixelColor(x, y);
+            if (pixel.alpha() < 16)
+            {
+                continue;
+            }
+            red += pixel.red();
+            green += pixel.green();
+            blue += pixel.blue();
+            ++count;
+        }
+    }
+
+    require(count > 0, "icon has visible pixels for color sampling");
+    return QColor(red / count, green / count, blue / count);
+}
+
+void requireColorNear(const QColor& actual, const QColor& expected, int tolerance, const char *message)
+{
+    require(std::abs(actual.red() - expected.red()) <= tolerance &&
+                std::abs(actual.green() - expected.green()) <= tolerance &&
+                std::abs(actual.blue() - expected.blue()) <= tolerance,
+            message);
+}
 
 void requireCardTitleBar(QWidget *card,
                          const QStringList& expectedTitles,
@@ -509,12 +548,13 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     auto *applyLeverButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkApplyLeverArmButton"));
     auto *refreshPortsButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkRefreshPortsButton"));
     auto *autoDetectPortsButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkAutoDetectPortsButton"));
+    auto *leverHelpButton = dialog->findChild<QToolButton *>(QStringLiteral("rtkLeverHelpButton"));
     QLabel *outputPortLabel = findLabelByText(dialog,
                                               {QStringLiteral("输出串口:"),
                                                QStringLiteral("Output Port:")});
     require(outputPortCombo != nullptr && baudrateCombo != nullptr && timeoutCombo != nullptr &&
                 reconnectCombo != nullptr && applyLeverButton != nullptr && refreshPortsButton != nullptr &&
-                autoDetectPortsButton != nullptr && outputPortLabel != nullptr,
+                autoDetectPortsButton != nullptr && leverHelpButton != nullptr && outputPortLabel != nullptr,
             "RTK RTCM output controls exist");
     require(widgetX(outputPortCombo) - (widgetX(outputPortLabel) + outputPortLabel->width()) <= 12,
             "RTK RTCM output port combo sits close to its label");
@@ -545,6 +585,10 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                 widgetX(refreshPortsButton) > widgetX(applyLeverButton) &&
                 widgetX(autoDetectPortsButton) > widgetX(refreshPortsButton),
             "RTK RTCM lever-arm, refresh and auto-detect buttons share the fourth row");
+    requireColorNear(averageVisibleIconColor(leverHelpButton->icon()),
+                     VaporView::appThemeColor(VaporView::AppThemeColor::Primary, false),
+                     6,
+                     "RTK lever-arm help icon uses the light theme primary color");
 
     const QRect ntripRectBeforeTheme = widgetRect(ntripCard);
     const QRect ggaRectBeforeTheme = widgetRect(ggaCard);
@@ -572,6 +616,10 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                     "RTK service action card geometry stays stable after switching to dark theme");
     require(std::abs(logCard->height() - rtcmCard->height()) <= 2,
             "RTK service log card remains equal-height with RTCM in dark theme");
+    requireColorNear(averageVisibleIconColor(leverHelpButton->icon()),
+                     VaporView::appThemeColor(VaporView::AppThemeColor::Primary, true),
+                     6,
+                     "RTK lever-arm help icon uses the dark theme primary color");
     require(outputPortLabel->width() >= outputPortLabel->fontMetrics().horizontalAdvance(outputPortLabel->text()) + 4,
             "RTK RTCM output port label has enough width after switching to dark theme");
     require(rtkScrollArea->horizontalScrollBar()->maximum() == 0 &&
@@ -594,6 +642,10 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                     "RTK service log card geometry returns unchanged after switching back to light theme");
     requireSameRect(widgetRect(actionCard), actionRectBeforeTheme,
                     "RTK service action card geometry returns unchanged after switching back to light theme");
+    requireColorNear(averageVisibleIconColor(leverHelpButton->icon()),
+                     VaporView::appThemeColor(VaporView::AppThemeColor::Primary, false),
+                     6,
+                     "RTK lever-arm help icon returns to the light theme primary color");
     for (QWidget *topLevel : QApplication::topLevelWidgets())
     {
         require(qobject_cast<RtkConfigDialog *>(topLevel) == nullptr,
