@@ -549,6 +549,8 @@ private:
     void createTitleApplicationMenuPanel();
     void showTitleApplicationMenu();
     bool shouldStartWindowMove(QObject *watched) const;
+    bool belongsToMainWindow(QWidget *widget) const;
+    void syncMainHoverStateFromCursor();
     int scalePixels(int pixels) const;
     int minimumLogSidePanelWidth() const;
     void setLogSidePanelToMinimumWidth();

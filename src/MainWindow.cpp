@@ -18,6 +18,7 @@
 #include <QAction>
 #include <QButtonGroup>
 #include <QCheckBox>
+#include <QCursor>
 #include <QDateTimeEdit>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -1182,9 +1183,75 @@ QIcon createRotatedLucideIcon(const QString& iconName, const QColor& color, int 
 constexpr const char *kSectionTitleIconNameProperty = "_vv_section_title_icon_name";
 constexpr const char *kSidebarIconNameProperty = "_vv_sidebar_icon_name";
 constexpr const char *kSidebarCompactProperty = "_vv_sidebar_compact";
+constexpr const char *kSidebarHoverProperty = "_vv_hover";
+constexpr const char *kSidebarHoverParticipantProperty = "_vv_sidebar_hover_button";
+constexpr const char *kTitleBarHoverProperty = "titleBarHover";
+constexpr const char *kTitleBarHoverParticipantProperty = "_vv_title_bar_hover_button";
 constexpr const char *kCustomLogoStateProperty = "_vv_logo_state";
 constexpr int kSectionTitleIconBoxSize = 26;
 constexpr int kSectionTitleIconSize = 22;
+
+bool isHoverEnterLikeEvent(QEvent::Type type)
+{
+    return type == QEvent::Enter ||
+           type == QEvent::HoverEnter ||
+           type == QEvent::HoverMove ||
+           type == QEvent::MouseMove ||
+           type == QEvent::MouseButtonPress ||
+           type == QEvent::MouseButtonRelease;
+}
+
+bool isHoverLeaveLikeEvent(QEvent::Type type)
+{
+    return type == QEvent::Leave ||
+           type == QEvent::HoverLeave;
+}
+
+bool widgetContainsGlobalCursor(const QWidget *widget, const QPoint& cursorPos)
+{
+    return widget &&
+           widget->isVisible() &&
+           widget->isEnabled() &&
+           QRect(widget->mapToGlobal(QPoint(0, 0)), widget->size()).contains(cursorPos);
+}
+
+void setWidgetBooleanProperty(QWidget *widget, const char *propertyName, bool enabled)
+{
+    if (!widget)
+    {
+        return;
+    }
+
+    if (widget->property(propertyName).toBool() == enabled)
+    {
+        widget->update();
+        return;
+    }
+
+    widget->setProperty(propertyName, enabled);
+    if (widget->style())
+    {
+        widget->style()->unpolish(widget);
+        widget->style()->polish(widget);
+    }
+    widget->update();
+}
+
+void configureHoverParticipant(QWidget *widget, const char *participantProperty, QObject *eventFilter)
+{
+    if (!widget)
+    {
+        return;
+    }
+
+    widget->setProperty(participantProperty, true);
+    widget->setAttribute(Qt::WA_Hover, true);
+    widget->setMouseTracking(true);
+    if (eventFilter)
+    {
+        widget->installEventFilter(eventFilter);
+    }
+}
 
 QColor sectionTitleIconColor(bool dark)
 {
@@ -6223,6 +6290,48 @@ bool MainWindow::shouldStartWindowMove(QObject *watched) const
            watched == custom_title_label_;
 }
 
+bool MainWindow::belongsToMainWindow(QWidget *widget) const
+{
+    for (QWidget *current = widget; current; current = current->parentWidget())
+    {
+        if (current == this)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+void MainWindow::syncMainHoverStateFromCursor()
+{
+    const QPoint cursorPos = QCursor::pos();
+    setCustomLogoHovered(widgetContainsGlobalCursor(custom_logo_label_, cursorPos));
+
+    const QList<QToolButton*> titleButtons = findChildren<QToolButton *>();
+    for (QToolButton *button : titleButtons)
+    {
+        if (!button || !button->property(kTitleBarHoverParticipantProperty).toBool())
+        {
+            continue;
+        }
+        setWidgetBooleanProperty(button,
+                                 kTitleBarHoverProperty,
+                                 widgetContainsGlobalCursor(button, cursorPos));
+    }
+
+    const QList<QPushButton*> sidebarButtons = findChildren<QPushButton *>(QStringLiteral("appSidebarButton"));
+    for (QPushButton *button : sidebarButtons)
+    {
+        if (!button || !button->property(kSidebarHoverParticipantProperty).toBool())
+        {
+            continue;
+        }
+        setWidgetBooleanProperty(button,
+                                 kSidebarHoverProperty,
+                                 widgetContainsGlobalCursor(button, cursorPos));
+    }
+}
+
 bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 {
     if (event->type() == QEvent::ToolTip && showAppTooltip(watched, event, dark_theme_enabled_))
@@ -6230,12 +6339,52 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         return true;
     }
 
-    if (event->type() == QEvent::Leave ||
-        event->type() == QEvent::MouseButtonPress ||
-        event->type() == QEvent::Wheel ||
-        event->type() == QEvent::KeyPress ||
-        event->type() == QEvent::ApplicationDeactivate ||
-        event->type() == QEvent::WindowDeactivate)
+    const QEvent::Type eventType = event->type();
+    if (eventType == QEvent::ApplicationActivate ||
+        eventType == QEvent::WindowActivate ||
+        eventType == QEvent::ActivationChange)
+    {
+        QTimer::singleShot(0, this, &MainWindow::syncMainHoverStateFromCursor);
+    }
+
+    if (auto *hoverWidget = qobject_cast<QWidget *>(watched))
+    {
+        const bool titleBarHoverParticipant =
+            hoverWidget->property(kTitleBarHoverParticipantProperty).toBool();
+        const bool sidebarHoverParticipant =
+            hoverWidget->property(kSidebarHoverParticipantProperty).toBool();
+        if (titleBarHoverParticipant || sidebarHoverParticipant)
+        {
+            const char *hoverProperty = titleBarHoverParticipant
+                ? kTitleBarHoverProperty
+                : kSidebarHoverProperty;
+            if (isHoverEnterLikeEvent(eventType))
+            {
+                setWidgetBooleanProperty(hoverWidget, hoverProperty, true);
+            }
+            else if (isHoverLeaveLikeEvent(eventType))
+            {
+                setWidgetBooleanProperty(hoverWidget, hoverProperty, false);
+            }
+        }
+
+        const bool hoverSyncAnchor = hoverWidget == this ||
+                                     hoverWidget == custom_title_bar_ ||
+                                     hoverWidget == app_sidebar_;
+        if ((eventType == QEvent::Enter || eventType == QEvent::MouseMove) &&
+            hoverSyncAnchor &&
+            belongsToMainWindow(hoverWidget))
+        {
+            QTimer::singleShot(0, this, &MainWindow::syncMainHoverStateFromCursor);
+        }
+    }
+
+    if (eventType == QEvent::Leave ||
+        eventType == QEvent::MouseButtonPress ||
+        eventType == QEvent::Wheel ||
+        eventType == QEvent::KeyPress ||
+        eventType == QEvent::ApplicationDeactivate ||
+        eventType == QEvent::WindowDeactivate)
     {
         hideAppTooltipPopup();
     }
@@ -6245,8 +6394,8 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         (title_application_sub_panel_ && title_application_sub_panel_->isVisible());
     if (titleMenuVisible)
     {
-        if (event->type() == QEvent::ApplicationDeactivate ||
-            event->type() == QEvent::WindowDeactivate)
+        if (eventType == QEvent::ApplicationDeactivate ||
+            eventType == QEvent::WindowDeactivate)
         {
             if (title_application_panel_)
             {
@@ -6257,7 +6406,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 title_application_sub_panel_->hide();
             }
         }
-        else if (event->type() == QEvent::MouseButtonPress)
+        else if (eventType == QEvent::MouseButtonPress)
         {
             auto *mouseEvent = static_cast<QMouseEvent *>(event);
             const QPoint globalPos = mouseEvent->globalPosition().toPoint();
@@ -6288,15 +6437,15 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 
     if (watched == custom_logo_label_)
     {
-        if (event->type() == QEvent::Enter || event->type() == QEvent::HoverEnter)
+        if (eventType == QEvent::Enter || eventType == QEvent::HoverEnter)
         {
             setCustomLogoHovered(true);
         }
-        else if (event->type() == QEvent::Leave || event->type() == QEvent::HoverLeave)
+        else if (eventType == QEvent::Leave || eventType == QEvent::HoverLeave)
         {
             setCustomLogoHovered(false);
         }
-        else if (event->type() == QEvent::MouseButtonPress)
+        else if (eventType == QEvent::MouseButtonPress)
         {
             auto *mouseEvent = static_cast<QMouseEvent *>(event);
             if (mouseEvent->button() == Qt::LeftButton)
@@ -6305,7 +6454,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 return true;
             }
         }
-        else if (event->type() == QEvent::MouseButtonDblClick)
+        else if (eventType == QEvent::MouseButtonDblClick)
         {
             auto *mouseEvent = static_cast<QMouseEvent *>(event);
             if (mouseEvent->button() == Qt::LeftButton)
@@ -6313,7 +6462,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 return true;
             }
         }
-        else if (event->type() == QEvent::KeyPress)
+        else if (eventType == QEvent::KeyPress)
         {
             auto *keyEvent = static_cast<QKeyEvent *>(event);
             if (keyEvent->key() == Qt::Key_Return ||
@@ -6328,7 +6477,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 
     if (shouldStartWindowMove(watched))
     {
-        if (event->type() == QEvent::MouseButtonDblClick)
+        if (eventType == QEvent::MouseButtonDblClick)
         {
             auto *mouseEvent = static_cast<QMouseEvent *>(event);
             if (mouseEvent->button() == Qt::LeftButton && !isFullScreen())
@@ -6337,7 +6486,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 return true;
             }
         }
-        else if (event->type() == QEvent::MouseButtonPress)
+        else if (eventType == QEvent::MouseButtonPress)
         {
             auto *mouseEvent = static_cast<QMouseEvent *>(event);
             if (mouseEvent->button() == Qt::LeftButton && windowHandle())
@@ -6350,7 +6499,7 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 
     if (app_layout_splitter_ &&
         watched == app_layout_splitter_->handle(1) &&
-        event->type() == QEvent::MouseButtonRelease)
+        eventType == QEvent::MouseButtonRelease)
     {
         QTimer::singleShot(0, this, &MainWindow::finishAppSidebarResize);
     }
@@ -6361,6 +6510,10 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
 void MainWindow::changeEvent(QEvent *event)
 {
     QMainWindow::changeEvent(event);
+    if (event->type() == QEvent::ActivationChange)
+    {
+        QTimer::singleShot(0, this, &MainWindow::syncMainHoverStateFromCursor);
+    }
     if (event->type() == QEvent::WindowStateChange)
     {
         if (!isWindowMaximizedForUi())
@@ -6501,7 +6654,7 @@ void MainWindow::loadModernStyleSheet()
             "QFrame#appSidebar { background-color: @vv-surface; border-right: 1px solid @vv-border; }"
             "QPushButton#appSidebarButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-weight: 600; min-height: 34px; max-height: 34px; padding: 6px 8px; text-align: left; }"
             "QPushButton#appSidebarButton[_vv_sidebar_compact=\"true\"] { min-width: 42px; max-width: 42px; min-height: 42px; max-height: 42px; padding: 0px; text-align: center; }"
-            "QPushButton#appSidebarButton:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
+            "QPushButton#appSidebarButton:hover, QPushButton#appSidebarButton[_vv_hover=\"true\"] { background-color: @vv-primary-subtle; color: @vv-primary; }"
             "QPushButton#appSidebarButton:checked { background-color: @vv-primary; border-color: @vv-primary; color: @vv-white; }"
             "QPushButton#dangerButton { background-color: @vv-danger; border: 1px solid @vv-danger; border-radius: 6px; color: @vv-white; font-weight: 700; padding: 6px 14px; }"
             "QMenuBar { background-color: @vv-surface; border-bottom: 1px solid @vv-border; padding: 4px 8px; }"
@@ -9961,6 +10114,8 @@ QToolButton *MainWindow::createTitleBarActionButton(QAction *action, QWidget *pa
     button->setToolButtonStyle(Qt::ToolButtonIconOnly);
     button->setAutoRaise(false);
     button->setFocusPolicy(Qt::NoFocus);
+    button->setProperty(kTitleBarHoverProperty, false);
+    configureHoverParticipant(button, kTitleBarHoverParticipantProperty, this);
     if (!action)
     {
         button->setEnabled(false);
@@ -9996,6 +10151,8 @@ QToolButton *MainWindow::createTitleBarIconButton(const QString& objectName, QWi
     button->setToolButtonStyle(Qt::ToolButtonIconOnly);
     button->setAutoRaise(false);
     button->setFocusPolicy(Qt::NoFocus);
+    button->setProperty(kTitleBarHoverProperty, false);
+    configureHoverParticipant(button, kTitleBarHoverParticipantProperty, this);
     return button;
 }
 
@@ -10842,6 +10999,8 @@ void MainWindow::setupCentralWidget()
         button->setObjectName(QStringLiteral("appSidebarButton"));
         button->setProperty(kSidebarIconNameProperty, iconName);
         button->setProperty(kSidebarCompactProperty, false);
+        button->setProperty(kSidebarHoverProperty, false);
+        configureHoverParticipant(button, kSidebarHoverParticipantProperty, this);
         button->setCheckable(true);
         button->setMinimumWidth(0);
         button->setMaximumWidth(QWIDGETSIZE_MAX);
@@ -12791,6 +12950,8 @@ void MainWindow::setupLogPanel()
     log_filter_btn_->setToolButtonStyle(Qt::ToolButtonIconOnly);
     log_filter_btn_->setAutoRaise(false);
     log_filter_btn_->setFocusPolicy(Qt::NoFocus);
+    log_filter_btn_->setProperty(kTitleBarHoverProperty, false);
+    configureHoverParticipant(log_filter_btn_, kTitleBarHoverParticipantProperty, this);
     log_filter_btn_->setIcon(createLogFilterIcon());
     log_filter_btn_->setStyleSheet(QStringLiteral("QToolButton::menu-indicator { image: none; width: 0px; height: 0px; }"));
     log_filter_btn_->setPopupMode(QToolButton::DelayedPopup);

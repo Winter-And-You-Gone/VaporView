@@ -7,6 +7,7 @@
 #include <QColor>
 #include <QComboBox>
 #include <QCoreApplication>
+#include <QCursor>
 #include <QElapsedTimer>
 #include <QFrame>
 #include <QGroupBox>
@@ -1118,6 +1119,43 @@ int main(int argc, char **argv)
     hoverWidget(customLogo, false);
     require(customLogo->property("_vv_logo_state").toString() == QStringLiteral("logo"),
             "custom title logo leave restores app logo");
+    QToolButton *hoverTitleButton = nullptr;
+    const QList<QToolButton*> mainTitleButtons =
+        window.findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
+    for (QToolButton *button : mainTitleButtons)
+    {
+        if (button && button->isVisible() && button->isEnabled() &&
+            button->property("_vv_title_bar_hover_button").toBool())
+        {
+            hoverTitleButton = button;
+            break;
+        }
+    }
+    require(hoverTitleButton != nullptr, "main title bar hover participant exists");
+    hoverWidget(hoverTitleButton, true);
+    require(hoverTitleButton->property("titleBarHover").toBool(),
+            "main title bar button hover property is enabled by enter");
+    hoverWidget(hoverTitleButton, false);
+    require(!hoverTitleButton->property("titleBarHover").toBool(),
+            "main title bar button hover property is cleared by leave");
+    QCursor::setPos(hoverTitleButton->mapToGlobal(hoverTitleButton->rect().center()));
+    QEvent titleReactivate(QEvent::WindowActivate);
+    QCoreApplication::sendEvent(&window, &titleReactivate);
+    processEventsFor(100);
+    require(hoverTitleButton->property("titleBarHover").toBool(),
+            "main title bar button hover recovers after window reactivation");
+    QCursor::setPos(window.mapToGlobal(QPoint(window.width() - 2, window.height() - 2)));
+    QEvent appReactivate(QEvent::ApplicationActivate);
+    QCoreApplication::sendEvent(qApp, &appReactivate);
+    processEventsFor(100);
+    require(!hoverTitleButton->property("titleBarHover").toBool(),
+            "main title bar button hover clears when cursor is outside after activation");
+    hoverWidget(checkedSidebarButton, true);
+    require(checkedSidebarButton->property("_vv_hover").toBool(),
+            "sidebar button hover property is enabled by enter");
+    hoverWidget(checkedSidebarButton, false);
+    require(!checkedSidebarButton->property("_vv_hover").toBool(),
+            "sidebar button hover property is cleared by leave");
     requireRtkSidebarPage(window, customTitleLabel);
 
     auto *homeOverviewSplitter = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
