@@ -1045,6 +1045,30 @@ int main(int argc, char **argv)
     require(window.centralWidget() != nullptr, "central widget exists");
     require(appLayoutSplitter->geometry().bottom() >= window.centralWidget()->contentsRect().bottom() - 1,
             "main content reaches the status bar without a bottom gap");
+    auto *mainPageStackForScroll = window.findChild<QStackedWidget *>(QStringLiteral("mainPageStack"));
+    require(mainPageStackForScroll != nullptr, "main page stack exists for home scroll check");
+    auto *homeScrollArea = qobject_cast<QScrollArea *>(mainPageStackForScroll->currentWidget());
+    require(homeScrollArea != nullptr, "home scroll area exists");
+    processEventsFor(250);
+    if (homeScrollArea->horizontalScrollBar()->maximum() != 0)
+    {
+        auto *homeContent = homeScrollArea->widget();
+        auto *overviewSplitter = window.findChild<QSplitter *>(QStringLiteral("homeOverviewSplitter"));
+        auto *sensorRow = window.findChild<QWidget *>(QStringLiteral("sensorRowContainer"));
+        std::cerr << "Home horizontal overflow: max="
+                  << homeScrollArea->horizontalScrollBar()->maximum()
+                  << " viewport=" << homeScrollArea->viewport()->width()
+                  << " contentWidth=" << (homeContent ? homeContent->width() : 0)
+                  << " contentMin=" << (homeContent ? homeContent->minimumWidth() : 0)
+                  << " overviewWidth=" << (overviewSplitter ? overviewSplitter->width() : 0)
+                  << " overviewMin=" << (overviewSplitter ? overviewSplitter->minimumWidth() : 0)
+                  << " overviewHint=" << (overviewSplitter ? overviewSplitter->sizeHint().width() : 0)
+                  << " sensorWidth=" << (sensorRow ? sensorRow->width() : 0)
+                  << " sensorMinHint=" << (sensorRow ? sensorRow->minimumSizeHint().width() : 0)
+                  << '\n';
+    }
+    require(homeScrollArea->horizontalScrollBar()->maximum() == 0,
+            "home page does not show a horizontal scrollbar in the default window");
 
     auto *appSidebar = window.findChild<QWidget *>(QStringLiteral("appSidebar"));
     require(appSidebar != nullptr, "app sidebar exists");
