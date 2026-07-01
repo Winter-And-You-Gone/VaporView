@@ -522,7 +522,7 @@ constexpr int kMainCardResizeHandleHeight = 3;
 constexpr int kEnvStatusIconSize = 18;
 constexpr int kEpsilonSideTitleWidth = 24;
 constexpr int kEpsilonTitleColumnWidth = 90;
-constexpr int kEpsilonMotionTitleColumnWidth = 108;
+constexpr int kEpsilonMotionTitleColumnWidth = 180;
 constexpr int kEpsilonLeftValueColumnWidth = 130;
 constexpr int kEpsilonPositionValueColumnWidth = 120;
 constexpr int kEpsilonMotionValueColumnWidth = 145;
@@ -3067,23 +3067,14 @@ public:
             }
             return QString::number(value, 'f', decimals);
         };
-        auto axisTriple = [&](const QString& firstLabel,
-                              const QString& secondLabel,
-                              const QString& thirdLabel,
-                              double a,
-                              double b,
-                              double c,
-                              int decimals) {
+        auto valueTriple = [](double a, double b, double c, int decimals) {
             if (!std::isfinite(a) || !std::isfinite(b) || !std::isfinite(c))
             {
                 return QString();
             }
-            return QStringLiteral("%1 %2 / %3 %4 / %5 %6")
-                .arg(firstLabel)
+            return QStringLiteral("%1/%2/%3")
                 .arg(a, 0, 'f', decimals)
-                .arg(secondLabel)
                 .arg(b, 0, 'f', decimals)
-                .arg(thirdLabel)
                 .arg(c, 0, 'f', decimals);
         };
         const bool gnss_fix_valid = epsilon_data.gnss_fix_code >= 2;
@@ -3114,21 +3105,17 @@ public:
         setValue(QStringLiteral("lon"), gnss_fix_valid ? scalar(epsilon_data.longitude_deg, 8) : QString());
         setValue(QStringLiteral("height"), gnss_fix_valid ? scalar(epsilon_data.height_m, 3) : QString());
         setValue(QStringLiteral("ned_vel"), gnss_fix_valid
-            ? axisTriple(QStringLiteral("N"), QStringLiteral("E"), QStringLiteral("D"),
-                  epsilon_data.vel_n_mps, epsilon_data.vel_e_mps, epsilon_data.vel_d_mps, 3)
+            ? valueTriple(epsilon_data.vel_n_mps, epsilon_data.vel_e_mps, epsilon_data.vel_d_mps, 3)
             : QString());
         setValue(QStringLiteral("imu_acc"),
-                 axisTriple(QStringLiteral("X"), QStringLiteral("Y"), QStringLiteral("Z"),
-                     epsilon_data.imu_acc_x_mps2, epsilon_data.imu_acc_y_mps2, epsilon_data.imu_acc_z_mps2, 3));
+                 valueTriple(epsilon_data.imu_acc_x_mps2, epsilon_data.imu_acc_y_mps2, epsilon_data.imu_acc_z_mps2, 3));
         setValue(QStringLiteral("imu_gyr"),
-                 axisTriple(QStringLiteral("X"), QStringLiteral("Y"), QStringLiteral("Z"),
-                     epsilon_data.imu_gyr_x_radps, epsilon_data.imu_gyr_y_radps, epsilon_data.imu_gyr_z_radps, 4));
+                 valueTriple(epsilon_data.imu_gyr_x_radps, epsilon_data.imu_gyr_y_radps, epsilon_data.imu_gyr_z_radps, 4));
         setValue(QStringLiteral("rpy"),
-                 axisTriple(QStringLiteral("Roll"), QStringLiteral("Pitch"), QStringLiteral("Yaw"),
-                     epsilon_data.roll_deg, epsilon_data.pitch_deg, epsilon_data.yaw_deg, 2));
+                 valueTriple(epsilon_data.roll_deg, epsilon_data.pitch_deg, epsilon_data.yaw_deg, 2));
         setValue(QStringLiteral("acc"),
                  gnss_fix_valid && std::isfinite(epsilon_data.hacc_m) && std::isfinite(epsilon_data.vacc_m)
-                     ? QStringLiteral("hAcc %1 m / vAcc %2 m")
+                     ? QStringLiteral("%1m/%2m")
                            .arg(epsilon_data.hacc_m, 0, 'f', 3)
                            .arg(epsilon_data.vacc_m, 0, 'f', 3)
                      : QString());
@@ -3597,7 +3584,7 @@ private:
         addField(positionGrid, row++, 0, QStringLiteral("lat"), QStringLiteral("纬度[deg]:"), QStringLiteral("Latitude [deg]:"), kEpsilonPositionValueColumnWidth);
         addField(positionGrid, row++, 0, QStringLiteral("lon"), QStringLiteral("经度[deg]:"), QStringLiteral("Longitude [deg]:"), kEpsilonPositionValueColumnWidth);
         addField(positionGrid, row++, 0, QStringLiteral("height"), QStringLiteral("高度[m]:"), QStringLiteral("Height [m]:"), kEpsilonPositionValueColumnWidth);
-        addField(positionGrid, row++, 0, QStringLiteral("acc"), QStringLiteral("hAcc / vAcc:"), QStringLiteral("hAcc / vAcc:"), kEpsilonPositionValueColumnWidth);
+        addField(positionGrid, row++, 0, QStringLiteral("acc"), QStringLiteral("hAcc/vAcc:"), QStringLiteral("hAcc/vAcc:"), kEpsilonPositionValueColumnWidth);
 
         QGridLayout *motionGrid = addSectionCard(QStringLiteral("motion"),
                                                  QStringLiteral("姿态与运动"),
@@ -3605,10 +3592,10 @@ private:
                                                  kEpsilonMotionTitleColumnWidth,
                                                  kEpsilonMotionValueColumnWidth);
         row = 0;
-        addField(motionGrid, row++, 0, QStringLiteral("ned_vel"), QStringLiteral("NED速度[m/s]:"), QStringLiteral("NED Velocity [m/s]:"), kEpsilonMotionValueColumnWidth);
-        addField(motionGrid, row++, 0, QStringLiteral("imu_acc"), QStringLiteral("IMU加速度[m/s²]:"), QStringLiteral("IMU Accel [m/s²]:"), kEpsilonMotionValueColumnWidth);
-        addField(motionGrid, row++, 0, QStringLiteral("imu_gyr"), QStringLiteral("IMU角速度[rad/s]:"), QStringLiteral("IMU Gyro [rad/s]:"), kEpsilonMotionValueColumnWidth);
-        addField(motionGrid, row++, 0, QStringLiteral("rpy"), QStringLiteral("姿态角[deg]:"), QStringLiteral("Attitude [deg]:"), kEpsilonMotionValueColumnWidth);
+        addField(motionGrid, row++, 0, QStringLiteral("ned_vel"), QStringLiteral("NED速度[m/s][N/E/D]:"), QStringLiteral("NED Velocity [m/s][N/E/D]:"), kEpsilonMotionValueColumnWidth);
+        addField(motionGrid, row++, 0, QStringLiteral("imu_acc"), QStringLiteral("IMU加速度[m/s²][X/Y/Z]:"), QStringLiteral("IMU Accel [m/s²][X/Y/Z]:"), kEpsilonMotionValueColumnWidth);
+        addField(motionGrid, row++, 0, QStringLiteral("imu_gyr"), QStringLiteral("IMU角速度[rad/s][X/Y/Z]:"), QStringLiteral("IMU Gyro [rad/s][X/Y/Z]:"), kEpsilonMotionValueColumnWidth);
+        addField(motionGrid, row++, 0, QStringLiteral("rpy"), QStringLiteral("姿态角[deg][Roll/Pitch/Yaw]:"), QStringLiteral("Attitude [deg][Roll/Pitch/Yaw]:"), kEpsilonMotionValueColumnWidth);
 
         updateCardGridLayout(true);
         layout->addLayout(cards_layout_, 0);
