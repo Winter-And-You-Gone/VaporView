@@ -2271,9 +2271,11 @@ int main(int argc, char **argv)
     {
         wideCardsRight = std::max(wideCardsRight,
                                   card->mapTo(epsilonGroup, QPoint(card->width(), 0)).x());
+        require(card->width() <= card->sizeHint().width() + 8,
+                "EPSILON section cards stay close to their content width at wide window size");
     }
-    require(wideCardsRight >= epsilonGroup->contentsRect().right() - 8,
-            "EPSILON section cards expand to fill the navigation card at wide window size");
+    require(wideCardsRight < epsilonGroup->contentsRect().right() - 8,
+            "EPSILON section cards leave unused width outside the cards at wide window size");
 
     window.resize(originalWindowSize);
     processEventsFor(300);

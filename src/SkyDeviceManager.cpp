@@ -530,7 +530,12 @@ void SkyDeviceManager::generateSimulatedData()
 
     if (epsilon_status_.state == DeviceState::Connected)
     {
-        const double phaseRateRadPerSecond = 0.4;
+        const double phaseRateRadPerSecond = 0.65;
+        const double northAmplitudeM = 24.0;
+        const double eastAmplitudeM = 16.0;
+        const double downAmplitudeM = 4.0;
+        const double rollAmplitudeDeg = 12.5;
+        const double pitchAmplitudeDeg = 8.5;
         latest_epsilon_.valid = true;
         latest_epsilon_.timestamp = std::chrono::steady_clock::now();
         latest_epsilon_.device_timestamp_us = t;
@@ -546,29 +551,29 @@ void SkyDeviceManager::generateSimulatedData()
         latest_epsilon_.ecef_x_m = 1000.0 + std::sin(simulate_phase_) * 5.0;
         latest_epsilon_.ecef_y_m = 2000.0 + std::cos(simulate_phase_) * 5.0;
         latest_epsilon_.ecef_z_m = 3000.0 + std::sin(simulate_phase_ * 0.5) * 5.0;
-        latest_epsilon_.ned_n_m = std::sin(simulate_phase_ * 0.8) * 4.0;
-        latest_epsilon_.ned_e_m = std::cos(simulate_phase_ * 0.6) * 4.0;
-        latest_epsilon_.ned_d_m = -std::sin(simulate_phase_ * 0.4) * 1.5;
-        latest_epsilon_.vel_n_mps = 4.0 * 0.8 * phaseRateRadPerSecond * std::cos(simulate_phase_ * 0.8);
-        latest_epsilon_.vel_e_mps = -4.0 * 0.6 * phaseRateRadPerSecond * std::sin(simulate_phase_ * 0.6);
-        latest_epsilon_.vel_d_mps = -1.5 * 0.4 * phaseRateRadPerSecond * std::cos(simulate_phase_ * 0.4);
+        latest_epsilon_.ned_n_m = std::sin(simulate_phase_ * 0.8) * northAmplitudeM;
+        latest_epsilon_.ned_e_m = std::cos(simulate_phase_ * 0.6) * eastAmplitudeM;
+        latest_epsilon_.ned_d_m = -std::sin(simulate_phase_ * 0.4) * downAmplitudeM;
+        latest_epsilon_.vel_n_mps = northAmplitudeM * 0.8 * phaseRateRadPerSecond * std::cos(simulate_phase_ * 0.8);
+        latest_epsilon_.vel_e_mps = -eastAmplitudeM * 0.6 * phaseRateRadPerSecond * std::sin(simulate_phase_ * 0.6);
+        latest_epsilon_.vel_d_mps = -downAmplitudeM * 0.4 * phaseRateRadPerSecond * std::cos(simulate_phase_ * 0.4);
         latest_epsilon_.body_vel_x_mps = latest_epsilon_.vel_n_mps * 0.95 + std::sin(simulate_phase_ * 0.3) * 0.05;
         latest_epsilon_.body_vel_y_mps = latest_epsilon_.vel_e_mps * 0.95 + std::cos(simulate_phase_ * 0.3) * 0.05;
         latest_epsilon_.body_vel_z_mps = latest_epsilon_.vel_d_mps;
         latest_epsilon_.body_acc_x_mps2 =
-            -4.0 * std::pow(0.8 * phaseRateRadPerSecond, 2.0) * std::sin(simulate_phase_ * 0.8);
+            -northAmplitudeM * std::pow(0.8 * phaseRateRadPerSecond, 2.0) * std::sin(simulate_phase_ * 0.8);
         latest_epsilon_.body_acc_y_mps2 =
-            -4.0 * std::pow(0.6 * phaseRateRadPerSecond, 2.0) * std::cos(simulate_phase_ * 0.6);
+            -eastAmplitudeM * std::pow(0.6 * phaseRateRadPerSecond, 2.0) * std::cos(simulate_phase_ * 0.6);
         latest_epsilon_.body_acc_z_mps2 =
-            1.5 * std::pow(0.4 * phaseRateRadPerSecond, 2.0) * std::sin(simulate_phase_ * 0.4);
-        latest_epsilon_.roll_deg = std::sin(simulate_phase_ * 0.5) * 2.0;
-        latest_epsilon_.pitch_deg = std::cos(simulate_phase_ * 0.45) * 1.5;
+            downAmplitudeM * std::pow(0.4 * phaseRateRadPerSecond, 2.0) * std::sin(simulate_phase_ * 0.4);
+        latest_epsilon_.roll_deg = std::sin(simulate_phase_ * 0.5) * rollAmplitudeDeg;
+        latest_epsilon_.pitch_deg = std::cos(simulate_phase_ * 0.45) * pitchAmplitudeDeg;
         latest_epsilon_.yaw_deg = positiveDegrees(85.0 + simulate_phase_ * 8.0 + std::sin(simulate_phase_ * 0.2) * 3.0);
         setQuaternionFromEuler(latest_epsilon_);
         latest_epsilon_.ang_vel_x_radps =
-            degToRad(2.0 * 0.5 * phaseRateRadPerSecond * std::cos(simulate_phase_ * 0.5));
+            degToRad(rollAmplitudeDeg * 0.5 * phaseRateRadPerSecond * std::cos(simulate_phase_ * 0.5));
         latest_epsilon_.ang_vel_y_radps =
-            degToRad(-1.5 * 0.45 * phaseRateRadPerSecond * std::sin(simulate_phase_ * 0.45));
+            degToRad(-pitchAmplitudeDeg * 0.45 * phaseRateRadPerSecond * std::sin(simulate_phase_ * 0.45));
         latest_epsilon_.ang_vel_z_radps =
             degToRad((8.0 + 3.0 * 0.2 * std::cos(simulate_phase_ * 0.2)) * phaseRateRadPerSecond);
         latest_epsilon_.imu_acc_x_mps2 = latest_epsilon_.body_acc_x_mps2 + std::sin(simulate_phase_ * 1.3) * 0.02;
