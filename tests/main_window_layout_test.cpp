@@ -876,8 +876,10 @@ int main(int argc, char **argv)
     requireMargins(temperatureOverviewBody->layout()->contentsMargins(),
                    QMargins(2, 2, 2, 2),
                    "temperature overview body padding matches sensor-card content rhythm");
-    require(deviceOverviewCard->minimumWidth() >= 620,
-            "device overview card minimum width leaves room for telemetry rows");
+    require(deviceOverviewCard->minimumWidth() >= 540,
+            "device overview card keeps a practical minimum width");
+    require(deviceOverviewCard->minimumWidth() < 620,
+            "device overview card minimum width follows its telemetry content instead of a fixed wide floor");
 
     auto *homeConfigCard = deviceOverviewCard;
     require(homeConfigCard != nullptr, "home configuration card exists");
@@ -1034,11 +1036,22 @@ int main(int argc, char **argv)
         homeRateSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     require(!ratePills.isEmpty(),
             "home data-stream telemetry section has value pills");
+    bool tcpActualRateShowsZero = false;
     for (QFrame *pill : ratePills)
     {
         const QRect pillRect(pill->mapTo(homeRateSection, QPoint(0, 0)), pill->size());
         rightmostRatePill = std::max(rightmostRatePill, pillRect.right());
+        QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+        QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+        if (nameLabel && valueLabel && nameLabel->text().contains(QStringLiteral("TCP")))
+        {
+            require(valueLabel->text() == QStringLiteral("0.0 Hz"),
+                    "home wave TCP actual rate uses the same zero-frequency text as other rates");
+            tcpActualRateShowsZero = true;
+        }
     }
+    require(tcpActualRateShowsZero,
+            "home data-stream telemetry section exposes the wave TCP actual rate");
     const int homeRateRightPadding = homeRateSection->rect().right() - rightmostRatePill;
     if (homeRateRightPadding < 12)
     {
@@ -1049,6 +1062,8 @@ int main(int argc, char **argv)
     }
     require(homeRateRightPadding >= 12,
             "home data-stream telemetry row keeps right-side breathing room");
+    require(homeRateRightPadding <= 24,
+            "home data-stream telemetry row avoids excessive right-side blank space");
     const int lightHomeTelemetrySummaryHeight = homeTelemetrySummaryContainer->height();
     int minHomeTelemetryPillHeight = std::numeric_limits<int>::max();
     for (QFrame *pill : homeTelemetryPills)

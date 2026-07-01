@@ -582,6 +582,8 @@ private:
     bool isRemoteSkyTcpMode() const;
     void updateSourceModeUi();
     int scaledConfiguredHeight(QWidget *widget, int baseHeight) const;
+    int homeDeviceOverviewContentMinimumWidth() const;
+    void updateHomeDeviceOverviewMinimumWidth();
     void updateConfigCardHeightForSourceMode();
     void syncDeviceConfigPageFromHome();
     void updateDeviceConfigTexts();

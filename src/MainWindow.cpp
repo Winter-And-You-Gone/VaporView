@@ -501,7 +501,7 @@ constexpr int kConfigHomeBodyBottomPadding = kHomeOverviewBodyPadding;
 constexpr int kConfigCardBottomPadding = kHomeOverviewCardOuterPadding;
 constexpr int kHomeTelemetrySummaryHeightPadding = 4;
 constexpr int kConfigCardMinHeight = kMainPageTitleBarHeight + kMainPageButtonHeight + kConfigHomeBodyBottomPadding + kConfigCardBottomPadding;
-constexpr int kHomeOverviewDeviceMinWidth = 620;
+constexpr int kHomeOverviewDeviceMinWidth = 540;
 constexpr int kHomeOverviewTemperatureMinWidth = 420;
 constexpr int kHomeOverviewSplitterHandleWidth = 8;
 constexpr const char *kHomeOverviewSplitterInitializedProperty = "_vv_home_overview_splitter_initialized";
@@ -7976,6 +7976,161 @@ int MainWindow::scaledConfiguredHeight(QWidget *widget, int baseHeight) const
     return baseHeight;
 }
 
+int MainWindow::homeDeviceOverviewContentMinimumWidth() const
+{
+    if (!config_group_)
+    {
+        return kHomeOverviewDeviceMinWidth;
+    }
+
+    auto widgetWidthHint = [](const QWidget *widget) {
+        if (!widget)
+        {
+            return 0;
+        }
+        int width = widget->minimumWidth();
+        width = std::max(width, widget->minimumSizeHint().width());
+        width = std::max(width, widget->sizeHint().width());
+        return width;
+    };
+
+    auto horizontalLayoutContentWidth = [&widgetWidthHint](const QLayout *layout) {
+        if (!layout)
+        {
+            return 0;
+        }
+
+        int width = 0;
+        int visibleItemCount = 0;
+        const QMargins margins = layout->contentsMargins();
+        for (int i = 0; i < layout->count(); ++i)
+        {
+            QLayoutItem *item = layout->itemAt(i);
+            if (!item || item->spacerItem())
+            {
+                continue;
+            }
+
+            int itemWidth = 0;
+            if (QWidget *widget = item->widget())
+            {
+                if (widget->isHidden())
+                {
+                    continue;
+                }
+                itemWidth = widgetWidthHint(widget);
+            }
+            else if (QLayout *childLayout = item->layout())
+            {
+                itemWidth = childLayout->minimumSize().width();
+            }
+            else
+            {
+                itemWidth = item->minimumSize().width();
+            }
+
+            if (itemWidth <= 0)
+            {
+                continue;
+            }
+            if (visibleItemCount > 0)
+            {
+                width += std::max(0, layout->spacing());
+            }
+            width += itemWidth;
+            ++visibleItemCount;
+        }
+
+        return margins.left() + width + margins.right();
+    };
+
+    auto sectionContentWidth = [this, &horizontalLayoutContentWidth](const QWidget *section) {
+        if (!section || !section->layout())
+        {
+            return 0;
+        }
+
+        int widestLine = 0;
+        const QMargins sectionMargins = section->layout()->contentsMargins();
+        for (int i = 0; i < section->layout()->count(); ++i)
+        {
+            QLayoutItem *item = section->layout()->itemAt(i);
+            QWidget *lineWidget = item ? item->widget() : nullptr;
+            if (!lineWidget || lineWidget->isHidden())
+            {
+                continue;
+            }
+            widestLine = std::max(widestLine, horizontalLayoutContentWidth(lineWidget->layout()));
+        }
+
+        if (widestLine <= 0)
+        {
+            return 0;
+        }
+        return sectionMargins.left() +
+               widestLine +
+               sectionMargins.right() +
+               scalePixels(12);
+    };
+
+    const QMargins cardMargins = config_group_->layout()
+        ? config_group_->layout()->contentsMargins()
+        : QMargins();
+    QWidget *body = config_group_->findChild<QWidget *>(QStringLiteral("homeOverviewDeviceBody"));
+    const QMargins bodyMargins = body && body->layout()
+        ? body->layout()->contentsMargins()
+        : QMargins(scalePixels(kHomeOverviewBodyPadding),
+                   scalePixels(kHomeOverviewBodyPadding),
+                   scalePixels(kHomeOverviewBodyPadding),
+                   scalePixels(kConfigHomeBodyBottomPadding));
+
+    auto widthInsideCard = [&cardMargins, &bodyMargins](int contentWidth) {
+        return contentWidth +
+               cardMargins.left() +
+               cardMargins.right() +
+               bodyMargins.left() +
+               bodyMargins.right();
+    };
+
+    int minimumWidth = kHomeOverviewDeviceMinWidth;
+    if (QWidget *homeDevices = config_group_->findChild<QWidget *>(QStringLiteral("homeOverviewDeviceGrid")))
+    {
+        minimumWidth = std::max(minimumWidth, widthInsideCard(widgetWidthHint(homeDevices)));
+    }
+
+    if (data_telemetry_summary_card_)
+    {
+        int summaryContentWidth = 0;
+        const QList<QFrame*> sections =
+            data_telemetry_summary_card_->findChildren<QFrame *>(QStringLiteral("homeTelemetrySectionCard"),
+                                                                 Qt::FindDirectChildrenOnly);
+        for (QFrame *section : sections)
+        {
+            if (section->isHidden())
+            {
+                continue;
+            }
+            summaryContentWidth = std::max(summaryContentWidth, sectionContentWidth(section));
+        }
+        if (summaryContentWidth <= 0)
+        {
+            summaryContentWidth = widgetWidthHint(data_telemetry_summary_card_);
+        }
+        minimumWidth = std::max(minimumWidth, widthInsideCard(summaryContentWidth));
+    }
+
+    return minimumWidth;
+}
+
+void MainWindow::updateHomeDeviceOverviewMinimumWidth()
+{
+    if (!config_group_)
+    {
+        return;
+    }
+    config_group_->setMinimumWidth(homeDeviceOverviewContentMinimumWidth());
+}
+
 void MainWindow::updateConfigCardHeightForSourceMode()
 {
     if (!config_group_)
@@ -8197,9 +8352,8 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
             : (is_english_ ? QStringLiteral("none") : QStringLiteral("无数据"));
     };
 
-    const QString actualWaveRate = (connected && remote_status_.wave_tcp_actual_rate_hz > 0.0f)
-        ? QStringLiteral("%1 Hz").arg(remote_status_.wave_tcp_actual_rate_hz, 0, 'f', 1)
-        : QStringLiteral("-- Hz");
+    const QString actualWaveRate = formatFrequencyText(
+        connected ? static_cast<double>(remote_status_.wave_tcp_actual_rate_hz) : 0.0);
     const double rxBps = connected ? ground_telemetry_service_->receiveBitsPerSecond() : 0.0;
     const double txBps = connected ? ground_telemetry_service_->transmitBitsPerSecond() : 0.0;
 
@@ -8511,6 +8665,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             summaryLayout->activate();
         }
         data_telemetry_summary_card_->updateGeometry();
+        updateHomeDeviceOverviewMinimumWidth();
     }
     if (device_config_.data_telemetry_summary_card)
     {
