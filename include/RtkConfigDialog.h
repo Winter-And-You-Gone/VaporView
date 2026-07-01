@@ -109,7 +109,7 @@ private:
 
     QVBoxLayout *main_layout_;
     QGridLayout *config_layout_;
-    QGridLayout *output_layout_;
+    QVBoxLayout *output_layout_;
     QHBoxLayout *button_layout_;
     QVBoxLayout *log_layout_;
     QHBoxLayout *log_button_layout_;

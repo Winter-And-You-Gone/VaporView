@@ -1015,41 +1015,51 @@ void RtkConfigDialog::setupUi()
     output_group_ = new QGroupBox(this);
     auto *outputCardLayout = createCardLayout(output_group_, output_title_label_, QStringLiteral("usb"));
     output_group_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Fixed);
-    output_layout_ = new QGridLayout();
+    output_layout_ = new QVBoxLayout();
     output_layout_->setSpacing(6);
     output_layout_->setContentsMargins(10, 10, 10, 10);
     output_layout_->setSizeConstraint(QLayout::SetFixedSize);
     outputCardLayout->addLayout(output_layout_);
 
-    row = 0;
+    auto createOutputRow = [this]() {
+        auto *rowWidget = new QWidget(this);
+        rowWidget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        auto *rowLayout = new QHBoxLayout(rowWidget);
+        rowLayout->setContentsMargins(0, 0, 0, 0);
+        rowLayout->setSpacing(6);
+        return std::pair<QWidget *, QHBoxLayout *>(rowWidget, rowLayout);
+    };
+
+    auto firstOutputRow = createOutputRow();
     output_port_label_ = createFieldLabel();
-    output_layout_->addWidget(output_port_label_, row, 0);
+    firstOutputRow.second->addWidget(output_port_label_);
     output_port_combo_ = new QComboBox(this);
     output_port_combo_->setObjectName(QStringLiteral("rtkOutputPortCombo"));
     output_port_combo_->setEditable(true);
-    output_layout_->addWidget(output_port_combo_, row, 1);
+    firstOutputRow.second->addWidget(output_port_combo_);
 
     baudrate_label_ = createFieldLabel();
-    output_layout_->addWidget(baudrate_label_, row, 2);
+    firstOutputRow.second->addWidget(baudrate_label_);
     baudrate_combo_ = new QComboBox(this);
     baudrate_combo_->setObjectName(QStringLiteral("rtkBaudrateCombo"));
     baudrate_combo_->addItems({"9600", "19200", "38400", "57600", "115200", "230400", "460800", "921600"});
     baudrate_combo_->setCurrentText("115200");
-    output_layout_->addWidget(baudrate_combo_, row, 3);
+    firstOutputRow.second->addWidget(baudrate_combo_);
+    output_layout_->addWidget(firstOutputRow.first, 0, Qt::AlignLeft);
 
+    auto secondOutputRow = createOutputRow();
     timeout_label_ = createFieldLabel();
-    output_layout_->addWidget(timeout_label_, row, 4);
+    secondOutputRow.second->addWidget(timeout_label_);
     timeout_combo_ = createTimingComboBox(this, "5000");
     timeout_combo_->setObjectName(QStringLiteral("rtkTimeoutCombo"));
-    output_layout_->addWidget(timeout_combo_, row, 5);
+    secondOutputRow.second->addWidget(timeout_combo_);
 
     reconnect_label_ = createFieldLabel();
-    output_layout_->addWidget(reconnect_label_, row, 6);
+    secondOutputRow.second->addWidget(reconnect_label_);
     reconnect_combo_ = createTimingComboBox(this, "1000");
     reconnect_combo_->setObjectName(QStringLiteral("rtkReconnectCombo"));
-    output_layout_->addWidget(reconnect_combo_, row, 7);
-
-    row++;
+    secondOutputRow.second->addWidget(reconnect_combo_);
+    output_layout_->addWidget(secondOutputRow.first, 0, Qt::AlignLeft);
 
     auto *lever_label_widget = new QWidget(this);
     lever_label_widget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
@@ -1097,26 +1107,27 @@ void RtkConfigDialog::setupUi()
     lever_edit_layout->addWidget(main_antenna_lever_z_edit_);
 
     apply_main_antenna_lever_btn_ = new QPushButton(this);
+    apply_main_antenna_lever_btn_->setObjectName(QStringLiteral("rtkApplyLeverArmButton"));
     connect(apply_main_antenna_lever_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onApplyMainAntennaLeverArmClicked);
 
     refresh_ports_btn_ = new QPushButton(this);
+    refresh_ports_btn_->setObjectName(QStringLiteral("rtkRefreshPortsButton"));
     connect(refresh_ports_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onRefreshPortsClicked);
 
     auto_detect_ports_btn_ = new QPushButton(this);
+    auto_detect_ports_btn_->setObjectName(QStringLiteral("rtkAutoDetectPortsButton"));
     connect(auto_detect_ports_btn_, &QPushButton::clicked, this, &RtkConfigDialog::onAutoDetectPortsClicked);
 
-    auto *lever_row_widget = new QWidget(this);
-    lever_row_widget->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    auto *lever_row_layout = new QHBoxLayout(lever_row_widget);
-    lever_row_layout->setContentsMargins(0, 0, 0, 0);
-    lever_row_layout->setSpacing(6);
-    lever_row_layout->addWidget(lever_label_widget);
-    lever_row_layout->addWidget(lever_edit_widget);
-    lever_row_layout->addWidget(apply_main_antenna_lever_btn_);
-    lever_row_layout->addWidget(refresh_ports_btn_);
-    lever_row_layout->addWidget(auto_detect_ports_btn_);
-    output_layout_->addWidget(lever_row_widget, row, 0, 1, 9, Qt::AlignLeft | Qt::AlignVCenter);
-    row++;
+    auto leverOutputRow = createOutputRow();
+    leverOutputRow.second->addWidget(lever_label_widget);
+    leverOutputRow.second->addWidget(lever_edit_widget);
+    output_layout_->addWidget(leverOutputRow.first, 0, Qt::AlignLeft);
+
+    auto buttonOutputRow = createOutputRow();
+    buttonOutputRow.second->addWidget(apply_main_antenna_lever_btn_);
+    buttonOutputRow.second->addWidget(refresh_ports_btn_);
+    buttonOutputRow.second->addWidget(auto_detect_ports_btn_);
+    output_layout_->addWidget(buttonOutputRow.first, 0, Qt::AlignLeft);
 
     gga_group_ = new QGroupBox(this);
     auto *ggaCardLayout = createCardLayout(gga_group_, gga_title_label_, QStringLiteral("activity"));
@@ -1193,10 +1204,10 @@ void RtkConfigDialog::setupUi()
     topRowLayout->addWidget(config_group_, 0, Qt::AlignTop | Qt::AlignLeft);
     topRowLayout->addWidget(gga_group_, 1);
     main_layout_->addWidget(topRowWidget);
-    main_layout_->addWidget(output_group_, 0, Qt::AlignLeft);
 
     log_group_ = new QGroupBox(this);
     auto *logCardLayout = createCardLayout(log_group_, log_title_label_, QStringLiteral("scroll-text"));
+    log_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     log_layout_ = new QVBoxLayout();
     log_layout_->setSpacing(4);
     log_layout_->setContentsMargins(10, 10, 10, 4);
@@ -1211,7 +1222,16 @@ void RtkConfigDialog::setupUi()
     log_text_edit_->setReadOnly(true);
     log_text_container_layout_->addWidget(log_text_edit_);
     log_layout_->addWidget(log_text_container_);
-    main_layout_->addWidget(log_group_);
+
+    auto *rtcmLogRowWidget = new QWidget(this);
+    rtcmLogRowWidget->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    auto *rtcmLogRowLayout = new QHBoxLayout(rtcmLogRowWidget);
+    rtcmLogRowLayout->setContentsMargins(0, 0, 0, 0);
+    rtcmLogRowLayout->setSpacing(8);
+    rtcmLogRowLayout->setAlignment(Qt::AlignTop);
+    rtcmLogRowLayout->addWidget(output_group_, 0, Qt::AlignTop | Qt::AlignLeft);
+    rtcmLogRowLayout->addWidget(log_group_, 1, Qt::AlignTop);
+    main_layout_->addWidget(rtcmLogRowWidget);
 
     action_group_ = new QGroupBox(this);
     auto *actionCardLayout = createCardLayout(action_group_, action_title_label_, QStringLiteral("play"));
@@ -1389,13 +1409,9 @@ void RtkConfigDialog::applyScaledUiMetrics()
 
     if (output_layout_)
     {
-        output_layout_->setHorizontalSpacing(scalePixels(6));
-        output_layout_->setVerticalSpacing(scalePixels(6));
+        output_layout_->setSpacing(scalePixels(6));
         output_layout_->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(8));
-        for (int row = 0; row < 2; ++row)
-        {
-            output_layout_->setRowMinimumHeight(row, scalePixels(36));
-        }
+        output_layout_->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     }
 
     if (button_layout_)
@@ -1456,7 +1472,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     applyFieldLabelContentWidth(port_label_);
     applyFieldLabelContentWidth(password_label_);
     applyFieldLabelContentWidth(mountpoint_label_);
-    server_edit_->setFixedWidth(scalePixels(150));
+    server_edit_->setFixedWidth(scalePixels(140));
     server_edit_->setFixedHeight(scalePixels(kRtkInputHeight));
     port_edit_->setFixedWidth(scalePixels(76));
     port_edit_->setFixedHeight(scalePixels(kRtkInputHeight));
@@ -1597,7 +1613,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
         const QMargins logMargins = log_layout_->contentsMargins();
         const int logGroupHeight = cardTitleBarHeight + logMargins.top() + logTextHeight + logTextBottomGap + logMargins.bottom();
         log_group_->setFixedHeight(logGroupHeight);
-        log_group_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        log_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     }
     gga_text_edit_->setMinimumWidth(scalePixels(120));
 

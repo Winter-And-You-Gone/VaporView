@@ -309,7 +309,7 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                 "RTK combo width stays compact");
     }
     const std::vector<std::pair<QString, int>> compactLineEdits = {
-        {QStringLiteral("rtkServerEdit"), 200},
+        {QStringLiteral("rtkServerEdit"), 170},
         {QStringLiteral("rtkUsernameEdit"), 170},
         {QStringLiteral("rtkPasswordEdit"), 170},
     };
@@ -380,8 +380,20 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
             "RTK GGA monitor card sits in the first row to the right of NTRIP");
     require(widgetY(rtcmCard) >= widgetY(ntripCard) + ntripCard->height() - 2,
             "RTK RTCM output card sits below the first row");
-    require(widgetY(logCard) - (widgetY(rtcmCard) + rtcmCard->height()) <= 12,
-            "RTK service log card sits directly below the RTCM card");
+    if (!(std::abs(widgetY(logCard) - widgetY(rtcmCard)) <= 2 &&
+          widgetX(logCard) >= widgetX(rtcmCard) + rtcmCard->width()))
+    {
+        std::cerr << "RTCM card: x=" << widgetX(rtcmCard) << " y=" << widgetY(rtcmCard)
+                  << " w=" << rtcmCard->width() << " h=" << rtcmCard->height()
+                  << " sizeHint=" << rtcmCard->sizeHint().width() << 'x' << rtcmCard->sizeHint().height()
+                  << " log card: x=" << widgetX(logCard) << " y=" << widgetY(logCard)
+                  << " w=" << logCard->width() << " h=" << logCard->height()
+                  << " sizeHint=" << logCard->sizeHint().width() << 'x' << logCard->sizeHint().height()
+                  << " dialog=" << dialog->width() << 'x' << dialog->height() << '\n';
+    }
+    require(std::abs(widgetY(logCard) - widgetY(rtcmCard)) <= 2 &&
+                widgetX(logCard) >= widgetX(rtcmCard) + rtcmCard->width(),
+            "RTK service log card sits to the right of the RTCM card");
     require(actionCard->width() >= dialog->width() - 40,
             "RTK bottom actions are collected in a full-width service card");
     auto *serverEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
@@ -408,6 +420,8 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     }
     require(std::abs(widgetX(serverEdit) - widgetX(usernameEdit)) <= 2,
             "RTK NTRIP server and username fields align vertically");
+    require(std::abs(serverEdit->width() - usernameEdit->width()) <= 1,
+            "RTK NTRIP server address field matches the username field width");
     require(std::abs(widgetX(portEdit) - widgetX(passwordEdit)) <= 2,
             "RTK NTRIP port and password fields align vertically");
     require(passwordEdit->width() > portEdit->width() + 40,
@@ -477,24 +491,48 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                              QStringLiteral("Status: Click button to read GGA")}) == nullptr,
             "RTK GGA monitor does not show the idle status prompt");
     auto *outputPortCombo = dialog->findChild<QComboBox *>(QStringLiteral("rtkOutputPortCombo"));
+    auto *baudrateCombo = dialog->findChild<QComboBox *>(QStringLiteral("rtkBaudrateCombo"));
+    auto *timeoutCombo = dialog->findChild<QComboBox *>(QStringLiteral("rtkTimeoutCombo"));
+    auto *reconnectCombo = dialog->findChild<QComboBox *>(QStringLiteral("rtkReconnectCombo"));
+    auto *applyLeverButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkApplyLeverArmButton"));
+    auto *refreshPortsButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkRefreshPortsButton"));
+    auto *autoDetectPortsButton = dialog->findChild<QPushButton *>(QStringLiteral("rtkAutoDetectPortsButton"));
     QLabel *outputPortLabel = findLabelByText(dialog,
                                               {QStringLiteral("输出串口:"),
                                                QStringLiteral("Output Port:")});
-    require(outputPortCombo != nullptr && outputPortLabel != nullptr,
-            "RTK RTCM output port label and combo exist");
+    require(outputPortCombo != nullptr && baudrateCombo != nullptr && timeoutCombo != nullptr &&
+                reconnectCombo != nullptr && applyLeverButton != nullptr && refreshPortsButton != nullptr &&
+                autoDetectPortsButton != nullptr && outputPortLabel != nullptr,
+            "RTK RTCM output controls exist");
     require(widgetX(outputPortCombo) - (widgetX(outputPortLabel) + outputPortLabel->width()) <= 12,
             "RTK RTCM output port combo sits close to its label");
     require(outputPortCombo->width() <= 100 &&
                 outputPortCombo->width() >= outputPortCombo->fontMetrics().horizontalAdvance(QStringLiteral("COM999")) + 34,
             "RTK RTCM output port combo is fixed around COM999 width");
+    require(std::abs(widgetY(baudrateCombo) - widgetY(outputPortCombo)) <= 2 &&
+                widgetX(baudrateCombo) > widgetX(outputPortCombo),
+            "RTK RTCM output port and baudrate share the first row");
+    require(widgetY(timeoutCombo) > widgetY(outputPortCombo) &&
+                std::abs(widgetY(reconnectCombo) - widgetY(timeoutCombo)) <= 2 &&
+                widgetX(reconnectCombo) > widgetX(timeoutCombo),
+            "RTK RTCM timeout and reconnect interval share the second row");
     auto *leverXEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkLeverXEdit"));
     auto *leverYEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkLeverYEdit"));
     auto *leverZEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkLeverZEdit"));
     require(leverXEdit != nullptr && leverYEdit != nullptr && leverZEdit != nullptr,
             "RTK RTCM lever-arm XYZ edits exist");
+    require(widgetY(leverXEdit) > widgetY(timeoutCombo) &&
+                widgetX(leverXEdit) > widgetX(outputPortLabel),
+            "RTK RTCM lever-arm XYZ controls sit on the third row");
     require(widgetX(leverYEdit) - (widgetX(leverXEdit) + leverXEdit->width()) <= 42 &&
                 widgetX(leverZEdit) - (widgetX(leverYEdit) + leverYEdit->width()) <= 42,
             "RTK RTCM lever-arm XYZ controls stay tightly grouped");
+    require(widgetY(applyLeverButton) > widgetY(leverXEdit) &&
+                std::abs(widgetY(refreshPortsButton) - widgetY(applyLeverButton)) <= 2 &&
+                std::abs(widgetY(autoDetectPortsButton) - widgetY(applyLeverButton)) <= 2 &&
+                widgetX(refreshPortsButton) > widgetX(applyLeverButton) &&
+                widgetX(autoDetectPortsButton) > widgetX(refreshPortsButton),
+            "RTK RTCM lever-arm, refresh and auto-detect buttons share the fourth row");
     for (QWidget *topLevel : QApplication::topLevelWidgets())
     {
         require(qobject_cast<RtkConfigDialog *>(topLevel) == nullptr,
