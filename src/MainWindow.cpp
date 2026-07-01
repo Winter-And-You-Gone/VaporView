@@ -527,6 +527,7 @@ constexpr int kEpsilonLeftValueColumnWidth = 130;
 constexpr int kEpsilonPositionValueColumnWidth = 112;
 constexpr int kEpsilonMotionValueColumnWidth = 145;
 constexpr int kEpsilonFieldBaseSpacing = 2;
+constexpr int kEpsilonMotionFieldSpacing = 8;
 constexpr int kEpsilonFieldMinimumHeight = 20;
 constexpr int kTemperatureControllerCardWidth = 960;
 constexpr int kTemperatureControllerPlotWidth = 260;
@@ -3324,6 +3325,21 @@ private:
         return widths;
     }
 
+    int fieldSpacingForSection(const QString& key) const
+    {
+        return key == QStringLiteral("motion")
+            ? kEpsilonMotionFieldSpacing
+            : kEpsilonFieldBaseSpacing;
+    }
+
+    int fieldSpacingForCard(int cardIndex) const
+    {
+        const QString key = cardIndex >= 0 && cardIndex < section_card_keys_.size()
+            ? section_card_keys_.at(cardIndex)
+            : QString();
+        return fieldSpacingForSection(key);
+    }
+
     QStringList valueWidthSamplesForSection(const QString& key) const
     {
         if (key == QStringLiteral("status"))
@@ -3439,9 +3455,10 @@ private:
                         continue;
                     }
                     if (label->minimumWidth() != valueWidth ||
-                        label->maximumWidth() != valueWidth)
+                        label->maximumWidth() != QWIDGETSIZE_MAX)
                     {
-                        label->setFixedWidth(valueWidth);
+                        label->setMinimumWidth(valueWidth);
+                        label->setMaximumWidth(QWIDGETSIZE_MAX);
                         changed = true;
                     }
                 }
@@ -3452,11 +3469,18 @@ private:
             {
                 const int standardWidth = section_card_chrome_widths_.at(i) +
                                           titleWidth +
-                                          kEpsilonFieldBaseSpacing +
+                                          fieldSpacingForCard(i) +
                                           valueWidth;
                 if (section_card_standard_widths_.at(i) != standardWidth)
                 {
                     section_card_standard_widths_[i] = standardWidth;
+                    changed = true;
+                }
+                if (i < section_cards_.size() &&
+                    section_cards_.at(i) &&
+                    section_cards_.at(i)->minimumWidth() != standardWidth)
+                {
+                    section_cards_.at(i)->setMinimumWidth(standardWidth);
                     changed = true;
                 }
                 if (section_card_value_widths_.at(i) != valueWidth)
@@ -3474,17 +3498,25 @@ private:
         for (QFrame *card : section_cards_)
         {
             card->setSizePolicy(expandable ? QSizePolicy::Expanding : QSizePolicy::Maximum,
-                                QSizePolicy::Preferred);
+                                expandable ? QSizePolicy::Expanding : QSizePolicy::Preferred);
         }
     }
 
     void syncCardMinimumHeights()
     {
+        int maximumMinimumHeight = 0;
         for (QFrame *card : section_cards_)
         {
             if (QLayout *cardLayout = card->layout())
             {
-                card->setMinimumHeight(cardLayout->minimumSize().height());
+                maximumMinimumHeight = std::max(maximumMinimumHeight, cardLayout->minimumSize().height());
+            }
+        }
+        for (QFrame *card : section_cards_)
+        {
+            if (maximumMinimumHeight > 0)
+            {
+                card->setMinimumHeight(maximumMinimumHeight);
             }
         }
     }
@@ -3500,7 +3532,7 @@ private:
         }
 
         Q_UNUSED(targetCardWidth);
-        section_card_grids_.at(cardIndex)->setHorizontalSpacing(kEpsilonFieldBaseSpacing);
+        section_card_grids_.at(cardIndex)->setHorizontalSpacing(fieldSpacingForCard(cardIndex));
     }
 
     void updateFieldSpacings(int columns, const QVector<int>& widths)
@@ -3548,13 +3580,13 @@ private:
 
         cards_layout_->setHorizontalSpacing(compact_layout_ ? 4 : 2);
         cards_layout_->setVerticalSpacing(compact_layout_ ? 4 : 2);
-        syncSectionColumnWidths();
+        const bool widthsChanged = syncSectionColumnWidths();
         syncCardMinimumHeights();
         const QVector<int> widths = standardCardWidths();
 
         const int columns = desiredCardColumns();
         updateFieldSpacings(columns, widths);
-        if (!force && current_card_columns_ == columns)
+        if (!force && current_card_columns_ == columns && !widthsChanged)
         {
             return;
         }
@@ -3572,35 +3604,36 @@ private:
 
         if (columns >= 3)
         {
-            setCardsExpandable(false);
+            setCardsExpandable(true);
             for (int i = 0; i < section_cards_.size(); ++i)
             {
                 if (i < widths.size())
                 {
                     cards_layout_->setColumnMinimumWidth(i, widths.at(i));
+                    cards_layout_->setColumnStretch(i, std::max(1, widths.at(i)));
                 }
-                cards_layout_->addWidget(section_cards_.at(i), 0, i, Qt::AlignLeft | Qt::AlignTop);
+                cards_layout_->addWidget(section_cards_.at(i), 0, i);
             }
-            cards_layout_->setColumnStretch(section_cards_.size(), 1);
         }
         else if (columns == 2 && section_cards_.size() >= 3)
         {
-            setCardsExpandable(false);
+            setCardsExpandable(true);
             cards_layout_->setColumnMinimumWidth(0, widths.at(0));
             cards_layout_->setColumnMinimumWidth(1, widths.at(1));
-            cards_layout_->addWidget(section_cards_.at(0), 0, 0, Qt::AlignLeft | Qt::AlignTop);
-            cards_layout_->addWidget(section_cards_.at(1), 0, 1, Qt::AlignLeft | Qt::AlignTop);
-            cards_layout_->addWidget(section_cards_.at(2), 1, 0, 1, 2, Qt::AlignLeft | Qt::AlignTop);
-            cards_layout_->setColumnStretch(2, 1);
+            cards_layout_->setColumnStretch(0, std::max(1, widths.at(0)));
+            cards_layout_->setColumnStretch(1, std::max(1, widths.at(1)));
+            cards_layout_->addWidget(section_cards_.at(0), 0, 0);
+            cards_layout_->addWidget(section_cards_.at(1), 0, 1);
+            cards_layout_->addWidget(section_cards_.at(2), 1, 0, 1, 2);
         }
         else
         {
-            setCardsExpandable(false);
+            setCardsExpandable(true);
+            cards_layout_->setColumnStretch(0, 1);
             for (int i = 0; i < section_cards_.size(); ++i)
             {
-                cards_layout_->addWidget(section_cards_.at(i), i, 0, Qt::AlignLeft | Qt::AlignTop);
+                cards_layout_->addWidget(section_cards_.at(i), i, 0);
             }
-            cards_layout_->setColumnStretch(1, 1);
         }
 
         current_card_columns_ = columns;
@@ -3630,7 +3663,7 @@ private:
 
         auto *cardLayout = new QGridLayout();
         cardLayout->setContentsMargins(2, 2, 2, 2);
-        cardLayout->setHorizontalSpacing(kEpsilonFieldBaseSpacing);
+        cardLayout->setHorizontalSpacing(fieldSpacingForSection(key));
         cardLayout->setVerticalSpacing(2);
         cardLayout->setColumnMinimumWidth(0, titleColumnWidth);
         cardLayout->setColumnMinimumWidth(1, valueColumnWidth);
@@ -3646,7 +3679,7 @@ private:
                                 cardLayout->contentsMargins().left() + cardLayout->contentsMargins().right();
         section_card_chrome_widths_.push_back(chromeWidth);
         section_card_value_widths_.push_back(valueColumnWidth);
-        section_card_standard_widths_.push_back(chromeWidth + titleColumnWidth + kEpsilonFieldBaseSpacing + valueColumnWidth);
+        section_card_standard_widths_.push_back(chromeWidth + titleColumnWidth + fieldSpacingForSection(key) + valueColumnWidth);
         return cardLayout;
     }
 

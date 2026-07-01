@@ -2266,16 +2266,41 @@ int main(int argc, char **argv)
             "EPSILON card keeps an approximately 4:1 width relationship against environment card");
     QList<QFrame*> wideCards = dataGroup->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
     require(wideCards.size() == 3, "three EPSILON section cards at wide window size");
+    std::sort(wideCards.begin(), wideCards.end(), [](const QFrame *lhs, const QFrame *rhs) {
+        if (std::abs(lhs->y() - rhs->y()) > 4)
+        {
+            return lhs->y() < rhs->y();
+        }
+        return lhs->x() < rhs->x();
+    });
     int wideCardsRight = 0;
+    int wideCardsTotalWidth = 0;
+    int wideCardsTotalMinimumWidth = 0;
     for (const QFrame *card : wideCards)
     {
         wideCardsRight = std::max(wideCardsRight,
                                   card->mapTo(epsilonGroup, QPoint(card->width(), 0)).x());
-        require(card->width() <= card->sizeHint().width() + 8,
-                "EPSILON section cards stay close to their content width at wide window size");
+        wideCardsTotalWidth += card->width();
+        wideCardsTotalMinimumWidth += card->minimumWidth();
+        require(card->width() + 2 >= card->minimumWidth(),
+                "EPSILON section cards keep their content-driven minimum width at wide window size");
     }
-    require(wideCardsRight < epsilonGroup->contentsRect().right() - 8,
-            "EPSILON section cards leave unused width outside the cards at wide window size");
+    require(wideCardsRight >= epsilonGroup->contentsRect().right() - 8,
+            "EPSILON section cards expand to fill the available group width at wide window size");
+    require(wideCardsTotalWidth > wideCardsTotalMinimumWidth + 24,
+            "EPSILON section cards grow beyond their minimum widths at wide window size");
+    for (const QFrame *card : wideCards)
+    {
+        const double actualRatio =
+            static_cast<double>(card->width()) / static_cast<double>(wideCardsTotalWidth);
+        const double minimumRatio =
+            static_cast<double>(card->minimumWidth()) / static_cast<double>(wideCardsTotalMinimumWidth);
+        require(std::abs(actualRatio - minimumRatio) <= 0.06,
+                "EPSILON section cards expand proportionally to their content widths");
+    }
+    require(std::abs(wideCards.at(0)->height() - wideCards.at(1)->height()) <= 2 &&
+                std::abs(wideCards.at(0)->height() - wideCards.at(2)->height()) <= 2,
+            "EPSILON section cards have matching heights at wide window size");
 
     window.resize(originalWindowSize);
     processEventsFor(300);
@@ -2305,6 +2330,9 @@ int main(int argc, char **argv)
             "EPSILON third card is on the same row at default window size");
     require(cards.at(1)->x() > cards.at(0)->x(), "EPSILON second card is to the right of the first");
     require(cards.at(2)->x() > cards.at(1)->x(), "EPSILON third card is to the right of the second");
+    require(std::abs(cards.at(0)->height() - cards.at(1)->height()) <= 2 &&
+                std::abs(cards.at(0)->height() - cards.at(2)->height()) <= 2,
+            "EPSILON section cards have matching heights at default window size");
 
     for (QTimer *timer : window.findChildren<QTimer *>())
     {
@@ -2316,11 +2344,11 @@ int main(int argc, char **argv)
         QStringLiteral("18446744073709551615 us"),
         QStringLiteral("原始 4294967295 / 丢帧 4294967295"),
         QStringLiteral("0xFFFF 已初始化 / 定位融合中"),
-        QStringLiteral("hAcc 9999.999 m / vAcc 9999.999 m"),
-        QStringLiteral("N -9999.999 / E 9999.999 / D -9999.999"),
-        QStringLiteral("X -9999.999 / Y 9999.999 / Z -9999.999"),
-        QStringLiteral("X -9999.9999 / Y 9999.9999 / Z -9999.9999"),
-        QStringLiteral("Roll -180.00 / Pitch 90.00 / Yaw 359.99")
+        QStringLiteral("9999.999m/9999.999m"),
+        QStringLiteral("-9999.999/9999.999/-9999.999"),
+        QStringLiteral("-9999.999/9999.999/-9999.999"),
+        QStringLiteral("-9999.9999/9999.9999/-9999.9999"),
+        QStringLiteral("-180.00/90.00/359.99")
     };
 
     QList<QLabel*> valueLabels;
