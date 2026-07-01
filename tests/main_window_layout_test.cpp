@@ -15,7 +15,6 @@
 #include <QLabel>
 #include <QLayout>
 #include <QLineEdit>
-#include <QMenu>
 #include <QMetaObject>
 #include <QMouseEvent>
 #include <QPushButton>
@@ -478,6 +477,32 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
             "RTK service log keeps RTCM diagnostic details on separate indented lines");
     require(actionCard->width() >= dialog->width() - 40,
             "RTK bottom actions are collected in a full-width service card");
+    auto *rtkActionStatusLabel = dialog->findChild<QLabel *>(QStringLiteral("rtkStatusLabel"));
+    auto *rtkActionStatusIcon = dialog->findChild<QLabel *>(QStringLiteral("rtkStatusIcon"));
+    QLabel *actionTitleLabel = findLabelByText(actionCard,
+                                               {QStringLiteral("服务操作"),
+                                                QStringLiteral("Service Actions")});
+    QWidget *actionTitleBar = nullptr;
+    for (QWidget *titleBar : actionCard->findChildren<QWidget *>(QStringLiteral("sectionTitleBar")))
+    {
+        if (actionTitleLabel && titleBar->isAncestorOf(actionTitleLabel))
+        {
+            actionTitleBar = titleBar;
+            break;
+        }
+    }
+    require(rtkActionStatusLabel != nullptr && rtkActionStatusIcon != nullptr &&
+                actionTitleLabel != nullptr && actionTitleBar != nullptr,
+            "RTK service action title bar contains status text and icon");
+    require(actionTitleBar->isAncestorOf(rtkActionStatusLabel) &&
+                actionTitleBar->isAncestorOf(rtkActionStatusIcon),
+            "RTK service status is placed in the service action title bar");
+    require(widgetX(rtkActionStatusIcon) > widgetX(actionTitleLabel) + actionTitleLabel->width() &&
+                widgetX(rtkActionStatusLabel) > widgetX(rtkActionStatusIcon),
+            "RTK service status sits to the right of the service action title");
+    require(rtkActionStatusLabel->text().startsWith(QStringLiteral("状态:")) ||
+                rtkActionStatusLabel->text().startsWith(QStringLiteral("Status:")),
+            "RTK service status text remains visible in the title bar");
     auto *serverEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
     auto *usernameEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkUsernameEdit"));
     auto *portEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkPortEdit"));
@@ -628,6 +653,17 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                      VaporView::appThemeColor(VaporView::AppThemeColor::Primary, false),
                      6,
                      "RTK lever-arm help icon uses the light theme primary color");
+    clickWidget(leverHelpButton, 100);
+    auto *leverHelpPopup = dialog->findChild<QFrame *>(QStringLiteral("rtkLeverHelpPopup"));
+    require(leverHelpPopup != nullptr && leverHelpPopup->isVisible(),
+            "RTK lever-arm help opens a menu-like popup");
+    auto *leverHelpText = leverHelpPopup->findChild<QLabel *>(QStringLiteral("rtkLeverHelpPopupText"));
+    require(leverHelpText != nullptr &&
+                (leverHelpText->text().contains(QStringLiteral("主天线杆臂")) ||
+                 leverHelpText->text().contains(QStringLiteral("Main antenna lever arm"))),
+            "RTK lever-arm help popup contains the lever-arm guidance");
+    leverHelpPopup->hide();
+    processEventsFor(50);
 
     const QRect ntripRectBeforeTheme = widgetRect(ntripCard);
     const QRect ggaRectBeforeTheme = widgetRect(ggaCard);

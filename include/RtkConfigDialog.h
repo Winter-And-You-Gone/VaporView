@@ -24,6 +24,7 @@
 #include <thread>
 
 #include "data_types.h"
+#include "AppTheme.h"
 #include "serial_port.h"
 #include "RtkStreamService.h"
 
@@ -105,7 +106,12 @@ private:
     bool parseMainAntennaLeverArm(double *x, double *y, double *z, QString *errorMessage = nullptr) const;
     QString mainAntennaLeverArmHelpText() const;
     void applyDetectedOutputAndGgaPort(const QString& portName, const QString& baudText);
-    QVBoxLayout *createCardLayout(QGroupBox *group, QLabel *&titleLabel, const QString& iconName);
+    void setServiceStatus(const QString& text, const QString& iconName, VaporView::AppThemeColor color);
+    void refreshServiceStatusAppearance();
+    QVBoxLayout *createCardLayout(QGroupBox *group,
+                                  QLabel *&titleLabel,
+                                  const QString& iconName,
+                                  QWidget **titleBarOut = nullptr);
 
     QVBoxLayout *main_layout_;
     QGridLayout *config_layout_;
@@ -129,6 +135,7 @@ private:
     QLabel *gga_title_label_;
     QLabel *log_title_label_;
     QLabel *action_title_label_;
+    QWidget *action_status_widget_;
     QWidget *gga_text_container_;
     QWidget *gga_controls_container_;
     QWidget *log_text_container_;
@@ -168,9 +175,14 @@ private:
     QPushButton *auto_detect_ports_btn_;
     QPushButton *fetch_mountpoints_btn_;
     QToolButton *main_antenna_lever_help_btn_;
+    QWidget *main_antenna_lever_help_popup_;
+    QLabel *main_antenna_lever_help_popup_label_;
     QPushButton *apply_main_antenna_lever_btn_;
     QPushButton *clear_log_btn_;
+    QLabel *status_icon_label_;
     QLabel *status_label_;
+    QString service_status_icon_name_;
+    VaporView::AppThemeColor service_status_color_;
 
     bool embedded_;
     std::unique_ptr<RtkStreamService> rtk_service_;

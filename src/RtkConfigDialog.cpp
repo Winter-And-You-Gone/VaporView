@@ -839,6 +839,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     , gga_title_label_(nullptr)
     , log_title_label_(nullptr)
     , action_title_label_(nullptr)
+    , action_status_widget_(nullptr)
     , gga_text_container_(nullptr)
     , gga_controls_container_(nullptr)
     , log_text_container_(nullptr)
@@ -878,9 +879,14 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     , auto_detect_ports_btn_(nullptr)
     , fetch_mountpoints_btn_(nullptr)
     , main_antenna_lever_help_btn_(nullptr)
+    , main_antenna_lever_help_popup_(nullptr)
+    , main_antenna_lever_help_popup_label_(nullptr)
     , apply_main_antenna_lever_btn_(nullptr)
     , clear_log_btn_(nullptr)
+    , status_icon_label_(nullptr)
     , status_label_(nullptr)
+    , service_status_icon_name_(QStringLiteral("circle-x"))
+    , service_status_color_(AppThemeColor::TextSecondary)
     , embedded_(embedded)
     , rtk_service_(std::make_unique<RtkStreamService>())
     , is_running_(false)
@@ -1035,7 +1041,10 @@ bool RtkConfigDialog::isBackgroundTaskRunning() const
     return fetch_mountpoints_in_progress_.load() || port_detection_in_progress_.load() || test_in_progress_.load();
 }
 
-QVBoxLayout *RtkConfigDialog::createCardLayout(QGroupBox *group, QLabel *&titleLabel, const QString& iconName)
+QVBoxLayout *RtkConfigDialog::createCardLayout(QGroupBox *group,
+                                               QLabel *&titleLabel,
+                                               const QString& iconName,
+                                               QWidget **titleBarOut)
 {
     group->setTitle(QString());
     group->setObjectName(QStringLiteral("sensorGroupBox"));
@@ -1056,9 +1065,46 @@ QVBoxLayout *RtkConfigDialog::createCardLayout(QGroupBox *group, QLabel *&titleL
     titleLabel = createSectionTitleCluster(titleBar, iconName, 36, &titleCluster);
     titleLayout->addWidget(titleCluster, 0, Qt::AlignVCenter | Qt::AlignLeft);
     titleLayout->addStretch(1);
+    if (titleBarOut)
+    {
+        *titleBarOut = titleBar;
+    }
 
     cardLayout->addWidget(titleBar);
     return cardLayout;
+}
+
+void RtkConfigDialog::setServiceStatus(const QString& text, const QString& iconName, AppThemeColor color)
+{
+    service_status_icon_name_ = iconName;
+    service_status_color_ = color;
+    if (status_label_)
+    {
+        status_label_->setText(text);
+        status_label_->setToolTip(text);
+    }
+    refreshServiceStatusAppearance();
+}
+
+void RtkConfigDialog::refreshServiceStatusAppearance()
+{
+    const bool dark = isDarkThemeEnabled();
+    const QColor statusColor = appThemeColor(service_status_color_, dark);
+    if (status_icon_label_)
+    {
+        const int iconBoxSize = scalePixels(18);
+        const int iconSize = std::max(14, scalePixels(16));
+        status_icon_label_->setFixedSize(iconBoxSize, iconBoxSize);
+        status_icon_label_->setPixmap(createLucideIcon(service_status_icon_name_, statusColor).pixmap(
+            QSize(iconSize, iconSize)));
+    }
+    if (status_label_)
+    {
+        status_label_->setFixedHeight(scalePixels(24));
+        status_label_->setStyleSheet(QStringLiteral(
+            "QLabel#rtkStatusLabel { color: %1; font-weight: bold; background: transparent; border: none; padding: 0px; }")
+            .arg(statusColor.name(QColor::HexRgb)));
+    }
 }
 
 void RtkConfigDialog::setupUi()
@@ -1371,7 +1417,34 @@ void RtkConfigDialog::setupUi()
     main_layout_->addWidget(rtcmLogRowWidget);
 
     action_group_ = new QGroupBox(this);
-    auto *actionCardLayout = createCardLayout(action_group_, action_title_label_, QStringLiteral("play"));
+    QWidget *actionTitleBar = nullptr;
+    auto *actionCardLayout = createCardLayout(action_group_,
+                                              action_title_label_,
+                                              QStringLiteral("play"),
+                                              &actionTitleBar);
+    action_status_widget_ = new QWidget(actionTitleBar);
+    action_status_widget_->setObjectName(QStringLiteral("rtkActionStatusGroup"));
+    action_status_widget_->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    action_status_widget_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    auto *actionStatusLayout = new QHBoxLayout(action_status_widget_);
+    actionStatusLayout->setContentsMargins(0, 0, 0, 0);
+    actionStatusLayout->setSpacing(4);
+    status_icon_label_ = new QLabel(action_status_widget_);
+    status_icon_label_->setObjectName(QStringLiteral("rtkStatusIcon"));
+    status_icon_label_->setAlignment(Qt::AlignCenter);
+    actionStatusLayout->addWidget(status_icon_label_, 0, Qt::AlignVCenter);
+    status_label_ = new QLabel(action_status_widget_);
+    status_label_->setObjectName(QStringLiteral("rtkStatusLabel"));
+    status_label_->setWordWrap(false);
+    status_label_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    actionStatusLayout->addWidget(status_label_, 0, Qt::AlignVCenter);
+    if (auto *actionTitleLayout = actionTitleBar ? qobject_cast<QHBoxLayout *>(actionTitleBar->layout()) : nullptr)
+    {
+        actionTitleLayout->insertWidget(std::max(1, actionTitleLayout->count() - 1),
+                                        action_status_widget_,
+                                        0,
+                                        Qt::AlignVCenter | Qt::AlignLeft);
+    }
     action_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     button_layout_ = new QHBoxLayout();
     button_layout_->setSpacing(6);
@@ -1398,12 +1471,6 @@ void RtkConfigDialog::setupUi()
 
     actionCardLayout->addLayout(button_layout_);
     main_layout_->addWidget(action_group_);
-
-    status_label_ = new QLabel(this);
-    status_label_->setObjectName(QStringLiteral("rtkStatusLabel"));
-    status_label_->setWordWrap(false);
-    status_label_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    main_layout_->addWidget(status_label_);
 }
 
 QString RtkConfigDialog::textFor(const QString& english, const QString& chinese) const
@@ -1757,6 +1824,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
     {
         main_layout_->invalidate();
     }
+    refreshServiceStatusAppearance();
 
     const QSize minimumDialogSize(scalePixels(base_minimum_dialog_size_.width()), scalePixels(base_minimum_dialog_size_.height()));
     const QSize targetMinimumSize = minimumDialogSize;
@@ -1995,18 +2063,19 @@ void RtkConfigDialog::updateButtonStates()
             : port_detection_in_progress_.load()
                 ? textFor("Status: Detecting serial ports", "状态: 正在识别串口")
             : textFor("Status: Running no-signal RTK test", "状态: 正在执行无信号 RTK 测试");
-        status_label_->setText(busyText);
-        status_label_->setStyleSheet(boldLabelColorStyle(AppThemeColor::Warning));
+        setServiceStatus(busyText, QStringLiteral("timer"), AppThemeColor::Warning);
     }
     else if (is_running_)
     {
-        status_label_->setText(textFor("Status: Running", "状态: 运行中"));
-        status_label_->setStyleSheet(boldLabelColorStyle(AppThemeColor::Success));
+        setServiceStatus(textFor("Status: Running", "状态: 运行中"),
+                         QStringLiteral("link"),
+                         AppThemeColor::Success);
     }
     else
     {
-        status_label_->setText(textFor("Status: Stopped", "状态: 已停止"));
-        status_label_->setStyleSheet(QString());
+        setServiceStatus(textFor("Status: Stopped", "状态: 已停止"),
+                         QStringLiteral("circle-x"),
+                         AppThemeColor::TextSecondary);
     }
 }
 
@@ -2048,11 +2117,12 @@ void RtkConfigDialog::pollRtkServiceStatus(bool forceLog)
 
     if (is_running_)
     {
-        status_label_->setText(
+        setServiceStatus(
             textFor("Status: Running (%1 bps in / %2 bps out)", "状态: 运行中 (%1 bps 输入 / %2 bps 输出)")
                 .arg(stats.inputBps)
-                .arg(stats.outputBps));
-        status_label_->setStyleSheet(boldLabelColorStyle(AppThemeColor::Success));
+                .arg(stats.outputBps),
+            QStringLiteral("link"),
+            AppThemeColor::Success);
     }
 }
 
@@ -2498,10 +2568,60 @@ QString RtkConfigDialog::mainAntennaLeverArmHelpText() const
 
 void RtkConfigDialog::onMainAntennaLeverHelpClicked()
 {
-    QMessageBox::information(
-        this,
-        textFor("Main Antenna Lever Arm", "主天线杆臂"),
-        mainAntennaLeverArmHelpText());
+    if (main_antenna_lever_help_popup_ && main_antenna_lever_help_popup_->isVisible())
+    {
+        main_antenna_lever_help_popup_->hide();
+        return;
+    }
+
+    const bool dark = isDarkThemeEnabled();
+    if (!main_antenna_lever_help_popup_)
+    {
+        auto *popup = new QFrame(this, Qt::Popup | Qt::FramelessWindowHint);
+        popup->setObjectName(QStringLiteral("rtkLeverHelpPopup"));
+        popup->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        auto *popupLayout = new QVBoxLayout(popup);
+        popupLayout->setContentsMargins(scalePixels(8), scalePixels(8), scalePixels(8), scalePixels(8));
+        popupLayout->setSpacing(0);
+
+        main_antenna_lever_help_popup_label_ = new QLabel(popup);
+        main_antenna_lever_help_popup_label_->setObjectName(QStringLiteral("rtkLeverHelpPopupText"));
+        main_antenna_lever_help_popup_label_->setWordWrap(true);
+        main_antenna_lever_help_popup_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        popupLayout->addWidget(main_antenna_lever_help_popup_label_);
+        main_antenna_lever_help_popup_ = popup;
+    }
+
+    main_antenna_lever_help_popup_->setStyleSheet(QStringLiteral(
+        "QFrame#rtkLeverHelpPopup {"
+        " background: %1;"
+        " border: 1px solid %2;"
+        " border-radius: %3px;"
+        "}"
+        "QLabel#rtkLeverHelpPopupText {"
+        " color: %4;"
+        " background: transparent;"
+        " border: none;"
+        " padding: 0px;"
+        "}")
+        .arg(appThemeColorName(AppThemeColor::Surface, dark),
+             appThemeColorName(AppThemeColor::BorderStrong, dark))
+        .arg(scalePixels(6))
+        .arg(appThemeColorName(AppThemeColor::Text, dark)));
+
+    if (main_antenna_lever_help_popup_label_)
+    {
+        main_antenna_lever_help_popup_label_->setText(mainAntennaLeverArmHelpText());
+        main_antenna_lever_help_popup_label_->setMinimumWidth(scalePixels(320));
+        main_antenna_lever_help_popup_label_->setMaximumWidth(scalePixels(440));
+    }
+
+    const QPoint popupPos = main_antenna_lever_help_btn_
+        ? main_antenna_lever_help_btn_->mapToGlobal(QPoint(0, main_antenna_lever_help_btn_->height() + scalePixels(4)))
+        : mapToGlobal(rect().center());
+    main_antenna_lever_help_popup_->adjustSize();
+    main_antenna_lever_help_popup_->move(popupPos);
+    main_antenna_lever_help_popup_->show();
 }
 
 bool RtkConfigDialog::parseMainAntennaLeverArm(double *x, double *y, double *z, QString *errorMessage) const
@@ -3045,18 +3165,20 @@ void RtkConfigDialog::onFetchMountpointsClicked()
                     ? self->textFor("Request timed out", "请求超时")
                     : response.error;
                 self->appendLog(self->textFor("Failed to fetch mountpoint list: %1", "获取挂载点列表失败: %1").arg(errorText));
-                self->status_label_->setText(
-                    self->textFor("Status: Failed to fetch mountpoints", "状态: 获取挂载点失败"));
-                self->status_label_->setStyleSheet(boldLabelColorStyle(AppThemeColor::Warning));
+                self->setServiceStatus(
+                    self->textFor("Status: Failed to fetch mountpoints", "状态: 获取挂载点失败"),
+                    QStringLiteral("triangle-alert"),
+                    AppThemeColor::Warning);
                 return;
             }
 
             if (result.mountpoints.isEmpty())
             {
                 self->appendLog(self->textFor("No mountpoints found in sourcetable response.", "返回的源表中未找到挂载点。"));
-                self->status_label_->setText(
-                    self->textFor("Status: No mountpoints found", "状态: 未找到挂载点"));
-                self->status_label_->setStyleSheet(boldLabelColorStyle(AppThemeColor::Warning));
+                self->setServiceStatus(
+                    self->textFor("Status: No mountpoints found", "状态: 未找到挂载点"),
+                    QStringLiteral("triangle-alert"),
+                    AppThemeColor::Warning);
                 return;
             }
 
@@ -3071,8 +3193,9 @@ void RtkConfigDialog::onFetchMountpointsClicked()
             self->mountpoint_combo_->setCurrentText(selected);
             self->appendLog(self->textFor("Fetched %1 mountpoints.", "已获取 %1 个挂载点。").arg(result.mountpoints.size()));
             self->appendLog(self->textFor("Mountpoint dropdown updated; current: %1", "挂载点下拉框已更新，当前: %1").arg(selected));
-            self->status_label_->setText(self->textFor("Status: Mountpoints loaded", "状态: 挂载点已载入"));
-            self->status_label_->setStyleSheet(boldLabelColorStyle(AppThemeColor::Success));
+            self->setServiceStatus(self->textFor("Status: Mountpoints loaded", "状态: 挂载点已载入"),
+                                   QStringLiteral("check"),
+                                   AppThemeColor::Success);
         }, Qt::QueuedConnection);
     });
 }
