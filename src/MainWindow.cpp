@@ -8615,7 +8615,6 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     QList<RemoteTelemetrySummarySections::Item> linkRows;
     QList<RemoteTelemetrySummarySections::Item> deviceRows;
     const QString frequencyWidthText = QStringLiteral("999.9 Hz");
-    const QString bitRateWidthText = QStringLiteral("999.9 Mbps");
     auto appendPacketRate = [&](VaporView::MsgType type, const QString& label) {
         const double rate = remotePacketRate(type);
         rateRows << makeItem(label, formatFrequencyText(rate), connected && rate > 0.0, frequencyWidthText);
@@ -8632,13 +8631,13 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     {
         appendPacketRate(VaporView::MsgType::TelemetryBasic, QStringLiteral("Basic:"));
         appendPacketRate(VaporView::MsgType::WaveformFeature, QStringLiteral("Feature:"));
+        appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("Status:"));
         appendWaveformRate(1, QStringLiteral("Wave raw:"));
         appendWaveformRate(4, QStringLiteral("Wave harm.:"));
-        appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("Status:"));
         rateRows << makeItem(QStringLiteral("Wave capture:"), actualWaveRate, connected && remote_status_.wave_tcp_actual_rate_hz > 0.0f, frequencyWidthText);
-        linkRows << makeItem(QStringLiteral("Sky->Ground:"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
-        linkRows << makeItem(QStringLiteral("Ground->Sky:"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
-        linkRows << makeItem(QStringLiteral("Total:"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
+        linkRows << makeItem(QStringLiteral("Sky->Ground:"), formatBitRate(rxBps), connected && rxBps > 0.0);
+        linkRows << makeItem(QStringLiteral("Ground->Sky:"), formatBitRate(txBps), connected && txBps > 0.0);
+        linkRows << makeItem(QStringLiteral("Total:"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0);
         appendDevice(VaporView::SkyDeviceId::Epsilon, 2000, QStringLiteral("EPSILON:"));
         appendDevice(VaporView::SkyDeviceId::Ptb, 3000, QStringLiteral("PTB:"));
         appendDevice(VaporView::SkyDeviceId::Hmp, 3000, QStringLiteral("HMP:"));
@@ -8649,18 +8648,18 @@ MainWindow::RemoteTelemetrySummarySections MainWindow::remoteTelemetrySummarySec
     {
         appendPacketRate(VaporView::MsgType::TelemetryBasic, QStringLiteral("基础:"));
         appendPacketRate(VaporView::MsgType::WaveformFeature, QStringLiteral("特征值:"));
+        appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("状态:"));
         appendWaveformRate(1, QStringLiteral("原始波形:"));
         appendWaveformRate(4, QStringLiteral("谐波波形:"));
-        appendPacketRate(VaporView::MsgType::TelemetryStatus, QStringLiteral("状态:"));
         rateRows << makeItem(QStringLiteral("波形采集:"), actualWaveRate, connected && remote_status_.wave_tcp_actual_rate_hz > 0.0f, frequencyWidthText);
-        linkRows << makeItem(QStringLiteral("天空→地面:"), formatBitRate(rxBps), connected && rxBps > 0.0, bitRateWidthText);
-        linkRows << makeItem(QStringLiteral("地面→天空:"), formatBitRate(txBps), connected && txBps > 0.0, bitRateWidthText);
-        linkRows << makeItem(QStringLiteral("合计:"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0, bitRateWidthText);
-        appendDevice(VaporView::SkyDeviceId::Epsilon, 2000, QStringLiteral("EPSILON:"));
-        appendDevice(VaporView::SkyDeviceId::Ptb, 3000, QStringLiteral("PTB:"));
-        appendDevice(VaporView::SkyDeviceId::Hmp, 3000, QStringLiteral("HMP:"));
-        appendDevice(VaporView::SkyDeviceId::Lidar, 2000, QStringLiteral("Lidar:"));
-        appendDevice(VaporView::SkyDeviceId::WaveTcp, 3000, QStringLiteral("波形:"));
+        linkRows << makeItem(QStringLiteral("天空→地面:"), formatBitRate(rxBps), connected && rxBps > 0.0);
+        linkRows << makeItem(QStringLiteral("地面→天空:"), formatBitRate(txBps), connected && txBps > 0.0);
+        linkRows << makeItem(QStringLiteral("合计:"), formatBitRate(rxBps + txBps), connected && (rxBps + txBps) > 0.0);
+        appendDevice(VaporView::SkyDeviceId::Epsilon, 2000, QStringLiteral("EPSILON："));
+        appendDevice(VaporView::SkyDeviceId::Ptb, 3000, QStringLiteral("PTB："));
+        appendDevice(VaporView::SkyDeviceId::Hmp, 3000, QStringLiteral("HMP："));
+        appendDevice(VaporView::SkyDeviceId::Lidar, 2000, QStringLiteral("Lidar："));
+        appendDevice(VaporView::SkyDeviceId::WaveTcp, 3000, QStringLiteral("波形："));
     }
 
     RemoteTelemetrySummarySections sections;
@@ -8710,7 +8709,8 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                                                      int firstLineItemCount,
                                                      int followingLineItemCount = -1,
                                                      bool useSideTitle = false,
-                                                     bool compactAvailabilityValues = false) {
+                                                     bool compactAvailabilityValues = false,
+                                                     bool alignLastFirstLineItemRight = false) {
         if (!summaryParent || !sectionLayout)
         {
             return;
@@ -8840,12 +8840,33 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                 lineLayout->addWidget(titleLabel, 0, Qt::AlignVCenter);
             }
 
+            bool lineHasRightAlignedItem = false;
             for (int i = begin; i < end; ++i)
             {
+                if (alignLastFirstLineItemRight && includeTitle && i == end - 1 && i > begin)
+                {
+                    lineLayout->addStretch(1);
+                    lineHasRightAlignedItem = true;
+                }
                 addItemLabel(lineLayout, line, items.at(i));
             }
-            lineLayout->addStretch(1);
-            linesLayout->addWidget(line, 0, Qt::AlignLeft | Qt::AlignTop);
+            if (!lineHasRightAlignedItem)
+            {
+                lineLayout->addStretch(1);
+            }
+            else
+            {
+                lineLayout->addSpacing(scalePixels(6));
+            }
+            if (lineHasRightAlignedItem)
+            {
+                line->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+                linesLayout->addWidget(line, 0, Qt::AlignTop);
+            }
+            else
+            {
+                linesLayout->addWidget(line, 0, Qt::AlignLeft | Qt::AlignTop);
+            }
         };
 
         const int itemCount = static_cast<int>(items.size());
@@ -8891,8 +8912,11 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                              data_telemetry_summary_layout_,
                              is_english_ ? QStringLiteral("Sky-ground data stream rates") : QStringLiteral("天地数据流频率"),
                              sections.rateItems,
-                             2,
-                             4);
+                             3,
+                             3,
+                             false,
+                             false,
+                             true);
         renderSummarySection(data_telemetry_summary_card_,
                              data_telemetry_link_summary_layout_,
                              is_english_ ? QStringLiteral("Link rate") : QStringLiteral("链路速率"),
@@ -8900,9 +8924,12 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
                              -1);
         renderSummarySection(data_telemetry_summary_card_,
                              data_telemetry_device_summary_layout_,
-                             QString(),
+                             is_english_ ? QStringLiteral("Data") : QStringLiteral("数据"),
                              sections.deviceItems,
-                             -1);
+                             -1,
+                             -1,
+                             false,
+                             true);
         if (QLayout *summaryLayout = data_telemetry_summary_card_->layout())
         {
             summaryLayout->invalidate();

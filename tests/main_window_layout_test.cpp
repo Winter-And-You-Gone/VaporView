@@ -953,11 +953,11 @@ void requireLastStyleRuleContains(const QString& styleSheet,
     require(rule.contains(expected), message);
 }
 
-QFrame *firstTelemetrySection(QWidget *summaryContainer)
+QList<QFrame*> sortedTelemetrySections(QWidget *summaryContainer)
 {
     if (!summaryContainer)
     {
-        return nullptr;
+        return {};
     }
 
     QList<QFrame*> sections =
@@ -966,7 +966,33 @@ QFrame *firstTelemetrySection(QWidget *summaryContainer)
         return a->mapTo(a->parentWidget(), QPoint(0, 0)).y() <
                b->mapTo(b->parentWidget(), QPoint(0, 0)).y();
     });
+    return sections;
+}
+
+QFrame *firstTelemetrySection(QWidget *summaryContainer)
+{
+    const QList<QFrame*> sections = sortedTelemetrySections(summaryContainer);
     return sections.isEmpty() ? nullptr : sections.first();
+}
+
+QFrame *findTelemetryPillByName(QFrame *section, const QString& text)
+{
+    if (!section)
+    {
+        return nullptr;
+    }
+
+    const QList<QFrame*> pills =
+        section->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+    for (QFrame *pill : pills)
+    {
+        QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+        if (nameLabel && nameLabel->text().contains(text))
+        {
+            return pill;
+        }
+    }
+    return nullptr;
 }
 
 int telemetrySectionRightPadding(QFrame *section)
@@ -1348,6 +1374,10 @@ int main(int argc, char **argv)
     QFrame *homeRateSection = firstTelemetrySection(homeTelemetrySummaryContainer);
     require(homeRateSection != nullptr,
             "home device overview telemetry sections exist before dark theme switch");
+    const QList<QFrame*> homeTelemetrySections =
+        sortedTelemetrySections(homeTelemetrySummaryContainer);
+    require(homeTelemetrySections.size() >= 3,
+            "home device overview telemetry summary has rate, link, and data sections");
     const QList<QFrame*> ratePills =
         homeRateSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     require(!ratePills.isEmpty(),
@@ -1373,9 +1403,74 @@ int main(int argc, char **argv)
             "home data-stream telemetry section hides the waveform total packet rate");
     require(waveCaptureRateShowsZero,
             "home data-stream telemetry section exposes the wave capture rate");
+    QFrame *featureRatePill = findTelemetryPillByName(homeRateSection, QStringLiteral("特征值"));
+    QFrame *statusRatePill = findTelemetryPillByName(homeRateSection, QStringLiteral("状态"));
+    QFrame *rawWaveRatePill = findTelemetryPillByName(homeRateSection, QStringLiteral("原始波形"));
+    require(featureRatePill != nullptr && statusRatePill != nullptr && rawWaveRatePill != nullptr,
+            "home data-stream telemetry section exposes feature, status, and raw-wave pills");
+    const int featureRateY = featureRatePill->mapTo(homeRateSection, QPoint(0, 0)).y();
+    const int statusRateY = statusRatePill->mapTo(homeRateSection, QPoint(0, 0)).y();
+    const int rawWaveRateY = rawWaveRatePill->mapTo(homeRateSection, QPoint(0, 0)).y();
+    require(std::abs(statusRateY - featureRateY) <= 2,
+            "home status rate pill sits on the same line as the feature rate pill");
+    require(statusRatePill->mapTo(homeRateSection, QPoint(0, 0)).x() >
+                featureRatePill->mapTo(homeRateSection, QPoint(0, 0)).x(),
+            "home status rate pill sits to the right of the feature rate pill");
+    require(rawWaveRateY > featureRateY,
+            "home waveform rates move to the second data-stream line");
     requireTelemetryRightPadding(deviceOverviewCard,
                                  homeRateSection,
                                  "home data-stream telemetry row keeps right-side breathing room");
+    QFrame *homeLinkSection = homeTelemetrySections.at(1);
+    const QList<QFrame*> linkRatePills =
+        homeLinkSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+    require(linkRatePills.size() == 3,
+            "home link-rate telemetry section keeps three link pills");
+    for (QFrame *pill : linkRatePills)
+    {
+        QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+        require(valueLabel != nullptr,
+                "home link-rate pill has a value label");
+        require(valueLabel->fontMetrics().horizontalAdvance(valueLabel->text()) <= valueLabel->width() + 1,
+                "home link-rate value text fits its compact label");
+        require(valueLabel->width() <
+                    valueLabel->fontMetrics().horizontalAdvance(QStringLiteral("999.9 Mbps")),
+                "home link-rate value label does not reserve the wide Mbps text when the current value is shorter");
+    }
+    QFrame *homeDataSection = homeTelemetrySections.at(2);
+    QLabel *homeDataTitle =
+        homeDataSection->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryTitleLabel"));
+    require(homeDataTitle != nullptr &&
+                (homeDataTitle->text() == QStringLiteral("数据：") ||
+                 homeDataTitle->text() == QStringLiteral("Data:")),
+            "home data availability row starts with a data title");
+    bool homeDataHasEpsilon = false;
+    const QList<QFrame*> dataPills =
+        homeDataSection->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
+    require(dataPills.size() == 5,
+            "home data availability row keeps five device pills");
+    for (QFrame *pill : dataPills)
+    {
+        QLabel *nameLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryNameLabel"));
+        QLabel *valueLabel = pill->findChild<QLabel *>(QStringLiteral("homeTelemetrySummaryValueLabel"));
+        require(nameLabel != nullptr && valueLabel != nullptr,
+                "home data availability pill has a name and compact value");
+        if (nameLabel->text().contains(QStringLiteral("EPSILON")))
+        {
+            homeDataHasEpsilon = true;
+        }
+        const QString valueText = valueLabel->text();
+        require(valueText == QStringLiteral("有") ||
+                    valueText == QStringLiteral("无") ||
+                    valueText == QStringLiteral("Yes") ||
+                    valueText == QStringLiteral("No"),
+                "home data availability values use compact yes/no text");
+        require(valueText != QStringLiteral("有数据") &&
+                    valueText != QStringLiteral("无数据"),
+                "home data availability values omit the longer data suffix");
+    }
+    require(homeDataHasEpsilon,
+            "home data availability row includes the EPSILON field");
     const int lightHomeTelemetrySummaryHeight = homeTelemetrySummaryContainer->height();
     int minHomeTelemetryPillHeight = std::numeric_limits<int>::max();
     for (QFrame *pill : homeTelemetryPills)
