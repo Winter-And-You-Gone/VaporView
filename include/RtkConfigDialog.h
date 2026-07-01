@@ -28,6 +28,7 @@
 #include "RtkStreamService.h"
 
 class QCloseEvent;
+class QEvent;
 
 class RtkConfigDialog : public QDialog
 {
@@ -52,6 +53,7 @@ signals:
 
 protected:
     void closeEvent(QCloseEvent *event) override;
+    void changeEvent(QEvent *event) override;
 
 private slots:
     void onStartClicked();
@@ -200,6 +202,7 @@ private:
     std::deque<double> gga_recent_intervals_sec_;
     bool gga_has_sentence_time_;
     bool gga_monitor_enabled_;
+    bool metrics_refresh_pending_;
     std::atomic<bool> fetch_mountpoints_in_progress_{false};
     std::atomic<bool> port_detection_in_progress_{false};
     std::atomic<bool> test_in_progress_{false};

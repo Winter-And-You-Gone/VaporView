@@ -326,6 +326,16 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     auto widgetY = [dialog](QWidget *widget) {
         return widget->mapTo(dialog, QPoint(0, 0)).y();
     };
+    auto widgetRect = [dialog](QWidget *widget) {
+        return QRect(widget->mapTo(dialog, QPoint(0, 0)), widget->size());
+    };
+    auto requireSameRect = [](const QRect& actual, const QRect& expected, const char *message) {
+        require(std::abs(actual.x() - expected.x()) <= 2 &&
+                    std::abs(actual.y() - expected.y()) <= 2 &&
+                    std::abs(actual.width() - expected.width()) <= 2 &&
+                    std::abs(actual.height() - expected.height()) <= 2,
+                message);
+    };
     const std::vector<std::tuple<QStringList, QString, const char*>> rtkCards = {
         {{QStringLiteral("NTRIP 服务器配置"), QStringLiteral("NTRIP Server Configuration")},
          QStringLiteral("satellite"),
@@ -394,6 +404,8 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
     require(std::abs(widgetY(logCard) - widgetY(rtcmCard)) <= 2 &&
                 widgetX(logCard) >= widgetX(rtcmCard) + rtcmCard->width(),
             "RTK service log card sits to the right of the RTCM card");
+    require(std::abs(logCard->height() - rtcmCard->height()) <= 2,
+            "RTK service log card matches the RTCM output card height");
     require(actionCard->width() >= dialog->width() - 40,
             "RTK bottom actions are collected in a full-width service card");
     auto *serverEdit = dialog->findChild<QLineEdit *>(QStringLiteral("rtkServerEdit"));
@@ -533,6 +545,55 @@ void requireRtkSidebarPage(MainWindow& window, QLabel *customTitleLabel)
                 widgetX(refreshPortsButton) > widgetX(applyLeverButton) &&
                 widgetX(autoDetectPortsButton) > widgetX(refreshPortsButton),
             "RTK RTCM lever-arm, refresh and auto-detect buttons share the fourth row");
+
+    const QRect ntripRectBeforeTheme = widgetRect(ntripCard);
+    const QRect ggaRectBeforeTheme = widgetRect(ggaCard);
+    const QRect rtcmRectBeforeTheme = widgetRect(rtcmCard);
+    const QRect logRectBeforeTheme = widgetRect(logCard);
+    const QRect actionRectBeforeTheme = widgetRect(actionCard);
+    require(outputPortLabel->width() >= outputPortLabel->fontMetrics().horizontalAdvance(outputPortLabel->text()) + 4,
+            "RTK RTCM output port label has enough width before theme switch");
+    require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
+            "main window can switch to dark theme from the RTK page");
+    processEventsFor(250);
+    activateLayouts(dialog);
+    processEventsFor(100);
+    require(qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
+            "main window is in dark theme for RTK layout stability checks");
+    requireSameRect(widgetRect(ntripCard), ntripRectBeforeTheme,
+                    "RTK NTRIP card geometry stays stable after switching to dark theme");
+    requireSameRect(widgetRect(ggaCard), ggaRectBeforeTheme,
+                    "RTK GGA card geometry stays stable after switching to dark theme");
+    requireSameRect(widgetRect(rtcmCard), rtcmRectBeforeTheme,
+                    "RTK RTCM card geometry stays stable after switching to dark theme");
+    requireSameRect(widgetRect(logCard), logRectBeforeTheme,
+                    "RTK service log card geometry stays stable after switching to dark theme");
+    requireSameRect(widgetRect(actionCard), actionRectBeforeTheme,
+                    "RTK service action card geometry stays stable after switching to dark theme");
+    require(std::abs(logCard->height() - rtcmCard->height()) <= 2,
+            "RTK service log card remains equal-height with RTCM in dark theme");
+    require(outputPortLabel->width() >= outputPortLabel->fontMetrics().horizontalAdvance(outputPortLabel->text()) + 4,
+            "RTK RTCM output port label has enough width after switching to dark theme");
+    require(rtkScrollArea->horizontalScrollBar()->maximum() == 0 &&
+                rtkScrollArea->verticalScrollBar()->maximum() == 0,
+            "RTK config page remains scrollbar-free after switching to dark theme");
+    require(QMetaObject::invokeMethod(&window, "onToggleTheme", Qt::DirectConnection),
+            "main window can switch back to light theme from the RTK page");
+    processEventsFor(250);
+    activateLayouts(dialog);
+    processEventsFor(100);
+    require(!qApp->property(VaporView::kAppDarkThemeProperty).toBool(),
+            "main window returns to light theme after RTK layout stability checks");
+    requireSameRect(widgetRect(ntripCard), ntripRectBeforeTheme,
+                    "RTK NTRIP card geometry returns unchanged after switching back to light theme");
+    requireSameRect(widgetRect(ggaCard), ggaRectBeforeTheme,
+                    "RTK GGA card geometry returns unchanged after switching back to light theme");
+    requireSameRect(widgetRect(rtcmCard), rtcmRectBeforeTheme,
+                    "RTK RTCM card geometry returns unchanged after switching back to light theme");
+    requireSameRect(widgetRect(logCard), logRectBeforeTheme,
+                    "RTK service log card geometry returns unchanged after switching back to light theme");
+    requireSameRect(widgetRect(actionCard), actionRectBeforeTheme,
+                    "RTK service action card geometry returns unchanged after switching back to light theme");
     for (QWidget *topLevel : QApplication::topLevelWidgets())
     {
         require(qobject_cast<RtkConfigDialog *>(topLevel) == nullptr,

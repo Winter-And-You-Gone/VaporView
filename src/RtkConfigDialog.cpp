@@ -19,6 +19,7 @@
 #include <QDateTime>
 #include <QDialog>
 #include <QCloseEvent>
+#include <QEvent>
 #include <QColor>
 #include <QDoubleValidator>
 #include <QFontDatabase>
@@ -65,7 +66,6 @@ constexpr int kGgaPollIntervalMs = kGgaSendCycleMs / 2;
 constexpr int kGgaReconnectIntervalMs = 1500;
 constexpr int kGgaStaleTimeoutMs = 1500;
 constexpr int kGgaMaxVisibleLines = 200;
-constexpr int kRtkLogVisibleLines = 5;
 constexpr int kRtkHttpTimeoutMs = 5000;
 constexpr int kRtkDefaultDialogWidth = 1024;
 constexpr int kRtkDefaultDialogHeight = 640;
@@ -801,6 +801,7 @@ RtkConfigDialog::RtkConfigDialog(QWidget *parent, bool embedded)
     , gga_last_epsilon_device_timestamp_us_(0)
     , gga_has_sentence_time_(false)
     , gga_monitor_enabled_(false)
+    , metrics_refresh_pending_(false)
 {
     if (embedded_)
     {
@@ -879,6 +880,40 @@ void RtkConfigDialog::closeEvent(QCloseEvent *event)
         appendLog(textFor("RTK config window hidden; running tasks continue in background.",
                           "RTK 配置窗口已隐藏；运行中的任务会继续在后台执行。"));
     }
+}
+
+void RtkConfigDialog::changeEvent(QEvent *event)
+{
+    QDialog::changeEvent(event);
+    if (!event)
+    {
+        return;
+    }
+
+    if (event->type() != QEvent::ApplicationPaletteChange &&
+        event->type() != QEvent::PaletteChange &&
+        event->type() != QEvent::StyleChange &&
+        event->type() != QEvent::FontChange)
+    {
+        return;
+    }
+
+    if (metrics_refresh_pending_)
+    {
+        return;
+    }
+
+    metrics_refresh_pending_ = true;
+    QTimer::singleShot(0, this, [this]() {
+        metrics_refresh_pending_ = false;
+        applyScaledUiMetrics();
+        updateGeometry();
+        if (QLayout *dialogLayout = layout())
+        {
+            dialogLayout->invalidate();
+            dialogLayout->activate();
+        }
+    });
 }
 
 void RtkConfigDialog::joinBackgroundTasks()
@@ -1384,7 +1419,7 @@ void RtkConfigDialog::applyScaledUiMetrics()
         }
 
         const QFontMetrics metrics(label->font());
-        label->setFixedWidth(metrics.horizontalAdvance(label->text()) + scalePixels(2));
+        label->setFixedWidth(metrics.horizontalAdvance(label->text()) + scalePixels(10));
         label->setMinimumHeight(scalePixels(kRtkInputHeight));
         label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     };
@@ -1595,25 +1630,36 @@ void RtkConfigDialog::applyScaledUiMetrics()
     applyButtonWidth(load_config_btn_, 100);
     applyButtonWidth(clear_log_btn_, 96);
 
-    log_text_edit_->setMinimumWidth(scalePixels(200));
-    const QFontMetrics logMetrics(log_text_edit_->font());
-    const int logDocumentMargin = scalePixels(8);
-    const int logTextHeight = logMetrics.lineSpacing() * kRtkLogVisibleLines + logDocumentMargin * 2;
-    log_text_edit_->setFixedHeight(logTextHeight);
-    log_text_edit_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    log_text_edit_->document()->setDocumentMargin(logDocumentMargin);
     const int logTextBottomGap = scalePixels(2);
-    if (log_text_container_)
+    const QMargins logMargins = log_layout_ ? log_layout_->contentsMargins() : QMargins();
+    int logGroupHeight =
+        cardTitleBarHeight + logMargins.top() + scalePixels(72) + logTextBottomGap + logMargins.bottom();
+    if (output_group_)
     {
-        log_text_container_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-        log_text_container_->setFixedHeight(logTextHeight + logTextBottomGap);
+        if (QLayout *outputGroupLayout = output_group_->layout())
+        {
+            outputGroupLayout->invalidate();
+            outputGroupLayout->activate();
+        }
+        logGroupHeight = std::max(logGroupHeight, output_group_->sizeHint().height());
     }
+    const int logDocumentMargin = scalePixels(8);
+    const int logTextHeight = std::max(
+        scalePixels(72),
+        logGroupHeight - cardTitleBarHeight - logMargins.top() - logTextBottomGap - logMargins.bottom());
+    log_text_edit_->setMinimumWidth(scalePixels(200));
+    log_text_edit_->setFixedHeight(logTextHeight);
+    log_text_edit_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    log_text_edit_->document()->setDocumentMargin(logDocumentMargin);
     if (log_group_ && log_layout_)
     {
-        const QMargins logMargins = log_layout_->contentsMargins();
-        const int logGroupHeight = cardTitleBarHeight + logMargins.top() + logTextHeight + logTextBottomGap + logMargins.bottom();
         log_group_->setFixedHeight(logGroupHeight);
         log_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    }
+    if (log_text_container_)
+    {
+        log_text_container_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        log_text_container_->setFixedHeight(logTextHeight + logTextBottomGap);
     }
     gga_text_edit_->setMinimumWidth(scalePixels(120));
 

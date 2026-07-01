@@ -7476,6 +7476,10 @@ void MainWindow::applyStyleConfiguration()
     qApp->setStyleSheet(scaledStyleSheet(themedStyleSheet()));
     setWindowsTitleBarDark(this, dark_theme_enabled_);
     applyScaledUiMetrics();
+    if (rtk_config_dialog_)
+    {
+        rtk_config_dialog_->setFontScale(font_scale_percent_);
+    }
     if (app_layout_splitter_)
     {
         updateAppSidebarForWidth(currentAppSidebarWidth(), true);
