@@ -22,6 +22,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPalette>
 #include <QPixmap>
 #include <QProgressBar>
@@ -58,6 +59,7 @@
 
 using VaporView::AppThemeColor;
 using VaporView::appThemeColor;
+using VaporView::appThemeColorName;
 using VaporView::isDarkThemePalette;
 
 namespace
@@ -366,6 +368,35 @@ QString formatSignedDeltaMs(quint64 deltaUs)
     return QStringLiteral("%1 ms").arg(QString::number(static_cast<double>(deltaUs) / 1000.0, 'f', 3));
 }
 
+QString trajectoryInfoRow(const QString& label, const QString& value, bool dark)
+{
+    return QStringLiteral(
+        "<tr>"
+        "<td style=\"padding:0 10px 5px 0; color:%1; font-weight:600; white-space:nowrap; vertical-align:top;\">%2</td>"
+        "<td style=\"padding:0 0 5px 0; color:%3; font-weight:600; vertical-align:top;\">%4</td>"
+        "</tr>")
+        .arg(appThemeColorName(AppThemeColor::TextMuted, dark),
+             label.toHtmlEscaped(),
+             appThemeColorName(AppThemeColor::TextStrong, dark),
+             value.toHtmlEscaped());
+}
+
+QString trajectoryInfoTable(const QString& title,
+                            const QVector<QPair<QString, QString>>& rows,
+                            bool dark)
+{
+    QString html = QStringLiteral(
+        "<div style=\"color:%1; font-weight:700; margin-bottom:6px;\">%2</div>"
+        "<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" style=\"border-collapse:collapse;\">")
+        .arg(appThemeColorName(AppThemeColor::TextStrong, dark), title.toHtmlEscaped());
+    for (const auto& row : rows)
+    {
+        html += trajectoryInfoRow(row.first, row.second, dark);
+    }
+    html += QStringLiteral("</table>");
+    return html;
+}
+
 QString csvCell(QString value)
 {
     value.replace('"', QStringLiteral("\"\""));
@@ -653,12 +684,15 @@ protected:
         painter.fillRect(rect(), appThemeColor(AppThemeColor::MapCanvas, false));
 
         const QRectF mapRect = rect().adjusted(kMapMargin, kMapMargin, -kMapMargin, -kMapMargin - 18);
-        painter.fillRect(mapRect, appThemeColor(AppThemeColor::MapViewport, false));
+        const QRectF roundedMapRect = mapRect.adjusted(0.5, 0.5, -0.5, -0.5);
+        QPainterPath mapClip;
+        mapClip.addRoundedRect(roundedMapRect, 8.0, 8.0);
+        painter.fillPath(mapClip, appThemeColor(AppThemeColor::MapViewport, false));
 
         if (track_points_.isEmpty())
         {
             painter.setPen(appThemeColor(AppThemeColor::MapMutedText, false));
-            painter.drawRoundedRect(mapRect, 8.0, 8.0);
+            painter.drawRoundedRect(roundedMapRect, 8.0, 8.0);
             painter.drawText(mapRect, Qt::AlignCenter,
                 is_english_
                     ? QStringLiteral("No %1 available in this session.").arg(english_track_label_)
@@ -666,9 +700,15 @@ protected:
             return;
         }
 
+        painter.save();
+        painter.setClipPath(mapClip);
         drawTiles(painter, mapRect);
-        drawFallbackGrid(painter, mapRect);
         drawTrack(painter, mapRect);
+        painter.restore();
+
+        painter.setPen(QPen(appThemeColor(AppThemeColor::MapTileBorder, false), 1));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(roundedMapRect, 8.0, 8.0);
 
         painter.setPen(appThemeColor(AppThemeColor::MapText, false));
         painter.drawText(QRectF(mapRect.left(), mapRect.bottom() + 2, mapRect.width(), 16),
@@ -1019,25 +1059,9 @@ private:
                 if (!drewTile)
                 {
                     painter.fillRect(tileRect, appThemeColor(AppThemeColor::MapTileBackground, false));
-                    painter.setPen(QPen(appThemeColor(AppThemeColor::MapTileBorder, false), 1));
-                    painter.drawRect(tileRect);
                 }
             }
         }
-    }
-
-    void drawFallbackGrid(QPainter& painter, const QRectF& mapRect)
-    {
-        painter.save();
-        painter.setPen(QPen(appThemeColor(AppThemeColor::MapGrid, false), 1));
-        for (int i = 1; i < 6; ++i)
-        {
-            const qreal x = mapRect.left() + mapRect.width() * i / 6.0;
-            const qreal y = mapRect.top() + mapRect.height() * i / 6.0;
-            painter.drawLine(QPointF(x, mapRect.top()), QPointF(x, mapRect.bottom()));
-            painter.drawLine(QPointF(mapRect.left(), y), QPointF(mapRect.right(), y));
-        }
-        painter.restore();
     }
 
     QPointF worldToScreen(const QPointF& worldPixel, const QRectF& mapRect) const
@@ -1067,7 +1091,7 @@ private:
         }
 
         painter.save();
-        painter.setClipRect(mapRect);
+        painter.setClipRect(mapRect, Qt::IntersectClip);
         if (polyline.size() >= 2)
         {
             for (int index = 0; index + 1 < polyline.size(); ++index)
@@ -1316,6 +1340,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     : QDialog(parent)
     , summary_label_(new QLabel(this))
     , sidebar_title_label_(new QLabel(this))
+    , sidebar_icon_label_(new QLabel(this))
     , legend_label_(new QLabel(this))
     , detail_label_(new QLabel(this))
     , map_status_label_(new QLabel(this))
@@ -1362,10 +1387,12 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
 
     auto *sidebarCard = new QFrame(this);
     sidebarCard->setObjectName(QStringLiteral("trajectoryViewerSidebarCard"));
+    sidebarCard->setFrameShape(QFrame::NoFrame);
+    sidebarCard->setAttribute(Qt::WA_StyledBackground, true);
     sidebarCard->setFixedWidth(kTrajectorySidebarWidth);
     sidebarCard->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
     auto *sidebarCardLayout = new QVBoxLayout(sidebarCard);
-    sidebarCardLayout->setContentsMargins(0, 0, 0, 0);
+    sidebarCardLayout->setContentsMargins(1, 1, 1, 1);
     sidebarCardLayout->setSpacing(0);
 
     auto *sidebarTitleBar = new QWidget(sidebarCard);
@@ -1374,6 +1401,10 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     auto *sidebarTitleLayout = new QHBoxLayout(sidebarTitleBar);
     sidebarTitleLayout->setContentsMargins(12, 0, 12, 0);
     sidebarTitleLayout->setSpacing(8);
+    sidebar_icon_label_->setObjectName(QStringLiteral("trajectorySidebarTitleIcon"));
+    sidebar_icon_label_->setFixedSize(24, 24);
+    sidebar_icon_label_->setAlignment(Qt::AlignCenter);
+    sidebarTitleLayout->addWidget(sidebar_icon_label_, 0, Qt::AlignVCenter);
     sidebar_title_label_->setObjectName(QStringLiteral("sectionTitleLabel"));
     sidebar_title_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     sidebarTitleLayout->addWidget(sidebar_title_label_, 1, Qt::AlignVCenter);
@@ -1395,28 +1426,33 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     sidebar->setWidget(sidebarContent);
     sidebarCardLayout->addWidget(sidebar, 1);
 
-    auto *mapPanel = new QWidget(this);
+    auto *mapPanel = new QFrame(this);
     mapPanel->setObjectName(QStringLiteral("trajectoryViewerMapPanel"));
+    mapPanel->setFrameShape(QFrame::NoFrame);
+    mapPanel->setAttribute(Qt::WA_StyledBackground, true);
     mapPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     auto *mapPanelLayout = new QVBoxLayout(mapPanel);
-    mapPanelLayout->setContentsMargins(0, 0, 0, 0);
+    mapPanelLayout->setContentsMargins(12, 12, 12, 12);
     mapPanelLayout->setSpacing(8);
 
     map_widget_->setObjectName(QStringLiteral("trajectoryViewerMap"));
     map_widget_->setMinimumHeight(kTrajectoryMapMinimumHeight);
     map_widget_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     summary_label_->setWordWrap(true);
-    summary_label_->setObjectName(QStringLiteral("trajectorySidebarBodyLabel"));
+    summary_label_->setTextFormat(Qt::RichText);
+    summary_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    summary_label_->setObjectName(QStringLiteral("trajectorySidebarSummaryLabel"));
     sidebarLayout->addWidget(summary_label_);
     legend_label_->setWordWrap(true);
     legend_label_->setTextFormat(Qt::RichText);
     legend_label_->setObjectName(QStringLiteral("fieldLabel"));
     detail_label_->setWordWrap(true);
-    detail_label_->setObjectName(QStringLiteral("trajectorySidebarBodyLabel"));
+    detail_label_->setTextFormat(Qt::RichText);
+    detail_label_->setObjectName(QStringLiteral("trajectorySidebarDetailLabel"));
     detail_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     sidebarLayout->addWidget(detail_label_);
     map_status_label_->setWordWrap(true);
-    map_status_label_->setObjectName(QStringLiteral("trajectorySidebarBodyLabel"));
+    map_status_label_->setObjectName(QStringLiteral("trajectorySidebarStatusLabel"));
     sidebarLayout->addWidget(map_status_label_);
     map_progress_bar_->setTextVisible(true);
     map_progress_bar_->setMinimum(0);
@@ -1589,13 +1625,16 @@ void TrajectoryViewerDialog::updateThemeStyles()
     updating_theme_styles_ = true;
     const QString themedStyleSheet = VaporView::applyAppThemeTokens(QStringLiteral(
         "QDialog#trajectoryViewerDialog { background-color: @vv-surface; }"
-        "QDialog#trajectoryViewerDialog QWidget#customTitleBarContent, QDialog#trajectoryViewerDialog QWidget#trajectoryViewerContent, QDialog#trajectoryViewerDialog QWidget#trajectoryViewerMapPanel { background-color: @vv-surface; }"
+        "QDialog#trajectoryViewerDialog QWidget#customTitleBarContent, QDialog#trajectoryViewerDialog QWidget#trajectoryViewerContent { background-color: @vv-surface; }"
         "QDialog#trajectoryViewerDialog QFrame#trajectoryViewerSidebarCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
         "QDialog#trajectoryViewerDialog QFrame#trajectoryViewerSidebarCard QWidget#sectionTitleBar { background-color: @vv-surface; border: none; border-bottom: 1px solid @vv-border; border-top-left-radius: 7px; border-top-right-radius: 7px; min-height: 40px; max-height: 40px; }"
+        "QDialog#trajectoryViewerDialog QFrame#trajectoryViewerSidebarCard QLabel#trajectorySidebarTitleIcon { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; border-radius: 6px; padding: 3px; }"
         "QDialog#trajectoryViewerDialog QFrame#trajectoryViewerSidebarCard QLabel#sectionTitleLabel { background-color: transparent; border: none; color: @vv-text; font-size: 16px; font-weight: bold; margin: 0px; padding: 0px; }"
         "QDialog#trajectoryViewerDialog QScrollArea#trajectoryViewerSidebar { background-color: @vv-surface; border: none; border-bottom-left-radius: 7px; border-bottom-right-radius: 7px; }"
         "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarViewport, QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent { background-color: @vv-surface; border: none; }"
-        "QDialog#trajectoryViewerDialog QLabel#trajectorySidebarBodyLabel { color: @vv-text; background-color: transparent; border: none; font-size: 14px; font-weight: 600; line-height: 140%; }"
+        "QDialog#trajectoryViewerDialog QLabel#trajectorySidebarSummaryLabel, QDialog#trajectoryViewerDialog QLabel#trajectorySidebarDetailLabel, QDialog#trajectoryViewerDialog QLabel#trajectorySidebarStatusLabel { color: @vv-text; background-color: transparent; border: none; font-size: 14px; font-weight: 500; line-height: 140%; }"
+        "QDialog#trajectoryViewerDialog QFrame#trajectoryViewerMapPanel { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
+        "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerMap { background-color: @vv-surface; border: none; border-radius: 8px; }"
         "QDialog#trajectoryViewerDialog QPushButton#trajectorySidebarActionButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 600; min-height: 32px; max-height: 32px; padding: 4px 10px; }"
         "QDialog#trajectoryViewerDialog QPushButton#trajectorySidebarActionButton:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
         "QDialog#trajectoryViewerDialog QPushButton#trajectorySidebarActionButton:pressed { background-color: @vv-primary-subtle-pressed; color: @vv-primary; }"
@@ -1907,20 +1946,21 @@ void TrajectoryViewerDialog::updateSelectedPointDetails()
               .arg(formatSignedDeltaMs(point.waveform_delta_us))
         : QStringLiteral("--");
 
-    detail_label_->setText(QString(is_english_
-        ? "Selected #%1/%2 | CSV row %3 | %4 | lat %5 lon %6 | height %7 | distance %8 | speed %9 | peak %10 | waveform %11"
-        : "当前 #%1/%2 | CSV 第 %3 行 | %4 | 纬度 %5 经度 %6 | 高度 %7 | 里程 %8 | 速度 %9 | 峰值 %10 | 波形 %11")
-        .arg(selected_track_index_ + 1)
-        .arg(track_points_.size())
-        .arg(point.csv_row >= 0 ? point.csv_row + 1 : 0)
-        .arg(formatTimestampUs(point.timestamp_us))
-        .arg(QString::number(point.latitude, 'f', 8))
-        .arg(QString::number(point.longitude, 'f', 8))
-        .arg(heightText)
-        .arg(formatDistanceMeters(point.cumulative_distance_m))
-        .arg(speedText)
-        .arg(peakText)
-        .arg(waveformText));
+    const QString title = is_english_
+        ? QStringLiteral("Selected #%1 / %2").arg(selected_track_index_ + 1).arg(track_points_.size())
+        : QStringLiteral("当前 #%1 / %2").arg(selected_track_index_ + 1).arg(track_points_.size());
+    const QVector<QPair<QString, QString>> rows = {
+        {is_english_ ? QStringLiteral("CSV row") : QStringLiteral("CSV 行"), QString::number(point.csv_row >= 0 ? point.csv_row + 1 : 0)},
+        {is_english_ ? QStringLiteral("Time") : QStringLiteral("时间"), formatTimestampUs(point.timestamp_us)},
+        {is_english_ ? QStringLiteral("Latitude") : QStringLiteral("纬度"), QString::number(point.latitude, 'f', 8)},
+        {is_english_ ? QStringLiteral("Longitude") : QStringLiteral("经度"), QString::number(point.longitude, 'f', 8)},
+        {is_english_ ? QStringLiteral("Height") : QStringLiteral("高度"), heightText},
+        {is_english_ ? QStringLiteral("Distance") : QStringLiteral("里程"), formatDistanceMeters(point.cumulative_distance_m)},
+        {is_english_ ? QStringLiteral("Speed") : QStringLiteral("速度"), speedText},
+        {is_english_ ? QStringLiteral("Peak") : QStringLiteral("峰值"), peakText},
+        {is_english_ ? QStringLiteral("Waveform") : QStringLiteral("波形"), waveformText}
+    };
+    detail_label_->setText(trajectoryInfoTable(title, rows, isDarkPalette()));
 }
 
 void TrajectoryViewerDialog::changeEvent(QEvent *event)
@@ -1934,6 +1974,7 @@ void TrajectoryViewerDialog::changeEvent(QEvent *event)
     if (event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange)
     {
         updateThemeStyles();
+        updateSummary();
         updateTitleBarIcons();
     }
 }
@@ -1941,6 +1982,10 @@ void TrajectoryViewerDialog::changeEvent(QEvent *event)
 void TrajectoryViewerDialog::updateTitleBarIcons()
 {
     const bool dark = isDarkPalette();
+    if (sidebar_icon_label_)
+    {
+        sidebar_icon_label_->setPixmap(createTitleBarIcon(QStringLiteral("activity"), dark).pixmap(QSize(18, 18)));
+    }
     if (tianditu_key_button_)
     {
         tianditu_key_button_->setIcon(createTitleBarIcon(QStringLiteral("key"), dark));
@@ -2017,29 +2062,14 @@ void TrajectoryViewerDialog::updateSummary()
         }
     }
 
-    const QString heightRangeText = hasHeightRange
-        ? (is_english_
-            ? QStringLiteral(" Height %1 to %2 m, change %3 m.")
-                  .arg(QString::number(minHeight, 'f', 3),
-                       QString::number(maxHeight, 'f', 3),
-                       QString::number(maxHeight - minHeight, 'f', 3))
-            : QStringLiteral("高度范围 %1 到 %2 m，变化区间 %3 m。")
-                  .arg(QString::number(minHeight, 'f', 3),
-                       QString::number(maxHeight, 'f', 3),
-                       QString::number(maxHeight - minHeight, 'f', 3)))
-        : QString();
-
     const int rejectedTotal = track_stats_.rejected_invalid_nav +
         track_stats_.rejected_bad_fix +
         track_stats_.rejected_zero_coordinate +
         track_stats_.rejected_out_of_range +
         track_stats_.rejected_jump;
-    const QString qualityText = QString(is_english_
-        ? " Source rows %1, accepted %2, rejected %3 (invalid %4, fix %5, zero %6, range %7, jumps>%8m %9)."
-        : "来源行 %1，保留 %2，剔除 %3（无效 %4、定位 %5、零点 %6、越界 %7、跳点>%8m %9）。")
-        .arg(track_stats_.scanned_rows)
-        .arg(track_stats_.accepted_points)
-        .arg(rejectedTotal)
+    const QString rejectedDetailText = QString(is_english_
+        ? "invalid %1, fix %2, zero %3, range %4, jumps>%5m %6"
+        : "无效 %1、定位 %2、零点 %3、越界 %4、跳点>%5m %6")
         .arg(track_stats_.rejected_invalid_nav)
         .arg(track_stats_.rejected_bad_fix)
         .arg(track_stats_.rejected_zero_coordinate)
@@ -2047,20 +2077,30 @@ void TrajectoryViewerDialog::updateSummary()
         .arg(QString::number(track_stats_.jump_threshold_m, 'f', 1))
         .arg(track_stats_.rejected_jump);
 
-    summary_label_->setText(QString(is_english_
-        ? "Showing %1 %2 points. Distance %3, max speed %4 from %5 speed samples. Latitude %6 to %7, longitude %8 to %9.%10%11"
-        : "正在显示 %1 个%2点。里程 %3，最大速度 %4（%5 个速度样本）。纬度范围 %6 到 %7，经度范围 %8 到 %9。%10%11")
-        .arg(track_points_.size())
-        .arg(is_english_ ? english_track_label_ : chinese_track_label_)
-        .arg(formatDistanceMeters(totalDistance))
-        .arg(speedCount > 0 ? formatSpeed(maxSpeed) : QStringLiteral("--"))
-        .arg(speedCount)
-        .arg(QString::number(minLat, 'f', 7))
-        .arg(QString::number(maxLat, 'f', 7))
-        .arg(QString::number(minLon, 'f', 7))
-        .arg(QString::number(maxLon, 'f', 7))
-        .arg(heightRangeText)
-        .arg(qualityText));
+    QVector<QPair<QString, QString>> rows = {
+        {is_english_ ? QStringLiteral("Points") : QStringLiteral("点数"), QString::number(track_points_.size())},
+        {is_english_ ? QStringLiteral("Distance") : QStringLiteral("里程"), formatDistanceMeters(totalDistance)},
+        {is_english_ ? QStringLiteral("Max speed") : QStringLiteral("最大速度"), speedCount > 0 ? formatSpeed(maxSpeed) : QStringLiteral("--")},
+        {is_english_ ? QStringLiteral("Speed samples") : QStringLiteral("速度样本"), QString::number(speedCount)},
+        {is_english_ ? QStringLiteral("Latitude") : QStringLiteral("纬度范围"),
+            QStringLiteral("%1 - %2").arg(QString::number(minLat, 'f', 7), QString::number(maxLat, 'f', 7))},
+        {is_english_ ? QStringLiteral("Longitude") : QStringLiteral("经度范围"),
+            QStringLiteral("%1 - %2").arg(QString::number(minLon, 'f', 7), QString::number(maxLon, 'f', 7))},
+        {is_english_ ? QStringLiteral("Height") : QStringLiteral("高度范围"),
+            hasHeightRange
+                ? QStringLiteral("%1 - %2 m").arg(QString::number(minHeight, 'f', 3), QString::number(maxHeight, 'f', 3))
+                : QStringLiteral("--")},
+        {is_english_ ? QStringLiteral("Height change") : QStringLiteral("高度变化"),
+            hasHeightRange ? QStringLiteral("%1 m").arg(QString::number(maxHeight - minHeight, 'f', 3)) : QStringLiteral("--")},
+        {is_english_ ? QStringLiteral("Source rows") : QStringLiteral("来源行"), QString::number(track_stats_.scanned_rows)},
+        {is_english_ ? QStringLiteral("Accepted") : QStringLiteral("保留"), QString::number(track_stats_.accepted_points)},
+        {is_english_ ? QStringLiteral("Rejected") : QStringLiteral("剔除"), QString::number(rejectedTotal)},
+        {is_english_ ? QStringLiteral("Reject detail") : QStringLiteral("剔除明细"), rejectedDetailText}
+    };
+    const QString title = is_english_
+        ? QStringLiteral("%1 %2 points").arg(track_points_.size()).arg(english_track_label_)
+        : QStringLiteral("%1 个%2点").arg(track_points_.size()).arg(chinese_track_label_);
+    summary_label_->setText(trajectoryInfoTable(title, rows, isDarkPalette()));
 
     if (!hasPeakRange)
     {

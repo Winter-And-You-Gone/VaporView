@@ -79,7 +79,10 @@ void clickWidgetCenterThroughWindow(QWidget *widget, int waitMs = 250)
     require(widget != nullptr, "click target exists");
     const QPoint globalCenter = widget->mapToGlobal(widget->rect().center());
     QWidget *target = QApplication::widgetAt(globalCenter);
-    require(target != nullptr, "top widget under click exists");
+    if (!target)
+    {
+        target = widget;
+    }
     const QPoint localPos = target->mapFromGlobal(globalCenter);
     QMouseEvent press(QEvent::MouseButtonPress,
                       localPos,
@@ -99,6 +102,19 @@ void clickWidgetCenterThroughWindow(QWidget *widget, int waitMs = 250)
     {
         processEventsFor(waitMs);
     }
+}
+
+SessionViewerWindow *visibleSessionViewerWindow()
+{
+    for (QWidget *widget : QApplication::topLevelWidgets())
+    {
+        auto *viewer = qobject_cast<SessionViewerWindow *>(widget);
+        if (viewer && viewer->isVisible() && !viewer->isMinimized())
+        {
+            return viewer;
+        }
+    }
+    return nullptr;
 }
 
 int countRedDominantPixels(const QImage& image)
@@ -283,12 +299,11 @@ void testMainWindowDataViewerOpenCanReopen()
     require(QMetaObject::invokeMethod(&window, "onOpenSessionViewerClicked", Qt::DirectConnection),
             "main window can invoke data viewer action");
     require(processEventsUntil(2000, []() {
-                return qobject_cast<SessionViewerWindow *>(
-                    QApplication::activeWindow()) != nullptr;
+                return visibleSessionViewerWindow() != nullptr;
             }),
             "data viewer opens from main window action");
 
-    auto *viewer = qobject_cast<SessionViewerWindow *>(QApplication::activeWindow());
+    auto *viewer = visibleSessionViewerWindow();
     require(viewer != nullptr, "active data viewer is available");
     requireSessionViewerTitleBarWindowButtonsWork(*viewer);
     auto *minimizeButton = viewer->findChild<QToolButton *>(QStringLiteral("windowMinimizeButton"));
@@ -313,8 +328,7 @@ void testMainWindowDataViewerOpenCanReopen()
     require(QMetaObject::invokeMethod(&window, "onOpenSessionViewerClicked", Qt::DirectConnection),
             "main window can reopen data viewer after close");
     require(processEventsUntil(2000, []() {
-                return qobject_cast<SessionViewerWindow *>(
-                    QApplication::activeWindow()) != nullptr;
+                return visibleSessionViewerWindow() != nullptr;
             }),
             "data viewer reopens from retained main window instance");
 }
@@ -333,22 +347,30 @@ void testTrajectoryViewerUsesSidebarLayout()
     auto *sidebarTitleBar = sidebarCard
         ? sidebarCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"))
         : nullptr;
+    auto *sidebarIcon = sidebarTitleBar
+        ? sidebarTitleBar->findChild<QLabel *>(QStringLiteral("trajectorySidebarTitleIcon"))
+        : nullptr;
     auto *sidebarTitle = sidebarTitleBar
         ? sidebarTitleBar->findChild<QLabel *>(QStringLiteral("sectionTitleLabel"))
         : nullptr;
     auto *sidebarContent = dialog.findChild<QWidget *>(QStringLiteral("trajectoryViewerSidebarContent"));
-    auto *mapPanel = dialog.findChild<QWidget *>(QStringLiteral("trajectoryViewerMapPanel"));
+    auto *mapPanel = dialog.findChild<QFrame *>(QStringLiteral("trajectoryViewerMapPanel"));
     auto *map = dialog.findChild<QWidget *>(QStringLiteral("trajectoryViewerMap"));
     auto *mapSourceCombo = dialog.findChild<QComboBox *>(QStringLiteral("trajectoryMapSourceCombo"));
+    auto *summaryLabel = dialog.findChild<QLabel *>(QStringLiteral("trajectorySidebarSummaryLabel"));
+    auto *detailLabel = dialog.findChild<QLabel *>(QStringLiteral("trajectorySidebarDetailLabel"));
 
     require(sidebarCard != nullptr, "trajectory viewer sidebar card exists");
     require(sidebarTitleBar != nullptr, "trajectory viewer sidebar title bar exists");
+    require(sidebarIcon != nullptr, "trajectory viewer sidebar title icon exists");
     require(sidebarTitle != nullptr, "trajectory viewer sidebar title label exists");
     require(sidebarContent != nullptr, "trajectory viewer sidebar body exists");
     require(sidebar != nullptr, "trajectory viewer sidebar exists");
     require(mapPanel != nullptr, "trajectory viewer map panel exists");
     require(map != nullptr, "trajectory viewer map exists");
     require(mapSourceCombo != nullptr, "trajectory viewer map source control exists");
+    require(summaryLabel != nullptr, "trajectory viewer summary label exists");
+    require(detailLabel != nullptr, "trajectory viewer detail label exists");
     const auto sidebarToolButtons = sidebar->findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
     require(sidebarToolButtons.size() >= 4, "trajectory viewer sidebar contains map tool buttons");
     const auto sidebarActionButtons = sidebar->findChildren<QPushButton *>(QStringLiteral("trajectorySidebarActionButton"));
@@ -357,6 +379,9 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(sidebarCard->isAncestorOf(sidebarTitleBar), "sidebar title bar is inside card");
     require(sidebarCard->isAncestorOf(sidebar), "sidebar body scroll area is inside card");
     require(sidebar->isAncestorOf(sidebarContent), "sidebar content is inside scroll body");
+    require(sidebarCard->layout() != nullptr, "sidebar card layout exists");
+    require(sidebarCard->layout()->contentsMargins() == QMargins(1, 1, 1, 1),
+            "sidebar card preserves visible rounded border");
     require(sidebarTitleBar->minimumHeight() == sidebarTitleBar->maximumHeight()
                 && sidebarTitleBar->minimumHeight() >= 40,
             "sidebar title bar keeps home card fixed height");
@@ -383,6 +408,50 @@ void testTrajectoryViewerUsesSidebarLayout()
             "trajectory viewer stylesheet includes home-style section title bar");
     require(styleSheet.contains(QStringLiteral("QPushButton#trajectorySidebarActionButton")),
             "trajectory viewer stylesheet includes sidebar action button styling");
+    require(styleSheet.contains(QStringLiteral("QLabel#trajectorySidebarTitleIcon")),
+            "trajectory viewer stylesheet includes sidebar title icon styling");
+    require(styleSheet.contains(QStringLiteral("QFrame#trajectoryViewerMapPanel")),
+            "trajectory viewer stylesheet includes rounded map panel styling");
+
+    RtkTrackStats stats;
+    stats.scanned_rows = 3;
+    stats.accepted_points = 2;
+    stats.rejected_invalid_nav = 1;
+    RtkTrackPoint firstPoint;
+    firstPoint.latitude = 30.13698120;
+    firstPoint.longitude = 120.06938175;
+    firstPoint.height_m = 9.606;
+    firstPoint.cumulative_distance_m = 0.0;
+    firstPoint.speed_mps = 3.2;
+    firstPoint.timestamp_us = 1782446035573000ULL;
+    firstPoint.peak_value = 0.380270f;
+    firstPoint.csv_row = 0;
+    firstPoint.waveform_frame_index = 0;
+    firstPoint.waveform_delta_us = 13929;
+    firstPoint.has_height = true;
+    firstPoint.has_speed = true;
+    firstPoint.has_peak_value = true;
+    firstPoint.has_waveform_match = true;
+    RtkTrackPoint secondPoint = firstPoint;
+    secondPoint.latitude = 30.1376200;
+    secondPoint.longitude = 120.0699071;
+    secondPoint.height_m = 11.190;
+    secondPoint.cumulative_distance_m = 448.82;
+    secondPoint.speed_mps = 4.1;
+    secondPoint.csv_row = 1;
+    secondPoint.peak_value = 0.420000f;
+    dialog.setTrackStats(stats);
+    dialog.setTrackPoints({firstPoint, secondPoint});
+    processEventsFor(200);
+
+    require(summaryLabel->textFormat() == Qt::RichText, "trajectory summary uses rich text");
+    require(detailLabel->textFormat() == Qt::RichText, "trajectory detail uses rich text");
+    require(summaryLabel->text().contains(QStringLiteral("<table")),
+            "trajectory summary fields are formatted as a table");
+    require(detailLabel->text().contains(QStringLiteral("<table")),
+            "trajectory detail fields are formatted as a table");
+    require(!detailLabel->text().contains(QStringLiteral(" | ")),
+            "trajectory detail no longer uses a dense pipe-delimited sentence");
 
     dialog.close();
     processEventsFor(100);

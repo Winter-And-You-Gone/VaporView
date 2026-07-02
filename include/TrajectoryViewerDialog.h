@@ -54,6 +54,7 @@ private:
 
     QLabel *summary_label_;
     QLabel *sidebar_title_label_;
+    QLabel *sidebar_icon_label_;
     QLabel *legend_label_;
     QLabel *detail_label_;
     QLabel *map_status_label_;
