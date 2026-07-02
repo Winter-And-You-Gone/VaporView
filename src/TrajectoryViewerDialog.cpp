@@ -26,6 +26,7 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QQueue>
+#include <QScrollArea>
 #include <QSet>
 #include <QSettings>
 #include <QSignalBlocker>
@@ -69,6 +70,8 @@ constexpr int kMapMargin = 12;
 constexpr int kTitleBarButtonSize = 34;
 constexpr int kTitleBarIconSize = 24;
 constexpr int kMaxConcurrentTileRequests = 8;
+constexpr int kTrajectorySidebarWidth = 340;
+constexpr int kTrajectoryMapMinimumHeight = 360;
 constexpr auto kTileRequestTimeout = std::chrono::seconds(15);
 
 enum class TileProvider
@@ -1340,18 +1343,32 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     setModal(false);
     resize(1080, 680);
 
-    auto *mainLayout = new QHBoxLayout(this);
+    auto *dialogLayout = new QVBoxLayout(this);
+    dialogLayout->setContentsMargins(12, 12, 12, 12);
+    dialogLayout->setSpacing(8);
+
+    auto *content = new QWidget(this);
+    content->setObjectName(QStringLiteral("trajectoryViewerContent"));
+    content->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+
+    auto *mainLayout = new QHBoxLayout(content);
     mainLayout->setContentsMargins(12, 12, 12, 12);
     mainLayout->setSpacing(12);
+    dialogLayout->addWidget(content, 1);
 
-    auto *sidebar = new QWidget(this);
+    auto *sidebar = new QScrollArea(this);
     sidebar->setObjectName(QStringLiteral("trajectoryViewerSidebar"));
-    sidebar->setMinimumWidth(280);
-    sidebar->setMaximumWidth(340);
+    sidebar->setFixedWidth(kTrajectorySidebarWidth);
+    sidebar->setWidgetResizable(true);
+    sidebar->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    sidebar->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     sidebar->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
-    auto *sidebarLayout = new QVBoxLayout(sidebar);
+    auto *sidebarContent = new QWidget(sidebar);
+    sidebarContent->setObjectName(QStringLiteral("trajectoryViewerSidebarContent"));
+    auto *sidebarLayout = new QVBoxLayout(sidebarContent);
     sidebarLayout->setContentsMargins(0, 0, 0, 0);
     sidebarLayout->setSpacing(8);
+    sidebar->setWidget(sidebarContent);
 
     auto *mapPanel = new QWidget(this);
     mapPanel->setObjectName(QStringLiteral("trajectoryViewerMapPanel"));
@@ -1361,6 +1378,8 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     mapPanelLayout->setSpacing(8);
 
     map_widget_->setObjectName(QStringLiteral("trajectoryViewerMap"));
+    map_widget_->setMinimumHeight(kTrajectoryMapMinimumHeight);
+    map_widget_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     summary_label_->setWordWrap(true);
     summary_label_->setObjectName(QStringLiteral("fieldLabel"));
     sidebarLayout->addWidget(summary_label_);

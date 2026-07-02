@@ -259,6 +259,11 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(sidebar->isAncestorOf(mapSourceCombo), "map source control is in sidebar");
     require(mapPanel->isAncestorOf(map), "map remains in the map panel");
     require(!sidebar->isAncestorOf(map), "map is not in sidebar");
+    require(sidebar->geometry().left() < mapPanel->geometry().left(),
+            "trajectory sidebar is positioned to the left of the map panel");
+    require(sidebar->geometry().top() == mapPanel->geometry().top(),
+            "trajectory sidebar and map panel share the same row");
+    require(map->height() >= 300, "trajectory map keeps usable vertical space");
 
     dialog.close();
     processEventsFor(100);
