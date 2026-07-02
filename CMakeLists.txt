@@ -449,6 +449,28 @@ add_dependencies(VaporViewSkyTui VaporViewSkyCore)
 add_dependencies(VaporViewSky VaporViewSkyTui)
 add_dependencies(VaporView VaporViewSky)
 
+add_custom_target(VaporViewRuntimeResources ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/resources
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/resources/modern_style.qss
+        ${CMAKE_CURRENT_BINARY_DIR}/resources/modern_style.qss
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/resources/combo_arrow_down.xpm
+        ${CMAKE_CURRENT_BINARY_DIR}/resources/combo_arrow_down.xpm
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_SOURCE_DIR}/resources/combo_arrow_up.xpm
+        ${CMAKE_CURRENT_BINARY_DIR}/resources/combo_arrow_up.xpm
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/resources/lucide
+        ${CMAKE_CURRENT_BINARY_DIR}/resources/lucide
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/resources/VaproViewLOGO
+        ${CMAKE_CURRENT_BINARY_DIR}/resources/VaproViewLOGO
+    DEPENDS ${NAV_RESOURCES} ${LUCIDE_RESOURCES}
+    COMMENT "Synchronizing VaporView runtime resources"
+)
+add_dependencies(VaporView VaporViewRuntimeResources)
+
 add_custom_command(TARGET VaporView POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:VaporView>/resources
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -591,6 +613,7 @@ if(BUILD_TESTING)
         ${CMAKE_SOURCE_DIR}/src
     )
     target_link_libraries(main_window_layout_test PRIVATE vaporview_main_window)
+    add_dependencies(main_window_layout_test VaporViewRuntimeResources)
     add_custom_command(TARGET main_window_layout_test POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:main_window_layout_test>/resources
         COMMAND ${CMAKE_COMMAND} -E copy_if_different

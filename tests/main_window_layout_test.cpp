@@ -1408,6 +1408,18 @@ int main(int argc, char **argv)
         deviceOverviewCard->findChildren<QFrame *>(QStringLiteral("homeTelemetrySummaryPill"));
     require(!homeTelemetryPills.isEmpty(),
             "home device overview telemetry pills exist before dark theme switch");
+    const QString lightOverviewStyleSheet = qApp->styleSheet();
+    requireLastStyleRuleContains(lightOverviewStyleSheet,
+                                 QStringLiteral("QFrame#homeTelemetrySummaryPill {"),
+                                 VaporView::appThemeColorName(VaporView::AppThemeColor::FieldBackground, false),
+                                 "light theme keeps home telemetry summary pills on the normal white field background");
+    require(!lightOverviewStyleSheet.contains(QStringLiteral("QFrame#homeTelemetrySummaryPill[hasData")),
+            "home telemetry summary pills do not expose data-state background rules");
+    for (QFrame *pill : homeTelemetryPills)
+    {
+        require(!pill->property("hasData").isValid(),
+                "home telemetry summary pill does not carry data-state background property");
+    }
     QWidget *homeTelemetrySummaryContainer =
         deviceOverviewCard->findChild<QWidget *>(QStringLiteral("homeTelemetrySummaryContainer"));
     require(homeTelemetrySummaryContainer != nullptr,
@@ -1538,16 +1550,10 @@ int main(int argc, char **argv)
     const QString darkOverviewStyleSheet = qApp->styleSheet();
     requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QFrame#homeTelemetrySummaryPill {"),
-                                 VaporView::appThemeColorName(VaporView::AppThemeColor::Surface, true),
+                                 VaporView::appThemeColorName(VaporView::AppThemeColor::FieldBackground, true),
                                  "dark theme keeps home telemetry summary pills on the normal surface background");
-    requireLastStyleRuleContains(darkOverviewStyleSheet,
-                                 QStringLiteral("QFrame#homeTelemetrySummaryPill[hasData=\"true\"] {"),
-                                 VaporView::appThemeColorName(VaporView::AppThemeColor::Surface, true),
-                                 "dark theme does not color available telemetry pills");
-    requireLastStyleRuleContains(darkOverviewStyleSheet,
-                                 QStringLiteral("QFrame#homeTelemetrySummaryPill[hasData=\"false\"] {"),
-                                 VaporView::appThemeColorName(VaporView::AppThemeColor::Surface, true),
-                                 "dark theme does not gray unavailable telemetry pills");
+    require(!darkOverviewStyleSheet.contains(QStringLiteral("QFrame#homeTelemetrySummaryPill[hasData")),
+            "dark theme has no data-state background rules for telemetry pills");
     requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QFrame#deviceTelemetrySectionTitlePane {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),

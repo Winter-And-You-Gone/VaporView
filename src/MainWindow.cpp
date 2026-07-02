@@ -2488,7 +2488,7 @@ QLabel#deviceTelemetrySectionTitleLabel {
     margin: 0px;
 }
 QFrame#homeTelemetrySummaryPill {
-    background-color: @vv-surface;
+    background-color: @vv-field-bg;
     border: 1px solid @vv-border;
     border-radius: 8px;
     padding: 0px;
@@ -2506,15 +2506,7 @@ QFrame#homeTelemetrySummaryPill QLabel {
 QFrame#homeTelemetrySummaryPill QLabel#homeTelemetrySummaryValueLabel {
     font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
 }
-QFrame#homeTelemetrySummaryPill[hasData="true"] {
-    background-color: @vv-surface;
-    border: 1px solid @vv-border;
-}
-QFrame#homeTelemetrySummaryPill[hasData="false"] {
-    background-color: @vv-surface;
-    border: 1px solid @vv-border;
-}
-QFrame#homeTelemetrySummaryPill[hasData="false"] QLabel {
+QFrame#homeTelemetrySummaryPill QLabel[telemetryAvailable="false"] {
     color: @vv-text-muted;
 }
 QLabel#homeTelemetrySummaryNameLabel[deviceConfigLink="true"] {
@@ -6891,12 +6883,10 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#deviceTelemetrySectionTitleLabel { background-color: transparent; border: none; color: @vv-text-strong; font-size: 13px; font-weight: 700; padding: 0px; margin: 0px; }"
             "QLabel#homeOverviewSectionTitle { color: @vv-primary; font-size: 14px; font-weight: 700; padding: 0px; margin: 0px; }"
             "QLabel#homeTelemetrySummaryTitleLabel { color: @vv-primary; font-size: 13px; font-weight: 700; padding: 0px; margin: 0px; }"
-            "QFrame#homeTelemetrySummaryPill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; padding: 0px; margin: 0px; }"
+            "QFrame#homeTelemetrySummaryPill { background-color: @vv-field-bg; border: 1px solid @vv-border; border-radius: 8px; padding: 0px; margin: 0px; }"
             "QFrame#homeTelemetrySummaryPill QLabel { background-color: transparent; border: none; color: @vv-text; font-size: 13px; font-weight: 600; padding: 0px; margin: 0px; }"
             "QFrame#homeTelemetrySummaryPill QLabel#homeTelemetrySummaryValueLabel { font-family: \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace; }"
-            "QFrame#homeTelemetrySummaryPill[hasData=\"true\"] { background-color: @vv-surface; border: 1px solid @vv-border; }"
-            "QFrame#homeTelemetrySummaryPill[hasData=\"false\"] { background-color: @vv-surface; border: 1px solid @vv-border; }"
-            "QFrame#homeTelemetrySummaryPill[hasData=\"false\"] QLabel { color: @vv-text-muted; }"
+            "QFrame#homeTelemetrySummaryPill QLabel[telemetryAvailable=\"false\"] { color: @vv-text-muted; }"
             "QLabel#homeTelemetrySummaryNameLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 14px; font-weight: 700; }"
             "QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 14px; font-weight: 600; }"
             "QLabel#temperatureOverviewValuePill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 12px; font-weight: 700; padding: 1px 4px; margin: 0px; }"
@@ -8910,8 +8900,6 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             pill->setProperty("deviceConfigLink", useSideTitle);
             pill->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
             pill->setMinimumHeight(scalePixels(useSideTitle ? 26 : 28));
-            pill->setProperty("hasData", item.hasData);
-            pill->setProperty("data-valid", QVariant());
             auto *pillLayout = new QHBoxLayout(pill);
             const int horizontalPadding = scalePixels(useSideTitle ? 4 : 8);
             pillLayout->setContentsMargins(horizontalPadding, scalePixels(1), horizontalPadding, scalePixels(1));
@@ -8920,6 +8908,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             auto *nameLabel = new QLabel(item.label, pill);
             nameLabel->setObjectName(QStringLiteral("homeTelemetrySummaryNameLabel"));
             nameLabel->setProperty("deviceConfigLink", useSideTitle);
+            nameLabel->setProperty("telemetryAvailable", item.hasData);
             nameLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
             nameLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
             nameLabel->setTextFormat(Qt::PlainText);
@@ -8934,6 +8923,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             auto *valueLabel = new QLabel(valueText, pill);
             valueLabel->setObjectName(QStringLiteral("homeTelemetrySummaryValueLabel"));
             valueLabel->setProperty("deviceConfigLink", useSideTitle);
+            valueLabel->setProperty("telemetryAvailable", item.hasData);
             valueLabel->setFont(numericFontFrom(valueLabel->font()));
             valueLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
             valueLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);

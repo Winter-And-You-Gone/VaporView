@@ -422,7 +422,7 @@ QLabel#homeTelemetrySummaryTitleLabel {
 }
 
 QFrame#homeTelemetrySummaryPill {
-    background-color: @vv-surface-alt;
+    background-color: @vv-field-bg;
     border: 1px solid @vv-border;
     border-radius: 8px;
     padding: 0px;
@@ -443,17 +443,7 @@ QFrame#homeTelemetrySummaryPill QLabel#homeTelemetrySummaryValueLabel {
     font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
 }
 
-QFrame#homeTelemetrySummaryPill[hasData="true"] {
-    background-color: @vv-primary-subtle;
-    border: 1px solid @vv-primary-subtle-pressed;
-}
-
-QFrame#homeTelemetrySummaryPill[hasData="false"] {
-    background-color: @vv-surface-alt;
-    border: 1px solid @vv-border;
-}
-
-QFrame#homeTelemetrySummaryPill[hasData="false"] QLabel {
+QFrame#homeTelemetrySummaryPill QLabel[telemetryAvailable="false"] {
     color: @vv-text-muted;
 }
 
