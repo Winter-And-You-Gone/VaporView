@@ -27,7 +27,6 @@
 #include <QPixmap>
 #include <QProgressBar>
 #include <QPushButton>
-#include <QQueue>
 #include <QScrollArea>
 #include <QSet>
 #include <QSettings>
@@ -44,6 +43,7 @@
 #include <QUrl>
 #include <QUrlQuery>
 #include <QVBoxLayout>
+#include <QVector>
 #include <QWidgetAction>
 #include <QMouseEvent>
 #include <QWheelEvent>
@@ -56,6 +56,7 @@
 #include <cmath>
 #include <functional>
 #include <limits>
+#include <utility>
 
 using VaporView::AppThemeColor;
 using VaporView::appThemeColor;
@@ -75,6 +76,11 @@ constexpr int kTitleBarIconSize = 24;
 constexpr int kMaxConcurrentTileRequests = 8;
 constexpr int kTrajectorySidebarWidth = 340;
 constexpr int kTrajectoryMapMinimumHeight = 360;
+constexpr int kTileCurrentPriority = 0;
+constexpr int kTilePrefetchPriority = 10;
+constexpr int kTileAdjacentZoomPriority = 20;
+constexpr int kTileZoomRequestDebounceMs = 90;
+constexpr int kTilePanRequestDebounceMs = 50;
 constexpr auto kTileRequestTimeout = std::chrono::seconds(15);
 
 enum class TileProvider
@@ -178,6 +184,16 @@ struct TileFetchRequest
     QString key;
     QNetworkRequest request;
     int generation;
+    int priority;
+};
+
+struct TileRange
+{
+    int zoom;
+    int min_x;
+    int max_x;
+    int min_y;
+    int max_y;
 };
 
 QVector<TileLayerSpec> tileLayerSpecs(TileProvider provider)
@@ -443,6 +459,7 @@ public:
         , selected_track_index_(-1)
         , active_tile_request_count_(0)
         , tile_request_generation_(0)
+        , visible_tile_request_scheduled_(false)
         , feedback_update_scheduled_(false)
         , repaint_update_requested_(false)
         , english_track_label_(QStringLiteral("RTK trajectory"))
@@ -641,7 +658,7 @@ protected:
             }
             center_world_pixel_ = drag_start_center_world_pixel_ - delta;
             manual_view_active_ = true;
-            requestVisibleTiles();
+            scheduleVisibleTileRequest(kTilePanRequestDebounceMs);
             update();
             event->accept();
             return;
@@ -681,6 +698,7 @@ protected:
 
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, true);
+        painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
         painter.fillRect(rect(), appThemeColor(AppThemeColor::MapCanvas, false));
 
         const QRectF mapRect = rect().adjusted(kMapMargin, kMapMargin, -kMapMargin, -kMapMargin - 18);
@@ -731,6 +749,7 @@ private:
         }
         pending_tiles_.clear();
         queued_tile_requests_.clear();
+        current_requested_tile_keys_.clear();
         failed_tiles_.clear();
         last_tile_error_.clear();
         active_tile_request_count_ = 0;
@@ -749,42 +768,77 @@ private:
         }
     }
 
-    void enqueueTileRequest(const QString& key, const QNetworkRequest& request)
+    void abortStaleActiveTileReplies()
+    {
+        const QSet<QNetworkReply*> replies = active_tile_replies_;
+        for (QNetworkReply *reply : replies)
+        {
+            if (!reply)
+            {
+                continue;
+            }
+
+            const QString key = active_tile_reply_keys_.value(reply);
+            if (!current_requested_tile_keys_.contains(key))
+            {
+                reply->abort();
+            }
+        }
+    }
+
+    void enqueueTileRequest(const QString& key, const QNetworkRequest& request, int priority)
     {
         if (tile_cache_.contains(key) || pending_tiles_.contains(key))
         {
+            for (TileFetchRequest& queuedRequest : queued_tile_requests_)
+            {
+                if (queuedRequest.key == key && queuedRequest.generation == tile_request_generation_)
+                {
+                    queuedRequest.priority = std::min(queuedRequest.priority, priority);
+                    return;
+                }
+            }
             return;
         }
 
         pending_tiles_.insert(key);
-        queued_tile_requests_.enqueue({key, request, tile_request_generation_});
+        queued_tile_requests_.append({key, request, tile_request_generation_, priority});
     }
 
     void pruneQueuedTileRequests()
     {
-        QQueue<TileFetchRequest> retainedRequests;
-        while (!queued_tile_requests_.isEmpty())
+        QVector<TileFetchRequest> retainedRequests;
+        retainedRequests.reserve(queued_tile_requests_.size());
+        for (const TileFetchRequest& request : std::as_const(queued_tile_requests_))
         {
-            const TileFetchRequest request = queued_tile_requests_.dequeue();
             if (request.generation == tile_request_generation_ &&
-                current_visible_tile_keys_.contains(request.key) &&
+                current_requested_tile_keys_.contains(request.key) &&
                 pending_tiles_.contains(request.key))
             {
-                retainedRequests.enqueue(request);
+                retainedRequests.append(request);
                 continue;
             }
             pending_tiles_.remove(request.key);
         }
-        queued_tile_requests_ = retainedRequests;
+        queued_tile_requests_ = std::move(retainedRequests);
     }
 
     void processTileRequestQueue()
     {
         while (active_tile_request_count_ < kMaxConcurrentTileRequests && !queued_tile_requests_.isEmpty())
         {
-            const TileFetchRequest tileRequest = queued_tile_requests_.dequeue();
+            int bestIndex = 0;
+            for (int index = 1; index < queued_tile_requests_.size(); ++index)
+            {
+                if (queued_tile_requests_.at(index).priority < queued_tile_requests_.at(bestIndex).priority)
+                {
+                    bestIndex = index;
+                }
+            }
+
+            const TileFetchRequest tileRequest = queued_tile_requests_.takeAt(bestIndex);
             if (tileRequest.generation != tile_request_generation_ ||
-                !current_visible_tile_keys_.contains(tileRequest.key) ||
+                !current_requested_tile_keys_.contains(tileRequest.key) ||
                 !pending_tiles_.contains(tileRequest.key))
             {
                 pending_tiles_.remove(tileRequest.key);
@@ -794,8 +848,10 @@ private:
             ++active_tile_request_count_;
             QNetworkReply *reply = manager_->get(tileRequest.request);
             active_tile_replies_.insert(reply);
+            active_tile_reply_keys_.insert(reply, tileRequest.key);
             QObject::connect(reply, &QNetworkReply::finished, this, [this, reply, key = tileRequest.key, generation = tileRequest.generation]() {
                 active_tile_replies_.remove(reply);
+                active_tile_reply_keys_.remove(reply);
                 reply->deleteLater();
                 if (generation != tile_request_generation_)
                 {
@@ -804,6 +860,7 @@ private:
 
                 active_tile_request_count_ = std::max(0, active_tile_request_count_ - 1);
                 pending_tiles_.remove(key);
+                const bool stillRequested = current_requested_tile_keys_.contains(key);
                 if (!reply->error())
                 {
                     QPixmap tile;
@@ -815,22 +872,48 @@ private:
                     }
                     else
                     {
-                        failed_tiles_.insert(key);
-                        last_tile_error_ = is_english_
-                            ? QStringLiteral("The tile response could not be decoded as an image.")
-                            : QStringLiteral("收到的瓦片响应无法解码为图像。");
+                        if (stillRequested)
+                        {
+                            failed_tiles_.insert(key);
+                            last_tile_error_ = is_english_
+                                ? QStringLiteral("The tile response could not be decoded as an image.")
+                                : QStringLiteral("收到的瓦片响应无法解码为图像。");
+                        }
                     }
                 }
                 else
                 {
-                    failed_tiles_.insert(key);
-                    last_tile_error_ = reply->errorString();
+                    if (stillRequested)
+                    {
+                        failed_tiles_.insert(key);
+                        last_tile_error_ = reply->errorString();
+                    }
                 }
 
-                scheduleLoadFeedbackUpdate(true);
+                scheduleLoadFeedbackUpdate(stillRequested);
                 processTileRequestQueue();
             });
         }
+    }
+
+    void scheduleVisibleTileRequest(int delayMs)
+    {
+        if (delayMs <= 0)
+        {
+            visible_tile_request_scheduled_ = false;
+            requestVisibleTiles();
+            return;
+        }
+        if (visible_tile_request_scheduled_)
+        {
+            return;
+        }
+
+        visible_tile_request_scheduled_ = true;
+        QTimer::singleShot(delayMs, this, [this]() {
+            visible_tile_request_scheduled_ = false;
+            requestVisibleTiles();
+        });
     }
 
     void scheduleLoadFeedbackUpdate(bool repaint)
@@ -934,90 +1017,155 @@ private:
         requestVisibleTiles();
     }
 
+    QRectF mapViewportRect() const
+    {
+        return rect().adjusted(kMapMargin, kMapMargin, -kMapMargin, -kMapMargin - 18);
+    }
+
+    QPointF centerWorldPixelForZoom(int targetZoom) const
+    {
+        if (targetZoom == zoom_)
+        {
+            return center_world_pixel_;
+        }
+
+        return latLonToPixel(
+            pixelToLatitude(center_world_pixel_, zoom_),
+            pixelToLongitude(center_world_pixel_, zoom_),
+            targetZoom);
+    }
+
+    TileRange tileRangeForZoom(int targetZoom, int expansionTiles) const
+    {
+        const QRectF mapRect = mapViewportRect();
+        const double targetScale = std::pow(2.0, targetZoom - zoom_);
+        const double width = std::max(1.0, mapRect.width() * targetScale);
+        const double height = std::max(1.0, mapRect.height() * targetScale);
+        const QPointF center = centerWorldPixelForZoom(targetZoom);
+        const QPointF topLeft = center - QPointF(width * 0.5, height * 0.5);
+        const QPointF bottomRight = center + QPointF(width * 0.5, height * 0.5);
+        const int tileCount = 1 << targetZoom;
+
+        return {
+            targetZoom,
+            std::max(0, static_cast<int>(std::floor(topLeft.x() / kTileSize)) - expansionTiles),
+            std::min(tileCount - 1, static_cast<int>(std::floor(bottomRight.x() / kTileSize)) + expansionTiles),
+            std::max(0, static_cast<int>(std::floor(topLeft.y() / kTileSize)) - expansionTiles),
+            std::min(tileCount - 1, static_cast<int>(std::floor(bottomRight.y() / kTileSize)) + expansionTiles)
+        };
+    }
+
+    QString tileCacheKey(const TileLayerSpec& layer, int zoom, int tileX, int tileY) const
+    {
+        return QStringLiteral("%1:%2:%3")
+            .arg(tileProviderKey(tile_provider_), layer.cache_suffix, tileKey(zoom, tileX, tileY));
+    }
+
+    QNetworkRequest createTileRequest(const TileLayerSpec& layer, int zoom, int tileX, int tileY) const
+    {
+        QUrl tileUrl;
+        if (tile_provider_ == TileProvider::OpenStreetMap)
+        {
+            tileUrl = QUrl(QStringLiteral("https://tile.openstreetmap.org/%1/%2/%3.png").arg(zoom).arg(tileX).arg(tileY));
+        }
+        else
+        {
+            tileUrl = QUrl(QStringLiteral("https://%1/%2/wmts")
+                .arg(tiandituHostForTile(tileX, tileY, layer.cache_suffix), layer.endpoint_path));
+            QUrlQuery query;
+            query.addQueryItem(QStringLiteral("SERVICE"), QStringLiteral("WMTS"));
+            query.addQueryItem(QStringLiteral("REQUEST"), QStringLiteral("GetTile"));
+            query.addQueryItem(QStringLiteral("VERSION"), QStringLiteral("1.0.0"));
+            query.addQueryItem(QStringLiteral("LAYER"), layer.layer);
+            query.addQueryItem(QStringLiteral("STYLE"), QStringLiteral("default"));
+            query.addQueryItem(QStringLiteral("TILEMATRIXSET"), QStringLiteral("w"));
+            query.addQueryItem(QStringLiteral("FORMAT"), layer.format);
+            query.addQueryItem(QStringLiteral("TILEMATRIX"), QString::number(zoom));
+            query.addQueryItem(QStringLiteral("TILEROW"), QString::number(tileY));
+            query.addQueryItem(QStringLiteral("TILECOL"), QString::number(tileX));
+            query.addQueryItem(QStringLiteral("tk"), tianditu_key_.trimmed());
+            tileUrl.setQuery(query);
+        }
+
+        QNetworkRequest request(tileUrl);
+        request.setTransferTimeout(kTileRequestTimeout);
+        if (isTianDiTuProvider(tile_provider_))
+        {
+            request.setRawHeader(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36");
+        }
+        else
+        {
+            request.setRawHeader("User-Agent", "VaporView/1.0");
+        }
+        return request;
+    }
+
+    void enqueueTileRange(const TileRange& range,
+                          int priority,
+                          QSet<QString>& requestedKeys,
+                          QSet<QString> *visibleKeys = nullptr)
+    {
+        const QVector<TileLayerSpec> layers = tileLayerSpecs(tile_provider_);
+        for (int tileX = range.min_x; tileX <= range.max_x; ++tileX)
+        {
+            for (int tileY = range.min_y; tileY <= range.max_y; ++tileY)
+            {
+                for (const TileLayerSpec& layer : layers)
+                {
+                    const QString key = tileCacheKey(layer, range.zoom, tileX, tileY);
+                    requestedKeys.insert(key);
+                    if (visibleKeys)
+                    {
+                        visibleKeys->insert(key);
+                    }
+                    if (tile_cache_.contains(key))
+                    {
+                        continue;
+                    }
+
+                    enqueueTileRequest(key, createTileRequest(layer, range.zoom, tileX, tileY), priority);
+                }
+            }
+        }
+    }
+
     void requestVisibleTiles()
     {
         if (track_points_.isEmpty())
         {
             current_visible_tile_keys_.clear();
+            current_requested_tile_keys_.clear();
             updateLoadFeedback();
             return;
         }
         if (isTianDiTuProvider(tile_provider_) && tianditu_key_.trimmed().isEmpty())
         {
             current_visible_tile_keys_.clear();
+            current_requested_tile_keys_.clear();
             updateLoadFeedback();
             return;
         }
 
-        const QRectF mapRect = rect().adjusted(kMapMargin, kMapMargin, -kMapMargin, -kMapMargin - 18);
-        const QPointF topLeft = center_world_pixel_ - QPointF(mapRect.width() * 0.5, mapRect.height() * 0.5);
-        const QPointF bottomRight = center_world_pixel_ + QPointF(mapRect.width() * 0.5, mapRect.height() * 0.5);
-        const int tileCount = 1 << zoom_;
-
-        const int minTileX = std::max(0, static_cast<int>(std::floor(topLeft.x() / kTileSize)));
-        const int maxTileX = std::min(tileCount - 1, static_cast<int>(std::floor(bottomRight.x() / kTileSize)));
-        const int minTileY = std::max(0, static_cast<int>(std::floor(topLeft.y() / kTileSize)));
-        const int maxTileY = std::min(tileCount - 1, static_cast<int>(std::floor(bottomRight.y() / kTileSize)));
-
         QSet<QString> visibleKeys;
-        for (int tileX = minTileX; tileX <= maxTileX; ++tileX)
+        QSet<QString> requestedKeys;
+        enqueueTileRange(tileRangeForZoom(zoom_, 0), kTileCurrentPriority, requestedKeys, &visibleKeys);
+        enqueueTileRange(tileRangeForZoom(zoom_, 1), kTilePrefetchPriority, requestedKeys);
+        if (zoom_ > kMinZoom)
         {
-            for (int tileY = minTileY; tileY <= maxTileY; ++tileY)
-            {
-                const QVector<TileLayerSpec> layers = tileLayerSpecs(tile_provider_);
-                for (const TileLayerSpec& layer : layers)
-                {
-                    const QString key = QStringLiteral("%1:%2:%3")
-                        .arg(tileProviderKey(tile_provider_), layer.cache_suffix, tileKey(zoom_, tileX, tileY));
-                    visibleKeys.insert(key);
-                    if (tile_cache_.contains(key) || pending_tiles_.contains(key))
-                    {
-                        continue;
-                    }
-
-                    QUrl tileUrl;
-                    if (tile_provider_ == TileProvider::OpenStreetMap)
-                    {
-                        tileUrl = QUrl(QStringLiteral("https://tile.openstreetmap.org/%1/%2/%3.png").arg(zoom_).arg(tileX).arg(tileY));
-                    }
-                    else
-                    {
-                        tileUrl = QUrl(QStringLiteral("https://%1/%2/wmts")
-                            .arg(tiandituHostForTile(tileX, tileY, layer.cache_suffix), layer.endpoint_path));
-                        QUrlQuery query;
-                        query.addQueryItem(QStringLiteral("SERVICE"), QStringLiteral("WMTS"));
-                        query.addQueryItem(QStringLiteral("REQUEST"), QStringLiteral("GetTile"));
-                        query.addQueryItem(QStringLiteral("VERSION"), QStringLiteral("1.0.0"));
-                        query.addQueryItem(QStringLiteral("LAYER"), layer.layer);
-                        query.addQueryItem(QStringLiteral("STYLE"), QStringLiteral("default"));
-                        query.addQueryItem(QStringLiteral("TILEMATRIXSET"), QStringLiteral("w"));
-                        query.addQueryItem(QStringLiteral("FORMAT"), layer.format);
-                        query.addQueryItem(QStringLiteral("TILEMATRIX"), QString::number(zoom_));
-                        query.addQueryItem(QStringLiteral("TILEROW"), QString::number(tileY));
-                        query.addQueryItem(QStringLiteral("TILECOL"), QString::number(tileX));
-                        query.addQueryItem(QStringLiteral("tk"), tianditu_key_.trimmed());
-                        tileUrl.setQuery(query);
-                    }
-
-                    QNetworkRequest request(tileUrl);
-                    request.setTransferTimeout(kTileRequestTimeout);
-                    if (isTianDiTuProvider(tile_provider_))
-                    {
-                        request.setRawHeader(
-                            "User-Agent",
-                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                            "(KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36");
-                    }
-                    else
-                    {
-                        request.setRawHeader("User-Agent", "VaporView/1.0");
-                    }
-                    enqueueTileRequest(key, request);
-                }
-            }
+            enqueueTileRange(tileRangeForZoom(zoom_ - 1, 1), kTileAdjacentZoomPriority, requestedKeys);
         }
-        current_visible_tile_keys_ = visibleKeys;
+        if (zoom_ < providerMaxZoom(tile_provider_))
+        {
+            enqueueTileRange(tileRangeForZoom(zoom_ + 1, 0), kTileAdjacentZoomPriority, requestedKeys);
+        }
+
+        current_visible_tile_keys_ = std::move(visibleKeys);
+        current_requested_tile_keys_ = std::move(requestedKeys);
         pruneQueuedTileRequests();
+        abortStaleActiveTileReplies();
         processTileRequestQueue();
         failed_tiles_ = failed_tiles_.intersect(current_visible_tile_keys_);
         updateLoadFeedback();
@@ -1033,6 +1181,7 @@ private:
         const int maxTileX = std::min(tileCount - 1, static_cast<int>(std::floor(bottomRight.x() / kTileSize)));
         const int minTileY = std::max(0, static_cast<int>(std::floor(topLeft.y() / kTileSize)));
         const int maxTileY = std::min(tileCount - 1, static_cast<int>(std::floor(bottomRight.y() / kTileSize)));
+        const QVector<TileLayerSpec> layers = tileLayerSpecs(tile_provider_);
 
         for (int tileX = minTileX; tileX <= maxTileX; ++tileX)
         {
@@ -1043,25 +1192,115 @@ private:
                     mapRect.top() + tileY * kTileSize - topLeft.y(),
                     kTileSize,
                     kTileSize);
-                bool drewTile = false;
-                const QVector<TileLayerSpec> layers = tileLayerSpecs(tile_provider_);
+                painter.fillRect(tileRect, appThemeColor(AppThemeColor::MapTileBackground, false));
                 for (const TileLayerSpec& layer : layers)
                 {
-                    const QString key = QStringLiteral("%1:%2:%3")
-                        .arg(tileProviderKey(tile_provider_), layer.cache_suffix, tileKey(zoom_, tileX, tileY));
-                    if (!tile_cache_.contains(key))
-                    {
-                        continue;
-                    }
-                    painter.drawPixmap(tileRect.toRect(), tile_cache_.value(key));
-                    drewTile = true;
-                }
-                if (!drewTile)
-                {
-                    painter.fillRect(tileRect, appThemeColor(AppThemeColor::MapTileBackground, false));
+                    drawTileLayer(painter, layer, zoom_, tileX, tileY, tileRect);
                 }
             }
         }
+    }
+
+    bool drawTileLayer(QPainter& painter,
+                       const TileLayerSpec& layer,
+                       int zoom,
+                       int tileX,
+                       int tileY,
+                       const QRectF& tileRect)
+    {
+        const QString key = tileCacheKey(layer, zoom, tileX, tileY);
+        const auto tile = tile_cache_.constFind(key);
+        if (tile != tile_cache_.constEnd())
+        {
+            painter.drawPixmap(tileRect, *tile, QRectF(0, 0, tile->width(), tile->height()));
+            return true;
+        }
+
+        if (drawParentTileFallback(painter, layer, zoom, tileX, tileY, tileRect))
+        {
+            return true;
+        }
+        return drawChildTileFallback(painter, layer, zoom, tileX, tileY, tileRect);
+    }
+
+    bool drawParentTileFallback(QPainter& painter,
+                                const TileLayerSpec& layer,
+                                int zoom,
+                                int tileX,
+                                int tileY,
+                                const QRectF& tileRect)
+    {
+        if (zoom <= kMinZoom)
+        {
+            return false;
+        }
+
+        const int parentZoom = zoom - 1;
+        const int parentTileX = tileX / 2;
+        const int parentTileY = tileY / 2;
+        const QString key = tileCacheKey(layer, parentZoom, parentTileX, parentTileY);
+        const auto parentTile = tile_cache_.constFind(key);
+        if (parentTile == tile_cache_.constEnd())
+        {
+            return false;
+        }
+
+        const double sourceWidth = parentTile->width() * 0.5;
+        const double sourceHeight = parentTile->height() * 0.5;
+        const QRectF sourceRect(
+            (tileX % 2) * sourceWidth,
+            (tileY % 2) * sourceHeight,
+            sourceWidth,
+            sourceHeight);
+        painter.drawPixmap(tileRect, *parentTile, sourceRect);
+        return true;
+    }
+
+    bool drawChildTileFallback(QPainter& painter,
+                               const TileLayerSpec& layer,
+                               int zoom,
+                               int tileX,
+                               int tileY,
+                               const QRectF& tileRect)
+    {
+        const int childZoom = zoom + 1;
+        if (childZoom > providerMaxZoom(tile_provider_))
+        {
+            return false;
+        }
+
+        bool drewChildTile = false;
+        const int childTileCount = 1 << childZoom;
+        const double destWidth = tileRect.width() * 0.5;
+        const double destHeight = tileRect.height() * 0.5;
+        for (int dx = 0; dx < 2; ++dx)
+        {
+            for (int dy = 0; dy < 2; ++dy)
+            {
+                const int childTileX = tileX * 2 + dx;
+                const int childTileY = tileY * 2 + dy;
+                if (childTileX >= childTileCount || childTileY >= childTileCount)
+                {
+                    continue;
+                }
+
+                const QString key = tileCacheKey(layer, childZoom, childTileX, childTileY);
+                const auto childTile = tile_cache_.constFind(key);
+                if (childTile == tile_cache_.constEnd())
+                {
+                    continue;
+                }
+
+                const QRectF destRect(
+                    tileRect.left() + dx * destWidth,
+                    tileRect.top() + dy * destHeight,
+                    destWidth,
+                    destHeight);
+                painter.drawPixmap(destRect, *childTile, QRectF(0, 0, childTile->width(), childTile->height()));
+                drewChildTile = true;
+            }
+        }
+        return drewChildTile;
     }
 
     QPointF worldToScreen(const QPointF& worldPixel, const QRectF& mapRect) const
@@ -1195,7 +1434,7 @@ private:
         zoom_ = newZoom;
         center_world_pixel_ = centerLatLonPixelAtNewZoom;
         manual_view_active_ = true;
-        requestVisibleTiles();
+        scheduleVisibleTileRequest(kTileZoomRequestDebounceMs);
         update();
     }
 
@@ -1306,9 +1545,11 @@ private:
     QVector<RtkTrackPoint> track_points_;
     QHash<QString, QPixmap> tile_cache_;
     QSet<QString> pending_tiles_;
-    QQueue<TileFetchRequest> queued_tile_requests_;
+    QVector<TileFetchRequest> queued_tile_requests_;
     QSet<QNetworkReply*> active_tile_replies_;
+    QHash<QNetworkReply*, QString> active_tile_reply_keys_;
     QSet<QString> current_visible_tile_keys_;
+    QSet<QString> current_requested_tile_keys_;
     QSet<QString> failed_tiles_;
     bool is_english_;
     TileProvider tile_provider_;
@@ -1326,6 +1567,7 @@ private:
     int selected_track_index_;
     int active_tile_request_count_;
     int tile_request_generation_;
+    bool visible_tile_request_scheduled_;
     bool feedback_update_scheduled_;
     bool repaint_update_requested_;
     QString english_track_label_;
