@@ -66,6 +66,8 @@ private:
     QSlider *track_width_slider_;
     QLabel *point_size_label_;
     QSlider *point_size_slider_;
+    QPushButton *show_route_button_;
+    QPushButton *show_points_button_;
     QPushButton *play_button_;
     QPushButton *export_button_;
     QPushButton *copy_point_button_;

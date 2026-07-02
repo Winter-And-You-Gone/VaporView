@@ -437,6 +437,20 @@ void testTrajectoryViewerUsesSidebarLayout()
     auto *heatPaletteCombo = dialog.findChild<QComboBox *>(QStringLiteral("trajectoryHeatPaletteCombo"));
     auto *trackWidthSlider = dialog.findChild<QSlider *>(QStringLiteral("trajectoryTrackWidthSlider"));
     auto *pointSizeSlider = dialog.findChild<QSlider *>(QStringLiteral("trajectoryPointSizeSlider"));
+    const auto visibilityToggles = dialog.findChildren<QPushButton *>(QStringLiteral("trajectoryVisibilityToggle"));
+    QPushButton *showRouteButton = nullptr;
+    QPushButton *showPointsButton = nullptr;
+    for (QPushButton *toggle : visibilityToggles)
+    {
+        if (toggle->property("visibilityRole").toString() == QStringLiteral("route"))
+        {
+            showRouteButton = toggle;
+        }
+        else if (toggle->property("visibilityRole").toString() == QStringLiteral("points"))
+        {
+            showPointsButton = toggle;
+        }
+    }
     auto *summaryLabel = dialog.findChild<QLabel *>(QStringLiteral("trajectorySidebarSummaryLabel"));
     auto *detailLabel = dialog.findChild<QLabel *>(QStringLiteral("trajectorySidebarDetailLabel"));
 
@@ -452,6 +466,8 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(heatPaletteCombo != nullptr, "trajectory viewer heat palette control exists");
     require(trackWidthSlider != nullptr, "trajectory viewer track width control exists");
     require(pointSizeSlider != nullptr, "trajectory viewer point size control exists");
+    require(showRouteButton != nullptr, "trajectory viewer route visibility toggle exists");
+    require(showPointsButton != nullptr, "trajectory viewer point visibility toggle exists");
     require(summaryLabel != nullptr, "trajectory viewer summary label exists");
     require(detailLabel != nullptr, "trajectory viewer detail label exists");
     const auto sidebarToolButtons = sidebar->findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
@@ -486,6 +502,12 @@ void testTrajectoryViewerUsesSidebarLayout()
             "point size slider exposes a bounded visual range");
     require(sidebar->isAncestorOf(trackWidthSlider), "track width control is in sidebar");
     require(sidebar->isAncestorOf(pointSizeSlider), "point size control is in sidebar");
+    require(sidebar->isAncestorOf(showRouteButton), "route visibility toggle is in sidebar");
+    require(sidebar->isAncestorOf(showPointsButton), "point visibility toggle is in sidebar");
+    require(showRouteButton->isCheckable() && showRouteButton->isChecked(),
+            "route visibility is enabled by default");
+    require(showPointsButton->isCheckable() && showPointsButton->isChecked(),
+            "point visibility is enabled by default");
     require(mapPanel->isAncestorOf(map), "map remains in the map panel");
     require(!sidebar->isAncestorOf(map), "map is not in sidebar");
     require(mapPanel->layout() != nullptr, "map panel layout exists");
@@ -518,6 +540,8 @@ void testTrajectoryViewerUsesSidebarLayout()
             "trajectory viewer stylesheet includes sidebar title icon styling");
     require(styleSheet.contains(QStringLiteral("QLabel#trajectoryControlLabel")),
             "trajectory viewer stylesheet includes route control label styling");
+    require(styleSheet.contains(QStringLiteral("QPushButton#trajectoryVisibilityToggle")),
+            "trajectory viewer stylesheet includes visibility toggle styling");
     require(styleSheet.contains(QStringLiteral("QFrame#trajectoryViewerMapPanel")),
             "trajectory viewer stylesheet includes rounded map panel styling");
 
