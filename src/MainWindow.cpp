@@ -13510,8 +13510,33 @@ void MainWindow::onOpenSessionViewerClicked()
     session_viewer_window_->setDefaultDataDirectory(
         recording_directory_.isEmpty() ? defaultRecordingDirectory() : recording_directory_);
 
-    VaporView::centerWindowOnScreen(session_viewer_window_, this);
-    session_viewer_window_->show();
+    const bool wasMinimized =
+        session_viewer_window_->isMinimized() ||
+        session_viewer_window_->windowState().testFlag(Qt::WindowMinimized);
+    const bool restoreMaximized =
+        session_viewer_window_->isMaximized() ||
+        session_viewer_window_->windowState().testFlag(Qt::WindowMaximized);
+    if (!wasMinimized)
+    {
+        VaporView::centerWindowOnScreen(session_viewer_window_, this);
+    }
+    if (wasMinimized)
+    {
+        session_viewer_window_->setWindowState(
+            session_viewer_window_->windowState() & ~Qt::WindowMinimized);
+        if (restoreMaximized)
+        {
+            session_viewer_window_->showMaximized();
+        }
+        else
+        {
+            session_viewer_window_->showNormal();
+        }
+    }
+    else
+    {
+        session_viewer_window_->show();
+    }
     session_viewer_window_->raise();
     session_viewer_window_->activateWindow();
     hideStatusTaskProgress();

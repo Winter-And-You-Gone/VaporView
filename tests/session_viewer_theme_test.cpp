@@ -18,6 +18,7 @@
 #include <QMainWindow>
 #include <QMargins>
 #include <QMetaObject>
+#include <QMouseEvent>
 #include <QPalette>
 #include <QProgressBar>
 #include <QPushButton>
@@ -70,6 +71,33 @@ void processEventsFor(int timeoutMs)
     while (timer.elapsed() < timeoutMs)
     {
         QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    }
+}
+
+void clickWidgetCenterThroughWindow(QWidget *widget, int waitMs = 250)
+{
+    require(widget != nullptr, "click target exists");
+    const QPoint globalCenter = widget->mapToGlobal(widget->rect().center());
+    QWidget *target = QApplication::widgetAt(globalCenter);
+    require(target != nullptr, "top widget under click exists");
+    const QPoint localPos = target->mapFromGlobal(globalCenter);
+    QMouseEvent press(QEvent::MouseButtonPress,
+                      localPos,
+                      globalCenter,
+                      Qt::LeftButton,
+                      Qt::LeftButton,
+                      Qt::NoModifier);
+    QCoreApplication::sendEvent(target, &press);
+    QMouseEvent release(QEvent::MouseButtonRelease,
+                        localPos,
+                        globalCenter,
+                        Qt::LeftButton,
+                        Qt::NoButton,
+                        Qt::NoModifier);
+    QCoreApplication::sendEvent(target, &release);
+    if (waitMs > 0)
+    {
+        processEventsFor(waitMs);
     }
 }
 
@@ -203,6 +231,40 @@ void testWaveformEmptyPlotIsNotRed(SessionViewerWindow& viewer)
     require(redDominantPixels < totalPixels / 100, "session viewer waveform grid is not red-dominant");
 }
 
+void requireSessionViewerTitleBarWindowButtonsWork(SessionViewerWindow& viewer)
+{
+    auto *minimizeButton = viewer.findChild<QToolButton *>(QStringLiteral("windowMinimizeButton"));
+    auto *maximizeButton = viewer.findChild<QToolButton *>(QStringLiteral("windowMaximizeButton"));
+    require(minimizeButton != nullptr, "data viewer minimize button exists");
+    require(maximizeButton != nullptr, "data viewer maximize button exists");
+    require(minimizeButton->isEnabled(), "data viewer minimize button is enabled");
+    require(maximizeButton->isEnabled(), "data viewer maximize button is enabled");
+
+    clickWidgetCenterThroughWindow(maximizeButton);
+    require(processEventsUntil(1000, [&viewer]() {
+                return viewer.isMaximized() ||
+                       viewer.windowState().testFlag(Qt::WindowMaximized);
+            }),
+            "data viewer maximize button maximizes window");
+
+    clickWidgetCenterThroughWindow(maximizeButton);
+    require(processEventsUntil(1000, [&viewer]() {
+                return !viewer.isMaximized() &&
+                       !viewer.windowState().testFlag(Qt::WindowMaximized);
+            }),
+            "data viewer maximize button restores window");
+
+    clickWidgetCenterThroughWindow(minimizeButton);
+    require(processEventsUntil(1000, [&viewer]() {
+                return viewer.isMinimized() ||
+                       viewer.windowState().testFlag(Qt::WindowMinimized);
+            }),
+            "data viewer minimize button minimizes window");
+
+    viewer.showNormal();
+    processEventsFor(200);
+}
+
 void testMainWindowDataViewerOpenCanReopen()
 {
     QTemporaryDir sessionDir;
@@ -228,6 +290,23 @@ void testMainWindowDataViewerOpenCanReopen()
 
     auto *viewer = qobject_cast<SessionViewerWindow *>(QApplication::activeWindow());
     require(viewer != nullptr, "active data viewer is available");
+    requireSessionViewerTitleBarWindowButtonsWork(*viewer);
+    auto *minimizeButton = viewer->findChild<QToolButton *>(QStringLiteral("windowMinimizeButton"));
+    require(minimizeButton != nullptr, "data viewer minimize button exists before reopen");
+    clickWidgetCenterThroughWindow(minimizeButton);
+    require(processEventsUntil(1000, [viewer]() {
+                return viewer->isMinimized() ||
+                       viewer->windowState().testFlag(Qt::WindowMinimized);
+            }),
+            "data viewer is minimized before reopen action");
+    require(QMetaObject::invokeMethod(&window, "onOpenSessionViewerClicked", Qt::DirectConnection),
+            "main window can invoke data viewer action while viewer is minimized");
+    require(processEventsUntil(2000, [viewer]() {
+                return viewer->isVisible() &&
+                       !viewer->isMinimized() &&
+                       !viewer->windowState().testFlag(Qt::WindowMinimized);
+            }),
+            "data viewer action restores minimized retained window");
     viewer->close();
     processEventsFor(200);
 
@@ -309,6 +388,18 @@ void testTrajectoryViewerUsesSidebarLayout()
     processEventsFor(100);
 }
 
+void testSessionViewerTitleBarWindowButtons()
+{
+    SessionViewerWindow viewer;
+    viewer.resize(1280, 800);
+    viewer.show();
+    processEventsFor(300);
+
+    requireSessionViewerTitleBarWindowButtonsWork(viewer);
+    viewer.close();
+    processEventsFor(100);
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -326,6 +417,7 @@ int main(int argc, char **argv)
 
     testRawDataParserOpenIsNonBlocking();
     testMainWindowDataViewerOpenCanReopen();
+    testSessionViewerTitleBarWindowButtons();
     testTrajectoryViewerUsesSidebarLayout();
 
     {
