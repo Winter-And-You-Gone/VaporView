@@ -88,10 +88,8 @@ constexpr double kDefaultTrackPointRadius = 4.0;
 constexpr int kTrackStyleSliderScale = 10;
 constexpr int kTrackWorldCacheZoom = 20;
 constexpr int kTrackSpatialCellSize = 4096;
-constexpr double kTrackLineMinPixelStep = 1.35;
 constexpr double kTrackPointMinPixelStep = 9.0;
 constexpr double kTrackBucketSize = 36.0;
-constexpr int kTrackDensePointThreshold = 5000;
 constexpr int kTrackBucketCandidateLimit = 24;
 constexpr qint64 kTrackMaxCellScanCount = 20000;
 constexpr auto kTileRequestTimeout = std::chrono::seconds(15);
@@ -1850,12 +1848,6 @@ private:
         }
 
         const QRectF visibleWorld = visibleWorldRect(mapRect, std::max(72.0, track_width_ * 6.0));
-        const double denseScale = track_points_.size() >= kTrackDensePointThreshold ? 1.0 : 0.45;
-        const double minStep = std::max(0.75, kTrackLineMinPixelStep * denseScale);
-        const double minDistanceSquared = minStep * minStep;
-        int lastDrawnSecondIndex = -1;
-        QPointF lastDrawnSecondScreen;
-
         for (int index : visibleIndices)
         {
             const int nextIndex = index + 1;
@@ -1870,23 +1862,7 @@ private:
 
             const QPointF firstScreen = cachedWorldToScreen(projected_track_points_.at(index).world_pixel, mapRect);
             const QPointF secondScreen = cachedWorldToScreen(projected_track_points_.at(nextIndex).world_pixel, mapRect);
-            const bool forced = isForcedTrackPoint(index) || isForcedTrackPoint(nextIndex);
-            const QPointF delta = secondScreen - lastDrawnSecondScreen;
-            if (!segments.isEmpty() &&
-                !forced &&
-                lastDrawnSecondIndex + 1 == nextIndex &&
-                delta.x() * delta.x() + delta.y() * delta.y() < minDistanceSquared)
-            {
-                segments.last().second_index = nextIndex;
-                segments.last().second_screen = secondScreen;
-                lastDrawnSecondIndex = nextIndex;
-                lastDrawnSecondScreen = secondScreen;
-                continue;
-            }
-
             segments.push_back({index, nextIndex, firstScreen, secondScreen});
-            lastDrawnSecondIndex = nextIndex;
-            lastDrawnSecondScreen = secondScreen;
         }
 
         return segments;
