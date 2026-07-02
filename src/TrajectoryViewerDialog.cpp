@@ -15,6 +15,7 @@
 #include <QComboBox>
 #include <QIcon>
 #include <QLabel>
+#include <QLinearGradient>
 #include <QLineEdit>
 #include <QMenu>
 #include <QNetworkAccessManager>
@@ -70,7 +71,6 @@ constexpr int kDefaultZoom = 16;
 constexpr int kMaxZoom = 19;
 constexpr int kTianDiTuMaxZoom = 18;
 constexpr int kMinZoom = 1;
-constexpr int kMapMargin = 12;
 constexpr int kTitleBarButtonSize = 34;
 constexpr int kTitleBarIconSize = 24;
 constexpr int kMaxConcurrentTileRequests = 8;
@@ -737,7 +737,7 @@ protected:
         painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
         painter.fillRect(rect(), appThemeColor(AppThemeColor::MapCanvas, false));
 
-        const QRectF mapRect = rect().adjusted(kMapMargin, kMapMargin, -kMapMargin, -kMapMargin - 18);
+        const QRectF mapRect = mapViewportRect();
         const QRectF roundedMapRect = mapRect.adjusted(0.5, 0.5, -0.5, -0.5);
         QPainterPath mapClip;
         mapClip.addRoundedRect(roundedMapRect, 8.0, 8.0);
@@ -760,19 +760,12 @@ protected:
         drawTrack(painter, mapRect);
         painter.restore();
 
+        drawPeakLegend(painter, mapRect);
+        drawMapFooter(painter, mapRect);
+
         painter.setPen(QPen(appThemeColor(AppThemeColor::MapTileBorder, false), 1));
         painter.setBrush(Qt::NoBrush);
         painter.drawRoundedRect(roundedMapRect, 8.0, 8.0);
-
-        painter.setPen(appThemeColor(AppThemeColor::MapText, false));
-        painter.drawText(QRectF(mapRect.left(), mapRect.bottom() + 2, mapRect.width(), 16),
-            Qt::AlignLeft | Qt::AlignVCenter,
-            mapAttributionText(tile_provider_, is_english_));
-        painter.drawText(QRectF(mapRect.left(), mapRect.bottom() + 2, mapRect.width(), 16),
-            Qt::AlignRight | Qt::AlignVCenter,
-            QString(is_english_ ? "%1 points: %2" : "%1点数: %2")
-                .arg(is_english_ ? english_track_label_ : chinese_track_label_)
-                .arg(track_points_.size()));
     }
 
 private:
@@ -985,7 +978,7 @@ private:
             return;
         }
 
-        const QSizeF mapSize = size() - QSize(2 * kMapMargin, 2 * kMapMargin + 18);
+        const QSizeF mapSize = mapViewportRect().size();
         const double availableWidth = std::max(200.0, mapSize.width());
         const double availableHeight = std::max(160.0, mapSize.height());
 
@@ -1055,7 +1048,7 @@ private:
 
     QRectF mapViewportRect() const
     {
-        return rect().adjusted(kMapMargin, kMapMargin, -kMapMargin, -kMapMargin - 18);
+        return rect();
     }
 
     QPointF centerWorldPixelForZoom(int targetZoom) const
@@ -1419,6 +1412,134 @@ private:
         painter.drawRoundedRect(mapRect, 8.0, 8.0);
     }
 
+    bool peakRange(float *minPeak, float *maxPeak, int *peakCount) const
+    {
+        bool hasPeakRange = false;
+        float localMin = std::numeric_limits<float>::max();
+        float localMax = std::numeric_limits<float>::lowest();
+        int localCount = 0;
+        for (const RtkTrackPoint& point : track_points_)
+        {
+            if (!point.has_peak_value || !std::isfinite(point.peak_value))
+            {
+                continue;
+            }
+            hasPeakRange = true;
+            ++localCount;
+            localMin = std::min(localMin, point.peak_value);
+            localMax = std::max(localMax, point.peak_value);
+        }
+
+        if (minPeak)
+        {
+            *minPeak = localMin;
+        }
+        if (maxPeak)
+        {
+            *maxPeak = localMax;
+        }
+        if (peakCount)
+        {
+            *peakCount = localCount;
+        }
+        return hasPeakRange;
+    }
+
+    void drawPeakLegend(QPainter& painter, const QRectF& mapRect) const
+    {
+        float minPeak = 0.0f;
+        float maxPeak = 0.0f;
+        int peakCount = 0;
+        if (!peakRange(&minPeak, &maxPeak, &peakCount))
+        {
+            return;
+        }
+
+        const qreal margin = 14.0;
+        const qreal cardWidth = std::min<qreal>(292.0, std::max<qreal>(220.0, mapRect.width() - margin * 2.0));
+        const QRectF cardRect(mapRect.left() + margin, mapRect.top() + margin, cardWidth, 76.0);
+        const QRectF safeCardRect = cardRect.translated(
+            std::min<qreal>(0.0, mapRect.right() - margin - cardRect.right()),
+            0.0);
+
+        painter.save();
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        QPainterPath cardPath;
+        cardPath.addRoundedRect(safeCardRect, 8.0, 8.0);
+        QColor cardColor = appThemeColor(AppThemeColor::SurfaceRaised, false);
+        cardColor.setAlpha(238);
+        painter.fillPath(cardPath, cardColor);
+        painter.setPen(QPen(appThemeColor(AppThemeColor::Border, false), 1));
+        painter.drawPath(cardPath);
+
+        QFont titleFont = painter.font();
+        titleFont.setPointSize(9);
+        titleFont.setWeight(QFont::DemiBold);
+        painter.setFont(titleFont);
+        painter.setPen(appThemeColor(AppThemeColor::TextStrong, false));
+        painter.drawText(safeCardRect.adjusted(12, 8, -12, -46),
+            Qt::AlignLeft | Qt::AlignVCenter,
+            is_english_ ? QStringLiteral("Peak heatmap") : QStringLiteral("峰值热力图"));
+
+        const QRectF barRect = safeCardRect.adjusted(12, 34, -12, -26);
+        QLinearGradient gradient(barRect.left(), barRect.top(), barRect.right(), barRect.top());
+        for (int stop = 0; stop <= 14; ++stop)
+        {
+            const double ratio = stop / 14.0;
+            gradient.setColorAt(ratio, heatmapColorAt(ratio));
+        }
+        QPainterPath barPath;
+        barPath.addRoundedRect(barRect, 4.0, 4.0);
+        painter.fillPath(barPath, gradient);
+        painter.setPen(QPen(appThemeColor(AppThemeColor::BorderStrong, false), 1));
+        painter.drawPath(barPath);
+
+        QFont captionFont = painter.font();
+        captionFont.setPointSize(8);
+        captionFont.setWeight(QFont::Normal);
+        painter.setFont(captionFont);
+        painter.setPen(appThemeColor(AppThemeColor::TextMuted, false));
+        const QRectF captionRect = safeCardRect.adjusted(12, 52, -12, -8);
+        painter.drawText(captionRect, Qt::AlignLeft | Qt::AlignVCenter, formatPeakValue(minPeak));
+        painter.drawText(captionRect, Qt::AlignCenter | Qt::AlignVCenter,
+            is_english_
+                ? QStringLiteral("%1 samples").arg(peakCount)
+                : QStringLiteral("%1 个样本").arg(peakCount));
+        painter.drawText(captionRect, Qt::AlignRight | Qt::AlignVCenter, formatPeakValue(maxPeak));
+        painter.restore();
+    }
+
+    void drawMapFooter(QPainter& painter, const QRectF& mapRect) const
+    {
+        const QRectF footerRect(mapRect.left() + 10.0, mapRect.bottom() - 28.0, mapRect.width() - 20.0, 20.0);
+        if (footerRect.width() <= 80.0)
+        {
+            return;
+        }
+
+        painter.save();
+        painter.setRenderHint(QPainter::Antialiasing, true);
+        QPainterPath footerPath;
+        footerPath.addRoundedRect(footerRect, 6.0, 6.0);
+        QColor footerColor = appThemeColor(AppThemeColor::SurfaceRaised, false);
+        footerColor.setAlpha(220);
+        painter.fillPath(footerPath, footerColor);
+
+        QFont footerFont = painter.font();
+        footerFont.setPointSize(8);
+        painter.setFont(footerFont);
+        painter.setPen(appThemeColor(AppThemeColor::MapText, false));
+        painter.drawText(footerRect.adjusted(8, 0, -8, 0),
+            Qt::AlignLeft | Qt::AlignVCenter,
+            mapAttributionText(tile_provider_, is_english_));
+        painter.drawText(footerRect.adjusted(8, 0, -8, 0),
+            Qt::AlignRight | Qt::AlignVCenter,
+            QString(is_english_ ? "%1 points: %2" : "%1点数: %2")
+                .arg(is_english_ ? english_track_label_ : chinese_track_label_)
+                .arg(track_points_.size()));
+        painter.restore();
+    }
+
     int closestTrackPointIndex(const QPointF& pos) const
     {
         if (track_points_.isEmpty())
@@ -1426,7 +1547,7 @@ private:
             return -1;
         }
 
-        const QRectF mapRect = rect().adjusted(kMapMargin, kMapMargin, -kMapMargin, -kMapMargin - 18);
+        const QRectF mapRect = mapViewportRect();
         if (!mapRect.adjusted(-8.0, -8.0, 8.0, 8.0).contains(pos))
         {
             return -1;
@@ -1619,7 +1740,6 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , summary_label_(new QLabel(this))
     , sidebar_title_label_(new QLabel(this))
     , sidebar_icon_label_(new QLabel(this))
-    , legend_label_(new QLabel(this))
     , detail_label_(new QLabel(this))
     , map_status_label_(new QLabel(this))
     , map_progress_bar_(new QProgressBar(this))
@@ -1710,8 +1830,8 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     mapPanel->setAttribute(Qt::WA_StyledBackground, true);
     mapPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     auto *mapPanelLayout = new QVBoxLayout(mapPanel);
-    mapPanelLayout->setContentsMargins(12, 12, 12, 12);
-    mapPanelLayout->setSpacing(8);
+    mapPanelLayout->setContentsMargins(0, 0, 0, 0);
+    mapPanelLayout->setSpacing(0);
 
     map_widget_->setObjectName(QStringLiteral("trajectoryViewerMap"));
     map_widget_->setMinimumHeight(kTrajectoryMapMinimumHeight);
@@ -1721,9 +1841,6 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     summary_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     summary_label_->setObjectName(QStringLiteral("trajectorySidebarSummaryLabel"));
     sidebarLayout->addWidget(summary_label_);
-    legend_label_->setWordWrap(true);
-    legend_label_->setTextFormat(Qt::RichText);
-    legend_label_->setObjectName(QStringLiteral("fieldLabel"));
     detail_label_->setWordWrap(true);
     detail_label_->setTextFormat(Qt::RichText);
     detail_label_->setObjectName(QStringLiteral("trajectorySidebarDetailLabel"));
@@ -1835,7 +1952,6 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     sidebarLayout->addLayout(mapControlsLayout);
     sidebarLayout->addStretch(1);
 
-    mapPanelLayout->addWidget(legend_label_);
     mapPanelLayout->addWidget(map_widget_, 1);
     mainLayout->addWidget(sidebarCard);
     mainLayout->addWidget(mapPanel, 1);
@@ -2289,9 +2405,6 @@ void TrajectoryViewerDialog::updateSummary()
         summary_label_->setText(is_english_
             ? QStringLiteral("No valid latitude/longitude samples were found for %1 in this session.").arg(english_track_label_)
             : QStringLiteral("当前会话中没有找到%1的有效经纬度轨迹点。").arg(chinese_track_label_));
-        legend_label_->setText(is_english_
-            ? QStringLiteral("Legend: no valid peak values are available for heatmap coloring.")
-            : QStringLiteral("图例：当前没有可用于热力着色的有效峰值。"));
         updateSelectedPointDetails();
         return;
     }
@@ -2302,14 +2415,10 @@ void TrajectoryViewerDialog::updateSummary()
     double maxLon = -std::numeric_limits<double>::infinity();
     double minHeight = std::numeric_limits<double>::infinity();
     double maxHeight = -std::numeric_limits<double>::infinity();
-    double minPeak = std::numeric_limits<double>::infinity();
-    double maxPeak = -std::numeric_limits<double>::infinity();
     bool hasHeightRange = false;
-    bool hasPeakRange = false;
     double totalDistance = 0.0;
     double maxSpeed = 0.0;
     int speedCount = 0;
-    int peakCount = 0;
     for (const RtkTrackPoint& point : track_points_)
     {
         minLat = std::min(minLat, point.latitude);
@@ -2321,13 +2430,6 @@ void TrajectoryViewerDialog::updateSummary()
             hasHeightRange = true;
             minHeight = std::min(minHeight, point.height_m);
             maxHeight = std::max(maxHeight, point.height_m);
-        }
-        if (point.has_peak_value && std::isfinite(point.peak_value))
-        {
-            hasPeakRange = true;
-            ++peakCount;
-            minPeak = std::min(minPeak, static_cast<double>(point.peak_value));
-            maxPeak = std::max(maxPeak, static_cast<double>(point.peak_value));
         }
         if (std::isfinite(point.cumulative_distance_m))
         {
@@ -2379,35 +2481,6 @@ void TrajectoryViewerDialog::updateSummary()
         ? QStringLiteral("%1 %2 points").arg(track_points_.size()).arg(english_track_label_)
         : QStringLiteral("%1 个%2点").arg(track_points_.size()).arg(chinese_track_label_);
     summary_label_->setText(trajectoryInfoTable(title, rows, isDarkPalette()));
-
-    if (!hasPeakRange)
-    {
-        legend_label_->setText(is_english_
-            ? QStringLiteral("Legend: no valid peak values remain after filtering, so the trajectory falls back to the default blue line.")
-            : QStringLiteral("图例：过滤后没有剩余有效峰值，轨迹将回退为默认蓝线。"));
-        updateSelectedPointDetails();
-        return;
-    }
-
-    const double totalRange = maxPeak - minPeak;
-    const int bandCount = 7;
-    const double section = totalRange / static_cast<double>(bandCount);
-    QStringList legendEntries;
-    legendEntries.reserve(bandCount);
-    for (int index = 0; index < bandCount; ++index)
-    {
-        const double startValue = minPeak + section * index;
-        const double endValue = (index == bandCount - 1) ? maxPeak : (minPeak + section * (index + 1));
-        const QString bandText = is_english_
-            ? QStringLiteral("Band %1: %2 to %3").arg(index + 1).arg(formatPeakValue(startValue)).arg(formatPeakValue(endValue))
-            : QStringLiteral("%1段: %2 到 %3").arg(index + 1).arg(formatPeakValue(startValue)).arg(formatPeakValue(endValue));
-        const QString bandColor = heatmapColorAt((index + 0.5) / static_cast<double>(bandCount)).name();
-        legendEntries.push_back(QStringLiteral("<span style=\"color:%1; font-weight:600;\">■</span> %2").arg(bandColor, bandText));
-    }
-    legend_label_->setText(QString(is_english_
-        ? "Peak heatmap (%1 matched points): "
-        : "峰值热力图（%1 个匹配点）：").arg(peakCount) +
-        legendEntries.join(QStringLiteral("&nbsp;&nbsp;&nbsp;")));
     updateSelectedPointDetails();
 }
 

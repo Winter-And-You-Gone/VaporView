@@ -470,11 +470,23 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(sidebar->isAncestorOf(mapSourceCombo), "map source control is in sidebar");
     require(mapPanel->isAncestorOf(map), "map remains in the map panel");
     require(!sidebar->isAncestorOf(map), "map is not in sidebar");
+    require(mapPanel->layout() != nullptr, "map panel layout exists");
+    require(mapPanel->layout()->contentsMargins() == QMargins(0, 0, 0, 0),
+            "map panel lets the map fill the rounded card");
+    require(mapPanel->layout()->spacing() == 0,
+            "map panel has no fixed legend spacing above the map");
     require(sidebarCard->geometry().left() < mapPanel->geometry().left(),
             "trajectory sidebar card is positioned to the left of the map panel");
     require(sidebarCard->geometry().top() == mapPanel->geometry().top(),
             "trajectory sidebar card and map panel share the same row");
     require(map->height() >= 300, "trajectory map keeps usable vertical space");
+    const QRect mapPanelContents = mapPanel->contentsRect();
+    require(std::abs(map->geometry().left() - mapPanelContents.left()) <= 2
+                && std::abs(map->geometry().top() - mapPanelContents.top()) <= 2,
+            "trajectory map starts at the map panel content origin");
+    require(std::abs(map->width() - mapPanelContents.width()) <= 2
+                && std::abs(map->height() - mapPanelContents.height()) <= 2,
+            "trajectory map fills the whole rounded map panel");
     const QString styleSheet = dialog.styleSheet();
     require(styleSheet.contains(QStringLiteral("QDialog#trajectoryViewerDialog")),
             "trajectory viewer stylesheet is scoped to dialog");
