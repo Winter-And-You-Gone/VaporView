@@ -13501,7 +13501,6 @@ void MainWindow::onOpenSessionViewerClicked()
     {
         session_viewer_window_ = new SessionViewerWindow();
         session_viewer_window_->setAttribute(Qt::WA_QuitOnClose, false);
-        session_viewer_window_->setAttribute(Qt::WA_DeleteOnClose, true);
         connect(session_viewer_window_, &QObject::destroyed, this, [this]() {
             session_viewer_window_ = nullptr;
         });

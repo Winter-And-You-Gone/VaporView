@@ -1,4 +1,5 @@
 #include "AppTheme.h"
+#include "MainWindow.h"
 #include "RawDataParserWindow.h"
 #include "SessionViewerWindow.h"
 
@@ -11,6 +12,8 @@
 #include <QFile>
 #include <QImage>
 #include <QLabel>
+#include <QMainWindow>
+#include <QMetaObject>
 #include <QPalette>
 #include <QProgressBar>
 #include <QSettings>
@@ -194,6 +197,43 @@ void testWaveformEmptyPlotIsNotRed(SessionViewerWindow& viewer)
     require(redDominantPixels < totalPixels / 100, "session viewer waveform grid is not red-dominant");
 }
 
+void testMainWindowDataViewerOpenCanReopen()
+{
+    QTemporaryDir sessionDir;
+    require(sessionDir.isValid(), "temporary session directory for data viewer startup");
+
+    {
+        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("SessionViewer"));
+        settings.setValue(QStringLiteral("last_session_directory"), sessionDir.path());
+    }
+
+    MainWindow window;
+    window.resize(1280, 800);
+    window.show();
+    processEventsFor(300);
+
+    require(QMetaObject::invokeMethod(&window, "onOpenSessionViewerClicked", Qt::DirectConnection),
+            "main window can invoke data viewer action");
+    require(processEventsUntil(2000, []() {
+                return qobject_cast<SessionViewerWindow *>(
+                    QApplication::activeWindow()) != nullptr;
+            }),
+            "data viewer opens from main window action");
+
+    auto *viewer = qobject_cast<SessionViewerWindow *>(QApplication::activeWindow());
+    require(viewer != nullptr, "active data viewer is available");
+    viewer->close();
+    processEventsFor(200);
+
+    require(QMetaObject::invokeMethod(&window, "onOpenSessionViewerClicked", Qt::DirectConnection),
+            "main window can reopen data viewer after close");
+    require(processEventsUntil(2000, []() {
+                return qobject_cast<SessionViewerWindow *>(
+                    QApplication::activeWindow()) != nullptr;
+            }),
+            "data viewer reopens from retained main window instance");
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -210,6 +250,7 @@ int main(int argc, char **argv)
     app.setPalette(VaporView::appThemePalette(false));
 
     testRawDataParserOpenIsNonBlocking();
+    testMainWindowDataViewerOpenCanReopen();
 
     {
         SessionViewerWindow viewer;

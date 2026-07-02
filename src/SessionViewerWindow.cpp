@@ -2448,6 +2448,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     humidity_values_.clear();
     pressure_values_.clear();
     rtk_track_points_.clear();
+    rtk_track_stats_ = RtkTrackStats();
     waveform_timestamps_us_.clear();
     waveform_segments_.clear();
     raw_tcp_wave_frames_.clear();
@@ -2479,6 +2480,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     trajectory_view_btn_->setEnabled(false);
     if (trajectory_viewer_dialog_)
     {
+        trajectory_viewer_dialog_->setTrackStats(rtk_track_stats_);
         trajectory_viewer_dialog_->setTrackPoints({});
     }
     frame_info_label_->setText(is_english_ ? "No waveform frame loaded" : "尚未加载波形帧");
@@ -2867,6 +2869,7 @@ bool SessionViewerWindow::loadSensorsCsv()
     });
     const int epsilonValidIndex = findHeaderIndex(csv_headers_, {QStringLiteral("epsilon_valid"), QStringLiteral("rtk_valid")});
     const int gnssFixIndex = findHeaderIndex(csv_headers_, {QStringLiteral("gnss_fix"), QStringLiteral("rtk_fix")});
+    const bool hasTrackColumns = navLatIndex >= 0 && navLonIndex >= 0;
     const int thValidIndex = findHeaderIndex(csv_headers_, {QStringLiteral("th_valid")});
     const int baroValidIndex = findHeaderIndex(csv_headers_, {QStringLiteral("baro_valid")});
     const bool hasLegacyThermometerColumns =
@@ -2963,79 +2966,79 @@ bool SessionViewerWindow::loadSensorsCsv()
         }
         pressure_values_.push_back(pressureValue);
 
-        const bool navValid = epsilonValidIndex < 0 || parseBooleanCsvField(csvValueAt(fields, epsilonValidIndex), true);
-        const double lat = parseOptionalDouble(csvValueAt(fields, navLatIndex));
-        const double lon = parseOptionalDouble(csvValueAt(fields, navLonIndex));
-        const QString gnssFix = csvValueAt(fields, gnssFixIndex).trimmed().toUpper();
-        if (navLatIndex >= 0 || navLonIndex >= 0)
+        if (hasTrackColumns)
         {
             ++rtk_track_stats_.scanned_rows;
-        }
-        const bool missingOrInvalidNav = !navValid || !std::isfinite(lat) || !std::isfinite(lon);
-        const bool zeroCoordinate = !missingOrInvalidNav && std::abs(lat) < 1e-8 && std::abs(lon) < 1e-8;
-        const bool outOfRange = !missingOrInvalidNav && !zeroCoordinate &&
-            (lat < -90.0 || lat > 90.0 || lon < -180.0 || lon > 180.0);
-        const bool badFix = gnssFix == QStringLiteral("NONE") ||
-            gnssFix == QStringLiteral("NO_FIX") ||
-            gnssFix == QStringLiteral("INVALID") ||
-            gnssFix == QStringLiteral("NO_GPS");
-        if (missingOrInvalidNav)
-        {
-            ++rtk_track_stats_.rejected_invalid_nav;
-        }
-        else if (zeroCoordinate)
-        {
-            ++rtk_track_stats_.rejected_zero_coordinate;
-        }
-        else if (outOfRange)
-        {
-            ++rtk_track_stats_.rejected_out_of_range;
-        }
-        else if (badFix)
-        {
-            ++rtk_track_stats_.rejected_bad_fix;
-        }
-        else
-        {
-            bool timestampOk = false;
-            const quint64 trackTimestampUs = trackTimestampIndex >= 0
-                ? csvValueAt(fields, trackTimestampIndex).toULongLong(&timestampOk)
-                : csv_timestamps_us_.last();
-            RtkTrackPoint point;
-            point.latitude = lat;
-            point.longitude = lon;
-            point.csv_row = rows.size() - 1;
-            point.gnss_fix = gnssFix;
-            const double height = parseOptionalDouble(csvValueAt(fields, navHeightIndex));
-            if (std::isfinite(height))
+            const bool navValid = epsilonValidIndex < 0 || parseBooleanCsvField(csvValueAt(fields, epsilonValidIndex), true);
+            const double lat = parseOptionalDouble(csvValueAt(fields, navLatIndex));
+            const double lon = parseOptionalDouble(csvValueAt(fields, navLonIndex));
+            const QString gnssFix = csvValueAt(fields, gnssFixIndex).trimmed().toUpper();
+            const bool missingOrInvalidNav = !navValid || !std::isfinite(lat) || !std::isfinite(lon);
+            const bool zeroCoordinate = !missingOrInvalidNav && std::abs(lat) < 1e-8 && std::abs(lon) < 1e-8;
+            const bool outOfRange = !missingOrInvalidNav && !zeroCoordinate &&
+                (lat < -90.0 || lat > 90.0 || lon < -180.0 || lon > 180.0);
+            const bool badFix = gnssFix == QStringLiteral("NONE") ||
+                gnssFix == QStringLiteral("NO_FIX") ||
+                gnssFix == QStringLiteral("INVALID") ||
+                gnssFix == QStringLiteral("NO_GPS");
+            if (missingOrInvalidNav)
             {
-                point.height_m = height;
-                point.has_height = true;
+                ++rtk_track_stats_.rejected_invalid_nav;
             }
-            point.timestamp_us = timestampOk ? trackTimestampUs : csv_timestamps_us_.last();
-            if (!rtk_track_points_.isEmpty())
+            else if (zeroCoordinate)
             {
-                const RtkTrackPoint& previous = rtk_track_points_.last();
-                const double jumpMeters = haversineDistanceMeters(previous.latitude, previous.longitude, point.latitude, point.longitude);
-                if (jumpMeters > rtk_track_stats_.jump_threshold_m)
+                ++rtk_track_stats_.rejected_zero_coordinate;
+            }
+            else if (outOfRange)
+            {
+                ++rtk_track_stats_.rejected_out_of_range;
+            }
+            else if (badFix)
+            {
+                ++rtk_track_stats_.rejected_bad_fix;
+            }
+            else
+            {
+                bool timestampOk = false;
+                const quint64 trackTimestampUs = trackTimestampIndex >= 0
+                    ? csvValueAt(fields, trackTimestampIndex).toULongLong(&timestampOk)
+                    : csv_timestamps_us_.last();
+                RtkTrackPoint point;
+                point.latitude = lat;
+                point.longitude = lon;
+                point.csv_row = rows.size() - 1;
+                point.gnss_fix = gnssFix;
+                const double height = parseOptionalDouble(csvValueAt(fields, navHeightIndex));
+                if (std::isfinite(height))
                 {
-                    ++rtk_track_stats_.rejected_jump;
-                    continue;
+                    point.height_m = height;
+                    point.has_height = true;
                 }
-                point.segment_distance_m = jumpMeters;
-                point.cumulative_distance_m = previous.cumulative_distance_m + jumpMeters;
-                if (previous.timestamp_us > 0 && point.timestamp_us > previous.timestamp_us)
+                point.timestamp_us = timestampOk ? trackTimestampUs : csv_timestamps_us_.last();
+                if (!rtk_track_points_.isEmpty())
                 {
-                    const double elapsedSeconds = static_cast<double>(point.timestamp_us - previous.timestamp_us) / 1000000.0;
-                    if (elapsedSeconds > 1e-6)
+                    const RtkTrackPoint& previous = rtk_track_points_.last();
+                    const double jumpMeters = haversineDistanceMeters(previous.latitude, previous.longitude, point.latitude, point.longitude);
+                    if (jumpMeters > rtk_track_stats_.jump_threshold_m)
                     {
-                        point.speed_mps = jumpMeters / elapsedSeconds;
-                        point.has_speed = true;
+                        ++rtk_track_stats_.rejected_jump;
+                        continue;
+                    }
+                    point.segment_distance_m = jumpMeters;
+                    point.cumulative_distance_m = previous.cumulative_distance_m + jumpMeters;
+                    if (previous.timestamp_us > 0 && point.timestamp_us > previous.timestamp_us)
+                    {
+                        const double elapsedSeconds = static_cast<double>(point.timestamp_us - previous.timestamp_us) / 1000000.0;
+                        if (elapsedSeconds > 1e-6)
+                        {
+                            point.speed_mps = jumpMeters / elapsedSeconds;
+                            point.has_speed = true;
+                        }
                     }
                 }
+                rtk_track_points_.push_back(point);
+                ++rtk_track_stats_.accepted_points;
             }
-            rtk_track_points_.push_back(point);
-            ++rtk_track_stats_.accepted_points;
         }
 
         if (session_loading_ && rows.size() % 5000 == 0)
