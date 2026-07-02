@@ -37,7 +37,6 @@ protected:
     void changeEvent(QEvent *event) override;
 
 private:
-    void installTitleBarControls();
     void applyMapSourceSelection(int index);
     void applyTiandituKeyEdit();
     void showTiandituKeyMenu();
@@ -70,7 +69,6 @@ private:
     QToolButton *zoom_in_button_;
     QToolButton *zoom_out_button_;
     QToolButton *reset_view_button_;
-    QWidget *title_bar_controls_;
     bool is_english_;
     QString english_track_label_;
     QString chinese_track_label_;

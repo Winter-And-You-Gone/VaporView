@@ -1328,7 +1328,6 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , zoom_in_button_(new QToolButton(this))
     , zoom_out_button_(new QToolButton(this))
     , reset_view_button_(new QToolButton(this))
-    , title_bar_controls_(nullptr)
     , is_english_(false)
     , english_track_label_(QStringLiteral("RTK trajectory"))
     , chinese_track_label_(QStringLiteral("RTK轨迹"))
@@ -1339,32 +1338,47 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
 {
     setWindowFlag(Qt::Window, true);
     setModal(false);
-    resize(920, 640);
+    resize(1080, 680);
 
-    auto *mainLayout = new QVBoxLayout(this);
+    auto *mainLayout = new QHBoxLayout(this);
     mainLayout->setContentsMargins(12, 12, 12, 12);
-    mainLayout->setSpacing(8);
+    mainLayout->setSpacing(12);
 
+    auto *sidebar = new QWidget(this);
+    sidebar->setObjectName(QStringLiteral("trajectoryViewerSidebar"));
+    sidebar->setMinimumWidth(280);
+    sidebar->setMaximumWidth(340);
+    sidebar->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+    auto *sidebarLayout = new QVBoxLayout(sidebar);
+    sidebarLayout->setContentsMargins(0, 0, 0, 0);
+    sidebarLayout->setSpacing(8);
+
+    auto *mapPanel = new QWidget(this);
+    mapPanel->setObjectName(QStringLiteral("trajectoryViewerMapPanel"));
+    mapPanel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    auto *mapPanelLayout = new QVBoxLayout(mapPanel);
+    mapPanelLayout->setContentsMargins(0, 0, 0, 0);
+    mapPanelLayout->setSpacing(8);
+
+    map_widget_->setObjectName(QStringLiteral("trajectoryViewerMap"));
     summary_label_->setWordWrap(true);
     summary_label_->setObjectName(QStringLiteral("fieldLabel"));
-    mainLayout->addWidget(summary_label_);
+    sidebarLayout->addWidget(summary_label_);
     legend_label_->setWordWrap(true);
     legend_label_->setTextFormat(Qt::RichText);
     legend_label_->setObjectName(QStringLiteral("fieldLabel"));
-    mainLayout->addWidget(legend_label_);
     detail_label_->setWordWrap(true);
     detail_label_->setObjectName(QStringLiteral("fieldLabel"));
     detail_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    mainLayout->addWidget(detail_label_);
+    sidebarLayout->addWidget(detail_label_);
     map_status_label_->setWordWrap(true);
     map_status_label_->setObjectName(QStringLiteral("fieldLabel"));
-    mainLayout->addWidget(map_status_label_);
+    sidebarLayout->addWidget(map_status_label_);
     map_progress_bar_->setTextVisible(true);
     map_progress_bar_->setMinimum(0);
     map_progress_bar_->setMaximum(1);
     map_progress_bar_->setValue(0);
-    mainLayout->addWidget(map_progress_bar_);
-    mainLayout->addWidget(map_widget_, 1);
+    sidebarLayout->addWidget(map_progress_bar_);
 
     auto *timelineLayout = new QHBoxLayout();
     timelineLayout->setContentsMargins(0, 0, 0, 0);
@@ -1379,7 +1393,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     timelineLayout->addWidget(timeline_slider_, 1);
     timelineLayout->addWidget(copy_point_button_);
     timelineLayout->addWidget(export_button_);
-    mainLayout->addLayout(timelineLayout);
+    sidebarLayout->addLayout(timelineLayout);
 
     auto *mapWidget = static_cast<TrajectoryMapWidget*>(map_widget_);
     mapWidget->setStatusCallback([this](const QString& text) {
@@ -1445,6 +1459,22 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     tianditu_key_button_->setPopupMode(QToolButton::InstantPopup);
     tianditu_key_button_->setMenu(tianditu_key_menu_);
 
+    auto *mapControlsLayout = new QHBoxLayout();
+    mapControlsLayout->setContentsMargins(0, 0, 0, 0);
+    mapControlsLayout->setSpacing(6);
+    mapControlsLayout->addWidget(map_source_combo_, 1);
+    mapControlsLayout->addWidget(tianditu_key_button_, 0);
+    mapControlsLayout->addWidget(zoom_in_button_, 0);
+    mapControlsLayout->addWidget(zoom_out_button_, 0);
+    mapControlsLayout->addWidget(reset_view_button_, 0);
+    sidebarLayout->addLayout(mapControlsLayout);
+    sidebarLayout->addStretch(1);
+
+    mapPanelLayout->addWidget(legend_label_);
+    mapPanelLayout->addWidget(map_widget_, 1);
+    mainLayout->addWidget(sidebar);
+    mainLayout->addWidget(mapPanel, 1);
+
     connect(map_source_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &TrajectoryViewerDialog::applyMapSourceSelection);
     connect(tianditu_key_edit_, &QLineEdit::editingFinished,
@@ -1493,47 +1523,8 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     }
 
     VaporView::installCustomTitleBar(this);
-    installTitleBarControls();
     updateTexts();
     updateSelectedPointDetails();
-}
-
-void TrajectoryViewerDialog::installTitleBarControls()
-{
-    if (title_bar_controls_)
-    {
-        return;
-    }
-
-    auto *titleBar = findChild<QWidget*>(QStringLiteral("customTitleBar"));
-    auto *titleLayout = titleBar ? qobject_cast<QHBoxLayout*>(titleBar->layout()) : nullptr;
-    if (!titleLayout)
-    {
-        return;
-    }
-
-    title_bar_controls_ = new QWidget(titleBar);
-    title_bar_controls_->setObjectName(QStringLiteral("trajectoryTitleBarControls"));
-    title_bar_controls_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    auto *controlsLayout = new QHBoxLayout(title_bar_controls_);
-    controlsLayout->setContentsMargins(0, 0, 0, 0);
-    controlsLayout->setSpacing(6);
-    controlsLayout->addWidget(map_source_combo_, 0, Qt::AlignVCenter);
-    controlsLayout->addWidget(tianditu_key_button_, 0, Qt::AlignVCenter);
-    controlsLayout->addWidget(zoom_in_button_, 0, Qt::AlignVCenter);
-    controlsLayout->addWidget(zoom_out_button_, 0, Qt::AlignVCenter);
-    controlsLayout->addWidget(reset_view_button_, 0, Qt::AlignVCenter);
-
-    int insertIndex = titleLayout->count();
-    for (int i = 0; i < titleLayout->count(); ++i)
-    {
-        if (titleLayout->itemAt(i)->spacerItem())
-        {
-            insertIndex = i;
-            break;
-        }
-    }
-    titleLayout->insertWidget(insertIndex, title_bar_controls_, 0, Qt::AlignVCenter);
 }
 
 void TrajectoryViewerDialog::applyMapSourceSelection(int index)

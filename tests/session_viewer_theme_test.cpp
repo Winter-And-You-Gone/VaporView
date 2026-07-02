@@ -2,8 +2,10 @@
 #include "MainWindow.h"
 #include "RawDataParserWindow.h"
 #include "SessionViewerWindow.h"
+#include "TrajectoryViewerDialog.h"
 
 #include <QApplication>
+#include <QComboBox>
 #include <QCoreApplication>
 #include <QDataStream>
 #include <QDir>
@@ -19,6 +21,7 @@
 #include <QSettings>
 #include <QTableWidget>
 #include <QTemporaryDir>
+#include <QToolButton>
 #include <QWidget>
 #include <cstdlib>
 #include <functional>
@@ -234,6 +237,33 @@ void testMainWindowDataViewerOpenCanReopen()
             "data viewer reopens from retained main window instance");
 }
 
+void testTrajectoryViewerUsesSidebarLayout()
+{
+    TrajectoryViewerDialog dialog;
+    dialog.resize(1080, 680);
+    dialog.show();
+    processEventsFor(200);
+
+    auto *sidebar = dialog.findChild<QWidget *>(QStringLiteral("trajectoryViewerSidebar"));
+    auto *mapPanel = dialog.findChild<QWidget *>(QStringLiteral("trajectoryViewerMapPanel"));
+    auto *map = dialog.findChild<QWidget *>(QStringLiteral("trajectoryViewerMap"));
+    auto *mapSourceCombo = dialog.findChild<QComboBox *>(QStringLiteral("trajectoryMapSourceCombo"));
+
+    require(sidebar != nullptr, "trajectory viewer sidebar exists");
+    require(mapPanel != nullptr, "trajectory viewer map panel exists");
+    require(map != nullptr, "trajectory viewer map exists");
+    require(mapSourceCombo != nullptr, "trajectory viewer map source control exists");
+    const auto sidebarToolButtons = sidebar->findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
+    require(sidebarToolButtons.size() >= 4, "trajectory viewer sidebar contains map tool buttons");
+
+    require(sidebar->isAncestorOf(mapSourceCombo), "map source control is in sidebar");
+    require(mapPanel->isAncestorOf(map), "map remains in the map panel");
+    require(!sidebar->isAncestorOf(map), "map is not in sidebar");
+
+    dialog.close();
+    processEventsFor(100);
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -251,6 +281,7 @@ int main(int argc, char **argv)
 
     testRawDataParserOpenIsNonBlocking();
     testMainWindowDataViewerOpenCanReopen();
+    testTrajectoryViewerUsesSidebarLayout();
 
     {
         SessionViewerWindow viewer;
