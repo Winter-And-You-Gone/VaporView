@@ -995,6 +995,40 @@ QFrame *findTelemetryPillByName(QFrame *section, const QString& text)
     return nullptr;
 }
 
+bool isRemoteSourceModeText(const QString& text)
+{
+    return text.contains(QStringLiteral("天地远程")) ||
+           text.contains(QStringLiteral("远程")) ||
+           text.contains(QStringLiteral("Remote")) ||
+           text.contains(QStringLiteral("天空")) ||
+           text.contains(QStringLiteral("Sky"));
+}
+
+QComboBox *findSourceModeCombo(QWidget *root)
+{
+    if (!root)
+    {
+        return nullptr;
+    }
+
+    const QList<QComboBox*> combos = root->findChildren<QComboBox *>();
+    for (QComboBox *combo : combos)
+    {
+        if (combo->count() < 2)
+        {
+            continue;
+        }
+        const QString localText = combo->itemText(0);
+        const QString remoteText = combo->itemText(1);
+        if ((localText.contains(QStringLiteral("本地")) || localText.contains(QStringLiteral("Local"))) &&
+            isRemoteSourceModeText(remoteText))
+        {
+            return combo;
+        }
+    }
+    return nullptr;
+}
+
 int telemetrySectionRightPadding(QFrame *section)
 {
     require(section != nullptr, "home telemetry rate section exists");
@@ -1050,6 +1084,30 @@ int main(int argc, char **argv)
         settings.setValue(QStringLiteral("dark_theme_enabled"), false);
         settings.setValue(QStringLiteral("serial/temperature_baud"), QStringLiteral("38400"));
         settings.setValue(QStringLiteral("rate/temperature"), QStringLiteral("5"));
+        settings.setValue(QStringLiteral("source/mode"), QStringLiteral("remote"));
+        settings.sync();
+    }
+
+    {
+        MainWindow rememberedModeWindow;
+        rememberedModeWindow.resize(1000, 700);
+        rememberedModeWindow.show();
+        processEventsFor(300);
+        QComboBox *rememberedSourceModeCombo = findSourceModeCombo(&rememberedModeWindow);
+        require(rememberedSourceModeCombo != nullptr,
+                "remembered source mode combo exists on startup");
+        require(rememberedSourceModeCombo->itemText(1) == QStringLiteral("天地远程模式") ||
+                    rememberedSourceModeCombo->itemText(1) == QStringLiteral("Sky-Ground Remote Mode"),
+                "source mode combo uses the new remote-mode label");
+        require(rememberedSourceModeCombo->currentIndex() == 1,
+                "source mode restores the last remote selection on startup");
+        rememberedModeWindow.close();
+        processEventsFor(100);
+    }
+
+    {
+        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("MainWindow"));
+        settings.setValue(QStringLiteral("source/mode"), QStringLiteral("local"));
         settings.sync();
     }
 
@@ -1232,23 +1290,7 @@ int main(int argc, char **argv)
     auto *homeConfigCard = deviceOverviewCard;
     require(homeConfigCard != nullptr, "home configuration card exists");
     const QRect homeConfigLocalRect = homeConfigCard->geometry();
-    QComboBox *homeSourceModeCombo = nullptr;
-    const QList<QComboBox*> homeConfigCombos = homeConfigCard->findChildren<QComboBox *>();
-    for (QComboBox *combo : homeConfigCombos)
-    {
-        if (combo->count() < 2)
-        {
-            continue;
-        }
-        const QString localText = combo->itemText(0);
-        const QString remoteText = combo->itemText(1);
-        if ((localText.contains(QStringLiteral("本地")) || localText.contains(QStringLiteral("Local"))) &&
-            (remoteText.contains(QStringLiteral("天空")) || remoteText.contains(QStringLiteral("Sky"))))
-        {
-            homeSourceModeCombo = combo;
-            break;
-        }
-    }
+    QComboBox *homeSourceModeCombo = findSourceModeCombo(homeConfigCard);
     require(homeSourceModeCombo != nullptr, "home source mode combo exists");
     const SkyTelemetryRowWidgets homeSkyTelemetry = findSkyTelemetryRowWidgets(homeConfigCard);
     require(homeSkyTelemetry.transportCombo != nullptr,
@@ -1269,7 +1311,7 @@ int main(int argc, char **argv)
     processEventsFor(100);
     activateLayouts(&window);
     requireSameRect(homeConfigCard->geometry(), homeConfigLocalRect, 2,
-                    "home configuration card geometry is stable in sky-ground receive mode");
+                    "home configuration card geometry is stable in sky-ground remote mode");
     homeSourceModeCombo->setCurrentIndex(0);
     processEventsFor(150);
     activateLayouts(&window);
@@ -1496,8 +1538,16 @@ int main(int argc, char **argv)
     const QString darkOverviewStyleSheet = qApp->styleSheet();
     requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QFrame#homeTelemetrySummaryPill {"),
-                                 VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
-                                 "dark theme overrides home telemetry summary pill background");
+                                 VaporView::appThemeColorName(VaporView::AppThemeColor::Surface, true),
+                                 "dark theme keeps home telemetry summary pills on the normal surface background");
+    requireLastStyleRuleContains(darkOverviewStyleSheet,
+                                 QStringLiteral("QFrame#homeTelemetrySummaryPill[hasData=\"true\"] {"),
+                                 VaporView::appThemeColorName(VaporView::AppThemeColor::Surface, true),
+                                 "dark theme does not color available telemetry pills");
+    requireLastStyleRuleContains(darkOverviewStyleSheet,
+                                 QStringLiteral("QFrame#homeTelemetrySummaryPill[hasData=\"false\"] {"),
+                                 VaporView::appThemeColorName(VaporView::AppThemeColor::Surface, true),
+                                 "dark theme does not gray unavailable telemetry pills");
     requireLastStyleRuleContains(darkOverviewStyleSheet,
                                  QStringLiteral("QFrame#deviceTelemetrySectionTitlePane {"),
                                  VaporView::appThemeColorName(VaporView::AppThemeColor::SurfaceAlt, true),
@@ -2173,22 +2223,7 @@ int main(int argc, char **argv)
                 "device configuration telemetry summary fits inside the viewport");
     }
 
-    QComboBox *deviceSourceModeCombo = nullptr;
-    for (QComboBox *combo : deviceConfigPage->findChildren<QComboBox *>())
-    {
-        if (!combo->isVisible() || combo->count() < 2)
-        {
-            continue;
-        }
-        const QString localText = combo->itemText(0);
-        const QString remoteText = combo->itemText(1);
-        if ((localText.contains(QStringLiteral("本地")) || localText.contains(QStringLiteral("Local"))) &&
-            (remoteText.contains(QStringLiteral("天空")) || remoteText.contains(QStringLiteral("Sky"))))
-        {
-            deviceSourceModeCombo = combo;
-            break;
-        }
-    }
+    QComboBox *deviceSourceModeCombo = findSourceModeCombo(deviceConfigPage);
     require(deviceSourceModeCombo != nullptr,
             "device configuration source mode combo exists");
     require(deviceSourceModeCombo->width() <= 160,
@@ -2212,13 +2247,13 @@ int main(int argc, char **argv)
     processEventsFor(100);
     activateLayouts(&window);
     require(epsilonConfigCard->isVisible(),
-            "device EPSILON configuration card stays visible in sky-ground receive mode");
+            "device EPSILON configuration card stays visible in sky-ground remote mode");
     require(deviceTelemetrySummaryCard->isVisible(),
-            "device telemetry summary remains visible after switching to sky-ground receive mode");
+            "device telemetry summary remains visible after switching to sky-ground remote mode");
     requireSameRect(epsilonConfigCard->geometry(), localEpsilonConfigRect, 2,
-                    "device EPSILON configuration card geometry is stable in sky-ground receive mode");
+                    "device EPSILON configuration card geometry is stable in sky-ground remote mode");
     requireSameRect(deviceTelemetrySummaryCard->geometry(), localTelemetrySummaryRect, 2,
-                    "device telemetry summary geometry is stable in sky-ground receive mode");
+                    "device telemetry summary geometry is stable in sky-ground remote mode");
     deviceSourceModeCombo->setCurrentIndex(0);
     processEventsFor(150);
     activateLayouts(&window);

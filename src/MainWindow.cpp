@@ -2488,7 +2488,7 @@ QLabel#deviceTelemetrySectionTitleLabel {
     margin: 0px;
 }
 QFrame#homeTelemetrySummaryPill {
-    background-color: @vv-surface-alt;
+    background-color: @vv-surface;
     border: 1px solid @vv-border;
     border-radius: 8px;
     padding: 0px;
@@ -2507,11 +2507,11 @@ QFrame#homeTelemetrySummaryPill QLabel#homeTelemetrySummaryValueLabel {
     font-family: "Cascadia Mono", "Consolas", "Courier New", monospace;
 }
 QFrame#homeTelemetrySummaryPill[hasData="true"] {
-    background-color: @vv-primary-subtle;
-    border: 1px solid @vv-primary-subtle-pressed;
+    background-color: @vv-surface;
+    border: 1px solid @vv-border;
 }
 QFrame#homeTelemetrySummaryPill[hasData="false"] {
-    background-color: @vv-surface-alt;
+    background-color: @vv-surface;
     border: 1px solid @vv-border;
 }
 QFrame#homeTelemetrySummaryPill[hasData="false"] QLabel {
@@ -2703,7 +2703,7 @@ void applyComboText(QComboBox *combo, const QString& value)
 QString sourceModeDisplayText(bool english, int index)
 {
     return index == 1
-        ? (english ? QStringLiteral("Sky-Ground Receive Mode") : QStringLiteral("天空-地面接收模式"))
+        ? (english ? QStringLiteral("Sky-Ground Remote Mode") : QStringLiteral("天地远程模式"))
         : (english ? QStringLiteral("Local") : QStringLiteral("本地"));
 }
 
@@ -2739,7 +2739,10 @@ int sourceModeIndexFromStoredValue(const QString& value)
     if (normalized == QStringLiteral("remote") ||
         normalized == QStringLiteral("remote sky") ||
         normalized == QStringLiteral("1") ||
-        normalized.contains(QStringLiteral("天空")))
+        normalized.contains(QStringLiteral("sky")) ||
+        normalized.contains(QStringLiteral("天空")) ||
+        normalized.contains(QStringLiteral("天地")) ||
+        normalized.contains(QStringLiteral("远程")))
     {
         return 1;
     }
@@ -6888,11 +6891,11 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#deviceTelemetrySectionTitleLabel { background-color: transparent; border: none; color: @vv-text-strong; font-size: 13px; font-weight: 700; padding: 0px; margin: 0px; }"
             "QLabel#homeOverviewSectionTitle { color: @vv-primary; font-size: 14px; font-weight: 700; padding: 0px; margin: 0px; }"
             "QLabel#homeTelemetrySummaryTitleLabel { color: @vv-primary; font-size: 13px; font-weight: 700; padding: 0px; margin: 0px; }"
-            "QFrame#homeTelemetrySummaryPill { background-color: @vv-surface-alt; border: 1px solid @vv-border; border-radius: 8px; padding: 0px; margin: 0px; }"
+            "QFrame#homeTelemetrySummaryPill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; padding: 0px; margin: 0px; }"
             "QFrame#homeTelemetrySummaryPill QLabel { background-color: transparent; border: none; color: @vv-text; font-size: 13px; font-weight: 600; padding: 0px; margin: 0px; }"
             "QFrame#homeTelemetrySummaryPill QLabel#homeTelemetrySummaryValueLabel { font-family: \"Cascadia Mono\", \"Consolas\", \"Courier New\", monospace; }"
-            "QFrame#homeTelemetrySummaryPill[hasData=\"true\"] { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; }"
-            "QFrame#homeTelemetrySummaryPill[hasData=\"false\"] { background-color: @vv-surface-alt; border: 1px solid @vv-border; }"
+            "QFrame#homeTelemetrySummaryPill[hasData=\"true\"] { background-color: @vv-surface; border: 1px solid @vv-border; }"
+            "QFrame#homeTelemetrySummaryPill[hasData=\"false\"] { background-color: @vv-surface; border: 1px solid @vv-border; }"
             "QFrame#homeTelemetrySummaryPill[hasData=\"false\"] QLabel { color: @vv-text-muted; }"
             "QLabel#homeTelemetrySummaryNameLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 14px; font-weight: 700; }"
             "QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 14px; font-weight: 600; }"
@@ -8260,6 +8263,7 @@ bool MainWindow::isRemoteSkyTcpMode() const
 void MainWindow::onDataSourceModeChanged(int index)
 {
     remote_sky_mode_ = index == 1;
+    saveRememberedInputState();
     clearRemoteSkyDataUi();
     if (tcp_wave_panel_)
     {
