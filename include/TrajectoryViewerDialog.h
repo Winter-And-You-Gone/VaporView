@@ -40,6 +40,7 @@ private:
     void applyMapSourceSelection(int index);
     void applyTiandituKeyEdit();
     void showTiandituKeyMenu();
+    void updateThemeStyles();
     void updateTitleBarIcons();
     void updateTexts();
     void updateSummary();
@@ -52,6 +53,7 @@ private:
     void copySelectedPoint();
 
     QLabel *summary_label_;
+    QLabel *sidebar_title_label_;
     QLabel *legend_label_;
     QLabel *detail_label_;
     QLabel *map_status_label_;
@@ -70,6 +72,7 @@ private:
     QToolButton *zoom_out_button_;
     QToolButton *reset_view_button_;
     bool is_english_;
+    bool updating_theme_styles_;
     QString english_track_label_;
     QString chinese_track_label_;
     QVector<RtkTrackPoint> track_points_;

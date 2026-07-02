@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFrame>
 #include <QHBoxLayout>
 #include <QComboBox>
 #include <QIcon>
@@ -1314,6 +1315,7 @@ private:
 TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     : QDialog(parent)
     , summary_label_(new QLabel(this))
+    , sidebar_title_label_(new QLabel(this))
     , legend_label_(new QLabel(this))
     , detail_label_(new QLabel(this))
     , map_status_label_(new QLabel(this))
@@ -1332,6 +1334,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , zoom_out_button_(new QToolButton(this))
     , reset_view_button_(new QToolButton(this))
     , is_english_(false)
+    , updating_theme_styles_(false)
     , english_track_label_(QStringLiteral("RTK trajectory"))
     , chinese_track_label_(QStringLiteral("RTK轨迹"))
     , track_points_()
@@ -1339,6 +1342,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , selected_track_index_(-1)
     , playback_timer_(new QTimer(this))
 {
+    setObjectName(QStringLiteral("trajectoryViewerDialog"));
     setWindowFlag(Qt::Window, true);
     setModal(false);
     resize(1080, 680);
@@ -1356,19 +1360,40 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     mainLayout->setSpacing(12);
     dialogLayout->addWidget(content, 1);
 
-    auto *sidebar = new QScrollArea(this);
+    auto *sidebarCard = new QFrame(this);
+    sidebarCard->setObjectName(QStringLiteral("trajectoryViewerSidebarCard"));
+    sidebarCard->setFixedWidth(kTrajectorySidebarWidth);
+    sidebarCard->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+    auto *sidebarCardLayout = new QVBoxLayout(sidebarCard);
+    sidebarCardLayout->setContentsMargins(0, 0, 0, 0);
+    sidebarCardLayout->setSpacing(0);
+
+    auto *sidebarTitleBar = new QWidget(sidebarCard);
+    sidebarTitleBar->setObjectName(QStringLiteral("sectionTitleBar"));
+    sidebarTitleBar->setFixedHeight(40);
+    auto *sidebarTitleLayout = new QHBoxLayout(sidebarTitleBar);
+    sidebarTitleLayout->setContentsMargins(12, 0, 12, 0);
+    sidebarTitleLayout->setSpacing(8);
+    sidebar_title_label_->setObjectName(QStringLiteral("sectionTitleLabel"));
+    sidebar_title_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    sidebarTitleLayout->addWidget(sidebar_title_label_, 1, Qt::AlignVCenter);
+    sidebarCardLayout->addWidget(sidebarTitleBar);
+
+    auto *sidebar = new QScrollArea(sidebarCard);
     sidebar->setObjectName(QStringLiteral("trajectoryViewerSidebar"));
-    sidebar->setFixedWidth(kTrajectorySidebarWidth);
     sidebar->setWidgetResizable(true);
+    sidebar->viewport()->setObjectName(QStringLiteral("trajectoryViewerSidebarViewport"));
     sidebar->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     sidebar->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    sidebar->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+    sidebar->setFrameShape(QFrame::NoFrame);
+    sidebar->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     auto *sidebarContent = new QWidget(sidebar);
     sidebarContent->setObjectName(QStringLiteral("trajectoryViewerSidebarContent"));
     auto *sidebarLayout = new QVBoxLayout(sidebarContent);
-    sidebarLayout->setContentsMargins(0, 0, 0, 0);
+    sidebarLayout->setContentsMargins(12, 12, 12, 12);
     sidebarLayout->setSpacing(8);
     sidebar->setWidget(sidebarContent);
+    sidebarCardLayout->addWidget(sidebar, 1);
 
     auto *mapPanel = new QWidget(this);
     mapPanel->setObjectName(QStringLiteral("trajectoryViewerMapPanel"));
@@ -1381,17 +1406,17 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     map_widget_->setMinimumHeight(kTrajectoryMapMinimumHeight);
     map_widget_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     summary_label_->setWordWrap(true);
-    summary_label_->setObjectName(QStringLiteral("fieldLabel"));
+    summary_label_->setObjectName(QStringLiteral("trajectorySidebarBodyLabel"));
     sidebarLayout->addWidget(summary_label_);
     legend_label_->setWordWrap(true);
     legend_label_->setTextFormat(Qt::RichText);
     legend_label_->setObjectName(QStringLiteral("fieldLabel"));
     detail_label_->setWordWrap(true);
-    detail_label_->setObjectName(QStringLiteral("fieldLabel"));
+    detail_label_->setObjectName(QStringLiteral("trajectorySidebarBodyLabel"));
     detail_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     sidebarLayout->addWidget(detail_label_);
     map_status_label_->setWordWrap(true);
-    map_status_label_->setObjectName(QStringLiteral("fieldLabel"));
+    map_status_label_->setObjectName(QStringLiteral("trajectorySidebarBodyLabel"));
     sidebarLayout->addWidget(map_status_label_);
     map_progress_bar_->setTextVisible(true);
     map_progress_bar_->setMinimum(0);
@@ -1408,6 +1433,12 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     play_button_->setEnabled(false);
     export_button_->setEnabled(false);
     copy_point_button_->setEnabled(false);
+    for (auto *button : {play_button_, copy_point_button_, export_button_})
+    {
+        button->setObjectName(QStringLiteral("trajectorySidebarActionButton"));
+        button->setFixedHeight(32);
+        button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
+    }
     timelineLayout->addWidget(play_button_);
     timelineLayout->addWidget(timeline_slider_, 1);
     timelineLayout->addWidget(copy_point_button_);
@@ -1430,7 +1461,8 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     });
 
     map_source_combo_->setObjectName(QStringLiteral("trajectoryMapSourceCombo"));
-    map_source_combo_->setFixedWidth(160);
+    map_source_combo_->setMinimumWidth(160);
+    map_source_combo_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     map_source_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     map_source_combo_->setToolTip(is_english_ ? QStringLiteral("Map source") : QStringLiteral("底图来源"));
 
@@ -1491,7 +1523,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
 
     mapPanelLayout->addWidget(legend_label_);
     mapPanelLayout->addWidget(map_widget_, 1);
-    mainLayout->addWidget(sidebar);
+    mainLayout->addWidget(sidebarCard);
     mainLayout->addWidget(mapPanel, 1);
 
     connect(map_source_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -1542,8 +1574,47 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     }
 
     VaporView::installCustomTitleBar(this);
+    updateThemeStyles();
     updateTexts();
     updateSelectedPointDetails();
+}
+
+void TrajectoryViewerDialog::updateThemeStyles()
+{
+    if (updating_theme_styles_)
+    {
+        return;
+    }
+
+    updating_theme_styles_ = true;
+    const QString themedStyleSheet = VaporView::applyAppThemeTokens(QStringLiteral(
+        "QDialog#trajectoryViewerDialog { background-color: @vv-surface; }"
+        "QDialog#trajectoryViewerDialog QWidget#customTitleBarContent, QDialog#trajectoryViewerDialog QWidget#trajectoryViewerContent, QDialog#trajectoryViewerDialog QWidget#trajectoryViewerMapPanel { background-color: @vv-surface; }"
+        "QDialog#trajectoryViewerDialog QFrame#trajectoryViewerSidebarCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
+        "QDialog#trajectoryViewerDialog QFrame#trajectoryViewerSidebarCard QWidget#sectionTitleBar { background-color: @vv-surface; border: none; border-bottom: 1px solid @vv-border; border-top-left-radius: 7px; border-top-right-radius: 7px; min-height: 40px; max-height: 40px; }"
+        "QDialog#trajectoryViewerDialog QFrame#trajectoryViewerSidebarCard QLabel#sectionTitleLabel { background-color: transparent; border: none; color: @vv-text; font-size: 16px; font-weight: bold; margin: 0px; padding: 0px; }"
+        "QDialog#trajectoryViewerDialog QScrollArea#trajectoryViewerSidebar { background-color: @vv-surface; border: none; border-bottom-left-radius: 7px; border-bottom-right-radius: 7px; }"
+        "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarViewport, QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent { background-color: @vv-surface; border: none; }"
+        "QDialog#trajectoryViewerDialog QLabel#trajectorySidebarBodyLabel { color: @vv-text; background-color: transparent; border: none; font-size: 14px; font-weight: 600; line-height: 140%; }"
+        "QDialog#trajectoryViewerDialog QPushButton#trajectorySidebarActionButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 600; min-height: 32px; max-height: 32px; padding: 4px 10px; }"
+        "QDialog#trajectoryViewerDialog QPushButton#trajectorySidebarActionButton:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
+        "QDialog#trajectoryViewerDialog QPushButton#trajectorySidebarActionButton:pressed { background-color: @vv-primary-subtle-pressed; color: @vv-primary; }"
+        "QDialog#trajectoryViewerDialog QPushButton#trajectorySidebarActionButton:disabled { background-color: transparent; color: @vv-text-muted; }"
+        "QDialog#trajectoryViewerDialog QProgressBar { background-color: @vv-field-bg; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; font-size: 12px; font-weight: 600; min-height: 16px; max-height: 16px; text-align: center; }"
+        "QDialog#trajectoryViewerDialog QProgressBar::chunk { background-color: @vv-progress-chunk; border-radius: 5px; }"
+        "QDialog#trajectoryViewerDialog QSlider::groove:horizontal { background-color: @vv-field-bg; border: 1px solid @vv-border; height: 6px; border-radius: 3px; }"
+        "QDialog#trajectoryViewerDialog QSlider::handle:horizontal { background-color: @vv-primary; border: 1px solid @vv-primary; width: 14px; margin: -5px 0px; border-radius: 7px; }"
+        "QDialog#trajectoryViewerDialog QComboBox#trajectoryMapSourceCombo { background-color: @vv-field-bg; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 600; min-height: 32px; padding: 4px 28px 4px 10px; }"
+        "QDialog#trajectoryViewerDialog QComboBox#trajectoryMapSourceCombo:hover { border-color: @vv-border-strong; }"
+        "QDialog#trajectoryViewerDialog QComboBox#trajectoryMapSourceCombo:focus { border-color: @vv-primary; }"
+        "QDialog#trajectoryViewerDialog QToolButton#titleBarButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; }"
+        "QDialog#trajectoryViewerDialog QToolButton#titleBarButton:hover { background-color: @vv-primary-subtle; border-color: @vv-primary-subtle-pressed; }"),
+        isDarkPalette());
+    if (styleSheet() != themedStyleSheet)
+    {
+        setStyleSheet(themedStyleSheet);
+    }
+    updating_theme_styles_ = false;
 }
 
 void TrajectoryViewerDialog::applyMapSourceSelection(int index)
@@ -1862,6 +1933,7 @@ void TrajectoryViewerDialog::changeEvent(QEvent *event)
 
     if (event->type() == QEvent::PaletteChange || event->type() == QEvent::ApplicationPaletteChange)
     {
+        updateThemeStyles();
         updateTitleBarIcons();
     }
 }
@@ -2026,6 +2098,10 @@ void TrajectoryViewerDialog::updateTexts()
     setWindowTitle(is_english_
         ? QStringLiteral("%1 Viewer").arg(english_track_label_)
         : QStringLiteral("%1查看").arg(chinese_track_label_));
+    if (sidebar_title_label_)
+    {
+        sidebar_title_label_->setText(is_english_ ? QStringLiteral("Trajectory Controls") : QStringLiteral("轨迹控制"));
+    }
     {
         QSignalBlocker blocker(map_source_combo_);
         map_source_combo_->clear();

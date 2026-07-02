@@ -12,12 +12,15 @@
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFile>
+#include <QFrame>
 #include <QImage>
 #include <QLabel>
 #include <QMainWindow>
+#include <QMargins>
 #include <QMetaObject>
 #include <QPalette>
 #include <QProgressBar>
+#include <QPushButton>
 #include <QSettings>
 #include <QTableWidget>
 #include <QTemporaryDir>
@@ -244,26 +247,63 @@ void testTrajectoryViewerUsesSidebarLayout()
     dialog.show();
     processEventsFor(200);
 
+    require(dialog.objectName() == QStringLiteral("trajectoryViewerDialog"),
+            "trajectory viewer dialog has scoped style object name");
     auto *sidebar = dialog.findChild<QWidget *>(QStringLiteral("trajectoryViewerSidebar"));
+    auto *sidebarCard = dialog.findChild<QFrame *>(QStringLiteral("trajectoryViewerSidebarCard"));
+    auto *sidebarTitleBar = sidebarCard
+        ? sidebarCard->findChild<QWidget *>(QStringLiteral("sectionTitleBar"))
+        : nullptr;
+    auto *sidebarTitle = sidebarTitleBar
+        ? sidebarTitleBar->findChild<QLabel *>(QStringLiteral("sectionTitleLabel"))
+        : nullptr;
+    auto *sidebarContent = dialog.findChild<QWidget *>(QStringLiteral("trajectoryViewerSidebarContent"));
     auto *mapPanel = dialog.findChild<QWidget *>(QStringLiteral("trajectoryViewerMapPanel"));
     auto *map = dialog.findChild<QWidget *>(QStringLiteral("trajectoryViewerMap"));
     auto *mapSourceCombo = dialog.findChild<QComboBox *>(QStringLiteral("trajectoryMapSourceCombo"));
 
+    require(sidebarCard != nullptr, "trajectory viewer sidebar card exists");
+    require(sidebarTitleBar != nullptr, "trajectory viewer sidebar title bar exists");
+    require(sidebarTitle != nullptr, "trajectory viewer sidebar title label exists");
+    require(sidebarContent != nullptr, "trajectory viewer sidebar body exists");
     require(sidebar != nullptr, "trajectory viewer sidebar exists");
     require(mapPanel != nullptr, "trajectory viewer map panel exists");
     require(map != nullptr, "trajectory viewer map exists");
     require(mapSourceCombo != nullptr, "trajectory viewer map source control exists");
     const auto sidebarToolButtons = sidebar->findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
     require(sidebarToolButtons.size() >= 4, "trajectory viewer sidebar contains map tool buttons");
+    const auto sidebarActionButtons = sidebar->findChildren<QPushButton *>(QStringLiteral("trajectorySidebarActionButton"));
+    require(sidebarActionButtons.size() == 3, "trajectory viewer sidebar contains styled action buttons");
 
+    require(sidebarCard->isAncestorOf(sidebarTitleBar), "sidebar title bar is inside card");
+    require(sidebarCard->isAncestorOf(sidebar), "sidebar body scroll area is inside card");
+    require(sidebar->isAncestorOf(sidebarContent), "sidebar content is inside scroll body");
+    require(sidebarTitleBar->minimumHeight() == sidebarTitleBar->maximumHeight()
+                && sidebarTitleBar->minimumHeight() >= 40,
+            "sidebar title bar keeps home card fixed height");
+    require(sidebarContent->layout() != nullptr, "sidebar content layout exists");
+    require(sidebarContent->layout()->contentsMargins() == QMargins(12, 12, 12, 12),
+            "sidebar body uses home card interior padding");
+    require(mapSourceCombo->minimumWidth() == 160, "map source combo keeps readable minimum width");
+    require(mapSourceCombo->sizePolicy().horizontalPolicy() == QSizePolicy::Expanding,
+            "map source combo expands within sidebar controls");
     require(sidebar->isAncestorOf(mapSourceCombo), "map source control is in sidebar");
     require(mapPanel->isAncestorOf(map), "map remains in the map panel");
     require(!sidebar->isAncestorOf(map), "map is not in sidebar");
-    require(sidebar->geometry().left() < mapPanel->geometry().left(),
-            "trajectory sidebar is positioned to the left of the map panel");
-    require(sidebar->geometry().top() == mapPanel->geometry().top(),
-            "trajectory sidebar and map panel share the same row");
+    require(sidebarCard->geometry().left() < mapPanel->geometry().left(),
+            "trajectory sidebar card is positioned to the left of the map panel");
+    require(sidebarCard->geometry().top() == mapPanel->geometry().top(),
+            "trajectory sidebar card and map panel share the same row");
     require(map->height() >= 300, "trajectory map keeps usable vertical space");
+    const QString styleSheet = dialog.styleSheet();
+    require(styleSheet.contains(QStringLiteral("QDialog#trajectoryViewerDialog")),
+            "trajectory viewer stylesheet is scoped to dialog");
+    require(styleSheet.contains(QStringLiteral("QFrame#trajectoryViewerSidebarCard")),
+            "trajectory viewer stylesheet includes sidebar card styling");
+    require(styleSheet.contains(QStringLiteral("QWidget#sectionTitleBar")),
+            "trajectory viewer stylesheet includes home-style section title bar");
+    require(styleSheet.contains(QStringLiteral("QPushButton#trajectorySidebarActionButton")),
+            "trajectory viewer stylesheet includes sidebar action button styling");
 
     dialog.close();
     processEventsFor(100);
