@@ -484,6 +484,42 @@ public:
         });
     }
 
+    ~TrajectoryMapWidget() override
+    {
+        ++tile_request_generation_;
+        visible_tile_request_scheduled_ = false;
+        feedback_update_scheduled_ = false;
+        repaint_update_requested_ = false;
+        status_callback_ = nullptr;
+        progress_callback_ = nullptr;
+        selection_callback_ = nullptr;
+
+        if (manager_)
+        {
+            manager_->disconnect(this);
+        }
+
+        const QSet<QNetworkReply*> replies = active_tile_replies_;
+        for (QNetworkReply *reply : replies)
+        {
+            if (!reply)
+            {
+                continue;
+            }
+            QObject::disconnect(reply, nullptr, this, nullptr);
+            reply->abort();
+        }
+
+        active_tile_replies_.clear();
+        active_tile_reply_keys_.clear();
+        pending_tiles_.clear();
+        queued_tile_requests_.clear();
+        current_visible_tile_keys_.clear();
+        current_requested_tile_keys_.clear();
+        failed_tiles_.clear();
+        active_tile_request_count_ = 0;
+    }
+
     void setStatusCallback(std::function<void(const QString&)> callback)
     {
         status_callback_ = std::move(callback);

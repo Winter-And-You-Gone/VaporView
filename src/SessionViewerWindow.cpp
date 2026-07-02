@@ -2671,7 +2671,7 @@ void SessionViewerWindow::onViewTrajectoryClicked()
     {
         trajectory_viewer_dialog_ = new TrajectoryViewerDialog();
         trajectory_viewer_dialog_->setAttribute(Qt::WA_QuitOnClose, false);
-        trajectory_viewer_dialog_->setAttribute(Qt::WA_DeleteOnClose, true);
+        trajectory_viewer_dialog_->setAttribute(Qt::WA_DeleteOnClose, false);
         connect(trajectory_viewer_dialog_, &QObject::destroyed, this, [this]() {
             trajectory_viewer_dialog_ = nullptr;
         });

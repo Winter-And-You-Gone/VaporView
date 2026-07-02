@@ -159,6 +159,46 @@ void writeUnifiedRawFile(const QString& path, int recordCount)
     }
 }
 
+void writeMinimalTrajectorySession(const QString& sessionPath)
+{
+    QDir dir(sessionPath);
+    require(dir.mkpath(QStringLiteral("sensors")), "temporary trajectory sensors directory can be created");
+
+    QFile metadata(dir.filePath(QStringLiteral("session.json")));
+    require(metadata.open(QIODevice::WriteOnly | QIODevice::Text), "temporary trajectory metadata can be written");
+    metadata.write(R"json({
+  "session_name": "trajectory_test_session",
+  "start_time_utc": "2026-06-26T06:33:55.573Z",
+  "end_time_utc": "2026-06-26T06:33:58.573Z",
+  "sensor_rows": "4",
+  "sensor_export_rate_hz": 1,
+  "waveform_frames": "0",
+  "waveform_points_per_frame": 16,
+  "waveform_export_rate_hz": 0,
+  "waveform_export_mode": "per_frame",
+  "paths": {
+    "devices_csv": "sensors/devices.csv",
+    "waveform_directory": "waveform",
+    "waveform_index": "waveform_index.csv"
+  },
+  "raw_files": {
+    "tcp_wave": {
+      "path": "raw/tcp_wave.dat"
+    }
+  }
+})json");
+    metadata.close();
+
+    QFile sensors(dir.filePath(QStringLiteral("sensors/devices.csv")));
+    require(sensors.open(QIODevice::WriteOnly | QIODevice::Text), "temporary trajectory CSV can be written");
+    QTextStream stream(&sensors);
+    stream << "record_timestamp_us,epsilon_valid,gnss_fix,nav_lat_deg,nav_lon_deg,nav_height_m\n";
+    stream << "1782446035573000,true,RTK_FIXED,30.13698120,120.06938175,9.606\n";
+    stream << "1782446036573000,true,RTK_FIXED,30.13712000,120.06952000,9.806\n";
+    stream << "1782446037573000,true,RTK_FIXED,30.13736000,120.06972000,10.106\n";
+    stream << "1782446038573000,true,RTK_FIXED,30.13762000,120.06990710,11.190\n";
+}
+
 void testRawDataParserOpenIsNonBlocking()
 {
     QTemporaryDir sessionDir;
@@ -333,6 +373,42 @@ void testMainWindowDataViewerOpenCanReopen()
             "data viewer reopens from retained main window instance");
 }
 
+void testSessionViewerTrajectoryActionLifetime()
+{
+    QTemporaryDir sessionDir;
+    require(sessionDir.isValid(), "temporary trajectory session directory");
+    writeMinimalTrajectorySession(sessionDir.path());
+
+    SessionViewerWindow viewer;
+    viewer.resize(1280, 800);
+    viewer.show();
+    processEventsFor(300);
+
+    require(viewer.openSessionPath(sessionDir.path()), "session viewer loads temporary trajectory session");
+    processEventsFor(300);
+    require(QMetaObject::invokeMethod(&viewer, "onViewTrajectoryClicked", Qt::DirectConnection),
+            "session viewer invokes trajectory viewer action");
+
+    TrajectoryViewerDialog *dialog = nullptr;
+    require(processEventsUntil(2000, [&dialog]() {
+                for (QWidget *widget : QApplication::topLevelWidgets())
+                {
+                    dialog = qobject_cast<TrajectoryViewerDialog *>(widget);
+                    if (dialog && dialog->isVisible())
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }),
+            "trajectory viewer opens from loaded data viewer session");
+
+    dialog->close();
+    processEventsFor(700);
+    viewer.close();
+    processEventsFor(100);
+}
+
 void testTrajectoryViewerUsesSidebarLayout()
 {
     TrajectoryViewerDialog dialog;
@@ -487,6 +563,7 @@ int main(int argc, char **argv)
     testRawDataParserOpenIsNonBlocking();
     testMainWindowDataViewerOpenCanReopen();
     testSessionViewerTitleBarWindowButtons();
+    testSessionViewerTrajectoryActionLifetime();
     testTrajectoryViewerUsesSidebarLayout();
 
     {
