@@ -86,6 +86,14 @@ constexpr int kTilePanRequestDebounceMs = 50;
 constexpr double kDefaultTrackWidth = 2.8;
 constexpr double kDefaultTrackPointRadius = 4.0;
 constexpr int kTrackStyleSliderScale = 10;
+constexpr int kTrackWorldCacheZoom = 20;
+constexpr int kTrackSpatialCellSize = 4096;
+constexpr double kTrackLineMinPixelStep = 1.35;
+constexpr double kTrackPointMinPixelStep = 9.0;
+constexpr double kTrackBucketSize = 36.0;
+constexpr int kTrackDensePointThreshold = 5000;
+constexpr int kTrackBucketCandidateLimit = 24;
+constexpr qint64 kTrackMaxCellScanCount = 20000;
 constexpr auto kTileRequestTimeout = std::chrono::seconds(15);
 
 enum class TileProvider
@@ -244,6 +252,33 @@ struct TileRange
     int max_x;
     int min_y;
     int max_y;
+};
+
+struct ProjectedTrackPoint
+{
+    QPointF world_pixel;
+    int cell_x;
+    int cell_y;
+};
+
+struct ScreenTrackPoint
+{
+    int index;
+    QPointF screen;
+};
+
+struct TrackRenderContext
+{
+    QVector<ScreenTrackPoint> point_points;
+    QHash<qint64, QVector<int>> hit_buckets;
+};
+
+struct ScreenTrackSegment
+{
+    int first_index;
+    int second_index;
+    QPointF first_screen;
+    QPointF second_screen;
 };
 
 QVector<TileLayerSpec> tileLayerSpecs(TileProvider provider)
@@ -581,6 +616,10 @@ public:
         , hovered_track_index_(-1)
         , track_width_(kDefaultTrackWidth)
         , point_radius_(kDefaultTrackPointRadius)
+        , has_peak_range_(false)
+        , min_peak_(0.0f)
+        , max_peak_(0.0f)
+        , peak_count_(0)
         , active_tile_request_count_(0)
         , tile_request_generation_(0)
         , visible_tile_request_scheduled_(false)
@@ -699,6 +738,7 @@ public:
     void setTrackPoints(const QVector<RtkTrackPoint>& points)
     {
         track_points_ = points;
+        rebuildTrackCaches();
         hovered_track_index_ = -1;
         selected_track_index_ = track_points_.isEmpty()
             ? -1
@@ -992,6 +1032,36 @@ private:
         last_tile_error_.clear();
         active_tile_request_count_ = 0;
         abortActiveTileReplies();
+    }
+
+    void rebuildTrackCaches()
+    {
+        projected_track_points_.clear();
+        track_spatial_index_.clear();
+        last_render_context_ = TrackRenderContext();
+        has_peak_range_ = false;
+        min_peak_ = std::numeric_limits<float>::max();
+        max_peak_ = std::numeric_limits<float>::lowest();
+        peak_count_ = 0;
+
+        projected_track_points_.reserve(track_points_.size());
+        for (int index = 0; index < track_points_.size(); ++index)
+        {
+            const RtkTrackPoint& point = track_points_.at(index);
+            const QPointF worldPixel = latLonToPixel(point.latitude, point.longitude, kTrackWorldCacheZoom);
+            const int cellX = static_cast<int>(std::floor(worldPixel.x() / kTrackSpatialCellSize));
+            const int cellY = static_cast<int>(std::floor(worldPixel.y() / kTrackSpatialCellSize));
+            projected_track_points_.push_back({worldPixel, cellX, cellY});
+            track_spatial_index_[trackCellKey(cellX, cellY)].push_back(index);
+
+            if (point.has_peak_value && std::isfinite(point.peak_value))
+            {
+                has_peak_range_ = true;
+                ++peak_count_;
+                min_peak_ = std::min(min_peak_, point.peak_value);
+                max_peak_ = std::max(max_peak_, point.peak_value);
+            }
+        }
     }
 
     void abortActiveTileReplies()
@@ -1560,100 +1630,366 @@ private:
             mapRect.top() + (worldPixel.y() - topLeft.y()));
     }
 
-    void drawTrack(QPainter& painter, const QRectF& mapRect)
+    QPointF cachedWorldToScreen(const QPointF& cachedWorldPixel, const QRectF& mapRect) const
     {
-        QVector<QPointF> polyline;
-        polyline.reserve(track_points_.size());
-        bool hasPeakRange = false;
-        float minPeak = std::numeric_limits<float>::max();
-        float maxPeak = std::numeric_limits<float>::lowest();
-        for (const RtkTrackPoint& point : track_points_)
+        const double scale = std::pow(2.0, zoom_ - kTrackWorldCacheZoom);
+        return worldToScreen(cachedWorldPixel * scale, mapRect);
+    }
+
+    qint64 trackCellKey(int cellX, int cellY) const
+    {
+        return (static_cast<qint64>(static_cast<quint32>(cellX)) << 32) |
+               static_cast<quint32>(cellY);
+    }
+
+    qint64 screenBucketKey(int bucketX, int bucketY) const
+    {
+        return (static_cast<qint64>(static_cast<quint32>(bucketX)) << 32) |
+               static_cast<quint32>(bucketY);
+    }
+
+    QRectF visibleWorldRect(const QRectF& mapRect, double marginPixels) const
+    {
+        const double scale = std::pow(2.0, kTrackWorldCacheZoom - zoom_);
+        const QPointF topLeft = center_world_pixel_ - QPointF(mapRect.width() * 0.5, mapRect.height() * 0.5);
+        return QRectF(
+            (topLeft.x() - marginPixels) * scale,
+            (topLeft.y() - marginPixels) * scale,
+            (mapRect.width() + marginPixels * 2.0) * scale,
+            (mapRect.height() + marginPixels * 2.0) * scale);
+    }
+
+    bool isForcedTrackPoint(int index) const
+    {
+        return index == 0 ||
+               index == track_points_.size() - 1 ||
+               index == hovered_track_index_ ||
+               index == selected_track_index_;
+    }
+
+    bool appendScreenPointIfSeparated(QVector<ScreenTrackPoint>& points,
+                                      const ScreenTrackPoint& candidate,
+                                      double minDistanceSquared) const
+    {
+        if (points.isEmpty() || isForcedTrackPoint(candidate.index))
         {
-            polyline.push_back(worldToScreen(latLonToPixel(point.latitude, point.longitude, zoom_), mapRect));
-            if (point.has_peak_value)
-            {
-                hasPeakRange = true;
-                minPeak = std::min(minPeak, point.peak_value);
-                maxPeak = std::max(maxPeak, point.peak_value);
-            }
+            points.push_back(candidate);
+            return true;
         }
 
-        painter.save();
-        painter.setClipRect(mapRect, Qt::IntersectClip);
-        if (polyline.size() >= 2)
+        const QPointF delta = candidate.screen - points.constLast().screen;
+        if (delta.x() * delta.x() + delta.y() * delta.y() >= minDistanceSquared)
         {
-            for (int index = 0; index + 1 < polyline.size(); ++index)
-            {
-                QColor segmentColor = defaultTrackColor();
-                const RtkTrackPoint& firstPoint = track_points_.at(index);
-                const RtkTrackPoint& secondPoint = track_points_.at(index + 1);
-                if (hasPeakRange)
-                {
-                    if (firstPoint.has_peak_value && secondPoint.has_peak_value)
-                    {
-                        segmentColor = trackHeatColor((firstPoint.peak_value + secondPoint.peak_value) * 0.5f,
-                            minPeak,
-                            maxPeak,
-                            heat_palette_);
-                    }
-                    else if (firstPoint.has_peak_value)
-                    {
-                        segmentColor = trackHeatColor(firstPoint.peak_value, minPeak, maxPeak, heat_palette_);
-                    }
-                    else if (secondPoint.has_peak_value)
-                    {
-                        segmentColor = trackHeatColor(secondPoint.peak_value, minPeak, maxPeak, heat_palette_);
-                    }
-                }
+            points.push_back(candidate);
+            return true;
+        }
+        return false;
+    }
 
-                painter.setPen(QPen(segmentColor, track_width_, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-                painter.drawLine(polyline.at(index), polyline.at(index + 1));
-            }
+    bool isVisibleTrackSegment(int firstIndex, int secondIndex, const QRectF& visibleWorld) const
+    {
+        if (firstIndex < 0 ||
+            secondIndex < 0 ||
+            firstIndex >= projected_track_points_.size() ||
+            secondIndex >= projected_track_points_.size())
+        {
+            return false;
         }
 
-        if (!polyline.isEmpty())
+        const QPointF& firstWorld = projected_track_points_.at(firstIndex).world_pixel;
+        const QPointF& secondWorld = projected_track_points_.at(secondIndex).world_pixel;
+        const QRectF segmentWorldRect(
+            std::min(firstWorld.x(), secondWorld.x()),
+            std::min(firstWorld.y(), secondWorld.y()),
+            std::abs(firstWorld.x() - secondWorld.x()),
+            std::abs(firstWorld.y() - secondWorld.y()));
+        return visibleWorld.intersects(segmentWorldRect.adjusted(-1.0, -1.0, 1.0, 1.0));
+    }
+
+    QColor segmentColorForPoints(int firstIndex, int secondIndex) const
+    {
+        QColor segmentColor = defaultTrackColor();
+        if (!has_peak_range_ ||
+            firstIndex < 0 ||
+            secondIndex < 0 ||
+            firstIndex >= track_points_.size() ||
+            secondIndex >= track_points_.size())
         {
-            for (int index = 0; index < polyline.size(); ++index)
+            return segmentColor;
+        }
+
+        const RtkTrackPoint& firstPoint = track_points_.at(firstIndex);
+        const RtkTrackPoint& secondPoint = track_points_.at(secondIndex);
+        if (firstPoint.has_peak_value && secondPoint.has_peak_value)
+        {
+            return trackHeatColor((firstPoint.peak_value + secondPoint.peak_value) * 0.5f,
+                min_peak_,
+                max_peak_,
+                heat_palette_);
+        }
+        if (firstPoint.has_peak_value)
+        {
+            return trackHeatColor(firstPoint.peak_value, min_peak_, max_peak_, heat_palette_);
+        }
+        if (secondPoint.has_peak_value)
+        {
+            return trackHeatColor(secondPoint.peak_value, min_peak_, max_peak_, heat_palette_);
+        }
+        return segmentColor;
+    }
+
+    QColor pointColorForIndex(int index) const
+    {
+        if (index < 0 || index >= track_points_.size())
+        {
+            return defaultTrackColor();
+        }
+
+        const RtkTrackPoint& point = track_points_.at(index);
+        if (has_peak_range_ && point.has_peak_value)
+        {
+            return trackHeatColor(point.peak_value, min_peak_, max_peak_, heat_palette_);
+        }
+        return defaultTrackColor();
+    }
+
+    QVector<int> visibleTrackCandidateIndices(const QRectF& mapRect) const
+    {
+        QVector<int> indices;
+        if (projected_track_points_.isEmpty())
+        {
+            return indices;
+        }
+
+        const QRectF visibleWorld = visibleWorldRect(mapRect, std::max(48.0, point_radius_ * 4.0));
+        const int minCellX = static_cast<int>(std::floor(visibleWorld.left() / kTrackSpatialCellSize));
+        const int maxCellX = static_cast<int>(std::floor(visibleWorld.right() / kTrackSpatialCellSize));
+        const int minCellY = static_cast<int>(std::floor(visibleWorld.top() / kTrackSpatialCellSize));
+        const int maxCellY = static_cast<int>(std::floor(visibleWorld.bottom() / kTrackSpatialCellSize));
+        const qint64 cellScanCount = static_cast<qint64>(maxCellX - minCellX + 1) *
+                                     static_cast<qint64>(maxCellY - minCellY + 1);
+
+        if (cellScanCount > kTrackMaxCellScanCount ||
+            cellScanCount > static_cast<qint64>(track_spatial_index_.size()) * 4)
+        {
+            for (int index = 0; index < projected_track_points_.size(); ++index)
             {
-                if (index == selected_track_index_ || index == hovered_track_index_)
+                const QPointF& world = projected_track_points_.at(index).world_pixel;
+                if (!visibleWorld.contains(world))
                 {
                     continue;
                 }
-                const RtkTrackPoint& point = track_points_.at(index);
-                QColor pointColor = defaultTrackColor();
-                if (point.has_peak_value && hasPeakRange)
+                if (index > 0)
                 {
-                    pointColor = trackHeatColor(point.peak_value, minPeak, maxPeak, heat_palette_);
+                    indices.push_back(index - 1);
+                }
+                indices.push_back(index);
+                if (index + 1 < projected_track_points_.size())
+                {
+                    indices.push_back(index + 1);
+                }
+            }
+        }
+        else
+        {
+            for (int cellX = minCellX; cellX <= maxCellX; ++cellX)
+            {
+                for (int cellY = minCellY; cellY <= maxCellY; ++cellY)
+                {
+                    const auto cell = track_spatial_index_.constFind(trackCellKey(cellX, cellY));
+                    if (cell == track_spatial_index_.constEnd())
+                    {
+                        continue;
+                    }
+                    for (int index : cell.value())
+                    {
+                        const QPointF& world = projected_track_points_.at(index).world_pixel;
+                        if (visibleWorld.contains(world))
+                        {
+                            if (index > 0)
+                            {
+                                indices.push_back(index - 1);
+                            }
+                            indices.push_back(index);
+                            if (index + 1 < projected_track_points_.size())
+                            {
+                                indices.push_back(index + 1);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (!track_points_.isEmpty())
+        {
+            indices.push_back(0);
+            indices.push_back(track_points_.size() - 1);
+            if (hovered_track_index_ >= 0)
+            {
+                indices.push_back(hovered_track_index_);
+            }
+            if (selected_track_index_ >= 0)
+            {
+                indices.push_back(selected_track_index_);
+            }
+        }
+
+        std::sort(indices.begin(), indices.end());
+        indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
+        return indices;
+    }
+
+    QVector<ScreenTrackSegment> buildVisibleTrackSegments(const QVector<int>& visibleIndices,
+                                                         const QRectF& mapRect) const
+    {
+        QVector<ScreenTrackSegment> segments;
+        if (visibleIndices.size() < 2)
+        {
+            return segments;
+        }
+
+        const QRectF visibleWorld = visibleWorldRect(mapRect, std::max(72.0, track_width_ * 6.0));
+        const double denseScale = track_points_.size() >= kTrackDensePointThreshold ? 1.0 : 0.45;
+        const double minStep = std::max(0.75, kTrackLineMinPixelStep * denseScale);
+        const double minDistanceSquared = minStep * minStep;
+        int lastDrawnSecondIndex = -1;
+        QPointF lastDrawnSecondScreen;
+
+        for (int index : visibleIndices)
+        {
+            const int nextIndex = index + 1;
+            if (nextIndex >= projected_track_points_.size())
+            {
+                continue;
+            }
+            if (!isVisibleTrackSegment(index, nextIndex, visibleWorld))
+            {
+                continue;
+            }
+
+            const QPointF firstScreen = cachedWorldToScreen(projected_track_points_.at(index).world_pixel, mapRect);
+            const QPointF secondScreen = cachedWorldToScreen(projected_track_points_.at(nextIndex).world_pixel, mapRect);
+            const bool forced = isForcedTrackPoint(index) || isForcedTrackPoint(nextIndex);
+            const QPointF delta = secondScreen - lastDrawnSecondScreen;
+            if (!segments.isEmpty() &&
+                !forced &&
+                lastDrawnSecondIndex + 1 == nextIndex &&
+                delta.x() * delta.x() + delta.y() * delta.y() < minDistanceSquared)
+            {
+                segments.last().second_index = nextIndex;
+                segments.last().second_screen = secondScreen;
+                lastDrawnSecondIndex = nextIndex;
+                lastDrawnSecondScreen = secondScreen;
+                continue;
+            }
+
+            segments.push_back({index, nextIndex, firstScreen, secondScreen});
+            lastDrawnSecondIndex = nextIndex;
+            lastDrawnSecondScreen = secondScreen;
+        }
+
+        return segments;
+    }
+
+    TrackRenderContext buildTrackRenderContext(const QVector<int>& visibleIndices,
+                                               const QRectF& mapRect) const
+    {
+        TrackRenderContext context;
+        context.point_points.reserve(std::min<int>(visibleIndices.size(), 12000));
+
+        const double pointMinStep = std::max(point_radius_ * 2.2, kTrackPointMinPixelStep);
+        const double pointMinDistanceSquared = pointMinStep * pointMinStep;
+
+        for (int index : visibleIndices)
+        {
+            if (index < 0 || index >= projected_track_points_.size())
+            {
+                continue;
+            }
+            const QPointF screen = cachedWorldToScreen(projected_track_points_.at(index).world_pixel, mapRect);
+            if (!mapRect.adjusted(-64.0, -64.0, 64.0, 64.0).contains(screen))
+            {
+                if (!isForcedTrackPoint(index))
+                {
+                    continue;
+                }
+            }
+
+            const ScreenTrackPoint screenPoint{index, screen};
+            const int bucketX = static_cast<int>(std::floor(screenPoint.screen.x() / kTrackBucketSize));
+            const int bucketY = static_cast<int>(std::floor(screenPoint.screen.y() / kTrackBucketSize));
+            QVector<int>& bucket = context.hit_buckets[screenBucketKey(bucketX, bucketY)];
+            if (bucket.size() < kTrackBucketCandidateLimit || isForcedTrackPoint(index))
+            {
+                bucket.push_back(index);
+            }
+            appendScreenPointIfSeparated(context.point_points, screenPoint, pointMinDistanceSquared);
+        }
+
+        for (const ScreenTrackPoint& screenPoint : std::as_const(context.point_points))
+        {
+            const int bucketX = static_cast<int>(std::floor(screenPoint.screen.x() / kTrackBucketSize));
+            const int bucketY = static_cast<int>(std::floor(screenPoint.screen.y() / kTrackBucketSize));
+            QVector<int>& bucket = context.hit_buckets[screenBucketKey(bucketX, bucketY)];
+            if (!bucket.contains(screenPoint.index))
+            {
+                bucket.push_back(screenPoint.index);
+            }
+        }
+
+        return context;
+    }
+
+    void drawTrack(QPainter& painter, const QRectF& mapRect)
+    {
+        const QVector<int> visibleIndices = visibleTrackCandidateIndices(mapRect);
+        last_render_context_ = buildTrackRenderContext(visibleIndices, mapRect);
+        const QVector<ScreenTrackSegment> lineSegments = buildVisibleTrackSegments(visibleIndices, mapRect);
+
+        painter.save();
+        painter.setClipRect(mapRect, Qt::IntersectClip);
+        if (!lineSegments.isEmpty())
+        {
+            for (const ScreenTrackSegment& segment : lineSegments)
+            {
+                const QColor segmentColor = segmentColorForPoints(segment.first_index, segment.second_index);
+                painter.setPen(QPen(segmentColor, track_width_, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+                painter.drawLine(segment.first_screen, segment.second_screen);
+            }
+        }
+
+        if (!last_render_context_.point_points.isEmpty())
+        {
+            for (const ScreenTrackPoint& screenPoint : std::as_const(last_render_context_.point_points))
+            {
+                if (screenPoint.index == selected_track_index_ || screenPoint.index == hovered_track_index_)
+                {
+                    continue;
                 }
                 painter.setPen(QPen(appThemeColor(AppThemeColor::MapViewport, false), 1.5));
-                painter.setBrush(pointColor);
-                painter.drawEllipse(polyline.at(index), point_radius_, point_radius_);
+                painter.setBrush(pointColorForIndex(screenPoint.index));
+                painter.drawEllipse(screenPoint.screen, point_radius_, point_radius_);
             }
 
             painter.setPen(Qt::NoPen);
             painter.setBrush(appThemeColor(AppThemeColor::TrackStart, false));
             const double endpointRadius = std::max(point_radius_ + 1.0, 5.0);
-            painter.drawEllipse(polyline.first(), endpointRadius, endpointRadius);
+            painter.drawEllipse(cachedWorldToScreen(projected_track_points_.first().world_pixel, mapRect), endpointRadius, endpointRadius);
             painter.setBrush(appThemeColor(AppThemeColor::TrackEnd, false));
-            painter.drawEllipse(polyline.last(), endpointRadius, endpointRadius);
+            painter.drawEllipse(cachedWorldToScreen(projected_track_points_.last().world_pixel, mapRect), endpointRadius, endpointRadius);
         }
-        if (hovered_track_index_ >= 0 && hovered_track_index_ < polyline.size())
+        if (hovered_track_index_ >= 0 && hovered_track_index_ < projected_track_points_.size())
         {
-            const QPointF hoveredPoint = polyline.at(hovered_track_index_);
-            const RtkTrackPoint& point = track_points_.at(hovered_track_index_);
-            QColor pointColor = defaultTrackColor();
-            if (point.has_peak_value && hasPeakRange)
-            {
-                pointColor = trackHeatColor(point.peak_value, minPeak, maxPeak, heat_palette_);
-            }
+            const QPointF hoveredPoint = cachedWorldToScreen(projected_track_points_.at(hovered_track_index_).world_pixel, mapRect);
             const double hoverRadius = point_radius_ * 1.55;
             painter.setPen(QPen(appThemeColor(AppThemeColor::TextStrong, false), 2.0));
-            painter.setBrush(pointColor);
+            painter.setBrush(pointColorForIndex(hovered_track_index_));
             painter.drawEllipse(hoveredPoint, hoverRadius, hoverRadius);
         }
-        if (selected_track_index_ >= 0 && selected_track_index_ < polyline.size())
+        if (selected_track_index_ >= 0 && selected_track_index_ < projected_track_points_.size())
         {
-            const QPointF selectedPoint = polyline.at(selected_track_index_);
+            const QPointF selectedPoint = cachedWorldToScreen(projected_track_points_.at(selected_track_index_).world_pixel, mapRect);
             const double selectedRadius = std::max(point_radius_ * 1.85, 8.0);
             painter.setPen(QPen(appThemeColor(AppThemeColor::TrackEnd, false), 3.0));
             painter.setBrush(appThemeColor(AppThemeColor::MapViewport, false));
@@ -1670,35 +2006,19 @@ private:
 
     bool peakRange(float *minPeak, float *maxPeak, int *peakCount) const
     {
-        bool hasPeakRange = false;
-        float localMin = std::numeric_limits<float>::max();
-        float localMax = std::numeric_limits<float>::lowest();
-        int localCount = 0;
-        for (const RtkTrackPoint& point : track_points_)
-        {
-            if (!point.has_peak_value || !std::isfinite(point.peak_value))
-            {
-                continue;
-            }
-            hasPeakRange = true;
-            ++localCount;
-            localMin = std::min(localMin, point.peak_value);
-            localMax = std::max(localMax, point.peak_value);
-        }
-
         if (minPeak)
         {
-            *minPeak = localMin;
+            *minPeak = min_peak_;
         }
         if (maxPeak)
         {
-            *maxPeak = localMax;
+            *maxPeak = max_peak_;
         }
         if (peakCount)
         {
-            *peakCount = localCount;
+            *peakCount = peak_count_;
         }
-        return hasPeakRange;
+        return has_peak_range_;
     }
 
     void drawPeakLegend(QPainter& painter, const QRectF& mapRect) const
@@ -1798,7 +2118,7 @@ private:
 
     int closestTrackPointIndex(const QPointF& pos) const
     {
-        if (track_points_.isEmpty())
+        if (track_points_.isEmpty() || projected_track_points_.isEmpty())
         {
             return -1;
         }
@@ -1811,10 +2131,34 @@ private:
 
         int bestIndex = -1;
         double bestDistanceSquared = std::numeric_limits<double>::infinity();
-        for (int index = 0; index < track_points_.size(); ++index)
+        const double pickRadius = std::max(18.0, point_radius_ * 2.4);
+        const int bucketX = static_cast<int>(std::floor(pos.x() / kTrackBucketSize));
+        const int bucketY = static_cast<int>(std::floor(pos.y() / kTrackBucketSize));
+        QVector<int> candidates;
+        for (int dx = -1; dx <= 1; ++dx)
         {
-            const RtkTrackPoint& point = track_points_.at(index);
-            const QPointF screenPoint = worldToScreen(latLonToPixel(point.latitude, point.longitude, zoom_), mapRect);
+            for (int dy = -1; dy <= 1; ++dy)
+            {
+                const auto bucket = last_render_context_.hit_buckets.constFind(screenBucketKey(bucketX + dx, bucketY + dy));
+                if (bucket != last_render_context_.hit_buckets.constEnd())
+                {
+                    candidates += bucket.value();
+                }
+            }
+        }
+
+        if (candidates.isEmpty())
+        {
+            candidates = visibleTrackCandidateIndices(mapRect);
+        }
+
+        for (int index : std::as_const(candidates))
+        {
+            if (index < 0 || index >= projected_track_points_.size())
+            {
+                continue;
+            }
+            const QPointF screenPoint = cachedWorldToScreen(projected_track_points_.at(index).world_pixel, mapRect);
             const QPointF delta = screenPoint - pos;
             const double distanceSquared = delta.x() * delta.x() + delta.y() * delta.y();
             if (distanceSquared < bestDistanceSquared)
@@ -1824,7 +2168,6 @@ private:
             }
         }
 
-        const double pickRadius = std::max(18.0, point_radius_ * 2.4);
         return bestDistanceSquared <= pickRadius * pickRadius ? bestIndex : -1;
     }
 
@@ -1981,6 +2324,9 @@ private:
 
     QNetworkAccessManager *manager_;
     QVector<RtkTrackPoint> track_points_;
+    QVector<ProjectedTrackPoint> projected_track_points_;
+    QHash<qint64, QVector<int>> track_spatial_index_;
+    mutable TrackRenderContext last_render_context_;
     QHash<QString, QPixmap> tile_cache_;
     QSet<QString> pending_tiles_;
     QVector<TileFetchRequest> queued_tile_requests_;
@@ -2007,6 +2353,10 @@ private:
     int hovered_track_index_;
     double track_width_;
     double point_radius_;
+    bool has_peak_range_;
+    float min_peak_;
+    float max_peak_;
+    int peak_count_;
     int active_tile_request_count_;
     int tile_request_generation_;
     bool visible_tile_request_scheduled_;
