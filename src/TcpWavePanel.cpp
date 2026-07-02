@@ -774,7 +774,7 @@ private:
         row->setClickedCallback([this, mode]() {
             if (mode == 0)
             {
-                setCurrentStates(true, false, false, false);
+                setCurrentStates(!show_all_, false, false, false);
             }
             else
             {

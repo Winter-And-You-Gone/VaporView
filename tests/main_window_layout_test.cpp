@@ -1745,10 +1745,8 @@ int main(int argc, char **argv)
         require(rowWidget != nullptr, message);
         clickWidget(rowWidget, 160);
     };
-    clickWaveDisplayMenuRow({QStringLiteral("显示原始信号"), QStringLiteral("Show Raw Signal")},
-                            "TCP wave display menu exposes the raw-signal row");
-    clickWaveDisplayMenuRow({QStringLiteral("显示原始信号"), QStringLiteral("Show Raw Signal")},
-                            "TCP wave display menu can toggle the raw-signal row back off");
+    clickWaveDisplayMenuRow({QStringLiteral("全部显示"), QStringLiteral("Show All")},
+                            "TCP wave display menu can toggle the selected show-all row back off");
     processEventsFor(200);
     activateLayouts(&window);
     require(!rawWaveGroup->isVisible() && !harmonicWaveGroup->isVisible() && !peakTrendGroup->isVisible(),
