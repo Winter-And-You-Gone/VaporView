@@ -1755,25 +1755,50 @@ int main(int argc, char **argv)
             "TCP wave card hides all plot subcards when every display mode is disabled");
     require(tcpWaveCard->height() <= tcpWaveTitleBar->height() + 12,
             "TCP wave card collapses to the title bar when every display mode is disabled");
-    QRect tcpWaveCardRect(tcpWaveCard->mapTo(homeScrollArea->widget(), QPoint(0, 0)), tcpWaveCard->size());
-    int previousCardBottom = std::numeric_limits<int>::min();
-    const QList<QGroupBox*> homeCards = homeScrollArea->widget()->findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox"));
-    for (QGroupBox *card : homeCards)
-    {
-        if (card == tcpWaveCard || !card->isVisible())
+    auto tcpWaveCardRectInHome = [&]() {
+        return QRect(tcpWaveCard->mapTo(homeScrollArea->widget(), QPoint(0, 0)), tcpWaveCard->size());
+    };
+    auto previousHomeCardBottom = [&](const QRect& tcpRect) {
+        int previousBottom = std::numeric_limits<int>::min();
+        const QList<QGroupBox*> homeCards = homeScrollArea->widget()->findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox"));
+        for (QGroupBox *card : homeCards)
         {
-            continue;
+            if (card == tcpWaveCard || !card->isVisible())
+            {
+                continue;
+            }
+            const QRect cardRect(card->mapTo(homeScrollArea->widget(), QPoint(0, 0)), card->size());
+            if (cardRect.bottom() <= tcpRect.top())
+            {
+                previousBottom = std::max(previousBottom, cardRect.bottom());
+            }
         }
-        const QRect cardRect(card->mapTo(homeScrollArea->widget(), QPoint(0, 0)), card->size());
-        if (cardRect.bottom() <= tcpWaveCardRect.top())
-        {
-            previousCardBottom = std::max(previousCardBottom, cardRect.bottom());
-        }
-    }
+        return previousBottom;
+    };
+    QRect tcpWaveCardRect = tcpWaveCardRectInHome();
+    int previousCardBottom = previousHomeCardBottom(tcpWaveCardRect);
     require(previousCardBottom != std::numeric_limits<int>::min(),
             "TCP wave card has a visible card above it on the home page");
     require(tcpWaveCardRect.top() - previousCardBottom <= 8,
             "collapsed TCP wave card stays tight against the card above it");
+    clickWaveDisplayMenuRow({QStringLiteral("显示原始信号"), QStringLiteral("Show Raw Signal")},
+                            "TCP wave display menu can re-enable only the raw-signal row");
+    if (QMenu *menu = visibleWaveDisplayMenu())
+    {
+        menu->hide();
+    }
+    processEventsFor(200);
+    activateLayouts(&window);
+    require(rawWaveGroup->isVisible() && !harmonicWaveGroup->isVisible() && !peakTrendGroup->isVisible(),
+            "TCP wave card can show only the raw-signal plot after all plots were disabled");
+    tcpWaveCardRect = tcpWaveCardRectInHome();
+    previousCardBottom = previousHomeCardBottom(tcpWaveCardRect);
+    require(previousCardBottom != std::numeric_limits<int>::min(),
+            "raw-only TCP wave card still has a visible card above it on the home page");
+    require(tcpWaveCardRect.top() - previousCardBottom <= 8,
+            "raw-only TCP wave card stays tight against the card above it");
+    require(tcpWaveCard->height() <= tcpWaveTitleBar->height() + rawWaveGroup->minimumSizeHint().height() + 24,
+            "raw-only TCP wave card does not reserve hidden plot height");
     clickWaveDisplayMenuRow({QStringLiteral("全部显示"), QStringLiteral("Show All")},
                             "TCP wave display menu exposes the show-all row");
     if (QMenu *menu = visibleWaveDisplayMenu())

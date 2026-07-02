@@ -40,6 +40,7 @@ public:
     void setCompactLayout(bool compact);
     int preferredPanelHeight() const;
     bool hasVisibleWaveDisplay() const;
+    bool usesExpandedPanelHeight() const;
     void setRemoteSkyMode(bool enabled);
     void setRemoteWaveTcpState(VaporView::DeviceState state);
     void setRemoteFeatureRateHz(double rateHz);

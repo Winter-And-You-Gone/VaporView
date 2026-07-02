@@ -7573,14 +7573,11 @@ void MainWindow::updateResponsiveHomeLayout()
     if (tcp_wave_group_ && tcp_wave_panel_)
     {
         const int preferredTcpWaveHeight = tcp_wave_panel_->preferredPanelHeight();
+        const bool useExpandedTcpWaveHeight = tcp_wave_panel_->usesExpandedPanelHeight();
         const int tcpWaveMinimumHeight = std::max(
-            tcp_wave_panel_->hasVisibleWaveDisplay() ? (compact ? kCompactTcpWaveCardMinHeight : kTcpWaveCardMinHeight) : preferredTcpWaveHeight,
+            useExpandedTcpWaveHeight ? (compact ? kCompactTcpWaveCardMinHeight : kTcpWaveCardMinHeight) : preferredTcpWaveHeight,
             preferredTcpWaveHeight);
-        tcp_wave_group_->setMinimumHeight(tcpWaveMinimumHeight);
-        if (layoutChanged || tcp_wave_group_->height() != tcpWaveMinimumHeight)
-        {
-            tcp_wave_group_->setFixedHeight(tcpWaveMinimumHeight);
-        }
+        tcp_wave_group_->setFixedHeight(tcpWaveMinimumHeight);
     }
     if (main_cards_scroll_area_ && main_cards_scroll_area_->widget() && main_cards_scroll_area_->viewport())
     {

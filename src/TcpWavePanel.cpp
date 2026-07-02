@@ -1458,6 +1458,15 @@ bool TcpWavePanel::hasVisibleWaveDisplay() const
     return wave_display_all_ || wave_display_raw_ || wave_display_harmonic_ || wave_display_peak_trend_;
 }
 
+bool TcpWavePanel::usesExpandedPanelHeight() const
+{
+    const int visibleDisplayCount =
+        ((wave_display_all_ || wave_display_raw_) ? 1 : 0) +
+        ((wave_display_all_ || wave_display_harmonic_) ? 1 : 0) +
+        ((wave_display_all_ || wave_display_peak_trend_) ? 1 : 0);
+    return visibleDisplayCount > 1;
+}
+
 void TcpWavePanel::setupUi()
 {
     auto *mainLayout = new QVBoxLayout(this);
