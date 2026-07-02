@@ -41,6 +41,7 @@
 #include <QSvgRenderer>
 #include <QTcpSocket>
 #include <QTimer>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <QVariant>
 #include <QWheelEvent>
@@ -542,8 +543,11 @@ public:
     QSize sizeHint() const override
     {
         QSize size = QLabel::sizeHint();
-        size.rwidth() += kWaveDisplayIconSize + kIconGap;
-        size.rheight() = std::max(size.height(), kWaveDisplayIconSize);
+        if (inline_icon_visible_)
+        {
+            size.rwidth() += kWaveDisplayIconSize + kIconGap;
+            size.rheight() = std::max(size.height(), kWaveDisplayIconSize);
+        }
         return size;
     }
 
@@ -610,6 +614,12 @@ public:
         mode_changed_ = std::move(callback);
     }
 
+    void popupMenuFrom(QWidget *anchor)
+    {
+        QWidget *popupAnchor = anchor ? anchor : this;
+        menu_->popup(popupAnchor->mapToGlobal(QPoint(0, popupAnchor->height())));
+    }
+
 protected:
     bool event(QEvent *event) override
     {
@@ -636,6 +646,12 @@ protected:
 
     void paintEvent(QPaintEvent *event) override
     {
+        if (!inline_icon_visible_)
+        {
+            VaporView::VisualTextLabel::paintEvent(event);
+            return;
+        }
+
         refreshTooltipAnchor();
         VaporView::VisualTextLabel::paintEvent(event);
         QPainter painter(this);
@@ -662,7 +678,9 @@ protected:
 
     void mousePressEvent(QMouseEvent *event) override
     {
-        if (event->button() == Qt::LeftButton && iconRect().contains(event->position().toPoint()))
+        if (inline_icon_visible_ &&
+            event->button() == Qt::LeftButton &&
+            iconRect().contains(event->position().toPoint()))
         {
             menu_->popup(mapToGlobal(QPoint(iconRect().left(), height())));
             event->accept();
@@ -674,7 +692,7 @@ protected:
     void mouseMoveEvent(QMouseEvent *event) override
     {
         refreshTooltipAnchor();
-        setIconHovered(iconRect().contains(event->position().toPoint()));
+        setIconHovered(inline_icon_visible_ && iconRect().contains(event->position().toPoint()));
         QLabel::mouseMoveEvent(event);
     }
 
@@ -696,7 +714,7 @@ private:
 
     void refreshTooltipAnchor()
     {
-        if (width() <= 0 || height() <= 0 || text().isEmpty())
+        if (!inline_icon_visible_ || width() <= 0 || height() <= 0 || text().isEmpty())
         {
             setProperty(kTooltipAnchorRectProperty, QVariant());
             return;
@@ -737,6 +755,7 @@ private:
     bool show_harmonic_ = false;
     bool show_peak_trend_ = false;
     bool icon_hovered_ = false;
+    bool inline_icon_visible_ = false;
 
     WaveDisplayMenuRow *addModeRow(int mode)
     {
@@ -1307,6 +1326,7 @@ TcpWavePanel::TcpWavePanel(QWidget *parent)
     , host_label_(nullptr)
     , port_label_(nullptr)
     , panel_title_label_(nullptr)
+    , wave_display_button_(nullptr)
     , frame_rate_label_(nullptr)
     , status_label_(nullptr)
     , hint_label_(nullptr)
@@ -1444,6 +1464,21 @@ void TcpWavePanel::setupUi()
                                                               kTcpButtonHeight),
                                     0,
                                     Qt::AlignVCenter | Qt::AlignLeft);
+    wave_display_button_ = new QToolButton(topControlsBar);
+    wave_display_button_->setObjectName(QStringLiteral("tcpWaveDisplayButton"));
+    wave_display_button_->setAutoRaise(true);
+    wave_display_button_->setCursor(Qt::PointingHandCursor);
+    wave_display_button_->setFocusPolicy(Qt::NoFocus);
+    wave_display_button_->setFixedSize(28, 28);
+    wave_display_button_->setIconSize(QSize(kWaveDisplayIconInnerSize, kWaveDisplayIconInnerSize));
+    connect(wave_display_button_, &QToolButton::clicked, this, [this]() {
+        if (auto *titleLabel = dynamic_cast<WaveDisplayTitleLabel *>(panel_title_label_))
+        {
+            titleLabel->popupMenuFrom(wave_display_button_);
+        }
+    });
+    top_controls_layout_->addSpacing(4);
+    top_controls_layout_->addWidget(wave_display_button_, 0, Qt::AlignVCenter | Qt::AlignLeft);
     top_controls_layout_->addSpacing(kTcpTitleBarPrimarySpacing);
 
     frame_rate_label_ = new VaporView::VisualTextLabel(this);
@@ -1732,6 +1767,12 @@ void TcpWavePanel::setEnglish(bool english)
     updateWaveDisplayModeTexts();
     updateWaveDisplayModeIcon();
     resetFrameRateDisplay();
+    if (wave_display_button_)
+    {
+        const QString tooltip = english ? QStringLiteral("Wave display settings") : QStringLiteral("波形显示设置");
+        wave_display_button_->setToolTip(tooltip);
+        wave_display_button_->setAccessibleName(tooltip);
+    }
     host_label_->setText(english ? "TCP Host:" : "TCP主机:");
     port_label_->setText(english ? "Port:" : "端口:");
     connect_button_->setText(remote_sky_mode_
@@ -1824,6 +1865,20 @@ void TcpWavePanel::updateWaveDisplayModeIcon()
         const QIcon waveDisplayIcon = createWaveDisplayIcon(appThemeColor(AppThemeColor::Primary, dark));
         titleLabel->setIcon(waveDisplayIcon);
         titleLabel->setCheckIcon(createMenuCheckIcon(appThemeColor(AppThemeColor::MenuCheckText, dark)));
+        if (wave_display_button_)
+        {
+            wave_display_button_->setIcon(waveDisplayIcon);
+        }
+    }
+    if (wave_display_button_)
+    {
+        const QString hoverColor = appThemeColor(AppThemeColor::TitleBarHover, dark).name(QColor::HexRgb);
+        const QString pressedColor = appThemeColor(AppThemeColor::PrimarySubtlePressed, dark).name(QColor::HexRgb);
+        wave_display_button_->setStyleSheet(QStringLiteral(
+            "QToolButton#tcpWaveDisplayButton { background-color: transparent; border: none; border-radius: 4px; padding: 0px; }"
+            "QToolButton#tcpWaveDisplayButton:hover { background-color: %1; }"
+            "QToolButton#tcpWaveDisplayButton:pressed { background-color: %2; }")
+            .arg(hoverColor, pressedColor));
     }
 }
 

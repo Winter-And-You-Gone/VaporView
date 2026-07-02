@@ -16,6 +16,7 @@ class QGroupBox;
 class QSpinBox;
 class QTcpSocket;
 class QTimer;
+class QToolButton;
 class QGridLayout;
 class QHBoxLayout;
 class WavePlotWidget;
@@ -145,6 +146,7 @@ private:
     QLabel *host_label_;
     QLabel *port_label_;
     QLabel *panel_title_label_;
+    QToolButton *wave_display_button_;
     QLabel *frame_rate_label_;
     QLabel *status_label_;
     QLabel *hint_label_;

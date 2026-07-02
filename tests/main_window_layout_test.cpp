@@ -1658,6 +1658,35 @@ int main(int argc, char **argv)
     require(peakTrendTitle != nullptr,
             "normalized second harmonic peak trend title omits frame-count suffix");
 
+    auto *tcpWaveDisplayButton = window.findChild<QToolButton *>(QStringLiteral("tcpWaveDisplayButton"));
+    require(tcpWaveDisplayButton != nullptr,
+            "TCP wave display settings button exists in the title bar");
+    require(tcpWaveDisplayButton->isVisible(),
+            "TCP wave display settings button is visible at the default window size");
+    auto *tcpWaveTitleBar = tcpWaveDisplayButton->parentWidget();
+    require(tcpWaveTitleBar != nullptr &&
+                tcpWaveTitleBar->objectName() == QStringLiteral("sectionTitleBar"),
+            "TCP wave display settings button lives in the TCP card title bar");
+    requireChildInsideParent(tcpWaveDisplayButton, tcpWaveTitleBar, 0,
+                             "TCP wave display settings button is not clipped by the title bar");
+    QLabel *tcpFrameRateLabel = nullptr;
+    const QList<QLabel*> tcpTitleBarLabels = tcpWaveTitleBar->findChildren<QLabel *>();
+    for (QLabel *label : tcpTitleBarLabels)
+    {
+        if (label->text().contains(QStringLiteral("实时频率")) ||
+            label->text().contains(QStringLiteral("Realtime")))
+        {
+            tcpFrameRateLabel = label;
+            break;
+        }
+    }
+    require(tcpFrameRateLabel != nullptr,
+            "TCP wave frame-rate label exists in the title bar");
+    const int displayButtonRight = tcpWaveDisplayButton->mapTo(tcpWaveTitleBar, QPoint(tcpWaveDisplayButton->width(), 0)).x();
+    const int frameRateLeft = tcpFrameRateLabel->mapTo(tcpWaveTitleBar, QPoint(0, 0)).x();
+    require(displayButtonRight + 4 <= frameRateLeft,
+            "TCP wave display settings button stays between the title and realtime label");
+
     QPushButton *peakFilterButton = nullptr;
     const QList<QPushButton*> compactTcpButtons =
         window.findChildren<QPushButton *>(QStringLiteral("compactTcpButton"));
