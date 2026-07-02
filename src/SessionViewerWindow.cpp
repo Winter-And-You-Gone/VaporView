@@ -1634,7 +1634,7 @@ SessionViewerWindow::~SessionViewerWindow()
 {
     if (trajectory_viewer_dialog_)
     {
-        delete trajectory_viewer_dialog_;
+        trajectory_viewer_dialog_->close();
         trajectory_viewer_dialog_ = nullptr;
     }
     if (raw_data_parser_window_)
@@ -2669,7 +2669,7 @@ void SessionViewerWindow::onViewTrajectoryClicked()
 
     if (!trajectory_viewer_dialog_)
     {
-        trajectory_viewer_dialog_ = new TrajectoryViewerDialog();
+        trajectory_viewer_dialog_ = new TrajectoryViewerDialog(this);
         trajectory_viewer_dialog_->setAttribute(Qt::WA_QuitOnClose, false);
         trajectory_viewer_dialog_->setAttribute(Qt::WA_DeleteOnClose, false);
         connect(trajectory_viewer_dialog_, &QObject::destroyed, this, [this]() {

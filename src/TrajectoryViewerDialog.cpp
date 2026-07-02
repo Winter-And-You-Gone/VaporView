@@ -4,6 +4,7 @@
 
 #include <QApplication>
 #include <QClipboard>
+#include <QCloseEvent>
 #include <QDateTime>
 #include <QDir>
 #include <QEvent>
@@ -82,6 +83,9 @@ constexpr int kTilePrefetchPriority = 10;
 constexpr int kTileAdjacentZoomPriority = 20;
 constexpr int kTileZoomRequestDebounceMs = 90;
 constexpr int kTilePanRequestDebounceMs = 50;
+constexpr double kDefaultTrackWidth = 2.8;
+constexpr double kDefaultTrackPointRadius = 4.0;
+constexpr int kTrackStyleSliderScale = 10;
 constexpr auto kTileRequestTimeout = std::chrono::seconds(15);
 
 enum class TileProvider
@@ -574,6 +578,9 @@ public:
         , drag_start_pos_()
         , drag_start_center_world_pixel_()
         , selected_track_index_(-1)
+        , hovered_track_index_(-1)
+        , track_width_(kDefaultTrackWidth)
+        , point_radius_(kDefaultTrackPointRadius)
         , active_tile_request_count_(0)
         , tile_request_generation_(0)
         , visible_tile_request_scheduled_(false)
@@ -585,6 +592,7 @@ public:
         setMinimumSize(720, 420);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         setMouseTracking(true);
+        setAttribute(Qt::WA_Hover, true);
 
         auto *cache = new QNetworkDiskCache(manager_);
         const QString cacheRoot = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
@@ -637,6 +645,33 @@ public:
         active_tile_request_count_ = 0;
     }
 
+    void cancelTileActivity()
+    {
+        ++tile_request_generation_;
+        visible_tile_request_scheduled_ = false;
+        feedback_update_scheduled_ = false;
+        repaint_update_requested_ = false;
+        pending_tiles_.clear();
+        queued_tile_requests_.clear();
+        current_visible_tile_keys_.clear();
+        current_requested_tile_keys_.clear();
+        failed_tiles_.clear();
+        active_tile_request_count_ = 0;
+
+        const QSet<QNetworkReply*> replies = active_tile_replies_;
+        for (QNetworkReply *reply : replies)
+        {
+            if (!reply)
+            {
+                continue;
+            }
+            QObject::disconnect(reply, nullptr, this, nullptr);
+            reply->abort();
+        }
+        active_tile_replies_.clear();
+        active_tile_reply_keys_.clear();
+    }
+
     void setStatusCallback(std::function<void(const QString&)> callback)
     {
         status_callback_ = std::move(callback);
@@ -664,9 +699,14 @@ public:
     void setTrackPoints(const QVector<RtkTrackPoint>& points)
     {
         track_points_ = points;
+        hovered_track_index_ = -1;
         selected_track_index_ = track_points_.isEmpty()
             ? -1
             : std::clamp(selected_track_index_, 0, static_cast<int>(track_points_.size()) - 1);
+        if (track_points_.isEmpty())
+        {
+            unsetCursor();
+        }
         manual_view_active_ = false;
         resetTileLoadingState(true);
         refreshViewport();
@@ -724,6 +764,38 @@ public:
     HeatPalette heatPalette() const
     {
         return heat_palette_;
+    }
+
+    void setTrackWidth(double width)
+    {
+        const double clamped = std::clamp(width, 1.0, 8.0);
+        if (qFuzzyCompare(track_width_, clamped))
+        {
+            return;
+        }
+        track_width_ = clamped;
+        update();
+    }
+
+    double trackWidth() const
+    {
+        return track_width_;
+    }
+
+    void setPointRadius(double radius)
+    {
+        const double clamped = std::clamp(radius, 2.0, 12.0);
+        if (qFuzzyCompare(point_radius_, clamped))
+        {
+            return;
+        }
+        point_radius_ = clamped;
+        update();
+    }
+
+    double pointRadius() const
+    {
+        return point_radius_;
     }
 
     void setTianDiTuKey(const QString& key)
@@ -829,6 +901,7 @@ protected:
             event->accept();
             return;
         }
+        updateHoveredTrackPoint(event->position());
         QWidget::mouseMoveEvent(event);
     }
 
@@ -838,7 +911,7 @@ protected:
         {
             const bool wasClick = !drag_moved_;
             dragging_ = false;
-            unsetCursor();
+            updateHoveredTrackPoint(event->position());
             if (wasClick)
             {
                 const int index = closestTrackPointIndex(event->position());
@@ -856,6 +929,12 @@ protected:
             return;
         }
         QWidget::mouseReleaseEvent(event);
+    }
+
+    void leaveEvent(QEvent *event) override
+    {
+        setHoveredTrackPoint(-1);
+        QWidget::leaveEvent(event);
     }
 
     void paintEvent(QPaintEvent *event) override
@@ -1527,28 +1606,61 @@ private:
                     }
                 }
 
-                painter.setPen(QPen(segmentColor, 2.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+                painter.setPen(QPen(segmentColor, track_width_, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
                 painter.drawLine(polyline.at(index), polyline.at(index + 1));
             }
         }
 
         if (!polyline.isEmpty())
         {
+            for (int index = 0; index < polyline.size(); ++index)
+            {
+                if (index == selected_track_index_ || index == hovered_track_index_)
+                {
+                    continue;
+                }
+                const RtkTrackPoint& point = track_points_.at(index);
+                QColor pointColor = defaultTrackColor();
+                if (point.has_peak_value && hasPeakRange)
+                {
+                    pointColor = trackHeatColor(point.peak_value, minPeak, maxPeak, heat_palette_);
+                }
+                painter.setPen(QPen(appThemeColor(AppThemeColor::MapViewport, false), 1.5));
+                painter.setBrush(pointColor);
+                painter.drawEllipse(polyline.at(index), point_radius_, point_radius_);
+            }
+
             painter.setPen(Qt::NoPen);
             painter.setBrush(appThemeColor(AppThemeColor::TrackStart, false));
-            painter.drawEllipse(polyline.first(), 5.0, 5.0);
+            const double endpointRadius = std::max(point_radius_ + 1.0, 5.0);
+            painter.drawEllipse(polyline.first(), endpointRadius, endpointRadius);
             painter.setBrush(appThemeColor(AppThemeColor::TrackEnd, false));
-            painter.drawEllipse(polyline.last(), 5.0, 5.0);
+            painter.drawEllipse(polyline.last(), endpointRadius, endpointRadius);
+        }
+        if (hovered_track_index_ >= 0 && hovered_track_index_ < polyline.size())
+        {
+            const QPointF hoveredPoint = polyline.at(hovered_track_index_);
+            const RtkTrackPoint& point = track_points_.at(hovered_track_index_);
+            QColor pointColor = defaultTrackColor();
+            if (point.has_peak_value && hasPeakRange)
+            {
+                pointColor = trackHeatColor(point.peak_value, minPeak, maxPeak, heat_palette_);
+            }
+            const double hoverRadius = point_radius_ * 1.55;
+            painter.setPen(QPen(appThemeColor(AppThemeColor::TextStrong, false), 2.0));
+            painter.setBrush(pointColor);
+            painter.drawEllipse(hoveredPoint, hoverRadius, hoverRadius);
         }
         if (selected_track_index_ >= 0 && selected_track_index_ < polyline.size())
         {
             const QPointF selectedPoint = polyline.at(selected_track_index_);
+            const double selectedRadius = std::max(point_radius_ * 1.85, 8.0);
             painter.setPen(QPen(appThemeColor(AppThemeColor::TrackEnd, false), 3.0));
             painter.setBrush(appThemeColor(AppThemeColor::MapViewport, false));
-            painter.drawEllipse(selectedPoint, 9.0, 9.0);
+            painter.drawEllipse(selectedPoint, selectedRadius, selectedRadius);
             painter.setPen(Qt::NoPen);
             painter.setBrush(appThemeColor(AppThemeColor::TrackEnd, false));
-            painter.drawEllipse(selectedPoint, 4.0, 4.0);
+            painter.drawEllipse(selectedPoint, std::max(point_radius_ * 0.75, 4.0), std::max(point_radius_ * 0.75, 4.0));
         }
         painter.restore();
 
@@ -1712,7 +1824,32 @@ private:
             }
         }
 
-        return bestDistanceSquared <= 18.0 * 18.0 ? bestIndex : -1;
+        const double pickRadius = std::max(18.0, point_radius_ * 2.4);
+        return bestDistanceSquared <= pickRadius * pickRadius ? bestIndex : -1;
+    }
+
+    void updateHoveredTrackPoint(const QPointF& pos)
+    {
+        setHoveredTrackPoint(closestTrackPointIndex(pos));
+    }
+
+    void setHoveredTrackPoint(int index)
+    {
+        const int clamped = (index >= 0 && index < track_points_.size()) ? index : -1;
+        if (hovered_track_index_ == clamped)
+        {
+            if (!dragging_)
+            {
+                setCursor(hovered_track_index_ >= 0 ? Qt::PointingHandCursor : Qt::ArrowCursor);
+            }
+            return;
+        }
+        hovered_track_index_ = clamped;
+        if (!dragging_)
+        {
+            setCursor(hovered_track_index_ >= 0 ? Qt::PointingHandCursor : Qt::ArrowCursor);
+        }
+        update();
     }
 
     void adjustZoom(int delta)
@@ -1867,6 +2004,9 @@ private:
     QPointF drag_start_pos_;
     QPointF drag_start_center_world_pixel_;
     int selected_track_index_;
+    int hovered_track_index_;
+    double track_width_;
+    double point_radius_;
     int active_tile_request_count_;
     int tile_request_generation_;
     bool visible_tile_request_scheduled_;
@@ -1890,6 +2030,10 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , map_progress_bar_(new QProgressBar(this))
     , map_widget_(new TrajectoryMapWidget(this))
     , timeline_slider_(new QSlider(Qt::Horizontal, this))
+    , track_width_label_(new QLabel(this))
+    , track_width_slider_(new QSlider(Qt::Horizontal, this))
+    , point_size_label_(new QLabel(this))
+    , point_size_slider_(new QSlider(Qt::Horizontal, this))
     , play_button_(new QPushButton(this))
     , export_button_(new QPushButton(this))
     , copy_point_button_(new QPushButton(this))
@@ -2007,6 +2151,18 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     timeline_slider_->setEnabled(false);
     timeline_slider_->setRange(0, 0);
     timeline_slider_->setTracking(true);
+    track_width_label_->setObjectName(QStringLiteral("trajectoryControlLabel"));
+    point_size_label_->setObjectName(QStringLiteral("trajectoryControlLabel"));
+    track_width_slider_->setObjectName(QStringLiteral("trajectoryTrackWidthSlider"));
+    track_width_slider_->setRange(10, 80);
+    track_width_slider_->setValue(static_cast<int>(std::lround(kDefaultTrackWidth * kTrackStyleSliderScale)));
+    track_width_slider_->setTracking(true);
+    track_width_slider_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    point_size_slider_->setObjectName(QStringLiteral("trajectoryPointSizeSlider"));
+    point_size_slider_->setRange(20, 120);
+    point_size_slider_->setValue(static_cast<int>(std::lround(kDefaultTrackPointRadius * kTrackStyleSliderScale)));
+    point_size_slider_->setTracking(true);
+    point_size_slider_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     play_button_->setEnabled(false);
     export_button_->setEnabled(false);
     copy_point_button_->setEnabled(false);
@@ -2110,6 +2266,22 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     paletteLayout->setSpacing(6);
     paletteLayout->addWidget(heat_palette_combo_, 1);
     sidebarLayout->addLayout(paletteLayout);
+
+    auto *trackWidthLayout = new QHBoxLayout();
+    trackWidthLayout->setContentsMargins(0, 0, 0, 0);
+    trackWidthLayout->setSpacing(8);
+    track_width_label_->setMinimumWidth(72);
+    trackWidthLayout->addWidget(track_width_label_, 0);
+    trackWidthLayout->addWidget(track_width_slider_, 1);
+    sidebarLayout->addLayout(trackWidthLayout);
+
+    auto *pointSizeLayout = new QHBoxLayout();
+    pointSizeLayout->setContentsMargins(0, 0, 0, 0);
+    pointSizeLayout->setSpacing(8);
+    point_size_label_->setMinimumWidth(72);
+    pointSizeLayout->addWidget(point_size_label_, 0);
+    pointSizeLayout->addWidget(point_size_slider_, 1);
+    sidebarLayout->addLayout(pointSizeLayout);
     sidebarLayout->addStretch(1);
 
     mapPanelLayout->addWidget(map_widget_, 1);
@@ -2122,6 +2294,12 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
             this, [mapWidget](int index) {
                 mapWidget->setHeatPalette(heatPaletteFromComboIndex(index));
             });
+    connect(track_width_slider_, &QSlider::valueChanged, this, [mapWidget](int value) {
+        mapWidget->setTrackWidth(value / static_cast<double>(kTrackStyleSliderScale));
+    });
+    connect(point_size_slider_, &QSlider::valueChanged, this, [mapWidget](int value) {
+        mapWidget->setPointRadius(value / static_cast<double>(kTrackStyleSliderScale));
+    });
     connect(tianditu_key_edit_, &QLineEdit::editingFinished,
             this, &TrajectoryViewerDialog::applyTiandituKeyEdit);
     connect(tianditu_key_edit_, &QLineEdit::returnPressed, this, [this]() {
@@ -2191,6 +2369,7 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QScrollArea#trajectoryViewerSidebar { background-color: @vv-surface; border: none; border-bottom-left-radius: 7px; border-bottom-right-radius: 7px; }"
         "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarViewport, QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent { background-color: @vv-surface; border: none; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectorySidebarSummaryLabel, QDialog#trajectoryViewerDialog QLabel#trajectorySidebarDetailLabel, QDialog#trajectoryViewerDialog QLabel#trajectorySidebarStatusLabel { color: @vv-text; background-color: transparent; border: none; font-size: 14px; font-weight: 500; line-height: 140%; }"
+        "QDialog#trajectoryViewerDialog QLabel#trajectoryControlLabel { color: @vv-text; background-color: transparent; border: none; font-size: 13px; font-weight: 600; min-height: 24px; }"
         "QDialog#trajectoryViewerDialog QFrame#trajectoryViewerMapPanel { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
         "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerMap { background-color: @vv-surface; border: none; border-radius: 8px; }"
         "QDialog#trajectoryViewerDialog QPushButton#trajectorySidebarActionButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 600; min-height: 32px; max-height: 32px; padding: 4px 10px; }"
@@ -2537,6 +2716,19 @@ void TrajectoryViewerDialog::changeEvent(QEvent *event)
     }
 }
 
+void TrajectoryViewerDialog::closeEvent(QCloseEvent *event)
+{
+    if (playback_timer_)
+    {
+        playback_timer_->stop();
+    }
+    if (map_widget_)
+    {
+        static_cast<TrajectoryMapWidget*>(map_widget_)->cancelTileActivity();
+    }
+    QDialog::closeEvent(event);
+}
+
 void TrajectoryViewerDialog::updateTitleBarIcons()
 {
     const bool dark = isDarkPalette();
@@ -2681,6 +2873,14 @@ void TrajectoryViewerDialog::updateTexts()
     heat_palette_combo_->setToolTip(is_english_
         ? QStringLiteral("Choose the peak heatmap color ramp.")
         : QStringLiteral("选择峰值热力图色带。"));
+    track_width_label_->setText(is_english_ ? QStringLiteral("Route width") : QStringLiteral("路线粗细"));
+    point_size_label_->setText(is_english_ ? QStringLiteral("Point size") : QStringLiteral("点大小"));
+    track_width_slider_->setToolTip(is_english_
+        ? QStringLiteral("Adjust trajectory route line width.")
+        : QStringLiteral("调整轨迹路线线宽。"));
+    point_size_slider_->setToolTip(is_english_
+        ? QStringLiteral("Adjust trajectory point size.")
+        : QStringLiteral("调整轨迹点大小。"));
     if (tianditu_key_menu_label_)
     {
         tianditu_key_menu_label_->setText(is_english_ ? QStringLiteral("Tianditu Key") : QStringLiteral("天地图 Key"));

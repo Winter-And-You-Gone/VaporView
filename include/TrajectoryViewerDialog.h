@@ -8,6 +8,7 @@
 
 class QLabel;
 class QComboBox;
+class QCloseEvent;
 class QEvent;
 class QLineEdit;
 class QMenu;
@@ -35,6 +36,7 @@ signals:
 
 protected:
     void changeEvent(QEvent *event) override;
+    void closeEvent(QCloseEvent *event) override;
 
 private:
     void applyMapSourceSelection(int index);
@@ -60,6 +62,10 @@ private:
     QProgressBar *map_progress_bar_;
     QWidget *map_widget_;
     QSlider *timeline_slider_;
+    QLabel *track_width_label_;
+    QSlider *track_width_slider_;
+    QLabel *point_size_label_;
+    QSlider *point_size_slider_;
     QPushButton *play_button_;
     QPushButton *export_button_;
     QPushButton *copy_point_button_;

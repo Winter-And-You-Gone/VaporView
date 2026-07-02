@@ -23,6 +23,7 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QSettings>
+#include <QSlider>
 #include <QTableWidget>
 #include <QTemporaryDir>
 #include <QToolButton>
@@ -434,6 +435,8 @@ void testTrajectoryViewerUsesSidebarLayout()
     auto *map = dialog.findChild<QWidget *>(QStringLiteral("trajectoryViewerMap"));
     auto *mapSourceCombo = dialog.findChild<QComboBox *>(QStringLiteral("trajectoryMapSourceCombo"));
     auto *heatPaletteCombo = dialog.findChild<QComboBox *>(QStringLiteral("trajectoryHeatPaletteCombo"));
+    auto *trackWidthSlider = dialog.findChild<QSlider *>(QStringLiteral("trajectoryTrackWidthSlider"));
+    auto *pointSizeSlider = dialog.findChild<QSlider *>(QStringLiteral("trajectoryPointSizeSlider"));
     auto *summaryLabel = dialog.findChild<QLabel *>(QStringLiteral("trajectorySidebarSummaryLabel"));
     auto *detailLabel = dialog.findChild<QLabel *>(QStringLiteral("trajectorySidebarDetailLabel"));
 
@@ -447,6 +450,8 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(map != nullptr, "trajectory viewer map exists");
     require(mapSourceCombo != nullptr, "trajectory viewer map source control exists");
     require(heatPaletteCombo != nullptr, "trajectory viewer heat palette control exists");
+    require(trackWidthSlider != nullptr, "trajectory viewer track width control exists");
+    require(pointSizeSlider != nullptr, "trajectory viewer point size control exists");
     require(summaryLabel != nullptr, "trajectory viewer summary label exists");
     require(detailLabel != nullptr, "trajectory viewer detail label exists");
     const auto sidebarToolButtons = sidebar->findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
@@ -475,6 +480,12 @@ void testTrajectoryViewerUsesSidebarLayout()
             "heat palette combo expands within sidebar controls");
     require(heatPaletteCombo->count() >= 5, "heat palette combo exposes multiple vivid ramps");
     require(sidebar->isAncestorOf(heatPaletteCombo), "heat palette control is in sidebar");
+    require(trackWidthSlider->minimum() == 10 && trackWidthSlider->maximum() == 80,
+            "track width slider exposes a bounded visual range");
+    require(pointSizeSlider->minimum() == 20 && pointSizeSlider->maximum() == 120,
+            "point size slider exposes a bounded visual range");
+    require(sidebar->isAncestorOf(trackWidthSlider), "track width control is in sidebar");
+    require(sidebar->isAncestorOf(pointSizeSlider), "point size control is in sidebar");
     require(mapPanel->isAncestorOf(map), "map remains in the map panel");
     require(!sidebar->isAncestorOf(map), "map is not in sidebar");
     require(mapPanel->layout() != nullptr, "map panel layout exists");
@@ -505,6 +516,8 @@ void testTrajectoryViewerUsesSidebarLayout()
             "trajectory viewer stylesheet includes sidebar action button styling");
     require(styleSheet.contains(QStringLiteral("QLabel#trajectorySidebarTitleIcon")),
             "trajectory viewer stylesheet includes sidebar title icon styling");
+    require(styleSheet.contains(QStringLiteral("QLabel#trajectoryControlLabel")),
+            "trajectory viewer stylesheet includes route control label styling");
     require(styleSheet.contains(QStringLiteral("QFrame#trajectoryViewerMapPanel")),
             "trajectory viewer stylesheet includes rounded map panel styling");
 
