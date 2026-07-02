@@ -1430,11 +1430,32 @@ void TcpWavePanel::setCompactLayout(bool compact)
 int TcpWavePanel::preferredPanelHeight() const
 {
     const int topControlsHeight = control_layout_ ? control_layout_->sizeHint().height() : kTcpTitleBarHeight;
-    const int plotRowsHeight = compact_layout_
-        ? (2 * (kTcpTitleBarHeight + kWavePlotMinimumHeight + 6) + 4)
-        : (kTcpTitleBarHeight + kWavePlotMinimumHeight + 6);
-    const int peakHeight = kTcpTitleBarHeight + kPeakPlotMinimumHeight + 8;
-    return topControlsHeight + plotRowsHeight + peakHeight + 20;
+    int height = topControlsHeight + 4;
+
+    const bool showRawWave = wave_display_all_ || wave_display_raw_;
+    const bool showHarmonicWave = wave_display_all_ || wave_display_harmonic_;
+    const bool showPeakTrend = wave_display_all_ || wave_display_peak_trend_;
+    const int visibleWaveRows = (showRawWave ? 1 : 0) + (showHarmonicWave ? 1 : 0);
+
+    if (visibleWaveRows > 0)
+    {
+        const int plotRowHeight = kTcpTitleBarHeight + kWavePlotMinimumHeight + 6;
+        height += 4;
+        height += compact_layout_
+            ? visibleWaveRows * plotRowHeight + std::max(0, visibleWaveRows - 1) * 4
+            : plotRowHeight;
+    }
+    if (showPeakTrend)
+    {
+        height += 4;
+        height += kTcpTitleBarHeight + kPeakPlotMinimumHeight + 8;
+    }
+    return height;
+}
+
+bool TcpWavePanel::hasVisibleWaveDisplay() const
+{
+    return wave_display_all_ || wave_display_raw_ || wave_display_harmonic_ || wave_display_peak_trend_;
 }
 
 void TcpWavePanel::setupUi()
@@ -1942,6 +1963,7 @@ void TcpWavePanel::applyWaveDisplayMode()
     }
 
     updateGeometry();
+    emit preferredPanelHeightChanged();
 }
 
 void TcpWavePanel::updatePeakPlotModeButtonText()

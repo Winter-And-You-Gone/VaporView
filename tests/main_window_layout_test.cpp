@@ -16,6 +16,7 @@
 #include <QLayout>
 #include <QLineEdit>
 #include <QMetaObject>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QScrollArea>
@@ -1698,6 +1699,89 @@ int main(int argc, char **argv)
     const int frameRateLeft = tcpFrameRateLabel->mapTo(tcpWaveTitleBar, QPoint(0, 0)).x();
     require(displayButtonRight + 4 <= frameRateLeft,
             "TCP wave display settings button stays between the title and realtime label");
+    auto *tcpWavePanelWidget = tcpWaveTitleBar->parentWidget();
+    auto *tcpWaveCard = qobject_cast<QGroupBox *>(tcpWavePanelWidget ? tcpWavePanelWidget->parentWidget() : nullptr);
+    require(tcpWaveCard != nullptr,
+            "TCP wave card can be identified from the title bar");
+    auto groupForSectionTitle = [](QLabel *label) -> QGroupBox * {
+        QWidget *widget = label;
+        while (widget && !qobject_cast<QGroupBox *>(widget))
+        {
+            widget = widget->parentWidget();
+        }
+        return qobject_cast<QGroupBox *>(widget);
+    };
+    auto *rawWaveGroup = groupForSectionTitle(findLabelByText(tcpWaveCard, {QStringLiteral("原始信号"), QStringLiteral("Raw Signal")}));
+    auto *harmonicWaveGroup = groupForSectionTitle(findLabelByText(tcpWaveCard,
+                                                                  {QStringLiteral("归一化二次谐波"),
+                                                                   QStringLiteral("Normalized Second Harmonic")}));
+    auto *peakTrendGroup = groupForSectionTitle(peakTrendTitle);
+    require(rawWaveGroup != nullptr && harmonicWaveGroup != nullptr && peakTrendGroup != nullptr,
+            "TCP wave subcards can be identified before display-mode changes");
+    auto visibleWaveDisplayMenu = []() -> QMenu * {
+        for (QWidget *topLevel : QApplication::topLevelWidgets())
+        {
+            auto *menu = qobject_cast<QMenu *>(topLevel);
+            if (menu && menu->isVisible() &&
+                (menu->title() == QStringLiteral("波形显示") ||
+                 menu->title() == QStringLiteral("Wave Display")))
+            {
+                return menu;
+            }
+        }
+        return nullptr;
+    };
+    auto clickWaveDisplayMenuRow = [&](const QStringList& labels, const char *message) {
+        QMenu *menu = visibleWaveDisplayMenu();
+        if (!menu)
+        {
+            clickWidget(tcpWaveDisplayButton, 120);
+            menu = visibleWaveDisplayMenu();
+        }
+        require(menu != nullptr, "TCP wave display menu opens from the title-bar settings button");
+        QLabel *rowLabel = findLabelByText(menu, labels);
+        require(rowLabel != nullptr, message);
+        QWidget *rowWidget = rowLabel->parentWidget();
+        require(rowWidget != nullptr, message);
+        clickWidget(rowWidget, 160);
+    };
+    clickWaveDisplayMenuRow({QStringLiteral("显示原始信号"), QStringLiteral("Show Raw Signal")},
+                            "TCP wave display menu exposes the raw-signal row");
+    clickWaveDisplayMenuRow({QStringLiteral("显示原始信号"), QStringLiteral("Show Raw Signal")},
+                            "TCP wave display menu can toggle the raw-signal row back off");
+    processEventsFor(200);
+    activateLayouts(&window);
+    require(!rawWaveGroup->isVisible() && !harmonicWaveGroup->isVisible() && !peakTrendGroup->isVisible(),
+            "TCP wave card hides all plot subcards when every display mode is disabled");
+    require(tcpWaveCard->height() <= tcpWaveTitleBar->height() + 12,
+            "TCP wave card collapses to the title bar when every display mode is disabled");
+    QRect tcpWaveCardRect(tcpWaveCard->mapTo(homeScrollArea->widget(), QPoint(0, 0)), tcpWaveCard->size());
+    int previousCardBottom = std::numeric_limits<int>::min();
+    const QList<QGroupBox*> homeCards = homeScrollArea->widget()->findChildren<QGroupBox *>(QStringLiteral("sensorGroupBox"));
+    for (QGroupBox *card : homeCards)
+    {
+        if (card == tcpWaveCard || !card->isVisible())
+        {
+            continue;
+        }
+        const QRect cardRect(card->mapTo(homeScrollArea->widget(), QPoint(0, 0)), card->size());
+        if (cardRect.bottom() <= tcpWaveCardRect.top())
+        {
+            previousCardBottom = std::max(previousCardBottom, cardRect.bottom());
+        }
+    }
+    require(previousCardBottom != std::numeric_limits<int>::min(),
+            "TCP wave card has a visible card above it on the home page");
+    require(tcpWaveCardRect.top() - previousCardBottom <= 8,
+            "collapsed TCP wave card stays tight against the card above it");
+    clickWaveDisplayMenuRow({QStringLiteral("全部显示"), QStringLiteral("Show All")},
+                            "TCP wave display menu exposes the show-all row");
+    if (QMenu *menu = visibleWaveDisplayMenu())
+    {
+        menu->hide();
+    }
+    processEventsFor(200);
+    activateLayouts(&window);
 
     QPushButton *peakFilterButton = nullptr;
     const QList<QPushButton*> compactTcpButtons =

@@ -39,6 +39,7 @@ public:
     void attachWaveformSplitControls(QLabel *label, QSpinBox *spinBox);
     void setCompactLayout(bool compact);
     int preferredPanelHeight() const;
+    bool hasVisibleWaveDisplay() const;
     void setRemoteSkyMode(bool enabled);
     void setRemoteWaveTcpState(VaporView::DeviceState state);
     void setRemoteFeatureRateHz(double rateHz);
@@ -81,6 +82,7 @@ signals:
     void logMessageRequested(const QString& message);
     void remoteWaveTcpConnectionRequested(bool connectRequested);
     void remotePeakSearchRangeRequested(quint32 startIndex, quint32 endIndex);
+    void preferredPanelHeightChanged();
 
 private slots:
     void onToggleConnectionClicked();

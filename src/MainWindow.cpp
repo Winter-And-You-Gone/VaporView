@@ -7572,11 +7572,12 @@ void MainWindow::updateResponsiveHomeLayout()
     }
     if (tcp_wave_group_ && tcp_wave_panel_)
     {
+        const int preferredTcpWaveHeight = tcp_wave_panel_->preferredPanelHeight();
         const int tcpWaveMinimumHeight = std::max(
-            compact ? kCompactTcpWaveCardMinHeight : kTcpWaveCardMinHeight,
-            tcp_wave_panel_->preferredPanelHeight());
+            tcp_wave_panel_->hasVisibleWaveDisplay() ? (compact ? kCompactTcpWaveCardMinHeight : kTcpWaveCardMinHeight) : preferredTcpWaveHeight,
+            preferredTcpWaveHeight);
         tcp_wave_group_->setMinimumHeight(tcpWaveMinimumHeight);
-        if (layoutChanged || tcp_wave_group_->height() < tcpWaveMinimumHeight)
+        if (layoutChanged || tcp_wave_group_->height() != tcpWaveMinimumHeight)
         {
             tcp_wave_group_->setFixedHeight(tcpWaveMinimumHeight);
         }
@@ -13044,6 +13045,8 @@ void MainWindow::setupDataPanels()
     });
     connect(tcp_wave_panel_, &TcpWavePanel::remotePeakSearchRangeRequested,
             this, &MainWindow::sendRemotePeakSearchRange);
+    connect(tcp_wave_panel_, &TcpWavePanel::preferredPanelHeightChanged,
+            this, &MainWindow::updateResponsiveHomeLayout);
     tcpWaveLayout->addWidget(tcp_wave_panel_);
     main_layout_->addWidget(tcp_wave_group_, 0);
     main_layout_->addStretch(1);
