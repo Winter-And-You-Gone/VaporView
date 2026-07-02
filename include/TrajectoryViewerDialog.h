@@ -64,6 +64,7 @@ private:
     QPushButton *export_button_;
     QPushButton *copy_point_button_;
     QComboBox *map_source_combo_;
+    QComboBox *heat_palette_combo_;
     QLineEdit *tianditu_key_edit_;
     QToolButton *tianditu_key_button_;
     QMenu *tianditu_key_menu_;

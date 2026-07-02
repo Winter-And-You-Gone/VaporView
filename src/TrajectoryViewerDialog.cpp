@@ -70,6 +70,7 @@ constexpr int kTileSize = 256;
 constexpr int kDefaultZoom = 16;
 constexpr int kMaxZoom = 19;
 constexpr int kTianDiTuMaxZoom = 18;
+constexpr int kMaxDisplayZoom = 30;
 constexpr int kMinZoom = 1;
 constexpr int kTitleBarButtonSize = 34;
 constexpr int kTitleBarIconSize = 24;
@@ -88,6 +89,15 @@ enum class TileProvider
     OpenStreetMap,
     TianDiTuVector,
     TianDiTuSatellite
+};
+
+enum class HeatPalette
+{
+    Turbo,
+    Neon,
+    Sunset,
+    Ocean,
+    Candy
 };
 
 QString tileProviderSettingKey()
@@ -109,7 +119,7 @@ QPointF latLonToPixel(double latitude, double longitude, int zoom)
 {
     const double lat = clampLatitude(latitude);
     const double sinLat = std::sin(qDegreesToRadians(lat));
-    const double worldSize = static_cast<double>(kTileSize) * static_cast<double>(1 << zoom);
+    const double worldSize = static_cast<double>(kTileSize) * std::pow(2.0, zoom);
     const double x = (longitude + 180.0) / 360.0 * worldSize;
     const double y = (0.5 - std::log((1.0 + sinLat) / (1.0 - sinLat)) / (4.0 * M_PI)) * worldSize;
     return QPointF(x, y);
@@ -164,6 +174,42 @@ TileProvider tileProviderFromComboIndex(int index)
         return TileProvider::TianDiTuSatellite;
     }
     return TileProvider::OpenStreetMap;
+}
+
+int heatPaletteComboIndex(HeatPalette palette)
+{
+    switch (palette)
+    {
+    case HeatPalette::Neon:
+        return 1;
+    case HeatPalette::Sunset:
+        return 2;
+    case HeatPalette::Ocean:
+        return 3;
+    case HeatPalette::Candy:
+        return 4;
+    case HeatPalette::Turbo:
+    default:
+        return 0;
+    }
+}
+
+HeatPalette heatPaletteFromComboIndex(int index)
+{
+    switch (index)
+    {
+    case 1:
+        return HeatPalette::Neon;
+    case 2:
+        return HeatPalette::Sunset;
+    case 3:
+        return HeatPalette::Ocean;
+    case 4:
+        return HeatPalette::Candy;
+    case 0:
+    default:
+        return HeatPalette::Turbo;
+    }
 }
 
 int providerMaxZoom(TileProvider provider)
@@ -298,31 +344,101 @@ QColor interpolateColor(const QColor& first, const QColor& second, double ratio)
         static_cast<int>(std::lround(first.blue() + (second.blue() - first.blue()) * clampedRatio)));
 }
 
-QColor heatmapColorAt(double normalized)
+QColor heatmapColorAt(double normalized, HeatPalette palette)
 {
-    static const std::array<std::pair<double, QColor>, 8> stops = {{
-        {0.00, appThemeColor(AppThemeColor::Heatmap0, false)},
-        {0.14, appThemeColor(AppThemeColor::Heatmap1, false)},
-        {0.28, appThemeColor(AppThemeColor::Heatmap2, false)},
-        {0.42, appThemeColor(AppThemeColor::Heatmap3, false)},
-        {0.56, appThemeColor(AppThemeColor::Heatmap4, false)},
-        {0.70, appThemeColor(AppThemeColor::Heatmap5, false)},
-        {0.84, appThemeColor(AppThemeColor::Heatmap6, false)},
-        {1.00, appThemeColor(AppThemeColor::Heatmap7, false)}
+    static const std::array<std::pair<double, QColor>, 8> turbo = {{
+        {0.00, QColor(QStringLiteral("#30123B"))},
+        {0.14, QColor(QStringLiteral("#445BFF"))},
+        {0.28, QColor(QStringLiteral("#18B7FF"))},
+        {0.42, QColor(QStringLiteral("#1DFFB3"))},
+        {0.56, QColor(QStringLiteral("#B6FF1D"))},
+        {0.70, QColor(QStringLiteral("#FFD21A"))},
+        {0.84, QColor(QStringLiteral("#FF6A00"))},
+        {1.00, QColor(QStringLiteral("#E60026"))}
+    }};
+    static const std::array<std::pair<double, QColor>, 7> neon = {{
+        {0.00, QColor(QStringLiteral("#2400FF"))},
+        {0.18, QColor(QStringLiteral("#008CFF"))},
+        {0.34, QColor(QStringLiteral("#00F5FF"))},
+        {0.50, QColor(QStringLiteral("#00FF66"))},
+        {0.66, QColor(QStringLiteral("#F7FF00"))},
+        {0.82, QColor(QStringLiteral("#FF7A00"))},
+        {1.00, QColor(QStringLiteral("#FF005D"))}
+    }};
+    static const std::array<std::pair<double, QColor>, 6> sunset = {{
+        {0.00, QColor(QStringLiteral("#3B0CA3"))},
+        {0.20, QColor(QStringLiteral("#8A1CFF"))},
+        {0.40, QColor(QStringLiteral("#FF2DB2"))},
+        {0.60, QColor(QStringLiteral("#FF5C00"))},
+        {0.80, QColor(QStringLiteral("#FFD000"))},
+        {1.00, QColor(QStringLiteral("#FFF44F"))}
+    }};
+    static const std::array<std::pair<double, QColor>, 6> ocean = {{
+        {0.00, QColor(QStringLiteral("#001E9A"))},
+        {0.20, QColor(QStringLiteral("#006CFF"))},
+        {0.40, QColor(QStringLiteral("#00D4FF"))},
+        {0.60, QColor(QStringLiteral("#00FFB2"))},
+        {0.80, QColor(QStringLiteral("#A8FF00"))},
+        {1.00, QColor(QStringLiteral("#FFF200"))}
+    }};
+    static const std::array<std::pair<double, QColor>, 6> candy = {{
+        {0.00, QColor(QStringLiteral("#0057FF"))},
+        {0.20, QColor(QStringLiteral("#00F0FF"))},
+        {0.40, QColor(QStringLiteral("#44FF00"))},
+        {0.60, QColor(QStringLiteral("#FFF500"))},
+        {0.80, QColor(QStringLiteral("#FF7A00"))},
+        {1.00, QColor(QStringLiteral("#FF00B8"))}
     }};
 
     const double clamped = std::clamp(normalized, 0.0, 1.0);
-    for (size_t index = 1; index < stops.size(); ++index)
-    {
-        const auto& previous = stops[index - 1];
-        const auto& current = stops[index];
-        if (clamped <= current.first)
+    const auto colorAtStop = [clamped](const auto& stops) {
+        for (size_t index = 1; index < stops.size(); ++index)
         {
-            const double localRatio = (clamped - previous.first) / std::max(1e-6, current.first - previous.first);
-            return interpolateColor(previous.second, current.second, localRatio);
+            const auto& previous = stops[index - 1];
+            const auto& current = stops[index];
+            if (clamped <= current.first)
+            {
+                const double localRatio = (clamped - previous.first) / std::max(1e-6, current.first - previous.first);
+                return interpolateColor(previous.second, current.second, localRatio);
+            }
         }
+        return stops.back().second;
+    };
+
+    switch (palette)
+    {
+    case HeatPalette::Neon:
+        return colorAtStop(neon);
+    case HeatPalette::Sunset:
+        return colorAtStop(sunset);
+    case HeatPalette::Ocean:
+        return colorAtStop(ocean);
+    case HeatPalette::Candy:
+        return colorAtStop(candy);
+    case HeatPalette::Turbo:
+    default:
+        return colorAtStop(turbo);
     }
-    return stops.back().second;
+}
+
+QColor heatmapColorAt(double normalized)
+{
+    return heatmapColorAt(normalized, HeatPalette::Turbo);
+}
+
+QColor trackHeatColor(float peakValue, float minPeak, float maxPeak, HeatPalette palette)
+{
+    const double totalRange = static_cast<double>(maxPeak) - static_cast<double>(minPeak);
+    if (!(totalRange > 1e-6))
+    {
+        return heatmapColorAt(0.5, palette);
+    }
+
+    const double normalized = std::clamp(
+        (static_cast<double>(peakValue) - static_cast<double>(minPeak)) / totalRange,
+        0.0,
+        1.0);
+    return heatmapColorAt(normalized, palette);
 }
 
 QColor trackHeatColor(float peakValue, float minPeak, float maxPeak)
@@ -446,6 +562,7 @@ public:
         , manager_(new QNetworkAccessManager(this))
         , is_english_(false)
         , tile_provider_(TileProvider::OpenStreetMap)
+        , heat_palette_(HeatPalette::Turbo)
         , tianditu_key_()
         , zoom_(kDefaultZoom)
         , center_world_pixel_(0.0, 0.0)
@@ -583,8 +700,6 @@ public:
             return;
         }
         tile_provider_ = provider;
-        zoom_ = std::min(zoom_, providerMaxZoom(tile_provider_));
-        fit_zoom_ = std::min(fit_zoom_, providerMaxZoom(tile_provider_));
         resetTileLoadingState(true);
         requestVisibleTiles();
         updateLoadFeedback();
@@ -594,6 +709,21 @@ public:
     TileProvider tileProvider() const
     {
         return tile_provider_;
+    }
+
+    void setHeatPalette(HeatPalette palette)
+    {
+        if (heat_palette_ == palette)
+        {
+            return;
+        }
+        heat_palette_ = palette;
+        update();
+    }
+
+    HeatPalette heatPalette() const
+    {
+        return heat_palette_;
     }
 
     void setTianDiTuKey(const QString& key)
@@ -969,7 +1099,7 @@ private:
     {
         if (track_points_.isEmpty())
         {
-            zoom_ = std::min(kDefaultZoom, providerMaxZoom(tile_provider_));
+            zoom_ = std::min(kDefaultZoom, kMaxDisplayZoom);
             center_world_pixel_ = QPointF();
             fit_zoom_ = zoom_;
             fit_center_world_pixel_ = center_world_pixel_;
@@ -1051,6 +1181,11 @@ private:
         return rect();
     }
 
+    int tileZoom() const
+    {
+        return std::min(zoom_, providerMaxZoom(tile_provider_));
+    }
+
     QPointF centerWorldPixelForZoom(int targetZoom) const
     {
         if (targetZoom == zoom_)
@@ -1066,17 +1201,18 @@ private:
 
     TileRange tileRangeForZoom(int targetZoom, int expansionTiles) const
     {
+        const int clampedTargetZoom = std::clamp(targetZoom, kMinZoom, providerMaxZoom(tile_provider_));
         const QRectF mapRect = mapViewportRect();
-        const double targetScale = std::pow(2.0, targetZoom - zoom_);
+        const double targetScale = std::pow(2.0, clampedTargetZoom - zoom_);
         const double width = std::max(1.0, mapRect.width() * targetScale);
         const double height = std::max(1.0, mapRect.height() * targetScale);
-        const QPointF center = centerWorldPixelForZoom(targetZoom);
+        const QPointF center = centerWorldPixelForZoom(clampedTargetZoom);
         const QPointF topLeft = center - QPointF(width * 0.5, height * 0.5);
         const QPointF bottomRight = center + QPointF(width * 0.5, height * 0.5);
-        const int tileCount = 1 << targetZoom;
+        const int tileCount = 1 << clampedTargetZoom;
 
         return {
-            targetZoom,
+            clampedTargetZoom,
             std::max(0, static_cast<int>(std::floor(topLeft.x() / kTileSize)) - expansionTiles),
             std::min(tileCount - 1, static_cast<int>(std::floor(bottomRight.x() / kTileSize)) + expansionTiles),
             std::max(0, static_cast<int>(std::floor(topLeft.y() / kTileSize)) - expansionTiles),
@@ -1180,15 +1316,16 @@ private:
 
         QSet<QString> visibleKeys;
         QSet<QString> requestedKeys;
-        enqueueTileRange(tileRangeForZoom(zoom_, 0), kTileCurrentPriority, requestedKeys, &visibleKeys);
-        enqueueTileRange(tileRangeForZoom(zoom_, 1), kTilePrefetchPriority, requestedKeys);
-        if (zoom_ > kMinZoom)
+        const int currentTileZoom = tileZoom();
+        enqueueTileRange(tileRangeForZoom(currentTileZoom, 0), kTileCurrentPriority, requestedKeys, &visibleKeys);
+        enqueueTileRange(tileRangeForZoom(currentTileZoom, 1), kTilePrefetchPriority, requestedKeys);
+        if (currentTileZoom > kMinZoom)
         {
-            enqueueTileRange(tileRangeForZoom(zoom_ - 1, 1), kTileAdjacentZoomPriority, requestedKeys);
+            enqueueTileRange(tileRangeForZoom(currentTileZoom - 1, 1), kTileAdjacentZoomPriority, requestedKeys);
         }
-        if (zoom_ < providerMaxZoom(tile_provider_))
+        if (currentTileZoom < providerMaxZoom(tile_provider_))
         {
-            enqueueTileRange(tileRangeForZoom(zoom_ + 1, 0), kTileAdjacentZoomPriority, requestedKeys);
+            enqueueTileRange(tileRangeForZoom(currentTileZoom + 1, 0), kTileAdjacentZoomPriority, requestedKeys);
         }
 
         current_visible_tile_keys_ = std::move(visibleKeys);
@@ -1202,9 +1339,13 @@ private:
 
     void drawTiles(QPainter& painter, const QRectF& mapRect)
     {
-        const QPointF topLeft = center_world_pixel_ - QPointF(mapRect.width() * 0.5, mapRect.height() * 0.5);
-        const QPointF bottomRight = center_world_pixel_ + QPointF(mapRect.width() * 0.5, mapRect.height() * 0.5);
-        const int tileCount = 1 << zoom_;
+        const int currentTileZoom = tileZoom();
+        const double tileScale = std::pow(2.0, zoom_ - currentTileZoom);
+        const double tileScreenSize = kTileSize * tileScale;
+        const QPointF tileCenter = centerWorldPixelForZoom(currentTileZoom);
+        const QPointF topLeft = tileCenter - QPointF(mapRect.width() * 0.5 / tileScale, mapRect.height() * 0.5 / tileScale);
+        const QPointF bottomRight = tileCenter + QPointF(mapRect.width() * 0.5 / tileScale, mapRect.height() * 0.5 / tileScale);
+        const int tileCount = 1 << currentTileZoom;
 
         const int minTileX = std::max(0, static_cast<int>(std::floor(topLeft.x() / kTileSize)));
         const int maxTileX = std::min(tileCount - 1, static_cast<int>(std::floor(bottomRight.x() / kTileSize)));
@@ -1217,14 +1358,14 @@ private:
             for (int tileY = minTileY; tileY <= maxTileY; ++tileY)
             {
                 const QRectF tileRect(
-                    mapRect.left() + tileX * kTileSize - topLeft.x(),
-                    mapRect.top() + tileY * kTileSize - topLeft.y(),
-                    kTileSize,
-                    kTileSize);
+                    mapRect.left() + (tileX * kTileSize - topLeft.x()) * tileScale,
+                    mapRect.top() + (tileY * kTileSize - topLeft.y()) * tileScale,
+                    tileScreenSize,
+                    tileScreenSize);
                 painter.fillRect(tileRect, appThemeColor(AppThemeColor::MapTileBackground, false));
                 for (const TileLayerSpec& layer : layers)
                 {
-                    drawTileLayer(painter, layer, zoom_, tileX, tileY, tileRect);
+                    drawTileLayer(painter, layer, currentTileZoom, tileX, tileY, tileRect);
                 }
             }
         }
@@ -1371,15 +1512,18 @@ private:
                 {
                     if (firstPoint.has_peak_value && secondPoint.has_peak_value)
                     {
-                        segmentColor = trackHeatColor((firstPoint.peak_value + secondPoint.peak_value) * 0.5f, minPeak, maxPeak);
+                        segmentColor = trackHeatColor((firstPoint.peak_value + secondPoint.peak_value) * 0.5f,
+                            minPeak,
+                            maxPeak,
+                            heat_palette_);
                     }
                     else if (firstPoint.has_peak_value)
                     {
-                        segmentColor = trackHeatColor(firstPoint.peak_value, minPeak, maxPeak);
+                        segmentColor = trackHeatColor(firstPoint.peak_value, minPeak, maxPeak, heat_palette_);
                     }
                     else if (secondPoint.has_peak_value)
                     {
-                        segmentColor = trackHeatColor(secondPoint.peak_value, minPeak, maxPeak);
+                        segmentColor = trackHeatColor(secondPoint.peak_value, minPeak, maxPeak, heat_palette_);
                     }
                 }
 
@@ -1486,7 +1630,7 @@ private:
         for (int stop = 0; stop <= 14; ++stop)
         {
             const double ratio = stop / 14.0;
-            gradient.setColorAt(ratio, heatmapColorAt(ratio));
+            gradient.setColorAt(ratio, heatmapColorAt(ratio, heat_palette_));
         }
         QPainterPath barPath;
         barPath.addRoundedRect(barRect, 4.0, 4.0);
@@ -1578,7 +1722,7 @@ private:
             return;
         }
 
-        const int newZoom = std::clamp(zoom_ + delta, kMinZoom, providerMaxZoom(tile_provider_));
+        const int newZoom = std::clamp(zoom_ + delta, kMinZoom, kMaxDisplayZoom);
         if (newZoom == zoom_)
         {
             return;
@@ -1597,13 +1741,13 @@ private:
 
     double pixelToLongitude(const QPointF& pixel, int zoom) const
     {
-        const double worldSize = static_cast<double>(kTileSize) * static_cast<double>(1 << zoom);
+        const double worldSize = static_cast<double>(kTileSize) * std::pow(2.0, zoom);
         return pixel.x() / worldSize * 360.0 - 180.0;
     }
 
     double pixelToLatitude(const QPointF& pixel, int zoom) const
     {
-        const double worldSize = static_cast<double>(kTileSize) * static_cast<double>(1 << zoom);
+        const double worldSize = static_cast<double>(kTileSize) * std::pow(2.0, zoom);
         const double mercatorY = M_PI * (1.0 - 2.0 * pixel.y() / worldSize);
         return qRadiansToDegrees(std::atan(std::sinh(mercatorY)));
     }
@@ -1710,6 +1854,7 @@ private:
     QSet<QString> failed_tiles_;
     bool is_english_;
     TileProvider tile_provider_;
+    HeatPalette heat_palette_;
     QString tianditu_key_;
     QString last_tile_error_;
     int zoom_;
@@ -1749,6 +1894,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , export_button_(new QPushButton(this))
     , copy_point_button_(new QPushButton(this))
     , map_source_combo_(new QComboBox(this))
+    , heat_palette_combo_(new QComboBox(this))
     , tianditu_key_edit_(new QLineEdit(this))
     , tianditu_key_button_(new QToolButton(this))
     , tianditu_key_menu_(new QMenu(this))
@@ -1897,6 +2043,14 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     map_source_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     map_source_combo_->setToolTip(is_english_ ? QStringLiteral("Map source") : QStringLiteral("底图来源"));
 
+    heat_palette_combo_->setObjectName(QStringLiteral("trajectoryHeatPaletteCombo"));
+    heat_palette_combo_->setMinimumWidth(160);
+    heat_palette_combo_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    heat_palette_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    heat_palette_combo_->setToolTip(is_english_
+        ? QStringLiteral("Choose the peak heatmap color ramp.")
+        : QStringLiteral("选择峰值热力图色带。"));
+
     tianditu_key_edit_->setObjectName(QStringLiteral("trajectoryTiandituKeyEdit"));
     tianditu_key_edit_->setFixedWidth(390);
     tianditu_key_edit_->setClearButtonEnabled(true);
@@ -1950,6 +2104,12 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     mapControlsLayout->addWidget(zoom_out_button_, 0);
     mapControlsLayout->addWidget(reset_view_button_, 0);
     sidebarLayout->addLayout(mapControlsLayout);
+
+    auto *paletteLayout = new QHBoxLayout();
+    paletteLayout->setContentsMargins(0, 0, 0, 0);
+    paletteLayout->setSpacing(6);
+    paletteLayout->addWidget(heat_palette_combo_, 1);
+    sidebarLayout->addLayout(paletteLayout);
     sidebarLayout->addStretch(1);
 
     mapPanelLayout->addWidget(map_widget_, 1);
@@ -1958,6 +2118,10 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
 
     connect(map_source_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &TrajectoryViewerDialog::applyMapSourceSelection);
+    connect(heat_palette_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, [mapWidget](int index) {
+                mapWidget->setHeatPalette(heatPaletteFromComboIndex(index));
+            });
     connect(tianditu_key_edit_, &QLineEdit::editingFinished,
             this, &TrajectoryViewerDialog::applyTiandituKeyEdit);
     connect(tianditu_key_edit_, &QLineEdit::returnPressed, this, [this]() {
@@ -2037,9 +2201,9 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QProgressBar::chunk { background-color: @vv-progress-chunk; border-radius: 5px; }"
         "QDialog#trajectoryViewerDialog QSlider::groove:horizontal { background-color: @vv-field-bg; border: 1px solid @vv-border; height: 6px; border-radius: 3px; }"
         "QDialog#trajectoryViewerDialog QSlider::handle:horizontal { background-color: @vv-primary; border: 1px solid @vv-primary; width: 14px; margin: -5px 0px; border-radius: 7px; }"
-        "QDialog#trajectoryViewerDialog QComboBox#trajectoryMapSourceCombo { background-color: @vv-field-bg; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 600; min-height: 32px; padding: 4px 28px 4px 10px; }"
-        "QDialog#trajectoryViewerDialog QComboBox#trajectoryMapSourceCombo:hover { border-color: @vv-border-strong; }"
-        "QDialog#trajectoryViewerDialog QComboBox#trajectoryMapSourceCombo:focus { border-color: @vv-primary; }"
+        "QDialog#trajectoryViewerDialog QComboBox#trajectoryMapSourceCombo, QDialog#trajectoryViewerDialog QComboBox#trajectoryHeatPaletteCombo { background-color: @vv-field-bg; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 600; min-height: 32px; padding: 4px 28px 4px 10px; }"
+        "QDialog#trajectoryViewerDialog QComboBox#trajectoryMapSourceCombo:hover, QDialog#trajectoryViewerDialog QComboBox#trajectoryHeatPaletteCombo:hover { border-color: @vv-border-strong; }"
+        "QDialog#trajectoryViewerDialog QComboBox#trajectoryMapSourceCombo:focus, QDialog#trajectoryViewerDialog QComboBox#trajectoryHeatPaletteCombo:focus { border-color: @vv-primary; }"
         "QDialog#trajectoryViewerDialog QToolButton#titleBarButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; }"
         "QDialog#trajectoryViewerDialog QToolButton#titleBarButton:hover { background-color: @vv-primary-subtle; border-color: @vv-primary-subtle-pressed; }"),
         isDarkPalette());
@@ -2503,6 +2667,20 @@ void TrajectoryViewerDialog::updateTexts()
         map_source_combo_->setCurrentIndex(tileProviderComboIndex(provider));
     }
     map_source_combo_->setToolTip(is_english_ ? QStringLiteral("Map source") : QStringLiteral("底图来源"));
+    {
+        QSignalBlocker blocker(heat_palette_combo_);
+        heat_palette_combo_->clear();
+        heat_palette_combo_->addItem(is_english_ ? QStringLiteral("Turbo vivid") : QStringLiteral("Turbo 明艳"));
+        heat_palette_combo_->addItem(is_english_ ? QStringLiteral("Neon") : QStringLiteral("霓虹"));
+        heat_palette_combo_->addItem(is_english_ ? QStringLiteral("Sunset") : QStringLiteral("日落"));
+        heat_palette_combo_->addItem(is_english_ ? QStringLiteral("Ocean") : QStringLiteral("海洋"));
+        heat_palette_combo_->addItem(is_english_ ? QStringLiteral("Candy") : QStringLiteral("糖果"));
+        const HeatPalette palette = static_cast<TrajectoryMapWidget*>(map_widget_)->heatPalette();
+        heat_palette_combo_->setCurrentIndex(heatPaletteComboIndex(palette));
+    }
+    heat_palette_combo_->setToolTip(is_english_
+        ? QStringLiteral("Choose the peak heatmap color ramp.")
+        : QStringLiteral("选择峰值热力图色带。"));
     if (tianditu_key_menu_label_)
     {
         tianditu_key_menu_label_->setText(is_english_ ? QStringLiteral("Tianditu Key") : QStringLiteral("天地图 Key"));

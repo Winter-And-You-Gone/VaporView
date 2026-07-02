@@ -433,6 +433,7 @@ void testTrajectoryViewerUsesSidebarLayout()
     auto *mapPanel = dialog.findChild<QFrame *>(QStringLiteral("trajectoryViewerMapPanel"));
     auto *map = dialog.findChild<QWidget *>(QStringLiteral("trajectoryViewerMap"));
     auto *mapSourceCombo = dialog.findChild<QComboBox *>(QStringLiteral("trajectoryMapSourceCombo"));
+    auto *heatPaletteCombo = dialog.findChild<QComboBox *>(QStringLiteral("trajectoryHeatPaletteCombo"));
     auto *summaryLabel = dialog.findChild<QLabel *>(QStringLiteral("trajectorySidebarSummaryLabel"));
     auto *detailLabel = dialog.findChild<QLabel *>(QStringLiteral("trajectorySidebarDetailLabel"));
 
@@ -445,6 +446,7 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(mapPanel != nullptr, "trajectory viewer map panel exists");
     require(map != nullptr, "trajectory viewer map exists");
     require(mapSourceCombo != nullptr, "trajectory viewer map source control exists");
+    require(heatPaletteCombo != nullptr, "trajectory viewer heat palette control exists");
     require(summaryLabel != nullptr, "trajectory viewer summary label exists");
     require(detailLabel != nullptr, "trajectory viewer detail label exists");
     const auto sidebarToolButtons = sidebar->findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
@@ -468,6 +470,11 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(mapSourceCombo->sizePolicy().horizontalPolicy() == QSizePolicy::Expanding,
             "map source combo expands within sidebar controls");
     require(sidebar->isAncestorOf(mapSourceCombo), "map source control is in sidebar");
+    require(heatPaletteCombo->minimumWidth() == 160, "heat palette combo keeps readable minimum width");
+    require(heatPaletteCombo->sizePolicy().horizontalPolicy() == QSizePolicy::Expanding,
+            "heat palette combo expands within sidebar controls");
+    require(heatPaletteCombo->count() >= 5, "heat palette combo exposes multiple vivid ramps");
+    require(sidebar->isAncestorOf(heatPaletteCombo), "heat palette control is in sidebar");
     require(mapPanel->isAncestorOf(map), "map remains in the map panel");
     require(!sidebar->isAncestorOf(map), "map is not in sidebar");
     require(mapPanel->layout() != nullptr, "map panel layout exists");
