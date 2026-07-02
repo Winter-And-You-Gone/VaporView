@@ -1565,6 +1565,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , humidity_values_()
     , pressure_values_()
     , rtk_track_points_()
+    , rtk_track_stats_()
     , waveform_timestamps_us_()
     , waveform_segments_()
     , raw_tcp_wave_frames_()
@@ -2676,7 +2677,11 @@ void SessionViewerWindow::onViewTrajectoryClicked()
 
     trajectory_viewer_dialog_->setEnglish(is_english_);
     trajectory_viewer_dialog_->setTrackLabel(QStringLiteral("RTK trajectory"), QStringLiteral("RTK轨迹"));
+    trajectory_viewer_dialog_->setTrackStats(rtk_track_stats_);
     trajectory_viewer_dialog_->setTrackPoints(rtk_track_points_);
+    connect(trajectory_viewer_dialog_, &TrajectoryViewerDialog::trackPointActivated,
+            this, &SessionViewerWindow::focusTrajectoryPoint,
+            Qt::UniqueConnection);
     VaporView::centerWindowOnScreen(trajectory_viewer_dialog_, this);
     trajectory_viewer_dialog_->show();
     trajectory_viewer_dialog_->raise();
@@ -2893,6 +2898,7 @@ bool SessionViewerWindow::loadSensorsCsv()
     humidity_values_.clear();
     pressure_values_.clear();
     rtk_track_points_.clear();
+    rtk_track_stats_ = RtkTrackStats();
     while (!stream.atEnd())
     {
         const QString line = stream.readLine();
@@ -2961,16 +2967,35 @@ bool SessionViewerWindow::loadSensorsCsv()
         const double lat = parseOptionalDouble(csvValueAt(fields, navLatIndex));
         const double lon = parseOptionalDouble(csvValueAt(fields, navLonIndex));
         const QString gnssFix = csvValueAt(fields, gnssFixIndex).trimmed().toUpper();
-        if (navValid &&
-            std::isfinite(lat) &&
-            std::isfinite(lon) &&
-            !(std::abs(lat) < 1e-8 && std::abs(lon) < 1e-8) &&
-            lat >= -90.0 && lat <= 90.0 &&
-            lon >= -180.0 && lon <= 180.0 &&
-            gnssFix != QStringLiteral("NONE") &&
-            gnssFix != QStringLiteral("NO_FIX") &&
-            gnssFix != QStringLiteral("INVALID") &&
-            gnssFix != QStringLiteral("NO_GPS"))
+        if (navLatIndex >= 0 || navLonIndex >= 0)
+        {
+            ++rtk_track_stats_.scanned_rows;
+        }
+        const bool missingOrInvalidNav = !navValid || !std::isfinite(lat) || !std::isfinite(lon);
+        const bool zeroCoordinate = !missingOrInvalidNav && std::abs(lat) < 1e-8 && std::abs(lon) < 1e-8;
+        const bool outOfRange = !missingOrInvalidNav && !zeroCoordinate &&
+            (lat < -90.0 || lat > 90.0 || lon < -180.0 || lon > 180.0);
+        const bool badFix = gnssFix == QStringLiteral("NONE") ||
+            gnssFix == QStringLiteral("NO_FIX") ||
+            gnssFix == QStringLiteral("INVALID") ||
+            gnssFix == QStringLiteral("NO_GPS");
+        if (missingOrInvalidNav)
+        {
+            ++rtk_track_stats_.rejected_invalid_nav;
+        }
+        else if (zeroCoordinate)
+        {
+            ++rtk_track_stats_.rejected_zero_coordinate;
+        }
+        else if (outOfRange)
+        {
+            ++rtk_track_stats_.rejected_out_of_range;
+        }
+        else if (badFix)
+        {
+            ++rtk_track_stats_.rejected_bad_fix;
+        }
+        else
         {
             bool timestampOk = false;
             const quint64 trackTimestampUs = trackTimestampIndex >= 0
@@ -2979,6 +3004,8 @@ bool SessionViewerWindow::loadSensorsCsv()
             RtkTrackPoint point;
             point.latitude = lat;
             point.longitude = lon;
+            point.csv_row = rows.size() - 1;
+            point.gnss_fix = gnssFix;
             const double height = parseOptionalDouble(csvValueAt(fields, navHeightIndex));
             if (std::isfinite(height))
             {
@@ -2990,12 +3017,25 @@ bool SessionViewerWindow::loadSensorsCsv()
             {
                 const RtkTrackPoint& previous = rtk_track_points_.last();
                 const double jumpMeters = haversineDistanceMeters(previous.latitude, previous.longitude, point.latitude, point.longitude);
-                if (jumpMeters > 20.0)
+                if (jumpMeters > rtk_track_stats_.jump_threshold_m)
                 {
+                    ++rtk_track_stats_.rejected_jump;
                     continue;
+                }
+                point.segment_distance_m = jumpMeters;
+                point.cumulative_distance_m = previous.cumulative_distance_m + jumpMeters;
+                if (previous.timestamp_us > 0 && point.timestamp_us > previous.timestamp_us)
+                {
+                    const double elapsedSeconds = static_cast<double>(point.timestamp_us - previous.timestamp_us) / 1000000.0;
+                    if (elapsedSeconds > 1e-6)
+                    {
+                        point.speed_mps = jumpMeters / elapsedSeconds;
+                        point.has_speed = true;
+                    }
                 }
             }
             rtk_track_points_.push_back(point);
+            ++rtk_track_stats_.accepted_points;
         }
 
         if (session_loading_ && rows.size() % 5000 == 0)
@@ -4052,6 +4092,10 @@ void SessionViewerWindow::updateRtkTrackPeakValues()
     {
         point.peak_value = 0.0f;
         point.has_peak_value = false;
+        point.waveform_frame_index = -1;
+        point.waveform_timestamp_us = 0;
+        point.waveform_delta_us = 0;
+        point.has_waveform_match = false;
 
         if (point.timestamp_us == 0)
         {
@@ -4062,6 +4106,16 @@ void SessionViewerWindow::updateRtkTrackPeakValues()
         if (peakIndex < 0 || peakIndex >= waveform_peak_values_.size())
         {
             continue;
+        }
+
+        point.waveform_frame_index = peakIndex;
+        if (peakIndex < waveform_timestamps_us_.size())
+        {
+            point.waveform_timestamp_us = waveform_timestamps_us_.at(peakIndex);
+            point.waveform_delta_us = point.waveform_timestamp_us >= point.timestamp_us
+                ? point.waveform_timestamp_us - point.timestamp_us
+                : point.timestamp_us - point.waveform_timestamp_us;
+            point.has_waveform_match = true;
         }
 
         const float peakValue = waveform_peak_values_.at(peakIndex);
@@ -4076,8 +4130,44 @@ void SessionViewerWindow::updateRtkTrackPeakValues()
 
     if (trajectory_viewer_dialog_)
     {
+        trajectory_viewer_dialog_->setTrackStats(rtk_track_stats_);
         trajectory_viewer_dialog_->setTrackPoints(rtk_track_points_);
     }
+}
+
+void SessionViewerWindow::focusTrajectoryPoint(int trackPointIndex)
+{
+    if (trackPointIndex < 0 || trackPointIndex >= rtk_track_points_.size())
+    {
+        return;
+    }
+
+    const RtkTrackPoint& point = rtk_track_points_.at(trackPointIndex);
+    if (point.has_waveform_match && point.waveform_frame_index >= 0)
+    {
+        const int frameValue = point.waveform_frame_index + 1;
+        const bool frameInRange = frame_spin_ &&
+            frameValue >= frame_spin_->minimum() &&
+            frameValue <= frame_spin_->maximum();
+        if (frameInRange)
+        {
+            const QSignalBlocker spinBlocker(frame_spin_);
+            const QSignalBlocker sliderBlocker(frame_slider_);
+            frame_spin_->setValue(frameValue);
+            frame_slider_->setValue(frameValue);
+        }
+        loadWaveformFrame(static_cast<quint64>(point.waveform_frame_index));
+    }
+    else if (point.timestamp_us > 0)
+    {
+        highlightClosestSensorRow(point.timestamp_us, true);
+    }
+
+    setStatusText(QString(is_english_
+        ? "Focused trajectory point #%1 at CSV row %2."
+        : "已定位轨迹点 #%1，对应 CSV 第 %2 行。")
+        .arg(trackPointIndex + 1)
+        .arg(point.csv_row >= 0 ? point.csv_row + 1 : 0));
 }
 
 void SessionViewerWindow::syncEnvironmentRangeToWaveformRange(int startFrameIndex, int visibleFrameCount)

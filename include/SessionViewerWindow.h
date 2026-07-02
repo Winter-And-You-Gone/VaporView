@@ -13,10 +13,32 @@ struct RtkTrackPoint
     double latitude = 0.0;
     double longitude = 0.0;
     double height_m = 0.0;
+    double cumulative_distance_m = 0.0;
+    double segment_distance_m = 0.0;
+    double speed_mps = 0.0;
     quint64 timestamp_us = 0;
+    quint64 waveform_timestamp_us = 0;
+    quint64 waveform_delta_us = 0;
     float peak_value = 0.0f;
+    int csv_row = -1;
+    int waveform_frame_index = -1;
+    QString gnss_fix;
     bool has_height = false;
+    bool has_speed = false;
     bool has_peak_value = false;
+    bool has_waveform_match = false;
+};
+
+struct RtkTrackStats
+{
+    int scanned_rows = 0;
+    int accepted_points = 0;
+    int rejected_invalid_nav = 0;
+    int rejected_bad_fix = 0;
+    int rejected_zero_coordinate = 0;
+    int rejected_out_of_range = 0;
+    int rejected_jump = 0;
+    double jump_threshold_m = 20.0;
 };
 
 class QGroupBox;
@@ -136,6 +158,7 @@ private:
     int findClosestCsvRow(quint64 timestampUs) const;
     void applyPeakFilter(int startPercent = 0, int endPercent = 96);
     void updateRtkTrackPeakValues();
+    void focusTrajectoryPoint(int trackPointIndex);
     void syncEnvironmentRangeToWaveformRange(int startFrameIndex, int visibleFrameCount);
     void previewClosestSensorRow(quint64 timestampUs);
     QString highlightClosestSensorRow(quint64 timestampUs, bool scrollToCsvRow = true);
@@ -217,6 +240,7 @@ private:
     QVector<double> humidity_values_;
     QVector<double> pressure_values_;
     QVector<RtkTrackPoint> rtk_track_points_;
+    RtkTrackStats rtk_track_stats_;
     QVector<quint64> waveform_timestamps_us_;
     QVector<WaveformSegment> waveform_segments_;
     QVector<RawTcpWaveFrame> raw_tcp_wave_frames_;

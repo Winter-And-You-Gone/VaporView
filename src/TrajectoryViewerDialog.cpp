@@ -3,9 +3,12 @@
 #include "CustomTitleBar.h"
 
 #include <QApplication>
+#include <QClipboard>
+#include <QDateTime>
 #include <QDir>
 #include <QEvent>
 #include <QFile>
+#include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QComboBox>
@@ -14,20 +17,27 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QNetworkAccessManager>
+#include <QNetworkDiskCache>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QPainter>
 #include <QPalette>
 #include <QPixmap>
 #include <QProgressBar>
+#include <QPushButton>
 #include <QQueue>
 #include <QSet>
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QSizePolicy>
+#include <QSlider>
+#include <QStandardPaths>
+#include <QStringConverter>
 #include <QSvgRenderer>
+#include <QTextStream>
 #include <QTimer>
 #include <QToolButton>
+#include <QTimeZone>
 #include <QUrl>
 #include <QUrlQuery>
 #include <QVBoxLayout>
@@ -36,6 +46,7 @@
 #include <QWheelEvent>
 #include <QWidget>
 #include <QtMath>
+#include <QSslError>
 #include <array>
 #include <algorithm>
 #include <chrono>
@@ -312,6 +323,55 @@ QString formatPeakValue(double value)
     return QString::number(value, 'f', 6);
 }
 
+QString formatTimestampUs(quint64 timestampUs)
+{
+    if (timestampUs == 0)
+    {
+        return QStringLiteral("--");
+    }
+    return QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(timestampUs / 1000), QTimeZone::UTC)
+        .toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz 'UTC'"));
+}
+
+QString formatDistanceMeters(double meters)
+{
+    if (!std::isfinite(meters))
+    {
+        return QStringLiteral("--");
+    }
+    if (std::abs(meters) >= 1000.0)
+    {
+        return QStringLiteral("%1 km").arg(QString::number(meters / 1000.0, 'f', 3));
+    }
+    return QStringLiteral("%1 m").arg(QString::number(meters, 'f', 2));
+}
+
+QString formatSpeed(double metersPerSecond)
+{
+    if (!std::isfinite(metersPerSecond))
+    {
+        return QStringLiteral("--");
+    }
+    return QStringLiteral("%1 m/s (%2 km/h)")
+        .arg(QString::number(metersPerSecond, 'f', 2),
+             QString::number(metersPerSecond * 3.6, 'f', 2));
+}
+
+QString formatSignedDeltaMs(quint64 deltaUs)
+{
+    return QStringLiteral("%1 ms").arg(QString::number(static_cast<double>(deltaUs) / 1000.0, 'f', 3));
+}
+
+QString csvCell(QString value)
+{
+    value.replace('"', QStringLiteral("\"\""));
+    if (value.contains(',') || value.contains('"') || value.contains('\n') || value.contains('\r'))
+    {
+        return QStringLiteral("\"%1\"").arg(value);
+    }
+    return value;
+}
+
 QString mapAttributionText(TileProvider provider, bool english)
 {
     switch (provider)
@@ -342,8 +402,10 @@ public:
         , fit_center_world_pixel_(0.0, 0.0)
         , manual_view_active_(false)
         , dragging_(false)
+        , drag_moved_(false)
         , drag_start_pos_()
         , drag_start_center_world_pixel_()
+        , selected_track_index_(-1)
         , active_tile_request_count_(0)
         , tile_request_generation_(0)
         , feedback_update_scheduled_(false)
@@ -354,6 +416,20 @@ public:
         setMinimumSize(720, 420);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
         setMouseTracking(true);
+
+        auto *cache = new QNetworkDiskCache(manager_);
+        const QString cacheRoot = QStandardPaths::writableLocation(QStandardPaths::CacheLocation);
+        cache->setCacheDirectory(QDir(cacheRoot).filePath(QStringLiteral("map-tiles")));
+        cache->setMaximumCacheSize(128LL * 1024LL * 1024LL);
+        manager_->setCache(cache);
+        connect(manager_, &QNetworkAccessManager::sslErrors, this,
+                [this](QNetworkReply *, const QList<QSslError>& errors) {
+            if (!errors.isEmpty())
+            {
+                last_tile_error_ = errors.first().errorString();
+                scheduleLoadFeedbackUpdate(false);
+            }
+        });
     }
 
     void setStatusCallback(std::function<void(const QString&)> callback)
@@ -368,6 +444,11 @@ public:
         updateLoadFeedback();
     }
 
+    void setSelectionCallback(std::function<void(int)> callback)
+    {
+        selection_callback_ = std::move(callback);
+    }
+
     void setEnglish(bool english)
     {
         is_english_ = english;
@@ -378,9 +459,25 @@ public:
     void setTrackPoints(const QVector<RtkTrackPoint>& points)
     {
         track_points_ = points;
+        selected_track_index_ = track_points_.isEmpty()
+            ? -1
+            : std::clamp(selected_track_index_, 0, static_cast<int>(track_points_.size()) - 1);
         manual_view_active_ = false;
         resetTileLoadingState(true);
         refreshViewport();
+        update();
+    }
+
+    void setSelectedTrackIndex(int index)
+    {
+        const int clamped = track_points_.isEmpty()
+            ? -1
+            : std::clamp(index, 0, static_cast<int>(track_points_.size()) - 1);
+        if (selected_track_index_ == clamped)
+        {
+            return;
+        }
+        selected_track_index_ = clamped;
         update();
     }
 
@@ -488,6 +585,7 @@ protected:
         if (event->button() == Qt::LeftButton && !track_points_.isEmpty())
         {
             dragging_ = true;
+            drag_moved_ = false;
             drag_start_pos_ = event->position();
             drag_start_center_world_pixel_ = center_world_pixel_;
             setCursor(Qt::ClosedHandCursor);
@@ -502,6 +600,10 @@ protected:
         if (dragging_)
         {
             const QPointF delta = event->position() - drag_start_pos_;
+            if (std::abs(delta.x()) > 3.0 || std::abs(delta.y()) > 3.0)
+            {
+                drag_moved_ = true;
+            }
             center_world_pixel_ = drag_start_center_world_pixel_ - delta;
             manual_view_active_ = true;
             requestVisibleTiles();
@@ -516,8 +618,22 @@ protected:
     {
         if (dragging_ && event->button() == Qt::LeftButton)
         {
+            const bool wasClick = !drag_moved_;
             dragging_ = false;
             unsetCursor();
+            if (wasClick)
+            {
+                const int index = closestTrackPointIndex(event->position());
+                if (index >= 0)
+                {
+                    selected_track_index_ = index;
+                    update();
+                    if (selection_callback_)
+                    {
+                        selection_callback_(index);
+                    }
+                }
+            }
             event->accept();
             return;
         }
@@ -984,10 +1100,51 @@ private:
             painter.setBrush(appThemeColor(AppThemeColor::TrackEnd, false));
             painter.drawEllipse(polyline.last(), 5.0, 5.0);
         }
+        if (selected_track_index_ >= 0 && selected_track_index_ < polyline.size())
+        {
+            const QPointF selectedPoint = polyline.at(selected_track_index_);
+            painter.setPen(QPen(appThemeColor(AppThemeColor::TrackEnd, false), 3.0));
+            painter.setBrush(appThemeColor(AppThemeColor::MapViewport, false));
+            painter.drawEllipse(selectedPoint, 9.0, 9.0);
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(appThemeColor(AppThemeColor::TrackEnd, false));
+            painter.drawEllipse(selectedPoint, 4.0, 4.0);
+        }
         painter.restore();
 
         painter.setPen(QPen(appThemeColor(AppThemeColor::MapBoundary, false), 1));
         painter.drawRoundedRect(mapRect, 8.0, 8.0);
+    }
+
+    int closestTrackPointIndex(const QPointF& pos) const
+    {
+        if (track_points_.isEmpty())
+        {
+            return -1;
+        }
+
+        const QRectF mapRect = rect().adjusted(kMapMargin, kMapMargin, -kMapMargin, -kMapMargin - 18);
+        if (!mapRect.adjusted(-8.0, -8.0, 8.0, 8.0).contains(pos))
+        {
+            return -1;
+        }
+
+        int bestIndex = -1;
+        double bestDistanceSquared = std::numeric_limits<double>::infinity();
+        for (int index = 0; index < track_points_.size(); ++index)
+        {
+            const RtkTrackPoint& point = track_points_.at(index);
+            const QPointF screenPoint = worldToScreen(latLonToPixel(point.latitude, point.longitude, zoom_), mapRect);
+            const QPointF delta = screenPoint - pos;
+            const double distanceSquared = delta.x() * delta.x() + delta.y() * delta.y();
+            if (distanceSquared < bestDistanceSquared)
+            {
+                bestDistanceSquared = distanceSquared;
+                bestIndex = index;
+            }
+        }
+
+        return bestDistanceSquared <= 18.0 * 18.0 ? bestIndex : -1;
     }
 
     void adjustZoom(int delta)
@@ -1135,8 +1292,10 @@ private:
     QPointF fit_center_world_pixel_;
     bool manual_view_active_;
     bool dragging_;
+    bool drag_moved_;
     QPointF drag_start_pos_;
     QPointF drag_start_center_world_pixel_;
+    int selected_track_index_;
     int active_tile_request_count_;
     int tile_request_generation_;
     bool feedback_update_scheduled_;
@@ -1145,6 +1304,7 @@ private:
     QString chinese_track_label_;
     std::function<void(const QString&)> status_callback_;
     std::function<void(int, int, int)> progress_callback_;
+    std::function<void(int)> selection_callback_;
 };
 }
 
@@ -1152,9 +1312,14 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     : QDialog(parent)
     , summary_label_(new QLabel(this))
     , legend_label_(new QLabel(this))
+    , detail_label_(new QLabel(this))
     , map_status_label_(new QLabel(this))
     , map_progress_bar_(new QProgressBar(this))
     , map_widget_(new TrajectoryMapWidget(this))
+    , timeline_slider_(new QSlider(Qt::Horizontal, this))
+    , play_button_(new QPushButton(this))
+    , export_button_(new QPushButton(this))
+    , copy_point_button_(new QPushButton(this))
     , map_source_combo_(new QComboBox(this))
     , tianditu_key_edit_(new QLineEdit(this))
     , tianditu_key_button_(new QToolButton(this))
@@ -1168,6 +1333,9 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , english_track_label_(QStringLiteral("RTK trajectory"))
     , chinese_track_label_(QStringLiteral("RTK轨迹"))
     , track_points_()
+    , track_stats_()
+    , selected_track_index_(-1)
+    , playback_timer_(new QTimer(this))
 {
     setWindowFlag(Qt::Window, true);
     setModal(false);
@@ -1184,6 +1352,10 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     legend_label_->setTextFormat(Qt::RichText);
     legend_label_->setObjectName(QStringLiteral("fieldLabel"));
     mainLayout->addWidget(legend_label_);
+    detail_label_->setWordWrap(true);
+    detail_label_->setObjectName(QStringLiteral("fieldLabel"));
+    detail_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    mainLayout->addWidget(detail_label_);
     map_status_label_->setWordWrap(true);
     map_status_label_->setObjectName(QStringLiteral("fieldLabel"));
     mainLayout->addWidget(map_status_label_);
@@ -1193,6 +1365,21 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     map_progress_bar_->setValue(0);
     mainLayout->addWidget(map_progress_bar_);
     mainLayout->addWidget(map_widget_, 1);
+
+    auto *timelineLayout = new QHBoxLayout();
+    timelineLayout->setContentsMargins(0, 0, 0, 0);
+    timelineLayout->setSpacing(8);
+    timeline_slider_->setEnabled(false);
+    timeline_slider_->setRange(0, 0);
+    timeline_slider_->setTracking(true);
+    play_button_->setEnabled(false);
+    export_button_->setEnabled(false);
+    copy_point_button_->setEnabled(false);
+    timelineLayout->addWidget(play_button_);
+    timelineLayout->addWidget(timeline_slider_, 1);
+    timelineLayout->addWidget(copy_point_button_);
+    timelineLayout->addWidget(export_button_);
+    mainLayout->addLayout(timelineLayout);
 
     auto *mapWidget = static_cast<TrajectoryMapWidget*>(map_widget_);
     mapWidget->setStatusCallback([this](const QString& text) {
@@ -1204,6 +1391,9 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
         map_progress_bar_->setFormat(total > 0
             ? QStringLiteral("%1/%2").arg(std::min(total, loaded + failed)).arg(total)
             : QStringLiteral("--"));
+    });
+    mapWidget->setSelectionCallback([this](int index) {
+        setSelectedTrackIndex(index, true);
     });
 
     map_source_combo_->setObjectName(QStringLiteral("trajectoryMapSourceCombo"));
@@ -1275,6 +1465,17 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     connect(reset_view_button_, &QToolButton::clicked, this, [this]() {
         static_cast<TrajectoryMapWidget*>(map_widget_)->resetView();
     });
+    connect(timeline_slider_, &QSlider::valueChanged,
+            this, &TrajectoryViewerDialog::onTimelineChanged);
+    connect(play_button_, &QPushButton::clicked,
+            this, &TrajectoryViewerDialog::togglePlayback);
+    connect(export_button_, &QPushButton::clicked,
+            this, &TrajectoryViewerDialog::exportTrackCsv);
+    connect(copy_point_button_, &QPushButton::clicked,
+            this, &TrajectoryViewerDialog::copySelectedPoint);
+    connect(playback_timer_, &QTimer::timeout,
+            this, &TrajectoryViewerDialog::advancePlayback);
+    playback_timer_->setInterval(350);
 
     {
         QSettings settings("VaporView", "TrajectoryViewer");
@@ -1294,6 +1495,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     VaporView::installCustomTitleBar(this);
     installTitleBarControls();
     updateTexts();
+    updateSelectedPointDetails();
 }
 
 void TrajectoryViewerDialog::installTitleBarControls()
@@ -1423,7 +1625,221 @@ void TrajectoryViewerDialog::setTrackPoints(const QVector<RtkTrackPoint>& points
 {
     track_points_ = points;
     static_cast<TrajectoryMapWidget*>(map_widget_)->setTrackPoints(points);
+    selected_track_index_ = track_points_.isEmpty()
+        ? -1
+        : std::clamp(selected_track_index_, 0, static_cast<int>(track_points_.size()) - 1);
+    {
+        QSignalBlocker blocker(timeline_slider_);
+        timeline_slider_->setEnabled(!track_points_.isEmpty());
+        timeline_slider_->setRange(track_points_.isEmpty() ? 0 : 1,
+                                   track_points_.isEmpty() ? 0 : static_cast<int>(track_points_.size()));
+        timeline_slider_->setValue(selected_track_index_ >= 0 ? selected_track_index_ + 1 : (track_points_.isEmpty() ? 0 : 1));
+    }
+    if (!track_points_.isEmpty() && selected_track_index_ < 0)
+    {
+        selected_track_index_ = 0;
+    }
+    static_cast<TrajectoryMapWidget*>(map_widget_)->setSelectedTrackIndex(selected_track_index_);
+    play_button_->setEnabled(!track_points_.isEmpty());
+    export_button_->setEnabled(!track_points_.isEmpty());
+    copy_point_button_->setEnabled(!track_points_.isEmpty());
     updateSummary();
+    updateSelectedPointDetails();
+}
+
+void TrajectoryViewerDialog::setTrackStats(const RtkTrackStats& stats)
+{
+    track_stats_ = stats;
+    updateSummary();
+}
+
+void TrajectoryViewerDialog::setSelectedTrackIndex(int index, bool notifySession)
+{
+    const int clamped = track_points_.isEmpty()
+        ? -1
+        : std::clamp(index, 0, static_cast<int>(track_points_.size()) - 1);
+    if (selected_track_index_ == clamped)
+    {
+        updateSelectedPointDetails();
+        if (notifySession && selected_track_index_ >= 0)
+        {
+            emit trackPointActivated(selected_track_index_);
+        }
+        return;
+    }
+
+    selected_track_index_ = clamped;
+    static_cast<TrajectoryMapWidget*>(map_widget_)->setSelectedTrackIndex(selected_track_index_);
+    if (timeline_slider_)
+    {
+        QSignalBlocker blocker(timeline_slider_);
+        timeline_slider_->setValue(selected_track_index_ >= 0 ? selected_track_index_ + 1 : 0);
+    }
+    updateSelectedPointDetails();
+    if (notifySession && selected_track_index_ >= 0)
+    {
+        emit trackPointActivated(selected_track_index_);
+    }
+}
+
+void TrajectoryViewerDialog::onTimelineChanged(int value)
+{
+    if (track_points_.isEmpty() || value <= 0)
+    {
+        setSelectedTrackIndex(-1, false);
+        return;
+    }
+    setSelectedTrackIndex(value - 1, true);
+}
+
+void TrajectoryViewerDialog::togglePlayback()
+{
+    if (track_points_.isEmpty())
+    {
+        return;
+    }
+    if (playback_timer_->isActive())
+    {
+        playback_timer_->stop();
+    }
+    else
+    {
+        if (selected_track_index_ < 0 || selected_track_index_ >= track_points_.size() - 1)
+        {
+            setSelectedTrackIndex(0, true);
+        }
+        playback_timer_->start();
+    }
+    updateTexts();
+}
+
+void TrajectoryViewerDialog::advancePlayback()
+{
+    if (track_points_.isEmpty())
+    {
+        playback_timer_->stop();
+        updateTexts();
+        return;
+    }
+
+    const int nextIndex = selected_track_index_ < 0 ? 0 : selected_track_index_ + 1;
+    if (nextIndex >= track_points_.size())
+    {
+        playback_timer_->stop();
+        updateTexts();
+        return;
+    }
+    setSelectedTrackIndex(nextIndex, true);
+}
+
+void TrajectoryViewerDialog::copySelectedPoint()
+{
+    if (selected_track_index_ < 0 || selected_track_index_ >= track_points_.size() || !qApp)
+    {
+        return;
+    }
+    const RtkTrackPoint& point = track_points_.at(selected_track_index_);
+    const QString text = QStringLiteral("#%1, %2, %3, %4, csv_row=%5, waveform_frame=%6")
+        .arg(selected_track_index_ + 1)
+        .arg(QString::number(point.latitude, 'f', 8))
+        .arg(QString::number(point.longitude, 'f', 8))
+        .arg(formatTimestampUs(point.timestamp_us))
+        .arg(point.csv_row >= 0 ? point.csv_row + 1 : 0)
+        .arg(point.waveform_frame_index >= 0 ? point.waveform_frame_index + 1 : 0);
+    qApp->clipboard()->setText(text);
+    map_status_label_->setText(is_english_
+        ? QStringLiteral("Selected trajectory point copied to clipboard.")
+        : QStringLiteral("已复制当前轨迹点到剪贴板。"));
+}
+
+void TrajectoryViewerDialog::exportTrackCsv()
+{
+    if (track_points_.isEmpty())
+    {
+        return;
+    }
+
+    const QString filename = QFileDialog::getSaveFileName(
+        this,
+        is_english_ ? QStringLiteral("Export Trajectory CSV") : QStringLiteral("导出轨迹 CSV"),
+        QDir::home().filePath(QStringLiteral("vaporview_trajectory.csv")),
+        QStringLiteral("CSV (*.csv)"));
+    if (filename.isEmpty())
+    {
+        return;
+    }
+
+    QFile file(filename);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
+    {
+        map_status_label_->setText(QString(is_english_
+            ? "Failed to export trajectory CSV: %1"
+            : "导出轨迹 CSV 失败：%1").arg(file.errorString()));
+        return;
+    }
+
+    QTextStream stream(&file);
+    stream.setEncoding(QStringConverter::Utf8);
+    stream << "index,csv_row,timestamp_utc,timestamp_us,latitude,longitude,height_m,cumulative_distance_m,segment_distance_m,speed_mps,gnss_fix,peak_value,waveform_frame,waveform_timestamp_us,waveform_delta_ms\n";
+    for (int index = 0; index < track_points_.size(); ++index)
+    {
+        const RtkTrackPoint& point = track_points_.at(index);
+        stream << index + 1 << ','
+               << (point.csv_row >= 0 ? point.csv_row + 1 : 0) << ','
+               << csvCell(formatTimestampUs(point.timestamp_us)) << ','
+               << point.timestamp_us << ','
+               << QString::number(point.latitude, 'f', 8) << ','
+               << QString::number(point.longitude, 'f', 8) << ','
+               << (point.has_height ? QString::number(point.height_m, 'f', 3) : QString()) << ','
+               << QString::number(point.cumulative_distance_m, 'f', 3) << ','
+               << QString::number(point.segment_distance_m, 'f', 3) << ','
+               << (point.has_speed ? QString::number(point.speed_mps, 'f', 4) : QString()) << ','
+               << csvCell(point.gnss_fix) << ','
+               << (point.has_peak_value ? QString::number(point.peak_value, 'f', 6) : QString()) << ','
+               << (point.waveform_frame_index >= 0 ? QString::number(point.waveform_frame_index + 1) : QString()) << ','
+               << (point.has_waveform_match ? QString::number(point.waveform_timestamp_us) : QString()) << ','
+               << (point.has_waveform_match ? QString::number(static_cast<double>(point.waveform_delta_us) / 1000.0, 'f', 3) : QString())
+               << '\n';
+    }
+    map_status_label_->setText(QString(is_english_
+        ? "Trajectory CSV exported: %1"
+        : "轨迹 CSV 已导出：%1").arg(QDir::toNativeSeparators(filename)));
+}
+
+void TrajectoryViewerDialog::updateSelectedPointDetails()
+{
+    if (track_points_.isEmpty() || selected_track_index_ < 0 || selected_track_index_ >= track_points_.size())
+    {
+        detail_label_->setText(is_english_
+            ? QStringLiteral("Select a trajectory point on the map or scrub the timeline to inspect CSV and waveform linkage.")
+            : QStringLiteral("在地图上点击轨迹点，或拖动时间轴，即可查看 CSV 与波形联动信息。"));
+        return;
+    }
+
+    const RtkTrackPoint& point = track_points_.at(selected_track_index_);
+    const QString heightText = point.has_height ? QStringLiteral("%1 m").arg(QString::number(point.height_m, 'f', 3)) : QStringLiteral("--");
+    const QString speedText = point.has_speed ? formatSpeed(point.speed_mps) : QStringLiteral("--");
+    const QString peakText = point.has_peak_value ? formatPeakValue(point.peak_value) : QStringLiteral("--");
+    const QString waveformText = point.has_waveform_match
+        ? QString(is_english_ ? "frame %1, Δ %2" : "第 %1 帧，Δ %2")
+              .arg(point.waveform_frame_index + 1)
+              .arg(formatSignedDeltaMs(point.waveform_delta_us))
+        : QStringLiteral("--");
+
+    detail_label_->setText(QString(is_english_
+        ? "Selected #%1/%2 | CSV row %3 | %4 | lat %5 lon %6 | height %7 | distance %8 | speed %9 | peak %10 | waveform %11"
+        : "当前 #%1/%2 | CSV 第 %3 行 | %4 | 纬度 %5 经度 %6 | 高度 %7 | 里程 %8 | 速度 %9 | 峰值 %10 | 波形 %11")
+        .arg(selected_track_index_ + 1)
+        .arg(track_points_.size())
+        .arg(point.csv_row >= 0 ? point.csv_row + 1 : 0)
+        .arg(formatTimestampUs(point.timestamp_us))
+        .arg(QString::number(point.latitude, 'f', 8))
+        .arg(QString::number(point.longitude, 'f', 8))
+        .arg(heightText)
+        .arg(formatDistanceMeters(point.cumulative_distance_m))
+        .arg(speedText)
+        .arg(peakText)
+        .arg(waveformText));
 }
 
 void TrajectoryViewerDialog::changeEvent(QEvent *event)
@@ -1471,6 +1887,7 @@ void TrajectoryViewerDialog::updateSummary()
         legend_label_->setText(is_english_
             ? QStringLiteral("Legend: no valid peak values are available for heatmap coloring.")
             : QStringLiteral("图例：当前没有可用于热力着色的有效峰值。"));
+        updateSelectedPointDetails();
         return;
     }
 
@@ -1484,6 +1901,10 @@ void TrajectoryViewerDialog::updateSummary()
     double maxPeak = -std::numeric_limits<double>::infinity();
     bool hasHeightRange = false;
     bool hasPeakRange = false;
+    double totalDistance = 0.0;
+    double maxSpeed = 0.0;
+    int speedCount = 0;
+    int peakCount = 0;
     for (const RtkTrackPoint& point : track_points_)
     {
         minLat = std::min(minLat, point.latitude);
@@ -1499,8 +1920,18 @@ void TrajectoryViewerDialog::updateSummary()
         if (point.has_peak_value && std::isfinite(point.peak_value))
         {
             hasPeakRange = true;
+            ++peakCount;
             minPeak = std::min(minPeak, static_cast<double>(point.peak_value));
             maxPeak = std::max(maxPeak, static_cast<double>(point.peak_value));
+        }
+        if (std::isfinite(point.cumulative_distance_m))
+        {
+            totalDistance = std::max(totalDistance, point.cumulative_distance_m);
+        }
+        if (point.has_speed && std::isfinite(point.speed_mps))
+        {
+            ++speedCount;
+            maxSpeed = std::max(maxSpeed, point.speed_mps);
         }
     }
 
@@ -1516,22 +1947,45 @@ void TrajectoryViewerDialog::updateSummary()
                        QString::number(maxHeight - minHeight, 'f', 3)))
         : QString();
 
+    const int rejectedTotal = track_stats_.rejected_invalid_nav +
+        track_stats_.rejected_bad_fix +
+        track_stats_.rejected_zero_coordinate +
+        track_stats_.rejected_out_of_range +
+        track_stats_.rejected_jump;
+    const QString qualityText = QString(is_english_
+        ? " Source rows %1, accepted %2, rejected %3 (invalid %4, fix %5, zero %6, range %7, jumps>%8m %9)."
+        : "来源行 %1，保留 %2，剔除 %3（无效 %4、定位 %5、零点 %6、越界 %7、跳点>%8m %9）。")
+        .arg(track_stats_.scanned_rows)
+        .arg(track_stats_.accepted_points)
+        .arg(rejectedTotal)
+        .arg(track_stats_.rejected_invalid_nav)
+        .arg(track_stats_.rejected_bad_fix)
+        .arg(track_stats_.rejected_zero_coordinate)
+        .arg(track_stats_.rejected_out_of_range)
+        .arg(QString::number(track_stats_.jump_threshold_m, 'f', 1))
+        .arg(track_stats_.rejected_jump);
+
     summary_label_->setText(QString(is_english_
-        ? "Showing %1 %2 points. Latitude %3 to %4, longitude %5 to %6.%7"
-        : "正在显示 %1 个%2点。纬度范围 %3 到 %4，经度范围 %5 到 %6。%7")
+        ? "Showing %1 %2 points. Distance %3, max speed %4 from %5 speed samples. Latitude %6 to %7, longitude %8 to %9.%10%11"
+        : "正在显示 %1 个%2点。里程 %3，最大速度 %4（%5 个速度样本）。纬度范围 %6 到 %7，经度范围 %8 到 %9。%10%11")
         .arg(track_points_.size())
         .arg(is_english_ ? english_track_label_ : chinese_track_label_)
+        .arg(formatDistanceMeters(totalDistance))
+        .arg(speedCount > 0 ? formatSpeed(maxSpeed) : QStringLiteral("--"))
+        .arg(speedCount)
         .arg(QString::number(minLat, 'f', 7))
         .arg(QString::number(maxLat, 'f', 7))
         .arg(QString::number(minLon, 'f', 7))
         .arg(QString::number(maxLon, 'f', 7))
-        .arg(heightRangeText));
+        .arg(heightRangeText)
+        .arg(qualityText));
 
     if (!hasPeakRange)
     {
         legend_label_->setText(is_english_
             ? QStringLiteral("Legend: no valid peak values remain after filtering, so the trajectory falls back to the default blue line.")
             : QStringLiteral("图例：过滤后没有剩余有效峰值，轨迹将回退为默认蓝线。"));
+        updateSelectedPointDetails();
         return;
     }
 
@@ -1550,7 +2004,11 @@ void TrajectoryViewerDialog::updateSummary()
         const QString bandColor = heatmapColorAt((index + 0.5) / static_cast<double>(bandCount)).name();
         legendEntries.push_back(QStringLiteral("<span style=\"color:%1; font-weight:600;\">■</span> %2").arg(bandColor, bandText));
     }
-    legend_label_->setText(legendEntries.join(QStringLiteral("&nbsp;&nbsp;&nbsp;")));
+    legend_label_->setText(QString(is_english_
+        ? "Peak heatmap (%1 matched points): "
+        : "峰值热力图（%1 个匹配点）：").arg(peakCount) +
+        legendEntries.join(QStringLiteral("&nbsp;&nbsp;&nbsp;")));
+    updateSelectedPointDetails();
 }
 
 void TrajectoryViewerDialog::updateTexts()
@@ -1586,6 +2044,20 @@ void TrajectoryViewerDialog::updateTexts()
         is_english_
             ? QStringLiteral("Shows the loading progress of the currently visible base map tiles.")
             : QStringLiteral("显示当前可见区域底图瓦片的加载进度。"));
+    play_button_->setText(playback_timer_->isActive()
+        ? (is_english_ ? QStringLiteral("Pause") : QStringLiteral("暂停"))
+        : (is_english_ ? QStringLiteral("Play") : QStringLiteral("播放")));
+    copy_point_button_->setText(is_english_ ? QStringLiteral("Copy Point") : QStringLiteral("复制点"));
+    export_button_->setText(is_english_ ? QStringLiteral("Export CSV") : QStringLiteral("导出 CSV"));
+    timeline_slider_->setToolTip(is_english_
+        ? QStringLiteral("Scrub along accepted trajectory points and sync the selected point back to CSV/waveform views.")
+        : QStringLiteral("沿有效轨迹点拖动，并同步定位到 CSV / 波形视图。"));
+    copy_point_button_->setToolTip(is_english_
+        ? QStringLiteral("Copy selected trajectory point coordinates and linkage info.")
+        : QStringLiteral("复制当前轨迹点坐标与联动信息。"));
+    export_button_->setToolTip(is_english_
+        ? QStringLiteral("Export accepted trajectory points with CSV row, waveform, distance, speed, and peak fields.")
+        : QStringLiteral("导出保留轨迹点及 CSV 行、波形、里程、速度和峰值字段。"));
     zoom_in_button_->setText(QString());
     zoom_out_button_->setText(QString());
     reset_view_button_->setText(QString());
