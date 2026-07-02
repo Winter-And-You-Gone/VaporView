@@ -1669,17 +1669,29 @@ int main(int argc, char **argv)
             "TCP wave display settings button lives in the TCP card title bar");
     requireChildInsideParent(tcpWaveDisplayButton, tcpWaveTitleBar, 0,
                              "TCP wave display settings button is not clipped by the title bar");
+    require(tcpWaveDisplayButton->iconSize().width() >= 28 &&
+                tcpWaveDisplayButton->iconSize().height() >= 28,
+            "TCP wave display settings icon matches the standard title-bar icon size");
+    QLabel *tcpWaveTitleLabel = nullptr;
     QLabel *tcpFrameRateLabel = nullptr;
     const QList<QLabel*> tcpTitleBarLabels = tcpWaveTitleBar->findChildren<QLabel *>();
     for (QLabel *label : tcpTitleBarLabels)
     {
+        if (label->text() == QStringLiteral("TCP波形监视") ||
+            label->text() == QStringLiteral("TCP Wave Monitor"))
+        {
+            tcpWaveTitleLabel = label;
+        }
         if (label->text().contains(QStringLiteral("实时频率")) ||
             label->text().contains(QStringLiteral("Realtime")))
         {
             tcpFrameRateLabel = label;
-            break;
         }
     }
+    require(tcpWaveTitleLabel != nullptr,
+            "TCP wave title label exists in the title bar");
+    require(tcpWaveTitleLabel->width() >= tcpWaveTitleLabel->fontMetrics().horizontalAdvance(tcpWaveTitleLabel->text()) + 6,
+            "TCP wave title label reserves enough width for the full title text");
     require(tcpFrameRateLabel != nullptr,
             "TCP wave frame-rate label exists in the title bar");
     const int displayButtonRight = tcpWaveDisplayButton->mapTo(tcpWaveTitleBar, QPoint(tcpWaveDisplayButton->width(), 0)).x();

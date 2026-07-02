@@ -68,7 +68,7 @@ constexpr int kTcpCompactButtonTextPadding = 56;
 constexpr int kTcpTitleBarHeight = kTcpControlHeight + 4;
 constexpr int kTcpTitleBarPrimarySpacing = 10;
 constexpr int kWaveDisplayIconSize = 28;
-constexpr int kWaveDisplayIconInnerSize = 18;
+constexpr int kWaveDisplayIconInnerSize = 22;
 constexpr int kTcpTitleBarRealtimeHostSpacing = 12;
 constexpr int kTcpTitleBarFieldSpacing = 18;
 constexpr int kTcpTitleBarStatusSpacing = 8;
@@ -543,6 +543,12 @@ public:
     QSize sizeHint() const override
     {
         QSize size = QLabel::sizeHint();
+        if (!text().isEmpty())
+        {
+            const QFontMetrics metrics(font());
+            size.rwidth() = std::max(size.width(), metrics.horizontalAdvance(text()) + 8);
+            size.rheight() = std::max(size.height(), metrics.height());
+        }
         if (inline_icon_visible_)
         {
             size.rwidth() += kWaveDisplayIconSize + kIconGap;
@@ -633,9 +639,11 @@ protected:
         {
         case QEvent::Resize:
         case QEvent::Show:
-        case QEvent::FontChange:
         case QEvent::ContentsRectChange:
             refreshTooltipAnchor();
+            break;
+        case QEvent::FontChange:
+            refreshFixedWidth();
             break;
         default:
             break;
@@ -1470,7 +1478,7 @@ void TcpWavePanel::setupUi()
     wave_display_button_->setCursor(Qt::PointingHandCursor);
     wave_display_button_->setFocusPolicy(Qt::NoFocus);
     wave_display_button_->setFixedSize(28, 28);
-    wave_display_button_->setIconSize(QSize(kWaveDisplayIconInnerSize, kWaveDisplayIconInnerSize));
+    wave_display_button_->setIconSize(QSize(kWaveDisplayIconSize, kWaveDisplayIconSize));
     connect(wave_display_button_, &QToolButton::clicked, this, [this]() {
         if (auto *titleLabel = dynamic_cast<WaveDisplayTitleLabel *>(panel_title_label_))
         {
