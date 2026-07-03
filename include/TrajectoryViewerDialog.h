@@ -74,7 +74,10 @@ private:
     QLabel *heat_palette_title_label_;
     QWidget *heat_gradient_bar_;
     QLabel *heat_min_label_;
+    QLabel *heat_mid_label_;
     QLabel *heat_max_label_;
+    QToolButton *heat_palette_button_;
+    QMenu *heat_palette_menu_;
     QFrame *map_tools_card_;
     QFrame *point_detail_card_;
     QPushButton *show_route_button_;
@@ -83,7 +86,6 @@ private:
     QPushButton *export_button_;
     QPushButton *copy_point_button_;
     QComboBox *map_source_combo_;
-    QComboBox *heat_palette_combo_;
     QLineEdit *tianditu_key_edit_;
     QToolButton *tianditu_key_button_;
     QMenu *tianditu_key_menu_;

@@ -440,7 +440,9 @@ void testTrajectoryViewerUsesSidebarLayout()
     auto *pointDetailCard = dialog.findChild<QFrame *>(QStringLiteral("trajectoryPointDetailCard"));
     auto *heatLegendTitle = dialog.findChild<QLabel *>(QStringLiteral("trajectoryHeatLegendTitle"));
     auto *heatGradientBar = dialog.findChild<QWidget *>(QStringLiteral("trajectoryHeatGradientBar"));
-    auto *heatPaletteCombo = dialog.findChild<QComboBox *>(QStringLiteral("trajectoryHeatPaletteCombo"));
+    auto *heatPaletteButton = dialog.findChild<QToolButton *>(QStringLiteral("trajectoryHeatPaletteButton"));
+    auto *heatPaletteMenu = dialog.findChild<QMenu *>(QStringLiteral("trajectoryHeatPaletteMenu"));
+    const auto heatCaptionLabels = dialog.findChildren<QLabel *>(QStringLiteral("trajectoryHeatLegendCaption"));
     auto *trackWidthSlider = dialog.findChild<QSlider *>(QStringLiteral("trajectoryTrackWidthSlider"));
     auto *pointSizeSlider = dialog.findChild<QSlider *>(QStringLiteral("trajectoryPointSizeSlider"));
     const auto visibilityToggles = dialog.findChildren<QPushButton *>(QStringLiteral("trajectoryVisibilityToggle"));
@@ -474,7 +476,8 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(pointDetailCard != nullptr, "trajectory viewer floating point detail card exists");
     require(heatLegendTitle != nullptr, "trajectory viewer floating heat legend title exists");
     require(heatGradientBar != nullptr, "trajectory viewer floating heat gradient bar exists");
-    require(heatPaletteCombo != nullptr, "trajectory viewer heat palette control exists");
+    require(heatPaletteButton != nullptr, "trajectory viewer heat palette control exists");
+    require(heatPaletteMenu != nullptr, "trajectory viewer heat palette menu exists");
     require(trackWidthSlider != nullptr, "trajectory viewer track width control exists");
     require(pointSizeSlider != nullptr, "trajectory viewer point size control exists");
     require(showRouteButton != nullptr, "trajectory viewer route visibility toggle exists");
@@ -502,16 +505,23 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(mapSourceCombo->sizePolicy().horizontalPolicy() == QSizePolicy::Expanding,
             "map source combo expands within sidebar controls");
     require(sidebar->isAncestorOf(mapSourceCombo), "map source control is in sidebar");
-    require(heatPaletteCombo->minimumWidth() == 28 && heatPaletteCombo->maximumWidth() == 28,
-            "heat palette combo is reduced to a compact arrow selector");
-    require(heatPaletteCombo->minimumHeight() == 24 && heatPaletteCombo->maximumHeight() == 24,
-            "heat palette combo keeps the floating heat legend short");
-    require(heatPaletteCombo->sizePolicy().horizontalPolicy() == QSizePolicy::Fixed,
-            "heat palette combo stays compact inside floating heat legend");
-    require(heatPaletteCombo->count() >= 5, "heat palette combo exposes multiple vivid ramps");
+    require(heatLegendCard->minimumWidth() >= 390 && heatGradientBar->minimumWidth() >= 260,
+            "heat palette card gives the gradient a longer readable span");
+    require(heatCaptionLabels.size() >= 3, "heat legend exposes min, middle, and max captions");
+    require(heatPaletteButton->minimumSize() == QSize(28, 24) && heatPaletteButton->maximumSize() == QSize(28, 24),
+            "heat palette button is reduced to a compact arrow selector");
+    require(heatPaletteButton->sizePolicy().horizontalPolicy() == QSizePolicy::Fixed,
+            "heat palette button stays compact inside floating heat legend");
+    require(heatPaletteButton->arrowType() == Qt::DownArrow,
+            "heat palette button uses a down-arrow affordance");
+    require(heatPaletteMenu->actions().size() >= 5, "heat palette menu exposes multiple vivid ramps");
+    for (QAction *action : heatPaletteMenu->actions())
+    {
+        require(action != nullptr && !action->text().trimmed().isEmpty(), "heat palette menu text is visible");
+    }
     require(map->isAncestorOf(heatLegendCard), "heat legend card floats inside the map");
-    require(heatLegendCard->isAncestorOf(heatPaletteCombo), "heat palette control is inside floating heat legend");
-    require(!sidebar->isAncestorOf(heatPaletteCombo), "heat palette control is no longer in sidebar");
+    require(heatLegendCard->isAncestorOf(heatPaletteButton), "heat palette control is inside floating heat legend");
+    require(!sidebar->isAncestorOf(heatPaletteButton), "heat palette control is no longer in sidebar");
     require(map->isAncestorOf(pointDetailCard), "point detail card floats inside the map");
     require(pointDetailCard->isAncestorOf(detailLabel), "point detail label is inside the floating card");
     require(!sidebar->isAncestorOf(detailLabel), "point detail label is no longer in sidebar");
@@ -580,8 +590,10 @@ void testTrajectoryViewerUsesSidebarLayout()
             "trajectory viewer stylesheet includes point detail label styling");
     require(styleSheet.contains(QStringLiteral("QPushButton#trajectoryVisibilityToggle")),
             "trajectory viewer stylesheet includes visibility toggle styling");
-    require(styleSheet.contains(QStringLiteral("QComboBox#trajectoryHeatPaletteCombo { background-color: transparent; border: none; color: transparent")),
+    require(styleSheet.contains(QStringLiteral("QToolButton#trajectoryHeatPaletteButton")),
             "trajectory viewer stylesheet renders the heat palette as an arrow-only selector");
+    require(styleSheet.contains(QStringLiteral("QMenu#trajectoryHeatPaletteMenu")),
+            "trajectory viewer stylesheet includes heat palette popup menu styling");
     require(styleSheet.contains(QStringLiteral("QFrame#trajectoryViewerMapPanel")),
             "trajectory viewer stylesheet includes rounded map panel styling");
 
