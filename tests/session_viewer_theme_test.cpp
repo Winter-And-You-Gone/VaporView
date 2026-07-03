@@ -512,8 +512,8 @@ void testTrajectoryViewerUsesSidebarLayout()
             "heat palette button is reduced to a compact arrow selector");
     require(heatPaletteButton->sizePolicy().horizontalPolicy() == QSizePolicy::Fixed,
             "heat palette button stays compact inside floating heat legend");
-    require(heatPaletteButton->arrowType() == Qt::DownArrow,
-            "heat palette button uses a down-arrow affordance");
+    require(heatPaletteButton->arrowType() == Qt::NoArrow && !heatPaletteButton->icon().isNull(),
+            "heat palette button uses a single lucide chevron affordance");
     require(heatPaletteMenu->actions().size() >= 5, "heat palette menu exposes multiple vivid ramps");
     for (QAction *action : heatPaletteMenu->actions())
     {
@@ -578,6 +578,8 @@ void testTrajectoryViewerUsesSidebarLayout()
             "trajectory viewer stylesheet includes sidebar action button styling");
     require(styleSheet.contains(QStringLiteral("QLabel#trajectorySidebarTitleIcon")),
             "trajectory viewer stylesheet includes sidebar title icon styling");
+    require(styleSheet.contains(QStringLiteral("QLabel#trajectorySidebarTitleIcon { background-color: transparent; border: none")),
+            "trajectory sidebar title icon is not drawn with a blue badge background");
     require(styleSheet.contains(QStringLiteral("QLabel#trajectoryControlLabel")),
             "trajectory viewer stylesheet includes route control label styling");
     require(styleSheet.contains(QStringLiteral("QFrame#trajectoryHeatLegendCard")),
@@ -592,6 +594,8 @@ void testTrajectoryViewerUsesSidebarLayout()
             "trajectory viewer stylesheet includes visibility toggle styling");
     require(styleSheet.contains(QStringLiteral("QToolButton#trajectoryHeatPaletteButton")),
             "trajectory viewer stylesheet renders the heat palette as an arrow-only selector");
+    require(styleSheet.contains(QStringLiteral("QToolButton#trajectoryHeatPaletteButton::menu-indicator")),
+            "trajectory viewer stylesheet hides the native menu indicator");
     require(styleSheet.contains(QStringLiteral("QMenu#trajectoryHeatPaletteMenu")),
             "trajectory viewer stylesheet includes heat palette popup menu styling");
     require(styleSheet.contains(QStringLiteral("QFrame#trajectoryViewerMapPanel")),

@@ -678,6 +678,8 @@ public:
         , drag_moved_(false)
         , drag_start_pos_()
         , drag_start_center_world_pixel_()
+        , drag_current_delta_()
+        , drag_frame_cache_()
         , selected_track_index_(-1)
         , hovered_track_index_(-1)
         , track_width_(kDefaultTrackWidth)
@@ -943,6 +945,7 @@ public:
         manual_view_active_ = false;
         zoom_ = fit_zoom_;
         center_world_pixel_ = fit_center_world_pixel_;
+        drag_frame_cache_ = QPixmap();
         last_render_context_ = TrackRenderContext();
         requestVisibleTiles();
         update();
@@ -952,6 +955,7 @@ protected:
     void resizeEvent(QResizeEvent *event) override
     {
         QWidget::resizeEvent(event);
+        drag_frame_cache_ = QPixmap();
         last_render_context_ = TrackRenderContext();
         refreshViewport();
     }
@@ -984,9 +988,11 @@ protected:
     {
         if (event->button() == Qt::LeftButton && !track_points_.isEmpty())
         {
+            drag_frame_cache_ = renderDragFrameCache();
             dragging_ = true;
             drag_moved_ = false;
             drag_start_pos_ = event->position();
+            drag_current_delta_ = QPointF();
             drag_start_center_world_pixel_ = center_world_pixel_;
             setCursor(Qt::ClosedHandCursor);
             event->accept();
@@ -1006,7 +1012,7 @@ protected:
             }
             center_world_pixel_ = drag_start_center_world_pixel_ - delta;
             manual_view_active_ = true;
-            last_render_context_ = TrackRenderContext();
+            drag_current_delta_ = delta;
             scheduleVisibleTileRequest(kTilePanRequestDebounceMs);
             update();
             event->accept();
@@ -1022,6 +1028,8 @@ protected:
         {
             const bool wasClick = !drag_moved_;
             dragging_ = false;
+            drag_frame_cache_ = QPixmap();
+            drag_current_delta_ = QPointF();
             last_render_context_ = TrackRenderContext();
             updateHoveredTrackPoint(event->position());
             if (wasClick)
@@ -1077,8 +1085,14 @@ protected:
 
         painter.save();
         painter.setClipPath(mapClip);
-        drawTiles(painter, mapRect);
-        drawTrack(painter, mapRect);
+        if (dragging_ && !drag_frame_cache_.isNull())
+        {
+            painter.drawPixmap(mapRect.topLeft() + drag_current_delta_, drag_frame_cache_);
+        }
+        else
+        {
+            drawMapBody(painter, mapRect);
+        }
         painter.restore();
 
         drawMapFooter(painter, mapRect);
@@ -1089,6 +1103,30 @@ protected:
     }
 
 private:
+    QPixmap renderDragFrameCache()
+    {
+        const qreal dpr = devicePixelRatioF();
+        QPixmap pixmap(size() * dpr);
+        pixmap.setDevicePixelRatio(dpr);
+        pixmap.fill(Qt::transparent);
+
+        QPainter cachePainter(&pixmap);
+        cachePainter.setRenderHint(QPainter::Antialiasing, true);
+        cachePainter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+        const QRectF mapRect = mapViewportRect();
+        QPainterPath mapClip;
+        mapClip.addRoundedRect(mapRect.adjusted(0.5, 0.5, -0.5, -0.5), 8.0, 8.0);
+        cachePainter.setClipPath(mapClip);
+        drawMapBody(cachePainter, mapRect);
+        return pixmap;
+    }
+
+    void drawMapBody(QPainter& painter, const QRectF& mapRect)
+    {
+        drawTiles(painter, mapRect);
+        drawTrack(painter, mapRect);
+    }
+
     void resetTileLoadingState(bool clearCache)
     {
         ++tile_request_generation_;
@@ -2330,6 +2368,8 @@ private:
     bool drag_moved_;
     QPointF drag_start_pos_;
     QPointF drag_start_center_world_pixel_;
+    QPointF drag_current_delta_;
+    QPixmap drag_frame_cache_;
     int selected_track_index_;
     int hovered_track_index_;
     double track_width_;
@@ -2562,8 +2602,9 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     heat_palette_button_->setToolButtonStyle(Qt::ToolButtonIconOnly);
     heat_palette_button_->setPopupMode(QToolButton::InstantPopup);
     heat_palette_button_->setAutoRaise(false);
-    heat_palette_button_->setArrowType(Qt::DownArrow);
+    heat_palette_button_->setArrowType(Qt::NoArrow);
     heat_palette_button_->setFixedSize(28, 24);
+    heat_palette_button_->setIconSize(QSize(18, 18));
     heat_palette_button_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     heat_palette_button_->setAccessibleName(is_english_ ? QStringLiteral("Heat palette") : QStringLiteral("热力图色带"));
     heat_palette_button_->setToolTip(is_english_
@@ -2837,7 +2878,7 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QWidget#customTitleBarContent, QDialog#trajectoryViewerDialog QWidget#trajectoryViewerContent { background-color: @vv-surface; }"
         "QDialog#trajectoryViewerDialog QFrame#trajectoryViewerSidebarCard { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
         "QDialog#trajectoryViewerDialog QFrame#trajectoryViewerSidebarCard QWidget#sectionTitleBar { background-color: @vv-surface; border: none; border-bottom: 1px solid @vv-border; border-top-left-radius: 7px; border-top-right-radius: 7px; min-height: 40px; max-height: 40px; }"
-        "QDialog#trajectoryViewerDialog QFrame#trajectoryViewerSidebarCard QLabel#trajectorySidebarTitleIcon { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; border-radius: 6px; padding: 3px; }"
+        "QDialog#trajectoryViewerDialog QFrame#trajectoryViewerSidebarCard QLabel#trajectorySidebarTitleIcon { background-color: transparent; border: none; border-radius: 0px; padding: 3px; }"
         "QDialog#trajectoryViewerDialog QFrame#trajectoryViewerSidebarCard QLabel#sectionTitleLabel { background-color: transparent; border: none; color: @vv-text; font-size: 16px; font-weight: bold; margin: 0px; padding: 0px; }"
         "QDialog#trajectoryViewerDialog QScrollArea#trajectoryViewerSidebar { background-color: @vv-surface; border: none; border-bottom-left-radius: 7px; border-bottom-right-radius: 7px; }"
         "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarViewport, QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent { background-color: @vv-surface; border: none; }"
@@ -2867,6 +2908,7 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QComboBox#trajectoryMapSourceCombo:focus { border-color: @vv-primary; }"
         "QDialog#trajectoryViewerDialog QToolButton#trajectoryHeatPaletteButton { background-color: transparent; border: none; border-radius: 4px; color: @vv-text; min-width: 28px; max-width: 28px; min-height: 24px; max-height: 24px; padding: 0px; }"
         "QDialog#trajectoryViewerDialog QToolButton#trajectoryHeatPaletteButton:hover, QDialog#trajectoryViewerDialog QToolButton#trajectoryHeatPaletteButton:focus { background-color: @vv-primary-subtle; border: none; }"
+        "QDialog#trajectoryViewerDialog QToolButton#trajectoryHeatPaletteButton::menu-indicator { image: none; width: 0px; }"
         "QDialog#trajectoryViewerDialog QMenu#trajectoryHeatPaletteMenu { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; padding: 4px; }"
         "QDialog#trajectoryViewerDialog QMenu#trajectoryHeatPaletteMenu::item { background-color: transparent; border-radius: 4px; padding: 6px 18px; }"
         "QDialog#trajectoryViewerDialog QMenu#trajectoryHeatPaletteMenu::item:selected { background-color: @vv-primary-subtle; color: @vv-primary; }"
@@ -3233,7 +3275,12 @@ void TrajectoryViewerDialog::updateTitleBarIcons()
     const bool dark = isDarkPalette();
     if (sidebar_icon_label_)
     {
-        sidebar_icon_label_->setPixmap(createTitleBarIcon(QStringLiteral("activity"), dark).pixmap(QSize(18, 18)));
+        sidebar_icon_label_->setPixmap(createTitleBarIcon(QStringLiteral("route"), dark).pixmap(QSize(20, 20)));
+    }
+    if (heat_palette_button_)
+    {
+        heat_palette_button_->setIcon(createLucideIcon(QStringLiteral("chevron-down"),
+            dark ? appThemeColor(AppThemeColor::TextTitle, true) : appThemeColor(AppThemeColor::TextStrong, false)));
     }
     if (tianditu_key_button_)
     {
