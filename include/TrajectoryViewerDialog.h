@@ -10,6 +10,7 @@ class QLabel;
 class QComboBox;
 class QCloseEvent;
 class QEvent;
+class QFrame;
 class QLineEdit;
 class QMenu;
 class QProgressBar;
@@ -25,6 +26,7 @@ class TrajectoryViewerDialog : public QDialog
 
 public:
     explicit TrajectoryViewerDialog(QWidget *parent = nullptr);
+    ~TrajectoryViewerDialog() override;
 
     void setEnglish(bool english);
     void setTrackLabel(const QString& englishLabel, const QString& chineseLabel);
@@ -44,6 +46,8 @@ private:
     void showTiandituKeyMenu();
     void updateThemeStyles();
     void updateTitleBarIcons();
+    void updateVisibilityButtonIcons();
+    void updateHeatLegend();
     void updateTexts();
     void updateSummary();
     void updateSelectedPointDetails();
@@ -66,6 +70,13 @@ private:
     QSlider *track_width_slider_;
     QLabel *point_size_label_;
     QSlider *point_size_slider_;
+    QFrame *heat_palette_card_;
+    QLabel *heat_palette_title_label_;
+    QWidget *heat_gradient_bar_;
+    QLabel *heat_min_label_;
+    QLabel *heat_count_label_;
+    QLabel *heat_max_label_;
+    QFrame *map_tools_card_;
     QPushButton *show_route_button_;
     QPushButton *show_points_button_;
     QPushButton *play_button_;

@@ -434,6 +434,10 @@ void testTrajectoryViewerUsesSidebarLayout()
     auto *mapPanel = dialog.findChild<QFrame *>(QStringLiteral("trajectoryViewerMapPanel"));
     auto *map = dialog.findChild<QWidget *>(QStringLiteral("trajectoryViewerMap"));
     auto *mapSourceCombo = dialog.findChild<QComboBox *>(QStringLiteral("trajectoryMapSourceCombo"));
+    auto *heatLegendCard = dialog.findChild<QFrame *>(QStringLiteral("trajectoryHeatLegendCard"));
+    auto *mapToolsCard = dialog.findChild<QFrame *>(QStringLiteral("trajectoryMapToolsCard"));
+    auto *heatLegendTitle = dialog.findChild<QLabel *>(QStringLiteral("trajectoryHeatLegendTitle"));
+    auto *heatGradientBar = dialog.findChild<QWidget *>(QStringLiteral("trajectoryHeatGradientBar"));
     auto *heatPaletteCombo = dialog.findChild<QComboBox *>(QStringLiteral("trajectoryHeatPaletteCombo"));
     auto *trackWidthSlider = dialog.findChild<QSlider *>(QStringLiteral("trajectoryTrackWidthSlider"));
     auto *pointSizeSlider = dialog.findChild<QSlider *>(QStringLiteral("trajectoryPointSizeSlider"));
@@ -463,6 +467,10 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(mapPanel != nullptr, "trajectory viewer map panel exists");
     require(map != nullptr, "trajectory viewer map exists");
     require(mapSourceCombo != nullptr, "trajectory viewer map source control exists");
+    require(heatLegendCard != nullptr, "trajectory viewer floating heat legend card exists");
+    require(mapToolsCard != nullptr, "trajectory viewer floating map tools card exists");
+    require(heatLegendTitle != nullptr, "trajectory viewer floating heat legend title exists");
+    require(heatGradientBar != nullptr, "trajectory viewer floating heat gradient bar exists");
     require(heatPaletteCombo != nullptr, "trajectory viewer heat palette control exists");
     require(trackWidthSlider != nullptr, "trajectory viewer track width control exists");
     require(pointSizeSlider != nullptr, "trajectory viewer point size control exists");
@@ -491,23 +499,33 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(mapSourceCombo->sizePolicy().horizontalPolicy() == QSizePolicy::Expanding,
             "map source combo expands within sidebar controls");
     require(sidebar->isAncestorOf(mapSourceCombo), "map source control is in sidebar");
-    require(heatPaletteCombo->minimumWidth() == 160, "heat palette combo keeps readable minimum width");
-    require(heatPaletteCombo->sizePolicy().horizontalPolicy() == QSizePolicy::Expanding,
-            "heat palette combo expands within sidebar controls");
+    require(heatPaletteCombo->minimumWidth() >= 132 && heatPaletteCombo->maximumWidth() <= 156,
+            "heat palette combo keeps compact floating-card width");
+    require(heatPaletteCombo->sizePolicy().horizontalPolicy() == QSizePolicy::Fixed,
+            "heat palette combo stays compact inside floating heat legend");
     require(heatPaletteCombo->count() >= 5, "heat palette combo exposes multiple vivid ramps");
-    require(sidebar->isAncestorOf(heatPaletteCombo), "heat palette control is in sidebar");
+    require(map->isAncestorOf(heatLegendCard), "heat legend card floats inside the map");
+    require(heatLegendCard->isAncestorOf(heatPaletteCombo), "heat palette control is inside floating heat legend");
+    require(!sidebar->isAncestorOf(heatPaletteCombo), "heat palette control is no longer in sidebar");
     require(trackWidthSlider->minimum() == 10 && trackWidthSlider->maximum() == 80,
             "track width slider exposes a bounded visual range");
     require(pointSizeSlider->minimum() == 20 && pointSizeSlider->maximum() == 120,
             "point size slider exposes a bounded visual range");
-    require(sidebar->isAncestorOf(trackWidthSlider), "track width control is in sidebar");
-    require(sidebar->isAncestorOf(pointSizeSlider), "point size control is in sidebar");
-    require(sidebar->isAncestorOf(showRouteButton), "route visibility toggle is in sidebar");
-    require(sidebar->isAncestorOf(showPointsButton), "point visibility toggle is in sidebar");
+    require(map->isAncestorOf(mapToolsCard), "map tools card floats inside the map");
+    require(mapToolsCard->isAncestorOf(trackWidthSlider), "track width control is in floating map tools card");
+    require(mapToolsCard->isAncestorOf(pointSizeSlider), "point size control is in floating map tools card");
+    require(mapToolsCard->isAncestorOf(showRouteButton), "route visibility toggle is in floating map tools card");
+    require(mapToolsCard->isAncestorOf(showPointsButton), "point visibility toggle is in floating map tools card");
+    require(!sidebar->isAncestorOf(trackWidthSlider), "track width control is no longer in sidebar");
+    require(!sidebar->isAncestorOf(pointSizeSlider), "point size control is no longer in sidebar");
     require(showRouteButton->isCheckable() && showRouteButton->isChecked(),
             "route visibility is enabled by default");
     require(showPointsButton->isCheckable() && showPointsButton->isChecked(),
             "point visibility is enabled by default");
+    require(showRouteButton->text().isEmpty() && showPointsButton->text().isEmpty(),
+            "visibility toggles use icon-only buttons");
+    require(!showRouteButton->icon().isNull() && !showPointsButton->icon().isNull(),
+            "visibility toggles use lucide icons");
     require(mapPanel->isAncestorOf(map), "map remains in the map panel");
     require(!sidebar->isAncestorOf(map), "map is not in sidebar");
     require(mapPanel->layout() != nullptr, "map panel layout exists");
@@ -540,6 +558,10 @@ void testTrajectoryViewerUsesSidebarLayout()
             "trajectory viewer stylesheet includes sidebar title icon styling");
     require(styleSheet.contains(QStringLiteral("QLabel#trajectoryControlLabel")),
             "trajectory viewer stylesheet includes route control label styling");
+    require(styleSheet.contains(QStringLiteral("QFrame#trajectoryHeatLegendCard")),
+            "trajectory viewer stylesheet includes floating heat legend styling");
+    require(styleSheet.contains(QStringLiteral("QFrame#trajectoryMapToolsCard")),
+            "trajectory viewer stylesheet includes floating map tools styling");
     require(styleSheet.contains(QStringLiteral("QPushButton#trajectoryVisibilityToggle")),
             "trajectory viewer stylesheet includes visibility toggle styling");
     require(styleSheet.contains(QStringLiteral("QFrame#trajectoryViewerMapPanel")),
@@ -575,6 +597,13 @@ void testTrajectoryViewerUsesSidebarLayout()
     dialog.setTrackStats(stats);
     dialog.setTrackPoints({firstPoint, secondPoint});
     processEventsFor(200);
+
+    require(heatLegendCard->isVisible(), "heat legend card is visible when peak samples exist");
+    require(heatGradientBar->isVisible(), "heat gradient bar is visible when peak samples exist");
+    require(heatLegendCard->geometry().left() < mapToolsCard->geometry().left(),
+            "floating heat legend stays to the left of map tools card");
+    require(std::abs(heatLegendCard->geometry().top() - mapToolsCard->geometry().top()) <= 2,
+            "floating heat legend and map tools card share the same top row");
 
     require(summaryLabel->textFormat() == Qt::RichText, "trajectory summary uses rich text");
     require(detailLabel->textFormat() == Qt::RichText, "trajectory detail uses rich text");
