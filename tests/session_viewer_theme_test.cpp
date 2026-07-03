@@ -443,6 +443,30 @@ void testTrajectoryViewerUsesSidebarLayout()
     auto *heatPaletteButton = dialog.findChild<QToolButton *>(QStringLiteral("trajectoryHeatPaletteButton"));
     auto *heatPaletteMenu = dialog.findChild<QMenu *>(QStringLiteral("trajectoryHeatPaletteMenu"));
     auto *pointDetailCloseButton = dialog.findChild<QToolButton *>(QStringLiteral("trajectoryPointDetailCloseButton"));
+    auto *filterCard = dialog.findChild<QFrame *>(QStringLiteral("trajectoryFilterCard"));
+    auto *filterTitle = dialog.findChild<QLabel *>(QStringLiteral("trajectoryFilterTitle"));
+    auto *filterEmptyLabel = dialog.findChild<QLabel *>(QStringLiteral("trajectoryFilterEmptyLabel"));
+    auto *filterList = dialog.findChild<QWidget *>(QStringLiteral("trajectoryFilterList"));
+    const auto pointDetailActionButtons = dialog.findChildren<QToolButton *>(QStringLiteral("trajectoryPointDetailActionButton"));
+    QToolButton *filterCurrentButton = nullptr;
+    QToolButton *filterStartButton = nullptr;
+    QToolButton *filterEndButton = nullptr;
+    for (QToolButton *button : pointDetailActionButtons)
+    {
+        const QString role = button->property("pointActionRole").toString();
+        if (role == QStringLiteral("filter-current"))
+        {
+            filterCurrentButton = button;
+        }
+        else if (role == QStringLiteral("filter-start"))
+        {
+            filterStartButton = button;
+        }
+        else if (role == QStringLiteral("filter-end"))
+        {
+            filterEndButton = button;
+        }
+    }
     const auto heatCaptionLabels = dialog.findChildren<QLabel *>(QStringLiteral("trajectoryHeatLegendCaption"));
     auto *trackWidthSlider = dialog.findChild<QSlider *>(QStringLiteral("trajectoryTrackWidthSlider"));
     auto *pointSizeSlider = dialog.findChild<QSlider *>(QStringLiteral("trajectoryPointSizeSlider"));
@@ -480,6 +504,13 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(heatPaletteButton != nullptr, "trajectory viewer heat palette control exists");
     require(heatPaletteMenu != nullptr, "trajectory viewer heat palette menu exists");
     require(pointDetailCloseButton != nullptr, "trajectory viewer point detail close button exists");
+    require(filterCard != nullptr, "trajectory viewer filter card exists");
+    require(filterTitle != nullptr, "trajectory viewer filter title exists");
+    require(filterEmptyLabel != nullptr, "trajectory viewer filter empty text exists");
+    require(filterList != nullptr, "trajectory viewer filter list exists");
+    require(filterCurrentButton != nullptr, "trajectory viewer filter-current point action exists");
+    require(filterStartButton != nullptr, "trajectory viewer filter-start point action exists");
+    require(filterEndButton != nullptr, "trajectory viewer filter-end point action exists");
     require(trackWidthSlider != nullptr, "trajectory viewer track width control exists");
     require(pointSizeSlider != nullptr, "trajectory viewer point size control exists");
     require(showRouteButton != nullptr, "trajectory viewer route visibility toggle exists");
@@ -498,6 +529,10 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(sidebarCard->isAncestorOf(sidebarTitleBar), "sidebar title bar is inside card");
     require(sidebarCard->isAncestorOf(sidebar), "sidebar body scroll area is inside card");
     require(sidebar->isAncestorOf(sidebarContent), "sidebar content is inside scroll body");
+    require(sidebar->isAncestorOf(filterCard), "trajectory filter card is in the sidebar");
+    require(filterCard->isAncestorOf(filterTitle), "trajectory filter title is inside filter card");
+    require(filterCard->isAncestorOf(filterEmptyLabel), "trajectory filter empty text is inside filter card");
+    require(filterCard->isAncestorOf(filterList), "trajectory filter list is inside filter card");
     require(sidebarCard->layout() != nullptr, "sidebar card layout exists");
     require(sidebarCard->layout()->contentsMargins() == QMargins(1, 1, 1, 1),
             "sidebar card preserves visible rounded border");
@@ -536,11 +571,21 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(map->isAncestorOf(pointDetailCard), "point detail card floats inside the map");
     require(pointDetailCard->isAncestorOf(detailLabel), "point detail label is inside the floating card");
     require(pointDetailCard->isAncestorOf(pointDetailCloseButton), "point detail close button is inside the floating card");
+    require(pointDetailCard->isAncestorOf(filterCurrentButton), "filter-current action is inside point detail card");
+    require(pointDetailCard->isAncestorOf(filterStartButton), "filter-start action is inside point detail card");
+    require(pointDetailCard->isAncestorOf(filterEndButton), "filter-end action is inside point detail card");
     require(!sidebar->isAncestorOf(detailLabel), "point detail label is no longer in sidebar");
     require(!pointDetailCard->isVisible(), "point detail card stays hidden until a point is clicked");
     require(pointDetailCloseButton->minimumSize() == QSize(24, 24)
                 && pointDetailCloseButton->maximumSize() == QSize(24, 24),
             "point detail close button stays compact in the card corner");
+    for (QToolButton *button : {filterCurrentButton, filterStartButton, filterEndButton})
+    {
+        require(button->text().isEmpty(), "point detail filter actions are icon-only");
+        require(!button->toolTip().trimmed().isEmpty(), "point detail filter actions expose hover tooltip text");
+        require(button->minimumSize() == QSize(24, 24) && button->maximumSize() == QSize(24, 24),
+                "point detail filter actions stay compact");
+    }
     require(trackWidthSlider->minimum() == 10 && trackWidthSlider->maximum() == 80,
             "track width slider exposes a bounded visual range");
     require(pointSizeSlider->minimum() == 20 && pointSizeSlider->maximum() == 120,
@@ -607,6 +652,10 @@ void testTrajectoryViewerUsesSidebarLayout()
             "trajectory viewer stylesheet includes point detail label styling");
     require(styleSheet.contains(QStringLiteral("QToolButton#trajectoryPointDetailCloseButton")),
             "trajectory viewer stylesheet includes point detail close button styling");
+    require(styleSheet.contains(QStringLiteral("QFrame#trajectoryFilterCard")),
+            "trajectory viewer stylesheet includes sidebar filter card styling");
+    require(styleSheet.contains(QStringLiteral("QToolButton#trajectoryPointDetailActionButton")),
+            "trajectory viewer stylesheet includes point detail filter action styling");
     require(styleSheet.contains(QStringLiteral("QPushButton#trajectoryVisibilityToggle")),
             "trajectory viewer stylesheet includes visibility toggle styling");
     require(styleSheet.contains(QStringLiteral("QToolButton#trajectoryHeatPaletteButton")),
@@ -656,6 +705,30 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(heatLegendCard->isVisible(), "heat legend card is visible when peak samples exist");
     require(heatGradientBar->isVisible(), "heat gradient bar is visible when peak samples exist");
     require(!pointDetailCard->isVisible(), "point detail card remains hidden after data load until map point click");
+    require(filterEmptyLabel->isVisible(), "filter card starts with an empty state");
+    require(filterCurrentButton->isEnabled(), "point filter action is enabled when track data exists");
+    filterCurrentButton->click();
+    processEventsFor(100);
+    const auto pointFilterRows = filterList->findChildren<QLabel *>(QStringLiteral("trajectoryFilterRowLabel"));
+    require(pointFilterRows.size() == 1, "filter-current action adds one row to the sidebar filter list");
+    require(pointFilterRows.first()->text().contains(QStringLiteral("#1")),
+            "filter-current row records the selected point number");
+    require(!filterEmptyLabel->isVisible(), "filter empty text hides after adding a filter");
+    filterStartButton->click();
+    processEventsFor(100);
+    const auto rangeStartRows = filterList->findChildren<QLabel *>(QStringLiteral("trajectoryFilterRowLabel"));
+    require(rangeStartRows.size() == 2, "filter-start action adds a pending range row");
+    require(std::any_of(rangeStartRows.cbegin(), rangeStartRows.cend(), [](const QLabel *label) {
+                return label && label->text().contains(QStringLiteral("#1")) && label->text().contains(QStringLiteral("--"));
+            }),
+            "filter-start row leaves the filter end empty until another point is clicked");
+    filterEndButton->click();
+    processEventsFor(100);
+    const auto rangeEndRows = filterList->findChildren<QLabel *>(QStringLiteral("trajectoryFilterRowLabel"));
+    require(std::any_of(rangeEndRows.cbegin(), rangeEndRows.cend(), [](const QLabel *label) {
+                return label && label->text().contains(QStringLiteral("终点 #1")) && !label->text().contains(QStringLiteral("--"));
+            }),
+            "filter-end action fills the pending range end");
     pointDetailCard->show();
     processEventsFor(50);
     pointDetailCloseButton->click();

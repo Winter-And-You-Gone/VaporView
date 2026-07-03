@@ -635,6 +635,11 @@ QString trajectoryInfoTable(const QString& title,
     return html;
 }
 
+QString pointIndexText(int index)
+{
+    return index >= 0 ? QStringLiteral("#%1").arg(index + 1) : QStringLiteral("--");
+}
+
 QString csvCell(QString value)
 {
     value.replace('"', QStringLiteral("\"\""));
@@ -795,6 +800,31 @@ public:
         manual_view_active_ = false;
         resetTileLoadingState(true);
         refreshViewport();
+        update();
+    }
+
+    void setFilterIndices(const QVector<int>& indices)
+    {
+        filtered_track_indices_.clear();
+        for (int index : indices)
+        {
+            if (index >= 0 && index < track_points_.size())
+            {
+                filtered_track_indices_.insert(index);
+            }
+        }
+        if (!filtered_track_indices_.isEmpty())
+        {
+            if (hovered_track_index_ >= 0 && !filtered_track_indices_.contains(hovered_track_index_))
+            {
+                hovered_track_index_ = -1;
+            }
+            if (selected_track_index_ >= 0 && !filtered_track_indices_.contains(selected_track_index_))
+            {
+                selected_track_index_ = -1;
+            }
+        }
+        last_render_context_ = TrackRenderContext();
         update();
     }
 
@@ -1777,10 +1807,59 @@ private:
 
     bool isForcedTrackPoint(int index) const
     {
+        if (!isTrackIndexVisibleByFilter(index))
+        {
+            return false;
+        }
         return index == 0 ||
                index == track_points_.size() - 1 ||
+               index == firstVisibleTrackIndex() ||
+               index == lastVisibleTrackIndex() ||
                index == hovered_track_index_ ||
                index == selected_track_index_;
+    }
+
+    bool isTrackIndexVisibleByFilter(int index) const
+    {
+        return index >= 0 &&
+               index < track_points_.size() &&
+               (filtered_track_indices_.isEmpty() || filtered_track_indices_.contains(index));
+    }
+
+    int firstVisibleTrackIndex() const
+    {
+        if (track_points_.isEmpty())
+        {
+            return -1;
+        }
+        if (filtered_track_indices_.isEmpty())
+        {
+            return 0;
+        }
+        int first = track_points_.size();
+        for (int index : filtered_track_indices_)
+        {
+            first = std::min(first, index);
+        }
+        return first < track_points_.size() ? first : -1;
+    }
+
+    int lastVisibleTrackIndex() const
+    {
+        if (track_points_.isEmpty())
+        {
+            return -1;
+        }
+        if (filtered_track_indices_.isEmpty())
+        {
+            return track_points_.size() - 1;
+        }
+        int last = -1;
+        for (int index : filtered_track_indices_)
+        {
+            last = std::max(last, index);
+        }
+        return last;
     }
 
     bool appendScreenPointIfSeparated(QVector<ScreenTrackPoint>& points,
@@ -1877,6 +1956,13 @@ private:
             return indices;
         }
 
+        auto appendCandidate = [this, &indices](int index) {
+            if (isTrackIndexVisibleByFilter(index))
+            {
+                indices.push_back(index);
+            }
+        };
+
         const QRectF visibleWorld = visibleWorldRect(mapRect, std::max(48.0, point_radius_ * 4.0));
         const int minCellX = static_cast<int>(std::floor(visibleWorld.left() / kTrackSpatialCellSize));
         const int maxCellX = static_cast<int>(std::floor(visibleWorld.right() / kTrackSpatialCellSize));
@@ -1897,12 +1983,12 @@ private:
                 }
                 if (index > 0)
                 {
-                    indices.push_back(index - 1);
+                    appendCandidate(index - 1);
                 }
-                indices.push_back(index);
+                appendCandidate(index);
                 if (index + 1 < projected_track_points_.size())
                 {
-                    indices.push_back(index + 1);
+                    appendCandidate(index + 1);
                 }
             }
         }
@@ -1924,12 +2010,12 @@ private:
                         {
                             if (index > 0)
                             {
-                                indices.push_back(index - 1);
+                                appendCandidate(index - 1);
                             }
-                            indices.push_back(index);
+                            appendCandidate(index);
                             if (index + 1 < projected_track_points_.size())
                             {
-                                indices.push_back(index + 1);
+                                appendCandidate(index + 1);
                             }
                         }
                     }
@@ -1939,15 +2025,15 @@ private:
 
         if (!track_points_.isEmpty())
         {
-            indices.push_back(0);
-            indices.push_back(track_points_.size() - 1);
+            appendCandidate(firstVisibleTrackIndex());
+            appendCandidate(lastVisibleTrackIndex());
             if (hovered_track_index_ >= 0)
             {
-                indices.push_back(hovered_track_index_);
+                appendCandidate(hovered_track_index_);
             }
             if (selected_track_index_ >= 0)
             {
-                indices.push_back(selected_track_index_);
+                appendCandidate(selected_track_index_);
             }
         }
 
@@ -1970,6 +2056,10 @@ private:
         {
             const int nextIndex = index + 1;
             if (nextIndex >= projected_track_points_.size())
+            {
+                continue;
+            }
+            if (!isTrackIndexVisibleByFilter(index) || !isTrackIndexVisibleByFilter(nextIndex))
             {
                 continue;
             }
@@ -2075,13 +2165,24 @@ private:
             }
 
             painter.setPen(Qt::NoPen);
+            const int firstVisibleIndex = firstVisibleTrackIndex();
+            const int lastVisibleIndex = lastVisibleTrackIndex();
             painter.setBrush(appThemeColor(AppThemeColor::TrackStart, false));
             const double endpointRadius = std::max(point_radius_ + 1.0, 5.0);
-            painter.drawEllipse(cachedWorldToScreen(projected_track_points_.first().world_pixel, mapRect), endpointRadius, endpointRadius);
-            painter.setBrush(appThemeColor(AppThemeColor::TrackEnd, false));
-            painter.drawEllipse(cachedWorldToScreen(projected_track_points_.last().world_pixel, mapRect), endpointRadius, endpointRadius);
+            if (firstVisibleIndex >= 0 && firstVisibleIndex < projected_track_points_.size())
+            {
+                painter.drawEllipse(cachedWorldToScreen(projected_track_points_.at(firstVisibleIndex).world_pixel, mapRect), endpointRadius, endpointRadius);
+            }
+            if (lastVisibleIndex >= 0 && lastVisibleIndex < projected_track_points_.size() && lastVisibleIndex != firstVisibleIndex)
+            {
+                painter.setBrush(appThemeColor(AppThemeColor::TrackEnd, false));
+                painter.drawEllipse(cachedWorldToScreen(projected_track_points_.at(lastVisibleIndex).world_pixel, mapRect), endpointRadius, endpointRadius);
+            }
         }
-        if (show_track_points_ && hovered_track_index_ >= 0 && hovered_track_index_ < projected_track_points_.size())
+        if (show_track_points_ &&
+            hovered_track_index_ >= 0 &&
+            hovered_track_index_ < projected_track_points_.size() &&
+            isTrackIndexVisibleByFilter(hovered_track_index_))
         {
             const QPointF hoveredPoint = cachedWorldToScreen(projected_track_points_.at(hovered_track_index_).world_pixel, mapRect);
             const double hoverRadius = point_radius_ * 1.55;
@@ -2089,7 +2190,10 @@ private:
             painter.setBrush(pointColorForIndex(hovered_track_index_));
             painter.drawEllipse(hoveredPoint, hoverRadius, hoverRadius);
         }
-        if (show_track_points_ && selected_track_index_ >= 0 && selected_track_index_ < projected_track_points_.size())
+        if (show_track_points_ &&
+            selected_track_index_ >= 0 &&
+            selected_track_index_ < projected_track_points_.size() &&
+            isTrackIndexVisibleByFilter(selected_track_index_))
         {
             const QPointF selectedPoint = cachedWorldToScreen(projected_track_points_.at(selected_track_index_).world_pixel, mapRect);
             const double selectedRadius = std::max(point_radius_ * 1.85, 8.0);
@@ -2129,11 +2233,14 @@ private:
         painter.drawText(footerRect.adjusted(8, 0, -8, 0),
             Qt::AlignLeft | Qt::AlignVCenter,
             mapAttributionText(tile_provider_, is_english_));
+        const int visiblePointCount = filtered_track_indices_.isEmpty()
+            ? track_points_.size()
+            : filtered_track_indices_.size();
         painter.drawText(footerRect.adjusted(8, 0, -8, 0),
             Qt::AlignRight | Qt::AlignVCenter,
             QString(is_english_ ? "%1 points: %2" : "%1点数: %2")
                 .arg(is_english_ ? english_track_label_ : chinese_track_label_)
-                .arg(track_points_.size()));
+                .arg(visiblePointCount));
         painter.restore();
     }
 
@@ -2363,6 +2470,7 @@ private:
     QVector<ProjectedTrackPoint> projected_track_points_;
     QHash<qint64, QVector<int>> track_spatial_index_;
     mutable TrackRenderContext last_render_context_;
+    QSet<int> filtered_track_indices_;
     QHash<QString, QPixmap> tile_cache_;
     QSet<QString> pending_tiles_;
     QVector<TileFetchRequest> queued_tile_requests_;
@@ -2416,6 +2524,12 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , sidebar_title_label_(new QLabel(this))
     , sidebar_icon_label_(new QLabel(this))
     , detail_label_(new QLabel(this))
+    , filter_card_(new QFrame(this))
+    , filter_title_label_(new QLabel(this))
+    , filter_empty_label_(new QLabel(this))
+    , filter_list_widget_(new QWidget(this))
+    , filter_list_layout_(nullptr)
+    , filter_row_labels_()
     , map_status_label_(new QLabel(this))
     , map_progress_bar_(new QProgressBar(this))
     , map_widget_(new TrajectoryMapWidget(this))
@@ -2433,6 +2547,9 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , heat_palette_menu_(new QMenu(this))
     , map_tools_card_(new QFrame(this))
     , point_detail_card_(new QFrame(this))
+    , filter_current_point_button_(new QToolButton(this))
+    , filter_start_point_button_(new QToolButton(this))
+    , filter_end_point_button_(new QToolButton(this))
     , point_detail_close_button_(new QToolButton(this))
     , show_route_button_(new QPushButton(this))
     , show_points_button_(new QPushButton(this))
@@ -2451,7 +2568,9 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , english_track_label_(QStringLiteral("RTK trajectory"))
     , chinese_track_label_(QStringLiteral("RTK轨迹"))
     , track_points_()
+    , trajectory_filters_()
     , track_stats_()
+    , pending_filter_range_index_(-1)
     , selected_track_index_(-1)
     , point_detail_visible_(false)
 {
@@ -2535,6 +2654,24 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     detail_label_->setTextFormat(Qt::RichText);
     detail_label_->setObjectName(QStringLiteral("trajectoryPointDetailLabel"));
     detail_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
+
+    filter_card_->setObjectName(QStringLiteral("trajectoryFilterCard"));
+    filter_card_->setAttribute(Qt::WA_StyledBackground, true);
+    auto *filterCardLayout = new QVBoxLayout(filter_card_);
+    filterCardLayout->setContentsMargins(10, 8, 10, 10);
+    filterCardLayout->setSpacing(7);
+    filter_title_label_->setObjectName(QStringLiteral("trajectoryFilterTitle"));
+    filterCardLayout->addWidget(filter_title_label_);
+    filter_empty_label_->setObjectName(QStringLiteral("trajectoryFilterEmptyLabel"));
+    filter_empty_label_->setWordWrap(true);
+    filterCardLayout->addWidget(filter_empty_label_);
+    filter_list_widget_->setObjectName(QStringLiteral("trajectoryFilterList"));
+    filter_list_layout_ = new QVBoxLayout(filter_list_widget_);
+    filter_list_layout_->setContentsMargins(0, 0, 0, 0);
+    filter_list_layout_->setSpacing(6);
+    filterCardLayout->addWidget(filter_list_widget_);
+    sidebarLayout->addWidget(filter_card_);
+
     map_status_label_->setWordWrap(true);
     map_status_label_->setObjectName(QStringLiteral("trajectorySidebarStatusLabel"));
     sidebarLayout->addWidget(map_status_label_);
@@ -2681,6 +2818,19 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     point_detail_card_->setFixedWidth(380);
     point_detail_card_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     point_detail_card_->hide();
+    for (auto *button : {filter_current_point_button_, filter_start_point_button_, filter_end_point_button_})
+    {
+        button->setObjectName(QStringLiteral("trajectoryPointDetailActionButton"));
+        button->setToolButtonStyle(Qt::ToolButtonIconOnly);
+        button->setAutoRaise(false);
+        button->setFocusPolicy(Qt::NoFocus);
+        button->setFixedSize(24, 24);
+        button->setIconSize(QSize(16, 16));
+        button->setText(QString());
+    }
+    filter_current_point_button_->setProperty("pointActionRole", QStringLiteral("filter-current"));
+    filter_start_point_button_->setProperty("pointActionRole", QStringLiteral("filter-start"));
+    filter_end_point_button_->setProperty("pointActionRole", QStringLiteral("filter-end"));
     point_detail_close_button_->setObjectName(QStringLiteral("trajectoryPointDetailCloseButton"));
     point_detail_close_button_->setToolButtonStyle(Qt::ToolButtonIconOnly);
     point_detail_close_button_->setAutoRaise(false);
@@ -2692,8 +2842,11 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     pointDetailLayout->setSpacing(2);
     auto *pointDetailHeaderLayout = new QHBoxLayout();
     pointDetailHeaderLayout->setContentsMargins(0, 0, 0, 0);
-    pointDetailHeaderLayout->setSpacing(0);
+    pointDetailHeaderLayout->setSpacing(2);
     pointDetailHeaderLayout->addStretch(1);
+    pointDetailHeaderLayout->addWidget(filter_current_point_button_);
+    pointDetailHeaderLayout->addWidget(filter_start_point_button_);
+    pointDetailHeaderLayout->addWidget(filter_end_point_button_);
     pointDetailHeaderLayout->addWidget(point_detail_close_button_);
     pointDetailLayout->addLayout(pointDetailHeaderLayout);
     pointDetailLayout->addWidget(detail_label_);
@@ -2827,6 +2980,12 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     connect(reset_view_button_, &QToolButton::clicked, this, [this]() {
         static_cast<TrajectoryMapWidget*>(map_widget_)->resetView();
     });
+    connect(filter_current_point_button_, &QToolButton::clicked,
+            this, &TrajectoryViewerDialog::filterSelectedPoint);
+    connect(filter_start_point_button_, &QToolButton::clicked,
+            this, &TrajectoryViewerDialog::markSelectedPointAsFilterStart);
+    connect(filter_end_point_button_, &QToolButton::clicked,
+            this, &TrajectoryViewerDialog::markSelectedPointAsFilterEnd);
     connect(point_detail_close_button_, &QToolButton::clicked,
             this, &TrajectoryViewerDialog::hidePointDetailCard);
     connect(export_button_, &QPushButton::clicked,
@@ -2864,6 +3023,9 @@ TrajectoryViewerDialog::~TrajectoryViewerDialog()
              static_cast<QObject*>(point_size_slider_),
              static_cast<QObject*>(show_route_button_),
              static_cast<QObject*>(show_points_button_),
+             static_cast<QObject*>(filter_current_point_button_),
+             static_cast<QObject*>(filter_start_point_button_),
+             static_cast<QObject*>(filter_end_point_button_),
              static_cast<QObject*>(point_detail_close_button_),
              static_cast<QObject*>(zoom_in_button_),
              static_cast<QObject*>(zoom_out_button_),
@@ -2898,10 +3060,15 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QScrollArea#trajectoryViewerSidebar { background-color: @vv-surface; border: none; border-bottom-left-radius: 7px; border-bottom-right-radius: 7px; }"
         "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarViewport, QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent { background-color: @vv-surface; border: none; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectorySidebarSummaryLabel, QDialog#trajectoryViewerDialog QLabel#trajectorySidebarStatusLabel { color: @vv-text; background-color: transparent; border: none; font-size: 14px; font-weight: 500; line-height: 140%; }"
+        "QDialog#trajectoryViewerDialog QFrame#trajectoryFilterCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
+        "QDialog#trajectoryViewerDialog QLabel#trajectoryFilterTitle { color: @vv-text-strong; background-color: transparent; border: none; font-size: 14px; font-weight: 700; }"
+        "QDialog#trajectoryViewerDialog QLabel#trajectoryFilterEmptyLabel { color: @vv-text-muted; background-color: transparent; border: none; font-size: 12px; font-weight: 500; line-height: 140%; }"
+        "QDialog#trajectoryViewerDialog QWidget#trajectoryFilterList { background-color: transparent; border: none; }"
+        "QDialog#trajectoryViewerDialog QLabel#trajectoryFilterRowLabel { background-color: @vv-field-bg; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; font-size: 12px; font-weight: 600; padding: 5px 7px; }"
         "QDialog#trajectoryViewerDialog QFrame#trajectoryPointDetailCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectoryPointDetailLabel { color: @vv-text; background-color: transparent; border: none; font-size: 13px; font-weight: 500; line-height: 140%; }"
-        "QDialog#trajectoryViewerDialog QToolButton#trajectoryPointDetailCloseButton { background-color: transparent; border: none; border-radius: 4px; color: @vv-text-muted; min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px; padding: 0px; }"
-        "QDialog#trajectoryViewerDialog QToolButton#trajectoryPointDetailCloseButton:hover, QDialog#trajectoryViewerDialog QToolButton#trajectoryPointDetailCloseButton:focus { background-color: @vv-primary-subtle; color: @vv-primary; }"
+        "QDialog#trajectoryViewerDialog QToolButton#trajectoryPointDetailCloseButton, QDialog#trajectoryViewerDialog QToolButton#trajectoryPointDetailActionButton { background-color: transparent; border: none; border-radius: 4px; color: @vv-text-muted; min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px; padding: 0px; }"
+        "QDialog#trajectoryViewerDialog QToolButton#trajectoryPointDetailCloseButton:hover, QDialog#trajectoryViewerDialog QToolButton#trajectoryPointDetailCloseButton:focus, QDialog#trajectoryViewerDialog QToolButton#trajectoryPointDetailActionButton:hover, QDialog#trajectoryViewerDialog QToolButton#trajectoryPointDetailActionButton:focus { background-color: @vv-primary-subtle; color: @vv-primary; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectoryControlLabel { color: @vv-text; background-color: transparent; border: none; font-size: 13px; font-weight: 600; min-height: 24px; }"
         "QDialog#trajectoryViewerDialog QFrame#trajectoryHeatLegendCard, QDialog#trajectoryViewerDialog QFrame#trajectoryMapToolsCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectoryHeatLegendTitle { color: @vv-text-strong; background-color: transparent; border: none; font-size: 13px; font-weight: 700; }"
@@ -3030,6 +3197,14 @@ void TrajectoryViewerDialog::setTrackPoints(const QVector<RtkTrackPoint>& points
     track_points_ = points;
     point_detail_visible_ = false;
     static_cast<TrajectoryMapWidget*>(map_widget_)->setTrackPoints(points);
+    trajectory_filters_.erase(std::remove_if(trajectory_filters_.begin(), trajectory_filters_.end(),
+                                  [this](const TrajectoryFilter& filter) {
+                                      const bool startValid = filter.start_index >= 0 && filter.start_index < track_points_.size();
+                                      const bool endValid = filter.end_index < 0 || filter.end_index < track_points_.size();
+                                      return !startValid || !endValid;
+                                  }),
+        trajectory_filters_.end());
+    pending_filter_range_index_ = -1;
     selected_track_index_ = track_points_.isEmpty()
         ? -1
         : std::clamp(selected_track_index_, 0, static_cast<int>(track_points_.size()) - 1);
@@ -3042,6 +3217,7 @@ void TrajectoryViewerDialog::setTrackPoints(const QVector<RtkTrackPoint>& points
     copy_point_button_->setEnabled(!track_points_.isEmpty());
     updateSummary();
     updateHeatLegend();
+    updateFilterSummary();
     updateSelectedPointDetails();
 }
 
@@ -3056,6 +3232,22 @@ void TrajectoryViewerDialog::setSelectedTrackIndex(int index, bool notifySession
     const int clamped = track_points_.isEmpty()
         ? -1
         : std::clamp(index, 0, static_cast<int>(track_points_.size()) - 1);
+    if (pending_filter_range_index_ >= 0 &&
+        pending_filter_range_index_ < trajectory_filters_.size() &&
+        clamped >= 0 &&
+        trajectory_filters_.at(pending_filter_range_index_).end_index < 0 &&
+        clamped != trajectory_filters_.at(pending_filter_range_index_).start_index)
+    {
+        selected_track_index_ = clamped;
+        static_cast<TrajectoryMapWidget*>(map_widget_)->setSelectedTrackIndex(selected_track_index_);
+        finishPendingFilterRange(clamped);
+        updateSelectedPointDetails();
+        if (notifySession)
+        {
+            emit trackPointActivated(selected_track_index_);
+        }
+        return;
+    }
     if (selected_track_index_ == clamped)
     {
         updateSelectedPointDetails();
@@ -3068,11 +3260,37 @@ void TrajectoryViewerDialog::setSelectedTrackIndex(int index, bool notifySession
 
     selected_track_index_ = clamped;
     static_cast<TrajectoryMapWidget*>(map_widget_)->setSelectedTrackIndex(selected_track_index_);
+    if (pending_filter_range_index_ >= 0)
+    {
+        updateFilterSummary();
+    }
     updateSelectedPointDetails();
     if (notifySession && selected_track_index_ >= 0)
     {
         emit trackPointActivated(selected_track_index_);
     }
+}
+
+void TrajectoryViewerDialog::finishPendingFilterRange(int endIndex)
+{
+    if (pending_filter_range_index_ < 0 ||
+        pending_filter_range_index_ >= trajectory_filters_.size() ||
+        endIndex < 0 ||
+        endIndex >= track_points_.size())
+    {
+        return;
+    }
+
+    TrajectoryFilter& filter = trajectory_filters_[pending_filter_range_index_];
+    if (filter.kind != TrajectoryFilter::Kind::Range)
+    {
+        pending_filter_range_index_ = -1;
+        return;
+    }
+
+    filter.end_index = endIndex;
+    pending_filter_range_index_ = -1;
+    updateFilterSummary();
 }
 
 void TrajectoryViewerDialog::hidePointDetailCard()
@@ -3102,6 +3320,47 @@ void TrajectoryViewerDialog::copySelectedPoint()
     map_status_label_->setText(is_english_
         ? QStringLiteral("Selected trajectory point copied to clipboard.")
         : QStringLiteral("已复制当前轨迹点到剪贴板。"));
+}
+
+void TrajectoryViewerDialog::filterSelectedPoint()
+{
+    if (selected_track_index_ < 0 || selected_track_index_ >= track_points_.size())
+    {
+        return;
+    }
+
+    trajectory_filters_.push_back({TrajectoryFilter::Kind::Point, selected_track_index_, -1});
+    pending_filter_range_index_ = -1;
+    updateFilterSummary();
+}
+
+void TrajectoryViewerDialog::markSelectedPointAsFilterStart()
+{
+    if (selected_track_index_ < 0 || selected_track_index_ >= track_points_.size())
+    {
+        return;
+    }
+
+    trajectory_filters_.push_back({TrajectoryFilter::Kind::Range, selected_track_index_, -1});
+    pending_filter_range_index_ = trajectory_filters_.size() - 1;
+    updateFilterSummary();
+}
+
+void TrajectoryViewerDialog::markSelectedPointAsFilterEnd()
+{
+    if (selected_track_index_ < 0 || selected_track_index_ >= track_points_.size())
+    {
+        return;
+    }
+
+    if (pending_filter_range_index_ >= 0)
+    {
+        finishPendingFilterRange(selected_track_index_);
+        return;
+    }
+
+    trajectory_filters_.push_back({TrajectoryFilter::Kind::Range, selected_track_index_, selected_track_index_});
+    updateFilterSummary();
 }
 
 void TrajectoryViewerDialog::exportTrackCsv()
@@ -3162,6 +3421,13 @@ void TrajectoryViewerDialog::updateSelectedPointDetails()
 {
     if (track_points_.isEmpty() || selected_track_index_ < 0 || selected_track_index_ >= track_points_.size())
     {
+        for (auto *button : {filter_current_point_button_, filter_start_point_button_, filter_end_point_button_})
+        {
+            if (button)
+            {
+                button->setEnabled(false);
+            }
+        }
         detail_label_->setText(is_english_
             ? QStringLiteral("Select a trajectory point on the map or scrub the timeline to inspect CSV and waveform linkage.")
             : QStringLiteral("在地图上点击轨迹点，或拖动时间轴，即可查看 CSV 与波形联动信息。"));
@@ -3170,6 +3436,14 @@ void TrajectoryViewerDialog::updateSelectedPointDetails()
             point_detail_card_->hide();
         }
         return;
+    }
+
+    for (auto *button : {filter_current_point_button_, filter_start_point_button_, filter_end_point_button_})
+    {
+        if (button)
+        {
+            button->setEnabled(true);
+        }
     }
 
     const RtkTrackPoint& point = track_points_.at(selected_track_index_);
@@ -3200,6 +3474,103 @@ void TrajectoryViewerDialog::updateSelectedPointDetails()
     if (point_detail_card_)
     {
         point_detail_card_->setVisible(point_detail_visible_);
+    }
+}
+
+void TrajectoryViewerDialog::updateFilterSummary()
+{
+    if (!filter_list_layout_ || !filter_empty_label_ || !filter_list_widget_)
+    {
+        return;
+    }
+
+    QVector<int> visibleIndices;
+    for (const TrajectoryFilter& filter : std::as_const(trajectory_filters_))
+    {
+        if (filter.kind == TrajectoryFilter::Kind::Point)
+        {
+            if (filter.start_index >= 0 && filter.start_index < track_points_.size())
+            {
+                visibleIndices.push_back(filter.start_index);
+            }
+            continue;
+        }
+
+        if (filter.start_index >= 0 && filter.start_index < track_points_.size())
+        {
+            if (filter.end_index >= 0 && filter.end_index < track_points_.size())
+            {
+                const int first = std::min(filter.start_index, filter.end_index);
+                const int last = std::max(filter.start_index, filter.end_index);
+                for (int index = first; index <= last; ++index)
+                {
+                    visibleIndices.push_back(index);
+                }
+            }
+            else
+            {
+                // Keep the full map selectable until the user chooses the range end.
+            }
+        }
+    }
+    std::sort(visibleIndices.begin(), visibleIndices.end());
+    visibleIndices.erase(std::unique(visibleIndices.begin(), visibleIndices.end()), visibleIndices.end());
+    const bool waitingForRangeEnd = pending_filter_range_index_ >= 0 &&
+        pending_filter_range_index_ < trajectory_filters_.size() &&
+        trajectory_filters_.at(pending_filter_range_index_).end_index < 0;
+    static_cast<TrajectoryMapWidget*>(map_widget_)->setFilterIndices(waitingForRangeEnd ? QVector<int>() : visibleIndices);
+
+    filter_empty_label_->setVisible(trajectory_filters_.isEmpty());
+    filter_empty_label_->setText(is_english_
+        ? QStringLiteral("No point filters yet. Click a point, then use the icons on its card.")
+        : QStringLiteral("暂无过滤条件。点击路径点后，可用浮动卡片上的图标添加。"));
+
+    while (filter_row_labels_.size() < trajectory_filters_.size())
+    {
+        auto *rowLabel = new QLabel(filter_list_widget_);
+        rowLabel->setObjectName(QStringLiteral("trajectoryFilterRowLabel"));
+        rowLabel->setWordWrap(true);
+        rowLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        filter_row_labels_.push_back(rowLabel);
+        filter_list_layout_->addWidget(rowLabel);
+    }
+
+    for (int index = 0; index < filter_row_labels_.size(); ++index)
+    {
+        filter_row_labels_.at(index)->setVisible(index < trajectory_filters_.size());
+    }
+
+    for (int index = 0; index < trajectory_filters_.size(); ++index)
+    {
+        const TrajectoryFilter& filter = trajectory_filters_.at(index);
+        QString rowText;
+        if (filter.kind == TrajectoryFilter::Kind::Point)
+        {
+            rowText = is_english_
+                ? QStringLiteral("Point %1").arg(pointIndexText(filter.start_index))
+                : QStringLiteral("当前点 %1").arg(pointIndexText(filter.start_index));
+        }
+        else
+        {
+            rowText = is_english_
+                ? QStringLiteral("Start %1    End %2").arg(pointIndexText(filter.start_index), pointIndexText(filter.end_index))
+                : QStringLiteral("起点 %1    终点 %2").arg(pointIndexText(filter.start_index), pointIndexText(filter.end_index));
+        }
+
+        QLabel *rowLabel = filter_row_labels_.at(index);
+        rowLabel->setText(rowText);
+        rowLabel->setProperty("filterRowIndex", index);
+    }
+    filter_list_widget_->setVisible(!trajectory_filters_.isEmpty());
+    if (map_status_label_ && !trajectory_filters_.isEmpty())
+    {
+        map_status_label_->setText(waitingForRangeEnd
+            ? (is_english_
+                ? QStringLiteral("Choose another point to complete the trajectory filter range.")
+                : QStringLiteral("请选择另一个路径点以完成轨迹过滤区间。"))
+            : (is_english_
+                ? QStringLiteral("Trajectory filter updated: %1 visible points.").arg(visibleIndices.size())
+                : QStringLiteral("轨迹过滤已更新：%1 个可见点。").arg(visibleIndices.size())));
     }
 }
 
@@ -3260,6 +3631,21 @@ void TrajectoryViewerDialog::updateTitleBarIcons()
     if (point_detail_close_button_)
     {
         point_detail_close_button_->setIcon(createLucideIcon(QStringLiteral("x"),
+            dark ? appThemeColor(AppThemeColor::TextMuted, true) : appThemeColor(AppThemeColor::TextMuted, false)));
+    }
+    if (filter_current_point_button_)
+    {
+        filter_current_point_button_->setIcon(createLucideIcon(QStringLiteral("funnel"),
+            dark ? appThemeColor(AppThemeColor::TextMuted, true) : appThemeColor(AppThemeColor::TextMuted, false)));
+    }
+    if (filter_start_point_button_)
+    {
+        filter_start_point_button_->setIcon(createLucideIcon(QStringLiteral("square"),
+            dark ? appThemeColor(AppThemeColor::TextMuted, true) : appThemeColor(AppThemeColor::TextMuted, false)));
+    }
+    if (filter_end_point_button_)
+    {
+        filter_end_point_button_->setIcon(createLucideIcon(QStringLiteral("square-check-big"),
             dark ? appThemeColor(AppThemeColor::TextMuted, true) : appThemeColor(AppThemeColor::TextMuted, false)));
     }
     updateVisibilityButtonIcons();
@@ -3430,6 +3816,10 @@ void TrajectoryViewerDialog::updateTexts()
     {
         sidebar_title_label_->setText(is_english_ ? QStringLiteral("Trajectory Controls") : QStringLiteral("轨迹控制"));
     }
+    if (filter_title_label_)
+    {
+        filter_title_label_->setText(is_english_ ? QStringLiteral("Filters") : QStringLiteral("过滤"));
+    }
     {
         QSignalBlocker blocker(map_source_combo_);
         map_source_combo_->clear();
@@ -3504,6 +3894,18 @@ void TrajectoryViewerDialog::updateTexts()
         ? QStringLiteral("Close selected point details")
         : QStringLiteral("关闭当前点详情"));
     point_detail_close_button_->setAccessibleName(point_detail_close_button_->toolTip());
+    filter_current_point_button_->setToolTip(is_english_
+        ? QStringLiteral("Filter this point")
+        : QStringLiteral("过滤当前点"));
+    filter_start_point_button_->setToolTip(is_english_
+        ? QStringLiteral("Use as filter start")
+        : QStringLiteral("作为过滤起点"));
+    filter_end_point_button_->setToolTip(is_english_
+        ? QStringLiteral("Use as filter end")
+        : QStringLiteral("作为过滤终点"));
+    filter_current_point_button_->setAccessibleName(filter_current_point_button_->toolTip());
+    filter_start_point_button_->setAccessibleName(filter_start_point_button_->toolTip());
+    filter_end_point_button_->setAccessibleName(filter_end_point_button_->toolTip());
     copy_point_button_->setToolTip(is_english_
         ? QStringLiteral("Copy selected trajectory point coordinates and linkage info.")
         : QStringLiteral("复制当前轨迹点坐标与联动信息。"));
@@ -3519,6 +3921,7 @@ void TrajectoryViewerDialog::updateTexts()
     zoom_in_button_->setStatusTip(zoom_in_button_->toolTip());
     zoom_out_button_->setStatusTip(zoom_out_button_->toolTip());
     reset_view_button_->setStatusTip(reset_view_button_->toolTip());
+    updateFilterSummary();
     updateHeatLegend();
     updateTitleBarIcons();
 }

@@ -18,6 +18,7 @@ class QToolButton;
 class QWidget;
 class QSlider;
 class QPushButton;
+class QVBoxLayout;
 
 class TrajectoryViewerDialog : public QDialog
 {
@@ -50,15 +51,39 @@ private:
     void updateTexts();
     void updateSummary();
     void updateSelectedPointDetails();
+    void updateFilterSummary();
     void setSelectedTrackIndex(int index, bool notifySession);
+    void finishPendingFilterRange(int endIndex);
     void hidePointDetailCard();
     void exportTrackCsv();
     void copySelectedPoint();
+    void filterSelectedPoint();
+    void markSelectedPointAsFilterStart();
+    void markSelectedPointAsFilterEnd();
+
+    struct TrajectoryFilter
+    {
+        enum class Kind
+        {
+            Point,
+            Range
+        };
+
+        Kind kind;
+        int start_index;
+        int end_index;
+    };
 
     QLabel *summary_label_;
     QLabel *sidebar_title_label_;
     QLabel *sidebar_icon_label_;
     QLabel *detail_label_;
+    QFrame *filter_card_;
+    QLabel *filter_title_label_;
+    QLabel *filter_empty_label_;
+    QWidget *filter_list_widget_;
+    QVBoxLayout *filter_list_layout_;
+    QVector<QLabel*> filter_row_labels_;
     QLabel *map_status_label_;
     QProgressBar *map_progress_bar_;
     QWidget *map_widget_;
@@ -76,6 +101,9 @@ private:
     QMenu *heat_palette_menu_;
     QFrame *map_tools_card_;
     QFrame *point_detail_card_;
+    QToolButton *filter_current_point_button_;
+    QToolButton *filter_start_point_button_;
+    QToolButton *filter_end_point_button_;
     QToolButton *point_detail_close_button_;
     QPushButton *show_route_button_;
     QPushButton *show_points_button_;
@@ -94,7 +122,9 @@ private:
     QString english_track_label_;
     QString chinese_track_label_;
     QVector<RtkTrackPoint> track_points_;
+    QVector<TrajectoryFilter> trajectory_filters_;
     RtkTrackStats track_stats_;
+    int pending_filter_range_index_;
     int selected_track_index_;
     bool point_detail_visible_;
 };
