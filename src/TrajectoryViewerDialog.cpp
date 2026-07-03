@@ -92,6 +92,8 @@ constexpr int kTrackStyleSliderScale = 10;
 constexpr int kTrackWorldCacheZoom = 20;
 constexpr int kTrackSpatialCellSize = 4096;
 constexpr double kTrackPointMinPixelStep = 9.0;
+constexpr double kTrackRouteMinPixelStep = 2.4;
+constexpr double kTrackRouteDragMinPixelStep = 6.0;
 constexpr double kTrackBucketSize = 36.0;
 constexpr qint64 kTrackMaxCellScanCount = 20000;
 constexpr auto kTileRequestTimeout = std::chrono::seconds(15);
@@ -1970,6 +1972,25 @@ private:
         return visibleWorld.intersects(segmentWorldRect.adjusted(-1.0, -1.0, 1.0, 1.0));
     }
 
+    double screenDistanceFromLineSquared(const QPointF& point,
+                                         const QPointF& lineStart,
+                                         const QPointF& lineEnd) const
+    {
+        const QPointF line = lineEnd - lineStart;
+        const double lineLengthSquared = line.x() * line.x() + line.y() * line.y();
+        if (lineLengthSquared <= 0.001)
+        {
+            const QPointF delta = point - lineStart;
+            return delta.x() * delta.x() + delta.y() * delta.y();
+        }
+
+        const QPointF offset = point - lineStart;
+        const double t = std::clamp((offset.x() * line.x() + offset.y() * line.y()) / lineLengthSquared, 0.0, 1.0);
+        const QPointF projection = lineStart + line * t;
+        const QPointF delta = point - projection;
+        return delta.x() * delta.x() + delta.y() * delta.y();
+    }
+
     QColor segmentColorForPoints(int firstIndex, int secondIndex) const
     {
         QColor segmentColor = defaultTrackColor();
@@ -2138,10 +2159,83 @@ private:
             segments.push_back({firstIndex, secondIndex, firstScreen, secondScreen});
         };
 
+        const double routeMinStep = dragging_
+            ? std::max(kTrackRouteDragMinPixelStep, track_width_ * 1.8)
+            : std::max(kTrackRouteMinPixelStep, track_width_ * 0.85);
+        const double routeMinDistanceSquared = routeMinStep * routeMinStep;
+        const double turnTolerance = dragging_
+            ? routeMinStep * 1.2
+            : routeMinStep * 0.75;
+        const double turnToleranceSquared = turnTolerance * turnTolerance;
+        const int maxSkippedPoints = dragging_
+            ? 64
+            : (has_peak_range_ ? 14 : 28);
+
+        int keptIndex = -1;
+        int pendingIndex = -1;
+        int previousIndex = -1;
+        QPointF keptScreen;
+        QPointF pendingScreen;
+        auto flushPendingSegment = [&]() {
+            if (keptIndex >= 0 && pendingIndex >= 0 && pendingIndex != keptIndex)
+            {
+                appendSegment(keptIndex, pendingIndex);
+            }
+        };
+
         for (int index : visibleIndices)
         {
-            appendSegment(index, index + 1);
+            if (index < 0 || index >= projected_track_points_.size() || !isTrackIndexVisibleByFilter(index))
+            {
+                continue;
+            }
+
+            if (previousIndex >= 0 && index != previousIndex + 1)
+            {
+                flushPendingSegment();
+                keptIndex = -1;
+                pendingIndex = -1;
+            }
+
+            const QPointF currentScreen = cachedWorldToScreen(projected_track_points_.at(index).world_pixel, mapRect);
+            if (keptIndex < 0)
+            {
+                keptIndex = index;
+                pendingIndex = index;
+                keptScreen = currentScreen;
+                pendingScreen = currentScreen;
+                previousIndex = index;
+                continue;
+            }
+
+            if (pendingIndex != keptIndex &&
+                (isForcedTrackPoint(pendingIndex) ||
+                 screenDistanceFromLineSquared(pendingScreen, keptScreen, currentScreen) >= turnToleranceSquared))
+            {
+                appendSegment(keptIndex, pendingIndex);
+                keptIndex = pendingIndex;
+                keptScreen = pendingScreen;
+            }
+
+            const QPointF delta = currentScreen - keptScreen;
+            const bool farEnough = delta.x() * delta.x() + delta.y() * delta.y() >= routeMinDistanceSquared;
+            if (farEnough || isForcedTrackPoint(index) || index - keptIndex >= maxSkippedPoints)
+            {
+                appendSegment(keptIndex, index);
+                keptIndex = index;
+                keptScreen = currentScreen;
+                pendingIndex = index;
+                pendingScreen = currentScreen;
+            }
+            else
+            {
+                pendingIndex = index;
+                pendingScreen = currentScreen;
+            }
+            previousIndex = index;
         }
+        flushPendingSegment();
+
         for (const auto& bridge : std::as_const(filter_bridge_segments_))
         {
             appendSegment(bridge.first, bridge.second);
@@ -2202,6 +2296,7 @@ private:
         if (!show_route_ && !show_track_points_)
         {
             last_render_context_ = TrackRenderContext();
+            setProperty("_vvRouteSegmentCount", 0);
             painter.setPen(QPen(appThemeColor(AppThemeColor::MapBoundary, false), 1));
             painter.drawRoundedRect(mapRect, 8.0, 8.0);
             return;
@@ -2212,6 +2307,7 @@ private:
         const QVector<ScreenTrackSegment> lineSegments = show_route_
             ? buildVisibleTrackSegments(visibleIndices, mapRect)
             : QVector<ScreenTrackSegment>();
+        setProperty("_vvRouteSegmentCount", static_cast<int>(lineSegments.size()));
 
         painter.save();
         painter.setClipRect(mapRect, Qt::IntersectClip);

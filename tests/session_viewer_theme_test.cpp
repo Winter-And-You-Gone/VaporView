@@ -20,6 +20,7 @@
 #include <QMetaObject>
 #include <QMouseEvent>
 #include <QPalette>
+#include <QPixmap>
 #include <QProgressBar>
 #include <QPushButton>
 #include <QSettings>
@@ -972,6 +973,45 @@ void testTrajectoryViewerBridgesFilteredRouteRanges()
     processEventsFor(100);
 }
 
+void testTrajectoryViewerRouteLodLimitsDenseTracks()
+{
+    TrajectoryViewerDialog dialog;
+    dialog.resize(1080, 680);
+    dialog.show();
+    processEventsFor(250);
+
+    auto *map = dialog.findChild<QWidget *>(QStringLiteral("trajectoryViewerMap"));
+    require(map != nullptr, "trajectory map exists for dense route LOD test");
+
+    QVector<RtkTrackPoint> points;
+    constexpr int kDensePointCount = 12000;
+    points.reserve(kDensePointCount);
+    for (int index = 0; index < kDensePointCount; ++index)
+    {
+        RtkTrackPoint point;
+        const double t = static_cast<double>(index) / static_cast<double>(kDensePointCount - 1);
+        point.latitude = 30.13698120 + std::sin(t * 8.0 * 3.14159265358979323846) * 0.0012;
+        point.longitude = 120.06100000 + t * 0.012;
+        point.height_m = 10.0;
+        point.cumulative_distance_m = index;
+        point.csv_row = index;
+        point.has_height = true;
+        points.push_back(point);
+    }
+
+    dialog.setTrackPoints(points);
+    processEventsFor(300);
+    const QPixmap renderedMap = map->grab();
+    require(!renderedMap.isNull(), "dense route LOD test renders the map");
+    const int routeSegmentCount = map->property("_vvRouteSegmentCount").toInt();
+    require(routeSegmentCount > 0, "dense route LOD draws visible route segments");
+    require(routeSegmentCount < kDensePointCount / 3,
+            "dense route LOD limits the number of route segments given to Qt");
+
+    dialog.close();
+    processEventsFor(100);
+}
+
 void testSessionViewerTitleBarWindowButtons()
 {
     SessionViewerWindow viewer;
@@ -1005,6 +1045,7 @@ int main(int argc, char **argv)
     testSessionViewerTrajectoryActionLifetime();
     testTrajectoryViewerUsesSidebarLayout();
     testTrajectoryViewerBridgesFilteredRouteRanges();
+    testTrajectoryViewerRouteLodLimitsDenseTracks();
 
     app.setProperty(VaporView::kAppDarkThemeProperty, false);
     app.setPalette(VaporView::appThemePalette(false));
