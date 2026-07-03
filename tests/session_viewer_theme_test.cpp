@@ -585,9 +585,16 @@ void testTrajectoryViewerUsesSidebarLayout()
     {
         require(button->text().isEmpty(), "point detail filter actions are icon-only");
         require(!button->toolTip().trimmed().isEmpty(), "point detail filter actions expose hover tooltip text");
+        require(!button->icon().isNull(), "point detail filter actions use lucide flag icons");
         require(button->minimumSize() == QSize(24, 24) && button->maximumSize() == QSize(24, 24),
                 "point detail filter actions stay compact");
     }
+    require(QFile::exists(QCoreApplication::applicationDirPath() + QStringLiteral("/resources/lucide/flag.svg")),
+            "trajectory filter-current icon resource is deployed");
+    require(QFile::exists(QCoreApplication::applicationDirPath() + QStringLiteral("/resources/lucide/flag-triangle-left.svg")),
+            "trajectory filter-start icon resource is deployed");
+    require(QFile::exists(QCoreApplication::applicationDirPath() + QStringLiteral("/resources/lucide/flag-triangle-right.svg")),
+            "trajectory filter-end icon resource is deployed");
     require(trackWidthSlider->minimum() == 10 && trackWidthSlider->maximum() == 80,
             "track width slider exposes a bounded visual range");
     require(pointSizeSlider->minimum() == 20 && pointSizeSlider->maximum() == 120,
@@ -658,6 +665,23 @@ void testTrajectoryViewerUsesSidebarLayout()
             "trajectory viewer stylesheet includes sidebar filter card styling");
     require(styleSheet.contains(QStringLiteral("QToolButton#trajectoryPointDetailActionButton")),
             "trajectory viewer stylesheet includes point detail filter action styling");
+    const QString titleHoverColor = styleSheet.contains(VaporView::appThemeColorName(VaporView::AppThemeColor::TitleBarHover, true))
+        ? VaporView::appThemeColorName(VaporView::AppThemeColor::TitleBarHover, true)
+        : VaporView::appThemeColorName(VaporView::AppThemeColor::TitleBarHover, false);
+    require(styleSheet.contains(VaporView::appThemeColorName(VaporView::AppThemeColor::TitleBarHover, true)) ||
+                styleSheet.contains(VaporView::appThemeColorName(VaporView::AppThemeColor::TitleBarHover, false)),
+            "trajectory viewer icon hover background uses the same neutral title hover color as the main window");
+    for (const QString& iconHoverRule : {
+             QStringLiteral("QToolButton#trajectoryPointDetailCloseButton:hover, QDialog#trajectoryViewerDialog QToolButton#trajectoryPointDetailCloseButton:focus, QDialog#trajectoryViewerDialog QToolButton#trajectoryPointDetailActionButton:hover, QDialog#trajectoryViewerDialog QToolButton#trajectoryPointDetailActionButton:focus { background-color: "),
+             QStringLiteral("QToolButton#trajectoryHeatPaletteButton:hover, QDialog#trajectoryViewerDialog QToolButton#trajectoryHeatPaletteButton:focus { background-color: "),
+             QStringLiteral("QToolButton#titleBarButton:hover, QDialog#trajectoryViewerDialog QToolButton#titleBarButton:focus { background-color: ")})
+    {
+        require(styleSheet.contains(iconHoverRule + titleHoverColor),
+                "trajectory viewer icon focus background uses the neutral title hover color");
+        require(!styleSheet.contains(iconHoverRule + VaporView::appThemeColorName(VaporView::AppThemeColor::PrimarySubtle, true)) &&
+                    !styleSheet.contains(iconHoverRule + VaporView::appThemeColorName(VaporView::AppThemeColor::PrimarySubtle, false)),
+                "trajectory viewer icon focus background does not use the primary accent color");
+    }
     require(styleSheet.contains(QStringLiteral("QPushButton#trajectoryVisibilityToggle")),
             "trajectory viewer stylesheet includes visibility toggle styling");
     require(styleSheet.contains(QStringLiteral("QToolButton#trajectoryHeatPaletteButton")),
@@ -824,6 +848,8 @@ int main(int argc, char **argv)
     testSessionViewerTrajectoryActionLifetime();
     testTrajectoryViewerUsesSidebarLayout();
 
+    app.setProperty(VaporView::kAppDarkThemeProperty, false);
+    app.setPalette(VaporView::appThemePalette(false));
     {
         SessionViewerWindow viewer;
         viewer.resize(1280, 800);

@@ -291,6 +291,9 @@ set(LUCIDE_RESOURCES
     resources/lucide/circle-x.svg
     resources/lucide/copy.svg
     resources/lucide/earth.svg
+    resources/lucide/flag-triangle-left.svg
+    resources/lucide/flag-triangle-right.svg
+    resources/lucide/flag.svg
     resources/lucide/funnel.svg
     resources/lucide/key.svg
     resources/lucide/languages.svg
