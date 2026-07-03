@@ -501,8 +501,8 @@ public:
         , palette_(HeatPalette::Turbo)
     {
         setObjectName(QStringLiteral("trajectoryHeatGradientBar"));
-        setFixedHeight(14);
-        setMinimumWidth(160);
+        setFixedHeight(10);
+        setMinimumWidth(104);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     }
 
@@ -2368,9 +2368,9 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , heat_palette_title_label_(new QLabel(this))
     , heat_gradient_bar_(new HeatGradientBarWidget(this))
     , heat_min_label_(new QLabel(this))
-    , heat_count_label_(new QLabel(this))
     , heat_max_label_(new QLabel(this))
     , map_tools_card_(new QFrame(this))
+    , point_detail_card_(new QFrame(this))
     , show_route_button_(new QPushButton(this))
     , show_points_button_(new QPushButton(this))
     , play_button_(new QPushButton(this))
@@ -2392,6 +2392,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , track_points_()
     , track_stats_()
     , selected_track_index_(-1)
+    , point_detail_visible_(false)
     , playback_timer_(new QTimer(this))
 {
     setObjectName(QStringLiteral("trajectoryViewerDialog"));
@@ -2472,9 +2473,8 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     sidebarLayout->addWidget(summary_label_);
     detail_label_->setWordWrap(true);
     detail_label_->setTextFormat(Qt::RichText);
-    detail_label_->setObjectName(QStringLiteral("trajectorySidebarDetailLabel"));
+    detail_label_->setObjectName(QStringLiteral("trajectoryPointDetailLabel"));
     detail_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    sidebarLayout->addWidget(detail_label_);
     map_status_label_->setWordWrap(true);
     map_status_label_->setObjectName(QStringLiteral("trajectorySidebarStatusLabel"));
     sidebarLayout->addWidget(map_status_label_);
@@ -2499,7 +2499,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
         button->setObjectName(QStringLiteral("trajectoryVisibilityToggle"));
         button->setCheckable(true);
         button->setChecked(true);
-        button->setFixedSize(32, 32);
+        button->setFixedSize(24, 24);
         button->setIconSize(QSize(18, 18));
         button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         button->setText(QString());
@@ -2543,6 +2543,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
             : QStringLiteral("--"));
     });
     mapWidget->setSelectionCallback([this](int index) {
+        point_detail_visible_ = true;
         setSelectedTrackIndex(index, true);
     });
 
@@ -2553,53 +2554,43 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     map_source_combo_->setToolTip(is_english_ ? QStringLiteral("Map source") : QStringLiteral("底图来源"));
 
     heat_palette_combo_->setObjectName(QStringLiteral("trajectoryHeatPaletteCombo"));
-    heat_palette_combo_->setMinimumWidth(132);
-    heat_palette_combo_->setMaximumWidth(150);
+    heat_palette_combo_->setFixedSize(28, 24);
     heat_palette_combo_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     heat_palette_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    heat_palette_combo_->setAccessibleName(is_english_ ? QStringLiteral("Heat palette") : QStringLiteral("热力图色带"));
     heat_palette_combo_->setToolTip(is_english_
         ? QStringLiteral("Choose the peak heatmap color ramp.")
         : QStringLiteral("选择峰值热力图色带。"));
 
     heat_palette_card_->setObjectName(QStringLiteral("trajectoryHeatLegendCard"));
     heat_palette_card_->setAttribute(Qt::WA_StyledBackground, true);
-    heat_palette_card_->setFixedWidth(292);
+    heat_palette_card_->setFixedWidth(300);
     heat_palette_card_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     heat_palette_title_label_->setObjectName(QStringLiteral("trajectoryHeatLegendTitle"));
-    heat_palette_title_label_->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
-    for (auto *label : {heat_min_label_, heat_count_label_, heat_max_label_})
+    heat_palette_title_label_->setFixedWidth(34);
+    for (auto *label : {heat_min_label_, heat_max_label_})
     {
         label->setObjectName(QStringLiteral("trajectoryHeatLegendCaption"));
-        label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+        label->setFixedWidth(48);
     }
     heat_min_label_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    heat_count_label_->setAlignment(Qt::AlignCenter | Qt::AlignVCenter);
     heat_max_label_->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    auto *heatCardLayout = new QVBoxLayout(heat_palette_card_);
-    heatCardLayout->setContentsMargins(12, 10, 12, 10);
-    heatCardLayout->setSpacing(6);
-    auto *heatTitleLayout = new QHBoxLayout();
-    heatTitleLayout->setContentsMargins(0, 0, 0, 0);
-    heatTitleLayout->setSpacing(8);
-    heatTitleLayout->addWidget(heat_palette_title_label_, 1);
-    heatTitleLayout->addWidget(heat_palette_combo_, 0);
-    heatCardLayout->addLayout(heatTitleLayout);
-    heatCardLayout->addWidget(heat_gradient_bar_);
-    auto *heatCaptionLayout = new QHBoxLayout();
-    heatCaptionLayout->setContentsMargins(0, 0, 0, 0);
-    heatCaptionLayout->setSpacing(6);
-    heatCaptionLayout->addWidget(heat_min_label_, 1);
-    heatCaptionLayout->addWidget(heat_count_label_, 1);
-    heatCaptionLayout->addWidget(heat_max_label_, 1);
-    heatCardLayout->addLayout(heatCaptionLayout);
+    auto *heatCardLayout = new QHBoxLayout(heat_palette_card_);
+    heatCardLayout->setContentsMargins(8, 6, 8, 6);
+    heatCardLayout->setSpacing(4);
+    heatCardLayout->addWidget(heat_palette_title_label_, 0);
+    heatCardLayout->addWidget(heat_min_label_, 0);
+    heatCardLayout->addWidget(heat_gradient_bar_, 1);
+    heatCardLayout->addWidget(heat_max_label_, 0);
+    heatCardLayout->addWidget(heat_palette_combo_, 0);
 
     map_tools_card_->setObjectName(QStringLiteral("trajectoryMapToolsCard"));
     map_tools_card_->setAttribute(Qt::WA_StyledBackground, true);
-    map_tools_card_->setFixedWidth(360);
+    map_tools_card_->setFixedWidth(336);
     map_tools_card_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     auto *mapToolsLayout = new QVBoxLayout(map_tools_card_);
-    mapToolsLayout->setContentsMargins(12, 10, 12, 10);
-    mapToolsLayout->setSpacing(8);
+    mapToolsLayout->setContentsMargins(8, 6, 8, 6);
+    mapToolsLayout->setSpacing(4);
     auto addMapToolRow = [mapToolsLayout](QLabel *label, QPushButton *button, QSlider *slider) {
         auto *row = new QHBoxLayout();
         row->setContentsMargins(0, 0, 0, 0);
@@ -2611,6 +2602,16 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     };
     addMapToolRow(track_width_label_, show_route_button_, track_width_slider_);
     addMapToolRow(point_size_label_, show_points_button_, point_size_slider_);
+
+    point_detail_card_->setObjectName(QStringLiteral("trajectoryPointDetailCard"));
+    point_detail_card_->setAttribute(Qt::WA_StyledBackground, true);
+    point_detail_card_->setFixedWidth(380);
+    point_detail_card_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    point_detail_card_->hide();
+    auto *pointDetailLayout = new QVBoxLayout(point_detail_card_);
+    pointDetailLayout->setContentsMargins(10, 8, 10, 8);
+    pointDetailLayout->setSpacing(0);
+    pointDetailLayout->addWidget(detail_label_);
 
     tianditu_key_edit_->setObjectName(QStringLiteral("trajectoryTiandituKeyEdit"));
     tianditu_key_edit_->setFixedWidth(390);
@@ -2667,13 +2668,23 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     sidebarLayout->addLayout(mapControlsLayout);
     sidebarLayout->addStretch(1);
 
-    auto *mapOverlayLayout = new QHBoxLayout(map_widget_);
-    mapOverlayLayout->setContentsMargins(14, 14, 14, 0);
-    mapOverlayLayout->setSpacing(10);
-    mapOverlayLayout->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-    mapOverlayLayout->addWidget(heat_palette_card_, 0, Qt::AlignTop);
-    mapOverlayLayout->addWidget(map_tools_card_, 0, Qt::AlignTop);
+    auto *mapOverlayLayout = new QVBoxLayout(map_widget_);
+    mapOverlayLayout->setContentsMargins(14, 14, 14, 14);
+    mapOverlayLayout->setSpacing(0);
+    auto *mapTopOverlayLayout = new QHBoxLayout();
+    mapTopOverlayLayout->setContentsMargins(0, 0, 0, 0);
+    mapTopOverlayLayout->setSpacing(10);
+    mapTopOverlayLayout->addWidget(heat_palette_card_, 0, Qt::AlignTop);
+    mapTopOverlayLayout->addWidget(map_tools_card_, 0, Qt::AlignTop);
+    mapTopOverlayLayout->addStretch(1);
+    mapOverlayLayout->addLayout(mapTopOverlayLayout);
     mapOverlayLayout->addStretch(1);
+    auto *mapBottomOverlayLayout = new QHBoxLayout();
+    mapBottomOverlayLayout->setContentsMargins(0, 0, 0, 0);
+    mapBottomOverlayLayout->setSpacing(0);
+    mapBottomOverlayLayout->addWidget(point_detail_card_, 0, Qt::AlignLeft | Qt::AlignBottom);
+    mapBottomOverlayLayout->addStretch(1);
+    mapOverlayLayout->addLayout(mapBottomOverlayLayout);
 
     mapPanelLayout->addWidget(map_widget_, 1);
     mainLayout->addWidget(sidebarCard);
@@ -2698,6 +2709,11 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     });
     connect(show_points_button_, &QPushButton::toggled, this, [this, mapWidget](bool checked) {
         mapWidget->setShowTrackPoints(checked);
+        if (!checked)
+        {
+            point_detail_visible_ = false;
+            updateSelectedPointDetails();
+        }
         updateVisibilityButtonIcons();
     });
     connect(tianditu_key_edit_, &QLineEdit::editingFinished,
@@ -2796,14 +2812,16 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QFrame#trajectoryViewerSidebarCard QLabel#sectionTitleLabel { background-color: transparent; border: none; color: @vv-text; font-size: 16px; font-weight: bold; margin: 0px; padding: 0px; }"
         "QDialog#trajectoryViewerDialog QScrollArea#trajectoryViewerSidebar { background-color: @vv-surface; border: none; border-bottom-left-radius: 7px; border-bottom-right-radius: 7px; }"
         "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarViewport, QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent { background-color: @vv-surface; border: none; }"
-        "QDialog#trajectoryViewerDialog QLabel#trajectorySidebarSummaryLabel, QDialog#trajectoryViewerDialog QLabel#trajectorySidebarDetailLabel, QDialog#trajectoryViewerDialog QLabel#trajectorySidebarStatusLabel { color: @vv-text; background-color: transparent; border: none; font-size: 14px; font-weight: 500; line-height: 140%; }"
+        "QDialog#trajectoryViewerDialog QLabel#trajectorySidebarSummaryLabel, QDialog#trajectoryViewerDialog QLabel#trajectorySidebarStatusLabel { color: @vv-text; background-color: transparent; border: none; font-size: 14px; font-weight: 500; line-height: 140%; }"
+        "QDialog#trajectoryViewerDialog QFrame#trajectoryPointDetailCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
+        "QDialog#trajectoryViewerDialog QLabel#trajectoryPointDetailLabel { color: @vv-text; background-color: transparent; border: none; font-size: 13px; font-weight: 500; line-height: 140%; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectoryControlLabel { color: @vv-text; background-color: transparent; border: none; font-size: 13px; font-weight: 600; min-height: 24px; }"
         "QDialog#trajectoryViewerDialog QFrame#trajectoryHeatLegendCard, QDialog#trajectoryViewerDialog QFrame#trajectoryMapToolsCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectoryHeatLegendTitle { color: @vv-text-strong; background-color: transparent; border: none; font-size: 13px; font-weight: 700; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectoryHeatLegendCaption { color: @vv-text-muted; background-color: transparent; border: none; font-size: 11px; font-weight: 500; }"
-        "QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle { background-color: transparent; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; min-width: 32px; max-width: 32px; min-height: 32px; max-height: 32px; padding: 0px; }"
-        "QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle:hover { background-color: @vv-primary-subtle; border-color: @vv-primary-subtle-pressed; }"
-        "QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle:checked { background-color: @vv-primary-subtle; border-color: @vv-primary; color: @vv-primary; }"
+        "QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle { background-color: transparent; border: none; border-radius: 0px; color: @vv-text; min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px; padding: 0px; }"
+        "QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle:hover { background-color: transparent; border: none; }"
+        "QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle:checked { background-color: transparent; border: none; color: @vv-primary; }"
         "QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle:disabled { color: @vv-text-muted; }"
         "QDialog#trajectoryViewerDialog QFrame#trajectoryViewerMapPanel { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
         "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerMap { background-color: @vv-surface; border: none; border-radius: 8px; }"
@@ -2815,9 +2833,13 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QProgressBar::chunk { background-color: @vv-progress-chunk; border-radius: 5px; }"
         "QDialog#trajectoryViewerDialog QSlider::groove:horizontal { background-color: @vv-field-bg; border: 1px solid @vv-border; height: 6px; border-radius: 3px; }"
         "QDialog#trajectoryViewerDialog QSlider::handle:horizontal { background-color: @vv-primary; border: 1px solid @vv-primary; width: 14px; margin: -5px 0px; border-radius: 7px; }"
-        "QDialog#trajectoryViewerDialog QComboBox#trajectoryMapSourceCombo, QDialog#trajectoryViewerDialog QComboBox#trajectoryHeatPaletteCombo { background-color: @vv-field-bg; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 600; min-height: 32px; padding: 4px 28px 4px 10px; }"
-        "QDialog#trajectoryViewerDialog QComboBox#trajectoryMapSourceCombo:hover, QDialog#trajectoryViewerDialog QComboBox#trajectoryHeatPaletteCombo:hover { border-color: @vv-border-strong; }"
-        "QDialog#trajectoryViewerDialog QComboBox#trajectoryMapSourceCombo:focus, QDialog#trajectoryViewerDialog QComboBox#trajectoryHeatPaletteCombo:focus { border-color: @vv-primary; }"
+        "QDialog#trajectoryViewerDialog QComboBox#trajectoryMapSourceCombo { background-color: @vv-field-bg; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 600; min-height: 32px; padding: 4px 28px 4px 10px; }"
+        "QDialog#trajectoryViewerDialog QComboBox#trajectoryMapSourceCombo:hover { border-color: @vv-border-strong; }"
+        "QDialog#trajectoryViewerDialog QComboBox#trajectoryMapSourceCombo:focus { border-color: @vv-primary; }"
+        "QDialog#trajectoryViewerDialog QComboBox#trajectoryHeatPaletteCombo { background-color: transparent; border: none; color: transparent; min-width: 28px; max-width: 28px; min-height: 24px; max-height: 24px; padding: 0px; }"
+        "QDialog#trajectoryViewerDialog QComboBox#trajectoryHeatPaletteCombo:hover, QDialog#trajectoryViewerDialog QComboBox#trajectoryHeatPaletteCombo:focus { background-color: @vv-primary-subtle; border: none; border-radius: 4px; }"
+        "QDialog#trajectoryViewerDialog QComboBox#trajectoryHeatPaletteCombo::drop-down { border: none; width: 24px; }"
+        "QDialog#trajectoryViewerDialog QComboBox#trajectoryHeatPaletteCombo QAbstractItemView { background-color: @vv-surface-raised; border: 1px solid @vv-border; color: @vv-text; selection-background-color: @vv-primary-subtle; selection-color: @vv-text; }"
         "QDialog#trajectoryViewerDialog QToolButton#titleBarButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; }"
         "QDialog#trajectoryViewerDialog QToolButton#titleBarButton:hover { background-color: @vv-primary-subtle; border-color: @vv-primary-subtle-pressed; }"),
         isDarkPalette());
@@ -2917,6 +2939,7 @@ void TrajectoryViewerDialog::setTrackLabel(const QString& englishLabel, const QS
 void TrajectoryViewerDialog::setTrackPoints(const QVector<RtkTrackPoint>& points)
 {
     track_points_ = points;
+    point_detail_visible_ = false;
     static_cast<TrajectoryMapWidget*>(map_widget_)->setTrackPoints(points);
     selected_track_index_ = track_points_.isEmpty()
         ? -1
@@ -3107,6 +3130,10 @@ void TrajectoryViewerDialog::updateSelectedPointDetails()
         detail_label_->setText(is_english_
             ? QStringLiteral("Select a trajectory point on the map or scrub the timeline to inspect CSV and waveform linkage.")
             : QStringLiteral("在地图上点击轨迹点，或拖动时间轴，即可查看 CSV 与波形联动信息。"));
+        if (point_detail_card_)
+        {
+            point_detail_card_->hide();
+        }
         return;
     }
 
@@ -3135,6 +3162,10 @@ void TrajectoryViewerDialog::updateSelectedPointDetails()
         {is_english_ ? QStringLiteral("Waveform") : QStringLiteral("波形"), waveformText}
     };
     detail_label_->setText(trajectoryInfoTable(title, rows, isDarkPalette()));
+    if (point_detail_card_)
+    {
+        point_detail_card_->setVisible(point_detail_visible_);
+    }
 }
 
 void TrajectoryViewerDialog::changeEvent(QEvent *event)
@@ -3215,7 +3246,7 @@ void TrajectoryViewerDialog::updateVisibilityButtonIcons()
 
 void TrajectoryViewerDialog::updateHeatLegend()
 {
-    if (!heat_palette_card_ || !heat_gradient_bar_ || !heat_min_label_ || !heat_count_label_ || !heat_max_label_)
+    if (!heat_palette_card_ || !heat_gradient_bar_ || !heat_min_label_ || !heat_max_label_)
     {
         return;
     }
@@ -3253,9 +3284,11 @@ void TrajectoryViewerDialog::updateHeatLegend()
     static_cast<HeatGradientBarWidget*>(heat_gradient_bar_)->setHeatPalette(
         static_cast<TrajectoryMapWidget*>(map_widget_)->heatPalette());
     heat_min_label_->setText(formatPeakValue(minPeak));
-    heat_count_label_->setText(is_english_
+    const QString countText = is_english_
         ? QStringLiteral("%1 samples").arg(peakCount)
-        : QStringLiteral("%1 个样本").arg(peakCount));
+        : QStringLiteral("%1 个样本").arg(peakCount);
+    heat_palette_card_->setToolTip(countText);
+    heat_gradient_bar_->setToolTip(countText);
     heat_max_label_->setText(formatPeakValue(maxPeak));
     heat_gradient_bar_->update();
 }
@@ -3379,9 +3412,10 @@ void TrajectoryViewerDialog::updateTexts()
     heat_palette_combo_->setToolTip(is_english_
         ? QStringLiteral("Choose the peak heatmap color ramp.")
         : QStringLiteral("选择峰值热力图色带。"));
+    heat_palette_combo_->setAccessibleName(is_english_ ? QStringLiteral("Heat palette") : QStringLiteral("热力图色带"));
     if (heat_palette_title_label_)
     {
-        heat_palette_title_label_->setText(is_english_ ? QStringLiteral("Peak heatmap") : QStringLiteral("峰值热力图"));
+        heat_palette_title_label_->setText(is_english_ ? QStringLiteral("Peak") : QStringLiteral("峰值"));
     }
     track_width_label_->setText(is_english_ ? QStringLiteral("Route width") : QStringLiteral("路线粗细"));
     point_size_label_->setText(is_english_ ? QStringLiteral("Point size") : QStringLiteral("点大小"));

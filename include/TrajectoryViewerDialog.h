@@ -74,9 +74,9 @@ private:
     QLabel *heat_palette_title_label_;
     QWidget *heat_gradient_bar_;
     QLabel *heat_min_label_;
-    QLabel *heat_count_label_;
     QLabel *heat_max_label_;
     QFrame *map_tools_card_;
+    QFrame *point_detail_card_;
     QPushButton *show_route_button_;
     QPushButton *show_points_button_;
     QPushButton *play_button_;
@@ -98,6 +98,7 @@ private:
     QVector<RtkTrackPoint> track_points_;
     RtkTrackStats track_stats_;
     int selected_track_index_;
+    bool point_detail_visible_;
     QTimer *playback_timer_;
 };
 
