@@ -692,6 +692,9 @@ public:
         , point_radius_(kDefaultTrackPointRadius)
         , show_route_(true)
         , show_track_points_(true)
+        , track_filter_active_(false)
+        , first_filter_visible_track_index_(-1)
+        , last_filter_visible_track_index_(-1)
         , has_peak_range_(false)
         , min_peak_(0.0f)
         , max_peak_(0.0f)
@@ -789,6 +792,7 @@ public:
     {
         track_points_ = points;
         rebuildTrackCaches();
+        refreshFilterBoundaryIndices();
         hovered_track_index_ = -1;
         selected_track_index_ = track_points_.isEmpty()
             ? -1
@@ -803,27 +807,29 @@ public:
         update();
     }
 
-    void setFilterIndices(const QVector<int>& indices)
+    void setExcludedFilterIndices(const QVector<int>& indices, bool active)
     {
-        filtered_track_indices_.clear();
+        track_filter_active_ = active;
+        excluded_track_indices_.clear();
         for (int index : indices)
         {
             if (index >= 0 && index < track_points_.size())
             {
-                filtered_track_indices_.insert(index);
+                excluded_track_indices_.insert(index);
             }
         }
-        if (!filtered_track_indices_.isEmpty())
+        if (track_filter_active_)
         {
-            if (hovered_track_index_ >= 0 && !filtered_track_indices_.contains(hovered_track_index_))
+            if (hovered_track_index_ >= 0 && excluded_track_indices_.contains(hovered_track_index_))
             {
                 hovered_track_index_ = -1;
             }
-            if (selected_track_index_ >= 0 && !filtered_track_indices_.contains(selected_track_index_))
+            if (selected_track_index_ >= 0 && excluded_track_indices_.contains(selected_track_index_))
             {
                 selected_track_index_ = -1;
             }
         }
+        refreshFilterBoundaryIndices();
         last_render_context_ = TrackRenderContext();
         update();
     }
@@ -1823,43 +1829,49 @@ private:
     {
         return index >= 0 &&
                index < track_points_.size() &&
-               (filtered_track_indices_.isEmpty() || filtered_track_indices_.contains(index));
+               (!track_filter_active_ || !excluded_track_indices_.contains(index));
     }
 
     int firstVisibleTrackIndex() const
     {
-        if (track_points_.isEmpty())
-        {
-            return -1;
-        }
-        if (filtered_track_indices_.isEmpty())
-        {
-            return 0;
-        }
-        int first = track_points_.size();
-        for (int index : filtered_track_indices_)
-        {
-            first = std::min(first, index);
-        }
-        return first < track_points_.size() ? first : -1;
+        return first_filter_visible_track_index_;
     }
 
     int lastVisibleTrackIndex() const
     {
+        return last_filter_visible_track_index_;
+    }
+
+    void refreshFilterBoundaryIndices()
+    {
+        first_filter_visible_track_index_ = -1;
+        last_filter_visible_track_index_ = -1;
         if (track_points_.isEmpty())
         {
-            return -1;
+            return;
         }
-        if (filtered_track_indices_.isEmpty())
+        if (!track_filter_active_)
         {
-            return track_points_.size() - 1;
+            first_filter_visible_track_index_ = 0;
+            last_filter_visible_track_index_ = track_points_.size() - 1;
+            return;
         }
-        int last = -1;
-        for (int index : filtered_track_indices_)
+        for (int index = 0; index < track_points_.size(); ++index)
         {
-            last = std::max(last, index);
+            if (!excluded_track_indices_.contains(index))
+            {
+                first_filter_visible_track_index_ = index;
+                break;
+            }
         }
-        return last;
+        for (int index = track_points_.size() - 1; index >= 0; --index)
+        {
+            if (!excluded_track_indices_.contains(index))
+            {
+                last_filter_visible_track_index_ = index;
+                break;
+            }
+        }
     }
 
     bool appendScreenPointIfSeparated(QVector<ScreenTrackPoint>& points,
@@ -2233,9 +2245,11 @@ private:
         painter.drawText(footerRect.adjusted(8, 0, -8, 0),
             Qt::AlignLeft | Qt::AlignVCenter,
             mapAttributionText(tile_provider_, is_english_));
-        const int visiblePointCount = filtered_track_indices_.isEmpty()
-            ? track_points_.size()
-            : filtered_track_indices_.size();
+        const int excludedPointCount = static_cast<int>(excluded_track_indices_.size());
+        const int trackPointCount = static_cast<int>(track_points_.size());
+        const int visiblePointCount = track_filter_active_
+            ? std::max(0, trackPointCount - excludedPointCount)
+            : trackPointCount;
         painter.drawText(footerRect.adjusted(8, 0, -8, 0),
             Qt::AlignRight | Qt::AlignVCenter,
             QString(is_english_ ? "%1 points: %2" : "%1点数: %2")
@@ -2470,7 +2484,6 @@ private:
     QVector<ProjectedTrackPoint> projected_track_points_;
     QHash<qint64, QVector<int>> track_spatial_index_;
     mutable TrackRenderContext last_render_context_;
-    QSet<int> filtered_track_indices_;
     QHash<QString, QPixmap> tile_cache_;
     QSet<QString> pending_tiles_;
     QVector<TileFetchRequest> queued_tile_requests_;
@@ -2501,6 +2514,10 @@ private:
     double point_radius_;
     bool show_route_;
     bool show_track_points_;
+    QSet<int> excluded_track_indices_;
+    bool track_filter_active_;
+    int first_filter_visible_track_index_;
+    int last_filter_visible_track_index_;
     bool has_peak_range_;
     float min_peak_;
     float max_peak_;
@@ -3514,14 +3531,14 @@ void TrajectoryViewerDialog::updateFilterSummary()
         return;
     }
 
-    QVector<int> visibleIndices;
+    QVector<int> excludedIndices;
     for (const TrajectoryFilter& filter : std::as_const(trajectory_filters_))
     {
         if (filter.kind == TrajectoryFilter::Kind::Point)
         {
             if (filter.start_index >= 0 && filter.start_index < track_points_.size())
             {
-                visibleIndices.push_back(filter.start_index);
+                excludedIndices.push_back(filter.start_index);
             }
             continue;
         }
@@ -3534,7 +3551,7 @@ void TrajectoryViewerDialog::updateFilterSummary()
                 const int last = std::max(filter.start_index, filter.end_index);
                 for (int index = first; index <= last; ++index)
                 {
-                    visibleIndices.push_back(index);
+                    excludedIndices.push_back(index);
                 }
             }
             else
@@ -3543,12 +3560,15 @@ void TrajectoryViewerDialog::updateFilterSummary()
             }
         }
     }
-    std::sort(visibleIndices.begin(), visibleIndices.end());
-    visibleIndices.erase(std::unique(visibleIndices.begin(), visibleIndices.end()), visibleIndices.end());
+    std::sort(excludedIndices.begin(), excludedIndices.end());
+    excludedIndices.erase(std::unique(excludedIndices.begin(), excludedIndices.end()), excludedIndices.end());
     const bool waitingForRangeEnd = pending_filter_range_index_ >= 0 &&
         pending_filter_range_index_ < trajectory_filters_.size() &&
         trajectory_filters_.at(pending_filter_range_index_).end_index < 0;
-    static_cast<TrajectoryMapWidget*>(map_widget_)->setFilterIndices(waitingForRangeEnd ? QVector<int>() : visibleIndices);
+    const bool filterActive = !trajectory_filters_.isEmpty() && !waitingForRangeEnd;
+    static_cast<TrajectoryMapWidget*>(map_widget_)->setExcludedFilterIndices(
+        filterActive ? excludedIndices : QVector<int>(),
+        filterActive);
 
     filter_empty_label_->setVisible(trajectory_filters_.isEmpty());
     filter_empty_label_->setText(is_english_
@@ -3596,14 +3616,14 @@ void TrajectoryViewerDialog::updateFilterSummary()
         if (filter.kind == TrajectoryFilter::Kind::Point)
         {
             rowText = is_english_
-                ? QStringLiteral("Point %1").arg(pointIndexText(filter.start_index))
-                : QStringLiteral("当前点 %1").arg(pointIndexText(filter.start_index));
+                ? QStringLiteral("Exclude point %1").arg(pointIndexText(filter.start_index))
+                : QStringLiteral("过滤点 %1").arg(pointIndexText(filter.start_index));
         }
         else
         {
             rowText = is_english_
-                ? QStringLiteral("Start %1    End %2").arg(pointIndexText(filter.start_index), pointIndexText(filter.end_index))
-                : QStringLiteral("起点 %1    终点 %2").arg(pointIndexText(filter.start_index), pointIndexText(filter.end_index));
+                ? QStringLiteral("Exclude range  Start %1    End %2").arg(pointIndexText(filter.start_index), pointIndexText(filter.end_index))
+                : QStringLiteral("过滤区间  起点 %1    终点 %2").arg(pointIndexText(filter.start_index), pointIndexText(filter.end_index));
         }
 
         const QString removeTitle = is_english_
@@ -3626,13 +3646,20 @@ void TrajectoryViewerDialog::updateFilterSummary()
     filter_list_widget_->setVisible(!trajectory_filters_.isEmpty());
     if (map_status_label_ && !trajectory_filters_.isEmpty())
     {
+        const int visiblePointCount = filterActive
+            ? std::max(0, static_cast<int>(track_points_.size()) - static_cast<int>(excludedIndices.size()))
+            : static_cast<int>(track_points_.size());
         map_status_label_->setText(waitingForRangeEnd
             ? (is_english_
                 ? QStringLiteral("Choose another point to complete the trajectory filter range.")
                 : QStringLiteral("请选择另一个路径点以完成轨迹过滤区间。"))
             : (is_english_
-                ? QStringLiteral("Trajectory filter updated: %1 visible points.").arg(visibleIndices.size())
-                : QStringLiteral("轨迹过滤已更新：%1 个可见点。").arg(visibleIndices.size())));
+                ? QStringLiteral("Trajectory filter updated: %1 points hidden, %2 visible.")
+                    .arg(excludedIndices.size())
+                    .arg(visiblePointCount)
+                : QStringLiteral("轨迹过滤已更新：已过滤 %1 个点，剩余 %2 个点。")
+                    .arg(excludedIndices.size())
+                    .arg(visiblePointCount)));
     }
 }
 

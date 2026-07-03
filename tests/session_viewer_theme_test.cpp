@@ -485,6 +485,7 @@ void testTrajectoryViewerUsesSidebarLayout()
         }
     }
     auto *summaryLabel = dialog.findChild<QLabel *>(QStringLiteral("trajectorySidebarSummaryLabel"));
+    auto *mapStatusLabel = dialog.findChild<QLabel *>(QStringLiteral("trajectorySidebarStatusLabel"));
     auto *detailLabel = dialog.findChild<QLabel *>(QStringLiteral("trajectoryPointDetailLabel"));
 
     require(sidebarCard != nullptr, "trajectory viewer sidebar card exists");
@@ -516,6 +517,7 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(showRouteButton != nullptr, "trajectory viewer route visibility toggle exists");
     require(showPointsButton != nullptr, "trajectory viewer point visibility toggle exists");
     require(summaryLabel != nullptr, "trajectory viewer summary label exists");
+    require(mapStatusLabel != nullptr, "trajectory viewer map status label exists");
     require(detailLabel != nullptr, "trajectory viewer detail label exists");
     const auto sidebarToolButtons = sidebar->findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
     require(sidebarToolButtons.size() >= 4, "trajectory viewer sidebar contains map tool buttons");
@@ -719,11 +721,17 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(filterEmptyLabel->isVisible(), "filter card starts with an empty state");
     require(filterCurrentButton->isEnabled(), "point filter action is enabled when track data exists");
     filterCurrentButton->click();
+    const QString pointFilterStatus = mapStatusLabel->text();
     processEventsFor(100);
     const auto pointFilterRows = visibleFilterRows();
     require(pointFilterRows.size() == 1, "filter-current action adds one row to the sidebar filter list");
     require(pointFilterRows.first()->text().contains(QStringLiteral("#1")),
             "filter-current row records the selected point number");
+    require(pointFilterRows.first()->text().contains(QStringLiteral("过滤点")),
+            "filter-current row describes an excluded point");
+    require(pointFilterStatus.contains(QStringLiteral("已过滤 1 个点"))
+                && pointFilterStatus.contains(QStringLiteral("剩余 1 个点")),
+            "filter-current action excludes the point instead of keeping only it");
     require(pointFilterRows.first()->text().contains(QStringLiteral("remove:0")),
             "filter-current row exposes a row-scoped remove link");
     require(!pointFilterRows.first()->toolTip().trimmed().isEmpty(),
@@ -744,7 +752,9 @@ void testTrajectoryViewerUsesSidebarLayout()
     const auto rangeStartRows = visibleFilterRows();
     require(rangeStartRows.size() == 2, "filter-start action adds a pending range row");
     require(std::any_of(rangeStartRows.cbegin(), rangeStartRows.cend(), [](const QLabel *label) {
-                return label && label->text().contains(QStringLiteral("#1")) && label->text().contains(QStringLiteral("--"));
+                return label && label->text().contains(QStringLiteral("过滤区间")) &&
+                       label->text().contains(QStringLiteral("#1")) &&
+                       label->text().contains(QStringLiteral("--"));
             }),
             "filter-start row leaves the filter end empty until another point is clicked");
     require(std::all_of(rangeStartRows.cbegin(), rangeStartRows.cend(), [](const QLabel *label) {
