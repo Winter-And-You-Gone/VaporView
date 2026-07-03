@@ -701,6 +701,17 @@ void testTrajectoryViewerUsesSidebarLayout()
     dialog.setTrackStats(stats);
     dialog.setTrackPoints({firstPoint, secondPoint});
     processEventsFor(200);
+    auto visibleFilterRows = [filterList]() {
+        QList<QLabel*> rows;
+        for (QLabel *label : filterList->findChildren<QLabel *>(QStringLiteral("trajectoryFilterRowLabel")))
+        {
+            if (label && !label->isHidden())
+            {
+                rows.push_back(label);
+            }
+        }
+        return rows;
+    };
 
     require(heatLegendCard->isVisible(), "heat legend card is visible when peak samples exist");
     require(heatGradientBar->isVisible(), "heat gradient bar is visible when peak samples exist");
@@ -709,22 +720,40 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(filterCurrentButton->isEnabled(), "point filter action is enabled when track data exists");
     filterCurrentButton->click();
     processEventsFor(100);
-    const auto pointFilterRows = filterList->findChildren<QLabel *>(QStringLiteral("trajectoryFilterRowLabel"));
+    const auto pointFilterRows = visibleFilterRows();
     require(pointFilterRows.size() == 1, "filter-current action adds one row to the sidebar filter list");
     require(pointFilterRows.first()->text().contains(QStringLiteral("#1")),
             "filter-current row records the selected point number");
+    require(pointFilterRows.first()->text().contains(QStringLiteral("remove:0")),
+            "filter-current row exposes a row-scoped remove link");
+    require(!pointFilterRows.first()->toolTip().trimmed().isEmpty(),
+            "filter row exposes hover tooltip text for removal");
     require(!filterEmptyLabel->isVisible(), "filter empty text hides after adding a filter");
+    require(QMetaObject::invokeMethod(pointFilterRows.first(),
+                "linkActivated",
+                Qt::DirectConnection,
+                Q_ARG(QString, QStringLiteral("remove:0"))),
+            "filter row remove link activates");
+    processEventsFor(100);
+    require(visibleFilterRows().isEmpty(), "filter remove link hides the canceled filter row");
+    require(filterEmptyLabel->isVisible(), "filter empty text returns after removing all filters");
+    filterCurrentButton->click();
+    processEventsFor(100);
     filterStartButton->click();
     processEventsFor(100);
-    const auto rangeStartRows = filterList->findChildren<QLabel *>(QStringLiteral("trajectoryFilterRowLabel"));
+    const auto rangeStartRows = visibleFilterRows();
     require(rangeStartRows.size() == 2, "filter-start action adds a pending range row");
     require(std::any_of(rangeStartRows.cbegin(), rangeStartRows.cend(), [](const QLabel *label) {
                 return label && label->text().contains(QStringLiteral("#1")) && label->text().contains(QStringLiteral("--"));
             }),
             "filter-start row leaves the filter end empty until another point is clicked");
+    require(std::all_of(rangeStartRows.cbegin(), rangeStartRows.cend(), [](const QLabel *label) {
+                return label && label->text().contains(QStringLiteral("remove:"));
+            }),
+            "each visible filter row exposes its own remove link");
     filterEndButton->click();
     processEventsFor(100);
-    const auto rangeEndRows = filterList->findChildren<QLabel *>(QStringLiteral("trajectoryFilterRowLabel"));
+    const auto rangeEndRows = visibleFilterRows();
     require(std::any_of(rangeEndRows.cbegin(), rangeEndRows.cend(), [](const QLabel *label) {
                 return label && label->text().contains(QStringLiteral("终点 #1")) && !label->text().contains(QStringLiteral("--"));
             }),

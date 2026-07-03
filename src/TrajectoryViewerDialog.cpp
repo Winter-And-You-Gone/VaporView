@@ -3363,6 +3363,36 @@ void TrajectoryViewerDialog::markSelectedPointAsFilterEnd()
     updateFilterSummary();
 }
 
+void TrajectoryViewerDialog::removeTrajectoryFilterAt(int index)
+{
+    if (index < 0 || index >= trajectory_filters_.size())
+    {
+        return;
+    }
+
+    trajectory_filters_.removeAt(index);
+    if (pending_filter_range_index_ == index)
+    {
+        pending_filter_range_index_ = -1;
+    }
+    else if (index < pending_filter_range_index_)
+    {
+        --pending_filter_range_index_;
+    }
+
+    updateFilterSummary();
+    if (map_status_label_)
+    {
+        map_status_label_->setText(trajectory_filters_.isEmpty()
+            ? (is_english_
+                ? QStringLiteral("Trajectory filters cleared.")
+                : QStringLiteral("轨迹过滤已清空。"))
+            : (is_english_
+                ? QStringLiteral("Trajectory filter removed.")
+                : QStringLiteral("已取消一个轨迹过滤条件。")));
+    }
+}
+
 void TrajectoryViewerDialog::exportTrackCsv()
 {
     if (track_points_.isEmpty())
@@ -3529,8 +3559,27 @@ void TrajectoryViewerDialog::updateFilterSummary()
     {
         auto *rowLabel = new QLabel(filter_list_widget_);
         rowLabel->setObjectName(QStringLiteral("trajectoryFilterRowLabel"));
+        rowLabel->setTextFormat(Qt::RichText);
         rowLabel->setWordWrap(true);
-        rowLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        rowLabel->setOpenExternalLinks(false);
+        rowLabel->setTextInteractionFlags(Qt::TextSelectableByMouse |
+                                          Qt::LinksAccessibleByMouse |
+                                          Qt::LinksAccessibleByKeyboard);
+        connect(rowLabel, &QLabel::linkActivated, this, [this](const QString& link) {
+            if (!link.startsWith(QStringLiteral("remove:")))
+            {
+                return;
+            }
+            bool ok = false;
+            const int rowIndex = link.mid(QStringLiteral("remove:").size()).toInt(&ok);
+            if (!ok)
+            {
+                return;
+            }
+            QTimer::singleShot(0, this, [this, rowIndex]() {
+                removeTrajectoryFilterAt(rowIndex);
+            });
+        });
         filter_row_labels_.push_back(rowLabel);
         filter_list_layout_->addWidget(rowLabel);
     }
@@ -3557,8 +3606,21 @@ void TrajectoryViewerDialog::updateFilterSummary()
                 : QStringLiteral("起点 %1    终点 %2").arg(pointIndexText(filter.start_index), pointIndexText(filter.end_index));
         }
 
+        const QString removeTitle = is_english_
+            ? QStringLiteral("Remove this filter")
+            : QStringLiteral("取消此过滤条件");
+        const QString removeColor = (isDarkPalette()
+            ? appThemeColor(AppThemeColor::TextMuted, true)
+            : appThemeColor(AppThemeColor::TextMuted, false)).name(QColor::HexRgb);
         QLabel *rowLabel = filter_row_labels_.at(index);
-        rowLabel->setText(rowText);
+        rowLabel->setText(QStringLiteral(
+            "<table width=\"100%\" cellspacing=\"0\" cellpadding=\"0\">"
+            "<tr><td>%1</td><td align=\"right\">"
+            "<a href=\"remove:%2\" style=\"color:%3; text-decoration:none;\">&#215;</a>"
+            "</td></tr></table>")
+            .arg(rowText, QString::number(index), removeColor));
+        rowLabel->setToolTip(removeTitle);
+        rowLabel->setAccessibleName(removeTitle);
         rowLabel->setProperty("filterRowIndex", index);
     }
     filter_list_widget_->setVisible(!trajectory_filters_.isEmpty());

@@ -60,6 +60,7 @@ private:
     void filterSelectedPoint();
     void markSelectedPointAsFilterStart();
     void markSelectedPointAsFilterEnd();
+    void removeTrajectoryFilterAt(int index);
 
     struct TrajectoryFilter
     {
