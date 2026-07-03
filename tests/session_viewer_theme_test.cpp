@@ -559,7 +559,6 @@ void testTrajectoryViewerUsesSidebarLayout()
         }
     }
     auto *summaryLabel = dialog.findChild<QLabel *>(QStringLiteral("trajectorySidebarSummaryLabel"));
-    auto *mapStatusLabel = dialog.findChild<QLabel *>(QStringLiteral("trajectorySidebarStatusLabel"));
     auto *detailLabel = dialog.findChild<QLabel *>(QStringLiteral("trajectoryPointDetailLabel"));
 
     require(sidebarCard != nullptr, "trajectory viewer sidebar card exists");
@@ -591,10 +590,13 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(showRouteButton != nullptr, "trajectory viewer route visibility toggle exists");
     require(showPointsButton != nullptr, "trajectory viewer point visibility toggle exists");
     require(summaryLabel != nullptr, "trajectory viewer summary label exists");
-    require(mapStatusLabel != nullptr, "trajectory viewer map status label exists");
     require(detailLabel != nullptr, "trajectory viewer detail label exists");
+    require(dialog.findChild<QLabel *>(QStringLiteral("trajectorySidebarStatusLabel")) == nullptr,
+            "trajectory viewer no longer puts map loading status in the sidebar");
     const auto sidebarToolButtons = sidebar->findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
     require(sidebarToolButtons.size() >= 4, "trajectory viewer sidebar contains map tool buttons");
+    require(sidebar->findChildren<QProgressBar *>().isEmpty(),
+            "trajectory viewer no longer puts map loading progress in the sidebar");
     const auto sidebarActionButtons = sidebar->findChildren<QPushButton *>(QStringLiteral("trajectorySidebarActionButton"));
     require(sidebarActionButtons.size() == 2, "trajectory viewer sidebar only keeps copy and export actions");
     require(std::none_of(sidebarActionButtons.cbegin(), sidebarActionButtons.cend(), [](const QPushButton *button) {
@@ -652,6 +654,8 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(pointDetailCard->isAncestorOf(filterEndButton), "filter-end action is inside point detail card");
     require(!sidebar->isAncestorOf(detailLabel), "point detail label is no longer in sidebar");
     require(!pointDetailCard->isVisible(), "point detail card stays hidden until a point is clicked");
+    require(map->layout() != nullptr && map->layout()->contentsMargins().bottom() >= 40,
+            "point detail card leaves vertical room above the map footer data bar");
     require(pointDetailCloseButton->minimumSize() == QSize(24, 24)
                 && pointDetailCloseButton->maximumSize() == QSize(24, 24),
             "point detail close button stays compact in the card corner");
@@ -723,6 +727,10 @@ void testTrajectoryViewerUsesSidebarLayout()
             "trajectory viewer stylesheet includes sidebar title icon styling");
     require(styleSheet.contains(QStringLiteral("QLabel#trajectorySidebarTitleIcon { background-color: transparent; border: none")),
             "trajectory sidebar title icon is not drawn with a blue badge background");
+    require(!styleSheet.contains(QStringLiteral("trajectorySidebarStatusLabel")),
+            "trajectory viewer stylesheet no longer targets a sidebar map status label");
+    require(!styleSheet.contains(QStringLiteral("QProgressBar")),
+            "trajectory viewer stylesheet no longer styles a sidebar map loading progress bar");
     require(styleSheet.contains(QStringLiteral("QLabel#trajectoryControlLabel")),
             "trajectory viewer stylesheet includes route control label styling");
     require(styleSheet.contains(QStringLiteral("QFrame#trajectoryHeatLegendCard")),
@@ -806,6 +814,11 @@ void testTrajectoryViewerUsesSidebarLayout()
     dialog.setTrackStats(stats);
     dialog.setTrackPoints({firstPoint, secondPoint});
     processEventsFor(200);
+    const QString footerStatus = map->property("_vvFooterStatusText").toString();
+    require(footerStatus.contains(QStringLiteral("底图")),
+            "map loading status is shown in the map footer data bar");
+    require(map->property("_vvFooterProgressFormat").toString().contains(QStringLiteral("/")),
+            "map loading progress is exposed by the map footer data bar");
     auto visibleFilterRows = [filterList]() {
         QList<QLabel*> rows;
         for (QLabel *label : filterList->findChildren<QLabel *>(QStringLiteral("trajectoryFilterRowLabel")))
@@ -824,7 +837,7 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(filterEmptyLabel->isVisible(), "filter card starts with an empty state");
     require(filterCurrentButton->isEnabled(), "point filter action is enabled when track data exists");
     filterCurrentButton->click();
-    const QString pointFilterStatus = mapStatusLabel->text();
+    const QString pointFilterStatus = map->property("_vvFooterStatusText").toString();
     processEventsFor(100);
     const auto pointFilterRows = visibleFilterRows();
     require(pointFilterRows.size() == 1, "filter-current action adds one row to the sidebar filter list");

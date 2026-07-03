@@ -12,6 +12,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFontMetrics>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QComboBox>
@@ -29,7 +30,6 @@
 #include <QPaintEvent>
 #include <QPalette>
 #include <QPixmap>
-#include <QProgressBar>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSet>
@@ -707,6 +707,10 @@ public:
         , repaint_update_requested_(false)
         , english_track_label_(QStringLiteral("RTK trajectory"))
         , chinese_track_label_(QStringLiteral("RTK轨迹"))
+        , footer_status_text_()
+        , footer_loaded_tiles_(0)
+        , footer_failed_tiles_(0)
+        , footer_total_tiles_(0)
     {
         setMinimumSize(720, 420);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -734,8 +738,6 @@ public:
         visible_tile_request_scheduled_ = false;
         feedback_update_scheduled_ = false;
         repaint_update_requested_ = false;
-        status_callback_ = nullptr;
-        progress_callback_ = nullptr;
         selection_callback_ = nullptr;
 
         if (manager_)
@@ -765,16 +767,11 @@ public:
         abortActiveTileReplies();
     }
 
-    void setStatusCallback(std::function<void(const QString&)> callback)
+    void setFooterStatusText(const QString& text)
     {
-        status_callback_ = std::move(callback);
-        updateLoadFeedback();
-    }
-
-    void setProgressCallback(std::function<void(int, int, int)> callback)
-    {
-        progress_callback_ = std::move(callback);
-        updateLoadFeedback();
+        footer_status_text_ = text;
+        setProperty("_vvFooterStatusText", footer_status_text_);
+        update();
     }
 
     void setSelectionCallback(std::function<void(int)> callback)
@@ -2306,20 +2303,66 @@ private:
         QFont footerFont = painter.font();
         footerFont.setPointSize(8);
         painter.setFont(footerFont);
+        const QFontMetrics footerMetrics(footerFont);
         painter.setPen(appThemeColor(AppThemeColor::MapText, false));
-        painter.drawText(footerRect.adjusted(8, 0, -8, 0),
+        const QRectF innerRect = footerRect.adjusted(8, 0, -8, 0);
+        const QString attributionText = mapAttributionText(tile_provider_, is_english_);
+        const double attributionWidth = std::clamp(footerRect.width() * 0.26, 120.0, 220.0);
+        const QRectF attributionRect(innerRect.left(), innerRect.top(), attributionWidth, innerRect.height());
+        painter.drawText(attributionRect,
             Qt::AlignLeft | Qt::AlignVCenter,
-            mapAttributionText(tile_provider_, is_english_));
+            footerMetrics.elidedText(attributionText, Qt::ElideRight, static_cast<int>(attributionRect.width())));
+
         const int excludedPointCount = static_cast<int>(excluded_track_indices_.size());
         const int trackPointCount = static_cast<int>(track_points_.size());
         const int visiblePointCount = track_filter_active_
             ? std::max(0, trackPointCount - excludedPointCount)
             : trackPointCount;
-        painter.drawText(footerRect.adjusted(8, 0, -8, 0),
+        const QString pointsText = QString(is_english_ ? "%1 points: %2" : "%1点数: %2")
+            .arg(is_english_ ? english_track_label_ : chinese_track_label_)
+            .arg(visiblePointCount);
+        const double pointsWidth = std::min<double>(footerMetrics.horizontalAdvance(pointsText) + 6, footerRect.width() * 0.28);
+        const double progressWidth = footerRect.width() >= 420.0 ? 92.0 : 74.0;
+        const QRectF pointsRect(innerRect.right() - pointsWidth, innerRect.top(), pointsWidth, innerRect.height());
+        const QRectF progressRect(pointsRect.left() - progressWidth - 8.0, innerRect.top() + 4.0, progressWidth, 12.0);
+        const QRectF statusRect(attributionRect.right() + 10.0,
+                                innerRect.top(),
+                                std::max(0.0, progressRect.left() - attributionRect.right() - 18.0),
+                                innerRect.height());
+
+        if (!footer_status_text_.isEmpty() && statusRect.width() > 40.0)
+        {
+            painter.drawText(statusRect,
+                Qt::AlignLeft | Qt::AlignVCenter,
+                footerMetrics.elidedText(footer_status_text_, Qt::ElideRight, static_cast<int>(statusRect.width())));
+        }
+
+        QPainterPath progressBg;
+        progressBg.addRoundedRect(progressRect, 6.0, 6.0);
+        QColor progressBgColor = appThemeColor(AppThemeColor::SurfaceSunken, false);
+        progressBgColor.setAlpha(170);
+        painter.fillPath(progressBg, progressBgColor);
+        const int completedTiles = footer_total_tiles_ > 0
+            ? std::min(footer_total_tiles_, footer_loaded_tiles_ + footer_failed_tiles_)
+            : 0;
+        if (footer_total_tiles_ > 0 && completedTiles > 0)
+        {
+            QRectF chunkRect = progressRect;
+            chunkRect.setWidth(std::max(10.0, progressRect.width() * static_cast<double>(completedTiles) / footer_total_tiles_));
+            QPainterPath chunkPath;
+            chunkPath.addRoundedRect(chunkRect, 6.0, 6.0);
+            painter.fillPath(chunkPath, appThemeColor(AppThemeColor::ProgressChunk, false));
+        }
+        painter.setPen(Qt::white);
+        painter.drawText(progressRect, Qt::AlignCenter,
+            footer_total_tiles_ > 0
+                ? QStringLiteral("%1/%2").arg(completedTiles).arg(footer_total_tiles_)
+                : QStringLiteral("--"));
+
+        painter.setPen(appThemeColor(AppThemeColor::MapText, false));
+        painter.drawText(pointsRect,
             Qt::AlignRight | Qt::AlignVCenter,
-            QString(is_english_ ? "%1 points: %2" : "%1点数: %2")
-                .arg(is_english_ ? english_track_label_ : chinese_track_label_)
-                .arg(visiblePointCount));
+            footerMetrics.elidedText(pointsText, Qt::ElideLeft, static_cast<int>(pointsRect.width())));
         painter.restore();
     }
 
@@ -2476,16 +2519,6 @@ private:
             }
         }
 
-        if (progress_callback_)
-        {
-            progress_callback_(loaded, failed, totalVisible);
-        }
-
-        if (!status_callback_)
-        {
-            return;
-        }
-
         QString statusText;
         if (track_points_.isEmpty())
         {
@@ -2541,7 +2574,15 @@ private:
                 .arg(totalVisible);
         }
 
-        status_callback_(statusText);
+        footer_status_text_ = statusText;
+        footer_loaded_tiles_ = loaded;
+        footer_failed_tiles_ = failed;
+        footer_total_tiles_ = totalVisible;
+        setProperty("_vvFooterStatusText", footer_status_text_);
+        setProperty("_vvFooterProgressFormat", footer_total_tiles_ > 0
+            ? QStringLiteral("%1/%2").arg(std::min(footer_total_tiles_, footer_loaded_tiles_ + footer_failed_tiles_)).arg(footer_total_tiles_)
+            : QStringLiteral("--"));
+        update();
     }
 
     QNetworkAccessManager *manager_;
@@ -2595,8 +2636,10 @@ private:
     bool repaint_update_requested_;
     QString english_track_label_;
     QString chinese_track_label_;
-    std::function<void(const QString&)> status_callback_;
-    std::function<void(int, int, int)> progress_callback_;
+    QString footer_status_text_;
+    int footer_loaded_tiles_;
+    int footer_failed_tiles_;
+    int footer_total_tiles_;
     std::function<void(int)> selection_callback_;
 };
 }
@@ -2613,8 +2656,6 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , filter_list_widget_(new QWidget(this))
     , filter_list_layout_(nullptr)
     , filter_row_labels_()
-    , map_status_label_(new QLabel(this))
-    , map_progress_bar_(new QProgressBar(this))
     , map_widget_(new TrajectoryMapWidget(this))
     , track_width_label_(new QLabel(this))
     , track_width_slider_(new QSlider(Qt::Horizontal, this))
@@ -2755,15 +2796,6 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     filterCardLayout->addWidget(filter_list_widget_);
     sidebarLayout->addWidget(filter_card_);
 
-    map_status_label_->setWordWrap(true);
-    map_status_label_->setObjectName(QStringLiteral("trajectorySidebarStatusLabel"));
-    sidebarLayout->addWidget(map_status_label_);
-    map_progress_bar_->setTextVisible(true);
-    map_progress_bar_->setMinimum(0);
-    map_progress_bar_->setMaximum(1);
-    map_progress_bar_->setValue(0);
-    sidebarLayout->addWidget(map_progress_bar_);
-
     auto *actionLayout = new QHBoxLayout();
     actionLayout->setContentsMargins(0, 0, 0, 0);
     actionLayout->setSpacing(8);
@@ -2806,16 +2838,6 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     sidebarLayout->addLayout(actionLayout);
 
     auto *mapWidget = static_cast<TrajectoryMapWidget*>(map_widget_);
-    mapWidget->setStatusCallback([this](const QString& text) {
-        map_status_label_->setText(text);
-    });
-    mapWidget->setProgressCallback([this](int loaded, int failed, int total) {
-        map_progress_bar_->setMaximum(std::max(1, total));
-        map_progress_bar_->setValue(std::min(total, loaded + failed));
-        map_progress_bar_->setFormat(total > 0
-            ? QStringLiteral("%1/%2").arg(std::min(total, loaded + failed)).arg(total)
-            : QStringLiteral("--"));
-    });
     mapWidget->setSelectionCallback([this](int index) {
         point_detail_visible_ = true;
         setSelectedTrackIndex(index, true);
@@ -2990,7 +3012,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     sidebarLayout->addStretch(1);
 
     auto *mapOverlayLayout = new QVBoxLayout(map_widget_);
-    mapOverlayLayout->setContentsMargins(14, 14, 14, 14);
+    mapOverlayLayout->setContentsMargins(14, 14, 14, 42);
     mapOverlayLayout->setSpacing(0);
     auto *mapTopOverlayLayout = new QHBoxLayout();
     mapTopOverlayLayout->setContentsMargins(0, 0, 0, 0);
@@ -3142,7 +3164,7 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QFrame#trajectoryViewerSidebarCard QLabel#sectionTitleLabel { background-color: transparent; border: none; color: @vv-text; font-size: 16px; font-weight: bold; margin: 0px; padding: 0px; }"
         "QDialog#trajectoryViewerDialog QScrollArea#trajectoryViewerSidebar { background-color: @vv-surface; border: none; border-bottom-left-radius: 7px; border-bottom-right-radius: 7px; }"
         "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarViewport, QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent { background-color: @vv-surface; border: none; }"
-        "QDialog#trajectoryViewerDialog QLabel#trajectorySidebarSummaryLabel, QDialog#trajectoryViewerDialog QLabel#trajectorySidebarStatusLabel { color: @vv-text; background-color: transparent; border: none; font-size: 14px; font-weight: 500; line-height: 140%; }"
+        "QDialog#trajectoryViewerDialog QLabel#trajectorySidebarSummaryLabel { color: @vv-text; background-color: transparent; border: none; font-size: 14px; font-weight: 500; line-height: 140%; }"
         "QDialog#trajectoryViewerDialog QFrame#trajectoryFilterCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectoryFilterTitle { color: @vv-text-strong; background-color: transparent; border: none; font-size: 14px; font-weight: 700; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectoryFilterEmptyLabel { color: @vv-text-muted; background-color: transparent; border: none; font-size: 12px; font-weight: 500; line-height: 140%; }"
@@ -3166,8 +3188,6 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QPushButton#trajectorySidebarActionButton:hover { background-color: @vv-primary-subtle; color: @vv-primary; }"
         "QDialog#trajectoryViewerDialog QPushButton#trajectorySidebarActionButton:pressed { background-color: @vv-primary-subtle-pressed; color: @vv-primary; }"
         "QDialog#trajectoryViewerDialog QPushButton#trajectorySidebarActionButton:disabled { background-color: transparent; color: @vv-text-muted; }"
-        "QDialog#trajectoryViewerDialog QProgressBar { background-color: @vv-field-bg; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; font-size: 12px; font-weight: 600; min-height: 16px; max-height: 16px; text-align: center; }"
-        "QDialog#trajectoryViewerDialog QProgressBar::chunk { background-color: @vv-progress-chunk; border-radius: 5px; }"
         "QDialog#trajectoryViewerDialog QSlider::groove:horizontal { background-color: @vv-field-bg; border: 1px solid @vv-border; height: 6px; border-radius: 3px; }"
         "QDialog#trajectoryViewerDialog QSlider::handle:horizontal { background-color: @vv-primary; border: 1px solid @vv-primary; width: 14px; margin: -5px 0px; border-radius: 7px; }"
         "QDialog#trajectoryViewerDialog QComboBox#trajectoryMapSourceCombo { background-color: @vv-field-bg; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; font-size: 14px; font-weight: 600; min-height: 32px; padding: 4px 28px 4px 10px; }"
@@ -3310,6 +3330,14 @@ void TrajectoryViewerDialog::setTrackStats(const RtkTrackStats& stats)
     updateSummary();
 }
 
+void TrajectoryViewerDialog::setMapFooterStatus(const QString& text)
+{
+    if (map_widget_)
+    {
+        static_cast<TrajectoryMapWidget*>(map_widget_)->setFooterStatusText(text);
+    }
+}
+
 void TrajectoryViewerDialog::setSelectedTrackIndex(int index, bool notifySession)
 {
     const int clamped = track_points_.isEmpty()
@@ -3400,7 +3428,7 @@ void TrajectoryViewerDialog::copySelectedPoint()
         .arg(point.csv_row >= 0 ? point.csv_row + 1 : 0)
         .arg(point.waveform_frame_index >= 0 ? point.waveform_frame_index + 1 : 0);
     qApp->clipboard()->setText(text);
-    map_status_label_->setText(is_english_
+    setMapFooterStatus(is_english_
         ? QStringLiteral("Selected trajectory point copied to clipboard.")
         : QStringLiteral("已复制当前轨迹点到剪贴板。"));
 }
@@ -3464,16 +3492,13 @@ void TrajectoryViewerDialog::removeTrajectoryFilterAt(int index)
     }
 
     updateFilterSummary();
-    if (map_status_label_)
-    {
-        map_status_label_->setText(trajectory_filters_.isEmpty()
-            ? (is_english_
-                ? QStringLiteral("Trajectory filters cleared.")
-                : QStringLiteral("轨迹过滤已清空。"))
-            : (is_english_
-                ? QStringLiteral("Trajectory filter removed.")
-                : QStringLiteral("已取消一个轨迹过滤条件。")));
-    }
+    setMapFooterStatus(trajectory_filters_.isEmpty()
+        ? (is_english_
+            ? QStringLiteral("Trajectory filters cleared.")
+            : QStringLiteral("轨迹过滤已清空。"))
+        : (is_english_
+            ? QStringLiteral("Trajectory filter removed.")
+            : QStringLiteral("已取消一个轨迹过滤条件。")));
 }
 
 void TrajectoryViewerDialog::exportTrackCsv()
@@ -3496,7 +3521,7 @@ void TrajectoryViewerDialog::exportTrackCsv()
     QFile file(filename);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
     {
-        map_status_label_->setText(QString(is_english_
+        setMapFooterStatus(QString(is_english_
             ? "Failed to export trajectory CSV: %1"
             : "导出轨迹 CSV 失败：%1").arg(file.errorString()));
         return;
@@ -3525,7 +3550,7 @@ void TrajectoryViewerDialog::exportTrackCsv()
                << (point.has_waveform_match ? QString::number(static_cast<double>(point.waveform_delta_us) / 1000.0, 'f', 3) : QString())
                << '\n';
     }
-    map_status_label_->setText(QString(is_english_
+    setMapFooterStatus(QString(is_english_
         ? "Trajectory CSV exported: %1"
         : "轨迹 CSV 已导出：%1").arg(QDir::toNativeSeparators(filename)));
 }
@@ -3710,12 +3735,12 @@ void TrajectoryViewerDialog::updateFilterSummary()
         rowLabel->setProperty("filterRowIndex", index);
     }
     filter_list_widget_->setVisible(!trajectory_filters_.isEmpty());
-    if (map_status_label_ && !trajectory_filters_.isEmpty())
+    if (!trajectory_filters_.isEmpty())
     {
         const int visiblePointCount = filterActive
             ? std::max(0, static_cast<int>(track_points_.size()) - static_cast<int>(excludedIndices.size()))
             : static_cast<int>(track_points_.size());
-        map_status_label_->setText(waitingForRangeEnd
+        setMapFooterStatus(waitingForRangeEnd
             ? (is_english_
                 ? QStringLiteral("Choose another point to complete the trajectory filter range.")
                 : QStringLiteral("请选择另一个路径点以完成轨迹过滤区间。"))
@@ -4039,10 +4064,6 @@ void TrajectoryViewerDialog::updateTexts()
         is_english_
             ? QStringLiteral("Saved Tianditu tile key. Clear the field to remove it.")
             : QStringLiteral("已保存的天地图瓦片 Key。清空输入框即可删除。"));
-    map_progress_bar_->setToolTip(
-        is_english_
-            ? QStringLiteral("Shows the loading progress of the currently visible base map tiles.")
-            : QStringLiteral("显示当前可见区域底图瓦片的加载进度。"));
     copy_point_button_->setText(is_english_ ? QStringLiteral("Copy Point") : QStringLiteral("复制点"));
     export_button_->setText(is_english_ ? QStringLiteral("Export CSV") : QStringLiteral("导出 CSV"));
     point_detail_close_button_->setToolTip(is_english_

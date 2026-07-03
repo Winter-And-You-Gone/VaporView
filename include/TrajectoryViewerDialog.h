@@ -13,7 +13,6 @@ class QEvent;
 class QFrame;
 class QLineEdit;
 class QMenu;
-class QProgressBar;
 class QToolButton;
 class QWidget;
 class QSlider;
@@ -52,6 +51,7 @@ private:
     void updateSummary();
     void updateSelectedPointDetails();
     void updateFilterSummary();
+    void setMapFooterStatus(const QString& text);
     void setSelectedTrackIndex(int index, bool notifySession);
     void finishPendingFilterRange(int endIndex);
     void hidePointDetailCard();
@@ -85,8 +85,6 @@ private:
     QWidget *filter_list_widget_;
     QVBoxLayout *filter_list_layout_;
     QVector<QLabel*> filter_row_labels_;
-    QLabel *map_status_label_;
-    QProgressBar *map_progress_bar_;
     QWidget *map_widget_;
     QLabel *track_width_label_;
     QSlider *track_width_slider_;
