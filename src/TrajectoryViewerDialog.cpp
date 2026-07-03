@@ -972,13 +972,13 @@ protected:
         const QPoint angleDelta = event->angleDelta();
         if (angleDelta.y() > 0)
         {
-            adjustZoom(+1);
+            adjustZoom(+1, event->position(), true);
             event->accept();
             return;
         }
         if (angleDelta.y() < 0)
         {
-            adjustZoom(-1);
+            adjustZoom(-1, event->position(), true);
             event->accept();
             return;
         }
@@ -2216,7 +2216,7 @@ private:
         update();
     }
 
-    void adjustZoom(int delta)
+    void adjustZoom(int delta, const QPointF& dragRebasePosition = QPointF(), bool rebaseDragPosition = false)
     {
         if (track_points_.isEmpty() || delta == 0)
         {
@@ -2237,7 +2237,21 @@ private:
         center_world_pixel_ = centerLatLonPixelAtNewZoom;
         manual_view_active_ = true;
         last_render_context_ = TrackRenderContext();
-        scheduleVisibleTileRequest(kTileZoomRequestDebounceMs);
+        if (dragging_)
+        {
+            drag_frame_cache_ = QPixmap();
+            drag_current_delta_ = QPointF();
+            drag_start_center_world_pixel_ = center_world_pixel_;
+            if (rebaseDragPosition)
+            {
+                drag_start_pos_ = dragRebasePosition;
+            }
+            requestVisibleTiles();
+        }
+        else
+        {
+            scheduleVisibleTileRequest(kTileZoomRequestDebounceMs);
+        }
         update();
     }
 
