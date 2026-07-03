@@ -2405,7 +2405,6 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , map_status_label_(new QLabel(this))
     , map_progress_bar_(new QProgressBar(this))
     , map_widget_(new TrajectoryMapWidget(this))
-    , timeline_slider_(new QSlider(Qt::Horizontal, this))
     , track_width_label_(new QLabel(this))
     , track_width_slider_(new QSlider(Qt::Horizontal, this))
     , point_size_label_(new QLabel(this))
@@ -2420,9 +2419,9 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , heat_palette_menu_(new QMenu(this))
     , map_tools_card_(new QFrame(this))
     , point_detail_card_(new QFrame(this))
+    , point_detail_close_button_(new QToolButton(this))
     , show_route_button_(new QPushButton(this))
     , show_points_button_(new QPushButton(this))
-    , play_button_(new QPushButton(this))
     , export_button_(new QPushButton(this))
     , copy_point_button_(new QPushButton(this))
     , map_source_combo_(new QComboBox(this))
@@ -2441,7 +2440,6 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , track_stats_()
     , selected_track_index_(-1)
     , point_detail_visible_(false)
-    , playback_timer_(new QTimer(this))
 {
     setObjectName(QStringLiteral("trajectoryViewerDialog"));
     setWindowFlag(Qt::Window, true);
@@ -2532,12 +2530,9 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     map_progress_bar_->setValue(0);
     sidebarLayout->addWidget(map_progress_bar_);
 
-    auto *timelineLayout = new QHBoxLayout();
-    timelineLayout->setContentsMargins(0, 0, 0, 0);
-    timelineLayout->setSpacing(8);
-    timeline_slider_->setEnabled(false);
-    timeline_slider_->setRange(0, 0);
-    timeline_slider_->setTracking(true);
+    auto *actionLayout = new QHBoxLayout();
+    actionLayout->setContentsMargins(0, 0, 0, 0);
+    actionLayout->setSpacing(8);
     track_width_label_->setObjectName(QStringLiteral("trajectoryControlLabel"));
     track_width_label_->setMinimumWidth(52);
     point_size_label_->setObjectName(QStringLiteral("trajectoryControlLabel"));
@@ -2564,20 +2559,17 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     point_size_slider_->setValue(static_cast<int>(std::lround(kDefaultTrackPointRadius * kTrackStyleSliderScale)));
     point_size_slider_->setTracking(true);
     point_size_slider_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    play_button_->setEnabled(false);
     export_button_->setEnabled(false);
     copy_point_button_->setEnabled(false);
-    for (auto *button : {play_button_, copy_point_button_, export_button_})
+    for (auto *button : {copy_point_button_, export_button_})
     {
         button->setObjectName(QStringLiteral("trajectorySidebarActionButton"));
         button->setFixedHeight(32);
         button->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Fixed);
     }
-    timelineLayout->addWidget(play_button_);
-    timelineLayout->addWidget(timeline_slider_, 1);
-    timelineLayout->addWidget(copy_point_button_);
-    timelineLayout->addWidget(export_button_);
-    sidebarLayout->addLayout(timelineLayout);
+    actionLayout->addWidget(copy_point_button_);
+    actionLayout->addWidget(export_button_);
+    sidebarLayout->addLayout(actionLayout);
 
     auto *mapWidget = static_cast<TrajectoryMapWidget*>(map_widget_);
     mapWidget->setStatusCallback([this](const QString& text) {
@@ -2675,9 +2667,21 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     point_detail_card_->setFixedWidth(380);
     point_detail_card_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     point_detail_card_->hide();
+    point_detail_close_button_->setObjectName(QStringLiteral("trajectoryPointDetailCloseButton"));
+    point_detail_close_button_->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    point_detail_close_button_->setAutoRaise(false);
+    point_detail_close_button_->setFocusPolicy(Qt::NoFocus);
+    point_detail_close_button_->setFixedSize(24, 24);
+    point_detail_close_button_->setIconSize(QSize(16, 16));
     auto *pointDetailLayout = new QVBoxLayout(point_detail_card_);
-    pointDetailLayout->setContentsMargins(10, 8, 10, 8);
-    pointDetailLayout->setSpacing(0);
+    pointDetailLayout->setContentsMargins(10, 6, 10, 8);
+    pointDetailLayout->setSpacing(2);
+    auto *pointDetailHeaderLayout = new QHBoxLayout();
+    pointDetailHeaderLayout->setContentsMargins(0, 0, 0, 0);
+    pointDetailHeaderLayout->setSpacing(0);
+    pointDetailHeaderLayout->addStretch(1);
+    pointDetailHeaderLayout->addWidget(point_detail_close_button_);
+    pointDetailLayout->addLayout(pointDetailHeaderLayout);
     pointDetailLayout->addWidget(detail_label_);
 
     tianditu_key_edit_->setObjectName(QStringLiteral("trajectoryTiandituKeyEdit"));
@@ -2809,17 +2813,12 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     connect(reset_view_button_, &QToolButton::clicked, this, [this]() {
         static_cast<TrajectoryMapWidget*>(map_widget_)->resetView();
     });
-    connect(timeline_slider_, &QSlider::valueChanged,
-            this, &TrajectoryViewerDialog::onTimelineChanged);
-    connect(play_button_, &QPushButton::clicked,
-            this, &TrajectoryViewerDialog::togglePlayback);
+    connect(point_detail_close_button_, &QToolButton::clicked,
+            this, &TrajectoryViewerDialog::hidePointDetailCard);
     connect(export_button_, &QPushButton::clicked,
             this, &TrajectoryViewerDialog::exportTrackCsv);
     connect(copy_point_button_, &QPushButton::clicked,
             this, &TrajectoryViewerDialog::copySelectedPoint);
-    connect(playback_timer_, &QTimer::timeout,
-            this, &TrajectoryViewerDialog::advancePlayback);
-    playback_timer_->setInterval(350);
 
     {
         QSettings settings("VaporView", "TrajectoryViewer");
@@ -2844,10 +2843,6 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
 
 TrajectoryViewerDialog::~TrajectoryViewerDialog()
 {
-    if (playback_timer_)
-    {
-        playback_timer_->stop();
-    }
     for (QObject *sender : {
              static_cast<QObject*>(heat_palette_menu_),
              static_cast<QObject*>(heat_palette_button_),
@@ -2855,7 +2850,7 @@ TrajectoryViewerDialog::~TrajectoryViewerDialog()
              static_cast<QObject*>(point_size_slider_),
              static_cast<QObject*>(show_route_button_),
              static_cast<QObject*>(show_points_button_),
-             static_cast<QObject*>(timeline_slider_),
+             static_cast<QObject*>(point_detail_close_button_),
              static_cast<QObject*>(zoom_in_button_),
              static_cast<QObject*>(zoom_out_button_),
              static_cast<QObject*>(reset_view_button_)})
@@ -2891,6 +2886,8 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QLabel#trajectorySidebarSummaryLabel, QDialog#trajectoryViewerDialog QLabel#trajectorySidebarStatusLabel { color: @vv-text; background-color: transparent; border: none; font-size: 14px; font-weight: 500; line-height: 140%; }"
         "QDialog#trajectoryViewerDialog QFrame#trajectoryPointDetailCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectoryPointDetailLabel { color: @vv-text; background-color: transparent; border: none; font-size: 13px; font-weight: 500; line-height: 140%; }"
+        "QDialog#trajectoryViewerDialog QToolButton#trajectoryPointDetailCloseButton { background-color: transparent; border: none; border-radius: 4px; color: @vv-text-muted; min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px; padding: 0px; }"
+        "QDialog#trajectoryViewerDialog QToolButton#trajectoryPointDetailCloseButton:hover, QDialog#trajectoryViewerDialog QToolButton#trajectoryPointDetailCloseButton:focus { background-color: @vv-primary-subtle; color: @vv-primary; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectoryControlLabel { color: @vv-text; background-color: transparent; border: none; font-size: 13px; font-weight: 600; min-height: 24px; }"
         "QDialog#trajectoryViewerDialog QFrame#trajectoryHeatLegendCard, QDialog#trajectoryViewerDialog QFrame#trajectoryMapToolsCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectoryHeatLegendTitle { color: @vv-text-strong; background-color: transparent; border: none; font-size: 13px; font-weight: 700; }"
@@ -3022,19 +3019,11 @@ void TrajectoryViewerDialog::setTrackPoints(const QVector<RtkTrackPoint>& points
     selected_track_index_ = track_points_.isEmpty()
         ? -1
         : std::clamp(selected_track_index_, 0, static_cast<int>(track_points_.size()) - 1);
-    {
-        QSignalBlocker blocker(timeline_slider_);
-        timeline_slider_->setEnabled(!track_points_.isEmpty());
-        timeline_slider_->setRange(track_points_.isEmpty() ? 0 : 1,
-                                   track_points_.isEmpty() ? 0 : static_cast<int>(track_points_.size()));
-        timeline_slider_->setValue(selected_track_index_ >= 0 ? selected_track_index_ + 1 : (track_points_.isEmpty() ? 0 : 1));
-    }
     if (!track_points_.isEmpty() && selected_track_index_ < 0)
     {
         selected_track_index_ = 0;
     }
     static_cast<TrajectoryMapWidget*>(map_widget_)->setSelectedTrackIndex(selected_track_index_);
-    play_button_->setEnabled(!track_points_.isEmpty());
     export_button_->setEnabled(!track_points_.isEmpty());
     copy_point_button_->setEnabled(!track_points_.isEmpty());
     updateSummary();
@@ -3065,11 +3054,6 @@ void TrajectoryViewerDialog::setSelectedTrackIndex(int index, bool notifySession
 
     selected_track_index_ = clamped;
     static_cast<TrajectoryMapWidget*>(map_widget_)->setSelectedTrackIndex(selected_track_index_);
-    if (timeline_slider_)
-    {
-        QSignalBlocker blocker(timeline_slider_);
-        timeline_slider_->setValue(selected_track_index_ >= 0 ? selected_track_index_ + 1 : 0);
-    }
     updateSelectedPointDetails();
     if (notifySession && selected_track_index_ >= 0)
     {
@@ -3077,54 +3061,13 @@ void TrajectoryViewerDialog::setSelectedTrackIndex(int index, bool notifySession
     }
 }
 
-void TrajectoryViewerDialog::onTimelineChanged(int value)
+void TrajectoryViewerDialog::hidePointDetailCard()
 {
-    if (track_points_.isEmpty() || value <= 0)
+    point_detail_visible_ = false;
+    if (point_detail_card_)
     {
-        setSelectedTrackIndex(-1, false);
-        return;
+        point_detail_card_->hide();
     }
-    setSelectedTrackIndex(value - 1, true);
-}
-
-void TrajectoryViewerDialog::togglePlayback()
-{
-    if (track_points_.isEmpty())
-    {
-        return;
-    }
-    if (playback_timer_->isActive())
-    {
-        playback_timer_->stop();
-    }
-    else
-    {
-        if (selected_track_index_ < 0 || selected_track_index_ >= track_points_.size() - 1)
-        {
-            setSelectedTrackIndex(0, true);
-        }
-        playback_timer_->start();
-    }
-    updateTexts();
-}
-
-void TrajectoryViewerDialog::advancePlayback()
-{
-    if (track_points_.isEmpty())
-    {
-        playback_timer_->stop();
-        updateTexts();
-        return;
-    }
-
-    const int nextIndex = selected_track_index_ < 0 ? 0 : selected_track_index_ + 1;
-    if (nextIndex >= track_points_.size())
-    {
-        playback_timer_->stop();
-        updateTexts();
-        return;
-    }
-    setSelectedTrackIndex(nextIndex, true);
 }
 
 void TrajectoryViewerDialog::copySelectedPoint()
@@ -3265,10 +3208,6 @@ void TrajectoryViewerDialog::changeEvent(QEvent *event)
 
 void TrajectoryViewerDialog::closeEvent(QCloseEvent *event)
 {
-    if (playback_timer_)
-    {
-        playback_timer_->stop();
-    }
     if (map_widget_)
     {
         static_cast<TrajectoryMapWidget*>(map_widget_)->cancelTileActivity();
@@ -3303,6 +3242,11 @@ void TrajectoryViewerDialog::updateTitleBarIcons()
     if (reset_view_button_)
     {
         reset_view_button_->setIcon(createTitleBarIcon(QStringLiteral("maximize"), dark));
+    }
+    if (point_detail_close_button_)
+    {
+        point_detail_close_button_->setIcon(createLucideIcon(QStringLiteral("x"),
+            dark ? appThemeColor(AppThemeColor::TextMuted, true) : appThemeColor(AppThemeColor::TextMuted, false)));
     }
     updateVisibilityButtonIcons();
 }
@@ -3540,14 +3484,12 @@ void TrajectoryViewerDialog::updateTexts()
         is_english_
             ? QStringLiteral("Shows the loading progress of the currently visible base map tiles.")
             : QStringLiteral("显示当前可见区域底图瓦片的加载进度。"));
-    play_button_->setText(playback_timer_->isActive()
-        ? (is_english_ ? QStringLiteral("Pause") : QStringLiteral("暂停"))
-        : (is_english_ ? QStringLiteral("Play") : QStringLiteral("播放")));
     copy_point_button_->setText(is_english_ ? QStringLiteral("Copy Point") : QStringLiteral("复制点"));
     export_button_->setText(is_english_ ? QStringLiteral("Export CSV") : QStringLiteral("导出 CSV"));
-    timeline_slider_->setToolTip(is_english_
-        ? QStringLiteral("Scrub along accepted trajectory points and sync the selected point back to CSV/waveform views.")
-        : QStringLiteral("沿有效轨迹点拖动，并同步定位到 CSV / 波形视图。"));
+    point_detail_close_button_->setToolTip(is_english_
+        ? QStringLiteral("Close selected point details")
+        : QStringLiteral("关闭当前点详情"));
+    point_detail_close_button_->setAccessibleName(point_detail_close_button_->toolTip());
     copy_point_button_->setToolTip(is_english_
         ? QStringLiteral("Copy selected trajectory point coordinates and linkage info.")
         : QStringLiteral("复制当前轨迹点坐标与联动信息。"));

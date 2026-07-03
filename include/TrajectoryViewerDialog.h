@@ -17,7 +17,6 @@ class QProgressBar;
 class QToolButton;
 class QWidget;
 class QSlider;
-class QTimer;
 class QPushButton;
 
 class TrajectoryViewerDialog : public QDialog
@@ -52,9 +51,7 @@ private:
     void updateSummary();
     void updateSelectedPointDetails();
     void setSelectedTrackIndex(int index, bool notifySession);
-    void onTimelineChanged(int value);
-    void togglePlayback();
-    void advancePlayback();
+    void hidePointDetailCard();
     void exportTrackCsv();
     void copySelectedPoint();
 
@@ -65,7 +62,6 @@ private:
     QLabel *map_status_label_;
     QProgressBar *map_progress_bar_;
     QWidget *map_widget_;
-    QSlider *timeline_slider_;
     QLabel *track_width_label_;
     QSlider *track_width_slider_;
     QLabel *point_size_label_;
@@ -80,9 +76,9 @@ private:
     QMenu *heat_palette_menu_;
     QFrame *map_tools_card_;
     QFrame *point_detail_card_;
+    QToolButton *point_detail_close_button_;
     QPushButton *show_route_button_;
     QPushButton *show_points_button_;
-    QPushButton *play_button_;
     QPushButton *export_button_;
     QPushButton *copy_point_button_;
     QComboBox *map_source_combo_;
@@ -101,7 +97,6 @@ private:
     RtkTrackStats track_stats_;
     int selected_track_index_;
     bool point_detail_visible_;
-    QTimer *playback_timer_;
 };
 
 #endif

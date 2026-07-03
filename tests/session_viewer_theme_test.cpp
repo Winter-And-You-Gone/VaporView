@@ -442,6 +442,7 @@ void testTrajectoryViewerUsesSidebarLayout()
     auto *heatGradientBar = dialog.findChild<QWidget *>(QStringLiteral("trajectoryHeatGradientBar"));
     auto *heatPaletteButton = dialog.findChild<QToolButton *>(QStringLiteral("trajectoryHeatPaletteButton"));
     auto *heatPaletteMenu = dialog.findChild<QMenu *>(QStringLiteral("trajectoryHeatPaletteMenu"));
+    auto *pointDetailCloseButton = dialog.findChild<QToolButton *>(QStringLiteral("trajectoryPointDetailCloseButton"));
     const auto heatCaptionLabels = dialog.findChildren<QLabel *>(QStringLiteral("trajectoryHeatLegendCaption"));
     auto *trackWidthSlider = dialog.findChild<QSlider *>(QStringLiteral("trajectoryTrackWidthSlider"));
     auto *pointSizeSlider = dialog.findChild<QSlider *>(QStringLiteral("trajectoryPointSizeSlider"));
@@ -478,6 +479,7 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(heatGradientBar != nullptr, "trajectory viewer floating heat gradient bar exists");
     require(heatPaletteButton != nullptr, "trajectory viewer heat palette control exists");
     require(heatPaletteMenu != nullptr, "trajectory viewer heat palette menu exists");
+    require(pointDetailCloseButton != nullptr, "trajectory viewer point detail close button exists");
     require(trackWidthSlider != nullptr, "trajectory viewer track width control exists");
     require(pointSizeSlider != nullptr, "trajectory viewer point size control exists");
     require(showRouteButton != nullptr, "trajectory viewer route visibility toggle exists");
@@ -487,7 +489,11 @@ void testTrajectoryViewerUsesSidebarLayout()
     const auto sidebarToolButtons = sidebar->findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
     require(sidebarToolButtons.size() >= 4, "trajectory viewer sidebar contains map tool buttons");
     const auto sidebarActionButtons = sidebar->findChildren<QPushButton *>(QStringLiteral("trajectorySidebarActionButton"));
-    require(sidebarActionButtons.size() == 3, "trajectory viewer sidebar contains styled action buttons");
+    require(sidebarActionButtons.size() == 2, "trajectory viewer sidebar only keeps copy and export actions");
+    require(std::none_of(sidebarActionButtons.cbegin(), sidebarActionButtons.cend(), [](const QPushButton *button) {
+                return button && (button->text() == QStringLiteral("Play") || button->text() == QStringLiteral("播放"));
+            }),
+            "trajectory viewer removes the unused playback button");
 
     require(sidebarCard->isAncestorOf(sidebarTitleBar), "sidebar title bar is inside card");
     require(sidebarCard->isAncestorOf(sidebar), "sidebar body scroll area is inside card");
@@ -529,8 +535,12 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(!sidebar->isAncestorOf(heatPaletteButton), "heat palette control is no longer in sidebar");
     require(map->isAncestorOf(pointDetailCard), "point detail card floats inside the map");
     require(pointDetailCard->isAncestorOf(detailLabel), "point detail label is inside the floating card");
+    require(pointDetailCard->isAncestorOf(pointDetailCloseButton), "point detail close button is inside the floating card");
     require(!sidebar->isAncestorOf(detailLabel), "point detail label is no longer in sidebar");
     require(!pointDetailCard->isVisible(), "point detail card stays hidden until a point is clicked");
+    require(pointDetailCloseButton->minimumSize() == QSize(24, 24)
+                && pointDetailCloseButton->maximumSize() == QSize(24, 24),
+            "point detail close button stays compact in the card corner");
     require(trackWidthSlider->minimum() == 10 && trackWidthSlider->maximum() == 80,
             "track width slider exposes a bounded visual range");
     require(pointSizeSlider->minimum() == 20 && pointSizeSlider->maximum() == 120,
@@ -595,6 +605,8 @@ void testTrajectoryViewerUsesSidebarLayout()
             "trajectory viewer stylesheet includes floating point detail styling");
     require(styleSheet.contains(QStringLiteral("QLabel#trajectoryPointDetailLabel")),
             "trajectory viewer stylesheet includes point detail label styling");
+    require(styleSheet.contains(QStringLiteral("QToolButton#trajectoryPointDetailCloseButton")),
+            "trajectory viewer stylesheet includes point detail close button styling");
     require(styleSheet.contains(QStringLiteral("QPushButton#trajectoryVisibilityToggle")),
             "trajectory viewer stylesheet includes visibility toggle styling");
     require(styleSheet.contains(QStringLiteral("QToolButton#trajectoryHeatPaletteButton")),
@@ -644,6 +656,11 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(heatLegendCard->isVisible(), "heat legend card is visible when peak samples exist");
     require(heatGradientBar->isVisible(), "heat gradient bar is visible when peak samples exist");
     require(!pointDetailCard->isVisible(), "point detail card remains hidden after data load until map point click");
+    pointDetailCard->show();
+    processEventsFor(50);
+    pointDetailCloseButton->click();
+    processEventsFor(50);
+    require(!pointDetailCard->isVisible(), "point detail close button hides the floating detail card");
     require(heatLegendCard->geometry().left() < mapToolsCard->geometry().left(),
             "floating heat legend stays to the left of map tools card");
     require(std::abs(heatLegendCard->geometry().top() - mapToolsCard->geometry().top()) <= 2,
