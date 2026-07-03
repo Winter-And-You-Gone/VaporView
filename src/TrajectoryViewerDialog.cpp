@@ -692,6 +692,7 @@ public:
         , point_radius_(kDefaultTrackPointRadius)
         , show_route_(true)
         , show_track_points_(true)
+        , filter_bridge_segments_()
         , track_filter_active_(false)
         , first_filter_visible_track_index_(-1)
         , last_filter_visible_track_index_(-1)
@@ -793,6 +794,7 @@ public:
         track_points_ = points;
         rebuildTrackCaches();
         refreshFilterBoundaryIndices();
+        refreshFilterBridgeSegments();
         hovered_track_index_ = -1;
         selected_track_index_ = track_points_.isEmpty()
             ? -1
@@ -830,6 +832,7 @@ public:
             }
         }
         refreshFilterBoundaryIndices();
+        refreshFilterBridgeSegments();
         last_render_context_ = TrackRenderContext();
         update();
     }
@@ -1874,6 +1877,62 @@ private:
         }
     }
 
+    void refreshFilterBridgeSegments()
+    {
+        filter_bridge_segments_.clear();
+        if (!track_filter_active_ || excluded_track_indices_.isEmpty() || track_points_.size() < 3)
+        {
+            setProperty("_vvFilterBridgeSegmentCount", 0);
+            return;
+        }
+
+        QVector<int> sortedExcluded;
+        sortedExcluded.reserve(excluded_track_indices_.size());
+        for (int index : std::as_const(excluded_track_indices_))
+        {
+            sortedExcluded.push_back(index);
+        }
+        std::sort(sortedExcluded.begin(), sortedExcluded.end());
+
+        int runStart = -1;
+        int runEnd = -1;
+        auto appendRunBridge = [this](int firstExcluded, int lastExcluded) {
+            const int beforeIndex = firstExcluded - 1;
+            const int afterIndex = lastExcluded + 1;
+            if (beforeIndex >= 0 &&
+                afterIndex < track_points_.size() &&
+                !excluded_track_indices_.contains(beforeIndex) &&
+                !excluded_track_indices_.contains(afterIndex))
+            {
+                filter_bridge_segments_.push_back({beforeIndex, afterIndex});
+            }
+        };
+
+        for (int index : std::as_const(sortedExcluded))
+        {
+            if (runStart < 0)
+            {
+                runStart = index;
+                runEnd = index;
+                continue;
+            }
+            if (index == runEnd + 1)
+            {
+                runEnd = index;
+                continue;
+            }
+            appendRunBridge(runStart, runEnd);
+            runStart = index;
+            runEnd = index;
+        }
+        if (runStart >= 0)
+        {
+            appendRunBridge(runStart, runEnd);
+        }
+
+        setProperty("_vvFilterBridgeSegmentCount", static_cast<int>(filter_bridge_segments_.size()));
+    }
+
     bool appendScreenPointIfSeparated(QVector<ScreenTrackPoint>& points,
                                       const ScreenTrackPoint& candidate,
                                       double minDistanceSquared) const
@@ -2058,31 +2117,36 @@ private:
                                                          const QRectF& mapRect) const
     {
         QVector<ScreenTrackSegment> segments;
-        if (visibleIndices.size() < 2)
+        if (projected_track_points_.size() < 2 ||
+            (visibleIndices.size() < 2 && filter_bridge_segments_.isEmpty()))
         {
             return segments;
         }
 
+        segments.reserve(visibleIndices.size() + filter_bridge_segments_.size());
         const QRectF visibleWorld = visibleWorldRect(mapRect, std::max(72.0, track_width_ * 6.0));
-        for (int index : visibleIndices)
-        {
-            const int nextIndex = index + 1;
-            if (nextIndex >= projected_track_points_.size())
+        auto appendSegment = [this, &segments, &mapRect, &visibleWorld](int firstIndex, int secondIndex) {
+            if (secondIndex <= firstIndex ||
+                secondIndex >= projected_track_points_.size() ||
+                !isTrackIndexVisibleByFilter(firstIndex) ||
+                !isTrackIndexVisibleByFilter(secondIndex) ||
+                !isVisibleTrackSegment(firstIndex, secondIndex, visibleWorld))
             {
-                continue;
-            }
-            if (!isTrackIndexVisibleByFilter(index) || !isTrackIndexVisibleByFilter(nextIndex))
-            {
-                continue;
-            }
-            if (!isVisibleTrackSegment(index, nextIndex, visibleWorld))
-            {
-                continue;
+                return;
             }
 
-            const QPointF firstScreen = cachedWorldToScreen(projected_track_points_.at(index).world_pixel, mapRect);
-            const QPointF secondScreen = cachedWorldToScreen(projected_track_points_.at(nextIndex).world_pixel, mapRect);
-            segments.push_back({index, nextIndex, firstScreen, secondScreen});
+            const QPointF firstScreen = cachedWorldToScreen(projected_track_points_.at(firstIndex).world_pixel, mapRect);
+            const QPointF secondScreen = cachedWorldToScreen(projected_track_points_.at(secondIndex).world_pixel, mapRect);
+            segments.push_back({firstIndex, secondIndex, firstScreen, secondScreen});
+        };
+
+        for (int index : visibleIndices)
+        {
+            appendSegment(index, index + 1);
+        }
+        for (const auto& bridge : std::as_const(filter_bridge_segments_))
+        {
+            appendSegment(bridge.first, bridge.second);
         }
 
         return segments;
@@ -2514,6 +2578,7 @@ private:
     double point_radius_;
     bool show_route_;
     bool show_track_points_;
+    QVector<std::pair<int, int>> filter_bridge_segments_;
     QSet<int> excluded_track_indices_;
     bool track_filter_active_;
     int first_filter_visible_track_index_;
@@ -3113,8 +3178,8 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QMenu#trajectoryHeatPaletteMenu { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; padding: 4px; margin: 0px; }"
         "QDialog#trajectoryViewerDialog QMenu#trajectoryHeatPaletteMenu::item { background-color: transparent; border-radius: 4px; padding: 6px 18px; }"
         "QDialog#trajectoryViewerDialog QMenu#trajectoryHeatPaletteMenu::item:selected { background-color: @vv-primary-subtle; color: @vv-primary; }"
-        "QDialog#trajectoryViewerDialog QToolButton#titleBarButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; }"
-        "QDialog#trajectoryViewerDialog QToolButton#titleBarButton:hover, QDialog#trajectoryViewerDialog QToolButton#titleBarButton:focus { background-color: @vv-title-hover; border-color: @vv-border-strong; }"),
+        "QDialog#trajectoryViewerDialog QToolButton#titleBarButton { background-color: transparent; border: none; border-radius: 6px; padding: 0px; margin: 0px; }"
+        "QDialog#trajectoryViewerDialog QToolButton#titleBarButton:hover, QDialog#trajectoryViewerDialog QToolButton#titleBarButton:focus { background-color: @vv-title-hover; border: none; }"),
         isDarkPalette());
     if (styleSheet() != themedStyleSheet)
     {

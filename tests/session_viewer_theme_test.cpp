@@ -29,9 +29,12 @@
 #include <QTemporaryDir>
 #include <QToolButton>
 #include <QWidget>
+#include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <functional>
 #include <iostream>
+#include <limits>
 
 namespace
 {
@@ -106,6 +109,28 @@ void clickWidgetCenterThroughWindow(QWidget *widget, int waitMs = 250)
     }
 }
 
+void clickWidgetAt(QWidget *widget, const QPointF& localPos, int waitMs = 250)
+{
+    require(widget != nullptr, "click target exists");
+    require(widget->rect().adjusted(-2, -2, 2, 2).contains(localPos.toPoint()), "click target point is inside widget");
+    QMouseEvent press(QEvent::MouseButtonPress,
+                      localPos,
+                      Qt::LeftButton,
+                      Qt::LeftButton,
+                      Qt::NoModifier);
+    QCoreApplication::sendEvent(widget, &press);
+    QMouseEvent release(QEvent::MouseButtonRelease,
+                        localPos,
+                        Qt::LeftButton,
+                        Qt::NoButton,
+                        Qt::NoModifier);
+    QCoreApplication::sendEvent(widget, &release);
+    if (waitMs > 0)
+    {
+        processEventsFor(waitMs);
+    }
+}
+
 SessionViewerWindow *visibleSessionViewerWindow()
 {
     for (QWidget *widget : QApplication::topLevelWidgets())
@@ -134,6 +159,55 @@ int countRedDominantPixels(const QImage& image)
         }
     }
     return count;
+}
+
+QPointF testLatLonToPixel(double latitude, double longitude, int zoom)
+{
+    constexpr double kTileSize = 256.0;
+    constexpr double kPi = 3.14159265358979323846;
+    const double lat = std::clamp(latitude, -85.05112878, 85.05112878);
+    const double sinLat = std::sin(lat * kPi / 180.0);
+    const double worldSize = kTileSize * std::pow(2.0, zoom);
+    return QPointF(
+        (longitude + 180.0) / 360.0 * worldSize,
+        (0.5 - std::log((1.0 + sinLat) / (1.0 - sinLat)) / (4.0 * kPi)) * worldSize);
+}
+
+QPointF trajectoryPointScreenPosition(QWidget *map, const QVector<RtkTrackPoint>& points, int pointIndex)
+{
+    require(map != nullptr, "trajectory map exists for point projection");
+    require(pointIndex >= 0 && pointIndex < points.size(), "trajectory point index is in range");
+
+    const QSizeF mapSize = map->rect().size();
+    const double availableWidth = std::max(200.0, mapSize.width());
+    const double availableHeight = std::max(160.0, mapSize.height());
+    int fitZoom = 1;
+    QPointF fitCenter;
+    for (int candidateZoom = 19; candidateZoom >= 1; --candidateZoom)
+    {
+        double minX = std::numeric_limits<double>::infinity();
+        double maxX = -std::numeric_limits<double>::infinity();
+        double minY = std::numeric_limits<double>::infinity();
+        double maxY = -std::numeric_limits<double>::infinity();
+        for (const RtkTrackPoint& point : points)
+        {
+            const QPointF pixel = testLatLonToPixel(point.latitude, point.longitude, candidateZoom);
+            minX = std::min(minX, pixel.x());
+            maxX = std::max(maxX, pixel.x());
+            minY = std::min(minY, pixel.y());
+            maxY = std::max(maxY, pixel.y());
+        }
+        if ((maxX - minX) <= availableWidth * 0.8 && (maxY - minY) <= availableHeight * 0.8)
+        {
+            fitZoom = candidateZoom;
+            fitCenter = QPointF((minX + maxX) * 0.5, (minY + maxY) * 0.5);
+            break;
+        }
+    }
+
+    const QPointF pointPixel = testLatLonToPixel(points.at(pointIndex).latitude, points.at(pointIndex).longitude, fitZoom);
+    const QPointF topLeft = fitCenter - QPointF(mapSize.width() * 0.5, mapSize.height() * 0.5);
+    return QPointF(pointPixel.x() - topLeft.x(), pointPixel.y() - topLeft.y());
 }
 
 void writeUnifiedRawFile(const QString& path, int recordCount)
@@ -682,6 +756,11 @@ void testTrajectoryViewerUsesSidebarLayout()
                     !styleSheet.contains(iconHoverRule + VaporView::appThemeColorName(VaporView::AppThemeColor::PrimarySubtle, false)),
                 "trajectory viewer icon focus background does not use the primary accent color");
     }
+    require(styleSheet.contains(QStringLiteral("QToolButton#titleBarButton { background-color: transparent; border: none")),
+            "trajectory viewer title bar icon buttons match the main window borderless background");
+    require(styleSheet.contains(QStringLiteral("QToolButton#titleBarButton:hover, QDialog#trajectoryViewerDialog QToolButton#titleBarButton:focus { background-color: ")
+                + titleHoverColor + QStringLiteral("; border: none; }")),
+            "trajectory viewer title bar icon hover state keeps the main window borderless style");
     require(styleSheet.contains(QStringLiteral("QPushButton#trajectoryVisibilityToggle")),
             "trajectory viewer stylesheet includes visibility toggle styling");
     require(styleSheet.contains(QStringLiteral("QToolButton#trajectoryHeatPaletteButton")),
@@ -815,6 +894,71 @@ void testTrajectoryViewerUsesSidebarLayout()
     processEventsFor(100);
 }
 
+void testTrajectoryViewerBridgesFilteredRouteRanges()
+{
+    TrajectoryViewerDialog dialog;
+    dialog.resize(1080, 680);
+    dialog.show();
+    processEventsFor(250);
+
+    auto *map = dialog.findChild<QWidget *>(QStringLiteral("trajectoryViewerMap"));
+    auto *filterList = dialog.findChild<QWidget *>(QStringLiteral("trajectoryFilterList"));
+    QToolButton *filterStartButton = nullptr;
+    for (QToolButton *button : dialog.findChildren<QToolButton *>(QStringLiteral("trajectoryPointDetailActionButton")))
+    {
+        if (button && button->property("pointActionRole").toString() == QStringLiteral("filter-start"))
+        {
+            filterStartButton = button;
+            break;
+        }
+    }
+    require(map != nullptr, "trajectory map exists for filtered route bridge test");
+    require(filterList != nullptr, "trajectory filter list exists for filtered route bridge test");
+    require(filterStartButton != nullptr, "filter-start button exists for filtered route bridge test");
+
+    QVector<RtkTrackPoint> points;
+    points.reserve(5);
+    for (int index = 0; index < 5; ++index)
+    {
+        RtkTrackPoint point;
+        point.latitude = 30.13698120;
+        point.longitude = 120.06100000 + index * 0.002;
+        point.height_m = 10.0 + index;
+        point.cumulative_distance_m = index * 100.0;
+        point.csv_row = index;
+        point.has_height = true;
+        points.push_back(point);
+    }
+    dialog.setTrackPoints(points);
+    processEventsFor(300);
+    require(map->property("_vvFilterBridgeSegmentCount").toInt() == 0,
+            "trajectory route starts without filtered bridge segments");
+
+    clickWidgetAt(map, trajectoryPointScreenPosition(map, points, 1));
+    filterStartButton->click();
+    processEventsFor(120);
+    clickWidgetAt(map, trajectoryPointScreenPosition(map, points, 3));
+    processEventsFor(160);
+
+    require(map->property("_vvFilterBridgeSegmentCount").toInt() == 1,
+            "trajectory route bridges the visible points around a filtered range");
+    bool hasCompletedRange = false;
+    for (QLabel *label : filterList->findChildren<QLabel *>(QStringLiteral("trajectoryFilterRowLabel")))
+    {
+        if (label && !label->isHidden() &&
+            label->text().contains(QStringLiteral("起点 #2")) &&
+            label->text().contains(QStringLiteral("终点 #4")))
+        {
+            hasCompletedRange = true;
+            break;
+        }
+    }
+    require(hasCompletedRange, "filtered route bridge test completes the intended point range");
+
+    dialog.close();
+    processEventsFor(100);
+}
+
 void testSessionViewerTitleBarWindowButtons()
 {
     SessionViewerWindow viewer;
@@ -847,6 +991,7 @@ int main(int argc, char **argv)
     testSessionViewerTitleBarWindowButtons();
     testSessionViewerTrajectoryActionLifetime();
     testTrajectoryViewerUsesSidebarLayout();
+    testTrajectoryViewerBridgesFilteredRouteRanges();
 
     app.setProperty(VaporView::kAppDarkThemeProperty, false);
     app.setPalette(VaporView::appThemePalette(false));
