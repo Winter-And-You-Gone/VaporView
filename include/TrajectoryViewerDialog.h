@@ -13,6 +13,7 @@ class QEvent;
 class QFrame;
 class QLineEdit;
 class QMenu;
+class QSpinBox;
 class QToolButton;
 class QWidget;
 class QSlider;
@@ -31,9 +32,11 @@ public:
     void setTrackLabel(const QString& englishLabel, const QString& chineseLabel);
     void setTrackPoints(const QVector<RtkTrackPoint>& points);
     void setTrackStats(const RtkTrackStats& stats);
+    void setPeakSettings(int searchStartIndex, int searchEndIndex, int filterMode, double filterMin, double filterMax);
 
 signals:
     void trackPointActivated(int index);
+    void peakSettingsChangeRequested(int searchStartIndex, int searchEndIndex, int filterMode, double filterMin, double filterMax);
 
 protected:
     void changeEvent(QEvent *event) override;
@@ -51,6 +54,8 @@ private:
     void updateSummary();
     void updateSelectedPointDetails();
     void updateFilterSummary();
+    void refreshPeakFilterModeCombo();
+    void applyPeakControlEdits();
     void setMapFooterStatus(const QString& text);
     void setSelectedTrackIndex(int index, bool notifySession);
     void finishPendingFilterRange(int endIndex);
@@ -85,6 +90,19 @@ private:
     QWidget *filter_list_widget_;
     QVBoxLayout *filter_list_layout_;
     QVector<QLabel*> filter_row_labels_;
+    QFrame *peak_card_;
+    QLabel *peak_title_label_;
+    QLabel *peak_search_start_label_;
+    QLabel *peak_search_end_label_;
+    QLabel *peak_filter_mode_label_;
+    QLabel *peak_filter_min_label_;
+    QLabel *peak_filter_max_label_;
+    QSpinBox *peak_search_start_spin_;
+    QSpinBox *peak_search_end_spin_;
+    QComboBox *peak_filter_mode_combo_;
+    QLineEdit *peak_filter_min_edit_;
+    QLineEdit *peak_filter_max_edit_;
+    QPushButton *peak_apply_button_;
     QWidget *map_widget_;
     QLabel *track_width_label_;
     QSlider *track_width_slider_;

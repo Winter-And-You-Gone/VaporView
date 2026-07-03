@@ -61,6 +61,7 @@
 #include <cstring>
 #include <functional>
 #include <limits>
+#include <utility>
 
 using VaporView::AppThemeColor;
 using VaporView::appThemeColor;
@@ -76,8 +77,8 @@ constexpr int kSessionViewerPlotRightMargin = 10;
 constexpr int kSessionViewerPlotTopMargin = 12;
 constexpr int kSessionViewerPlotBottomMargin = 28;
 constexpr int kSessionViewerWaveBottomMargin = 30;
-constexpr int kDefaultPeakSearchStartIndex = 10000;
-constexpr int kDefaultPeakSearchEndIndex = 50000;
+constexpr int kDefaultPeakSearchStartIndex = 0;
+constexpr int kDefaultPeakSearchEndIndex = 0;
 constexpr int kSessionViewerDefaultWidth = 1280;
 constexpr int kSessionViewerDefaultHeight = 800;
 constexpr int kMaxTrendPointsPerPixel = 2;
@@ -486,7 +487,9 @@ float waveformPeakValue(const float* samples, int sampleCount, int searchStartIn
     }
 
     const int startIndex = std::clamp(searchStartIndex, 0, sampleCount);
-    const int endIndex = std::clamp(searchEndIndex, 0, sampleCount);
+    const int endIndex = searchEndIndex <= 0
+        ? sampleCount
+        : std::clamp(searchEndIndex, 0, sampleCount);
     if (startIndex >= endIndex)
     {
         return std::numeric_limits<float>::quiet_NaN();
@@ -511,6 +514,19 @@ float waveformPeakValue(const float* samples, int sampleCount, int searchStartIn
 float waveformPeakValue(const QVector<float>& samples, int searchStartIndex, int searchEndIndex)
 {
     return waveformPeakValue(samples.constData(), samples.size(), searchStartIndex, searchEndIndex);
+}
+
+quint64 midpointTimestamp(quint64 first, quint64 second)
+{
+    return first <= second
+        ? first + (second - first) / 2ULL
+        : second + (first - second) / 2ULL;
+}
+
+quint64 addClampedUs(quint64 timestampUs, quint64 deltaUs)
+{
+    const quint64 maxValue = std::numeric_limits<quint64>::max();
+    return deltaUs > maxValue - timestampUs ? maxValue : timestampUs + deltaUs;
 }
 
 double haversineDistanceMeters(double lat1Deg, double lon1Deg, double lat2Deg, double lon2Deg)
@@ -1616,8 +1632,8 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     peak_filter_settings_.min_value = settings.value("peak_filter/min_value", 0.0).toDouble();
     peak_filter_settings_.max_value = settings.value("peak_filter/max_value", 0.0).toDouble();
     peak_search_start_index_ = std::max(0, settings.value("peak_search/start_index", kDefaultPeakSearchStartIndex).toInt());
-    peak_search_end_index_ = settings.value("peak_search/end_index", kDefaultPeakSearchEndIndex).toInt();
-    if (peak_search_end_index_ <= peak_search_start_index_)
+    peak_search_end_index_ = std::max(0, settings.value("peak_search/end_index", kDefaultPeakSearchEndIndex).toInt());
+    if (peak_search_end_index_ > 0 && peak_search_end_index_ <= peak_search_start_index_)
     {
         peak_search_end_index_ = peak_search_start_index_ + 1;
     }
@@ -2162,6 +2178,14 @@ QString SessionViewerWindow::peakFilterModeText(PeakFilterMode mode) const
     }
 }
 
+QString SessionViewerWindow::peakSearchRangeText() const
+{
+    const QString searchEndText = peak_search_end_index_ <= 0
+        ? (is_english_ ? QStringLiteral("end") : QStringLiteral("末尾"))
+        : QString::number(peak_search_end_index_);
+    return QStringLiteral("%1-%2").arg(peak_search_start_index_).arg(searchEndText);
+}
+
 void SessionViewerWindow::updatePeakFilterButtonText()
 {
     if (!waveform_peak_filter_btn_)
@@ -2169,11 +2193,115 @@ void SessionViewerWindow::updatePeakFilterButtonText()
         return;
     }
 
-    waveform_peak_filter_btn_->setText(QStringLiteral("%1:%2-%3 / %4")
+    waveform_peak_filter_btn_->setText(QStringLiteral("%1:%2 / %3")
         .arg(is_english_ ? QStringLiteral("Peak") : QStringLiteral("峰值"))
-        .arg(peak_search_start_index_)
-        .arg(peak_search_end_index_)
+        .arg(peakSearchRangeText())
         .arg(peakFilterModeText(peak_filter_settings_.mode)));
+}
+
+void SessionViewerWindow::syncPeakSettingsToTrajectoryViewer()
+{
+    if (!trajectory_viewer_dialog_)
+    {
+        return;
+    }
+
+    trajectory_viewer_dialog_->setPeakSettings(
+        peak_search_start_index_,
+        peak_search_end_index_,
+        static_cast<int>(peak_filter_settings_.mode),
+        peak_filter_settings_.min_value,
+        peak_filter_settings_.max_value);
+}
+
+bool SessionViewerWindow::applyPeakSettings(int searchStartIndex,
+                                            int searchEndIndex,
+                                            PeakFilterMode mode,
+                                            double minValue,
+                                            double maxValue,
+                                            bool hasMinValue,
+                                            bool hasMaxValue,
+                                            const QString& recalculatingText,
+                                            const QString& filteringText)
+{
+    if (searchStartIndex < 0 || (searchEndIndex > 0 && searchEndIndex <= searchStartIndex))
+    {
+        return false;
+    }
+
+    const bool peakSearchChanged =
+        peak_search_start_index_ != searchStartIndex ||
+        peak_search_end_index_ != searchEndIndex;
+    peak_search_start_index_ = searchStartIndex;
+    peak_search_end_index_ = searchEndIndex;
+    peak_filter_settings_.mode = mode;
+    if (hasMinValue)
+    {
+        peak_filter_settings_.min_value = minValue;
+    }
+    if (hasMaxValue)
+    {
+        peak_filter_settings_.max_value = maxValue;
+    }
+
+    QSettings settings("VaporView", "SessionViewer");
+    settings.setValue("peak_filter/mode",
+        mode == PeakFilterMode::IqrOutlier
+            ? QStringLiteral("iqr")
+            : mode == PeakFilterMode::KeepRange
+                ? QStringLiteral("keep_range")
+                : mode == PeakFilterMode::ExcludeRange
+                    ? QStringLiteral("exclude_range")
+                    : QStringLiteral("none"));
+    settings.setValue("peak_filter/min_value", peak_filter_settings_.min_value);
+    settings.setValue("peak_filter/max_value", peak_filter_settings_.max_value);
+    settings.setValue("peak_search/start_index", peak_search_start_index_);
+    settings.setValue("peak_search/end_index", peak_search_end_index_);
+
+    updatePeakFilterButtonText();
+    syncPeakSettingsToTrajectoryViewer();
+    beginSessionLoading(peakSearchChanged ? recalculatingText : filteringText);
+    if (peakSearchChanged &&
+        (!waveform_segments_.isEmpty() || !raw_tcp_wave_frames_.isEmpty() || !indexed_waveform_frames_.isEmpty()))
+    {
+        const bool loaded = loadWaveformPeakSeries();
+        finishSessionLoading();
+        syncPeakSettingsToTrajectoryViewer();
+        return loaded;
+    }
+
+    applyPeakFilter();
+    finishSessionLoading();
+    syncPeakSettingsToTrajectoryViewer();
+    return true;
+}
+
+void SessionViewerWindow::applyPeakSettingsFromTrajectory(int searchStartIndex,
+                                                          int searchEndIndex,
+                                                          int filterMode,
+                                                          double minValue,
+                                                          double maxValue)
+{
+    const PeakFilterMode mode = static_cast<PeakFilterMode>(filterMode);
+    if (mode != PeakFilterMode::None &&
+        mode != PeakFilterMode::IqrOutlier &&
+        mode != PeakFilterMode::KeepRange &&
+        mode != PeakFilterMode::ExcludeRange)
+    {
+        return;
+    }
+    if (!applyPeakSettings(searchStartIndex,
+            searchEndIndex,
+            mode,
+            minValue,
+            maxValue,
+            true,
+            true,
+            is_english_ ? QStringLiteral("Recalculating waveform peak series...") : QStringLiteral("正在重新计算波形峰值序列..."),
+            is_english_ ? QStringLiteral("Applying peak filter...") : QStringLiteral("正在应用峰值过滤...")))
+    {
+        syncPeakSettingsToTrajectoryViewer();
+    }
 }
 
 void SessionViewerWindow::relayoutSummaryFields()
@@ -2675,10 +2803,13 @@ void SessionViewerWindow::onViewTrajectoryClicked()
         connect(trajectory_viewer_dialog_, &QObject::destroyed, this, [this]() {
             trajectory_viewer_dialog_ = nullptr;
         });
+        connect(trajectory_viewer_dialog_, &TrajectoryViewerDialog::peakSettingsChangeRequested,
+                this, &SessionViewerWindow::applyPeakSettingsFromTrajectory);
     }
 
     trajectory_viewer_dialog_->setEnglish(is_english_);
     trajectory_viewer_dialog_->setTrackLabel(QStringLiteral("RTK trajectory"), QStringLiteral("RTK轨迹"));
+    syncPeakSettingsToTrajectoryViewer();
     trajectory_viewer_dialog_->setTrackStats(rtk_track_stats_);
     trajectory_viewer_dialog_->setTrackPoints(rtk_track_points_);
     connect(trajectory_viewer_dialog_, &TrajectoryViewerDialog::trackPointActivated,
@@ -3737,9 +3868,10 @@ void SessionViewerWindow::onConfigurePeakFilterClicked()
     addFormRow(0, is_english_ ? QStringLiteral("Search Start") : QStringLiteral("搜索起点"), searchStartSpin);
 
     auto *searchEndSpin = new QSpinBox(formWidget);
-    searchEndSpin->setRange(1, 10000000);
+    searchEndSpin->setRange(0, 10000000);
     searchEndSpin->setSingleStep(1000);
-    searchEndSpin->setValue(peak_search_end_index_);
+    searchEndSpin->setSpecialValueText(is_english_ ? QStringLiteral("Full Frame") : QStringLiteral("整帧"));
+    searchEndSpin->setValue(std::max(0, peak_search_end_index_));
     searchEndSpin->setMinimumWidth(inputColumnWidth);
     addFormRow(1, is_english_ ? QStringLiteral("Search End") : QStringLiteral("搜索终点"), searchEndSpin);
 
@@ -3765,8 +3897,8 @@ void SessionViewerWindow::onConfigurePeakFilterClicked()
 
     auto *hintLabel = new QLabel(
         is_english_
-            ? QStringLiteral("Peak search uses sample indexes [start, end). IQR removes statistical outliers. Keep Range keeps only values inside [min, max]. Exclude Range removes values inside [min, max]. If no peak remains after filtering, the plot shows no valid values.")
-            : QStringLiteral("峰值搜索使用采样点下标 [起点, 终点)。IQR 会过滤统计异常值。保留区间只保留 [最小值, 最大值] 内的峰值。排除区间会过滤 [最小值, 最大值] 内的峰值。过滤后没有峰值时，趋势图显示无有效值。"),
+            ? QStringLiteral("Peak search uses sample indexes [start, end). Search End = Full Frame uses all remaining samples. IQR removes statistical outliers. Keep Range keeps only values inside [min, max]. Exclude Range removes values inside [min, max]. If no peak remains after filtering, the plot shows no valid values.")
+            : QStringLiteral("峰值搜索使用采样点下标 [起点, 终点)。搜索终点为“整帧”时表示一直搜索到本帧末尾。IQR 会过滤统计异常值。保留区间只保留 [最小值, 最大值] 内的峰值。排除区间会过滤 [最小值, 最大值] 内的峰值。过滤后没有峰值时，趋势图显示无有效值。"),
         content);
     hintLabel->setWordWrap(true);
     hintLabel->setMinimumWidth(labelColumnWidth + inputColumnWidth + formLayout->horizontalSpacing());
@@ -3800,12 +3932,12 @@ void SessionViewerWindow::onConfigurePeakFilterClicked()
     const int searchStart = searchStartSpin->value();
     const int searchEnd = searchEndSpin->value();
     const PeakFilterMode mode = static_cast<PeakFilterMode>(modeCombo->currentData().toInt());
-    if (searchEnd <= searchStart)
+    if (searchEnd > 0 && searchEnd <= searchStart)
     {
         QMessageBox::warning(
             this,
             is_english_ ? QStringLiteral("Peak Settings") : QStringLiteral("峰值设置"),
-            is_english_ ? QStringLiteral("Search End must be greater than Search Start.") : QStringLiteral("搜索终点必须大于搜索起点。"));
+            is_english_ ? QStringLiteral("Search End must be greater than Search Start, or set to Full Frame.") : QStringLiteral("搜索终点必须大于搜索起点，或者设置为整帧。"));
         return;
     }
     if ((mode == PeakFilterMode::KeepRange || mode == PeakFilterMode::ExcludeRange) && (!minOk || !maxOk))
@@ -3817,60 +3949,15 @@ void SessionViewerWindow::onConfigurePeakFilterClicked()
         return;
     }
 
-    const bool peakSearchChanged =
-        peak_search_start_index_ != searchStart ||
-        peak_search_end_index_ != searchEnd;
-    peak_search_start_index_ = searchStart;
-    peak_search_end_index_ = searchEnd;
-    peak_filter_settings_.mode = mode;
-    if (minOk)
-    {
-        peak_filter_settings_.min_value = minValue;
-    }
-    if (maxOk)
-    {
-        peak_filter_settings_.max_value = maxValue;
-    }
-
-    QSettings settings("VaporView", "SessionViewer");
-    QString modeKey = QStringLiteral("none");
-    if (mode == PeakFilterMode::IqrOutlier)
-    {
-        modeKey = QStringLiteral("iqr");
-    }
-    else if (mode == PeakFilterMode::KeepRange)
-    {
-        modeKey = QStringLiteral("keep_range");
-    }
-    else if (mode == PeakFilterMode::ExcludeRange)
-    {
-        modeKey = QStringLiteral("exclude_range");
-    }
-    settings.setValue("peak_filter/mode", modeKey);
-    settings.setValue("peak_filter/min_value", peak_filter_settings_.min_value);
-    settings.setValue("peak_filter/max_value", peak_filter_settings_.max_value);
-    settings.setValue("peak_search/start_index", peak_search_start_index_);
-    settings.setValue("peak_search/end_index", peak_search_end_index_);
-
-    updatePeakFilterButtonText();
-    beginSessionLoading(peakSearchChanged
-        ? (is_english_ ? "Recalculating waveform peak series..." : "正在重新计算波形峰值序列...")
-        : (is_english_ ? "Applying peak filter..." : "正在应用峰值过滤..."));
-    if (peakSearchChanged &&
-        (!waveform_segments_.isEmpty() || !raw_tcp_wave_frames_.isEmpty() || !indexed_waveform_frames_.isEmpty()))
-    {
-        const bool loaded = loadWaveformPeakSeries();
-        finishSessionLoading();
-        if (!loaded)
-        {
-            return;
-        }
-    }
-    else
-    {
-        applyPeakFilter();
-        finishSessionLoading();
-    }
+    applyPeakSettings(searchStart,
+        searchEnd,
+        mode,
+        minValue,
+        maxValue,
+        minOk,
+        maxOk,
+        is_english_ ? QStringLiteral("Recalculating waveform peak series...") : QStringLiteral("正在重新计算波形峰值序列..."),
+        is_english_ ? QStringLiteral("Applying peak filter...") : QStringLiteral("正在应用峰值过滤..."));
 }
 
 bool SessionViewerWindow::readWaveformFrameSamples(quint64 frameIndex, quint64& timestampUs, QVector<float>& samples)
@@ -4091,8 +4178,48 @@ int SessionViewerWindow::findClosestCsvRow(quint64 timestampUs) const
 
 void SessionViewerWindow::updateRtkTrackPeakValues()
 {
-    for (RtkTrackPoint& point : rtk_track_points_)
+    QVector<quint64> trackTimestampsUs;
+    trackTimestampsUs.reserve(rtk_track_points_.size());
+    for (const RtkTrackPoint& point : std::as_const(rtk_track_points_))
     {
+        trackTimestampsUs.push_back(point.timestamp_us);
+    }
+
+    const double waveformRateHz = calculateMeasuredRateHz(waveform_timestamps_us_);
+    const double trackRateHz = calculateMeasuredRateHz(trackTimestampsUs);
+    const bool averageHighRatePeaks =
+        waveformRateHz > 0.0 &&
+        trackRateHz > 0.0 &&
+        waveformRateHz > trackRateHz * 1.05;
+
+    QVector<int> previousTrackTimestampIndex(rtk_track_points_.size(), -1);
+    QVector<int> nextTrackTimestampIndex(rtk_track_points_.size(), -1);
+    if (averageHighRatePeaks)
+    {
+        int previousIndex = -1;
+        for (int index = 0; index < rtk_track_points_.size(); ++index)
+        {
+            previousTrackTimestampIndex[index] = previousIndex;
+            if (rtk_track_points_.at(index).timestamp_us > 0)
+            {
+                previousIndex = index;
+            }
+        }
+
+        int nextIndex = -1;
+        for (int index = rtk_track_points_.size() - 1; index >= 0; --index)
+        {
+            nextTrackTimestampIndex[index] = nextIndex;
+            if (rtk_track_points_.at(index).timestamp_us > 0)
+            {
+                nextIndex = index;
+            }
+        }
+    }
+
+    for (int trackIndex = 0; trackIndex < rtk_track_points_.size(); ++trackIndex)
+    {
+        RtkTrackPoint& point = rtk_track_points_[trackIndex];
         point.peak_value = 0.0f;
         point.has_peak_value = false;
         point.waveform_frame_index = -1;
@@ -4121,7 +4248,81 @@ void SessionViewerWindow::updateRtkTrackPeakValues()
             point.has_waveform_match = true;
         }
 
-        const float peakValue = waveform_peak_values_.at(peakIndex);
+        float peakValue = waveform_peak_values_.at(peakIndex);
+        if (averageHighRatePeaks)
+        {
+            const int previousIndex = previousTrackTimestampIndex.at(trackIndex);
+            const int nextIndex = nextTrackTimestampIndex.at(trackIndex);
+            quint64 lowerBoundUs = 0;
+            quint64 upperBoundUs = 0;
+            bool hasLowerBound = false;
+            bool hasUpperBound = false;
+
+            if (previousIndex >= 0)
+            {
+                const quint64 previousUs = rtk_track_points_.at(previousIndex).timestamp_us;
+                if (previousUs > 0 && previousUs < point.timestamp_us)
+                {
+                    lowerBoundUs = midpointTimestamp(previousUs, point.timestamp_us);
+                    hasLowerBound = true;
+                }
+            }
+            if (!hasLowerBound && nextIndex >= 0)
+            {
+                const quint64 nextUs = rtk_track_points_.at(nextIndex).timestamp_us;
+                if (nextUs > point.timestamp_us)
+                {
+                    const quint64 halfInterval = (nextUs - point.timestamp_us) / 2ULL;
+                    lowerBoundUs = point.timestamp_us > halfInterval ? point.timestamp_us - halfInterval : 0;
+                    hasLowerBound = true;
+                }
+            }
+
+            if (nextIndex >= 0)
+            {
+                const quint64 nextUs = rtk_track_points_.at(nextIndex).timestamp_us;
+                if (nextUs > point.timestamp_us)
+                {
+                    upperBoundUs = midpointTimestamp(point.timestamp_us, nextUs);
+                    hasUpperBound = true;
+                }
+            }
+            if (!hasUpperBound && previousIndex >= 0)
+            {
+                const quint64 previousUs = rtk_track_points_.at(previousIndex).timestamp_us;
+                if (previousUs > 0 && previousUs < point.timestamp_us)
+                {
+                    const quint64 halfInterval = (point.timestamp_us - previousUs) / 2ULL;
+                    upperBoundUs = addClampedUs(point.timestamp_us, halfInterval);
+                    hasUpperBound = true;
+                }
+            }
+
+            if (hasLowerBound && hasUpperBound && lowerBoundUs < upperBoundUs)
+            {
+                const auto firstIt = std::lower_bound(waveform_timestamps_us_.cbegin(), waveform_timestamps_us_.cend(), lowerBoundUs);
+                const auto lastIt = std::lower_bound(waveform_timestamps_us_.cbegin(), waveform_timestamps_us_.cend(), upperBoundUs);
+                const int firstPeakIndex = static_cast<int>(std::distance(waveform_timestamps_us_.cbegin(), firstIt));
+                const int lastPeakIndex = std::min(
+                    static_cast<int>(std::distance(waveform_timestamps_us_.cbegin(), lastIt)),
+                    static_cast<int>(waveform_peak_values_.size()));
+                double sum = 0.0;
+                int count = 0;
+                for (int valueIndex = firstPeakIndex; valueIndex < lastPeakIndex; ++valueIndex)
+                {
+                    const float candidate = waveform_peak_values_.at(valueIndex);
+                    if (std::isfinite(candidate))
+                    {
+                        sum += static_cast<double>(candidate);
+                        ++count;
+                    }
+                }
+                if (count > 0)
+                {
+                    peakValue = static_cast<float>(sum / static_cast<double>(count));
+                }
+            }
+        }
         if (!std::isfinite(peakValue))
         {
             continue;

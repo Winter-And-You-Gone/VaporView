@@ -166,6 +166,18 @@ private:
     void updatePeakPlotModeButtonText();
     void updatePeakFilterButtonText();
     QString peakFilterModeText(PeakFilterMode mode) const;
+    QString peakSearchRangeText() const;
+    void syncPeakSettingsToTrajectoryViewer();
+    bool applyPeakSettings(int searchStartIndex,
+                           int searchEndIndex,
+                           PeakFilterMode mode,
+                           double minValue,
+                           double maxValue,
+                           bool hasMinValue,
+                           bool hasMaxValue,
+                           const QString& recalculatingText,
+                           const QString& filteringText);
+    void applyPeakSettingsFromTrajectory(int searchStartIndex, int searchEndIndex, int filterMode, double minValue, double maxValue);
     QVector<float> visibleWaveformSamples(const QVector<float>& samples, int& firstSampleIndex) const;
 
     QWidget *central_widget_;

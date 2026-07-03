@@ -15,6 +15,7 @@
 #include <QFrame>
 #include <QImage>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMainWindow>
 #include <QMargins>
 #include <QMetaObject>
@@ -26,6 +27,7 @@
 #include <QSettings>
 #include <QSize>
 #include <QSlider>
+#include <QSpinBox>
 #include <QTableWidget>
 #include <QTemporaryDir>
 #include <QToolButton>
@@ -522,6 +524,14 @@ void testTrajectoryViewerUsesSidebarLayout()
     auto *filterTitle = dialog.findChild<QLabel *>(QStringLiteral("trajectoryFilterTitle"));
     auto *filterEmptyLabel = dialog.findChild<QLabel *>(QStringLiteral("trajectoryFilterEmptyLabel"));
     auto *filterList = dialog.findChild<QWidget *>(QStringLiteral("trajectoryFilterList"));
+    auto *peakCard = dialog.findChild<QFrame *>(QStringLiteral("trajectoryPeakCard"));
+    auto *peakTitle = dialog.findChild<QLabel *>(QStringLiteral("trajectoryPeakTitle"));
+    auto *peakSearchStartSpin = dialog.findChild<QSpinBox *>(QStringLiteral("trajectoryPeakSearchStartSpin"));
+    auto *peakSearchEndSpin = dialog.findChild<QSpinBox *>(QStringLiteral("trajectoryPeakSearchEndSpin"));
+    auto *peakFilterModeCombo = dialog.findChild<QComboBox *>(QStringLiteral("trajectoryPeakFilterModeCombo"));
+    auto *peakFilterMinEdit = dialog.findChild<QLineEdit *>(QStringLiteral("trajectoryPeakFilterMinEdit"));
+    auto *peakFilterMaxEdit = dialog.findChild<QLineEdit *>(QStringLiteral("trajectoryPeakFilterMaxEdit"));
+    auto *peakApplyButton = dialog.findChild<QPushButton *>(QStringLiteral("trajectoryPeakApplyButton"));
     const auto pointDetailActionButtons = dialog.findChildren<QToolButton *>(QStringLiteral("trajectoryPointDetailActionButton"));
     QToolButton *filterCurrentButton = nullptr;
     QToolButton *filterStartButton = nullptr;
@@ -583,6 +593,14 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(filterTitle != nullptr, "trajectory viewer filter title exists");
     require(filterEmptyLabel != nullptr, "trajectory viewer filter empty text exists");
     require(filterList != nullptr, "trajectory viewer filter list exists");
+    require(peakCard != nullptr, "trajectory viewer peak settings card exists");
+    require(peakTitle != nullptr, "trajectory viewer peak settings title exists");
+    require(peakSearchStartSpin != nullptr, "trajectory viewer peak search start control exists");
+    require(peakSearchEndSpin != nullptr, "trajectory viewer peak search end control exists");
+    require(peakFilterModeCombo != nullptr, "trajectory viewer peak filter mode control exists");
+    require(peakFilterMinEdit != nullptr, "trajectory viewer peak filter min control exists");
+    require(peakFilterMaxEdit != nullptr, "trajectory viewer peak filter max control exists");
+    require(peakApplyButton != nullptr, "trajectory viewer peak settings apply button exists");
     require(filterCurrentButton != nullptr, "trajectory viewer filter-current point action exists");
     require(filterStartButton != nullptr, "trajectory viewer filter-start point action exists");
     require(filterEndButton != nullptr, "trajectory viewer filter-end point action exists");
@@ -608,6 +626,14 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(sidebarCard->isAncestorOf(sidebarTitleBar), "sidebar title bar is inside card");
     require(sidebarCard->isAncestorOf(sidebar), "sidebar body scroll area is inside card");
     require(sidebar->isAncestorOf(sidebarContent), "sidebar content is inside scroll body");
+    require(sidebar->isAncestorOf(peakCard), "trajectory peak settings card is in the sidebar");
+    require(peakCard->isAncestorOf(peakTitle), "trajectory peak settings title is inside peak card");
+    require(peakCard->isAncestorOf(peakSearchStartSpin), "trajectory peak search start is inside peak card");
+    require(peakCard->isAncestorOf(peakSearchEndSpin), "trajectory peak search end is inside peak card");
+    require(peakCard->isAncestorOf(peakFilterModeCombo), "trajectory peak filter mode is inside peak card");
+    require(peakCard->isAncestorOf(peakFilterMinEdit), "trajectory peak filter min is inside peak card");
+    require(peakCard->isAncestorOf(peakFilterMaxEdit), "trajectory peak filter max is inside peak card");
+    require(peakCard->isAncestorOf(peakApplyButton), "trajectory peak apply button is inside peak card");
     require(sidebar->isAncestorOf(filterCard), "trajectory filter card is in the sidebar");
     require(filterCard->isAncestorOf(filterTitle), "trajectory filter title is inside filter card");
     require(filterCard->isAncestorOf(filterEmptyLabel), "trajectory filter empty text is inside filter card");
@@ -625,6 +651,49 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(mapSourceCombo->sizePolicy().horizontalPolicy() == QSizePolicy::Expanding,
             "map source combo expands within sidebar controls");
     require(sidebar->isAncestorOf(mapSourceCombo), "map source control is in sidebar");
+    require(peakSearchStartSpin->minimum() == 0 && peakSearchEndSpin->minimum() == 0,
+            "trajectory peak search controls allow full-frame end value");
+    require(peakSearchEndSpin->specialValueText().contains(QStringLiteral("整帧")) ||
+                peakSearchEndSpin->specialValueText().contains(QStringLiteral("Full")),
+            "trajectory peak search end exposes full-frame special value");
+    require(peakFilterModeCombo->count() == 4,
+            "trajectory peak filter mode mirrors the data viewer filter modes");
+    dialog.setPeakSettings(100, 0, 2, 0.125, 0.875);
+    processEventsFor(50);
+    require(peakSearchStartSpin->value() == 100 && peakSearchEndSpin->value() == 0,
+            "trajectory peak controls sync search range from the data viewer");
+    require(peakFilterModeCombo->currentData().toInt() == 2,
+            "trajectory peak controls sync filter mode from the data viewer");
+    require(peakFilterMinEdit->text().startsWith(QStringLiteral("0.125")) &&
+                peakFilterMaxEdit->text().startsWith(QStringLiteral("0.875")),
+            "trajectory peak controls sync numeric filter bounds from the data viewer");
+    require(peakFilterMinEdit->isEnabled() && peakFilterMaxEdit->isEnabled(),
+            "trajectory peak range filter enables range bound editors");
+    int requestedPeakStart = -1;
+    int requestedPeakEnd = -1;
+    int requestedPeakMode = -1;
+    double requestedPeakMin = 0.0;
+    double requestedPeakMax = 0.0;
+    QObject::connect(&dialog,
+                     &TrajectoryViewerDialog::peakSettingsChangeRequested,
+                     &dialog,
+                     [&](int start, int end, int mode, double minValue, double maxValue) {
+                         requestedPeakStart = start;
+                         requestedPeakEnd = end;
+                         requestedPeakMode = mode;
+                         requestedPeakMin = minValue;
+                         requestedPeakMax = maxValue;
+                     });
+    peakSearchStartSpin->setValue(250);
+    peakSearchEndSpin->setValue(0);
+    peakFilterMinEdit->setText(QStringLiteral("0.200000"));
+    peakFilterMaxEdit->setText(QStringLiteral("0.700000"));
+    peakApplyButton->click();
+    processEventsFor(50);
+    require(requestedPeakStart == 250 && requestedPeakEnd == 0 && requestedPeakMode == 2,
+            "trajectory peak apply emits the shared peak search and filter mode");
+    require(std::abs(requestedPeakMin - 0.2) < 1e-9 && std::abs(requestedPeakMax - 0.7) < 1e-9,
+            "trajectory peak apply emits the shared numeric filter bounds");
     require(heatLegendCard->minimumWidth() >= 390 && heatGradientBar->minimumWidth() >= 260,
             "heat palette card gives the gradient a longer readable span");
     require(heatCaptionLabels.size() >= 3, "heat legend exposes min, middle, and max captions");
@@ -728,6 +797,12 @@ void testTrajectoryViewerUsesSidebarLayout()
             "trajectory viewer stylesheet includes sidebar title icon styling");
     require(styleSheet.contains(QStringLiteral("QLabel#trajectorySidebarTitleIcon { background-color: transparent; border: none")),
             "trajectory sidebar title icon is not drawn with a blue badge background");
+    require(styleSheet.contains(QStringLiteral("QFrame#trajectoryPeakCard")),
+            "trajectory viewer stylesheet includes sidebar peak settings card styling");
+    require(styleSheet.contains(QStringLiteral("QSpinBox#trajectoryPeakSearchStartSpin")),
+            "trajectory viewer stylesheet includes peak search spinbox styling");
+    require(styleSheet.contains(QStringLiteral("QPushButton#trajectoryPeakApplyButton")),
+            "trajectory viewer stylesheet includes peak settings apply button styling");
     require(!styleSheet.contains(QStringLiteral("trajectorySidebarStatusLabel")),
             "trajectory viewer stylesheet no longer targets a sidebar map status label");
     require(!styleSheet.contains(QStringLiteral("QProgressBar")),

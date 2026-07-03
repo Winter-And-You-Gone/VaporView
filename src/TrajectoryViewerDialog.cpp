@@ -14,6 +14,7 @@
 #include <QFileInfo>
 #include <QFontMetrics>
 #include <QFrame>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QComboBox>
 #include <QIcon>
@@ -37,6 +38,7 @@
 #include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QSlider>
+#include <QSpinBox>
 #include <QStandardPaths>
 #include <QStringConverter>
 #include <QSvgRenderer>
@@ -2752,6 +2754,19 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , filter_list_widget_(new QWidget(this))
     , filter_list_layout_(nullptr)
     , filter_row_labels_()
+    , peak_card_(new QFrame(this))
+    , peak_title_label_(new QLabel(this))
+    , peak_search_start_label_(new QLabel(this))
+    , peak_search_end_label_(new QLabel(this))
+    , peak_filter_mode_label_(new QLabel(this))
+    , peak_filter_min_label_(new QLabel(this))
+    , peak_filter_max_label_(new QLabel(this))
+    , peak_search_start_spin_(new QSpinBox(this))
+    , peak_search_end_spin_(new QSpinBox(this))
+    , peak_filter_mode_combo_(new QComboBox(this))
+    , peak_filter_min_edit_(new QLineEdit(this))
+    , peak_filter_max_edit_(new QLineEdit(this))
+    , peak_apply_button_(new QPushButton(this))
     , map_widget_(new TrajectoryMapWidget(this))
     , track_width_label_(new QLabel(this))
     , track_width_slider_(new QSlider(Qt::Horizontal, this))
@@ -2870,6 +2885,61 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     summary_label_->setTextInteractionFlags(Qt::TextSelectableByMouse);
     summary_label_->setObjectName(QStringLiteral("trajectorySidebarSummaryLabel"));
     sidebarLayout->addWidget(summary_label_);
+
+    peak_card_->setObjectName(QStringLiteral("trajectoryPeakCard"));
+    peak_card_->setAttribute(Qt::WA_StyledBackground, true);
+    auto *peakCardLayout = new QVBoxLayout(peak_card_);
+    peakCardLayout->setContentsMargins(10, 8, 10, 10);
+    peakCardLayout->setSpacing(7);
+    peak_title_label_->setObjectName(QStringLiteral("trajectoryPeakTitle"));
+    peakCardLayout->addWidget(peak_title_label_);
+    auto *peakGridLayout = new QGridLayout();
+    peakGridLayout->setContentsMargins(0, 0, 0, 0);
+    peakGridLayout->setHorizontalSpacing(8);
+    peakGridLayout->setVerticalSpacing(6);
+    for (auto *label : {peak_search_start_label_, peak_search_end_label_, peak_filter_mode_label_, peak_filter_min_label_, peak_filter_max_label_})
+    {
+        label->setObjectName(QStringLiteral("trajectoryPeakFieldLabel"));
+        label->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+        label->setMinimumWidth(42);
+    }
+    peak_search_start_spin_->setObjectName(QStringLiteral("trajectoryPeakSearchStartSpin"));
+    peak_search_start_spin_->setRange(0, 10000000);
+    peak_search_start_spin_->setSingleStep(1000);
+    peak_search_end_spin_->setObjectName(QStringLiteral("trajectoryPeakSearchEndSpin"));
+    peak_search_end_spin_->setRange(0, 10000000);
+    peak_search_end_spin_->setSingleStep(1000);
+    peak_filter_mode_combo_->setObjectName(QStringLiteral("trajectoryPeakFilterModeCombo"));
+    peak_filter_min_edit_->setObjectName(QStringLiteral("trajectoryPeakFilterMinEdit"));
+    peak_filter_max_edit_->setObjectName(QStringLiteral("trajectoryPeakFilterMaxEdit"));
+    peak_filter_min_edit_->setClearButtonEnabled(true);
+    peak_filter_max_edit_->setClearButtonEnabled(true);
+    for (auto *editor : {static_cast<QWidget*>(peak_search_start_spin_),
+             static_cast<QWidget*>(peak_search_end_spin_),
+             static_cast<QWidget*>(peak_filter_mode_combo_),
+             static_cast<QWidget*>(peak_filter_min_edit_),
+             static_cast<QWidget*>(peak_filter_max_edit_)})
+    {
+        editor->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    }
+    peakGridLayout->addWidget(peak_search_start_label_, 0, 0);
+    peakGridLayout->addWidget(peak_search_start_spin_, 0, 1);
+    peakGridLayout->addWidget(peak_search_end_label_, 1, 0);
+    peakGridLayout->addWidget(peak_search_end_spin_, 1, 1);
+    peakGridLayout->addWidget(peak_filter_mode_label_, 2, 0);
+    peakGridLayout->addWidget(peak_filter_mode_combo_, 2, 1);
+    peakGridLayout->addWidget(peak_filter_min_label_, 3, 0);
+    peakGridLayout->addWidget(peak_filter_min_edit_, 3, 1);
+    peakGridLayout->addWidget(peak_filter_max_label_, 4, 0);
+    peakGridLayout->addWidget(peak_filter_max_edit_, 4, 1);
+    peakGridLayout->setColumnStretch(1, 1);
+    peakCardLayout->addLayout(peakGridLayout);
+    peak_apply_button_->setObjectName(QStringLiteral("trajectoryPeakApplyButton"));
+    peak_apply_button_->setFixedHeight(30);
+    peak_apply_button_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    peakCardLayout->addWidget(peak_apply_button_);
+    sidebarLayout->addWidget(peak_card_);
+
     detail_label_->setWordWrap(true);
     detail_label_->setTextFormat(Qt::RichText);
     detail_label_->setObjectName(QStringLiteral("trajectoryPointDetailLabel"));
@@ -3193,6 +3263,18 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
             this, &TrajectoryViewerDialog::exportTrackCsv);
     connect(copy_point_button_, &QPushButton::clicked,
             this, &TrajectoryViewerDialog::copySelectedPoint);
+    connect(peak_apply_button_, &QPushButton::clicked,
+            this, &TrajectoryViewerDialog::applyPeakControlEdits);
+    connect(peak_filter_mode_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() {
+        const int mode = peak_filter_mode_combo_->currentData().toInt();
+        const bool rangeMode = mode == 2 || mode == 3;
+        peak_filter_min_edit_->setEnabled(rangeMode);
+        peak_filter_max_edit_->setEnabled(rangeMode);
+    });
+    connect(peak_filter_min_edit_, &QLineEdit::returnPressed,
+            this, &TrajectoryViewerDialog::applyPeakControlEdits);
+    connect(peak_filter_max_edit_, &QLineEdit::returnPressed,
+            this, &TrajectoryViewerDialog::applyPeakControlEdits);
 
     {
         QSettings settings("VaporView", "TrajectoryViewer");
@@ -3224,6 +3306,10 @@ TrajectoryViewerDialog::~TrajectoryViewerDialog()
              static_cast<QObject*>(point_size_slider_),
              static_cast<QObject*>(show_route_button_),
              static_cast<QObject*>(show_points_button_),
+             static_cast<QObject*>(peak_apply_button_),
+             static_cast<QObject*>(peak_filter_mode_combo_),
+             static_cast<QObject*>(peak_filter_min_edit_),
+             static_cast<QObject*>(peak_filter_max_edit_),
              static_cast<QObject*>(filter_current_point_button_),
              static_cast<QObject*>(filter_start_point_button_),
              static_cast<QObject*>(filter_end_point_button_),
@@ -3261,6 +3347,15 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QScrollArea#trajectoryViewerSidebar { background-color: @vv-surface; border: none; border-bottom-left-radius: 7px; border-bottom-right-radius: 7px; }"
         "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarViewport, QDialog#trajectoryViewerDialog QWidget#trajectoryViewerSidebarContent { background-color: @vv-surface; border: none; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectorySidebarSummaryLabel { color: @vv-text; background-color: transparent; border: none; font-size: 14px; font-weight: 500; line-height: 140%; }"
+        "QDialog#trajectoryViewerDialog QFrame#trajectoryPeakCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
+        "QDialog#trajectoryViewerDialog QLabel#trajectoryPeakTitle { color: @vv-text-strong; background-color: transparent; border: none; font-size: 14px; font-weight: 700; }"
+        "QDialog#trajectoryViewerDialog QLabel#trajectoryPeakFieldLabel { color: @vv-text-muted; background-color: transparent; border: none; font-size: 12px; font-weight: 600; }"
+        "QDialog#trajectoryViewerDialog QSpinBox#trajectoryPeakSearchStartSpin, QDialog#trajectoryViewerDialog QSpinBox#trajectoryPeakSearchEndSpin, QDialog#trajectoryViewerDialog QComboBox#trajectoryPeakFilterModeCombo, QDialog#trajectoryViewerDialog QLineEdit#trajectoryPeakFilterMinEdit, QDialog#trajectoryViewerDialog QLineEdit#trajectoryPeakFilterMaxEdit { background-color: @vv-field-bg; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; font-size: 12px; font-weight: 600; min-height: 26px; padding: 2px 6px; }"
+        "QDialog#trajectoryViewerDialog QSpinBox#trajectoryPeakSearchStartSpin:hover, QDialog#trajectoryViewerDialog QSpinBox#trajectoryPeakSearchEndSpin:hover, QDialog#trajectoryViewerDialog QComboBox#trajectoryPeakFilterModeCombo:hover, QDialog#trajectoryViewerDialog QLineEdit#trajectoryPeakFilterMinEdit:hover, QDialog#trajectoryViewerDialog QLineEdit#trajectoryPeakFilterMaxEdit:hover { border-color: @vv-border-strong; }"
+        "QDialog#trajectoryViewerDialog QSpinBox#trajectoryPeakSearchStartSpin:focus, QDialog#trajectoryViewerDialog QSpinBox#trajectoryPeakSearchEndSpin:focus, QDialog#trajectoryViewerDialog QComboBox#trajectoryPeakFilterModeCombo:focus, QDialog#trajectoryViewerDialog QLineEdit#trajectoryPeakFilterMinEdit:focus, QDialog#trajectoryViewerDialog QLineEdit#trajectoryPeakFilterMaxEdit:focus { border-color: @vv-primary; }"
+        "QDialog#trajectoryViewerDialog QPushButton#trajectoryPeakApplyButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; color: @vv-text; font-size: 13px; font-weight: 700; min-height: 30px; max-height: 30px; padding: 4px 10px; }"
+        "QDialog#trajectoryViewerDialog QPushButton#trajectoryPeakApplyButton:hover { background-color: @vv-title-hover; color: @vv-text-strong; }"
+        "QDialog#trajectoryViewerDialog QPushButton#trajectoryPeakApplyButton:pressed { background-color: @vv-field-bg; color: @vv-text-strong; }"
         "QDialog#trajectoryViewerDialog QFrame#trajectoryFilterCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectoryFilterTitle { color: @vv-text-strong; background-color: transparent; border: none; font-size: 14px; font-weight: 700; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectoryFilterEmptyLabel { color: @vv-text-muted; background-color: transparent; border: none; font-size: 12px; font-weight: 500; line-height: 140%; }"
@@ -3424,6 +3519,82 @@ void TrajectoryViewerDialog::setTrackStats(const RtkTrackStats& stats)
 {
     track_stats_ = stats;
     updateSummary();
+}
+
+void TrajectoryViewerDialog::setPeakSettings(int searchStartIndex,
+                                             int searchEndIndex,
+                                             int filterMode,
+                                             double filterMin,
+                                             double filterMax)
+{
+    const QSignalBlocker startBlocker(peak_search_start_spin_);
+    const QSignalBlocker endBlocker(peak_search_end_spin_);
+    const QSignalBlocker modeBlocker(peak_filter_mode_combo_);
+    const QSignalBlocker minBlocker(peak_filter_min_edit_);
+    const QSignalBlocker maxBlocker(peak_filter_max_edit_);
+    peak_search_start_spin_->setValue(std::max(0, searchStartIndex));
+    peak_search_end_spin_->setValue(std::max(0, searchEndIndex));
+    const int modeIndex = peak_filter_mode_combo_->findData(filterMode);
+    peak_filter_mode_combo_->setCurrentIndex(modeIndex >= 0 ? modeIndex : 0);
+    peak_filter_min_edit_->setText(QString::number(filterMin, 'f', 6));
+    peak_filter_max_edit_->setText(QString::number(filterMax, 'f', 6));
+    const bool rangeMode = filterMode == 2 || filterMode == 3;
+    peak_filter_min_edit_->setEnabled(rangeMode);
+    peak_filter_max_edit_->setEnabled(rangeMode);
+}
+
+void TrajectoryViewerDialog::refreshPeakFilterModeCombo()
+{
+    if (!peak_filter_mode_combo_)
+    {
+        return;
+    }
+
+    const QVariant currentData = peak_filter_mode_combo_->currentData();
+    const QSignalBlocker blocker(peak_filter_mode_combo_);
+    peak_filter_mode_combo_->clear();
+    peak_filter_mode_combo_->addItem(is_english_ ? QStringLiteral("Off") : QStringLiteral("关闭"), 0);
+    peak_filter_mode_combo_->addItem(is_english_ ? QStringLiteral("IQR") : QStringLiteral("IQR"), 1);
+    peak_filter_mode_combo_->addItem(is_english_ ? QStringLiteral("Keep Range") : QStringLiteral("保留区间"), 2);
+    peak_filter_mode_combo_->addItem(is_english_ ? QStringLiteral("Exclude Range") : QStringLiteral("排除区间"), 3);
+    const int index = currentData.isValid() ? peak_filter_mode_combo_->findData(currentData) : 0;
+    peak_filter_mode_combo_->setCurrentIndex(index >= 0 ? index : 0);
+    const int mode = peak_filter_mode_combo_->currentData().toInt();
+    const bool rangeMode = mode == 2 || mode == 3;
+    peak_filter_min_edit_->setEnabled(rangeMode);
+    peak_filter_max_edit_->setEnabled(rangeMode);
+}
+
+void TrajectoryViewerDialog::applyPeakControlEdits()
+{
+    const int searchStart = peak_search_start_spin_->value();
+    const int searchEnd = peak_search_end_spin_->value();
+    if (searchEnd > 0 && searchEnd <= searchStart)
+    {
+        setMapFooterStatus(is_english_
+            ? QStringLiteral("Peak search end must be greater than start, or set to full frame.")
+            : QStringLiteral("峰值搜索终点必须大于起点，或者设置为整帧。"));
+        return;
+    }
+
+    bool minOk = false;
+    bool maxOk = false;
+    const double minValue = peak_filter_min_edit_->text().trimmed().toDouble(&minOk);
+    const double maxValue = peak_filter_max_edit_->text().trimmed().toDouble(&maxOk);
+    const int mode = peak_filter_mode_combo_->currentData().toInt();
+    if ((mode == 2 || mode == 3) && (!minOk || !maxOk))
+    {
+        setMapFooterStatus(is_english_
+            ? QStringLiteral("Please enter valid numeric peak filter bounds.")
+            : QStringLiteral("请输入有效的峰值过滤区间。"));
+        return;
+    }
+
+    emit peakSettingsChangeRequested(searchStart,
+        searchEnd,
+        mode,
+        minOk ? minValue : 0.0,
+        maxOk ? maxValue : 0.0);
 }
 
 void TrajectoryViewerDialog::setMapFooterStatus(const QString& text)
@@ -4096,6 +4267,36 @@ void TrajectoryViewerDialog::updateTexts()
     {
         filter_title_label_->setText(is_english_ ? QStringLiteral("Filters") : QStringLiteral("过滤"));
     }
+    if (peak_title_label_)
+    {
+        peak_title_label_->setText(is_english_ ? QStringLiteral("Peak Mapping") : QStringLiteral("峰值映射"));
+    }
+    peak_search_start_label_->setText(is_english_ ? QStringLiteral("Start") : QStringLiteral("起点"));
+    peak_search_end_label_->setText(is_english_ ? QStringLiteral("End") : QStringLiteral("终点"));
+    peak_filter_mode_label_->setText(is_english_ ? QStringLiteral("Filter") : QStringLiteral("过滤"));
+    peak_filter_min_label_->setText(is_english_ ? QStringLiteral("Min") : QStringLiteral("最小"));
+    peak_filter_max_label_->setText(is_english_ ? QStringLiteral("Max") : QStringLiteral("最大"));
+    peak_search_end_spin_->setSpecialValueText(is_english_ ? QStringLiteral("Full Frame") : QStringLiteral("整帧"));
+    refreshPeakFilterModeCombo();
+    peak_apply_button_->setText(is_english_ ? QStringLiteral("Apply Peak Settings") : QStringLiteral("应用峰值设置"));
+    peak_apply_button_->setToolTip(is_english_
+        ? QStringLiteral("Apply peak search and filter settings, then refresh trajectory peak colors.")
+        : QStringLiteral("应用峰值搜索和过滤设置，并刷新轨迹峰值颜色。"));
+    peak_search_start_spin_->setToolTip(is_english_
+        ? QStringLiteral("Peak search start sample index.")
+        : QStringLiteral("峰值搜索起始采样点下标。"));
+    peak_search_end_spin_->setToolTip(is_english_
+        ? QStringLiteral("Peak search end sample index. Set to Full Frame to search to the end of each frame.")
+        : QStringLiteral("峰值搜索结束采样点下标。设置为整帧时会搜索到每帧末尾。"));
+    peak_filter_mode_combo_->setToolTip(is_english_
+        ? QStringLiteral("Peak value filter mode shared with the data viewer.")
+        : QStringLiteral("与数据查看器同步的峰值过滤方式。"));
+    peak_filter_min_edit_->setToolTip(is_english_
+        ? QStringLiteral("Minimum bound for range-based peak filters.")
+        : QStringLiteral("区间类峰值过滤的最小值。"));
+    peak_filter_max_edit_->setToolTip(is_english_
+        ? QStringLiteral("Maximum bound for range-based peak filters.")
+        : QStringLiteral("区间类峰值过滤的最大值。"));
     {
         QSignalBlocker blocker(map_source_combo_);
         map_source_combo_->clear();
