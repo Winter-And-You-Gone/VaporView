@@ -1130,6 +1130,7 @@ protected:
         {
             drawTiles(painter, mapRect);
             painter.drawPixmap(mapRect.topLeft() + drag_current_delta_, drag_frame_cache_);
+            drawTrack(painter, mapRect);
         }
         else
         {
@@ -1159,7 +1160,7 @@ private:
         QPainterPath mapClip;
         mapClip.addRoundedRect(mapRect.adjusted(0.5, 0.5, -0.5, -0.5), 8.0, 8.0);
         cachePainter.setClipPath(mapClip);
-        drawMapBody(cachePainter, mapRect);
+        drawTiles(cachePainter, mapRect);
         return pixmap;
     }
 
