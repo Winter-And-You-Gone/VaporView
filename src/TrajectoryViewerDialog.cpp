@@ -83,6 +83,7 @@ constexpr int kTrajectoryMapMinimumHeight = 360;
 constexpr int kTileCurrentPriority = 0;
 constexpr int kTilePrefetchPriority = 10;
 constexpr int kTileAdjacentZoomPriority = 20;
+constexpr int kTilePanPrefetchExpansion = 2;
 constexpr int kTileZoomRequestDebounceMs = 90;
 constexpr int kTilePanRequestDebounceMs = 50;
 constexpr double kDefaultTrackWidth = 2.8;
@@ -1031,6 +1032,7 @@ protected:
             drag_frame_cache_ = QPixmap();
             drag_current_delta_ = QPointF();
             last_render_context_ = TrackRenderContext();
+            requestVisibleTiles();
             updateHoveredTrackPoint(event->position());
             if (wasClick)
             {
@@ -1087,6 +1089,7 @@ protected:
         painter.setClipPath(mapClip);
         if (dragging_ && !drag_frame_cache_.isNull())
         {
+            drawTiles(painter, mapRect);
             painter.drawPixmap(mapRect.topLeft() + drag_current_delta_, drag_frame_cache_);
         }
         else
@@ -1580,7 +1583,7 @@ private:
         QSet<QString> requestedKeys;
         const int currentTileZoom = tileZoom();
         enqueueTileRange(tileRangeForZoom(currentTileZoom, 0), kTileCurrentPriority, requestedKeys, &visibleKeys);
-        enqueueTileRange(tileRangeForZoom(currentTileZoom, 1), kTilePrefetchPriority, requestedKeys);
+        enqueueTileRange(tileRangeForZoom(currentTileZoom, kTilePanPrefetchExpansion), kTilePrefetchPriority, requestedKeys);
         if (currentTileZoom > kMinZoom)
         {
             enqueueTileRange(tileRangeForZoom(currentTileZoom - 1, 1), kTileAdjacentZoomPriority, requestedKeys);
@@ -2611,6 +2614,9 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
         ? QStringLiteral("Choose the peak heatmap color ramp.")
         : QStringLiteral("选择峰值热力图色带。"));
     heat_palette_menu_->setObjectName(QStringLiteral("trajectoryHeatPaletteMenu"));
+    heat_palette_menu_->setAttribute(Qt::WA_TranslucentBackground, true);
+    heat_palette_menu_->setWindowFlag(Qt::FramelessWindowHint, true);
+    heat_palette_menu_->setWindowFlag(Qt::NoDropShadowWindowHint, true);
     heat_palette_button_->setMenu(heat_palette_menu_);
 
     heat_palette_card_->setObjectName(QStringLiteral("trajectoryHeatLegendCard"));
@@ -2909,7 +2915,7 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QToolButton#trajectoryHeatPaletteButton { background-color: transparent; border: none; border-radius: 4px; color: @vv-text; min-width: 28px; max-width: 28px; min-height: 24px; max-height: 24px; padding: 0px; }"
         "QDialog#trajectoryViewerDialog QToolButton#trajectoryHeatPaletteButton:hover, QDialog#trajectoryViewerDialog QToolButton#trajectoryHeatPaletteButton:focus { background-color: @vv-primary-subtle; border: none; }"
         "QDialog#trajectoryViewerDialog QToolButton#trajectoryHeatPaletteButton::menu-indicator { image: none; width: 0px; }"
-        "QDialog#trajectoryViewerDialog QMenu#trajectoryHeatPaletteMenu { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; padding: 4px; }"
+        "QDialog#trajectoryViewerDialog QMenu#trajectoryHeatPaletteMenu { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 6px; color: @vv-text; padding: 4px; margin: 0px; }"
         "QDialog#trajectoryViewerDialog QMenu#trajectoryHeatPaletteMenu::item { background-color: transparent; border-radius: 4px; padding: 6px 18px; }"
         "QDialog#trajectoryViewerDialog QMenu#trajectoryHeatPaletteMenu::item:selected { background-color: @vv-primary-subtle; color: @vv-primary; }"
         "QDialog#trajectoryViewerDialog QToolButton#titleBarButton { background-color: transparent; border: 1px solid transparent; border-radius: 6px; }"

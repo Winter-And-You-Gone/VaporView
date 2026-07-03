@@ -514,6 +514,11 @@ void testTrajectoryViewerUsesSidebarLayout()
             "heat palette button stays compact inside floating heat legend");
     require(heatPaletteButton->arrowType() == Qt::NoArrow && !heatPaletteButton->icon().isNull(),
             "heat palette button uses a single lucide chevron affordance");
+    require(heatPaletteMenu->testAttribute(Qt::WA_TranslucentBackground),
+            "heat palette menu uses a transparent popup background for rounded corners");
+    require(heatPaletteMenu->windowFlags().testFlag(Qt::FramelessWindowHint)
+                && heatPaletteMenu->windowFlags().testFlag(Qt::NoDropShadowWindowHint),
+            "heat palette menu avoids native popup chrome around rounded corners");
     require(heatPaletteMenu->actions().size() >= 5, "heat palette menu exposes multiple vivid ramps");
     for (QAction *action : heatPaletteMenu->actions())
     {
@@ -598,6 +603,10 @@ void testTrajectoryViewerUsesSidebarLayout()
             "trajectory viewer stylesheet hides the native menu indicator");
     require(styleSheet.contains(QStringLiteral("QMenu#trajectoryHeatPaletteMenu")),
             "trajectory viewer stylesheet includes heat palette popup menu styling");
+    require(styleSheet.contains(QStringLiteral("QMenu#trajectoryHeatPaletteMenu"))
+                && styleSheet.contains(QStringLiteral("border-radius: 6px"))
+                && styleSheet.contains(QStringLiteral("margin: 0px")),
+            "heat palette popup menu keeps rounded corners flush with the transparent popup");
     require(styleSheet.contains(QStringLiteral("QFrame#trajectoryViewerMapPanel")),
             "trajectory viewer stylesheet includes rounded map panel styling");
 
