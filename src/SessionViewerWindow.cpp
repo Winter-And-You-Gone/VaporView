@@ -3826,6 +3826,22 @@ bool SessionViewerWindow::loadSensorsCsv()
                 point.longitude = lon;
                 point.csv_row = rows.size() - 1;
                 point.gnss_fix = gnssFix;
+                if (std::isfinite(temperatureValue))
+                {
+                    point.temperature_c = temperatureValue;
+                    point.has_temperature = true;
+                }
+                const double humidityValue = humidity_values_.isEmpty() ? std::numeric_limits<double>::quiet_NaN() : humidity_values_.last();
+                if (std::isfinite(humidityValue))
+                {
+                    point.humidity_rh = humidityValue;
+                    point.has_humidity = true;
+                }
+                if (std::isfinite(pressureValue))
+                {
+                    point.pressure_hpa = pressureValue;
+                    point.has_pressure = true;
+                }
                 const double height = parseOptionalDouble(csvValueAt(fields, navHeightIndex));
                 if (std::isfinite(height))
                 {

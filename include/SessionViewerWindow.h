@@ -23,12 +23,18 @@ struct RtkTrackPoint
     quint64 waveform_timestamp_us = 0;
     quint64 waveform_delta_us = 0;
     float peak_value = 0.0f;
+    double temperature_c = 0.0;
+    double humidity_rh = 0.0;
+    double pressure_hpa = 0.0;
     int csv_row = -1;
     int waveform_frame_index = -1;
     QString gnss_fix;
     bool has_height = false;
     bool has_speed = false;
     bool has_peak_value = false;
+    bool has_temperature = false;
+    bool has_humidity = false;
+    bool has_pressure = false;
     bool has_waveform_match = false;
 };
 

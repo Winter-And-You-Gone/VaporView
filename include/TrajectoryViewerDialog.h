@@ -50,6 +50,7 @@ private:
     void updateTitleBarIcons();
     void updateVisibilityButtonIcons();
     void updateHeatLegend();
+    void updateHeatMetricCombo();
     void updateTexts();
     void updateSummary();
     void updateSelectedPointDetails();
@@ -109,7 +110,7 @@ private:
     QLabel *point_size_label_;
     QSlider *point_size_slider_;
     QFrame *heat_palette_card_;
-    QLabel *heat_palette_title_label_;
+    QComboBox *heat_metric_combo_;
     QWidget *heat_gradient_bar_;
     QLabel *heat_min_label_;
     QLabel *heat_mid_label_;

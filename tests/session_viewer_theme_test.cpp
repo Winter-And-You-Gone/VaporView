@@ -670,7 +670,7 @@ void testTrajectoryViewerUsesSidebarLayout()
     auto *heatLegendCard = dialog.findChild<QFrame *>(QStringLiteral("trajectoryHeatLegendCard"));
     auto *mapToolsCard = dialog.findChild<QFrame *>(QStringLiteral("trajectoryMapToolsCard"));
     auto *pointDetailCard = dialog.findChild<QFrame *>(QStringLiteral("trajectoryPointDetailCard"));
-    auto *heatLegendTitle = dialog.findChild<QLabel *>(QStringLiteral("trajectoryHeatLegendTitle"));
+    auto *heatMetricCombo = dialog.findChild<QComboBox *>(QStringLiteral("trajectoryHeatMetricCombo"));
     auto *heatGradientBar = dialog.findChild<QWidget *>(QStringLiteral("trajectoryHeatGradientBar"));
     auto *heatPaletteButton = dialog.findChild<QToolButton *>(QStringLiteral("trajectoryHeatPaletteButton"));
     auto *heatPaletteMenu = dialog.findChild<QMenu *>(QStringLiteral("trajectoryHeatPaletteMenu"));
@@ -739,7 +739,7 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(heatLegendCard != nullptr, "trajectory viewer floating heat legend card exists");
     require(mapToolsCard != nullptr, "trajectory viewer floating map tools card exists");
     require(pointDetailCard != nullptr, "trajectory viewer floating point detail card exists");
-    require(heatLegendTitle != nullptr, "trajectory viewer floating heat legend title exists");
+    require(heatMetricCombo != nullptr, "trajectory viewer floating heat metric selector exists");
     require(heatGradientBar != nullptr, "trajectory viewer floating heat gradient bar exists");
     require(heatPaletteButton != nullptr, "trajectory viewer heat palette control exists");
     require(heatPaletteMenu != nullptr, "trajectory viewer heat palette menu exists");
@@ -863,7 +863,8 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(heatPaletteMenu->windowFlags().testFlag(Qt::FramelessWindowHint)
                 && heatPaletteMenu->windowFlags().testFlag(Qt::NoDropShadowWindowHint),
             "heat palette menu avoids native popup chrome around rounded corners");
-    require(heatPaletteMenu->actions().size() >= 8, "heat palette menu exposes multiple vivid ramps");
+    require(heatPaletteMenu->actions().size() == 3, "heat palette menu exposes the curated vivid ramps");
+    require(heatMetricCombo->count() == 4, "heat metric selector exposes peak, humidity, temperature, and pressure");
     for (QAction *action : heatPaletteMenu->actions())
     {
         require(action != nullptr && !action->text().trimmed().isEmpty(), "heat palette menu text is visible");

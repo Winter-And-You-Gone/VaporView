@@ -109,17 +109,20 @@ enum class TileProvider
 
 enum class HeatPalette
 {
-    Turbo,
-    Neon,
-    Sunset,
-    Ocean,
     Candy,
     BlueRedFast,
-    IceFire,
-    PrismRush
+    SpectralReverse
 };
 
-constexpr int kHeatPaletteCount = 8;
+constexpr int kHeatPaletteCount = 3;
+
+enum class HeatMetric
+{
+    Peak,
+    Humidity,
+    Temperature,
+    Pressure
+};
 
 QString tileProviderSettingKey()
 {
@@ -201,21 +204,11 @@ int heatPaletteComboIndex(HeatPalette palette)
 {
     switch (palette)
     {
-    case HeatPalette::Neon:
-        return 1;
-    case HeatPalette::Sunset:
-        return 2;
-    case HeatPalette::Ocean:
-        return 3;
-    case HeatPalette::Candy:
-        return 4;
     case HeatPalette::BlueRedFast:
-        return 5;
-    case HeatPalette::IceFire:
-        return 6;
-    case HeatPalette::PrismRush:
-        return 7;
-    case HeatPalette::Turbo:
+        return 1;
+    case HeatPalette::SpectralReverse:
+        return 2;
+    case HeatPalette::Candy:
     default:
         return 0;
     }
@@ -226,22 +219,12 @@ HeatPalette heatPaletteFromComboIndex(int index)
     switch (index)
     {
     case 1:
-        return HeatPalette::Neon;
-    case 2:
-        return HeatPalette::Sunset;
-    case 3:
-        return HeatPalette::Ocean;
-    case 4:
-        return HeatPalette::Candy;
-    case 5:
         return HeatPalette::BlueRedFast;
-    case 6:
-        return HeatPalette::IceFire;
-    case 7:
-        return HeatPalette::PrismRush;
+    case 2:
+        return HeatPalette::SpectralReverse;
     case 0:
     default:
-        return HeatPalette::Turbo;
+        return HeatPalette::Candy;
     }
 }
 
@@ -249,23 +232,77 @@ QString heatPaletteName(HeatPalette palette, bool english)
 {
     switch (palette)
     {
-    case HeatPalette::Neon:
-        return english ? QStringLiteral("Neon") : QStringLiteral("霓虹");
-    case HeatPalette::Sunset:
-        return english ? QStringLiteral("Sunset") : QStringLiteral("日落");
-    case HeatPalette::Ocean:
-        return english ? QStringLiteral("Ocean") : QStringLiteral("海洋");
-    case HeatPalette::Candy:
-        return english ? QStringLiteral("Candy") : QStringLiteral("糖果");
     case HeatPalette::BlueRedFast:
         return english ? QStringLiteral("Fast blue-red") : QStringLiteral("蓝红急变");
-    case HeatPalette::IceFire:
-        return english ? QStringLiteral("Ice fire") : QStringLiteral("冰火");
-    case HeatPalette::PrismRush:
-        return english ? QStringLiteral("Prism rush") : QStringLiteral("疾彩");
-    case HeatPalette::Turbo:
+    case HeatPalette::SpectralReverse:
+        return english ? QStringLiteral("Spectral") : QStringLiteral("Spectral");
+    case HeatPalette::Candy:
     default:
-        return english ? QStringLiteral("Turbo vivid") : QStringLiteral("Turbo 明艳");
+        return english ? QStringLiteral("Candy") : QStringLiteral("糖果");
+    }
+}
+
+int heatMetricComboIndex(HeatMetric metric)
+{
+    switch (metric)
+    {
+    case HeatMetric::Humidity:
+        return 1;
+    case HeatMetric::Temperature:
+        return 2;
+    case HeatMetric::Pressure:
+        return 3;
+    case HeatMetric::Peak:
+    default:
+        return 0;
+    }
+}
+
+HeatMetric heatMetricFromComboIndex(int index)
+{
+    switch (index)
+    {
+    case 1:
+        return HeatMetric::Humidity;
+    case 2:
+        return HeatMetric::Temperature;
+    case 3:
+        return HeatMetric::Pressure;
+    case 0:
+    default:
+        return HeatMetric::Peak;
+    }
+}
+
+QString heatMetricName(HeatMetric metric, bool english)
+{
+    switch (metric)
+    {
+    case HeatMetric::Humidity:
+        return english ? QStringLiteral("Humidity") : QStringLiteral("湿度");
+    case HeatMetric::Temperature:
+        return english ? QStringLiteral("Temperature") : QStringLiteral("温度");
+    case HeatMetric::Pressure:
+        return english ? QStringLiteral("Pressure") : QStringLiteral("气压");
+    case HeatMetric::Peak:
+    default:
+        return english ? QStringLiteral("Peak") : QStringLiteral("峰值");
+    }
+}
+
+QString heatMetricUnit(HeatMetric metric)
+{
+    switch (metric)
+    {
+    case HeatMetric::Humidity:
+        return QStringLiteral("%RH");
+    case HeatMetric::Temperature:
+        return QStringLiteral("°C");
+    case HeatMetric::Pressure:
+        return QStringLiteral("hPa");
+    case HeatMetric::Peak:
+    default:
+        return QString();
     }
 }
 
@@ -430,41 +467,6 @@ QColor interpolateColor(const QColor& first, const QColor& second, double ratio)
 
 QColor heatmapColorAt(double normalized, HeatPalette palette)
 {
-    static const std::array<std::pair<double, QColor>, 8> turbo = {{
-        {0.00, QColor(QStringLiteral("#30123B"))},
-        {0.14, QColor(QStringLiteral("#445BFF"))},
-        {0.28, QColor(QStringLiteral("#18B7FF"))},
-        {0.42, QColor(QStringLiteral("#1DFFB3"))},
-        {0.56, QColor(QStringLiteral("#B6FF1D"))},
-        {0.70, QColor(QStringLiteral("#FFD21A"))},
-        {0.84, QColor(QStringLiteral("#FF6A00"))},
-        {1.00, QColor(QStringLiteral("#E60026"))}
-    }};
-    static const std::array<std::pair<double, QColor>, 7> neon = {{
-        {0.00, QColor(QStringLiteral("#2400FF"))},
-        {0.18, QColor(QStringLiteral("#008CFF"))},
-        {0.34, QColor(QStringLiteral("#00F5FF"))},
-        {0.50, QColor(QStringLiteral("#00FF66"))},
-        {0.66, QColor(QStringLiteral("#F7FF00"))},
-        {0.82, QColor(QStringLiteral("#FF7A00"))},
-        {1.00, QColor(QStringLiteral("#FF005D"))}
-    }};
-    static const std::array<std::pair<double, QColor>, 6> sunset = {{
-        {0.00, QColor(QStringLiteral("#3B0CA3"))},
-        {0.20, QColor(QStringLiteral("#8A1CFF"))},
-        {0.40, QColor(QStringLiteral("#FF2DB2"))},
-        {0.60, QColor(QStringLiteral("#FF5C00"))},
-        {0.80, QColor(QStringLiteral("#FFD000"))},
-        {1.00, QColor(QStringLiteral("#FFF44F"))}
-    }};
-    static const std::array<std::pair<double, QColor>, 6> ocean = {{
-        {0.00, QColor(QStringLiteral("#001E9A"))},
-        {0.20, QColor(QStringLiteral("#006CFF"))},
-        {0.40, QColor(QStringLiteral("#00D4FF"))},
-        {0.60, QColor(QStringLiteral("#00FFB2"))},
-        {0.80, QColor(QStringLiteral("#A8FF00"))},
-        {1.00, QColor(QStringLiteral("#FFF200"))}
-    }};
     static const std::array<std::pair<double, QColor>, 6> candy = {{
         {0.00, QColor(QStringLiteral("#0057FF"))},
         {0.20, QColor(QStringLiteral("#00F0FF"))},
@@ -484,26 +486,17 @@ QColor heatmapColorAt(double normalized, HeatPalette palette)
         {0.76, QColor(QStringLiteral("#FF2A00"))},
         {1.00, QColor(QStringLiteral("#D60000"))}
     }};
-    static const std::array<std::pair<double, QColor>, 8> iceFire = {{
-        {0.00, QColor(QStringLiteral("#002BFF"))},
-        {0.12, QColor(QStringLiteral("#0087FF"))},
-        {0.24, QColor(QStringLiteral("#00F6FF"))},
-        {0.36, QColor(QStringLiteral("#FFFFFF"))},
-        {0.48, QColor(QStringLiteral("#FFF200"))},
-        {0.62, QColor(QStringLiteral("#FF9C00"))},
-        {0.78, QColor(QStringLiteral("#FF2800"))},
-        {1.00, QColor(QStringLiteral("#B00000"))}
-    }};
-    static const std::array<std::pair<double, QColor>, 9> prismRush = {{
-        {0.00, QColor(QStringLiteral("#0033FF"))},
-        {0.10, QColor(QStringLiteral("#7A00FF"))},
-        {0.20, QColor(QStringLiteral("#FF00B8"))},
-        {0.32, QColor(QStringLiteral("#FF0061"))},
-        {0.44, QColor(QStringLiteral("#FF4D00"))},
-        {0.56, QColor(QStringLiteral("#FFE600"))},
-        {0.68, QColor(QStringLiteral("#55FF00"))},
-        {0.82, QColor(QStringLiteral("#00F0FF"))},
-        {1.00, QColor(QStringLiteral("#0057FF"))}
+    static const std::array<std::pair<double, QColor>, 10> spectralReverse = {{
+        {0.00, QColor(QStringLiteral("#5E4FA2"))},
+        {0.11, QColor(QStringLiteral("#3288BD"))},
+        {0.22, QColor(QStringLiteral("#66C2A5"))},
+        {0.33, QColor(QStringLiteral("#ABDDA4"))},
+        {0.44, QColor(QStringLiteral("#E6F598"))},
+        {0.55, QColor(QStringLiteral("#FEE08B"))},
+        {0.66, QColor(QStringLiteral("#FDAE61"))},
+        {0.77, QColor(QStringLiteral("#F46D43"))},
+        {0.88, QColor(QStringLiteral("#D53E4F"))},
+        {1.00, QColor(QStringLiteral("#9E0142"))}
     }};
 
     const double clamped = std::clamp(normalized, 0.0, 1.0);
@@ -523,59 +516,93 @@ QColor heatmapColorAt(double normalized, HeatPalette palette)
 
     switch (palette)
     {
-    case HeatPalette::Neon:
-        return colorAtStop(neon);
-    case HeatPalette::Sunset:
-        return colorAtStop(sunset);
-    case HeatPalette::Ocean:
-        return colorAtStop(ocean);
-    case HeatPalette::Candy:
-        return colorAtStop(candy);
     case HeatPalette::BlueRedFast:
         return colorAtStop(blueRedFast);
-    case HeatPalette::IceFire:
-        return colorAtStop(iceFire);
-    case HeatPalette::PrismRush:
-        return colorAtStop(prismRush);
-    case HeatPalette::Turbo:
+    case HeatPalette::SpectralReverse:
+        return colorAtStop(spectralReverse);
+    case HeatPalette::Candy:
     default:
-        return colorAtStop(turbo);
+        return colorAtStop(candy);
     }
 }
 
 QColor heatmapColorAt(double normalized)
 {
-    return heatmapColorAt(normalized, HeatPalette::Turbo);
+    return heatmapColorAt(normalized, HeatPalette::Candy);
 }
 
-QColor trackHeatColor(float peakValue, float minPeak, float maxPeak, HeatPalette palette)
+QColor trackHeatColor(double value, double minValue, double maxValue, HeatPalette palette)
 {
-    const double totalRange = static_cast<double>(maxPeak) - static_cast<double>(minPeak);
+    const double totalRange = maxValue - minValue;
     if (!(totalRange > 1e-6))
     {
         return heatmapColorAt(0.5, palette);
     }
 
-    const double normalized = std::clamp(
-        (static_cast<double>(peakValue) - static_cast<double>(minPeak)) / totalRange,
-        0.0,
-        1.0);
+    const double normalized = std::clamp((value - minValue) / totalRange, 0.0, 1.0);
     return heatmapColorAt(normalized, palette);
 }
 
-QColor trackHeatColor(float peakValue, float minPeak, float maxPeak)
+QColor trackHeatColor(double value, double minValue, double maxValue)
 {
-    const double totalRange = static_cast<double>(maxPeak) - static_cast<double>(minPeak);
+    const double totalRange = maxValue - minValue;
     if (!(totalRange > 1e-6))
     {
         return heatmapColorAt(0.5);
     }
 
-    const double normalized = std::clamp(
-        (static_cast<double>(peakValue) - static_cast<double>(minPeak)) / totalRange,
-        0.0,
-        1.0);
+    const double normalized = std::clamp((value - minValue) / totalRange, 0.0, 1.0);
     return heatmapColorAt(normalized);
+}
+
+bool heatMetricValueForPoint(const RtkTrackPoint& point, HeatMetric metric, double& value)
+{
+    switch (metric)
+    {
+    case HeatMetric::Humidity:
+        if (point.has_humidity && std::isfinite(point.humidity_rh))
+        {
+            value = point.humidity_rh;
+            return true;
+        }
+        return false;
+    case HeatMetric::Temperature:
+        if (point.has_temperature && std::isfinite(point.temperature_c))
+        {
+            value = point.temperature_c;
+            return true;
+        }
+        return false;
+    case HeatMetric::Pressure:
+        if (point.has_pressure && std::isfinite(point.pressure_hpa))
+        {
+            value = point.pressure_hpa;
+            return true;
+        }
+        return false;
+    case HeatMetric::Peak:
+    default:
+        if (point.has_peak_value && std::isfinite(point.peak_value))
+        {
+            value = point.peak_value;
+            return true;
+        }
+        return false;
+    }
+}
+
+QString formatHeatMetricValue(double value, HeatMetric metric)
+{
+    if (!std::isfinite(value))
+    {
+        return QStringLiteral("--");
+    }
+    const QString unit = heatMetricUnit(metric);
+    if (unit.isEmpty())
+    {
+        return QString::number(value, 'f', 6);
+    }
+    return QStringLiteral("%1 %2").arg(QString::number(value, 'f', 2), unit);
 }
 
 class HeatGradientBarWidget : public QWidget
@@ -583,7 +610,7 @@ class HeatGradientBarWidget : public QWidget
 public:
     explicit HeatGradientBarWidget(QWidget *parent = nullptr)
         : QWidget(parent)
-        , palette_(HeatPalette::Turbo)
+        , palette_(HeatPalette::Candy)
     {
         setObjectName(QStringLiteral("trajectoryHeatGradientBar"));
         setFixedHeight(10);
@@ -738,7 +765,8 @@ public:
         , manager_(new QNetworkAccessManager(this))
         , is_english_(false)
         , tile_provider_(TileProvider::OpenStreetMap)
-        , heat_palette_(HeatPalette::Turbo)
+        , heat_palette_(HeatPalette::Candy)
+        , heat_metric_(HeatMetric::Peak)
         , tianditu_key_()
         , zoom_(kDefaultZoom)
         , center_world_pixel_(0.0, 0.0)
@@ -761,10 +789,10 @@ public:
         , track_filter_active_(false)
         , first_filter_visible_track_index_(-1)
         , last_filter_visible_track_index_(-1)
-        , has_peak_range_(false)
-        , min_peak_(0.0f)
-        , max_peak_(0.0f)
-        , peak_count_(0)
+        , has_heat_metric_range_(false)
+        , min_heat_metric_(0.0)
+        , max_heat_metric_(0.0)
+        , heat_metric_count_(0)
         , active_tile_request_count_(0)
         , tile_request_generation_(0)
         , visible_tile_request_scheduled_(false)
@@ -950,6 +978,22 @@ public:
     HeatPalette heatPalette() const
     {
         return heat_palette_;
+    }
+
+    void setHeatMetric(HeatMetric metric)
+    {
+        if (heat_metric_ == metric)
+        {
+            return;
+        }
+        heat_metric_ = metric;
+        rebuildHeatMetricRange();
+        update();
+    }
+
+    HeatMetric heatMetric() const
+    {
+        return heat_metric_;
     }
 
     void setTrackWidth(double width)
@@ -1252,10 +1296,6 @@ private:
         projected_track_points_.clear();
         track_spatial_index_.clear();
         last_render_context_ = TrackRenderContext();
-        has_peak_range_ = false;
-        min_peak_ = std::numeric_limits<float>::max();
-        max_peak_ = std::numeric_limits<float>::lowest();
-        peak_count_ = 0;
 
         projected_track_points_.reserve(track_points_.size());
         for (int index = 0; index < track_points_.size(); ++index)
@@ -1266,14 +1306,27 @@ private:
             const int cellY = static_cast<int>(std::floor(worldPixel.y() / kTrackSpatialCellSize));
             projected_track_points_.push_back({worldPixel, cellX, cellY});
             track_spatial_index_[trackCellKey(cellX, cellY)].push_back(index);
+        }
+        rebuildHeatMetricRange();
+    }
 
-            if (point.has_peak_value && std::isfinite(point.peak_value))
+    void rebuildHeatMetricRange()
+    {
+        has_heat_metric_range_ = false;
+        min_heat_metric_ = std::numeric_limits<double>::max();
+        max_heat_metric_ = std::numeric_limits<double>::lowest();
+        heat_metric_count_ = 0;
+        for (const RtkTrackPoint& point : std::as_const(track_points_))
+        {
+            double value = 0.0;
+            if (!heatMetricValueForPoint(point, heat_metric_, value))
             {
-                has_peak_range_ = true;
-                ++peak_count_;
-                min_peak_ = std::min(min_peak_, point.peak_value);
-                max_peak_ = std::max(max_peak_, point.peak_value);
+                continue;
             }
+            has_heat_metric_range_ = true;
+            ++heat_metric_count_;
+            min_heat_metric_ = std::min(min_heat_metric_, value);
+            max_heat_metric_ = std::max(max_heat_metric_, value);
         }
     }
 
@@ -2057,7 +2110,7 @@ private:
     QColor segmentColorForPoints(int firstIndex, int secondIndex) const
     {
         QColor segmentColor = defaultTrackColor();
-        if (!has_peak_range_ ||
+        if (!has_heat_metric_range_ ||
             firstIndex < 0 ||
             secondIndex < 0 ||
             firstIndex >= track_points_.size() ||
@@ -2068,20 +2121,24 @@ private:
 
         const RtkTrackPoint& firstPoint = track_points_.at(firstIndex);
         const RtkTrackPoint& secondPoint = track_points_.at(secondIndex);
-        if (firstPoint.has_peak_value && secondPoint.has_peak_value)
+        double firstValue = 0.0;
+        double secondValue = 0.0;
+        const bool hasFirst = heatMetricValueForPoint(firstPoint, heat_metric_, firstValue);
+        const bool hasSecond = heatMetricValueForPoint(secondPoint, heat_metric_, secondValue);
+        if (hasFirst && hasSecond)
         {
-            return trackHeatColor((firstPoint.peak_value + secondPoint.peak_value) * 0.5f,
-                min_peak_,
-                max_peak_,
+            return trackHeatColor((firstValue + secondValue) * 0.5,
+                min_heat_metric_,
+                max_heat_metric_,
                 heat_palette_);
         }
-        if (firstPoint.has_peak_value)
+        if (hasFirst)
         {
-            return trackHeatColor(firstPoint.peak_value, min_peak_, max_peak_, heat_palette_);
+            return trackHeatColor(firstValue, min_heat_metric_, max_heat_metric_, heat_palette_);
         }
-        if (secondPoint.has_peak_value)
+        if (hasSecond)
         {
-            return trackHeatColor(secondPoint.peak_value, min_peak_, max_peak_, heat_palette_);
+            return trackHeatColor(secondValue, min_heat_metric_, max_heat_metric_, heat_palette_);
         }
         return segmentColor;
     }
@@ -2094,9 +2151,10 @@ private:
         }
 
         const RtkTrackPoint& point = track_points_.at(index);
-        if (has_peak_range_ && point.has_peak_value)
+        double value = 0.0;
+        if (has_heat_metric_range_ && heatMetricValueForPoint(point, heat_metric_, value))
         {
-            return trackHeatColor(point.peak_value, min_peak_, max_peak_, heat_palette_);
+            return trackHeatColor(value, min_heat_metric_, max_heat_metric_, heat_palette_);
         }
         return defaultTrackColor();
     }
@@ -2232,7 +2290,7 @@ private:
         const double turnToleranceSquared = turnTolerance * turnTolerance;
         const int maxSkippedPoints = dragging_
             ? 64
-            : (has_peak_range_ ? 14 : 28);
+            : (has_heat_metric_range_ ? 14 : 28);
 
         int keptIndex = -1;
         int pendingIndex = -1;
@@ -2760,6 +2818,7 @@ private:
     bool is_english_;
     TileProvider tile_provider_;
     HeatPalette heat_palette_;
+    HeatMetric heat_metric_;
     QString tianditu_key_;
     QString last_tile_error_;
     int zoom_;
@@ -2784,10 +2843,10 @@ private:
     bool track_filter_active_;
     int first_filter_visible_track_index_;
     int last_filter_visible_track_index_;
-    bool has_peak_range_;
-    float min_peak_;
-    float max_peak_;
-    int peak_count_;
+    bool has_heat_metric_range_;
+    double min_heat_metric_;
+    double max_heat_metric_;
+    int heat_metric_count_;
     int active_tile_request_count_;
     int tile_request_generation_;
     bool visible_tile_request_scheduled_;
@@ -2834,7 +2893,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     , point_size_label_(new QLabel(this))
     , point_size_slider_(new QSlider(Qt::Horizontal, this))
     , heat_palette_card_(new QFrame(this))
-    , heat_palette_title_label_(new QLabel(this))
+    , heat_metric_combo_(new QComboBox(this))
     , heat_gradient_bar_(new HeatGradientBarWidget(this))
     , heat_min_label_(new QLabel(this))
     , heat_mid_label_(new QLabel(this))
@@ -3098,8 +3157,10 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     heat_palette_card_->setAttribute(Qt::WA_StyledBackground, true);
     heat_palette_card_->setFixedWidth(390);
     heat_palette_card_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
-    heat_palette_title_label_->setObjectName(QStringLiteral("trajectoryHeatLegendTitle"));
-    heat_palette_title_label_->setFixedWidth(34);
+    heat_metric_combo_->setObjectName(QStringLiteral("trajectoryHeatMetricCombo"));
+    heat_metric_combo_->setFixedWidth(72);
+    heat_metric_combo_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    heat_metric_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     for (auto *label : {heat_min_label_, heat_mid_label_, heat_max_label_})
     {
         label->setObjectName(QStringLiteral("trajectoryHeatLegendCaption"));
@@ -3113,14 +3174,14 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     auto *heatTopLayout = new QHBoxLayout();
     heatTopLayout->setContentsMargins(0, 0, 0, 0);
     heatTopLayout->setSpacing(6);
-    heatTopLayout->addWidget(heat_palette_title_label_, 0);
+    heatTopLayout->addWidget(heat_metric_combo_, 0);
     heatTopLayout->addWidget(heat_gradient_bar_, 1);
     heatTopLayout->addWidget(heat_palette_button_, 0);
     heatCardLayout->addLayout(heatTopLayout);
     auto *heatCaptionLayout = new QHBoxLayout();
     heatCaptionLayout->setContentsMargins(0, 0, 34, 0);
     heatCaptionLayout->setSpacing(6);
-    heatCaptionLayout->addSpacing(40);
+    heatCaptionLayout->addSpacing(78);
     heatCaptionLayout->addWidget(heat_min_label_, 1);
     heatCaptionLayout->addWidget(heat_mid_label_, 1);
     heatCaptionLayout->addWidget(heat_max_label_, 1);
@@ -3272,8 +3333,13 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
         {
             mapWidget->setHeatPalette(heatPaletteFromComboIndex(action->data().toInt()));
             updateTexts();
-                updateHeatLegend();
+            updateHeatLegend();
         }
+    });
+    connect(heat_metric_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, mapWidget](int index) {
+        mapWidget->setHeatMetric(heatMetricFromComboIndex(index));
+        updateHeatLegend();
+        updateSelectedPointDetails();
     });
     connect(track_width_slider_, &QSlider::valueChanged, this, [mapWidget](int value) {
         mapWidget->setTrackWidth(value / static_cast<double>(kTrackStyleSliderScale));
@@ -3428,7 +3494,9 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QToolButton#trajectoryPointDetailCloseButton:hover, QDialog#trajectoryViewerDialog QToolButton#trajectoryPointDetailCloseButton:focus, QDialog#trajectoryViewerDialog QToolButton#trajectoryPointDetailActionButton:hover, QDialog#trajectoryViewerDialog QToolButton#trajectoryPointDetailActionButton:focus { background-color: @vv-title-hover; color: @vv-text-strong; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectoryControlLabel { color: @vv-text; background-color: transparent; border: none; font-size: 13px; font-weight: 600; min-height: 24px; }"
         "QDialog#trajectoryViewerDialog QFrame#trajectoryHeatLegendCard, QDialog#trajectoryViewerDialog QFrame#trajectoryMapToolsCard { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
-        "QDialog#trajectoryViewerDialog QLabel#trajectoryHeatLegendTitle { color: @vv-text-strong; background-color: transparent; border: none; font-size: 13px; font-weight: 700; }"
+        "QDialog#trajectoryViewerDialog QComboBox#trajectoryHeatMetricCombo { background-color: transparent; border: none; border-radius: 4px; color: @vv-text-strong; font-size: 13px; font-weight: 700; min-height: 24px; padding: 0px 16px 0px 0px; }"
+        "QDialog#trajectoryViewerDialog QComboBox#trajectoryHeatMetricCombo:hover, QDialog#trajectoryViewerDialog QComboBox#trajectoryHeatMetricCombo:focus { background-color: @vv-title-hover; }"
+        "QDialog#trajectoryViewerDialog QComboBox#trajectoryHeatMetricCombo::drop-down { border: none; width: 14px; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectoryHeatLegendCaption { color: @vv-text-muted; background-color: transparent; border: none; font-size: 11px; font-weight: 500; }"
         "QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle { background-color: transparent; border: none; border-radius: 0px; color: @vv-text; min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px; padding: 0px; }"
         "QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle:hover { background-color: transparent; border: none; }"
@@ -4181,52 +4249,75 @@ void TrajectoryViewerDialog::updateVisibilityButtonIcons()
 
 void TrajectoryViewerDialog::updateHeatLegend()
 {
-    if (!heat_palette_card_ || !heat_gradient_bar_ || !heat_min_label_ || !heat_mid_label_ || !heat_max_label_)
+    if (!heat_palette_card_ || !heat_gradient_bar_ || !heat_min_label_ || !heat_mid_label_ || !heat_max_label_ || !map_widget_)
     {
         return;
     }
 
-    float minPeak = 0.0f;
-    float maxPeak = 0.0f;
-    int peakCount = 0;
-    bool hasPeak = false;
+    auto *mapWidget = static_cast<TrajectoryMapWidget*>(map_widget_);
+    const HeatMetric metric = mapWidget->heatMetric();
+    double minValue = 0.0;
+    double maxValue = 0.0;
+    int sampleCount = 0;
+    bool hasMetric = false;
     for (const RtkTrackPoint& point : track_points_)
     {
-        if (!point.has_peak_value || !std::isfinite(point.peak_value))
+        double value = 0.0;
+        if (!heatMetricValueForPoint(point, metric, value))
         {
             continue;
         }
-        if (!hasPeak)
+        if (!hasMetric)
         {
-            minPeak = point.peak_value;
-            maxPeak = point.peak_value;
-            hasPeak = true;
+            minValue = value;
+            maxValue = value;
+            hasMetric = true;
         }
         else
         {
-            minPeak = std::min(minPeak, point.peak_value);
-            maxPeak = std::max(maxPeak, point.peak_value);
+            minValue = std::min(minValue, value);
+            maxValue = std::max(maxValue, value);
         }
-        ++peakCount;
+        ++sampleCount;
     }
 
-    heat_palette_card_->setVisible(hasPeak);
-    if (!hasPeak)
+    heat_palette_card_->setVisible(hasMetric);
+    if (!hasMetric)
     {
         return;
     }
 
-    static_cast<HeatGradientBarWidget*>(heat_gradient_bar_)->setHeatPalette(
-        static_cast<TrajectoryMapWidget*>(map_widget_)->heatPalette());
-    heat_min_label_->setText(formatPeakValue(minPeak));
-    heat_mid_label_->setText(formatPeakValue((static_cast<double>(minPeak) + static_cast<double>(maxPeak)) * 0.5));
+    static_cast<HeatGradientBarWidget*>(heat_gradient_bar_)->setHeatPalette(mapWidget->heatPalette());
+    heat_min_label_->setText(formatHeatMetricValue(minValue, metric));
+    heat_mid_label_->setText(formatHeatMetricValue((minValue + maxValue) * 0.5, metric));
     const QString countText = is_english_
-        ? QStringLiteral("%1 samples").arg(peakCount)
-        : QStringLiteral("%1 个样本").arg(peakCount);
+        ? QStringLiteral("%1 samples").arg(sampleCount)
+        : QStringLiteral("%1 个样本").arg(sampleCount);
     heat_palette_card_->setToolTip(countText);
     heat_gradient_bar_->setToolTip(countText);
-    heat_max_label_->setText(formatPeakValue(maxPeak));
+    heat_max_label_->setText(formatHeatMetricValue(maxValue, metric));
     heat_gradient_bar_->update();
+}
+
+void TrajectoryViewerDialog::updateHeatMetricCombo()
+{
+    if (!heat_metric_combo_ || !map_widget_)
+    {
+        return;
+    }
+    const HeatMetric currentMetric = static_cast<TrajectoryMapWidget*>(map_widget_)->heatMetric();
+    QSignalBlocker blocker(heat_metric_combo_);
+    heat_metric_combo_->clear();
+    for (int index = 0; index < 4; ++index)
+    {
+        const HeatMetric metric = heatMetricFromComboIndex(index);
+        heat_metric_combo_->addItem(heatMetricName(metric, is_english_), index);
+    }
+    heat_metric_combo_->setCurrentIndex(heatMetricComboIndex(currentMetric));
+    heat_metric_combo_->setToolTip(is_english_
+        ? QStringLiteral("Choose the trajectory color metric.")
+        : QStringLiteral("选择轨迹着色指标。"));
+    heat_metric_combo_->setAccessibleName(is_english_ ? QStringLiteral("Heat metric") : QStringLiteral("热力图指标"));
 }
 
 void TrajectoryViewerDialog::updateSummary()
@@ -4368,6 +4459,7 @@ void TrajectoryViewerDialog::updateTexts()
         map_source_combo_->setCurrentIndex(tileProviderComboIndex(provider));
     }
     map_source_combo_->setToolTip(is_english_ ? QStringLiteral("Map source") : QStringLiteral("底图来源"));
+    updateHeatMetricCombo();
     if (heat_palette_menu_)
     {
         QSignalBlocker blocker(heat_palette_menu_);
@@ -4383,13 +4475,9 @@ void TrajectoryViewerDialog::updateTexts()
         }
     }
     heat_palette_button_->setToolTip(is_english_
-        ? QStringLiteral("Choose the peak heatmap color ramp.")
-        : QStringLiteral("选择峰值热力图色带。"));
+        ? QStringLiteral("Choose the trajectory heatmap color ramp.")
+        : QStringLiteral("选择轨迹热力图色带。"));
     heat_palette_button_->setAccessibleName(is_english_ ? QStringLiteral("Heat palette") : QStringLiteral("热力图色带"));
-    if (heat_palette_title_label_)
-    {
-        heat_palette_title_label_->setText(is_english_ ? QStringLiteral("Peak") : QStringLiteral("峰值"));
-    }
     track_width_label_->setText(is_english_ ? QStringLiteral("Route width") : QStringLiteral("路线粗细"));
     point_size_label_->setText(is_english_ ? QStringLiteral("Point size") : QStringLiteral("点大小"));
     show_route_button_->setText(QString());
