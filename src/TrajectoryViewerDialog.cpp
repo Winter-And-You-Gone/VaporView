@@ -477,13 +477,13 @@ QColor heatmapColorAt(double normalized, HeatPalette palette)
     }};
     static const std::array<std::pair<double, QColor>, 9> blueRedFast = {{
         {0.00, QColor(QStringLiteral("#001BFF"))},
-        {0.08, QColor(QStringLiteral("#006CFF"))},
-        {0.16, QColor(QStringLiteral("#00D5FF"))},
-        {0.24, QColor(QStringLiteral("#00FF9A"))},
-        {0.34, QColor(QStringLiteral("#C8FF00"))},
-        {0.46, QColor(QStringLiteral("#FFF000"))},
-        {0.60, QColor(QStringLiteral("#FF8A00"))},
-        {0.76, QColor(QStringLiteral("#FF2A00"))},
+        {0.12, QColor(QStringLiteral("#006CFF"))},
+        {0.26, QColor(QStringLiteral("#00D5FF"))},
+        {0.42, QColor(QStringLiteral("#00FF9A"))},
+        {0.58, QColor(QStringLiteral("#C8FF00"))},
+        {0.72, QColor(QStringLiteral("#FFF000"))},
+        {0.84, QColor(QStringLiteral("#FF8A00"))},
+        {0.93, QColor(QStringLiteral("#FF2A00"))},
         {1.00, QColor(QStringLiteral("#D60000"))}
     }};
     static const std::array<std::pair<double, QColor>, 10> spectralReverse = {{
@@ -923,6 +923,7 @@ public:
         }
         refreshFilterBoundaryIndices();
         refreshFilterBridgeSegments();
+        rebuildHeatMetricRange();
         last_render_context_ = TrackRenderContext();
         update();
     }
@@ -994,6 +995,26 @@ public:
     HeatMetric heatMetric() const
     {
         return heat_metric_;
+    }
+
+    bool hasHeatMetricRange() const
+    {
+        return has_heat_metric_range_;
+    }
+
+    double minHeatMetric() const
+    {
+        return min_heat_metric_;
+    }
+
+    double maxHeatMetric() const
+    {
+        return max_heat_metric_;
+    }
+
+    int heatMetricCount() const
+    {
+        return heat_metric_count_;
     }
 
     void setTrackWidth(double width)
@@ -1316,8 +1337,14 @@ private:
         min_heat_metric_ = std::numeric_limits<double>::max();
         max_heat_metric_ = std::numeric_limits<double>::lowest();
         heat_metric_count_ = 0;
-        for (const RtkTrackPoint& point : std::as_const(track_points_))
+        for (int index = 0; index < track_points_.size(); ++index)
         {
+            if (!isTrackIndexVisibleByFilter(index))
+            {
+                continue;
+            }
+
+            const RtkTrackPoint& point = track_points_.at(index);
             double value = 0.0;
             if (!heatMetricValueForPoint(point, heat_metric_, value))
             {
@@ -4073,6 +4100,7 @@ void TrajectoryViewerDialog::updateFilterSummary()
     static_cast<TrajectoryMapWidget*>(map_widget_)->setExcludedFilterIndices(
         filterActive ? excludedIndices : QVector<int>(),
         filterActive);
+    updateHeatLegend();
 
     filter_empty_label_->setVisible(trajectory_filters_.isEmpty());
     filter_empty_label_->setText(is_english_
@@ -4278,31 +4306,10 @@ void TrajectoryViewerDialog::updateHeatLegend()
 
     auto *mapWidget = static_cast<TrajectoryMapWidget*>(map_widget_);
     const HeatMetric metric = mapWidget->heatMetric();
-    double minValue = 0.0;
-    double maxValue = 0.0;
-    int sampleCount = 0;
-    bool hasMetric = false;
-    for (const RtkTrackPoint& point : track_points_)
-    {
-        double value = 0.0;
-        if (!heatMetricValueForPoint(point, metric, value))
-        {
-            continue;
-        }
-        if (!hasMetric)
-        {
-            minValue = value;
-            maxValue = value;
-            hasMetric = true;
-        }
-        else
-        {
-            minValue = std::min(minValue, value);
-            maxValue = std::max(maxValue, value);
-        }
-        ++sampleCount;
-    }
-
+    const double minValue = mapWidget->minHeatMetric();
+    const double maxValue = mapWidget->maxHeatMetric();
+    const int sampleCount = mapWidget->heatMetricCount();
+    const bool hasMetric = mapWidget->hasHeatMetricRange();
     heat_palette_card_->setVisible(hasMetric);
     if (!hasMetric)
     {
