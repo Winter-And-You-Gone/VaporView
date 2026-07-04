@@ -171,6 +171,7 @@ int main(int argc, char *argv[])
     require(!QFileInfo::exists(sessionDir + QStringLiteral("/waveforms")), "no waveform bin directory");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/epsilon.dat")), "epsilon raw dat");
     require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/tcp_wave.dat")), "tcp wave raw dat");
+    require(QFileInfo::exists(sessionDir + QStringLiteral("/raw/tcp_wave_peaks.csv")), "tcp wave peak index csv");
 
     recorder.stop();
     require(!recorder.isRecording(), "recorder stopped");
@@ -226,6 +227,23 @@ int main(int argc, char *argv[])
     require(featureCells.at(11) == QStringLiteral("-0.750000"), "feature min csv precision");
     require(featureCells.at(12) == QStringLiteral("1.250000"), "feature max csv precision");
 
+    QFile peakIndexFile(sessionDir + QStringLiteral("/raw/tcp_wave_peaks.csv"));
+    require(peakIndexFile.open(QIODevice::ReadOnly | QIODevice::Text), "open tcp wave peak index csv");
+    const QStringList peakIndexLines = QString::fromUtf8(peakIndexFile.readAll()).trimmed().split('\n');
+    require(peakIndexLines.size() == 2, "tcp wave peak index row count");
+    const QStringList peakIndexHeaders = peakIndexLines.at(0).split(',');
+    require(peakIndexHeaders.size() == 6, "tcp wave peak index header column count");
+    require(peakIndexHeaders.at(0) == QStringLiteral("host_time_us"), "tcp wave peak index timestamp header");
+    require(peakIndexHeaders.at(1) == QStringLiteral("peak_value"), "tcp wave peak index value header");
+    const QStringList peakIndexCells = peakIndexLines.at(1).split(',');
+    require(peakIndexCells.size() == 6, "tcp wave peak index column count");
+    require(peakIndexCells.at(0) == QStringLiteral("1000"), "tcp wave peak index timestamp");
+    require(peakIndexCells.at(1) == QStringLiteral("4"), "tcp wave peak index peak value");
+    require(peakIndexCells.at(2) == QStringLiteral("3"), "tcp wave peak index peak sample");
+    require(peakIndexCells.at(3) == QStringLiteral("4"), "tcp wave peak index point count");
+    require(peakIndexCells.at(4) == QStringLiteral("0"), "tcp wave peak index search start");
+    require(peakIndexCells.at(5) == QStringLiteral("0"), "tcp wave peak index search end");
+
     QFile metadataFile(sessionDir + QStringLiteral("/session.json"));
     require(metadataFile.open(QIODevice::ReadOnly), "open metadata");
     const QJsonDocument metadata = QJsonDocument::fromJson(metadataFile.readAll());
@@ -242,6 +260,9 @@ int main(int argc, char *argv[])
     const QJsonObject rawFiles = root.value(QStringLiteral("raw_files")).toObject();
     require(rawFiles.value(QStringLiteral("tcp_wave")).toObject().value(QStringLiteral("record_count")).toString().toULongLong() == 1,
             "tcp wave raw record count");
+    const QJsonObject paths = root.value(QStringLiteral("paths")).toObject();
+    require(paths.value(QStringLiteral("waveform_peak_index")).toString() == QStringLiteral("raw/tcp_wave_peaks.csv"),
+            "metadata waveform peak index path");
 
     QFile rawFile(sessionDir + QStringLiteral("/raw/tcp_wave.dat"));
     require(rawFile.open(QIODevice::ReadOnly), "open tcp wave raw dat");

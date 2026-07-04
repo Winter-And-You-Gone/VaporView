@@ -545,6 +545,100 @@ constexpr quint64 kTcpRawRecordQueueMaxBytes = 256ULL * 1024ULL * 1024ULL;
 constexpr qint64 kTcpRawRecordQueueWarningIntervalMs = 5000;
 constexpr int kPtbMinSampleRateHz = 1;
 constexpr int kPtbMaxSampleRateHz = 70;
+constexpr const char *kTcpWavePeakIndexCsvHeader =
+    "host_time_us,peak_value,peak_index,point_count,search_start_index,search_end_index\n";
+
+struct TcpWavePeakSummary
+{
+    float value = std::numeric_limits<float>::quiet_NaN();
+    int index = -1;
+    quint32 point_count = 0;
+};
+
+TcpWavePeakSummary summarizeTcpWavePeakSamples(const char *samples,
+                                               qsizetype byteCount,
+                                               VaporView::TcpFloatEncoding encoding)
+{
+    TcpWavePeakSummary summary;
+    if (!samples || byteCount <= 0 || byteCount % static_cast<qsizetype>(sizeof(float)) != 0)
+    {
+        return summary;
+    }
+
+    const qsizetype sampleCount = byteCount / static_cast<qsizetype>(sizeof(float));
+    summary.point_count = static_cast<quint32>(std::min<quint64>(
+        static_cast<quint64>(sampleCount),
+        static_cast<quint64>(std::numeric_limits<quint32>::max())));
+    const VaporView::TcpFloatEncoding effectiveEncoding = encoding == VaporView::TcpFloatEncoding::Unknown
+        ? VaporView::autoDetectTcpFloatEncoding(QByteArray(samples, static_cast<qsizetype>(byteCount)))
+        : encoding;
+
+    bool hasPeak = false;
+    float peakValue = std::numeric_limits<float>::lowest();
+    int peakIndex = -1;
+    const int scanCount = static_cast<int>(std::min<quint64>(
+        static_cast<quint64>(sampleCount),
+        static_cast<quint64>(std::numeric_limits<int>::max())));
+    for (int index = 0; index < scanCount; ++index)
+    {
+        const float value = VaporView::decodeTcpFloatSample(samples + index * static_cast<int>(sizeof(float)), effectiveEncoding);
+        if (!std::isfinite(value))
+        {
+            continue;
+        }
+        if (!hasPeak || value > peakValue)
+        {
+            hasPeak = true;
+            peakValue = value;
+            peakIndex = index;
+        }
+    }
+
+    if (hasPeak)
+    {
+        summary.value = peakValue;
+        summary.index = peakIndex;
+    }
+    return summary;
+}
+
+TcpWavePeakSummary summarizeTcpWavePeakRecordPayload(const QByteArray& payload, quint32 flags)
+{
+    TcpWavePeakSummary summary;
+    if (payload.size() < static_cast<qsizetype>(sizeof(quint32) * 2))
+    {
+        return summary;
+    }
+
+    quint32 rawSizeLe = 0;
+    quint32 harmonicSizeLe = 0;
+    const char *cursor = payload.constData();
+    std::memcpy(&rawSizeLe, cursor, sizeof(rawSizeLe));
+    cursor += sizeof(rawSizeLe);
+    std::memcpy(&harmonicSizeLe, cursor, sizeof(harmonicSizeLe));
+    cursor += sizeof(harmonicSizeLe);
+
+    const quint32 rawSize = qFromLittleEndian(rawSizeLe);
+    const quint32 harmonicSize = qFromLittleEndian(harmonicSizeLe);
+    const quint64 requiredBytes = static_cast<quint64>(sizeof(quint32) * 2) + rawSize + harmonicSize;
+    if (requiredBytes > static_cast<quint64>(payload.size()) ||
+        harmonicSize == 0 ||
+        harmonicSize % static_cast<quint32>(sizeof(float)) != 0)
+    {
+        return summary;
+    }
+
+    return summarizeTcpWavePeakSamples(payload.constData() + sizeof(quint32) * 2 + rawSize,
+                                       static_cast<qsizetype>(harmonicSize),
+                                       VaporView::tcpFloatEncodingFromRawDatFlags(flags));
+}
+
+QString peakValueCsvText(float value)
+{
+    return std::isfinite(value)
+        ? QString::number(static_cast<double>(value), 'g', 9)
+        : QString();
+}
 
 void notePacketArrival(QVector<qint64>& arrivals, qint64 now)
 {
@@ -6116,6 +6210,7 @@ MainWindow::MainWindow(QWidget *parent)
     , raw_hmp_file_(nullptr)
     , raw_lidar_file_(nullptr)
     , raw_tcp_wave_file_(nullptr)
+    , raw_tcp_wave_peak_index_file_(nullptr)
     , event_log_file_(nullptr)
     , error_log_file_(nullptr)
     , recording_directory_()
@@ -6129,6 +6224,7 @@ MainWindow::MainWindow(QWidget *parent)
     , raw_hmp_filename_()
     , raw_lidar_filename_()
     , raw_tcp_wave_filename_()
+    , raw_tcp_wave_peak_index_filename_()
     , raw_dat_doc_filename_()
     , session_metadata_filename_()
     , event_log_filename_()
@@ -15057,6 +15153,7 @@ bool MainWindow::prepareRecordingSessionLayout(const QString& recordsPath, const
     raw_hmp_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw/hmp.dat"));
     raw_lidar_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw/lidar.dat"));
     raw_tcp_wave_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw/tcp_wave.dat"));
+    raw_tcp_wave_peak_index_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw/tcp_wave_peaks.csv"));
     raw_dat_doc_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("raw_dat_format.md"));
     session_metadata_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("session.json"));
     event_log_filename_ = QDir::fromNativeSeparators(sessionDir.filePath("logs/event_log.csv"));
@@ -15207,6 +15304,7 @@ void MainWindow::startTcpRawRecordingWorker()
                                       record.payload.constData(),
                                       static_cast<size_t>(record.payload.size())))
             {
+                appendTcpWavePeakIndexLine(record);
                 waveform_frame_count_.fetch_add(1);
                 waveform_file_count_.store(1);
                 const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
@@ -15322,7 +15420,8 @@ void MainWindow::closeUnifiedRawDatFiles()
                        raw_ptb_file_.get(),
                        raw_hmp_file_.get(),
                        raw_lidar_file_.get(),
-                       raw_tcp_wave_file_.get()})
+                       raw_tcp_wave_file_.get(),
+                       raw_tcp_wave_peak_index_file_.get()})
     {
         if (file && file->isOpen())
         {
@@ -15339,6 +15438,26 @@ void MainWindow::resetUnifiedRawDatFiles()
     raw_hmp_file_.reset();
     raw_lidar_file_.reset();
     raw_tcp_wave_file_.reset();
+    raw_tcp_wave_peak_index_file_.reset();
+}
+
+void MainWindow::appendTcpWavePeakIndexLine(const TcpRawRecord& record)
+{
+    const TcpWavePeakSummary summary = summarizeTcpWavePeakRecordPayload(record.payload, record.flags);
+
+    std::lock_guard<std::mutex> lock(recording_files_mutex_);
+    if (!raw_tcp_wave_peak_index_file_ || !raw_tcp_wave_peak_index_file_->isOpen())
+    {
+        return;
+    }
+
+    QTextStream out(raw_tcp_wave_peak_index_file_.get());
+    out.setEncoding(QStringConverter::Utf8);
+    out << record.timestamp_us << ','
+        << peakValueCsvText(summary.value) << ','
+        << summary.index << ','
+        << summary.point_count << ",0,0\n";
+    out.flush();
 }
 
 void MainWindow::appendEventLogLine(const QString& level, const QString& message)
@@ -15445,6 +15564,7 @@ bool MainWindow::writeSessionMetadata(const QString& endTimeUtc)
     QJsonObject paths;
     paths["raw_directory"] = QStringLiteral("raw");
     paths["devices_csv"] = sessionDir.relativeFilePath(sensors_filename_);
+    paths["waveform_peak_index"] = sessionDir.relativeFilePath(raw_tcp_wave_peak_index_filename_);
     paths["raw_format_doc"] = sessionDir.relativeFilePath(raw_dat_doc_filename_);
     paths["event_log"] = sessionDir.relativeFilePath(event_log_filename_);
     paths["error_log"] = sessionDir.relativeFilePath(error_log_filename_);
@@ -15756,9 +15876,11 @@ bool MainWindow::startRecordingSession()
     sensors_file_ = std::make_unique<QFile>(sensors_filename_);
     event_log_file_ = std::make_unique<QFile>(event_log_filename_);
     error_log_file_ = std::make_unique<QFile>(error_log_filename_);
+    raw_tcp_wave_peak_index_file_ = std::make_unique<QFile>(raw_tcp_wave_peak_index_filename_);
     if (!sensors_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
         !event_log_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
         !error_log_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
+        !raw_tcp_wave_peak_index_file_->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
         !openUnifiedRawDatFile(raw_epsilon_file_, raw_epsilon_filename_, kRawSourceEpsilon) ||
         !openUnifiedRawDatFile(raw_ptb_file_, raw_ptb_filename_, kRawSourcePtb) ||
         !openUnifiedRawDatFile(raw_hmp_file_, raw_hmp_filename_, kRawSourceHmp) ||
@@ -15792,6 +15914,12 @@ bool MainWindow::startRecordingSession()
         eventOut.setEncoding(QStringConverter::Utf8);
         eventOut << "timestamp_utc,timestamp_us,level,message\n";
         eventOut.flush();
+    }
+    {
+        QTextStream peakOut(raw_tcp_wave_peak_index_file_.get());
+        peakOut.setEncoding(QStringConverter::Utf8);
+        peakOut << kTcpWavePeakIndexCsvHeader;
+        peakOut.flush();
     }
 
     writeSensorsHeader();
@@ -16848,6 +16976,7 @@ void MainWindow::stopRecording(bool announce)
     raw_hmp_filename_.clear();
     raw_lidar_filename_.clear();
     raw_tcp_wave_filename_.clear();
+    raw_tcp_wave_peak_index_filename_.clear();
     raw_dat_doc_filename_.clear();
     session_metadata_filename_.clear();
     event_log_filename_.clear();

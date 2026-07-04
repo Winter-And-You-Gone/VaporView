@@ -488,6 +488,7 @@ private:
     void resetUnifiedRawDatFiles();
     bool writeSessionMetadata(const QString& endTimeUtc = QString());
     bool writeDeviceConfigSnapshot();
+    void appendTcpWavePeakIndexLine(const TcpRawRecord& record);
     void appendEventLogLine(const QString& level, const QString& message);
     void appendErrorLogLine(const QString& message);
     quint64 currentTimestampUs() const;
@@ -1038,6 +1039,7 @@ private:
     std::unique_ptr<QFile> raw_hmp_file_;
     std::unique_ptr<QFile> raw_lidar_file_;
     std::unique_ptr<QFile> raw_tcp_wave_file_;
+    std::unique_ptr<QFile> raw_tcp_wave_peak_index_file_;
     std::unique_ptr<QFile> event_log_file_;
     std::unique_ptr<QFile> error_log_file_;
     QString recording_directory_;
@@ -1051,6 +1053,7 @@ private:
     QString raw_hmp_filename_;
     QString raw_lidar_filename_;
     QString raw_tcp_wave_filename_;
+    QString raw_tcp_wave_peak_index_filename_;
     QString raw_dat_doc_filename_;
     QString session_metadata_filename_;
     QString event_log_filename_;

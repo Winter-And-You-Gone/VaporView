@@ -150,6 +150,10 @@ private:
     bool loadSensorsCsv();
     bool loadWaveformSegments();
     bool loadWaveformPeakSeries();
+    bool loadWaveformPeakIndexSeries();
+    bool loadRawTcpWavePeakSeries();
+    bool loadIndexedWaveformPeakSeries();
+    bool loadLegacyWaveformPeakSeries();
     bool previewWaveformFrame(quint64 frameIndex);
     bool loadWaveformFrame(quint64 frameIndex, bool scrollToCsvRow = true);
     bool loadUnifiedRawTcpWaveFrames();
@@ -241,6 +245,7 @@ private:
     QString sensors_csv_filename_;
     QString waveform_directory_;
     QString waveform_index_filename_;
+    QString waveform_peak_index_filename_;
     QString raw_tcp_wave_filename_;
     QString default_data_directory_;
     QString session_name_;

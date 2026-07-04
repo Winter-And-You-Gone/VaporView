@@ -29,6 +29,8 @@ constexpr quint16 kRawSourceLidar = 4u;
 constexpr quint16 kRawSourceTcpWave = 5u;
 constexpr quint16 kRawRecordTypeGeneric = 1u;
 constexpr quint32 kRawTcpWaveCombinedPayloadFlag = 0x00000001u;
+constexpr const char *kTcpWavePeakIndexCsvHeader =
+    "host_time_us,peak_value,peak_index,point_count,search_start_index,search_end_index\n";
 constexpr const char *kDevicesCsvHeader =
     "record_timestamp_us,"
     "epsilon_host_timestamp_us,epsilon_device_timestamp_us,epsilon_utc_unix_s,epsilon_utc_microseconds,"
@@ -149,6 +151,61 @@ QByteArray encodeLittleEndianFloatPayload(const QVector<float>& samples)
     return payload;
 }
 
+struct TcpWavePeakSummary
+{
+    float value = std::numeric_limits<float>::quiet_NaN();
+    int index = -1;
+    quint32 point_count = 0;
+};
+
+TcpWavePeakSummary summarizeTcpWavePeakSamples(const QByteArray& payload, TcpFloatEncoding encoding)
+{
+    TcpWavePeakSummary summary;
+    if (payload.isEmpty() || payload.size() % static_cast<int>(sizeof(float)) != 0)
+    {
+        return summary;
+    }
+
+    const int sampleCount = payload.size() / static_cast<int>(sizeof(float));
+    summary.point_count = static_cast<quint32>(sampleCount);
+    const TcpFloatEncoding effectiveEncoding = encoding == TcpFloatEncoding::Unknown
+        ? autoDetectTcpFloatEncoding(payload)
+        : encoding;
+
+    bool hasPeak = false;
+    float peakValue = std::numeric_limits<float>::lowest();
+    int peakIndex = -1;
+    const char *samples = payload.constData();
+    for (int index = 0; index < sampleCount; ++index)
+    {
+        const float value = decodeTcpFloatSample(samples + index * static_cast<int>(sizeof(float)), effectiveEncoding);
+        if (!std::isfinite(value))
+        {
+            continue;
+        }
+        if (!hasPeak || value > peakValue)
+        {
+            hasPeak = true;
+            peakValue = value;
+            peakIndex = index;
+        }
+    }
+
+    if (hasPeak)
+    {
+        summary.value = peakValue;
+        summary.index = peakIndex;
+    }
+    return summary;
+}
+
+QString peakValueCsvText(float value)
+{
+    return std::isfinite(value)
+        ? QString::number(static_cast<double>(value), 'g', 9)
+        : QString();
+}
+
 }  // namespace
 
 bool SkySessionRecorder::start(const QString& baseDirectory,
@@ -231,10 +288,13 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     raw_hmp_filename_ = sessionDir.filePath(QStringLiteral("raw/hmp.dat"));
     raw_lidar_filename_ = sessionDir.filePath(QStringLiteral("raw/lidar.dat"));
     raw_tcp_wave_filename_ = sessionDir.filePath(QStringLiteral("raw/tcp_wave.dat"));
+    raw_tcp_wave_peak_index_filename_ = sessionDir.filePath(QStringLiteral("raw/tcp_wave_peaks.csv"));
+    raw_tcp_wave_peak_index_file_.setFileName(raw_tcp_wave_peak_index_filename_);
 
     if (!basic_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !feature_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
         !temperature_controller_record_file_.open(QIODevice::WriteOnly | QIODevice::Text) ||
+        !raw_tcp_wave_peak_index_file_.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate) ||
         !openRawDatFile(raw_epsilon_file_, raw_epsilon_filename_, kRawSourceEpsilon, errorMessage) ||
         !openRawDatFile(raw_ptb_file_, raw_ptb_filename_, kRawSourcePtb, errorMessage) ||
         !openRawDatFile(raw_hmp_file_, raw_hmp_filename_, kRawSourceHmp, errorMessage) ||
@@ -256,6 +316,10 @@ bool SkySessionRecorder::start(const QString& baseDirectory,
     temperatureOut << "host_time_us,valid,internal_temperature_c,error_code,"
                       "ch1_target_c,ch1_measured_c,ch1_output_percent,ch1_output_current_a,ch1_enabled,ch1_mode,ch1_max_output_percent,ch1_kp,ch1_ki,ch1_kd,"
                       "ch2_target_c,ch2_measured_c,ch2_output_percent,ch2_output_current_a,ch2_enabled,ch2_mode,ch2_max_output_percent,ch2_kp,ch2_ki,ch2_kd\n";
+
+    QTextStream peakIndexOut(&raw_tcp_wave_peak_index_file_);
+    peakIndexOut << kTcpWavePeakIndexCsvHeader;
+    peakIndexOut.flush();
 
     session_start_time_utc_ = QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs);
     telemetry_port_ = telemetryPort;
@@ -852,12 +916,33 @@ bool SkySessionRecorder::writeRawTcpWavePayload(quint64 hostTimeUs,
         return false;
     }
 
+    appendTcpWavePeakIndexLine(hostTimeUs, harmonicPayload, floatEncoding);
     waveform_file_count_ = 1;
     if (harmonicPayload.size() > 0 && harmonicPayload.size() % static_cast<int>(sizeof(float)) == 0)
     {
         waveform_points_per_frame_ = static_cast<quint64>(harmonicPayload.size() / static_cast<int>(sizeof(float)));
     }
     return true;
+}
+
+void SkySessionRecorder::appendTcpWavePeakIndexLine(quint64 hostTimeUs,
+                                                    const QByteArray& harmonicPayload,
+                                                    TcpFloatEncoding floatEncoding)
+{
+    const TcpWavePeakSummary summary = summarizeTcpWavePeakSamples(harmonicPayload, floatEncoding);
+
+    std::lock_guard<std::mutex> lock(files_mutex_);
+    if (!raw_tcp_wave_peak_index_file_.isOpen())
+    {
+        return;
+    }
+
+    QTextStream out(&raw_tcp_wave_peak_index_file_);
+    out << hostTimeUs << ','
+        << peakValueCsvText(summary.value) << ','
+        << summary.index << ','
+        << summary.point_count << ",0,0\n";
+    out.flush();
 }
 
 bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString *errorMessage)
@@ -926,6 +1011,7 @@ bool SkySessionRecorder::writeSessionMetadata(const QString& endTimeUtc, QString
     paths.insert(QStringLiteral("devices_csv"), sessionDir.relativeFilePath(sensors_filename_));
     paths.insert(QStringLiteral("temperature_controller_csv"), sessionDir.relativeFilePath(temperature_controller_filename_));
     paths.insert(QStringLiteral("waveform_features"), sessionDir.relativeFilePath(feature_filename_));
+    paths.insert(QStringLiteral("waveform_peak_index"), sessionDir.relativeFilePath(raw_tcp_wave_peak_index_filename_));
     root.insert(QStringLiteral("paths"), paths);
 
     return writeJsonFileAtomically(session_metadata_filename_, root, errorMessage);
@@ -941,7 +1027,8 @@ void SkySessionRecorder::closeFiles()
                         &raw_ptb_file_,
                         &raw_hmp_file_,
                         &raw_lidar_file_,
-                        &raw_tcp_wave_file_})
+                        &raw_tcp_wave_file_,
+                        &raw_tcp_wave_peak_index_file_})
     {
         if (file->isOpen())
         {

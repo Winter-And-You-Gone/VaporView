@@ -90,6 +90,9 @@ private:
                                 const QByteArray& rawPayload,
                                 const QByteArray& harmonicPayload,
                                 TcpFloatEncoding floatEncoding);
+    void appendTcpWavePeakIndexLine(quint64 hostTimeUs,
+                                    const QByteArray& harmonicPayload,
+                                    TcpFloatEncoding floatEncoding);
     bool writeSessionMetadata(const QString& endTimeUtc = QString(), QString *errorMessage = nullptr);
     void closeFiles();
 
@@ -105,6 +108,7 @@ private:
     QString raw_hmp_filename_;
     QString raw_lidar_filename_;
     QString raw_tcp_wave_filename_;
+    QString raw_tcp_wave_peak_index_filename_;
     QFile basic_record_file_;
     QFile feature_record_file_;
     QFile temperature_controller_record_file_;
@@ -113,6 +117,7 @@ private:
     QFile raw_hmp_file_;
     QFile raw_lidar_file_;
     QFile raw_tcp_wave_file_;
+    QFile raw_tcp_wave_peak_index_file_;
     mutable std::mutex files_mutex_;
     QString session_start_time_utc_;
     QString telemetry_port_;

@@ -54,14 +54,17 @@
 #include <QVBoxLayout>
 #include <QWidget>
 #include <QStringConverter>
+#include <QThread>
 #include <QTimeZone>
 #include <QtEndian>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <future>
 #include <functional>
 #include <limits>
 #include <utility>
+#include <vector>
 
 using VaporView::AppThemeColor;
 using VaporView::appThemeColor;
@@ -82,6 +85,7 @@ constexpr int kDefaultPeakSearchEndIndex = 0;
 constexpr int kSessionViewerDefaultWidth = 1280;
 constexpr int kSessionViewerDefaultHeight = 800;
 constexpr int kMaxTrendPointsPerPixel = 2;
+constexpr qsizetype kPeakPayloadChunkBytes = 32 * 1024 * 1024;
 constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
 constexpr quint32 kUnifiedRawRecordMarker = 0x44525756u;
 constexpr quint16 kRawSourceTcpWave = 5u;
@@ -249,6 +253,19 @@ struct UnifiedRawRecordHeader
     quint64 sequence;
 };
 #pragma pack(pop)
+
+struct WaveformPeakPayload
+{
+    quint64 timestamp_us = 0;
+    QByteArray payload;
+    VaporView::TcpFloatEncoding encoding = VaporView::TcpFloatEncoding::LittleEndian;
+};
+
+struct WaveformPeakResult
+{
+    quint64 timestamp_us = 0;
+    float peak_value = std::numeric_limits<float>::quiet_NaN();
+};
 
 QString csvValueAt(const QStringList& fields, int index)
 {
@@ -514,6 +531,138 @@ float waveformPeakValue(const float* samples, int sampleCount, int searchStartIn
 float waveformPeakValue(const QVector<float>& samples, int searchStartIndex, int searchEndIndex)
 {
     return waveformPeakValue(samples.constData(), samples.size(), searchStartIndex, searchEndIndex);
+}
+
+bool isFullFramePeakSearch(int searchStartIndex, int searchEndIndex)
+{
+    return searchStartIndex == 0 && searchEndIndex <= 0;
+}
+
+std::pair<int, int> waveformPeakSearchRange(int sampleCount, int searchStartIndex, int searchEndIndex)
+{
+    if (sampleCount <= 0)
+    {
+        return {0, 0};
+    }
+
+    const int startIndex = std::clamp(searchStartIndex, 0, sampleCount);
+    const int endIndex = searchEndIndex <= 0
+        ? sampleCount
+        : std::clamp(searchEndIndex, 0, sampleCount);
+    return {startIndex, std::max(startIndex, endIndex)};
+}
+
+bool readWaveformPeakPayload(QFile& file,
+                             quint64 samplePayloadOffset,
+                             int sampleCount,
+                             int searchStartIndex,
+                             int searchEndIndex,
+                             QByteArray& payload)
+{
+    payload.clear();
+    const auto [startIndex, endIndex] = waveformPeakSearchRange(sampleCount, searchStartIndex, searchEndIndex);
+    if (startIndex >= endIndex)
+    {
+        return true;
+    }
+
+    const quint64 byteOffset = samplePayloadOffset + static_cast<quint64>(startIndex) * kFloatBytes;
+    const quint64 byteCount = static_cast<quint64>(endIndex - startIndex) * kFloatBytes;
+    if (byteOffset > static_cast<quint64>(std::numeric_limits<qint64>::max()) ||
+        byteCount > static_cast<quint64>(std::numeric_limits<qint64>::max()))
+    {
+        return false;
+    }
+    if (!file.seek(static_cast<qint64>(byteOffset)))
+    {
+        return false;
+    }
+
+    payload = file.read(static_cast<qint64>(byteCount));
+    return payload.size() == static_cast<qsizetype>(byteCount);
+}
+
+float waveformPeakValueFromPayload(const QByteArray& payload, VaporView::TcpFloatEncoding encoding)
+{
+    const int sampleCount = static_cast<int>(payload.size() / static_cast<int>(kFloatBytes));
+    if (sampleCount <= 0 || payload.size() % static_cast<int>(kFloatBytes) != 0)
+    {
+        return std::numeric_limits<float>::quiet_NaN();
+    }
+
+    const VaporView::TcpFloatEncoding effectiveEncoding = encoding == VaporView::TcpFloatEncoding::Unknown
+        ? VaporView::autoDetectTcpFloatEncoding(payload)
+        : encoding;
+    bool hasPeak = false;
+    float peakValue = std::numeric_limits<float>::lowest();
+    const char *samples = payload.constData();
+    for (int index = 0; index < sampleCount; ++index)
+    {
+        const float value = VaporView::decodeTcpFloatSample(samples + index * static_cast<int>(kFloatBytes), effectiveEncoding);
+        if (!std::isfinite(value))
+        {
+            continue;
+        }
+        hasPeak = true;
+        peakValue = std::max(peakValue, value);
+    }
+    return hasPeak ? peakValue : std::numeric_limits<float>::quiet_NaN();
+}
+
+QVector<WaveformPeakResult> computeWaveformPeakChunk(const QVector<WaveformPeakPayload>& payloads)
+{
+    QVector<WaveformPeakResult> results(payloads.size());
+    if (payloads.isEmpty())
+    {
+        return results;
+    }
+
+    const int desiredThreads = std::max(1, QThread::idealThreadCount());
+    const int workerCount = std::clamp(desiredThreads, 1, static_cast<int>(payloads.size()));
+    const int blockSize = (static_cast<int>(payloads.size()) + workerCount - 1) / workerCount;
+
+    std::vector<std::future<void>> futures;
+    futures.reserve(static_cast<size_t>(workerCount));
+    for (int worker = 0; worker < workerCount; ++worker)
+    {
+        const int begin = worker * blockSize;
+        const int end = std::min(static_cast<int>(payloads.size()), begin + blockSize);
+        if (begin >= end)
+        {
+            continue;
+        }
+
+        futures.emplace_back(std::async(std::launch::async, [&payloads, &results, begin, end]() {
+            for (int index = begin; index < end; ++index)
+            {
+                const WaveformPeakPayload& payload = payloads.at(index);
+                WaveformPeakResult result;
+                result.timestamp_us = payload.timestamp_us;
+                result.peak_value = waveformPeakValueFromPayload(payload.payload, payload.encoding);
+                results[index] = result;
+            }
+        }));
+    }
+
+    for (std::future<void>& future : futures)
+    {
+        future.get();
+    }
+    return results;
+}
+
+void appendWaveformPeakResults(const QVector<WaveformPeakPayload>& payloads,
+                               QVector<quint64>& timestampsUs,
+                               QVector<float>& peakValues)
+{
+    const QVector<WaveformPeakResult> results = computeWaveformPeakChunk(payloads);
+    timestampsUs.reserve(timestampsUs.size() + results.size());
+    peakValues.reserve(peakValues.size() + results.size());
+    for (const WaveformPeakResult& result : results)
+    {
+        timestampsUs.push_back(result.timestamp_us);
+        peakValues.push_back(result.peak_value);
+    }
 }
 
 quint64 midpointTimestamp(quint64 first, quint64 second)
@@ -1570,6 +1719,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , sensors_csv_filename_()
     , waveform_directory_()
     , waveform_index_filename_()
+    , waveform_peak_index_filename_()
     , raw_tcp_wave_filename_()
     , default_data_directory_()
     , session_name_()
@@ -2566,6 +2716,7 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     sensors_csv_filename_.clear();
     waveform_directory_.clear();
     waveform_index_filename_.clear();
+    waveform_peak_index_filename_.clear();
     raw_tcp_wave_filename_.clear();
     session_name_.clear();
     start_time_utc_.clear();
@@ -2950,12 +3101,14 @@ bool SessionViewerWindow::loadSessionMetadata(const QString& sessionDirectory)
     const QString csvRelativePath = paths.value(QStringLiteral("devices_csv")).toString(QStringLiteral("sensors/devices.csv"));
     const QString waveformRelativePath = paths.value(QStringLiteral("waveform_directory")).toString(QStringLiteral("waveform"));
     const QString waveformIndexRelativePath = paths.value(QStringLiteral("waveform_index")).toString(QStringLiteral("waveform_index.csv"));
+    const QString waveformPeakIndexRelativePath = paths.value(QStringLiteral("waveform_peak_index")).toString(QStringLiteral("raw/tcp_wave_peaks.csv"));
     const QJsonObject rawFiles = root.value(QStringLiteral("raw_files")).toObject();
     const QJsonObject tcpWaveRaw = rawFiles.value(QStringLiteral("tcp_wave")).toObject();
     const QString rawTcpWaveRelativePath = tcpWaveRaw.value(QStringLiteral("path")).toString(QStringLiteral("raw/tcp_wave.dat"));
     sensors_csv_filename_ = QDir(sessionDirectory).filePath(csvRelativePath);
     waveform_directory_ = QDir(sessionDirectory).filePath(waveformRelativePath);
     waveform_index_filename_ = QDir(sessionDirectory).filePath(waveformIndexRelativePath);
+    waveform_peak_index_filename_ = QDir(sessionDirectory).filePath(waveformPeakIndexRelativePath);
     raw_tcp_wave_filename_ = QDir(sessionDirectory).filePath(rawTcpWaveRelativePath);
     return true;
 }
@@ -3616,6 +3769,350 @@ void SessionViewerWindow::applyPeakFilter(int startPercent, int endPercent)
     }
 }
 
+bool SessionViewerWindow::loadWaveformPeakIndexSeries()
+{
+    if (!isFullFramePeakSearch(peak_search_start_index_, peak_search_end_index_) ||
+        waveform_peak_index_filename_.isEmpty() ||
+        !QFileInfo::exists(waveform_peak_index_filename_))
+    {
+        return false;
+    }
+
+    QFile file(waveform_peak_index_filename_);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        return false;
+    }
+
+    QTextStream stream(&file);
+    stream.setEncoding(QStringConverter::Utf8);
+    if (stream.atEnd())
+    {
+        return false;
+    }
+
+    const QStringList headers = parseCsvLine(stream.readLine());
+    const int hostTimeIndex = findHeaderIndex(headers, {QStringLiteral("host_time_us"), QStringLiteral("timestamp_us")});
+    const int peakValueIndex = findHeaderIndex(headers, {QStringLiteral("peak_value"), QStringLiteral("peak")});
+    const int searchStartIndex = findHeaderIndex(headers, {QStringLiteral("search_start_index")});
+    const int searchEndIndex = findHeaderIndex(headers, {QStringLiteral("search_end_index")});
+    if (hostTimeIndex < 0 || peakValueIndex < 0)
+    {
+        return false;
+    }
+
+    QVector<quint64> timestampsUs;
+    QVector<float> peakValues;
+    const qsizetype reserveCount = static_cast<qsizetype>(std::min<quint64>(
+        total_waveform_frames_,
+        static_cast<quint64>(std::numeric_limits<qsizetype>::max())));
+    timestampsUs.reserve(reserveCount);
+    peakValues.reserve(reserveCount);
+
+    while (!stream.atEnd())
+    {
+        const QString line = stream.readLine();
+        if (line.trimmed().isEmpty())
+        {
+            continue;
+        }
+
+        const QStringList fields = parseCsvLine(line);
+        if (searchStartIndex >= 0)
+        {
+            bool ok = false;
+            const int rowStart = csvValueAt(fields, searchStartIndex).toInt(&ok);
+            if (ok && rowStart != 0)
+            {
+                return false;
+            }
+        }
+        if (searchEndIndex >= 0)
+        {
+            bool ok = false;
+            const int rowEnd = csvValueAt(fields, searchEndIndex).toInt(&ok);
+            if (ok && rowEnd > 0)
+            {
+                return false;
+            }
+        }
+
+        bool timestampOk = false;
+        const quint64 timestampUs = csvValueAt(fields, hostTimeIndex).toULongLong(&timestampOk);
+        if (!timestampOk)
+        {
+            continue;
+        }
+
+        const QString peakText = csvValueAt(fields, peakValueIndex).trimmed();
+        bool peakOk = false;
+        const float peakValue = peakText.isEmpty()
+            ? std::numeric_limits<float>::quiet_NaN()
+            : peakText.toFloat(&peakOk);
+        timestampsUs.push_back(timestampUs);
+        peakValues.push_back(peakText.isEmpty() || !peakOk
+            ? std::numeric_limits<float>::quiet_NaN()
+            : peakValue);
+    }
+
+    if (peakValues.isEmpty())
+    {
+        return false;
+    }
+    if (total_waveform_frames_ > 0 && static_cast<quint64>(peakValues.size()) != total_waveform_frames_)
+    {
+        return false;
+    }
+
+    waveform_timestamps_us_ = std::move(timestampsUs);
+    waveform_peak_raw_values_ = std::move(peakValues);
+    return true;
+}
+
+bool SessionViewerWindow::loadRawTcpWavePeakSeries()
+{
+    if (raw_tcp_wave_frames_.isEmpty())
+    {
+        return true;
+    }
+
+    QFile file;
+    QString openFilename;
+    QVector<WaveformPeakPayload> payloads;
+    qsizetype chunkBytes = 0;
+    const quint64 progressInterval = std::max<quint64>(1, static_cast<quint64>(raw_tcp_wave_frames_.size()) / 100);
+
+    auto flushChunk = [&]() {
+        if (payloads.isEmpty())
+        {
+            return;
+        }
+        appendWaveformPeakResults(payloads, waveform_timestamps_us_, waveform_peak_raw_values_);
+        payloads.clear();
+        chunkBytes = 0;
+    };
+
+    for (int frameIndex = 0; frameIndex < raw_tcp_wave_frames_.size(); ++frameIndex)
+    {
+        const RawTcpWaveFrame& frame = raw_tcp_wave_frames_.at(frameIndex);
+        if (openFilename != frame.filename)
+        {
+            file.close();
+            file.setFileName(frame.filename);
+            if (!file.open(QIODevice::ReadOnly))
+            {
+                setStatusText(QString(is_english_ ? "Failed to read raw TCP wave file: %1" : "读取 raw TCP 波形文件失败: %1").arg(frame.filename));
+                return false;
+            }
+            openFilename = frame.filename;
+        }
+
+        const quint64 sampleCount64 = frame.harmonic_payload_size / kFloatBytes;
+        const int sampleCount = static_cast<int>(std::min<quint64>(
+            sampleCount64,
+            static_cast<quint64>(std::numeric_limits<int>::max())));
+        QByteArray payload;
+        if (!readWaveformPeakPayload(file,
+                                     frame.harmonic_payload_offset,
+                                     sampleCount,
+                                     peak_search_start_index_,
+                                     peak_search_end_index_,
+                                     payload))
+        {
+            setStatusText(QString(is_english_ ? "Incomplete raw TCP wave frame in %1" : "%1 中的 raw TCP 波形帧不完整").arg(frame.filename));
+            return false;
+        }
+
+        WaveformPeakPayload peakPayload;
+        peakPayload.timestamp_us = frame.timestamp_us;
+        peakPayload.payload = std::move(payload);
+        peakPayload.encoding = frame.float_encoding;
+        chunkBytes += peakPayload.payload.size();
+        payloads.push_back(std::move(peakPayload));
+
+        if (chunkBytes >= kPeakPayloadChunkBytes)
+        {
+            flushChunk();
+        }
+        if (session_loading_ && (static_cast<quint64>(frameIndex + 1) == total_waveform_frames_ ||
+                                 static_cast<quint64>(frameIndex + 1) % progressInterval == 0))
+        {
+            updateSessionLoadingProgress(QString(is_english_
+                ? "Calculating waveform peak series... %1/%2 frames"
+                : "正在计算波形峰值序列... %1/%2 帧")
+                .arg(frameIndex + 1)
+                .arg(total_waveform_frames_),
+                rangedProgressPercent(static_cast<quint64>(frameIndex + 1), total_waveform_frames_, 45, 90));
+        }
+    }
+
+    flushChunk();
+    return true;
+}
+
+bool SessionViewerWindow::loadIndexedWaveformPeakSeries()
+{
+    if (indexed_waveform_frames_.isEmpty())
+    {
+        return true;
+    }
+
+    QVector<WaveformPeakPayload> payloads;
+    qsizetype chunkBytes = 0;
+    const quint64 progressInterval = std::max<quint64>(1, static_cast<quint64>(indexed_waveform_frames_.size()) / 100);
+
+    auto flushChunk = [&]() {
+        if (payloads.isEmpty())
+        {
+            return;
+        }
+        appendWaveformPeakResults(payloads, waveform_timestamps_us_, waveform_peak_raw_values_);
+        payloads.clear();
+        chunkBytes = 0;
+    };
+
+    for (int frameIndex = 0; frameIndex < indexed_waveform_frames_.size(); ++frameIndex)
+    {
+        const IndexedWaveformFrame& frame = indexed_waveform_frames_.at(frameIndex);
+        QFile file(frame.filename);
+        if (!file.open(QIODevice::ReadOnly))
+        {
+            setStatusText(QString(is_english_ ? "Failed to read indexed waveform file: %1" : "读取索引波形文件失败: %1").arg(frame.filename));
+            return false;
+        }
+
+        QByteArray payload;
+        if (!readWaveformPeakPayload(file,
+                                     0,
+                                     static_cast<int>(std::min<quint64>(frame.point_count, static_cast<quint64>(std::numeric_limits<int>::max()))),
+                                     peak_search_start_index_,
+                                     peak_search_end_index_,
+                                     payload))
+        {
+            setStatusText(QString(is_english_ ? "Incomplete indexed waveform file: %1" : "索引波形文件不完整: %1").arg(frame.filename));
+            return false;
+        }
+
+        WaveformPeakPayload peakPayload;
+        peakPayload.timestamp_us = frame.timestamp_us;
+        peakPayload.payload = std::move(payload);
+        peakPayload.encoding = VaporView::TcpFloatEncoding::LittleEndian;
+        chunkBytes += peakPayload.payload.size();
+        payloads.push_back(std::move(peakPayload));
+
+        if (chunkBytes >= kPeakPayloadChunkBytes)
+        {
+            flushChunk();
+        }
+        if (session_loading_ && (static_cast<quint64>(frameIndex + 1) == total_waveform_frames_ ||
+                                 static_cast<quint64>(frameIndex + 1) % progressInterval == 0))
+        {
+            updateSessionLoadingProgress(QString(is_english_
+                ? "Calculating waveform peak series... %1/%2 frames"
+                : "正在计算波形峰值序列... %1/%2 帧")
+                .arg(frameIndex + 1)
+                .arg(total_waveform_frames_),
+                rangedProgressPercent(static_cast<quint64>(frameIndex + 1), total_waveform_frames_, 45, 90));
+        }
+    }
+
+    flushChunk();
+    return true;
+}
+
+bool SessionViewerWindow::loadLegacyWaveformPeakSeries()
+{
+    if (waveform_segments_.isEmpty())
+    {
+        return true;
+    }
+    if (points_per_frame_ <= 0)
+    {
+        return true;
+    }
+
+    QVector<WaveformPeakPayload> payloads;
+    qsizetype chunkBytes = 0;
+    quint64 processedFrames = 0;
+    const quint64 progressInterval = std::max<quint64>(1, total_waveform_frames_ / 100);
+    const quint64 frameBytes = kWaveformTimestampBytes + static_cast<quint64>(points_per_frame_) * kFloatBytes;
+
+    auto flushChunk = [&]() {
+        if (payloads.isEmpty())
+        {
+            return;
+        }
+        appendWaveformPeakResults(payloads, waveform_timestamps_us_, waveform_peak_raw_values_);
+        payloads.clear();
+        chunkBytes = 0;
+    };
+
+    for (const WaveformSegment& segment : waveform_segments_)
+    {
+        QFile file(segment.filename);
+        if (!file.open(QIODevice::ReadOnly))
+        {
+            setStatusText(QString(is_english_ ? "Failed to read waveform file: %1" : "读取波形文件失败: %1").arg(segment.filename));
+            return false;
+        }
+
+        for (quint64 localFrame = 0; localFrame < segment.frame_count; ++localFrame)
+        {
+            const quint64 frameOffset = localFrame * frameBytes;
+            if (frameOffset > static_cast<quint64>(std::numeric_limits<qint64>::max()) ||
+                !file.seek(static_cast<qint64>(frameOffset)))
+            {
+                setStatusText(QString(is_english_ ? "Failed to read waveform file: %1" : "读取波形文件失败: %1").arg(segment.filename));
+                return false;
+            }
+
+            quint64 timestampLe = 0;
+            if (file.read(reinterpret_cast<char*>(&timestampLe), sizeof(timestampLe)) != static_cast<qint64>(sizeof(timestampLe)))
+            {
+                setStatusText(QString(is_english_ ? "Incomplete waveform frame in %1" : "%1 中的波形帧不完整").arg(segment.filename));
+                return false;
+            }
+
+            QByteArray payload;
+            if (!readWaveformPeakPayload(file,
+                                         frameOffset + kWaveformTimestampBytes,
+                                         points_per_frame_,
+                                         peak_search_start_index_,
+                                         peak_search_end_index_,
+                                         payload))
+            {
+                setStatusText(QString(is_english_ ? "Incomplete waveform frame in %1" : "%1 中的波形帧不完整").arg(segment.filename));
+                return false;
+            }
+
+            WaveformPeakPayload peakPayload;
+            peakPayload.timestamp_us = qFromLittleEndian(timestampLe);
+            peakPayload.payload = std::move(payload);
+            peakPayload.encoding = VaporView::TcpFloatEncoding::LittleEndian;
+            chunkBytes += peakPayload.payload.size();
+            payloads.push_back(std::move(peakPayload));
+
+            ++processedFrames;
+            if (chunkBytes >= kPeakPayloadChunkBytes)
+            {
+                flushChunk();
+            }
+            if (session_loading_ && (processedFrames == total_waveform_frames_ || processedFrames % progressInterval == 0))
+            {
+                updateSessionLoadingProgress(QString(is_english_
+                    ? "Calculating waveform peak series... %1/%2 frames"
+                    : "正在计算波形峰值序列... %1/%2 帧")
+                    .arg(processedFrames)
+                    .arg(total_waveform_frames_),
+                    rangedProgressPercent(processedFrames, total_waveform_frames_, 45, 90));
+            }
+        }
+    }
+
+    flushChunk();
+    return true;
+}
+
 bool SessionViewerWindow::loadWaveformPeakSeries()
 {
     waveform_peak_raw_values_.clear();
@@ -3640,27 +4137,35 @@ bool SessionViewerWindow::loadWaveformPeakSeries()
     waveform_peak_raw_values_.reserve(static_cast<int>(std::min<quint64>(total_waveform_frames_, static_cast<quint64>(std::numeric_limits<int>::max()))));
     waveform_timestamps_us_.reserve(static_cast<int>(std::min<quint64>(total_waveform_frames_, static_cast<quint64>(std::numeric_limits<int>::max()))));
 
-    const quint64 progressInterval = std::max<quint64>(1, total_waveform_frames_ / 100);
-    for (quint64 frameIndex = 0; frameIndex < total_waveform_frames_; ++frameIndex)
+    if (isFullFramePeakSearch(peak_search_start_index_, peak_search_end_index_) && loadWaveformPeakIndexSeries())
     {
-        quint64 timestampUs = 0;
-        QVector<float> frameSamples;
-        if (!readWaveformFrameSamples(frameIndex, timestampUs, frameSamples))
+        if (session_loading_)
         {
-            return false;
+            updateSessionLoadingProgress(is_english_
+                ? "Loaded cached waveform peak index."
+                : "已加载缓存的波形峰值索引。",
+                90);
         }
+        applyPeakFilter(90, 97);
+        return true;
+    }
 
-        waveform_timestamps_us_.push_back(timestampUs);
-        waveform_peak_raw_values_.push_back(waveformPeakValue(frameSamples, peak_search_start_index_, peak_search_end_index_));
-        if (session_loading_ && ((frameIndex + 1) == total_waveform_frames_ || (frameIndex + 1) % progressInterval == 0))
-        {
-            updateSessionLoadingProgress(QString(is_english_
-                ? "Calculating waveform peak series... %1/%2 frames"
-                : "正在计算波形峰值序列... %1/%2 帧")
-                .arg(frameIndex + 1)
-                .arg(total_waveform_frames_),
-                rangedProgressPercent(frameIndex + 1, total_waveform_frames_, 45, 90));
-        }
+    bool loaded = false;
+    if (!raw_tcp_wave_frames_.isEmpty())
+    {
+        loaded = loadRawTcpWavePeakSeries();
+    }
+    else if (!indexed_waveform_frames_.isEmpty())
+    {
+        loaded = loadIndexedWaveformPeakSeries();
+    }
+    else
+    {
+        loaded = loadLegacyWaveformPeakSeries();
+    }
+    if (!loaded)
+    {
+        return false;
     }
 
     applyPeakFilter(90, 97);
