@@ -2613,6 +2613,9 @@ QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink="true"] {
     font-size: 14px;
     font-weight: 600;
 }
+QLabel#homeTelemetrySummaryTitleLabel[skyTelemetryTitle="true"] {
+    color: @vv-primary;
+}
 QLabel#temperatureOverviewValuePill {
     background-color: @vv-surface-alt;
     border: 1px solid @vv-border;
@@ -6985,6 +6988,7 @@ void MainWindow::loadModernStyleSheet()
             "QFrame#homeTelemetrySummaryPill QLabel[telemetryAvailable=\"false\"] { color: @vv-text-muted; }"
             "QLabel#homeTelemetrySummaryNameLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 14px; font-weight: 700; }"
             "QLabel#homeTelemetrySummaryValueLabel[deviceConfigLink=\"true\"] { color: @vv-text-strong; font-size: 14px; font-weight: 600; }"
+            "QLabel#homeTelemetrySummaryTitleLabel[skyTelemetryTitle=\"true\"] { color: @vv-primary; }"
             "QLabel#temperatureOverviewValuePill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 12px; font-weight: 700; padding: 1px 4px; margin: 0px; }"
             "QPushButton#temperatureOverviewOutputSwitch { background-color: transparent; border: none; min-height: 56px; max-height: 56px; padding: 0px; margin: 0px; color: @vv-text; font-size: 13px; font-weight: 700; }"
             "QToolButton#temperatureOverviewChannelButton { background-color: @vv-primary-subtle; border: 1px solid @vv-primary-subtle-pressed; border-radius: 10px; color: @vv-primary; font-size: 13px; font-weight: 700; padding: 1px 0px; text-align: center; }"
@@ -9102,6 +9106,7 @@ void MainWindow::updateRemoteTelemetrySummaryLabel()
             {
                 auto *titleLabel = new QLabel(line);
                 titleLabel->setObjectName(QStringLiteral("homeTelemetrySummaryTitleLabel"));
+                titleLabel->setProperty("skyTelemetryTitle", true);
                 titleLabel->setText(title + (is_english_ ? QStringLiteral(":") : QStringLiteral("：")));
                 titleLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
                 titleLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
