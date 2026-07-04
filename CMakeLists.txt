@@ -12,6 +12,7 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 option(BUILD_PYTHON_BINDINGS "Build Python bindings with pybind11" OFF)
+option(VAPORVIEW_ENABLE_OSGEARTH "Enable osgEarth 3D local map viewer" OFF)
 
 find_package(Qt6 COMPONENTS Core Widgets SerialPort Network Svg Concurrent REQUIRED)
 set(QT_LIBRARIES Qt6::Core Qt6::Widgets Qt6::SerialPort Qt6::Network Qt6::Svg Qt6::Concurrent)
@@ -138,6 +139,86 @@ target_include_directories(vaporview_app_theme PUBLIC
 target_link_libraries(vaporview_app_theme PUBLIC
     Qt6::Widgets
 )
+
+set(GEO_CORE_SOURCES
+    src/geo/TrajectoryBuffer.cpp
+    src/geo/TrajectoryQuality.cpp
+    src/geo/SessionTrackReader.cpp
+)
+
+set(GEO_CORE_HEADERS
+    include/geo/GeoTypes.h
+    include/geo/TrajectoryBuffer.h
+    include/geo/TrajectoryQuality.h
+    include/geo/SessionTrackReader.h
+)
+
+add_library(vaporview_geo_core STATIC
+    ${GEO_CORE_SOURCES}
+    ${GEO_CORE_HEADERS}
+)
+
+target_include_directories(vaporview_geo_core PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+target_link_libraries(vaporview_geo_core PUBLIC
+    Qt6::Core
+)
+
+if(VAPORVIEW_ENABLE_OSGEARTH)
+    find_package(Qt6 COMPONENTS OpenGLWidgets REQUIRED)
+    find_package(osgEarth CONFIG REQUIRED)
+    find_package(OpenSceneGraph REQUIRED COMPONENTS osg osgDB osgGA osgViewer osgUtil)
+
+    if(TARGET osgEarth::osgEarth)
+        set(OSGEARTH_TARGET osgEarth::osgEarth)
+    elseif(TARGET osgEarth)
+        set(OSGEARTH_TARGET osgEarth)
+    else()
+        message(FATAL_ERROR "osgEarth package was found but no known osgEarth target is available")
+    endif()
+
+    set(MAP3D_SOURCES
+        src/map3d/Map3DWindow.cpp
+        src/map3d/OsgEarthViewWidget.cpp
+        src/map3d/Trajectory3DLayer.cpp
+        src/map3d/Aircraft3DLayer.cpp
+    )
+
+    set(MAP3D_HEADERS
+        include/map3d/Map3DWindow.h
+        include/map3d/OsgEarthViewWidget.h
+        include/map3d/Trajectory3DLayer.h
+        include/map3d/Aircraft3DLayer.h
+    )
+
+    add_library(vaporview_map3d_osgearth STATIC
+        ${MAP3D_SOURCES}
+        ${MAP3D_HEADERS}
+    )
+
+    target_include_directories(vaporview_map3d_osgearth
+        PUBLIC
+            ${CMAKE_SOURCE_DIR}/include
+        PRIVATE
+            ${OPENSCENEGRAPH_INCLUDE_DIRS}
+    )
+
+    target_compile_definitions(vaporview_map3d_osgearth
+        PUBLIC
+            VAPORVIEW_HAS_OSGEARTH=1
+    )
+
+    target_link_libraries(vaporview_map3d_osgearth
+        PUBLIC
+            vaporview_geo_core
+            Qt6::Widgets
+            Qt6::OpenGLWidgets
+            ${OSGEARTH_TARGET}
+            ${OPENSCENEGRAPH_LIBRARIES}
+    )
+endif()
 
 set(SKY_CORE_SOURCES
     src/SkyRuntime.cpp
@@ -388,6 +469,7 @@ target_include_directories(vaporview_main_window PUBLIC
 target_link_libraries(VaporView PRIVATE
     ${QT_LIBRARIES}
     vaporview_app_theme
+    vaporview_geo_core
     vaporview_sky_core
     rtklib_strsvr
 )
@@ -395,9 +477,17 @@ target_link_libraries(VaporView PRIVATE
 target_link_libraries(vaporview_main_window PUBLIC
     ${QT_LIBRARIES}
     vaporview_app_theme
+    vaporview_geo_core
     vaporview_sky_core
     rtklib_strsvr
 )
+
+if(VAPORVIEW_ENABLE_OSGEARTH)
+    target_link_libraries(VaporView PRIVATE vaporview_map3d_osgearth)
+    target_compile_definitions(VaporView PRIVATE VAPORVIEW_HAS_OSGEARTH=1)
+    target_link_libraries(vaporview_main_window PUBLIC vaporview_map3d_osgearth)
+    target_compile_definitions(vaporview_main_window PUBLIC VAPORVIEW_HAS_OSGEARTH=1)
+endif()
 
 if(WIN32)
     target_link_libraries(VaporView PRIVATE dwmapi)
@@ -511,6 +601,24 @@ add_custom_command(TARGET VaporViewSkyTui POST_BUILD
 )
 
 if(BUILD_TESTING)
+    add_executable(trajectory_buffer_test
+        tests/trajectory_buffer_test.cpp
+    )
+    target_link_libraries(trajectory_buffer_test PRIVATE vaporview_geo_core)
+    add_test(NAME trajectory_buffer_test COMMAND trajectory_buffer_test)
+
+    add_executable(trajectory_quality_test
+        tests/trajectory_quality_test.cpp
+    )
+    target_link_libraries(trajectory_quality_test PRIVATE vaporview_geo_core)
+    add_test(NAME trajectory_quality_test COMMAND trajectory_quality_test)
+
+    add_executable(session_track_reader_test
+        tests/session_track_reader_test.cpp
+    )
+    target_link_libraries(session_track_reader_test PRIVATE vaporview_geo_core)
+    add_test(NAME session_track_reader_test COMMAND session_track_reader_test)
+
     add_executable(tcp_wave_encoding_test
         tests/tcp_wave_encoding_test.cpp
     )

@@ -6,6 +6,9 @@
 #include "GroundTelemetryService.h"
 #include "TelemetryTypes.h"
 #include "TcpWaveEncoding.h"
+#ifdef VAPORVIEW_HAS_OSGEARTH
+#include "geo/GeoTypes.h"
+#endif
 #include <QByteArray>
 #include <QMainWindow>
 #include <QLabel>
@@ -58,6 +61,9 @@ class SourceModeOverviewSwitchButton;
 class TemperatureTrendPlotWidget;
 class TemperatureControllerOverviewPanel;
 namespace VaporView { class SkyDeviceConfigDialog; }
+#ifdef VAPORVIEW_HAS_OSGEARTH
+namespace VaporView::Map3D { class Map3DWindow; }
+#endif
 
 class GnssPanel : public QWidget
 {
@@ -360,6 +366,9 @@ private slots:
     void onTemperatureRateChanged(const QString& text);
     void onRtkConfigClicked();
     void onOpenSessionViewerClicked();
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    void onOpenMap3DWindowClicked();
+#endif
     void onFontScaleTriggered(QAction *action);
     void onCancelConnectClicked();
     void onToggleTheme();
@@ -628,6 +637,10 @@ private:
     QPushButton *createRemoteDeviceButton(const QString& text, VaporView::CommandId command, VaporView::SkyDeviceId device);
     void setRemoteDeviceButtonsEnabled(bool enabled);
     void updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, VaporView::DeviceState state);
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    void maybeForwardMap3DSample(const VaporView::EpsilonData& epsilonData, quint64 recordTimestampUs);
+    VaporView::Geo::NavSample map3DSampleFromEpsilon(const VaporView::EpsilonData& epsilonData, quint64 recordTimestampUs) const;
+#endif
     void sendTemperatureCommand(VaporView::CommandId command, const VaporView::TemperatureControllerCommand& payload);
     void sendRemoteTemperatureCommand(VaporView::CommandId command, const VaporView::TemperatureControllerCommand& payload);
     void restoreTemperatureCommandUi(VaporView::CommandId command, quint8 channel);
@@ -783,6 +796,9 @@ private:
     QAction *log_filter_recording_action_;
     QAction *clear_log_action_;
     QAction *session_viewer_action_;
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    QAction *map3d_action_;
+#endif
     QAction *epsilon_reconfigure_action_;
     QAction *epsilon_rtcm_port_action_;
     QAction *epsilon_packet_rates_action_;
@@ -993,6 +1009,9 @@ private:
     QHash<quint16, VaporView::TemperatureControllerCommand> remote_temperature_commands_;
     QHash<quint16, VaporView::PeakSearchRange> remote_peak_search_commands_;
     qint64 remote_last_status_ms_;
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    qint64 last_map3d_update_ms_;
+#endif
     VaporView::TelemetryStatus remote_status_;
     VaporView::TelemetryStatus last_remote_recording_status_;
     bool has_last_remote_recording_status_;
@@ -1094,6 +1113,9 @@ private:
     bool rtk_service_running_;
     TcpWavePanel *tcp_wave_panel_;
     SessionViewerWindow *session_viewer_window_;
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    VaporView::Map3D::Map3DWindow *map3d_window_;
+#endif
     VaporView::GroundTelemetryService *ground_telemetry_service_;
     VaporView::SkyDeviceConfigDialog *sky_device_config_dialog_;
 };

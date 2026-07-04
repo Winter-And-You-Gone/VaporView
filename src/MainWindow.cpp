@@ -1,6 +1,9 @@
 #include "MainWindow.h"
 #include "AppTheme.h"
 #include "CustomTitleBar.h"
+#ifdef VAPORVIEW_HAS_OSGEARTH
+#include "map3d/Map3DWindow.h"
+#endif
 #include "RtkConfigDialog.h"
 #include "SessionViewerWindow.h"
 #include "SkyDeviceConfigDialog.h"
@@ -6209,6 +6212,9 @@ MainWindow::MainWindow(QWidget *parent)
     , log_filter_recording_action_(nullptr)
     , clear_log_action_(nullptr)
     , session_viewer_action_(nullptr)
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    , map3d_action_(nullptr)
+#endif
     , epsilon_reconfigure_action_(nullptr)
     , epsilon_rtcm_port_action_(nullptr)
     , epsilon_packet_rates_action_(nullptr)
@@ -6396,6 +6402,9 @@ MainWindow::MainWindow(QWidget *parent)
     , remote_wave_stream_auto_start_(true)
     , remote_recording_state_(0)
     , remote_last_status_ms_(0)
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    , last_map3d_update_ms_(0)
+#endif
     , has_last_remote_recording_status_(false)
     , cancel_connection_requested_(false)
     , recording_thread_running_(false)
@@ -6483,6 +6492,9 @@ MainWindow::MainWindow(QWidget *parent)
     , rtk_service_running_(false)
     , tcp_wave_panel_(nullptr)
     , session_viewer_window_(nullptr)
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    , map3d_window_(nullptr)
+#endif
     , ground_telemetry_service_(nullptr)
     , sky_device_config_dialog_(nullptr)
 {
@@ -10377,6 +10389,11 @@ void MainWindow::setupMenuBar()
     session_viewer_action_ = new QAction(this);
     connect(session_viewer_action_, &QAction::triggered, this, &MainWindow::onOpenSessionViewerClicked);
 
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    map3d_action_ = new QAction(this);
+    connect(map3d_action_, &QAction::triggered, this, &MainWindow::onOpenMap3DWindowClicked);
+#endif
+
     exit_action_ = new QAction(this);
     exit_action_->setShortcut(QKeySequence::Quit);
     connect(exit_action_, &QAction::triggered, this, &QMainWindow::close);
@@ -10538,6 +10555,12 @@ void MainWindow::setupToolBar()
     log_filter_menu_->addAction(log_filter_recording_action_);
 
     session_viewer_action_->setIcon(createWaveformViewerIcon());
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    if (map3d_action_)
+    {
+        map3d_action_->setIcon(QIcon(QStringLiteral("resources/lucide/earth.svg")));
+    }
+#endif
 
     theme_toggle_action_ = new QAction(this);
     connect(theme_toggle_action_, &QAction::triggered, this, &MainWindow::onToggleTheme);
@@ -10591,6 +10614,9 @@ void MainWindow::setupCustomTitleBar()
     titleLayout->addWidget(createTitleBarActionButton(stop_recording_btn_, custom_title_bar_), 0, Qt::AlignVCenter);
     addTitleBarSeparator(titleLayout);
     titleLayout->addWidget(createTitleBarActionButton(session_viewer_action_, custom_title_bar_), 0, Qt::AlignVCenter);
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    titleLayout->addWidget(createTitleBarActionButton(map3d_action_, custom_title_bar_), 0, Qt::AlignVCenter);
+#endif
     addTitleBarSeparator(titleLayout);
     title_language_btn_ = createTitleBarIconButton(QStringLiteral("titleBarButton"), custom_title_bar_);
     title_language_btn_->setAccessibleName(QStringLiteral("titleLanguageButton"));
@@ -10847,6 +10873,15 @@ void MainWindow::createTitleApplicationMenuPanel()
              font_scale_percent_ == 130,
              false,
              [this]() { setFontScale(130); }}
+#ifdef VAPORVIEW_HAS_OSGEARTH
+            ,
+            {is_english_ ? QStringLiteral("3D Map...") : QStringLiteral("三维地图..."),
+             QString(),
+             true,
+             false,
+             true,
+             [this]() { onOpenMap3DWindowClicked(); }}
+#endif
         }
     };
 
@@ -13576,6 +13611,14 @@ void MainWindow::setEnglish(bool english)
         epsilon_reconfigure_action_->setText(english ? "Reconfigure EPSILON Output..." : "重新配置EPSILON输出...");
     }
     session_viewer_action_->setText(english ? "Data Viewer..." : "数据查看器...");
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    if (map3d_action_)
+    {
+        map3d_action_->setText(english ? "3D Map..." : "三维地图...");
+        map3d_action_->setToolTip(english ? "Open 3D map" : "打开三维地图");
+        map3d_action_->setStatusTip(map3d_action_->toolTip());
+    }
+#endif
     exit_action_->setText(english ? "E&xit" : "退出(&X)");
 
     setNativeMenuTitle(font_menu_, english ? QStringLiteral("Font &Size") : QStringLiteral("字号(&S)"));
@@ -13883,6 +13926,24 @@ void MainWindow::onOpenSessionViewerClicked()
     session_viewer_window_->activateWindow();
     hideStatusTaskProgress();
 }
+
+#ifdef VAPORVIEW_HAS_OSGEARTH
+void MainWindow::onOpenMap3DWindowClicked()
+{
+    if (!map3d_window_)
+    {
+        map3d_window_ = new VaporView::Map3D::Map3DWindow(this);
+        map3d_window_->setAttribute(Qt::WA_QuitOnClose, false);
+        connect(map3d_window_, &QObject::destroyed, this, [this]() {
+            map3d_window_ = nullptr;
+        });
+    }
+
+    map3d_window_->show();
+    map3d_window_->raise();
+    map3d_window_->activateWindow();
+}
+#endif
 
 void MainWindow::onSwitchLanguage()
 {
@@ -18935,6 +18996,9 @@ void MainWindow::onEpsilonDataReady()
     {
         current_epsilon_ = collectors.epsilon->getLatestData();
     }
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    maybeForwardMap3DSample(current_epsilon_, currentTimestampUs());
+#endif
 }
 
 void MainWindow::onImuDataReady()
@@ -19129,6 +19193,9 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
             current_epsilon_.ecef_packet_rate_hz = telemetry.ecef_packet_rate_hz;
         }
         remote_last_data_ms_.insert(VaporView::SkyDeviceId::Epsilon, nowMs);
+#ifdef VAPORVIEW_HAS_OSGEARTH
+        maybeForwardMap3DSample(current_epsilon_, telemetry.host_time_us);
+#endif
     }
     else
     {
@@ -19184,6 +19251,87 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
 
     refreshRemoteSkyDataUi();
 }
+
+#ifdef VAPORVIEW_HAS_OSGEARTH
+VaporView::Geo::NavSample MainWindow::map3DSampleFromEpsilon(const VaporView::EpsilonData& epsilonData,
+                                                             quint64 recordTimestampUs) const
+{
+    VaporView::Geo::NavSample sample;
+    sample.recordTimestampUs = static_cast<qint64>(recordTimestampUs);
+    sample.deviceTimestampUs = static_cast<qint64>(epsilonData.device_timestamp_us);
+    sample.latDeg = epsilonData.latitude_deg;
+    sample.lonDeg = epsilonData.longitude_deg;
+    sample.heightM = epsilonData.height_m;
+    sample.ecefXM = epsilonData.ecef_x_m;
+    sample.ecefYM = epsilonData.ecef_y_m;
+    sample.ecefZM = epsilonData.ecef_z_m;
+    if (std::isfinite(epsilonData.ned_n_m) &&
+        std::isfinite(epsilonData.ned_e_m) &&
+        std::isfinite(epsilonData.ned_d_m) &&
+        (std::abs(epsilonData.ned_n_m) > 1e-6 ||
+         std::abs(epsilonData.ned_e_m) > 1e-6 ||
+         std::abs(epsilonData.ned_d_m) > 1e-6))
+    {
+        sample.nedNM = epsilonData.ned_n_m;
+        sample.nedEM = epsilonData.ned_e_m;
+        sample.nedDM = epsilonData.ned_d_m;
+    }
+    sample.velNMps = epsilonData.vel_n_mps;
+    sample.velEMps = epsilonData.vel_e_mps;
+    sample.velDMps = epsilonData.vel_d_mps;
+    sample.rollDeg = epsilonData.roll_deg;
+    sample.pitchDeg = epsilonData.pitch_deg;
+    sample.yawDeg = epsilonData.yaw_deg;
+    sample.satellites = epsilonData.gnss_satellites;
+    sample.hdop = epsilonData.hdop;
+    sample.vdop = epsilonData.vdop;
+    sample.diffAgeS = epsilonData.diff_age_s;
+
+    if (epsilonData.gnss_fix_code <= 0)
+    {
+        sample.fixQuality = VaporView::Geo::FixQuality::Invalid;
+    }
+    else if (epsilonData.gnss_fix_code >= 6)
+    {
+        sample.fixQuality = VaporView::Geo::FixQuality::Fixed;
+    }
+    else if (epsilonData.gnss_fix_code == 5)
+    {
+        sample.fixQuality = VaporView::Geo::FixQuality::Float;
+    }
+    else if (epsilonData.gnss_fix_code == 2)
+    {
+        sample.fixQuality = VaporView::Geo::FixQuality::Dgps;
+    }
+    else
+    {
+        sample.fixQuality = VaporView::Geo::FixQuality::Single;
+    }
+
+    return sample;
+}
+
+void MainWindow::maybeForwardMap3DSample(const VaporView::EpsilonData& epsilonData, quint64 recordTimestampUs)
+{
+    if (!map3d_window_ || !map3d_window_->isVisible() || !epsilonData.valid)
+    {
+        return;
+    }
+
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    if (last_map3d_update_ms_ > 0 && nowMs - last_map3d_update_ms_ < 50)
+    {
+        return;
+    }
+    last_map3d_update_ms_ = nowMs;
+
+    const VaporView::Geo::NavSample sample = map3DSampleFromEpsilon(epsilonData, recordTimestampUs);
+    if (sample.hasLlh() && sample.fixQuality != VaporView::Geo::FixQuality::Invalid)
+    {
+        map3d_window_->appendSample(sample);
+    }
+}
+#endif
 
 void MainWindow::onRemoteWaveformUpdated(const VaporView::DownsampledWaveform& waveform)
 {
