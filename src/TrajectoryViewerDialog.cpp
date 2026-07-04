@@ -21,7 +21,6 @@
 #include <QLabel>
 #include <QLinearGradient>
 #include <QLineEdit>
-#include <QListView>
 #include <QMenu>
 #include <QNetworkAccessManager>
 #include <QNetworkDiskCache>
@@ -31,6 +30,8 @@
 #include <QPainterPath>
 #include <QPaintEvent>
 #include <QPalette>
+#include <QPointer>
+#include <QRegion>
 #include <QStyleOptionComboBox>
 #include <QPixmap>
 #include <QPushButton>
@@ -671,6 +672,66 @@ public:
     }
 
 protected:
+    void showPopup() override
+    {
+        if (popup_)
+        {
+            popup_->close();
+            popup_.clear();
+        }
+
+        auto *popup = new QFrame(this, Qt::Popup | Qt::FramelessWindowHint | Qt::NoDropShadowWindowHint);
+        popup_ = popup;
+        popup->setObjectName(QStringLiteral("trajectoryHeatMetricComboPopupFrame"));
+        popup->setAttribute(Qt::WA_TranslucentBackground, true);
+        popup->setAttribute(Qt::WA_DeleteOnClose, true);
+        popup->setAutoFillBackground(false);
+
+        auto *layout = new QVBoxLayout(popup);
+        layout->setContentsMargins(0, 0, 0, 0);
+        layout->setSpacing(0);
+
+        for (int index = 0; index < count(); ++index)
+        {
+            auto *button = new QPushButton(itemText(index), popup);
+            button->setObjectName(QStringLiteral("trajectoryHeatMetricPopupItem"));
+            button->setProperty("selected", index == currentIndex());
+            button->setCursor(Qt::PointingHandCursor);
+            button->setFlat(true);
+            button->setFocusPolicy(Qt::NoFocus);
+            button->setMinimumHeight(44);
+            connect(button, &QPushButton::clicked, this, [this, index]() {
+                setCurrentIndex(index);
+                if (popup_)
+                {
+                    popup_->close();
+                    popup_.clear();
+                }
+            });
+            layout->addWidget(button);
+        }
+
+        const int popupWidth = qMax(width(), 112);
+        popup->setFixedSize(popupWidth, qMax(1, count()) * 44);
+        applyRoundedPopupMask(popup);
+        popup->move(mapToGlobal(QPoint(0, height() + 4)));
+        if (window())
+        {
+            popup->setStyleSheet(window()->styleSheet());
+        }
+        popup->show();
+    }
+
+    void hidePopup() override
+    {
+        if (popup_)
+        {
+            popup_->close();
+            popup_.clear();
+        }
+        QComboBox::hidePopup();
+    }
+
     void paintEvent(QPaintEvent *event) override
     {
         Q_UNUSED(event);
@@ -680,17 +741,25 @@ protected:
 
         QStyleOptionComboBox option;
         initStyleOption(&option);
-        const QRect textRect = rect().adjusted(2, 0, 15, 0);
+        const QRect textRect = rect().adjusted(0, 0, -18, 0);
         painter.setPen(palette().color(QPalette::ButtonText));
         painter.setFont(font());
         painter.drawText(textRect, Qt::AlignCenter, currentText());
 
-        const QRect iconRect(rect().right() - 16, rect().center().y() - 7, 14, 14);
+        const QRect iconRect(rect().right() - 15, rect().center().y() - 7, 14, 14);
         chevron_icon_.paint(&painter, iconRect, Qt::AlignCenter, isEnabled() ? QIcon::Normal : QIcon::Disabled);
     }
 
 private:
+    void applyRoundedPopupMask(QWidget *popup)
+    {
+        QPainterPath path;
+        path.addRoundedRect(popup->rect(), 8.0, 8.0);
+        popup->setMask(QRegion(path.toFillPolygon().toPolygon()));
+    }
+
     QIcon chevron_icon_;
+    QPointer<QFrame> popup_;
 };
 
 QString formatPeakValue(double value)
@@ -3197,22 +3266,11 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     heat_palette_card_->setFixedWidth(390);
     heat_palette_card_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     heat_metric_combo_->setObjectName(QStringLiteral("trajectoryHeatMetricCombo"));
-    heat_metric_combo_->setFixedWidth(56);
+    heat_metric_combo_->setFixedWidth(64);
     heat_metric_combo_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     heat_metric_combo_->setSizeAdjustPolicy(QComboBox::AdjustToContents);
     heat_metric_combo_->setAttribute(Qt::WA_TranslucentBackground, true);
     heat_metric_combo_->setAutoFillBackground(false);
-    auto *heatMetricView = new QListView(heat_metric_combo_);
-    heatMetricView->setObjectName(QStringLiteral("trajectoryHeatMetricComboPopup"));
-    heatMetricView->setFrameShape(QFrame::NoFrame);
-    heatMetricView->setAttribute(Qt::WA_TranslucentBackground, true);
-    heatMetricView->setAutoFillBackground(false);
-    heatMetricView->viewport()->setAttribute(Qt::WA_TranslucentBackground, true);
-    heatMetricView->viewport()->setAutoFillBackground(false);
-    heatMetricView->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    heatMetricView->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    heatMetricView->setUniformItemSizes(true);
-    heat_metric_combo_->setView(heatMetricView);
     for (auto *label : {heat_min_label_, heat_mid_label_, heat_max_label_})
     {
         label->setObjectName(QStringLiteral("trajectoryHeatLegendCaption"));
@@ -3550,13 +3608,9 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QComboBox#trajectoryHeatMetricCombo:hover, QDialog#trajectoryViewerDialog QComboBox#trajectoryHeatMetricCombo:focus { background-color: @vv-title-hover; }"
         "QDialog#trajectoryViewerDialog QComboBox#trajectoryHeatMetricCombo::drop-down { border: none; width: 0px; }"
         "QDialog#trajectoryViewerDialog QComboBox#trajectoryHeatMetricCombo::down-arrow { image: none; width: 0px; height: 0px; }"
-        "QDialog#trajectoryViewerDialog QComboBox#trajectoryHeatMetricCombo QAbstractItemView { background-color: transparent; border: none; outline: 0px; padding: 0px; selection-background-color: @vv-primary-subtle; }"
-        "QDialog#trajectoryViewerDialog QListView#trajectoryHeatMetricComboPopup { background-color: transparent; border: none; outline: 0px; padding: 0px; selection-background-color: @vv-primary-subtle; }"
-        "QDialog#trajectoryViewerDialog QListView#trajectoryHeatMetricComboPopup::viewport { background-color: transparent; }"
-        "QDialog#trajectoryViewerDialog QListView#trajectoryHeatMetricComboPopup::item { background-color: @vv-surface-raised; color: @vv-text; border: none; min-height: 32px; padding: 6px 10px; }"
-        "QDialog#trajectoryViewerDialog QListView#trajectoryHeatMetricComboPopup::item:first { border-top-left-radius: 6px; border-top-right-radius: 6px; }"
-        "QDialog#trajectoryViewerDialog QListView#trajectoryHeatMetricComboPopup::item:last { border-bottom-left-radius: 6px; border-bottom-right-radius: 6px; }"
-        "QDialog#trajectoryViewerDialog QListView#trajectoryHeatMetricComboPopup::item:selected { background-color: @vv-primary-subtle; color: @vv-primary; }"
+        "QFrame#trajectoryHeatMetricComboPopupFrame { background-color: @vv-surface-raised; border: 1px solid @vv-border; border-radius: 8px; }"
+        "QFrame#trajectoryHeatMetricComboPopupFrame QPushButton#trajectoryHeatMetricPopupItem { background-color: transparent; border: none; border-radius: 0px; color: @vv-text; font-size: 14px; font-weight: 500; min-height: 44px; padding: 0px 14px; text-align: center; }"
+        "QFrame#trajectoryHeatMetricComboPopupFrame QPushButton#trajectoryHeatMetricPopupItem:hover, QFrame#trajectoryHeatMetricComboPopupFrame QPushButton#trajectoryHeatMetricPopupItem[selected=\"true\"] { background-color: @vv-primary-subtle; color: @vv-primary; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectoryHeatLegendCaption { color: @vv-text-muted; background-color: transparent; border: none; font-size: 11px; font-weight: 500; }"
         "QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle { background-color: transparent; border: none; border-radius: 0px; color: @vv-text; min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px; padding: 0px; }"
         "QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle:hover { background-color: transparent; border: none; }"
