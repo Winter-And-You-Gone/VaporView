@@ -5225,11 +5225,14 @@ public:
         thumb_animation_->setEasingCurve(QEasingCurve::OutCubic);
         connect(thumb_animation_, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
             const qreal progress = std::clamp(value.toReal(), 0.0, 1.0);
+            constexpr qreal kPi = 3.14159265358979323846;
             thumb_position_ = thumb_start_position_ + (thumb_target_position_ - thumb_start_position_) * progress;
+            thumb_jelly_ = std::sin(progress * kPi);
             update();
         });
         connect(thumb_animation_, &QVariantAnimation::finished, this, [this]() {
             thumb_position_ = thumb_target_position_;
+            thumb_jelly_ = 0.0;
             update();
         });
         refreshText();
@@ -5267,6 +5270,7 @@ public:
             thumb_position_ = target;
             thumb_start_position_ = target;
             thumb_target_position_ = target;
+            thumb_jelly_ = 0.0;
             update();
         }
     }
@@ -5314,10 +5318,24 @@ protected:
         const QRectF trackRect = outerRect.adjusted(kInset, kInset, -kInset, -kInset);
         const QRectF contentRect = trackRect.adjusted(kInnerInset, kInnerInset, -kInnerInset, -kInnerInset);
         const qreal segmentWidth = contentRect.width() / 2.0;
-        const QRectF selectedRect(contentRect.left() + segmentWidth * thumb_position_,
-                                  contentRect.top(),
-                                  segmentWidth,
-                                  contentRect.height());
+        QRectF selectedRect(contentRect.left() + segmentWidth * thumb_position_,
+                            contentRect.top(),
+                            segmentWidth,
+                            contentRect.height());
+        if (enabled && thumb_jelly_ > 0.001)
+        {
+            const qreal stretch = std::min<qreal>(segmentWidth * 0.24, 12.0) * thumb_jelly_;
+            if (thumb_direction_ >= 0)
+            {
+                selectedRect.adjust(-stretch * 0.35, 0.0, stretch * 0.65, 0.0);
+            }
+            else
+            {
+                selectedRect.adjust(-stretch * 0.65, 0.0, stretch * 0.35, 0.0);
+            }
+            selectedRect.setLeft(std::max(selectedRect.left(), contentRect.left()));
+            selectedRect.setRight(std::min(selectedRect.right(), contentRect.right()));
+        }
         const QRectF localRect(contentRect.left(), contentRect.top(), segmentWidth, contentRect.height());
         const QRectF remoteRect(contentRect.left() + segmentWidth, contentRect.top(), segmentWidth, contentRect.height());
         const bool localSelected = thumb_position_ < 0.5;
@@ -5375,6 +5393,7 @@ private:
             thumb_position_ = target;
             thumb_start_position_ = target;
             thumb_target_position_ = target;
+            thumb_jelly_ = 0.0;
             update();
             return;
         }
@@ -5382,6 +5401,8 @@ private:
         thumb_animation_->stop();
         thumb_start_position_ = thumb_position_;
         thumb_target_position_ = target;
+        thumb_direction_ = thumb_target_position_ >= thumb_start_position_ ? 1 : -1;
+        thumb_jelly_ = 0.0;
         thumb_animation_->setStartValue(0.0);
         thumb_animation_->setEndValue(1.0);
         thumb_animation_->start();
@@ -5391,6 +5412,8 @@ private:
     qreal thumb_position_ = 0.0;
     qreal thumb_start_position_ = 0.0;
     qreal thumb_target_position_ = 0.0;
+    qreal thumb_jelly_ = 0.0;
+    int thumb_direction_ = 1;
     QVariantAnimation *thumb_animation_ = nullptr;
 };
 
