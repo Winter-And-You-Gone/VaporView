@@ -670,7 +670,8 @@ void testTrajectoryViewerUsesSidebarLayout()
     auto *heatLegendCard = dialog.findChild<QFrame *>(QStringLiteral("trajectoryHeatLegendCard"));
     auto *mapToolsCard = dialog.findChild<QFrame *>(QStringLiteral("trajectoryMapToolsCard"));
     auto *pointDetailCard = dialog.findChild<QFrame *>(QStringLiteral("trajectoryPointDetailCard"));
-    auto *heatMetricCombo = dialog.findChild<QComboBox *>(QStringLiteral("trajectoryHeatMetricCombo"));
+    auto *heatMetricButton = dialog.findChild<QToolButton *>(QStringLiteral("trajectoryHeatMetricButton"));
+    auto *heatMetricMenu = dialog.findChild<QMenu *>(QStringLiteral("trajectoryHeatMetricMenu"));
     auto *heatGradientBar = dialog.findChild<QWidget *>(QStringLiteral("trajectoryHeatGradientBar"));
     auto *heatPaletteButton = dialog.findChild<QToolButton *>(QStringLiteral("trajectoryHeatPaletteButton"));
     auto *heatPaletteMenu = dialog.findChild<QMenu *>(QStringLiteral("trajectoryHeatPaletteMenu"));
@@ -739,7 +740,8 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(heatLegendCard != nullptr, "trajectory viewer floating heat legend card exists");
     require(mapToolsCard != nullptr, "trajectory viewer floating map tools card exists");
     require(pointDetailCard != nullptr, "trajectory viewer floating point detail card exists");
-    require(heatMetricCombo != nullptr, "trajectory viewer floating heat metric selector exists");
+    require(heatMetricButton != nullptr, "trajectory viewer floating heat metric selector exists");
+    require(heatMetricMenu != nullptr, "trajectory viewer floating heat metric menu exists");
     require(heatGradientBar != nullptr, "trajectory viewer floating heat gradient bar exists");
     require(heatPaletteButton != nullptr, "trajectory viewer heat palette control exists");
     require(heatPaletteMenu != nullptr, "trajectory viewer heat palette menu exists");
@@ -864,7 +866,9 @@ void testTrajectoryViewerUsesSidebarLayout()
                 && heatPaletteMenu->windowFlags().testFlag(Qt::NoDropShadowWindowHint),
             "heat palette menu avoids native popup chrome around rounded corners");
     require(heatPaletteMenu->actions().size() == 3, "heat palette menu exposes the curated vivid ramps");
-    require(heatMetricCombo->count() == 4, "heat metric selector exposes peak, humidity, temperature, and pressure");
+    require(heatMetricMenu->actions().size() == 4, "heat metric selector exposes peak, humidity, temperature, and pressure");
+    require(heatMetricButton->arrowType() == Qt::NoArrow && !heatMetricButton->icon().isNull(),
+            "heat metric button uses the same lucide chevron affordance as the heat palette selector");
     for (QAction *action : heatPaletteMenu->actions())
     {
         require(action != nullptr && !action->text().trimmed().isEmpty(), "heat palette menu text is visible");
@@ -1013,6 +1017,10 @@ void testTrajectoryViewerUsesSidebarLayout()
                 && styleSheet.contains(QStringLiteral("border-radius: 6px"))
                 && styleSheet.contains(QStringLiteral("margin: 0px")),
             "heat palette popup menu keeps rounded corners flush with the transparent popup");
+    require(styleSheet.contains(QStringLiteral("QToolButton#trajectoryHeatMetricButton")),
+            "trajectory viewer stylesheet renders the heat metric as a menu button");
+    require(styleSheet.contains(QStringLiteral("QMenu#trajectoryHeatMetricMenu")),
+            "trajectory viewer stylesheet reuses menu styling for the heat metric popup");
     require(styleSheet.contains(QStringLiteral("QFrame#trajectoryViewerMapPanel")),
             "trajectory viewer stylesheet includes rounded map panel styling");
 

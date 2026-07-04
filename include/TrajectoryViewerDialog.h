@@ -110,7 +110,8 @@ private:
     QLabel *point_size_label_;
     QSlider *point_size_slider_;
     QFrame *heat_palette_card_;
-    QComboBox *heat_metric_combo_;
+    QToolButton *heat_metric_button_;
+    QMenu *heat_metric_menu_;
     QWidget *heat_gradient_bar_;
     QLabel *heat_min_label_;
     QLabel *heat_mid_label_;

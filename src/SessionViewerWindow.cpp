@@ -2278,6 +2278,8 @@ SessionViewerWindow::~SessionViewerWindow()
     if (trajectory_viewer_dialog_)
     {
         trajectory_viewer_dialog_->close();
+        trajectory_viewer_dialog_->disconnect(this);
+        delete trajectory_viewer_dialog_;
         trajectory_viewer_dialog_ = nullptr;
     }
     if (raw_data_parser_window_)
