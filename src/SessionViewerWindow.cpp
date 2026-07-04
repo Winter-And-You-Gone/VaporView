@@ -15,6 +15,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QEvent>
 #include <QEventLoop>
 #include <QFile>
@@ -103,6 +104,17 @@ constexpr char kUnifiedRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
 constexpr quint32 kUnifiedRawRecordMarker = 0x44525756u;
 constexpr quint16 kRawSourceTcpWave = 5u;
 constexpr quint32 kRawTcpWaveCombinedPayloadFlag = 0x00000001u;
+
+qint64 monotonicMilliseconds()
+{
+    static QElapsedTimer timer = []() {
+        QElapsedTimer initialized;
+        initialized.start();
+        return initialized;
+    }();
+    return timer.elapsed();
+}
+
 QFont numericFontFrom(const QFont& base)
 {
     QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
@@ -3498,6 +3510,26 @@ void SessionViewerWindow::onRawDataParserClicked()
 bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
 {
     beginSessionLoading(is_english_ ? "Preparing to load session data..." : "正在准备加载会话数据...");
+    const qint64 loadStartedMs = monotonicMilliseconds();
+    qint64 lastStageMs = loadStartedMs;
+    QStringList loadTimings;
+    auto recordStageTiming = [&](const QString& stageName) {
+        const qint64 now = monotonicMilliseconds();
+        const qint64 stageMs = std::max<qint64>(0, now - lastStageMs);
+        lastStageMs = now;
+        loadTimings.push_back(QStringLiteral("%1 %2 ms").arg(stageName).arg(stageMs));
+    };
+    auto timingSummary = [&]() {
+        if (loadTimings.isEmpty())
+        {
+            return QString();
+        }
+        const qint64 totalMs = std::max<qint64>(0, monotonicMilliseconds() - loadStartedMs);
+        return QStringLiteral("%1 | %2 %3 ms")
+            .arg(loadTimings.join(QStringLiteral(" | ")))
+            .arg(is_english_ ? QStringLiteral("Total") : QStringLiteral("总计"))
+            .arg(totalMs);
+    };
     clearLoadedData(false);
 
     const QString normalized = QDir::fromNativeSeparators(sessionDirectory);
@@ -3508,24 +3540,28 @@ bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
         finishSessionLoading();
         return false;
     }
+    recordStageTiming(is_english_ ? QStringLiteral("Metadata") : QStringLiteral("元数据"));
     updateSessionLoadingProgress(is_english_ ? "Reading sensors CSV..." : "正在读取传感器 CSV...", 8);
     if (!loadSensorsCsv())
     {
         finishSessionLoading();
         return false;
     }
+    recordStageTiming(is_english_ ? QStringLiteral("Sensors CSV") : QStringLiteral("传感器 CSV"));
     updateSessionLoadingProgress(is_english_ ? "Indexing waveform files..." : "正在索引波形文件...", 36);
     if (!loadWaveformSegments())
     {
         finishSessionLoading();
         return false;
     }
+    recordStageTiming(is_english_ ? QStringLiteral("TCP/waveform index") : QStringLiteral("TCP/波形索引"));
     updateSessionLoadingProgress(is_english_ ? "Calculating waveform peak series..." : "正在计算波形峰值序列...", 45);
     if (!loadWaveformPeakSeries(true))
     {
         finishSessionLoading();
         return false;
     }
+    recordStageTiming(is_english_ ? QStringLiteral("Peak series") : QStringLiteral("峰值序列"));
 
     updateSessionLoadingProgress(is_english_ ? "Updating viewer..." : "正在更新显示...", 98);
     session_path_edit_->setText(session_directory_);
@@ -3549,6 +3585,13 @@ bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
                                                : "这个会话里没有找到波形帧文件。");
     }
 
+    recordStageTiming(is_english_ ? QStringLiteral("Viewer refresh") : QStringLiteral("界面刷新"));
+    const QString summary = timingSummary();
+    setProperty("_vvSessionLoadTimingSummary", summary);
+    if (status_label_)
+    {
+        status_label_->setToolTip(summary);
+    }
     setStatusText(QString(is_english_ ? "Loaded session: %1" : "已加载会话: %1").arg(session_directory_));
     finishSessionLoading();
     return true;
