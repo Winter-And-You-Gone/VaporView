@@ -477,13 +477,13 @@ QColor heatmapColorAt(double normalized, HeatPalette palette)
     }};
     static const std::array<std::pair<double, QColor>, 9> blueRedFast = {{
         {0.00, QColor(QStringLiteral("#001BFF"))},
-        {0.12, QColor(QStringLiteral("#006CFF"))},
-        {0.26, QColor(QStringLiteral("#00D5FF"))},
-        {0.42, QColor(QStringLiteral("#00FF9A"))},
-        {0.58, QColor(QStringLiteral("#C8FF00"))},
-        {0.72, QColor(QStringLiteral("#FFF000"))},
-        {0.84, QColor(QStringLiteral("#FF8A00"))},
-        {0.93, QColor(QStringLiteral("#FF2A00"))},
+        {0.14, QColor(QStringLiteral("#006CFF"))},
+        {0.30, QColor(QStringLiteral("#00D5FF"))},
+        {0.41, QColor(QStringLiteral("#00FF9A"))},
+        {0.47, QColor(QStringLiteral("#A8FF00"))},
+        {0.62, QColor(QStringLiteral("#FFF000"))},
+        {0.78, QColor(QStringLiteral("#FF8A00"))},
+        {0.91, QColor(QStringLiteral("#FF2A00"))},
         {1.00, QColor(QStringLiteral("#D60000"))}
     }};
     static const std::array<std::pair<double, QColor>, 10> spectralReverse = {{
