@@ -19,6 +19,7 @@
 #include <QPainter>
 #include <QPalette>
 #include <QPixmap>
+#include <QPointer>
 #include <QPushButton>
 #include <QScreen>
 #include <QSizePolicy>
@@ -300,13 +301,43 @@ public:
         createResizeHandles();
         createWindowBorderFrames();
         window_->installEventFilter(this);
-        if (qApp)
-        {
-            qApp->installEventFilter(this);
-        }
         refreshTheme();
         updateResizeHandles();
         updateWindowBorderFrames();
+    }
+
+    ~CustomTitleBarController() override
+    {
+        if (window_)
+        {
+            window_->removeEventFilter(this);
+        }
+        if (title_bar_)
+        {
+            title_bar_->removeEventFilter(this);
+        }
+        if (logo_label_)
+        {
+            logo_label_->removeEventFilter(this);
+        }
+        if (title_label_)
+        {
+            title_label_->removeEventFilter(this);
+        }
+        for (const QPointer<QWidget>& button : std::as_const(title_bar_buttons_))
+        {
+            if (button)
+            {
+                button->removeEventFilter(this);
+            }
+        }
+        for (const QPointer<QWidget>& handle : std::as_const(resize_handles_))
+        {
+            if (handle)
+            {
+                handle->removeEventFilter(this);
+            }
+        }
     }
 
 protected:
@@ -332,16 +363,6 @@ protected:
                 updateWindowBorderFrames();
             }
         }
-        else if (watched == qApp)
-        {
-            if (event->type() == QEvent::ApplicationPaletteChange ||
-                event->type() == QEvent::PaletteChange ||
-                event->type() == QEvent::DynamicPropertyChange)
-            {
-                refreshTheme();
-            }
-        }
-
         if (watched == title_bar_ || watched == logo_label_ || watched == title_label_)
         {
             if (event->type() == QEvent::MouseButtonDblClick && show_maximize_button_)
@@ -596,7 +617,7 @@ private:
         }
 
         const QPoint cursorPos = QCursor::pos();
-        for (QWidget *button : title_bar_buttons_)
+        for (const QPointer<QWidget>& button : std::as_const(title_bar_buttons_))
         {
             if (!button)
             {
@@ -974,23 +995,23 @@ private:
         updateWindowBorderFrames();
     }
 
-    QWidget *window_;
-    QWidget *content_;
-    QWidget *title_bar_;
-    QLabel *logo_label_;
-    QLabel *title_label_;
-    QToolButton *language_button_;
-    QToolButton *theme_button_;
-    QToolButton *minimize_button_;
-    QToolButton *maximize_button_;
-    QToolButton *close_button_;
-    QFrame *border_left_;
-    QFrame *border_right_;
-    QFrame *border_bottom_;
+    QPointer<QWidget> window_;
+    QPointer<QWidget> content_;
+    QPointer<QWidget> title_bar_;
+    QPointer<QLabel> logo_label_;
+    QPointer<QLabel> title_label_;
+    QPointer<QToolButton> language_button_;
+    QPointer<QToolButton> theme_button_;
+    QPointer<QToolButton> minimize_button_;
+    QPointer<QToolButton> maximize_button_;
+    QPointer<QToolButton> close_button_;
+    QPointer<QFrame> border_left_;
+    QPointer<QFrame> border_right_;
+    QPointer<QFrame> border_bottom_;
     bool show_maximize_button_;
     QRect normal_geometry_;
-    QList<QWidget *> title_bar_buttons_;
-    QList<QWidget *> resize_handles_;
+    QList<QPointer<QWidget>> title_bar_buttons_;
+    QList<QPointer<QWidget>> resize_handles_;
 };
 }  // namespace
 

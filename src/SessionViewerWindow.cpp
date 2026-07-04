@@ -62,6 +62,7 @@
 #include <QtEndian>
 #include <QtConcurrent/QtConcurrentRun>
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <future>
@@ -72,6 +73,14 @@
 
 using VaporView::AppThemeColor;
 using VaporView::appThemeColor;
+
+struct WaveformPeakSeriesResult
+{
+    bool loaded = false;
+    QString error;
+    QVector<quint64> timestamps_us;
+    QVector<float> peak_values;
+};
 
 namespace
 {
@@ -269,14 +278,6 @@ struct WaveformPeakResult
 {
     quint64 timestamp_us = 0;
     float peak_value = std::numeric_limits<float>::quiet_NaN();
-};
-
-struct WaveformPeakSeriesResult
-{
-    bool loaded = false;
-    QString error;
-    QVector<quint64> timestamps_us;
-    QVector<float> peak_values;
 };
 
 struct BackgroundRawTcpWaveFrame
@@ -643,10 +644,16 @@ float waveformPeakValueFromPayload(const QByteArray& payload, VaporView::TcpFloa
     return hasPeak ? peakValue : std::numeric_limits<float>::quiet_NaN();
 }
 
-QVector<WaveformPeakResult> computeWaveformPeakChunk(const QVector<WaveformPeakPayload>& payloads)
+bool isWaveformPeakCalculationCancelled(const std::shared_ptr<std::atomic_bool>& cancelFlag)
+{
+    return cancelFlag && cancelFlag->load(std::memory_order_relaxed);
+}
+
+QVector<WaveformPeakResult> computeWaveformPeakChunk(const QVector<WaveformPeakPayload>& payloads,
+                                                     const std::shared_ptr<std::atomic_bool>& cancelFlag = {})
 {
     QVector<WaveformPeakResult> results(payloads.size());
-    if (payloads.isEmpty())
+    if (payloads.isEmpty() || isWaveformPeakCalculationCancelled(cancelFlag))
     {
         return results;
     }
@@ -666,9 +673,13 @@ QVector<WaveformPeakResult> computeWaveformPeakChunk(const QVector<WaveformPeakP
             continue;
         }
 
-        futures.emplace_back(std::async(std::launch::async, [&payloads, &results, begin, end]() {
+        futures.emplace_back(std::async(std::launch::async, [&payloads, &results, begin, end, cancelFlag]() {
             for (int index = begin; index < end; ++index)
             {
+                if (isWaveformPeakCalculationCancelled(cancelFlag))
+                {
+                    return;
+                }
                 const WaveformPeakPayload& payload = payloads.at(index);
                 WaveformPeakResult result;
                 result.timestamp_us = payload.timestamp_us;
@@ -687,9 +698,18 @@ QVector<WaveformPeakResult> computeWaveformPeakChunk(const QVector<WaveformPeakP
 
 void appendWaveformPeakResults(const QVector<WaveformPeakPayload>& payloads,
                                QVector<quint64>& timestampsUs,
-                               QVector<float>& peakValues)
+                               QVector<float>& peakValues,
+                               const std::shared_ptr<std::atomic_bool>& cancelFlag = {})
 {
-    const QVector<WaveformPeakResult> results = computeWaveformPeakChunk(payloads);
+    if (isWaveformPeakCalculationCancelled(cancelFlag))
+    {
+        return;
+    }
+    const QVector<WaveformPeakResult> results = computeWaveformPeakChunk(payloads, cancelFlag);
+    if (isWaveformPeakCalculationCancelled(cancelFlag))
+    {
+        return;
+    }
     timestampsUs.reserve(timestampsUs.size() + results.size());
     peakValues.reserve(peakValues.size() + results.size());
     for (const WaveformPeakResult& result : results)
@@ -701,11 +721,12 @@ void appendWaveformPeakResults(const QVector<WaveformPeakPayload>& payloads,
 
 WaveformPeakSeriesResult calculateRawTcpWavePeakSeries(QVector<BackgroundRawTcpWaveFrame> frames,
                                                        int searchStartIndex,
-                                                       int searchEndIndex)
+                                                       int searchEndIndex,
+                                                       std::shared_ptr<std::atomic_bool> cancelFlag = {})
 {
     WaveformPeakSeriesResult result;
     result.loaded = true;
-    if (frames.isEmpty())
+    if (frames.isEmpty() || isWaveformPeakCalculationCancelled(cancelFlag))
     {
         return result;
     }
@@ -720,13 +741,18 @@ WaveformPeakSeriesResult calculateRawTcpWavePeakSeries(QVector<BackgroundRawTcpW
         {
             return;
         }
-        appendWaveformPeakResults(payloads, result.timestamps_us, result.peak_values);
+        appendWaveformPeakResults(payloads, result.timestamps_us, result.peak_values, cancelFlag);
         payloads.clear();
         chunkBytes = 0;
     };
 
     for (const BackgroundRawTcpWaveFrame& frame : frames)
     {
+        if (isWaveformPeakCalculationCancelled(cancelFlag))
+        {
+            result.loaded = false;
+            return result;
+        }
         if (openFilename != frame.filename)
         {
             file.close();
@@ -775,11 +801,12 @@ WaveformPeakSeriesResult calculateRawTcpWavePeakSeries(QVector<BackgroundRawTcpW
 
 WaveformPeakSeriesResult calculateIndexedWaveformPeakSeries(QVector<BackgroundIndexedWaveformFrame> frames,
                                                             int searchStartIndex,
-                                                            int searchEndIndex)
+                                                            int searchEndIndex,
+                                                            std::shared_ptr<std::atomic_bool> cancelFlag = {})
 {
     WaveformPeakSeriesResult result;
     result.loaded = true;
-    if (frames.isEmpty())
+    if (frames.isEmpty() || isWaveformPeakCalculationCancelled(cancelFlag))
     {
         return result;
     }
@@ -792,13 +819,18 @@ WaveformPeakSeriesResult calculateIndexedWaveformPeakSeries(QVector<BackgroundIn
         {
             return;
         }
-        appendWaveformPeakResults(payloads, result.timestamps_us, result.peak_values);
+        appendWaveformPeakResults(payloads, result.timestamps_us, result.peak_values, cancelFlag);
         payloads.clear();
         chunkBytes = 0;
     };
 
     for (const BackgroundIndexedWaveformFrame& frame : frames)
     {
+        if (isWaveformPeakCalculationCancelled(cancelFlag))
+        {
+            result.loaded = false;
+            return result;
+        }
         QFile file(frame.filename);
         if (!file.open(QIODevice::ReadOnly))
         {
@@ -839,11 +871,12 @@ WaveformPeakSeriesResult calculateIndexedWaveformPeakSeries(QVector<BackgroundIn
 WaveformPeakSeriesResult calculateLegacyWaveformPeakSeries(QVector<BackgroundWaveformSegment> segments,
                                                            int pointsPerFrame,
                                                            int searchStartIndex,
-                                                           int searchEndIndex)
+                                                           int searchEndIndex,
+                                                           std::shared_ptr<std::atomic_bool> cancelFlag = {})
 {
     WaveformPeakSeriesResult result;
     result.loaded = true;
-    if (segments.isEmpty() || pointsPerFrame <= 0)
+    if (segments.isEmpty() || pointsPerFrame <= 0 || isWaveformPeakCalculationCancelled(cancelFlag))
     {
         return result;
     }
@@ -857,13 +890,18 @@ WaveformPeakSeriesResult calculateLegacyWaveformPeakSeries(QVector<BackgroundWav
         {
             return;
         }
-        appendWaveformPeakResults(payloads, result.timestamps_us, result.peak_values);
+        appendWaveformPeakResults(payloads, result.timestamps_us, result.peak_values, cancelFlag);
         payloads.clear();
         chunkBytes = 0;
     };
 
     for (const BackgroundWaveformSegment& segment : segments)
     {
+        if (isWaveformPeakCalculationCancelled(cancelFlag))
+        {
+            result.loaded = false;
+            return result;
+        }
         QFile file(segment.filename);
         if (!file.open(QIODevice::ReadOnly))
         {
@@ -874,6 +912,11 @@ WaveformPeakSeriesResult calculateLegacyWaveformPeakSeries(QVector<BackgroundWav
 
         for (quint64 localFrame = 0; localFrame < segment.frame_count; ++localFrame)
         {
+            if (isWaveformPeakCalculationCancelled(cancelFlag))
+            {
+                result.loaded = false;
+                return result;
+            }
             const quint64 frameOffset = localFrame * frameBytes;
             if (frameOffset > static_cast<quint64>(std::numeric_limits<qint64>::max()) ||
                 !file.seek(static_cast<qint64>(frameOffset)))
@@ -2166,6 +2209,8 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , waveform_show_filtered_frame_(false)
     , session_loading_(false)
     , peak_series_request_id_(0)
+    , peak_series_watcher_(nullptr)
+    , peak_series_cancel_flag_(nullptr)
     , highlighted_csv_rows_()
     , primary_highlighted_csv_row_(-1)
     , trajectory_viewer_dialog_(nullptr)
@@ -2217,6 +2262,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
 
 SessionViewerWindow::~SessionViewerWindow()
 {
+    cancelBackgroundWaveformPeakSeries(false);
     if (trajectory_viewer_dialog_)
     {
         trajectory_viewer_dialog_->close();
@@ -2247,7 +2293,7 @@ void SessionViewerWindow::setupUi()
     scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     setCentralWidget(scrollArea);
 
-    central_widget_ = new QWidget(this);
+    central_widget_ = new QWidget(scrollArea);
     central_widget_->setObjectName("sessionViewerCentralWidget");
     central_widget_->setAttribute(Qt::WA_StyledBackground, true);
     central_widget_->setAutoFillBackground(true);
@@ -2261,49 +2307,49 @@ void SessionViewerWindow::setupUi()
     controlLayout->setHorizontalSpacing(8);
     controlLayout->setVerticalSpacing(4);
 
-    auto *pathTitle = new QLabel(this);
+    auto *pathTitle = new QLabel(central_widget_);
     pathTitle->setObjectName("fieldLabel");
     pathTitle->setText(tr("Session:"));
     controlLayout->addWidget(pathTitle, 0, 0);
 
-    session_path_edit_ = new QLineEdit(this);
+    session_path_edit_ = new QLineEdit(central_widget_);
     session_path_edit_->setReadOnly(true);
     controlLayout->addWidget(session_path_edit_, 0, 1);
 
-    choose_session_btn_ = new QPushButton(this);
+    choose_session_btn_ = new QPushButton(central_widget_);
     connect(choose_session_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onChooseSessionClicked);
     controlLayout->addWidget(choose_session_btn_, 0, 2);
 
-    reload_btn_ = new QPushButton(this);
+    reload_btn_ = new QPushButton(central_widget_);
     connect(reload_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onReloadClicked);
     controlLayout->addWidget(reload_btn_, 0, 3);
 
-    trajectory_view_btn_ = new QPushButton(this);
+    trajectory_view_btn_ = new QPushButton(central_widget_);
     trajectory_view_btn_->setEnabled(false);
     connect(trajectory_view_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onViewTrajectoryClicked);
     controlLayout->addWidget(trajectory_view_btn_, 0, 4);
 
-    raw_data_parser_btn_ = new QPushButton(this);
+    raw_data_parser_btn_ = new QPushButton(central_widget_);
     connect(raw_data_parser_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onRawDataParserClicked);
     controlLayout->addWidget(raw_data_parser_btn_, 0, 5);
 
-    clear_view_btn_ = new QPushButton(this);
+    clear_view_btn_ = new QPushButton(central_widget_);
     connect(clear_view_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onClearViewClicked);
     controlLayout->addWidget(clear_view_btn_, 0, 6);
 
-    status_label_ = new QLabel(this);
+    status_label_ = new QLabel(central_widget_);
     status_label_->setWordWrap(true);
     status_label_->setFocusPolicy(Qt::StrongFocus);
     controlLayout->addWidget(status_label_, 1, 0, 1, 7);
 
     mainLayout->addLayout(controlLayout);
 
-    auto *summaryWaveSplitter = new QSplitter(Qt::Vertical, this);
+    auto *summaryWaveSplitter = new QSplitter(Qt::Vertical, central_widget_);
     summaryWaveSplitter->setObjectName("sessionViewerContentSplitter");
     summaryWaveSplitter->setAttribute(Qt::WA_StyledBackground, true);
     summaryWaveSplitter->setAutoFillBackground(true);
 
-    auto *upperWidget = new QWidget(this);
+    auto *upperWidget = new QWidget(summaryWaveSplitter);
     upperWidget->setObjectName("sessionViewerContentPane");
     upperWidget->setAttribute(Qt::WA_StyledBackground, true);
     upperWidget->setAutoFillBackground(true);
@@ -2311,7 +2357,7 @@ void SessionViewerWindow::setupUi()
     upperLayout->setContentsMargins(0, 0, 0, 0);
     upperLayout->setSpacing(8);
 
-    summary_group_ = new QGroupBox(this);
+    summary_group_ = new QGroupBox(upperWidget);
     summary_group_->setObjectName("sensorGroupBox");
     summary_group_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     summary_layout_ = new QGridLayout(summary_group_);
@@ -2320,12 +2366,12 @@ void SessionViewerWindow::setupUi()
     summary_layout_->setVerticalSpacing(4);
 
     auto createSummaryRow = [this](QLabel*& title, QLabel*& value) {
-        title = new QLabel(this);
+        title = new QLabel(summary_group_);
         title->setObjectName("fieldLabel");
         title->setMinimumWidth(64);
         title->setMaximumWidth(156);
         title->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
-        value = new QLabel("---", this);
+        value = new QLabel("---", summary_group_);
         value->setObjectName("valueLabel");
         value->setMinimumWidth(120);
         value->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -2343,7 +2389,7 @@ void SessionViewerWindow::setupUi()
     createSummaryRow(waveform_frames_title_, waveform_frames_value_);
     upperLayout->addWidget(summary_group_);
 
-    waveform_group_ = new QGroupBox(this);
+    waveform_group_ = new QGroupBox(upperWidget);
     waveform_group_->setObjectName("sensorGroupBox");
     auto *waveformLayout = new QVBoxLayout(waveform_group_);
     waveformLayout->setContentsMargins(10, 30, 10, 10);
@@ -2353,62 +2399,62 @@ void SessionViewerWindow::setupUi()
     frameLayout->setHorizontalSpacing(8);
     frameLayout->setVerticalSpacing(4);
 
-    frame_title_ = new QLabel(this);
+    frame_title_ = new QLabel(waveform_group_);
     frame_title_->setObjectName("fieldLabel");
     frameLayout->addWidget(frame_title_, 0, 0);
 
-    frame_slider_ = new QSlider(Qt::Horizontal, this);
+    frame_slider_ = new QSlider(Qt::Horizontal, waveform_group_);
     frame_slider_->setEnabled(false);
     frame_slider_->setTracking(false);
     connect(frame_slider_, &QSlider::sliderMoved, this, &SessionViewerWindow::onFrameSliderMoved);
     connect(frame_slider_, &QSlider::valueChanged, this, &SessionViewerWindow::onFrameSliderChanged);
     frameLayout->addWidget(frame_slider_, 0, 1);
 
-    frame_spin_ = new QSpinBox(this);
+    frame_spin_ = new QSpinBox(waveform_group_);
     frame_spin_->setRange(0, 0);
     frame_spin_->setEnabled(false);
     connect(frame_spin_, &QSpinBox::valueChanged, this, &SessionViewerWindow::onFrameSpinChanged);
     frameLayout->addWidget(frame_spin_, 0, 2);
 
-    frame_total_label_ = new QLabel("---", this);
+    frame_total_label_ = new QLabel("---", waveform_group_);
     frame_total_label_->setFont(numericFontFrom(frame_total_label_->font()));
     frame_total_label_->setFixedWidth(QFontMetrics(frame_total_label_->font()).horizontalAdvance(QStringLiteral("/ 999999999")) + 8);
     frameLayout->addWidget(frame_total_label_, 0, 3);
 
-    frame_info_label_ = new QLabel(this);
+    frame_info_label_ = new QLabel(waveform_group_);
     frame_info_label_->setFont(numericFontFrom(frame_info_label_->font()));
     frame_info_label_->setWordWrap(true);
     frameLayout->addWidget(frame_info_label_, 1, 0, 1, 4);
 
     waveformLayout->addLayout(frameLayout);
 
-    waveform_plot_title_ = new QLabel(this);
+    waveform_plot_title_ = new QLabel(waveform_group_);
     waveform_plot_title_->setObjectName("fieldLabel");
     waveformLayout->addWidget(waveform_plot_title_);
 
-    waveform_plot_ = new SessionWavePlotWidget(this);
+    waveform_plot_ = new SessionWavePlotWidget(waveform_group_);
     waveform_plot_->setObjectName(QStringLiteral("sessionViewerWaveformPlot"));
     waveformLayout->addWidget(waveform_plot_, 1);
 
     auto *peakHeaderLayout = new QHBoxLayout();
     peakHeaderLayout->setContentsMargins(0, 0, 0, 0);
     peakHeaderLayout->setSpacing(8);
-    waveform_peak_plot_title_ = new QLabel(this);
+    waveform_peak_plot_title_ = new QLabel(waveform_group_);
     waveform_peak_plot_title_->setObjectName("fieldLabel");
     peakHeaderLayout->addWidget(waveform_peak_plot_title_, 0, Qt::AlignVCenter | Qt::AlignLeft);
-    auto *waveformPeakRangeAxis = new RangeSelectionAxisWidget(this);
+    auto *waveformPeakRangeAxis = new RangeSelectionAxisWidget(waveform_group_);
     waveformPeakRangeAxis->setCompactMode(true);
     waveformPeakRangeAxis->setMinimumWidth(240);
     peakHeaderLayout->addWidget(waveformPeakRangeAxis, 1, Qt::AlignVCenter);
-    waveform_frame_filter_btn_ = new QPushButton(this);
+    waveform_frame_filter_btn_ = new QPushButton(waveform_group_);
     peakHeaderLayout->addWidget(waveform_frame_filter_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
-    waveform_peak_filter_btn_ = new QPushButton(this);
+    waveform_peak_filter_btn_ = new QPushButton(waveform_group_);
     peakHeaderLayout->addWidget(waveform_peak_filter_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
-    waveform_peak_mode_btn_ = new QPushButton(this);
+    waveform_peak_mode_btn_ = new QPushButton(waveform_group_);
     peakHeaderLayout->addWidget(waveform_peak_mode_btn_, 0, Qt::AlignVCenter | Qt::AlignRight);
     waveformLayout->addLayout(peakHeaderLayout);
 
-    waveform_peak_plot_ = new SessionPeakPlotWidget(this);
+    waveform_peak_plot_ = new SessionPeakPlotWidget(waveform_group_);
     waveform_peak_plot_->setObjectName(QStringLiteral("sessionViewerPeakPlot"));
     static_cast<SessionPeakPlotWidget*>(waveform_peak_plot_)->setPlotMode(
         waveform_peak_scatter_mode_ ? SessionPeakPlotWidget::PlotMode::Scatter : SessionPeakPlotWidget::PlotMode::Polyline);
@@ -2417,43 +2463,43 @@ void SessionViewerWindow::setupUi()
     connect(waveform_peak_mode_btn_, &QPushButton::clicked, this, &SessionViewerWindow::onTogglePeakPlotModeClicked);
     waveformLayout->addWidget(waveform_peak_plot_, 1);
 
-    temperature_plot_title_ = new QLabel(this);
+    temperature_plot_title_ = new QLabel(waveform_group_);
     temperature_plot_title_->setObjectName("fieldLabel");
     waveformLayout->addWidget(temperature_plot_title_);
     temperature_plot_ = new SingleSeriesTrendPlotWidget(appThemeColor(AppThemeColor::PlotSeriesTemperature, false),
         is_english_ ? "No temperature series" : "没有温度趋势数据",
         QStringLiteral("°C"),
-        this);
+        waveform_group_);
     temperature_plot_->setObjectName(QStringLiteral("sessionViewerTemperaturePlot"));
     static_cast<SingleSeriesTrendPlotWidget*>(temperature_plot_)->setPlotMode(
         waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
     waveformLayout->addWidget(temperature_plot_);
 
-    humidity_plot_title_ = new QLabel(this);
+    humidity_plot_title_ = new QLabel(waveform_group_);
     humidity_plot_title_->setObjectName("fieldLabel");
     waveformLayout->addWidget(humidity_plot_title_);
     humidity_plot_ = new SingleSeriesTrendPlotWidget(appThemeColor(AppThemeColor::PlotSeriesHumidity, false),
         is_english_ ? "No humidity series" : "没有湿度趋势数据",
         QStringLiteral("%RH"),
-        this);
+        waveform_group_);
     humidity_plot_->setObjectName(QStringLiteral("sessionViewerHumidityPlot"));
     static_cast<SingleSeriesTrendPlotWidget*>(humidity_plot_)->setPlotMode(
         waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
     waveformLayout->addWidget(humidity_plot_);
 
-    pressure_plot_title_ = new QLabel(this);
+    pressure_plot_title_ = new QLabel(waveform_group_);
     pressure_plot_title_->setObjectName("fieldLabel");
     waveformLayout->addWidget(pressure_plot_title_);
     pressure_plot_ = new SingleSeriesTrendPlotWidget(appThemeColor(AppThemeColor::PlotSeriesPressure, false),
         is_english_ ? "No pressure series" : "没有气压趋势数据",
         QStringLiteral("hPa"),
-        this);
+        waveform_group_);
     pressure_plot_->setObjectName(QStringLiteral("sessionViewerPressurePlot"));
     static_cast<SingleSeriesTrendPlotWidget*>(pressure_plot_)->setPlotMode(
         waveform_peak_scatter_mode_ ? SingleSeriesTrendPlotWidget::PlotMode::Scatter : SingleSeriesTrendPlotWidget::PlotMode::Polyline);
     waveformLayout->addWidget(pressure_plot_);
 
-    environment_info_label_ = new QLabel(this);
+    environment_info_label_ = new QLabel(waveform_group_);
     environment_info_label_->setFont(numericFontFrom(environment_info_label_->font()));
     environment_info_label_->setWordWrap(true);
     environment_info_label_->setObjectName("fieldLabel");
@@ -2474,18 +2520,18 @@ void SessionViewerWindow::setupUi()
 
     summaryWaveSplitter->addWidget(upperWidget);
 
-    csv_group_ = new QGroupBox(this);
+    csv_group_ = new QGroupBox(summaryWaveSplitter);
     csv_group_->setObjectName("sensorGroupBox");
     auto *csvLayout = new QVBoxLayout(csv_group_);
     csvLayout->setContentsMargins(10, 30, 10, 10);
     csvLayout->setSpacing(6);
 
-    csv_info_label_ = new QLabel(this);
+    csv_info_label_ = new QLabel(csv_group_);
     csv_info_label_->setWordWrap(true);
     csvLayout->addWidget(csv_info_label_);
 
     csv_model_ = new SessionCsvTableModel(this);
-    csv_table_ = new QTableView(this);
+    csv_table_ = new QTableView(csv_group_);
     csv_table_->setObjectName(QStringLiteral("sessionViewerCsvTable"));
     csv_table_->viewport()->setObjectName(QStringLiteral("sessionViewerCsvViewport"));
     csv_table_->setModel(csv_model_);
@@ -3118,6 +3164,7 @@ void SessionViewerWindow::finishSessionLoading()
 
 void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
 {
+    cancelBackgroundWaveformPeakSeries(false);
     session_directory_.clear();
     metadata_filename_.clear();
     sensors_csv_filename_.clear();
@@ -3395,7 +3442,7 @@ void SessionViewerWindow::onRawDataParserClicked()
     {
         raw_data_parser_window_ = new RawDataParserWindow();
         raw_data_parser_window_->setAttribute(Qt::WA_QuitOnClose, false);
-        raw_data_parser_window_->setAttribute(Qt::WA_DeleteOnClose, true);
+        raw_data_parser_window_->setAttribute(Qt::WA_DeleteOnClose, false);
         connect(raw_data_parser_window_, &QObject::destroyed, this, [this]() {
             raw_data_parser_window_ = nullptr;
         });
@@ -4605,12 +4652,15 @@ bool SessionViewerWindow::loadWaveformPeakSeries(bool allowBackground)
 
 void SessionViewerWindow::startBackgroundWaveformPeakSeries()
 {
+    cancelBackgroundWaveformPeakSeries(false);
     const quint64 requestId = ++peak_series_request_id_;
     const QString sessionDirectory = session_directory_;
     const int searchStartIndex = peak_search_start_index_;
     const int searchEndIndex = peak_search_end_index_;
     const int pointsPerFrame = points_per_frame_;
     const bool fullFrameSearch = isFullFramePeakSearch(searchStartIndex, searchEndIndex);
+    auto cancelFlag = std::make_shared<std::atomic_bool>(false);
+    peak_series_cancel_flag_ = cancelFlag;
 
     QVector<BackgroundRawTcpWaveFrame> rawFrames;
     rawFrames.reserve(raw_tcp_wave_frames_.size());
@@ -4646,10 +4696,16 @@ void SessionViewerWindow::startBackgroundWaveformPeakSeries()
         segments.push_back(std::move(copy));
     }
 
-    auto *watcher = new QFutureWatcher<WaveformPeakSeriesResult>(this);
-    connect(watcher, &QFutureWatcher<WaveformPeakSeriesResult>::finished, this, [this, watcher, requestId, sessionDirectory, fullFrameSearch]() {
-        watcher->deleteLater();
+    peak_series_watcher_ = new QFutureWatcher<WaveformPeakSeriesResult>(this);
+    connect(peak_series_watcher_, &QFutureWatcher<WaveformPeakSeriesResult>::finished, this, [this, requestId, sessionDirectory, fullFrameSearch]() {
+        QFutureWatcher<WaveformPeakSeriesResult> *watcher = peak_series_watcher_;
+        if (!watcher)
+        {
+            return;
+        }
         const WaveformPeakSeriesResult result = watcher->result();
+        peak_series_watcher_ = nullptr;
+        watcher->deleteLater();
         if (requestId != peak_series_request_id_ || sessionDirectory != session_directory_)
         {
             return;
@@ -4676,22 +4732,43 @@ void SessionViewerWindow::startBackgroundWaveformPeakSeries()
             : "已加载会话: %1（波形峰值已就绪）").arg(session_directory_));
     });
 
-    watcher->setFuture(QtConcurrent::run([rawFrames = std::move(rawFrames),
-                                          indexedFrames = std::move(indexedFrames),
-                                          segments = std::move(segments),
-                                          pointsPerFrame,
-                                          searchStartIndex,
-                                          searchEndIndex]() mutable {
+    peak_series_watcher_->setFuture(QtConcurrent::run([rawFrames = std::move(rawFrames),
+                                                       indexedFrames = std::move(indexedFrames),
+                                                       segments = std::move(segments),
+                                                       pointsPerFrame,
+                                                       searchStartIndex,
+                                                       searchEndIndex,
+                                                       cancelFlag]() mutable {
         if (!rawFrames.isEmpty())
         {
-            return calculateRawTcpWavePeakSeries(std::move(rawFrames), searchStartIndex, searchEndIndex);
+            return calculateRawTcpWavePeakSeries(std::move(rawFrames), searchStartIndex, searchEndIndex, cancelFlag);
         }
         if (!indexedFrames.isEmpty())
         {
-            return calculateIndexedWaveformPeakSeries(std::move(indexedFrames), searchStartIndex, searchEndIndex);
+            return calculateIndexedWaveformPeakSeries(std::move(indexedFrames), searchStartIndex, searchEndIndex, cancelFlag);
         }
-        return calculateLegacyWaveformPeakSeries(std::move(segments), pointsPerFrame, searchStartIndex, searchEndIndex);
+        return calculateLegacyWaveformPeakSeries(std::move(segments), pointsPerFrame, searchStartIndex, searchEndIndex, cancelFlag);
     }));
+}
+
+void SessionViewerWindow::cancelBackgroundWaveformPeakSeries(bool waitForFinished)
+{
+    Q_UNUSED(waitForFinished);
+    ++peak_series_request_id_;
+    if (peak_series_cancel_flag_)
+    {
+        peak_series_cancel_flag_->store(true, std::memory_order_relaxed);
+        peak_series_cancel_flag_.reset();
+    }
+    if (!peak_series_watcher_)
+    {
+        return;
+    }
+
+    QFutureWatcher<WaveformPeakSeriesResult> *watcher = peak_series_watcher_;
+    peak_series_watcher_ = nullptr;
+    disconnect(watcher, nullptr, this, nullptr);
+    delete watcher;
 }
 
 void SessionViewerWindow::updateSummaryLabels()

@@ -219,6 +219,7 @@ struct RawScanProgress
     std::atomic<qint64> indexed_records{0};
     std::atomic<int> total_files{0};
     std::atomic<int> completed_files{0};
+    std::atomic_bool cancelled{false};
 };
 
 struct RawDecodedField
@@ -371,6 +372,9 @@ void scanRawFileIndex(const QString& filename,
             progress->indexed_records.store(result.records.size(), std::memory_order_relaxed);
         }
     };
+    auto isCancelled = [&]() {
+        return progress && progress->cancelled.load(std::memory_order_relaxed);
+    };
 
     QFileInfo info(filename);
     if (!info.exists())
@@ -380,6 +384,10 @@ void scanRawFileIndex(const QString& filename,
         return;
     }
     summary.file_size = info.size();
+    if (isCancelled())
+    {
+        return;
+    }
 
     QFile file(filename);
     if (!file.open(QIODevice::ReadOnly))
@@ -422,6 +430,14 @@ void scanRawFileIndex(const QString& filename,
 
     while (!file.atEnd())
     {
+        if (isCancelled())
+        {
+            summary.status = english ? QStringLiteral("Canceled") : QStringLiteral("已取消");
+            result.file_summaries.push_back(summary);
+            finishFileProgress();
+            return;
+        }
+
         const qint64 recordOffset = file.pos();
         UnifiedRawRecordHeader header{};
         const qint64 headerBytes = file.read(reinterpret_cast<char*>(&header), sizeof(header));
@@ -524,6 +540,10 @@ RawScanResult scanRawSession(const QString& sessionDirectory,
 
     for (int i = 0; i < files.size(); ++i)
     {
+        if (progress && progress->cancelled.load(std::memory_order_relaxed))
+        {
+            break;
+        }
         scanRawFileIndex(rawDir.filePath(files.at(i).first), files.at(i).second, english, result, progress);
         if (progress)
         {
@@ -1118,13 +1138,22 @@ void RawDataParserWindow::Impl::shutdown()
     {
         scan_progress_timer->stop();
     }
+    if (scan_progress)
+    {
+        scan_progress->cancelled.store(true, std::memory_order_relaxed);
+    }
     if (!scan_watcher)
     {
         return;
     }
     QObject::disconnect(scan_watcher, nullptr, owner, nullptr);
+    if (scan_watcher->isRunning())
+    {
+        scan_watcher->future().waitForFinished();
+    }
     delete scan_watcher;
     scan_watcher = nullptr;
+    scan_progress.reset();
 }
 
 void RawDataParserWindow::Impl::setEnglish(bool value)
@@ -1221,6 +1250,7 @@ void RawDataParserWindow::Impl::scanSession()
 
     setScanControlsEnabled(false);
     scan_progress = std::make_shared<RawScanProgress>();
+    scan_progress->cancelled.store(false, std::memory_order_relaxed);
     if (scan_progress_panel)
     {
         scan_progress_panel->setVisible(true);
@@ -1585,7 +1615,8 @@ void RawDataParserWindow::Impl::applyFilters()
     if (progress)
     {
         progress->setValue(records.size());
-        progress->deleteLater();
+        progress->close();
+        delete progress;
     }
     record_model->setSource(&records, &visible_rows);
     if (!visible_rows.isEmpty())

@@ -6,6 +6,9 @@
 #include <QStringList>
 #include <QVector>
 
+#include <atomic>
+#include <memory>
+
 #include "TcpWaveEncoding.h"
 
 struct RtkTrackPoint
@@ -54,11 +57,13 @@ class QTableView;
 class QWidget;
 class QGridLayout;
 class QEvent;
+template <typename T> class QFutureWatcher;
 class QResizeEvent;
 class QShowEvent;
 class RawDataParserWindow;
 class SessionCsvTableModel;
 class TrajectoryViewerDialog;
+struct WaveformPeakSeriesResult;
 
 class SessionViewerWindow : public QMainWindow
 {
@@ -158,6 +163,7 @@ private:
     bool loadIndexedWaveformPeakSeries();
     bool loadLegacyWaveformPeakSeries();
     void startBackgroundWaveformPeakSeries();
+    void cancelBackgroundWaveformPeakSeries(bool waitForFinished = false);
     bool previewWaveformFrame(quint64 frameIndex);
     bool loadWaveformFrame(quint64 frameIndex, bool scrollToCsvRow = true);
     bool loadUnifiedRawTcpWaveFrames();
@@ -279,6 +285,8 @@ private:
     bool waveform_show_filtered_frame_;
     bool session_loading_;
     quint64 peak_series_request_id_;
+    QFutureWatcher<WaveformPeakSeriesResult> *peak_series_watcher_;
+    std::shared_ptr<std::atomic_bool> peak_series_cancel_flag_;
     QVector<int> highlighted_csv_rows_;
     int primary_highlighted_csv_row_;
     TrajectoryViewerDialog *trajectory_viewer_dialog_;
