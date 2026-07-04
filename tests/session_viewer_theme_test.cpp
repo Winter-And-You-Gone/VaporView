@@ -863,7 +863,7 @@ void testTrajectoryViewerUsesSidebarLayout()
     require(heatPaletteMenu->windowFlags().testFlag(Qt::FramelessWindowHint)
                 && heatPaletteMenu->windowFlags().testFlag(Qt::NoDropShadowWindowHint),
             "heat palette menu avoids native popup chrome around rounded corners");
-    require(heatPaletteMenu->actions().size() >= 5, "heat palette menu exposes multiple vivid ramps");
+    require(heatPaletteMenu->actions().size() >= 8, "heat palette menu exposes multiple vivid ramps");
     for (QAction *action : heatPaletteMenu->actions())
     {
         require(action != nullptr && !action->text().trimmed().isEmpty(), "heat palette menu text is visible");

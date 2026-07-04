@@ -113,8 +113,13 @@ enum class HeatPalette
     Neon,
     Sunset,
     Ocean,
-    Candy
+    Candy,
+    BlueRedFast,
+    IceFire,
+    PrismRush
 };
+
+constexpr int kHeatPaletteCount = 8;
 
 QString tileProviderSettingKey()
 {
@@ -204,6 +209,12 @@ int heatPaletteComboIndex(HeatPalette palette)
         return 3;
     case HeatPalette::Candy:
         return 4;
+    case HeatPalette::BlueRedFast:
+        return 5;
+    case HeatPalette::IceFire:
+        return 6;
+    case HeatPalette::PrismRush:
+        return 7;
     case HeatPalette::Turbo:
     default:
         return 0;
@@ -222,6 +233,12 @@ HeatPalette heatPaletteFromComboIndex(int index)
         return HeatPalette::Ocean;
     case 4:
         return HeatPalette::Candy;
+    case 5:
+        return HeatPalette::BlueRedFast;
+    case 6:
+        return HeatPalette::IceFire;
+    case 7:
+        return HeatPalette::PrismRush;
     case 0:
     default:
         return HeatPalette::Turbo;
@@ -240,6 +257,12 @@ QString heatPaletteName(HeatPalette palette, bool english)
         return english ? QStringLiteral("Ocean") : QStringLiteral("海洋");
     case HeatPalette::Candy:
         return english ? QStringLiteral("Candy") : QStringLiteral("糖果");
+    case HeatPalette::BlueRedFast:
+        return english ? QStringLiteral("Fast blue-red") : QStringLiteral("蓝红急变");
+    case HeatPalette::IceFire:
+        return english ? QStringLiteral("Ice fire") : QStringLiteral("冰火");
+    case HeatPalette::PrismRush:
+        return english ? QStringLiteral("Prism rush") : QStringLiteral("疾彩");
     case HeatPalette::Turbo:
     default:
         return english ? QStringLiteral("Turbo vivid") : QStringLiteral("Turbo 明艳");
@@ -450,6 +473,38 @@ QColor heatmapColorAt(double normalized, HeatPalette palette)
         {0.80, QColor(QStringLiteral("#FF7A00"))},
         {1.00, QColor(QStringLiteral("#FF00B8"))}
     }};
+    static const std::array<std::pair<double, QColor>, 9> blueRedFast = {{
+        {0.00, QColor(QStringLiteral("#001BFF"))},
+        {0.08, QColor(QStringLiteral("#006CFF"))},
+        {0.16, QColor(QStringLiteral("#00D5FF"))},
+        {0.24, QColor(QStringLiteral("#00FF9A"))},
+        {0.34, QColor(QStringLiteral("#C8FF00"))},
+        {0.46, QColor(QStringLiteral("#FFF000"))},
+        {0.60, QColor(QStringLiteral("#FF8A00"))},
+        {0.76, QColor(QStringLiteral("#FF2A00"))},
+        {1.00, QColor(QStringLiteral("#D60000"))}
+    }};
+    static const std::array<std::pair<double, QColor>, 8> iceFire = {{
+        {0.00, QColor(QStringLiteral("#002BFF"))},
+        {0.12, QColor(QStringLiteral("#0087FF"))},
+        {0.24, QColor(QStringLiteral("#00F6FF"))},
+        {0.36, QColor(QStringLiteral("#FFFFFF"))},
+        {0.48, QColor(QStringLiteral("#FFF200"))},
+        {0.62, QColor(QStringLiteral("#FF9C00"))},
+        {0.78, QColor(QStringLiteral("#FF2800"))},
+        {1.00, QColor(QStringLiteral("#B00000"))}
+    }};
+    static const std::array<std::pair<double, QColor>, 9> prismRush = {{
+        {0.00, QColor(QStringLiteral("#0033FF"))},
+        {0.10, QColor(QStringLiteral("#7A00FF"))},
+        {0.20, QColor(QStringLiteral("#FF00B8"))},
+        {0.32, QColor(QStringLiteral("#FF0061"))},
+        {0.44, QColor(QStringLiteral("#FF4D00"))},
+        {0.56, QColor(QStringLiteral("#FFE600"))},
+        {0.68, QColor(QStringLiteral("#55FF00"))},
+        {0.82, QColor(QStringLiteral("#00F0FF"))},
+        {1.00, QColor(QStringLiteral("#0057FF"))}
+    }};
 
     const double clamped = std::clamp(normalized, 0.0, 1.0);
     const auto colorAtStop = [clamped](const auto& stops) {
@@ -476,6 +531,12 @@ QColor heatmapColorAt(double normalized, HeatPalette palette)
         return colorAtStop(ocean);
     case HeatPalette::Candy:
         return colorAtStop(candy);
+    case HeatPalette::BlueRedFast:
+        return colorAtStop(blueRedFast);
+    case HeatPalette::IceFire:
+        return colorAtStop(iceFire);
+    case HeatPalette::PrismRush:
+        return colorAtStop(prismRush);
     case HeatPalette::Turbo:
     default:
         return colorAtStop(turbo);
@@ -4313,7 +4374,7 @@ void TrajectoryViewerDialog::updateTexts()
         heat_palette_menu_->clear();
         const HeatPalette palette = static_cast<TrajectoryMapWidget*>(map_widget_)->heatPalette();
         const int currentIndex = heatPaletteComboIndex(palette);
-        for (int index = 0; index < 5; ++index)
+        for (int index = 0; index < kHeatPaletteCount; ++index)
         {
             QAction *action = heat_palette_menu_->addAction(heatPaletteName(heatPaletteFromComboIndex(index), is_english_));
             action->setData(index);
