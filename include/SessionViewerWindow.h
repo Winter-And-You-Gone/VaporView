@@ -164,6 +164,7 @@ private:
     bool loadLegacyWaveformPeakSeries();
     void startBackgroundWaveformPeakSeries();
     void cancelBackgroundWaveformPeakSeries(bool waitForFinished = false);
+    bool ensureTrajectoryPeakValuesReady();
     bool previewWaveformFrame(quint64 frameIndex);
     bool loadWaveformFrame(quint64 frameIndex, bool scrollToCsvRow = true);
     bool loadUnifiedRawTcpWaveFrames();

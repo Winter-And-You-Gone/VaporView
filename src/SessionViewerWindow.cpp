@@ -3401,6 +3401,15 @@ void SessionViewerWindow::onViewTrajectoryClicked()
         return;
     }
 
+    if (!ensureTrajectoryPeakValuesReady())
+    {
+        QMessageBox::warning(this,
+            is_english_ ? "RTK Trajectory" : "RTK轨迹",
+            is_english_ ? "Failed to prepare waveform peak values for the trajectory viewer."
+                        : "无法为轨迹查看器准备波形峰值。");
+        return;
+    }
+
     if (!trajectory_viewer_dialog_)
     {
         trajectory_viewer_dialog_ = new TrajectoryViewerDialog(this);
@@ -3425,6 +3434,36 @@ void SessionViewerWindow::onViewTrajectoryClicked()
     trajectory_viewer_dialog_->show();
     trajectory_viewer_dialog_->raise();
     trajectory_viewer_dialog_->activateWindow();
+}
+
+bool SessionViewerWindow::ensureTrajectoryPeakValuesReady()
+{
+    const bool hasWaveformFrames =
+        !waveform_segments_.isEmpty() ||
+        !raw_tcp_wave_frames_.isEmpty() ||
+        !indexed_waveform_frames_.isEmpty();
+    if (!hasWaveformFrames)
+    {
+        return true;
+    }
+
+    const bool peakSeriesReady =
+        !waveform_peak_values_.isEmpty() &&
+        waveform_peak_values_.size() == waveform_timestamps_us_.size() &&
+        (!total_waveform_frames_ || static_cast<quint64>(waveform_peak_values_.size()) == total_waveform_frames_);
+    if (peakSeriesReady)
+    {
+        return true;
+    }
+
+    beginSessionLoading(is_english_
+        ? QStringLiteral("Preparing trajectory peak values...")
+        : QStringLiteral("正在准备轨迹峰值数据..."));
+    cancelBackgroundWaveformPeakSeries(false);
+    const bool loaded = loadWaveformPeakSeries(false);
+    finishSessionLoading();
+    syncPeakSettingsToTrajectoryViewer();
+    return loaded;
 }
 
 void SessionViewerWindow::onRawDataParserClicked()

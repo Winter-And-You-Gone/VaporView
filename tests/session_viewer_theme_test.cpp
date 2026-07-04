@@ -32,10 +32,13 @@
 #include <QTemporaryDir>
 #include <QToolButton>
 #include <QWidget>
+#include <QtEndian>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <cstdlib>
 #include <functional>
+#include <initializer_list>
 #include <iostream>
 #include <limits>
 
@@ -45,8 +48,10 @@ namespace
 constexpr char kTestRawMagic[8] = {'V', 'V', 'R', 'A', 'W', 'D', 'A', 'T'};
 constexpr quint32 kTestRawRecordMarker = 0x44525756u;
 constexpr quint16 kTestRawSourceEpsilon = 1u;
+constexpr quint16 kTestRawSourceTcpWave = 5u;
 constexpr quint16 kTestRawHeaderSize = 20u;
 constexpr quint16 kTestRawRecordHeaderSize = 36u;
+constexpr quint32 kTestRawTcpWaveCombinedPayloadFlag = 0x00000001u;
 
 void require(bool condition, const char *message)
 {
@@ -147,6 +152,19 @@ SessionViewerWindow *visibleSessionViewerWindow()
     return nullptr;
 }
 
+TrajectoryViewerDialog *visibleTrajectoryViewerDialog()
+{
+    for (QWidget *widget : QApplication::topLevelWidgets())
+    {
+        auto *dialog = qobject_cast<TrajectoryViewerDialog *>(widget);
+        if (dialog && dialog->isVisible())
+        {
+            return dialog;
+        }
+    }
+    return nullptr;
+}
+
 int countRedDominantPixels(const QImage& image)
 {
     int count = 0;
@@ -238,6 +256,60 @@ void writeUnifiedRawFile(const QString& path, int recordCount)
     }
 }
 
+QByteArray floatPayload(std::initializer_list<float> values)
+{
+    QByteArray payload;
+    payload.resize(static_cast<int>(values.size() * sizeof(float)));
+    char *cursor = payload.data();
+    for (float value : values)
+    {
+        quint32 bits = 0;
+        static_assert(sizeof(bits) == sizeof(value));
+        std::memcpy(&bits, &value, sizeof(value));
+        const quint32 littleEndianBits = qToLittleEndian(bits);
+        std::memcpy(cursor, &littleEndianBits, sizeof(littleEndianBits));
+        cursor += sizeof(littleEndianBits);
+    }
+    return payload;
+}
+
+void writeMinimalRawTcpWaveFile(const QString& path, const QVector<quint64>& timestampsUs)
+{
+    QFile file(path);
+    require(file.open(QIODevice::WriteOnly), "temporary raw tcp wave file can be written");
+
+    QDataStream stream(&file);
+    stream.setByteOrder(QDataStream::LittleEndian);
+    stream.writeRawData(kTestRawMagic, sizeof(kTestRawMagic));
+    stream << quint32(2) << quint32(kTestRawHeaderSize) << quint16(kTestRawSourceTcpWave) << quint16(0);
+
+    for (int index = 0; index < timestampsUs.size(); ++index)
+    {
+        const QByteArray rawPayload = floatPayload({0.1f, 0.2f});
+        const QByteArray harmonicPayload = floatPayload({
+            0.1f + static_cast<float>(index),
+            0.4f + static_cast<float>(index),
+            0.9f + static_cast<float>(index),
+            0.3f + static_cast<float>(index)});
+        const quint32 rawSize = static_cast<quint32>(rawPayload.size());
+        const quint32 harmonicSize = static_cast<quint32>(harmonicPayload.size());
+        const quint32 payloadSize = sizeof(quint32) * 2u + rawSize + harmonicSize;
+
+        stream << quint32(kTestRawRecordMarker)
+               << quint32(kTestRawRecordHeaderSize)
+               << timestampsUs.at(index)
+               << payloadSize
+               << quint16(kTestRawSourceTcpWave)
+               << quint16(0)
+               << quint32(kTestRawTcpWaveCombinedPayloadFlag)
+               << quint64(index)
+               << rawSize
+               << harmonicSize;
+        stream.writeRawData(rawPayload.constData(), rawPayload.size());
+        stream.writeRawData(harmonicPayload.constData(), harmonicPayload.size());
+    }
+}
+
 void writeMinimalTrajectorySession(const QString& sessionPath)
 {
     QDir dir(sessionPath);
@@ -276,6 +348,59 @@ void writeMinimalTrajectorySession(const QString& sessionPath)
     stream << "1782446036573000,true,RTK_FIXED,30.13712000,120.06952000,9.806\n";
     stream << "1782446037573000,true,RTK_FIXED,30.13736000,120.06972000,10.106\n";
     stream << "1782446038573000,true,RTK_FIXED,30.13762000,120.06990710,11.190\n";
+}
+
+void writeTrajectorySessionWithRawTcpPeaks(const QString& sessionPath)
+{
+    QDir dir(sessionPath);
+    require(dir.mkpath(QStringLiteral("sensors")), "temporary peak trajectory sensors directory can be created");
+    require(dir.mkpath(QStringLiteral("raw")), "temporary peak trajectory raw directory can be created");
+
+    const QVector<quint64> timestampsUs = {
+        1782446035573000ULL,
+        1782446036573000ULL,
+        1782446037573000ULL,
+        1782446038573000ULL,
+    };
+
+    QFile metadata(dir.filePath(QStringLiteral("session.json")));
+    require(metadata.open(QIODevice::WriteOnly | QIODevice::Text), "temporary peak trajectory metadata can be written");
+    metadata.write(R"json({
+  "session_name": "trajectory_peak_test_session",
+  "start_time_utc": "2026-06-26T06:33:55.573Z",
+  "end_time_utc": "2026-06-26T06:33:58.573Z",
+  "sensor_rows": "4",
+  "sensor_export_rate_hz": 1,
+  "waveform_frames": "4",
+  "waveform_points_per_frame": 4,
+  "waveform_export_rate_hz": 1,
+  "waveform_export_mode": "per_frame",
+  "paths": {
+    "devices_csv": "sensors/devices.csv",
+    "waveform_directory": "waveform",
+    "waveform_index": "waveform_index.csv",
+    "waveform_peak_index": "raw/tcp_wave_peaks.csv"
+  },
+  "raw_files": {
+    "tcp_wave": {
+      "path": "raw/tcp_wave.dat",
+      "record_count": "4"
+    }
+  }
+})json");
+    metadata.close();
+
+    QFile sensors(dir.filePath(QStringLiteral("sensors/devices.csv")));
+    require(sensors.open(QIODevice::WriteOnly | QIODevice::Text), "temporary peak trajectory CSV can be written");
+    QTextStream stream(&sensors);
+    stream << "record_timestamp_us,epsilon_valid,gnss_fix,nav_lat_deg,nav_lon_deg,nav_height_m\n";
+    stream << "1782446035573000,true,RTK_FIXED,30.13698120,120.06938175,9.606\n";
+    stream << "1782446036573000,true,RTK_FIXED,30.13712000,120.06952000,9.806\n";
+    stream << "1782446037573000,true,RTK_FIXED,30.13736000,120.06972000,10.106\n";
+    stream << "1782446038573000,true,RTK_FIXED,30.13762000,120.06990710,11.190\n";
+    sensors.close();
+
+    writeMinimalRawTcpWaveFile(dir.filePath(QStringLiteral("raw/tcp_wave.dat")), timestampsUs);
 }
 
 void testRawDataParserOpenIsNonBlocking()
@@ -484,6 +609,36 @@ void testSessionViewerTrajectoryActionLifetime()
 
     dialog->close();
     processEventsFor(700);
+    viewer.close();
+    processEventsFor(100);
+}
+
+void testTrajectoryViewerInitialHeatLegendFromPendingPeaks()
+{
+    QTemporaryDir sessionDir;
+    require(sessionDir.isValid(), "temporary trajectory peak session directory");
+    writeTrajectorySessionWithRawTcpPeaks(sessionDir.path());
+
+    SessionViewerWindow viewer;
+    viewer.resize(1280, 800);
+    viewer.show();
+    processEventsFor(50);
+
+    require(viewer.openSessionPath(sessionDir.path()), "session viewer loads trajectory session with raw tcp peaks");
+    require(QMetaObject::invokeMethod(&viewer, "onViewTrajectoryClicked", Qt::DirectConnection),
+            "trajectory viewer opens while peak calculation may still be pending");
+
+    auto *dialog = visibleTrajectoryViewerDialog();
+    require(dialog != nullptr, "trajectory viewer is visible after immediate open");
+    auto *heatLegendCard = dialog->findChild<QFrame *>(QStringLiteral("trajectoryHeatLegendCard"));
+    auto *heatGradientBar = dialog->findChild<QWidget *>(QStringLiteral("trajectoryHeatGradientBar"));
+    require(heatLegendCard != nullptr, "initial trajectory heat legend card exists");
+    require(heatGradientBar != nullptr, "initial trajectory heat gradient bar exists");
+    require(heatLegendCard->isVisible(), "initial trajectory heat legend is visible before deferred refresh");
+    require(heatGradientBar->isVisible(), "initial trajectory heat gradient is visible before deferred refresh");
+
+    dialog->close();
+    processEventsFor(100);
     viewer.close();
     processEventsFor(100);
 }
@@ -1118,6 +1273,7 @@ int main(int argc, char **argv)
     testMainWindowDataViewerOpenCanReopen();
     testSessionViewerTitleBarWindowButtons();
     testSessionViewerTrajectoryActionLifetime();
+    testTrajectoryViewerInitialHeatLegendFromPendingPeaks();
     testTrajectoryViewerUsesSidebarLayout();
     testTrajectoryViewerBridgesFilteredRouteRanges();
     testTrajectoryViewerRouteLodLimitsDenseTracks();
