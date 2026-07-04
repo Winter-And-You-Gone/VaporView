@@ -50,13 +50,14 @@ class QPushButton;
 class QScrollArea;
 class QSlider;
 class QSpinBox;
-class QTableWidget;
+class QTableView;
 class QWidget;
 class QGridLayout;
 class QEvent;
 class QResizeEvent;
 class QShowEvent;
 class RawDataParserWindow;
+class SessionCsvTableModel;
 class TrajectoryViewerDialog;
 
 class SessionViewerWindow : public QMainWindow
@@ -132,6 +133,7 @@ private:
     void updateSummaryLabels();
     void relayoutSummaryFields();
     void updateWaveformControls();
+    void updateCsvDisplayHeaders();
     void applyCsvTableTheme();
     void refreshCsvItemTheme();
     void setStatusText(const QString& text);
@@ -149,11 +151,13 @@ private:
     bool loadSessionMetadata(const QString& sessionDirectory);
     bool loadSensorsCsv();
     bool loadWaveformSegments();
-    bool loadWaveformPeakSeries();
+    bool loadWaveformPeakSeries(bool allowBackground = false);
     bool loadWaveformPeakIndexSeries();
+    bool writeWaveformPeakIndexSeries() const;
     bool loadRawTcpWavePeakSeries();
     bool loadIndexedWaveformPeakSeries();
     bool loadLegacyWaveformPeakSeries();
+    void startBackgroundWaveformPeakSeries();
     bool previewWaveformFrame(quint64 frameIndex);
     bool loadWaveformFrame(quint64 frameIndex, bool scrollToCsvRow = true);
     bool loadUnifiedRawTcpWaveFrames();
@@ -238,7 +242,8 @@ private:
     QLabel *environment_info_label_;
     QGroupBox *csv_group_;
     QLabel *csv_info_label_;
-    QTableWidget *csv_table_;
+    QTableView *csv_table_;
+    SessionCsvTableModel *csv_model_;
 
     QString session_directory_;
     QString metadata_filename_;
@@ -273,6 +278,7 @@ private:
     bool waveform_peak_scatter_mode_;
     bool waveform_show_filtered_frame_;
     bool session_loading_;
+    quint64 peak_series_request_id_;
     QVector<int> highlighted_csv_rows_;
     int primary_highlighted_csv_row_;
     TrajectoryViewerDialog *trajectory_viewer_dialog_;

@@ -8,6 +8,7 @@
 #include "WindowSizing.h"
 
 #include <QByteArray>
+#include <QAbstractTableModel>
 #include <QComboBox>
 #include <QCoreApplication>
 #include <QDateTime>
@@ -20,12 +21,14 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QFutureWatcher>
 #include <QFontDatabase>
 #include <QFontMetrics>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QHash>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
@@ -47,8 +50,8 @@
 #include <QSlider>
 #include <QSpinBox>
 #include <QSplitter>
-#include <QTableWidget>
-#include <QTableWidgetItem>
+#include <QSaveFile>
+#include <QTableView>
 #include <QTextStream>
 #include <QWheelEvent>
 #include <QVBoxLayout>
@@ -57,6 +60,7 @@
 #include <QThread>
 #include <QTimeZone>
 #include <QtEndian>
+#include <QtConcurrent/QtConcurrentRun>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -265,6 +269,36 @@ struct WaveformPeakResult
 {
     quint64 timestamp_us = 0;
     float peak_value = std::numeric_limits<float>::quiet_NaN();
+};
+
+struct WaveformPeakSeriesResult
+{
+    bool loaded = false;
+    QString error;
+    QVector<quint64> timestamps_us;
+    QVector<float> peak_values;
+};
+
+struct BackgroundRawTcpWaveFrame
+{
+    QString filename;
+    quint64 harmonic_payload_offset = 0;
+    quint32 harmonic_payload_size = 0;
+    quint64 timestamp_us = 0;
+    VaporView::TcpFloatEncoding float_encoding = VaporView::TcpFloatEncoding::Unknown;
+};
+
+struct BackgroundIndexedWaveformFrame
+{
+    QString filename;
+    quint64 timestamp_us = 0;
+    quint32 point_count = 0;
+};
+
+struct BackgroundWaveformSegment
+{
+    QString filename;
+    quint64 frame_count = 0;
 };
 
 QString csvValueAt(const QStringList& fields, int index)
@@ -665,6 +699,228 @@ void appendWaveformPeakResults(const QVector<WaveformPeakPayload>& payloads,
     }
 }
 
+WaveformPeakSeriesResult calculateRawTcpWavePeakSeries(QVector<BackgroundRawTcpWaveFrame> frames,
+                                                       int searchStartIndex,
+                                                       int searchEndIndex)
+{
+    WaveformPeakSeriesResult result;
+    result.loaded = true;
+    if (frames.isEmpty())
+    {
+        return result;
+    }
+
+    QFile file;
+    QString openFilename;
+    QVector<WaveformPeakPayload> payloads;
+    qsizetype chunkBytes = 0;
+
+    auto flushChunk = [&]() {
+        if (payloads.isEmpty())
+        {
+            return;
+        }
+        appendWaveformPeakResults(payloads, result.timestamps_us, result.peak_values);
+        payloads.clear();
+        chunkBytes = 0;
+    };
+
+    for (const BackgroundRawTcpWaveFrame& frame : frames)
+    {
+        if (openFilename != frame.filename)
+        {
+            file.close();
+            file.setFileName(frame.filename);
+            if (!file.open(QIODevice::ReadOnly))
+            {
+                result.loaded = false;
+                result.error = frame.filename;
+                return result;
+            }
+            openFilename = frame.filename;
+        }
+
+        const quint64 sampleCount64 = frame.harmonic_payload_size / kFloatBytes;
+        const int sampleCount = static_cast<int>(std::min<quint64>(
+            sampleCount64,
+            static_cast<quint64>(std::numeric_limits<int>::max())));
+        QByteArray payload;
+        if (!readWaveformPeakPayload(file,
+                                     frame.harmonic_payload_offset,
+                                     sampleCount,
+                                     searchStartIndex,
+                                     searchEndIndex,
+                                     payload))
+        {
+            result.loaded = false;
+            result.error = frame.filename;
+            return result;
+        }
+
+        WaveformPeakPayload peakPayload;
+        peakPayload.timestamp_us = frame.timestamp_us;
+        peakPayload.payload = std::move(payload);
+        peakPayload.encoding = frame.float_encoding;
+        chunkBytes += peakPayload.payload.size();
+        payloads.push_back(std::move(peakPayload));
+        if (chunkBytes >= kPeakPayloadChunkBytes)
+        {
+            flushChunk();
+        }
+    }
+
+    flushChunk();
+    return result;
+}
+
+WaveformPeakSeriesResult calculateIndexedWaveformPeakSeries(QVector<BackgroundIndexedWaveformFrame> frames,
+                                                            int searchStartIndex,
+                                                            int searchEndIndex)
+{
+    WaveformPeakSeriesResult result;
+    result.loaded = true;
+    if (frames.isEmpty())
+    {
+        return result;
+    }
+
+    QVector<WaveformPeakPayload> payloads;
+    qsizetype chunkBytes = 0;
+
+    auto flushChunk = [&]() {
+        if (payloads.isEmpty())
+        {
+            return;
+        }
+        appendWaveformPeakResults(payloads, result.timestamps_us, result.peak_values);
+        payloads.clear();
+        chunkBytes = 0;
+    };
+
+    for (const BackgroundIndexedWaveformFrame& frame : frames)
+    {
+        QFile file(frame.filename);
+        if (!file.open(QIODevice::ReadOnly))
+        {
+            result.loaded = false;
+            result.error = frame.filename;
+            return result;
+        }
+
+        QByteArray payload;
+        if (!readWaveformPeakPayload(file,
+                                     0,
+                                     static_cast<int>(std::min<quint64>(frame.point_count, static_cast<quint64>(std::numeric_limits<int>::max()))),
+                                     searchStartIndex,
+                                     searchEndIndex,
+                                     payload))
+        {
+            result.loaded = false;
+            result.error = frame.filename;
+            return result;
+        }
+
+        WaveformPeakPayload peakPayload;
+        peakPayload.timestamp_us = frame.timestamp_us;
+        peakPayload.payload = std::move(payload);
+        peakPayload.encoding = VaporView::TcpFloatEncoding::LittleEndian;
+        chunkBytes += peakPayload.payload.size();
+        payloads.push_back(std::move(peakPayload));
+        if (chunkBytes >= kPeakPayloadChunkBytes)
+        {
+            flushChunk();
+        }
+    }
+
+    flushChunk();
+    return result;
+}
+
+WaveformPeakSeriesResult calculateLegacyWaveformPeakSeries(QVector<BackgroundWaveformSegment> segments,
+                                                           int pointsPerFrame,
+                                                           int searchStartIndex,
+                                                           int searchEndIndex)
+{
+    WaveformPeakSeriesResult result;
+    result.loaded = true;
+    if (segments.isEmpty() || pointsPerFrame <= 0)
+    {
+        return result;
+    }
+
+    QVector<WaveformPeakPayload> payloads;
+    qsizetype chunkBytes = 0;
+    const quint64 frameBytes = kWaveformTimestampBytes + static_cast<quint64>(pointsPerFrame) * kFloatBytes;
+
+    auto flushChunk = [&]() {
+        if (payloads.isEmpty())
+        {
+            return;
+        }
+        appendWaveformPeakResults(payloads, result.timestamps_us, result.peak_values);
+        payloads.clear();
+        chunkBytes = 0;
+    };
+
+    for (const BackgroundWaveformSegment& segment : segments)
+    {
+        QFile file(segment.filename);
+        if (!file.open(QIODevice::ReadOnly))
+        {
+            result.loaded = false;
+            result.error = segment.filename;
+            return result;
+        }
+
+        for (quint64 localFrame = 0; localFrame < segment.frame_count; ++localFrame)
+        {
+            const quint64 frameOffset = localFrame * frameBytes;
+            if (frameOffset > static_cast<quint64>(std::numeric_limits<qint64>::max()) ||
+                !file.seek(static_cast<qint64>(frameOffset)))
+            {
+                result.loaded = false;
+                result.error = segment.filename;
+                return result;
+            }
+
+            quint64 timestampLe = 0;
+            if (file.read(reinterpret_cast<char*>(&timestampLe), sizeof(timestampLe)) != static_cast<qint64>(sizeof(timestampLe)))
+            {
+                result.loaded = false;
+                result.error = segment.filename;
+                return result;
+            }
+
+            QByteArray payload;
+            if (!readWaveformPeakPayload(file,
+                                         frameOffset + kWaveformTimestampBytes,
+                                         pointsPerFrame,
+                                         searchStartIndex,
+                                         searchEndIndex,
+                                         payload))
+            {
+                result.loaded = false;
+                result.error = segment.filename;
+                return result;
+            }
+
+            WaveformPeakPayload peakPayload;
+            peakPayload.timestamp_us = qFromLittleEndian(timestampLe);
+            peakPayload.payload = std::move(payload);
+            peakPayload.encoding = VaporView::TcpFloatEncoding::LittleEndian;
+            chunkBytes += peakPayload.payload.size();
+            payloads.push_back(std::move(peakPayload));
+            if (chunkBytes >= kPeakPayloadChunkBytes)
+            {
+                flushChunk();
+            }
+        }
+    }
+
+    flushChunk();
+    return result;
+}
+
 quint64 midpointTimestamp(quint64 first, quint64 second)
 {
     return first <= second
@@ -786,6 +1042,167 @@ void drawCurrentPointGuides(QPainter& painter,
     painter.restore();
 }
 }
+
+class SessionCsvTableModel : public QAbstractTableModel
+{
+public:
+    explicit SessionCsvTableModel(QObject *parent = nullptr)
+        : QAbstractTableModel(parent)
+        , theme_(sessionTableThemeFor(nullptr))
+        , primary_highlighted_row_(-1)
+    {
+    }
+
+    int rowCount(const QModelIndex& parent = QModelIndex()) const override
+    {
+        return parent.isValid() ? 0 : rows_.size();
+    }
+
+    int columnCount(const QModelIndex& parent = QModelIndex()) const override
+    {
+        return parent.isValid() ? 0 : headers_.size();
+    }
+
+    QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override
+    {
+        if (!index.isValid() || index.row() < 0 || index.row() >= rows_.size() ||
+            index.column() < 0 || index.column() >= headers_.size())
+        {
+            return {};
+        }
+
+        switch (role)
+        {
+        case Qt::DisplayRole:
+            if (index.column() == 0)
+            {
+                return QString::number(index.row() + 1);
+            }
+            if (index.column() == 1)
+            {
+                return delta_text_by_row_.value(index.row());
+            }
+            return csvValueAt(rows_.at(index.row()), index.column() - 2);
+        case Qt::BackgroundRole:
+            return rowBackground(index.row());
+        case Qt::ForegroundRole:
+            return rowForeground(index.row());
+        default:
+            return {};
+        }
+    }
+
+    QVariant headerData(int section, Qt::Orientation orientation, int role = Qt::DisplayRole) const override
+    {
+        if (role != Qt::DisplayRole || orientation != Qt::Horizontal ||
+            section < 0 || section >= headers_.size())
+        {
+            return {};
+        }
+        return headers_.at(section);
+    }
+
+    void setRows(const QStringList& headers, QVector<QStringList>&& rows)
+    {
+        beginResetModel();
+        headers_ = headers;
+        rows_ = std::move(rows);
+        highlighted_rows_.clear();
+        delta_text_by_row_.clear();
+        primary_highlighted_row_ = -1;
+        endResetModel();
+    }
+
+    void setHeaders(const QStringList& headers)
+    {
+        if (headers_ == headers)
+        {
+            return;
+        }
+        headers_ = headers;
+        if (!headers_.isEmpty())
+        {
+            emit headerDataChanged(Qt::Horizontal, 0, static_cast<int>(headers_.size()) - 1);
+        }
+    }
+
+    void clear()
+    {
+        beginResetModel();
+        headers_.clear();
+        rows_.clear();
+        highlighted_rows_.clear();
+        delta_text_by_row_.clear();
+        primary_highlighted_row_ = -1;
+        endResetModel();
+    }
+
+    void setTheme(const SessionTableTheme& theme)
+    {
+        theme_ = theme;
+        if (rowCount() > 0 && columnCount() > 0)
+        {
+            emit dataChanged(index(0, 0), index(rowCount() - 1, columnCount() - 1),
+                             {Qt::BackgroundRole, Qt::ForegroundRole});
+        }
+    }
+
+    void setHighlightedRows(const QVector<int>& rows, int primaryRow, const QHash<int, QString>& deltas)
+    {
+        QVector<int> changedRows = highlighted_rows_;
+        changedRows += rows;
+        std::sort(changedRows.begin(), changedRows.end());
+        changedRows.erase(std::unique(changedRows.begin(), changedRows.end()), changedRows.end());
+
+        highlighted_rows_ = rows;
+        primary_highlighted_row_ = primaryRow;
+        delta_text_by_row_ = deltas;
+
+        if (columnCount() <= 0)
+        {
+            return;
+        }
+        for (int row : changedRows)
+        {
+            if (row < 0 || row >= rowCount())
+            {
+                continue;
+            }
+            emit dataChanged(index(row, 0), index(row, columnCount() - 1),
+                             {Qt::DisplayRole, Qt::BackgroundRole, Qt::ForegroundRole});
+        }
+    }
+
+private:
+    QColor rowBackground(int row) const
+    {
+        if (!highlighted_rows_.contains(row))
+        {
+            return theme_.background;
+        }
+        const bool primary = row == primary_highlighted_row_ ||
+            (primary_highlighted_row_ < 0 && !highlighted_rows_.isEmpty() && row == highlighted_rows_.first());
+        return primary ? theme_.highlightedBackground : theme_.secondaryHighlightedBackground;
+    }
+
+    QColor rowForeground(int row) const
+    {
+        if (!highlighted_rows_.contains(row))
+        {
+            return theme_.text;
+        }
+        const bool primary = row == primary_highlighted_row_ ||
+            (primary_highlighted_row_ < 0 && !highlighted_rows_.isEmpty() && row == highlighted_rows_.first());
+        return primary ? theme_.highlightedText : theme_.secondaryHighlightedText;
+    }
+
+    QStringList headers_;
+    QVector<QStringList> rows_;
+    SessionTableTheme theme_;
+    QVector<int> highlighted_rows_;
+    QHash<int, QString> delta_text_by_row_;
+    int primary_highlighted_row_;
+};
 
 class SessionWavePlotWidget : public QWidget
 {
@@ -1714,6 +2131,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , csv_group_(nullptr)
     , csv_info_label_(nullptr)
     , csv_table_(nullptr)
+    , csv_model_(nullptr)
     , session_directory_()
     , metadata_filename_()
     , sensors_csv_filename_()
@@ -1747,6 +2165,7 @@ SessionViewerWindow::SessionViewerWindow(QWidget *parent)
     , waveform_peak_scatter_mode_(true)
     , waveform_show_filtered_frame_(false)
     , session_loading_(false)
+    , peak_series_request_id_(0)
     , highlighted_csv_rows_()
     , primary_highlighted_csv_row_(-1)
     , trajectory_viewer_dialog_(nullptr)
@@ -2065,9 +2484,11 @@ void SessionViewerWindow::setupUi()
     csv_info_label_->setWordWrap(true);
     csvLayout->addWidget(csv_info_label_);
 
-    csv_table_ = new QTableWidget(this);
+    csv_model_ = new SessionCsvTableModel(this);
+    csv_table_ = new QTableView(this);
     csv_table_->setObjectName(QStringLiteral("sessionViewerCsvTable"));
     csv_table_->viewport()->setObjectName(QStringLiteral("sessionViewerCsvViewport"));
+    csv_table_->setModel(csv_model_);
     csv_table_->setAlternatingRowColors(false);
     csv_table_->setSelectionBehavior(QAbstractItemView::SelectRows);
     csv_table_->setSelectionMode(QAbstractItemView::SingleSelection);
@@ -2110,7 +2531,7 @@ void SessionViewerWindow::applyCsvTableTheme()
     csv_table_->horizontalHeader()->setPalette(tablePalette);
 
     csv_table_->setStyleSheet(QStringLiteral(
-        "QTableWidget {"
+        "QTableView {"
         " background-color: %1;"
         " alternate-background-color: %1;"
         " border: 1px solid %3;"
@@ -2120,10 +2541,10 @@ void SessionViewerWindow::applyCsvTableTheme()
         " selection-color: %7;"
         "}"
         "QWidget#sessionViewerCsvViewport { background-color: %1; }"
-        "QTableWidget::item { color: %2; }"
-        "QTableWidget::item:selected { background-color: %6; color: %7; }"
-        "QTableWidget::item:selected:active { background-color: %6; color: %7; }"
-        "QTableWidget::item:selected:!active { background-color: %6; color: %7; }"
+        "QTableView::item { color: %2; }"
+        "QTableView::item:selected { background-color: %6; color: %7; }"
+        "QTableView::item:selected:active { background-color: %6; color: %7; }"
+        "QTableView::item:selected:!active { background-color: %6; color: %7; }"
         "QHeaderView::section {"
         " background-color: %4;"
         " color: %5;"
@@ -2149,35 +2570,28 @@ void SessionViewerWindow::applyCsvTableTheme()
 
 void SessionViewerWindow::refreshCsvItemTheme()
 {
-    if (!csv_table_)
+    if (!csv_table_ || !csv_model_)
     {
         return;
     }
 
-    const SessionTableTheme theme = sessionTableThemeFor(this);
-    const int currentRow = csv_table_->currentRow();
-    for (int row = 0; row < csv_table_->rowCount(); ++row)
-    {
-        QColor background = theme.background;
-        QColor foreground = theme.text;
-        if (highlighted_csv_rows_.contains(row))
-        {
-            const bool primaryRow = row == primary_highlighted_csv_row_ ||
-                (primary_highlighted_csv_row_ < 0 && row == currentRow);
-            background = primaryRow ? theme.highlightedBackground : theme.secondaryHighlightedBackground;
-            foreground = primaryRow ? theme.highlightedText : theme.secondaryHighlightedText;
-        }
-
-        for (int col = 0; col < csv_table_->columnCount(); ++col)
-        {
-            if (QTableWidgetItem *item = csv_table_->item(row, col))
-            {
-                item->setBackground(background);
-                item->setForeground(foreground);
-            }
-        }
-    }
+    csv_model_->setTheme(sessionTableThemeFor(this));
     csv_table_->viewport()->update();
+}
+
+void SessionViewerWindow::updateCsvDisplayHeaders()
+{
+    if (!csv_model_)
+    {
+        return;
+    }
+
+    QStringList displayHeaders;
+    displayHeaders.reserve(csv_headers_.size() + 2);
+    displayHeaders << (is_english_ ? QStringLiteral("No.") : QStringLiteral("序号"));
+    displayHeaders << (is_english_ ? QStringLiteral("Delta") : QStringLiteral("时间误差"));
+    displayHeaders << csv_headers_;
+    csv_model_->setHeaders(displayHeaders);
 }
 
 void SessionViewerWindow::setEnglish(bool english)
@@ -2255,14 +2669,7 @@ void SessionViewerWindow::updateTexts()
     waveform_files_title_->setText(is_english_ ? "Wave Files:" : "波形文件数:");
     waveform_frames_title_->setText(is_english_ ? "Wave Frames:" : "波形帧数:");
     frame_title_->setText(is_english_ ? "Frame:" : "帧:");
-    if (csv_table_ && csv_table_->columnCount() > 0)
-    {
-        csv_table_->setHorizontalHeaderItem(0, new QTableWidgetItem(is_english_ ? "No." : "序号"));
-        if (csv_table_->columnCount() > 1)
-        {
-            csv_table_->setHorizontalHeaderItem(1, new QTableWidgetItem(is_english_ ? "Delta" : "时间误差"));
-        }
-    }
+    updateCsvDisplayHeaders();
 
     if (session_directory_.isEmpty())
     {
@@ -2742,9 +3149,10 @@ void SessionViewerWindow::clearLoadedData(bool clearPathEdit)
     waveform_export_rate_hz_ = 10;
     waveform_export_mode_ = QStringLiteral("fixed_rate");
 
-    csv_table_->clearContents();
-    csv_table_->setRowCount(0);
-    csv_table_->setColumnCount(0);
+    if (csv_model_)
+    {
+        csv_model_->clear();
+    }
     highlighted_csv_rows_.clear();
     primary_highlighted_csv_row_ = -1;
     static_cast<SessionWavePlotWidget*>(waveform_plot_)->setSamples({});
@@ -3027,7 +3435,7 @@ bool SessionViewerWindow::loadSessionDirectory(QString sessionDirectory)
         return false;
     }
     updateSessionLoadingProgress(is_english_ ? "Calculating waveform peak series..." : "正在计算波形峰值序列...", 45);
-    if (!loadWaveformPeakSeries())
+    if (!loadWaveformPeakSeries(true))
     {
         finishSessionLoading();
         return false;
@@ -3115,9 +3523,10 @@ bool SessionViewerWindow::loadSessionMetadata(const QString& sessionDirectory)
 
 bool SessionViewerWindow::loadSensorsCsv()
 {
-    csv_table_->clearContents();
-    csv_table_->setRowCount(0);
-    csv_table_->setColumnCount(0);
+    if (csv_model_)
+    {
+        csv_model_->clear();
+    }
     highlighted_csv_rows_.clear();
     primary_highlighted_csv_row_ = -1;
     csv_headers_.clear();
@@ -3174,10 +3583,6 @@ bool SessionViewerWindow::loadSensorsCsv()
     displayHeaders << (is_english_ ? "No." : "序号");
     displayHeaders << (is_english_ ? "Delta" : "时间误差");
     displayHeaders << csv_headers_;
-    csv_table_->setColumnCount(displayHeaders.size());
-    csv_table_->setHorizontalHeaderLabels(displayHeaders);
-    csv_table_->setColumnWidth(0, 48);
-    csv_table_->setColumnWidth(1, 96);
 
     QVector<QStringList> rows;
     rows.reserve(static_cast<int>(std::min<quint64>(total_sensor_rows_ > 0 ? total_sensor_rows_ : 256ULL, 50000ULL)));
@@ -3335,39 +3740,17 @@ bool SessionViewerWindow::loadSensorsCsv()
         }
     }
 
-    csv_table_->setRowCount(rows.size());
-    const SessionTableTheme tableTheme = sessionTableThemeFor(this);
-    for (int row = 0; row < rows.size(); ++row)
+    if (session_loading_)
     {
-        auto *indexItem = new QTableWidgetItem(QString::number(row + 1));
-        indexItem->setBackground(tableTheme.background);
-        indexItem->setForeground(tableTheme.text);
-        csv_table_->setItem(row, 0, indexItem);
-
-        auto *deltaItem = new QTableWidgetItem(QString());
-        deltaItem->setBackground(tableTheme.background);
-        deltaItem->setForeground(tableTheme.text);
-        csv_table_->setItem(row, 1, deltaItem);
-
-        const QStringList& fields = rows.at(row);
-        for (int col = 0; col < csv_headers_.size(); ++col)
-        {
-            auto *item = new QTableWidgetItem(csvValueAt(fields, col));
-            item->setBackground(tableTheme.background);
-            item->setForeground(tableTheme.text);
-            csv_table_->setItem(row, col + 2, item);
-        }
-
-        if (session_loading_ && (row + 1) % 5000 == 0)
-        {
-            updateSessionLoadingProgress(QString(is_english_
-                ? "Rendering CSV table... %1/%2 rows"
-                : "正在渲染 CSV 表格... %1/%2 行")
-                .arg(row + 1)
-                .arg(rows.size()),
-                rangedProgressPercent(static_cast<quint64>(row + 1), static_cast<quint64>(rows.size()), 24, 36));
-        }
+        updateSessionLoadingProgress(is_english_
+            ? QStringLiteral("Preparing virtual CSV table...")
+            : QStringLiteral("正在准备虚拟 CSV 表格..."),
+            36);
     }
+    csv_model_->setRows(displayHeaders, std::move(rows));
+    csv_model_->setTheme(sessionTableThemeFor(this));
+    csv_table_->setColumnWidth(0, 48);
+    csv_table_->setColumnWidth(1, 96);
 
     total_sensor_rows_ = static_cast<quint64>(rows.size());
     csv_info_label_->setText(QString(is_english_
@@ -3869,6 +4252,44 @@ bool SessionViewerWindow::loadWaveformPeakIndexSeries()
     return true;
 }
 
+bool SessionViewerWindow::writeWaveformPeakIndexSeries() const
+{
+    if (waveform_peak_index_filename_.isEmpty() ||
+        waveform_timestamps_us_.isEmpty() ||
+        waveform_peak_raw_values_.isEmpty() ||
+        waveform_timestamps_us_.size() != waveform_peak_raw_values_.size())
+    {
+        return false;
+    }
+
+    const QFileInfo info(waveform_peak_index_filename_);
+    if (!QDir().mkpath(info.absolutePath()))
+    {
+        return false;
+    }
+
+    QSaveFile file(waveform_peak_index_filename_);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+    {
+        return false;
+    }
+
+    QTextStream stream(&file);
+    stream.setEncoding(QStringConverter::Utf8);
+    stream << "host_time_us,peak_value,peak_index,point_count,search_start_index,search_end_index\n";
+    for (int index = 0; index < waveform_timestamps_us_.size(); ++index)
+    {
+        const float peakValue = waveform_peak_raw_values_.at(index);
+        stream << waveform_timestamps_us_.at(index) << ',';
+        if (std::isfinite(peakValue))
+        {
+            stream << QString::number(static_cast<double>(peakValue), 'g', 9);
+        }
+        stream << ",-1," << points_per_frame_ << ",0,0\n";
+    }
+    return file.commit();
+}
+
 bool SessionViewerWindow::loadRawTcpWavePeakSeries()
 {
     if (raw_tcp_wave_frames_.isEmpty())
@@ -4113,7 +4534,7 @@ bool SessionViewerWindow::loadLegacyWaveformPeakSeries()
     return true;
 }
 
-bool SessionViewerWindow::loadWaveformPeakSeries()
+bool SessionViewerWindow::loadWaveformPeakSeries(bool allowBackground)
 {
     waveform_peak_raw_values_.clear();
     waveform_peak_values_.clear();
@@ -4150,6 +4571,12 @@ bool SessionViewerWindow::loadWaveformPeakSeries()
         return true;
     }
 
+    if (allowBackground)
+    {
+        startBackgroundWaveformPeakSeries();
+        return true;
+    }
+
     bool loaded = false;
     if (!raw_tcp_wave_frames_.isEmpty())
     {
@@ -4168,8 +4595,103 @@ bool SessionViewerWindow::loadWaveformPeakSeries()
         return false;
     }
 
+    if (isFullFramePeakSearch(peak_search_start_index_, peak_search_end_index_))
+    {
+        writeWaveformPeakIndexSeries();
+    }
     applyPeakFilter(90, 97);
     return true;
+}
+
+void SessionViewerWindow::startBackgroundWaveformPeakSeries()
+{
+    const quint64 requestId = ++peak_series_request_id_;
+    const QString sessionDirectory = session_directory_;
+    const int searchStartIndex = peak_search_start_index_;
+    const int searchEndIndex = peak_search_end_index_;
+    const int pointsPerFrame = points_per_frame_;
+    const bool fullFrameSearch = isFullFramePeakSearch(searchStartIndex, searchEndIndex);
+
+    QVector<BackgroundRawTcpWaveFrame> rawFrames;
+    rawFrames.reserve(raw_tcp_wave_frames_.size());
+    for (const RawTcpWaveFrame& frame : raw_tcp_wave_frames_)
+    {
+        BackgroundRawTcpWaveFrame copy;
+        copy.filename = frame.filename;
+        copy.harmonic_payload_offset = frame.harmonic_payload_offset;
+        copy.harmonic_payload_size = frame.harmonic_payload_size;
+        copy.timestamp_us = frame.timestamp_us;
+        copy.float_encoding = frame.float_encoding;
+        rawFrames.push_back(std::move(copy));
+    }
+
+    QVector<BackgroundIndexedWaveformFrame> indexedFrames;
+    indexedFrames.reserve(indexed_waveform_frames_.size());
+    for (const IndexedWaveformFrame& frame : indexed_waveform_frames_)
+    {
+        BackgroundIndexedWaveformFrame copy;
+        copy.filename = frame.filename;
+        copy.timestamp_us = frame.timestamp_us;
+        copy.point_count = frame.point_count;
+        indexedFrames.push_back(std::move(copy));
+    }
+
+    QVector<BackgroundWaveformSegment> segments;
+    segments.reserve(waveform_segments_.size());
+    for (const WaveformSegment& segment : waveform_segments_)
+    {
+        BackgroundWaveformSegment copy;
+        copy.filename = segment.filename;
+        copy.frame_count = segment.frame_count;
+        segments.push_back(std::move(copy));
+    }
+
+    auto *watcher = new QFutureWatcher<WaveformPeakSeriesResult>(this);
+    connect(watcher, &QFutureWatcher<WaveformPeakSeriesResult>::finished, this, [this, watcher, requestId, sessionDirectory, fullFrameSearch]() {
+        watcher->deleteLater();
+        const WaveformPeakSeriesResult result = watcher->result();
+        if (requestId != peak_series_request_id_ || sessionDirectory != session_directory_)
+        {
+            return;
+        }
+        if (!result.loaded)
+        {
+            setStatusText(QString(is_english_
+                ? "Failed to calculate waveform peak series: %1"
+                : "计算波形峰值序列失败: %1").arg(result.error));
+            return;
+        }
+
+        waveform_timestamps_us_ = result.timestamps_us;
+        waveform_peak_raw_values_ = result.peak_values;
+        if (fullFrameSearch)
+        {
+            writeWaveformPeakIndexSeries();
+        }
+        applyPeakFilter();
+        updateSummaryLabels();
+        syncPeakSettingsToTrajectoryViewer();
+        setStatusText(QString(is_english_
+            ? "Loaded session: %1 (waveform peaks ready)"
+            : "已加载会话: %1（波形峰值已就绪）").arg(session_directory_));
+    });
+
+    watcher->setFuture(QtConcurrent::run([rawFrames = std::move(rawFrames),
+                                          indexedFrames = std::move(indexedFrames),
+                                          segments = std::move(segments),
+                                          pointsPerFrame,
+                                          searchStartIndex,
+                                          searchEndIndex]() mutable {
+        if (!rawFrames.isEmpty())
+        {
+            return calculateRawTcpWavePeakSeries(std::move(rawFrames), searchStartIndex, searchEndIndex);
+        }
+        if (!indexedFrames.isEmpty())
+        {
+            return calculateIndexedWaveformPeakSeries(std::move(indexedFrames), searchStartIndex, searchEndIndex);
+        }
+        return calculateLegacyWaveformPeakSeries(std::move(segments), pointsPerFrame, searchStartIndex, searchEndIndex);
+    }));
 }
 
 void SessionViewerWindow::updateSummaryLabels()
@@ -4926,9 +5448,13 @@ void SessionViewerWindow::previewClosestSensorRow(quint64 timestampUs)
 
 QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs, bool scrollToCsvRow)
 {
-    if (csv_timestamps_us_.isEmpty() || csv_table_->rowCount() == 0)
+    if (csv_timestamps_us_.isEmpty() || !csv_model_ || csv_model_->rowCount() == 0)
     {
         primary_highlighted_csv_row_ = -1;
+        if (csv_model_)
+        {
+            csv_model_->setHighlightedRows({}, -1, {});
+        }
         return QString();
     }
 
@@ -4961,27 +5487,6 @@ QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs, bool
     std::sort(rowsToHighlight.begin(), rowsToHighlight.end());
     rowsToHighlight.erase(std::unique(rowsToHighlight.begin(), rowsToHighlight.end()), rowsToHighlight.end());
 
-    const SessionTableTheme tableTheme = sessionTableThemeFor(this);
-    for (int previousRow : highlighted_csv_rows_)
-    {
-        if (previousRow < 0 || previousRow >= csv_table_->rowCount() || rowsToHighlight.contains(previousRow))
-        {
-            continue;
-        }
-        for (int col = 0; col < csv_table_->columnCount(); ++col)
-        {
-            if (QTableWidgetItem *item = csv_table_->item(previousRow, col))
-            {
-                item->setBackground(tableTheme.background);
-                item->setForeground(tableTheme.text);
-            }
-        }
-        if (QTableWidgetItem *deltaItem = csv_table_->item(previousRow, 1))
-        {
-            deltaItem->setText(QString());
-        }
-    }
-
     int primaryRow = rowsToHighlight.isEmpty() ? -1 : rowsToHighlight.first();
     qint64 primaryAbsDelta = std::numeric_limits<qint64>::max();
     for (int row : rowsToHighlight)
@@ -5001,25 +5506,11 @@ QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs, bool
     primary_highlighted_csv_row_ = primaryRow;
 
     QStringList matchParts;
+    QHash<int, QString> deltaTextByRow;
     for (int row : rowsToHighlight)
     {
-        const bool primary = row == primaryRow;
-        const QColor rowColor = primary ? tableTheme.highlightedBackground : tableTheme.secondaryHighlightedBackground;
-        const QColor textColor = primary ? tableTheme.highlightedText : tableTheme.secondaryHighlightedText;
-        for (int col = 0; col < csv_table_->columnCount(); ++col)
-        {
-            if (QTableWidgetItem *item = csv_table_->item(row, col))
-            {
-                item->setBackground(rowColor);
-                item->setForeground(textColor);
-            }
-        }
-
         const qint64 deltaUs = static_cast<qint64>(csv_timestamps_us_.at(row)) - static_cast<qint64>(timestampUs);
-        if (QTableWidgetItem *deltaItem = csv_table_->item(row, 1))
-        {
-            deltaItem->setText(formatSignedDeltaMs(deltaUs));
-        }
+        deltaTextByRow.insert(row, formatSignedDeltaMs(deltaUs));
         const QString rowText = fixedIntegerField(row + 1, 8);
         const QString deltaText = fixedTextField(formatSignedDeltaMs(deltaUs), 12);
         matchParts.append(is_english_
@@ -5028,6 +5519,7 @@ QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs, bool
     }
 
     highlighted_csv_rows_ = rowsToHighlight;
+    csv_model_->setHighlightedRows(highlighted_csv_rows_, primary_highlighted_csv_row_, deltaTextByRow);
     if (primaryRow >= 0)
     {
         static_cast<SingleSeriesTrendPlotWidget*>(temperature_plot_)->setCurrentIndex(primaryRow);
@@ -5036,9 +5528,9 @@ QString SessionViewerWindow::highlightClosestSensorRow(quint64 timestampUs, bool
         if (scrollToCsvRow)
         {
             const int topVisibleRow = rowsToHighlight.isEmpty() ? primaryRow : rowsToHighlight.first();
-            if (QTableWidgetItem *item = csv_table_->item(topVisibleRow, 0))
+            if (topVisibleRow >= 0 && topVisibleRow < csv_model_->rowCount())
             {
-                csv_table_->scrollToItem(item, QAbstractItemView::PositionAtTop);
+                csv_table_->scrollTo(csv_model_->index(topVisibleRow, 0), QAbstractItemView::PositionAtTop);
             }
         }
     }

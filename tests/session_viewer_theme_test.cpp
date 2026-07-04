@@ -28,7 +28,7 @@
 #include <QSize>
 #include <QSlider>
 #include <QSpinBox>
-#include <QTableWidget>
+#include <QTableView>
 #include <QTemporaryDir>
 #include <QToolButton>
 #include <QWidget>
@@ -315,7 +315,7 @@ void testRawDataParserOpenIsNonBlocking()
 
 void testCsvViewportUsesNeutralBackground(SessionViewerWindow& viewer)
 {
-    auto *table = viewer.findChild<QTableWidget *>(QStringLiteral("sessionViewerCsvTable"));
+    auto *table = viewer.findChild<QTableView *>(QStringLiteral("sessionViewerCsvTable"));
     require(table != nullptr, "session viewer CSV table exists");
     require(table->viewport() != nullptr, "session viewer CSV viewport exists");
 
@@ -326,7 +326,7 @@ void testCsvViewportUsesNeutralBackground(SessionViewerWindow& viewer)
 
 void testCsvSelectionUsesThemeAccent(SessionViewerWindow& viewer, bool dark)
 {
-    auto *table = viewer.findChild<QTableWidget *>(QStringLiteral("sessionViewerCsvTable"));
+    auto *table = viewer.findChild<QTableView *>(QStringLiteral("sessionViewerCsvTable"));
     require(table != nullptr, "session viewer CSV table exists for selection theme");
 
     const QColor actualHighlight = table->palette().color(QPalette::Highlight);
