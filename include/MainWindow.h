@@ -54,6 +54,7 @@ class QCheckBox;
 class TcpWavePanel;
 class SessionViewerWindow;
 class EpsilonPanel;
+class SourceModeOverviewSwitchButton;
 class TemperatureTrendPlotWidget;
 class TemperatureControllerOverviewPanel;
 namespace VaporView { class SkyDeviceConfigDialog; }
@@ -886,6 +887,7 @@ private:
     QLabel *lidar_rate_lbl_;
     QLabel *temperature_rate_lbl_;
     QLabel *data_source_mode_lbl_;
+    SourceModeOverviewSwitchButton *source_mode_switch_;
     QLabel *sky_telemetry_transport_lbl_;
     QLabel *sky_telemetry_port_lbl_;
     QLabel *sky_telemetry_baud_lbl_;

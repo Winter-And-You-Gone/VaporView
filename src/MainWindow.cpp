@@ -5208,6 +5208,192 @@ private:
     QVariantAnimation *thumb_animation_ = nullptr;
 };
 
+class SourceModeOverviewSwitchButton final : public QPushButton
+{
+public:
+    explicit SourceModeOverviewSwitchButton(QWidget *parent = nullptr)
+        : QPushButton(parent)
+    {
+        setCheckable(true);
+        setObjectName(QStringLiteral("sourceModeOverviewSwitch"));
+        setCursor(Qt::PointingHandCursor);
+        setFocusPolicy(Qt::TabFocus);
+        setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        thumb_position_ = isChecked() ? 1.0 : 0.0;
+        thumb_animation_ = new QVariantAnimation(this);
+        thumb_animation_->setDuration(160);
+        thumb_animation_->setEasingCurve(QEasingCurve::OutCubic);
+        connect(thumb_animation_, &QVariantAnimation::valueChanged, this, [this](const QVariant& value) {
+            const qreal progress = std::clamp(value.toReal(), 0.0, 1.0);
+            thumb_position_ = thumb_start_position_ + (thumb_target_position_ - thumb_start_position_) * progress;
+            update();
+        });
+        connect(thumb_animation_, &QVariantAnimation::finished, this, [this]() {
+            thumb_position_ = thumb_target_position_;
+            update();
+        });
+        refreshText();
+    }
+
+    void setEnglish(bool english)
+    {
+        is_english_ = english;
+        refreshText();
+        update();
+    }
+
+    bool switchChecked() const
+    {
+        return isChecked();
+    }
+
+    void setSwitchChecked(bool checked, bool animated)
+    {
+        const QSignalBlocker blocker(this);
+        setChecked(checked);
+        refreshText();
+
+        const qreal target = checked ? 1.0 : 0.0;
+        if (animated)
+        {
+            animateThumbTo(target);
+        }
+        else
+        {
+            if (thumb_animation_)
+            {
+                thumb_animation_->stop();
+            }
+            thumb_position_ = target;
+            thumb_start_position_ = target;
+            thumb_target_position_ = target;
+            update();
+        }
+    }
+
+protected:
+    void nextCheckState() override
+    {
+        // Source mode changes are routed through the existing data-source combo.
+    }
+
+    void paintEvent(QPaintEvent *event) override
+    {
+        Q_UNUSED(event);
+
+        const bool dark = VaporView::isDarkThemeEnabled();
+        const bool enabled = isEnabled();
+        const QColor border = appThemeColor(AppThemeColor::Border, dark);
+        const QColor fill = enabled
+            ? appThemeColor(AppThemeColor::PrimarySubtle, dark)
+            : appThemeColor(AppThemeColor::SurfaceAlt, dark);
+        const QColor trackFill = enabled
+            ? appThemeColor(AppThemeColor::Primary, dark)
+            : appThemeColor(AppThemeColor::Surface, dark);
+        const QColor selectedFill = enabled
+            ? appThemeColor(AppThemeColor::Surface, dark)
+            : appThemeColor(AppThemeColor::SurfaceAlt, dark);
+        const QColor selectedText = enabled
+            ? appThemeColor(AppThemeColor::Primary, dark)
+            : appThemeColor(AppThemeColor::TextMuted, dark);
+        const QColor inactiveText = enabled
+            ? appThemeColor(AppThemeColor::White, dark)
+            : appThemeColor(AppThemeColor::TextMuted, dark);
+
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, true);
+
+        const QRectF outerRect = rect().adjusted(0.5, 0.5, -0.5, -0.5);
+        constexpr qreal kOuterRadius = 10.0;
+        painter.setPen(QPen(border, 1.0));
+        painter.setBrush(fill);
+        painter.drawRoundedRect(outerRect, kOuterRadius, kOuterRadius);
+
+        constexpr qreal kInset = 3.0;
+        constexpr qreal kInnerInset = 2.0;
+        const QRectF trackRect = outerRect.adjusted(kInset, kInset, -kInset, -kInset);
+        const QRectF contentRect = trackRect.adjusted(kInnerInset, kInnerInset, -kInnerInset, -kInnerInset);
+        const qreal segmentWidth = contentRect.width() / 2.0;
+        const QRectF selectedRect(contentRect.left() + segmentWidth * thumb_position_,
+                                  contentRect.top(),
+                                  segmentWidth,
+                                  contentRect.height());
+        const QRectF localRect(contentRect.left(), contentRect.top(), segmentWidth, contentRect.height());
+        const QRectF remoteRect(contentRect.left() + segmentWidth, contentRect.top(), segmentWidth, contentRect.height());
+        const bool localSelected = thumb_position_ < 0.5;
+
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(trackFill);
+        painter.drawRoundedRect(trackRect, kOuterRadius - kInset, kOuterRadius - kInset);
+        painter.setBrush(selectedFill);
+        painter.drawRoundedRect(selectedRect, kOuterRadius - kInset - kInnerInset, kOuterRadius - kInset - kInnerInset);
+
+        QFont segmentFont = font();
+        segmentFont.setWeight(QFont::DemiBold);
+        painter.setFont(segmentFont);
+        painter.setPen(localSelected ? selectedText : inactiveText);
+        painter.drawText(localRect, Qt::AlignCenter, localText());
+        painter.setPen(localSelected ? inactiveText : selectedText);
+        painter.drawText(remoteRect, Qt::AlignCenter, remoteText());
+
+        if (hasFocus())
+        {
+            painter.setPen(QPen(appThemeColor(AppThemeColor::Focus, dark), 1.0));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawRoundedRect(outerRect.adjusted(2.0, 2.0, -2.0, -2.0),
+                                    kOuterRadius - 2.0,
+                                    kOuterRadius - 2.0);
+        }
+    }
+
+private:
+    QString localText() const
+    {
+        return is_english_ ? QStringLiteral("Local") : QStringLiteral("本地");
+    }
+
+    QString remoteText() const
+    {
+        return is_english_ ? QStringLiteral("Remote") : QStringLiteral("远程");
+    }
+
+    void refreshText()
+    {
+        const QString text = is_english_
+            ? QStringLiteral("Source: %1").arg(isChecked() ? remoteText() : localText())
+            : QStringLiteral("数据源：%1").arg(isChecked() ? remoteText() : localText());
+        setText(text);
+        setToolTip(text);
+        setStatusTip(text);
+        setAccessibleName(text);
+    }
+
+    void animateThumbTo(qreal target)
+    {
+        if (!thumb_animation_ || qFuzzyCompare(thumb_position_, target))
+        {
+            thumb_position_ = target;
+            thumb_start_position_ = target;
+            thumb_target_position_ = target;
+            update();
+            return;
+        }
+
+        thumb_animation_->stop();
+        thumb_start_position_ = thumb_position_;
+        thumb_target_position_ = target;
+        thumb_animation_->setStartValue(0.0);
+        thumb_animation_->setEndValue(1.0);
+        thumb_animation_->start();
+    }
+
+    bool is_english_ = false;
+    qreal thumb_position_ = 0.0;
+    qreal thumb_start_position_ = 0.0;
+    qreal thumb_target_position_ = 0.0;
+    QVariantAnimation *thumb_animation_ = nullptr;
+};
+
 class TemperatureControllerOverviewPanel : public QWidget
 {
 public:
@@ -6088,6 +6274,7 @@ MainWindow::MainWindow(QWidget *parent)
     , lidar_rate_lbl_(nullptr)
     , temperature_rate_lbl_(nullptr)
     , data_source_mode_lbl_(nullptr)
+    , source_mode_switch_(nullptr)
     , sky_telemetry_transport_lbl_(nullptr)
     , sky_telemetry_port_lbl_(nullptr)
     , sky_telemetry_baud_lbl_(nullptr)
@@ -8381,6 +8568,11 @@ void MainWindow::updateSourceModeUi()
     if (auto_detect_ports_btn_)
     {
         auto_detect_ports_btn_->setEnabled(!remote && !is_connected_ && !connection_attempt_in_progress_);
+    }
+    if (source_mode_switch_)
+    {
+        source_mode_switch_->setEnabled(!is_connected_ && !connection_attempt_in_progress_);
+        source_mode_switch_->setSwitchChecked(remote, source_mode_switch_->switchChecked() != remote);
     }
     const bool remoteInputsEnabled = remote && !is_connected_ && !connection_attempt_in_progress_;
     const bool tcpTelemetry = isRemoteSkyTcpMode();
@@ -12552,6 +12744,18 @@ void MainWindow::setupConfigPanel()
 
     configTitleLayout->addStretch(1);
 
+    source_mode_switch_ = new SourceModeOverviewSwitchButton(configTitleBar);
+    source_mode_switch_->setFixedSize(128, kMainPageButtonHeight);
+    source_mode_switch_->setEnglish(is_english_);
+    connect(source_mode_switch_, &QPushButton::clicked, this, [this]() {
+        if (!data_source_mode_combo_)
+        {
+            return;
+        }
+        data_source_mode_combo_->setCurrentIndex(source_mode_switch_->switchChecked() ? 0 : 1);
+    });
+    configTitleLayout->addWidget(source_mode_switch_, 0, Qt::AlignVCenter | Qt::AlignRight);
+
     auto_detect_ports_btn_ = new QPushButton(config_form_widget);
     auto_detect_ports_btn_->setFixedHeight(kMainPageButtonHeight);
     auto_detect_ports_btn_->setMinimumWidth(120);
@@ -13412,6 +13616,7 @@ void MainWindow::setEnglish(bool english)
         config_inline_title_lbl_->setText(english ? "Device Overview" : "设备概览");
     }
     if (data_source_mode_lbl_) data_source_mode_lbl_->setText(english ? "Source:" : "数据源:");
+    if (source_mode_switch_) source_mode_switch_->setEnglish(english);
     if (sky_telemetry_transport_lbl_) sky_telemetry_transport_lbl_->setText(english ? "Link:" : "链路:");
     updateSkyTelemetryTransportComboTexts(sky_telemetry_transport_combo_, english);
     if (sky_telemetry_tcp_host_lbl_) sky_telemetry_tcp_host_lbl_->setText(english ? "Sky IP:" : "天空端IP:");
