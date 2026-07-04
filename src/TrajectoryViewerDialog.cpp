@@ -3539,9 +3539,10 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QToolButton#trajectoryHeatMetricButton:hover, QDialog#trajectoryViewerDialog QToolButton#trajectoryHeatMetricButton:focus { background-color: @vv-title-hover; border: none; }"
         "QDialog#trajectoryViewerDialog QToolButton#trajectoryHeatMetricButton::menu-indicator { image: none; width: 0px; }"
         "QDialog#trajectoryViewerDialog QLabel#trajectoryHeatLegendCaption { color: @vv-text-muted; background-color: transparent; border: none; font-size: 11px; font-weight: 500; }"
-        "QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle { background-color: transparent; border: none; border-radius: 0px; color: @vv-text; min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px; padding: 0px; }"
-        "QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle:hover { background-color: transparent; border: none; }"
+        "QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle { background-color: transparent; border: none; border-radius: 4px; color: @vv-text; min-width: 24px; max-width: 24px; min-height: 24px; max-height: 24px; padding: 0px; }"
+        "QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle:hover, QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle:focus { background-color: @vv-title-hover; border: none; }"
         "QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle:checked { background-color: transparent; border: none; color: @vv-primary; }"
+        "QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle:checked:hover, QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle:checked:focus { background-color: @vv-title-hover; border: none; color: @vv-primary; }"
         "QDialog#trajectoryViewerDialog QPushButton#trajectoryVisibilityToggle:disabled { color: @vv-text-muted; }"
         "QDialog#trajectoryViewerDialog QFrame#trajectoryViewerMapPanel { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 8px; }"
         "QDialog#trajectoryViewerDialog QWidget#trajectoryViewerMap { background-color: @vv-surface; border: none; border-radius: 8px; }"
@@ -3564,7 +3565,8 @@ void TrajectoryViewerDialog::updateThemeStyles()
         "QDialog#trajectoryViewerDialog QMenu#trajectoryHeatMetricMenu::item { background-color: transparent; border-radius: 4px; padding: 6px 18px; }"
         "QDialog#trajectoryViewerDialog QMenu#trajectoryHeatMetricMenu::item:selected { background-color: @vv-primary-subtle; color: @vv-primary; }"
         "QDialog#trajectoryViewerDialog QToolButton#titleBarButton { background-color: transparent; border: none; border-radius: 6px; padding: 0px; margin: 0px; }"
-        "QDialog#trajectoryViewerDialog QToolButton#titleBarButton:hover, QDialog#trajectoryViewerDialog QToolButton#titleBarButton:focus { background-color: @vv-title-hover; border: none; }"),
+        "QDialog#trajectoryViewerDialog QToolButton#titleBarButton:hover, QDialog#trajectoryViewerDialog QToolButton#titleBarButton:focus { background-color: @vv-title-hover; border: none; }"
+        "QDialog#trajectoryViewerDialog QToolButton#titleBarButton::menu-indicator { image: none; width: 0px; height: 0px; }"),
         isDarkPalette());
     if (styleSheet() != themedStyleSheet)
     {
