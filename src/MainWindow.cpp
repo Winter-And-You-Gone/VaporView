@@ -5252,11 +5252,24 @@ public:
 
     void setSwitchChecked(bool checked, bool animated)
     {
-        const QSignalBlocker blocker(this);
-        setChecked(checked);
-        refreshText();
-
         const qreal target = checked ? 1.0 : 0.0;
+        const bool continuingSameAnimation =
+            !animated &&
+            thumb_animation_ &&
+            thumb_animation_->state() == QAbstractAnimation::Running &&
+            qFuzzyCompare(thumb_target_position_, target);
+
+        {
+            const QSignalBlocker blocker(this);
+            setChecked(checked);
+        }
+        refreshText();
+        if (continuingSameAnimation)
+        {
+            update();
+            return;
+        }
+
         if (animated)
         {
             animateThumbTo(target);
