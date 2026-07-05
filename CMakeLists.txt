@@ -956,6 +956,7 @@ if(BUILD_TESTING)
         if(WIN32)
             vaporview_stage_osgearth_runtime(map3d_window_smoke_test)
         endif()
+        add_test(NAME map3d_window_smoke_test COMMAND map3d_window_smoke_test)
     endif()
 
     add_executable(vaporview_startup_test

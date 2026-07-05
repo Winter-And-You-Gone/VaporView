@@ -62,6 +62,8 @@ QAction* actionByName(VaporView::Map3D::Map3DWindow& window, const QString& obje
 
 int main(int argc, char** argv)
 {
+    qputenv("VAPORVIEW_MAP3D_HEADLESS_TEST", "1");
+
     QApplication app(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("VaporViewTest"));
     QCoreApplication::setApplicationName(QStringLiteral("map3d_window_smoke_test"));
