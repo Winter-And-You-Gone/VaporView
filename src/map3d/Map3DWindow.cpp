@@ -15,11 +15,14 @@
 #include <QSettings>
 #include <QSignalBlocker>
 #include <QSlider>
+#include <QSpinBox>
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
 #include <QVBoxLayout>
 #include <QWidget>
+
+#include <algorithm>
 
 namespace VaporView::Map3D {
 namespace {
@@ -72,6 +75,11 @@ QString selectedOsmLabel(const MapDataDiagnostics& diagnostics)
         return QStringLiteral("off");
     }
     return QStringLiteral("%1 layers").arg(diagnostics.selectedOsmLayerCount);
+}
+
+int sanitizeMaxVisibleSamples(int value)
+{
+    return std::clamp(value, 1000, 1000000);
 }
 
 } // namespace
@@ -144,7 +152,29 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     follow_action_ = toolbar->addAction(QStringLiteral("跟随飞机"));
     follow_action_->setCheckable(true);
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
-    max_visible_samples_ = settings.value(QStringLiteral("maxVisibleSamples"), 200000).toInt();
+    max_visible_samples_ = sanitizeMaxVisibleSamples(settings.value(QStringLiteral("maxVisibleSamples"), 200000).toInt());
+
+    max_visible_samples_spin_ = new QSpinBox(toolbar);
+    max_visible_samples_spin_->setObjectName(QStringLiteral("map3DMaxVisibleSamplesSpin"));
+    max_visible_samples_spin_->setRange(1000, 1000000);
+    max_visible_samples_spin_->setSingleStep(1000);
+    max_visible_samples_spin_->setValue(max_visible_samples_);
+    max_visible_samples_spin_->setPrefix(QStringLiteral("可见点 "));
+    max_visible_samples_spin_->setSuffix(QStringLiteral(" 点"));
+    max_visible_samples_spin_->setToolTip(QStringLiteral("最大可见轨迹点数"));
+    max_visible_samples_spin_->setStatusTip(max_visible_samples_spin_->toolTip());
+    toolbar->addWidget(max_visible_samples_spin_);
+    connect(max_visible_samples_spin_, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int value) {
+        max_visible_samples_ = sanitizeMaxVisibleSamples(value);
+        if (view_)
+        {
+            view_->setMaxVisibleSamples(max_visible_samples_);
+        }
+        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+        settings.setValue(QStringLiteral("maxVisibleSamples"), max_visible_samples_);
+        updateStatus(nullptr);
+    });
+
     replay_.setSpeed(settings.value(QStringLiteral("replaySpeed"), 1.0).toDouble());
     const QString replaySpeedText = QStringLiteral("%1x").arg(replay_.speed(), 0, 'g', 3);
     const int replaySpeedIndex = replay_speed_combo_->findText(replaySpeedText);
@@ -693,7 +723,7 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest)
 {
     const Map3DPerformanceStats stats = view_ ? view_->performanceStats() : Map3DPerformanceStats{};
     const int totalSamples = view_ ? stats.totalSamples : headless_sample_count_;
-    const int visibleSamples = view_ ? stats.visibleSamples : headless_sample_count_;
+    const int visibleSamples = view_ ? stats.visibleSamples : std::min(headless_sample_count_, max_visible_samples_);
     QString text = QStringLiteral("Points: %1/%2").arg(visibleSamples).arg(totalSamples);
     if (view_ || headless_view_)
     {

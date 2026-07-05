@@ -38,6 +38,7 @@ No map mode should require network access. Missing files should fall back to the
 Replay speed
 Replay slider
 跟随飞机
+最大可见点数
 加载 Earth 文件
 重载最佳本地地图
 飞到飞机
@@ -60,6 +61,8 @@ Replay slider
 
 `跟随飞机` keeps the camera near the latest aircraft sample as new samples arrive.
 
+`最大可见点数` limits how many trajectory samples are rendered at once. The full session sample count is still kept for replay/status, while older rendered segments are hidden when the limit is exceeded. The value is saved as `Map3D/maxVisibleSamples`.
+
 ## Session Replay
 
 After loading a session:
@@ -81,6 +84,7 @@ When the main VaporView window receives navigation samples and the 3D Map window
 The status bar shows:
 
 - visible and total track samples
+- visible count after the maximum visible sample limit is applied
 - map mode
 - viewport size
 - FPS

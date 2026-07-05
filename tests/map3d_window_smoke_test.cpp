@@ -9,11 +9,13 @@
 #include <QFile>
 #include <QLabel>
 #include <QSlider>
+#include <QSpinBox>
 #include <QTemporaryDir>
 #include <QTextStream>
 
 #include <cstdlib>
 #include <iostream>
+#include <vector>
 
 namespace
 {
@@ -78,6 +80,7 @@ int main(int argc, char** argv)
     QAction* diagnosticsAction = actionByName(window, QStringLiteral("map3DDiagnosticsAction"));
     auto* replaySpeedCombo = window.findChild<QComboBox*>(QStringLiteral("map3DReplaySpeedCombo"));
     auto* replaySlider = window.findChild<QSlider*>(QStringLiteral("map3DReplaySlider"));
+    auto* maxVisibleSamplesSpin = window.findChild<QSpinBox*>(QStringLiteral("map3DMaxVisibleSamplesSpin"));
     require(reloadBestMapAction->isEnabled(), "reload best local map action exists");
     require(flyToAircraftAction->isEnabled(), "fly to aircraft action exists");
     require(flyToTrackAction->isEnabled(), "fly to track action exists");
@@ -85,9 +88,28 @@ int main(int argc, char** argv)
     require(diagnosticsAction->isEnabled(), "diagnostics action exists");
     require(replaySpeedCombo != nullptr, "replay speed combo exists");
     require(replaySlider != nullptr, "replay slider exists");
+    require(maxVisibleSamplesSpin != nullptr, "max visible samples spin box exists");
+    require(maxVisibleSamplesSpin->minimum() == 1000, "max visible samples lower bound is 1000");
+    require(maxVisibleSamplesSpin->maximum() == 1000000, "max visible samples upper bound is 1000000");
     require(!replayAction->isEnabled(), "replay disabled before session load");
     require(!replayStopAction->isEnabled(), "replay stop disabled before session load");
     require(!replaySlider->isEnabled(), "replay slider disabled before session load");
+
+    maxVisibleSamplesSpin->setValue(1000);
+    std::vector<VaporView::Geo::NavSample> manySamples(1100);
+    for (int i = 0; i < static_cast<int>(manySamples.size()); ++i)
+    {
+        manySamples[i].latDeg = 39.9 + static_cast<double>(i) * 0.000001;
+        manySamples[i].lonDeg = 116.3;
+        manySamples[i].heightM = 45.0;
+        manySamples[i].fixQuality = VaporView::Geo::FixQuality::Fixed;
+    }
+    window.appendSamples(manySamples);
+    QCoreApplication::processEvents();
+    require(label->text().contains(QStringLiteral("Points: 1000/1100")),
+            "max visible samples caps the visible status count");
+    window.clearTrack();
+    QCoreApplication::processEvents();
 
     VaporView::Geo::NavSample sample;
     sample.recordTimestampUs = 1000000;

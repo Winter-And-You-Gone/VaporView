@@ -13,6 +13,7 @@ class QDialog;
 class QLabel;
 class QPlainTextEdit;
 class QSlider;
+class QSpinBox;
 class QTimer;
 
 namespace VaporView::Map3D {
@@ -64,6 +65,7 @@ private:
     QAction* replay_stop_action_ = nullptr;
     QSlider* replay_slider_ = nullptr;
     QComboBox* replay_speed_combo_ = nullptr;
+    QSpinBox* max_visible_samples_spin_ = nullptr;
     QTimer* replay_timer_ = nullptr;
     QDialog* diagnostics_dialog_ = nullptr;
     QPlainTextEdit* diagnostics_text_ = nullptr;
