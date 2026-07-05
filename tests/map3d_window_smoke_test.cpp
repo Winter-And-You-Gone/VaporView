@@ -1,11 +1,14 @@
 #include "geo/GeoTypes.h"
 #include "map3d/Map3DWindow.h"
 
+#include <QAction>
 #include <QApplication>
+#include <QComboBox>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QLabel>
+#include <QSlider>
 #include <QTemporaryDir>
 #include <QTextStream>
 
@@ -46,6 +49,13 @@ QLabel* statusLabel(VaporView::Map3D::Map3DWindow& window)
     return label;
 }
 
+QAction* actionByName(VaporView::Map3D::Map3DWindow& window, const QString& objectName)
+{
+    QAction* action = window.findChild<QAction*>(objectName);
+    require(action != nullptr, "map3d action exists");
+    return action;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -59,6 +69,15 @@ int main(int argc, char** argv)
 
     QLabel* label = statusLabel(window);
     require(label->text().contains(QStringLiteral("Points: 0")), "initial status has zero points");
+    QAction* replayAction = actionByName(window, QStringLiteral("map3DReplayAction"));
+    QAction* replayStopAction = actionByName(window, QStringLiteral("map3DReplayStopAction"));
+    auto* replaySpeedCombo = window.findChild<QComboBox*>(QStringLiteral("map3DReplaySpeedCombo"));
+    auto* replaySlider = window.findChild<QSlider*>(QStringLiteral("map3DReplaySlider"));
+    require(replaySpeedCombo != nullptr, "replay speed combo exists");
+    require(replaySlider != nullptr, "replay slider exists");
+    require(!replayAction->isEnabled(), "replay disabled before session load");
+    require(!replayStopAction->isEnabled(), "replay stop disabled before session load");
+    require(!replaySlider->isEnabled(), "replay slider disabled before session load");
 
     VaporView::Geo::NavSample sample;
     sample.recordTimestampUs = 1000000;
@@ -82,6 +101,32 @@ int main(int argc, char** argv)
     window.loadSessionDirectory(sessionDir.path());
     QCoreApplication::processEvents();
     require(label->text().contains(QStringLiteral("Points: 2")), "session load appends track samples");
+    require(replayAction->isEnabled(), "replay enabled after session load");
+    require(replayStopAction->isEnabled(), "replay stop enabled after session load");
+    require(replaySlider->isEnabled(), "replay slider enabled after session load");
+    require(replaySlider->maximum() == 1, "replay slider spans session samples");
+    require(label->text().contains(QStringLiteral("Replay 2/2")), "session status includes replay position");
+
+    replaySlider->setSliderDown(true);
+    replaySlider->setValue(0);
+    QCoreApplication::processEvents();
+    replaySlider->setSliderDown(false);
+    require(label->text().contains(QStringLiteral("Points: 1")), "slider previews replay sample");
+    require(label->text().contains(QStringLiteral("Replay 1/2")), "slider updates replay position");
+
+    replaySpeedCombo->setCurrentText(QStringLiteral("2x"));
+    QCoreApplication::processEvents();
+    require(replaySpeedCombo->currentText() == QStringLiteral("2x"), "replay speed can be changed");
+
+    replayAction->trigger();
+    QCoreApplication::processEvents();
+    require(replayAction->isChecked(), "replay action toggles into playing state");
+    require(replayAction->text() == QStringLiteral("暂停"), "replay action text changes to pause");
+
+    replayStopAction->trigger();
+    QCoreApplication::processEvents();
+    require(!replayAction->isChecked(), "stop clears replay playing state");
+    require(label->text().contains(QStringLiteral("Replay 1/2")), "stop rewinds replay to first sample");
 
     return 0;
 }

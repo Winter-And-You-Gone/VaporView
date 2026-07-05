@@ -1,0 +1,45 @@
+#pragma once
+
+#include "geo/GeoTypes.h"
+
+#include <QtCore/QString>
+
+#include <vector>
+
+namespace VaporView::Geo {
+
+class TrajectoryReplay {
+public:
+    void clear();
+    void setSamples(std::vector<NavSample> samples);
+
+    bool hasSamples() const;
+    int sampleCount() const;
+    int currentIndex() const;
+    bool isPlaying() const;
+
+    double speed() const;
+    void setSpeed(double speed);
+
+    void play();
+    void pause();
+    void stop();
+    bool seek(int index);
+    bool stepForward();
+
+    const NavSample* currentSample() const;
+    std::vector<NavSample> visibleSamples() const;
+    const std::vector<NavSample>& samples() const;
+
+    int intervalMs() const;
+    static int intervalMsForSpeed(double speed);
+    static double speedFromText(const QString& text, double fallback = 1.0);
+
+private:
+    std::vector<NavSample> samples_;
+    int current_index_ = -1;
+    double speed_ = 1.0;
+    bool playing_ = false;
+};
+
+} // namespace VaporView::Geo

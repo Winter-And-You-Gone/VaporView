@@ -4,6 +4,7 @@
 #include "map3d/OsgEarthViewWidget.h"
 
 #include <QAction>
+#include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFileDialog>
@@ -12,7 +13,10 @@
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QSettings>
+#include <QSignalBlocker>
+#include <QSlider>
 #include <QStatusBar>
+#include <QTimer>
 #include <QToolBar>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -48,6 +52,7 @@ bool isMap3DHeadlessTest()
 Map3DWindow::Map3DWindow(QWidget* parent)
     : QMainWindow(parent)
     , status_label_(new QLabel(this))
+    , replay_timer_(new QTimer(this))
 {
     setObjectName(QStringLiteral("map3DWindow"));
     setWindowTitle(QStringLiteral("VaporView 3D Map"));
@@ -75,10 +80,54 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     QAction* clearAction = toolbar->addAction(QStringLiteral("清空轨迹"));
     connect(clearAction, &QAction::triggered, this, &Map3DWindow::clearTrack);
 
+    replay_action_ = toolbar->addAction(QStringLiteral("播放"));
+    replay_action_->setObjectName(QStringLiteral("map3DReplayAction"));
+    replay_action_->setCheckable(true);
+    replay_action_->setEnabled(false);
+    connect(replay_action_, &QAction::triggered, this, &Map3DWindow::toggleReplay);
+
+    replay_stop_action_ = toolbar->addAction(QStringLiteral("停止回放"));
+    replay_stop_action_->setObjectName(QStringLiteral("map3DReplayStopAction"));
+    replay_stop_action_->setEnabled(false);
+    connect(replay_stop_action_, &QAction::triggered, this, &Map3DWindow::stopReplay);
+
+    replay_speed_combo_ = new QComboBox(toolbar);
+    replay_speed_combo_->setObjectName(QStringLiteral("map3DReplaySpeedCombo"));
+    replay_speed_combo_->addItems({QStringLiteral("0.5x"),
+                                   QStringLiteral("1x"),
+                                   QStringLiteral("2x"),
+                                   QStringLiteral("5x"),
+                                   QStringLiteral("10x")});
+    toolbar->addWidget(replay_speed_combo_);
+
+    replay_slider_ = new QSlider(Qt::Horizontal, toolbar);
+    replay_slider_->setObjectName(QStringLiteral("map3DReplaySlider"));
+    replay_slider_->setMinimumWidth(180);
+    replay_slider_->setEnabled(false);
+    replay_slider_->setTracking(true);
+    toolbar->addWidget(replay_slider_);
+    connect(replay_slider_, &QSlider::sliderMoved, this, &Map3DWindow::onReplaySliderMoved);
+    connect(replay_slider_, &QSlider::valueChanged, this, [this](int value) {
+        if (!replay_.isPlaying() && replay_slider_ && replay_slider_->isSliderDown())
+        {
+            rebuildReplayAt(value);
+        }
+    });
+
     follow_action_ = toolbar->addAction(QStringLiteral("跟随飞机"));
     follow_action_->setCheckable(true);
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
     max_visible_samples_ = settings.value(QStringLiteral("maxVisibleSamples"), 200000).toInt();
+    replay_.setSpeed(settings.value(QStringLiteral("replaySpeed"), 1.0).toDouble());
+    const QString replaySpeedText = QStringLiteral("%1x").arg(replay_.speed(), 0, 'g', 3);
+    const int replaySpeedIndex = replay_speed_combo_->findText(replaySpeedText);
+    replay_speed_combo_->setCurrentIndex(replaySpeedIndex >= 0 ? replaySpeedIndex : 1);
+    connect(replay_speed_combo_, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &Map3DWindow::onReplaySpeedChanged);
+
+    replay_timer_->setTimerType(Qt::PreciseTimer);
+    replay_timer_->setInterval(replay_.intervalMs());
+    connect(replay_timer_, &QTimer::timeout, this, &Map3DWindow::onReplayTick);
+
     follow_action_->setChecked(settings.value(QStringLiteral("followAircraft"), false).toBool());
     if (view_)
     {
@@ -101,6 +150,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     connect(diagnostics_action_, &QAction::triggered, this, &Map3DWindow::showMapDiagnostics);
 
     statusBar()->addPermanentWidget(status_label_, 1);
+    updateReplayUi();
     updateStatus(nullptr);
     if (isMap3DHeadlessTest())
     {
@@ -122,6 +172,11 @@ Map3DWindow::~Map3DWindow()
 
 void Map3DWindow::appendSample(const VaporView::Geo::NavSample& sample)
 {
+    if (replay_.isPlaying())
+    {
+        stopReplay();
+    }
+    replay_.clear();
     if (view_)
     {
         view_->appendSample(sample);
@@ -130,11 +185,17 @@ void Map3DWindow::appendSample(const VaporView::Geo::NavSample& sample)
     {
         ++headless_sample_count_;
     }
+    updateReplayUi();
     updateStatus(&sample);
 }
 
 void Map3DWindow::appendSamples(const std::vector<VaporView::Geo::NavSample>& samples)
 {
+    if (replay_.isPlaying())
+    {
+        stopReplay();
+    }
+    replay_.clear();
     if (view_)
     {
         view_->appendSamples(samples);
@@ -143,11 +204,14 @@ void Map3DWindow::appendSamples(const std::vector<VaporView::Geo::NavSample>& sa
     {
         headless_sample_count_ += static_cast<int>(samples.size());
     }
+    updateReplayUi();
     updateStatus(samples.empty() ? nullptr : &samples.back());
 }
 
 void Map3DWindow::clearTrack()
 {
+    replay_timer_->stop();
+    replay_.clear();
     if (view_)
     {
         view_->clearTrack();
@@ -156,6 +220,7 @@ void Map3DWindow::clearTrack()
     {
         headless_sample_count_ = 0;
     }
+    updateReplayUi();
     updateStatus(nullptr);
 }
 
@@ -170,8 +235,19 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
         return;
     }
 
-    clearTrack();
-    appendSamples(result.samples);
+    replay_timer_->stop();
+    if (view_)
+    {
+        view_->clearTrack();
+        view_->appendSamples(result.samples);
+    }
+    if (headless_view_)
+    {
+        headless_sample_count_ = static_cast<int>(result.samples.size());
+    }
+    replay_.setSamples(result.samples);
+    updateReplayUi();
+    updateStatus(replay_.currentSample());
     statusBar()->showMessage(QStringLiteral("Loaded %1 samples from %2")
                                  .arg(result.samples.size())
                                  .arg(result.sourceCsvPath),
@@ -291,6 +367,140 @@ void Map3DWindow::showMapDiagnostics()
     diagnostics_dialog_->activateWindow();
 }
 
+void Map3DWindow::toggleReplay()
+{
+    if (!replay_.hasSamples())
+    {
+        updateReplayUi();
+        return;
+    }
+
+    if (replay_.isPlaying())
+    {
+        replay_.pause();
+        replay_timer_->stop();
+    }
+    else
+    {
+        replay_.play();
+        rebuildReplayAt(replay_.currentIndex());
+        replay_timer_->start(replay_.intervalMs());
+    }
+    updateReplayUi();
+}
+
+void Map3DWindow::stopReplay()
+{
+    replay_timer_->stop();
+    replay_.stop();
+    rebuildReplayAt(replay_.currentIndex());
+    updateReplayUi();
+}
+
+void Map3DWindow::onReplayTick()
+{
+    if (!replay_.isPlaying() || !replay_.hasSamples())
+    {
+        replay_timer_->stop();
+        replay_.pause();
+        updateReplayUi();
+        return;
+    }
+
+    replay_.stepForward();
+    rebuildReplayAt(replay_.currentIndex());
+    if (!replay_.isPlaying())
+    {
+        replay_timer_->stop();
+    }
+    updateReplayUi();
+}
+
+void Map3DWindow::onReplaySliderMoved(int value)
+{
+    if (!replay_.hasSamples())
+    {
+        return;
+    }
+    rebuildReplayAt(value);
+    updateReplayUi();
+}
+
+void Map3DWindow::onReplaySpeedChanged(int index)
+{
+    if (!replay_speed_combo_ || index < 0)
+    {
+        return;
+    }
+    replay_.setSpeed(VaporView::Geo::TrajectoryReplay::speedFromText(replay_speed_combo_->itemText(index)));
+    replay_timer_->setInterval(replay_.intervalMs());
+    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    settings.setValue(QStringLiteral("replaySpeed"), replay_.speed());
+}
+
+void Map3DWindow::rebuildReplayAt(int index)
+{
+    if (!replay_.hasSamples())
+    {
+        return;
+    }
+    replay_.seek(index);
+    const std::vector<VaporView::Geo::NavSample> visibleSamples = replay_.visibleSamples();
+
+    if (view_)
+    {
+        view_->clearTrack();
+        view_->appendSamples(visibleSamples);
+    }
+    if (headless_view_)
+    {
+        headless_sample_count_ = static_cast<int>(visibleSamples.size());
+    }
+    updateStatus(visibleSamples.empty() ? nullptr : &visibleSamples.back());
+}
+
+void Map3DWindow::setReplayEnabled(bool enabled)
+{
+    if (replay_action_)
+    {
+        replay_action_->setEnabled(enabled);
+    }
+    if (replay_stop_action_)
+    {
+        replay_stop_action_->setEnabled(enabled);
+    }
+    if (replay_slider_)
+    {
+        replay_slider_->setEnabled(enabled);
+    }
+    if (replay_speed_combo_)
+    {
+        replay_speed_combo_->setEnabled(enabled);
+    }
+}
+
+void Map3DWindow::updateReplayUi()
+{
+    const bool hasReplay = replay_.hasSamples();
+    setReplayEnabled(hasReplay);
+    if (replay_action_)
+    {
+        const QSignalBlocker blocker(replay_action_);
+        replay_action_->setChecked(replay_.isPlaying());
+        replay_action_->setText(replay_.isPlaying() ? QStringLiteral("暂停") : QStringLiteral("播放"));
+    }
+    if (replay_stop_action_)
+    {
+        replay_stop_action_->setText(QStringLiteral("停止回放"));
+    }
+    if (replay_slider_)
+    {
+        const QSignalBlocker blocker(replay_slider_);
+        replay_slider_->setRange(0, hasReplay ? replay_.sampleCount() - 1 : 0);
+        replay_slider_->setValue(qMax(0, replay_.currentIndex()));
+    }
+}
+
 void Map3DWindow::setMapSelection(const MapDataSelection& selection)
 {
     map_selection_ = selection;
@@ -401,6 +611,14 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest)
                     .arg(latest->heightM, 0, 'f', 2)
                     .arg(heightReferenceLabel(latest->heightReference))
                     .arg(static_cast<int>(latest->fixQuality));
+    }
+    if (replay_.hasSamples())
+    {
+        text += QStringLiteral(" | Replay %1/%2 %3x%4")
+                    .arg(qMax(0, replay_.currentIndex() + 1))
+                    .arg(replay_.sampleCount())
+                    .arg(replay_.speed(), 0, 'g', 3)
+                    .arg(replay_.isPlaying() ? QStringLiteral(" playing") : QStringLiteral(""));
     }
     status_label_->setText(text);
 }

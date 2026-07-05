@@ -1,15 +1,19 @@
 #pragma once
 
 #include "geo/GeoTypes.h"
+#include "geo/TrajectoryReplay.h"
 #include "map3d/MapDataManager.h"
 
 #include <QMainWindow>
 #include <vector>
 
 class QAction;
+class QComboBox;
 class QDialog;
 class QLabel;
 class QPlainTextEdit;
+class QSlider;
+class QTimer;
 
 namespace VaporView::Map3D {
 
@@ -33,6 +37,14 @@ private:
     void openSessionDirectory();
     void openEarthFile();
     void showMapDiagnostics();
+    void toggleReplay();
+    void stopReplay();
+    void onReplayTick();
+    void onReplaySliderMoved(int value);
+    void onReplaySpeedChanged(int index);
+    void rebuildReplayAt(int index);
+    void setReplayEnabled(bool enabled);
+    void updateReplayUi();
     void setMapSelection(const MapDataSelection& selection);
     QString diagnosticsText() const;
     void updateStatus(const VaporView::Geo::NavSample* latest = nullptr);
@@ -44,10 +56,16 @@ private:
     QAction* follow_action_ = nullptr;
     QLabel* status_label_ = nullptr;
     QAction* diagnostics_action_ = nullptr;
+    QAction* replay_action_ = nullptr;
+    QAction* replay_stop_action_ = nullptr;
+    QSlider* replay_slider_ = nullptr;
+    QComboBox* replay_speed_combo_ = nullptr;
+    QTimer* replay_timer_ = nullptr;
     QDialog* diagnostics_dialog_ = nullptr;
     QPlainTextEdit* diagnostics_text_ = nullptr;
     MapDataManager map_data_manager_;
     MapDataSelection map_selection_;
+    VaporView::Geo::TrajectoryReplay replay_;
 };
 
 } // namespace VaporView::Map3D

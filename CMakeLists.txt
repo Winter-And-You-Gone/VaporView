@@ -148,6 +148,7 @@ target_link_libraries(vaporview_app_theme PUBLIC
 set(GEO_CORE_SOURCES
     src/geo/CoordinateTransform.cpp
     src/geo/TrajectoryBuffer.cpp
+    src/geo/TrajectoryReplay.cpp
     src/geo/TrajectoryQuality.cpp
     src/geo/SessionTrackReader.cpp
 )
@@ -156,6 +157,7 @@ set(GEO_CORE_HEADERS
     include/geo/CoordinateTransform.h
     include/geo/GeoTypes.h
     include/geo/TrajectoryBuffer.h
+    include/geo/TrajectoryReplay.h
     include/geo/TrajectoryQuality.h
     include/geo/SessionTrackReader.h
 )
@@ -726,6 +728,12 @@ if(BUILD_TESTING)
     )
     target_link_libraries(trajectory_quality_test PRIVATE vaporview_geo_core)
     add_test(NAME trajectory_quality_test COMMAND trajectory_quality_test)
+
+    add_executable(trajectory_replay_test
+        tests/trajectory_replay_test.cpp
+    )
+    target_link_libraries(trajectory_replay_test PRIVATE vaporview_geo_core)
+    add_test(NAME trajectory_replay_test COMMAND trajectory_replay_test)
 
     add_executable(session_track_reader_test
         tests/session_track_reader_test.cpp
