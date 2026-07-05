@@ -97,6 +97,13 @@ void writeDummyFile(const QString& path, const QByteArray& contents)
     file.write(contents);
 }
 
+QString readTextFile(const QString& path)
+{
+    QFile file(path);
+    require(file.open(QIODevice::ReadOnly | QIODevice::Text), QStringLiteral("open %1").arg(path));
+    return QString::fromUtf8(file.readAll());
+}
+
 } // namespace
 
 int main()
@@ -111,8 +118,31 @@ int main()
     const QDir sourceRoot(QString::fromLocal8Bit(VAPORVIEW_SOURCE_DIR));
     const QString osmScript = sourceRoot.filePath(QStringLiteral("scripts/prepare-osm-local-data.py"));
     const QString demScript = sourceRoot.filePath(QStringLiteral("scripts/prepare-demo-dem.py"));
+    const QString fullLocalEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_full_local.earth"));
     require(QFileInfo(osmScript).isFile(), QStringLiteral("OSM script exists"));
     require(QFileInfo(demScript).isFile(), QStringLiteral("DEM script exists"));
+    require(QFileInfo(fullLocalEarth).isFile(), QStringLiteral("full local earth template exists"));
+
+    const QString fullLocalEarthText = readTextFile(fullLocalEarth);
+    require(fullLocalEarthText.contains(QStringLiteral("<FeatureImage name=\"OSM water fill\"")),
+            QStringLiteral("full local earth renders OSM water with FeatureImage"));
+    require(fullLocalEarthText.contains(QStringLiteral("<FeatureImage name=\"OSM roads\"")),
+            QStringLiteral("full local earth renders OSM roads with FeatureImage"));
+    require(fullLocalEarthText.contains(QStringLiteral("<FeatureImage name=\"OSM building footprints\"")),
+            QStringLiteral("full local earth renders OSM building footprints with FeatureImage"));
+    require(fullLocalEarthText.contains(QStringLiteral("<TiledFeatureModel name=\"OSM place labels\"")),
+            QStringLiteral("full local earth renders OSM place labels with TiledFeatureModel"));
+    for (const QString& forbidden : {QStringLiteral("cesium"),
+                                    QStringLiteral("google"),
+                                    QStringLiteral("mapbox"),
+                                    QStringLiteral("arcgisonline"),
+                                    QStringLiteral("tianditu"),
+                                    QStringLiteral("http://"),
+                                    QStringLiteral("https://")})
+    {
+        require(!fullLocalEarthText.toLower().contains(forbidden),
+                QStringLiteral("full local earth does not reference forbidden online source %1").arg(forbidden));
+    }
 
     const ProcessResult osmHelp = runProcess(python, {osmScript, QStringLiteral("--help")});
     require(osmHelp.started, QStringLiteral("prepare-osm-local-data.py --help starts: %1").arg(osmHelp.standardError));
@@ -120,7 +150,11 @@ int main()
     require(osmHelp.exitCode == 0,
             QStringLiteral("prepare-osm-local-data.py --help exits 0, stderr=%1").arg(osmHelp.standardError));
     require(osmHelp.standardOutput.contains(QStringLiteral("GeoPackage"))
-                && osmHelp.standardOutput.contains(QStringLiteral("download data")),
+                && osmHelp.standardOutput.contains(QStringLiteral("download data"))
+                && osmHelp.standardOutput.contains(QStringLiteral("roads"))
+                && osmHelp.standardOutput.contains(QStringLiteral("water"))
+                && osmHelp.standardOutput.contains(QStringLiteral("buildings"))
+                && osmHelp.standardOutput.contains(QStringLiteral("places")),
             QStringLiteral("prepare-osm-local-data.py --help describes local GeoPackage conversion"));
 
     QTemporaryDir fakeProject;

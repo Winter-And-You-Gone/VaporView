@@ -11,6 +11,8 @@ Expected generated files:
 
 Use `scripts/prepare-osm-local-data.py` to convert a local `.osm.pbf` or `.osm` extract into these GeoPackage files with GDAL/OGR. Large OSM inputs and generated GeoPackages are intentionally ignored by git.
 
+The full-local earth template renders these local files as water fill, road lines, building footprints, and place labels. It does not use online OSM tiles.
+
 Example:
 
 ```powershell

@@ -11,25 +11,82 @@
         <interpolation>bilinear</interpolation>
     </GDALElevation>
 
-    <!--
-        Local OSM vector GeoPackages prepared by scripts/prepare-osm-local-data.py.
-        These entries declare local vector data sources for the full local dataset.
-        Styling/rendering of OSM vectors is intentionally kept minimal in this
-        template and can be expanded after the data pipeline is verified.
-    -->
-    <OGRFeatures name="OSM water polygons">
+    <!-- Local OSM vector GeoPackages prepared by scripts/prepare-osm-local-data.py. -->
+    <OGRFeatures name="osm-water">
         <url>osm/water.gpkg</url>
     </OGRFeatures>
 
-    <OGRFeatures name="OSM roads">
+    <OGRFeatures name="osm-roads">
         <url>osm/roads.gpkg</url>
     </OGRFeatures>
 
-    <OGRFeatures name="OSM buildings">
+    <OGRFeatures name="osm-buildings">
         <url>osm/buildings.gpkg</url>
     </OGRFeatures>
 
-    <OGRFeatures name="OSM places">
+    <OGRFeatures name="osm-places">
         <url>osm/places.gpkg</url>
     </OGRFeatures>
+
+    <FeatureImage name="OSM water fill" min_level="6">
+        <features>osm-water</features>
+        <styles>
+            <style type="text/css"><![CDATA[
+                default {
+                    fill:         #3f86b9;
+                    stroke:       #76b9df;
+                    stroke-width: 1px;
+                }
+            ]]></style>
+        </styles>
+    </FeatureImage>
+
+    <FeatureImage name="OSM building footprints" min_level="13">
+        <features>osm-buildings</features>
+        <styles>
+            <style type="text/css"><![CDATA[
+                default {
+                    fill:         #d7c1a3;
+                    stroke:       #8f7659;
+                    stroke-width: 1px;
+                }
+            ]]></style>
+        </styles>
+    </FeatureImage>
+
+    <FeatureImage name="OSM roads" min_level="8">
+        <features>osm-roads</features>
+        <styles>
+            <style type="text/css"><![CDATA[
+                default {
+                    stroke:       #f6df8f;
+                    stroke-width: 2px;
+                }
+            ]]></style>
+        </styles>
+    </FeatureImage>
+
+    <TiledFeatureModel name="OSM place labels" features="osm-places" pickable="true">
+        <profile>global-geodetic</profile>
+        <min_level>7</min_level>
+        <max_level>16</max_level>
+        <styles>
+            <style type="text/css"><![CDATA[
+                default {
+                    text-content:    feature.properties.name;
+                    text-encoding:   utf-8;
+                    text-align:      center_center;
+                    text-declutter:  true;
+                    text-size:       18.0;
+                    text-color:      #f4f1e8;
+                    text-halo:       #202020;
+                    render-depth-test: false;
+                }
+            ]]></style>
+        </styles>
+    </TiledFeatureModel>
+
+    <screen_space_layout>
+        <sort_by_priority>true</sort_by_priority>
+    </screen_space_layout>
 </map>

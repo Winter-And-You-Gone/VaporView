@@ -109,9 +109,16 @@ Prepare those files from a local `.osm.pbf` or `.osm` extract with GDAL/OGR:
 python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --overwrite
 ```
 
-The helper does not download data. It runs `ogr2ogr` locally and writes four GeoPackage files. Once Natural Earth, one DEM VRT, and all four OSM GeoPackages exist, `MapDataManager` selects `FullLocalMap` and loads `data/maps/vaporview_full_local.earth`.
+The helper does not download data. It runs `ogr2ogr` locally and writes four GeoPackage files. The generated GeoPackage layer names are `roads`, `water`, `buildings`, and `places`. Once Natural Earth, one DEM VRT, and all four OSM GeoPackages exist, `MapDataManager` selects `FullLocalMap` and loads `data/maps/vaporview_full_local.earth`.
 
-The current full-local earth template declares the local OSM GeoPackage sources. Detailed OSM vector styling is intentionally a later step after the local data pipeline is stable.
+The current full-local earth template renders local OSM context offline:
+
+- water polygons as a blue draped `FeatureImage`
+- roads as a yellow draped `FeatureImage`
+- building footprints as a tan draped `FeatureImage`
+- place names as a `TiledFeatureModel` label layer
+
+The first version shows building footprints only. It does not download online OSM tiles, cache web tiles, or extrude buildings into true 3D meshes yet.
 
 ## Real DEM Verification Flow
 
@@ -134,6 +141,7 @@ For SRTM fallback validation, place SRTM GeoTIFF tiles in `data/maps/terrain/srt
 6. Build and start VaporView with `-DVAPORVIEW_ENABLE_OSGEARTH=ON`.
 7. Open the 3D Map window and click `地图诊断`.
 8. Confirm the mode is `Full local map` and the loaded earth file is `vaporview_full_local.earth`.
+9. Zoom into the OSM extract area and confirm local water, roads, building footprints, and place labels are visible.
 
 ## Git Tracking
 

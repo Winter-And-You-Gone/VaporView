@@ -28,7 +28,7 @@ LAYER_CONFIGS = {
     ),
     "places": (
         "points",
-        "place IS NOT NULL OR name IS NOT NULL",
+        "name IS NOT NULL",
         "places.gpkg",
     ),
 }
@@ -43,7 +43,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Convert a local open OSM extract into roads/water/buildings/places "
-            "GeoPackages for data/maps/vaporview_full_local.earth."
+            "GeoPackages for data/maps/vaporview_full_local.earth. "
+            "The generated layer names are roads, water, buildings, and places."
         )
     )
     parser.add_argument(
