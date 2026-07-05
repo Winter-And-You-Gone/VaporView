@@ -184,7 +184,7 @@ void Map3DWindow::loadInitialEarthFile()
     const QString initialEarthFile =
         QFileInfo(lastEarthFile).isFile() && !map_data_manager_.isBuiltInEarthFile(lastEarthFile)
             ? lastEarthFile
-            : autoSelection.earthFilePath;
+            : autoSelection.earthFile;
 
     if (!QFileInfo(initialEarthFile).isFile())
     {
@@ -202,9 +202,10 @@ void Map3DWindow::loadInitialEarthFile()
     }
 
     MapDataSelection activeSelection = autoSelection;
-    if (initialEarthFile != autoSelection.earthFilePath)
+    if (initialEarthFile != autoSelection.earthFile)
     {
         activeSelection.mode = MapDataMode::NaturalEarth;
+        activeSelection.earthFile = initialEarthFile;
         activeSelection.earthFilePath = initialEarthFile;
         activeSelection.diagnostics.earthFilePath = initialEarthFile;
         activeSelection.diagnostics.messages.push_back(QStringLiteral("Using user-selected custom earth file."));
@@ -252,6 +253,7 @@ void Map3DWindow::openEarthFile()
     }
     settings.setValue(QStringLiteral("lastEarthFile"), file);
     MapDataSelection selection = map_data_manager_.selectBestAvailableMap();
+    selection.earthFile = file;
     selection.earthFilePath = file;
     selection.diagnostics.earthFilePath = file;
     selection.diagnostics.messages.push_back(QStringLiteral("Loaded user-selected earth file."));
@@ -303,14 +305,38 @@ QString Map3DWindow::diagnosticsText() const
     lines << QStringLiteral("Mode: %1 (%2)")
                  .arg(MapDataManager::modeLabel(map_selection_.mode),
                       MapDataManager::modeKey(map_selection_.mode));
-    lines << QStringLiteral("Earth file: %1").arg(map_selection_.earthFilePath.isEmpty() ? QStringLiteral("<none>") : map_selection_.earthFilePath);
+    if (!map_selection_.description.isEmpty())
+    {
+        lines << QStringLiteral("Description: %1").arg(map_selection_.description);
+    }
+    const QString earthFile = map_selection_.earthFile.isEmpty() ? map_selection_.earthFilePath : map_selection_.earthFile;
+    lines << QStringLiteral("Earth file: %1").arg(earthFile.isEmpty() ? QStringLiteral("<none>") : earthFile);
+    lines << QStringLiteral("Current working directory: %1").arg(diagnostics.currentWorkingDirectory.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.currentWorkingDirectory);
+    lines << QStringLiteral("Project root: %1").arg(diagnostics.projectRoot.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.projectRoot);
     lines << QStringLiteral("Maps root: %1").arg(diagnostics.mapsRoot.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.mapsRoot);
+    lines << QStringLiteral("Full local earth: %1").arg(diagnostics.fullLocalEarthPath);
     lines << QStringLiteral("Natural Earth texture: %1").arg(diagnostics.naturalEarthTexturePath);
     lines << QStringLiteral("Copernicus DEM VRT: %1").arg(diagnostics.copernicusDemVrtPath);
     lines << QStringLiteral("SRTM VRT: %1").arg(diagnostics.srtmDemVrtPath);
+    lines << QStringLiteral("OSM roads: %1").arg(diagnostics.osmRoadsPath);
+    lines << QStringLiteral("OSM water: %1").arg(diagnostics.osmWaterPath);
+    lines << QStringLiteral("OSM buildings: %1").arg(diagnostics.osmBuildingsPath);
+    lines << QStringLiteral("OSM places: %1").arg(diagnostics.osmPlacesPath);
     lines << QStringLiteral("OSG plugin path: %1").arg(diagnostics.osgPluginPath.isEmpty() ? QStringLiteral("<not found>") : diagnostics.osgPluginPath);
+    lines << QStringLiteral("OSG_LIBRARY_PATH: %1").arg(diagnostics.osgLibraryPath.isEmpty() ? QStringLiteral("<not set>") : diagnostics.osgLibraryPath);
+    lines << QStringLiteral("OSGEARTH_NOTIFY_LEVEL: %1").arg(diagnostics.osgEarthNotifyLevel.isEmpty() ? QStringLiteral("<not set>") : diagnostics.osgEarthNotifyLevel);
     lines << QStringLiteral("GDAL_DATA: %1").arg(diagnostics.gdalDataPath.isEmpty() ? QStringLiteral("<not found>") : diagnostics.gdalDataPath);
     lines << QStringLiteral("PROJ_DATA: %1").arg(diagnostics.projDataPath.isEmpty() ? QStringLiteral("<not found>") : diagnostics.projDataPath);
+
+    if (!diagnostics.foundFiles.isEmpty())
+    {
+        lines << QString();
+        lines << QStringLiteral("Found files:");
+        for (const QString& path : diagnostics.foundFiles)
+        {
+            lines << QStringLiteral("  - %1").arg(path);
+        }
+    }
 
     if (!diagnostics.missingFiles.isEmpty())
     {
@@ -319,6 +345,16 @@ QString Map3DWindow::diagnosticsText() const
         for (const QString& path : diagnostics.missingFiles)
         {
             lines << QStringLiteral("  - %1").arg(path);
+        }
+    }
+
+    if (!diagnostics.warnings.isEmpty())
+    {
+        lines << QString();
+        lines << QStringLiteral("Warnings:");
+        for (const QString& warning : diagnostics.warnings)
+        {
+            lines << QStringLiteral("  - %1").arg(warning);
         }
     }
 

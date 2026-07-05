@@ -1,0 +1,35 @@
+<map name="VaporView Full Local Map">
+    <!-- Offline global visual background. This is not terrain elevation. -->
+    <GDALImage name="Natural Earth II 1:50m shaded relief with water">
+        <url>natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt</url>
+        <interpolation>bilinear</interpolation>
+    </GDALImage>
+
+    <!-- Preferred local elevation layer. Build this from local Copernicus DEM GLO-30 GeoTIFF tiles. -->
+    <GDALElevation name="Copernicus DEM GLO-30 local GeoTIFF elevation">
+        <url>terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt</url>
+        <interpolation>bilinear</interpolation>
+    </GDALElevation>
+
+    <!--
+        Local OSM vector GeoPackages prepared by scripts/prepare-osm-local-data.py.
+        These entries declare local vector data sources for the full local dataset.
+        Styling/rendering of OSM vectors is intentionally kept minimal in this
+        template and can be expanded after the data pipeline is verified.
+    -->
+    <OGRFeatures name="OSM water polygons">
+        <url>osm/water.gpkg</url>
+    </OGRFeatures>
+
+    <OGRFeatures name="OSM roads">
+        <url>osm/roads.gpkg</url>
+    </OGRFeatures>
+
+    <OGRFeatures name="OSM buildings">
+        <url>osm/buildings.gpkg</url>
+    </OGRFeatures>
+
+    <OGRFeatures name="OSM places">
+        <url>osm/places.gpkg</url>
+    </OGRFeatures>
+</map>

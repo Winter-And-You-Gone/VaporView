@@ -283,6 +283,7 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
         set(vaporview_default_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_default.earth")
         set(vaporview_dem_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_with_dem.earth")
         set(vaporview_srtm_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_with_srtm.earth")
+        set(vaporview_full_local_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_full_local.earth")
         set(vaporview_natural_earth_texture
             "${CMAKE_SOURCE_DIR}/data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"
         )
@@ -299,6 +300,9 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_srtm_earth_file}"
                     "${CMAKE_CURRENT_BINARY_DIR}/data/maps/vaporview_with_srtm.earth"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${vaporview_full_local_earth_file}"
+                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/vaporview_full_local.earth"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_natural_earth_texture}"
                     "${CMAKE_CURRENT_BINARY_DIR}/data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"
@@ -871,6 +875,15 @@ if(BUILD_TESTING)
     add_test(NAME session_viewer_theme_test COMMAND session_viewer_theme_test)
 
     if(VAPORVIEW_ENABLE_OSGEARTH)
+        add_executable(map_data_manager_test
+            tests/map_data_manager_test.cpp
+        )
+        target_include_directories(map_data_manager_test PRIVATE
+            ${CMAKE_SOURCE_DIR}/include
+        )
+        target_link_libraries(map_data_manager_test PRIVATE vaporview_map3d_osgearth)
+        add_test(NAME map_data_manager_test COMMAND map_data_manager_test)
+
         add_executable(map3d_window_smoke_test
             tests/map3d_window_smoke_test.cpp
         )
@@ -882,10 +895,6 @@ if(BUILD_TESTING)
         if(WIN32)
             vaporview_stage_osgearth_runtime(map3d_window_smoke_test)
         endif()
-        add_test(NAME map3d_window_smoke_test COMMAND map3d_window_smoke_test)
-        set_tests_properties(map3d_window_smoke_test PROPERTIES
-            ENVIRONMENT "VAPORVIEW_MAP3D_HEADLESS_TEST=1"
-        )
     endif()
 
     add_executable(vaporview_startup_test

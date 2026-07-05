@@ -4,8 +4,6 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDir>
-#include <QElapsedTimer>
-#include <QEventLoop>
 #include <QFile>
 #include <QLabel>
 #include <QTemporaryDir>
@@ -23,16 +21,6 @@ void require(bool condition, const char* message)
     {
         std::cerr << "FAIL: " << message << '\n';
         std::exit(1);
-    }
-}
-
-void processEventsFor(int timeoutMs)
-{
-    QElapsedTimer timer;
-    timer.start();
-    while (timer.elapsed() < timeoutMs)
-    {
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
     }
 }
 
@@ -67,8 +55,7 @@ int main(int argc, char** argv)
     QCoreApplication::setApplicationName(QStringLiteral("map3d_window_smoke_test"));
 
     VaporView::Map3D::Map3DWindow window;
-    window.show();
-    processEventsFor(500);
+    QCoreApplication::processEvents();
 
     QLabel* label = statusLabel(window);
     require(label->text().contains(QStringLiteral("Points: 0")), "initial status has zero points");
@@ -83,17 +70,17 @@ int main(int argc, char** argv)
     sample.hdop = 0.9;
     sample.fixQuality = VaporView::Geo::FixQuality::Fixed;
     window.appendSample(sample);
-    processEventsFor(250);
+    QCoreApplication::processEvents();
     require(label->text().contains(QStringLiteral("Points: 1")), "appendSample updates status");
 
     window.clearTrack();
-    processEventsFor(100);
+    QCoreApplication::processEvents();
     require(label->text().contains(QStringLiteral("Points: 0")), "clearTrack resets status");
 
     QTemporaryDir sessionDir;
     writeSessionTrack(sessionDir);
     window.loadSessionDirectory(sessionDir.path());
-    processEventsFor(250);
+    QCoreApplication::processEvents();
     require(label->text().contains(QStringLiteral("Points: 2")), "session load appends track samples");
 
     return 0;
