@@ -266,6 +266,35 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
             endforeach()
         endif()
 
+        foreach(vaporview_osgearth_share_dir IN ITEMS gdal proj proj4)
+            if(EXISTS "${VAPORVIEW_LOCAL_VCPKG_INSTALLED_DIR}/x64-windows/share/${vaporview_osgearth_share_dir}")
+                list(APPEND vaporview_osgearth_runtime_commands
+                    COMMAND ${CMAKE_COMMAND} -E make_directory
+                        "${CMAKE_CURRENT_BINARY_DIR}/share/${vaporview_osgearth_share_dir}"
+                    COMMAND ${CMAKE_COMMAND} -E copy_directory
+                        "${VAPORVIEW_LOCAL_VCPKG_INSTALLED_DIR}/x64-windows/share/${vaporview_osgearth_share_dir}"
+                        "${CMAKE_CURRENT_BINARY_DIR}/share/${vaporview_osgearth_share_dir}"
+                )
+            endif()
+        endforeach()
+
+        set(vaporview_default_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_default.earth")
+        set(vaporview_natural_earth_texture
+            "${CMAKE_SOURCE_DIR}/data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"
+        )
+        if(EXISTS "${vaporview_default_earth_file}" AND EXISTS "${vaporview_natural_earth_texture}")
+            list(APPEND vaporview_osgearth_runtime_commands
+                COMMAND ${CMAKE_COMMAND} -E make_directory
+                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/natural_earth/NE2_50M_SR_W"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${vaporview_default_earth_file}"
+                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/vaporview_default.earth"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${vaporview_natural_earth_texture}"
+                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"
+            )
+        endif()
+
         if(vaporview_osgearth_runtime_commands)
             add_custom_target(VaporViewOsgEarthRuntime
                 ${vaporview_osgearth_runtime_commands}

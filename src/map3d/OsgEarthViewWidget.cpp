@@ -7,23 +7,233 @@
 #include <osg/Geometry>
 #include <osg/Geode>
 #include <osg/Group>
+#include <osg/Texture2D>
 #include <osg/Viewport>
 #include <osgDB/ReadFile>
+#include <osgDB/Registry>
 #include <osgGA/TrackballManipulator>
 #include <osgViewer/GraphicsWindow>
 #include <osgViewer/Viewer>
 #include <osgEarth/EarthManipulator>
 #include <osgEarth/GeoData>
+#include <osgEarth/GLUtils>
 #include <osgEarth/MapNode>
+#include <osgEarth/Map>
+#include <osgEarth/Registry>
 #include <osgEarth/SpatialReference>
 #include <osgEarth/Viewpoint>
+
+#include <QCoreApplication>
+#include <QDebug>
+#include <QDir>
+#include <QFileInfo>
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <mutex>
 
 namespace VaporView::Map3D {
 namespace {
+
+constexpr double kEarthRadiusM = 6378137.0;
+
+QStringList runtimeRootCandidates()
+{
+    const QString appDir = QCoreApplication::applicationDirPath();
+    return {
+        appDir,
+        QDir::currentPath(),
+        QDir(appDir).absoluteFilePath(QStringLiteral("../..")),
+        QDir(QDir::currentPath()).absoluteFilePath(QStringLiteral("."))
+    };
+}
+
+QString firstExistingDirectory(const QStringList& roots, const QStringList& relatives)
+{
+    for (const QString& root : roots)
+    {
+        for (const QString& relative : relatives)
+        {
+            const QString candidate = QDir::cleanPath(QDir(root).absoluteFilePath(relative));
+            if (QFileInfo(candidate).isDir())
+            {
+                return QFileInfo(candidate).absoluteFilePath();
+            }
+        }
+    }
+    return {};
+}
+
+void prependEnvironmentPath(const char* name, const QString& path)
+{
+    if (path.isEmpty())
+    {
+        return;
+    }
+
+    const QByteArray pathBytes = QDir::toNativeSeparators(path).toLocal8Bit();
+    const QByteArray current = qgetenv(name);
+    if (current.isEmpty())
+    {
+        qputenv(name, pathBytes);
+        return;
+    }
+
+    const QList<QByteArray> parts = current.split(';');
+    if (!parts.contains(pathBytes))
+    {
+        qputenv(name, pathBytes + ';' + current);
+    }
+}
+
+void setEnvironmentIfMissing(const char* name, const QString& path)
+{
+    if (!path.isEmpty() && qgetenv(name).isEmpty())
+    {
+        qputenv(name, QDir::toNativeSeparators(path).toLocal8Bit());
+    }
+}
+
+void initializeOsgEarthRuntime()
+{
+    static std::once_flag once;
+    std::call_once(once, [] {
+        const QStringList roots = runtimeRootCandidates();
+        const QString pluginDir = firstExistingDirectory(roots, {
+            QStringLiteral("osgPlugins-3.6.5"),
+            QStringLiteral("plugins/osgPlugins-3.6.5"),
+            QStringLiteral(".local_deps/vcpkg_installed/x64-windows/plugins/osgPlugins-3.6.5")
+        });
+        const QString gdalDataDir = firstExistingDirectory(roots, {
+            QStringLiteral("share/gdal"),
+            QStringLiteral(".local_deps/vcpkg_installed/x64-windows/share/gdal")
+        });
+        const QString projDataDir = firstExistingDirectory(roots, {
+            QStringLiteral("share/proj"),
+            QStringLiteral("share/proj4"),
+            QStringLiteral(".local_deps/vcpkg_installed/x64-windows/share/proj"),
+            QStringLiteral(".local_deps/vcpkg_installed/x64-windows/share/proj4")
+        });
+
+        prependEnvironmentPath("OSG_LIBRARY_PATH", pluginDir);
+        setEnvironmentIfMissing("GDAL_DATA", gdalDataDir);
+        setEnvironmentIfMissing("PROJ_LIB", projDataDir);
+        setEnvironmentIfMissing("PROJ_DATA", projDataDir);
+
+        if (!pluginDir.isEmpty())
+        {
+            osgDB::Registry::instance()->getLibraryFilePathList().push_front(pluginDir.toStdString());
+        }
+
+        osgEarth::initialize();
+        qInfo().noquote() << "osgEarth runtime initialized"
+                          << "plugins=" << (pluginDir.isEmpty() ? QStringLiteral("<not found>") : pluginDir)
+                          << "GDAL_DATA=" << QString::fromLocal8Bit(qgetenv("GDAL_DATA"))
+                          << "PROJ_LIB=" << QString::fromLocal8Bit(qgetenv("PROJ_LIB"));
+    });
+}
+
+QString naturalEarthTexturePathForEarthFile(const QString& earthPath)
+{
+    const QFileInfo earthInfo(earthPath);
+    if (earthInfo.fileName() != QStringLiteral("vaporview_default.earth"))
+    {
+        return {};
+    }
+
+    const QString textureRelative = QStringLiteral("natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png");
+    const QString candidate = QDir::cleanPath(earthInfo.dir().absoluteFilePath(textureRelative));
+    if (QFileInfo(candidate).isFile())
+    {
+        return QFileInfo(candidate).absoluteFilePath();
+    }
+
+    for (const QString& root : runtimeRootCandidates())
+    {
+        const QString fallback = QDir::cleanPath(QDir(root).absoluteFilePath(
+            QStringLiteral("data/maps/%1").arg(textureRelative)));
+        if (QFileInfo(fallback).isFile())
+        {
+            return QFileInfo(fallback).absoluteFilePath();
+        }
+    }
+
+    return {};
+}
+
+osg::Node* createTexturedEarthNode(const QString& texturePath)
+{
+    osg::ref_ptr<osg::Image> image = osgDB::readImageFile(texturePath.toStdString());
+    if (!image)
+    {
+        return nullptr;
+    }
+
+    constexpr int kLatSegments = 64;
+    constexpr int kLonSegments = 128;
+    osg::ref_ptr<osg::Geometry> geometry = new osg::Geometry;
+    osg::ref_ptr<osg::Vec3Array> vertices = new osg::Vec3Array;
+    osg::ref_ptr<osg::Vec3Array> normals = new osg::Vec3Array;
+    osg::ref_ptr<osg::Vec2Array> texCoords = new osg::Vec2Array;
+    vertices->reserve((kLatSegments + 1) * (kLonSegments + 1));
+    normals->reserve(vertices->capacity());
+    texCoords->reserve(vertices->capacity());
+
+    for (int latIndex = 0; latIndex <= kLatSegments; ++latIndex)
+    {
+        const double v = static_cast<double>(latIndex) / static_cast<double>(kLatSegments);
+        const double latRad = osg::PI_2 - v * osg::PI;
+        const double cosLat = std::cos(latRad);
+        const double sinLat = std::sin(latRad);
+        for (int lonIndex = 0; lonIndex <= kLonSegments; ++lonIndex)
+        {
+            const double u = static_cast<double>(lonIndex) / static_cast<double>(kLonSegments);
+            const double lonRad = -osg::PI + u * 2.0 * osg::PI;
+            const osg::Vec3d normal(cosLat * std::cos(lonRad),
+                                    cosLat * std::sin(lonRad),
+                                    sinLat);
+            vertices->push_back(normal * kEarthRadiusM);
+            normals->push_back(normal);
+            texCoords->push_back(osg::Vec2(static_cast<float>(u), static_cast<float>(v)));
+        }
+    }
+
+    osg::ref_ptr<osg::DrawElementsUInt> indices = new osg::DrawElementsUInt(GL_TRIANGLES);
+    indices->reserve(kLatSegments * kLonSegments * 6);
+    for (int latIndex = 0; latIndex < kLatSegments; ++latIndex)
+    {
+        for (int lonIndex = 0; lonIndex < kLonSegments; ++lonIndex)
+        {
+            const unsigned int first = static_cast<unsigned int>(latIndex * (kLonSegments + 1) + lonIndex);
+            const unsigned int second = first + static_cast<unsigned int>(kLonSegments + 1);
+            indices->push_back(first);
+            indices->push_back(second);
+            indices->push_back(first + 1);
+            indices->push_back(second);
+            indices->push_back(second + 1);
+            indices->push_back(first + 1);
+        }
+    }
+
+    geometry->setVertexArray(vertices.get());
+    geometry->setNormalArray(normals.get(), osg::Array::BIND_PER_VERTEX);
+    geometry->setTexCoordArray(0, texCoords.get());
+    geometry->addPrimitiveSet(indices.get());
+
+    osg::ref_ptr<osg::Texture2D> texture = new osg::Texture2D(image.get());
+    texture->setResizeNonPowerOfTwoHint(false);
+    texture->setFilter(osg::Texture::MIN_FILTER, osg::Texture::LINEAR);
+    texture->setFilter(osg::Texture::MAG_FILTER, osg::Texture::LINEAR);
+    texture->setWrap(osg::Texture::WRAP_S, osg::Texture::REPEAT);
+    texture->setWrap(osg::Texture::WRAP_T, osg::Texture::CLAMP_TO_EDGE);
+
+    osg::ref_ptr<osg::Geode> geode = new osg::Geode;
+    geode->addDrawable(geometry.get());
+    geode->getOrCreateStateSet()->setTextureAttributeAndModes(0, texture.get(), osg::StateAttribute::ON);
+    geode->getOrCreateStateSet()->setMode(GL_LIGHTING, osg::StateAttribute::OFF);
+    return geode.release();
+}
 
 osg::Node* createLocalGridNode()
 {
@@ -78,6 +288,7 @@ OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent)
     , trajectory_layer_(std::make_unique<Trajectory3DLayer>())
     , aircraft_layer_(std::make_unique<Aircraft3DLayer>())
 {
+    initializeOsgEarthRuntime();
     setMinimumSize(640, 420);
     setFocusPolicy(Qt::StrongFocus);
     frameTimer_.setInterval(33);
@@ -105,7 +316,10 @@ void OsgEarthViewWidget::shutdown()
     if (viewer_)
     {
         viewer_->setDone(true);
+        viewer_->stopThreading();
         viewer_->setCameraManipulator(nullptr);
+        viewer_->setDatabasePager(nullptr);
+        viewer_->setImagePager(nullptr);
         if (viewer_->getCamera())
         {
             viewer_->getCamera()->setGraphicsContext(nullptr);
@@ -169,6 +383,25 @@ void OsgEarthViewWidget::clearTrack()
 bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
 {
     initializeSceneIfNeeded();
+    const QString texturePath = naturalEarthTexturePathForEarthFile(earthPath);
+    osg::ref_ptr<osg::Node> texturedEarthNode = createTexturedEarthNode(texturePath);
+    if (texturedEarthNode && root_)
+    {
+        if (earth_node_)
+        {
+            root_->removeChild(earth_node_.get());
+        }
+        earth_node_ = texturedEarthNode;
+        map_node_ = nullptr;
+        trajectory_layer_->setUseWorldCoordinates(true);
+        aircraft_layer_->setUseWorldCoordinates(true);
+        root_->insertChild(0, earth_node_.get());
+        setInitialEarthView();
+        rebuildDisplayTrack();
+        update();
+        return true;
+    }
+
     osg::ref_ptr<osg::Node> earthNode = osgDB::readNodeFile(earthPath.toStdString());
     if (!earthNode || !root_)
     {
@@ -180,6 +413,28 @@ bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
     }
     earth_node_ = earthNode;
     map_node_ = osgEarth::MapNode::findMapNode(earth_node_.get());
+    if (map_node_)
+    {
+        map_node_->openMapLayers();
+        if (map_node_->getMap())
+        {
+            osgEarth::LayerVector layers;
+            map_node_->getMap()->getLayers(layers);
+            for (const osg::ref_ptr<osgEarth::Layer>& layer : layers)
+            {
+                if (!layer)
+                {
+                    continue;
+                }
+                const osgEarth::Status& status = layer->getStatus();
+                qInfo().noquote()
+                    << "osgEarth layer"
+                    << QString::fromStdString(layer->getName())
+                    << "open=" << layer->isOpen()
+                    << "status=" << QString::fromStdString(status.toString());
+            }
+        }
+    }
     trajectory_layer_->setUseWorldCoordinates(true);
     aircraft_layer_->setUseWorldCoordinates(true);
     root_->insertChild(0, earth_node_.get());
@@ -203,7 +458,7 @@ void OsgEarthViewWidget::setFollowAircraft(bool enabled)
     }
     else if (!viewer_->getCameraManipulator())
     {
-        if (earth_node_)
+        if (earth_node_ && map_node_)
         {
             viewer_->setCameraManipulator(new osgEarth::EarthManipulator);
         }
@@ -263,6 +518,7 @@ void OsgEarthViewWidget::initializeSceneIfNeeded()
 
     viewer_ = std::make_unique<osgViewer::Viewer>();
     viewer_->setThreadingModel(osgViewer::Viewer::SingleThreaded);
+    viewer_->setRealizeOperation(new osgEarth::GL3RealizeOperation);
     viewer_->setSceneData(root_.get());
     if (!follow_aircraft_)
     {
@@ -282,6 +538,8 @@ void OsgEarthViewWidget::initializeSceneIfNeeded()
                                                     osg::Vec3d(0.0, 0.0, 1.0));
     }
     updateCameraViewport(width(), height());
+    osgEarth::GL3RealizeOperation gl3RealizeOperation;
+    gl3RealizeOperation(graphics_window_.get());
     initialized_ = true;
 }
 
@@ -357,6 +615,32 @@ void OsgEarthViewWidget::setInitialEarthView()
 {
     if (!viewer_)
     {
+        return;
+    }
+
+    if (earth_node_ && !map_node_)
+    {
+        if (!follow_aircraft_)
+        {
+            osg::ref_ptr<osgGA::TrackballManipulator> manipulator = new osgGA::TrackballManipulator;
+            manipulator->setHomePosition(osg::Vec3d(0.0, -kEarthRadiusM * 3.0, kEarthRadiusM * 1.2),
+                                         osg::Vec3d(0.0, 0.0, 0.0),
+                                         osg::Vec3d(0.0, 0.0, 1.0),
+                                         false);
+            viewer_->setCameraManipulator(manipulator.get());
+            manipulator->home(0.0);
+        }
+        else
+        {
+            viewer_->setCameraManipulator(nullptr);
+        }
+
+        if (viewer_->getCamera())
+        {
+            viewer_->getCamera()->setViewMatrixAsLookAt(osg::Vec3d(0.0, -kEarthRadiusM * 3.0, kEarthRadiusM * 1.2),
+                                                        osg::Vec3d(0.0, 0.0, 0.0),
+                                                        osg::Vec3d(0.0, 0.0, 1.0));
+        }
         return;
     }
 

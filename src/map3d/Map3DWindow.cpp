@@ -21,7 +21,7 @@ namespace {
 QString defaultEarthFilePath()
 {
     const QString relative = QStringLiteral("data/maps/vaporview_default.earth");
-    const QString rasterRelative = QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif");
+    const QString textureRelative = QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png");
     const QString appDir = QCoreApplication::applicationDirPath();
     const QStringList roots = {
         QDir::currentPath(),
@@ -32,8 +32,8 @@ QString defaultEarthFilePath()
     for (const QString& root : roots)
     {
         const QString earthPath = QDir::cleanPath(QDir(root).absoluteFilePath(relative));
-        const QString rasterPath = QDir::cleanPath(QDir(root).absoluteFilePath(rasterRelative));
-        if (QFileInfo(earthPath).isFile() && QFileInfo(rasterPath).isFile())
+        const QString texturePath = QDir::cleanPath(QDir(root).absoluteFilePath(textureRelative));
+        if (QFileInfo(earthPath).isFile() && QFileInfo(texturePath).isFile())
         {
             return QFileInfo(earthPath).absoluteFilePath();
         }
