@@ -11,6 +11,9 @@
 #include <memory>
 #include <vector>
 
+class QMouseEvent;
+class QWheelEvent;
+
 namespace osgViewer {
 class Viewer;
 }
@@ -46,6 +49,10 @@ protected:
     void initializeGL() override;
     void resizeGL(int w, int h) override;
     void paintGL() override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void wheelEvent(QWheelEvent* event) override;
 
 private:
     void initializeSceneIfNeeded();
@@ -60,7 +67,7 @@ private:
     QTimer frameTimer_;
     bool initialized_ = false;
     bool shutdown_ = false;
-    bool follow_aircraft_ = true;
+    bool follow_aircraft_ = false;
     QSize framebuffer_size_;
     bool has_local_origin_ = false;
     double origin_lat_deg_ = 0.0;

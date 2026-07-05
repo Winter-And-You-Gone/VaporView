@@ -11,6 +11,7 @@
 #include <osg/Viewport>
 #include <osgDB/ReadFile>
 #include <osgDB/Registry>
+#include <osgGA/EventQueue>
 #include <osgGA/TrackballManipulator>
 #include <osgViewer/GraphicsWindow>
 #include <osgViewer/Viewer>
@@ -27,6 +28,8 @@
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
+#include <QMouseEvent>
+#include <QWheelEvent>
 
 #include <algorithm>
 #include <cmath>
@@ -37,6 +40,21 @@ namespace VaporView::Map3D {
 namespace {
 
 constexpr double kEarthRadiusM = 6378137.0;
+
+unsigned int toOsgMouseButton(Qt::MouseButton button)
+{
+    switch (button)
+    {
+    case Qt::LeftButton:
+        return 1;
+    case Qt::MiddleButton:
+        return 2;
+    case Qt::RightButton:
+        return 3;
+    default:
+        return 0;
+    }
+}
 
 QStringList runtimeRootCandidates()
 {
@@ -291,6 +309,7 @@ OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent)
     initializeOsgEarthRuntime();
     setMinimumSize(640, 420);
     setFocusPolicy(Qt::StrongFocus);
+    setMouseTracking(true);
     frameTimer_.setInterval(33);
     connect(&frameTimer_, &QTimer::timeout, this, QOverload<>::of(&OsgEarthViewWidget::update));
     frameTimer_.start();
@@ -452,11 +471,7 @@ void OsgEarthViewWidget::setFollowAircraft(bool enabled)
         return;
     }
 
-    if (follow_aircraft_)
-    {
-        viewer_->setCameraManipulator(nullptr);
-    }
-    else if (!viewer_->getCameraManipulator())
+    if (!viewer_->getCameraManipulator())
     {
         if (earth_node_ && map_node_)
         {
@@ -502,6 +517,76 @@ void OsgEarthViewWidget::paintGL()
     {
         viewer_->frame();
     }
+}
+
+void OsgEarthViewWidget::mousePressEvent(QMouseEvent* event)
+{
+    initializeSceneIfNeeded();
+    setFocus(Qt::MouseFocusReason);
+    const unsigned int button = toOsgMouseButton(event->button());
+    if (graphics_window_ && button != 0)
+    {
+        const qreal dpr = std::max<qreal>(1.0, devicePixelRatioF());
+        graphics_window_->getEventQueue()->mouseButtonPress(
+            static_cast<float>(event->position().x() * dpr),
+            static_cast<float>(event->position().y() * dpr),
+            button);
+        update();
+        event->accept();
+        return;
+    }
+    QOpenGLWidget::mousePressEvent(event);
+}
+
+void OsgEarthViewWidget::mouseReleaseEvent(QMouseEvent* event)
+{
+    initializeSceneIfNeeded();
+    const unsigned int button = toOsgMouseButton(event->button());
+    if (graphics_window_ && button != 0)
+    {
+        const qreal dpr = std::max<qreal>(1.0, devicePixelRatioF());
+        graphics_window_->getEventQueue()->mouseButtonRelease(
+            static_cast<float>(event->position().x() * dpr),
+            static_cast<float>(event->position().y() * dpr),
+            button);
+        update();
+        event->accept();
+        return;
+    }
+    QOpenGLWidget::mouseReleaseEvent(event);
+}
+
+void OsgEarthViewWidget::mouseMoveEvent(QMouseEvent* event)
+{
+    initializeSceneIfNeeded();
+    if (graphics_window_)
+    {
+        const qreal dpr = std::max<qreal>(1.0, devicePixelRatioF());
+        graphics_window_->getEventQueue()->mouseMotion(
+            static_cast<float>(event->position().x() * dpr),
+            static_cast<float>(event->position().y() * dpr));
+        update();
+        event->accept();
+        return;
+    }
+    QOpenGLWidget::mouseMoveEvent(event);
+}
+
+void OsgEarthViewWidget::wheelEvent(QWheelEvent* event)
+{
+    initializeSceneIfNeeded();
+    if (graphics_window_ && event->angleDelta().y() != 0)
+    {
+        const osgGA::GUIEventAdapter::ScrollingMotion motion =
+            event->angleDelta().y() > 0
+                ? osgGA::GUIEventAdapter::SCROLL_UP
+                : osgGA::GUIEventAdapter::SCROLL_DOWN;
+        graphics_window_->getEventQueue()->mouseScroll(motion);
+        update();
+        event->accept();
+        return;
+    }
+    QOpenGLWidget::wheelEvent(event);
 }
 
 void OsgEarthViewWidget::initializeSceneIfNeeded()
@@ -620,20 +705,13 @@ void OsgEarthViewWidget::setInitialEarthView()
 
     if (earth_node_ && !map_node_)
     {
-        if (!follow_aircraft_)
-        {
-            osg::ref_ptr<osgGA::TrackballManipulator> manipulator = new osgGA::TrackballManipulator;
-            manipulator->setHomePosition(osg::Vec3d(0.0, -kEarthRadiusM * 3.0, kEarthRadiusM * 1.2),
-                                         osg::Vec3d(0.0, 0.0, 0.0),
-                                         osg::Vec3d(0.0, 0.0, 1.0),
-                                         false);
-            viewer_->setCameraManipulator(manipulator.get());
-            manipulator->home(0.0);
-        }
-        else
-        {
-            viewer_->setCameraManipulator(nullptr);
-        }
+        osg::ref_ptr<osgGA::TrackballManipulator> manipulator = new osgGA::TrackballManipulator;
+        manipulator->setHomePosition(osg::Vec3d(0.0, -kEarthRadiusM * 3.0, kEarthRadiusM * 1.2),
+                                     osg::Vec3d(0.0, 0.0, 0.0),
+                                     osg::Vec3d(0.0, 0.0, 1.0),
+                                     false);
+        viewer_->setCameraManipulator(manipulator.get());
+        manipulator->home(0.0);
 
         if (viewer_->getCamera())
         {
@@ -650,10 +728,6 @@ void OsgEarthViewWidget::setInitialEarthView()
     if (viewer_->getCamera())
     {
         manipulator->updateCamera(*viewer_->getCamera());
-    }
-    if (follow_aircraft_)
-    {
-        viewer_->setCameraManipulator(nullptr);
     }
 }
 

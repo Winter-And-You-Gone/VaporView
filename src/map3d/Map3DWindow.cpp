@@ -66,7 +66,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     follow_action_ = toolbar->addAction(QStringLiteral("跟随飞机"));
     follow_action_->setCheckable(true);
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
-    follow_action_->setChecked(settings.value(QStringLiteral("followAircraft"), true).toBool());
+    follow_action_->setChecked(settings.value(QStringLiteral("followAircraft"), false).toBool());
     view_->setFollowAircraft(follow_action_->isChecked());
     connect(follow_action_, &QAction::toggled, this, [this](bool enabled) {
         if (view_)
