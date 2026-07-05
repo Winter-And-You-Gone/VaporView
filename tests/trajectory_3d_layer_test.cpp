@@ -2,6 +2,7 @@
 
 #include <osg/Geometry>
 #include <osg/Geode>
+#include <osg/PrimitiveSet>
 
 #include <cstdlib>
 #include <iostream>
@@ -22,6 +23,7 @@ void require(bool condition, const char* message)
 VaporView::Geo::NavSample sample(int index)
 {
     VaporView::Geo::NavSample value;
+    value.recordTimestampUs = static_cast<qint64>(index + 1) * 1000000;
     value.latDeg = 39.0 + static_cast<double>(index) * 0.000001;
     value.lonDeg = 116.0 + static_cast<double>(index) * 0.000001;
     value.heightM = 50.0;
@@ -32,6 +34,38 @@ VaporView::Geo::NavSample sample(int index)
     value.satellites = 12;
     value.hdop = 0.9;
     return value;
+}
+
+struct PrimitiveStats {
+    int lineStrips = 0;
+    int lineVertices = 0;
+    int pointSets = 0;
+    int pointVertices = 0;
+};
+
+PrimitiveStats primitiveStats(const osg::Geometry& geometry)
+{
+    PrimitiveStats stats;
+    for (unsigned int index = 0; index < geometry.getNumPrimitiveSets(); ++index)
+    {
+        const osg::PrimitiveSet* primitive = geometry.getPrimitiveSet(index);
+        const auto* drawArrays = dynamic_cast<const osg::DrawArrays*>(primitive);
+        if (!primitive || !drawArrays)
+        {
+            continue;
+        }
+        if (primitive->getMode() == osg::PrimitiveSet::LINE_STRIP)
+        {
+            ++stats.lineStrips;
+            stats.lineVertices += static_cast<int>(drawArrays->getCount());
+        }
+        else if (primitive->getMode() == osg::PrimitiveSet::POINTS)
+        {
+            ++stats.pointSets;
+            stats.pointVertices += static_cast<int>(drawArrays->getCount());
+        }
+    }
+    return stats;
 }
 
 } // namespace
@@ -82,6 +116,27 @@ int main()
     require(restoredFirstGeometry->getVertexArray() != nullptr, "restored first segment has vertex array");
     require(restoredFirstGeometry->getVertexArray()->getNumElements() == 4095,
             "expanded visibility restores previously clipped segment");
+
+    VaporView::Map3D::Trajectory3DLayer qualityLayer;
+    std::vector<VaporView::Geo::NavSample> qualitySamples;
+    for (int index = 0; index < 8; ++index)
+    {
+        qualitySamples.push_back(sample(index));
+    }
+    qualitySamples[2].fixQuality = VaporView::Geo::FixQuality::Invalid;
+    qualitySamples[5].recordTimestampUs = qualitySamples[4].recordTimestampUs - 1;
+
+    qualityLayer.appendSamples(qualitySamples);
+    auto* qualityGeode = dynamic_cast<osg::Geode*>(qualityLayer.node());
+    require(qualityGeode != nullptr, "quality trajectory node is a geode");
+    require(qualityGeode->getNumDrawables() == 1, "quality trajectory fits in one segment");
+    auto* qualityGeometry = dynamic_cast<osg::Geometry*>(qualityGeode->getDrawable(0));
+    require(qualityGeometry != nullptr, "quality trajectory drawable is geometry");
+    const PrimitiveStats stats = primitiveStats(*qualityGeometry);
+    require(stats.lineStrips == 3, "invalid and jump samples split the continuous trajectory line");
+    require(stats.lineVertices == 6, "only usable non-jump samples participate in line strips");
+    require(stats.pointSets == 1, "invalid and jump samples share one red point marker primitive");
+    require(stats.pointVertices == 2, "invalid and jump samples are rendered as two point markers");
 
     layer.clear();
     require(layer.sampleCount() == 0, "clear removes samples");

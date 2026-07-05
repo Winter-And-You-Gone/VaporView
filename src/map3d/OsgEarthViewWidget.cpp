@@ -927,9 +927,6 @@ VaporView::Geo::NavSample OsgEarthViewWidget::toWorldSample(const VaporView::Geo
     worldSample.ecefXM = world.x();
     worldSample.ecefYM = world.y();
     worldSample.ecefZM = world.z();
-    worldSample.nedNM = std::numeric_limits<double>::quiet_NaN();
-    worldSample.nedEM = std::numeric_limits<double>::quiet_NaN();
-    worldSample.nedDM = std::numeric_limits<double>::quiet_NaN();
     return worldSample;
 }
 

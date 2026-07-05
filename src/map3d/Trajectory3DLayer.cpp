@@ -5,6 +5,7 @@
 #include <osg/Geometry>
 #include <osg/Geode>
 #include <osg/LineWidth>
+#include <osg/Point>
 
 #include <algorithm>
 #include <cmath>
@@ -51,6 +52,27 @@ osg::Vec4 qualityColor(const VaporView::Geo::NavSample& sample)
     default:
         return osg::Vec4(0.85f, 0.85f, 0.85f, 1.0f);
     }
+}
+
+bool isJumpSample(const std::vector<VaporView::Geo::NavSample>& samples, int index)
+{
+    if (index <= 0)
+    {
+        return false;
+    }
+    return VaporView::Geo::isLikelyJump(samples[static_cast<std::size_t>(index - 1)],
+                                        samples[static_cast<std::size_t>(index)]);
+}
+
+bool isLineSample(const std::vector<VaporView::Geo::NavSample>& samples, int index)
+{
+    const VaporView::Geo::NavSample& sample = samples[static_cast<std::size_t>(index)];
+    return VaporView::Geo::isUsableForDisplay(sample) && !isJumpSample(samples, index);
+}
+
+osg::Vec4 markerColor()
+{
+    return osg::Vec4(0.95f, 0.05f, 0.05f, 1.0f);
 }
 
 } // namespace
@@ -175,27 +197,71 @@ void Trajectory3DLayer::rebuildSegmentGeometry(TrajectorySegment& segment)
     {
         geometry = new osg::Geometry;
     }
+    geometry->removePrimitiveSet(0, geometry->getNumPrimitiveSets());
+
     osg::ref_ptr<osg::Vec3Array> vertices = new osg::Vec3Array;
     osg::ref_ptr<osg::Vec4Array> colors = new osg::Vec4Array;
+    std::vector<osg::Vec3d> markerPositions;
     const int first = std::max(segment.firstSampleIndex, firstVisibleIndex());
     const int end = std::min(sampleCount(), segment.firstSampleIndex + segment.sampleCount);
     const int vertexCount = std::max(0, end - first);
     vertices->reserve(static_cast<std::size_t>(vertexCount));
     colors->reserve(static_cast<std::size_t>(vertexCount));
+
+    int runStartVertex = -1;
+    int runVertexCount = 0;
+    auto flushLineRun = [&]() {
+        if (runVertexCount >= 2)
+        {
+            geometry->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::LINE_STRIP,
+                                                          runStartVertex,
+                                                          static_cast<GLsizei>(runVertexCount)));
+        }
+        runStartVertex = -1;
+        runVertexCount = 0;
+    };
+
     for (int index = first; index < end; ++index)
     {
         const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(index)];
-        vertices->push_back(samplePosition(sample, use_world_coordinates_));
-        colors->push_back(qualityColor(sample));
+        const osg::Vec3d position = samplePosition(sample, use_world_coordinates_);
+        if (isLineSample(samples_, index))
+        {
+            if (runStartVertex < 0)
+            {
+                runStartVertex = static_cast<int>(vertices->size());
+            }
+            vertices->push_back(position);
+            colors->push_back(qualityColor(sample));
+            ++runVertexCount;
+            continue;
+        }
+
+        flushLineRun();
+        markerPositions.push_back(position);
+    }
+    flushLineRun();
+
+    if (!markerPositions.empty())
+    {
+        const int markerStartVertex = static_cast<int>(vertices->size());
+        for (const osg::Vec3d& position : markerPositions)
+        {
+            vertices->push_back(position);
+            colors->push_back(markerColor());
+        }
+        geometry->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::POINTS,
+                                                      markerStartVertex,
+                                                      static_cast<GLsizei>(markerPositions.size())));
     }
 
-    geometry->removePrimitiveSet(0, geometry->getNumPrimitiveSets());
     geometry->setVertexArray(vertices.get());
     geometry->setColorArray(colors.get(), osg::Array::BIND_PER_VERTEX);
-    geometry->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::LINE_STRIP, 0, static_cast<GLsizei>(vertices->size())));
 
     osg::ref_ptr<osg::LineWidth> lineWidth = new osg::LineWidth(2.5f);
     geometry->getOrCreateStateSet()->setAttributeAndModes(lineWidth.get(), osg::StateAttribute::ON);
+    osg::ref_ptr<osg::Point> pointSize = new osg::Point(7.0f);
+    geometry->getOrCreateStateSet()->setAttributeAndModes(pointSize.get(), osg::StateAttribute::ON);
 
     segment.geometry = geometry;
 }
