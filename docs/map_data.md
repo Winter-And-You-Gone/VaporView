@@ -72,6 +72,8 @@ python scripts/prepare-demo-dem.py --srtm --check
 
 The Copernicus DEM-enabled template is `data/maps/vaporview_with_dem.earth`. The SRTM fallback template is `data/maps/vaporview_with_srtm.earth`. Both keep the Natural Earth visual background and add a `GDALElevation` layer for local terrain.
 
+Height reference note: RTK/GNSS samples may report WGS84 ellipsoid height, mean sea level height, EGM2008-related orthometric height, or a local NED height. Copernicus DEM and SRTM elevations are terrain datasets with their own vertical datum assumptions. VaporView currently labels the `NavSample::heightReference` value for display and diagnostics only; it does not perform terrain clearance or AGL safety decisions while the RTK and DEM height references are unchecked.
+
 VaporView automatic map selection order:
 
 1. `vaporview_full_local.earth` when Natural Earth, one DEM VRT, and all required local OSM GeoPackages exist.

@@ -157,7 +157,14 @@ HeightReference parseHeightReference(const QString& value)
         normalized == QStringLiteral("hae") ||
         normalized == QStringLiteral("wgs84"))
     {
-        return HeightReference::Ellipsoid;
+        return HeightReference::Wgs84Ellipsoid;
+    }
+    if (normalized.contains(QStringLiteral("egm2008")) ||
+        normalized.contains(QStringLiteral("egm08")) ||
+        normalized.contains(QStringLiteral("egm 2008")) ||
+        normalized.contains(QStringLiteral("earth gravitational model 2008")))
+    {
+        return HeightReference::Egm2008;
     }
     if (normalized.contains(QStringLiteral("msl")) ||
         normalized.contains(QStringLiteral("mean sea")) ||
@@ -169,12 +176,12 @@ HeightReference parseHeightReference(const QString& value)
     if (normalized.contains(QStringLiteral("local")) ||
         normalized.contains(QStringLiteral("ned")))
     {
-        return HeightReference::Local;
+        return HeightReference::LocalNed;
     }
     if (normalized.contains(QStringLiteral("dem")) ||
         normalized.contains(QStringLiteral("terrain")))
     {
-        return HeightReference::Dem;
+        return HeightReference::Egm2008;
     }
     return HeightReference::Unknown;
 }

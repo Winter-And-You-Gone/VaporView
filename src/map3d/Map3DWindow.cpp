@@ -28,14 +28,14 @@ QString heightReferenceLabel(VaporView::Geo::HeightReference reference)
 {
     switch (reference)
     {
-    case VaporView::Geo::HeightReference::Ellipsoid:
-        return QStringLiteral("ellipsoid");
+    case VaporView::Geo::HeightReference::Wgs84Ellipsoid:
+        return QStringLiteral("WGS84 ellipsoid");
     case VaporView::Geo::HeightReference::MeanSeaLevel:
         return QStringLiteral("MSL");
-    case VaporView::Geo::HeightReference::Local:
-        return QStringLiteral("local");
-    case VaporView::Geo::HeightReference::Dem:
-        return QStringLiteral("DEM");
+    case VaporView::Geo::HeightReference::Egm2008:
+        return QStringLiteral("EGM2008");
+    case VaporView::Geo::HeightReference::LocalNed:
+        return QStringLiteral("local NED");
     case VaporView::Geo::HeightReference::Unknown:
         return QStringLiteral("unknown");
     }

@@ -18,10 +18,15 @@ enum class FixQuality {
 
 enum class HeightReference {
     Unknown = 0,
-    Ellipsoid,
+    Wgs84Ellipsoid,
     MeanSeaLevel,
-    Local,
-    Dem
+    Egm2008,
+    LocalNed,
+
+    // Compatibility aliases for older session readers and UI code.
+    Ellipsoid = Wgs84Ellipsoid,
+    Local = LocalNed,
+    Dem = Egm2008
 };
 
 struct NavSample {

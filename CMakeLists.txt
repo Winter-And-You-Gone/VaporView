@@ -759,6 +759,12 @@ if(BUILD_TESTING)
     target_link_libraries(coordinate_transform_test PRIVATE vaporview_geo_core)
     add_test(NAME coordinate_transform_test COMMAND coordinate_transform_test)
 
+    add_executable(height_reference_test
+        tests/height_reference_test.cpp
+    )
+    target_link_libraries(height_reference_test PRIVATE vaporview_geo_core)
+    add_test(NAME height_reference_test COMMAND height_reference_test)
+
     add_executable(tcp_wave_encoding_test
         tests/tcp_wave_encoding_test.cpp
     )
