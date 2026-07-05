@@ -37,6 +37,18 @@ int main()
     require(recent.size() == 2, "recent count");
     require(recent.front().recordTimestampUs == 3, "recent starts at expected sample");
 
+    buffer.setMaxSamples(2);
+    require(buffer.size() == 2, "setMaxSamples trims existing samples");
+    require(buffer.snapshot().front().recordTimestampUs == 3, "setMaxSamples keeps newest samples");
+
+    buffer.setMaxSamples(0);
+    require(buffer.size() == 0, "zero max samples clears buffer");
+
+    VaporView::Geo::NavSample dropped;
+    dropped.recordTimestampUs = 99;
+    buffer.append(dropped);
+    require(buffer.size() == 0, "zero max samples drops appended samples");
+
     buffer.clear();
     require(buffer.size() == 0, "clear empties buffer");
 

@@ -63,5 +63,13 @@ int main()
     sample.nedDM = 0.0;
     require(VaporView::Geo::isLikelyJump(previous, sample), "unreasonable NED speed is jump");
 
+    previous = validSample();
+    previous.recordTimestampUs = 1000000;
+    sample = validSample();
+    sample.recordTimestampUs = 2000000;
+    sample.latDeg = 45.0;
+    sample.lonDeg = 90.0;
+    require(!VaporView::Geo::isLikelyJump(previous, sample), "missing NED does not reject LLH-only samples");
+
     return 0;
 }

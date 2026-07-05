@@ -330,6 +330,19 @@ Linux ARM64 构建：
 - `rtklib_strsvr`：静态库，封装 RTKLIB 流服务所需源码。
 - `str2str`：当 `third_party/rtklib/app/consapp/str2str/str2str.c` 存在时构建。
 
+### 可选本地三维地图
+
+本地三维地图模块由 `VAPORVIEW_ENABLE_OSGEARTH` 控制，默认关闭。默认构建不会查找 osgEarth / OpenSceneGraph，也不会影响 `VaporViewSkyCore`、`VaporViewSkyTui` 或现有记录与数传链路。
+
+启用时需要本机已安装 osgEarth 和 OpenSceneGraph，并让 CMake 能通过 `CMAKE_PREFIX_PATH`、`osgEarth_DIR` 或系统包路径找到对应 CMake 配置：
+
+```powershell
+cmake -S . -B build/Release -DVAPORVIEW_ENABLE_OSGEARTH=ON
+cmake --build build/Release --config Release --target VaporView
+```
+
+如果缺少 osgEarth，开启该选项会在 CMake configure 阶段报错；保持默认 `OFF` 时项目应照常构建。该模块只链接到 `VaporView` 主程序，用于打开 3D Map 窗口、加载 session 轨迹和后续叠加 `.earth` 本地地图数据。
+
 构建后主程序位置：
 
 ```text
