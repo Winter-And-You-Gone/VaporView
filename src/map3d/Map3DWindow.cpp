@@ -55,7 +55,13 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     statusBar()->showMessage(QStringLiteral("未加载 Earth 文件，当前显示本地 NED 网格。加载 .earth 后显示地图底图。"), 8000);
 }
 
-Map3DWindow::~Map3DWindow() = default;
+Map3DWindow::~Map3DWindow()
+{
+    if (view_)
+    {
+        view_->shutdown();
+    }
+}
 
 void Map3DWindow::appendSample(const VaporView::Geo::NavSample& sample)
 {

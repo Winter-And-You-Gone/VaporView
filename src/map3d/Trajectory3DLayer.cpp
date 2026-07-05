@@ -6,11 +6,24 @@
 #include <osg/Geode>
 #include <osg/LineWidth>
 
+#include <cmath>
+
 namespace VaporView::Map3D {
 namespace {
 
-osg::Vec3d samplePosition(const VaporView::Geo::NavSample& sample)
+bool hasWorldPosition(const VaporView::Geo::NavSample& sample)
 {
+    return std::isfinite(sample.ecefXM)
+        && std::isfinite(sample.ecefYM)
+        && std::isfinite(sample.ecefZM);
+}
+
+osg::Vec3d samplePosition(const VaporView::Geo::NavSample& sample, bool useWorldCoordinates)
+{
+    if (useWorldCoordinates && hasWorldPosition(sample))
+    {
+        return osg::Vec3d(sample.ecefXM, sample.ecefYM, sample.ecefZM);
+    }
     if (sample.hasNed())
     {
         return osg::Vec3d(sample.nedEM, sample.nedNM, -sample.nedDM);
@@ -62,6 +75,16 @@ void Trajectory3DLayer::appendSamples(const std::vector<VaporView::Geo::NavSampl
     rebuildGeometry();
 }
 
+void Trajectory3DLayer::setUseWorldCoordinates(bool enabled)
+{
+    if (use_world_coordinates_ == enabled)
+    {
+        return;
+    }
+    use_world_coordinates_ = enabled;
+    rebuildGeometry();
+}
+
 int Trajectory3DLayer::sampleCount() const
 {
     return static_cast<int>(samples_.size());
@@ -88,7 +111,7 @@ void Trajectory3DLayer::rebuildGeometry()
 
     for (const VaporView::Geo::NavSample& sample : samples_)
     {
-        vertices->push_back(samplePosition(sample));
+        vertices->push_back(samplePosition(sample, use_world_coordinates_));
         colors->push_back(qualityColor(sample));
     }
 

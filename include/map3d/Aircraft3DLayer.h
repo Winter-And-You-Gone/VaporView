@@ -17,6 +17,7 @@ public:
 
     void clear();
     void updateSample(const VaporView::Geo::NavSample& sample);
+    void setUseWorldCoordinates(bool enabled);
 
     bool hasPosition() const;
     osg::Node* node() const;
@@ -24,6 +25,7 @@ public:
 private:
     osg::ref_ptr<osg::MatrixTransform> transform_;
     bool has_position_ = false;
+    bool use_world_coordinates_ = false;
 };
 
 } // namespace VaporView::Map3D

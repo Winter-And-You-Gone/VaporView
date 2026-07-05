@@ -10,8 +10,19 @@
 namespace VaporView::Map3D {
 namespace {
 
-osg::Vec3d samplePosition(const VaporView::Geo::NavSample& sample)
+bool hasWorldPosition(const VaporView::Geo::NavSample& sample)
 {
+    return std::isfinite(sample.ecefXM)
+        && std::isfinite(sample.ecefYM)
+        && std::isfinite(sample.ecefZM);
+}
+
+osg::Vec3d samplePosition(const VaporView::Geo::NavSample& sample, bool useWorldCoordinates)
+{
+    if (useWorldCoordinates && hasWorldPosition(sample))
+    {
+        return osg::Vec3d(sample.ecefXM, sample.ecefYM, sample.ecefZM);
+    }
     if (sample.hasNed())
     {
         return osg::Vec3d(sample.nedEM, sample.nedNM, -sample.nedDM);
@@ -54,8 +65,13 @@ void Aircraft3DLayer::updateSample(const VaporView::Geo::NavSample& sample)
                                        pitch, osg::Vec3d(0.0, 1.0, 0.0),
                                        yaw, osg::Vec3d(0.0, 0.0, 1.0));
     }
-    transform_->setMatrix(rotation * osg::Matrix::translate(samplePosition(sample)));
+    transform_->setMatrix(rotation * osg::Matrix::translate(samplePosition(sample, use_world_coordinates_)));
     has_position_ = true;
+}
+
+void Aircraft3DLayer::setUseWorldCoordinates(bool enabled)
+{
+    use_world_coordinates_ = enabled;
 }
 
 bool Aircraft3DLayer::hasPosition() const

@@ -1,0 +1,6 @@
+<map name="VaporView Natural Earth">
+    <GDALImage name="Natural Earth II 1:50m shaded relief with water">
+        <url>natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt</url>
+        <interpolation>bilinear</interpolation>
+    </GDALImage>
+</map>

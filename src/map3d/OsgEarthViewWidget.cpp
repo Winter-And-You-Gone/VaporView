@@ -12,9 +12,15 @@
 #include <osgGA/TrackballManipulator>
 #include <osgViewer/GraphicsWindow>
 #include <osgViewer/Viewer>
+#include <osgEarth/EarthManipulator>
+#include <osgEarth/GeoData>
+#include <osgEarth/MapNode>
+#include <osgEarth/SpatialReference>
+#include <osgEarth/Viewpoint>
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace VaporView::Map3D {
 namespace {
@@ -52,6 +58,12 @@ osg::Node* createLocalGridNode()
 
 osg::Vec3d samplePosition(const VaporView::Geo::NavSample& sample)
 {
+    if (std::isfinite(sample.ecefXM)
+        && std::isfinite(sample.ecefYM)
+        && std::isfinite(sample.ecefZM))
+    {
+        return osg::Vec3d(sample.ecefXM, sample.ecefYM, sample.ecefZM);
+    }
     if (sample.hasNed())
     {
         return osg::Vec3d(sample.nedEM, sample.nedNM, -sample.nedDM);
@@ -73,36 +85,81 @@ OsgEarthViewWidget::OsgEarthViewWidget(QWidget* parent)
     frameTimer_.start();
 }
 
-OsgEarthViewWidget::~OsgEarthViewWidget() = default;
+OsgEarthViewWidget::~OsgEarthViewWidget()
+{
+    shutdown();
+}
+
+void OsgEarthViewWidget::shutdown()
+{
+    frameTimer_.stop();
+    if (shutdown_)
+    {
+        return;
+    }
+    shutdown_ = true;
+    if (initialized_)
+    {
+        makeCurrent();
+    }
+    if (viewer_)
+    {
+        viewer_->setDone(true);
+        viewer_->setCameraManipulator(nullptr);
+        if (viewer_->getCamera())
+        {
+            viewer_->getCamera()->setGraphicsContext(nullptr);
+        }
+        viewer_->setSceneData(nullptr);
+    }
+    if (root_)
+    {
+        root_->removeChildren(0, root_->getNumChildren());
+    }
+    earth_node_ = nullptr;
+    map_node_ = nullptr;
+    trajectory_layer_.reset();
+    aircraft_layer_.reset();
+    root_ = nullptr;
+    graphics_window_ = nullptr;
+    viewer_.reset();
+    if (initialized_)
+    {
+        doneCurrent();
+    }
+}
 
 void OsgEarthViewWidget::appendSample(const VaporView::Geo::NavSample& sample)
 {
-    const VaporView::Geo::NavSample localSample = toLocalSample(sample);
-    trajectory_layer_->appendSample(localSample);
-    aircraft_layer_->updateSample(localSample);
-    updateFollowCamera(localSample);
+    raw_samples_.push_back(sample);
+    const VaporView::Geo::NavSample displaySample = toDisplaySample(sample);
+    trajectory_layer_->appendSample(displaySample);
+    aircraft_layer_->updateSample(displaySample);
+    updateFollowCamera(displaySample);
     update();
 }
 
 void OsgEarthViewWidget::appendSamples(const std::vector<VaporView::Geo::NavSample>& samples)
 {
-    std::vector<VaporView::Geo::NavSample> localSamples;
-    localSamples.reserve(samples.size());
+    raw_samples_.insert(raw_samples_.end(), samples.cbegin(), samples.cend());
+    std::vector<VaporView::Geo::NavSample> displaySamples;
+    displaySamples.reserve(samples.size());
     for (const VaporView::Geo::NavSample& sample : samples)
     {
-        localSamples.push_back(toLocalSample(sample));
+        displaySamples.push_back(toDisplaySample(sample));
     }
-    trajectory_layer_->appendSamples(localSamples);
-    if (!localSamples.empty())
+    trajectory_layer_->appendSamples(displaySamples);
+    if (!displaySamples.empty())
     {
-        aircraft_layer_->updateSample(localSamples.back());
-        updateFollowCamera(localSamples.back());
+        aircraft_layer_->updateSample(displaySamples.back());
+        updateFollowCamera(displaySamples.back());
     }
     update();
 }
 
 void OsgEarthViewWidget::clearTrack()
 {
+    raw_samples_.clear();
     trajectory_layer_->clear();
     aircraft_layer_->clear();
     has_local_origin_ = false;
@@ -122,7 +179,12 @@ bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
         root_->removeChild(earth_node_.get());
     }
     earth_node_ = earthNode;
+    map_node_ = osgEarth::MapNode::findMapNode(earth_node_.get());
+    trajectory_layer_->setUseWorldCoordinates(true);
+    aircraft_layer_->setUseWorldCoordinates(true);
     root_->insertChild(0, earth_node_.get());
+    setInitialEarthView();
+    rebuildDisplayTrack();
     update();
     return true;
 }
@@ -141,7 +203,14 @@ void OsgEarthViewWidget::setFollowAircraft(bool enabled)
     }
     else if (!viewer_->getCameraManipulator())
     {
-        viewer_->setCameraManipulator(new osgGA::TrackballManipulator);
+        if (earth_node_)
+        {
+            viewer_->setCameraManipulator(new osgEarth::EarthManipulator);
+        }
+        else
+        {
+            viewer_->setCameraManipulator(new osgGA::TrackballManipulator);
+        }
     }
 }
 
@@ -242,7 +311,7 @@ void OsgEarthViewWidget::updateCameraViewport(int w, int h)
 
 void OsgEarthViewWidget::updateFollowCamera(const VaporView::Geo::NavSample& sample)
 {
-    if (!follow_aircraft_ || !viewer_ || !viewer_->getCamera() || !sample.hasNed())
+    if (!follow_aircraft_ || !viewer_ || !viewer_->getCamera())
     {
         return;
     }
@@ -251,10 +320,84 @@ void OsgEarthViewWidget::updateFollowCamera(const VaporView::Geo::NavSample& sam
     const double yawRad = std::isfinite(sample.yawDeg) ? sample.yawDeg * 3.14159265358979323846 / 180.0 : 0.0;
     constexpr double kFollowDistanceM = 160.0;
     constexpr double kFollowHeightM = 90.0;
+
+    if (earth_node_
+        && std::isfinite(sample.ecefXM)
+        && std::isfinite(sample.ecefYM)
+        && std::isfinite(sample.ecefZM)
+        && sample.hasLlh())
+    {
+        const double latRad = sample.latDeg * 3.14159265358979323846 / 180.0;
+        const double lonRad = sample.lonDeg * 3.14159265358979323846 / 180.0;
+        const osg::Vec3d east(-std::sin(lonRad), std::cos(lonRad), 0.0);
+        const osg::Vec3d north(-std::sin(latRad) * std::cos(lonRad),
+                               -std::sin(latRad) * std::sin(lonRad),
+                               std::cos(latRad));
+        const osg::Vec3d up(std::cos(latRad) * std::cos(lonRad),
+                            std::cos(latRad) * std::sin(lonRad),
+                            std::sin(latRad));
+        const osg::Vec3d forward = east * std::sin(yawRad) + north * std::cos(yawRad);
+        const osg::Vec3d eye = center - forward * kFollowDistanceM + up * kFollowHeightM;
+        viewer_->getCamera()->setViewMatrixAsLookAt(eye, center, up);
+        return;
+    }
+
+    if (!sample.hasNed())
+    {
+        return;
+    }
+
     const osg::Vec3d eye(center.x() - std::sin(yawRad) * kFollowDistanceM,
                          center.y() - std::cos(yawRad) * kFollowDistanceM,
                          center.z() + kFollowHeightM);
     viewer_->getCamera()->setViewMatrixAsLookAt(eye, center, osg::Vec3d(0.0, 0.0, 1.0));
+}
+
+void OsgEarthViewWidget::setInitialEarthView()
+{
+    if (!viewer_)
+    {
+        return;
+    }
+
+    osg::ref_ptr<osgEarth::EarthManipulator> manipulator = new osgEarth::EarthManipulator;
+    viewer_->setCameraManipulator(manipulator.get());
+    manipulator->setViewpoint(osgEarth::Viewpoint("VaporView Earth", 0.0, 20.0, 0.0, 0.0, -90.0, 18000000.0), 0.0);
+    if (viewer_->getCamera())
+    {
+        manipulator->updateCamera(*viewer_->getCamera());
+    }
+    if (follow_aircraft_)
+    {
+        viewer_->setCameraManipulator(nullptr);
+    }
+}
+
+void OsgEarthViewWidget::rebuildDisplayTrack()
+{
+    trajectory_layer_->clear();
+    aircraft_layer_->clear();
+    std::vector<VaporView::Geo::NavSample> displaySamples;
+    displaySamples.reserve(raw_samples_.size());
+    for (const VaporView::Geo::NavSample& sample : raw_samples_)
+    {
+        displaySamples.push_back(toDisplaySample(sample));
+    }
+    trajectory_layer_->appendSamples(displaySamples);
+    if (!displaySamples.empty())
+    {
+        aircraft_layer_->updateSample(displaySamples.back());
+        updateFollowCamera(displaySamples.back());
+    }
+}
+
+VaporView::Geo::NavSample OsgEarthViewWidget::toDisplaySample(const VaporView::Geo::NavSample& sample)
+{
+    if (earth_node_)
+    {
+        return toWorldSample(sample);
+    }
+    return toLocalSample(sample);
 }
 
 VaporView::Geo::NavSample OsgEarthViewWidget::toLocalSample(const VaporView::Geo::NavSample& sample)
@@ -280,6 +423,36 @@ VaporView::Geo::NavSample OsgEarthViewWidget::toLocalSample(const VaporView::Geo
     local.nedEM = (sample.lonDeg - origin_lon_deg_) * metersPerDegreeLon;
     local.nedDM = origin_height_m_ - sample.heightM;
     return local;
+}
+
+VaporView::Geo::NavSample OsgEarthViewWidget::toWorldSample(const VaporView::Geo::NavSample& sample) const
+{
+    if (!sample.hasLlh())
+    {
+        return sample;
+    }
+
+    const osgEarth::SpatialReference* wgs84 = osgEarth::SpatialReference::get("wgs84");
+    if (!wgs84)
+    {
+        return sample;
+    }
+
+    osgEarth::GeoPoint geo(wgs84, sample.lonDeg, sample.latDeg, sample.heightM, osgEarth::ALTMODE_ABSOLUTE);
+    osg::Vec3d world;
+    if (!geo.toWorld(world))
+    {
+        return sample;
+    }
+
+    VaporView::Geo::NavSample worldSample = sample;
+    worldSample.ecefXM = world.x();
+    worldSample.ecefYM = world.y();
+    worldSample.ecefZM = world.z();
+    worldSample.nedNM = std::numeric_limits<double>::quiet_NaN();
+    worldSample.nedEM = std::numeric_limits<double>::quiet_NaN();
+    worldSample.nedDM = std::numeric_limits<double>::quiet_NaN();
+    return worldSample;
 }
 
 } // namespace VaporView::Map3D

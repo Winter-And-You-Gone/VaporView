@@ -15,6 +15,10 @@ namespace osgViewer {
 class Viewer;
 }
 
+namespace osgEarth {
+class MapNode;
+}
+
 namespace VaporView::Map3D {
 
 class Aircraft3DLayer;
@@ -32,6 +36,7 @@ public:
     void clearTrack();
     bool loadEarthFile(const QString& earthPath);
     void setFollowAircraft(bool enabled);
+    void shutdown();
 
     int sampleCount() const;
     QSize framebufferSize() const;
@@ -46,10 +51,15 @@ private:
     void initializeSceneIfNeeded();
     void updateCameraViewport(int w, int h);
     void updateFollowCamera(const VaporView::Geo::NavSample& sample);
+    void setInitialEarthView();
+    void rebuildDisplayTrack();
+    VaporView::Geo::NavSample toDisplaySample(const VaporView::Geo::NavSample& sample);
     VaporView::Geo::NavSample toLocalSample(const VaporView::Geo::NavSample& sample);
+    VaporView::Geo::NavSample toWorldSample(const VaporView::Geo::NavSample& sample) const;
 
     QTimer frameTimer_;
     bool initialized_ = false;
+    bool shutdown_ = false;
     bool follow_aircraft_ = true;
     QSize framebuffer_size_;
     bool has_local_origin_ = false;
@@ -60,6 +70,8 @@ private:
     osg::ref_ptr<osgViewer::GraphicsWindowEmbedded> graphics_window_;
     osg::ref_ptr<osg::Group> root_;
     osg::ref_ptr<osg::Node> earth_node_;
+    osgEarth::MapNode* map_node_ = nullptr;
+    std::vector<VaporView::Geo::NavSample> raw_samples_;
     std::unique_ptr<Trajectory3DLayer> trajectory_layer_;
     std::unique_ptr<Aircraft3DLayer> aircraft_layer_;
 };
