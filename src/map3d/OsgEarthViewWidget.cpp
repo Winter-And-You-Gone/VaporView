@@ -150,6 +150,11 @@ int OsgEarthViewWidget::sampleCount() const
     return trajectory_layer_ ? trajectory_layer_->sampleCount() : 0;
 }
 
+QSize OsgEarthViewWidget::framebufferSize() const
+{
+    return framebuffer_size_;
+}
+
 void OsgEarthViewWidget::initializeGL()
 {
     initializeSceneIfNeeded();
@@ -190,7 +195,10 @@ void OsgEarthViewWidget::initializeSceneIfNeeded()
         viewer_->setCameraManipulator(new osgGA::TrackballManipulator);
     }
 
-    graphics_window_ = new osgViewer::GraphicsWindowEmbedded(0, 0, std::max(1, width()), std::max(1, height()));
+    const qreal dpr = std::max<qreal>(1.0, devicePixelRatioF());
+    const int framebufferWidth = std::max(1, static_cast<int>(std::lround(width() * dpr)));
+    const int framebufferHeight = std::max(1, static_cast<int>(std::lround(height() * dpr)));
+    graphics_window_ = new osgViewer::GraphicsWindowEmbedded(0, 0, framebufferWidth, framebufferHeight);
     if (viewer_->getCamera())
     {
         viewer_->getCamera()->setGraphicsContext(graphics_window_.get());
@@ -205,12 +213,15 @@ void OsgEarthViewWidget::initializeSceneIfNeeded()
 
 void OsgEarthViewWidget::updateCameraViewport(int w, int h)
 {
-    const int safeWidth = std::max(1, w);
-    const int safeHeight = std::max(1, h);
+    const qreal dpr = std::max<qreal>(1.0, devicePixelRatioF());
+    const int safeWidth = std::max(1, static_cast<int>(std::lround(w * dpr)));
+    const int safeHeight = std::max(1, static_cast<int>(std::lround(h * dpr)));
+    framebuffer_size_ = QSize(safeWidth, safeHeight);
 
     if (graphics_window_)
     {
         graphics_window_->resized(0, 0, safeWidth, safeHeight);
+        graphics_window_->getEventQueue()->windowResize(0, 0, safeWidth, safeHeight);
     }
 
     if (viewer_ && viewer_->getCamera())

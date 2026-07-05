@@ -134,6 +134,13 @@ void Map3DWindow::openEarthFile()
 void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest)
 {
     QString text = QStringLiteral("Points: %1").arg(view_ ? view_->sampleCount() : 0);
+    if (view_)
+    {
+        const QSize framebufferSize = view_->framebufferSize();
+        text += QStringLiteral(" | View %1x%2")
+                    .arg(framebufferSize.width())
+                    .arg(framebufferSize.height());
+    }
     if (latest && latest->hasLlh())
     {
         text += QStringLiteral(" | Lat %1 Lon %2 H %3 m | Fix %4")

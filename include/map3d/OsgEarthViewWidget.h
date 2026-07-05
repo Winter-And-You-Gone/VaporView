@@ -34,6 +34,7 @@ public:
     void setFollowAircraft(bool enabled);
 
     int sampleCount() const;
+    QSize framebufferSize() const;
 
 protected:
     void initializeGL() override;
@@ -49,6 +50,7 @@ private:
     QTimer frameTimer_;
     bool initialized_ = false;
     bool follow_aircraft_ = true;
+    QSize framebuffer_size_;
     bool has_local_origin_ = false;
     double origin_lat_deg_ = 0.0;
     double origin_lon_deg_ = 0.0;
