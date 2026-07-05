@@ -30,6 +30,7 @@
 #include <QFileInfo>
 #include <QMouseEvent>
 #include <QWheelEvent>
+#include <QElapsedTimer>
 
 #include <algorithm>
 #include <cmath>
@@ -364,16 +365,21 @@ void OsgEarthViewWidget::shutdown()
 
 void OsgEarthViewWidget::appendSample(const VaporView::Geo::NavSample& sample)
 {
+    QElapsedTimer timer;
+    timer.start();
     raw_samples_.push_back(sample);
     const VaporView::Geo::NavSample displaySample = toDisplaySample(sample);
     trajectory_layer_->appendSample(displaySample);
     aircraft_layer_->updateSample(displaySample);
     updateFollowCamera(displaySample);
+    last_track_update_ms_ = static_cast<double>(timer.nsecsElapsed()) / 1000000.0;
     update();
 }
 
 void OsgEarthViewWidget::appendSamples(const std::vector<VaporView::Geo::NavSample>& samples)
 {
+    QElapsedTimer timer;
+    timer.start();
     raw_samples_.insert(raw_samples_.end(), samples.cbegin(), samples.cend());
     std::vector<VaporView::Geo::NavSample> displaySamples;
     displaySamples.reserve(samples.size());
@@ -387,6 +393,7 @@ void OsgEarthViewWidget::appendSamples(const std::vector<VaporView::Geo::NavSamp
         aircraft_layer_->updateSample(displaySamples.back());
         updateFollowCamera(displaySamples.back());
     }
+    last_track_update_ms_ = static_cast<double>(timer.nsecsElapsed()) / 1000000.0;
     update();
 }
 
@@ -484,9 +491,41 @@ void OsgEarthViewWidget::setFollowAircraft(bool enabled)
     }
 }
 
+void OsgEarthViewWidget::setMaxVisibleSamples(int maxVisibleSamples)
+{
+    if (!trajectory_layer_)
+    {
+        return;
+    }
+    trajectory_layer_->setMaxVisibleSamples(maxVisibleSamples);
+    update();
+}
+
 int OsgEarthViewWidget::sampleCount() const
 {
     return trajectory_layer_ ? trajectory_layer_->sampleCount() : 0;
+}
+
+int OsgEarthViewWidget::visibleSampleCount() const
+{
+    return trajectory_layer_ ? trajectory_layer_->visibleSampleCount() : 0;
+}
+
+int OsgEarthViewWidget::maxVisibleSamples() const
+{
+    return trajectory_layer_ ? trajectory_layer_->maxVisibleSamples() : 0;
+}
+
+Map3DPerformanceStats OsgEarthViewWidget::performanceStats() const
+{
+    Map3DPerformanceStats stats;
+    stats.totalSamples = sampleCount();
+    stats.visibleSamples = visibleSampleCount();
+    stats.maxVisibleSamples = maxVisibleSamples();
+    stats.frameMs = smoothed_frame_ms_ > 0.0 ? smoothed_frame_ms_ : last_frame_ms_;
+    stats.framesPerSecond = frames_per_second_;
+    stats.trackUpdateMs = last_track_update_ms_;
+    return stats;
 }
 
 QSize OsgEarthViewWidget::framebufferSize() const
@@ -515,7 +554,14 @@ void OsgEarthViewWidget::paintGL()
     initializeSceneIfNeeded();
     if (viewer_)
     {
+        QElapsedTimer timer;
+        timer.start();
         viewer_->frame();
+        last_frame_ms_ = static_cast<double>(timer.nsecsElapsed()) / 1000000.0;
+        smoothed_frame_ms_ = smoothed_frame_ms_ <= 0.0
+            ? last_frame_ms_
+            : (smoothed_frame_ms_ * 0.9 + last_frame_ms_ * 0.1);
+        frames_per_second_ = smoothed_frame_ms_ > 0.0 ? 1000.0 / smoothed_frame_ms_ : 0.0;
     }
 }
 

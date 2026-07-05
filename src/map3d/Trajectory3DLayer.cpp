@@ -7,6 +7,7 @@
 #include <osg/LineWidth>
 
 #include <cmath>
+#include <algorithm>
 
 namespace VaporView::Map3D {
 namespace {
@@ -85,9 +86,30 @@ void Trajectory3DLayer::setUseWorldCoordinates(bool enabled)
     rebuildGeometry();
 }
 
+void Trajectory3DLayer::setMaxVisibleSamples(int maxVisibleSamples)
+{
+    const int sanitized = std::max(1000, maxVisibleSamples);
+    if (max_visible_samples_ == sanitized)
+    {
+        return;
+    }
+    max_visible_samples_ = sanitized;
+    rebuildGeometry();
+}
+
 int Trajectory3DLayer::sampleCount() const
 {
     return static_cast<int>(samples_.size());
+}
+
+int Trajectory3DLayer::visibleSampleCount() const
+{
+    return std::min(sampleCount(), max_visible_samples_);
+}
+
+int Trajectory3DLayer::maxVisibleSamples() const
+{
+    return max_visible_samples_;
 }
 
 osg::Node* Trajectory3DLayer::node() const
@@ -106,11 +128,14 @@ void Trajectory3DLayer::rebuildGeometry()
     osg::ref_ptr<osg::Geometry> geometry = new osg::Geometry;
     osg::ref_ptr<osg::Vec3Array> vertices = new osg::Vec3Array;
     osg::ref_ptr<osg::Vec4Array> colors = new osg::Vec4Array;
-    vertices->reserve(samples_.size());
-    colors->reserve(samples_.size());
+    const int visibleCount = visibleSampleCount();
+    const int firstVisibleIndex = std::max(0, sampleCount() - visibleCount);
+    vertices->reserve(static_cast<std::size_t>(visibleCount));
+    colors->reserve(static_cast<std::size_t>(visibleCount));
 
-    for (const VaporView::Geo::NavSample& sample : samples_)
+    for (auto it = samples_.cbegin() + firstVisibleIndex; it != samples_.cend(); ++it)
     {
+        const VaporView::Geo::NavSample& sample = *it;
         vertices->push_back(samplePosition(sample, use_world_coordinates_));
         colors->push_back(qualityColor(sample));
     }

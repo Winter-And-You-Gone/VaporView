@@ -27,6 +27,15 @@ namespace VaporView::Map3D {
 class Aircraft3DLayer;
 class Trajectory3DLayer;
 
+struct Map3DPerformanceStats {
+    int totalSamples = 0;
+    int visibleSamples = 0;
+    int maxVisibleSamples = 0;
+    double frameMs = 0.0;
+    double framesPerSecond = 0.0;
+    double trackUpdateMs = 0.0;
+};
+
 class OsgEarthViewWidget final : public QOpenGLWidget {
     Q_OBJECT
 
@@ -39,9 +48,13 @@ public:
     void clearTrack();
     bool loadEarthFile(const QString& earthPath);
     void setFollowAircraft(bool enabled);
+    void setMaxVisibleSamples(int maxVisibleSamples);
     void shutdown();
 
     int sampleCount() const;
+    int visibleSampleCount() const;
+    int maxVisibleSamples() const;
+    Map3DPerformanceStats performanceStats() const;
     QSize framebufferSize() const;
     bool hasEarthMap() const;
 
@@ -69,6 +82,10 @@ private:
     bool shutdown_ = false;
     bool follow_aircraft_ = false;
     QSize framebuffer_size_;
+    double last_frame_ms_ = 0.0;
+    double smoothed_frame_ms_ = 0.0;
+    double frames_per_second_ = 0.0;
+    double last_track_update_ms_ = 0.0;
     bool has_local_origin_ = false;
     double origin_lat_deg_ = 0.0;
     double origin_lon_deg_ = 0.0;

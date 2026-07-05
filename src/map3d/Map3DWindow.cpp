@@ -78,10 +78,12 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     follow_action_ = toolbar->addAction(QStringLiteral("跟随飞机"));
     follow_action_->setCheckable(true);
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    max_visible_samples_ = settings.value(QStringLiteral("maxVisibleSamples"), 200000).toInt();
     follow_action_->setChecked(settings.value(QStringLiteral("followAircraft"), false).toBool());
     if (view_)
     {
         view_->setFollowAircraft(follow_action_->isChecked());
+        view_->setMaxVisibleSamples(max_visible_samples_);
     }
     connect(follow_action_, &QAction::toggled, this, [this](bool enabled) {
         if (view_)
@@ -372,8 +374,10 @@ QString Map3DWindow::diagnosticsText() const
 
 void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest)
 {
-    const int sampleCount = view_ ? view_->sampleCount() : headless_sample_count_;
-    QString text = QStringLiteral("Points: %1").arg(sampleCount);
+    const Map3DPerformanceStats stats = view_ ? view_->performanceStats() : Map3DPerformanceStats{};
+    const int totalSamples = view_ ? stats.totalSamples : headless_sample_count_;
+    const int visibleSamples = view_ ? stats.visibleSamples : headless_sample_count_;
+    QString text = QStringLiteral("Points: %1/%2").arg(visibleSamples).arg(totalSamples);
     if (view_ || headless_view_)
     {
         const QSize framebufferSize = view_ ? view_->framebufferSize() : headless_view_->size();
@@ -381,6 +385,13 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest)
                     .arg(MapDataManager::modeLabel(map_selection_.mode))
                     .arg(framebufferSize.width())
                     .arg(framebufferSize.height());
+    }
+    if (view_)
+    {
+        text += QStringLiteral(" | FPS %1 | Frame %2 ms | Track %3 ms")
+                    .arg(stats.framesPerSecond, 0, 'f', 1)
+                    .arg(stats.frameMs, 0, 'f', 1)
+                    .arg(stats.trackUpdateMs, 0, 'f', 1);
     }
     if (latest && latest->hasLlh())
     {
