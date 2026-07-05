@@ -45,6 +45,7 @@ Or use the repository helper, which only reads local files and does not download
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/prepare-demo-dem.ps1
+python scripts/prepare-demo-dem.py
 ```
 
 Build a VRT from local SRTM GeoTIFF tiles:
@@ -57,6 +58,14 @@ The helper can prepare the SRTM fallback VRT too:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/prepare-demo-dem.ps1 -Srtm
+python scripts/prepare-demo-dem.py --srtm
+```
+
+Use `--check` to validate local DEM inputs and the generated VRT without rebuilding it:
+
+```powershell
+python scripts/prepare-demo-dem.py --check
+python scripts/prepare-demo-dem.py --srtm --check
 ```
 
 The Copernicus DEM-enabled template is `data/maps/vaporview_with_dem.earth`. The SRTM fallback template is `data/maps/vaporview_with_srtm.earth`. Both keep the Natural Earth visual background and add a `GDALElevation` layer for local terrain.
@@ -97,7 +106,7 @@ The current full-local earth template declares the local OSM GeoPackage sources.
 ## Real DEM Verification Flow
 
 1. Place Copernicus DEM GLO-30 GeoTIFF tiles in `data/maps/terrain/copernicus_dem_glo30/`.
-2. Run `powershell -ExecutionPolicy Bypass -File scripts/prepare-demo-dem.ps1`.
+2. Run `powershell -ExecutionPolicy Bypass -File scripts/prepare-demo-dem.ps1` or `python scripts/prepare-demo-dem.py`.
 3. Confirm `data/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt` exists.
 4. Build and start VaporView with `-DVAPORVIEW_ENABLE_OSGEARTH=ON`.
 5. Open the 3D Map window and click `地图诊断`.
@@ -109,7 +118,7 @@ For SRTM fallback validation, place SRTM GeoTIFF tiles in `data/maps/terrain/srt
 
 1. Prepare Natural Earth with `powershell -ExecutionPolicy Bypass -File scripts/download-natural-earth-map.ps1`.
 2. Place Copernicus DEM or SRTM GeoTIFF tiles under `data/maps/terrain/`.
-3. Build the DEM VRT with `scripts/prepare-demo-dem.ps1`.
+3. Build the DEM VRT with `scripts/prepare-demo-dem.ps1` or `scripts/prepare-demo-dem.py`.
 4. Place a local open OSM extract under `data/maps/osm/`.
 5. Run `python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --overwrite`.
 6. Build and start VaporView with `-DVAPORVIEW_ENABLE_OSGEARTH=ON`.
