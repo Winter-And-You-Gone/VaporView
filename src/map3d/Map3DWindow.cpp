@@ -190,6 +190,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     connect(resetViewAction, &QAction::triggered, this, &Map3DWindow::resetView);
 
     diagnostics_action_ = toolbar->addAction(QStringLiteral("地图诊断"));
+    diagnostics_action_->setObjectName(QStringLiteral("map3DDiagnosticsAction"));
     connect(diagnostics_action_, &QAction::triggered, this, &Map3DWindow::showMapDiagnostics);
 
     statusBar()->addPermanentWidget(status_label_, 1);

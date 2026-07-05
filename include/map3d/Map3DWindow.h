@@ -31,6 +31,7 @@ public slots:
     void appendSamples(const std::vector<VaporView::Geo::NavSample>& samples);
     void clearTrack();
     void loadSessionDirectory(const QString& sessionDir);
+    void showMapDiagnostics();
 
 private:
     void loadInitialEarthFile();
@@ -40,7 +41,6 @@ private:
     void flyToAircraft();
     void flyToTrack();
     void resetView();
-    void showMapDiagnostics();
     void toggleReplay();
     void stopReplay();
     void onReplayTick();

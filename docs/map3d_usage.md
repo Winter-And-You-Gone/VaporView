@@ -10,6 +10,8 @@ In the VaporView ground GUI, use:
 View / 视图 -> 3D Map / 三维地图
 ```
 
+Use `View / 视图 -> Map Data Diagnostics / 地图数据诊断` to open the 3D Map window and show the map data diagnostics panel directly.
+
 When osgEarth is disabled, the main window does not create the native 3D map module. Rebuild with `-DVAPORVIEW_ENABLE_OSGEARTH=ON` to enable it.
 
 ## Map Modes
@@ -93,7 +95,7 @@ Height reference labels are display hints only. VaporView currently does not com
 
 ## Map Data Diagnostics
 
-Click `地图诊断` to inspect:
+Click `地图诊断`, or use `View / 视图 -> Map Data Diagnostics / 地图数据诊断`, to inspect:
 
 - current map mode
 - active `.earth` file

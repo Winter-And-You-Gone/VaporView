@@ -75,12 +75,14 @@ int main(int argc, char** argv)
     QAction* flyToAircraftAction = actionByName(window, QStringLiteral("map3DFlyToAircraftAction"));
     QAction* flyToTrackAction = actionByName(window, QStringLiteral("map3DFlyToTrackAction"));
     QAction* resetViewAction = actionByName(window, QStringLiteral("map3DResetViewAction"));
+    QAction* diagnosticsAction = actionByName(window, QStringLiteral("map3DDiagnosticsAction"));
     auto* replaySpeedCombo = window.findChild<QComboBox*>(QStringLiteral("map3DReplaySpeedCombo"));
     auto* replaySlider = window.findChild<QSlider*>(QStringLiteral("map3DReplaySlider"));
     require(reloadBestMapAction->isEnabled(), "reload best local map action exists");
     require(flyToAircraftAction->isEnabled(), "fly to aircraft action exists");
     require(flyToTrackAction->isEnabled(), "fly to track action exists");
     require(resetViewAction->isEnabled(), "reset view action exists");
+    require(diagnosticsAction->isEnabled(), "diagnostics action exists");
     require(replaySpeedCombo != nullptr, "replay speed combo exists");
     require(replaySlider != nullptr, "replay slider exists");
     require(!replayAction->isEnabled(), "replay disabled before session load");

@@ -1061,6 +1061,69 @@ void requireTelemetryRightPadding(QWidget *deviceOverviewCard,
     require(rightPadding >= 12, message);
 }
 
+#ifdef VAPORVIEW_HAS_OSGEARTH
+QAction *findActionByText(QWidget *root, const QStringList& expectedTexts)
+{
+    const QList<QAction*> actions = root->findChildren<QAction *>();
+    for (QAction *action : actions)
+    {
+        if (action && expectedTexts.contains(action->text()))
+        {
+            return action;
+        }
+    }
+    return nullptr;
+}
+
+void requireMainWindowMap3DEntries(MainWindow& window)
+{
+    QAction *mapAction = findActionByText(&window,
+                                          {QStringLiteral("三维地图..."),
+                                           QStringLiteral("3D Map...")});
+    QAction *diagnosticsAction = findActionByText(&window,
+                                                  {QStringLiteral("地图数据诊断..."),
+                                                   QStringLiteral("Map Data Diagnostics...")});
+    require(mapAction != nullptr, "3D map action exists in the main window");
+    require(diagnosticsAction != nullptr, "map data diagnostics action exists in the main window");
+
+    QMenu *viewMenu = nullptr;
+    const QList<QMenu*> menus = window.findChildren<QMenu *>();
+    for (QMenu *menu : menus)
+    {
+        if (menu && menu->actions().contains(mapAction) &&
+            menu->actions().contains(diagnosticsAction))
+        {
+            viewMenu = menu;
+            break;
+        }
+    }
+    require(viewMenu != nullptr, "View menu exists for 3D map entries");
+    require(viewMenu->actions().contains(mapAction), "View menu contains the 3D map action");
+    require(viewMenu->actions().contains(diagnosticsAction), "View menu contains the map data diagnostics action");
+
+    bool foundMapTitleButton = false;
+    bool foundDiagnosticsTitleButton = false;
+    const QList<QToolButton*> titleButtons =
+        window.findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
+    for (QToolButton *button : titleButtons)
+    {
+        if (!button)
+        {
+            continue;
+        }
+        const QString toolTip = button->toolTip();
+        foundMapTitleButton = foundMapTitleButton ||
+            toolTip == QStringLiteral("打开三维地图") ||
+            toolTip == QStringLiteral("Open 3D map");
+        foundDiagnosticsTitleButton = foundDiagnosticsTitleButton ||
+            toolTip == QStringLiteral("打开三维地图数据诊断") ||
+            toolTip == QStringLiteral("Open 3D map data diagnostics");
+    }
+    require(foundMapTitleButton, "title bar exposes the 3D map action");
+    require(foundDiagnosticsTitleButton, "title bar exposes the map data diagnostics action");
+}
+#endif
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -1117,6 +1180,9 @@ int main(int argc, char **argv)
     window.resize(1280, 800);
     window.show();
     processEventsFor(500);
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    requireMainWindowMap3DEntries(window);
+#endif
     require(qApp->styleSheet().contains(QStringLiteral("square.svg")) &&
                 qApp->styleSheet().contains(QStringLiteral("square-check-big.svg")) &&
                 !qApp->styleSheet().contains(QStringLiteral("lucide/check.svg")),

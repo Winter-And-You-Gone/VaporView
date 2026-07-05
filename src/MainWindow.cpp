@@ -6214,6 +6214,7 @@ MainWindow::MainWindow(QWidget *parent)
     , session_viewer_action_(nullptr)
 #ifdef VAPORVIEW_HAS_OSGEARTH
     , map3d_action_(nullptr)
+    , map3d_diagnostics_action_(nullptr)
 #endif
     , epsilon_reconfigure_action_(nullptr)
     , epsilon_rtcm_port_action_(nullptr)
@@ -6230,6 +6231,7 @@ MainWindow::MainWindow(QWidget *parent)
     , font_extra_large_action_(nullptr)
     , data_menu_(nullptr)
     , devices_menu_(nullptr)
+    , view_menu_(nullptr)
     , font_menu_(nullptr)
     , language_menu_(nullptr)
     , help_menu_(nullptr)
@@ -10396,9 +10398,18 @@ void MainWindow::setupMenuBar()
     session_viewer_action_ = new QAction(this);
     connect(session_viewer_action_, &QAction::triggered, this, &MainWindow::onOpenSessionViewerClicked);
 
+    view_menu_ = menuBar()->addMenu("");
+    view_menu_->addAction(session_viewer_action_);
+
 #ifdef VAPORVIEW_HAS_OSGEARTH
     map3d_action_ = new QAction(this);
     connect(map3d_action_, &QAction::triggered, this, &MainWindow::onOpenMap3DWindowClicked);
+
+    map3d_diagnostics_action_ = new QAction(this);
+    connect(map3d_diagnostics_action_, &QAction::triggered, this, &MainWindow::onOpenMap3DDiagnosticsClicked);
+
+    view_menu_->addAction(map3d_action_);
+    view_menu_->addAction(map3d_diagnostics_action_);
 #endif
 
     exit_action_ = new QAction(this);
@@ -10567,6 +10578,10 @@ void MainWindow::setupToolBar()
     {
         map3d_action_->setIcon(QIcon(QStringLiteral("resources/lucide/earth.svg")));
     }
+    if (map3d_diagnostics_action_)
+    {
+        map3d_diagnostics_action_->setIcon(createLucideIcon(QStringLiteral("activity"), toolbarColor(AppThemeColor::ToolbarBlue)));
+    }
 #endif
 
     theme_toggle_action_ = new QAction(this);
@@ -10623,6 +10638,7 @@ void MainWindow::setupCustomTitleBar()
     titleLayout->addWidget(createTitleBarActionButton(session_viewer_action_, custom_title_bar_), 0, Qt::AlignVCenter);
 #ifdef VAPORVIEW_HAS_OSGEARTH
     titleLayout->addWidget(createTitleBarActionButton(map3d_action_, custom_title_bar_), 0, Qt::AlignVCenter);
+    titleLayout->addWidget(createTitleBarActionButton(map3d_diagnostics_action_, custom_title_bar_), 0, Qt::AlignVCenter);
 #endif
     addTitleBarSeparator(titleLayout);
     title_language_btn_ = createTitleBarIconButton(QStringLiteral("titleBarButton"), custom_title_bar_);
@@ -13618,12 +13634,19 @@ void MainWindow::setEnglish(bool english)
         epsilon_reconfigure_action_->setText(english ? "Reconfigure EPSILON Output..." : "重新配置EPSILON输出...");
     }
     session_viewer_action_->setText(english ? "Data Viewer..." : "数据查看器...");
+    setNativeMenuTitle(view_menu_, english ? QStringLiteral("&View") : QStringLiteral("视图(&V)"));
 #ifdef VAPORVIEW_HAS_OSGEARTH
     if (map3d_action_)
     {
         map3d_action_->setText(english ? "3D Map..." : "三维地图...");
         map3d_action_->setToolTip(english ? "Open 3D map" : "打开三维地图");
         map3d_action_->setStatusTip(map3d_action_->toolTip());
+    }
+    if (map3d_diagnostics_action_)
+    {
+        map3d_diagnostics_action_->setText(english ? "Map Data Diagnostics..." : "地图数据诊断...");
+        map3d_diagnostics_action_->setToolTip(english ? "Open 3D map data diagnostics" : "打开三维地图数据诊断");
+        map3d_diagnostics_action_->setStatusTip(map3d_diagnostics_action_->toolTip());
     }
 #endif
     exit_action_->setText(english ? "E&xit" : "退出(&X)");
@@ -13955,6 +13978,15 @@ void MainWindow::onOpenMap3DWindowClicked()
     map3d_window_->raise();
     map3d_window_->activateWindow();
 }
+
+void MainWindow::onOpenMap3DDiagnosticsClicked()
+{
+    onOpenMap3DWindowClicked();
+    if (map3d_window_)
+    {
+        map3d_window_->showMapDiagnostics();
+    }
+}
 #else
 void MainWindow::onOpenMap3DWindowClicked()
 {
@@ -13963,6 +13995,11 @@ void MainWindow::onOpenMap3DWindowClicked()
                              is_english_
                                  ? QStringLiteral("3D map module is not enabled. Rebuild with -DVAPORVIEW_ENABLE_OSGEARTH=ON.")
                                  : QStringLiteral("三维地图模块未启用。请使用 -DVAPORVIEW_ENABLE_OSGEARTH=ON 重新构建。"));
+}
+
+void MainWindow::onOpenMap3DDiagnosticsClicked()
+{
+    onOpenMap3DWindowClicked();
 }
 #endif
 
@@ -14071,6 +14108,16 @@ void MainWindow::updateThemedIcons()
     {
         session_viewer_action_->setIcon(createWaveformViewerIcon());
     }
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    if (map3d_action_)
+    {
+        map3d_action_->setIcon(QIcon(QStringLiteral("resources/lucide/earth.svg")));
+    }
+    if (map3d_diagnostics_action_)
+    {
+        map3d_diagnostics_action_->setIcon(createLucideIcon(QStringLiteral("activity"), toolbarColor(AppThemeColor::ToolbarBlue)));
+    }
+#endif
     if (temperature_overview_panel_)
     {
         temperature_overview_panel_->updateThemedIcons();

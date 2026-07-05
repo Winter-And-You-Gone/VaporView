@@ -368,6 +368,7 @@ private slots:
     void onRtkConfigClicked();
     void onOpenSessionViewerClicked();
     void onOpenMap3DWindowClicked();
+    void onOpenMap3DDiagnosticsClicked();
     void onFontScaleTriggered(QAction *action);
     void onCancelConnectClicked();
     void onToggleTheme();
@@ -798,6 +799,7 @@ private:
     QAction *session_viewer_action_;
 #ifdef VAPORVIEW_HAS_OSGEARTH
     QAction *map3d_action_;
+    QAction *map3d_diagnostics_action_;
 #endif
     QAction *epsilon_reconfigure_action_;
     QAction *epsilon_rtcm_port_action_;
@@ -814,6 +816,7 @@ private:
     QAction *font_extra_large_action_;
     QMenu *data_menu_;
     QMenu *devices_menu_;
+    QMenu *view_menu_;
     QMenu *font_menu_;
     QMenu *language_menu_;
     QMenu *help_menu_;
