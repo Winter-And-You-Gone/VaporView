@@ -2,10 +2,10 @@
 
 #include "geo/GeoTypes.h"
 
+#include <osg/MatrixTransform>
 #include <osg/ref_ptr>
 
 namespace osg {
-class MatrixTransform;
 class Node;
 }
 

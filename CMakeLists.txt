@@ -13,6 +13,11 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 option(BUILD_PYTHON_BINDINGS "Build Python bindings with pybind11" OFF)
 option(VAPORVIEW_ENABLE_OSGEARTH "Enable osgEarth 3D local map viewer" OFF)
+set(VAPORVIEW_LOCAL_VCPKG_INSTALLED_DIR
+    "${CMAKE_SOURCE_DIR}/.local_deps/vcpkg_installed"
+    CACHE PATH
+    "Project-local vcpkg installed directory used for optional native dependencies"
+)
 
 find_package(Qt6 COMPONENTS Core Widgets SerialPort Network Svg Concurrent REQUIRED)
 set(QT_LIBRARIES Qt6::Core Qt6::Widgets Qt6::SerialPort Qt6::Network Qt6::Svg Qt6::Concurrent)
@@ -168,6 +173,9 @@ target_link_libraries(vaporview_geo_core PUBLIC
 
 if(VAPORVIEW_ENABLE_OSGEARTH)
     find_package(Qt6 COMPONENTS OpenGLWidgets REQUIRED)
+    if(EXISTS "${VAPORVIEW_LOCAL_VCPKG_INSTALLED_DIR}/x64-windows")
+        list(PREPEND CMAKE_PREFIX_PATH "${VAPORVIEW_LOCAL_VCPKG_INSTALLED_DIR}/x64-windows")
+    endif()
     find_package(osgEarth CONFIG REQUIRED)
     find_package(OpenSceneGraph REQUIRED COMPONENTS osg osgDB osgGA osgViewer osgUtil)
 
@@ -218,6 +226,49 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
             ${OSGEARTH_TARGET}
             ${OPENSCENEGRAPH_LIBRARIES}
     )
+
+    if(WIN32)
+        set(VAPORVIEW_OSGEARTH_RUNTIME_BIN_DIR
+            "${VAPORVIEW_LOCAL_VCPKG_INSTALLED_DIR}/x64-windows/bin"
+            CACHE PATH
+            "Runtime DLL directory for the optional project-local osgEarth install"
+        )
+        set(VAPORVIEW_OSGEARTH_PLUGIN_DIR
+            "${VAPORVIEW_LOCAL_VCPKG_INSTALLED_DIR}/x64-windows/plugins"
+            CACHE PATH
+            "OSG plugin directory for the optional project-local osgEarth install"
+        )
+
+        function(vaporview_stage_osgearth_runtime target_name)
+            if(EXISTS "${VAPORVIEW_OSGEARTH_RUNTIME_BIN_DIR}")
+                add_custom_command(TARGET ${target_name} POST_BUILD
+                    COMMAND ${CMAKE_COMMAND} -E copy_directory
+                        "${VAPORVIEW_OSGEARTH_RUNTIME_BIN_DIR}"
+                        "$<TARGET_FILE_DIR:${target_name}>"
+                    COMMENT "Copying project-local osgEarth runtime DLLs for ${target_name}"
+                )
+            endif()
+
+            if(EXISTS "${VAPORVIEW_OSGEARTH_PLUGIN_DIR}")
+                file(GLOB vaporview_osg_plugin_dirs
+                    LIST_DIRECTORIES true
+                    "${VAPORVIEW_OSGEARTH_PLUGIN_DIR}/osgPlugins-*"
+                )
+                foreach(vaporview_osg_plugin_dir IN LISTS vaporview_osg_plugin_dirs)
+                    get_filename_component(vaporview_osg_plugin_name
+                        "${vaporview_osg_plugin_dir}"
+                        NAME
+                    )
+                    add_custom_command(TARGET ${target_name} POST_BUILD
+                        COMMAND ${CMAKE_COMMAND} -E copy_directory
+                            "${vaporview_osg_plugin_dir}"
+                            "$<TARGET_FILE_DIR:${target_name}>/${vaporview_osg_plugin_name}"
+                        COMMENT "Copying project-local OSG plugins for ${target_name}"
+                    )
+                endforeach()
+            endif()
+        endfunction()
+    endif()
 endif()
 
 set(SKY_CORE_SOURCES
@@ -487,6 +538,9 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
     target_compile_definitions(VaporView PRIVATE VAPORVIEW_HAS_OSGEARTH=1)
     target_link_libraries(vaporview_main_window PUBLIC vaporview_map3d_osgearth)
     target_compile_definitions(vaporview_main_window PUBLIC VAPORVIEW_HAS_OSGEARTH=1)
+    if(WIN32)
+        vaporview_stage_osgearth_runtime(VaporView)
+    endif()
 endif()
 
 if(WIN32)
@@ -725,6 +779,9 @@ if(BUILD_TESTING)
     )
     target_link_libraries(main_window_layout_test PRIVATE vaporview_main_window)
     add_dependencies(main_window_layout_test VaporViewRuntimeResources)
+    if(VAPORVIEW_ENABLE_OSGEARTH AND WIN32)
+        vaporview_stage_osgearth_runtime(main_window_layout_test)
+    endif()
     add_custom_command(TARGET main_window_layout_test POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:main_window_layout_test>/resources
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -754,6 +811,9 @@ if(BUILD_TESTING)
         ${CMAKE_SOURCE_DIR}/src
     )
     target_link_libraries(session_viewer_theme_test PRIVATE vaporview_main_window)
+    if(VAPORVIEW_ENABLE_OSGEARTH AND WIN32)
+        vaporview_stage_osgearth_runtime(session_viewer_theme_test)
+    endif()
     add_test(NAME session_viewer_theme_test COMMAND session_viewer_theme_test)
 
     add_executable(vaporview_startup_test

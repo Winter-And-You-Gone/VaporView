@@ -4,11 +4,12 @@
 
 #include <QOpenGLWidget>
 #include <QTimer>
+#include <osg/Group>
+#include <osg/ref_ptr>
 #include <memory>
 #include <vector>
 
 namespace osg {
-class Group;
 }
 
 namespace osgViewer {

@@ -2,11 +2,11 @@
 
 #include "geo/GeoTypes.h"
 
+#include <osg/Geode>
 #include <osg/ref_ptr>
 #include <vector>
 
 namespace osg {
-class Geode;
 class Node;
 }
 
