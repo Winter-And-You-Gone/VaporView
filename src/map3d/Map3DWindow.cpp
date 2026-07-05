@@ -658,6 +658,11 @@ QString Map3DWindow::diagnosticsText() const
                  .arg(diagnostics.osmVectorAvailable ? QStringLiteral("available") : QStringLiteral("missing"))
                  .arg(diagnostics.osmLayerCount);
     lines << QStringLiteral("  Selected OSM: %1").arg(selectedOsmLabel(diagnostics));
+    lines << QStringLiteral("  Optional local imagery: %1 (%2/3 VRTs found)")
+                 .arg(diagnostics.localImageryAvailable ? QStringLiteral("available") : QStringLiteral("not configured"))
+                 .arg(diagnostics.localImageryLayerCount);
+    lines << QStringLiteral("  Optional local 3D Tiles: %1")
+                 .arg(diagnostics.local3DTilesAvailable ? QStringLiteral("available") : QStringLiteral("not configured"));
     lines << QStringLiteral("Current working directory: %1").arg(diagnostics.currentWorkingDirectory.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.currentWorkingDirectory);
     lines << QStringLiteral("Project root: %1").arg(diagnostics.projectRoot.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.projectRoot);
     lines << QStringLiteral("Maps root: %1").arg(diagnostics.mapsRoot.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.mapsRoot);
@@ -671,6 +676,10 @@ QString Map3DWindow::diagnosticsText() const
     lines << QStringLiteral("OSM water: %1").arg(diagnostics.osmWaterPath);
     lines << QStringLiteral("OSM buildings: %1").arg(diagnostics.osmBuildingsPath);
     lines << QStringLiteral("OSM places: %1").arg(diagnostics.osmPlacesPath);
+    lines << QStringLiteral("Sentinel-2 imagery VRT: %1").arg(diagnostics.sentinel2ImageryVrtPath);
+    lines << QStringLiteral("Landsat imagery VRT: %1").arg(diagnostics.landsatImageryVrtPath);
+    lines << QStringLiteral("OpenAerialMap imagery VRT: %1").arg(diagnostics.openAerialMapImageryVrtPath);
+    lines << QStringLiteral("Local 3D Tiles tileset: %1").arg(diagnostics.local3DTilesTilesetPath);
     lines << QStringLiteral("OSG plugin path: %1").arg(diagnostics.osgPluginPath.isEmpty() ? QStringLiteral("<not found>") : diagnostics.osgPluginPath);
     lines << QStringLiteral("OSG_LIBRARY_PATH: %1").arg(diagnostics.osgLibraryPath.isEmpty() ? QStringLiteral("<not set>") : diagnostics.osgLibraryPath);
     lines << QStringLiteral("OSGEARTH_NOTIFY_LEVEL: %1").arg(diagnostics.osgEarthNotifyLevel.isEmpty() ? QStringLiteral("<not set>") : diagnostics.osgEarthNotifyLevel);

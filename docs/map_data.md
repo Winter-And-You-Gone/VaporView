@@ -120,6 +120,38 @@ The current full-local earth template renders local OSM context offline:
 
 The first version shows building footprints only. It does not download online OSM tiles, cache web tiles, or extrude buildings into true 3D meshes yet.
 
+## Optional Local High-Resolution Imagery
+
+Optional local imagery is reserved under `data/maps/imagery/`. VaporView does not download imagery and does not use commercial online imagery services by default.
+
+Expected VRT entry points:
+
+```text
+data/maps/imagery/sentinel2/sentinel2.vrt
+data/maps/imagery/landsat/landsat.vrt
+data/maps/imagery/openaerialmap/openaerialmap.vrt
+```
+
+Build each VRT from local GeoTIFF files with GDAL, for example:
+
+```powershell
+gdalbuildvrt data/maps/imagery/sentinel2/sentinel2.vrt data/maps/imagery/sentinel2/*.tif
+```
+
+`MapDataManager` scans these VRTs and shows them in the 3D Map diagnostics. The current built-in `.earth` templates do not automatically load these imagery layers yet; the paths are a stable local contract for future high-resolution offline imagery templates.
+
+## Optional Local 3D Tiles
+
+Local 3D Tiles are reserved under `data/maps/tiles3d/` for future offline 3D content loading. This path is local-only and does not use Cesium ion.
+
+Expected entry point:
+
+```text
+data/maps/tiles3d/local/tileset.json
+```
+
+Put the complete local 3D Tiles dataset under `data/maps/tiles3d/local/`. `MapDataManager` scans the `tileset.json` path and reports it in diagnostics. The current renderer does not load 3D Tiles yet; this only establishes the local data layout and diagnostics needed for a later osgEarth/OSG integration step.
+
 ## Real DEM Verification Flow
 
 1. Place Copernicus DEM GLO-30 GeoTIFF tiles in `data/maps/terrain/copernicus_dem_glo30/`.
@@ -143,6 +175,15 @@ For SRTM fallback validation, place SRTM GeoTIFF tiles in `data/maps/terrain/srt
 8. Confirm the mode is `Full local map` and the loaded earth file is `vaporview_full_local.earth`.
 9. Zoom into the OSM extract area and confirm local water, roads, building footprints, and place labels are visible.
 
+## Optional Imagery And 3D Tiles Diagnostics Flow
+
+1. Place local GeoTIFF imagery under one of `data/maps/imagery/sentinel2/`, `data/maps/imagery/landsat/`, or `data/maps/imagery/openaerialmap/`.
+2. Build the matching VRT with `gdalbuildvrt`.
+3. Optionally place a local 3D Tiles dataset under `data/maps/tiles3d/local/` with `tileset.json` at the root.
+4. Build and start VaporView with `-DVAPORVIEW_ENABLE_OSGEARTH=ON`.
+5. Open the 3D Map window and click `地图诊断`.
+6. Confirm optional local imagery and optional local 3D Tiles availability are reported. These optional files should not change the selected base map mode until a future template explicitly loads them.
+
 ## Git Tracking
 
-The `data/` directory ignores large downloaded rasters, DEM tiles, and archives. Git tracks only small map templates, VRT metadata, README files, and scripts needed to recreate the local map setup.
+The `data/` directory ignores large downloaded rasters, DEM tiles, imagery, OSM extracts, GeoPackages, 3D Tiles payloads, and archives. Git tracks only small map templates, VRT metadata, README files, and scripts needed to recreate the local map setup.

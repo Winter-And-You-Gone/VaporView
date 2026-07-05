@@ -65,6 +65,27 @@ int main(int argc, char** argv)
     require(selection.diagnostics.naturalEarthAvailable, "NaturalEarth selection should mark Natural Earth available");
     require(!selection.diagnostics.selectedDemLayerAvailable, "NaturalEarth selection should not select a DEM layer");
     require(!selection.diagnostics.osmVectorAvailable, "NaturalEarth selection should not mark OSM complete");
+    require(!selection.diagnostics.localImageryAvailable, "optional imagery should be absent by default");
+    require(!selection.diagnostics.local3DTilesAvailable, "optional 3D Tiles should be absent by default");
+    require(!selection.diagnostics.missingFiles.contains(selection.diagnostics.sentinel2ImageryVrtPath),
+            "missing optional Sentinel-2 imagery should not be treated as required");
+    require(!selection.diagnostics.missingFiles.contains(selection.diagnostics.local3DTilesTilesetPath),
+            "missing optional 3D Tiles should not be treated as required");
+
+    touch(root, QStringLiteral("data/maps/imagery/sentinel2/sentinel2.vrt"));
+    touch(root, QStringLiteral("data/maps/imagery/landsat/landsat.vrt"));
+    touch(root, QStringLiteral("data/maps/imagery/openaerialmap/openaerialmap.vrt"));
+    touch(root, QStringLiteral("data/maps/tiles3d/local/tileset.json"));
+    selection = select(root);
+    require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarth,
+            "optional imagery and 3D Tiles should not change base map selection");
+    require(selection.diagnostics.localImageryAvailable, "optional imagery VRTs should be detected");
+    require(selection.diagnostics.localImageryLayerCount == 3, "all three optional imagery VRTs should be counted");
+    require(selection.diagnostics.local3DTilesAvailable, "optional local 3D Tiles tileset should be detected");
+    require(selection.diagnostics.foundFiles.contains(selection.diagnostics.sentinel2ImageryVrtPath),
+            "optional Sentinel-2 VRT should be listed as found");
+    require(selection.diagnostics.foundFiles.contains(selection.diagnostics.local3DTilesTilesetPath),
+            "optional 3D Tiles tileset should be listed as found");
 
     touch(root, QStringLiteral("data/maps/vaporview_with_srtm.earth"));
     touch(root, QStringLiteral("data/maps/terrain/srtm/srtm.vrt"));

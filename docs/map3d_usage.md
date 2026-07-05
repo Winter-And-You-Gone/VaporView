@@ -110,6 +110,8 @@ Click `地图诊断`, or use `View / 视图 -> Map Data Diagnostics / 地图数�
 - Copernicus DEM VRT
 - SRTM VRT
 - OSM roads/water/buildings/places GeoPackages
+- optional Sentinel-2/Landsat/OpenAerialMap imagery VRTs
+- optional local 3D Tiles `tileset.json`
 - OSG plugin path
 - `OSG_LIBRARY_PATH`
 - `OSGEARTH_NOTIFY_LEVEL`
@@ -154,3 +156,5 @@ python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --o
 ```
 
 The user is responsible for placing Copernicus DEM, SRTM, OSM, Sentinel-2, Landsat, or OpenAerialMap files under `data/maps`. VaporView should not download commercial or restricted data sources.
+
+Optional local 3D Tiles can be placed under `data/maps/tiles3d/local/tileset.json`. The diagnostics panel detects that path, but the current renderer does not load 3D Tiles yet.

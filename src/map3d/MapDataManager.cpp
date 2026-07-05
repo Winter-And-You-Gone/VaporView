@@ -23,6 +23,10 @@ constexpr auto kOsmRoadsRelative = "data/maps/osm/roads.gpkg";
 constexpr auto kOsmWaterRelative = "data/maps/osm/water.gpkg";
 constexpr auto kOsmBuildingsRelative = "data/maps/osm/buildings.gpkg";
 constexpr auto kOsmPlacesRelative = "data/maps/osm/places.gpkg";
+constexpr auto kSentinel2ImageryVrtRelative = "data/maps/imagery/sentinel2/sentinel2.vrt";
+constexpr auto kLandsatImageryVrtRelative = "data/maps/imagery/landsat/landsat.vrt";
+constexpr auto kOpenAerialMapImageryVrtRelative = "data/maps/imagery/openaerialmap/openaerialmap.vrt";
+constexpr auto kLocal3DTilesTilesetRelative = "data/maps/tiles3d/local/tileset.json";
 
 QString absolutePath(const QString& root, const char* relative)
 {
@@ -62,6 +66,14 @@ void recordFile(MapDataDiagnostics& diagnostics, const QString& path)
     }
 }
 
+void recordOptionalFile(MapDataDiagnostics& diagnostics, const QString& path)
+{
+    if (isFile(path))
+    {
+        diagnostics.foundFiles.push_back(path);
+    }
+}
+
 bool hasCompleteOsmSet(const MapDataDiagnostics& diagnostics)
 {
     return isFile(diagnostics.osmRoadsPath)
@@ -96,6 +108,24 @@ int osmLayerCount(const MapDataDiagnostics& diagnostics)
         ++count;
     }
     if (isFile(diagnostics.osmPlacesPath))
+    {
+        ++count;
+    }
+    return count;
+}
+
+int localImageryLayerCount(const MapDataDiagnostics& diagnostics)
+{
+    int count = 0;
+    if (isFile(diagnostics.sentinel2ImageryVrtPath))
+    {
+        ++count;
+    }
+    if (isFile(diagnostics.landsatImageryVrtPath))
+    {
+        ++count;
+    }
+    if (isFile(diagnostics.openAerialMapImageryVrtPath))
     {
         ++count;
     }
@@ -243,6 +273,10 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     diagnostics.osmWaterPath = absolutePath(root, kOsmWaterRelative);
     diagnostics.osmBuildingsPath = absolutePath(root, kOsmBuildingsRelative);
     diagnostics.osmPlacesPath = absolutePath(root, kOsmPlacesRelative);
+    diagnostics.sentinel2ImageryVrtPath = absolutePath(root, kSentinel2ImageryVrtRelative);
+    diagnostics.landsatImageryVrtPath = absolutePath(root, kLandsatImageryVrtRelative);
+    diagnostics.openAerialMapImageryVrtPath = absolutePath(root, kOpenAerialMapImageryVrtRelative);
+    diagnostics.local3DTilesTilesetPath = absolutePath(root, kLocal3DTilesTilesetRelative);
 
     const QStringList roots = candidateRoots();
     const QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
@@ -294,12 +328,30 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     recordFile(diagnostics, diagnostics.osmWaterPath);
     recordFile(diagnostics, diagnostics.osmBuildingsPath);
     recordFile(diagnostics, diagnostics.osmPlacesPath);
+    recordOptionalFile(diagnostics, diagnostics.sentinel2ImageryVrtPath);
+    recordOptionalFile(diagnostics, diagnostics.landsatImageryVrtPath);
+    recordOptionalFile(diagnostics, diagnostics.openAerialMapImageryVrtPath);
+    recordOptionalFile(diagnostics, diagnostics.local3DTilesTilesetPath);
 
     diagnostics.naturalEarthAvailable = hasNaturalEarth(diagnostics);
     diagnostics.copernicusDemAvailable = isFile(diagnostics.copernicusDemVrtPath);
     diagnostics.srtmDemAvailable = isFile(diagnostics.srtmDemVrtPath);
     diagnostics.osmLayerCount = osmLayerCount(diagnostics);
     diagnostics.osmVectorAvailable = diagnostics.osmLayerCount == 4;
+    diagnostics.localImageryLayerCount = localImageryLayerCount(diagnostics);
+    diagnostics.localImageryAvailable = diagnostics.localImageryLayerCount > 0;
+    diagnostics.local3DTilesAvailable = isFile(diagnostics.local3DTilesTilesetPath);
+
+    if (diagnostics.localImageryAvailable)
+    {
+        diagnostics.messages.push_back(
+            QStringLiteral("Optional local high-resolution imagery VRTs detected for future map templates."));
+    }
+    if (diagnostics.local3DTilesAvailable)
+    {
+        diagnostics.messages.push_back(
+            QStringLiteral("Optional local 3D Tiles tileset detected for future 3D content loading."));
+    }
 
     if (isFile(fullLocalEarthPath)
         && diagnostics.naturalEarthAvailable

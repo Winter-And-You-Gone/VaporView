@@ -28,6 +28,10 @@ struct MapDataDiagnostics {
     QString osmWaterPath;
     QString osmBuildingsPath;
     QString osmPlacesPath;
+    QString sentinel2ImageryVrtPath;
+    QString landsatImageryVrtPath;
+    QString openAerialMapImageryVrtPath;
+    QString local3DTilesTilesetPath;
     QString osgPluginPath;
     QString gdalDataPath;
     QString projDataPath;
@@ -37,11 +41,14 @@ struct MapDataDiagnostics {
     bool copernicusDemAvailable = false;
     bool srtmDemAvailable = false;
     bool osmVectorAvailable = false;
+    bool localImageryAvailable = false;
+    bool local3DTilesAvailable = false;
     bool selectedDemLayerAvailable = false;
     bool selectedOsmLayersAvailable = false;
     QString selectedElevationSource;
     int osmLayerCount = 0;
     int selectedOsmLayerCount = 0;
+    int localImageryLayerCount = 0;
     QStringList missingFiles;
     QStringList foundFiles;
     QStringList warnings;
