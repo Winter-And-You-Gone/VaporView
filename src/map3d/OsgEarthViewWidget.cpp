@@ -213,7 +213,7 @@ osg::Node* createTexturedEarthNode(const QString& texturePath)
                                     sinLat);
             vertices->push_back(normal * kEarthRadiusM);
             normals->push_back(normal);
-            texCoords->push_back(osg::Vec2(static_cast<float>(u), static_cast<float>(v)));
+            texCoords->push_back(osg::Vec2(static_cast<float>(1.0 - u), static_cast<float>(v)));
         }
     }
 
