@@ -74,10 +74,11 @@ The Copernicus DEM-enabled template is `data/maps/vaporview_with_dem.earth`. The
 
 VaporView automatic map selection order:
 
-1. `vaporview_with_dem.earth` when Natural Earth and `data/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt` exist.
-2. `vaporview_with_srtm.earth` when Natural Earth and `data/maps/terrain/srtm/srtm.vrt` exist.
-3. `vaporview_default.earth` when Natural Earth exists but no DEM VRT exists.
-4. Local grid only when no complete local Natural Earth dataset exists.
+1. `vaporview_full_local.earth` when Natural Earth, one DEM VRT, and all required local OSM GeoPackages exist.
+2. `vaporview_with_dem.earth` when Natural Earth and `data/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt` exist.
+3. `vaporview_with_srtm.earth` when Natural Earth and `data/maps/terrain/srtm/srtm.vrt` exist.
+4. `vaporview_default.earth` when Natural Earth exists but no DEM VRT exists.
+5. Local grid only when no complete local Natural Earth dataset exists.
 
 If no DEM VRT exists, the 3D map still uses Natural Earth plus the local grid fallback.
 
@@ -101,7 +102,7 @@ Prepare those files from a local `.osm.pbf` or `.osm` extract with GDAL/OGR:
 python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --overwrite
 ```
 
-The helper does not download data. It runs `ogr2ogr` locally and writes four GeoPackage files. `data/maps/vaporview_full_local.earth` remains available for manual loading from the 3D Map toolbar, but automatic startup selection keeps the DEM priority order above: Copernicus DEM, then SRTM, then Natural Earth, then local grid only.
+The helper does not download data. It runs `ogr2ogr` locally and writes four GeoPackage files. Once Natural Earth, one DEM VRT, and all four OSM GeoPackages exist, `MapDataManager` selects `FullLocalMap` and loads `data/maps/vaporview_full_local.earth`.
 
 The current full-local earth template declares the local OSM GeoPackage sources. Detailed OSM vector styling is intentionally a later step after the local data pipeline is stable.
 
@@ -125,7 +126,7 @@ For SRTM fallback validation, place SRTM GeoTIFF tiles in `data/maps/terrain/srt
 5. Run `python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --overwrite`.
 6. Build and start VaporView with `-DVAPORVIEW_ENABLE_OSGEARTH=ON`.
 7. Open the 3D Map window and click `地图诊断`.
-8. Use `加载 Earth 文件` to open `vaporview_full_local.earth` manually while OSM vector styling is still being expanded.
+8. Confirm the mode is `Full local map` and the loaded earth file is `vaporview_full_local.earth`.
 
 ## Git Tracking
 

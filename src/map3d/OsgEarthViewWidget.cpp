@@ -4,6 +4,7 @@
 #include "map3d/Trajectory3DLayer.h"
 
 #include <osg/Camera>
+#include <osg/BoundingSphere>
 #include <osg/Geometry>
 #include <osg/Geode>
 #include <osg/Group>
@@ -501,6 +502,48 @@ void OsgEarthViewWidget::setMaxVisibleSamples(int maxVisibleSamples)
     update();
 }
 
+bool OsgEarthViewWidget::flyToAircraft()
+{
+    if (raw_samples_.empty())
+    {
+        return false;
+    }
+    initializeSceneIfNeeded();
+    setLookAt(samplePosition(toDisplaySample(raw_samples_.back())), 600.0);
+    update();
+    return true;
+}
+
+bool OsgEarthViewWidget::flyToTrack()
+{
+    if (raw_samples_.empty())
+    {
+        return false;
+    }
+    initializeSceneIfNeeded();
+
+    osg::BoundingSphere bounds;
+    for (const VaporView::Geo::NavSample& sample : raw_samples_)
+    {
+        bounds.expandBy(samplePosition(toDisplaySample(sample)));
+    }
+    if (!bounds.valid())
+    {
+        return false;
+    }
+
+    setLookAt(bounds.center(), std::max(300.0, static_cast<double>(bounds.radius()) * 3.0));
+    update();
+    return true;
+}
+
+void OsgEarthViewWidget::resetView()
+{
+    initializeSceneIfNeeded();
+    setInitialEarthView();
+    update();
+}
+
 int OsgEarthViewWidget::sampleCount() const
 {
     return trajectory_layer_ ? trajectory_layer_->sampleCount() : 0;
@@ -775,6 +818,37 @@ void OsgEarthViewWidget::setInitialEarthView()
     {
         manipulator->updateCamera(*viewer_->getCamera());
     }
+}
+
+void OsgEarthViewWidget::setLookAt(const osg::Vec3d& center, double distanceM)
+{
+    if (!viewer_ || !viewer_->getCamera())
+    {
+        return;
+    }
+
+    const double safeDistance = std::max(50.0, distanceM);
+    if (earth_node_ && center.length2() > 1.0)
+    {
+        const osg::Vec3d up = center;
+        osg::Vec3d upUnit = up;
+        upUnit.normalize();
+        osg::Vec3d east(-upUnit.y(), upUnit.x(), 0.0);
+        if (east.length2() < 1.0e-9)
+        {
+            east.set(1.0, 0.0, 0.0);
+        }
+        east.normalize();
+        const osg::Vec3d north = upUnit ^ east;
+        const osg::Vec3d eye = center - north * safeDistance + upUnit * (safeDistance * 0.45);
+        viewer_->getCamera()->setViewMatrixAsLookAt(eye, center, upUnit);
+        return;
+    }
+
+    const osg::Vec3d eye(center.x() - safeDistance,
+                         center.y() - safeDistance,
+                         center.z() + safeDistance * 0.65);
+    viewer_->getCamera()->setViewMatrixAsLookAt(eye, center, osg::Vec3d(0.0, 0.0, 1.0));
 }
 
 void OsgEarthViewWidget::rebuildDisplayTrack()

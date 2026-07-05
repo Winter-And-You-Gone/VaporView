@@ -82,7 +82,7 @@ int main(int argc, char** argv)
     touch(root, QStringLiteral("data/maps/osm/buildings.gpkg"));
     touch(root, QStringLiteral("data/maps/osm/places.gpkg"));
     selection = select(root);
-    require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarthWithCopernicusDem, "Copernicus DEM should remain the automatic top priority");
+    require(selection.mode == VaporView::Map3D::MapDataMode::FullLocalMap, "complete local data should select full local map");
     require(selection.diagnostics.foundFiles.contains(selection.earthFile), "selected earth file should be listed as found");
     require(selection.diagnostics.foundFiles.contains(selection.diagnostics.naturalEarthVrtPath), "Natural Earth VRT should be listed as found");
 

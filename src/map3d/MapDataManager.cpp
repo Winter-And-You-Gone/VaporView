@@ -75,6 +75,11 @@ bool hasNaturalEarth(const MapDataDiagnostics& diagnostics)
     return isFile(diagnostics.naturalEarthVrtPath) && isFile(diagnostics.naturalEarthRasterPath);
 }
 
+bool hasAnyDem(const MapDataDiagnostics& diagnostics)
+{
+    return isFile(diagnostics.copernicusDemVrtPath) || isFile(diagnostics.srtmDemVrtPath);
+}
+
 void setEarthFile(MapDataSelection& selection, const QString& path)
 {
     const QString absolute = QFileInfo(path).absoluteFilePath();
@@ -254,6 +259,19 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     recordFile(diagnostics, diagnostics.osmWaterPath);
     recordFile(diagnostics, diagnostics.osmBuildingsPath);
     recordFile(diagnostics, diagnostics.osmPlacesPath);
+
+    if (isFile(fullLocalEarthPath)
+        && hasNaturalEarth(diagnostics)
+        && hasAnyDem(diagnostics)
+        && hasCompleteOsmSet(diagnostics))
+    {
+        selection.mode = MapDataMode::FullLocalMap;
+        selection.description = QStringLiteral("Natural Earth background, local DEM, and local OSM vector GeoPackages.");
+        setEarthFile(selection, fullLocalEarthPath);
+        diagnostics.messages.push_back(QStringLiteral("Selected full local map with offline OSM vector layers."));
+        finalizeSelection(selection);
+        return selection;
+    }
 
     if (isFile(copernicusEarthPath)
         && hasNaturalEarth(diagnostics)

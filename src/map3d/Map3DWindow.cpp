@@ -146,6 +146,22 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     QAction* loadEarthAction = toolbar->addAction(QStringLiteral("加载 Earth 文件"));
     connect(loadEarthAction, &QAction::triggered, this, &Map3DWindow::openEarthFile);
 
+    QAction* reloadBestMapAction = toolbar->addAction(QStringLiteral("重载最佳本地地图"));
+    reloadBestMapAction->setObjectName(QStringLiteral("map3DReloadBestMapAction"));
+    connect(reloadBestMapAction, &QAction::triggered, this, &Map3DWindow::reloadBestLocalMap);
+
+    QAction* flyToAircraftAction = toolbar->addAction(QStringLiteral("飞到飞机"));
+    flyToAircraftAction->setObjectName(QStringLiteral("map3DFlyToAircraftAction"));
+    connect(flyToAircraftAction, &QAction::triggered, this, &Map3DWindow::flyToAircraft);
+
+    QAction* flyToTrackAction = toolbar->addAction(QStringLiteral("飞到轨迹"));
+    flyToTrackAction->setObjectName(QStringLiteral("map3DFlyToTrackAction"));
+    connect(flyToTrackAction, &QAction::triggered, this, &Map3DWindow::flyToTrack);
+
+    QAction* resetViewAction = toolbar->addAction(QStringLiteral("重置视角"));
+    resetViewAction->setObjectName(QStringLiteral("map3DResetViewAction"));
+    connect(resetViewAction, &QAction::triggered, this, &Map3DWindow::resetView);
+
     diagnostics_action_ = toolbar->addAction(QStringLiteral("地图诊断"));
     connect(diagnostics_action_, &QAction::triggered, this, &Map3DWindow::showMapDiagnostics);
 
@@ -338,6 +354,58 @@ void Map3DWindow::openEarthFile()
     setMapSelection(selection);
     updateStatus(nullptr);
     statusBar()->showMessage(QStringLiteral("Loaded earth file: %1").arg(file), 5000);
+}
+
+void Map3DWindow::reloadBestLocalMap()
+{
+    const MapDataSelection selection = map_data_manager_.selectBestAvailableMap();
+    if (!QFileInfo(selection.earthFile).isFile())
+    {
+        setMapSelection(selection);
+        updateStatus(nullptr);
+        statusBar()->showMessage(QStringLiteral("未找到完整本地地图数据，保持本地网格显示。"), 8000);
+        return;
+    }
+
+    const bool loaded = view_ ? view_->loadEarthFile(selection.earthFile) : false;
+    if (!loaded && view_)
+    {
+        setMapSelection(selection);
+        updateStatus(nullptr);
+        statusBar()->showMessage(QStringLiteral("重载最佳本地地图失败: %1").arg(selection.earthFile), 8000);
+        return;
+    }
+
+    setMapSelection(selection);
+    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    settings.setValue(QStringLiteral("lastEarthFile"), selection.earthFile);
+    updateStatus(nullptr);
+    statusBar()->showMessage(QStringLiteral("已重载最佳本地地图: %1").arg(selection.earthFile), 5000);
+}
+
+void Map3DWindow::flyToAircraft()
+{
+    const bool ok = view_ ? view_->flyToAircraft() : headless_sample_count_ > 0;
+    statusBar()->showMessage(ok ? QStringLiteral("已定位到飞机。")
+                                : QStringLiteral("暂无飞机位置可定位。"),
+                             3000);
+}
+
+void Map3DWindow::flyToTrack()
+{
+    const bool ok = view_ ? view_->flyToTrack() : headless_sample_count_ > 0;
+    statusBar()->showMessage(ok ? QStringLiteral("已定位到完整轨迹。")
+                                : QStringLiteral("暂无轨迹可定位。"),
+                             3000);
+}
+
+void Map3DWindow::resetView()
+{
+    if (view_)
+    {
+        view_->resetView();
+    }
+    statusBar()->showMessage(QStringLiteral("视角已重置。"), 3000);
 }
 
 void Map3DWindow::showMapDiagnostics()

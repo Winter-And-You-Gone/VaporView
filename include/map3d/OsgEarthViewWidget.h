@@ -49,6 +49,9 @@ public:
     bool loadEarthFile(const QString& earthPath);
     void setFollowAircraft(bool enabled);
     void setMaxVisibleSamples(int maxVisibleSamples);
+    bool flyToAircraft();
+    bool flyToTrack();
+    void resetView();
     void shutdown();
 
     int sampleCount() const;
@@ -76,6 +79,7 @@ private:
     VaporView::Geo::NavSample toDisplaySample(const VaporView::Geo::NavSample& sample);
     VaporView::Geo::NavSample toLocalSample(const VaporView::Geo::NavSample& sample);
     VaporView::Geo::NavSample toWorldSample(const VaporView::Geo::NavSample& sample) const;
+    void setLookAt(const osg::Vec3d& center, double distanceM);
 
     QTimer frameTimer_;
     bool initialized_ = false;

@@ -36,6 +36,10 @@ private:
     void loadInitialEarthFile();
     void openSessionDirectory();
     void openEarthFile();
+    void reloadBestLocalMap();
+    void flyToAircraft();
+    void flyToTrack();
+    void resetView();
     void showMapDiagnostics();
     void toggleReplay();
     void stopReplay();

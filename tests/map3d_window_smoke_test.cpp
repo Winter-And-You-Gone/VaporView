@@ -71,8 +71,16 @@ int main(int argc, char** argv)
     require(label->text().contains(QStringLiteral("Points: 0")), "initial status has zero points");
     QAction* replayAction = actionByName(window, QStringLiteral("map3DReplayAction"));
     QAction* replayStopAction = actionByName(window, QStringLiteral("map3DReplayStopAction"));
+    QAction* reloadBestMapAction = actionByName(window, QStringLiteral("map3DReloadBestMapAction"));
+    QAction* flyToAircraftAction = actionByName(window, QStringLiteral("map3DFlyToAircraftAction"));
+    QAction* flyToTrackAction = actionByName(window, QStringLiteral("map3DFlyToTrackAction"));
+    QAction* resetViewAction = actionByName(window, QStringLiteral("map3DResetViewAction"));
     auto* replaySpeedCombo = window.findChild<QComboBox*>(QStringLiteral("map3DReplaySpeedCombo"));
     auto* replaySlider = window.findChild<QSlider*>(QStringLiteral("map3DReplaySlider"));
+    require(reloadBestMapAction->isEnabled(), "reload best local map action exists");
+    require(flyToAircraftAction->isEnabled(), "fly to aircraft action exists");
+    require(flyToTrackAction->isEnabled(), "fly to track action exists");
+    require(resetViewAction->isEnabled(), "reset view action exists");
     require(replaySpeedCombo != nullptr, "replay speed combo exists");
     require(replaySlider != nullptr, "replay slider exists");
     require(!replayAction->isEnabled(), "replay disabled before session load");
