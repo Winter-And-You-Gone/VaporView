@@ -35,6 +35,7 @@ public:
 
     int sampleCount() const;
     QSize framebufferSize() const;
+    bool hasEarthMap() const;
 
 protected:
     void initializeGL() override;

@@ -52,6 +52,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
 
     statusBar()->addPermanentWidget(status_label_, 1);
     updateStatus(nullptr);
+    statusBar()->showMessage(QStringLiteral("未加载 Earth 文件，当前显示本地 NED 网格。加载 .earth 后显示地图底图。"), 8000);
 }
 
 Map3DWindow::~Map3DWindow() = default;
@@ -128,6 +129,7 @@ void Map3DWindow::openEarthFile()
         return;
     }
     settings.setValue(QStringLiteral("lastEarthFile"), file);
+    updateStatus(nullptr);
     statusBar()->showMessage(QStringLiteral("Loaded earth file: %1").arg(file), 5000);
 }
 
@@ -137,7 +139,8 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest)
     if (view_)
     {
         const QSize framebufferSize = view_->framebufferSize();
-        text += QStringLiteral(" | View %1x%2")
+        text += QStringLiteral(" | Map %1 | View %2x%3")
+                    .arg(view_->hasEarthMap() ? QStringLiteral("Earth") : QStringLiteral("Local grid"))
                     .arg(framebufferSize.width())
                     .arg(framebufferSize.height());
     }

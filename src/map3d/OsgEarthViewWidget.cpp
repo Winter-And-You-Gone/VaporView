@@ -35,8 +35,8 @@ osg::Node* createLocalGridNode()
         vertices->push_back(osg::Vec3(-kExtentM, value, 0.0f));
         vertices->push_back(osg::Vec3(kExtentM, value, 0.0f));
         const osg::Vec4 color = value == 0
-            ? osg::Vec4(0.45f, 0.55f, 0.65f, 1.0f)
-            : osg::Vec4(0.18f, 0.22f, 0.26f, 1.0f);
+            ? osg::Vec4(0.62f, 0.72f, 0.82f, 1.0f)
+            : osg::Vec4(0.28f, 0.34f, 0.40f, 1.0f);
         colors->push_back(color);
         colors->push_back(color);
         colors->push_back(color);
@@ -155,6 +155,11 @@ QSize OsgEarthViewWidget::framebufferSize() const
     return framebuffer_size_;
 }
 
+bool OsgEarthViewWidget::hasEarthMap() const
+{
+    return earth_node_.valid();
+}
+
 void OsgEarthViewWidget::initializeGL()
 {
     initializeSceneIfNeeded();
@@ -202,7 +207,7 @@ void OsgEarthViewWidget::initializeSceneIfNeeded()
     if (viewer_->getCamera())
     {
         viewer_->getCamera()->setGraphicsContext(graphics_window_.get());
-        viewer_->getCamera()->setClearColor(osg::Vec4(0.02f, 0.025f, 0.03f, 1.0f));
+        viewer_->getCamera()->setClearColor(osg::Vec4(0.055f, 0.065f, 0.075f, 1.0f));
         viewer_->getCamera()->setViewMatrixAsLookAt(osg::Vec3d(220.0, -320.0, 240.0),
                                                     osg::Vec3d(0.0, 0.0, 0.0),
                                                     osg::Vec3d(0.0, 0.0, 1.0));
