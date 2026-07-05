@@ -146,6 +146,39 @@ FixQuality parseFixQuality(const QString& value)
     return FixQuality::Unknown;
 }
 
+HeightReference parseHeightReference(const QString& value)
+{
+    const QString normalized = value.trimmed().toLower();
+    if (normalized.isEmpty())
+    {
+        return HeightReference::Unknown;
+    }
+    if (normalized.contains(QStringLiteral("ellipsoid")) ||
+        normalized == QStringLiteral("hae") ||
+        normalized == QStringLiteral("wgs84"))
+    {
+        return HeightReference::Ellipsoid;
+    }
+    if (normalized.contains(QStringLiteral("msl")) ||
+        normalized.contains(QStringLiteral("mean sea")) ||
+        normalized.contains(QStringLiteral("orthometric")) ||
+        normalized.contains(QStringLiteral("geoid")))
+    {
+        return HeightReference::MeanSeaLevel;
+    }
+    if (normalized.contains(QStringLiteral("local")) ||
+        normalized.contains(QStringLiteral("ned")))
+    {
+        return HeightReference::Local;
+    }
+    if (normalized.contains(QStringLiteral("dem")) ||
+        normalized.contains(QStringLiteral("terrain")))
+    {
+        return HeightReference::Dem;
+    }
+    return HeightReference::Unknown;
+}
+
 QString locateDevicesCsv(const QString& sessionDir)
 {
     const QDir dir(sessionDir);
@@ -218,11 +251,12 @@ SessionTrackReadResult readSessionTrack(const QString& sessionDir)
     const int rollCol = findColumn(columns, {"roll_deg", "epsilon_roll_deg"});
     const int pitchCol = findColumn(columns, {"pitch_deg", "epsilon_pitch_deg"});
     const int yawCol = findColumn(columns, {"yaw_deg", "heading_deg", "epsilon_yaw_deg"});
-    const int satellitesCol = findColumn(columns, {"satellites", "gnss_satellites", "epsilon_gnss_satellites"});
+    const int satellitesCol = findColumn(columns, {"satellites", "satellite_count", "num_satellites", "gnss_satellites", "gnss_satellite_count", "epsilon_gnss_satellites"});
     const int hdopCol = findColumn(columns, {"hdop", "epsilon_hdop"});
     const int vdopCol = findColumn(columns, {"vdop", "epsilon_vdop"});
     const int diffAgeCol = findColumn(columns, {"diff_age_s", "epsilon_diff_age_s"});
     const int fixCol = findColumn(columns, {"fix_quality", "gnss_status", "rtk_status", "gnss_fix_text", "epsilon_gnss_fix_text", "gnss_fix_code"});
+    const int heightReferenceCol = findColumn(columns, {"height_reference", "height_ref", "altitude_reference", "nav_height_reference"});
 
     if (latCol < 0 || lonCol < 0 || heightCol < 0)
     {
@@ -263,6 +297,7 @@ SessionTrackReadResult readSessionTrack(const QString& sessionDir)
         sample.vdop = readDouble(fields, vdopCol);
         sample.diffAgeS = readDouble(fields, diffAgeCol);
         sample.fixQuality = parseFixQuality(fieldAt(fields, fixCol));
+        sample.heightReference = parseHeightReference(fieldAt(fields, heightReferenceCol));
 
         if (sample.hasLlh())
         {

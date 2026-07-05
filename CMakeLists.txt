@@ -188,6 +188,7 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
     endif()
 
     set(MAP3D_SOURCES
+        src/map3d/MapDataManager.cpp
         src/map3d/Map3DWindow.cpp
         src/map3d/OsgEarthViewWidget.cpp
         src/map3d/Trajectory3DLayer.cpp
@@ -195,6 +196,7 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
     )
 
     set(MAP3D_HEADERS
+        include/map3d/MapDataManager.h
         include/map3d/Map3DWindow.h
         include/map3d/OsgEarthViewWidget.h
         include/map3d/Trajectory3DLayer.h
@@ -881,6 +883,9 @@ if(BUILD_TESTING)
             vaporview_stage_osgearth_runtime(map3d_window_smoke_test)
         endif()
         add_test(NAME map3d_window_smoke_test COMMAND map3d_window_smoke_test)
+        set_tests_properties(map3d_window_smoke_test PROPERTIES
+            ENVIRONMENT "VAPORVIEW_MAP3D_HEADLESS_TEST=1"
+        )
     endif()
 
     add_executable(vaporview_startup_test

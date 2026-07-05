@@ -4,84 +4,68 @@
 #include "map3d/OsgEarthViewWidget.h"
 
 #include <QAction>
-#include <QCoreApplication>
-#include <QDir>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QLabel>
 #include <QMessageBox>
+#include <QPlainTextEdit>
 #include <QSettings>
-#include <QStringList>
 #include <QStatusBar>
 #include <QToolBar>
+#include <QVBoxLayout>
+#include <QWidget>
 
 namespace VaporView::Map3D {
 namespace {
 
-QString defaultEarthFilePath()
+QString heightReferenceLabel(VaporView::Geo::HeightReference reference)
 {
-    const QString demRelative = QStringLiteral("data/maps/vaporview_with_dem.earth");
-    const QString srtmRelative = QStringLiteral("data/maps/vaporview_with_srtm.earth");
-    const QString defaultRelative = QStringLiteral("data/maps/vaporview_default.earth");
-    const QString textureRelative = QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png");
-    const QString copernicusDemRelative = QStringLiteral("data/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt");
-    const QString srtmDemRelative = QStringLiteral("data/maps/terrain/srtm/srtm.vrt");
-    const QString appDir = QCoreApplication::applicationDirPath();
-    const QStringList roots = {
-        QDir::currentPath(),
-        appDir,
-        QDir(appDir).absoluteFilePath(QStringLiteral("../.."))
-    };
-
-    for (const QString& root : roots)
+    switch (reference)
     {
-        const QString demEarthPath = QDir::cleanPath(QDir(root).absoluteFilePath(demRelative));
-        const QString srtmEarthPath = QDir::cleanPath(QDir(root).absoluteFilePath(srtmRelative));
-        const QString defaultEarthPath = QDir::cleanPath(QDir(root).absoluteFilePath(defaultRelative));
-        const QString texturePath = QDir::cleanPath(QDir(root).absoluteFilePath(textureRelative));
-        const QString copernicusDemPath = QDir::cleanPath(QDir(root).absoluteFilePath(copernicusDemRelative));
-        const QString srtmDemPath = QDir::cleanPath(QDir(root).absoluteFilePath(srtmDemRelative));
-        if (QFileInfo(demEarthPath).isFile()
-            && QFileInfo(texturePath).isFile()
-            && QFileInfo(copernicusDemPath).isFile())
-        {
-            return QFileInfo(demEarthPath).absoluteFilePath();
-        }
-        if (QFileInfo(srtmEarthPath).isFile()
-            && QFileInfo(texturePath).isFile()
-            && QFileInfo(srtmDemPath).isFile())
-        {
-            return QFileInfo(srtmEarthPath).absoluteFilePath();
-        }
-        if (QFileInfo(defaultEarthPath).isFile() && QFileInfo(texturePath).isFile())
-        {
-            return QFileInfo(defaultEarthPath).absoluteFilePath();
-        }
+    case VaporView::Geo::HeightReference::Ellipsoid:
+        return QStringLiteral("ellipsoid");
+    case VaporView::Geo::HeightReference::MeanSeaLevel:
+        return QStringLiteral("MSL");
+    case VaporView::Geo::HeightReference::Local:
+        return QStringLiteral("local");
+    case VaporView::Geo::HeightReference::Dem:
+        return QStringLiteral("DEM");
+    case VaporView::Geo::HeightReference::Unknown:
+        return QStringLiteral("unknown");
     }
-    return QDir::cleanPath(QDir(appDir).absoluteFilePath(QStringLiteral("../../%1").arg(defaultRelative)));
+    return QStringLiteral("unknown");
 }
 
-bool isBuiltInEarthFile(const QString& earthPath)
+bool isMap3DHeadlessTest()
 {
-    const QString fileName = QFileInfo(earthPath).fileName();
-    return fileName == QStringLiteral("vaporview_default.earth")
-        || fileName == QStringLiteral("vaporview_with_dem.earth")
-        || fileName == QStringLiteral("vaporview_with_srtm.earth");
+    return qEnvironmentVariableIsSet("VAPORVIEW_MAP3D_HEADLESS_TEST");
 }
 
 } // namespace
 
 Map3DWindow::Map3DWindow(QWidget* parent)
     : QMainWindow(parent)
-    , view_(new OsgEarthViewWidget(this))
     , status_label_(new QLabel(this))
 {
     setObjectName(QStringLiteral("map3DWindow"));
     setWindowTitle(QStringLiteral("VaporView 3D Map"));
     setAttribute(Qt::WA_QuitOnClose, false);
     resize(1100, 760);
-    view_->setObjectName(QStringLiteral("map3DView"));
-    setCentralWidget(view_);
+    if (isMap3DHeadlessTest())
+    {
+        headless_view_ = new QWidget(this);
+        headless_view_->setMinimumSize(640, 420);
+        headless_view_->setObjectName(QStringLiteral("map3DView"));
+        setCentralWidget(headless_view_);
+    }
+    else
+    {
+        view_ = new OsgEarthViewWidget(this);
+        view_->setObjectName(QStringLiteral("map3DView"));
+        setCentralWidget(view_);
+    }
     status_label_->setObjectName(QStringLiteral("map3DStatusLabel"));
 
     QToolBar* toolbar = addToolBar(QStringLiteral("3D Map"));
@@ -95,7 +79,10 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     follow_action_->setCheckable(true);
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
     follow_action_->setChecked(settings.value(QStringLiteral("followAircraft"), false).toBool());
-    view_->setFollowAircraft(follow_action_->isChecked());
+    if (view_)
+    {
+        view_->setFollowAircraft(follow_action_->isChecked());
+    }
     connect(follow_action_, &QAction::toggled, this, [this](bool enabled) {
         if (view_)
         {
@@ -108,9 +95,19 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     QAction* loadEarthAction = toolbar->addAction(QStringLiteral("加载 Earth 文件"));
     connect(loadEarthAction, &QAction::triggered, this, &Map3DWindow::openEarthFile);
 
+    diagnostics_action_ = toolbar->addAction(QStringLiteral("地图诊断"));
+    connect(diagnostics_action_, &QAction::triggered, this, &Map3DWindow::showMapDiagnostics);
+
     statusBar()->addPermanentWidget(status_label_, 1);
     updateStatus(nullptr);
-    loadInitialEarthFile();
+    if (isMap3DHeadlessTest())
+    {
+        setMapSelection(map_data_manager_.selectBestAvailableMap());
+    }
+    else
+    {
+        loadInitialEarthFile();
+    }
 }
 
 Map3DWindow::~Map3DWindow()
@@ -123,19 +120,40 @@ Map3DWindow::~Map3DWindow()
 
 void Map3DWindow::appendSample(const VaporView::Geo::NavSample& sample)
 {
-    view_->appendSample(sample);
+    if (view_)
+    {
+        view_->appendSample(sample);
+    }
+    if (headless_view_)
+    {
+        ++headless_sample_count_;
+    }
     updateStatus(&sample);
 }
 
 void Map3DWindow::appendSamples(const std::vector<VaporView::Geo::NavSample>& samples)
 {
-    view_->appendSamples(samples);
+    if (view_)
+    {
+        view_->appendSamples(samples);
+    }
+    if (headless_view_)
+    {
+        headless_sample_count_ += static_cast<int>(samples.size());
+    }
     updateStatus(samples.empty() ? nullptr : &samples.back());
 }
 
 void Map3DWindow::clearTrack()
 {
-    view_->clearTrack();
+    if (view_)
+    {
+        view_->clearTrack();
+    }
+    if (headless_view_)
+    {
+        headless_sample_count_ = 0;
+    }
     updateStatus(nullptr);
 }
 
@@ -162,24 +180,36 @@ void Map3DWindow::loadInitialEarthFile()
 {
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
     const QString lastEarthFile = settings.value(QStringLiteral("lastEarthFile")).toString();
-    const QString autoEarthFile = defaultEarthFilePath();
+    const MapDataSelection autoSelection = map_data_manager_.selectBestAvailableMap();
     const QString initialEarthFile =
-        QFileInfo(lastEarthFile).isFile() && !isBuiltInEarthFile(lastEarthFile)
+        QFileInfo(lastEarthFile).isFile() && !map_data_manager_.isBuiltInEarthFile(lastEarthFile)
             ? lastEarthFile
-            : autoEarthFile;
+            : autoSelection.earthFilePath;
 
     if (!QFileInfo(initialEarthFile).isFile())
     {
-        statusBar()->showMessage(QStringLiteral("未找到默认 Earth 文件，当前显示本地 NED 网格。默认路径: %1").arg(initialEarthFile), 8000);
+        setMapSelection(autoSelection);
+        statusBar()->showMessage(QStringLiteral("未找到默认 Earth 文件，当前显示本地 NED 网格。"), 8000);
         return;
     }
 
-    if (!view_->loadEarthFile(initialEarthFile))
+    const bool loaded = view_ ? view_->loadEarthFile(initialEarthFile) : false;
+    if (!loaded)
     {
+        setMapSelection(autoSelection);
         statusBar()->showMessage(QStringLiteral("自动加载 Earth 文件失败，当前显示本地 NED 网格: %1").arg(initialEarthFile), 8000);
         return;
     }
 
+    MapDataSelection activeSelection = autoSelection;
+    if (initialEarthFile != autoSelection.earthFilePath)
+    {
+        activeSelection.mode = MapDataMode::NaturalEarth;
+        activeSelection.earthFilePath = initialEarthFile;
+        activeSelection.diagnostics.earthFilePath = initialEarthFile;
+        activeSelection.diagnostics.messages.push_back(QStringLiteral("Using user-selected custom earth file."));
+    }
+    setMapSelection(activeSelection);
     settings.setValue(QStringLiteral("lastEarthFile"), initialEarthFile);
     updateStatus(nullptr);
     statusBar()->showMessage(QStringLiteral("已自动加载 Earth 文件: %1").arg(initialEarthFile), 5000);
@@ -212,7 +242,8 @@ void Map3DWindow::openEarthFile()
     {
         return;
     }
-    if (!view_->loadEarthFile(file))
+    const bool loaded = view_ ? view_->loadEarthFile(file) : false;
+    if (!loaded)
     {
         QMessageBox::warning(this,
                              QStringLiteral("osgEarth"),
@@ -220,27 +251,108 @@ void Map3DWindow::openEarthFile()
         return;
     }
     settings.setValue(QStringLiteral("lastEarthFile"), file);
+    MapDataSelection selection = map_data_manager_.selectBestAvailableMap();
+    selection.earthFilePath = file;
+    selection.diagnostics.earthFilePath = file;
+    selection.diagnostics.messages.push_back(QStringLiteral("Loaded user-selected earth file."));
+    setMapSelection(selection);
     updateStatus(nullptr);
     statusBar()->showMessage(QStringLiteral("Loaded earth file: %1").arg(file), 5000);
 }
 
+void Map3DWindow::showMapDiagnostics()
+{
+    if (!diagnostics_dialog_)
+    {
+        diagnostics_dialog_ = new QDialog(this);
+        diagnostics_dialog_->setWindowTitle(QStringLiteral("3D Map 数据诊断"));
+        diagnostics_dialog_->resize(820, 520);
+
+        QVBoxLayout* layout = new QVBoxLayout(diagnostics_dialog_);
+        diagnostics_text_ = new QPlainTextEdit(diagnostics_dialog_);
+        diagnostics_text_->setReadOnly(true);
+        layout->addWidget(diagnostics_text_);
+
+        QDialogButtonBox* buttons = new QDialogButtonBox(QDialogButtonBox::Close, diagnostics_dialog_);
+        connect(buttons, &QDialogButtonBox::rejected, diagnostics_dialog_, &QDialog::hide);
+        layout->addWidget(buttons);
+    }
+
+    if (diagnostics_text_)
+    {
+        diagnostics_text_->setPlainText(diagnosticsText());
+    }
+    diagnostics_dialog_->show();
+    diagnostics_dialog_->raise();
+    diagnostics_dialog_->activateWindow();
+}
+
+void Map3DWindow::setMapSelection(const MapDataSelection& selection)
+{
+    map_selection_ = selection;
+    if (diagnostics_text_)
+    {
+        diagnostics_text_->setPlainText(diagnosticsText());
+    }
+}
+
+QString Map3DWindow::diagnosticsText() const
+{
+    const MapDataDiagnostics& diagnostics = map_selection_.diagnostics;
+    QStringList lines;
+    lines << QStringLiteral("Mode: %1 (%2)")
+                 .arg(MapDataManager::modeLabel(map_selection_.mode),
+                      MapDataManager::modeKey(map_selection_.mode));
+    lines << QStringLiteral("Earth file: %1").arg(map_selection_.earthFilePath.isEmpty() ? QStringLiteral("<none>") : map_selection_.earthFilePath);
+    lines << QStringLiteral("Maps root: %1").arg(diagnostics.mapsRoot.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.mapsRoot);
+    lines << QStringLiteral("Natural Earth texture: %1").arg(diagnostics.naturalEarthTexturePath);
+    lines << QStringLiteral("Copernicus DEM VRT: %1").arg(diagnostics.copernicusDemVrtPath);
+    lines << QStringLiteral("SRTM VRT: %1").arg(diagnostics.srtmDemVrtPath);
+    lines << QStringLiteral("OSG plugin path: %1").arg(diagnostics.osgPluginPath.isEmpty() ? QStringLiteral("<not found>") : diagnostics.osgPluginPath);
+    lines << QStringLiteral("GDAL_DATA: %1").arg(diagnostics.gdalDataPath.isEmpty() ? QStringLiteral("<not found>") : diagnostics.gdalDataPath);
+    lines << QStringLiteral("PROJ_DATA: %1").arg(diagnostics.projDataPath.isEmpty() ? QStringLiteral("<not found>") : diagnostics.projDataPath);
+
+    if (!diagnostics.missingFiles.isEmpty())
+    {
+        lines << QString();
+        lines << QStringLiteral("Missing files:");
+        for (const QString& path : diagnostics.missingFiles)
+        {
+            lines << QStringLiteral("  - %1").arg(path);
+        }
+    }
+
+    if (!diagnostics.messages.isEmpty())
+    {
+        lines << QString();
+        lines << QStringLiteral("Diagnostics:");
+        for (const QString& message : diagnostics.messages)
+        {
+            lines << QStringLiteral("  - %1").arg(message);
+        }
+    }
+    return lines.join(QLatin1Char('\n'));
+}
+
 void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest)
 {
-    QString text = QStringLiteral("Points: %1").arg(view_ ? view_->sampleCount() : 0);
-    if (view_)
+    const int sampleCount = view_ ? view_->sampleCount() : headless_sample_count_;
+    QString text = QStringLiteral("Points: %1").arg(sampleCount);
+    if (view_ || headless_view_)
     {
-        const QSize framebufferSize = view_->framebufferSize();
+        const QSize framebufferSize = view_ ? view_->framebufferSize() : headless_view_->size();
         text += QStringLiteral(" | Map %1 | View %2x%3")
-                    .arg(view_->hasEarthMap() ? QStringLiteral("Earth") : QStringLiteral("Local grid"))
+                    .arg(MapDataManager::modeLabel(map_selection_.mode))
                     .arg(framebufferSize.width())
                     .arg(framebufferSize.height());
     }
     if (latest && latest->hasLlh())
     {
-        text += QStringLiteral(" | Lat %1 Lon %2 H %3 m | Fix %4")
+        text += QStringLiteral(" | Lat %1 Lon %2 H %3 m %4 | Fix %5")
                     .arg(latest->latDeg, 0, 'f', 7)
                     .arg(latest->lonDeg, 0, 'f', 7)
                     .arg(latest->heightM, 0, 'f', 2)
+                    .arg(heightReferenceLabel(latest->heightReference))
                     .arg(static_cast<int>(latest->fixQuality));
     }
     status_label_->setText(text);

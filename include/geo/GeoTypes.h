@@ -16,6 +16,14 @@ enum class FixQuality {
     Fixed
 };
 
+enum class HeightReference {
+    Unknown = 0,
+    Ellipsoid,
+    MeanSeaLevel,
+    Local,
+    Dem
+};
+
 struct NavSample {
     qint64 recordTimestampUs = 0;
     qint64 deviceTimestampUs = 0;
@@ -46,6 +54,7 @@ struct NavSample {
     double diffAgeS = std::numeric_limits<double>::quiet_NaN();
 
     FixQuality fixQuality = FixQuality::Unknown;
+    HeightReference heightReference = HeightReference::Unknown;
 
     bool hasLlh() const
     {
