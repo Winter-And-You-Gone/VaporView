@@ -3,6 +3,7 @@
 #include "geo/GeoTypes.h"
 
 #include <osg/Geode>
+#include <osg/Geometry>
 #include <osg/ref_ptr>
 #include <vector>
 
@@ -25,13 +26,28 @@ public:
     int sampleCount() const;
     int visibleSampleCount() const;
     int maxVisibleSamples() const;
+    int segmentCount() const;
+    int segmentSize() const;
     osg::Node* node() const;
 
 private:
-    void rebuildGeometry();
+    struct TrajectorySegment {
+        int firstSampleIndex = 0;
+        int sampleCount = 0;
+        osg::ref_ptr<osg::Geometry> geometry;
+    };
+
+    void rebuildSegments();
+    void rebuildSegmentGeometry(TrajectorySegment& segment);
+    void rebuildVisibilityBoundarySegment();
+    void appendSegment();
+    int firstVisibleIndex() const;
+    bool segmentIsVisible(const TrajectorySegment& segment) const;
+    void applySegmentVisibility();
 
     osg::ref_ptr<osg::Geode> geode_;
     std::vector<VaporView::Geo::NavSample> samples_;
+    std::vector<TrajectorySegment> segments_;
     bool use_world_coordinates_ = false;
     int max_visible_samples_ = 200000;
 };

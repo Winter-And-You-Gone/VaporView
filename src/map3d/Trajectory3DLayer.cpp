@@ -6,11 +6,13 @@
 #include <osg/Geode>
 #include <osg/LineWidth>
 
-#include <cmath>
 #include <algorithm>
+#include <cmath>
 
 namespace VaporView::Map3D {
 namespace {
+
+constexpr int kSegmentSize = 4096;
 
 bool hasWorldPosition(const VaporView::Geo::NavSample& sample)
 {
@@ -61,19 +63,36 @@ Trajectory3DLayer::Trajectory3DLayer()
 void Trajectory3DLayer::clear()
 {
     samples_.clear();
-    rebuildGeometry();
+    segments_.clear();
+    geode_->removeDrawables(0, geode_->getNumDrawables());
 }
 
 void Trajectory3DLayer::appendSample(const VaporView::Geo::NavSample& sample)
 {
+    const int previousFirstVisibleIndex = firstVisibleIndex();
     samples_.push_back(sample);
-    rebuildGeometry();
+    if (segments_.empty() || segments_.back().sampleCount >= kSegmentSize)
+    {
+        appendSegment();
+    }
+    TrajectorySegment& segment = segments_.back();
+    ++segment.sampleCount;
+    rebuildSegmentGeometry(segment);
+    if (previousFirstVisibleIndex != firstVisibleIndex())
+    {
+        rebuildVisibilityBoundarySegment();
+    }
+    applySegmentVisibility();
 }
 
 void Trajectory3DLayer::appendSamples(const std::vector<VaporView::Geo::NavSample>& samples)
 {
+    if (samples.empty())
+    {
+        return;
+    }
     samples_.insert(samples_.end(), samples.cbegin(), samples.cend());
-    rebuildGeometry();
+    rebuildSegments();
 }
 
 void Trajectory3DLayer::setUseWorldCoordinates(bool enabled)
@@ -83,7 +102,7 @@ void Trajectory3DLayer::setUseWorldCoordinates(bool enabled)
         return;
     }
     use_world_coordinates_ = enabled;
-    rebuildGeometry();
+    rebuildSegments();
 }
 
 void Trajectory3DLayer::setMaxVisibleSamples(int maxVisibleSamples)
@@ -94,7 +113,7 @@ void Trajectory3DLayer::setMaxVisibleSamples(int maxVisibleSamples)
         return;
     }
     max_visible_samples_ = sanitized;
-    rebuildGeometry();
+    rebuildSegments();
 }
 
 int Trajectory3DLayer::sampleCount() const
@@ -112,34 +131,65 @@ int Trajectory3DLayer::maxVisibleSamples() const
     return max_visible_samples_;
 }
 
+int Trajectory3DLayer::segmentCount() const
+{
+    return static_cast<int>(segments_.size());
+}
+
+int Trajectory3DLayer::segmentSize() const
+{
+    return kSegmentSize;
+}
+
 osg::Node* Trajectory3DLayer::node() const
 {
     return geode_.get();
 }
 
-void Trajectory3DLayer::rebuildGeometry()
+void Trajectory3DLayer::rebuildSegments()
 {
     geode_->removeDrawables(0, geode_->getNumDrawables());
     if (samples_.empty())
     {
+        segments_.clear();
         return;
     }
 
-    osg::ref_ptr<osg::Geometry> geometry = new osg::Geometry;
+    segments_.clear();
+    for (int firstSample = 0; firstSample < sampleCount(); firstSample += kSegmentSize)
+    {
+        TrajectorySegment segment;
+        segment.firstSampleIndex = firstSample;
+        segment.sampleCount = std::min(kSegmentSize, sampleCount() - firstSample);
+        rebuildSegmentGeometry(segment);
+        geode_->addDrawable(segment.geometry.get());
+        segments_.push_back(segment);
+    }
+    applySegmentVisibility();
+}
+
+void Trajectory3DLayer::rebuildSegmentGeometry(TrajectorySegment& segment)
+{
+    osg::ref_ptr<osg::Geometry> geometry = segment.geometry;
+    if (!geometry.valid())
+    {
+        geometry = new osg::Geometry;
+    }
     osg::ref_ptr<osg::Vec3Array> vertices = new osg::Vec3Array;
     osg::ref_ptr<osg::Vec4Array> colors = new osg::Vec4Array;
-    const int visibleCount = visibleSampleCount();
-    const int firstVisibleIndex = std::max(0, sampleCount() - visibleCount);
-    vertices->reserve(static_cast<std::size_t>(visibleCount));
-    colors->reserve(static_cast<std::size_t>(visibleCount));
-
-    for (auto it = samples_.cbegin() + firstVisibleIndex; it != samples_.cend(); ++it)
+    const int first = std::max(segment.firstSampleIndex, firstVisibleIndex());
+    const int end = std::min(sampleCount(), segment.firstSampleIndex + segment.sampleCount);
+    const int vertexCount = std::max(0, end - first);
+    vertices->reserve(static_cast<std::size_t>(vertexCount));
+    colors->reserve(static_cast<std::size_t>(vertexCount));
+    for (int index = first; index < end; ++index)
     {
-        const VaporView::Geo::NavSample& sample = *it;
+        const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(index)];
         vertices->push_back(samplePosition(sample, use_world_coordinates_));
         colors->push_back(qualityColor(sample));
     }
 
+    geometry->removePrimitiveSet(0, geometry->getNumPrimitiveSets());
     geometry->setVertexArray(vertices.get());
     geometry->setColorArray(colors.get(), osg::Array::BIND_PER_VERTEX);
     geometry->addPrimitiveSet(new osg::DrawArrays(osg::PrimitiveSet::LINE_STRIP, 0, static_cast<GLsizei>(vertices->size())));
@@ -147,7 +197,60 @@ void Trajectory3DLayer::rebuildGeometry()
     osg::ref_ptr<osg::LineWidth> lineWidth = new osg::LineWidth(2.5f);
     geometry->getOrCreateStateSet()->setAttributeAndModes(lineWidth.get(), osg::StateAttribute::ON);
 
-    geode_->addDrawable(geometry.get());
+    segment.geometry = geometry;
+}
+
+void Trajectory3DLayer::rebuildVisibilityBoundarySegment()
+{
+    if (segments_.empty())
+    {
+        return;
+    }
+
+    const int visibleFirst = firstVisibleIndex();
+    for (TrajectorySegment& segment : segments_)
+    {
+        const int segmentEnd = segment.firstSampleIndex + segment.sampleCount;
+        if (segment.firstSampleIndex <= visibleFirst && segmentEnd > visibleFirst)
+        {
+            rebuildSegmentGeometry(segment);
+            return;
+        }
+    }
+}
+
+void Trajectory3DLayer::appendSegment()
+{
+    TrajectorySegment segment;
+    segment.firstSampleIndex = sampleCount() - 1;
+    segment.sampleCount = 0;
+    segment.geometry = new osg::Geometry;
+    geode_->addDrawable(segment.geometry.get());
+    segments_.push_back(segment);
+}
+
+int Trajectory3DLayer::firstVisibleIndex() const
+{
+    return std::max(0, sampleCount() - visibleSampleCount());
+}
+
+bool Trajectory3DLayer::segmentIsVisible(const TrajectorySegment& segment) const
+{
+    const int visibleFirst = firstVisibleIndex();
+    const int segmentEnd = segment.firstSampleIndex + segment.sampleCount;
+    return segmentEnd > visibleFirst;
+}
+
+void Trajectory3DLayer::applySegmentVisibility()
+{
+    for (TrajectorySegment& segment : segments_)
+    {
+        if (!segment.geometry.valid())
+        {
+            continue;
+        }
+        segment.geometry->setNodeMask(segmentIsVisible(segment) ? ~0u : 0u);
+    }
 }
 
 } // namespace VaporView::Map3D

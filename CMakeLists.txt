@@ -900,6 +900,15 @@ if(BUILD_TESTING)
         target_link_libraries(map_data_manager_test PRIVATE vaporview_map3d_osgearth)
         add_test(NAME map_data_manager_test COMMAND map_data_manager_test)
 
+        add_executable(trajectory_3d_layer_test
+            tests/trajectory_3d_layer_test.cpp
+        )
+        target_include_directories(trajectory_3d_layer_test PRIVATE
+            ${CMAKE_SOURCE_DIR}/include
+        )
+        target_link_libraries(trajectory_3d_layer_test PRIVATE vaporview_map3d_osgearth)
+        add_test(NAME trajectory_3d_layer_test COMMAND trajectory_3d_layer_test)
+
         add_executable(map3d_window_smoke_test
             tests/map3d_window_smoke_test.cpp
         )
