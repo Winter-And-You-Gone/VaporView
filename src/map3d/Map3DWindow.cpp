@@ -4,14 +4,44 @@
 #include "map3d/OsgEarthViewWidget.h"
 
 #include <QAction>
+#include <QCoreApplication>
+#include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QLabel>
 #include <QMessageBox>
 #include <QSettings>
+#include <QStringList>
 #include <QStatusBar>
 #include <QToolBar>
 
 namespace VaporView::Map3D {
+namespace {
+
+QString defaultEarthFilePath()
+{
+    const QString relative = QStringLiteral("data/maps/vaporview_default.earth");
+    const QString rasterRelative = QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif");
+    const QString appDir = QCoreApplication::applicationDirPath();
+    const QStringList roots = {
+        QDir::currentPath(),
+        appDir,
+        QDir(appDir).absoluteFilePath(QStringLiteral("../.."))
+    };
+
+    for (const QString& root : roots)
+    {
+        const QString earthPath = QDir::cleanPath(QDir(root).absoluteFilePath(relative));
+        const QString rasterPath = QDir::cleanPath(QDir(root).absoluteFilePath(rasterRelative));
+        if (QFileInfo(earthPath).isFile() && QFileInfo(rasterPath).isFile())
+        {
+            return QFileInfo(earthPath).absoluteFilePath();
+        }
+    }
+    return QDir::cleanPath(QDir(appDir).absoluteFilePath(QStringLiteral("../../%1").arg(relative)));
+}
+
+} // namespace
 
 Map3DWindow::Map3DWindow(QWidget* parent)
     : QMainWindow(parent)
@@ -52,7 +82,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
 
     statusBar()->addPermanentWidget(status_label_, 1);
     updateStatus(nullptr);
-    statusBar()->showMessage(QStringLiteral("未加载 Earth 文件，当前显示本地 NED 网格。加载 .earth 后显示地图底图。"), 8000);
+    loadInitialEarthFile();
 }
 
 Map3DWindow::~Map3DWindow()
@@ -98,6 +128,29 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
                                  .arg(result.samples.size())
                                  .arg(result.sourceCsvPath),
                              5000);
+}
+
+void Map3DWindow::loadInitialEarthFile()
+{
+    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    const QString lastEarthFile = settings.value(QStringLiteral("lastEarthFile")).toString();
+    const QString initialEarthFile = QFileInfo(lastEarthFile).isFile() ? lastEarthFile : defaultEarthFilePath();
+
+    if (!QFileInfo(initialEarthFile).isFile())
+    {
+        statusBar()->showMessage(QStringLiteral("未找到默认 Earth 文件，当前显示本地 NED 网格。默认路径: %1").arg(initialEarthFile), 8000);
+        return;
+    }
+
+    if (!view_->loadEarthFile(initialEarthFile))
+    {
+        statusBar()->showMessage(QStringLiteral("自动加载 Earth 文件失败，当前显示本地 NED 网格: %1").arg(initialEarthFile), 8000);
+        return;
+    }
+
+    settings.setValue(QStringLiteral("lastEarthFile"), initialEarthFile);
+    updateStatus(nullptr);
+    statusBar()->showMessage(QStringLiteral("已自动加载 Earth 文件: %1").arg(initialEarthFile), 5000);
 }
 
 void Map3DWindow::openSessionDirectory()

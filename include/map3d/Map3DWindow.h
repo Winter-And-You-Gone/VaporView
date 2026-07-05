@@ -26,6 +26,7 @@ public slots:
     void loadSessionDirectory(const QString& sessionDir);
 
 private:
+    void loadInitialEarthFile();
     void openSessionDirectory();
     void openEarthFile();
     void updateStatus(const VaporView::Geo::NavSample* latest = nullptr);
