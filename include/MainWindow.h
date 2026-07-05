@@ -366,9 +366,7 @@ private slots:
     void onTemperatureRateChanged(const QString& text);
     void onRtkConfigClicked();
     void onOpenSessionViewerClicked();
-#ifdef VAPORVIEW_HAS_OSGEARTH
     void onOpenMap3DWindowClicked();
-#endif
     void onFontScaleTriggered(QAction *action);
     void onCancelConnectClicked();
     void onToggleTheme();

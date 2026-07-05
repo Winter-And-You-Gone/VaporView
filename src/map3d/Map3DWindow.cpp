@@ -22,7 +22,9 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     setWindowTitle(QStringLiteral("VaporView 3D Map"));
     setAttribute(Qt::WA_QuitOnClose, false);
     resize(1100, 760);
+    view_->setObjectName(QStringLiteral("map3DView"));
     setCentralWidget(view_);
+    status_label_->setObjectName(QStringLiteral("map3DStatusLabel"));
 
     QToolBar* toolbar = addToolBar(QStringLiteral("3D Map"));
     QAction* openSessionAction = toolbar->addAction(QStringLiteral("打开 Session"));
@@ -35,7 +37,12 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     follow_action_->setCheckable(true);
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
     follow_action_->setChecked(settings.value(QStringLiteral("followAircraft"), true).toBool());
-    connect(follow_action_, &QAction::toggled, this, [](bool enabled) {
+    view_->setFollowAircraft(follow_action_->isChecked());
+    connect(follow_action_, &QAction::toggled, this, [this](bool enabled) {
+        if (view_)
+        {
+            view_->setFollowAircraft(enabled);
+        }
         QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
         settings.setValue(QStringLiteral("followAircraft"), enabled);
     });

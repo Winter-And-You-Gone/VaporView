@@ -13943,6 +13943,15 @@ void MainWindow::onOpenMap3DWindowClicked()
     map3d_window_->raise();
     map3d_window_->activateWindow();
 }
+#else
+void MainWindow::onOpenMap3DWindowClicked()
+{
+    QMessageBox::information(this,
+                             QStringLiteral("VaporView 3D Map"),
+                             is_english_
+                                 ? QStringLiteral("3D map module is not enabled. Rebuild with -DVAPORVIEW_ENABLE_OSGEARTH=ON.")
+                                 : QStringLiteral("三维地图模块未启用。请使用 -DVAPORVIEW_ENABLE_OSGEARTH=ON 重新构建。"));
+}
 #endif
 
 void MainWindow::onSwitchLanguage()

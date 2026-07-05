@@ -239,35 +239,50 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
             "OSG plugin directory for the optional project-local osgEarth install"
         )
 
-        function(vaporview_stage_osgearth_runtime target_name)
-            if(EXISTS "${VAPORVIEW_OSGEARTH_RUNTIME_BIN_DIR}")
-                add_custom_command(TARGET ${target_name} POST_BUILD
-                    COMMAND ${CMAKE_COMMAND} -E copy_directory
-                        "${VAPORVIEW_OSGEARTH_RUNTIME_BIN_DIR}"
-                        "$<TARGET_FILE_DIR:${target_name}>"
-                    COMMENT "Copying project-local osgEarth runtime DLLs for ${target_name}"
-                )
-            endif()
+        set(vaporview_osgearth_runtime_commands)
+        if(EXISTS "${VAPORVIEW_OSGEARTH_RUNTIME_BIN_DIR}")
+            list(APPEND vaporview_osgearth_runtime_commands
+                COMMAND ${CMAKE_COMMAND} -E copy_directory
+                    "${VAPORVIEW_OSGEARTH_RUNTIME_BIN_DIR}"
+                    "${CMAKE_CURRENT_BINARY_DIR}"
+            )
+        endif()
 
-            if(EXISTS "${VAPORVIEW_OSGEARTH_PLUGIN_DIR}")
-                file(GLOB vaporview_osg_plugin_dirs
-                    LIST_DIRECTORIES true
-                    "${VAPORVIEW_OSGEARTH_PLUGIN_DIR}/osgPlugins-*"
+        if(EXISTS "${VAPORVIEW_OSGEARTH_PLUGIN_DIR}")
+            file(GLOB vaporview_osg_plugin_dirs
+                LIST_DIRECTORIES true
+                "${VAPORVIEW_OSGEARTH_PLUGIN_DIR}/osgPlugins-*"
+            )
+            foreach(vaporview_osg_plugin_dir IN LISTS vaporview_osg_plugin_dirs)
+                get_filename_component(vaporview_osg_plugin_name
+                    "${vaporview_osg_plugin_dir}"
+                    NAME
                 )
-                foreach(vaporview_osg_plugin_dir IN LISTS vaporview_osg_plugin_dirs)
-                    get_filename_component(vaporview_osg_plugin_name
+                list(APPEND vaporview_osgearth_runtime_commands
+                    COMMAND ${CMAKE_COMMAND} -E copy_directory
                         "${vaporview_osg_plugin_dir}"
-                        NAME
-                    )
-                    add_custom_command(TARGET ${target_name} POST_BUILD
-                        COMMAND ${CMAKE_COMMAND} -E copy_directory
-                            "${vaporview_osg_plugin_dir}"
-                            "$<TARGET_FILE_DIR:${target_name}>/${vaporview_osg_plugin_name}"
-                        COMMENT "Copying project-local OSG plugins for ${target_name}"
-                    )
-                endforeach()
-            endif()
-        endfunction()
+                        "${CMAKE_CURRENT_BINARY_DIR}/${vaporview_osg_plugin_name}"
+                )
+            endforeach()
+        endif()
+
+        if(vaporview_osgearth_runtime_commands)
+            add_custom_target(VaporViewOsgEarthRuntime
+                ${vaporview_osgearth_runtime_commands}
+                COMMENT "Synchronizing project-local osgEarth runtime"
+            )
+
+            function(vaporview_stage_osgearth_runtime target_name)
+                add_dependencies(${target_name} VaporViewOsgEarthRuntime)
+            endfunction()
+        else()
+            function(vaporview_stage_osgearth_runtime target_name)
+                message(WARNING
+                    "No project-local osgEarth runtime directories found for ${target_name}; "
+                    "runtime DLLs must be available on PATH."
+                )
+            endfunction()
+        endif()
     endif()
 endif()
 
@@ -815,6 +830,21 @@ if(BUILD_TESTING)
         vaporview_stage_osgearth_runtime(session_viewer_theme_test)
     endif()
     add_test(NAME session_viewer_theme_test COMMAND session_viewer_theme_test)
+
+    if(VAPORVIEW_ENABLE_OSGEARTH)
+        add_executable(map3d_window_smoke_test
+            tests/map3d_window_smoke_test.cpp
+        )
+        target_include_directories(map3d_window_smoke_test PRIVATE
+            ${CMAKE_SOURCE_DIR}/include
+            ${CMAKE_SOURCE_DIR}/src
+        )
+        target_link_libraries(map3d_window_smoke_test PRIVATE vaporview_map3d_osgearth)
+        if(WIN32)
+            vaporview_stage_osgearth_runtime(map3d_window_smoke_test)
+        endif()
+        add_test(NAME map3d_window_smoke_test COMMAND map3d_window_smoke_test)
+    endif()
 
     add_executable(vaporview_startup_test
         tests/vaporview_startup_test.cpp
