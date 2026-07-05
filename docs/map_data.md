@@ -2,6 +2,11 @@
 
 VaporView keeps map data local and offline. Do not add online commercial map services, Cesium ion, or API-key based imagery providers to the default map setup.
 
+See also:
+
+- `docs/osgearth_setup.md` for osgEarth, OSG plugin, GDAL, and PROJ setup.
+- `docs/map3d_usage.md` for 3D Map window usage and diagnostics.
+
 ## Natural Earth Background
 
 The default offline 3D map background uses Natural Earth II 1:50m shaded relief with water.

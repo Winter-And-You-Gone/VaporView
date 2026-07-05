@@ -765,6 +765,15 @@ if(BUILD_TESTING)
     target_link_libraries(height_reference_test PRIVATE vaporview_geo_core)
     add_test(NAME height_reference_test COMMAND height_reference_test)
 
+    add_executable(map_data_script_test
+        tests/map_data_script_test.cpp
+    )
+    target_compile_definitions(map_data_script_test PRIVATE
+        VAPORVIEW_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    )
+    target_link_libraries(map_data_script_test PRIVATE Qt6::Core)
+    add_test(NAME map_data_script_test COMMAND map_data_script_test)
+
     add_executable(tcp_wave_encoding_test
         tests/tcp_wave_encoding_test.cpp
     )
