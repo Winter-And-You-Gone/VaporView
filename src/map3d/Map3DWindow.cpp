@@ -47,6 +47,33 @@ bool isMap3DHeadlessTest()
     return qEnvironmentVariableIsSet("VAPORVIEW_MAP3D_HEADLESS_TEST");
 }
 
+QString availabilityLabel(bool available)
+{
+    return available ? QStringLiteral("available") : QStringLiteral("missing");
+}
+
+QString selectedDemLabel(const MapDataDiagnostics& diagnostics)
+{
+    if (!diagnostics.selectedDemLayerAvailable)
+    {
+        return QStringLiteral("none");
+    }
+    if (diagnostics.selectedElevationSource.isEmpty())
+    {
+        return QStringLiteral("available");
+    }
+    return diagnostics.selectedElevationSource;
+}
+
+QString selectedOsmLabel(const MapDataDiagnostics& diagnostics)
+{
+    if (!diagnostics.selectedOsmLayersAvailable)
+    {
+        return QStringLiteral("off");
+    }
+    return QStringLiteral("%1 layers").arg(diagnostics.selectedOsmLayerCount);
+}
+
 } // namespace
 
 Map3DWindow::Map3DWindow(QWidget* parent)
@@ -591,6 +618,15 @@ QString Map3DWindow::diagnosticsText() const
     }
     const QString earthFile = map_selection_.earthFile.isEmpty() ? map_selection_.earthFilePath : map_selection_.earthFile;
     lines << QStringLiteral("Earth file: %1").arg(earthFile.isEmpty() ? QStringLiteral("<none>") : earthFile);
+    lines << QStringLiteral("Layer summary:");
+    lines << QStringLiteral("  Natural Earth: %1").arg(availabilityLabel(diagnostics.naturalEarthAvailable));
+    lines << QStringLiteral("  Selected DEM: %1").arg(selectedDemLabel(diagnostics));
+    lines << QStringLiteral("  Copernicus DEM VRT: %1").arg(availabilityLabel(diagnostics.copernicusDemAvailable));
+    lines << QStringLiteral("  SRTM VRT: %1").arg(availabilityLabel(diagnostics.srtmDemAvailable));
+    lines << QStringLiteral("  OSM vectors: %1 (%2/4 files found)")
+                 .arg(diagnostics.osmVectorAvailable ? QStringLiteral("available") : QStringLiteral("missing"))
+                 .arg(diagnostics.osmLayerCount);
+    lines << QStringLiteral("  Selected OSM: %1").arg(selectedOsmLabel(diagnostics));
     lines << QStringLiteral("Current working directory: %1").arg(diagnostics.currentWorkingDirectory.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.currentWorkingDirectory);
     lines << QStringLiteral("Project root: %1").arg(diagnostics.projectRoot.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.projectRoot);
     lines << QStringLiteral("Maps root: %1").arg(diagnostics.mapsRoot.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.mapsRoot);
@@ -665,6 +701,9 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest)
                     .arg(MapDataManager::modeLabel(map_selection_.mode))
                     .arg(framebufferSize.width())
                     .arg(framebufferSize.height());
+        text += QStringLiteral(" | DEM %1 | OSM %2")
+                    .arg(selectedDemLabel(map_selection_.diagnostics),
+                         selectedOsmLabel(map_selection_.diagnostics));
     }
     if (view_)
     {

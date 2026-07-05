@@ -80,6 +80,41 @@ bool hasAnyDem(const MapDataDiagnostics& diagnostics)
     return isFile(diagnostics.copernicusDemVrtPath) || isFile(diagnostics.srtmDemVrtPath);
 }
 
+int osmLayerCount(const MapDataDiagnostics& diagnostics)
+{
+    int count = 0;
+    if (isFile(diagnostics.osmRoadsPath))
+    {
+        ++count;
+    }
+    if (isFile(diagnostics.osmWaterPath))
+    {
+        ++count;
+    }
+    if (isFile(diagnostics.osmBuildingsPath))
+    {
+        ++count;
+    }
+    if (isFile(diagnostics.osmPlacesPath))
+    {
+        ++count;
+    }
+    return count;
+}
+
+QString bestAvailableDemSource(const MapDataDiagnostics& diagnostics)
+{
+    if (diagnostics.copernicusDemAvailable)
+    {
+        return QStringLiteral("Copernicus DEM GLO-30");
+    }
+    if (diagnostics.srtmDemAvailable)
+    {
+        return QStringLiteral("SRTM");
+    }
+    return {};
+}
+
 void setEarthFile(MapDataSelection& selection, const QString& path)
 {
     const QString absolute = QFileInfo(path).absoluteFilePath();
@@ -260,26 +295,38 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     recordFile(diagnostics, diagnostics.osmBuildingsPath);
     recordFile(diagnostics, diagnostics.osmPlacesPath);
 
+    diagnostics.naturalEarthAvailable = hasNaturalEarth(diagnostics);
+    diagnostics.copernicusDemAvailable = isFile(diagnostics.copernicusDemVrtPath);
+    diagnostics.srtmDemAvailable = isFile(diagnostics.srtmDemVrtPath);
+    diagnostics.osmLayerCount = osmLayerCount(diagnostics);
+    diagnostics.osmVectorAvailable = diagnostics.osmLayerCount == 4;
+
     if (isFile(fullLocalEarthPath)
-        && hasNaturalEarth(diagnostics)
+        && diagnostics.naturalEarthAvailable
         && hasAnyDem(diagnostics)
-        && hasCompleteOsmSet(diagnostics))
+        && diagnostics.osmVectorAvailable)
     {
         selection.mode = MapDataMode::FullLocalMap;
         selection.description = QStringLiteral("Natural Earth background, local DEM, and local OSM vector GeoPackages.");
         setEarthFile(selection, fullLocalEarthPath);
+        diagnostics.selectedDemLayerAvailable = true;
+        diagnostics.selectedOsmLayersAvailable = true;
+        diagnostics.selectedElevationSource = bestAvailableDemSource(diagnostics);
+        diagnostics.selectedOsmLayerCount = diagnostics.osmLayerCount;
         diagnostics.messages.push_back(QStringLiteral("Selected full local map with offline OSM vector layers."));
         finalizeSelection(selection);
         return selection;
     }
 
     if (isFile(copernicusEarthPath)
-        && hasNaturalEarth(diagnostics)
-        && isFile(diagnostics.copernicusDemVrtPath))
+        && diagnostics.naturalEarthAvailable
+        && diagnostics.copernicusDemAvailable)
     {
         selection.mode = MapDataMode::NaturalEarthWithCopernicusDem;
         selection.description = QStringLiteral("Natural Earth background with local Copernicus DEM elevation.");
         setEarthFile(selection, copernicusEarthPath);
+        diagnostics.selectedDemLayerAvailable = true;
+        diagnostics.selectedElevationSource = QStringLiteral("Copernicus DEM GLO-30");
         diagnostics.messages.push_back(QStringLiteral("Selected Copernicus DEM GLO-30 local elevation."));
         if (isFile(fullLocalEarthPath) && hasCompleteOsmSet(diagnostics))
         {
@@ -294,18 +341,20 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     }
 
     if (isFile(srtmEarthPath)
-        && hasNaturalEarth(diagnostics)
-        && isFile(diagnostics.srtmDemVrtPath))
+        && diagnostics.naturalEarthAvailable
+        && diagnostics.srtmDemAvailable)
     {
         selection.mode = MapDataMode::NaturalEarthWithSrtm;
         selection.description = QStringLiteral("Natural Earth background with local SRTM elevation.");
         setEarthFile(selection, srtmEarthPath);
+        diagnostics.selectedDemLayerAvailable = true;
+        diagnostics.selectedElevationSource = QStringLiteral("SRTM");
         diagnostics.messages.push_back(QStringLiteral("Selected SRTM local elevation fallback."));
         finalizeSelection(selection);
         return selection;
     }
 
-    if (isFile(defaultEarthPath) && hasNaturalEarth(diagnostics))
+    if (isFile(defaultEarthPath) && diagnostics.naturalEarthAvailable)
     {
         selection.mode = MapDataMode::NaturalEarth;
         selection.description = QStringLiteral("Natural Earth offline visual background without terrain elevation.");

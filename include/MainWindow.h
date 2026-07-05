@@ -44,6 +44,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 class RtkConfigDialog;
 class QFile;
@@ -637,6 +638,7 @@ private:
     void updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, VaporView::DeviceState state);
 #ifdef VAPORVIEW_HAS_OSGEARTH
     void maybeForwardMap3DSample(const VaporView::EpsilonData& epsilonData, quint64 recordTimestampUs);
+    void flushMap3DSamples();
     VaporView::Geo::NavSample map3DSampleFromEpsilon(const VaporView::EpsilonData& epsilonData, quint64 recordTimestampUs) const;
 #endif
     void sendTemperatureCommand(VaporView::CommandId command, const VaporView::TemperatureControllerCommand& payload);
@@ -1008,7 +1010,8 @@ private:
     QHash<quint16, VaporView::PeakSearchRange> remote_peak_search_commands_;
     qint64 remote_last_status_ms_;
 #ifdef VAPORVIEW_HAS_OSGEARTH
-    qint64 last_map3d_update_ms_;
+    QTimer *map3d_flush_timer_;
+    std::vector<VaporView::Geo::NavSample> pending_map3d_samples_;
 #endif
     VaporView::TelemetryStatus remote_status_;
     VaporView::TelemetryStatus last_remote_recording_status_;

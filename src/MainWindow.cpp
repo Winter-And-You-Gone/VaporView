@@ -6403,7 +6403,8 @@ MainWindow::MainWindow(QWidget *parent)
     , remote_recording_state_(0)
     , remote_last_status_ms_(0)
 #ifdef VAPORVIEW_HAS_OSGEARTH
-    , last_map3d_update_ms_(0)
+    , map3d_flush_timer_(new QTimer(this))
+    , pending_map3d_samples_()
 #endif
     , has_last_remote_recording_status_(false)
     , cancel_connection_requested_(false)
@@ -6504,6 +6505,12 @@ MainWindow::MainWindow(QWidget *parent)
                    Qt::WindowMaximizeButtonHint |
                    Qt::WindowCloseButtonHint);
     setProperty(kMainWindowProperty, true);
+
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    map3d_flush_timer_->setInterval(50);
+    map3d_flush_timer_->setTimerType(Qt::CoarseTimer);
+    connect(map3d_flush_timer_, &QTimer::timeout, this, &MainWindow::flushMap3DSamples);
+#endif
 
     const double currentPointSize = qApp->font().pointSizeF();
     base_font_point_size_ = currentPointSize > 0.0 ? currentPointSize : 10.0;
@@ -13936,6 +13943,11 @@ void MainWindow::onOpenMap3DWindowClicked()
         map3d_window_->setAttribute(Qt::WA_QuitOnClose, false);
         connect(map3d_window_, &QObject::destroyed, this, [this]() {
             map3d_window_ = nullptr;
+            pending_map3d_samples_.clear();
+            if (map3d_flush_timer_)
+            {
+                map3d_flush_timer_->stop();
+            }
         });
     }
 
@@ -19324,20 +19336,53 @@ void MainWindow::maybeForwardMap3DSample(const VaporView::EpsilonData& epsilonDa
 {
     if (!map3d_window_ || !map3d_window_->isVisible() || !epsilonData.valid)
     {
+        pending_map3d_samples_.clear();
+        if (map3d_flush_timer_)
+        {
+            map3d_flush_timer_->stop();
+        }
         return;
     }
-
-    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-    if (last_map3d_update_ms_ > 0 && nowMs - last_map3d_update_ms_ < 50)
-    {
-        return;
-    }
-    last_map3d_update_ms_ = nowMs;
 
     const VaporView::Geo::NavSample sample = map3DSampleFromEpsilon(epsilonData, recordTimestampUs);
     if (sample.hasLlh() && sample.fixQuality != VaporView::Geo::FixQuality::Invalid)
     {
-        map3d_window_->appendSample(sample);
+        pending_map3d_samples_.push_back(sample);
+        if (map3d_flush_timer_ && !map3d_flush_timer_->isActive())
+        {
+            map3d_flush_timer_->start();
+        }
+    }
+}
+
+void MainWindow::flushMap3DSamples()
+{
+    if (!map3d_window_ || !map3d_window_->isVisible())
+    {
+        pending_map3d_samples_.clear();
+        if (map3d_flush_timer_)
+        {
+            map3d_flush_timer_->stop();
+        }
+        return;
+    }
+
+    if (pending_map3d_samples_.empty())
+    {
+        if (map3d_flush_timer_)
+        {
+            map3d_flush_timer_->stop();
+        }
+        return;
+    }
+
+    std::vector<VaporView::Geo::NavSample> samples;
+    samples.swap(pending_map3d_samples_);
+    map3d_window_->appendSamples(samples);
+
+    if (map3d_flush_timer_ && pending_map3d_samples_.empty())
+    {
+        map3d_flush_timer_->stop();
     }
 }
 #endif

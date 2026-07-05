@@ -33,6 +33,15 @@ struct MapDataDiagnostics {
     QString projDataPath;
     QString osgLibraryPath;
     QString osgEarthNotifyLevel;
+    bool naturalEarthAvailable = false;
+    bool copernicusDemAvailable = false;
+    bool srtmDemAvailable = false;
+    bool osmVectorAvailable = false;
+    bool selectedDemLayerAvailable = false;
+    bool selectedOsmLayersAvailable = false;
+    QString selectedElevationSource;
+    int osmLayerCount = 0;
+    int selectedOsmLayerCount = 0;
     QStringList missingFiles;
     QStringList foundFiles;
     QStringList warnings;
