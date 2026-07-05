@@ -1,0 +1,17 @@
+<map name="VaporView Natural Earth + Sentinel-2 Local Imagery">
+    <!-- Offline global visual background. This is not terrain elevation. -->
+    <GDALImage name="Natural Earth II 1:50m shaded relief with water">
+        <url>natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt</url>
+        <interpolation>bilinear</interpolation>
+    </GDALImage>
+
+    <!--
+        Optional high-resolution local imagery overlay.
+        Build this VRT from local open Sentinel-2-derived GeoTIFF files.
+        VaporView does not download imagery or use API-key/commercial map services.
+    -->
+    <GDALImage name="Sentinel-2 local imagery overlay">
+        <url>imagery/sentinel2/sentinel2.vrt</url>
+        <interpolation>bilinear</interpolation>
+    </GDALImage>
+</map>

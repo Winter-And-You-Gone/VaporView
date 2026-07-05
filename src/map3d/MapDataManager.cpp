@@ -345,7 +345,7 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     if (diagnostics.localImageryAvailable)
     {
         diagnostics.messages.push_back(
-            QStringLiteral("Optional local high-resolution imagery VRTs detected for future map templates."));
+            QStringLiteral("Optional local high-resolution imagery VRTs detected; load a matching imagery earth template manually."));
     }
     if (diagnostics.local3DTilesAvailable)
     {

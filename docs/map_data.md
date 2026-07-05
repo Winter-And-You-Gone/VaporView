@@ -132,13 +132,21 @@ data/maps/imagery/landsat/landsat.vrt
 data/maps/imagery/openaerialmap/openaerialmap.vrt
 ```
 
+Manual local imagery earth templates:
+
+```text
+data/maps/vaporview_with_sentinel2_imagery.earth
+data/maps/vaporview_with_landsat_imagery.earth
+data/maps/vaporview_with_openaerialmap_imagery.earth
+```
+
 Build each VRT from local GeoTIFF files with GDAL, for example:
 
 ```powershell
 gdalbuildvrt data/maps/imagery/sentinel2/sentinel2.vrt data/maps/imagery/sentinel2/*.tif
 ```
 
-`MapDataManager` scans these VRTs and shows them in the 3D Map diagnostics. The current built-in `.earth` templates do not automatically load these imagery layers yet; the paths are a stable local contract for future high-resolution offline imagery templates.
+`MapDataManager` scans these VRTs and shows them in the 3D Map diagnostics. Optional imagery does not change the automatic base map mode. After preparing a VRT, use the 3D Map toolbar `加载 Earth 文件` action and select the matching imagery `.earth` template manually. The templates keep Natural Earth as the offline global background and add one local imagery overlay.
 
 ## Optional Local 3D Tiles
 
@@ -182,7 +190,8 @@ For SRTM fallback validation, place SRTM GeoTIFF tiles in `data/maps/terrain/srt
 3. Optionally place a local 3D Tiles dataset under `data/maps/tiles3d/local/` with `tileset.json` at the root.
 4. Build and start VaporView with `-DVAPORVIEW_ENABLE_OSGEARTH=ON`.
 5. Open the 3D Map window and click `地图诊断`.
-6. Confirm optional local imagery and optional local 3D Tiles availability are reported. These optional files should not change the selected base map mode until a future template explicitly loads them.
+6. Confirm optional local imagery and optional local 3D Tiles availability are reported. These optional files should not change the selected base map mode.
+7. To view local imagery, click `加载 Earth 文件` and select `vaporview_with_sentinel2_imagery.earth`, `vaporview_with_landsat_imagery.earth`, or `vaporview_with_openaerialmap_imagery.earth`.
 
 ## Git Tracking
 

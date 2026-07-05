@@ -14,4 +14,4 @@ Build the VRT from local files only, for example:
 gdalbuildvrt data/maps/imagery/sentinel2/sentinel2.vrt data/maps/imagery/sentinel2/*.tif
 ```
 
-VaporView diagnostics will detect this VRT, but the current default map templates do not automatically load it yet.
+VaporView diagnostics will detect this VRT. To view it, use the 3D Map toolbar `加载 Earth 文件` action and select `data/maps/vaporview_with_sentinel2_imagery.earth`.

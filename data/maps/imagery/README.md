@@ -11,6 +11,14 @@ data/maps/imagery/
   openaerialmap/openaerialmap.vrt
 ```
 
-Current built-in templates use Natural Earth as the offline visual background and optional local DEM/OSM layers. These VRT paths are scanned by `MapDataManager` and shown in diagnostics so future `.earth` templates can add higher-resolution local imagery without changing the directory contract.
+Manual `.earth` templates are available at the `data/maps` root:
+
+```text
+data/maps/vaporview_with_sentinel2_imagery.earth
+data/maps/vaporview_with_landsat_imagery.earth
+data/maps/vaporview_with_openaerialmap_imagery.earth
+```
+
+Each template keeps Natural Earth as the offline global background and adds exactly one local imagery VRT overlay. `MapDataManager` scans these VRT paths and shows them in diagnostics, but optional imagery does not change the automatic base map selection order.
 
 Large GeoTIFF/VRT imagery and archives are intentionally ignored by git.

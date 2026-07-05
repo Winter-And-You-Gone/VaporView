@@ -3,6 +3,7 @@
 #include <QtCore/QProcess>
 #include <QtCore/QProcessEnvironment>
 #include <QtCore/QStandardPaths>
+#include <QtCore/QStringList>
 #include <QtCore/QTemporaryDir>
 
 #include <cstdlib>
@@ -119,10 +120,23 @@ int main()
     const QString osmScript = sourceRoot.filePath(QStringLiteral("scripts/prepare-osm-local-data.py"));
     const QString demScript = sourceRoot.filePath(QStringLiteral("scripts/prepare-demo-dem.py"));
     const QString fullLocalEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_full_local.earth"));
+    const QString sentinel2ImageryEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_with_sentinel2_imagery.earth"));
+    const QString landsatImageryEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_with_landsat_imagery.earth"));
+    const QString openAerialMapImageryEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_with_openaerialmap_imagery.earth"));
     require(QFileInfo(osmScript).isFile(), QStringLiteral("OSM script exists"));
     require(QFileInfo(demScript).isFile(), QStringLiteral("DEM script exists"));
     require(QFileInfo(fullLocalEarth).isFile(), QStringLiteral("full local earth template exists"));
+    require(QFileInfo(sentinel2ImageryEarth).isFile(), QStringLiteral("Sentinel-2 imagery earth template exists"));
+    require(QFileInfo(landsatImageryEarth).isFile(), QStringLiteral("Landsat imagery earth template exists"));
+    require(QFileInfo(openAerialMapImageryEarth).isFile(), QStringLiteral("OpenAerialMap imagery earth template exists"));
 
+    const QStringList forbiddenOnlineSources = {QStringLiteral("cesium"),
+                                                QStringLiteral("google"),
+                                                QStringLiteral("mapbox"),
+                                                QStringLiteral("arcgisonline"),
+                                                QStringLiteral("tianditu"),
+                                                QStringLiteral("http://"),
+                                                QStringLiteral("https://")};
     const QString fullLocalEarthText = readTextFile(fullLocalEarth);
     require(fullLocalEarthText.contains(QStringLiteral("<FeatureImage name=\"OSM water fill\"")),
             QStringLiteral("full local earth renders OSM water with FeatureImage"));
@@ -132,16 +146,30 @@ int main()
             QStringLiteral("full local earth renders OSM building footprints with FeatureImage"));
     require(fullLocalEarthText.contains(QStringLiteral("<TiledFeatureModel name=\"OSM place labels\"")),
             QStringLiteral("full local earth renders OSM place labels with TiledFeatureModel"));
-    for (const QString& forbidden : {QStringLiteral("cesium"),
-                                    QStringLiteral("google"),
-                                    QStringLiteral("mapbox"),
-                                    QStringLiteral("arcgisonline"),
-                                    QStringLiteral("tianditu"),
-                                    QStringLiteral("http://"),
-                                    QStringLiteral("https://")})
+    for (const QString& forbidden : forbiddenOnlineSources)
     {
         require(!fullLocalEarthText.toLower().contains(forbidden),
                 QStringLiteral("full local earth does not reference forbidden online source %1").arg(forbidden));
+    }
+
+    const QStringList imageryEarthFiles = {sentinel2ImageryEarth, landsatImageryEarth, openAerialMapImageryEarth};
+    const QStringList imageryVrtPaths = {QStringLiteral("imagery/sentinel2/sentinel2.vrt"),
+                                         QStringLiteral("imagery/landsat/landsat.vrt"),
+                                         QStringLiteral("imagery/openaerialmap/openaerialmap.vrt")};
+    for (int index = 0; index < imageryEarthFiles.size(); ++index)
+    {
+        const QString imageryEarthText = readTextFile(imageryEarthFiles[index]);
+        require(imageryEarthText.contains(QStringLiteral("natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt")),
+                QStringLiteral("imagery earth template keeps Natural Earth offline background"));
+        require(imageryEarthText.contains(imageryVrtPaths[index]),
+                QStringLiteral("imagery earth template references its local VRT"));
+        require(imageryEarthText.contains(QStringLiteral("<GDALImage")),
+                QStringLiteral("imagery earth template uses GDALImage layers"));
+        for (const QString& forbidden : forbiddenOnlineSources)
+        {
+            require(!imageryEarthText.toLower().contains(forbidden),
+                    QStringLiteral("imagery earth template does not reference forbidden online source %1").arg(forbidden));
+        }
     }
 
     const ProcessResult osmHelp = runProcess(python, {osmScript, QStringLiteral("--help")});

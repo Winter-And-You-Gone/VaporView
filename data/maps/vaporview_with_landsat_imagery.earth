@@ -1,0 +1,17 @@
+<map name="VaporView Natural Earth + Landsat Local Imagery">
+    <!-- Offline global visual background. This is not terrain elevation. -->
+    <GDALImage name="Natural Earth II 1:50m shaded relief with water">
+        <url>natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt</url>
+        <interpolation>bilinear</interpolation>
+    </GDALImage>
+
+    <!--
+        Optional high-resolution local imagery overlay.
+        Build this VRT from local open Landsat-derived GeoTIFF files.
+        VaporView does not download imagery or use API-key/commercial map services.
+    -->
+    <GDALImage name="Landsat local imagery overlay">
+        <url>imagery/landsat/landsat.vrt</url>
+        <interpolation>bilinear</interpolation>
+    </GDALImage>
+</map>

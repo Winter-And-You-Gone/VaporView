@@ -51,6 +51,14 @@ Replay slider
 
 `加载 Earth 文件` opens a custom `.earth` file. Keep relative paths in that file aligned with its location.
 
+Optional local imagery templates live in `data/maps` and can be loaded manually after the matching VRT exists:
+
+```text
+vaporview_with_sentinel2_imagery.earth
+vaporview_with_landsat_imagery.earth
+vaporview_with_openaerialmap_imagery.earth
+```
+
 `重载最佳本地地图` rescans `data/maps` and loads the best local dataset currently available.
 
 `飞到飞机` moves the camera to the latest aircraft sample.
@@ -154,6 +162,14 @@ OSM local vectors:
 ```powershell
 python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --overwrite
 ```
+
+Optional local imagery:
+
+```powershell
+gdalbuildvrt data/maps/imagery/sentinel2/sentinel2.vrt data/maps/imagery/sentinel2/*.tif
+```
+
+After building a local imagery VRT, use `加载 Earth 文件` and select the matching `vaporview_with_*_imagery.earth` template from `data/maps`.
 
 The user is responsible for placing Copernicus DEM, SRTM, OSM, Sentinel-2, Landsat, or OpenAerialMap files under `data/maps`. VaporView should not download commercial or restricted data sources.
 

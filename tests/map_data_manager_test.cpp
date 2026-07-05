@@ -86,6 +86,8 @@ int main(int argc, char** argv)
             "optional Sentinel-2 VRT should be listed as found");
     require(selection.diagnostics.foundFiles.contains(selection.diagnostics.local3DTilesTilesetPath),
             "optional 3D Tiles tileset should be listed as found");
+    require(selection.diagnostics.messages.join(QLatin1Char('\n')).contains(QStringLiteral("imagery earth template")),
+            "optional imagery diagnostics should mention manual imagery earth templates");
 
     touch(root, QStringLiteral("data/maps/vaporview_with_srtm.earth"));
     touch(root, QStringLiteral("data/maps/terrain/srtm/srtm.vrt"));
