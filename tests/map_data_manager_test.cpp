@@ -54,6 +54,11 @@ int main(int argc, char** argv)
     touch(root, QStringLiteral("data/maps/vaporview_default.earth"));
     touch(root, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"));
     selection = select(root);
+    require(selection.mode == VaporView::Map3D::MapDataMode::LocalGridOnly, "preview texture alone should not select NaturalEarth");
+
+    touch(root, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"));
+    touch(root, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"));
+    selection = select(root);
     require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarth, "Natural Earth files should select NaturalEarth");
     require(selection.hasEarthFile(), "NaturalEarth selection should expose an earth file");
 
@@ -77,8 +82,9 @@ int main(int argc, char** argv)
     touch(root, QStringLiteral("data/maps/osm/buildings.gpkg"));
     touch(root, QStringLiteral("data/maps/osm/places.gpkg"));
     selection = select(root);
-    require(selection.mode == VaporView::Map3D::MapDataMode::FullLocalMap, "complete local data should select full local map");
+    require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarthWithCopernicusDem, "Copernicus DEM should remain the automatic top priority");
     require(selection.diagnostics.foundFiles.contains(selection.earthFile), "selected earth file should be listed as found");
+    require(selection.diagnostics.foundFiles.contains(selection.diagnostics.naturalEarthVrtPath), "Natural Earth VRT should be listed as found");
 
     return 0;
 }

@@ -291,7 +291,13 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
         set(vaporview_natural_earth_texture
             "${CMAKE_SOURCE_DIR}/data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"
         )
-        if(EXISTS "${vaporview_default_earth_file}" AND EXISTS "${vaporview_natural_earth_texture}")
+        set(vaporview_natural_earth_vrt
+            "${CMAKE_SOURCE_DIR}/data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"
+        )
+        set(vaporview_natural_earth_raster
+            "${CMAKE_SOURCE_DIR}/data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"
+        )
+        if(EXISTS "${vaporview_default_earth_file}" AND EXISTS "${vaporview_natural_earth_vrt}" AND EXISTS "${vaporview_natural_earth_raster}")
             list(APPEND vaporview_osgearth_runtime_commands
                 COMMAND ${CMAKE_COMMAND} -E make_directory
                     "${CMAKE_CURRENT_BINARY_DIR}/data/maps/natural_earth/NE2_50M_SR_W"
@@ -307,6 +313,12 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_full_local_earth_file}"
                     "${CMAKE_CURRENT_BINARY_DIR}/data/maps/vaporview_full_local.earth"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${vaporview_natural_earth_vrt}"
+                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${vaporview_natural_earth_raster}"
+                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_natural_earth_texture}"
                     "${CMAKE_CURRENT_BINARY_DIR}/data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"

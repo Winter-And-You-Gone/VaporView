@@ -15,6 +15,8 @@ constexpr auto kCopernicusEarthRelative = "data/maps/vaporview_with_dem.earth";
 constexpr auto kSrtmEarthRelative = "data/maps/vaporview_with_srtm.earth";
 constexpr auto kFullLocalEarthRelative = "data/maps/vaporview_full_local.earth";
 constexpr auto kNaturalEarthTextureRelative = "data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png";
+constexpr auto kNaturalEarthVrtRelative = "data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt";
+constexpr auto kNaturalEarthRasterRelative = "data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif";
 constexpr auto kCopernicusDemVrtRelative = "data/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt";
 constexpr auto kSrtmDemVrtRelative = "data/maps/terrain/srtm/srtm.vrt";
 constexpr auto kOsmRoadsRelative = "data/maps/osm/roads.gpkg";
@@ -68,9 +70,9 @@ bool hasCompleteOsmSet(const MapDataDiagnostics& diagnostics)
         && isFile(diagnostics.osmPlacesPath);
 }
 
-bool hasAnyDem(const MapDataDiagnostics& diagnostics)
+bool hasNaturalEarth(const MapDataDiagnostics& diagnostics)
 {
-    return isFile(diagnostics.copernicusDemVrtPath) || isFile(diagnostics.srtmDemVrtPath);
+    return isFile(diagnostics.naturalEarthVrtPath) && isFile(diagnostics.naturalEarthRasterPath);
 }
 
 void setEarthFile(MapDataSelection& selection, const QString& path)
@@ -193,6 +195,8 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     const QString fullLocalEarthPath = absolutePath(root, kFullLocalEarthRelative);
     diagnostics.fullLocalEarthPath = fullLocalEarthPath;
     diagnostics.naturalEarthTexturePath = absolutePath(root, kNaturalEarthTextureRelative);
+    diagnostics.naturalEarthVrtPath = absolutePath(root, kNaturalEarthVrtRelative);
+    diagnostics.naturalEarthRasterPath = absolutePath(root, kNaturalEarthRasterRelative);
     diagnostics.copernicusDemVrtPath = absolutePath(root, kCopernicusDemVrtRelative);
     diagnostics.srtmDemVrtPath = absolutePath(root, kSrtmDemVrtRelative);
     diagnostics.osmRoadsPath = absolutePath(root, kOsmRoadsRelative);
@@ -240,6 +244,8 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     recordFile(diagnostics, defaultEarthPath);
     recordFile(diagnostics, fullLocalEarthPath);
     recordFile(diagnostics, diagnostics.naturalEarthTexturePath);
+    recordFile(diagnostics, diagnostics.naturalEarthVrtPath);
+    recordFile(diagnostics, diagnostics.naturalEarthRasterPath);
     recordFile(diagnostics, copernicusEarthPath);
     recordFile(diagnostics, diagnostics.copernicusDemVrtPath);
     recordFile(diagnostics, srtmEarthPath);
@@ -249,28 +255,19 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     recordFile(diagnostics, diagnostics.osmBuildingsPath);
     recordFile(diagnostics, diagnostics.osmPlacesPath);
 
-    if (isFile(fullLocalEarthPath)
-        && isFile(diagnostics.naturalEarthTexturePath)
-        && hasAnyDem(diagnostics)
-        && hasCompleteOsmSet(diagnostics))
-    {
-        selection.mode = MapDataMode::FullLocalMap;
-        selection.description = QStringLiteral("Natural Earth background, local DEM, and local OSM vector GeoPackages.");
-        setEarthFile(selection, fullLocalEarthPath);
-        diagnostics.messages.push_back(QStringLiteral("Selected full local map with offline OSM vector layers."));
-        finalizeSelection(selection);
-        return selection;
-    }
-
     if (isFile(copernicusEarthPath)
-        && isFile(diagnostics.naturalEarthTexturePath)
+        && hasNaturalEarth(diagnostics)
         && isFile(diagnostics.copernicusDemVrtPath))
     {
         selection.mode = MapDataMode::NaturalEarthWithCopernicusDem;
         selection.description = QStringLiteral("Natural Earth background with local Copernicus DEM elevation.");
         setEarthFile(selection, copernicusEarthPath);
         diagnostics.messages.push_back(QStringLiteral("Selected Copernicus DEM GLO-30 local elevation."));
-        if (isFile(fullLocalEarthPath) && !hasCompleteOsmSet(diagnostics))
+        if (isFile(fullLocalEarthPath) && hasCompleteOsmSet(diagnostics))
+        {
+            diagnostics.messages.push_back(QStringLiteral("Full local OSM data is available but automatic selection prioritizes DEM templates."));
+        }
+        else if (isFile(fullLocalEarthPath) && !hasCompleteOsmSet(diagnostics))
         {
             diagnostics.warnings.push_back(QStringLiteral("Full local map template exists, but one or more OSM GeoPackages are missing."));
         }
@@ -279,7 +276,7 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     }
 
     if (isFile(srtmEarthPath)
-        && isFile(diagnostics.naturalEarthTexturePath)
+        && hasNaturalEarth(diagnostics)
         && isFile(diagnostics.srtmDemVrtPath))
     {
         selection.mode = MapDataMode::NaturalEarthWithSrtm;
@@ -290,7 +287,7 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
         return selection;
     }
 
-    if (isFile(defaultEarthPath) && isFile(diagnostics.naturalEarthTexturePath))
+    if (isFile(defaultEarthPath) && hasNaturalEarth(diagnostics))
     {
         selection.mode = MapDataMode::NaturalEarth;
         selection.description = QStringLiteral("Natural Earth offline visual background without terrain elevation.");

@@ -528,6 +528,8 @@ QString Map3DWindow::diagnosticsText() const
     lines << QStringLiteral("Maps root: %1").arg(diagnostics.mapsRoot.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.mapsRoot);
     lines << QStringLiteral("Full local earth: %1").arg(diagnostics.fullLocalEarthPath);
     lines << QStringLiteral("Natural Earth texture: %1").arg(diagnostics.naturalEarthTexturePath);
+    lines << QStringLiteral("Natural Earth VRT: %1").arg(diagnostics.naturalEarthVrtPath);
+    lines << QStringLiteral("Natural Earth raster: %1").arg(diagnostics.naturalEarthRasterPath);
     lines << QStringLiteral("Copernicus DEM VRT: %1").arg(diagnostics.copernicusDemVrtPath);
     lines << QStringLiteral("SRTM VRT: %1").arg(diagnostics.srtmDemVrtPath);
     lines << QStringLiteral("OSM roads: %1").arg(diagnostics.osmRoadsPath);
