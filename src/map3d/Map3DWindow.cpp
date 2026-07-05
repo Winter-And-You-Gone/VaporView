@@ -20,8 +20,12 @@ namespace {
 
 QString defaultEarthFilePath()
 {
-    const QString relative = QStringLiteral("data/maps/vaporview_default.earth");
+    const QString demRelative = QStringLiteral("data/maps/vaporview_with_dem.earth");
+    const QString srtmRelative = QStringLiteral("data/maps/vaporview_with_srtm.earth");
+    const QString defaultRelative = QStringLiteral("data/maps/vaporview_default.earth");
     const QString textureRelative = QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png");
+    const QString copernicusDemRelative = QStringLiteral("data/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt");
+    const QString srtmDemRelative = QStringLiteral("data/maps/terrain/srtm/srtm.vrt");
     const QString appDir = QCoreApplication::applicationDirPath();
     const QStringList roots = {
         QDir::currentPath(),
@@ -31,14 +35,38 @@ QString defaultEarthFilePath()
 
     for (const QString& root : roots)
     {
-        const QString earthPath = QDir::cleanPath(QDir(root).absoluteFilePath(relative));
+        const QString demEarthPath = QDir::cleanPath(QDir(root).absoluteFilePath(demRelative));
+        const QString srtmEarthPath = QDir::cleanPath(QDir(root).absoluteFilePath(srtmRelative));
+        const QString defaultEarthPath = QDir::cleanPath(QDir(root).absoluteFilePath(defaultRelative));
         const QString texturePath = QDir::cleanPath(QDir(root).absoluteFilePath(textureRelative));
-        if (QFileInfo(earthPath).isFile() && QFileInfo(texturePath).isFile())
+        const QString copernicusDemPath = QDir::cleanPath(QDir(root).absoluteFilePath(copernicusDemRelative));
+        const QString srtmDemPath = QDir::cleanPath(QDir(root).absoluteFilePath(srtmDemRelative));
+        if (QFileInfo(demEarthPath).isFile()
+            && QFileInfo(texturePath).isFile()
+            && QFileInfo(copernicusDemPath).isFile())
         {
-            return QFileInfo(earthPath).absoluteFilePath();
+            return QFileInfo(demEarthPath).absoluteFilePath();
+        }
+        if (QFileInfo(srtmEarthPath).isFile()
+            && QFileInfo(texturePath).isFile()
+            && QFileInfo(srtmDemPath).isFile())
+        {
+            return QFileInfo(srtmEarthPath).absoluteFilePath();
+        }
+        if (QFileInfo(defaultEarthPath).isFile() && QFileInfo(texturePath).isFile())
+        {
+            return QFileInfo(defaultEarthPath).absoluteFilePath();
         }
     }
-    return QDir::cleanPath(QDir(appDir).absoluteFilePath(QStringLiteral("../../%1").arg(relative)));
+    return QDir::cleanPath(QDir(appDir).absoluteFilePath(QStringLiteral("../../%1").arg(defaultRelative)));
+}
+
+bool isBuiltInEarthFile(const QString& earthPath)
+{
+    const QString fileName = QFileInfo(earthPath).fileName();
+    return fileName == QStringLiteral("vaporview_default.earth")
+        || fileName == QStringLiteral("vaporview_with_dem.earth")
+        || fileName == QStringLiteral("vaporview_with_srtm.earth");
 }
 
 } // namespace
@@ -134,7 +162,11 @@ void Map3DWindow::loadInitialEarthFile()
 {
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
     const QString lastEarthFile = settings.value(QStringLiteral("lastEarthFile")).toString();
-    const QString initialEarthFile = QFileInfo(lastEarthFile).isFile() ? lastEarthFile : defaultEarthFilePath();
+    const QString autoEarthFile = defaultEarthFilePath();
+    const QString initialEarthFile =
+        QFileInfo(lastEarthFile).isFile() && !isBuiltInEarthFile(lastEarthFile)
+            ? lastEarthFile
+            : autoEarthFile;
 
     if (!QFileInfo(initialEarthFile).isFile())
     {

@@ -1,0 +1,25 @@
+<map name="VaporView Natural Earth + Local DEM">
+    <!-- Offline global visual background. This is not terrain elevation. -->
+    <GDALImage name="Natural Earth II 1:50m shaded relief with water">
+        <url>natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt</url>
+        <interpolation>bilinear</interpolation>
+    </GDALImage>
+
+    <!--
+        Local elevation layer. Build this VRT from local GeoTIFF DEM tiles.
+
+        Preferred source:
+          data/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt
+
+        Backup source:
+          data/maps/terrain/srtm/srtm.vrt
+
+        Keep this template pointed at the Copernicus path by default. If only
+        SRTM is available, either copy/update the VRT path here or load a
+        custom .earth file from the 3D Map toolbar.
+    -->
+    <GDALElevation name="Copernicus DEM GLO-30 local GeoTIFF elevation">
+        <url>terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt</url>
+        <interpolation>bilinear</interpolation>
+    </GDALElevation>
+</map>

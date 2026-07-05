@@ -279,6 +279,8 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
         endforeach()
 
         set(vaporview_default_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_default.earth")
+        set(vaporview_dem_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_with_dem.earth")
+        set(vaporview_srtm_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_with_srtm.earth")
         set(vaporview_natural_earth_texture
             "${CMAKE_SOURCE_DIR}/data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"
         )
@@ -289,6 +291,12 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_default_earth_file}"
                     "${CMAKE_CURRENT_BINARY_DIR}/data/maps/vaporview_default.earth"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${vaporview_dem_earth_file}"
+                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/vaporview_with_dem.earth"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${vaporview_srtm_earth_file}"
+                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/vaporview_with_srtm.earth"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_natural_earth_texture}"
                     "${CMAKE_CURRENT_BINARY_DIR}/data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"

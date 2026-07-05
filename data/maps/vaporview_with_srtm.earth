@@ -1,0 +1,13 @@
+<map name="VaporView Natural Earth + SRTM DEM">
+    <!-- Offline global visual background. This is not terrain elevation. -->
+    <GDALImage name="Natural Earth II 1:50m shaded relief with water">
+        <url>natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt</url>
+        <interpolation>bilinear</interpolation>
+    </GDALImage>
+
+    <!-- Backup local elevation layer for SRTM GeoTIFF tiles. -->
+    <GDALElevation name="SRTM local GeoTIFF elevation">
+        <url>terrain/srtm/srtm.vrt</url>
+        <interpolation>bilinear</interpolation>
+    </GDALElevation>
+</map>
