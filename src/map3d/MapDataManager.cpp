@@ -14,6 +14,7 @@ constexpr auto kDefaultEarthRelative = "data/maps/vaporview_default.earth";
 constexpr auto kCopernicusEarthRelative = "data/maps/vaporview_with_dem.earth";
 constexpr auto kSrtmEarthRelative = "data/maps/vaporview_with_srtm.earth";
 constexpr auto kFullLocalEarthRelative = "data/maps/vaporview_full_local.earth";
+constexpr auto kFullLocalSrtmEarthRelative = "data/maps/vaporview_full_local_srtm.earth";
 constexpr auto kNaturalEarthTextureRelative = "data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png";
 constexpr auto kNaturalEarthVrtRelative = "data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt";
 constexpr auto kNaturalEarthRasterRelative = "data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif";
@@ -90,6 +91,21 @@ bool hasNaturalEarth(const MapDataDiagnostics& diagnostics)
 bool hasAnyDem(const MapDataDiagnostics& diagnostics)
 {
     return isFile(diagnostics.copernicusDemVrtPath) || isFile(diagnostics.srtmDemVrtPath);
+}
+
+QString fullLocalEarthForAvailableDem(const QString& copernicusEarthPath,
+                                      const QString& srtmEarthPath,
+                                      const MapDataDiagnostics& diagnostics)
+{
+    if (diagnostics.copernicusDemAvailable && isFile(copernicusEarthPath))
+    {
+        return copernicusEarthPath;
+    }
+    if (diagnostics.srtmDemAvailable && isFile(srtmEarthPath))
+    {
+        return srtmEarthPath;
+    }
+    return {};
 }
 
 int osmLayerCount(const MapDataDiagnostics& diagnostics)
@@ -263,7 +279,9 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     const QString copernicusEarthPath = absolutePath(root, kCopernicusEarthRelative);
     const QString srtmEarthPath = absolutePath(root, kSrtmEarthRelative);
     const QString fullLocalEarthPath = absolutePath(root, kFullLocalEarthRelative);
+    const QString fullLocalSrtmEarthPath = absolutePath(root, kFullLocalSrtmEarthRelative);
     diagnostics.fullLocalEarthPath = fullLocalEarthPath;
+    diagnostics.fullLocalSrtmEarthPath = fullLocalSrtmEarthPath;
     diagnostics.naturalEarthTexturePath = absolutePath(root, kNaturalEarthTextureRelative);
     diagnostics.naturalEarthVrtPath = absolutePath(root, kNaturalEarthVrtRelative);
     diagnostics.naturalEarthRasterPath = absolutePath(root, kNaturalEarthRasterRelative);
@@ -317,6 +335,7 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
 
     recordFile(diagnostics, defaultEarthPath);
     recordFile(diagnostics, fullLocalEarthPath);
+    recordFile(diagnostics, fullLocalSrtmEarthPath);
     recordFile(diagnostics, diagnostics.naturalEarthTexturePath);
     recordFile(diagnostics, diagnostics.naturalEarthVrtPath);
     recordFile(diagnostics, diagnostics.naturalEarthRasterPath);
@@ -353,19 +372,26 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
             QStringLiteral("Optional local 3D Tiles tileset detected for future 3D content loading."));
     }
 
-    if (isFile(fullLocalEarthPath)
+    const QString selectedFullLocalEarthPath = fullLocalEarthForAvailableDem(
+        fullLocalEarthPath,
+        fullLocalSrtmEarthPath,
+        diagnostics);
+
+    if (!selectedFullLocalEarthPath.isEmpty()
         && diagnostics.naturalEarthAvailable
         && hasAnyDem(diagnostics)
         && diagnostics.osmVectorAvailable)
     {
         selection.mode = MapDataMode::FullLocalMap;
         selection.description = QStringLiteral("Natural Earth background, local DEM, and local OSM vector GeoPackages.");
-        setEarthFile(selection, fullLocalEarthPath);
+        setEarthFile(selection, selectedFullLocalEarthPath);
         diagnostics.selectedDemLayerAvailable = true;
         diagnostics.selectedOsmLayersAvailable = true;
         diagnostics.selectedElevationSource = bestAvailableDemSource(diagnostics);
         diagnostics.selectedOsmLayerCount = diagnostics.osmLayerCount;
-        diagnostics.messages.push_back(QStringLiteral("Selected full local map with offline OSM vector layers."));
+        diagnostics.messages.push_back(
+            QStringLiteral("Selected full local map with offline OSM vector layers and %1 elevation.")
+                .arg(diagnostics.selectedElevationSource));
         finalizeSelection(selection);
         return selection;
     }

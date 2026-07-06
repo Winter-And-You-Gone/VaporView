@@ -288,6 +288,7 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
         set(vaporview_dem_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_with_dem.earth")
         set(vaporview_srtm_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_with_srtm.earth")
         set(vaporview_full_local_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_full_local.earth")
+        set(vaporview_full_local_srtm_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_full_local_srtm.earth")
         set(vaporview_sentinel2_imagery_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_with_sentinel2_imagery.earth")
         set(vaporview_landsat_imagery_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_with_landsat_imagery.earth")
         set(vaporview_openaerialmap_imagery_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_with_openaerialmap_imagery.earth")
@@ -316,6 +317,9 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_full_local_earth_file}"
                     "${CMAKE_CURRENT_BINARY_DIR}/data/maps/vaporview_full_local.earth"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${vaporview_full_local_srtm_earth_file}"
+                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/vaporview_full_local_srtm.earth"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_sentinel2_imagery_earth_file}"
                     "${CMAKE_CURRENT_BINARY_DIR}/data/maps/vaporview_with_sentinel2_imagery.earth"

@@ -706,7 +706,8 @@ QString Map3DWindow::diagnosticsText() const
     lines << QStringLiteral("Current working directory: %1").arg(diagnostics.currentWorkingDirectory.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.currentWorkingDirectory);
     lines << QStringLiteral("Project root: %1").arg(diagnostics.projectRoot.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.projectRoot);
     lines << QStringLiteral("Maps root: %1").arg(diagnostics.mapsRoot.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.mapsRoot);
-    lines << QStringLiteral("Full local earth: %1").arg(diagnostics.fullLocalEarthPath);
+    lines << QStringLiteral("Full local Copernicus earth: %1").arg(diagnostics.fullLocalEarthPath);
+    lines << QStringLiteral("Full local SRTM earth: %1").arg(diagnostics.fullLocalSrtmEarthPath);
     lines << QStringLiteral("Natural Earth texture: %1").arg(diagnostics.naturalEarthTexturePath);
     lines << QStringLiteral("Natural Earth VRT: %1").arg(diagnostics.naturalEarthVrtPath);
     lines << QStringLiteral("Natural Earth raster: %1").arg(diagnostics.naturalEarthRasterPath);

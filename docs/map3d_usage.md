@@ -20,7 +20,7 @@ The window asks `MapDataManager` for the best local map data at startup.
 
 Selection order:
 
-1. `Full local map`: Natural Earth + DEM + local OSM water, roads, building footprints, and place labels.
+1. `Full local map`: Natural Earth + DEM + local OSM water, roads, building footprints, and place labels. This uses `vaporview_full_local.earth` with Copernicus DEM, or `vaporview_full_local_srtm.earth` when SRTM is the only available DEM.
 2. `Natural Earth + Copernicus DEM`.
 3. `Natural Earth + SRTM DEM`.
 4. `Natural Earth`.

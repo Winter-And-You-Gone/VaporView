@@ -105,6 +105,7 @@ int main(int argc, char** argv)
     require(selection.diagnostics.selectedElevationSource == QStringLiteral("Copernicus DEM GLO-30"), "Copernicus selection should report Copernicus elevation source");
 
     touch(root, QStringLiteral("data/maps/vaporview_full_local.earth"));
+    touch(root, QStringLiteral("data/maps/vaporview_full_local_srtm.earth"));
     selection = select(root);
     require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarthWithCopernicusDem, "incomplete OSM set should not select full local map");
     require(!selection.warnings.isEmpty(), "missing OSM files should produce a warning");
@@ -122,6 +123,28 @@ int main(int argc, char** argv)
     require(selection.diagnostics.osmVectorAvailable, "complete local data should mark OSM vectors available");
     require(selection.diagnostics.selectedOsmLayersAvailable, "complete local data should select OSM layers");
     require(selection.diagnostics.selectedOsmLayerCount == 4, "complete local data should report four selected OSM layers");
+
+    QTemporaryDir srtmFullLocalDir;
+    require(srtmFullLocalDir.isValid(), "failed to create SRTM full-local temporary directory");
+    QDir srtmRoot(srtmFullLocalDir.path());
+    touch(srtmRoot, QStringLiteral("data/maps/vaporview_default.earth"));
+    touch(srtmRoot, QStringLiteral("data/maps/vaporview_with_srtm.earth"));
+    touch(srtmRoot, QStringLiteral("data/maps/vaporview_full_local_srtm.earth"));
+    touch(srtmRoot, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"));
+    touch(srtmRoot, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"));
+    touch(srtmRoot, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"));
+    touch(srtmRoot, QStringLiteral("data/maps/terrain/srtm/srtm.vrt"));
+    touch(srtmRoot, QStringLiteral("data/maps/osm/roads.gpkg"));
+    touch(srtmRoot, QStringLiteral("data/maps/osm/water.gpkg"));
+    touch(srtmRoot, QStringLiteral("data/maps/osm/buildings.gpkg"));
+    touch(srtmRoot, QStringLiteral("data/maps/osm/places.gpkg"));
+    selection = select(srtmRoot);
+    require(selection.mode == VaporView::Map3D::MapDataMode::FullLocalMap,
+            "SRTM plus complete OSM should select full local map");
+    require(selection.earthFile.endsWith(QStringLiteral("vaporview_full_local_srtm.earth")),
+            "SRTM-only full local map should load the SRTM full-local earth template");
+    require(selection.diagnostics.selectedElevationSource == QStringLiteral("SRTM"),
+            "SRTM-only full local map should report SRTM elevation source");
 
     return 0;
 }

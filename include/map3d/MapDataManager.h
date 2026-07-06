@@ -19,6 +19,7 @@ struct MapDataDiagnostics {
     QString mapsRoot;
     QString earthFilePath;
     QString fullLocalEarthPath;
+    QString fullLocalSrtmEarthPath;
     QString naturalEarthTexturePath;
     QString naturalEarthVrtPath;
     QString naturalEarthRasterPath;

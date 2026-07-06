@@ -81,7 +81,9 @@ Height reference note: RTK/GNSS samples may report WGS84 ellipsoid height, mean 
 
 VaporView automatic map selection order:
 
-1. `vaporview_full_local.earth` when Natural Earth, one DEM VRT, and all required local OSM GeoPackages exist.
+1. Full local map when Natural Earth, one DEM VRT, and all required local OSM GeoPackages exist:
+   - `vaporview_full_local.earth` when Copernicus DEM is available.
+   - `vaporview_full_local_srtm.earth` when only the SRTM fallback DEM is available.
 2. `vaporview_with_dem.earth` when Natural Earth and `data/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt` exist.
 3. `vaporview_with_srtm.earth` when Natural Earth and `data/maps/terrain/srtm/srtm.vrt` exist.
 4. `vaporview_default.earth` when Natural Earth exists but no DEM VRT exists.
@@ -109,7 +111,7 @@ Prepare those files from a local `.osm.pbf` or `.osm` extract with GDAL/OGR:
 python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --overwrite
 ```
 
-The helper does not download data. It runs `ogr2ogr` locally and writes four GeoPackage files. The generated GeoPackage layer names are `roads`, `water`, `buildings`, and `places`. Once Natural Earth, one DEM VRT, and all four OSM GeoPackages exist, `MapDataManager` selects `FullLocalMap` and loads `data/maps/vaporview_full_local.earth`.
+The helper does not download data. It runs `ogr2ogr` locally and writes four GeoPackage files. The generated GeoPackage layer names are `roads`, `water`, `buildings`, and `places`. Once Natural Earth, one DEM VRT, and all four OSM GeoPackages exist, `MapDataManager` selects `FullLocalMap`. It loads `data/maps/vaporview_full_local.earth` for Copernicus DEM, or `data/maps/vaporview_full_local_srtm.earth` when SRTM is the only available DEM.
 
 The current full-local earth template renders local OSM context offline:
 
@@ -180,7 +182,7 @@ For SRTM fallback validation, place SRTM GeoTIFF tiles in `data/maps/terrain/srt
 5. Run `python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --overwrite`.
 6. Build and start VaporView with `-DVAPORVIEW_ENABLE_OSGEARTH=ON`.
 7. Open the 3D Map window and click `地图诊断`.
-8. Confirm the mode is `Full local map` and the loaded earth file is `vaporview_full_local.earth`.
+8. Confirm the mode is `Full local map` and the loaded earth file is `vaporview_full_local.earth` for Copernicus DEM or `vaporview_full_local_srtm.earth` for SRTM-only fallback.
 9. Zoom into the OSM extract area and confirm local water, roads, building footprints, and place labels are visible.
 
 ## Optional Imagery And 3D Tiles Diagnostics Flow
