@@ -478,5 +478,12 @@ int main(int argc, char** argv)
     require(selection.earthFile.startsWith(demRoot.absolutePath()),
             "best map selection should come from the DEM-capable root");
 
+    VaporView::Map3D::MapDataManager srtmThenCopernicusManager({srtmRoot.absolutePath(), demRoot.absolutePath()});
+    selection = srtmThenCopernicusManager.selectBestAvailableMap();
+    require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarthWithCopernicusDem,
+            "Copernicus DEM should outrank a complete SRTM full-local root across candidate roots");
+    require(selection.earthFile.startsWith(demRoot.absolutePath()),
+            "cross-root selection should prefer the Copernicus DEM root over SRTM full-local data");
+
     return 0;
 }

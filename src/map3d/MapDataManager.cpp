@@ -688,22 +688,32 @@ void finalizeSelection(MapDataSelection& selection)
     selection.warnings = selection.diagnostics.warnings;
 }
 
-int modePriority(MapDataMode mode)
+int baseModePriority(MapDataMode mode)
 {
     switch (mode)
     {
     case MapDataMode::FullLocalMap:
-        return 4;
+        return 0;
     case MapDataMode::NaturalEarthWithCopernicusDem:
-        return 3;
+        return 30;
     case MapDataMode::NaturalEarthWithSrtm:
-        return 2;
+        return 20;
     case MapDataMode::NaturalEarth:
-        return 1;
+        return 10;
     case MapDataMode::LocalGridOnly:
         return 0;
     }
     return 0;
+}
+
+int selectionPriority(const MapDataSelection& selection)
+{
+    int priority = baseModePriority(selection.diagnostics.selectedBaseMode);
+    if (selection.mode == MapDataMode::FullLocalMap)
+    {
+        ++priority;
+    }
+    return priority;
 }
 
 } // namespace
@@ -728,11 +738,12 @@ MapDataSelection MapDataManager::selectBestAvailableMap() const
     for (const QString& root : candidateRoots())
     {
         const MapDataSelection selection = evaluateRoot(root);
-        if (!haveSelection || modePriority(selection.mode) > modePriority(best.mode))
+        if (!haveSelection || selectionPriority(selection) > selectionPriority(best))
         {
             best = selection;
             haveSelection = true;
-            if (best.mode == MapDataMode::FullLocalMap)
+            if (best.mode == MapDataMode::FullLocalMap
+                && best.diagnostics.selectedBaseMode == MapDataMode::NaturalEarthWithCopernicusDem)
             {
                 break;
             }
