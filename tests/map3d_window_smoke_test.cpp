@@ -305,6 +305,8 @@ int main(int argc, char** argv)
             "diagnostics include selected earth file");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Natural Earth texture:")),
             "diagnostics include Natural Earth texture path");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Local grid fallback:")),
+            "diagnostics include local grid fallback availability");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Copernicus DEM VRT:")),
             "diagnostics include Copernicus DEM VRT path");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("SRTM VRT:")),

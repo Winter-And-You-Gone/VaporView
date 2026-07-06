@@ -604,6 +604,8 @@ void finalizeSelection(MapDataSelection& selection)
     {
         diagnostics.selectedBaseMode = selection.mode;
     }
+    diagnostics.localGridFallbackAvailable = true;
+    diagnostics.localGridFallbackActive = selection.mode == MapDataMode::LocalGridOnly;
     diagnostics.selectedBaseModeLabel = MapDataManager::modeLabel(diagnostics.selectedBaseMode);
     diagnostics.selectedBaseModeKey = MapDataManager::modeKey(diagnostics.selectedBaseMode);
     diagnostics.selectedBaseEarthFilePath =

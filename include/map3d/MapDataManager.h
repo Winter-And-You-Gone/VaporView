@@ -70,6 +70,8 @@ struct MapDataDiagnostics {
     bool local3DTilesAvailable = false;
     bool local3DTilesTilesetValid = false;
     bool local3DTilesHasExternalUris = false;
+    bool localGridFallbackAvailable = true;
+    bool localGridFallbackActive = false;
     bool selectedDemLayerAvailable = false;
     bool selectedOsmLayersAvailable = false;
     QString selectedElevationSource;

@@ -91,6 +91,8 @@ int main(int argc, char** argv)
     auto selection = select(root);
     require(selection.mode == VaporView::Map3D::MapDataMode::LocalGridOnly, "empty root should use local grid");
     require(!selection.hasEarthFile(), "empty root should not have an earth file");
+    require(selection.diagnostics.localGridFallbackAvailable, "local grid fallback should always be available");
+    require(selection.diagnostics.localGridFallbackActive, "empty root should activate the local grid fallback");
 
     touch(root, QStringLiteral("data/maps/vaporview_default.earth"));
     touch(root, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"));
@@ -134,6 +136,8 @@ int main(int argc, char** argv)
     selection = select(root);
     require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarth, "Natural Earth files should select NaturalEarth");
     require(selection.hasEarthFile(), "NaturalEarth selection should expose an earth file");
+    require(selection.diagnostics.localGridFallbackAvailable, "local grid fallback should remain available when a map loads");
+    require(!selection.diagnostics.localGridFallbackActive, "NaturalEarth selection should leave local grid in standby");
     require(selection.diagnostics.naturalEarthAvailable, "NaturalEarth selection should mark Natural Earth available");
     require(selection.diagnostics.selectedBaseMode == VaporView::Map3D::MapDataMode::NaturalEarth,
             "NaturalEarth selection should report NaturalEarth as the selected base mode");

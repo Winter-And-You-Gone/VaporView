@@ -1336,6 +1336,9 @@ QString Map3DWindow::diagnosticsText() const
         }
     }
     lines << QStringLiteral("  Natural Earth: %1").arg(availabilityLabel(diagnostics.naturalEarthAvailable));
+    lines << QStringLiteral("  Local grid fallback: %1%2")
+                 .arg(diagnostics.localGridFallbackAvailable ? QStringLiteral("available") : QStringLiteral("unavailable"),
+                      diagnostics.localGridFallbackActive ? QStringLiteral(" (active)") : QStringLiteral(" (standby)"));
     lines << QStringLiteral("  Selected DEM: %1").arg(selectedDemLabel(diagnostics));
     lines << QStringLiteral("  Copernicus DEM VRT: %1").arg(availabilityLabel(diagnostics.copernicusDemAvailable));
     lines << QStringLiteral("  SRTM VRT: %1").arg(availabilityLabel(diagnostics.srtmDemAvailable));
