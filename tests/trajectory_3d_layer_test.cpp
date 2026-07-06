@@ -68,6 +68,20 @@ PrimitiveStats primitiveStats(const osg::Geometry& geometry)
     return stats;
 }
 
+int visibleDrawableCount(const osg::Geode& geode)
+{
+    int count = 0;
+    for (unsigned int index = 0; index < geode.getNumDrawables(); ++index)
+    {
+        const osg::Drawable* drawable = geode.getDrawable(index);
+        if (drawable && drawable->getNodeMask() != 0u)
+        {
+            ++count;
+        }
+    }
+    return count;
+}
+
 } // namespace
 
 int main()
@@ -116,6 +130,49 @@ int main()
     require(restoredFirstGeometry->getVertexArray() != nullptr, "restored first segment has vertex array");
     require(restoredFirstGeometry->getVertexArray()->getNumElements() == 4095,
             "expanded visibility restores previously clipped segment");
+
+    VaporView::Map3D::Trajectory3DLayer longLayer;
+    std::vector<VaporView::Geo::NavSample> longSamples;
+    constexpr int kLongTrackSampleCount = 100000;
+    longSamples.reserve(kLongTrackSampleCount);
+    for (int index = 0; index < kLongTrackSampleCount; ++index)
+    {
+        longSamples.push_back(sample(index));
+    }
+
+    longLayer.appendSamples(longSamples);
+    require(longLayer.sampleCount() == kLongTrackSampleCount, "long layer keeps 100000 samples");
+    require(longLayer.visibleSampleCount() == kLongTrackSampleCount, "long layer shows all samples under default cap");
+    const int expectedLongSegments =
+        (kLongTrackSampleCount + longLayer.segmentSize() - 1) / longLayer.segmentSize();
+    require(longLayer.segmentCount() == expectedLongSegments, "long layer splits 100000 samples into segments");
+
+    auto* longGeode = dynamic_cast<osg::Geode*>(longLayer.node());
+    require(longGeode != nullptr, "long trajectory node is a geode");
+    require(static_cast<int>(longGeode->getNumDrawables()) == expectedLongSegments,
+            "long trajectory has one drawable per segment");
+
+    longLayer.setMaxVisibleSamples(10000);
+    require(longLayer.sampleCount() == kLongTrackSampleCount,
+            "long layer max-visible cap does not discard source samples");
+    require(longLayer.visibleSampleCount() == 10000,
+            "long layer max-visible cap limits rendered samples");
+    require(longGeode->getDrawable(0)->getNodeMask() == 0u,
+            "long layer hides old segments outside the visible window");
+    const int firstVisibleIndex = kLongTrackSampleCount - longLayer.visibleSampleCount();
+    const int firstVisibleSegment = firstVisibleIndex / longLayer.segmentSize();
+    require(visibleDrawableCount(*longGeode) == expectedLongSegments - firstVisibleSegment,
+            "long layer keeps only boundary and current visible segments active");
+
+    auto* longBoundaryGeometry =
+        dynamic_cast<osg::Geometry*>(longGeode->getDrawable(static_cast<unsigned int>(firstVisibleSegment)));
+    require(longBoundaryGeometry != nullptr, "long layer boundary segment drawable is geometry");
+    require(longBoundaryGeometry->getVertexArray() != nullptr,
+            "long layer boundary segment has vertex array");
+    const int expectedBoundaryVertices =
+        ((firstVisibleSegment + 1) * longLayer.segmentSize()) - firstVisibleIndex;
+    require(static_cast<int>(longBoundaryGeometry->getVertexArray()->getNumElements()) == expectedBoundaryVertices,
+            "long layer clips the boundary segment to the visible window");
 
     VaporView::Map3D::Trajectory3DLayer qualityLayer;
     std::vector<VaporView::Geo::NavSample> qualitySamples;
