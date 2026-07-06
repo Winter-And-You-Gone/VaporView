@@ -46,6 +46,25 @@ QString heightReferenceLabel(VaporView::Geo::HeightReference reference)
     return QStringLiteral("unknown");
 }
 
+QString attitudeSourceLabel(const VaporView::Geo::NavSample* sample)
+{
+    if (!sample)
+    {
+        return QStringLiteral("none");
+    }
+    if (sample->hasQuaternion())
+    {
+        return QStringLiteral("Quaternion");
+    }
+    if (std::isfinite(sample->rollDeg)
+        || std::isfinite(sample->pitchDeg)
+        || std::isfinite(sample->yawDeg))
+    {
+        return QStringLiteral("Euler");
+    }
+    return QStringLiteral("none");
+}
+
 bool isMap3DHeadlessTest()
 {
     return qEnvironmentVariableIsSet("VAPORVIEW_MAP3D_HEADLESS_TEST");
@@ -784,6 +803,8 @@ QString Map3DWindow::diagnosticsText() const
                  .arg(latest_track_record_timestamp_us_ > 0 ? QString::number(latest_track_record_timestamp_us_) : QStringLiteral("<none>"));
     lines << QStringLiteral("  Latest device timestamp us: %1")
                  .arg(latest_track_device_timestamp_us_ > 0 ? QString::number(latest_track_device_timestamp_us_) : QStringLiteral("<none>"));
+    lines << QStringLiteral("  Attitude source: %1")
+                 .arg(attitudeSourceLabel(has_latest_status_sample_ ? &latest_status_sample_ : nullptr));
     if (!latest_track_note_.isEmpty())
     {
         lines << QStringLiteral("  Note: %1").arg(latest_track_note_);
@@ -982,6 +1003,7 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest)
                     .arg(heightReferenceLabel(displayLatest->heightReference))
                     .arg(static_cast<int>(displayLatest->fixQuality))
                     .arg(satellitesText, hdopText);
+        text += QStringLiteral(" | Att %1").arg(attitudeSourceLabel(displayLatest));
     }
     if (replay_.hasSamples())
     {

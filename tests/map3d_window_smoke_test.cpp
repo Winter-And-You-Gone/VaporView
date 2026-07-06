@@ -139,9 +139,32 @@ int main(int argc, char** argv)
     require(label->text().contains(QStringLiteral("dev 900000")), "status includes latest device timestamp");
     require(label->text().contains(QStringLiteral("Sats 12")), "status includes latest sample satellite count");
     require(label->text().contains(QStringLiteral("HDOP 0.90")), "status includes latest sample HDOP");
+    require(label->text().contains(QStringLiteral("Att none")), "status reports absent attitude source");
 
     window.clearTrack();
     QCoreApplication::processEvents();
+
+    VaporView::Geo::NavSample eulerSample = sample;
+    eulerSample.yawDeg = 91.0;
+    window.appendSample(eulerSample);
+    QCoreApplication::processEvents();
+    require(label->text().contains(QStringLiteral("Att Euler")), "status reports Euler attitude source");
+
+    window.clearTrack();
+    QCoreApplication::processEvents();
+
+    VaporView::Geo::NavSample quaternionSample = sample;
+    quaternionSample.quatW = 1.0;
+    quaternionSample.quatX = 0.0;
+    quaternionSample.quatY = 0.0;
+    quaternionSample.quatZ = 0.0;
+    window.appendSample(quaternionSample);
+    QCoreApplication::processEvents();
+    require(label->text().contains(QStringLiteral("Att Quaternion")), "status reports quaternion attitude source");
+
+    window.clearTrack();
+    QCoreApplication::processEvents();
+
     require(label->text().contains(QStringLiteral("Points: 0")), "clearTrack resets status");
     require(label->text().contains(QStringLiteral("Source none")), "clearTrack resets track source");
 
@@ -199,6 +222,8 @@ int main(int argc, char** argv)
             "diagnostics include visible and total sample counts");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Source: Replay")),
             "diagnostics include latest track source");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Attitude source: none")),
+            "diagnostics include attitude source");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Camera: Track auto")),
             "diagnostics include latest automatic camera action");
 

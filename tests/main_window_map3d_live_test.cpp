@@ -62,6 +62,7 @@ VaporView::EpsilonData makeSample(double latitudeDeg)
     sample.gnss_satellites = 12;
     sample.hdop = 0.9;
     sample.vdop = 1.1;
+    sample.yaw_deg = 91.0;
     return sample;
 }
 
@@ -136,6 +137,9 @@ int main(int argc, char** argv)
             "remote sky telemetry forwards one pending 3D map sample");
     require(window.testLatestPendingMap3DRecordTimestampUs() == 2010000,
             "remote sky telemetry uses host timestamp for the pending 3D map sample");
+    processEventsFor(80);
+    require(mapStatusLabel->text().contains(QStringLiteral("Att Euler")),
+            "flushed remote sky telemetry reports Euler aircraft attitude source");
 
     VaporView::EpsilonData invalidSample = makeSample(39.900004);
     invalidSample.valid = false;

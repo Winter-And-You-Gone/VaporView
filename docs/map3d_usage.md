@@ -106,6 +106,7 @@ The status bar shows:
 - latest latitude, longitude, and height when available
 - height reference label
 - fix quality
+- aircraft attitude source (`Quaternion`, `Euler`, or `none`)
 - replay position and speed
 
 Height reference labels are display hints only. VaporView currently does not compute AGL or terrain-clearance safety decisions because RTK/GNSS and DEM height references may not be unified.
@@ -118,6 +119,7 @@ Click `地图诊断`, or use `View / 视图 -> Map Data Diagnostics / 地图数�
 - active `.earth` file
 - runtime `Earth load` status, including requested path, loaded state, MapNode state, and layer open/status strings
 - render performance, including visible/total/hidden samples, trajectory segment count/size, FPS, frame time, and track update time
+- latest aircraft attitude source, using the same quaternion-first fallback as the aircraft marker
 - current working directory
 - project root
 - `data/maps` root
