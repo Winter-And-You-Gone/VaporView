@@ -193,7 +193,7 @@ void collectOsmLayerContracts(MapDataDiagnostics& diagnostics)
             .arg(diagnostics.osmRoadsPath),
         QStringLiteral("%1 -> layer water -> OGRFeatures osm-water -> FeatureImage OSM water fill")
             .arg(diagnostics.osmWaterPath),
-        QStringLiteral("%1 -> layer buildings -> OGRFeatures osm-buildings -> FeatureImage OSM building footprints")
+        QStringLiteral("%1 -> layer buildings -> OGRFeatures osm-buildings -> FeatureImage OSM building footprints + TiledFeatureModel OSM building extrusion")
             .arg(diagnostics.osmBuildingsPath),
         QStringLiteral("%1 -> layer places -> OGRFeatures osm-places -> TiledFeatureModel OSM place labels")
             .arg(diagnostics.osmPlacesPath)

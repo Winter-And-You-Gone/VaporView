@@ -54,6 +54,26 @@
         </styles>
     </FeatureImage>
 
+    <TiledFeatureModel name="OSM building extrusion" features="osm-buildings" pickable="true">
+        <profile>global-geodetic</profile>
+        <min_level>14</min_level>
+        <max_level>18</max_level>
+        <styles>
+            <style type="text/css"><![CDATA[
+                default {
+                    fill:                    #d7c1a3;
+                    extrusion-height:        10.0;
+                    extrusion-flatten:       true;
+                    extrusion-wall-gradient: 0.35;
+                    altitude-clamping:       terrain;
+                    altitude-technique:      map;
+                    altitude-binding:        vertex;
+                    render-lighting:         true;
+                }
+            ]]></style>
+        </styles>
+    </TiledFeatureModel>
+
     <FeatureImage name="OSM roads" min_level="8">
         <features>osm-roads</features>
         <styles>

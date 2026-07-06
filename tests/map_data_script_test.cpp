@@ -121,6 +121,7 @@ int main()
     const QString demScript = sourceRoot.filePath(QStringLiteral("scripts/prepare-demo-dem.py"));
     const QString mapsReadme = sourceRoot.filePath(QStringLiteral("data/maps/README.md"));
     const QString fullLocalEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_full_local.earth"));
+    const QString fullLocalSrtmEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_full_local_srtm.earth"));
     const QString sentinel2ImageryEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_with_sentinel2_imagery.earth"));
     const QString landsatImageryEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_with_landsat_imagery.earth"));
     const QString openAerialMapImageryEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_with_openaerialmap_imagery.earth"));
@@ -128,6 +129,7 @@ int main()
     require(QFileInfo(demScript).isFile(), QStringLiteral("DEM script exists"));
     require(QFileInfo(mapsReadme).isFile(), QStringLiteral("data/maps README exists"));
     require(QFileInfo(fullLocalEarth).isFile(), QStringLiteral("full local earth template exists"));
+    require(QFileInfo(fullLocalSrtmEarth).isFile(), QStringLiteral("SRTM full local earth template exists"));
     require(QFileInfo(sentinel2ImageryEarth).isFile(), QStringLiteral("Sentinel-2 imagery earth template exists"));
     require(QFileInfo(landsatImageryEarth).isFile(), QStringLiteral("Landsat imagery earth template exists"));
     require(QFileInfo(openAerialMapImageryEarth).isFile(), QStringLiteral("OpenAerialMap imagery earth template exists"));
@@ -161,12 +163,31 @@ int main()
             QStringLiteral("full local earth renders OSM roads with FeatureImage"));
     require(fullLocalEarthText.contains(QStringLiteral("<FeatureImage name=\"OSM building footprints\"")),
             QStringLiteral("full local earth renders OSM building footprints with FeatureImage"));
+    require(fullLocalEarthText.contains(QStringLiteral("<TiledFeatureModel name=\"OSM building extrusion\"")),
+            QStringLiteral("full local earth renders OSM buildings with TiledFeatureModel extrusion"));
+    require(fullLocalEarthText.contains(QStringLiteral("extrusion-height:        10.0"))
+                && fullLocalEarthText.contains(QStringLiteral("extrusion-flatten:       true"))
+                && fullLocalEarthText.contains(QStringLiteral("altitude-clamping:       terrain")),
+            QStringLiteral("full local earth configures coarse fixed-height terrain-clamped building extrusion"));
     require(fullLocalEarthText.contains(QStringLiteral("<TiledFeatureModel name=\"OSM place labels\"")),
             QStringLiteral("full local earth renders OSM place labels with TiledFeatureModel"));
     for (const QString& forbidden : forbiddenOnlineSources)
     {
         require(!fullLocalEarthText.toLower().contains(forbidden),
                 QStringLiteral("full local earth does not reference forbidden online source %1").arg(forbidden));
+    }
+
+    const QString fullLocalSrtmEarthText = readTextFile(fullLocalSrtmEarth);
+    require(fullLocalSrtmEarthText.contains(QStringLiteral("<TiledFeatureModel name=\"OSM building extrusion\"")),
+            QStringLiteral("SRTM full local earth also renders OSM buildings with extrusion"));
+    require(fullLocalSrtmEarthText.contains(QStringLiteral("extrusion-height:        10.0"))
+                && fullLocalSrtmEarthText.contains(QStringLiteral("extrusion-flatten:       true"))
+                && fullLocalSrtmEarthText.contains(QStringLiteral("altitude-clamping:       terrain")),
+            QStringLiteral("SRTM full local earth configures coarse fixed-height terrain-clamped building extrusion"));
+    for (const QString& forbidden : forbiddenOnlineSources)
+    {
+        require(!fullLocalSrtmEarthText.toLower().contains(forbidden),
+                QStringLiteral("SRTM full local earth does not reference forbidden online source %1").arg(forbidden));
     }
 
     const QStringList imageryEarthFiles = {sentinel2ImageryEarth, landsatImageryEarth, openAerialMapImageryEarth};

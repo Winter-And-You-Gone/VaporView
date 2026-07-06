@@ -71,6 +71,10 @@ int main(int argc, char** argv)
             "OSM diagnostics should describe the roads GeoPackage layer name");
     require(selection.diagnostics.osmLayerContracts.join(QLatin1Char('\n')).contains(QStringLiteral("FeatureImage OSM roads")),
             "OSM diagnostics should describe the roads earth render layer");
+    require(selection.diagnostics.osmLayerContracts.join(QLatin1Char('\n')).contains(QStringLiteral("FeatureImage OSM building footprints")),
+            "OSM diagnostics should describe the building footprint render layer");
+    require(selection.diagnostics.osmLayerContracts.join(QLatin1Char('\n')).contains(QStringLiteral("TiledFeatureModel OSM building extrusion")),
+            "OSM diagnostics should describe the building extrusion render layer");
     require(selection.diagnostics.osmLayerContracts.join(QLatin1Char('\n')).contains(QStringLiteral("TiledFeatureModel OSM place labels")),
             "OSM diagnostics should describe the place label render layer");
     require(!selection.diagnostics.selectedDemLayerAvailable, "NaturalEarth selection should not select a DEM layer");
@@ -139,6 +143,8 @@ int main(int argc, char** argv)
     require(selection.diagnostics.selectedOsmLayerCount == 4, "complete local data should report four selected OSM layers");
     require(selection.diagnostics.osmLayerContracts.join(QLatin1Char('\n')).contains(QStringLiteral("buildings.gpkg -> layer buildings")),
             "complete OSM diagnostics should retain the building layer contract");
+    require(selection.diagnostics.osmLayerContracts.join(QLatin1Char('\n')).contains(QStringLiteral("TiledFeatureModel OSM building extrusion")),
+            "complete OSM diagnostics should include the building extrusion contract");
     require(selection.diagnostics.missingOsmFiles.isEmpty(), "complete local data should not report missing OSM files");
     require(selection.diagnostics.fullLocalBlockers.isEmpty(), "complete local data should not report full-local blockers");
     require(selection.diagnostics.selectedFullLocalEarthPath.endsWith(QStringLiteral("vaporview_full_local.earth")),

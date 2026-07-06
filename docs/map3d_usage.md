@@ -22,7 +22,7 @@ The `地图诊断` panel reports both static file discovery and runtime earth lo
 
 Selection order:
 
-1. `Full local map`: Natural Earth + DEM + local OSM water, roads, building footprints, and place labels. This uses `vaporview_full_local.earth` with Copernicus DEM, or `vaporview_full_local_srtm.earth` when SRTM is the only available DEM.
+1. `Full local map`: Natural Earth + DEM + local OSM water, roads, building footprints, coarse fixed-height building extrusion, and place labels. This uses `vaporview_full_local.earth` with Copernicus DEM, or `vaporview_full_local_srtm.earth` when SRTM is the only available DEM.
 2. `Natural Earth + Copernicus DEM`.
 3. `Natural Earth + SRTM DEM`.
 4. `Natural Earth`.

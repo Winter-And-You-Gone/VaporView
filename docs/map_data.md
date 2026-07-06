@@ -135,11 +135,12 @@ The current full-local earth template renders local OSM context offline:
 - water polygons as a blue draped `FeatureImage`
 - roads as a yellow draped `FeatureImage`
 - building footprints as a tan draped `FeatureImage`
+- building polygons as a coarse fixed-height `TiledFeatureModel` extrusion
 - place names as a `TiledFeatureModel` label layer
 
-The 3D Map diagnostics also prints the expected OSM layer contract for each file: `roads.gpkg -> layer roads -> OGRFeatures osm-roads -> FeatureImage OSM roads`, `water.gpkg -> layer water -> OGRFeatures osm-water -> FeatureImage OSM water fill`, `buildings.gpkg -> layer buildings -> OGRFeatures osm-buildings -> FeatureImage OSM building footprints`, and `places.gpkg -> layer places -> OGRFeatures osm-places -> TiledFeatureModel OSM place labels`. If a GeoPackage exists but the vector layer does not render, compare this contract with `ogrinfo -ro -so data/maps/osm/<file>.gpkg <layer>` and the matching `.earth` feature name.
+The 3D Map diagnostics also prints the expected OSM layer contract for each file: `roads.gpkg -> layer roads -> OGRFeatures osm-roads -> FeatureImage OSM roads`, `water.gpkg -> layer water -> OGRFeatures osm-water -> FeatureImage OSM water fill`, `buildings.gpkg -> layer buildings -> OGRFeatures osm-buildings -> FeatureImage OSM building footprints + TiledFeatureModel OSM building extrusion`, and `places.gpkg -> layer places -> OGRFeatures osm-places -> TiledFeatureModel OSM place labels`. If a GeoPackage exists but the vector layer does not render, compare this contract with `ogrinfo -ro -so data/maps/osm/<file>.gpkg <layer>` and the matching `.earth` feature name.
 
-The first version shows building footprints only. It does not download online OSM tiles, cache web tiles, or extrude buildings into true 3D meshes yet.
+The building extrusion is intentionally simple: every building footprint uses a fixed 10 m height and clamps to terrain. It gives local 3D context without relying on online tiles or proprietary building-height sources. It is not a surveyed building-height model; later data enrichment can replace the fixed height with feature-specific attributes.
 
 ## Optional Local High-Resolution Imagery
 
@@ -203,7 +204,7 @@ For SRTM fallback validation, place SRTM GeoTIFF tiles in `data/maps/terrain/srt
 7. Build and start VaporView with `-DVAPORVIEW_ENABLE_OSGEARTH=ON`.
 8. Open the 3D Map window and click `地图诊断`.
 9. Confirm the mode is `Full local map` and the loaded earth file is `vaporview_full_local.earth` for Copernicus DEM or `vaporview_full_local_srtm.earth` for SRTM-only fallback.
-10. Zoom into the OSM extract area and confirm local water, roads, building footprints, and place labels are visible.
+10. Zoom into the OSM extract area and confirm local water, roads, building footprints, coarse building extrusion, and place labels are visible.
 
 ## Optional Imagery And 3D Tiles Diagnostics Flow
 
