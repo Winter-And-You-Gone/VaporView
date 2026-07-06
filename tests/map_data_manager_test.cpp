@@ -8,6 +8,38 @@
 
 namespace {
 
+class EnvVarGuard {
+public:
+    explicit EnvVarGuard(const char* name)
+        : name_(name),
+          original_(qgetenv(name)),
+          had_original_(!original_.isEmpty())
+    {
+    }
+
+    ~EnvVarGuard()
+    {
+        if (had_original_)
+        {
+            qputenv(name_, original_);
+        }
+        else
+        {
+            qunsetenv(name_);
+        }
+    }
+
+    void unset()
+    {
+        qunsetenv(name_);
+    }
+
+private:
+    const char* name_;
+    QByteArray original_;
+    bool had_original_ = false;
+};
+
 void fail(const char* message)
 {
     std::cerr << message << '\n';
@@ -76,6 +108,17 @@ int main(int argc, char** argv)
             "local grid readiness should include the Natural Earth preparation command");
     require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("python scripts/prepare-demo-dem.py")),
             "local grid readiness should include the DEM preparation command");
+
+    {
+        EnvVarGuard osgLibraryPathGuard("OSG_LIBRARY_PATH");
+        osgLibraryPathGuard.unset();
+        touch(root, QStringLiteral(".local_deps/vcpkg_installed/x64-windows/plugins/osgPlugins-3.6.6/osgdb_earth.dll"));
+        selection = select(root);
+        require(selection.diagnostics.osgPluginPath.endsWith(QStringLiteral("osgPlugins-3.6.6")),
+                "diagnostics should discover project-local osgPlugins-* directories without a hard-coded OSG patch version");
+        require(selection.diagnostics.osgLibraryPath == selection.diagnostics.osgPluginPath,
+                "OSG library path diagnostics should mirror the inferred plugin directory");
+    }
 
     touch(root, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"));
     touch(root, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"));

@@ -64,6 +64,53 @@ QString firstExistingDirectory(const QStringList& roots, const QStringList& rela
     return {};
 }
 
+QString firstExistingDirectoryMatching(const QStringList& roots,
+                                       const QStringList& relatives,
+                                       const QString& namePattern)
+{
+    for (const QString& root : roots)
+    {
+        for (const QString& relative : relatives)
+        {
+            QDir directory(QDir::cleanPath(QDir(root).absoluteFilePath(relative)));
+            if (!directory.exists())
+            {
+                continue;
+            }
+
+            const QFileInfoList matches =
+                directory.entryInfoList({namePattern}, QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+            for (const QFileInfo& match : matches)
+            {
+                if (match.isDir())
+                {
+                    return match.absoluteFilePath();
+                }
+            }
+        }
+    }
+    return {};
+}
+
+QString findOsgPluginDirectory(const QStringList& roots)
+{
+    const QString exact = firstExistingDirectory(roots, {
+        QStringLiteral("osgPlugins-3.6.5"),
+        QStringLiteral("plugins/osgPlugins-3.6.5"),
+        QStringLiteral(".local_deps/vcpkg_installed/x64-windows/plugins/osgPlugins-3.6.5")
+    });
+    if (!exact.isEmpty())
+    {
+        return exact;
+    }
+
+    return firstExistingDirectoryMatching(roots,
+                                          {QStringLiteral("."),
+                                           QStringLiteral("plugins"),
+                                           QStringLiteral(".local_deps/vcpkg_installed/x64-windows/plugins")},
+                                          QStringLiteral("osgPlugins-*"));
+}
+
 void recordFile(MapDataDiagnostics& diagnostics, const QString& path)
 {
     if (isFile(path))
@@ -780,11 +827,7 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     diagnostics.osgEarthNotifyLevel = environment.value(QStringLiteral("OSGEARTH_NOTIFY_LEVEL"));
     if (diagnostics.osgPluginPath.isEmpty())
     {
-        diagnostics.osgPluginPath = firstExistingDirectory(roots, {
-            QStringLiteral("osgPlugins-3.6.5"),
-            QStringLiteral("plugins/osgPlugins-3.6.5"),
-            QStringLiteral(".local_deps/vcpkg_installed/x64-windows/plugins/osgPlugins-3.6.5")
-        });
+        diagnostics.osgPluginPath = findOsgPluginDirectory(roots);
         diagnostics.osgLibraryPath = diagnostics.osgPluginPath;
     }
     diagnostics.gdalDataPath = environment.value(QStringLiteral("GDAL_DATA"));

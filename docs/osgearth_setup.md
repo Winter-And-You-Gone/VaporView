@@ -15,7 +15,7 @@ Recommended local layout:
       bin/
       include/
       lib/
-      plugins/osgPlugins-3.6.5/
+      plugins/osgPlugins-*/
       share/gdal/
       share/proj/
 ```
@@ -100,7 +100,7 @@ Configure was run with `VAPORVIEW_ENABLE_OSGEARTH=ON`, but CMake cannot find osg
 
 ### OSG Plugin Not Found
 
-Symptoms include blank maps, unknown file extension messages, or image/earth files failing to load. Check `OSG_LIBRARY_PATH` in the 3D Map diagnostics panel. It should point at a directory like `osgPlugins-3.6.5`.
+Symptoms include blank maps, unknown file extension messages, or image/earth files failing to load. Check `OSG_LIBRARY_PATH` in the 3D Map diagnostics panel. It should point at a directory like `osgPlugins-3.6.5` or another `osgPlugins-*` directory from the local OSG install.
 
 ### Missing `GDAL_DATA` or `PROJ_DATA`
 
