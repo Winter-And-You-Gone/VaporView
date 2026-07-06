@@ -17,6 +17,10 @@ public:
     int sampleCount() const;
     int currentIndex() const;
     bool isPlaying() const;
+    qint64 startTimestampUs() const;
+    qint64 endTimestampUs() const;
+    qint64 durationUs() const;
+    qint64 elapsedUs() const;
 
     double speed() const;
     void setSpeed(double speed);
@@ -25,6 +29,7 @@ public:
     void pause();
     void stop();
     bool seek(int index);
+    bool seekElapsedUs(qint64 elapsedUs);
     bool stepForward();
 
     const NavSample* currentSample() const;
@@ -36,6 +41,11 @@ public:
     static double speedFromText(const QString& text, double fallback = 1.0);
 
 private:
+    static qint64 timestampUsForSample(const NavSample& sample);
+    bool hasTimestampTimeline() const;
+    qint64 fallbackDurationUs() const;
+    qint64 sampleTimestampUs(int index) const;
+
     std::vector<NavSample> samples_;
     int current_index_ = -1;
     double speed_ = 1.0;

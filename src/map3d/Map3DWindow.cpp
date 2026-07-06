@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace VaporView::Map3D {
 namespace {
@@ -250,7 +251,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     connect(replay_slider_, &QSlider::valueChanged, this, [this](int value) {
         if (!replay_.isPlaying() && replay_slider_ && replay_slider_->isSliderDown())
         {
-            rebuildReplayAt(value);
+            rebuildReplayAtElapsedUs(replaySliderValueToElapsedUs(value));
         }
     });
 
@@ -706,7 +707,7 @@ void Map3DWindow::onReplaySliderMoved(int value)
     {
         return;
     }
-    rebuildReplayAt(value);
+    rebuildReplayAtElapsedUs(replaySliderValueToElapsedUs(value));
     updateReplayUi();
 }
 
@@ -746,6 +747,16 @@ void Map3DWindow::rebuildReplayAt(int index)
     updateStatus(visibleSamples.empty() ? nullptr : &visibleSamples.back());
 }
 
+void Map3DWindow::rebuildReplayAtElapsedUs(qint64 elapsedUs)
+{
+    if (!replay_.hasSamples())
+    {
+        return;
+    }
+    replay_.seekElapsedUs(elapsedUs);
+    rebuildReplayAt(replay_.currentIndex());
+}
+
 void Map3DWindow::setReplayEnabled(bool enabled)
 {
     if (replay_action_)
@@ -783,9 +794,33 @@ void Map3DWindow::updateReplayUi()
     if (replay_slider_)
     {
         const QSignalBlocker blocker(replay_slider_);
-        replay_slider_->setRange(0, hasReplay ? replay_.sampleCount() - 1 : 0);
-        replay_slider_->setValue(qMax(0, replay_.currentIndex()));
+        replay_slider_->setRange(0, hasReplay ? replaySliderMaximum() : 0);
+        replay_slider_->setValue(hasReplay ? replaySliderValue() : 0);
     }
+}
+
+int Map3DWindow::replaySliderMaximum() const
+{
+    const qint64 durationMs = (replay_.durationUs() + 999) / 1000;
+    return static_cast<int>(std::clamp<qint64>(durationMs, 0, std::numeric_limits<int>::max()));
+}
+
+int Map3DWindow::replaySliderValue() const
+{
+    const qint64 elapsedMs = (replay_.elapsedUs() + 999) / 1000;
+    return static_cast<int>(std::clamp<qint64>(elapsedMs, 0, replaySliderMaximum()));
+}
+
+qint64 Map3DWindow::replaySliderValueToElapsedUs(int value) const
+{
+    return static_cast<qint64>(std::clamp(value, 0, replaySliderMaximum())) * 1000;
+}
+
+QString Map3DWindow::replayTimeLabel() const
+{
+    const double elapsedS = static_cast<double>(replay_.elapsedUs()) / 1000000.0;
+    const double durationS = static_cast<double>(replay_.durationUs()) / 1000000.0;
+    return QStringLiteral("t %1/%2 s").arg(elapsedS, 0, 'f', 3).arg(durationS, 0, 'f', 3);
 }
 
 void Map3DWindow::setMapSelection(const MapDataSelection& selection)
@@ -1116,10 +1151,11 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest)
     }
     if (replay_.hasSamples())
     {
-        text += QStringLiteral(" | Replay %1/%2 %3x%4")
+        text += QStringLiteral(" | Replay %1/%2 %3x %4%5")
                     .arg(qMax(0, replay_.currentIndex() + 1))
                     .arg(replay_.sampleCount())
                     .arg(replay_.speed(), 0, 'g', 3)
+                    .arg(replayTimeLabel())
                     .arg(replay_.isPlaying() ? QStringLiteral(" playing") : QStringLiteral(""));
     }
     status_label_->setText(text);

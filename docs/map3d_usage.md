@@ -83,7 +83,7 @@ After loading a session:
 - `暂停` pauses replay.
 - `停止回放` stops and rewinds to the first sample.
 - Speed choices are `0.5x`, `1x`, `2x`, `5x`, and `10x`.
-- The slider seeks through the loaded samples.
+- The slider seeks by elapsed session time from the first recorded sample. The status bar still reports the current sample index and the elapsed/duration time.
 
 Replay is local to the 3D Map window and does not change the recorded session files.
 Loading a session automatically flies the camera to the complete track so the first view is useful without manual searching. Loading or reloading an earth file also re-centers on the current track when track samples are already present.

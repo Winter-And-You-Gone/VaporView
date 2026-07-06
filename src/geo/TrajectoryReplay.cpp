@@ -5,6 +5,12 @@
 #include <utility>
 
 namespace VaporView::Geo {
+namespace
+{
+
+constexpr qint64 kFallbackReplayStepUs = 100000;
+
+} // namespace
 
 void TrajectoryReplay::clear()
 {
@@ -38,6 +44,48 @@ int TrajectoryReplay::currentIndex() const
 bool TrajectoryReplay::isPlaying() const
 {
     return playing_;
+}
+
+qint64 TrajectoryReplay::startTimestampUs() const
+{
+    return samples_.empty() ? 0 : sampleTimestampUs(0);
+}
+
+qint64 TrajectoryReplay::endTimestampUs() const
+{
+    if (samples_.empty())
+    {
+        return 0;
+    }
+    return hasTimestampTimeline()
+        ? sampleTimestampUs(static_cast<int>(samples_.size()) - 1)
+        : fallbackDurationUs();
+}
+
+qint64 TrajectoryReplay::durationUs() const
+{
+    if (samples_.size() < 2)
+    {
+        return 0;
+    }
+    if (!hasTimestampTimeline())
+    {
+        return fallbackDurationUs();
+    }
+    return std::max<qint64>(0, endTimestampUs() - startTimestampUs());
+}
+
+qint64 TrajectoryReplay::elapsedUs() const
+{
+    if (current_index_ < 0 || samples_.empty())
+    {
+        return 0;
+    }
+    if (!hasTimestampTimeline())
+    {
+        return static_cast<qint64>(current_index_) * kFallbackReplayStepUs;
+    }
+    return std::max<qint64>(0, sampleTimestampUs(current_index_) - startTimestampUs());
 }
 
 double TrajectoryReplay::speed() const
@@ -86,6 +134,39 @@ bool TrajectoryReplay::seek(int index)
     }
     current_index_ = std::clamp(index, 0, static_cast<int>(samples_.size()) - 1);
     return true;
+}
+
+bool TrajectoryReplay::seekElapsedUs(qint64 elapsedUs)
+{
+    if (samples_.empty())
+    {
+        current_index_ = -1;
+        playing_ = false;
+        return false;
+    }
+
+    const qint64 targetElapsed = std::clamp<qint64>(elapsedUs, 0, durationUs());
+    if (!hasTimestampTimeline())
+    {
+        const int index = static_cast<int>(
+            std::clamp<qint64>(std::llround(static_cast<double>(targetElapsed) / kFallbackReplayStepUs),
+                               0,
+                               static_cast<qint64>(samples_.size()) - 1));
+        return seek(index);
+    }
+
+    const qint64 targetTimestamp = startTimestampUs() + targetElapsed;
+    int selectedIndex = 0;
+    for (int index = 0; index < static_cast<int>(samples_.size()); ++index)
+    {
+        if (sampleTimestampUs(index) <= targetTimestamp)
+        {
+            selectedIndex = index;
+            continue;
+        }
+        break;
+    }
+    return seek(selectedIndex);
 }
 
 bool TrajectoryReplay::stepForward()
@@ -158,6 +239,51 @@ double TrajectoryReplay::speedFromText(const QString& text, double fallback)
         return speed;
     }
     return fallback > 0.0 ? fallback : 1.0;
+}
+
+qint64 TrajectoryReplay::timestampUsForSample(const NavSample& sample)
+{
+    if (sample.recordTimestampUs > 0)
+    {
+        return sample.recordTimestampUs;
+    }
+    return sample.deviceTimestampUs > 0 ? sample.deviceTimestampUs : 0;
+}
+
+bool TrajectoryReplay::hasTimestampTimeline() const
+{
+    if (samples_.size() < 2)
+    {
+        return false;
+    }
+    const qint64 first = timestampUsForSample(samples_.front());
+    const qint64 last = timestampUsForSample(samples_.back());
+    return first > 0 && last > first;
+}
+
+qint64 TrajectoryReplay::fallbackDurationUs() const
+{
+    if (samples_.size() < 2)
+    {
+        return 0;
+    }
+    return static_cast<qint64>(samples_.size() - 1) * kFallbackReplayStepUs;
+}
+
+qint64 TrajectoryReplay::sampleTimestampUs(int index) const
+{
+    if (index < 0 || index >= static_cast<int>(samples_.size()))
+    {
+        return 0;
+    }
+    const qint64 timestamp = timestampUsForSample(samples_[static_cast<std::size_t>(index)]);
+    if (timestamp > 0)
+    {
+        return timestamp;
+    }
+    return hasTimestampTimeline()
+        ? startTimestampUs() + static_cast<qint64>(index) * kFallbackReplayStepUs
+        : static_cast<qint64>(index) * kFallbackReplayStepUs;
 }
 
 } // namespace VaporView::Geo

@@ -49,11 +49,16 @@ int main()
     require(replay.sampleCount() == 3, "loaded replay keeps sample count");
     require(replay.currentIndex() == 2, "loaded replay starts at full track");
     require(replay.visibleSamples().size() == 3, "loaded replay shows full track");
+    require(replay.startTimestampUs() == 1000000, "replay reports first timestamp");
+    require(replay.endTimestampUs() == 1200000, "replay reports last timestamp");
+    require(replay.durationUs() == 200000, "replay reports timestamp duration");
+    require(replay.elapsedUs() == 200000, "full-track replay reports elapsed duration");
 
     replay.play();
     require(replay.isPlaying(), "play starts replay");
     require(replay.currentIndex() == 0, "play rewinds from end");
     require(replay.visibleSamples().size() == 1, "play exposes first sample");
+    require(replay.elapsedUs() == 0, "play starts at zero elapsed time");
 
     require(replay.stepForward(), "first replay step advances");
     require(replay.currentIndex() == 1, "first replay step reaches second sample");
@@ -67,6 +72,15 @@ int main()
     require(replay.currentIndex() == 0, "negative seek clamps to first sample");
     replay.seek(20);
     require(replay.currentIndex() == 2, "large seek clamps to last sample");
+    replay.seekElapsedUs(150000);
+    require(replay.currentIndex() == 1, "time seek picks latest sample at or before elapsed timestamp");
+    require(replay.visibleSamples().size() == 2, "time seek exposes samples up to elapsed timestamp");
+    replay.seekElapsedUs(200000);
+    require(replay.currentIndex() == 2, "time seek reaches final sample at duration");
+    replay.seekElapsedUs(-1);
+    require(replay.currentIndex() == 0, "negative elapsed seek clamps to first sample");
+    replay.seekElapsedUs(999999);
+    require(replay.currentIndex() == 2, "elapsed seek beyond duration clamps to last sample");
 
     replay.stop();
     require(!replay.isPlaying(), "stop clears playing state");
@@ -79,6 +93,15 @@ int main()
     require(replay.speed() == 1.0, "invalid replay speed falls back");
     require(VaporView::Geo::TrajectoryReplay::speedFromText(QStringLiteral("5x")) == 5.0,
             "speed text parser handles x suffix");
+
+    std::vector<VaporView::Geo::NavSample> untimedSamples;
+    untimedSamples.push_back(sample(39.9, 116.3, 0));
+    untimedSamples.push_back(sample(39.9001, 116.3002, 0));
+    untimedSamples.push_back(sample(39.9002, 116.3004, 0));
+    replay.setSamples(untimedSamples);
+    require(replay.durationUs() == 200000, "untimed replay falls back to synthetic 10 Hz timeline");
+    replay.seekElapsedUs(100000);
+    require(replay.currentIndex() == 1, "untimed elapsed seek uses synthetic timeline");
 
     replay.clear();
     require(!replay.hasSamples(), "clear removes samples");

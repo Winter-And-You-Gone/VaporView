@@ -189,8 +189,9 @@ int main(int argc, char** argv)
     require(replayAction->isEnabled(), "replay enabled after session load");
     require(replayStopAction->isEnabled(), "replay stop enabled after session load");
     require(replaySlider->isEnabled(), "replay slider enabled after session load");
-    require(replaySlider->maximum() == 1, "replay slider spans session samples");
+    require(replaySlider->maximum() == 50, "replay slider spans session time in milliseconds");
     require(label->text().contains(QStringLiteral("Replay 2/2")), "session status includes replay position");
+    require(label->text().contains(QStringLiteral("t 0.050/0.050 s")), "session status includes replay time progress");
 
     replaySlider->setSliderDown(true);
     replaySlider->setValue(0);
@@ -199,6 +200,7 @@ int main(int argc, char** argv)
     require(label->text().contains(QStringLiteral("Points: 1")), "slider previews replay sample");
     require(label->text().contains(QStringLiteral("Source Replay")), "slider preview reports replay source");
     require(label->text().contains(QStringLiteral("Replay 1/2")), "slider updates replay position");
+    require(label->text().contains(QStringLiteral("t 0.000/0.050 s")), "slider updates replay elapsed time");
 
     diagnosticsAction->trigger();
     QCoreApplication::processEvents();
