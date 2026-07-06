@@ -1180,6 +1180,21 @@ QString Map3DWindow::diagnosticsText() const
     lines << QStringLiteral("Mode: %1 (%2)")
                  .arg(MapDataManager::modeLabel(map_selection_.mode),
                       MapDataManager::modeKey(map_selection_.mode));
+    lines << QStringLiteral("Base map priority: %1")
+                 .arg(diagnostics.baseMapPriority.isEmpty()
+                          ? QStringLiteral("Copernicus DEM > SRTM > Natural Earth > Local grid")
+                          : diagnostics.baseMapPriority);
+    lines << QStringLiteral("Selected base mode: %1 (%2)")
+                 .arg(diagnostics.selectedBaseModeLabel.isEmpty()
+                          ? QStringLiteral("<not evaluated>")
+                          : diagnostics.selectedBaseModeLabel,
+                      diagnostics.selectedBaseModeKey.isEmpty()
+                          ? QStringLiteral("<not evaluated>")
+                          : diagnostics.selectedBaseModeKey);
+    lines << QStringLiteral("Selected base earth file: %1")
+                 .arg(diagnostics.selectedBaseEarthFilePath.isEmpty()
+                          ? QStringLiteral("<none>")
+                          : diagnostics.selectedBaseEarthFilePath);
     if (!map_selection_.description.isEmpty())
     {
         lines << QStringLiteral("Description: %1").arg(map_selection_.description);

@@ -575,6 +575,25 @@ void setEarthFile(MapDataSelection& selection, const QString& path)
 void finalizeSelection(MapDataSelection& selection)
 {
     MapDataDiagnostics& diagnostics = selection.diagnostics;
+    diagnostics.baseMapPriority =
+        QStringLiteral("Copernicus DEM > SRTM > Natural Earth > Local grid");
+
+    if (selection.mode == MapDataMode::FullLocalMap)
+    {
+        diagnostics.selectedBaseMode =
+            diagnostics.selectedElevationSource == QStringLiteral("SRTM")
+                ? MapDataMode::NaturalEarthWithSrtm
+                : MapDataMode::NaturalEarthWithCopernicusDem;
+    }
+    else
+    {
+        diagnostics.selectedBaseMode = selection.mode;
+    }
+    diagnostics.selectedBaseModeLabel = MapDataManager::modeLabel(diagnostics.selectedBaseMode);
+    diagnostics.selectedBaseModeKey = MapDataManager::modeKey(diagnostics.selectedBaseMode);
+    diagnostics.selectedBaseEarthFilePath =
+        selection.earthFilePath.isEmpty() ? selection.earthFile : selection.earthFilePath;
+
     const auto ready = [](const bool value) {
         return value ? QStringLiteral("ready") : QStringLiteral("missing");
     };

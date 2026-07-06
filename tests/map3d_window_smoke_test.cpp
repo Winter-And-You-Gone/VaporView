@@ -297,6 +297,10 @@ int main(int argc, char** argv)
             "diagnostics include Copernicus DEM VRT path");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("SRTM VRT:")),
             "diagnostics include SRTM VRT path");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Base map priority: Copernicus DEM > SRTM > Natural Earth > Local grid")),
+            "diagnostics include the base map selection priority");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Selected base mode:")),
+            "diagnostics include selected base mode");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("OSM layer contract:")),
             "diagnostics include expected OSM layer contract section");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("layer roads")),

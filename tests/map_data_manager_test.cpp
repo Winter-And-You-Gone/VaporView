@@ -102,6 +102,10 @@ int main(int argc, char** argv)
     require(!selection.diagnostics.naturalEarthAvailable, "preview texture alone should not mark Natural Earth available");
     require(selection.diagnostics.readinessSummary.contains(QStringLiteral("Local grid fallback")),
             "local grid selection should summarize fallback readiness");
+    require(selection.diagnostics.baseMapPriority.contains(QStringLiteral("Copernicus DEM > SRTM > Natural Earth > Local grid")),
+            "diagnostics should state the base map selection priority");
+    require(selection.diagnostics.selectedBaseMode == VaporView::Map3D::MapDataMode::LocalGridOnly,
+            "local grid selection should report LocalGridOnly as the selected base mode");
     require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("Natural Earth")),
             "local grid readiness should suggest preparing Natural Earth");
     require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("download-natural-earth-map.ps1")),
@@ -126,6 +130,10 @@ int main(int argc, char** argv)
     require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarth, "Natural Earth files should select NaturalEarth");
     require(selection.hasEarthFile(), "NaturalEarth selection should expose an earth file");
     require(selection.diagnostics.naturalEarthAvailable, "NaturalEarth selection should mark Natural Earth available");
+    require(selection.diagnostics.selectedBaseMode == VaporView::Map3D::MapDataMode::NaturalEarth,
+            "NaturalEarth selection should report NaturalEarth as the selected base mode");
+    require(selection.diagnostics.selectedBaseEarthFilePath.endsWith(QStringLiteral("vaporview_default.earth")),
+            "NaturalEarth selection should report the default earth file as the selected base earth");
     require(selection.diagnostics.readinessSummary.contains(QStringLiteral("visual background only")),
             "Natural Earth selection should explain visual-only readiness");
     require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("Copernicus DEM")),
@@ -363,6 +371,8 @@ int main(int argc, char** argv)
     require(selection.diagnostics.srtmDemAvailable, "SRTM VRT should be marked available");
     require(selection.diagnostics.selectedDemLayerAvailable, "SRTM selection should select a DEM layer");
     require(selection.diagnostics.selectedElevationSource == QStringLiteral("SRTM"), "SRTM selection should report SRTM elevation source");
+    require(selection.diagnostics.selectedBaseMode == VaporView::Map3D::MapDataMode::NaturalEarthWithSrtm,
+            "SRTM selection should report SRTM as the selected base mode");
     require(selection.diagnostics.readinessSummary.contains(QStringLiteral("terrain-backed offline map")),
             "SRTM selection should summarize terrain-backed readiness");
     require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("OSM GeoPackages")),
@@ -378,6 +388,8 @@ int main(int argc, char** argv)
     require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarthWithCopernicusDem, "Copernicus files should outrank SRTM");
     require(selection.diagnostics.copernicusDemAvailable, "Copernicus VRT should be marked available");
     require(selection.diagnostics.selectedElevationSource == QStringLiteral("Copernicus DEM GLO-30"), "Copernicus selection should report Copernicus elevation source");
+    require(selection.diagnostics.selectedBaseMode == VaporView::Map3D::MapDataMode::NaturalEarthWithCopernicusDem,
+            "Copernicus selection should report Copernicus DEM as the selected base mode");
 
     touch(root, QStringLiteral("data/maps/vaporview_full_local.earth"));
     touch(root, QStringLiteral("data/maps/vaporview_full_local_srtm.earth"));
@@ -414,6 +426,8 @@ int main(int argc, char** argv)
     require(selection.diagnostics.fullLocalBlockers.isEmpty(), "complete local data should not report full-local blockers");
     require(selection.diagnostics.selectedFullLocalEarthPath.endsWith(QStringLiteral("vaporview_full_local.earth")),
             "complete Copernicus full local map should report selected full-local earth template");
+    require(selection.diagnostics.selectedBaseMode == VaporView::Map3D::MapDataMode::NaturalEarthWithCopernicusDem,
+            "complete Copernicus full local map should still report Copernicus DEM as the selected base mode");
 
     QTemporaryDir srtmFullLocalDir;
     require(srtmFullLocalDir.isValid(), "failed to create SRTM full-local temporary directory");
@@ -438,6 +452,8 @@ int main(int argc, char** argv)
             "SRTM-only full local map should report SRTM elevation source");
     require(selection.diagnostics.selectedFullLocalEarthPath.endsWith(QStringLiteral("vaporview_full_local_srtm.earth")),
             "SRTM-only full local map should report selected SRTM full-local earth template");
+    require(selection.diagnostics.selectedBaseMode == VaporView::Map3D::MapDataMode::NaturalEarthWithSrtm,
+            "SRTM-only full local map should still report SRTM as the selected base mode");
 
     QTemporaryDir naturalOnlyDir;
     QTemporaryDir demPreferredDir;

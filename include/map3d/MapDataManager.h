@@ -51,6 +51,11 @@ struct MapDataDiagnostics {
     QString projLibPath;
     QString osgLibraryPath;
     QString osgEarthNotifyLevel;
+    QString baseMapPriority;
+    QString selectedBaseModeLabel;
+    QString selectedBaseModeKey;
+    QString selectedBaseEarthFilePath;
+    MapDataMode selectedBaseMode = MapDataMode::LocalGridOnly;
     bool naturalEarthAvailable = false;
     bool copernicusDemAvailable = false;
     bool srtmDemAvailable = false;

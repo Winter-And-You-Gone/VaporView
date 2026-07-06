@@ -30,6 +30,8 @@ powershell -ExecutionPolicy Bypass -File scripts/download-natural-earth-map.ps1
 
 Local terrain elevation is optional and lives under `data/maps/terrain/`. The preferred source is Copernicus DEM GLO-30 GeoTIFF tiles. SRTM GeoTIFF tiles are the backup source when Copernicus data is unavailable.
 
+`MapDataManager` selects the best local base map stack in this order: Copernicus DEM, then SRTM, then Natural Earth, then the built-in local grid. When all OSM GeoPackages are also present, the selected window mode becomes `Full local map`, but diagnostics still show the underlying selected base mode so DEM priority remains visible and auditable.
+
 Recommended directory layout:
 
 ```text
