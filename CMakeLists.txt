@@ -582,6 +582,12 @@ add_library(vaporview_main_window STATIC
     ${LUCIDE_RESOURCES}
 )
 
+if(BUILD_TESTING)
+    target_compile_definitions(vaporview_main_window PRIVATE
+        VAPORVIEW_MAIN_WINDOW_TESTING=1
+    )
+endif()
+
 if(MSVC)
     target_compile_options(VaporView PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /Zc:__cplusplus /permissive-)
     target_compile_options(vaporview_main_window PRIVATE /FI${CMAKE_SOURCE_DIR}/include/compiler_compat.h /Zc:__cplusplus /permissive-)
@@ -969,6 +975,23 @@ if(BUILD_TESTING)
             vaporview_stage_osgearth_runtime(map3d_window_smoke_test)
         endif()
         add_test(NAME map3d_window_smoke_test COMMAND map3d_window_smoke_test)
+
+        add_executable(main_window_map3d_live_test
+            tests/main_window_map3d_live_test.cpp
+        )
+        target_include_directories(main_window_map3d_live_test PRIVATE
+            ${CMAKE_SOURCE_DIR}/include
+            ${CMAKE_SOURCE_DIR}/src
+        )
+        target_compile_definitions(main_window_map3d_live_test PRIVATE
+            VAPORVIEW_MAIN_WINDOW_TESTING=1
+        )
+        target_link_libraries(main_window_map3d_live_test PRIVATE vaporview_main_window)
+        add_dependencies(main_window_map3d_live_test VaporViewRuntimeResources)
+        if(WIN32)
+            vaporview_stage_osgearth_runtime(main_window_map3d_live_test)
+        endif()
+        add_test(NAME main_window_map3d_live_test COMMAND main_window_map3d_live_test)
     endif()
 
     add_executable(vaporview_startup_test

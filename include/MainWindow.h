@@ -331,6 +331,14 @@ public:
     explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow() override;
 
+#if defined(VAPORVIEW_HAS_OSGEARTH) && defined(VAPORVIEW_MAIN_WINDOW_TESTING)
+    int testPendingMap3DSampleCount() const;
+    qint64 testLatestPendingMap3DRecordTimestampUs() const;
+    bool testMap3DFlushTimerActive() const;
+    void testMaybeForwardMap3DSampleForMap3D(const VaporView::EpsilonData& epsilonData,
+                                             quint64 recordTimestampUs);
+#endif
+
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 #ifdef Q_OS_WIN

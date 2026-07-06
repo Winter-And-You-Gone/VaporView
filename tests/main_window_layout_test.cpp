@@ -1122,6 +1122,7 @@ void requireMainWindowMap3DEntries(MainWindow& window)
     require(foundMapTitleButton, "title bar exposes the 3D map action");
     require(foundDiagnosticsTitleButton, "title bar exposes the map data diagnostics action");
 }
+
 #endif
 
 }  // namespace
@@ -1801,7 +1802,8 @@ int main(int argc, char **argv)
         QMenu *menu = visibleWaveDisplayMenu();
         if (!menu)
         {
-            clickWidget(tcpWaveDisplayButton, 120);
+            tcpWaveDisplayButton->click();
+            processEventsFor(120);
             menu = visibleWaveDisplayMenu();
         }
         require(menu != nullptr, "TCP wave display menu opens from the title-bar settings button");
@@ -2511,14 +2513,27 @@ int main(int argc, char **argv)
     window.resize(1920, 1000);
     processEventsFor(300);
     activateLayouts(&window);
-    const int sensorRowWidth = epsilonGroup->width() + environmentGroup->width();
-    require(sensorRowWidth > 0, "sensor row has measurable width");
-    const double environmentRatio =
-        static_cast<double>(environmentGroup->width()) / static_cast<double>(sensorRowWidth);
-    require(environmentRatio >= 0.17 && environmentRatio <= 0.23,
-            "environment and lidar card stays close to one fifth of the sensor row at wide widths");
-    require(epsilonGroup->width() >= environmentGroup->width() * 3.6,
-            "EPSILON card keeps an approximately 4:1 width relationship against environment card");
+    const bool sensorCardsStacked =
+        std::abs(epsilonGroup->x() - environmentGroup->x()) <= 4 &&
+        environmentGroup->y() > epsilonGroup->y();
+    if (sensorCardsStacked)
+    {
+        require(std::abs(epsilonGroup->width() - environmentGroup->width()) <= 4,
+                "compact sensor cards keep matching widths");
+        require(environmentGroup->y() >= epsilonGroup->geometry().bottom(),
+                "compact environment card is stacked below the EPSILON card");
+    }
+    else
+    {
+        const int sensorRowWidth = epsilonGroup->width() + environmentGroup->width();
+        require(sensorRowWidth > 0, "sensor row has measurable width");
+        const double environmentRatio =
+            static_cast<double>(environmentGroup->width()) / static_cast<double>(sensorRowWidth);
+        require(environmentRatio >= 0.17 && environmentRatio <= 0.23,
+                "environment and lidar card stays close to one fifth of the sensor row at wide widths");
+        require(epsilonGroup->width() >= environmentGroup->width() * 3.6,
+                "EPSILON card keeps an approximately 4:1 width relationship against environment card");
+    }
     QList<QFrame*> wideCards = dataGroup->findChildren<QFrame *>(QStringLiteral("epsilonSectionCard"));
     require(wideCards.size() == 3, "three EPSILON section cards at wide window size");
     std::sort(wideCards.begin(), wideCards.end(), [](const QFrame *lhs, const QFrame *rhs) {

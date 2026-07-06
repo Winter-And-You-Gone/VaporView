@@ -19394,7 +19394,14 @@ void MainWindow::maybeForwardMap3DSample(const VaporView::EpsilonData& epsilonDa
     const VaporView::Geo::NavSample sample = map3DSampleFromEpsilon(epsilonData, recordTimestampUs);
     if (sample.hasLlh() && sample.fixQuality != VaporView::Geo::FixQuality::Invalid)
     {
-        pending_map3d_samples_.push_back(sample);
+        if (pending_map3d_samples_.empty())
+        {
+            pending_map3d_samples_.push_back(sample);
+        }
+        else
+        {
+            pending_map3d_samples_.back() = sample;
+        }
         if (map3d_flush_timer_ && !map3d_flush_timer_->isActive())
         {
             map3d_flush_timer_->start();
@@ -19432,6 +19439,29 @@ void MainWindow::flushMap3DSamples()
         map3d_flush_timer_->stop();
     }
 }
+
+#ifdef VAPORVIEW_MAIN_WINDOW_TESTING
+int MainWindow::testPendingMap3DSampleCount() const
+{
+    return static_cast<int>(pending_map3d_samples_.size());
+}
+
+qint64 MainWindow::testLatestPendingMap3DRecordTimestampUs() const
+{
+    return pending_map3d_samples_.empty() ? -1 : pending_map3d_samples_.back().recordTimestampUs;
+}
+
+bool MainWindow::testMap3DFlushTimerActive() const
+{
+    return map3d_flush_timer_ && map3d_flush_timer_->isActive();
+}
+
+void MainWindow::testMaybeForwardMap3DSampleForMap3D(const VaporView::EpsilonData& epsilonData,
+                                                     quint64 recordTimestampUs)
+{
+    maybeForwardMap3DSample(epsilonData, recordTimestampUs);
+}
+#endif
 #endif
 
 void MainWindow::onRemoteWaveformUpdated(const VaporView::DownsampledWaveform& waveform)
