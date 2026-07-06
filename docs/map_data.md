@@ -100,15 +100,18 @@ The Copernicus DEM-enabled template is `data/maps/vaporview_with_dem.earth`. The
 
 Height reference note: RTK/GNSS samples may report WGS84 ellipsoid height, mean sea level height, EGM2008-related orthometric height, or a local NED height. Copernicus DEM and SRTM elevations are terrain datasets with their own vertical datum assumptions. VaporView currently labels the `NavSample::heightReference` value for display and diagnostics only; it does not perform terrain clearance or AGL safety decisions while the RTK and DEM height references are unchecked.
 
-VaporView automatic map selection order:
+VaporView automatic map selection first chooses the best available terrain/background base, then upgrades that same base to a full-local OSM template when all required OSM GeoPackages are present:
 
-1. Full local map when Natural Earth, one DEM VRT, and all required local OSM GeoPackages exist:
-   - `vaporview_full_local.earth` when Copernicus DEM is available.
-   - `vaporview_full_local_srtm.earth` when only the SRTM fallback DEM is available.
-2. `vaporview_with_dem.earth` when Natural Earth and `data/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt` exist.
-3. `vaporview_with_srtm.earth` when Natural Earth and `data/maps/terrain/srtm/srtm.vrt` exist.
-4. `vaporview_default.earth` when Natural Earth exists but no DEM VRT exists.
-5. Local grid only when no complete local Natural Earth dataset exists.
+1. Copernicus DEM base when Natural Earth and `data/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt` exist:
+   - `vaporview_full_local.earth` when all required OSM GeoPackages also exist.
+   - `vaporview_with_dem.earth` when OSM is incomplete or absent.
+2. SRTM fallback base when Natural Earth and `data/maps/terrain/srtm/srtm.vrt` exist and Copernicus DEM is unavailable:
+   - `vaporview_full_local_srtm.earth` when all required OSM GeoPackages also exist.
+   - `vaporview_with_srtm.earth` when OSM is incomplete or absent.
+3. `vaporview_default.earth` when Natural Earth exists but no DEM VRT exists.
+4. Local grid only when no complete local Natural Earth dataset exists.
+
+Across multiple candidate `data/maps` roots, Copernicus DEM still outranks a complete SRTM full-local root. Diagnostics show `Selected base mode` separately from the final `Full local map` window mode so that this DEM priority remains auditable.
 
 If no DEM VRT exists, the 3D map still uses Natural Earth plus the local grid fallback.
 
