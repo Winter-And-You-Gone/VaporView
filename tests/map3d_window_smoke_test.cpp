@@ -168,6 +168,13 @@ int main(int argc, char** argv)
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Source: Replay")),
             "diagnostics include latest track source");
 
+    window.noteLiveSampleDrop(QStringLiteral("Live"), QStringLiteral("missing LLH"), 123456);
+    QCoreApplication::processEvents();
+    require(label->text().contains(QStringLiteral("Last drop Live: missing LLH")),
+            "status includes latest live sample drop reason");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Last drop reason: missing LLH")),
+            "diagnostics include latest live sample drop reason");
+
     replaySpeedCombo->setCurrentText(QStringLiteral("2x"));
     QCoreApplication::processEvents();
     require(replaySpeedCombo->currentText() == QStringLiteral("2x"), "replay speed can be changed");

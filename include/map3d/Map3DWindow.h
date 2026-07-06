@@ -33,6 +33,7 @@ public slots:
     void appendSamples(const std::vector<VaporView::Geo::NavSample>& samples);
     void clearTrack();
     void loadSessionDirectory(const QString& sessionDir);
+    void noteLiveSampleDrop(const QString& source, const QString& reason, qint64 recordTimestampUs = 0);
     void showMapDiagnostics();
 
 private:
@@ -78,6 +79,9 @@ private:
     VaporView::Geo::TrajectoryReplay replay_;
     QString latest_track_source_;
     QString latest_track_note_;
+    QString latest_drop_source_;
+    QString latest_drop_reason_;
+    qint64 latest_drop_record_timestamp_us_ = 0;
     qint64 latest_track_record_timestamp_us_ = 0;
     qint64 latest_track_device_timestamp_us_ = 0;
 };

@@ -326,6 +326,9 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
         headless_sample_count_ = static_cast<int>(result.samples.size());
     }
     replay_.setSamples(result.samples);
+    latest_drop_source_.clear();
+    latest_drop_reason_.clear();
+    latest_drop_record_timestamp_us_ = 0;
     recordTrackSource(QStringLiteral("Session"),
                       replay_.currentSample(),
                       result.sourceCsvPath);
@@ -335,6 +338,18 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
                                  .arg(result.samples.size())
                                  .arg(result.sourceCsvPath),
                              5000);
+}
+
+void Map3DWindow::noteLiveSampleDrop(const QString& source, const QString& reason, qint64 recordTimestampUs)
+{
+    latest_drop_source_ = source.isEmpty() ? QStringLiteral("Live") : source;
+    latest_drop_reason_ = reason.isEmpty() ? QStringLiteral("unknown") : reason;
+    latest_drop_record_timestamp_us_ = recordTimestampUs;
+    if (diagnostics_text_)
+    {
+        diagnostics_text_->setPlainText(diagnosticsText());
+    }
+    updateStatus(nullptr);
 }
 
 void Map3DWindow::loadInitialEarthFile()
@@ -670,6 +685,10 @@ QString Map3DWindow::diagnosticsText() const
     {
         lines << QStringLiteral("  Note: %1").arg(latest_track_note_);
     }
+    lines << QStringLiteral("  Last drop source: %1").arg(latest_drop_source_.isEmpty() ? QStringLiteral("<none>") : latest_drop_source_);
+    lines << QStringLiteral("  Last drop reason: %1").arg(latest_drop_reason_.isEmpty() ? QStringLiteral("<none>") : latest_drop_reason_);
+    lines << QStringLiteral("  Last drop record timestamp us: %1")
+                 .arg(latest_drop_record_timestamp_us_ > 0 ? QString::number(latest_drop_record_timestamp_us_) : QStringLiteral("<none>"));
     lines << QStringLiteral("Layer summary:");
     lines << QStringLiteral("  Natural Earth: %1").arg(availabilityLabel(diagnostics.naturalEarthAvailable));
     lines << QStringLiteral("  Selected DEM: %1").arg(selectedDemLabel(diagnostics));
@@ -757,6 +776,9 @@ void Map3DWindow::recordTrackSource(const QString& source,
     latest_track_note_ = note;
     latest_track_record_timestamp_us_ = latest ? latest->recordTimestampUs : 0;
     latest_track_device_timestamp_us_ = latest ? latest->deviceTimestampUs : 0;
+    latest_drop_source_.clear();
+    latest_drop_reason_.clear();
+    latest_drop_record_timestamp_us_ = 0;
     if (diagnostics_text_)
     {
         diagnostics_text_->setPlainText(diagnosticsText());
@@ -777,6 +799,16 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest)
     if (latest_track_device_timestamp_us_ > 0)
     {
         text += QStringLiteral(" dev %1").arg(latest_track_device_timestamp_us_);
+    }
+    if (!latest_drop_reason_.isEmpty())
+    {
+        text += QStringLiteral(" | Last drop %1: %2")
+                    .arg(latest_drop_source_.isEmpty() ? QStringLiteral("Live") : latest_drop_source_,
+                         latest_drop_reason_);
+        if (latest_drop_record_timestamp_us_ > 0)
+        {
+            text += QStringLiteral(" rec %1").arg(latest_drop_record_timestamp_us_);
+        }
     }
     if (view_ || headless_view_)
     {

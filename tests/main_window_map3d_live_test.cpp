@@ -6,6 +6,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QEventLoop>
+#include <QLabel>
 #include <QSettings>
 #include <QStringList>
 #include <QTemporaryDir>
@@ -115,6 +116,8 @@ int main(int argc, char** argv)
 
     QWidget* mapWindow = window.findChild<QWidget*>(QStringLiteral("map3DWindow"));
     require(mapWindow != nullptr && mapWindow->isVisible(), "3D map window opens");
+    QLabel* mapStatusLabel = mapWindow->findChild<QLabel*>(QStringLiteral("map3DStatusLabel"));
+    require(mapStatusLabel != nullptr, "3D map status label exists");
 
     window.testMaybeForwardMap3DSampleForMap3D(makeSample(39.900001), 1000000);
     window.testMaybeForwardMap3DSampleForMap3D(makeSample(39.900002), 1005000);
@@ -141,6 +144,10 @@ int main(int argc, char** argv)
             "invalid live sample clears pending 3D map samples");
     require(!window.testMap3DFlushTimerActive(),
             "invalid live sample stops the 3D map flush timer");
+    require(window.testLastMap3DDropReason() == QStringLiteral("epsilon invalid"),
+            "invalid live sample records a 3D map drop reason");
+    require(mapStatusLabel->text().contains(QStringLiteral("Last drop Live: epsilon invalid")),
+            "3D map status reports invalid live sample drop reason");
 
     window.testMaybeForwardMap3DSampleForMap3D(makeSample(39.900005), 1020000);
     require(window.testPendingMap3DSampleCount() == 1,
@@ -156,13 +163,15 @@ int main(int argc, char** argv)
     ecefOnlyRemote.ecef_x_m = -2170000.0;
     ecefOnlyRemote.ecef_y_m = 4380000.0;
     ecefOnlyRemote.ecef_z_m = 4070000.0;
-    invalidSample.valid = false;
-    window.testMaybeForwardMap3DSampleForMap3D(invalidSample, 2015000);
     window.testOnRemoteBasicTelemetryUpdatedForMap3D(ecefOnlyRemote);
     require(window.testPendingMap3DSampleCount() == 0,
-            "remote telemetry without BasicHasPosition does not inject a 0/0/0 3D map point");
+            "remote telemetry without BasicHasPosition clears pending samples and does not inject a 0/0/0 3D map point");
     require(!window.testMap3DFlushTimerActive(),
             "remote telemetry without position leaves the 3D map flush timer stopped");
+    require(window.testLastMap3DDropReason() == QStringLiteral("missing BasicHasPosition"),
+            "remote telemetry without position records a 3D map drop reason");
+    require(mapStatusLabel->text().contains(QStringLiteral("Last drop Remote: missing BasicHasPosition")),
+            "3D map status reports remote telemetry drop reason");
 
     mapWindow->hide();
     window.testMaybeForwardMap3DSampleForMap3D(makeSample(39.900006), 1025000);

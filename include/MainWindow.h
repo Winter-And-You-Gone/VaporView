@@ -335,6 +335,7 @@ public:
     int testPendingMap3DSampleCount() const;
     qint64 testLatestPendingMap3DRecordTimestampUs() const;
     bool testMap3DFlushTimerActive() const;
+    QString testLastMap3DDropReason() const;
     void testMaybeForwardMap3DSampleForMap3D(const VaporView::EpsilonData& epsilonData,
                                              quint64 recordTimestampUs);
     void testOnRemoteBasicTelemetryUpdatedForMap3D(const VaporView::TelemetryBasic& telemetry);
@@ -648,6 +649,7 @@ private:
     void updateRemoteDeviceButtonText(VaporView::SkyDeviceId device, VaporView::DeviceState state);
 #ifdef VAPORVIEW_HAS_OSGEARTH
     void maybeForwardMap3DSample(const VaporView::EpsilonData& epsilonData, quint64 recordTimestampUs);
+    void noteMap3DSampleDrop(const QString& source, const QString& reason, quint64 recordTimestampUs = 0);
     void flushMap3DSamples();
     VaporView::Geo::NavSample map3DSampleFromEpsilon(const VaporView::EpsilonData& epsilonData, quint64 recordTimestampUs) const;
 #endif
@@ -1024,6 +1026,7 @@ private:
 #ifdef VAPORVIEW_HAS_OSGEARTH
     QTimer *map3d_flush_timer_;
     std::vector<VaporView::Geo::NavSample> pending_map3d_samples_;
+    QString last_map3d_drop_reason_;
 #endif
     VaporView::TelemetryStatus remote_status_;
     VaporView::TelemetryStatus last_remote_recording_status_;

@@ -19266,6 +19266,17 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
         {
             maybeForwardMap3DSample(current_epsilon_, telemetry.host_time_us);
         }
+        else
+        {
+            pending_map3d_samples_.clear();
+            if (map3d_flush_timer_)
+            {
+                map3d_flush_timer_->stop();
+            }
+            noteMap3DSampleDrop(QStringLiteral("Remote"),
+                                QStringLiteral("missing BasicHasPosition"),
+                                telemetry.host_time_us);
+        }
 #endif
     }
     else
@@ -19384,7 +19395,7 @@ VaporView::Geo::NavSample MainWindow::map3DSampleFromEpsilon(const VaporView::Ep
 
 void MainWindow::maybeForwardMap3DSample(const VaporView::EpsilonData& epsilonData, quint64 recordTimestampUs)
 {
-    if (!map3d_window_ || !map3d_window_->isVisible() || !epsilonData.valid)
+    if (!map3d_window_ || !map3d_window_->isVisible())
     {
         pending_map3d_samples_.clear();
         if (map3d_flush_timer_)
@@ -19394,21 +19405,66 @@ void MainWindow::maybeForwardMap3DSample(const VaporView::EpsilonData& epsilonDa
         return;
     }
 
-    const VaporView::Geo::NavSample sample = map3DSampleFromEpsilon(epsilonData, recordTimestampUs);
-    if (sample.hasLlh() && sample.fixQuality != VaporView::Geo::FixQuality::Invalid)
+    if (!epsilonData.valid)
     {
-        if (pending_map3d_samples_.empty())
+        pending_map3d_samples_.clear();
+        if (map3d_flush_timer_)
         {
-            pending_map3d_samples_.push_back(sample);
+            map3d_flush_timer_->stop();
         }
-        else
+        noteMap3DSampleDrop(QStringLiteral("Live"),
+                            QStringLiteral("epsilon invalid"),
+                            recordTimestampUs);
+        return;
+    }
+
+    const VaporView::Geo::NavSample sample = map3DSampleFromEpsilon(epsilonData, recordTimestampUs);
+    if (!sample.hasLlh())
+    {
+        pending_map3d_samples_.clear();
+        if (map3d_flush_timer_)
         {
-            pending_map3d_samples_.back() = sample;
+            map3d_flush_timer_->stop();
         }
-        if (map3d_flush_timer_ && !map3d_flush_timer_->isActive())
+        noteMap3DSampleDrop(QStringLiteral("Live"),
+                            QStringLiteral("missing LLH"),
+                            recordTimestampUs);
+        return;
+    }
+    if (sample.fixQuality == VaporView::Geo::FixQuality::Invalid)
+    {
+        pending_map3d_samples_.clear();
+        if (map3d_flush_timer_)
         {
-            map3d_flush_timer_->start();
+            map3d_flush_timer_->stop();
         }
+        noteMap3DSampleDrop(QStringLiteral("Live"),
+                            QStringLiteral("invalid fix"),
+                            recordTimestampUs);
+        return;
+    }
+
+    last_map3d_drop_reason_.clear();
+    if (pending_map3d_samples_.empty())
+    {
+        pending_map3d_samples_.push_back(sample);
+    }
+    else
+    {
+        pending_map3d_samples_.back() = sample;
+    }
+    if (map3d_flush_timer_ && !map3d_flush_timer_->isActive())
+    {
+        map3d_flush_timer_->start();
+    }
+}
+
+void MainWindow::noteMap3DSampleDrop(const QString& source, const QString& reason, quint64 recordTimestampUs)
+{
+    last_map3d_drop_reason_ = reason;
+    if (map3d_window_ && map3d_window_->isVisible())
+    {
+        map3d_window_->noteLiveSampleDrop(source, reason, static_cast<qint64>(recordTimestampUs));
     }
 }
 
@@ -19457,6 +19513,11 @@ qint64 MainWindow::testLatestPendingMap3DRecordTimestampUs() const
 bool MainWindow::testMap3DFlushTimerActive() const
 {
     return map3d_flush_timer_ && map3d_flush_timer_->isActive();
+}
+
+QString MainWindow::testLastMap3DDropReason() const
+{
+    return last_map3d_drop_reason_;
 }
 
 void MainWindow::testMaybeForwardMap3DSampleForMap3D(const VaporView::EpsilonData& epsilonData,
