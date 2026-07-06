@@ -9,6 +9,7 @@
 #include <QFile>
 #include <QLabel>
 #include <QPlainTextEdit>
+#include <QSettings>
 #include <QSlider>
 #include <QSpinBox>
 #include <QTemporaryDir>
@@ -68,6 +69,11 @@ int main(int argc, char** argv)
     QApplication app(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("VaporViewTest"));
     QCoreApplication::setApplicationName(QStringLiteral("map3d_window_smoke_test"));
+
+    QTemporaryDir settingsDir;
+    require(settingsDir.isValid(), "temporary settings directory is valid");
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, settingsDir.path());
+    QSettings::setDefaultFormat(QSettings::IniFormat);
 
     VaporView::Map3D::Map3DWindow window;
     QCoreApplication::processEvents();
@@ -169,6 +175,22 @@ int main(int argc, char** argv)
             "diagnostics include track data section");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Earth load:")),
             "diagnostics include earth runtime load section");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Mode:")),
+            "diagnostics include selected map mode");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Earth file:")),
+            "diagnostics include selected earth file");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Natural Earth texture:")),
+            "diagnostics include Natural Earth texture path");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Copernicus DEM VRT:")),
+            "diagnostics include Copernicus DEM VRT path");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("SRTM VRT:")),
+            "diagnostics include SRTM VRT path");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("OSG_LIBRARY_PATH:")),
+            "diagnostics include OSG plugin environment");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("GDAL_DATA:")),
+            "diagnostics include GDAL data environment");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("PROJ_DATA:")),
+            "diagnostics include PROJ data environment");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Attempted:")),
             "diagnostics include earth load attempt state");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Render performance:")),

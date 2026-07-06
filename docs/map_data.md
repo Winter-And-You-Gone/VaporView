@@ -71,7 +71,9 @@ python scripts/prepare-demo-dem.py --srtm
 Use `--check` to validate local DEM inputs and the generated VRT without rebuilding it:
 
 ```powershell
+powershell -ExecutionPolicy Bypass -File scripts/prepare-demo-dem.ps1 -Check
 python scripts/prepare-demo-dem.py --check
+powershell -ExecutionPolicy Bypass -File scripts/prepare-demo-dem.ps1 -Srtm -Check
 python scripts/prepare-demo-dem.py --srtm --check
 ```
 

@@ -2,7 +2,8 @@
 param(
     [string]$ProjectRoot,
     [string]$DemName = "copernicus_dem_glo30",
-    [switch]$Srtm
+    [switch]$Srtm,
+    [switch]$Check
 )
 
 $ErrorActionPreference = "Stop"
@@ -41,20 +42,6 @@ if (-not $gdalBuildVrt) {
     throw "gdalbuildvrt was not found on PATH or in .local_deps. Install GDAL tools or add them to PATH, then retry."
 }
 
-if (Test-Path -LiteralPath $vrtPath) {
-    Remove-Item -LiteralPath $vrtPath -Force
-}
-
-$tilePaths = @($tiles | ForEach-Object { $_.FullName })
-& $gdalBuildVrt.Source $vrtPath @tilePaths
-if ($LASTEXITCODE -ne 0) {
-    throw "gdalbuildvrt failed with exit code $LASTEXITCODE"
-}
-
-if (-not (Test-Path -LiteralPath $vrtPath -PathType Leaf)) {
-    throw "Expected VRT was not created: $vrtPath"
-}
-
 if (-not (Test-Path -LiteralPath $earthPath -PathType Leaf)) {
     throw "Expected earth template not found: $earthPath"
 }
@@ -63,6 +50,26 @@ $earthText = Get-Content -LiteralPath $earthPath -Raw
 $expectedRelative = if ($Srtm) { "terrain/srtm/srtm.vrt" } else { "terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt" }
 if ($earthText -notmatch [regex]::Escape($expectedRelative)) {
     throw "$earthFileName does not reference $expectedRelative"
+}
+
+if ($Check) {
+    if (-not (Test-Path -LiteralPath $vrtPath -PathType Leaf)) {
+        throw "Expected VRT does not exist yet: $vrtPath"
+    }
+} else {
+    if (Test-Path -LiteralPath $vrtPath) {
+        Remove-Item -LiteralPath $vrtPath -Force
+    }
+
+    $tilePaths = @($tiles | ForEach-Object { $_.FullName })
+    & $gdalBuildVrt.Source $vrtPath @tilePaths
+    if ($LASTEXITCODE -ne 0) {
+        throw "gdalbuildvrt failed with exit code $LASTEXITCODE"
+    }
+
+    if (-not (Test-Path -LiteralPath $vrtPath -PathType Leaf)) {
+        throw "Expected VRT was not created: $vrtPath"
+    }
 }
 
 $gdalInfo = Get-Command gdalinfo -ErrorAction SilentlyContinue
@@ -79,6 +86,10 @@ if ($gdalInfo) {
     }
 }
 
-Write-Host "Prepared DEM VRT: $vrtPath"
+if ($Check) {
+    Write-Host "DEM check passed: $vrtPath"
+} else {
+    Write-Host "Prepared DEM VRT: $vrtPath"
+}
 Write-Host "Validated earth template: $earthPath"
 Write-Host "Start VaporView with -DVAPORVIEW_ENABLE_OSGEARTH=ON build; MapDataManager should select $earthFileName automatically."
