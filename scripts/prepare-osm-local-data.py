@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -50,17 +51,73 @@ LAYER_CONFIGS = {
 }
 
 
-def find_tool(name: str, project_root: Path) -> str | None:
+def tool_executable_name(name: str) -> str:
+    return f"{name}.exe" if sys.platform.startswith("win") else name
+
+
+def candidate_gdal_dirs(project_root: Path, explicit_gdal_bin: Path | None) -> list[Path]:
+    candidates: list[Path] = []
+    if explicit_gdal_bin is not None:
+        candidates.append(explicit_gdal_bin)
+
+    env_gdal_bin = os.environ.get("GDAL_BIN")
+    if env_gdal_bin:
+        candidates.append(Path(env_gdal_bin))
+
+    if os.environ.get("VAPORVIEW_GDAL_TOOL_SEARCH") == "PATH_ONLY":
+        return candidates
+
+    candidates.extend(
+        [
+            project_root / ".local_deps" / "vcpkg_installed" / "x64-windows" / "tools" / "gdal",
+            project_root / ".local_deps" / "vcpkg_installed" / "x64-windows" / "bin",
+        ]
+    )
+
+    if sys.platform.startswith("win"):
+        candidates.extend(
+            [
+                Path("C:/OSGeo4W/bin"),
+                Path("C:/OSGeo4W64/bin"),
+                Path("C:/Program Files/QGIS 3.40/bin"),
+                Path("C:/Program Files/QGIS 3.38/bin"),
+                Path("C:/Program Files/QGIS 3.36/bin"),
+                Path("C:/Program Files/QGIS 3.34/bin"),
+                Path("C:/Program Files/QGIS 3.32/bin"),
+            ]
+        )
+
+    unique: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        key = str(candidate.expanduser())
+        if key not in seen:
+            seen.add(key)
+            unique.append(candidate.expanduser())
+    return unique
+
+
+def find_tool(name: str, project_root: Path, explicit_gdal_bin: Path | None = None) -> str | None:
     found = shutil.which(name)
     if found:
         return found
 
-    if sys.platform.startswith("win"):
-        candidate = project_root / ".local_deps" / "vcpkg_installed" / "x64-windows" / "tools" / "gdal" / f"{name}.exe"
+    executable_name = tool_executable_name(name)
+    for gdal_dir in candidate_gdal_dirs(project_root, explicit_gdal_bin):
+        candidate = gdal_dir / executable_name
         if candidate.is_file():
             return str(candidate)
 
     return None
+
+
+def gdal_tool_hint(project_root: Path, explicit_gdal_bin: Path | None) -> str:
+    searched = "\n  ".join(str(path) for path in candidate_gdal_dirs(project_root, explicit_gdal_bin))
+    return (
+        "Install GDAL/OGR command-line tools, add them to PATH, set GDAL_BIN, or pass --gdal-bin.\n"
+        "Searched:\n  "
+        f"{searched}"
+    )
 
 
 def run(command: list[str]) -> None:
@@ -136,28 +193,37 @@ def main() -> int:
         action="store_true",
         help="Only validate the expected generated GeoPackages and layer names; do not convert.",
     )
+    parser.add_argument(
+        "--gdal-bin",
+        type=Path,
+        default=None,
+        help=(
+            "Directory containing GDAL/OGR command-line tools such as ogr2ogr and "
+            "ogrinfo. Useful for OSGeo4W, QGIS, or a manual project-local GDAL install."
+        ),
+    )
     args = parser.parse_args()
 
     project_root = args.project_root.resolve()
     source = args.source.resolve()
     output_dir = (args.output_dir or (project_root / "data" / "maps" / "osm")).resolve()
+    gdal_bin = args.gdal_bin.resolve() if args.gdal_bin is not None else None
 
-    ogr2ogr = find_tool("ogr2ogr", project_root)
-    ogrinfo = find_tool("ogrinfo", project_root)
+    ogr2ogr = find_tool("ogr2ogr", project_root, gdal_bin)
+    ogrinfo = find_tool("ogrinfo", project_root, gdal_bin)
 
     if args.check:
         if ogrinfo is None:
             print(
-                "WARNING: ogrinfo was not found on PATH or in "
-                ".local_deps/vcpkg_installed/x64-windows/tools/gdal; checking file presence only.",
+                "WARNING: ogrinfo was not found; checking file presence only. "
+                + gdal_tool_hint(project_root, gdal_bin),
                 file=sys.stderr,
             )
         return 0 if validate_outputs(output_dir, ogrinfo) else 2
 
     if ogr2ogr is None:
         print(
-            "ERROR: ogr2ogr was not found on PATH or in "
-            ".local_deps/vcpkg_installed/x64-windows/tools/gdal. Install GDAL/OGR first.",
+            "ERROR: ogr2ogr was not found. " + gdal_tool_hint(project_root, gdal_bin),
             file=sys.stderr,
         )
         return 2

@@ -86,6 +86,8 @@ QProcessEnvironment environmentWithoutGdalTools()
     QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
     environment.insert(QStringLiteral("PATH"), QString());
     environment.insert(QStringLiteral("Path"), QString());
+    environment.remove(QStringLiteral("GDAL_BIN"));
+    environment.insert(QStringLiteral("VAPORVIEW_GDAL_TOOL_SEARCH"), QStringLiteral("PATH_ONLY"));
     return environment;
 }
 
@@ -240,8 +242,10 @@ int main()
     require(demHelp.exitCode == 0,
             QStringLiteral("prepare-demo-dem.py --help exits 0, stderr=%1").arg(demHelp.standardError));
     require(demHelp.standardOutput.contains(QStringLiteral("--dem-dir"))
+                && demHelp.standardOutput.contains(QStringLiteral("--gdal-bin"))
                 && demHelp.standardOutput.contains(QStringLiteral("canonical"))
-                && demHelp.standardOutput.contains(QStringLiteral("MapDataManager")),
+                && demHelp.standardOutput.contains(QStringLiteral("MapDataManager"))
+                && demHelp.standardOutput.contains(QStringLiteral("OSGeo4W")),
             QStringLiteral("prepare-demo-dem.py --help explains external tile directory and canonical VRT output"));
 
     QTemporaryDir fakeProject;
@@ -261,6 +265,10 @@ int main()
                 .arg(missingGdal.standardOutput, missingGdal.standardError));
     require(missingGdal.standardError.contains(QStringLiteral("gdalbuildvrt was not found")),
             QStringLiteral("prepare-demo-dem.py reports missing gdalbuildvrt clearly"));
+    require(missingGdal.standardError.contains(QStringLiteral("set GDAL_BIN"))
+                && missingGdal.standardError.contains(QStringLiteral("--gdal-bin"))
+                && missingGdal.standardError.contains(QStringLiteral("Searched:")),
+            QStringLiteral("prepare-demo-dem.py reports GDAL tool search hints"));
 
     QTemporaryDir customDemProject;
     require(customDemProject.isValid(), QStringLiteral("temporary custom DEM project root is valid"));
@@ -289,6 +297,8 @@ int main()
     require(customDemMissingGdal.standardError.contains(QStringLiteral("gdalbuildvrt was not found"))
                 && !customDemMissingGdal.standardError.contains(QStringLiteral("no GeoTIFF DEM tiles found")),
             QStringLiteral("prepare-demo-dem.py --dem-dir uses the external tile directory before checking GDAL"));
+    require(customDemMissingGdal.standardError.contains(QStringLiteral("--gdal-bin")),
+            QStringLiteral("prepare-demo-dem.py --dem-dir missing GDAL hint mentions explicit tool directory"));
 
     QTemporaryDir fakeOsmProject;
     require(fakeOsmProject.isValid(), QStringLiteral("temporary fake OSM project root is valid"));
@@ -311,6 +321,10 @@ int main()
     require(missingOsmOutputs.standardError.contains(QStringLiteral("ogrinfo was not found"))
                 && missingOsmOutputs.standardError.contains(QStringLiteral("missing generated GeoPackage")),
             QStringLiteral("prepare-osm-local-data.py --check reports missing OSM outputs clearly"));
+    require(missingOsmOutputs.standardError.contains(QStringLiteral("set GDAL_BIN"))
+                && missingOsmOutputs.standardError.contains(QStringLiteral("--gdal-bin"))
+                && missingOsmOutputs.standardError.contains(QStringLiteral("Searched:")),
+            QStringLiteral("prepare-osm-local-data.py reports GDAL/OGR tool search hints"));
 
     return 0;
 }

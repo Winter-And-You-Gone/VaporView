@@ -20,6 +20,13 @@ python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --o
 python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --check
 ```
 
+If `ogr2ogr` or `ogrinfo` is outside `PATH`, set `GDAL_BIN` or pass the tool
+directory explicitly:
+
+```powershell
+python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --gdal-bin C:\OSGeo4W\bin --overwrite
+```
+
 `--check` validates the expected `roads`, `water`, `buildings`, and `places` GeoPackage outputs. If GDAL's `ogrinfo` is available, it also checks that each file exposes the layer name used by the full-local earth templates.
 
 Recommended open sources for local extracts include OpenStreetMap regional extracts such as Geofabrik. The script does not download anything; it only converts files you already placed locally.

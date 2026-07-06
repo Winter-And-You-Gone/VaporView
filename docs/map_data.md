@@ -55,6 +55,16 @@ powershell -ExecutionPolicy Bypass -File scripts/prepare-demo-dem.ps1
 python scripts/prepare-demo-dem.py
 ```
 
+The helper searches for GDAL command-line tools in `PATH`, `GDAL_BIN`, the
+project-local `.local_deps/vcpkg_installed/x64-windows/tools/gdal` and `bin`
+folders, and common Windows OSGeo4W/QGIS install folders. If your GDAL tools
+are somewhere else, pass the directory explicitly:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/prepare-demo-dem.ps1 -GdalBin C:\OSGeo4W\bin
+python scripts/prepare-demo-dem.py --gdal-bin C:\OSGeo4W\bin
+```
+
 If the GeoTIFF tiles are staged outside the canonical project directory, pass that input directory explicitly. The helper still writes the generated VRT to `data/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt` or `data/maps/terrain/srtm/srtm.vrt`, because those are the paths that `MapDataManager` and the built-in `.earth` templates auto-load:
 
 ```powershell
@@ -120,12 +130,13 @@ Prepare those files from a local `.osm.pbf` or `.osm` extract with GDAL/OGR:
 python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --overwrite
 ```
 
-The helper does not download data. It runs `ogr2ogr` locally and writes four GeoPackage files. On Windows it also checks the project-local GDAL tools under `.local_deps/vcpkg_installed/x64-windows/tools/gdal` if GDAL is not on `PATH`. The generated GeoPackage layer names are `roads`, `water`, `buildings`, and `places`. The `buildings` layer also gets a normalized `extrusion_height_m` field derived from OSM `height`, `building:height`, `building:levels`, or `levels`; missing values fall back to 10 m. Once Natural Earth, one DEM VRT, and all four OSM GeoPackages exist, `MapDataManager` selects `FullLocalMap`. It loads `data/maps/vaporview_full_local.earth` for Copernicus DEM, or `data/maps/vaporview_full_local_srtm.earth` when SRTM is the only available DEM.
+The helper does not download data. It runs `ogr2ogr` locally and writes four GeoPackage files. It searches for GDAL/OGR tools in `PATH`, `GDAL_BIN`, the project-local `.local_deps/vcpkg_installed/x64-windows/tools/gdal` and `bin` folders, and common Windows OSGeo4W/QGIS install folders. If your tools are elsewhere, pass `--gdal-bin C:\path\to\gdal\bin`. The generated GeoPackage layer names are `roads`, `water`, `buildings`, and `places`. The `buildings` layer also gets a normalized `extrusion_height_m` field derived from OSM `height`, `building:height`, `building:levels`, or `levels`; missing values fall back to 10 m. Once Natural Earth, one DEM VRT, and all four OSM GeoPackages exist, `MapDataManager` selects `FullLocalMap`. It loads `data/maps/vaporview_full_local.earth` for Copernicus DEM, or `data/maps/vaporview_full_local_srtm.earth` when SRTM is the only available DEM.
 
 Validate the generated files and layer names without reconverting:
 
 ```powershell
 python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --check
+python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --gdal-bin C:\OSGeo4W\bin --check
 ```
 
 If `ogrinfo` is unavailable, `--check` still reports missing files, but layer-name validation requires GDAL/OGR.

@@ -74,6 +74,24 @@ PROJ_LIB
 
 The 3D Map diagnostics dialog shows the resolved plugin and data paths.
 
+## GDAL Command-Line Tools
+
+The optional data-preparation helpers need GDAL command-line tools:
+
+- `gdalbuildvrt` and optionally `gdalinfo` for DEM VRT generation.
+- `ogr2ogr` and optionally `ogrinfo` for local OSM GeoPackage generation.
+
+The scripts first check `PATH`, then `GDAL_BIN`, then the project-local
+`.local_deps/vcpkg_installed/x64-windows/tools/gdal` and `bin` folders, and on
+Windows common OSGeo4W/QGIS folders such as `C:\OSGeo4W\bin`. If the tools are
+installed elsewhere, pass the directory explicitly:
+
+```powershell
+python scripts/prepare-demo-dem.py --gdal-bin C:\OSGeo4W\bin
+python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --gdal-bin C:\OSGeo4W\bin --check
+powershell -ExecutionPolicy Bypass -File scripts/prepare-demo-dem.ps1 -GdalBin C:\OSGeo4W\bin
+```
+
 ## Common Problems
 
 ### `osgEarthConfig.cmake` Not Found
@@ -87,6 +105,10 @@ Symptoms include blank maps, unknown file extension messages, or image/earth fil
 ### Missing `GDAL_DATA` or `PROJ_DATA`
 
 GDAL and PROJ may fail to interpret GeoTIFF/VRT coordinate systems when their data directories are missing. Open the diagnostics panel and confirm `GDAL_DATA`, `PROJ_DATA`, and `PROJ_LIB` resolve to real directories.
+
+### `gdalbuildvrt` or `ogr2ogr` Not Found
+
+The osgEarth runtime can load GDAL through libraries even when GDAL command-line tools are not installed. The DEM and OSM preparation scripts need the tools separately. Install OSGeo4W, QGIS, or another GDAL tools package, then add its `bin` directory to `PATH`, set `GDAL_BIN`, or pass `--gdal-bin` / `-GdalBin`.
 
 ### Black Screen
 

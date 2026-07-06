@@ -3,6 +3,7 @@ param(
     [string]$ProjectRoot,
     [string]$DemName = "copernicus_dem_glo30",
     [string]$DemDir,
+    [string]$GdalBin,
     [switch]$Srtm,
     [switch]$Check
 )
@@ -14,6 +15,69 @@ if ([string]::IsNullOrWhiteSpace($ProjectRoot)) {
 }
 
 $ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).Path
+
+function Get-GdalTool {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    $command = Get-Command $Name -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+
+    $candidateDirs = @()
+    if (-not [string]::IsNullOrWhiteSpace($GdalBin)) {
+        $candidateDirs += [System.IO.Path]::GetFullPath($GdalBin)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:GDAL_BIN)) {
+        $candidateDirs += $env:GDAL_BIN
+    }
+    $candidateDirs += @(
+        (Join-Path $ProjectRoot ".local_deps/vcpkg_installed/x64-windows/tools/gdal"),
+        (Join-Path $ProjectRoot ".local_deps/vcpkg_installed/x64-windows/bin"),
+        "C:/OSGeo4W/bin",
+        "C:/OSGeo4W64/bin",
+        "C:/Program Files/QGIS 3.40/bin",
+        "C:/Program Files/QGIS 3.38/bin",
+        "C:/Program Files/QGIS 3.36/bin",
+        "C:/Program Files/QGIS 3.34/bin",
+        "C:/Program Files/QGIS 3.32/bin"
+    )
+
+    foreach ($dir in ($candidateDirs | Select-Object -Unique)) {
+        $candidate = Join-Path $dir "$Name.exe"
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return $candidate
+        }
+    }
+
+    return $null
+}
+
+function Get-GdalToolHint {
+    $candidateDirs = @()
+    if (-not [string]::IsNullOrWhiteSpace($GdalBin)) {
+        $candidateDirs += [System.IO.Path]::GetFullPath($GdalBin)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:GDAL_BIN)) {
+        $candidateDirs += $env:GDAL_BIN
+    }
+    $candidateDirs += @(
+        (Join-Path $ProjectRoot ".local_deps/vcpkg_installed/x64-windows/tools/gdal"),
+        (Join-Path $ProjectRoot ".local_deps/vcpkg_installed/x64-windows/bin"),
+        "C:/OSGeo4W/bin",
+        "C:/OSGeo4W64/bin",
+        "C:/Program Files/QGIS 3.40/bin",
+        "C:/Program Files/QGIS 3.38/bin",
+        "C:/Program Files/QGIS 3.36/bin",
+        "C:/Program Files/QGIS 3.34/bin",
+        "C:/Program Files/QGIS 3.32/bin"
+    )
+    return (($candidateDirs | Select-Object -Unique) -join "; ")
+}
+
 $demFolderName = if ($Srtm) { "srtm" } else { $DemName }
 $vrtFileName = if ($Srtm) { "srtm.vrt" } else { "copernicus_dem_glo30.vrt" }
 $earthFileName = if ($Srtm) { "vaporview_with_srtm.earth" } else { "vaporview_with_dem.earth" }
@@ -37,15 +101,9 @@ if (-not $tiles -or $tiles.Count -eq 0) {
     throw "No GeoTIFF DEM tiles found in $tileDir. Place local DEM .tif/.tiff files there first. This script does not download data."
 }
 
-$gdalBuildVrt = Get-Command gdalbuildvrt -ErrorAction SilentlyContinue
+$gdalBuildVrt = Get-GdalTool -Name "gdalbuildvrt"
 if (-not $gdalBuildVrt) {
-    $localCandidate = Join-Path $ProjectRoot ".local_deps/vcpkg_installed/x64-windows/tools/gdal/gdalbuildvrt.exe"
-    if (Test-Path -LiteralPath $localCandidate -PathType Leaf) {
-        $gdalBuildVrt = [pscustomobject]@{ Source = $localCandidate }
-    }
-}
-if (-not $gdalBuildVrt) {
-    throw "gdalbuildvrt was not found on PATH or in .local_deps. Install GDAL tools or add them to PATH, then retry."
+    throw "gdalbuildvrt was not found. Install GDAL tools, add them to PATH, set GDAL_BIN, or pass -GdalBin. Searched: $(Get-GdalToolHint)"
 }
 
 if (-not (Test-Path -LiteralPath $earthPath -PathType Leaf)) {
@@ -73,7 +131,7 @@ if ($Check) {
     }
 
     $tilePaths = @($tiles | ForEach-Object { $_.FullName })
-    & $gdalBuildVrt.Source $vrtPath @tilePaths
+    & $gdalBuildVrt $vrtPath @tilePaths
     if ($LASTEXITCODE -ne 0) {
         throw "gdalbuildvrt failed with exit code $LASTEXITCODE"
     }
@@ -83,15 +141,9 @@ if ($Check) {
     }
 }
 
-$gdalInfo = Get-Command gdalinfo -ErrorAction SilentlyContinue
-if (-not $gdalInfo) {
-    $localInfoCandidate = Join-Path $ProjectRoot ".local_deps/vcpkg_installed/x64-windows/tools/gdal/gdalinfo.exe"
-    if (Test-Path -LiteralPath $localInfoCandidate -PathType Leaf) {
-        $gdalInfo = [pscustomobject]@{ Source = $localInfoCandidate }
-    }
-}
+$gdalInfo = Get-GdalTool -Name "gdalinfo"
 if ($gdalInfo) {
-    & $gdalInfo.Source $vrtPath | Out-Null
+    & $gdalInfo $vrtPath | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "gdalinfo could not read generated VRT: $vrtPath"
     }
