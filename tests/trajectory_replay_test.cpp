@@ -119,6 +119,8 @@ int main()
     untimedSamples.push_back(sample(39.9001, 116.3002, 0));
     untimedSamples.push_back(sample(39.9002, 116.3004, 0));
     replay.setSamples(untimedSamples);
+    require(replay.startTimestampUs() == 0, "untimed replay synthetic timeline starts at zero");
+    require(replay.endTimestampUs() == 200000, "untimed replay synthetic timeline ends at fallback duration");
     require(replay.durationUs() == 200000, "untimed replay falls back to synthetic 10 Hz timeline");
     replay.seekElapsedUs(100000);
     require(replay.currentIndex() == 1, "untimed elapsed seek uses synthetic timeline");
@@ -128,6 +130,8 @@ int main()
     outOfOrderSamples.push_back(sample(39.9001, 116.3002, 900000));
     outOfOrderSamples.push_back(sample(39.9002, 116.3004, 1200000));
     replay.setSamples(outOfOrderSamples);
+    require(replay.startTimestampUs() == 0, "out-of-order replay synthetic timeline starts at zero");
+    require(replay.endTimestampUs() == 200000, "out-of-order replay synthetic timeline ends at fallback duration");
     require(replay.durationUs() == 200000, "out-of-order replay timestamps fall back to synthetic timeline");
     replay.seekElapsedUs(100000);
     require(replay.currentIndex() == 1, "out-of-order elapsed seek uses synthetic index timeline");
@@ -137,6 +141,8 @@ int main()
     duplicateTimestampSamples.push_back(sample(39.9001, 116.3002, 1000000));
     duplicateTimestampSamples.push_back(sample(39.9002, 116.3004, 1200000));
     replay.setSamples(duplicateTimestampSamples);
+    require(replay.startTimestampUs() == 0, "duplicate replay synthetic timeline starts at zero");
+    require(replay.endTimestampUs() == 200000, "duplicate replay synthetic timeline ends at fallback duration");
     require(replay.durationUs() == 200000, "duplicate replay timestamps fall back to synthetic timeline");
     replay.seekElapsedUs(100000);
     require(replay.currentIndex() == 1, "duplicate elapsed seek uses synthetic index timeline");

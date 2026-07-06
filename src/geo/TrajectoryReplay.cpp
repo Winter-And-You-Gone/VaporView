@@ -59,9 +59,7 @@ qint64 TrajectoryReplay::endTimestampUs() const
     {
         return 0;
     }
-    return hasTimestampTimeline()
-        ? sampleTimestampUs(static_cast<int>(samples_.size()) - 1)
-        : fallbackDurationUs();
+    return sampleTimestampUs(static_cast<int>(samples_.size()) - 1);
 }
 
 qint64 TrajectoryReplay::durationUs() const
@@ -329,14 +327,11 @@ qint64 TrajectoryReplay::sampleTimestampUs(int index) const
     {
         return 0;
     }
-    const qint64 timestamp = timestampUsForSample(samples_[static_cast<std::size_t>(index)]);
-    if (timestamp > 0)
+    if (hasTimestampTimeline())
     {
-        return timestamp;
+        return timestampUsForSample(samples_[static_cast<std::size_t>(index)]);
     }
-    return hasTimestampTimeline()
-        ? startTimestampUs() + static_cast<qint64>(index) * kFallbackReplayStepUs
-        : static_cast<qint64>(index) * kFallbackReplayStepUs;
+    return static_cast<qint64>(index) * kFallbackReplayStepUs;
 }
 
 } // namespace VaporView::Geo
