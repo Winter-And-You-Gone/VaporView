@@ -44,6 +44,7 @@ private:
     void openSessionDirectory();
     void openEarthFile();
     void loadLocalImageryTemplate(const VaporView::Map3D::LocalImageryOption& option);
+    void loadLocal3DTilesPreview();
     void reloadBestLocalMap();
     void flyToAircraft();
     void flyToTrack();
@@ -80,6 +81,7 @@ private:
     QLabel* status_label_ = nullptr;
     QAction* diagnostics_action_ = nullptr;
     QAction* local_imagery_action_ = nullptr;
+    QAction* local_3d_tiles_action_ = nullptr;
     QMenu* local_imagery_menu_ = nullptr;
     QAction* replay_action_ = nullptr;
     QAction* replay_stop_action_ = nullptr;
@@ -98,6 +100,7 @@ private:
     QString latest_track_note_;
     QString latest_camera_note_;
     EarthLoadDiagnostics latest_earth_load_;
+    Local3DTilesLoadDiagnostics latest_local_3d_tiles_load_;
     QString latest_drop_source_;
     QString latest_drop_reason_;
     VaporView::Geo::NavSample latest_status_sample_;

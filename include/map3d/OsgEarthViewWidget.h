@@ -54,6 +54,14 @@ struct EarthLoadDiagnostics {
     QStringList layerSummaries;
 };
 
+struct Local3DTilesLoadDiagnostics {
+    QString requestedPath;
+    bool attempted = false;
+    bool loaded = false;
+    QString failureReason;
+    QString nodeDescription;
+};
+
 class OsgEarthViewWidget final : public QOpenGLWidget {
     Q_OBJECT
 
@@ -65,6 +73,8 @@ public:
     void appendSamples(const std::vector<VaporView::Geo::NavSample>& samples);
     void clearTrack();
     bool loadEarthFile(const QString& earthPath);
+    bool loadLocal3DTilesPreview(const QString& tilesetPath);
+    void clearLocal3DTilesPreview();
     void setFollowAircraft(bool enabled);
     void setMaxVisibleSamples(int maxVisibleSamples);
     bool flyToAircraft();
@@ -77,6 +87,7 @@ public:
     int maxVisibleSamples() const;
     Map3DPerformanceStats performanceStats() const;
     EarthLoadDiagnostics earthLoadDiagnostics() const;
+    Local3DTilesLoadDiagnostics local3DTilesLoadDiagnostics() const;
     QSize framebufferSize() const;
     bool hasEarthMap() const;
 
@@ -117,8 +128,10 @@ private:
     osg::ref_ptr<osgViewer::GraphicsWindowEmbedded> graphics_window_;
     osg::ref_ptr<osg::Group> root_;
     osg::ref_ptr<osg::Node> earth_node_;
+    osg::ref_ptr<osg::Node> local_3d_tiles_node_;
     osgEarth::MapNode* map_node_ = nullptr;
     EarthLoadDiagnostics earth_load_diagnostics_;
+    Local3DTilesLoadDiagnostics local_3d_tiles_load_diagnostics_;
     std::vector<VaporView::Geo::NavSample> raw_samples_;
     std::unique_ptr<Trajectory3DLayer> trajectory_layer_;
     std::unique_ptr<Aircraft3DLayer> aircraft_layer_;

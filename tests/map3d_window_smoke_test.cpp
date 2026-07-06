@@ -91,6 +91,7 @@ int main(int argc, char** argv)
     QAction* resetViewAction = actionByName(window, QStringLiteral("map3DResetViewAction"));
     QAction* diagnosticsAction = actionByName(window, QStringLiteral("map3DDiagnosticsAction"));
     QAction* localImageryAction = actionByName(window, QStringLiteral("map3DLocalImageryAction"));
+    QAction* local3DTilesAction = actionByName(window, QStringLiteral("map3DLocal3DTilesAction"));
     auto* replaySpeedCombo = window.findChild<QComboBox*>(QStringLiteral("map3DReplaySpeedCombo"));
     auto* replaySlider = window.findChild<QSlider*>(QStringLiteral("map3DReplaySlider"));
     auto* maxVisibleSamplesSpin = window.findChild<QSpinBox*>(QStringLiteral("map3DMaxVisibleSamplesSpin"));
@@ -101,6 +102,10 @@ int main(int argc, char** argv)
     require(diagnosticsAction->isEnabled(), "diagnostics action exists");
     require(localImageryAction->menu() != nullptr, "local imagery action has a menu");
     require(!localImageryAction->isEnabled(), "local imagery action starts disabled without local imagery VRTs");
+    require(!local3DTilesAction->isEnabled(), "local 3D Tiles action starts disabled without a valid local tileset");
+    require(local3DTilesAction->toolTip().contains(QStringLiteral("地图诊断"))
+                || local3DTilesAction->toolTip().contains(QStringLiteral("3D Tiles")),
+            "local 3D Tiles action explains why it is unavailable");
     require(replaySpeedCombo != nullptr, "replay speed combo exists");
     require(replaySlider != nullptr, "replay slider exists");
     require(maxVisibleSamplesSpin != nullptr, "max visible samples spin box exists");
@@ -233,6 +238,8 @@ int main(int argc, char** argv)
             "diagnostics include track data section");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Earth load:")),
             "diagnostics include earth runtime load section");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Local 3D Tiles preview load:")),
+            "diagnostics include local 3D Tiles preview load section");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Mode:")),
             "diagnostics include selected map mode");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Earth file:")),
@@ -263,6 +270,8 @@ int main(int argc, char** argv)
             "diagnostics include local imagery menu availability");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Local 3D Tiles contract:")),
             "diagnostics include local 3D Tiles contract status");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Local 3D Tiles tileset:")),
+            "diagnostics include local 3D Tiles tileset path");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Trajectory quality:")),
             "diagnostics include trajectory quality section");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Fixed: 1")),

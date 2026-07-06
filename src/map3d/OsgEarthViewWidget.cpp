@@ -353,6 +353,7 @@ void OsgEarthViewWidget::shutdown()
         root_->removeChildren(0, root_->getNumChildren());
     }
     earth_node_ = nullptr;
+    local_3d_tiles_node_ = nullptr;
     map_node_ = nullptr;
     trajectory_layer_.reset();
     aircraft_layer_.reset();
@@ -504,9 +505,65 @@ bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
     return true;
 }
 
+bool OsgEarthViewWidget::loadLocal3DTilesPreview(const QString& tilesetPath)
+{
+    local_3d_tiles_load_diagnostics_ = {};
+    local_3d_tiles_load_diagnostics_.attempted = true;
+    local_3d_tiles_load_diagnostics_.requestedPath = tilesetPath;
+
+    const QFileInfo tilesetInfo(tilesetPath);
+    if (!tilesetInfo.isFile())
+    {
+        local_3d_tiles_load_diagnostics_.failureReason =
+            QStringLiteral("Local 3D Tiles tileset file does not exist.");
+        return false;
+    }
+
+    initializeSceneIfNeeded();
+    if (!root_)
+    {
+        local_3d_tiles_load_diagnostics_.failureReason =
+            QStringLiteral("Scene root is not initialized.");
+        return false;
+    }
+
+    osg::ref_ptr<osg::Node> tilesNode = osgDB::readNodeFile(tilesetInfo.absoluteFilePath().toStdString());
+    if (!tilesNode)
+    {
+        local_3d_tiles_load_diagnostics_.failureReason =
+            QStringLiteral("osgDB::readNodeFile returned null; check OSG/osgEarth runtime plugin support for local 3D Tiles.");
+        return false;
+    }
+
+    clearLocal3DTilesPreview();
+    local_3d_tiles_node_ = tilesNode;
+    root_->addChild(local_3d_tiles_node_.get());
+    local_3d_tiles_load_diagnostics_.loaded = true;
+    local_3d_tiles_load_diagnostics_.nodeDescription =
+        QStringLiteral("%1 (%2)")
+            .arg(QString::fromStdString(local_3d_tiles_node_->className()),
+                 QString::fromStdString(local_3d_tiles_node_->getName()));
+    update();
+    return true;
+}
+
+void OsgEarthViewWidget::clearLocal3DTilesPreview()
+{
+    if (root_ && local_3d_tiles_node_)
+    {
+        root_->removeChild(local_3d_tiles_node_.get());
+    }
+    local_3d_tiles_node_ = nullptr;
+}
+
 EarthLoadDiagnostics OsgEarthViewWidget::earthLoadDiagnostics() const
 {
     return earth_load_diagnostics_;
+}
+
+Local3DTilesLoadDiagnostics OsgEarthViewWidget::local3DTilesLoadDiagnostics() const
+{
+    return local_3d_tiles_load_diagnostics_;
 }
 
 void OsgEarthViewWidget::setFollowAircraft(bool enabled)

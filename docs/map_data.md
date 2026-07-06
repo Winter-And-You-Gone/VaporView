@@ -203,7 +203,7 @@ The helper only reads local GeoTIFF files. It does not download imagery and does
 
 ## Optional Local 3D Tiles
 
-Local 3D Tiles are reserved under `data/maps/tiles3d/` for future offline 3D content loading. This path is local-only and does not use Cesium ion.
+Local 3D Tiles live under `data/maps/tiles3d/` for offline 3D content experiments. This path is local-only and does not use Cesium ion.
 
 Expected entry point:
 
@@ -211,7 +211,9 @@ Expected entry point:
 data/maps/tiles3d/local/tileset.json
 ```
 
-Put the complete local 3D Tiles dataset under `data/maps/tiles3d/local/`. `MapDataManager` scans the `tileset.json` path and reports it in diagnostics. The current renderer does not load 3D Tiles yet; this establishes the local data layout, validates the basic tileset contract, and catches non-local content URIs before a later osgEarth/OSG integration step.
+Put the complete local 3D Tiles dataset under `data/maps/tiles3d/local/`. `MapDataManager` scans the `tileset.json` path and reports it in diagnostics. The 3D Map toolbar exposes a `本地 3D Tiles` preview action when the local-only contract is valid. That action attempts to load the tileset as an independent OSG overlay, without replacing the Natural Earth/DEM/OSM base map and without affecting track or aircraft layers.
+
+Rendering success depends on the installed OSG/osgEarth runtime plugin support for the tileset payloads. If `osgDB::readNodeFile` cannot load the dataset, VaporView keeps the base map running and reports the failure in the diagnostics panel. Treat this as a diagnostic-backed preview entry point, not as a Cesium ion or web-based 3D Tiles pipeline.
 
 The diagnostics currently check:
 
@@ -255,7 +257,8 @@ For SRTM fallback validation, place SRTM GeoTIFF tiles in `data/maps/terrain/srt
 5. Open the 3D Map window and click `地图诊断`.
 6. Confirm optional local imagery and optional local 3D Tiles availability are reported. These optional files should not change the selected base map mode.
 7. To view local imagery, click `本地影像` and select the enabled Sentinel-2, Landsat, or OpenAerialMap entry.
-8. For local 3D Tiles, confirm the diagnostics show `Local 3D Tiles contract: valid` before relying on that dataset for later renderer integration.
+8. For local 3D Tiles, confirm the diagnostics show `Local 3D Tiles contract: valid`, then click `本地 3D Tiles` to attempt a local preview overlay.
+9. If the preview fails, check `Local 3D Tiles preview load` in diagnostics. A failure such as `osgDB::readNodeFile returned null` usually means the current OSG/osgEarth runtime lacks the needed 3D Tiles/plugin support for that dataset.
 
 ## Git Tracking
 

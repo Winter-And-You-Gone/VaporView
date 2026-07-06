@@ -324,6 +324,13 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     local_imagery_action_->setObjectName(QStringLiteral("map3DLocalImageryAction"));
     local_imagery_action_->setMenu(local_imagery_menu_);
 
+    local_3d_tiles_action_ = toolbar->addAction(QStringLiteral("本地 3D Tiles"));
+    local_3d_tiles_action_->setObjectName(QStringLiteral("map3DLocal3DTilesAction"));
+    local_3d_tiles_action_->setEnabled(false);
+    local_3d_tiles_action_->setToolTip(QStringLiteral("加载 data/maps/tiles3d/local/tileset.json 作为本地 3D Tiles 预览叠加层"));
+    local_3d_tiles_action_->setStatusTip(local_3d_tiles_action_->toolTip());
+    connect(local_3d_tiles_action_, &QAction::triggered, this, &Map3DWindow::loadLocal3DTilesPreview);
+
     QAction* reloadBestMapAction = toolbar->addAction(QStringLiteral("重载最佳本地地图"));
     reloadBestMapAction->setObjectName(QStringLiteral("map3DReloadBestMapAction"));
     connect(reloadBestMapAction, &QAction::triggered, this, &Map3DWindow::reloadBestLocalMap);
@@ -606,6 +613,46 @@ void Map3DWindow::loadLocalImageryTemplate(const LocalImageryOption& option)
                                  .arg(option.label,
                                       focusedTrack ? QStringLiteral(" (已自动定位轨迹)") : QString()),
                              5000);
+}
+
+void Map3DWindow::loadLocal3DTilesPreview()
+{
+    const MapDataDiagnostics& diagnostics = map_selection_.diagnostics;
+    if (!diagnostics.local3DTilesTilesetValid)
+    {
+        latest_local_3d_tiles_load_ = {};
+        latest_local_3d_tiles_load_.requestedPath = diagnostics.local3DTilesTilesetPath;
+        latest_local_3d_tiles_load_.failureReason =
+            QStringLiteral("Local 3D Tiles contract is not valid; open Map Data Diagnostics for details.");
+        if (diagnostics_text_)
+        {
+            diagnostics_text_->setPlainText(diagnosticsText());
+        }
+        statusBar()->showMessage(QStringLiteral("本地 3D Tiles 契约无效，请先查看地图诊断。"), 8000);
+        return;
+    }
+
+    const bool loaded = view_ ? view_->loadLocal3DTilesPreview(diagnostics.local3DTilesTilesetPath) : false;
+    latest_local_3d_tiles_load_ = view_ ? view_->local3DTilesLoadDiagnostics() : Local3DTilesLoadDiagnostics{};
+    if (diagnostics_text_)
+    {
+        diagnostics_text_->setPlainText(diagnosticsText());
+    }
+    updateStatus(nullptr);
+
+    if (!loaded)
+    {
+        statusBar()->showMessage(QStringLiteral("本地 3D Tiles 预览加载失败: %1")
+                                     .arg(latest_local_3d_tiles_load_.failureReason.isEmpty()
+                                              ? diagnostics.local3DTilesTilesetPath
+                                              : latest_local_3d_tiles_load_.failureReason),
+                                 9000);
+        return;
+    }
+
+    statusBar()->showMessage(QStringLiteral("已加载本地 3D Tiles 预览叠加层: %1")
+                                 .arg(diagnostics.local3DTilesTilesetPath),
+                             6000);
 }
 
 void Map3DWindow::reloadBestLocalMap()
@@ -911,6 +958,17 @@ void Map3DWindow::setMapSelection(const MapDataSelection& selection)
         }
         local_imagery_action_->setEnabled(map_selection_.diagnostics.localImageryAvailable);
     }
+    if (local_3d_tiles_action_)
+    {
+        const bool enabled = map_selection_.diagnostics.local3DTilesTilesetValid;
+        local_3d_tiles_action_->setEnabled(enabled);
+        local_3d_tiles_action_->setToolTip(
+            enabled
+                ? QStringLiteral("加载本地 3D Tiles 预览叠加层: %1")
+                      .arg(map_selection_.diagnostics.local3DTilesTilesetPath)
+                : QStringLiteral("本地 3D Tiles 不可用或契约无效；请查看地图诊断"));
+        local_3d_tiles_action_->setStatusTip(local_3d_tiles_action_->toolTip());
+    }
     if (diagnostics_text_)
     {
         diagnostics_text_->setPlainText(diagnosticsText());
@@ -989,6 +1047,21 @@ QString Map3DWindow::diagnosticsText() const
         {
             lines << QStringLiteral("    - %1").arg(layerSummary);
         }
+    }
+    lines << QStringLiteral("Local 3D Tiles preview load:");
+    lines << QStringLiteral("  Requested path: %1")
+                 .arg(latest_local_3d_tiles_load_.requestedPath.isEmpty()
+                          ? QStringLiteral("<none>")
+                          : latest_local_3d_tiles_load_.requestedPath);
+    lines << QStringLiteral("  Attempted: %1").arg(latest_local_3d_tiles_load_.attempted ? QStringLiteral("yes") : QStringLiteral("no"));
+    lines << QStringLiteral("  Loaded: %1").arg(latest_local_3d_tiles_load_.loaded ? QStringLiteral("yes") : QStringLiteral("no"));
+    if (!latest_local_3d_tiles_load_.nodeDescription.isEmpty())
+    {
+        lines << QStringLiteral("  Node: %1").arg(latest_local_3d_tiles_load_.nodeDescription);
+    }
+    if (!latest_local_3d_tiles_load_.failureReason.isEmpty())
+    {
+        lines << QStringLiteral("  Failure/note: %1").arg(latest_local_3d_tiles_load_.failureReason);
     }
     lines << QStringLiteral("Render performance:");
     lines << QStringLiteral("  Samples: %1 visible / %2 total / %3 hidden")
