@@ -61,6 +61,11 @@ struct NavSample {
     FixQuality fixQuality = FixQuality::Unknown;
     HeightReference heightReference = HeightReference::Unknown;
 
+    double quatW = std::numeric_limits<double>::quiet_NaN();
+    double quatX = std::numeric_limits<double>::quiet_NaN();
+    double quatY = std::numeric_limits<double>::quiet_NaN();
+    double quatZ = std::numeric_limits<double>::quiet_NaN();
+
     bool hasLlh() const
     {
         return std::isfinite(latDeg)
@@ -75,6 +80,19 @@ struct NavSample {
         return std::isfinite(nedNM)
             && std::isfinite(nedEM)
             && std::isfinite(nedDM);
+    }
+
+    bool hasQuaternion() const
+    {
+        if (!std::isfinite(quatW)
+            || !std::isfinite(quatX)
+            || !std::isfinite(quatY)
+            || !std::isfinite(quatZ))
+        {
+            return false;
+        }
+        const double norm2 = quatW * quatW + quatX * quatX + quatY * quatY + quatZ * quatZ;
+        return norm2 > 1e-12;
     }
 };
 

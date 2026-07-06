@@ -258,6 +258,10 @@ SessionTrackReadResult readSessionTrack(const QString& sessionDir)
     const int rollCol = findColumn(columns, {"roll_deg", "epsilon_roll_deg", "imu_roll"});
     const int pitchCol = findColumn(columns, {"pitch_deg", "epsilon_pitch_deg", "rtk_pitch", "imu_pitch"});
     const int yawCol = findColumn(columns, {"yaw_deg", "heading_deg", "epsilon_yaw_deg", "rtk_heading", "rtk_yaw", "imu_yaw"});
+    const int quatWCol = findColumn(columns, {"quat_w", "quaternion_w", "epsilon_quat_w", "nav_quat_w"});
+    const int quatXCol = findColumn(columns, {"quat_x", "quaternion_x", "epsilon_quat_x", "nav_quat_x"});
+    const int quatYCol = findColumn(columns, {"quat_y", "quaternion_y", "epsilon_quat_y", "nav_quat_y"});
+    const int quatZCol = findColumn(columns, {"quat_z", "quaternion_z", "epsilon_quat_z", "nav_quat_z"});
     const int satellitesCol = findColumn(columns, {"satellites", "satellite_count", "num_satellites", "gnss_satellites", "gnss_satellite_count", "epsilon_gnss_satellites", "rtk_sat"});
     const int hdopCol = findColumn(columns, {"hdop", "epsilon_hdop"});
     const int vdopCol = findColumn(columns, {"vdop", "epsilon_vdop"});
@@ -299,6 +303,10 @@ SessionTrackReadResult readSessionTrack(const QString& sessionDir)
         sample.rollDeg = readDouble(fields, rollCol);
         sample.pitchDeg = readDouble(fields, pitchCol);
         sample.yawDeg = readDouble(fields, yawCol);
+        sample.quatW = readDouble(fields, quatWCol);
+        sample.quatX = readDouble(fields, quatXCol);
+        sample.quatY = readDouble(fields, quatYCol);
+        sample.quatZ = readDouble(fields, quatZCol);
         sample.satellites = readInt(fields, satellitesCol);
         sample.hdop = readDouble(fields, hdopCol);
         sample.vdop = readDouble(fields, vdopCol);

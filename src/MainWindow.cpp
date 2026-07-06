@@ -19364,6 +19364,10 @@ VaporView::Geo::NavSample MainWindow::map3DSampleFromEpsilon(const VaporView::Ep
     sample.rollDeg = epsilonData.roll_deg;
     sample.pitchDeg = epsilonData.pitch_deg;
     sample.yawDeg = epsilonData.yaw_deg;
+    sample.quatW = epsilonData.quat_w;
+    sample.quatX = epsilonData.quat_x;
+    sample.quatY = epsilonData.quat_y;
+    sample.quatZ = epsilonData.quat_z;
     sample.satellites = epsilonData.gnss_satellites;
     sample.hdop = epsilonData.hdop;
     sample.vdop = epsilonData.vdop;

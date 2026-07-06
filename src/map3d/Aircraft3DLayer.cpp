@@ -83,6 +83,34 @@ osg::ref_ptr<osg::Geometry> createAircraftOutline()
     return geometry;
 }
 
+osg::Matrix rotationFromSample(const VaporView::Geo::NavSample& sample)
+{
+    if (sample.hasQuaternion())
+    {
+        const double norm = std::sqrt(sample.quatW * sample.quatW
+                                      + sample.quatX * sample.quatX
+                                      + sample.quatY * sample.quatY
+                                      + sample.quatZ * sample.quatZ);
+        const osg::Quat quat(sample.quatX / norm,
+                             sample.quatY / norm,
+                             sample.quatZ / norm,
+                             sample.quatW / norm);
+        return osg::Matrix::rotate(quat);
+    }
+
+    if (std::isfinite(sample.yawDeg) || std::isfinite(sample.pitchDeg) || std::isfinite(sample.rollDeg))
+    {
+        const double yaw = std::isfinite(sample.yawDeg) ? osg::DegreesToRadians(sample.yawDeg) : 0.0;
+        const double pitch = std::isfinite(sample.pitchDeg) ? osg::DegreesToRadians(sample.pitchDeg) : 0.0;
+        const double roll = std::isfinite(sample.rollDeg) ? osg::DegreesToRadians(sample.rollDeg) : 0.0;
+        return osg::Matrix::rotate(roll, osg::Vec3d(1.0, 0.0, 0.0),
+                                   pitch, osg::Vec3d(0.0, 1.0, 0.0),
+                                   yaw, osg::Vec3d(0.0, 0.0, 1.0));
+    }
+
+    return osg::Matrix::identity();
+}
+
 } // namespace
 
 Aircraft3DLayer::Aircraft3DLayer()
@@ -107,16 +135,7 @@ void Aircraft3DLayer::updateSample(const VaporView::Geo::NavSample& sample)
         return;
     }
 
-    osg::Matrix rotation = osg::Matrix::identity();
-    if (std::isfinite(sample.yawDeg) || std::isfinite(sample.pitchDeg) || std::isfinite(sample.rollDeg))
-    {
-        const double yaw = std::isfinite(sample.yawDeg) ? osg::DegreesToRadians(sample.yawDeg) : 0.0;
-        const double pitch = std::isfinite(sample.pitchDeg) ? osg::DegreesToRadians(sample.pitchDeg) : 0.0;
-        const double roll = std::isfinite(sample.rollDeg) ? osg::DegreesToRadians(sample.rollDeg) : 0.0;
-        rotation = osg::Matrix::rotate(roll, osg::Vec3d(1.0, 0.0, 0.0),
-                                       pitch, osg::Vec3d(0.0, 1.0, 0.0),
-                                       yaw, osg::Vec3d(0.0, 0.0, 1.0));
-    }
+    const osg::Matrix rotation = rotationFromSample(sample);
     transform_->setMatrix(rotation * osg::Matrix::translate(samplePosition(sample, use_world_coordinates_)));
     has_position_ = true;
 }

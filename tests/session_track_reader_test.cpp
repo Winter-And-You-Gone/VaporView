@@ -60,9 +60,9 @@ int main()
         require(dir.mkpath(QStringLiteral("nested/session/sensors")), "create nested sensors directory");
 
         writeCsv(dir.filePath(QStringLiteral("nested/session/sensors/devices.csv")),
-                 QStringLiteral("host_time_us,epsilon_device_timestamp_us,epsilon_latitude_deg,epsilon_longitude_deg,epsilon_height_m,epsilon_ned_n_m,epsilon_ned_e_m,epsilon_ned_d_m,epsilon_yaw_deg,epsilon_gnss_satellites,epsilon_hdop,epsilon_gnss_fix_text\n"
-                                "3000,2900,31.230600001,121.473900001,19.0,1.0,2.0,-3.0,45.5,14,0.6,RTK fixed\n"
-                                "4000,3900,,,20.0,4.0,5.0,-6.0,46.0,14,0.6,RTK float\n"));
+                 QStringLiteral("host_time_us,epsilon_device_timestamp_us,epsilon_latitude_deg,epsilon_longitude_deg,epsilon_height_m,epsilon_ned_n_m,epsilon_ned_e_m,epsilon_ned_d_m,epsilon_yaw_deg,epsilon_quat_w,epsilon_quat_x,epsilon_quat_y,epsilon_quat_z,epsilon_gnss_satellites,epsilon_hdop,epsilon_gnss_fix_text\n"
+                                "3000,2900,31.230600001,121.473900001,19.0,1.0,2.0,-3.0,45.5,0.9238795,0.0,0.0,0.3826834,14,0.6,RTK fixed\n"
+                                "4000,3900,,,20.0,4.0,5.0,-6.0,46.0,1.0,0.0,0.0,0.0,14,0.6,RTK float\n"));
 
         const VaporView::Geo::SessionTrackReadResult result =
             VaporView::Geo::readSessionTrack(sessionDir.path());
@@ -79,6 +79,9 @@ int main()
         require(std::fabs(sample.nedEM - 2.0) < 0.000001, "epsilon NED east parsed");
         require(std::fabs(sample.nedDM + 3.0) < 0.000001, "epsilon NED down parsed");
         require(std::fabs(sample.yawDeg - 45.5) < 0.000001, "epsilon yaw parsed");
+        require(sample.hasQuaternion(), "epsilon quaternion parsed");
+        require(std::fabs(sample.quatW - 0.9238795) < 0.0000001, "epsilon quaternion W parsed");
+        require(std::fabs(sample.quatZ - 0.3826834) < 0.0000001, "epsilon quaternion Z parsed");
         require(sample.fixQuality == VaporView::Geo::FixQuality::Fixed, "epsilon fix text parsed");
     }
 

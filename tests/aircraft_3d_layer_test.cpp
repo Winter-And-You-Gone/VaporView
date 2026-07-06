@@ -80,6 +80,18 @@ int main()
     require(std::abs(yaw90Forward.x()) > 0.9, "yaw 90 rotates visible aircraft nose toward east/west axis");
     require(std::abs(yaw90Forward.y()) < 0.1, "yaw 90 no longer points north");
 
+    VaporView::Geo::NavSample quaternionSample = localSample(0.0);
+    quaternionSample.quatW = std::cos(osg::DegreesToRadians(45.0));
+    quaternionSample.quatX = 0.0;
+    quaternionSample.quatY = 0.0;
+    quaternionSample.quatZ = std::sin(osg::DegreesToRadians(45.0));
+    layer.updateSample(quaternionSample);
+    const osg::Vec3d quaternionForward = transformedForward(transform->getMatrix());
+    require(std::abs(quaternionForward.x()) > 0.9,
+            "quaternion orientation takes precedence over yaw fallback");
+    require(std::abs(quaternionForward.y()) < 0.1,
+            "quaternion yaw rotates aircraft nose away from north");
+
     VaporView::Geo::NavSample worldSample = localSample(0.0);
     worldSample.ecefXM = 1.0;
     worldSample.ecefYM = 2.0;
