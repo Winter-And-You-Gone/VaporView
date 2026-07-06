@@ -261,6 +261,8 @@ int main(int argc, char** argv)
             "diagnostics include render performance section");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Local imagery menu:")),
             "diagnostics include local imagery menu availability");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Local 3D Tiles contract:")),
+            "diagnostics include local 3D Tiles contract status");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Trajectory quality:")),
             "diagnostics include trajectory quality section");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Fixed: 1")),

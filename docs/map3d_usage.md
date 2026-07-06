@@ -138,6 +138,7 @@ Click `地图诊断`, or use `View / 视图 -> Map Data Diagnostics / 地图数�
 - Full Local Map blockers, including exact missing DEM, Natural Earth, OSM, or earth template files
 - optional Sentinel-2/Landsat/OpenAerialMap imagery VRTs
 - optional local 3D Tiles `tileset.json`
+- local 3D Tiles contract status, referenced content URIs, missing resources, and non-local URI warnings
 - OSG plugin path
 - `OSG_LIBRARY_PATH`
 - `OSGEARTH_NOTIFY_LEVEL`
@@ -207,4 +208,4 @@ After building a local imagery VRT, use the `本地影像` menu and select the e
 
 The user is responsible for placing Copernicus DEM, SRTM, OSM, Sentinel-2, Landsat, or OpenAerialMap files under `data/maps`. VaporView should not download commercial or restricted data sources.
 
-Optional local 3D Tiles can be placed under `data/maps/tiles3d/local/tileset.json`. The diagnostics panel detects that path, but the current renderer does not load 3D Tiles yet.
+Optional local 3D Tiles can be placed under `data/maps/tiles3d/local/tileset.json`. The diagnostics panel detects that path and validates the local-only data contract, but the current renderer does not load 3D Tiles yet. A healthy dataset should report `Local 3D Tiles contract: valid`; remote, absolute, missing, or malformed content references are listed in the diagnostics panel.

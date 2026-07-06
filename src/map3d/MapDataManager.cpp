@@ -3,6 +3,12 @@
 #include <QtCore/QCoreApplication>
 #include <QtCore/QDir>
 #include <QtCore/QFileInfo>
+#include <QtCore/QFile>
+#include <QtCore/QJsonArray>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
+#include <QtCore/QJsonParseError>
+#include <QtCore/QJsonValue>
 #include <QtCore/QProcessEnvironment>
 
 #include <utility>
@@ -170,6 +176,254 @@ std::vector<LocalImageryOption> localImageryOptions(const MapDataDiagnostics& di
          diagnostics.openAerialMapImageryVrtPath,
          isFile(diagnostics.openAerialMapImageryEarthPath) && isFile(diagnostics.openAerialMapImageryVrtPath)}
     };
+}
+
+QString stripUriQueryAndFragment(QString uri)
+{
+    const int queryIndex = uri.indexOf(QLatin1Char('?'));
+    const int fragmentIndex = uri.indexOf(QLatin1Char('#'));
+    int cutIndex = -1;
+    if (queryIndex >= 0)
+    {
+        cutIndex = queryIndex;
+    }
+    if (fragmentIndex >= 0 && (cutIndex < 0 || fragmentIndex < cutIndex))
+    {
+        cutIndex = fragmentIndex;
+    }
+    return cutIndex >= 0 ? uri.left(cutIndex) : uri;
+}
+
+bool hasUriSchemeOrNetworkPath(const QString& uri)
+{
+    const QString trimmed = uri.trimmed();
+    const QString lower = trimmed.toLower();
+    if (lower.startsWith(QStringLiteral("//")))
+    {
+        return true;
+    }
+
+    const int colonIndex = lower.indexOf(QLatin1Char(':'));
+    if (colonIndex <= 0)
+    {
+        return false;
+    }
+
+    const int slashIndex = lower.indexOf(QLatin1Char('/'));
+    const int backslashIndex = lower.indexOf(QLatin1Char('\\'));
+    int firstSeparator = -1;
+    if (slashIndex >= 0)
+    {
+        firstSeparator = slashIndex;
+    }
+    if (backslashIndex >= 0 && (firstSeparator < 0 || backslashIndex < firstSeparator))
+    {
+        firstSeparator = backslashIndex;
+    }
+    return firstSeparator < 0 || colonIndex < firstSeparator;
+}
+
+bool pathStartsWithDirectory(const QString& path, const QString& directory)
+{
+    QString cleanPath = QDir::cleanPath(path).replace(QLatin1Char('\\'), QLatin1Char('/'));
+    QString cleanDirectory = QDir::cleanPath(directory).replace(QLatin1Char('\\'), QLatin1Char('/'));
+#ifdef Q_OS_WIN
+    cleanPath = cleanPath.toLower();
+    cleanDirectory = cleanDirectory.toLower();
+#endif
+    if (!cleanDirectory.endsWith(QLatin1Char('/')))
+    {
+        cleanDirectory.append(QLatin1Char('/'));
+    }
+    return cleanPath == cleanDirectory.left(cleanDirectory.size() - 1)
+        || cleanPath.startsWith(cleanDirectory);
+}
+
+void appendContentUri(const QJsonObject& object, QStringList& uris)
+{
+    const QJsonValue uriValue = object.value(QStringLiteral("uri"));
+    if (uriValue.isString())
+    {
+        uris.push_back(uriValue.toString());
+    }
+    const QJsonValue urlValue = object.value(QStringLiteral("url"));
+    if (urlValue.isString())
+    {
+        uris.push_back(urlValue.toString());
+    }
+}
+
+void collectTileContentUris(const QJsonObject& tile, QStringList& uris)
+{
+    const QJsonValue contentValue = tile.value(QStringLiteral("content"));
+    if (contentValue.isObject())
+    {
+        appendContentUri(contentValue.toObject(), uris);
+    }
+
+    const QJsonValue contentsValue = tile.value(QStringLiteral("contents"));
+    if (contentsValue.isArray())
+    {
+        const QJsonArray contents = contentsValue.toArray();
+        for (const QJsonValue& value : contents)
+        {
+            if (value.isObject())
+            {
+                appendContentUri(value.toObject(), uris);
+            }
+        }
+    }
+
+    const QJsonValue childrenValue = tile.value(QStringLiteral("children"));
+    if (childrenValue.isArray())
+    {
+        const QJsonArray children = childrenValue.toArray();
+        for (const QJsonValue& child : children)
+        {
+            if (child.isObject())
+            {
+                collectTileContentUris(child.toObject(), uris);
+            }
+        }
+    }
+}
+
+void collectLocal3DTilesDiagnostics(MapDataDiagnostics& diagnostics)
+{
+    if (!isFile(diagnostics.local3DTilesTilesetPath))
+    {
+        return;
+    }
+
+    QFile file(diagnostics.local3DTilesTilesetPath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    {
+        const QString message = QStringLiteral("Local 3D Tiles tileset could not be opened: %1").arg(file.errorString());
+        diagnostics.local3DTilesDiagnostics.push_back(message);
+        diagnostics.warnings.push_back(message);
+        return;
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject())
+    {
+        const QString message = QStringLiteral("Local 3D Tiles tileset is not valid JSON: %1").arg(parseError.errorString());
+        diagnostics.local3DTilesDiagnostics.push_back(message);
+        diagnostics.warnings.push_back(message);
+        return;
+    }
+
+    const QJsonObject tileset = document.object();
+    const QJsonValue assetValue = tileset.value(QStringLiteral("asset"));
+    const bool hasAsset = assetValue.isObject();
+    const bool hasAssetVersion = hasAsset
+        && !assetValue.toObject().value(QStringLiteral("version")).toString().trimmed().isEmpty();
+    const QJsonValue rootValue = tileset.value(QStringLiteral("root"));
+    const bool hasRoot = rootValue.isObject();
+    const QJsonObject rootObject = hasRoot ? rootValue.toObject() : QJsonObject{};
+    const bool hasBoundingVolume = hasRoot && rootObject.value(QStringLiteral("boundingVolume")).isObject();
+    const bool hasRootGeometricError = hasRoot && rootObject.value(QStringLiteral("geometricError")).isDouble();
+    const bool hasTilesetGeometricError = tileset.value(QStringLiteral("geometricError")).isDouble();
+    const bool hasGeometricError = hasRootGeometricError || hasTilesetGeometricError;
+
+    auto addIssue = [&diagnostics](const QString& message) {
+        diagnostics.local3DTilesDiagnostics.push_back(message);
+        diagnostics.warnings.push_back(message);
+    };
+
+    if (!hasAsset)
+    {
+        addIssue(QStringLiteral("Local 3D Tiles tileset is missing asset object."));
+    }
+    else if (!hasAssetVersion)
+    {
+        addIssue(QStringLiteral("Local 3D Tiles tileset asset.version is missing."));
+    }
+    if (!hasRoot)
+    {
+        addIssue(QStringLiteral("Local 3D Tiles tileset is missing root tile."));
+    }
+    if (hasRoot && !hasBoundingVolume)
+    {
+        addIssue(QStringLiteral("Local 3D Tiles root tile is missing boundingVolume."));
+    }
+    if (!hasGeometricError)
+    {
+        addIssue(QStringLiteral("Local 3D Tiles tileset/root geometricError is missing."));
+    }
+
+    QStringList uris;
+    if (hasRoot)
+    {
+        collectTileContentUris(rootObject, uris);
+    }
+    uris.removeDuplicates();
+    diagnostics.local3DTilesResourceUris = uris;
+    diagnostics.local3DTilesResourceCount = uris.size();
+    if (uris.isEmpty())
+    {
+        addIssue(QStringLiteral("Local 3D Tiles tileset has no content.uri entries yet."));
+    }
+
+    const QFileInfo tilesetInfo(diagnostics.local3DTilesTilesetPath);
+    const QString datasetRoot = QDir::cleanPath(tilesetInfo.absolutePath());
+    for (const QString& rawUri : uris)
+    {
+        const QString uri = rawUri.trimmed();
+        const QString resourcePath = stripUriQueryAndFragment(uri);
+        if (resourcePath.isEmpty())
+        {
+            addIssue(QStringLiteral("Local 3D Tiles contains an empty content URI."));
+            continue;
+        }
+        if (hasUriSchemeOrNetworkPath(resourcePath) || QDir::isAbsolutePath(resourcePath))
+        {
+            diagnostics.local3DTilesExternalUris.push_back(rawUri);
+            continue;
+        }
+
+        const QString absoluteResource = QDir::cleanPath(QDir(datasetRoot).absoluteFilePath(resourcePath));
+        if (!pathStartsWithDirectory(absoluteResource, datasetRoot))
+        {
+            diagnostics.local3DTilesExternalUris.push_back(rawUri);
+            continue;
+        }
+        if (isFile(absoluteResource))
+        {
+            diagnostics.foundFiles.push_back(absoluteResource);
+        }
+        else
+        {
+            diagnostics.local3DTilesMissingResources.push_back(absoluteResource);
+        }
+    }
+
+    diagnostics.local3DTilesExternalUris.removeDuplicates();
+    diagnostics.local3DTilesMissingResources.removeDuplicates();
+    diagnostics.local3DTilesHasExternalUris = !diagnostics.local3DTilesExternalUris.isEmpty();
+
+    for (const QString& uri : diagnostics.local3DTilesExternalUris)
+    {
+        addIssue(QStringLiteral("Local 3D Tiles content URI is not local/portable: %1").arg(uri));
+    }
+    for (const QString& path : diagnostics.local3DTilesMissingResources)
+    {
+        addIssue(QStringLiteral("Local 3D Tiles referenced resource is missing: %1").arg(path));
+    }
+
+    diagnostics.local3DTilesTilesetValid = hasAsset
+        && hasAssetVersion
+        && hasRoot
+        && hasBoundingVolume
+        && hasGeometricError
+        && !uris.isEmpty()
+        && diagnostics.local3DTilesExternalUris.isEmpty()
+        && diagnostics.local3DTilesMissingResources.isEmpty();
+    diagnostics.local3DTilesDiagnostics.push_back(
+        diagnostics.local3DTilesTilesetValid
+            ? QStringLiteral("Local 3D Tiles tileset passes local-only contract checks.")
+            : QStringLiteral("Local 3D Tiles tileset needs attention before renderer integration."));
 }
 
 QString bestAvailableDemSource(const MapDataDiagnostics& diagnostics)
@@ -488,6 +742,7 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     diagnostics.localImageryAvailable = diagnostics.localImageryLayerCount > 0;
     diagnostics.localImageryOptions = localImageryOptions(diagnostics);
     diagnostics.local3DTilesAvailable = isFile(diagnostics.local3DTilesTilesetPath);
+    collectLocal3DTilesDiagnostics(diagnostics);
     collectFullLocalBlockers(diagnostics, fullLocalEarthPath, fullLocalSrtmEarthPath);
 
     if (diagnostics.localImageryAvailable)
@@ -498,7 +753,9 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     if (diagnostics.local3DTilesAvailable)
     {
         diagnostics.messages.push_back(
-            QStringLiteral("Optional local 3D Tiles tileset detected for future 3D content loading."));
+            diagnostics.local3DTilesTilesetValid
+                ? QStringLiteral("Optional local 3D Tiles tileset detected and passed local-only contract checks.")
+                : QStringLiteral("Optional local 3D Tiles tileset detected but needs attention before renderer integration."));
     }
 
     const QString selectedFullLocalEarthPath = fullLocalEarthForAvailableDem(

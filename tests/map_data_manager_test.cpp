@@ -31,6 +31,15 @@ void touch(const QDir& root, const QString& relative)
     file.write("test");
 }
 
+void writeFile(const QDir& root, const QString& relative, const QByteArray& contents)
+{
+    const QFileInfo info(root.absoluteFilePath(relative));
+    QDir().mkpath(info.absolutePath());
+    QFile file(info.absoluteFilePath());
+    require(file.open(QIODevice::WriteOnly), "failed to write test file");
+    file.write(contents);
+}
+
 VaporView::Map3D::MapDataSelection select(const QDir& root)
 {
     VaporView::Map3D::MapDataManager manager({root.absolutePath()});
@@ -115,12 +124,79 @@ int main(int argc, char** argv)
     require(selection.diagnostics.localImageryOptions[0].earthFilePath.endsWith(QStringLiteral("vaporview_with_sentinel2_imagery.earth")),
             "Sentinel-2 imagery option should point at its earth template");
     require(selection.diagnostics.local3DTilesAvailable, "optional local 3D Tiles tileset should be detected");
+    require(!selection.diagnostics.local3DTilesTilesetValid,
+            "invalid placeholder 3D Tiles JSON should not pass local-only contract checks");
+    require(selection.diagnostics.local3DTilesDiagnostics.join(QLatin1Char('\n')).contains(QStringLiteral("not valid JSON")),
+            "invalid 3D Tiles JSON should be diagnosed");
     require(selection.diagnostics.foundFiles.contains(selection.diagnostics.sentinel2ImageryVrtPath),
             "optional Sentinel-2 VRT should be listed as found");
     require(selection.diagnostics.foundFiles.contains(selection.diagnostics.local3DTilesTilesetPath),
             "optional 3D Tiles tileset should be listed as found");
     require(selection.diagnostics.messages.join(QLatin1Char('\n')).contains(QStringLiteral("imagery earth template")),
             "optional imagery diagnostics should mention manual imagery earth templates");
+
+    writeFile(root, QStringLiteral("data/maps/tiles3d/local/content/building.b3dm"),
+              QByteArrayLiteral("not a real b3dm"));
+    writeFile(root,
+              QStringLiteral("data/maps/tiles3d/local/tileset.json"),
+              QByteArrayLiteral(R"JSON({
+  "asset": {"version": "1.1"},
+  "geometricError": 500,
+  "root": {
+    "boundingVolume": {"region": [0, 0, 0.1, 0.1, 0, 100]},
+    "geometricError": 250,
+    "content": {"uri": "content/building.b3dm"}
+  }
+})JSON"));
+    selection = select(root);
+    require(selection.diagnostics.local3DTilesAvailable, "valid local 3D Tiles tileset should be detected");
+    require(selection.diagnostics.local3DTilesTilesetValid,
+            "valid local 3D Tiles tileset should pass local-only contract checks");
+    require(selection.diagnostics.local3DTilesResourceCount == 1,
+            "valid local 3D Tiles tileset should report referenced resource count");
+    require(selection.diagnostics.local3DTilesResourceUris.contains(QStringLiteral("content/building.b3dm")),
+            "valid local 3D Tiles diagnostics should list content URI");
+    require(selection.diagnostics.local3DTilesExternalUris.isEmpty(),
+            "valid local 3D Tiles tileset should not report external URIs");
+    require(selection.diagnostics.local3DTilesMissingResources.isEmpty(),
+            "valid local 3D Tiles tileset should not report missing resources");
+
+    writeFile(root,
+              QStringLiteral("data/maps/tiles3d/local/tileset.json"),
+              QByteArrayLiteral(R"JSON({
+  "asset": {"version": "1.1"},
+  "geometricError": 500,
+  "root": {
+    "boundingVolume": {"region": [0, 0, 0.1, 0.1, 0, 100]},
+    "geometricError": 250,
+    "content": {"uri": "https://example.invalid/tiles/building.b3dm"}
+  }
+})JSON"));
+    selection = select(root);
+    require(selection.diagnostics.local3DTilesAvailable,
+            "3D Tiles tileset with remote URI should still be detected as present");
+    require(!selection.diagnostics.local3DTilesTilesetValid,
+            "3D Tiles tileset with remote URI should not pass local-only checks");
+    require(selection.diagnostics.local3DTilesHasExternalUris,
+            "3D Tiles tileset with remote URI should report external URI flag");
+    require(selection.diagnostics.local3DTilesExternalUris.contains(QStringLiteral("https://example.invalid/tiles/building.b3dm")),
+            "3D Tiles diagnostics should list the remote URI");
+
+    writeFile(root,
+              QStringLiteral("data/maps/tiles3d/local/tileset.json"),
+              QByteArrayLiteral(R"JSON({
+  "asset": {"version": "1.1"},
+  "geometricError": 500,
+  "root": {
+    "boundingVolume": {"region": [0, 0, 0.1, 0.1, 0, 100]},
+    "geometricError": 250
+  }
+})JSON"));
+    selection = select(root);
+    require(!selection.diagnostics.local3DTilesTilesetValid,
+            "3D Tiles tileset without content URI should not pass local-only checks");
+    require(selection.diagnostics.local3DTilesDiagnostics.join(QLatin1Char('\n')).contains(QStringLiteral("no content.uri entries")),
+            "3D Tiles diagnostics should explain missing content URIs");
 
     touch(root, QStringLiteral("data/maps/vaporview_with_srtm.earth"));
     touch(root, QStringLiteral("data/maps/terrain/srtm/srtm.vrt"));

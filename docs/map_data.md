@@ -211,7 +211,16 @@ Expected entry point:
 data/maps/tiles3d/local/tileset.json
 ```
 
-Put the complete local 3D Tiles dataset under `data/maps/tiles3d/local/`. `MapDataManager` scans the `tileset.json` path and reports it in diagnostics. The current renderer does not load 3D Tiles yet; this only establishes the local data layout and diagnostics needed for a later osgEarth/OSG integration step.
+Put the complete local 3D Tiles dataset under `data/maps/tiles3d/local/`. `MapDataManager` scans the `tileset.json` path and reports it in diagnostics. The current renderer does not load 3D Tiles yet; this establishes the local data layout, validates the basic tileset contract, and catches non-local content URIs before a later osgEarth/OSG integration step.
+
+The diagnostics currently check:
+
+- `tileset.json` is parseable JSON.
+- `asset.version`, `root`, `root.boundingVolume`, and `geometricError` are present.
+- at least one local `content.uri`, `content.url`, or `contents[].uri` payload reference exists.
+- `content.uri`, `content.url`, and `contents[].uri` references stay relative to `data/maps/tiles3d/local/`.
+- referenced local payload files exist.
+- `http://`, `https://`, protocol-relative, absolute, or other non-portable URI references are flagged.
 
 ## Real DEM Verification Flow
 
@@ -246,6 +255,7 @@ For SRTM fallback validation, place SRTM GeoTIFF tiles in `data/maps/terrain/srt
 5. Open the 3D Map window and click `地图诊断`.
 6. Confirm optional local imagery and optional local 3D Tiles availability are reported. These optional files should not change the selected base map mode.
 7. To view local imagery, click `本地影像` and select the enabled Sentinel-2, Landsat, or OpenAerialMap entry.
+8. For local 3D Tiles, confirm the diagnostics show `Local 3D Tiles contract: valid` before relying on that dataset for later renderer integration.
 
 ## Git Tracking
 
