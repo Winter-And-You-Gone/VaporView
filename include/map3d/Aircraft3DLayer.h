@@ -15,6 +15,8 @@ public:
     void clear();
     void updateSample(const VaporView::Geo::NavSample& sample);
     void setUseWorldCoordinates(bool enabled);
+    void setWorldOrigin(const osg::Vec3d& origin);
+    void clearWorldOrigin();
     void setCustomModel(osg::Node* modelNode);
     void clearCustomModel();
 
@@ -30,6 +32,8 @@ private:
     osg::ref_ptr<osg::Node> custom_model_;
     bool has_position_ = false;
     bool use_world_coordinates_ = false;
+    bool has_world_origin_ = false;
+    osg::Vec3d world_origin_;
 };
 
 } // namespace VaporView::Map3D

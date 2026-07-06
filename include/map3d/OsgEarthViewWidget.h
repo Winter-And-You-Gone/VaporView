@@ -9,6 +9,7 @@
 #include <QStringList>
 #include <QTimer>
 #include <osg/Group>
+#include <osg/MatrixTransform>
 #include <osg/Node>
 #include <osg/ref_ptr>
 #include <osgViewer/GraphicsWindow>
@@ -127,7 +128,9 @@ private:
     void rebuildDisplayTrack();
     VaporView::Geo::NavSample toDisplaySample(const VaporView::Geo::NavSample& sample);
     VaporView::Geo::NavSample toLocalSample(const VaporView::Geo::NavSample& sample);
-    VaporView::Geo::NavSample toWorldSample(const VaporView::Geo::NavSample& sample) const;
+    VaporView::Geo::NavSample toWorldSample(const VaporView::Geo::NavSample& sample);
+    void resetWorldOverlayOrigin();
+    void updateWorldOverlayOriginFromSample(const VaporView::Geo::NavSample& sample);
     void setLookAt(const osg::Vec3d& center, double distanceM);
 
     QTimer frameTimer_;
@@ -140,9 +143,12 @@ private:
     double frames_per_second_ = 0.0;
     double last_track_update_ms_ = 0.0;
     VaporView::Geo::LocalTangentPlane local_frame_;
+    bool has_world_overlay_origin_ = false;
+    osg::Vec3d world_overlay_origin_;
     std::unique_ptr<osgViewer::Viewer> viewer_;
     osg::ref_ptr<osgViewer::GraphicsWindowEmbedded> graphics_window_;
     osg::ref_ptr<osg::Group> root_;
+    osg::ref_ptr<osg::MatrixTransform> overlay_transform_;
     osg::ref_ptr<osg::Node> earth_node_;
     osg::ref_ptr<osg::Node> local_3d_tiles_node_;
     osgEarth::MapNode* map_node_ = nullptr;

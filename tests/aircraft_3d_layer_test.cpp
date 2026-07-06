@@ -112,11 +112,21 @@ int main()
     worldSample.ecefYM = 2.0;
     worldSample.ecefZM = 3.0;
     layer.setUseWorldCoordinates(true);
+    layer.setWorldOrigin(osg::Vec3d(1.0, 2.0, 3.0));
     layer.updateSample(worldSample);
     const osg::Vec3d worldPosition = transformedOrigin(transform->getMatrix());
-    require(nearlyEqual(worldPosition.x(), 1.0), "world mode uses ECEF X");
-    require(nearlyEqual(worldPosition.y(), 2.0), "world mode uses ECEF Y");
-    require(nearlyEqual(worldPosition.z(), 3.0), "world mode uses ECEF Z");
+    require(nearlyEqual(worldPosition.x(), 0.0), "world mode uses local offset X");
+    require(nearlyEqual(worldPosition.y(), 0.0), "world mode uses local offset Y");
+    require(nearlyEqual(worldPosition.z(), 0.0), "world mode uses local offset Z");
+
+    worldSample.ecefXM = 4.0;
+    worldSample.ecefYM = 6.0;
+    worldSample.ecefZM = 8.0;
+    layer.updateSample(worldSample);
+    const osg::Vec3d offsetWorldPosition = transformedOrigin(transform->getMatrix());
+    require(nearlyEqual(offsetWorldPosition.x(), 3.0), "world mode preserves local ECEF X offset");
+    require(nearlyEqual(offsetWorldPosition.y(), 4.0), "world mode preserves local ECEF Y offset");
+    require(nearlyEqual(offsetWorldPosition.z(), 5.0), "world mode preserves local ECEF Z offset");
 
     layer.clear();
     require(!layer.hasPosition(), "clear removes aircraft position");

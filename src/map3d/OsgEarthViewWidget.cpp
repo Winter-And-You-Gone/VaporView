@@ -460,6 +460,7 @@ void OsgEarthViewWidget::shutdown()
     }
     earth_node_ = nullptr;
     local_3d_tiles_node_ = nullptr;
+    overlay_transform_ = nullptr;
     map_node_ = nullptr;
     trajectory_layer_.reset();
     aircraft_layer_.reset();
@@ -512,6 +513,7 @@ void OsgEarthViewWidget::clearTrack()
     trajectory_layer_->clear();
     aircraft_layer_->clear();
     local_frame_ = VaporView::Geo::LocalTangentPlane();
+    resetWorldOverlayOrigin();
     update();
 }
 
@@ -534,6 +536,7 @@ bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
         map_node_ = nullptr;
         trajectory_layer_->setUseWorldCoordinates(true);
         aircraft_layer_->setUseWorldCoordinates(true);
+        resetWorldOverlayOrigin();
         root_->insertChild(0, earth_node_.get());
         setInitialEarthView();
         rebuildDisplayTrack();
@@ -604,6 +607,7 @@ bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
     }
     trajectory_layer_->setUseWorldCoordinates(true);
     aircraft_layer_->setUseWorldCoordinates(true);
+    resetWorldOverlayOrigin();
     root_->insertChild(0, earth_node_.get());
     setInitialEarthView();
     rebuildDisplayTrack();
@@ -944,9 +948,11 @@ void OsgEarthViewWidget::initializeSceneIfNeeded()
     }
 
     root_ = new osg::Group;
+    overlay_transform_ = new osg::MatrixTransform;
+    overlay_transform_->addChild(trajectory_layer_->node());
+    overlay_transform_->addChild(aircraft_layer_->node());
     root_->addChild(createLocalGridNode());
-    root_->addChild(trajectory_layer_->node());
-    root_->addChild(aircraft_layer_->node());
+    root_->addChild(overlay_transform_.get());
     loadDefaultAircraftModelIfAvailable();
 
     viewer_ = std::make_unique<osgViewer::Viewer>();
@@ -1208,6 +1214,55 @@ VaporView::Geo::NavSample OsgEarthViewWidget::toDisplaySample(const VaporView::G
     return toLocalSample(sample);
 }
 
+void OsgEarthViewWidget::resetWorldOverlayOrigin()
+{
+    has_world_overlay_origin_ = false;
+    world_overlay_origin_.set(0.0, 0.0, 0.0);
+    if (overlay_transform_)
+    {
+        overlay_transform_->setMatrix(osg::Matrix::identity());
+    }
+    if (trajectory_layer_)
+    {
+        trajectory_layer_->clearWorldOrigin();
+    }
+    if (aircraft_layer_)
+    {
+        aircraft_layer_->clearWorldOrigin();
+    }
+}
+
+void OsgEarthViewWidget::updateWorldOverlayOriginFromSample(const VaporView::Geo::NavSample& sample)
+{
+    if (!earth_node_
+        || !std::isfinite(sample.ecefXM)
+        || !std::isfinite(sample.ecefYM)
+        || !std::isfinite(sample.ecefZM))
+    {
+        return;
+    }
+
+    if (has_world_overlay_origin_)
+    {
+        return;
+    }
+
+    world_overlay_origin_.set(sample.ecefXM, sample.ecefYM, sample.ecefZM);
+    has_world_overlay_origin_ = true;
+    if (overlay_transform_)
+    {
+        overlay_transform_->setMatrix(osg::Matrix::translate(world_overlay_origin_));
+    }
+    if (trajectory_layer_)
+    {
+        trajectory_layer_->setWorldOrigin(world_overlay_origin_);
+    }
+    if (aircraft_layer_)
+    {
+        aircraft_layer_->setWorldOrigin(world_overlay_origin_);
+    }
+}
+
 VaporView::Geo::NavSample OsgEarthViewWidget::toLocalSample(const VaporView::Geo::NavSample& sample)
 {
     if (sample.hasNed() || !sample.hasLlh())
@@ -1228,7 +1283,7 @@ VaporView::Geo::NavSample OsgEarthViewWidget::toLocalSample(const VaporView::Geo
     return local;
 }
 
-VaporView::Geo::NavSample OsgEarthViewWidget::toWorldSample(const VaporView::Geo::NavSample& sample) const
+VaporView::Geo::NavSample OsgEarthViewWidget::toWorldSample(const VaporView::Geo::NavSample& sample)
 {
     if (!sample.hasLlh())
     {
@@ -1252,6 +1307,7 @@ VaporView::Geo::NavSample OsgEarthViewWidget::toWorldSample(const VaporView::Geo
     worldSample.ecefXM = world.x();
     worldSample.ecefYM = world.y();
     worldSample.ecefZM = world.z();
+    updateWorldOverlayOriginFromSample(worldSample);
     return worldSample;
 }
 

@@ -22,11 +22,15 @@ bool hasWorldPosition(const VaporView::Geo::NavSample& sample)
         && std::isfinite(sample.ecefZM);
 }
 
-osg::Vec3d samplePosition(const VaporView::Geo::NavSample& sample, bool useWorldCoordinates)
+osg::Vec3d samplePosition(const VaporView::Geo::NavSample& sample,
+                          bool useWorldCoordinates,
+                          bool hasWorldOrigin,
+                          const osg::Vec3d& worldOrigin)
 {
     if (useWorldCoordinates && hasWorldPosition(sample))
     {
-        return osg::Vec3d(sample.ecefXM, sample.ecefYM, sample.ecefZM);
+        const osg::Vec3d world(sample.ecefXM, sample.ecefYM, sample.ecefZM);
+        return hasWorldOrigin ? world - worldOrigin : world;
     }
     if (sample.hasNed())
     {
@@ -112,6 +116,34 @@ void Trajectory3DLayer::setUseWorldCoordinates(bool enabled)
     }
     use_world_coordinates_ = enabled;
     rebuildSegments();
+}
+
+void Trajectory3DLayer::setWorldOrigin(const osg::Vec3d& origin)
+{
+    if (has_world_origin_ && world_origin_ == origin)
+    {
+        return;
+    }
+    has_world_origin_ = true;
+    world_origin_ = origin;
+    if (use_world_coordinates_)
+    {
+        rebuildSegments();
+    }
+}
+
+void Trajectory3DLayer::clearWorldOrigin()
+{
+    if (!has_world_origin_)
+    {
+        return;
+    }
+    has_world_origin_ = false;
+    world_origin_.set(0.0, 0.0, 0.0);
+    if (use_world_coordinates_)
+    {
+        rebuildSegments();
+    }
 }
 
 void Trajectory3DLayer::setMaxVisibleSamples(int maxVisibleSamples)
@@ -261,7 +293,8 @@ void Trajectory3DLayer::rebuildSegmentGeometry(TrajectorySegment& segment)
     for (int index = first; index < end; ++index)
     {
         const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(index)];
-        const osg::Vec3d position = samplePosition(sample, use_world_coordinates_);
+        const osg::Vec3d position =
+            samplePosition(sample, use_world_coordinates_, has_world_origin_, world_origin_);
         if (isLineSample(index))
         {
             if (runStartVertex < 0)

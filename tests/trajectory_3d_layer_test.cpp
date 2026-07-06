@@ -240,6 +240,8 @@ int main()
     worldSamples[1].ecefXM = -2173582.876543211;
     worldSamples[1].ecefYM = 4381235.123456789;
     worldSamples[1].ecefZM = 4079876.876543211;
+    const osg::Vec3d worldOrigin(worldSamples[0].ecefXM, worldSamples[0].ecefYM, worldSamples[0].ecefZM);
+    worldLayer.setWorldOrigin(worldOrigin);
     worldLayer.appendSamples(worldSamples);
     auto* worldGeode = dynamic_cast<osg::Geode*>(worldLayer.node());
     require(worldGeode != nullptr, "world trajectory node is a geode");
@@ -248,16 +250,16 @@ int main()
     require(worldGeometry != nullptr, "world trajectory drawable is geometry");
     auto* worldVertices = dynamic_cast<osg::Vec3dArray*>(worldGeometry->getVertexArray());
     require(worldVertices != nullptr,
-            "world trajectory stores ECEF-scale vertices as double precision, not float");
+            "world trajectory stores local world offsets as double precision");
     require(worldVertices->size() >= 2, "world trajectory keeps both ECEF vertices");
-    require(nearlyEqual((*worldVertices)[0].x(), worldSamples[0].ecefXM)
-                && nearlyEqual((*worldVertices)[0].y(), worldSamples[0].ecefYM)
-                && nearlyEqual((*worldVertices)[0].z(), worldSamples[0].ecefZM),
-            "world trajectory preserves first ECEF vertex precision");
-    require(nearlyEqual((*worldVertices)[1].x(), worldSamples[1].ecefXM)
-                && nearlyEqual((*worldVertices)[1].y(), worldSamples[1].ecefYM)
-                && nearlyEqual((*worldVertices)[1].z(), worldSamples[1].ecefZM),
-            "world trajectory preserves second ECEF vertex precision");
+    require(nearlyEqual((*worldVertices)[0].x(), 0.0)
+                && nearlyEqual((*worldVertices)[0].y(), 0.0)
+                && nearlyEqual((*worldVertices)[0].z(), 0.0),
+            "world trajectory first vertex is relative to the local world origin");
+    require(nearlyEqual((*worldVertices)[1].x(), worldSamples[1].ecefXM - worldSamples[0].ecefXM)
+                && nearlyEqual((*worldVertices)[1].y(), worldSamples[1].ecefYM - worldSamples[0].ecefYM)
+                && nearlyEqual((*worldVertices)[1].z(), worldSamples[1].ecefZM - worldSamples[0].ecefZM),
+            "world trajectory stores small local offsets instead of ECEF-scale vertices");
 
     layer.clear();
     require(layer.sampleCount() == 0, "clear removes samples");
