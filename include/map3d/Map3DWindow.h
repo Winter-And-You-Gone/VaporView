@@ -5,6 +5,7 @@
 #include "map3d/MapDataManager.h"
 #include "map3d/OsgEarthViewWidget.h"
 
+#include <QElapsedTimer>
 #include <QMainWindow>
 #include <QString>
 #include <vector>
@@ -82,6 +83,7 @@ private:
     QComboBox* replay_speed_combo_ = nullptr;
     QSpinBox* max_visible_samples_spin_ = nullptr;
     QTimer* replay_timer_ = nullptr;
+    QElapsedTimer replay_tick_clock_;
     QDialog* diagnostics_dialog_ = nullptr;
     QPlainTextEdit* diagnostics_text_ = nullptr;
     MapDataManager map_data_manager_;

@@ -83,6 +83,7 @@ After loading a session:
 - `暂停` pauses replay.
 - `停止回放` stops and rewinds to the first sample.
 - Speed choices are `0.5x`, `1x`, `2x`, `5x`, and `10x`.
+- Playback advances by elapsed session time, so sparse or irregular GNSS sample intervals are preserved.
 - The slider seeks by elapsed session time from the first recorded sample. The status bar still reports the current sample index and the elapsed/duration time.
 
 Replay is local to the 3D Map window and does not change the recorded session files.

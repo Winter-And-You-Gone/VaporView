@@ -31,6 +31,7 @@ public:
     bool seek(int index);
     bool seekElapsedUs(qint64 elapsedUs);
     bool stepForward();
+    bool stepByElapsedUs(qint64 deltaUs);
 
     const NavSample* currentSample() const;
     std::vector<NavSample> visibleSamples() const;
@@ -48,6 +49,7 @@ private:
 
     std::vector<NavSample> samples_;
     int current_index_ = -1;
+    qint64 current_elapsed_us_ = 0;
     double speed_ = 1.0;
     bool playing_ = false;
 };

@@ -82,6 +82,26 @@ int main()
     replay.seekElapsedUs(999999);
     require(replay.currentIndex() == 2, "elapsed seek beyond duration clamps to last sample");
 
+    std::vector<VaporView::Geo::NavSample> irregularSamples;
+    irregularSamples.push_back(sample(39.9, 116.3, 1000000));
+    irregularSamples.push_back(sample(39.9001, 116.3002, 1050000));
+    irregularSamples.push_back(sample(39.9002, 116.3004, 1300000));
+    irregularSamples.push_back(sample(39.9003, 116.3006, 2000000));
+    replay.setSamples(irregularSamples);
+    replay.play();
+    require(replay.currentIndex() == 0, "irregular replay starts at first sample");
+    require(replay.stepByElapsedUs(40000), "elapsed replay accepts sub-sample delta");
+    require(replay.currentIndex() == 0, "elapsed replay keeps current sample before next timestamp");
+    require(replay.isPlaying(), "elapsed replay keeps playing before next timestamp");
+    require(replay.stepByElapsedUs(20000), "elapsed replay crosses first irregular timestamp");
+    require(replay.currentIndex() == 1, "elapsed replay advances to latest sample at elapsed time");
+    require(replay.stepByElapsedUs(300000), "elapsed replay can skip across sparse timestamps");
+    require(replay.currentIndex() == 2, "elapsed replay selects latest sample at or before sparse timestamp");
+    require(replay.isPlaying(), "elapsed replay keeps playing before final timestamp");
+    require(replay.stepByElapsedUs(1000000), "elapsed replay clamps at final timestamp");
+    require(replay.currentIndex() == 3, "elapsed replay reaches final sample");
+    require(!replay.isPlaying(), "elapsed replay stops at final sample");
+
     replay.stop();
     require(!replay.isPlaying(), "stop clears playing state");
     require(replay.currentIndex() == 0, "stop rewinds to first sample");

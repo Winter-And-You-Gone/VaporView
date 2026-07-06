@@ -664,11 +664,13 @@ void Map3DWindow::toggleReplay()
     {
         replay_.pause();
         replay_timer_->stop();
+        replay_tick_clock_.invalidate();
     }
     else
     {
         replay_.play();
         rebuildReplayAt(replay_.currentIndex());
+        replay_tick_clock_.restart();
         replay_timer_->start(replay_.intervalMs());
     }
     updateReplayUi();
@@ -677,6 +679,7 @@ void Map3DWindow::toggleReplay()
 void Map3DWindow::stopReplay()
 {
     replay_timer_->stop();
+    replay_tick_clock_.invalidate();
     replay_.stop();
     rebuildReplayAt(replay_.currentIndex());
     updateReplayUi();
@@ -688,15 +691,22 @@ void Map3DWindow::onReplayTick()
     {
         replay_timer_->stop();
         replay_.pause();
+        replay_tick_clock_.invalidate();
         updateReplayUi();
         return;
     }
 
-    replay_.stepForward();
+    const qint64 elapsedMs = replay_tick_clock_.isValid()
+        ? replay_tick_clock_.restart()
+        : static_cast<qint64>(replay_.intervalMs());
+    const qint64 deltaUs = static_cast<qint64>(
+        std::llround(static_cast<double>(elapsedMs) * 1000.0 * replay_.speed()));
+    replay_.stepByElapsedUs(deltaUs);
     rebuildReplayAt(replay_.currentIndex());
     if (!replay_.isPlaying())
     {
         replay_timer_->stop();
+        replay_tick_clock_.invalidate();
     }
     updateReplayUi();
 }
@@ -708,6 +718,10 @@ void Map3DWindow::onReplaySliderMoved(int value)
         return;
     }
     rebuildReplayAtElapsedUs(replaySliderValueToElapsedUs(value));
+    if (replay_.isPlaying())
+    {
+        replay_tick_clock_.restart();
+    }
     updateReplayUi();
 }
 
@@ -719,6 +733,10 @@ void Map3DWindow::onReplaySpeedChanged(int index)
     }
     replay_.setSpeed(VaporView::Geo::TrajectoryReplay::speedFromText(replay_speed_combo_->itemText(index)));
     replay_timer_->setInterval(replay_.intervalMs());
+    if (replay_.isPlaying())
+    {
+        replay_tick_clock_.restart();
+    }
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
     settings.setValue(QStringLiteral("replaySpeed"), replay_.speed());
 }
