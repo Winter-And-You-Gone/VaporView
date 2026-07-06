@@ -72,6 +72,10 @@ int main(int argc, char** argv)
             "local grid selection should summarize fallback readiness");
     require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("Natural Earth")),
             "local grid readiness should suggest preparing Natural Earth");
+    require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("download-natural-earth-map.ps1")),
+            "local grid readiness should include the Natural Earth preparation command");
+    require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("python scripts/prepare-demo-dem.py")),
+            "local grid readiness should include the DEM preparation command");
 
     touch(root, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"));
     touch(root, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"));
@@ -83,6 +87,10 @@ int main(int argc, char** argv)
             "Natural Earth selection should explain visual-only readiness");
     require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("Copernicus DEM")),
             "Natural Earth readiness should suggest preparing Copernicus DEM");
+    require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("python scripts/prepare-demo-dem.py")),
+            "Natural Earth readiness should include the Copernicus DEM preparation command");
+    require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("python scripts/prepare-demo-dem.py --srtm")),
+            "Natural Earth readiness should include the SRTM fallback preparation command");
     require(selection.diagnostics.readinessChecks.join(QLatin1Char('\n')).contains(QStringLiteral("Terrain DEM: missing")),
             "Natural Earth readiness checks should report missing terrain DEM");
     require(selection.diagnostics.osmLayerContracts.size() == 4, "diagnostics should describe the four expected OSM layer contracts");
@@ -219,6 +227,10 @@ int main(int argc, char** argv)
             "SRTM selection should summarize terrain-backed readiness");
     require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("OSM GeoPackages")),
             "terrain-backed readiness should suggest preparing OSM GeoPackages");
+    require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --overwrite")),
+            "terrain-backed readiness should include the OSM conversion command");
+    require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --check")),
+            "terrain-backed readiness should include the OSM validation command");
 
     touch(root, QStringLiteral("data/maps/vaporview_with_dem.earth"));
     touch(root, QStringLiteral("data/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt"));

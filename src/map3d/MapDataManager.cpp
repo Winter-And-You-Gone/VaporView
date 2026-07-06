@@ -562,6 +562,10 @@ void finalizeSelection(MapDataSelection& selection)
                 .arg(diagnostics.selectedElevationSource);
         diagnostics.readinessNextSteps.push_back(
             QStringLiteral("Generate all four local OSM GeoPackages with scripts/prepare-osm-local-data.py to enable Full local map."));
+        diagnostics.readinessNextSteps.push_back(
+            QStringLiteral("Command: python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --overwrite"));
+        diagnostics.readinessNextSteps.push_back(
+            QStringLiteral("Validate: python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --check"));
         if (!diagnostics.missingOsmFiles.isEmpty())
         {
             diagnostics.readinessNextSteps.push_back(
@@ -574,7 +578,11 @@ void finalizeSelection(MapDataSelection& selection)
         diagnostics.readinessNextSteps.push_back(
             QStringLiteral("Place Copernicus DEM GLO-30 GeoTIFF tiles under data/maps/terrain/copernicus_dem_glo30/ and run scripts/prepare-demo-dem.py."));
         diagnostics.readinessNextSteps.push_back(
+            QStringLiteral("Command: python scripts/prepare-demo-dem.py"));
+        diagnostics.readinessNextSteps.push_back(
             QStringLiteral("Use SRTM under data/maps/terrain/srtm/ as a fallback when Copernicus DEM is unavailable."));
+        diagnostics.readinessNextSteps.push_back(
+            QStringLiteral("SRTM fallback command: python scripts/prepare-demo-dem.py --srtm"));
         break;
     case MapDataMode::LocalGridOnly:
         diagnostics.readinessSummary =
@@ -582,7 +590,11 @@ void finalizeSelection(MapDataSelection& selection)
         diagnostics.readinessNextSteps.push_back(
             QStringLiteral("Run scripts/download-natural-earth-map.ps1 to prepare the offline Natural Earth background."));
         diagnostics.readinessNextSteps.push_back(
+            QStringLiteral("Command: powershell -ExecutionPolicy Bypass -File scripts/download-natural-earth-map.ps1"));
+        diagnostics.readinessNextSteps.push_back(
             QStringLiteral("Then add Copernicus DEM or SRTM VRTs for real terrain elevation."));
+        diagnostics.readinessNextSteps.push_back(
+            QStringLiteral("DEM command: python scripts/prepare-demo-dem.py"));
         break;
     }
 
