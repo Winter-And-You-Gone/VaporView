@@ -73,9 +73,15 @@ QString selectedOsmLabel(const MapDataDiagnostics& diagnostics)
 {
     if (!diagnostics.selectedOsmLayersAvailable)
     {
-        return QStringLiteral("off");
+        return QStringLiteral("not selected (%1/4 files)").arg(diagnostics.osmLayerCount);
     }
     return QStringLiteral("%1 layers").arg(diagnostics.selectedOsmLayerCount);
+}
+
+QString fileAvailabilityLabel(bool available, const QString& path)
+{
+    return QStringLiteral("%1 - %2")
+        .arg(available ? QStringLiteral("available") : QStringLiteral("missing"), path);
 }
 
 int sanitizeMaxVisibleSamples(int value)
@@ -748,6 +754,8 @@ QString Map3DWindow::diagnosticsText() const
                  .arg(diagnostics.osmVectorAvailable ? QStringLiteral("available") : QStringLiteral("missing"))
                  .arg(diagnostics.osmLayerCount);
     lines << QStringLiteral("  Selected OSM: %1").arg(selectedOsmLabel(diagnostics));
+    lines << QStringLiteral("  Selected full-local earth: %1")
+                 .arg(diagnostics.selectedFullLocalEarthPath.isEmpty() ? QStringLiteral("<not selected>") : diagnostics.selectedFullLocalEarthPath);
     lines << QStringLiteral("  Optional local imagery: %1 (%2/3 VRTs found)")
                  .arg(diagnostics.localImageryAvailable ? QStringLiteral("available") : QStringLiteral("not configured"))
                  .arg(diagnostics.localImageryLayerCount);
@@ -763,10 +771,10 @@ QString Map3DWindow::diagnosticsText() const
     lines << QStringLiteral("Natural Earth raster: %1").arg(diagnostics.naturalEarthRasterPath);
     lines << QStringLiteral("Copernicus DEM VRT: %1").arg(diagnostics.copernicusDemVrtPath);
     lines << QStringLiteral("SRTM VRT: %1").arg(diagnostics.srtmDemVrtPath);
-    lines << QStringLiteral("OSM roads: %1").arg(diagnostics.osmRoadsPath);
-    lines << QStringLiteral("OSM water: %1").arg(diagnostics.osmWaterPath);
-    lines << QStringLiteral("OSM buildings: %1").arg(diagnostics.osmBuildingsPath);
-    lines << QStringLiteral("OSM places: %1").arg(diagnostics.osmPlacesPath);
+    lines << QStringLiteral("OSM roads: %1").arg(fileAvailabilityLabel(diagnostics.osmRoadsAvailable, diagnostics.osmRoadsPath));
+    lines << QStringLiteral("OSM water: %1").arg(fileAvailabilityLabel(diagnostics.osmWaterAvailable, diagnostics.osmWaterPath));
+    lines << QStringLiteral("OSM buildings: %1").arg(fileAvailabilityLabel(diagnostics.osmBuildingsAvailable, diagnostics.osmBuildingsPath));
+    lines << QStringLiteral("OSM places: %1").arg(fileAvailabilityLabel(diagnostics.osmPlacesAvailable, diagnostics.osmPlacesPath));
     lines << QStringLiteral("Sentinel-2 imagery VRT: %1").arg(diagnostics.sentinel2ImageryVrtPath);
     lines << QStringLiteral("Landsat imagery VRT: %1").arg(diagnostics.landsatImageryVrtPath);
     lines << QStringLiteral("OpenAerialMap imagery VRT: %1").arg(diagnostics.openAerialMapImageryVrtPath);
@@ -795,6 +803,16 @@ QString Map3DWindow::diagnosticsText() const
         for (const QString& path : diagnostics.missingFiles)
         {
             lines << QStringLiteral("  - %1").arg(path);
+        }
+    }
+
+    if (!diagnostics.fullLocalBlockers.isEmpty())
+    {
+        lines << QString();
+        lines << QStringLiteral("Full local map blockers:");
+        for (const QString& blocker : diagnostics.fullLocalBlockers)
+        {
+            lines << QStringLiteral("  - %1").arg(blocker);
         }
     }
 

@@ -113,6 +113,10 @@ int main(int argc, char** argv)
     require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarthWithCopernicusDem, "incomplete OSM set should not select full local map");
     require(!selection.warnings.isEmpty(), "missing OSM files should produce a warning");
     require(selection.diagnostics.osmLayerCount == 0, "incomplete OSM set should report zero OSM layers");
+    require(selection.diagnostics.missingOsmFiles.size() == 4, "incomplete OSM set should report four missing OSM files");
+    require(!selection.diagnostics.fullLocalBlockers.isEmpty(), "incomplete OSM set should explain full-local blockers");
+    require(selection.diagnostics.fullLocalBlockers.join(QLatin1Char('\n')).contains(QStringLiteral("Missing OSM GeoPackage")),
+            "full-local blockers should identify missing OSM GeoPackages");
     require(!selection.diagnostics.selectedOsmLayersAvailable, "incomplete OSM set should not select OSM layers");
 
     touch(root, QStringLiteral("data/maps/osm/roads.gpkg"));
@@ -126,6 +130,10 @@ int main(int argc, char** argv)
     require(selection.diagnostics.osmVectorAvailable, "complete local data should mark OSM vectors available");
     require(selection.diagnostics.selectedOsmLayersAvailable, "complete local data should select OSM layers");
     require(selection.diagnostics.selectedOsmLayerCount == 4, "complete local data should report four selected OSM layers");
+    require(selection.diagnostics.missingOsmFiles.isEmpty(), "complete local data should not report missing OSM files");
+    require(selection.diagnostics.fullLocalBlockers.isEmpty(), "complete local data should not report full-local blockers");
+    require(selection.diagnostics.selectedFullLocalEarthPath.endsWith(QStringLiteral("vaporview_full_local.earth")),
+            "complete Copernicus full local map should report selected full-local earth template");
 
     QTemporaryDir srtmFullLocalDir;
     require(srtmFullLocalDir.isValid(), "failed to create SRTM full-local temporary directory");
@@ -148,6 +156,8 @@ int main(int argc, char** argv)
             "SRTM-only full local map should load the SRTM full-local earth template");
     require(selection.diagnostics.selectedElevationSource == QStringLiteral("SRTM"),
             "SRTM-only full local map should report SRTM elevation source");
+    require(selection.diagnostics.selectedFullLocalEarthPath.endsWith(QStringLiteral("vaporview_full_local_srtm.earth")),
+            "SRTM-only full local map should report selected SRTM full-local earth template");
 
     return 0;
 }

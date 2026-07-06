@@ -111,19 +111,19 @@ QString fullLocalEarthForAvailableDem(const QString& copernicusEarthPath,
 int osmLayerCount(const MapDataDiagnostics& diagnostics)
 {
     int count = 0;
-    if (isFile(diagnostics.osmRoadsPath))
+    if (diagnostics.osmRoadsAvailable)
     {
         ++count;
     }
-    if (isFile(diagnostics.osmWaterPath))
+    if (diagnostics.osmWaterAvailable)
     {
         ++count;
     }
-    if (isFile(diagnostics.osmBuildingsPath))
+    if (diagnostics.osmBuildingsAvailable)
     {
         ++count;
     }
-    if (isFile(diagnostics.osmPlacesPath))
+    if (diagnostics.osmPlacesAvailable)
     {
         ++count;
     }
@@ -159,6 +159,57 @@ QString bestAvailableDemSource(const MapDataDiagnostics& diagnostics)
         return QStringLiteral("SRTM");
     }
     return {};
+}
+
+void collectOsmDiagnostics(MapDataDiagnostics& diagnostics)
+{
+    diagnostics.osmRoadsAvailable = isFile(diagnostics.osmRoadsPath);
+    diagnostics.osmWaterAvailable = isFile(diagnostics.osmWaterPath);
+    diagnostics.osmBuildingsAvailable = isFile(diagnostics.osmBuildingsPath);
+    diagnostics.osmPlacesAvailable = isFile(diagnostics.osmPlacesPath);
+
+    if (!diagnostics.osmRoadsAvailable)
+    {
+        diagnostics.missingOsmFiles.push_back(diagnostics.osmRoadsPath);
+    }
+    if (!diagnostics.osmWaterAvailable)
+    {
+        diagnostics.missingOsmFiles.push_back(diagnostics.osmWaterPath);
+    }
+    if (!diagnostics.osmBuildingsAvailable)
+    {
+        diagnostics.missingOsmFiles.push_back(diagnostics.osmBuildingsPath);
+    }
+    if (!diagnostics.osmPlacesAvailable)
+    {
+        diagnostics.missingOsmFiles.push_back(diagnostics.osmPlacesPath);
+    }
+}
+
+void collectFullLocalBlockers(MapDataDiagnostics& diagnostics,
+                              const QString& fullLocalEarthPath,
+                              const QString& fullLocalSrtmEarthPath)
+{
+    if (!diagnostics.naturalEarthAvailable)
+    {
+        diagnostics.fullLocalBlockers.push_back(QStringLiteral("Natural Earth VRT/raster is incomplete."));
+    }
+    if (!diagnostics.copernicusDemAvailable && !diagnostics.srtmDemAvailable)
+    {
+        diagnostics.fullLocalBlockers.push_back(QStringLiteral("No Copernicus DEM or SRTM VRT is available."));
+    }
+    if (diagnostics.copernicusDemAvailable && !isFile(fullLocalEarthPath))
+    {
+        diagnostics.fullLocalBlockers.push_back(QStringLiteral("Copernicus full-local earth template is missing."));
+    }
+    if (!diagnostics.copernicusDemAvailable && diagnostics.srtmDemAvailable && !isFile(fullLocalSrtmEarthPath))
+    {
+        diagnostics.fullLocalBlockers.push_back(QStringLiteral("SRTM full-local earth template is missing."));
+    }
+    for (const QString& path : diagnostics.missingOsmFiles)
+    {
+        diagnostics.fullLocalBlockers.push_back(QStringLiteral("Missing OSM GeoPackage: %1").arg(path));
+    }
 }
 
 void setEarthFile(MapDataSelection& selection, const QString& path)
@@ -358,11 +409,13 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     diagnostics.naturalEarthAvailable = hasNaturalEarth(diagnostics);
     diagnostics.copernicusDemAvailable = isFile(diagnostics.copernicusDemVrtPath);
     diagnostics.srtmDemAvailable = isFile(diagnostics.srtmDemVrtPath);
+    collectOsmDiagnostics(diagnostics);
     diagnostics.osmLayerCount = osmLayerCount(diagnostics);
     diagnostics.osmVectorAvailable = diagnostics.osmLayerCount == 4;
     diagnostics.localImageryLayerCount = localImageryLayerCount(diagnostics);
     diagnostics.localImageryAvailable = diagnostics.localImageryLayerCount > 0;
     diagnostics.local3DTilesAvailable = isFile(diagnostics.local3DTilesTilesetPath);
+    collectFullLocalBlockers(diagnostics, fullLocalEarthPath, fullLocalSrtmEarthPath);
 
     if (diagnostics.localImageryAvailable)
     {
@@ -391,6 +444,7 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
         diagnostics.selectedDemLayerAvailable = true;
         diagnostics.selectedOsmLayersAvailable = true;
         diagnostics.selectedElevationSource = bestAvailableDemSource(diagnostics);
+        diagnostics.selectedFullLocalEarthPath = selectedFullLocalEarthPath;
         diagnostics.selectedOsmLayerCount = diagnostics.osmLayerCount;
         diagnostics.messages.push_back(
             QStringLiteral("Selected full local map with offline OSM vector layers and %1 elevation.")
