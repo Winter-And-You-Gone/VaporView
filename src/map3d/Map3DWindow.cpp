@@ -23,6 +23,7 @@
 #include <QWidget>
 
 #include <algorithm>
+#include <cmath>
 
 namespace VaporView::Map3D {
 namespace {
@@ -754,12 +755,19 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest)
     }
     if (latest && latest->hasLlh())
     {
-        text += QStringLiteral(" | Lat %1 Lon %2 H %3 m %4 | Fix %5")
+        const QString satellitesText = latest->satellites > 0
+            ? QString::number(latest->satellites)
+            : QStringLiteral("--");
+        const QString hdopText = std::isfinite(latest->hdop)
+            ? QString::number(latest->hdop, 'f', 2)
+            : QStringLiteral("--");
+        text += QStringLiteral(" | Lat %1 Lon %2 H %3 m %4 | Fix %5 | Sats %6 | HDOP %7")
                     .arg(latest->latDeg, 0, 'f', 7)
                     .arg(latest->lonDeg, 0, 'f', 7)
                     .arg(latest->heightM, 0, 'f', 2)
                     .arg(heightReferenceLabel(latest->heightReference))
-                    .arg(static_cast<int>(latest->fixQuality));
+                    .arg(static_cast<int>(latest->fixQuality))
+                    .arg(satellitesText, hdopText);
     }
     if (replay_.hasSamples())
     {

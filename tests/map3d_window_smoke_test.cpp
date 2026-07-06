@@ -125,6 +125,8 @@ int main(int argc, char** argv)
     window.appendSample(sample);
     QCoreApplication::processEvents();
     require(label->text().contains(QStringLiteral("Points: 1")), "appendSample updates status");
+    require(label->text().contains(QStringLiteral("Sats 12")), "status includes latest sample satellite count");
+    require(label->text().contains(QStringLiteral("HDOP 0.90")), "status includes latest sample HDOP");
 
     window.clearTrack();
     QCoreApplication::processEvents();
