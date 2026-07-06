@@ -166,6 +166,13 @@ powershell -ExecutionPolicy Bypass -File scripts/prepare-demo-dem.ps1
 python scripts/prepare-demo-dem.py
 ```
 
+For tiles staged outside `data/maps/terrain/copernicus_dem_glo30/`, pass the external tile folder while still writing the VRT to the auto-load project path:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/prepare-demo-dem.ps1 -DemDir X:\DEM\copernicus_tiles
+python scripts/prepare-demo-dem.py --dem-dir X:\DEM\copernicus_tiles
+```
+
 SRTM:
 
 ```powershell

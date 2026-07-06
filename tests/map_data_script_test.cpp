@@ -203,6 +203,16 @@ int main()
                 && osmHelp.standardOutput.contains(QStringLiteral("places")),
             QStringLiteral("prepare-osm-local-data.py --help describes local GeoPackage conversion"));
 
+    const ProcessResult demHelp = runProcess(python, {demScript, QStringLiteral("--help")});
+    require(demHelp.started, QStringLiteral("prepare-demo-dem.py --help starts: %1").arg(demHelp.standardError));
+    require(!demHelp.timedOut, QStringLiteral("prepare-demo-dem.py --help does not time out"));
+    require(demHelp.exitCode == 0,
+            QStringLiteral("prepare-demo-dem.py --help exits 0, stderr=%1").arg(demHelp.standardError));
+    require(demHelp.standardOutput.contains(QStringLiteral("--dem-dir"))
+                && demHelp.standardOutput.contains(QStringLiteral("canonical"))
+                && demHelp.standardOutput.contains(QStringLiteral("MapDataManager")),
+            QStringLiteral("prepare-demo-dem.py --help explains external tile directory and canonical VRT output"));
+
     QTemporaryDir fakeProject;
     require(fakeProject.isValid(), QStringLiteral("temporary fake project root is valid"));
     const QDir fakeRoot(fakeProject.path());
@@ -220,6 +230,34 @@ int main()
                 .arg(missingGdal.standardOutput, missingGdal.standardError));
     require(missingGdal.standardError.contains(QStringLiteral("gdalbuildvrt was not found")),
             QStringLiteral("prepare-demo-dem.py reports missing gdalbuildvrt clearly"));
+
+    QTemporaryDir customDemProject;
+    require(customDemProject.isValid(), QStringLiteral("temporary custom DEM project root is valid"));
+    const QDir customDemRoot(customDemProject.path());
+    const QString customTileDir = customDemRoot.filePath(QStringLiteral("external_dem_tiles"));
+    writeDummyFile(QDir(customTileDir).filePath(QStringLiteral("custom_tile.tif")),
+                   QByteArrayLiteral("not a real geotiff"));
+    writeDummyFile(customDemRoot.filePath(QStringLiteral("data/maps/vaporview_with_dem.earth")),
+                   QByteArrayLiteral("terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt"));
+    const ProcessResult customDemMissingGdal =
+        runProcess(python,
+                   {demScript,
+                    QStringLiteral("--project-root"),
+                    customDemRoot.absolutePath(),
+                    QStringLiteral("--dem-dir"),
+                    customTileDir,
+                    QStringLiteral("--check")},
+                   environmentWithoutGdalTools());
+    require(customDemMissingGdal.started,
+            QStringLiteral("prepare-demo-dem.py --dem-dir --check starts: %1").arg(customDemMissingGdal.standardError));
+    require(!customDemMissingGdal.timedOut,
+            QStringLiteral("prepare-demo-dem.py --dem-dir --check does not time out"));
+    require(customDemMissingGdal.exitCode == 2,
+            QStringLiteral("prepare-demo-dem.py --dem-dir --check exits 2 without GDAL, stdout=%1 stderr=%2")
+                .arg(customDemMissingGdal.standardOutput, customDemMissingGdal.standardError));
+    require(customDemMissingGdal.standardError.contains(QStringLiteral("gdalbuildvrt was not found"))
+                && !customDemMissingGdal.standardError.contains(QStringLiteral("no GeoTIFF DEM tiles found")),
+            QStringLiteral("prepare-demo-dem.py --dem-dir uses the external tile directory before checking GDAL"));
 
     QTemporaryDir fakeOsmProject;
     require(fakeOsmProject.isValid(), QStringLiteral("temporary fake OSM project root is valid"));

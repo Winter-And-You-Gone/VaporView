@@ -241,6 +241,24 @@ void finalizeSelection(MapDataSelection& selection)
     selection.warnings = selection.diagnostics.warnings;
 }
 
+int modePriority(MapDataMode mode)
+{
+    switch (mode)
+    {
+    case MapDataMode::FullLocalMap:
+        return 4;
+    case MapDataMode::NaturalEarthWithCopernicusDem:
+        return 3;
+    case MapDataMode::NaturalEarthWithSrtm:
+        return 2;
+    case MapDataMode::NaturalEarth:
+        return 1;
+    case MapDataMode::LocalGridOnly:
+        return 0;
+    }
+    return 0;
+}
+
 } // namespace
 
 MapDataManager::MapDataManager() = default;
@@ -257,19 +275,28 @@ bool MapDataSelection::hasEarthFile() const
 
 MapDataSelection MapDataManager::selectBestAvailableMap() const
 {
-    MapDataSelection fallback;
-    fallback.diagnostics.messages.push_back(QStringLiteral("No usable map root found; using local grid only."));
+    MapDataSelection best;
+    bool haveSelection = false;
 
     for (const QString& root : candidateRoots())
     {
         const MapDataSelection selection = evaluateRoot(root);
-        if (selection.mode != MapDataMode::LocalGridOnly)
+        if (!haveSelection || modePriority(selection.mode) > modePriority(best.mode))
         {
-            return selection;
+            best = selection;
+            haveSelection = true;
+            if (best.mode == MapDataMode::FullLocalMap)
+            {
+                break;
+            }
         }
-        fallback = selection;
     }
-    return fallback;
+
+    if (!haveSelection)
+    {
+        best.diagnostics.messages.push_back(QStringLiteral("No usable map root found; using local grid only."));
+    }
+    return best;
 }
 
 bool MapDataManager::isBuiltInEarthFile(const QString& earthPath) const

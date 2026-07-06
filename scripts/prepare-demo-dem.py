@@ -77,7 +77,11 @@ def main() -> int:
         "--dem-dir",
         type=Path,
         default=None,
-        help="DEM tile directory. Defaults to data/maps/terrain/copernicus_dem_glo30 or data/maps/terrain/srtm.",
+        help=(
+            "Input DEM tile directory. Defaults to data/maps/terrain/copernicus_dem_glo30 "
+            "or data/maps/terrain/srtm. The generated VRT is still written to the "
+            "canonical data/maps/terrain path so MapDataManager can auto-load it."
+        ),
     )
     parser.add_argument(
         "--dem-name",
@@ -100,15 +104,15 @@ def main() -> int:
     terrain_dir, vrt_path, earth_path, expected_relative = dem_paths(
         project_root, args.srtm, args.dem_name
     )
+    tile_dir = terrain_dir
     if args.dem_dir is not None:
-        terrain_dir = args.dem_dir.resolve()
-        vrt_path = terrain_dir / ("srtm.vrt" if args.srtm else "copernicus_dem_glo30.vrt")
+        tile_dir = args.dem_dir.resolve()
 
     terrain_dir.mkdir(parents=True, exist_ok=True)
-    tiles = collect_tiles(terrain_dir)
+    tiles = collect_tiles(tile_dir)
     if not tiles:
         print(
-            f"ERROR: no GeoTIFF DEM tiles found in {terrain_dir}. "
+            f"ERROR: no GeoTIFF DEM tiles found in {tile_dir}. "
             "Place local .tif/.tiff DEM files there first; this script does not download data.",
             file=sys.stderr,
         )
@@ -142,6 +146,10 @@ def main() -> int:
 
     if vrt_path.exists():
         vrt_path.unlink()
+
+    if tile_dir != terrain_dir:
+        print(f"Using DEM tiles from: {tile_dir}")
+        print(f"Writing auto-load VRT to: {vrt_path}")
 
     run([gdalbuildvrt, str(vrt_path), *[str(tile) for tile in tiles]])
     if not vrt_path.is_file():

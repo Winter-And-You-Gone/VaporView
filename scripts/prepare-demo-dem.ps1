@@ -2,6 +2,7 @@
 param(
     [string]$ProjectRoot,
     [string]$DemName = "copernicus_dem_glo30",
+    [string]$DemDir,
     [switch]$Srtm,
     [switch]$Check
 )
@@ -20,15 +21,20 @@ $earthFileName = if ($Srtm) { "vaporview_with_srtm.earth" } else { "vaporview_wi
 $terrainDir = Join-Path $ProjectRoot "data/maps/terrain/$demFolderName"
 $vrtPath = Join-Path $terrainDir $vrtFileName
 $earthPath = Join-Path $ProjectRoot "data/maps/$earthFileName"
+$tileDir = if ([string]::IsNullOrWhiteSpace($DemDir)) {
+    $terrainDir
+} else {
+    [System.IO.Path]::GetFullPath($DemDir)
+}
 
 if (-not (Test-Path -LiteralPath $terrainDir -PathType Container)) {
     New-Item -ItemType Directory -Path $terrainDir | Out-Null
 }
 
-$tiles = Get-ChildItem -LiteralPath $terrainDir -File -ErrorAction SilentlyContinue |
+$tiles = Get-ChildItem -LiteralPath $tileDir -File -ErrorAction SilentlyContinue |
     Where-Object { $_.Extension -in @(".tif", ".tiff") }
 if (-not $tiles -or $tiles.Count -eq 0) {
-    throw "No GeoTIFF DEM tiles found in $terrainDir. Place local DEM .tif/.tiff files there first. This script does not download data."
+    throw "No GeoTIFF DEM tiles found in $tileDir. Place local DEM .tif/.tiff files there first. This script does not download data."
 }
 
 $gdalBuildVrt = Get-Command gdalbuildvrt -ErrorAction SilentlyContinue
@@ -59,6 +65,11 @@ if ($Check) {
 } else {
     if (Test-Path -LiteralPath $vrtPath) {
         Remove-Item -LiteralPath $vrtPath -Force
+    }
+
+    if ($tileDir -ne $terrainDir) {
+        Write-Host "Using DEM tiles from: $tileDir"
+        Write-Host "Writing auto-load VRT to: $vrtPath"
     }
 
     $tilePaths = @($tiles | ForEach-Object { $_.FullName })

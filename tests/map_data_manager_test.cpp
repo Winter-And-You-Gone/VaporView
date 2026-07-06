@@ -168,5 +168,28 @@ int main(int argc, char** argv)
     require(selection.diagnostics.selectedFullLocalEarthPath.endsWith(QStringLiteral("vaporview_full_local_srtm.earth")),
             "SRTM-only full local map should report selected SRTM full-local earth template");
 
+    QTemporaryDir naturalOnlyDir;
+    QTemporaryDir demPreferredDir;
+    require(naturalOnlyDir.isValid(), "failed to create natural-only temporary directory");
+    require(demPreferredDir.isValid(), "failed to create DEM-preferred temporary directory");
+    QDir naturalRoot(naturalOnlyDir.path());
+    QDir demRoot(demPreferredDir.path());
+    touch(naturalRoot, QStringLiteral("data/maps/vaporview_default.earth"));
+    touch(naturalRoot, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"));
+    touch(naturalRoot, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"));
+    touch(naturalRoot, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"));
+    touch(demRoot, QStringLiteral("data/maps/vaporview_default.earth"));
+    touch(demRoot, QStringLiteral("data/maps/vaporview_with_dem.earth"));
+    touch(demRoot, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"));
+    touch(demRoot, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"));
+    touch(demRoot, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"));
+    touch(demRoot, QStringLiteral("data/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt"));
+    VaporView::Map3D::MapDataManager multiRootManager({naturalRoot.absolutePath(), demRoot.absolutePath()});
+    selection = multiRootManager.selectBestAvailableMap();
+    require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarthWithCopernicusDem,
+            "manager should choose the best map mode across candidate roots, not the first usable root");
+    require(selection.earthFile.startsWith(demRoot.absolutePath()),
+            "best map selection should come from the DEM-capable root");
+
     return 0;
 }

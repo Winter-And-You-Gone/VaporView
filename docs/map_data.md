@@ -55,6 +55,13 @@ powershell -ExecutionPolicy Bypass -File scripts/prepare-demo-dem.ps1
 python scripts/prepare-demo-dem.py
 ```
 
+If the GeoTIFF tiles are staged outside the canonical project directory, pass that input directory explicitly. The helper still writes the generated VRT to `data/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt` or `data/maps/terrain/srtm/srtm.vrt`, because those are the paths that `MapDataManager` and the built-in `.earth` templates auto-load:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/prepare-demo-dem.ps1 -DemDir X:\DEM\copernicus_tiles
+python scripts/prepare-demo-dem.py --dem-dir X:\DEM\copernicus_tiles
+```
+
 Build a VRT from local SRTM GeoTIFF tiles:
 
 ```powershell
