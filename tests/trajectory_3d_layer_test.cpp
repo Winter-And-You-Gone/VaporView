@@ -201,6 +201,28 @@ int main()
     require(qualityStats.lineSamples == 6, "quality stats count line samples");
     require(qualityStats.markerSamples == 2, "quality stats count marker samples");
 
+    VaporView::Map3D::Trajectory3DLayer outlierLayer;
+    std::vector<VaporView::Geo::NavSample> outlierSamples;
+    for (int index = 0; index < 5; ++index)
+    {
+        outlierSamples.push_back(sample(index));
+    }
+    outlierSamples[2].nedNM = 10000.0;
+    outlierSamples[2].nedEM = 10000.0;
+    outlierLayer.appendSamples(outlierSamples);
+    auto* outlierGeode = dynamic_cast<osg::Geode*>(outlierLayer.node());
+    require(outlierGeode != nullptr, "outlier trajectory node is a geode");
+    require(outlierGeode->getNumDrawables() == 1, "outlier trajectory fits in one segment");
+    auto* outlierGeometry = dynamic_cast<osg::Geometry*>(outlierGeode->getDrawable(0));
+    require(outlierGeometry != nullptr, "outlier trajectory drawable is geometry");
+    const PrimitiveStats outlierStats = primitiveStats(*outlierGeometry);
+    require(outlierStats.lineStrips == 2, "single outlier splits the line into two runs");
+    require(outlierStats.lineVertices == 4, "samples after an outlier reconnect from the last valid track point");
+    require(outlierStats.pointVertices == 1, "only the outlier is rendered as a red marker");
+    const VaporView::Map3D::TrajectoryQualityStats outlierQualityStats = outlierLayer.qualityStats();
+    require(outlierQualityStats.jumpSamples == 1, "only the outlier is counted as a jump");
+    require(outlierQualityStats.lineSamples == 4, "normal samples after the outlier remain line samples");
+
     layer.clear();
     require(layer.sampleCount() == 0, "clear removes samples");
     require(layer.segmentCount() == 0, "clear removes segments");

@@ -55,11 +55,16 @@ private:
     void rebuildVisibilityBoundarySegment();
     void appendSegment();
     int firstVisibleIndex() const;
+    int previousLineSampleIndex(int index) const;
+    bool shouldUseAsLineSample(int index) const;
+    bool isLineSample(int index) const;
+    void rebuildLineSampleFlags();
     bool segmentIsVisible(const TrajectorySegment& segment) const;
     void applySegmentVisibility();
 
     osg::ref_ptr<osg::Geode> geode_;
     std::vector<VaporView::Geo::NavSample> samples_;
+    std::vector<char> line_sample_flags_;
     std::vector<TrajectorySegment> segments_;
     bool use_world_coordinates_ = false;
     int max_visible_samples_ = 200000;

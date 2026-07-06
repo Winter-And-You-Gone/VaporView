@@ -54,22 +54,6 @@ osg::Vec4 qualityColor(const VaporView::Geo::NavSample& sample)
     }
 }
 
-bool isJumpSample(const std::vector<VaporView::Geo::NavSample>& samples, int index)
-{
-    if (index <= 0)
-    {
-        return false;
-    }
-    return VaporView::Geo::isLikelyJump(samples[static_cast<std::size_t>(index - 1)],
-                                        samples[static_cast<std::size_t>(index)]);
-}
-
-bool isLineSample(const std::vector<VaporView::Geo::NavSample>& samples, int index)
-{
-    const VaporView::Geo::NavSample& sample = samples[static_cast<std::size_t>(index)];
-    return VaporView::Geo::isUsableForDisplay(sample) && !isJumpSample(samples, index);
-}
-
 osg::Vec4 markerColor()
 {
     return osg::Vec4(0.95f, 0.05f, 0.05f, 1.0f);
@@ -85,6 +69,7 @@ Trajectory3DLayer::Trajectory3DLayer()
 void Trajectory3DLayer::clear()
 {
     samples_.clear();
+    line_sample_flags_.clear();
     segments_.clear();
     geode_->removeDrawables(0, geode_->getNumDrawables());
 }
@@ -93,6 +78,7 @@ void Trajectory3DLayer::appendSample(const VaporView::Geo::NavSample& sample)
 {
     const int previousFirstVisibleIndex = firstVisibleIndex();
     samples_.push_back(sample);
+    line_sample_flags_.push_back(shouldUseAsLineSample(sampleCount() - 1) ? 1 : 0);
     if (segments_.empty() || segments_.back().sampleCount >= kSegmentSize)
     {
         appendSegment();
@@ -114,6 +100,7 @@ void Trajectory3DLayer::appendSamples(const std::vector<VaporView::Geo::NavSampl
         return;
     }
     samples_.insert(samples_.end(), samples.cbegin(), samples.cend());
+    rebuildLineSampleFlags();
     rebuildSegments();
 }
 
@@ -171,14 +158,14 @@ TrajectoryQualityStats Trajectory3DLayer::qualityStats() const
     {
         const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(index)];
         const bool usable = VaporView::Geo::isUsableForDisplay(sample);
-        const bool jump = usable && isJumpSample(samples_, index);
+        const bool line = isLineSample(index);
         if (!usable)
         {
             ++stats.invalidSamples;
             ++stats.markerSamples;
             continue;
         }
-        if (jump)
+        if (!line)
         {
             ++stats.jumpSamples;
             ++stats.markerSamples;
@@ -275,7 +262,7 @@ void Trajectory3DLayer::rebuildSegmentGeometry(TrajectorySegment& segment)
     {
         const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(index)];
         const osg::Vec3d position = samplePosition(sample, use_world_coordinates_);
-        if (isLineSample(samples_, index))
+        if (isLineSample(index))
         {
             if (runStartVertex < 0)
             {
@@ -348,6 +335,51 @@ void Trajectory3DLayer::appendSegment()
 int Trajectory3DLayer::firstVisibleIndex() const
 {
     return std::max(0, sampleCount() - visibleSampleCount());
+}
+
+int Trajectory3DLayer::previousLineSampleIndex(int index) const
+{
+    for (int previousIndex = index - 1; previousIndex >= 0; --previousIndex)
+    {
+        if (isLineSample(previousIndex))
+        {
+            return previousIndex;
+        }
+    }
+    return -1;
+}
+
+bool Trajectory3DLayer::shouldUseAsLineSample(int index) const
+{
+    const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(index)];
+    if (!VaporView::Geo::isUsableForDisplay(sample))
+    {
+        return false;
+    }
+
+    const int previousIndex = previousLineSampleIndex(index);
+    if (previousIndex < 0)
+    {
+        return true;
+    }
+    return !VaporView::Geo::isLikelyJump(samples_[static_cast<std::size_t>(previousIndex)], sample);
+}
+
+bool Trajectory3DLayer::isLineSample(int index) const
+{
+    return index >= 0
+        && index < static_cast<int>(line_sample_flags_.size())
+        && line_sample_flags_[static_cast<std::size_t>(index)] != 0;
+}
+
+void Trajectory3DLayer::rebuildLineSampleFlags()
+{
+    line_sample_flags_.clear();
+    line_sample_flags_.reserve(samples_.size());
+    for (int index = 0; index < sampleCount(); ++index)
+    {
+        line_sample_flags_.push_back(shouldUseAsLineSample(index) ? 1 : 0);
+    }
 }
 
 bool Trajectory3DLayer::segmentIsVisible(const TrajectorySegment& segment) const
