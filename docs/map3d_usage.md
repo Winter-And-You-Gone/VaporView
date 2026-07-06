@@ -54,6 +54,8 @@ Replay slider
 The reader supports both newer `nav_*`/`epsilon_*` columns and older RTK/IMU session columns such as `rtk_lat`, `rtk_lon`, `rtk_alt`, `rtk_fix`, `rtk_sat`, `rtk_heading`, `rtk_pitch`, `rtk_vel_*`, and `imu_roll`/`imu_yaw`.
 When quaternion columns (`quat_w`, `quat_x`, `quat_y`, `quat_z`, including `epsilon_quat_*` aliases) are available, the aircraft marker and follow camera use them for attitude/heading before falling back to roll/pitch/yaw.
 
+By default the aircraft is a built-in OSG marker, so the 3D Map works without extra assets. To use a local model, place one of these files under `data/maps/models/aircraft/`: `vaporview_aircraft.osgb`, `vaporview_aircraft.osg`, `vaporview_aircraft.glb`, or `vaporview_aircraft.gltf`. The diagnostics panel reports whether the model loaded; if OSG cannot read it, VaporView keeps the built-in marker and continues rendering the flight path.
+
 `加载 Earth 文件` opens a custom `.earth` file. Keep relative paths in that file aligned with its location.
 
 `本地影像` opens a menu for optional local imagery templates. Entries become enabled when both the matching VRT and the `.earth` template exist. The templates live in `data/maps`:
@@ -126,6 +128,7 @@ Click `地图诊断`, or use `View / 视图 -> Map Data Diagnostics / 地图数�
 - active `.earth` file
 - runtime `Earth load` status, including requested path, loaded state, MapNode state, and layer open/status strings
 - render performance, including visible/total/hidden samples, trajectory segment count/size, FPS, frame time, and track update time
+- local aircraft model load status and built-in marker fallback state
 - visible trajectory quality, including line samples, red marker samples, RTK Fixed/Float/DGPS/Single/Unknown counts, invalid/unusable samples, and jump markers
 - latest aircraft attitude source, using the same quaternion-first fallback as the aircraft marker
 - current working directory

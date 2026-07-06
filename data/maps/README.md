@@ -30,6 +30,8 @@ Directory roles:
   `water.gpkg`, `buildings.gpkg`, and `places.gpkg`.
 - `imagery/`: optional local Sentinel-2, Landsat, or OpenAerialMap raster overlays.
 - `tiles3d/`: optional local 3D Tiles layout and preview overlay entry point.
+- `models/aircraft/`: optional local aircraft model override. If no supported model
+  is present, the 3D Map keeps using its built-in marker.
 
 Use `docs/map_data.md` for the full data preparation and verification workflow, and
 `docs/map3d_usage.md` for the 3D Map diagnostics panel.

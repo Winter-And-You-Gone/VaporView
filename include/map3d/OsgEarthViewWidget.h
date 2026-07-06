@@ -62,6 +62,15 @@ struct Local3DTilesLoadDiagnostics {
     QString nodeDescription;
 };
 
+struct AircraftModelDiagnostics {
+    QString requestedPath;
+    bool attempted = false;
+    bool loaded = false;
+    bool usingBuiltInMarker = true;
+    QString failureReason;
+    QString nodeDescription;
+};
+
 class OsgEarthViewWidget final : public QOpenGLWidget {
     Q_OBJECT
 
@@ -88,6 +97,7 @@ public:
     Map3DPerformanceStats performanceStats() const;
     EarthLoadDiagnostics earthLoadDiagnostics() const;
     Local3DTilesLoadDiagnostics local3DTilesLoadDiagnostics() const;
+    AircraftModelDiagnostics aircraftModelDiagnostics() const;
     QSize framebufferSize() const;
     bool hasEarthMap() const;
 
@@ -103,6 +113,7 @@ protected:
 private:
     void initializeSceneIfNeeded();
     void updateCameraViewport(int w, int h);
+    void loadDefaultAircraftModelIfAvailable();
     void updateFollowCamera(const VaporView::Geo::NavSample& sample);
     void setInitialEarthView();
     void rebuildDisplayTrack();
@@ -132,6 +143,7 @@ private:
     osgEarth::MapNode* map_node_ = nullptr;
     EarthLoadDiagnostics earth_load_diagnostics_;
     Local3DTilesLoadDiagnostics local_3d_tiles_load_diagnostics_;
+    AircraftModelDiagnostics aircraft_model_diagnostics_;
     std::vector<VaporView::Geo::NavSample> raw_samples_;
     std::unique_ptr<Trajectory3DLayer> trajectory_layer_;
     std::unique_ptr<Aircraft3DLayer> aircraft_layer_;

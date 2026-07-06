@@ -1,6 +1,7 @@
 #include "map3d/Aircraft3DLayer.h"
 
 #include <osg/Geode>
+#include <osg/Group>
 #include <osg/MatrixTransform>
 #include <osg/Node>
 
@@ -65,6 +66,20 @@ int main()
     auto* geode = dynamic_cast<osg::Geode*>(transform->getChild(0));
     require(geode != nullptr, "aircraft child is a geode");
     require(geode->getNumDrawables() >= 2, "aircraft marker has body and outline drawables");
+    require(!layer.hasCustomModel(), "aircraft starts with built-in marker");
+
+    osg::ref_ptr<osg::Group> customModel = new osg::Group;
+    customModel->setName("test-aircraft-model");
+    layer.setCustomModel(customModel.get());
+    require(layer.hasCustomModel(), "custom aircraft model can be installed");
+    require(transform->getNumChildren() == 1, "custom aircraft model replaces built-in marker child");
+    require(transform->getChild(0) == customModel.get(), "custom aircraft model is attached to transform");
+
+    layer.clearCustomModel();
+    require(!layer.hasCustomModel(), "custom aircraft model can be cleared");
+    require(transform->getNumChildren() == 1, "built-in marker is restored after clearing custom model");
+    geode = dynamic_cast<osg::Geode*>(transform->getChild(0));
+    require(geode != nullptr, "built-in aircraft child is restored as a geode");
 
     layer.updateSample(localSample(0.0));
     require(layer.hasPosition(), "valid local sample sets aircraft position");

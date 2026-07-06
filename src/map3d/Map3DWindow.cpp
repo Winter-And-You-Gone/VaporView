@@ -1127,6 +1127,24 @@ QString Map3DWindow::diagnosticsText() const
     {
         lines << QStringLiteral("  Failure/note: %1").arg(latest_local_3d_tiles_load_.failureReason);
     }
+    const AircraftModelDiagnostics aircraftModel =
+        view_ ? view_->aircraftModelDiagnostics() : AircraftModelDiagnostics{};
+    lines << QStringLiteral("Aircraft model:");
+    lines << QStringLiteral("  Requested path: %1")
+                 .arg(aircraftModel.requestedPath.isEmpty()
+                          ? QStringLiteral("<none>")
+                          : aircraftModel.requestedPath);
+    lines << QStringLiteral("  Attempted: %1").arg(aircraftModel.attempted ? QStringLiteral("yes") : QStringLiteral("no"));
+    lines << QStringLiteral("  Loaded: %1").arg(aircraftModel.loaded ? QStringLiteral("yes") : QStringLiteral("no"));
+    lines << QStringLiteral("  Built-in marker: %1").arg(aircraftModel.usingBuiltInMarker ? QStringLiteral("yes") : QStringLiteral("no"));
+    if (!aircraftModel.nodeDescription.isEmpty())
+    {
+        lines << QStringLiteral("  Node: %1").arg(aircraftModel.nodeDescription);
+    }
+    if (!aircraftModel.failureReason.isEmpty())
+    {
+        lines << QStringLiteral("  Failure/note: %1").arg(aircraftModel.failureReason);
+    }
     lines << QStringLiteral("Render performance:");
     lines << QStringLiteral("  Samples: %1 visible / %2 total / %3 hidden")
                  .arg(visibleSamples)

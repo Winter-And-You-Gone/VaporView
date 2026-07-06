@@ -13,6 +13,7 @@
 #include <osg/Viewport>
 #include <osgDB/ReadFile>
 #include <osgDB/Registry>
+#include <osgUtil/Optimizer>
 #include <osgGA/EventQueue>
 #include <osgGA/TrackballManipulator>
 #include <osgViewer/GraphicsWindow>
@@ -78,6 +79,22 @@ QString firstExistingDirectory(const QStringList& roots, const QStringList& rela
         {
             const QString candidate = QDir::cleanPath(QDir(root).absoluteFilePath(relative));
             if (QFileInfo(candidate).isDir())
+            {
+                return QFileInfo(candidate).absoluteFilePath();
+            }
+        }
+    }
+    return {};
+}
+
+QString firstExistingFile(const QStringList& roots, const QStringList& relatives)
+{
+    for (const QString& root : roots)
+    {
+        for (const QString& relative : relatives)
+        {
+            const QString candidate = QDir::cleanPath(QDir(root).absoluteFilePath(relative));
+            if (QFileInfo(candidate).isFile())
             {
                 return QFileInfo(candidate).absoluteFilePath();
             }
@@ -566,6 +583,11 @@ Local3DTilesLoadDiagnostics OsgEarthViewWidget::local3DTilesLoadDiagnostics() co
     return local_3d_tiles_load_diagnostics_;
 }
 
+AircraftModelDiagnostics OsgEarthViewWidget::aircraftModelDiagnostics() const
+{
+    return aircraft_model_diagnostics_;
+}
+
 void OsgEarthViewWidget::setFollowAircraft(bool enabled)
 {
     follow_aircraft_ = enabled;
@@ -787,6 +809,7 @@ void OsgEarthViewWidget::initializeSceneIfNeeded()
     root_->addChild(createLocalGridNode());
     root_->addChild(trajectory_layer_->node());
     root_->addChild(aircraft_layer_->node());
+    loadDefaultAircraftModelIfAvailable();
 
     viewer_ = std::make_unique<osgViewer::Viewer>();
     viewer_->setThreadingModel(osgViewer::Viewer::SingleThreaded);
@@ -813,6 +836,47 @@ void OsgEarthViewWidget::initializeSceneIfNeeded()
     osgEarth::GL3RealizeOperation gl3RealizeOperation;
     gl3RealizeOperation(graphics_window_.get());
     initialized_ = true;
+}
+
+void OsgEarthViewWidget::loadDefaultAircraftModelIfAvailable()
+{
+    aircraft_model_diagnostics_ = {};
+    aircraft_model_diagnostics_.usingBuiltInMarker = true;
+
+    const QString modelPath = firstExistingFile(runtimeRootCandidates(),
+                                                {QStringLiteral("data/maps/models/aircraft/vaporview_aircraft.osgb"),
+                                                 QStringLiteral("data/maps/models/aircraft/vaporview_aircraft.osg"),
+                                                 QStringLiteral("data/maps/models/aircraft/vaporview_aircraft.glb"),
+                                                 QStringLiteral("data/maps/models/aircraft/vaporview_aircraft.gltf")});
+    if (modelPath.isEmpty())
+    {
+        aircraft_model_diagnostics_.failureReason =
+            QStringLiteral("No local aircraft model found; using built-in marker.");
+        aircraft_layer_->clearCustomModel();
+        return;
+    }
+
+    aircraft_model_diagnostics_.attempted = true;
+    aircraft_model_diagnostics_.requestedPath = modelPath;
+
+    osg::ref_ptr<osg::Node> modelNode = osgDB::readNodeFile(modelPath.toStdString());
+    if (!modelNode)
+    {
+        aircraft_model_diagnostics_.failureReason =
+            QStringLiteral("osgDB::readNodeFile returned null; using built-in marker.");
+        aircraft_layer_->clearCustomModel();
+        return;
+    }
+
+    osgUtil::Optimizer optimizer;
+    optimizer.optimize(modelNode.get(), osgUtil::Optimizer::DEFAULT_OPTIMIZATIONS);
+    aircraft_layer_->setCustomModel(modelNode.get());
+    aircraft_model_diagnostics_.loaded = true;
+    aircraft_model_diagnostics_.usingBuiltInMarker = false;
+    aircraft_model_diagnostics_.nodeDescription =
+        QStringLiteral("%1 children, bound radius %2")
+            .arg(modelNode->asGroup() ? modelNode->asGroup()->getNumChildren() : 0)
+            .arg(modelNode->getBound().radius(), 0, 'f', 2);
 }
 
 void OsgEarthViewWidget::updateCameraViewport(int w, int h)

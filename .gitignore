@@ -68,6 +68,10 @@ __pycache__/
 !/data/maps/imagery/openaerialmap/README.md
 !/data/maps/tiles3d/
 !/data/maps/tiles3d/README.md
+!/data/maps/models/
+!/data/maps/models/README.md
+!/data/maps/models/aircraft/
+!/data/maps/models/aircraft/README.md
 /data/maps/natural_earth/*.zip
 /data/maps/natural_earth/*/*.tif
 /data/maps/natural_earth/*/*.tfw
@@ -93,6 +97,14 @@ __pycache__/
 /data/maps/tiles3d/**/*.cmpt
 /data/maps/tiles3d/**/*.glb
 /data/maps/tiles3d/**/*.gltf
+/data/maps/models/**/*.osg
+/data/maps/models/**/*.osgb
+/data/maps/models/**/*.glb
+/data/maps/models/**/*.gltf
+/data/maps/models/**/*.bin
+/data/maps/models/**/*.png
+/data/maps/models/**/*.jpg
+/data/maps/models/**/*.jpeg
 records/
 AGENTS.md
 MEETING*.md

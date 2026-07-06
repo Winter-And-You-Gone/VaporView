@@ -116,10 +116,19 @@ osg::Matrix rotationFromSample(const VaporView::Geo::NavSample& sample)
 Aircraft3DLayer::Aircraft3DLayer()
     : transform_(new osg::MatrixTransform)
 {
+    installBuiltInMarker();
+}
+
+void Aircraft3DLayer::installBuiltInMarker()
+{
     osg::ref_ptr<osg::Geode> geode = new osg::Geode;
     geode->addDrawable(createAircraftBody().get());
     geode->addDrawable(createAircraftOutline().get());
-    transform_->addChild(geode.get());
+    built_in_marker_ = geode;
+    if (transform_->getNumChildren() == 0)
+    {
+        transform_->addChild(built_in_marker_.get());
+    }
 }
 
 void Aircraft3DLayer::clear()
@@ -145,9 +154,44 @@ void Aircraft3DLayer::setUseWorldCoordinates(bool enabled)
     use_world_coordinates_ = enabled;
 }
 
+void Aircraft3DLayer::setCustomModel(osg::Node* modelNode)
+{
+    if (!modelNode)
+    {
+        clearCustomModel();
+        return;
+    }
+
+    if (custom_model_ == modelNode && transform_->containsNode(custom_model_.get()))
+    {
+        return;
+    }
+
+    transform_->removeChildren(0, transform_->getNumChildren());
+    custom_model_ = modelNode;
+    transform_->addChild(custom_model_.get());
+}
+
+void Aircraft3DLayer::clearCustomModel()
+{
+    if (!custom_model_)
+    {
+        return;
+    }
+
+    transform_->removeChildren(0, transform_->getNumChildren());
+    custom_model_ = nullptr;
+    transform_->addChild(built_in_marker_.get());
+}
+
 bool Aircraft3DLayer::hasPosition() const
 {
     return has_position_;
+}
+
+bool Aircraft3DLayer::hasCustomModel() const
+{
+    return custom_model_.valid();
 }
 
 osg::Node* Aircraft3DLayer::node() const

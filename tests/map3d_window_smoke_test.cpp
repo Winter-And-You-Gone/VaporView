@@ -271,6 +271,10 @@ int main(int argc, char** argv)
             "diagnostics include earth runtime load section");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Local 3D Tiles preview load:")),
             "diagnostics include local 3D Tiles preview load section");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Aircraft model:")),
+            "diagnostics include aircraft model section");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Built-in marker: yes")),
+            "diagnostics report built-in aircraft marker fallback");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Mode:")),
             "diagnostics include selected map mode");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Earth file:")),

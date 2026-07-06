@@ -3,11 +3,8 @@
 #include "geo/GeoTypes.h"
 
 #include <osg/MatrixTransform>
+#include <osg/Node>
 #include <osg/ref_ptr>
-
-namespace osg {
-class Node;
-}
 
 namespace VaporView::Map3D {
 
@@ -18,12 +15,19 @@ public:
     void clear();
     void updateSample(const VaporView::Geo::NavSample& sample);
     void setUseWorldCoordinates(bool enabled);
+    void setCustomModel(osg::Node* modelNode);
+    void clearCustomModel();
 
     bool hasPosition() const;
+    bool hasCustomModel() const;
     osg::Node* node() const;
 
 private:
+    void installBuiltInMarker();
+
     osg::ref_ptr<osg::MatrixTransform> transform_;
+    osg::ref_ptr<osg::Node> built_in_marker_;
+    osg::ref_ptr<osg::Node> custom_model_;
     bool has_position_ = false;
     bool use_world_coordinates_ = false;
 };
