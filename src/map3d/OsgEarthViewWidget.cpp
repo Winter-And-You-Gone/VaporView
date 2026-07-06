@@ -409,6 +409,10 @@ void OsgEarthViewWidget::clearTrack()
 
 bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
 {
+    earth_load_diagnostics_ = {};
+    earth_load_diagnostics_.attempted = true;
+    earth_load_diagnostics_.requestedPath = earthPath;
+
     initializeSceneIfNeeded();
     const QString texturePath = naturalEarthTexturePathForEarthFile(earthPath);
     osg::ref_ptr<osg::Node> texturedEarthNode = createTexturedEarthNode(texturePath);
@@ -426,12 +430,23 @@ bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
         setInitialEarthView();
         rebuildDisplayTrack();
         update();
+        earth_load_diagnostics_.loaded = true;
+        earth_load_diagnostics_.usedTexturedFallback = true;
+        earth_load_diagnostics_.foundMapNode = false;
+        earth_load_diagnostics_.layerSummaries.push_back(
+            QStringLiteral("Manual Natural Earth textured globe fallback (no osgEarth MapNode)."));
         return true;
     }
 
     osg::ref_ptr<osg::Node> earthNode = osgDB::readNodeFile(earthPath.toStdString());
-    if (!earthNode || !root_)
+    if (!earthNode)
     {
+        earth_load_diagnostics_.failureReason = QStringLiteral("osgDB::readNodeFile returned null.");
+        return false;
+    }
+    if (!root_)
+    {
+        earth_load_diagnostics_.failureReason = QStringLiteral("Scene root is not initialized.");
         return false;
     }
     if (earth_node_)
@@ -440,6 +455,8 @@ bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
     }
     earth_node_ = earthNode;
     map_node_ = osgEarth::MapNode::findMapNode(earth_node_.get());
+    earth_load_diagnostics_.loaded = true;
+    earth_load_diagnostics_.foundMapNode = map_node_ != nullptr;
     if (map_node_)
     {
         map_node_->openMapLayers();
@@ -447,6 +464,7 @@ bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
         {
             osgEarth::LayerVector layers;
             map_node_->getMap()->getLayers(layers);
+            earth_load_diagnostics_.layerCount = static_cast<int>(layers.size());
             for (const osg::ref_ptr<osgEarth::Layer>& layer : layers)
             {
                 if (!layer)
@@ -454,6 +472,15 @@ bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
                     continue;
                 }
                 const osgEarth::Status& status = layer->getStatus();
+                if (layer->isOpen())
+                {
+                    ++earth_load_diagnostics_.openLayerCount;
+                }
+                const QString summary = QStringLiteral("%1 | open=%2 | status=%3")
+                    .arg(QString::fromStdString(layer->getName()),
+                         layer->isOpen() ? QStringLiteral("yes") : QStringLiteral("no"),
+                         QString::fromStdString(status.toString()));
+                earth_load_diagnostics_.layerSummaries.push_back(summary);
                 qInfo().noquote()
                     << "osgEarth layer"
                     << QString::fromStdString(layer->getName())
@@ -462,6 +489,11 @@ bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
             }
         }
     }
+    else
+    {
+        earth_load_diagnostics_.failureReason = QStringLiteral("Loaded OSG node, but no osgEarth MapNode was found.");
+        earth_load_diagnostics_.layerSummaries.push_back(earth_load_diagnostics_.failureReason);
+    }
     trajectory_layer_->setUseWorldCoordinates(true);
     aircraft_layer_->setUseWorldCoordinates(true);
     root_->insertChild(0, earth_node_.get());
@@ -469,6 +501,11 @@ bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
     rebuildDisplayTrack();
     update();
     return true;
+}
+
+EarthLoadDiagnostics OsgEarthViewWidget::earthLoadDiagnostics() const
+{
+    return earth_load_diagnostics_;
 }
 
 void OsgEarthViewWidget::setFollowAircraft(bool enabled)

@@ -237,6 +237,8 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     if (isMap3DHeadlessTest())
     {
         setMapSelection(map_data_manager_.selectBestAvailableMap());
+        latest_earth_load_.requestedPath = map_selection_.earthFile;
+        latest_earth_load_.failureReason = QStringLiteral("Headless test mode; earth loading was not attempted.");
     }
     else
     {
@@ -372,12 +374,16 @@ void Map3DWindow::loadInitialEarthFile()
 
     if (!QFileInfo(initialEarthFile).isFile())
     {
+        latest_earth_load_ = {};
+        latest_earth_load_.requestedPath = initialEarthFile;
+        latest_earth_load_.failureReason = QStringLiteral("Selected earth file does not exist.");
         setMapSelection(autoSelection);
         statusBar()->showMessage(QStringLiteral("未找到默认 Earth 文件，当前显示本地 NED 网格。"), 8000);
         return;
     }
 
     const bool loaded = view_ ? view_->loadEarthFile(initialEarthFile) : false;
+    latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
     if (!loaded)
     {
         setMapSelection(autoSelection);
@@ -428,6 +434,7 @@ void Map3DWindow::openEarthFile()
         return;
     }
     const bool loaded = view_ ? view_->loadEarthFile(file) : false;
+    latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
     if (!loaded)
     {
         QMessageBox::warning(this,
@@ -455,6 +462,9 @@ void Map3DWindow::reloadBestLocalMap()
     const MapDataSelection selection = map_data_manager_.selectBestAvailableMap();
     if (!QFileInfo(selection.earthFile).isFile())
     {
+        latest_earth_load_ = {};
+        latest_earth_load_.requestedPath = selection.earthFile;
+        latest_earth_load_.failureReason = QStringLiteral("Selected earth file does not exist.");
         setMapSelection(selection);
         updateStatus(nullptr);
         statusBar()->showMessage(QStringLiteral("未找到完整本地地图数据，保持本地网格显示。"), 8000);
@@ -462,6 +472,7 @@ void Map3DWindow::reloadBestLocalMap()
     }
 
     const bool loaded = view_ ? view_->loadEarthFile(selection.earthFile) : false;
+    latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
     if (!loaded && view_)
     {
         setMapSelection(selection);
@@ -730,6 +741,26 @@ QString Map3DWindow::diagnosticsText() const
     }
     const QString earthFile = map_selection_.earthFile.isEmpty() ? map_selection_.earthFilePath : map_selection_.earthFile;
     lines << QStringLiteral("Earth file: %1").arg(earthFile.isEmpty() ? QStringLiteral("<none>") : earthFile);
+    lines << QStringLiteral("Earth load:");
+    lines << QStringLiteral("  Requested path: %1")
+                 .arg(latest_earth_load_.requestedPath.isEmpty() ? QStringLiteral("<none>") : latest_earth_load_.requestedPath);
+    lines << QStringLiteral("  Attempted: %1").arg(latest_earth_load_.attempted ? QStringLiteral("yes") : QStringLiteral("no"));
+    lines << QStringLiteral("  Loaded: %1").arg(latest_earth_load_.loaded ? QStringLiteral("yes") : QStringLiteral("no"));
+    lines << QStringLiteral("  Textured fallback: %1").arg(latest_earth_load_.usedTexturedFallback ? QStringLiteral("yes") : QStringLiteral("no"));
+    lines << QStringLiteral("  MapNode: %1").arg(latest_earth_load_.foundMapNode ? QStringLiteral("yes") : QStringLiteral("no"));
+    lines << QStringLiteral("  Layers: %1/%2 open").arg(latest_earth_load_.openLayerCount).arg(latest_earth_load_.layerCount);
+    if (!latest_earth_load_.failureReason.isEmpty())
+    {
+        lines << QStringLiteral("  Failure/note: %1").arg(latest_earth_load_.failureReason);
+    }
+    if (!latest_earth_load_.layerSummaries.isEmpty())
+    {
+        lines << QStringLiteral("  Layer details:");
+        for (const QString& layerSummary : latest_earth_load_.layerSummaries)
+        {
+            lines << QStringLiteral("    - %1").arg(layerSummary);
+        }
+    }
     lines << QStringLiteral("Track data:");
     lines << QStringLiteral("  Source: %1").arg(latest_track_source_.isEmpty() ? QStringLiteral("none") : latest_track_source_);
     lines << QStringLiteral("  Latest record timestamp us: %1")

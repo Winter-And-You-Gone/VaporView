@@ -3,6 +3,7 @@
 #include "geo/GeoTypes.h"
 #include "geo/TrajectoryReplay.h"
 #include "map3d/MapDataManager.h"
+#include "map3d/OsgEarthViewWidget.h"
 
 #include <QMainWindow>
 #include <QString>
@@ -83,6 +84,7 @@ private:
     QString latest_track_source_;
     QString latest_track_note_;
     QString latest_camera_note_;
+    EarthLoadDiagnostics latest_earth_load_;
     QString latest_drop_source_;
     QString latest_drop_reason_;
     VaporView::Geo::NavSample latest_status_sample_;

@@ -167,6 +167,10 @@ int main(int argc, char** argv)
     require(diagnosticsText != nullptr, "diagnostics text view exists");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Track data:")),
             "diagnostics include track data section");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Earth load:")),
+            "diagnostics include earth runtime load section");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Attempted:")),
+            "diagnostics include earth load attempt state");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Source: Replay")),
             "diagnostics include latest track source");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Camera: Track auto")),

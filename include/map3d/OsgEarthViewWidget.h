@@ -3,6 +3,8 @@
 #include "geo/GeoTypes.h"
 
 #include <QOpenGLWidget>
+#include <QString>
+#include <QStringList>
 #include <QTimer>
 #include <osg/Group>
 #include <osg/Node>
@@ -36,6 +38,18 @@ struct Map3DPerformanceStats {
     double trackUpdateMs = 0.0;
 };
 
+struct EarthLoadDiagnostics {
+    QString requestedPath;
+    bool attempted = false;
+    bool loaded = false;
+    bool usedTexturedFallback = false;
+    bool foundMapNode = false;
+    int layerCount = 0;
+    int openLayerCount = 0;
+    QString failureReason;
+    QStringList layerSummaries;
+};
+
 class OsgEarthViewWidget final : public QOpenGLWidget {
     Q_OBJECT
 
@@ -58,6 +72,7 @@ public:
     int visibleSampleCount() const;
     int maxVisibleSamples() const;
     Map3DPerformanceStats performanceStats() const;
+    EarthLoadDiagnostics earthLoadDiagnostics() const;
     QSize framebufferSize() const;
     bool hasEarthMap() const;
 
@@ -99,6 +114,7 @@ private:
     osg::ref_ptr<osg::Group> root_;
     osg::ref_ptr<osg::Node> earth_node_;
     osgEarth::MapNode* map_node_ = nullptr;
+    EarthLoadDiagnostics earth_load_diagnostics_;
     std::vector<VaporView::Geo::NavSample> raw_samples_;
     std::unique_ptr<Trajectory3DLayer> trajectory_layer_;
     std::unique_ptr<Aircraft3DLayer> aircraft_layer_;

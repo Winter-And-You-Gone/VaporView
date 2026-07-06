@@ -18,6 +18,8 @@ When osgEarth is disabled, the main window does not create the native 3D map mod
 
 The window asks `MapDataManager` for the best local map data at startup.
 
+The `地图诊断` panel reports both static file discovery and runtime earth loading. When the map appears blank or incomplete, check `Earth load` first: it shows the requested `.earth` path, whether OSG/osgEarth loaded it, whether a real `MapNode` was found, and each layer's open/status string.
+
 Selection order:
 
 1. `Full local map`: Natural Earth + DEM + local OSM water, roads, building footprints, and place labels. This uses `vaporview_full_local.earth` with Copernicus DEM, or `vaporview_full_local_srtm.earth` when SRTM is the only available DEM.
@@ -112,6 +114,7 @@ Click `地图诊断`, or use `View / 视图 -> Map Data Diagnostics / 地图数�
 
 - current map mode
 - active `.earth` file
+- runtime `Earth load` status, including requested path, loaded state, MapNode state, and layer open/status strings
 - current working directory
 - project root
 - `data/maps` root
@@ -133,7 +136,7 @@ Click `地图诊断`, or use `View / 视图 -> Map Data Diagnostics / 地图数�
 - missing files
 - warnings and diagnostics messages
 
-This panel is the first place to check when the map is black, an earth file fails to load, or DEM/OSM layers do not appear.
+This panel is the first place to check when the map is black, an earth file fails to load, or DEM/OSM layers do not appear. If the `.earth` path exists but `Loaded` is `no`, focus on OSG plugins and GDAL/PROJ data paths. If `Loaded` is `yes` but `MapNode` is `no`, the view is probably using the manual Natural Earth textured-globe fallback or an OSG node that is not an osgEarth map.
 
 ## Local Grid Fallback
 

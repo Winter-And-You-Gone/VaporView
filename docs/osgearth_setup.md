@@ -93,11 +93,14 @@ GDAL and PROJ may fail to interpret GeoTIFF/VRT coordinate systems when their da
 Check these in order:
 
 1. Build with `-DVAPORVIEW_ENABLE_OSGEARTH=ON`.
-2. Confirm OSG plugins, `GDAL_DATA`, `PROJ_DATA`, and `PROJ_LIB` in diagnostics.
-3. Confirm `data/maps/vaporview_default.earth` and Natural Earth files exist.
-4. Use `重载最佳本地地图`.
-5. Use `重置视角`.
-6. If no map data exists, confirm the local grid fallback appears.
+2. Open `地图诊断` and check `Earth load`. If `Loaded` is `no`, the `.earth` file did not load at runtime even if it exists on disk.
+3. If `MapNode` is `no`, VaporView may be using the manual Natural Earth textured-globe fallback or OSG loaded a node that is not an osgEarth map.
+4. Review `Layer details`. Closed layers or non-OK status strings usually point to missing raster/VRT/GeoPackage data, missing GDAL/PROJ data, or missing OSG plugins.
+5. Confirm OSG plugins, `GDAL_DATA`, `PROJ_DATA`, and `PROJ_LIB` in diagnostics.
+6. Confirm `data/maps/vaporview_default.earth` and Natural Earth files exist.
+7. Use `重载最佳本地地图`.
+8. Use `重置视角`.
+9. If no map data exists, confirm the local grid fallback appears.
 
 ### `.earth` Load Failed
 
