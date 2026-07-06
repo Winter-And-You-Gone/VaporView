@@ -51,7 +51,7 @@ private:
     void onReplayTick();
     void onReplaySliderMoved(int value);
     void onReplaySpeedChanged(int index);
-    void rebuildReplayAt(int index);
+    void rebuildReplayAt(int index, bool forceStatus = true);
     void rebuildReplayAtElapsedUs(qint64 elapsedUs);
     void setReplayEnabled(bool enabled);
     void updateReplayUi();
@@ -67,7 +67,7 @@ private:
     void recordTrackSource(const QString& source,
                            const VaporView::Geo::NavSample* latest,
                            const QString& note = {});
-    void updateStatus(const VaporView::Geo::NavSample* latest = nullptr);
+    void updateStatus(const VaporView::Geo::NavSample* latest = nullptr, bool force = true);
 
     OsgEarthViewWidget* view_ = nullptr;
     QWidget* headless_view_ = nullptr;
@@ -84,6 +84,7 @@ private:
     QSpinBox* max_visible_samples_spin_ = nullptr;
     QTimer* replay_timer_ = nullptr;
     QElapsedTimer replay_tick_clock_;
+    QElapsedTimer status_update_clock_;
     QDialog* diagnostics_dialog_ = nullptr;
     QPlainTextEdit* diagnostics_text_ = nullptr;
     MapDataManager map_data_manager_;

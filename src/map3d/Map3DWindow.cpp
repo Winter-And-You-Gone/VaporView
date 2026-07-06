@@ -30,6 +30,8 @@
 namespace VaporView::Map3D {
 namespace {
 
+constexpr qint64 kStatusUpdateIntervalMs = 200;
+
 QString heightReferenceLabel(VaporView::Geo::HeightReference reference)
 {
     switch (reference)
@@ -370,7 +372,7 @@ void Map3DWindow::appendSample(const VaporView::Geo::NavSample& sample)
     }
     recordTrackSource(QStringLiteral("Live"), &sample);
     updateReplayUi();
-    updateStatus(&sample);
+    updateStatus(&sample, false);
 }
 
 void Map3DWindow::appendSamples(const std::vector<VaporView::Geo::NavSample>& samples)
@@ -392,7 +394,7 @@ void Map3DWindow::appendSamples(const std::vector<VaporView::Geo::NavSample>& sa
     recordTrackSource(QStringLiteral("Live"), samples.empty() ? nullptr : &samples.back(),
                       samples.empty() ? QStringLiteral("empty live batch") : QString());
     updateReplayUi();
-    updateStatus(samples.empty() ? nullptr : &samples.back());
+    updateStatus(samples.empty() ? nullptr : &samples.back(), false);
 }
 
 void Map3DWindow::clearTrack()
@@ -681,7 +683,7 @@ void Map3DWindow::stopReplay()
     replay_timer_->stop();
     replay_tick_clock_.invalidate();
     replay_.stop();
-    rebuildReplayAt(replay_.currentIndex());
+    rebuildReplayAt(replay_.currentIndex(), false);
     updateReplayUi();
 }
 
@@ -741,7 +743,7 @@ void Map3DWindow::onReplaySpeedChanged(int index)
     settings.setValue(QStringLiteral("replaySpeed"), replay_.speed());
 }
 
-void Map3DWindow::rebuildReplayAt(int index)
+void Map3DWindow::rebuildReplayAt(int index, bool forceStatus)
 {
     if (!replay_.hasSamples())
     {
@@ -762,7 +764,7 @@ void Map3DWindow::rebuildReplayAt(int index)
     }
     recordTrackSource(QStringLiteral("Replay"),
                       visibleSamples.empty() ? nullptr : &visibleSamples.back());
-    updateStatus(visibleSamples.empty() ? nullptr : &visibleSamples.back());
+    updateStatus(visibleSamples.empty() ? nullptr : &visibleSamples.back(), forceStatus);
 }
 
 void Map3DWindow::rebuildReplayAtElapsedUs(qint64 elapsedUs)
@@ -1084,7 +1086,7 @@ void Map3DWindow::recordTrackSource(const QString& source,
     }
 }
 
-void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest)
+void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool force)
 {
     const VaporView::Geo::NavSample* displayLatest = latest;
     if (latest)
@@ -1095,6 +1097,18 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest)
     else if (has_latest_status_sample_)
     {
         displayLatest = &latest_status_sample_;
+    }
+    if (!force)
+    {
+        if (status_update_clock_.isValid() && status_update_clock_.elapsed() < kStatusUpdateIntervalMs)
+        {
+            return;
+        }
+        status_update_clock_.restart();
+    }
+    else
+    {
+        status_update_clock_.invalidate();
     }
 
     const Map3DPerformanceStats stats = view_ ? view_->performanceStats() : Map3DPerformanceStats{};

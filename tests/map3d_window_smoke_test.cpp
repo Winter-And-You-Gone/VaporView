@@ -14,6 +14,7 @@
 #include <QSpinBox>
 #include <QTemporaryDir>
 #include <QTextStream>
+#include <QThread>
 
 #include <cstdlib>
 #include <iostream>
@@ -171,6 +172,24 @@ int main(int argc, char** argv)
     window.appendSample(quaternionSample);
     QCoreApplication::processEvents();
     require(label->text().contains(QStringLiteral("Att Quaternion")), "status reports quaternion attitude source");
+
+    VaporView::Geo::NavSample throttledSample = sample;
+    throttledSample.recordTimestampUs = 2000000;
+    throttledSample.deviceTimestampUs = 1900000;
+    throttledSample.latDeg = 39.91;
+    window.appendSample(throttledSample);
+    QCoreApplication::processEvents();
+    require(!label->text().contains(QStringLiteral("rec 2000000")),
+            "live status updates are throttled below 5 Hz");
+    QThread::msleep(220);
+    QCoreApplication::processEvents();
+    throttledSample.recordTimestampUs = 3000000;
+    throttledSample.deviceTimestampUs = 2900000;
+    throttledSample.latDeg = 39.92;
+    window.appendSample(throttledSample);
+    QCoreApplication::processEvents();
+    require(label->text().contains(QStringLiteral("rec 3000000")),
+            "live status updates refresh after the 5 Hz throttle interval");
 
     window.clearTrack();
     QCoreApplication::processEvents();
