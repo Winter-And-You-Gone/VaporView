@@ -1,6 +1,7 @@
 #include "map3d/OsgEarthViewWidget.h"
 
 #include "map3d/Aircraft3DLayer.h"
+#include "map3d/AircraftHeading.h"
 #include "map3d/Trajectory3DLayer.h"
 
 #include <osg/Camera>
@@ -789,7 +790,7 @@ void OsgEarthViewWidget::updateFollowCamera(const VaporView::Geo::NavSample& sam
     }
 
     const osg::Vec3d center = samplePosition(sample);
-    const double yawRad = std::isfinite(sample.yawDeg) ? sample.yawDeg * 3.14159265358979323846 / 180.0 : 0.0;
+    const double yawRad = aircraftHeadingRad(sample);
     constexpr double kFollowDistanceM = 160.0;
     constexpr double kFollowHeightM = 90.0;
 
