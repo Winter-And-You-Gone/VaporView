@@ -41,10 +41,15 @@ __pycache__/
 .python-version
 /data/*
 !/data/maps/
+!/data/maps/README.md
 !/data/maps/vaporview_default.earth
 !/data/maps/vaporview_with_dem.earth
 !/data/maps/vaporview_with_srtm.earth
 !/data/maps/vaporview_full_local.earth
+!/data/maps/vaporview_full_local_srtm.earth
+!/data/maps/vaporview_with_sentinel2_imagery.earth
+!/data/maps/vaporview_with_landsat_imagery.earth
+!/data/maps/vaporview_with_openaerialmap_imagery.earth
 !/data/maps/natural_earth/
 !/data/maps/natural_earth/README.md
 !/data/maps/natural_earth/NE2_50M_SR_W/

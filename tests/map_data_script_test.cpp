@@ -119,12 +119,14 @@ int main()
     const QDir sourceRoot(QString::fromLocal8Bit(VAPORVIEW_SOURCE_DIR));
     const QString osmScript = sourceRoot.filePath(QStringLiteral("scripts/prepare-osm-local-data.py"));
     const QString demScript = sourceRoot.filePath(QStringLiteral("scripts/prepare-demo-dem.py"));
+    const QString mapsReadme = sourceRoot.filePath(QStringLiteral("data/maps/README.md"));
     const QString fullLocalEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_full_local.earth"));
     const QString sentinel2ImageryEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_with_sentinel2_imagery.earth"));
     const QString landsatImageryEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_with_landsat_imagery.earth"));
     const QString openAerialMapImageryEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_with_openaerialmap_imagery.earth"));
     require(QFileInfo(osmScript).isFile(), QStringLiteral("OSM script exists"));
     require(QFileInfo(demScript).isFile(), QStringLiteral("DEM script exists"));
+    require(QFileInfo(mapsReadme).isFile(), QStringLiteral("data/maps README exists"));
     require(QFileInfo(fullLocalEarth).isFile(), QStringLiteral("full local earth template exists"));
     require(QFileInfo(sentinel2ImageryEarth).isFile(), QStringLiteral("Sentinel-2 imagery earth template exists"));
     require(QFileInfo(landsatImageryEarth).isFile(), QStringLiteral("Landsat imagery earth template exists"));
@@ -137,6 +139,21 @@ int main()
                                                 QStringLiteral("tianditu"),
                                                 QStringLiteral("http://"),
                                                 QStringLiteral("https://")};
+    const QString mapsReadmeText = readTextFile(mapsReadme);
+    require(mapsReadmeText.contains(QStringLiteral("Natural Earth"))
+                && mapsReadmeText.contains(QStringLiteral("Copernicus DEM"))
+                && mapsReadmeText.contains(QStringLiteral("SRTM"))
+                && mapsReadmeText.contains(QStringLiteral("OpenStreetMap"))
+                && mapsReadmeText.contains(QStringLiteral("Sentinel-2"))
+                && mapsReadmeText.contains(QStringLiteral("3D Tiles"))
+                && mapsReadmeText.contains(QStringLiteral("Local grid fallback")),
+            QStringLiteral("data/maps README describes the local offline data stack"));
+    for (const QString& forbidden : forbiddenOnlineSources)
+    {
+        require(!mapsReadmeText.toLower().contains(forbidden),
+                QStringLiteral("data/maps README does not reference forbidden online source %1").arg(forbidden));
+    }
+
     const QString fullLocalEarthText = readTextFile(fullLocalEarth);
     require(fullLocalEarthText.contains(QStringLiteral("<FeatureImage name=\"OSM water fill\"")),
             QStringLiteral("full local earth renders OSM water with FeatureImage"));
