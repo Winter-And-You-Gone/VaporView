@@ -291,6 +291,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     });
 
     follow_action_ = toolbar->addAction(QStringLiteral("跟随飞机"));
+    follow_action_->setObjectName(QStringLiteral("map3DFollowAction"));
     follow_action_->setCheckable(true);
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
     max_visible_samples_ = sanitizeMaxVisibleSamples(settings.value(QStringLiteral("maxVisibleSamples"), 200000).toInt());
@@ -477,6 +478,9 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
                              QStringLiteral("无法读取轨迹: %1").arg(result.error));
         return;
     }
+
+    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    settings.setValue(QStringLiteral("lastSessionDir"), QFileInfo(sessionDir).absoluteFilePath());
 
     replay_timer_->stop();
     if (view_)

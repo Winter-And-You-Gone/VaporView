@@ -7,6 +7,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QLabel>
 #include <QMenu>
 #include <QPlainTextEdit>
@@ -85,6 +86,7 @@ int main(int argc, char** argv)
     require(label->text().contains(QStringLiteral("Source none")), "initial status reports no track source");
     QAction* replayAction = actionByName(window, QStringLiteral("map3DReplayAction"));
     QAction* replayStopAction = actionByName(window, QStringLiteral("map3DReplayStopAction"));
+    QAction* followAction = actionByName(window, QStringLiteral("map3DFollowAction"));
     QAction* reloadBestMapAction = actionByName(window, QStringLiteral("map3DReloadBestMapAction"));
     QAction* flyToAircraftAction = actionByName(window, QStringLiteral("map3DFlyToAircraftAction"));
     QAction* flyToTrackAction = actionByName(window, QStringLiteral("map3DFlyToTrackAction"));
@@ -111,6 +113,7 @@ int main(int argc, char** argv)
     require(replaySpeedCombo != nullptr, "replay speed combo exists");
     require(replaySlider != nullptr, "replay slider exists");
     require(maxVisibleSamplesSpin != nullptr, "max visible samples spin box exists");
+    require(followAction->isCheckable(), "follow aircraft action is checkable");
     require(maxVisibleSamplesSpin->minimum() == 1000, "max visible samples lower bound is 1000");
     require(maxVisibleSamplesSpin->maximum() == 1000000, "max visible samples upper bound is 1000000");
     require(!replayAction->isEnabled(), "replay disabled before session load");
@@ -118,6 +121,22 @@ int main(int argc, char** argv)
     require(!replaySlider->isEnabled(), "replay slider disabled before session load");
 
     maxVisibleSamplesSpin->setValue(1000);
+    {
+        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+        require(settings.value(QStringLiteral("maxVisibleSamples")).toInt() == 1000,
+                "max visible sample setting is persisted");
+    }
+
+    followAction->setChecked(true);
+    QCoreApplication::processEvents();
+    {
+        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+        require(settings.value(QStringLiteral("followAircraft")).toBool(),
+                "follow aircraft setting is persisted");
+    }
+    followAction->setChecked(false);
+    QCoreApplication::processEvents();
+
     std::vector<VaporView::Geo::NavSample> manySamples(1100);
     for (int i = 0; i < static_cast<int>(manySamples.size()); ++i)
     {
@@ -216,6 +235,12 @@ int main(int argc, char** argv)
     writeSessionTrack(sessionDir);
     window.loadSessionDirectory(sessionDir.path());
     QCoreApplication::processEvents();
+    {
+        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+        require(settings.value(QStringLiteral("lastSessionDir")).toString()
+                    == QFileInfo(sessionDir.path()).absoluteFilePath(),
+                "programmatic session load persists last session directory");
+    }
     require(label->text().contains(QStringLiteral("Points: 2")), "session load appends track samples");
     require(label->text().contains(QStringLiteral("Source Session")), "session load reports session source");
     require(label->text().contains(QStringLiteral("Camera Track auto")),
@@ -324,6 +349,11 @@ int main(int argc, char** argv)
     replaySpeedCombo->setCurrentText(QStringLiteral("2x"));
     QCoreApplication::processEvents();
     require(replaySpeedCombo->currentText() == QStringLiteral("2x"), "replay speed can be changed");
+    {
+        QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+        require(settings.value(QStringLiteral("replaySpeed")).toDouble() == 2.0,
+                "replay speed setting is persisted");
+    }
 
     replayAction->trigger();
     QCoreApplication::processEvents();

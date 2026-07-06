@@ -78,6 +78,8 @@ These overlays are still fully local. They do not change automatic base-map sele
 
 `最大可见点数` limits how many trajectory samples are rendered at once. The full session sample count is still kept for replay/status, while older rendered segments are hidden when the limit is exceeded. The value is saved as `Map3D/maxVisibleSamples`.
 
+The 3D Map persists its local UI state with `QSettings("VaporView", "Map3D")`: `lastEarthFile`, `lastSessionDir`, `followAircraft`, `maxVisibleSamples`, and `replaySpeed`. These settings only affect the optional 3D Map window and do not alter SkyCore, SkyTui, telemetry, or recorded session files.
+
 ## Session Replay
 
 After loading a session:
