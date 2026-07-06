@@ -331,6 +331,13 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     local_3d_tiles_action_->setStatusTip(local_3d_tiles_action_->toolTip());
     connect(local_3d_tiles_action_, &QAction::triggered, this, &Map3DWindow::loadLocal3DTilesPreview);
 
+    clear_local_3d_tiles_action_ = toolbar->addAction(QStringLiteral("清除 3D Tiles"));
+    clear_local_3d_tiles_action_->setObjectName(QStringLiteral("map3DClearLocal3DTilesAction"));
+    clear_local_3d_tiles_action_->setEnabled(false);
+    clear_local_3d_tiles_action_->setToolTip(QStringLiteral("清除当前本地 3D Tiles 预览叠加层"));
+    clear_local_3d_tiles_action_->setStatusTip(clear_local_3d_tiles_action_->toolTip());
+    connect(clear_local_3d_tiles_action_, &QAction::triggered, this, &Map3DWindow::clearLocal3DTilesPreview);
+
     QAction* reloadBestMapAction = toolbar->addAction(QStringLiteral("重载最佳本地地图"));
     reloadBestMapAction->setObjectName(QStringLiteral("map3DReloadBestMapAction"));
     connect(reloadBestMapAction, &QAction::triggered, this, &Map3DWindow::reloadBestLocalMap);
@@ -642,6 +649,10 @@ void Map3DWindow::loadLocal3DTilesPreview()
 
     if (!loaded)
     {
+        if (clear_local_3d_tiles_action_)
+        {
+            clear_local_3d_tiles_action_->setEnabled(false);
+        }
         statusBar()->showMessage(QStringLiteral("本地 3D Tiles 预览加载失败: %1")
                                      .arg(latest_local_3d_tiles_load_.failureReason.isEmpty()
                                               ? diagnostics.local3DTilesTilesetPath
@@ -650,9 +661,33 @@ void Map3DWindow::loadLocal3DTilesPreview()
         return;
     }
 
+    if (clear_local_3d_tiles_action_)
+    {
+        clear_local_3d_tiles_action_->setEnabled(true);
+    }
     statusBar()->showMessage(QStringLiteral("已加载本地 3D Tiles 预览叠加层: %1")
                                  .arg(diagnostics.local3DTilesTilesetPath),
                              6000);
+}
+
+void Map3DWindow::clearLocal3DTilesPreview()
+{
+    if (view_)
+    {
+        view_->clearLocal3DTilesPreview();
+    }
+    latest_local_3d_tiles_load_ = {};
+    latest_local_3d_tiles_load_.failureReason = QStringLiteral("Local 3D Tiles preview overlay cleared.");
+    if (clear_local_3d_tiles_action_)
+    {
+        clear_local_3d_tiles_action_->setEnabled(false);
+    }
+    if (diagnostics_text_)
+    {
+        diagnostics_text_->setPlainText(diagnosticsText());
+    }
+    updateStatus(nullptr);
+    statusBar()->showMessage(QStringLiteral("已清除本地 3D Tiles 预览叠加层。"), 5000);
 }
 
 void Map3DWindow::reloadBestLocalMap()

@@ -92,6 +92,7 @@ int main(int argc, char** argv)
     QAction* diagnosticsAction = actionByName(window, QStringLiteral("map3DDiagnosticsAction"));
     QAction* localImageryAction = actionByName(window, QStringLiteral("map3DLocalImageryAction"));
     QAction* local3DTilesAction = actionByName(window, QStringLiteral("map3DLocal3DTilesAction"));
+    QAction* clearLocal3DTilesAction = actionByName(window, QStringLiteral("map3DClearLocal3DTilesAction"));
     auto* replaySpeedCombo = window.findChild<QComboBox*>(QStringLiteral("map3DReplaySpeedCombo"));
     auto* replaySlider = window.findChild<QSlider*>(QStringLiteral("map3DReplaySlider"));
     auto* maxVisibleSamplesSpin = window.findChild<QSpinBox*>(QStringLiteral("map3DMaxVisibleSamplesSpin"));
@@ -103,6 +104,7 @@ int main(int argc, char** argv)
     require(localImageryAction->menu() != nullptr, "local imagery action has a menu");
     require(!localImageryAction->isEnabled(), "local imagery action starts disabled without local imagery VRTs");
     require(!local3DTilesAction->isEnabled(), "local 3D Tiles action starts disabled without a valid local tileset");
+    require(!clearLocal3DTilesAction->isEnabled(), "clear local 3D Tiles action starts disabled before preview load");
     require(local3DTilesAction->toolTip().contains(QStringLiteral("地图诊断"))
                 || local3DTilesAction->toolTip().contains(QStringLiteral("3D Tiles")),
             "local 3D Tiles action explains why it is unavailable");
