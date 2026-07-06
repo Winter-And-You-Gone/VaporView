@@ -29,7 +29,7 @@ Directory roles:
 - `osm/`: local OpenStreetMap/Geofabrik extracts and generated `roads.gpkg`,
   `water.gpkg`, `buildings.gpkg`, and `places.gpkg`.
 - `imagery/`: optional local Sentinel-2, Landsat, or OpenAerialMap raster overlays.
-- `tiles3d/`: reserved local 3D Tiles layout for future offline 3D content loading.
+- `tiles3d/`: optional local 3D Tiles layout and preview overlay entry point.
 
 Use `docs/map_data.md` for the full data preparation and verification workflow, and
 `docs/map3d_usage.md` for the 3D Map diagnostics panel.

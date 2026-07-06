@@ -208,4 +208,6 @@ After building a local imagery VRT, use the `本地影像` menu and select the e
 
 The user is responsible for placing Copernicus DEM, SRTM, OSM, Sentinel-2, Landsat, or OpenAerialMap files under `data/maps`. VaporView should not download commercial or restricted data sources.
 
-Optional local 3D Tiles can be placed under `data/maps/tiles3d/local/tileset.json`. The diagnostics panel detects that path and validates the local-only data contract, but the current renderer does not load 3D Tiles yet. A healthy dataset should report `Local 3D Tiles contract: valid`; remote, absolute, missing, or malformed content references are listed in the diagnostics panel.
+Optional local 3D Tiles can be placed under `data/maps/tiles3d/local/tileset.json`. The diagnostics panel detects that path and validates the local-only data contract. A healthy dataset should report `Local 3D Tiles contract: valid`; remote, absolute, missing, or malformed content references are listed in the diagnostics panel.
+
+When the contract is valid, the `本地 3D Tiles` toolbar action attempts to load the tileset as a local OSG overlay. This preview does not replace the active Natural Earth/DEM/OSM base map and does not affect trajectory or aircraft layers. If loading fails, check `Local 3D Tiles preview load` in diagnostics; `osgDB::readNodeFile returned null` usually means the installed OSG/osgEarth runtime lacks plugin support for that dataset.
