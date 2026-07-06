@@ -64,6 +64,28 @@ VaporView::EpsilonData makeSample(double latitudeDeg)
     return sample;
 }
 
+VaporView::TelemetryBasic makeRemoteTelemetry(double latitudeDeg, quint64 hostTimeUs)
+{
+    VaporView::TelemetryBasic telemetry;
+    telemetry.host_time_us = hostTimeUs;
+    telemetry.epsilon_time_us = hostTimeUs - 2000;
+    telemetry.validity_flags = VaporView::BasicHasEpsilonTime |
+                               VaporView::BasicHasPosition |
+                               VaporView::BasicHasGnssQuality |
+                               VaporView::BasicHasAttitude;
+    telemetry.latitude_deg = latitudeDeg;
+    telemetry.longitude_deg = 116.4;
+    telemetry.height_m = 50.0;
+    telemetry.gnss_fix_code = 6;
+    telemetry.gnss_satellites = 14;
+    telemetry.hdop = 0.8f;
+    telemetry.vdop = 1.0f;
+    telemetry.roll_deg = 1.5f;
+    telemetry.pitch_deg = -2.0f;
+    telemetry.yaw_deg = 93.0f;
+    return telemetry;
+}
+
 } // namespace
 
 int main(int argc, char** argv)
@@ -105,6 +127,13 @@ int main(int argc, char** argv)
     require(window.testMap3DFlushTimerActive(),
             "3D map flush timer starts after a valid live sample");
 
+    VaporView::TelemetryBasic remoteTelemetry = makeRemoteTelemetry(39.910001, 2010000);
+    window.testOnRemoteBasicTelemetryUpdatedForMap3D(remoteTelemetry);
+    require(window.testPendingMap3DSampleCount() == 1,
+            "remote sky telemetry forwards one pending 3D map sample");
+    require(window.testLatestPendingMap3DRecordTimestampUs() == 2010000,
+            "remote sky telemetry uses host timestamp for the pending 3D map sample");
+
     VaporView::EpsilonData invalidSample = makeSample(39.900004);
     invalidSample.valid = false;
     window.testMaybeForwardMap3DSampleForMap3D(invalidSample, 1015000);
@@ -116,6 +145,24 @@ int main(int argc, char** argv)
     window.testMaybeForwardMap3DSampleForMap3D(makeSample(39.900005), 1020000);
     require(window.testPendingMap3DSampleCount() == 1,
             "valid live sample queues after invalid sample reset");
+
+    VaporView::TelemetryBasic ecefOnlyRemote = makeRemoteTelemetry(39.920001, 2020000);
+    ecefOnlyRemote.validity_flags = VaporView::BasicHasEpsilonTime |
+                                    VaporView::BasicHasEcef |
+                                    VaporView::BasicHasGnssQuality;
+    ecefOnlyRemote.latitude_deg = 0.0;
+    ecefOnlyRemote.longitude_deg = 0.0;
+    ecefOnlyRemote.height_m = 0.0;
+    ecefOnlyRemote.ecef_x_m = -2170000.0;
+    ecefOnlyRemote.ecef_y_m = 4380000.0;
+    ecefOnlyRemote.ecef_z_m = 4070000.0;
+    invalidSample.valid = false;
+    window.testMaybeForwardMap3DSampleForMap3D(invalidSample, 2015000);
+    window.testOnRemoteBasicTelemetryUpdatedForMap3D(ecefOnlyRemote);
+    require(window.testPendingMap3DSampleCount() == 0,
+            "remote telemetry without BasicHasPosition does not inject a 0/0/0 3D map point");
+    require(!window.testMap3DFlushTimerActive(),
+            "remote telemetry without position leaves the 3D map flush timer stopped");
 
     mapWindow->hide();
     window.testMaybeForwardMap3DSampleForMap3D(makeSample(39.900006), 1025000);

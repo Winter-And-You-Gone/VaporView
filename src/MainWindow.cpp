@@ -19262,7 +19262,10 @@ void MainWindow::onRemoteBasicTelemetryUpdated(const VaporView::TelemetryBasic& 
         }
         remote_last_data_ms_.insert(VaporView::SkyDeviceId::Epsilon, nowMs);
 #ifdef VAPORVIEW_HAS_OSGEARTH
-        maybeForwardMap3DSample(current_epsilon_, telemetry.host_time_us);
+        if (hasFlag(VaporView::BasicHasPosition))
+        {
+            maybeForwardMap3DSample(current_epsilon_, telemetry.host_time_us);
+        }
 #endif
     }
     else
@@ -19460,6 +19463,11 @@ void MainWindow::testMaybeForwardMap3DSampleForMap3D(const VaporView::EpsilonDat
                                                      quint64 recordTimestampUs)
 {
     maybeForwardMap3DSample(epsilonData, recordTimestampUs);
+}
+
+void MainWindow::testOnRemoteBasicTelemetryUpdatedForMap3D(const VaporView::TelemetryBasic& telemetry)
+{
+    onRemoteBasicTelemetryUpdated(telemetry);
 }
 #endif
 #endif

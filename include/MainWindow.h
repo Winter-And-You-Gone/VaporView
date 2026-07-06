@@ -337,6 +337,7 @@ public:
     bool testMap3DFlushTimerActive() const;
     void testMaybeForwardMap3DSampleForMap3D(const VaporView::EpsilonData& epsilonData,
                                              quint64 recordTimestampUs);
+    void testOnRemoteBasicTelemetryUpdatedForMap3D(const VaporView::TelemetryBasic& telemetry);
 #endif
 
 protected:
