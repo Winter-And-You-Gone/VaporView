@@ -257,7 +257,7 @@ int main(int argc, char** argv)
     require(replayStopAction->isEnabled(), "replay stop enabled after session load");
     require(replaySlider->isEnabled(), "replay slider enabled after session load");
     require(replaySlider->maximum() == 50, "replay slider spans session time in milliseconds");
-    require(label->text().contains(QStringLiteral("Replay 2/2")), "session status includes replay position");
+    require(label->text().contains(QStringLiteral("Replay paused 2/2")), "session status includes paused replay position");
     require(label->text().contains(QStringLiteral("t 0.050/0.050 s")), "session status includes replay time progress");
 
     replaySlider->setSliderDown(true);
@@ -266,7 +266,7 @@ int main(int argc, char** argv)
     replaySlider->setSliderDown(false);
     require(label->text().contains(QStringLiteral("Points: 1")), "slider previews replay sample");
     require(label->text().contains(QStringLiteral("Source Replay")), "slider preview reports replay source");
-    require(label->text().contains(QStringLiteral("Replay 1/2")), "slider updates replay position");
+    require(label->text().contains(QStringLiteral("Replay stopped 1/2")), "slider updates replay state and position");
     require(label->text().contains(QStringLiteral("t 0.000/0.050 s")), "slider updates replay elapsed time");
 
     diagnosticsAction->trigger();
@@ -327,6 +327,14 @@ int main(int argc, char** argv)
             "diagnostics include visible and total sample counts");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Source: Replay")),
             "diagnostics include latest track source");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay state: stopped")),
+            "diagnostics include explicit replay state");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay position: 1/2")),
+            "diagnostics include replay position");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay speed:")),
+            "diagnostics include replay speed");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay time: t 0.000/0.050 s")),
+            "diagnostics include replay elapsed time");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Attitude source: none")),
             "diagnostics include attitude source");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Height safety note: height reference unchecked")),
@@ -363,6 +371,10 @@ int main(int argc, char** argv)
     replaySpeedCombo->setCurrentText(QStringLiteral("2x"));
     QCoreApplication::processEvents();
     require(replaySpeedCombo->currentText() == QStringLiteral("2x"), "replay speed can be changed");
+    require(label->text().contains(QStringLiteral("Replay stopped 1/2 2x")),
+            "status refreshes when replay speed changes");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Replay speed: 2x")),
+            "diagnostics refresh when replay speed changes");
     {
         QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
         require(settings.value(QStringLiteral("replaySpeed")).toDouble() == 2.0,
@@ -373,11 +385,13 @@ int main(int argc, char** argv)
     QCoreApplication::processEvents();
     require(replayAction->isChecked(), "replay action toggles into playing state");
     require(replayAction->text() == QStringLiteral("暂停"), "replay action text changes to pause");
+    require(label->text().contains(QStringLiteral("Replay playing 1/2")),
+            "status reports explicit playing replay state");
 
     replayStopAction->trigger();
     QCoreApplication::processEvents();
     require(!replayAction->isChecked(), "stop clears replay playing state");
-    require(label->text().contains(QStringLiteral("Replay 1/2")), "stop rewinds replay to first sample");
+    require(label->text().contains(QStringLiteral("Replay stopped 1/2")), "stop rewinds replay to first sample and reports stopped state");
 
     return 0;
 }

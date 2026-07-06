@@ -222,6 +222,23 @@ QString qualityStatsSummary(const TrajectoryQualityStats& stats)
         .arg(stats.jumpSamples);
 }
 
+QString replayStateLabel(const VaporView::Geo::TrajectoryReplay& replay)
+{
+    if (!replay.hasSamples())
+    {
+        return QStringLiteral("unloaded");
+    }
+    if (replay.isPlaying())
+    {
+        return QStringLiteral("playing");
+    }
+    if (replay.currentIndex() <= 0)
+    {
+        return QStringLiteral("stopped");
+    }
+    return QStringLiteral("paused");
+}
+
 } // namespace
 
 Map3DWindow::Map3DWindow(QWidget* parent)
@@ -971,6 +988,11 @@ void Map3DWindow::onReplaySpeedChanged(int index)
     }
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
     settings.setValue(QStringLiteral("replaySpeed"), replay_.speed());
+    if (diagnostics_text_)
+    {
+        diagnostics_text_->setPlainText(diagnosticsText());
+    }
+    updateStatus(nullptr);
 }
 
 void Map3DWindow::rebuildReplayAt(int index, bool forceStatus)
@@ -1241,6 +1263,15 @@ QString Map3DWindow::diagnosticsText() const
     lines << QStringLiteral("  Jump markers: %1").arg(qualityStats.jumpSamples);
     lines << QStringLiteral("Track data:");
     lines << QStringLiteral("  Source: %1").arg(latest_track_source_.isEmpty() ? QStringLiteral("none") : latest_track_source_);
+    lines << QStringLiteral("  Replay state: %1").arg(replayStateLabel(replay_));
+    if (replay_.hasSamples())
+    {
+        lines << QStringLiteral("  Replay position: %1/%2")
+                     .arg(qMax(0, replay_.currentIndex() + 1))
+                     .arg(replay_.sampleCount());
+        lines << QStringLiteral("  Replay speed: %1x").arg(replay_.speed(), 0, 'g', 3);
+        lines << QStringLiteral("  Replay time: %1").arg(replayTimeLabel());
+    }
     lines << QStringLiteral("  Latest record timestamp us: %1")
                  .arg(latest_track_record_timestamp_us_ > 0 ? QString::number(latest_track_record_timestamp_us_) : QStringLiteral("<none>"));
     lines << QStringLiteral("  Latest device timestamp us: %1")
@@ -1550,12 +1581,12 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
     }
     if (replay_.hasSamples())
     {
-        text += QStringLiteral(" | Replay %1/%2 %3x %4%5")
+        text += QStringLiteral(" | Replay %1 %2/%3 %4x %5")
+                    .arg(replayStateLabel(replay_))
                     .arg(qMax(0, replay_.currentIndex() + 1))
                     .arg(replay_.sampleCount())
                     .arg(replay_.speed(), 0, 'g', 3)
-                    .arg(replayTimeLabel())
-                    .arg(replay_.isPlaying() ? QStringLiteral(" playing") : QStringLiteral(""));
+                    .arg(replayTimeLabel());
     }
     status_label_->setText(text);
 }
