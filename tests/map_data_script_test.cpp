@@ -144,6 +144,9 @@ int main()
     const QString demScript = sourceRoot.filePath(QStringLiteral("scripts/prepare-demo-dem.py"));
     const QString imageryScript = sourceRoot.filePath(QStringLiteral("scripts/prepare-local-imagery.py"));
     const QString mapsReadme = sourceRoot.filePath(QStringLiteral("data/maps/README.md"));
+    const QString defaultEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_default.earth"));
+    const QString demEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_with_dem.earth"));
+    const QString srtmEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_with_srtm.earth"));
     const QString fullLocalEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_full_local.earth"));
     const QString fullLocalSrtmEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_full_local_srtm.earth"));
     const QString sentinel2ImageryEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_with_sentinel2_imagery.earth"));
@@ -153,6 +156,9 @@ int main()
     require(QFileInfo(demScript).isFile(), QStringLiteral("DEM script exists"));
     require(QFileInfo(imageryScript).isFile(), QStringLiteral("local imagery script exists"));
     require(QFileInfo(mapsReadme).isFile(), QStringLiteral("data/maps README exists"));
+    require(QFileInfo(defaultEarth).isFile(), QStringLiteral("default Natural Earth template exists"));
+    require(QFileInfo(demEarth).isFile(), QStringLiteral("Copernicus DEM earth template exists"));
+    require(QFileInfo(srtmEarth).isFile(), QStringLiteral("SRTM DEM earth template exists"));
     require(QFileInfo(fullLocalEarth).isFile(), QStringLiteral("full local earth template exists"));
     require(QFileInfo(fullLocalSrtmEarth).isFile(), QStringLiteral("SRTM full local earth template exists"));
     require(QFileInfo(sentinel2ImageryEarth).isFile(), QStringLiteral("Sentinel-2 imagery earth template exists"));
@@ -160,8 +166,15 @@ int main()
     require(QFileInfo(openAerialMapImageryEarth).isFile(), QStringLiteral("OpenAerialMap imagery earth template exists"));
 
     const QStringList forbiddenOnlineSources = {QStringLiteral("cesium"),
+                                                QStringLiteral("cesium ion"),
                                                 QStringLiteral("google"),
+                                                QStringLiteral("bing"),
+                                                QStringLiteral("gaode"),
+                                                QStringLiteral("amap"),
+                                                QStringLiteral("baidu"),
+                                                QStringLiteral("tencent"),
                                                 QStringLiteral("mapbox"),
+                                                QStringLiteral("arcgis"),
                                                 QStringLiteral("arcgisonline"),
                                                 QStringLiteral("tianditu"),
                                                 QStringLiteral("http://"),
@@ -180,6 +193,22 @@ int main()
     {
         require(!mapsReadmeText.toLower().contains(forbidden),
                 QStringLiteral("data/maps README does not reference forbidden online source %1").arg(forbidden));
+    }
+
+    const QStringList earthFiles = QDir(sourceRoot.filePath(QStringLiteral("data/maps")))
+                                       .entryList({QStringLiteral("*.earth")}, QDir::Files, QDir::Name);
+    require(!earthFiles.isEmpty(), QStringLiteral("data/maps contains default earth templates"));
+    for (const QString& earthFileName : earthFiles)
+    {
+        const QString earthText = readTextFile(sourceRoot.filePath(QStringLiteral("data/maps/%1").arg(earthFileName)));
+        require(earthText.contains(QStringLiteral("<map")),
+                QStringLiteral("%1 is an osgEarth map template").arg(earthFileName));
+        for (const QString& forbidden : forbiddenOnlineSources)
+        {
+            require(!earthText.toLower().contains(forbidden),
+                    QStringLiteral("%1 does not reference forbidden online source %2")
+                        .arg(earthFileName, forbidden));
+        }
     }
 
     const QString fullLocalEarthText = readTextFile(fullLocalEarth);
