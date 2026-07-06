@@ -192,10 +192,18 @@ python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --o
 Optional local imagery:
 
 ```powershell
-gdalbuildvrt data/maps/imagery/sentinel2/sentinel2.vrt data/maps/imagery/sentinel2/*.tif
+python scripts/prepare-local-imagery.py sentinel2
+python scripts/prepare-local-imagery.py landsat
+python scripts/prepare-local-imagery.py openaerialmap
 ```
 
-After building a local imagery VRT, use `加载 Earth 文件` and select the matching `vaporview_with_*_imagery.earth` template from `data/maps`.
+For imagery staged outside `data/maps/imagery/<slot>/`, pass the external tile folder while still writing the VRT to the auto-detect project path:
+
+```powershell
+python scripts/prepare-local-imagery.py sentinel2 --imagery-dir X:\Imagery\sentinel2_tiles
+```
+
+After building a local imagery VRT, use the `本地影像` menu and select the enabled matching overlay.
 
 The user is responsible for placing Copernicus DEM, SRTM, OSM, Sentinel-2, Landsat, or OpenAerialMap files under `data/maps`. VaporView should not download commercial or restricted data sources.
 

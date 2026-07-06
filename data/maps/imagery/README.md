@@ -21,4 +21,14 @@ data/maps/vaporview_with_openaerialmap_imagery.earth
 
 Each template keeps Natural Earth as the offline global background and adds exactly one local imagery VRT overlay. `MapDataManager` scans these VRT paths and shows them in diagnostics, but optional imagery does not change the automatic base map selection order.
 
+Prepare VRT files from local GeoTIFFs with:
+
+```powershell
+python scripts/prepare-local-imagery.py sentinel2
+python scripts/prepare-local-imagery.py landsat
+python scripts/prepare-local-imagery.py openaerialmap
+```
+
+Use `--imagery-dir` when the source GeoTIFFs live outside `data/maps/imagery/<slot>/`. The helper still writes the VRT to the canonical project path so the 3D Map `本地影像` menu can auto-detect it.
+
 Large GeoTIFF/VRT imagery and archives are intentionally ignored by git.

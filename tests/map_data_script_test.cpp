@@ -121,6 +121,7 @@ int main()
     const QDir sourceRoot(QString::fromLocal8Bit(VAPORVIEW_SOURCE_DIR));
     const QString osmScript = sourceRoot.filePath(QStringLiteral("scripts/prepare-osm-local-data.py"));
     const QString demScript = sourceRoot.filePath(QStringLiteral("scripts/prepare-demo-dem.py"));
+    const QString imageryScript = sourceRoot.filePath(QStringLiteral("scripts/prepare-local-imagery.py"));
     const QString mapsReadme = sourceRoot.filePath(QStringLiteral("data/maps/README.md"));
     const QString fullLocalEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_full_local.earth"));
     const QString fullLocalSrtmEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_full_local_srtm.earth"));
@@ -129,6 +130,7 @@ int main()
     const QString openAerialMapImageryEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_with_openaerialmap_imagery.earth"));
     require(QFileInfo(osmScript).isFile(), QStringLiteral("OSM script exists"));
     require(QFileInfo(demScript).isFile(), QStringLiteral("DEM script exists"));
+    require(QFileInfo(imageryScript).isFile(), QStringLiteral("local imagery script exists"));
     require(QFileInfo(mapsReadme).isFile(), QStringLiteral("data/maps README exists"));
     require(QFileInfo(fullLocalEarth).isFile(), QStringLiteral("full local earth template exists"));
     require(QFileInfo(fullLocalSrtmEarth).isFile(), QStringLiteral("SRTM full local earth template exists"));
@@ -248,6 +250,22 @@ int main()
                 && demHelp.standardOutput.contains(QStringLiteral("OSGeo4W")),
             QStringLiteral("prepare-demo-dem.py --help explains external tile directory and canonical VRT output"));
 
+    const ProcessResult imageryHelp = runProcess(python, {imageryScript, QStringLiteral("--help")});
+    require(imageryHelp.started,
+            QStringLiteral("prepare-local-imagery.py --help starts: %1").arg(imageryHelp.standardError));
+    require(!imageryHelp.timedOut, QStringLiteral("prepare-local-imagery.py --help does not time out"));
+    require(imageryHelp.exitCode == 0,
+            QStringLiteral("prepare-local-imagery.py --help exits 0, stderr=%1").arg(imageryHelp.standardError));
+    require(imageryHelp.standardOutput.contains(QStringLiteral("sentinel2"))
+                && imageryHelp.standardOutput.contains(QStringLiteral("landsat"))
+                && imageryHelp.standardOutput.contains(QStringLiteral("openaerialmap"))
+                && imageryHelp.standardOutput.contains(QStringLiteral("--imagery-dir"))
+                && imageryHelp.standardOutput.contains(QStringLiteral("--gdal-bin"))
+                && imageryHelp.standardOutput.contains(QStringLiteral("MapDataManager"))
+                && imageryHelp.standardOutput.contains(QStringLiteral("toolbar menu"))
+                && imageryHelp.standardOutput.contains(QStringLiteral("does not download")),
+            QStringLiteral("prepare-local-imagery.py --help describes local imagery VRT preparation"));
+
     QTemporaryDir fakeProject;
     require(fakeProject.isValid(), QStringLiteral("temporary fake project root is valid"));
     const QDir fakeRoot(fakeProject.path());
@@ -299,6 +317,67 @@ int main()
             QStringLiteral("prepare-demo-dem.py --dem-dir uses the external tile directory before checking GDAL"));
     require(customDemMissingGdal.standardError.contains(QStringLiteral("--gdal-bin")),
             QStringLiteral("prepare-demo-dem.py --dem-dir missing GDAL hint mentions explicit tool directory"));
+
+    QTemporaryDir fakeImageryProject;
+    require(fakeImageryProject.isValid(), QStringLiteral("temporary fake imagery project root is valid"));
+    const QDir fakeImageryRoot(fakeImageryProject.path());
+    writeDummyFile(fakeImageryRoot.filePath(QStringLiteral("data/maps/imagery/sentinel2/dummy.tif")),
+                   QByteArrayLiteral("not a real geotiff"));
+    writeDummyFile(fakeImageryRoot.filePath(QStringLiteral("data/maps/vaporview_with_sentinel2_imagery.earth")),
+                   QByteArrayLiteral("imagery/sentinel2/sentinel2.vrt"));
+    const ProcessResult imageryMissingGdal =
+        runProcess(python,
+                   {imageryScript,
+                    QStringLiteral("sentinel2"),
+                    QStringLiteral("--project-root"),
+                    fakeImageryRoot.absolutePath(),
+                    QStringLiteral("--check")},
+                   environmentWithoutGdalTools());
+    require(imageryMissingGdal.started,
+            QStringLiteral("prepare-local-imagery.py --check starts: %1").arg(imageryMissingGdal.standardError));
+    require(!imageryMissingGdal.timedOut,
+            QStringLiteral("prepare-local-imagery.py --check does not time out"));
+    require(imageryMissingGdal.exitCode == 2,
+            QStringLiteral("prepare-local-imagery.py --check exits 2 when GDAL is missing, stdout=%1 stderr=%2")
+                .arg(imageryMissingGdal.standardOutput, imageryMissingGdal.standardError));
+    require(imageryMissingGdal.standardError.contains(QStringLiteral("gdalbuildvrt was not found")),
+            QStringLiteral("prepare-local-imagery.py reports missing gdalbuildvrt clearly"));
+    require(imageryMissingGdal.standardError.contains(QStringLiteral("set GDAL_BIN"))
+                && imageryMissingGdal.standardError.contains(QStringLiteral("--gdal-bin"))
+                && imageryMissingGdal.standardError.contains(QStringLiteral("Searched:")),
+            QStringLiteral("prepare-local-imagery.py reports GDAL tool search hints"));
+
+    QTemporaryDir customImageryProject;
+    require(customImageryProject.isValid(), QStringLiteral("temporary custom imagery project root is valid"));
+    const QDir customImageryRoot(customImageryProject.path());
+    const QString customImageryDir = customImageryRoot.filePath(QStringLiteral("external_imagery_tiles"));
+    writeDummyFile(QDir(customImageryDir).filePath(QStringLiteral("custom_tile.tif")),
+                   QByteArrayLiteral("not a real geotiff"));
+    writeDummyFile(customImageryRoot.filePath(QStringLiteral("data/maps/vaporview_with_landsat_imagery.earth")),
+                   QByteArrayLiteral("imagery/landsat/landsat.vrt"));
+    const ProcessResult customImageryMissingGdal =
+        runProcess(python,
+                   {imageryScript,
+                    QStringLiteral("landsat"),
+                    QStringLiteral("--project-root"),
+                    customImageryRoot.absolutePath(),
+                    QStringLiteral("--imagery-dir"),
+                    customImageryDir,
+                    QStringLiteral("--check")},
+                   environmentWithoutGdalTools());
+    require(customImageryMissingGdal.started,
+            QStringLiteral("prepare-local-imagery.py --imagery-dir --check starts: %1")
+                .arg(customImageryMissingGdal.standardError));
+    require(!customImageryMissingGdal.timedOut,
+            QStringLiteral("prepare-local-imagery.py --imagery-dir --check does not time out"));
+    require(customImageryMissingGdal.exitCode == 2,
+            QStringLiteral("prepare-local-imagery.py --imagery-dir --check exits 2 without GDAL, stdout=%1 stderr=%2")
+                .arg(customImageryMissingGdal.standardOutput, customImageryMissingGdal.standardError));
+    require(customImageryMissingGdal.standardError.contains(QStringLiteral("gdalbuildvrt was not found"))
+                && !customImageryMissingGdal.standardError.contains(QStringLiteral("no GeoTIFF imagery tiles found")),
+            QStringLiteral("prepare-local-imagery.py --imagery-dir uses the external tile directory before checking GDAL"));
+    require(customImageryMissingGdal.standardError.contains(QStringLiteral("--gdal-bin")),
+            QStringLiteral("prepare-local-imagery.py --imagery-dir missing GDAL hint mentions explicit tool directory"));
 
     QTemporaryDir fakeOsmProject;
     require(fakeOsmProject.isValid(), QStringLiteral("temporary fake OSM project root is valid"));

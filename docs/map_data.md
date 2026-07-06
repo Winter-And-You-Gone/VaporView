@@ -173,13 +173,33 @@ data/maps/vaporview_with_landsat_imagery.earth
 data/maps/vaporview_with_openaerialmap_imagery.earth
 ```
 
-Build each VRT from local GeoTIFF files with GDAL, for example:
+Build each VRT from local GeoTIFF files with the repository helper:
 
 ```powershell
-gdalbuildvrt data/maps/imagery/sentinel2/sentinel2.vrt data/maps/imagery/sentinel2/*.tif
+python scripts/prepare-local-imagery.py sentinel2
+python scripts/prepare-local-imagery.py landsat
+python scripts/prepare-local-imagery.py openaerialmap
 ```
 
-`MapDataManager` scans these VRTs and shows them in the 3D Map diagnostics. Optional imagery does not change the automatic base map mode. After preparing a VRT, use the 3D Map toolbar `加载 Earth 文件` action and select the matching imagery `.earth` template manually. The templates keep Natural Earth as the offline global background and add one local imagery overlay.
+If the GeoTIFF files are staged outside the canonical project directory, pass that input directory explicitly. The generated VRT is still written to the canonical `data/maps/imagery/<slot>/<slot>.vrt` path so `MapDataManager` and the 3D Map `本地影像` toolbar menu can auto-detect it:
+
+```powershell
+python scripts/prepare-local-imagery.py sentinel2 --imagery-dir X:\Imagery\sentinel2_tiles
+python scripts/prepare-local-imagery.py landsat --imagery-dir X:\Imagery\landsat_tiles
+python scripts/prepare-local-imagery.py openaerialmap --imagery-dir X:\Imagery\openaerialmap_tiles
+```
+
+Use `--check` to validate local imagery inputs, GDAL availability, the generated VRT, and the matching `.earth` template without rebuilding:
+
+```powershell
+python scripts/prepare-local-imagery.py sentinel2 --check
+python scripts/prepare-local-imagery.py landsat --check
+python scripts/prepare-local-imagery.py openaerialmap --check
+```
+
+The helper only reads local GeoTIFF files. It does not download imagery and does not contact online map services. It searches for GDAL command-line tools in the same locations as the DEM and OSM helpers, including `PATH`, `GDAL_BIN`, the project-local `.local_deps/vcpkg_installed/x64-windows/tools/gdal` and `bin` folders, and common Windows OSGeo4W/QGIS install folders. If your GDAL tools are elsewhere, pass `--gdal-bin C:\path\to\gdal\bin`.
+
+`MapDataManager` scans these VRTs and shows them in the 3D Map diagnostics. Optional imagery does not change the automatic base map mode. After preparing a VRT, use the 3D Map toolbar `本地影像` menu to load the matching imagery `.earth` template. The templates keep Natural Earth as the offline global background and add one local imagery overlay.
 
 ## Optional Local 3D Tiles
 
@@ -220,12 +240,12 @@ For SRTM fallback validation, place SRTM GeoTIFF tiles in `data/maps/terrain/srt
 ## Optional Imagery And 3D Tiles Diagnostics Flow
 
 1. Place local GeoTIFF imagery under one of `data/maps/imagery/sentinel2/`, `data/maps/imagery/landsat/`, or `data/maps/imagery/openaerialmap/`.
-2. Build the matching VRT with `gdalbuildvrt`.
+2. Build the matching VRT with `python scripts/prepare-local-imagery.py sentinel2`, `landsat`, or `openaerialmap`.
 3. Optionally place a local 3D Tiles dataset under `data/maps/tiles3d/local/` with `tileset.json` at the root.
 4. Build and start VaporView with `-DVAPORVIEW_ENABLE_OSGEARTH=ON`.
 5. Open the 3D Map window and click `地图诊断`.
 6. Confirm optional local imagery and optional local 3D Tiles availability are reported. These optional files should not change the selected base map mode.
-7. To view local imagery, click `加载 Earth 文件` and select `vaporview_with_sentinel2_imagery.earth`, `vaporview_with_landsat_imagery.earth`, or `vaporview_with_openaerialmap_imagery.earth`.
+7. To view local imagery, click `本地影像` and select the enabled Sentinel-2, Landsat, or OpenAerialMap entry.
 
 ## Git Tracking
 
