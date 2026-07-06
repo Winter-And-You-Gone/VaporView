@@ -95,6 +95,8 @@ int main(int argc, char** argv)
     QAction* localImageryAction = actionByName(window, QStringLiteral("map3DLocalImageryAction"));
     QAction* local3DTilesAction = actionByName(window, QStringLiteral("map3DLocal3DTilesAction"));
     QAction* clearLocal3DTilesAction = actionByName(window, QStringLiteral("map3DClearLocal3DTilesAction"));
+    QAction* loadAircraftModelAction = actionByName(window, QStringLiteral("map3DLoadAircraftModelAction"));
+    QAction* resetAircraftModelAction = actionByName(window, QStringLiteral("map3DResetAircraftModelAction"));
     auto* replaySpeedCombo = window.findChild<QComboBox*>(QStringLiteral("map3DReplaySpeedCombo"));
     auto* replaySlider = window.findChild<QSlider*>(QStringLiteral("map3DReplaySlider"));
     auto* maxVisibleSamplesSpin = window.findChild<QSpinBox*>(QStringLiteral("map3DMaxVisibleSamplesSpin"));
@@ -107,6 +109,12 @@ int main(int argc, char** argv)
     require(!localImageryAction->isEnabled(), "local imagery action starts disabled without local imagery VRTs");
     require(!local3DTilesAction->isEnabled(), "local 3D Tiles action starts disabled without a valid local tileset");
     require(!clearLocal3DTilesAction->isEnabled(), "clear local 3D Tiles action starts disabled before preview load");
+    require(loadAircraftModelAction->isEnabled(), "load aircraft model action exists");
+    require(resetAircraftModelAction->isEnabled(), "reset aircraft model action exists");
+    require(loadAircraftModelAction->toolTip().contains(QStringLiteral("飞机模型")),
+            "load aircraft model action explains local model selection");
+    require(resetAircraftModelAction->toolTip().contains(QStringLiteral("内置")),
+            "reset aircraft model action explains built-in fallback");
     require(local3DTilesAction->toolTip().contains(QStringLiteral("地图诊断"))
                 || local3DTilesAction->toolTip().contains(QStringLiteral("3D Tiles")),
             "local 3D Tiles action explains why it is unavailable");
@@ -273,6 +281,8 @@ int main(int argc, char** argv)
             "diagnostics include local 3D Tiles preview load section");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Aircraft model:")),
             "diagnostics include aircraft model section");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Requested path: <none>")),
+            "diagnostics report no custom aircraft model in headless smoke test");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Built-in marker: yes")),
             "diagnostics report built-in aircraft marker fallback");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Mode:")),

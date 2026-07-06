@@ -364,6 +364,18 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     clear_local_3d_tiles_action_->setStatusTip(clear_local_3d_tiles_action_->toolTip());
     connect(clear_local_3d_tiles_action_, &QAction::triggered, this, &Map3DWindow::clearLocal3DTilesPreview);
 
+    load_aircraft_model_action_ = toolbar->addAction(QStringLiteral("加载飞机模型"));
+    load_aircraft_model_action_->setObjectName(QStringLiteral("map3DLoadAircraftModelAction"));
+    load_aircraft_model_action_->setToolTip(QStringLiteral("选择本地 .osgb/.osg/.glb/.gltf 飞机模型"));
+    load_aircraft_model_action_->setStatusTip(load_aircraft_model_action_->toolTip());
+    connect(load_aircraft_model_action_, &QAction::triggered, this, &Map3DWindow::openAircraftModel);
+
+    reset_aircraft_model_action_ = toolbar->addAction(QStringLiteral("内置飞机标记"));
+    reset_aircraft_model_action_->setObjectName(QStringLiteral("map3DResetAircraftModelAction"));
+    reset_aircraft_model_action_->setToolTip(QStringLiteral("清除自定义飞机模型设置并恢复内置标记"));
+    reset_aircraft_model_action_->setStatusTip(reset_aircraft_model_action_->toolTip());
+    connect(reset_aircraft_model_action_, &QAction::triggered, this, &Map3DWindow::resetAircraftModel);
+
     QAction* reloadBestMapAction = toolbar->addAction(QStringLiteral("重载最佳本地地图"));
     reloadBestMapAction->setObjectName(QStringLiteral("map3DReloadBestMapAction"));
     connect(reloadBestMapAction, &QAction::triggered, this, &Map3DWindow::reloadBestLocalMap);
@@ -396,6 +408,18 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     else
     {
         loadInitialEarthFile();
+        const QString aircraftModelPath =
+            QSettings(QStringLiteral("VaporView"), QStringLiteral("Map3D"))
+                .value(QStringLiteral("aircraftModelPath"))
+                .toString();
+        if (!aircraftModelPath.isEmpty() && view_)
+        {
+            const bool loaded = view_->loadAircraftModel(aircraftModelPath);
+            statusBar()->showMessage(loaded
+                                         ? QStringLiteral("已加载飞机模型: %1").arg(aircraftModelPath)
+                                         : QStringLiteral("飞机模型加载失败，已保留内置标记: %1").arg(aircraftModelPath),
+                                     7000);
+        }
     }
 }
 
@@ -717,6 +741,54 @@ void Map3DWindow::clearLocal3DTilesPreview()
     }
     updateStatus(nullptr);
     statusBar()->showMessage(QStringLiteral("已清除本地 3D Tiles 预览叠加层。"), 5000);
+}
+
+void Map3DWindow::openAircraftModel()
+{
+    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    const QString initial = settings.value(QStringLiteral("aircraftModelPath")).toString();
+    const QString file = QFileDialog::getOpenFileName(this,
+                                                      QStringLiteral("加载飞机模型"),
+                                                      initial,
+                                                      QStringLiteral("3D Models (*.osgb *.osg *.glb *.gltf);;All Files (*)"));
+    if (file.isEmpty())
+    {
+        return;
+    }
+
+    settings.setValue(QStringLiteral("aircraftModelPath"), file);
+    const bool loaded = view_ ? view_->loadAircraftModel(file) : false;
+    if (diagnostics_text_)
+    {
+        diagnostics_text_->setPlainText(diagnosticsText());
+    }
+    updateStatus(nullptr);
+
+    if (!loaded && view_)
+    {
+        QMessageBox::warning(this,
+                             QStringLiteral("飞机模型"),
+                             QStringLiteral("无法加载飞机模型，已保留内置标记: %1").arg(file));
+        return;
+    }
+
+    statusBar()->showMessage(QStringLiteral("已加载飞机模型: %1").arg(file), 6000);
+}
+
+void Map3DWindow::resetAircraftModel()
+{
+    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    settings.remove(QStringLiteral("aircraftModelPath"));
+    if (view_)
+    {
+        view_->resetAircraftModelToBuiltIn();
+    }
+    if (diagnostics_text_)
+    {
+        diagnostics_text_->setPlainText(diagnosticsText());
+    }
+    updateStatus(nullptr);
+    statusBar()->showMessage(QStringLiteral("已恢复内置飞机标记。"), 5000);
 }
 
 void Map3DWindow::reloadBestLocalMap()

@@ -43,6 +43,10 @@ Replay slider
 最大可见点数
 加载 Earth 文件
 本地影像
+本地 3D Tiles
+清除 3D Tiles
+加载飞机模型
+内置飞机标记
 重载最佳本地地图
 飞到飞机
 飞到轨迹
@@ -54,7 +58,7 @@ Replay slider
 The reader supports both newer `nav_*`/`epsilon_*` columns and older RTK/IMU session columns such as `rtk_lat`, `rtk_lon`, `rtk_alt`, `rtk_fix`, `rtk_sat`, `rtk_heading`, `rtk_pitch`, `rtk_vel_*`, and `imu_roll`/`imu_yaw`.
 When quaternion columns (`quat_w`, `quat_x`, `quat_y`, `quat_z`, including `epsilon_quat_*` aliases) are available, the aircraft marker and follow camera use them for attitude/heading before falling back to roll/pitch/yaw.
 
-By default the aircraft is a built-in OSG marker, so the 3D Map works without extra assets. To use a local model, place one of these files under `data/maps/models/aircraft/`: `vaporview_aircraft.osgb`, `vaporview_aircraft.osg`, `vaporview_aircraft.glb`, or `vaporview_aircraft.gltf`. The diagnostics panel reports whether the model loaded; if OSG cannot read it, VaporView keeps the built-in marker and continues rendering the flight path.
+By default the aircraft is a built-in OSG marker, so the 3D Map works without extra assets. `加载飞机模型` lets you choose any local `.osgb`, `.osg`, `.glb`, or `.gltf` model path; the selection is saved as `Map3D/aircraftModelPath`. `内置飞机标记` clears that setting and returns to the built-in marker. You can also keep an automatic default model under `data/maps/models/aircraft/` as `vaporview_aircraft.osgb`, `vaporview_aircraft.osg`, `vaporview_aircraft.glb`, or `vaporview_aircraft.gltf`. The diagnostics panel reports whether the model loaded; if OSG cannot read it, VaporView keeps the built-in marker and continues rendering the flight path.
 
 `加载 Earth 文件` opens a custom `.earth` file. Keep relative paths in that file aligned with its location.
 
@@ -80,7 +84,7 @@ These overlays are still fully local. They do not change automatic base-map sele
 
 `最大可见点数` limits how many trajectory samples are rendered at once. The full session sample count is still kept for replay/status, while older rendered segments are hidden when the limit is exceeded. The value is saved as `Map3D/maxVisibleSamples`.
 
-The 3D Map persists its local UI state with `QSettings("VaporView", "Map3D")`: `lastEarthFile`, `lastSessionDir`, `followAircraft`, `maxVisibleSamples`, and `replaySpeed`. These settings only affect the optional 3D Map window and do not alter SkyCore, SkyTui, telemetry, or recorded session files.
+The 3D Map persists its local UI state with `QSettings("VaporView", "Map3D")`: `lastEarthFile`, `lastSessionDir`, `followAircraft`, `maxVisibleSamples`, `replaySpeed`, and `aircraftModelPath`. These settings only affect the optional 3D Map window and do not alter SkyCore, SkyTui, telemetry, or recorded session files.
 
 ## Session Replay
 

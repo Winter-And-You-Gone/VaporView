@@ -588,6 +588,26 @@ AircraftModelDiagnostics OsgEarthViewWidget::aircraftModelDiagnostics() const
     return aircraft_model_diagnostics_;
 }
 
+bool OsgEarthViewWidget::loadAircraftModel(const QString& modelPath)
+{
+    initializeSceneIfNeeded();
+    return loadAircraftModelFile(modelPath, QStringLiteral("User-selected aircraft model"));
+}
+
+void OsgEarthViewWidget::resetAircraftModelToBuiltIn()
+{
+    initializeSceneIfNeeded();
+    aircraft_model_diagnostics_ = {};
+    aircraft_model_diagnostics_.usingBuiltInMarker = true;
+    aircraft_model_diagnostics_.failureReason =
+        QStringLiteral("User reset aircraft model; using built-in marker.");
+    if (aircraft_layer_)
+    {
+        aircraft_layer_->clearCustomModel();
+    }
+    update();
+}
+
 void OsgEarthViewWidget::setFollowAircraft(bool enabled)
 {
     follow_aircraft_ = enabled;
@@ -840,32 +860,60 @@ void OsgEarthViewWidget::initializeSceneIfNeeded()
 
 void OsgEarthViewWidget::loadDefaultAircraftModelIfAvailable()
 {
-    aircraft_model_diagnostics_ = {};
-    aircraft_model_diagnostics_.usingBuiltInMarker = true;
-
     const QString modelPath = firstExistingFile(runtimeRootCandidates(),
                                                 {QStringLiteral("data/maps/models/aircraft/vaporview_aircraft.osgb"),
                                                  QStringLiteral("data/maps/models/aircraft/vaporview_aircraft.osg"),
                                                  QStringLiteral("data/maps/models/aircraft/vaporview_aircraft.glb"),
                                                  QStringLiteral("data/maps/models/aircraft/vaporview_aircraft.gltf")});
-    if (modelPath.isEmpty())
+    loadAircraftModelFile(modelPath, QStringLiteral("Default aircraft model"));
+}
+
+bool OsgEarthViewWidget::loadAircraftModelFile(const QString& modelPath, const QString& fallbackReasonPrefix)
+{
+    aircraft_model_diagnostics_ = {};
+    aircraft_model_diagnostics_.usingBuiltInMarker = true;
+    aircraft_model_diagnostics_.requestedPath = modelPath;
+
+    if (!aircraft_layer_)
     {
         aircraft_model_diagnostics_.failureReason =
-            QStringLiteral("No local aircraft model found; using built-in marker.");
+            QStringLiteral("%1 could not be applied before the aircraft layer was initialized; using built-in marker.")
+                .arg(fallbackReasonPrefix);
+        return false;
+    }
+
+    const QString trimmedPath = modelPath.trimmed();
+    if (trimmedPath.isEmpty())
+    {
+        aircraft_model_diagnostics_.failureReason =
+            QStringLiteral("%1 not configured; using built-in marker.").arg(fallbackReasonPrefix);
         aircraft_layer_->clearCustomModel();
-        return;
+        update();
+        return false;
+    }
+
+    const QFileInfo modelInfo(trimmedPath);
+    if (!modelInfo.isFile())
+    {
+        aircraft_model_diagnostics_.failureReason =
+            QStringLiteral("%1 file does not exist; using built-in marker.").arg(fallbackReasonPrefix);
+        aircraft_layer_->clearCustomModel();
+        update();
+        return false;
     }
 
     aircraft_model_diagnostics_.attempted = true;
-    aircraft_model_diagnostics_.requestedPath = modelPath;
+    aircraft_model_diagnostics_.requestedPath = modelInfo.absoluteFilePath();
 
-    osg::ref_ptr<osg::Node> modelNode = osgDB::readNodeFile(modelPath.toStdString());
+    osg::ref_ptr<osg::Node> modelNode = osgDB::readNodeFile(modelInfo.absoluteFilePath().toStdString());
     if (!modelNode)
     {
         aircraft_model_diagnostics_.failureReason =
-            QStringLiteral("osgDB::readNodeFile returned null; using built-in marker.");
+            QStringLiteral("%1 could not be read by osgDB::readNodeFile; using built-in marker.")
+                .arg(fallbackReasonPrefix);
         aircraft_layer_->clearCustomModel();
-        return;
+        update();
+        return false;
     }
 
     osgUtil::Optimizer optimizer;
@@ -877,6 +925,8 @@ void OsgEarthViewWidget::loadDefaultAircraftModelIfAvailable()
         QStringLiteral("%1 children, bound radius %2")
             .arg(modelNode->asGroup() ? modelNode->asGroup()->getNumChildren() : 0)
             .arg(modelNode->getBound().radius(), 0, 'f', 2);
+    update();
+    return true;
 }
 
 void OsgEarthViewWidget::updateCameraViewport(int w, int h)

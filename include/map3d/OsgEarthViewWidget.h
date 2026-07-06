@@ -84,6 +84,8 @@ public:
     bool loadEarthFile(const QString& earthPath);
     bool loadLocal3DTilesPreview(const QString& tilesetPath);
     void clearLocal3DTilesPreview();
+    bool loadAircraftModel(const QString& modelPath);
+    void resetAircraftModelToBuiltIn();
     void setFollowAircraft(bool enabled);
     void setMaxVisibleSamples(int maxVisibleSamples);
     bool flyToAircraft();
@@ -114,6 +116,7 @@ private:
     void initializeSceneIfNeeded();
     void updateCameraViewport(int w, int h);
     void loadDefaultAircraftModelIfAvailable();
+    bool loadAircraftModelFile(const QString& modelPath, const QString& fallbackReasonPrefix);
     void updateFollowCamera(const VaporView::Geo::NavSample& sample);
     void setInitialEarthView();
     void rebuildDisplayTrack();

@@ -46,6 +46,8 @@ private:
     void loadLocalImageryTemplate(const VaporView::Map3D::LocalImageryOption& option);
     void loadLocal3DTilesPreview();
     void clearLocal3DTilesPreview();
+    void openAircraftModel();
+    void resetAircraftModel();
     void reloadBestLocalMap();
     void flyToAircraft();
     void flyToTrack();
@@ -84,6 +86,8 @@ private:
     QAction* local_imagery_action_ = nullptr;
     QAction* local_3d_tiles_action_ = nullptr;
     QAction* clear_local_3d_tiles_action_ = nullptr;
+    QAction* load_aircraft_model_action_ = nullptr;
+    QAction* reset_aircraft_model_action_ = nullptr;
     QMenu* local_imagery_menu_ = nullptr;
     QAction* replay_action_ = nullptr;
     QAction* replay_stop_action_ = nullptr;
