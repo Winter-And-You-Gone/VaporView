@@ -332,11 +332,13 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
     recordTrackSource(QStringLiteral("Session"),
                       replay_.currentSample(),
                       result.sourceCsvPath);
+    const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
     updateReplayUi();
     updateStatus(replay_.currentSample());
-    statusBar()->showMessage(QStringLiteral("Loaded %1 samples from %2")
+    statusBar()->showMessage(QStringLiteral("Loaded %1 samples from %2%3")
                                  .arg(result.samples.size())
-                                 .arg(result.sourceCsvPath),
+                                 .arg(result.sourceCsvPath,
+                                      focusedTrack ? QStringLiteral(" (auto-focused track)") : QString()),
                              5000);
 }
 
@@ -434,8 +436,12 @@ void Map3DWindow::openEarthFile()
     selection.diagnostics.earthFilePath = file;
     selection.diagnostics.messages.push_back(QStringLiteral("Loaded user-selected earth file."));
     setMapSelection(selection);
+    const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
     updateStatus(nullptr);
-    statusBar()->showMessage(QStringLiteral("Loaded earth file: %1").arg(file), 5000);
+    statusBar()->showMessage(QStringLiteral("Loaded earth file: %1%2")
+                                 .arg(file,
+                                      focusedTrack ? QStringLiteral(" (auto-focused track)") : QString()),
+                             5000);
 }
 
 void Map3DWindow::reloadBestLocalMap()
@@ -461,13 +467,19 @@ void Map3DWindow::reloadBestLocalMap()
     setMapSelection(selection);
     QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
     settings.setValue(QStringLiteral("lastEarthFile"), selection.earthFile);
+    const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
     updateStatus(nullptr);
-    statusBar()->showMessage(QStringLiteral("已重载最佳本地地图: %1").arg(selection.earthFile), 5000);
+    statusBar()->showMessage(QStringLiteral("已重载最佳本地地图: %1%2")
+                                 .arg(selection.earthFile,
+                                      focusedTrack ? QStringLiteral(" (已自动定位轨迹)") : QString()),
+                             5000);
 }
 
 void Map3DWindow::flyToAircraft()
 {
     const bool ok = view_ ? view_->flyToAircraft() : headless_sample_count_ > 0;
+    setCameraNote(ok ? QStringLiteral("Aircraft") : QStringLiteral("Aircraft unavailable"));
+    updateStatus(nullptr);
     statusBar()->showMessage(ok ? QStringLiteral("已定位到飞机。")
                                 : QStringLiteral("暂无飞机位置可定位。"),
                              3000);
@@ -476,6 +488,8 @@ void Map3DWindow::flyToAircraft()
 void Map3DWindow::flyToTrack()
 {
     const bool ok = view_ ? view_->flyToTrack() : headless_sample_count_ > 0;
+    setCameraNote(ok ? QStringLiteral("Track") : QStringLiteral("Track unavailable"));
+    updateStatus(nullptr);
     statusBar()->showMessage(ok ? QStringLiteral("已定位到完整轨迹。")
                                 : QStringLiteral("暂无轨迹可定位。"),
                              3000);
@@ -487,6 +501,8 @@ void Map3DWindow::resetView()
     {
         view_->resetView();
     }
+    setCameraNote(QStringLiteral("Reset"));
+    updateStatus(nullptr);
     statusBar()->showMessage(QStringLiteral("视角已重置。"), 3000);
 }
 
@@ -662,6 +678,39 @@ void Map3DWindow::setMapSelection(const MapDataSelection& selection)
     }
 }
 
+int Map3DWindow::currentTrackSampleCount() const
+{
+    if (view_)
+    {
+        return view_->sampleCount();
+    }
+    return headless_sample_count_;
+}
+
+bool Map3DWindow::autoFocusTrack(const QString& note)
+{
+    if (currentTrackSampleCount() <= 0)
+    {
+        return false;
+    }
+
+    const bool ok = view_ ? view_->flyToTrack() : true;
+    if (ok)
+    {
+        setCameraNote(note);
+    }
+    return ok;
+}
+
+void Map3DWindow::setCameraNote(const QString& note)
+{
+    latest_camera_note_ = note;
+    if (diagnostics_text_)
+    {
+        diagnostics_text_->setPlainText(diagnosticsText());
+    }
+}
+
 QString Map3DWindow::diagnosticsText() const
 {
     const MapDataDiagnostics& diagnostics = map_selection_.diagnostics;
@@ -689,6 +738,7 @@ QString Map3DWindow::diagnosticsText() const
     lines << QStringLiteral("  Last drop reason: %1").arg(latest_drop_reason_.isEmpty() ? QStringLiteral("<none>") : latest_drop_reason_);
     lines << QStringLiteral("  Last drop record timestamp us: %1")
                  .arg(latest_drop_record_timestamp_us_ > 0 ? QString::number(latest_drop_record_timestamp_us_) : QStringLiteral("<none>"));
+    lines << QStringLiteral("Camera: %1").arg(latest_camera_note_.isEmpty() ? QStringLiteral("<none>") : latest_camera_note_);
     lines << QStringLiteral("Layer summary:");
     lines << QStringLiteral("  Natural Earth: %1").arg(availabilityLabel(diagnostics.naturalEarthAvailable));
     lines << QStringLiteral("  Selected DEM: %1").arg(selectedDemLabel(diagnostics));
@@ -777,6 +827,10 @@ void Map3DWindow::recordTrackSource(const QString& source,
     latest_track_note_ = note;
     latest_track_record_timestamp_us_ = latest ? latest->recordTimestampUs : 0;
     latest_track_device_timestamp_us_ = latest ? latest->deviceTimestampUs : 0;
+    if (!latest)
+    {
+        has_latest_status_sample_ = false;
+    }
     latest_drop_source_.clear();
     latest_drop_reason_.clear();
     latest_drop_record_timestamp_us_ = 0;
@@ -788,11 +842,26 @@ void Map3DWindow::recordTrackSource(const QString& source,
 
 void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest)
 {
+    const VaporView::Geo::NavSample* displayLatest = latest;
+    if (latest)
+    {
+        latest_status_sample_ = *latest;
+        has_latest_status_sample_ = true;
+    }
+    else if (has_latest_status_sample_)
+    {
+        displayLatest = &latest_status_sample_;
+    }
+
     const Map3DPerformanceStats stats = view_ ? view_->performanceStats() : Map3DPerformanceStats{};
     const int totalSamples = view_ ? stats.totalSamples : headless_sample_count_;
     const int visibleSamples = view_ ? stats.visibleSamples : std::min(headless_sample_count_, max_visible_samples_);
     QString text = QStringLiteral("Points: %1/%2").arg(visibleSamples).arg(totalSamples);
     text += QStringLiteral(" | Source %1").arg(latest_track_source_.isEmpty() ? QStringLiteral("none") : latest_track_source_);
+    if (!latest_camera_note_.isEmpty())
+    {
+        text += QStringLiteral(" | Camera %1").arg(latest_camera_note_);
+    }
     if (latest_track_record_timestamp_us_ > 0)
     {
         text += QStringLiteral(" rec %1").arg(latest_track_record_timestamp_us_);
@@ -829,20 +898,20 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest)
                     .arg(stats.frameMs, 0, 'f', 1)
                     .arg(stats.trackUpdateMs, 0, 'f', 1);
     }
-    if (latest && latest->hasLlh())
+    if (displayLatest && displayLatest->hasLlh())
     {
-        const QString satellitesText = latest->satellites > 0
-            ? QString::number(latest->satellites)
+        const QString satellitesText = displayLatest->satellites > 0
+            ? QString::number(displayLatest->satellites)
             : QStringLiteral("--");
-        const QString hdopText = std::isfinite(latest->hdop)
-            ? QString::number(latest->hdop, 'f', 2)
+        const QString hdopText = std::isfinite(displayLatest->hdop)
+            ? QString::number(displayLatest->hdop, 'f', 2)
             : QStringLiteral("--");
         text += QStringLiteral(" | Lat %1 Lon %2 H %3 m %4 | Fix %5 | Sats %6 | HDOP %7")
-                    .arg(latest->latDeg, 0, 'f', 7)
-                    .arg(latest->lonDeg, 0, 'f', 7)
-                    .arg(latest->heightM, 0, 'f', 2)
-                    .arg(heightReferenceLabel(latest->heightReference))
-                    .arg(static_cast<int>(latest->fixQuality))
+                    .arg(displayLatest->latDeg, 0, 'f', 7)
+                    .arg(displayLatest->lonDeg, 0, 'f', 7)
+                    .arg(displayLatest->heightM, 0, 'f', 2)
+                    .arg(heightReferenceLabel(displayLatest->heightReference))
+                    .arg(static_cast<int>(displayLatest->fixQuality))
                     .arg(satellitesText, hdopText);
     }
     if (replay_.hasSamples())

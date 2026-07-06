@@ -82,6 +82,7 @@ After loading a session:
 - The slider seeks through the loaded samples.
 
 Replay is local to the 3D Map window and does not change the recorded session files.
+Loading a session automatically flies the camera to the complete track so the first view is useful without manual searching. Loading or reloading an earth file also re-centers on the current track when track samples are already present.
 
 ## Realtime Track
 

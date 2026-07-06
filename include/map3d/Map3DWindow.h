@@ -54,6 +54,9 @@ private:
     void updateReplayUi();
     void setMapSelection(const MapDataSelection& selection);
     QString diagnosticsText() const;
+    int currentTrackSampleCount() const;
+    bool autoFocusTrack(const QString& note);
+    void setCameraNote(const QString& note);
     void recordTrackSource(const QString& source,
                            const VaporView::Geo::NavSample* latest,
                            const QString& note = {});
@@ -79,8 +82,11 @@ private:
     VaporView::Geo::TrajectoryReplay replay_;
     QString latest_track_source_;
     QString latest_track_note_;
+    QString latest_camera_note_;
     QString latest_drop_source_;
     QString latest_drop_reason_;
+    VaporView::Geo::NavSample latest_status_sample_;
+    bool has_latest_status_sample_ = false;
     qint64 latest_drop_record_timestamp_us_ = 0;
     qint64 latest_track_record_timestamp_us_ = 0;
     qint64 latest_track_device_timestamp_us_ = 0;

@@ -145,6 +145,8 @@ int main(int argc, char** argv)
     QCoreApplication::processEvents();
     require(label->text().contains(QStringLiteral("Points: 2")), "session load appends track samples");
     require(label->text().contains(QStringLiteral("Source Session")), "session load reports session source");
+    require(label->text().contains(QStringLiteral("Camera Track auto")),
+            "session load automatically focuses the complete track");
     require(replayAction->isEnabled(), "replay enabled after session load");
     require(replayStopAction->isEnabled(), "replay stop enabled after session load");
     require(replaySlider->isEnabled(), "replay slider enabled after session load");
@@ -167,6 +169,25 @@ int main(int argc, char** argv)
             "diagnostics include track data section");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Source: Replay")),
             "diagnostics include latest track source");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Camera: Track auto")),
+            "diagnostics include latest automatic camera action");
+
+    flyToAircraftAction->trigger();
+    QCoreApplication::processEvents();
+    require(label->text().contains(QStringLiteral("Camera Aircraft")),
+            "fly to aircraft updates persistent camera status");
+    require(label->text().contains(QStringLiteral("Lat 39.9000000")),
+            "camera action preserves latest sample status details");
+
+    flyToTrackAction->trigger();
+    QCoreApplication::processEvents();
+    require(label->text().contains(QStringLiteral("Camera Track")),
+            "fly to track updates persistent camera status");
+
+    resetViewAction->trigger();
+    QCoreApplication::processEvents();
+    require(label->text().contains(QStringLiteral("Camera Reset")),
+            "reset view updates persistent camera status");
 
     window.noteLiveSampleDrop(QStringLiteral("Live"), QStringLiteral("missing LLH"), 123456);
     QCoreApplication::processEvents();
