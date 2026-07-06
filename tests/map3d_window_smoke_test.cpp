@@ -100,6 +100,14 @@ int main(int argc, char** argv)
     auto* replaySpeedCombo = window.findChild<QComboBox*>(QStringLiteral("map3DReplaySpeedCombo"));
     auto* replaySlider = window.findChild<QSlider*>(QStringLiteral("map3DReplaySlider"));
     auto* maxVisibleSamplesSpin = window.findChild<QSpinBox*>(QStringLiteral("map3DMaxVisibleSamplesSpin"));
+    QWidget* mapView = window.findChild<QWidget*>(QStringLiteral("map3DView"));
+    auto* osgView = window.findChild<VaporView::Map3D::OsgEarthViewWidget*>();
+    require(mapView != nullptr, "embedded map view exists");
+    if (osgView)
+    {
+        require(osgView->focusPolicy() == Qt::StrongFocus,
+                "embedded osgEarth view accepts keyboard focus for native camera navigation");
+    }
     require(reloadBestMapAction->isEnabled(), "reload best local map action exists");
     require(flyToAircraftAction->isEnabled(), "fly to aircraft action exists");
     require(flyToTrackAction->isEnabled(), "fly to track action exists");

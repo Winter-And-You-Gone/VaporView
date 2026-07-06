@@ -31,6 +31,7 @@
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
+#include <QKeyEvent>
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <QElapsedTimer>
@@ -58,6 +59,51 @@ unsigned int toOsgMouseButton(Qt::MouseButton button)
     default:
         return 0;
     }
+}
+
+int toOsgKey(const QKeyEvent* event)
+{
+    if (!event)
+    {
+        return 0;
+    }
+
+    switch (event->key())
+    {
+    case Qt::Key_Left:
+        return osgGA::GUIEventAdapter::KEY_Left;
+    case Qt::Key_Right:
+        return osgGA::GUIEventAdapter::KEY_Right;
+    case Qt::Key_Up:
+        return osgGA::GUIEventAdapter::KEY_Up;
+    case Qt::Key_Down:
+        return osgGA::GUIEventAdapter::KEY_Down;
+    case Qt::Key_PageUp:
+        return osgGA::GUIEventAdapter::KEY_Page_Up;
+    case Qt::Key_PageDown:
+        return osgGA::GUIEventAdapter::KEY_Page_Down;
+    case Qt::Key_Home:
+        return osgGA::GUIEventAdapter::KEY_Home;
+    case Qt::Key_End:
+        return osgGA::GUIEventAdapter::KEY_End;
+    case Qt::Key_Escape:
+        return osgGA::GUIEventAdapter::KEY_Escape;
+    case Qt::Key_Space:
+        return ' ';
+    default:
+        break;
+    }
+
+    const QString text = event->text();
+    if (text.size() == 1)
+    {
+        const QChar character = text.at(0).toLower();
+        if (character.isPrint())
+        {
+            return character.unicode();
+        }
+    }
+    return 0;
 }
 
 QStringList runtimeRootCandidates()
@@ -860,6 +906,34 @@ void OsgEarthViewWidget::wheelEvent(QWheelEvent* event)
         return;
     }
     QOpenGLWidget::wheelEvent(event);
+}
+
+void OsgEarthViewWidget::keyPressEvent(QKeyEvent* event)
+{
+    initializeSceneIfNeeded();
+    const int key = toOsgKey(event);
+    if (graphics_window_ && key != 0)
+    {
+        graphics_window_->getEventQueue()->keyPress(key);
+        update();
+        event->accept();
+        return;
+    }
+    QOpenGLWidget::keyPressEvent(event);
+}
+
+void OsgEarthViewWidget::keyReleaseEvent(QKeyEvent* event)
+{
+    initializeSceneIfNeeded();
+    const int key = toOsgKey(event);
+    if (graphics_window_ && key != 0)
+    {
+        graphics_window_->getEventQueue()->keyRelease(key);
+        update();
+        event->accept();
+        return;
+    }
+    QOpenGLWidget::keyReleaseEvent(event);
 }
 
 void OsgEarthViewWidget::initializeSceneIfNeeded()

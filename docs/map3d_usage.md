@@ -74,6 +74,8 @@ These overlays are still fully local. They do not change automatic base-map sele
 
 `重载最佳本地地图` rescans `data/maps` and loads the best local dataset currently available.
 
+The native OSG view accepts mouse drag, mouse wheel, and keyboard focus. Click the 3D view once, then use the mouse or keyboard navigation keys that the active OSG/osgEarth manipulator supports.
+
 `飞到飞机` moves the camera to the latest aircraft sample.
 
 `飞到轨迹` frames the full loaded/displayed trajectory.
