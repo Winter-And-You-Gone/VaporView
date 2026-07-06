@@ -19447,19 +19447,6 @@ void MainWindow::maybeForwardMap3DSample(const VaporView::EpsilonData& epsilonDa
                             recordTimestampUs);
         return;
     }
-    if (sample.fixQuality == VaporView::Geo::FixQuality::Invalid)
-    {
-        pending_map3d_samples_.clear();
-        if (map3d_flush_timer_)
-        {
-            map3d_flush_timer_->stop();
-        }
-        noteMap3DSampleDrop(QStringLiteral("Live"),
-                            QStringLiteral("invalid fix"),
-                            recordTimestampUs);
-        return;
-    }
-
     last_map3d_drop_reason_.clear();
     if (pending_map3d_samples_.empty())
     {

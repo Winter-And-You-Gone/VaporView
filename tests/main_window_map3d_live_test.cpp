@@ -153,6 +153,23 @@ int main(int argc, char** argv)
     require(mapStatusLabel->text().contains(QStringLiteral("Last drop Live: epsilon invalid")),
             "3D map status reports invalid live sample drop reason");
 
+    VaporView::EpsilonData invalidFixSample = makeSample(39.900005);
+    invalidFixSample.gnss_fix_code = 0;
+    window.testMaybeForwardMap3DSampleForMap3D(invalidFixSample, 1018000);
+    require(window.testPendingMap3DSampleCount() == 1,
+            "live sample with invalid GNSS fix but valid LLH queues for 3D marker display");
+    require(window.testLatestPendingMap3DRecordTimestampUs() == 1018000,
+            "invalid-fix live sample retains its timestamp while queued");
+    require(window.testMap3DFlushTimerActive(),
+            "invalid-fix live sample starts the 3D map flush timer");
+    require(window.testLastMap3DDropReason().isEmpty(),
+            "invalid-fix live sample is not treated as a dropped 3D map sample");
+    processEventsFor(80);
+    require(mapStatusLabel->text().contains(QStringLiteral("Fix Invalid")),
+            "3D map status reports the forwarded invalid GNSS fix");
+    require(mapStatusLabel->text().contains(QStringLiteral("Invalid 1")),
+            "3D map status counts invalid GNSS fixes as marker samples");
+
     window.testMaybeForwardMap3DSampleForMap3D(makeSample(39.900005), 1020000);
     require(window.testPendingMap3DSampleCount() == 1,
             "valid live sample queues after invalid sample reset");
