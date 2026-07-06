@@ -4,6 +4,7 @@
 #include <osg/Geode>
 #include <osg/PrimitiveSet>
 
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <vector>
@@ -80,6 +81,11 @@ int visibleDrawableCount(const osg::Geode& geode)
         }
     }
     return count;
+}
+
+bool nearlyEqual(double lhs, double rhs, double tolerance = 1.0e-9)
+{
+    return std::abs(lhs - rhs) <= tolerance;
 }
 
 } // namespace
@@ -222,6 +228,36 @@ int main()
     const VaporView::Map3D::TrajectoryQualityStats outlierQualityStats = outlierLayer.qualityStats();
     require(outlierQualityStats.jumpSamples == 1, "only the outlier is counted as a jump");
     require(outlierQualityStats.lineSamples == 4, "normal samples after the outlier remain line samples");
+
+    VaporView::Map3D::Trajectory3DLayer worldLayer;
+    worldLayer.setUseWorldCoordinates(true);
+    std::vector<VaporView::Geo::NavSample> worldSamples;
+    worldSamples.push_back(sample(0));
+    worldSamples.push_back(sample(1));
+    worldSamples[0].ecefXM = -2173583.123456789;
+    worldSamples[0].ecefYM = 4381234.987654321;
+    worldSamples[0].ecefZM = 4079876.543210987;
+    worldSamples[1].ecefXM = -2173582.876543211;
+    worldSamples[1].ecefYM = 4381235.123456789;
+    worldSamples[1].ecefZM = 4079876.876543211;
+    worldLayer.appendSamples(worldSamples);
+    auto* worldGeode = dynamic_cast<osg::Geode*>(worldLayer.node());
+    require(worldGeode != nullptr, "world trajectory node is a geode");
+    require(worldGeode->getNumDrawables() == 1, "world trajectory fits in one segment");
+    auto* worldGeometry = dynamic_cast<osg::Geometry*>(worldGeode->getDrawable(0));
+    require(worldGeometry != nullptr, "world trajectory drawable is geometry");
+    auto* worldVertices = dynamic_cast<osg::Vec3dArray*>(worldGeometry->getVertexArray());
+    require(worldVertices != nullptr,
+            "world trajectory stores ECEF-scale vertices as double precision, not float");
+    require(worldVertices->size() >= 2, "world trajectory keeps both ECEF vertices");
+    require(nearlyEqual((*worldVertices)[0].x(), worldSamples[0].ecefXM)
+                && nearlyEqual((*worldVertices)[0].y(), worldSamples[0].ecefYM)
+                && nearlyEqual((*worldVertices)[0].z(), worldSamples[0].ecefZM),
+            "world trajectory preserves first ECEF vertex precision");
+    require(nearlyEqual((*worldVertices)[1].x(), worldSamples[1].ecefXM)
+                && nearlyEqual((*worldVertices)[1].y(), worldSamples[1].ecefYM)
+                && nearlyEqual((*worldVertices)[1].z(), worldSamples[1].ecefZM),
+            "world trajectory preserves second ECEF vertex precision");
 
     layer.clear();
     require(layer.sampleCount() == 0, "clear removes samples");

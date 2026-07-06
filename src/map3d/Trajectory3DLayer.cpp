@@ -236,7 +236,7 @@ void Trajectory3DLayer::rebuildSegmentGeometry(TrajectorySegment& segment)
     }
     geometry->removePrimitiveSet(0, geometry->getNumPrimitiveSets());
 
-    osg::ref_ptr<osg::Vec3Array> vertices = new osg::Vec3Array;
+    osg::ref_ptr<osg::Vec3dArray> vertices = new osg::Vec3dArray;
     osg::ref_ptr<osg::Vec4Array> colors = new osg::Vec4Array;
     std::vector<osg::Vec3d> markerPositions;
     const int first = std::max(segment.firstSampleIndex, firstVisibleIndex());
