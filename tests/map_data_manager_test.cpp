@@ -179,6 +179,45 @@ int main(int argc, char** argv)
     require(selection.diagnostics.local3DTilesMissingResources.isEmpty(),
             "valid local 3D Tiles tileset should not report missing resources");
 
+    writeFile(root, QStringLiteral("data/maps/tiles3d/local/content/parent.b3dm"),
+              QByteArrayLiteral("not a real parent b3dm"));
+    writeFile(root, QStringLiteral("data/maps/tiles3d/local/content/child-a.b3dm"),
+              QByteArrayLiteral("not a real child a b3dm"));
+    writeFile(root, QStringLiteral("data/maps/tiles3d/local/content/child-b.b3dm"),
+              QByteArrayLiteral("not a real child b b3dm"));
+    writeFile(root,
+              QStringLiteral("data/maps/tiles3d/local/tileset.json"),
+              QByteArrayLiteral(R"JSON({
+  "asset": {"version": "1.1"},
+  "geometricError": 500,
+  "root": {
+    "boundingVolume": {"region": [0, 0, 0.1, 0.1, 0, 100]},
+    "geometricError": 250,
+    "content": {"uri": "content/parent.b3dm"},
+    "children": [
+      {
+        "boundingVolume": {"region": [0, 0, 0.05, 0.05, 0, 50]},
+        "geometricError": 0,
+        "contents": [
+          {"uri": "content/child-a.b3dm"},
+          {"url": "content/child-b.b3dm"}
+        ]
+      }
+    ]
+  }
+})JSON"));
+    selection = select(root);
+    require(selection.diagnostics.local3DTilesTilesetValid,
+            "nested local 3D Tiles contents[] and child content URLs should pass local-only checks");
+    require(selection.diagnostics.local3DTilesResourceCount == 3,
+            "nested local 3D Tiles diagnostics should count parent and child resources");
+    require(selection.diagnostics.local3DTilesResourceUris.contains(QStringLiteral("content/parent.b3dm")),
+            "nested local 3D Tiles diagnostics should list parent content URI");
+    require(selection.diagnostics.local3DTilesResourceUris.contains(QStringLiteral("content/child-a.b3dm")),
+            "nested local 3D Tiles diagnostics should list child contents URI");
+    require(selection.diagnostics.local3DTilesResourceUris.contains(QStringLiteral("content/child-b.b3dm")),
+            "nested local 3D Tiles diagnostics should list child contents URL alias");
+
     writeFile(root,
               QStringLiteral("data/maps/tiles3d/local/tileset.json"),
               QByteArrayLiteral(R"JSON({
@@ -199,6 +238,46 @@ int main(int argc, char** argv)
             "3D Tiles tileset with remote URI should report external URI flag");
     require(selection.diagnostics.local3DTilesExternalUris.contains(QStringLiteral("https://example.invalid/tiles/building.b3dm")),
             "3D Tiles diagnostics should list the remote URI");
+
+    writeFile(root,
+              QStringLiteral("data/maps/tiles3d/local/tileset.json"),
+              QByteArrayLiteral(R"JSON({
+  "asset": {"version": "1.1"},
+  "geometricError": 500,
+  "root": {
+    "boundingVolume": {"region": [0, 0, 0.1, 0.1, 0, 100]},
+    "geometricError": 250,
+    "content": {"uri": "/outside/building.b3dm"}
+  }
+})JSON"));
+    selection = select(root);
+    require(!selection.diagnostics.local3DTilesTilesetValid,
+            "3D Tiles tileset with an absolute URI should not pass local-only checks");
+    require(selection.diagnostics.local3DTilesHasExternalUris,
+            "3D Tiles tileset with an absolute URI should report external URI flag");
+    require(selection.diagnostics.local3DTilesExternalUris.contains(QStringLiteral("/outside/building.b3dm")),
+            "3D Tiles diagnostics should list the absolute URI");
+
+    writeFile(root,
+              QStringLiteral("data/maps/tiles3d/local/tileset.json"),
+              QByteArrayLiteral(R"JSON({
+  "asset": {"version": "1.1"},
+  "geometricError": 500,
+  "root": {
+    "boundingVolume": {"region": [0, 0, 0.1, 0.1, 0, 100]},
+    "geometricError": 250,
+    "content": {"uri": "content/missing.b3dm"}
+  }
+})JSON"));
+    selection = select(root);
+    require(!selection.diagnostics.local3DTilesTilesetValid,
+            "3D Tiles tileset with a missing local payload should not pass local-only checks");
+    require(!selection.diagnostics.local3DTilesMissingResources.isEmpty(),
+            "3D Tiles diagnostics should list missing local payload files");
+    require(selection.diagnostics.local3DTilesMissingResources.join(QLatin1Char('\n')).contains(QStringLiteral("missing.b3dm")),
+            "3D Tiles diagnostics should identify the missing payload filename");
+    require(selection.diagnostics.local3DTilesDiagnostics.join(QLatin1Char('\n')).contains(QStringLiteral("referenced resource is missing")),
+            "3D Tiles diagnostics should explain missing payload resources");
 
     writeFile(root,
               QStringLiteral("data/maps/tiles3d/local/tileset.json"),
