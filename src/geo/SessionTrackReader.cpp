@@ -242,27 +242,27 @@ SessionTrackReadResult readSessionTrack(const QString& sessionDir)
     }
 
     const int recordTsCol = findColumn(columns, {"record_timestamp_us", "host_time_us", "timestamp_us"});
-    const int deviceTsCol = findColumn(columns, {"device_timestamp_us", "epsilon_device_timestamp_us"});
-    const int latCol = findColumn(columns, {"nav_lat_deg", "lat_deg", "latitude_deg", "epsilon_latitude_deg"});
-    const int lonCol = findColumn(columns, {"nav_lon_deg", "lon_deg", "longitude_deg", "epsilon_longitude_deg"});
-    const int heightCol = findColumn(columns, {"nav_height_m", "height_m", "altitude_m", "epsilon_height_m"});
+    const int deviceTsCol = findColumn(columns, {"device_timestamp_us", "epsilon_device_timestamp_us", "rtk_timestamp_us"});
+    const int latCol = findColumn(columns, {"nav_lat_deg", "lat_deg", "latitude_deg", "epsilon_latitude_deg", "rtk_lat", "rtk_lat_deg"});
+    const int lonCol = findColumn(columns, {"nav_lon_deg", "lon_deg", "longitude_deg", "epsilon_longitude_deg", "rtk_lon", "rtk_lon_deg"});
+    const int heightCol = findColumn(columns, {"nav_height_m", "height_m", "altitude_m", "epsilon_height_m", "rtk_alt", "rtk_alt_m"});
     const int ecefXCol = findColumn(columns, {"ecef_x_m", "nav_ecef_x_m", "epsilon_ecef_x_m"});
     const int ecefYCol = findColumn(columns, {"ecef_y_m", "nav_ecef_y_m", "epsilon_ecef_y_m"});
     const int ecefZCol = findColumn(columns, {"ecef_z_m", "nav_ecef_z_m", "epsilon_ecef_z_m"});
     const int nedNCol = findColumn(columns, {"ned_n_m", "nav_ned_n_m", "epsilon_ned_n_m"});
     const int nedECol = findColumn(columns, {"ned_e_m", "nav_ned_e_m", "epsilon_ned_e_m"});
     const int nedDCol = findColumn(columns, {"ned_d_m", "nav_ned_d_m", "epsilon_ned_d_m"});
-    const int velNCol = findColumn(columns, {"vel_n_mps", "nav_vel_n_mps", "epsilon_vel_n_mps"});
-    const int velECol = findColumn(columns, {"vel_e_mps", "nav_vel_e_mps", "epsilon_vel_e_mps"});
-    const int velDCol = findColumn(columns, {"vel_d_mps", "nav_vel_d_mps", "epsilon_vel_d_mps"});
-    const int rollCol = findColumn(columns, {"roll_deg", "epsilon_roll_deg"});
-    const int pitchCol = findColumn(columns, {"pitch_deg", "epsilon_pitch_deg"});
-    const int yawCol = findColumn(columns, {"yaw_deg", "heading_deg", "epsilon_yaw_deg"});
-    const int satellitesCol = findColumn(columns, {"satellites", "satellite_count", "num_satellites", "gnss_satellites", "gnss_satellite_count", "epsilon_gnss_satellites"});
+    const int velNCol = findColumn(columns, {"vel_n_mps", "nav_vel_n_mps", "epsilon_vel_n_mps", "rtk_vel_n"});
+    const int velECol = findColumn(columns, {"vel_e_mps", "nav_vel_e_mps", "epsilon_vel_e_mps", "rtk_vel_e"});
+    const int velDCol = findColumn(columns, {"vel_d_mps", "nav_vel_d_mps", "epsilon_vel_d_mps", "rtk_vel_d"});
+    const int rollCol = findColumn(columns, {"roll_deg", "epsilon_roll_deg", "imu_roll"});
+    const int pitchCol = findColumn(columns, {"pitch_deg", "epsilon_pitch_deg", "rtk_pitch", "imu_pitch"});
+    const int yawCol = findColumn(columns, {"yaw_deg", "heading_deg", "epsilon_yaw_deg", "rtk_heading", "rtk_yaw", "imu_yaw"});
+    const int satellitesCol = findColumn(columns, {"satellites", "satellite_count", "num_satellites", "gnss_satellites", "gnss_satellite_count", "epsilon_gnss_satellites", "rtk_sat"});
     const int hdopCol = findColumn(columns, {"hdop", "epsilon_hdop"});
     const int vdopCol = findColumn(columns, {"vdop", "epsilon_vdop"});
     const int diffAgeCol = findColumn(columns, {"diff_age_s", "epsilon_diff_age_s"});
-    const int fixCol = findColumn(columns, {"fix_quality", "gnss_status", "rtk_status", "gnss_fix_text", "epsilon_gnss_fix_text", "gnss_fix_code"});
+    const int fixCol = findColumn(columns, {"fix_quality", "gnss_status", "rtk_status", "gnss_fix_text", "epsilon_gnss_fix_text", "gnss_fix_code", "rtk_fix"});
     const int heightReferenceCol = findColumn(columns, {"height_reference", "height_ref", "altitude_reference", "nav_height_reference"});
 
     if (latCol < 0 || lonCol < 0 || heightCol < 0)

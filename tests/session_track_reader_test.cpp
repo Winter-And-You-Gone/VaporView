@@ -82,5 +82,40 @@ int main()
         require(sample.fixQuality == VaporView::Geo::FixQuality::Fixed, "epsilon fix text parsed");
     }
 
+    {
+        QTemporaryDir sessionDir;
+        require(sessionDir.isValid(), "temporary legacy RTK session directory");
+
+        QDir dir(sessionDir.path());
+        require(dir.mkpath(QStringLiteral("sensors")), "create legacy sensors directory");
+
+        writeCsv(dir.filePath(QStringLiteral("sensors/devices.csv")),
+                 QStringLiteral("record_timestamp_us,rtk_timestamp_us,rtk_lat,rtk_lon,rtk_alt,rtk_fix,rtk_sat,rtk_heading,rtk_pitch,rtk_vel_n,rtk_vel_e,rtk_vel_d,imu_roll,imu_yaw\n"
+                                "5000,4900,31.231000001,121.474000001,22.5,4,10,88.5,1.5,0.1,0.2,-0.3,-2.0,89.5\n"
+                                "6000,5900,31.231100001,121.474100001,22.7,5,9,90.0,1.0,0.4,0.5,-0.6,-1.0,91.0\n"));
+
+        const VaporView::Geo::SessionTrackReadResult result =
+            VaporView::Geo::readSessionTrack(sessionDir.path());
+
+        require(result.ok, "legacy RTK devices.csv read ok");
+        require(result.samples.size() == 2, "legacy RTK rows parsed");
+        const auto& first = result.samples.front();
+        require(first.recordTimestampUs == 5000, "legacy record timestamp parsed");
+        require(first.deviceTimestampUs == 4900, "legacy RTK timestamp parsed");
+        require(std::fabs(first.latDeg - 31.231000001) < 0.000000001, "legacy RTK latitude parsed");
+        require(std::fabs(first.lonDeg - 121.474000001) < 0.000000001, "legacy RTK longitude parsed");
+        require(std::fabs(first.heightM - 22.5) < 0.000001, "legacy RTK altitude parsed");
+        require(first.fixQuality == VaporView::Geo::FixQuality::Fixed, "legacy numeric RTK fixed parsed");
+        require(first.satellites == 10, "legacy RTK satellite count parsed");
+        require(std::fabs(first.yawDeg - 88.5) < 0.000001, "legacy RTK heading preferred as yaw");
+        require(std::fabs(first.pitchDeg - 1.5) < 0.000001, "legacy RTK pitch parsed");
+        require(std::fabs(first.rollDeg + 2.0) < 0.000001, "legacy IMU roll parsed");
+        require(std::fabs(first.velNMps - 0.1) < 0.000001, "legacy RTK north velocity parsed");
+        require(std::fabs(first.velEMps - 0.2) < 0.000001, "legacy RTK east velocity parsed");
+        require(std::fabs(first.velDMps + 0.3) < 0.000001, "legacy RTK down velocity parsed");
+        require(result.samples.back().fixQuality == VaporView::Geo::FixQuality::Float,
+                "legacy numeric RTK float parsed");
+    }
+
     return 0;
 }

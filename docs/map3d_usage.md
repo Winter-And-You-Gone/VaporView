@@ -50,6 +50,7 @@ Replay slider
 ```
 
 `打开 Session` loads a recorded session directory and reads `sensors/devices.csv`.
+The reader supports both newer `nav_*`/`epsilon_*` columns and older RTK/IMU session columns such as `rtk_lat`, `rtk_lon`, `rtk_alt`, `rtk_fix`, `rtk_sat`, `rtk_heading`, `rtk_pitch`, `rtk_vel_*`, and `imu_roll`/`imu_yaw`.
 
 `加载 Earth 文件` opens a custom `.earth` file. Keep relative paths in that file aligned with its location.
 
