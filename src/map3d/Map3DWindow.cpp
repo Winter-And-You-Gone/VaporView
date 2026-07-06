@@ -56,6 +56,26 @@ QString heightReferenceLabel(VaporView::Geo::HeightReference reference)
     return QStringLiteral("unknown");
 }
 
+QString fixQualityLabel(VaporView::Geo::FixQuality quality)
+{
+    switch (quality)
+    {
+    case VaporView::Geo::FixQuality::Fixed:
+        return QStringLiteral("Fixed");
+    case VaporView::Geo::FixQuality::Float:
+        return QStringLiteral("Float");
+    case VaporView::Geo::FixQuality::Dgps:
+        return QStringLiteral("DGPS");
+    case VaporView::Geo::FixQuality::Single:
+        return QStringLiteral("Single");
+    case VaporView::Geo::FixQuality::Invalid:
+        return QStringLiteral("Invalid");
+    case VaporView::Geo::FixQuality::Unknown:
+        return QStringLiteral("Unknown");
+    }
+    return QStringLiteral("Unknown");
+}
+
 QString attitudeSourceLabel(const VaporView::Geo::NavSample* sample)
 {
     if (!sample)
@@ -1137,6 +1157,8 @@ QString Map3DWindow::diagnosticsText() const
     {
         lines << QStringLiteral("  Height reference: %1")
                      .arg(heightReferenceLabel(latest_status_sample_.heightReference));
+        lines << QStringLiteral("  Fix quality: %1")
+                     .arg(fixQualityLabel(latest_status_sample_.fixQuality));
         lines << QStringLiteral("  Height safety note: %1").arg(heightReferenceUncheckedNote());
     }
     if (!latest_track_note_.isEmpty())
@@ -1409,7 +1431,7 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
                     .arg(displayLatest->lonDeg, 0, 'f', 7)
                     .arg(displayLatest->heightM, 0, 'f', 2)
                     .arg(heightReferenceLabel(displayLatest->heightReference))
-                    .arg(static_cast<int>(displayLatest->fixQuality))
+                    .arg(fixQualityLabel(displayLatest->fixQuality))
                     .arg(satellitesText, hdopText);
         text += QStringLiteral(" | Height ref unchecked");
         text += QStringLiteral(" | Att %1").arg(attitudeSourceLabel(displayLatest));

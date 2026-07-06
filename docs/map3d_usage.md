@@ -110,7 +110,7 @@ The status bar shows:
 - visible RTK/GNSS quality counts for Fixed, Float, DGPS, Single, Unknown, Invalid, and jump markers
 - latest latitude, longitude, and height when available
 - height reference label
-- fix quality
+- readable fix quality (`Fixed`, `Float`, `DGPS`, `Single`, `Invalid`, or `Unknown`)
 - aircraft attitude source (`Quaternion`, `Euler`, or `none`)
 - replay position and speed
 
