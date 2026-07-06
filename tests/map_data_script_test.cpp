@@ -179,6 +179,7 @@ int main()
             QStringLiteral("prepare-osm-local-data.py --help exits 0, stderr=%1").arg(osmHelp.standardError));
     require(osmHelp.standardOutput.contains(QStringLiteral("GeoPackage"))
                 && osmHelp.standardOutput.contains(QStringLiteral("download data"))
+                && osmHelp.standardOutput.contains(QStringLiteral("--check"))
                 && osmHelp.standardOutput.contains(QStringLiteral("roads"))
                 && osmHelp.standardOutput.contains(QStringLiteral("water"))
                 && osmHelp.standardOutput.contains(QStringLiteral("buildings"))
@@ -202,6 +203,28 @@ int main()
                 .arg(missingGdal.standardOutput, missingGdal.standardError));
     require(missingGdal.standardError.contains(QStringLiteral("gdalbuildvrt was not found")),
             QStringLiteral("prepare-demo-dem.py reports missing gdalbuildvrt clearly"));
+
+    QTemporaryDir fakeOsmProject;
+    require(fakeOsmProject.isValid(), QStringLiteral("temporary fake OSM project root is valid"));
+    const QDir fakeOsmRoot(fakeOsmProject.path());
+    const ProcessResult missingOsmOutputs =
+        runProcess(python,
+                   {osmScript,
+                    fakeOsmRoot.filePath(QStringLiteral("data/maps/osm/local_extract.osm.pbf")),
+                    QStringLiteral("--project-root"),
+                    fakeOsmRoot.absolutePath(),
+                    QStringLiteral("--check")},
+                   environmentWithoutGdalTools());
+    require(missingOsmOutputs.started,
+            QStringLiteral("prepare-osm-local-data.py --check starts: %1").arg(missingOsmOutputs.standardError));
+    require(!missingOsmOutputs.timedOut,
+            QStringLiteral("prepare-osm-local-data.py --check does not time out"));
+    require(missingOsmOutputs.exitCode == 2,
+            QStringLiteral("prepare-osm-local-data.py --check exits 2 when GeoPackages are missing, stdout=%1 stderr=%2")
+                .arg(missingOsmOutputs.standardOutput, missingOsmOutputs.standardError));
+    require(missingOsmOutputs.standardError.contains(QStringLiteral("ogrinfo was not found"))
+                && missingOsmOutputs.standardError.contains(QStringLiteral("missing generated GeoPackage")),
+            QStringLiteral("prepare-osm-local-data.py --check reports missing OSM outputs clearly"));
 
     return 0;
 }

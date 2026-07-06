@@ -17,7 +17,10 @@ Example:
 
 ```powershell
 python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --overwrite
+python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --check
 ```
+
+`--check` validates the expected `roads`, `water`, `buildings`, and `places` GeoPackage outputs. If GDAL's `ogrinfo` is available, it also checks that each file exposes the layer name used by the full-local earth templates.
 
 Recommended open sources for local extracts include OpenStreetMap regional extracts such as Geofabrik. The script does not download anything; it only converts files you already placed locally.
 

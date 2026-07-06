@@ -111,7 +111,15 @@ Prepare those files from a local `.osm.pbf` or `.osm` extract with GDAL/OGR:
 python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --overwrite
 ```
 
-The helper does not download data. It runs `ogr2ogr` locally and writes four GeoPackage files. The generated GeoPackage layer names are `roads`, `water`, `buildings`, and `places`. Once Natural Earth, one DEM VRT, and all four OSM GeoPackages exist, `MapDataManager` selects `FullLocalMap`. It loads `data/maps/vaporview_full_local.earth` for Copernicus DEM, or `data/maps/vaporview_full_local_srtm.earth` when SRTM is the only available DEM.
+The helper does not download data. It runs `ogr2ogr` locally and writes four GeoPackage files. On Windows it also checks the project-local GDAL tools under `.local_deps/vcpkg_installed/x64-windows/tools/gdal` if GDAL is not on `PATH`. The generated GeoPackage layer names are `roads`, `water`, `buildings`, and `places`. Once Natural Earth, one DEM VRT, and all four OSM GeoPackages exist, `MapDataManager` selects `FullLocalMap`. It loads `data/maps/vaporview_full_local.earth` for Copernicus DEM, or `data/maps/vaporview_full_local_srtm.earth` when SRTM is the only available DEM.
+
+Validate the generated files and layer names without reconverting:
+
+```powershell
+python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --check
+```
+
+If `ogrinfo` is unavailable, `--check` still reports missing files, but layer-name validation requires GDAL/OGR.
 
 The current full-local earth template renders local OSM context offline:
 
@@ -180,10 +188,11 @@ For SRTM fallback validation, place SRTM GeoTIFF tiles in `data/maps/terrain/srt
 3. Build the DEM VRT with `scripts/prepare-demo-dem.ps1` or `scripts/prepare-demo-dem.py`.
 4. Place a local open OSM extract under `data/maps/osm/`.
 5. Run `python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --overwrite`.
-6. Build and start VaporView with `-DVAPORVIEW_ENABLE_OSGEARTH=ON`.
-7. Open the 3D Map window and click `地图诊断`.
-8. Confirm the mode is `Full local map` and the loaded earth file is `vaporview_full_local.earth` for Copernicus DEM or `vaporview_full_local_srtm.earth` for SRTM-only fallback.
-9. Zoom into the OSM extract area and confirm local water, roads, building footprints, and place labels are visible.
+6. Run `python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --check`.
+7. Build and start VaporView with `-DVAPORVIEW_ENABLE_OSGEARTH=ON`.
+8. Open the 3D Map window and click `地图诊断`.
+9. Confirm the mode is `Full local map` and the loaded earth file is `vaporview_full_local.earth` for Copernicus DEM or `vaporview_full_local_srtm.earth` for SRTM-only fallback.
+10. Zoom into the OSM extract area and confirm local water, roads, building footprints, and place labels are visible.
 
 ## Optional Imagery And 3D Tiles Diagnostics Flow
 
