@@ -511,7 +511,7 @@ void OsgEarthViewWidget::clearTrack()
     raw_samples_.clear();
     trajectory_layer_->clear();
     aircraft_layer_->clear();
-    has_local_origin_ = false;
+    local_frame_ = VaporView::Geo::LocalTangentPlane();
     update();
 }
 
@@ -1215,21 +1215,16 @@ VaporView::Geo::NavSample OsgEarthViewWidget::toLocalSample(const VaporView::Geo
         return sample;
     }
 
-    if (!has_local_origin_)
+    if (!local_frame_.isValid())
     {
-        origin_lat_deg_ = sample.latDeg;
-        origin_lon_deg_ = sample.lonDeg;
-        origin_height_m_ = sample.heightM;
-        has_local_origin_ = true;
+        local_frame_ = VaporView::Geo::LocalTangentPlane(sample);
     }
 
     VaporView::Geo::NavSample local = sample;
-    constexpr double kMetersPerDegreeLat = 111320.0;
-    const double originLatRad = origin_lat_deg_ * 3.14159265358979323846 / 180.0;
-    const double metersPerDegreeLon = kMetersPerDegreeLat * std::max(0.01, std::cos(originLatRad));
-    local.nedNM = (sample.latDeg - origin_lat_deg_) * kMetersPerDegreeLat;
-    local.nedEM = (sample.lonDeg - origin_lon_deg_) * metersPerDegreeLon;
-    local.nedDM = origin_height_m_ - sample.heightM;
+    const VaporView::Geo::NedPoint ned = VaporView::Geo::navSampleToNed(sample, local_frame_);
+    local.nedNM = ned.northM;
+    local.nedEM = ned.eastM;
+    local.nedDM = ned.downM;
     return local;
 }
 

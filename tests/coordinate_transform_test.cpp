@@ -70,5 +70,17 @@ int main()
     requireNear(sampleEnu.northM, 1.0, 0.0, "NavSample NED north maps to ENU north");
     requireNear(sampleEnu.upM, 3.0, 0.0, "NavSample NED down maps to ENU up");
 
+    VaporView::Geo::NavSample llhSample;
+    llhSample.latDeg = shifted.latDeg;
+    llhSample.lonDeg = shifted.lonDeg;
+    llhSample.heightM = shifted.heightM;
+    const VaporView::Geo::NedPoint llhSampleNed = VaporView::Geo::navSampleToNed(llhSample, local);
+    requireNear(llhSampleNed.northM, testEnu.northM, 0.001,
+                "NavSample LLH uses LocalTangentPlane northing");
+    requireNear(llhSampleNed.eastM, testEnu.eastM, 0.001,
+                "NavSample LLH uses LocalTangentPlane easting");
+    requireNear(llhSampleNed.downM, -testEnu.upM, 0.001,
+                "NavSample LLH uses LocalTangentPlane down");
+
     return 0;
 }

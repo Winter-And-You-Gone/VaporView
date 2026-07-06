@@ -1,5 +1,6 @@
 #pragma once
 
+#include "geo/CoordinateTransform.h"
 #include "geo/GeoTypes.h"
 #include "map3d/Trajectory3DLayer.h"
 
@@ -138,10 +139,7 @@ private:
     double smoothed_frame_ms_ = 0.0;
     double frames_per_second_ = 0.0;
     double last_track_update_ms_ = 0.0;
-    bool has_local_origin_ = false;
-    double origin_lat_deg_ = 0.0;
-    double origin_lon_deg_ = 0.0;
-    double origin_height_m_ = 0.0;
+    VaporView::Geo::LocalTangentPlane local_frame_;
     std::unique_ptr<osgViewer::Viewer> viewer_;
     osg::ref_ptr<osgViewer::GraphicsWindowEmbedded> graphics_window_;
     osg::ref_ptr<osg::Group> root_;
