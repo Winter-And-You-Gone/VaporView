@@ -115,6 +115,7 @@ Click `地图诊断`, or use `View / 视图 -> Map Data Diagnostics / 地图数�
 - current map mode
 - active `.earth` file
 - runtime `Earth load` status, including requested path, loaded state, MapNode state, and layer open/status strings
+- render performance, including visible/total/hidden samples, trajectory segment count/size, FPS, frame time, and track update time
 - current working directory
 - project root
 - `data/maps` root

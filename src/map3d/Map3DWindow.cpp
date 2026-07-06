@@ -731,6 +731,11 @@ void Map3DWindow::setCameraNote(const QString& note)
 QString Map3DWindow::diagnosticsText() const
 {
     const MapDataDiagnostics& diagnostics = map_selection_.diagnostics;
+    const Map3DPerformanceStats stats = view_ ? view_->performanceStats() : Map3DPerformanceStats{};
+    const int totalSamples = view_ ? stats.totalSamples : headless_sample_count_;
+    const int visibleSamples = view_ ? stats.visibleSamples : std::min(headless_sample_count_, max_visible_samples_);
+    const int maxVisibleSamples = view_ ? stats.maxVisibleSamples : max_visible_samples_;
+    const int hiddenSamples = std::max(0, totalSamples - visibleSamples);
     QStringList lines;
     lines << QStringLiteral("Mode: %1 (%2)")
                  .arg(MapDataManager::modeLabel(map_selection_.mode),
@@ -761,6 +766,18 @@ QString Map3DWindow::diagnosticsText() const
             lines << QStringLiteral("    - %1").arg(layerSummary);
         }
     }
+    lines << QStringLiteral("Render performance:");
+    lines << QStringLiteral("  Samples: %1 visible / %2 total / %3 hidden")
+                 .arg(visibleSamples)
+                 .arg(totalSamples)
+                 .arg(hiddenSamples);
+    lines << QStringLiteral("  Max visible samples: %1").arg(maxVisibleSamples);
+    lines << QStringLiteral("  Trajectory segments: %1 x %2 samples")
+                 .arg(stats.segmentCount)
+                 .arg(stats.segmentSize);
+    lines << QStringLiteral("  FPS: %1").arg(stats.framesPerSecond, 0, 'f', 1);
+    lines << QStringLiteral("  Frame ms: %1").arg(stats.frameMs, 0, 'f', 1);
+    lines << QStringLiteral("  Track update ms: %1").arg(stats.trackUpdateMs, 0, 'f', 1);
     lines << QStringLiteral("Track data:");
     lines << QStringLiteral("  Source: %1").arg(latest_track_source_.isEmpty() ? QStringLiteral("none") : latest_track_source_);
     lines << QStringLiteral("  Latest record timestamp us: %1")
@@ -943,7 +960,9 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest)
     }
     if (view_)
     {
-        text += QStringLiteral(" | FPS %1 | Frame %2 ms | Track %3 ms")
+        text += QStringLiteral(" | Seg %1x%2 | FPS %3 | Frame %4 ms | Track %5 ms")
+                    .arg(stats.segmentCount)
+                    .arg(stats.segmentSize)
                     .arg(stats.framesPerSecond, 0, 'f', 1)
                     .arg(stats.frameMs, 0, 'f', 1)
                     .arg(stats.trackUpdateMs, 0, 'f', 1);

@@ -602,6 +602,8 @@ Map3DPerformanceStats OsgEarthViewWidget::performanceStats() const
     stats.totalSamples = sampleCount();
     stats.visibleSamples = visibleSampleCount();
     stats.maxVisibleSamples = maxVisibleSamples();
+    stats.segmentCount = trajectory_layer_ ? trajectory_layer_->segmentCount() : 0;
+    stats.segmentSize = trajectory_layer_ ? trajectory_layer_->segmentSize() : 0;
     stats.frameMs = smoothed_frame_ms_ > 0.0 ? smoothed_frame_ms_ : last_frame_ms_;
     stats.framesPerSecond = frames_per_second_;
     stats.trackUpdateMs = last_track_update_ms_;

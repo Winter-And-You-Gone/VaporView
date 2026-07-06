@@ -171,6 +171,10 @@ int main(int argc, char** argv)
             "diagnostics include earth runtime load section");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Attempted:")),
             "diagnostics include earth load attempt state");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Render performance:")),
+            "diagnostics include render performance section");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Samples:")),
+            "diagnostics include visible and total sample counts");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Source: Replay")),
             "diagnostics include latest track source");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Camera: Track auto")),

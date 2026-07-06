@@ -33,6 +33,8 @@ struct Map3DPerformanceStats {
     int totalSamples = 0;
     int visibleSamples = 0;
     int maxVisibleSamples = 0;
+    int segmentCount = 0;
+    int segmentSize = 0;
     double frameMs = 0.0;
     double framesPerSecond = 0.0;
     double trackUpdateMs = 0.0;
