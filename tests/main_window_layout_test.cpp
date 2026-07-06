@@ -1061,7 +1061,6 @@ void requireTelemetryRightPadding(QWidget *deviceOverviewCard,
     require(rightPadding >= 12, message);
 }
 
-#ifdef VAPORVIEW_HAS_OSGEARTH
 QAction *findActionByText(QWidget *root, const QStringList& expectedTexts)
 {
     const QList<QAction*> actions = root->findChildren<QAction *>();
@@ -1075,6 +1074,7 @@ QAction *findActionByText(QWidget *root, const QStringList& expectedTexts)
     return nullptr;
 }
 
+#ifdef VAPORVIEW_HAS_OSGEARTH
 void requireMainWindowMap3DEntries(MainWindow& window)
 {
     QAction *mapAction = findActionByText(&window,
@@ -1123,6 +1123,35 @@ void requireMainWindowMap3DEntries(MainWindow& window)
     require(foundDiagnosticsTitleButton, "title bar exposes the map data diagnostics action");
 }
 
+#else
+void requireMainWindowOmitsMap3DEntries(MainWindow& window)
+{
+    QAction *mapAction = findActionByText(&window,
+                                          {QStringLiteral("三维地图..."),
+                                           QStringLiteral("3D Map...")});
+    QAction *diagnosticsAction = findActionByText(&window,
+                                                  {QStringLiteral("地图数据诊断..."),
+                                                   QStringLiteral("Map Data Diagnostics...")});
+    require(mapAction == nullptr, "default OFF build omits the 3D map action");
+    require(diagnosticsAction == nullptr, "default OFF build omits the map data diagnostics action");
+
+    const QList<QToolButton*> titleButtons =
+        window.findChildren<QToolButton *>(QStringLiteral("titleBarButton"));
+    for (QToolButton *button : titleButtons)
+    {
+        if (!button)
+        {
+            continue;
+        }
+        const QString toolTip = button->toolTip();
+        require(toolTip != QStringLiteral("打开三维地图") &&
+                    toolTip != QStringLiteral("Open 3D map"),
+                "default OFF build omits the 3D map title-bar button");
+        require(toolTip != QStringLiteral("打开三维地图数据诊断") &&
+                    toolTip != QStringLiteral("Open 3D map data diagnostics"),
+                "default OFF build omits the map data diagnostics title-bar button");
+    }
+}
 #endif
 
 }  // namespace
@@ -1183,6 +1212,8 @@ int main(int argc, char **argv)
     processEventsFor(500);
 #ifdef VAPORVIEW_HAS_OSGEARTH
     requireMainWindowMap3DEntries(window);
+#else
+    requireMainWindowOmitsMap3DEntries(window);
 #endif
     require(qApp->styleSheet().contains(QStringLiteral("square.svg")) &&
                 qApp->styleSheet().contains(QStringLiteral("square-check-big.svg")) &&
