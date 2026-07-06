@@ -114,7 +114,7 @@ The status bar shows:
 - aircraft attitude source (`Quaternion`, `Euler`, or `none`)
 - replay position and speed
 
-Height reference labels are display hints only. VaporView currently does not compute AGL or terrain-clearance safety decisions because RTK/GNSS and DEM height references may not be unified.
+Height reference labels are display hints only. The status bar and diagnostics intentionally show `Height ref unchecked` / `height reference unchecked` whenever a displayed height is based on the raw navigation sample. VaporView currently does not compute AGL or terrain-clearance safety decisions because RTK/GNSS and DEM height references may not be unified.
 
 ## Map Data Diagnostics
 

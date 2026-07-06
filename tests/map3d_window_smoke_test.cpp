@@ -161,6 +161,8 @@ int main(int argc, char** argv)
     require(label->text().contains(QStringLiteral("dev 900000")), "status includes latest device timestamp");
     require(label->text().contains(QStringLiteral("Sats 12")), "status includes latest sample satellite count");
     require(label->text().contains(QStringLiteral("HDOP 0.90")), "status includes latest sample HDOP");
+    require(label->text().contains(QStringLiteral("Height ref unchecked")),
+            "status warns that displayed height reference is unchecked");
     require(label->text().contains(QStringLiteral("Att none")), "status reports absent attitude source");
 
     window.clearTrack();
@@ -286,6 +288,8 @@ int main(int argc, char** argv)
             "diagnostics include latest track source");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Attitude source: none")),
             "diagnostics include attitude source");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Height safety note: height reference unchecked")),
+            "diagnostics include height reference safety note");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Camera: Track auto")),
             "diagnostics include latest automatic camera action");
 

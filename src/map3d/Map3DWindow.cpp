@@ -33,6 +33,11 @@ namespace {
 
 constexpr qint64 kStatusUpdateIntervalMs = 200;
 
+QString heightReferenceUncheckedNote()
+{
+    return QStringLiteral("height reference unchecked; no AGL/terrain-clearance decision");
+}
+
 QString heightReferenceLabel(VaporView::Geo::HeightReference reference)
 {
     switch (reference)
@@ -1128,6 +1133,12 @@ QString Map3DWindow::diagnosticsText() const
                  .arg(latest_track_device_timestamp_us_ > 0 ? QString::number(latest_track_device_timestamp_us_) : QStringLiteral("<none>"));
     lines << QStringLiteral("  Attitude source: %1")
                  .arg(attitudeSourceLabel(has_latest_status_sample_ ? &latest_status_sample_ : nullptr));
+    if (has_latest_status_sample_ && latest_status_sample_.hasLlh())
+    {
+        lines << QStringLiteral("  Height reference: %1")
+                     .arg(heightReferenceLabel(latest_status_sample_.heightReference));
+        lines << QStringLiteral("  Height safety note: %1").arg(heightReferenceUncheckedNote());
+    }
     if (!latest_track_note_.isEmpty())
     {
         lines << QStringLiteral("  Note: %1").arg(latest_track_note_);
@@ -1400,6 +1411,7 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
                     .arg(heightReferenceLabel(displayLatest->heightReference))
                     .arg(static_cast<int>(displayLatest->fixQuality))
                     .arg(satellitesText, hdopText);
+        text += QStringLiteral(" | Height ref unchecked");
         text += QStringLiteral(" | Att %1").arg(attitudeSourceLabel(displayLatest));
     }
     if (replay_.hasSamples())
