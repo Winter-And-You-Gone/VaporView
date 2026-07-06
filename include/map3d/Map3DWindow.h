@@ -5,6 +5,7 @@
 #include "map3d/MapDataManager.h"
 
 #include <QMainWindow>
+#include <QString>
 #include <vector>
 
 class QAction;
@@ -52,6 +53,9 @@ private:
     void updateReplayUi();
     void setMapSelection(const MapDataSelection& selection);
     QString diagnosticsText() const;
+    void recordTrackSource(const QString& source,
+                           const VaporView::Geo::NavSample* latest,
+                           const QString& note = {});
     void updateStatus(const VaporView::Geo::NavSample* latest = nullptr);
 
     OsgEarthViewWidget* view_ = nullptr;
@@ -72,6 +76,10 @@ private:
     MapDataManager map_data_manager_;
     MapDataSelection map_selection_;
     VaporView::Geo::TrajectoryReplay replay_;
+    QString latest_track_source_;
+    QString latest_track_note_;
+    qint64 latest_track_record_timestamp_us_ = 0;
+    qint64 latest_track_device_timestamp_us_ = 0;
 };
 
 } // namespace VaporView::Map3D

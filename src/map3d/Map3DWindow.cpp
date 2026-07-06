@@ -89,6 +89,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     : QMainWindow(parent)
     , status_label_(new QLabel(this))
     , replay_timer_(new QTimer(this))
+    , latest_track_source_(QStringLiteral("none"))
 {
     setObjectName(QStringLiteral("map3DWindow"));
     setWindowTitle(QStringLiteral("VaporView 3D Map"));
@@ -260,6 +261,7 @@ void Map3DWindow::appendSample(const VaporView::Geo::NavSample& sample)
     {
         ++headless_sample_count_;
     }
+    recordTrackSource(QStringLiteral("Live"), &sample);
     updateReplayUi();
     updateStatus(&sample);
 }
@@ -279,6 +281,8 @@ void Map3DWindow::appendSamples(const std::vector<VaporView::Geo::NavSample>& sa
     {
         headless_sample_count_ += static_cast<int>(samples.size());
     }
+    recordTrackSource(QStringLiteral("Live"), samples.empty() ? nullptr : &samples.back(),
+                      samples.empty() ? QStringLiteral("empty live batch") : QString());
     updateReplayUi();
     updateStatus(samples.empty() ? nullptr : &samples.back());
 }
@@ -295,6 +299,7 @@ void Map3DWindow::clearTrack()
     {
         headless_sample_count_ = 0;
     }
+    recordTrackSource(QStringLiteral("none"), nullptr, QStringLiteral("track cleared"));
     updateReplayUi();
     updateStatus(nullptr);
 }
@@ -321,6 +326,9 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
         headless_sample_count_ = static_cast<int>(result.samples.size());
     }
     replay_.setSamples(result.samples);
+    recordTrackSource(QStringLiteral("Session"),
+                      replay_.currentSample(),
+                      result.sourceCsvPath);
     updateReplayUi();
     updateStatus(replay_.currentSample());
     statusBar()->showMessage(QStringLiteral("Loaded %1 samples from %2")
@@ -583,6 +591,8 @@ void Map3DWindow::rebuildReplayAt(int index)
     {
         headless_sample_count_ = static_cast<int>(visibleSamples.size());
     }
+    recordTrackSource(QStringLiteral("Replay"),
+                      visibleSamples.empty() ? nullptr : &visibleSamples.back());
     updateStatus(visibleSamples.empty() ? nullptr : &visibleSamples.back());
 }
 
@@ -650,6 +660,16 @@ QString Map3DWindow::diagnosticsText() const
     }
     const QString earthFile = map_selection_.earthFile.isEmpty() ? map_selection_.earthFilePath : map_selection_.earthFile;
     lines << QStringLiteral("Earth file: %1").arg(earthFile.isEmpty() ? QStringLiteral("<none>") : earthFile);
+    lines << QStringLiteral("Track data:");
+    lines << QStringLiteral("  Source: %1").arg(latest_track_source_.isEmpty() ? QStringLiteral("none") : latest_track_source_);
+    lines << QStringLiteral("  Latest record timestamp us: %1")
+                 .arg(latest_track_record_timestamp_us_ > 0 ? QString::number(latest_track_record_timestamp_us_) : QStringLiteral("<none>"));
+    lines << QStringLiteral("  Latest device timestamp us: %1")
+                 .arg(latest_track_device_timestamp_us_ > 0 ? QString::number(latest_track_device_timestamp_us_) : QStringLiteral("<none>"));
+    if (!latest_track_note_.isEmpty())
+    {
+        lines << QStringLiteral("  Note: %1").arg(latest_track_note_);
+    }
     lines << QStringLiteral("Layer summary:");
     lines << QStringLiteral("  Natural Earth: %1").arg(availabilityLabel(diagnostics.naturalEarthAvailable));
     lines << QStringLiteral("  Selected DEM: %1").arg(selectedDemLabel(diagnostics));
@@ -729,12 +749,35 @@ QString Map3DWindow::diagnosticsText() const
     return lines.join(QLatin1Char('\n'));
 }
 
+void Map3DWindow::recordTrackSource(const QString& source,
+                                    const VaporView::Geo::NavSample* latest,
+                                    const QString& note)
+{
+    latest_track_source_ = source.isEmpty() ? QStringLiteral("none") : source;
+    latest_track_note_ = note;
+    latest_track_record_timestamp_us_ = latest ? latest->recordTimestampUs : 0;
+    latest_track_device_timestamp_us_ = latest ? latest->deviceTimestampUs : 0;
+    if (diagnostics_text_)
+    {
+        diagnostics_text_->setPlainText(diagnosticsText());
+    }
+}
+
 void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest)
 {
     const Map3DPerformanceStats stats = view_ ? view_->performanceStats() : Map3DPerformanceStats{};
     const int totalSamples = view_ ? stats.totalSamples : headless_sample_count_;
     const int visibleSamples = view_ ? stats.visibleSamples : std::min(headless_sample_count_, max_visible_samples_);
     QString text = QStringLiteral("Points: %1/%2").arg(visibleSamples).arg(totalSamples);
+    text += QStringLiteral(" | Source %1").arg(latest_track_source_.isEmpty() ? QStringLiteral("none") : latest_track_source_);
+    if (latest_track_record_timestamp_us_ > 0)
+    {
+        text += QStringLiteral(" rec %1").arg(latest_track_record_timestamp_us_);
+    }
+    if (latest_track_device_timestamp_us_ > 0)
+    {
+        text += QStringLiteral(" dev %1").arg(latest_track_device_timestamp_us_);
+    }
     if (view_ || headless_view_)
     {
         const QSize framebufferSize = view_ ? view_->framebufferSize() : headless_view_->size();

@@ -8,6 +8,7 @@
 #include <QDir>
 #include <QFile>
 #include <QLabel>
+#include <QPlainTextEdit>
 #include <QSlider>
 #include <QSpinBox>
 #include <QTemporaryDir>
@@ -73,6 +74,7 @@ int main(int argc, char** argv)
 
     QLabel* label = statusLabel(window);
     require(label->text().contains(QStringLiteral("Points: 0")), "initial status has zero points");
+    require(label->text().contains(QStringLiteral("Source none")), "initial status reports no track source");
     QAction* replayAction = actionByName(window, QStringLiteral("map3DReplayAction"));
     QAction* replayStopAction = actionByName(window, QStringLiteral("map3DReplayStopAction"));
     QAction* reloadBestMapAction = actionByName(window, QStringLiteral("map3DReloadBestMapAction"));
@@ -110,6 +112,7 @@ int main(int argc, char** argv)
     QCoreApplication::processEvents();
     require(label->text().contains(QStringLiteral("Points: 1000/1100")),
             "max visible samples caps the visible status count");
+    require(label->text().contains(QStringLiteral("Source Live")), "live append batch reports live source");
     window.clearTrack();
     QCoreApplication::processEvents();
 
@@ -125,18 +128,23 @@ int main(int argc, char** argv)
     window.appendSample(sample);
     QCoreApplication::processEvents();
     require(label->text().contains(QStringLiteral("Points: 1")), "appendSample updates status");
+    require(label->text().contains(QStringLiteral("Source Live")), "appendSample reports live source");
+    require(label->text().contains(QStringLiteral("rec 1000000")), "status includes latest record timestamp");
+    require(label->text().contains(QStringLiteral("dev 900000")), "status includes latest device timestamp");
     require(label->text().contains(QStringLiteral("Sats 12")), "status includes latest sample satellite count");
     require(label->text().contains(QStringLiteral("HDOP 0.90")), "status includes latest sample HDOP");
 
     window.clearTrack();
     QCoreApplication::processEvents();
     require(label->text().contains(QStringLiteral("Points: 0")), "clearTrack resets status");
+    require(label->text().contains(QStringLiteral("Source none")), "clearTrack resets track source");
 
     QTemporaryDir sessionDir;
     writeSessionTrack(sessionDir);
     window.loadSessionDirectory(sessionDir.path());
     QCoreApplication::processEvents();
     require(label->text().contains(QStringLiteral("Points: 2")), "session load appends track samples");
+    require(label->text().contains(QStringLiteral("Source Session")), "session load reports session source");
     require(replayAction->isEnabled(), "replay enabled after session load");
     require(replayStopAction->isEnabled(), "replay stop enabled after session load");
     require(replaySlider->isEnabled(), "replay slider enabled after session load");
@@ -148,7 +156,17 @@ int main(int argc, char** argv)
     QCoreApplication::processEvents();
     replaySlider->setSliderDown(false);
     require(label->text().contains(QStringLiteral("Points: 1")), "slider previews replay sample");
+    require(label->text().contains(QStringLiteral("Source Replay")), "slider preview reports replay source");
     require(label->text().contains(QStringLiteral("Replay 1/2")), "slider updates replay position");
+
+    diagnosticsAction->trigger();
+    QCoreApplication::processEvents();
+    auto* diagnosticsText = window.findChild<QPlainTextEdit*>();
+    require(diagnosticsText != nullptr, "diagnostics text view exists");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Track data:")),
+            "diagnostics include track data section");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Source: Replay")),
+            "diagnostics include latest track source");
 
     replaySpeedCombo->setCurrentText(QStringLiteral("2x"));
     QCoreApplication::processEvents();
