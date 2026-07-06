@@ -570,6 +570,8 @@ bool OsgEarthViewWidget::loadLocal3DTilesPreview(const QString& tilesetPath)
     local_3d_tiles_load_diagnostics_ = {};
     local_3d_tiles_load_diagnostics_.attempted = true;
     local_3d_tiles_load_diagnostics_.requestedPath = tilesetPath;
+    local_3d_tiles_load_diagnostics_.clearedPreviousPreview = local_3d_tiles_node_.valid();
+    clearLocal3DTilesPreview();
 
     const QFileInfo tilesetInfo(tilesetPath);
     if (!tilesetInfo.isFile())
@@ -595,7 +597,6 @@ bool OsgEarthViewWidget::loadLocal3DTilesPreview(const QString& tilesetPath)
         return false;
     }
 
-    clearLocal3DTilesPreview();
     local_3d_tiles_node_ = tilesNode;
     root_->addChild(local_3d_tiles_node_.get());
     local_3d_tiles_load_diagnostics_.loaded = true;

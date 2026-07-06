@@ -58,6 +58,7 @@ struct Local3DTilesLoadDiagnostics {
     QString requestedPath;
     bool attempted = false;
     bool loaded = false;
+    bool clearedPreviousPreview = false;
     QString failureReason;
     QString nodeDescription;
 };

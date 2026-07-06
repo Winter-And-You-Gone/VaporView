@@ -1213,6 +1213,8 @@ QString Map3DWindow::diagnosticsText() const
                           : latest_local_3d_tiles_load_.requestedPath);
     lines << QStringLiteral("  Attempted: %1").arg(latest_local_3d_tiles_load_.attempted ? QStringLiteral("yes") : QStringLiteral("no"));
     lines << QStringLiteral("  Loaded: %1").arg(latest_local_3d_tiles_load_.loaded ? QStringLiteral("yes") : QStringLiteral("no"));
+    lines << QStringLiteral("  Cleared previous preview: %1")
+                 .arg(latest_local_3d_tiles_load_.clearedPreviousPreview ? QStringLiteral("yes") : QStringLiteral("no"));
     if (!latest_local_3d_tiles_load_.nodeDescription.isEmpty())
     {
         lines << QStringLiteral("  Node: %1").arg(latest_local_3d_tiles_load_.nodeDescription);

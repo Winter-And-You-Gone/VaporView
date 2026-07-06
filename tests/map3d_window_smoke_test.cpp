@@ -279,6 +279,8 @@ int main(int argc, char** argv)
             "diagnostics include earth runtime load section");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Local 3D Tiles preview load:")),
             "diagnostics include local 3D Tiles preview load section");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Cleared previous preview:")),
+            "diagnostics report whether a local 3D Tiles load removed an old preview");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Aircraft model:")),
             "diagnostics include aircraft model section");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Requested path: <none>")),
