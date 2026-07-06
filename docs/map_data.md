@@ -120,7 +120,7 @@ Prepare those files from a local `.osm.pbf` or `.osm` extract with GDAL/OGR:
 python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --overwrite
 ```
 
-The helper does not download data. It runs `ogr2ogr` locally and writes four GeoPackage files. On Windows it also checks the project-local GDAL tools under `.local_deps/vcpkg_installed/x64-windows/tools/gdal` if GDAL is not on `PATH`. The generated GeoPackage layer names are `roads`, `water`, `buildings`, and `places`. Once Natural Earth, one DEM VRT, and all four OSM GeoPackages exist, `MapDataManager` selects `FullLocalMap`. It loads `data/maps/vaporview_full_local.earth` for Copernicus DEM, or `data/maps/vaporview_full_local_srtm.earth` when SRTM is the only available DEM.
+The helper does not download data. It runs `ogr2ogr` locally and writes four GeoPackage files. On Windows it also checks the project-local GDAL tools under `.local_deps/vcpkg_installed/x64-windows/tools/gdal` if GDAL is not on `PATH`. The generated GeoPackage layer names are `roads`, `water`, `buildings`, and `places`. The `buildings` layer also gets a normalized `extrusion_height_m` field derived from OSM `height`, `building:height`, `building:levels`, or `levels`; missing values fall back to 10 m. Once Natural Earth, one DEM VRT, and all four OSM GeoPackages exist, `MapDataManager` selects `FullLocalMap`. It loads `data/maps/vaporview_full_local.earth` for Copernicus DEM, or `data/maps/vaporview_full_local_srtm.earth` when SRTM is the only available DEM.
 
 Validate the generated files and layer names without reconverting:
 
@@ -140,7 +140,7 @@ The current full-local earth template renders local OSM context offline:
 
 The 3D Map diagnostics also prints the expected OSM layer contract for each file: `roads.gpkg -> layer roads -> OGRFeatures osm-roads -> FeatureImage OSM roads`, `water.gpkg -> layer water -> OGRFeatures osm-water -> FeatureImage OSM water fill`, `buildings.gpkg -> layer buildings -> OGRFeatures osm-buildings -> FeatureImage OSM building footprints + TiledFeatureModel OSM building extrusion`, and `places.gpkg -> layer places -> OGRFeatures osm-places -> TiledFeatureModel OSM place labels`. If a GeoPackage exists but the vector layer does not render, compare this contract with `ogrinfo -ro -so data/maps/osm/<file>.gpkg <layer>` and the matching `.earth` feature name.
 
-The building extrusion is intentionally simple: every building footprint uses a fixed 10 m height and clamps to terrain. It gives local 3D context without relying on online tiles or proprietary building-height sources. It is not a surveyed building-height model; later data enrichment can replace the fixed height with feature-specific attributes.
+The building extrusion reads `extrusion_height_m` from the generated `buildings.gpkg` layer and clamps the result to at least 10 m. The helper derives that field from local OSM height or level tags when present, and otherwise writes the 10 m fallback. This gives local 3D context without relying on online tiles or proprietary building-height sources; it is still not a surveyed building-height model.
 
 ## Optional Local High-Resolution Imagery
 

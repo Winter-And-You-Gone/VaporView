@@ -62,7 +62,7 @@
             <style type="text/css"><![CDATA[
                 default {
                     fill:                    #d7c1a3;
-                    extrusion-height:        10.0;
+                    extrusion-height:        Math.max(feature.properties.extrusion_height_m, 10.0);
                     extrusion-flatten:       true;
                     extrusion-wall-gradient: 0.35;
                     altitude-clamping:       terrain;

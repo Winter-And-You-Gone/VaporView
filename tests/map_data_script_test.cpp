@@ -142,6 +142,7 @@ int main()
                                                 QStringLiteral("http://"),
                                                 QStringLiteral("https://")};
     const QString mapsReadmeText = readTextFile(mapsReadme);
+    const QString osmScriptText = readTextFile(osmScript);
     require(mapsReadmeText.contains(QStringLiteral("Natural Earth"))
                 && mapsReadmeText.contains(QStringLiteral("Copernicus DEM"))
                 && mapsReadmeText.contains(QStringLiteral("SRTM"))
@@ -157,6 +158,14 @@ int main()
     }
 
     const QString fullLocalEarthText = readTextFile(fullLocalEarth);
+    require(osmScriptText.contains(QStringLiteral("BUILDING_HEIGHT_SQL"))
+                && osmScriptText.contains(QStringLiteral("hstore_get_value(other_tags, 'height')"))
+                && osmScriptText.contains(QStringLiteral("hstore_get_value(other_tags, 'building:height')"))
+                && osmScriptText.contains(QStringLiteral("hstore_get_value(other_tags, 'building:levels')"))
+                && osmScriptText.contains(QStringLiteral("hstore_get_value(other_tags, 'levels')"))
+                && osmScriptText.contains(QStringLiteral("AS extrusion_height_m"))
+                && osmScriptText.contains(QStringLiteral("\"-dialect\", \"SQLITE\", \"-sql\"")),
+            QStringLiteral("prepare-osm-local-data.py standardizes building extrusion height from local OSM tags"));
     require(fullLocalEarthText.contains(QStringLiteral("<FeatureImage name=\"OSM water fill\"")),
             QStringLiteral("full local earth renders OSM water with FeatureImage"));
     require(fullLocalEarthText.contains(QStringLiteral("<FeatureImage name=\"OSM roads\"")),
@@ -165,10 +174,10 @@ int main()
             QStringLiteral("full local earth renders OSM building footprints with FeatureImage"));
     require(fullLocalEarthText.contains(QStringLiteral("<TiledFeatureModel name=\"OSM building extrusion\"")),
             QStringLiteral("full local earth renders OSM buildings with TiledFeatureModel extrusion"));
-    require(fullLocalEarthText.contains(QStringLiteral("extrusion-height:        10.0"))
+    require(fullLocalEarthText.contains(QStringLiteral("extrusion-height:        Math.max(feature.properties.extrusion_height_m, 10.0)"))
                 && fullLocalEarthText.contains(QStringLiteral("extrusion-flatten:       true"))
                 && fullLocalEarthText.contains(QStringLiteral("altitude-clamping:       terrain")),
-            QStringLiteral("full local earth configures coarse fixed-height terrain-clamped building extrusion"));
+            QStringLiteral("full local earth uses standardized building extrusion height with fallback"));
     require(fullLocalEarthText.contains(QStringLiteral("<TiledFeatureModel name=\"OSM place labels\"")),
             QStringLiteral("full local earth renders OSM place labels with TiledFeatureModel"));
     for (const QString& forbidden : forbiddenOnlineSources)
@@ -180,10 +189,10 @@ int main()
     const QString fullLocalSrtmEarthText = readTextFile(fullLocalSrtmEarth);
     require(fullLocalSrtmEarthText.contains(QStringLiteral("<TiledFeatureModel name=\"OSM building extrusion\"")),
             QStringLiteral("SRTM full local earth also renders OSM buildings with extrusion"));
-    require(fullLocalSrtmEarthText.contains(QStringLiteral("extrusion-height:        10.0"))
+    require(fullLocalSrtmEarthText.contains(QStringLiteral("extrusion-height:        Math.max(feature.properties.extrusion_height_m, 10.0)"))
                 && fullLocalSrtmEarthText.contains(QStringLiteral("extrusion-flatten:       true"))
                 && fullLocalSrtmEarthText.contains(QStringLiteral("altitude-clamping:       terrain")),
-            QStringLiteral("SRTM full local earth configures coarse fixed-height terrain-clamped building extrusion"));
+            QStringLiteral("SRTM full local earth uses standardized building extrusion height with fallback"));
     for (const QString& forbidden : forbiddenOnlineSources)
     {
         require(!fullLocalSrtmEarthText.toLower().contains(forbidden),
@@ -218,6 +227,7 @@ int main()
     require(osmHelp.standardOutput.contains(QStringLiteral("GeoPackage"))
                 && osmHelp.standardOutput.contains(QStringLiteral("download data"))
                 && osmHelp.standardOutput.contains(QStringLiteral("--check"))
+                && osmHelp.standardOutput.contains(QStringLiteral("extrusion_height_m"))
                 && osmHelp.standardOutput.contains(QStringLiteral("roads"))
                 && osmHelp.standardOutput.contains(QStringLiteral("water"))
                 && osmHelp.standardOutput.contains(QStringLiteral("buildings"))

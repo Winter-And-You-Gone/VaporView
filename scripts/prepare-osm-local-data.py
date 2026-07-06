@@ -10,6 +10,16 @@ import sys
 from pathlib import Path
 
 
+BUILDING_HEIGHT_SQL = (
+    "COALESCE("
+    "CAST(REPLACE(REPLACE(hstore_get_value(other_tags, 'height'), 'm', ''), ' ', '') AS REAL), "
+    "CAST(REPLACE(REPLACE(hstore_get_value(other_tags, 'building:height'), 'm', ''), ' ', '') AS REAL), "
+    "CAST(hstore_get_value(other_tags, 'building:levels') AS REAL) * 3.0, "
+    "CAST(hstore_get_value(other_tags, 'levels') AS REAL) * 3.0, "
+    "10.0)"
+)
+
+
 LAYER_CONFIGS = {
     "roads": (
         "lines",
@@ -25,6 +35,12 @@ LAYER_CONFIGS = {
         "multipolygons",
         "building IS NOT NULL",
         "buildings.gpkg",
+        (
+            "SELECT *, "
+            f"{BUILDING_HEIGHT_SQL} AS extrusion_height_m "
+            "FROM multipolygons "
+            "WHERE building IS NOT NULL"
+        ),
     ),
     "places": (
         "points",
@@ -54,7 +70,8 @@ def run(command: list[str]) -> None:
 
 def validate_outputs(output_dir: Path, ogrinfo: str | None) -> bool:
     ok = True
-    for name, (_, _, file_name) in LAYER_CONFIGS.items():
+    for name, config in LAYER_CONFIGS.items():
+        file_name = config[2]
         target = output_dir / file_name
         if not target.is_file():
             print(f"ERROR: missing generated GeoPackage for {name}: {target}", file=sys.stderr)
@@ -87,7 +104,9 @@ def main() -> int:
         description=(
             "Convert a local open OSM extract into roads/water/buildings/places "
             "GeoPackages for data/maps/vaporview_full_local.earth. "
-            "The generated layer names are roads, water, buildings, and places."
+            "The generated layer names are roads, water, buildings, and places. "
+            "The buildings layer includes extrusion_height_m derived from local "
+            "OSM height or building level tags, with a 10 m fallback."
         )
     )
     parser.add_argument(
@@ -149,7 +168,8 @@ def main() -> int:
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    for name, (source_layer, where_clause, file_name) in LAYER_CONFIGS.items():
+    for name, config in LAYER_CONFIGS.items():
+        source_layer, where_clause, file_name = config[:3]
         target = output_dir / file_name
         if target.exists():
             if not args.overwrite:
@@ -157,27 +177,28 @@ def main() -> int:
                 continue
             target.unlink()
 
-        run(
-            [
-                ogr2ogr,
-                "-f",
-                "GPKG",
-                str(target),
-                str(source),
-                source_layer,
-                "-where",
-                where_clause,
-                "-nln",
-                name,
-                "-t_srs",
-                "EPSG:4326",
-                "-lco",
-                "SPATIAL_INDEX=YES",
-            ]
-        )
+        command = [
+            ogr2ogr,
+            "-f",
+            "GPKG",
+            str(target),
+            str(source),
+            "-nln",
+            name,
+            "-t_srs",
+            "EPSG:4326",
+            "-lco",
+            "SPATIAL_INDEX=YES",
+        ]
+        if len(config) >= 4:
+            command.extend(["-dialect", "SQLITE", "-sql", config[3]])
+        else:
+            command.extend([source_layer, "-where", where_clause])
+        run(command)
 
     print("OSM local vector data is ready:")
-    for _, (_, _, file_name) in LAYER_CONFIGS.items():
+    for config in LAYER_CONFIGS.values():
+        file_name = config[2]
         print(f"  {output_dir / file_name}")
     if not validate_outputs(output_dir, ogrinfo):
         return 1
