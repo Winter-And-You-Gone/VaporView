@@ -150,8 +150,12 @@ int main(int argc, char** argv)
         require(settings.value(QStringLiteral("followAircraft")).toBool(),
                 "follow aircraft setting is persisted");
     }
+    require(label->text().contains(QStringLiteral("Follow On")),
+            "status reports follow camera enabled state");
     followAction->setChecked(false);
     QCoreApplication::processEvents();
+    require(label->text().contains(QStringLiteral("Follow Off")),
+            "status reports follow camera disabled state");
 
     std::vector<VaporView::Geo::NavSample> manySamples(1100);
     for (int i = 0; i < static_cast<int>(manySamples.size()); ++i)
@@ -355,6 +359,8 @@ int main(int argc, char** argv)
             "diagnostics include replay elapsed time");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Attitude source: none")),
             "diagnostics include attitude source");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Follow aircraft: off")),
+            "diagnostics include follow camera state");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Height safety note: height reference unchecked")),
             "diagnostics include height reference safety note");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Fix quality: Fixed")),

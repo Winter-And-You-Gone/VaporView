@@ -357,6 +357,8 @@ Map3DWindow::Map3DWindow(QWidget* parent)
         }
         QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
         settings.setValue(QStringLiteral("followAircraft"), enabled);
+        setCameraNote(enabled ? QStringLiteral("Follow aircraft") : QStringLiteral("Manual/free camera"));
+        updateStatus(nullptr);
     });
 
     QAction* loadEarthAction = toolbar->addAction(QStringLiteral("加载 Earth 文件"));
@@ -1295,6 +1297,8 @@ QString Map3DWindow::diagnosticsText() const
                  .arg(latest_track_device_timestamp_us_ > 0 ? QString::number(latest_track_device_timestamp_us_) : QStringLiteral("<none>"));
     lines << QStringLiteral("  Attitude source: %1")
                  .arg(attitudeSourceLabel(has_latest_status_sample_ ? &latest_status_sample_ : nullptr));
+    lines << QStringLiteral("  Follow aircraft: %1")
+                 .arg(follow_action_ && follow_action_->isChecked() ? QStringLiteral("on") : QStringLiteral("off"));
     if (has_latest_status_sample_ && latest_status_sample_.hasLlh())
     {
         lines << QStringLiteral("  Height reference: %1")
@@ -1542,6 +1546,8 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest, bool for
     {
         text += QStringLiteral(" | Camera %1").arg(latest_camera_note_);
     }
+    text += QStringLiteral(" | Follow %1")
+                .arg(follow_action_ && follow_action_->isChecked() ? QStringLiteral("On") : QStringLiteral("Off"));
     if (latest_track_record_timestamp_us_ > 0)
     {
         text += QStringLiteral(" rec %1").arg(latest_track_record_timestamp_us_);

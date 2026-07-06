@@ -83,6 +83,7 @@ The native OSG view accepts mouse drag, mouse wheel, and keyboard focus. Click t
 `重置视角` returns to the default globe or local-grid view.
 
 `跟随飞机` keeps the camera near the latest aircraft sample as new samples arrive.
+The status bar and diagnostics panel report whether follow mode is currently on or off.
 
 `最大可见点数` limits how many trajectory samples are rendered at once. The full session sample count is still kept for replay/status, while older rendered segments are hidden when the limit is exceeded. The value is saved as `Map3D/maxVisibleSamples`.
 
