@@ -58,11 +58,11 @@ Replay slider
 The reader supports both newer `nav_*`/`epsilon_*` columns and older RTK/IMU session columns such as `rtk_lat`, `rtk_lon`, `rtk_alt`, `rtk_fix`, `rtk_sat`, `rtk_heading`, `rtk_pitch`, `rtk_vel_*`, and `imu_roll`/`imu_yaw`.
 When quaternion columns (`quat_w`, `quat_x`, `quat_y`, `quat_z`, including `epsilon_quat_*` aliases) are available, the aircraft marker and follow camera use them for attitude/heading before falling back to roll/pitch/yaw.
 
-By default the aircraft is a built-in OSG marker, so the 3D Map works without extra assets. `加载飞机模型` lets you choose any local `.osgb`, `.osg`, `.glb`, or `.gltf` model path; the selection is saved as `Map3D/aircraftModelPath`. `内置飞机标记` clears that setting and returns to the built-in marker. You can also keep an automatic default model under `data/maps/models/aircraft/` as `vaporview_aircraft.osgb`, `vaporview_aircraft.osg`, `vaporview_aircraft.glb`, or `vaporview_aircraft.gltf`. The diagnostics panel reports whether the model loaded; if OSG cannot read it, VaporView keeps the built-in marker and continues rendering the flight path.
+By default the aircraft is a built-in OSG marker, so the 3D Map works without extra assets. `加载飞机模型` lets you choose any local `.osgb`, `.osg`, `.glb`, or `.gltf` model path; the selection is saved as `Map3D/aircraftModelPath`. `内置飞机标记` clears that setting and returns to the built-in marker. You can also keep an automatic default model under `resources/maps/models/aircraft/` as `vaporview_aircraft.osgb`, `vaporview_aircraft.osg`, `vaporview_aircraft.glb`, or `vaporview_aircraft.gltf`. The diagnostics panel reports whether the model loaded; if OSG cannot read it, VaporView keeps the built-in marker and continues rendering the flight path.
 
 `加载 Earth 文件` opens a custom `.earth` file. Keep relative paths in that file aligned with its location.
 
-`本地影像` opens a menu for optional local imagery templates. Entries become enabled when both the matching VRT and the `.earth` template exist. The templates live in `data/maps`:
+`本地影像` opens a menu for optional local imagery templates. Entries become enabled when both the matching VRT and the `.earth` template exist. The templates live in `resources/maps`:
 
 ```text
 vaporview_with_sentinel2_imagery.earth
@@ -72,7 +72,7 @@ vaporview_with_openaerialmap_imagery.earth
 
 These overlays are still fully local. They do not change automatic base-map selection, but the menu avoids manually browsing for the template once `MapDataManager` detects the VRT.
 
-`重载最佳本地地图` rescans `data/maps` and loads the best local dataset currently available.
+`重载最佳本地地图` rescans `resources/maps` and loads the best local dataset currently available.
 
 The native OSG view accepts mouse drag, mouse wheel, and keyboard focus. Click the 3D view once, then use the mouse or keyboard navigation keys that the active OSG/osgEarth manipulator supports.
 
@@ -140,7 +140,7 @@ Click `地图诊断`, or use `View / 视图 -> Map Data Diagnostics / 地图数�
 - latest aircraft attitude source, using the same quaternion-first fallback as the aircraft marker
 - current working directory
 - project root
-- `data/maps` root
+- `resources/maps` root
 - Natural Earth texture, VRT, and raster paths
 - Copernicus DEM VRT
 - SRTM VRT
@@ -183,7 +183,7 @@ powershell -ExecutionPolicy Bypass -File scripts/prepare-demo-dem.ps1
 python scripts/prepare-demo-dem.py
 ```
 
-For tiles staged outside `data/maps/terrain/copernicus_dem_glo30/`, pass the external tile folder while still writing the VRT to the auto-load project path:
+For tiles staged outside `resources/maps/terrain/copernicus_dem_glo30/`, pass the external tile folder while still writing the VRT to the auto-load project path:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/prepare-demo-dem.ps1 -DemDir X:\DEM\copernicus_tiles
@@ -200,7 +200,7 @@ python scripts/prepare-demo-dem.py --srtm
 OSM local vectors:
 
 ```powershell
-python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --overwrite
+python scripts/prepare-osm-local-data.py resources/maps/osm/local_extract.osm.pbf --overwrite
 ```
 
 Optional local imagery:
@@ -211,7 +211,7 @@ python scripts/prepare-local-imagery.py landsat
 python scripts/prepare-local-imagery.py openaerialmap
 ```
 
-For imagery staged outside `data/maps/imagery/<slot>/`, pass the external tile folder while still writing the VRT to the auto-detect project path:
+For imagery staged outside `resources/maps/imagery/<slot>/`, pass the external tile folder while still writing the VRT to the auto-detect project path:
 
 ```powershell
 python scripts/prepare-local-imagery.py sentinel2 --imagery-dir X:\Imagery\sentinel2_tiles
@@ -219,9 +219,9 @@ python scripts/prepare-local-imagery.py sentinel2 --imagery-dir X:\Imagery\senti
 
 After building a local imagery VRT, use the `本地影像` menu and select the enabled matching overlay.
 
-The user is responsible for placing Copernicus DEM, SRTM, OSM, Sentinel-2, Landsat, or OpenAerialMap files under `data/maps`. VaporView should not download commercial or restricted data sources.
+The user is responsible for placing Copernicus DEM, SRTM, OSM, Sentinel-2, Landsat, or OpenAerialMap files under `resources/maps`. VaporView should not download commercial or restricted data sources.
 
-Optional local 3D Tiles can be placed under `data/maps/tiles3d/local/tileset.json`. The diagnostics panel detects that path and validates the local-only data contract. A healthy dataset should report `Local 3D Tiles contract: valid`; remote, absolute, missing, or malformed content references are listed in the diagnostics panel.
+Optional local 3D Tiles can be placed under `resources/maps/tiles3d/local/tileset.json`. The diagnostics panel detects that path and validates the local-only data contract. A healthy dataset should report `Local 3D Tiles contract: valid`; remote, absolute, missing, or malformed content references are listed in the diagnostics panel.
 
 When the contract is valid, the `本地 3D Tiles` toolbar action attempts to load the tileset as a local OSG overlay. This preview does not replace the active Natural Earth/DEM/OSM base map and does not affect trajectory or aircraft layers. Use `清除 3D Tiles` to remove the preview overlay while keeping the base map and flight track. If loading fails, check `Local 3D Tiles preview load` in diagnostics; `osgDB::readNodeFile returned null` usually means the installed OSG/osgEarth runtime lacks plugin support for that dataset.
 

@@ -51,6 +51,8 @@ def candidate_gdal_dirs(project_root: Path, explicit_gdal_bin: Path | None) -> l
 
     candidates.extend(
         [
+            project_root / ".local_deps" / "vcpkg" / "packages" / "gdal_x64-windows" / "bin",
+            project_root / ".local_deps" / "vcpkg" / "buildtrees" / "gdal" / "x64-windows-rel" / "apps",
             project_root / ".local_deps" / "vcpkg_installed" / "x64-windows" / "tools" / "gdal",
             project_root / ".local_deps" / "vcpkg_installed" / "x64-windows" / "bin",
         ]
@@ -102,11 +104,61 @@ def gdal_tool_hint(project_root: Path, explicit_gdal_bin: Path | None) -> str:
     )
 
 
+def first_existing_dir(paths: list[Path]) -> Path | None:
+    for path in paths:
+        if path.is_dir():
+            return path
+    return None
+
+
+def gdal_runtime_env(project_root: Path, tool_path: str | None) -> dict[str, str]:
+    env = os.environ.copy()
+    path_entries: list[str] = []
+    if tool_path:
+        tool_dir = Path(tool_path).resolve().parent
+        path_entries.append(str(tool_dir))
+        if tool_dir.name.lower() == "apps":
+            path_entries.append(str(tool_dir.parent))
+
+    for path in [
+        project_root / ".local_deps" / "vcpkg" / "buildtrees" / "gdal" / "x64-windows-rel",
+        project_root / ".local_deps" / "vcpkg_installed" / "x64-windows" / "bin",
+        project_root / ".local_deps" / "vcpkg" / "packages" / "gdal_x64-windows" / "bin",
+    ]:
+        if path.is_dir():
+            path_entries.append(str(path))
+
+    if path_entries:
+        env["PATH"] = os.pathsep.join(path_entries + [env.get("PATH", "")])
+
+    if not env.get("GDAL_DATA"):
+        gdal_data = first_existing_dir(
+            [
+                project_root / ".local_deps" / "vcpkg_installed" / "x64-windows" / "share" / "gdal",
+                project_root / ".local_deps" / "vcpkg" / "packages" / "gdal_x64-windows" / "share" / "gdal",
+            ]
+        )
+        if gdal_data is not None:
+            env["GDAL_DATA"] = str(gdal_data)
+
+    proj_data = first_existing_dir(
+        [
+            project_root / ".local_deps" / "vcpkg_installed" / "x64-windows" / "share" / "proj",
+            project_root / ".local_deps" / "vcpkg" / "packages" / "proj_x64-windows" / "share" / "proj",
+        ]
+    )
+    if proj_data is not None:
+        env.setdefault("PROJ_DATA", str(proj_data))
+        env.setdefault("PROJ_LIB", str(proj_data))
+
+    return env
+
+
 def imagery_paths(project_root: Path, key: str) -> tuple[Path, Path, Path, str, str]:
     config = IMAGERY_CONFIGS[key]
-    imagery_dir = project_root / "data" / "maps" / "imagery" / config["folder"]
+    imagery_dir = project_root / "resources" / "maps" / "imagery" / config["folder"]
     vrt_path = imagery_dir / config["vrt"]
-    earth_path = project_root / "data" / "maps" / config["earth"]
+    earth_path = project_root / "resources" / "maps" / config["earth"]
     expected_relative = f"imagery/{config['folder']}/{config['vrt']}"
     return imagery_dir, vrt_path, earth_path, expected_relative, config["label"]
 
@@ -129,9 +181,9 @@ def validate_template(earth_path: Path, expected_relative: str) -> None:
         raise RuntimeError(f"{earth_path.name} does not reference {expected_relative}")
 
 
-def run(command: list[str]) -> None:
+def run(command: list[str], env: dict[str, str] | None = None) -> None:
     print("+", " ".join(command))
-    subprocess.run(command, check=True)
+    subprocess.run(command, check=True, env=env)
 
 
 def main() -> int:
@@ -140,7 +192,8 @@ def main() -> int:
             "Build or check a local imagery VRT for VaporView. The script only reads "
             "local GeoTIFF imagery and does not download data, call online map services, "
             "or use Cesium ion."
-        )
+        ),
+        epilog="Generated VRTs enable the 3D Map toolbar menu overlay entries.",
     )
     parser.add_argument(
         "imagery",
@@ -160,8 +213,8 @@ def main() -> int:
         type=Path,
         default=None,
         help=(
-            "Input imagery tile directory. Defaults to data/maps/imagery/<slot>. "
-            "The generated VRT is still written to the canonical data/maps/imagery "
+            "Input imagery tile directory. Defaults to resources/maps/imagery/<slot>. "
+            "The generated VRT is still written to the canonical resources/maps/imagery "
             "path so MapDataManager and the local imagery toolbar menu can auto-detect it."
         ),
     )
@@ -205,6 +258,7 @@ def main() -> int:
         return 2
 
     gdalinfo = find_tool("gdalinfo", project_root, gdal_bin)
+    tool_env = gdal_runtime_env(project_root, gdalbuildvrt or gdalinfo)
     try:
         validate_template(earth_path, expected_relative)
     except RuntimeError as exc:
@@ -216,7 +270,7 @@ def main() -> int:
             print(f"ERROR: expected VRT does not exist yet: {vrt_path}", file=sys.stderr)
             return 2
         if gdalinfo is not None:
-            run([gdalinfo, str(vrt_path)])
+            run([gdalinfo, str(vrt_path)], env=tool_env)
         print(f"Imagery check passed for {label}: {vrt_path}")
         print(f"Earth template references expected VRT: {earth_path}")
         return 0
@@ -228,13 +282,13 @@ def main() -> int:
         print(f"Using imagery tiles from: {tile_dir}")
         print(f"Writing auto-detect VRT to: {vrt_path}")
 
-    run([gdalbuildvrt, str(vrt_path), *[str(tile) for tile in tiles]])
+    run([gdalbuildvrt, str(vrt_path), *[str(tile) for tile in tiles]], env=tool_env)
     if not vrt_path.is_file():
         print(f"ERROR: expected VRT was not created: {vrt_path}", file=sys.stderr)
         return 1
 
     if gdalinfo is not None:
-        run([gdalinfo, str(vrt_path)])
+        run([gdalinfo, str(vrt_path)], env=tool_env)
 
     print(f"Prepared {label} imagery VRT: {vrt_path}")
     print(f"Validated earth template: {earth_path}")

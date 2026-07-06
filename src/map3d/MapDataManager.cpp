@@ -16,27 +16,27 @@
 namespace VaporView::Map3D {
 namespace {
 
-constexpr auto kDefaultEarthRelative = "data/maps/vaporview_default.earth";
-constexpr auto kCopernicusEarthRelative = "data/maps/vaporview_with_dem.earth";
-constexpr auto kSrtmEarthRelative = "data/maps/vaporview_with_srtm.earth";
-constexpr auto kFullLocalEarthRelative = "data/maps/vaporview_full_local.earth";
-constexpr auto kFullLocalSrtmEarthRelative = "data/maps/vaporview_full_local_srtm.earth";
-constexpr auto kSentinel2ImageryEarthRelative = "data/maps/vaporview_with_sentinel2_imagery.earth";
-constexpr auto kLandsatImageryEarthRelative = "data/maps/vaporview_with_landsat_imagery.earth";
-constexpr auto kOpenAerialMapImageryEarthRelative = "data/maps/vaporview_with_openaerialmap_imagery.earth";
-constexpr auto kNaturalEarthTextureRelative = "data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png";
-constexpr auto kNaturalEarthVrtRelative = "data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt";
-constexpr auto kNaturalEarthRasterRelative = "data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif";
-constexpr auto kCopernicusDemVrtRelative = "data/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt";
-constexpr auto kSrtmDemVrtRelative = "data/maps/terrain/srtm/srtm.vrt";
-constexpr auto kOsmRoadsRelative = "data/maps/osm/roads.gpkg";
-constexpr auto kOsmWaterRelative = "data/maps/osm/water.gpkg";
-constexpr auto kOsmBuildingsRelative = "data/maps/osm/buildings.gpkg";
-constexpr auto kOsmPlacesRelative = "data/maps/osm/places.gpkg";
-constexpr auto kSentinel2ImageryVrtRelative = "data/maps/imagery/sentinel2/sentinel2.vrt";
-constexpr auto kLandsatImageryVrtRelative = "data/maps/imagery/landsat/landsat.vrt";
-constexpr auto kOpenAerialMapImageryVrtRelative = "data/maps/imagery/openaerialmap/openaerialmap.vrt";
-constexpr auto kLocal3DTilesTilesetRelative = "data/maps/tiles3d/local/tileset.json";
+constexpr auto kDefaultEarthRelative = "resources/maps/vaporview_default.earth";
+constexpr auto kCopernicusEarthRelative = "resources/maps/vaporview_with_dem.earth";
+constexpr auto kSrtmEarthRelative = "resources/maps/vaporview_with_srtm.earth";
+constexpr auto kFullLocalEarthRelative = "resources/maps/vaporview_full_local.earth";
+constexpr auto kFullLocalSrtmEarthRelative = "resources/maps/vaporview_full_local_srtm.earth";
+constexpr auto kSentinel2ImageryEarthRelative = "resources/maps/vaporview_with_sentinel2_imagery.earth";
+constexpr auto kLandsatImageryEarthRelative = "resources/maps/vaporview_with_landsat_imagery.earth";
+constexpr auto kOpenAerialMapImageryEarthRelative = "resources/maps/vaporview_with_openaerialmap_imagery.earth";
+constexpr auto kNaturalEarthTextureRelative = "resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png";
+constexpr auto kNaturalEarthVrtRelative = "resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt";
+constexpr auto kNaturalEarthRasterRelative = "resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif";
+constexpr auto kCopernicusDemVrtRelative = "resources/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt";
+constexpr auto kSrtmDemVrtRelative = "resources/maps/terrain/srtm/srtm.vrt";
+constexpr auto kOsmRoadsRelative = "resources/maps/osm/roads.gpkg";
+constexpr auto kOsmWaterRelative = "resources/maps/osm/water.gpkg";
+constexpr auto kOsmBuildingsRelative = "resources/maps/osm/buildings.gpkg";
+constexpr auto kOsmPlacesRelative = "resources/maps/osm/places.gpkg";
+constexpr auto kSentinel2ImageryVrtRelative = "resources/maps/imagery/sentinel2/sentinel2.vrt";
+constexpr auto kLandsatImageryVrtRelative = "resources/maps/imagery/landsat/landsat.vrt";
+constexpr auto kOpenAerialMapImageryVrtRelative = "resources/maps/imagery/openaerialmap/openaerialmap.vrt";
+constexpr auto kLocal3DTilesTilesetRelative = "resources/maps/tiles3d/local/tileset.json";
 
 QString absolutePath(const QString& root, const char* relative)
 {
@@ -648,7 +648,7 @@ void finalizeSelection(MapDataSelection& selection)
         if (!diagnostics.local3DTilesAvailable)
         {
             diagnostics.readinessNextSteps.push_back(
-                QStringLiteral("Optional: place a local 3D Tiles dataset under data/maps/tiles3d/local/ for preview diagnostics."));
+                QStringLiteral("Optional: place a local 3D Tiles dataset under resources/maps/tiles3d/local/ for preview diagnostics."));
         }
         break;
     case MapDataMode::NaturalEarthWithCopernicusDem:
@@ -659,9 +659,9 @@ void finalizeSelection(MapDataSelection& selection)
         diagnostics.readinessNextSteps.push_back(
             QStringLiteral("Generate all four local OSM GeoPackages with scripts/prepare-osm-local-data.py to enable Full local map."));
         diagnostics.readinessNextSteps.push_back(
-            QStringLiteral("Command: python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --overwrite"));
+            QStringLiteral("Command: python scripts/prepare-osm-local-data.py resources/maps/osm/local_extract.osm.pbf --overwrite"));
         diagnostics.readinessNextSteps.push_back(
-            QStringLiteral("Validate: python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --check"));
+            QStringLiteral("Validate: python scripts/prepare-osm-local-data.py resources/maps/osm/local_extract.osm.pbf --check"));
         if (!diagnostics.missingOsmFiles.isEmpty())
         {
             diagnostics.readinessNextSteps.push_back(
@@ -672,11 +672,11 @@ void finalizeSelection(MapDataSelection& selection)
         diagnostics.readinessSummary =
             QStringLiteral("Ready for offline visual background only: Natural Earth is selected, but no real DEM terrain is available.");
         diagnostics.readinessNextSteps.push_back(
-            QStringLiteral("Place Copernicus DEM GLO-30 GeoTIFF tiles under data/maps/terrain/copernicus_dem_glo30/ and run scripts/prepare-demo-dem.py."));
+            QStringLiteral("Place Copernicus DEM GLO-30 GeoTIFF tiles under resources/maps/terrain/copernicus_dem_glo30/ and run scripts/prepare-demo-dem.py."));
         diagnostics.readinessNextSteps.push_back(
             QStringLiteral("Command: python scripts/prepare-demo-dem.py"));
         diagnostics.readinessNextSteps.push_back(
-            QStringLiteral("Use SRTM under data/maps/terrain/srtm/ as a fallback when Copernicus DEM is unavailable."));
+            QStringLiteral("Use SRTM under resources/maps/terrain/srtm/ as a fallback when Copernicus DEM is unavailable."));
         diagnostics.readinessNextSteps.push_back(
             QStringLiteral("SRTM fallback command: python scripts/prepare-demo-dem.py --srtm"));
         break;
@@ -841,7 +841,7 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     MapDataDiagnostics& diagnostics = selection.diagnostics;
     diagnostics.currentWorkingDirectory = QDir::currentPath();
     diagnostics.projectRoot = QDir::cleanPath(QDir(root).absolutePath());
-    diagnostics.mapsRoot = QDir::cleanPath(QDir(root).absoluteFilePath(QStringLiteral("data/maps")));
+    diagnostics.mapsRoot = QDir::cleanPath(QDir(root).absoluteFilePath(QStringLiteral("resources/maps")));
 
     const QString defaultEarthPath = absolutePath(root, kDefaultEarthRelative);
     const QString copernicusEarthPath = absolutePath(root, kCopernicusEarthRelative);

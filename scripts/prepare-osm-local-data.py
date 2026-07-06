@@ -29,8 +29,15 @@ LAYER_CONFIGS = {
     ),
     "water": (
         "multipolygons",
-        "natural = 'water' OR water IS NOT NULL OR waterway IS NOT NULL",
+        "natural = 'water'",
         "water.gpkg",
+        (
+            "SELECT * "
+            "FROM multipolygons "
+            "WHERE natural = 'water' "
+            "OR hstore_get_value(other_tags, 'water') IS NOT NULL "
+            "OR hstore_get_value(other_tags, 'waterway') IS NOT NULL"
+        ),
     ),
     "buildings": (
         "multipolygons",
@@ -69,6 +76,8 @@ def candidate_gdal_dirs(project_root: Path, explicit_gdal_bin: Path | None) -> l
 
     candidates.extend(
         [
+            project_root / ".local_deps" / "vcpkg" / "packages" / "gdal_x64-windows" / "bin",
+            project_root / ".local_deps" / "vcpkg" / "buildtrees" / "gdal" / "x64-windows-rel" / "apps",
             project_root / ".local_deps" / "vcpkg_installed" / "x64-windows" / "tools" / "gdal",
             project_root / ".local_deps" / "vcpkg_installed" / "x64-windows" / "bin",
         ]
@@ -120,12 +129,62 @@ def gdal_tool_hint(project_root: Path, explicit_gdal_bin: Path | None) -> str:
     )
 
 
-def run(command: list[str]) -> None:
+def first_existing_dir(paths: list[Path]) -> Path | None:
+    for path in paths:
+        if path.is_dir():
+            return path
+    return None
+
+
+def gdal_runtime_env(project_root: Path, tool_path: str | None) -> dict[str, str]:
+    env = os.environ.copy()
+    path_entries: list[str] = []
+    if tool_path:
+        tool_dir = Path(tool_path).resolve().parent
+        path_entries.append(str(tool_dir))
+        if tool_dir.name.lower() == "apps":
+            path_entries.append(str(tool_dir.parent))
+
+    for path in [
+        project_root / ".local_deps" / "vcpkg" / "buildtrees" / "gdal" / "x64-windows-rel",
+        project_root / ".local_deps" / "vcpkg_installed" / "x64-windows" / "bin",
+        project_root / ".local_deps" / "vcpkg" / "packages" / "gdal_x64-windows" / "bin",
+    ]:
+        if path.is_dir():
+            path_entries.append(str(path))
+
+    if path_entries:
+        env["PATH"] = os.pathsep.join(path_entries + [env.get("PATH", "")])
+
+    if not env.get("GDAL_DATA"):
+        gdal_data = first_existing_dir(
+            [
+                project_root / ".local_deps" / "vcpkg_installed" / "x64-windows" / "share" / "gdal",
+                project_root / ".local_deps" / "vcpkg" / "packages" / "gdal_x64-windows" / "share" / "gdal",
+            ]
+        )
+        if gdal_data is not None:
+            env["GDAL_DATA"] = str(gdal_data)
+
+    proj_data = first_existing_dir(
+        [
+            project_root / ".local_deps" / "vcpkg_installed" / "x64-windows" / "share" / "proj",
+            project_root / ".local_deps" / "vcpkg" / "packages" / "proj_x64-windows" / "share" / "proj",
+        ]
+    )
+    if proj_data is not None:
+        env.setdefault("PROJ_DATA", str(proj_data))
+        env.setdefault("PROJ_LIB", str(proj_data))
+
+    return env
+
+
+def run(command: list[str], env: dict[str, str] | None = None) -> None:
     print("+", " ".join(command))
-    subprocess.run(command, check=True)
+    subprocess.run(command, check=True, env=env)
 
 
-def validate_outputs(output_dir: Path, ogrinfo: str | None) -> bool:
+def validate_outputs(output_dir: Path, ogrinfo: str | None, env: dict[str, str] | None = None) -> bool:
     ok = True
     for name, config in LAYER_CONFIGS.items():
         file_name = config[2]
@@ -144,6 +203,7 @@ def validate_outputs(output_dir: Path, ogrinfo: str | None) -> bool:
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            env=env,
         )
         if result.returncode != 0:
             print(
@@ -170,7 +230,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Convert a local open OSM extract into roads/water/buildings/places "
-            "GeoPackages for data/maps/vaporview_full_local.earth. "
+            "GeoPackages for resources/maps/vaporview_full_local.earth. "
             "The generated layer names are roads, water, buildings, and places. "
             "The buildings layer includes extrusion_height_m derived from local "
             "OSM height or building level tags, with a 10 m fallback."
@@ -191,7 +251,7 @@ def main() -> int:
         "--output-dir",
         type=Path,
         default=None,
-        help="Output directory. Defaults to data/maps/osm under the project root.",
+        help="Output directory. Defaults to resources/maps/osm under the project root.",
     )
     parser.add_argument(
         "--overwrite",
@@ -216,11 +276,12 @@ def main() -> int:
 
     project_root = args.project_root.resolve()
     source = args.source.resolve()
-    output_dir = (args.output_dir or (project_root / "data" / "maps" / "osm")).resolve()
+    output_dir = (args.output_dir or (project_root / "resources" / "maps" / "osm")).resolve()
     gdal_bin = args.gdal_bin.resolve() if args.gdal_bin is not None else None
 
     ogr2ogr = find_tool("ogr2ogr", project_root, gdal_bin)
     ogrinfo = find_tool("ogrinfo", project_root, gdal_bin)
+    tool_env = gdal_runtime_env(project_root, ogr2ogr or ogrinfo)
 
     if args.check:
         if ogrinfo is None:
@@ -229,7 +290,7 @@ def main() -> int:
                 + gdal_tool_hint(project_root, gdal_bin),
                 file=sys.stderr,
             )
-        return 0 if validate_outputs(output_dir, ogrinfo) else 2
+        return 0 if validate_outputs(output_dir, ogrinfo, env=tool_env) else 2
 
     if ogr2ogr is None:
         print(
@@ -270,13 +331,13 @@ def main() -> int:
             command.extend(["-dialect", "SQLITE", "-sql", config[3]])
         else:
             command.extend([source_layer, "-where", where_clause])
-        run(command)
+        run(command, env=tool_env)
 
     print("OSM local vector data is ready:")
     for config in LAYER_CONFIGS.values():
         file_name = config[2]
         print(f"  {output_dir / file_name}")
-    if not validate_outputs(output_dir, ogrinfo):
+    if not validate_outputs(output_dir, ogrinfo, env=tool_env):
         return 1
     print("MapDataManager will select FullLocalMap when Natural Earth, a DEM VRT, and all four GeoPackages exist.")
     return 0

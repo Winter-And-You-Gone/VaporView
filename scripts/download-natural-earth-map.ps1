@@ -7,7 +7,7 @@ $ErrorActionPreference = 'Stop'
 
 $url = 'https://naturalearth.s3.amazonaws.com/50m_raster/NE2_50M_SR_W.zip'
 $expectedBytes = 88903451
-$mapsDir = Join-Path $ProjectRoot 'data\maps'
+$mapsDir = Join-Path $ProjectRoot 'resources\maps'
 $naturalEarthDir = Join-Path $mapsDir 'natural_earth'
 $extractDir = Join-Path $naturalEarthDir 'NE2_50M_SR_W'
 $zipPath = Join-Path $naturalEarthDir 'NE2_50M_SR_W.zip'

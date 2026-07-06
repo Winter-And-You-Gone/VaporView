@@ -61,7 +61,7 @@ On Windows, the build stages common project-local runtime files into `build/Rele
 - OSG plugins from `.local_deps/vcpkg_installed/x64-windows/plugins/osgPlugins-*`
 - GDAL data from `.local_deps/vcpkg_installed/x64-windows/share/gdal`
 - PROJ data from `.local_deps/vcpkg_installed/x64-windows/share/proj`
-- local Natural Earth map files from `data/maps`
+- local Natural Earth map files from `resources/maps`
 
 At runtime `OsgEarthViewWidget` also tries to fill missing environment variables:
 
@@ -88,7 +88,7 @@ installed elsewhere, pass the directory explicitly:
 
 ```powershell
 python scripts/prepare-demo-dem.py --gdal-bin C:\OSGeo4W\bin
-python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --gdal-bin C:\OSGeo4W\bin --check
+python scripts/prepare-osm-local-data.py resources/maps/osm/local_extract.osm.pbf --gdal-bin C:\OSGeo4W\bin --check
 powershell -ExecutionPolicy Bypass -File scripts/prepare-demo-dem.ps1 -GdalBin C:\OSGeo4W\bin
 ```
 
@@ -119,14 +119,14 @@ Check these in order:
 3. If `MapNode` is `no`, VaporView may be using the manual Natural Earth textured-globe fallback or OSG loaded a node that is not an osgEarth map.
 4. Review `Layer details`. Closed layers or non-OK status strings usually point to missing raster/VRT/GeoPackage data, missing GDAL/PROJ data, or missing OSG plugins.
 5. Confirm OSG plugins, `GDAL_DATA`, `PROJ_DATA`, and `PROJ_LIB` in diagnostics.
-6. Confirm `data/maps/vaporview_default.earth` and Natural Earth files exist.
+6. Confirm `resources/maps/vaporview_default.earth` and Natural Earth files exist.
 7. Use `重载最佳本地地图`.
 8. Use `重置视角`.
 9. If no map data exists, confirm the local grid fallback appears.
 
 ### `.earth` Load Failed
 
-The built-in `.earth` templates use paths relative to `data/maps`. Keep the `.earth` file next to `natural_earth/`, `terrain/`, and `osm/`, or load a custom template whose paths match its location.
+The built-in `.earth` templates use paths relative to `resources/maps`. Keep the `.earth` file next to `natural_earth/`, `terrain/`, and `osm/`, or load a custom template whose paths match its location.
 
 ### QOpenGLWidget / OSG Integration Issues
 

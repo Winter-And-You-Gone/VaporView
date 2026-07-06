@@ -94,10 +94,10 @@ int main(int argc, char** argv)
     require(selection.diagnostics.localGridFallbackAvailable, "local grid fallback should always be available");
     require(selection.diagnostics.localGridFallbackActive, "empty root should activate the local grid fallback");
 
-    touch(root, QStringLiteral("data/maps/vaporview_default.earth"));
-    touch(root, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"));
+    touch(root, QStringLiteral("resources/maps/vaporview_default.earth"));
+    touch(root, QStringLiteral("resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"));
     VaporView::Map3D::MapDataManager builtInManager({root.absolutePath()});
-    require(builtInManager.isBuiltInEarthFile(QStringLiteral("data/maps/vaporview_full_local_srtm.earth")),
+    require(builtInManager.isBuiltInEarthFile(QStringLiteral("resources/maps/vaporview_full_local_srtm.earth")),
             "SRTM full-local earth template should be treated as built in");
     selection = select(root);
     require(selection.mode == VaporView::Map3D::MapDataMode::LocalGridOnly, "preview texture alone should not select NaturalEarth");
@@ -131,8 +131,8 @@ int main(int argc, char** argv)
                 "diagnostics should include osgEarth environment variables beyond OSGEARTH_NOTIFY_LEVEL");
     }
 
-    touch(root, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"));
-    touch(root, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"));
+    touch(root, QStringLiteral("resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"));
+    touch(root, QStringLiteral("resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"));
     selection = select(root);
     require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarth, "Natural Earth files should select NaturalEarth");
     require(selection.hasEarthFile(), "NaturalEarth selection should expose an earth file");
@@ -185,7 +185,7 @@ int main(int argc, char** argv)
     require(!selection.diagnostics.missingFiles.contains(selection.diagnostics.local3DTilesTilesetPath),
             "missing optional 3D Tiles should not be treated as required");
 
-    touch(root, QStringLiteral("data/maps/imagery/sentinel2/sentinel2.vrt"));
+    touch(root, QStringLiteral("resources/maps/imagery/sentinel2/sentinel2.vrt"));
     selection = select(root);
     require(selection.diagnostics.localImageryAvailable,
             "optional imagery VRT should be detected even when the matching earth template is missing");
@@ -200,12 +200,12 @@ int main(int argc, char** argv)
     require(selection.diagnostics.messages.join(QLatin1Char('\n')).contains(QStringLiteral("no matching imagery earth templates")),
             "VRT-only imagery diagnostics should explain why the menu is unavailable");
 
-    touch(root, QStringLiteral("data/maps/vaporview_with_sentinel2_imagery.earth"));
-    touch(root, QStringLiteral("data/maps/imagery/landsat/landsat.vrt"));
-    touch(root, QStringLiteral("data/maps/vaporview_with_landsat_imagery.earth"));
-    touch(root, QStringLiteral("data/maps/imagery/openaerialmap/openaerialmap.vrt"));
-    touch(root, QStringLiteral("data/maps/vaporview_with_openaerialmap_imagery.earth"));
-    touch(root, QStringLiteral("data/maps/tiles3d/local/tileset.json"));
+    touch(root, QStringLiteral("resources/maps/vaporview_with_sentinel2_imagery.earth"));
+    touch(root, QStringLiteral("resources/maps/imagery/landsat/landsat.vrt"));
+    touch(root, QStringLiteral("resources/maps/vaporview_with_landsat_imagery.earth"));
+    touch(root, QStringLiteral("resources/maps/imagery/openaerialmap/openaerialmap.vrt"));
+    touch(root, QStringLiteral("resources/maps/vaporview_with_openaerialmap_imagery.earth"));
+    touch(root, QStringLiteral("resources/maps/tiles3d/local/tileset.json"));
     selection = select(root);
     require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarth,
             "optional imagery and 3D Tiles should not change base map selection");
@@ -231,10 +231,10 @@ int main(int argc, char** argv)
     require(selection.diagnostics.messages.join(QLatin1Char('\n')).contains(QStringLiteral("menu-ready overlays")),
             "optional imagery diagnostics should mention menu-ready toolbar overlays");
 
-    writeFile(root, QStringLiteral("data/maps/tiles3d/local/content/building.b3dm"),
+    writeFile(root, QStringLiteral("resources/maps/tiles3d/local/content/building.b3dm"),
               QByteArrayLiteral("not a real b3dm"));
     writeFile(root,
-              QStringLiteral("data/maps/tiles3d/local/tileset.json"),
+              QStringLiteral("resources/maps/tiles3d/local/tileset.json"),
               QByteArrayLiteral(R"JSON({
   "asset": {"version": "1.1"},
   "geometricError": 500,
@@ -257,14 +257,14 @@ int main(int argc, char** argv)
     require(selection.diagnostics.local3DTilesMissingResources.isEmpty(),
             "valid local 3D Tiles tileset should not report missing resources");
 
-    writeFile(root, QStringLiteral("data/maps/tiles3d/local/content/parent.b3dm"),
+    writeFile(root, QStringLiteral("resources/maps/tiles3d/local/content/parent.b3dm"),
               QByteArrayLiteral("not a real parent b3dm"));
-    writeFile(root, QStringLiteral("data/maps/tiles3d/local/content/child-a.b3dm"),
+    writeFile(root, QStringLiteral("resources/maps/tiles3d/local/content/child-a.b3dm"),
               QByteArrayLiteral("not a real child a b3dm"));
-    writeFile(root, QStringLiteral("data/maps/tiles3d/local/content/child-b.b3dm"),
+    writeFile(root, QStringLiteral("resources/maps/tiles3d/local/content/child-b.b3dm"),
               QByteArrayLiteral("not a real child b b3dm"));
     writeFile(root,
-              QStringLiteral("data/maps/tiles3d/local/tileset.json"),
+              QStringLiteral("resources/maps/tiles3d/local/tileset.json"),
               QByteArrayLiteral(R"JSON({
   "asset": {"version": "1.1"},
   "geometricError": 500,
@@ -297,7 +297,7 @@ int main(int argc, char** argv)
             "nested local 3D Tiles diagnostics should list child contents URL alias");
 
     writeFile(root,
-              QStringLiteral("data/maps/tiles3d/local/tileset.json"),
+              QStringLiteral("resources/maps/tiles3d/local/tileset.json"),
               QByteArrayLiteral(R"JSON({
   "asset": {"version": "1.1"},
   "geometricError": 500,
@@ -318,7 +318,7 @@ int main(int argc, char** argv)
             "3D Tiles diagnostics should list the remote URI");
 
     writeFile(root,
-              QStringLiteral("data/maps/tiles3d/local/tileset.json"),
+              QStringLiteral("resources/maps/tiles3d/local/tileset.json"),
               QByteArrayLiteral(R"JSON({
   "asset": {"version": "1.1"},
   "geometricError": 500,
@@ -337,7 +337,7 @@ int main(int argc, char** argv)
             "3D Tiles diagnostics should list the absolute URI");
 
     writeFile(root,
-              QStringLiteral("data/maps/tiles3d/local/tileset.json"),
+              QStringLiteral("resources/maps/tiles3d/local/tileset.json"),
               QByteArrayLiteral(R"JSON({
   "asset": {"version": "1.1"},
   "geometricError": 500,
@@ -358,7 +358,7 @@ int main(int argc, char** argv)
             "3D Tiles diagnostics should explain missing payload resources");
 
     writeFile(root,
-              QStringLiteral("data/maps/tiles3d/local/tileset.json"),
+              QStringLiteral("resources/maps/tiles3d/local/tileset.json"),
               QByteArrayLiteral(R"JSON({
   "asset": {"version": "1.1"},
   "geometricError": 500,
@@ -373,8 +373,8 @@ int main(int argc, char** argv)
     require(selection.diagnostics.local3DTilesDiagnostics.join(QLatin1Char('\n')).contains(QStringLiteral("no content.uri entries")),
             "3D Tiles diagnostics should explain missing content URIs");
 
-    touch(root, QStringLiteral("data/maps/vaporview_with_srtm.earth"));
-    touch(root, QStringLiteral("data/maps/terrain/srtm/srtm.vrt"));
+    touch(root, QStringLiteral("resources/maps/vaporview_with_srtm.earth"));
+    touch(root, QStringLiteral("resources/maps/terrain/srtm/srtm.vrt"));
     selection = select(root);
     require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarthWithSrtm, "SRTM files should select SRTM mode");
     require(selection.diagnostics.srtmDemAvailable, "SRTM VRT should be marked available");
@@ -386,13 +386,13 @@ int main(int argc, char** argv)
             "SRTM selection should summarize terrain-backed readiness");
     require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("OSM GeoPackages")),
             "terrain-backed readiness should suggest preparing OSM GeoPackages");
-    require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --overwrite")),
+    require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("python scripts/prepare-osm-local-data.py resources/maps/osm/local_extract.osm.pbf --overwrite")),
             "terrain-backed readiness should include the OSM conversion command");
-    require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("python scripts/prepare-osm-local-data.py data/maps/osm/local_extract.osm.pbf --check")),
+    require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("python scripts/prepare-osm-local-data.py resources/maps/osm/local_extract.osm.pbf --check")),
             "terrain-backed readiness should include the OSM validation command");
 
-    touch(root, QStringLiteral("data/maps/vaporview_with_dem.earth"));
-    touch(root, QStringLiteral("data/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt"));
+    touch(root, QStringLiteral("resources/maps/vaporview_with_dem.earth"));
+    touch(root, QStringLiteral("resources/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt"));
     selection = select(root);
     require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarthWithCopernicusDem, "Copernicus files should outrank SRTM");
     require(selection.diagnostics.copernicusDemAvailable, "Copernicus VRT should be marked available");
@@ -400,8 +400,8 @@ int main(int argc, char** argv)
     require(selection.diagnostics.selectedBaseMode == VaporView::Map3D::MapDataMode::NaturalEarthWithCopernicusDem,
             "Copernicus selection should report Copernicus DEM as the selected base mode");
 
-    touch(root, QStringLiteral("data/maps/vaporview_full_local.earth"));
-    touch(root, QStringLiteral("data/maps/vaporview_full_local_srtm.earth"));
+    touch(root, QStringLiteral("resources/maps/vaporview_full_local.earth"));
+    touch(root, QStringLiteral("resources/maps/vaporview_full_local_srtm.earth"));
     selection = select(root);
     require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarthWithCopernicusDem, "incomplete OSM set should not select full local map");
     require(!selection.warnings.isEmpty(), "missing OSM files should produce a warning");
@@ -412,10 +412,10 @@ int main(int argc, char** argv)
             "full-local blockers should identify missing OSM GeoPackages");
     require(!selection.diagnostics.selectedOsmLayersAvailable, "incomplete OSM set should not select OSM layers");
 
-    touch(root, QStringLiteral("data/maps/osm/roads.gpkg"));
-    touch(root, QStringLiteral("data/maps/osm/water.gpkg"));
-    touch(root, QStringLiteral("data/maps/osm/buildings.gpkg"));
-    touch(root, QStringLiteral("data/maps/osm/places.gpkg"));
+    touch(root, QStringLiteral("resources/maps/osm/roads.gpkg"));
+    touch(root, QStringLiteral("resources/maps/osm/water.gpkg"));
+    touch(root, QStringLiteral("resources/maps/osm/buildings.gpkg"));
+    touch(root, QStringLiteral("resources/maps/osm/places.gpkg"));
     selection = select(root);
     require(selection.mode == VaporView::Map3D::MapDataMode::FullLocalMap, "complete local data should select full local map");
     require(selection.diagnostics.readinessSummary.contains(QStringLiteral("Ready for full offline local map")),
@@ -441,17 +441,17 @@ int main(int argc, char** argv)
     QTemporaryDir srtmFullLocalDir;
     require(srtmFullLocalDir.isValid(), "failed to create SRTM full-local temporary directory");
     QDir srtmRoot(srtmFullLocalDir.path());
-    touch(srtmRoot, QStringLiteral("data/maps/vaporview_default.earth"));
-    touch(srtmRoot, QStringLiteral("data/maps/vaporview_with_srtm.earth"));
-    touch(srtmRoot, QStringLiteral("data/maps/vaporview_full_local_srtm.earth"));
-    touch(srtmRoot, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"));
-    touch(srtmRoot, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"));
-    touch(srtmRoot, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"));
-    touch(srtmRoot, QStringLiteral("data/maps/terrain/srtm/srtm.vrt"));
-    touch(srtmRoot, QStringLiteral("data/maps/osm/roads.gpkg"));
-    touch(srtmRoot, QStringLiteral("data/maps/osm/water.gpkg"));
-    touch(srtmRoot, QStringLiteral("data/maps/osm/buildings.gpkg"));
-    touch(srtmRoot, QStringLiteral("data/maps/osm/places.gpkg"));
+    touch(srtmRoot, QStringLiteral("resources/maps/vaporview_default.earth"));
+    touch(srtmRoot, QStringLiteral("resources/maps/vaporview_with_srtm.earth"));
+    touch(srtmRoot, QStringLiteral("resources/maps/vaporview_full_local_srtm.earth"));
+    touch(srtmRoot, QStringLiteral("resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"));
+    touch(srtmRoot, QStringLiteral("resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"));
+    touch(srtmRoot, QStringLiteral("resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"));
+    touch(srtmRoot, QStringLiteral("resources/maps/terrain/srtm/srtm.vrt"));
+    touch(srtmRoot, QStringLiteral("resources/maps/osm/roads.gpkg"));
+    touch(srtmRoot, QStringLiteral("resources/maps/osm/water.gpkg"));
+    touch(srtmRoot, QStringLiteral("resources/maps/osm/buildings.gpkg"));
+    touch(srtmRoot, QStringLiteral("resources/maps/osm/places.gpkg"));
     selection = select(srtmRoot);
     require(selection.mode == VaporView::Map3D::MapDataMode::FullLocalMap,
             "SRTM plus complete OSM should select full local map");
@@ -470,16 +470,16 @@ int main(int argc, char** argv)
     require(demPreferredDir.isValid(), "failed to create DEM-preferred temporary directory");
     QDir naturalRoot(naturalOnlyDir.path());
     QDir demRoot(demPreferredDir.path());
-    touch(naturalRoot, QStringLiteral("data/maps/vaporview_default.earth"));
-    touch(naturalRoot, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"));
-    touch(naturalRoot, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"));
-    touch(naturalRoot, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"));
-    touch(demRoot, QStringLiteral("data/maps/vaporview_default.earth"));
-    touch(demRoot, QStringLiteral("data/maps/vaporview_with_dem.earth"));
-    touch(demRoot, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"));
-    touch(demRoot, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"));
-    touch(demRoot, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"));
-    touch(demRoot, QStringLiteral("data/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt"));
+    touch(naturalRoot, QStringLiteral("resources/maps/vaporview_default.earth"));
+    touch(naturalRoot, QStringLiteral("resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"));
+    touch(naturalRoot, QStringLiteral("resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"));
+    touch(naturalRoot, QStringLiteral("resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"));
+    touch(demRoot, QStringLiteral("resources/maps/vaporview_default.earth"));
+    touch(demRoot, QStringLiteral("resources/maps/vaporview_with_dem.earth"));
+    touch(demRoot, QStringLiteral("resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"));
+    touch(demRoot, QStringLiteral("resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"));
+    touch(demRoot, QStringLiteral("resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"));
+    touch(demRoot, QStringLiteral("resources/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt"));
     VaporView::Map3D::MapDataManager multiRootManager({naturalRoot.absolutePath(), demRoot.absolutePath()});
     selection = multiRootManager.selectBestAvailableMap();
     require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarthWithCopernicusDem,

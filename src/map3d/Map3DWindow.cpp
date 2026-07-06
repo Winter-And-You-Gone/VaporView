@@ -372,7 +372,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     local_3d_tiles_action_ = toolbar->addAction(QStringLiteral("本地 3D Tiles"));
     local_3d_tiles_action_->setObjectName(QStringLiteral("map3DLocal3DTilesAction"));
     local_3d_tiles_action_->setEnabled(false);
-    local_3d_tiles_action_->setToolTip(QStringLiteral("加载 data/maps/tiles3d/local/tileset.json 作为本地 3D Tiles 预览叠加层"));
+    local_3d_tiles_action_->setToolTip(QStringLiteral("加载 resources/maps/tiles3d/local/tileset.json 作为本地 3D Tiles 预览叠加层"));
     local_3d_tiles_action_->setStatusTip(local_3d_tiles_action_->toolTip());
     connect(local_3d_tiles_action_, &QAction::triggered, this, &Map3DWindow::loadLocal3DTilesPreview);
 

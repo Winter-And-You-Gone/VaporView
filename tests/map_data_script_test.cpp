@@ -143,19 +143,19 @@ int main()
     const QString osmScript = sourceRoot.filePath(QStringLiteral("scripts/prepare-osm-local-data.py"));
     const QString demScript = sourceRoot.filePath(QStringLiteral("scripts/prepare-demo-dem.py"));
     const QString imageryScript = sourceRoot.filePath(QStringLiteral("scripts/prepare-local-imagery.py"));
-    const QString mapsReadme = sourceRoot.filePath(QStringLiteral("data/maps/README.md"));
-    const QString defaultEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_default.earth"));
-    const QString demEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_with_dem.earth"));
-    const QString srtmEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_with_srtm.earth"));
-    const QString fullLocalEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_full_local.earth"));
-    const QString fullLocalSrtmEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_full_local_srtm.earth"));
-    const QString sentinel2ImageryEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_with_sentinel2_imagery.earth"));
-    const QString landsatImageryEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_with_landsat_imagery.earth"));
-    const QString openAerialMapImageryEarth = sourceRoot.filePath(QStringLiteral("data/maps/vaporview_with_openaerialmap_imagery.earth"));
+    const QString mapsReadme = sourceRoot.filePath(QStringLiteral("resources/maps/README.md"));
+    const QString defaultEarth = sourceRoot.filePath(QStringLiteral("resources/maps/vaporview_default.earth"));
+    const QString demEarth = sourceRoot.filePath(QStringLiteral("resources/maps/vaporview_with_dem.earth"));
+    const QString srtmEarth = sourceRoot.filePath(QStringLiteral("resources/maps/vaporview_with_srtm.earth"));
+    const QString fullLocalEarth = sourceRoot.filePath(QStringLiteral("resources/maps/vaporview_full_local.earth"));
+    const QString fullLocalSrtmEarth = sourceRoot.filePath(QStringLiteral("resources/maps/vaporview_full_local_srtm.earth"));
+    const QString sentinel2ImageryEarth = sourceRoot.filePath(QStringLiteral("resources/maps/vaporview_with_sentinel2_imagery.earth"));
+    const QString landsatImageryEarth = sourceRoot.filePath(QStringLiteral("resources/maps/vaporview_with_landsat_imagery.earth"));
+    const QString openAerialMapImageryEarth = sourceRoot.filePath(QStringLiteral("resources/maps/vaporview_with_openaerialmap_imagery.earth"));
     require(QFileInfo(osmScript).isFile(), QStringLiteral("OSM script exists"));
     require(QFileInfo(demScript).isFile(), QStringLiteral("DEM script exists"));
     require(QFileInfo(imageryScript).isFile(), QStringLiteral("local imagery script exists"));
-    require(QFileInfo(mapsReadme).isFile(), QStringLiteral("data/maps README exists"));
+    require(QFileInfo(mapsReadme).isFile(), QStringLiteral("resources/maps README exists"));
     require(QFileInfo(defaultEarth).isFile(), QStringLiteral("default Natural Earth template exists"));
     require(QFileInfo(demEarth).isFile(), QStringLiteral("Copernicus DEM earth template exists"));
     require(QFileInfo(srtmEarth).isFile(), QStringLiteral("SRTM DEM earth template exists"));
@@ -188,19 +188,19 @@ int main()
                 && mapsReadmeText.contains(QStringLiteral("Sentinel-2"))
                 && mapsReadmeText.contains(QStringLiteral("3D Tiles"))
                 && mapsReadmeText.contains(QStringLiteral("Local grid fallback")),
-            QStringLiteral("data/maps README describes the local offline data stack"));
+            QStringLiteral("resources/maps README describes the local offline data stack"));
     for (const QString& forbidden : forbiddenOnlineSources)
     {
         require(!mapsReadmeText.toLower().contains(forbidden),
-                QStringLiteral("data/maps README does not reference forbidden online source %1").arg(forbidden));
+                QStringLiteral("resources/maps README does not reference forbidden online source %1").arg(forbidden));
     }
 
-    const QStringList earthFiles = QDir(sourceRoot.filePath(QStringLiteral("data/maps")))
+    const QStringList earthFiles = QDir(sourceRoot.filePath(QStringLiteral("resources/maps")))
                                        .entryList({QStringLiteral("*.earth")}, QDir::Files, QDir::Name);
-    require(!earthFiles.isEmpty(), QStringLiteral("data/maps contains default earth templates"));
+    require(!earthFiles.isEmpty(), QStringLiteral("resources/maps contains default earth templates"));
     for (const QString& earthFileName : earthFiles)
     {
-        const QString earthText = readTextFile(sourceRoot.filePath(QStringLiteral("data/maps/%1").arg(earthFileName)));
+        const QString earthText = readTextFile(sourceRoot.filePath(QStringLiteral("resources/maps/%1").arg(earthFileName)));
         require(earthText.contains(QStringLiteral("<map")),
                 QStringLiteral("%1 is an osgEarth map template").arg(earthFileName));
         for (const QString& forbidden : forbiddenOnlineSources)
@@ -319,7 +319,7 @@ int main()
     QTemporaryDir fakeProject;
     require(fakeProject.isValid(), QStringLiteral("temporary fake project root is valid"));
     const QDir fakeRoot(fakeProject.path());
-    writeDummyFile(fakeRoot.filePath(QStringLiteral("data/maps/terrain/copernicus_dem_glo30/dummy.tif")),
+    writeDummyFile(fakeRoot.filePath(QStringLiteral("resources/maps/terrain/copernicus_dem_glo30/dummy.tif")),
                    QByteArrayLiteral("not a real geotiff"));
 
     const ProcessResult missingGdal =
@@ -344,7 +344,7 @@ int main()
     const QString customTileDir = customDemRoot.filePath(QStringLiteral("external_dem_tiles"));
     writeDummyFile(QDir(customTileDir).filePath(QStringLiteral("custom_tile.tif")),
                    QByteArrayLiteral("not a real geotiff"));
-    writeDummyFile(customDemRoot.filePath(QStringLiteral("data/maps/vaporview_with_dem.earth")),
+    writeDummyFile(customDemRoot.filePath(QStringLiteral("resources/maps/vaporview_with_dem.earth")),
                    QByteArrayLiteral("terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt"));
     const ProcessResult customDemMissingGdal =
         runProcess(python,
@@ -371,9 +371,9 @@ int main()
     QTemporaryDir fakeImageryProject;
     require(fakeImageryProject.isValid(), QStringLiteral("temporary fake imagery project root is valid"));
     const QDir fakeImageryRoot(fakeImageryProject.path());
-    writeDummyFile(fakeImageryRoot.filePath(QStringLiteral("data/maps/imagery/sentinel2/dummy.tif")),
+    writeDummyFile(fakeImageryRoot.filePath(QStringLiteral("resources/maps/imagery/sentinel2/dummy.tif")),
                    QByteArrayLiteral("not a real geotiff"));
-    writeDummyFile(fakeImageryRoot.filePath(QStringLiteral("data/maps/vaporview_with_sentinel2_imagery.earth")),
+    writeDummyFile(fakeImageryRoot.filePath(QStringLiteral("resources/maps/vaporview_with_sentinel2_imagery.earth")),
                    QByteArrayLiteral("imagery/sentinel2/sentinel2.vrt"));
     const ProcessResult imageryMissingGdal =
         runProcess(python,
@@ -403,7 +403,7 @@ int main()
     const QString customImageryDir = customImageryRoot.filePath(QStringLiteral("external_imagery_tiles"));
     writeDummyFile(QDir(customImageryDir).filePath(QStringLiteral("custom_tile.tif")),
                    QByteArrayLiteral("not a real geotiff"));
-    writeDummyFile(customImageryRoot.filePath(QStringLiteral("data/maps/vaporview_with_landsat_imagery.earth")),
+    writeDummyFile(customImageryRoot.filePath(QStringLiteral("resources/maps/vaporview_with_landsat_imagery.earth")),
                    QByteArrayLiteral("imagery/landsat/landsat.vrt"));
     const ProcessResult customImageryMissingGdal =
         runProcess(python,
@@ -435,7 +435,7 @@ int main()
     const ProcessResult missingOsmOutputs =
         runProcess(python,
                    {osmScript,
-                    fakeOsmRoot.filePath(QStringLiteral("data/maps/osm/local_extract.osm.pbf")),
+                    fakeOsmRoot.filePath(QStringLiteral("resources/maps/osm/local_extract.osm.pbf")),
                     QStringLiteral("--project-root"),
                     fakeOsmRoot.absolutePath(),
                     QStringLiteral("--check")},
@@ -458,7 +458,7 @@ int main()
     QTemporaryDir fakeOgrinfoProject;
     require(fakeOgrinfoProject.isValid(), QStringLiteral("temporary fake ogrinfo project root is valid"));
     const QDir fakeOgrinfoRoot(fakeOgrinfoProject.path());
-    const QString fakeOsmDir = fakeOgrinfoRoot.filePath(QStringLiteral("data/maps/osm"));
+    const QString fakeOsmDir = fakeOgrinfoRoot.filePath(QStringLiteral("resources/maps/osm"));
     for (const QString& fileName : {QStringLiteral("roads.gpkg"),
                                    QStringLiteral("water.gpkg"),
                                    QStringLiteral("buildings.gpkg"),
@@ -491,7 +491,7 @@ int main()
     const ProcessResult missingExtrusionField =
         runProcess(python,
                    {osmScript,
-                    fakeOgrinfoRoot.filePath(QStringLiteral("data/maps/osm/local_extract.osm.pbf")),
+                    fakeOgrinfoRoot.filePath(QStringLiteral("resources/maps/osm/local_extract.osm.pbf")),
                     QStringLiteral("--project-root"),
                     fakeOgrinfoRoot.absolutePath(),
                     QStringLiteral("--check")},
@@ -529,7 +529,7 @@ int main()
     const ProcessResult validOsmCheck =
         runProcess(python,
                    {osmScript,
-                    fakeOgrinfoRoot.filePath(QStringLiteral("data/maps/osm/local_extract.osm.pbf")),
+                    fakeOgrinfoRoot.filePath(QStringLiteral("resources/maps/osm/local_extract.osm.pbf")),
                     QStringLiteral("--project-root"),
                     fakeOgrinfoRoot.absolutePath(),
                     QStringLiteral("--check")},

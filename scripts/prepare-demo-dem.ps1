@@ -82,9 +82,9 @@ $demFolderName = if ($Srtm) { "srtm" } else { $DemName }
 $vrtFileName = if ($Srtm) { "srtm.vrt" } else { "copernicus_dem_glo30.vrt" }
 $earthFileName = if ($Srtm) { "vaporview_with_srtm.earth" } else { "vaporview_with_dem.earth" }
 
-$terrainDir = Join-Path $ProjectRoot "data/maps/terrain/$demFolderName"
+$terrainDir = Join-Path $ProjectRoot "resources/maps/terrain/$demFolderName"
 $vrtPath = Join-Path $terrainDir $vrtFileName
-$earthPath = Join-Path $ProjectRoot "data/maps/$earthFileName"
+$earthPath = Join-Path $ProjectRoot "resources/maps/$earthFileName"
 $tileDir = if ([string]::IsNullOrWhiteSpace($DemDir)) {
     $terrainDir
 } else {

@@ -279,7 +279,7 @@ QString naturalEarthTexturePathForEarthFile(const QString& earthPath)
     for (const QString& root : runtimeRootCandidates())
     {
         const QString fallback = QDir::cleanPath(QDir(root).absoluteFilePath(
-            QStringLiteral("data/maps/%1").arg(textureRelative)));
+            QStringLiteral("resources/maps/%1").arg(textureRelative)));
         if (QFileInfo(fallback).isFile())
         {
             return QFileInfo(fallback).absoluteFilePath();
@@ -988,10 +988,10 @@ void OsgEarthViewWidget::initializeSceneIfNeeded()
 void OsgEarthViewWidget::loadDefaultAircraftModelIfAvailable()
 {
     const QString modelPath = firstExistingFile(runtimeRootCandidates(),
-                                                {QStringLiteral("data/maps/models/aircraft/vaporview_aircraft.osgb"),
-                                                 QStringLiteral("data/maps/models/aircraft/vaporview_aircraft.osg"),
-                                                 QStringLiteral("data/maps/models/aircraft/vaporview_aircraft.glb"),
-                                                 QStringLiteral("data/maps/models/aircraft/vaporview_aircraft.gltf")});
+                                                {QStringLiteral("resources/maps/models/aircraft/vaporview_aircraft.osgb"),
+                                                 QStringLiteral("resources/maps/models/aircraft/vaporview_aircraft.osg"),
+                                                 QStringLiteral("resources/maps/models/aircraft/vaporview_aircraft.glb"),
+                                                 QStringLiteral("resources/maps/models/aircraft/vaporview_aircraft.gltf")});
     loadAircraftModelFile(modelPath, QStringLiteral("Default aircraft model"));
 }
 

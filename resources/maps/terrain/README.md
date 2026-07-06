@@ -5,7 +5,7 @@ Place offline DEM files under this directory. The files are intentionally not tr
 Preferred layout:
 
 ```text
-data/maps/terrain/
+resources/maps/terrain/
   copernicus_dem_glo30/
     *.tif
     copernicus_dem_glo30.vrt
@@ -19,10 +19,10 @@ VaporView prefers Copernicus DEM GLO-30 GeoTIFF tiles. SRTM GeoTIFF tiles are th
 Build a VRT after placing GeoTIFF tiles:
 
 ```powershell
-gdalbuildvrt data/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt data/maps/terrain/copernicus_dem_glo30/*.tif
+gdalbuildvrt resources/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt resources/maps/terrain/copernicus_dem_glo30/*.tif
 ```
 
-The default Copernicus DEM earth template is `data/maps/vaporview_with_dem.earth`. The SRTM fallback template is `data/maps/vaporview_with_srtm.earth`.
+The default Copernicus DEM earth template is `resources/maps/vaporview_with_dem.earth`. The SRTM fallback template is `resources/maps/vaporview_with_srtm.earth`.
 
 Application auto-load order:
 

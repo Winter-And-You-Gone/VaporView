@@ -9,10 +9,10 @@
         Local elevation layer. Build this VRT from local GeoTIFF DEM tiles.
 
         Preferred source:
-          data/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt
+          resources/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt
 
         Backup source:
-          data/maps/terrain/srtm/srtm.vrt
+          resources/maps/terrain/srtm/srtm.vrt
 
         Keep this template pointed at the Copernicus path by default. If only
         SRTM is available, either copy/update the VRT path here or load a

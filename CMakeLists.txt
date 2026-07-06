@@ -286,60 +286,60 @@ if(VAPORVIEW_ENABLE_OSGEARTH)
             endif()
         endforeach()
 
-        set(vaporview_default_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_default.earth")
-        set(vaporview_dem_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_with_dem.earth")
-        set(vaporview_srtm_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_with_srtm.earth")
-        set(vaporview_full_local_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_full_local.earth")
-        set(vaporview_full_local_srtm_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_full_local_srtm.earth")
-        set(vaporview_sentinel2_imagery_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_with_sentinel2_imagery.earth")
-        set(vaporview_landsat_imagery_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_with_landsat_imagery.earth")
-        set(vaporview_openaerialmap_imagery_earth_file "${CMAKE_SOURCE_DIR}/data/maps/vaporview_with_openaerialmap_imagery.earth")
+        set(vaporview_default_earth_file "${CMAKE_SOURCE_DIR}/resources/maps/vaporview_default.earth")
+        set(vaporview_dem_earth_file "${CMAKE_SOURCE_DIR}/resources/maps/vaporview_with_dem.earth")
+        set(vaporview_srtm_earth_file "${CMAKE_SOURCE_DIR}/resources/maps/vaporview_with_srtm.earth")
+        set(vaporview_full_local_earth_file "${CMAKE_SOURCE_DIR}/resources/maps/vaporview_full_local.earth")
+        set(vaporview_full_local_srtm_earth_file "${CMAKE_SOURCE_DIR}/resources/maps/vaporview_full_local_srtm.earth")
+        set(vaporview_sentinel2_imagery_earth_file "${CMAKE_SOURCE_DIR}/resources/maps/vaporview_with_sentinel2_imagery.earth")
+        set(vaporview_landsat_imagery_earth_file "${CMAKE_SOURCE_DIR}/resources/maps/vaporview_with_landsat_imagery.earth")
+        set(vaporview_openaerialmap_imagery_earth_file "${CMAKE_SOURCE_DIR}/resources/maps/vaporview_with_openaerialmap_imagery.earth")
         set(vaporview_natural_earth_texture
-            "${CMAKE_SOURCE_DIR}/data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"
+            "${CMAKE_SOURCE_DIR}/resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"
         )
         set(vaporview_natural_earth_vrt
-            "${CMAKE_SOURCE_DIR}/data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"
+            "${CMAKE_SOURCE_DIR}/resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"
         )
         set(vaporview_natural_earth_raster
-            "${CMAKE_SOURCE_DIR}/data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"
+            "${CMAKE_SOURCE_DIR}/resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"
         )
         if(EXISTS "${vaporview_default_earth_file}" AND EXISTS "${vaporview_natural_earth_vrt}" AND EXISTS "${vaporview_natural_earth_raster}")
             list(APPEND vaporview_osgearth_runtime_commands
                 COMMAND ${CMAKE_COMMAND} -E make_directory
-                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/natural_earth/NE2_50M_SR_W"
+                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/natural_earth/NE2_50M_SR_W"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_default_earth_file}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/vaporview_default.earth"
+                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_default.earth"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_dem_earth_file}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/vaporview_with_dem.earth"
+                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_with_dem.earth"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_srtm_earth_file}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/vaporview_with_srtm.earth"
+                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_with_srtm.earth"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_full_local_earth_file}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/vaporview_full_local.earth"
+                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_full_local.earth"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_full_local_srtm_earth_file}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/vaporview_full_local_srtm.earth"
+                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_full_local_srtm.earth"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_sentinel2_imagery_earth_file}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/vaporview_with_sentinel2_imagery.earth"
+                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_with_sentinel2_imagery.earth"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_landsat_imagery_earth_file}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/vaporview_with_landsat_imagery.earth"
+                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_with_landsat_imagery.earth"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_openaerialmap_imagery_earth_file}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/vaporview_with_openaerialmap_imagery.earth"
+                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/vaporview_with_openaerialmap_imagery.earth"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_natural_earth_vrt}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"
+                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_natural_earth_raster}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"
+                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     "${vaporview_natural_earth_texture}"
-                    "${CMAKE_CURRENT_BINARY_DIR}/data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"
+                    "${CMAKE_CURRENT_BINARY_DIR}/resources/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"
             )
         endif()
 
