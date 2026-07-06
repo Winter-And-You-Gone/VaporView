@@ -296,9 +296,22 @@ bool TrajectoryReplay::hasTimestampTimeline() const
     {
         return false;
     }
-    const qint64 first = timestampUsForSample(samples_.front());
-    const qint64 last = timestampUsForSample(samples_.back());
-    return first > 0 && last > first;
+    qint64 previous = timestampUsForSample(samples_.front());
+    if (previous <= 0)
+    {
+        return false;
+    }
+
+    for (std::size_t index = 1; index < samples_.size(); ++index)
+    {
+        const qint64 current = timestampUsForSample(samples_[index]);
+        if (current <= previous)
+        {
+            return false;
+        }
+        previous = current;
+    }
+    return true;
 }
 
 qint64 TrajectoryReplay::fallbackDurationUs() const

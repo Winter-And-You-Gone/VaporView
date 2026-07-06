@@ -123,6 +123,24 @@ int main()
     replay.seekElapsedUs(100000);
     require(replay.currentIndex() == 1, "untimed elapsed seek uses synthetic timeline");
 
+    std::vector<VaporView::Geo::NavSample> outOfOrderSamples;
+    outOfOrderSamples.push_back(sample(39.9, 116.3, 1000000));
+    outOfOrderSamples.push_back(sample(39.9001, 116.3002, 900000));
+    outOfOrderSamples.push_back(sample(39.9002, 116.3004, 1200000));
+    replay.setSamples(outOfOrderSamples);
+    require(replay.durationUs() == 200000, "out-of-order replay timestamps fall back to synthetic timeline");
+    replay.seekElapsedUs(100000);
+    require(replay.currentIndex() == 1, "out-of-order elapsed seek uses synthetic index timeline");
+
+    std::vector<VaporView::Geo::NavSample> duplicateTimestampSamples;
+    duplicateTimestampSamples.push_back(sample(39.9, 116.3, 1000000));
+    duplicateTimestampSamples.push_back(sample(39.9001, 116.3002, 1000000));
+    duplicateTimestampSamples.push_back(sample(39.9002, 116.3004, 1200000));
+    replay.setSamples(duplicateTimestampSamples);
+    require(replay.durationUs() == 200000, "duplicate replay timestamps fall back to synthetic timeline");
+    replay.seekElapsedUs(100000);
+    require(replay.currentIndex() == 1, "duplicate elapsed seek uses synthetic index timeline");
+
     replay.clear();
     require(!replay.hasSamples(), "clear removes samples");
     require(replay.currentIndex() == -1, "clear resets current index");
