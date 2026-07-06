@@ -514,6 +514,84 @@ void setEarthFile(MapDataSelection& selection, const QString& path)
 
 void finalizeSelection(MapDataSelection& selection)
 {
+    MapDataDiagnostics& diagnostics = selection.diagnostics;
+    const auto ready = [](const bool value) {
+        return value ? QStringLiteral("ready") : QStringLiteral("missing");
+    };
+
+    diagnostics.readinessChecks = {
+        QStringLiteral("Natural Earth background: %1").arg(ready(diagnostics.naturalEarthAvailable)),
+        QStringLiteral("Terrain DEM: %1")
+            .arg(diagnostics.selectedDemLayerAvailable
+                     ? diagnostics.selectedElevationSource
+                     : QStringLiteral("missing")),
+        QStringLiteral("OSM vector layers: %1 (%2/4)")
+            .arg(diagnostics.selectedOsmLayersAvailable ? QStringLiteral("ready") : QStringLiteral("missing"))
+            .arg(diagnostics.osmLayerCount),
+        QStringLiteral("Optional imagery overlays: %1 (%2/3)")
+            .arg(diagnostics.localImageryAvailable ? QStringLiteral("configured") : QStringLiteral("not configured"))
+            .arg(diagnostics.localImageryLayerCount),
+        QStringLiteral("Optional local 3D Tiles: %1")
+            .arg(diagnostics.local3DTilesAvailable
+                     ? (diagnostics.local3DTilesTilesetValid ? QStringLiteral("contract valid") : QStringLiteral("needs attention"))
+                     : QStringLiteral("not configured"))
+    };
+
+    diagnostics.readinessNextSteps.clear();
+    switch (selection.mode)
+    {
+    case MapDataMode::FullLocalMap:
+        diagnostics.readinessSummary =
+            QStringLiteral("Ready for full offline local map: Natural Earth, %1 elevation, and OSM vectors are selected.")
+                .arg(diagnostics.selectedElevationSource);
+        if (!diagnostics.localImageryAvailable)
+        {
+            diagnostics.readinessNextSteps.push_back(
+                QStringLiteral("Optional: prepare Sentinel-2, Landsat, or OpenAerialMap GeoTIFF VRTs for high-resolution imagery overlays."));
+        }
+        if (!diagnostics.local3DTilesAvailable)
+        {
+            diagnostics.readinessNextSteps.push_back(
+                QStringLiteral("Optional: place a local 3D Tiles dataset under data/maps/tiles3d/local/ for preview diagnostics."));
+        }
+        break;
+    case MapDataMode::NaturalEarthWithCopernicusDem:
+    case MapDataMode::NaturalEarthWithSrtm:
+        diagnostics.readinessSummary =
+            QStringLiteral("Ready for terrain-backed offline map: Natural Earth and %1 elevation are selected; OSM vectors are not complete.")
+                .arg(diagnostics.selectedElevationSource);
+        diagnostics.readinessNextSteps.push_back(
+            QStringLiteral("Generate all four local OSM GeoPackages with scripts/prepare-osm-local-data.py to enable Full local map."));
+        if (!diagnostics.missingOsmFiles.isEmpty())
+        {
+            diagnostics.readinessNextSteps.push_back(
+                QStringLiteral("Missing OSM files: %1").arg(diagnostics.missingOsmFiles.join(QStringLiteral("; "))));
+        }
+        break;
+    case MapDataMode::NaturalEarth:
+        diagnostics.readinessSummary =
+            QStringLiteral("Ready for offline visual background only: Natural Earth is selected, but no real DEM terrain is available.");
+        diagnostics.readinessNextSteps.push_back(
+            QStringLiteral("Place Copernicus DEM GLO-30 GeoTIFF tiles under data/maps/terrain/copernicus_dem_glo30/ and run scripts/prepare-demo-dem.py."));
+        diagnostics.readinessNextSteps.push_back(
+            QStringLiteral("Use SRTM under data/maps/terrain/srtm/ as a fallback when Copernicus DEM is unavailable."));
+        break;
+    case MapDataMode::LocalGridOnly:
+        diagnostics.readinessSummary =
+            QStringLiteral("Local grid fallback only: no complete offline Natural Earth dataset is available.");
+        diagnostics.readinessNextSteps.push_back(
+            QStringLiteral("Run scripts/download-natural-earth-map.ps1 to prepare the offline Natural Earth background."));
+        diagnostics.readinessNextSteps.push_back(
+            QStringLiteral("Then add Copernicus DEM or SRTM VRTs for real terrain elevation."));
+        break;
+    }
+
+    if (diagnostics.readinessNextSteps.isEmpty())
+    {
+        diagnostics.readinessNextSteps.push_back(
+            QStringLiteral("No required map-data blockers remain for the selected mode."));
+    }
+
     selection.foundFiles = selection.diagnostics.foundFiles;
     selection.missingFiles = selection.diagnostics.missingFiles;
     selection.warnings = selection.diagnostics.warnings;

@@ -67,6 +67,7 @@ struct MapDataDiagnostics {
     bool selectedOsmLayersAvailable = false;
     QString selectedElevationSource;
     QString selectedFullLocalEarthPath;
+    QString readinessSummary;
     int osmLayerCount = 0;
     int selectedOsmLayerCount = 0;
     int localImageryLayerCount = 0;
@@ -81,6 +82,8 @@ struct MapDataDiagnostics {
     QStringList fullLocalBlockers;
     QStringList missingFiles;
     QStringList foundFiles;
+    QStringList readinessChecks;
+    QStringList readinessNextSteps;
     QStringList warnings;
     QStringList messages;
 };

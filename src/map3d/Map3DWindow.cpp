@@ -1193,6 +1193,24 @@ QString Map3DWindow::diagnosticsText() const
                  .arg(latest_drop_record_timestamp_us_ > 0 ? QString::number(latest_drop_record_timestamp_us_) : QStringLiteral("<none>"));
     lines << QStringLiteral("Camera: %1").arg(latest_camera_note_.isEmpty() ? QStringLiteral("<none>") : latest_camera_note_);
     lines << QStringLiteral("Layer summary:");
+    lines << QStringLiteral("  Readiness: %1")
+                 .arg(diagnostics.readinessSummary.isEmpty() ? QStringLiteral("<not evaluated>") : diagnostics.readinessSummary);
+    if (!diagnostics.readinessChecks.isEmpty())
+    {
+        lines << QStringLiteral("  Readiness checks:");
+        for (const QString& check : diagnostics.readinessChecks)
+        {
+            lines << QStringLiteral("    - %1").arg(check);
+        }
+    }
+    if (!diagnostics.readinessNextSteps.isEmpty())
+    {
+        lines << QStringLiteral("  Next steps:");
+        for (const QString& step : diagnostics.readinessNextSteps)
+        {
+            lines << QStringLiteral("    - %1").arg(step);
+        }
+    }
     lines << QStringLiteral("  Natural Earth: %1").arg(availabilityLabel(diagnostics.naturalEarthAvailable));
     lines << QStringLiteral("  Selected DEM: %1").arg(selectedDemLabel(diagnostics));
     lines << QStringLiteral("  Copernicus DEM VRT: %1").arg(availabilityLabel(diagnostics.copernicusDemAvailable));

@@ -110,6 +110,13 @@ VaporView automatic map selection order:
 
 If no DEM VRT exists, the 3D map still uses Natural Earth plus the local grid fallback.
 
+The 3D Map diagnostics panel also includes a readiness summary. Read it as the current local data capability tier, not as a legal or quality certification:
+
+- `Local grid fallback only` means Natural Earth is incomplete; prepare `data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt` and `.tif` first.
+- `Ready for offline visual background only` means Natural Earth is loaded but no Copernicus DEM or SRTM VRT is selected.
+- `Ready for terrain-backed offline map` means Natural Earth plus a DEM VRT is selected; generate the four OSM GeoPackages to unlock `Full local map`.
+- `Ready for full offline local map` means Natural Earth, one DEM source, and all required OSM GeoPackages are selected. Optional imagery overlays and local 3D Tiles may still be absent.
+
 ## Local OSM Vector Data
 
 Local OSM vector data is optional and lives under `data/maps/osm/`. This path is for open, offline files only. Do not add online tile services, API keys, Cesium ion, or commercial map providers.

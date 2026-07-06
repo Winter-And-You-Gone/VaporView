@@ -68,6 +68,10 @@ int main(int argc, char** argv)
     selection = select(root);
     require(selection.mode == VaporView::Map3D::MapDataMode::LocalGridOnly, "preview texture alone should not select NaturalEarth");
     require(!selection.diagnostics.naturalEarthAvailable, "preview texture alone should not mark Natural Earth available");
+    require(selection.diagnostics.readinessSummary.contains(QStringLiteral("Local grid fallback")),
+            "local grid selection should summarize fallback readiness");
+    require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("Natural Earth")),
+            "local grid readiness should suggest preparing Natural Earth");
 
     touch(root, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"));
     touch(root, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif"));
@@ -75,6 +79,12 @@ int main(int argc, char** argv)
     require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarth, "Natural Earth files should select NaturalEarth");
     require(selection.hasEarthFile(), "NaturalEarth selection should expose an earth file");
     require(selection.diagnostics.naturalEarthAvailable, "NaturalEarth selection should mark Natural Earth available");
+    require(selection.diagnostics.readinessSummary.contains(QStringLiteral("visual background only")),
+            "Natural Earth selection should explain visual-only readiness");
+    require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("Copernicus DEM")),
+            "Natural Earth readiness should suggest preparing Copernicus DEM");
+    require(selection.diagnostics.readinessChecks.join(QLatin1Char('\n')).contains(QStringLiteral("Terrain DEM: missing")),
+            "Natural Earth readiness checks should report missing terrain DEM");
     require(selection.diagnostics.osmLayerContracts.size() == 4, "diagnostics should describe the four expected OSM layer contracts");
     require(selection.diagnostics.osmLayerContracts.join(QLatin1Char('\n')).contains(QStringLiteral("roads.gpkg -> layer roads")),
             "OSM diagnostics should describe the roads GeoPackage layer name");
@@ -205,6 +215,10 @@ int main(int argc, char** argv)
     require(selection.diagnostics.srtmDemAvailable, "SRTM VRT should be marked available");
     require(selection.diagnostics.selectedDemLayerAvailable, "SRTM selection should select a DEM layer");
     require(selection.diagnostics.selectedElevationSource == QStringLiteral("SRTM"), "SRTM selection should report SRTM elevation source");
+    require(selection.diagnostics.readinessSummary.contains(QStringLiteral("terrain-backed offline map")),
+            "SRTM selection should summarize terrain-backed readiness");
+    require(selection.diagnostics.readinessNextSteps.join(QLatin1Char('\n')).contains(QStringLiteral("OSM GeoPackages")),
+            "terrain-backed readiness should suggest preparing OSM GeoPackages");
 
     touch(root, QStringLiteral("data/maps/vaporview_with_dem.earth"));
     touch(root, QStringLiteral("data/maps/terrain/copernicus_dem_glo30/copernicus_dem_glo30.vrt"));
@@ -231,6 +245,10 @@ int main(int argc, char** argv)
     touch(root, QStringLiteral("data/maps/osm/places.gpkg"));
     selection = select(root);
     require(selection.mode == VaporView::Map3D::MapDataMode::FullLocalMap, "complete local data should select full local map");
+    require(selection.diagnostics.readinessSummary.contains(QStringLiteral("Ready for full offline local map")),
+            "full local map should summarize complete local readiness");
+    require(selection.diagnostics.readinessChecks.join(QLatin1Char('\n')).contains(QStringLiteral("OSM vector layers: ready (4/4)")),
+            "full local readiness checks should report selected OSM readiness");
     require(selection.diagnostics.foundFiles.contains(selection.earthFile), "selected earth file should be listed as found");
     require(selection.diagnostics.foundFiles.contains(selection.diagnostics.naturalEarthVrtPath), "Natural Earth VRT should be listed as found");
     require(selection.diagnostics.osmVectorAvailable, "complete local data should mark OSM vectors available");
