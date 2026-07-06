@@ -313,6 +313,10 @@ int main(int argc, char** argv)
             "diagnostics include render performance section");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Local imagery menu:")),
             "diagnostics include local imagery menu availability");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Optional local imagery VRTs:")),
+            "diagnostics include optional local imagery VRT count");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Optional local imagery menu-ready overlays:")),
+            "diagnostics include menu-ready optional local imagery count");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Local 3D Tiles contract:")),
             "diagnostics include local 3D Tiles contract status");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Local 3D Tiles tileset:")),

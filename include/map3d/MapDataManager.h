@@ -60,6 +60,7 @@ struct MapDataDiagnostics {
     bool osmBuildingsAvailable = false;
     bool osmPlacesAvailable = false;
     bool localImageryAvailable = false;
+    bool localImageryMenuAvailable = false;
     bool local3DTilesAvailable = false;
     bool local3DTilesTilesetValid = false;
     bool local3DTilesHasExternalUris = false;
@@ -71,6 +72,7 @@ struct MapDataDiagnostics {
     int osmLayerCount = 0;
     int selectedOsmLayerCount = 0;
     int localImageryLayerCount = 0;
+    int localImageryMenuEntryCount = 0;
     int local3DTilesResourceCount = 0;
     std::vector<LocalImageryOption> localImageryOptions;
     QStringList local3DTilesResourceUris;

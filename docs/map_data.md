@@ -206,7 +206,7 @@ python scripts/prepare-local-imagery.py openaerialmap --check
 
 The helper only reads local GeoTIFF files. It does not download imagery and does not contact online map services. It searches for GDAL command-line tools in the same locations as the DEM and OSM helpers, including `PATH`, `GDAL_BIN`, the project-local `.local_deps/vcpkg_installed/x64-windows/tools/gdal` and `bin` folders, and common Windows OSGeo4W/QGIS install folders. If your GDAL tools are elsewhere, pass `--gdal-bin C:\path\to\gdal\bin`.
 
-`MapDataManager` scans these VRTs and shows them in the 3D Map diagnostics. Optional imagery does not change the automatic base map mode. After preparing a VRT, use the 3D Map toolbar `本地影像` menu to load the matching imagery `.earth` template. The templates keep Natural Earth as the offline global background and add one local imagery overlay.
+`MapDataManager` scans these VRTs and shows them in the 3D Map diagnostics. Optional imagery does not change the automatic base map mode. The diagnostics distinguish VRTs found from menu-ready overlays: a toolbar entry is enabled only when both the VRT and the matching `.earth` template exist. After preparing a VRT, use the 3D Map toolbar `本地影像` menu to load the matching imagery `.earth` template. The templates keep Natural Earth as the offline global background and add one local imagery overlay.
 
 ## Optional Local 3D Tiles
 

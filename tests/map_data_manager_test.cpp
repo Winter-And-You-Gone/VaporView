@@ -107,6 +107,8 @@ int main(int argc, char** argv)
     require(!selection.diagnostics.selectedDemLayerAvailable, "NaturalEarth selection should not select a DEM layer");
     require(!selection.diagnostics.osmVectorAvailable, "NaturalEarth selection should not mark OSM complete");
     require(!selection.diagnostics.localImageryAvailable, "optional imagery should be absent by default");
+    require(!selection.diagnostics.localImageryMenuAvailable, "optional imagery menu should be unavailable by default");
+    require(selection.diagnostics.localImageryMenuEntryCount == 0, "missing optional imagery should report zero menu-ready entries");
     require(selection.diagnostics.localImageryOptions.size() == 3,
             "diagnostics should expose all optional local imagery slots");
     require(!selection.diagnostics.localImageryOptions[0].available,
@@ -124,6 +126,20 @@ int main(int argc, char** argv)
             "missing optional 3D Tiles should not be treated as required");
 
     touch(root, QStringLiteral("data/maps/imagery/sentinel2/sentinel2.vrt"));
+    selection = select(root);
+    require(selection.diagnostics.localImageryAvailable,
+            "optional imagery VRT should be detected even when the matching earth template is missing");
+    require(selection.diagnostics.localImageryLayerCount == 1,
+            "diagnostics should count detected optional imagery VRTs separately");
+    require(!selection.diagnostics.localImageryMenuAvailable,
+            "imagery menu should stay disabled when only a VRT is present");
+    require(selection.diagnostics.localImageryMenuEntryCount == 0,
+            "VRT-only imagery should not count as a menu-ready entry");
+    require(!selection.diagnostics.localImageryOptions[0].available,
+            "VRT-only imagery option should not be directly loadable from the menu");
+    require(selection.diagnostics.messages.join(QLatin1Char('\n')).contains(QStringLiteral("no matching imagery earth templates")),
+            "VRT-only imagery diagnostics should explain why the menu is unavailable");
+
     touch(root, QStringLiteral("data/maps/vaporview_with_sentinel2_imagery.earth"));
     touch(root, QStringLiteral("data/maps/imagery/landsat/landsat.vrt"));
     touch(root, QStringLiteral("data/maps/vaporview_with_landsat_imagery.earth"));
@@ -134,7 +150,9 @@ int main(int argc, char** argv)
     require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarth,
             "optional imagery and 3D Tiles should not change base map selection");
     require(selection.diagnostics.localImageryAvailable, "optional imagery VRTs should be detected");
+    require(selection.diagnostics.localImageryMenuAvailable, "optional imagery menu should be available when VRTs and earth templates exist");
     require(selection.diagnostics.localImageryLayerCount == 3, "all three optional imagery VRTs should be counted");
+    require(selection.diagnostics.localImageryMenuEntryCount == 3, "all three optional imagery entries should be menu-ready");
     require(selection.diagnostics.localImageryOptions.size() == 3,
             "all three optional imagery menu entries should be reported");
     require(selection.diagnostics.localImageryOptions[0].available,
@@ -150,8 +168,8 @@ int main(int argc, char** argv)
             "optional Sentinel-2 VRT should be listed as found");
     require(selection.diagnostics.foundFiles.contains(selection.diagnostics.local3DTilesTilesetPath),
             "optional 3D Tiles tileset should be listed as found");
-    require(selection.diagnostics.messages.join(QLatin1Char('\n')).contains(QStringLiteral("imagery earth template")),
-            "optional imagery diagnostics should mention manual imagery earth templates");
+    require(selection.diagnostics.messages.join(QLatin1Char('\n')).contains(QStringLiteral("menu-ready overlays")),
+            "optional imagery diagnostics should mention menu-ready toolbar overlays");
 
     writeFile(root, QStringLiteral("data/maps/tiles3d/local/content/building.b3dm"),
               QByteArrayLiteral("not a real b3dm"));

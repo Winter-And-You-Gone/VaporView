@@ -146,6 +146,7 @@ Click `地图诊断`, or use `View / 视图 -> Map Data Diagnostics / 地图数�
 - OSM layer contracts that map each GeoPackage file to its expected internal layer name, `.earth` `OGRFeatures` name, and render layer type
 - Full Local Map blockers, including exact missing DEM, Natural Earth, OSM, or earth template files
 - optional Sentinel-2/Landsat/OpenAerialMap imagery VRTs
+- optional local imagery menu-ready overlay count, which requires both the VRT and matching `.earth` template
 - optional local 3D Tiles `tileset.json`
 - local 3D Tiles contract status, referenced content URIs, missing resources, and non-local URI warnings
 - OSG plugin path

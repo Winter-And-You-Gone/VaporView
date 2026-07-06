@@ -157,6 +157,19 @@ int localImageryLayerCount(const MapDataDiagnostics& diagnostics)
     return count;
 }
 
+int localImageryMenuEntryCount(const std::vector<LocalImageryOption>& options)
+{
+    int count = 0;
+    for (const LocalImageryOption& option : options)
+    {
+        if (option.available)
+        {
+            ++count;
+        }
+    }
+    return count;
+}
+
 std::vector<LocalImageryOption> localImageryOptions(const MapDataDiagnostics& diagnostics)
 {
     return {
@@ -529,8 +542,8 @@ void finalizeSelection(MapDataSelection& selection)
             .arg(diagnostics.selectedOsmLayersAvailable ? QStringLiteral("ready") : QStringLiteral("missing"))
             .arg(diagnostics.osmLayerCount),
         QStringLiteral("Optional imagery overlays: %1 (%2/3)")
-            .arg(diagnostics.localImageryAvailable ? QStringLiteral("configured") : QStringLiteral("not configured"))
-            .arg(diagnostics.localImageryLayerCount),
+            .arg(diagnostics.localImageryMenuAvailable ? QStringLiteral("menu ready") : QStringLiteral("not menu ready"))
+            .arg(diagnostics.localImageryMenuEntryCount),
         QStringLiteral("Optional local 3D Tiles: %1")
             .arg(diagnostics.local3DTilesAvailable
                      ? (diagnostics.local3DTilesTilesetValid ? QStringLiteral("contract valid") : QStringLiteral("needs attention"))
@@ -831,6 +844,8 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     diagnostics.localImageryLayerCount = localImageryLayerCount(diagnostics);
     diagnostics.localImageryAvailable = diagnostics.localImageryLayerCount > 0;
     diagnostics.localImageryOptions = localImageryOptions(diagnostics);
+    diagnostics.localImageryMenuEntryCount = localImageryMenuEntryCount(diagnostics.localImageryOptions);
+    diagnostics.localImageryMenuAvailable = diagnostics.localImageryMenuEntryCount > 0;
     diagnostics.local3DTilesAvailable = isFile(diagnostics.local3DTilesTilesetPath);
     collectLocal3DTilesDiagnostics(diagnostics);
     collectFullLocalBlockers(diagnostics, fullLocalEarthPath, fullLocalSrtmEarthPath);
@@ -838,7 +853,9 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     if (diagnostics.localImageryAvailable)
     {
         diagnostics.messages.push_back(
-            QStringLiteral("Optional local high-resolution imagery VRTs detected; use the local imagery toolbar menu or load the matching imagery earth template."));
+            diagnostics.localImageryMenuAvailable
+                ? QStringLiteral("Optional local high-resolution imagery VRTs detected; use the local imagery toolbar menu to load menu-ready overlays.")
+                : QStringLiteral("Optional local high-resolution imagery VRTs detected, but no matching imagery earth templates are available for the toolbar menu."));
     }
     if (diagnostics.local3DTilesAvailable)
     {

@@ -1114,7 +1114,7 @@ void Map3DWindow::setMapSelection(const MapDataSelection& selection)
                 loadLocalImageryTemplate(option);
             });
         }
-        local_imagery_action_->setEnabled(map_selection_.diagnostics.localImageryAvailable);
+        local_imagery_action_->setEnabled(map_selection_.diagnostics.localImageryMenuAvailable);
     }
     if (local_3d_tiles_action_)
     {
@@ -1324,17 +1324,19 @@ QString Map3DWindow::diagnosticsText() const
     lines << QStringLiteral("  Selected OSM: %1").arg(selectedOsmLabel(diagnostics));
     lines << QStringLiteral("  Selected full-local earth: %1")
                  .arg(diagnostics.selectedFullLocalEarthPath.isEmpty() ? QStringLiteral("<not selected>") : diagnostics.selectedFullLocalEarthPath);
-    lines << QStringLiteral("  Optional local imagery: %1 (%2/3 VRTs found)")
-                 .arg(diagnostics.localImageryAvailable ? QStringLiteral("available") : QStringLiteral("not configured"))
-                 .arg(diagnostics.localImageryLayerCount);
+    lines << QStringLiteral("  Optional local imagery VRTs: %1/3 found").arg(diagnostics.localImageryLayerCount);
+    lines << QStringLiteral("  Optional local imagery menu-ready overlays: %1/3")
+                 .arg(diagnostics.localImageryMenuEntryCount);
     if (!diagnostics.localImageryOptions.empty())
     {
         lines << QStringLiteral("  Local imagery menu:");
         for (const LocalImageryOption& option : diagnostics.localImageryOptions)
         {
-            lines << QStringLiteral("    - %1: %2")
+            lines << QStringLiteral("    - %1: %2 (VRT: %3, earth: %4)")
                          .arg(option.label,
-                              option.available ? QStringLiteral("available") : QStringLiteral("missing"));
+                              option.available ? QStringLiteral("menu ready") : QStringLiteral("missing VRT or earth template"),
+                              QFileInfo(option.vrtPath).isFile() ? QStringLiteral("found") : QStringLiteral("missing"),
+                              QFileInfo(option.earthFilePath).isFile() ? QStringLiteral("found") : QStringLiteral("missing"));
         }
     }
     lines << QStringLiteral("  Optional local 3D Tiles: %1")
