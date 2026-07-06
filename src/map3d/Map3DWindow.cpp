@@ -1,6 +1,7 @@
 #include "map3d/Map3DWindow.h"
 
 #include "geo/SessionTrackReader.h"
+#include "geo/TrajectoryQuality.h"
 #include "map3d/OsgEarthViewWidget.h"
 
 #include <QAction>
@@ -106,6 +107,83 @@ QString fileAvailabilityLabel(bool available, const QString& path)
 int sanitizeMaxVisibleSamples(int value)
 {
     return std::clamp(value, 1000, 1000000);
+}
+
+int firstVisibleIndex(const std::vector<VaporView::Geo::NavSample>& samples, int maxVisibleSamples)
+{
+    return std::max(0, static_cast<int>(samples.size()) - sanitizeMaxVisibleSamples(maxVisibleSamples));
+}
+
+bool isVisibleJumpSample(const std::vector<VaporView::Geo::NavSample>& samples, int index)
+{
+    if (index <= 0)
+    {
+        return false;
+    }
+    return VaporView::Geo::isLikelyJump(samples[static_cast<std::size_t>(index - 1)],
+                                        samples[static_cast<std::size_t>(index)]);
+}
+
+TrajectoryQualityStats qualityStatsForSamples(const std::vector<VaporView::Geo::NavSample>& samples,
+                                              int maxVisibleSamples)
+{
+    TrajectoryQualityStats stats;
+    for (int index = firstVisibleIndex(samples, maxVisibleSamples); index < static_cast<int>(samples.size()); ++index)
+    {
+        const VaporView::Geo::NavSample& sample = samples[static_cast<std::size_t>(index)];
+        const bool usable = VaporView::Geo::isUsableForDisplay(sample);
+        const bool jump = usable && isVisibleJumpSample(samples, index);
+        if (!usable)
+        {
+            ++stats.invalidSamples;
+            ++stats.markerSamples;
+            continue;
+        }
+        if (jump)
+        {
+            ++stats.jumpSamples;
+            ++stats.markerSamples;
+            continue;
+        }
+
+        ++stats.lineSamples;
+        switch (sample.fixQuality)
+        {
+        case VaporView::Geo::FixQuality::Fixed:
+            ++stats.fixedSamples;
+            break;
+        case VaporView::Geo::FixQuality::Float:
+            ++stats.floatSamples;
+            break;
+        case VaporView::Geo::FixQuality::Dgps:
+            ++stats.dgpsSamples;
+            break;
+        case VaporView::Geo::FixQuality::Single:
+            ++stats.singleSamples;
+            break;
+        case VaporView::Geo::FixQuality::Invalid:
+            ++stats.invalidSamples;
+            ++stats.markerSamples;
+            --stats.lineSamples;
+            break;
+        case VaporView::Geo::FixQuality::Unknown:
+            ++stats.unknownSamples;
+            break;
+        }
+    }
+    return stats;
+}
+
+QString qualityStatsSummary(const TrajectoryQualityStats& stats)
+{
+    return QStringLiteral("Fixed %1 Float %2 DGPS %3 Single %4 Unknown %5 Invalid %6 Jump %7")
+        .arg(stats.fixedSamples)
+        .arg(stats.floatSamples)
+        .arg(stats.dgpsSamples)
+        .arg(stats.singleSamples)
+        .arg(stats.unknownSamples)
+        .arg(stats.invalidSamples)
+        .arg(stats.jumpSamples);
 }
 
 } // namespace
@@ -287,6 +365,7 @@ void Map3DWindow::appendSample(const VaporView::Geo::NavSample& sample)
     if (headless_view_)
     {
         ++headless_sample_count_;
+        headless_samples_.push_back(sample);
     }
     recordTrackSource(QStringLiteral("Live"), &sample);
     updateReplayUi();
@@ -307,6 +386,7 @@ void Map3DWindow::appendSamples(const std::vector<VaporView::Geo::NavSample>& sa
     if (headless_view_)
     {
         headless_sample_count_ += static_cast<int>(samples.size());
+        headless_samples_.insert(headless_samples_.end(), samples.cbegin(), samples.cend());
     }
     recordTrackSource(QStringLiteral("Live"), samples.empty() ? nullptr : &samples.back(),
                       samples.empty() ? QStringLiteral("empty live batch") : QString());
@@ -325,6 +405,7 @@ void Map3DWindow::clearTrack()
     if (headless_view_)
     {
         headless_sample_count_ = 0;
+        headless_samples_.clear();
     }
     recordTrackSource(QStringLiteral("none"), nullptr, QStringLiteral("track cleared"));
     updateReplayUi();
@@ -351,6 +432,7 @@ void Map3DWindow::loadSessionDirectory(const QString& sessionDir)
     if (headless_view_)
     {
         headless_sample_count_ = static_cast<int>(result.samples.size());
+        headless_samples_ = result.samples;
     }
     replay_.setSamples(result.samples);
     latest_drop_source_.clear();
@@ -657,6 +739,7 @@ void Map3DWindow::rebuildReplayAt(int index)
     if (headless_view_)
     {
         headless_sample_count_ = static_cast<int>(visibleSamples.size());
+        headless_samples_ = visibleSamples;
     }
     recordTrackSource(QStringLiteral("Replay"),
                       visibleSamples.empty() ? nullptr : &visibleSamples.back());
@@ -755,6 +838,8 @@ QString Map3DWindow::diagnosticsText() const
     const int visibleSamples = view_ ? stats.visibleSamples : std::min(headless_sample_count_, max_visible_samples_);
     const int maxVisibleSamples = view_ ? stats.maxVisibleSamples : max_visible_samples_;
     const int hiddenSamples = std::max(0, totalSamples - visibleSamples);
+    const TrajectoryQualityStats qualityStats =
+        view_ ? stats.qualityStats : qualityStatsForSamples(headless_samples_, max_visible_samples_);
     QStringList lines;
     lines << QStringLiteral("Mode: %1 (%2)")
                  .arg(MapDataManager::modeLabel(map_selection_.mode),
@@ -797,6 +882,16 @@ QString Map3DWindow::diagnosticsText() const
     lines << QStringLiteral("  FPS: %1").arg(stats.framesPerSecond, 0, 'f', 1);
     lines << QStringLiteral("  Frame ms: %1").arg(stats.frameMs, 0, 'f', 1);
     lines << QStringLiteral("  Track update ms: %1").arg(stats.trackUpdateMs, 0, 'f', 1);
+    lines << QStringLiteral("Trajectory quality:");
+    lines << QStringLiteral("  Visible line samples: %1").arg(qualityStats.lineSamples);
+    lines << QStringLiteral("  Visible marker samples: %1").arg(qualityStats.markerSamples);
+    lines << QStringLiteral("  Fixed: %1").arg(qualityStats.fixedSamples);
+    lines << QStringLiteral("  Float: %1").arg(qualityStats.floatSamples);
+    lines << QStringLiteral("  DGPS: %1").arg(qualityStats.dgpsSamples);
+    lines << QStringLiteral("  Single: %1").arg(qualityStats.singleSamples);
+    lines << QStringLiteral("  Unknown: %1").arg(qualityStats.unknownSamples);
+    lines << QStringLiteral("  Invalid/unusable: %1").arg(qualityStats.invalidSamples);
+    lines << QStringLiteral("  Jump markers: %1").arg(qualityStats.jumpSamples);
     lines << QStringLiteral("Track data:");
     lines << QStringLiteral("  Source: %1").arg(latest_track_source_.isEmpty() ? QStringLiteral("none") : latest_track_source_);
     lines << QStringLiteral("  Latest record timestamp us: %1")
@@ -944,7 +1039,13 @@ void Map3DWindow::updateStatus(const VaporView::Geo::NavSample* latest)
     const Map3DPerformanceStats stats = view_ ? view_->performanceStats() : Map3DPerformanceStats{};
     const int totalSamples = view_ ? stats.totalSamples : headless_sample_count_;
     const int visibleSamples = view_ ? stats.visibleSamples : std::min(headless_sample_count_, max_visible_samples_);
+    const TrajectoryQualityStats qualityStats =
+        view_ ? stats.qualityStats : qualityStatsForSamples(headless_samples_, max_visible_samples_);
     QString text = QStringLiteral("Points: %1/%2").arg(visibleSamples).arg(totalSamples);
+    if (visibleSamples > 0)
+    {
+        text += QStringLiteral(" | Q %1").arg(qualityStatsSummary(qualityStats));
+    }
     text += QStringLiteral(" | Source %1").arg(latest_track_source_.isEmpty() ? QStringLiteral("none") : latest_track_source_);
     if (!latest_camera_note_.isEmpty())
     {

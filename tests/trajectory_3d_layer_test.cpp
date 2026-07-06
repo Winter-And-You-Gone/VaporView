@@ -137,6 +137,12 @@ int main()
     require(stats.lineVertices == 6, "only usable non-jump samples participate in line strips");
     require(stats.pointSets == 1, "invalid and jump samples share one red point marker primitive");
     require(stats.pointVertices == 2, "invalid and jump samples are rendered as two point markers");
+    const VaporView::Map3D::TrajectoryQualityStats qualityStats = qualityLayer.qualityStats();
+    require(qualityStats.fixedSamples == 6, "quality stats count fixed line samples");
+    require(qualityStats.invalidSamples == 1, "quality stats count invalid marker samples");
+    require(qualityStats.jumpSamples == 1, "quality stats count jump marker samples");
+    require(qualityStats.lineSamples == 6, "quality stats count line samples");
+    require(qualityStats.markerSamples == 2, "quality stats count marker samples");
 
     layer.clear();
     require(layer.sampleCount() == 0, "clear removes samples");

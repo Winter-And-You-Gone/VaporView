@@ -13,6 +13,18 @@ class Node;
 
 namespace VaporView::Map3D {
 
+struct TrajectoryQualityStats {
+    int fixedSamples = 0;
+    int floatSamples = 0;
+    int dgpsSamples = 0;
+    int singleSamples = 0;
+    int unknownSamples = 0;
+    int invalidSamples = 0;
+    int jumpSamples = 0;
+    int lineSamples = 0;
+    int markerSamples = 0;
+};
+
 class Trajectory3DLayer {
 public:
     Trajectory3DLayer();
@@ -28,6 +40,7 @@ public:
     int maxVisibleSamples() const;
     int segmentCount() const;
     int segmentSize() const;
+    TrajectoryQualityStats qualityStats() const;
     osg::Node* node() const;
 
 private:

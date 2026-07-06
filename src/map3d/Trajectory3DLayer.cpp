@@ -163,6 +163,56 @@ int Trajectory3DLayer::segmentSize() const
     return kSegmentSize;
 }
 
+TrajectoryQualityStats Trajectory3DLayer::qualityStats() const
+{
+    TrajectoryQualityStats stats;
+    const int first = firstVisibleIndex();
+    for (int index = first; index < sampleCount(); ++index)
+    {
+        const VaporView::Geo::NavSample& sample = samples_[static_cast<std::size_t>(index)];
+        const bool usable = VaporView::Geo::isUsableForDisplay(sample);
+        const bool jump = usable && isJumpSample(samples_, index);
+        if (!usable)
+        {
+            ++stats.invalidSamples;
+            ++stats.markerSamples;
+            continue;
+        }
+        if (jump)
+        {
+            ++stats.jumpSamples;
+            ++stats.markerSamples;
+            continue;
+        }
+
+        ++stats.lineSamples;
+        switch (sample.fixQuality)
+        {
+        case VaporView::Geo::FixQuality::Fixed:
+            ++stats.fixedSamples;
+            break;
+        case VaporView::Geo::FixQuality::Float:
+            ++stats.floatSamples;
+            break;
+        case VaporView::Geo::FixQuality::Dgps:
+            ++stats.dgpsSamples;
+            break;
+        case VaporView::Geo::FixQuality::Single:
+            ++stats.singleSamples;
+            break;
+        case VaporView::Geo::FixQuality::Invalid:
+            ++stats.invalidSamples;
+            ++stats.markerSamples;
+            --stats.lineSamples;
+            break;
+        case VaporView::Geo::FixQuality::Unknown:
+            ++stats.unknownSamples;
+            break;
+        }
+    }
+    return stats;
+}
+
 osg::Node* Trajectory3DLayer::node() const
 {
     return geode_.get();

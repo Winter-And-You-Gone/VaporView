@@ -1,6 +1,7 @@
 #pragma once
 
 #include "geo/GeoTypes.h"
+#include "map3d/Trajectory3DLayer.h"
 
 #include <QOpenGLWidget>
 #include <QString>
@@ -35,6 +36,7 @@ struct Map3DPerformanceStats {
     int maxVisibleSamples = 0;
     int segmentCount = 0;
     int segmentSize = 0;
+    TrajectoryQualityStats qualityStats;
     double frameMs = 0.0;
     double framesPerSecond = 0.0;
     double trackUpdateMs = 0.0;

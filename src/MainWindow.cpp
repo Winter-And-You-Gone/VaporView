@@ -6762,6 +6762,18 @@ MainWindow::~MainWindow()
         delete session_viewer_window_;
         session_viewer_window_ = nullptr;
     }
+#ifdef VAPORVIEW_HAS_OSGEARTH
+    pending_map3d_samples_.clear();
+    if (map3d_flush_timer_)
+    {
+        map3d_flush_timer_->stop();
+    }
+    if (map3d_window_)
+    {
+        delete map3d_window_;
+        map3d_window_ = nullptr;
+    }
+#endif
 
     if (custom_title_bar_)
     {

@@ -103,6 +103,7 @@ The status bar shows:
 - FPS
 - frame time
 - track update time
+- visible RTK/GNSS quality counts for Fixed, Float, DGPS, Single, Unknown, Invalid, and jump markers
 - latest latitude, longitude, and height when available
 - height reference label
 - fix quality
@@ -119,6 +120,7 @@ Click `地图诊断`, or use `View / 视图 -> Map Data Diagnostics / 地图数�
 - active `.earth` file
 - runtime `Earth load` status, including requested path, loaded state, MapNode state, and layer open/status strings
 - render performance, including visible/total/hidden samples, trajectory segment count/size, FPS, frame time, and track update time
+- visible trajectory quality, including line samples, red marker samples, RTK Fixed/Float/DGPS/Single/Unknown counts, invalid/unusable samples, and jump markers
 - latest aircraft attitude source, using the same quaternion-first fallback as the aircraft marker
 - current working directory
 - project root

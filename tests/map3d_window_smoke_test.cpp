@@ -109,15 +109,23 @@ int main(int argc, char** argv)
     std::vector<VaporView::Geo::NavSample> manySamples(1100);
     for (int i = 0; i < static_cast<int>(manySamples.size()); ++i)
     {
+        manySamples[i].recordTimestampUs = static_cast<qint64>(i + 1) * 1000000;
         manySamples[i].latDeg = 39.9 + static_cast<double>(i) * 0.000001;
         manySamples[i].lonDeg = 116.3;
         manySamples[i].heightM = 45.0;
+        manySamples[i].nedNM = static_cast<double>(i);
+        manySamples[i].nedEM = 0.0;
+        manySamples[i].nedDM = -45.0;
         manySamples[i].fixQuality = VaporView::Geo::FixQuality::Fixed;
+        manySamples[i].satellites = 12;
+        manySamples[i].hdop = 0.9;
     }
     window.appendSamples(manySamples);
     QCoreApplication::processEvents();
     require(label->text().contains(QStringLiteral("Points: 1000/1100")),
             "max visible samples caps the visible status count");
+    require(label->text().contains(QStringLiteral("Q Fixed 1000")),
+            "status includes visible fixed quality count");
     require(label->text().contains(QStringLiteral("Source Live")), "live append batch reports live source");
     window.clearTrack();
     QCoreApplication::processEvents();
@@ -134,6 +142,8 @@ int main(int argc, char** argv)
     window.appendSample(sample);
     QCoreApplication::processEvents();
     require(label->text().contains(QStringLiteral("Points: 1")), "appendSample updates status");
+    require(label->text().contains(QStringLiteral("Q Fixed 1")),
+            "appendSample status includes quality summary");
     require(label->text().contains(QStringLiteral("Source Live")), "appendSample reports live source");
     require(label->text().contains(QStringLiteral("rec 1000000")), "status includes latest record timestamp");
     require(label->text().contains(QStringLiteral("dev 900000")), "status includes latest device timestamp");
@@ -218,6 +228,12 @@ int main(int argc, char** argv)
             "diagnostics include earth load attempt state");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Render performance:")),
             "diagnostics include render performance section");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Trajectory quality:")),
+            "diagnostics include trajectory quality section");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Fixed: 1")),
+            "diagnostics include fixed quality count");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Visible line samples: 1")),
+            "diagnostics include visible line sample count");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Samples:")),
             "diagnostics include visible and total sample counts");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Source: Replay")),

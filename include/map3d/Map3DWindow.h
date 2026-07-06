@@ -66,6 +66,7 @@ private:
     OsgEarthViewWidget* view_ = nullptr;
     QWidget* headless_view_ = nullptr;
     int headless_sample_count_ = 0;
+    std::vector<VaporView::Geo::NavSample> headless_samples_;
     int max_visible_samples_ = 200000;
     QAction* follow_action_ = nullptr;
     QLabel* status_label_ = nullptr;
