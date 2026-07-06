@@ -213,7 +213,8 @@ bool MapDataManager::isBuiltInEarthFile(const QString& earthPath) const
     return fileName == QStringLiteral("vaporview_default.earth")
         || fileName == QStringLiteral("vaporview_with_dem.earth")
         || fileName == QStringLiteral("vaporview_with_srtm.earth")
-        || fileName == QStringLiteral("vaporview_full_local.earth");
+        || fileName == QStringLiteral("vaporview_full_local.earth")
+        || fileName == QStringLiteral("vaporview_full_local_srtm.earth");
 }
 
 QString MapDataManager::modeLabel(MapDataMode mode)
@@ -319,18 +320,20 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
         });
     }
     diagnostics.projDataPath = environment.value(QStringLiteral("PROJ_DATA"));
+    diagnostics.projLibPath = environment.value(QStringLiteral("PROJ_LIB"));
+    const QString inferredProjPath = firstExistingDirectory(roots, {
+        QStringLiteral("share/proj"),
+        QStringLiteral("share/proj4"),
+        QStringLiteral(".local_deps/vcpkg_installed/x64-windows/share/proj"),
+        QStringLiteral(".local_deps/vcpkg_installed/x64-windows/share/proj4")
+    });
     if (diagnostics.projDataPath.isEmpty())
     {
-        diagnostics.projDataPath = environment.value(QStringLiteral("PROJ_LIB"));
+        diagnostics.projDataPath = inferredProjPath.isEmpty() ? diagnostics.projLibPath : inferredProjPath;
     }
-    if (diagnostics.projDataPath.isEmpty())
+    if (diagnostics.projLibPath.isEmpty())
     {
-        diagnostics.projDataPath = firstExistingDirectory(roots, {
-            QStringLiteral("share/proj"),
-            QStringLiteral("share/proj4"),
-            QStringLiteral(".local_deps/vcpkg_installed/x64-windows/share/proj"),
-            QStringLiteral(".local_deps/vcpkg_installed/x64-windows/share/proj4")
-        });
+        diagnostics.projLibPath = inferredProjPath.isEmpty() ? diagnostics.projDataPath : inferredProjPath;
     }
 
     recordFile(diagnostics, defaultEarthPath);

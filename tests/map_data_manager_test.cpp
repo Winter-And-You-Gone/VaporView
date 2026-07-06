@@ -53,6 +53,9 @@ int main(int argc, char** argv)
 
     touch(root, QStringLiteral("data/maps/vaporview_default.earth"));
     touch(root, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png"));
+    VaporView::Map3D::MapDataManager builtInManager({root.absolutePath()});
+    require(builtInManager.isBuiltInEarthFile(QStringLiteral("data/maps/vaporview_full_local_srtm.earth")),
+            "SRTM full-local earth template should be treated as built in");
     selection = select(root);
     require(selection.mode == VaporView::Map3D::MapDataMode::LocalGridOnly, "preview texture alone should not select NaturalEarth");
     require(!selection.diagnostics.naturalEarthAvailable, "preview texture alone should not mark Natural Earth available");

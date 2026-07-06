@@ -86,14 +86,14 @@ Symptoms include blank maps, unknown file extension messages, or image/earth fil
 
 ### Missing `GDAL_DATA` or `PROJ_DATA`
 
-GDAL and PROJ may fail to interpret GeoTIFF/VRT coordinate systems when their data directories are missing. Open the diagnostics panel and confirm `GDAL_DATA` and `PROJ_DATA` resolve to real directories.
+GDAL and PROJ may fail to interpret GeoTIFF/VRT coordinate systems when their data directories are missing. Open the diagnostics panel and confirm `GDAL_DATA`, `PROJ_DATA`, and `PROJ_LIB` resolve to real directories.
 
 ### Black Screen
 
 Check these in order:
 
 1. Build with `-DVAPORVIEW_ENABLE_OSGEARTH=ON`.
-2. Confirm OSG plugins, `GDAL_DATA`, and `PROJ_DATA` in diagnostics.
+2. Confirm OSG plugins, `GDAL_DATA`, `PROJ_DATA`, and `PROJ_LIB` in diagnostics.
 3. Confirm `data/maps/vaporview_default.earth` and Natural Earth files exist.
 4. Use `重载最佳本地地图`.
 5. Use `重置视角`.

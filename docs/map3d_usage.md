@@ -126,6 +126,7 @@ Click `地图诊断`, or use `View / 视图 -> Map Data Diagnostics / 地图数�
 - `OSGEARTH_NOTIFY_LEVEL`
 - `GDAL_DATA`
 - `PROJ_DATA`
+- `PROJ_LIB`
 - found files
 - missing files
 - warnings and diagnostics messages

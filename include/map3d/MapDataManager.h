@@ -36,6 +36,7 @@ struct MapDataDiagnostics {
     QString osgPluginPath;
     QString gdalDataPath;
     QString projDataPath;
+    QString projLibPath;
     QString osgLibraryPath;
     QString osgEarthNotifyLevel;
     bool naturalEarthAvailable = false;
