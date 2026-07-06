@@ -5,6 +5,7 @@
 #include <QtCore/QStandardPaths>
 #include <QtCore/QStringList>
 #include <QtCore/QTemporaryDir>
+#include <QtCore/QTextStream>
 
 #include <cstdlib>
 #include <iostream>
@@ -91,6 +92,16 @@ QProcessEnvironment environmentWithoutGdalTools()
     return environment;
 }
 
+QProcessEnvironment environmentWithOnlyPath(const QString& path)
+{
+    QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+    environment.insert(QStringLiteral("PATH"), path);
+    environment.insert(QStringLiteral("Path"), path);
+    environment.remove(QStringLiteral("GDAL_BIN"));
+    environment.insert(QStringLiteral("VAPORVIEW_GDAL_TOOL_SEARCH"), QStringLiteral("PATH_ONLY"));
+    return environment;
+}
+
 void writeDummyFile(const QString& path, const QByteArray& contents)
 {
     const QFileInfo info(path);
@@ -98,6 +109,16 @@ void writeDummyFile(const QString& path, const QByteArray& contents)
     QFile file(info.absoluteFilePath());
     require(file.open(QIODevice::WriteOnly), QStringLiteral("open %1").arg(info.absoluteFilePath()));
     file.write(contents);
+}
+
+void writeTextFile(const QString& path, const QString& contents)
+{
+    const QFileInfo info(path);
+    QDir().mkpath(info.absolutePath());
+    QFile file(info.absoluteFilePath());
+    require(file.open(QIODevice::WriteOnly | QIODevice::Text), QStringLiteral("open %1").arg(info.absoluteFilePath()));
+    QTextStream stream(&file);
+    stream << contents;
 }
 
 QString readTextFile(const QString& path)
@@ -404,6 +425,96 @@ int main()
                 && missingOsmOutputs.standardError.contains(QStringLiteral("--gdal-bin"))
                 && missingOsmOutputs.standardError.contains(QStringLiteral("Searched:")),
             QStringLiteral("prepare-osm-local-data.py reports GDAL/OGR tool search hints"));
+
+    QTemporaryDir fakeOgrinfoProject;
+    require(fakeOgrinfoProject.isValid(), QStringLiteral("temporary fake ogrinfo project root is valid"));
+    const QDir fakeOgrinfoRoot(fakeOgrinfoProject.path());
+    const QString fakeOsmDir = fakeOgrinfoRoot.filePath(QStringLiteral("data/maps/osm"));
+    for (const QString& fileName : {QStringLiteral("roads.gpkg"),
+                                   QStringLiteral("water.gpkg"),
+                                   QStringLiteral("buildings.gpkg"),
+                                   QStringLiteral("places.gpkg")})
+    {
+        writeDummyFile(QDir(fakeOsmDir).filePath(fileName), QByteArrayLiteral("dummy gpkg"));
+    }
+
+    const QString fakeToolDir = fakeOgrinfoRoot.filePath(QStringLiteral("fake_gdal_bin"));
+#ifdef Q_OS_WIN
+    const QString fakeOgrinfoPath = QDir(fakeToolDir).filePath(QStringLiteral("ogrinfo.cmd"));
+    writeTextFile(fakeOgrinfoPath,
+                  QStringLiteral("@echo off\r\n"
+                                 "echo Layer name: %4\r\n"
+                                 "if \"%4\"==\"buildings\" echo name: String\r\n"
+                                 "exit /b 0\r\n"));
+#else
+    const QString fakeOgrinfoPath = QDir(fakeToolDir).filePath(QStringLiteral("ogrinfo"));
+    writeTextFile(fakeOgrinfoPath,
+                  QStringLiteral("#!/bin/sh\n"
+                                 "echo \"Layer name: $4\"\n"
+                                 "if [ \"$4\" = \"buildings\" ]; then echo \"name: String\"; fi\n"
+                                 "exit 0\n"));
+    QFile::setPermissions(fakeOgrinfoPath,
+                          QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner |
+                              QFile::ReadGroup | QFile::ExeGroup |
+                              QFile::ReadOther | QFile::ExeOther);
+#endif
+
+    const ProcessResult missingExtrusionField =
+        runProcess(python,
+                   {osmScript,
+                    fakeOgrinfoRoot.filePath(QStringLiteral("data/maps/osm/local_extract.osm.pbf")),
+                    QStringLiteral("--project-root"),
+                    fakeOgrinfoRoot.absolutePath(),
+                    QStringLiteral("--check")},
+                   environmentWithOnlyPath(fakeToolDir));
+    require(missingExtrusionField.started,
+            QStringLiteral("prepare-osm-local-data.py --check with fake ogrinfo starts: %1")
+                .arg(missingExtrusionField.standardError));
+    require(!missingExtrusionField.timedOut,
+            QStringLiteral("prepare-osm-local-data.py --check with fake ogrinfo does not time out"));
+    require(missingExtrusionField.exitCode == 2,
+            QStringLiteral("prepare-osm-local-data.py --check exits 2 when buildings layer lacks extrusion_height_m, stdout=%1 stderr=%2")
+                .arg(missingExtrusionField.standardOutput, missingExtrusionField.standardError));
+    require(missingExtrusionField.standardError.contains(QStringLiteral("extrusion_height_m")),
+            QStringLiteral("prepare-osm-local-data.py --check reports missing building extrusion field"));
+
+    writeTextFile(fakeOgrinfoPath,
+#ifdef Q_OS_WIN
+                  QStringLiteral("@echo off\r\n"
+                                 "echo Layer name: %4\r\n"
+                                 "if \"%4\"==\"buildings\" echo extrusion_height_m: Real\r\n"
+                                 "exit /b 0\r\n")
+#else
+                  QStringLiteral("#!/bin/sh\n"
+                                 "echo \"Layer name: $4\"\n"
+                                 "if [ \"$4\" = \"buildings\" ]; then echo \"extrusion_height_m: Real\"; fi\n"
+                                 "exit 0\n")
+#endif
+    );
+#ifndef Q_OS_WIN
+    QFile::setPermissions(fakeOgrinfoPath,
+                          QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner |
+                              QFile::ReadGroup | QFile::ExeGroup |
+                              QFile::ReadOther | QFile::ExeOther);
+#endif
+    const ProcessResult validOsmCheck =
+        runProcess(python,
+                   {osmScript,
+                    fakeOgrinfoRoot.filePath(QStringLiteral("data/maps/osm/local_extract.osm.pbf")),
+                    QStringLiteral("--project-root"),
+                    fakeOgrinfoRoot.absolutePath(),
+                    QStringLiteral("--check")},
+                   environmentWithOnlyPath(fakeToolDir));
+    require(validOsmCheck.started,
+            QStringLiteral("prepare-osm-local-data.py --check with extrusion field starts: %1")
+                .arg(validOsmCheck.standardError));
+    require(!validOsmCheck.timedOut,
+            QStringLiteral("prepare-osm-local-data.py --check with extrusion field does not time out"));
+    require(validOsmCheck.exitCode == 0,
+            QStringLiteral("prepare-osm-local-data.py --check exits 0 when all layer contracts are valid, stdout=%1 stderr=%2")
+                .arg(validOsmCheck.standardOutput, validOsmCheck.standardError));
+    require(validOsmCheck.standardOutput.contains(QStringLiteral("CHECK buildings: extrusion_height_m field exists")),
+            QStringLiteral("prepare-osm-local-data.py --check confirms building extrusion field"));
 
     return 0;
 }

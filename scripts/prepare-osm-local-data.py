@@ -153,6 +153,16 @@ def validate_outputs(output_dir: Path, ogrinfo: str | None) -> bool:
             ok = False
         else:
             print(f"CHECK {name}: layer exists")
+            if name == "buildings":
+                if "extrusion_height_m" not in result.stdout:
+                    print(
+                        "ERROR: buildings.gpkg layer 'buildings' does not expose "
+                        "the required extrusion_height_m field for local building extrusion.",
+                        file=sys.stderr,
+                    )
+                    ok = False
+                else:
+                    print("CHECK buildings: extrusion_height_m field exists")
     return ok
 
 
