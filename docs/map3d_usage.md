@@ -42,6 +42,7 @@ Replay slider
 跟随飞机
 最大可见点数
 加载 Earth 文件
+本地影像
 重载最佳本地地图
 飞到飞机
 飞到轨迹
@@ -55,13 +56,15 @@ When quaternion columns (`quat_w`, `quat_x`, `quat_y`, `quat_z`, including `epsi
 
 `加载 Earth 文件` opens a custom `.earth` file. Keep relative paths in that file aligned with its location.
 
-Optional local imagery templates live in `data/maps` and can be loaded manually after the matching VRT exists:
+`本地影像` opens a menu for optional local imagery templates. Entries become enabled when both the matching VRT and the `.earth` template exist. The templates live in `data/maps`:
 
 ```text
 vaporview_with_sentinel2_imagery.earth
 vaporview_with_landsat_imagery.earth
 vaporview_with_openaerialmap_imagery.earth
 ```
+
+These overlays are still fully local. They do not change automatic base-map selection, but the menu avoids manually browsing for the template once `MapDataManager` detects the VRT.
 
 `重载最佳本地地图` rescans `data/maps` and loads the best local dataset currently available.
 

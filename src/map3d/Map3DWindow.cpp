@@ -11,6 +11,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QLabel>
+#include <QMenu>
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QSettings>
@@ -105,6 +106,13 @@ QString fileAvailabilityLabel(bool available, const QString& path)
 {
     return QStringLiteral("%1 - %2")
         .arg(available ? QStringLiteral("available") : QStringLiteral("missing"), path);
+}
+
+QString imageryOptionLabel(const LocalImageryOption& option)
+{
+    return QStringLiteral("%1 - %2")
+        .arg(option.label,
+             option.available ? QStringLiteral("available") : QStringLiteral("missing VRT/template"));
 }
 
 int sanitizeMaxVisibleSamples(int value)
@@ -310,6 +318,11 @@ Map3DWindow::Map3DWindow(QWidget* parent)
 
     QAction* loadEarthAction = toolbar->addAction(QStringLiteral("加载 Earth 文件"));
     connect(loadEarthAction, &QAction::triggered, this, &Map3DWindow::openEarthFile);
+
+    local_imagery_menu_ = new QMenu(QStringLiteral("本地影像"), this);
+    local_imagery_action_ = toolbar->addAction(QStringLiteral("本地影像"));
+    local_imagery_action_->setObjectName(QStringLiteral("map3DLocalImageryAction"));
+    local_imagery_action_->setMenu(local_imagery_menu_);
 
     QAction* reloadBestMapAction = toolbar->addAction(QStringLiteral("重载最佳本地地图"));
     reloadBestMapAction->setObjectName(QStringLiteral("map3DReloadBestMapAction"));
@@ -558,6 +571,40 @@ void Map3DWindow::openEarthFile()
     statusBar()->showMessage(QStringLiteral("Loaded earth file: %1%2")
                                  .arg(file,
                                       focusedTrack ? QStringLiteral(" (auto-focused track)") : QString()),
+                             5000);
+}
+
+void Map3DWindow::loadLocalImageryTemplate(const LocalImageryOption& option)
+{
+    if (!option.available)
+    {
+        statusBar()->showMessage(QStringLiteral("本地影像不可用: %1").arg(option.label), 5000);
+        return;
+    }
+
+    const bool loaded = view_ ? view_->loadEarthFile(option.earthFilePath) : false;
+    latest_earth_load_ = view_ ? view_->earthLoadDiagnostics() : EarthLoadDiagnostics{};
+    if (!loaded && view_)
+    {
+        statusBar()->showMessage(QStringLiteral("加载本地影像失败: %1").arg(option.earthFilePath), 8000);
+        return;
+    }
+
+    MapDataSelection selection = map_data_manager_.selectBestAvailableMap();
+    selection.earthFile = option.earthFilePath;
+    selection.earthFilePath = option.earthFilePath;
+    selection.description = QStringLiteral("Natural Earth background with %1 overlay.").arg(option.label);
+    selection.diagnostics.earthFilePath = option.earthFilePath;
+    selection.diagnostics.messages.push_back(QStringLiteral("Loaded optional local imagery template: %1").arg(option.label));
+    setMapSelection(selection);
+
+    QSettings settings(QStringLiteral("VaporView"), QStringLiteral("Map3D"));
+    settings.setValue(QStringLiteral("lastEarthFile"), option.earthFilePath);
+    const bool focusedTrack = autoFocusTrack(QStringLiteral("Track auto"));
+    updateStatus(nullptr);
+    statusBar()->showMessage(QStringLiteral("已加载本地影像: %1%2")
+                                 .arg(option.label,
+                                      focusedTrack ? QStringLiteral(" (已自动定位轨迹)") : QString()),
                              5000);
 }
 
@@ -846,6 +893,24 @@ QString Map3DWindow::replayTimeLabel() const
 void Map3DWindow::setMapSelection(const MapDataSelection& selection)
 {
     map_selection_ = selection;
+    if (local_imagery_menu_)
+    {
+        local_imagery_menu_->clear();
+        for (const LocalImageryOption& option : map_selection_.diagnostics.localImageryOptions)
+        {
+            QAction* action = local_imagery_menu_->addAction(imageryOptionLabel(option));
+            action->setObjectName(QStringLiteral("map3DLocalImagery_%1").arg(option.key));
+            action->setEnabled(option.available);
+            action->setToolTip(QStringLiteral("%1\nVRT: %2\nEarth: %3")
+                                   .arg(option.available ? QStringLiteral("可加载") : QStringLiteral("缺少本地 VRT 或 earth 模板"),
+                                        option.vrtPath,
+                                        option.earthFilePath));
+            connect(action, &QAction::triggered, this, [this, option]() {
+                loadLocalImageryTemplate(option);
+            });
+        }
+        local_imagery_action_->setEnabled(map_selection_.diagnostics.localImageryAvailable);
+    }
     if (diagnostics_text_)
     {
         diagnostics_text_->setPlainText(diagnosticsText());
@@ -978,6 +1043,16 @@ QString Map3DWindow::diagnosticsText() const
     lines << QStringLiteral("  Optional local imagery: %1 (%2/3 VRTs found)")
                  .arg(diagnostics.localImageryAvailable ? QStringLiteral("available") : QStringLiteral("not configured"))
                  .arg(diagnostics.localImageryLayerCount);
+    if (!diagnostics.localImageryOptions.empty())
+    {
+        lines << QStringLiteral("  Local imagery menu:");
+        for (const LocalImageryOption& option : diagnostics.localImageryOptions)
+        {
+            lines << QStringLiteral("    - %1: %2")
+                         .arg(option.label,
+                              option.available ? QStringLiteral("available") : QStringLiteral("missing"));
+        }
+    }
     lines << QStringLiteral("  Optional local 3D Tiles: %1")
                  .arg(diagnostics.local3DTilesAvailable ? QStringLiteral("available") : QStringLiteral("not configured"));
     lines << QStringLiteral("Current working directory: %1").arg(diagnostics.currentWorkingDirectory.isEmpty() ? QStringLiteral("<unknown>") : diagnostics.currentWorkingDirectory);

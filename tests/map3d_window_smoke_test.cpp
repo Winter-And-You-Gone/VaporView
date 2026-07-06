@@ -8,6 +8,7 @@
 #include <QDir>
 #include <QFile>
 #include <QLabel>
+#include <QMenu>
 #include <QPlainTextEdit>
 #include <QSettings>
 #include <QSlider>
@@ -89,6 +90,7 @@ int main(int argc, char** argv)
     QAction* flyToTrackAction = actionByName(window, QStringLiteral("map3DFlyToTrackAction"));
     QAction* resetViewAction = actionByName(window, QStringLiteral("map3DResetViewAction"));
     QAction* diagnosticsAction = actionByName(window, QStringLiteral("map3DDiagnosticsAction"));
+    QAction* localImageryAction = actionByName(window, QStringLiteral("map3DLocalImageryAction"));
     auto* replaySpeedCombo = window.findChild<QComboBox*>(QStringLiteral("map3DReplaySpeedCombo"));
     auto* replaySlider = window.findChild<QSlider*>(QStringLiteral("map3DReplaySlider"));
     auto* maxVisibleSamplesSpin = window.findChild<QSpinBox*>(QStringLiteral("map3DMaxVisibleSamplesSpin"));
@@ -97,6 +99,8 @@ int main(int argc, char** argv)
     require(flyToTrackAction->isEnabled(), "fly to track action exists");
     require(resetViewAction->isEnabled(), "reset view action exists");
     require(diagnosticsAction->isEnabled(), "diagnostics action exists");
+    require(localImageryAction->menu() != nullptr, "local imagery action has a menu");
+    require(!localImageryAction->isEnabled(), "local imagery action starts disabled without local imagery VRTs");
     require(replaySpeedCombo != nullptr, "replay speed combo exists");
     require(replaySlider != nullptr, "replay slider exists");
     require(maxVisibleSamplesSpin != nullptr, "max visible samples spin box exists");
@@ -255,6 +259,8 @@ int main(int argc, char** argv)
             "diagnostics include earth load attempt state");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Render performance:")),
             "diagnostics include render performance section");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("Local imagery menu:")),
+            "diagnostics include local imagery menu availability");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Trajectory quality:")),
             "diagnostics include trajectory quality section");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("Fixed: 1")),

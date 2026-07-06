@@ -15,6 +15,9 @@ constexpr auto kCopernicusEarthRelative = "data/maps/vaporview_with_dem.earth";
 constexpr auto kSrtmEarthRelative = "data/maps/vaporview_with_srtm.earth";
 constexpr auto kFullLocalEarthRelative = "data/maps/vaporview_full_local.earth";
 constexpr auto kFullLocalSrtmEarthRelative = "data/maps/vaporview_full_local_srtm.earth";
+constexpr auto kSentinel2ImageryEarthRelative = "data/maps/vaporview_with_sentinel2_imagery.earth";
+constexpr auto kLandsatImageryEarthRelative = "data/maps/vaporview_with_landsat_imagery.earth";
+constexpr auto kOpenAerialMapImageryEarthRelative = "data/maps/vaporview_with_openaerialmap_imagery.earth";
 constexpr auto kNaturalEarthTextureRelative = "data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W_2048.png";
 constexpr auto kNaturalEarthVrtRelative = "data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt";
 constexpr auto kNaturalEarthRasterRelative = "data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.tif";
@@ -146,6 +149,27 @@ int localImageryLayerCount(const MapDataDiagnostics& diagnostics)
         ++count;
     }
     return count;
+}
+
+std::vector<LocalImageryOption> localImageryOptions(const MapDataDiagnostics& diagnostics)
+{
+    return {
+        {QStringLiteral("sentinel2"),
+         QStringLiteral("Sentinel-2 local imagery"),
+         diagnostics.sentinel2ImageryEarthPath,
+         diagnostics.sentinel2ImageryVrtPath,
+         isFile(diagnostics.sentinel2ImageryEarthPath) && isFile(diagnostics.sentinel2ImageryVrtPath)},
+        {QStringLiteral("landsat"),
+         QStringLiteral("Landsat local imagery"),
+         diagnostics.landsatImageryEarthPath,
+         diagnostics.landsatImageryVrtPath,
+         isFile(diagnostics.landsatImageryEarthPath) && isFile(diagnostics.landsatImageryVrtPath)},
+        {QStringLiteral("openaerialmap"),
+         QStringLiteral("OpenAerialMap local imagery"),
+         diagnostics.openAerialMapImageryEarthPath,
+         diagnostics.openAerialMapImageryVrtPath,
+         isFile(diagnostics.openAerialMapImageryEarthPath) && isFile(diagnostics.openAerialMapImageryVrtPath)}
+    };
 }
 
 QString bestAvailableDemSource(const MapDataDiagnostics& diagnostics)
@@ -375,6 +399,9 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     const QString fullLocalSrtmEarthPath = absolutePath(root, kFullLocalSrtmEarthRelative);
     diagnostics.fullLocalEarthPath = fullLocalEarthPath;
     diagnostics.fullLocalSrtmEarthPath = fullLocalSrtmEarthPath;
+    diagnostics.sentinel2ImageryEarthPath = absolutePath(root, kSentinel2ImageryEarthRelative);
+    diagnostics.landsatImageryEarthPath = absolutePath(root, kLandsatImageryEarthRelative);
+    diagnostics.openAerialMapImageryEarthPath = absolutePath(root, kOpenAerialMapImageryEarthRelative);
     diagnostics.naturalEarthTexturePath = absolutePath(root, kNaturalEarthTextureRelative);
     diagnostics.naturalEarthVrtPath = absolutePath(root, kNaturalEarthVrtRelative);
     diagnostics.naturalEarthRasterPath = absolutePath(root, kNaturalEarthRasterRelative);
@@ -431,6 +458,9 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     recordFile(diagnostics, defaultEarthPath);
     recordFile(diagnostics, fullLocalEarthPath);
     recordFile(diagnostics, fullLocalSrtmEarthPath);
+    recordOptionalFile(diagnostics, diagnostics.sentinel2ImageryEarthPath);
+    recordOptionalFile(diagnostics, diagnostics.landsatImageryEarthPath);
+    recordOptionalFile(diagnostics, diagnostics.openAerialMapImageryEarthPath);
     recordFile(diagnostics, diagnostics.naturalEarthTexturePath);
     recordFile(diagnostics, diagnostics.naturalEarthVrtPath);
     recordFile(diagnostics, diagnostics.naturalEarthRasterPath);
@@ -456,13 +486,14 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     diagnostics.osmVectorAvailable = diagnostics.osmLayerCount == 4;
     diagnostics.localImageryLayerCount = localImageryLayerCount(diagnostics);
     diagnostics.localImageryAvailable = diagnostics.localImageryLayerCount > 0;
+    diagnostics.localImageryOptions = localImageryOptions(diagnostics);
     diagnostics.local3DTilesAvailable = isFile(diagnostics.local3DTilesTilesetPath);
     collectFullLocalBlockers(diagnostics, fullLocalEarthPath, fullLocalSrtmEarthPath);
 
     if (diagnostics.localImageryAvailable)
     {
         diagnostics.messages.push_back(
-            QStringLiteral("Optional local high-resolution imagery VRTs detected; load a matching imagery earth template manually."));
+            QStringLiteral("Optional local high-resolution imagery VRTs detected; use the local imagery toolbar menu or load the matching imagery earth template."));
     }
     if (diagnostics.local3DTilesAvailable)
     {

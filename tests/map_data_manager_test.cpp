@@ -80,21 +80,40 @@ int main(int argc, char** argv)
     require(!selection.diagnostics.selectedDemLayerAvailable, "NaturalEarth selection should not select a DEM layer");
     require(!selection.diagnostics.osmVectorAvailable, "NaturalEarth selection should not mark OSM complete");
     require(!selection.diagnostics.localImageryAvailable, "optional imagery should be absent by default");
+    require(selection.diagnostics.localImageryOptions.size() == 3,
+            "diagnostics should expose all optional local imagery slots");
+    require(!selection.diagnostics.localImageryOptions[0].available,
+            "missing optional imagery slot should not be available");
     require(!selection.diagnostics.local3DTilesAvailable, "optional 3D Tiles should be absent by default");
     require(!selection.diagnostics.missingFiles.contains(selection.diagnostics.sentinel2ImageryVrtPath),
             "missing optional Sentinel-2 imagery should not be treated as required");
+    require(!selection.diagnostics.missingFiles.contains(selection.diagnostics.sentinel2ImageryEarthPath),
+            "missing optional Sentinel-2 imagery earth template should not be treated as required");
+    require(!selection.diagnostics.missingFiles.contains(selection.diagnostics.landsatImageryEarthPath),
+            "missing optional Landsat imagery earth template should not be treated as required");
+    require(!selection.diagnostics.missingFiles.contains(selection.diagnostics.openAerialMapImageryEarthPath),
+            "missing optional OpenAerialMap imagery earth template should not be treated as required");
     require(!selection.diagnostics.missingFiles.contains(selection.diagnostics.local3DTilesTilesetPath),
             "missing optional 3D Tiles should not be treated as required");
 
     touch(root, QStringLiteral("data/maps/imagery/sentinel2/sentinel2.vrt"));
+    touch(root, QStringLiteral("data/maps/vaporview_with_sentinel2_imagery.earth"));
     touch(root, QStringLiteral("data/maps/imagery/landsat/landsat.vrt"));
+    touch(root, QStringLiteral("data/maps/vaporview_with_landsat_imagery.earth"));
     touch(root, QStringLiteral("data/maps/imagery/openaerialmap/openaerialmap.vrt"));
+    touch(root, QStringLiteral("data/maps/vaporview_with_openaerialmap_imagery.earth"));
     touch(root, QStringLiteral("data/maps/tiles3d/local/tileset.json"));
     selection = select(root);
     require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarth,
             "optional imagery and 3D Tiles should not change base map selection");
     require(selection.diagnostics.localImageryAvailable, "optional imagery VRTs should be detected");
     require(selection.diagnostics.localImageryLayerCount == 3, "all three optional imagery VRTs should be counted");
+    require(selection.diagnostics.localImageryOptions.size() == 3,
+            "all three optional imagery menu entries should be reported");
+    require(selection.diagnostics.localImageryOptions[0].available,
+            "Sentinel-2 imagery option should be available when VRT and earth template exist");
+    require(selection.diagnostics.localImageryOptions[0].earthFilePath.endsWith(QStringLiteral("vaporview_with_sentinel2_imagery.earth")),
+            "Sentinel-2 imagery option should point at its earth template");
     require(selection.diagnostics.local3DTilesAvailable, "optional local 3D Tiles tileset should be detected");
     require(selection.diagnostics.foundFiles.contains(selection.diagnostics.sentinel2ImageryVrtPath),
             "optional Sentinel-2 VRT should be listed as found");

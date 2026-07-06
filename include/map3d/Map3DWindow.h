@@ -14,6 +14,7 @@ class QAction;
 class QComboBox;
 class QDialog;
 class QLabel;
+class QMenu;
 class QPlainTextEdit;
 class QSlider;
 class QSpinBox;
@@ -42,6 +43,7 @@ private:
     void loadInitialEarthFile();
     void openSessionDirectory();
     void openEarthFile();
+    void loadLocalImageryTemplate(const VaporView::Map3D::LocalImageryOption& option);
     void reloadBestLocalMap();
     void flyToAircraft();
     void flyToTrack();
@@ -77,6 +79,8 @@ private:
     QAction* follow_action_ = nullptr;
     QLabel* status_label_ = nullptr;
     QAction* diagnostics_action_ = nullptr;
+    QAction* local_imagery_action_ = nullptr;
+    QMenu* local_imagery_menu_ = nullptr;
     QAction* replay_action_ = nullptr;
     QAction* replay_stop_action_ = nullptr;
     QSlider* replay_slider_ = nullptr;

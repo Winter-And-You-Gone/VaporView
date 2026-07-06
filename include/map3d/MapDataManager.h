@@ -2,6 +2,7 @@
 
 #include <QtCore/QString>
 #include <QtCore/QStringList>
+#include <vector>
 
 namespace VaporView::Map3D {
 
@@ -11,6 +12,14 @@ enum class MapDataMode {
     NaturalEarthWithSrtm,
     NaturalEarthWithCopernicusDem,
     FullLocalMap
+};
+
+struct LocalImageryOption {
+    QString key;
+    QString label;
+    QString earthFilePath;
+    QString vrtPath;
+    bool available = false;
 };
 
 struct MapDataDiagnostics {
@@ -29,6 +38,9 @@ struct MapDataDiagnostics {
     QString osmWaterPath;
     QString osmBuildingsPath;
     QString osmPlacesPath;
+    QString sentinel2ImageryEarthPath;
+    QString landsatImageryEarthPath;
+    QString openAerialMapImageryEarthPath;
     QString sentinel2ImageryVrtPath;
     QString landsatImageryVrtPath;
     QString openAerialMapImageryVrtPath;
@@ -56,6 +68,7 @@ struct MapDataDiagnostics {
     int osmLayerCount = 0;
     int selectedOsmLayerCount = 0;
     int localImageryLayerCount = 0;
+    std::vector<LocalImageryOption> localImageryOptions;
     QStringList osmLayerContracts;
     QStringList missingOsmFiles;
     QStringList fullLocalBlockers;
