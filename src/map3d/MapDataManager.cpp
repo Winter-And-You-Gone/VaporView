@@ -186,6 +186,20 @@ void collectOsmDiagnostics(MapDataDiagnostics& diagnostics)
     }
 }
 
+void collectOsmLayerContracts(MapDataDiagnostics& diagnostics)
+{
+    diagnostics.osmLayerContracts = {
+        QStringLiteral("%1 -> layer roads -> OGRFeatures osm-roads -> FeatureImage OSM roads")
+            .arg(diagnostics.osmRoadsPath),
+        QStringLiteral("%1 -> layer water -> OGRFeatures osm-water -> FeatureImage OSM water fill")
+            .arg(diagnostics.osmWaterPath),
+        QStringLiteral("%1 -> layer buildings -> OGRFeatures osm-buildings -> FeatureImage OSM building footprints")
+            .arg(diagnostics.osmBuildingsPath),
+        QStringLiteral("%1 -> layer places -> OGRFeatures osm-places -> TiledFeatureModel OSM place labels")
+            .arg(diagnostics.osmPlacesPath)
+    };
+}
+
 void collectFullLocalBlockers(MapDataDiagnostics& diagnostics,
                               const QString& fullLocalEarthPath,
                               const QString& fullLocalSrtmEarthPath)
@@ -410,6 +424,7 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     diagnostics.copernicusDemAvailable = isFile(diagnostics.copernicusDemVrtPath);
     diagnostics.srtmDemAvailable = isFile(diagnostics.srtmDemVrtPath);
     collectOsmDiagnostics(diagnostics);
+    collectOsmLayerContracts(diagnostics);
     diagnostics.osmLayerCount = osmLayerCount(diagnostics);
     diagnostics.osmVectorAvailable = diagnostics.osmLayerCount == 4;
     diagnostics.localImageryLayerCount = localImageryLayerCount(diagnostics);

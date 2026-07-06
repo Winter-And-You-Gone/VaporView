@@ -66,6 +66,13 @@ int main(int argc, char** argv)
     require(selection.mode == VaporView::Map3D::MapDataMode::NaturalEarth, "Natural Earth files should select NaturalEarth");
     require(selection.hasEarthFile(), "NaturalEarth selection should expose an earth file");
     require(selection.diagnostics.naturalEarthAvailable, "NaturalEarth selection should mark Natural Earth available");
+    require(selection.diagnostics.osmLayerContracts.size() == 4, "diagnostics should describe the four expected OSM layer contracts");
+    require(selection.diagnostics.osmLayerContracts.join(QLatin1Char('\n')).contains(QStringLiteral("roads.gpkg -> layer roads")),
+            "OSM diagnostics should describe the roads GeoPackage layer name");
+    require(selection.diagnostics.osmLayerContracts.join(QLatin1Char('\n')).contains(QStringLiteral("FeatureImage OSM roads")),
+            "OSM diagnostics should describe the roads earth render layer");
+    require(selection.diagnostics.osmLayerContracts.join(QLatin1Char('\n')).contains(QStringLiteral("TiledFeatureModel OSM place labels")),
+            "OSM diagnostics should describe the place label render layer");
     require(!selection.diagnostics.selectedDemLayerAvailable, "NaturalEarth selection should not select a DEM layer");
     require(!selection.diagnostics.osmVectorAvailable, "NaturalEarth selection should not mark OSM complete");
     require(!selection.diagnostics.localImageryAvailable, "optional imagery should be absent by default");
@@ -130,6 +137,8 @@ int main(int argc, char** argv)
     require(selection.diagnostics.osmVectorAvailable, "complete local data should mark OSM vectors available");
     require(selection.diagnostics.selectedOsmLayersAvailable, "complete local data should select OSM layers");
     require(selection.diagnostics.selectedOsmLayerCount == 4, "complete local data should report four selected OSM layers");
+    require(selection.diagnostics.osmLayerContracts.join(QLatin1Char('\n')).contains(QStringLiteral("buildings.gpkg -> layer buildings")),
+            "complete OSM diagnostics should retain the building layer contract");
     require(selection.diagnostics.missingOsmFiles.isEmpty(), "complete local data should not report missing OSM files");
     require(selection.diagnostics.fullLocalBlockers.isEmpty(), "complete local data should not report full-local blockers");
     require(selection.diagnostics.selectedFullLocalEarthPath.endsWith(QStringLiteral("vaporview_full_local.earth")),

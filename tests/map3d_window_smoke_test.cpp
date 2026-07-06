@@ -218,6 +218,12 @@ int main(int argc, char** argv)
             "diagnostics include Copernicus DEM VRT path");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("SRTM VRT:")),
             "diagnostics include SRTM VRT path");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("OSM layer contract:")),
+            "diagnostics include expected OSM layer contract section");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("layer roads")),
+            "diagnostics include expected OSM roads GeoPackage layer name");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("TiledFeatureModel OSM place labels")),
+            "diagnostics include OSM place label render contract");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("OSG_LIBRARY_PATH:")),
             "diagnostics include OSG plugin environment");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("GDAL_DATA:")),

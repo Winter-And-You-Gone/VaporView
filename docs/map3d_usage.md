@@ -130,6 +130,7 @@ Click `地图诊断`, or use `View / 视图 -> Map Data Diagnostics / 地图数�
 - SRTM VRT
 - OSM roads/water/buildings/places GeoPackages
 - per-layer OSM GeoPackage availability for roads, water, buildings, and places
+- OSM layer contracts that map each GeoPackage file to its expected internal layer name, `.earth` `OGRFeatures` name, and render layer type
 - Full Local Map blockers, including exact missing DEM, Natural Earth, OSM, or earth template files
 - optional Sentinel-2/Landsat/OpenAerialMap imagery VRTs
 - optional local 3D Tiles `tileset.json`

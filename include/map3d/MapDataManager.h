@@ -56,6 +56,7 @@ struct MapDataDiagnostics {
     int osmLayerCount = 0;
     int selectedOsmLayerCount = 0;
     int localImageryLayerCount = 0;
+    QStringList osmLayerContracts;
     QStringList missingOsmFiles;
     QStringList fullLocalBlockers;
     QStringList missingFiles;

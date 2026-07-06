@@ -130,6 +130,8 @@ The current full-local earth template renders local OSM context offline:
 - building footprints as a tan draped `FeatureImage`
 - place names as a `TiledFeatureModel` label layer
 
+The 3D Map diagnostics also prints the expected OSM layer contract for each file: `roads.gpkg -> layer roads -> OGRFeatures osm-roads -> FeatureImage OSM roads`, `water.gpkg -> layer water -> OGRFeatures osm-water -> FeatureImage OSM water fill`, `buildings.gpkg -> layer buildings -> OGRFeatures osm-buildings -> FeatureImage OSM building footprints`, and `places.gpkg -> layer places -> OGRFeatures osm-places -> TiledFeatureModel OSM place labels`. If a GeoPackage exists but the vector layer does not render, compare this contract with `ogrinfo -ro -so data/maps/osm/<file>.gpkg <layer>` and the matching `.earth` feature name.
+
 The first version shows building footprints only. It does not download online OSM tiles, cache web tiles, or extrude buildings into true 3D meshes yet.
 
 ## Optional Local High-Resolution Imagery

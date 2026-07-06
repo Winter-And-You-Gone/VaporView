@@ -939,6 +939,14 @@ QString Map3DWindow::diagnosticsText() const
     lines << QStringLiteral("OSM water: %1").arg(fileAvailabilityLabel(diagnostics.osmWaterAvailable, diagnostics.osmWaterPath));
     lines << QStringLiteral("OSM buildings: %1").arg(fileAvailabilityLabel(diagnostics.osmBuildingsAvailable, diagnostics.osmBuildingsPath));
     lines << QStringLiteral("OSM places: %1").arg(fileAvailabilityLabel(diagnostics.osmPlacesAvailable, diagnostics.osmPlacesPath));
+    if (!diagnostics.osmLayerContracts.isEmpty())
+    {
+        lines << QStringLiteral("OSM layer contract:");
+        for (const QString& contract : diagnostics.osmLayerContracts)
+        {
+            lines << QStringLiteral("  - %1").arg(contract);
+        }
+    }
     lines << QStringLiteral("Sentinel-2 imagery VRT: %1").arg(diagnostics.sentinel2ImageryVrtPath);
     lines << QStringLiteral("Landsat imagery VRT: %1").arg(diagnostics.landsatImageryVrtPath);
     lines << QStringLiteral("OpenAerialMap imagery VRT: %1").arg(diagnostics.openAerialMapImageryVrtPath);
