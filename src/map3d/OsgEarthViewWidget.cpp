@@ -524,35 +524,38 @@ bool OsgEarthViewWidget::loadEarthFile(const QString& earthPath)
     earth_load_diagnostics_.requestedPath = earthPath;
 
     initializeSceneIfNeeded();
-    const QString texturePath = naturalEarthTexturePathForEarthFile(earthPath);
-    osg::ref_ptr<osg::Node> texturedEarthNode = createTexturedEarthNode(texturePath);
-    if (texturedEarthNode && root_)
-    {
-        if (earth_node_)
-        {
-            root_->removeChild(earth_node_.get());
-        }
-        earth_node_ = texturedEarthNode;
-        map_node_ = nullptr;
-        trajectory_layer_->setUseWorldCoordinates(true);
-        aircraft_layer_->setUseWorldCoordinates(true);
-        resetWorldOverlayOrigin();
-        root_->insertChild(0, earth_node_.get());
-        setInitialEarthView();
-        rebuildDisplayTrack();
-        update();
-        earth_load_diagnostics_.loaded = true;
-        earth_load_diagnostics_.usedTexturedFallback = true;
-        earth_load_diagnostics_.foundMapNode = false;
-        earth_load_diagnostics_.layerSummaries.push_back(
-            QStringLiteral("Manual Natural Earth textured globe fallback (no osgEarth MapNode)."));
-        return true;
-    }
-
     osg::ref_ptr<osg::Node> earthNode = osgDB::readNodeFile(earthPath.toStdString());
     if (!earthNode)
     {
-        earth_load_diagnostics_.failureReason = QStringLiteral("osgDB::readNodeFile returned null.");
+        const QString readFailure = QStringLiteral("osgDB::readNodeFile returned null.");
+        const QString texturePath = naturalEarthTexturePathForEarthFile(earthPath);
+        osg::ref_ptr<osg::Node> texturedEarthNode = createTexturedEarthNode(texturePath);
+        if (texturedEarthNode && root_)
+        {
+            if (earth_node_)
+            {
+                root_->removeChild(earth_node_.get());
+            }
+            earth_node_ = texturedEarthNode;
+            map_node_ = nullptr;
+            trajectory_layer_->setUseWorldCoordinates(true);
+            aircraft_layer_->setUseWorldCoordinates(true);
+            resetWorldOverlayOrigin();
+            root_->insertChild(0, earth_node_.get());
+            setInitialEarthView();
+            rebuildDisplayTrack();
+            update();
+            earth_load_diagnostics_.loaded = true;
+            earth_load_diagnostics_.usedTexturedFallback = true;
+            earth_load_diagnostics_.foundMapNode = false;
+            earth_load_diagnostics_.failureReason =
+                QStringLiteral("%1 Using manual Natural Earth textured globe fallback.").arg(readFailure);
+            earth_load_diagnostics_.layerSummaries.push_back(
+                QStringLiteral("Manual Natural Earth textured globe fallback (no osgEarth MapNode)."));
+            return true;
+        }
+
+        earth_load_diagnostics_.failureReason = readFailure;
         return false;
     }
     if (!root_)
