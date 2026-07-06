@@ -1429,6 +1429,18 @@ QString Map3DWindow::diagnosticsText() const
     lines << QStringLiteral("OSG plugin path: %1").arg(diagnostics.osgPluginPath.isEmpty() ? QStringLiteral("<not found>") : diagnostics.osgPluginPath);
     lines << QStringLiteral("OSG_LIBRARY_PATH: %1").arg(diagnostics.osgLibraryPath.isEmpty() ? QStringLiteral("<not set>") : diagnostics.osgLibraryPath);
     lines << QStringLiteral("OSGEARTH_NOTIFY_LEVEL: %1").arg(diagnostics.osgEarthNotifyLevel.isEmpty() ? QStringLiteral("<not set>") : diagnostics.osgEarthNotifyLevel);
+    lines << QStringLiteral("osgEarth environment:");
+    if (diagnostics.osgEarthEnvironment.isEmpty())
+    {
+        lines << QStringLiteral("  - <none set>");
+    }
+    else
+    {
+        for (const QString& entry : diagnostics.osgEarthEnvironment)
+        {
+            lines << QStringLiteral("  - %1").arg(entry);
+        }
+    }
     lines << QStringLiteral("GDAL_DATA: %1").arg(diagnostics.gdalDataPath.isEmpty() ? QStringLiteral("<not found>") : diagnostics.gdalDataPath);
     lines << QStringLiteral("PROJ_DATA: %1").arg(diagnostics.projDataPath.isEmpty() ? QStringLiteral("<not found>") : diagnostics.projDataPath);
     lines << QStringLiteral("PROJ_LIB: %1").arg(diagnostics.projLibPath.isEmpty() ? QStringLiteral("<not found>") : diagnostics.projLibPath);

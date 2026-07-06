@@ -51,6 +51,7 @@ struct MapDataDiagnostics {
     QString projLibPath;
     QString osgLibraryPath;
     QString osgEarthNotifyLevel;
+    QStringList osgEarthEnvironment;
     QString baseMapPriority;
     QString selectedBaseModeLabel;
     QString selectedBaseModeKey;

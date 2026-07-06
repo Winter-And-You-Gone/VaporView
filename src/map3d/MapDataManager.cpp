@@ -64,6 +64,21 @@ QString firstExistingDirectory(const QStringList& roots, const QStringList& rela
     return {};
 }
 
+QStringList osgEarthEnvironmentVariables(const QProcessEnvironment& environment)
+{
+    QStringList entries;
+    const QStringList keys = environment.keys();
+    for (const QString& key : keys)
+    {
+        if (key.startsWith(QStringLiteral("OSGEARTH_")))
+        {
+            entries.push_back(QStringLiteral("%1=%2").arg(key, environment.value(key)));
+        }
+    }
+    entries.sort(Qt::CaseInsensitive);
+    return entries;
+}
+
 QString firstExistingDirectoryMatching(const QStringList& roots,
                                        const QStringList& relatives,
                                        const QString& namePattern)
@@ -855,6 +870,7 @@ MapDataSelection MapDataManager::evaluateRoot(const QString& root) const
     diagnostics.osgPluginPath = environment.value(QStringLiteral("OSG_LIBRARY_PATH"));
     diagnostics.osgLibraryPath = diagnostics.osgPluginPath;
     diagnostics.osgEarthNotifyLevel = environment.value(QStringLiteral("OSGEARTH_NOTIFY_LEVEL"));
+    diagnostics.osgEarthEnvironment = osgEarthEnvironmentVariables(environment);
     if (diagnostics.osgPluginPath.isEmpty())
     {
         diagnostics.osgPluginPath = findOsgPluginDirectory(roots);

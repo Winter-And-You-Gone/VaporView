@@ -321,6 +321,8 @@ int main(int argc, char** argv)
             "diagnostics include OSM place label render contract");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("OSG_LIBRARY_PATH:")),
             "diagnostics include OSG plugin environment");
+    require(diagnosticsText->toPlainText().contains(QStringLiteral("osgEarth environment:")),
+            "diagnostics include osgEarth environment variable list");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("GDAL_DATA:")),
             "diagnostics include GDAL data environment");
     require(diagnosticsText->toPlainText().contains(QStringLiteral("PROJ_DATA:")),

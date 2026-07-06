@@ -115,13 +115,18 @@ int main(int argc, char** argv)
 
     {
         EnvVarGuard osgLibraryPathGuard("OSG_LIBRARY_PATH");
+        EnvVarGuard osgEarthCacheGuard("OSGEARTH_CACHE_PATH");
         osgLibraryPathGuard.unset();
+        qputenv("OSGEARTH_CACHE_PATH", QByteArrayLiteral("X:/Project/GPS/VaporView/.local_osgearth_cache"));
         touch(root, QStringLiteral(".local_deps/vcpkg_installed/x64-windows/plugins/osgPlugins-3.6.6/osgdb_earth.dll"));
         selection = select(root);
         require(selection.diagnostics.osgPluginPath.endsWith(QStringLiteral("osgPlugins-3.6.6")),
                 "diagnostics should discover project-local osgPlugins-* directories without a hard-coded OSG patch version");
         require(selection.diagnostics.osgLibraryPath == selection.diagnostics.osgPluginPath,
                 "OSG library path diagnostics should mirror the inferred plugin directory");
+        require(selection.diagnostics.osgEarthEnvironment.join(QLatin1Char('\n'))
+                    .contains(QStringLiteral("OSGEARTH_CACHE_PATH=X:/Project/GPS/VaporView/.local_osgearth_cache")),
+                "diagnostics should include osgEarth environment variables beyond OSGEARTH_NOTIFY_LEVEL");
     }
 
     touch(root, QStringLiteral("data/maps/natural_earth/NE2_50M_SR_W/NE2_50M_SR_W.vrt"));
