@@ -5044,15 +5044,35 @@ private:
     bool is_english_ = false;
 };
 
-QString temperatureOverviewValueText(double value)
+QString temperatureOverviewNumberText(double value)
 {
     if (!std::isfinite(value))
     {
-        return QStringLiteral("---℃");
+        return QStringLiteral("---");
     }
 
-    QString text = QLocale::c().toString(value, 'f', 5);
-    return text + QStringLiteral("℃");
+    return QLocale::c().toString(value, 'f', 5);
+}
+
+int temperatureOverviewValueFontSizePx(const QLabel *label, const QString& value)
+{
+    constexpr int kFallbackWidth = 99;
+    constexpr int kHorizontalPadding = 10;
+    constexpr int kMinimumFontSize = 14;
+    constexpr int kMaximumFontSize = 19;
+    const int width = label && label->width() > 0 ? label->width() : kFallbackWidth;
+    const int availableWidth = std::max(32, width - kHorizontalPadding);
+    QFont valueFont = label ? label->font() : QFont();
+    valueFont.setWeight(QFont::Bold);
+    for (int size = kMaximumFontSize; size >= kMinimumFontSize; --size)
+    {
+        valueFont.setPixelSize(size);
+        if (QFontMetrics(valueFont).horizontalAdvance(value) <= availableWidth)
+        {
+            return size;
+        }
+    }
+    return kMinimumFontSize;
 }
 
 void setTemperatureOverviewPillText(QLabel *label, const QString& title, const QString& value)
@@ -5062,8 +5082,14 @@ void setTemperatureOverviewPillText(QLabel *label, const QString& title, const Q
         return;
     }
 
-    const QString text = title.isEmpty() ? value : QStringLiteral("%1\n%2").arg(title, value);
-    label->setText(text);
+    const int valueFontSize = temperatureOverviewValueFontSizePx(label, value);
+    label->setTextFormat(Qt::RichText);
+    label->setText(QStringLiteral(
+        "<div align=\"center\" style=\"line-height: 14px; white-space: nowrap;\">"
+        "<span style=\"font-size: 12px; font-weight: 700;\">%1</span><br/>"
+        "<span style=\"font-size: %2px; font-weight: 700;\">%3</span>"
+        "</div>")
+        .arg(title.toHtmlEscaped(), QString::number(valueFontSize), value.toHtmlEscaped()));
     label->style()->unpolish(label);
     label->style()->polish(label);
 }
@@ -5632,11 +5658,11 @@ public:
 
         output_switch_button_ = new TemperatureOverviewSwitchButton(summary_widget_);
         output_switch_button_->setFixedWidth(kOverviewControlWidth);
-        output_switch_button_->setMinimumHeight(kOverviewMinimumOutputHeight);
-        output_switch_button_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+        output_switch_button_->setFixedHeight(kOverviewOutputHeight);
+        output_switch_button_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         output_switch_button_->setStyleSheet(QStringLiteral(
-            "QPushButton#temperatureOverviewOutputSwitch { min-height: %1px; max-height: 16777215px; }")
-            .arg(kOverviewMinimumOutputHeight));
+            "QPushButton#temperatureOverviewOutputSwitch { min-height: %1px; max-height: %1px; }")
+            .arg(kOverviewOutputHeight));
         connect(output_switch_button_, &QPushButton::clicked, this, [this]() {
             const bool requested = !output_switch_button_->switchChecked();
             if (output_enabled_callback_)
@@ -5644,7 +5670,7 @@ public:
                 output_enabled_callback_(currentChannelNumber(), requested);
             }
         });
-        summaryLayout->addWidget(output_switch_button_, 2);
+        summaryLayout->addWidget(output_switch_button_, 0);
 
         layout->addWidget(summary_widget_, 0);
 
@@ -5753,7 +5779,7 @@ private:
     static constexpr int kOverviewSummarySpacing = 4;
     static constexpr int kOverviewChannelHeight = 34;
     static constexpr int kOverviewMinimumValueHeight = 44;
-    static constexpr int kOverviewMinimumOutputHeight = 68;
+    static constexpr int kOverviewOutputHeight = 56;
 
     quint8 currentChannelNumber() const
     {
@@ -5876,12 +5902,12 @@ private:
         const bool targetValid = valid && std::isfinite(channel.target_temperature_c);
         setTemperatureOverviewPillText(
             target_temp_value_,
-            is_english_ ? QStringLiteral("Target Temp") : QStringLiteral("目标温度"),
-            temperatureOverviewValueText(targetValid ? channel.target_temperature_c : std::numeric_limits<double>::quiet_NaN()));
+            is_english_ ? QStringLiteral("Target Temp °C") : QStringLiteral("目标温度℃"),
+            temperatureOverviewNumberText(targetValid ? channel.target_temperature_c : std::numeric_limits<double>::quiet_NaN()));
         setTemperatureOverviewPillText(
             current_temp_value_,
-            is_english_ ? QStringLiteral("Current Temp") : QStringLiteral("当前温度"),
-            temperatureOverviewValueText(measuredValid ? channel.measured_temperature_c : std::numeric_limits<double>::quiet_NaN()));
+            is_english_ ? QStringLiteral("Current Temp °C") : QStringLiteral("当前温度℃"),
+            temperatureOverviewNumberText(measuredValid ? channel.measured_temperature_c : std::numeric_limits<double>::quiet_NaN()));
         if (channel_button_)
         {
             channel_button_->setProperty("available", valid);

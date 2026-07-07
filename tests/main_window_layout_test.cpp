@@ -1497,6 +1497,10 @@ int main(int argc, char **argv)
                 "temperature overview value pill does not carry availability styling state");
         require(!pill->wordWrap(),
                 "temperature overview value pill uses explicit two-line text without wrapping");
+        require(pill->textFormat() == Qt::RichText &&
+                    pill->text().contains(QStringLiteral("<br/>")) &&
+                    pill->text().contains(QStringLiteral("px; font-weight: 700;\">---")),
+                "temperature overview value pill uses rich text with an enlarged numeric row");
     }
     auto *temperatureOutputSwitch =
         window.findChild<QPushButton *>(QStringLiteral("temperatureOverviewOutputSwitch"));
@@ -1532,8 +1536,8 @@ int main(int argc, char **argv)
     }
     require(temperatureChannelButton->height() <= 38,
             "temperature overview channel selector is shorter than the value and output capsules");
-    require(temperatureOutputSwitch->height() >= 68,
-            "temperature overview output enable capsule keeps extra height for its two-row switch");
+    require(temperatureOutputSwitch->height() == 56,
+            "temperature overview output enable capsule is restored to the previous compact height");
     require(std::abs(temperatureSummaryControlHeight - temperatureOverviewSummary->height()) <= 2,
             "temperature overview summary capsules fill the available card body height");
 
@@ -1780,15 +1784,17 @@ int main(int argc, char **argv)
     bool sawTemperatureOverviewCurrentValue = false;
     for (QLabel *pill : temperatureValuePills)
     {
-        if (pill->text().contains(QLatin1Char('\n')) &&
-            pill->text().contains(QStringLiteral("25.00000℃")) &&
-            pill->text().contains(QStringLiteral("目标温度")))
+        if (pill->text().contains(QStringLiteral("<br/>")) &&
+            pill->text().contains(QStringLiteral("25.00000")) &&
+            !pill->text().contains(QStringLiteral("25.00000℃")) &&
+            pill->text().contains(QStringLiteral("目标温度℃")))
         {
             sawTemperatureOverviewTargetValue = true;
         }
-        if (pill->text().contains(QLatin1Char('\n')) &&
-            pill->text().contains(QStringLiteral("24.75000℃")) &&
-            pill->text().contains(QStringLiteral("当前温度")))
+        if (pill->text().contains(QStringLiteral("<br/>")) &&
+            pill->text().contains(QStringLiteral("24.75000")) &&
+            !pill->text().contains(QStringLiteral("24.75000℃")) &&
+            pill->text().contains(QStringLiteral("当前温度℃")))
         {
             sawTemperatureOverviewCurrentValue = true;
         }
