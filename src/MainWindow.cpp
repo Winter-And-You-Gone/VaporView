@@ -2645,8 +2645,8 @@ QLabel#temperatureOverviewValuePill {
     color: @vv-text-strong;
 }
 QToolButton#temperatureOverviewChannelButton {
-    background-color: @vv-primary-subtle;
-    border: 1px solid @vv-primary-subtle-pressed;
+    background-color: @vv-surface-alt;
+    border: 1px solid @vv-border;
     color: @vv-primary;
 }
 QToolButton#temperatureOverviewChannelButton[available="false"] {
@@ -4865,7 +4865,7 @@ protected:
         const QFontMetrics fm = painter.fontMetrics();
         const QFontMetrics axisFm(axisFont);
         painter.setPen(text);
-        constexpr int kYAxisTicks = 5;
+        constexpr int kYAxisTicks = 6;
         constexpr int kXAxisTicks = 4;
         const qreal leftAxisWidth = axisFm.horizontalAdvance(QStringLiteral("999")) + 6.0;
         constexpr qreal kBottomAxisHeight = 18.0;
@@ -5018,7 +5018,7 @@ private:
         setProperty("yAxisMinC", minValue);
         setProperty("yAxisMaxC", maxValue);
         setProperty("axisLabelsVisible", true);
-        setProperty("yAxisTickCount", 6);
+        setProperty("yAxisTickCount", 7);
         setProperty("xAxisTickCount", 5);
     }
 
@@ -5054,6 +5054,11 @@ QString temperatureOverviewNumberText(double value)
     return QLocale::c().toString(value, 'f', 5);
 }
 
+QString temperatureOverviewReservedNumberText()
+{
+    return QStringLiteral("999.99999");
+}
+
 int temperatureOverviewValueFontSizePx(const QLabel *label, const QString& value)
 {
     constexpr int kFallbackWidth = 99;
@@ -5064,10 +5069,14 @@ int temperatureOverviewValueFontSizePx(const QLabel *label, const QString& value
     const int availableWidth = std::max(32, width - kHorizontalPadding);
     QFont valueFont = label ? label->font() : QFont();
     valueFont.setWeight(QFont::Bold);
+    const QString reservedText = temperatureOverviewReservedNumberText();
     for (int size = kMaximumFontSize; size >= kMinimumFontSize; --size)
     {
         valueFont.setPixelSize(size);
-        if (QFontMetrics(valueFont).horizontalAdvance(value) <= availableWidth)
+        const QFontMetrics metrics(valueFont);
+        const int requiredWidth = std::max(metrics.horizontalAdvance(value),
+                                           metrics.horizontalAdvance(reservedText));
+        if (requiredWidth <= availableWidth)
         {
             return size;
         }
@@ -5083,6 +5092,14 @@ void setTemperatureOverviewPillText(QLabel *label, const QString& title, const Q
     }
 
     const int valueFontSize = temperatureOverviewValueFontSizePx(label, value);
+    label->setProperty("reservedValueText", temperatureOverviewReservedNumberText());
+    label->setProperty("valueFontSizePx", valueFontSize);
+    QFont valueFont = label->font();
+    valueFont.setWeight(QFont::Bold);
+    valueFont.setPixelSize(valueFontSize);
+    const int availableWidth = std::max(32, label->width() - 10);
+    label->setProperty("reservedValueFits",
+                       QFontMetrics(valueFont).horizontalAdvance(temperatureOverviewReservedNumberText()) <= availableWidth);
     label->setTextFormat(Qt::RichText);
     label->setText(QStringLiteral(
         "<div align=\"center\" style=\"line-height: 14px; white-space: nowrap;\">"
@@ -5591,8 +5608,9 @@ public:
         channel_button_->setFixedWidth(kOverviewControlWidth);
         channel_button_->setFixedHeight(kOverviewChannelHeight);
         channel_button_->setPopupMode(QToolButton::InstantPopup);
-        channel_button_->setToolButtonStyle(Qt::ToolButtonTextOnly);
-        channel_button_->setLayoutDirection(Qt::LeftToRight);
+        channel_button_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+        channel_button_->setLayoutDirection(Qt::RightToLeft);
+        channel_button_->setIconSize(QSize(14, 14));
         channel_button_->setFocusPolicy(Qt::StrongFocus);
         channel_button_->setCursor(Qt::PointingHandCursor);
         channel_menu_ = new QMenu(channel_button_);
@@ -5610,6 +5628,8 @@ public:
             button->setFocusPolicy(Qt::NoFocus);
             button->setText(text);
             button->setFlat(true);
+            button->setLayoutDirection(Qt::RightToLeft);
+            button->setIconSize(QSize(14, 14));
             channel_menu_->addAction(action);
         };
         auto *channelWidgetAction1 = new QWidgetAction(channel_menu_);
@@ -5772,6 +5792,8 @@ public:
                                                       toolbarColor(AppThemeColor::ToolbarBlue)));
             channel_button_->setIconSize(QSize(14, 14));
         }
+        syncChannelMenuButton(channel_menu_button_1_, channel_action_1_);
+        syncChannelMenuButton(channel_menu_button_2_, channel_action_2_);
     }
 
 private:
@@ -5888,6 +5910,12 @@ private:
         }
         button->setText(action->text());
         button->setProperty("selected", action->isChecked());
+        const bool selected = action->isChecked();
+        button->setIcon(selected
+            ? createLucideIcon(QStringLiteral("check"),
+                               toolbarColor(AppThemeColor::ToolbarBlue))
+            : QIcon());
+        button->setProperty("hasCheckIcon", selected);
         button->style()->unpolish(button);
         button->style()->polish(button);
         button->update();
@@ -7459,15 +7487,15 @@ void MainWindow::loadModernStyleSheet()
             "QLabel#homeTelemetrySummaryTitleLabel[skyTelemetryTitle=\"true\"] { color: @vv-primary; }"
             "QLabel#temperatureOverviewValuePill { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-text-strong; font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 13px; font-weight: 700; padding: 2px 3px; margin: 0px; }"
             "QPushButton#temperatureOverviewOutputSwitch { background-color: transparent; border: none; padding: 0px; margin: 0px; color: @vv-text; font-size: 14px; font-weight: 700; }"
-            "QToolButton#temperatureOverviewChannelButton { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-primary; font-size: 13px; font-weight: 700; padding: 1px 0px; text-align: center; }"
+            "QToolButton#temperatureOverviewChannelButton { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; color: @vv-primary; font-size: 13px; font-weight: 700; padding: 1px 8px 1px 8px; text-align: center; }"
             "QToolButton#temperatureOverviewChannelButton[available=\"false\"] { background-color: @vv-surface-alt; border-color: @vv-border; color: @vv-text-muted; }"
             "QToolButton#temperatureOverviewChannelButton:hover, QToolButton#temperatureOverviewChannelButton:pressed { background-color: @vv-surface; border-color: @vv-border-strong; }"
             "QToolButton#temperatureOverviewChannelButton[available=\"false\"]:hover, QToolButton#temperatureOverviewChannelButton[available=\"false\"]:pressed { background-color: @vv-surface-alt; border-color: @vv-border; }"
-            "QToolButton#temperatureOverviewChannelButton::menu-indicator { image: url(combo_arrow_down.xpm); width: 12px; height: 8px; subcontrol-origin: padding; subcontrol-position: center right; right: 8px; }"
-            "QMenu#temperatureOverviewChannelMenu { padding: 0px; }"
+            "QToolButton#temperatureOverviewChannelButton::menu-indicator { image: none; width: 0px; height: 0px; }"
+            "QMenu#temperatureOverviewChannelMenu { background-color: @vv-surface; border: 1px solid @vv-border; border-radius: 10px; padding: 2px; }"
             "QMenu#temperatureOverviewChannelMenu::item { min-width: 99px; max-width: 99px; padding: 0px; margin: 0px; }"
-            "QPushButton#temperatureOverviewChannelMenuItem { background-color: transparent; border: none; border-radius: 8px; color: @vv-text; font-size: 13px; font-weight: 700; min-width: 99px; max-width: 99px; padding: 0px; margin: 0px; }"
-            "QPushButton#temperatureOverviewChannelMenuItem:hover, QPushButton#temperatureOverviewChannelMenuItem:pressed, QPushButton#temperatureOverviewChannelMenuItem[selected=\"true\"] { background-color: @vv-primary-subtle; color: @vv-primary; }"
+            "QPushButton#temperatureOverviewChannelMenuItem { background-color: transparent; border: none; border-radius: 6px; color: @vv-text; font-size: 13px; font-weight: 700; min-width: 99px; max-width: 99px; padding: 0px 8px; margin: 0px; }"
+            "QPushButton#temperatureOverviewChannelMenuItem:hover, QPushButton#temperatureOverviewChannelMenuItem:pressed, QPushButton#temperatureOverviewChannelMenuItem[selected=\"true\"] { background-color: transparent; color: @vv-primary; }"
             "QFrame#homeOverviewDivider { background-color: @vv-border; border: none; min-width: 1px; max-width: 1px; }"
             "QLabel#epsilonSectionLabel { color: @vv-text; background-color: @vv-surface-alt; border: none; border-right: 1px solid @vv-border; font-size: 14px; font-weight: 700; padding: 2px; }"
             "QLabel#valueLabel { font-family: \"Consolas\", \"Monaco\", \"Courier New\", monospace; font-size: 14px; font-weight: 600; }"

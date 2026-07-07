@@ -1453,8 +1453,10 @@ int main(int argc, char **argv)
     auto *temperatureChannelButton =
         window.findChild<QToolButton *>(QStringLiteral("temperatureOverviewChannelButton"));
     require(temperatureChannelButton != nullptr, "temperature overview channel selector exists");
-    require(temperatureChannelButton->toolButtonStyle() == Qt::ToolButtonTextOnly,
-            "temperature overview channel selector text remains centered");
+    require(temperatureChannelButton->toolButtonStyle() == Qt::ToolButtonTextBesideIcon &&
+                temperatureChannelButton->layoutDirection() == Qt::RightToLeft &&
+                !temperatureChannelButton->icon().isNull(),
+            "temperature overview channel selector uses a right-side lucide chevron icon");
     require(temperatureChannelButton->property("available").isValid() &&
                 !temperatureChannelButton->property("available").toBool(),
             "temperature overview channel selector starts unavailable without controller data");
@@ -1462,9 +1464,10 @@ int main(int argc, char **argv)
             "temperature overview channel selector is disabled without controller data");
     require(qApp->styleSheet().contains(QStringLiteral("QToolButton#temperatureOverviewChannelButton[available=\"false\"]")),
             "temperature overview channel selector has a gray unavailable state");
-    require(qApp->styleSheet().contains(QStringLiteral("QToolButton#temperatureOverviewChannelButton::menu-indicator")) &&
-                qApp->styleSheet().contains(QStringLiteral("combo_arrow_down.xpm")),
-            "temperature overview channel selector has right-side dropdown arrow");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QToolButton#temperatureOverviewChannelButton::menu-indicator {"),
+                                 QStringLiteral("image: none"),
+                                 "temperature overview channel selector hides the default dropdown indicator");
     require(temperatureChannelButton->menu() != nullptr,
             "temperature overview channel selector menu exists");
     require(temperatureChannelButton->menu()->minimumWidth() == temperatureChannelButton->width() &&
@@ -1472,6 +1475,32 @@ int main(int argc, char **argv)
             "temperature overview channel menu width matches capsule width");
     require(temperatureChannelButton->menu()->actions().size() == 2,
             "temperature overview channel menu has two channel options");
+    const QList<QPushButton*> temperatureChannelMenuButtons =
+        temperatureChannelButton->menu()->findChildren<QPushButton *>(QStringLiteral("temperatureOverviewChannelMenuItem"));
+    require(temperatureChannelMenuButtons.size() == 2,
+            "temperature overview channel menu uses custom button rows");
+    int selectedTemperatureChannelMenuItems = 0;
+    for (QPushButton *button : temperatureChannelMenuButtons)
+    {
+        require(button->layoutDirection() == Qt::RightToLeft,
+                "temperature overview channel menu check icon sits after the channel text");
+        if (button->property("hasCheckIcon").toBool())
+        {
+            ++selectedTemperatureChannelMenuItems;
+            require(!button->icon().isNull(),
+                    "temperature overview selected channel menu item shows a check icon");
+        }
+    }
+    require(selectedTemperatureChannelMenuItems == 1,
+            "temperature overview channel menu marks only the selected channel with a check icon");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QMenu#temperatureOverviewChannelMenu {"),
+                                 QStringLiteral("border-radius: 10px"),
+                                 "temperature overview channel menu keeps rounded corners");
+    requireLastStyleRuleContains(qApp->styleSheet(),
+                                 QStringLiteral("QPushButton#temperatureOverviewChannelMenuItem:hover,"),
+                                 QStringLiteral("background-color: transparent"),
+                                 "temperature overview channel menu selection does not use a colored background");
     temperatureChannelButton->menu()->popup(temperatureChannelButton->mapToGlobal(QPoint(0, temperatureChannelButton->height())));
     processEventsFor(50);
     for (QAction *action : temperatureChannelButton->menu()->actions())
@@ -1501,6 +1530,9 @@ int main(int argc, char **argv)
                     pill->text().contains(QStringLiteral("<br/>")) &&
                     pill->text().contains(QStringLiteral("px; font-weight: 700;\">---")),
                 "temperature overview value pill uses rich text with an enlarged numeric row");
+        require(pill->property("reservedValueText").toString() == QStringLiteral("999.99999") &&
+                    pill->property("reservedValueFits").toBool(),
+                "temperature overview value pill reserves width for 999.99999");
     }
     auto *temperatureOutputSwitch =
         window.findChild<QPushButton *>(QStringLiteral("temperatureOverviewOutputSwitch"));
@@ -1814,7 +1846,7 @@ int main(int argc, char **argv)
                 "temperature trend plot centers the default axis range around the target temperature");
         require(plot->property("axisLabelsVisible").toBool(),
                 "temperature trend plot exposes visible axis labels");
-        require(plot->property("yAxisTickCount").toInt() == 6 &&
+        require(plot->property("yAxisTickCount").toInt() == 7 &&
                     plot->property("xAxisTickCount").toInt() == 5,
                 "temperature trend plot shows numeric ticks on both axes");
     }
