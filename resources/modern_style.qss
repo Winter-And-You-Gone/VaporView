@@ -524,8 +524,8 @@ QMenu#temperatureOverviewChannelMenu {
 }
 
 QMenu#temperatureOverviewChannelMenu::item {
-    min-width: 99px;
-    max-width: 99px;
+    min-width: 95px;
+    max-width: 95px;
     padding: 0px;
     margin: 0px;
 }
@@ -537,8 +537,8 @@ QPushButton#temperatureOverviewChannelMenuItem {
     color: @vv-text;
     font-size: 13px;
     font-weight: 700;
-    min-width: 99px;
-    max-width: 99px;
+    min-width: 95px;
+    max-width: 95px;
     padding: 0px 8px;
     margin: 0px;
 }

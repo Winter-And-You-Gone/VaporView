@@ -1457,6 +1457,9 @@ int main(int argc, char **argv)
                 temperatureChannelButton->layoutDirection() == Qt::RightToLeft &&
                 !temperatureChannelButton->icon().isNull(),
             "temperature overview channel selector uses a right-side lucide chevron icon");
+    require(temperatureChannelButton->property("textAlignment").toString() == QStringLiteral("center") &&
+                temperatureChannelButton->property("iconAlignment").toString() == QStringLiteral("right"),
+            "temperature overview channel selector keeps its text centered with the chevron right-aligned");
     require(temperatureChannelButton->property("available").isValid() &&
                 !temperatureChannelButton->property("available").toBool(),
             "temperature overview channel selector starts unavailable without controller data");
@@ -1470,6 +1473,9 @@ int main(int argc, char **argv)
                                  "temperature overview channel selector hides the default dropdown indicator");
     require(temperatureChannelButton->menu() != nullptr,
             "temperature overview channel selector menu exists");
+    require(temperatureChannelButton->menu()->testAttribute(Qt::WA_TranslucentBackground) &&
+                temperatureChannelButton->menu()->testAttribute(Qt::WA_StyledBackground),
+            "temperature overview channel menu uses a translucent styled background for rounded corners");
     require(temperatureChannelButton->menu()->minimumWidth() == temperatureChannelButton->width() &&
                 temperatureChannelButton->menu()->maximumWidth() == temperatureChannelButton->width(),
             "temperature overview channel menu width matches capsule width");
@@ -1484,6 +1490,9 @@ int main(int argc, char **argv)
     {
         require(button->layoutDirection() == Qt::RightToLeft,
                 "temperature overview channel menu check icon sits after the channel text");
+        require(button->property("textAlignment").toString() == QStringLiteral("center") &&
+                    button->property("checkIconAlignment").toString() == QStringLiteral("right"),
+                "temperature overview channel menu item text is centered while check icon is right-aligned");
         if (button->property("hasCheckIcon").toBool())
         {
             ++selectedTemperatureChannelMenuItems;
@@ -1508,6 +1517,8 @@ int main(int argc, char **argv)
         const QRect actionRect = temperatureChannelButton->menu()->actionGeometry(action);
         require(std::abs(actionRect.width() - temperatureChannelButton->width()) <= 4,
                 "temperature overview channel menu option width matches capsule width");
+        require(actionRect.width() <= temperatureChannelButton->width() - 4,
+                "temperature overview channel menu option leaves padding for rounded menu corners");
         require(std::abs(actionRect.height() - temperatureChannelButton->height()) <= 4,
                 "temperature overview channel menu option height matches capsule height");
     }
