@@ -373,15 +373,17 @@ void SingleLevelPopupMenu::refreshTheme()
     }
 
     const bool dark = isDarkThemeEnabled();
+    const int horizontalPadding = panel_padding_ >= 8 ? 0 : panel_padding_;
     const QString styleSheet = QStringLiteral(
-        "QMenu#%1 { background-color: %2; border: 1px solid %3; border-radius: %4px; padding: %5px; }"
+        "QMenu#%1 { background-color: %2; border: 1px solid %3; border-radius: %4px; padding: %5px %6px; }"
         "QMenu#%1::item { background-color: transparent; padding: 0px; margin: 0px; }"
         "QMenu#%1::item:selected { background-color: transparent; }")
         .arg(objectName(),
              appThemeColorName(AppThemeColor::MenuPanel, dark),
              appThemeColorName(AppThemeColor::Border, dark))
         .arg(corner_radius_)
-        .arg(panel_padding_);
+        .arg(panel_padding_)
+        .arg(horizontalPadding);
     setStyleSheet(styleSheet);
 
     for (SingleLevelPopupMenuRow *row : rows())
@@ -431,6 +433,7 @@ void SingleLevelPopupMenu::applyRoundedMask()
 void SingleLevelPopupMenu::resizeEvent(QResizeEvent *event)
 {
     QMenu::resizeEvent(event);
+    syncRowWidths();
     applyRoundedMask();
 }
 
@@ -438,8 +441,10 @@ void SingleLevelPopupMenu::showEvent(QShowEvent *event)
 {
     QMenu::showEvent(event);
     refreshTheme();
+    syncRowWidths();
     applyRoundedMask();
     QTimer::singleShot(0, this, [this]() {
+        syncRowWidths();
         applyRoundedMask();
     });
 }
@@ -452,6 +457,33 @@ QSize SingleLevelPopupMenu::maskSize() const
         menuSize = sizeHint();
     }
     return menuSize;
+}
+
+void SingleLevelPopupMenu::syncRowWidths()
+{
+    if (panel_padding_ < 8)
+    {
+        return;
+    }
+    if (!isVisible())
+    {
+        return;
+    }
+    const int availableWidth = std::max(1, width() - 2);
+    for (SingleLevelPopupMenuRow *row : rows())
+    {
+        if (!row)
+        {
+            continue;
+        }
+        if (row->width() != availableWidth ||
+            row->minimumWidth() != availableWidth ||
+            row->maximumWidth() != availableWidth)
+        {
+            row->setMinimumRowWidth(availableWidth);
+            row->setFixedWidth(availableWidth);
+        }
+    }
 }
 
 }

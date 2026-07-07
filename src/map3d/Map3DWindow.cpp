@@ -387,7 +387,7 @@ Map3DWindow::Map3DWindow(QWidget* parent)
     local_imagery_menu_ = new VaporView::SingleLevelPopupMenu(this);
     local_imagery_menu_->setTitle(QStringLiteral("本地影像"));
     local_imagery_menu_->setObjectName(QStringLiteral("map3DLocalImageryMenu"));
-    local_imagery_menu_->setPanelPadding(6);
+    local_imagery_menu_->setPanelPadding(8);
     local_imagery_menu_->setCornerRadius(8);
     local_imagery_menu_->refreshTheme();
     local_imagery_action_ = toolbar->addAction(QStringLiteral("本地影像"));

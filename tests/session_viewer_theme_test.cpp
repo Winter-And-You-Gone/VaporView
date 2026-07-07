@@ -878,7 +878,9 @@ void testTrajectoryViewerUsesSidebarLayout()
             "heat palette button uses a single lucide chevron affordance");
     require(heatPaletteMenu->testAttribute(Qt::WA_TranslucentBackground),
             "heat palette menu uses the shared translucent popup background for rounded corners");
-    require(heatPaletteMenu->cornerRadius() == 8 && heatPaletteMenu->panelPadding() == 6,
+    require(heatPaletteMenu->cornerRadius() == 8 &&
+                heatPaletteMenu->panelPadding() == 8 &&
+                heatPaletteMenu->styleSheet().contains(QStringLiteral("padding: 8px 0px")),
             "heat palette menu uses the shared single-level popup chrome");
     require(heatPaletteMenu->actions().size() == 3, "heat palette menu exposes the curated vivid ramps");
     require(heatMetricMenu->actions().size() == 4, "heat metric selector exposes peak, humidity, temperature, and pressure");

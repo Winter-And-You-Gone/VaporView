@@ -3189,7 +3189,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
         ? QStringLiteral("Choose the peak heatmap color ramp.")
         : QStringLiteral("选择峰值热力图色带。"));
     heat_palette_menu_->setObjectName(QStringLiteral("trajectoryHeatPaletteMenu"));
-    heat_palette_menu_->setPanelPadding(6);
+    heat_palette_menu_->setPanelPadding(8);
     heat_palette_menu_->setCornerRadius(8);
     heat_palette_menu_->refreshTheme();
     heat_palette_button_->setMenu(heat_palette_menu_);
@@ -3208,7 +3208,7 @@ TrajectoryViewerDialog::TrajectoryViewerDialog(QWidget *parent)
     heat_metric_button_->setIconSize(QSize(14, 14));
     heat_metric_button_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
     heat_metric_menu_->setObjectName(QStringLiteral("trajectoryHeatMetricMenu"));
-    heat_metric_menu_->setPanelPadding(6);
+    heat_metric_menu_->setPanelPadding(8);
     heat_metric_menu_->setCornerRadius(8);
     heat_metric_menu_->refreshTheme();
     heat_metric_button_->setMenu(heat_metric_menu_);
